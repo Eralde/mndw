@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {sharedImportMap, sharedSpecifiers} from '@mndw/sdk/shared-dependencies';
 import {svelte} from '@sveltejs/vite-plugin-svelte';
+import {resolvePluginRequest} from './scripts/serve-plugins.js';
 import type {ProxyOptions} from 'vite';
 import {defineConfig, loadEnv} from 'vite';
 
@@ -16,6 +17,11 @@ export default defineConfig(({mode}) => {
   const deviceHost = process.env.MNDW_HOST_DEVICE || env.MNDW_HOST_DEVICE || 'http://192.168.1.1';
   const daemonHost = process.env.MNDW_DAEMON || env.MNDW_DAEMON || 'http://127.0.0.1:9090';
   const deviceUrl = new URL(deviceHost);
+
+  const builtinPluginsDir = process.env.MNDW_BUILTIN_PLUGINS_DIR
+    || path.resolve(repoRoot, 'example-plugins', 'dist');
+  const userPluginsDir = process.env.MNDW_USER_PLUGINS_DIR
+    || path.resolve(repoRoot, '.dev-data', 'user-plugins');
 
   function deviceProxy(apiPath: string, ws = false): ProxyOptions {
     return {
@@ -57,6 +63,37 @@ export default defineConfig(({mode}) => {
             } catch {
               next();
             }
+          });
+        },
+      },
+      {
+        // Serve plugin bundles in dev so the loader's import() resolves real assets:
+        //   /plugins/<name>/*      → built builtin plugins (example-plugins/dist)
+        //   /user-plugins/<name>/* → approved user plugins (empty until Phase 6)
+        // Mirrors mndw-serve-shared; prod serving is lighttpd's job (Phase 8).
+        name: 'mndw-serve-plugins',
+        configureServer(server) {
+          const dirs = {builtinDir: builtinPluginsDir, userDir: userPluginsDir};
+
+          server.middlewares.use((req, res, next) => {
+            const resolved = req.url ? resolvePluginRequest(req.url, dirs) : null;
+
+            if (!resolved) {
+              next();
+
+              return;
+            }
+
+            fs.readFile(resolved.filePath, (err, content) => {
+              if (err) {
+                next();
+
+                return;
+              }
+
+              res.setHeader('Content-Type', resolved.contentType);
+              res.end(content);
+            });
           });
         },
       },

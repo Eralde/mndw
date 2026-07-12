@@ -1,0 +1,10 @@
+{
+  "$schema": "../../packages/sdk/manifest.schema.json",
+  "manifestVersion": 2,
+  "name": "broken-widget",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "Broken Widget",
+  "entry": "index.js",
+  "size": { "w": 3, "h": 2 }
+}

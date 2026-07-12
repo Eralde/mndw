@@ -262,7 +262,12 @@ module.exports = tseslint.config(
   // Scaffolding templates are opaque source text (they carry placeholder tokens and reference deps a
   // scaffolded plugin installs, not the host), so keep them out of every lint pass.
   {
-    ignores: ['packages/host/scripts/templates/**'],
+    ignores: [
+      'packages/host/scripts/templates/**',
+      // Built example-plugin bundles (esbuild output) are not source — never lint them.
+      'example-plugins/dist/**',
+      'example-plugins/*/dist/**',
+    ],
   },
   // @see https://typescript-eslint.io/getting-started/typed-linting/
   {

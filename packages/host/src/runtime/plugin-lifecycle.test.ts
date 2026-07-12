@@ -174,4 +174,27 @@ describe('unmountPlugin', () => {
     expect(() => unmountPlugin({pluginName: 'test', instanceId: 'test:1', instance}, document.createElement('div'))).not
       .toThrow();
   });
+
+  it('logs when async instance.unmount() rejects while cleanup remains synchronous', async () => {
+    const {clearInstanceStorage} = await import('../services/storage.service.js');
+    const error = new Error('async unmount failed');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const closeAll = vi.fn();
+    const container = document.createElement('div');
+    const instance: PluginInstance = {unmount: vi.fn(() => Promise.reject(error))};
+
+    container.innerHTML = '<div>content</div>';
+
+    unmountPlugin({pluginName: 'test', instanceId: 'test:1', instance, disposeOverlayService: closeAll}, container);
+
+    expect(closeAll).toHaveBeenCalledTimes(1);
+    expect(clearInstanceStorage).toHaveBeenCalledWith('test', 'test:1');
+    expect(container.innerHTML).toBe('');
+
+    await vi.waitFor(() => {
+      expect(consoleError).toHaveBeenCalledWith('[mndw] Plugin "test" unmount failed:', error);
+    });
+
+    consoleError.mockRestore();
+  });
 });

@@ -1,0 +1,18 @@
+{
+  "name": "@mndw/example-device-traffic-widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@mndw/sdk": "workspace:*",
+    "@rci-tools/core": "^0.2.0",
+    "@types/d3": "^7.4.3",
+    "d3": "^7.9.0",
+    "rxjs": "^7.8.0",
+    "svelte": "^5.56.4",
+    "vitest": "^3.2.7"
+  }
+}

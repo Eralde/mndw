@@ -1,7 +1,7 @@
-export type {MndwPlugin, PluginInstance, PluginResizeSize} from './plugin.js';
-export type {HostInfo, PluginContext} from './context.js';
-export type {PluginStorage} from './storage.js';
-export type {ServiceInjector} from './injector.js';
+export type { MndwPlugin, PluginInstance, PluginResizeSize } from './plugin.js';
+export type { HostInfo, PluginContext } from './context.js';
+export type { PluginStorage } from './storage.js';
+export type { ServiceInjector } from './injector.js';
 export type {
   OverlayAnchor,
   OverlayCloseEvent,
@@ -27,10 +27,10 @@ export type {
   WidgetManifest,
   WidgetSize,
 } from './manifest.js';
-export {pluginManifestSchema} from './manifest-schema.js';
-export type {PluginManifestInput, PluginManifestOutput} from './manifest-schema.js';
-export {ManifestValidationError, validateManifest} from './manifest-validator.js';
-export {BackendDisabled, BackendNotApproved, BackendUnknownId, createBackendClient} from './backend-client.js';
+export { pluginManifestSchema } from './manifest-schema.js';
+export type { PluginManifestInput, PluginManifestOutput } from './manifest-schema.js';
+export { ManifestValidationError, validateManifest } from './manifest-validator.js';
+export { BackendDisabled, BackendNotApproved, BackendUnknownId, createBackendClient } from './backend-client.js';
 export type {
   BackendApprovalStatus,
   BackendClient,
@@ -49,6 +49,6 @@ export {
   sharedSpecifiers,
   versionedBundleUrl,
 } from '../shared-dependencies.js';
-export type {DependencyConsumer, SharedDependency} from '../shared-dependencies.js';
-export {MNDW_TOKENS} from './tokens.js';
-export type {MndwThemeName} from './tokens.js';
+export type { DependencyConsumer, SharedDependency } from '../shared-dependencies.js';
+export { MNDW_TOKENS } from './tokens.js';
+export type { MndwThemeName } from './tokens.js';

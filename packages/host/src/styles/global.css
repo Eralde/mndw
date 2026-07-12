@@ -177,6 +177,14 @@ body {
   background: color-mix(in srgb, var(--mndw-accent) 10%, transparent);
 }
 
+.mndw-sidebar__section-label {
+  margin-top: 12px;
+  padding: 6px 16px;
+  color: var(--mndw-text-subtle);
+  font-size: 0.75em;
+  text-transform: uppercase;
+}
+
 .mndw-sidebar__spacer {
   flex: 1;
 }
@@ -266,4 +274,219 @@ body {
   align-items: center;
   height: 100%;
   color: var(--mndw-text-subtle);
+}
+
+/* === Dashboard (GridStack) === */
+
+.mndw-dashboard-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mndw-dashboard-page .mndw-dashboard__grid-wrapper {
+  flex: 1;
+  min-height: 0;
+}
+
+.mndw-dashboard-page .mndw-grid-scroll {
+  overflow: auto;
+  height: 100%;
+}
+
+.mndw-dashboard-page .grid-stack {
+  min-width: 720px;
+
+  /* The 12-column grid keeps a fixed usable width and scrolls horizontally on narrow
+     viewports rather than crushing tiles below one grid unit. */
+  height: 100%;
+  padding: 6px;
+}
+
+.mndw-dashboard-page .grid-stack-item {
+  position: relative;
+  box-sizing: border-box;
+  padding: 4px;
+}
+
+.mndw-dashboard-page .grid-stack-item-content {
+  border: 1px solid var(--mndw-border);
+  border-radius: 4px;
+  background: var(--mndw-surface);
+}
+
+/* Host-owned tile frame: title, plugin body, and remove control. */
+.mndw-grid-tile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mndw-grid-tile__title {
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 6px 28px 6px 10px;
+  border-bottom: 1px solid var(--mndw-border);
+  color: var(--mndw-text-muted);
+  font-weight: 600;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mndw-grid-tile__body {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  padding: 8px;
+}
+
+.mndw-grid-tile__close {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text-subtle);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.grid-stack-item:hover .mndw-grid-tile__close,
+.mndw-grid-tile__close:focus-visible {
+  opacity: 1;
+}
+
+.mndw-grid-tile__close:hover {
+  background: var(--mndw-danger);
+  color: var(--mndw-accent-contrast);
+}
+
+.mndw-dashboard-page .mndw-dashboard__loading {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--mndw-bg);
+}
+
+.mndw-dashboard__toolbar {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-top: 1px solid var(--mndw-border);
+  background: var(--mndw-surface);
+}
+
+.mndw-dashboard__toolbar button {
+  padding: 6px 12px;
+  border: 1px solid var(--mndw-border);
+  border-radius: 4px;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.mndw-dashboard__toolbar button:hover {
+  border-color: var(--mndw-accent);
+}
+
+.mndw-dashboard__toolbar--empty {
+  color: var(--mndw-text-subtle);
+  font-size: 13px;
+}
+
+/* === Floating Add Panel === */
+
+.mndw-floating-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgb(0 0 0 / 30%);
+}
+
+.mndw-floating-panel {
+  overflow-y: auto;
+  width: min(360px, calc(100vw - 32px));
+  max-height: 80vh;
+  padding: 16px;
+  border: 1px solid var(--mndw-border);
+  border-radius: 8px;
+  background: var(--mndw-surface);
+}
+
+.mndw-floating-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.mndw-floating-panel__header h3 {
+  margin: 0;
+  color: var(--mndw-text);
+  font-size: 16px;
+}
+
+.mndw-floating-panel__close {
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--mndw-text-subtle);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.mndw-floating-panel__close:hover {
+  color: var(--mndw-text);
+}
+
+.mndw-floating-panel button {
+  display: block;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--mndw-border);
+  border-radius: 4px;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text-muted);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mndw-floating-panel button:hover {
+  border-color: var(--mndw-accent);
+  background: var(--mndw-border);
+}
+
+.mndw-floating-panel__empty {
+  padding: 20px 0;
+  color: var(--mndw-text-subtle);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* === Page Plugin === */
+
+.mndw-page-plugin,
+.mndw-page-plugin__mount {
+  height: 100%;
 }

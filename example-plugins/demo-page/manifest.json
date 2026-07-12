@@ -1,0 +1,10 @@
+{
+  "$schema": "../../packages/sdk/manifest.schema.json",
+  "manifestVersion": 2,
+  "name": "demo-page",
+  "version": "0.1.0",
+  "type": "page",
+  "label": "Demo Page",
+  "route": "/demo",
+  "entry": "index.js"
+}

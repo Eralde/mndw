@@ -28,6 +28,7 @@
     "**/node_modules",
     "**/*-lock.json",
     "packages/host/scripts/templates",
+    "example-plugins/dist",
     "**/*.go"
   ],
   "plugins": [

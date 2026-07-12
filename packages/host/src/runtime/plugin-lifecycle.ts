@@ -100,9 +100,11 @@ export function unmountPlugin(
   }
 
   try {
-    // unmount may be sync or async; we don't await teardown (best-effort). A sync
-    // throw is caught here; a rejected promise is intentionally not chained.
-    void mounted.instance.unmount();
+    // Teardown remains synchronous from the host's perspective, but rejected async
+    // unmounts still need to be observed to avoid an unhandled rejection.
+    void mounted.instance.unmount()?.catch((err: unknown) => {
+      console.error(`[mndw] Plugin "${mounted.pluginName}" unmount failed:`, err);
+    });
   } catch (err) {
     console.error(`[mndw] Plugin "${mounted.pluginName}" unmount failed:`, err);
   }

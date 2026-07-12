@@ -1,0 +1,45 @@
+{
+  "name": "@mndw/sdk",
+  "version": "2.0.0",
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./tokens.css": "./src/tokens.css",
+    "./tokens": {
+      "types": "./src/tokens.ts",
+      "default": "./src/tokens.ts"
+    },
+    "./manifest-schema": {
+      "types": "./src/manifest-schema.ts",
+      "default": "./src/manifest-schema.ts"
+    },
+    "./shared-dependencies": {
+      "types": "./shared-dependencies.ts",
+      "default": "./shared-dependencies.ts"
+    },
+    "./manifest.schema.json": "./manifest.schema.json"
+  },
+  "files": ["src", "shared-dependencies.ts", "manifest.schema.json"],
+  "scripts": {
+    "test": "vitest run",
+    "generate-manifest-schema": "tsx scripts/generate-manifest-schema.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@rci-tools/core": ">=0.2.0",
+    "rxjs": ">=7.0.0"
+  },
+  "devDependencies": {
+    "@rci-tools/core": "^0.2.0",
+    "rxjs": "^7.8.0",
+    "tsx": "^4.23.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
+  }
+}

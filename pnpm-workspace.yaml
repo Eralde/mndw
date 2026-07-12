@@ -1,0 +1,7 @@
+packages:
+  - "packages/*"
+  - "example-plugins/*"
+  - "tools/*"
+onlyBuiltDependencies:
+  - dprint
+  - esbuild

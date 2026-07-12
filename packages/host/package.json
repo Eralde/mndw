@@ -1,0 +1,34 @@
+{
+  "name": "@mndw/host",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx scripts/bundle-shared.ts && vite",
+    "build": "vite build && tsx scripts/bundle-shared.ts",
+    "preview": "vite preview",
+    "bundle-shared": "tsx scripts/bundle-shared.ts",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mndw/sdk": "workspace:*",
+    "@rci-tools/core": "^0.2.0",
+    "hash-wasm": "^4.12.0",
+    "rxjs": "^7.8.0",
+    "sv-router": "^0.14.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@types/node": "22.19.15",
+    "esbuild": "^0.25.0",
+    "happy-dom": "^17.4.4",
+    "svelte": "^5.56.4",
+    "svelte-check": "^4.7.2",
+    "tsx": "^4.23.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7"
+  }
+}

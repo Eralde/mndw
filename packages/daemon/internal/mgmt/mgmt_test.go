@@ -1,0 +1,505 @@
+package mgmt
+
+import (
+	"archive/zip"
+	"bytes"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"mndwd/internal/lifecycle"
+	"mndwd/internal/opkg"
+	"mndwd/internal/state"
+)
+
+func newTestServer(t *testing.T) (*httptest.Server, Config) {
+	t.Helper()
+	root := t.TempDir()
+	cfg := Config{
+		StagingDir:        filepath.Join(root, "staging"),
+		UserPluginsDir:    filepath.Join(root, "user-plugins"),
+		BuiltinPluginsDir: filepath.Join(root, "builtin"),
+		MaxUploadBytes:    10 << 20,
+	}
+	store, err := state.Open(filepath.Join(root, "data", "state.json"))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	mux := http.NewServeMux()
+	New(cfg, store, opkg.New("stub", logger), lifecycle.New(logger), logger).Register(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	return srv, cfg
+}
+
+// makeZip builds an in-memory plugin archive from path→content pairs.
+func makeZip(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range files {
+		f, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("zip create %s: %v", name, err)
+		}
+		if _, err := f.Write([]byte(content)); err != nil {
+			t.Fatalf("zip write %s: %v", name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("zip close: %v", err)
+	}
+
+	return buf.Bytes()
+}
+
+func upload(t *testing.T, srv *httptest.Server, zipBytes []byte) *http.Response {
+	t.Helper()
+	resp, err := http.Post(srv.URL+"/api/mgmt/upload", "application/zip", bytes.NewReader(zipBytes))
+	if err != nil {
+		t.Fatalf("upload POST: %v", err)
+	}
+
+	return resp
+}
+
+func postName(t *testing.T, srv *httptest.Server, path, name string) *http.Response {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"name": name})
+	resp, err := http.Post(srv.URL+path, "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+
+	return resp
+}
+
+func listPlugins(t *testing.T, srv *httptest.Server, path string) []ListEntry {
+	t.Helper()
+	resp, err := http.Get(srv.URL + path)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		Plugins []ListEntry `json:"plugins"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+
+	return out.Plugins
+}
+
+func findEntry(entries []ListEntry, name string) (ListEntry, bool) {
+	for _, e := range entries {
+		if e.Name == name {
+			return e, true
+		}
+	}
+
+	return ListEntry{}, false
+}
+
+const noBackendManifest = `{
+  "manifestVersion": 2, "name": "hello", "version": "1.0.0",
+  "type": "widget", "label": "Hello", "entry": "index.js",
+  "size": {"w": 4, "h": 3}
+}`
+
+const backendManifest = `{
+  "manifestVersion": 2, "name": "svc", "version": "1.0.0",
+  "type": "widget", "label": "Service", "entry": "index.js",
+  "size": {"w": 6, "h": 4},
+  "backend": {
+    "opkg": ["curl"],
+    "scripts": [{"id": "s1", "source": "backend/run.sh", "runtime": "sh"}],
+    "endpoints": [{"id": "e1", "method": "GET", "path": "run", "scriptId": "s1"}]
+  }
+}`
+
+func TestUploadNoBackendInstallsDirectly(t *testing.T) {
+	srv, cfg := newTestServer(t)
+
+	resp := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": noBackendManifest,
+		"index.js":      "export function createInstance(){}",
+	}))
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+
+	entries := listPlugins(t, srv, "/api/mgmt/list")
+	e, ok := findEntry(entries, "hello")
+	if !ok {
+		t.Fatalf("hello not in list")
+	}
+	if e.Approval != state.ApprovalApproved || !e.Enabled {
+		t.Errorf("no-backend plugin should be approved+enabled, got approval=%s enabled=%v", e.Approval, e.Enabled)
+	}
+
+	// Files must have moved out of staging into user-plugins.
+	if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, "hello", "index.js")); err != nil {
+		t.Errorf("expected installed file in user-plugins: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.StagingDir, "hello")); !os.IsNotExist(err) {
+		t.Errorf("staging should be empty after direct install")
+	}
+}
+
+func TestUploadBackendPendingThenApprove(t *testing.T) {
+	srv, cfg := newTestServer(t)
+
+	resp := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json":  backendManifest,
+		"index.js":       "export function createInstance(){}",
+		"backend/run.sh": "#!/bin/sh\necho hi\n",
+	}))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("upload status = %d, want 202", resp.StatusCode)
+	}
+
+	// Shows up as pending with its declared capabilities.
+	pending := listPlugins(t, srv, "/api/mgmt/pending")
+	e, ok := findEntry(pending, "svc")
+	if !ok {
+		t.Fatalf("svc not in pending list")
+	}
+	if e.Approval != state.ApprovalPending {
+		t.Errorf("expected pending, got %s", e.Approval)
+	}
+	if _, ok := e.Backend.Endpoints["e1"]; !ok {
+		t.Errorf("expected endpoint e1 in descriptor, got %+v", e.Backend.Endpoints)
+	}
+	if len(e.Backend.Opkg) != 1 || e.Backend.Opkg[0] != "curl" {
+		t.Errorf("expected opkg [curl], got %v", e.Backend.Opkg)
+	}
+
+	// Approve.
+	ap := postName(t, srv, "/api/mgmt/approve", "svc")
+	defer ap.Body.Close()
+	if ap.StatusCode != http.StatusOK {
+		t.Fatalf("approve status = %d, want 200", ap.StatusCode)
+	}
+
+	entries := listPlugins(t, srv, "/api/mgmt/list")
+	e, _ = findEntry(entries, "svc")
+	if e.Approval != state.ApprovalApproved || !e.Enabled {
+		t.Errorf("after approve want approved+enabled, got approval=%s enabled=%v", e.Approval, e.Enabled)
+	}
+
+	// Script moved to user-plugins and made executable.
+	scriptPath := filepath.Join(cfg.UserPluginsDir, "svc", "backend", "run.sh")
+	info, err := os.Stat(scriptPath)
+	if err != nil {
+		t.Fatalf("expected approved script installed: %v", err)
+	}
+	if info.Mode().Perm()&0o100 == 0 {
+		t.Errorf("approved script should be executable, mode=%o", info.Mode().Perm())
+	}
+
+	// Nothing left in pending.
+	if p := listPlugins(t, srv, "/api/mgmt/pending"); len(p) != 0 {
+		t.Errorf("expected empty pending after approve, got %d", len(p))
+	}
+}
+
+func TestDenyRemovesStaging(t *testing.T) {
+	srv, cfg := newTestServer(t)
+
+	resp := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json":  backendManifest,
+		"index.js":       "x",
+		"backend/run.sh": "#!/bin/sh\n",
+	}))
+	resp.Body.Close()
+
+	dn := postName(t, srv, "/api/mgmt/deny", "svc")
+	defer dn.Body.Close()
+	if dn.StatusCode != http.StatusOK {
+		t.Fatalf("deny status = %d, want 200", dn.StatusCode)
+	}
+
+	if _, err := os.Stat(filepath.Join(cfg.StagingDir, "svc")); !os.IsNotExist(err) {
+		t.Errorf("staging should be gone after deny")
+	}
+	if entries := listPlugins(t, srv, "/api/mgmt/list"); len(entries) != 0 {
+		t.Errorf("denied plugin should not be listed, got %d", len(entries))
+	}
+}
+
+func TestDeleteInstalledPlugin(t *testing.T) {
+	srv, cfg := newTestServer(t)
+
+	upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": noBackendManifest, "index.js": "x",
+	})).Body.Close()
+
+	del := postName(t, srv, "/api/mgmt/delete", "hello")
+	defer del.Body.Close()
+	if del.StatusCode != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200", del.StatusCode)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, "hello")); !os.IsNotExist(err) {
+		t.Errorf("plugin files should be gone after delete")
+	}
+	if entries := listPlugins(t, srv, "/api/mgmt/list"); len(entries) != 0 {
+		t.Errorf("deleted plugin should not be listed")
+	}
+}
+
+func TestDuplicateUploadConflicts(t *testing.T) {
+	srv, _ := newTestServer(t)
+	z := makeZip(t, map[string]string{"manifest.json": noBackendManifest, "index.js": "x"})
+
+	upload(t, srv, z).Body.Close()
+	resp := upload(t, srv, z)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate upload status = %d, want 409", resp.StatusCode)
+	}
+	assertCode(t, resp, "CONFLICT")
+}
+
+func TestUploadInvalidManifest(t *testing.T) {
+	srv, _ := newTestServer(t)
+	bad := `{"manifestVersion": 2, "name": "BadName!!", "version": "1", "type": "widget", "label": "x", "entry": "index.js", "size": {"w":4,"h":3}}`
+
+	resp := upload(t, srv, makeZip(t, map[string]string{"manifest.json": bad, "index.js": "x"}))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	assertCode(t, resp, "MANIFEST_INVALID")
+}
+
+func TestUploadNonZip(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resp := upload(t, srv, []byte("this is not a zip file at all"))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	assertCode(t, resp, "INVALID_ZIP")
+}
+
+func TestUploadMissingManifest(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resp := upload(t, srv, makeZip(t, map[string]string{"index.js": "x"}))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	assertCode(t, resp, "MANIFEST_MISSING")
+}
+
+func TestUploadTooLarge(t *testing.T) {
+	srv, _ := newTestServer(t)
+	// Shrink the cap below the payload via a second server would need config access;
+	// instead upload a body larger than the fixed 10 MB cap.
+	big := bytes.Repeat([]byte("A"), int(11<<20))
+	resp, err := http.Post(srv.URL+"/api/mgmt/upload", "application/zip", bytes.NewReader(big))
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413", resp.StatusCode)
+	}
+	assertCode(t, resp, "UPLOAD_TOO_LARGE")
+}
+
+func TestUploadZipSlipRejected(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resp := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": noBackendManifest,
+		"index.js":      "x",
+		"../escape.txt": "pwned",
+	}))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("zip-slip status = %d, want 400", resp.StatusCode)
+	}
+	assertCode(t, resp, "INVALID_ZIP")
+}
+
+func TestApproveUnknownPlugin(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resp := postName(t, srv, "/api/mgmt/approve", "ghost")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestApproveNonPendingConflicts(t *testing.T) {
+	srv, _ := newTestServer(t)
+	upload(t, srv, makeZip(t, map[string]string{"manifest.json": noBackendManifest, "index.js": "x"})).Body.Close()
+	// hello is approved (no backend); approving again is a conflict.
+	resp := postName(t, srv, "/api/mgmt/approve", "hello")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.StatusCode)
+	}
+}
+
+func TestBuiltinAppearsInList(t *testing.T) {
+	srv, cfg := newTestServer(t)
+	// Seed a builtin on disk.
+	bdir := filepath.Join(cfg.BuiltinPluginsDir, "core-demo")
+	if err := os.MkdirAll(bdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	builtin := `{"manifestVersion":2,"name":"core-demo","version":"2.0.0","type":"page","label":"Demo","entry":"index.js","route":"/demo"}`
+	if err := os.WriteFile(filepath.Join(bdir, "manifest.json"), []byte(builtin), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e, ok := findEntry(listPlugins(t, srv, "/api/mgmt/list"), "core-demo")
+	if !ok {
+		t.Fatalf("builtin not listed")
+	}
+	if e.Source != state.SourceBuiltin || e.Approval != state.ApprovalApproved || !e.Enabled {
+		t.Errorf("builtin should be builtin/approved/enabled, got %s/%s/%v", e.Source, e.Approval, e.Enabled)
+	}
+}
+
+func TestWrongMethodRejected(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resp, err := http.Get(srv.URL + "/api/mgmt/upload") // upload is POST-only
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("status = %d, want 405", resp.StatusCode)
+	}
+}
+
+func TestEnableDisableTogglesState(t *testing.T) {
+	srv, _ := newTestServer(t)
+	// Backend plugin without a daemon: approve → enabled, then disable/enable.
+	upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json":  backendManifest,
+		"index.js":       "x",
+		"backend/run.sh": "#!/bin/sh\necho hi\n",
+	})).Body.Close()
+	postName(t, srv, "/api/mgmt/approve", "svc").Body.Close()
+
+	dis := postName(t, srv, "/api/mgmt/disable", "svc")
+	defer dis.Body.Close()
+	if dis.StatusCode != http.StatusOK {
+		t.Fatalf("disable status = %d, want 200", dis.StatusCode)
+	}
+	e, _ := findEntry(listPlugins(t, srv, "/api/mgmt/list"), "svc")
+	if e.Enabled {
+		t.Errorf("plugin should be disabled")
+	}
+
+	en := postName(t, srv, "/api/mgmt/enable", "svc")
+	defer en.Body.Close()
+	if en.StatusCode != http.StatusOK {
+		t.Fatalf("enable status = %d, want 200", en.StatusCode)
+	}
+	e, _ = findEntry(listPlugins(t, srv, "/api/mgmt/list"), "svc")
+	if !e.Enabled {
+		t.Errorf("plugin should be enabled again")
+	}
+}
+
+func TestEnableUnknownPlugin(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resp := postName(t, srv, "/api/mgmt/enable", "ghost")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestApproveInstallsOpkgDeps(t *testing.T) {
+	srv, _ := newTestServer(t)
+	// backendManifest declares opkg ["curl"].
+	upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json":  backendManifest,
+		"index.js":       "x",
+		"backend/run.sh": "#!/bin/sh\n",
+	})).Body.Close()
+	postName(t, srv, "/api/mgmt/approve", "svc").Body.Close()
+
+	// The stub opkg should now report curl installed.
+	resp, err := http.Get(srv.URL + "/api/mgmt/opkg/list-installed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Packages []string `json:"packages"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range out.Packages {
+		if p == "curl" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected curl installed after approve, got %v", out.Packages)
+	}
+}
+
+func TestOpkgInstallInvalidName(t *testing.T) {
+	srv, _ := newTestServer(t)
+	body, _ := json.Marshal(map[string][]string{"packages": {"BAD NAME"}})
+	resp, err := http.Post(srv.URL+"/api/mgmt/opkg/install", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+	assertCode(t, resp, "INVALID_PACKAGE_NAME")
+}
+
+func TestOpkgInstallEmpty(t *testing.T) {
+	srv, _ := newTestServer(t)
+	body, _ := json.Marshal(map[string][]string{"packages": {}})
+	resp, err := http.Post(srv.URL+"/api/mgmt/opkg/install", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func assertCode(t *testing.T, resp *http.Response, wantCode string) {
+	t.Helper()
+	var env struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if env.Error.Code != wantCode {
+		t.Errorf("error code = %q, want %q", env.Error.Code, wantCode)
+	}
+}

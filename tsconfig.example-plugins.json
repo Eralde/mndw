@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "example-plugins/**/*.ts",
+    "example-plugins/**/*.svelte",
+    "example-plugins/**/*.vue"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/node_modules"
+  ]
+}

@@ -1,0 +1,269 @@
+/* === Scrollbar utility ===
+ *
+ * Add class `mndw-scrollbar` to any scrollable element to theme its scrollbar
+ * in Chrome/Safari/Edge (WebKit) and Firefox.
+ *
+ * Override colors per element via CSS custom properties:
+ *   --scrollbar-thumb        thumb color            (default var(--mndw-accent))
+ *   --scrollbar-thumb-hover  thumb color on hover   (default var(--mndw-accent-hover))
+ *   --scrollbar-track        track/background color (default var(--mndw-surface))
+ *   --scrollbar-size         thumb thickness in px  (default 10)
+ */
+
+.mndw-scrollbar {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb, var(--mndw-accent)) var(--scrollbar-track, var(--mndw-surface));
+}
+
+/* Chrome / Safari / Edge */
+.mndw-scrollbar::-webkit-scrollbar {
+  width: calc(var(--scrollbar-size, 10) * 1px);
+  height: calc(var(--scrollbar-size, 10) * 1px);
+}
+
+.mndw-scrollbar::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, var(--mndw-surface));
+}
+
+.mndw-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scrollbar-track, var(--mndw-surface));
+  border-radius: 6px;
+  background: var(--scrollbar-thumb, var(--mndw-accent));
+}
+
+.mndw-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, var(--mndw-accent-hover));
+}
+
+.mndw-scrollbar::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track, var(--mndw-surface));
+}
+
+/* === Reset & Base === */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  background: var(--mndw-bg);
+  color: var(--mndw-text);
+  font-family: var(--mndw-font-sans);
+}
+
+/* === App Shell === */
+
+.mndw-app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mndw-app-shell__body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.mndw-app-shell__content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+/* === Header === */
+
+.mndw-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--mndw-border);
+  background: var(--mndw-surface);
+}
+
+.mndw-header__left {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.mndw-header__brand {
+  color: var(--mndw-accent);
+  font-weight: 700;
+}
+
+.mndw-header__device {
+  color: var(--mndw-text-subtle);
+  font-size: 0.85em;
+}
+
+.mndw-header__menu-toggle {
+  border: none;
+  background: none;
+  color: var(--mndw-text-subtle);
+  font-size: 1.2em;
+  cursor: pointer;
+}
+
+.mndw-header__right {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.mndw-header__theme-toggle {
+  border: none;
+  background: none;
+  color: var(--mndw-text-subtle);
+  font-size: 1.1em;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mndw-header__theme-toggle:hover {
+  color: var(--mndw-text);
+}
+
+.mndw-header__logout {
+  padding: 4px 12px;
+  border: 1px solid var(--mndw-danger);
+  border-radius: 4px;
+  background: none;
+  color: var(--mndw-danger);
+  cursor: pointer;
+}
+
+/* === Sidebar === */
+
+.mndw-sidebar {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  width: 200px;
+  padding: 8px 0;
+  border-right: 1px solid var(--mndw-border);
+  background: var(--mndw-surface);
+  transition: width 0.2s;
+}
+
+.mndw-sidebar.collapsed {
+  overflow: hidden;
+  width: 0;
+  padding: 0;
+}
+
+.mndw-sidebar__link {
+  display: block;
+  padding: 8px 16px;
+  color: var(--mndw-text-muted);
+  font-size: 0.9em;
+  text-decoration: none;
+}
+
+.mndw-sidebar__link:hover {
+  background: color-mix(in srgb, var(--mndw-accent) 10%, transparent);
+}
+
+.mndw-sidebar__spacer {
+  flex: 1;
+}
+
+/* === Login === */
+
+.mndw-login {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  background: var(--mndw-bg);
+}
+
+.mndw-login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 300px;
+  padding: 32px;
+  border-radius: 8px;
+  background: var(--mndw-surface);
+}
+
+.mndw-login__form input {
+  padding: 8px 12px;
+  border: 1px solid var(--mndw-border);
+  border-radius: 4px;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text);
+}
+
+.mndw-login__form button {
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  background: var(--mndw-accent);
+  color: var(--mndw-accent-contrast);
+  cursor: pointer;
+}
+
+.mndw-login__form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mndw-login__title {
+  color: var(--mndw-accent);
+  text-align: center;
+}
+
+.mndw-login__error {
+  color: var(--mndw-danger);
+  font-size: 0.85em;
+}
+
+/* === Settings === */
+
+.mndw-settings {
+  max-width: 600px;
+}
+
+.mndw-settings h2 {
+  margin-bottom: 16px;
+}
+
+.mndw-settings h3 {
+  margin: 16px 0 8px;
+  color: var(--mndw-text-muted);
+}
+
+.mndw-settings ul {
+  padding: 0;
+  list-style: none;
+}
+
+.mndw-settings li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--mndw-border);
+}
+
+/* === Loading === */
+
+.mndw-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: var(--mndw-text-subtle);
+}

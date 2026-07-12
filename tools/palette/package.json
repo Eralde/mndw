@@ -1,0 +1,20 @@
+{
+  "name": "@mndw/palette-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only WCAG palette engine + playground. Never bundled into the host; emits committed design tokens.",
+  "scripts": {
+    "playground": "vite",
+    "gen-tokens": "tsx scripts/gen-tokens.ts",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/culori": "^4.0.1",
+    "culori": "^4.0.2",
+    "tsx": "^4.23.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7"
+  }
+}

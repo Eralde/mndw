@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mndw palette playground</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; }
+      h1 { font-size: 18px; }
+      .toolbar { display: flex; gap: 16px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+      .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+      .swatch { width: 96px; height: 72px; border-radius: 6px; border: 1px solid #8884;
+                display: flex; flex-direction: column; justify-content: flex-end; padding: 6px; font-size: 11px; }
+      table { border-collapse: collapse; font-size: 13px; }
+      td, th { border: 1px solid #8884; padding: 6px 10px; text-align: left; }
+      .pass { color: #2e7d32; font-weight: 600; }
+      .fail { color: #c62828; font-weight: 700; }
+      .preview { margin-top: 24px; padding: 16px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>mndw palette playground</h1>
+    <div class="toolbar">
+      <label>Theme
+        <select id="theme"><option value="light">light</option><option value="dark">dark</option></select>
+      </label>
+      <label>primary <input type="color" id="in-primary" /></label>
+      <label>danger <input type="color" id="in-danger" /></label>
+      <label>bg <input type="color" id="in-bg" /></label>
+      <label>text <input type="color" id="in-text" /></label>
+      <button id="reset" type="button">reset</button>
+      <span id="verdict"></span>
+    </div>
+    <div id="swatches" class="swatches"></div>
+    <h2>WCAG contrast grid</h2>
+    <table id="grid"></table>
+    <div id="preview" class="preview"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

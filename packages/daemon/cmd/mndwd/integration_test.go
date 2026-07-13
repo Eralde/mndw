@@ -429,3 +429,103 @@ func assertWSEcho(t *testing.T, srv *httptest.Server, plugin, cookie string) {
 	}
 	conn.Close(websocket.StatusNormalClosure, "")
 }
+
+// backendEchoDir locates the real backend-echo example plugin relative to this
+// package dir (go test runs with the working directory set to the package). The
+// integration test loads the shipped manifest + echo.cgi — the two files the
+// backend/dispatch path needs — so it exercises the real script, not a hand-copied
+// fixture. The frontend bundle is not involved in dispatch.
+const backendEchoDir = "../../../../example-plugins/backend-echo"
+
+func backendEchoFiles(t *testing.T) map[string]string {
+	t.Helper()
+	manifestBytes, err := os.ReadFile(filepath.Join(backendEchoDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("read backend-echo manifest (corpus not located?): %v", err)
+	}
+	scriptBytes, err := os.ReadFile(filepath.Join(backendEchoDir, "backend", "echo.cgi"))
+	if err != nil {
+		t.Fatalf("read backend-echo echo.cgi: %v", err)
+	}
+
+	return map[string]string{
+		"manifest.json":    string(manifestBytes),
+		"backend/echo.cgi": string(scriptBytes),
+	}
+}
+
+type echoEnvelope struct {
+	Method        string `json:"method"`
+	Query         string `json:"query"`
+	ContentType   string `json:"contentType"`
+	ContentLength string `json:"contentLength"`
+	PluginID      string `json:"pluginId"`
+	EndpointID    string `json:"endpointId"`
+	Body          string `json:"body"`
+}
+
+func decodeEcho(t *testing.T, resp *http.Response) echoEnvelope {
+	t.Helper()
+	defer resp.Body.Close()
+	var env echoEnvelope
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode echo envelope: %v", err)
+	}
+
+	return env
+}
+
+// TestIntegrationScriptsOnlyDispatch exercises the pure sh-scripts backend path
+// (no daemon hooks, no ws) end to end: upload → pending → approve → dispatch, plus
+// the CGI Status: override, a custom response header, and stdin-body echo.
+func TestIntegrationScriptsOnlyDispatch(t *testing.T) {
+	srv, _ := devServer(t)
+	zipBytes := makeZip(t, backendEchoFiles(t))
+
+	if resp := uploadZip(t, srv, "", zipBytes); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("upload = %d, want 202", resp.StatusCode)
+	}
+
+	// Pre-approve dispatch is gated.
+	resp := do(t, http.MethodGet, srv.URL+"/api/plugins/backend-echo/echo", "", "", nil)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("pre-approve = %d, want 403", resp.StatusCode)
+	}
+	if c := errCode(t, resp); c != "NOT_APPROVED" {
+		t.Fatalf("pre-approve code = %s, want NOT_APPROVED", c)
+	}
+
+	if resp := postName(t, srv, "", "/api/mgmt/approve", "backend-echo"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("approve = %d, want 200 (%s)", resp.StatusCode, bodyString(t, resp))
+	}
+
+	// GET with a Status: override and a custom header.
+	resp = do(t, http.MethodGet, srv.URL+"/api/plugins/backend-echo/echo?status=418", "", "", nil)
+	if resp.StatusCode != http.StatusTeapot {
+		t.Fatalf("GET status override = %d, want 418", resp.StatusCode)
+	}
+	if h := resp.Header.Get("X-Mndw-Echo"); h != "1" {
+		t.Errorf("X-Mndw-Echo = %q, want 1", h)
+	}
+	got := decodeEcho(t, resp)
+	if got.Method != "GET" || got.Query != "status=418" || got.PluginID != "backend-echo" || got.EndpointID != "echoGet" {
+		t.Errorf("GET echo = %+v", got)
+	}
+	// The daemon defaults CONTENT_TYPE and reports a zero-length body for a GET.
+	if got.ContentType != "application/json" || got.ContentLength != "0" {
+		t.Errorf("GET echo contentType=%q contentLength=%q, want application/json / 0", got.ContentType, got.ContentLength)
+	}
+
+	// POST with a JSON body, echoed back verbatim.
+	resp = do(t, http.MethodPost, srv.URL+"/api/plugins/backend-echo/echo", "", "application/json", []byte(`{"hi":1}`))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST = %d, want 200", resp.StatusCode)
+	}
+	got = decodeEcho(t, resp)
+	if got.Method != "POST" || got.EndpointID != "echoPost" || got.Body != `{"hi":1}` {
+		t.Errorf("POST echo = %+v", got)
+	}
+	if got.ContentType != "application/json" || got.ContentLength != "8" {
+		t.Errorf("POST echo contentType=%q contentLength=%q, want application/json / 8", got.ContentType, got.ContentLength)
+	}
+}

@@ -1,4 +1,4 @@
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {validateManifest} from '@mndw/sdk';
@@ -251,12 +251,18 @@ describe('packExamplePlugins', () => {
   }
 
   it('builds every example plugin into one output destination', () => {
-    expect(names).toEqual(['broken-widget', 'demo-page', 'device-traffic-widget']);
+    expect(names).toEqual(['backend-echo', 'broken-widget', 'demo-page', 'device-traffic-widget']);
 
     for (const name of names) {
       expect(existsSync(join(outDir, name, 'index.js'))).toBe(true);
       expect(existsSync(join(outDir, name, 'manifest.json'))).toBe(true);
     }
+
+    const scriptMode = statSync(join(outDir, 'backend-echo', 'backend', 'echo.cgi')).mode;
+
+    const hasExecutableBit = [0o100, 0o010, 0o001].some((bit) => Math.floor(scriptMode / bit) % 2 === 1);
+
+    expect(hasExecutableBit).toBe(true);
   });
 
   it('preserves manifests, emitted CSS, bundled dependencies, and shared externals', () => {

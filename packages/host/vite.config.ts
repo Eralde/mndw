@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {sharedImportMap, sharedSpecifiers} from '@mndw/sdk/shared-dependencies';
 import {svelte} from '@sveltejs/vite-plugin-svelte';
+import {resolveSandboxPluginPath, sandboxPlugin} from './scripts/sandbox-plugin.js';
 import {resolvePluginRequest} from './scripts/serve-plugins.js';
 import type {ProxyOptions} from 'vite';
 import {defineConfig, loadEnv} from 'vite';
@@ -22,6 +23,13 @@ export default defineConfig(({mode}) => {
     || path.resolve(repoRoot, 'example-plugins', 'dist');
   const userPluginsDir = process.env.MNDW_USER_PLUGINS_DIR
     || path.resolve(repoRoot, '.dev-data', 'user-plugins');
+
+  // Single-plugin source-HMR mode (`mndw dev`): resolved only from an explicit env var, so
+  // normal startup keeps loading plugins from the daemon list. null → sandbox off.
+  const sandboxPluginPath = resolveSandboxPluginPath(
+    process.env.MNDW_SANDBOX_PLUGIN || env.MNDW_SANDBOX_PLUGIN,
+    repoRoot,
+  );
 
   function deviceProxy(apiPath: string, ws = false): ProxyOptions {
     return {
@@ -46,6 +54,9 @@ export default defineConfig(({mode}) => {
 
   return {
     plugins: [
+      // Always registered so the virtual:sandbox-* ids resolve in every build; serves inert
+      // stubs when sandbox mode is off (sandboxPluginPath === null).
+      sandboxPlugin(sandboxPluginPath),
       svelte(),
       {
         // Serve the versioned shared-dependency bundles from dist/shared in dev.
@@ -118,6 +129,10 @@ export default defineConfig(({mode}) => {
         '/api': daemonProxy(),
         '/ws': daemonProxy(true),
       },
+    },
+    // Compile-time flag the runtime reads to pick the sandbox loader over the daemon list.
+    define: {
+      __MNDW_SANDBOX__: JSON.stringify(sandboxPluginPath !== null),
     },
     build: {
       rollupOptions: {

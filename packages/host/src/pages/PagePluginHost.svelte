@@ -8,7 +8,12 @@ import {
   mountPlugin,
   unmountPlugin,
 } from '../runtime/plugin-lifecycle.js';
+import type {LoadedPlugin} from '../runtime/plugin-registry.js';
 import {pluginRegistry} from '../runtime/plugin-registry.js';
+import {
+  SANDBOX_RELOAD_EVENT,
+  type SandboxReloadDetail,
+} from '../runtime/sandbox-loader.js';
 import {appRouter, routeToPluginName} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 
@@ -70,6 +75,20 @@ function mountCurrent(): void {
     return;
   }
 
+  void mountPluginRecord(plugin);
+}
+
+/**
+ * Mounts a page plugin into a fresh child container, tracking it as the active mount, and
+ * resolves once the mount settles: `true` when `createInstance` succeeded, `false` on
+ * failure. A navigation that supersedes this mount before an async `createInstance` resolves
+ * disposes the stale instance against its own child, leaving the current page untouched.
+ */
+function mountPluginRecord(plugin: LoadedPlugin): Promise<boolean> {
+  if (host === undefined) {
+    return Promise.resolve(false);
+  }
+
   generation += 1;
   const thisGeneration = generation;
 
@@ -86,29 +105,64 @@ function mountCurrent(): void {
   const hostInfo: HostInfo = appState.hostInfo ?? FALLBACK_HOST_INFO;
   const context = createPluginContext(
     plugin.entry,
-    `${pluginName}:1`,
+    `${plugin.entry.name}:1`,
     hostInfo,
   );
   const result = mountPlugin(child, plugin, context);
 
   if (result instanceof Promise) {
-    void result.then((nextMounted) => {
+    return result.then((nextMounted) => {
       if (thisGeneration !== generation) {
         // Superseded by a newer navigation before resolving: dispose against this
         // generation's own child so the current page's DOM is untouched.
         unmountPlugin(nextMounted, child, UNMOUNT_OPTIONS);
         child.remove();
 
-        return;
+        return nextMounted !== null;
       }
 
       record.mounted = nextMounted;
-    });
 
-    return;
+      return nextMounted !== null;
+    });
   }
 
   record.mounted = result;
+
+  return Promise.resolve(result !== null);
+}
+
+/**
+ * Re-mounts the active page with a hot-reloaded module as one transaction: dispose the live
+ * instance, mount the candidate, and on failure dispose it and remount the prior module (same
+ * instance id, storage preserved). Reports success/failure back to the sandbox reload
+ * coordinator so it can commit or roll back the registry.
+ */
+async function remountActivePage(
+  next: LoadedPlugin,
+  prior: LoadedPlugin,
+): Promise<boolean> {
+  disposeActive();
+
+  if (await mountPluginRecord(next)) {
+    return true;
+  }
+
+  disposeActive();
+  await mountPluginRecord(prior);
+
+  return false;
+}
+
+function handleSandboxReload(event: Event): void {
+  const {detail} = event as CustomEvent<SandboxReloadDetail>;
+
+  // Only the host currently showing the reloaded page acts; others leave it to their own.
+  if (active === null || detail.pluginName !== currentPluginName) {
+    return;
+  }
+
+  detail.register(remountActivePage(detail.next, detail.prior));
 }
 
 $effect(() => {
@@ -119,6 +173,13 @@ $effect(() => {
 
   disposeActive();
   mountCurrent();
+});
+
+$effect(() => {
+  window.addEventListener(SANDBOX_RELOAD_EVENT, handleSandboxReload);
+
+  return () =>
+    window.removeEventListener(SANDBOX_RELOAD_EVENT, handleSandboxReload);
 });
 
 onDestroy(disposeActive);

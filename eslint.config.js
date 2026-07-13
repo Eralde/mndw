@@ -264,6 +264,7 @@ module.exports = tseslint.config(
   {
     ignores: [
       'packages/host/scripts/templates/**',
+      'packages/cli/templates/**',
       // Built example-plugin bundles (esbuild output) are not source — never lint them.
       'example-plugins/dist/**',
       'example-plugins/*/dist/**',
@@ -275,11 +276,6 @@ module.exports = tseslint.config(
       'sourceType': 'module',
 
       parserOptions: {
-        'project': [
-          './packages/*/tsconfig.json',
-          './tools/palette/tsconfig.json',
-          './tsconfig.example-plugins.json',
-        ],
         'tsconfigRootDir': __dirname,
       },
     },
@@ -296,7 +292,18 @@ module.exports = tseslint.config(
       'tools/palette/vitest.config.ts',
       'packages/sdk/src/tokens.ts',
       '**/*.vue',
+      '**/*.svelte.ts',
     ],
+    languageOptions: {
+      parserOptions: {
+        'project': [
+          './packages/*/tsconfig.json',
+          './tools/tsconfig.json',
+          './tools/palette/tsconfig.json',
+          './tsconfig.example-plugins.json',
+        ],
+      },
+    },
     extends: [
       eslint.configs.recommended,
 
@@ -338,7 +345,12 @@ module.exports = tseslint.config(
       parser: svelteParser,
       parserOptions: {
         parser: tseslint.parser,
+        projectService: {
+          allowDefaultProject: ['example-plugins/*/src/components/*.svelte'],
+          defaultProject: './tsconfig.example-plugins.json',
+        },
         extraFileExtensions: ['.svelte'],
+        tsconfigRootDir: __dirname,
       },
     },
     extends: [

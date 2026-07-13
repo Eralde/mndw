@@ -1,3 +1,4 @@
+/* eslint id-blacklist: 0 */
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {type PersistedGridTile, loadGridLayout, parseWidgetTileId, saveGridLayout} from './grid-layout-persistence.js';
 

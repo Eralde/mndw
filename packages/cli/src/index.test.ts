@@ -105,11 +105,18 @@ function execute(args: string[]): {result: ExecutionResult; run: Promise<unknown
 }
 
 describe('createProgram', () => {
-  test('creates mndw program with validate command', () => {
+  test('creates mndw program with the implemented commands', () => {
     const program = createProgram();
 
     expect(program.name()).toBe('mndw');
-    expect(program.commands.map((command) => command.name())).toEqual(['validate']);
+    expect(program.commands.map((command) => command.name())).toEqual([
+      'create',
+      'dev',
+      'validate',
+      'pack',
+      'pack-examples',
+      'zip',
+    ]);
   });
 
   test('prints help', async () => {

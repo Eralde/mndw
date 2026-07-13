@@ -1,6 +1,9 @@
 import type {GridStack} from 'gridstack';
+import {FALLBACK_HOST_INFO} from '../constants.js';
+import {createPluginContext} from '../runtime/plugin-context.js';
 import type {OverlayTeardownReason} from '../runtime/plugin-lifecycle.js';
-import {pluginRegistry} from '../runtime/plugin-registry.js';
+import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
+import {appState} from '../state/app.svelte.js';
 import {createWidgetContext} from './widget-context.js';
 import {getNextInstanceId} from './widget-counter.js';
 import {getWidgetSize} from './widget-size.js';
@@ -136,6 +139,88 @@ export function removeWidgetTile(id: string): void {
 
   tileRegistry.delete(id);
   tile.handle.dispose({clearStorage: true, closeReason: 'plugin-unmount'});
+}
+
+/**
+ * Re-mounts every live tile of `pluginName` with the hot-reloaded `next` module, reusing
+ * each tile's content element, instance id, and GridStack geometry and preserving instance
+ * storage. Awaits all mounts (including async ones); if any candidate `createInstance` fails,
+ * the candidate mounts are disposed and the `prior` module is remounted into the same tiles,
+ * and the call reports `false`. A no-op returning `true` when no tile matches (e.g. the plugin
+ * under development is a page, or the widget has no placed tiles).
+ */
+export async function remountWidgetTiles(
+  pluginName: string,
+  next: LoadedPlugin,
+  prior: LoadedPlugin,
+): Promise<boolean> {
+  const affected = [...tileRegistry]
+    .filter(([, tile]) => tile.pluginName === pluginName)
+    .map(([id, tile]) => ({id, el: tile.el, instanceId: tile.instanceId, current: tile.handle}));
+
+  if (affected.length === 0) {
+    return true;
+  }
+
+  // Tear down the current (prior-module) instances first, keeping their storage so the
+  // reloaded module resumes with the same persisted state.
+  for (const tile of affected) {
+    tile.current.dispose({clearStorage: false, closeReason: 'host-navigation'});
+  }
+
+  const mountAll = (plugin: LoadedPlugin): WidgetTileHandle[] =>
+    affected.map((tile) => {
+      const handle = remountTileBody(tile.el, plugin, tile.instanceId);
+
+      tileRegistry.set(tile.id, {el: tile.el, handle, pluginName, instanceId: tile.instanceId});
+
+      return handle;
+    });
+
+  const candidateHandles = mountAll(next);
+  const settled = await Promise.all(candidateHandles.map((handle) => handle.whenReady()));
+
+  if (settled.every(Boolean)) {
+    return true;
+  }
+
+  // A candidate mount failed: dispose the candidate mounts and restore the prior module.
+  for (const handle of candidateHandles) {
+    handle.dispose({clearStorage: false, closeReason: 'host-navigation'});
+  }
+
+  const priorHandles = mountAll(prior);
+
+  await Promise.all(priorHandles.map((handle) => handle.whenReady()));
+
+  return false;
+}
+
+/**
+ * Re-mounts one tile's plugin body in place: refreshes the frame title/label, then mounts the
+ * given plugin into the existing body element (cleared by the prior dispose), reusing the
+ * instance id so scoped storage and overlays stay coherent across the reload.
+ */
+function remountTileBody(
+  contentEl: HTMLElement,
+  plugin: LoadedPlugin,
+  instanceId: string,
+): WidgetTileHandle {
+  const title = contentEl.querySelector('.mndw-grid-tile__title');
+
+  if (title !== null) {
+    title.textContent = plugin.entry.label;
+  }
+
+  const removeBtn = contentEl.querySelector('.mndw-grid-tile__close');
+
+  removeBtn?.setAttribute('aria-label', `Remove ${plugin.entry.label}`);
+
+  const body = contentEl.querySelector<HTMLElement>('.mndw-grid-tile__body') ?? contentEl;
+  const hostInfo = appState.hostInfo ?? FALLBACK_HOST_INFO;
+  const context = createPluginContext(plugin.entry, instanceId, hostInfo);
+
+  return mountWidgetTile(body, plugin, context);
 }
 
 /** Forwards new grid-unit dimensions to a tile's optional `onResize`, isolating throws. */

@@ -141,8 +141,12 @@ export const sharedImportMap = (): Record<string, string> => {
 /** All import specifiers (esbuild/rollup `external`). */
 export const sharedSpecifiers = (): string[] => SHARED_DEPENDENCIES.flatMap((entry) => entry.specifiers);
 
-/** Specifiers a plugin of the given framework must not bundle (esbuild `external` at pack time). */
-export const pluginDependencies = (framework: 'svelte' | 'vue' | 'angular'): string[] => {
+/**
+ * Specifiers a plugin of the given framework must not bundle (esbuild `external` at pack time).
+ * `vanilla` and `svelte` both receive the base shared deps only (svelte itself is bundled); `vue`
+ * and `angular` add their framework externals.
+ */
+export const pluginDependencies = (framework: 'vanilla' | 'svelte' | 'vue' | 'angular'): string[] => {
   return SHARED_DEPENDENCIES
     .filter((entry) => entry.framework === 'base' || entry.framework === framework)
     .flatMap((entry) => entry.specifiers);

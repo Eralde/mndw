@@ -63,4 +63,16 @@ describe('shared dependencies table', () => {
     expect(angularDeps).toContain('@angular/core');
     expect(angularDeps).not.toContain('vue');
   });
+
+  it('gives vanilla plugins the base shared deps only (no framework deps)', () => {
+    const vanillaDeps = pluginDependencies('vanilla');
+
+    expect(vanillaDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm']);
+    expect(vanillaDeps).not.toContain('vue');
+    expect(vanillaDeps).not.toContain('@angular/core');
+  });
+
+  it('gives svelte plugins the same base deps as vanilla (svelte itself is bundled)', () => {
+    expect(pluginDependencies('svelte')).toEqual(pluginDependencies('vanilla'));
+  });
 });

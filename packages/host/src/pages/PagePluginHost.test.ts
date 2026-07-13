@@ -18,6 +18,7 @@ import type {MndwPlugin} from '@mndw/sdk';
 import {type MountedPlugin, mountPlugin, unmountPlugin} from '../runtime/plugin-lifecycle.js';
 import {type LoadedPage, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry} from '../runtime/plugin-types.js';
+import {SANDBOX_RELOAD_EVENT, type SandboxReloadDetail} from '../runtime/sandbox-loader.js';
 import {appState} from '../state/app.svelte.js';
 import {createAppRouter} from '../router/create-app-router.js';
 import PagePluginHost from './PagePluginHost.svelte';
@@ -150,6 +151,85 @@ describe('PagePluginHost', () => {
       clearStorage: false,
       closeReason: 'host-navigation',
     });
+
+    void unmount(component);
+  });
+
+  function dispatchReload(
+    detail: Omit<SandboxReloadDetail, 'register'>,
+  ): Promise<boolean> | null {
+    let registered: Promise<boolean> | null = null;
+    const full: SandboxReloadDetail = {...detail, register: (result) => {
+      registered = result;
+    }};
+
+    window.dispatchEvent(new CustomEvent(SANDBOX_RELOAD_EVENT, {detail: full}));
+
+    return registered;
+  }
+
+  it('remounts the active page with the candidate module on a sandbox reload', async () => {
+    vi.mocked(mountPlugin).mockReturnValue(fakeMounted('page-a'));
+
+    const {component, target} = await setup();
+    const childA = target.querySelector('.mndw-page-plugin__mount');
+    const next = pagePlugin('page-a');
+    const prior = pagePlugin('page-a');
+
+    vi.mocked(mountPlugin).mockClear();
+    vi.mocked(unmountPlugin).mockClear();
+
+    const registered = dispatchReload({pluginName: 'page-a', next, prior});
+    const ok = await registered;
+
+    expect(ok).toBe(true);
+    expect(unmountPlugin).toHaveBeenCalledWith(expect.anything(), childA, {
+      clearStorage: false,
+      closeReason: 'host-navigation',
+    });
+    expect(mountPlugin).toHaveBeenCalledWith(expect.anything(), next, {instanceId: 'page-a:1'});
+
+    void unmount(component);
+  });
+
+  it('rolls back to the prior page module when the candidate mount fails', async () => {
+    vi.mocked(mountPlugin).mockReturnValue(fakeMounted('page-a'));
+
+    const {component} = await setup();
+    const next = pagePlugin('page-a');
+    const prior = pagePlugin('page-a');
+
+    // Candidate mount fails (null), then the prior module mounts successfully on rollback.
+    vi.mocked(mountPlugin)
+      .mockReset()
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(fakeMounted('page-a'));
+
+    const registered = dispatchReload({pluginName: 'page-a', next, prior});
+    const ok = await registered;
+
+    expect(ok).toBe(false);
+    expect(mountPlugin).toHaveBeenNthCalledWith(1, expect.anything(), next, {instanceId: 'page-a:1'});
+    expect(mountPlugin).toHaveBeenNthCalledWith(2, expect.anything(), prior, {instanceId: 'page-a:1'});
+
+    void unmount(component);
+  });
+
+  it('ignores a sandbox reload for a page it is not currently showing', async () => {
+    vi.mocked(mountPlugin).mockReturnValue(fakeMounted('page-a'));
+
+    const {component} = await setup();
+    const next = pagePlugin('page-b');
+    const prior = pagePlugin('page-b');
+
+    vi.mocked(mountPlugin).mockClear();
+    vi.mocked(unmountPlugin).mockClear();
+
+    const registered = dispatchReload({pluginName: 'page-b', next, prior});
+
+    expect(registered).toBeNull();
+    expect(mountPlugin).not.toHaveBeenCalled();
+    expect(unmountPlugin).not.toHaveBeenCalled();
 
     void unmount(component);
   });

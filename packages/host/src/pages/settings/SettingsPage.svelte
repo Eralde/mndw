@@ -1,4 +1,5 @@
 <script lang="ts">
+import PluginManager from './plugin-manager/PluginManager.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
 import {appState} from '../../state/app.svelte.js';
 
@@ -32,6 +33,10 @@ import {appState} from '../../state/app.svelte.js';
     {:else}
       <p>Device info unavailable.</p>
     {/if}
+  </section>
+
+  <section>
+    <PluginManager />
   </section>
 </div>
 

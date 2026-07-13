@@ -119,4 +119,51 @@ describe('PluginRegistry', () => {
 
     expect(registry.getAll()).toHaveLength(0);
   });
+
+  describe('replace()', () => {
+    it('swaps a plugin record in place and returns the prior record', () => {
+      const prior = widgetPlugin('hot');
+
+      registry.register(prior);
+
+      const next = widgetPlugin('hot');
+
+      const returned = registry.replace(next);
+
+      expect(returned).toBe(prior);
+      expect(registry.get('hot')).toBe(next);
+    });
+
+    it('throws when replacing an unknown plugin', () => {
+      expect(() => registry.replace(widgetPlugin('ghost'))).toThrow('Cannot replace unknown plugin');
+    });
+
+    it('throws when the replacement changes the plugin type', () => {
+      registry.register(widgetPlugin('shape'));
+
+      expect(() => registry.replace(pagePlugin('shape', '/shape'))).toThrow(
+        'Cannot change plugin "shape" type',
+      );
+      // The original widget record stays registered on rejection.
+      expect(registry.get('shape')?.entry.type).toBe('widget');
+    });
+
+    it('throws when the replacement changes a page route', () => {
+      registry.register(pagePlugin('docs', '/docs'));
+
+      expect(() => registry.replace(pagePlugin('docs', '/guide'))).toThrow(
+        'Cannot change page "docs" route',
+      );
+      expect((registry.get('docs')?.entry as {route: string}).route).toBe('/docs');
+    });
+
+    it('accepts a page replacement that keeps name, type, and route', () => {
+      registry.register(pagePlugin('docs', '/docs'));
+
+      const next = pagePlugin('docs', '/docs');
+
+      expect(() => registry.replace(next)).not.toThrow();
+      expect(registry.get('docs')).toBe(next);
+    });
+  });
 });

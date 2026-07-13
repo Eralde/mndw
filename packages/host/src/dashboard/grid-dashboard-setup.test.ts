@@ -1,3 +1,4 @@
+/* eslint id-blacklist: 0 */
 import type {GridStack, GridStackWidget} from 'gridstack';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
@@ -12,6 +13,11 @@ vi.mock('./widget-counter.js', () => ({
 
 vi.mock('./widget-context.js', () => ({
   createWidgetContext: vi.fn((_name: string, instanceId: string) => ({instanceId})),
+}));
+
+vi.mock('../runtime/plugin-context.js', () => ({
+  createPluginContext: vi.fn((_entry: unknown, instanceId: string) => ({instanceId})),
+  consumeOverlayDispose: () => () => {},
 }));
 
 // Spy-wrap the real lifecycle so error-tile tests exercise the real mount (which renders
@@ -30,6 +36,7 @@ import {
   type RestoredTilePosition,
   addWidgetTile,
   destroyAllTiles,
+  remountWidgetTiles,
   removeWidgetTile,
   resizeWidgetTile,
 } from './grid-dashboard-setup.js';
@@ -323,6 +330,70 @@ describe('grid-dashboard-setup', () => {
 
     expect(first).toHaveBeenCalledWith({w: 6, h: 4});
     expect(second).not.toHaveBeenCalled();
+  });
+
+  describe('remountWidgetTiles', () => {
+    function labelledWidget(name: string, text: string): LoadedPlugin {
+      const plugin = widgetPlugin(name, (container) => {
+        container.textContent = text;
+
+        return noop();
+      });
+
+      return plugin;
+    }
+
+    it('is a no-op returning true when no tile matches the plugin', async () => {
+      const next = labelledWidget('absent', 'x');
+
+      expect(await remountWidgetTiles('absent', next, next)).toBe(true);
+    });
+
+    it('remounts matching tiles in place with the candidate module, preserving instance storage', async () => {
+      vi.mocked(pluginRegistry).get.mockReturnValue(labelledWidget('traffic', 'v1'));
+
+      const {grid} = createFakeGrid();
+      const id = addTile(grid, 'traffic');
+      const body = () => document.querySelector('.mndw-grid-tile__body');
+
+      expect(body()?.textContent).toBe('v1');
+      vi.mocked(unmountPlugin).mockClear();
+
+      const ok = await remountWidgetTiles(
+        'traffic',
+        labelledWidget('traffic', 'v2'),
+        labelledWidget('traffic', 'v1'),
+      );
+
+      expect(ok).toBe(true);
+      expect(body()?.textContent).toBe('v2');
+      // The tile keeps its instance id and its storage is preserved across the reload.
+      expect(id).toBe('widget-traffic:1');
+      expect(unmountPlugin).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+        clearStorage: false,
+        closeReason: 'host-navigation',
+      });
+    });
+
+    it('rolls back to the prior module when a candidate createInstance fails', async () => {
+      vi.mocked(pluginRegistry).get.mockReturnValue(labelledWidget('traffic', 'v1'));
+
+      const {grid} = createFakeGrid();
+
+      addTile(grid, 'traffic');
+
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const failing = widgetPlugin('traffic', () => {
+        throw new Error('boom');
+      });
+
+      const ok = await remountWidgetTiles('traffic', failing, labelledWidget('traffic', 'restored'));
+
+      expect(ok).toBe(false);
+      expect(document.querySelector('.mndw-grid-tile__body')?.textContent).toBe('restored');
+
+      errorSpy.mockRestore();
+    });
   });
 
   it('rolls back a tile GridStack created without a content element', () => {

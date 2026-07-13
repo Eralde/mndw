@@ -17,6 +17,10 @@
   "dependencies": {
     "@mndw/sdk": "workspace:*",
     "commander": "^15.0.0",
+    "esbuild": "^0.25.12",
+    "esbuild-svelte": "^0.9.5",
+    "fflate": "^0.8.2",
+    "svelte": "^5.56.4",
     "tsx": "^4.23.0"
   }
 }

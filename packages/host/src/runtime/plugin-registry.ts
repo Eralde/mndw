@@ -26,6 +26,42 @@ export class PluginRegistry {
     this.plugins.set(plugin.entry.name, plugin);
   }
 
+  /**
+   * Swaps an already-registered plugin's record for a new one (its freshly imported
+   * module + manifest-derived entry), returning the prior record so a caller can roll
+   * back on a failed hot-reload. Only compatible replacements are allowed: the name must
+   * already exist, the type must not change, and a page's route must stay the same — a
+   * topology-changing reload requires restarting `mndw dev`, and is rejected here so the
+   * previous live plugin is never silently dropped.
+   */
+  public replace(plugin: LoadedPlugin): LoadedPlugin {
+    const prior = this.plugins.get(plugin.entry.name);
+
+    if (prior === undefined) {
+      throw new Error(`Cannot replace unknown plugin "${plugin.entry.name}"`);
+    }
+
+    if (prior.entry.type !== plugin.entry.type) {
+      throw new Error(
+        `Cannot change plugin "${plugin.entry.name}" type from ${prior.entry.type} to ${plugin.entry.type}`,
+      );
+    }
+
+    if (
+      prior.entry.type === 'page'
+      && plugin.entry.type === 'page'
+      && prior.entry.route !== plugin.entry.route
+    ) {
+      throw new Error(
+        `Cannot change page "${plugin.entry.name}" route from ${prior.entry.route} to ${plugin.entry.route}`,
+      );
+    }
+
+    this.plugins.set(plugin.entry.name, plugin);
+
+    return prior;
+  }
+
   public get(name: string): LoadedPlugin | undefined {
     return this.plugins.get(name);
   }

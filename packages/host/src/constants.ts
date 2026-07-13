@@ -18,6 +18,12 @@ export const FALLBACK_HOST_INFO = {
 
 /** Daemon management endpoint the runtime loads the plugin list from (design §5.2). */
 export const MGMT_LIST_URL = '/api/mgmt/list';
+export const MGMT_UPLOAD_URL = '/api/mgmt/upload';
+export const MGMT_APPROVE_URL = '/api/mgmt/approve';
+export const MGMT_DENY_URL = '/api/mgmt/deny';
+export const MGMT_ENABLE_URL = '/api/mgmt/enable';
+export const MGMT_DISABLE_URL = '/api/mgmt/disable';
+export const MGMT_DELETE_URL = '/api/mgmt/delete';
 
 /** URL prefixes plugin assets are served from, by source (design §6). */
 export const PLUGIN_SOURCE_PATHS = {

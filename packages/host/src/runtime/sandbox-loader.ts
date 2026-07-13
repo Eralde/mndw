@@ -1,0 +1,228 @@
+import {type MndwPlugin, type PluginBackendManifest, type PluginManifest, validateManifest} from '@mndw/sdk';
+import {type LoadedPlugin, pluginRegistry} from './plugin-registry.js';
+import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
+
+/** Window event the sandbox HMR transaction dispatches so the active page host remounts. */
+export const SANDBOX_RELOAD_EVENT = 'mndw:sandbox-reloaded';
+
+/**
+ * Detail of {@link SANDBOX_RELOAD_EVENT}. Carries the candidate and prior loaded plugins
+ * explicitly (not via the registry, whose module has already been swapped) so a page host
+ * can remount the candidate and roll back to the prior module on its own without racing the
+ * registry. A matching host registers a `Promise<boolean>` reporting its remount outcome so
+ * the transaction can await it before committing.
+ */
+export interface SandboxReloadDetail {
+  pluginName: string;
+  next: LoadedPlugin;
+  prior: LoadedPlugin;
+  register(result: Promise<boolean>): void;
+}
+
+/** The registry surface the loader needs; a subset so tests can pass a fresh registry. */
+export interface SandboxRegistry {
+  register(plugin: LoadedPlugin): void;
+  replace(plugin: LoadedPlugin): LoadedPlugin;
+  get(name: string): LoadedPlugin | undefined;
+}
+
+/**
+ * How the loader reaches the Vite virtual modules. Kept as injected functions (never a
+ * literal `import('virtual:…')` inside this module) so vitest — which has no sandbox Vite
+ * plugin — can transform this file; the real `virtual:` specifiers live in `sandbox-virtual.ts`.
+ */
+export interface SandboxImports {
+  importPluginModule: () => Promise<unknown>;
+  importManifestModule: () => Promise<{default?: unknown}>;
+}
+
+/** Injected boundaries so the loader is unit-testable without Vite virtual modules or the DOM. */
+export interface SandboxLoaderDeps extends Partial<SandboxImports> {
+  registry?: SandboxRegistry;
+  remountWidgets?: (name: string, next: LoadedPlugin, prior: LoadedPlugin) => Promise<boolean>;
+  reloadPage?: (name: string, next: LoadedPlugin, prior: LoadedPlugin) => Promise<boolean>;
+}
+
+/** Outcome of a hot-reload transaction, exposed for tests and logging. */
+export type SandboxReloadResult = 'reloaded' | 'restart-required' | 'failed';
+
+function validateModule(module: unknown): MndwPlugin {
+  const m = module as Record<string, unknown>;
+
+  if (typeof m.createInstance !== 'function') {
+    throw new Error('Sandbox plugin does not export { createInstance }');
+  }
+
+  return m as unknown as MndwPlugin;
+}
+
+/** Projects a manifest's optional backend into the client-facing descriptor shape. */
+function descriptorFromManifest(backend: PluginBackendManifest | undefined): PluginBackendDescriptor {
+  const endpoints: PluginBackendDescriptor['endpoints'] = {};
+
+  for (const endpoint of backend?.endpoints ?? []) {
+    endpoints[endpoint.id] = {method: endpoint.method, path: endpoint.path};
+  }
+
+  const websockets: PluginBackendDescriptor['websockets'] = {};
+
+  for (const socket of backend?.websockets ?? []) {
+    websockets[socket.id] = socket.protocols === undefined
+      ? {path: socket.path}
+      : {path: socket.path, protocols: socket.protocols};
+  }
+
+  return {
+    endpoints,
+    websockets,
+    opkg: backend?.opkg ?? [],
+    daemon: backend?.daemon !== undefined,
+    public: backend?.public === true,
+  };
+}
+
+/**
+ * Builds the runtime {@link PluginListEntry} the host consumes from a validated sandbox
+ * manifest. A sandbox plugin is always treated as an approved+enabled builtin — the daemon
+ * is bypassed in `mndw dev`, so there is no approval flow.
+ */
+export function manifestToListEntry(manifest: PluginManifest): PluginListEntry {
+  const base = {
+    name: manifest.name,
+    version: manifest.version,
+    label: manifest.label,
+    entry: manifest.entry,
+    ...(manifest.icon !== undefined ? {icon: manifest.icon} : {}),
+    source: 'builtin' as const,
+    approval: 'approved' as const,
+    enabled: true,
+    backend: descriptorFromManifest(manifest.backend),
+  };
+
+  if (manifest.type === 'widget') {
+    return {...base, type: 'widget', size: manifest.size};
+  }
+
+  return {...base, type: 'page', route: manifest.route};
+}
+
+async function buildLoadedPlugin(deps: SandboxLoaderDeps): Promise<LoadedPlugin> {
+  if (deps.importPluginModule === undefined || deps.importManifestModule === undefined) {
+    throw new Error('Sandbox imports were not provided');
+  }
+
+  const module = validateModule(await deps.importPluginModule());
+  const manifestModule = await deps.importManifestModule();
+
+  if (manifestModule.default === undefined || manifestModule.default === null) {
+    throw new Error('Sandbox manifest module has no default export');
+  }
+
+  const manifest = validateManifest(manifestModule.default);
+
+  return {entry: manifestToListEntry(manifest), module};
+}
+
+/**
+ * Sandbox-mode counterpart to {@link loadPlugins}: imports the single plugin under
+ * development through the Vite virtual modules, validates its module and manifest, and
+ * registers it. A missing/invalid module or manifest is logged and nothing is registered —
+ * never a placeholder plugin masking the authoring error.
+ */
+export async function loadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise<void> {
+  const registry = deps.registry ?? pluginRegistry;
+
+  try {
+    const plugin = await buildLoadedPlugin(deps);
+
+    registry.register(plugin);
+    console.log(`[mndw] Sandbox plugin loaded: ${plugin.entry.name}`);
+  } catch (err) {
+    console.error('[mndw] Failed to load sandbox plugin:', err);
+  }
+}
+
+/**
+ * Runs one hot-reload transaction. Rebuilds and validates the candidate, then (only when
+ * compatible: same name, type, and page route) swaps the registry module and remounts every
+ * affected widget tile and the active page in place, awaiting each. On any failure the
+ * registry is rolled back to the prior module and the previous live plugin is retained;
+ * a topology-changing manifest returns `restart-required` without disturbing the live plugin.
+ */
+export async function reloadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise<SandboxReloadResult> {
+  const registry = deps.registry ?? pluginRegistry;
+  const remountWidgets = deps.remountWidgets ?? defaultRemountWidgets;
+  const reloadPage = deps.reloadPage ?? defaultReloadPage;
+
+  let candidate: LoadedPlugin;
+
+  try {
+    candidate = await buildLoadedPlugin(deps);
+  } catch (err) {
+    console.error('[mndw] Sandbox reload rejected (invalid update kept previous plugin):', err);
+
+    return 'failed';
+  }
+
+  const name = candidate.entry.name;
+  const prior = registry.get(name);
+
+  if (prior === undefined) {
+    // Never loaded (e.g. the first load failed): treat the update as a fresh load.
+    registry.register(candidate);
+
+    return 'reloaded';
+  }
+
+  let restored: LoadedPlugin;
+
+  try {
+    restored = registry.replace(candidate);
+  } catch (err) {
+    console.error(`[mndw] Sandbox reload needs a restart of \`mndw dev\`: ${(err as Error).message}`);
+
+    return 'restart-required';
+  }
+
+  try {
+    const widgetsOk = await remountWidgets(name, candidate, prior);
+    const pageOk = await reloadPage(name, candidate, prior);
+
+    if (!widgetsOk || !pageOk) {
+      throw new Error('a widget or page remount reported failure');
+    }
+
+    console.log(`[mndw] Sandbox plugin reloaded: ${name}`);
+
+    return 'reloaded';
+  } catch (err) {
+    registry.replace(restored);
+    console.error(`[mndw] Sandbox reload failed, kept previous plugin "${name}":`, err);
+
+    return 'failed';
+  }
+}
+
+/** Default widget remount: lazily reaches the grid setup so this module stays DOM-free for tests. */
+async function defaultRemountWidgets(name: string, next: LoadedPlugin, prior: LoadedPlugin): Promise<boolean> {
+  const {remountWidgetTiles} = await import('../dashboard/grid-dashboard-setup.js');
+
+  return remountWidgetTiles(name, next, prior);
+}
+
+/** Default page reload: dispatches the reload event and awaits any matching page host's report. */
+async function defaultReloadPage(name: string, next: LoadedPlugin, prior: LoadedPlugin): Promise<boolean> {
+  const results: Array<Promise<boolean>> = [];
+  const detail: SandboxReloadDetail = {
+    pluginName: name,
+    next,
+    prior,
+    register: (result) => results.push(result),
+  };
+
+  window.dispatchEvent(new CustomEvent(SANDBOX_RELOAD_EVENT, {detail}));
+
+  const settled = await Promise.all(results);
+
+  return settled.every(Boolean);
+}

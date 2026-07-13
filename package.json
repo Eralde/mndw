@@ -3,12 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
+    "dev": "tsx tools/dev.ts",
     "test": "pnpm -r --if-present test",
     "gen-tokens": "pnpm --filter @mndw/palette-tools gen-tokens",
     "generate-manifest-schema": "pnpm --filter @mndw/sdk generate-manifest-schema",
-    "build-example-plugins": "tsx tools/build-example-plugins.ts",
-    "fmt": "dprint fmt \"packages/**/*.*\" \"example-plugins/**/*.*\"",
-    "lint": "eslint --fix --no-error-on-unmatched-pattern \"packages/\" \"example-plugins/\"",
+    "build-example-plugins": "tsx packages/cli/src/index.ts pack-examples --out-dir example-plugins/dist",
+    "fmt": "dprint fmt \"packages/**/*.*\" \"example-plugins/**/*.*\" \"tools/dev.ts\"",
+    "lint": "eslint --fix --no-error-on-unmatched-pattern \"packages/\" \"example-plugins/\" \"tools/dev.ts\"",
     "lint-styles": "stylelint --config .stylelintrc.js \"**/*.scss\" --fix && stylelint --config .stylelintrc.css.js \"**/*.css\" --fix"
   },
   "devDependencies": {

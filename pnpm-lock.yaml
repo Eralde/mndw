@@ -159,6 +159,58 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@22.19.15)(happy-dom@17.6.3)(tsx@4.23.0)
 
+  example-plugins/ping-widget:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^5.0.0
+        version: 5.1.1(svelte@5.56.4(@typescript-eslint/types@8.57.1))(vite@6.4.3(@types/node@22.19.15)(tsx@4.23.0))
+      '@types/node':
+        specifier: 22.19.15
+        version: 22.19.15
+      happy-dom:
+        specifier: ^17.4.4
+        version: 17.6.3
+      svelte:
+        specifier: ^5.56.4
+        version: 5.56.4(@typescript-eslint/types@8.57.1)
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.0
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@17.6.3)(tsx@4.23.0)
+
+  example-plugins/ttyd-widget:
+    dependencies:
+      '@xterm/addon-fit':
+        specifier: ^0.10.0
+        version: 0.10.0(@xterm/xterm@5.5.0)
+      '@xterm/xterm':
+        specifier: ^5.5.0
+        version: 5.5.0
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^5.0.0
+        version: 5.1.1(svelte@5.56.4(@typescript-eslint/types@8.57.1))(vite@6.4.3(@types/node@22.19.15)(tsx@4.23.0))
+      '@types/node':
+        specifier: 22.19.15
+        version: 22.19.15
+      happy-dom:
+        specifier: ^17.4.4
+        version: 17.6.3
+      svelte:
+        specifier: ^5.56.4
+        version: 5.56.4(@typescript-eslint/types@8.57.1)
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@17.6.3)(tsx@4.23.0)
+
   packages/cli:
     dependencies:
       '@mndw/sdk':
@@ -1250,6 +1302,14 @@ packages:
 
   '@vitest/utils@3.2.7':
     resolution: {integrity: sha512-x6BDOd7dyo3PFLY3I9/HJ25X/6OurhGXk2/B9gOZNPF7XDVjeBK4k01lQE5uvDpbuheErh91qYuE1E2OEjK3Rw==}
+
+  '@xterm/addon-fit@0.10.0':
+    resolution: {integrity: sha512-UFYkDm4HUahf2lnEyHvio51TNGiLK66mqP2JoATy7hRZeXaGMRDr00JiSF7m63vR5WKATF605yEggJKsw0JpMQ==}
+    peerDependencies:
+      '@xterm/xterm': ^5.0.0
+
+  '@xterm/xterm@5.5.0':
+    resolution: {integrity: sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A==}
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -3965,6 +4025,12 @@ snapshots:
       '@vitest/pretty-format': 3.2.7
       loupe: 3.2.1
       tinyrainbow: 2.0.0
+
+  '@xterm/addon-fit@0.10.0(@xterm/xterm@5.5.0)':
+    dependencies:
+      '@xterm/xterm': 5.5.0
+
+  '@xterm/xterm@5.5.0': {}
 
   acorn-jsx@5.3.2(acorn@8.17.0):
     dependencies:

@@ -346,7 +346,10 @@ module.exports = tseslint.config(
       parserOptions: {
         parser: tseslint.parser,
         projectService: {
-          allowDefaultProject: ['example-plugins/*/src/components/*.svelte'],
+          allowDefaultProject: [
+            'example-plugins/*/src/components/*.svelte',
+            'example-plugins/*/src/*.svelte',
+          ],
           defaultProject: './tsconfig.example-plugins.json',
         },
         extraFileExtensions: ['.svelte'],

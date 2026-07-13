@@ -1,3 +1,4 @@
+import {spawnSync} from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -48,6 +49,29 @@ export interface PackExamplePluginsOptions {
   readonly outDir: string;
   /** Directory containing manifest-backed plugin source directories. */
   readonly sourceDir?: string;
+}
+
+function runPluginBuild(pluginDir: string): void {
+  const pkgPath = join(pluginDir, 'package.json');
+
+  if (!existsSync(pkgPath)) {
+    return;
+  }
+
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
+    name?: string;
+    scripts?: Record<string, string>;
+  };
+
+  if (pkg.scripts?.build === undefined) {
+    return;
+  }
+
+  const result = spawnSync('pnpm', ['run', 'build'], {cwd: pluginDir, stdio: 'inherit'});
+
+  if (result.status !== 0) {
+    throw new CliError(`Plugin build failed for ${pkg.name ?? pluginDir} (exit ${result.status ?? 'signal'})`);
+  }
 }
 
 interface StagedAsset {
@@ -182,6 +206,7 @@ export async function packExamplePlugins(options: PackExamplePluginsOptions): Pr
     .sort();
 
   for (const name of names) {
+    runPluginBuild(join(sourceDir, name));
     await packPlugin(join(sourceDir, name), {outDir: join(outDir, name)});
   }
 
@@ -204,6 +229,10 @@ function backendAssetRelPaths(manifest: PluginManifestOutput): string[] {
 
   if (backend.daemon !== undefined) {
     paths.push(backend.daemon.start, backend.daemon.stop);
+  }
+
+  for (const asset of backend.assets ?? []) {
+    paths.push(asset);
   }
 
   return [...new Set(paths)];

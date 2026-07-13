@@ -111,6 +111,13 @@
                 "additionalProperties": false
               }
             },
+            "assets": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
             "endpoints": {
               "type": "array",
               "items": {
@@ -292,6 +299,13 @@
                   "source"
                 ],
                 "additionalProperties": false
+              }
+            },
+            "assets": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
               }
             },
             "endpoints": {

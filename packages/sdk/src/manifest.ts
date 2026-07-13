@@ -39,6 +39,8 @@ export interface PluginBackendManifest {
   /** opkg packages the daemon installs on approval. */
   opkg?: string[];
   scripts?: PluginBackendScriptDeclaration[];
+  /** Non-script backend files pack must ship verbatim (e.g. compiled binaries). */
+  assets?: string[];
   endpoints?: PluginBackendEndpointDeclaration[];
   websockets?: PluginBackendWebSocketDeclaration[];
   daemon?: PluginBackendDaemonDeclaration;

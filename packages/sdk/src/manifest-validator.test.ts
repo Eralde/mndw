@@ -118,3 +118,33 @@ describe('validateManifest behavior', () => {
     expect(() => validateManifest({type: 'widget'})).toThrow(/unknown/);
   });
 });
+
+describe('backend.assets', () => {
+  const base = {
+    manifestVersion: 2 as const,
+    name: 'asset-plugin',
+    version: '0.1.0',
+    type: 'widget' as const,
+    label: 'Asset Plugin',
+    entry: 'index.js',
+    size: {w: 2, h: 2},
+  };
+
+  it('accepts a safe relative asset path', () => {
+    const manifest = validateManifest({
+      ...base,
+      backend: {assets: ['backend/ping-util']},
+    });
+
+    expect(manifest.backend?.assets).toEqual(['backend/ping-util']);
+  });
+
+  it.each([
+    ['/abs/ping-util'],
+    ['../ping-util'],
+    ['backend\\ping-util'],
+    [''],
+  ])('rejects unsafe asset path %s', (bad) => {
+    expect(() => validateManifest({...base, backend: {assets: [bad]}})).toThrow();
+  });
+});

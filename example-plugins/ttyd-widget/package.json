@@ -1,0 +1,21 @@
+{
+  "name": "@mndw/example-ttyd-widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0"
+  },
+  "devDependencies": {
+    "@mndw/sdk": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@types/node": "22.19.15",
+    "happy-dom": "^17.4.4",
+    "svelte": "^5.56.4",
+    "vitest": "^3.2.7"
+  }
+}

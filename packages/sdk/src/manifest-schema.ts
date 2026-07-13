@@ -72,6 +72,9 @@ const pluginBackendDaemonSchema = z.object({
 const pluginBackendSchema = z.object({
   opkg: z.array(pluginBackendOpkgSchema).optional(),
   scripts: z.array(pluginBackendScriptSchema).optional(),
+  assets: z.array(
+    safeRelativePathSchema.refine(hasFileName, {message: 'asset must include a file name'}),
+  ).optional(),
   endpoints: z.array(pluginBackendEndpointSchema).optional(),
   websockets: z.array(pluginBackendWebSocketSchema).optional(),
   daemon: pluginBackendDaemonSchema.optional(),

@@ -51,3 +51,16 @@ jobs:
           else
             echo "packages/daemon/go.mod not present yet — skipping go test"
           fi
+
+  busybox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Run the daemon sh-exec suite where /bin/sh is BusyBox ash (the router
+      # shell family). Uses `docker run` rather than a `container:` job so the
+      # glibc-linked checkout action runs on the host, and so the CI command is
+      # identical to the local reproduction command. opkg stubbed; no -race.
+      - name: Run daemon sh-exec suite under BusyBox ash
+        run: docker run --rm -v "$PWD":/src -w /src golang:1.26-alpine sh deploy/ci/run-busybox-tests.sh

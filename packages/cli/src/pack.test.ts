@@ -1,4 +1,4 @@
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {validateManifest} from '@mndw/sdk';
@@ -201,6 +201,48 @@ describe('packPlugin', () => {
     expect(existsSync(join(dir, 'dist'))).toBe(false);
   });
 
+  it('copies declared backend.assets into dist, mode-preserved, and errors when missing', async () => {
+    mkdirSync(join(dir, 'src'), {recursive: true});
+    mkdirSync(join(dir, 'backend'), {recursive: true});
+    writeFileSync(join(dir, 'src', 'index.ts'), 'export function createInstance(){return {unmount(){}}}');
+    writeFileSync(join(dir, 'backend', 'blob.bin'), Buffer.from([1, 2, 3]));
+    chmodSync(join(dir, 'backend', 'blob.bin'), 0o755);
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      JSON.stringify({
+        manifestVersion: 2,
+        name: 'asset-plugin',
+        version: '0.1.0',
+        type: 'widget',
+        label: 'Asset',
+        entry: 'index.js',
+        size: {w: 2, h: 2},
+        backend: {assets: ['backend/blob.bin']},
+      }),
+    );
+
+    const outDir = join(dir, 'dist');
+
+    await packPlugin(dir, {outDir});
+
+    const packed = join(outDir, 'backend', 'blob.bin');
+
+    expect(existsSync(packed)).toBe(true);
+    expect(readFileSync(packed)).toEqual(Buffer.from([1, 2, 3]));
+
+    const packedMode = statSync(packed).mode;
+    const hasExecutableBit = [0o100, 0o010, 0o001].some((bit) => Math.floor(packedMode / bit) % 2 === 1);
+
+    expect(hasExecutableBit).toBe(true);
+
+    rmSync(join(dir, 'backend', 'blob.bin'));
+
+    const missingOutDir = mkdtempSync(join(tmpdir(), 'mndw-assets-missing-'));
+
+    rmSync(missingOutDir, {recursive: true, force: true});
+    await expect(packPlugin(dir, {outDir: missingOutDir})).rejects.toThrow(/Missing backend asset/);
+  });
+
   it.each([
     ['equals', (pluginDir: string) => pluginDir],
     ['is inside', (pluginDir: string) => join(pluginDir, 'src', 'output')],
@@ -251,7 +293,14 @@ describe('packExamplePlugins', () => {
   }
 
   it('builds every example plugin into one output destination', () => {
-    expect(names).toEqual(['backend-echo', 'broken-widget', 'demo-page', 'device-traffic-widget']);
+    expect(names).toEqual([
+      'backend-echo',
+      'broken-widget',
+      'demo-page',
+      'device-traffic-widget',
+      'ping-widget',
+      'ttyd-widget',
+    ]);
 
     for (const name of names) {
       expect(existsSync(join(outDir, name, 'index.js'))).toBe(true);
@@ -285,5 +334,48 @@ describe('packExamplePlugins', () => {
 
     expect(svelteBundle).not.toMatch(/from\s*["']svelte["']/);
     expect(svelteBundle).toContain('svelte');
+  });
+});
+
+describe('packExamplePlugins build pre-pass', () => {
+  it('runs each example plugin build script before packing', async () => {
+    const src = mkdtempSync(join(tmpdir(), 'mndw-examples-'));
+    const plugin = join(src, 'built-widget');
+
+    mkdirSync(join(plugin, 'src'), {recursive: true});
+    writeFileSync(join(plugin, 'src', 'index.ts'), 'export function createInstance(){return {unmount(){}}}');
+    writeFileSync(
+      join(plugin, 'manifest.json'),
+      JSON.stringify({
+        manifestVersion: 2,
+        name: 'built-widget',
+        version: '0.1.0',
+        type: 'widget',
+        label: 'Built',
+        entry: 'index.js',
+        size: {w: 2, h: 2},
+        backend: {assets: ['backend/marker.bin']},
+      }),
+    );
+    writeFileSync(
+      join(plugin, 'package.json'),
+      JSON.stringify({
+        name: '@mndw/example-built-widget',
+        version: '0.1.0',
+        private: true,
+        scripts: {
+          build:
+            'node -e "require(\'fs\').mkdirSync(\'backend\',{recursive:true});require(\'fs\').writeFileSync(\'backend/marker.bin\',\'ok\')"',
+        },
+      }),
+    );
+
+    const outDir = join(src, 'dist');
+    const names = await packExamplePlugins({outDir, sourceDir: src});
+
+    expect(names).toEqual(['built-widget']);
+    expect(readFileSync(join(outDir, 'built-widget', 'backend', 'marker.bin'), 'utf8')).toBe('ok');
+
+    rmSync(src, {recursive: true, force: true});
   });
 });

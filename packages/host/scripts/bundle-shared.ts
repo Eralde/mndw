@@ -6,14 +6,15 @@ import {build} from 'esbuild';
 
 // Builds the host-provided shared-dependency bundles into dist/shared, one versioned
 // file per entry (`<bundle>@<version>.js`) matching the import map the host injects.
-// Phase 3 ships the `base` framework bundles only (@rci-tools/core, rxjs,
-// rxjs/operators, hash-wasm); the vue/angular bundles land with those phases.
+// Phase 7a ships base + vue; the angular bundles land in 7b (their deps aren't installed yet).
 const outDir = path.resolve(import.meta.dirname, '..', 'dist', 'shared');
 
 async function bundleShared(): Promise<void> {
   fs.mkdirSync(outDir, {recursive: true});
 
-  const entries = SHARED_DEPENDENCIES.filter((entry) => entry.framework === 'base');
+  const entries = SHARED_DEPENDENCIES.filter(
+    (entry) => entry.framework === 'base' || entry.framework === 'vue',
+  );
 
   await Promise.all(entries.map((entry) => {
     const options: BuildOptions = {

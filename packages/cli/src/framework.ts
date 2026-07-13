@@ -1,18 +1,12 @@
 import {readdirSync} from 'node:fs';
 import {join} from 'node:path';
 
-/** Supported plugin frameworks the packer can build. Vue/Angular arrive in Phase 7. */
-export type PluginFramework = 'vanilla' | 'svelte';
+import {CliError} from './errors.js';
 
-/**
- * Detects a plugin's framework by scanning its `src/` tree: any `.svelte` file (entry or imported
- * component) marks a Svelte plugin; otherwise it is treated as vanilla TypeScript.
- */
-export function detectFramework(pluginDir: string): PluginFramework {
-  return hasSvelteFile(join(pluginDir, 'src')) ? 'svelte' : 'vanilla';
-}
+/** Supported plugin frameworks the packer can build. */
+export type PluginFramework = 'vanilla' | 'svelte' | 'vue';
 
-function hasSvelteFile(dir: string): boolean {
+function hasExtension(dir: string, ext: string): boolean {
   let entries;
 
   try {
@@ -23,17 +17,44 @@ function hasSvelteFile(dir: string): boolean {
 
   for (const entry of entries) {
     if (entry.isDirectory()) {
-      if (hasSvelteFile(join(dir, entry.name))) {
+      if (hasExtension(join(dir, entry.name), ext)) {
         return true;
       }
 
       continue;
     }
 
-    if (entry.isFile() && entry.name.endsWith('.svelte')) {
+    if (entry.isFile() && entry.name.endsWith(ext)) {
       return true;
     }
   }
 
   return false;
+}
+
+/**
+ * Detects a plugin's framework by scanning its `src/` tree: any `.vue` file marks a Vue plugin, any
+ * `.svelte` file marks a Svelte plugin, otherwise vanilla TypeScript. A tree containing BOTH throws —
+ * a plugin must use a single framework, and silently picking one would let a stray SFC flip the build.
+ */
+export function detectFramework(pluginDir: string): PluginFramework {
+  const src = join(pluginDir, 'src');
+  const hasVue = hasExtension(src, '.vue');
+  const hasSvelte = hasExtension(src, '.svelte');
+
+  if (hasVue && hasSvelte) {
+    throw new CliError(
+      'mixed framework sources: found both .vue and .svelte under src/; a plugin must use a single framework',
+    );
+  }
+
+  if (hasVue) {
+    return 'vue';
+  }
+
+  if (hasSvelte) {
+    return 'svelte';
+  }
+
+  return 'vanilla';
 }

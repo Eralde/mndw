@@ -3,6 +3,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 
+import {CliError} from './errors.js';
 import {detectFramework} from './framework.js';
 
 describe('detectFramework', () => {
@@ -36,5 +37,18 @@ describe('detectFramework', () => {
     writeFileSync(join(dir, 'src', 'components', 'Foo.svelte'), '<p>foo</p>\n');
 
     expect(detectFramework(dir)).toBe('svelte');
+  });
+
+  it('detects vue when the source tree contains a .vue file', () => {
+    writeFileSync(join(dir, 'src', 'App.vue'), '<template><b/></template>\n');
+
+    expect(detectFramework(dir)).toBe('vue');
+  });
+
+  it('throws on a mixed .vue + .svelte source tree', () => {
+    writeFileSync(join(dir, 'src', 'App.vue'), '<template/>\n');
+    writeFileSync(join(dir, 'src', 'Other.svelte'), '<b/>\n');
+
+    expect(() => detectFramework(dir)).toThrow(CliError);
   });
 });

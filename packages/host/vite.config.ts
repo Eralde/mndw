@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {sharedImportMap, sharedSpecifiers} from '@mndw/sdk/shared-dependencies';
 import {svelte} from '@sveltejs/vite-plugin-svelte';
+import vue from '@vitejs/plugin-vue';
 import {resolveSandboxPluginPath, sandboxPlugin} from './scripts/sandbox-plugin.js';
 import {resolvePluginRequest} from './scripts/serve-plugins.js';
 import type {ProxyOptions} from 'vite';
@@ -58,6 +59,7 @@ export default defineConfig(({mode}) => {
       // stubs when sandbox mode is off (sandboxPluginPath === null).
       sandboxPlugin(sandboxPluginPath),
       svelte(),
+      vue(),
       {
         // Serve the versioned shared-dependency bundles from dist/shared in dev.
         name: 'mndw-serve-shared',

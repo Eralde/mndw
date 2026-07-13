@@ -106,6 +106,33 @@ describe('packPlugin', () => {
     expect(readFileSync(join(dir, 'dist', 'index.css'), 'utf8')).toContain('color');
   });
 
+  it('bundles a vue plugin, keeps vue external, and emits dist/index.css', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({name: 'vue-widget'}),
+      index: 'import {createApp} from "vue";\n'
+        + 'import App from "./App.vue";\n'
+        + 'export const createInstance = (el: HTMLElement) => {\n'
+        + '  const app = createApp(App);\n'
+        + '  app.mount(el);\n'
+        + '  return {unmount() { app.unmount(); }};\n'
+        + '};\n',
+      files: {
+        'src/App.vue': '<script setup lang="ts"></script>\n<template><h1>hi</h1></template>\n'
+          + '<style scoped>h1{color:red}</style>\n',
+      },
+    });
+
+    const result = await packPlugin(dir);
+
+    expect(result.framework).toBe('vue');
+
+    const js = readFileSync(join(result.outDir, 'index.js'), 'utf8');
+
+    expect(js).toMatch(/from\s*["']vue["']/);
+    expect(existsSync(join(result.outDir, 'index.css'))).toBe(true);
+    expect(readFileSync(join(result.outDir, 'index.css'), 'utf8')).toMatch(/color:\s*red/);
+  });
+
   it('stamps a version-1 mndw.lock.json alongside the bundle', async () => {
     scaffold(dir, {
       manifest: widgetManifest({name: 'locked-widget', version: '2.5.0'}),
@@ -297,6 +324,7 @@ describe('packExamplePlugins', () => {
       'backend-echo',
       'broken-widget',
       'demo-page',
+      'device-info-widget',
       'device-traffic-widget',
       'ping-widget',
       'ttyd-widget',

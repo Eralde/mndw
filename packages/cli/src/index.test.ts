@@ -1,5 +1,5 @@
 import {execFileSync, spawnSync} from 'node:child_process';
-import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
 
@@ -223,6 +223,24 @@ describe('createProgram', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain(resolve(pluginDir, 'manifest.json'));
+  });
+
+  test('create --framework vue scaffolds a Vue plugin end to end', () => {
+    const workdir = mkdtempSync(resolve(tmpdir(), 'mndw-cli-create-vue-'));
+
+    temporaryDirectories.push(workdir);
+
+    const result = runCliFrom(workdir, ['create', 'vue-cmd', '--framework', 'vue']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('(vue)');
+    expect(existsSync(resolve(workdir, 'vue-cmd', 'src', 'App.vue'))).toBe(true);
+  });
+
+  test('create --help lists vue among the framework options', () => {
+    const result = runCliFrom(WORKSPACE_ROOT, ['create', '--help']);
+
+    expect(result.stdout).toContain('vanilla|svelte|vue');
   });
 });
 

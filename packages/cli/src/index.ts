@@ -47,7 +47,7 @@ export function createProgram(): Command {
   program
     .command('create <name>')
     .option('--type <type>', 'plugin type: widget|page', 'widget')
-    .option('--framework <framework>', 'UI framework: vanilla|svelte', 'vanilla')
+    .option('--framework <framework>', 'UI framework: vanilla|svelte|vue', 'vanilla')
     .option('--out <dir>', 'output directory (default: ./<name>)')
     .option('--route <route>', 'page route (page type only; default /<name>)')
     .option('--label <label>', 'human-readable label (default derived from name)')
@@ -58,7 +58,7 @@ export function createProgram(): Command {
         name,
         outDir,
         type: options.type as 'widget' | 'page' | undefined,
-        framework: options.framework as 'vanilla' | 'svelte' | undefined,
+        framework: options.framework as 'vanilla' | 'svelte' | 'vue' | undefined,
         route: options.route,
         label: options.label,
         backend: options.backend as 'sh' | undefined,

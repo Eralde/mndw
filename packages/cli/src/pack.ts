@@ -17,6 +17,7 @@ import {type PluginManifestOutput} from '@mndw/sdk';
 import {pluginDependencies} from '@mndw/sdk/shared-dependencies';
 import {build} from 'esbuild';
 import esbuildSvelte from 'esbuild-svelte';
+import vuePlugin from 'unplugin-vue/esbuild';
 
 import {CliError} from './errors.js';
 import {type PluginFramework, detectFramework} from './framework.js';
@@ -81,7 +82,7 @@ interface StagedAsset {
 }
 
 /**
- * Builds a vanilla or Svelte plugin into an isolated output directory: bundles `src/index.ts` to a
+ * Builds a vanilla, Svelte, or Vue plugin into an isolated output directory: bundles `src/index.ts` to a
  * browser ESM module at `dist/<manifest.entry>` (host-shared deps kept external), writes any emitted
  * CSS to the host-expected `dist/index.css`, re-serializes the validated `manifest.json`, and copies
  * every declared backend script and daemon hook. The build runs entirely in memory and only swaps the
@@ -110,7 +111,11 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
     logLevel: 'silent',
     nodePaths: [CLI_NODE_MODULES],
     external: pluginDependencies(framework),
-    plugins: framework === 'svelte' ? [esbuildSvelte({compilerOptions: {css: 'external'}})] : [],
+    plugins: framework === 'svelte'
+      ? [esbuildSvelte({compilerOptions: {css: 'external'}})]
+      : framework === 'vue'
+      ? [vuePlugin({sourceMap: false})]
+      : [],
   });
 
   const jsOutput = result.outputFiles.find((file) => file.path.endsWith('.js'));

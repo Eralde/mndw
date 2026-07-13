@@ -137,6 +137,7 @@ export function buildManifest(options: CreateOptions): Record<string, unknown> {
 interface CliMetadata {
   readonly version: string;
   readonly svelteRange: string;
+  readonly vueRange: string;
 }
 
 function readCliMetadata(): CliMetadata {
@@ -148,19 +149,26 @@ function readCliMetadata(): CliMetadata {
   return {
     version: parsed.version ?? '0.0.0',
     svelteRange: parsed.dependencies?.svelte ?? '^5.0.0',
+    vueRange: parsed.dependencies?.vue ?? '^3.5.39',
   };
 }
 
-/** Builds the scaffold's `package.json`: runtime imports in `dependencies`, tooling in `devDependencies`. */
+/** Builds the scaffold's `package.json`: everything a plugin needs is build/type-only, so it all
+ * lives in `devDependencies` (spec Decision 10 — the packed artifact never ships these). */
 function buildPackageJson(normalized: NormalizedOptions): Record<string, unknown> {
   const inside = isInsideRepo(normalized.outDir);
   const cli = readCliMetadata();
   const sdkRange = inside ? 'workspace:*' : `^${resolveSdkVersion()}`;
 
-  const dependencies: Record<string, string> = {'@mndw/sdk': sdkRange};
+  const devDependencies: Record<string, string> = {
+    '@mndw/sdk': sdkRange,
+    '@mndw/cli': inside ? 'workspace:*' : `^${cli.version}`,
+  };
 
   if (normalized.framework === 'svelte') {
-    dependencies.svelte = cli.svelteRange;
+    devDependencies.svelte = cli.svelteRange;
+  } else if (normalized.framework === 'vue') {
+    devDependencies.vue = cli.vueRange;
   }
 
   return {
@@ -168,8 +176,7 @@ function buildPackageJson(normalized: NormalizedOptions): Record<string, unknown
     version: '0.1.0',
     private: true,
     type: 'module',
-    dependencies,
-    devDependencies: {'@mndw/cli': inside ? 'workspace:*' : `^${cli.version}`},
+    devDependencies,
   };
 }
 
@@ -245,8 +252,8 @@ function assertSupportedOptions(options: CreateOptions): void {
 
   const framework = options.framework ?? 'vanilla';
 
-  if (framework !== 'vanilla' && framework !== 'svelte') {
-    throw new CliError(`Invalid --framework "${framework}": expected "vanilla" or "svelte"`);
+  if (framework !== 'vanilla' && framework !== 'svelte' && framework !== 'vue') {
+    throw new CliError(`Invalid --framework "${framework}": expected "vanilla", "svelte", or "vue"`);
   }
 
   if (options.backend !== undefined && options.backend !== 'sh') {

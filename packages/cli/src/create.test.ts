@@ -139,12 +139,12 @@ describe('planCreate', () => {
 
     const manifest = JSON.parse(fileContents(plan, 'manifest.json')) as {name: string; manifestVersion: number};
     const pkg = JSON.parse(fileContents(plan, 'package.json')) as {
-      dependencies?: Record<string, string>;
+      devDependencies: Record<string, string>;
     };
 
     expect(manifest.name).toBe('my-widget');
     expect(manifest.manifestVersion).toBe(2);
-    expect(pkg.dependencies?.['@mndw/sdk']).toBeDefined();
+    expect(pkg.devDependencies['@mndw/sdk']).toBeDefined();
   });
 
   it('renders a svelte plugin with an App.svelte component', () => {
@@ -156,6 +156,28 @@ describe('planCreate', () => {
     expect(app).toContain('var(--mndw-');
     expect(app).not.toContain('__MNDW_');
     expect(fileContents(plan, 'src/index.ts')).toContain('App.svelte');
+  });
+
+  it('renders a vue plugin with an App.vue component and env shim', () => {
+    const plan = planCreate(options({name: 'vw', framework: 'vue', type: 'widget'}));
+
+    expect(fileContents(plan, 'src/App.vue')).toContain('Vw');
+    expect(fileContents(plan, 'src/App.vue')).not.toContain('__MNDW_LABEL__');
+    expect(fileContents(plan, 'src/index.ts')).toContain('App.vue');
+    expect(fileContents(plan, 'src/env.d.ts')).toContain('declare module \'*.vue\'');
+  });
+
+  it('places @mndw/sdk and the framework under devDependencies with empty dependencies', () => {
+    const plan = planCreate(options({name: 'vw', framework: 'vue', type: 'widget'}));
+    const pkg = JSON.parse(fileContents(plan, 'package.json')) as {
+      dependencies?: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+
+    expect(pkg.devDependencies['@mndw/sdk']).toBeDefined();
+    expect(pkg.devDependencies.vue).toBeDefined();
+    expect(pkg.devDependencies['@mndw/cli']).toBeDefined();
+    expect(pkg.dependencies ?? {}).toEqual({});
   });
 
   it('adds an executable backend script for --backend sh', () => {
@@ -187,17 +209,17 @@ describe('planCreate', () => {
       devDependencies: Record<string, string>;
     };
 
-    expect(insidePkg.dependencies['@mndw/sdk']).toBe('workspace:*');
-    expect(insidePkg.dependencies.svelte).toBeDefined();
+    expect(insidePkg.devDependencies['@mndw/sdk']).toBe('workspace:*');
+    expect(insidePkg.devDependencies.svelte).toBeDefined();
     expect(insidePkg.devDependencies['@mndw/cli']).toBe('workspace:*');
 
     const outsidePlan = planCreate({name: 'outside-plugin', outDir, framework: 'vanilla', type: 'widget'});
     const outsidePkg = JSON.parse(fileContents(outsidePlan, 'package.json')) as {
-      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
     };
 
-    expect(outsidePkg.dependencies['@mndw/sdk']).toMatch(/^\^/);
-    expect(outsidePkg.dependencies.svelte).toBeUndefined();
+    expect(outsidePkg.devDependencies['@mndw/sdk']).toMatch(/^\^/);
+    expect(outsidePkg.devDependencies.svelte).toBeUndefined();
   });
 });
 
@@ -248,11 +270,13 @@ describe('createPlugin', () => {
     expect(() => accessSync(join(outDir, 'backend', 'main.sh'), constants.X_OK)).not.toThrow();
   });
 
-  const combos: {framework: 'vanilla' | 'svelte'; type: 'widget' | 'page'}[] = [
+  const combos: {framework: 'vanilla' | 'svelte' | 'vue'; type: 'widget' | 'page'}[] = [
     {framework: 'vanilla', type: 'widget'},
     {framework: 'vanilla', type: 'page'},
     {framework: 'svelte', type: 'widget'},
     {framework: 'svelte', type: 'page'},
+    {framework: 'vue', type: 'widget'},
+    {framework: 'vue', type: 'page'},
   ];
 
   for (const combo of combos) {

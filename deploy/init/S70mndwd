@@ -1,0 +1,57 @@
+#!/bin/sh
+
+PID_FILE="/opt/var/run/mndwd.pid"
+DAEMON="/opt/sbin/mndwd"
+DATA_DIR="/opt/var/lib/mndw"
+LOG_FILE="/opt/var/log/mndwd.log"
+
+start() {
+  mkdir -p /opt/var/run "$DATA_DIR"
+
+  # Always regenerate proxy config on boot (IP may have changed).
+  ROUTER_IP="$(ip -4 addr show br0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)"
+  ROUTER_IP="${ROUTER_IP:-192.168.1.1}"
+
+  cat > "$DATA_DIR/proxy-target.conf" <<EOF
+proxy.server = ( "" => (( "host" => "$ROUTER_IP", "port" => 80 )) )
+proxy.header = (
+  "map-host-request"  => ( "-" => "$ROUTER_IP" ),
+  "map-host-response" => ( "$ROUTER_IP" => "-" )
+)
+EOF
+
+  # PID guard AFTER proxy-target.conf is written.
+  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    return 0
+  fi
+
+  "$DAEMON" \
+    --listen "127.0.0.1:9090" \
+    --data-dir "$DATA_DIR" \
+    --builtin-plugins-dir "/opt/share/www/mndw/plugins" \
+    --user-plugins-dir "/opt/share/www/mndw/user-plugins" \
+    --router-url "http://$ROUTER_IP" \
+    --opkg exec \
+    >> "$LOG_FILE" 2>&1 &
+  echo "$!" > "$PID_FILE"
+}
+
+stop() {
+  if [ ! -f "$PID_FILE" ]; then
+    return 0
+  fi
+  pid="$(cat "$PID_FILE")"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+  fi
+  rm -f "$PID_FILE"
+}
+
+restart() { stop; start; }
+
+case "$1" in
+  start)   start ;;
+  stop)    stop ;;
+  restart) restart ;;
+  *)       echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

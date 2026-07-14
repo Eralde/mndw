@@ -1,0 +1,27 @@
+#!/bin/sh
+set -e
+
+APP_ROOT="/opt/share/www/mndw"
+
+if [ -x "/opt/etc/init.d/S70mndwd" ]; then
+  "/opt/etc/init.d/S70mndwd" stop || true
+fi
+
+# On remove: clean up runtime state and config so lighttpd doesn't reference deleted paths.
+# On upgrade ($1 = "upgrade"): stop daemon but keep config + data intact.
+if [ "$1" = "remove" ]; then
+  rm -f /opt/var/run/mndwd.pid
+  rm -f /opt/etc/lighttpd/conf.d/80-mndw.conf
+
+  if [ -x "/opt/etc/init.d/S80lighttpd" ]; then
+    "/opt/etc/init.d/S80lighttpd" restart >/dev/null 2>&1 || true
+  fi
+
+  if [ -d "$APP_ROOT" ]; then
+    rm -rf "$APP_ROOT"
+  fi
+fi
+
+# /opt/var/lib/mndw/ data dir and /opt/var/log/mndwd.log are preserved for reinstall.
+
+exit 0

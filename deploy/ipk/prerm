@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+
+if [ -x "/opt/etc/init.d/S70mndwd" ]; then
+  "/opt/etc/init.d/S70mndwd" stop || true
+fi
+
+exit 0

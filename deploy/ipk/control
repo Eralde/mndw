@@ -1,0 +1,8 @@
+Package: mndw
+Version: __VERSION__
+Depends: lighttpd, lighttpd-mod-proxy, lighttpd-mod-rewrite, lighttpd-mod-alias
+Section: web
+Priority: optional
+Architecture: __ARCH__
+Maintainer: mndw contributors
+Description: Modular plugin-based dashboard served by lighttpd.

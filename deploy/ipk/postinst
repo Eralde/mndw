@@ -1,0 +1,30 @@
+#!/bin/sh
+set -e
+
+LIGHTTPD_INIT="/opt/etc/init.d/S80lighttpd"
+LIGHTTPD_CONF="/opt/etc/lighttpd/lighttpd.conf"
+MNDWD_INIT="/opt/etc/init.d/S70mndwd"
+
+if [ "$1" != "configure" ] && [ -n "$1" ]; then
+  exit 0
+fi
+
+# Start mndwd first so proxy-target.conf exists when lighttpd reads config.
+if [ -x "$MNDWD_INIT" ]; then
+  "$MNDWD_INIT" start
+fi
+
+# Validate lighttpd config after mndwd start.
+if command -v lighttpd >/dev/null 2>&1 && [ -f "$LIGHTTPD_CONF" ]; then
+  if ! lighttpd -t -f "$LIGHTTPD_CONF"; then
+    echo "[mndw] lighttpd configuration check failed" >&2
+    exit 1
+  fi
+fi
+
+if [ -x "$LIGHTTPD_INIT" ]; then
+  "$LIGHTTPD_INIT" restart >/dev/null 2>&1 || "$LIGHTTPD_INIT" start >/dev/null 2>&1 || true
+fi
+
+echo "[mndw] installed. open http://<router-ip>:99"
+exit 0

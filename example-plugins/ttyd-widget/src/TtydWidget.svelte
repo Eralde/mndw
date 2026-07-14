@@ -1,10 +1,10 @@
 <script lang="ts">
 import {onMount, tick} from 'svelte';
+import type {BackendClient} from '@mndw/sdk';
 import {Terminal} from '@xterm/xterm';
 import {FitAddon} from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import {
-  type SpawnResult,
   type TerminalInstance,
   connectToCli,
   killCli,
@@ -12,15 +12,11 @@ import {
 } from './cli.service.js';
 
 interface Props {
-  spawnEndpoint?: string;
-  killEndpoint?: string;
-  websocketPath?: string;
+  backend?: BackendClient;
 }
 
 let {
-  spawnEndpoint,
-  killEndpoint,
-  websocketPath,
+  backend,
 }: Props = $props();
 
 type WidgetState = 'idle' | 'starting' | 'connected' | 'error' | 'disconnected';
@@ -31,19 +27,6 @@ let terminalElement = $state<HTMLDivElement | undefined>(undefined);
 let terminalInstance: TerminalInstance | null = null;
 let spawnDelayId: ReturnType<typeof setTimeout> | undefined;
 let disconnectExpected = false;
-const spawnCliWithEndpoint = spawnCli as unknown as (
-  endpoint: string,
-) => Promise<SpawnResult>;
-const killCliWithEndpoint = killCli as unknown as (
-  endpoint: string,
-) => Promise<{success: boolean}>;
-const connectToCliWithEndpoint = connectToCli as unknown as (
-  websocketPath: string,
-  element: HTMLElement,
-  TerminalCtor: typeof Terminal,
-  FitAddonCtor: typeof FitAddon,
-  onDisconnect?: () => void,
-) => TerminalInstance;
 const handleWindowResize = (): void => {
   terminalInstance?.fitAddon.fit();
 };
@@ -80,11 +63,11 @@ async function startTerminal(): Promise<void> {
   errorMessage = '';
 
   try {
-    if (!spawnEndpoint || !killEndpoint || !websocketPath) {
+    if (!backend) {
       throw new Error('Backend bindings are missing for ttyd-widget');
     }
 
-    const spawnResult = await spawnCliWithEndpoint(spawnEndpoint);
+    const spawnResult = await spawnCli(backend);
 
     if (!spawnResult.success) {
       throw new Error(spawnResult.error || 'Failed to start terminal service');
@@ -100,8 +83,8 @@ async function startTerminal(): Promise<void> {
       throw new Error('Terminal container is not available');
     }
 
-    terminalInstance = connectToCliWithEndpoint(
-      websocketPath,
+    terminalInstance = connectToCli(
+      backend,
       terminalElement,
       Terminal,
       FitAddon,
@@ -127,8 +110,8 @@ async function stopTerminal(): Promise<void> {
   disconnectExpected = true;
   clearSpawnDelay();
   disposeTerminal();
-  if (killEndpoint) {
-    await killCliWithEndpoint(killEndpoint);
+  if (backend) {
+    await killCli(backend);
   }
   state = 'idle';
   disconnectExpected = false;
@@ -143,8 +126,8 @@ onMount(() => {
     disconnectExpected = true;
     clearSpawnDelay();
     disposeTerminal();
-    if (killEndpoint) {
-      void killCliWithEndpoint(killEndpoint);
+    if (backend) {
+      void killCli(backend);
     }
   };
 });

@@ -8,6 +8,7 @@ const order: string[] = [];
 const handlers = new Map<string, Handler>();
 const offEvents: string[] = [];
 const save = vi.fn();
+let initOptions: unknown;
 
 const fakeGrid = {
   on: vi.fn((event: string, handler: Handler) => {
@@ -22,7 +23,8 @@ const fakeGrid = {
 
 vi.mock('gridstack', () => ({
   GridStack: {
-    init: vi.fn(() => {
+    init: vi.fn((options: unknown) => {
+      initOptions = options;
       order.push('init');
 
       return fakeGrid;
@@ -66,6 +68,7 @@ describe('DashboardGrid', () => {
     offEvents.length = 0;
     handlers.clear();
     save.mockReset();
+    initOptions = undefined;
     fakeGrid.on.mockClear();
     fakeGrid.off.mockClear();
   });
@@ -78,6 +81,17 @@ describe('DashboardGrid', () => {
     const {component, target} = mountGrid();
 
     expect(order).toEqual(['init', 'on:removed', 'on:added', 'on:change', 'on:resizestop', 'ready']);
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('does not start tile dragging from xterm terminal content', () => {
+    const {component, target} = mountGrid();
+
+    expect(initOptions).toEqual(expect.objectContaining({
+      draggable: {cancel: '.xterm'},
+    }));
 
     void unmount(component);
     target.remove();

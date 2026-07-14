@@ -35,10 +35,10 @@ const readTarEntries = (archivePath: string): {name: string; typeFlag: string}[]
     if (header.every((byte) => byte === 0)) { break; }
 
     const name = header.subarray(0, 100).toString('utf8')
-.replace(/\0.*$/, '');
+      .replace(/\0.*$/, '');
     const sizeText = header.subarray(124, 136).toString('ascii')
-.replace(/\0.*$/, '')
-.trim();
+      .replace(/\0.*$/, '')
+      .trim();
     const size = parseInt(sizeText, 8);
 
     entries.push({name, typeFlag: String.fromCharCode(header[156] || 0)});

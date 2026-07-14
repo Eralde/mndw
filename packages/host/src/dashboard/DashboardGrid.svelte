@@ -33,6 +33,7 @@ onMount(() => {
       float: false,
       cellHeight: 60,
       margin: 10,
+      draggable: {cancel: '.xterm'},
       resizable: {handles: 'se'},
     },
     container,

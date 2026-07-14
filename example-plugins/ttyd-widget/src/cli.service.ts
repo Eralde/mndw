@@ -1,5 +1,6 @@
 import type {FitAddon} from '@xterm/addon-fit';
 import type {Terminal} from '@xterm/xterm';
+import type {BackendClient} from '@mndw/sdk';
 
 export interface TerminalInstance {
   terminal: Terminal;
@@ -35,20 +36,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 function isJsonResponse(response: Response): boolean {
   const contentType = response.headers.get('content-type') || '';
 
@@ -56,25 +43,21 @@ function isJsonResponse(response: Response): boolean {
 }
 
 async function callTtydApi(
-  endpoint: string,
+  backend: BackendClient,
+  id: 'spawn' | 'kill',
   timeoutMs: number,
-): Promise<{response: Response; endpoint: string} | null> {
+): Promise<Response | null> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const response = await fetchWithTimeout(
-      endpoint,
-      {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({}),
-      },
-      timeoutMs,
-    );
+    const response = await backend.fetch(id, {body: {}, signal: controller.signal});
 
     if (isJsonResponse(response)) {
-      return {response, endpoint};
+      return response;
     }
-  } catch {
-    // Try the next endpoint
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   return null;
@@ -118,19 +101,17 @@ function buildSpawnError(result: SpawnApiResponse): SpawnResult {
   };
 }
 
-export async function spawnCli(endpoint: string, retryIndex = 0): Promise<SpawnResult> {
+export async function spawnCli(backend: BackendClient, retryIndex = 0): Promise<SpawnResult> {
   try {
-    const hit = await callTtydApi(endpoint, SPAWN_TIMEOUT_MS);
+    const response = await callTtydApi(backend, 'spawn', SPAWN_TIMEOUT_MS);
 
-    if (!hit) {
+    if (!response) {
       return {
         success: false,
         error: 'No ttyd endpoint responded with JSON.',
         errorType: 'SPAWN_FAILED',
       };
     }
-
-    const {response} = hit;
 
     if (response.status === 401 || response.status === 403) {
       return {
@@ -158,7 +139,7 @@ export async function spawnCli(endpoint: string, retryIndex = 0): Promise<SpawnR
 
       await sleep(delay);
 
-      return spawnCli(endpoint, retryIndex + 1);
+      return spawnCli(backend, retryIndex + 1);
     }
 
     return {
@@ -169,30 +150,28 @@ export async function spawnCli(endpoint: string, retryIndex = 0): Promise<SpawnR
   }
 }
 
-export async function killCli(endpoint: string): Promise<{success: boolean}> {
+export async function killCli(backend: BackendClient): Promise<{success: boolean}> {
   try {
-    const hit = await callTtydApi(endpoint, SPAWN_TIMEOUT_MS);
+    const response = await callTtydApi(backend, 'kill', SPAWN_TIMEOUT_MS);
 
-    if (!hit) {
+    if (!response) {
       return {success: false};
     }
 
-    return await hit.response.json() as {success: boolean};
+    return await response.json() as {success: boolean};
   } catch {
     return {success: false};
   }
 }
 
 export function connectToCli(
-  websocketPath: string,
+  backend: BackendClient,
   element: HTMLElement,
   TerminalCtor: typeof Terminal,
   FitAddonCtor: typeof FitAddon,
   onDisconnect?: () => void,
 ): TerminalInstance {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}${websocketPath}`;
-  const socket = new WebSocket(wsUrl, ['tty']);
+  const socket = backend.socket('terminal');
 
   socket.binaryType = 'arraybuffer';
 
@@ -219,6 +198,7 @@ export function connectToCli(
     });
 
     socket.send(new TextEncoder().encode(handshake));
+    terminal.focus();
   });
 
   socket.addEventListener('message', (event) => {

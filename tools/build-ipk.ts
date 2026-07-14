@@ -254,7 +254,10 @@ export function buildControlTar(ipkDir: string, outDir: string, version: string,
     const files = fs.readdirSync(ctrlDir).map((f) => `./${f}`)
       .join(' ');
 
-    execSync(`tar ${tarOpts.join(' ')} --format=ustar -C "${ctrlDir}" -czf "${outPath}" ${files}`, {stdio: 'inherit'});
+    execSync(
+      `COPYFILE_DISABLE=1 tar ${tarOpts.join(' ')} --format=ustar -C "${ctrlDir}" -czf "${outPath}" ${files}`,
+      {stdio: 'inherit'},
+    );
 
     return outPath;
   } finally {
@@ -279,9 +282,10 @@ export function buildIpk(
     fs.writeFileSync(path.join(buildDir, 'debian-binary'), '2.0\n');
     fs.copyFileSync(dataTarPath, path.join(buildDir, 'data.tar.gz'));
     fs.copyFileSync(controlTarPath, path.join(buildDir, 'control.tar.gz'));
-    execSync(`tar -czf "${ipkPath}" -C "${buildDir}" ./debian-binary ./data.tar.gz ./control.tar.gz`, {
-      stdio: 'inherit',
-    });
+    execSync(
+      `COPYFILE_DISABLE=1 tar --format=ustar -czf "${ipkPath}" -C "${buildDir}" ./debian-binary ./data.tar.gz ./control.tar.gz`,
+      {stdio: 'inherit'},
+    );
 
     return ipkPath;
   } finally {

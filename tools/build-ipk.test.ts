@@ -2,11 +2,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execSync} from 'node:child_process';
+import zlib from 'node:zlib';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {SHARED_DEPENDENCIES} from '@mndw/sdk/shared-dependencies';
 import {
   ARCH_MAP,
   buildControlTar,
+  buildIpk,
   collectStagePaths,
   detectTar,
   generateFeed,
@@ -20,8 +22,39 @@ import {
 
 const isExecutable = (mode: number): boolean =>
   mode.toString(8).slice(-3)
-.split('')
-.some((digit) => '1357'.includes(digit));
+    .split('')
+    .some((digit) => '1357'.includes(digit));
+
+const readTarEntries = (archivePath: string): {name: string; typeFlag: string}[] => {
+  const archive = zlib.gunzipSync(fs.readFileSync(archivePath));
+  const entries: {name: string; typeFlag: string}[] = [];
+
+  for (let offset = 0; offset + 512 <= archive.length;) {
+    const header = archive.subarray(offset, offset + 512);
+
+    if (header.every((byte) => byte === 0)) { break; }
+
+    const name = header.subarray(0, 100).toString('utf8')
+.replace(/\0.*$/, '');
+    const sizeText = header.subarray(124, 136).toString('ascii')
+.replace(/\0.*$/, '')
+.trim();
+    const size = parseInt(sizeText, 8);
+
+    entries.push({name, typeFlag: String.fromCharCode(header[156] || 0)});
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+
+  return entries;
+};
+
+const expectUstarArchive = (archivePath: string): void => {
+  const entries = readTarEntries(archivePath);
+
+  expect(entries.length).toBeGreaterThan(0);
+  expect(entries.every(({name, typeFlag}) => typeFlag !== 'x' && !name.includes('PaxHeader') && !name.includes('/._')))
+    .toBe(true);
+};
 
 describe('ARCH_MAP', () => {
   it('maps mipsel-3.4 to mipsle softfloat', () => {
@@ -278,8 +311,30 @@ describe('buildControlTar', () => {
 
         expect(isExecutable(mode)).toBe(true);
       }
+
+      expectUstarArchive(tarPath);
     } finally {
       fs.rmSync(tmpIpk, {recursive: true, force: true});
+      fs.rmSync(outDir, {recursive: true, force: true});
+    }
+  });
+});
+
+describe('buildIpk', () => {
+  it('produces an outer USTAR archive without macOS metadata', () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-out-'));
+
+    try {
+      const dataTarPath = path.join(outDir, 'data.tar.gz');
+      const controlTarPath = path.join(outDir, 'control.tar.gz');
+
+      fs.writeFileSync(dataTarPath, zlib.gzipSync('data'));
+      fs.writeFileSync(controlTarPath, zlib.gzipSync('control'));
+
+      const ipkPath = buildIpk(dataTarPath, controlTarPath, outDir, '1.0.0', 'all');
+
+      expectUstarArchive(ipkPath);
+    } finally {
       fs.rmSync(outDir, {recursive: true, force: true});
     }
   });

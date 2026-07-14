@@ -6,10 +6,24 @@ import type {PluginContext, PluginInstance} from '@mndw/sdk';
  * clean mount/unmount reference.
  */
 export function createInstance(el: HTMLElement, _ctx: PluginContext): PluginInstance {
+  const containerStyle = `
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-family: var(--mndw-font-mono, sans-serif);
+    color: var(--mndw-text-subtle);
+  `;
+
+  const timeStyle = `
+    font-size: 2rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  `;
+
   el.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:center;height:100%;
-                font-family:var(--mndw-font-family, sans-serif);color:var(--mndw-color-text, #111)">
-      <time data-mndw-clock style="font-size:2rem;font-variant-numeric:tabular-nums"></time>
+    <div style="${containerStyle}">
+      <time data-mndw-clock style="${timeStyle}"></time>
     </div>
   `;
 

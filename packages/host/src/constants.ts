@@ -25,6 +25,12 @@ export const MGMT_ENABLE_URL = '/api/mgmt/enable';
 export const MGMT_DISABLE_URL = '/api/mgmt/disable';
 export const MGMT_DELETE_URL = '/api/mgmt/delete';
 
+export const OPKG_LIST_URL = '/api/mgmt/opkg/list';
+export const OPKG_INSTALL_URL = '/api/mgmt/opkg/install';
+export const OPKG_REMOVE_URL = '/api/mgmt/opkg/remove';
+export const OPKG_UPDATE_URL = '/api/mgmt/opkg/update';
+export const OPKG_UPGRADE_URL = '/api/mgmt/opkg/upgrade';
+
 /** URL prefixes plugin assets are served from, by source (design §6). */
 export const PLUGIN_SOURCE_PATHS = {
   builtin: '/plugins/',

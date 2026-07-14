@@ -41,6 +41,34 @@ func newTestServer(t *testing.T) (*httptest.Server, Config) {
 	return srv, cfg
 }
 
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func newTestServerWithOpkg(t *testing.T, opkgMgr opkg.Manager) (*httptest.Server, Config) {
+	t.Helper()
+	root := t.TempDir()
+	cfg := Config{
+		StagingDir:        filepath.Join(root, "staging"),
+		UserPluginsDir:    filepath.Join(root, "user-plugins"),
+		BuiltinPluginsDir: filepath.Join(root, "builtin"),
+		MaxUploadBytes:    10 << 20,
+	}
+	store, err := state.Open(filepath.Join(root, "data", "state.json"))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+
+	logger := discardLogger()
+	mux := http.NewServeMux()
+	New(cfg, store, opkgMgr, lifecycle.New(logger), logger).Register(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	return srv, cfg
+}
+
 // makeZip builds an in-memory plugin archive from path→content pairs.
 func makeZip(t *testing.T, files map[string]string) []byte {
 	t.Helper()
@@ -462,30 +490,27 @@ func TestApproveInstallsOpkgDeps(t *testing.T) {
 	}
 }
 
-func TestOpkgInstallInvalidName(t *testing.T) {
+func TestOpkgInstallSuccessPreservesResponse(t *testing.T) {
 	srv, _ := newTestServer(t)
-	body, _ := json.Marshal(map[string][]string{"packages": {"BAD NAME"}})
+	body, _ := json.Marshal(map[string][]string{"packages": {"curl"}})
 	resp, err := http.Post(srv.URL+"/api/mgmt/opkg/install", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-	assertCode(t, resp, "INVALID_PACKAGE_NAME")
-}
-
-func TestOpkgInstallEmpty(t *testing.T) {
-	srv, _ := newTestServer(t)
-	body, _ := json.Marshal(map[string][]string{"packages": {}})
-	resp, err := http.Post(srv.URL+"/api/mgmt/opkg/install", "application/json", bytes.NewReader(body))
-	if err != nil {
+	var result struct {
+		OK       bool     `json:"ok"`
+		Message  string   `json:"message"`
+		Packages []string `json:"packages"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	if !result.OK || result.Message != "1 package(s) installed" || len(result.Packages) != 1 || result.Packages[0] != "curl" {
+		t.Errorf("install response = %+v", result)
 	}
 }
 

@@ -372,6 +372,7 @@ describe('packExamplePlugins', () => {
       'demo-page',
       'device-info-widget',
       'device-traffic-widget',
+      'opkg-package-manager',
       'ping-widget',
       'ttyd-widget',
       'tx-rx-chart-widget',

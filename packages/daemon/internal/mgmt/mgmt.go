@@ -74,6 +74,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/mgmt/opkg/list-installed", h.handleOpkgListInstalled)
 	mux.HandleFunc("GET /api/mgmt/opkg/list-available", h.handleOpkgListAvailable)
+	mux.HandleFunc("GET /api/mgmt/opkg/list", h.handleOpkgList)
 	mux.HandleFunc("POST /api/mgmt/opkg/install", h.handleOpkgInstall)
 	mux.HandleFunc("POST /api/mgmt/opkg/remove", h.handleOpkgRemove)
 	mux.HandleFunc("POST /api/mgmt/opkg/update", h.handleOpkgUpdate)

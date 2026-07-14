@@ -8,10 +8,12 @@ package opkg
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -32,6 +34,15 @@ func (e *InvalidPackageError) Error() string {
 	return "invalid package name: " + e.Name
 }
 
+// PackageEntry is one package as reported by the rich package listing.
+type PackageEntry struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+	NewVersion  string `json:"newVersion,omitempty"`
+}
+
 // Manager is the set of opkg operations the daemon needs.
 type Manager interface {
 	// Install installs the named packages (plugin deps or an explicit request).
@@ -46,6 +57,8 @@ type Manager interface {
 	ListInstalled(ctx context.Context) ([]string, error)
 	// ListAvailable returns the names of packages available to install.
 	ListAvailable(ctx context.Context) ([]string, error)
+	// List returns a merged, version-aware package listing.
+	List(ctx context.Context) ([]PackageEntry, error)
 }
 
 // New returns an exec-backed Manager, or a stub when mode is "stub".
@@ -85,27 +98,59 @@ func tail(s string) string {
 
 type execManager struct {
 	logger *slog.Logger
+	runner func(ctx context.Context, args ...string) (string, int, error)
 }
 
-func (m *execManager) run(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "opkg", args...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err := cmd.Run()
+func execRun(ctx context.Context, args ...string) (string, int, error) {
+	if len(args) == 0 {
+		return "", 0, errors.New("opkg command is missing")
+	}
 
-	return out.String(), err
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if ctx.Err() != nil {
+		return "", 0, ctx.Err()
+	}
+	if err == nil {
+		return stdout.String(), 0, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return stdout.String(), exitErr.ExitCode(), nil
+	}
+
+	return "", 0, err
+}
+
+func (m *execManager) run(ctx context.Context, args ...string) (string, int, error) {
+	if m.runner != nil {
+		return m.runner(ctx, args...)
+	}
+
+	return execRun(ctx, args...)
 }
 
 func (m *execManager) mutate(ctx context.Context, action string, packages []string, args ...string) error {
 	if err := validate(packages); err != nil {
 		return err
 	}
-	out, err := m.run(ctx, append(args, packages...)...)
+	commandArgs := append([]string{"opkg"}, args...)
+	commandArgs = append(commandArgs, packages...)
+	out, exitCode, err := m.run(ctx, commandArgs...)
 	if err != nil {
 		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", tail(out))
 
 		return fmt.Errorf("opkg %s: %w", action, err)
+	}
+	if exitCode != 0 {
+		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", tail(out), "exitCode", exitCode)
+
+		return fmt.Errorf("opkg %s exited %d", action, exitCode)
 	}
 
 	return nil
@@ -124,11 +169,16 @@ func (m *execManager) Upgrade(ctx context.Context, packages []string) error {
 }
 
 func (m *execManager) Update(ctx context.Context) error {
-	out, err := m.run(ctx, "update")
+	out, exitCode, err := m.run(ctx, "opkg", "update")
 	if err != nil {
 		m.logger.Error("opkg update failed", "output", tail(out))
 
 		return fmt.Errorf("opkg update: %w", err)
+	}
+	if exitCode != 0 {
+		m.logger.Error("opkg update failed", "output", tail(out), "exitCode", exitCode)
+
+		return fmt.Errorf("opkg update exited %d", exitCode)
 	}
 
 	return nil
@@ -143,14 +193,108 @@ func (m *execManager) ListAvailable(ctx context.Context) ([]string, error) {
 }
 
 func (m *execManager) list(ctx context.Context, verb string) ([]string, error) {
-	out, err := m.run(ctx, verb)
+	out, exitCode, err := m.run(ctx, "opkg", verb)
 	if err != nil {
 		m.logger.Error("opkg list failed", "verb", verb, "output", tail(out))
 
 		return nil, fmt.Errorf("opkg %s: %w", verb, err)
 	}
+	if exitCode != 0 {
+		m.logger.Error("opkg list failed", "verb", verb, "output", tail(out), "exitCode", exitCode)
+
+		return nil, fmt.Errorf("opkg %s exited %d", verb, exitCode)
+	}
 
 	return parseNames(out), nil
+}
+
+func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
+	installedOutput, installedExit, err := m.run(ctx, "opkg", "list-installed")
+	if err != nil {
+		return nil, fmt.Errorf("opkg list-installed: %w", err)
+	}
+	if installedExit != 0 {
+		return nil, fmt.Errorf("opkg list-installed exited %d", installedExit)
+	}
+	installedEntries, err := parseEntries(installedOutput)
+	if err != nil {
+		return nil, err
+	}
+
+	availableOutput, availableExit, err := m.run(ctx, "opkg", "list")
+	if err != nil {
+		return nil, fmt.Errorf("opkg list: %w", err)
+	}
+	if availableExit != 0 {
+		return nil, fmt.Errorf("opkg list exited %d", availableExit)
+	}
+	availableEntries, err := parseEntries(availableOutput)
+	if err != nil {
+		return nil, err
+	}
+
+	installedMap := make(map[string]PackageEntry, len(installedEntries))
+	for _, entry := range installedEntries {
+		installedMap[entry.Name] = entry
+	}
+	availableMap := make(map[string]PackageEntry, len(availableEntries))
+	for _, entry := range availableEntries {
+		availableMap[entry.Name] = entry
+	}
+
+	combined := make([]PackageEntry, 0, len(installedMap)+len(availableMap))
+	for name, available := range availableMap {
+		installed, ok := installedMap[name]
+		if !ok {
+			available.Status = "uninstalled"
+			combined = append(combined, available)
+
+			continue
+		}
+
+		entry := PackageEntry{
+			Name:        name,
+			Version:     installed.Version,
+			Description: installed.Description,
+			Status:      "installed",
+		}
+		isUpdate, err := m.compareVersions(ctx, installed.Version, available.Version)
+		if err != nil {
+			return nil, err
+		}
+		if isUpdate {
+			entry.Status = "update_available"
+			entry.NewVersion = available.Version
+		}
+		combined = append(combined, entry)
+	}
+	for name, installed := range installedMap {
+		if _, ok := availableMap[name]; ok {
+			continue
+		}
+		installed.Status = "installed"
+		installed.NewVersion = ""
+		combined = append(combined, installed)
+	}
+
+	sort.Slice(combined, func(i, j int) bool { return combined[i].Name < combined[j].Name })
+
+	return combined, nil
+}
+
+func (m *execManager) compareVersions(ctx context.Context, installed, available string) (bool, error) {
+	_, exitCode, err := m.run(ctx, "opkg", "compare-versions", installed, "<<", available)
+	if err != nil {
+		return false, err
+	}
+	switch exitCode {
+	case 0:
+		return true, nil
+	case 1:
+		return false, nil
+	default:
+		return false, fmt.Errorf("opkg compare-versions exited %d", exitCode)
+	}
 }
 
 // parseNames extracts the first whitespace field of each non-empty line, the package
@@ -166,4 +310,30 @@ func parseNames(out string) []string {
 	}
 
 	return names
+}
+
+func parseEntries(out string) ([]PackageEntry, error) {
+	entries := make([]PackageEntry, 0)
+	for i, rawLine := range strings.Split(out, "\n") {
+		if strings.TrimSpace(rawLine) == "" {
+			continue
+		}
+		line := strings.TrimSuffix(rawLine, "\r")
+		parts := strings.SplitN(line, " - ", 3)
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("malformed opkg output line %d: %q", i+1, strings.TrimSpace(line))
+		}
+		name := strings.TrimSpace(parts[0])
+		version := strings.TrimSpace(parts[1])
+		if name == "" || version == "" {
+			return nil, fmt.Errorf("malformed opkg output line %d: %q", i+1, strings.TrimSpace(line))
+		}
+		entries = append(entries, PackageEntry{
+			Name:        name,
+			Version:     version,
+			Description: strings.TrimSpace(parts[2]),
+		})
+	}
+
+	return entries, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"mndwd/internal/httpx"
@@ -43,6 +44,20 @@ func (h *Handler) handleOpkgListAvailable(w http.ResponseWriter, _ *http.Request
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"packages": packages})
 }
 
+func (h *Handler) handleOpkgList(w http.ResponseWriter, _ *http.Request) {
+	ctx, cancel := opkgContext()
+	defer cancel()
+
+	packages, err := h.opkg.List(ctx)
+	if err != nil {
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to list packages"))
+
+		return
+	}
+
+	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"packages": packages})
+}
+
 func (h *Handler) handleOpkgInstall(w http.ResponseWriter, r *http.Request) {
 	h.opkgMutate(w, r, "install", func(ctx context.Context, pkgs []string) error {
 		return h.opkg.Install(ctx, pkgs)
@@ -71,7 +86,17 @@ func (h *Handler) handleOpkgUpdate(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
-	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"ok": true})
+	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"ok": true, "message": "Package metadata refreshed"})
+}
+
+func opkgActionMessage(action string, count int) string {
+	verb := map[string]string{
+		"install": "installed",
+		"remove":  "removed",
+		"upgrade": "upgraded",
+	}[action]
+
+	return fmt.Sprintf("%d package(s) %s", count, verb)
 }
 
 // opkgMutate runs the shared decode → validate → execute path for install/remove/
@@ -104,5 +129,9 @@ func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action stri
 		return
 	}
 
-	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"ok": true, "packages": req.Packages})
+	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{
+		"ok":       true,
+		"message":  opkgActionMessage(action, len(req.Packages)),
+		"packages": req.Packages,
+	})
 }

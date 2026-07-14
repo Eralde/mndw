@@ -1,0 +1,17 @@
+{
+  "name": "@mndw/example-opkg-package-manager",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@mndw/sdk": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@types/node": "22.19.15",
+    "happy-dom": "^17.4.4",
+    "svelte": "^5.56.4",
+    "vitest": "^3.2.7"
+  }
+}

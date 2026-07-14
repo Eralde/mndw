@@ -117,7 +117,7 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@22.19.15)(happy-dom@17.6.3)(lightningcss@1.32.0)(sass@1.101.0)(tsx@4.23.0)
 
-  example-plugins/broken-widget:
+  example-plugins/clock-widget:
     devDependencies:
       '@mndw/sdk':
         specifier: workspace:*

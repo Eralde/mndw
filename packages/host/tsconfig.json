@@ -3,5 +3,5 @@
   "compilerOptions": {
     "outDir": "./dist"
   },
-  "include": ["src", "src/**/*.svelte"]
+  "include": ["src", "src/**/*.svelte", "scripts/**/*.ts"]
 }

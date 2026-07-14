@@ -368,7 +368,7 @@ describe('packExamplePlugins', () => {
   it('builds every example plugin into one output destination', () => {
     expect(names).toEqual([
       'backend-echo',
-      'broken-widget',
+      'clock-widget',
       'demo-page',
       'device-info-widget',
       'device-traffic-widget',

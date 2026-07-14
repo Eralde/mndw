@@ -1,5 +1,5 @@
 {
-  "name": "@mndw/example-broken-widget",
+  "name": "@mndw/example-clock-widget",
   "version": "0.1.0",
   "private": true,
   "type": "module",

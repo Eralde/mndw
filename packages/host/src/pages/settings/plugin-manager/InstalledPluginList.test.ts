@@ -2,6 +2,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
+import {clearPluginVersionWarnings, setPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 import InstalledPluginList from './InstalledPluginList.svelte';
 
 const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
@@ -60,6 +61,7 @@ function mountInstalledPluginList(props: Partial<{
 
 describe('InstalledPluginList', () => {
   afterEach(() => {
+    clearPluginVersionWarnings();
     document.body.innerHTML = '';
   });
 
@@ -156,6 +158,17 @@ describe('InstalledPluginList', () => {
     expect(target.textContent).toContain('1 opkg');
     expect(target.textContent).toContain('Daemon');
     expect(target.querySelector('.mndw-installed__public')?.textContent).toContain('Public backend');
+
+    void unmount(component);
+  });
+
+  it('renders a persistent version mismatch badge on the matching plugin row', () => {
+    setPluginVersionWarnings('network-tools', ['rxjs @6 (host provides @7)']);
+
+    const {component, target} = mountInstalledPluginList();
+
+    expect(target.querySelector('.mndw-installed__version-badge')?.textContent).toContain('Version mismatch');
+    expect(target.querySelector('.mndw-installed__version-warning')?.textContent).toContain('rxjs @6');
 
     void unmount(component);
   });

@@ -52,3 +52,4 @@ export {
 export type {DependencyConsumer, SharedDependency} from '../shared-dependencies.js';
 export {MNDW_TOKENS} from './tokens.js';
 export type {MndwThemeName} from './tokens.js';
+export {SDK_VERSION} from './version.js';

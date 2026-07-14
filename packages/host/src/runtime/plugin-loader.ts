@@ -1,8 +1,10 @@
 import type {MndwPlugin} from '@mndw/sdk';
 import {MGMT_LIST_URL, PLUGIN_SOURCE_PATHS} from '../constants.js';
 import {appState} from '../state/app.svelte.js';
+import {checkPluginVersions, readPluginLock} from './plugin-lock.js';
 import {pluginRegistry} from './plugin-registry.js';
 import type {PluginListEntry} from './plugin-types.js';
+import {clearPluginVersionWarnings, setPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
 
 /**
  * Injectable dependencies so the loader is unit-testable without real HTTP or DOM. In
@@ -13,6 +15,7 @@ export interface LoaderDeps {
   fetchList?: () => Promise<PluginListEntry[]>;
   importModule?: (url: string) => Promise<unknown>;
   loadStylesheet?: (href: string, pluginName: string) => Promise<void>;
+  checkVersions?: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
 }
 
 const loadedPluginStylesheets = new Set<string>();
@@ -78,6 +81,16 @@ async function defaultFetchList(): Promise<PluginListEntry[]> {
   return Array.isArray(data.plugins) ? data.plugins as PluginListEntry[] : [];
 }
 
+async function defaultCheckVersions(entry: PluginListEntry, dir: string): Promise<string[]> {
+  const lock = await readPluginLock(dir);
+
+  if (!lock) {
+    return [];
+  }
+
+  return checkPluginVersions(entry.name, lock);
+}
+
 /** Drops duplicate plugin names, and duplicate page routes, keeping the first seen. */
 function dedupe(entries: PluginListEntry[]): PluginListEntry[] {
   const seenNames = new Set<string>();
@@ -110,6 +123,7 @@ async function loadOne(
   entry: PluginListEntry,
   importModule: (url: string) => Promise<unknown>,
   loadStylesheet: (href: string, pluginName: string) => Promise<void>,
+  checkVersions: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>,
 ): Promise<void> {
   const base = entry.source === 'builtin' ? PLUGIN_SOURCE_PATHS.builtin : PLUGIN_SOURCE_PATHS.user;
   const dir = `${base}${entry.name}`;
@@ -121,6 +135,15 @@ async function loadOne(
 
     pluginRegistry.register({entry, module: validateModule(module, entry.name)});
     console.log(`[mndw] Loaded plugin: ${entry.name} (${entry.source})`);
+
+    void Promise.resolve()
+      .then(() => checkVersions(entry, dir))
+      .then((mismatches) => {
+        setPluginVersionWarnings(entry.name, mismatches);
+      })
+      .catch((err: unknown) => {
+        console.error(`[mndw] Version check failed for "${entry.name}":`, err);
+      });
   } catch (err) {
     console.error(`[mndw] Failed to load plugin "${entry.name}":`, err);
   }
@@ -136,9 +159,11 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   const fetchList = deps.fetchList ?? defaultFetchList;
   const importModule = deps.importModule ?? ((url) => import(/* @vite-ignore */ url));
   const loadStylesheet = deps.loadStylesheet ?? ensurePluginStylesheet;
+  const checkVersions = deps.checkVersions ?? defaultCheckVersions;
 
   pluginRegistry.clear();
   appState.pluginLoadError = null;
+  clearPluginVersionWarnings();
 
   let entries: PluginListEntry[];
 
@@ -155,5 +180,5 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   // ones appear in the list (for the settings UI) but must not load into the runtime.
   const runnable = dedupe(entries.filter((entry) => entry.enabled));
 
-  await Promise.all(runnable.map((entry) => loadOne(entry, importModule, loadStylesheet)));
+  await Promise.all(runnable.map((entry) => loadOne(entry, importModule, loadStylesheet, checkVersions)));
 }

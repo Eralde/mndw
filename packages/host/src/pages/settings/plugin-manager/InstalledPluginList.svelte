@@ -3,6 +3,7 @@ import type {
   PluginBackendDescriptor,
   PluginListEntry,
 } from '../../../runtime/plugin-types.js';
+import {getPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 
 interface Props {
   items: PluginListEntry[];
@@ -69,6 +70,7 @@ let {
     <ul class="mndw-installed__list">
       {#each items as item (item.name)}
         {@const summary = backendSummary(item.backend)}
+        {@const versionWarnings = getPluginVersionWarnings(item.name)}
         <li class="mndw-installed__item">
           <div class="mndw-installed__identity">
             <strong>{item.label}</strong>
@@ -82,7 +84,18 @@ let {
             {#if item.source === 'builtin'}
               <span class="mndw-installed__builtin">Built-in</span>
             {/if}
+            {#if versionWarnings.length > 0}
+              <span class="mndw-installed__version-badge"
+              >Version mismatch</span>
+            {/if}
           </div>
+
+          {#if versionWarnings.length > 0}
+            <p class="mndw-installed__version-warning">
+              Built against {versionWarnings.join(', ')}. Plugin still loads,
+              but may misbehave with this host.
+            </p>
+          {/if}
 
           {#if summary.length > 0}
             <p class="mndw-installed__backend">{summary.join(', ')}</p>
@@ -218,6 +231,16 @@ let {
 .mndw-installed__builtin {
   color: var(--mndw-accent);
   font-weight: var(--mndw-weight-semibold);
+}
+
+.mndw-installed__version-badge {
+  color: var(--mndw-warning);
+  font-weight: var(--mndw-weight-semibold);
+}
+
+.mndw-installed__version-warning {
+  color: var(--mndw-warning);
+  font-size: var(--mndw-text-sm);
 }
 
 .mndw-installed__public,

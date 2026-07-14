@@ -224,7 +224,7 @@ describe('repository dev orchestration', () => {
 
   it('aborts a stalled readiness request at its deadline', async () => {
     const controller = new AbortController();
-    const fetch = vi.fn((_url: string, init?: RequestInit) =>
+    const fetch = vi.fn((_url: URL | RequestInfo, init?: RequestInit) =>
       new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {once: true});
       })
@@ -241,7 +241,7 @@ describe('repository dev orchestration', () => {
 
   it('cancels a stalled readiness request immediately when shutdown aborts', async () => {
     const controller = new AbortController();
-    const fetch = vi.fn((_url: string, init?: RequestInit) =>
+    const fetch = vi.fn((_url: URL | RequestInfo, init?: RequestInit) =>
       new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {once: true});
       })

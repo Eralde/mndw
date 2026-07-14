@@ -1,0 +1,34 @@
+import type {PluginContext, PluginInstance} from '@mndw/sdk';
+
+/**
+ * Minimal vanilla widget: a live ticking clock rendered with plain DOM against host tokens.
+ * No framework, no backend, no RCI — the vanilla tile for the four-framework dashboard and a
+ * clean mount/unmount reference.
+ */
+export function createInstance(el: HTMLElement, _ctx: PluginContext): PluginInstance {
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:center;height:100%;
+                font-family:var(--mndw-font-family, sans-serif);color:var(--mndw-color-text, #111)">
+      <time data-mndw-clock style="font-size:2rem;font-variant-numeric:tabular-nums"></time>
+    </div>
+  `;
+
+  const timeEl = el.querySelector<HTMLTimeElement>('[data-mndw-clock]');
+
+  const render = (): void => {
+    if (timeEl) {
+      timeEl.textContent = new Date().toLocaleTimeString();
+    }
+  };
+
+  render();
+
+  const interval = setInterval(render, 1000);
+
+  return {
+    unmount(): void {
+      clearInterval(interval);
+      el.innerHTML = '';
+    },
+  };
+}

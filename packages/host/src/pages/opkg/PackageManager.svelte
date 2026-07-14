@@ -1,8 +1,8 @@
 <script lang="ts">
 import {onMount} from 'svelte';
 import {SvelteSet} from 'svelte/reactivity';
-import {OpkgError, opkgClient} from './opkg-client.js';
-import type {PackageEntry} from './opkg-client.js';
+import {OpkgError, opkgClient} from '../../services/opkg-client.js';
+import type {PackageEntry} from '../../services/opkg-client.js';
 
 let packages = $state<PackageEntry[]>([]);
 let checked = new SvelteSet<string>();

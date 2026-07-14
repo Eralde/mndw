@@ -62,11 +62,12 @@ describe('Sidebar', () => {
       ]);
     });
 
-    it('keeps Dashboard first, sorts plugin links by label then name, and Settings last', () => {
+    it('keeps Dashboard first, Package Manager second, sorts plugin links, and Settings last', () => {
       const {component, target} = mountSidebar();
 
       expect(links(target)).toEqual([
         {text: 'Dashboard', href: '/'},
+        {text: 'Package Manager', href: '/packages'},
         {text: 'Status', href: '/alpha-status'},
         {text: 'Status', href: '/beta-status'},
         {text: 'Traffic', href: '/traffic'},
@@ -90,12 +91,13 @@ describe('Sidebar', () => {
       vi.mocked(pluginRegistry).getPages.mockReturnValue([]);
     });
 
-    it('omits the Plugins heading and shows only Dashboard and Settings', () => {
+    it('omits the Plugins heading and shows only Dashboard, Package Manager and Settings', () => {
       const {component, target} = mountSidebar();
 
       expect(target.querySelector('.mndw-sidebar__section-label')).toBeNull();
       expect(links(target)).toEqual([
         {text: 'Dashboard', href: '/'},
+        {text: 'Package Manager', href: '/packages'},
         {text: 'Settings', href: '/settings'},
       ]);
 

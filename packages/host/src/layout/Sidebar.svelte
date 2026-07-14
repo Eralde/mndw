@@ -22,6 +22,11 @@ const pagePlugins = pluginRegistry
     class="mndw-sidebar__link"
   >Dashboard</a>
 
+  <a
+    href="/packages"
+    class="mndw-sidebar__link"
+  >Package Manager</a>
+
   {#if pagePlugins.length > 0}
     <div class="mndw-sidebar__section-label">Plugins</div>
     {#each pagePlugins as plugin (plugin.entry.name)}

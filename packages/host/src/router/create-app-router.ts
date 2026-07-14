@@ -2,6 +2,7 @@ import {createRouter} from 'sv-router';
 import DashboardPage from '../dashboard/DashboardPage.svelte';
 import AppShell from '../layout/AppShell.svelte';
 import PagePluginHost from '../pages/PagePluginHost.svelte';
+import PackageManagerPage from '../pages/PackageManagerPage.svelte';
 import SettingsPage from '../pages/settings/SettingsPage.svelte';
 import {pluginRegistry} from '../runtime/plugin-registry.js';
 
@@ -47,6 +48,7 @@ export function createAppRouter(): ReturnType<typeof createRouter> {
     '/': {
       'layout': AppShell,
       '/': DashboardPage,
+      '/packages': PackageManagerPage,
       '/settings': SettingsPage,
       ...pluginRoutes,
       '*': DashboardPage,

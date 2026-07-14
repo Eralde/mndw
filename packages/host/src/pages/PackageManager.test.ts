@@ -1,11 +1,22 @@
 // @vitest-environment happy-dom
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import PackageManager from './PackageManager.svelte';
+import {type PackageEntry} from '../services/opkg-client.js';
 
-function jsonResponse(body: unknown): Response {
-  return {ok: true, json: () => Promise.resolve(body)} as Response;
-}
+const mockList = vi.fn<(...args: unknown[]) => Promise<PackageEntry[]>>();
+const mockUpdate = vi.fn<(...args: unknown[]) => Promise<{message: string}>>();
+
+vi.mock('../services/opkg-client.js', () => ({
+  OpkgError: Error,
+  get opkgClient() {
+    return {
+      list: mockList,
+      update: mockUpdate,
+    };
+  },
+}));
+
+import PackageManager from './opkg/PackageManager.svelte';
 
 describe('PackageManager', () => {
   let host: HTMLElement;
@@ -16,12 +27,12 @@ describe('PackageManager', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.clearAllMocks();
     host.remove();
   });
 
   it('shows an empty catalog as an informational state', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({packages: []}), {status: 200}));
+    mockList.mockResolvedValue([]);
 
     const app = mount(PackageManager, {target: host});
 
@@ -36,7 +47,7 @@ describe('PackageManager', () => {
   });
 
   it('shows a load error for a rejected list', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('offline'));
+    mockList.mockRejectedValue(new Error('offline'));
 
     const app = mount(PackageManager, {target: host});
 
@@ -51,12 +62,8 @@ describe('PackageManager', () => {
   });
 
   it('preserves action feedback after reloading the list', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-
-    fetchMock
-      .mockResolvedValueOnce(jsonResponse({packages: []}))
-      .mockResolvedValueOnce(jsonResponse({ok: true, message: 'Package metadata refreshed'}))
-      .mockResolvedValueOnce(jsonResponse({packages: []}));
+    mockList.mockResolvedValue([]);
+    mockUpdate.mockResolvedValue({message: 'Package metadata refreshed'});
 
     const app = mount(PackageManager, {target: host});
 

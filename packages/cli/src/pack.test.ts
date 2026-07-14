@@ -133,6 +133,52 @@ describe('packPlugin', () => {
     expect(readFileSync(join(result.outDir, 'index.css'), 'utf8')).toMatch(/color:\s*red/);
   });
 
+  it('AOT-compiles an angular plugin, keeps angular external, inlines d3, and emits index.css', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({name: 'ng-widget'}),
+      files: {
+        'tsconfig.json': JSON.stringify({
+          compilerOptions: {
+            target: 'ES2022',
+            module: 'ESNext',
+            moduleResolution: 'bundler',
+            experimentalDecorators: true,
+            useDefineForClassFields: false,
+            outDir: '.ngc-cache',
+            rootDir: 'src',
+          },
+          angularCompilerOptions: {strictInjectionParameters: true},
+          include: ['src/**/*.ts'],
+        }),
+        'src/app.component.ts': 'import {Component} from "@angular/core";\n'
+          + '@Component({selector: "x-root", standalone: true, template: "<b></b>", styleUrls: ["./x.component.scss"]})\n'
+          + 'export class AppComponent {}\n',
+        'src/x.component.scss': '.a{.b{color:red}}',
+        'src/index.ts': 'import "zone.js";\nimport "@angular/compiler";\n'
+          + 'import {createApplication} from "@angular/platform-browser";\n'
+          + 'import * as d3 from "d3";\n'
+          + 'import {AppComponent} from "./app.component";\n'
+          + 'export const createInstance = () => { void createApplication; void AppComponent; return {unmount() {}, d3}; };\n',
+        'node_modules/d3/package.json': JSON.stringify({name: 'd3', type: 'module', module: 'index.js',
+          types: 'index.d.ts'}),
+        'node_modules/d3/index.d.ts': 'export const marker: string;\n',
+        'node_modules/d3/index.js': 'export const marker = "d3 bundled";\n',
+      },
+    });
+
+    const result = await packPlugin(dir);
+
+    expect(result.framework).toBe('angular');
+
+    const js = readFileSync(join(result.outDir, 'index.js'), 'utf8');
+
+    expect(js).toMatch(/from\s*["']@angular\/core["']/);
+    expect(js).toMatch(/(?:from|import)\s*["']zone\.js["']/);
+    expect(js).not.toMatch(/from\s*["']d3["']/);
+    expect(existsSync(join(result.outDir, 'index.css'))).toBe(true);
+    expect(readFileSync(join(result.outDir, 'index.css'), 'utf8')).toMatch(/color:\s*red/);
+  });
+
   it('stamps a version-1 mndw.lock.json alongside the bundle', async () => {
     scaffold(dir, {
       manifest: widgetManifest({name: 'locked-widget', version: '2.5.0'}),
@@ -328,6 +374,7 @@ describe('packExamplePlugins', () => {
       'device-traffic-widget',
       'ping-widget',
       'ttyd-widget',
+      'tx-rx-chart-widget',
     ]);
 
     for (const name of names) {

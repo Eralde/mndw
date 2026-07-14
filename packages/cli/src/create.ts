@@ -138,6 +138,7 @@ interface CliMetadata {
   readonly version: string;
   readonly svelteRange: string;
   readonly vueRange: string;
+  readonly angular: Record<string, string>;
 }
 
 function readCliMetadata(): CliMetadata {
@@ -146,10 +147,20 @@ function readCliMetadata(): CliMetadata {
     dependencies?: Record<string, string>;
   };
 
+  const dependencies = parsed.dependencies ?? {};
+
   return {
     version: parsed.version ?? '0.0.0',
-    svelteRange: parsed.dependencies?.svelte ?? '^5.0.0',
-    vueRange: parsed.dependencies?.vue ?? '^3.5.39',
+    svelteRange: dependencies.svelte ?? '^5.0.0',
+    vueRange: dependencies.vue ?? '^3.5.39',
+    angular: {
+      '@angular/core': dependencies['@angular/core'] ?? '^21.2.18',
+      '@angular/common': dependencies['@angular/common'] ?? '^21.2.18',
+      '@angular/platform-browser': dependencies['@angular/platform-browser'] ?? '^21.2.18',
+      '@angular/compiler': dependencies['@angular/compiler'] ?? '^21.2.18',
+      'zone.js': dependencies['zone.js'] ?? '^0.15.1',
+      'typescript': dependencies.typescript ?? '^5.7.0',
+    },
   };
 }
 
@@ -169,6 +180,8 @@ function buildPackageJson(normalized: NormalizedOptions): Record<string, unknown
     devDependencies.svelte = cli.svelteRange;
   } else if (normalized.framework === 'vue') {
     devDependencies.vue = cli.vueRange;
+  } else if (normalized.framework === 'angular') {
+    Object.assign(devDependencies, cli.angular);
   }
 
   return {
@@ -252,8 +265,10 @@ function assertSupportedOptions(options: CreateOptions): void {
 
   const framework = options.framework ?? 'vanilla';
 
-  if (framework !== 'vanilla' && framework !== 'svelte' && framework !== 'vue') {
-    throw new CliError(`Invalid --framework "${framework}": expected "vanilla", "svelte", or "vue"`);
+  if (framework !== 'vanilla' && framework !== 'svelte' && framework !== 'vue' && framework !== 'angular') {
+    throw new CliError(
+      `Invalid --framework "${framework}": expected "vanilla", "svelte", "vue", or "angular"`,
+    );
   }
 
   if (options.backend !== undefined && options.backend !== 'sh') {

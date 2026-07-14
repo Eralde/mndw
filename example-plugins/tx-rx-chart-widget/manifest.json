@@ -1,0 +1,10 @@
+{
+  "$schema": "../../packages/sdk/manifest.schema.json",
+  "manifestVersion": 2,
+  "name": "tx-rx-chart-widget",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "TX/RX Traffic",
+  "entry": "index.js",
+  "size": {"w": 6, "h": 4, "minW": 3, "minH": 3}
+}

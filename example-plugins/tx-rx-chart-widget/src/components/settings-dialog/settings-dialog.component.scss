@@ -1,0 +1,55 @@
+/* Rendered inside the host overlay shell body: the host owns the surface,
+   border, backdrop, and sizing, so this styles only the form contents. */
+.settings-dialog__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 320px;
+  color: var(--mndw-text);
+  font-family: var(--mndw-font-sans);
+}
+
+.settings-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-dialog__label {
+  color: var(--mndw-text-subtle);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.settings-dialog__input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--mndw-border);
+  border-radius: 6px;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text);
+  font-size: 14px;
+}
+
+.settings-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.settings-dialog__close-btn {
+  padding: 8px 20px;
+  border: 1px solid var(--mndw-border);
+  border-radius: 6px;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text);
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--mndw-border);
+  }
+}
+

@@ -15,14 +15,22 @@
     "vitest": "^3.2.7"
   },
   "dependencies": {
+    "@angular/common": "^21.2.18",
+    "@angular/compiler": "^21.2.18",
+    "@angular/compiler-cli": "^21.2.18",
+    "@angular/core": "^21.2.18",
+    "@angular/platform-browser": "^21.2.18",
     "@mndw/sdk": "workspace:*",
     "commander": "^15.0.0",
     "esbuild": "^0.25.12",
     "esbuild-svelte": "^0.9.5",
     "fflate": "^0.8.2",
+    "sass": "^1.77.0",
     "svelte": "^5.56.4",
     "tsx": "^4.23.0",
+    "typescript": "^5.7.0",
     "unplugin-vue": "^7.2.0",
-    "vue": "^3.5.39"
+    "vue": "^3.5.39",
+    "zone.js": "^0.15.1"
   }
 }

@@ -237,10 +237,22 @@ describe('createProgram', () => {
     expect(existsSync(resolve(workdir, 'vue-cmd', 'src', 'App.vue'))).toBe(true);
   });
 
-  test('create --help lists vue among the framework options', () => {
+  test('create --framework angular scaffolds an Angular plugin end to end', () => {
+    const workdir = mkdtempSync(resolve(tmpdir(), 'mndw-cli-create-ng-'));
+
+    temporaryDirectories.push(workdir);
+
+    const result = runCliFrom(workdir, ['create', 'ng-cmd', '--framework', 'angular']);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('(angular)');
+    expect(existsSync(resolve(workdir, 'ng-cmd', 'src', 'app.component.ts'))).toBe(true);
+  });
+
+  test('create --help lists all framework options', () => {
     const result = runCliFrom(WORKSPACE_ROOT, ['create', '--help']);
 
-    expect(result.stdout).toContain('vanilla|svelte|vue');
+    expect(result.stdout).toContain('vanilla|svelte|vue|angular');
   });
 });
 

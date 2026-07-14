@@ -1,0 +1,65 @@
+<div class="tx-rx-widget">
+    @if (error()) {
+        <div class="error">
+            <span>{{ error() }}</span>
+            <button
+                class="error__retry"
+                (click)="retryLoad()"
+            >
+                Retry
+            </button>
+        </div>
+    }
+    @if (loadingInterfaces()) {
+        <div class="loading">Loading interfaces...</div>
+    } @else if (!selectedInterface()) {
+        <div class="empty-state">
+            <h3 class="empty-state__heading">Network Traffic Monitor</h3>
+            <p class="empty-state__subtitle">Select a network interface to begin monitoring TX/RX traffic</p>
+            <tx-rx-interface-select
+                [interfaces]="interfaceList()"
+                [selectedId]="selectedInterface()"
+                (selectedChange)="onInterfaceChange($event)"
+            />
+            @if (interfaceList().length === 0 && !loadingInterfaces()) {
+                <p class="empty-state__error">No network interfaces found</p>
+            }
+        </div>
+    } @else {
+        <div class="chart-view">
+            <div class="chart-header">
+                <div class="chart-header__left">
+                    <span class="chart-header__label">{{ activeInterfaceName() }}</span>
+                    @if (txData().length > 0 || rxData().length > 0) {
+                        <div class="chart-header__legend">
+                          <span class="chart-header__legend-item">
+                            <span class="chart-header__legend-swatch chart-header__legend-swatch--tx"></span>
+                            TX
+                          </span>
+                            <span class="chart-header__legend-item">
+                            <span class="chart-header__legend-swatch chart-header__legend-swatch--rx"></span>
+                                RX
+                            </span>
+                        </div>
+                    }
+                </div>
+                <div class="chart-header__actions">
+                    <button
+                        class="gear-btn"
+                        (click)="openSettingsDialog()"
+                        title="Widget Settings"
+                        aria-label="Widget settings"
+                    >
+                        &#9881;
+                    </button>
+                </div>
+            </div>
+            <tx-rx-rrd-line-chart
+                [txData]="txData()"
+                [rxData]="rxData()"
+                [deviceTime]="clockTime()"
+            />
+        </div>
+    }
+</div>
+

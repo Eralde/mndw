@@ -51,4 +51,29 @@ describe('detectFramework', () => {
 
     expect(() => detectFramework(dir)).toThrow(CliError);
   });
+
+  describe('angular', () => {
+    it('detects angular from a root tsconfig.json with angularCompilerOptions', () => {
+      writeFileSync(
+        join(dir, 'tsconfig.json'),
+        JSON.stringify({compilerOptions: {}, angularCompilerOptions: {}}),
+      );
+      writeFileSync(join(dir, 'src', 'index.ts'), 'export const createInstance = () => ({unmount() {}});');
+
+      expect(detectFramework(dir)).toBe('angular');
+    });
+
+    it('throws on a malformed root tsconfig.json', () => {
+      writeFileSync(join(dir, 'tsconfig.json'), '{ not json');
+
+      expect(() => detectFramework(dir)).toThrow(CliError);
+    });
+
+    it('throws on mixed angular + vue signals', () => {
+      writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify({angularCompilerOptions: {}}));
+      writeFileSync(join(dir, 'src', 'App.vue'), '<template/>');
+
+      expect(() => detectFramework(dir)).toThrow(CliError);
+    });
+  });
 });

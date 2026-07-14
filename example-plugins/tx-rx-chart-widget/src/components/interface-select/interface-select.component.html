@@ -1,0 +1,25 @@
+<div class="interface-select">
+    <div
+        class="interface-select__trigger"
+        (click)="toggleOpen()"
+    >
+        <span class="interface-select__value">{{ selectedLabel() || 'Select interface…' }}</span>
+        <span class="interface-select__arrow">&#9662;</span>
+    </div>
+
+    @if (open) {
+        <select
+          #sel
+          class="interface-select__select"
+          [value]="selectedId()"
+          (change)="onSelect(sel.value)"
+          (blur)="open = false"
+          size="10"
+        >
+            @for (iface of interfaces(); track iface.id) {
+                <option [value]="iface.id">{{ iface.description || iface.id }}</option>
+            }
+        </select>
+    }
+</div>
+

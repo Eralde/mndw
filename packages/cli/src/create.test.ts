@@ -167,6 +167,39 @@ describe('planCreate', () => {
     expect(fileContents(plan, 'src/env.d.ts')).toContain('declare module \'*.vue\'');
   });
 
+  it('renders an angular plugin with app.component.ts and angular compiler options', () => {
+    const plan = planCreate(options({name: 'ng', framework: 'angular', type: 'widget'}));
+
+    expect(fileContents(plan, 'src/app.component.ts')).toContain('Ng');
+    expect(fileContents(plan, 'src/index.ts')).toContain('createApplication');
+    expect(JSON.parse(fileContents(plan, 'tsconfig.json'))).toHaveProperty('angularCompilerOptions');
+  });
+
+  it('places the SDK and all Angular runtime deps under devDependencies', () => {
+    const plan = planCreate(options({name: 'ng', framework: 'angular', type: 'widget'}));
+    const pkg = JSON.parse(fileContents(plan, 'package.json')) as {
+      dependencies?: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+
+    for (
+      const dep of [
+        '@mndw/sdk',
+        '@angular/core',
+        '@angular/common',
+        '@angular/platform-browser',
+        '@angular/compiler',
+        'zone.js',
+        'typescript',
+      ]
+    ) {
+      expect(pkg.devDependencies[dep]).toBeDefined();
+    }
+
+    expect(pkg.devDependencies['@angular/compiler-cli']).toBeUndefined();
+    expect(pkg.dependencies ?? {}).toEqual({});
+  });
+
   it('places @mndw/sdk and the framework under devDependencies with empty dependencies', () => {
     const plan = planCreate(options({name: 'vw', framework: 'vue', type: 'widget'}));
     const pkg = JSON.parse(fileContents(plan, 'package.json')) as {
@@ -270,13 +303,15 @@ describe('createPlugin', () => {
     expect(() => accessSync(join(outDir, 'backend', 'main.sh'), constants.X_OK)).not.toThrow();
   });
 
-  const combos: {framework: 'vanilla' | 'svelte' | 'vue'; type: 'widget' | 'page'}[] = [
+  const combos: {framework: 'vanilla' | 'svelte' | 'vue' | 'angular'; type: 'widget' | 'page'}[] = [
     {framework: 'vanilla', type: 'widget'},
     {framework: 'vanilla', type: 'page'},
     {framework: 'svelte', type: 'widget'},
     {framework: 'svelte', type: 'page'},
     {framework: 'vue', type: 'widget'},
     {framework: 'vue', type: 'page'},
+    {framework: 'angular', type: 'widget'},
+    {framework: 'angular', type: 'page'},
   ];
 
   for (const combo of combos) {
@@ -294,7 +329,10 @@ describe('createPlugin', () => {
 
       expect(packed.framework).toBe(combo.framework);
       expect(existsSync(join(outDir, 'dist', 'index.js'))).toBe(true);
-      expect(existsSync(join(outDir, 'dist', 'index.css'))).toBe(true);
+
+      if (combo.framework !== 'angular') {
+        expect(existsSync(join(outDir, 'dist', 'index.css'))).toBe(true);
+      }
 
       // zip
       const zipped = await zipPlugin(outDir);

@@ -1,0 +1,51 @@
+.interface-select {
+  position: relative;
+  width: 100%;
+  cursor: pointer;
+  user-select: none;
+}
+
+.interface-select__trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--mndw-border);
+  border-radius: 6px;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text);
+  font-size: 14px;
+
+  &:hover {
+    border-color: var(--mndw-accent);
+  }
+}
+
+.interface-select__value {
+  flex: 1;
+  overflow: hidden;
+  color: var(--mndw-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.interface-select__arrow {
+  margin-left: 8px;
+  color: var(--mndw-text-subtle);
+  font-size: 10px;
+}
+
+.interface-select__select {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  z-index: 10;
+  border: 1px solid var(--mndw-border);
+  border-radius: 0 0 6px 6px;
+  background: var(--mndw-surface-raised);
+  outline: none;
+  color: var(--mndw-text);
+  font-size: 14px;
+}
+

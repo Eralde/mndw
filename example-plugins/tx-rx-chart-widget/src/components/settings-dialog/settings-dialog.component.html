@@ -1,0 +1,36 @@
+<div class="settings-dialog__form">
+    <div class="settings-dialog__field">
+        <label class="settings-dialog__label">Interface</label>
+        <select
+          #interfaceSel
+          [value]="selectedInterface()"
+          (change)="interfaceChange.emit(interfaceSel.value)"
+          class="settings-dialog__input"
+        >
+            @for (iface of interfaces(); track iface.id) {
+                <option [value]="iface.id">{{ iface.description || iface.id }}</option>
+            }
+        </select>
+    </div>
+    <div class="settings-dialog__field">
+        <label class="settings-dialog__label">Refresh (ms)</label>
+        <input
+          #refreshInput
+          type="number"
+          [value]="refresh()"
+          (change)="onRefreshChange(refreshInput.value)"
+          class="settings-dialog__input"
+          min="1000"
+          step="500"
+        />
+    </div>
+    <div class="settings-dialog__actions">
+        <button
+            class="settings-dialog__close-btn"
+            (click)="closeDialogEvent.emit()"
+        >
+            Close
+        </button>
+    </div>
+</div>
+

@@ -19,6 +19,7 @@ import {build} from 'esbuild';
 import esbuildSvelte from 'esbuild-svelte';
 import vuePlugin from 'unplugin-vue/esbuild';
 
+import {type AngularCompileResult, compileAngular} from './angular-compiler.js';
 import {CliError} from './errors.js';
 import {type PluginFramework, detectFramework} from './framework.js';
 import {buildLock, findBundledSharedDependencies, serializeLock} from './lock.js';
@@ -82,7 +83,7 @@ interface StagedAsset {
 }
 
 /**
- * Builds a vanilla, Svelte, or Vue plugin into an isolated output directory: bundles `src/index.ts` to a
+ * Builds a vanilla, Svelte, Vue, or Angular plugin into an isolated output directory: bundles its entry to a
  * browser ESM module at `dist/<manifest.entry>` (host-shared deps kept external), writes any emitted
  * CSS to the host-expected `dist/index.css`, re-serializes the validated `manifest.json`, and copies
  * every declared backend script and daemon hook. The build runs entirely in memory and only swaps the
@@ -99,81 +100,95 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
     throw new CliError(`Output directory overlaps plugin source: ${outDir}`);
   }
 
-  const result = await build({
-    entryPoints: [join(resolvedDir, 'src', 'index.ts')],
-    outdir: outDir,
-    bundle: true,
-    format: 'esm',
-    platform: 'browser',
-    target: 'es2022',
-    write: false,
-    metafile: true,
-    logLevel: 'silent',
-    nodePaths: [CLI_NODE_MODULES],
-    external: pluginDependencies(framework),
-    plugins: framework === 'svelte'
-      ? [esbuildSvelte({compilerOptions: {css: 'external'}})]
-      : framework === 'vue'
-      ? [vuePlugin({sourceMap: false})]
-      : [],
-  });
-
-  const jsOutput = result.outputFiles.find((file) => file.path.endsWith('.js'));
-
-  if (jsOutput === undefined) {
-    throw new CliError('esbuild produced no JavaScript bundle');
-  }
-
-  const cssOutput = result.outputFiles.find((file) => file.path.endsWith('.css'));
-
-  // Fail before mutating output if a host-shared dependency leaked into the bundle.
-  const bundledShared = findBundledSharedDependencies(result.metafile, pluginDependencies(framework));
-
-  if (bundledShared.length > 0) {
-    throw new CliError(
-      `Packed bundle must not include host-shared dependencies: ${bundledShared.join(', ')}`,
-    );
-  }
-
-  const lock = serializeLock(buildLock(manifest, framework));
-
-  // Read backend assets before mutating any output, so a missing asset fails cleanly.
-  const backendAssets = collectBackendAssets(manifest, resolvedDir);
-
-  const parent = dirname(outDir);
-
-  mkdirSync(parent, {recursive: true});
-
-  const staging = mkdtempSync(join(parent, '.mndw-pack-'));
+  let angularCompile: AngularCompileResult | undefined;
+  const entryPoint = framework === 'angular'
+    ? (angularCompile = compileAngular(resolvedDir)).entryPath
+    : join(resolvedDir, 'src', 'index.ts');
 
   try {
-    writeStaged(staging, manifest.entry, Buffer.from(jsOutput.contents));
+    const styleEntry = angularCompile === undefined ? undefined : join(angularCompile.cacheDir, 'styles.css');
+    const entryPoints = styleEntry !== undefined && existsSync(styleEntry)
+      ? [entryPoint, styleEntry]
+      : [entryPoint];
 
-    if (cssOutput !== undefined) {
-      writeStaged(staging, 'index.css', Buffer.from(cssOutput.contents));
+    const result = await build({
+      entryPoints,
+      outdir: outDir,
+      bundle: true,
+      format: 'esm',
+      platform: 'browser',
+      target: 'es2022',
+      write: false,
+      metafile: true,
+      logLevel: 'silent',
+      nodePaths: [CLI_NODE_MODULES, join(resolvedDir, 'node_modules')].filter((path) => existsSync(path)),
+      external: pluginDependencies(framework),
+      plugins: framework === 'svelte'
+        ? [esbuildSvelte({compilerOptions: {css: 'external'}})]
+        : framework === 'vue'
+        ? [vuePlugin({sourceMap: false})]
+        : [],
+    });
+
+    const jsOutput = result.outputFiles.find((file) => file.path.endsWith('.js'));
+
+    if (jsOutput === undefined) {
+      throw new CliError('esbuild produced no JavaScript bundle');
     }
 
-    writeStaged(staging, 'manifest.json', Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));
-    writeStaged(staging, 'mndw.lock.json', Buffer.from(lock));
+    const cssOutput = result.outputFiles.find((file) => file.path.endsWith('.css'));
 
-    for (const asset of backendAssets) {
-      writeStaged(staging, asset.rel, asset.contents, asset.mode);
+    // Fail before mutating output if a host-shared dependency leaked into the bundle.
+    const bundledShared = findBundledSharedDependencies(result.metafile, pluginDependencies(framework));
+
+    if (bundledShared.length > 0) {
+      throw new CliError(
+        `Packed bundle must not include host-shared dependencies: ${bundledShared.join(', ')}`,
+      );
     }
 
-    promoteStaging(staging, outDir);
-  } catch (error) {
-    rmSync(staging, {recursive: true, force: true});
+    const lock = serializeLock(buildLock(manifest, framework));
 
-    throw error;
+    // Read backend assets before mutating any output, so a missing asset fails cleanly.
+    const backendAssets = collectBackendAssets(manifest, resolvedDir);
+
+    const parent = dirname(outDir);
+
+    mkdirSync(parent, {recursive: true});
+
+    const staging = mkdtempSync(join(parent, '.mndw-pack-'));
+
+    try {
+      writeStaged(staging, manifest.entry, Buffer.from(jsOutput.contents));
+
+      if (cssOutput !== undefined) {
+        writeStaged(staging, 'index.css', Buffer.from(cssOutput.contents));
+      }
+
+      writeStaged(staging, 'manifest.json', Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));
+      writeStaged(staging, 'mndw.lock.json', Buffer.from(lock));
+
+      for (const asset of backendAssets) {
+        writeStaged(staging, asset.rel, asset.contents, asset.mode);
+      }
+
+      promoteStaging(staging, outDir);
+    } catch (error) {
+      rmSync(staging, {recursive: true, force: true});
+
+      throw error;
+    }
+
+    return {
+      outDir,
+      framework,
+      manifest,
+      manifestPath: join(outDir, 'manifest.json'),
+      entryPath: join(outDir, manifest.entry),
+    };
+  } finally {
+    angularCompile?.cleanup();
   }
-
-  return {
-    outDir,
-    framework,
-    manifest,
-    manifestPath: join(outDir, 'manifest.json'),
-    entryPath: join(outDir, manifest.entry),
-  };
 }
 
 /** Atomically replaces output where possible, restoring the prior output if promotion fails. */

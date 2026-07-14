@@ -33,7 +33,7 @@ onMount(() => {
       float: false,
       cellHeight: 60,
       margin: 10,
-      draggable: {cancel: '.xterm'},
+      draggable: {handle: '.mndw-grid-tile__title'},
       resizable: {handles: 'se'},
     },
     container,

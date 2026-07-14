@@ -183,6 +183,7 @@ onMount(() => {
           Disconnect
         </button>
       </div>
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         class="terminal-content"
         bind:this={terminalElement}

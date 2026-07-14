@@ -73,6 +73,11 @@ export function addWidgetTile(
   }
 
   const body = buildTileFrame(contentEl, entry.label, grid, gridItem);
+
+  // GridStack init's drag during addWidget(), before the title bar DOM exists.
+  // Force re-init so the handle selector finds the now-present title bar element.
+  grid.prepareDragDrop(gridItem, true);
+
   const context = createWidgetContext(pluginName, instanceId);
 
   // mountWidgetTile tracks async (promise-based) mounts too, so remove/teardown reliably

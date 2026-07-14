@@ -86,11 +86,11 @@ describe('DashboardGrid', () => {
     target.remove();
   });
 
-  it('does not start tile dragging from xterm terminal content', () => {
+  it('restricts tile dragging to the title bar handle', () => {
     const {component, target} = mountGrid();
 
     expect(initOptions).toEqual(expect.objectContaining({
-      draggable: {cancel: '.xterm'},
+      draggable: {handle: '.mndw-grid-tile__title'},
     }));
 
     void unmount(component);

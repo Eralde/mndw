@@ -333,6 +333,11 @@ body {
   font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: grab;
+  user-select: none;
+}
+.mndw-grid-tile__title:active {
+  cursor: grabbing;
 }
 
 .mndw-grid-tile__body {

@@ -111,7 +111,8 @@ function createFakeGrid(withContent = true): FakeGrid {
   });
   const removeWidget = vi.fn();
 
-  return {grid: {addWidget, removeWidget} as unknown as GridStack, added, addWidget, removeWidget};
+  return {grid: {addWidget, removeWidget, prepareDragDrop: vi.fn()} as unknown as GridStack, added, addWidget,
+    removeWidget};
 }
 
 function noop(): PluginInstance {

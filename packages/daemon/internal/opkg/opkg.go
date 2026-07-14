@@ -209,37 +209,12 @@ func (m *execManager) list(ctx context.Context, verb string) ([]string, error) {
 }
 
 func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
-	installedOutput, installedExit, err := m.run(ctx, "opkg", "list-installed")
-	if err != nil {
-		return nil, fmt.Errorf("opkg list-installed: %w", err)
-	}
-	if installedExit != 0 {
-		return nil, fmt.Errorf("opkg list-installed exited %d", installedExit)
-	}
-	installedEntries, err := parseEntries(installedOutput)
-	if err != nil {
-		return nil, err
-	}
+	installedMap, installedErr := m.listInstalledMap(ctx)
 
-	availableOutput, availableExit, err := m.run(ctx, "opkg", "list")
-	if err != nil {
-		return nil, fmt.Errorf("opkg list: %w", err)
-	}
-	if availableExit != 0 {
-		return nil, fmt.Errorf("opkg list exited %d", availableExit)
-	}
-	availableEntries, err := parseEntries(availableOutput)
-	if err != nil {
-		return nil, err
-	}
+	availableMap, availableErr := m.listAvailableMap(ctx)
 
-	installedMap := make(map[string]PackageEntry, len(installedEntries))
-	for _, entry := range installedEntries {
-		installedMap[entry.Name] = entry
-	}
-	availableMap := make(map[string]PackageEntry, len(availableEntries))
-	for _, entry := range availableEntries {
-		availableMap[entry.Name] = entry
+	if installedErr != nil && availableErr != nil {
+		return nil, fmt.Errorf("opkg list-installed: %w; opkg list: %w", installedErr, availableErr)
 	}
 
 	combined := make([]PackageEntry, 0, len(installedMap)+len(availableMap))
@@ -252,17 +227,18 @@ func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
 			continue
 		}
 
+		description := installed.Description
+		if available.Description != "" {
+			description = available.Description
+		}
+
 		entry := PackageEntry{
 			Name:        name,
 			Version:     installed.Version,
-			Description: installed.Description,
+			Description: description,
 			Status:      "installed",
 		}
-		isUpdate, err := m.compareVersions(ctx, installed.Version, available.Version)
-		if err != nil {
-			return nil, err
-		}
-		if isUpdate {
+		if installed.Version != available.Version {
 			entry.Status = "update_available"
 			entry.NewVersion = available.Version
 		}
@@ -282,20 +258,46 @@ func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
 	return combined, nil
 }
 
-func (m *execManager) compareVersions(ctx context.Context, installed, available string) (bool, error) {
-	_, exitCode, err := m.run(ctx, "opkg", "compare-versions", installed, "<<", available)
+func (m *execManager) listInstalledMap(ctx context.Context) (map[string]PackageEntry, error) {
+	out, exitCode, err := m.run(ctx, "opkg", "list-installed")
 	if err != nil {
-		return false, err
+		return nil, fmt.Errorf("opkg list-installed: %w", err)
 	}
-	switch exitCode {
-	case 0:
-		return true, nil
-	case 1:
-		return false, nil
-	default:
-		return false, fmt.Errorf("opkg compare-versions exited %d", exitCode)
+	if exitCode != 0 {
+		return nil, fmt.Errorf("opkg list-installed exited %d", exitCode)
 	}
+	entries, err := parseEntries(out)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]PackageEntry, len(entries))
+	for _, entry := range entries {
+		result[entry.Name] = entry
+	}
+
+	return result, nil
 }
+
+func (m *execManager) listAvailableMap(ctx context.Context) (map[string]PackageEntry, error) {
+	out, exitCode, err := m.run(ctx, "opkg", "list")
+	if err != nil {
+		return nil, fmt.Errorf("opkg list: %w", err)
+	}
+	if exitCode != 0 {
+		return nil, fmt.Errorf("opkg list exited %d", exitCode)
+	}
+	entries, err := parseEntries(out)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]PackageEntry, len(entries))
+	for _, entry := range entries {
+		result[entry.Name] = entry
+	}
+
+	return result, nil
+}
+
 
 // parseNames extracts the first whitespace field of each non-empty line, the package
 // name in `opkg list` / `opkg list-installed` output ("name - version - desc").
@@ -320,7 +322,7 @@ func parseEntries(out string) ([]PackageEntry, error) {
 		}
 		line := strings.TrimSuffix(rawLine, "\r")
 		parts := strings.SplitN(line, " - ", 3)
-		if len(parts) != 3 {
+		if len(parts) < 2 {
 			return nil, fmt.Errorf("malformed opkg output line %d: %q", i+1, strings.TrimSpace(line))
 		}
 		name := strings.TrimSpace(parts[0])
@@ -328,10 +330,14 @@ func parseEntries(out string) ([]PackageEntry, error) {
 		if name == "" || version == "" {
 			return nil, fmt.Errorf("malformed opkg output line %d: %q", i+1, strings.TrimSpace(line))
 		}
+		description := ""
+		if len(parts) >= 3 {
+			description = strings.TrimSpace(parts[2])
+		}
 		entries = append(entries, PackageEntry{
 			Name:        name,
 			Version:     version,
-			Description: strings.TrimSpace(parts[2]),
+			Description: description,
 		})
 	}
 

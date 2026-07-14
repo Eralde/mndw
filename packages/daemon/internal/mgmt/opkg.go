@@ -22,7 +22,7 @@ func (h *Handler) handleOpkgListInstalled(w http.ResponseWriter, _ *http.Request
 
 	packages, err := h.opkg.ListInstalled(ctx)
 	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to list installed packages"))
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to list installed packages").WithDetail(err.Error()))
 
 		return
 	}
@@ -36,7 +36,7 @@ func (h *Handler) handleOpkgListAvailable(w http.ResponseWriter, _ *http.Request
 
 	packages, err := h.opkg.ListAvailable(ctx)
 	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to list available packages"))
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to list available packages").WithDetail(err.Error()))
 
 		return
 	}
@@ -50,7 +50,7 @@ func (h *Handler) handleOpkgList(w http.ResponseWriter, _ *http.Request) {
 
 	packages, err := h.opkg.List(ctx)
 	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to list packages"))
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to list packages").WithDetail(err.Error()))
 
 		return
 	}

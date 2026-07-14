@@ -92,10 +92,11 @@ func TestParseEntries(t *testing.T) {
 		wantLen int
 		wantErr bool
 	}{
-		{name: "valid", output: "curl - 8.0.1-1 - Client URL retrieval utility\r\n", wantLen: 1},
+		{name: "valid with description", output: "curl - 8.0.1-1 - Client URL retrieval utility\r\n", wantLen: 1},
+		{name: "valid without description", output: "antiscan2 - 2-alpha18\n", wantLen: 1},
 		{name: "separator in description", output: "pkg - 1.0-1 - desc - with separator\n", wantLen: 1},
 		{name: "empty description", output: "pkg - 1.0-1 - \n", wantLen: 1},
-		{name: "malformed", output: "pkg 1.0-1 - desc\n", wantErr: true},
+		{name: "missing version separator", output: "pkg 1.0-1\n", wantErr: true},
 		{name: "empty name", output: " - 1.0-1 - desc\n", wantErr: true},
 		{name: "empty version", output: "pkg -  - desc\n", wantErr: true},
 	}
@@ -120,8 +121,6 @@ func TestExecListMergeAndOrphan(t *testing.T) {
 			return "curl - 7.55.1-1 - Installed desc\norphan - 2.1.0-1 - Custom tool\n", 0, nil
 		case "opkg list":
 			return "curl - 8.0.1-1 - Feed desc\nsocat - 1.7.4.4-1 - Relay\n", 0, nil
-		case "opkg compare-versions 7.55.1-1 << 8.0.1-1":
-			return "", 0, nil
 		default:
 			return "", 0, errors.New("unexpected command: " + strings.Join(args, " "))
 		}
@@ -134,7 +133,7 @@ func TestExecListMergeAndOrphan(t *testing.T) {
 	if len(entries) != 3 {
 		t.Fatalf("len(entries) = %d, want 3", len(entries))
 	}
-	if entries[0].Name != "curl" || entries[0].Version != "7.55.1-1" || entries[0].Description != "Installed desc" || entries[0].Status != "update_available" || entries[0].NewVersion != "8.0.1-1" {
+	if entries[0].Name != "curl" || entries[0].Version != "7.55.1-1" || entries[0].Description != "Feed desc" || entries[0].Status != "update_available" || entries[0].NewVersion != "8.0.1-1" {
 		t.Errorf("curl entry = %+v", entries[0])
 	}
 	if entries[1].Name != "orphan" || entries[1].Version != "2.1.0-1" || entries[1].Description != "Custom tool" || entries[1].Status != "installed" || entries[1].NewVersion != "" {
@@ -145,24 +144,6 @@ func TestExecListMergeAndOrphan(t *testing.T) {
 	}
 }
 
-func TestExecListUnexpectedComparatorExit(t *testing.T) {
-	runner := func(_ context.Context, args ...string) (string, int, error) {
-		switch strings.Join(args, " ") {
-		case "opkg list-installed":
-			return "curl - 1.0-1 - Curl\n", 0, nil
-		case "opkg list":
-			return "curl - 2.0-1 - Curl\n", 0, nil
-		case "opkg compare-versions 1.0-1 << 2.0-1":
-			return "usage\n", 2, nil
-		default:
-			return "", 0, errors.New("unexpected command: " + strings.Join(args, " "))
-		}
-	}
-
-	if _, err := newExecManagerWithRunner(runner).List(context.Background()); err == nil {
-		t.Fatal("List() error = nil, want comparator exit error")
-	}
-}
 
 func TestExecListEmptyOutput(t *testing.T) {
 	runner := func(_ context.Context, _ ...string) (string, int, error) {

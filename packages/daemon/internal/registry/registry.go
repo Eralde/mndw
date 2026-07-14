@@ -89,3 +89,46 @@ func (r *Registry) Resolve(name string) (*Plugin, bool) {
 
 	return nil, false
 }
+
+// ListBuiltins returns every plugin discovered in the builtin directory. Builtins are
+// always treated as approved+enabled. The caller is responsible for filtering (e.g.
+// for daemon hooks, for the mgmt list).
+func (r *Registry) ListBuiltins() []*Plugin {
+	if r.builtinDir == "" {
+		return nil
+	}
+
+	entries, err := os.ReadDir(r.builtinDir)
+	if err != nil {
+		return nil
+	}
+
+	var plugins []*Plugin
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		data, readErr := os.ReadFile(filepath.Join(r.builtinDir, name, "manifest.json"))
+		if readErr != nil {
+			continue
+		}
+
+		m, verr := manifest.Validate(data)
+		if verr != nil {
+			continue
+		}
+
+		plugins = append(plugins, &Plugin{
+			Name:     name,
+			Dir:      filepath.Join(r.builtinDir, name),
+			Manifest: m,
+			Source:   state.SourceBuiltin,
+			Approval: state.ApprovalApproved,
+			Enabled:  true,
+		})
+	}
+
+	return plugins
+}

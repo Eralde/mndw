@@ -2,6 +2,7 @@ package registry
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -75,6 +76,66 @@ func TestResolveUnknown(t *testing.T) {
 	reg, _, _, _ := newRegistry(t)
 	if _, ok := reg.Resolve("nope"); ok {
 		t.Errorf("expected miss for unknown plugin")
+	}
+}
+
+func TestListBuiltins(t *testing.T) {
+	reg, _, _, builtinDir := newRegistry(t)
+
+	for _, name := range []string{"alpha", "beta"} {
+		dir := filepath.Join(builtinDir, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		m := fmt.Sprintf(`{"manifestVersion":2,"name":"%s","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`, name)
+		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(m), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	plugins := reg.ListBuiltins()
+	if len(plugins) != 2 {
+		t.Fatalf("expected 2 builtins, got %d", len(plugins))
+	}
+
+	names := make(map[string]bool)
+	for _, p := range plugins {
+		names[p.Name] = true
+		if p.Source != state.SourceBuiltin || p.Approval != state.ApprovalApproved || !p.Enabled {
+			t.Errorf("builtin %s has wrong state: source=%s approval=%s enabled=%v", p.Name, p.Source, p.Approval, p.Enabled)
+		}
+	}
+
+	if !names["alpha"] || !names["beta"] {
+		t.Errorf("expected alpha and beta, got %v", names)
+	}
+}
+
+func TestListBuiltinsSkipsInvalidManifest(t *testing.T) {
+	reg, _, _, builtinDir := newRegistry(t)
+
+	goodDir := filepath.Join(builtinDir, "good")
+	if err := os.MkdirAll(goodDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(goodDir, "manifest.json"), []byte(`{"manifestVersion":2,"name":"good","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	badDir := filepath.Join(builtinDir, "bad")
+	if err := os.MkdirAll(badDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(badDir, "manifest.json"), []byte(`not json`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plugins := reg.ListBuiltins()
+	if len(plugins) != 1 {
+		t.Fatalf("expected 1 builtin (bad skipped), got %d", len(plugins))
+	}
+	if plugins[0].Name != "good" {
+		t.Errorf("expected good, got %s", plugins[0].Name)
 	}
 }
 

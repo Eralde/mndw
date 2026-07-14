@@ -135,9 +135,11 @@ func shutdownDaemons(reg *registry.Registry, life *lifecycle.Manager, store *sta
 	})
 }
 
-// forEachDaemonPlugin invokes fn for every approved+enabled user plugin that declares
-// a backend.daemon.
+// forEachDaemonPlugin invokes fn for every approved+enabled plugin that declares a
+// backend.daemon — both user plugins tracked in state and builtins discovered on disk.
 func forEachDaemonPlugin(reg *registry.Registry, store *state.Store, fn func(name, dir string, d *manifest.Daemon)) {
+	seen := make(map[string]bool)
+
 	snap := store.Snapshot()
 	for name, rec := range snap.Plugins {
 		if rec.Approval != state.ApprovalApproved || !rec.Enabled {
@@ -148,6 +150,17 @@ func forEachDaemonPlugin(reg *registry.Registry, store *state.Store, fn func(nam
 			continue
 		}
 		fn(name, plugin.Dir, plugin.Manifest.Backend.Daemon)
+		seen[name] = true
+	}
+
+	for _, plugin := range reg.ListBuiltins() {
+		if seen[plugin.Name] {
+			continue
+		}
+		if plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Daemon == nil {
+			continue
+		}
+		fn(plugin.Name, plugin.Dir, plugin.Manifest.Backend.Daemon)
 	}
 }
 

@@ -1,4 +1,14 @@
-import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {validateManifest} from '@mndw/sdk';
@@ -89,6 +99,30 @@ describe('packPlugin', () => {
     const packedManifest = JSON.parse(readFileSync(join(dir, 'dist', 'manifest.json'), 'utf8')) as {name: string};
 
     expect(packedManifest.name).toBe('sample-widget');
+  });
+
+  it('stages a module worker emitted alongside the main bundle', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({name: 'worker-widget'}),
+      index: 'const worker = new Worker(new URL("./ticker.worker.ts", import.meta.url), {type: "module"});\n'
+        + 'export const createInstance = () => ({unmount() { worker.terminate(); }});\n',
+      files: {'src/ticker.worker.ts': 'self.postMessage("tick");\n'},
+    });
+
+    await packPlugin(dir);
+
+    const jsFiles = readdirSync(join(dir, 'dist')).filter((file) => file.endsWith('.js'));
+    const workerFile = jsFiles.find((file) => file !== 'index.js');
+    const bundle = readFileSync(join(dir, 'dist', 'index.js'), 'utf8');
+
+    expect(jsFiles).toHaveLength(2);
+    expect(jsFiles).toContain('ticker.worker.js');
+    expect(workerFile).toBeDefined();
+    expect(bundle).toContain('./ticker.worker.js');
+    expect(bundle).not.toContain('./ticker.worker.ts');
+    expect(workerFile === undefined ? '' : readFileSync(join(dir, 'dist', workerFile), 'utf8')).toContain(
+      'postMessage',
+    );
   });
 
   it('bundles a svelte plugin and emits dist/index.css', async () => {

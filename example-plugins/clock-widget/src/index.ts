@@ -1,4 +1,5 @@
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
+import {Ticker} from './ticker';
 
 /**
  * Minimal vanilla widget: a live ticking clock rendered with plain DOM against host tokens.
@@ -37,11 +38,17 @@ export function createInstance(el: HTMLElement, _ctx: PluginContext): PluginInst
 
   render();
 
-  const interval = setInterval(render, 1000);
+  const ticker = new Ticker();
+  const unsubscribe = ticker.onTick(() => {
+    render();
+  });
+
+  ticker.start(1000);
 
   return {
     unmount(): void {
-      clearInterval(interval);
+      unsubscribe();
+      ticker.destroy();
       el.innerHTML = '';
     },
   };

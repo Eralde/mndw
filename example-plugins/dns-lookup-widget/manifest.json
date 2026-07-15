@@ -1,0 +1,19 @@
+{
+  "$schema": "../../packages/sdk/manifest.schema.json",
+  "manifestVersion": 2,
+  "name": "dns-lookup-widget",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "DNS Lookup",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 4, "minW": 3, "minH": 3},
+  "backend": {
+    "assets": ["backend/dns-util"],
+    "scripts": [
+      {"id": "lookup", "runtime": "sh", "source": "backend/lookup.sh"}
+    ],
+    "endpoints": [
+      {"id": "lookup", "method": "GET", "path": "lookup", "scriptId": "lookup"}
+    ]
+  }
+}

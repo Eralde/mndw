@@ -189,8 +189,9 @@ func (h *Handler) exec(w http.ResponseWriter, r *http.Request, plugin *registry.
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, scriptPath)
+	configureScriptCommand(cmd)
 	cmd.Dir = plugin.Dir
-	cmd.Env = cgiEnv(r, plugin.Name, endpoint.ID, len(body))
+	cmd.Env = h.cgiEnv(r, plugin.Name, endpoint.ID, len(body))
 	cmd.Stdin = bytes.NewReader(body)
 
 	var stdout, stderr bytes.Buffer
@@ -241,7 +242,7 @@ func (h *Handler) writeScriptError(w http.ResponseWriter, code, message string, 
 
 // cgiEnv builds the CGI-ish environment (design §5.3). It inherits the daemon's env
 // (PATH etc. from the init script) and appends the request-scoped variables.
-func cgiEnv(r *http.Request, pluginID, endpointID string, contentLength int) []string {
+func (h *Handler) cgiEnv(r *http.Request, pluginID, endpointID string, contentLength int) []string {
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/json"
@@ -256,6 +257,10 @@ func cgiEnv(r *http.Request, pluginID, endpointID string, contentLength int) []s
 		"MNDW_PLUGIN_ID="+pluginID,
 		"MNDW_ENDPOINT_ID="+endpointID,
 	)
+
+	if h.cfg.Dev {
+		env = append(env, "MNDW_DEV=1")
+	}
 
 	return env
 }

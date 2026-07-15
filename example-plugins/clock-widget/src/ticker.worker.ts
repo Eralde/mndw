@@ -1,4 +1,4 @@
-export {}
+export {};
 
 export type TickerRequest =
   | {command: 'start'; interval: number}

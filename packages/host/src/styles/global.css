@@ -336,6 +336,7 @@ body {
   cursor: grab;
   user-select: none;
 }
+
 .mndw-grid-tile__title:active {
   cursor: grabbing;
 }

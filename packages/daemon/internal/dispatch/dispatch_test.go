@@ -9,7 +9,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -322,6 +324,51 @@ func TestDispatchTimeout(t *testing.T) {
 	}
 	if c := codeOf(t, resp); c != "SCRIPT_TIMEOUT" {
 		t.Errorf("code = %s, want SCRIPT_TIMEOUT", c)
+	}
+}
+
+func TestDispatchTimeoutKillsScriptDescendants(t *testing.T) {
+	h := newHarness(t, allowAuth{}, Config{Timeout: 500 * time.Millisecond})
+	files := map[string]string{
+		"index.js": "x",
+		"backend/run.sh": `#!/bin/sh
+sleep 5 &
+echo $! > child.pid
+wait
+`,
+		"backend/echo.sh": echoScript,
+	}
+	h.install(t, "svc", manifestJSON("svc", stdBackend), files, state.ApprovalApproved, true)
+
+	started := time.Now()
+	resp, err := http.Get(h.srv.URL + "/api/plugins/svc/run")
+	if err != nil {
+		t.Fatalf("request should return a timeout response: %v", err)
+	}
+	defer resp.Body.Close()
+	if elapsed := time.Since(started); elapsed >= 2*time.Second {
+		t.Fatalf("timeout response took %s; descendant kept command pipes open", elapsed)
+	}
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", resp.StatusCode)
+	}
+	if c := codeOf(t, resp); c != "SCRIPT_TIMEOUT" {
+		t.Errorf("code = %s, want SCRIPT_TIMEOUT", c)
+	}
+
+	pidData, err := os.ReadFile(filepath.Join(h.userDir, "svc", "child.pid"))
+	if err != nil {
+		t.Fatalf("read child pid: %v", err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(pidData)))
+	if err != nil {
+		t.Fatalf("parse child pid: %v", err)
+	}
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+
+	if err := syscall.Kill(pid, 0); err == nil {
+		t.Fatalf("timed-out script descendant pid %d is still running", pid)
 	}
 }
 

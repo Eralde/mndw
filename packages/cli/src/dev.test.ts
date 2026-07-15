@@ -1,12 +1,41 @@
+import {spawnSync} from 'node:child_process';
+import {resolve} from 'node:path';
+
 import {describe, expect, it, vi} from 'vitest';
 
 import {CliError} from './errors.js';
-import {type DevDeps, buildDaemonArgs, buildHostEnv, resolveDaemonLaunch, runDev} from './dev.js';
+import {
+  type DevDeps,
+  buildDaemonArgs,
+  buildHostEnv,
+  defaultBuildGoBackend,
+  resolveDaemonLaunch,
+  runDev,
+} from './dev.js';
 
 /** A stub `readManifest` returning just the name runDev reads, typed to the full contract. */
 function stubReadManifest(name: string): DevDeps['readManifest'] {
   return (() => ({manifest: {name}, path: '/p/manifest.json'})) as unknown as DevDeps['readManifest'];
 }
+
+describe('defaultBuildGoBackend', () => {
+  it.each([
+    ['dns-lookup-widget', 'dns-util'],
+    ['ping-widget', 'ping-util'],
+  ])('builds %s command using its discovered executable name', (pluginName, commandName) => {
+    const runBuild = vi.fn(() => ({status: 0})) as unknown as typeof spawnSync;
+    const pluginDir = resolve(import.meta.dirname, '..', '..', '..', 'example-plugins', pluginName);
+
+    const result = defaultBuildGoBackend(pluginDir, runBuild);
+
+    expect(result).toEqual({success: true, skipped: false});
+    expect(runBuild).toHaveBeenCalledWith(
+      'go',
+      ['build', '-ldflags', '-s -w', '-o', commandName, `./cmd/${commandName}`],
+      expect.objectContaining({cwd: resolve(pluginDir, 'backend'), stdio: 'inherit'}),
+    );
+  });
+});
 
 describe('buildDaemonArgs', () => {
   it('builds a --dev --opkg stub daemon invocation over the temp roots', () => {
@@ -153,6 +182,7 @@ function harness(overrides: Partial<DevDeps> = {}): Harness {
     },
     findDaemonPackageDir: () => '/repo/packages/daemon',
     fileExists: () => true,
+    buildGoBackend: vi.fn(() => ({success: true, skipped: true})),
     env: {PATH: '/bin'},
     ...overrides,
   };
@@ -208,6 +238,35 @@ describe('runDev', () => {
         }),
       }),
     );
+  });
+
+  it('builds the Go backend before spawning the daemon', async () => {
+    const buildGoBackend = vi.fn(() => ({success: true, skipped: false}));
+    const h = harness({buildGoBackend});
+
+    await runDev('example-plugins/demo-page', {}, h.deps);
+
+    expect(buildGoBackend).toHaveBeenCalledWith(expect.stringContaining('demo-page'));
+    expect(h.spawn).toHaveBeenCalled();
+  });
+
+  it('proceeds when Go backend build is skipped (no go.mod)', async () => {
+    const buildGoBackend = vi.fn(() => ({success: true, skipped: true}));
+    const h = harness({buildGoBackend});
+
+    await runDev('example-plugins/demo-page', {}, h.deps);
+
+    expect(buildGoBackend).toHaveBeenCalled();
+    expect(h.spawn).toHaveBeenCalled();
+  });
+
+  it('fails with an actionable error and cleans up when Go backend build fails', async () => {
+    const buildGoBackend = vi.fn(() => ({success: false, skipped: false, error: 'go build failed'}));
+    const h = harness({buildGoBackend});
+
+    await expect(runDev('example-plugins/demo-page', {}, h.deps)).rejects.toThrow(/Go backend build failed/);
+    expect(h.spawn).not.toHaveBeenCalled();
+    expect(h.removeDir).toHaveBeenCalled();
   });
 
   it('fails with an actionable error and copies nothing when the symlink cannot be created', async () => {

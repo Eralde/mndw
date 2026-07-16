@@ -39,7 +39,7 @@ func buildServer(t *testing.T, verifier *authz.Verifier) (*httptest.Server, Conf
 		t.Fatalf("state.Open: %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler, _, _ := assemble(cfg, store, verifier, logger)
+	handler, _, _, _ := assemble(cfg, store, verifier, logger)
 
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)

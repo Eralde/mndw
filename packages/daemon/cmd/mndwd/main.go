@@ -63,7 +63,11 @@ func run(cfg Config) error {
 	}
 
 	verifier := authz.New(cfg.RouterURL, cfg.Dev, logger, authz.Options{})
-	handler, life, reg := assemble(cfg, store, verifier, logger)
+	handler, life, reg, opkgMgr := assemble(cfg, store, verifier, logger)
+
+	// Builtins skip the approval flow (where user-plugin opkg deps are installed), so
+	// install their declared deps here — before their daemons start needing them.
+	installBuiltinDeps(reg, opkgMgr, logger)
 
 	// Start the backend.daemon of every already-approved+enabled plugin (design §5.2:
 	// daemons start on startup). Stop them on graceful shutdown.
@@ -79,10 +83,10 @@ func run(cfg Config) error {
 	return serve(srv, logger)
 }
 
-// assemble builds the fully-wired HTTP handler plus the lifecycle manager and
-// registry the startup/shutdown hooks need. Kept separate from run so the
+// assemble builds the fully-wired HTTP handler plus the lifecycle manager, registry,
+// and opkg manager the startup/shutdown hooks need. Kept separate from run so the
 // integration test can drive the exact same wiring over httptest.
-func assemble(cfg Config, store *state.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry) {
+func assemble(cfg Config, store *state.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry, opkg.Manager) {
 	reg := registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir)
 	opkgMgr := opkg.New(cfg.Opkg, logger)
 	life := lifecycle.New(logger)
@@ -112,7 +116,32 @@ func assemble(cfg Config, store *state.Store, verifier *authz.Verifier, logger *
 	dispatchHandler.Register(mux)
 	wsHandler.Register(mux)
 
-	return httpx.LogMiddleware(logger, mux), life, reg
+	return httpx.LogMiddleware(logger, mux), life, reg, opkgMgr
+}
+
+// opkgInstallTimeout bounds one builtin's dependency install at startup (an install
+// can pull over a slow link). Mirrors mgmt's opkgTimeout for the approval flow.
+const opkgInstallTimeout = 3 * time.Minute
+
+// installBuiltinDeps installs the backend.opkg dependencies of every builtin plugin.
+// Builtins never pass the upload/approve flow (where user-plugin deps are installed),
+// so this runs at startup instead. Best-effort per plugin: a failed install is logged
+// and the remaining builtins still get theirs — one broken plugin must not stop the
+// daemon, and opkg install is idempotent so the next startup retries.
+func installBuiltinDeps(reg *registry.Registry, mgr opkg.Manager, logger *slog.Logger) {
+	for _, plugin := range reg.ListBuiltins() {
+		if plugin.Manifest.Backend == nil || len(plugin.Manifest.Backend.Opkg) == 0 {
+			continue
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), opkgInstallTimeout)
+		err := mgr.Install(ctx, plugin.Manifest.Backend.Opkg)
+		cancel()
+		if err != nil {
+			logger.Error("builtin opkg dependency install failed",
+				"plugin", plugin.Name, "packages", plugin.Manifest.Backend.Opkg, "error", err)
+		}
+	}
 }
 
 // startupActivate starts the backend.daemon of each approved+enabled user plugin. A

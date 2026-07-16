@@ -9,6 +9,12 @@ import type {WidgetSize} from '@mndw/sdk';
 
 export type PluginSource = 'builtin' | 'user';
 
+/**
+ * Dependency-install state surfaced by daemon. Always present. Only builtins with
+ * backend opkg deps installed in background can be non-ready.
+ */
+export type DepsStatus = 'ready' | 'installing' | 'failed';
+
 /** Approval states that can appear in the list (a denied plugin is removed, not listed). */
 export type PluginApproval = 'pending' | 'approved';
 
@@ -33,6 +39,7 @@ interface PluginListEntryBase {
   source: PluginSource;
   approval: PluginApproval;
   enabled: boolean;
+  depsStatus: DepsStatus;
   backend: PluginBackendDescriptor;
 }
 

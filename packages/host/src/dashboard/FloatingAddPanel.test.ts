@@ -7,6 +7,7 @@ vi.mock('../runtime/plugin-registry.js', () => ({
 
 import {type LoadedWidget, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
+import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import FloatingAddPanel from './FloatingAddPanel.svelte';
 
 const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
@@ -20,6 +21,7 @@ function widget(name: string, label: string): LoadedWidget {
     source: 'builtin',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     backend: emptyBackend,
     type: 'widget',
     size: {w: 4, h: 3},
@@ -66,6 +68,7 @@ describe('FloatingAddPanel', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    replaceDepsStatuses([]);
     vi.clearAllMocks();
   });
 
@@ -102,6 +105,28 @@ describe('FloatingAddPanel', () => {
 
     void unmount(component);
     target.remove();
+  });
+
+  it('annotates installing and failed dependencies while keeping add enabled', () => {
+    replaceDepsStatuses([{name: 'traffic', depsStatus: 'installing'}]);
+
+    const first = mountPanel();
+    const trafficButton = widgetButtons(first.target).find((button) => button.textContent?.includes('Traffic'));
+
+    expect(trafficButton?.textContent).toContain('preparing…');
+    expect(trafficButton?.disabled).toBe(false);
+    trafficButton?.click();
+    expect(first.onAddWidget).toHaveBeenCalledWith('traffic');
+    void unmount(first.component);
+
+    replaceDepsStatuses([{name: 'traffic', depsStatus: 'failed'}]);
+
+    const second = mountPanel();
+
+    expect(widgetButtons(second.target).find((button) => button.textContent?.includes('Traffic'))?.textContent)
+      .toContain('unavailable');
+
+    void unmount(second.component);
   });
 
   it('focuses the first widget button when opened', async () => {

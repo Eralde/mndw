@@ -4,6 +4,7 @@ import {createPluginContext} from '../runtime/plugin-context.js';
 import type {OverlayTeardownReason} from '../runtime/plugin-lifecycle.js';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
+import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {createWidgetContext} from './widget-context.js';
 import {getNextInstanceId} from './widget-counter.js';
 import {getWidgetSize} from './widget-size.js';
@@ -23,6 +24,8 @@ interface TileEntry {
   handle: WidgetTileHandle;
   pluginName: string;
   instanceId: string;
+  /** True while tile shows installing placeholder awaiting hydration. */
+  pending: boolean;
 }
 
 // Keyed by GridStack widget id (`widget-<instanceId>`).
@@ -78,15 +81,93 @@ export function addWidgetTile(
   // Force re-init so the handle selector finds the now-present title bar element.
   grid.prepareDragDrop(gridItem, true);
 
-  const context = createWidgetContext(pluginName, instanceId);
+  const status = getDepsStatus(pluginName);
+  let handle: WidgetTileHandle;
 
-  // mountWidgetTile tracks async (promise-based) mounts too, so remove/teardown reliably
-  // dispose the instance and its overlays even if createInstance resolves after removal.
-  const handle = mountWidgetTile(body, plugin, context);
+  if (status === 'ready') {
+    const context = createWidgetContext(pluginName, instanceId);
 
-  tileRegistry.set(id, {el: contentEl, handle, pluginName, instanceId});
+    // mountWidgetTile tracks async (promise-based) mounts too, so remove/teardown reliably
+    // dispose the instance and its overlays even if createInstance resolves after removal.
+    handle = mountWidgetTile(body, plugin, context);
+  } else {
+    renderTileNotice(body, status);
+    handle = placeholderTileHandle();
+  }
+
+  tileRegistry.set(id, {el: contentEl, handle, pluginName, instanceId, pending: status === 'installing'});
 
   return id;
+}
+
+const PREPARING_TEXT = 'Preparing… installing dependencies';
+const FAILED_TEXT = 'Dependency install failed';
+
+/** A no-op handle for a placeholder tile with no mounted plugin instance. */
+function placeholderTileHandle(): WidgetTileHandle {
+  return {
+    getMounted: (): null => {
+      return null;
+    },
+    whenReady: (): Promise<boolean> => {
+      return Promise.resolve(false);
+    },
+    dispose: (): void => {},
+  };
+}
+
+/** Replaces tile body content with a host-owned dependency-status notice. */
+function renderTileNotice(body: HTMLElement, kind: 'installing' | 'failed'): void {
+  body.textContent = '';
+
+  const notice = document.createElement('div');
+
+  notice.className = `mndw-grid-tile__notice mndw-grid-tile__notice--${kind}`;
+  notice.textContent = kind === 'installing' ? PREPARING_TEXT : FAILED_TEXT;
+  body.appendChild(notice);
+}
+
+function tileBody(contentEl: HTMLElement): HTMLElement {
+  return contentEl.querySelector<HTMLElement>('.mndw-grid-tile__body') ?? contentEl;
+}
+
+/** Mounts pending placeholders when dependency status transitions to ready or failed. */
+export function hydratePendingTiles(): void {
+  for (const [id, tile] of tileRegistry) {
+    if (!tile.pending) {
+      continue;
+    }
+
+    const status = getDepsStatus(tile.pluginName);
+
+    if (status === 'installing') {
+      continue;
+    }
+
+    const body = tileBody(tile.el);
+
+    if (status === 'failed') {
+      renderTileNotice(body, 'failed');
+      tileRegistry.set(id, {...tile, pending: false});
+
+      continue;
+    }
+
+    const plugin = pluginRegistry.get(tile.pluginName);
+
+    if (plugin?.entry.type !== 'widget') {
+      tileRegistry.set(id, {...tile, pending: false});
+
+      continue;
+    }
+
+    body.textContent = '';
+
+    const context = createWidgetContext(tile.pluginName, tile.instanceId);
+    const handle = mountWidgetTile(body, plugin, context);
+
+    tileRegistry.set(id, {...tile, handle, pending: false});
+  }
 }
 
 /**
@@ -160,7 +241,7 @@ export async function remountWidgetTiles(
   prior: LoadedPlugin,
 ): Promise<boolean> {
   const affected = [...tileRegistry]
-    .filter(([, tile]) => tile.pluginName === pluginName)
+    .filter(([, tile]) => tile.pluginName === pluginName && !tile.pending)
     .map(([id, tile]) => ({id, el: tile.el, instanceId: tile.instanceId, current: tile.handle}));
 
   if (affected.length === 0) {
@@ -177,7 +258,7 @@ export async function remountWidgetTiles(
     affected.map((tile) => {
       const handle = remountTileBody(tile.el, plugin, tile.instanceId);
 
-      tileRegistry.set(tile.id, {el: tile.el, handle, pluginName, instanceId: tile.instanceId});
+      tileRegistry.set(tile.id, {el: tile.el, handle, pluginName, instanceId: tile.instanceId, pending: false});
 
       return handle;
     });

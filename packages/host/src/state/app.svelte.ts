@@ -1,5 +1,6 @@
 import type {HostInfo, MndwThemeName} from '@mndw/sdk';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';
+import {stopDepsPolling} from './deps-status.svelte.js';
 
 interface AppState {
   /** True once the device session is confirmed valid. */
@@ -21,6 +22,14 @@ export const appState: AppState = $state({
   sidebarCollapsed: false,
   theme: getTheme(),
 });
+
+/** Resets app to login and stops dependency polling for prior session. */
+export function resetToLogin(): void {
+  stopDepsPolling();
+  appState.authenticated = false;
+  appState.ready = false;
+  appState.hostInfo = null;
+}
 
 // Keep the reactive UI mirror in sync with the theme service (source of truth).
 subscribeTheme((theme) => {

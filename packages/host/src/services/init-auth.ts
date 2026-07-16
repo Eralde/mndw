@@ -3,7 +3,13 @@ import {loadSandboxPlugin} from '../runtime/sandbox-loader.js';
 import {sandboxVirtualImports, setupSandboxHmr} from '../runtime/sandbox-virtual.js';
 import {createAppRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
+import {anyInstalling, startDepsPolling} from '../state/deps-status.svelte.js';
 import {fetchHostInfo} from './host-info.service.js';
+
+/** True only in a `mndw dev` build; `typeof` guards the undefined case (e.g. under vitest). */
+function isSandboxMode(): boolean {
+  return typeof __MNDW_SANDBOX__ !== 'undefined' && __MNDW_SANDBOX__ === true;
+}
 
 /**
  * Bring the app up for an authenticated session: fetch device info (best-effort), populate
@@ -27,13 +33,12 @@ export async function initAuthenticated(): Promise<void> {
     setupSandboxHmr();
   } else {
     await loadPlugins();
+
+    if (anyInstalling()) {
+      startDepsPolling();
+    }
   }
 
   createAppRouter();
   appState.ready = true;
-}
-
-/** True only in a `mndw dev` build; `typeof` guards the undefined case (e.g. under vitest). */
-function isSandboxMode(): boolean {
-  return typeof __MNDW_SANDBOX__ !== 'undefined' && __MNDW_SANDBOX__ === true;
 }

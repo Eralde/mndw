@@ -42,7 +42,10 @@ func newStub(logger *slog.Logger) *stubManager {
 	}
 }
 
-func (m *stubManager) Install(_ context.Context, packages []string) error {
+func (m *stubManager) Install(ctx context.Context, packages []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := validate(packages); err != nil {
 		return err
 	}
@@ -60,7 +63,10 @@ func (m *stubManager) Install(_ context.Context, packages []string) error {
 	return nil
 }
 
-func (m *stubManager) Remove(_ context.Context, packages []string) error {
+func (m *stubManager) Remove(ctx context.Context, packages []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := validate(packages); err != nil {
 		return err
 	}
@@ -75,6 +81,9 @@ func (m *stubManager) Remove(_ context.Context, packages []string) error {
 }
 
 func (m *stubManager) Upgrade(ctx context.Context, packages []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := validate(packages); err != nil {
 		return err
 	}
@@ -83,13 +92,19 @@ func (m *stubManager) Upgrade(ctx context.Context, packages []string) error {
 	return m.Install(ctx, packages)
 }
 
-func (m *stubManager) Update(_ context.Context) error {
+func (m *stubManager) Update(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.logger.Info("opkg update (stub)")
 
 	return nil
 }
 
-func (m *stubManager) ListInstalled(_ context.Context) ([]string, error) {
+func (m *stubManager) ListInstalled(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -102,7 +117,10 @@ func (m *stubManager) ListInstalled(_ context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (m *stubManager) ListAvailable(_ context.Context) ([]string, error) {
+func (m *stubManager) ListAvailable(ctx context.Context) ([]string, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -123,7 +141,10 @@ func (m *stubManager) ListAvailable(_ context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (m *stubManager) List(_ context.Context) ([]PackageEntry, error) {
+func (m *stubManager) List(ctx context.Context) ([]PackageEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

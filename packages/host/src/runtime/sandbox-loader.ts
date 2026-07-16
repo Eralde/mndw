@@ -96,6 +96,7 @@ export function manifestToListEntry(manifest: PluginManifest): PluginListEntry {
     source: 'builtin' as const,
     approval: 'approved' as const,
     enabled: true,
+    depsStatus: 'ready' as const,
     backend: descriptorFromManifest(manifest.backend),
   };
 

@@ -96,7 +96,7 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin approved", "plugin", name)
-	httpx.WriteJSON(w, h.logger, http.StatusOK, entryFrom(m, state.SourceUser, state.ApprovalApproved, true))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, state.ApprovalApproved, true))
 }
 
 // installDeps installs a plugin's declared opkg packages. No-op when none declared.
@@ -147,7 +147,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p.Enabled {
-		httpx.WriteJSON(w, h.logger, http.StatusOK, entryFrom(m, state.SourceUser, p.Approval, true))
+		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, p.Approval, true))
 
 		return
 	}
@@ -168,7 +168,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin enabled", "plugin", name)
-	httpx.WriteJSON(w, h.logger, http.StatusOK, entryFrom(m, state.SourceUser, state.ApprovalApproved, true))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, state.ApprovalApproved, true))
 }
 
 // handleDisable deactivates a plugin: stop its daemon and mark disabled. Routes are
@@ -190,7 +190,7 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !p.Enabled {
-		httpx.WriteJSON(w, h.logger, http.StatusOK, entryFrom(m, state.SourceUser, p.Approval, false))
+		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, p.Approval, false))
 
 		return
 	}
@@ -209,7 +209,7 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin disabled", "plugin", name)
-	httpx.WriteJSON(w, h.logger, http.StatusOK, entryFrom(m, state.SourceUser, p.Approval, false))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, p.Approval, false))
 }
 
 // lookupForToggle resolves a user plugin and its manifest for enable/disable,

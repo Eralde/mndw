@@ -16,6 +16,7 @@ import {
 } from '../runtime/sandbox-loader.js';
 import {appRouter, routeToPluginName} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
+import {getDepsStatus} from '../state/deps-status.svelte.js';
 
 interface ActiveMount {
   generation: number;
@@ -47,10 +48,18 @@ function bindHost(node: HTMLElement): {destroy(): void} {
 const pluginName = $derived(
   routeToPluginName.get(appRouter.route.pathname) ?? null,
 );
+const depsState = $derived(
+  pluginName === null ? 'ready' : getDepsStatus(pluginName),
+);
+const mountTarget = $derived(depsState === 'ready' ? pluginName : null);
 
 // Each mount lives in its own child container inside the stable host, so disposing a
 // stale generation only clears that generation's DOM — never the current page.
 function disposeActive(): void {
+  // A dependency status change can dispose without a replacement mount. Invalidate
+  // pending async createInstance calls so late resolutions are always torn down.
+  generation += 1;
+
   if (active === null) {
     return;
   }
@@ -60,14 +69,14 @@ function disposeActive(): void {
   active = null;
 }
 
-function mountCurrent(): void {
-  currentPluginName = pluginName;
+function mountCurrent(target: string | null): void {
+  currentPluginName = target;
 
-  if (pluginName === null) {
+  if (target === null) {
     return;
   }
 
-  const plugin = pluginRegistry.get(pluginName);
+  const plugin = pluginRegistry.get(target);
 
   if (
     host === undefined || plugin === undefined || plugin.entry.type !== 'page'
@@ -166,13 +175,13 @@ function handleSandboxReload(event: Event): void {
 }
 
 $effect(() => {
-  // Track the reactive route; re-mount only when the resolved plugin actually changes.
-  if (pluginName === currentPluginName) {
+  // Track route + deps-status; remount only when effective target changes.
+  if (mountTarget === currentPluginName) {
     return;
   }
 
   disposeActive();
-  mountCurrent();
+  mountCurrent(mountTarget);
 });
 
 $effect(() => {
@@ -185,8 +194,23 @@ $effect(() => {
 onDestroy(disposeActive);
 </script>
 
-<div
-  class="mndw-page-plugin"
-  use:bindHost
->
+<div class="mndw-page-plugin-wrap">
+  {#if pluginName !== null && depsState !== 'ready'}
+    <div
+      class="mndw-page-plugin__notice"
+      role="status"
+    >
+      {
+        depsState === 'installing'
+        ? 'Preparing… installing dependencies'
+        : 'Dependency install failed'
+      }
+    </div>
+  {/if}
+
+  <div
+    class="mndw-page-plugin"
+    use:bindHost
+  >
+  </div>
 </div>

@@ -13,6 +13,7 @@ function entry(name: string, over: Partial<PluginListEntry> = {}): PluginListEnt
     source: 'user',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     backend,
     type: 'widget',
     size: {w: 4, h: 3},

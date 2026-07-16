@@ -14,6 +14,7 @@ import (
 
 	"mndwd/internal/lifecycle"
 	"mndwd/internal/opkg"
+	"mndwd/internal/readiness"
 	"mndwd/internal/state"
 )
 
@@ -33,7 +34,7 @@ func newTestServer(t *testing.T) (*httptest.Server, Config) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mux := http.NewServeMux()
-	New(cfg, store, opkg.New("stub", logger), lifecycle.New(logger), logger).Register(mux)
+	New(cfg, store, opkg.New("stub", logger), lifecycle.New(logger), readiness.New(), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -61,12 +62,58 @@ func newTestServerWithOpkg(t *testing.T, opkgMgr opkg.Manager) (*httptest.Server
 
 	logger := discardLogger()
 	mux := http.NewServeMux()
-	New(cfg, store, opkgMgr, lifecycle.New(logger), logger).Register(mux)
+	New(cfg, store, opkgMgr, lifecycle.New(logger), readiness.New(), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
 	return srv, cfg
+}
+
+// trackerStub satisfies ReadinessSource with a fixed map.
+type trackerStub map[string]readiness.State
+
+func (s trackerStub) Get(name string) (readiness.State, bool) {
+	st, ok := s[name]
+
+	return st, ok
+}
+
+func newTestServerWithReadiness(t *testing.T, ready ReadinessSource) (*httptest.Server, Config) {
+	t.Helper()
+	root := t.TempDir()
+	cfg := Config{
+		StagingDir:        filepath.Join(root, "staging"),
+		UserPluginsDir:    filepath.Join(root, "user-plugins"),
+		BuiltinPluginsDir: filepath.Join(root, "builtin"),
+		MaxUploadBytes:    10 << 20,
+	}
+	store, err := state.Open(filepath.Join(root, "data", "state.json"))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+
+	logger := discardLogger()
+	mux := http.NewServeMux()
+	New(cfg, store, opkg.New("stub", logger), lifecycle.New(logger), ready, logger).Register(mux)
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	return srv, cfg
+}
+
+// writeBuiltinFixture drops a minimal valid widget manifest into the builtin dir.
+func writeBuiltinFixture(t *testing.T, cfg Config, name string) {
+	t.Helper()
+	dir := filepath.Join(cfg.BuiltinPluginsDir, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"manifestVersion":2,"name":"` + name + `","version":"0.1.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}}`
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // makeZip builds an in-memory plugin archive from path→content pairs.
@@ -402,6 +449,43 @@ func TestBuiltinAppearsInList(t *testing.T) {
 	}
 	if e.Source != state.SourceBuiltin || e.Approval != state.ApprovalApproved || !e.Enabled {
 		t.Errorf("builtin should be builtin/approved/enabled, got %s/%s/%v", e.Source, e.Approval, e.Enabled)
+	}
+}
+
+func TestListReportsDepsStatus(t *testing.T) {
+	srv, cfg := newTestServerWithReadiness(t, trackerStub{"ttyd-widget": readiness.StateInstalling})
+	writeBuiltinFixture(t, cfg, "ttyd-widget")
+	writeBuiltinFixture(t, cfg, "clock-widget")
+
+	byName := make(map[string]string)
+	for _, e := range listPlugins(t, srv, "/api/mgmt/list") {
+		byName[e.Name] = e.DepsStatus
+	}
+
+	if byName["ttyd-widget"] != "installing" {
+		t.Errorf("ttyd-widget depsStatus = %q, want installing", byName["ttyd-widget"])
+	}
+	if byName["clock-widget"] != "ready" {
+		t.Errorf("clock-widget depsStatus = %q, want ready", byName["clock-widget"])
+	}
+}
+
+func TestMutationResponsesCarryDepsStatus(t *testing.T) {
+	srv, _ := newTestServer(t)
+
+	zipBytes := makeZip(t, map[string]string{
+		"manifest.json": `{"manifestVersion":2,"name":"up-widget","version":"0.1.0","type":"widget","label":"up-widget","entry":"index.js","size":{"w":4,"h":3}}`,
+		"index.js":      "export function createInstance() {}",
+	})
+	resp := upload(t, srv, zipBytes)
+	defer resp.Body.Close()
+
+	var entry ListEntry
+	if err := json.NewDecoder(resp.Body).Decode(&entry); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+	if entry.DepsStatus != "ready" {
+		t.Errorf("upload response depsStatus = %q, want ready", entry.DepsStatus)
 	}
 }
 

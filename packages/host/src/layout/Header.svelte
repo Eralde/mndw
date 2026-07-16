@@ -1,13 +1,7 @@
 <script lang="ts">
 import {rciService} from '../services/rci.service.js';
 import {toggleTheme} from '../services/theme.service.js';
-import {appState} from '../state/app.svelte.js';
-
-function resetToLogin(): void {
-  appState.authenticated = false;
-  appState.ready = false;
-  appState.hostInfo = null;
-}
+import {appState, resetToLogin} from '../state/app.svelte.js';
 
 function handleLogout(): void {
   // Reset to the login screen regardless of whether the device ack's the logout.

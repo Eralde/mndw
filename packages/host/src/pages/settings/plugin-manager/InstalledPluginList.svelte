@@ -4,6 +4,7 @@ import type {
   PluginListEntry,
 } from '../../../runtime/plugin-types.js';
 import {getPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
+import {getDepsStatus} from '../../../state/deps-status.svelte.js';
 
 interface Props {
   items: PluginListEntry[];
@@ -71,6 +72,7 @@ let {
       {#each items as item (item.name)}
         {@const summary = backendSummary(item.backend)}
         {@const versionWarnings = getPluginVersionWarnings(item.name)}
+        {@const deps = getDepsStatus(item.name)}
         <li class="mndw-installed__item">
           <div class="mndw-installed__identity">
             <strong>{item.label}</strong>
@@ -83,6 +85,14 @@ let {
             <span>Source: {item.source}</span>
             {#if item.source === 'builtin'}
               <span class="mndw-installed__builtin">Built-in</span>
+            {/if}
+            {#if deps === 'installing'}
+              <span class="mndw-installed__deps-badge"
+              >Installing dependencies…</span>
+            {:else if deps === 'failed'}
+              <span
+                class="mndw-installed__deps-badge mndw-installed__deps-badge--failed"
+              >Dependency install failed</span>
             {/if}
             {#if versionWarnings.length > 0}
               <span class="mndw-installed__version-badge"
@@ -236,6 +246,15 @@ let {
 .mndw-installed__version-badge {
   color: var(--mndw-warning);
   font-weight: var(--mndw-weight-semibold);
+}
+
+.mndw-installed__deps-badge {
+  color: var(--mndw-warning);
+  font-weight: var(--mndw-weight-semibold);
+}
+
+.mndw-installed__deps-badge--failed {
+  color: var(--mndw-danger);
 }
 
 .mndw-installed__version-warning {

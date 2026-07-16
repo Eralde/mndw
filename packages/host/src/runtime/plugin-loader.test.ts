@@ -4,6 +4,7 @@ import {pluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, getPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
 import {appState} from '../state/app.svelte.js';
+import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
 
 const emptyBackend: PluginBackendDescriptor = {
   endpoints: {},
@@ -23,6 +24,7 @@ function widget(name: string, over: Partial<PluginListEntry> = {}): PluginListEn
     source: 'user',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     size: {w: 4, h: 3},
     backend: emptyBackend,
     ...over,
@@ -39,6 +41,7 @@ function page(name: string, route: string, over: Partial<PluginListEntry> = {}):
     source: 'builtin',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     route,
     backend: emptyBackend,
     ...over,
@@ -59,6 +62,7 @@ function harness(entries: PluginListEntry[], modules: Record<string, unknown> = 
 afterEach(() => {
   clearPluginVersionWarnings();
   pluginRegistry.clear();
+  replaceDepsStatuses([]);
   appState.pluginLoadError = null;
   vi.restoreAllMocks();
 });
@@ -75,6 +79,18 @@ describe('loadPlugins', () => {
     ).toEqual(['alpha', 'beta']);
     expect(h.importModule).toHaveBeenCalledWith('/user-plugins/alpha/index.js');
     expect(h.importModule).toHaveBeenCalledWith('/plugins/beta/index.js');
+  });
+
+  it('seeds dependency statuses from the daemon list', async () => {
+    const h = harness([
+      widget('installing', {depsStatus: 'installing'}),
+      page('failed', '/failed', {depsStatus: 'failed'}),
+    ]);
+
+    await loadPlugins(h);
+
+    expect(getDepsStatus('installing')).toBe('installing');
+    expect(getDepsStatus('failed')).toBe('failed');
   });
 
   it('loads a per-plugin stylesheet from the plugin dir', async () => {

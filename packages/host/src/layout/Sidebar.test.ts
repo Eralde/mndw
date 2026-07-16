@@ -20,6 +20,7 @@ function page(name: string, label: string, route: string): LoadedPage {
     source: 'builtin',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     backend: emptyBackend,
     type: 'page',
     route,

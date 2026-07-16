@@ -6,7 +6,7 @@ import App from './App.svelte';
 import {initAuthenticated} from './services/init-auth.js';
 import {rciService} from './services/rci.service.js';
 import {initTheme} from './services/theme.service.js';
-import {appState} from './state/app.svelte.js';
+import {appState, resetToLogin} from './state/app.svelte.js';
 
 // A broken plugin must never take down the host. These window-level guards swallow
 // errors originating from plugin bundle URLs; the per-widget error boundary (Phase 4)
@@ -59,9 +59,7 @@ async function init(): Promise<void> {
   }
 
   rciService.authError$.subscribe(() => {
-    appState.authenticated = false;
-    appState.ready = false;
-    appState.hostInfo = null;
+    resetToLogin();
   });
 
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion

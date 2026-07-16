@@ -28,6 +28,7 @@ function widgetEntry(name: string): WidgetListEntry {
     source: 'builtin',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     backend: {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false},
     type: 'widget',
     size: {w: 4, h: 3},

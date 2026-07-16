@@ -22,6 +22,7 @@ import (
 	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/opkg"
+	"mndwd/internal/readiness"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
 	"mndwd/internal/wsproxy"
@@ -63,16 +64,27 @@ func run(cfg Config) error {
 	}
 
 	verifier := authz.New(cfg.RouterURL, cfg.Dev, logger, authz.Options{})
-	handler, life, reg, opkgMgr := assemble(cfg, store, verifier, logger)
+	handler, life, reg, opkgMgr, tracker := assemble(cfg, store, verifier, logger)
+
+	// run owns all lifetimes: the signal context drives graceful HTTP shutdown, and
+	// background install work runs under a child so a signal cancels installs
+	// immediately — without waiting for HTTP drain.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	// Builtins skip the approval flow (where user-plugin opkg deps are installed), so
-	// install their declared deps here — before their daemons start needing them.
-	installBuiltinDeps(reg, opkgMgr, logger)
+	// their deps install in the background — off the critical path, so the UI's first
+	// request is served immediately. Pre-registration must precede the listener bind.
+	coord := newStartupCoordinator(reg, opkgMgr, life, tracker, opkgInstallRetryDelays, logger)
+	coord.PreRegister()
 
-	// Start the backend.daemon of every already-approved+enabled plugin (design §5.2:
-	// daemons start on startup). Stop them on graceful shutdown.
-	startupActivate(reg, life, store, logger)
-	defer shutdownDaemons(reg, life, store, logger)
+	// Start backend.daemon hooks whose dependencies need no background install;
+	// dep-declaring builtins chain behind their install.
+	startupActivate(reg, life, store, coord.Deferred, logger)
+
+	bgCtx, bgCancel := context.WithCancel(ctx)
+	defer bgCancel()
+	coord.Run(bgCtx)
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
@@ -80,23 +92,34 @@ func run(cfg Config) error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	return serve(srv, logger)
+	err = serve(ctx, srv, logger)
+
+	// Cancel background work, join it so Start cannot race Stop, then stop daemons.
+	// Deferred builtins whose Start hook never ran are excluded from shutdown.
+	bgCancel()
+	coord.Wait()
+	shutdownDaemons(reg, life, store, func(name string) bool {
+		return coord.Deferred(name) && !coord.Started(name)
+	}, logger)
+
+	return err
 }
 
 // assemble builds the fully-wired HTTP handler plus the lifecycle manager, registry,
 // and opkg manager the startup/shutdown hooks need. Kept separate from run so the
 // integration test can drive the exact same wiring over httptest.
-func assemble(cfg Config, store *state.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry, opkg.Manager) {
+func assemble(cfg Config, store *state.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry, opkg.Manager, *readiness.Tracker) {
 	reg := registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir)
 	opkgMgr := opkg.New(cfg.Opkg, logger)
 	life := lifecycle.New(logger)
+	tracker := readiness.New()
 
 	mgmtHandler := mgmt.New(mgmt.Config{
 		StagingDir:        cfg.StagingDir(),
 		UserPluginsDir:    cfg.UserPluginsDir,
 		BuiltinPluginsDir: cfg.BuiltinPluginsDir,
 		MaxUploadBytes:    maxUploadBytes,
-	}, store, opkgMgr, life, logger)
+	}, store, opkgMgr, life, tracker, logger)
 
 	dispatchHandler := dispatch.New(dispatch.Config{
 		Timeout:           cfg.ExecTimeout,
@@ -116,7 +139,7 @@ func assemble(cfg Config, store *state.Store, verifier *authz.Verifier, logger *
 	dispatchHandler.Register(mux)
 	wsHandler.Register(mux)
 
-	return httpx.LogMiddleware(logger, mux), life, reg, opkgMgr
+	return httpx.LogMiddleware(logger, mux), life, reg, opkgMgr, tracker
 }
 
 // opkgInstallTimeout bounds one builtin's dependency install at startup (an install
@@ -126,58 +149,14 @@ const opkgInstallTimeout = 3 * time.Minute
 // opkgInstallRetryDelays are the waits between startup install attempts. When the ipk
 // postinst starts the daemon, the parent `opkg install mndw...` still holds the global
 // opkg lock, so the first attempt fails instantly — the retries land after that
-// window closes (and also absorb transient boot conditions). Var, not const: tests
-// shrink the delays. Failures on the lock are instant, so the worst-case added
-// startup delay stays close to the sum of the delays.
+// window closes (and also absorb transient boot conditions). Failures on the lock are
+// instant, so the worst-case added startup delay stays close to the sum of the delays.
 var opkgInstallRetryDelays = []time.Duration{5 * time.Second, 15 * time.Second}
-
-// installBuiltinDeps installs the backend.opkg dependencies of every builtin plugin.
-// Builtins never pass the upload/approve flow (where user-plugin deps are installed),
-// so this runs at startup instead. Best-effort per plugin: after the retries a failed
-// install is logged and the remaining builtins still get theirs — one broken plugin
-// must not stop the daemon, and opkg install is idempotent so the next startup
-// retries from scratch.
-func installBuiltinDeps(reg *registry.Registry, mgr opkg.Manager, logger *slog.Logger) {
-	for _, plugin := range reg.ListBuiltins() {
-		if plugin.Manifest.Backend == nil || len(plugin.Manifest.Backend.Opkg) == 0 {
-			continue
-		}
-		pkgs := plugin.Manifest.Backend.Opkg
-
-		var err error
-		for attempt := 0; ; attempt++ {
-			err = installOnce(mgr, pkgs)
-			if err == nil || attempt >= len(opkgInstallRetryDelays) {
-				break
-			}
-			delay := opkgInstallRetryDelays[attempt]
-			logger.Warn("builtin opkg dependency install failed; retrying",
-				"plugin", plugin.Name, "packages", pkgs, "delay", delay, "error", err)
-			time.Sleep(delay)
-		}
-		if err != nil {
-			logger.Error("builtin opkg dependency install failed",
-				"plugin", plugin.Name, "packages", pkgs, "error", err)
-
-			continue
-		}
-
-		logger.Info("builtin opkg dependencies installed", "plugin", plugin.Name, "packages", pkgs)
-	}
-}
-
-// installOnce runs a single bounded install attempt.
-func installOnce(mgr opkg.Manager, pkgs []string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), opkgInstallTimeout)
-	defer cancel()
-
-	return mgr.Install(ctx, pkgs)
-}
 
 // startupActivate starts the backend.daemon of each approved+enabled user plugin. A
 // hook failure is logged, never fatal — one broken plugin must not stop the daemon.
-func startupActivate(reg *registry.Registry, life *lifecycle.Manager, store *state.Store, logger *slog.Logger) {
-	forEachDaemonPlugin(reg, store, func(name, dir string, d *manifest.Daemon) {
+func startupActivate(reg *registry.Registry, life daemonStarter, store *state.Store, skip func(name string) bool, logger *slog.Logger) {
+	forEachDaemonPlugin(reg, store, skip, func(name, dir string, d *manifest.Daemon) {
 		if err := life.Start(name, dir, d.Start); err != nil {
 			logger.Error("startup daemon activation failed", "plugin", name, "error", err)
 		}
@@ -186,8 +165,8 @@ func startupActivate(reg *registry.Registry, life *lifecycle.Manager, store *sta
 
 // shutdownDaemons stops the backend.daemon of each approved+enabled user plugin on
 // graceful shutdown so no orphaned processes survive the daemon.
-func shutdownDaemons(reg *registry.Registry, life *lifecycle.Manager, store *state.Store, logger *slog.Logger) {
-	forEachDaemonPlugin(reg, store, func(name, dir string, d *manifest.Daemon) {
+func shutdownDaemons(reg *registry.Registry, life daemonStopper, store *state.Store, skip func(name string) bool, logger *slog.Logger) {
+	forEachDaemonPlugin(reg, store, skip, func(name, dir string, d *manifest.Daemon) {
 		if err := life.Stop(name, dir, d.Stop); err != nil {
 			logger.Error("shutdown daemon stop failed", "plugin", name, "error", err)
 		}
@@ -196,7 +175,7 @@ func shutdownDaemons(reg *registry.Registry, life *lifecycle.Manager, store *sta
 
 // forEachDaemonPlugin invokes fn for every approved+enabled plugin that declares a
 // backend.daemon — both user plugins tracked in state and builtins discovered on disk.
-func forEachDaemonPlugin(reg *registry.Registry, store *state.Store, fn func(name, dir string, d *manifest.Daemon)) {
+func forEachDaemonPlugin(reg *registry.Registry, store *state.Store, skip func(name string) bool, fn func(name, dir string, d *manifest.Daemon)) {
 	seen := make(map[string]bool)
 
 	snap := store.Snapshot()
@@ -206,6 +185,9 @@ func forEachDaemonPlugin(reg *registry.Registry, store *state.Store, fn func(nam
 		}
 		plugin, ok := reg.Resolve(name)
 		if !ok || plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Daemon == nil {
+			continue
+		}
+		if skip != nil && skip(name) {
 			continue
 		}
 		fn(name, plugin.Dir, plugin.Manifest.Backend.Daemon)
@@ -219,16 +201,16 @@ func forEachDaemonPlugin(reg *registry.Registry, store *state.Store, fn func(nam
 		if plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Daemon == nil {
 			continue
 		}
+		if skip != nil && skip(plugin.Name) {
+			continue
+		}
 		fn(plugin.Name, plugin.Dir, plugin.Manifest.Backend.Daemon)
 	}
 }
 
-// serve runs the HTTP server until a termination signal arrives, then shuts down
-// gracefully.
-func serve(srv *http.Server, logger *slog.Logger) error {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
+// serve runs the HTTP server until ctx is canceled or the listener fails, then
+// shuts down gracefully.
+func serve(ctx context.Context, srv *http.Server, logger *slog.Logger) error {
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("mndwd listening", "addr", srv.Addr, "version", version)

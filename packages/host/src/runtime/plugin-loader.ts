@@ -1,6 +1,7 @@
 import type {MndwPlugin} from '@mndw/sdk';
 import {MGMT_LIST_URL, PLUGIN_SOURCE_PATHS} from '../constants.js';
 import {appState} from '../state/app.svelte.js';
+import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {checkPluginVersions, readPluginLock} from './plugin-lock.js';
 import {pluginRegistry} from './plugin-registry.js';
 import type {PluginListEntry} from './plugin-types.js';
@@ -162,6 +163,7 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   const checkVersions = deps.checkVersions ?? defaultCheckVersions;
 
   pluginRegistry.clear();
+  replaceDepsStatuses([]);
   appState.pluginLoadError = null;
   clearPluginVersionWarnings();
 
@@ -175,6 +177,8 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
 
     return;
   }
+
+  replaceDepsStatuses(entries);
 
   // Only enabled+approved plugins are runnable and served on disk; pending/disabled
   // ones appear in the list (for the settings UI) but must not load into the runtime.

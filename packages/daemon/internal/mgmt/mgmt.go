@@ -19,6 +19,7 @@ import (
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/opkg"
+	"mndwd/internal/readiness"
 	"mndwd/internal/state"
 )
 
@@ -32,6 +33,12 @@ const opkgTimeout = 3 * time.Minute
 type DaemonLifecycle interface {
 	Start(name, dir, start string) error
 	Stop(name, dir, stop string) error
+}
+
+// ReadinessSource reports a plugin's dependency-install state. Satisfied by
+// *readiness.Tracker; declared here so mgmt depends on the behavior, not the type.
+type ReadinessSource interface {
+	Get(name string) (readiness.State, bool)
 }
 
 // Config carries the on-disk locations the handlers operate over.
@@ -52,12 +59,13 @@ type Handler struct {
 	store  *state.Store
 	opkg   opkg.Manager
 	life   DaemonLifecycle
+	ready  ReadinessSource
 	logger *slog.Logger
 }
 
 // New constructs a management Handler.
-func New(cfg Config, store *state.Store, opkgMgr opkg.Manager, life DaemonLifecycle, logger *slog.Logger) *Handler {
-	return &Handler{cfg: cfg, store: store, opkg: opkgMgr, life: life, logger: logger}
+func New(cfg Config, store *state.Store, opkgMgr opkg.Manager, life DaemonLifecycle, ready ReadinessSource, logger *slog.Logger) *Handler {
+	return &Handler{cfg: cfg, store: store, opkg: opkgMgr, life: life, ready: ready, logger: logger}
 }
 
 // Register wires the management routes onto mux. Method-qualified patterns give a
@@ -90,18 +98,22 @@ func opkgContext() (context.Context, context.CancelFunc) {
 // ListEntry is one plugin as surfaced by list/pending. It merges manifest display
 // fields with runtime state and the client-facing backend descriptor (design §3.3).
 type ListEntry struct {
-	Name     string                      `json:"name"`
-	Type     string                      `json:"type"`
-	Version  string                      `json:"version"`
-	Label    string                      `json:"label"`
-	Entry    string                      `json:"entry"`
-	Icon     string                      `json:"icon,omitempty"`
-	Source   string                      `json:"source"`
-	Approval string                      `json:"approval"`
-	Enabled  bool                        `json:"enabled"`
-	Size     *manifest.Size              `json:"size,omitempty"`
-	Route    string                      `json:"route,omitempty"`
-	Backend  *manifest.BackendDescriptor `json:"backend"`
+	Name     string         `json:"name"`
+	Type     string         `json:"type"`
+	Version  string         `json:"version"`
+	Label    string         `json:"label"`
+	Entry    string         `json:"entry"`
+	Icon     string         `json:"icon,omitempty"`
+	Source   string         `json:"source"`
+	Approval string         `json:"approval"`
+	Enabled  bool           `json:"enabled"`
+	Size     *manifest.Size `json:"size,omitempty"`
+	Route    string         `json:"route,omitempty"`
+	// DepsStatus is the plugin's dependency-install state: "ready" | "installing" |
+	// "failed". Always present; only builtins with backend.opkg installed in the
+	// background can be non-ready.
+	DepsStatus string                      `json:"depsStatus"`
+	Backend    *manifest.BackendDescriptor `json:"backend"`
 }
 
 func (h *Handler) handleList(w http.ResponseWriter, _ *http.Request) {
@@ -148,7 +160,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 
 			continue
 		}
-		entries = append(entries, entryFrom(m, p.Source, p.Approval, p.Enabled))
+		entries = append(entries, h.entryFrom(m, p.Source, p.Approval, p.Enabled))
 	}
 
 	builtins, err := h.scanBuiltins(snap.Plugins)
@@ -198,14 +210,25 @@ func (h *Handler) scanBuiltins(taken map[string]*state.Plugin) ([]ListEntry, *ht
 
 			continue
 		}
-		entries = append(entries, entryFrom(m, state.SourceBuiltin, state.ApprovalApproved, true))
+		entries = append(entries, h.entryFrom(m, state.SourceBuiltin, state.ApprovalApproved, true))
 	}
 
 	return entries, nil
 }
 
-// entryFrom projects a validated manifest plus runtime state into a ListEntry.
-func entryFrom(m *manifest.Manifest, source, approval string, enabled bool) ListEntry {
+// depsStatusFor projects the readiness tracker's state (absence = ready) into the
+// wire value.
+func (h *Handler) depsStatusFor(name string) string {
+	if s, ok := h.ready.Get(name); ok {
+		return string(s)
+	}
+
+	return "ready"
+}
+
+// entryFrom projects a validated manifest plus runtime state into a ListEntry,
+// including its always-present depsStatus.
+func (h *Handler) entryFrom(m *manifest.Manifest, source, approval string, enabled bool) ListEntry {
 	e := ListEntry{
 		Name:     deref(m.Name),
 		Type:     deref(m.Type),
@@ -220,6 +243,7 @@ func entryFrom(m *manifest.Manifest, source, approval string, enabled bool) List
 		Route:    deref(m.Route),
 		Backend:  m.Descriptor(),
 	}
+	e.DepsStatus = h.depsStatusFor(e.Name)
 
 	return e
 }

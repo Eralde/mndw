@@ -36,11 +36,13 @@ import {
   type RestoredTilePosition,
   addWidgetTile,
   destroyAllTiles,
+  hydratePendingTiles,
   remountWidgetTiles,
   removeWidgetTile,
   resizeWidgetTile,
 } from './grid-dashboard-setup.js';
 import {getNextInstanceId} from './widget-counter.js';
+import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 
 const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
 
@@ -56,6 +58,7 @@ function widgetPlugin(
     source: 'builtin',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     backend: emptyBackend,
     type: 'widget',
     size: {w: 4, h: 3, minW: 2, minH: 2},
@@ -73,6 +76,7 @@ function pagePlugin(name: string): LoadedPlugin {
     source: 'builtin',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     backend: emptyBackend,
     type: 'page',
     route: `/${name}`,
@@ -138,6 +142,7 @@ describe('grid-dashboard-setup', () => {
 
   afterEach(() => {
     destroyAllTiles();
+    replaceDepsStatuses([]);
     vi.clearAllMocks();
     localStorage.clear();
     document.body.innerHTML = '';
@@ -218,6 +223,57 @@ describe('grid-dashboard-setup', () => {
     expect(title?.textContent).toBe('TRAFFIC');
     expect(body?.textContent).toBe('live widget');
     expect(remove?.getAttribute('aria-label')).toBe('Remove TRAFFIC');
+  });
+
+  it('renders an installing dependency placeholder without mounting the widget', () => {
+    const createInstance = vi.fn(noop);
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', createInstance));
+    replaceDepsStatuses([{name: 'traffic', depsStatus: 'installing'}]);
+
+    const {grid} = createFakeGrid();
+
+    addWidgetTile(grid, 'traffic');
+
+    expect(document.querySelector('.mndw-grid-tile__body')?.textContent).toBe(
+      'Preparing… installing dependencies',
+    );
+    expect(createInstance).not.toHaveBeenCalled();
+  });
+
+  it('renders a failed dependency notice without mounting the widget', () => {
+    const createInstance = vi.fn(noop);
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', createInstance));
+    replaceDepsStatuses([{name: 'traffic', depsStatus: 'failed'}]);
+
+    const {grid} = createFakeGrid();
+
+    addWidgetTile(grid, 'traffic');
+
+    expect(document.querySelector('.mndw-grid-tile__body')?.textContent).toBe('Dependency install failed');
+    expect(createInstance).not.toHaveBeenCalled();
+  });
+
+  it('hydrates an installing tile once dependencies become ready', () => {
+    const createInstance = vi.fn(noop);
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', createInstance));
+    replaceDepsStatuses([{name: 'traffic', depsStatus: 'installing'}]);
+
+    const {grid} = createFakeGrid();
+
+    addWidgetTile(grid, 'traffic');
+    expect(createInstance).not.toHaveBeenCalled();
+
+    replaceDepsStatuses([{name: 'traffic', depsStatus: 'ready'}]);
+    hydratePendingTiles();
+
+    expect(createInstance).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.mndw-grid-tile__body')?.textContent).not.toContain('Preparing');
+
+    hydratePendingTiles();
+    expect(createInstance).toHaveBeenCalledTimes(1);
   });
 
   it('contains a synchronous createInstance failure to the plugin body', () => {

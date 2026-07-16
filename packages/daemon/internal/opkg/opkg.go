@@ -44,6 +44,11 @@ type PackageEntry struct {
 }
 
 // Manager is the set of opkg operations the daemon needs.
+//
+// Cancellation contract: every method MUST return promptly once ctx is done —
+// whether waiting to start (the mutation gate) or mid-operation. The startup
+// coordinator's bounded shutdown join relies on this; any new implementation
+// must honor it.
 type Manager interface {
 	// Install installs the named packages (plugin deps or an explicit request).
 	Install(ctx context.Context, packages []string) error
@@ -67,7 +72,7 @@ func New(mode string, logger *slog.Logger) Manager {
 		return newStub(logger)
 	}
 
-	return &execManager{logger: logger}
+	return &execManager{logger: logger, gate: make(chan struct{}, 1)}
 }
 
 // validate rejects an empty list or any malformed package name before exec.
@@ -99,6 +104,11 @@ func tail(s string) string {
 type execManager struct {
 	logger *slog.Logger
 	runner func(ctx context.Context, args ...string) (string, int, error)
+	// gate is a 1-slot semaphore serializing mutating operations. A plain mutex
+	// would defeat cancellation: Lock() cannot be interrupted, so a shutdown
+	// arriving while another install holds the lock would stall the caller for
+	// the full remaining install. Acquisition selects on ctx instead.
+	gate chan struct{}
 }
 
 func execRun(ctx context.Context, args ...string) (string, int, error) {
@@ -138,10 +148,35 @@ func (m *execManager) run(ctx context.Context, args ...string) (string, int, err
 	return execRun(ctx, args...)
 }
 
+// acquire takes the mutation gate, aborting immediately when ctx is done. The
+// pre-check matters because with an empty gate and a done context both select
+// cases are ready and Go picks randomly.
+func (m *execManager) acquire(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	select {
+	case m.gate <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (m *execManager) release() {
+	<-m.gate
+}
+
 func (m *execManager) mutate(ctx context.Context, action string, packages []string, args ...string) error {
 	if err := validate(packages); err != nil {
 		return err
 	}
+	if err := m.acquire(ctx); err != nil {
+		return fmt.Errorf("opkg %s: %w", action, err)
+	}
+	defer m.release()
+
 	commandArgs := append([]string{"opkg"}, args...)
 	commandArgs = append(commandArgs, packages...)
 	out, exitCode, err := m.run(ctx, commandArgs...)
@@ -172,6 +207,11 @@ func (m *execManager) Upgrade(ctx context.Context, packages []string) error {
 }
 
 func (m *execManager) Update(ctx context.Context) error {
+	if err := m.acquire(ctx); err != nil {
+		return fmt.Errorf("opkg update: %w", err)
+	}
+	defer m.release()
+
 	out, exitCode, err := m.run(ctx, "opkg", "update")
 	if err != nil {
 		m.logger.Error("opkg update failed", "output", tail(out))

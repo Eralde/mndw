@@ -40,6 +40,7 @@ function widgetEntry(backend: PluginBackendDescriptor = emptyBackend): WidgetLis
     source: 'user',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     size: {w: 4, h: 3},
     backend,
   };

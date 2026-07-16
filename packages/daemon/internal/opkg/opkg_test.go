@@ -7,13 +7,15 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func discard() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func newExecManagerWithRunner(runner func(context.Context, ...string) (string, int, error)) *execManager {
-	return &execManager{logger: discard(), runner: runner}
+	return &execManager{logger: discard(), runner: runner, gate: make(chan struct{}, 1)}
 }
 
 func TestStubInstallListRemove(t *testing.T) {
@@ -215,4 +217,142 @@ func mapsEqual(got, want map[string]string) bool {
 	}
 
 	return true
+}
+
+// TestExecMutationsSerialize verifies mutating operations never run concurrently:
+// while the first runner is held open, no other mutation may enter. Channel-driven —
+// the only timing element is the negative-assertion window, which can only produce
+// a false FAILURE if the gate is broken, never a false pass of a working gate.
+func TestExecMutationsSerialize(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	entered := make(chan struct{}, 4)
+	release := make(chan struct{})
+	m := &execManager{logger: logger, gate: make(chan struct{}, 1)}
+	m.runner = func(_ context.Context, _ ...string) (string, int, error) {
+		entered <- struct{}{}
+		<-release
+
+		return "", 0, nil
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := m.Install(context.Background(), []string{"ttyd"}); err != nil {
+				t.Errorf("Install: %v", err)
+			}
+		}()
+	}
+
+	<-entered
+
+	select {
+	case <-entered:
+		t.Fatal("a second mutation entered the runner while the gate was held")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	wg.Wait()
+
+	if got := len(entered); got != 3 {
+		t.Fatalf("runner entries after release = %d, want 3", got)
+	}
+}
+
+// TestExecGateWaitAbortsOnCancel verifies a canceled context aborts a gate wait
+// immediately instead of queueing behind a long-running mutation. The holder signals
+// gate acquisition from inside its runner — no wall-clock sleeps.
+func TestExecGateWaitAbortsOnCancel(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	acquired := make(chan struct{})
+	holdRelease := make(chan struct{})
+	m := &execManager{logger: logger, gate: make(chan struct{}, 1)}
+	m.runner = func(ctx context.Context, _ ...string) (string, int, error) {
+		close(acquired)
+		select {
+		case <-holdRelease:
+		case <-ctx.Done():
+		}
+
+		return "", 0, nil
+	}
+
+	holderDone := make(chan struct{})
+	go func() {
+		defer close(holderDone)
+		_ = m.Install(context.Background(), []string{"ttyd"})
+	}()
+	<-acquired
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := m.Install(ctx, []string{"daemonize"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Install with canceled ctx = %v, want context.Canceled", err)
+	}
+
+	close(holdRelease)
+	<-holderDone
+}
+
+// TestExecMutationsAbortWhenCanceled pins the contract on every exec mutating
+// method: an already-canceled context aborts at the gate, before the runner runs.
+func TestExecMutationsAbortWhenCanceled(t *testing.T) {
+	m := &execManager{logger: discard(), gate: make(chan struct{}, 1)}
+	m.runner = func(_ context.Context, args ...string) (string, int, error) {
+		t.Errorf("runner invoked despite canceled context: %v", args)
+
+		return "", 0, nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	checks := []struct {
+		name string
+		call func() error
+	}{
+		{"Install", func() error { return m.Install(ctx, []string{"ttyd"}) }},
+		{"Remove", func() error { return m.Remove(ctx, []string{"ttyd"}) }},
+		{"Upgrade", func() error { return m.Upgrade(ctx, []string{"ttyd"}) }},
+		{"Update", func() error { return m.Update(ctx) }},
+	}
+	for _, c := range checks {
+		if err := c.call(); !errors.Is(err, context.Canceled) {
+			t.Errorf("exec %s with canceled ctx = %v, want context.Canceled", c.name, err)
+		}
+	}
+}
+
+// TestStubHonorsCancellation pins the Manager cancellation contract on EVERY method
+// of the stub: each must return the context error once ctx is done.
+func TestStubHonorsCancellation(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	m := newStub(logger)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	checks := []struct {
+		name string
+		call func() error
+	}{
+		{"Install", func() error { return m.Install(ctx, []string{"ttyd"}) }},
+		{"Remove", func() error { return m.Remove(ctx, []string{"ttyd"}) }},
+		{"Upgrade", func() error { return m.Upgrade(ctx, []string{"ttyd"}) }},
+		{"Update", func() error { return m.Update(ctx) }},
+		{"ListInstalled", func() error { _, err := m.ListInstalled(ctx); return err }},
+		{"ListAvailable", func() error { _, err := m.ListAvailable(ctx); return err }},
+		{"List", func() error { _, err := m.List(ctx); return err }},
+	}
+	for _, c := range checks {
+		if err := c.call(); !errors.Is(err, context.Canceled) {
+			t.Errorf("stub %s with canceled ctx = %v, want context.Canceled", c.name, err)
+		}
+	}
 }

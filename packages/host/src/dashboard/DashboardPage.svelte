@@ -2,11 +2,13 @@
 import type {GridStack as GridStackType} from 'gridstack';
 import {onDestroy} from 'svelte';
 import {pluginRegistry} from '../runtime/plugin-registry.js';
+import {depsStatusMap} from '../state/deps-status.svelte.js';
 import DashboardGrid from './DashboardGrid.svelte';
 import FloatingAddPanel from './FloatingAddPanel.svelte';
 import {
   addWidgetTile,
   destroyAllTiles,
+  hydratePendingTiles,
   removeWidgetTile,
   resizeWidgetTile,
 } from './grid-dashboard-setup.js';
@@ -99,6 +101,13 @@ function handleAddWidget(pluginName: string): void {
 
   addPanelOpen = false;
 }
+
+$effect(() => {
+  // Read the reactive map so status transitions re-run this effect even when no tile
+  // is pending yet; hydration itself is idempotent and cheap.
+  void [...depsStatusMap.entries()];
+  hydratePendingTiles();
+});
 
 onDestroy(() => {
   clearTimeout(debounceTimer);

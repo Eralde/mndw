@@ -3,6 +3,7 @@ import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
+import {replaceDepsStatuses} from '../../../state/deps-status.svelte.js';
 import InstalledPluginList from './InstalledPluginList.svelte';
 
 const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
@@ -62,6 +63,7 @@ function mountInstalledPluginList(props: Partial<{
 describe('InstalledPluginList', () => {
   afterEach(() => {
     clearPluginVersionWarnings();
+    replaceDepsStatuses([]);
     document.body.innerHTML = '';
   });
 
@@ -171,5 +173,23 @@ describe('InstalledPluginList', () => {
     expect(target.querySelector('.mndw-installed__version-warning')?.textContent).toContain('rxjs @6');
 
     void unmount(component);
+  });
+
+  it('renders dependency badges from the shared status store', () => {
+    replaceDepsStatuses([{name: 'network-tools', depsStatus: 'installing'}]);
+
+    const installing = mountInstalledPluginList({items: [plugin({depsStatus: 'ready'})]});
+
+    expect(installing.target.querySelector('.mndw-installed__deps-badge')?.textContent)
+      .toContain('Installing dependencies…');
+    void unmount(installing.component);
+
+    replaceDepsStatuses([{name: 'network-tools', depsStatus: 'failed'}]);
+
+    const failed = mountInstalledPluginList({items: [plugin({depsStatus: 'ready'})]});
+
+    expect(failed.target.querySelector('.mndw-installed__deps-badge--failed')?.textContent)
+      .toContain('Dependency install failed');
+    void unmount(failed.component);
   });
 });

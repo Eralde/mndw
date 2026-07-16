@@ -24,6 +24,7 @@ vi.mock('./grid-dashboard-setup.js', () => ({
   addWidgetTile: vi.fn(() => 'widget-x:1'),
   removeWidgetTile: vi.fn(),
   resizeWidgetTile: vi.fn(),
+  hydratePendingTiles: vi.fn(),
   destroyAllTiles: vi.fn(() => teardownLog.push('destroyAll')),
 }));
 
@@ -59,6 +60,7 @@ function widgetEntry(name: string): WidgetListEntry {
     source: 'builtin',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     backend: emptyBackend,
     type: 'widget',
     size: {w: 4, h: 3},

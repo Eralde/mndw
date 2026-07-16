@@ -30,6 +30,7 @@ function mockPlugin(createInstanceResult: PluginInstance | Promise<PluginInstanc
       source: 'builtin',
       approval: 'approved',
       enabled: true,
+      depsStatus: 'ready',
       size: {w: 4, h: 3},
       backend: {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false},
     },

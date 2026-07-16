@@ -1,5 +1,6 @@
 <script lang="ts">
 import {pluginRegistry} from '../runtime/plugin-registry.js';
+import {getDepsStatus} from '../state/deps-status.svelte.js';
 
 interface Props {
   open: boolean;
@@ -64,11 +65,19 @@ function handleKeydown(event: KeyboardEvent): void {
         <p class="mndw-floating-panel__empty">No widgets available</p>
       {:else}
         {#each availableWidgets as widget, index (widget.entry.name)}
+          {@const deps = getDepsStatus(widget.entry.name)}
           <button
             bind:this={buttonRefs[index]}
             onclick={() => onAddWidget(widget.entry.name)}
           >
             {widget.entry.label}
+            {#if deps === 'installing'}
+              <span class="mndw-floating-panel__deps">preparing…</span>
+            {:else if deps === 'failed'}
+              <span
+                class="mndw-floating-panel__deps mndw-floating-panel__deps--failed"
+              >unavailable</span>
+            {/if}
           </button>
         {/each}
       {/if}

@@ -14,6 +14,7 @@ const entry: PluginListEntry = {
   source: 'user',
   approval: 'pending',
   enabled: false,
+  depsStatus: 'ready',
   route: '/network-tools',
   backend: {
     endpoints: {},

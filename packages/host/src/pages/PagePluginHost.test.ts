@@ -21,6 +21,7 @@ import type {PageListEntry} from '../runtime/plugin-types.js';
 import {SANDBOX_RELOAD_EVENT, type SandboxReloadDetail} from '../runtime/sandbox-loader.js';
 import {appState} from '../state/app.svelte.js';
 import {createAppRouter} from '../router/create-app-router.js';
+import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import PagePluginHost from './PagePluginHost.svelte';
 
 const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
@@ -34,6 +35,7 @@ function pagePlugin(name: string): LoadedPage {
     source: 'builtin',
     approval: 'approved',
     enabled: true,
+    depsStatus: 'ready',
     backend: emptyBackend,
     type: 'page',
     route: `/${name}`,
@@ -74,11 +76,13 @@ async function setup(): Promise<{component: ReturnType<typeof mount>; target: HT
 describe('PagePluginHost', () => {
   beforeEach(() => {
     appState.hostInfo = null;
+    replaceDepsStatuses([]);
   });
 
   afterEach(async () => {
     await router?.navigate('/');
     vi.clearAllMocks();
+    replaceDepsStatuses([]);
     document.body.innerHTML = '';
     appState.hostInfo = null;
   });
@@ -93,6 +97,76 @@ describe('PagePluginHost', () => {
 
     expect(child).not.toBeNull();
     expect(mountPlugin).toHaveBeenCalledWith(child, pageA, {instanceId: 'page-a:1'});
+
+    void unmount(component);
+  });
+
+  it('shows an installing notice and keeps the page mount host empty', async () => {
+    replaceDepsStatuses([{name: 'page-a', depsStatus: 'installing'}]);
+
+    const {component, target} = await setup();
+
+    expect(target.querySelector('.mndw-page-plugin__notice')?.textContent).toBe(
+      'Preparing… installing dependencies',
+    );
+    expect(target.querySelector('.mndw-page-plugin-wrap .mndw-page-plugin')).not.toBeNull();
+    expect(mountPlugin).not.toHaveBeenCalled();
+
+    void unmount(component);
+  });
+
+  it('shows a failed dependency notice without mounting the page', async () => {
+    replaceDepsStatuses([{name: 'page-a', depsStatus: 'failed'}]);
+
+    const {component, target} = await setup();
+
+    expect(target.querySelector('.mndw-page-plugin__notice')?.textContent).toBe('Dependency install failed');
+    expect(target.querySelector('.mndw-page-plugin-wrap .mndw-page-plugin')).not.toBeNull();
+    expect(mountPlugin).not.toHaveBeenCalled();
+
+    void unmount(component);
+  });
+
+  it('mounts the page when its dependencies become ready', async () => {
+    replaceDepsStatuses([{name: 'page-a', depsStatus: 'installing'}]);
+    vi.mocked(mountPlugin).mockReturnValue(fakeMounted('page-a'));
+
+    const {component, target} = await setup();
+
+    expect(mountPlugin).not.toHaveBeenCalled();
+
+    replaceDepsStatuses([{name: 'page-a', depsStatus: 'ready'}]);
+    flushSync();
+
+    expect(mountPlugin).toHaveBeenCalledTimes(1);
+    expect(target.querySelector('.mndw-page-plugin__notice')).toBeNull();
+
+    void unmount(component);
+  });
+
+  it('disposes an async page mount when dependencies become unavailable', async () => {
+    let resolveA: (value: MountedPlugin | null) => void = () => {};
+    const pendingA = new Promise<MountedPlugin | null>((resolve) => {
+      resolveA = resolve;
+    });
+    const mountedA = fakeMounted('page-a');
+
+    replaceDepsStatuses([{name: 'page-a', depsStatus: 'ready'}]);
+    vi.mocked(mountPlugin).mockReturnValue(pendingA);
+
+    const {component} = await setup();
+
+    replaceDepsStatuses([{name: 'page-a', depsStatus: 'installing'}]);
+    flushSync();
+
+    resolveA(mountedA);
+    await pendingA;
+    await Promise.resolve();
+
+    expect(unmountPlugin).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
+      clearStorage: false,
+      closeReason: 'host-navigation',
+    });
 
     void unmount(component);
   });

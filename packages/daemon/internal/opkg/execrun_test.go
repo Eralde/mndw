@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A failing command's stderr must reach the returned output — opkg reports its
@@ -37,5 +38,21 @@ func TestExecRunZeroExitExcludesStderr(t *testing.T) {
 	}
 	if out != "from-stdout\n" {
 		t.Errorf("output = %q, want %q", out, "from-stdout\n")
+	}
+}
+
+// TestExecRunReturnsPromptlyOnCancel pins the ungated read path's half of the
+// cancellation contract: CommandContext must kill the child once ctx is done.
+func TestExecRunReturnsPromptlyOnCancel(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, _, err := execRun(ctx, "sleep", "5")
+	if err == nil {
+		t.Fatal("execRun with expiring ctx returned nil error")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("execRun returned after %v; the child was not killed on cancel", elapsed)
 	}
 }

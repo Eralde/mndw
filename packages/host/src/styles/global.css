@@ -348,6 +348,22 @@ body {
   padding: 8px;
 }
 
+.mndw-grid-tile__notice {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  padding: 8px;
+  font-size: 0.85rem;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.mndw-grid-tile__notice--failed {
+  color: var(--mndw-danger);
+  opacity: 1;
+}
+
 .mndw-grid-tile__close {
   position: absolute;
   top: 4px;
@@ -490,9 +506,35 @@ body {
   text-align: center;
 }
 
+.mndw-floating-panel__deps {
+  margin-left: 6px;
+  color: var(--mndw-text-subtle);
+  font-size: 0.8em;
+}
+
+.mndw-floating-panel__deps--failed {
+  color: var(--mndw-danger);
+}
+
 /* === Page Plugin === */
 
 .mndw-page-plugin,
 .mndw-page-plugin__mount {
   height: 100%;
+}
+
+.mndw-page-plugin-wrap {
+  position: relative;
+  height: 100%;
+}
+
+.mndw-page-plugin__notice {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  text-align: center;
+  opacity: 0.7;
 }

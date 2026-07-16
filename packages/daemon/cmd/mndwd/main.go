@@ -123,25 +123,55 @@ func assemble(cfg Config, store *state.Store, verifier *authz.Verifier, logger *
 // can pull over a slow link). Mirrors mgmt's opkgTimeout for the approval flow.
 const opkgInstallTimeout = 3 * time.Minute
 
+// opkgInstallRetryDelays are the waits between startup install attempts. When the ipk
+// postinst starts the daemon, the parent `opkg install mndw...` still holds the global
+// opkg lock, so the first attempt fails instantly — the retries land after that
+// window closes (and also absorb transient boot conditions). Var, not const: tests
+// shrink the delays. Failures on the lock are instant, so the worst-case added
+// startup delay stays close to the sum of the delays.
+var opkgInstallRetryDelays = []time.Duration{5 * time.Second, 15 * time.Second}
+
 // installBuiltinDeps installs the backend.opkg dependencies of every builtin plugin.
 // Builtins never pass the upload/approve flow (where user-plugin deps are installed),
-// so this runs at startup instead. Best-effort per plugin: a failed install is logged
-// and the remaining builtins still get theirs — one broken plugin must not stop the
-// daemon, and opkg install is idempotent so the next startup retries.
+// so this runs at startup instead. Best-effort per plugin: after the retries a failed
+// install is logged and the remaining builtins still get theirs — one broken plugin
+// must not stop the daemon, and opkg install is idempotent so the next startup
+// retries from scratch.
 func installBuiltinDeps(reg *registry.Registry, mgr opkg.Manager, logger *slog.Logger) {
 	for _, plugin := range reg.ListBuiltins() {
 		if plugin.Manifest.Backend == nil || len(plugin.Manifest.Backend.Opkg) == 0 {
 			continue
 		}
+		pkgs := plugin.Manifest.Backend.Opkg
 
-		ctx, cancel := context.WithTimeout(context.Background(), opkgInstallTimeout)
-		err := mgr.Install(ctx, plugin.Manifest.Backend.Opkg)
-		cancel()
+		var err error
+		for attempt := 0; ; attempt++ {
+			err = installOnce(mgr, pkgs)
+			if err == nil || attempt >= len(opkgInstallRetryDelays) {
+				break
+			}
+			delay := opkgInstallRetryDelays[attempt]
+			logger.Warn("builtin opkg dependency install failed; retrying",
+				"plugin", plugin.Name, "packages", pkgs, "delay", delay, "error", err)
+			time.Sleep(delay)
+		}
 		if err != nil {
 			logger.Error("builtin opkg dependency install failed",
-				"plugin", plugin.Name, "packages", plugin.Manifest.Backend.Opkg, "error", err)
+				"plugin", plugin.Name, "packages", pkgs, "error", err)
+
+			continue
 		}
+
+		logger.Info("builtin opkg dependencies installed", "plugin", plugin.Name, "packages", pkgs)
 	}
+}
+
+// installOnce runs a single bounded install attempt.
+func installOnce(mgr opkg.Manager, pkgs []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), opkgInstallTimeout)
+	defer cancel()
+
+	return mgr.Install(ctx, pkgs)
 }
 
 // startupActivate starts the backend.daemon of each approved+enabled user plugin. A

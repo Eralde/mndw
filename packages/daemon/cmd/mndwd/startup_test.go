@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"mndwd/internal/opkg"
 	"mndwd/internal/registry"
@@ -82,22 +83,70 @@ func TestInstallBuiltinDepsInstallsDeclaredPackages(t *testing.T) {
 	}
 }
 
-// failFirstManager fails the first Install call and records every attempt.
-type failFirstManager struct {
-	opkg.Manager
-	calls [][]string
+// setRetryDelays overrides the between-attempt waits for the test's duration.
+func setRetryDelays(t *testing.T, delays []time.Duration) {
+	t.Helper()
+	restore := opkgInstallRetryDelays
+	opkgInstallRetryDelays = delays
+	t.Cleanup(func() { opkgInstallRetryDelays = restore })
 }
 
-func (m *failFirstManager) Install(_ context.Context, packages []string) error {
+// flakyManager fails the first `failures` Install calls (a transient condition such
+// as the opkg lock still held by the parent `opkg install mndw...` during postinst)
+// and records every attempt.
+type flakyManager struct {
+	opkg.Manager
+	failures int
+	calls    [][]string
+}
+
+func (m *flakyManager) Install(_ context.Context, packages []string) error {
 	m.calls = append(m.calls, packages)
-	if len(m.calls) == 1 {
-		return errors.New("simulated opkg failure")
+	if len(m.calls) <= m.failures {
+		return errors.New("simulated transient opkg failure")
 	}
 
 	return nil
 }
 
-func TestInstallBuiltinDepsContinuesAfterFailure(t *testing.T) {
+func TestInstallBuiltinDepsRetriesTransientFailure(t *testing.T) {
+	setRetryDelays(t, []time.Duration{0, 0})
+
+	builtinDir := t.TempDir()
+	writeBuiltin(t, builtinDir, "ttyd-widget", []string{"ttyd", "daemonize"})
+
+	reg := builtinRegistry(t, builtinDir)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	mgr := &flakyManager{failures: 2}
+
+	installBuiltinDeps(reg, mgr, logger)
+
+	if len(mgr.calls) != 3 {
+		t.Fatalf("expected 3 install attempts (2 failures + 1 success), got %d: %v", len(mgr.calls), mgr.calls)
+	}
+}
+
+// stuckManager fails every Install for a marked package and records every attempt.
+type stuckManager struct {
+	opkg.Manager
+	failing map[string]bool
+	calls   [][]string
+}
+
+func (m *stuckManager) Install(_ context.Context, packages []string) error {
+	m.calls = append(m.calls, packages)
+	for _, p := range packages {
+		if m.failing[p] {
+			return errors.New("simulated persistent opkg failure")
+		}
+	}
+
+	return nil
+}
+
+func TestInstallBuiltinDepsContinuesAfterPersistentFailure(t *testing.T) {
+	setRetryDelays(t, []time.Duration{0})
+
 	builtinDir := t.TempDir()
 	// ListBuiltins walks the dir in lexical order, so a-widget installs first.
 	writeBuiltin(t, builtinDir, "a-widget", []string{"socat"})
@@ -105,14 +154,13 @@ func TestInstallBuiltinDepsContinuesAfterFailure(t *testing.T) {
 
 	reg := builtinRegistry(t, builtinDir)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	mgr := &failFirstManager{}
+	mgr := &stuckManager{failing: map[string]bool{"socat": true}}
 
 	installBuiltinDeps(reg, mgr, logger)
 
-	if len(mgr.calls) != 2 {
-		t.Fatalf("expected 2 install attempts, got %d: %v", len(mgr.calls), mgr.calls)
-	}
-	if fmt.Sprint(mgr.calls[0]) != "[socat]" || fmt.Sprint(mgr.calls[1]) != "[ttyd]" {
-		t.Errorf("unexpected install calls: %v", mgr.calls)
+	// a-widget exhausts its 2 attempts (1 + 1 retry), then b-widget still installs.
+	want := "[[socat] [socat] [ttyd]]"
+	if fmt.Sprint(mgr.calls) != want {
+		t.Errorf("install calls = %v, want %s", mgr.calls, want)
 	}
 }

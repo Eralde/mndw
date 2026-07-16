@@ -144,7 +144,6 @@ func TestExecListMergeAndOrphan(t *testing.T) {
 	}
 }
 
-
 func TestExecListEmptyOutput(t *testing.T) {
 	runner := func(_ context.Context, _ ...string) (string, int, error) {
 		return "", 0, nil

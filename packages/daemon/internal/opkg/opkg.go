@@ -121,7 +121,10 @@ func execRun(ctx context.Context, args ...string) (string, int, error) {
 
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
-		return stdout.String(), exitErr.ExitCode(), nil
+		// Non-zero exit: append stderr — opkg reports its failure reason there, and
+		// the callers log this output. Exit-0 output stays stdout-only, as it is
+		// parsed (list/list-installed) and stderr warnings would corrupt it.
+		return stdout.String() + stderr.String(), exitErr.ExitCode(), nil
 	}
 
 	return "", 0, err
@@ -297,7 +300,6 @@ func (m *execManager) listAvailableMap(ctx context.Context) (map[string]PackageE
 
 	return result, nil
 }
-
 
 // parseNames extracts the first whitespace field of each non-empty line, the package
 // name in `opkg list` / `opkg list-installed` output ("name - version - desc").

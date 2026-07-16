@@ -4,7 +4,10 @@ import type {FitAddon} from '@xterm/addon-fit';
 import type {Terminal} from '@xterm/xterm';
 import {connectToCli, killCli, spawnCli} from './cli.service';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {status, headers: {'content-type': 'application/json'}});
@@ -74,5 +77,57 @@ describe('cli.service', () => {
 
     expect(focus).toHaveBeenCalledOnce();
     instance.dispose();
+  });
+
+  it('fits the terminal when its container changes size and disconnects the observer', () => {
+    let resizeCallback: ResizeObserverCallback | undefined;
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+
+    vi.stubGlobal(
+      'ResizeObserver',
+      vi.fn((callback: ResizeObserverCallback) => {
+        resizeCallback = callback;
+
+        return {disconnect, observe};
+      }),
+    );
+
+    const socket = {
+      addEventListener: vi.fn(),
+      binaryType: '',
+      close: vi.fn(),
+      send: vi.fn(),
+    } as unknown as WebSocket;
+    const backendClient = {
+      fetch: vi.fn(),
+      socket: vi.fn(() => socket),
+    } as unknown as BackendClient;
+    const terminal = {
+      cols: 80,
+      dispose: vi.fn(),
+      focus: vi.fn(),
+      loadAddon: vi.fn(),
+      onData: vi.fn(),
+      onResize: vi.fn(),
+      open: vi.fn(),
+      rows: 24,
+    } as unknown as Terminal;
+    const fit = vi.fn();
+    const fitAddon = {fit} as unknown as FitAddon;
+    const TerminalCtor = vi.fn(() => terminal) as unknown as typeof Terminal;
+    const FitAddonCtor = vi.fn(() => fitAddon) as unknown as typeof FitAddon;
+    const element = document.createElement('div');
+
+    const instance = connectToCli(backendClient, element, TerminalCtor, FitAddonCtor);
+
+    expect(observe).toHaveBeenCalledWith(element);
+    expect(resizeCallback).toBeDefined();
+    resizeCallback?.([], {} as ResizeObserver);
+    expect(fit).toHaveBeenCalledOnce();
+
+    instance.dispose();
+
+    expect(disconnect).toHaveBeenCalledOnce();
   });
 });

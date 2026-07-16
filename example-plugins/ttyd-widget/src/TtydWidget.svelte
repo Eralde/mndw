@@ -27,9 +27,6 @@ let terminalElement = $state<HTMLDivElement | undefined>(undefined);
 let terminalInstance: TerminalInstance | null = null;
 let spawnDelayId: ReturnType<typeof setTimeout> | undefined;
 let disconnectExpected = false;
-const handleWindowResize = (): void => {
-  terminalInstance?.fitAddon.fit();
-};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -49,7 +46,6 @@ function clearSpawnDelay(): void {
 }
 
 function disposeTerminal(): void {
-  window.removeEventListener('resize', handleWindowResize);
   terminalInstance?.dispose();
   terminalInstance = null;
 }
@@ -97,7 +93,6 @@ async function startTerminal(): Promise<void> {
     requestAnimationFrame(() => {
       terminalInstance?.fitAddon.fit();
     });
-    window.addEventListener('resize', handleWindowResize);
   } catch (error) {
     clearSpawnDelay();
     state = 'error';

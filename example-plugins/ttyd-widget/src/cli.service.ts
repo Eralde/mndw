@@ -184,6 +184,13 @@ export function connectToCli(
   let socketReady = false;
   let gotFirstMessage = false;
   let disposed = false;
+  const resizeObserver = new ResizeObserver(() => {
+    if (!disposed) {
+      fitAddon.fit();
+    }
+  });
+
+  resizeObserver.observe(element);
 
   socket.addEventListener('open', () => {
     if (disposed) {
@@ -259,6 +266,7 @@ export function connectToCli(
     fitAddon,
     dispose: () => {
       disposed = true;
+      resizeObserver.disconnect();
       socket.close();
       terminal.dispose();
     },

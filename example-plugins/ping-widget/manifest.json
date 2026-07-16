@@ -12,12 +12,16 @@
     "daemon": {"start": "backend/start.sh", "stop": "backend/stop.sh"},
     "scripts": [
       {"id": "stats", "runtime": "sh", "source": "backend/stats.sh"},
-      {"id": "hosts", "runtime": "sh", "source": "backend/hosts.sh"}
+      {"id": "hosts", "runtime": "sh", "source": "backend/hosts.sh"},
+      {"id": "daemonStart", "runtime": "sh", "source": "backend/start.sh"},
+      {"id": "daemonStop", "runtime": "sh", "source": "backend/stop.sh"}
     ],
     "endpoints": [
       {"id": "stats", "method": "GET", "path": "stats", "scriptId": "stats"},
       {"id": "hosts", "method": "GET", "path": "hosts", "scriptId": "hosts"},
-      {"id": "hostsUpdate", "method": "POST", "path": "hosts", "scriptId": "hosts"}
+      {"id": "hostsUpdate", "method": "POST", "path": "hosts", "scriptId": "hosts"},
+      {"id": "daemonStart", "method": "POST", "path": "daemon/start", "scriptId": "daemonStart"},
+      {"id": "daemonStop", "method": "POST", "path": "daemon/stop", "scriptId": "daemonStop"}
     ]
   }
 }

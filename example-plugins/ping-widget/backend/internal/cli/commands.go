@@ -46,6 +46,16 @@ func StartDaemon() (model.Response, error) {
 }
 
 func StopDaemon() (model.Response, error) {
+	if _, running := daemon.ReadRunningPid(); !running {
+		return model.Response{
+			Success: true,
+			Data: map[string]any{
+				"alreadyStopped": true,
+			},
+			Message: "Daemon already stopped",
+		}, nil
+	}
+
 	response, err := Send(model.Request{Cmd: "stop"})
 	if err != nil {
 		return model.Response{}, err

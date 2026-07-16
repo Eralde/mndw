@@ -128,3 +128,23 @@ func TestConfigHonorsEnvOverride(t *testing.T) {
 		t.Fatalf("StateDir = %q", got)
 	}
 }
+
+func TestStopDaemonSucceedsWhenAlreadyStopped(t *testing.T) {
+	t.Setenv("MNDW_PING_RUNTIME_DIR", t.TempDir())
+
+	response, err := StopDaemon()
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if !response.Success {
+		t.Fatalf("expected successful response")
+	}
+
+	data, ok := response.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map data, got %#v", response.Data)
+	}
+	if alreadyStopped, ok := data["alreadyStopped"].(bool); !ok || !alreadyStopped {
+		t.Fatalf("expected alreadyStopped=true, got %#v", data["alreadyStopped"])
+	}
+}

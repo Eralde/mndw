@@ -2,8 +2,10 @@
 import {onMount} from 'svelte';
 import type {BackendClient} from '@mndw/sdk';
 import {
+  type DaemonAction,
   type Host,
   type HostStats,
+  controlDaemon,
   fetchHosts,
   fetchStats,
   updateHosts,
@@ -38,6 +40,10 @@ let isError = $state(false);
 let newHostIp = $state('');
 let newHostName = $state('');
 let pollSeconds = $state(2);
+type DaemonUiAction = 'idle' | DaemonAction | 'restart';
+
+let daemonAction = $state<DaemonUiAction>('idle');
+const daemonBusy = $derived(daemonAction !== 'idle');
 
 const renameStates = $state<Record<string, RenameState>>({});
 let statsIntervalId: ReturnType<typeof setInterval> | undefined;
@@ -147,6 +153,36 @@ async function refreshNow(showMessage = true): Promise<void> {
   }
 }
 
+async function runDaemonAction(
+  action: Exclude<DaemonUiAction, 'idle'>,
+): Promise<void> {
+  if (!backend || daemonBusy) {
+    return;
+  }
+
+  daemonAction = action;
+
+  try {
+    if (action === 'restart') {
+      await controlDaemon(backend, 'stop');
+      await controlDaemon(backend, 'start');
+    } else {
+      await controlDaemon(backend, action);
+    }
+
+    setMessage(
+      action === 'restart'
+        ? 'Daemon restarted'
+        : `Daemon ${action === 'start' ? 'started' : 'stopped'}`,
+    );
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : 'Request failed';
+    setMessage(`Daemon ${action} failed: ${detail}`, true);
+  } finally {
+    daemonAction = 'idle';
+  }
+}
+
 function restartStatsPolling(): void {
   if (statsIntervalId) {
     clearInterval(statsIntervalId);
@@ -240,7 +276,6 @@ function renderHostCell(row: HostStats, state: RenameState): string {
       escapeHtml(label)
     }</span><span class="host-address">${escapeHtml(row.ip)}</span>`
     : `<span class="host-label">${escapeHtml(row.ip)}</span>`;
-  const removeDisabled = state.status === 'saving' ? ' disabled' : '';
 
   if (
     state.status === 'editing' || state.status === 'saving'
@@ -260,13 +295,6 @@ function renderHostCell(row: HostStats, state: RenameState): string {
       escapeHtml(state.draft)
     }"${inputDisabled} data-host-input="${escapeHtml(row.ip)}">
       ${feedback}
-    </div>
-    <div class="host-actions">
-      <button type="button" class="btn danger compact" aria-label="Remove host ${
-      escapeHtml(row.ip)
-    }" data-host-action="remove" data-host-ip="${
-      escapeHtml(row.ip)
-    }"${removeDisabled}>Remove</button>
     </div>`;
   }
 
@@ -274,14 +302,17 @@ function renderHostCell(row: HostStats, state: RenameState): string {
     escapeHtml(row.ip)
   }" data-host-action="rename" data-host-ip="${
     escapeHtml(row.ip)
-  }">${display}</button>
-    <div class="host-actions">
-      <button type="button" class="btn danger compact" aria-label="Remove host ${
+  }">${display}</button>`;
+}
+
+function renderActionsCell(row: HostStats, state: RenameState): string {
+  const disabled = state.status === 'saving' ? ' disabled' : '';
+
+  return `<button type="button" class="btn danger compact" aria-label="Delete host ${
     escapeHtml(row.ip)
   }" data-host-action="remove" data-host-ip="${
     escapeHtml(row.ip)
-  }">Remove</button>
-    </div>`;
+  }"${disabled}>Delete</button>`;
 }
 
 function renderStatsBody(
@@ -289,7 +320,7 @@ function renderStatsBody(
   states: Record<string, RenameState>,
 ): string {
   if (rows.length === 0) {
-    return '<tr><td colspan="9" class="empty">No stats yet.</td></tr>';
+    return '<tr><td colspan="10" class="empty">No stats yet.</td></tr>';
   }
 
   return rows.map((row) => {
@@ -322,6 +353,7 @@ function renderStatsBody(
       <td class="stat-value stat-optional">${
       escapeHtml(formatUpdatedAt(row.updatedAt))
     }</td>
+      <td class="actions-cell">${renderActionsCell(row, state)}</td>
     </tr>`;
   }).join('');
 }
@@ -432,6 +464,33 @@ onMount(() => {
     <div class="header-actions">
       <button
         type="button"
+        class="btn primary"
+        aria-label="Start daemon"
+        disabled={loading || daemonBusy || !hasBackend}
+        onclick={() => void runDaemonAction('start')}
+      >
+        Start
+      </button>
+      <button
+        type="button"
+        class="btn secondary"
+        aria-label="Stop daemon"
+        disabled={loading || daemonBusy || !hasBackend}
+        onclick={() => void runDaemonAction('stop')}
+      >
+        Stop
+      </button>
+      <button
+        type="button"
+        class="btn secondary"
+        aria-label="Restart daemon"
+        disabled={loading || daemonBusy || !hasBackend}
+        onclick={() => void runDaemonAction('restart')}
+      >
+        Restart
+      </button>
+      <button
+        type="button"
         class="btn secondary"
         disabled={loading || !hasBackend}
         onclick={() => void refreshNow()}
@@ -494,6 +553,7 @@ onMount(() => {
         <col class="col-loss" />
         <col class="col-optional col-samples" />
         <col class="col-optional col-updated" />
+        <col class="col-actions" />
       </colgroup>
       <thead>
         <tr>
@@ -506,6 +566,7 @@ onMount(() => {
           <th>Loss</th>
           <th class="stat-optional">Samples</th>
           <th class="stat-optional">Updated</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -683,27 +744,31 @@ table {
 }
 
 .col-host {
-  width: 24%;
+  width: 22%;
 }
 
 .col-last,
 .col-avg,
 .col-median {
-  width: 10%;
+  width: 9%;
 }
 
 .col-min,
 .col-max {
-  width: 8%;
+  width: 7%;
 }
 
 .col-loss,
 .col-samples {
-  width: 9%;
+  width: 8%;
 }
 
 .col-updated {
-  width: 12%;
+  width: 11%;
+}
+
+.col-actions {
+  width: 10%;
 }
 
 thead {
@@ -782,11 +847,8 @@ thead {
   width: 100%;
 }
 
-:global(.ping-widget .host-actions) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--mndw-space-1);
-  margin-top: var(--mndw-space-1);
+:global(.ping-widget .actions-cell) {
+  white-space: nowrap;
 }
 
 :global(.ping-widget .rename-status) {
@@ -819,19 +881,23 @@ thead {
 
 @container ping-widget (max-width: 599px) {
   .col-host {
-    width: 50%;
+    width: 42%;
   }
 
   .col-last {
-    width: 17%;
+    width: 15%;
   }
 
   .col-avg {
-    width: 17%;
+    width: 15%;
   }
 
   .col-loss {
-    width: 16%;
+    width: 14%;
+  }
+
+  .col-actions {
+    width: 14%;
   }
 
   .ping-widget :global(.col-optional),

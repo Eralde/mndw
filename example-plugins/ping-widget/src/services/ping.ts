@@ -31,6 +31,13 @@ interface Envelope<T> {
   message?: string;
 }
 
+export type DaemonAction = 'start' | 'stop';
+
+const daemonEndpointIds: Record<DaemonAction, string> = {
+  start: 'daemonStart',
+  stop: 'daemonStop',
+};
+
 async function parseEnvelope<T>(response: Response): Promise<Envelope<T>> {
   const text = await response.text();
   let payload: Envelope<T>;
@@ -50,6 +57,10 @@ async function parseEnvelope<T>(response: Response): Promise<Envelope<T>> {
 
 function dataArray<T>(payload: Envelope<T[]>): T[] {
   return Array.isArray(payload.data) ? payload.data : [];
+}
+
+export async function controlDaemon(backend: BackendClient, action: DaemonAction): Promise<void> {
+  await parseEnvelope<unknown>(await backend.fetch(daemonEndpointIds[action]));
 }
 
 export async function fetchStats(backend: BackendClient): Promise<HostStats[]> {

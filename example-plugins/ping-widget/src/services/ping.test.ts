@@ -1,6 +1,6 @@
 import {describe, expect, it, vi} from 'vitest';
 import type {BackendClient} from '@mndw/sdk';
-import {fetchHosts, fetchStats, updateHosts} from './ping';
+import {controlDaemon, fetchHosts, fetchStats, updateHosts} from './ping';
 
 function fakeBackend(response: Response) {
   const fetchMock = vi.fn().mockResolvedValue(response);
@@ -16,6 +16,28 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe('ping services', () => {
+  it('calls the start daemon binding', async () => {
+    const {backend, fetchMock} = fakeBackend(jsonResponse({success: true}));
+
+    await controlDaemon(backend, 'start');
+
+    expect(fetchMock).toHaveBeenCalledWith('daemonStart');
+  });
+
+  it('calls the stop daemon binding', async () => {
+    const {backend, fetchMock} = fakeBackend(jsonResponse({success: true}));
+
+    await controlDaemon(backend, 'stop');
+
+    expect(fetchMock).toHaveBeenCalledWith('daemonStop');
+  });
+
+  it('throws the daemon envelope message on failure', async () => {
+    const {backend} = fakeBackend(jsonResponse({success: false, message: 'Daemon unavailable'}, {status: 500}));
+
+    await expect(controlDaemon(backend, 'stop')).rejects.toThrow('Daemon unavailable');
+  });
+
   it('fetchStats returns the data array from the envelope', async () => {
     const {backend, fetchMock} = fakeBackend(jsonResponse({
       success: true,

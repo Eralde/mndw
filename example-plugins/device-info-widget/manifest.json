@@ -6,5 +6,5 @@
   "type": "widget",
   "label": "Device Info",
   "entry": "index.js",
-  "size": {"w": 4, "h": 5, "minW": 3, "minH": 4}
+  "size": {"w": 4, "h": 7, "minW": 3, "minH": 6}
 }

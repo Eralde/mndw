@@ -1,31 +1,75 @@
 <script setup lang="ts">
 import type {PluginContext} from '@mndw/sdk';
-import {computed, onMounted, ref} from 'vue';
+import {computed, onMounted, onUnmounted, ref} from 'vue';
 
 import CopyField from './components/CopyField.vue';
+import LoadBarChart from './components/LoadBarChart.vue';
 import {type DeviceInfo, fetchDeviceInfo, formatUptime} from './services/device-info.js';
+import {createRefreshLoop, type RefreshLoop} from './services/refresh-loop.js';
+import {Ticker} from './services/ticker.js';
+import {createUptimeBaseline, getUptimeSeconds, type UptimeBaseline} from './services/uptime.js';
 
 const props = defineProps<{ctx: PluginContext}>();
 
 const loading = ref(true);
 const error = ref(false);
 const info = ref<DeviceInfo | null>(null);
+const uptimeSeconds = ref<number | null>(null);
+
+let baseline: UptimeBaseline | null = null;
+let ticker: Ticker | null = null;
+let unsubscribeTicker: (() => void) | null = null;
+let refreshLoop: RefreshLoop | null = null;
 
 const firmware = computed(() => props.ctx.hostInfo.firmwareVersion);
 const deviceName = computed(() => props.ctx.hostInfo.deviceName);
 const uptime = computed(() =>
-  info.value !== null && info.value.uptimeSeconds !== null
-    ? formatUptime(info.value.uptimeSeconds)
-    : 'Unknown');
+    uptimeSeconds.value !== null
+        ? formatUptime(uptimeSeconds.value)
+        : 'Unknown');
 
-onMounted(async () => {
-  try {
-    info.value = await fetchDeviceInfo(props.ctx.rciManager);
-  } catch {
-    error.value = true;
-  } finally {
+const handleInfoSuccess = (nextInfo: DeviceInfo): void => {
+  const syncedAtMs = Date.now();
+
+  info.value = nextInfo;
+  error.value = false;
+  loading.value = false;
+  baseline = createUptimeBaseline(nextInfo.uptimeSeconds, syncedAtMs);
+  uptimeSeconds.value = getUptimeSeconds(baseline, syncedAtMs);
+};
+
+const handleLoadError = (loadError: unknown, isInitial: boolean): void => {
+  console.error('[device-info-widget] device info refresh failed', loadError);
+
+  if (isInitial) {
     loading.value = false;
+    error.value = true;
   }
+};
+
+onMounted(() => {
+  ticker = new Ticker();
+  unsubscribeTicker = ticker.onTick(() => {
+    uptimeSeconds.value = getUptimeSeconds(baseline, Date.now());
+  });
+  ticker.start(1000);
+
+  refreshLoop = createRefreshLoop({
+    load: () => fetchDeviceInfo(props.ctx.rciManager),
+    intervalMs: 30_000,
+    onSuccess: handleInfoSuccess,
+    onError: handleLoadError,
+  });
+  refreshLoop.start();
+});
+
+onUnmounted(() => {
+  refreshLoop?.stop();
+  refreshLoop = null;
+  unsubscribeTicker?.();
+  unsubscribeTicker = null;
+  ticker?.destroy();
+  ticker = null;
 });
 </script>
 
@@ -34,6 +78,11 @@ onMounted(async () => {
     <div v-if="loading" class="app__loading">Loading&#8230;</div>
     <div v-else-if="error || info === null" class="app__error">Failed to load device info</div>
     <div v-else>
+      <div class="app__loads">
+        <LoadBarChart label="CPU" :value="info.cpuLoadPercent" :history="info.cpuHistory"/>
+        <LoadBarChart label="RAM" :value="info.ramLoadPercent" :history="info.ramHistory"/>
+      </div>
+      <hr class="app__divider">
       <div class="app__grid">
         <span class="app__label">Device:</span>
         <span class="app__value">{{ deviceName }} ({{ info.model }})</span>
@@ -44,11 +93,11 @@ onMounted(async () => {
       </div>
       <hr class="app__divider">
       <div class="app__grid">
-        <CopyField label="Serial" :value="info.serial" />
-        <CopyField label="Service Tag" :value="info.serviceTag" />
-        <CopyField label="MAC" :value="info.mac" />
-        <CopyField label="HW ID" :value="info.hwid" />
-        <CopyField label="CID" :value="info.cid" />
+        <CopyField label="Serial" :value="info.serial"/>
+        <CopyField label="Service Tag" :value="info.serviceTag"/>
+        <CopyField label="MAC" :value="info.mac"/>
+        <CopyField label="HW ID" :value="info.hwid"/>
+        <CopyField label="CID" :value="info.cid"/>
       </div>
     </div>
   </div>
@@ -56,6 +105,10 @@ onMounted(async () => {
 
 <style scoped>
 .app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  box-sizing: border-box;
   padding: 16px;
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
@@ -94,5 +147,12 @@ onMounted(async () => {
   border: none;
   border-top: 1px solid var(--mndw-border);
   margin: 12px 0;
+}
+
+.app__loads {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 </style>

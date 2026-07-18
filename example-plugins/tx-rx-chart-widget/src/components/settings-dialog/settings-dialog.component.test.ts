@@ -1,0 +1,118 @@
+import '@angular/compiler';
+import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {type ComponentFixture, TestBed} from '@angular/core/testing';
+import type {NetworkInterface} from '../../types/rci.types.js';
+import {afterEach, describe, expect, it} from 'vitest';
+import {InterfaceSelectComponent} from '../interface-select/interface-select.component.js';
+import interfaceSelectStyles from '../interface-select/interface-select.component.scss?raw';
+import interfaceSelectTemplate from '../interface-select/interface-select.component.html?raw';
+import {SettingsDialogComponent} from './settings-dialog.component.js';
+import settingsDialogStyles from './settings-dialog.component.scss?raw';
+import settingsDialogTemplate from './settings-dialog.component.html?raw';
+
+const interfaces: NetworkInterface[] = [
+  {id: 'eth0', description: 'LAN'},
+  {id: 'eth1', description: 'WAN'},
+];
+
+function queryElement<T extends Element>(root: Element, selector: string): T {
+  const element = root.querySelector<T>(selector);
+
+  if (element === null) {
+    throw new Error(`Missing element: ${selector}`);
+  }
+
+  return element;
+}
+
+async function createFixture(
+  selectedInterface: string,
+  refresh: number,
+): Promise<ComponentFixture<SettingsDialogComponent>> {
+  await resolveComponentResources((url: string) => {
+    if (url.endsWith('interface-select.component.html')) {
+      return Promise.resolve(interfaceSelectTemplate);
+    }
+
+    if (url.endsWith('interface-select.component.scss')) {
+      return Promise.resolve(interfaceSelectStyles);
+    }
+
+    if (url.endsWith('settings-dialog.component.html')) {
+      return Promise.resolve(settingsDialogTemplate);
+    }
+
+    if (url.endsWith('settings-dialog.component.scss')) {
+      return Promise.resolve(settingsDialogStyles);
+    }
+
+    throw new Error(`resource URL: ${url}`);
+  });
+  await TestBed.configureTestingModule({
+    imports: [InterfaceSelectComponent, SettingsDialogComponent],
+  }).compileComponents();
+
+  const fixture = TestBed.createComponent(SettingsDialogComponent);
+
+  fixture.componentRef.setInput('interfaces', interfaces);
+  fixture.componentRef.setInput('selectedInterface', selectedInterface);
+  fixture.componentRef.setInput('refresh', refresh);
+  fixture.detectChanges();
+
+  return fixture;
+}
+
+afterEach(() => {
+  TestBed.resetTestingModule();
+});
+
+describe('SettingsDialogComponent', () => {
+  it('renders the shared select with the current interface', async () => {
+    const fixture = await createFixture('eth1', 2500);
+
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('tx-rx-interface-select')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.interface-select__value')?.textContent).toContain('WAN');
+  });
+
+  it('renders a range slider with the requested bounds and current value', async () => {
+    const fixture = await createFixture('', 2500);
+
+    fixture.detectChanges();
+
+    const slider = queryElement<HTMLInputElement>(fixture.nativeElement, 'input[type="range"]');
+
+    expect(slider.min).toBe('1');
+    expect(slider.max).toBe('5');
+    expect(slider.step).toBe('0.5');
+    expect(slider.value).toBe('2.5');
+    expect(fixture.nativeElement.querySelector('output')?.textContent).toContain('2.5 s');
+  });
+
+  it('emits slider values as milliseconds', async () => {
+    const fixture = await createFixture('', 3000);
+    let emitted = 0;
+
+    fixture.componentInstance.refreshChange.subscribe((value: number) => emitted = value);
+    fixture.detectChanges();
+
+    const slider = queryElement<HTMLInputElement>(fixture.nativeElement, 'input[type="range"]');
+
+    slider.value = '4.5';
+    slider.dispatchEvent(new Event('input', {bubbles: true}));
+
+    expect(emitted).toBe(4500);
+  });
+
+  it('updates displayed refresh seconds while the slider moves', async () => {
+    const fixture = await createFixture('', 3000);
+    const slider = queryElement<HTMLInputElement>(fixture.nativeElement, 'input[type="range"]');
+
+    slider.value = '4.5';
+    slider.dispatchEvent(new Event('input', {bubbles: true}));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('output')?.textContent).toContain('4.5 s');
+  });
+});

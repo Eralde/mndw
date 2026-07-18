@@ -1,4 +1,4 @@
-import {Component, DestroyRef, type OnInit, inject, input, signal} from '@angular/core';
+import {Component, DestroyRef, Input, type OnInit, inject, signal} from '@angular/core';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {CommonModule} from '@angular/common';
 import {Subscription, switchMap, timer} from 'rxjs';
@@ -7,20 +7,22 @@ import {RciService} from '../services/rci.service';
 import {PLUGIN_STORAGE} from '../tokens';
 import {InterfaceSelectComponent, RrdLineChartComponent} from '../components';
 import type {OpenSettingsFn} from '../open-settings-dialog';
+import {DEFAULT_REFRESH_MS, normalizeRefreshMs} from '../utils/refresh.utils';
 
 const STORAGE_KEY = 'tx-rx-rrd-chart-interface';
 const STORAGE_REFRESH = 'tx-rx-rrd-chart-refresh';
-const POLL_INTERVAL = 3000;
 const DEVICE_TIME_INTERVAL = 30000;
 
 @Component({
   selector: 'tx-rx-app',
+  standalone: true,
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
   imports: [CommonModule, InterfaceSelectComponent, RrdLineChartComponent],
 })
 export class AppComponent implements OnInit {
-  public readonly openSettings = input.required<OpenSettingsFn>();
+  @Input({required: true})
+  public openSettings: OpenSettingsFn = () => undefined;
 
   private readonly rciService = inject(RciService);
   private readonly storage = inject(PLUGIN_STORAGE);
@@ -33,7 +35,7 @@ export class AppComponent implements OnInit {
   protected readonly clockTime = signal<Date | null>(null);
   protected readonly error = signal<string>('');
   protected readonly loadingInterfaces = signal(true);
-  protected readonly refresh = signal(POLL_INTERVAL);
+  protected readonly refresh = signal(DEFAULT_REFRESH_MS);
 
   private pollingSub: Subscription | null = null;
   private deviceTimeSub: Subscription | null = null;
@@ -48,7 +50,7 @@ export class AppComponent implements OnInit {
     const savedInterface = await this.storage.get(STORAGE_KEY);
     const savedRefresh = await this.storage.get(STORAGE_REFRESH);
 
-    if (savedRefresh) { this.refresh.set(parseInt(savedRefresh, 10) || POLL_INTERVAL); }
+    if (savedRefresh) { this.refresh.set(normalizeRefreshMs(savedRefresh)); }
 
     this.rciService.getInterfaces().pipe(
       takeUntilDestroyed(this.destroyRef),
@@ -83,7 +85,7 @@ export class AppComponent implements OnInit {
   }
 
   protected openSettingsDialog(): void {
-    this.openSettings()({
+    this.openSettings({
       interfaces: this.interfaceList(),
       selectedInterface: this.selectedInterface(),
       refresh: this.refresh(),

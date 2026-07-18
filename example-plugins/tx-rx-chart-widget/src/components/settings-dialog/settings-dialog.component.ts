@@ -1,23 +1,41 @@
-import {Component, input, output} from '@angular/core';
+import {Component, EventEmitter, Input, Output} from '@angular/core';
 import type {NetworkInterface} from '../../types/rci.types';
+import {InterfaceSelectComponent} from '../interface-select/interface-select.component';
+import {refreshMsToSeconds, refreshSecondsToMs} from '../../utils/refresh.utils';
 
 /**
  * Settings form body. Rendered inside a host-managed overlay shell (see open-settings-dialog.ts).
  */
 @Component({
   selector: 'tx-rx-settings-dialog',
+  standalone: true,
   templateUrl: './settings-dialog.component.html',
   styleUrls: ['./settings-dialog.component.scss'],
+  imports: [InterfaceSelectComponent],
 })
 export class SettingsDialogComponent {
-  public readonly interfaces = input.required<NetworkInterface[]>();
-  public readonly selectedInterface = input.required<string>();
-  public readonly refresh = input.required<number>();
-  public readonly interfaceChange = output<string>();
-  public readonly refreshChange = output<number>();
-  public readonly closeDialogEvent = output<void>();
+  @Input({required: true})
+  public interfaces: NetworkInterface[] = [];
+
+  @Input({required: true})
+  public selectedInterface = '';
+
+  @Input({required: true})
+  public refresh = 3000;
+
+  @Output()
+  public readonly interfaceChange = new EventEmitter<string>();
+
+  @Output()
+  public readonly refreshChange = new EventEmitter<number>();
+
+  @Output()
+  public readonly closeDialogEvent = new EventEmitter<void>();
+
+  protected readonly refreshMsToSeconds = refreshMsToSeconds;
 
   protected onRefreshChange(value: string): void {
-    this.refreshChange.emit(Number(value));
+    this.refresh = refreshSecondsToMs(value);
+    this.refreshChange.emit(this.refresh);
   }
 }

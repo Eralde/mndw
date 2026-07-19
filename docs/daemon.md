@@ -131,11 +131,11 @@ durable audit trail.
 ## Lifecycle and opkg
 
 `backend.daemon.start` and `.stop` hooks run on approval, enable, disable,
-startup, and shutdown as appropriate. The daemon is process-stateless: the
-hook owns backgrounding and any pidfile, which lets a process survive a daemon
-restart when designed to do so.
+startup, and shutdown as appropriate. The daemon is process-stateless: each
+hook owns backgrounding and its process-ownership record, which lets a process
+survive a daemon restart when designed to do so. Stop hooks must signal only
+PIDs recorded by their matching start hook, never a global process name.
 
 Opkg operations have an executable mode for devices and a stub mode for local
 development and tests. Dependency installation happens before an approved
 plugin leaves staging, so a package failure leaves a retryable pending plugin.
-

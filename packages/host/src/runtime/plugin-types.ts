@@ -46,6 +46,7 @@ interface PluginListEntryBase {
 export interface WidgetListEntry extends PluginListEntryBase {
   type: 'widget';
   size: WidgetSize;
+  fixedHeight?: boolean;
 }
 
 export interface PageListEntry extends PluginListEntryBase {

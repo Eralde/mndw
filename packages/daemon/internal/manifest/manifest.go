@@ -81,6 +81,7 @@ type Manifest struct {
 	Entry           *string  `json:"entry"`
 	Icon            *string  `json:"icon,omitempty"`
 	Size            *Size    `json:"size,omitempty"`
+	FixedHeight     *bool    `json:"fixedHeight,omitempty"`
 	Route           *string  `json:"route,omitempty"`
 	Backend         *Backend `json:"backend,omitempty"`
 }

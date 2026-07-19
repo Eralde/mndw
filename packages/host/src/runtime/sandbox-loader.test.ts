@@ -77,6 +77,12 @@ describe('manifestToListEntry', () => {
     expect(entry).toMatchObject({type: 'page', route: '/sandbox'});
   });
 
+  it('forwards fixedHeight for dev-mode widget manifests', () => {
+    const entry = manifestToListEntry({...widgetManifest, fixedHeight: true} as never);
+
+    expect(entry).toMatchObject({type: 'widget', fixedHeight: true});
+  });
+
   it('maps declared backend endpoints/opkg/public into the descriptor', () => {
     const entry = manifestToListEntry(backendManifest as never);
 

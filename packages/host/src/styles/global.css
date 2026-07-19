@@ -42,6 +42,10 @@
 
 /* === Reset & Base === */
 
+:root {
+  --mndw-header-height: 48px;
+}
+
 *,
 *::before,
 *::after {
@@ -189,6 +193,50 @@ body {
   flex: 1;
 }
 
+.mndw-sidebar-backdrop {
+  display: none;
+}
+
+/* 720px matches MOBILE_BREAKPOINT_PX in layout/breakpoint.ts. */
+@media (max-width: 720px) {
+  .mndw-header {
+    overflow: hidden;
+    height: var(--mndw-header-height);
+  }
+
+  .mndw-header__device {
+    overflow: hidden;
+    max-width: 35vw;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mndw-sidebar {
+    position: fixed;
+    inset: var(--mndw-header-height) auto 0 0;
+    z-index: 89;
+    width: min(80vw, 280px);
+    padding: 8px 0;
+    transition: transform 0.2s ease;
+    transform: translateX(0);
+  }
+
+  .mndw-sidebar.collapsed {
+    overflow: hidden;
+    width: min(80vw, 280px);
+    padding: 8px 0;
+    transform: translateX(-100%);
+  }
+
+  .mndw-sidebar-backdrop {
+    position: fixed;
+    inset: var(--mndw-header-height) 0 0 0;
+    z-index: 88;
+    display: block;
+    background: rgb(0 0 0 / 30%);
+  }
+}
+
 /* === Login === */
 
 .mndw-login {
@@ -296,10 +344,6 @@ body {
 }
 
 .mndw-dashboard-page .grid-stack {
-  min-width: 720px;
-
-  /* The 12-column grid keeps a fixed usable width and scrolls horizontally on narrow
-     viewports rather than crushing tiles below one grid unit. */
   height: 100%;
   padding: 6px;
 }
@@ -391,6 +435,52 @@ body {
 .mndw-grid-tile__close:hover {
   background: var(--mndw-danger);
   color: var(--mndw-accent-contrast);
+}
+
+/* Mobile dashboard: one-column intrinsic-height flow (720px matches
+   MOBILE_BREAKPOINT_PX in layout/breakpoint.ts; the host renders this shell instead
+   of GridStack below it). Tiles take their content height — no row quantization. */
+.mndw-mobile-dashboard {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  height: auto;
+  min-height: 0;
+  padding: 10px;
+}
+
+.mndw-mobile-tile {
+  position: relative;
+  flex-shrink: 0;
+  border: 1px solid var(--mndw-border);
+  border-radius: 4px;
+  background: var(--mndw-surface);
+}
+
+.mndw-mobile-tile .mndw-grid-tile {
+  height: auto;
+}
+
+.mndw-mobile-tile .mndw-grid-tile__title {
+  cursor: default;
+}
+
+.mndw-mobile-tile .mndw-grid-tile__body {
+  flex: none;
+  overflow: visible;
+  height: auto;
+  min-height: auto;
+}
+
+.mndw-mobile-tile .mndw-grid-tile__notice {
+  height: auto;
+}
+
+/* No hover on touch: the remove control is always visible on mobile tiles. */
+.mndw-mobile-tile .mndw-grid-tile__close {
+  opacity: 1;
 }
 
 .mndw-dashboard-page .mndw-dashboard__loading {
@@ -514,6 +604,68 @@ body {
 
 .mndw-floating-panel__deps--failed {
   color: var(--mndw-danger);
+}
+
+/* Mobile order overlay: slim reorder cards inside the shared floating panel. */
+.mndw-order-overlay__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mndw-order-card {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--mndw-border);
+  border-radius: 4px;
+  background: var(--mndw-surface);
+}
+
+.mndw-order-card--dragging {
+  border-color: var(--mndw-accent);
+}
+
+.mndw-order-card__handle {
+  color: var(--mndw-text-subtle);
+  cursor: grab;
+  user-select: none;
+
+  /* Required for pointer-based drag on touch: stop the browser panning instead. */
+  touch-action: none;
+}
+
+.mndw-order-card__label {
+  flex: 1;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mndw-order-card__moves {
+  display: flex;
+  gap: 4px;
+}
+
+.mndw-order-card__moves button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--mndw-border);
+  border-radius: 4px;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text-muted);
+  cursor: pointer;
+}
+
+.mndw-order-card__moves button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* === Page Plugin === */

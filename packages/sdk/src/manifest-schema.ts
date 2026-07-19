@@ -173,6 +173,7 @@ const widgetManifestSchema = z.object({
   entry: entryField,
   icon: iconField,
   size: widgetSizeSchema,
+  fixedHeight: z.boolean().optional(),
   backend: pluginBackendSchema,
 });
 

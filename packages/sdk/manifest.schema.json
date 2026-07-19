@@ -75,6 +75,9 @@
           "additionalProperties": false,
           "description": "Widget size in grid units on the 12-column dashboard grid."
         },
+        "fixedHeight": {
+          "type": "boolean"
+        },
         "backend": {
           "type": "object",
           "properties": {

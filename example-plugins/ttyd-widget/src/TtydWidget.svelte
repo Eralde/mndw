@@ -310,4 +310,14 @@ onMount(() => {
     transform: rotate(360deg);
   }
 }
+
+/* 720px matches the host's MOBILE_BREAKPOINT_PX (packages/host/src/layout/breakpoint.ts).
+   Below it the dashboard renders intrinsic-height flow tiles, so the terminal must
+   supply its own height instead of resolving 100% from a GridStack row. Fixed height
+   (not min-height): the terminal stays an internally-scrolling fixed-size area. */
+@media (max-width: 720px) {
+  .ttyd-widget {
+    height: 320px;
+  }
+}
 </style>

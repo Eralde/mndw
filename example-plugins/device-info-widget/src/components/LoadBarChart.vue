@@ -1,98 +1,64 @@
 <script setup lang="ts">
-import * as d3 from 'd3';
-import {onMounted, onUnmounted, ref, watch} from 'vue';
+import {computed, onMounted, onUnmounted, ref} from 'vue';
 
-import {prepareChartHistory} from './load-bar-chart-data.js';
+import {barIndexAt, computeChartBars, prepareChartHistory} from './load-bar-chart-data.js';
 
 const props = defineProps<{label: string; value: number; history: number[]}>();
 
-const containerRef = ref<HTMLDivElement | null>(null);
-const svgRef = ref<SVGSVGElement | null>(null);
-const tooltipRef = ref<HTMLDivElement | null>(null);
+const CHART_HEIGHT = 28;
+const BAR_GAP = 1;
 
-const CHART_HEIGHT = 88;
-const MARGIN = {top: 6, right: 4, bottom: 18, left: 28};
+const chartRef = ref<HTMLDivElement | null>(null);
+const chartWidth = ref(0);
+const hoverIndex = ref<number | null>(null);
 
 let resizeObserver: ResizeObserver | null = null;
 
-const hideTooltip = (): void => {
-  if (tooltipRef.value !== null) {
-    tooltipRef.value.style.display = 'none';
-  }
-};
+const history = computed(() => prepareChartHistory(props.history));
 
-const showTooltip = (event: MouseEvent, value: number): void => {
-  if (tooltipRef.value === null || containerRef.value === null) {
+const bars = computed(() =>
+    computeChartBars(history.value, chartWidth.value, CHART_HEIGHT, BAR_GAP));
+
+const tooltip = computed(() => {
+  if (hoverIndex.value === null) {
+    return null;
+  }
+
+  const bar = bars.value[hoverIndex.value];
+
+  if (bar === undefined) {
+    return null;
+  }
+
+  return {value: bar.value, left: bar.left + bar.width / 2};
+});
+
+const handlePointerMove = (event: PointerEvent): void => {
+  if (chartRef.value === null) {
     return;
   }
 
-  const bounds = containerRef.value.getBoundingClientRect();
-  tooltipRef.value.textContent = `${value}%`;
-  tooltipRef.value.style.display = 'block';
-  tooltipRef.value.style.left = `${event.clientX - bounds.left + 6}px`;
-  tooltipRef.value.style.top = `${event.clientY - bounds.top - 28}px`;
+  const bounds = chartRef.value.getBoundingClientRect();
+
+  hoverIndex.value = barIndexAt(event.clientX - bounds.left, bounds.width, history.value.length);
 };
 
-const drawChart = (): void => {
-  if (svgRef.value === null || containerRef.value === null) {
-    return;
-  }
-
-  const history = prepareChartHistory(props.history);
-  const width = Math.max(180, containerRef.value.clientWidth);
-  const innerWidth = width - MARGIN.left - MARGIN.right;
-  const innerHeight = CHART_HEIGHT - MARGIN.top - MARGIN.bottom;
-  const svg = d3.select<SVGSVGElement, undefined>(svgRef.value);
-
-  svg
-      .attr('viewBox', `0 0 ${width} ${CHART_HEIGHT}`)
-      .attr('aria-label', `${props.label} history`)
-      .selectAll('*')
-      .remove();
-
-  hideTooltip();
-
-  if (history.length === 0) {
-    return;
-  }
-
-  const chart = svg.append('g').attr('transform', `translate(${MARGIN.left},${MARGIN.top})`);
-  const x = d3.scaleBand<string>()
-      .domain(history.map((_, index) => String(index)))
-      .range([0, innerWidth])
-      .padding(0.15);
-  const y = d3.scaleLinear().domain([0, 100]).range([innerHeight, 0]);
-
-  chart.append('g')
-      .attr('class', 'load-bar-chart__grid')
-      .call(d3.axisLeft(y).ticks(2).tickSize(-innerWidth).tickFormat((tick) => `${tick}%`));
-
-  chart.selectAll<SVGRectElement, number>('rect')
-      .data(history)
-      .join('rect')
-      .attr('class', 'load-bar-chart__bar')
-      .attr('x', (_, index) => x(String(index)) ?? 0)
-      .attr('y', (value) => y(value))
-      .attr('width', x.bandwidth())
-      .attr('height', (value) => innerHeight - y(value))
-      .on('pointerenter', (event: MouseEvent, value: number) => showTooltip(event, value))
-      .on('pointermove', (event: MouseEvent, value: number) => showTooltip(event, value))
-      .on('pointerleave', hideTooltip);
-
-  chart.append('g')
-      .attr('class', 'load-bar-chart__axis')
-      .attr('transform', `translate(0,${innerHeight})`)
-      .call(d3.axisBottom(x).tickValues([]).tickSize(0));
+const handlePointerLeave = (): void => {
+  hoverIndex.value = null;
 };
 
-watch([() => props.history, () => props.value], drawChart, {deep: true, flush: 'post'});
+const updateWidth = (): void => {
+  if (chartRef.value !== null) {
+    chartWidth.value = chartRef.value.clientWidth;
+  }
+};
 
 onMounted(() => {
-  drawChart();
-  resizeObserver = new ResizeObserver(drawChart);
+  updateWidth();
+  resizeObserver = new ResizeObserver(updateWidth);
 
-  if (containerRef.value !== null) {
-    resizeObserver.observe(containerRef.value);
+  if (chartRef.value !== null) {
+    resizeObserver.observe(chartRef.value);
   }
 });
 
@@ -103,30 +69,70 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section ref="containerRef" class="load-bar-chart">
+  <div class="load-bar-chart">
     <div class="load-bar-chart__header">
       <span class="load-bar-chart__label">{{ label }}</span>
       <span class="load-bar-chart__value">{{ value }}%</span>
     </div>
-    <div class="load-bar-chart__body">
-      <svg v-if="history.length > 0" ref="svgRef" class="load-bar-chart__svg"/>
-      <span v-else class="load-bar-chart__empty">No historical data</span>
-      <div ref="tooltipRef" class="load-bar-chart__tooltip"/>
+    <div
+      ref="chartRef"
+      class="load-bar-chart__chart"
+      @pointermove="handlePointerMove"
+      @pointerleave="handlePointerLeave"
+    >
+      <svg
+        v-if="bars.length > 0"
+        class="load-bar-chart__svg"
+        :viewBox="`0 0 ${chartWidth} ${CHART_HEIGHT}`"
+        preserveAspectRatio="none"
+        :aria-label="`${label} history`"
+      >
+        <rect
+          v-for="(bar, index) in bars"
+          :key="index"
+          class="load-bar-chart__bar"
+          :class="{'load-bar-chart__bar--active': index === hoverIndex}"
+          :x="bar.left"
+          :y="bar.top"
+          :width="bar.width"
+          :height="bar.height"
+        />
+        <line
+          class="load-bar-chart__ceiling"
+          x1="0"
+          :x2="chartWidth"
+          y1="0.5"
+          y2="0.5"
+        />
+        <line
+          class="load-bar-chart__baseline"
+          x1="0"
+          :x2="chartWidth"
+          :y1="CHART_HEIGHT - 0.5"
+          :y2="CHART_HEIGHT - 0.5"
+        />
+      </svg>
+      <span v-else class="load-bar-chart__empty">No data</span>
+      <div v-if="tooltip !== null" class="load-bar-chart__tooltip" :style="{left: `${tooltip.left}px`}">
+        {{ tooltip.value }}%
+      </div>
     </div>
-  </section>
+  </div>
 </template>
 
 <style scoped>
 .load-bar-chart {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 0;
 }
 
 .load-bar-chart__header {
   display: flex;
-  justify-content: space-between;
+  align-items: baseline;
+  justify-content: flex-start;
   gap: 8px;
-  margin-bottom: 2px;
 }
 
 .load-bar-chart__label {
@@ -139,57 +145,59 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-.load-bar-chart__body {
+.load-bar-chart__chart {
   position: relative;
-  min-height: 88px;
+  width: 100%;
+  height: 28px;
 }
 
 .load-bar-chart__svg {
   display: block;
   width: 100%;
-  height: 88px;
-  overflow: visible;
+  height: 100%;
 }
 
 .load-bar-chart__empty {
   display: block;
-  padding: 32px 0;
   color: var(--mndw-text-subtle);
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 28px;
+}
+
+.load-bar-chart__bar {
+  fill: var(--mndw-accent);
+}
+
+.load-bar-chart__bar--active {
+  fill: var(--mndw-text);
+}
+
+.load-bar-chart__ceiling,
+.load-bar-chart__baseline {
+  stroke: var(--mndw-border);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
 }
 
 .load-bar-chart__tooltip {
   position: absolute;
-  display: none;
-  padding: 2px 5px;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  padding: 1px 5px;
   border: 1px solid var(--mndw-border);
   border-radius: 3px;
   background: var(--mndw-surface);
   color: var(--mndw-text);
   font-size: 11px;
-  pointer-events: none;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  pointer-events: none;
 }
 
-:deep(.load-bar-chart__grid line) {
-  stroke: var(--mndw-border);
-  stroke-dasharray: 2 2;
-  opacity: 0.7;
-}
-
-:deep(.load-bar-chart__grid path),
-:deep(.load-bar-chart__axis path),
-:deep(.load-bar-chart__axis line) {
-  stroke: var(--mndw-border);
-}
-
-:deep(.load-bar-chart__grid text),
-:deep(.load-bar-chart__axis text) {
-  fill: var(--mndw-text-subtle);
-  font-size: 9px;
-}
-
-:deep(.load-bar-chart__bar) {
-  fill: var(--mndw-accent);
+@container device-info-loads (max-width: 200px) {
+  .load-bar-chart__chart {
+    display: none;
+  }
 }
 </style>

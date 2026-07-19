@@ -104,13 +104,17 @@ func newTestServerWithReadiness(t *testing.T, ready ReadinessSource) (*httptest.
 }
 
 // writeBuiltinFixture drops a minimal valid widget manifest into the builtin dir.
-func writeBuiltinFixture(t *testing.T, cfg Config, name string) {
+func writeBuiltinFixture(t *testing.T, cfg Config, name string, fixedHeight bool) {
 	t.Helper()
 	dir := filepath.Join(cfg.BuiltinPluginsDir, name)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest := `{"manifestVersion":2,"name":"` + name + `","version":"0.1.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}}`
+	fixedHeightField := ""
+	if fixedHeight {
+		fixedHeightField = `,"fixedHeight":true`
+	}
+	manifest := `{"manifestVersion":2,"name":"` + name + `","version":"0.1.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}` + fixedHeightField + `}`
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -454,19 +458,25 @@ func TestBuiltinAppearsInList(t *testing.T) {
 
 func TestListReportsDepsStatus(t *testing.T) {
 	srv, cfg := newTestServerWithReadiness(t, trackerStub{"ttyd-widget": readiness.StateInstalling})
-	writeBuiltinFixture(t, cfg, "ttyd-widget")
-	writeBuiltinFixture(t, cfg, "clock-widget")
+	writeBuiltinFixture(t, cfg, "ttyd-widget", true)
+	writeBuiltinFixture(t, cfg, "clock-widget", false)
 
-	byName := make(map[string]string)
+	byName := make(map[string]ListEntry)
 	for _, e := range listPlugins(t, srv, "/api/mgmt/list") {
-		byName[e.Name] = e.DepsStatus
+		byName[e.Name] = e
 	}
 
-	if byName["ttyd-widget"] != "installing" {
-		t.Errorf("ttyd-widget depsStatus = %q, want installing", byName["ttyd-widget"])
+	if byName["ttyd-widget"].DepsStatus != "installing" {
+		t.Errorf("ttyd-widget depsStatus = %q, want installing", byName["ttyd-widget"].DepsStatus)
 	}
-	if byName["clock-widget"] != "ready" {
-		t.Errorf("clock-widget depsStatus = %q, want ready", byName["clock-widget"])
+	if byName["clock-widget"].DepsStatus != "ready" {
+		t.Errorf("clock-widget depsStatus = %q, want ready", byName["clock-widget"].DepsStatus)
+	}
+	if byName["ttyd-widget"].FixedHeight == nil || !*byName["ttyd-widget"].FixedHeight {
+		t.Errorf("ttyd-widget fixedHeight = %v, want non-nil true", byName["ttyd-widget"].FixedHeight)
+	}
+	if byName["clock-widget"].FixedHeight != nil {
+		t.Errorf("clock-widget fixedHeight = %v, want nil", byName["clock-widget"].FixedHeight)
 	}
 }
 

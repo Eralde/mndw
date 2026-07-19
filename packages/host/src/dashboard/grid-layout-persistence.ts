@@ -1,4 +1,4 @@
-import type {WidgetSize} from './widget-size.js';
+import {type WidgetSize, getWidgetSize} from './widget-size.js';
 
 const GRID_LAYOUT_KEY = 'mndw:dashboard:grid-layout';
 const WIDGET_TILE_ID = /^widget-(.+):([1-9]\d*)$/;
@@ -9,6 +9,11 @@ export interface PersistedGridTile {
   y: number;
   w: number;
   h: number;
+}
+
+export interface DashboardLayout {
+  tiles: PersistedGridTile[];
+  mobileOrder: string[];
 }
 
 export function parseWidgetTileId(tileId: string): {pluginName: string; counter: number} | null {
@@ -57,59 +62,85 @@ function clearGridLayout(): void {
   try {
     localStorage.removeItem(GRID_LAYOUT_KEY);
   } catch (error) {
-    console.error('[mndw] Failed to clear grid dashboard layout:', error);
+    console.error('[mndw] Failed to clear dashboard layout:', error);
   }
 }
 
-export function saveGridLayout(layout: PersistedGridTile[]): void {
-  const persistedLayout = layout.map(({id, x, y, w, h}) => ({id, x, y, w, h}));
+/**
+ * Stable ordering for widget tile ids: plugin name lexicographically, then the
+ * instance counter numerically (`widget-a:2` before `widget-a:10`). Unparsable
+ * ids fall back to a plain string compare.
+ */
+export function compareTileIds(a: string, b: string): number {
+  const parsedA = parseWidgetTileId(a);
+  const parsedB = parseWidgetTileId(b);
 
-  try {
-    localStorage.setItem(GRID_LAYOUT_KEY, JSON.stringify(persistedLayout));
-  } catch (error) {
-    console.error('[mndw] Failed to save grid dashboard layout:', error);
+  if (parsedA === null || parsedB === null) {
+    return a.localeCompare(b);
   }
+
+  return parsedA.pluginName.localeCompare(parsedB.pluginName)
+    || parsedA.counter - parsedB.counter;
 }
 
-export function loadGridLayout(
+function deriveMobileOrder(tiles: PersistedGridTile[]): string[] {
+  return [...tiles]
+    .sort((a, b) => a.y - b.y || a.x - b.x || compareTileIds(a.id, b.id))
+    .map((tile) => tile.id);
+}
+
+/**
+ * Sanitizes a raw stored order against the sanitized tiles: keeps only string ids
+ * that exist in `tiles`, drops duplicates, and appends any tile id the order is
+ * missing (in derived y/x order) so new widgets always have a mobile position.
+ */
+function reconcileMobileOrder(order: unknown, tiles: PersistedGridTile[]): string[] {
+  const available = new Set(tiles.map((tile) => tile.id));
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  if (Array.isArray(order)) {
+    for (const id of order) {
+      if (typeof id === 'string' && available.has(id) && !seen.has(id)) {
+        seen.add(id);
+        result.push(id);
+      }
+    }
+  }
+
+  for (const id of deriveMobileOrder(tiles)) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Desktop placement for a tile added while the mobile renderer is active and no
+ * GridStack instance exists to auto-place it: full-left, one row past the bottom
+ * of the current desktop layout, manifest default size.
+ */
+export function placeTileBelowLayout(
+  tiles: PersistedGridTile[],
+  size: WidgetSize,
+): {x: number; y: number; w: number; h: number} {
+  const normalized = getWidgetSize(size);
+  const y = tiles.reduce((max, tile) => Math.max(max, tile.y + tile.h), 0);
+
+  return {x: 0, y, w: Math.min(normalized.w, 12), h: normalized.h};
+}
+
+function sanitizeTiles(
+  rawTiles: unknown[],
   resolveWidgetSize: (pluginName: string) => WidgetSize | undefined,
-): PersistedGridTile[] | null {
-  let raw: string | null;
-
-  try {
-    raw = localStorage.getItem(GRID_LAYOUT_KEY);
-  } catch (error) {
-    console.error('[mndw] Failed to load grid dashboard layout:', error);
-
-    return null;
-  }
-
-  if (raw === null) {
-    return null;
-  }
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    console.warn('[mndw] Failed to parse grid dashboard layout, discarding:', error);
-    clearGridLayout();
-
-    return null;
-  }
-
-  if (!Array.isArray(parsed)) {
-    console.warn('[mndw] Grid dashboard layout is not an array, discarding');
-    clearGridLayout();
-
-    return null;
-  }
-
+): PersistedGridTile[] {
   const tileIds = new Set<string>();
-  const layout: PersistedGridTile[] = [];
+  const tiles: PersistedGridTile[] = [];
 
-  for (const tile of parsed) {
+  for (const tile of rawTiles) {
     if (!isPersistedTile(tile) || tileIds.has(tile.id)) {
       continue;
     }
@@ -130,8 +161,70 @@ export function loadGridLayout(
     const h = Math.max(tile.h, size.minH ?? 1);
 
     tileIds.add(tile.id);
-    layout.push({id: tile.id, x: Math.min(tile.x, 12 - w), y: tile.y, w, h});
+    tiles.push({id: tile.id, x: Math.min(tile.x, 12 - w), y: tile.y, w, h});
   }
 
-  return layout;
+  return tiles;
+}
+
+function isDashboardLayout(value: unknown): value is {tiles: unknown[]; mobileOrder?: unknown} {
+  return typeof value === 'object' && value !== null
+    && !('version' in value)
+    && Array.isArray((value as {tiles?: unknown}).tiles);
+}
+
+export function saveDashboardLayout(layout: DashboardLayout): void {
+  const persisted: DashboardLayout = {
+    tiles: layout.tiles.map(({id, x, y, w, h}) => ({id, x, y, w, h})),
+    mobileOrder: [...layout.mobileOrder],
+  };
+
+  try {
+    localStorage.setItem(GRID_LAYOUT_KEY, JSON.stringify(persisted));
+  } catch (error) {
+    console.error('[mndw] Failed to save dashboard layout:', error);
+  }
+}
+
+export function loadDashboardLayout(
+  resolveWidgetSize: (pluginName: string) => WidgetSize | undefined,
+): DashboardLayout | null {
+  let raw: string | null;
+
+  try {
+    raw = localStorage.getItem(GRID_LAYOUT_KEY);
+  } catch (error) {
+    console.error('[mndw] Failed to load dashboard layout:', error);
+
+    return null;
+  }
+
+  if (raw === null) {
+    return null;
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    console.warn('[mndw] Failed to parse dashboard layout, discarding:', error);
+    clearGridLayout();
+
+    return null;
+  }
+
+  if (!isDashboardLayout(parsed)) {
+    console.warn('[mndw] Malformed dashboard layout, discarding');
+    clearGridLayout();
+
+    return null;
+  }
+
+  const tiles = sanitizeTiles(parsed.tiles, resolveWidgetSize);
+
+  return {
+    tiles,
+    mobileOrder: reconcileMobileOrder(parsed.mobileOrder, tiles),
+  };
 }

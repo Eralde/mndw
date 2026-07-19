@@ -98,17 +98,18 @@ func opkgContext() (context.Context, context.CancelFunc) {
 // ListEntry is one plugin as surfaced by list/pending. It merges manifest display
 // fields with runtime state and the client-facing backend descriptor (design §3.3).
 type ListEntry struct {
-	Name     string         `json:"name"`
-	Type     string         `json:"type"`
-	Version  string         `json:"version"`
-	Label    string         `json:"label"`
-	Entry    string         `json:"entry"`
-	Icon     string         `json:"icon,omitempty"`
-	Source   string         `json:"source"`
-	Approval string         `json:"approval"`
-	Enabled  bool           `json:"enabled"`
-	Size     *manifest.Size `json:"size,omitempty"`
-	Route    string         `json:"route,omitempty"`
+	Name        string         `json:"name"`
+	Type        string         `json:"type"`
+	Version     string         `json:"version"`
+	Label       string         `json:"label"`
+	Entry       string         `json:"entry"`
+	Icon        string         `json:"icon,omitempty"`
+	Source      string         `json:"source"`
+	Approval    string         `json:"approval"`
+	Enabled     bool           `json:"enabled"`
+	Size        *manifest.Size `json:"size,omitempty"`
+	FixedHeight *bool          `json:"fixedHeight,omitempty"`
+	Route       string         `json:"route,omitempty"`
 	// DepsStatus is the plugin's dependency-install state: "ready" | "installing" |
 	// "failed". Always present; only builtins with backend.opkg installed in the
 	// background can be non-ready.
@@ -230,18 +231,19 @@ func (h *Handler) depsStatusFor(name string) string {
 // including its always-present depsStatus.
 func (h *Handler) entryFrom(m *manifest.Manifest, source, approval string, enabled bool) ListEntry {
 	e := ListEntry{
-		Name:     deref(m.Name),
-		Type:     deref(m.Type),
-		Version:  deref(m.Version),
-		Label:    deref(m.Label),
-		Entry:    deref(m.Entry),
-		Icon:     deref(m.Icon),
-		Source:   source,
-		Approval: approval,
-		Enabled:  enabled,
-		Size:     m.Size,
-		Route:    deref(m.Route),
-		Backend:  m.Descriptor(),
+		Name:        deref(m.Name),
+		Type:        deref(m.Type),
+		Version:     deref(m.Version),
+		Label:       deref(m.Label),
+		Entry:       deref(m.Entry),
+		Icon:        deref(m.Icon),
+		Source:      source,
+		Approval:    approval,
+		Enabled:     enabled,
+		Size:        m.Size,
+		FixedHeight: m.FixedHeight,
+		Route:       deref(m.Route),
+		Backend:     m.Descriptor(),
 	}
 	e.DepsStatus = h.depsStatusFor(e.Name)
 

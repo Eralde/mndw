@@ -50,6 +50,21 @@ describe('validateManifest behavior', () => {
     expect(result.type === 'widget' && result.size.w).toBe(4);
   });
 
+  it('retains widget fixedHeight in validated output', () => {
+    const result = validateManifest({
+      manifestVersion: 2,
+      name: 'fixed-widget',
+      version: '2.0.0',
+      type: 'widget',
+      label: 'Fixed Widget',
+      entry: 'index.js',
+      size: {w: 4, h: 3},
+      fixedHeight: true,
+    });
+
+    expect(result.type === 'widget' && result.fixedHeight).toBe(true);
+  });
+
   it('returns typed page data with the route preserved', () => {
     const result = validateManifest({
       manifestVersion: 2,

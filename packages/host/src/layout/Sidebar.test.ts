@@ -1,12 +1,19 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
+const mobileState = vi.hoisted(() => ({matches: false}));
+
+vi.mock('./breakpoint.js', () => ({
+  mobileMediaQuery: vi.fn(() => ({matches: mobileState.matches})),
+}));
+
 vi.mock('../runtime/plugin-registry.js', () => ({
   pluginRegistry: {getPages: vi.fn(() => [])},
 }));
 
 import {type LoadedPage, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry} from '../runtime/plugin-types.js';
+import {appState} from '../state/app.svelte.js';
 import Sidebar from './Sidebar.svelte';
 
 const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
@@ -49,9 +56,15 @@ function links(target: HTMLElement): {text: string; href: string}[] {
 }
 
 describe('Sidebar', () => {
+  beforeEach(() => {
+    mobileState.matches = false;
+    appState.sidebarCollapsed = false;
+  });
+
   afterEach(() => {
     document.body.innerHTML = '';
     vi.clearAllMocks();
+    appState.sidebarCollapsed = false;
   });
 
   describe('with page plugins', () => {
@@ -101,6 +114,59 @@ describe('Sidebar', () => {
         {text: 'Package Manager', href: '/packages'},
         {text: 'Settings', href: '/settings'},
       ]);
+
+      void unmount(component);
+    });
+
+    it('closes an open mobile drawer when its backdrop is clicked', () => {
+      mobileState.matches = true;
+
+      const {component, target} = mountSidebar();
+
+      target.querySelector<HTMLElement>('.mndw-sidebar-backdrop')?.click();
+      flushSync();
+
+      expect(appState.sidebarCollapsed).toBe(true);
+      expect(target.querySelector('.mndw-sidebar-backdrop')).toBeNull();
+
+      void unmount(component);
+    });
+
+    it('closes an open mobile drawer when any sidebar link is clicked', () => {
+      mobileState.matches = true;
+
+      const {component, target} = mountSidebar();
+
+      target.querySelector<HTMLAnchorElement>('.mndw-sidebar__link')?.click();
+
+      expect(appState.sidebarCollapsed).toBe(true);
+
+      void unmount(component);
+    });
+
+    it('keeps the drawer open when a sidebar link is clicked on desktop', () => {
+      mobileState.matches = false;
+
+      const {component, target} = mountSidebar();
+
+      target.querySelector<HTMLAnchorElement>('.mndw-sidebar__link')?.click();
+
+      expect(appState.sidebarCollapsed).toBe(false);
+
+      void unmount(component);
+    });
+
+    it('renders the backdrop as a sibling of the sidebar nav', () => {
+      mobileState.matches = true;
+
+      const {component, target} = mountSidebar();
+
+      const backdrop = target.querySelector('.mndw-sidebar-backdrop');
+      const nav = target.querySelector('.mndw-sidebar');
+
+      expect(backdrop?.parentElement).toBe(target);
+      expect(nav?.parentElement).toBe(target);
+      expect(backdrop?.nextElementSibling).toBe(nav);
 
       void unmount(component);
     });

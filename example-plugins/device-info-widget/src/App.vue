@@ -150,9 +150,15 @@ onUnmounted(() => {
 }
 
 .app__loads {
+  container-type: inline-size;
+  container-name: device-info-loads;
   display: flex;
-  flex-direction: column;
-  gap: 16px;
+  flex-direction: row;
+  gap: 24px;
   min-width: 0;
+
+  .load-bar-chart {
+    flex-grow: 1;
+  }
 }
 </style>

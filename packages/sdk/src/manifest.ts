@@ -70,6 +70,8 @@ export interface WidgetSize {
 export interface WidgetManifest extends PluginManifestBase {
   type: 'widget';
   size: WidgetSize;
+  /** Fixed-height widgets retain desktop GridStack height on mobile (for example ttyd). */
+  fixedHeight?: boolean;
 }
 
 export interface PageManifest extends PluginManifestBase {

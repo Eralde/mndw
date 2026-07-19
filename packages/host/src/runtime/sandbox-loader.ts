@@ -101,7 +101,12 @@ export function manifestToListEntry(manifest: PluginManifest): PluginListEntry {
   };
 
   if (manifest.type === 'widget') {
-    return {...base, type: 'widget', size: manifest.size};
+    return {
+      ...base,
+      type: 'widget',
+      size: manifest.size,
+      ...(manifest.fixedHeight === true ? {fixedHeight: true} : {}),
+    };
   }
 
   return {...base, type: 'page', route: manifest.route};
@@ -206,7 +211,7 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise
 
 /** Default widget remount: lazily reaches the grid setup so this module stays DOM-free for tests. */
 async function defaultRemountWidgets(name: string, next: LoadedPlugin, prior: LoadedPlugin): Promise<boolean> {
-  const {remountWidgetTiles} = await import('../dashboard/grid-dashboard-setup.js');
+  const {remountWidgetTiles} = await import('../dashboard/tile-controller.js');
 
   return remountWidgetTiles(name, next, prior);
 }

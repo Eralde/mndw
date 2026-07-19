@@ -15,20 +15,24 @@ import {
 
 interface Props {
   onGridReady: (grid: GridStackType) => void;
+  onGridDestroyed: () => void;
   onWidgetRemoved: (widgetId: string) => void;
   onLayoutChanged: (layout: PersistedGridTile[]) => void;
   onWidgetResized: (widgetId: string, size: {w: number; h: number}) => void;
 }
 
-let {onGridReady, onWidgetRemoved, onLayoutChanged, onWidgetResized}: Props =
-  $props();
+let {onGridReady, onGridDestroyed, onWidgetRemoved, onLayoutChanged,
+  onWidgetResized}: Props = $props();
 
 let container: HTMLElement;
+
+// Persisted tile positions assume this base column count (see grid-layout-persistence.ts).
+const BASE_COLUMN_COUNT = 12;
 
 onMount(() => {
   const grid = GridStack.init(
     {
-      column: 12,
+      column: BASE_COLUMN_COUNT,
       animate: true,
       float: false,
       cellHeight: 60,
@@ -83,6 +87,8 @@ onMount(() => {
     grid.off('added');
     grid.off('change');
     grid.off('resizestop');
+    grid.destroy(false);
+    onGridDestroyed();
   };
 });
 </script>

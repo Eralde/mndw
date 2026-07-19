@@ -7,6 +7,7 @@
   "label": "Terminal",
   "entry": "index.js",
   "size": {"w": 6, "h": 5, "minW": 4, "minH": 3},
+  "fixedHeight": true,
   "backend": {
     "opkg": ["ttyd", "daemonize"],
     "daemon": {"start": "backend/spawn_ttyd.sh", "stop": "backend/kill_ttyd.sh"},

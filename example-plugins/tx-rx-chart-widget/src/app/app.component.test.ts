@@ -119,6 +119,7 @@ afterEach(() => {
 
   fixtures = [];
   TestBed.resetTestingModule();
+  vi.unstubAllGlobals();
 });
 
 describe('AppComponent', () => {

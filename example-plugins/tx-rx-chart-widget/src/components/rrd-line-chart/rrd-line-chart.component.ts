@@ -15,6 +15,7 @@ import {EXPECTED_POINTS, WINDOW_SECONDS, formatSpeed, getSpeedUpperLimit, padDat
 
 @Component({
   selector: 'tx-rx-rrd-line-chart',
+  standalone: true,
   templateUrl: './rrd-line-chart.component.html',
   styleUrls: ['./rrd-line-chart.component.scss'],
 })
@@ -38,6 +39,7 @@ export class RrdLineChartComponent implements OnInit, OnDestroy {
   private readonly containerRef = viewChild<ElementRef<HTMLElement>>('container');
 
   private resizeObserver: ResizeObserver | null = null;
+  private observedContainer: HTMLElement | null = null;
   private windowMousePos: {clientX: number; clientY: number} | null = null;
   private containerWidth = 400;
   private containerHeight = 200;
@@ -62,6 +64,8 @@ export class RrdLineChartComponent implements OnInit, OnDestroy {
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
     }
+
+    this.observedContainer = null;
   }
 
   private onWindowMouseMove = (event: MouseEvent): void => {
@@ -73,6 +77,19 @@ export class RrdLineChartComponent implements OnInit, OnDestroy {
 
     if (!el) {
       return;
+    }
+
+    if (this.resizeObserver === null) {
+      this.resizeObserver = new ResizeObserver(() => this.drawChart());
+    }
+
+    if (this.observedContainer !== el) {
+      if (this.observedContainer !== null) {
+        this.resizeObserver.unobserve(this.observedContainer);
+      }
+
+      this.resizeObserver.observe(el);
+      this.observedContainer = el;
     }
 
     const txData = this.txData();

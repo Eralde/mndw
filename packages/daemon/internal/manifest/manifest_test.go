@@ -49,6 +49,18 @@ func TestInvalidFixturesRejected(t *testing.T) {
 	}
 }
 
+func TestValidateFixedHeightRoundTrips(t *testing.T) {
+	data := []byte(`{"manifestVersion":2,"name":"fixed-widget","version":"0.1.0","type":"widget","label":"Fixed","entry":"index.js","size":{"w":4,"h":3},"fixedHeight":true}`)
+
+	manifest, err := Validate(data)
+	if err != nil {
+		t.Fatalf("Validate fixedHeight manifest: %v", err)
+	}
+	if manifest.FixedHeight == nil || !*manifest.FixedHeight {
+		t.Fatalf("FixedHeight = %v, want non-nil true", manifest.FixedHeight)
+	}
+}
+
 func readFixtures(t *testing.T, kind string) []string {
 	t.Helper()
 	dir := filepath.Join(fixturesDir, kind)

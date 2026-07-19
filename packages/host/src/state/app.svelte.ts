@@ -1,4 +1,5 @@
 import type {HostInfo, MndwThemeName} from '@mndw/sdk';
+import {mobileMediaQuery} from '../layout/breakpoint.js';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import {stopDepsPolling} from './deps-status.svelte.js';
 
@@ -19,7 +20,7 @@ export const appState: AppState = $state({
   ready: false,
   hostInfo: null,
   pluginLoadError: null,
-  sidebarCollapsed: false,
+  sidebarCollapsed: mobileMediaQuery().matches,
   theme: getTheme(),
 });
 

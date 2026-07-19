@@ -167,6 +167,15 @@
   color: var(--mndw-text);
 }
 
+/* 720px matches the host's MOBILE_BREAKPOINT_PX (packages/host/src/layout/breakpoint.ts).
+   Below it dashboard tiles are intrinsic-height flow items; give the widget a floor so
+   the chart container measures a real height instead of collapsing to the header. */
+@media (max-width: 720px) {
+  .tx-rx-widget {
+    min-height: 240px;
+  }
+}
+
 @container (max-width: 399px) {
   .tx-rx-widget .chart-header {
     padding: 4px 8px;
@@ -190,4 +199,3 @@
     font-size: 18px;
   }
 }
-

@@ -8,6 +8,9 @@ const order: string[] = [];
 const handlers = new Map<string, Handler>();
 const offEvents: string[] = [];
 const save = vi.fn();
+const update = vi.fn();
+const resizeToContent = vi.fn();
+const destroy = vi.fn();
 let initOptions: unknown;
 
 const fakeGrid = {
@@ -19,6 +22,9 @@ const fakeGrid = {
     offEvents.push(event);
   }),
   save,
+  update,
+  resizeToContent,
+  destroy,
 };
 
 vi.mock('gridstack', () => ({
@@ -38,6 +44,7 @@ interface MountResult {
   component: ReturnType<typeof mount>;
   target: HTMLElement;
   onGridReady: ReturnType<typeof vi.fn>;
+  onGridDestroyed: ReturnType<typeof vi.fn>;
   onWidgetRemoved: ReturnType<typeof vi.fn>;
   onLayoutChanged: ReturnType<typeof vi.fn>;
   onWidgetResized: ReturnType<typeof vi.fn>;
@@ -50,6 +57,7 @@ function mountGrid(): MountResult {
 
   const props = {
     onGridReady: vi.fn(() => order.push('ready')),
+    onGridDestroyed: vi.fn(),
     onWidgetRemoved: vi.fn(),
     onLayoutChanged: vi.fn(),
     onWidgetResized: vi.fn(),
@@ -68,6 +76,9 @@ describe('DashboardGrid', () => {
     offEvents.length = 0;
     handlers.clear();
     save.mockReset();
+    update.mockReset();
+    resizeToContent.mockReset();
+    destroy.mockReset();
     initOptions = undefined;
     fakeGrid.on.mockClear();
     fakeGrid.off.mockClear();
@@ -97,12 +108,24 @@ describe('DashboardGrid', () => {
     target.remove();
   });
 
-  it('unregisters listeners on cleanup', () => {
+  it('keeps GridStack at its desktop base column count', () => {
     const {component, target} = mountGrid();
+
+    expect(initOptions).toEqual(expect.objectContaining({column: 12}));
+    expect(initOptions).not.toHaveProperty('columnOpts');
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('unregisters listeners on cleanup', () => {
+    const {component, target, onGridDestroyed} = mountGrid();
 
     void unmount(component);
 
     expect(offEvents).toEqual(expect.arrayContaining(['removed', 'added', 'change', 'resizestop']));
+    expect(destroy).toHaveBeenCalledWith(false);
+    expect(onGridDestroyed).toHaveBeenCalledTimes(1);
 
     target.remove();
   });
@@ -124,7 +147,7 @@ describe('DashboardGrid', () => {
 
     save.mockReturnValue([
       {id: 'widget-a:1', x: 0, y: 0, w: 4, h: 3, extra: 'ignored'},
-      {id: 'widget-b:1', x: 2, y: 1}, // incomplete → dropped
+      {id: 'widget-b:1', x: 2, y: 1},
     ]);
 
     handlers.get('change')?.(new Event('change'));
@@ -140,7 +163,7 @@ describe('DashboardGrid', () => {
 
     save.mockReturnValue([
       {id: 'widget-a:1', x: 0, y: 0, w: 4, h: 3, extra: 'ignored'},
-      {id: 'widget-b:1', x: 2, y: 1}, // incomplete → dropped
+      {id: 'widget-b:1', x: 2, y: 1},
     ]);
 
     handlers.get('added')?.(new Event('added'));

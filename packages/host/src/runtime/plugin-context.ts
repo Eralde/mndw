@@ -5,6 +5,7 @@ import {
   type PluginContext,
   createBackendClient,
 } from '@mndw/sdk';
+import type {RciManager, SessionManager} from '@rci-tools/core';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {injector} from '../services/injector.service.js';
 import {createPluginOverlayService} from '../services/overlay/overlay-manager.svelte.js';
@@ -12,12 +13,30 @@ import {rciService} from '../services/rci.service.js';
 import {ScopedPluginStorage} from '../services/storage.service.js';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import type {PluginListEntry} from './plugin-types.js';
+import {createReadonlyInjector, createServiceFacade} from './service-facade.js';
 
 type OverlayDispose = (reason?: 'plugin-unmount' | 'host-navigation') => void;
 
 // Holds each instance's host-internal overlay teardown until the lifecycle layer
 // claims it (see consumeOverlayDispose). Plugins only ever see the public service.
 const pendingOverlayDisposers = new Map<string, OverlayDispose>();
+
+// Plugin-facing method allowlists — the full current public surface of each shared
+// service (capability parity). This is the seam for future per-plugin scoping.
+const RCI_MANAGER_METHODS = [
+  'execute',
+  'queue',
+  'initBackgroundProcess',
+  'queueBackgroundProcess',
+] as const satisfies readonly (keyof RciManager)[];
+
+const SESSION_MANAGER_METHODS = [
+  'isAuthenticated',
+  'getRealmHeader',
+  'login',
+  'logout',
+  'toggleErrorLogging',
+] as const satisfies readonly (keyof SessionManager)[];
 
 /**
  * Constructs the backend client from the list descriptor, or returns undefined when
@@ -57,18 +76,25 @@ export function createPluginContext(
 
   pendingOverlayDisposers.set(instanceId, dispose);
 
-  return {
-    rciManager: rciService.driver,
-    sessionManager: rciService.auth,
-    storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
-    sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
-    hostInfo: {...hostInfo, theme: getTheme()},
-    injector,
-    instanceId,
-    backend: backendClientFor(entry),
-    onThemeChange: subscribeTheme,
-    overlay: service,
-  };
+  const context: PluginContext = Object.assign(
+    Object.create(null),
+    {
+      // SDK exposes concrete classes with private fields; runtime facades intentionally contain only
+      // public methods, so cast narrowed facades at this plugin-context boundary.
+      rciManager: createServiceFacade(rciService.driver, RCI_MANAGER_METHODS) as unknown as RciManager,
+      sessionManager: createServiceFacade(rciService.auth, SESSION_MANAGER_METHODS) as unknown as SessionManager,
+      storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
+      sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
+      hostInfo: Object.freeze(Object.assign(Object.create(null), {...hostInfo, theme: getTheme()})),
+      injector: createReadonlyInjector(injector),
+      instanceId,
+      backend: backendClientFor(entry),
+      onThemeChange: subscribeTheme,
+      overlay: service,
+    } satisfies PluginContext,
+  );
+
+  return Object.freeze(context);
 }
 
 /**

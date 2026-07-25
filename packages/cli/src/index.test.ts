@@ -181,6 +181,21 @@ describe('createProgram', () => {
     expectExpectedError(result, 'Missing source entry', resolve(pluginDir, 'src/index.ts'));
   });
 
+  test('reports missing configured production entry without a stack trace', () => {
+    const pluginDir = createPluginDirectory(VALID_MANIFEST);
+
+    mkdirSync(resolve(pluginDir, 'src'));
+    writeFileSync(resolve(pluginDir, 'src/index.ts'), 'export {}');
+    writeFileSync(
+      resolve(pluginDir, 'package.json'),
+      JSON.stringify({mndw: {productionEntry: 'src/index.prod.ts'}}),
+    );
+
+    const result = runCli(['validate', pluginDir]);
+
+    expectExpectedError(result, 'Missing production entry', resolve(pluginDir, 'src/index.prod.ts'));
+  });
+
   test('reports malformed manifest JSON without a stack trace', () => {
     const pluginDir = createPluginDirectory('{');
     const result = runCli(['validate', pluginDir]);

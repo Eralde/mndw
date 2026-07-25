@@ -24,12 +24,13 @@ optional shell backend. The generated project uses `@mndw/sdk` and the
 
 1. read and validate the source manifest;
 2. detect or select the frontend framework;
-3. bundle `src/index.ts` with esbuild;
-4. externalize host-provided shared dependencies;
-5. emit the entry and fixed `index.css` output;
-6. copy declared backend scripts and daemon hooks;
-7. write a validated manifest and `mndw.lock.json`;
-8. atomically replace the output directory.
+3. resolve package `mndw.productionEntry`, defaulting to `src/index.ts`;
+4. bundle the selected TypeScript source with esbuild;
+5. externalize host-provided shared dependencies;
+6. emit the entry and fixed `index.css` output;
+7. copy declared backend scripts and daemon hooks;
+8. write a validated manifest and `mndw.lock.json`;
+9. atomically replace the output directory.
 
 The packer reads backend assets before mutating output. It rejects traversal,
 missing declared files, and shared dependencies that leaked into the bundle.
@@ -66,9 +67,25 @@ Source HMR is transactional. A valid compatible change remounts the candidate;
 an invalid manifest, topology change, or remount failure leaves the prior
 plugin live or reports that restart is required.
 
-At repository level, `pnpm dev` packs example plugins, starts a local daemon,
-waits for readiness, and starts the host under one supervisor. The existing
-`MNDW_HOST_DEVICE` value continues to select the real router for RCI/auth calls.
+Plugins may keep development-only behavior in `src/index.ts`, which `mndw dev`
+loads. To select a different production source, add this build-only setting to
+`package.json`:
+
+```json
+"mndw": {"productionEntry": "src/index.prod.ts"}
+```
+
+`mndw pack` bundles only configured production source; manifest entry and output
+filename stay unchanged. Configured file must be regular `.ts` below `src/`,
+and `src/index.ts` must still exist because `mndw validate` requires it and
+`mndw dev` loads it by path.
+
+At repository level, `pnpm dev` packs example plugins from `src/index.ts`, starts
+a local daemon, waits for readiness, and starts the host under one supervisor.
+This keeps development-only behavior such as MWS mock data available. The
+ordinary `pnpm build-example-plugins` command continues to pack configured
+production entries. The existing `MNDW_HOST_DEVICE` value continues to select
+the real router for RCI/auth calls.
 
 ## Author loop
 
@@ -84,4 +101,3 @@ mndw zip hello
 
 The resulting zip can be uploaded through the host's management UI or the
 daemon management API. A backend zip remains staged until approval.
-

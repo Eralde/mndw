@@ -1,44 +1,9 @@
 import {TestBed} from '@angular/core/testing';
-import type {HostInfo} from '@mndw/sdk';
 import {of, throwError} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {MwsApiService, type MwsMemberResult} from '../api/mws-api.service';
-import {normalizeBridge, normalizeDeviceHosts, normalizeMembers, normalizeVersion} from '../api/normalize';
-import {loadFixture} from '../fixtures/load';
-import {HOST_INFO} from '../tokens';
-import {MwsDataService, POLL_INTERVAL_MS} from './mws-data.service';
-
-const HOST: HostInfo = {deviceName: 'My Router', vendor: 'Keenetic', firmwareVersion: '5.1.1', theme: 'light'};
-
-interface FakeApi {
-  showVersion: ReturnType<typeof vi.fn>;
-  showMwsMember: ReturnType<typeof vi.fn>;
-  showDeviceList: ReturnType<typeof vi.fn>;
-  showBridge0: ReturnType<typeof vi.fn>;
-}
-
-function goodApi(): FakeApi {
-  return {
-    showVersion: vi.fn(() => of(normalizeVersion(loadFixture('show-version.json')))),
-    showMwsMember: vi.fn(() =>
-      of<MwsMemberResult>({kind: 'ok', members: normalizeMembers(loadFixture('show-mws-member.json'))})
-    ),
-    showDeviceList: vi.fn(() => of(normalizeDeviceHosts(loadFixture('show-device-list.json')))),
-    showBridge0: vi.fn(() => of(normalizeBridge(loadFixture('show-interface-bridge0.json')))),
-  };
-}
-
-function makeService(api: FakeApi): MwsDataService {
-  TestBed.configureTestingModule({
-    providers: [
-      MwsDataService,
-      {provide: MwsApiService, useValue: api as unknown as MwsApiService},
-      {provide: HOST_INFO, useValue: HOST},
-    ],
-  });
-
-  return TestBed.inject(MwsDataService);
-}
+import type {MwsMemberResult} from '../api/mws-api.service';
+import {goodApi, makeLiveService} from '../test-support/mws-data-test-support';
+import {POLL_INTERVAL_MS} from './mws-data.service';
 
 describe('MwsDataService', () => {
   beforeEach(() => {
@@ -51,7 +16,7 @@ describe('MwsDataService', () => {
   });
 
   it('reaches ready with the built forest after version + first poll succeed', async () => {
-    const service = makeService(goodApi());
+    const service = makeLiveService(goodApi());
 
     service.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -67,7 +32,7 @@ describe('MwsDataService', () => {
 
     api.showVersion.mockReturnValueOnce(throwError(() => new Error('boom')));
 
-    const service = makeService(api);
+    const service = makeLiveService(api);
 
     service.start();
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
@@ -84,7 +49,7 @@ describe('MwsDataService', () => {
 
     api.showMwsMember.mockReturnValueOnce(throwError(() => new Error('boom')));
 
-    const service = makeService(api);
+    const service = makeLiveService(api);
 
     service.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -94,7 +59,7 @@ describe('MwsDataService', () => {
 
   it('keeps the last good map and raises pollError on a later failure, then clears it', async () => {
     const api = goodApi();
-    const service = makeService(api);
+    const service = makeLiveService(api);
 
     service.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -115,7 +80,7 @@ describe('MwsDataService', () => {
 
     api.showMwsMember.mockReturnValue(of<MwsMemberResult>({kind: 'ok', members: []}));
 
-    const service = makeService(api);
+    const service = makeLiveService(api);
 
     service.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -129,7 +94,7 @@ describe('MwsDataService', () => {
 
     api.showMwsMember.mockReturnValue(of<MwsMemberResult>({kind: 'unsupported'}));
 
-    const service = makeService(api);
+    const service = makeLiveService(api);
 
     service.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -139,7 +104,7 @@ describe('MwsDataService', () => {
 
   it('skips polls while hidden and refreshes immediately on becoming visible', async () => {
     const api = goodApi();
-    const service = makeService(api);
+    const service = makeLiveService(api);
 
     service.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -155,7 +120,7 @@ describe('MwsDataService', () => {
   });
 
   it('emits each good forest on snapshots$', async () => {
-    const service = makeService(goodApi());
+    const service = makeLiveService(goodApi());
     const emissions: number[] = [];
 
     service.snapshots$.subscribe((roots) => emissions.push(roots.length));

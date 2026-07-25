@@ -14,11 +14,13 @@ function fakeContext(): {
   ctx: PluginContext;
   closeAll: ReturnType<typeof vi.fn>;
   unsubscribe: ReturnType<typeof vi.fn>;
+  queue: ReturnType<typeof vi.fn>;
 } {
   const closeAll = vi.fn();
   const unsubscribe = vi.fn();
+  const queue = vi.fn(() => of({}));
   const ctx = {
-    rciManager: {queue: vi.fn(() => of({}))},
+    rciManager: {queue},
     sessionManager: {},
     storage: {},
     sharedStorage: {},
@@ -29,7 +31,7 @@ function fakeContext(): {
     overlay: {open: vi.fn(), createLayer: vi.fn(), closeAll},
   } as unknown as PluginContext;
 
-  return {ctx, closeAll, unsubscribe};
+  return {ctx, closeAll, unsubscribe, queue};
 }
 
 describe('createInstance', () => {
@@ -61,6 +63,7 @@ describe('createInstance', () => {
   });
 
   afterEach(() => {
+    window.history.replaceState({}, '', '/');
     vi.useRealTimers();
   });
 
@@ -102,6 +105,35 @@ describe('createInstance', () => {
 
     callback('dark');
     expect(el.dataset.mndwTheme).toBe('dark');
+    instance.unmount();
+  });
+
+  it('activates parameterized large mock mode from the URL', async () => {
+    window.history.replaceState({}, '', '/mws-map?mock=large&extenders=3&clients=7');
+
+    const {ctx, queue} = fakeContext();
+    const el = document.createElement('div');
+    const instance = createInstance(el, ctx);
+
+    await vi.waitFor(() => {
+      expect(el.textContent).toContain('Mock data: 3 extenders · 7 clients');
+    });
+
+    expect(queue).not.toHaveBeenCalled();
+    instance.unmount();
+  });
+
+  it('uses live RCI service when mock query is absent', async () => {
+    window.history.replaceState({}, '', '/mws-map');
+
+    const {ctx, queue} = fakeContext();
+    const el = document.createElement('div');
+    const instance = createInstance(el, ctx);
+
+    await vi.waitFor(() => {
+      expect(queue).toHaveBeenCalled();
+    });
+
     instance.unmount();
   });
 });

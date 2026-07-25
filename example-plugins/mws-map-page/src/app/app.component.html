@@ -1,6 +1,9 @@
 <div class="mws-map-page">
   <header class="page-header">
     <h2>MWS Map</h2>
+    @if (mockOptions.mode === 'large') {
+      <span class="mock-badge">Mock data: {{ mockOptions.extenders }} extenders · {{ mockOptions.clients }} clients</span>
+    }
     @if (data.pollError()) {
       <span class="banner" role="alert">Update failed — showing the last known map.</span>
     }

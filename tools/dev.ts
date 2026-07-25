@@ -127,7 +127,7 @@ export async function waitForDaemon(
 }
 
 async function defaultPackExamples(repoRoot: string): Promise<void> {
-  await execFile('pnpm', ['build-example-plugins'], {cwd: repoRoot});
+  await execFile('pnpm', ['build-example-plugins', '--dev'], {cwd: repoRoot});
 }
 
 function defaultSpawn(

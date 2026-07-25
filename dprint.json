@@ -29,6 +29,7 @@
     "**/*-lock.json",
     "packages/host/scripts/templates",
     "example-plugins/dist",
+    "example-plugins/*/dist",
     "**/*.go"
   ],
   "plugins": [

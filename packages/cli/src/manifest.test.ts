@@ -81,6 +81,19 @@ describe('readManifest', () => {
     expect(() => readManifest(pluginDir)).toThrow(resolve(pluginDir, 'src/index.ts'));
   });
 
+  test('validates configured productionEntry after validating src/index.ts', () => {
+    const pluginDir = createPluginDirectory(VALID_MANIFEST);
+
+    mkdirSync(resolve(pluginDir, 'src'));
+    writeFileSync(resolve(pluginDir, 'src/index.ts'), 'export {}');
+    writeFileSync(
+      resolve(pluginDir, 'package.json'),
+      JSON.stringify({mndw: {productionEntry: 'src/index.prod.ts'}}),
+    );
+
+    expect(() => readManifest(pluginDir)).toThrow(/Missing production entry/);
+  });
+
   test('returns manifest when valid plugin has a regular src/index.ts', () => {
     const pluginDir = createPluginDirectory(VALID_MANIFEST);
 

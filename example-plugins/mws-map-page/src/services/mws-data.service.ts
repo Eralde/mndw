@@ -51,6 +51,7 @@ export class MwsDataService {
 
   public start(): void {
     this.phase.set('loading');
+
     this.versionSub = this.api.showVersion().subscribe({
       next: (version) => {
         this.version = version;
@@ -95,6 +96,16 @@ export class MwsDataService {
         ),
       )
       .subscribe((result) => this.applyPoll(result));
+  }
+
+  protected publishSnapshot(
+    version: ShowVersionRecord,
+    members: MwsMemberRecord[],
+    hosts: DeviceHostRecord[],
+    bridge: BridgeInterfaceRecord,
+  ): void {
+    this.version = version;
+    this.applyPoll({kind: 'ok', members, hosts, bridge});
   }
 
   private applyPoll(result: PollResult): void {

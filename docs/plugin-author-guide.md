@@ -27,6 +27,22 @@ hello/
   backend/main.sh      when --backend sh is selected
 ```
 
+Plugins may keep development-only behavior in `src/index.ts`, which `mndw dev`
+loads. To select a different production source, add this build-only setting to
+`package.json`:
+
+```json
+"mndw": {"productionEntry": "src/index.prod.ts"}
+```
+
+`mndw pack` bundles only configured production source; manifest entry and output
+filename stay unchanged. Configured file must be regular `.ts` below `src/`,
+and `src/index.ts` must still exist because `mndw validate` requires it and
+`mndw dev` loads it by path.
+
+Repository `pnpm dev` builds example plugins from `src/index.ts`, while
+`pnpm build-example-plugins` uses configured production entries.
+
 ## Implement the module
 
 The entry exports `createInstance`. Mount UI into the supplied container and
@@ -148,4 +164,3 @@ optional `index.css`, `mndw.lock.json`, and all declared backend assets.
 Backend plugins show their opkg packages, endpoints, WebSockets, daemon hooks,
 and public flag during approval. Treat approval as a security review: an
 approved shell backend executes with device daemon privileges.
-

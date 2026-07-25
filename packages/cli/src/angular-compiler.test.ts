@@ -98,4 +98,32 @@ describe('compileAngular happy path', () => {
     expect(existsSync(result.cacheDir)).toBe(false);
     rmSync(dir, {recursive: true, force: true});
   });
+
+  it('returns the selected compiled source entry', () => {
+    const dir = ngPlugin({
+      'tsconfig.json': TSCONFIG,
+      'src/index.ts': 'export {}',
+      'src/index.prod.ts': 'export {}',
+    });
+
+    const result = compileAngular(dir, 'src/index.prod.ts');
+
+    expect(result.entryPath.endsWith('index.prod.js')).toBe(true);
+
+    result.cleanup();
+    rmSync(dir, {recursive: true, force: true});
+  });
+
+  it('throws when selected source entry was not emitted by ngc', () => {
+    const tsconfig = JSON.stringify({...JSON.parse(TSCONFIG), include: ['src/index.ts']});
+    const dir = ngPlugin({
+      'tsconfig.json': tsconfig,
+      'src/index.ts': 'export {}',
+      'src/index.prod.ts': 'export {}',
+    });
+
+    expect(() => compileAngular(dir, 'src/index.prod.ts')).toThrow(/index\.prod\.ts/);
+
+    rmSync(dir, {recursive: true, force: true});
+  });
 });

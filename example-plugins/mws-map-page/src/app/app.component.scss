@@ -26,6 +26,13 @@
       background: var(--mndw-danger-bg);
       color: var(--mndw-danger);
     }
+
+    .mock-badge {
+      padding: 4px 12px;
+      border-radius: 4px;
+      background: var(--mndw-accent);
+      color: var(--mndw-accent-contrast);
+    }
   }
 
   .state {

@@ -5,6 +5,7 @@ import {type PluginManifestOutput, validateManifest} from '@mndw/sdk';
 
 import {CliError} from './errors.js';
 import {resolvePluginDir} from './paths.js';
+import {resolveProductionSourceEntry} from './source-entry.js';
 
 export interface LoadedManifest {
   readonly manifest: PluginManifestOutput;
@@ -60,6 +61,8 @@ export function readManifest(pluginDir: string): LoadedManifest {
 
     throw error;
   }
+
+  resolveProductionSourceEntry(resolvedPluginDir);
 
   return {manifest, path};
 }

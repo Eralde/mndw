@@ -2,6 +2,7 @@ import {Component, Input, type OnInit, inject} from '@angular/core';
 import {MwsGraphComponent} from '../components/mws-graph/mws-graph.component';
 import {findNodeById} from '../domain/mws/map-builder';
 import {MwsDataService} from '../services/mws-data.service';
+import {MWS_MOCK_OPTIONS} from '../tokens';
 
 @Component({
   selector: 'mws-map-app',
@@ -15,6 +16,7 @@ export class AppComponent implements OnInit {
   public openNodeDrawer: (nodeId: string, title: string) => void = () => undefined;
 
   protected readonly data = inject(MwsDataService);
+  protected readonly mockOptions = inject(MWS_MOCK_OPTIONS);
 
   public ngOnInit(): void {
     this.data.start();

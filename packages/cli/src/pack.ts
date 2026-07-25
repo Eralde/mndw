@@ -26,6 +26,8 @@ import {type PluginFramework, detectFramework} from './framework.js';
 import {buildLock, findBundledSharedDependencies, serializeLock} from './lock.js';
 import {readManifest} from './manifest.js';
 import {resolvePluginDir} from './paths.js';
+import {readPluginPackage} from './plugin-package.js';
+import {resolveDevelopmentSourceEntry, resolveProductionSourceEntry} from './source-entry.js';
 
 /**
  * The CLI's own `node_modules`, used as an esbuild resolution fallback so a plugin's bundled runtime
@@ -37,6 +39,8 @@ const CLI_NODE_MODULES = resolve(import.meta.dirname, '..', 'node_modules');
 export interface PackOptions {
   /** Output directory. Defaults to `<plugin-dir>/dist`. */
   readonly outDir?: string;
+  /** Use `src/index.ts` instead of the configured production entry. */
+  readonly development?: boolean;
 }
 
 export interface PackResult {
@@ -52,19 +56,16 @@ export interface PackExamplePluginsOptions {
   readonly outDir: string;
   /** Directory containing manifest-backed plugin source directories. */
   readonly sourceDir?: string;
+  /** Pack development entries so repository dev serves source-only behavior. */
+  readonly development?: boolean;
 }
 
 function runPluginBuild(pluginDir: string): void {
-  const pkgPath = join(pluginDir, 'package.json');
+  const pkg = readPluginPackage(pluginDir);
 
-  if (!existsSync(pkgPath)) {
+  if (pkg === null) {
     return;
   }
-
-  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
-    name?: string;
-    scripts?: Record<string, string>;
-  };
 
   if (pkg.scripts?.build === undefined) {
     return;
@@ -100,6 +101,9 @@ interface WorkerReference {
 export async function packPlugin(pluginDir: string, options: PackOptions = {}): Promise<PackResult> {
   const resolvedDir = resolvePluginDir(pluginDir);
   const {manifest} = readManifest(pluginDir);
+  const sourceEntry = options.development
+    ? resolveDevelopmentSourceEntry(resolvedDir)
+    : resolveProductionSourceEntry(resolvedDir);
   const framework = detectFramework(resolvedDir);
   const outDir = options.outDir === undefined ? join(resolvedDir, 'dist') : resolve(process.cwd(), options.outDir);
   const defaultOutDir = join(resolvedDir, 'dist');
@@ -110,8 +114,8 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
 
   let angularCompile: AngularCompileResult | undefined;
   const entryPoint = framework === 'angular'
-    ? (angularCompile = compileAngular(resolvedDir)).entryPath
-    : join(resolvedDir, 'src', 'index.ts');
+    ? (angularCompile = compileAngular(resolvedDir, sourceEntry)).entryPath
+    : join(resolvedDir, sourceEntry);
 
   try {
     const styleEntry = angularCompile === undefined ? undefined : join(angularCompile.cacheDir, 'styles.css');
@@ -255,7 +259,7 @@ export async function packExamplePlugins(options: PackExamplePluginsOptions): Pr
 
   for (const name of names) {
     runPluginBuild(join(sourceDir, name));
-    await packPlugin(join(sourceDir, name), {outDir: join(outDir, name)});
+    await packPlugin(join(sourceDir, name), {outDir: join(outDir, name), development: options.development});
   }
 
   return names;

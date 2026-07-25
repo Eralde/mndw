@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "mndw": {"productionEntry": "src/index.prod.ts"},
   "scripts": {"test": "vitest run"},
   "dependencies": {"d3": "^7.9.0", "d3-dag": "^1.1.0"},
   "devDependencies": {

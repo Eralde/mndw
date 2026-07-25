@@ -101,6 +101,42 @@ describe('packPlugin', () => {
     expect(packedManifest.name).toBe('sample-widget');
   });
 
+  it('bundles configured production source instead of the development source', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({name: 'configured-entry-widget'}),
+      index: 'export const createInstance = () => ({unmount() {}, source: "DEV_ONLY_ENTRY"});\n',
+      files: {
+        'package.json': JSON.stringify({mndw: {productionEntry: 'src/index.prod.ts'}}),
+        'src/index.prod.ts': 'export const createInstance = () => ({unmount() {}, source: "PRODUCTION_ENTRY"});\n',
+      },
+    });
+
+    await packPlugin(dir);
+
+    const bundle = readFileSync(join(dir, 'dist', 'index.js'), 'utf8');
+
+    expect(bundle).toContain('PRODUCTION_ENTRY');
+    expect(bundle).not.toContain('DEV_ONLY_ENTRY');
+  });
+
+  it('bundles development source when development packing is selected', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({name: 'development-entry-widget'}),
+      index: 'export const createInstance = () => ({unmount() {}, source: "DEV_ONLY_ENTRY"});\n',
+      files: {
+        'package.json': JSON.stringify({mndw: {productionEntry: 'src/index.prod.ts'}}),
+        'src/index.prod.ts': 'export const createInstance = () => ({unmount() {}, source: "PRODUCTION_ENTRY"});\n',
+      },
+    });
+
+    await packPlugin(dir, {development: true});
+
+    const bundle = readFileSync(join(dir, 'dist', 'index.js'), 'utf8');
+
+    expect(bundle).toContain('DEV_ONLY_ENTRY');
+    expect(bundle).not.toContain('PRODUCTION_ENTRY');
+  });
+
   it('stages a module worker emitted alongside the main bundle', async () => {
     scaffold(dir, {
       manifest: widgetManifest({name: 'worker-widget'}),
@@ -192,7 +228,13 @@ describe('packPlugin', () => {
           + 'import {createApplication} from "@angular/platform-browser";\n'
           + 'import * as d3 from "d3";\n'
           + 'import {AppComponent} from "./app.component";\n'
-          + 'export const createInstance = () => { void createApplication; void AppComponent; return {unmount() {}, d3}; };\n',
+          + 'export const createInstance = () => { void createApplication; void AppComponent; return {unmount() {}, d3, source: "DEV_ONLY_ANGULAR_ENTRY"}; };\n',
+        'src/index.prod.ts': 'import "zone.js";\nimport "@angular/compiler";\n'
+          + 'import {createApplication} from "@angular/platform-browser";\n'
+          + 'import * as d3 from "d3";\n'
+          + 'import {AppComponent} from "./app.component";\n'
+          + 'export const createInstance = () => { void createApplication; void AppComponent; return {unmount() {}, d3, source: "PRODUCTION_ANGULAR_ENTRY"}; };\n',
+        'package.json': JSON.stringify({mndw: {productionEntry: 'src/index.prod.ts'}}),
         'node_modules/d3/package.json': JSON.stringify({name: 'd3', type: 'module', module: 'index.js',
           types: 'index.d.ts'}),
         'node_modules/d3/index.d.ts': 'export const marker: string;\n',
@@ -449,6 +491,33 @@ describe('packExamplePlugins', () => {
 });
 
 describe('packExamplePlugins build pre-pass', () => {
+  it('uses development entries when development packing is selected', async () => {
+    const src = mkdtempSync(join(tmpdir(), 'mndw-dev-examples-'));
+    const plugin = join(src, 'dev-entry-widget');
+
+    mkdirSync(plugin, {recursive: true});
+
+    scaffold(plugin, {
+      manifest: widgetManifest({name: 'dev-entry-widget'}),
+      index: 'export const createInstance = () => ({unmount() {}, source: "DEV_ONLY_ENTRY"});\n',
+      files: {
+        'package.json': JSON.stringify({mndw: {productionEntry: 'src/index.prod.ts'}}),
+        'src/index.prod.ts': 'export const createInstance = () => ({unmount() {}, source: "PRODUCTION_ENTRY"});\n',
+      },
+    });
+
+    const outDir = join(src, 'dist');
+
+    await packExamplePlugins({sourceDir: src, outDir, development: true});
+
+    const bundle = readFileSync(join(outDir, 'dev-entry-widget', 'index.js'), 'utf8');
+
+    expect(bundle).toContain('DEV_ONLY_ENTRY');
+    expect(bundle).not.toContain('PRODUCTION_ENTRY');
+
+    rmSync(src, {recursive: true, force: true});
+  });
+
   it('runs each example plugin build script before packing', async () => {
     const src = mkdtempSync(join(tmpdir(), 'mndw-examples-'));
     const plugin = join(src, 'built-widget');

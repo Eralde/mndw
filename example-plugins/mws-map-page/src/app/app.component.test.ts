@@ -7,6 +7,7 @@ import {buildMap} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
 import {MwsDataService, type MwsViewPhase} from '../services/mws-data.service';
+import {MWS_MOCK_OPTIONS} from '../tokens';
 import graphStyles from '../components/mws-graph/mws-graph.component.scss?raw';
 import appStyles from './app.component.scss?raw';
 import appTemplate from './app.component.html?raw';
@@ -129,5 +130,15 @@ describe('AppComponent', () => {
     const fixture = render(data);
 
     expect((fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')).not.toBeNull();
+  });
+
+  it('labels large mock mode with its generated size', () => {
+    const data = fakeData('ready', fixtureRoots());
+
+    TestBed.overrideProvider(MWS_MOCK_OPTIONS, {useValue: {mode: 'large', extenders: 20, clients: 100}});
+
+    const fixture = render(data);
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Mock data: 20 extenders · 100 clients');
   });
 });

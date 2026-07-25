@@ -1,7 +1,7 @@
 import {execFileSync} from 'node:child_process';
 import {cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join, posix, resolve} from 'node:path';
+import {join, posix, relative, resolve} from 'node:path';
 
 import {compileString} from 'sass';
 
@@ -21,7 +21,7 @@ export interface AngularCompileResult {
  * compiled before ngc and style references are rewritten in the staged TypeScript only; the plugin
  * source is never mutated.
  */
-export function compileAngular(pluginDir: string): AngularCompileResult {
+export function compileAngular(pluginDir: string, sourceEntry = 'src/index.ts'): AngularCompileResult {
   const tsconfigPath = join(pluginDir, 'tsconfig.json');
 
   if (!existsSync(tsconfigPath)) {
@@ -63,10 +63,11 @@ export function compileAngular(pluginDir: string): AngularCompileResult {
 
     runNgc(ngc, staging, cacheDir, pluginDir);
 
-    const entryPath = join(cacheDir, 'index.js');
+    const relativeEntry = relative('src', sourceEntry);
+    const entryPath = join(cacheDir, relativeEntry.replace(/\.ts$/, '.js'));
 
     if (!existsSync(entryPath)) {
-      throw new CliError(`Angular compilation produced no index.js in ${cacheDir}`);
+      throw new CliError(`Angular compilation produced no ${sourceEntry} output in ${cacheDir}`);
     }
 
     if (styles.length > 0) {

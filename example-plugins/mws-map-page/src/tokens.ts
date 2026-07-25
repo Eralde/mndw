@@ -6,3 +6,13 @@ export const RCI_MANAGER = new InjectionToken<RciManager>('RCI_MANAGER');
 export const OVERLAY = new InjectionToken<OverlayService>('OVERLAY');
 export const HOST_INFO = new InjectionToken<HostInfo>('HOST_INFO');
 export const ON_THEME_CHANGE = new InjectionToken<PluginContext['onThemeChange']>('ON_THEME_CHANGE');
+
+export interface MwsMockOptions {
+  mode: 'live' | 'large';
+  extenders: number;
+  clients: number;
+}
+
+export const MWS_MOCK_OPTIONS = new InjectionToken<MwsMockOptions>('MWS_MOCK_OPTIONS', {
+  factory: () => ({mode: 'live', extenders: 0, clients: 0}),
+});

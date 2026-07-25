@@ -114,8 +114,9 @@ export function createProgram(): Command {
     .command('pack-examples [source-dir]')
     .description('pack every manifest-backed plugin source directory into one destination')
     .requiredOption('--out-dir <dir>', 'directory containing one output subdirectory per plugin')
-    .action(async (sourceDir: string | undefined, options: {outDir: string}) => {
-      const names = await packExamplePlugins({sourceDir, outDir: options.outDir});
+    .option('--dev', 'pack development entries instead of configured production entries')
+    .action(async (sourceDir: string | undefined, options: {outDir: string; dev?: boolean}) => {
+      const names = await packExamplePlugins({sourceDir, outDir: options.outDir, development: options.dev});
 
       process.stdout.write(`Packed ${names.length} example plugins: ${names.join(', ')}\n`);
     });

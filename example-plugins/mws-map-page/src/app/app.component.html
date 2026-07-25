@@ -1,0 +1,29 @@
+<div class="mws-map-page">
+  <header class="page-header">
+    <h2>MWS Map</h2>
+    @if (data.pollError()) {
+      <span class="banner" role="alert">Update failed — showing the last known map.</span>
+    }
+  </header>
+
+  @switch (data.phase()) {
+    @case ('loading') {
+      <p class="state">Loading MWS topology…</p>
+    }
+    @case ('error') {
+      <div class="state">
+        <p>Failed to load MWS data.</p>
+        <button type="button" (click)="retry()">Retry</button>
+      </div>
+    }
+    @case ('unsupported') {
+      <p class="state">This device is not an MWS controller.</p>
+    }
+    @case ('empty') {
+      <p class="state">No extenders found.</p>
+    }
+    @case ('ready') {
+      <mws-map-graph class="graph" [roots]="data.roots()" (nodeSelected)="onNodeSelected($event)" />
+    }
+  }
+</div>

@@ -1,0 +1,45 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.mws-map-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px;
+  color: var(--mndw-text);
+  font-family: var(--mndw-font-sans);
+
+  .page-header {
+    display: flex;
+    gap: 16px;
+    align-items: baseline;
+
+    h2 {
+      margin: 0 0 12px;
+    }
+
+    .banner {
+      padding: 4px 12px;
+      border-radius: 4px;
+      background: var(--mndw-danger-bg);
+      color: var(--mndw-danger);
+    }
+  }
+
+  .state {
+    margin: auto;
+    color: var(--mndw-text-subtle);
+    text-align: center;
+
+    button {
+      margin-top: 8px;
+    }
+  }
+
+  .graph {
+    flex: 1;
+    min-height: 0;
+  }
+}

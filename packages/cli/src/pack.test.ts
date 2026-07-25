@@ -407,6 +407,7 @@ describe('packExamplePlugins', () => {
       'device-info-widget',
       'device-traffic-widget',
       'dns-lookup-widget',
+      'mws-map-page',
       'ping-widget',
       'ttyd-widget',
       'tx-rx-chart-widget',

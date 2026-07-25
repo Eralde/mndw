@@ -1,0 +1,10 @@
+{
+  "$schema": "../../packages/sdk/manifest.schema.json",
+  "manifestVersion": 2,
+  "name": "mws-map-page",
+  "version": "0.1.0",
+  "type": "page",
+  "label": "MWS Map",
+  "route": "/mws-map",
+  "entry": "index.js"
+}

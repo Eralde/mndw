@@ -1,0 +1,22 @@
+{
+  "name": "@mndw/example-mws-map-page",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "vitest run"},
+  "dependencies": {"d3": "^7.9.0", "d3-dag": "^1.1.0"},
+  "devDependencies": {
+    "@angular/common": "^21.2.18",
+    "@angular/compiler": "^21.2.18",
+    "@angular/core": "^21.2.18",
+    "@angular/platform-browser": "^21.2.18",
+    "@mndw/sdk": "workspace:*",
+    "@rci-tools/core": "^0.2.0",
+    "@types/d3": "^7.4.3",
+    "happy-dom": "^17.4.4",
+    "rxjs": "^7.8.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7",
+    "zone.js": "^0.15.1"
+  }
+}

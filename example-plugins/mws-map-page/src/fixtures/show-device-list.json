@@ -1,0 +1,63 @@
+{
+  "host": [
+    {
+      "mac": "02:7d:4a:91:c3:43",
+      "ip": "192.168.1.46",
+      "hostname": "client-a",
+      "name": "Client A",
+      "mws-backhaul": false,
+      "registered": true,
+      "active": true,
+      "link": "up",
+      "speed": 1000,
+      "port": "2",
+      "uptime": 1483,
+      "last-seen": 12
+    },
+    {
+      "mac": "02:7d:4a:91:c3:21",
+      "ip": "192.168.1.138",
+      "hostname": "mesh-extender-a",
+      "name": "Mesh Extender A",
+      "mws-backhaul": false,
+      "system-mode": "extender",
+      "registered": true,
+      "active": true,
+      "uptime": 1051,
+      "last-seen": 4
+    },
+    {
+      "mac": "02:7d:4a:91:c3:32",
+      "ip": "192.168.1.36",
+      "hostname": "mesh-extender-b",
+      "name": "Mesh Extender B",
+      "mws-backhaul": false,
+      "system-mode": "extender",
+      "registered": true,
+      "active": true,
+      "mws": {"cid": "1a2c405a-fabb-11ee-911a-2559b061cca4", "port": "0", "speed": 1000, "duplex": true},
+      "uptime": 878,
+      "last-seen": 12
+    },
+    {
+      "mac": "02:7d:4a:91:c3:54",
+      "ip": "0.0.0.0",
+      "hostname": "",
+      "name": "Former Client A",
+      "mws-backhaul": false,
+      "registered": true,
+      "active": false,
+      "uptime": 0
+    },
+    {
+      "mac": "02:7d:4a:91:c3:65",
+      "ip": "0.0.0.0",
+      "hostname": "",
+      "name": "Former Mesh Extender B",
+      "mws-backhaul": false,
+      "registered": true,
+      "active": false,
+      "uptime": 0
+    }
+  ]
+}

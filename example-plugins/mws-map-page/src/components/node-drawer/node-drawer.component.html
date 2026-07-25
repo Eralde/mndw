@@ -1,0 +1,80 @@
+@if (node; as n) {
+  <div class="drawer">
+    <section class="identity">
+      <h3>{{ n.name }}</h3>
+      <dl>
+        <dt>Model</dt><dd>{{ dash(n.model) }}</dd>
+        <dt>MAC</dt><dd>{{ n.mac }}</dd>
+        <dt>IP</dt><dd>{{ dash(n.ip) }}</dd>
+        <dt>Firmware</dt>
+        <dd>
+          {{ dash(n.fw) }}
+          @if (n.fw && n.fwAvailable && n.fw !== n.fwAvailable) {
+            <span class="update-hint">update available: {{ n.fwAvailable }}</span>
+          }
+        </dd>
+        <dt>Uptime</dt><dd>{{ dash(n.system?.uptime) }}</dd>
+        <dt>CPU load</dt><dd>{{ dash(n.system?.cpuload) }}</dd>
+        <dt>Memory</dt><dd>{{ memory(n) }}</dd>
+      </dl>
+    </section>
+
+    <section class="backhaul">
+      <h4>Backhaul</h4>
+      @if (n.isController) {
+        <p>Controller — root of the MWS. No backhaul metrics.</p>
+      } @else if (!n.backhaul) {
+        <p>Offline — no backhaul reported.</p>
+      } @else if (isWirelessBackhaul(n)) {
+        <dl>
+          <dt>Type</dt><dd>Wireless</dd>
+          <dt>Uplink</dt><dd>{{ dash(n.backhaul.uplink) }}</dd>
+          <dt>AP</dt><dd>{{ dash(n.backhaul.ap) }}</dd>
+          <dt>Mode</dt><dd>{{ dash(n.backhaul.mode) }}</dd>
+          <dt>RSSI</dt><dd>{{ dash(n.backhaul.rssi) }}</dd>
+          <dt>TX rate</dt><dd>{{ dash(n.backhaul.txrate) }}</dd>
+          <dt>Security</dt><dd>{{ dash(n.backhaul.security) }}</dd>
+          <dt>STP cost</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
+        </dl>
+      } @else {
+        <dl>
+          <dt>Type</dt><dd>Wired</dd>
+          <dt>Speed</dt><dd>{{ dash(n.backhaul.speed) }}</dd>
+          <dt>Duplex</dt><dd>{{ dash(n.backhaul.duplex) }}</dd>
+          <dt>Port</dt><dd>{{ dash(n.backhaul.portLabel) }}</dd>
+          <dt>STP cost</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
+        </dl>
+      }
+    </section>
+
+    <section class="clients">
+      <h4>Clients ({{ n.clients.length }})</h4>
+      @if (n.clients.length === 0) {
+        <p>No active clients.</p>
+      } @else {
+        <table>
+          <thead>
+            <tr><th>Name</th><th>IP</th><th>MAC</th><th>Link</th><th>Uptime</th></tr>
+          </thead>
+          <tbody>
+            @for (client of n.clients; track client.mac) {
+              <tr>
+                <td>{{ client.name }}</td>
+                <td>{{ dash(client.ip) }}</td>
+                <td>{{ client.mac }}</td>
+                <td>
+                  <span class="link-badge" [class.wired]="client.wired">
+                    {{ client.wired ? 'wired' : 'wireless' }}
+                  </span>
+                </td>
+                <td>{{ dash(client.uptime) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </section>
+  </div>
+} @else {
+  <p class="gone">This node is offline / no longer reported by the controller.</p>
+}

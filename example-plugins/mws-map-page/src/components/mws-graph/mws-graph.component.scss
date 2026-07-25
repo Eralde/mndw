@@ -1,0 +1,76 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+}
+
+.mws-graph {
+  display: block;
+  width: 100%;
+  height: 100%;
+  font-family: var(--mndw-font-sans);
+
+  .edge {
+    fill: none;
+    stroke: var(--mndw-border);
+    stroke-width: 2;
+
+    &.wireless {
+      stroke-dasharray: 5 5;
+    }
+  }
+
+  .node {
+    cursor: pointer;
+
+    rect {
+      fill: var(--mndw-surface-raised);
+      stroke: var(--mndw-border);
+      stroke-width: 2;
+    }
+
+    text {
+      font-size: 12px;
+      fill: var(--mndw-text);
+
+      &.model {
+        font-size: 10px;
+        fill: var(--mndw-text-subtle);
+      }
+    }
+
+    .client-badge {
+      circle {
+        fill: var(--mndw-accent);
+      }
+
+      text {
+        font-size: 10px;
+        fill: var(--mndw-surface-raised);
+      }
+    }
+
+    .update-dot {
+      fill: var(--mndw-success);
+    }
+
+    &.controller rect {
+      stroke: var(--mndw-accent);
+      stroke-width: 3;
+    }
+
+    &.offline {
+      opacity: 0.6;
+
+      rect {
+        stroke: var(--mndw-danger);
+      }
+    }
+
+    &:focus-visible rect {
+      outline: 2px solid var(--mndw-accent);
+      outline-offset: 2px;
+    }
+  }
+}

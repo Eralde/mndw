@@ -4,8 +4,8 @@ The mndw host loads plugins as dashboard widgets or full-page routes.
 
 ## 1. What is mndw?
 
-One SPA. Plugins are dashboard widgets or full-page routes loaded dynamically.
-This guide covers the `@mndw/sdk` package — everything a plugin author needs.
+One SPA. Plugins are dashboard widgets or full-page routes loaded dynamically. This guide covers the
+`@mndw/sdk` package — everything a plugin author needs.
 
 ## 2. Getting Started
 
@@ -17,18 +17,18 @@ Scaffolds: `manifest.json`, `src/index.ts`, `src/App.svelte`, `src/index.css`.
 
 ## 3. Manifest Reference
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `manifestVersion` | `2` | yes | Always 2 |
-| `name` | string | yes | `^[a-z0-9][a-z0-9-]*$` |
-| `version` | string | yes | Semver |
-| `type` | `"widget"` or `"page"` | yes | |
-| `label` | string | yes | Human-readable |
-| `entry` | string | yes | Relative path to JS bundle |
-| `icon` | string? | no | |
+| Field             | Type                   | Required | Description                |
+|-------------------|------------------------|----------|----------------------------|
+| `manifestVersion` | `2`                    | yes      | Always 2                   |
+| `name`            | string                 | yes      | `^[a-z0-9][a-z0-9-]*$`     |
+| `version`         | string                 | yes      | Semver                     |
+| `type`            | `"widget"` or `"page"` | yes      |                            |
+| `label`           | string                 | yes      | Human-readable             |
+| `entry`           | string                 | yes      | Relative path to JS bundle |
+| `icon`            | string?                | no       |                            |
 
-Widgets: `size: { w, h, minW?, minH? }` in grid units (12-column grid).
-Pages: `route` (single segment, reserved: `/`, `/login`, `/settings`).
+Widgets: `size: { w, h, minW?, minH? }` in grid units (12-column grid). Pages: `route` (single
+segment, reserved: `/`, `/login`, `/settings`).
 
 Backend (optional): `opkg`, `scripts`, `endpoints`, `websockets`, `daemon`, `public`.
 
@@ -50,7 +50,7 @@ export function createInstance(
       // Optional widget resize callback.
       void size
     },
-  }
+  };
 }
 ```
 
@@ -61,12 +61,13 @@ import {mount, unmount} from 'svelte'
 import App from './App.svelte'
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
-  const app = mount(App, {target: container, props: {ctx}})
+  const app = mount(App, {target: container, props: {ctx}});
+
   return {
     unmount() {
-      void unmount(app)
+      void unmount(app);
     },
-  }
+  };
 }
 ```
 
@@ -77,13 +78,15 @@ import {createApp} from 'vue'
 import App from './App.vue'
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
-  const app = createApp(App, {ctx})
-  app.mount(container)
+  const app = createApp(App, {ctx});
+
+  app.mount(container);
+
   return {
     unmount() {
       app.unmount()
     },
-  }
+  };
 }
 ```
 
@@ -97,25 +100,29 @@ import '@angular/compiler'
 import {AppComponent} from './app.component'
 
 export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInstance {
-  let appRef: Awaited<ReturnType<typeof createApplication>> | null = null
-  let componentRef: ReturnType<typeof createComponent> | null = null
+  let appRef: Awaited<ReturnType<typeof createApplication>> | null = null;
+  let componentRef: ReturnType<typeof createComponent> | null = null;
 
   void createApplication().then((ref) => {
-    appRef = ref
-    const injector = ref.injector.get(EnvironmentInjector)
-    el.innerHTML = ''
-    componentRef = createComponent(AppComponent, {hostElement: el, environmentInjector: injector})
-    componentRef.setInput('deviceName', ctx.hostInfo.deviceName)
-    ref.attachView(componentRef.hostView)
+    appRef = ref;
+
+    const injector = ref.injector.get(EnvironmentInjector);
+
+    el.innerHTML = '';
+    componentRef = createComponent(AppComponent, {hostElement: el, environmentInjector: injector});
+    componentRef.setInput('deviceName', ctx.hostInfo.deviceName);
+
+    ref.attachView(componentRef.hostView);
   })
 
   return {
     unmount() {
-      componentRef?.destroy()
-      appRef?.destroy()
-      el.innerHTML = ''
+      componentRef?.destroy();
+      appRef?.destroy();
+
+      el.innerHTML = '';
     },
-  }
+  };
 }
 ```
 
@@ -123,30 +130,31 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
 
 ```ts
 interface PluginContext {
-  rciManager: RciManager
-  sessionManager: SessionManager
-  storage: PluginStorage
-  sharedStorage: PluginStorage
-  hostInfo: HostInfo
-  injector: ServiceInjector
-  instanceId: string
-  backend?: BackendClient
-  onThemeChange(callback: (theme: MndwThemeName) => void): () => void
-  overlay: OverlayService
+  rciManager: RciManager;
+  sessionManager: SessionManager;
+  storage: PluginStorage;
+  sharedStorage: PluginStorage;
+  hostInfo: HostInfo;
+  injector: ServiceInjector;
+  instanceId: string;
+  backend?: BackendClient;
+  overlay: OverlayService;
+
+  onThemeChange(callback: (theme: MndwThemeName) => void): () => void;
 }
 
 interface HostInfo {
-  deviceName: string
-  vendor: string
-  firmwareVersion: string
-  theme: MndwThemeName
+  deviceName: string;
+  vendor: string;
+  firmwareVersion: string;
+  theme: MndwThemeName;
 }
 
 interface PluginStorage {
-  get(key: string): Promise<string | null>
-  set(key: string, value: string): Promise<void>
-  delete(key: string): Promise<void>
-  keys(): Promise<string[]>
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
+  delete(key: string): Promise<void>;
+  keys(): Promise<string[]>;
 }
 ```
 
@@ -154,9 +162,9 @@ interface PluginStorage {
 
 ```ts
 interface OverlayService {
-  createLayer<Result>(options: OverlayLayerOptions): OverlayLayer<Result>
-  open<Result>(options: OverlayOpenOptions<Result>): OverlaySession<Result>
-  closeAll(): void
+  createLayer<Result>(options: OverlayLayerOptions): OverlayLayer<Result>;
+  open<Result>(options: OverlayOpenOptions<Result>): OverlaySession<Result>;
+  closeAll(): void;
 }
 ```
 
@@ -167,21 +175,23 @@ interface OverlayService {
 
 ```ts
 interface BackendClient {
-  fetch(id: string, options?: BackendFetchOptions): Promise<Response>
-  socket(id: string, options?: BackendSocketOptions): WebSocket
+  fetch(id: string, options?: BackendFetchOptions): Promise<Response>;
+  socket(id: string, options?: BackendSocketOptions): WebSocket;
 }
 ```
 
-The method and relative path come from endpoint declaration in manifest.
-Typed errors: `BackendNotApproved`, `BackendDisabled`, `BackendUnknownId`.
+The method and relative path come from endpoint declaration in manifest. Typed errors:
+`BackendNotApproved`, `BackendDisabled`, `BackendUnknownId`.
 
 ```ts
-const client = context.backend
+const client = context.backend;
+
 if (client) {
-  const res = await client.fetch('stats')
-  const socket = client.socket('term')
-  void res
-  void socket
+  const res = await client.fetch('stats');
+  const socket = client.socket('term');
+
+  void res;
+  void socket;
 }
 ```
 
@@ -192,7 +202,7 @@ Style with `var(--mndw-*)` custom properties (auto-themed light/dark):
 ```css
 .my-widget {
   background: var(--mndw-surface);
-  color: var(--mndw-text-primary);
+  color: var(--mndw-text-subtle);
   border: 1px solid var(--mndw-border);
 }
 ```
@@ -203,10 +213,10 @@ Full reference: `@mndw/sdk/tokens` (typed) and `@mndw/sdk/tokens.css` (CSS prope
 
 Host-provided, must NOT be bundled:
 
-| Package | Applies to |
-|---------|-----------|
-| `@rci-tools/core`, `rxjs`, `rxjs/operators`, `hash-wasm` | all plugins |
-| `vue` | Vue plugins only |
+| Package                                                                                         | Applies to           |
+|-------------------------------------------------------------------------------------------------|----------------------|
+| `@rci-tools/core`, `rxjs`, `rxjs/operators`, `hash-wasm`                                        | all plugins          |
+| `vue`                                                                                           | Vue plugins only     |
 | `zone.js`, `@angular/core`, `@angular/common`, `@angular/platform-browser`, `@angular/compiler` | Angular plugins only |
 
 CLI enforces at pack time.
@@ -228,5 +238,15 @@ Each zip includes `mndw.lock.json` with exact shared dependency versions.
 
 ## 10. Examples
 
-`example-plugins/` in repo: `demo-page`, `device-traffic-widget`, `device-info-widget`,
-`tx-rx-chart-widget`, `backend-echo`, `ttyd-widget`, `ping-widget`.
+`example-plugins/` in repo:
+
+- `demo-page`
+- `device-traffic-widget`
+- `device-info-widget`
+- `tx-rx-chart-widget`
+- `backend-echo`
+- `ttyd-widget`
+- `ping-widget`
+- `clock-widget`
+- `dns-lookup-widget`
+- `mws-map-page`

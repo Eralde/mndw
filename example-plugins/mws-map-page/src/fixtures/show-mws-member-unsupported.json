@@ -1,0 +1,10 @@
+{
+  "status": [
+    {
+      "status": "error",
+      "code": "7405600",
+      "ident": "Mws::MemberList",
+      "message": "MWS is not supported on this device."
+    }
+  ]
+}

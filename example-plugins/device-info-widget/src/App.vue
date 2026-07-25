@@ -22,7 +22,6 @@ let unsubscribeTicker: (() => void) | null = null;
 let refreshLoop: RefreshLoop | null = null;
 
 const firmware = computed(() => props.ctx.hostInfo.firmwareVersion);
-const deviceName = computed(() => props.ctx.hostInfo.deviceName);
 const uptime = computed(() =>
     uptimeSeconds.value !== null
         ? formatUptime(uptimeSeconds.value)
@@ -85,7 +84,7 @@ onUnmounted(() => {
       <hr class="app__divider">
       <div class="app__grid">
         <span class="app__label">Device:</span>
-        <span class="app__value">{{ deviceName }} ({{ info.model }})</span>
+        <span class="app__value">{{ info.model }}</span>
         <span class="app__label">Firmware:</span>
         <span class="app__value">{{ firmware }}</span>
         <span class="app__label">Uptime:</span>

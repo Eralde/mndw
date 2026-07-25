@@ -10,7 +10,7 @@ function fakeRci(handler: (q: RciQuery) => unknown): RciManager {
 }
 
 describe('fetchDeviceInfo', () => {
-  it('maps identification, system, and load data into the DeviceInfo model', async () => {
+  it('maps identification, system, version, and load data into the DeviceInfo model', async () => {
     const queries: RciQuery[] = [];
     const info = await fetchDeviceInfo({
       queue: (query: RciQuery) => {
@@ -20,7 +20,9 @@ describe('fetchDeviceInfo', () => {
           case 'show.identification':
             return of({servicetag: 'ST', serial: 'SN', mac: 'AA:BB', hwid: 'HW', cid: 'CID'});
           case 'show.system':
-            return of({model: 'Keenetic Giga', uptime: 90061, cpuload: 27, memtotal: 1000, memory: '610/1024'});
+            return of({uptime: 90061, cpuload: 27, memtotal: 1000, memory: '610/1024'});
+          case 'show.version':
+            return of({model: 'Keenetic Giga (KN-1011)'});
           case 'show.system.rrd.cpu':
             return of({data: [{t: '30', v: 21}, {t: 10, v: 18}]});
           case 'show.system.rrd.memory':
@@ -32,7 +34,7 @@ describe('fetchDeviceInfo', () => {
     } as unknown as RciManager);
 
     expect(info).toEqual({
-      model: 'Keenetic Giga',
+      model: 'Keenetic Giga (KN-1011)',
       uptimeSeconds: 90061,
       cpuLoadPercent: 27,
       ramLoadPercent: 61,
@@ -48,9 +50,16 @@ describe('fetchDeviceInfo', () => {
     expect(queries).toEqual(expect.arrayContaining([
       {path: 'show.identification', extractData: true},
       {path: 'show.system', extractData: true},
+      {path: 'show.version', extractData: true},
       {path: 'show.system.rrd.cpu', extractData: true, data: {detail: 0, attribute: 'avg'}},
       {path: 'show.system.rrd.memory', extractData: true, data: {detail: 0, attribute: 'used'}},
     ]));
+  });
+
+  it('coerces uptime given as a string (firmware 5.2 returns "984")', async () => {
+    const info = await fetchDeviceInfo(fakeRci((q) => q.path === 'show.system' ? {uptime: '984'} : {}));
+
+    expect(info.uptimeSeconds).toBe(984);
   });
 
   it('falls back per field when values are missing', async () => {
@@ -85,6 +94,8 @@ describe('fetchDeviceInfo', () => {
             return of({});
           case 'show.system':
             return of({memtotal: 1000, memory: '610/1024'});
+          case 'show.version':
+            return of({});
           case 'show.system.rrd.cpu':
             return throwError(() => new Error('CPU RRD unavailable'));
           case 'show.system.rrd.memory':
@@ -107,6 +118,8 @@ describe('fetchDeviceInfo', () => {
             return of({});
           case 'show.system':
             return of({cpuload: 27, memtotal: 1000, memory: '610/1024'});
+          case 'show.version':
+            return of({});
           case 'show.system.rrd.cpu':
             return of({data: [{t: 1, v: 27}]});
           case 'show.system.rrd.memory':
@@ -130,6 +143,8 @@ describe('fetchDeviceInfo', () => {
             return of({});
           case 'show.system':
             return of({memtotal: 1000, memory: '0/1000'});
+          case 'show.version':
+            return of({});
           case 'show.system.rrd.cpu':
             return of({data: samples});
           case 'show.system.rrd.memory':

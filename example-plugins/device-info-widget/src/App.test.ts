@@ -46,6 +46,8 @@ function successfulResponse(query: RciQuery): Observable<unknown> {
       return of(identification);
     case 'show.system':
       return of(system);
+    case 'show.version':
+      return of({model: 'Keenetic Giga'});
     case 'show.system.rrd.cpu':
       return of({data: [{t: '1', v: 21}]});
     case 'show.system.rrd.memory':

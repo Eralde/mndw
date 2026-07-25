@@ -26,11 +26,14 @@ interface Identification {
 }
 
 interface System {
-  model?: string;
-  uptime?: number;
+  uptime?: number | string;
   cpuload?: number;
   memtotal?: number;
   memory?: string;
+}
+
+interface Version {
+  model?: string;
 }
 
 export interface RrdTick {
@@ -51,10 +54,22 @@ function getRrdHistory(response: RrdResponse, valueMapper: (tick: RrdTick) => nu
   return normalizeHistory(values);
 }
 
+/** Coerces `show.system.uptime` (string or number on real firmware) to a finite number, else null. */
+function toUptimeSeconds(value: number | string | undefined): number | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const num = typeof value === 'string' ? Number(value) : value;
+
+  return Number.isFinite(num) ? num : null;
+}
+
 /** Reads required identity/system data and isolates optional load-history failures. */
 export async function fetchDeviceInfo(rci: RciManager): Promise<DeviceInfo> {
   const identificationQuery: RciQuery = {path: 'show.identification', extractData: true};
   const systemQuery: RciQuery = {path: 'show.system', extractData: true};
+  const versionQuery: RciQuery = {path: 'show.version', extractData: true};
   const cpuQuery: RciQuery = {
     path: 'show.system.rrd.cpu',
     extractData: true,
@@ -66,9 +81,10 @@ export async function fetchDeviceInfo(rci: RciManager): Promise<DeviceInfo> {
     data: {detail: 0, attribute: 'used'},
   };
 
-  const [identification, system, cpuResponse, memoryResponse] = await Promise.all([
+  const [identification, system, version, cpuResponse, memoryResponse] = await Promise.all([
     firstValueFrom(rci.queue(identificationQuery)) as Promise<Identification>,
     firstValueFrom(rci.queue(systemQuery)) as Promise<System>,
+    firstValueFrom(rci.queue(versionQuery)).catch(() => ({}) as Version) as Promise<Version>,
     firstValueFrom(rci.queue(cpuQuery)).catch(() => ({data: []})) as Promise<RrdResponse>,
     firstValueFrom(rci.queue(memoryQuery)).catch(() => ({data: []})) as Promise<RrdResponse>,
   ]);
@@ -77,8 +93,8 @@ export async function fetchDeviceInfo(rci: RciManager): Promise<DeviceInfo> {
   const memoryUsed = Number(system.memory?.split('/')[0] ?? Number.NaN);
 
   return {
-    model: system.model ?? 'Unknown',
-    uptimeSeconds: system.uptime ?? null,
+    model: version.model ?? 'Unknown',
+    uptimeSeconds: toUptimeSeconds(system.uptime),
     cpuLoadPercent: normalizePercent(system.cpuload ?? Number.NaN) ?? 0,
     ramLoadPercent: normalizePercent((memoryUsed / memoryTotal) * 100) ?? 0,
     cpuHistory: getRrdHistory(cpuResponse, (tick) => tick.v),

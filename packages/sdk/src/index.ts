@@ -50,6 +50,27 @@ export {
   versionedBundleUrl,
 } from '../shared-dependencies.js';
 export type {DependencyConsumer, SharedDependency} from '../shared-dependencies.js';
+/**
+ * The COMPILED DEFAULT palette. Correct for build-time use and for code with no
+ * plugin context, but it does not reflect a device palette override — inside a
+ * plugin, use `context.getTokens()` instead.
+ */
 export {MNDW_TOKENS} from './tokens.js';
 export type {MndwThemeName} from './tokens.js';
+export {
+  contrastRatio,
+  PALETTE_CONTRAST_PAIRS,
+  PALETTE_CSS_VARIABLES,
+  paletteToCss,
+  validateImportedPalette,
+} from './palette.js';
+export type {
+  PaletteContrastPair,
+  PaletteContrastWarning,
+  PaletteCssVariable,
+  PaletteTokenMap,
+  PaletteValidation,
+  ThemeName,
+  TokenName,
+} from './palette.js';
 export {SDK_VERSION} from './version.js';

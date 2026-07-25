@@ -1,4 +1,5 @@
 import {type Mock, beforeEach, describe, expect, it, vi} from 'vitest';
+import type {PaletteTokenMap} from '@mndw/sdk';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
 import {MgmtError, createMgmtClient, messageForError} from './mgmt-client.js';
 
@@ -27,6 +28,41 @@ function jsonResponse(status: number, body: unknown): Response {
     headers: {'content-type': 'application/json'},
   });
 }
+
+const paletteFixture = {
+  dark: {
+    bg: '#030405',
+    surface: '#0d0f10',
+    surfaceRaised: '#151719',
+    border: '#5d6266',
+    textSubtle: '#b9c0c7',
+    textMuted: '#d1d9e1',
+    text: '#eaf3fb',
+    accent: '#016ca5',
+    accentHover: '#2b84bf',
+    accentContrast: '#ffffff',
+    danger: '#c5001b',
+    dangerBg: '#ffd2cc',
+    success: '#5cb572',
+    warning: '#efa831',
+  },
+  light: {
+    bg: '#f7fcfd',
+    surface: '#edf2f3',
+    surfaceRaised: '#f2f7f8',
+    border: '#80878a',
+    textSubtle: '#2f353a',
+    textMuted: '#1d2328',
+    text: '#0c1217',
+    accent: '#016ca5',
+    accentHover: '#005583',
+    accentContrast: '#ffffff',
+    danger: '#c5001b',
+    dangerBg: '#ffe9e6',
+    success: '#137738',
+    warning: '#b37900',
+  },
+} as PaletteTokenMap;
 
 let fetchImpl: Mock<typeof globalThis.fetch>;
 
@@ -138,5 +174,107 @@ describe('mgmt-client', () => {
     expect(messageForError(new MgmtError('x', 'UPLOAD_TOO_LARGE'))).toContain('10 MB');
     expect(messageForError(new MgmtError('x', 'MANIFEST_INVALID', 'route reserved'))).toContain('route reserved');
     expect(messageForError(new Error('boom'))).toBe('boom');
+  });
+});
+
+describe('mgmt-client palette', () => {
+  it('getPalette GETs the palette endpoint and unwraps palette', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, {palette: paletteFixture}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    expect(await client.getPalette()).toEqual(paletteFixture);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/mgmt/palette',
+      expect.objectContaining({method: 'GET', cache: 'no-store', signal: expect.any(AbortSignal)}),
+    );
+  });
+
+  it('getPalette returns null when no override exists', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, {palette: null}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.getPalette()).resolves.toBeNull();
+  });
+
+  it.each([null, 42, 'palette', [], {}, {other: paletteFixture}])(
+    'rejects malformed GET response %p with MgmtError',
+    async (body) => {
+      fetchImpl.mockResolvedValue(jsonResponse(200, body));
+
+      const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+      await expect(client.getPalette()).rejects.toBeInstanceOf(MgmtError);
+    },
+  );
+
+  it('rejects a non-JSON successful GET with MgmtError', async () => {
+    fetchImpl.mockResolvedValue(new Response('<!doctype html>', {status: 200}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.getPalette()).rejects.toBeInstanceOf(MgmtError);
+  });
+
+  it('putPalette sends bare JSON and accepts only 204', async () => {
+    fetchImpl.mockResolvedValue(new Response(null, {status: 204}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await client.putPalette(paletteFixture);
+
+    const [url, init] = fetchImpl.mock.calls[0];
+
+    expect(url).toBe('/api/mgmt/palette');
+    expect(init?.method).toBe('PUT');
+    expect(JSON.parse(init?.body as string)).toEqual(paletteFixture);
+  });
+
+  it.each([200, 201, 202])('rejects PUT status %d as a protocol error', async (status) => {
+    fetchImpl.mockResolvedValue(new Response(null, {status}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.putPalette(paletteFixture)).rejects.toMatchObject({code: 'UNKNOWN'});
+  });
+
+  it('deletePalette accepts only 204', async () => {
+    fetchImpl.mockResolvedValue(new Response(null, {status: 204}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await client.deletePalette();
+  });
+
+  it.each([200, 201, 202])('rejects DELETE status %d as a protocol error', async (status) => {
+    fetchImpl.mockResolvedValue(new Response(null, {status}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.deletePalette()).rejects.toMatchObject({code: 'UNKNOWN'});
+  });
+});
+
+describe('mgmt-client timeouts', () => {
+  it('passes an abort signal on regular requests but not upload', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, {palette: null}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await client.getPalette();
+
+    expect(fetchImpl.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+
+    fetchImpl.mockReset().mockResolvedValue(jsonResponse(201, entry('fresh')));
+    await client.uploadPlugin(new File([new Uint8Array([1])], 'p.zip'));
+
+    expect(fetchImpl.mock.calls[0][1]?.signal).toBeUndefined();
+  });
+
+  it('maps TimeoutError to device response copy', () => {
+    expect(messageForError(new DOMException('signal timed out', 'TimeoutError'))).toBe(
+      'The device did not respond.',
+    );
   });
 });

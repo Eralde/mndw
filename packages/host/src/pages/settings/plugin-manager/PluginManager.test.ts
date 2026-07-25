@@ -32,6 +32,9 @@ function clientWith(items: PluginListEntry[]): Mocked<MgmtClient> {
     disablePlugin: vi.fn().mockResolvedValue(items[0]),
     denyPlugin: vi.fn().mockResolvedValue(undefined),
     deletePlugin: vi.fn().mockResolvedValue(undefined),
+    getPalette: vi.fn().mockResolvedValue(null),
+    putPalette: vi.fn().mockResolvedValue(undefined),
+    deletePalette: vi.fn().mockResolvedValue(undefined),
   } as Mocked<MgmtClient>;
 }
 

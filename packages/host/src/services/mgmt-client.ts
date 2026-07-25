@@ -1,10 +1,13 @@
+import type {PaletteTokenMap} from '@mndw/sdk';
 import {
+  API_TIMEOUT_MS,
   MGMT_APPROVE_URL,
   MGMT_DELETE_URL,
   MGMT_DENY_URL,
   MGMT_DISABLE_URL,
   MGMT_ENABLE_URL,
   MGMT_LIST_URL,
+  MGMT_PALETTE_URL,
   MGMT_UPLOAD_URL,
 } from '../constants.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
@@ -34,6 +37,9 @@ export interface MgmtClient {
   disablePlugin(name: string): Promise<PluginListEntry>;
   denyPlugin(name: string): Promise<void>;
   deletePlugin(name: string): Promise<void>;
+  getPalette(): Promise<PaletteTokenMap | null>;
+  putPalette(palette: PaletteTokenMap): Promise<void>;
+  deletePalette(): Promise<void>;
 }
 
 interface Envelope {
@@ -48,11 +54,28 @@ async function toError(response: Response): Promise<MgmtError> {
 }
 
 export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis.fetch): MgmtClient {
+  function timeout(): AbortSignal {
+    return AbortSignal.timeout(API_TIMEOUT_MS);
+  }
+
+  async function expectNoContent(response: Response): Promise<void> {
+    if (response.status === 204) {
+      return;
+    }
+
+    if (!response.ok) {
+      throw await toError(response);
+    }
+
+    throw new MgmtError('The device returned an unexpected response.', 'UNKNOWN');
+  }
+
   async function postName(url: string, name: string): Promise<Response> {
     const response = await fetchImpl(url, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({name}),
+      signal: timeout(),
     });
 
     if (!response.ok) {
@@ -70,7 +93,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
 
   return {
     async listPlugins(): Promise<PluginListEntry[]> {
-      const response = await fetchImpl(MGMT_LIST_URL, {method: 'GET'});
+      const response = await fetchImpl(MGMT_LIST_URL, {method: 'GET', signal: timeout()});
 
       if (!response.ok) {
         throw await toError(response);
@@ -82,6 +105,8 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
     },
 
     async uploadPlugin(file: File): Promise<UploadResult> {
+      // Deliberately unbounded: a 10 MB plugin over a slow link legitimately outlives
+      // API_TIMEOUT_MS, and aborting a partial upload would be a regression.
       const response = await fetchImpl(MGMT_UPLOAD_URL, {
         method: 'POST',
         headers: {'Content-Type': 'application/zip'},
@@ -108,6 +133,48 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
     async deletePlugin(name: string): Promise<void> {
       await postName(MGMT_DELETE_URL, name);
     },
+
+    async getPalette(): Promise<PaletteTokenMap | null> {
+      const response = await fetchImpl(MGMT_PALETTE_URL, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: timeout(),
+      });
+
+      if (!response.ok) {
+        throw await toError(response);
+      }
+
+      const body: unknown = await response.json().catch(() => null);
+
+      if (
+        body === null
+        || typeof body !== 'object'
+        || Array.isArray(body)
+        || !Object.prototype.hasOwnProperty.call(body, 'palette')
+      ) {
+        throw new MgmtError('The device returned an unexpected palette response.', 'UNKNOWN');
+      }
+
+      return (body as {palette?: PaletteTokenMap | null}).palette ?? null;
+    },
+
+    async putPalette(palette: PaletteTokenMap): Promise<void> {
+      const response = await fetchImpl(MGMT_PALETTE_URL, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(palette),
+        signal: timeout(),
+      });
+
+      await expectNoContent(response);
+    },
+
+    async deletePalette(): Promise<void> {
+      const response = await fetchImpl(MGMT_PALETTE_URL, {method: 'DELETE', signal: timeout()});
+
+      await expectNoContent(response);
+    },
   };
 }
 
@@ -124,6 +191,10 @@ const MESSAGES: Record<string, string> = {
 };
 
 export function messageForError(error: unknown): string {
+  if (error instanceof DOMException && error.name === 'TimeoutError') {
+    return 'The device did not respond.';
+  }
+
   if (error instanceof MgmtError) {
     if (error.code === 'MANIFEST_INVALID') {
       return error.detail ? `Invalid manifest: ${error.detail}` : 'The plugin manifest is invalid.';

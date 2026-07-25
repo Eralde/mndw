@@ -11,6 +11,7 @@ import {injector} from '../services/injector.service.js';
 import {createPluginOverlayService} from '../services/overlay/overlay-manager.svelte.js';
 import {rciService} from '../services/rci.service.js';
 import {ScopedPluginStorage} from '../services/storage.service.js';
+import {getTokens, subscribePalette} from '../services/palette.service.js';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {createReadonlyInjector, createServiceFacade} from './service-facade.js';
@@ -90,6 +91,8 @@ export function createPluginContext(
       instanceId,
       backend: backendClientFor(entry),
       onThemeChange: subscribeTheme,
+      getTokens,
+      onPaletteChange: subscribePalette,
       overlay: service,
     } satisfies PluginContext,
   );

@@ -1,5 +1,6 @@
 <script lang="ts">
 import PluginManager from './plugin-manager/PluginManager.svelte';
+import PaletteManager from './palette-manager/PaletteManager.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
 import {appState} from '../../state/app.svelte.js';
 
@@ -21,6 +22,8 @@ import {appState} from '../../state/app.svelte.js';
       Dark theme
     </label>
   </section>
+
+  <PaletteManager />
 
   <section>
     <h3>Device</h3>

@@ -4,9 +4,11 @@ import {firstValueFrom, timeout} from 'rxjs';
 import {mount} from 'svelte';
 import App from './App.svelte';
 import {initAuthenticated} from './services/init-auth.js';
+import {initPalette} from './services/palette.service.js';
 import {rciService} from './services/rci.service.js';
 import {initTheme} from './services/theme.service.js';
 import {appState, resetToLogin} from './state/app.svelte.js';
+import {initialize} from './startup.js';
 
 // A broken plugin must never take down the host. These window-level guards swallow
 // errors originating from plugin bundle URLs; the per-widget error boundary (Phase 4)
@@ -42,28 +44,36 @@ function registerPluginErrorGuards(): void {
   });
 }
 
-async function init(): Promise<void> {
-  registerPluginErrorGuards();
-  initTheme();
-
-  try {
-    const isAuthenticated$ = rciService.isAuthenticated().pipe(timeout(5000));
-
-    appState.authenticated = await firstValueFrom(isAuthenticated$);
-  } catch {
-    appState.authenticated = false;
-  }
-
-  if (appState.authenticated) {
-    await initAuthenticated();
-  }
-
-  rciService.authError$.subscribe(() => {
-    resetToLogin();
-  });
-
+function mountApp(): void {
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   mount(App, {target: document.getElementById('app')!});
+}
+
+async function checkAuthenticated(): Promise<boolean> {
+  const isAuthenticated$ = rciService.isAuthenticated().pipe(timeout(5000));
+
+  return firstValueFrom(isAuthenticated$);
+}
+
+function subscribeAuthErrors(callback: () => void): void {
+  rciService.authError$.subscribe(callback);
+}
+
+async function init(): Promise<void> {
+  registerPluginErrorGuards();
+
+  await initialize({
+    initTheme,
+    initPalette,
+    checkAuthenticated,
+    setAuthenticated: (authenticated) => {
+      appState.authenticated = authenticated;
+    },
+    initAuthenticated,
+    subscribeAuthErrors,
+    resetToLogin,
+    mountApp,
+  });
 }
 
 void init();

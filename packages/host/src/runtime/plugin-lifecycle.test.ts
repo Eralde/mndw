@@ -1,4 +1,4 @@
-import type {PluginContext, PluginInstance} from '@mndw/sdk';
+import {MNDW_TOKENS, type PluginContext, type PluginInstance} from '@mndw/sdk';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {mountPlugin, unmountPlugin} from './plugin-lifecycle.js';
 import type {LoadedPlugin} from './plugin-registry.js';
@@ -49,6 +49,8 @@ function mockContext(instanceId = 'test:1'): PluginContext {
     instanceId,
     backend: undefined,
     onThemeChange: () => () => {},
+    getTokens: () => MNDW_TOKENS,
+    onPaletteChange: () => () => {},
     overlay: {createLayer: vi.fn(), open: vi.fn(), closeAll: vi.fn()} as never,
   };
 }

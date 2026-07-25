@@ -1,3 +1,4 @@
+import {MNDW_TOKENS, type PaletteTokenMap} from '@mndw/sdk';
 import {describe, expect, it, vi} from 'vitest';
 import {createPluginContext} from './plugin-context.js';
 import type {PluginBackendDescriptor, WidgetListEntry} from './plugin-types.js';
@@ -137,6 +138,30 @@ describe('createPluginContext service boundaries', () => {
 
     expect(execute).toHaveBeenCalledWith({path: 'x'});
     expect(result).toBe('exec-result');
+  });
+});
+
+describe('palette access', () => {
+  it('exposes the applied palette and notifies on change', async () => {
+    const service = await import('../services/palette.service.js');
+    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+
+    expect(ctx.getTokens()).toEqual(service.getTokens());
+
+    const seen: PaletteTokenMap[] = [];
+    const unsubscribe = ctx.onPaletteChange((tokens) => seen.push(tokens));
+    const next = JSON.parse(JSON.stringify(MNDW_TOKENS)) as PaletteTokenMap;
+
+    next.dark.accent = '#ff0000';
+    service.previewOverride(next);
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual(next);
+    expect(ctx.getTokens()).toEqual(MNDW_TOKENS);
+
+    unsubscribe();
+    service.discardPreview();
+    expect(seen).toHaveLength(1);
   });
 });
 

@@ -13,6 +13,10 @@
       "types": "./src/tokens.ts",
       "default": "./src/tokens.ts"
     },
+    "./palette": {
+      "types": "./src/palette.ts",
+      "default": "./src/palette.ts"
+    },
     "./manifest-schema": {
       "types": "./src/manifest-schema.ts",
       "default": "./src/manifest-schema.ts"

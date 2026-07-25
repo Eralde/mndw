@@ -1,0 +1,18 @@
+{
+  "dark": {
+    "bg": "#000000",
+    "surface": "#000000",
+    "surfaceRaised": "#111111",
+    "border": "#333333",
+    "textSubtle": "#cccccc",
+    "textMuted": "#dddddd",
+    "text": "#ffffff",
+    "accent": "#000000",
+    "accentHover": "#222222",
+    "accentContrast": "#ffffff",
+    "danger": "#ff0000",
+    "dangerBg": "#000000",
+    "success": "#00ff00",
+    "warning": "#ffff00"
+  }
+}

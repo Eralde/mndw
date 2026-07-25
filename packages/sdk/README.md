@@ -141,6 +141,8 @@ interface PluginContext {
   overlay: OverlayService;
 
   onThemeChange(callback: (theme: MndwThemeName) => void): () => void;
+  getTokens(): PaletteTokenMap;
+  onPaletteChange(callback: (tokens: PaletteTokenMap) => void): () => void;
 }
 
 interface HostInfo {
@@ -208,6 +210,10 @@ Style with `var(--mndw-*)` custom properties (auto-themed light/dark):
 ```
 
 Full reference: `@mndw/sdk/tokens` (typed) and `@mndw/sdk/tokens.css` (CSS properties).
+
+For runtime JavaScript colours, use `context.getTokens()` and subscribe with
+`context.onPaletteChange(...)`. `MNDW_TOKENS` contains compiled defaults only and does not
+include a device palette override.
 
 ## 8. Externals Policy
 

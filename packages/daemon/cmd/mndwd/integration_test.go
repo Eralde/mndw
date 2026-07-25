@@ -19,6 +19,7 @@ import (
 	"github.com/coder/websocket"
 
 	"mndwd/internal/authz"
+	"mndwd/internal/palette"
 	"mndwd/internal/state"
 )
 
@@ -38,8 +39,12 @@ func buildServer(t *testing.T, verifier *authz.Verifier) (*httptest.Server, Conf
 	if err != nil {
 		t.Fatalf("state.Open: %v", err)
 	}
+	paletteStore, err := palette.Open(cfg.PaletteFile())
+	if err != nil {
+		t.Fatalf("palette.Open: %v", err)
+	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler, _, _, _, _ := assemble(cfg, store, verifier, logger)
+	handler, _, _, _, _ := assemble(cfg, store, paletteStore, verifier, logger)
 
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -51,6 +56,52 @@ func devServer(t *testing.T) (*httptest.Server, Config) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	return buildServer(t, authz.New("", true, logger, authz.Options{}))
+}
+
+func TestIntegrationPaletteRouteAuthorization(t *testing.T) {
+	router := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Cookie") == "session=ok" {
+			w.WriteHeader(http.StatusOK)
+
+			return
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(router.Close)
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv, _ := buildServer(t, authz.New(router.URL, false, logger, authz.Options{}))
+
+	cases := []struct {
+		method string
+		cookie string
+		want   int
+	}{
+		{http.MethodGet, "", http.StatusOK},
+		{http.MethodPut, "", http.StatusUnauthorized},
+		{http.MethodDelete, "", http.StatusUnauthorized},
+		{http.MethodDelete, "session=ok", http.StatusNoContent},
+	}
+
+	for _, tc := range cases {
+		var body []byte
+		if tc.method == http.MethodPut {
+			body = []byte(`{}`)
+		}
+
+		resp := do(t, tc.method, srv.URL+"/api/mgmt/palette", tc.cookie, "", body)
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s /api/mgmt/palette cookie=%q = %d, want %d",
+				tc.method, tc.cookie, resp.StatusCode, tc.want)
+		}
+		resp.Body.Close()
+	}
+
+	resp := do(t, http.MethodGet, srv.URL+"/api/mgmt/list", "", "", nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("unauthenticated GET /api/mgmt/list = %d, want 401", resp.StatusCode)
+	}
+	resp.Body.Close()
 }
 
 // echoWSBackend accepts a websocket (offering the given subprotocols) and echoes.

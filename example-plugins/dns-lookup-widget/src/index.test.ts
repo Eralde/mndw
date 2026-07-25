@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type {BackendClient, PluginContext} from '@mndw/sdk';
+import {type BackendClient, MNDW_TOKENS, type PluginContext} from '@mndw/sdk';
 import {describe, expect, it, vi} from 'vitest';
 import {createInstance} from './index.js';
 
@@ -15,6 +15,8 @@ function fakeContext(overrides?: Partial<BackendClient>): PluginContext {
     injector: {get: vi.fn(), has: vi.fn()},
     instanceId: 'test-id',
     onThemeChange: vi.fn(),
+    getTokens: vi.fn(() => MNDW_TOKENS),
+    onPaletteChange: vi.fn(() => () => {}),
     overlay: {} as PluginContext['overlay'],
     backend: {fetch, socket: vi.fn(), ...overrides} as BackendClient,
   };

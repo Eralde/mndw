@@ -22,6 +22,7 @@ import (
 	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/opkg"
+	"mndwd/internal/palette"
 	"mndwd/internal/readiness"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
@@ -62,9 +63,13 @@ func run(cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("open state: %w", err)
 	}
+	paletteStore, err := palette.Open(cfg.PaletteFile())
+	if err != nil {
+		return fmt.Errorf("open palette store: %w", err)
+	}
 
 	verifier := authz.New(cfg.RouterURL, cfg.Dev, logger, authz.Options{})
-	handler, life, reg, opkgMgr, tracker := assemble(cfg, store, verifier, logger)
+	handler, life, reg, opkgMgr, tracker := assemble(cfg, store, paletteStore, verifier, logger)
 
 	// run owns all lifetimes: the signal context drives graceful HTTP shutdown, and
 	// background install work runs under a child so a signal cancels installs
@@ -108,7 +113,7 @@ func run(cfg Config) error {
 // assemble builds the fully-wired HTTP handler plus the lifecycle manager, registry,
 // and opkg manager the startup/shutdown hooks need. Kept separate from run so the
 // integration test can drive the exact same wiring over httptest.
-func assemble(cfg Config, store *state.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry, opkg.Manager, *readiness.Tracker) {
+func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry, opkg.Manager, *readiness.Tracker) {
 	reg := registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir)
 	opkgMgr := opkg.New(cfg.Opkg, logger)
 	life := lifecycle.New(logger)
@@ -136,6 +141,9 @@ func assemble(cfg Config, store *state.Store, verifier *authz.Verifier, logger *
 	mgmtMux := http.NewServeMux()
 	mgmtHandler.Register(mgmtMux)
 	mux.Handle("/api/mgmt/", verifier.Middleware(mgmtMux))
+	paletteHandler := palette.NewHandler(paletteStore, logger)
+	paletteHandler.RegisterPublic(mux)
+	paletteHandler.RegisterProtected(mgmtMux)
 	dispatchHandler.Register(mux)
 	wsHandler.Register(mux)
 

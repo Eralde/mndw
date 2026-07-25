@@ -1,0 +1,34 @@
+{
+  "dark": {
+    "bg": "#000000",
+    "surface": "#000000",
+    "surfaceRaised": "#111111",
+    "border": "#333333",
+    "textSubtle": "#cccccc",
+    "textMuted": "#dddddd",
+    "text": "#ffffff",
+    "accent": "#000000",
+    "accentHover": "#222222",
+    "accentContrast": "#ffffff",
+    "danger": "#ff0000",
+    "dangerBg": "#000000",
+    "success": "#00ff00",
+    "warning": "#ffff00"
+  },
+  "light": {
+    "bg": "#ffffff",
+    "surface": "#ffffff",
+    "surfaceRaised": "#eeeeee",
+    "border": "#cccccc",
+    "textSubtle": "#333333",
+    "textMuted": "#222222",
+    "text": "#000000",
+    "accent": "#ffffff",
+    "accentHover": "#dddddd",
+    "accentContrast": "#000000",
+    "danger": "#aa0000",
+    "dangerBg": "#ffffff",
+    "success": "#006600",
+    "warning": "#996600"
+  }
+}

@@ -24,6 +24,7 @@ export const MGMT_DENY_URL = '/api/mgmt/deny';
 export const MGMT_ENABLE_URL = '/api/mgmt/enable';
 export const MGMT_DISABLE_URL = '/api/mgmt/disable';
 export const MGMT_DELETE_URL = '/api/mgmt/delete';
+export const MGMT_PALETTE_URL = '/api/mgmt/palette';
 
 export const OPKG_LIST_URL = '/api/mgmt/opkg/list';
 export const OPKG_INSTALL_URL = '/api/mgmt/opkg/install';

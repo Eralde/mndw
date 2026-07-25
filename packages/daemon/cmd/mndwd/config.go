@@ -32,6 +32,9 @@ type Config struct {
 // StateFile is the path to the durable state document.
 func (c Config) StateFile() string { return filepath.Join(c.DataDir, "state.json") }
 
+// PaletteFile is the path to the device's optional colour-palette override.
+func (c Config) PaletteFile() string { return filepath.Join(c.DataDir, "palette.json") }
+
 // StagingDir holds uploaded-but-unapproved plugins.
 func (c Config) StagingDir() string { return filepath.Join(c.DataDir, "staging") }
 

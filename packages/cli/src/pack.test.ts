@@ -203,7 +203,7 @@ describe('packPlugin', () => {
     expect(readFileSync(join(result.outDir, 'index.css'), 'utf8')).toMatch(/color:\s*red/);
   });
 
-  it('AOT-compiles an angular plugin, keeps angular external, inlines d3, and emits index.css', async () => {
+  it('AOT-compiles an angular plugin, keeps angular and d3 external, and emits index.css', async () => {
     scaffold(dir, {
       manifest: widgetManifest({name: 'ng-widget'}),
       files: {
@@ -250,7 +250,7 @@ describe('packPlugin', () => {
 
     expect(js).toMatch(/from\s*["']@angular\/core["']/);
     expect(js).toMatch(/(?:from|import)\s*["']zone\.js["']/);
-    expect(js).not.toMatch(/from\s*["']d3["']/);
+    expect(js).toMatch(/from\s*["']d3["']/);
     expect(existsSync(join(result.outDir, 'index.css'))).toBe(true);
     expect(readFileSync(join(result.outDir, 'index.css'), 'utf8')).toMatch(/color:\s*red/);
   });
@@ -480,8 +480,8 @@ describe('packExamplePlugins', () => {
 
     expect(widgetBundle).toMatch(/from\s*["']rxjs["']/);
     expect(widgetBundle).not.toMatch(/["']@rci-tools\/core["']/);
-    expect(widgetBundle).not.toMatch(/from\s*["']d3["']/);
-    expect(widgetBundle).toContain('d3-selection');
+    expect(widgetBundle).toMatch(/from\s*["']d3["']/);
+    expect(widgetBundle).not.toContain('d3-selection');
 
     const svelteBundle = bundle('device-traffic-widget');
 

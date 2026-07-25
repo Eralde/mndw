@@ -131,6 +131,11 @@ server consume that same table and import map. `mndw.lock.json` records the
 versions used to build a plugin. Major-version mismatches warn but do not block
 loading.
 
+The base shared set includes the complete `d3@7.9.0` package under the `d3`
+specifier. Official d3 APIs therefore share one browser module and one prototype
+identity. Third-party extensions such as `d3-dag` remain plugin-bundled unless a
+later shared-dependency decision promotes them.
+
 Angular bundles have an identity invariant: every Angular bundle keeps
 `@angular/core` external, and core plus `rxjs-interop` share one bundle. An
 executable regression suite protects this from duplicate class identities.
@@ -144,4 +149,3 @@ backend runs with the daemon's privileges, so approval is the trust boundary.
 Uploaded backend plugins remain staged and non-executable until approval.
 After approval, the daemon installs declared packages, activates routes, runs
 daemon hooks, and records the change in state.
-

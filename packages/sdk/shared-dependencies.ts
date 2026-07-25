@@ -73,6 +73,13 @@ export const SHARED_DEPENDENCIES: SharedDependency[] = [
     framework: 'base',
   },
   {
+    specifiers: ['d3'],
+    bundle: 'd3',
+    version: '7.9.0',
+    entryPoint: 'd3',
+    framework: 'base',
+  },
+  {
     specifiers: ['vue'],
     bundle: 'vue',
     version: '3.5.39',

@@ -62,12 +62,14 @@ describe('buildLock', () => {
     expect(lock.sdkVersion).toBe(resolveSdkVersion());
     expect(Object.keys(lock.sharedDependencies)).toEqual([
       '@rci-tools/core',
+      'd3',
       'hash-wasm',
       'rxjs',
       'rxjs/operators',
     ]);
     expect(lock.sharedDependencies.rxjs).toBe('7.8.2');
     expect(lock.sharedDependencies['@rci-tools/core']).toBe('0.2.0');
+    expect(lock.sharedDependencies.d3).toBe('7.9.0');
   });
 
   it('records the same base shared deps for a svelte plugin', () => {

@@ -44,9 +44,11 @@ The lock file records the plugin version, framework, SDK version, and versions
 of shared dependencies used during the build. Shared bundles are versioned and
 resolved through one import map in development and production.
 
-Host-provided packages include the base RCI/RxJS/hash-wasm set, with Vue and
+Host-provided packages include the base RCI/RxJS/hash-wasm/d3 set, with Vue and
 Angular additions. Plugins should not bundle those packages. The packer checks
-the esbuild metafile for leaks before staging output.
+the esbuild metafile for leaks before staging output. Packages absent from the
+shared-dependency table remain plugin-bundled, which lets plugins use extensions
+such as `d3-dag` without waiting for a host change.
 
 ## Source development
 

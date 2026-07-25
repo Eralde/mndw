@@ -4,6 +4,7 @@ import {
   pluginDependencies,
   sharedDependencyVersions,
   sharedImportMap,
+  sharedSpecifiers,
   versionedBundleUrl,
 } from '../shared-dependencies.js';
 
@@ -56,6 +57,38 @@ describe('shared dependencies table', () => {
     });
   });
 
+  describe('full d3 bundle', () => {
+    const d3Entry = SHARED_DEPENDENCIES.find((entry) => entry.bundle === 'd3');
+
+    it('ships one complete base-framework d3 entry at the pinned version', () => {
+      expect(d3Entry).toEqual({
+        specifiers: ['d3'],
+        bundle: 'd3',
+        version: '7.9.0',
+        entryPoint: 'd3',
+        framework: 'base',
+      });
+    });
+
+    it('maps d3 to one versioned host URL', () => {
+      expect(sharedImportMap().d3).toBe('/shared/d3@7.9.0.js');
+      expect(sharedDependencyVersions().d3).toBe('7.9.0');
+    });
+
+    it('gives every plugin framework the full d3 external', () => {
+      for (const framework of ['vanilla', 'svelte', 'vue', 'angular'] as const) {
+        expect(pluginDependencies(framework)).toContain('d3');
+      }
+    });
+
+    it('does not publish individual d3 submodule entries or d3 extensions', () => {
+      expect(sharedSpecifiers()).not.toContain('d3-selection');
+      expect(sharedSpecifiers()).not.toContain('d3-zoom');
+      expect(sharedSpecifiers()).not.toContain('d3-dag');
+      expect(SHARED_DEPENDENCIES.some((entry) => entry.bundle.startsWith('d3-'))).toBe(false);
+    });
+  });
+
   it('scopes framework externals: angular widgets get vue-free base + angular deps', () => {
     const angularDeps = pluginDependencies('angular');
 
@@ -67,7 +100,7 @@ describe('shared dependencies table', () => {
   it('gives vanilla plugins the base shared deps only (no framework deps)', () => {
     const vanillaDeps = pluginDependencies('vanilla');
 
-    expect(vanillaDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm']);
+    expect(vanillaDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm', 'd3']);
     expect(vanillaDeps).not.toContain('vue');
     expect(vanillaDeps).not.toContain('@angular/core');
   });
@@ -79,7 +112,7 @@ describe('shared dependencies table', () => {
   it('gives vue plugins the base deps plus vue', () => {
     const vueDeps = pluginDependencies('vue');
 
-    expect(vueDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm', 'vue']);
+    expect(vueDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm', 'd3', 'vue']);
     expect(vueDeps).not.toContain('@angular/core');
   });
 });

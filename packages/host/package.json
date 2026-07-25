@@ -28,6 +28,7 @@
     "@vitejs/plugin-vue": "^6.0.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@types/node": "22.19.15",
+    "d3": "^7.9.0",
     "esbuild": "^0.25.0",
     "happy-dom": "^17.4.4",
     "svelte": "^5.56.4",

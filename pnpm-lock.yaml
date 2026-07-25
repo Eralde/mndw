@@ -209,9 +209,6 @@ importers:
 
   example-plugins/mws-map-page:
     dependencies:
-      d3:
-        specifier: ^7.9.0
-        version: 7.9.0
       d3-dag:
         specifier: ^1.1.0
         version: 1.2.2
@@ -237,6 +234,9 @@ importers:
       '@types/d3':
         specifier: ^7.4.3
         version: 7.4.3
+      d3:
+        specifier: ^7.9.0
+        version: 7.9.0
       happy-dom:
         specifier: ^17.4.4
         version: 17.6.3
@@ -306,10 +306,6 @@ importers:
         version: 3.2.7(@types/node@22.19.15)(happy-dom@17.6.3)(lightningcss@1.32.0)(sass@1.101.0)(tsx@4.23.0)
 
   example-plugins/tx-rx-chart-widget:
-    dependencies:
-      d3:
-        specifier: ^7.9.0
-        version: 7.9.0
     devDependencies:
       '@angular/common':
         specifier: ^21.2.18
@@ -332,6 +328,9 @@ importers:
       '@types/d3':
         specifier: ^7.4.3
         version: 7.4.3
+      d3:
+        specifier: ^7.9.0
+        version: 7.9.0
       happy-dom:
         specifier: ^17.4.4
         version: 17.6.3
@@ -454,6 +453,9 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^6.0.0
         version: 6.0.7(vite@6.4.3(@types/node@22.19.15)(lightningcss@1.32.0)(sass@1.101.0)(tsx@4.23.0))(vue@3.5.39(typescript@5.9.3))
+      d3:
+        specifier: ^7.9.0
+        version: 7.9.0
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12

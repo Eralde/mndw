@@ -215,11 +215,23 @@ Host-provided, must NOT be bundled:
 
 | Package                                                                                         | Applies to           |
 |-------------------------------------------------------------------------------------------------|----------------------|
-| `@rci-tools/core`, `rxjs`, `rxjs/operators`, `hash-wasm`                                        | all plugins          |
+| `@rci-tools/core`, `rxjs`, `rxjs/operators`, `hash-wasm`, `d3`                                  | all plugins          |
 | `vue`                                                                                           | Vue plugins only     |
 | `zone.js`, `@angular/core`, `@angular/common`, `@angular/platform-browser`, `@angular/compiler` | Angular plugins only |
 
 CLI enforces at pack time.
+
+### D3 and extensions
+
+The host provides the complete `d3@7.9.0` package as one shared bundle. Use the normal package import:
+
+```ts
+import * as d3 from 'd3';
+```
+
+All official d3 APIs, including `zoom`, are available from that namespace. Keep `d3` and `@types/d3` in `devDependencies` so local tests and type checking resolve the package; `mndw pack` externalizes it and the host import map supplies it at runtime.
+
+Third-party extensions are not automatically host-provided. Declare an extension such as `d3-dag` in your plugin and let the packer bundle it. Any package not listed in the host shared-dependency table follows this same fallback rule; using it never requires a host release. Do not separately bundle official d3 modules already exposed by the full `d3` namespace.
 
 ## 9. Packing & Uploading
 

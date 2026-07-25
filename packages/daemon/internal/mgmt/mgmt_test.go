@@ -456,6 +456,29 @@ func TestBuiltinAppearsInList(t *testing.T) {
 	}
 }
 
+func TestSymlinkedBuiltinAppearsInList(t *testing.T) {
+	srv, cfg := newTestServer(t)
+	if err := os.MkdirAll(cfg.BuiltinPluginsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sourceDir := filepath.Join(t.TempDir(), "clients-widget")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	builtin := `{"manifestVersion":2,"name":"clients-widget","version":"1.0.0","type":"widget","label":"Clients","entry":"index.js","size":{"w":4,"h":3}}`
+	if err := os.WriteFile(filepath.Join(sourceDir, "manifest.json"), []byte(builtin), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(sourceDir, filepath.Join(cfg.BuiltinPluginsDir, "clients-widget")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := findEntry(listPlugins(t, srv, "/api/mgmt/list"), "clients-widget"); !ok {
+		t.Fatalf("symlinked builtin not listed")
+	}
+}
+
 func TestListReportsDepsStatus(t *testing.T) {
 	srv, cfg := newTestServerWithReadiness(t, trackerStub{"ttyd-widget": readiness.StateInstalling})
 	writeBuiltinFixture(t, cfg, "ttyd-widget", true)

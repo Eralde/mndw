@@ -111,6 +111,35 @@ func TestListBuiltins(t *testing.T) {
 	}
 }
 
+func TestListBuiltinsIncludesDirectorySymlink(t *testing.T) {
+	reg, _, _, builtinDir := newRegistry(t)
+	if err := os.MkdirAll(builtinDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sourceDir := filepath.Join(t.TempDir(), "clients-widget")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"manifestVersion":2,"name":"clients-widget","version":"1.0.0","type":"widget","label":"Clients","entry":"index.js","size":{"w":4,"h":3}}`
+	if err := os.WriteFile(filepath.Join(sourceDir, "manifest.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	linkPath := filepath.Join(builtinDir, "clients-widget")
+	if err := os.Symlink(sourceDir, linkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	plugins := reg.ListBuiltins()
+	if len(plugins) != 1 {
+		t.Fatalf("expected 1 builtin, got %d", len(plugins))
+	}
+	if plugins[0].Name != "clients-widget" || plugins[0].Dir != linkPath {
+		t.Errorf("unexpected symlinked builtin: %+v", plugins[0])
+	}
+}
+
 func TestListBuiltinsSkipsInvalidManifest(t *testing.T) {
 	reg, _, _, builtinDir := newRegistry(t)
 

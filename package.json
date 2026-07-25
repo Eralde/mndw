@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx tools/dev.ts",
+    "dev-plugin": "pnpm exec mndw dev",
     "test": "pnpm -r --if-present test",
     "gen-tokens": "pnpm --filter @mndw/palette-tools gen-tokens",
     "generate-manifest-schema": "pnpm --filter @mndw/sdk generate-manifest-schema",

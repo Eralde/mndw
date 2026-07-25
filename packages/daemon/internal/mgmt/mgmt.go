@@ -194,14 +194,16 @@ func (h *Handler) scanBuiltins(taken map[string]*state.Plugin) ([]ListEntry, *ht
 
 	entries := make([]ListEntry, 0)
 	for _, d := range dirs {
-		if !d.IsDir() {
+		pluginDir := filepath.Join(h.cfg.BuiltinPluginsDir, d.Name())
+		info, statErr := os.Stat(pluginDir)
+		if statErr != nil || !info.IsDir() {
 			continue
 		}
 		if _, exists := taken[d.Name()]; exists {
 			continue
 		}
 
-		data, readErr := os.ReadFile(filepath.Join(h.cfg.BuiltinPluginsDir, d.Name(), "manifest.json"))
+		data, readErr := os.ReadFile(filepath.Join(pluginDir, "manifest.json"))
 		if readErr != nil {
 			continue
 		}

@@ -125,6 +125,11 @@ export default defineConfig(({mode}) => {
       },
     ],
     server: {
+      // Keep host source files allowed when the sandbox plugin adds its external source dir.
+      // Vite merges array-valued fs.allow entries, so both workspace and plugin remain served.
+      fs: {
+        allow: [repoRoot],
+      },
       proxy: {
         '/rci': deviceProxy('/rci'),
         '/auth': deviceProxy('/auth'),

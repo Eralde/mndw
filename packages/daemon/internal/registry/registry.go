@@ -105,12 +105,14 @@ func (r *Registry) ListBuiltins() []*Plugin {
 
 	var plugins []*Plugin
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		name := entry.Name()
+		pluginDir := filepath.Join(r.builtinDir, name)
+		info, statErr := os.Stat(pluginDir)
+		if statErr != nil || !info.IsDir() {
 			continue
 		}
 
-		name := entry.Name()
-		data, readErr := os.ReadFile(filepath.Join(r.builtinDir, name, "manifest.json"))
+		data, readErr := os.ReadFile(filepath.Join(pluginDir, "manifest.json"))
 		if readErr != nil {
 			continue
 		}
@@ -122,7 +124,7 @@ func (r *Registry) ListBuiltins() []*Plugin {
 
 		plugins = append(plugins, &Plugin{
 			Name:     name,
-			Dir:      filepath.Join(r.builtinDir, name),
+			Dir:      pluginDir,
 			Manifest: m,
 			Source:   state.SourceBuiltin,
 			Approval: state.ApprovalApproved,

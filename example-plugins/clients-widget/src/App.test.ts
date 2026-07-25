@@ -288,11 +288,16 @@ describe('cell formatting', () => {
     expect(cells.filter((cell) => cell === '—').length).toBeGreaterThan(0);
   });
 
-  it('renders speed in Mbps', async () => {
+  it('renders speed and port in one Connection cell', async () => {
     mountWidget();
     await flush();
 
     expect(text()).toContain('1000 Mbps');
+
+    const connectionIndex = headers().indexOf('Connection');
+    const cell = host.querySelectorAll('tbody tr')[0]?.querySelectorAll('td')[connectionIndex];
+
+    expect(cell?.textContent?.replace(/\s+/g, ' ').trim()).toBe('1000 Mbps Port 2');
   });
 });
 
@@ -301,14 +306,14 @@ describe('storage', () => {
     mountWidget();
     await flush();
 
-    expect(headers()).toEqual(['Name', 'Link', 'IP Address', 'Interface', 'Speed', 'Uptime', 'Last Seen']);
+    expect(headers()).toEqual(['Name', 'Link', 'IP Address', 'Connection', 'Uptime', 'Last Seen']);
     expect(offlineToggle().checked).toBe(false);
   });
 
   it('restores all three keys', async () => {
     store.set(
       'column-visibility',
-      JSON.stringify({ip: false, interface: true, speed: true, uptime: true, lastSeen: true}),
+      JSON.stringify({ip: false, connection: true, uptime: true, lastSeen: true}),
     );
     store.set('show-offline', 'true');
     store.set('refresh-interval', '5');
@@ -374,11 +379,11 @@ describe('storage', () => {
   });
 
   it('merges a partial column config onto all-visible', async () => {
-    store.set('column-visibility', JSON.stringify({speed: false, unknownColumn: true}));
+    store.set('column-visibility', JSON.stringify({connection: false, unknownColumn: true}));
     mountWidget();
     await flush();
 
-    expect(headers()).not.toContain('Speed');
+    expect(headers()).not.toContain('Connection');
     expect(headers()).toContain('IP Address');
   });
 
@@ -409,13 +414,13 @@ describe('settings', () => {
     const [, visibility, intervalSeconds, onChange, _onRefreshIntervalChange] =
       vi.mocked(openSettingsDialog).mock.calls[0];
 
-    expect(visibility).toMatchObject({ip: true, speed: true});
+    expect(visibility).toMatchObject({ip: true, connection: true});
     expect(intervalSeconds).toBe(3);
 
-    onChange('speed', false);
+    onChange('connection', false);
     await flush();
-    expect(headers()).not.toContain('Speed');
-    expect(storageSet).toHaveBeenCalledWith('column-visibility', expect.stringContaining('"speed":false'));
+    expect(headers()).not.toContain('Connection');
+    expect(storageSet).toHaveBeenCalledWith('column-visibility', expect.stringContaining('"connection":false'));
   });
 
   it('applies an interval change without an extra RCI call', async () => {

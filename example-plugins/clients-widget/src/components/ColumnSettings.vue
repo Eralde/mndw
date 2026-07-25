@@ -10,8 +10,7 @@ const props = defineProps<Props>();
 
 const COLUMNS: readonly {key: string; label: string}[] = [
   {key: 'ip', label: 'IP Address'},
-  {key: 'interface', label: 'Interface'},
-  {key: 'speed', label: 'Speed'},
+  {key: 'connection', label: 'Connection'},
   {key: 'uptime', label: 'Uptime'},
   {key: 'lastSeen', label: 'Last Seen'},
 ];

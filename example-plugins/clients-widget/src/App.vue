@@ -8,7 +8,7 @@ import {createRefreshLoop, type RefreshLoop} from './services/refresh-loop.js';
 
 const props = defineProps<{ctx: PluginContext}>();
 
-const COLUMN_KEYS = ['ip', 'interface', 'speed', 'uptime', 'lastSeen'] as const;
+const COLUMN_KEYS = ['ip', 'connection', 'uptime', 'lastSeen'] as const;
 const KEY_COLUMNS = 'column-visibility';
 const KEY_OFFLINE = 'show-offline';
 const KEY_INTERVAL = 'refresh-interval';

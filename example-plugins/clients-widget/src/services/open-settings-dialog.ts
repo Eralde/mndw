@@ -15,12 +15,15 @@ export function openSettingsDialog(
     width: 280,
     closeOnOutsideClick: true,
     mount(target, layer) {
-      const app = createApp(ColumnSettings, {
-        visibility,
-        refreshIntervalSeconds,
-        onChange,
-        onRefreshIntervalChange,
-      });
+      const app = createApp(
+        ColumnSettings,
+        {
+          visibility,
+          refreshIntervalSeconds,
+          onChange,
+          onRefreshIntervalChange,
+        },
+      );
 
       app.mount(target);
       layer.setCleanup(() => app.unmount());

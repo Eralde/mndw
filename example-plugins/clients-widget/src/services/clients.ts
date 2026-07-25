@@ -1,5 +1,6 @@
 import type {RciManager, RciQuery} from '@rci-tools/core';
 import {firstValueFrom} from 'rxjs';
+import {get, has, pick, pickBy} from 'lodash-es';
 
 interface RawDeviceHost {
   mac?: unknown;
@@ -16,26 +17,43 @@ interface RawDeviceHost {
   'last-seen'?: unknown;
 }
 
+export type WiredConnectionInfo = Partial<{
+  speed: number;
+  port: string;
+}>;
+
+export type WifiBand = '2' | '5' | '6';
+export type HostConnectionType = 'wired' | 'wireless' | 'unknown';
+
+export interface WirelessConnectionInfo {
+  accessPointId: string;
+  bands: WifiBand[];
+  txrate: number;
+  rssi: number;
+  txss: number;
+}
+
 export interface ClientRecord {
   mac: string;
   displayName: string;
   ip: string | null;
   link: 'up' | 'down' | null;
-  speed: number | null;
-  port: string | null;
+  active: boolean;
+  connectionType: HostConnectionType;
+  connection: WiredConnectionInfo | WirelessConnectionInfo | null;
   uptime: number | null;
   lastSeen: number | null;
-  active: boolean;
 }
 
 export class ClientsParseError extends Error {
   public constructor(message: string) {
     super(message);
+
     this.name = 'ClientsParseError';
   }
 }
 
-const MAC_PATTERN = /^(?:[0-9a-f]{2}:){5}[0-9a-f]{2}$/;
+const MAC_PATTERN = /^[0-9A-Fa-f][02468ACEace]([:-])[0-9A-Fa-f]{2}(?:\1[0-9A-Fa-f]{2}){4}$/;
 const QUERY: RciQuery = {path: 'show.device-list', extractData: true};
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -80,17 +98,81 @@ function isClient(host: RawDeviceHost): boolean {
   return host['system-mode'] !== 'extender' && host['mws-backhaul'] !== true;
 }
 
+const getHostConnectionType = (host: RawDeviceHost): HostConnectionType => {
+  if (!host.active) {
+    return 'unknown';
+  }
+
+  // host connected via MLO Wi-Fi
+  if (Number(get(host, 'mld.length')) > 0) {
+    return 'wireless';
+  }
+
+  return (has(host, 'ap') || has(host, 'mws.ap'))
+    ? 'wireless'
+    : 'wired';
+};
+
+const getWiredConnectionInfo = (host: RawDeviceHost): WiredConnectionInfo => {
+  let apiData: Record<string, unknown>;
+
+  if (has(host, 'mws.speed')) {
+    apiData = pick(host, ['mws.speed', 'mws.port']);
+  }
+
+  apiData = pick(host, ['speed', 'port']);
+
+  return {
+    speed: Number(apiData.speed),
+    port: String(apiData.port),
+  };
+};
+
+const getWirelessConnectionInfo = (host: RawDeviceHost): WirelessConnectionInfo => {
+  const dataObject = has(host, 'mws')
+    ? get(host, 'mws')
+    : host;
+
+  const connectionInfo = pickBy({
+    txss: get(dataObject, 'txss'),
+    txrate: get(dataObject, 'txrate'),
+    rssi: get(dataObject, 'rssi'),
+    security: get(dataObject, 'security'),
+    ht: get(dataObject, 'ht'),
+    ap: get(dataObject, 'ap'),
+  });
+
+  const accessPointId = connectionInfo.ap ?? '';
+  const bands = ['2' as const]; // TODO: get real bands list
+
+  return {
+    accessPointId,
+    bands,
+    txss: connectionInfo.txss ?? 0,
+    txrate: connectionInfo.txss ?? 0,
+    rssi: connectionInfo.txss ?? 0,
+  };
+};
+
 function toRecord(host: RawDeviceHost, index: number): ClientRecord {
   const mac = toMac(host.mac, index);
   const link = host.link === 'up' || host.link === 'down' ? host.link : null;
+  const connectionType = getHostConnectionType(host);
+  let connection: ClientRecord['connection'] = null;
+
+  if (connectionType === 'wired') {
+    connection = getWiredConnectionInfo(host);
+  } else if (connectionType === 'wireless') {
+    connection = getWirelessConnectionInfo(host);
+  }
 
   return {
     mac,
     displayName: toText(host.name) ?? toText(host.hostname) ?? mac,
     ip: toText(host.ip),
     link,
-    speed: toNumber(host.speed),
-    port: toText(typeof host.port === 'number' ? String(host.port) : host.port),
+    connection,
+    connectionType,
     uptime: toNumber(host.uptime),
     lastSeen: toNumber(host['last-seen']),
     active: host.active === true,

@@ -37,7 +37,7 @@ function createContext(): {ctx: PluginContext; opened: Opened[]} {
   };
 }
 
-const visibility = {ip: true, interface: true, speed: false, uptime: true, lastSeen: true};
+const visibility = {ip: true, connection: false, uptime: true, lastSeen: true};
 
 function openDialog(): {
   opened: Opened;
@@ -81,13 +81,13 @@ describe('overlay options', () => {
 });
 
 describe('column checkboxes', () => {
-  it('renders exactly the five toggleable columns and no others', () => {
+  it('renders exactly the four toggleable columns and no others', () => {
     const {opened} = openDialog();
     const labels = [...opened.target.querySelectorAll('label')]
       .filter((label) => label.querySelector('input[type="checkbox"]'))
       .map((label) => label.textContent?.trim());
 
-    expect(labels).toEqual(['IP Address', 'Interface', 'Speed', 'Uptime', 'Last Seen']);
+    expect(labels).toEqual(['IP Address', 'Connection', 'Uptime', 'Last Seen']);
     expect(opened.target.textContent).not.toContain('Name');
     expect(opened.target.textContent).not.toContain('Link');
   });
@@ -96,17 +96,17 @@ describe('column checkboxes', () => {
     const {opened} = openDialog();
     const boxes = [...opened.target.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
 
-    expect(boxes.map((box) => box.checked)).toEqual([true, true, false, true, true]);
+    expect(boxes.map((box) => box.checked)).toEqual([true, false, true, true]);
   });
 
   it('reports a toggle without closing the dialog', () => {
     const {opened, onChange} = openDialog();
-    const speed = opened.target.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[2];
+    const connection = opened.target.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1];
 
-    speed.checked = true;
-    speed.dispatchEvent(new Event('change', {bubbles: true}));
+    connection.checked = true;
+    connection.dispatchEvent(new Event('change', {bubbles: true}));
 
-    expect(onChange).toHaveBeenCalledWith('speed', true);
+    expect(onChange).toHaveBeenCalledWith('connection', true);
     expect(opened.target.querySelector('input')).not.toBeNull();
   });
 });

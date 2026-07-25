@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {computed} from 'vue';
-import type {ClientRecord} from '../services/clients.js';
+import type {ClientRecord, WifiBand} from '../services/clients.js';
 import {formatCompactDuration, formatElapsed, formatFullDuration} from '../services/format-duration.js';
 
 interface Props {
@@ -16,8 +16,20 @@ const DASH = '—';
 const shows = (key: string): boolean => props.columnVisibility[key] !== false;
 const emptyMessage = computed(() => props.showOffline ? 'No clients found' : 'No clients connected');
 
-function speedText(client: ClientRecord): string {
-  return client.speed === null ? DASH : `${client.speed} Mbps`;
+function bandText(band: WifiBand): string {
+  return `${band === '2' ? '2.4' : band} GHz`;
+}
+
+function wirelessBandsText(bands: WifiBand[]): string {
+  return bands.length === 0 ? DASH : bands.map((band) => bandText(band)).join(', ');
+}
+
+function wiredSpeedText(speed: number | undefined): string {
+  return speed === undefined || !Number.isFinite(speed) ? DASH : `${speed} Mbps`;
+}
+
+function wiredPortText(port: string | undefined): string {
+  return port === undefined || port === '' || port === 'undefined' ? DASH : `Port ${port}`;
 }
 
 function durationText(seconds: number | null): string {
@@ -45,35 +57,43 @@ function fullText(seconds: number | null): string | undefined {
   </p>
   <table v-else class="clients-table">
     <thead>
-      <tr>
-        <th scope="col">Name</th>
-        <th scope="col">Link</th>
-        <th v-if="shows('ip')" scope="col">IP Address</th>
-        <th v-if="shows('interface')" scope="col">Interface</th>
-        <th v-if="shows('speed')" scope="col">Speed</th>
-        <th v-if="shows('uptime')" scope="col">Uptime</th>
-        <th v-if="shows('lastSeen')" scope="col">Last Seen</th>
-      </tr>
+    <tr>
+      <th scope="col">Name</th>
+      <th scope="col">Link</th>
+      <th v-if="shows('ip')" scope="col">IP Address</th>
+      <th v-if="shows('connection')" scope="col">Connection</th>
+      <th v-if="shows('uptime')" scope="col">Uptime</th>
+      <th v-if="shows('lastSeen')" scope="col">Last Seen</th>
+    </tr>
     </thead>
     <tbody>
-      <tr v-for="client in clients" :key="client.mac">
-        <td>{{ client.displayName }}</td>
-        <td>
-          <template v-if="client.link === null">{{ DASH }}</template>
-          <template v-else>
+    <tr v-for="client in clients" :key="client.mac">
+      <td>{{ client.displayName }}</td>
+      <td>
+        <template v-if="client.link === null">{{ DASH }}</template>
+        <template v-else>
             <span
-              class="clients-table__dot"
-              :class="client.link === 'up' ? 'clients-table__dot--up' : 'clients-table__dot--down'"
+                class="clients-table__dot"
+                :class="client.link === 'up' ? 'clients-table__dot--up' : 'clients-table__dot--down'"
             />
-            {{ client.link }}
-          </template>
-        </td>
-        <td v-if="shows('ip')">{{ client.ip ?? DASH }}</td>
-        <td v-if="shows('interface')">{{ client.port ?? DASH }}</td>
-        <td v-if="shows('speed')">{{ speedText(client) }}</td>
-        <td v-if="shows('uptime')" :title="fullText(client.uptime)">{{ durationText(client.uptime) }}</td>
-        <td v-if="shows('lastSeen')" :title="fullText(client.lastSeen)">{{ elapsedText(client.lastSeen) }}</td>
-      </tr>
+          {{ client.link }}
+        </template>
+      </td>
+      <td v-if="shows('ip')">{{ client.ip ?? DASH }}</td>
+      <td v-if="shows('connection')">
+        <template v-if="client.connectionType === 'unknown' || client.connection === null">{{ DASH }}</template>
+        <template v-else-if="'accessPointId' in client.connection">
+          RSSI: {{ client.connection.rssi }}; {{ client.connection.txrate }} Mbps;
+          {{ wirelessBandsText(client.connection.bands) }}
+        </template>
+        <template v-else>
+          {{ wiredSpeedText(client.connection.speed) }}<br>
+          {{ wiredPortText(client.connection.port) }}
+        </template>
+      </td>
+      <td v-if="shows('uptime')" :title="fullText(client.uptime)">{{ durationText(client.uptime) }}</td>
+      <td v-if="shows('lastSeen')" :title="fullText(client.lastSeen)">{{ elapsedText(client.lastSeen) }}</td>
+    </tr>
     </tbody>
   </table>
 </template>

@@ -140,6 +140,13 @@ describe('normalizeClients — mesh filtering', () => {
     expect(records.filter((record) => !record.active)).toHaveLength(2);
   });
 
+  it('exposes connection type for active and inactive clients', () => {
+    const records = normalizeClients(fixture);
+
+    expect(records.find((record) => record.displayName === 'Client A')?.connectionType).toBe('wired');
+    expect(records.find((record) => record.displayName === 'Former Client A')?.connectionType).toBe('unknown');
+  });
+
   it('treats an unknown system-mode as an ordinary client', () => {
     const records = normalizeClients(wrap(rawHost({'system-mode': 'router'})));
 

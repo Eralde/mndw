@@ -1,5 +1,5 @@
 #!/bin/sh
-# Phase 6d — BusyBox sh-portability gate.
+# BusyBox sh-portability gate.
 #
 # Runs the daemon's sh-exec test suite under whatever /bin/sh the container
 # provides (Alpine => BusyBox ash), so backend scripts are interpreted by the

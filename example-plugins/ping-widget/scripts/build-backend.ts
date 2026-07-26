@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 
 const backendDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'backend');
 
-// Host-arch build for dev/pack; per-arch cross-compile is Phase 8.
+// Host-arch build for dev/pack.
 const result = spawnSync(
   'go',
   ['build', '-ldflags', '-s -w', '-o', 'ping-util', './cmd/ping-util'],

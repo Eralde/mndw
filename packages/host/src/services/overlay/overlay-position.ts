@@ -18,7 +18,7 @@ const POPOVER_PLACEMENTS: ReadonlySet<OverlayPlacement> = new Set([
   'right-end',
 ]);
 
-/** Default flip search order for anchored popovers (spec suggestion). */
+/** Default flip search order for anchored popovers */
 export const POPOVER_FLIP_ORDER: OverlayPlacement[] = [
   'bottom-start',
   'top-start',

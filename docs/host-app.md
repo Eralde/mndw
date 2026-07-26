@@ -1,8 +1,8 @@
 # Host application
 
-The host is the Svelte 5 SPA that users see in the browser. It is responsible
-for presentation and plugin runtime concerns. It does not execute plugin
-backend scripts or decide whether a backend is approved.
+The host is the Svelte 5 SPA that users see in the browser.
+It is responsible for presentation and plugin runtime concerns.
+It does not execute plugin backend scripts or decide whether a backend is approved.
 
 ## Boundary
 
@@ -93,9 +93,8 @@ generated `tokens.css`, applies the active theme, and exposes typed token names
 through the SDK. Plugins should use `--mndw-*` custom properties instead of
 inventing a separate visual system.
 
-The settings area contains appearance and device controls. The target v2
-settings experience also manages plugin upload, approval, enable/disable, and
-delete operations; that plugin-manager work is Phase 6.
+The settings area contains appearance and device controls.
+It also manages plugin upload, approval, enable/disable, and delete operations.
 
 ## Development sandbox
 

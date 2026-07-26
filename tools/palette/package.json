@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
     "@types/culori": "^4.0.1",
     "culori": "^4.0.2",
     "tsx": "^4.23.0",

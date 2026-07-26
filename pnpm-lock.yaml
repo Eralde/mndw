@@ -200,6 +200,9 @@ importers:
       '@mndw/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@rci-tools/core':
         specifier: ^0.2.0
         version: 0.2.0
@@ -352,6 +355,9 @@ importers:
       '@mndw/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@rci-tools/core':
         specifier: ^0.2.0
         version: 0.2.0
@@ -443,6 +449,9 @@ importers:
       '@mndw/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../ui
       '@rci-tools/core':
         specifier: ^0.2.0
         version: 0.2.0
@@ -539,11 +548,33 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@22.19.15)(happy-dom@17.6.3)(lightningcss@1.32.0)(sass@1.101.0)(tsx@4.23.0)
 
+  packages/ui:
+    dependencies:
+      lit:
+        specifier: ^3.2.0
+        version: 3.3.3
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      happy-dom:
+        specifier: ^17.4.4
+        version: 17.6.3
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@17.6.3)(lightningcss@1.32.0)(sass@1.101.0)(tsx@4.23.0)
+
   tools/palette:
     devDependencies:
       '@mndw/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@types/culori':
         specifier: ^4.0.1
         version: 4.0.1
@@ -1231,6 +1262,12 @@ packages:
 
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
+
+  '@lit-labs/ssr-dom-shim@1.6.0':
+    resolution: {integrity: sha512-VHb0ALPMTlgKjM6yIxxoQNnpKyUKLD04VzeQdsiXkMqkvYlAHxq9glGLmgbb889/1GsohSOAjvQYoiBppXFqrQ==}
+
+  '@lit/reactive-element@2.1.2':
+    resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
 
   '@napi-rs/wasm-runtime@1.1.6':
     resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
@@ -3135,6 +3172,15 @@ packages:
   lines-and-columns@1.2.4:
     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
 
+  lit-element@4.2.2:
+    resolution: {integrity: sha512-aFKhNToWxoyhkNDmWZwEva2SlQia+jfG0fjIWV//YeTaWrVnOxD89dPKfigCUspXFmjzOEUQpOkejH5Ly6sG0w==}
+
+  lit-html@3.3.3:
+    resolution: {integrity: sha512-el8M6jK2o3RXBnrSHX3ZKrsN8zEV63pSExTO1wYJz7QndGYZ8353e2a5PPX+qHe2aGayfnchQmkAojaWAREOIA==}
+
+  lit@3.3.3:
+    resolution: {integrity: sha512-fycuvZg/hkpozL00lm1pEJH5nN/lr9ZXd6mJI2HSN4+Bzc+LDNdEApJ6HFbPkdFNHLvOplIIuJvxkS4XUxqirw==}
+
   locate-character@3.0.0:
     resolution: {integrity: sha512-SW13ws7BjaeJ6p7Q6CO2nchbYEc3X3J6WrmTTDto7yMPqVSZTUyY5Tjbid+Ab8gLnATtygYtiDIJGQRRn2ZOiA==}
 
@@ -4672,6 +4718,12 @@ snapshots:
       keyv: 5.6.0
 
   '@keyv/serialize@1.1.1': {}
+
+  '@lit-labs/ssr-dom-shim@1.6.0': {}
+
+  '@lit/reactive-element@2.1.2':
+    dependencies:
+      '@lit-labs/ssr-dom-shim': 1.6.0
 
   '@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
     dependencies:
@@ -6684,6 +6736,22 @@ snapshots:
   lilconfig@2.1.0: {}
 
   lines-and-columns@1.2.4: {}
+
+  lit-element@4.2.2:
+    dependencies:
+      '@lit-labs/ssr-dom-shim': 1.6.0
+      '@lit/reactive-element': 2.1.2
+      lit-html: 3.3.3
+
+  lit-html@3.3.3:
+    dependencies:
+      '@types/trusted-types': 2.0.7
+
+  lit@3.3.3:
+    dependencies:
+      '@lit/reactive-element': 2.1.2
+      lit-element: 4.2.2
+      lit-html: 3.3.3
 
   locate-character@3.0.0: {}
 

@@ -9,7 +9,13 @@ import type {
   OverlayService,
   OverlaySession,
 } from '@mndw/sdk';
-import {type ResolvedSizing, coercePlacement, computePopoverCoords, resolveSizing} from './overlay-position.js';
+import {
+  type ResolvedSizing,
+  coercePlacement,
+  computePopoverCoords,
+  isMobileSheet,
+  resolveSizing,
+} from './overlay-position.js';
 
 /** Reasons the host applies internally; never assignable through public `close()`. */
 type HostCloseReason = OverlayCloseReason;
@@ -91,9 +97,11 @@ export interface OverlayLayerView {
   readonly instanceId: string;
   readonly hostElement: HTMLElement;
   readonly contentElement: HTMLElement;
+  readonly anchorElement: HTMLElement | null;
   state: 'opening' | 'open' | 'closing' | 'closed';
   shell: ShellConfig | null;
   placement: OverlayPlacement;
+  readonly mobileSheet: boolean;
   className: string | undefined;
   sizing: ResolvedSizing;
   position: {top: number; left: number} | null;
@@ -120,6 +128,7 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
   public state = $state<'opening' | 'open' | 'closing' | 'closed'>('opening');
   public shell = $state<ShellConfig | null>(null);
   public placement = $state<OverlayPlacement>('center');
+  public readonly mobileSheet: boolean;
   public className = $state<string | undefined>(undefined);
   public sizing = $state<ResolvedSizing>({});
   public position = $state<{top: number; left: number} | null>(null);
@@ -135,7 +144,7 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
   public readonly closed: Promise<OverlayCloseEvent<Result>>;
 
   private readonly abortController = new AbortController();
-  private anchorElement: HTMLElement | null;
+  public anchorElement: HTMLElement | null;
   private cleanup: CleanupInput | null = null;
   private readonly onCloseListeners = new Set<(event: OverlayCloseEvent<Result>) => void>();
   private readonly previousFocus: HTMLElement | null;
@@ -167,8 +176,9 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
 
     this.shell = shell;
     this.placement = coercePlacement(options.kind, options.placement);
+    this.mobileSheet = isMobileSheet(options.kind);
     this.className = options.className;
-    this.sizing = resolveSizing(options.kind, options);
+    this.sizing = resolveSizing(options.kind, options, this.mobileSheet);
     this.anchorElement = options.anchor?.element ?? null;
 
     this.hostElement = document.createElement('div');
@@ -287,13 +297,17 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
       options.width !== undefined || options.height !== undefined
       || options.maxWidth !== undefined || options.maxHeight !== undefined
     ) {
-      this.sizing = resolveSizing(this.kind, {
-        kind: this.kind,
-        width: options.width,
-        height: options.height,
-        maxWidth: options.maxWidth,
-        maxHeight: options.maxHeight,
-      });
+      this.sizing = resolveSizing(
+        this.kind,
+        {
+          kind: this.kind,
+          width: options.width,
+          height: options.height,
+          maxWidth: options.maxWidth,
+          maxHeight: options.maxHeight,
+        },
+        this.mobileSheet,
+      );
     }
 
     this.reposition();

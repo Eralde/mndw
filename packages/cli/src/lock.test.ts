@@ -61,6 +61,7 @@ describe('buildLock', () => {
     expect(lock.framework).toBe('vanilla');
     expect(lock.sdkVersion).toBe(resolveSdkVersion());
     expect(Object.keys(lock.sharedDependencies)).toEqual([
+      '@mndw/ui',
       '@rci-tools/core',
       'd3',
       'hash-wasm',

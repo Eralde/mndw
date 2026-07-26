@@ -26,6 +26,10 @@ function appendContent(node: HTMLElement, target: HTMLElement) {
 }
 
 const sizeStyle = $derived.by(() => {
+  if (layer.mobileSheet) {
+    return 'width:100%;height:auto;max-height:100dvh';
+  }
+
   return [
     layer.sizing.width ? `width:${layer.sizing.width}` : '',
     layer.sizing.height ? `height:${layer.sizing.height}` : '',
@@ -38,7 +42,7 @@ const sizeStyle = $derived.by(() => {
 </script>
 
 <div
-  class="mndw-overlay-dialog mndw-overlay-dialog--{layer.kind} {layer.className ?? ''}"
+  class="mndw-overlay-dialog mndw-overlay-dialog--{layer.kind} mndw-overlay-dialog--{layer.placement} {layer.mobileSheet ? 'mndw-overlay-dialog--sheet' : ''} {layer.className ?? ''}"
   role="dialog"
   aria-modal={layer.kind === 'modal' ? 'true' : undefined}
   aria-labelledby={layer.shell?.title ? titleId : undefined}
@@ -107,6 +111,19 @@ const sizeStyle = $derived.by(() => {
   height: 100%;
 }
 
+.mndw-overlay-dialog--bottom {
+  border-right: none;
+  border-bottom: none;
+  border-left: none;
+  border-radius: 12px 12px 0 0;
+}
+.mndw-overlay-dialog--sheet {
+  border-right: none;
+  border-bottom: none;
+  border-left: none;
+  border-radius: 12px 12px 0 0;
+}
+
 .mndw-overlay-dialog__header {
   display: flex;
   align-items: center;
@@ -152,5 +169,15 @@ const sizeStyle = $derived.by(() => {
   min-height: 0;
   overflow: auto;
   padding: 16px;
+}
+.mndw-overlay-dialog--sheet .mndw-overlay-dialog__body {
+  flex: 0 1 auto;
+  max-height: calc(100dvh - 54px);
+  overflow: auto;
+}
+
+.mndw-overlay-dialog:global(.mndw-ui-select-sheet) .mndw-overlay-dialog__body {
+  padding: 0;
+  overflow: hidden;
 }
 </style>

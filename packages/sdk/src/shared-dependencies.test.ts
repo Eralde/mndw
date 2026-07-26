@@ -100,7 +100,7 @@ describe('shared dependencies table', () => {
   it('gives vanilla plugins the base shared deps only (no framework deps)', () => {
     const vanillaDeps = pluginDependencies('vanilla');
 
-    expect(vanillaDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm', 'd3']);
+    expect(vanillaDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm', 'd3', '@mndw/ui']);
     expect(vanillaDeps).not.toContain('vue');
     expect(vanillaDeps).not.toContain('@angular/core');
   });
@@ -112,7 +112,7 @@ describe('shared dependencies table', () => {
   it('gives vue plugins the base deps plus vue', () => {
     const vueDeps = pluginDependencies('vue');
 
-    expect(vueDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm', 'd3', 'vue']);
+    expect(vueDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm', 'd3', '@mndw/ui', 'vue']);
     expect(vueDeps).not.toContain('@angular/core');
   });
 });

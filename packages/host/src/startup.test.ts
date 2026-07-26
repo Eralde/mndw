@@ -3,6 +3,7 @@ import {type StartupDeps, initialize} from './startup.js';
 
 function depsFor(events: string[], authenticated = false, triggerAuthError = false): StartupDeps {
   return {
+    defineUi: () => events.push('define-ui'),
     initTheme: () => events.push('theme'),
     initPalette: () =>
       Promise.resolve().then(() => events.push('palette'))
@@ -36,6 +37,7 @@ describe('initialize', () => {
     await initialize(depsFor(events, true));
 
     expect(events).toEqual([
+      'define-ui',
       'theme',
       'palette',
       'auth-check',
@@ -44,6 +46,27 @@ describe('initialize', () => {
       'auth-subscribe',
       'mount',
     ]);
+  });
+
+  it('registers ui elements before anything else', async () => {
+    const order: string[] = [];
+
+    await initialize({
+      defineUi: () => order.push('defineUi'),
+      initTheme: () => order.push('initTheme'),
+      initPalette: () =>
+        Promise.resolve().then(() => {
+          order.push('initPalette');
+        }),
+      checkAuthenticated: () => Promise.resolve(false),
+      setAuthenticated: () => undefined,
+      initAuthenticated: () => Promise.resolve(),
+      subscribeAuthErrors: () => undefined,
+      resetToLogin: () => undefined,
+      mountApp: () => order.push('mountApp'),
+    });
+
+    expect(order[0]).toBe('defineUi');
   });
 
   it('does not start auth check until palette initialization resolves', async () => {
@@ -59,7 +82,7 @@ describe('initialize', () => {
     const pending = initialize(deps);
 
     await Promise.resolve();
-    expect(events).toEqual(['theme']);
+    expect(events).toEqual(['define-ui', 'theme']);
 
     releasePalette();
     await pending;

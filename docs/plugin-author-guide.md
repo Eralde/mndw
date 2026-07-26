@@ -135,7 +135,10 @@ Prefer SDK and context surfaces:
 - `sharedStorage` for state shared by instances of one plugin;
 - RCI/session managers for device communication;
 - `hostInfo` for device identity and theme;
-- `overlay` for modal, drawer, popover, or custom top-layer UI;
+- `overlay` for modal, drawer, popover, or custom top-layer UI. At viewport widths
+  `<=600px`, host-presented modals and drawers become full-width, content-sized
+  bottom sheets; their explicit `width` and `height` options are overridden, and
+  the choice is made when the overlay opens;
 - `onThemeChange` for theme-sensitive rendering;
 - `injector` for approved host service tokens.
 

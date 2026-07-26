@@ -1,11 +1,9 @@
-import {
-  SEED,
-  type Seed,
-  type ThemeName,
-  type TokenName,
-  buildPalette,
-  validatePalette,
-} from '../src/index.js';
+import '@mndw/sdk/tokens.css';
+import {defineMndwUi} from '@mndw/ui';
+import {PALETTE_CSS_VARIABLES} from '@mndw/sdk/palette';
+import {SEED, type Seed, type ThemeName, type TokenName, buildPalette, validatePalette} from '../src/index.js';
+
+defineMndwUi();
 
 const themeSelect = document.getElementById('theme') as HTMLSelectElement;
 const swatchesEl = document.getElementById('swatches') as HTMLElement;
@@ -64,18 +62,23 @@ function render(): void {
   verdictEl.textContent = allPass ? '✅ all pairs pass' : '❌ contrast failures';
   verdictEl.className = allPass ? 'pass' : 'fail';
 
+  for (const {token, cssVar} of PALETTE_CSS_VARIABLES) {
+    previewEl.style.setProperty(cssVar, palette[token]);
+  }
+
   previewEl.style.background = palette.surface;
   previewEl.style.color = palette.text;
   previewEl.style.border = `1px solid ${palette.border}`;
-  previewEl.innerHTML = `<div style="color:${palette.text}">Body text</div>`
-    + `<div style="color:${palette.textMuted}">Muted label</div>`
-    + `<div style="color:${palette.textSubtle}">Subtle caption</div>`
-    + `<button style="background:${palette.accent};color:${palette.accentContrast};`
-    + `border:none;padding:6px 12px;border-radius:6px;margin-top:8px">Accent button</button>`
-    + `<div style="background:${palette.dangerBg};color:${palette.danger};padding:6px;`
-    + `border-radius:4px;margin-top:8px">Error message</div>`
-    + `<div style="color:${palette.success};padding:6px 0">✓ Success message</div>`
-    + `<div style="color:${palette.warning};padding:6px 0">⚠ Warning message</div>`;
+  previewEl.innerHTML = `
+    <mndw-select placeholder="Interface…" label="Interface" style="width: 220px">
+      <mndw-option value="isp">Wired</mndw-option>
+      <mndw-option value="wifi">Wireless</mndw-option>
+      <mndw-option value="lte" disabled>LTE (unavailable)</mndw-option>
+    </mndw-select>
+    <mndw-checkbox checked>Show offline devices</mndw-checkbox>
+    <mndw-button variant="primary">Apply</mndw-button>
+    <mndw-button variant="secondary">Cancel</mndw-button>
+    <mndw-button variant="ghost" aria-label="Settings">&#9881;</mndw-button>`;
 }
 
 function onInput(): void {

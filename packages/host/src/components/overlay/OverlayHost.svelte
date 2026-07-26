@@ -43,6 +43,15 @@ function positionerStyle(layer: OverlayLayerView): string {
 function renderLayer(node: HTMLElement, layer: OverlayLayerView) {
   node.appendChild(layer.hostElement);
 
+  if (layer.kind === 'drawer' && layer.placement === 'bottom') {
+    layer.hostElement.style.display = 'flex';
+    layer.hostElement.style.flexDirection = 'column';
+    layer.hostElement.style.justifyContent = 'flex-end';
+    layer.hostElement.style.width = '100%';
+    layer.hostElement.style.height = '100%';
+    layer.hostElement.style.minHeight = '0';
+  }
+
   let shellApp: Record<string, unknown> | undefined;
 
   if (layer.shell) {
@@ -93,12 +102,15 @@ function handleKeydown(event: KeyboardEvent): void {
 
 // Outside-click is evaluated from the top down; a dismissal does not fall through.
 function handlePointerDown(event: MouseEvent): void {
-  const target = event.target as Node;
+  const path = event.composedPath();
 
   for (let i = layers.length - 1; i >= 0; i--) {
     const layer = layers[i];
 
-    if (layer.hostElement.contains(target)) {
+    if (
+      path.includes(layer.hostElement)
+      || (layer.anchorElement && path.includes(layer.anchorElement))
+    ) {
       return;
     }
 
@@ -148,7 +160,7 @@ $effect(() => {
     {/if}
 
     <div
-      class="mndw-overlay-positioner mndw-overlay-positioner--{layer.kind}"
+      class="mndw-overlay-positioner mndw-overlay-positioner--{layer.kind} mndw-overlay-positioner--{layer.placement} {layer.mobileSheet ? 'mndw-overlay-positioner--sheet' : ''}"
       style={positionerStyle(layer)}
       use:renderLayer={layer}
     >
@@ -187,6 +199,11 @@ $effect(() => {
   align-items: stretch;
   justify-content: flex-end;
 }
+.mndw-overlay-positioner--bottom {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
+}
 .mndw-overlay-positioner--popover {
   display: block;
   inset: auto;
@@ -194,5 +211,11 @@ $effect(() => {
 .mndw-overlay-positioner--custom {
   align-items: center;
   justify-content: center;
+}
+.mndw-overlay-positioner--sheet {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-end;
+  padding: 0;
 }
 </style>

@@ -27,6 +27,11 @@ export const POPOVER_FLIP_ORDER: OverlayPlacement[] = [
 ];
 
 const POPOVER_OFFSET_PX = 8;
+export const MOBILE_OVERLAY_MAX_WIDTH = 600;
+
+export function isMobileSheet(kind: OverlayKind, viewportWidth = window.innerWidth): boolean {
+  return viewportWidth <= MOBILE_OVERLAY_MAX_WIDTH && (kind === 'modal' || kind === 'drawer');
+}
 
 /** Coerces a requested placement into one valid for the given kind. */
 export function coercePlacement(kind: OverlayKind, placement?: OverlayPlacement): OverlayPlacement {
@@ -133,7 +138,19 @@ export interface ResolvedSizing {
 }
 
 /** Resolves explicit sizing options, applying per-kind defaults for modal/drawer. */
-export function resolveSizing(kind: OverlayKind, options: OverlayLayerOptions): ResolvedSizing {
+export function resolveSizing(
+  kind: OverlayKind,
+  options: OverlayLayerOptions,
+  mobileSheet = false,
+): ResolvedSizing {
+  if (mobileSheet && (kind === 'modal' || kind === 'drawer')) {
+    return {
+      width: '100%',
+      height: 'auto',
+      maxHeight: '100dvh',
+    };
+  }
+
   const width = toCssSize(options.width);
   const height = toCssSize(options.height);
   const maxWidth = toCssSize(options.maxWidth);

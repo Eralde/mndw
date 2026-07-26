@@ -1,4 +1,5 @@
 export interface StartupDeps {
+  defineUi: () => void;
   initTheme: () => void;
   initPalette: () => Promise<void>;
   checkAuthenticated: () => Promise<boolean>;
@@ -10,6 +11,7 @@ export interface StartupDeps {
 }
 
 export async function initialize(deps: StartupDeps): Promise<void> {
+  deps.defineUi();
   deps.initTheme();
 
   try {

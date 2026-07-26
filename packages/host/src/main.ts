@@ -1,4 +1,5 @@
 import '@mndw/sdk/tokens.css';
+import {defineMndwUi} from '@mndw/ui';
 import './styles/global.css';
 import {firstValueFrom, timeout} from 'rxjs';
 import {mount} from 'svelte';
@@ -7,6 +8,7 @@ import {initAuthenticated} from './services/init-auth.js';
 import {initPalette} from './services/palette.service.js';
 import {rciService} from './services/rci.service.js';
 import {initTheme} from './services/theme.service.js';
+import {uiOverlayService} from './services/overlay/ui-overlay.js';
 import {appState, resetToLogin} from './state/app.svelte.js';
 import {initialize} from './startup.js';
 
@@ -63,6 +65,7 @@ async function init(): Promise<void> {
   registerPluginErrorGuards();
 
   await initialize({
+    defineUi: () => defineMndwUi({overlay: uiOverlayService}),
     initTheme,
     initPalette,
     checkAuthenticated,

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
     "@rci-tools/core": "^0.2.0",
     "gridstack": "^12.6.0",
     "hash-wasm": "^4.12.0",

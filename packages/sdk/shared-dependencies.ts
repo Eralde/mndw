@@ -80,6 +80,13 @@ export const SHARED_DEPENDENCIES: SharedDependency[] = [
     framework: 'base',
   },
   {
+    specifiers: ['@mndw/ui'],
+    bundle: 'mndw-ui',
+    version: '0.1.0',
+    entryPoint: '@mndw/ui',
+    framework: 'base',
+  },
+  {
     specifiers: ['vue'],
     bundle: 'vue',
     version: '3.5.39',

@@ -1,8 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
-import type {TickerRequest, TickerResponse} from './ticker.worker';
-import {Ticker} from './ticker';
+import {Ticker, type TickerRequest, type TickerResponse} from './ticker';
 
 class FakeWorker {
   public static readonly instances: FakeWorker[] = [];
@@ -10,7 +9,7 @@ class FakeWorker {
   public readonly messages: TickerRequest[] = [];
   public terminated = false;
 
-  public constructor() {
+  constructor() {
     FakeWorker.instances.push(this);
   }
 
@@ -37,7 +36,7 @@ afterEach(() => {
 });
 
 describe('Ticker', () => {
-  it('forwards lifecycle messages and tick responses while supporting unsubscribe and destroy', () => {
+  it('uses a WebWorker for lifecycle messages and tick responses', () => {
     const ticker = new Ticker();
     const callback = vi.fn();
     const unsubscribe = ticker.onTick(callback);

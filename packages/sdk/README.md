@@ -126,7 +126,30 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
 }
 ```
 
-## 5. PluginContext API
+## 5. Worker-backed ticker
+
+Use `@mndw/sdk/ticker` for drift-corrected periodic updates. Scheduling runs in a dedicated
+WebWorker, so plugin code does not own timer logic or worker protocol details.
+
+```ts
+import {Ticker} from '@mndw/sdk/ticker'
+
+const ticker = new Ticker()
+const unsubscribe = ticker.onTick(() => {
+  // Update plugin state.
+})
+
+ticker.start(1000)
+
+// During plugin teardown:
+unsubscribe()
+ticker.destroy()
+```
+
+`Ticker.destroy()` stops and terminates its worker. The CLI packer includes the SDK worker in the
+plugin distribution automatically.
+
+## 6. PluginContext API
 
 ```ts
 interface PluginContext {
@@ -173,7 +196,7 @@ interface OverlayService {
 `OverlayOpenOptions` requires `kind` (`"modal"` or `"drawer"`), `title?`, `description?`,
 `showCloseButton?`, and a `mount(target, layer, signal)` callback.
 
-## 6. Backend Client
+## 7. Backend Client
 
 ```ts
 interface BackendClient {
@@ -197,7 +220,7 @@ if (client) {
 }
 ```
 
-## 7. Design Tokens
+## 8. Design Tokens
 
 Style with `var(--mndw-*)` custom properties (auto-themed light/dark):
 
@@ -215,7 +238,7 @@ For runtime JavaScript colours, use `context.getTokens()` and subscribe with
 `context.onPaletteChange(...)`. `MNDW_TOKENS` contains compiled defaults only and does not
 include a device palette override.
 
-## 8. Externals Policy
+## 9. Externals Policy
 
 Host-provided, must NOT be bundled:
 
@@ -239,7 +262,7 @@ All official d3 APIs, including `zoom`, are available from that namespace. Keep 
 
 Third-party extensions are not automatically host-provided. Declare an extension such as `d3-dag` in your plugin and let the packer bundle it. Any package not listed in the host shared-dependency table follows this same fallback rule; using it never requires a host release. Do not separately bundle official d3 modules already exposed by the full `d3` namespace.
 
-## 9. Packing & Uploading
+## 10. Packing & Uploading
 
 ```bash
 mndw pack my-widget   # bundle → my-widget/dist/
@@ -254,7 +277,7 @@ curl --data-binary @my-widget.zip http://<device>:99/api/mgmt/upload
 
 Each zip includes `mndw.lock.json` with exact shared dependency versions.
 
-## 10. Examples
+## 11. Examples
 
 `example-plugins/` in repo:
 

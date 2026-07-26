@@ -94,9 +94,10 @@ interface WorkerReference {
 /**
  * Builds a vanilla, Svelte, Vue, or Angular plugin into an isolated output directory: bundles its entry to a
  * browser ESM module at `dist/<manifest.entry>` (host-shared deps kept external), writes any emitted
- * CSS to the host-expected `dist/index.css`, re-serializes the validated `manifest.json`, and copies
- * every declared backend script and daemon hook. The build runs entirely in memory and only swaps the
- * output directory into place on success, so a failed build never leaves a partial distribution.
+ * CSS to the host-expected `dist/index.css`, stages module workers referenced by plugin or bundled SDK
+ * source, re-serializes the validated `manifest.json`, and copies every declared backend script and
+ * daemon hook. The build runs entirely in memory and only swaps the output directory into place on
+ * success, so a failed build never leaves a partial distribution.
  */
 export async function packPlugin(pluginDir: string, options: PackOptions = {}): Promise<PackResult> {
   const resolvedDir = resolvePluginDir(pluginDir);
@@ -164,7 +165,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
 
     // Read backend assets before mutating any output, so a missing asset fails cleanly.
     const backendAssets = collectBackendAssets(manifest, resolvedDir);
-    const workerReferences = collectWorkerReferences(resolvedDir, manifest.entry, result.metafile);
+    const workerReferences = collectWorkerReferences(manifest.entry, result.metafile);
     const workerAssets = await buildWorkerAssets(workerReferences, outDir, resolvedDir, framework);
     const mainBundle = rewriteWorkerSpecifiers(jsOutput.contents, workerReferences);
 
@@ -292,14 +293,13 @@ function backendAssetRelPaths(manifest: PluginManifestOutput): string[] {
 
 const WORKER_URL_PATTERN = /new\s+Worker\s*\(\s*new\s+URL\s*\(\s*(['"])([^'"]+)\1\s*,\s*import\.meta\.url\s*\)/g;
 
+/** Finds module-worker references in every bundled source input, including workspace dependencies such as the SDK. */
 function collectWorkerReferences(
-  pluginDir: string,
   manifestEntry: string,
   metafile: {readonly inputs: Readonly<Record<string, unknown>>},
 ): WorkerReference[] {
   const references: WorkerReference[] = [];
   const outputOwners = new Map<string, string>();
-  const resolvedPluginDir = realpathSync(pluginDir);
 
   for (const input of Object.keys(metafile.inputs)) {
     const inputPath = resolve(process.cwd(), input);
@@ -309,11 +309,6 @@ function collectWorkerReferences(
     }
 
     const realInputPath = realpathSync(inputPath);
-
-    if (!isInside(resolvedPluginDir, realInputPath)) {
-      continue;
-    }
-
     const source = readFileSync(realInputPath, 'utf8');
 
     for (const match of source.matchAll(WORKER_URL_PATTERN)) {
@@ -324,10 +319,6 @@ function collectWorkerReferences(
       }
 
       const sourcePath = resolve(dirname(realInputPath), sourceSpecifier);
-
-      if (!isInside(resolvedPluginDir, sourcePath)) {
-        throw new CliError(`Worker source escapes plugin directory: ${sourceSpecifier}`);
-      }
 
       if (!existsSync(sourcePath)) {
         throw new CliError(`Missing worker source: ${sourcePath}`);
@@ -345,7 +336,7 @@ function collectWorkerReferences(
       const runtimePath = relative(dirname(manifestEntry), outputRel).split(sep)
         .join('/');
 
-      if (references.some((reference) => reference.sourceSpecifier === sourceSpecifier)) {
+      if (references.some((reference) => reference.sourcePath === sourcePath)) {
         continue;
       }
 
@@ -443,10 +434,6 @@ function safeJoin(root: string, rel: string): string {
   }
 
   return dest;
-}
-
-function isInside(root: string, target: string): boolean {
-  return target === root || target.startsWith(root + sep);
 }
 
 /** True when either resolved path is the other or a descendant of it. */

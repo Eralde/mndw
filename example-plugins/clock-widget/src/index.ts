@@ -1,5 +1,5 @@
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
-import {Ticker} from './ticker';
+import {Ticker} from '@mndw/sdk/ticker';
 
 /**
  * Minimal vanilla widget: a live ticking clock rendered with plain DOM against host tokens.

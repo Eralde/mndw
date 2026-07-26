@@ -1,6 +1,7 @@
 // @vitest-environment node
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import type {TickerRequest, TickerResponse} from './ticker.worker';
+
+import type {TickerRequest, TickerResponse} from './ticker.js';
 
 interface PendingTimer {
   readonly callback: () => void;
@@ -45,7 +46,7 @@ describe('ticker.worker', () => {
     vi.spyOn(performance, 'now').mockReturnValueOnce(1000)
       .mockReturnValueOnce(2008);
 
-    await import('./ticker.worker');
+    await import('./ticker.worker.js');
 
     scope.onmessage?.({data: {command: 'start', interval: 1000}} as MessageEvent<TickerRequest>);
 

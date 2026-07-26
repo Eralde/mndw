@@ -17,6 +17,10 @@
       "types": "./src/palette.ts",
       "default": "./src/palette.ts"
     },
+    "./ticker": {
+      "types": "./src/ticker.ts",
+      "default": "./src/ticker.ts"
+    },
     "./manifest-schema": {
       "types": "./src/manifest-schema.ts",
       "default": "./src/manifest-schema.ts"

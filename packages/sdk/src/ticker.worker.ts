@@ -1,15 +1,4 @@
-export {};
-
-export type TickerRequest =
-  | {command: 'start'; interval: number}
-  | {command: 'stop'}
-  | {command: 'setInterval'; interval: number};
-
-export interface TickerResponse {
-  readonly type: 'tick';
-  readonly timestamp: number;
-  readonly drift: number;
-}
+import type {TickerRequest, TickerResponse} from './ticker.js';
 
 interface TickerWorkerScope {
   clearTimeout(timeoutId: number): void;

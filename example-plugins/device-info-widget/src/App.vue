@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type {PluginContext} from '@mndw/sdk';
+import {Ticker} from '@mndw/sdk/ticker';
 import {computed, onMounted, onUnmounted, ref} from 'vue';
 
 import CopyField from './components/CopyField.vue';
 import LoadBarChart from './components/LoadBarChart.vue';
 import {type DeviceInfo, fetchDeviceInfo, formatUptime} from './services/device-info.js';
 import {createRefreshLoop, type RefreshLoop} from './services/refresh-loop.js';
-import {Ticker} from './services/ticker.js';
 import {createUptimeBaseline, getUptimeSeconds, type UptimeBaseline} from './services/uptime.js';
 
 const props = defineProps<{ctx: PluginContext}>();

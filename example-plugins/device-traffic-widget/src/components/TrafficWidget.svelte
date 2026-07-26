@@ -170,17 +170,24 @@ onMount(() => {
 
 <div class="traffic-widget">
   <div class="widget-header">
-    <span class="device-label">{
-      hosts.find(h => h.mac === selectedMac)?.name || 'Select device'
-    }</span>
-    <button
+    <span class="device-label">
+      {
+        hosts.find(h => h.mac === selectedMac)?.name
+        || 'Select device'
+      }
+    </span>
+    <mndw-button
       class="gear-btn"
+      role="button"
+      tabindex="-1"
+      onkeydown={() => undefined}
+      variant="ghost"
       title="Select device"
       aria-label="Select device"
       onclick={handleOpenSettings}
     >
       &#9881;
-    </button>
+    </mndw-button>
   </div>
 
   <div class="controls">
@@ -240,8 +247,7 @@ onMount(() => {
 }
 .widget-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .device-label { font-weight: 600; font-size: 13px; color: var(--mndw-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gear-btn { width: 28px; height: 28px; border: none; background: transparent; font-size: 18px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: var(--mndw-text-subtle); flex-shrink: 0; }
-.gear-btn:hover { background: color-mix(in srgb, var(--mndw-text) 8%, transparent); color: var(--mndw-text); }
+.gear-btn { flex-shrink: 0; font-size: 18px; }
 .controls { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
 .btn-group { display: flex; gap: 0; }
 .btn-group button {

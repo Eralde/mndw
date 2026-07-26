@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
     "@rci-tools/core": "^0.2.0",
     "@types/d3": "^7.4.3",
     "d3": "^7.9.0",

@@ -16,9 +16,9 @@ type WebSocketDescriptor struct {
 }
 
 // BackendDescriptor is the client-facing capability snapshot surfaced in
-// GET /api/mgmt/list (design §3.3), minus the approval/enabled/public state which
-// the mgmt layer overlays from state.json. Also drives the approval UI's capability
-// display (opkg deps, daemon hooks).
+// GET /api/mgmt/list, minus the approval/enabled/public state which the mgmt layer
+// overlays from state.json. It also drives the approval UI's capability display
+// (opkg deps, daemon hooks).
 type BackendDescriptor struct {
 	Endpoints  map[string]EndpointDescriptor  `json:"endpoints"`
 	WebSockets map[string]WebSocketDescriptor `json:"websockets"`
@@ -66,7 +66,8 @@ func (m *Manifest) Descriptor() *BackendDescriptor {
 }
 
 // HasBackend reports whether the plugin declares any server-side capability.
-// Plugins without a backend skip the approval gate (design §5.2).
+// Plugins without a backend skip the approval gate because they expose no
+// executable server-side capability.
 func (m *Manifest) HasBackend() bool {
 	return m.Backend != nil
 }

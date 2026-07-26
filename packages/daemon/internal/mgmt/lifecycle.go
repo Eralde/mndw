@@ -11,7 +11,7 @@ import (
 	"mndwd/internal/state"
 )
 
-// handleApprove promotes a pending backend plugin (design §5.2): install opkg
+// handleApprove promotes a pending backend plugin: install opkg
 // dependencies, move staging → user-plugins, +x declared scripts, start the
 // backend.daemon, then record approved+enabled. Dependencies install first (before
 // any file move) so an opkg failure leaves the plugin cleanly pending; a failure
@@ -251,8 +251,7 @@ func (h *Handler) setEnabled(name string, enabled bool, action, detail string) *
 	return nil
 }
 
-// handleDeny drops a pending plugin: its staging tree is removed and the record
-// deleted (design §5.2).
+// handleDeny drops a pending plugin: its staging tree is removed and the record deleted.
 func (h *Handler) handleDeny(w http.ResponseWriter, r *http.Request) {
 	name, apiErr := decodeName(r)
 	if apiErr != nil {

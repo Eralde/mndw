@@ -16,7 +16,7 @@ import (
 // handleUpload accepts a raw application/zip body (curl: --data-binary @plugin.zip).
 // The plugin name comes from the validated manifest, never the upload filename. The
 // flow: cap → unzip-to-memory → validate manifest → stage → (no backend) install
-// directly | (backend) leave pending for approval (design §5.2).
+// directly | (backend) leave pending for approval.
 func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 	data, apiErr := h.readUploadBody(w, r)
 	if apiErr != nil {
@@ -105,7 +105,7 @@ func (h *Handler) ensureNameFree(name string) *httpx.APIError {
 }
 
 // installDirect promotes a no-backend plugin straight to installed (approved+enabled)
-// — approval exists for shell execution, not static assets (design §5.2).
+// — approval exists for shell execution, not static assets.
 func (h *Handler) installDirect(w http.ResponseWriter, m *manifest.Manifest, manifestBytes []byte, stagingPath string) {
 	name := *m.Name
 	if err := moveDir(stagingPath, filepath.Join(h.cfg.UserPluginsDir, name)); err != nil {

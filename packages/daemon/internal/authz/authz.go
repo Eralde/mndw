@@ -1,4 +1,4 @@
-// Package authz is the daemon's session gate (design §5.4). It has no session store
+// Package authz is the daemon's session gate. It has no session store
 // of its own: it replays a request's cookies against the router's /auth endpoint and
 // trusts the router's verdict, caching it per cookie for a short TTL so a burst of
 // plugin calls costs one upstream check. --dev accepts everything (the bypass is

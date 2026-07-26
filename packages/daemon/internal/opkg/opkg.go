@@ -1,4 +1,4 @@
-// Package opkg wraps the device package manager (design §5.2). It has two
+// Package opkg wraps the device package manager. It has two
 // implementations behind one interface: exec (runs the real `opkg` binary on the
 // router) and stub (in-memory, for --dev and tests — no opkg on a dev laptop). It is
 // used both by the approval flow (installing a plugin's declared dependencies) and by
@@ -17,8 +17,8 @@ import (
 	"strings"
 )
 
-// pkgNameRe mirrors v1's validate_pkg_name: a conservative opkg package name. Every
-// name is shell-adjacent (passed to exec), so it must stay to this charset.
+// pkgNameRe accepts a conservative opkg package name. Every name is shell-adjacent
+// (passed to exec), so it must stay within this character set.
 var pkgNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9+._-]*$`)
 
 // outputTailBytes bounds how much command output is kept for logging.

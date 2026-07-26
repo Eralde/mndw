@@ -11,10 +11,15 @@ const loadFixtures = (kind: 'valid' | 'invalid'): Array<{name: string; data: unk
   return readdirSync(dir)
     .filter((file) => file.endsWith('.json'))
     .sort()
-    .map((file) => ({name: file, data: JSON.parse(readFileSync(resolve(dir, file), 'utf8'))}));
+    .map((file) => {
+      return {
+        name: file,
+        data: JSON.parse(readFileSync(resolve(dir, file), 'utf8')),
+      };
+    });
 };
 
-// The shared fixture corpus is the source of truth for Zod ⇄ Go validator parity (design §3.2).
+// The shared fixture corpus is the source of truth for Zod <-> Go validator parity.
 // Every file under valid/ must parse; every file under invalid/ must be rejected.
 describe('manifest fixture corpus', () => {
   const validFixtures = loadFixtures('valid');

@@ -1,7 +1,4 @@
-// Command mndwd is the mndw device daemon. It replaces v1's CGI/sh machinery and
-// the WS gateway with a single Go process (design §5). Phase 2a wired the management
-// API (upload/approve/deny/delete/list); Phase 2b adds the session gate plus the
-// plugin HTTP dispatcher and WS proxy. opkg + backend.daemon lifecycle land in 2c.
+// Command mndwd is the mndw device daemon.
 package main
 
 import (
@@ -29,8 +26,8 @@ import (
 	"mndwd/internal/wsproxy"
 )
 
-// version is stamped at build time via -ldflags "-X main.version=<v>"; design §9
-// single-sources it from the root package.json.
+// version is stamped at build time via -ldflags "-X main.version=<v>" and
+// single-sourced from the root package.json.
 var version = "dev"
 
 func main() {

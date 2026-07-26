@@ -1,10 +1,10 @@
 import type {WidgetSize} from '@mndw/sdk';
 
 /**
- * The runtime's view of a plugin, as delivered by the daemon's `GET /api/mgmt/list`
- * (design §5.2). This is a flattened list entry — NOT a full plugin manifest: the
- * daemon has already validated the manifest and merged builtin + user plugins, so the
- * runtime consumes this trusted shape rather than re-validating manifests client-side.
+ * The runtime's view of a plugin, as delivered by the daemon's `GET /api/mgmt/list`.
+ * This is a flattened list entry - NOT a full plugin manifest:
+ * the daemon has already validated the manifest and merged builtin + user plugins,
+ * so the runtime consumes this trusted shape rather than re-validating manifests client-side.
  */
 
 export type PluginSource = 'builtin' | 'user';

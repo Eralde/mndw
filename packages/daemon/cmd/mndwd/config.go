@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-// maxUploadBytes caps an upload request body at 10 MB (design §5.2).
+// maxUploadBytes caps an upload request body at 10 MB.
 const maxUploadBytes = 10 << 20
 
-// Config is the daemon's fully-resolved runtime configuration (design §5). Opkg is
-// consumed in 2c.
+// Config is the daemon's fully-resolved runtime configuration, including package
+// manager, authentication, backend execution, and storage settings.
 type Config struct {
 	Listen            string
 	DataDir           string
@@ -23,7 +23,7 @@ type Config struct {
 	Opkg              string
 	LogLevel          string
 
-	// Dispatch limits (design §5.3).
+	// Backend script dispatch limits.
 	ExecTimeout       time.Duration
 	MaxRequestBytes   int64
 	MaxConcurrentExec int

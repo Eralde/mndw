@@ -1,12 +1,16 @@
 /**
- * Typed backend client handed to plugins as `context.backend`. Replaces v1's raw bindings record.
+ * Typed backend client handed to plugins as `context.backend`.
+ * It resolves endpoint and websocket ids from the daemon's capability snapshot and
+ * applies the same approval and enabled checks before issuing a request.
  *
- * Ids resolve locally from a descriptor snapshot taken from `GET /api/mgmt/list` — no per-call
- * lookup. Two error layers (design §3.3):
- *  - client-side pre-check from the snapshot — a typo (`BackendUnknownId`) throws synchronously;
+ * Ids resolve locally from a descriptor snapshot taken from `GET /api/mgmt/list`,
+ * no per-call lookup. Two error layers:
+ *  - client-side pre-check from the snapshot - a typo (`BackendUnknownId`) throws synchronously;
  *    a known-unapproved / disabled binding rejects fast (`BackendNotApproved` / `BackendDisabled`);
- *  - the daemon is authoritative — its structured error envelope (§5.6) codes `NOT_APPROVED` /
- *    `DISABLED` / `ROUTE_NOT_FOUND` map onto the same typed errors when state changed after load.
+ *  - the daemon is authoritative - its structured error envelope codes
+ *    `NOT_APPROVED` / `DISABLED` / `ROUTE_NOT_FOUND` map onto the same
+ *    typed errors when state changed after load.
+ *
  * Plugins handle one error family either way.
  */
 

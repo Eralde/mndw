@@ -32,7 +32,7 @@ describe('shared dependencies table', () => {
     expect(sharedDependencyVersions()['@rci-tools/core']).toBe('0.2.0');
   });
 
-  // Angular DI invariants, encoded as data (design §4). Splitting or inlining these re-creates the
+  // Angular DI invariants, encoded as data. Splitting or inlining these re-creates the
   // duplicate class-identity / "No provider found" failures.
   describe('Angular invariants', () => {
     const angular = SHARED_DEPENDENCIES.filter((d) => d.framework === 'angular');

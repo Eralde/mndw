@@ -37,7 +37,7 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 }
 
 // LogMiddleware emits exactly one request line per API call at info level:
-// `method path status duration`. Body contents are never logged (§5.6).
+// `method path status duration`. Body contents are never logged.
 func LogMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

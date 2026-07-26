@@ -1,10 +1,10 @@
-// Package lifecycle runs a plugin's backend.daemon start/stop hooks (design §5.2).
-// The hooks are ordinary sh scripts: `start` launches the long-running process (it is
-// responsible for backgrounding itself and recording its own pid, as v1's ttyd
-// spawn did) and returns; `stop` tears it down. The daemon invokes these on
-// approve/enable (start), disable/delete (stop), and at boot for every approved +
-// enabled plugin that declares them. lifecycle holds no process handles itself — the
-// scripts own their process state — so it stays correct across a daemon restart.
+// Package lifecycle runs a plugin's backend.daemon start/stop hooks.
+// The hooks are ordinary sh scripts: `start` launches the long-running process,
+// backgrounds it, records its pid, and returns; `stop` tears it down. The daemon
+// invokes these on approve/enable (start), disable/delete (stop), and at boot for
+// every approved + enabled plugin that declares them. lifecycle holds no process
+// handles itself — the scripts own their process state — so it stays correct across
+// a daemon restart.
 package lifecycle
 
 import (

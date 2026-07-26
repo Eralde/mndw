@@ -8,9 +8,9 @@ import (
 )
 
 // parseCGIResponse splits a script's stdout into a status, headers, and body under
-// the CGI-ish contract (design §5.3): an optional block of `Key: Value` lines, a
-// blank line, then the body. `Status:` sets the HTTP status; other lines become
-// response headers.
+// the CGI-ish response contract: an optional block of `Key: Value` lines, a blank
+// line, then the body. `Status:` sets the HTTP status; other lines become response
+// headers.
 //
 // The parse is deliberately conservative: it only treats the leading bytes as a
 // header block when a blank-line separator exists AND every line before it is a

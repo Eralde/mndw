@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-/** Dev static roots for plugin assets (design §6): builtin vs. user plugins. */
+/** Dev static roots for plugin assets: builtin vs. user plugins. */
 export interface PluginServeDirs {
   builtinDir: string;
   userDir: string;

@@ -1,9 +1,10 @@
-// Package mgmt implements the /api/mgmt/* management API (design §5.2): upload,
-// approve/deny, enable/disable, delete, the merged list/pending views, and the
-// /api/mgmt/opkg/* package-manager endpoints. The whole surface is session-gated by
-// the authz middleware wired in cmd/mndwd. approve installs a plugin's opkg
-// dependencies and starts its backend.daemon; enable/disable/delete drive the daemon
-// lifecycle.
+// Package mgmt implements the /api/mgmt/* management API:
+// upload, approve/deny, enable/disable, delete, the merged list/pending views,
+// and the /api/mgmt/opkg/* package-manager endpoints.
+//
+// The whole surface is session-gated by the authz middleware wired in cmd/mndwd.
+// approve installs a plugin's opkg dependencies and starts its backend.daemon;
+// enable/disable/delete drive the daemon lifecycle.
 package mgmt
 
 import (
@@ -43,7 +44,7 @@ type ReadinessSource interface {
 
 // Config carries the on-disk locations the handlers operate over.
 type Config struct {
-	// StagingDir holds uploaded-but-unapproved plugins (design §5.2).
+	// StagingDir holds uploaded-but-unapproved plugins.
 	StagingDir string
 	// UserPluginsDir holds approved user plugins, served statically.
 	UserPluginsDir string
@@ -96,7 +97,7 @@ func opkgContext() (context.Context, context.CancelFunc) {
 }
 
 // ListEntry is one plugin as surfaced by list/pending. It merges manifest display
-// fields with runtime state and the client-facing backend descriptor (design §3.3).
+// fields with runtime state and the client-facing backend descriptor.
 type ListEntry struct {
 	Name        string         `json:"name"`
 	Type        string         `json:"type"`

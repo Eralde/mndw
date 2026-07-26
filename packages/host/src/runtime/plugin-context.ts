@@ -22,7 +22,7 @@ type OverlayDispose = (reason?: 'plugin-unmount' | 'host-navigation') => void;
 // claims it (see consumeOverlayDispose). Plugins only ever see the public service.
 const pendingOverlayDisposers = new Map<string, OverlayDispose>();
 
-// Plugin-facing method allowlists — the full current public surface of each shared
+// Plugin-facing method allowlists - the full current public surface of each shared
 // service (capability parity). This is the seam for future per-plugin scoping.
 const RCI_MANAGER_METHODS = [
   'execute',
@@ -41,7 +41,7 @@ const SESSION_MANAGER_METHODS = [
 
 /**
  * Constructs the backend client from the list descriptor, or returns undefined when
- * the plugin declares nothing callable (no endpoints, no websockets) — a daemon-only
+ * the plugin declares nothing callable (no endpoints, no websockets) - a daemon-only
  * or backendless plugin gets no `context.backend`.
  */
 function backendClientFor(entry: PluginListEntry): BackendClient | undefined {
@@ -63,10 +63,10 @@ function backendClientFor(entry: PluginListEntry): BackendClient | undefined {
 }
 
 /**
- * Builds the {@link PluginContext} handed to a plugin's `createInstance`. The typed
- * backend client is derived from the daemon list entry's descriptor (design §3.3),
- * replacing v1's `backend-bindings.service` — the daemon is now authoritative for
- * approval/enabled, and the client maps its error envelope to typed errors.
+ * Builds the {@link PluginContext} handed to a plugin's `createInstance`.
+ * The typed backend client is derived from the daemon list entry's descriptor,
+ * so the daemon is authoritative for approval/enabled state and the client maps
+ * its error envelope to typed errors.
  */
 export function createPluginContext(
   entry: PluginListEntry,

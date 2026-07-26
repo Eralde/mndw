@@ -1,7 +1,7 @@
 // Package registry resolves an installed plugin by name into the concrete data the
 // HTTP dispatcher and the WS proxy need: its validated manifest, on-disk directory,
-// and the approval/enabled/public gate state. It is the single route source both
-// serve backend traffic from (design §5.3, §5.5), so a plugin's reachability is
+// and the approval/enabled/public gate state. It is the single route source used
+// by both backend traffic handlers, so a plugin's reachability is
 // decided in exactly one place rather than drifting between the two.
 package registry
 
@@ -30,7 +30,7 @@ type Plugin struct {
 
 // Public reports whether the plugin opted its backend out of the session gate
 // (backend.public). Public routes still require approval + enabled — public only
-// skips the cookie check (design §5.4).
+// skips the cookie check.
 func (p *Plugin) Public() bool {
 	d := p.Manifest.Descriptor()
 
@@ -51,7 +51,7 @@ func New(store *state.Store, userDir, builtinDir string) *Registry {
 
 // Resolve returns the named plugin, or false if no such plugin is installed. User
 // plugins come from state (their exact validated manifest bytes); builtins are read
-// from disk and treated as always approved+enabled (design §5.2). A stored manifest
+// from disk and treated as always approved+enabled. A stored manifest
 // that no longer validates is treated as not found — a tampered state file must not
 // open a backend route.
 func (r *Registry) Resolve(name string) (*Plugin, bool) {

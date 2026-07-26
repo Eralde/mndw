@@ -1,7 +1,7 @@
 // Package state owns state.json: the single durable record of installed plugins,
-// their approval/enable status, and the security audit trail (design §5.1). It is
-// held in memory behind a mutex and persisted atomically (tmp + rename) so a crash
-// mid-write can never corrupt the last good state.
+// their approval/enable status, and the security audit trail. It is held in memory
+// behind a mutex and persisted atomically (tmp + rename) so a crash mid-write can
+// never corrupt the last good state.
 package state
 
 import (
@@ -19,7 +19,7 @@ import (
 const schemaVersion = 1
 
 // Approval status of a plugin's backend. Plugins without a backend are installed
-// directly as approved (design §5.2).
+// directly as approved because they do not expose executable server-side code.
 const (
 	ApprovalPending  = "pending"
 	ApprovalApproved = "approved"
@@ -46,7 +46,7 @@ type Plugin struct {
 	InstalledAt time.Time       `json:"installedAt"`
 }
 
-// AuditEntry is one durable, security-relevant state change (design §5.6).
+// AuditEntry is one durable, security-relevant state change.
 type AuditEntry struct {
 	Time   time.Time `json:"time"`
 	Action string    `json:"action"`

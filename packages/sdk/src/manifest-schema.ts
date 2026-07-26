@@ -12,8 +12,8 @@ const pluginNameSchema = z.string()
 
 // Any path a plugin declares (entry module, script source, daemon hooks) is interpolated into a
 // filesystem/URL path. Allow relative subpaths (e.g. `dist/index.js`) but reject absolute paths and
-// traversal. Endpoint/websocket paths are relative too — v1's `/api/plugins/` / `/ws/plugins/`
-// prefix requirement is gone (the daemon composes the full URL and namespaces it by plugin name).
+// traversal. Endpoint/websocket paths are relative too; the daemon composes the full URL and
+// namespaces it by plugin name.
 const safeRelativePath = (value: string): boolean => {
   return !value.startsWith('/') && !value.includes('..') && !value.includes('\\');
 };

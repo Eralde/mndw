@@ -178,7 +178,7 @@ func TestWSProxySubprotocolNegotiated(t *testing.T) {
 func TestWSProxySubprotocolRejected(t *testing.T) {
 	backend := echoBackend(t, "mndw.v1")
 	h := newHarness(t, allowAuth{})
-	// Manifest only allows mndw.v1; client offers something else → rejected before upgrade.
+	// Manifest restricts allowed subprotocols; client offers an unsupported value → rejected before upgrade.
 	h.install(t, "svc", wsManifest("svc", backend.URL, []string{"mndw.v1"}, false), state.ApprovalApproved, true)
 
 	conn, _, err := dial(t, wsURL(h.srv, "/ws/plugins/svc/stream"), &websocket.DialOptions{

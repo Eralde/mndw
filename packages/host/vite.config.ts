@@ -1,15 +1,14 @@
 import type {ClientRequest} from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import {sharedImportMap, sharedSpecifiers} from '@mndw/sdk/shared-dependencies';
+import {type ProxyOptions, defineConfig, loadEnv} from 'vite';
 import {svelte} from '@sveltejs/vite-plugin-svelte';
 import vue from '@vitejs/plugin-vue';
+import {sharedImportMap, sharedSpecifiers} from '@mndw/sdk/shared-dependencies';
 import {resolveSandboxPluginPath, sandboxPlugin} from './scripts/sandbox-plugin.js';
 import {resolvePluginRequest} from './scripts/serve-plugins.js';
-import type {ProxyOptions} from 'vite';
-import {defineConfig, loadEnv} from 'vite';
 
-// Two proxy targets in dev, mirroring the production lighttpd split (design §2):
+// Two proxy targets in dev, mirroring the production lighttpd split:
 //  - the router device serves the RCI API + auth (`/rci`, `/auth`);
 //  - the local mndwd serves plugin dispatch, the ws proxy, and management (`/api`, `/ws`).
 export default defineConfig(({mode}) => {

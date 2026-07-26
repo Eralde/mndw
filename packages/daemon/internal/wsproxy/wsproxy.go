@@ -1,6 +1,5 @@
 // Package wsproxy bridges a browser websocket (/ws/plugins/<name>/<path>) to the
-// target a plugin's manifest declares (design §5.5). It replaces v1's committed
-// prebuilt gateway binary, built from source here. Before upgrading it runs the same
+// target declared in a plugin's manifest. Before forwarding it applies the same
 // gate as dispatch — approval + enabled, and the session check unless the plugin is
 // public — then negotiates the declared subprotocol intersection and pumps frames
 // both ways until either side closes.
@@ -194,11 +193,10 @@ func resolveWebSocket(m *manifest.Manifest, path string) (manifest.WebSocket, bo
 	return manifest.WebSocket{}, false
 }
 
-// negotiateSubprotocol implements the v1 gateway rule: the chosen subprotocol is the
-// first client-offered one the manifest also declares. When the manifest declares
-// none there is no restriction (no subprotocol is selected). A rejection (false)
-// happens only when the manifest declares a set and the client offered subprotocols
-// that are all outside it.
+// negotiateSubprotocol selects the first client-offered subprotocol also declared by
+// the manifest. When the manifest declares none there is no restriction (no
+// subprotocol is selected). A rejection (false) happens only when the manifest
+// declares a set and the client offered subprotocols that are all outside it.
 func negotiateSubprotocol(declared, offered []string) (chosen string, acceptable bool) {
 	if len(declared) == 0 {
 		return "", true

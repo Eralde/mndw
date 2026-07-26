@@ -1,10 +1,9 @@
 // Package dispatch serves a plugin's HTTP endpoints (/api/plugins/<name>/<path>) by
-// executing its declared sh script under a CGI-ish contract (design §5.3): request
-// metadata in the environment, request body on stdin, and a CGI-style
-// Status:/Content-Type: header block on stdout. v1 scripts port with a path rename
-// only. Unlike v1's mod-cgi it adds hard limits — per-request timeout, request-body
-// cap, and a per-plugin concurrent-exec cap — and gates every call on approval +
-// enabled (and the session, unless the plugin is public).
+// executing its declared sh script under a CGI-ish contract: request metadata in
+// the environment, request body on stdin, and a CGI-style Status:/Content-Type:
+// header block on stdout. It enforces a per-request timeout, request-body cap, and
+// per-plugin concurrent-exec cap, and gates every call on approval + enabled (and
+// the session, unless the plugin is public).
 package dispatch
 
 import (
@@ -36,7 +35,7 @@ const (
 	maxStderrTail = 4 << 10 // 4 KiB
 )
 
-// Config carries the dispatch limits (design §5.3).
+// Config carries the backend script dispatch limits.
 type Config struct {
 	// Timeout bounds a single script execution.
 	Timeout time.Duration
@@ -86,7 +85,7 @@ func New(cfg Config, reg *registry.Registry, auth Authenticator, logger *slog.Lo
 
 // Register wires the dispatch route. A single all-methods pattern; method matching
 // is done against the resolved endpoint so a wrong verb reads as ROUTE_NOT_FOUND
-// (v1 keyed routes by "METHOD path").
+// A wrong verb reads as ROUTE_NOT_FOUND after endpoint resolution.
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/api/plugins/{name}/{path...}", h.handle)
 }
@@ -230,8 +229,8 @@ func (h *Handler) exec(w http.ResponseWriter, r *http.Request, plugin *registry.
 }
 
 // writeScriptError emits a 502 for a failed/timed-out script. The stderr tail is
-// included in detail only in --dev (design §5.6: prod responses stay terse, prod
-// logs stay complete).
+// included in detail only in --dev; production responses stay terse while logs
+// retain the complete diagnostic.
 func (h *Handler) writeScriptError(w http.ResponseWriter, code, message string, stderr []byte) {
 	apiErr := httpx.NewError(http.StatusBadGateway, code, message)
 	if h.cfg.Dev && len(stderr) > 0 {
@@ -240,8 +239,8 @@ func (h *Handler) writeScriptError(w http.ResponseWriter, code, message string, 
 	httpx.WriteError(w, h.logger, apiErr)
 }
 
-// cgiEnv builds the CGI-ish environment (design §5.3). It inherits the daemon's env
-// (PATH etc. from the init script) and appends the request-scoped variables.
+// cgiEnv builds the CGI-ish environment. It inherits the daemon's env (PATH etc.
+// from the init script) and appends the request-scoped variables.
 func (h *Handler) cgiEnv(r *http.Request, pluginID, endpointID string, contentLength int) []string {
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "" {

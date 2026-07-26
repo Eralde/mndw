@@ -1,10 +1,10 @@
 /**
- * v2 plugin manifest types (`manifestVersion: 2`).
+ * Plugin manifest types (`manifestVersion: 2`).
  *
- * Changes vs v1: widget sizing is in **grid units** (`size: {w, h, minW?, minH?}`) rather than px;
- * backend endpoint/websocket paths are **relative** (the daemon composes the full URL as
- * `/api/plugins/<name>/<path>` / `/ws/plugins/<name>/<path>`); `backend.daemon` formalizes the
- * long-running-process hooks; `backend.public` opts a plugin's endpoints/ws out of the session gate.
+ * Widget sizing uses **grid units** (`size: {w, h, minW?, minH?}`); backend endpoint/websocket paths
+ * are **relative** (the daemon composes the full URL as `/api/plugins/<name>/<path>` /
+ * `/ws/plugins/<name>/<path>`); `backend.daemon` declares long-running-process hooks; and
+ * `backend.public` opts a plugin's endpoints/websockets out of the session gate.
  */
 
 export interface PluginBackendScriptDeclaration {

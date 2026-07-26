@@ -13,5 +13,6 @@
     "enableI18nLegacyMessageIdFormat": false,
     "strictInjectionParameters": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/test-support/**/*.ts", "src/**/fixtures/**/*.ts"]
 }

@@ -32,6 +32,7 @@ const TSCONFIG = JSON.stringify({
   },
   angularCompilerOptions: {strictInjectionParameters: true},
   include: ['src/**/*.ts'],
+  exclude: ['src/**/*.test.ts', 'src/**/test-support/**/*.ts', 'src/**/fixtures/**/*.ts'],
 });
 
 const INDEX = 'import {AppComponent} from "./app.component";\nexport {AppComponent};\n';
@@ -109,6 +110,25 @@ describe('compileAngular happy path', () => {
     const result = compileAngular(dir, 'src/index.prod.ts');
 
     expect(result.entryPath.endsWith('index.prod.js')).toBe(true);
+
+    result.cleanup();
+    rmSync(dir, {recursive: true, force: true});
+  });
+
+  it('excludes test-only sources from production compilation', () => {
+    const dir = ngPlugin({
+      'tsconfig.json': TSCONFIG,
+      'src/index.ts': INDEX,
+      'src/app.component.ts': COMPONENT,
+      'src/x.component.scss': '.a{.b{color:red}}',
+      'src/ignored.test.ts': 'const invalid: string = 42;\n',
+      'src/test-support/ignored.ts': 'const invalid: string = 42;\n',
+      'src/fixtures/ignored.ts': 'const invalid: string = 42;\n',
+    });
+
+    const result = compileAngular(dir);
+
+    expect(result.entryPath.endsWith('index.js')).toBe(true);
 
     result.cleanup();
     rmSync(dir, {recursive: true, force: true});

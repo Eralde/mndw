@@ -59,5 +59,3 @@ docs/
 ## Links
 
 - [SDK plugin-author guide](packages/sdk/README.md)
-- [Design doc](docs/rewrite/02-v2-design.md)
-- [Implementation plan](docs/rewrite/03-implementation-plan.md)

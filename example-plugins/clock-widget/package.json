@@ -8,7 +8,7 @@
   },
   "devDependencies": {
     "@mndw/sdk": "workspace:*",
-    "happy-dom": "^17.4.4",
+    "happy-dom": "20.11.1",
     "vitest": "^3.2.7"
   }
 }

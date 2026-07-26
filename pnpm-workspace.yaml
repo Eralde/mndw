@@ -3,5 +3,6 @@ packages:
   - "example-plugins/*"
   - "tools/*"
 onlyBuiltDependencies:
+  - '@parcel/watcher'
   - dprint
   - esbuild

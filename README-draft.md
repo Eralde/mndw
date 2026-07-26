@@ -92,7 +92,3 @@ details and known gaps.
   plugin authoring guide.
 - [`docs/testing-and-status.md`](docs/testing-and-status.md) — test map,
   project status, and caveats.
-
-The detailed rewrite sources remain in
-[`docs/rewrite/`](docs/rewrite/). They are the design and implementation
-baseline, not a replacement for this shorter orientation.

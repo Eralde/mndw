@@ -11,7 +11,7 @@
     "@rci-tools/core": "^0.2.0",
     "@types/lodash-es": "^4.17.12",
     "@vitejs/plugin-vue": "^6.0.0",
-    "happy-dom": "^17.4.4",
+    "happy-dom": "20.11.1",
     "lodash-es": "^4.18.1",
     "rxjs": "^7.8.0",
     "vitest": "^3.2.7",

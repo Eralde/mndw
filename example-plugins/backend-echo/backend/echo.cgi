@@ -1,6 +1,7 @@
 #!/bin/sh
-# backend-echo reflector — mirrors the incoming request back as JSON per the mndw
-# CGI contract (design §5.3). Pure POSIX sh; runs on darwin and BusyBox alike.
+# backend-echo reflector — mirrors the incoming request back as JSON
+# per the mndw CGI contract. Pure POSIX sh; runs on darwin and BusyBox alike.
+#
 # Never exits non-zero: a bad request still yields valid JSON, and a non-200 result
 # is expressed via the Status: header (a non-zero exit would become a 502 instead).
 
@@ -29,18 +30,22 @@ MNDW_ENDPOINT_ID="${MNDW_ENDPOINT_ID:-}"
 # Read the whole request body from stdin. A trailing-sentinel (printf 'x') is appended
 # and then stripped so command substitution does not swallow trailing newlines — the
 # body is reflected verbatim.
-body=$(cat; printf 'x')
+body=$(
+  cat
+  printf 'x'
+)
+
 body=${body%x}
 
 # Optional ?status=NNN overrides the HTTP status (100-599); anything else stays 200.
 status=200
 case "$QUERY_STRING" in
-  *status=*)
-    val=$(printf '%s' "$QUERY_STRING" | sed -n 's/.*status=\([0-9][0-9]*\).*/\1/p')
-    if [ -n "$val" ] && [ "$val" -ge 100 ] 2>/dev/null && [ "$val" -le 599 ] 2>/dev/null; then
-      status="$val"
-    fi
-    ;;
+*status=*)
+  val=$(printf '%s' "$QUERY_STRING" | sed -n 's/.*status=\([0-9][0-9]*\).*/\1/p')
+  if [ -n "$val" ] && [ "$val" -ge 100 ] 2>/dev/null && [ "$val" -le 599 ] 2>/dev/null; then
+    status="$val"
+  fi
+  ;;
 esac
 
 esc_query=$(printf '%s' "$QUERY_STRING" | json_escape)

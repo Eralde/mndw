@@ -146,25 +146,8 @@
 }
 
 .tx-rx-widget .gear-btn {
-  display: flex;
   flex-shrink: 0;
-  justify-content: center;
-  align-items: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--mndw-text-subtle);
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.tx-rx-widget .gear-btn:hover {
-  background: color-mix(in srgb, var(--mndw-text) 8%, transparent);
-  color: var(--mndw-text);
+  font-size: 18px;
 }
 
 /* 720px matches the host's MOBILE_BREAKPOINT_PX (packages/host/src/layout/breakpoint.ts).
@@ -194,8 +177,6 @@
   }
 
   .tx-rx-widget .gear-btn {
-    width: 28px;
-    height: 28px;
     font-size: 18px;
   }
 }

@@ -3,9 +3,6 @@ import {ɵresolveComponentResources as resolveComponentResources} from '@angular
 import {type ComponentFixture, TestBed} from '@angular/core/testing';
 import type {NetworkInterface} from '../../types/rci.types.js';
 import {afterEach, describe, expect, it} from 'vitest';
-import {InterfaceSelectComponent} from '../interface-select/interface-select.component.js';
-import interfaceSelectStyles from '../interface-select/interface-select.component.scss?raw';
-import interfaceSelectTemplate from '../interface-select/interface-select.component.html?raw';
 import {SettingsDialogComponent} from './settings-dialog.component.js';
 import settingsDialogStyles from './settings-dialog.component.scss?raw';
 import settingsDialogTemplate from './settings-dialog.component.html?raw';
@@ -30,14 +27,6 @@ async function createFixture(
   refresh: number,
 ): Promise<ComponentFixture<SettingsDialogComponent>> {
   await resolveComponentResources((url: string) => {
-    if (url.endsWith('interface-select.component.html')) {
-      return Promise.resolve(interfaceSelectTemplate);
-    }
-
-    if (url.endsWith('interface-select.component.scss')) {
-      return Promise.resolve(interfaceSelectStyles);
-    }
-
     if (url.endsWith('settings-dialog.component.html')) {
       return Promise.resolve(settingsDialogTemplate);
     }
@@ -49,7 +38,7 @@ async function createFixture(
     throw new Error(`resource URL: ${url}`);
   });
   await TestBed.configureTestingModule({
-    imports: [InterfaceSelectComponent, SettingsDialogComponent],
+    imports: [SettingsDialogComponent],
   }).compileComponents();
 
   const fixture = TestBed.createComponent(SettingsDialogComponent);
@@ -72,8 +61,26 @@ describe('SettingsDialogComponent', () => {
 
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('tx-rx-interface-select')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('.interface-select__value')?.textContent).toContain('WAN');
+    const select = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-select');
+
+    expect((select as unknown as {value: string}).value).toBe('eth1');
+    expect(select.querySelectorAll('mndw-option')).toHaveLength(2);
+  });
+
+  it('emits the chosen interface', async () => {
+    const fixture = await createFixture('eth0', 3000);
+    const emitted: string[] = [];
+
+    fixture.componentInstance.interfaceChange.subscribe((value: string) => emitted.push(value));
+
+    const select = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-select');
+
+    select.dispatchEvent(
+      new CustomEvent('mndwchange', {detail: {value: 'eth1'}, bubbles: true, composed: true}),
+    );
+    fixture.detectChanges();
+
+    expect(emitted).toEqual(['eth1']);
   });
 
   it('renders a range slider with the requested bounds and current value', async () => {

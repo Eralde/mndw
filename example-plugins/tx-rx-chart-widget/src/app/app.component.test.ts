@@ -9,8 +9,6 @@ import type {OpenSettingsFn} from '../open-settings-dialog';
 import {PLUGIN_STORAGE, RCI_MANAGER} from '../tokens';
 import appStyles from './app.component.scss?raw';
 import appTemplate from './app.component.html?raw';
-import interfaceSelectStyles from '../components/interface-select/interface-select.component.scss?raw';
-import interfaceSelectTemplate from '../components/interface-select/interface-select.component.html?raw';
 import rrdChartStyles from '../components/rrd-line-chart/rrd-line-chart.component.scss?raw';
 import rrdChartTemplate from '../components/rrd-line-chart/rrd-line-chart.component.html?raw';
 import {AppComponent as AppComponentType} from './app.component';
@@ -73,14 +71,6 @@ async function createFixture(
 
     if (url.endsWith('app.component.scss')) {
       return Promise.resolve(appStyles);
-    }
-
-    if (url.endsWith('interface-select.component.html')) {
-      return Promise.resolve(interfaceSelectTemplate);
-    }
-
-    if (url.endsWith('interface-select.component.scss')) {
-      return Promise.resolve(interfaceSelectStyles);
     }
 
     if (url.endsWith('rrd-line-chart.component.html')) {
@@ -152,7 +142,8 @@ describe('AppComponent', () => {
     await fixture.componentInstance.ngOnInit();
     fixture.detectChanges();
 
-    expect(queryElement<HTMLElement>(fixture.nativeElement, '.interface-select__value').textContent)
-      .toContain('Select interface…');
+    const select = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-select');
+
+    expect(select.getAttribute('placeholder')).toBe('Select interface…');
   });
 });

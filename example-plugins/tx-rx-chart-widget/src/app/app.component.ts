@@ -1,11 +1,11 @@
-import {Component, DestroyRef, Input, type OnInit, inject, signal} from '@angular/core';
+import {CUSTOM_ELEMENTS_SCHEMA, Component, DestroyRef, Input, type OnInit, inject, signal} from '@angular/core';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {CommonModule} from '@angular/common';
 import {Subscription, switchMap, timer} from 'rxjs';
 import type {NetworkInterface, RrdTick} from '../types/rci.types';
 import {RciService} from '../services/rci.service';
 import {PLUGIN_STORAGE} from '../tokens';
-import {InterfaceSelectComponent, RrdLineChartComponent} from '../components';
+import {RrdLineChartComponent} from '../components';
 import type {OpenSettingsFn} from '../open-settings-dialog';
 import {DEFAULT_REFRESH_MS, normalizeRefreshMs} from '../utils/refresh.utils';
 
@@ -18,7 +18,8 @@ const DEVICE_TIME_INTERVAL = 30000;
   standalone: true,
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
-  imports: [CommonModule, InterfaceSelectComponent, RrdLineChartComponent],
+  imports: [CommonModule, RrdLineChartComponent],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class AppComponent implements OnInit {
   @Input({required: true})

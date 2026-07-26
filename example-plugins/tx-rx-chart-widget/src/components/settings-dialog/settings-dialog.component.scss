@@ -85,17 +85,3 @@
   display: flex;
   justify-content: flex-end;
 }
-
-.settings-dialog__close-btn {
-  padding: 8px 20px;
-  border: 1px solid var(--mndw-border);
-  border-radius: 6px;
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text);
-  font-size: 14px;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--mndw-border);
-  }
-}

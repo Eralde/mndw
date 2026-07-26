@@ -1,6 +1,5 @@
-import {Component, EventEmitter, Input, Output} from '@angular/core';
+import {CUSTOM_ELEMENTS_SCHEMA, Component, EventEmitter, Input, Output} from '@angular/core';
 import type {NetworkInterface} from '../../types/rci.types';
-import {InterfaceSelectComponent} from '../interface-select/interface-select.component';
 import {refreshMsToSeconds, refreshSecondsToMs} from '../../utils/refresh.utils';
 
 /**
@@ -11,7 +10,7 @@ import {refreshMsToSeconds, refreshSecondsToMs} from '../../utils/refresh.utils'
   standalone: true,
   templateUrl: './settings-dialog.component.html',
   styleUrls: ['./settings-dialog.component.scss'],
-  imports: [InterfaceSelectComponent],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class SettingsDialogComponent {
   @Input({required: true})

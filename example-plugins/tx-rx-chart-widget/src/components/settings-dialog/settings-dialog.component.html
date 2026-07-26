@@ -1,11 +1,16 @@
 <div class="settings-dialog__form">
     <div class="settings-dialog__field">
         <label class="settings-dialog__label">Interface</label>
-        <tx-rx-interface-select
-          [interfaces]="interfaces"
-          [selectedId]="selectedInterface"
-          (selectedChange)="interfaceChange.emit($event)"
-        />
+        <mndw-select
+          label="Interface"
+          placeholder="Select interface…"
+          [value]="selectedInterface"
+          (mndwchange)="interfaceChange.emit($any($event).detail.value)"
+        >
+          @for (iface of interfaces; track iface.id) {
+            <mndw-option [value]="iface.id">{{ iface.description || iface.id }}</mndw-option>
+          }
+        </mndw-select>
     </div>
     <div class="settings-dialog__field">
         <label class="settings-dialog__label">Refresh interval</label>
@@ -25,11 +30,11 @@
         </div>
     </div>
     <div class="settings-dialog__actions">
-        <button
-            class="settings-dialog__close-btn"
+        <mndw-button
+            variant="secondary"
             (click)="closeDialogEvent.emit()"
         >
             Close
-        </button>
+        </mndw-button>
     </div>
 </div>

@@ -16,11 +16,16 @@
         <div class="empty-state">
             <h3 class="empty-state__heading">Network Traffic Monitor</h3>
             <p class="empty-state__subtitle">Select a network interface to begin monitoring TX/RX traffic</p>
-            <tx-rx-interface-select
-                [interfaces]="interfaceList()"
-                [selectedId]="selectedInterface()"
-                (selectedChange)="onInterfaceChange($event)"
-            />
+            <mndw-select
+                label="Interface"
+                placeholder="Select interface…"
+                [value]="selectedInterface()"
+                (mndwchange)="onInterfaceChange($any($event).detail.value)"
+            >
+              @for (iface of interfaceList(); track iface.id) {
+                <mndw-option [value]="iface.id">{{ iface.description || iface.id }}</mndw-option>
+              }
+            </mndw-select>
             @if (interfaceList().length === 0 && !loadingInterfaces()) {
                 <p class="empty-state__error">No network interfaces found</p>
             }
@@ -44,14 +49,15 @@
                     }
                 </div>
                 <div class="chart-header__actions">
-                    <button
+                    <mndw-button
                         class="gear-btn"
+                        variant="ghost"
                         (click)="openSettingsDialog()"
                         title="Widget Settings"
                         aria-label="Widget settings"
                     >
                         &#9881;
-                    </button>
+                    </mndw-button>
                 </div>
             </div>
             <tx-rx-rrd-line-chart
@@ -62,4 +68,3 @@
         </div>
     }
 </div>
-

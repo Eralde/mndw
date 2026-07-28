@@ -70,9 +70,13 @@ function renderLayer(node: HTMLElement, layer: OverlayLayerView) {
     );
   }
 
-  // Now that the plugin's content is in the live DOM and measurable, compute the
-  // anchored popover position (no-op for non-popover kinds).
-  layer.reposition();
+  // Let plugin content finish its first layout before exposing anchored placement.
+  // This prevents a partially-rendered popover from flashing at the preferred side.
+  requestAnimationFrame(() => {
+    if (layer.state !== 'closed') {
+      layer.reposition();
+    }
+  });
 
   return {
     destroy() {

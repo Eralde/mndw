@@ -25,10 +25,19 @@ describe('readOptions', () => {
       <mndw-option value="wifi">Wireless</mndw-option>
     `);
 
-    expect(readOptions(root)).toEqual([
+    expect(readOptions(root).map(({value, label, disabled}) => ({value, label, disabled}))).toEqual([
       {value: 'isp', label: 'Wired', disabled: false},
       {value: 'wifi', label: 'Wireless', disabled: false},
     ]);
+  });
+
+  it('retains rich label child nodes as clones', () => {
+    const root = host('<mndw-option value="isp"><strong>Wired</strong> <em>5GHz</em></mndw-option>');
+    const option = readOptions(root)[0];
+
+    expect(option.label).toBe('Wired 5GHz');
+    expect(option.labelNodes.map((node) => node.nodeName)).toEqual(['STRONG', '#text', 'EM']);
+    expect(option.labelNodes[0]).not.toBe(root.querySelector('strong'));
   });
 
   it('collapses interior whitespace produced by template interpolation', () => {

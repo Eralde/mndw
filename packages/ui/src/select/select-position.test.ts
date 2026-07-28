@@ -10,8 +10,8 @@ describe('select presentation', () => {
 
 describe('select popover height', () => {
   it('uses the larger available region above or below the trigger', () => {
-    expect(availablePopoverHeight({top: 300, bottom: 332}, {width: 1200, height: 868})).toBe(524);
-    expect(availablePopoverHeight({top: 756, bottom: 788}, {width: 390, height: 844})).toBe(744);
+    expect(availablePopoverHeight({top: 300, bottom: 332}, {width: 1200, height: 868})).toBe(520);
+    expect(availablePopoverHeight({top: 756, bottom: 788}, {width: 390, height: 844})).toBe(740);
   });
 
   it('always leaves at least one pixel for a fully clipped trigger', () => {

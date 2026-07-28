@@ -34,7 +34,7 @@ function anchor(): HTMLElement {
 
 function openFallback(
   target: HTMLElement = anchor(),
-  options: Pick<Parameters<UiOverlayProvider['open']>[0], 'presentation' | 'title'> = {},
+  options: Pick<Parameters<UiOverlayProvider['open']>[0], 'presentation' | 'title' | 'className'> = {},
 ): UiLayer {
   return track(createFallbackProvider().open({anchor: target, ...options}));
 }
@@ -70,11 +70,17 @@ describe('fallback provider', () => {
     expect(layer.contentElement.style.position).toBe('fixed');
   });
 
+  it('applies className to the fixed layer wrapper', () => {
+    const layer = openFallback(anchor(), {className: 'demo'});
+
+    expect(layer.contentElement.classList.contains('demo')).toBe(true);
+  });
+
   it('applies no sizing of its own', () => {
     const layer = openFallback();
 
     expect(layer.contentElement.style.maxHeight).toBe('');
-    expect(layer.contentElement.style.overflowY).toBe('');
+    expect(layer.contentElement.style.overflow).toBe('');
   });
 
   it('removes the content element on close and reports the api reason', async () => {
@@ -203,6 +209,8 @@ describe('fallback provider', () => {
     expect(surface?.style.height).toBe('auto');
     expect(surface?.style.maxHeight).toBe('100dvh');
     expect(body?.style.maxHeight).toBe('calc(100dvh - 54px)');
+    expect(body?.style.minHeight).toBe('0');
+    expect(body?.style.overflow).toBe('hidden');
   });
 
   it('does not close a sheet from its surface but treats its anchor as outside', async () => {

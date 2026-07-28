@@ -20,6 +20,37 @@ export interface MndwSelectChangeDetail {
 
 const PANEL_MIN_WIDTH = 180;
 
+type SelectOpenFocus = 'selected' | 'first' | 'last';
+
+interface PopoverGeometry {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+const readPopoverGeometry = (rect: DOMRect): PopoverGeometry => {
+  return {
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+  };
+};
+
+const samePopoverGeometry = (left: PopoverGeometry | null, right: PopoverGeometry): boolean => {
+  return left?.top === right.top
+    && left.right === right.right
+    && left.bottom === right.bottom
+    && left.left === right.left
+    && left.width === right.width
+    && left.height === right.height;
+};
+
 export class MndwSelect extends LitElement {
   public static readonly properties: PropertyDeclarations = {
     value: {type: String},
@@ -89,6 +120,10 @@ export class MndwSelect extends LitElement {
   private panel: MndwSelectPanel | null = null;
   private panelHadFocus = false;
   private presentation: UiLayerPresentation | null = null;
+  private popoverFrame: number | null = null;
+  private popoverGeometry: PopoverGeometry | null = null;
+  private popoverNeedsReposition = false;
+  private readonly internals = typeof this.attachInternals === 'function' ? this.attachInternals() : null;
 
   constructor() {
     super();
@@ -173,7 +208,13 @@ export class MndwSelect extends LitElement {
     event.preventDefault();
 
     if (!this.open) {
-      this.openPanel();
+      const focus: SelectOpenFocus = event.key === 'Home'
+        ? 'first'
+        : event.key === 'End'
+        ? 'last'
+        : 'selected';
+
+      this.openPanel(focus);
     }
   };
 
@@ -181,7 +222,7 @@ export class MndwSelect extends LitElement {
     return this.renderRoot.querySelector('button');
   }
 
-  private openPanel(): void {
+  private openPanel(focus: SelectOpenFocus = 'selected'): void {
     const anchor = this.triggerElement();
 
     if (this.disabled || this.open || !anchor) {
@@ -193,6 +234,7 @@ export class MndwSelect extends LitElement {
       anchor,
       presentation,
       title: this.label || 'Select option',
+      className: this.panelClass || undefined,
     });
 
     if (presentation === 'popover') {
@@ -203,10 +245,6 @@ export class MndwSelect extends LitElement {
 
     const panel = document.createElement(MNDW_SELECT_PANEL_TAG) as MndwSelectPanel;
 
-    if (this.panelClass) {
-      panel.classList.add(...this.panelClass.split(/\s+/).filter(Boolean));
-    }
-
     panel.options = this.options();
     panel.value = this.value;
     panel.label = this.label;
@@ -216,18 +254,28 @@ export class MndwSelect extends LitElement {
     panel.addEventListener('focusout', this.onPanelFocusOut);
     layer.contentElement.appendChild(panel);
 
+    if (this.internals && 'ariaControlsElements' in this.internals) {
+      this.internals.ariaControlsElements = [panel];
+    }
+
     this.layer = layer;
     this.panel = panel;
     this.presentation = presentation;
     this.open = true;
+
+    if (presentation === 'popover') {
+      this.startPopoverTracking();
+    }
 
     void panel.updateComplete.then(() => {
       if (this.layer !== layer) {
         return;
       }
 
-      if (presentation === 'popover') {
-        layer.reposition();
+      if (focus === 'first') {
+        panel.activeIndex = this.firstEnabledIndex(panel.options);
+      } else if (focus === 'last') {
+        panel.activeIndex = this.lastEnabledIndex(panel.options);
       }
 
       panel.focusActive();
@@ -246,8 +294,8 @@ export class MndwSelect extends LitElement {
     });
   }
 
-  private applyPopoverSizing(layer: UiLayer, anchor: HTMLElement): void {
-    const rect = anchor.getBoundingClientRect();
+  private applyPopoverSizing(layer: UiLayer, anchor: HTMLElement, rect = anchor.getBoundingClientRect()): void {
+    this.popoverGeometry = readPopoverGeometry(rect);
 
     layer.contentElement.style.minWidth = `${Math.max(rect.width, PANEL_MIN_WIDTH)}px`;
     layer.contentElement.style.maxWidth = `calc(100vw - ${SELECT_VIEWPORT_PADDING * 2}px)`;
@@ -257,8 +305,51 @@ export class MndwSelect extends LitElement {
         height: window.innerHeight,
       })
     }px`;
-    layer.contentElement.style.overflowY = 'auto';
+    layer.contentElement.style.overflow = 'hidden';
+    layer.contentElement.style.display = 'flex';
+    layer.contentElement.style.flexDirection = 'column';
   }
+
+  private startPopoverTracking(): void {
+    // Widget layout can move the anchor without emitting window resize or scroll.
+    this.cancelPopoverTracking();
+    this.popoverNeedsReposition = true;
+    this.popoverFrame = requestAnimationFrame(this.trackPopover);
+  }
+
+  private cancelPopoverTracking(): void {
+    if (this.popoverFrame !== null) {
+      cancelAnimationFrame(this.popoverFrame);
+      this.popoverFrame = null;
+    }
+  }
+
+  private readonly trackPopover = (): void => {
+    this.popoverFrame = null;
+
+    const layer = this.layer;
+    const anchor = this.triggerElement();
+
+    if (this.presentation !== 'popover' || !layer || !anchor) {
+      return;
+    }
+
+    const rect = anchor.getBoundingClientRect();
+    const geometry = readPopoverGeometry(rect);
+
+    const geometryChanged = !samePopoverGeometry(this.popoverGeometry, geometry);
+
+    if (geometryChanged) {
+      this.applyPopoverSizing(layer, anchor, rect);
+    }
+
+    if ((this.popoverNeedsReposition || geometryChanged) && layer.contentElement.isConnected) {
+      layer.reposition();
+      this.popoverNeedsReposition = false;
+    }
+
+    this.popoverFrame = requestAnimationFrame(this.trackPopover);
+  };
 
   private readonly onViewportChange = (): void => {
     const layer = this.layer;
@@ -270,6 +361,7 @@ export class MndwSelect extends LitElement {
 
     this.applyPopoverSizing(layer, anchor);
     layer.reposition();
+    this.popoverNeedsReposition = false;
   };
 
   private restoreFocus(reason: UiCloseReason, hadFocus: boolean): void {
@@ -333,15 +425,37 @@ export class MndwSelect extends LitElement {
   }
 
   private forgetLayer(): void {
+    this.cancelPopoverTracking();
     window.removeEventListener('resize', this.onViewportChange);
     window.removeEventListener('scroll', this.onViewportChange, true);
     this.panel?.removeEventListener('mndwpanelselect', this.onPanelSelect);
     this.panel?.removeEventListener('mndwpaneldismiss', this.onPanelDismiss);
     this.panel?.removeEventListener('focusout', this.onPanelFocusOut);
+
+    if (this.internals && 'ariaControlsElements' in this.internals) {
+      this.internals.ariaControlsElements = [];
+    }
+
     this.panel = null;
     this.layer = null;
     this.presentation = null;
+    this.popoverGeometry = null;
+    this.popoverNeedsReposition = false;
     this.open = false;
     this.panelHadFocus = false;
+  }
+
+  private firstEnabledIndex(options: OptionModel[]): number {
+    return options.findIndex((option) => !option.disabled);
+  }
+
+  private lastEnabledIndex(options: OptionModel[]): number {
+    for (let index = options.length - 1; index >= 0; index -= 1) {
+      if (!options[index].disabled) {
+        return index;
+      }
+    }
+
+    return -1;
   }
 }

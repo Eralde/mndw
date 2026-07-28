@@ -33,7 +33,7 @@ export function adaptOverlayService(service: OverlayService): UiOverlayProvider 
           width: '100%',
           height: 'auto',
           maxHeight: '100dvh',
-          className: 'mndw-ui-select-sheet',
+          className: ['mndw-ui-select-sheet', options.className].filter(Boolean).join(' '),
           mount(target) {
             target.style.removeProperty('height');
             target.style.minHeight = '0';
@@ -56,6 +56,7 @@ export function adaptOverlayService(service: OverlayService): UiOverlayProvider 
         placement: 'bottom-start',
         closeOnEscape: true,
         closeOnOutsideClick: true,
+        className: options.className,
       });
 
       layer.markReady();

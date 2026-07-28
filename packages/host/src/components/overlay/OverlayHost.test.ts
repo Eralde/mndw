@@ -26,6 +26,10 @@ function mountHost() {
   };
 }
 
+async function nextAnimationFrame(): Promise<void> {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 async function anchoredPopover() {
   const harness = mountHost();
   const anchor = document.createElement('button');
@@ -237,6 +241,62 @@ describe('OverlayHost', () => {
     void unmount(host);
     root.remove();
     anchor.remove();
+  });
+
+  it('keeps an anchored popover hidden until its content has measurable geometry', async () => {
+    const harness = mountHost();
+    const anchor = document.createElement('button');
+
+    document.body.appendChild(anchor);
+
+    const {service} = createPluginOverlayService('probe', 'probe:1');
+    const layer = service.createLayer({kind: 'popover', anchor: {element: anchor}});
+
+    layer.markReady();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const positioner = harness.root.querySelector<HTMLElement>('.mndw-overlay-positioner');
+
+    expect(positioner?.getAttribute('style')).toContain('visibility: hidden');
+
+    layer.close();
+    await layer.closed;
+    anchor.remove();
+    harness.dispose();
+  });
+
+  it('defers initial anchored placement until the first layout frame', async () => {
+    const harness = mountHost();
+    const anchor = document.createElement('button');
+
+    document.body.appendChild(anchor);
+
+    const {service} = createPluginOverlayService('probe', 'probe:1');
+    const layer = service.createLayer({kind: 'popover', anchor: {element: anchor}});
+
+    layer.contentElement.textContent = 'Popover body';
+    Object.defineProperty(layer.contentElement, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({top: 0, bottom: 50, left: 0, right: 100, width: 100, height: 50} as DOMRect),
+    });
+    layer.markReady();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const positioner = harness.root.querySelector<HTMLElement>('.mndw-overlay-positioner');
+
+    expect(positioner?.getAttribute('style')).toContain('visibility: hidden');
+
+    await nextAnimationFrame();
+
+    expect(positioner?.getAttribute('style')).toContain('top:');
+    expect(positioner?.getAttribute('style')).not.toContain('visibility: hidden');
+
+    layer.close();
+    await layer.closed;
+    anchor.remove();
+    harness.dispose();
   });
 
   it('does not dismiss an anchored popover when its own anchor is clicked', async () => {

@@ -59,6 +59,10 @@ function trigger(element: MndwSelect): HTMLButtonElement {
   return found;
 }
 
+async function nextAnimationFrame(): Promise<void> {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 function panel(): MndwSelectPanel | null {
   return document.querySelector(MNDW_SELECT_PANEL_TAG);
 }
@@ -174,7 +178,7 @@ describe('<mndw-select> opening', () => {
   it('passes the option model to the panel', async () => {
     const opened = await openPanel(await mount());
 
-    expect(opened.options).toEqual([
+    expect(opened.options.map(({value, label, disabled}) => ({value, label, disabled}))).toEqual([
       {value: 'isp', label: 'Wired', disabled: false},
       {value: 'wifi', label: 'Wireless', disabled: false},
     ]);
@@ -202,6 +206,50 @@ describe('<mndw-select> opening', () => {
     expect(panel()).not.toBeNull();
   });
 
+  it('opens on Home with the first enabled option active', async () => {
+    const element = await mount();
+
+    element.value = 'wifi';
+    await element.updateComplete;
+    trigger(element).dispatchEvent(new KeyboardEvent('keydown', {key: 'Home', bubbles: true}));
+
+    await element.updateComplete;
+
+    const opened = panel();
+
+    if (!opened) {
+      throw new Error('panel did not open');
+    }
+
+    await opened.updateComplete;
+
+    expect(opened.activeIndex).toBe(0);
+  });
+
+  it('opens on End with the last enabled option active', async () => {
+    const element = await mount();
+
+    trigger(element).dispatchEvent(new KeyboardEvent('keydown', {key: 'End', bubbles: true}));
+
+    await element.updateComplete;
+
+    const opened = panel();
+
+    if (!opened) {
+      throw new Error('panel did not open');
+    }
+
+    await opened.updateComplete;
+
+    expect(opened.activeIndex).toBe(1);
+  });
+
+  it('does not emit aria-controls when ElementInternals support is absent', async () => {
+    const element = await mount();
+
+    expect(trigger(element).hasAttribute('aria-controls')).toBe(false);
+  });
+
   it('does not open when disabled', async () => {
     const element = await mount(
       '<mndw-select disabled><mndw-option value="a">A</mndw-option></mndw-select>',
@@ -213,27 +261,35 @@ describe('<mndw-select> opening', () => {
     expect(panel()).toBeNull();
   });
 
-  it('applies panelClass to the panel element, so ::part() resolves', async () => {
+  it('forwards panelClass to the overlay provider', async () => {
+    const probe = fakeProvider();
+
+    setOverlayProvider(probe.provider);
+
     const element = await mount(
       '<mndw-select panel-class="demo"><mndw-option value="a">A</mndw-option></mndw-select>',
     );
     const opened = await openPanel(element);
 
-    expect(opened.classList.contains('demo')).toBe(true);
-    expect(opened.parentElement?.classList.contains('demo')).toBe(false);
+    expect(probe.calls[0]?.className).toBe('demo');
+    expect(opened.classList.contains('demo')).toBe(false);
   });
 
-  it('accepts several space-separated panel classes', async () => {
+  it('preserves several space-separated panel classes', async () => {
+    const probe = fakeProvider();
+
+    setOverlayProvider(probe.provider);
+
     const element = await mount(
       '<mndw-select panel-class="a  b"><mndw-option value="x">X</mndw-option></mndw-select>',
     );
-    const opened = await openPanel(element);
 
-    expect(opened.classList.contains('a')).toBe(true);
-    expect(opened.classList.contains('b')).toBe(true);
+    await openPanel(element);
+
+    expect(probe.calls[0]?.className).toBe('a  b');
   });
 
-  it('keeps panel class and sizing out of provider options', async () => {
+  it('forwards panel class while keeping sizing in the select', async () => {
     const probe = fakeProvider();
 
     setOverlayProvider(probe.provider);
@@ -243,7 +299,7 @@ describe('<mndw-select> opening', () => {
       ),
     );
 
-    expect(probe.calls[0]).not.toHaveProperty('className');
+    expect(probe.calls[0]).toHaveProperty('className', 'demo');
     expect(probe.calls[0]).not.toHaveProperty('maxHeight');
     expect(probe.calls[0]).toMatchObject({presentation: 'popover', title: 'Select option'});
   });
@@ -269,8 +325,12 @@ describe('<mndw-select> opening', () => {
       throw new Error('missing overlay wrapper');
     }
 
-    expect(wrapper.style.maxHeight).toBe('624px');
-    expect(wrapper.style.overflowY).toBe('auto');
+    expect(wrapper.style.maxHeight).toBe('620px');
+    expect(wrapper.style.minWidth).toBe('200px');
+    expect(wrapper.style.overflow).toBe('hidden');
+    expect(wrapper.style.display).toBe('flex');
+    expect(wrapper.style.flexDirection).toBe('column');
+    expect(opened.style.maxHeight).toBe('');
     expect(wrapper.style.maxWidth).toBe('calc(100vw - 16px)');
   });
 
@@ -295,13 +355,42 @@ describe('<mndw-select> opening', () => {
       throw new Error('missing overlay wrapper');
     }
 
-    expect(wrapper.style.maxHeight).toBe('624px');
+    expect(wrapper.style.maxHeight).toBe('620px');
 
     rect = {top: 500, bottom: 532, width: 200};
     window.dispatchEvent(new Event('resize'));
 
-    expect(wrapper.style.maxHeight).toBe('488px');
-    expect(probe.layers[0].reposition).toHaveBeenCalledTimes(2);
+    expect(wrapper.style.maxHeight).toBe('484px');
+    expect(probe.layers[0].reposition).toHaveBeenCalledTimes(1);
+  });
+
+  it('updates popover sizing when anchor geometry changes without a viewport event', async () => {
+    const probe = fakeProvider();
+
+    setOverlayProvider(probe.provider);
+    setViewport(1024, 768);
+
+    const element = await mount();
+    let rect = {top: 100, bottom: 132, width: 200};
+
+    Object.defineProperty(trigger(element), 'getBoundingClientRect', {
+      value: () => rect as DOMRect,
+      configurable: true,
+    });
+
+    const opened = await openPanel(element);
+    const wrapper = opened.parentElement;
+
+    if (!wrapper) {
+      throw new Error('missing overlay wrapper');
+    }
+
+    await nextAnimationFrame();
+    rect = {top: 500, bottom: 532, width: 320};
+    await nextAnimationFrame();
+
+    expect(wrapper.style.maxHeight).toBe('484px');
+    expect(wrapper.style.minWidth).toBe('320px');
   });
 
   it('opens a full-screen sheet at 600px without popover sizing', async () => {
@@ -326,7 +415,8 @@ describe('<mndw-select> opening', () => {
     expect(wrapper.style.minWidth).toBe('');
     expect(wrapper.style.maxWidth).toBe('');
     expect(wrapper.style.maxHeight).toBe('');
-    expect(wrapper.style.overflowY).toBe('');
+    expect(wrapper.style.overflow).toBe('');
+    expect(wrapper.style.display).toBe('');
   });
 
   it('uses popover presentation above the mobile breakpoint', async () => {
@@ -406,12 +496,64 @@ describe('<mndw-select> opening', () => {
     expect(probe.calls).toHaveLength(1);
   });
 
+  it('registers the current panel through ariaControlsElements when supported', async () => {
+    const TAG = 'mndw-select-internals-probe';
+    const previous = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'attachInternals');
+    let controlled: Element[] = [];
+
+    Object.defineProperty(HTMLElement.prototype, 'attachInternals', {
+      configurable: true,
+      writable: true,
+      value(): ElementInternals {
+        return {
+          get ariaControlsElements(): Element[] {
+            return controlled;
+          },
+          set ariaControlsElements(value: Element[]) {
+            controlled = value;
+          },
+        } as unknown as ElementInternals;
+      },
+    });
+
+    try {
+      if (!customElements.get(TAG)) {
+        customElements.define(TAG, class extends MndwSelect {});
+      }
+
+      document.body.innerHTML = `<${TAG} label="Interface"><mndw-option value="a">A</mndw-option></${TAG}>`;
+
+      const element = document.body.firstElementChild as MndwSelect;
+
+      await element.updateComplete;
+
+      const opened = await openPanel(element);
+
+      expect(controlled).toEqual([opened]);
+
+      trigger(element).click();
+      await element.updateComplete;
+
+      expect(controlled).toEqual([]);
+    } finally {
+      if (previous) {
+        Object.defineProperty(HTMLElement.prototype, 'attachInternals', previous);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, 'attachInternals');
+      }
+    }
+  });
+
   it('repositions the layer only after the panel has rendered', async () => {
     const probe = fakeProvider();
 
     setOverlayProvider(probe.provider);
 
     const opened = await openPanel(await mount());
+
+    expect(probe.layers[0].reposition).not.toHaveBeenCalled();
+
+    await nextAnimationFrame();
 
     expect(probe.layers[0].reposition).toHaveBeenCalledTimes(1);
     expect(opened.shadowRoot?.querySelectorAll('[role="option"]').length).toBe(2);

@@ -1,17 +1,22 @@
 import {beforeAll, describe, expect, it, vi} from 'vitest';
+import {MNDW_SCROLL_AREA_TAG, MndwScrollArea} from '../scroll-area/scroll-area.js';
 import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select-panel.js';
 import type {OptionModel} from './option-model.js';
 
 beforeAll(() => {
+  if (!customElements.get(MNDW_SCROLL_AREA_TAG)) {
+    customElements.define(MNDW_SCROLL_AREA_TAG, MndwScrollArea);
+  }
+
   if (!customElements.get(MNDW_SELECT_PANEL_TAG)) {
     customElements.define(MNDW_SELECT_PANEL_TAG, MndwSelectPanel);
   }
 });
 
 const options: OptionModel[] = [
-  {value: 'isp', label: 'Wired', disabled: false},
-  {value: 'wifi', label: 'Wireless', disabled: false},
-  {value: 'vpn', label: 'VPN', disabled: true},
+  {value: 'isp', label: 'Wired', labelNodes: [], disabled: false},
+  {value: 'wifi', label: 'Wireless', labelNodes: [], disabled: false},
+  {value: 'vpn', label: 'VPN', labelNodes: [], disabled: true},
 ];
 
 async function mount(value = ''): Promise<MndwSelectPanel> {
@@ -40,6 +45,23 @@ async function press(panel: MndwSelectPanel, key: string): Promise<void> {
 }
 
 describe('<mndw-select-panel>', () => {
+  it('renders rich label nodes without HTML string interpolation', async () => {
+    const panel = await mount();
+    const strong = document.createElement('strong');
+
+    strong.textContent = 'Wired';
+    panel.options = [{
+      value: 'isp',
+      label: 'Wired 5GHz',
+      labelNodes: [strong, document.createTextNode(' 5GHz')],
+      disabled: false,
+    }];
+    await panel.updateComplete;
+
+    expect(panel.shadowRoot?.querySelector('[role="option"] strong')).not.toBeNull();
+    expect(panel.shadowRoot?.querySelector('[role="option"]')?.textContent).toContain('5GHz');
+  });
+
   it('renders one role=option per model entry', async () => {
     expect(items(await mount())).toHaveLength(3);
   });
@@ -52,18 +74,42 @@ describe('<mndw-select-panel>', () => {
 
     expect(panel.hasAttribute('sheet')).toBe(true);
     expect(panel.shadowRoot?.querySelector('[part="listbox"]')).not.toBeNull();
+    expect(panel.shadowRoot?.querySelector(MNDW_SCROLL_AREA_TAG)).not.toBeNull();
   });
 
-  it('uses content sizing with a viewport cap for sheet lists', async () => {
-    const panel = await mount();
-
-    panel.sheet = true;
-    await panel.updateComplete;
-
+  it('caps sheet height on the panel host and stays a flex column', () => {
     const styles = String(MndwSelectPanel.styles);
 
-    expect(styles).toContain('height: auto;');
-    expect(styles).toContain('max-height: calc(100dvh - 54px);');
+    expect(styles).toContain('max-height: var(--mndw-select-sheet-max-height, calc(100dvh - 54px));');
+    expect(styles).toMatch(/:host\(\[sheet\]\)\s*\{/);
+    expect(styles).not.toMatch(/:host\(\[sheet\]\)\s*\{[^}]*display:\s*block/);
+    expect(styles).not.toMatch(/:host\(\[sheet\]\)\s*\{[^}]*height:\s*auto/);
+  });
+
+  it('owns the outer border on the panel host', () => {
+    const styles = String(MndwSelectPanel.styles);
+
+    expect(styles).toMatch(/:host\s*\{[^}]*\swidth:\s*100%;/);
+    expect(styles).toMatch(/:host\s*\{[^}]*border:\s*1px solid var\(--mndw-border\);/);
+    expect(styles).not.toMatch(/\.listbox\s*\{[^}]*border:\s*1px solid var\(--mndw-border\);/);
+  });
+
+  it('wraps listbox in scroll area and keeps chrome on the host', async () => {
+    const panel = await mount();
+    const styles = String(MndwSelectPanel.styles);
+    const scrollArea = panel.shadowRoot?.querySelector(MNDW_SCROLL_AREA_TAG);
+
+    expect(panel.shadowRoot?.querySelector('mndw-scroll-area [role="listbox"]')).not.toBeNull();
+    expect(styles).toMatch(/:host\s*\{[^}]*border:\s*1px solid var\(--mndw-border\);/);
+    expect(styles).toMatch(/:host\s*\{[^}]*border-radius:\s*var\(--mndw-radius-md\);/);
+    expect(styles).toContain('overflow: hidden;');
+    expect(styles).toContain('padding-inline-end:');
+    expect(styles).not.toMatch(/(?:^|\n)[ \t]*\.listbox[ \t]*\{[^}]*border:/);
+    expect(styles).not.toMatch(/(?:^|\n)[ \t]*\.listbox[ \t]*\{[^}]*border-radius:/);
+    expect(styles).not.toMatch(/(?:^|\n)[ \t]*\.listbox[ \t]*\{[^}]*background:/);
+    expect(styles).not.toMatch(/(?:^|\n)[ \t]*\.listbox[ \t]*\{[^}]*box-shadow:/);
+    expect(styles).not.toMatch(/(?:^|\n)[ \t]*\.listbox[ \t]*\{[^}]*overflow/);
+    expect(scrollArea?.getAttribute('exportparts')).toBe('viewport,scrollbar,track,thumb');
   });
 
   it('names the listbox from the label', async () => {
@@ -222,9 +268,9 @@ describe('<mndw-select-panel>', () => {
     const panel = document.createElement(MNDW_SELECT_PANEL_TAG) as MndwSelectPanel;
 
     panel.options = [
-      {value: 'eth0', label: 'LAN', disabled: false},
-      {value: 'eth0', label: 'LAN (bridged)', disabled: false},
-      {value: 'eth1', label: 'WAN', disabled: false},
+      {value: 'eth0', label: 'LAN', labelNodes: [], disabled: false},
+      {value: 'eth0', label: 'LAN (bridged)', labelNodes: [], disabled: false},
+      {value: 'eth1', label: 'WAN', labelNodes: [], disabled: false},
     ];
     document.body.appendChild(panel);
     await panel.updateComplete;

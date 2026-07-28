@@ -25,14 +25,14 @@ export class MndwCheckbox extends LitElement {
       :host {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        color: var(--mndw-color-text);
+        gap: var(--mndw-space-2);
+        color: var(--mndw-text);
         cursor: pointer;
         user-select: none;
       }
 
       :host([disabled]) {
-        color: var(--mndw-color-text-muted);
+        color: var(--mndw-text-muted);
         cursor: not-allowed;
         opacity: 0.65;
       }
@@ -42,24 +42,24 @@ export class MndwCheckbox extends LitElement {
         width: 18px;
         height: 18px;
         place-items: center;
-        border: 1px solid var(--mndw-color-border-strong);
-        border-radius: 4px;
-        background: var(--mndw-color-surface);
-        color: var(--mndw-color-on-accent);
+        border: 1px solid var(--mndw-border);
+        border-radius: var(--mndw-radius-sm);
+        background: var(--mndw-surface);
+        color: var(--mndw-accent-contrast);
         flex: 0 0 auto;
       }
 
       [part='box'][aria-checked='true'],
       [part='box'][aria-checked='mixed'] {
-        border-color: var(--mndw-color-accent);
-        background: var(--mndw-color-accent);
+        border-color: var(--mndw-accent);
+        background: var(--mndw-accent);
       }
 
       [part='mark'] {
         display: none;
-        font-size: 14px;
-        font-weight: 700;
-        line-height: 1;
+        font-size: var(--mndw-text-md);
+        font-weight: var(--mndw-weight-semibold);
+        line-height: var(--mndw-leading);
       }
 
       [part='box'][aria-checked='true'] [part='mark'] {
@@ -113,12 +113,23 @@ export class MndwCheckbox extends LitElement {
       >
         <span part="mark">✓</span>
       </div>
-      <slot></slot>
+      <slot part="label"></slot>
     `;
   }
 
   protected override updated(): void {
-    this.internals?.setFormValue(this.checked ? this.value : null);
+    const ariaChecked = this.indeterminate ? 'mixed' : String(this.checked);
+
+    if (this.internals) {
+      this.internals.ariaChecked = ariaChecked;
+      this.internals.setFormValue(this.checked ? this.value : null);
+
+      if (this.checked) {
+        this.internals.states.add('checked');
+      } else {
+        this.internals.states.delete('checked');
+      }
+    }
   }
 
   private readonly handleClick = (event: Event): void => {

@@ -4,6 +4,7 @@ import {
   MNDW_BUTTON_TAG,
   MNDW_CHECKBOX_TAG,
   MNDW_OPTION_TAG,
+  MNDW_SCROLL_AREA_TAG,
   MNDW_SELECT_PANEL_TAG,
   MNDW_SELECT_TAG,
   defineMndwUi,
@@ -23,6 +24,7 @@ describe('defineMndwUi', () => {
         MNDW_BUTTON_TAG,
         MNDW_CHECKBOX_TAG,
         MNDW_OPTION_TAG,
+        MNDW_SCROLL_AREA_TAG,
         MNDW_SELECT_PANEL_TAG,
         MNDW_SELECT_TAG,
       ]

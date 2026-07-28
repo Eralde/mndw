@@ -1,7 +1,8 @@
 import type {UiLayerPresentation} from '../overlay.js';
 
 export const SELECT_MOBILE_MAX_WIDTH = 600;
-export const SELECT_ANCHOR_GAP = 4;
+// Keep in sync with host overlay popover positioning.
+export const SELECT_ANCHOR_GAP = 8;
 export const SELECT_VIEWPORT_PADDING = 8;
 
 export interface SelectViewport {

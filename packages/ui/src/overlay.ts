@@ -6,6 +6,7 @@ export interface UiLayerOptions {
   anchor: HTMLElement;
   presentation?: UiLayerPresentation;
   title?: string;
+  className?: string;
 }
 
 export interface UiLayer {
@@ -31,6 +32,7 @@ export function createFallbackProvider(): UiOverlayProvider {
 
       const contentElement = document.createElement('div');
 
+      contentElement.className = options.className ?? '';
       contentElement.style.position = 'fixed';
       contentElement.style.zIndex = '1000';
       contentElement.style.visibility = 'hidden';
@@ -116,7 +118,7 @@ export function createFallbackProvider(): UiOverlayProvider {
 function createFallbackSheet(options: UiLayerOptions): UiLayer {
   const root = document.createElement('div');
 
-  root.className = 'mndw-ui-sheet-root';
+  root.className = ['mndw-ui-sheet-root', options.className].filter(Boolean).join(' ');
   root.style.position = 'fixed';
   root.style.inset = '0';
   root.style.zIndex = '1000';
@@ -165,7 +167,7 @@ function createFallbackSheet(options: UiLayerOptions): UiLayer {
   body.style.flex = '0 1 auto';
   body.style.minHeight = '0';
   body.style.maxHeight = 'calc(100dvh - 54px)';
-  body.style.overflow = 'auto';
+  body.style.overflow = 'hidden';
 
   const contentElement = document.createElement('div');
 

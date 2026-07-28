@@ -6,6 +6,7 @@ import {setOverlayProvider} from './overlay.js';
 import {MNDW_OPTION_TAG, MndwOption} from './select/option.js';
 import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select/select-panel.js';
 import {MNDW_SELECT_TAG, MndwSelect} from './select/select.js';
+import {MNDW_SCROLL_AREA_TAG, MndwScrollArea} from './scroll-area/scroll-area.js';
 
 export {MNDW_BUTTON_TAG, MndwButton} from './button/button.js';
 export type {MndwButtonVariant} from './button/button.js';
@@ -16,6 +17,7 @@ export {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select/select-panel.js';
 export {MNDW_SELECT_TAG, MndwSelect} from './select/select.js';
 export type {MndwSelectChangeDetail} from './select/select.js';
 export {MNDW_OPTION_CHANGE_EVENT} from './select/option.js';
+export {MNDW_SCROLL_AREA_TAG, MndwScrollArea} from './scroll-area/scroll-area.js';
 export type {UiCloseReason, UiLayer, UiLayerOptions, UiLayerPresentation, UiOverlayProvider} from './overlay.js';
 
 export interface MndwUiDeps {
@@ -26,6 +28,7 @@ const REGISTRY: [string, CustomElementConstructor][] = [
   [MNDW_BUTTON_TAG, MndwButton],
   [MNDW_CHECKBOX_TAG, MndwCheckbox],
   [MNDW_OPTION_TAG, MndwOption],
+  [MNDW_SCROLL_AREA_TAG, MndwScrollArea],
   [MNDW_SELECT_PANEL_TAG, MndwSelectPanel],
   [MNDW_SELECT_TAG, MndwSelect],
 ];

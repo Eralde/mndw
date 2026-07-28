@@ -16,7 +16,6 @@ let chosen = $state(selectedMac);
 
 <div class="settings-form">
   <mndw-select
-    class="device-select"
     value={chosen}
     label="Device"
     placeholder="-- Choose --"
@@ -53,6 +52,5 @@ let chosen = $state(selectedMac);
 /* Rendered inside the host overlay shell body; the shell owns surface, border,
    padding, title, and close button, so this only styles the form controls. */
 .settings-form { font-family: var(--mndw-font-sans); }
-.device-select { display: block; margin-bottom: 12px; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; }
 </style>

@@ -76,12 +76,12 @@ describe('adaptOverlayService', () => {
     expect(calls[0].closeOnOutsideClick).toBe(true);
   });
 
-  it('sends neither className nor sizing', () => {
+  it('forwards className but not select sizing', () => {
     const {service, calls} = fakeService();
 
-    adaptOverlayService(service).open({anchor: document.createElement('button')});
+    adaptOverlayService(service).open({anchor: document.createElement('button'), className: 'demo'});
 
-    expect(calls[0]).not.toHaveProperty('className');
+    expect(calls[0]).toHaveProperty('className', 'demo');
     expect(calls[0]).not.toHaveProperty('maxHeight');
   });
 
@@ -111,6 +111,7 @@ describe('adaptOverlayService', () => {
       anchor,
       presentation: 'sheet',
       title: 'Interface',
+      className: 'demo',
     });
 
     expect(calls).toHaveLength(0);
@@ -124,7 +125,7 @@ describe('adaptOverlayService', () => {
       width: '100%',
       height: 'auto',
       maxHeight: '100dvh',
-      className: 'mndw-ui-select-sheet',
+      className: 'mndw-ui-select-sheet demo',
     });
     expect(layer.contentElement.style.height).toBe('');
     expect(layer.contentElement.style.minHeight).toBe('0');

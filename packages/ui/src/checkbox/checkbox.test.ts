@@ -49,6 +49,24 @@ describe('<mndw-checkbox>', () => {
     expect(box(element).getAttribute('aria-checked')).toBe('mixed');
   });
 
+  it('exposes box, mark, and label parts', async () => {
+    const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>');
+
+    expect(element.shadowRoot?.querySelector('[part="box"]')).not.toBeNull();
+    expect(element.shadowRoot?.querySelector('[part="mark"]')).not.toBeNull();
+    expect(element.shadowRoot?.querySelector('slot[part="label"]')).not.toBeNull();
+  });
+
+  it('uses only existing mndw token names', () => {
+    const cssText = String(MndwCheckbox.styles);
+
+    expect(cssText).toContain('--mndw-text');
+    expect(cssText).toContain('--mndw-border');
+    expect(cssText).toContain('--mndw-surface');
+    expect(cssText).toContain('--mndw-accent');
+    expect(cssText).not.toContain('--mndw-color-');
+  });
+
   it('toggles on click and emits mndwchange', async () => {
     const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>');
     const onChange = vi.fn();
@@ -124,13 +142,24 @@ describe('<mndw-checkbox>', () => {
 describe('<mndw-checkbox> with ElementInternals available', () => {
   const TAG = 'mndw-checkbox-internals-probe';
   const setFormValue = vi.fn();
+  const states = new Set<string>();
+  let ariaChecked: string | null = null;
 
   beforeAll(() => {
     Object.defineProperty(HTMLElement.prototype, 'attachInternals', {
       configurable: true,
       writable: true,
       value(): ElementInternals {
-        return {setFormValue} as unknown as ElementInternals;
+        return {
+          setFormValue,
+          states,
+          get ariaChecked(): string | null {
+            return ariaChecked;
+          },
+          set ariaChecked(value: string | null) {
+            ariaChecked = value;
+          },
+        } as unknown as ElementInternals;
       },
     });
 
@@ -147,6 +176,8 @@ describe('<mndw-checkbox> with ElementInternals available', () => {
 
   beforeEach(() => {
     setFormValue.mockClear();
+    states.clear();
+    ariaChecked = null;
   });
 
   async function mountProbe(html: string): Promise<MndwCheckbox> {
@@ -190,5 +221,22 @@ describe('<mndw-checkbox> with ElementInternals available', () => {
     await element.updateComplete;
 
     expect(setFormValue).toHaveBeenCalledWith(null);
+  });
+
+  it('synchronizes checked state to ElementInternals', async () => {
+    const element = await mountProbe(`<${TAG}></${TAG}>`);
+
+    element.checked = true;
+    await element.updateComplete;
+
+    expect(ariaChecked).toBe('true');
+    expect(states.has('checked')).toBe(true);
+  });
+
+  it('reports mixed state without the checked state', async () => {
+    await mountProbe(`<${TAG} indeterminate></${TAG}>`);
+
+    expect(ariaChecked).toBe('mixed');
+    expect(states.has('checked')).toBe(false);
   });
 });

@@ -26,30 +26,37 @@ export class MndwSelectPanel extends LitElement {
     :host {
       ${hostTypography}
 
-      display: block;
-    }
-
-    .listbox {
-      padding: var(--mndw-space-1);
+      box-sizing: border-box;
+      display: flex;
+      flex: 0 1 auto;
+      flex-direction: column;
+      min-height: 0;
+      width: 100%;
+      max-width: 100%;
+      overflow: hidden;
       border: 1px solid var(--mndw-border);
       border-radius: var(--mndw-radius-md);
       background: var(--mndw-surface-raised);
       box-shadow: var(--mndw-shadow-2);
+    }
+
+    mndw-scroll-area {
+      flex: 0 1 auto;
+      min-height: 0;
+    }
+
+    .listbox {
+      padding: var(--mndw-space-1);
+      padding-inline-end: calc(var(--mndw-space-1) + var(--mndw-scrollbar-size, var(--mndw-space-2)));
       font-family: inherit;
       font-size: inherit;
     }
 
     :host([sheet]) {
-      display: block;
-      height: auto;
+      display: flex;
+      flex-direction: column;
       min-height: 0;
-    }
-
-    :host([sheet]) .listbox {
-      box-sizing: border-box;
-      height: auto;
-      max-height: calc(100dvh - 54px);
-      overflow-y: auto;
+      max-height: var(--mndw-select-sheet-max-height, calc(100dvh - 54px));
       border: none;
       border-radius: 0;
       box-shadow: none;
@@ -115,35 +122,42 @@ export class MndwSelectPanel extends LitElement {
 
   protected override render(): TemplateResult {
     return html`
-      <div
-        class="listbox"
-        part="listbox"
-        role="listbox"
-        aria-label=${this.label}
-        @keydown=${this.onKeydown}
-      >
-        ${
+      <mndw-scroll-area exportparts="viewport,scrollbar,track,thumb">
+        <div
+          class="listbox"
+          part="listbox"
+          role="listbox"
+          aria-label=${this.label}
+          @keydown=${this.onKeydown}
+        >
+          ${
       repeat(
         this.options,
         (option, index) => `${index}:${option.value}`,
-        (option, index) =>
-          html`
-            <div
-              class="option"
-              part="option"
-              role="option"
-              tabindex=${index === this.activeIndex ? 0 : -1}
-              aria-selected=${String(option.value === this.value)}
-              aria-disabled=${String(option.disabled)}
-              @click=${() => this.select(index)}
-            >
-              <span>${option.label}</span>
-              ${option.value === this.value ? html`<span aria-hidden="true">✓</span>` : null}
-            </div>
-          `,
+        (option, index) => {
+          const labelHtml = option.labelNodes.length > 0
+            ? option.labelNodes.map((node) => node.cloneNode(true))
+            : option.label;
+
+          return html`
+              <div
+                class="option"
+                part="option"
+                role="option"
+                tabindex=${index === this.activeIndex ? 0 : -1}
+                aria-selected=${String(option.value === this.value)}
+                aria-disabled=${String(option.disabled)}
+                @click=${() => this.select(index)}
+              >
+                <span>${labelHtml}</span>
+                ${option.value === this.value ? html`<span aria-hidden="true">✓</span>` : null}
+              </div>
+            `;
+        },
       )
     }
-      </div>
+        </div>
+      </mndw-scroll-area>
     `;
   }
 

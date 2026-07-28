@@ -327,6 +327,14 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
     }
 
     const rect = this.contentElement.getBoundingClientRect();
+
+    // The host can render the positioner before plugin content has laid out.
+    // Keep it hidden until a real size exists so an anchored popover cannot flash
+    // at its preferred side before its final placement is known.
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+
     const coords = computePopoverCoords(
       {element: this.anchorElement},
       {width: rect.width, height: rect.height},

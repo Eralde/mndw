@@ -42,27 +42,29 @@ export class MndwScrollArea extends LitElement {
       position: absolute;
       inset-block: 0;
       inset-inline-end: 0;
-      width: var(--mndw-scrollbar-size, var(--mndw-space-2));
+      width: var(--mndw-scrollbar-size, 10px);
       touch-action: none;
       user-select: none;
     }
 
     .track {
       height: 100%;
-      border-radius: var(--mndw-scrollbar-radius, var(--mndw-radius-sm));
-      background: var(--mndw-scrollbar-track, transparent);
+      border-radius: var(--mndw-scrollbar-radius, 6px);
+      background: var(--mndw-scrollbar-track, var(--mndw-surface));
       touch-action: none;
     }
 
     .thumb {
-      border-radius: var(--mndw-scrollbar-radius, var(--mndw-radius-sm));
-      background: var(--mndw-scrollbar-thumb, color-mix(in srgb, var(--mndw-text) 28%, transparent));
+      box-sizing: border-box;
+      border: 2px solid var(--mndw-scrollbar-track, var(--mndw-surface));
+      border-radius: var(--mndw-scrollbar-radius, 6px);
+      background: var(--mndw-scrollbar-thumb, var(--mndw-accent));
       touch-action: none;
     }
 
     .thumb:hover,
     .thumb.dragging {
-      background: var(--mndw-scrollbar-thumb-hover, color-mix(in srgb, var(--mndw-text) 44%, transparent));
+      background: var(--mndw-scrollbar-thumb-hover, var(--mndw-accent-hover));
     }
 
     :host(.dragging) {

@@ -37,6 +37,14 @@ export class MndwCheckbox extends LitElement {
         opacity: 0.65;
       }
 
+      [part='label'] {
+        cursor: pointer;
+      }
+
+      :host([disabled]) [part='label'] {
+        cursor: not-allowed;
+      }
+
       [part='box'] {
         display: inline-grid;
         width: 18px;

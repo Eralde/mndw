@@ -199,6 +199,15 @@ describe('<mndw-scroll-area>', () => {
     expect(styles).not.toMatch(/:host[^}]*--mndw-scrollbar-/);
   });
 
+  it('uses themed defaults for scrollbar appearance', () => {
+    const styles = String(MndwScrollArea.styles);
+
+    expect(styles).toContain('var(--mndw-scrollbar-size, 10px)');
+    expect(styles).toContain('var(--mndw-scrollbar-track, var(--mndw-surface))');
+    expect(styles).toContain('var(--mndw-scrollbar-thumb, var(--mndw-accent))');
+    expect(styles).toContain('var(--mndw-scrollbar-thumb-hover, var(--mndw-accent-hover))');
+  });
+
   it('refreshes geometry from viewport and content resize observers', async () => {
     const area = await mountWithGeometry({clientHeight: 100, scrollHeight: 100, scrollTop: 0, trackHeight: 100});
     const viewport = area.viewportElement;

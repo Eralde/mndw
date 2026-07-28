@@ -67,6 +67,15 @@ describe('<mndw-checkbox>', () => {
     expect(cssText).not.toContain('--mndw-color-');
   });
 
+  it('uses pointer cursor for the label and not-allowed when disabled', () => {
+    const cssText = String(MndwCheckbox.styles);
+
+    expect(cssText).toContain("[part='label']");
+    expect(cssText).toContain('cursor: pointer');
+    expect(cssText).toContain(":host([disabled]) [part='label']");
+    expect(cssText).toContain('cursor: not-allowed');
+  });
+
   it('toggles on click and emits mndwchange', async () => {
     const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>');
     const onChange = vi.fn();

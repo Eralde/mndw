@@ -1,6 +1,7 @@
 import {describe, expect, it} from 'vitest';
 import {contrastRatio} from './contrast.js';
-import {buildPalette, validatePalette} from './roles.js';
+import {oklchOf} from './ramp.js';
+import {PAIRS, SEED, buildPalette, validatePalette} from './roles.js';
 
 describe('buildPalette', () => {
   it('produces every semantic token for both themes', () => {
@@ -22,10 +23,17 @@ describe('buildPalette', () => {
           'danger',
           'dangerBg',
           'success',
+          'successBg',
           'warning',
+          'warningBg',
+          'info',
+          'infoBg',
+          'focusRing',
+          'surfaceHover',
+          'shadowColor',
         ] as const
       ) {
-        expect(p[key], `${theme}.${key}`).toMatch(/^#[0-9a-f]{6}$/);
+        expect(p[key], `${theme}.${key}`).toMatch(key === 'shadowColor' ? /^#[0-9a-f]{8}$/ : /^#[0-9a-f]{6}$/);
       }
     }
   });
@@ -45,5 +53,38 @@ describe('validatePalette (WCAG gate)', () => {
     const p = buildPalette('dark');
 
     expect(contrastRatio(p.text, p.surface)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('exports all contrast pairs, including new status and surface relationships', () => {
+    expect(PAIRS).toHaveLength(16);
+    expect(PAIRS).toEqual(expect.arrayContaining([
+      {fg: 'text', bg: 'surfaceRaised', min: 4.5},
+      {fg: 'text', bg: 'surfaceHover', min: 4.5},
+      {fg: 'focusRing', bg: 'surfaceRaised', min: 3},
+      {fg: 'success', bg: 'successBg', min: 4.5},
+      {fg: 'warning', bg: 'warningBg', min: 4.5},
+      {fg: 'info', bg: 'infoBg', min: 4.5},
+    ]));
+  });
+
+  it('defaults info to primary and accepts an explicit info seed', () => {
+    expect(buildPalette('dark').info).toBe(SEED.primary);
+    expect(buildPalette('dark', {...SEED, info: '#7a3fb3'}).info).toBe('#7a3fb3');
+  });
+
+  it('keeps raised surfaces visibly lighter than surfaces', () => {
+    for (const theme of ['light', 'dark'] as const) {
+      const palette = buildPalette(theme);
+
+      expect(oklchOf(palette.surfaceRaised).l - oklchOf(palette.surface).l).toBeGreaterThanOrEqual(0.012);
+    }
+  });
+
+  it('keeps shadow color hex-shaped and outside contrast validation', () => {
+    for (const theme of ['light', 'dark'] as const) {
+      expect(buildPalette(theme).shadowColor).toMatch(/^#[0-9a-f]{8}$/);
+    }
+
+    expect(PAIRS.some(({fg, bg}) => fg === 'shadowColor' || bg === 'shadowColor')).toBe(false);
   });
 });

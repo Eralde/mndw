@@ -31,6 +31,16 @@ export function shiftLightness(hex: string, delta: number): string {
   return oklchToHex(Math.min(1, Math.max(0, l + delta)), c, h);
 }
 
+export function withAlpha(hex: string, alpha: number): string {
+  const normalized = hex.replace('#', '');
+  const rgb = normalized.length === 3
+    ? normalized.split('').map((channel) => channel + channel).join('')
+    : normalized.slice(0, 6);
+  const alphaByte = Math.round(Math.min(1, Math.max(0, alpha)) * 255).toString(16).padStart(2, '0');
+
+  return `#${rgb}${alphaByte}`;
+}
+
 // Interpolate a neutral ramp between two hex endpoints in OKLCH. Endpoints are
 // pinned exactly (index 0 = fromHex, last = toHex); interior steps blend L/C/H.
 export function rampBetween(fromHex: string, toHex: string, steps: number): string[] {

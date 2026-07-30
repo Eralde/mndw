@@ -42,7 +42,10 @@ describe('render', () => {
 
     render(el, {state: 'error', message: 'boom'});
 
-    expect(el.querySelector('.mndw-echo__error')?.textContent).toContain('boom');
+    const alert = el.querySelector('.mndw-alert--danger');
+
+    expect(alert?.textContent).toContain('boom');
+    expect(alert?.getAttribute('role')).toBe('alert');
   });
 
   it('is idempotent — re-rendering replaces prior content', () => {
@@ -51,7 +54,7 @@ describe('render', () => {
     render(el, {state: 'error', message: 'first'});
     render(el, {state: 'idle'});
 
-    expect(el.querySelector('.mndw-echo__error')).toBeNull();
+    expect(el.querySelector('.mndw-alert--danger')).toBeNull();
     expect(el.querySelector('.mndw-echo__idle')).not.toBeNull();
   });
 });

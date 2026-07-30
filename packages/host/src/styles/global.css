@@ -257,14 +257,6 @@ body {
   background: var(--mndw-surface);
 }
 
-.mndw-login__form input {
-  padding: 8px 12px;
-  border: 1px solid var(--mndw-border);
-  border-radius: 4px;
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text);
-}
-
 .mndw-login__form button {
   padding: 8px;
   border: none;
@@ -282,11 +274,6 @@ body {
 .mndw-login__title {
   color: var(--mndw-accent);
   text-align: center;
-}
-
-.mndw-login__error {
-  color: var(--mndw-danger);
-  font-size: 0.85em;
 }
 
 /* === Settings === */

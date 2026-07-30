@@ -42,12 +42,12 @@ let {
         <CapabilityReview descriptor={item.backend} />
 
         {#if actionError?.name === item.name}
-          <p
-            class="mndw-pending__error"
+          <div
+            class="mndw-alert mndw-alert--danger"
             role="alert"
           >
             {actionError.message}
-          </p>
+          </div>
         {/if}
 
         {#if confirmingName === item.name}
@@ -141,12 +141,6 @@ let {
   color: var(--mndw-text-muted);
   font-family: var(--mndw-font-mono);
   font-size: var(--mndw-text-xs);
-}
-
-.mndw-pending__error {
-  margin: 0;
-  color: var(--mndw-danger);
-  font-size: var(--mndw-text-sm);
 }
 
 .mndw-pending__confirmation {

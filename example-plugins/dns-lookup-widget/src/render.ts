@@ -47,8 +47,9 @@ export function render(root: HTMLElement, view: DnsView): void {
       break;
     }
     case 'error': {
-      const el = createEl(`${NAME}__error`, `Lookup failed: ${view.message}`);
+      const el = createEl('mndw-alert mndw-alert--danger', `Lookup failed: ${view.message}`);
 
+      el.setAttribute('role', 'alert');
       root.append(el);
       break;
     }

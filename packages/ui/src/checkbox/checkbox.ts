@@ -1,19 +1,28 @@
 import {LitElement, type PropertyDeclarations, css, html} from 'lit';
+import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
+import {FormAssociatedController} from '../forms/form-associated.js';
 import {focusRing, hostTypography} from '../styles/base.js';
 
 export const MNDW_CHECKBOX_TAG = 'mndw-checkbox';
+let nextGeneratedLabelId = 0;
 
 export interface MndwCheckboxChangeDetail {
   checked: boolean;
+  indeterminate: boolean;
 }
 
 export class MndwCheckbox extends LitElement {
   public static readonly formAssociated = true;
 
+  /** Slotted content is the accessible name, so `<mndw-field>` renders no label of its own. */
+  public static readonly mndwLabelSource: MndwLabelSource = 'slot';
+
   public static readonly properties: PropertyDeclarations = {
     checked: {type: Boolean, reflect: true},
     indeterminate: {type: Boolean, reflect: true},
     disabled: {type: Boolean, reflect: true},
+    required: {type: Boolean, reflect: true},
+    invalid: {type: Boolean, reflect: true},
     value: {type: String, reflect: true},
     name: {type: String, reflect: true},
   };
@@ -91,33 +100,68 @@ export class MndwCheckbox extends LitElement {
   declare public checked: boolean;
   declare public indeterminate: boolean;
   declare public disabled: boolean;
+  declare public required: boolean;
+  declare public invalid: boolean;
   declare public value: string;
   declare public name: string;
 
-  private readonly internals = typeof this.attachInternals === 'function' ? this.attachInternals() : null;
+  private readonly formState = new FormAssociatedController(this, {
+    isExplicitlyDisabled: () => this.disabled,
+    onReset: () => this.resetForm(),
+    onStateRestore: (state) => this.restoreFormState(state),
+    onDisabledChange: () => {
+      this.requestUpdate();
+    },
+  });
+  private readonly labelObserver: MutationObserver;
+  private labelSlot: HTMLSlotElement | null = null;
 
   constructor() {
     super();
     this.checked = false;
     this.indeterminate = false;
     this.disabled = false;
+    this.required = false;
+    this.invalid = false;
     this.value = 'on';
     this.name = '';
+    this.labelObserver = new MutationObserver(() => {
+      this.dispatchLabelChange();
+    });
     this.addEventListener('click', this.handleClick);
     this.addEventListener('keydown', this.handleKeyDown);
   }
 
-  protected override render(): unknown {
-    const ariaChecked = this.indeterminate ? 'mixed' : String(this.checked);
+  public override connectedCallback(): void {
+    super.connectedCallback();
+    this.formState.captureInitialAttributes(['checked']);
+    this.labelObserver.observe(this, {childList: true, subtree: true, characterData: true});
+  }
 
+  public override disconnectedCallback(): void {
+    this.labelObserver.disconnect();
+    this.labelSlot?.removeEventListener('slotchange', this.onLabelSlotChange);
+    this.labelSlot = null;
+    super.disconnectedCallback();
+  }
+
+  public formDisabledCallback(disabled: boolean): void {
+    this.formState.formDisabledCallback(disabled);
+  }
+
+  public formResetCallback(): void {
+    this.formState.formResetCallback();
+  }
+
+  public formStateRestoreCallback(state: string | File | FormData | null, mode: 'autocomplete' | 'restore'): void {
+    this.formState.formStateRestoreCallback(state, mode);
+  }
+
+  protected override render(): unknown {
     return html`
       <div
         part="box"
-        role="checkbox"
-        tabindex=${this.disabled ? '-1' : '0'}
-        aria-checked=${ariaChecked}
-        aria-disabled=${this.disabled ? 'true' : 'false'}
-        @keydown=${this.handleKeyDown}
+        aria-hidden="true"
       >
         <span part="mark">✓</span>
       </div>
@@ -126,22 +170,86 @@ export class MndwCheckbox extends LitElement {
   }
 
   protected override updated(): void {
-    const ariaChecked = this.indeterminate ? 'mixed' : String(this.checked);
+    const labelSlot = this.shadowRoot?.querySelector<HTMLSlotElement>('slot[part="label"]') ?? null;
 
-    if (this.internals) {
-      this.internals.ariaChecked = ariaChecked;
-      this.internals.setFormValue(this.checked ? this.value : null);
+    if (labelSlot !== this.labelSlot) {
+      this.labelSlot?.removeEventListener('slotchange', this.onLabelSlotChange);
+      labelSlot?.addEventListener('slotchange', this.onLabelSlotChange);
+      this.labelSlot = labelSlot;
+    }
+
+    const ariaChecked = this.indeterminate ? 'mixed' : String(this.checked);
+    const effectiveDisabled = this.formState.effectiveDisabled;
+
+    this.setAttribute('role', 'checkbox');
+    this.setAttribute('aria-checked', ariaChecked);
+    this.setAttribute('aria-disabled', String(effectiveDisabled));
+    this.setAttribute('aria-required', String(this.required));
+    this.tabIndex = effectiveDisabled ? -1 : 0;
+
+    const labels = this.formState.labels;
+
+    if (labels.length > 0) {
+      const ids = labels.map((label) => {
+        if (!label.id) {
+          nextGeneratedLabelId += 1;
+          label.id = `mndw-checkbox-label-${nextGeneratedLabelId}`;
+        }
+
+        return label.id;
+      });
+
+      this.setAttribute('aria-labelledby', ids.join(' '));
+    } else {
+      this.removeAttribute('aria-labelledby');
+    }
+
+    this.formState.internals?.setFormValue(
+      this.checked ? this.value : null,
+      this.indeterminate ? 'indeterminate' : this.checked ? 'checked' : 'unchecked',
+    );
+
+    if (this.formState.internals) {
+      this.formState.internals.role = 'checkbox';
+      this.formState.internals.ariaChecked = ariaChecked;
+      this.formState.internals.ariaDisabled = String(effectiveDisabled);
+      this.formState.internals.ariaRequired = String(this.required);
+      this.formState.internals.ariaLabelledByElements = labels;
 
       if (this.checked) {
-        this.internals.states.add('checked');
+        this.formState.internals.states.add('checked');
       } else {
-        this.internals.states.delete('checked');
+        this.formState.internals.states.delete('checked');
       }
+    }
+
+    if (this.required && !this.checked) {
+      this.formState.setValidity({valueMissing: true}, 'Please select this option.');
+    } else {
+      this.formState.clearValidity();
+    }
+
+    const invalid = this.invalid
+      || (this.required && !this.checked)
+      || (this.formState.internals?.validity?.valid === false);
+
+    this.setAttribute('aria-invalid', String(invalid));
+
+    if (this.formState.internals) {
+      this.formState.internals.ariaInvalid = String(invalid);
     }
   }
 
+  private readonly onLabelSlotChange = (): void => {
+    this.dispatchLabelChange();
+  };
+
+  private dispatchLabelChange(): void {
+    this.dispatchEvent(new Event(MNDW_LABEL_CHANGE_EVENT, {bubbles: true, composed: true}));
+  }
+
   private readonly handleClick = (event: Event): void => {
-    if (this.disabled) {
+    if (this.formState.effectiveDisabled) {
       event.preventDefault();
 
       return;
@@ -151,7 +259,7 @@ export class MndwCheckbox extends LitElement {
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    if (this.disabled || (event.key !== ' ' && event.key !== 'Enter')) {
+    if (this.formState.effectiveDisabled || (event.key !== ' ' && event.key !== 'Enter')) {
       return;
     }
 
@@ -166,8 +274,37 @@ export class MndwCheckbox extends LitElement {
       new CustomEvent<MndwCheckboxChangeDetail>('mndwchange', {
         bubbles: true,
         composed: true,
-        detail: {checked: this.checked},
+        detail: {checked: this.checked, indeterminate: this.indeterminate},
       }),
     );
+  }
+
+  private readonly resetForm = (): void => {
+    this.checked = this.hasAttribute('checked');
+    this.indeterminate = false;
+  };
+
+  private readonly restoreFormState = (state: string | File | FormData | null): void => {
+    if (typeof state !== 'string') {
+      return;
+    }
+
+    if (state === 'checked') {
+      this.checked = true;
+      this.indeterminate = false;
+    } else if (state === 'unchecked') {
+      this.checked = false;
+      this.indeterminate = false;
+    } else if (state === 'indeterminate') {
+      this.checked = false;
+      this.indeterminate = true;
+    }
+  };
+}
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- augmenting a DOM lib interface
+  interface HTMLElementTagNameMap {
+    'mndw-checkbox': MndwCheckbox;
   }
 }

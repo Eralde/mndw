@@ -17,7 +17,9 @@ func valid() Palette {
 		Bg: "#000000", Surface: "#010101", SurfaceRaised: "#020202", Border: "#030303",
 		TextSubtle: "#040404", TextMuted: "#050505", Text: "#ffffff", Accent: "#016ca5",
 		AccentHover: "#2b84bf", AccentContrast: "#ffffff", Danger: "#c5001b",
-		DangerBg: "#ffd2cc", Success: "#5cb572", Warning: "#efa831",
+		DangerBg: "#ffd2cc", Success: "#5cb572", SuccessBg: "#d8f3dc", Warning: "#efa831",
+		WarningBg: "#fff0c2", Info: "#016ca5", InfoBg: "#d6efff", FocusRing: "#2b84bf",
+		SurfaceHover: "#040404", ShadowColor: "#0000002e",
 	}
 
 	return Palette{Dark: tokens, Light: tokens}

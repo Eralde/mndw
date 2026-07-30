@@ -42,29 +42,29 @@ export class MndwScrollArea extends LitElement {
       position: absolute;
       inset-block: 0;
       inset-inline-end: 0;
-      width: var(--mndw-scrollbar-size, 10px);
+      width: var(--mndw-scrollbar-size);
       touch-action: none;
       user-select: none;
     }
 
     .track {
       height: 100%;
-      border-radius: var(--mndw-scrollbar-radius, 6px);
-      background: var(--mndw-scrollbar-track, var(--mndw-surface));
+      border-radius: var(--mndw-scrollbar-radius);
+      background: var(--mndw-scrollbar-track);
       touch-action: none;
     }
 
     .thumb {
       box-sizing: border-box;
-      border: 2px solid var(--mndw-scrollbar-track, var(--mndw-surface));
-      border-radius: var(--mndw-scrollbar-radius, 6px);
-      background: var(--mndw-scrollbar-thumb, var(--mndw-accent));
+      border: var(--mndw-focus-w) solid var(--mndw-scrollbar-track);
+      border-radius: var(--mndw-scrollbar-radius);
+      background: var(--mndw-scrollbar-thumb);
       touch-action: none;
     }
 
     .thumb:hover,
     .thumb.dragging {
-      background: var(--mndw-scrollbar-thumb-hover, var(--mndw-accent-hover));
+      background: var(--mndw-scrollbar-thumb-hover);
     }
 
     :host(.dragging) {
@@ -75,7 +75,7 @@ export class MndwScrollArea extends LitElement {
       position: absolute;
       visibility: hidden;
       width: 0;
-      height: var(--mndw-scrollbar-thumb-min-size, 24px);
+      height: var(--mndw-scrollbar-thumb-min-size);
       pointer-events: none;
     }
   `;
@@ -405,4 +405,11 @@ export class MndwScrollArea extends LitElement {
       this.endDrag();
     }
   };
+}
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- augmenting a DOM lib interface
+  interface HTMLElementTagNameMap {
+    'mndw-scroll-area': MndwScrollArea;
+  }
 }

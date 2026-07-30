@@ -73,3 +73,10 @@ export class MndwOption extends HTMLElement {
     this.dispatchEvent(new CustomEvent(MNDW_OPTION_CHANGE_EVENT, {bubbles: true, composed: false}));
   }
 }
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- augmenting a DOM lib interface
+  interface HTMLElementTagNameMap {
+    'mndw-option': MndwOption;
+  }
+}

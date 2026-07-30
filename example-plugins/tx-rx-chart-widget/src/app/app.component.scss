@@ -13,20 +13,17 @@
   font-family: var(--mndw-font-sans);
 }
 
-.tx-rx-widget .error {
+/* Layout only. `.mndw-alert--danger` owns the box and the severity colours. */
+.tx-rx-widget .notice {
   display: flex;
   gap: 8px;
   align-items: center;
   align-self: stretch;
   margin: 8px 12px;
-  padding: 8px;
-  border-radius: 4px;
-  background: var(--mndw-danger-bg);
-  color: var(--mndw-danger);
   font-size: 13px;
 }
 
-.tx-rx-widget .error__retry {
+.tx-rx-widget .notice__retry {
   margin-left: auto;
   padding: 4px 10px;
   border: 1px solid var(--mndw-danger);
@@ -67,14 +64,6 @@
   color: var(--mndw-text-subtle);
   font-size: 13px;
   line-height: 1.4;
-}
-
-.tx-rx-widget .empty-state__error {
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: var(--mndw-danger-bg);
-  color: var(--mndw-danger);
-  font-size: 13px;
 }
 
 .tx-rx-widget .chart-view {

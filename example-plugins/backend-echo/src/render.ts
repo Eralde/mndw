@@ -35,7 +35,8 @@ export function render(root: HTMLElement, view: EchoView): void {
       el.textContent = 'This plugin has no backend available.';
       break;
     case 'error':
-      el.className = 'mndw-echo__error';
+      el.className = 'mndw-alert mndw-alert--danger';
+      el.setAttribute('role', 'alert');
       el.textContent = `Request failed: ${view.message}`;
       break;
     case 'result': {

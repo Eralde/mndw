@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Component fixture</title>
+    <style>
+      html,
+      body {
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: grid;
+        gap: 16px;
+        padding: 24px;
+      }
+
+      .fixture-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      mndw-scroll-area {
+        display: block;
+        width: 320px;
+        height: 96px;
+      }
+
+      .scroll-content {
+        display: grid;
+        gap: 8px;
+        padding: 8px;
+      }
+
+      .fixture-fields {
+        display: grid;
+        gap: 16px;
+        max-width: 320px;
+      }
+
+      /* Pinned to the top edge so the tooltip above it is always clipped and has to flip. */
+      #edge-trigger {
+        position: fixed;
+        top: 2px;
+        left: 400px;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="component-form" data-testid="form">
+      <fieldset id="fieldset">
+        <div class="fixture-row">
+          <mndw-button id="button" type="button">Run</mndw-button>
+          <mndw-button id="submit-button" type="submit">Submit</mndw-button>
+          <mndw-button id="reset-button" type="reset">Reset</mndw-button>
+        </div>
+        <div class="fixture-row">
+          <label for="checkbox">Enable feature</label>
+          <mndw-checkbox id="checkbox" name="feature" value="enabled">Feature</mndw-checkbox>
+        </div>
+        <div class="fixture-row">
+          <label for="select">Interface</label>
+          <mndw-select id="select" name="interface" label="Interface" placeholder="Choose interface">
+            <mndw-option value="wired">Wired</mndw-option>
+            <mndw-option value="wireless">Wireless</mndw-option>
+          </mndw-select>
+        </div>
+        <div class="fixture-row">
+          <label for="field-select">Field interface</label>
+          <mndw-select id="field-select" name="field-interface" placeholder="Choose field interface">
+            <mndw-option value="field">Field value</mndw-option>
+          </mndw-select>
+        </div>
+        <div class="fixture-row">
+          <label for="form-input">Device name</label>
+          <mndw-input id="form-input" name="device"></mndw-input>
+        </div>
+        <div class="fixture-row">
+          <label for="form-textarea">Comment</label>
+          <mndw-textarea id="form-textarea" name="comment"></mndw-textarea>
+        </div>
+      </fieldset>
+    </form>
+    <div class="mndw-card" data-testid="card">Class layer loaded.</div>
+    <section class="fixture-fields">
+      <mndw-field id="field-native" label="Host name" hint="Shown in the device list.">
+        <input id="native-input" />
+      </mndw-field>
+      <mndw-field id="field-checkbox" label="Enable telemetry">
+        <mndw-checkbox id="telemetry-checkbox">Enable telemetry</mndw-checkbox>
+      </mndw-field>
+      <mndw-field id="field-select-label" label="Field select label">
+        <mndw-select id="select-label" label="Select label" placeholder="Choose a field option">
+          <mndw-option value="one">One</mndw-option>
+        </mndw-select>
+      </mndw-field>
+      <mndw-field id="field-input" label="Router name" hint="Shown to other devices.">
+        <mndw-input id="text-input"></mndw-input>
+      </mndw-field>
+      <mndw-field id="field-port" label="Listen port" required>
+        <mndw-input id="port-input" type="number" min="1" max="65535" step="1"></mndw-input>
+      </mndw-field>
+      <mndw-field id="field-notes" label="Release notes" hint="Markdown is supported.">
+        <mndw-textarea id="notes-textarea"></mndw-textarea>
+      </mndw-field>
+      <mndw-textarea id="autosize-textarea" autosize aria-label="Autosizing notes"></mndw-textarea>
+      <fieldset id="secondary-fieldset">
+        <mndw-field id="field-switch" label="Dark theme">
+          <mndw-switch id="theme-switch" name="theme" value="dark"></mndw-switch>
+        </mndw-field>
+        <mndw-segmented id="range" label="Range" name="range">
+          <mndw-segment value="day">Day</mndw-segment>
+          <mndw-segment value="week">Week</mndw-segment>
+          <mndw-segment value="month" disabled>Month</mndw-segment>
+        </mndw-segmented>
+        <mndw-field id="field-volume" label="Volume">
+          <mndw-slider id="volume" name="volume" max="100" step="10" value="30"></mndw-slider>
+        </mndw-field>
+      </fieldset>
+      <mndw-tabs id="settings-tabs">
+        <mndw-tab id="tab-general">General</mndw-tab>
+        <mndw-tab id="tab-network">Network</mndw-tab>
+        <mndw-tab id="tab-advanced" disabled>Advanced</mndw-tab>
+        <mndw-tab-panel for="tab-general">General body</mndw-tab-panel>
+        <mndw-tab-panel id="network-panel" for="tab-network">Network body</mndw-tab-panel>
+        <mndw-tab-panel for="ghost">Orphan body</mndw-tab-panel>
+      </mndw-tabs>
+      <mndw-tooltip id="restart-tip" text="Restarts the device immediately" delay="0">
+        <button id="restart-trigger" aria-describedby="restart-hint">Restart</button>
+      </mndw-tooltip>
+      <span id="restart-hint">Consumer description.</span>
+      <mndw-tooltip id="edge-tip" text="Clipped above" delay="0" placement="top">
+        <button id="edge-trigger">Edge</button>
+      </mndw-tooltip>
+      <mndw-input id="bare-input"></mndw-input>
+      <mndw-input id="password-input" type="password" aria-label="Password"></mndw-input>
+      <label for="external-input" id="external-label">External name</label>
+      <mndw-field id="field-external" label="Field name">
+        <input id="external-input" />
+      </mndw-field>
+    </section>
+    <mndw-scroll-area id="scroll-area" aria-label="Scrollable content">
+      <div class="scroll-content">
+        <span>First row</span>
+        <span>Second row</span>
+        <span>Third row</span>
+        <span>Fourth row</span>
+      </div>
+    </mndw-scroll-area>
+    <script type="module" src="./components.ts"></script>
+  </body>
+</html>

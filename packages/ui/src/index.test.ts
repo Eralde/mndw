@@ -1,13 +1,34 @@
 import type {OverlayService} from '@mndw/sdk';
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, expectTypeOf, it, vi} from 'vitest';
 import {
   MNDW_BUTTON_TAG,
   MNDW_CHECKBOX_TAG,
+  MNDW_FIELD_TAG,
+  MNDW_INPUT_TAG,
   MNDW_OPTION_TAG,
   MNDW_SCROLL_AREA_TAG,
+  MNDW_SEGMENTED_TAG,
+  MNDW_SEGMENT_TAG,
   MNDW_SELECT_PANEL_TAG,
   MNDW_SELECT_TAG,
+  MNDW_SLIDER_TAG,
+  MNDW_SWITCH_TAG,
+  MNDW_TABS_TAG,
+  MNDW_TAB_PANEL_TAG,
+  MNDW_TAB_TAG,
+  MNDW_TEXTAREA_TAG,
+  MNDW_TOOLTIP_TAG,
+  type MndwButton,
+  type MndwCheckbox,
+  type MndwOption,
+  type MndwScrollArea,
+  type MndwSelect,
+  type MndwSelectPanel,
+  POPOVER_FLIP_ORDER,
+  computePopoverCoords,
+  computeTooltipCoords,
   defineMndwUi,
+  resolveSizing,
 } from './index.js';
 import {getOverlayProvider, setOverlayProvider} from './overlay.js';
 
@@ -23,14 +44,34 @@ describe('defineMndwUi', () => {
       const tag of [
         MNDW_BUTTON_TAG,
         MNDW_CHECKBOX_TAG,
+        MNDW_FIELD_TAG,
+        MNDW_INPUT_TAG,
         MNDW_OPTION_TAG,
         MNDW_SCROLL_AREA_TAG,
         MNDW_SELECT_PANEL_TAG,
         MNDW_SELECT_TAG,
+        MNDW_SEGMENT_TAG,
+        MNDW_SEGMENTED_TAG,
+        MNDW_SLIDER_TAG,
+        MNDW_SWITCH_TAG,
+        MNDW_TAB_PANEL_TAG,
+        MNDW_TAB_TAG,
+        MNDW_TABS_TAG,
+        MNDW_TEXTAREA_TAG,
+        MNDW_TOOLTIP_TAG,
       ]
     ) {
       expect(customElements.get(tag)).toBeDefined();
     }
+  });
+
+  it('types shipped custom elements by tag name', () => {
+    expectTypeOf(document.querySelector('mndw-button')).toEqualTypeOf<MndwButton | null>();
+    expectTypeOf(document.querySelector('mndw-checkbox')).toEqualTypeOf<MndwCheckbox | null>();
+    expectTypeOf(document.querySelector('mndw-select')).toEqualTypeOf<MndwSelect | null>();
+    expectTypeOf(document.querySelector('mndw-select-panel')).toEqualTypeOf<MndwSelectPanel | null>();
+    expectTypeOf(document.querySelector('mndw-option')).toEqualTypeOf<MndwOption | null>();
+    expectTypeOf(document.querySelector('mndw-scroll-area')).toEqualTypeOf<MndwScrollArea | null>();
   });
 
   it('is idempotent — the registry is page-global and cannot be redefined', () => {
@@ -62,5 +103,14 @@ describe('defineMndwUi', () => {
     defineMndwUi({overlay: second});
 
     expect(getOverlayProvider()).not.toBe(before);
+  });
+});
+
+describe('positioning exports', () => {
+  it('publishes helpers for host overlay consumers', () => {
+    expect(POPOVER_FLIP_ORDER).toEqual(['bottom-start', 'top-start', 'bottom-end', 'top-end']);
+    expect(typeof computePopoverCoords).toBe('function');
+    expect(typeof computeTooltipCoords).toBe('function');
+    expect(typeof resolveSizing).toBe('function');
   });
 });

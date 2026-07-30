@@ -219,7 +219,7 @@ describe('PluginManager', () => {
     target.querySelector<HTMLButtonElement>('.mndw-installed__toggle')?.click();
     await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
 
-    expect(target.querySelector('.mndw-installed__error')?.textContent).toContain('Disable failed');
+    expect(target.querySelector('.mndw-alert--danger')?.textContent).toContain('Disable failed');
     expect(target.querySelector('.mndw-reload')).toBeNull();
 
     void unmount(component);
@@ -252,7 +252,7 @@ describe('PluginManager', () => {
     target.querySelector<HTMLButtonElement>('.mndw-pending__approve')?.click();
     await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
 
-    expect(target.querySelector('.mndw-pending__error')?.textContent).toContain('Approval failed');
+    expect(target.querySelector('.mndw-alert--danger')?.textContent).toContain('Approval failed');
     expect(target.querySelector('.mndw-reload')).toBeNull();
 
     void unmount(component);

@@ -13,14 +13,18 @@ import {appState} from '../../state/app.svelte.js';
 
   <section>
     <h3>Appearance</h3>
-    <label class="mndw-settings__toggle">
-      <input
-        type="checkbox"
+    <!-- A switch, not a checkbox: the theme applies at once rather than travelling with a form. -->
+    <div class="mndw-settings__toggle">
+      <mndw-switch
+        id="mndw-theme-switch"
         checked={appState.theme === 'dark'}
-        onchange={toggleTheme}
-      />
-      Dark theme
-    </label>
+        onmndwchange={toggleTheme}
+      ></mndw-switch>
+      <label
+        id="mndw-theme-switch-label"
+        for="mndw-theme-switch"
+      >Dark theme</label>
+    </div>
   </section>
 
   <PaletteManager />
@@ -49,5 +53,9 @@ import {appState} from '../../state/app.svelte.js';
   gap: 0.5rem;
   align-items: center;
   margin: 0.75rem 0;
+}
+
+.mndw-settings__toggle label {
+  cursor: pointer;
 }
 </style>

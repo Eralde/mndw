@@ -1,5 +1,5 @@
 import {beforeAll, describe, expect, it} from 'vitest';
-import {MNDW_BUTTON_TAG, MndwButton} from './button.js';
+import {MNDW_BUTTON_TAG, MndwButton, type MndwButtonVariant} from './button.js';
 
 beforeAll(() => {
   if (!customElements.get(MNDW_BUTTON_TAG)) {
@@ -54,10 +54,27 @@ describe('<mndw-button>', () => {
     expect(element.hasAttribute('disabled')).toBe(true);
   });
 
-  it('propagates type to the inner button', async () => {
+  it('re-enables the inner button when host disabled state is cleared', async () => {
+    const element = await mount('<mndw-button disabled>Apply</mndw-button>');
+
+    element.disabled = false;
+    await element.updateComplete;
+
+    expect(element.disabled).toBe(false);
+    expect(innerButton(element).disabled).toBe(false);
+  });
+
+  it('keeps the inner button presentational for every host type', async () => {
     const element = await mount('<mndw-button type="submit">Go</mndw-button>');
 
-    expect(innerButton(element).getAttribute('type')).toBe('submit');
+    expect(innerButton(element).getAttribute('type')).toBe('button');
+  });
+
+  it('is form-associated and accepts reset as a host type', async () => {
+    const element = await mount('<mndw-button type="reset">Reset</mndw-button>');
+
+    expect(MndwButton.formAssociated).toBe(true);
+    expect(element.type).toBe('reset');
   });
 
   it('lets native clicks bubble out of the shadow root', async () => {
@@ -83,5 +100,76 @@ describe('<mndw-button>', () => {
 
     expect(getComputedStyle(element).fontSize).toBe('18px');
     expect(MndwButton.styles.cssText).toContain('font-size: inherit');
+  });
+});
+
+/** The variant selector carries single quotes of its own, hence the template literal. */
+function variantRule(variant: MndwButtonVariant, state = ''): string {
+  return `:host([variant='${variant}']) button${state}`;
+}
+
+describe('<mndw-button> danger variant', () => {
+  it('accepts danger as a fourth variant', () => {
+    const variants: MndwButtonVariant[] = ['primary', 'secondary', 'ghost', 'danger'];
+
+    expect(variants).toHaveLength(4);
+  });
+
+  it('reflects danger the way the shipped variants do', async () => {
+    const element = await mount('<mndw-button variant="danger">Delete</mndw-button>');
+
+    expect(element.variant).toBe('danger');
+    expect(element.getAttribute('variant')).toBe('danger');
+
+    element.variant = 'secondary';
+    await element.updateComplete;
+
+    expect(element.getAttribute('variant')).toBe('secondary');
+  });
+
+  it('leaves the default and the shipped variants untouched', async () => {
+    const element = await mount('<mndw-button>Cancel</mndw-button>');
+    const {cssText} = MndwButton.styles;
+
+    expect(element.variant).toBe('secondary');
+    expect(cssText).toContain(variantRule('primary'));
+    expect(cssText).toContain(variantRule('secondary'));
+    expect(cssText).toContain(variantRule('ghost'));
+  });
+
+  it('keeps the inner button native under the danger variant', async () => {
+    const element = await mount('<mndw-button variant="danger">Delete</mndw-button>');
+    const inner = innerButton(element);
+    let seen = 0;
+
+    expect(MndwButton.shadowRootOptions.delegatesFocus).toBe(true);
+    expect(inner.localName).toBe('button');
+    expect(inner.getAttribute('type')).toBe('button');
+    expect(inner.disabled).toBe(false);
+
+    document.body.addEventListener('click', () => {
+      seen += 1;
+    });
+    inner.click();
+
+    expect(seen).toBe(1);
+  });
+
+  it('still gates activation while a danger button is disabled', async () => {
+    const element = await mount('<mndw-button variant="danger" disabled>Delete</mndw-button>');
+
+    expect(innerButton(element).disabled).toBe(true);
+  });
+
+  it('tints danger from the emitted tokens rather than filling it solid', () => {
+    const {cssText} = MndwButton.styles;
+
+    expect(cssText).toContain(variantRule('danger'));
+    expect(cssText).toContain(variantRule('danger', ':hover'));
+    expect(cssText).toContain('var(--mndw-danger-bg)');
+    expect(cssText).toContain('var(--mndw-danger)');
+    // The palette models `danger` as a foreground and emits no contrast pair for it, so a solid
+    // danger fill would be an unvalidated colour combination.
+    expect(cssText).not.toContain('--mndw-danger-contrast');
   });
 });

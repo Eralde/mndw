@@ -151,6 +151,43 @@ func TestOpenQuarantinesUnusableFiles(t *testing.T) {
 	}
 }
 
+func TestOpenQuarantinesLegacy14TokenPalette(t *testing.T) {
+	path := storePath(t)
+	current := valid()
+	legacyTheme := func(tokens ThemeTokens) map[string]string {
+		return map[string]string{
+			"bg": tokens.Bg, "surface": tokens.Surface, "surfaceRaised": tokens.SurfaceRaised,
+			"border": tokens.Border, "textSubtle": tokens.TextSubtle, "textMuted": tokens.TextMuted,
+			"text": tokens.Text, "accent": tokens.Accent, "accentHover": tokens.AccentHover,
+			"accentContrast": tokens.AccentContrast, "danger": tokens.Danger, "dangerBg": tokens.DangerBg,
+			"success": tokens.Success, "warning": tokens.Warning,
+		}
+	}
+	documentBytes, err := json.Marshal(map[string]any{
+		"version": schemaVersion,
+		"palette": map[string]any{
+			"dark": legacyTheme(current.Dark), "light": legacyTheme(current.Light),
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal legacy document: %v", err)
+	}
+	if err := os.WriteFile(path, documentBytes, 0o644); err != nil {
+		t.Fatalf("seed legacy file: %v", err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open on legacy document = %v, want nil", err)
+	}
+	if _, ok := store.Get(); ok {
+		t.Error("legacy document became an active palette")
+	}
+	if _, err := os.Stat(path + ".bak"); err != nil {
+		t.Errorf("legacy document was not quarantined: %v", err)
+	}
+}
+
 func TestConcurrentSetsAreSerialized(t *testing.T) {
 	store, err := Open(storePath(t))
 	if err != nil {

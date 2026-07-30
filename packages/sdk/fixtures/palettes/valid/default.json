@@ -13,7 +13,14 @@
     "danger": "#c5001b",
     "dangerBg": "#ffd2cc",
     "success": "#5cb572",
-    "warning": "#efa831"
+    "successBg": "#05210d",
+    "warning": "#efa831",
+    "warningBg": "#271700",
+    "info": "#016ca5",
+    "infoBg": "#cde9ff",
+    "focusRing": "#338ac5",
+    "surfaceHover": "#1e2022",
+    "shadowColor": "#0102038c"
   },
   "light": {
     "bg": "#f7fcfd",
@@ -29,6 +36,13 @@
     "danger": "#c5001b",
     "dangerBg": "#ffe9e6",
     "success": "#137738",
-    "warning": "#b37900"
+    "successBg": "#d7f9dc",
+    "warning": "#b37900",
+    "warningBg": "#281a05",
+    "info": "#016ca5",
+    "infoBg": "#e0f1ff",
+    "focusRing": "#004f7a",
+    "surfaceHover": "#e8edee",
+    "shadowColor": "#4145462e"
   }
 }

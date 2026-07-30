@@ -145,8 +145,8 @@ async function reset(): Promise<void> {
   <h3>Palette</h3>
 
   {#if refreshError}
-    <p
-      class="mndw-palette-manager__error"
+    <div
+      class="mndw-alert mndw-alert--danger"
       role="alert"
     >
       {refreshError}
@@ -163,7 +163,7 @@ async function reset(): Promise<void> {
       >
         Dismiss
       </button>
-    </p>
+    </div>
   {/if}
 
   {#if phase === 'loading'}
@@ -195,7 +195,7 @@ async function reset(): Promise<void> {
 
     {#if phase === 'importError'}
       <div
-        class="mndw-palette-manager__error"
+        class="mndw-alert mndw-alert--danger"
         role="alert"
       >
         <ul>
@@ -237,12 +237,6 @@ async function reset(): Promise<void> {
   gap: var(--mndw-space-3);
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
-}
-
-.mndw-palette-manager__error {
-  margin: 0;
-  color: var(--mndw-danger, var(--mndw-text));
-  font-size: var(--mndw-text-sm);
 }
 
 .mndw-palette-manager__actions {

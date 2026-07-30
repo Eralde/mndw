@@ -65,7 +65,7 @@ function stubRect(element: Element, produce: () => DOMRect): void {
 }
 
 async function mountWithGeometry(geometry: Geometry): Promise<MndwScrollArea> {
-  const area = document.createElement(MNDW_SCROLL_AREA_TAG) as MndwScrollArea;
+  const area = document.createElement(MNDW_SCROLL_AREA_TAG);
   const content = document.createElement('div');
 
   content.textContent = 'scroll content';
@@ -104,7 +104,7 @@ async function mountWithGeometry(geometry: Geometry): Promise<MndwScrollArea> {
 
 describe('<mndw-scroll-area>', () => {
   it('renders native viewport and bespoke scrollbar parts', async () => {
-    const area = document.createElement(MNDW_SCROLL_AREA_TAG) as MndwScrollArea;
+    const area = document.createElement(MNDW_SCROLL_AREA_TAG);
 
     document.body.appendChild(area);
     await area.updateComplete;
@@ -192,20 +192,21 @@ describe('<mndw-scroll-area>', () => {
     expect(scrollbar.style.display).not.toBe('none');
   });
 
-  it('keeps scrollbar defaults at usage sites for ancestor overrides', () => {
+  it('keeps scrollbar hooks at usage sites for ancestor overrides', () => {
     const styles = String(MndwScrollArea.styles);
 
-    expect(styles).toContain('var(--mndw-scrollbar-thumb,');
+    expect(styles).toContain('var(--mndw-scrollbar-thumb)');
     expect(styles).not.toMatch(/:host[^}]*--mndw-scrollbar-/);
   });
 
-  it('uses themed defaults for scrollbar appearance', () => {
+  it('uses emitted theme tokens for scrollbar appearance', () => {
     const styles = String(MndwScrollArea.styles);
 
-    expect(styles).toContain('var(--mndw-scrollbar-size, 10px)');
-    expect(styles).toContain('var(--mndw-scrollbar-track, var(--mndw-surface))');
-    expect(styles).toContain('var(--mndw-scrollbar-thumb, var(--mndw-accent))');
-    expect(styles).toContain('var(--mndw-scrollbar-thumb-hover, var(--mndw-accent-hover))');
+    expect(styles).toContain('var(--mndw-scrollbar-size)');
+    expect(styles).toContain('var(--mndw-scrollbar-track)');
+    expect(styles).toContain('var(--mndw-scrollbar-thumb)');
+    expect(styles).toContain('var(--mndw-scrollbar-thumb-hover)');
+    expect(styles).not.toContain('var(--mndw-scrollbar-size,');
   });
 
   it('refreshes geometry from viewport and content resize observers', async () => {
@@ -229,7 +230,7 @@ describe('<mndw-scroll-area>', () => {
   });
 
   it('retargets content observation on slotchange', async () => {
-    const area = document.createElement(MNDW_SCROLL_AREA_TAG) as MndwScrollArea;
+    const area = document.createElement(MNDW_SCROLL_AREA_TAG);
     const firstContent = document.createElement('div');
     const secondContent = document.createElement('div');
 

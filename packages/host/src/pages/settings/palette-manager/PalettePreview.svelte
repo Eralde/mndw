@@ -62,12 +62,12 @@ let byTheme = $derived(
   {/each}
 
   {#if error}
-    <p
-      class="mndw-palette-preview__error"
+    <div
+      class="mndw-alert mndw-alert--danger"
       role="alert"
     >
       {error}
-    </p>
+    </div>
   {/if}
 
   <div class="mndw-palette-preview__actions">
@@ -121,12 +121,6 @@ let byTheme = $derived(
 .mndw-palette-preview__warnings {
   font-size: var(--mndw-text-sm);
   color: var(--mndw-warning, var(--mndw-text));
-}
-
-.mndw-palette-preview__error {
-  margin: 0;
-  color: var(--mndw-danger, var(--mndw-text));
-  font-size: var(--mndw-text-sm);
 }
 
 .mndw-palette-preview__actions {

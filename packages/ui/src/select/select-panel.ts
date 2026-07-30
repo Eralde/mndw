@@ -34,7 +34,7 @@ export class MndwSelectPanel extends LitElement {
       width: 100%;
       max-width: 100%;
       overflow: hidden;
-      border: 1px solid var(--mndw-border);
+      border: var(--mndw-border-w) solid var(--mndw-border);
       border-radius: var(--mndw-radius-md);
       background: var(--mndw-surface-raised);
       box-shadow: var(--mndw-shadow-2);
@@ -47,7 +47,7 @@ export class MndwSelectPanel extends LitElement {
 
     .listbox {
       padding: var(--mndw-space-1);
-      padding-inline-end: calc(var(--mndw-space-1) + var(--mndw-scrollbar-size, var(--mndw-space-2)));
+      padding-inline-end: calc(var(--mndw-space-1) + var(--mndw-scrollbar-size));
       font-family: inherit;
       font-size: inherit;
     }
@@ -56,7 +56,6 @@ export class MndwSelectPanel extends LitElement {
       display: flex;
       flex-direction: column;
       min-height: 0;
-      max-height: var(--mndw-select-sheet-max-height, calc(100dvh - 54px));
       border: none;
       border-radius: 0;
       box-shadow: none;
@@ -74,7 +73,7 @@ export class MndwSelectPanel extends LitElement {
     }
 
     .option:hover {
-      background: color-mix(in srgb, var(--mndw-text) 8%, transparent);
+      background: var(--mndw-surface-hover);
     }
 
     .option:focus-visible {
@@ -259,5 +258,12 @@ export class MndwSelectPanel extends LitElement {
     this.dispatchEvent(
       new CustomEvent<PanelDismissDetail>('mndwpaneldismiss', {detail: {restoreFocus: true}}),
     );
+  }
+}
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- augmenting a DOM lib interface
+  interface HTMLElementTagNameMap {
+    'mndw-select-panel': MndwSelectPanel;
   }
 }

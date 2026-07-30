@@ -158,7 +158,7 @@ onMount(() => {
     </p>
   {:else if loadError}
     <div
-      class="mndw-plugin-manager__load-error"
+      class="mndw-alert mndw-alert--danger mndw-plugin-manager__notice"
       role="alert"
     >
       <p>{loadError}</p>
@@ -172,7 +172,7 @@ onMount(() => {
   {:else}
     {#if refreshError}
       <div
-        class="mndw-plugin-manager__refresh-error"
+        class="mndw-alert mndw-alert--danger mndw-plugin-manager__notice"
         role="alert"
       >
         <span>{refreshError}</span>
@@ -230,32 +230,28 @@ onMount(() => {
   font-weight: var(--mndw-weight-semibold);
 }
 
-.mndw-reload,
-.mndw-plugin-manager__refresh-error,
-.mndw-plugin-manager__load-error {
+.mndw-reload {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--mndw-space-2);
   padding: var(--mndw-space-3);
-  border: 1px solid var(--mndw-border);
+  border: 1px solid var(--mndw-accent);
   border-radius: var(--mndw-radius-sm);
   font-size: var(--mndw-text-sm);
 }
 
-.mndw-reload {
-  border-color: var(--mndw-accent);
-}
-
-.mndw-plugin-manager__refresh-error,
-.mndw-plugin-manager__load-error {
-  border-color: var(--mndw-danger);
-  color: var(--mndw-danger);
+/* Layout only. `.mndw-alert--danger` owns the box and the severity colours. */
+.mndw-plugin-manager__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mndw-space-2);
+  font-size: var(--mndw-text-sm);
 }
 
 .mndw-reload button,
-.mndw-plugin-manager__refresh-error button,
-.mndw-plugin-manager__load-error button {
+.mndw-plugin-manager__notice button {
   border: 1px solid var(--mndw-border);
   border-radius: var(--mndw-radius-sm);
   padding: var(--mndw-space-2) var(--mndw-space-3);

@@ -1,9 +1,12 @@
 <div class="tx-rx-widget">
     @if (error()) {
-        <div class="error">
+        <div
+            class="mndw-alert mndw-alert--danger notice"
+            role="alert"
+        >
             <span>{{ error() }}</span>
             <button
-                class="error__retry"
+                class="notice__retry"
                 (click)="retryLoad()"
             >
                 Retry
@@ -27,7 +30,7 @@
               }
             </mndw-select>
             @if (interfaceList().length === 0 && !loadingInterfaces()) {
-                <p class="empty-state__error">No network interfaces found</p>
+                <p class="mndw-alert mndw-alert--danger">No network interfaces found</p>
             }
         </div>
     } @else {

@@ -204,7 +204,10 @@ onMount(() => {
   </div>
 
   {#if error}
-    <div class="error">
+    <div
+      class="mndw-alert mndw-alert--danger notice"
+      role="alert"
+    >
       {error}
       <button
         class="retry-btn"
@@ -257,7 +260,8 @@ onMount(() => {
 .btn-group button:last-child { border-radius: 0 3px 3px 0; }
 .btn-group button:not(:last-child) { border-right: none; }
 .btn-group button.active { background: var(--mndw-accent); color: var(--mndw-accent-contrast); border-color: var(--mndw-accent); }
-.error { color: var(--mndw-danger); margin: 4px 0; padding: 4px 8px; background: var(--mndw-danger-bg); border-radius: 4px; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+/* Layout only. `.mndw-alert--danger` owns the box and the severity colours. */
+.notice { margin: 4px 0; font-size: 12px; display: flex; align-items: center; gap: 6px; }
 .retry-btn { margin-left: auto; padding: 2px 8px; border: 1px solid var(--mndw-danger); border-radius: 3px; background: var(--mndw-surface); color: var(--mndw-danger); font-size: 11px; cursor: pointer; }
 .msg { text-align: center; color: var(--mndw-text-subtle); padding: 16px; font-size: 13px; }
 .chart-wrap { flex: 1; min-height: 0; width: 100%; }

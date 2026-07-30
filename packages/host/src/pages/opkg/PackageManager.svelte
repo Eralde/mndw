@@ -50,6 +50,11 @@ const setStatus = (
   statusVariant = variant;
 };
 
+// The class layer names the severity `danger`; this component's callers say `error`.
+const statusSeverity = $derived(
+  statusVariant === 'error' ? 'danger' : statusVariant,
+);
+
 const fetchPackages = async (suppressStatus = false): Promise<void> => {
   loading = true;
   try {
@@ -410,7 +415,7 @@ onMount(() => {
 
   {#if statusMsg}
     <div
-      class="status-bar status-{statusVariant}"
+      class="status-bar mndw-alert mndw-alert--{statusSeverity}"
       role="status"
       aria-live="polite"
     >
@@ -656,25 +661,9 @@ tr:last-child td {
   margin-left: 2px;
 }
 
+/* Spacing only. `.mndw-alert` and its severity modifier own the box and the colours. */
 .status-bar {
   margin-top: 8px;
-  padding: 6px 10px;
-  border-radius: 4px;
   font-size: 0.8125rem;
-}
-
-.status-info {
-  background: color-mix(in srgb, var(--mndw-accent) 15%, transparent);
-  color: var(--mndw-accent);
-}
-
-.status-success {
-  background: color-mix(in srgb, var(--mndw-success) 15%, transparent);
-  color: var(--mndw-success);
-}
-
-.status-error {
-  background: color-mix(in srgb, var(--mndw-danger) 15%, transparent);
-  color: var(--mndw-danger);
 }
 </style>

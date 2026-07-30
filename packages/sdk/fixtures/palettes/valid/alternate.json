@@ -13,7 +13,14 @@
     "danger": "#ff0000",
     "dangerBg": "#000000",
     "success": "#00ff00",
-    "warning": "#ffff00"
+    "successBg": "#000000",
+    "warning": "#ffff00",
+    "warningBg": "#000000",
+    "info": "#0000aa",
+    "infoBg": "#000000",
+    "focusRing": "#ffffff",
+    "surfaceHover": "#000000",
+    "shadowColor": "#0000008c"
   },
   "light": {
     "bg": "#ffffff",
@@ -29,6 +36,13 @@
     "danger": "#aa0000",
     "dangerBg": "#ffffff",
     "success": "#006600",
-    "warning": "#996600"
+    "successBg": "#ffffff",
+    "warning": "#996600",
+    "warningBg": "#ffffff",
+    "info": "#0000aa",
+    "infoBg": "#ffffff",
+    "focusRing": "#000000",
+    "surfaceHover": "#ffffff",
+    "shadowColor": "#0000002e"
   }
 }

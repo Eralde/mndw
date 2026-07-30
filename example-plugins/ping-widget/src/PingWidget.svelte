@@ -285,7 +285,9 @@ function renderHostCell(row: HostStats, state: RenameState): string {
     const feedback = state.status === 'saving'
       ? '<span class="rename-status" role="status">Saving…</span>'
       : state.status === 'error'
-      ? `<span class="rename-status error" role="alert">${
+      // Inline feedback beside an input inside a table cell, so this is a badge rather than a
+      // block alert — the class layer's inline severity form.
+      ? `<span class="mndw-badge mndw-badge--danger rename-feedback" role="alert">${
         escapeHtml(state.error)
       }</span>`
       : '';
@@ -532,7 +534,12 @@ onMount(() => {
   </div>
 
   {#if message}
-    <div class={`message ${isError ? 'error' : 'info'}`}>{message}</div>
+    <div
+      class={`mndw-alert mndw-alert--${isError ? 'danger' : 'info'} message`}
+      role={isError ? 'alert' : undefined}
+    >
+      {message}
+    </div>
   {/if}
 
   <div class="table-wrap">
@@ -702,23 +709,12 @@ h3 {
   padding-inline: var(--mndw-space-2);
 }
 
+/* Layout only. `.mndw-alert` and its severity modifier own the box and the colours. */
 .message {
   max-width: 100%;
   box-sizing: border-box;
-  padding: var(--mndw-space-1) var(--mndw-space-2);
-  border-radius: var(--mndw-radius-md);
   font-size: var(--mndw-text-xs);
   overflow-wrap: anywhere;
-}
-
-.message.info {
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-accent);
-}
-
-.message.error {
-  background: var(--mndw-danger-bg);
-  color: var(--mndw-danger);
 }
 
 .table-wrap {
@@ -856,8 +852,7 @@ thead {
   font-size: var(--mndw-text-xs);
 }
 
-:global(.ping-widget .rename-status.error) {
-  color: var(--mndw-danger);
+:global(.ping-widget .rename-feedback) {
   overflow-wrap: anywhere;
 }
 

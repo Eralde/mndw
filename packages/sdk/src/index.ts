@@ -55,7 +55,7 @@ export type {DependencyConsumer, SharedDependency} from '../shared-dependencies.
  * plugin context, but it does not reflect a device palette override — inside a
  * plugin, use `context.getTokens()` instead.
  */
-export {MNDW_TOKENS} from './tokens.js';
+export {MNDW_SCALE, MNDW_TOKENS} from './tokens.js';
 export type {MndwThemeName} from './tokens.js';
 export {
   contrastRatio,

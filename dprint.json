@@ -28,6 +28,7 @@
     "**/node_modules",
     "**/*-lock.json",
     "packages/host/scripts/templates",
+    "packages/sdk/src/tokens.ts",
     "example-plugins/dist",
     "example-plugins/*/dist",
     "**/*.go"

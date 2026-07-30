@@ -57,11 +57,6 @@
   font-size: var(--mndw-text-sm);
 }
 
-.mndw-dns-lookup-widget__error {
-  color: var(--mndw-error);
-  font-size: var(--mndw-text-sm);
-}
-
 .mndw-dns-lookup-widget__not-found {
   color: var(--mndw-warning-text, var(--mndw-text-muted));
   font-size: var(--mndw-text-sm);

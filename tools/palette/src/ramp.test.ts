@@ -8,6 +8,7 @@ import {
   oklchToHex,
   rampBetween,
   shiftLightness,
+  withAlpha,
 } from './ramp.js';
 
 describe('oklchToHex', () => {
@@ -82,5 +83,12 @@ describe('nudgeHexForContrast', () => {
 
     expect(contrastRatio(result, bg)).toBeGreaterThanOrEqual(4.5);
     expect(result).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
+
+describe('withAlpha', () => {
+  it('appends an 8-bit alpha channel without changing RGB channels', () => {
+    expect(withAlpha('#016ca5', 0.55)).toBe('#016ca58c');
+    expect(withAlpha('#abc', 0.18)).toBe('#aabbcc2e');
   });
 });

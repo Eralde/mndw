@@ -1,12 +1,11 @@
 import {type CSSResult, css} from 'lit';
 
 /**
- * Focus indicator shared by every control. Uses `--mndw-accent` against
- * `--mndw-surface-raised`; see the spec's caveat 13.5 — that pair is not contrast-validated
- * by the palette generator, so changes here are unguarded.
+ * Focus indicator shared by every control. Palette generator validates focus ring against
+ * `--mndw-surface-raised` at 3:1.
  */
 export const focusRing: CSSResult = css`
-  outline: 2px solid var(--mndw-accent);
+  outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
   outline-offset: 1px;
 `;
 

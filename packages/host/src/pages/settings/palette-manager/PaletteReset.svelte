@@ -51,12 +51,12 @@ function confirm(): void {
   {/if}
 
   {#if error}
-    <p
-      class="mndw-palette-reset__error"
+    <div
+      class="mndw-alert mndw-alert--danger"
       role="alert"
     >
       {error}
-    </p>
+    </div>
   {/if}
 </div>
 
@@ -66,11 +66,5 @@ function confirm(): void {
   flex-wrap: wrap;
   gap: var(--mndw-space-2);
   align-items: center;
-}
-
-.mndw-palette-reset__error {
-  margin: 0;
-  color: var(--mndw-danger, var(--mndw-text));
-  font-size: var(--mndw-text-sm);
 }
 </style>

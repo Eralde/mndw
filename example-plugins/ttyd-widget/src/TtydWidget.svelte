@@ -149,7 +149,12 @@ onMount(() => {
     </div>
   {:else if state === 'error'}
     <div class="screen">
-      <div class="error">{errorMessage}</div>
+      <div
+        class="mndw-alert mndw-alert--danger"
+        role="alert"
+      >
+        {errorMessage}
+      </div>
       <button
         class="primary"
         onclick={retryTerminal}
@@ -159,7 +164,12 @@ onMount(() => {
     </div>
   {:else if state === 'disconnected'}
     <div class="screen">
-      <div class="error">Connection lost</div>
+      <div
+        class="mndw-alert mndw-alert--danger"
+        role="alert"
+      >
+        Connection lost
+      </div>
       <button
         class="primary"
         onclick={retryTerminal}
@@ -298,11 +308,6 @@ onMount(() => {
   border: 2px solid #2a3039;
   border-top-color: #2f81f7;
   animation: spin 0.8s linear infinite;
-}
-
-.error {
-  color: #ff7b72;
-  font-size: 12px;
 }
 
 @keyframes spin {

@@ -133,6 +133,10 @@ const sizeStyle = $derived.by(() => {
   border-bottom: 1px solid var(--mndw-border);
 }
 
+.mndw-overlay-dialog--sheet .mndw-overlay-dialog__header {
+  flex-shrink: 0;
+}
+
 .mndw-overlay-dialog__title {
   margin: 0;
   font-size: 15px;
@@ -172,7 +176,7 @@ const sizeStyle = $derived.by(() => {
 }
 .mndw-overlay-dialog--sheet .mndw-overlay-dialog__body {
   flex: 0 1 auto;
-  max-height: calc(100dvh - 54px);
+  min-height: 0;
   overflow: auto;
 }
 

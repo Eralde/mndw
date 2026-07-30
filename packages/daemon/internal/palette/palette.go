@@ -24,7 +24,14 @@ type ThemeTokens struct {
 	Danger         string `json:"danger"`
 	DangerBg       string `json:"dangerBg"`
 	Success        string `json:"success"`
+	SuccessBg      string `json:"successBg"`
 	Warning        string `json:"warning"`
+	WarningBg      string `json:"warningBg"`
+	Info           string `json:"info"`
+	InfoBg         string `json:"infoBg"`
+	FocusRing      string `json:"focusRing"`
+	SurfaceHover   string `json:"surfaceHover"`
+	ShadowColor    string `json:"shadowColor"`
 }
 
 type Palette struct {
@@ -47,7 +54,14 @@ func (t ThemeTokens) named() [][2]string {
 		{"danger", t.Danger},
 		{"dangerBg", t.DangerBg},
 		{"success", t.Success},
+		{"successBg", t.SuccessBg},
 		{"warning", t.Warning},
+		{"warningBg", t.WarningBg},
+		{"info", t.Info},
+		{"infoBg", t.InfoBg},
+		{"focusRing", t.FocusRing},
+		{"surfaceHover", t.SurfaceHover},
+		{"shadowColor", t.ShadowColor},
 	}
 }
 

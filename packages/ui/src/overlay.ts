@@ -148,6 +148,7 @@ function createFallbackSheet(options: UiLayerOptions): UiLayer {
 
   header.className = 'mndw-ui-sheet__header';
   header.style.display = 'flex';
+  header.style.flexShrink = '0';
   header.style.alignItems = 'center';
   header.style.justifyContent = 'space-between';
 
@@ -165,11 +166,18 @@ function createFallbackSheet(options: UiLayerOptions): UiLayer {
 
   body.className = 'mndw-ui-sheet__body';
   body.style.flex = '0 1 auto';
+  body.style.display = 'flex';
+  body.style.flexDirection = 'column';
   body.style.minHeight = '0';
-  body.style.maxHeight = 'calc(100dvh - 54px)';
   body.style.overflow = 'hidden';
 
   const contentElement = document.createElement('div');
+
+  contentElement.style.display = 'flex';
+  contentElement.style.flex = '1 1 auto';
+  contentElement.style.flexDirection = 'column';
+  contentElement.style.minHeight = '0';
+  contentElement.style.overflow = 'hidden';
 
   let settle = (_reason: UiCloseReason): void => {};
   const closed = new Promise<UiCloseReason>((resolve) => {

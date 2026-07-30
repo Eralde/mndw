@@ -1,5 +1,5 @@
 import {contrastRatio} from './contrast.js';
-import {nudgeHexForContrast, oklchOf, oklchToHex, rampBetween, shiftLightness} from './ramp.js';
+import {nudgeHexForContrast, oklchOf, oklchToHex, rampBetween, shiftLightness, withAlpha} from './ramp.js';
 
 export type ThemeName = 'light' | 'dark';
 
@@ -17,16 +17,24 @@ export type TokenName =
   | 'danger'
   | 'dangerBg'
   | 'success'
-  | 'warning';
+  | 'successBg'
+  | 'warning'
+  | 'warningBg'
+  | 'info'
+  | 'infoBg'
+  | 'focusRing'
+  | 'surfaceHover'
+  | 'shadowColor';
 
 // Base colors are given as HEX inputs; every other token is derived from them.
 // `bg` and `text` are provided per theme; `primary`/`danger` stay constant so
-// the brand reads the same across themes. `success`/`warning` are optional.
+// the brand reads the same across themes. `success`/`warning`/`info` are optional.
 export interface Seed {
   primary: string;
   danger: string;
   success?: string;
   warning?: string;
+  info?: string;
   bg: Record<ThemeName, string>;
   text: Record<ThemeName, string>;
   steps: number;
@@ -42,7 +50,7 @@ export const SEED: Seed = {
 };
 
 // Contrast targets per semantic pairing.
-const PAIRS: {fg: TokenName; bg: TokenName; min: number}[] = [
+export const PAIRS: {fg: TokenName; bg: TokenName; min: number}[] = [
   {fg: 'text', bg: 'surface', min: 4.5},
   {fg: 'text', bg: 'bg', min: 4.5},
   {fg: 'textMuted', bg: 'surface', min: 4.5},
@@ -50,23 +58,46 @@ const PAIRS: {fg: TokenName; bg: TokenName; min: number}[] = [
   {fg: 'border', bg: 'surface', min: 3},
   {fg: 'accentContrast', bg: 'accent', min: 4.5},
   {fg: 'danger', bg: 'dangerBg', min: 4.5},
+  {fg: 'text', bg: 'surfaceRaised', min: 4.5},
+  {fg: 'text', bg: 'surfaceHover', min: 4.5},
+  {fg: 'textSubtle', bg: 'surfaceRaised', min: 4.5},
+  {fg: 'textMuted', bg: 'surfaceRaised', min: 4.5},
+  {fg: 'border', bg: 'surfaceRaised', min: 3},
+  {fg: 'focusRing', bg: 'surfaceRaised', min: 3},
+  {fg: 'success', bg: 'successBg', min: 4.5},
+  {fg: 'warning', bg: 'warningBg', min: 4.5},
+  {fg: 'info', bg: 'infoBg', min: 4.5},
 ];
 
 // Nudge failing derived tokens along their own hue until they clear the target.
 // bg/text/primary/danger are user inputs and stay pinned; only derivatives move.
 function enforceContrast(palette: Record<TokenName, string>): void {
-  const fixups: {token: TokenName; against: TokenName; min: number}[] = [
-    {token: 'textMuted', against: 'surface', min: 4.5},
-    {token: 'textSubtle', against: 'surface', min: 4.5},
-    {token: 'border', against: 'surface', min: 3},
-    {token: 'dangerBg', against: 'danger', min: 4.5},
-  ];
-
-  for (const fix of fixups) {
-    if (contrastRatio(palette[fix.token], palette[fix.against]) < fix.min) {
-      palette[fix.token] = nudgeHexForContrast(palette[fix.token], palette[fix.against], fix.min);
+  const nudge = (token: TokenName, against: TokenName, min: number): void => {
+    if (contrastRatio(palette[token], palette[against]) < min) {
+      palette[token] = nudgeHexForContrast(palette[token], palette[against], min);
     }
-  }
+  };
+
+  // Pass 1: settle derivative surfaces against pinned body text.
+  nudge('surfaceRaised', 'text', 4.5);
+  nudge('surfaceHover', 'text', 4.5);
+
+  // Pass 2: settle foreground derivatives against whichever surface is harder
+  // for them to read, then settle each status background against its foreground.
+  const worseSurface = (token: TokenName): TokenName =>
+    contrastRatio(palette[token], palette.surface)
+        <= contrastRatio(palette[token], palette.surfaceRaised)
+      ? 'surface'
+      : 'surfaceRaised';
+
+  nudge('textMuted', worseSurface('textMuted'), 4.5);
+  nudge('textSubtle', worseSurface('textSubtle'), 4.5);
+  nudge('border', worseSurface('border'), 3);
+  nudge('focusRing', 'surfaceRaised', 3);
+  nudge('dangerBg', 'danger', 4.5);
+  nudge('successBg', 'success', 4.5);
+  nudge('warningBg', 'warning', 4.5);
+  nudge('infoBg', 'info', 4.5);
 }
 
 export function buildPalette(theme: ThemeName, seed: Seed = SEED): Record<TokenName, string> {
@@ -97,7 +128,20 @@ export function buildPalette(theme: ThemeName, seed: Seed = SEED): Record<TokenN
   const dangerHue = oklchOf(danger);
   const dangerBg = oklchToHex(theme === 'dark' ? 0.22 : 0.95, dangerHue.c * 0.4, dangerHue.h);
   const success = seed.success ?? oklchToHex(theme === 'dark' ? 0.7 : 0.5, 0.13, 150);
+  const successHue = oklchOf(success);
+  const successBg = oklchToHex(theme === 'dark' ? 0.22 : 0.95, successHue.c * 0.4, successHue.h);
   const warning = seed.warning ?? oklchToHex(theme === 'dark' ? 0.78 : 0.62, 0.15, 75);
+  const warningHue = oklchOf(warning);
+  const warningBg = oklchToHex(theme === 'dark' ? 0.22 : 0.95, warningHue.c * 0.4, warningHue.h);
+  const info = seed.info ?? seed.primary;
+  const infoHue = oklchOf(info);
+  const infoBg = oklchToHex(theme === 'dark' ? 0.22 : 0.95, infoHue.c * 0.4, infoHue.h);
+  const focusRing = shiftLightness(accent, theme === 'dark' ? 0.1 : -0.1);
+  const surfaceHover = shiftLightness(surfaceRaised, theme === 'dark' ? 0.04 : -0.03);
+  const shadowColor = withAlpha(
+    shiftLightness(bg, theme === 'dark' ? -0.02 : -0.6),
+    theme === 'dark' ? 0.55 : 0.18,
+  );
 
   const palette: Record<TokenName, string> = {
     bg,
@@ -113,7 +157,14 @@ export function buildPalette(theme: ThemeName, seed: Seed = SEED): Record<TokenN
     danger,
     dangerBg,
     success,
+    successBg,
     warning,
+    warningBg,
+    info,
+    infoBg,
+    focusRing,
+    surfaceHover,
+    shadowColor,
   };
 
   enforceContrast(palette);

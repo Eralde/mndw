@@ -131,12 +131,12 @@ describe('App', () => {
 
     await flushPromises();
 
-    expect(document.querySelector('.app__error')).not.toBeNull();
+    expect(document.querySelector('.mndw-alert--danger')).not.toBeNull();
 
     vi.advanceTimersByTime(30_000);
     await flushPromises();
 
-    expect(document.querySelector('.app__error')).toBeNull();
+    expect(document.querySelector('.mndw-alert--danger')).toBeNull();
     expect(document.body.textContent).toContain('Keenetic Giga');
 
     app.unmount();

@@ -49,9 +49,9 @@ function fullText(seconds: number | null): string | undefined {
   <p v-if="loading && clients.length === 0" class="clients-table__status" role="status">
     Loading clients…
   </p>
-  <p v-else-if="error !== null" class="clients-table__error" role="alert">
+  <div v-else-if="error !== null" class="mndw-alert mndw-alert--danger" role="alert">
     show device-list failed: {{ error }}
-  </p>
+  </div>
   <p v-else-if="clients.length === 0" class="clients-table__status" role="status">
     {{ emptyMessage }}
   </p>
@@ -149,13 +149,6 @@ function fullText(seconds: number | null): string | undefined {
 .clients-table__status {
   margin: 0;
   color: var(--mndw-text-muted);
-  font-family: var(--mndw-font-sans);
-  font-size: var(--mndw-text-sm);
-}
-
-.clients-table__error {
-  margin: 0;
-  color: var(--mndw-danger);
   font-family: var(--mndw-font-sans);
   font-size: var(--mndw-text-sm);
 }

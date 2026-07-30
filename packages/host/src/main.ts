@@ -1,5 +1,6 @@
 import '@mndw/sdk/tokens.css';
 import {defineMndwUi} from '@mndw/ui';
+import '@mndw/ui/styles.css';
 import './styles/global.css';
 import {firstValueFrom, timeout} from 'rxjs';
 import {mount} from 'svelte';

@@ -116,7 +116,7 @@ describe('PendingApprovals', () => {
       actionError: {name: 'network-tools', message: 'Approval failed'},
     });
 
-    const error = target.querySelector('.mndw-pending__error');
+    const error = target.querySelector('.mndw-alert--danger');
 
     expect(error?.getAttribute('role')).toBe('alert');
     expect(error?.textContent).toContain('Approval failed');

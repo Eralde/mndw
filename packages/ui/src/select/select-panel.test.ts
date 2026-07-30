@@ -22,7 +22,7 @@ const options: OptionModel[] = [
 async function mount(value = ''): Promise<MndwSelectPanel> {
   document.body.innerHTML = '';
 
-  const panel = document.createElement(MNDW_SELECT_PANEL_TAG) as MndwSelectPanel;
+  const panel = document.createElement(MNDW_SELECT_PANEL_TAG);
 
   panel.options = options;
   panel.value = value;
@@ -77,10 +77,11 @@ describe('<mndw-select-panel>', () => {
     expect(panel.shadowRoot?.querySelector(MNDW_SCROLL_AREA_TAG)).not.toBeNull();
   });
 
-  it('caps sheet height on the panel host and stays a flex column', () => {
+  it('keeps sheet panel content-sized and stays a flex column', () => {
     const styles = String(MndwSelectPanel.styles);
 
-    expect(styles).toContain('max-height: var(--mndw-select-sheet-max-height, calc(100dvh - 54px));');
+    expect(styles).not.toContain('--mndw-select-sheet-max-height');
+    expect(styles).not.toContain('54px');
     expect(styles).toMatch(/:host\(\[sheet\]\)\s*\{/);
     expect(styles).not.toMatch(/:host\(\[sheet\]\)\s*\{[^}]*display:\s*block/);
     expect(styles).not.toMatch(/:host\(\[sheet\]\)\s*\{[^}]*height:\s*auto/);
@@ -90,7 +91,7 @@ describe('<mndw-select-panel>', () => {
     const styles = String(MndwSelectPanel.styles);
 
     expect(styles).toMatch(/:host\s*\{[^}]*\swidth:\s*100%;/);
-    expect(styles).toMatch(/:host\s*\{[^}]*border:\s*1px solid var\(--mndw-border\);/);
+    expect(styles).toMatch(/:host\s*\{[^}]*border:\s*var\(--mndw-border-w\) solid var\(--mndw-border\);/);
     expect(styles).not.toMatch(/\.listbox\s*\{[^}]*border:\s*1px solid var\(--mndw-border\);/);
   });
 
@@ -100,7 +101,7 @@ describe('<mndw-select-panel>', () => {
     const scrollArea = panel.shadowRoot?.querySelector(MNDW_SCROLL_AREA_TAG);
 
     expect(panel.shadowRoot?.querySelector('mndw-scroll-area [role="listbox"]')).not.toBeNull();
-    expect(styles).toMatch(/:host\s*\{[^}]*border:\s*1px solid var\(--mndw-border\);/);
+    expect(styles).toMatch(/:host\s*\{[^}]*border:\s*var\(--mndw-border-w\) solid var\(--mndw-border\);/);
     expect(styles).toMatch(/:host\s*\{[^}]*border-radius:\s*var\(--mndw-radius-md\);/);
     expect(styles).toContain('overflow: hidden;');
     expect(styles).toContain('padding-inline-end:');
@@ -265,7 +266,7 @@ describe('<mndw-select-panel>', () => {
   it('renders every option when two share a value', async () => {
     document.body.innerHTML = '';
 
-    const panel = document.createElement(MNDW_SELECT_PANEL_TAG) as MndwSelectPanel;
+    const panel = document.createElement(MNDW_SELECT_PANEL_TAG);
 
     panel.options = [
       {value: 'eth0', label: 'LAN', labelNodes: [], disabled: false},

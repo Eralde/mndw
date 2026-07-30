@@ -1,10 +1,12 @@
-import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
+import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
+import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
 import {deepActiveElement} from '../focus.js';
+import {FormAssociatedController} from '../forms/form-associated.js';
 import {type UiCloseReason, type UiLayer, type UiLayerPresentation, getOverlayProvider} from '../overlay.js';
+import {SELECT_VIEWPORT_PADDING, availablePopoverHeight, selectPresentation} from '../position/position.js';
 import {controlBase, focusRing, hostTypography} from '../styles/base.js';
 import {MNDW_OPTION_CHANGE_EVENT} from './option.js';
 import {type OptionModel, readOptions} from './option-model.js';
-import {SELECT_VIEWPORT_PADDING, availablePopoverHeight, selectPresentation} from './select-position.js';
 import {
   MNDW_SELECT_PANEL_TAG,
   type MndwSelectPanel,
@@ -19,6 +21,7 @@ export interface MndwSelectChangeDetail {
 }
 
 const PANEL_MIN_WIDTH = 180;
+let nextGeneratedLabelId = 0;
 
 type SelectOpenFocus = 'selected' | 'first' | 'last';
 
@@ -52,10 +55,18 @@ const samePopoverGeometry = (left: PopoverGeometry | null, right: PopoverGeometr
 };
 
 export class MndwSelect extends LitElement {
+  public static readonly formAssociated = true;
+
+  /** A non-empty `label` is the accessible name; its children are options, never labels. */
+  public static readonly mndwLabelSource: MndwLabelSource = 'label-property';
+
   public static readonly properties: PropertyDeclarations = {
     value: {type: String},
     placeholder: {type: String},
     disabled: {type: Boolean, reflect: true},
+    required: {type: Boolean, reflect: true},
+    invalid: {type: Boolean, reflect: true},
+    name: {type: String, reflect: true},
     panelClass: {type: String, attribute: 'panel-class'},
     label: {type: String},
     open: {type: Boolean, state: true},
@@ -74,7 +85,7 @@ export class MndwSelect extends LitElement {
       opacity: 0.5;
     }
 
-    button {
+    [part='trigger'] {
       ${controlBase}
 
       display: flex;
@@ -89,7 +100,7 @@ export class MndwSelect extends LitElement {
       cursor: pointer;
     }
 
-    button:focus-visible {
+    :host(:focus-visible) {
       ${focusRing}
     }
 
@@ -112,6 +123,9 @@ export class MndwSelect extends LitElement {
   declare public value: string;
   declare public placeholder: string;
   declare public disabled: boolean;
+  declare public required: boolean;
+  declare public invalid: boolean;
+  declare public name: string;
   declare public panelClass: string;
   declare public label: string;
   declare public open: boolean;
@@ -123,20 +137,33 @@ export class MndwSelect extends LitElement {
   private popoverFrame: number | null = null;
   private popoverGeometry: PopoverGeometry | null = null;
   private popoverNeedsReposition = false;
-  private readonly internals = typeof this.attachInternals === 'function' ? this.attachInternals() : null;
+  private readonly formState = new FormAssociatedController(this, {
+    isExplicitlyDisabled: () => this.disabled,
+    onReset: () => this.resetForm(),
+    onStateRestore: (state) => this.restoreFormState(state),
+    onDisabledChange: () => {
+      this.requestUpdate();
+    },
+  });
 
   constructor() {
     super();
     this.value = '';
     this.placeholder = 'Select…';
     this.disabled = false;
+    this.required = false;
+    this.invalid = false;
+    this.name = '';
     this.panelClass = '';
     this.label = '';
     this.open = false;
+    this.addEventListener('click', this.onTriggerClick);
+    this.addEventListener('keydown', this.onTriggerKeydown);
   }
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    this.formState.captureInitialAttributes(['value']);
     this.addEventListener(MNDW_OPTION_CHANGE_EVENT, this.onOptionChange);
   }
 
@@ -146,28 +173,100 @@ export class MndwSelect extends LitElement {
     this.closePanel(false);
   }
 
+  public formDisabledCallback(disabled: boolean): void {
+    this.formState.formDisabledCallback(disabled);
+  }
+
+  public formResetCallback(): void {
+    this.formState.formResetCallback();
+  }
+
+  public formStateRestoreCallback(state: string | File | FormData | null, mode: 'autocomplete' | 'restore'): void {
+    this.formState.formStateRestoreCallback(state, mode);
+  }
+
+  public refreshAccessibleName(): void {
+    this.requestUpdate();
+  }
+
   protected override render(): TemplateResult {
     const selected = this.options().find((option) => option.value === this.value);
 
     return html`
-      <button
+      <div
         part="trigger"
-        type="button"
-        role="combobox"
-        aria-haspopup="listbox"
-        aria-expanded=${String(this.open)}
-        aria-label=${this.label}
-        aria-disabled=${String(this.disabled)}
-        @click=${this.onTriggerClick}
+        aria-hidden="true"
         @keydown=${this.onTriggerKeydown}
       >
         <span class="value ${selected ? '' : 'placeholder'}" part="value">
           ${selected ? selected.label : this.placeholder}
         </span>
         <span class="indicator" part="indicator" aria-hidden="true">▾</span>
-      </button>
+      </div>
       <slot hidden @slotchange=${this.onSlotChange}></slot>
     `;
+  }
+
+  protected override updated(changed: PropertyValues): void {
+    const effectiveDisabled = this.formState.effectiveDisabled;
+    const selected = this.options().find((option) => option.value === this.value);
+    const submittedValue = selected ? selected.value : null;
+
+    this.setAttribute('role', 'combobox');
+    this.setAttribute('aria-haspopup', 'listbox');
+    this.setAttribute('aria-expanded', String(this.open));
+    this.setAttribute('aria-disabled', String(effectiveDisabled));
+    this.setAttribute('aria-required', String(this.required));
+    this.tabIndex = effectiveDisabled ? -1 : 0;
+
+    if (this.formState.internals) {
+      this.formState.internals.ariaLabel = this.label || null;
+      this.formState.internals.ariaExpanded = String(this.open);
+      this.formState.internals.ariaHasPopup = 'listbox';
+      this.formState.internals.ariaDisabled = String(effectiveDisabled);
+      this.formState.internals.ariaRequired = String(this.required);
+
+      if (this.label) {
+        this.setAttribute('aria-label', this.label);
+        this.removeAttribute('aria-labelledby');
+        this.formState.internals.ariaLabelledByElements = [];
+      } else {
+        this.removeAttribute('aria-label');
+
+        const labels = this.formState.labels;
+
+        this.setExternalLabelIds(labels);
+        this.formState.internals.ariaLabelledByElements = labels;
+      }
+    } else if (this.label) {
+      this.setAttribute('aria-label', this.label);
+    } else {
+      this.removeAttribute('aria-label');
+    }
+
+    this.formState.setFormValue(submittedValue, this.value);
+
+    if (this.required && !selected) {
+      this.formState.setValidity({valueMissing: true}, 'Please select an option.');
+    } else {
+      this.formState.clearValidity();
+    }
+
+    const invalid = this.invalid
+      || (this.required && !selected)
+      || (this.formState.internals?.validity?.valid === false);
+
+    this.setAttribute('aria-invalid', String(invalid));
+
+    if (this.formState.internals) {
+      this.formState.internals.role = 'combobox';
+      this.formState.internals.ariaInvalid = String(invalid);
+    }
+
+    // A label source that changes after mount would leave a wrapping field's suppression stale.
+    if (changed.has('label') && changed.get('label') !== undefined) {
+      this.dispatchEvent(new Event(MNDW_LABEL_CHANGE_EVENT, {bubbles: true, composed: true}));
+    }
   }
 
   private options(): OptionModel[] {
@@ -201,6 +300,8 @@ export class MndwSelect extends LitElement {
   };
 
   private onTriggerKeydown = (event: KeyboardEvent): void => {
+    const fromShadowTrigger = event.currentTarget !== this;
+
     if (!['ArrowDown', 'ArrowUp', 'Enter', ' ', 'Home', 'End'].includes(event.key)) {
       return;
     }
@@ -216,34 +317,32 @@ export class MndwSelect extends LitElement {
 
       this.openPanel(focus);
     }
+
+    if (fromShadowTrigger) {
+      event.stopPropagation();
+    }
   };
 
-  private triggerElement(): HTMLButtonElement | null {
-    return this.renderRoot.querySelector('button');
-  }
-
   private openPanel(focus: SelectOpenFocus = 'selected'): void {
-    const anchor = this.triggerElement();
-
-    if (this.disabled || this.open || !anchor) {
+    if (this.formState.effectiveDisabled || this.open || !this.isConnected) {
       return;
     }
 
     const presentation = selectPresentation(window.innerWidth);
     const layer = getOverlayProvider().open({
-      anchor,
+      anchor: this,
       presentation,
       title: this.label || 'Select option',
       className: this.panelClass || undefined,
     });
 
     if (presentation === 'popover') {
-      this.applyPopoverSizing(layer, anchor);
+      this.applyPopoverSizing(layer, this);
       window.addEventListener('resize', this.onViewportChange);
       window.addEventListener('scroll', this.onViewportChange, true);
     }
 
-    const panel = document.createElement(MNDW_SELECT_PANEL_TAG) as MndwSelectPanel;
+    const panel = document.createElement(MNDW_SELECT_PANEL_TAG);
 
     panel.options = this.options();
     panel.value = this.value;
@@ -254,8 +353,8 @@ export class MndwSelect extends LitElement {
     panel.addEventListener('focusout', this.onPanelFocusOut);
     layer.contentElement.appendChild(panel);
 
-    if (this.internals && 'ariaControlsElements' in this.internals) {
-      this.internals.ariaControlsElements = [panel];
+    if (this.formState.internals && 'ariaControlsElements' in this.formState.internals) {
+      this.formState.internals.ariaControlsElements = [panel];
     }
 
     this.layer = layer;
@@ -328,19 +427,18 @@ export class MndwSelect extends LitElement {
     this.popoverFrame = null;
 
     const layer = this.layer;
-    const anchor = this.triggerElement();
 
-    if (this.presentation !== 'popover' || !layer || !anchor) {
+    if (this.presentation !== 'popover' || !layer) {
       return;
     }
 
-    const rect = anchor.getBoundingClientRect();
+    const rect = this.getBoundingClientRect();
     const geometry = readPopoverGeometry(rect);
 
     const geometryChanged = !samePopoverGeometry(this.popoverGeometry, geometry);
 
     if (geometryChanged) {
-      this.applyPopoverSizing(layer, anchor, rect);
+      this.applyPopoverSizing(layer, this, rect);
     }
 
     if ((this.popoverNeedsReposition || geometryChanged) && layer.contentElement.isConnected) {
@@ -353,13 +451,12 @@ export class MndwSelect extends LitElement {
 
   private readonly onViewportChange = (): void => {
     const layer = this.layer;
-    const anchor = this.triggerElement();
 
-    if (this.presentation !== 'popover' || !layer || !anchor) {
+    if (this.presentation !== 'popover' || !layer) {
       return;
     }
 
-    this.applyPopoverSizing(layer, anchor);
+    this.applyPopoverSizing(layer, this);
     layer.reposition();
     this.popoverNeedsReposition = false;
   };
@@ -376,7 +473,7 @@ export class MndwSelect extends LitElement {
       return;
     }
 
-    this.triggerElement()?.focus();
+    this.focus();
   }
 
   private readonly onPanelFocusOut = (event: FocusEvent): void => {
@@ -432,8 +529,8 @@ export class MndwSelect extends LitElement {
     this.panel?.removeEventListener('mndwpaneldismiss', this.onPanelDismiss);
     this.panel?.removeEventListener('focusout', this.onPanelFocusOut);
 
-    if (this.internals && 'ariaControlsElements' in this.internals) {
-      this.internals.ariaControlsElements = [];
+    if (this.formState.internals && 'ariaControlsElements' in this.formState.internals) {
+      this.formState.internals.ariaControlsElements = [];
     }
 
     this.panel = null;
@@ -457,5 +554,41 @@ export class MndwSelect extends LitElement {
     }
 
     return -1;
+  }
+
+  private resetForm(): void {
+    this.value = this.getAttribute('value') ?? this.options()[0]?.value ?? '';
+  }
+
+  private restoreFormState(state: string | File | FormData | null): void {
+    if (typeof state === 'string') {
+      this.value = state;
+    }
+  }
+
+  private setExternalLabelIds(labels: readonly HTMLLabelElement[]): void {
+    if (labels.length === 0) {
+      this.removeAttribute('aria-labelledby');
+
+      return;
+    }
+
+    const ids = labels.map((label) => {
+      if (!label.id) {
+        nextGeneratedLabelId += 1;
+        label.id = `mndw-select-label-${nextGeneratedLabelId}`;
+      }
+
+      return label.id;
+    });
+
+    this.setAttribute('aria-labelledby', ids.join(' '));
+  }
+}
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- augmenting a DOM lib interface
+  interface HTMLElementTagNameMap {
+    'mndw-select': MndwSelect;
   }
 }

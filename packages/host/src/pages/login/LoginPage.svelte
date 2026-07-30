@@ -8,6 +8,16 @@ let password = $state('');
 let error = $state('');
 let loading = $state(false);
 
+// `<mndw-input>` reports through `mndwinput` rather than a bindable `value`, so the two-way flow
+// is explicit: the property writes down, the event reads back up.
+function onUsernameInput(e: CustomEvent<{value: string}>): void {
+  username = e.detail.value;
+}
+
+function onPasswordInput(e: CustomEvent<{value: string}>): void {
+  password = e.detail.value;
+}
+
 function handleSubmit(e: Event): void {
   e.preventDefault();
   loading = true;
@@ -37,20 +47,32 @@ function handleSubmit(e: Event): void {
     onsubmit={handleSubmit}
   >
     <h1 class="mndw-login__title">mndw</h1>
-    <input
-      type="text"
-      placeholder="Username"
-      bind:value={username}
-      disabled={loading}
-    />
-    <input
-      type="password"
-      placeholder="Password"
-      bind:value={password}
-      disabled={loading}
-    />
+    <mndw-field label="Username">
+      <mndw-input
+        name="username"
+        autocomplete="username"
+        value={username}
+        disabled={loading}
+        onmndwinput={onUsernameInput}
+      ></mndw-input>
+    </mndw-field>
+    <mndw-field label="Password">
+      <mndw-input
+        type="password"
+        name="password"
+        autocomplete="current-password"
+        value={password}
+        disabled={loading}
+        onmndwinput={onPasswordInput}
+      ></mndw-input>
+    </mndw-field>
     {#if error}
-      <div class="mndw-login__error">{error}</div>
+      <div
+        class="mndw-alert mndw-alert--danger"
+        role="alert"
+      >
+        {error}
+      </div>
     {/if}
     <button
       type="submit"

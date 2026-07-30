@@ -215,12 +215,12 @@ function onDrop(event: DragEvent): void {
       {success}
     </p>
   {:else if status === 'error'}
-    <p
-      class="mndw-upload__error"
+    <div
+      class="mndw-alert mndw-alert--danger"
       role="alert"
     >
       {error}
-    </p>
+    </div>
   {/if}
 </div>
 
@@ -246,17 +246,12 @@ function onDrop(event: DragEvent): void {
 }
 
 .mndw-upload__status,
-.mndw-upload__success,
-.mndw-upload__error {
+.mndw-upload__success {
   margin: 0;
   font-size: var(--mndw-text-sm);
 }
 
 .mndw-upload__success {
   color: var(--mndw-success, var(--mndw-text));
-}
-
-.mndw-upload__error {
-  color: var(--mndw-danger, var(--mndw-text));
 }
 </style>

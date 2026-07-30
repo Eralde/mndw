@@ -86,8 +86,8 @@ describe('PluginUpload', () => {
     await drop(target, new File(['plugin'], 'plugin.tar.gz', {type: 'application/gzip'}));
 
     expect(uploadFile).not.toHaveBeenCalled();
-    expect(target.querySelector('.mndw-upload__error')?.textContent).toContain('ZIP');
-    expect(target.querySelector('.mndw-upload__error')?.getAttribute('role')).toBe('alert');
+    expect(target.querySelector('.mndw-alert--danger')?.textContent).toContain('ZIP');
+    expect(target.querySelector('.mndw-alert--danger')?.getAttribute('role')).toBe('alert');
 
     void unmount(component);
   });

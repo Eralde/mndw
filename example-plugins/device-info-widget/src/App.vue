@@ -75,7 +75,9 @@ onUnmounted(() => {
 <template>
   <div class="app">
     <div v-if="loading" class="app__loading">Loading&#8230;</div>
-    <div v-else-if="error || info === null" class="app__error">Failed to load device info</div>
+    <div v-else-if="error || info === null" class="mndw-alert mndw-alert--danger" role="alert">
+      Failed to load device info
+    </div>
     <div v-else>
       <div class="app__loads">
         <LoadBarChart label="CPU" :value="info.cpuLoadPercent" :history="info.cpuHistory"/>
@@ -117,11 +119,6 @@ onUnmounted(() => {
 .app__loading {
   padding: 16px;
   color: var(--mndw-text-subtle);
-}
-
-.app__error {
-  padding: 16px;
-  color: var(--mndw-danger);
 }
 
 .app__grid {

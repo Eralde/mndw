@@ -34,7 +34,8 @@ describe('render', () => {
     const html = renderView({state: 'error', message: 'timeout'});
 
     expect(html).toContain('timeout');
-    expect(html).toContain('dns-lookup-widget__error');
+    expect(html).toContain('mndw-alert mndw-alert--danger');
+    expect(html).toContain('role="alert"');
   });
 
   it('renders not-found state', () => {

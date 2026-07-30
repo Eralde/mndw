@@ -63,15 +63,47 @@
         font-weight: 700;
       }
 
+      /* Both themes at once: each pane carries its own palette as inline custom properties, which
+         inherit into every component's shadow DOM without touching :root. */
+      .previews {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+        gap: 16px;
+        margin-top: 12px;
+      }
+
       .preview {
-        margin-top: 24px;
         padding: 16px;
         border-radius: 8px;
+        min-height: 120px;
+      }
+
+      .preview__theme {
+        margin: 0 0 12px;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.7;
+      }
+
+      .gallery {
+        display: grid;
+        gap: 16px;
+      }
+
+      .gallery__group {
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
+        gap: 8px;
         align-items: center;
-        min-height: 120px;
+      }
+
+      .gallery__heading {
+        margin: 0;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        opacity: 0.6;
       }
     </style>
 </head>
@@ -94,7 +126,15 @@
 <div id="swatches" class="swatches"></div>
 <h2>WCAG contrast grid</h2>
 <table id="grid"></table>
-<div id="preview" class="preview"></div>
+<h2>Component preview</h2>
+<div class="previews">
+    <section id="preview-light" class="preview">
+        <p class="preview__theme">light</p>
+    </section>
+    <section id="preview-dark" class="preview">
+        <p class="preview__theme">dark</p>
+    </section>
+</div>
 <script type="module" src="./main.ts"></script>
 </body>
 </html>

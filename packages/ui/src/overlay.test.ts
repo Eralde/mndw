@@ -204,11 +204,13 @@ describe('fallback provider', () => {
     openFallback(anchor(), {presentation: 'sheet', title: 'Interface'});
 
     const surface = document.querySelector<HTMLElement>('.mndw-ui-sheet');
+    const header = document.querySelector<HTMLElement>('.mndw-ui-sheet__header');
     const body = document.querySelector<HTMLElement>('.mndw-ui-sheet__body');
 
     expect(surface?.style.height).toBe('auto');
     expect(surface?.style.maxHeight).toBe('100dvh');
-    expect(body?.style.maxHeight).toBe('calc(100dvh - 54px)');
+    expect(header?.style.flexShrink).toBe('0');
+    expect(body?.style.maxHeight).toBe('');
     expect(body?.style.minHeight).toBe('0');
     expect(body?.style.overflow).toBe('hidden');
   });

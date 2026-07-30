@@ -116,12 +116,12 @@ let {
           {/if}
 
           {#if actionError?.name === item.name}
-            <p
-              class="mndw-installed__error"
+            <div
+              class="mndw-alert mndw-alert--danger"
               role="alert"
             >
               {actionError.message}
-            </p>
+            </div>
           {/if}
 
           {#if item.source === 'user'}
@@ -262,17 +262,9 @@ let {
   font-size: var(--mndw-text-sm);
 }
 
-.mndw-installed__public,
-.mndw-installed__error {
-  font-size: var(--mndw-text-sm);
-}
-
 .mndw-installed__public {
   color: var(--mndw-warning);
-}
-
-.mndw-installed__error {
-  color: var(--mndw-danger);
+  font-size: var(--mndw-text-sm);
 }
 
 .mndw-installed__confirmation {

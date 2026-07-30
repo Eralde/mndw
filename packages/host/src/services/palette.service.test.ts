@@ -151,6 +151,7 @@ describe('getExportable, getTokens, and notifications', () => {
   it('uses compiled defaults without an applied override and ignores preview for reads', () => {
     expect(service.getExportable()).toEqual(MNDW_TOKENS);
     expect(service.getTokens()).toEqual(MNDW_TOKENS);
+    expect(Object.keys(service.getExportable().dark)).toHaveLength(21);
 
     service.previewOverride(override);
 

@@ -24,7 +24,14 @@ const TOKEN_NAMES = [
   'danger',
   'dangerBg',
   'success',
+  'successBg',
   'warning',
+  'warningBg',
+  'info',
+  'infoBg',
+  'focusRing',
+  'surfaceHover',
+  'shadowColor',
 ] as const;
 
 /** A structurally valid, contrast-clean palette: white-on-black dark, black-on-white light. */
@@ -34,18 +41,28 @@ function validMap(): PaletteTokenMap {
 
   dark.bg = '#000000';
   dark.surface = '#000000';
+  dark.surfaceRaised = '#000000';
+  dark.surfaceHover = '#000000';
   dark.accent = '#000000';
   dark.dangerBg = '#000000';
+  dark.successBg = '#000000';
+  dark.warningBg = '#000000';
+  dark.infoBg = '#000000';
   light.bg = '#ffffff';
   light.surface = '#ffffff';
+  light.surfaceRaised = '#ffffff';
+  light.surfaceHover = '#ffffff';
   light.accent = '#ffffff';
   light.dangerBg = '#ffffff';
+  light.successBg = '#ffffff';
+  light.warningBg = '#ffffff';
+  light.infoBg = '#ffffff';
 
   return {dark, light} as PaletteTokenMap;
 }
 
 describe('metadata', () => {
-  it('lists all 14 tokens in canonical order with kebab-case css vars', () => {
+  it('lists all 21 tokens in canonical order with kebab-case css vars', () => {
     expect(PALETTE_CSS_VARIABLES.map((entry) => entry.token)).toEqual([...TOKEN_NAMES]);
     expect(PALETTE_CSS_VARIABLES.map((entry) => entry.cssVar)).toEqual([
       '--mndw-bg',
@@ -61,12 +78,19 @@ describe('metadata', () => {
       '--mndw-danger',
       '--mndw-danger-bg',
       '--mndw-success',
+      '--mndw-success-bg',
       '--mndw-warning',
+      '--mndw-warning-bg',
+      '--mndw-info',
+      '--mndw-info-bg',
+      '--mndw-focus-ring',
+      '--mndw-surface-hover',
+      '--mndw-shadow-color',
     ]);
   });
 
-  it('declares the seven audited contrast pairs', () => {
-    expect(PALETTE_CONTRAST_PAIRS).toHaveLength(7);
+  it('declares all 16 audited contrast pairs', () => {
+    expect(PALETTE_CONTRAST_PAIRS).toHaveLength(16);
     expect(PALETTE_CONTRAST_PAIRS[0]).toEqual({fg: 'text', bg: 'surface', min: 4.5});
   });
 });
@@ -159,6 +183,21 @@ describe('validateImportedPalette structural rules', () => {
     expect(result.contrastWarnings).toEqual([]);
   });
 
+  it('rejects a legacy 14-token palette', () => {
+    const map = validMap() as unknown as Record<string, Record<string, string>>;
+
+    for (const theme of ['dark', 'light']) {
+      for (const token of ['successBg', 'warningBg', 'info', 'infoBg', 'focusRing', 'surfaceHover', 'shadowColor']) {
+        delete map[theme][token];
+      }
+    }
+
+    const result = validateImportedPalette(map);
+
+    expect(result.palette).toBeNull();
+    expect(result.structuralErrors).toHaveLength(14);
+  });
+
   it.each([[null], [undefined], ['a string'], [42], [[]]])('rejects the non-object input %p', (input) => {
     expect(validateImportedPalette(input).palette).toBeNull();
   });
@@ -193,16 +232,15 @@ describe('validateImportedPalette contrast warnings', () => {
   it('emits warnings dark-first then light', () => {
     const map = validMap();
 
-    // textMuted and textSubtle each appear in exactly one pair, so breaking them
-    // produces a predictable warning count. (Breaking `text` would fail both
-    // `text on surface` and `text on bg`.)
+    // textMuted and textSubtle each appear in two surface pairs, so breaking them
+    // produces a predictable warning count.
     map.dark.textMuted = map.dark.surface;
     map.dark.textSubtle = map.dark.surface;
     map.light.textMuted = map.light.surface;
 
     const themes = validateImportedPalette(map).contrastWarnings.map((w) => w.theme);
 
-    expect(themes).toEqual(['dark', 'dark', 'light']);
+    expect(themes).toEqual(['dark', 'dark', 'dark', 'dark', 'light', 'light']);
   });
 });
 
@@ -217,7 +255,7 @@ describe('shipped default palette', () => {
   it.each(
     [
       ['dark', 'danger', 'dangerBg', 4.53],
-      ['dark', 'border', 'surface', 3.11],
+      ['dark', 'border', 'surface', 3.26],
       ['light', 'border', 'surface', 3.23],
       ['dark', 'text', 'surface', 17.12],
       ['light', 'text', 'surface', 16.69],

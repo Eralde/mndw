@@ -1,4 +1,5 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
+import {MNDW_LABEL_CHANGE_EVENT} from '../field/field.js';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox.js';
 
 beforeAll(() => {
@@ -18,10 +19,10 @@ async function mount(html: string): Promise<MndwCheckbox> {
 }
 
 function box(element: MndwCheckbox): HTMLElement {
-  const found = element.shadowRoot?.querySelector<HTMLElement>('[role="checkbox"]');
+  const found = element.shadowRoot?.querySelector<HTMLElement>('[part="box"]');
 
   if (!found) {
-    throw new Error('missing role=checkbox');
+    throw new Error('missing checkbox box');
   }
 
   return found;
@@ -32,7 +33,27 @@ describe('<mndw-checkbox>', () => {
     const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>');
 
     expect(element.checked).toBe(false);
-    expect(box(element).getAttribute('aria-checked')).toBe('false');
+    expect(element.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('dispatches mndwlabelchange when slotted label text changes', async () => {
+    const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>');
+    const listener = vi.fn();
+
+    element.addEventListener(MNDW_LABEL_CHANGE_EVENT, listener);
+
+    const text = element.firstChild;
+
+    if (!text) {
+      throw new Error('missing slotted label text');
+    }
+
+    text.textContent = 'Show offline devices';
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('reflects the checked attribute for external styling', async () => {
@@ -40,13 +61,36 @@ describe('<mndw-checkbox>', () => {
 
     expect(element.checked).toBe(true);
     expect(element.hasAttribute('checked')).toBe(true);
-    expect(box(element).getAttribute('aria-checked')).toBe('true');
+    expect(element.getAttribute('aria-checked')).toBe('true');
   });
 
   it('reports indeterminate as mixed', async () => {
     const element = await mount('<mndw-checkbox indeterminate>Some</mndw-checkbox>');
 
-    expect(box(element).getAttribute('aria-checked')).toBe('mixed');
+    expect(element.getAttribute('aria-checked')).toBe('mixed');
+  });
+
+  it('restores checked from its authored attribute and clears indeterminate', async () => {
+    const element = await mount('<mndw-checkbox>Some</mndw-checkbox>');
+
+    element.checked = true;
+    element.indeterminate = true;
+    element.formResetCallback();
+    await element.updateComplete;
+
+    expect(element.checked).toBe(false);
+    expect(element.indeterminate).toBe(false);
+  });
+
+  it('restores checkbox state without changing its value', async () => {
+    const element = await mount('<mndw-checkbox value="wifi6">Some</mndw-checkbox>');
+
+    element.formStateRestoreCallback('indeterminate', 'restore');
+    await element.updateComplete;
+
+    expect(element.checked).toBe(false);
+    expect(element.indeterminate).toBe(true);
+    expect(element.value).toBe('wifi6');
   });
 
   it('exposes box, mark, and label parts', async () => {
@@ -70,9 +114,9 @@ describe('<mndw-checkbox>', () => {
   it('uses pointer cursor for the label and not-allowed when disabled', () => {
     const cssText = String(MndwCheckbox.styles);
 
-    expect(cssText).toContain("[part='label']");
+    expect(cssText).toContain('[part=\'label\']');
     expect(cssText).toContain('cursor: pointer');
-    expect(cssText).toContain(":host([disabled]) [part='label']");
+    expect(cssText).toContain(':host([disabled]) [part=\'label\']');
     expect(cssText).toContain('cursor: not-allowed');
   });
 
@@ -86,9 +130,28 @@ describe('<mndw-checkbox>', () => {
 
     expect(element.checked).toBe(true);
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect((onChange.mock.calls[0][0] as CustomEvent<{checked: boolean}>).detail).toEqual({
+    expect((onChange.mock.calls[0][0] as CustomEvent<{checked: boolean; indeterminate: boolean}>).detail).toEqual({
       checked: true,
+      indeterminate: false,
     });
+  });
+
+  it('exposes checkbox semantics on the host and makes its shadow box presentational', async () => {
+    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>');
+
+    expect(element.getAttribute('role')).toBe('checkbox');
+    expect(element.getAttribute('aria-checked')).toBe('false');
+    expect(element.getAttribute('tabindex')).toBe('0');
+    expect(box(element).getAttribute('role')).toBeNull();
+    expect(box(element).getAttribute('tabindex')).toBeNull();
+  });
+
+  it('exposes form lifecycle callbacks', async () => {
+    const element = await mount('<mndw-checkbox checked>Toggle</mndw-checkbox>');
+
+    expect(typeof element.formResetCallback).toBe('function');
+    expect(typeof element.formStateRestoreCallback).toBe('function');
+    expect(typeof element.formDisabledCallback).toBe('function');
   });
 
   it('emits a composed event that escapes the shadow root', async () => {
@@ -104,7 +167,7 @@ describe('<mndw-checkbox>', () => {
   it('toggles on Space and clears indeterminate', async () => {
     const element = await mount('<mndw-checkbox indeterminate>Some</mndw-checkbox>');
 
-    box(element).dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
+    element.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
     await element.updateComplete;
 
     expect(element.checked).toBe(true);
@@ -162,6 +225,7 @@ describe('<mndw-checkbox> with ElementInternals available', () => {
         return {
           setFormValue,
           states,
+          setValidity(): void {},
           get ariaChecked(): string | null {
             return ariaChecked;
           },
@@ -202,7 +266,7 @@ describe('<mndw-checkbox> with ElementInternals available', () => {
   it('reports no form value while unchecked', async () => {
     await mountProbe(`<${TAG}></${TAG}>`);
 
-    expect(setFormValue).toHaveBeenCalledWith(null);
+    expect(setFormValue).toHaveBeenCalledWith(null, expect.any(String));
   });
 
   it('reports the value once checked', async () => {
@@ -212,14 +276,14 @@ describe('<mndw-checkbox> with ElementInternals available', () => {
     element.checked = true;
     await element.updateComplete;
 
-    expect(setFormValue).toHaveBeenCalledWith('offline');
+    expect(setFormValue).toHaveBeenCalledWith('offline', expect.any(String));
   });
 
   it('defaults the submitted value to "on"', async () => {
     const element = await mountProbe(`<${TAG} checked></${TAG}>`);
 
     expect(element.value).toBe('on');
-    expect(setFormValue).toHaveBeenCalledWith('on');
+    expect(setFormValue).toHaveBeenCalledWith('on', expect.any(String));
   });
 
   it('clears the form value when unchecked again', async () => {
@@ -229,7 +293,7 @@ describe('<mndw-checkbox> with ElementInternals available', () => {
     element.checked = false;
     await element.updateComplete;
 
-    expect(setFormValue).toHaveBeenCalledWith(null);
+    expect(setFormValue).toHaveBeenCalledWith(null, expect.any(String));
   });
 
   it('synchronizes checked state to ElementInternals', async () => {

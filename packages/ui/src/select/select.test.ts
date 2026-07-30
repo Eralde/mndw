@@ -49,11 +49,11 @@ async function mount(markup = MARKUP): Promise<MndwSelect> {
   return element;
 }
 
-function trigger(element: MndwSelect): HTMLButtonElement {
-  const found = element.shadowRoot?.querySelector('button');
+function trigger(element: MndwSelect): HTMLElement {
+  const found = element.shadowRoot?.querySelector<HTMLElement>('[part="trigger"]');
 
   if (!found) {
-    throw new Error('missing trigger');
+    throw new Error('missing trigger part');
   }
 
   return found;
@@ -134,6 +134,24 @@ function fakeProvider(): {
 }
 
 describe('<mndw-select> trigger', () => {
+  it('is form-associated and exposes combobox semantics on the host', async () => {
+    const element = await mount();
+
+    expect(MndwSelect.formAssociated).toBe(true);
+    expect(element.getAttribute('role')).toBe('combobox');
+    expect(element.getAttribute('aria-expanded')).toBe('false');
+    expect(element.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('opens when the host receives activation', async () => {
+    const element = await mount();
+
+    element.click();
+    await element.updateComplete;
+
+    expect(element.open).toBe(true);
+  });
+
   it('shows the placeholder when nothing is selected', async () => {
     const element = await mount();
 
@@ -151,17 +169,46 @@ describe('<mndw-select> trigger', () => {
 
   it('is a combobox that reports collapsed state', async () => {
     const element = await mount();
-    const button = trigger(element);
 
-    expect(button.getAttribute('role')).toBe('combobox');
-    expect(button.getAttribute('aria-haspopup')).toBe('listbox');
-    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(element.getAttribute('role')).toBe('combobox');
+    expect(element.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(element.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('names the trigger from the label', async () => {
     const element = await mount();
 
-    expect(trigger(element).getAttribute('aria-label')).toBe('Interface');
+    expect(element.label).toBe('Interface');
+  });
+
+  it('restores the authored value or first option on form reset', async () => {
+    const element = await mount();
+
+    element.value = 'wifi';
+    element.formResetCallback();
+    await element.updateComplete;
+
+    expect(element.value).toBe('isp');
+  });
+
+  it('restores a string state without requiring a matching option', async () => {
+    const element = await mount();
+
+    element.formStateRestoreCallback('saved-value', 'restore');
+    await element.updateComplete;
+
+    expect(element.value).toBe('saved-value');
+  });
+
+  it('announces required and invalid state on the host', async () => {
+    const element = await mount();
+
+    element.required = true;
+    element.invalid = true;
+    await element.updateComplete;
+
+    expect(element.getAttribute('aria-required')).toBe('true');
+    expect(element.getAttribute('aria-invalid')).toBe('true');
   });
 });
 
@@ -172,7 +219,7 @@ describe('<mndw-select> opening', () => {
     await openPanel(element);
 
     expect(element.open).toBe(true);
-    expect(trigger(element).getAttribute('aria-expanded')).toBe('true');
+    expect(element.getAttribute('aria-expanded')).toBe('true');
   });
 
   it('passes the option model to the panel', async () => {
@@ -247,7 +294,7 @@ describe('<mndw-select> opening', () => {
   it('does not emit aria-controls when ElementInternals support is absent', async () => {
     const element = await mount();
 
-    expect(trigger(element).hasAttribute('aria-controls')).toBe(false);
+    expect(element.hasAttribute('aria-controls')).toBe(false);
   });
 
   it('does not open when disabled', async () => {
@@ -313,7 +360,7 @@ describe('<mndw-select> opening', () => {
 
     const element = await mount();
 
-    Object.defineProperty(trigger(element), 'getBoundingClientRect', {
+    Object.defineProperty(element, 'getBoundingClientRect', {
       value: () => ({top: 100, bottom: 132, width: 200} as DOMRect),
       configurable: true,
     });
@@ -343,7 +390,7 @@ describe('<mndw-select> opening', () => {
     const element = await mount();
     let rect = {top: 100, bottom: 132, width: 200};
 
-    Object.defineProperty(trigger(element), 'getBoundingClientRect', {
+    Object.defineProperty(element, 'getBoundingClientRect', {
       value: () => rect as DOMRect,
       configurable: true,
     });
@@ -373,7 +420,7 @@ describe('<mndw-select> opening', () => {
     const element = await mount();
     let rect = {top: 100, bottom: 132, width: 200};
 
-    Object.defineProperty(trigger(element), 'getBoundingClientRect', {
+    Object.defineProperty(element, 'getBoundingClientRect', {
       value: () => rect as DOMRect,
       configurable: true,
     });
@@ -448,7 +495,7 @@ describe('<mndw-select> opening', () => {
 
     const element = await mount();
 
-    Object.defineProperty(element.shadowRoot?.querySelector('button') as HTMLElement, 'getBoundingClientRect', {
+    Object.defineProperty(element, 'getBoundingClientRect', {
       value: () => ({top: 100, bottom: 132, width: 320} as DOMRect),
       configurable: true,
     });
@@ -471,7 +518,7 @@ describe('<mndw-select> opening', () => {
 
     const element = await mount();
 
-    Object.defineProperty(element.shadowRoot?.querySelector('button') as HTMLElement, 'getBoundingClientRect', {
+    Object.defineProperty(element, 'getBoundingClientRect', {
       value: () => ({top: 100, bottom: 132, width: 60} as DOMRect),
       configurable: true,
     });
@@ -512,6 +559,8 @@ describe('<mndw-select> opening', () => {
           set ariaControlsElements(value: Element[]) {
             controlled = value;
           },
+          setFormValue(): void {},
+          setValidity(): void {},
         } as unknown as ElementInternals;
       },
     });
@@ -602,7 +651,7 @@ describe('<mndw-select> selection', () => {
 
   it('restores focus to the trigger after selecting', async () => {
     const element = await mount();
-    const focus = vi.spyOn(trigger(element), 'focus');
+    const focus = vi.spyOn(element, 'focus');
     const opened = await openPanel(element);
 
     opened.dispatchEvent(new CustomEvent('mndwpanelselect', {detail: {value: 'isp'}}));
@@ -613,7 +662,7 @@ describe('<mndw-select> selection', () => {
 
   it('restores focus to the trigger on panel dismiss', async () => {
     const element = await mount();
-    const focus = vi.spyOn(trigger(element), 'focus');
+    const focus = vi.spyOn(element, 'focus');
     const opened = await openPanel(element);
 
     opened.dispatchEvent(new CustomEvent('mndwpaneldismiss', {detail: {restoreFocus: true}}));
@@ -630,7 +679,7 @@ describe('<mndw-select> externally closed layers', () => {
     setOverlayProvider(probe.provider);
 
     const element = await mount();
-    const focus = vi.spyOn(trigger(element), 'focus');
+    const focus = vi.spyOn(element, 'focus');
 
     await openPanel(element);
     probe.layers[0].settle('escape');
@@ -651,7 +700,7 @@ describe('<mndw-select> externally closed layers', () => {
 
     document.body.appendChild(elsewhere);
 
-    const focus = vi.spyOn(trigger(element), 'focus');
+    const focus = vi.spyOn(element, 'focus');
 
     await openPanel(element);
 
@@ -673,7 +722,7 @@ describe('<mndw-select> externally closed layers', () => {
     setOverlayProvider(probe.provider);
 
     const element = await mount();
-    const focus = vi.spyOn(trigger(element), 'focus');
+    const focus = vi.spyOn(element, 'focus');
 
     await openPanel(element);
     probe.layers[0].settle('outside');
@@ -689,7 +738,7 @@ describe('<mndw-select> externally closed layers', () => {
     setOverlayProvider(probe.provider);
 
     const element = await mount();
-    const focus = vi.spyOn(trigger(element), 'focus');
+    const focus = vi.spyOn(element, 'focus');
 
     await openPanel(element);
     probe.layers[0].settle('api');
@@ -705,7 +754,7 @@ describe('<mndw-select> externally closed layers', () => {
     setOverlayProvider(probe.provider);
 
     const element = await mount();
-    const focus = vi.spyOn(trigger(element), 'focus');
+    const focus = vi.spyOn(element, 'focus');
 
     await openPanel(element);
     element.remove();
@@ -769,7 +818,7 @@ describe('<mndw-select> option mutation', () => {
     element.value = 'wifi';
     await element.updateComplete;
 
-    const option = element.querySelectorAll(MNDW_OPTION_TAG)[1] as MndwOption;
+    const option = element.querySelectorAll(MNDW_OPTION_TAG)[1];
 
     option.textContent = 'Wireless 5GHz';
     await Promise.resolve();
@@ -804,7 +853,7 @@ describe('<mndw-select> teardown', () => {
 
   it('picks up options added after first render', async () => {
     const element = await mount();
-    const extra = document.createElement(MNDW_OPTION_TAG) as MndwOption;
+    const extra = document.createElement(MNDW_OPTION_TAG);
 
     extra.value = 'lte';
     extra.textContent = 'LTE';

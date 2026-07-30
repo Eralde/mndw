@@ -13,6 +13,13 @@
     "danger": "#ff0000",
     "dangerBg": "#000000",
     "success": "#00ff00",
-    "warning": "#ffff00"
+    "successBg": "#000000",
+    "warning": "#ffff00",
+    "warningBg": "#000000",
+    "info": "#0000aa",
+    "infoBg": "#000000",
+    "focusRing": "#ffffff",
+    "surfaceHover": "#000000",
+    "shadowColor": "#0000008c"
   }
 }

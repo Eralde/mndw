@@ -18,7 +18,9 @@ describe('createInstance', () => {
 
     flushSync();
 
-    expect(host.querySelector('button')?.textContent).toMatch(/start terminal/i);
+    const labels = [...host.querySelectorAll('button')].map((b) => b.textContent ?? '');
+
+    expect(labels.some((t) => /router cli|entware shell/i.test(t))).toBe(true);
     instance.unmount();
     host.remove();
   });

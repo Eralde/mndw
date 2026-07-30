@@ -19,10 +19,11 @@ let {
   backend,
 }: Props = $props();
 
-type WidgetState = 'idle' | 'starting' | 'connected' | 'error' | 'disconnected';
+type PageState = 'idle' | 'starting' | 'connected' | 'error' | 'disconnected';
 
-let state = $state<WidgetState>('idle');
+let state = $state<PageState>('idle');
 let errorMessage = $state('');
+let consoleChoice = $state<import('./cli.service.js').ConsoleChoice>('router');
 let terminalElement = $state<HTMLDivElement | undefined>(undefined);
 let terminalInstance: TerminalInstance | null = null;
 let spawnDelayId: ReturnType<typeof setTimeout> | undefined;
@@ -60,10 +61,10 @@ async function startTerminal(): Promise<void> {
 
   try {
     if (!backend) {
-      throw new Error('Backend bindings are missing for ttyd-widget');
+      throw new Error('Backend bindings are missing for terminal-page');
     }
 
-    const spawnResult = await spawnCli(backend);
+    const spawnResult = await spawnCli(backend, consoleChoice);
 
     if (!spawnResult.success) {
       throw new Error(spawnResult.error || 'Failed to start terminal service');
@@ -97,7 +98,7 @@ async function startTerminal(): Promise<void> {
     clearSpawnDelay();
     state = 'error';
     errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[ttyd-widget] Failed to start terminal:', error);
+    console.error('[terminal-page] Failed to start terminal:', error);
   }
 }
 
@@ -116,6 +117,11 @@ function retryTerminal(): void {
   void startTerminal();
 }
 
+function selectConsole(choice: import('./cli.service.js').ConsoleChoice): void {
+  consoleChoice = choice;
+  void startTerminal();
+}
+
 onMount(() => {
   return () => {
     disconnectExpected = true;
@@ -128,15 +134,23 @@ onMount(() => {
 });
 </script>
 
-<div class="ttyd-widget">
+<div class="ttyd-terminal">
   {#if state === 'idle'}
     <div class="screen">
-      <button
-        class="primary"
-        onclick={startTerminal}
-      >
-        Start Terminal
-      </button>
+      <div class="console-choice">
+        <button
+          class="primary"
+          onclick={() => selectConsole('router')}
+        >
+          Router CLI
+        </button>
+        <button
+          class="primary"
+          onclick={() => selectConsole('entware')}
+        >
+          Entware Shell
+        </button>
+      </div>
     </div>
   {:else if state === 'starting'}
     <div class="screen">
@@ -199,7 +213,7 @@ onMount(() => {
 </div>
 
 <style>
-.ttyd-widget {
+.ttyd-terminal {
   width: 100%;
   height: 100%;
   display: flex;
@@ -221,6 +235,11 @@ onMount(() => {
   gap: 12px;
   padding: 16px;
   text-align: center;
+}
+
+.console-choice {
+  display: flex;
+  gap: 12px;
 }
 
 .primary,
@@ -313,16 +332,6 @@ onMount(() => {
 @keyframes spin {
   to {
     transform: rotate(360deg);
-  }
-}
-
-/* 720px matches the host's MOBILE_BREAKPOINT_PX (packages/host/src/layout/breakpoint.ts).
-   Below it the dashboard renders intrinsic-height flow tiles, so the terminal must
-   supply its own height instead of resolving 100% from a GridStack row. Fixed height
-   (not min-height): the terminal stays an internally-scrolling fixed-size area. */
-@media (max-width: 720px) {
-  .ttyd-widget {
-    height: 320px;
   }
 }
 </style>

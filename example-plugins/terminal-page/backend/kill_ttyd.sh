@@ -3,7 +3,7 @@
 echo "Content-Type: application/json"
 echo ""
 
-TTYD_PID_FILE="${MNDW_TTYD_PID_FILE:-/opt/var/run/mndw-ttyd-widget.pid}"
+TTYD_PID_FILE="${MNDW_TTYD_PID_FILE:-/opt/var/run/mndw-terminal-page.pid}"
 success=true
 
 process_start_time() {
@@ -51,6 +51,22 @@ if [ -f "$TTYD_PID_FILE" ]; then
 
   rm -f "$TTYD_PID_FILE"
 fi
+
+NETSTAT_BIN="${MNDW_NETSTAT_BIN:-/opt/bin/netstat}"
+GREP_BIN="${MNDW_GREP_BIN:-/opt/bin/grep}"
+[ -x "$NETSTAT_BIN" ] || NETSTAT_BIN="netstat"
+[ -x "$GREP_BIN" ] || GREP_BIN="grep"
+TTYD_PORT="7681"
+
+# Wait for the listen socket to be released (bounded: 20 * 100ms) so a fast
+# reconnect with a different console can't reuse the stale ttyd. Fractional sleep
+# is supported by the Entware/darwin sleep this plugin runs under.
+i=0
+while [ "$i" -lt 20 ]; do
+  "$NETSTAT_BIN" -tln 2>/dev/null | "$GREP_BIN" -q ":$TTYD_PORT " || break
+  i=$((i + 1))
+  sleep 0.1
+done
 
 if [ "$success" = true ]; then
   echo '{"success": true}'

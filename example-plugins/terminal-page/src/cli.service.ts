@@ -15,6 +15,8 @@ export type ConnectionError =
   | 'NETWORK_ERROR'
   | 'UNKNOWN';
 
+export type ConsoleChoice = 'router' | 'entware';
+
 export interface SpawnResult {
   success: boolean;
   port?: number;
@@ -46,12 +48,13 @@ async function callTtydApi(
   backend: BackendClient,
   id: 'spawn' | 'kill',
   timeoutMs: number,
+  body: Record<string, unknown>,
 ): Promise<Response | null> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await backend.fetch(id, {body: {}, signal: controller.signal});
+    const response = await backend.fetch(id, {body, signal: controller.signal});
 
     if (isJsonResponse(response)) {
       return response;
@@ -101,9 +104,13 @@ function buildSpawnError(result: SpawnApiResponse): SpawnResult {
   };
 }
 
-export async function spawnCli(backend: BackendClient, retryIndex = 0): Promise<SpawnResult> {
+export async function spawnCli(
+  backend: BackendClient,
+  consoleChoice: ConsoleChoice,
+  retryIndex = 0,
+): Promise<SpawnResult> {
   try {
-    const response = await callTtydApi(backend, 'spawn', SPAWN_TIMEOUT_MS);
+    const response = await callTtydApi(backend, 'spawn', SPAWN_TIMEOUT_MS, {console: consoleChoice});
 
     if (!response) {
       return {
@@ -139,7 +146,7 @@ export async function spawnCli(backend: BackendClient, retryIndex = 0): Promise<
 
       await sleep(delay);
 
-      return spawnCli(backend, retryIndex + 1);
+      return spawnCli(backend, consoleChoice, retryIndex + 1);
     }
 
     return {
@@ -152,7 +159,7 @@ export async function spawnCli(backend: BackendClient, retryIndex = 0): Promise<
 
 export async function killCli(backend: BackendClient): Promise<{success: boolean}> {
   try {
-    const response = await callTtydApi(backend, 'kill', SPAWN_TIMEOUT_MS);
+    const response = await callTtydApi(backend, 'kill', SPAWN_TIMEOUT_MS, {});
 
     if (!response) {
       return {success: false};

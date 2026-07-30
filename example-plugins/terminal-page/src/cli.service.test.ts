@@ -18,23 +18,48 @@ function backend(fetch: ReturnType<typeof vi.fn>): BackendClient {
 }
 
 describe('cli.service', () => {
-  it('spawnCli returns success + port', async () => {
+  it('spawnCli returns success + port and sends the console on the body', async () => {
     const fetch = vi.fn().mockResolvedValue(jsonResponse({success: true, port: 7681}));
 
-    const result = await spawnCli(backend(fetch));
+    const result = await spawnCli(backend(fetch), 'router');
 
     expect(result).toEqual({success: true, port: 7681});
-    expect(fetch).toHaveBeenCalledWith('spawn', expect.objectContaining({body: {}}));
+    expect(fetch).toHaveBeenCalledWith('spawn', expect.objectContaining({body: {console: 'router'}}));
   });
 
   it('spawnCli maps "ttyd is not installed" to a spawn failure', async () => {
     const fetch = vi.fn().mockResolvedValue(jsonResponse({success: false, error: 'ttyd is not installed'}));
 
-    const result = await spawnCli(backend(fetch));
+    const result = await spawnCli(backend(fetch), 'entware');
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe('SPAWN_FAILED');
     expect(result.error).toMatch(/not installed/i);
+    expect(fetch).toHaveBeenCalledWith('spawn', expect.objectContaining({body: {console: 'entware'}}));
+  });
+
+  it('spawnCli forwards the console on every retry', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const fetch = vi.fn().mockRejectedValue(new TypeError('network error: failed to fetch'));
+      const pending = spawnCli(backend(fetch), 'entware');
+
+      // Drive the three backoff delays (1000 + 2000 + 4000 ms) to exhaustion.
+      await vi.advanceTimersByTimeAsync(8000);
+
+      const result = await pending;
+
+      expect(result.success).toBe(false);
+      expect(fetch).toHaveBeenCalledTimes(4);
+
+      for (const call of fetch.mock.calls) {
+        expect(call[0]).toBe('spawn');
+        expect(call[1]).toEqual(expect.objectContaining({body: {console: 'entware'}}));
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('killCli returns the parsed success flag', async () => {

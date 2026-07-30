@@ -188,4 +188,115 @@ echo "$!" > "$pid_file"
     expect(responseBody(start.stdout)).toMatchObject({success: true});
     expect(() => readFileSync(pidFile)).toThrow();
   });
+
+  it('polls for the ttyd port to be released before returning', () => {
+    const grepCalls = join(tempDir, 'grep-calls');
+    const fakeNetstat = join(tempDir, 'netstat');
+    const fakeGrep = join(tempDir, 'grep');
+
+    writeExecutable(fakeNetstat, '#!/bin/sh\nexit 0\n');
+    writeExecutable(
+      fakeGrep,
+      `#!/bin/sh
+f="${grepCalls}"
+n=0
+[ -f "$f" ] && n="$(cat "$f")"
+n=$((n + 1))
+echo "$n" > "$f"
+if [ "$n" -le 2 ]; then exit 0; else exit 1; fi
+`,
+    );
+
+    // No pid-file -> nothing to kill, but the port poll still runs. grep reports
+    // "listening" for the first 2 checks, then "released" -> the loop stops early.
+    const stop = spawnSync('sh', [killScript], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        MNDW_TTYD_PID_FILE: join(tempDir, 'ttyd.pid'),
+        MNDW_NETSTAT_BIN: fakeNetstat,
+        MNDW_GREP_BIN: fakeGrep,
+      },
+    });
+
+    expect(stop.status).toBe(0);
+    expect(responseBody(stop.stdout)).toMatchObject({success: true});
+    expect(Number(readFileSync(grepCalls, 'utf8').trim())).toBe(3);
+  });
+
+  it('restarts ttyd via kill_ttyd.sh when the running console differs', async () => {
+    const argsFile = join(tempDir, 'daemonize-args');
+    const grepCalls = join(tempDir, 'grep-calls');
+    const pidFile = join(tempDir, 'ttyd.pid');
+    const fakeTtyd = join(tempDir, 'ttyd');
+    const fakeDaemonize = join(tempDir, 'daemonize');
+    const fakeNetstat = join(tempDir, 'netstat');
+    const fakeGrep = join(tempDir, 'grep');
+
+    writeExecutable(fakeTtyd, '#!/bin/sh\nexec sleep 30\n');
+    writeExecutable(
+      fakeDaemonize,
+      `#!/bin/sh
+printf '%s\\n' "$@" > "${argsFile}"
+if [ "$1" != "-p" ]; then exit 2; fi
+pid_file="$2"
+shift 2
+"$@" >/dev/null 2>&1 &
+echo "$!" > "$pid_file"
+`,
+    );
+    writeExecutable(fakeNetstat, '#!/bin/sh\nexit 0\n');
+
+    const env = {
+      ...process.env,
+      MNDW_DAEMONIZE_BIN: fakeDaemonize,
+      MNDW_GREP_BIN: fakeGrep,
+      MNDW_NETSTAT_BIN: fakeNetstat,
+      MNDW_TTYD_BIN: fakeTtyd,
+      MNDW_TTYD_PID_FILE: pidFile,
+    };
+
+    // Phase 1: port free, console router -> the script writes an owned pid-file + sidecar.
+    writeExecutable(fakeGrep, '#!/bin/sh\nexit 1\n');
+
+    const first = spawnSync('sh', [spawnScript], {encoding: 'utf8', input: '{"console":"router"}', env});
+
+    expect(responseBody(first.stdout)).toMatchObject({success: true});
+    await waitForFile(pidFile);
+
+    const firstPid = Number(readFileSync(pidFile, 'utf8').trim()
+.split(/\s+/)[0]);
+
+    expect(readFileSync(`${pidFile}.console`, 'utf8').trim()).toBe('router');
+
+    // Phase 2: stateful grep — "listening" for spawn's own port check (call 1),
+    // "released" for kill_ttyd.sh's poll (call 2+). Console entware -> restart.
+    writeExecutable(
+      fakeGrep,
+      `#!/bin/sh
+f="${grepCalls}"
+n=0
+[ -f "$f" ] && n="$(cat "$f")"
+n=$((n + 1))
+echo "$n" > "$f"
+if [ "$n" -eq 1 ]; then exit 0; else exit 1; fi
+`,
+    );
+
+    const second = spawnSync('sh', [spawnScript], {encoding: 'utf8', input: '{"console":"entware"}', env});
+
+    expect(responseBody(second.stdout)).toMatchObject({success: true});
+    await waitForExit(firstPid);
+    expect(readFileSync(argsFile, 'utf8')).toContain('/opt/bin/sh');
+    expect(readFileSync(`${pidFile}.console`, 'utf8').trim()).toBe('entware');
+
+    const secondPid = Number(readFileSync(pidFile, 'utf8').trim()
+.split(/\s+/)[0]);
+
+    try {
+      process.kill(secondPid, 'SIGKILL');
+    } catch {
+      // Already exited.
+    }
+  });
 });

@@ -6,7 +6,7 @@ echo ""
 TTYD_BIN="${MNDW_TTYD_BIN:-/opt/bin/ttyd}"
 DAEMONIZE_BIN="${MNDW_DAEMONIZE_BIN:-/opt/bin/daemonize}"
 TTYD_PORT="7681"
-TTYD_PID_FILE="${MNDW_TTYD_PID_FILE:-/opt/var/run/mndw-ttyd-widget.pid}"
+TTYD_PID_FILE="${MNDW_TTYD_PID_FILE:-/opt/var/run/mndw-terminal-page.pid}"
 
 process_start_time() {
   pid="$1"
@@ -50,6 +50,23 @@ if [ ! -x "$DAEMONIZE_BIN" ]; then
   exit 0
 fi
 
+# Read the request body from stdin exactly once (EOF-safe; the trailing sentinel
+# preserves any trailing newline). The daemon pipes the POST body here.
+REQUEST_BODY="$(cat; printf 'x')"
+REQUEST_BODY="${REQUEST_BODY%x}"
+
+# Minimal POSIX-sh parse: the frontend only ever sends {"console":"router"} or
+# {"console":"entware"}. Anything else falls back to router.
+CONSOLE="router"
+case "$REQUEST_BODY" in
+  *'"console"'*'"entware"'*) CONSOLE="entware" ;;
+esac
+
+case "$CONSOLE" in
+  entware) TTYD_COMMAND="/opt/bin/sh" ;;
+  *) TTYD_COMMAND="ndmc" ;;
+esac
+
 NETSTAT_BIN="${MNDW_NETSTAT_BIN:-/opt/bin/netstat}"
 GREP_BIN="${MNDW_GREP_BIN:-/opt/bin/grep}"
 
@@ -62,11 +79,25 @@ if [ ! -x "$GREP_BIN" ]; then
 fi
 
 if "$NETSTAT_BIN" -tln 2>/dev/null | "$GREP_BIN" -q ":$TTYD_PORT "; then
-  if ! pid_file_is_owned; then
+  if pid_file_is_owned; then
+    recorded_console="$(cat "${TTYD_PID_FILE}.console" 2>/dev/null | tr -d '[:space:]')"
+
+    if [ -n "$recorded_console" ] && [ "$recorded_console" != "$CONSOLE" ]; then
+      # Requested console differs: tear down via kill_ttyd.sh (which removes the
+      # pid-file and polls the port free), drop the sidecar, then fall through to
+      # a fresh spawn below. Do not duplicate the kill logic here.
+      sh "$(dirname "$0")/kill_ttyd.sh" >/dev/null 2>&1
+      rm -f "${TTYD_PID_FILE}.console"
+    else
+      echo "{\"success\": true, \"port\": $TTYD_PORT}"
+      exit 0
+    fi
+  else
+    # Port bound but not by an owned ttyd (started outside the plugin): reuse as-is.
     rm -f "$TTYD_PID_FILE"
+    echo "{\"success\": true, \"port\": $TTYD_PORT}"
+    exit 0
   fi
-  echo "{\"success\": true, \"port\": $TTYD_PORT}"
-  exit 0
 fi
 
 pid_dir="${TTYD_PID_FILE%/*}"
@@ -76,7 +107,7 @@ fi
 mkdir -p "$pid_dir"
 rm -f "$TTYD_PID_FILE"
 
-if ! "$DAEMONIZE_BIN" -p "$TTYD_PID_FILE" "$TTYD_BIN" -p "$TTYD_PORT" -W ndmc; then
+if ! "$DAEMONIZE_BIN" -p "$TTYD_PID_FILE" "$TTYD_BIN" -p "$TTYD_PORT" -W "$TTYD_COMMAND"; then
   rm -f "$TTYD_PID_FILE"
   echo '{"success": false, "error": "Failed to spawn ttyd"}'
   exit 0
@@ -89,5 +120,7 @@ start_time="$(process_start_time "$pid")"
 if [ -n "$start_time" ]; then
   printf '%s %s\n' "$pid" "$start_time" > "$TTYD_PID_FILE"
 fi
+
+printf '%s\n' "$CONSOLE" > "${TTYD_PID_FILE}.console"
 
 echo "{\"success\": true, \"port\": $TTYD_PORT}"

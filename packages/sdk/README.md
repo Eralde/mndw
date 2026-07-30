@@ -286,7 +286,7 @@ Each zip includes `mndw.lock.json` with exact shared dependency versions.
 - `device-info-widget`
 - `tx-rx-chart-widget`
 - `backend-echo`
-- `ttyd-widget`
+- `terminal-page`
 - `ping-widget`
 - `clock-widget`
 - `dns-lookup-widget`

@@ -264,8 +264,10 @@ echo "$!" > "$pid_file"
     expect(responseBody(first.stdout)).toMatchObject({success: true});
     await waitForFile(pidFile);
 
-    const firstPid = Number(readFileSync(pidFile, 'utf8').trim()
-.split(/\s+/)[0]);
+    const firstPid = Number(
+      readFileSync(pidFile, 'utf8').trim()
+        .split(/\s+/)[0],
+    );
 
     expect(readFileSync(`${pidFile}.console`, 'utf8').trim()).toBe('router');
 
@@ -290,8 +292,10 @@ if [ "$n" -eq 1 ]; then exit 0; else exit 1; fi
     expect(readFileSync(argsFile, 'utf8')).toContain('/opt/bin/sh');
     expect(readFileSync(`${pidFile}.console`, 'utf8').trim()).toBe('entware');
 
-    const secondPid = Number(readFileSync(pidFile, 'utf8').trim()
-.split(/\s+/)[0]);
+    const secondPid = Number(
+      readFileSync(pidFile, 'utf8').trim()
+        .split(/\s+/)[0],
+    );
 
     try {
       process.kill(secondPid, 'SIGKILL');

@@ -529,6 +529,78 @@ describe('<mndw-input> invalid announcement', () => {
   });
 });
 
+describe('<mndw-input> password toggle', () => {
+  it('renders a password toggle button when type is password', async () => {
+    const element = await mount('<mndw-input type="password"></mndw-input>');
+    const toggle = element.shadowRoot?.querySelector('[part="password-toggle"]');
+
+    expect(toggle).not.toBeNull();
+    expect(toggle?.getAttribute('type')).toBe('button');
+  });
+
+  it('does not render a password toggle when type is not password', async () => {
+    const element = await mount('<mndw-input type="text"></mndw-input>');
+
+    expect(element.shadowRoot?.querySelector('[part="password-toggle"]')).toBeNull();
+  });
+
+  it('toggles between Show password / Hide password aria-label', async () => {
+    const element = await mount('<mndw-input type="password"></mndw-input>');
+    const toggle = element.shadowRoot?.querySelector('[part="password-toggle"]')!;
+
+    expect(toggle.getAttribute('aria-label')).toBe('Show password');
+
+    toggle.click();
+    await element.updateComplete;
+
+    expect(toggle.getAttribute('aria-label')).toBe('Hide password');
+
+    toggle.click();
+    await element.updateComplete;
+
+    expect(toggle.getAttribute('aria-label')).toBe('Show password');
+  });
+
+  it('changes the native input type between password and text', async () => {
+    const element = await mount('<mndw-input type="password"></mndw-input>');
+
+    expect(inner(element).getAttribute('type')).toBe('password');
+
+    const toggle = element.shadowRoot?.querySelector('[part="password-toggle"]')!;
+
+    toggle.click();
+    await element.updateComplete;
+
+    expect(inner(element).getAttribute('type')).toBe('text');
+
+    toggle.click();
+    await element.updateComplete;
+
+    expect(inner(element).getAttribute('type')).toBe('password');
+  });
+
+  it('does not affect the input type when the component type is not password', async () => {
+    const element = await mount('<mndw-input type="text"></mndw-input>');
+
+    expect(inner(element).getAttribute('type')).toBe('text');
+  });
+
+  it('preserves the input value when toggling visibility', async () => {
+    const element = await mount('<mndw-input type="password"></mndw-input>');
+
+    element.value = 's3cret';
+    await element.updateComplete;
+
+    const toggle = element.shadowRoot?.querySelector('[part="password-toggle"]')!;
+
+    toggle.click();
+    await element.updateComplete;
+
+    expect(inner(element).value).toBe('s3cret');
+    expect(element.value).toBe('s3cret');
+  });
+});
+
 describe('<mndw-input> inside <mndw-field>', () => {
   it.each([
     ['optional', ''],

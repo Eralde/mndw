@@ -1,4 +1,4 @@
-import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
+import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html, nothing} from 'lit';
 import {FormAssociatedController} from '../forms/form-associated.js';
 import {CommitTracker, TextAnnouncementController, setOrRemove, validityFlagsFrom} from '../forms/text-control.js';
 import {controlBase, focusRing, hostTypography} from '../styles/base.js';
@@ -87,6 +87,28 @@ export class MndwInput extends LitElement {
       align-items: center;
       color: var(--mndw-text-subtle);
     }
+
+    [part='password-toggle'] {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      padding: var(--mndw-space-1);
+      border: 0;
+      border-radius: var(--mndw-radius-sm);
+      background: none;
+      color: var(--mndw-text-subtle);
+      cursor: pointer;
+      font: inherit;
+    }
+
+    [part='password-toggle']:hover {
+      color: var(--mndw-text);
+    }
+
+    :host([disabled]) [part='password-toggle'] {
+      pointer-events: none;
+    }
   `;
 
   declare public value: string;
@@ -116,6 +138,7 @@ export class MndwInput extends LitElement {
     isInvalid: () => this.invalid,
   });
   private readonly commits = new CommitTracker((value) => this.emitChange(value));
+  private _showPassword = false;
 
   constructor() {
     super();
@@ -176,12 +199,13 @@ export class MndwInput extends LitElement {
         <slot name="prefix" part="prefix"></slot>
         <input
           part="input"
-          type=${this.resolvedType}
+          type=${this._effectiveType}
           @input=${this.onInnerInput}
           @focus=${this.onInnerFocus}
           @blur=${this.onInnerBlur}
           @keydown=${this.onInnerKeyDown}
         />
+        ${this.type === 'password' ? this._renderPasswordToggle() : nothing}
         <slot name="suffix" part="suffix"></slot>
       </div>
     `;
@@ -211,6 +235,10 @@ export class MndwInput extends LitElement {
   /** The property type union is the contract; anything else degrades to `text` rather than breaking. */
   private get resolvedType(): MndwInputType {
     return MNDW_INPUT_TYPES.includes(this.type) ? this.type : 'text';
+  }
+
+  private get _effectiveType(): string {
+    return this.type === 'password' && this._showPassword ? 'text' : this.resolvedType;
   }
 
   private syncInner(inner: HTMLInputElement): void {
@@ -271,6 +299,44 @@ export class MndwInput extends LitElement {
       }),
     );
   }
+
+  private readonly _onTogglePassword = (): void => {
+    this._showPassword = !this._showPassword;
+    this.requestUpdate();
+    void this.updateComplete.then(() => {
+      this.innerInput?.focus();
+    });
+  };
+
+  private _renderPasswordToggle(): TemplateResult {
+    return html`
+      <button
+        part="password-toggle"
+        type="button"
+        aria-label=${this._showPassword ? 'Hide password' : 'Show password'}
+        ?disabled=${this.formState.effectiveDisabled}
+        @click=${this._onTogglePassword}
+      >
+        ${this._showPassword ? MndwInput._eyeOffIcon : MndwInput._eyeIcon}
+      </button>
+    `;
+  }
+
+  private static readonly _eyeIcon: TemplateResult = html`
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  `;
+
+  private static readonly _eyeOffIcon: TemplateResult = html`
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+      <path d="m6.72 13.93a3 3 0 1 0 4.24-4.24"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  `;
 
   private resetForm(): void {
     this.value = this.getAttribute('value') ?? '';

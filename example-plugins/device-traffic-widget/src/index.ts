@@ -10,6 +10,7 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
       rci: ctx.rciManager,
       storage: ctx.storage,
       openSettings: (args: OpenSettingsArgs) => openSettingsDialog(ctx, args),
+      setTileTitle: ctx.setTileTitle,
     },
   });
 

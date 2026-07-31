@@ -11,9 +11,10 @@ interface Props {
   rci: RciManager;
   storage: PluginStorage;
   openSettings: (args: OpenSettingsArgs) => void;
+  setTileTitle?: (title: string) => void;
 }
 
-let {rci, storage, openSettings}: Props = $props();
+let {rci, storage, openSettings, setTileTitle}: Props = $props();
 
 const POLL_INTERVAL = 5000;
 const DEVICE_TIME_INTERVAL = 30000;
@@ -34,6 +35,14 @@ let isLoading = $state(true);
 
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 let deviceTimeTimer: ReturnType<typeof setInterval> | undefined;
+
+$effect(() => {
+  const name = hosts.find((h) => h.mac === selectedMac)?.name || selectedMac;
+
+  if (setTileTitle) {
+    setTileTitle(name);
+  }
+});
 
 const detailLabels = [
   {value: 0, label: '3m'},
@@ -215,12 +224,14 @@ onMount(() => {
   {:else}
     <div class="chart-view">
       <div class="widget-header">
-        <span class="device-label">
-          {
-            hosts.find(h => h.mac === selectedMac)?.name
-            || selectedMac
-          }
-        </span>
+        {#if !setTileTitle}
+          <span class="device-label">
+            {
+              hosts.find(h => h.mac === selectedMac)?.name
+              || selectedMac
+            }
+          </span>
+        {/if}
         <div class="header-actions">
           <div class="btn-group">
             {#each detailLabels as d (d.value)}

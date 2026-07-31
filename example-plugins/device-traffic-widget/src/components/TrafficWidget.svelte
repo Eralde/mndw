@@ -169,40 +169,6 @@ onMount(() => {
 </script>
 
 <div class="traffic-widget">
-  <div class="widget-header">
-    <span class="device-label">
-      {
-        hosts.find(h => h.mac === selectedMac)?.name
-        || 'Select device'
-      }
-    </span>
-    <mndw-button
-      class="gear-btn"
-      role="button"
-      tabindex="-1"
-      onkeydown={() => undefined}
-      variant="ghost"
-      title="Select device"
-      aria-label="Select device"
-      onclick={handleOpenSettings}
-    >
-      &#9881;
-    </mndw-button>
-  </div>
-
-  <div class="controls">
-    <div class="btn-group">
-      {#each detailLabels as d (d.value)}
-        <button
-          class:active={detail === d.value}
-          onclick={() => handleDetailChange(d.value)}
-        >
-          {d.label}
-        </button>
-      {/each}
-    </div>
-  </div>
-
   {#if error}
     <div
       class="mndw-alert mndw-alert--danger notice"
@@ -226,43 +192,220 @@ onMount(() => {
   {#if isLoading}
     <div class="msg">Loading...</div>
   {:else if !selectedMac}
-    <div class="msg">Select a device</div>
-  {:else if chartData.length === 0 || !deviceTime}
-    <div class="msg">Loading data...</div>
+    <div class="empty-state">
+      <h3 class="empty-state__heading">Device Traffic Monitor</h3>
+      <p class="empty-state__subtitle">Select a device to monitor traffic</p>
+      <mndw-select
+        label="Device"
+        placeholder="Select device…"
+        value={selectedMac}
+        onmndwchange={(e: CustomEvent<{value: string}>) =>
+        handleSelectDevice(e.detail.value)}
+      >
+        {#each hosts as host (host.mac)}
+          <mndw-option value={host.mac}>
+            {host.name}{#if !host.active} (offline){/if}
+          </mndw-option>
+        {/each}
+      </mndw-select>
+      {#if hosts.length === 0}
+        <p class="mndw-alert mndw-alert--danger">No devices found</p>
+      {/if}
+    </div>
   {:else}
-    <div class="chart-wrap">
-      <BarChart
-        data={chartData}
-        {hosts}
-        deviceTime={deviceTime}
-      />
+    <div class="chart-view">
+      <div class="widget-header">
+        <span class="device-label">
+          {
+            hosts.find(h => h.mac === selectedMac)?.name
+            || selectedMac
+          }
+        </span>
+        <div class="header-actions">
+          <div class="btn-group">
+            {#each detailLabels as d (d.value)}
+              <button
+                class:active={detail === d.value}
+                onclick={() => handleDetailChange(d.value)}
+              >
+                {d.label}
+              </button>
+            {/each}
+          </div>
+          <mndw-button
+            class="gear-btn"
+            role="button"
+            tabindex="-1"
+            onkeydown={() => undefined}
+            variant="ghost"
+            title="Widget Settings"
+            aria-label="Widget settings"
+            onclick={handleOpenSettings}
+          >
+            &#9881;
+          </mndw-button>
+        </div>
+      </div>
+      {#if chartData.length === 0 || !deviceTime}
+        <div class="msg">Loading data...</div>
+      {:else}
+        <div class="chart-wrap">
+          <BarChart
+            data={chartData}
+            {hosts}
+            deviceTime={deviceTime}
+          />
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
 
 <style>
 .traffic-widget {
-  container-type: inline-size; padding: 8px;
-  font-family: var(--mndw-font-sans);
-  font-size: 14px; width: 100%; height: 100%; box-sizing: border-box;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0;
   color: var(--mndw-text);
-  display: flex; flex-direction: column;
+  font-size: 14px;
+  font-family: var(--mndw-font-sans);
 }
-.widget-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.device-label { font-weight: 600; font-size: 13px; color: var(--mndw-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gear-btn { flex-shrink: 0; font-size: 18px; }
-.controls { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
-.btn-group { display: flex; gap: 0; }
-.btn-group button {
-  padding: 3px 8px; border: 1px solid var(--mndw-border); background: var(--mndw-surface); color: var(--mndw-text); font-size: 11px; cursor: pointer;
-}
-.btn-group button:first-child { border-radius: 3px 0 0 3px; }
-.btn-group button:last-child { border-radius: 0 3px 3px 0; }
-.btn-group button:not(:last-child) { border-right: none; }
-.btn-group button.active { background: var(--mndw-accent); color: var(--mndw-accent-contrast); border-color: var(--mndw-accent); }
+
 /* Layout only. `.mndw-alert--danger` owns the box and the severity colours. */
-.notice { margin: 4px 0; font-size: 12px; display: flex; align-items: center; gap: 6px; }
-.retry-btn { margin-left: auto; padding: 2px 8px; border: 1px solid var(--mndw-danger); border-radius: 3px; background: var(--mndw-surface); color: var(--mndw-danger); font-size: 11px; cursor: pointer; }
-.msg { text-align: center; color: var(--mndw-text-subtle); padding: 16px; font-size: 13px; }
-.chart-wrap { flex: 1; min-height: 0; width: 100%; }
+.notice {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  align-self: stretch;
+  margin: 8px 12px;
+  font-size: 12px;
+}
+
+.retry-btn {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--mndw-danger);
+  border-radius: 3px;
+  background: var(--mndw-surface);
+  color: var(--mndw-danger);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: 320px;
+  margin: auto;
+  padding: 16px;
+  text-align: center;
+}
+
+.empty-state__heading {
+  margin: 0;
+  color: var(--mndw-text);
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.empty-state__subtitle {
+  margin: 0 0 4px;
+  color: var(--mndw-text-subtle);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.chart-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
+  padding: 8px;
+}
+
+.widget-header {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px 6px;
+}
+
+.device-label {
+  flex-shrink: 1;
+  overflow: hidden;
+  min-width: 0;
+  color: var(--mndw-text);
+  font-weight: 600;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn-group {
+  display: flex;
+  gap: 0;
+}
+
+.btn-group button {
+  padding: 3px 8px;
+  border: 1px solid var(--mndw-border);
+  background: var(--mndw-surface);
+  color: var(--mndw-text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.btn-group button:first-child {
+  border-radius: 3px 0 0 3px;
+}
+
+.btn-group button:last-child {
+  border-radius: 0 3px 3px 0;
+}
+
+.btn-group button:not(:last-child) {
+  border-right: none;
+}
+
+.btn-group button.active {
+  border-color: var(--mndw-accent);
+  background: var(--mndw-accent);
+  color: var(--mndw-accent-contrast);
+}
+
+.gear-btn {
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.msg {
+  padding: 16px;
+  color: var(--mndw-text-subtle);
+  font-size: 13px;
+  text-align: center;
+}
+
+.chart-wrap {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
 </style>

@@ -51,6 +51,13 @@ let chosen = $state(selectedMac);
 <style>
 /* Rendered inside the host overlay shell body; the shell owns surface, border,
    padding, title, and close button, so this only styles the form controls. */
-.settings-form { font-family: var(--mndw-font-sans); }
-.actions { display: flex; gap: 8px; justify-content: flex-end; }
+.settings-form {
+  font-family: var(--mndw-font-sans);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
 </style>

@@ -252,20 +252,36 @@ onMount(() => {
 <div
   bind:this={containerEl}
   class="chart-container"
-  style="width:100%;height:100%;position:relative"
 >
-  <div
-    class="chart-tooltip"
-    style="position:absolute;background:var(--mndw-surface-raised);color:var(--mndw-text);border:1px solid var(--mndw-border);padding:4px 8px;border-radius:4px;font-size:11px;pointer-events:none;display:none;z-index:100;white-space:nowrap"
-  >
-  </div>
+  <div class="chart-tooltip"></div>
 </div>
 
 <style>
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 100;
+  display: none;
+  padding: 4px 8px;
+  border: 1px solid var(--mndw-border);
+  border-radius: 4px;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .chart-container :global(.grid line) {
   stroke: var(--mndw-border);
   stroke-dasharray: 4, 4;
 }
+
 .chart-container :global(.grid .domain) {
   display: none;
 }

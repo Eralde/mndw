@@ -36,6 +36,8 @@ export class MwsDataService {
   public readonly phase = signal<MwsViewPhase>('loading');
   public readonly roots = signal<MwsNode[]>([]);
   public readonly pollError = signal<boolean>(false);
+  public readonly lastUpdatedAt = signal<number | null>(null);
+  public readonly freshnessNow = signal(Date.now());
 
   private readonly snapshotSubject = new ReplaySubject<MwsNode[]>(1);
   public readonly snapshots$ = this.snapshotSubject.asObservable();
@@ -46,7 +48,10 @@ export class MwsDataService {
   private hasSnapshot = false;
 
   public constructor() {
+    const freshnessTimer = setInterval(() => this.freshnessNow.set(Date.now()), 5_000);
+
     this.destroyRef.onDestroy(() => this.stop());
+    this.destroyRef.onDestroy(() => clearInterval(freshnessTimer));
   }
 
   public start(): void {
@@ -140,6 +145,7 @@ export class MwsDataService {
 
     this.roots.set(roots);
     this.snapshotSubject.next(roots);
+    this.lastUpdatedAt.set(Date.now());
     this.hasSnapshot = true;
     this.pollError.set(false);
     this.phase.set(result.members.length === 0 ? 'empty' : 'ready');

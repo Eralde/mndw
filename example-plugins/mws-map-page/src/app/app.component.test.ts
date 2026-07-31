@@ -7,7 +7,9 @@ import {buildMap} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
 import {MwsDataService, type MwsViewPhase} from '../services/mws-data.service';
-import {MWS_MOCK_OPTIONS} from '../tokens';
+import {FakePluginStorage} from '../test-support/plugin-storage.fake';
+import {MWS_MOCK_OPTIONS, PLUGIN_STORAGE} from '../tokens';
+import {NodePositionStore} from '../services/node-position.store';
 import graphStyles from '../components/mws-graph/mws-graph.component.scss?raw';
 import appStyles from './app.component.scss?raw';
 import appTemplate from './app.component.html?raw';
@@ -17,6 +19,8 @@ interface FakeData {
   phase: ReturnType<typeof signal<MwsViewPhase>>;
   roots: ReturnType<typeof signal<MwsNode[]>>;
   pollError: ReturnType<typeof signal<boolean>>;
+  lastUpdatedAt: ReturnType<typeof signal<number | null>>;
+  freshnessNow: ReturnType<typeof signal<number>>;
   start: ReturnType<typeof vi.fn>;
   retry: ReturnType<typeof vi.fn>;
 }
@@ -26,6 +30,8 @@ function fakeData(phase: MwsViewPhase, roots: MwsNode[] = []): FakeData {
     phase: signal<MwsViewPhase>(phase),
     roots: signal<MwsNode[]>(roots),
     pollError: signal(false),
+    lastUpdatedAt: signal<number | null>(null),
+    freshnessNow: signal(Date.now()),
     start: vi.fn(),
     retry: vi.fn(),
   };
@@ -74,7 +80,11 @@ describe('AppComponent', () => {
     });
     await TestBed.configureTestingModule({
       imports: [AppComponent],
-      providers: [{provide: MwsDataService, useValue: undefined}],
+      providers: [
+        {provide: MwsDataService, useValue: undefined},
+        {provide: PLUGIN_STORAGE, useValue: new FakePluginStorage()},
+        NodePositionStore,
+      ],
     }).compileComponents();
   });
 
@@ -93,7 +103,7 @@ describe('AppComponent', () => {
   it('shows the retry button in the error state and wires it to retry()', () => {
     const data = fakeData('error');
     const fixture = render(data);
-    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('button');
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.state button');
 
     button?.click();
     expect(data.retry).toHaveBeenCalledOnce();
@@ -119,7 +129,7 @@ describe('AppComponent', () => {
 
     expect(node).not.toBeNull();
     node?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-    expect(open).toHaveBeenCalledWith(expect.any(String), expect.any(String));
+    expect(open).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(Function));
   });
 
   it('shows the non-blocking banner when pollError is set', () => {

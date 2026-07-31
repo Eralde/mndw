@@ -1,8 +1,57 @@
 :host {
+  position: relative;
   display: block;
   width: 100%;
   height: 100%;
   min-height: 320px;
+}
+
+.graph-controls {
+  position: absolute;
+  right: var(--mndw-space-3);
+  bottom: var(--mndw-space-3);
+  z-index: 1;
+  display: flex;
+  flex-flow: column wrap;
+  gap: var(--mndw-space-1);
+  justify-content: flex-end;
+  align-items: flex-end;
+
+  .graph-view-controls,
+  .graph-edit-controls {
+    display: flex;
+    gap: var(--mndw-space-1);
+  }
+
+  button {
+    width: var(--mndw-control-h);
+    height: var(--mndw-control-h);
+    padding: 0;
+    border: 1px solid var(--mndw-border);
+    border-radius: 4px;
+    background: var(--mndw-surface-raised);
+    color: var(--mndw-text);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .graph-action {
+    width: auto;
+    min-width: var(--mndw-control-h);
+    padding: 0 var(--mndw-space-2);
+    font-size: 12px;
+  }
+}
+
+:host.editing {
+  .mws-graph {
+    outline: 1px dashed var(--mndw-accent);
+  }
+
+  .node {
+    cursor: grab;
+  }
 }
 
 .mws-graph {
@@ -18,6 +67,21 @@
 
     &.wireless {
       stroke-dasharray: 5 5;
+    }
+
+    &.good {
+      stroke: var(--mndw-success);
+      stroke-width: 2;
+    }
+
+    &.fair {
+      stroke: var(--mndw-warning);
+      stroke-width: 3;
+    }
+
+    &.weak {
+      stroke: var(--mndw-danger);
+      stroke-width: 4;
     }
   }
 
@@ -68,9 +132,33 @@
       }
     }
 
+    &.on-path rect {
+      stroke-width: 3;
+    }
+
+    &.selected rect {
+      filter: drop-shadow(0 0 6px var(--mndw-accent));
+      stroke: var(--mndw-accent);
+      stroke-width: 3;
+    }
+
+    &.dimmed {
+      opacity: 0.35;
+    }
+
     &:focus-visible rect {
       outline: 2px solid var(--mndw-accent);
       outline-offset: 2px;
+    }
+  }
+
+  .edge {
+    &.on-path {
+      opacity: 1;
+    }
+
+    &.dimmed {
+      opacity: 0.35;
     }
   }
 }

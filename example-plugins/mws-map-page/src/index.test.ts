@@ -9,6 +9,7 @@ import graphStyles from './components/mws-graph/mws-graph.component.scss?raw';
 import appStyles from './app/app.component.scss?raw';
 import appTemplate from './app/app.component.html?raw';
 import {createInstance} from './index';
+import {FakePluginStorage} from './test-support/plugin-storage.fake';
 
 function fakeContext(): {
   ctx: PluginContext;
@@ -22,7 +23,7 @@ function fakeContext(): {
   const ctx = {
     rciManager: {queue},
     sessionManager: {},
-    storage: {},
+    storage: new FakePluginStorage(),
     sharedStorage: {},
     hostInfo: {deviceName: 'Router', vendor: 'Keenetic', firmwareVersion: '5.1.1', theme: 'light'},
     injector: {},

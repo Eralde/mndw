@@ -25,6 +25,7 @@ describe('MwsDataService', () => {
     expect(service.roots()).toHaveLength(1);
     expect(service.roots()[0].name).toBe('My Router');
     expect(service.pollError()).toBe(false);
+    expect(service.lastUpdatedAt()).not.toBeNull();
   });
 
   it('stays in error and never polls when show.version fails; retry recovers', async () => {
@@ -87,6 +88,7 @@ describe('MwsDataService', () => {
 
     expect(service.phase()).toBe('empty');
     expect(service.roots()).toHaveLength(1);
+    expect(service.lastUpdatedAt()).not.toBeNull();
   });
 
   it('maps the unsupported classification to the unsupported phase', async () => {

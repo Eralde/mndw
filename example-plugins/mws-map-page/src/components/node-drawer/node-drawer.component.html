@@ -13,8 +13,8 @@
             <span class="update-hint">update available: {{ n.fwAvailable }}</span>
           }
         </dd>
-        <dt>Uptime</dt><dd>{{ dash(n.system?.uptime) }}</dd>
-        <dt>CPU load</dt><dd>{{ dash(n.system?.cpuload) }}</dd>
+        <dt>Uptime</dt><dd>{{ uptime(n.system?.uptime) }}</dd>
+        <dt>CPU load</dt><dd>{{ cpuLoad(n.system?.cpuload) }}</dd>
         <dt>Memory</dt><dd>{{ memory(n) }}</dd>
       </dl>
     </section>
@@ -31,15 +31,15 @@
           <dt>Uplink</dt><dd>{{ dash(n.backhaul.uplink) }}</dd>
           <dt>AP</dt><dd>{{ dash(n.backhaul.ap) }}</dd>
           <dt>Mode</dt><dd>{{ dash(n.backhaul.mode) }}</dd>
-          <dt>RSSI</dt><dd>{{ dash(n.backhaul.rssi) }}</dd>
-          <dt>TX rate</dt><dd>{{ dash(n.backhaul.txrate) }}</dd>
+          <dt>RSSI</dt><dd>{{ rssi(n.backhaul.rssi) }}</dd>
+          <dt>TX rate</dt><dd>{{ rate(n.backhaul.txrate) }}</dd>
           <dt>Security</dt><dd>{{ dash(n.backhaul.security) }}</dd>
           <dt>STP cost</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
         </dl>
       } @else {
         <dl>
           <dt>Type</dt><dd>Wired</dd>
-          <dt>Speed</dt><dd>{{ dash(n.backhaul.speed) }}</dd>
+          <dt>Speed</dt><dd>{{ speed(n.backhaul.speed) }}</dd>
           <dt>Duplex</dt><dd>{{ dash(n.backhaul.duplex) }}</dd>
           <dt>Port</dt><dd>{{ dash(n.backhaul.portLabel) }}</dd>
           <dt>STP cost</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
@@ -67,7 +67,7 @@
                     {{ client.wired ? 'wired' : 'wireless' }}
                   </span>
                 </td>
-                <td>{{ dash(client.uptime) }}</td>
+                <td>{{ uptime(client.uptime) }}</td>
               </tr>
             }
           </tbody>

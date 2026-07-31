@@ -13,11 +13,30 @@
 
   .page-header {
     display: flex;
+    flex-wrap: wrap;
     gap: 16px;
     align-items: baseline;
 
-    h2 {
-      margin: 0 0 12px;
+    .title-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--mndw-space-2);
+      align-items: center;
+      width: 100%;
+
+      h2 {
+        margin: 0;
+      }
+
+      button {
+        min-height: var(--mndw-control-h);
+      }
+    }
+
+    .summary {
+      flex: 1 1 100%;
+      margin: 0;
+      color: var(--mndw-text-subtle);
     }
 
     .banner {

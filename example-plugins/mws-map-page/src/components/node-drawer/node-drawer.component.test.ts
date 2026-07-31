@@ -59,7 +59,8 @@ describe('NodeDrawerComponent', () => {
 
     expect(text).toContain('Mesh Extender A');
     expect(text).toContain('Buddy 6 (KN-3411)');
-    expect(text).toContain('-35');
+    expect(text).toContain('−35 dBm');
+    expect(text).toContain('1.2 Gbit/s');
     expect(text).toContain('11ax');
   });
 
@@ -71,7 +72,7 @@ describe('NodeDrawerComponent', () => {
 
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
 
-    expect(text).toContain('1000');
+    expect(text).toContain('1 Gbit/s');
     expect(text).toContain('full');
   });
 

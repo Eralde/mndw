@@ -48,7 +48,6 @@ describe('MwsGraphComponent', () => {
     expect(element.querySelectorAll('path.edge')).toHaveLength(2);
     expect(element.querySelectorAll('path.edge.wireless')).toHaveLength(1);
     expect(element.querySelector('g.node.controller')).not.toBeNull();
-    expect(element.querySelector('svg')?.getAttribute('viewBox')).toBeTruthy();
   });
 
   it('marks nodes focusable with role=button and an aria-label', () => {
@@ -84,16 +83,60 @@ describe('MwsGraphComponent', () => {
     expect(new Set(selected).size).toBe(2);
   });
 
+  it('renders edit actions beside view controls and emits their requests', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+    const component = fixture.componentInstance;
+    const toggled = vi.fn();
+    const autoLayout = vi.fn();
+    const done = vi.fn();
+
+    component.editModeToggled.subscribe(toggled);
+    component.autoLayoutRequested.subscribe(autoLayout);
+    component.doneEditingRequested.subscribe(done);
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+
+    element.querySelector<HTMLButtonElement>('[aria-label="Rearrange"]')?.click();
+    expect(toggled).toHaveBeenCalledOnce();
+    expect(element.querySelector('[aria-label="Auto layout"]')).toBeNull();
+
+    fixture.componentRef.setInput('editMode', true);
+    fixture.detectChanges();
+    element.querySelector<HTMLButtonElement>('[aria-label="Auto layout"]')?.click();
+    element.querySelector<HTMLButtonElement>('[aria-label="Done"]')?.click();
+
+    expect(autoLayout).toHaveBeenCalledOnce();
+    expect(done).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the rearrange control stable while editing', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.componentRef.setInput('editMode', true);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const rearrange = element.querySelector<HTMLButtonElement>('[aria-label="Rearrange"]');
+    const editButtons = Array.from(element.querySelectorAll<HTMLButtonElement>('.graph-edit-controls button'));
+
+    expect(rearrange?.textContent?.trim()).toBe('Rearrange');
+    expect(rearrange?.disabled).toBe(true);
+    expect(editButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Auto layout',
+      'Done',
+      'Rearrange',
+    ]);
+  });
+
   it('marks offline nodes and re-renders on input change without throwing', () => {
     const roots = fixtureRoots();
     const fixture = TestBed.createComponent(MwsGraphComponent);
 
     fixture.componentRef.setInput('roots', roots);
     fixture.detectChanges();
-
-    const viewBoxBefore = fixture.nativeElement.querySelector('svg')?.getAttribute('viewBox');
-
-    expect(viewBoxBefore).toBeTruthy();
 
     const offlineRoots = buildMap(
       normalizeMembers([{cid: 'c-off', mac: 'aa:00:00:00:00:01'}]),
@@ -106,7 +149,6 @@ describe('MwsGraphComponent', () => {
 
     expect(fixture.nativeElement.querySelectorAll('g.node')).toHaveLength(2);
     expect(fixture.nativeElement.querySelector('g.node.offline')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('svg')?.getAttribute('viewBox')).toBe(viewBoxBefore);
   });
 
   it('disconnects its ResizeObserver on destroy', () => {

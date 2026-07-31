@@ -1,8 +1,13 @@
 <div class="mws-map-page">
   <header class="page-header">
-    <h2>MWS Map</h2>
+    <div class="title-row">
+      <h2>MWS Map</h2>
+    </div>
     @if (mockOptions.mode === 'large') {
       <span class="mock-badge">Mock data: {{ mockOptions.extenders }} extenders · {{ mockOptions.clients }} clients</span>
+    }
+    @if (summary().total > 0) {
+      <p class="summary">{{ summaryText() }}</p>
     }
     @if (data.pollError()) {
       <span class="banner" role="alert">Update failed — showing the last known map.</span>
@@ -26,7 +31,20 @@
       <p class="state">No extenders found.</p>
     }
     @case ('ready') {
-      <mws-map-graph class="graph" [roots]="data.roots()" (nodeSelected)="onNodeSelected($event)" />
+      <mws-map-graph
+        #graph
+        class="graph"
+        [roots]="data.roots()"
+        [nodePositions]="positions.positions()"
+        [positionsLoadOutcome]="positions.loadOutcome()"
+        [editMode]="editMode()"
+        [selectedNodeId]="selectedNodeId()"
+        (nodeSelected)="onNodeSelected($event)"
+        (nodePositionChanged)="onNodePositionChanged($event)"
+        (editModeToggled)="toggleEditMode()"
+        (autoLayoutRequested)="autoLayout()"
+        (doneEditingRequested)="doneEditing()"
+      />
     }
   }
 </div>

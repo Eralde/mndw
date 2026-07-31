@@ -1,5 +1,6 @@
 import {Component, Input} from '@angular/core';
 import type {MwsNode} from '../../domain/mws/mws.types';
+import {formatCpuLoad, formatMemory, formatRate, formatRssi, formatSpeed, formatUptime} from '../../format';
 
 @Component({
   selector: 'mws-map-node-drawer',
@@ -16,16 +17,27 @@ export class NodeDrawerComponent {
   }
 
   protected memory(node: MwsNode): string {
-    const system = node.system;
+    return formatMemory(node.system?.memoryUsed, node.system?.memoryTotal);
+  }
 
-    if (
-      system?.memoryUsed === null || system?.memoryUsed === undefined
-      || system?.memoryTotal === null || system?.memoryTotal === undefined
-    ) {
-      return '—';
-    }
+  protected uptime(value: number | null | undefined): string {
+    return formatUptime(value);
+  }
 
-    return `${system.memoryUsed} / ${system.memoryTotal}`;
+  protected cpuLoad(value: number | null | undefined): string {
+    return formatCpuLoad(value);
+  }
+
+  protected rssi(value: number | null | undefined): string {
+    return formatRssi(value);
+  }
+
+  protected rate(value: number | null | undefined): string {
+    return formatRate(value);
+  }
+
+  protected speed(value: string | null | undefined): string {
+    return formatSpeed(value);
   }
 
   protected isWirelessBackhaul(node: MwsNode): boolean {

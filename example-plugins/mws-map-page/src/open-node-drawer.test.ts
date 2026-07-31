@@ -46,10 +46,13 @@ describe('openNodeDrawer', () => {
       })
     );
     const source: NodeDetailsSource = {open: sourceOpen};
-    const open = vi.fn();
+    const onClose = vi.fn();
+    const open = vi.fn(() => ({onClose}));
     const ctx = {overlay: {open}} as unknown as PluginContext;
 
     openNodeDrawer(ctx, appRef, injector, source, 'node-id', 'Node');
+
+    expect(onClose).toHaveBeenCalledOnce();
 
     const options = open.mock.calls[0][0] as OverlayOpenOptions;
     const abortController = new AbortController();

@@ -10,8 +10,9 @@ export function openNodeDrawer(
   source: NodeDetailsSource,
   nodeId: string,
   title: string,
+  onClose: () => void = () => undefined,
 ): void {
-  ctx.overlay.open({
+  const opened = ctx.overlay.open({
     kind: 'drawer',
     title,
     width: 400,
@@ -34,4 +35,6 @@ export function openNodeDrawer(
       });
     },
   });
+
+  opened.onClose(() => onClose());
 }

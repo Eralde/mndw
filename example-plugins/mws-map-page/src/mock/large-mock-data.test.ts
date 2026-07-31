@@ -18,7 +18,7 @@ describe('createLargeMockSnapshot', () => {
 
     expect(snapshot.members).toHaveLength(8);
     expect(snapshot.hosts).toHaveLength(12);
-    expect(roots).toHaveLength(1);
+    expect(roots.length).toBeGreaterThan(1);
     expect(nodes.every((node) => node !== null)).toBe(true);
     expect(nodes.some((node) => node?.parent?.type === 'wired')).toBe(true);
     expect(nodes.some((node) => node?.parent?.type === 'wireless')).toBe(true);
@@ -32,6 +32,27 @@ describe('createLargeMockSnapshot', () => {
 
     expect(first).toEqual(second);
     expect(new Set(first.hosts.map((host) => host.mwsCid).filter((cid) => cid !== null)).size).toBe(4);
+  });
+
+  it('includes offline nodes and uneven deterministic branching', () => {
+    const snapshot = createLargeMockSnapshot(12, 0);
+    const roots = buildMap(snapshot.members, [], {
+      mac: snapshot.bridge.mac,
+      ip: snapshot.bridge.address,
+      name: 'Router',
+      model: snapshot.version.model,
+      firmware: snapshot.version.firmware,
+      interfaceUptime: snapshot.bridge.uptime,
+      isOnline: snapshot.bridge.isOnline,
+    });
+    const nodes = snapshot.members
+      .map((member) => findNodeById(roots, member.mac))
+      .filter((node) => node !== null);
+
+    expect(snapshot.members.filter((member) => member.backhaul === null)).toHaveLength(2);
+    expect(nodes.filter((node) => !node.isOnline)).toHaveLength(2);
+    expect(Math.max(...nodes.map((node) => node.children.length))).toBeGreaterThan(1);
+    expect(new Set(nodes.map((node) => node.parent?.node.id ?? 'root')).size).toBeGreaterThan(4);
   });
 
   it('supports zero extenders and zero clients', () => {

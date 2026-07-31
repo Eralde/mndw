@@ -8,7 +8,16 @@ import {AppComponent} from './app/app.component';
 import {LiveMapNodeDetailsSource} from './node-details-source';
 import {openNodeDrawer} from './open-node-drawer';
 import {MwsDataService} from './services/mws-data.service';
-import {HOST_INFO, MWS_MOCK_OPTIONS, type MwsMockOptions, ON_THEME_CHANGE, OVERLAY, RCI_MANAGER} from './tokens';
+import {NodePositionStore} from './services/node-position.store';
+import {
+  HOST_INFO,
+  MWS_MOCK_OPTIONS,
+  type MwsMockOptions,
+  ON_THEME_CHANGE,
+  OVERLAY,
+  PLUGIN_STORAGE,
+  RCI_MANAGER,
+} from './tokens';
 
 export interface MwsInstanceOptions {
   readonly dataService?: Type<MwsDataService>;
@@ -22,6 +31,7 @@ export function createMwsMapInstance(
 ): PluginInstance {
   let appRef: ApplicationRef | null = null;
   let componentRef: ReturnType<typeof createComponent> | null = null;
+  let positions: NodePositionStore | null = null;
   let cancelled = false;
   const onThemeChange = ctx.onThemeChange.bind(ctx);
   const dataServiceProvider = options.dataService === undefined
@@ -42,10 +52,12 @@ export function createMwsMapInstance(
       {provide: RCI_MANAGER, useValue: ctx.rciManager},
       {provide: OVERLAY, useValue: ctx.overlay},
       {provide: HOST_INFO, useValue: ctx.hostInfo},
+      {provide: PLUGIN_STORAGE, useValue: ctx.storage},
       ...mockOptionsProvider,
       {provide: ON_THEME_CHANGE, useValue: onThemeChange},
       MwsApiService,
       dataServiceProvider,
+      NodePositionStore,
     ],
   }).then((ref) => {
     if (cancelled) {
@@ -60,10 +72,12 @@ export function createMwsMapInstance(
     const dataService = ref.injector.get(MwsDataService);
     const detailsSource = new LiveMapNodeDetailsSource(dataService.snapshots$);
 
+    positions = ref.injector.get(NodePositionStore);
+
     el.innerHTML = '';
     componentRef = createComponent(AppComponent, {hostElement: el, environmentInjector: injector});
-    componentRef.setInput('openNodeDrawer', (nodeId: string, title: string) => {
-      openNodeDrawer(ctx, ref, injector, detailsSource, nodeId, title);
+    componentRef.setInput('openNodeDrawer', (nodeId: string, title: string, onClose: () => void) => {
+      openNodeDrawer(ctx, ref, injector, detailsSource, nodeId, title, onClose);
     });
     ref.attachView(componentRef.hostView);
   });
@@ -73,6 +87,7 @@ export function createMwsMapInstance(
       cancelled = true;
       unsubscribeTheme();
       ctx.overlay.closeAll();
+      void positions?.flush();
 
       if (componentRef !== null) {
         componentRef.destroy();
@@ -83,6 +98,8 @@ export function createMwsMapInstance(
         appRef.destroy();
         appRef = null;
       }
+
+      positions = null;
 
       el.replaceChildren();
     },

@@ -107,6 +107,10 @@ export function findNodeById(roots: MwsNode[], id: string): MwsNode | null {
   return null;
 }
 
+export function hasUpdate(node: MwsNode): boolean {
+  return node.fw !== null && node.fwAvailable !== null && node.fw !== node.fwAvailable;
+}
+
 function toMemberNode(record: MwsMemberRecord): MwsNode {
   return {
     id: record.mac,

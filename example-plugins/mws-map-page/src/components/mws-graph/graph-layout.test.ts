@@ -3,7 +3,8 @@ import {normalizeMembers} from '../../api/normalize';
 import {loadFixture} from '../../fixtures/load';
 import {buildMap} from '../../domain/mws/map-builder';
 import type {ControllerInfo} from '../../domain/mws/mws.types';
-import {layoutForest} from './graph-layout';
+import {edgeType} from './link-quality';
+import {layoutForest, topologySignature} from './graph-layout';
 
 const CONTROLLER: ControllerInfo = {
   mac: '02:7d:4a:91:c3:10',
@@ -16,13 +17,14 @@ const CONTROLLER: ControllerInfo = {
 };
 
 describe('layoutForest', () => {
-  it('positions every node and types every edge for the fixture chain', () => {
+  it('positions every node without caching edge type', () => {
     const roots = buildMap(normalizeMembers(loadFixture('show-mws-member.json')), [], CONTROLLER);
     const layout = layoutForest(roots);
 
     expect(layout.nodes).toHaveLength(3);
     expect(layout.edges).toHaveLength(2);
-    expect(layout.edges.map((edge) => edge.type).sort()).toEqual(['wired', 'wireless']);
+    expect(layout.edges.every((edge) => !('type' in edge))).toBe(true);
+    expect(layout.edges.map((edge) => edgeType(edge.target.node)).sort()).toEqual(['wired', 'wireless']);
     expect(layout.width).toBeGreaterThan(0);
     expect(layout.height).toBeGreaterThan(0);
 
@@ -66,5 +68,15 @@ describe('layoutForest', () => {
 
   it('handles an empty forest', () => {
     expect(layoutForest([])).toEqual({nodes: [], edges: [], width: 0, height: 0});
+  });
+
+  it('signatures only include sorted node-to-parent relationships', () => {
+    const roots = buildMap(normalizeMembers(loadFixture('show-mws-member.json')), [], CONTROLLER);
+    const copy = buildMap(normalizeMembers(loadFixture('show-mws-member.json')), [], CONTROLLER);
+
+    copy[0].children[0].node.name = 'Changed metric snapshot';
+
+    expect(topologySignature(roots)).toBe(topologySignature(copy));
+    expect(topologySignature(roots)).toContain('02:7d:4a:91:c3:21>02:7d:4a:91:c3:10');
   });
 });

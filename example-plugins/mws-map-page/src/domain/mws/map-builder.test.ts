@@ -3,7 +3,7 @@ import {normalizeDeviceHosts, normalizeMembers} from '../../api/normalize';
 import type {MwsMemberRecord} from '../../api/rci.types';
 import {loadFixture} from '../../fixtures/load';
 import type {ControllerInfo} from './mws.types';
-import {buildMap, findNodeById} from './map-builder';
+import {buildMap, findNodeById, hasUpdate} from './map-builder';
 
 const CONTROLLER: ControllerInfo = {
   mac: '02:7d:4a:91:c3:10',
@@ -173,5 +173,19 @@ describe('findNodeById', () => {
 
     expect(findNodeById(roots, '02:7d:4a:91:c3:32')?.model).toBe('Atlas SE (KN-4310)');
     expect(findNodeById(roots, 'no:pe')).toBeNull();
+  });
+});
+
+describe('hasUpdate', () => {
+  it('matches the firmware update-dot predicate', () => {
+    const node = buildMap(fixtureMembers(), [], CONTROLLER)[0].children[0].node;
+
+    node.fw = 'old';
+    node.fwAvailable = 'new';
+    expect(hasUpdate(node)).toBe(true);
+    node.fwAvailable = node.fw;
+    expect(hasUpdate(node)).toBe(false);
+    node.fw = null;
+    expect(hasUpdate(node)).toBe(false);
   });
 });

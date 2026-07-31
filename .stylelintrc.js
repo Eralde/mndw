@@ -1,13 +1,13 @@
 module.exports = {
-  'extends': [
+  extends: [
     'stylelint-config-standard-scss',
     'stylelint-config-hudochenkov/order',
   ],
-  'plugins': [
+  plugins: [
     'stylelint-scss',
     'stylelint-order',
   ],
-  'rules': {
+  rules: {
     'media-feature-range-notation': 'prefix',
     'keyframes-name-pattern': null,
     'no-empty-source': null,
@@ -52,6 +52,17 @@ module.exports = {
       },
     ],
     'color-hex-length': null,
+    'selector-pseudo-class-no-unknown': [
+      true,
+      {
+        'ignorePseudoClasses': ['global'],
+      },
+    ],
   },
-  'overrides': []
+  overrides: [
+    {
+      files: ['**/*.svelte'],
+      customSyntax: 'postcss-html',
+    },
+  ],
 };

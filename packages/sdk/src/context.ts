@@ -51,4 +51,8 @@ export interface PluginContext {
   onPaletteChange(callback: (tokens: PaletteTokenMap) => void): () => void;
   /** Framework-agnostic top-layer UI (modal, drawer, popover, custom). */
   overlay: OverlayService;
+  /**
+   * Widgets only. Set the host tile title. Page plugins receive `undefined`.
+   */
+  setTileTitle?: (title: string) => void;
 }

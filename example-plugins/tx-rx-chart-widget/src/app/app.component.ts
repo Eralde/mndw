@@ -1,4 +1,14 @@
-import {CUSTOM_ELEMENTS_SCHEMA, Component, DestroyRef, Input, type OnInit, inject, signal} from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  Component,
+  DestroyRef,
+  type OnInit,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {CommonModule} from '@angular/common';
 import {Subscription, switchMap, timer} from 'rxjs';
@@ -22,8 +32,8 @@ const DEVICE_TIME_INTERVAL = 30000;
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class AppComponent implements OnInit {
-  @Input({required: true})
-  public openSettings: OpenSettingsFn = () => undefined;
+  public readonly openSettings = input.required<OpenSettingsFn>();
+  public readonly setTileTitle = input<(title: string) => void>();
 
   private readonly rciService = inject(RciService);
   private readonly storage = inject(PLUGIN_STORAGE);
@@ -41,11 +51,22 @@ export class AppComponent implements OnInit {
   private pollingSub: Subscription | null = null;
   private deviceTimeSub: Subscription | null = null;
 
-  public activeInterfaceName = (): string => {
+  protected readonly activeInterfaceName = computed(() => {
     const found = this.interfaceList().find((i) => i.id === this.selectedInterface());
 
     return found ? (found.description || found.id) : '';
-  };
+  });
+
+  public constructor() {
+    effect(() => {
+      const title = this.activeInterfaceName();
+      const setTitle = this.setTileTitle();
+
+      if (setTitle) {
+        setTitle(title);
+      }
+    });
+  }
 
   public async ngOnInit(): Promise<void> {
     const savedInterface = await this.storage.get(STORAGE_KEY);
@@ -86,7 +107,7 @@ export class AppComponent implements OnInit {
   }
 
   protected openSettingsDialog(): void {
-    this.openSettings({
+    this.openSettings()({
       interfaces: this.interfaceList(),
       selectedInterface: this.selectedInterface(),
       refresh: this.refresh(),

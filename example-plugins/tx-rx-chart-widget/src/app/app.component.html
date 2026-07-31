@@ -37,7 +37,9 @@
         <div class="chart-view">
             <div class="chart-header">
                 <div class="chart-header__left">
-                    <span class="chart-header__label">{{ activeInterfaceName() }}</span>
+                    @if (!setTileTitle()) {
+                        <span class="chart-header__label">{{ activeInterfaceName() }}</span>
+                    }
                     @if (txData().length > 0 || rxData().length > 0) {
                         <div class="chart-header__legend">
                           <span class="chart-header__legend-item">

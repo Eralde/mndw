@@ -20,6 +20,7 @@ export interface TileController {
   frame: HTMLElement;
   body: HTMLElement;
   handle: WidgetTileHandle;
+  setTileTitle: (title: string) => void;
   /** True while the tile shows the installing placeholder awaiting hydration. */
   pending: boolean;
 }
@@ -57,7 +58,7 @@ function renderTileNotice(body: HTMLElement, kind: 'installing' | 'failed'): voi
 function buildTileFrame(
   label: string,
   onRemove: () => void,
-): {frame: HTMLElement; body: HTMLElement} {
+): {frame: HTMLElement; body: HTMLElement; setTileTitle: (title: string) => void} {
   const frame = document.createElement('div');
 
   frame.className = 'mndw-grid-tile';
@@ -66,6 +67,8 @@ function buildTileFrame(
 
   title.className = 'mndw-grid-tile__title';
   title.textContent = label;
+
+  title.setAttribute('data-manifest-label', label);
 
   const removeBtn = document.createElement('button');
 
@@ -82,9 +85,17 @@ function buildTileFrame(
 
   body.className = 'mndw-grid-tile__body';
 
+  const setTileTitle = (tileTitle: string): void => {
+    const fallback = title.getAttribute('data-manifest-label') ?? label;
+    const effectiveTitle = tileTitle || fallback;
+
+    title.textContent = effectiveTitle;
+    removeBtn.setAttribute('aria-label', `Remove ${fallback}`);
+  };
+
   frame.append(title, removeBtn, body);
 
-  return {frame, body};
+  return {frame, body, setTileTitle};
 }
 
 /**
@@ -111,14 +122,16 @@ export function ensureTileController(
     return null;
   }
 
-  const {frame, body} = buildTileFrame(plugin.entry.label, () => onRemoveRequest(id));
+  const {frame, body, setTileTitle} = buildTileFrame(plugin.entry.label, () => onRemoveRequest(id));
   const status = getDepsStatus(pluginName);
+
   let handle: WidgetTileHandle;
 
   if (status === 'ready') {
-    handle = mountWidgetTile(body, plugin, createWidgetContext(pluginName, instanceId));
+    handle = mountWidgetTile(body, plugin, createWidgetContext(pluginName, instanceId, undefined, setTileTitle));
   } else {
     renderTileNotice(body, status);
+
     handle = placeholderTileHandle();
   }
 
@@ -129,6 +142,7 @@ export function ensureTileController(
     frame,
     body,
     handle,
+    setTileTitle,
     pending: status === 'installing',
   };
 
@@ -173,7 +187,7 @@ export function hydratePendingTiles(): void {
     controller.handle = mountWidgetTile(
       controller.body,
       plugin,
-      createWidgetContext(controller.pluginName, controller.instanceId),
+      createWidgetContext(controller.pluginName, controller.instanceId, undefined, controller.setTileTitle),
     );
     controller.pending = false;
   }
@@ -201,6 +215,8 @@ function refreshTileFrame(frame: HTMLElement, label: string): void {
 
   if (title !== null) {
     title.textContent = label;
+
+    title.setAttribute('data-manifest-label', label);
   }
 
   frame.querySelector('.mndw-grid-tile__close')?.setAttribute('aria-label', `Remove ${label}`);
@@ -231,13 +247,14 @@ export async function remountWidgetTiles(
   const mountAll = (plugin: LoadedPlugin): WidgetTileHandle[] =>
     affected.map((controller) => {
       refreshTileFrame(controller.frame, plugin.entry.label);
+      controller.setTileTitle('');
 
       const hostInfo = appState.hostInfo ?? FALLBACK_HOST_INFO;
 
       controller.handle = mountWidgetTile(
         controller.body,
         plugin,
-        createPluginContext(plugin.entry, controller.instanceId, hostInfo),
+        createPluginContext(plugin.entry, controller.instanceId, hostInfo, controller.setTileTitle),
       );
 
       return controller.handle;

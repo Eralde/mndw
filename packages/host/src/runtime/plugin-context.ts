@@ -72,6 +72,7 @@ export function createPluginContext(
   entry: PluginListEntry,
   instanceId: string,
   hostInfo: HostInfo,
+  setTileTitle?: (title: string) => void,
 ): PluginContext {
   const {service, dispose} = createPluginOverlayService(entry.name, instanceId);
 
@@ -94,6 +95,7 @@ export function createPluginContext(
       getTokens,
       onPaletteChange: subscribePalette,
       overlay: service,
+      setTileTitle,
     } satisfies PluginContext,
   );
 

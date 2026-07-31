@@ -8,11 +8,16 @@ vi.mock('../runtime/plugin-registry.js', () => ({
 }));
 
 vi.mock('../runtime/plugin-context.js', () => ({
-  createPluginContext: vi.fn((_entry: unknown, instanceId: string) => ({instanceId})),
+  createPluginContext: vi.fn((_entry: unknown, instanceId: string, _hostInfo: unknown, _setTileTitle?: unknown) => ({
+    instanceId,
+  })),
 }));
 
 vi.mock('./widget-context.js', () => ({
-  createWidgetContext: vi.fn((_name: string, instanceId: string) => ({instanceId})),
+  createWidgetContext: vi.fn((_name: string, instanceId: string, _hostInfo?: unknown, setTileTitle?: unknown) => ({
+    instanceId,
+    setTileTitle,
+  })),
 }));
 
 vi.mock('./widget-mount.js', () => ({mountWidgetTile}));
@@ -127,6 +132,31 @@ describe('tile controller', () => {
     expect(mountWidgetTile).toHaveBeenCalledWith(controller?.body, expect.anything(), expect.anything());
   });
 
+  it('updates the tile title and close aria-label via setTileTitle', () => {
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
+
+    const controller = ensureTileController('clock', 'clock:1', vi.fn());
+
+    controller?.setTileTitle('eth0');
+
+    expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('eth0');
+    expect(controller?.frame.querySelector('.mndw-grid-tile__close')?.getAttribute('aria-label')).toBe('Remove clock');
+
+    controller?.setTileTitle('');
+
+    expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('clock');
+  });
+
+  it('keeps the manifest label on placeholder tiles', () => {
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', noop));
+    replaceDepsStatuses([{name: 'traffic', depsStatus: 'installing'}]);
+
+    const controller = ensureTileController('traffic', 'traffic:1', vi.fn());
+
+    expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('traffic');
+    expect(controller?.body.textContent).toBe('Preparing… installing dependencies');
+  });
+
   it('returns the existing controller (same frame element) for a repeated ensure', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
 
@@ -148,8 +178,32 @@ describe('tile controller', () => {
 
   it('renders the installing notice and hydrates once deps become ready', () => {
     const createInstance = vi.fn(noop);
+    let capturedContext: unknown = null;
 
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', createInstance));
+    vi.mocked(mountWidgetTile).mockImplementation((body: HTMLElement, plugin: unknown, ctx: unknown) => {
+      const loadedPlugin = plugin as LoadedPlugin;
+
+      body.textContent = '';
+      capturedContext = ctx;
+
+      try {
+        const instance = loadedPlugin.module.createInstance(body, ctx as never);
+        const mounted = instance instanceof Promise ? null : instance;
+
+        return {
+          getMounted: vi.fn(() => mounted === null ? null : {instance: mounted}),
+          whenReady: vi.fn(() => Promise.resolve(mounted !== null)),
+          dispose: vi.fn(),
+        };
+      } catch {
+        return {
+          getMounted: vi.fn(() => null),
+          whenReady: vi.fn(() => Promise.resolve(false)),
+          dispose: vi.fn(),
+        };
+      }
+    });
     replaceDepsStatuses([{name: 'traffic', depsStatus: 'installing'}]);
 
     const controller = ensureTileController('traffic', 'traffic:1', vi.fn());
@@ -162,6 +216,12 @@ describe('tile controller', () => {
 
     expect(createInstance).toHaveBeenCalledTimes(1);
     expect(controller?.pending).toBe(false);
+    expect(capturedContext).toEqual(expect.objectContaining({setTileTitle: controller?.setTileTitle}));
+
+    const setTileTitle = (capturedContext as {setTileTitle: (title: string) => void}).setTileTitle;
+
+    setTileTitle('eth0');
+    expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('eth0');
   });
 
   it('renders the failed notice when hydration finds failed deps', () => {

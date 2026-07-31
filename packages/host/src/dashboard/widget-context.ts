@@ -14,6 +14,7 @@ export function createWidgetContext(
   pluginName: string,
   instanceId: string,
   hostInfo?: HostInfo,
+  setTileTitle?: (title: string) => void,
 ): PluginContext {
   const effectiveHostInfo = hostInfo ?? appState.hostInfo ?? FALLBACK_HOST_INFO;
   const plugin = pluginRegistry.get(pluginName);
@@ -22,5 +23,5 @@ export function createWidgetContext(
     throw new Error(`No loaded plugin "${pluginName}"`);
   }
 
-  return createPluginContext(plugin.entry, instanceId, effectiveHostInfo);
+  return createPluginContext(plugin.entry, instanceId, effectiveHostInfo, setTileTitle);
 }

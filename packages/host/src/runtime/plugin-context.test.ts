@@ -114,6 +114,19 @@ describe('createPluginContext', () => {
 
     expect(ctx.backend).toBeDefined();
   });
+
+  it('forwards setTileTitle when provided', () => {
+    const setTileTitle = vi.fn();
+    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo, setTileTitle);
+
+    expect(ctx.setTileTitle).toBe(setTileTitle);
+  });
+
+  it('leaves setTileTitle undefined when not provided', () => {
+    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+
+    expect(ctx.setTileTitle).toBeUndefined();
+  });
 });
 
 describe('createPluginContext service boundaries', () => {

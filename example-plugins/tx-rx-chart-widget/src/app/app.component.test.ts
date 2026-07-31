@@ -63,7 +63,14 @@ function queryElement<T extends Element>(root: Element, selector: string): T {
 async function createFixture(
   savedInterface: string | null,
   savedRefresh: string | null,
-): Promise<{fixture: ComponentFixture<AppComponentType>; openSettings: ReturnType<typeof vi.fn>}> {
+  setTileTitle?: ((title: string) => void) | null,
+): Promise<
+  {
+    fixture: ComponentFixture<AppComponentType>;
+    openSettings: ReturnType<typeof vi.fn>;
+    setTileTitle: ((title: string) => void) | undefined;
+  }
+> {
   await resolveComponentResources((url: string) => {
     if (url.endsWith('app.component.html')) {
       return Promise.resolve(appTemplate);
@@ -85,6 +92,7 @@ async function createFixture(
   });
 
   const openSettings = vi.fn<OpenSettingsFn>();
+  const setTileTitleInput = setTileTitle === null ? undefined : (setTileTitle ?? vi.fn<(title: string) => void>());
 
   await TestBed.configureTestingModule({
     imports: [AppComponentType],
@@ -95,11 +103,16 @@ async function createFixture(
   }).compileComponents();
 
   const fixture = TestBed.createComponent(AppComponentType);
+  const instance = fixture.componentInstance as unknown as {
+    openSettings: () => OpenSettingsFn;
+    setTileTitle: () => ((title: string) => void) | undefined;
+  };
 
-  fixture.componentRef.setInput('openSettings', openSettings);
+  instance.openSettings = () => openSettings;
+  instance.setTileTitle = () => setTileTitleInput;
   fixtures.push(fixture);
 
-  return {fixture, openSettings};
+  return {fixture, openSettings, setTileTitle: setTileTitleInput};
 }
 
 afterEach(() => {
@@ -145,5 +158,46 @@ describe('AppComponent', () => {
     const select = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-select');
 
     expect(select.getAttribute('placeholder')).toBe('Select interface…');
+  });
+
+  it('calls setTileTitle with the active interface name when provided', async () => {
+    const {fixture, setTileTitle} = await createFixture('eth1', '3000');
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    expect(setTileTitle).toHaveBeenCalledWith('WAN');
+  });
+
+  it('calls setTileTitle with an empty string when no interface is selected', async () => {
+    const {fixture, setTileTitle} = await createFixture(null, '3000');
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    expect(setTileTitle).toHaveBeenCalledWith('');
+  });
+
+  it('keeps the internal interface label when setTileTitle is absent', async () => {
+    const {fixture} = await createFixture('eth1', '3000', null);
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    const label = fixture.nativeElement.querySelector('.chart-header__label');
+
+    expect(label).not.toBeNull();
+    expect(label.textContent).toBe('WAN');
+  });
+
+  it('hides the internal interface label when setTileTitle is provided', async () => {
+    const {fixture} = await createFixture('eth1', '3000', () => undefined);
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    const label = fixture.nativeElement.querySelector('.chart-header__label');
+
+    expect(label).toBeNull();
   });
 });

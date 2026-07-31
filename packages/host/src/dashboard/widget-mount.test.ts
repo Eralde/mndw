@@ -74,7 +74,7 @@ describe('createWidgetContext', () => {
 
     createWidgetContext('traffic', 'traffic:1', explicitHostInfo);
 
-    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', explicitHostInfo);
+    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', explicitHostInfo, undefined);
   });
 
   it('falls back to app-state host info when none is passed', () => {
@@ -88,7 +88,7 @@ describe('createWidgetContext', () => {
 
     createWidgetContext('traffic', 'traffic:1');
 
-    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', stateHostInfo);
+    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', stateHostInfo, undefined);
   });
 
   it('falls back to FALLBACK_HOST_INFO when neither explicit nor app-state host info exists', () => {
@@ -98,7 +98,18 @@ describe('createWidgetContext', () => {
 
     createWidgetContext('traffic', 'traffic:1');
 
-    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', FALLBACK_HOST_INFO);
+    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', FALLBACK_HOST_INFO, undefined);
+  });
+
+  it('forwards setTileTitle to createPluginContext', () => {
+    const plugin = loadedWidget('traffic');
+    const setTileTitle = vi.fn();
+
+    pluginRegistry.register(plugin);
+
+    createWidgetContext('traffic', 'traffic:1', explicitHostInfo, setTileTitle);
+
+    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', explicitHostInfo, setTileTitle);
   });
 
   it('throws when the plugin is not in the registry', () => {

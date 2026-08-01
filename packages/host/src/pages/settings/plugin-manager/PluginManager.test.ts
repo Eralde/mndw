@@ -1,4 +1,5 @@
-import {type Mocked, afterEach, describe, expect, it, vi} from 'vitest';
+import {defineMndwUi} from '@mndw/ui';
+import {type Mocked, afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
@@ -79,6 +80,10 @@ function deferred<T>(): {promise: Promise<T>; resolve: (value: T) => void} {
 }
 
 describe('PluginManager', () => {
+  beforeAll(() => {
+    defineMndwUi();
+  });
+
   afterEach(() => {
     document.body.innerHTML = '';
   });

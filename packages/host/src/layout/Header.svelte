@@ -14,19 +14,26 @@ function handleLogout(): void {
 
 <header class="mndw-header">
   <div class="mndw-header__left">
-    <button
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="ghost"
       class="mndw-header__menu-toggle"
+      aria-label="Toggle menu"
       onclick={() => appState.sidebarCollapsed = !appState.sidebarCollapsed}
     >
       ☰
-    </button>
+    </mndw-button>
     <span class="mndw-header__brand">mndw</span>
     {#if appState.hostInfo}
       <span class="mndw-header__device">{appState.hostInfo.deviceName}</span>
     {/if}
   </div>
   <div class="mndw-header__right">
-    <button
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="ghost"
       class="mndw-header__theme-toggle"
       title={appState.theme === 'dark'
       ? 'Switch to light theme'
@@ -35,12 +42,15 @@ function handleLogout(): void {
       onclick={toggleTheme}
     >
       {appState.theme === 'dark' ? '☀' : '☾'}
-    </button>
-    <button
+    </mndw-button>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="danger"
       class="mndw-header__logout"
       onclick={handleLogout}
     >
       Logout
-    </button>
+    </mndw-button>
   </div>
 </header>

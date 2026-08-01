@@ -126,44 +126,52 @@ let {
 
           {#if item.source === 'user'}
             <div class="mndw-installed__actions">
-              <button
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <mndw-button
                 class="mndw-installed__toggle"
-                type="button"
+                variant="primary"
                 disabled={busyName !== null}
                 onclick={() =>
                 item.enabled ? onDisable(item.name) : onEnable(item.name)}
               >
                 {item.enabled ? 'Disable' : 'Enable'}
-              </button>
+              </mndw-button>
               {#if confirmingName === item.name}
                 <div class="mndw-installed__confirmation">
                   <p>Delete {item.label}? This cannot be undone.</p>
-                  <button
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <mndw-button
                     class="mndw-installed__cancel"
-                    type="button"
+                    variant="ghost"
                     disabled={busyName !== null}
                     onclick={onCancelConfirm}
                   >
                     Cancel
-                  </button>
-                  <button
+                  </mndw-button>
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <mndw-button
                     class="mndw-installed__confirm"
-                    type="button"
+                    variant="danger"
                     disabled={busyName !== null}
                     onclick={() => onDelete(item.name)}
                   >
                     Delete plugin
-                  </button>
+                  </mndw-button>
                 </div>
               {:else}
-                <button
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <mndw-button
                   class="mndw-installed__delete"
-                  type="button"
+                  variant="danger"
                   disabled={busyName !== null}
                   onclick={() => onRequestConfirm(item.name)}
                 >
                   Delete
-                </button>
+                </mndw-button>
               {/if}
             </div>
           {/if}
@@ -274,28 +282,5 @@ let {
   border: 1px solid var(--mndw-warning);
   border-radius: var(--mndw-radius-sm);
   font-size: var(--mndw-text-sm);
-}
-
-.mndw-installed__actions button {
-  border: 1px solid var(--mndw-border);
-  border-radius: var(--mndw-radius-sm);
-  padding: var(--mndw-space-2) var(--mndw-space-3);
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text);
-  font: inherit;
-  font-size: var(--mndw-text-sm);
-  font-weight: var(--mndw-weight-semibold);
-  cursor: pointer;
-}
-
-.mndw-installed__actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.mndw-installed__confirm {
-  border-color: var(--mndw-danger) !important;
-  background: var(--mndw-danger) !important;
-  color: var(--mndw-accent-contrast) !important;
 }
 </style>

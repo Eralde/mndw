@@ -114,11 +114,12 @@ body {
 }
 
 .mndw-header__menu-toggle {
-  border: none;
-  background: none;
-  color: var(--mndw-text-subtle);
   font-size: 1.2em;
-  cursor: pointer;
+}
+
+.mndw-header__menu-toggle::part(button) {
+  padding: 4px;
+  line-height: 1;
 }
 
 .mndw-header__right {
@@ -128,25 +129,20 @@ body {
 }
 
 .mndw-header__theme-toggle {
-  border: none;
-  background: none;
-  color: var(--mndw-text-subtle);
   font-size: 1.1em;
-  line-height: 1;
-  cursor: pointer;
 }
 
-.mndw-header__theme-toggle:hover {
-  color: var(--mndw-text);
+.mndw-header__theme-toggle::part(button) {
+  padding: 4px;
+  line-height: 1;
 }
 
 .mndw-header__logout {
+  display: inline-block;
+}
+
+.mndw-header__logout::part(button) {
   padding: 4px 12px;
-  border: 1px solid var(--mndw-danger);
-  border-radius: 4px;
-  background: none;
-  color: var(--mndw-danger);
-  cursor: pointer;
 }
 
 /* === Sidebar === */
@@ -257,18 +253,13 @@ body {
   background: var(--mndw-surface);
 }
 
-.mndw-login__form button {
-  padding: 8px;
-  border: none;
-  border-radius: 4px;
-  background: var(--mndw-accent);
-  color: var(--mndw-accent-contrast);
-  cursor: pointer;
+.mndw-login__form mndw-button {
+  display: block;
 }
 
-.mndw-login__form button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.mndw-login__form mndw-button::part(button) {
+  width: 100%;
+  padding: 8px;
 }
 
 .mndw-login__title {
@@ -490,18 +481,13 @@ body {
   background: var(--mndw-surface);
 }
 
-.mndw-dashboard__toolbar button {
-  padding: 6px 12px;
-  border: 1px solid var(--mndw-border);
-  border-radius: 4px;
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text-muted);
-  font-size: 13px;
-  cursor: pointer;
+.mndw-dashboard__toolbar mndw-button {
+  display: inline-block;
 }
 
-.mndw-dashboard__toolbar button:hover {
-  border-color: var(--mndw-accent);
+.mndw-dashboard__toolbar mndw-button::part(button) {
+  padding: 6px 12px;
+  font-size: 13px;
 }
 
 .mndw-dashboard__toolbar--empty {
@@ -545,35 +531,26 @@ body {
 }
 
 .mndw-floating-panel__close {
-  padding: 0 4px;
-  border: none;
-  background: none;
-  color: var(--mndw-text-subtle);
   font-size: 18px;
-  cursor: pointer;
 }
 
-.mndw-floating-panel__close:hover {
-  color: var(--mndw-text);
+.mndw-floating-panel__close::part(button) {
+  padding: 0 4px;
+  line-height: 1;
 }
 
-.mndw-floating-panel button {
+.mndw-floating-panel > mndw-button:not(.mndw-floating-panel__close) {
   display: block;
   width: 100%;
   margin-bottom: 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--mndw-border);
-  border-radius: 4px;
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text-muted);
-  font-size: 14px;
-  text-align: left;
-  cursor: pointer;
 }
 
-.mndw-floating-panel button:hover {
-  border-color: var(--mndw-accent);
-  background: var(--mndw-border);
+.mndw-floating-panel > mndw-button:not(.mndw-floating-panel__close)::part(button) {
+  justify-content: flex-start;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  text-align: left;
 }
 
 .mndw-floating-panel__empty {
@@ -639,20 +616,16 @@ body {
   gap: 4px;
 }
 
-.mndw-order-card__moves button {
+.mndw-order-card__moves mndw-button {
+  display: inline-block;
   width: 28px;
   height: 28px;
-  padding: 0;
-  border: 1px solid var(--mndw-border);
-  border-radius: 4px;
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text-muted);
-  cursor: pointer;
 }
 
-.mndw-order-card__moves button:disabled {
-  opacity: 0.4;
-  cursor: default;
+.mndw-order-card__moves mndw-button::part(button) {
+  width: 100%;
+  height: 100%;
+  padding: 0;
 }
 
 /* === Page Plugin === */

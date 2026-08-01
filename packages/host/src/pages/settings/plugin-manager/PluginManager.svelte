@@ -126,18 +126,22 @@ onMount(() => {
       role="status"
     >
       <span>Reload to apply plugin changes.</span>
-      <button
-        type="button"
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="primary"
         onclick={() => window.location.reload()}
       >
         Reload now
-      </button>
-      <button
-        type="button"
+      </mndw-button>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="ghost"
         onclick={() => (reloadPrompt = false)}
       >
         Later
-      </button>
+      </mndw-button>
     </div>
   {/if}
 
@@ -162,12 +166,14 @@ onMount(() => {
       role="alert"
     >
       <p>{loadError}</p>
-      <button
-        type="button"
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="secondary"
         onclick={() => void load()}
       >
         Retry
-      </button>
+      </mndw-button>
     </div>
   {:else}
     {#if refreshError}
@@ -176,12 +182,14 @@ onMount(() => {
         role="alert"
       >
         <span>{refreshError}</span>
-        <button
-          type="button"
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <mndw-button
+          variant="ghost"
           onclick={() => (refreshError = '')}
         >
           Dismiss
-        </button>
+        </mndw-button>
       </div>
     {/if}
 
@@ -248,16 +256,5 @@ onMount(() => {
   align-items: center;
   gap: var(--mndw-space-2);
   font-size: var(--mndw-text-sm);
-}
-
-.mndw-reload button,
-.mndw-plugin-manager__notice button {
-  border: 1px solid var(--mndw-border);
-  border-radius: var(--mndw-radius-sm);
-  padding: var(--mndw-space-2) var(--mndw-space-3);
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text);
-  font: inherit;
-  cursor: pointer;
 }
 </style>

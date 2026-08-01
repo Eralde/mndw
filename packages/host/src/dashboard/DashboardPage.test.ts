@@ -1,5 +1,6 @@
 /* eslint id-blacklist: 0 */
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
+import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
 
 type Handler = (...args: unknown[]) => void;
@@ -132,8 +133,8 @@ function configureTwoClockWidgets(): void {
   });
 }
 
-function arrangeButton(target: HTMLElement): HTMLButtonElement | undefined {
-  return [...target.querySelectorAll<HTMLButtonElement>('.mndw-dashboard__toolbar button')]
+function arrangeButton(target: HTMLElement): HTMLElement | undefined {
+  return [...target.querySelectorAll<HTMLElement>('.mndw-dashboard__toolbar mndw-button')]
     .find((button) => button.textContent?.includes('Arrange widgets'));
 }
 
@@ -150,6 +151,10 @@ function mountPage(): {component: ReturnType<typeof mount>; target: HTMLElement}
 }
 
 describe('DashboardPage', () => {
+  beforeAll(() => {
+    defineMndwUi();
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
     mobileState.matches = false;
@@ -343,14 +348,14 @@ describe('DashboardPage', () => {
 
     const {component, target} = mountPage();
 
-    const addButton = [...target.querySelectorAll('button')].find(
+    const addButton = [...target.querySelectorAll('mndw-button')].find(
       (btn) => btn.textContent?.includes('Add Widget'),
     );
 
     addButton?.click();
     flushSync();
 
-    const pickerButton = [...document.querySelectorAll('.mndw-floating-panel button')].find(
+    const pickerButton = [...document.querySelectorAll('.mndw-floating-panel mndw-button')].find(
       (btn) => btn.textContent?.trim() === 'traffic',
     ) as HTMLButtonElement | undefined;
 
@@ -373,9 +378,9 @@ describe('DashboardPage', () => {
 
     const {component, target} = mountPage();
 
-    target.querySelector<HTMLButtonElement>('.mndw-dashboard__toolbar button')?.click();
+    target.querySelector<HTMLElement>('.mndw-dashboard__toolbar mndw-button')?.click();
     flushSync();
-    document.body.querySelector<HTMLButtonElement>('.mndw-floating-panel button:not(.mndw-floating-panel__close)')
+    document.body.querySelector<HTMLElement>('.mndw-floating-panel mndw-button:not(.mndw-floating-panel__close)')
       ?.click();
     flushSync();
     gridHandlers.get('added')?.();
@@ -463,10 +468,10 @@ describe('DashboardPage', () => {
 
     const {component, target} = mountPage();
 
-    target.querySelector<HTMLButtonElement>('.mndw-dashboard__toolbar button')?.click();
+    target.querySelector<HTMLElement>('.mndw-dashboard__toolbar mndw-button')?.click();
     flushSync();
     document.body
-      .querySelector<HTMLButtonElement>('.mndw-floating-panel button:not(.mndw-floating-panel__close)')
+      .querySelector<HTMLElement>('.mndw-floating-panel mndw-button:not(.mndw-floating-panel__close)')
       ?.click();
     flushSync();
 

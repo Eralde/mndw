@@ -19,20 +19,24 @@ let {entry, close}: Props = $props();
   <CapabilityReview descriptor={entry.backend} />
 
   <div class="mndw-approval__actions">
-    <button
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
       class="mndw-approval__deny"
-      type="button"
+      variant="danger"
       onclick={() => close('deny')}
     >
       Deny
-    </button>
-    <button
+    </mndw-button>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
       class="mndw-approval__approve"
-      type="button"
+      variant="primary"
       onclick={() => close('approve')}
     >
       Approve
-    </button>
+    </mndw-button>
   </div>
 </div>
 
@@ -55,29 +59,5 @@ let {entry, close}: Props = $props();
   display: flex;
   justify-content: flex-end;
   gap: var(--mndw-space-2);
-}
-
-.mndw-approval__actions button {
-  border: 1px solid var(--mndw-border);
-  border-radius: var(--mndw-radius-sm);
-  padding: var(--mndw-space-2) var(--mndw-space-3);
-  font: inherit;
-  font-weight: var(--mndw-weight-semibold);
-  cursor: pointer;
-}
-
-.mndw-approval__approve {
-  border-color: var(--mndw-accent) !important;
-  background: var(--mndw-accent);
-  color: var(--mndw-accent-contrast);
-}
-
-.mndw-approval__approve:hover {
-  background: var(--mndw-accent-hover);
-}
-
-.mndw-approval__deny {
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text);
 }
 </style>

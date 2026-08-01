@@ -1,5 +1,6 @@
 import {MNDW_TOKENS, type PaletteTokenMap} from '@mndw/sdk';
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {defineMndwUi} from '@mndw/ui';
+import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
 const refreshPalette = vi.fn<() => Promise<void>>();
@@ -72,14 +73,14 @@ async function chooseFile(contents: string): Promise<void> {
   });
 }
 
-function button(label: string): HTMLButtonElement {
-  const found = [...target.querySelectorAll('button')].find((candidate) =>
+function button(label: string): HTMLElement & {disabled: boolean} {
+  const found = [...target.querySelectorAll<HTMLElement & {disabled: boolean}>('mndw-button')].find((candidate) =>
     candidate.textContent?.trim().startsWith(label)
   );
 
   if (!found) {
     throw new Error(`no button labelled "${label}"; saw: ${
-      [...target.querySelectorAll('button')]
+      [...target.querySelectorAll('mndw-button')]
         .map((candidate) => candidate.textContent?.trim())
         .join(' | ')
     }`);
@@ -87,6 +88,10 @@ function button(label: string): HTMLButtonElement {
 
   return found;
 }
+
+beforeAll(() => {
+  defineMndwUi();
+});
 
 beforeEach(() => {
   refreshPalette.mockReset().mockResolvedValue(undefined);
@@ -328,7 +333,7 @@ describe('PaletteManager', () => {
 
       await chooseFile(JSON.stringify(valid));
       expect(
-        [...target.querySelectorAll('button')].some((candidate) =>
+        [...target.querySelectorAll('mndw-button')].some((candidate) =>
           candidate.textContent?.trim().startsWith('Export palette')
         ),
       )

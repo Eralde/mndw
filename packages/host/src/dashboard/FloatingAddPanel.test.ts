@@ -1,4 +1,5 @@
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
+import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
 
 vi.mock('../runtime/plugin-registry.js', () => ({
@@ -37,6 +38,8 @@ interface PanelHandles {
   onClose: ReturnType<typeof vi.fn>;
 }
 
+type MndwButtonHost = HTMLElement & {disabled: boolean};
+
 function mountPanel(open = true): PanelHandles {
   const target = document.createElement('div');
 
@@ -51,13 +54,17 @@ function mountPanel(open = true): PanelHandles {
   return {component, target, onAddWidget, onClose};
 }
 
-function widgetButtons(target: HTMLElement): HTMLButtonElement[] {
-  return [...target.querySelectorAll<HTMLButtonElement>('.mndw-floating-panel button')].filter(
+function widgetButtons(target: HTMLElement): MndwButtonHost[] {
+  return [...target.querySelectorAll<MndwButtonHost>('.mndw-floating-panel mndw-button')].filter(
     (btn) => btn.getAttribute('aria-label') !== 'Close',
   );
 }
 
 describe('FloatingAddPanel', () => {
+  beforeAll(() => {
+    defineMndwUi();
+  });
+
   beforeEach(() => {
     vi.mocked(pluginRegistry).getWidgets.mockReturnValue([
       widget('traffic', 'Traffic'),

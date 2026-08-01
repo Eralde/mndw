@@ -74,11 +74,12 @@ function handleSubmit(e: Event): void {
         {error}
       </div>
     {/if}
-    <button
+    <mndw-button
+      variant="primary"
       type="submit"
       disabled={loading}
     >
       {loading ? 'Logging in...' : 'Login'}
-    </button>
+    </mndw-button>
   </form>
 </div>

@@ -102,13 +102,16 @@ function handlePointerUp(): void {
     >
       <div class="mndw-floating-panel__header">
         <h3 id="arrange-widgets-title">Arrange widgets</h3>
-        <button
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <mndw-button
+          variant="ghost"
           class="mndw-floating-panel__close"
           onclick={commit}
           aria-label="Close"
         >
           ×
-        </button>
+        </mndw-button>
       </div>
       <ul class="mndw-order-overlay__list">
         {#each draft as card, index (card.id)}
@@ -126,20 +129,26 @@ function handlePointerUp(): void {
             >☰</span>
             <span class="mndw-order-card__label">{card.label}</span>
             <span class="mndw-order-card__moves">
-              <button
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <mndw-button
+                variant="ghost"
                 onclick={() => move(index, -1)}
                 disabled={index === 0}
                 aria-label={`Move ${card.label} up`}
               >
                 ▲
-              </button>
-              <button
+              </mndw-button>
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <mndw-button
+                variant="ghost"
                 onclick={() => move(index, 1)}
                 disabled={index === draft.length - 1}
                 aria-label={`Move ${card.label} down`}
               >
                 ▼
-              </button>
+              </mndw-button>
             </span>
           </li>
         {/each}

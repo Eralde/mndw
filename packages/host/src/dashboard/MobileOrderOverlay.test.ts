@@ -1,7 +1,10 @@
 /* eslint id-blacklist: 0 */
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
 import MobileOrderOverlay from './MobileOrderOverlay.svelte';
+
+type MndwButtonHost = HTMLElement & {disabled: boolean};
 import MobileOrderOverlayTestHost from './MobileOrderOverlayTestHost.svelte';
 
 const CARDS = [
@@ -35,6 +38,10 @@ const cardLabels = (target: HTMLElement): string[] =>
   [...target.querySelectorAll('.mndw-order-card__label')].map((el) => el.textContent ?? '');
 
 describe('MobileOrderOverlay', () => {
+  beforeAll(() => {
+    defineMndwUi();
+  });
+
   afterEach(() => {
     document.body.innerHTML = '';
   });
@@ -51,7 +58,7 @@ describe('MobileOrderOverlay', () => {
     const {component, target, onCommit} = mountOverlay();
 
     target
-      .querySelectorAll<HTMLButtonElement>('[aria-label="Move Clock down"]')[0]
+      .querySelectorAll<HTMLElement>('[aria-label="Move Clock down"]')[0]
       ?.click();
     flushSync();
 
@@ -63,8 +70,8 @@ describe('MobileOrderOverlay', () => {
 
   it('disables move-up on the first card and move-down on the last', () => {
     const {component, target} = mountOverlay();
-    const ups = target.querySelectorAll<HTMLButtonElement>('.mndw-order-card__moves button:first-child');
-    const downs = target.querySelectorAll<HTMLButtonElement>('.mndw-order-card__moves button:last-child');
+    const ups = target.querySelectorAll<MndwButtonHost>('.mndw-order-card__moves mndw-button:first-child');
+    const downs = target.querySelectorAll<MndwButtonHost>('.mndw-order-card__moves mndw-button:last-child');
 
     expect(ups[0]?.disabled).toBe(true);
     expect(downs[downs.length - 1]?.disabled).toBe(true);
@@ -75,7 +82,7 @@ describe('MobileOrderOverlay', () => {
   it.each([
     [
       'close button',
-      (target: HTMLElement) => target.querySelector<HTMLButtonElement>('.mndw-floating-panel__close')?.click(),
+      (target: HTMLElement) => target.querySelector<HTMLElement>('.mndw-floating-panel__close')?.click(),
     ],
     ['backdrop', (target: HTMLElement) => target.querySelector<HTMLElement>('.mndw-floating-panel-backdrop')?.click()],
     ['Escape', (target: HTMLElement) =>
@@ -85,7 +92,7 @@ describe('MobileOrderOverlay', () => {
   ])('commits the draft order on %s', (_path, close) => {
     const {component, target, onCommit} = mountOverlay();
 
-    target.querySelectorAll<HTMLButtonElement>('[aria-label="Move Clock down"]')[0]?.click();
+    target.querySelectorAll<HTMLElement>('[aria-label="Move Clock down"]')[0]?.click();
     flushSync();
     close(target);
     flushSync();

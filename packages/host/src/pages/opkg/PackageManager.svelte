@@ -1,4 +1,5 @@
 <script lang="ts">
+import type {MndwCheckboxChangeDetail, MndwTabsChangeDetail} from '@mndw/ui';
 import {onMount} from 'svelte';
 import {SvelteSet} from 'svelte/reactivity';
 import {OpkgError, opkgClient} from '../../services/opkg-client.js';
@@ -127,8 +128,10 @@ const handleRefresh = async (): Promise<void> => {
   }
 };
 
-const toggleSelectAll = (): void => {
-  if (allFilteredChecked) {
+const handleSelectAllChange = (
+  event: CustomEvent<MndwCheckboxChangeDetail>,
+): void => {
+  if (!event.detail.checked) {
     for (const p of filtered) {
       checked.delete(p.name);
     }
@@ -139,11 +142,22 @@ const toggleSelectAll = (): void => {
   }
 };
 
-const toggleCheck = (name: string): void => {
-  if (checked.has(name)) {
-    checked.delete(name);
-  } else {
+const handlePackageChange = (
+  name: string,
+  event: CustomEvent<MndwCheckboxChangeDetail>,
+): void => {
+  if (event.detail.checked) {
     checked.add(name);
+  } else {
+    checked.delete(name);
+  }
+};
+
+const handleFilterChange = (event: CustomEvent<MndwTabsChangeDetail>): void => {
+  const value = event.detail.value;
+
+  if (value === 'all' || value === 'installed' || value === 'updates') {
+    filterMode = value;
   }
 };
 
@@ -156,20 +170,24 @@ onMount(() => {
   <div class="header-row">
     <h1>Package Manager</h1>
     <div class="header-actions">
-      <button
-        type="button"
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="secondary"
         disabled={loading}
         onclick={() => void handleRefresh()}
       >
         Refresh Metadata
-      </button>
-      <button
-        type="button"
+      </mndw-button>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="secondary"
         disabled={loading}
         onclick={() => void fetchPackages()}
       >
         Reload
-      </button>
+      </mndw-button>
     </div>
   </div>
 
@@ -180,66 +198,51 @@ onMount(() => {
       placeholder="Search packages..."
       class="filter-input"
     />
-    <div
-      class="filter-tabs"
-      role="tablist"
+    <mndw-tabs
+      value={filterMode}
+      onmndwchange={handleFilterChange}
     >
-      <button
-        role="tab"
-        aria-selected={filterMode === 'all'}
-        class:active={filterMode === 'all'}
-        onclick={() => filterMode = 'all'}
-      >
-        All
-      </button>
-      <button
-        role="tab"
-        aria-selected={filterMode === 'installed'}
-        class:active={filterMode === 'installed'}
-        onclick={() => filterMode = 'installed'}
-      >
-        Installed
-      </button>
-      <button
-        role="tab"
-        aria-selected={filterMode === 'updates'}
-        class:active={filterMode === 'updates'}
-        onclick={() => filterMode = 'updates'}
-      >
-        Updates ({updateCount})
-      </button>
-    </div>
+      <mndw-tab id="all">All</mndw-tab>
+      <mndw-tab id="installed">Installed</mndw-tab>
+      <mndw-tab id="updates">Updates ({updateCount})</mndw-tab>
+    </mndw-tabs>
   </div>
 
   <div class="bulk-bar">
     <span class="bulk-label">With selected:</span>
-    <button
-      type="button"
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="primary"
       disabled={loading || !canInstall}
       onclick={() =>
       void runAction('install', 'Install', (p) =>
         p.status === 'uninstalled')}
     >
       Install
-    </button>
-    <button
-      type="button"
+    </mndw-button>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="danger"
       disabled={loading || !canRemove}
       onclick={() =>
       void runAction('remove', 'Remove', (p) =>
         p.status !== 'uninstalled')}
     >
       Remove
-    </button>
-    <button
-      type="button"
+    </mndw-button>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="primary"
       disabled={loading || !canUpdate}
       onclick={() =>
       void runAction('upgrade', 'Upgrade', (p) =>
         p.status === 'update_available')}
     >
       Update
-    </button>
+    </mndw-button>
     {#if selectedCount > 0}
       <span class="selected-count">({selectedCount} selected)</span>
     {/if}
@@ -250,54 +253,12 @@ onMount(() => {
       <thead>
         <tr>
           <th class="col-check">
-            <label class="checkbox-label">
-              {#if allFilteredChecked}
-                <svg
-                  viewBox="0 0 16 16"
-                  width="14"
-                  height="14"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M3 8h10v1H3z"
-                  />
-                </svg>
-              {:else if someFilteredChecked}
-                <svg
-                  viewBox="0 0 16 16"
-                  width="14"
-                  height="14"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M3 8h10v1H3z"
-                  />
-                </svg>
-              {:else}
-                <svg
-                  viewBox="0 0 16 16"
-                  width="14"
-                  height="14"
-                >
-                  <rect
-                    x="1"
-                    y="1"
-                    width="14"
-                    height="14"
-                    rx="2"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                  />
-                </svg>
-              {/if}
-              <input
-                type="checkbox"
-                checked={allFilteredChecked}
-                onchange={toggleSelectAll}
-                style="display:none"
-              />
-            </label>
+            <mndw-checkbox
+              checked={allFilteredChecked}
+              indeterminate={someFilteredChecked && !allFilteredChecked}
+              aria-label="Select all filtered packages"
+              onmndwchange={handleSelectAllChange}
+            ></mndw-checkbox>
           </th>
           <th class="col-name">Package</th>
           <th class="col-ver">Version</th>
@@ -346,43 +307,12 @@ onMount(() => {
           {#each filtered as pkg (pkg.name)}
             <tr>
               <td class="col-check">
-                <label class="checkbox-label">
-                  {#if checked.has(pkg.name)}
-                    <svg
-                      viewBox="0 0 16 16"
-                      width="14"
-                      height="14"
-                    >
-                      <path
-                        fill="currentColor"
-                        d="M3 2.5L1.5 4 6 8.5l8.5-8.5L13 1.5 6 7z"
-                      />
-                    </svg>
-                  {:else}
-                    <svg
-                      viewBox="0 0 16 16"
-                      width="14"
-                      height="14"
-                    >
-                      <rect
-                        x="1"
-                        y="1"
-                        width="14"
-                        height="14"
-                        rx="2"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="1.5"
-                      />
-                    </svg>
-                  {/if}
-                  <input
-                    type="checkbox"
-                    checked={checked.has(pkg.name)}
-                    onchange={() => toggleCheck(pkg.name)}
-                    style="display:none"
-                  />
-                </label>
+                <mndw-checkbox
+                  checked={checked.has(pkg.name)}
+                  aria-label={`Select ${pkg.name}`}
+                  onmndwchange={(event: CustomEvent<MndwCheckboxChangeDetail>) =>
+                  handlePackageChange(pkg.name, event)}
+                ></mndw-checkbox>
               </td>
               <td
                 class="col-name"
@@ -450,30 +380,16 @@ onMount(() => {
   gap: 8px;
 }
 
-button {
+.header-actions mndw-button,
+.bulk-bar mndw-button {
+  display: inline-block;
+}
+
+:global(.header-actions mndw-button)::part(button),
+:global(.bulk-bar mndw-button)::part(button) {
   padding: 6px 12px;
   font-size: 0.8125rem;
-  border: 1px solid var(--mndw-border);
-  border-radius: 4px;
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text-muted);
-  cursor: pointer;
   white-space: nowrap;
-}
-
-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-button:not(:disabled):hover {
-  background: var(--mndw-accent-hover);
-  color: var(--mndw-accent-contrast);
-}
-
-button:not(:disabled):active {
-  background: var(--mndw-accent);
-  color: var(--mndw-accent-contrast);
 }
 
 .filter-row {
@@ -499,32 +415,8 @@ button:not(:disabled):active {
   color: var(--mndw-text-subtle);
 }
 
-.filter-tabs {
-  display: flex;
-  gap: 0;
-  border: 1px solid var(--mndw-border);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.filter-tabs button {
-  border: none;
-  border-radius: 0;
-  padding: 6px 14px;
-  font-size: 0.8125rem;
-  background: transparent;
-  color: var(--mndw-text-subtle);
-  cursor: pointer;
-}
-
-.filter-tabs button.active {
-  background: var(--mndw-accent);
-  color: var(--mndw-accent-contrast);
-}
-
-.filter-tabs button:not(.active):hover {
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text-muted);
+.filter-row mndw-tabs {
+  display: block;
 }
 
 .bulk-bar {
@@ -613,15 +505,8 @@ tr:last-child td {
   white-space: nowrap;
 }
 
-.checkbox-label {
-  display: inline-flex;
-  align-items: center;
-  cursor: pointer;
-  color: var(--mndw-text-subtle);
-}
-
-.checkbox-label svg {
-  display: block;
+td.col-check mndw-checkbox {
+  vertical-align: middle;
 }
 
 .msg-cell {

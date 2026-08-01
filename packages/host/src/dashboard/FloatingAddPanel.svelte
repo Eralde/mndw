@@ -19,7 +19,7 @@ let availableWidgets = $derived(
       || a.entry.name.localeCompare(b.entry.name),
   ),
 );
-let buttonRefs: HTMLButtonElement[] = [];
+let buttonRefs: HTMLElement[] = [];
 
 $effect(() => {
   if (open) {
@@ -53,20 +53,26 @@ function handleKeydown(event: KeyboardEvent): void {
     >
       <div class="mndw-floating-panel__header">
         <h3 id="add-widget-title">Add Widget</h3>
-        <button
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <mndw-button
+          variant="ghost"
           class="mndw-floating-panel__close"
           onclick={onClose}
           aria-label="Close"
         >
           ×
-        </button>
+        </mndw-button>
       </div>
       {#if availableWidgets.length === 0}
         <p class="mndw-floating-panel__empty">No widgets available</p>
       {:else}
         {#each availableWidgets as widget, index (widget.entry.name)}
           {@const deps = getDepsStatus(widget.entry.name)}
-          <button
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <mndw-button
+            variant="secondary"
             bind:this={buttonRefs[index]}
             onclick={() => onAddWidget(widget.entry.name)}
           >
@@ -78,7 +84,7 @@ function handleKeydown(event: KeyboardEvent): void {
                 class="mndw-floating-panel__deps mndw-floating-panel__deps--failed"
               >unavailable</span>
             {/if}
-          </button>
+          </mndw-button>
         {/each}
       {/if}
     </div>

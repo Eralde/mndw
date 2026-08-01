@@ -1,4 +1,5 @@
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {defineMndwUi} from '@mndw/ui';
 import {mount, unmount} from 'svelte';
 import {MNDW_TOKENS} from '@mndw/sdk';
 
@@ -32,6 +33,10 @@ vi.mock('../../services/palette.service.js', () => ({
 import SettingsPage from './SettingsPage.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
 
+beforeAll(() => {
+  defineMndwUi();
+});
+
 describe('SettingsPage', () => {
   afterEach(() => {
     document.body.innerHTML = '';
@@ -50,19 +55,24 @@ describe('SettingsPage', () => {
     void unmount(component);
   });
 
-  it('offers the theme as a switch labelled from outside', () => {
+  it('offers the theme switch through a labelled field', async () => {
     const target = document.createElement('div');
 
     document.body.appendChild(target);
 
     const component = mount(SettingsPage, {target});
     const control = target.querySelector('mndw-switch');
-    const label = target.querySelector<HTMLLabelElement>('label[for="mndw-theme-switch"]');
+    const field = target.querySelector<HTMLElement & {label: string; updateComplete: Promise<unknown>}>('mndw-field');
+
+    await field?.updateComplete;
+
+    const label = field?.querySelector<HTMLLabelElement>('label.mndw-field__label');
 
     // A switch, not a checkbox: the theme change applies immediately.
     expect(target.querySelector('input[type="checkbox"]')).toBeNull();
     expect(control?.id).toBe('mndw-theme-switch');
-    expect(label?.textContent?.trim()).toBe('Dark theme');
+    expect(field?.label).toContain('Dark theme');
+    expect(label?.textContent?.trim()).toContain('Dark theme');
 
     void unmount(component);
   });

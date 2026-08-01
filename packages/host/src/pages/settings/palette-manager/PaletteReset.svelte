@@ -26,28 +26,34 @@ function confirm(): void {
 <div class="mndw-palette-reset">
   {#if confirming}
     <p>Discard the imported palette and return to the built-in colours?</p>
-    <button
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="danger"
       disabled={busy || disabled}
-      type="button"
       onclick={confirm}
     >
       Yes, reset
-    </button>
-    <button
+    </mndw-button>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="secondary"
       disabled={busy || disabled}
-      type="button"
       onclick={() => (confirming = false)}
     >
       Cancel
-    </button>
+    </mndw-button>
   {:else}
-    <button
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="danger"
       disabled={busy || disabled}
-      type="button"
       onclick={start}
     >
       Reset to default{busy ? '...' : ''}
-    </button>
+    </mndw-button>
   {/if}
 
   {#if error}

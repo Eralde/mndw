@@ -54,41 +54,49 @@ let {
           <div class="mndw-pending__confirmation">
             <p>Deny {item.label}? This cannot be undone.</p>
             <div class="mndw-pending__actions">
-              <button
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <mndw-button
                 class="mndw-pending__cancel"
-                type="button"
+                variant="ghost"
                 onclick={onCancelConfirm}
               >
                 Cancel
-              </button>
-              <button
+              </mndw-button>
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <mndw-button
                 class="mndw-pending__confirm"
-                type="button"
+                variant="danger"
                 disabled={busyName !== null}
                 onclick={() => onDeny(item.name)}
               >
                 Deny plugin
-              </button>
+              </mndw-button>
             </div>
           </div>
         {:else}
           <div class="mndw-pending__actions">
-            <button
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <mndw-button
               class="mndw-pending__deny"
-              type="button"
+              variant="danger"
               disabled={busyName !== null}
               onclick={() => onRequestConfirm(item.name)}
             >
               Deny
-            </button>
-            <button
+            </mndw-button>
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <mndw-button
               class="mndw-pending__approve"
-              type="button"
+              variant="primary"
               disabled={busyName !== null}
               onclick={() => onApprove(item.name)}
             >
               Approve
-            </button>
+            </mndw-button>
           </div>
         {/if}
       </li>
@@ -160,38 +168,5 @@ let {
   display: flex;
   justify-content: flex-end;
   gap: var(--mndw-space-2);
-}
-
-.mndw-pending__actions button {
-  border: 1px solid var(--mndw-border);
-  border-radius: var(--mndw-radius-sm);
-  padding: var(--mndw-space-2) var(--mndw-space-3);
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text);
-  font: inherit;
-  font-size: var(--mndw-text-sm);
-  font-weight: var(--mndw-weight-semibold);
-  cursor: pointer;
-}
-
-.mndw-pending__actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.mndw-pending__approve {
-  border-color: var(--mndw-accent) !important;
-  background: var(--mndw-accent) !important;
-  color: var(--mndw-accent-contrast) !important;
-}
-
-.mndw-pending__approve:hover:not(:disabled) {
-  background: var(--mndw-accent-hover) !important;
-}
-
-.mndw-pending__confirm {
-  border-color: var(--mndw-danger) !important;
-  background: var(--mndw-danger) !important;
-  color: var(--mndw-accent-contrast) !important;
 }
 </style>

@@ -1,4 +1,5 @@
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {defineMndwUi} from '@mndw/ui';
+import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
@@ -42,6 +43,10 @@ function mountModal(close = vi.fn()): {component: ReturnType<typeof mount>; targ
 }
 
 describe('BackendApprovalModal', () => {
+  beforeAll(() => {
+    defineMndwUi();
+  });
+
   afterEach(() => {
     document.body.innerHTML = '';
   });

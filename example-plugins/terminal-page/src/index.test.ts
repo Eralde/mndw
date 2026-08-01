@@ -18,7 +18,7 @@ describe('createInstance', () => {
 
     flushSync();
 
-    const labels = [...host.querySelectorAll('button')].map((b) => b.textContent ?? '');
+    const labels = [...host.querySelectorAll('mndw-button')].map((b) => b.textContent ?? '');
 
     expect(labels.some((t) => /router cli|entware shell/i.test(t))).toBe(true);
     instance.unmount();

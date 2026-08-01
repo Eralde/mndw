@@ -5,12 +5,13 @@
             role="alert"
         >
             <span>{{ error() }}</span>
-            <button
+            <mndw-button
+                variant="danger"
                 class="notice__retry"
                 (click)="retryLoad()"
             >
                 Retry
-            </button>
+            </mndw-button>
         </div>
     }
     @if (loadingInterfaces()) {

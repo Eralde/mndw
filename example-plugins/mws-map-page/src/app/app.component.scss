@@ -28,7 +28,7 @@
         margin: 0;
       }
 
-      button {
+      mndw-button {
         min-height: var(--mndw-control-h);
       }
     }
@@ -59,7 +59,7 @@
     color: var(--mndw-text-subtle);
     text-align: center;
 
-    button {
+    mndw-button {
       margin-top: 8px;
     }
   }

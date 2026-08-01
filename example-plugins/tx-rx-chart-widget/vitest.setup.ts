@@ -7,3 +7,19 @@ import {defineMndwUi} from '@mndw/ui';
 getTestBed().initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
 
 defineMndwUi();
+
+if (typeof MutationObserver !== 'undefined' && !('observe' in MutationObserver.prototype)) {
+  class TestMutationObserver {
+    public constructor(_callback: MutationCallback) {}
+
+    public disconnect(): void {}
+
+    public observe(_target: Node, _options?: MutationObserverInit): void {}
+
+    public takeRecords(): MutationRecord[] {
+      return [];
+    }
+  }
+
+  globalThis.MutationObserver = TestMutationObserver;
+}

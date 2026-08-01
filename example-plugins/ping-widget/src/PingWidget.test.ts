@@ -138,14 +138,22 @@ async function mountWithHosts(
   return app;
 }
 
-function setInputValue(input: HTMLInputElement, value: string): void {
+type MndwInputHost = HTMLElement & {value: string};
+
+function setInputValue(input: MndwInputHost, value: string): void {
   input.value = value;
-  input.dispatchEvent(new Event('input', {bubbles: true}));
+  input.dispatchEvent(
+    new CustomEvent('mndwinput', {
+      detail: {value},
+      bubbles: true,
+      composed: true,
+    }),
+  );
   flushSync();
 }
 
 function pressKey(element: HTMLElement, key: string): void {
-  element.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, key}));
+  element.dispatchEvent(new KeyboardEvent('keydown', {bubbles: true, composed: true, key}));
   flushSync();
 }
 
@@ -210,6 +218,19 @@ describe('PingWidget', () => {
     expect(fetchMock).toHaveBeenCalledWith('stats');
     expect(fetchMock).toHaveBeenCalledWith('hosts');
     await unmount(app);
+  });
+
+  it('renders shared controls instead of native top-level controls', async () => {
+    const {backend} = backendReturning({
+      stats: [hostStats('9.9.9.9', 'dns')],
+      hosts: [{ip: '9.9.9.9', name: 'dns'}],
+    });
+
+    await mountWithHosts(host, backend, ['9.9.9.9']);
+
+    expect(host.querySelectorAll('mndw-button').length).toBeGreaterThanOrEqual(5);
+    expect(host.querySelectorAll('mndw-input')).toHaveLength(3);
+    expect(host.querySelector('button')).toBeNull();
   });
 
   it('starts daemon from the header controls', async () => {
@@ -317,7 +338,7 @@ describe('PingWidget', () => {
 
     if (input) {
       setInputValue(input, 'gateway dns');
-      input.dispatchEvent(new FocusEvent('focusout', {bubbles: true}));
+      input.dispatchEvent(new FocusEvent('focusout', {bubbles: true, composed: true}));
       flushSync();
     }
 
@@ -393,7 +414,7 @@ describe('PingWidget', () => {
 
     await vi.waitFor(() => {
       expect(updateBodies).toContainEqual({action: 'update', ip: '9.9.9.9', name: 'broken rename'});
-      expect(host.querySelector('[role="alert"]')?.textContent).toContain('Rename failed');
+      expect(host.querySelector('.rename-feedback')?.textContent).toContain('Rename failed');
       expect((host.querySelector('[aria-label="Label for 9.9.9.9"]'))?.value).toBe(
         'broken rename',
       );

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type {MndwCheckboxChangeDetail, MndwSliderInputDetail} from '@mndw/ui';
+
 interface Props {
   visibility: Record<string, boolean>;
   refreshIntervalSeconds: number;
@@ -15,12 +17,12 @@ const COLUMNS: readonly {key: string; label: string}[] = [
   {key: 'lastSeen', label: 'Last Seen'},
 ];
 
-function onToggle(key: string, event: Event): void {
-  props.onChange(key, (event.target as HTMLInputElement).checked);
+function onToggle(key: string, event: CustomEvent<MndwCheckboxChangeDetail>): void {
+  props.onChange(key, event.detail.checked);
 }
 
-function onInterval(event: Event): void {
-  props.onRefreshIntervalChange(Number.parseInt((event.target as HTMLInputElement).value, 10));
+function onInterval(event: CustomEvent<MndwSliderInputDetail>): void {
+  props.onRefreshIntervalChange(event.detail.value);
 }
 </script>
 
@@ -28,33 +30,28 @@ function onInterval(event: Event): void {
   <div class="clients-settings">
     <fieldset class="clients-settings__group">
       <legend>Columns</legend>
-      <label
+      <mndw-checkbox
         v-for="column in COLUMNS"
         :key="column.key"
         class="clients-settings__row"
+        :checked="visibility[column.key] !== false"
+        @mndwchange="onToggle(column.key, $event)"
       >
-        <input
-          type="checkbox"
-          :checked="visibility[column.key] !== false"
-          @change="onToggle(column.key, $event)"
-        >
         {{ column.label }}
-      </label>
+      </mndw-checkbox>
     </fieldset>
 
     <div class="clients-settings__group">
-      <label class="clients-settings__row" for="clients-refresh-interval">
-        Refresh interval
-      </label>
-      <input
-        id="clients-refresh-interval"
-        type="range"
+      <mndw-field label="Refresh interval">
+        <mndw-slider
         min="1"
         max="10"
         step="1"
         :value="refreshIntervalSeconds"
-        @input="onInterval"
-      >
+        :value-text="`${refreshIntervalSeconds}s`"
+        @mndwinput="onInterval"
+        ></mndw-slider>
+      </mndw-field>
       <span class="clients-settings__value">{{ refreshIntervalSeconds }}s</span>
     </div>
   </div>

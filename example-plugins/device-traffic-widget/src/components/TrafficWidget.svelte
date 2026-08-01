@@ -184,7 +184,9 @@ onMount(() => {
       role="alert"
     >
       {error}
-      <button
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="danger"
         class="retry-btn"
         onclick={() => {
           error = '';
@@ -194,7 +196,7 @@ onMount(() => {
         }}
       >
         Retry
-      </button>
+      </mndw-button>
     </div>
   {/if}
 
@@ -233,21 +235,22 @@ onMount(() => {
           </span>
         {/if}
         <div class="header-actions">
-          <div class="btn-group">
+          <mndw-segmented
+            class="btn-group"
+            label="Detail"
+            value={String(detail)}
+            onmndwchange={(event: CustomEvent<{value: string}>) =>
+            handleDetailChange(Number(event.detail.value))}
+          >
             {#each detailLabels as d (d.value)}
-              <button
-                class:active={detail === d.value}
-                onclick={() => handleDetailChange(d.value)}
-              >
+              <mndw-segment value={String(d.value)}>
                 {d.label}
-              </button>
+              </mndw-segment>
             {/each}
-          </div>
+          </mndw-segmented>
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <mndw-button
             class="gear-btn"
-            role="button"
-            tabindex="-1"
-            onkeydown={() => undefined}
             variant="ghost"
             title="Widget Settings"
             aria-label="Widget settings"
@@ -297,14 +300,14 @@ onMount(() => {
 }
 
 .retry-btn {
+  flex-shrink: 0;
   margin-left: auto;
+}
+
+.retry-btn::part(button) {
+  min-height: auto;
   padding: 2px 8px;
-  border: 1px solid var(--mndw-danger);
-  border-radius: 3px;
-  background: var(--mndw-surface);
-  color: var(--mndw-danger);
   font-size: 11px;
-  cursor: pointer;
 }
 
 .empty-state {
@@ -370,36 +373,31 @@ onMount(() => {
   align-items: center;
 }
 
-.btn-group {
-  display: flex;
+.btn-group::part(group) {
   gap: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
-.btn-group button {
+.btn-group mndw-segment::part(segment) {
   padding: 3px 8px;
   border: 1px solid var(--mndw-border);
+  border-radius: 0;
   background: var(--mndw-surface);
-  color: var(--mndw-text);
   font-size: 11px;
-  cursor: pointer;
 }
 
-.btn-group button:first-child {
+.btn-group mndw-segment:first-child::part(segment) {
   border-radius: 3px 0 0 3px;
 }
 
-.btn-group button:last-child {
+.btn-group mndw-segment:last-child::part(segment) {
   border-radius: 0 3px 3px 0;
 }
 
-.btn-group button:not(:last-child) {
-  border-right: none;
-}
-
-.btn-group button.active {
-  border-color: var(--mndw-accent);
-  background: var(--mndw-accent);
-  color: var(--mndw-accent-contrast);
+.btn-group mndw-segment:not(:last-child)::part(segment) {
+  border-right: 0;
 }
 
 .gear-btn {

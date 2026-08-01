@@ -23,14 +23,15 @@ const handleCopy = (): void => {
   <span class="copy-field__label">{{ label }}:</span>
   <span class="copy-field__value">
     {{ value }}
-    <button
-      type="button"
+    <mndw-button
+      variant="ghost"
       class="copy-field__btn"
+      :aria-label="`Copy ${label}`"
       :title="`Copy ${label}`"
       @click="handleCopy"
     >
       {{ copied ? 'Copied!' : '⧉' }}
-    </button>
+    </mndw-button>
   </span>
 </template>
 
@@ -47,17 +48,15 @@ const handleCopy = (): void => {
 }
 
 .copy-field__btn {
+  display: inline-block;
   margin-left: 4px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--mndw-accent);
-  font: inherit;
-  cursor: pointer;
   user-select: none;
 }
 
-.copy-field__btn:hover {
-  text-decoration: underline;
+.copy-field__btn::part(button) {
+  min-height: auto;
+  padding: 0;
+  color: var(--mndw-accent);
+  font: inherit;
 }
 </style>

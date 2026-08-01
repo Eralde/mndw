@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {PluginContext} from '@mndw/sdk';
+import type {MndwCheckboxChangeDetail} from '@mndw/ui';
 import {computed, onMounted, onUnmounted, ref} from 'vue';
 import ClientsTable from './components/ClientsTable.vue';
 import {type ClientRecord, fetchClients, filterVisibleClients} from './services/clients.js';
@@ -43,8 +44,8 @@ function onColumnChange(key: string, value: boolean): void {
   persist(KEY_COLUMNS, JSON.stringify(columnVisibility.value));
 }
 
-function onOfflineChange(event: Event): void {
-  showOffline.value = (event.target as HTMLInputElement).checked;
+function onOfflineChange(event: CustomEvent<MndwCheckboxChangeDetail>): void {
+  showOffline.value = event.detail.checked;
   persist(KEY_OFFLINE, String(showOffline.value));
 }
 
@@ -166,11 +167,14 @@ onUnmounted(() => {
   <div class="clients-widget">
     <header class="clients-widget__header">
       <span>{{ headerLabel }}</span>
-      <label class="clients-widget__toggle">
-        <input type="checkbox" :checked="showOffline" @change="onOfflineChange">
+      <mndw-checkbox
+        class="clients-widget__toggle"
+        :checked="showOffline"
+        @mndwchange="onOfflineChange"
+      >
         Show offline
-      </label>
-      <button type="button" aria-label="Client settings" @click="openSettings">⚙</button>
+      </mndw-checkbox>
+      <mndw-button variant="ghost" aria-label="Client settings" @click="openSettings">⚙</mndw-button>
     </header>
     <ClientsTable
       :clients="visibleClients"

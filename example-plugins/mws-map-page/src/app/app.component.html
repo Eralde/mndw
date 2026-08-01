@@ -21,7 +21,7 @@
     @case ('error') {
       <div class="state">
         <p>Failed to load MWS data.</p>
-        <button type="button" (click)="retry()">Retry</button>
+        <mndw-button variant="danger" (click)="retry()">Retry</mndw-button>
       </div>
     }
     @case ('unsupported') {

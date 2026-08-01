@@ -98,14 +98,14 @@ describe('MwsGraphComponent', () => {
 
     const element = fixture.nativeElement as HTMLElement;
 
-    element.querySelector<HTMLButtonElement>('[aria-label="Rearrange"]')?.click();
+    element.querySelector<HTMLElement>('[aria-label="Rearrange"]')?.click();
     expect(toggled).toHaveBeenCalledOnce();
     expect(element.querySelector('[aria-label="Auto layout"]')).toBeNull();
 
     fixture.componentRef.setInput('editMode', true);
     fixture.detectChanges();
-    element.querySelector<HTMLButtonElement>('[aria-label="Auto layout"]')?.click();
-    element.querySelector<HTMLButtonElement>('[aria-label="Done"]')?.click();
+    element.querySelector<HTMLElement>('[aria-label="Auto layout"]')?.click();
+    element.querySelector<HTMLElement>('[aria-label="Done"]')?.click();
 
     expect(autoLayout).toHaveBeenCalledOnce();
     expect(done).toHaveBeenCalledOnce();
@@ -119,8 +119,10 @@ describe('MwsGraphComponent', () => {
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
-    const rearrange = element.querySelector<HTMLButtonElement>('[aria-label="Rearrange"]');
-    const editButtons = Array.from(element.querySelectorAll<HTMLButtonElement>('.graph-edit-controls button'));
+    const rearrange = element.querySelector<HTMLElement>('[aria-label="Rearrange"]') as
+      | (HTMLElement & {disabled?: boolean})
+      | null;
+    const editButtons = Array.from(element.querySelectorAll<HTMLElement>('.graph-edit-controls mndw-button'));
 
     expect(rearrange?.textContent?.trim()).toBe('Rearrange');
     expect(rearrange?.disabled).toBe(true);

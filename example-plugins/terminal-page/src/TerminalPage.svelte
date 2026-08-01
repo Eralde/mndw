@@ -138,18 +138,20 @@ onMount(() => {
   {#if state === 'idle'}
     <div class="screen">
       <div class="console-choice">
-        <button
-          class="primary"
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+        <mndw-button
+          variant="primary"
           onclick={() => selectConsole('router')}
         >
           Router CLI
-        </button>
-        <button
-          class="primary"
+        </mndw-button>
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+        <mndw-button
+          variant="primary"
           onclick={() => selectConsole('entware')}
         >
           Entware Shell
-        </button>
+        </mndw-button>
       </div>
     </div>
   {:else if state === 'starting'}
@@ -169,12 +171,13 @@ onMount(() => {
       >
         {errorMessage}
       </div>
-      <button
-        class="primary"
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="primary"
         onclick={retryTerminal}
       >
         Retry
-      </button>
+      </mndw-button>
     </div>
   {:else if state === 'disconnected'}
     <div class="screen">
@@ -184,25 +187,26 @@ onMount(() => {
       >
         Connection lost
       </div>
-      <button
-        class="primary"
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="primary"
         onclick={retryTerminal}
       >
         Reconnect
-      </button>
+      </mndw-button>
     </div>
   {:else}
     <div class="terminal-wrap">
       <div class="terminal-header">
         <span class="status">Connected</span>
-        <button
-          class="secondary"
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+        <mndw-button
+          variant="secondary"
           onclick={stopTerminal}
         >
           Disconnect
-        </button>
+        </mndw-button>
       </div>
-      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         class="terminal-content"
         bind:this={terminalElement}
@@ -242,31 +246,9 @@ onMount(() => {
   gap: 12px;
 }
 
-.primary,
-.secondary {
-  border: 0;
-  border-radius: 6px;
-  padding: 8px 14px;
+.ttyd-terminal :global(mndw-button) {
+  font-family: inherit;
   font-size: 12px;
-  cursor: pointer;
-}
-
-.primary {
-  background: #2f81f7;
-  color: #ffffff;
-}
-
-.primary:hover {
-  background: #1f6feb;
-}
-
-.secondary {
-  background: #30363d;
-  color: #c9d1d9;
-}
-
-.secondary:hover {
-  background: #3d444d;
 }
 
 .terminal-wrap {

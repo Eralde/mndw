@@ -1,4 +1,5 @@
 import {CUSTOM_ELEMENTS_SCHEMA, Component, EventEmitter, Input, Output} from '@angular/core';
+import type {MndwSliderInputDetail} from '@mndw/ui';
 import type {NetworkInterface} from '../../types/rci.types';
 import {refreshMsToSeconds, refreshSecondsToMs} from '../../utils/refresh.utils';
 
@@ -36,5 +37,9 @@ export class SettingsDialogComponent {
   protected onRefreshChange(value: string): void {
     this.refresh = refreshSecondsToMs(value);
     this.refreshChange.emit(this.refresh);
+  }
+
+  protected onRefreshSliderInput(event: CustomEvent<MndwSliderInputDetail>): void {
+    this.onRefreshChange(String(event.detail.value));
   }
 }

@@ -103,7 +103,7 @@ describe('AppComponent', () => {
   it('shows the retry button in the error state and wires it to retry()', () => {
     const data = fakeData('error');
     const fixture = render(data);
-    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.state button');
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.state mndw-button');
 
     button?.click();
     expect(data.retry).toHaveBeenCalledOnce();

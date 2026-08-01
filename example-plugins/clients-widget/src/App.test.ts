@@ -60,14 +60,29 @@ function headers(): string[] {
   return [...host.querySelectorAll('thead th')].map((cell) => cell.textContent?.trim() ?? '');
 }
 
-function offlineToggle(): HTMLInputElement {
-  const input = host.querySelector<HTMLInputElement>('header input[type="checkbox"]');
+type MndwCheckboxHost = HTMLElement & {checked: boolean};
+
+function offlineToggle(): MndwCheckboxHost {
+  const input = host.querySelector<MndwCheckboxHost>('header mndw-checkbox');
 
   if (input === null) {
     throw new Error('no Show offline toggle');
   }
 
   return input;
+}
+
+function setOffline(value: boolean): void {
+  const toggle = offlineToggle();
+
+  toggle.checked = value;
+  toggle.dispatchEvent(
+    new CustomEvent('mndwchange', {
+      bubbles: true,
+      composed: true,
+      detail: {checked: value, indeterminate: false},
+    }),
+  );
 }
 
 beforeEach(() => {
@@ -151,8 +166,7 @@ describe('successful load', () => {
     mountWidget();
     await flush();
 
-    offlineToggle().checked = true;
-    offlineToggle().dispatchEvent(new Event('change', {bubbles: true}));
+    setOffline(true);
     await flush();
 
     expect(rowNames()).not.toContain('Mesh Extender A');
@@ -174,8 +188,7 @@ describe('show offline', () => {
     await flush();
     expect(queue).toHaveBeenCalledTimes(1);
 
-    offlineToggle().checked = true;
-    offlineToggle().dispatchEvent(new Event('change', {bubbles: true}));
+    setOffline(true);
     await flush();
 
     expect(rowNames()).toEqual(['Client A', 'Former Client A', 'Former Mesh Extender B']);
@@ -187,8 +200,7 @@ describe('show offline', () => {
     mountWidget();
     await flush();
 
-    offlineToggle().checked = true;
-    offlineToggle().dispatchEvent(new Event('change', {bubbles: true}));
+    setOffline(true);
     await flush();
 
     expect(storageSet).toHaveBeenCalledWith('show-offline', 'true');
@@ -261,8 +273,7 @@ describe('empty states', () => {
 
     expect(text()).toContain('No clients connected');
 
-    offlineToggle().checked = true;
-    offlineToggle().dispatchEvent(new Event('change', {bubbles: true}));
+    setOffline(true);
     await flush();
 
     expect(text()).toContain('No clients found');
@@ -351,8 +362,7 @@ describe('storage', () => {
     mountWidget();
     await flush();
 
-    offlineToggle().checked = true;
-    offlineToggle().dispatchEvent(new Event('change', {bubbles: true}));
+    setOffline(true);
     await flush();
     expect(offlineToggle().checked).toBe(true);
 
@@ -392,8 +402,7 @@ describe('storage', () => {
     mountWidget();
     await flush();
 
-    offlineToggle().checked = true;
-    offlineToggle().dispatchEvent(new Event('change', {bubbles: true}));
+    setOffline(true);
     await flush();
 
     expect(offlineToggle().checked).toBe(true);
@@ -406,7 +415,7 @@ describe('settings', () => {
     mountWidget();
     await flush();
 
-    host.querySelector<HTMLButtonElement>('header button')?.click();
+    host.querySelector<HTMLElement>('header mndw-button')?.click();
     await flush();
 
     expect(openSettingsDialog).toHaveBeenCalledTimes(1);
@@ -429,7 +438,7 @@ describe('settings', () => {
 
     const initialCalls = queue.mock.calls.length;
 
-    host.querySelector<HTMLButtonElement>('header button')?.click();
+    host.querySelector<HTMLElement>('header mndw-button')?.click();
     await flush();
 
     const [, , , , onRefreshIntervalChange] = vi.mocked(openSettingsDialog).mock.calls[0];

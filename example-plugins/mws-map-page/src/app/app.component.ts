@@ -1,4 +1,14 @@
-import {Component, Input, type OnInit, ViewChild, computed, effect, inject, signal} from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  Component,
+  Input,
+  type OnInit,
+  ViewChild,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import {MwsGraphComponent} from '../components/mws-graph/mws-graph.component';
 import {findNodeById, hasUpdate} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
@@ -37,6 +47,7 @@ function walkForest(roots: MwsNode[], visit: (node: MwsNode) => void): void {
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
   imports: [MwsGraphComponent],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class AppComponent implements OnInit {
   @Input({required: true})

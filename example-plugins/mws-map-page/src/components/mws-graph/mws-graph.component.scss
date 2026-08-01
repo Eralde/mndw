@@ -23,24 +23,27 @@
     gap: var(--mndw-space-1);
   }
 
-  button {
+  mndw-button {
     width: var(--mndw-control-h);
     height: var(--mndw-control-h);
-    padding: 0;
-    border: 1px solid var(--mndw-border);
-    border-radius: 4px;
-    background: var(--mndw-surface-raised);
-    color: var(--mndw-text);
-    font-size: 18px;
-    line-height: 1;
-    cursor: pointer;
+
+    &::part(button) {
+      min-width: 100%;
+      min-height: 100%;
+      padding: 0;
+      font-size: 18px;
+      line-height: 1;
+    }
   }
 
   .graph-action {
     width: auto;
     min-width: var(--mndw-control-h);
-    padding: 0 var(--mndw-space-2);
-    font-size: 12px;
+
+    &::part(button) {
+      padding: 0 var(--mndw-space-2);
+      font-size: 12px;
+    }
   }
 }
 

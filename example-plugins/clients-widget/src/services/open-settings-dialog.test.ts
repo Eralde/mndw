@@ -9,6 +9,9 @@ interface Opened {
   cleanup: (() => void) | null;
 }
 
+type MndwCheckboxHost = HTMLElement & {checked: boolean};
+type MndwSliderHost = HTMLElement & {min: number; max: number; step: number; value: number};
+
 function createContext(): {ctx: PluginContext; opened: Opened[]} {
   const opened: Opened[] = [];
 
@@ -67,10 +70,10 @@ describe('overlay options', () => {
     const {opened} = openDialog();
 
     expect(opened.cleanup).toBeTypeOf('function');
-    expect(opened.target.querySelector('input')).not.toBeNull();
+    expect(opened.target.querySelector('mndw-checkbox')).not.toBeNull();
 
     opened.cleanup?.();
-    expect(opened.target.querySelector('input')).toBeNull();
+    expect(opened.target.querySelector('mndw-checkbox')).toBeNull();
   });
 
   it('returns void — the session is intentionally discarded', () => {
@@ -83,9 +86,8 @@ describe('overlay options', () => {
 describe('column checkboxes', () => {
   it('renders exactly the four toggleable columns and no others', () => {
     const {opened} = openDialog();
-    const labels = [...opened.target.querySelectorAll('label')]
-      .filter((label) => label.querySelector('input[type="checkbox"]'))
-      .map((label) => label.textContent?.trim());
+    const labels = [...opened.target.querySelectorAll('mndw-checkbox')]
+      .map((checkbox) => checkbox.textContent?.trim());
 
     expect(labels).toEqual(['IP Address', 'Connection', 'Uptime', 'Last Seen']);
     expect(opened.target.textContent).not.toContain('Name');
@@ -94,44 +96,56 @@ describe('column checkboxes', () => {
 
   it('reflects incoming visibility', () => {
     const {opened} = openDialog();
-    const boxes = [...opened.target.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
+    const boxes = [...opened.target.querySelectorAll<MndwCheckboxHost>('mndw-checkbox')];
 
     expect(boxes.map((box) => box.checked)).toEqual([true, false, true, true]);
   });
 
   it('reports a toggle without closing the dialog', () => {
     const {opened, onChange} = openDialog();
-    const connection = opened.target.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1];
+    const connection = opened.target.querySelectorAll<MndwCheckboxHost>('mndw-checkbox')[1];
 
     connection.checked = true;
-    connection.dispatchEvent(new Event('change', {bubbles: true}));
+    connection.dispatchEvent(
+      new CustomEvent('mndwchange', {
+        bubbles: true,
+        composed: true,
+        detail: {checked: true, indeterminate: false},
+      }),
+    );
 
     expect(onChange).toHaveBeenCalledWith('connection', true);
-    expect(opened.target.querySelector('input')).not.toBeNull();
+    expect(opened.target.querySelector('mndw-checkbox')).not.toBeNull();
   });
 });
 
 describe('interval slider', () => {
   it('renders a 1..10 range bound to the current value', () => {
     const {opened} = openDialog();
-    const slider = opened.target.querySelector<HTMLInputElement>('input[type="range"]');
+    const slider = opened.target.querySelector<MndwSliderHost>('mndw-slider');
 
-    expect(slider?.min).toBe('1');
-    expect(slider?.max).toBe('10');
-    expect(slider?.step).toBe('1');
-    expect(slider?.value).toBe('3');
+    expect(String(slider?.min)).toBe('1');
+    expect(String(slider?.max)).toBe('10');
+    expect(String(slider?.step)).toBe('1');
+    expect(slider?.value).toBe(3);
   });
 
   it('reports an integer, not the raw string', () => {
     const {opened, onRefreshIntervalChange} = openDialog();
-    const slider = opened.target.querySelector<HTMLInputElement>('input[type="range"]');
+    const slider = opened.target.querySelector<MndwSliderHost>('mndw-slider');
 
     if (slider === null) {
       throw new Error('no range input rendered');
     }
 
-    slider.value = '7';
-    slider.dispatchEvent(new Event('input', {bubbles: true}));
+    slider.value = 7;
+    slider.dispatchEvent(
+      new CustomEvent('mndwinput', {
+        bubbles: true,
+        composed: true,
+        detail: {value: 7},
+      }),
+    );
 
     expect(onRefreshIntervalChange).toHaveBeenCalledWith(7);
   });

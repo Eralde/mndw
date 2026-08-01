@@ -18,7 +18,7 @@ function notInstalledBackend(): {backend: BackendClient; fetch: ReturnType<typeo
 }
 
 function clickButton(host: HTMLElement, label: RegExp): void {
-  const button = [...host.querySelectorAll('button')].find((b) => label.test(b.textContent ?? ''));
+  const button = [...host.querySelectorAll('mndw-button')].find((b) => label.test(b.textContent ?? ''));
 
   if (!button) {
     throw new Error(`Button not found: ${label}`);
@@ -38,7 +38,7 @@ describe('TerminalPage (dev path)', () => {
 
     flushSync();
 
-    const labels = [...host.querySelectorAll('button')].map((b) => b.textContent ?? '');
+    const labels = [...host.querySelectorAll('mndw-button')].map((b) => b.textContent ?? '');
 
     expect(labels.some((t) => /router cli/i.test(t))).toBe(true);
     expect(labels.some((t) => /entware shell/i.test(t))).toBe(true);

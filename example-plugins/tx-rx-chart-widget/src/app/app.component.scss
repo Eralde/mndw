@@ -24,14 +24,14 @@
 }
 
 .tx-rx-widget .notice__retry {
+  flex-shrink: 0;
   margin-left: auto;
+}
+
+.tx-rx-widget .notice__retry::part(button) {
+  min-height: auto;
   padding: 4px 10px;
-  border: 1px solid var(--mndw-danger);
-  border-radius: 4px;
-  background: var(--mndw-surface);
-  color: var(--mndw-danger);
   font-size: 12px;
-  cursor: pointer;
 }
 
 .tx-rx-widget .loading {

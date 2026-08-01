@@ -9,7 +9,7 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
       <p>Device: ${ctx.hostInfo.deviceName}</p>
       <p>Vendor: ${ctx.hostInfo.vendor}</p>
       <div id="hello-page-counter">Count: 0</div>
-      <button id="hello-page-save">Save count</button>
+      <mndw-button id="hello-page-save" variant="primary">Save count</mndw-button>
       <div id="hello-page-stored"></div>
     </div>
   `;

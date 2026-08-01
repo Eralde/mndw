@@ -13,20 +13,18 @@
         </mndw-select>
     </div>
     <div class="settings-dialog__field">
-        <label class="settings-dialog__label">Refresh interval</label>
         <div class="settings-dialog__refresh-control">
-            <input
-              #refreshInput
-              type="range"
-              min="1"
-              max="5"
-              step="0.5"
-              [value]="refreshMsToSeconds(refresh)"
-              [attr.aria-valuetext]="refreshMsToSeconds(refresh) + ' seconds'"
-              (input)="onRefreshChange(refreshInput.value)"
-              class="settings-dialog__range"
-            />
-            <output class="settings-dialog__output">{{ refreshMsToSeconds(refresh) }} s</output>
+            <mndw-field label="Refresh interval">
+              <mndw-slider
+                min="1"
+                max="5"
+                step="0.5"
+                [value]="refreshMsToSeconds(refresh)"
+                [attr.value-text]="refreshMsToSeconds(refresh) + ' seconds'"
+                (mndwinput)="onRefreshSliderInput($event)"
+                class="settings-dialog__range"
+              ></mndw-slider>
+            </mndw-field>
         </div>
     </div>
     <div class="settings-dialog__actions">

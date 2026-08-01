@@ -28,17 +28,13 @@ let chosen = $state(selectedMac);
     {/each}
   </mndw-select>
   <div class="actions">
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <mndw-button
-      role="button"
-      tabindex="-1"
-      onkeydown={() => undefined}
       variant="secondary"
       onclick={onClose}
     >Cancel</mndw-button>
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <mndw-button
-      role="button"
-      tabindex="-1"
-      onkeydown={() => undefined}
       variant="primary"
       onclick={() => onSelect(chosen)}
       disabled={!chosen}

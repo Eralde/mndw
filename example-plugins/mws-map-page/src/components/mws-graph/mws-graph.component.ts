@@ -1,5 +1,6 @@
 import {
   AfterViewInit,
+  CUSTOM_ELEMENTS_SCHEMA,
   Component,
   ElementRef,
   EventEmitter,
@@ -47,28 +48,30 @@ interface DragState {
   template: `
     <div class="graph-controls" aria-label="Map view controls">
       <div class="graph-view-controls" aria-label="View controls">
-        <button type="button" aria-label="Zoom in" (click)="zoomIn()">+</button>
-        <button type="button" aria-label="Zoom out" (click)="zoomOut()">−</button>
-        <button type="button" aria-label="Fit to content" (click)="recenter()">⌖</button>
+        <mndw-button variant="secondary" aria-label="Zoom in" (click)="zoomIn()">+</mndw-button>
+        <mndw-button variant="secondary" aria-label="Zoom out" (click)="zoomOut()">−</mndw-button>
+        <mndw-button variant="secondary" aria-label="Fit to content" (click)="recenter()">⌖</mndw-button>
       </div>
       <div class="graph-edit-controls" aria-label="Layout controls">
         @if (editMode) {
-          <button type="button" class="graph-action" aria-label="Auto layout" (click)="requestAutoLayout()">Auto layout</button>
-          <button type="button" class="graph-action" aria-label="Done" (click)="requestDoneEditing()">Done</button>
+          <mndw-button variant="primary" class="graph-action" aria-label="Auto layout" (click)="requestAutoLayout()">Auto layout</mndw-button>
+          <mndw-button variant="primary" class="graph-action" aria-label="Done" (click)="requestDoneEditing()">Done</mndw-button>
         }
-        <button
+        <mndw-button
+          variant="secondary"
           type="button"
           class="graph-action"
           aria-label="Rearrange"
           [attr.aria-pressed]="editMode"
           [disabled]="editMode"
           (click)="toggleEditMode()"
-        >Rearrange</button>
+        >Rearrange</mndw-button>
       </div>
     </div>
     <svg #svg class="mws-graph" role="group" aria-label="MWS topology" tabindex="0"></svg>
   `,
   styleUrls: ['./mws-graph.component.scss'],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input({required: true})

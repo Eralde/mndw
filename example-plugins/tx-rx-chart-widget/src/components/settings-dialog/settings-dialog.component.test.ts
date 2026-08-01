@@ -88,13 +88,13 @@ describe('SettingsDialogComponent', () => {
 
     fixture.detectChanges();
 
-    const slider = queryElement<HTMLInputElement>(fixture.nativeElement, 'input[type="range"]');
+    const slider = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-slider');
 
-    expect(slider.min).toBe('1');
-    expect(slider.max).toBe('5');
-    expect(slider.step).toBe('0.5');
-    expect(slider.value).toBe('2.5');
-    expect(fixture.nativeElement.querySelector('output')?.textContent).toContain('2.5 s');
+    expect(slider.getAttribute('min')).toBe('1');
+    expect(slider.getAttribute('max')).toBe('5');
+    expect(slider.getAttribute('step')).toBe('0.5');
+    expect((slider as unknown as {value: number}).value).toBe(2.5);
+    expect(slider.getAttribute('value-text')).toBe('2.5 seconds');
   });
 
   it('emits slider values as milliseconds', async () => {
@@ -104,22 +104,32 @@ describe('SettingsDialogComponent', () => {
     fixture.componentInstance.refreshChange.subscribe((value: number) => emitted = value);
     fixture.detectChanges();
 
-    const slider = queryElement<HTMLInputElement>(fixture.nativeElement, 'input[type="range"]');
+    const slider = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-slider');
 
-    slider.value = '4.5';
-    slider.dispatchEvent(new Event('input', {bubbles: true}));
+    slider.dispatchEvent(
+      new CustomEvent('mndwinput', {
+        detail: {value: 4.5},
+        bubbles: true,
+        composed: true,
+      }),
+    );
 
     expect(emitted).toBe(4500);
   });
 
   it('updates displayed refresh seconds while the slider moves', async () => {
     const fixture = await createFixture('', 3000);
-    const slider = queryElement<HTMLInputElement>(fixture.nativeElement, 'input[type="range"]');
+    const slider = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-slider');
 
-    slider.value = '4.5';
-    slider.dispatchEvent(new Event('input', {bubbles: true}));
+    slider.dispatchEvent(
+      new CustomEvent('mndwinput', {
+        detail: {value: 4.5},
+        bubbles: true,
+        composed: true,
+      }),
+    );
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('output')?.textContent).toContain('4.5 s');
+    expect(slider.getAttribute('value-text')).toBe('4.5 seconds');
   });
 });

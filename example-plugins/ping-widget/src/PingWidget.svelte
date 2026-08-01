@@ -28,6 +28,8 @@ interface RenameState {
   error: string;
 }
 
+type MndwInputHost = HTMLElement & {value: string};
+
 let {backend}: Props = $props();
 
 const hasBackend = $derived(Boolean(backend));
@@ -251,6 +253,7 @@ async function saveHostName(ip: string, draft?: string): Promise<void> {
   } catch (error) {
     state.status = 'error';
     state.error = error instanceof Error ? error.message : 'Update host failed';
+    stats = [...stats];
   }
 }
 
@@ -293,28 +296,30 @@ function renderHostCell(row: HostStats, state: RenameState): string {
       : '';
 
     return `<div class="host-editor">
-      <input type="text" aria-label="Label for ${escapeHtml(row.ip)}" value="${
-      escapeHtml(state.draft)
-    }"${inputDisabled} data-host-input="${escapeHtml(row.ip)}">
+      <mndw-input type="text" aria-label="Label for ${
+      escapeHtml(row.ip)
+    }" value="${escapeHtml(state.draft)}"${inputDisabled} data-host-input="${
+      escapeHtml(row.ip)
+    }"></mndw-input>
       ${feedback}
     </div>`;
   }
 
-  return `<button type="button" class="host-display" aria-label="Rename host ${
+  return `<mndw-button variant="ghost" class="host-display" aria-label="Rename host ${
     escapeHtml(row.ip)
   }" data-host-action="rename" data-host-ip="${
     escapeHtml(row.ip)
-  }">${display}</button>`;
+  }">${display}</mndw-button>`;
 }
 
 function renderActionsCell(row: HostStats, state: RenameState): string {
   const disabled = state.status === 'saving' ? ' disabled' : '';
 
-  return `<button type="button" class="btn danger compact" aria-label="Delete host ${
+  return `<mndw-button variant="danger" class="compact" aria-label="Delete host ${
     escapeHtml(row.ip)
   }" data-host-action="remove" data-host-ip="${
     escapeHtml(row.ip)
-  }"${disabled}>Delete</button>`;
+  }"${disabled}>Delete</mndw-button>`;
 }
 
 function renderStatsBody(
@@ -386,9 +391,40 @@ function handleTableClick(event: MouseEvent): void {
   }
 }
 
-function handleTableKeydown(event: KeyboardEvent): void {
+function tableInputTarget(event: Event): MndwInputHost | null {
   const target = tableTarget(event);
-  if (!(target instanceof HTMLInputElement)) {
+
+  if (target?.localName !== 'mndw-input') {
+    return null;
+  }
+
+  return target as MndwInputHost;
+}
+
+function handleTableInput(event: Event): void {
+  const target = tableInputTarget(event);
+
+  if (!target) {
+    return;
+  }
+
+  const ip = target.dataset.hostInput;
+
+  if (!ip) {
+    return;
+  }
+
+  const value = (event as CustomEvent<{value: string}>).detail.value;
+
+  if (target.value !== value) {
+    target.value = value;
+  }
+}
+
+function handleTableKeydown(event: KeyboardEvent): void {
+  const target = tableInputTarget(event);
+
+  if (!target) {
     return;
   }
 
@@ -408,8 +444,9 @@ function handleTableKeydown(event: KeyboardEvent): void {
 }
 
 function handleTableFocusOut(event: FocusEvent): void {
-  const target = tableTarget(event);
-  if (!(target instanceof HTMLInputElement)) {
+  const target = tableInputTarget(event);
+
+  if (!target) {
     return;
   }
 
@@ -464,73 +501,82 @@ onMount(() => {
   <div class="header">
     <h3>Ping Utility</h3>
     <div class="header-actions">
-      <button
-        type="button"
-        class="btn primary"
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="primary"
         aria-label="Start daemon"
         disabled={loading || daemonBusy || !hasBackend}
         onclick={() => void runDaemonAction('start')}
       >
         Start
-      </button>
-      <button
-        type="button"
-        class="btn secondary"
+      </mndw-button>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="secondary"
         aria-label="Stop daemon"
         disabled={loading || daemonBusy || !hasBackend}
         onclick={() => void runDaemonAction('stop')}
       >
         Stop
-      </button>
-      <button
-        type="button"
-        class="btn secondary"
+      </mndw-button>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="secondary"
         aria-label="Restart daemon"
         disabled={loading || daemonBusy || !hasBackend}
         onclick={() => void runDaemonAction('restart')}
       >
         Restart
-      </button>
-      <button
-        type="button"
-        class="btn secondary"
+      </mndw-button>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <mndw-button
+        variant="secondary"
         disabled={loading || !hasBackend}
         onclick={() => void refreshNow()}
       >
         Refresh now
-      </button>
+      </mndw-button>
     </div>
   </div>
 
   <div class="controls">
-    <input
-      type="text"
-      bind:value={newHostIp}
-      placeholder="Host IP"
-    />
-    <input
-      type="text"
-      bind:value={newHostName}
-      placeholder="Label (optional)"
-    />
-    <button
-      type="button"
-      class="btn primary"
+    <mndw-field label="Host IP">
+      <mndw-input
+        type="text"
+        placeholder="Host IP"
+        value={newHostIp}
+        onmndwinput={(event: CustomEvent<{value: string}>) =>
+        newHostIp = event.detail.value}
+      ></mndw-input>
+    </mndw-field>
+    <mndw-field label="Label (optional)">
+      <mndw-input
+        type="text"
+        placeholder="Label (optional)"
+        value={newHostName}
+        onmndwinput={(event: CustomEvent<{value: string}>) =>
+        newHostName = event.detail.value}
+      ></mndw-input>
+    </mndw-field>
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="primary"
       disabled={loading || !hasBackend}
       onclick={addHost}
     >
       Add
-    </button>
-    <label>
-      Poll
-      <input
+    </mndw-button>
+    <mndw-field label="Poll">
+      <mndw-input
         type="number"
         min="1"
         max="30"
-        bind:value={pollSeconds}
-      />
-      s
-    </label>
+        step="1"
+        value={String(pollSeconds)}
+        onmndwinput={(event: CustomEvent<{value: string}>) =>
+        pollSeconds = Number(event.detail.value)}
+      ><span slot="suffix">s</span></mndw-input>
+    </mndw-field>
   </div>
 
   {#if message}
@@ -547,6 +593,7 @@ onMount(() => {
       role="grid"
       aria-label="Ping statistics"
       onclick={handleTableClick}
+      onmndwinput={handleTableInput}
       onkeydown={handleTableKeydown}
       onfocusout={handleTableFocusOut}
     >
@@ -635,78 +682,29 @@ h3 {
   align-items: center;
 }
 
-.controls label {
-  display: flex;
-  align-items: center;
-  gap: var(--mndw-space-1);
+.controls :global(mndw-field) {
   min-width: 0;
-  color: var(--mndw-text-subtle);
-  font-size: var(--mndw-text-xs);
 }
 
-.ping-widget :global(input) {
-  min-width: 0;
-  max-width: 100%;
+.controls :global(mndw-input) {
+  display: block;
+  width: 100%;
+}
+
+.ping-widget :global(mndw-button) {
+  flex: 0 0 auto;
   min-height: var(--mndw-control-h);
-  box-sizing: border-box;
-  padding: var(--mndw-space-1) var(--mndw-space-2);
-  border: 1px solid var(--mndw-border);
-  border-radius: var(--mndw-radius-md);
-  background: var(--mndw-surface);
-  color: var(--mndw-text);
-  font: inherit;
 }
 
-.ping-widget :global(input:focus-visible),
-.ping-widget :global(button:focus-visible) {
-  outline: 2px solid var(--mndw-accent-hover);
-  outline-offset: 1px;
-}
-
-.ping-widget :global(.btn) {
-  min-height: var(--mndw-control-h);
-  box-sizing: border-box;
-  padding: var(--mndw-space-1) var(--mndw-space-2);
-  border: 0;
-  border-radius: var(--mndw-radius-md);
-  cursor: pointer;
+.ping-widget :global(mndw-button)::part(button) {
   font: inherit;
   font-size: var(--mndw-text-xs);
-  transition: transform 120ms ease;
 }
 
-.ping-widget :global(.btn:disabled) {
-  opacity: 0.55;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.ping-widget :global(.btn:not(:disabled):hover) {
-  transform: translateY(-1px);
-}
-
-.ping-widget :global(.btn.primary) {
-  background: var(--mndw-accent);
-  color: var(--mndw-accent-contrast);
-}
-
-.ping-widget :global(.btn.primary:not(:disabled):hover) {
-  background: var(--mndw-accent-hover);
-}
-
-.ping-widget :global(.btn.secondary) {
-  background: var(--mndw-surface-raised);
-  color: var(--mndw-text);
-}
-
-.ping-widget :global(.btn.danger) {
-  background: var(--mndw-danger);
-  color: var(--mndw-accent-contrast);
-}
-
-.ping-widget :global(.btn.compact) {
-  min-height: var(--mndw-control-h);
-  padding-inline: var(--mndw-space-2);
+.ping-widget :global(mndw-button.compact)::part(button) {
+  min-height: 28px;
+  padding: 2px 8px;
+  font-size: var(--mndw-text-xs);
 }
 
 /* Layout only. `.mndw-alert` and its severity modifier own the box and the colours. */
@@ -801,21 +799,25 @@ thead {
   min-width: 0;
 }
 
-:global(.ping-widget .host-display) {
-  display: flex;
-  flex-direction: column;
+:global(.ping-widget mndw-button.host-display) {
+  display: block;
   width: 100%;
   min-width: 0;
+  text-align: left;
+}
+
+:global(.ping-widget mndw-button.host-display)::part(button) {
+  width: 100%;
+  justify-content: flex-start;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--mndw-text);
-  cursor: pointer;
   font: inherit;
   text-align: left;
 }
 
-:global(.ping-widget .host-display:hover .host-label) {
+:global(.ping-widget mndw-button.host-display:hover .host-label) {
   color: var(--mndw-accent-hover);
 }
 
@@ -839,7 +841,7 @@ thead {
   min-width: 0;
 }
 
-:global(.ping-widget .host-editor input) {
+:global(.ping-widget .host-editor mndw-input) {
   width: 100%;
 }
 

@@ -1,0 +1,274 @@
+<script lang="ts">
+import {onMount, tick} from 'svelte';
+import {SvelteSet} from 'svelte/reactivity';
+import {firstValueFrom} from 'rxjs';
+import type {OverlayService} from '@mndw/sdk';
+import {openClearConfirmation} from './clear-log-confirmation';
+import {ALL_LOG_LEVELS, type FilterState, filterRecords} from './log-filters';
+import LogFilters from './LogFilters.svelte';
+import LogRow from './LogRow.svelte';
+import {createLogReconciler} from './log-reconciler';
+import {type DownloadBrowser, downloadLog} from './log-download';
+import {isNearBottom, readScrollMetrics} from './log-scroll';
+import type {SystemLogApi} from './system-log-api';
+import type {NormalizedLogRecord} from './log-types';
+
+interface Props {
+  api: SystemLogApi;
+  overlay: OverlayService;
+}
+
+let {api, overlay: _overlay}: Props = $props();
+let records = $state<NormalizedLogRecord[]>([]);
+let errorMessage = $state('');
+let loading = $state(true);
+let filterState = $state<FilterState>({query: '',
+  levels: new SvelteSet(ALL_LOG_LEVELS)});
+let logViewport = $state<HTMLElement | undefined>(undefined);
+let shouldStickToBottom = $state(true);
+let reconciler: ReturnType<typeof createLogReconciler> | undefined;
+const filteredRecords = $derived(filterRecords(records, filterState));
+
+function updateStickiness(): void {
+  if (logViewport) {
+    shouldStickToBottom = isNearBottom(readScrollMetrics(logViewport));
+  }
+}
+
+function mergeBatch(
+  reconciler: ReturnType<typeof createLogReconciler>,
+  batch: NormalizedLogRecord[],
+  source: 'snapshot' | 'stream',
+): void {
+  const wasNearBottom = logViewport
+    ? isNearBottom(readScrollMetrics(logViewport))
+    : true;
+  shouldStickToBottom = wasNearBottom;
+  records = reconciler.merge(batch, source);
+  loading = false;
+
+  if (shouldStickToBottom) {
+    void tick().then(() => {
+      if (logViewport) {
+        logViewport.scrollTo({top: logViewport.scrollHeight});
+      }
+    });
+  }
+}
+
+function browserDownload(): DownloadBrowser {
+  return {
+    createObjectURL: (blob: Blob) => URL.createObjectURL(blob),
+    revokeObjectURL: (url: string) => URL.revokeObjectURL(url),
+    createAnchor: () => document.createElement('a'),
+  };
+}
+
+function downloadAll(): void {
+  try {
+    downloadLog(records, browserDownload());
+  } catch (error) {
+    errorMessage = error instanceof Error
+      ? error.message
+      : 'Log download failed';
+  }
+}
+
+async function requestClear(): Promise<void> {
+  try {
+    const result = await openClearConfirmation(_overlay);
+
+    if (result.result?.confirmed !== true) {
+      return;
+    }
+
+    await firstValueFrom(api.clearLog());
+    records = reconciler?.reset() ?? [];
+    errorMessage = '';
+  } catch (error) {
+    errorMessage = error instanceof Error
+      ? error.message
+      : 'System log clear failed';
+  }
+}
+
+onMount(() => {
+  reconciler = createLogReconciler();
+  const stream = api.startLogStream();
+  const streamSubscription = stream.data$.subscribe({
+    next: (batch) => {
+      mergeBatch(reconciler, batch, 'stream');
+    },
+    error: (error: unknown) => {
+      errorMessage = error instanceof Error
+        ? error.message
+        : 'System log stream failed';
+    },
+  });
+  const snapshotSubscription = api.showLogOnce().subscribe({
+    next: (batch) => {
+      mergeBatch(reconciler, batch, 'snapshot');
+    },
+    error: (error: unknown) => {
+      errorMessage = error instanceof Error
+        ? error.message
+        : 'System log snapshot failed';
+    },
+  });
+
+  return () => {
+    streamSubscription.unsubscribe();
+    snapshotSubscription.unsubscribe();
+    stream.process.abort();
+  };
+});
+</script>
+
+<div
+  class="system-log-page"
+  data-system-log-page
+>
+  <header class="system-log-page__header">
+    <div>
+      <h1>System Log</h1>
+      <p class="system-log-page__count">
+        <span data-filtered-count>{filteredRecords.length}</span> filtered /
+        <span data-loaded-count>{records.length}</span> loaded
+      </p>
+    </div>
+    <div class="system-log-page__actions">
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <mndw-button
+        data-download-log
+        variant="secondary"
+        onclick={downloadAll}
+      >
+        Download
+      </mndw-button>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <mndw-button
+        data-clear-log
+        variant="danger"
+        onclick={requestClear}
+      >
+        Clear log
+      </mndw-button>
+    </div>
+  </header>
+
+  <LogFilters
+    state={filterState}
+    onChange={(next) => filterState = next}
+  />
+
+  {#if errorMessage}
+    <p
+      class="system-log-page__status system-log-page__status--error"
+      role="alert"
+    >
+      {errorMessage}
+    </p>
+  {:else if loading}
+    <p class="system-log-page__status">Loading system log…</p>
+  {/if}
+
+  <div
+    class="system-log-page__viewport"
+    data-log-viewport
+    role="region"
+    aria-label="System log entries"
+    bind:this={logViewport}
+    onscroll={updateStickiness}
+  >
+    {#if filteredRecords.length === 0 && !loading}
+      <p class="system-log-page__empty">
+        No log records match current filters.
+      </p>
+    {:else}
+      {#each filteredRecords as record (record.id)}
+        <LogRow
+          {record}
+          query={filterState.query}
+        />
+      {/each}
+    {/if}
+  </div>
+</div>
+
+<style>
+.system-log-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mndw-space-4);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: var(--mndw-space-4);
+  box-sizing: border-box;
+  color: var(--mndw-text);
+  background: var(--mndw-bg);
+  font-family: var(--mndw-font-sans);
+}
+
+.system-log-page__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--mndw-space-4);
+  align-items: center;
+  padding-bottom: var(--mndw-space-3);
+  border-bottom: 1px solid var(--mndw-border);
+  background: var(--mndw-bg);
+}
+
+h1,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--mndw-text-lg);
+}
+
+.system-log-page__count,
+.system-log-page__status,
+.system-log-page__empty {
+  color: var(--mndw-text-muted);
+  font-size: var(--mndw-text-sm);
+}
+
+.system-log-page__actions {
+  display: flex;
+  gap: var(--mndw-space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.system-log-page__status--error {
+  color: var(--mndw-danger);
+}
+
+.system-log-page__viewport {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--mndw-space-3);
+  border: 1px solid var(--mndw-border);
+  border-radius: var(--mndw-radius-md);
+  background: var(--mndw-surface);
+  font-family: var(--mndw-font-mono);
+}
+
+@media (max-width: 700px) {
+  .system-log-page__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .system-log-page__actions {
+    justify-content: flex-start;
+  }
+}
+</style>

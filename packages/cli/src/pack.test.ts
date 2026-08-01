@@ -471,7 +471,8 @@ describe('packExamplePlugins', () => {
       'dns-lookup-widget',
       'mws-map-page',
       'ping-widget',
-      'ttyd-widget',
+      'system-log-page',
+      'terminal-page',
       'tx-rx-chart-widget',
     ]);
 

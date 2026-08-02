@@ -15,6 +15,7 @@ export interface FakeApi {
   readonly showMwsMember: ReturnType<typeof vi.fn>;
   readonly showDeviceList: ReturnType<typeof vi.fn>;
   readonly showBridge0: ReturnType<typeof vi.fn>;
+  readonly showControllerDescription: ReturnType<typeof vi.fn>;
 }
 
 export const HOST: HostInfo = {
@@ -32,6 +33,7 @@ export function goodApi(): FakeApi {
     ),
     showDeviceList: vi.fn(() => of(normalizeDeviceHosts(loadFixture('show-device-list.json')))),
     showBridge0: vi.fn(() => of(normalizeBridge(loadFixture('show-interface-bridge0.json')))),
+    showControllerDescription: vi.fn(() => of(HOST.deviceName)),
   };
 }
 

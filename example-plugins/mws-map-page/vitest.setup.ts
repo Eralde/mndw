@@ -16,3 +16,13 @@ if (globalThis.ResizeObserver === undefined) {
 
   globalThis.ResizeObserver = ResizeObserverStub;
 }
+
+if (globalThis.MutationObserver === undefined || typeof globalThis.MutationObserver.prototype.observe !== 'function') {
+  class MutationObserverStub {
+    public observe(): void {}
+
+    public disconnect(): void {}
+  }
+
+  globalThis.MutationObserver = MutationObserverStub as typeof MutationObserver;
+}

@@ -4,6 +4,7 @@ import type {RawDeviceHost, RawMwsMember} from './rci.types';
 import {
   MwsApiParseError,
   normalizeBridge,
+  normalizeControllerDescription,
   normalizeDeviceHosts,
   normalizeMac,
   normalizeMembers,
@@ -149,5 +150,17 @@ describe('normalizeVersion', () => {
 
   it('yields nulls for an empty object', () => {
     expect(normalizeVersion({})).toEqual({model: null, firmware: null});
+  });
+});
+
+describe('normalizeControllerDescription', () => {
+  it('accepts the direct and data-wrapped response forms', () => {
+    expect(normalizeControllerDescription('  Router  ')).toBe('Router');
+    expect(normalizeControllerDescription({data: '  Router  '})).toBe('Router');
+  });
+
+  it('returns null for an empty or unrelated response', () => {
+    expect(normalizeControllerDescription({data: ' '})).toBeNull();
+    expect(normalizeControllerDescription({status: [{status: 'ok'}]})).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import {TestBed} from '@angular/core/testing';
-import {of, throwError} from 'rxjs';
+import {Subject, of, throwError} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {MwsMemberResult} from '../api/mws-api.service';
 import {goodApi, makeLiveService} from '../test-support/mws-data-test-support';
@@ -26,6 +26,21 @@ describe('MwsDataService', () => {
     expect(service.roots()[0].name).toBe('My Router');
     expect(service.pollError()).toBe(false);
     expect(service.lastUpdatedAt()).not.toBeNull();
+  });
+
+  it('uses the refreshed typed controller description as the graph name', async () => {
+    const api = goodApi();
+    const service = makeLiveService(api);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.roots()[0].name).toBe('My Router');
+
+    api.showControllerDescription.mockReturnValueOnce(of('Renamed Router'));
+    service.refreshNow();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(service.roots()[0].name).toBe('Renamed Router');
   });
 
   it('stays in error and never polls when show.version fails; retry recovers', async () => {
@@ -131,5 +146,90 @@ describe('MwsDataService', () => {
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
 
     expect(emissions).toEqual([1, 1]);
+  });
+
+  it('refreshes immediately when polling is idle', async () => {
+    const api = goodApi();
+    const service = makeLiveService(api);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.showMwsMember).toHaveBeenCalledTimes(1);
+
+    service.refreshNow();
+
+    expect(api.showMwsMember).toHaveBeenCalledTimes(2);
+  });
+
+  it('coalesces refresh requests that arrive during an active poll', async () => {
+    const api = goodApi();
+    const pendingMembers = new Subject<MwsMemberResult>();
+
+    api.showMwsMember.mockReturnValueOnce(pendingMembers);
+
+    const service = makeLiveService(api);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.showMwsMember).toHaveBeenCalledTimes(1);
+
+    service.refreshNow();
+    service.refreshNow();
+    expect(api.showMwsMember).toHaveBeenCalledTimes(1);
+
+    pendingMembers.next({kind: 'ok', members: []});
+    pendingMembers.complete();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(api.showMwsMember).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not queue a refresh before polling starts', async () => {
+    const api = goodApi();
+    const service = makeLiveService(api);
+
+    service.refreshNow();
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(api.showMwsMember).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers a hidden refresh on the next visibility event', async () => {
+    const api = goodApi();
+    const service = makeLiveService(api);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.showMwsMember).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, 'hidden', {configurable: true, value: true});
+    service.refreshNow();
+    expect(api.showMwsMember).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, 'hidden', {configurable: true, value: false});
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(api.showMwsMember).toHaveBeenCalledTimes(2);
+  });
+
+  it('cancels a pending follow-up when the service is destroyed', async () => {
+    const api = goodApi();
+    const pendingMembers = new Subject<MwsMemberResult>();
+
+    api.showMwsMember.mockReturnValueOnce(pendingMembers);
+
+    const service = makeLiveService(api);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    service.refreshNow();
+
+    TestBed.resetTestingModule();
+    pendingMembers.next({kind: 'ok', members: []});
+    pendingMembers.complete();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(api.showMwsMember).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,10 +1,13 @@
 import {DestroyRef, Injectable, inject, signal} from '@angular/core';
 import {
   ReplaySubject,
+  Subject,
   type Subscription,
   catchError,
+  defer,
   exhaustMap,
   filter,
+  finalize,
   forkJoin,
   fromEvent,
   map,
@@ -23,7 +26,13 @@ export const POLL_INTERVAL_MS = 10_000;
 export type MwsViewPhase = 'loading' | 'error' | 'unsupported' | 'empty' | 'ready';
 
 type PollResult =
-  | {kind: 'ok'; members: MwsMemberRecord[]; hosts: DeviceHostRecord[]; bridge: BridgeInterfaceRecord}
+  | {
+    kind: 'ok';
+    members: MwsMemberRecord[];
+    hosts: DeviceHostRecord[];
+    bridge: BridgeInterfaceRecord;
+    controllerName: string | null;
+  }
   | {kind: 'unsupported'}
   | {kind: 'error'};
 
@@ -45,6 +54,11 @@ export class MwsDataService {
   private version: ShowVersionRecord | null = null;
   private versionSub: Subscription | null = null;
   private pollSub: Subscription | null = null;
+  private readonly refreshTrigger = new Subject<void>();
+  private refreshTimerSub: Subscription | null = null;
+  private pollingStarted = false;
+  private pollInFlight = false;
+  private refreshPending = false;
   private hasSnapshot = false;
 
   public constructor() {
@@ -72,32 +86,74 @@ export class MwsDataService {
     this.start();
   }
 
+  public refreshNow(): void {
+    if (!this.pollingStarted) {
+      return;
+    }
+
+    if (this.pollInFlight) {
+      this.refreshPending = true;
+
+      return;
+    }
+
+    this.refreshTrigger.next();
+  }
+
   private stop(): void {
+    this.pollingStarted = false;
+    this.pollInFlight = false;
+    this.refreshPending = false;
+
     this.versionSub?.unsubscribe();
     this.versionSub = null;
     this.pollSub?.unsubscribe();
     this.pollSub = null;
+    this.refreshTimerSub?.unsubscribe();
+    this.refreshTimerSub = null;
   }
 
   private startPolling(): void {
+    this.pollingStarted = true;
+
     const visible$ = fromEvent(document, 'visibilitychange').pipe(filter(() => !document.hidden));
 
-    this.pollSub = merge(timer(0, POLL_INTERVAL_MS), visible$)
+    this.pollSub = merge(timer(0, POLL_INTERVAL_MS), visible$, this.refreshTrigger)
       .pipe(
         filter(() => !document.hidden),
         exhaustMap(() =>
-          forkJoin({
-            memberResult: this.api.showMwsMember(),
-            hosts: this.api.showDeviceList(),
-            bridge: this.api.showBridge0(),
-          }).pipe(
-            map(({memberResult, hosts, bridge}): PollResult =>
-              memberResult.kind === 'unsupported'
-                ? {kind: 'unsupported'}
-                : {kind: 'ok', members: memberResult.members, hosts, bridge}
-            ),
-            catchError(() => of<PollResult>({kind: 'error'})),
-          )
+          defer(() => {
+            this.pollInFlight = true;
+
+            return forkJoin({
+              memberResult: this.api.showMwsMember(),
+              hosts: this.api.showDeviceList(),
+              bridge: this.api.showBridge0(),
+              controllerName: this.api.showControllerDescription(),
+            }).pipe(
+              map(({memberResult, hosts, bridge, controllerName}): PollResult =>
+                memberResult.kind === 'unsupported'
+                  ? {kind: 'unsupported'}
+                  : {kind: 'ok', members: memberResult.members, hosts, bridge, controllerName}
+              ),
+              catchError(() => of<PollResult>({kind: 'error'})),
+              finalize(() => {
+                this.pollInFlight = false;
+
+                if (this.refreshPending) {
+                  this.refreshPending = false;
+                  this.refreshTimerSub?.unsubscribe();
+                  this.refreshTimerSub = timer(0).subscribe(() => {
+                    this.refreshTimerSub = null;
+
+                    if (this.pollingStarted) {
+                      this.refreshTrigger.next();
+                    }
+                  });
+                }
+              }),
+            );
+          })
         ),
       )
       .subscribe((result) => this.applyPoll(result));
@@ -110,7 +166,7 @@ export class MwsDataService {
     bridge: BridgeInterfaceRecord,
   ): void {
     this.version = version;
-    this.applyPoll({kind: 'ok', members, hosts, bridge});
+    this.applyPoll({kind: 'ok', members, hosts, bridge, controllerName: this.hostInfo.deviceName});
   }
 
   private applyPoll(result: PollResult): void {
@@ -133,7 +189,9 @@ export class MwsDataService {
     const controller: ControllerInfo = {
       mac: result.bridge.mac,
       ip: result.bridge.address,
-      name: this.hostInfo.deviceName.trim() !== ''
+      name: result.controllerName !== null && result.controllerName.trim() !== ''
+        ? result.controllerName
+        : this.hostInfo.deviceName.trim() !== ''
         ? this.hostInfo.deviceName
         : (this.version?.model ?? result.bridge.mac),
       model: this.version?.model ?? null,

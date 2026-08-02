@@ -1,8 +1,17 @@
 import {Injectable, inject} from '@angular/core';
-import {type Observable, map} from 'rxjs';
-import {RCI_MANAGER} from '../tokens';
+import {type Observable, map, throwError} from 'rxjs';
+import {type MwsRenameApi, RCI_MANAGER} from '../tokens';
 import type {BridgeInterfaceRecord, DeviceHostRecord, MwsMemberRecord, ShowVersionRecord} from './rci.types';
-import {MwsApiParseError, normalizeBridge, normalizeDeviceHosts, normalizeMembers, normalizeVersion} from './normalize';
+import {
+  MwsApiParseError,
+  normalizeBridge,
+  normalizeControllerDescription,
+  normalizeDeviceHosts,
+  normalizeMac,
+  normalizeMembers,
+  normalizeVersion,
+} from './normalize';
+import {validateNodeName} from './node-name';
 
 export type MwsMemberResult = {kind: 'ok'; members: MwsMemberRecord[]} | {kind: 'unsupported'};
 
@@ -24,8 +33,32 @@ export function isUnsupportedMwsMemberResponse(value: unknown): boolean {
   );
 }
 
+function renameResponseError(response: unknown): Error | null {
+  const status = (response as {status?: unknown} | null)?.status;
+
+  if (!Array.isArray(status)) {
+    return null;
+  }
+
+  const failed = status.find((entry: {status?: unknown}) => entry?.status === 'error') as {
+    message?: unknown;
+    error?: unknown;
+    msg?: unknown;
+    description?: unknown;
+  } | undefined;
+
+  if (failed === undefined) {
+    return null;
+  }
+
+  const message = [failed.message, failed.error, failed.msg, failed.description]
+    .find((value): value is string => typeof value === 'string' && value.trim() !== '');
+
+  return new Error(message ?? 'Device rejected node name.');
+}
+
 @Injectable()
-export class MwsApiService {
+export class MwsApiService implements MwsRenameApi {
   private readonly rci = inject(RCI_MANAGER);
 
   public showMwsMember(): Observable<MwsMemberResult> {
@@ -52,6 +85,41 @@ export class MwsApiService {
 
   public showVersion(): Observable<ShowVersionRecord> {
     return this.rci.queue({path: 'show.version'}).pipe(map((response) => normalizeVersion(response)));
+  }
+
+  /** The controller name is written at system.description but exposed by show.version.description. */
+  public showControllerDescription(): Observable<string | null> {
+    return this.rci.queue({path: 'show.version'}).pipe(
+      map((response) => normalizeControllerDescription(response)),
+    );
+  }
+
+  public renameNode(mac: string, isController: boolean, name: string): Observable<void> {
+    const validation = validateNodeName(name);
+
+    if (validation.value === null) {
+      return throwError(() => new Error(validation.error ?? 'Invalid name.'));
+    }
+
+    let query: {path: string; data: string | {mac: string; name: string}};
+
+    try {
+      query = isController
+        ? {path: 'system.description', data: validation.value}
+        : {path: 'known.host', data: {mac: normalizeMac(mac), name: validation.value}};
+    } catch (error) {
+      return throwError(() => error);
+    }
+
+    return this.rci.queue(query).pipe(
+      map((response: unknown): void => {
+        const error = renameResponseError(response);
+
+        if (error !== null) {
+          throw error;
+        }
+      }),
+    );
   }
 }
 

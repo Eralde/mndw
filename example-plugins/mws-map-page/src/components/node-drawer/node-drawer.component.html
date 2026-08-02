@@ -1,7 +1,46 @@
 @if (node; as n) {
   <div class="drawer">
     <section class="identity">
-      <h3>{{ n.name }}</h3>
+      @if (editing) {
+        <div class="rename-editor">
+          <mndw-input
+            type="text"
+            aria-label="Node name"
+            [value]="draft"
+            [disabled]="pending"
+            [maxlength]="64"
+            (mndwinput)="onNameInput($event)"
+            (keydown)="onNameKeydown($event)"
+          ></mndw-input>
+          <div class="rename-actions">
+            <mndw-button
+              variant="primary"
+              data-action="save-name"
+              [disabled]="pending"
+              (click)="saveRename()"
+            >{{ pending ? 'Saving…' : 'Save' }}</mndw-button>
+            <mndw-button
+              variant="secondary"
+              data-action="cancel-name"
+              [disabled]="pending"
+              (click)="cancelRename()"
+            >Cancel</mndw-button>
+          </div>
+          @if (error) {
+            <p class="rename-error" role="alert">{{ error }}</p>
+          }
+        </div>
+      } @else {
+        <div class="identity-heading">
+          <h3>{{ n.name }}</h3>
+          <mndw-button
+            variant="ghost"
+            data-action="edit-name"
+            aria-label="Edit node name"
+            (click)="beginRename()"
+          >Edit</mndw-button>
+        </div>
+      }
       <dl>
         <dt>Model</dt><dd>{{ dash(n.model) }}</dd>
         <dt>MAC</dt><dd>{{ n.mac }}</dd>

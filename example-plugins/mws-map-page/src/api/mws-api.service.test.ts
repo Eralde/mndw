@@ -70,4 +70,52 @@ describe('MwsApiService', () => {
     expect((await firstValueFrom(service.showVersion())).model).toBe('Hopper (KN-3811)');
     expect(queue).toHaveBeenCalledWith({path: 'show.interface', data: {name: 'Bridge0'}});
   });
+
+  it('queries and normalizes the controller name from show.version.description', async () => {
+    const {service, queue} = serviceWith(() => of({description: 'Router'}));
+
+    await expect(firstValueFrom(service.showControllerDescription())).resolves.toBe('Router');
+    expect(queue).toHaveBeenCalledWith({path: 'show.version'});
+  });
+
+  it('renames a controller with the system.description RCI path', async () => {
+    const {service, queue} = serviceWith(() => of({status: [{status: 'ok'}]}));
+
+    await expect(firstValueFrom(service.renameNode('02:7d:4a:91:c3:10', true, '  New Router  '))).resolves
+      .toBeUndefined();
+
+    expect(queue).toHaveBeenCalledWith({path: 'system.description', data: 'New Router'});
+  });
+
+  it('renames an extender with the normalized known.host payload', async () => {
+    const {service, queue} = serviceWith(() => of({status: [{status: 'ok'}]}));
+
+    await expect(firstValueFrom(service.renameNode(' 02:7D:4A:91:C3:21 ', false, '  New Extender '))).resolves
+      .toBeUndefined();
+
+    expect(queue).toHaveBeenCalledWith({
+      path: 'known.host',
+      data: {mac: '02:7d:4a:91:c3:21', name: 'New Extender'},
+    });
+  });
+
+  it('rejects invalid names without queueing an RCI write', async () => {
+    const {service, queue} = serviceWith(() => of({status: [{status: 'ok'}]}));
+
+    await expect(firstValueFrom(service.renameNode('02:7d:4a:91:c3:10', true, '   '))).rejects.toThrow(
+      'Name cannot be empty.',
+    );
+    await expect(firstValueFrom(service.renameNode('02:7d:4a:91:c3:10', true, 'a'.repeat(65)))).rejects.toThrow(
+      'Name must be 64 characters or fewer.',
+    );
+    expect(queue).not.toHaveBeenCalled();
+  });
+
+  it('maps an RCI status error to its device message', async () => {
+    const {service} = serviceWith(() => of({status: [{status: 'error', message: 'Name is reserved'}]}));
+
+    await expect(firstValueFrom(service.renameNode('02:7d:4a:91:c3:10', true, 'Router'))).rejects.toThrow(
+      'Name is reserved',
+    );
+  });
 });

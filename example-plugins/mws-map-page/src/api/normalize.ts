@@ -172,3 +172,14 @@ export function normalizeVersion(raw: unknown): ShowVersionRecord {
     firmware: toNonEmptyString(version?.title) ?? toNonEmptyString(version?.release),
   };
 }
+
+export function normalizeControllerDescription(raw: unknown): string | null {
+  const value = typeof raw === 'string'
+    ? raw
+    : (raw as {data?: unknown; description?: unknown} | null)?.data
+      ?? (raw as {data?: unknown; description?: unknown} | null)?.description;
+
+  const description = toNonEmptyString(value);
+
+  return description === null ? null : description.trim();
+}

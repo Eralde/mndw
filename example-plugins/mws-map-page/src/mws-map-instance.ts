@@ -12,6 +12,7 @@ import {NodePositionStore} from './services/node-position.store';
 import {
   HOST_INFO,
   MWS_MOCK_OPTIONS,
+  MWS_RENAME_API,
   type MwsMockOptions,
   ON_THEME_CHANGE,
   OVERLAY,
@@ -56,6 +57,7 @@ export function createMwsMapInstance(
       ...mockOptionsProvider,
       {provide: ON_THEME_CHANGE, useValue: onThemeChange},
       MwsApiService,
+      {provide: MWS_RENAME_API, useExisting: MwsApiService},
       dataServiceProvider,
       NodePositionStore,
     ],

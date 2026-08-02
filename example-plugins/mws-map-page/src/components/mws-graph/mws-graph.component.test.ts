@@ -6,6 +6,7 @@ import {normalizeMembers} from '../../api/normalize';
 import {buildMap} from '../../domain/mws/map-builder';
 import type {ControllerInfo, MwsNode} from '../../domain/mws/mws.types';
 import {loadFixture} from '../../fixtures/load';
+import {DEFAULT_LAYOUT_CONFIG} from './graph-layout';
 import {MwsGraphComponent} from './mws-graph.component';
 import graphStyles from './mws-graph.component.scss?raw';
 
@@ -48,6 +49,57 @@ describe('MwsGraphComponent', () => {
     expect(element.querySelectorAll('path.edge')).toHaveLength(2);
     expect(element.querySelectorAll('path.edge.wireless')).toHaveLength(1);
     expect(element.querySelector('g.node.controller')).not.toBeNull();
+  });
+
+  it('renders separate body and selection-ring rectangles for every node', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const element: HTMLElement = fixture.nativeElement;
+
+    expect(element.querySelectorAll('rect.selection-ring')).toHaveLength(3);
+    expect(element.querySelectorAll('rect.node-body')).toHaveLength(3);
+    expect(element.querySelector('rect.node-body')?.getAttribute('width')).toBe(
+      String(DEFAULT_LAYOUT_CONFIG.nodeWidth),
+    );
+    expect(element.querySelector('rect.node-body')?.getAttribute('height')).toBe(
+      String(DEFAULT_LAYOUT_CONFIG.nodeHeight),
+    );
+    expect([...element.querySelectorAll<SVGRectElement>('rect.selection-ring')]
+      .every((ring) => ring.style.display === 'none')).toBe(true);
+  });
+
+  it('shows the selection ring only on the selected node and moves it when selection changes', () => {
+    const roots = fixtureRoots();
+    const firstNode = roots[0];
+    const secondNode = firstNode?.children[0]?.node;
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    expect(firstNode).toBeDefined();
+    expect(secondNode).toBeDefined();
+
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+
+    fixture.componentRef.setInput('selectedNodeId', firstNode?.id ?? null);
+    fixture.detectChanges();
+
+    const element: HTMLElement = fixture.nativeElement;
+    const visibleRings = (): SVGRectElement[] =>
+      [...element.querySelectorAll<SVGRectElement>('rect.selection-ring')]
+        .filter((ring) => ring.style.display !== 'none');
+
+    expect(visibleRings()).toHaveLength(1);
+    expect(element.querySelector('g.node.selected rect.selection-ring')).not.toBeNull();
+
+    fixture.componentRef.setInput('selectedNodeId', secondNode?.id ?? null);
+    fixture.detectChanges();
+
+    expect(visibleRings()).toHaveLength(1);
+    expect(element.querySelector('g.node.selected rect.selection-ring')).not.toBeNull();
+    expect(element.querySelector('g.node.selected')?.getAttribute('aria-label')).toContain(secondNode?.name ?? '');
   });
 
   it('marks nodes focusable with role=button and an aria-label', () => {

@@ -1,0 +1,49 @@
+<div class="search-row">
+  <mndw-input
+    type="search"
+    aria-label="Search clients"
+    placeholder="Search clients"
+    [value]="search()"
+    (mndwinput)="onSearch($event)"
+  ></mndw-input>
+</div>
+
+@if (allRows().length === 0) {
+  <p class="status" role="status">No clients connected.</p>
+} @else if (rows().length === 0) {
+  <p class="status" role="status">No clients match your search.</p>
+} @else {
+  <div class="table-scroll">
+    <table class="mndw-table">
+      <caption>All mesh clients</caption>
+      <thead>
+        <tr>
+          @for (column of columns; track column.key) {
+            <th
+              scope="col"
+              [attr.aria-sort]="sortKey() === column.key ? sortDir() === 'asc' ? 'ascending' : 'descending' : 'none'"
+            >
+              <button type="button" (click)="onSort(column.key)">{{ column.label }}</button>
+            </th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.node.id + ':' + row.client.mac) {
+          <tr>
+            <td>{{ row.client.name }}</td>
+            <td>{{ row.node.name }}</td>
+            <td>
+              <span class="link-badge" [class.wired]="row.client.wired">
+                {{ row.client.wired ? 'wired' : 'wireless' }}
+              </span>
+            </td>
+            <td>{{ row.client.ip ?? dash }}</td>
+            <td>{{ row.client.mac }}</td>
+            <td>{{ uptime(row.client.uptime) }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

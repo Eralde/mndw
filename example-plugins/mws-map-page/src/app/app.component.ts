@@ -10,6 +10,7 @@ import {
   signal,
 } from '@angular/core';
 import {MwsGraphComponent} from '../components/mws-graph/mws-graph.component';
+import {MwsClientsTableComponent} from '../components/clients-table/clients-table.component';
 import {findNodeById, hasUpdate} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {NodePositionStore} from '../services/node-position.store';
@@ -46,7 +47,7 @@ function walkForest(roots: MwsNode[], visit: (node: MwsNode) => void): void {
   standalone: true,
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
-  imports: [MwsGraphComponent],
+  imports: [MwsGraphComponent, MwsClientsTableComponent],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class AppComponent implements OnInit {

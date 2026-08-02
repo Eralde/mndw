@@ -5,6 +5,8 @@ import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import drawerStyles from './components/node-drawer/node-drawer.component.scss?raw';
 import drawerTemplate from './components/node-drawer/node-drawer.component.html?raw';
+import clientsTableStyles from './components/clients-table/clients-table.component.scss?raw';
+import clientsTableTemplate from './components/clients-table/clients-table.component.html?raw';
 import graphStyles from './components/mws-graph/mws-graph.component.scss?raw';
 import appStyles from './app/app.component.scss?raw';
 import appTemplate from './app/app.component.html?raw';
@@ -49,6 +51,14 @@ describe('createInstance', () => {
 
       if (url.endsWith('mws-graph.component.scss')) {
         return Promise.resolve(graphStyles);
+      }
+
+      if (url.endsWith('clients-table.component.html')) {
+        return Promise.resolve(clientsTableTemplate);
+      }
+
+      if (url.endsWith('clients-table.component.scss')) {
+        return Promise.resolve(clientsTableStyles);
       }
 
       if (url.endsWith('node-drawer.component.html')) {

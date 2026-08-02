@@ -11,6 +11,8 @@ import {FakePluginStorage} from '../test-support/plugin-storage.fake';
 import {MWS_MOCK_OPTIONS, PLUGIN_STORAGE} from '../tokens';
 import {NodePositionStore} from '../services/node-position.store';
 import graphStyles from '../components/mws-graph/mws-graph.component.scss?raw';
+import clientsTableStyles from '../components/clients-table/clients-table.component.scss?raw';
+import clientsTableTemplate from '../components/clients-table/clients-table.component.html?raw';
 import appStyles from './app.component.scss?raw';
 import appTemplate from './app.component.html?raw';
 import {AppComponent} from './app.component';
@@ -76,6 +78,14 @@ describe('AppComponent', () => {
         return Promise.resolve(graphStyles);
       }
 
+      if (url.endsWith('clients-table.component.html')) {
+        return Promise.resolve(clientsTableTemplate);
+      }
+
+      if (url.endsWith('clients-table.component.scss')) {
+        return Promise.resolve(clientsTableStyles);
+      }
+
       throw new Error(`resource URL: ${url}`);
     });
     await TestBed.configureTestingModule({
@@ -130,6 +140,18 @@ describe('AppComponent', () => {
     expect(node).not.toBeNull();
     node?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
     expect(open).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(Function));
+  });
+
+  it('renders Map and Clients tabs when ready', () => {
+    const fixture = render(fakeData('ready', fixtureRoots()));
+    const element = fixture.nativeElement as HTMLElement;
+
+    expect(element.querySelector('mndw-tabs.map-tabs')).not.toBeNull();
+    expect(element.querySelectorAll('mndw-tab')).toHaveLength(2);
+    expect(element.querySelector('mndw-tab#tab-map')?.textContent).toContain('Map');
+    expect(element.querySelector('mndw-tab#tab-clients')?.textContent).toContain('Clients');
+    expect(element.querySelector('mndw-tab-panel[for="tab-map"] mws-map-graph')).not.toBeNull();
+    expect(element.querySelector('mndw-tab-panel[for="tab-clients"] mws-clients-table')).not.toBeNull();
   });
 
   it('shows the non-blocking banner when pollError is set', () => {

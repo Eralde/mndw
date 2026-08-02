@@ -393,7 +393,8 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       .join((enter) => {
         const nodeGroup = enter.append('g');
 
-        nodeGroup.append('rect');
+        nodeGroup.append('rect').attr('class', 'selection-ring');
+        nodeGroup.append('rect').attr('class', 'node-body');
         nodeGroup.append('text').attr('class', 'name');
         nodeGroup.append('text').attr('class', 'model');
         nodeGroup.append('text').attr('class', 'client-count');
@@ -430,7 +431,15 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       });
     }
 
-    nodeGroups.select('rect')
+    nodeGroups.select('rect.selection-ring')
+      .attr('x', -(nodeWidth / 2 + 5))
+      .attr('y', -(nodeHeight / 2 + 5))
+      .attr('width', nodeWidth + 10)
+      .attr('height', nodeHeight + 10)
+      .attr('rx', 11)
+      .style('display', (positioned) => positioned.node.id === selected.selected?.id ? null : 'none');
+
+    nodeGroups.select('rect.node-body')
       .attr('x', -nodeWidth / 2)
       .attr('y', -nodeHeight / 2)
       .attr('width', nodeWidth)

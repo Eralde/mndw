@@ -31,20 +31,31 @@
       <p class="state">No extenders found.</p>
     }
     @case ('ready') {
-      <mws-map-graph
-        #graph
-        class="graph"
-        [roots]="data.roots()"
-        [nodePositions]="positions.positions()"
-        [positionsLoadOutcome]="positions.loadOutcome()"
-        [editMode]="editMode()"
-        [selectedNodeId]="selectedNodeId()"
-        (nodeSelected)="onNodeSelected($event)"
-        (nodePositionChanged)="onNodePositionChanged($event)"
-        (editModeToggled)="toggleEditMode()"
-        (autoLayoutRequested)="autoLayout()"
-        (doneEditingRequested)="doneEditing()"
-      />
+      <mndw-tabs class="map-tabs" value="map">
+        <mndw-tab id="tab-map">Map</mndw-tab>
+        <mndw-tab id="tab-clients">Clients</mndw-tab>
+
+        <mndw-tab-panel for="tab-map">
+          <mws-map-graph
+            #graph
+            class="graph"
+            [roots]="data.roots()"
+            [nodePositions]="positions.positions()"
+            [positionsLoadOutcome]="positions.loadOutcome()"
+            [editMode]="editMode()"
+            [selectedNodeId]="selectedNodeId()"
+            (nodeSelected)="onNodeSelected($event)"
+            (nodePositionChanged)="onNodePositionChanged($event)"
+            (editModeToggled)="toggleEditMode()"
+            (autoLayoutRequested)="autoLayout()"
+            (doneEditingRequested)="doneEditing()"
+          />
+        </mndw-tab-panel>
+
+        <mndw-tab-panel for="tab-clients">
+          <mws-clients-table [roots]="data.roots()" />
+        </mndw-tab-panel>
+      </mndw-tabs>
     }
   }
 </div>

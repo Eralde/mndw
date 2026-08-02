@@ -64,6 +64,27 @@
     }
   }
 
+  .map-tabs {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .map-tabs > mndw-tab-panel:not([hidden]) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+
+    &::part(panel) {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+    }
+  }
+
   .graph {
     flex: 1;
     min-height: 0;

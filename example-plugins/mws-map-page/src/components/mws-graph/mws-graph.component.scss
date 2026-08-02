@@ -63,6 +63,15 @@
   height: 100%;
   font-family: var(--mndw-font-sans);
 
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible {
+    outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
+    outline-offset: -2px;
+  }
+
   .edge {
     fill: none;
     stroke: var(--mndw-border);
@@ -91,9 +100,15 @@
   .node {
     cursor: pointer;
 
-    rect {
+    rect.node-body {
       fill: var(--mndw-surface-raised);
       stroke: var(--mndw-border);
+      stroke-width: 2;
+    }
+
+    rect.selection-ring {
+      fill: none;
+      stroke: var(--mndw-accent);
       stroke-width: 2;
     }
 
@@ -122,7 +137,7 @@
       fill: var(--mndw-success);
     }
 
-    &.controller rect {
+    &.controller rect.node-body {
       stroke: var(--mndw-accent);
       stroke-width: 3;
     }
@@ -130,16 +145,16 @@
     &.offline {
       opacity: 0.6;
 
-      rect {
+      rect.node-body {
         stroke: var(--mndw-danger);
       }
     }
 
-    &.on-path rect {
+    &.on-path rect.node-body {
       stroke-width: 3;
     }
 
-    &.selected rect {
+    &.selected rect.node-body {
       filter: drop-shadow(0 0 6px var(--mndw-accent));
       stroke: var(--mndw-accent);
       stroke-width: 3;

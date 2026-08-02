@@ -1,30 +1,20 @@
 <script lang="ts">
 import {SvelteSet} from 'svelte/reactivity';
-import type {LogLevel} from './log-types';
 import {ALL_LOG_LEVELS, type FilterState, isFilterActive} from './log-filters';
+import LogLevelPills from './LogLevelPills.svelte';
 
 interface Props {
   state: FilterState;
+  filteredCount: number;
+  totalCount: number;
   onChange: (state: FilterState) => void;
 }
 
-let {state: filterState, onChange}: Props = $props();
-let expanded = $state(true);
+let {state: filterState, filteredCount, totalCount, onChange}: Props = $props();
+let expanded = $state(false);
 
 function updateQuery(query: string): void {
   onChange({query, levels: filterState.levels});
-}
-
-function updateLevel(level: LogLevel, checked: boolean): void {
-  const levels = new SvelteSet(filterState.levels);
-
-  if (checked) {
-    levels.add(level);
-  } else {
-    levels.delete(level);
-  }
-
-  onChange({query: filterState.query, levels});
 }
 
 function resetFilters(): void {
@@ -34,80 +24,139 @@ function resetFilters(): void {
 
 <section
   class="log-filters"
+  data-filter-panel
+  data-expanded={expanded}
   aria-label="Log filters"
 >
   <div class="log-filters__header">
-    <span>Filters</span>
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <mndw-button
-      variant="ghost"
-      aria-expanded={expanded}
-      aria-label={expanded ? 'Collapse filters' : 'Expand filters'}
-      onclick={() => expanded = !expanded}
-    >
-      {expanded ? 'Hide' : 'Show'}
-    </mndw-button>
+    <div class="log-filters__summary">
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <mndw-button
+        data-filter-toggle
+        variant="ghost"
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Hide filters' : 'Show filters'}
+        onclick={() => expanded = !expanded}
+      >
+        <span class:log-filters__toggle--active={isFilterActive(filterState)}>
+          Filters {expanded ? '▲' : '▼'}
+        </span>
+      </mndw-button>
+      <span class="log-filters__count">
+        <span
+          class="log-filters__count-full"
+          data-filtered-count={filteredCount}
+          data-loaded-count={totalCount}
+        >
+          Showing {filteredCount} of {totalCount} items
+        </span>
+        <span class="log-filters__count-compact">
+          Showing {filteredCount}/{totalCount}
+        </span>
+      </span>
+      {#if isFilterActive(filterState)}
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+        <mndw-button
+          data-reset-filters
+          variant="secondary"
+          onclick={resetFilters}
+        >
+          Reset
+        </mndw-button>
+      {/if}
+    </div>
   </div>
 
-  {#if expanded}
-    <div class="log-filters__controls">
-      <mndw-input
-        type="text"
-        aria-label="Search logs"
-        placeholder="Search logs"
-        value={filterState.query}
-        onmndwinput={(event: CustomEvent<{value: string}>) =>
-        updateQuery(event.detail.value)}
-      ></mndw-input>
-      <div
-        class="log-filters__levels"
-        aria-label="Log levels"
-      >
-        {#each ALL_LOG_LEVELS as level (level)}
-          <mndw-checkbox
-            data-level={level}
-            checked={filterState.levels.has(level)}
-            onmndwchange={(
-              event: CustomEvent<
-                {checked: boolean; indeterminate: boolean}
-              >,
-            ) => updateLevel(level, event.detail.checked)}
-          >
-            {level}
-          </mndw-checkbox>
-        {/each}
-      </div>
-    </div>
-  {/if}
-
-  {#if isFilterActive(filterState)}
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-    <mndw-button
-      data-reset-filters
-      variant="secondary"
-      onclick={resetFilters}
-    >
-      Reset filters
-    </mndw-button>
-  {/if}
+  <div
+    class="log-filters__controls"
+    class:collapsed={!expanded}
+  >
+    <mndw-input
+      type="text"
+      aria-label="Search logs"
+      placeholder="Filter by substring"
+      value={filterState.query}
+      onmndwinput={(event: CustomEvent<{value: string}>) =>
+      updateQuery(event.detail.value)}
+    ></mndw-input>
+    <LogLevelPills
+      activeLevels={filterState.levels}
+      onChange={(levels) => onChange({query: filterState.query, levels})}
+    />
+  </div>
 </section>
 
 <style>
 .log-filters {
-  display: grid;
-  gap: var(--mndw-space-2);
+  min-width: 0;
+  container-type: inline-size;
+  container-name: log-filters;
 }
 
 .log-filters__header,
-.log-filters__controls,
-.log-filters__levels {
+.log-filters__summary,
+.log-filters__controls {
   display: flex;
   align-items: center;
-  gap: var(--mndw-space-3);
+  gap: var(--mndw-space-2);
   flex-wrap: wrap;
 }
 
 .log-filters__header {
-  justify-content: space-between;
+  min-height: 32px;
+}
+
+.log-filters__summary {
+  min-width: 0;
+}
+
+.log-filters__count {
+  color: var(--mndw-text-muted);
+  font-size: var(--mndw-text-xs);
+  white-space: nowrap;
+}
+
+.log-filters__count-compact {
+  display: none;
+}
+
+.log-filters__toggle--active {
+  color: var(--mndw-accent);
+}
+
+.log-filters__controls {
+  --log-filter-focus-gutter: calc(var(--mndw-focus-w) + 1px);
+
+  max-height: 300px;
+  padding: 0 var(--log-filter-focus-gutter) var(--log-filter-focus-gutter);
+  opacity: 1;
+  overflow: hidden;
+  transition: max-height 0.3s ease-out, opacity 0.3s ease-out, padding 0.3s ease-out;
+}
+
+.log-filters__controls:not(.collapsed) {
+  padding-top: calc(var(--mndw-space-2) + var(--log-filter-focus-gutter));
+}
+
+.log-filters__controls.collapsed {
+  max-height: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+mndw-input {
+  flex: 0 1 190px;
+  min-width: 120px;
+}
+
+@container log-filters (max-width: 420px) {
+  .log-filters__count-full {
+    display: none;
+  }
+
+  .log-filters__count-compact {
+    display: inline;
+  }
 }
 </style>

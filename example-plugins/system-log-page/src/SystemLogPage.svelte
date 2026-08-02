@@ -129,37 +129,34 @@ onMount(() => {
   data-system-log-page
 >
   <header class="system-log-page__header">
-    <div>
-      <h1>System Log</h1>
-      <p class="system-log-page__count">
-        <span data-filtered-count>{filteredRecords.length}</span> filtered /
-        <span data-loaded-count>{records.length}</span> loaded
-      </p>
-    </div>
-    <div class="system-log-page__actions">
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <mndw-button
-        data-download-log
-        variant="secondary"
-        onclick={downloadAll}
-      >
-        Download
-      </mndw-button>
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <mndw-button
-        data-clear-log
-        variant="danger"
-        onclick={requestClear}
-      >
-        Clear log
-      </mndw-button>
+    <h1 class="system-log-page__title">System Log</h1>
+    <div class="system-log-page__header-row">
+      <LogFilters
+        state={filterState}
+        filteredCount={filteredRecords.length}
+        totalCount={records.length}
+        onChange={(next) => filterState = next}
+      />
+      <div class="system-log-page__actions">
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+        <mndw-button
+          data-download-log
+          variant="secondary"
+          onclick={downloadAll}
+        >
+          Download
+        </mndw-button>
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+        <mndw-button
+          data-clear-log
+          variant="danger"
+          onclick={requestClear}
+        >
+          Clear log
+        </mndw-button>
+      </div>
     </div>
   </header>
-
-  <LogFilters
-    state={filterState}
-    onChange={(next) => filterState = next}
-  />
 
   {#if errorMessage}
     <p
@@ -199,11 +196,9 @@ onMount(() => {
 .system-log-page {
   display: flex;
   flex-direction: column;
-  gap: var(--mndw-space-4);
   width: 100%;
   height: 100%;
   min-height: 0;
-  padding: var(--mndw-space-4);
   box-sizing: border-box;
   color: var(--mndw-text);
   background: var(--mndw-bg);
@@ -214,25 +209,37 @@ onMount(() => {
   position: sticky;
   top: 0;
   z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  gap: var(--mndw-space-4);
-  align-items: center;
-  padding-bottom: var(--mndw-space-3);
+  padding: var(--mndw-space-2) var(--mndw-space-4);
   border-bottom: 1px solid var(--mndw-border);
   background: var(--mndw-bg);
 }
 
-h1,
 p {
   margin: 0;
 }
 
-h1 {
-  font-size: var(--mndw-text-lg);
+.system-log-page__title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.system-log-page__count,
+.system-log-page__header-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--mndw-space-3);
+}
+
+.system-log-page__header-row :global(.log-filters) {
+  flex: 1 1 auto;
+}
+
 .system-log-page__status,
 .system-log-page__empty {
   color: var(--mndw-text-muted);
@@ -244,6 +251,13 @@ h1 {
   gap: var(--mndw-space-2);
   flex-wrap: wrap;
   justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+.system-log-page__actions mndw-button::part(button) {
+  min-height: 28px;
+  padding: var(--mndw-space-1) var(--mndw-space-2);
+  font-size: var(--mndw-text-xs);
 }
 
 .system-log-page__status--error {
@@ -251,23 +265,24 @@ h1 {
 }
 
 .system-log-page__viewport {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mndw-space-1);
   flex: 1 1 0%;
   min-height: 0;
   overflow: auto;
-  padding: var(--mndw-space-3);
-  border: 1px solid var(--mndw-border);
-  border-radius: var(--mndw-radius-md);
-  background: var(--mndw-surface);
+  padding: var(--mndw-space-3) var(--mndw-space-5) var(--mndw-space-5);
   font-family: var(--mndw-font-mono);
 }
 
 @media (max-width: 700px) {
-  .system-log-page__header {
+  .system-log-page__header-row {
     align-items: flex-start;
     flex-direction: column;
   }
 
   .system-log-page__actions {
+    width: 100%;
     justify-content: flex-start;
   }
 }

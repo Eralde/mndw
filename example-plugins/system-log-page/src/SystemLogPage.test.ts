@@ -91,6 +91,14 @@ describe('SystemLogPage lifecycle', () => {
     expect(snapshotCounters.subscriptions).toBe(1);
     expect(streamCounters.subscriptions).toBe(1);
     expect(host.querySelector('[data-system-log-page]')).not.toBeNull();
+
+    const header = host.querySelector('.system-log-page__header');
+
+    expect(header?.querySelector('[data-filter-panel]')).not.toBeNull();
+    expect(header?.querySelector('[data-download-log]')).not.toBeNull();
+    expect(header?.querySelector('[data-clear-log]')).not.toBeNull();
+    expect(host.querySelector('.system-log-page > [data-filter-panel]')).toBeNull();
+    expect(host.querySelector('h1')?.textContent).toContain('System Log');
     expect(host.textContent).not.toMatch(/refresh/i);
 
     await unmount(app);
@@ -137,6 +145,7 @@ describe('SystemLogPage lifecycle', () => {
     await vi.waitFor(() => expect(scrollTo).toHaveBeenCalledWith({top: 100}));
     expect(host.querySelector('[data-loaded-count]')?.textContent).toContain('1');
     expect(host.querySelector('[data-filtered-count]')?.textContent).toContain('1');
+    expect(host.querySelector('[data-filter-panel]')?.textContent).toContain('Showing 1 of 1 items');
 
     scrollTop = 0;
     scrollHeight = 200;

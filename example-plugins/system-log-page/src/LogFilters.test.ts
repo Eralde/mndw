@@ -2,10 +2,10 @@
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {LogLevel} from './log-types';
-import type {FilterState} from './log-filters';
+import {ALL_LOG_LEVELS, type FilterState} from './log-filters';
 import LogFilters from './LogFilters.svelte';
 
-const allLevels = new Set<LogLevel>(['Info', 'Warning', 'Error', 'Critical', 'Debug']);
+const allLevels = new Set<LogLevel>(ALL_LOG_LEVELS);
 
 describe('LogFilters', () => {
   let host: HTMLElement;
@@ -38,7 +38,7 @@ describe('LogFilters', () => {
     const changedState = onChange.mock.lastCall?.[0] as FilterState;
 
     expect(changedState.query).toBe('');
-    expect([...changedState.levels]).toEqual(['Info', 'Warning', 'Critical', 'Debug']);
+    expect([...changedState.levels]).toEqual(['Info', 'Warning', 'Critical', 'Debug', 'Notice']);
 
     await unmount(app);
   });

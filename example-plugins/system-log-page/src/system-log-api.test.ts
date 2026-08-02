@@ -2,7 +2,6 @@ import {Subject, firstValueFrom, of} from 'rxjs';
 import type {RciBackgroundProcess, RciManager, RciQuery} from '@rci-tools/core';
 import {describe, expect, it, vi} from 'vitest';
 import validResponse from './fixtures/log-response.json';
-import {SystemLogParseError} from './log-normalizer';
 import {createSystemLogApi} from './system-log-api';
 
 describe('createSystemLogApi', () => {
@@ -52,7 +51,7 @@ describe('createSystemLogApi', () => {
     expect(abort).not.toHaveBeenCalled();
   });
 
-  it('normalizes stream values and surfaces malformed responses through Observables', async () => {
+  it('normalizes stream values and drops malformed records through Observables', async () => {
     const streamData$ = new Subject<unknown>();
     const queue = vi.fn(() => of({log: {1: {}}}));
     const process = {
@@ -67,13 +66,13 @@ describe('createSystemLogApi', () => {
     } as unknown as RciManager;
     const api = createSystemLogApi(rci);
 
-    await expect(firstValueFrom(api.showLogOnce())).rejects.toBeInstanceOf(SystemLogParseError);
+    await expect(firstValueFrom(api.showLogOnce())).resolves.toEqual([]);
 
     const stream = api.startLogStream();
     const streamPromise = firstValueFrom(stream.data$);
 
     streamData$.next({log: {1: {}}});
 
-    await expect(streamPromise).rejects.toBeInstanceOf(SystemLogParseError);
+    await expect(streamPromise).resolves.toEqual([]);
   });
 });

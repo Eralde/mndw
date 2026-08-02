@@ -1,4 +1,4 @@
-export type LogLevel = 'Info' | 'Warning' | 'Error' | 'Critical' | 'Debug';
+export type LogLevel = 'Info' | 'Warning' | 'Error' | 'Critical' | 'Debug' | 'Notice';
 
 export interface NormalizedLogRecord {
   readonly id: number;

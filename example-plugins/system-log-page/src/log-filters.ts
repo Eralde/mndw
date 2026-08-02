@@ -5,7 +5,7 @@ export interface FilterState {
   readonly levels: ReadonlySet<LogLevel>;
 }
 
-export const ALL_LOG_LEVELS: readonly LogLevel[] = ['Info', 'Warning', 'Error', 'Critical', 'Debug'];
+export const ALL_LOG_LEVELS: readonly LogLevel[] = ['Info', 'Warning', 'Error', 'Critical', 'Debug', 'Notice'];
 
 export function filterRecords(records: readonly NormalizedLogRecord[], state: FilterState): NormalizedLogRecord[] {
   const query = state.query.toLocaleLowerCase();

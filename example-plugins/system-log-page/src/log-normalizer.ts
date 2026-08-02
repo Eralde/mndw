@@ -2,7 +2,7 @@ import type {LogLevel, NormalizedLogRecord} from './log-types';
 
 export const DEFAULT_MAX_LINES = 500;
 
-const LOG_LEVELS = new Set<LogLevel>(['Info', 'Warning', 'Error', 'Critical', 'Debug']);
+const LOG_LEVELS = new Set<LogLevel>(['Info', 'Warning', 'Error', 'Critical', 'Debug', 'Notice']);
 
 export class SystemLogParseError extends Error {
   public constructor(message: string) {
@@ -14,10 +14,12 @@ export class SystemLogParseError extends Error {
 interface RawMessage {
   level?: unknown;
   label?: unknown;
+  message?: unknown;
   text?: unknown;
 }
 
 interface RawRecord {
+  id?: unknown;
   timestamp?: unknown;
   ident?: unknown;
   message?: unknown;
@@ -28,19 +30,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function requiredString(value: unknown, field: string, path: string): string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new SystemLogParseError(`${path}.${field}: expected a non-empty string`);
+  if (typeof value !== 'string') {
+    throw new SystemLogParseError(`${path}.${field}: expected a string`);
   }
 
   return value;
 }
 
-function recordId(key: string): number {
-  if (!/^\d+$/.test(key)) {
-    throw new SystemLogParseError(`log.${key}: expected a digit-only id`);
+function recordId(key: string, value: unknown): number {
+  const rawId = value === undefined ? key : value;
+
+  if (typeof rawId !== 'number' && (typeof rawId !== 'string' || !/^\d+$/.test(rawId))) {
+    throw new SystemLogParseError(`log.${key}: expected a numeric id`);
   }
 
-  const id = Number(key);
+  const id = Number(rawId);
 
   if (!Number.isSafeInteger(id)) {
     throw new SystemLogParseError(`log.${key}: expected a safe integer id`);
@@ -69,34 +73,43 @@ function normalizeRecord(key: string, value: unknown): NormalizedLogRecord {
     throw new SystemLogParseError(`log.${key}.message.level: unknown log level`);
   }
 
+  const text = message.message ?? message.text;
+
   return {
-    id: recordId(key),
+    id: recordId(key, raw.id),
     timestamp,
     ident,
     level: level as LogLevel,
     label: requiredString(message.label, 'label', `log.${key}.message`),
-    text: requiredString(message.text, 'text', `log.${key}.message`),
+    text: requiredString(text, 'message', `log.${key}.message`),
   };
 }
 
 export function normalizeLogResponse(response: unknown, maxLines = DEFAULT_MAX_LINES): NormalizedLogRecord[] {
-  console.log(1);
-
   if (!isRecord(response)) {
     throw new SystemLogParseError('show.log: expected an object response');
   }
 
-  if (response.continued === true && response.log === undefined) {
+  if (response.log === undefined) {
     return [];
   }
-
-  console.warn(response.log);
 
   if (!isRecord(response.log)) {
     throw new SystemLogParseError('show.log.log: expected a keyed record object');
   }
 
-  const records = Object.entries(response.log).map(([key, value]) => normalizeRecord(key, value));
+  const records = Object.entries(response.log).flatMap(([key, value]) => {
+    try {
+      return [normalizeRecord(key, value)];
+    } catch (error) {
+      if (error instanceof SystemLogParseError) {
+        // Keep one malformed device record from discarding the rest of the snapshot.
+        return [];
+      }
+
+      throw error;
+    }
+  });
 
   records.sort((left, right) => left.id - right.id);
 

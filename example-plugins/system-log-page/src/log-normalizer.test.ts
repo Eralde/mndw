@@ -11,13 +11,70 @@ describe('normalizeLogResponse', () => {
     ]);
   });
 
-  it('throws a typed parse error for malformed records', () => {
-    expect(() => normalizeLogResponse(malformedResponse)).toThrow(SystemLogParseError);
+  it('skips malformed records but rejects malformed top-level log data', () => {
+    expect(normalizeLogResponse(malformedResponse)).toEqual([]);
     expect(() => normalizeLogResponse({log: []})).toThrow(SystemLogParseError);
   });
 
   it('accepts a continued marker without records', () => {
     expect(normalizeLogResponse({continued: true})).toEqual([]);
+  });
+
+  it('accepts the sv-webcli message field and Notice level', () => {
+    expect(normalizeLogResponse({
+      log: {
+        908: {
+          id: 908,
+          timestamp: 'Jul 28 13:58:16',
+          ident: 'kernel',
+          message: {level: 'Info', label: 'I', message: 'entered forwarding state'},
+        },
+        1165: {
+          id: 1165,
+          timestamp: 'Jul 28 13:58:21',
+          ident: 'avahi-daemon[838]',
+          message: {level: 'Notice', label: 'N', message: 'starting up.'},
+        },
+      },
+    })).toEqual([
+      {
+        id: 908,
+        timestamp: 'Jul 28 13:58:16',
+        ident: 'kernel',
+        level: 'Info',
+        label: 'I',
+        text: 'entered forwarding state',
+      },
+      {
+        id: 1165,
+        timestamp: 'Jul 28 13:58:21',
+        ident: 'avahi-daemon[838]',
+        level: 'Notice',
+        label: 'N',
+        text: 'starting up.',
+      },
+    ]);
+  });
+
+  it('skips one malformed record while keeping valid records', () => {
+    expect(normalizeLogResponse({
+      log: {
+        1: {
+          id: 1,
+          timestamp: 'Aug  1 12:00:00',
+          ident: 'system',
+          message: {level: 'Info', label: 'I', message: 'booted'},
+        },
+        2: {
+          id: 2,
+          timestamp: 'Aug  1 12:00:01',
+          ident: 'router',
+          message: {level: 'Info', label: 'I'},
+        },
+      },
+    })).toEqual([
+      {id: 1, timestamp: 'Aug  1 12:00:00', ident: 'system', level: 'Info', label: 'I', text: 'booted'},
+    ]);
   });
 
   it('keeps only newest numeric ids up to the response cap', () => {

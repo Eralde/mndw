@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import type {NormalizedLogRecord} from './log-types';
-import {filterRecords, isFilterActive} from './log-filters';
+import {ALL_LOG_LEVELS, filterRecords, isFilterActive} from './log-filters';
 
 const baseRecord: NormalizedLogRecord = {
   id: 1,
@@ -36,7 +36,7 @@ describe('filterRecords', () => {
   });
 
   it('recognizes empty and active filter states', () => {
-    const allLevels = new Set(['Info', 'Warning', 'Error', 'Critical', 'Debug'] as const);
+    const allLevels = new Set(ALL_LOG_LEVELS);
 
     expect(filterRecords(records, {query: '', levels: allLevels})).toEqual(records);
     expect(isFilterActive({query: '', levels: allLevels})).toBe(false);

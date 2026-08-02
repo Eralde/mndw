@@ -116,6 +116,53 @@ test('queries semantic control state from hosts', async ({page}) => {
   await expect(page.getByRole('combobox', {name: 'Field interface', exact: true})).toBeVisible();
 });
 
+test('keeps a checkbox host geometrically stable across checked-state changes', async ({page}) => {
+  const checkbox = page.locator('#inline-checkbox');
+
+  await expect(checkbox).toBeAttached();
+
+  async function setState(checked: boolean, indeterminate: boolean): Promise<void> {
+    await checkbox.evaluate(
+      async (element, next) => {
+        const host = element as HTMLElement & {
+          checked: boolean;
+          indeterminate: boolean;
+          updateComplete: Promise<unknown>;
+        };
+
+        host.checked = next.checked;
+        host.indeterminate = next.indeterminate;
+        await host.updateComplete;
+      },
+      {checked, indeterminate},
+    );
+  }
+
+  async function rect(): Promise<{left: number; top: number; width: number; height: number}> {
+    const box = await checkbox.boundingBox();
+
+    if (!box) {
+      throw new Error('checkbox has no bounding box');
+    }
+
+    return {left: box.x, top: box.y, width: box.width, height: box.height};
+  }
+
+  // unchecked -> checked -> indeterminate -> unchecked
+  await setState(false, false);
+
+  const baseline = await rect();
+
+  await setState(true, false);
+  expect(await rect()).toEqual(baseline);
+
+  await setState(false, true);
+  expect(await rect()).toEqual(baseline);
+
+  await setState(false, false);
+  expect(await rect()).toEqual(baseline);
+});
+
 test('keeps native button focus inside its shadow tree', async ({page}) => {
   const button = page.locator('#button');
 

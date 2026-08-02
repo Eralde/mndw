@@ -111,6 +111,46 @@ describe('<mndw-checkbox>', () => {
     expect(cssText).not.toContain('--mndw-color-');
   });
 
+  it('reveals the mark from the reflected checked attribute, not the box aria-checked', () => {
+    const cssText = String(MndwCheckbox.styles);
+
+    // The box is aria-hidden and never carries aria-checked, so the checked visuals
+    // must key off the host's reflected attributes or the mark stays hidden.
+    expect(cssText).toContain(':host([checked]:not([indeterminate])) [part=\'mark\']');
+    expect(cssText).toContain(':host([indeterminate]) [part=\'mark\']');
+    expect(cssText).not.toContain('[part=\'box\'][aria-checked');
+  });
+
+  it('keeps the mark out of flow and toggles only visibility so the box baseline is stable', () => {
+    const cssText = String(MndwCheckbox.styles);
+
+    // Box establishes the containing block for the absolutely positioned mark.
+    expect(cssText).toMatch(/\[part='box'\]\s*\{[^}]*position: relative;/);
+
+    // Mark is always block, out of flow, and centered — never display:none, which is
+    // the toggle that shifted the box baseline.
+    expect(cssText).toMatch(/\[part='mark'\]\s*\{[^}]*position: absolute;/);
+    expect(cssText).toMatch(/\[part='mark'\]\s*\{[^}]*display: block;/);
+    expect(cssText).toContain('top: 50%');
+    expect(cssText).toContain('left: 50%');
+    expect(cssText).toContain('translate(-50%, -50%)');
+    expect(cssText).not.toContain('display: none');
+
+    // Default hidden, revealed by visibility in checked and indeterminate states.
+    expect(cssText).toMatch(/\[part='mark'\]\s*\{[^}]*visibility: hidden;/);
+    expect(cssText).toMatch(
+      /:host\(\[checked\]:not\(\[indeterminate\]\)\)\s+\[part='mark'\]\s*\{[^}]*visibility: visible;/,
+    );
+    expect(cssText).toMatch(
+      /:host\(\[indeterminate\]\)\s+\[part='mark'\]\s*\{[^}]*visibility: visible;/,
+    );
+
+    // Indeterminate keeps its bar dimensions.
+    expect(cssText).toMatch(
+      /:host\(\[indeterminate\]\)\s+\[part='mark'\]\s*\{[^}]*width: 9px;[^}]*height: 2px;/,
+    );
+  });
+
   it('uses pointer cursor for the label and not-allowed when disabled', () => {
     const cssText = String(MndwCheckbox.styles);
 

@@ -55,6 +55,7 @@ export class MndwCheckbox extends LitElement {
       }
 
       [part='box'] {
+        position: relative;
         display: inline-grid;
         width: 18px;
         height: 18px;
@@ -66,25 +67,30 @@ export class MndwCheckbox extends LitElement {
         flex: 0 0 auto;
       }
 
-      [part='box'][aria-checked='true'],
-      [part='box'][aria-checked='mixed'] {
+      :host([checked]) [part='box'],
+      :host([indeterminate]) [part='box'] {
         border-color: var(--mndw-accent);
         background: var(--mndw-accent);
       }
 
       [part='mark'] {
-        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        display: block;
+        visibility: hidden;
         font-size: var(--mndw-text-md);
         font-weight: var(--mndw-weight-semibold);
-        line-height: var(--mndw-leading);
+        line-height: 1;
       }
 
-      [part='box'][aria-checked='true'] [part='mark'] {
-        display: block;
+      :host([checked]:not([indeterminate])) [part='mark'] {
+        visibility: visible;
       }
 
-      [part='box'][aria-checked='mixed'] [part='mark'] {
-        display: block;
+      :host([indeterminate]) [part='mark'] {
+        visibility: visible;
         width: 9px;
         height: 2px;
         background: currentColor;

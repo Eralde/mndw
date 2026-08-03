@@ -1,7 +1,7 @@
 <script lang="ts">
 import {initAuthenticated} from '../../services/init-auth.js';
 import {rciService} from '../../services/rci.service.js';
-import {appState} from '../../state/app.svelte.js';
+import {appState, resetToLogin} from '../../state/app.svelte.js';
 
 let username = $state('');
 let password = $state('');
@@ -27,7 +27,14 @@ function handleSubmit(e: Event): void {
     next(success) {
       if (success) {
         appState.authenticated = true;
-        void initAuthenticated();
+        void initAuthenticated({username, password}).catch(() => {
+          resetToLogin();
+          error = 'Extender access setup failed';
+          loading = false;
+        }).finally(() => {
+          username = '';
+          password = '';
+        });
       } else {
         error = 'Invalid credentials';
         loading = false;

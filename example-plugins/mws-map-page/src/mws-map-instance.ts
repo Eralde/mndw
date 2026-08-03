@@ -11,6 +11,7 @@ import {MwsDataService} from './services/mws-data.service';
 import {NodePositionStore} from './services/node-position.store';
 import {
   HOST_INFO,
+  MWSD_BACKEND,
   MWS_MOCK_OPTIONS,
   MWS_RENAME_API,
   type MwsMockOptions,
@@ -53,6 +54,7 @@ export function createMwsMapInstance(
       {provide: RCI_MANAGER, useValue: ctx.rciManager},
       {provide: OVERLAY, useValue: ctx.overlay},
       {provide: HOST_INFO, useValue: ctx.hostInfo},
+      {provide: MWSD_BACKEND, useValue: ctx.backend ?? null},
       {provide: PLUGIN_STORAGE, useValue: ctx.storage},
       ...mockOptionsProvider,
       {provide: ON_THEME_CHANGE, useValue: onThemeChange},

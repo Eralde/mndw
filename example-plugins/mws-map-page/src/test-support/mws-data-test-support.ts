@@ -1,12 +1,12 @@
 import {TestBed} from '@angular/core/testing';
-import type {HostInfo} from '@mndw/sdk';
+import type {BackendClient, HostInfo} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {vi} from 'vitest';
 import {MwsApiService, type MwsMemberResult} from '../api/mws-api.service';
 import {normalizeBridge, normalizeDeviceHosts, normalizeMembers, normalizeVersion} from '../api/normalize';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
-import {HOST_INFO, MWS_MOCK_OPTIONS, type MwsMockOptions} from '../tokens';
+import {HOST_INFO, MWSD_BACKEND, MWS_MOCK_OPTIONS, type MwsMockOptions} from '../tokens';
 import {MwsDataService} from '../services/mws-data.service';
 import {MwsMockDataService} from '../services/mws-mock-data.service';
 
@@ -38,23 +38,37 @@ export function goodApi(): FakeApi {
 }
 
 export function makeLiveService(api: FakeApi): MwsDataService {
+  return makeLiveServiceWithBackend(api, null);
+}
+
+export function makeLiveServiceWithBackend(api: FakeApi, backend: BackendClient | null): MwsDataService {
   TestBed.configureTestingModule({
     providers: [
       MwsDataService,
       {provide: MwsApiService, useValue: api as unknown as MwsApiService},
       {provide: HOST_INFO, useValue: HOST},
+      {provide: MWSD_BACKEND, useValue: backend},
     ],
   });
 
   return TestBed.inject(MwsDataService);
 }
 
-export function makeMockService(api: FakeApi, mockOptions: MwsMockOptions): MwsMockDataService {
+export function fakeBackend(fetch: BackendClient['fetch']): BackendClient {
+  return {fetch, socket: vi.fn()} as unknown as BackendClient;
+}
+
+export function makeMockService(
+  api: FakeApi,
+  mockOptions: MwsMockOptions,
+  backend: BackendClient | null = null,
+): MwsMockDataService {
   TestBed.configureTestingModule({
     providers: [
       MwsMockDataService,
       {provide: MwsApiService, useValue: api as unknown as MwsApiService},
       {provide: HOST_INFO, useValue: HOST},
+      {provide: MWSD_BACKEND, useValue: backend},
       {provide: MWS_MOCK_OPTIONS, useValue: mockOptions},
     ],
   });

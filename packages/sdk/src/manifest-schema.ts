@@ -54,6 +54,8 @@ const pluginBackendEndpointSchema = z.object({
     .transform((m) => m.toUpperCase())
     .pipe(z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])),
   scriptId: z.string().min(1),
+  csrf: z.boolean().optional(),
+  sensitive: z.boolean().optional(),
 });
 
 const pluginBackendWebSocketSchema = z.object({

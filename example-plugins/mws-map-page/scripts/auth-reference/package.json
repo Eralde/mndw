@@ -1,0 +1,19 @@
+{
+  "name": "@mndw/mws-auth-reference",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsx build-reference.ts"
+  },
+  "dependencies": {
+    "@rci-tools/core": "github:Eralde/rci-tools#85eb264d7d7c5e177813f858db23cff117712fad&path:/packages/core",
+    "esbuild": "^0.25.12",
+    "hash-wasm": "^4.12.0",
+    "jssha": "^3.3.2",
+    "rxjs": "^7.8.2"
+  },
+  "exports": {
+    ".": "./generated/auth-protocol.mjs"
+  }
+}

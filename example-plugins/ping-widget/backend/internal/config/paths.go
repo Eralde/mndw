@@ -12,7 +12,7 @@ const (
 )
 
 func runtimeDir() string {
-	if dir := os.Getenv("MNDW_PING_RUNTIME_DIR"); dir != "" {
+	if dir := os.Getenv("MNDW_PLUGIN_RUNTIME_DIR"); dir != "" {
 		return dir
 	}
 

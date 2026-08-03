@@ -2,8 +2,9 @@ import {TestBed} from '@angular/core/testing';
 import {Subject, of, throwError} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {MwsMemberResult} from '../api/mws-api.service';
-import {goodApi, makeLiveService} from '../test-support/mws-data-test-support';
-import {POLL_INTERVAL_MS} from './mws-data.service';
+import {findNodeById} from '../domain/mws/map-builder';
+import {fakeBackend, goodApi, makeLiveService, makeLiveServiceWithBackend} from '../test-support/mws-data-test-support';
+import {MWSD_STATUS_POLL_INTERVAL_MS, MWSD_STATUS_REQUEST_TIMEOUT_MS, POLL_INTERVAL_MS} from './mws-data.service';
 
 describe('MwsDataService', () => {
   beforeEach(() => {
@@ -231,5 +232,99 @@ describe('MwsDataService', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(api.showMwsMember).toHaveBeenCalledTimes(1);
+  });
+
+  it('polls mwsd independently and annotates a ready RCI map', async () => {
+    const api = goodApi();
+    const fetch = vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            credState: 'present',
+            lastRefreshAt: new Date().toISOString(),
+            nodes: [{mac: '02:7d:4a:91:c3:21', state: 'live', lastSuccessAt: new Date().toISOString()}],
+          }),
+          {status: 200, headers: {'content-type': 'application/json'}},
+        ),
+      )
+    );
+    const backend = fakeBackend(fetch);
+    const service = makeLiveServiceWithBackend(api, backend);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(service.phase()).toBe('ready');
+    expect(fetch).toHaveBeenCalledWith('nodes', expect.objectContaining({signal: expect.any(AbortSignal)}));
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('live');
+  });
+
+  it('keeps RCI ready when mwsd rejects and recovers on a later status tick', async () => {
+    const api = goodApi();
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(new Error('backend unavailable'))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            credState: 'present',
+            nodes: [{mac: '02:7d:4a:91:c3:21', state: 'live', lastSuccessAt: new Date().toISOString()}],
+          }),
+          {status: 200},
+        ),
+      );
+    const service = makeLiveServiceWithBackend(api, fakeBackend(fetch));
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.phase()).toBe('ready');
+    expect(service.pollError()).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(service.phase()).toBe('ready');
+    expect(service.pollError()).toBe(false);
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('live');
+  });
+
+  it('times out an ignored-abort request without blocking later status polls', async () => {
+    const api = goodApi();
+    const pending = new Promise<Response>(() => undefined);
+    const fetch = vi.fn()
+      .mockReturnValueOnce(pending)
+      .mockResolvedValueOnce(new Response(JSON.stringify({credState: 'present', nodes: []}), {status: 200}));
+    const service = makeLiveServiceWithBackend(api, fakeBackend(fetch));
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(MWSD_STATUS_REQUEST_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS - MWSD_STATUS_REQUEST_TIMEOUT_MS);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(service.phase()).toBe('ready');
+  });
+
+  it('reapplies the last good mwsd status after an RCI refresh rebuilds the map', async () => {
+    const api = goodApi();
+    const backend = fakeBackend(vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            credState: 'present',
+            nodes: [{mac: '02:7d:4a:91:c3:21', state: 'live', lastSuccessAt: new Date().toISOString()}],
+          }),
+          {status: 200},
+        ),
+      )
+    ));
+    const service = makeLiveServiceWithBackend(api, backend);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('live');
+
+    service.refreshNow();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('live');
   });
 });

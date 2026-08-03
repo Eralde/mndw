@@ -1,0 +1,374 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"mws-map-page/internal/auth"
+	"mws-map-page/internal/config"
+	"mws-map-page/internal/credentials"
+	"mws-map-page/internal/discovery"
+	"mws-map-page/internal/session"
+	"mws-map-page/internal/socket"
+	"mws-map-page/internal/target"
+	"mws-map-page/internal/telemetry"
+)
+
+type Service struct {
+	transport     *auth.HTTPTransport
+	authenticator *auth.Authenticator
+	credentials   *credentials.Store
+	epoch         *credentials.Epoch
+	holder        *session.Holder
+	controller    auth.Target
+	mu            sync.Mutex
+	members       []discovery.Member
+	refreshMu     sync.Mutex
+	telemetry     *telemetry.Collector
+	clock         Clock
+	lastRefreshAt time.Time
+}
+
+type Clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now() }
+
+type OperationError struct {
+	status  int
+	code    string
+	message string
+	err     error
+}
+
+func (e *OperationError) Error() string { return e.message }
+func (e *OperationError) Unwrap() error { return e.err }
+func (e *OperationError) Status() int   { return e.status }
+func (e *OperationError) Code() string  { return e.code }
+
+func New(cfg config.Config) *Service {
+	transport := auth.NewHTTPTransport(nil)
+	transport.IOTimeout = cfg.IOTimeout
+	transport.MaxResponseBytes = cfg.MaxResponseBytes
+	authenticator := auth.New(auth.Options{Transport: transport, AuthTimeout: cfg.AuthOperation})
+	store := credentials.NewStore()
+	epoch := credentials.NewEpoch()
+	holder := session.NewHolder(authenticator, store)
+	return &Service{transport: transport, authenticator: authenticator, credentials: store, epoch: epoch, holder: holder, controller: auth.Target{BaseURL: cfg.ControllerURL}, telemetry: telemetry.NewCollector(holder, epoch, telemetry.FieldAdapter{}), clock: realClock{}}
+}
+
+var _ socket.Service = (*Service)(nil)
+
+func (s *Service) Run(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if s.credentials.State() == credentials.StatePresent {
+				_ = s.refresh(ctx)
+			}
+		}
+	}
+}
+
+func (s *Service) SetClock(clock Clock) {
+	if clock == nil {
+		return
+	}
+	s.clock = clock
+	s.holder.SetClock(clock)
+}
+
+func (s *Service) Credentials(ctx context.Context, username, password string) (any, error) {
+	if username == "" || password == "" {
+		return nil, &OperationError{status: 401, code: "authentication_failed", message: "authentication failed"}
+	}
+	token, operationCtx := s.epoch.Begin(ctx)
+	s.holder.Forget()
+	s.credentials.Set(username, []byte(password), token)
+	if err := s.holder.Authenticate(operationCtx, "controller", s.controller); err != nil {
+		return nil, classify(err)
+	}
+	if err := s.refresh(operationCtx); err != nil {
+		return nil, classify(err)
+	}
+	return map[string]any{"authenticated": true, "nodes": len(s.membersSnapshot())}, nil
+}
+
+func (s *Service) Forget(ctx context.Context) (any, error) {
+	_, operationCtx := s.epoch.Begin(ctx)
+	s.holder.Forget()
+	s.credentials.Forget(s.epoch.Current())
+	select {
+	case <-operationCtx.Done():
+		return nil, operationCtx.Err()
+	default:
+		return map[string]bool{"forgotten": true}, nil
+	}
+}
+
+func (s *Service) Nodes(ctx context.Context) (any, error) {
+	state := s.credentials.State()
+	if len(s.membersSnapshot()) == 0 && state == credentials.StatePresent {
+		if err := s.refresh(ctx); err != nil {
+			return nil, classify(err)
+		}
+	}
+	return telemetry.NodesResponse{CredState: string(state), LastRefreshAt: s.lastRefreshSnapshot(), Nodes: s.nodesSnapshot()}, nil
+}
+
+func (s *Service) Snapshot(ctx context.Context, nodeID string) (any, error) {
+	if s.credentials.State() != credentials.StatePresent {
+		return nil, &OperationError{status: 409, code: "credentials_required", message: "credentials required"}
+	}
+	if len(s.membersSnapshot()) == 0 {
+		if err := s.refresh(ctx); err != nil {
+			return nil, classify(err)
+		}
+	}
+	nodes := s.nodesSnapshot()
+	if nodeID == "" {
+		return map[string]any{"credState": s.credentials.State(), "nodes": nodes}, nil
+	}
+	if !validNodeID(nodeID) {
+		return nil, &OperationError{status: 400, code: "operation_rejected", message: "invalid node id"}
+	}
+	for _, node := range nodes {
+		if node.ID == nodeID {
+			return map[string]any{"credState": s.credentials.State(), "node": node}, nil
+		}
+	}
+	return nil, &OperationError{status: 409, code: "node_offline", message: "node unavailable"}
+}
+
+func (s *Service) refresh(ctx context.Context) error {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	data, err := s.query(ctx, "controller", s.controller, "show.mws.member")
+	if err != nil {
+		return err
+	}
+	members, err := discovery.ParseMembers(data)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	previous := make(map[string]discovery.Member, len(s.members))
+	for _, member := range s.members {
+		previous[member.Identity()] = member
+	}
+	s.mu.Unlock()
+	for index := range members {
+		identity := members[index].Identity()
+		resolved, resolveErr := target.Resolve(members[index])
+		if resolveErr != nil {
+			members[index].Online = false
+			s.holder.State().SetOffline(identity, s.clock.Now())
+			continue
+		}
+		if old, ok := previous[identity]; ok && (!old.Online || old.IP != members[index].IP) {
+			s.holder.State().SetOnline(identity, s.clock.Now())
+		}
+		if !s.holder.CanAttempt(identity, s.clock.Now()) {
+			continue
+		}
+		if err := s.holder.Authenticate(ctx, identity, resolved.AuthTarget()); err != nil {
+			continue
+		}
+		members[index].Online = true
+	}
+	current := make(map[string]struct{}, len(members))
+	for _, member := range members {
+		current[member.Identity()] = struct{}{}
+	}
+	for identity, old := range previous {
+		if old.Online {
+			if _, exists := current[identity]; !exists {
+				s.holder.State().SetOffline(identity, s.clock.Now())
+			}
+		}
+	}
+	s.mu.Lock()
+	s.members = append([]discovery.Member(nil), members...)
+	s.lastRefreshAt = s.clock.Now().UTC()
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *Service) query(ctx context.Context, id string, destination auth.Target, path string) ([]byte, error) {
+	var response []byte
+	operation := func(operationCtx context.Context, jar http.CookieJar) error {
+		query := map[string]any{}
+		setQueryPath(query, path)
+		body, _ := json.Marshal([]map[string]any{query})
+		reply, err := s.transport.Do(operationCtx, destination, jar, http.MethodPost, "/rci/", body)
+		if err != nil {
+			return err
+		}
+		if reply.Status != http.StatusOK {
+			return fmt.Errorf("router query failed")
+		}
+		response = extractQueryValue(reply.Body, path)
+		return nil
+	}
+	if err := s.holder.WithSession(ctx, id, destination, operation); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (s *Service) membersSnapshot() []discovery.Member {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]discovery.Member(nil), s.members...)
+}
+
+func (s *Service) nodesSnapshot() []telemetry.Node {
+	members := s.membersSnapshot()
+	result := make([]telemetry.Node, 0, len(members))
+	for _, member := range members {
+		state := "node_offline"
+		if member.Online {
+			state = "authenticating"
+		}
+		if snapshot, ok := s.holder.State().Snapshot(member.Identity()); ok {
+			switch snapshot.State {
+			case session.NodeOnline:
+				state = "live"
+			case session.NodeFailed:
+				state = "failed"
+			case session.NodeOffline:
+				if member.Online {
+					state = "reauthenticating"
+				}
+			}
+			var lastSuccessAt *time.Time
+			if !snapshot.LastSuccess.IsZero() {
+				lastSuccess := snapshot.LastSuccess.UTC()
+				lastSuccessAt = &lastSuccess
+			}
+			result = append(result, telemetry.Node{ID: member.Identity(), CID: member.CID, MAC: member.MAC, Name: member.Name, IP: member.IP, Online: member.Online, State: state, LastConnectedNode: member.LastPeer, LastSuccessAt: lastSuccessAt})
+			continue
+		}
+		result = append(result, telemetry.Node{ID: member.Identity(), CID: member.CID, MAC: member.MAC, Name: member.Name, IP: member.IP, Online: member.Online, State: state, LastConnectedNode: member.LastPeer, LastSuccessAt: nil})
+	}
+	return result
+}
+
+func (s *Service) lastRefreshSnapshot() *time.Time {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastRefreshAt.IsZero() {
+		return nil
+	}
+	lastRefresh := s.lastRefreshAt.UTC()
+	return &lastRefresh
+}
+
+func classify(err error) error {
+	var authErr *auth.AuthError
+	if errors.As(err, &authErr) {
+		switch authErr.Kind {
+		case auth.ErrorRejected:
+			return &OperationError{status: 401, code: "authentication_failed", message: "authentication failed", err: err}
+		case auth.ErrorUnsupported:
+			return &OperationError{status: 422, code: "unsupported_firmware", message: "unsupported firmware", err: err}
+		case auth.ErrorTimeout, auth.ErrorTransport:
+			return &OperationError{status: 504, code: "target_unavailable", message: "target unavailable", err: err}
+		default:
+			return &OperationError{status: 400, code: "operation_rejected", message: "operation rejected", err: err}
+		}
+	}
+	if strings.Contains(err.Error(), "credentials required") {
+		return &OperationError{status: 409, code: "credentials_required", message: "credentials required", err: err}
+	}
+	return &OperationError{status: 504, code: "target_unavailable", message: "target unavailable", err: err}
+}
+
+func validNodeID(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != ':' && char != '-' && char != '_' && char != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+func setQueryPath(root map[string]any, path string) {
+	parts := splitPath(path)
+	current := root
+	for index, part := range parts {
+		if index == len(parts)-1 {
+			current[part] = map[string]any{}
+			return
+		}
+		next := map[string]any{}
+		current[part] = next
+		current = next
+	}
+}
+
+func extractQueryValue(data []byte, path string) []byte {
+	var payload any
+	if json.Unmarshal(data, &payload) != nil {
+		return data
+	}
+	if value, ok := findPath(payload, splitPath(path)); ok {
+		result, _ := json.Marshal(value)
+		return result
+	}
+	return data
+}
+
+func findPath(value any, path []string) (any, bool) {
+	if len(path) == 0 {
+		return value, true
+	}
+	if list, ok := value.([]any); ok {
+		for _, item := range list {
+			if found, exists := findPath(item, path); exists {
+				return found, true
+			}
+		}
+		return nil, false
+	}
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	next, ok := object[path[0]]
+	if !ok {
+		return nil, false
+	}
+	return findPath(next, path[1:])
+}
+
+func splitPath(path string) []string {
+	if path == "" {
+		return nil
+	}
+	result := make([]string, 0)
+	start := 0
+	for index, char := range path {
+		if char == '.' {
+			result = append(result, path[start:index])
+			start = index + 1
+		}
+	}
+	return append(result, path[start:])
+}

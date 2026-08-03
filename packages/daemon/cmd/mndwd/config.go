@@ -4,8 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
+
+	"mndwd/internal/pluginruntime"
 )
 
 // maxUploadBytes caps an upload request body at 10 MB.
@@ -16,6 +19,7 @@ const maxUploadBytes = 10 << 20
 type Config struct {
 	Listen            string
 	DataDir           string
+	PluginRuntimeRoot string
 	BuiltinPluginsDir string
 	UserPluginsDir    string
 	RouterURL         string
@@ -44,6 +48,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs := flag.NewFlagSet("mndwd", flag.ContinueOnError)
 	fs.StringVar(&cfg.Listen, "listen", "127.0.0.1:9090", "address to listen on")
 	fs.StringVar(&cfg.DataDir, "data-dir", "/opt/var/lib/mndw", "directory for state.json and staging")
+	fs.StringVar(&cfg.PluginRuntimeRoot, "plugin-runtime-root", "", "root directory for per-plugin runtime state")
 	fs.StringVar(&cfg.BuiltinPluginsDir, "builtin-plugins-dir", "/opt/share/www/mndw/plugins", "directory of builtin plugins")
 	fs.StringVar(&cfg.UserPluginsDir, "user-plugins-dir", "/opt/share/www/mndw/user-plugins", "directory of approved user plugins")
 	fs.StringVar(&cfg.RouterURL, "router-url", "http://127.0.0.1:80", "router base URL for session auth")
@@ -60,6 +65,12 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	}
 	if showVersion {
 		return cfg, true, nil
+	}
+	if cfg.PluginRuntimeRoot == "" {
+		cfg.PluginRuntimeRoot = os.Getenv(pluginruntime.RuntimeRootEnv)
+	}
+	if cfg.PluginRuntimeRoot == "" {
+		cfg.PluginRuntimeRoot = filepath.Join(cfg.DataDir, "plugin-runtime")
 	}
 
 	if cfg.Opkg != "exec" && cfg.Opkg != "stub" {

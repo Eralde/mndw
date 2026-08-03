@@ -40,10 +40,12 @@ type Script struct {
 
 // Endpoint is a declared HTTP endpoint fronting a script.
 type Endpoint struct {
-	ID       string `json:"id"`
-	Method   string `json:"method"`
-	Path     string `json:"path"`
-	ScriptID string `json:"scriptId"`
+	ID        string `json:"id"`
+	Method    string `json:"method"`
+	Path      string `json:"path"`
+	ScriptID  string `json:"scriptId"`
+	Csrf      bool   `json:"csrf,omitempty"`
+	Sensitive bool   `json:"sensitive,omitempty"`
 }
 
 // WebSocket is a declared websocket proxy target.

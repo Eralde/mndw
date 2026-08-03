@@ -29,6 +29,13 @@ vi.mock('../../services/palette.service.js', () => ({
   getExportable: vi.fn(() => MNDW_TOKENS),
   getApplied: vi.fn(() => null),
 }));
+vi.mock('../../services/extender-access.service.js', () => ({
+  extenderAccessService: {
+    getExtenderAccess: vi.fn().mockResolvedValue({enabled: false}),
+    setExtenderAccess: vi.fn().mockResolvedValue({enabled: false}),
+    postForget: vi.fn().mockResolvedValue(undefined),
+  },
+}));
 
 import SettingsPage from './SettingsPage.svelte';
 import {toggleTheme} from '../../services/theme.service.js';

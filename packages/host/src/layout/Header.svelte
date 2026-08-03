@@ -1,14 +1,23 @@
 <script lang="ts">
 import {rciService} from '../services/rci.service.js';
+import {extenderAccessService} from '../services/extender-access.service.js';
 import {toggleTheme} from '../services/theme.service.js';
 import {appState, resetToLogin} from '../state/app.svelte.js';
 
-function handleLogout(): void {
-  // Reset to the login screen regardless of whether the device ack's the logout.
-  rciService.logout().subscribe({
-    next: resetToLogin,
-    error: resetToLogin,
-  });
+async function handleLogout(): Promise<void> {
+  try {
+    await extenderAccessService.postForget();
+  } catch {
+    // Router logout and local reset must proceed even when mwsd is unavailable.
+  }
+  try {
+    await new Promise<void>((resolve) => {
+      rciService.logout().subscribe({next: () => resolve(), error: () =>
+        resolve()});
+    });
+  } finally {
+    resetToLogin();
+  }
 }
 </script>
 

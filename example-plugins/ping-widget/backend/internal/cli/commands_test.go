@@ -117,7 +117,7 @@ func TestStatsWithFallbackReturnsErrorWhenStoreLoadFails(t *testing.T) {
 }
 
 func TestConfigHonorsEnvOverride(t *testing.T) {
-	t.Setenv("MNDW_PING_RUNTIME_DIR", "/tmp/ping-test-runtime")
+	t.Setenv("MNDW_PLUGIN_RUNTIME_DIR", "/tmp/ping-test-runtime")
 	t.Setenv("MNDW_PING_STATE_DIR", "/tmp/ping-test-state")
 
 	if got := config.SocketPath(); got != "/tmp/ping-test-runtime/ping-widget.sock" {
@@ -130,7 +130,7 @@ func TestConfigHonorsEnvOverride(t *testing.T) {
 }
 
 func TestStopDaemonSucceedsWhenAlreadyStopped(t *testing.T) {
-	t.Setenv("MNDW_PING_RUNTIME_DIR", t.TempDir())
+	t.Setenv("MNDW_PLUGIN_RUNTIME_DIR", t.TempDir())
 
 	response, err := StopDaemon()
 	if err != nil {

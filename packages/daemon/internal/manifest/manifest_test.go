@@ -61,6 +61,28 @@ func TestValidateFixedHeightRoundTrips(t *testing.T) {
 	}
 }
 
+func TestValidateEndpointSecurityFlagsRoundTrip(t *testing.T) {
+	data := []byte(`{"manifestVersion":2,"name":"secure-backend-plugin","version":"1.0.0","type":"widget","label":"Secure","entry":"index.js","size":{"w":2,"h":2},"backend":{"scripts":[{"id":"script","runtime":"sh","source":"backend/script.sh"}],"endpoints":[{"id":"endpoint","method":"POST","path":"secure","scriptId":"script","csrf":true,"sensitive":true}]}}`)
+
+	manifest, err := Validate(data)
+	if err != nil {
+		t.Fatalf("Validate security flags manifest: %v", err)
+	}
+	if len(manifest.Backend.Endpoints) != 1 {
+		t.Fatalf("endpoint count = %d, want 1", len(manifest.Backend.Endpoints))
+	}
+	endpoint := manifest.Backend.Endpoints[0]
+	if !endpoint.Csrf || !endpoint.Sensitive {
+		t.Fatalf("endpoint flags = csrf:%v sensitive:%v, want both true", endpoint.Csrf, endpoint.Sensitive)
+	}
+
+	descriptor := manifest.Descriptor()
+	described := descriptor.Endpoints["endpoint"]
+	if !described.Csrf || !described.Sensitive {
+		t.Fatalf("descriptor flags = csrf:%v sensitive:%v, want both true", described.Csrf, described.Sensitive)
+	}
+}
+
 func readFixtures(t *testing.T, kind string) []string {
 	t.Helper()
 	dir := filepath.Join(fixturesDir, kind)

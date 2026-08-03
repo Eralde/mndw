@@ -120,6 +120,32 @@ describe('validateManifest behavior', () => {
     expect(endpoint?.method).toBe('GET');
   });
 
+  it('retains endpoint csrf and sensitive flags', () => {
+    const result = validateManifest({
+      manifestVersion: 2,
+      name: 'secure-backend-plugin',
+      version: '1.0.0',
+      type: 'widget',
+      label: 'Secure Backend Plugin',
+      entry: 'index.js',
+      size: {w: 2, h: 2},
+      backend: {
+        scripts: [{id: 'script', source: 'backend/script.sh', runtime: 'sh'}],
+        endpoints: [{
+          id: 'endpoint',
+          method: 'POST',
+          path: 'secure',
+          scriptId: 'script',
+          csrf: true,
+          sensitive: true,
+        }],
+      },
+    });
+
+    expect(result.backend?.endpoints?.[0]?.csrf).toBe(true);
+    expect(result.backend?.endpoints?.[0]?.sensitive).toBe(true);
+  });
+
   it('surfaces the plugin name in the error message', () => {
     expect(() =>
       validateManifest({

@@ -147,6 +147,12 @@
                   "scriptId": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "csrf": {
+                    "type": "boolean"
+                  },
+                  "sensitive": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
@@ -337,6 +343,12 @@
                   "scriptId": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "csrf": {
+                    "type": "boolean"
+                  },
+                  "sensitive": {
+                    "type": "boolean"
                   }
                 },
                 "required": [

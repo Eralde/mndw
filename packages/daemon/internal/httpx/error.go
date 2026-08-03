@@ -34,6 +34,7 @@ const (
 	CodeScriptTimeout   = "SCRIPT_TIMEOUT"
 	CodeBodyTooLarge    = "BODY_TOO_LARGE"
 	CodeTooManyRequests = "TOO_MANY_REQUESTS"
+	CodeCsrfRequired    = "CSRF_REQUIRED"
 	CodeUnauthorized    = "UNAUTHORIZED"
 	CodeBadGateway      = "BAD_GATEWAY"
 

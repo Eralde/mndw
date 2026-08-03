@@ -31,7 +31,11 @@ export async function initialize(deps: StartupDeps): Promise<void> {
   deps.setAuthenticated(authenticated);
 
   if (authenticated) {
-    await deps.initAuthenticated();
+    try {
+      await deps.initAuthenticated();
+    } catch {
+      deps.resetToLogin();
+    }
   }
 
   deps.subscribeAuthErrors(() => {

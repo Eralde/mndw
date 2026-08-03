@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"mndwd/internal/pluginruntime"
 )
 
 // hookTimeout bounds how long a start/stop hook may run. Hooks should return promptly
@@ -28,12 +30,23 @@ const outputTailBytes = 4 << 10
 
 // Manager runs daemon hooks.
 type Manager struct {
-	logger *slog.Logger
+	logger      *slog.Logger
+	runtimeRoot string
+}
+
+// Options configures plugin daemon hook execution.
+type Options struct {
+	RuntimeRoot string
 }
 
 // New constructs a lifecycle Manager.
-func New(logger *slog.Logger) *Manager {
-	return &Manager{logger: logger}
+func New(logger *slog.Logger, options ...Options) *Manager {
+	var cfg Options
+	if len(options) > 0 {
+		cfg = options[0]
+	}
+
+	return &Manager{logger: logger, runtimeRoot: cfg.RuntimeRoot}
 }
 
 // Start runs the plugin's backend.daemon.start hook. It is a no-op when the plugin
@@ -61,9 +74,14 @@ func (m *Manager) runHook(name, dir, rel, which string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), hookTimeout)
 	defer cancel()
 
+	runtimeDir, err := pluginruntime.Ensure(m.runtimeRoot, name)
+	if err != nil {
+		return err
+	}
+
 	cmd := exec.CommandContext(ctx, scriptPath)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "MNDW_PLUGIN_ID="+name)
+	cmd.Env = pluginruntime.SetPluginEnv(os.Environ(), name, runtimeDir)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out

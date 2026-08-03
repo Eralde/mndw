@@ -4,7 +4,7 @@ import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 
 const login = vi.fn<(user: string, password: string) => Observable<boolean>>();
-const initAuthenticated = vi.fn<() => Promise<void>>();
+const initAuthenticated = vi.fn<(credentials?: {username: string; password: string}) => Promise<void>>();
 
 vi.mock('../../services/rci.service.js', () => ({
   rciService: {
@@ -12,7 +12,8 @@ vi.mock('../../services/rci.service.js', () => ({
   },
 }));
 vi.mock('../../services/init-auth.js', () => ({
-  initAuthenticated: (): Promise<void> => initAuthenticated(),
+  initAuthenticated: (credentials?: {username: string; password: string}): Promise<void> =>
+    initAuthenticated(credentials),
 }));
 
 import LoginPage from './LoginPage.svelte';
@@ -114,10 +115,12 @@ describe('LoginPage', () => {
   it('authenticates and initialises on a successful login', () => {
     login.mockReturnValue(of(true));
     render();
+    type(inputs()[0], 'admin');
+    type(inputs()[1], 'secret');
     submit();
 
     expect(appState.authenticated).toBe(true);
-    expect(initAuthenticated).toHaveBeenCalledTimes(1);
+    expect(initAuthenticated).toHaveBeenCalledWith({username: 'admin', password: 'secret'});
   });
 
   it('announces rejected credentials as a danger alert', () => {

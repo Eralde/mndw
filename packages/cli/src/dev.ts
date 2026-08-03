@@ -314,7 +314,10 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
 
   onShutdownSignal(shutdown);
 
-  const daemon = spawn(launch.command, launch.args, {cwd: launch.cwd, env: baseEnv});
+  const daemon = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
+    env: {...baseEnv, MNDW_PLUGIN_RUNTIME_ROOT: join(dataDir, 'plugin-runtime')},
+  });
 
   children.push(daemon);
   daemon.on('exit', shutdown);

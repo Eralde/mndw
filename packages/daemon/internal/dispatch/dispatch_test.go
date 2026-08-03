@@ -116,6 +116,16 @@ const stdBackend = `
       {"id": "e2", "method": "POST", "path": "echo", "scriptId": "s2"}
     ]`
 
+const secureBackend = `
+    "scripts": [
+      {"id": "s1", "source": "backend/run.sh", "runtime": "sh"},
+      {"id": "s2", "source": "backend/echo.sh", "runtime": "sh"}
+    ],
+    "endpoints": [
+      {"id": "e1", "method": "GET", "path": "run", "scriptId": "s1", "sensitive": true},
+      {"id": "e2", "method": "POST", "path": "echo", "scriptId": "s2", "csrf": true, "sensitive": true}
+    ]`
+
 const runScript = `#!/bin/sh
 echo "Status: 200"
 echo "Content-Type: application/json"
@@ -182,6 +192,44 @@ func TestDispatchExecutesScriptWithCGIEnv(t *testing.T) {
 	}
 	if got.Method != "GET" || got.Query != "foo=bar" || got.Plugin != "svc" || got.Endpoint != "e1" {
 		t.Errorf("CGI env not propagated: %+v", got)
+	}
+}
+
+func TestDispatchInjectsPrivatePluginRuntimeDir(t *testing.T) {
+	runtimeRoot := t.TempDir()
+	h := newHarness(t, allowAuth{}, Config{PluginRuntimeRoot: runtimeRoot})
+	files := map[string]string{
+		"index.js": "x",
+		"backend/run.sh": `#!/bin/sh
+printf 'Status: 200\r\nContent-Type: text/plain\r\n\r\n%s\n' "$MNDW_PLUGIN_RUNTIME_DIR"
+`,
+	}
+	h.install(t, "svc", manifestJSON("svc", `
+    "scripts": [{"id": "s1", "source": "backend/run.sh", "runtime": "sh"}],
+    "endpoints": [{"id": "e1", "method": "GET", "path": "run", "scriptId": "s1"}]`), files, state.ApprovalApproved, true)
+
+	resp, err := http.Get(h.srv.URL + "/api/plugins/svc/run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.TrimSpace(string(body)), filepath.Join(runtimeRoot, "svc"); got != want {
+		t.Fatalf("runtime dir = %q, want %q", got, want)
+	}
+	info, err := os.Stat(filepath.Join(runtimeRoot, "svc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o700 {
+		t.Fatalf("runtime dir mode = %o, want 700", mode)
 	}
 }
 
@@ -387,6 +435,43 @@ func TestDispatchSessionGate(t *testing.T) {
 	}
 	if c := codeOf(t, resp); c != "UNAUTHORIZED" {
 		t.Errorf("code = %s, want UNAUTHORIZED", c)
+	}
+}
+
+func TestDispatchCsrfIsEnforcedAfterSessionGate(t *testing.T) {
+	h := newHarness(t, allowAuth{}, Config{})
+	h.install(t, "svc", manifestJSON("svc", secureBackend), stdFiles(), state.ApprovalApproved, true)
+
+	resp, err := http.Post(h.srv.URL+"/api/plugins/svc/echo", "text/plain", strings.NewReader("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+	if c := codeOf(t, resp); c != "CSRF_REQUIRED" {
+		t.Errorf("code = %s, want CSRF_REQUIRED", c)
+	}
+}
+
+func TestDispatchSensitiveSuccessSetsNoStore(t *testing.T) {
+	h := newHarness(t, allowAuth{}, Config{})
+	h.install(t, "svc", manifestJSON("svc", secureBackend), stdFiles(), state.ApprovalApproved, true)
+
+	resp, err := http.Get(h.srv.URL + "/api/plugins/svc/run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+	if got := resp.Header.Get("Referrer-Policy"); got != "no-referrer" {
+		t.Errorf("Referrer-Policy = %q, want no-referrer", got)
 	}
 }
 

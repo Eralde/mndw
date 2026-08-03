@@ -1,7 +1,6 @@
 import {TestBed} from '@angular/core/testing';
-import {countClients, countNodes, goodApi, makeMockService} from '../test-support/mws-data-test-support';
-
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import {countClients, countNodes, fakeBackend, goodApi, makeMockService} from '../test-support/mws-data-test-support';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 describe('MwsMockDataService', () => {
   beforeEach(() => {
@@ -14,7 +13,8 @@ describe('MwsMockDataService', () => {
 
   it('publishes generated data without calling RCI', () => {
     const api = goodApi();
-    const service = makeMockService(api, {mode: 'large', extenders: 5, clients: 17});
+    const fetch = vi.fn();
+    const service = makeMockService(api, {mode: 'large', extenders: 5, clients: 17}, fakeBackend(fetch));
 
     service.start();
 
@@ -25,5 +25,7 @@ describe('MwsMockDataService', () => {
     expect(api.showMwsMember).not.toHaveBeenCalled();
     expect(api.showDeviceList).not.toHaveBeenCalled();
     expect(api.showBridge0).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(service.roots().some((node) => node.mwsdStatus !== undefined)).toBe(false);
   });
 });

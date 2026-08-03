@@ -22,6 +22,7 @@ import (
 
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
+	"mndwd/internal/pluginruntime"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
@@ -45,6 +46,8 @@ type Config struct {
 	MaxConcurrentExec int
 	// Dev includes a tail of script stderr in error detail (prod responses stay terse).
 	Dev bool
+	// PluginRuntimeRoot is the root under which each plugin gets private runtime state.
+	PluginRuntimeRoot string
 }
 
 // Authenticator is the session gate dispatch calls for non-public routes.
@@ -119,6 +122,17 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if endpoint.Sensitive {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+	}
+
+	if endpoint.Csrf && r.Header.Get("X-Mndw-Csrf") != "1" {
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusForbidden, httpx.CodeCsrfRequired, "CSRF header required"))
+
+		return
+	}
+
 	if apiErr := approvalGate(plugin); apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
 
@@ -149,7 +163,14 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.exec(w, r, plugin, endpoint, scriptPath, body)
+	runtimeDir, err := pluginruntime.Ensure(h.cfg.PluginRuntimeRoot, plugin.Name)
+	if err != nil {
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to prepare plugin runtime directory"))
+
+		return
+	}
+
+	h.exec(w, r, plugin, endpoint, scriptPath, body, runtimeDir)
 }
 
 // approvalGate enforces that a matched route's plugin is approved and enabled. The
@@ -183,14 +204,14 @@ func (h *Handler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, *htt
 }
 
 // exec runs the script and translates its outcome into an HTTP response.
-func (h *Handler) exec(w http.ResponseWriter, r *http.Request, plugin *registry.Plugin, endpoint manifest.Endpoint, scriptPath string, body []byte) {
+func (h *Handler) exec(w http.ResponseWriter, r *http.Request, plugin *registry.Plugin, endpoint manifest.Endpoint, scriptPath string, body []byte, runtimeDir string) {
 	ctx, cancel := context.WithTimeout(r.Context(), h.cfg.Timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, scriptPath)
 	configureScriptCommand(cmd)
 	cmd.Dir = plugin.Dir
-	cmd.Env = h.cgiEnv(r, plugin.Name, endpoint.ID, len(body))
+	cmd.Env = h.cgiEnv(r, plugin.Name, endpoint.ID, len(body), runtimeDir)
 	cmd.Stdin = bytes.NewReader(body)
 
 	var stdout, stderr bytes.Buffer
@@ -241,19 +262,18 @@ func (h *Handler) writeScriptError(w http.ResponseWriter, code, message string, 
 
 // cgiEnv builds the CGI-ish environment. It inherits the daemon's env (PATH etc.
 // from the init script) and appends the request-scoped variables.
-func (h *Handler) cgiEnv(r *http.Request, pluginID, endpointID string, contentLength int) []string {
+func (h *Handler) cgiEnv(r *http.Request, pluginID, endpointID string, contentLength int, runtimeDir string) []string {
 	contentType := r.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/json"
 	}
 
-	env := os.Environ()
+	env := pluginruntime.SetPluginEnv(os.Environ(), pluginID, runtimeDir)
 	env = append(env,
 		"REQUEST_METHOD="+r.Method,
 		"QUERY_STRING="+r.URL.RawQuery,
 		"CONTENT_TYPE="+contentType,
 		"CONTENT_LENGTH="+strconv.Itoa(contentLength),
-		"MNDW_PLUGIN_ID="+pluginID,
 		"MNDW_ENDPOINT_ID="+endpointID,
 	)
 

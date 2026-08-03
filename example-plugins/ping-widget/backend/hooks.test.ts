@@ -17,7 +17,7 @@ function runHook(name: string, env: Record<string, string>, stdin = ''): {stdout
 
 describe('ping-widget sh hooks', () => {
   const devEnv = {
-    MNDW_PING_RUNTIME_DIR: '/tmp/ping-hooktest',
+    MNDW_PLUGIN_RUNTIME_DIR: '/tmp/ping-hooktest',
     MNDW_PING_STATE_DIR: '/tmp/ping-hooktest/state',
     REQUEST_METHOD: 'GET',
   };

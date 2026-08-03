@@ -1,13 +1,16 @@
 import {InjectionToken} from '@angular/core';
 import type {RciManager} from '@rci-tools/core';
 import type {Observable} from 'rxjs';
-import type {HostInfo, OverlayService, PluginContext, PluginStorage} from '@mndw/sdk';
+import type {BackendClient, HostInfo, OverlayService, PluginContext, PluginStorage} from '@mndw/sdk';
 
 export const RCI_MANAGER = new InjectionToken<RciManager>('RCI_MANAGER');
 export const OVERLAY = new InjectionToken<OverlayService>('OVERLAY');
 export const HOST_INFO = new InjectionToken<HostInfo>('HOST_INFO');
 export const ON_THEME_CHANGE = new InjectionToken<PluginContext['onThemeChange']>('ON_THEME_CHANGE');
 export const PLUGIN_STORAGE = new InjectionToken<PluginStorage>('PLUGIN_STORAGE');
+export const MWSD_BACKEND = new InjectionToken<BackendClient | null>('MWSD_BACKEND', {
+  factory: () => null,
+});
 
 export interface MwsRenameApi {
   renameNode(mac: string, isController: boolean, name: string): Observable<void>;

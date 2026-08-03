@@ -3,8 +3,10 @@ package manifest
 // EndpointDescriptor is the resolved shape the host's backend client needs to
 // build a request URL: method + relative path, keyed by endpoint id.
 type EndpointDescriptor struct {
-	Method string `json:"method"`
-	Path   string `json:"path"`
+	Method    string `json:"method"`
+	Path      string `json:"path"`
+	Csrf      bool   `json:"csrf,omitempty"`
+	Sensitive bool   `json:"sensitive,omitempty"`
 }
 
 // WebSocketDescriptor is the resolved shape for a websocket binding, keyed by id.
@@ -41,7 +43,12 @@ func (m *Manifest) Descriptor() *BackendDescriptor {
 	b := m.Backend
 	endpoints := make(map[string]EndpointDescriptor, len(b.Endpoints))
 	for _, e := range b.Endpoints {
-		endpoints[e.ID] = EndpointDescriptor{Method: e.Method, Path: e.Path}
+		endpoints[e.ID] = EndpointDescriptor{
+			Method:    e.Method,
+			Path:      e.Path,
+			Csrf:      e.Csrf,
+			Sensitive: e.Sensitive,
+		}
 	}
 
 	websockets := make(map[string]WebSocketDescriptor, len(b.WebSockets))

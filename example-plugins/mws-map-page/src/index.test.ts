@@ -1,6 +1,6 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
-import type {PluginContext} from '@mndw/sdk';
+import type {BackendClient, PluginContext} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import drawerStyles from './components/node-drawer/node-drawer.component.scss?raw';
@@ -13,7 +13,7 @@ import appTemplate from './app/app.component.html?raw';
 import {createInstance} from './index';
 import {FakePluginStorage} from './test-support/plugin-storage.fake';
 
-function fakeContext(): {
+function fakeContext(backend: BackendClient | null = null): {
   ctx: PluginContext;
   closeAll: ReturnType<typeof vi.fn>;
   unsubscribe: ReturnType<typeof vi.fn>;
@@ -24,6 +24,7 @@ function fakeContext(): {
   const queue = vi.fn(() => of({}));
   const ctx = {
     rciManager: {queue},
+    backend,
     sessionManager: {},
     storage: new FakePluginStorage(),
     sharedStorage: {},
@@ -122,7 +123,9 @@ describe('createInstance', () => {
   it('activates parameterized large mock mode from the URL', async () => {
     window.history.replaceState({}, '', '/mws-map?mock=large&extenders=3&clients=7');
 
-    const {ctx, queue} = fakeContext();
+    const fetch = vi.fn();
+    const backend = {fetch, socket: vi.fn()} as unknown as BackendClient;
+    const {ctx, queue} = fakeContext(backend);
     const el = document.createElement('div');
     const instance = createInstance(el, ctx);
 
@@ -131,18 +134,29 @@ describe('createInstance', () => {
     });
 
     expect(queue).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
     instance.unmount();
   });
 
   it('uses live RCI service when mock query is absent', async () => {
     window.history.replaceState({}, '', '/mws-map');
 
-    const {ctx, queue} = fakeContext();
+    const fetch = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({credState: 'present', nodes: []}), {status: 200}))
+    );
+    const backend = {
+      fetch,
+      socket: vi.fn(),
+    } as unknown as BackendClient;
+    const {ctx, queue} = fakeContext(backend);
     const el = document.createElement('div');
     const instance = createInstance(el, ctx);
 
     await vi.waitFor(() => {
       expect(queue).toHaveBeenCalled();
+    });
+    await vi.waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('nodes', expect.anything());
     });
 
     instance.unmount();

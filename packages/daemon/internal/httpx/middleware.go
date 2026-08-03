@@ -57,3 +57,14 @@ func LogMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 		)
 	})
 }
+
+// PluginNoStoreMiddleware is registered outside plugin dispatch, so even
+// unauthenticated route-gate errors cannot reveal whether a sensitive endpoint
+// exists through caching or referrer propagation.
+func PluginNoStoreMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
+}

@@ -3,6 +3,47 @@ import PluginManager from './plugin-manager/PluginManager.svelte';
 import PaletteManager from './palette-manager/PaletteManager.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
 import {appState} from '../../state/app.svelte.js';
+import {onMount} from 'svelte';
+import {extenderAccessService} from '../../services/extender-access.service.js';
+
+let extenderAccessEnabled = $state(false);
+let extenderAccessLoading = $state(true);
+let extenderAccessError = $state('');
+
+onMount(() => {
+  void extenderAccessService.getExtenderAccess().then((state) => {
+    extenderAccessEnabled = state.enabled;
+  }).catch(() => {
+    extenderAccessError = 'Extender access state unavailable';
+  }).finally(() => {
+    extenderAccessLoading = false;
+  });
+});
+
+async function setExtenderAccess(
+  event: CustomEvent<{checked?: boolean; value?: boolean}>,
+): Promise<void> {
+  const enabled = event.detail.checked ?? event.detail.value ?? false;
+  if (
+    enabled
+    && !window.confirm('Allow mwsd to access configured extender credentials?')
+  ) {
+    return;
+  }
+  extenderAccessLoading = true;
+  extenderAccessError = '';
+  try {
+    if (!enabled) {
+      await extenderAccessService.postForget();
+    }
+    const state = await extenderAccessService.setExtenderAccess(enabled);
+    extenderAccessEnabled = state.enabled;
+  } catch {
+    extenderAccessError = 'Could not update extender access';
+  } finally {
+    extenderAccessLoading = false;
+  }
+}
 </script>
 
 <div class="mndw-settings">
@@ -32,6 +73,20 @@ import {appState} from '../../state/app.svelte.js';
       </ul>
     {:else}
       <p>Device info unavailable.</p>
+    {/if}
+  </section>
+
+  <section aria-label="Extender access">
+    <mndw-field label="Allow mwsd to access extender telemetry">
+      <mndw-switch
+        id="mndw-extender-access"
+        checked={extenderAccessEnabled}
+        disabled={extenderAccessLoading}
+        onmndwchange={setExtenderAccess}
+      ></mndw-switch>
+    </mndw-field>
+    {#if extenderAccessError}
+      <p role="alert">{extenderAccessError}</p>
     {/if}
   </section>
 

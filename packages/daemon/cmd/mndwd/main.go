@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
+	"mndwd/internal/access"
 	"mndwd/internal/authz"
 	"mndwd/internal/dispatch"
 	"mndwd/internal/httpx"
@@ -113,7 +115,11 @@ func run(cfg Config) error {
 func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry, opkg.Manager, *readiness.Tracker) {
 	reg := registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir)
 	opkgMgr := opkg.New(cfg.Opkg, logger)
-	life := lifecycle.New(logger)
+	runtimeRoot := cfg.PluginRuntimeRoot
+	if runtimeRoot == "" {
+		runtimeRoot = filepath.Join(cfg.DataDir, "plugin-runtime")
+	}
+	life := lifecycle.New(logger, lifecycle.Options{RuntimeRoot: runtimeRoot})
 	tracker := readiness.New()
 
 	mgmtHandler := mgmt.New(mgmt.Config{
@@ -128,6 +134,7 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 		MaxRequestBytes:   cfg.MaxRequestBytes,
 		MaxConcurrentExec: cfg.MaxConcurrentExec,
 		Dev:               cfg.Dev,
+		PluginRuntimeRoot: runtimeRoot,
 	}, reg, verifier, logger)
 
 	wsHandler := wsproxy.New(reg, verifier, logger)
@@ -138,10 +145,17 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 	mgmtMux := http.NewServeMux()
 	mgmtHandler.Register(mgmtMux)
 	mux.Handle("/api/mgmt/", verifier.Middleware(mgmtMux))
+	accessMux := http.NewServeMux()
+	access.New(store).Register(accessMux)
+	// Keep the route mounted in dev so the host exercises the same consent contract;
+	// the verifier still bypasses only session validation when cfg.Dev is true.
+	mux.Handle("/api/mndw/", verifier.Middleware(accessMux))
 	paletteHandler := palette.NewHandler(paletteStore, logger)
 	paletteHandler.RegisterPublic(mux)
 	paletteHandler.RegisterProtected(mgmtMux)
-	dispatchHandler.Register(mux)
+	pluginMux := http.NewServeMux()
+	dispatchHandler.Register(pluginMux)
+	mux.Handle("/api/plugins/", httpx.PluginNoStoreMiddleware(pluginMux))
 	wsHandler.Register(mux)
 
 	return httpx.LogMiddleware(logger, mux), life, reg, opkgMgr, tracker

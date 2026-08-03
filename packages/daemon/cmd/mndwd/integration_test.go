@@ -27,12 +27,17 @@ import (
 // given verifier) over temp dirs and returns it as an httptest server plus the
 // resolved config.
 func buildServer(t *testing.T, verifier *authz.Verifier) (*httptest.Server, Config) {
+	return buildServerMode(t, verifier, false)
+}
+
+func buildServerMode(t *testing.T, verifier *authz.Verifier, dev bool) (*httptest.Server, Config) {
 	t.Helper()
 	root := t.TempDir()
 	cfg := Config{
 		DataDir:           filepath.Join(root, "data"),
 		UserPluginsDir:    filepath.Join(root, "user-plugins"),
 		BuiltinPluginsDir: filepath.Join(root, "builtin"),
+		Dev:               dev,
 		Opkg:              "stub",
 	}
 	store, err := state.Open(cfg.StateFile())
@@ -55,7 +60,7 @@ func buildServer(t *testing.T, verifier *authz.Verifier) (*httptest.Server, Conf
 func devServer(t *testing.T) (*httptest.Server, Config) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	return buildServer(t, authz.New("", true, logger, authz.Options{}))
+	return buildServerMode(t, authz.New("", true, logger, authz.Options{}), true)
 }
 
 func TestIntegrationPaletteRouteAuthorization(t *testing.T) {
@@ -102,6 +107,32 @@ func TestIntegrationPaletteRouteAuthorization(t *testing.T) {
 		t.Errorf("unauthenticated GET /api/mgmt/list = %d, want 401", resp.StatusCode)
 	}
 	resp.Body.Close()
+}
+
+func TestIntegrationDevExposesExtenderAccessRoute(t *testing.T) {
+	srv, _ := devServer(t)
+
+	resp := do(t, http.MethodGet, srv.URL+"/api/mndw/extender-access", "", "", nil)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("dev extender-access without CSRF = %d, want 403", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/api/mndw/extender-access", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Mndw-Csrf", "1")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("dev extender-access = %d, want 200", resp.StatusCode)
+	}
+	if body := bodyString(t, resp); !strings.Contains(body, `"enabled":false`) {
+		t.Fatalf("dev extender-access body = %q, want disabled state", body)
+	}
 }
 
 // echoWSBackend accepts a websocket (offering the given subprotocols) and echoes.

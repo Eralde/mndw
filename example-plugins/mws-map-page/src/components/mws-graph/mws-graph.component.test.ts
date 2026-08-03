@@ -115,6 +115,44 @@ describe('MwsGraphComponent', () => {
     expect(node.getAttribute('aria-label')).toBeTruthy();
   });
 
+  it('renders accessible mwsd dots for extenders and updates state without topology changes', () => {
+    const roots = fixtureRoots();
+    const extenders = roots
+      .flatMap((root) => collectNodes(root))
+      .filter((node) => !node.isController);
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    extenders[0].mwsdStatus = {state: 'live', lastSuccessAt: Date.now()};
+    extenders[1].mwsdStatus = {state: 'stale', lastSuccessAt: Date.now() - 100_000};
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const controllerDot = element.querySelector('g.node.controller circle.mwsd-status-dot');
+
+    expect(element.querySelectorAll('circle.mwsd-status-dot')).toHaveLength(3);
+    expect(controllerDot).not.toBeNull();
+    expect(controllerDot?.style.display).toBe('none');
+    expect(element.querySelector('circle.mwsd-status-dot.mwsd-live')).not.toBeNull();
+    expect(element.querySelector('circle.mwsd-status-dot.mwsd-stale')).not.toBeNull();
+    expect(element.querySelector('g.node.mwsd-live')?.getAttribute('aria-label')).toContain('mwsd live');
+    expect(element.querySelector('g.node.mwsd-stale')?.getAttribute('aria-label')).toContain('mwsd stale');
+
+    const updatedRoots = fixtureRoots();
+    const updatedExtenders = updatedRoots
+      .flatMap((root) => collectNodes(root))
+      .filter((node) => !node.isController);
+
+    updatedExtenders[0].mwsdStatus = {state: 'stale', lastSuccessAt: Date.now() - 100_000};
+    updatedExtenders[1].mwsdStatus = {state: 'offline', lastSuccessAt: null};
+    fixture.componentRef.setInput('roots', updatedRoots);
+    fixture.detectChanges();
+
+    expect(element.querySelector('circle.mwsd-status-dot.mwsd-live')).toBeNull();
+    expect(element.querySelectorAll('circle.mwsd-status-dot.mwsd-stale')).toHaveLength(1);
+    expect(element.querySelectorAll('circle.mwsd-status-dot.mwsd-offline')).toHaveLength(1);
+  });
+
   it('emits nodeSelected on click and on Enter', () => {
     const fixture = TestBed.createComponent(MwsGraphComponent);
 
@@ -226,3 +264,7 @@ describe('MwsGraphComponent', () => {
     vi.unstubAllGlobals();
   });
 });
+
+function collectNodes(root: MwsNode): MwsNode[] {
+  return [root, ...root.children.flatMap((link) => collectNodes(link.node))];
+}

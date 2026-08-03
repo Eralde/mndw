@@ -224,7 +224,10 @@ describe('runDev', () => {
       1,
       'go',
       expect.arrayContaining(['run', './cmd/mndwd']),
-      expect.objectContaining({cwd: '/repo/packages/daemon'}),
+      expect.objectContaining({
+        cwd: '/repo/packages/daemon',
+        env: expect.objectContaining({MNDW_PLUGIN_RUNTIME_ROOT: '/tmp/mndw-dev-data-X/plugin-runtime'}),
+      }),
     );
     expect(h.waitForDaemon).toHaveBeenCalledWith('http://127.0.0.1:9090', 'demo-page');
     expect(h.spawn).toHaveBeenNthCalledWith(

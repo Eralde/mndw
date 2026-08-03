@@ -6,6 +6,7 @@ import {firstValueFrom, timeout} from 'rxjs';
 import {mount} from 'svelte';
 import App from './App.svelte';
 import {initAuthenticated} from './services/init-auth.js';
+import './services/pristine-fetch.js';
 import {initPalette} from './services/palette.service.js';
 import {rciService} from './services/rci.service.js';
 import {initTheme} from './services/theme.service.js';

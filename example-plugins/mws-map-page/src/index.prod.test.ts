@@ -1,6 +1,6 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
-import type {PluginContext} from '@mndw/sdk';
+import type {BackendClient, PluginContext} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import drawerStyles from './components/node-drawer/node-drawer.component.scss?raw';
@@ -13,11 +13,12 @@ import appTemplate from './app/app.component.html?raw';
 import {createInstance} from './index.prod';
 import {FakePluginStorage} from './test-support/plugin-storage.fake';
 
-function fakeContext(): {ctx: PluginContext; queue: ReturnType<typeof vi.fn>} {
+function fakeContext(backend: BackendClient | null = null): {ctx: PluginContext; queue: ReturnType<typeof vi.fn>} {
   const unsubscribe = vi.fn();
   const queue = vi.fn(() => of({}));
   const ctx = {
     rciManager: {queue},
+    backend,
     sessionManager: {},
     storage: new FakePluginStorage(),
     sharedStorage: {},
@@ -75,12 +76,22 @@ describe('production createInstance', () => {
   it('uses live RCI even when large mock query is present', async () => {
     window.history.replaceState({}, '', '/mws-map?mock=large&extenders=3&clients=7');
 
-    const {ctx, queue} = fakeContext();
+    const fetch = vi.fn(() =>
+      Promise.resolve(new Response(JSON.stringify({credState: 'present', nodes: []}), {status: 200}))
+    );
+    const backend = {
+      fetch,
+      socket: vi.fn(),
+    } as unknown as BackendClient;
+    const {ctx, queue} = fakeContext(backend);
     const el = document.createElement('div');
     const instance = createInstance(el, ctx);
 
     await vi.waitFor(() => {
       expect(queue).toHaveBeenCalled();
+    });
+    await vi.waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith('nodes', expect.anything());
     });
 
     instance.unmount();

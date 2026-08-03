@@ -143,13 +143,14 @@ function defaultOnShutdownSignal(handler: () => void): void {
   process.on('SIGTERM', handler);
 }
 
-/** Starts packed examples, local mndwd, then Vite; exits either child with its sibling. */
+/** Starts packed example plugins, local mndwd, then Vite; child failure shuts down its sibling. */
 export async function runDev(deps: DevDeps = {}): Promise<void> {
   const repoRoot = deps.repoRoot ?? resolve(import.meta.dirname, '..');
   const env = deps.env ?? process.env;
   const builtinDir = resolve(repoRoot, 'example-plugins', 'dist');
   const dataDir = resolve(repoRoot, '.dev-data');
   const userDir = resolve(dataDir, 'user-plugins');
+  const pluginRuntimeRoot = resolve(dataDir, 'plugin-runtime');
   const packExamples = deps.packExamples ?? (() => defaultPackExamples(repoRoot));
   const ensureDir = deps.ensureDir ?? ((dir) => mkdirSync(dir, {recursive: true}));
   const spawn = deps.spawn ?? defaultSpawn;
@@ -217,7 +218,11 @@ export async function runDev(deps: DevDeps = {}): Promise<void> {
       '--user-plugins-dir',
       userDir,
     ],
-    {cwd: resolve(repoRoot, 'packages', 'daemon'), detached: true, env},
+    {
+      cwd: resolve(repoRoot, 'packages', 'daemon'),
+      detached: true,
+      env: {...env, MNDW_PLUGIN_RUNTIME_ROOT: pluginRuntimeRoot},
+    },
   );
 
   processState.daemon = daemonChild;

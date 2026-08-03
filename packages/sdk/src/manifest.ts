@@ -19,6 +19,10 @@ export interface PluginBackendEndpointDeclaration {
   /** Relative path; daemon serves it at `/api/plugins/<name>/<path>`. */
   path: string;
   scriptId: string;
+  /** Require the daemon's custom CSRF header after session authentication. */
+  csrf?: boolean;
+  /** Mark matched responses as sensitive at the dispatch boundary. */
+  sensitive?: boolean;
 }
 
 export interface PluginBackendWebSocketDeclaration {

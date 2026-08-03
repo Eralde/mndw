@@ -404,6 +404,8 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
             badge.append('text');
           });
         nodeGroup.append('circle').attr('class', 'update-dot');
+        nodeGroup.append('circle').attr('class', 'mwsd-status-dot')
+.append('title');
 
         return nodeGroup;
       })
@@ -477,6 +479,22 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       .attr('cy', -nodeHeight / 2 + 8)
       .attr('r', 4)
       .style('display', (positioned) => hasUpdate(positioned.node) ? null : 'none');
+
+    nodeGroups.select<SVGCircleElement>('circle.mwsd-status-dot')
+      .attr('class', (positioned) => {
+        const state = positioned.node.mwsdStatus?.state;
+
+        return state === undefined ? 'mwsd-status-dot' : `mwsd-status-dot mwsd-${state}`;
+      })
+      .attr('cx', -nodeWidth / 2 + 8)
+      .attr('cy', nodeHeight / 2 - 8)
+      .attr('r', 4)
+      .style(
+        'display',
+        (positioned) => positioned.node.isController || positioned.node.mwsdStatus === undefined ? 'none' : null,
+      )
+      .select('title')
+      .text((positioned) => positioned.node.mwsdStatus === undefined ? '' : `mwsd ${positioned.node.mwsdStatus.state}`);
 
     this.applyDragBehavior(nodeGroups);
   }
@@ -635,6 +653,7 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
     const stateClass = [
       node.isController ? 'controller' : '',
       node.isOnline ? '' : 'offline',
+      node.mwsdStatus === undefined || node.isController ? '' : `mwsd-${node.mwsdStatus.state}`,
       selection.selected === null ? '' : node.id === selection.selected.id
         ? 'selected'
         : selection.path.has(node.id)
@@ -662,6 +681,7 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       node.model ?? '',
       node.isController ? 'controller' : 'extender',
       node.isOnline ? '' : 'offline',
+      node.mwsdStatus === undefined || node.isController ? '' : `mwsd ${node.mwsdStatus.state}`,
       `${node.clients.length} clients`,
     ];
 

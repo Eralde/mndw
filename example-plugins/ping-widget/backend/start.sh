@@ -1,7 +1,7 @@
 #!/bin/sh
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-export MNDW_PING_RUNTIME_DIR="${MNDW_PING_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
+export MNDW_PLUGIN_RUNTIME_DIR="${MNDW_PLUGIN_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
 export MNDW_PING_STATE_DIR="${MNDW_PING_STATE_DIR:-$SCRIPT_DIR/../.state}"
 
 # Asset mode may not survive the pack->zip->extract round-trip; self-heal.

@@ -19,6 +19,8 @@ export type BackendApprovalStatus = 'approved' | 'pending' | 'denied';
 export interface BackendEndpointDescriptor {
   method: string;
   path: string;
+  csrf?: boolean;
+  sensitive?: boolean;
 }
 
 export interface BackendWebSocketDescriptor {

@@ -50,6 +50,12 @@ export interface MwsNode {
   parent: MwsLink | null;
   children: MwsLink[];
   clients: MwsClient[];
+  mwsdStatus?: MwsdNodeStatus;
+}
+
+export interface MwsdNodeStatus {
+  readonly state: 'starting' | 'live' | 'stale' | 'offline';
+  readonly lastSuccessAt: number | null;
 }
 
 export interface ControllerInfo {

@@ -9,19 +9,26 @@ import {
   filter,
   finalize,
   forkJoin,
+  from,
   fromEvent,
   map,
   merge,
   of,
+  switchMap,
+  timeout,
   timer,
 } from 'rxjs';
+import type {BackendClient} from '@mndw/sdk';
 import {MwsApiService} from '../api/mws-api.service';
+import {type MwsdStatusSnapshot, mergeMwsdStatuses, parseMwsdNodesResponse} from '../api/mwsd-status';
 import type {BridgeInterfaceRecord, DeviceHostRecord, MwsMemberRecord, ShowVersionRecord} from '../api/rci.types';
 import {buildMap} from '../domain/mws/map-builder';
 import type {ControllerInfo, MwsNode} from '../domain/mws/mws.types';
-import {HOST_INFO} from '../tokens';
+import {HOST_INFO, MWSD_BACKEND} from '../tokens';
 
 export const POLL_INTERVAL_MS = 10_000;
+export const MWSD_STATUS_POLL_INTERVAL_MS = 10_000;
+export const MWSD_STATUS_REQUEST_TIMEOUT_MS = 5_000;
 
 export type MwsViewPhase = 'loading' | 'error' | 'unsupported' | 'empty' | 'ready';
 
@@ -40,6 +47,7 @@ type PollResult =
 export class MwsDataService {
   private readonly api = inject(MwsApiService);
   private readonly hostInfo = inject(HOST_INFO);
+  private readonly backend = inject(MWSD_BACKEND);
   private readonly destroyRef = inject(DestroyRef);
 
   public readonly phase = signal<MwsViewPhase>('loading');
@@ -54,12 +62,14 @@ export class MwsDataService {
   private version: ShowVersionRecord | null = null;
   private versionSub: Subscription | null = null;
   private pollSub: Subscription | null = null;
+  private mwsdStatusSub: Subscription | null = null;
   private readonly refreshTrigger = new Subject<void>();
   private refreshTimerSub: Subscription | null = null;
   private pollingStarted = false;
   private pollInFlight = false;
   private refreshPending = false;
   private hasSnapshot = false;
+  private lastMwsdSnapshot: MwsdStatusSnapshot = emptyMwsdSnapshot();
 
   public constructor() {
     const freshnessTimer = setInterval(() => this.freshnessNow.set(Date.now()), 5_000);
@@ -75,6 +85,7 @@ export class MwsDataService {
       next: (version) => {
         this.version = version;
         this.startPolling();
+        this.startMwsdPolling();
       },
       error: () => this.phase.set('error'),
     });
@@ -109,8 +120,11 @@ export class MwsDataService {
     this.versionSub = null;
     this.pollSub?.unsubscribe();
     this.pollSub = null;
+    this.mwsdStatusSub?.unsubscribe();
+    this.mwsdStatusSub = null;
     this.refreshTimerSub?.unsubscribe();
     this.refreshTimerSub = null;
+    this.lastMwsdSnapshot = emptyMwsdSnapshot();
   }
 
   private startPolling(): void {
@@ -159,6 +173,42 @@ export class MwsDataService {
       .subscribe((result) => this.applyPoll(result));
   }
 
+  private startMwsdPolling(): void {
+    const backend = this.backend;
+
+    if (backend === null) {
+      return;
+    }
+
+    this.mwsdStatusSub = timer(0, MWSD_STATUS_POLL_INTERVAL_MS)
+      .pipe(
+        filter(() => !document.hidden),
+        exhaustMap(() => this.fetchMwsdStatus(backend)),
+      )
+      .subscribe((snapshot) => {
+        if (snapshot !== null) {
+          this.lastMwsdSnapshot = snapshot;
+        }
+
+        this.mergeCurrentMwsdStatus();
+      });
+  }
+
+  private fetchMwsdStatus(backend: BackendClient): ReturnType<typeof defer> {
+    const controller = new AbortController();
+
+    return defer(() => from(backend.fetch('nodes', {signal: controller.signal}))).pipe(
+      timeout({each: MWSD_STATUS_REQUEST_TIMEOUT_MS}),
+      switchMap((response) =>
+        response.ok
+          ? defer(() => from(response.json())).pipe(map((value) => parseMwsdNodesResponse(value, Date.now())))
+          : of<MwsdStatusSnapshot | null>(null)
+      ),
+      catchError(() => of<MwsdStatusSnapshot | null>(null)),
+      finalize(() => controller.abort()),
+    );
+  }
+
   protected publishSnapshot(
     version: ShowVersionRecord,
     members: MwsMemberRecord[],
@@ -166,10 +216,10 @@ export class MwsDataService {
     bridge: BridgeInterfaceRecord,
   ): void {
     this.version = version;
-    this.applyPoll({kind: 'ok', members, hosts, bridge, controllerName: this.hostInfo.deviceName});
+    this.applyPoll({kind: 'ok', members, hosts, bridge, controllerName: this.hostInfo.deviceName}, false);
   }
 
-  private applyPoll(result: PollResult): void {
+  private applyPoll(result: PollResult, applyMwsdStatus = this.backend !== null): void {
     if (result.kind === 'error') {
       if (this.hasSnapshot) {
         this.pollError.set(true);
@@ -199,7 +249,11 @@ export class MwsDataService {
       interfaceUptime: result.bridge.uptime,
       isOnline: result.bridge.isOnline,
     };
-    const roots = buildMap(result.members, result.hosts, controller);
+    let roots = buildMap(result.members, result.hosts, controller);
+
+    if (applyMwsdStatus && this.backend !== null) {
+      roots = mergeMwsdStatuses(roots, this.lastMwsdSnapshot, Date.now());
+    }
 
     this.roots.set(roots);
     this.snapshotSubject.next(roots);
@@ -208,4 +262,19 @@ export class MwsDataService {
     this.pollError.set(false);
     this.phase.set(result.members.length === 0 ? 'empty' : 'ready');
   }
+
+  private mergeCurrentMwsdStatus(): void {
+    if (this.backend === null || !this.hasSnapshot) {
+      return;
+    }
+
+    const roots = mergeMwsdStatuses(this.roots(), this.lastMwsdSnapshot, Date.now());
+
+    this.roots.set(roots);
+    this.snapshotSubject.next(roots);
+  }
+}
+
+function emptyMwsdSnapshot(): MwsdStatusSnapshot {
+  return {credState: 'absent', lastRefreshAt: null, nodes: new Map()};
 }

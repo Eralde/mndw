@@ -137,6 +137,24 @@
       fill: var(--mndw-success);
     }
 
+    .mwsd-status-dot {
+      &.mwsd-starting {
+        fill: var(--mndw-info);
+      }
+
+      &.mwsd-live {
+        fill: var(--mndw-success);
+      }
+
+      &.mwsd-stale {
+        fill: var(--mndw-warning);
+      }
+
+      &.mwsd-offline {
+        fill: var(--mndw-danger);
+      }
+    }
+
     &.controller rect.node-body {
       stroke: var(--mndw-accent);
       stroke-width: 3;

@@ -56,9 +56,10 @@ type AuditEntry struct {
 
 // State is the whole persisted document.
 type State struct {
-	Version int                `json:"version"`
-	Plugins map[string]*Plugin `json:"plugins"`
-	Audit   []AuditEntry       `json:"audit"`
+	Version               int                `json:"version"`
+	Plugins               map[string]*Plugin `json:"plugins"`
+	Audit                 []AuditEntry       `json:"audit"`
+	ExtenderAccessEnabled bool               `json:"extenderAccessEnabled"`
 }
 
 // Store is the concurrency-safe, atomically-persisted owner of a State.

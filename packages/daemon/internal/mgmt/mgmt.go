@@ -178,7 +178,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 
 // scanBuiltins reads valid manifests from the builtin dir, skipping any name already
 // represented in state (defense against collision). Builtins are always approved and
-// enabled — enable/disable of builtins lands with lifecycle in Phase 2c.
+// enabled.
 func (h *Handler) scanBuiltins(taken map[string]*state.Plugin) ([]ListEntry, *httpx.APIError) {
 	if h.cfg.BuiltinPluginsDir == "" {
 		return nil, nil

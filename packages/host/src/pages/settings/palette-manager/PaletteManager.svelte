@@ -24,7 +24,7 @@ type State =
   | 'resetting'
   | 'importError';
 
-let phase = $state<State>('loading');
+let state = $state<State>('loading');
 let refreshError = $state('');
 let importErrors = $state<string[]>([]);
 let commitError = $state('');
@@ -34,21 +34,21 @@ let pending = $state<PaletteTokenMap | null>(null);
 let warnings = $state<PaletteContrastWarning[]>([]);
 
 let importDisabled = $derived(
-  phase === 'loading'
-    || phase === 'importing'
-    || phase === 'previewing'
-    || phase === 'committing'
-    || phase === 'resetting',
+  state === 'loading'
+    || state === 'importing'
+    || state === 'previewing'
+    || state === 'committing'
+    || state === 'resetting',
 );
-let exportDisabled = $derived(phase !== 'idle');
-let resetDisabled = $derived(phase !== 'idle');
+let exportDisabled = $derived(state !== 'idle');
+let resetDisabled = $derived(state !== 'idle');
 
 async function load(): Promise<void> {
-  if (phase !== 'loading' && phase !== 'idle') {
+  if (state !== 'loading' && state !== 'idle') {
     return;
   }
 
-  phase = 'loading';
+  state = 'loading';
 
   try {
     await refreshPalette();
@@ -56,7 +56,7 @@ async function load(): Promise<void> {
   } catch (caught) {
     refreshError = messageForError(caught);
   } finally {
-    phase = 'idle';
+    state = 'idle';
   }
 }
 
@@ -72,7 +72,7 @@ function onImportStart(): void {
   importErrors = [];
   commitError = '';
   saved = false;
-  phase = 'importing';
+  state = 'importing';
 }
 
 function onPreview(
@@ -85,17 +85,17 @@ function onPreview(
   pending = palette;
   warnings = next;
   previewOverride(palette);
-  phase = 'previewing';
+  state = 'previewing';
 }
 
 function onImportErrors(errors: string[]): void {
   importErrors = errors;
-  phase = 'importError';
+  state = 'importError';
 }
 
 function dismissImportError(): void {
   importErrors = [];
-  phase = 'idle';
+  state = 'idle';
 }
 
 async function confirm(): Promise<void> {
@@ -103,7 +103,7 @@ async function confirm(): Promise<void> {
     return;
   }
 
-  phase = 'committing';
+  state = 'committing';
   commitError = '';
 
   try {
@@ -111,10 +111,10 @@ async function confirm(): Promise<void> {
     pending = null;
     warnings = [];
     saved = true;
-    phase = 'idle';
+    state = 'idle';
   } catch (caught) {
     commitError = messageForError(caught);
-    phase = 'previewing';
+    state = 'previewing';
   }
 }
 
@@ -123,11 +123,11 @@ function discard(): void {
   pending = null;
   warnings = [];
   commitError = '';
-  phase = 'idle';
+  state = 'idle';
 }
 
 async function reset(): Promise<void> {
-  phase = 'resetting';
+  state = 'resetting';
   resetError = '';
 
   try {
@@ -136,7 +136,7 @@ async function reset(): Promise<void> {
   } catch (caught) {
     resetError = messageForError(caught);
   } finally {
-    phase = 'idle';
+    state = 'idle';
   }
 }
 </script>
@@ -154,7 +154,7 @@ async function reset(): Promise<void> {
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-button
         variant="secondary"
-        disabled={phase !== 'idle'}
+        disabled={state !== 'idle'}
         onclick={() => void load()}
       >
         Retry
@@ -170,14 +170,14 @@ async function reset(): Promise<void> {
     </div>
   {/if}
 
-  {#if phase === 'loading'}
+  {#if state === 'loading'}
     <p role="status">Loading palette...</p>
   {/if}
 
-  {#if phase === 'previewing' || phase === 'committing'}
+  {#if state === 'previewing' || state === 'committing'}
     {#if pending}
       <PalettePreview
-        busy={phase === 'committing'}
+        busy={state === 'committing'}
         error={commitError}
         onConfirm={() => void confirm()}
         onDiscard={discard}
@@ -186,7 +186,7 @@ async function reset(): Promise<void> {
       />
     {/if}
   {:else}
-    {#if phase === 'importing'}
+    {#if state === 'importing'}
       <p role="status">Reading palette...</p>
     {/if}
 
@@ -197,7 +197,7 @@ async function reset(): Promise<void> {
       onPreview={onPreview}
     />
 
-    {#if phase === 'importError'}
+    {#if state === 'importError'}
       <div
         class="mndw-alert mndw-alert--danger"
         role="alert"
@@ -228,7 +228,7 @@ async function reset(): Promise<void> {
         read={getExportable}
       />
       <PaletteReset
-        busy={phase === 'resetting'}
+        busy={state === 'resetting'}
         disabled={resetDisabled}
         error={resetError}
         onReset={() => void reset()}

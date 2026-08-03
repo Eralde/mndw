@@ -81,8 +81,8 @@ export default defineConfig(({mode}) => {
       {
         // Serve plugin bundles in dev so the loader's import() resolves real assets:
         //   /plugins/<name>/*      → built builtin plugins (example-plugins/dist)
-        //   /user-plugins/<name>/* → approved user plugins (empty until Phase 6)
-        // Mirrors mndw-serve-shared; prod serving is lighttpd's job (Phase 8).
+        //   /user-plugins/<name>/* → approved user plugins
+        // Mirrors mndw-serve-shared; prod serving is lighttpd's job.
         name: 'mndw-serve-plugins',
         configureServer(server) {
           const dirs = {builtinDir: builtinPluginsDir, userDir: userPluginsDir};

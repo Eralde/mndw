@@ -12,7 +12,7 @@ import (
 
 // Stable machine-readable error codes (SCREAMING_SNAKE). Clients map these to typed
 // errors / UI copy; the human-readable message is advisory only. Grow this list as
-// later phases add handlers — never repurpose an existing code.
+// handlers are added — never repurpose an existing code.
 const (
 	CodeUploadTooLarge   = "UPLOAD_TOO_LARGE"
 	CodeInvalidZip       = "INVALID_ZIP"
@@ -24,7 +24,7 @@ const (
 	CodeMethodNotAllowed = "METHOD_NOT_ALLOWED"
 	CodeInternal         = "INTERNAL"
 
-	// Phase 2b: dispatch, ws proxy, and the session gate. NOT_APPROVED / DISABLED /
+	// Dispatch, ws proxy, and session-gate errors. NOT_APPROVED / DISABLED /
 	// ROUTE_NOT_FOUND are the codes the SDK backend client maps onto its typed errors
 	// (packages/sdk/src/backend-client.ts) — never repurpose them.
 	CodeRouteNotFound   = "ROUTE_NOT_FOUND"
@@ -37,7 +37,7 @@ const (
 	CodeUnauthorized    = "UNAUTHORIZED"
 	CodeBadGateway      = "BAD_GATEWAY"
 
-	// Phase 2c: opkg dependency management and backend.daemon lifecycle.
+	// Opkg dependency management and backend.daemon lifecycle errors.
 	CodeOpkgFailed         = "OPKG_FAILED"
 	CodeInvalidPackageName = "INVALID_PACKAGE_NAME"
 	CodeDaemonFailed       = "DAEMON_FAILED"

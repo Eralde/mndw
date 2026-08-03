@@ -27,7 +27,7 @@ export interface SharedDependency {
   bundle: string;
   /**
    * Version the host provides. Stamped into a plugin's `mndw.lock.json` at pack time; the host warns
-   * on a major mismatch at load. Tracks the versions the host actually pins (updated in later phases).
+   * on a major mismatch at load. Tracks the versions the host actually pins as dependencies change.
    */
   version: string;
   /** esbuild entry: a single module specifier. Mutually exclusive with `stdin`. */

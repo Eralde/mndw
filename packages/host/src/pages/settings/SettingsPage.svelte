@@ -3,9 +3,6 @@ import PluginManager from './plugin-manager/PluginManager.svelte';
 import PaletteManager from './palette-manager/PaletteManager.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
 import {appState} from '../../state/app.svelte.js';
-
-// Phase 3 settings: appearance + device info. Plugin management (installed list,
-// upload, pending approvals) and dashboard settings land in later phases.
 </script>
 
 <div class="mndw-settings">

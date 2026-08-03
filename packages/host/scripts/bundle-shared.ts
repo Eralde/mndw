@@ -6,8 +6,8 @@ import {build} from 'esbuild';
 
 // Builds the host-provided shared-dependency bundles into dist/shared, one versioned
 // file per entry (`<bundle>@<version>.js`) matching the import map the host injects.
-// Phase 7b: all frameworks' bundles ship (base + vue + angular). The Angular identity invariant is
-// encoded by SHARED_DEPENDENCIES and must not be changed here.
+// All frameworks' bundles ship (base + vue + angular). The Angular identity invariant is encoded by
+// SHARED_DEPENDENCIES and must not be changed here.
 const outDir = path.resolve(import.meta.dirname, '..', 'dist', 'shared');
 
 async function bundleShared(): Promise<void> {

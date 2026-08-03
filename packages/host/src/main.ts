@@ -14,7 +14,7 @@ import {appState, resetToLogin} from './state/app.svelte.js';
 import {initialize} from './startup.js';
 
 // A broken plugin must never take down the host. These window-level guards swallow
-// errors originating from plugin bundle URLs; the per-widget error boundary (Phase 4)
+// errors originating from plugin bundle URLs; the per-widget error boundary
 // is the first net, these are the second.
 function isPluginSource(value: string | undefined): boolean {
   if (!value) {

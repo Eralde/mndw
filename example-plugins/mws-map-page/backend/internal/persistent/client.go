@@ -21,18 +21,37 @@ type Target struct {
 }
 
 type Session struct {
-	Mac  string `json:"mac"`
-	Live bool   `json:"live"`
+	Identity string `json:"-"`
+	Mac      string `json:"mac"`
+	Live     bool   `json:"live"`
 }
 
+type Request struct {
+	Method string
+	Path   string
+	Body   []byte
+}
+
+type Response struct {
+	Status int
+	Body   []byte
+}
+
+type Requester interface {
+	Do(context.Context, Request) (Response, error)
+}
+
+type TelemetryPoll func(context.Context, Target, Requester) error
+
 type Config struct {
-	Path         string
-	PluginID     string
-	PollInterval time.Duration
-	RetryDelay   time.Duration
-	IOTimeout    time.Duration
-	MaxInflight  int
-	Dial         func(context.Context) (net.Conn, error)
+	Path          string
+	PluginID      string
+	PollInterval  time.Duration
+	RetryDelay    time.Duration
+	IOTimeout     time.Duration
+	MaxInflight   int
+	Dial          func(context.Context) (net.Conn, error)
+	TelemetryPoll TelemetryPoll
 }
 
 type Client struct {
@@ -119,13 +138,13 @@ func (c *Client) Snapshot() []Session {
 		if !state.live {
 			continue
 		}
-		result = append(result, Session{Mac: state.target.MAC, Live: true})
+		result = append(result, Session{Identity: state.target.Identity, Mac: state.target.MAC, Live: true})
 	}
 	for _, state := range c.sessions {
 		if state.live || state.misses < 2 {
 			continue
 		}
-		result = append(result, Session{Mac: state.target.MAC, Live: false})
+		result = append(result, Session{Identity: state.target.Identity, Mac: state.target.MAC, Live: false})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Mac < result[j].Mac })
 	return result
@@ -239,9 +258,25 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rpcConnection) {
 			defer func() { <-semaphore }()
 			response, err := rpc.call(ctx, wireFrame{Target: target.Identity, Method: "GET", Path: "rci/show/version"})
 			c.applyResult(target, response, err)
+			if err == nil && response.Status == 200 && c.config.TelemetryPoll != nil {
+				_ = c.config.TelemetryPoll(ctx, target, rpcRequester{rpc: rpc, target: target.Identity})
+			}
 		}()
 	}
 	workers.Wait()
+}
+
+type rpcRequester struct {
+	rpc    *rpcConnection
+	target string
+}
+
+func (r rpcRequester) Do(ctx context.Context, request Request) (Response, error) {
+	frame, err := r.rpc.call(ctx, wireFrame{Target: r.target, Method: request.Method, Path: request.Path, Body: request.Body})
+	if err != nil {
+		return Response{}, err
+	}
+	return Response{Status: frame.Status, Body: append([]byte(nil), frame.Body...)}, nil
 }
 
 func (c *Client) applyResult(target Target, response wireFrame, err error) {

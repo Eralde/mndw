@@ -72,12 +72,16 @@ func New(cfg config.Config) *Service {
 	store := credentials.NewStore()
 	epoch := credentials.NewEpoch()
 	holder := session.NewHolder(authenticator, store)
+	service := &Service{transport: transport, authenticator: authenticator, credentials: store, epoch: epoch, holder: holder, controller: auth.Target{BaseURL: cfg.ControllerURL}, telemetry: telemetry.NewCollector(holder, epoch, telemetry.FieldAdapter{}), clock: realClock{}}
 	runtimeDir := os.Getenv("MNDW_PLUGIN_RUNTIME_DIR")
-	var persistentSource PersistentSource
 	if runtimeDir != "" {
-		persistentSource = persistent.New(persistent.Config{Path: filepath.Join(runtimeDir, "rci-session.sock"), PluginID: os.Getenv("MNDW_PLUGIN_ID")})
+		service.persistent = persistent.New(persistent.Config{
+			Path:          filepath.Join(runtimeDir, "rci-session.sock"),
+			PluginID:      os.Getenv("MNDW_PLUGIN_ID"),
+			TelemetryPoll: service.pollPersistentTelemetry,
+		})
 	}
-	return &Service{transport: transport, authenticator: authenticator, credentials: store, epoch: epoch, holder: holder, controller: auth.Target{BaseURL: cfg.ControllerURL}, telemetry: telemetry.NewCollector(holder, epoch, telemetry.FieldAdapter{}), persistent: persistentSource, clock: realClock{}}
+	return service
 }
 
 var _ socket.Service = (*Service)(nil)
@@ -148,6 +152,34 @@ func (s *Service) Nodes(ctx context.Context) (any, error) {
 
 func (s *Service) SetPersistentSource(source PersistentSource) {
 	s.persistent = source
+}
+
+func (s *Service) pollPersistentTelemetry(ctx context.Context, target persistent.Target, requester persistent.Requester) error {
+	queries := []struct {
+		path string
+		data map[string]any
+	}{
+		{path: "show.system"},
+		{path: "show.system.rrd.cpu", data: map[string]any{"detail": 0, "attribute": "avg"}},
+		{path: "show.system.rrd.memory", data: map[string]any{"detail": 0, "attribute": "used"}},
+	}
+	responses := make([][]byte, len(queries))
+	for index, query := range queries {
+		response, err := requester.Do(ctx, persistent.Request{Method: http.MethodPost, Path: "rci/", Body: buildRciQuery(query.path, query.data)})
+		if err != nil || response.Status != http.StatusOK {
+			continue
+		}
+		responses[index] = extractQueryValue(response.Body, query.path)
+	}
+	if len(responses[0]) == 0 {
+		return fmt.Errorf("persistent system telemetry unavailable")
+	}
+	sample, err := telemetry.ParsePersistentTelemetry(responses[0], responses[1], responses[2], s.clock.Now().UTC())
+	if err != nil {
+		return err
+	}
+	s.telemetry.StorePersistent(target.Identity, sample)
+	return nil
 }
 
 func (s *Service) Snapshot(ctx context.Context, nodeID string) (any, error) {
@@ -304,8 +336,13 @@ func (s *Service) persistentSessionsSnapshot() []telemetry.PersistentSession {
 	}
 	sessions := s.persistent.Snapshot()
 	result := make([]telemetry.PersistentSession, 0, len(sessions))
+	now := s.clock.Now()
 	for _, session := range sessions {
-		result = append(result, telemetry.PersistentSession{Mac: session.Mac, Live: session.Live})
+		item := telemetry.PersistentSession{Mac: session.Mac, Live: session.Live}
+		if sessionData, ok := s.telemetry.Persistent(session.Identity, now); ok {
+			item.Telemetry = &sessionData
+		}
+		result = append(result, item)
 	}
 	return result
 }
@@ -343,17 +380,32 @@ func validNodeID(value string) bool {
 }
 
 func setQueryPath(root map[string]any, path string) {
+	setQueryValue(root, path, map[string]any{})
+}
+
+func setQueryValue(root map[string]any, path string, value any) {
 	parts := splitPath(path)
 	current := root
 	for index, part := range parts {
 		if index == len(parts)-1 {
-			current[part] = map[string]any{}
+			current[part] = value
 			return
 		}
 		next := map[string]any{}
 		current[part] = next
 		current = next
 	}
+}
+
+func buildRciQuery(path string, data map[string]any) []byte {
+	query := make(map[string]any)
+	if data == nil {
+		setQueryPath(query, path)
+	} else {
+		setQueryValue(query, path, data)
+	}
+	body, _ := json.Marshal([]map[string]any{query})
+	return body
 }
 
 func extractQueryValue(data []byte, path string) []byte {

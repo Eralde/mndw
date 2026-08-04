@@ -121,8 +121,72 @@ func TestClientRequiresTwoConsecutiveFailuresBeforeFalse(t *testing.T) {
 	}
 
 	client.applyResult(target, wireFrame{}, &remoteError{code: "target-unreachable"})
-	if sessions := client.Snapshot(); len(sessions) != 1 || sessions[0] != (Session{Mac: target.MAC, Live: false}) {
+	if sessions := client.Snapshot(); len(sessions) != 1 || sessions[0] != (Session{Identity: target.Identity, Mac: target.MAC, Live: false}) {
 		t.Fatalf("after two misses sessions = %#v, want configured failure", sessions)
+	}
+}
+
+func TestClientRunsTelemetryPollThroughAuthenticatedRequester(t *testing.T) {
+	requests := make(chan Request, 3)
+	polled := make(chan struct{})
+	var pollOnce sync.Once
+	client := New(Config{
+		PluginID:     "mws-map-page",
+		PollInterval: time.Hour,
+		TelemetryPoll: func(ctx context.Context, target Target, requester Requester) error {
+			if target.Identity != "cid-1" {
+				t.Fatalf("target = %#v", target)
+			}
+			for _, request := range []Request{
+				{Method: "POST", Path: "rci/", Body: []byte(`{"query":"system"}`)},
+				{Method: "POST", Path: "rci/", Body: []byte(`{"query":"cpu"}`)},
+				{Method: "POST", Path: "rci/", Body: []byte(`{"query":"memory"}`)},
+			} {
+				response, err := requester.Do(ctx, request)
+				if err != nil || response.Status != 200 {
+					t.Fatalf("telemetry response = %#v, err = %v", response, err)
+				}
+			}
+			pollOnce.Do(func() { close(polled) })
+			return nil
+		},
+		Dial: func(context.Context) (net.Conn, error) {
+			clientConn, serverConn := net.Pipe()
+			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+				if frame.Op == "targets" {
+					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+				}
+				if frame.Target != "cid-1" {
+					t.Errorf("telemetry target = %q, want cid-1", frame.Target)
+				}
+				if frame.Method == "GET" && frame.Path == "rci/show/version" {
+					return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+				}
+				requests <- Request{Method: frame.Method, Path: frame.Path, Body: append([]byte(nil), frame.Body...)}
+				return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+			})
+			return clientConn, nil
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go client.Run(ctx)
+
+	select {
+	case <-polled:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("telemetry poll did not run")
+	}
+	for index, want := range []string{"{\"query\":\"system\"}", "{\"query\":\"cpu\"}", "{\"query\":\"memory\"}"} {
+		select {
+		case request := <-requests:
+			if request.Method != "POST" || request.Path != "rci/" || string(request.Body) != want {
+				t.Fatalf("request %d = %#v, want POST rci/ %s", index, request, want)
+			}
+		case <-time.After(500 * time.Millisecond):
+			t.Fatalf("request %d missing", index)
+		}
 	}
 }
 

@@ -16,6 +16,11 @@ describe('MwsDataService', () => {
     vi.useRealTimers();
   });
 
+  it('refreshes map data and mwsd status every three seconds', () => {
+    expect(POLL_INTERVAL_MS).toBe(3_000);
+    expect(MWSD_STATUS_POLL_INTERVAL_MS).toBe(3_000);
+  });
+
   it('reaches ready with the built forest after version + first poll succeed', async () => {
     const service = makeLiveService(goodApi());
 
@@ -297,7 +302,7 @@ describe('MwsDataService', () => {
     service.start();
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(MWSD_STATUS_REQUEST_TIMEOUT_MS);
-    await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS - MWSD_STATUS_REQUEST_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS);
 
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(service.phase()).toBe('ready');

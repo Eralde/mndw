@@ -3,12 +3,15 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"reflect"
 	"testing"
 	"time"
 
 	"mws-map-page/internal/config"
 	"mws-map-page/internal/discovery"
 	"mws-map-page/internal/persistent"
+	"mws-map-page/internal/telemetry"
 	"mws-map-page/internal/testsupport"
 )
 
@@ -24,6 +27,16 @@ func (f fakePersistentSource) Snapshot() []persistent.Session {
 type testClock struct{ now time.Time }
 
 func (c testClock) Now() time.Time { return c.now }
+
+type persistentRequester struct {
+	requests  []persistent.Request
+	responses []persistent.Response
+}
+
+func (r *persistentRequester) Do(_ context.Context, request persistent.Request) (persistent.Response, error) {
+	r.requests = append(r.requests, request)
+	return r.responses[len(r.requests)-1], nil
+}
 
 func TestNodesResponseTracksSuccessfulRefreshAndUsesUTC(t *testing.T) {
 	controller := testsupport.NewFakeController(t, "admin", "secret", []byte(`[]`))
@@ -139,6 +152,79 @@ func TestNodesResponseIncludesPersistentSessionsWithoutCredentials(t *testing.T)
 	sessions, ok := envelope["persistentSessions"].([]any)
 	if !ok || len(sessions) != 2 {
 		t.Fatalf("persistentSessions = %#v, want two entries", envelope["persistentSessions"])
+	}
+}
+
+func TestNodesResponseIncludesPersistentTelemetryWithoutCredentials(t *testing.T) {
+	service := New(config.Config{})
+	when := time.Unix(100, 0).UTC()
+	service.SetClock(testClock{now: when})
+	service.telemetry.StorePersistent("cid-1", telemetry.PersistentTelemetry{
+		SampledAt: when,
+		System:    telemetry.System{CPULoad: 27},
+	})
+	service.SetPersistentSource(fakePersistentSource{sessions: []persistent.Session{{Identity: "cid-1", Mac: "aa:bb:cc:dd:ee:ff", Live: true}}})
+
+	response, err := service.Nodes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	sessions, ok := envelope["persistentSessions"].([]any)
+	if !ok || len(sessions) != 1 {
+		t.Fatalf("persistentSessions = %#v", envelope["persistentSessions"])
+	}
+	session, ok := sessions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("session = %#v", sessions[0])
+	}
+	telemetry, ok := session["telemetry"].(map[string]any)
+	if !ok || telemetry["system"].(map[string]any)["cpuload"] != float64(27) {
+		t.Fatalf("telemetry = %#v", session["telemetry"])
+	}
+}
+
+func TestPersistentTelemetryPollUsesDeviceInfoQueries(t *testing.T) {
+	service := New(config.Config{})
+	requester := &persistentRequester{responses: []persistent.Response{
+		{Status: http.StatusOK, Body: []byte(`[ {"show":{"system":{"uptime":42,"cpuload":27,"memtotal":1000,"memory":"610/1024"}}} ]`)},
+		{Status: http.StatusOK, Body: []byte(`[ {"show":{"system":{"rrd":{"cpu":{"data":[{"t":1,"v":27}]}}}}} ]`)},
+		{Status: http.StatusOK, Body: []byte(`[ {"show":{"system":{"rrd":{"memory":{"data":[{"t":1,"v":610}]}}}}} ]`)},
+	}}
+
+	if err := service.pollPersistentTelemetry(context.Background(), persistent.Target{Identity: "cid-1"}, requester); err != nil {
+		t.Fatal(err)
+	}
+	if len(requester.requests) != 3 {
+		t.Fatalf("requests = %#v, want three requests", requester.requests)
+	}
+
+	wantQueries := []map[string]any{
+		{"show": map[string]any{"system": map[string]any{}}},
+		{"show": map[string]any{"system": map[string]any{"rrd": map[string]any{"cpu": map[string]any{"detail": float64(0), "attribute": "avg"}}}}},
+		{"show": map[string]any{"system": map[string]any{"rrd": map[string]any{"memory": map[string]any{"detail": float64(0), "attribute": "used"}}}}},
+	}
+	for index, request := range requester.requests {
+		if request.Method != http.MethodPost || request.Path != "rci/" {
+			t.Fatalf("request %d = %#v, want POST rci/", index, request)
+		}
+		var envelope []map[string]any
+		if err := json.Unmarshal(request.Body, &envelope); err != nil {
+			t.Fatalf("request %d body: %v", index, err)
+		}
+		if !reflect.DeepEqual(envelope[0], wantQueries[index]) {
+			t.Fatalf("request %d query = %#v, want %#v", index, envelope[0], wantQueries[index])
+		}
+	}
+	if sample, ok := service.telemetry.Persistent("cid-1", time.Now()); !ok || sample.System.CPULoad != 27 || len(sample.CPURRD.Data) != 1 || len(sample.MemoryRRD.Data) != 1 {
+		t.Fatalf("stored sample = %#v, ok = %v", sample, ok)
 	}
 }
 

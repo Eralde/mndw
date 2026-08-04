@@ -33,8 +33,8 @@ import {buildMap} from '../domain/mws/map-builder';
 import type {ControllerInfo, MwsNode} from '../domain/mws/mws.types';
 import {HOST_INFO, MWSD_BACKEND} from '../tokens';
 
-export const POLL_INTERVAL_MS = 10_000;
-export const MWSD_STATUS_POLL_INTERVAL_MS = 10_000;
+export const POLL_INTERVAL_MS = 3_000;
+export const MWSD_STATUS_POLL_INTERVAL_MS = 3_000;
 export const MWSD_STATUS_REQUEST_TIMEOUT_MS = 5_000;
 
 export type MwsViewPhase = 'loading' | 'error' | 'unsupported' | 'empty' | 'ready';

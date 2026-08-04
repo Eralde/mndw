@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestParseMembersRequiresIdentityMACAndIP(t *testing.T) {
+func TestParseMembersRequiresIdentityAndMACAndAllowsOfflineMembers(t *testing.T) {
 	members, err := ParseMembers([]byte(`[{"cid":"node-1","mac":"AA-BB-CC-DD-EE-FF","ip":"192.168.1.2","known-host":"A"}]`))
 	if err != nil {
 		t.Fatal(err)
@@ -21,12 +21,20 @@ func TestParseMembersRequiresIdentityMACAndIP(t *testing.T) {
 
 	for _, input := range []string{
 		`[{"cid":"node-1","mac":"","ip":"192.168.1.2"}]`,
-		`[{"cid":"node-1","mac":"aa:bb:cc:dd:ee:ff","ip":""}]`,
 		`[{"cid":"","mac":"","ip":"192.168.1.2"}]`,
+		`[{"cid":"node-1","mac":"aa:bb:cc:dd:ee:ff","ip":"not-an-ip"}]`,
 	} {
 		if _, err := ParseMembers([]byte(input)); err == nil {
 			t.Fatalf("ParseMembers(%s) succeeded, want validation error", input)
 		}
+	}
+
+	offline, err := ParseMembers([]byte(`[{"cid":"node-2","mac":"AA-BB-CC-DD-EE-11","ip":""}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(offline) != 1 || offline[0].Identity != "node-2" || offline[0].IP != "" {
+		t.Fatalf("offline members = %#v", offline)
 	}
 }
 
@@ -84,8 +92,11 @@ func TestCacheInvalidationForcesEnumeration(t *testing.T) {
 func TestHTTPSourceUsesConfiguredControllerURL(t *testing.T) {
 	transport := &enumerationRoundTripper{response: &http.Response{
 		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(strings.NewReader(`[ {"show":{"mws":{"member":[{"cid":"node-1","mac":"aa:bb:cc:dd:ee:ff","ip":"192.168.1.2"}]}}} ]`)),
-		Header:     make(http.Header),
+		Body: io.NopCloser(strings.NewReader(`[ {"show":{"mws":{"member":[` +
+			`{"cid":"node-1","mac":"aa:bb:cc:dd:ee:ff","ip":"192.168.1.2"},` +
+			`{"cid":"node-2","mac":"aa:bb:cc:dd:ee:11","ip":""}` +
+			`]}}} ]`)),
+		Header: make(http.Header),
 	}}
 	source := HTTPSource{
 		Client:          &http.Client{Transport: transport},
@@ -97,7 +108,7 @@ func TestHTTPSourceUsesConfiguredControllerURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(members) != 1 || members[0].Identity != "node-1" {
+	if len(members) != 2 || members[0].Identity != "node-1" || members[1].Identity != "node-2" || members[1].IP != "" {
 		t.Fatalf("members = %#v", members)
 	}
 	if transport.request.URL.String() != "http://192.168.1.1:80/rci/" || transport.request.Method != http.MethodPost {

@@ -94,8 +94,8 @@ var macPattern = regexp.MustCompile(`^[0-9a-f]{2}(:[0-9a-f]{2}){5}$`)
 func validateMembers(members []Member) error {
 	seen := make(map[string]struct{}, len(members))
 	for _, member := range members {
-		if member.Identity == "" || member.IP == "" || !macPattern.MatchString(member.MAC) || net.ParseIP(member.IP) == nil {
-			return fmt.Errorf("member identity, MAC, and IP are required")
+		if member.Identity == "" || !macPattern.MatchString(member.MAC) || (member.IP != "" && net.ParseIP(member.IP) == nil) {
+			return fmt.Errorf("member identity and MAC are required; IP must be valid when present")
 		}
 		if _, exists := seen[member.Identity]; exists {
 			return fmt.Errorf("member identity is ambiguous")

@@ -135,6 +135,36 @@ func TestIntegrationDevExposesExtenderAccessRoute(t *testing.T) {
 	}
 }
 
+func TestIntegrationParsedDevConfigExposesPersistentRciCapability(t *testing.T) {
+	root := t.TempDir()
+	cfg, _, err := parseFlags([]string{
+		"--dev",
+		"--data-dir", filepath.Join(root, "data"),
+		"--builtin-plugins-dir", filepath.Join(root, "builtin"),
+		"--user-plugins-dir", filepath.Join(root, "user-plugins"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := state.Open(cfg.StateFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	paletteStore, err := palette.Open(cfg.PaletteFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler, _, _, _, _ := assemble(cfg, store, paletteStore, authz.New("", true, logger, authz.Options{}), logger)
+	request := httptest.NewRequest(http.MethodGet, "/api/mndw/rci-session/capability", nil)
+	request.Header.Set("X-Mndw-Csrf", "1")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("persistent RCI capability status = %d, want 200", response.Code)
+	}
+}
+
 // echoWSBackend accepts a websocket (offering the given subprotocols) and echoes.
 func echoWSBackend(t *testing.T, subprotocols ...string) *httptest.Server {
 	t.Helper()

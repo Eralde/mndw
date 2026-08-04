@@ -84,7 +84,6 @@ describe('repository dev orchestration', () => {
     expect(h.packExamples).toHaveBeenCalledBefore(h.spawn);
     expect(h.ensureDir).toHaveBeenCalledWith('/repo/.dev-data');
     expect(h.ensureDir).toHaveBeenCalledWith('/repo/.dev-data/user-plugins');
-    expect(h.ensureDir).toHaveBeenCalledWith('/repo/.dev-data/mwsd');
     expect(h.spawn).toHaveBeenNthCalledWith(
       1,
       'go',
@@ -102,13 +101,15 @@ describe('repository dev orchestration', () => {
         '/repo/.dev-data',
         '--user-plugins-dir',
         '/repo/.dev-data/user-plugins',
+        '--controller-url',
+        'http://router.test',
       ],
       {
         cwd: '/repo/packages/daemon',
         detached: true,
         env: {
           MNDW_HOST_DEVICE: 'http://router.test',
-          MNDW_MWSD_RUNTIME_DIR: '/repo/.dev-data/mwsd',
+          MNDW_PLUGIN_RUNTIME_ROOT: '/repo/.dev-data/plugin-runtime',
         },
       },
     );

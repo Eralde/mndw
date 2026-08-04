@@ -39,9 +39,12 @@ const (
 	CodeBadGateway      = "BAD_GATEWAY"
 
 	// Opkg dependency management and backend.daemon lifecycle errors.
-	CodeOpkgFailed         = "OPKG_FAILED"
-	CodeInvalidPackageName = "INVALID_PACKAGE_NAME"
-	CodeDaemonFailed       = "DAEMON_FAILED"
+	CodeOpkgFailed             = "OPKG_FAILED"
+	CodeInvalidPackageName     = "INVALID_PACKAGE_NAME"
+	CodeDaemonFailed           = "DAEMON_FAILED"
+	CodeRCITokenInvalid        = "RCI_TOKEN_INVALID"
+	CodeRCIFirmwareUnsupported = "RCI_FIRMWARE_UNSUPPORTED"
+	CodeRCIDeviceUnreachable   = "RCI_DEVICE_UNREACHABLE"
 )
 
 // APIError is the single shape of every non-2xx response body. It also implements

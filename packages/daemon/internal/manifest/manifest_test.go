@@ -61,6 +61,26 @@ func TestValidateFixedHeightRoundTrips(t *testing.T) {
 	}
 }
 
+func TestValidatePersistentRCIPermissionRoundTrips(t *testing.T) {
+	data := []byte(`{"manifestVersion":2,"name":"persistent-session-widget","version":"0.1.0","type":"widget","label":"Persistent","entry":"index.js","size":{"w":4,"h":3},"permissions":["persistent-rci-session"]}`)
+
+	manifest, err := Validate(data)
+	if err != nil {
+		t.Fatalf("Validate persistent permission manifest: %v", err)
+	}
+	if len(manifest.Permissions) != 1 || manifest.Permissions[0] != "persistent-rci-session" {
+		t.Fatalf("Permissions = %#v, want persistent-rci-session", manifest.Permissions)
+	}
+}
+
+func TestValidateUnknownPermissionRejects(t *testing.T) {
+	data := []byte(`{"manifestVersion":2,"name":"unknown-permission-widget","version":"0.1.0","type":"widget","label":"Unknown","entry":"index.js","size":{"w":4,"h":3},"permissions":["not-a-real-permission"]}`)
+
+	if _, err := Validate(data); err == nil {
+		t.Fatal("Validate unknown permission succeeded, want error")
+	}
+}
+
 func TestValidateEndpointSecurityFlagsRoundTrip(t *testing.T) {
 	data := []byte(`{"manifestVersion":2,"name":"secure-backend-plugin","version":"1.0.0","type":"widget","label":"Secure","entry":"index.js","size":{"w":2,"h":2},"backend":{"scripts":[{"id":"script","runtime":"sh","source":"backend/script.sh"}],"endpoints":[{"id":"endpoint","method":"POST","path":"secure","scriptId":"script","csrf":true,"sensitive":true}]}}`)
 

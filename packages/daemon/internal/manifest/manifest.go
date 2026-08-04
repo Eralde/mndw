@@ -21,6 +21,8 @@ const (
 	TypePage   Type = "page"
 )
 
+const PersistentRCISessionPermission = "persistent-rci-session"
+
 // Size is a widget's grid footprint in units on the 12-column dashboard grid.
 // Fields are pointers so absence is distinguishable from a zero value; JSON
 // numbers land as float64 so non-integers can be rejected explicitly.
@@ -82,6 +84,7 @@ type Manifest struct {
 	Label           *string  `json:"label"`
 	Entry           *string  `json:"entry"`
 	Icon            *string  `json:"icon,omitempty"`
+	Permissions     []string `json:"permissions,omitempty"`
 	Size            *Size    `json:"size,omitempty"`
 	FixedHeight     *bool    `json:"fixedHeight,omitempty"`
 	Route           *string  `json:"route,omitempty"`
@@ -183,6 +186,11 @@ func validate(m *Manifest) error {
 	}
 	if !hasFileName(*m.Entry) {
 		return fail("entry must include a file name")
+	}
+	for _, permission := range m.Permissions {
+		if permission != PersistentRCISessionPermission {
+			return fail(fmt.Sprintf("unknown permission %q", permission))
+		}
 	}
 
 	// --- discriminated union on type ---

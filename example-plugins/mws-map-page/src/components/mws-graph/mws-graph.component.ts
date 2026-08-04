@@ -405,7 +405,9 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
           });
         nodeGroup.append('circle').attr('class', 'update-dot');
         nodeGroup.append('circle').attr('class', 'mwsd-status-dot')
-.append('title');
+          .append('title');
+        nodeGroup.append('circle').attr('class', 'persistent-session-dot')
+          .append('title');
 
         return nodeGroup;
       })
@@ -495,6 +497,30 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       )
       .select('title')
       .text((positioned) => positioned.node.mwsdStatus === undefined ? '' : `mwsd ${positioned.node.mwsdStatus.state}`);
+
+    nodeGroups.select<SVGCircleElement>('circle.persistent-session-dot')
+      .attr('class', (positioned) => {
+        const state = positioned.node.persistentSession;
+
+        return state === undefined
+          ? 'persistent-session-dot'
+          : `persistent-session-dot ${state ? 'persistent-live' : 'persistent-failing'}`;
+      })
+      .attr('cx', nodeWidth / 2 - 8)
+      .attr('cy', nodeHeight / 2 - 8)
+      .attr('r', 4)
+      .style(
+        'display',
+        (positioned) => positioned.node.isController || positioned.node.persistentSession === undefined ? 'none' : null,
+      )
+      .select('title')
+      .text((positioned) =>
+        positioned.node.persistentSession === undefined
+          ? ''
+          : positioned.node.persistentSession
+          ? 'persistent session live'
+          : 'persistent session failing'
+      );
 
     this.applyDragBehavior(nodeGroups);
   }
@@ -654,6 +680,11 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       node.isController ? 'controller' : '',
       node.isOnline ? '' : 'offline',
       node.mwsdStatus === undefined || node.isController ? '' : `mwsd-${node.mwsdStatus.state}`,
+      node.persistentSession === undefined || node.isController
+        ? ''
+        : node.persistentSession
+        ? 'persistent-live'
+        : 'persistent-failing',
       selection.selected === null ? '' : node.id === selection.selected.id
         ? 'selected'
         : selection.path.has(node.id)
@@ -682,6 +713,11 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       node.isController ? 'controller' : 'extender',
       node.isOnline ? '' : 'offline',
       node.mwsdStatus === undefined || node.isController ? '' : `mwsd ${node.mwsdStatus.state}`,
+      node.persistentSession === undefined || node.isController
+        ? ''
+        : node.persistentSession
+        ? 'persistent session live'
+        : 'persistent session failing',
       `${node.clients.length} clients`,
     ];
 

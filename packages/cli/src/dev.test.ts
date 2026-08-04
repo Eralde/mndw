@@ -53,6 +53,14 @@ describe('buildDaemonArgs', () => {
       '/u',
     ]);
   });
+
+  it('passes the configured host device as the controller URL', () => {
+    expect(
+      buildDaemonArgs({listen: '127.0.0.1:9090', builtinDir: '/b', dataDir: '/d', userDir: '/u'}, 'http://192.168.1.1'),
+    ).toEqual(
+      expect.arrayContaining(['--controller-url', 'http://192.168.1.1']),
+    );
+  });
 });
 
 describe('resolveDaemonLaunch', () => {

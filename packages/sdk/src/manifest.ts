@@ -39,6 +39,8 @@ export interface PluginBackendDaemonDeclaration {
   stop: string;
 }
 
+export type PluginPermission = 'persistent-rci-session';
+
 export interface PluginBackendManifest {
   /** opkg packages the daemon installs on approval. */
   opkg?: string[];
@@ -60,6 +62,7 @@ export interface PluginManifestBase {
   label: string;
   entry: string;
   icon?: string;
+  permissions?: PluginPermission[];
   backend?: PluginBackendManifest;
 }
 

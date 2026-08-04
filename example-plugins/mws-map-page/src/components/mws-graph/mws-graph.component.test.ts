@@ -153,6 +153,34 @@ describe('MwsGraphComponent', () => {
     expect(element.querySelectorAll('circle.mwsd-status-dot.mwsd-offline')).toHaveLength(1);
   });
 
+  it('renders persistent-session state only for configured extenders', () => {
+    const roots = fixtureRoots();
+    const nodes = roots.flatMap((root) => collectNodes(root));
+    const extenders = nodes.filter((node) => !node.isController);
+
+    extenders[0].persistentSession = true;
+    extenders[1].persistentSession = false;
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const dots = element.querySelectorAll('circle.persistent-session-dot');
+
+    expect(dots).toHaveLength(nodes.length);
+    expect(element.querySelector('circle.persistent-session-dot.persistent-live')).not.toBeNull();
+    expect(element.querySelector('circle.persistent-session-dot.persistent-failing')).not.toBeNull();
+    expect(element.querySelector('g.node.controller circle.persistent-session-dot')?.style.display).toBe('none');
+    expect(element.querySelector('g.node.persistent-live')?.getAttribute('aria-label')).toContain(
+      'persistent session live',
+    );
+    expect(element.querySelector('g.node.persistent-failing')?.getAttribute('aria-label')).toContain(
+      'persistent session failing',
+    );
+  });
+
   it('emits nodeSelected on click and on Enter', () => {
     const fixture = TestBed.createComponent(MwsGraphComponent);
 

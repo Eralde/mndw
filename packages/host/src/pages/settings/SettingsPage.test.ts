@@ -3,6 +3,10 @@ import {defineMndwUi} from '@mndw/ui';
 import {mount, unmount} from 'svelte';
 import {MNDW_TOKENS} from '@mndw/sdk';
 
+const {probeControllerTokenAuth} = vi.hoisted(() => ({
+  probeControllerTokenAuth: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock('../../services/mgmt-client.js', () => ({
   mgmtClient: {
     listPlugins: vi.fn().mockResolvedValue([]),
@@ -36,6 +40,21 @@ vi.mock('../../services/extender-access.service.js', () => ({
     postForget: vi.fn().mockResolvedValue(undefined),
   },
 }));
+vi.mock('../../services/persistent-rci-session.service.js', () => ({
+  persistentRciSessionService: {
+    getCapability: vi.fn().mockResolvedValue({
+      store: {state: 'empty'},
+      controller: {support: 'unknown'},
+      extenders: [],
+    }),
+    probeControllerTokenAuth,
+    testController: vi.fn(),
+    saveController: vi.fn(),
+    clearController: vi.fn(),
+    provisionExtenders: vi.fn(),
+    clearExtenders: vi.fn(),
+  },
+}));
 
 import SettingsPage from './SettingsPage.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
@@ -48,6 +67,7 @@ describe('SettingsPage', () => {
   afterEach(() => {
     document.body.innerHTML = '';
     vi.mocked(toggleTheme).mockClear();
+    probeControllerTokenAuth.mockReset().mockResolvedValue(true);
   });
 
   it('renders plugin manager', async () => {
@@ -101,17 +121,62 @@ describe('SettingsPage', () => {
     void unmount(component);
   });
 
-  it('renders the palette manager between Appearance and Device', () => {
+  it('renders the palette manager between Appearance and Device', async () => {
     const target = document.createElement('div');
 
     document.body.appendChild(target);
 
     const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent rci session"]')).not.toBeNull());
+
     const headings = [...target.querySelectorAll('h3')].map((heading) => heading.textContent?.trim());
 
-    expect(headings).toEqual(['Appearance', 'Palette', 'Device']);
+    expect(headings.slice(0, 4)).toEqual(['Appearance', 'Palette', 'Device', 'Persistent rci/ session']);
     expect(target.querySelector('.mndw-palette-manager')).not.toBeNull();
     expect(target.querySelector('.mndw-plugin-manager')).not.toBeNull();
+
+    void unmount(component);
+  });
+
+  it('renders persistent-session settings only after controller probe and keeps token field hidden until enabled', async () => {
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent rci session"]')).not.toBeNull());
+
+    expect(target.querySelector('input[type="password"]')).toBeNull();
+    expect(target.querySelector('section[aria-label="Extender access"]')).toBeNull();
+
+    const checkbox = target.querySelector<HTMLElement>('#mndw-persistent-rci-enabled');
+
+    expect(checkbox).not.toBeNull();
+    await vi.waitFor(() => expect(checkbox?.hasAttribute('disabled')).toBe(false));
+
+    if (checkbox) {
+      checkbox.dispatchEvent(new CustomEvent('mndwchange', {bubbles: true, composed: true, detail: {checked: true}}));
+    }
+
+    await vi.waitFor(() => expect(target.querySelector('mndw-input[type="password"]')).not.toBeNull());
+    expect(target.querySelector('section[aria-label="Extender access"]')).not.toBeNull();
+
+    void unmount(component);
+  });
+
+  it('hides persistent-session settings when controller token probe is not found', async () => {
+    probeControllerTokenAuth.mockResolvedValueOnce(false);
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent rci session"]')).toBeNull());
+    expect(target.querySelector('section[aria-label="Persistent rci session"]')).toBeNull();
 
     void unmount(component);
   });

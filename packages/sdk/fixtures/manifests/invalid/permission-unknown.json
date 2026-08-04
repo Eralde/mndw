@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 2,
+  "name": "unknown-permission-widget",
+  "version": "2.0.0",
+  "type": "widget",
+  "label": "Unknown Permission Widget",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3},
+  "permissions": ["not-a-real-permission"]
+}

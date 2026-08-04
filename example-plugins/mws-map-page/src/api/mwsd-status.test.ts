@@ -1,5 +1,10 @@
 import {describe, expect, it} from 'vitest';
-import {mergeMwsdStatuses, parseMwsdNodesResponse} from './mwsd-status';
+import {
+  mergeMwsdStatuses,
+  mergePersistentSessions,
+  parseMwsdNodesResponse,
+  parsePersistentSessionsResponse,
+} from './mwsd-status';
 import type {MwsNode} from '../domain/mws/mws.types';
 
 const NOW = Date.parse('2026-08-03T18:00:00Z');
@@ -96,5 +101,42 @@ describe('mwsd status', () => {
 
     expect(roots[0]?.children[0]?.node.mwsdStatus?.state).toBe('offline');
     expect(roots[0]?.children[0]?.node.parent?.node).toBe(roots[0]);
+  });
+
+  it('parses persistent sessions separately and ignores malformed or unknown entries', () => {
+    const sessions = parsePersistentSessionsResponse({
+      ok: true,
+      status: 200,
+      data: {
+        persistentSessions: [
+          {mac: MAC.toUpperCase(), live: true},
+          {mac: '11:22:33:44:55:66', live: false},
+          {mac: 'not-a-mac', live: true},
+          {mac: MAC, live: 'true'},
+        ],
+      },
+    });
+
+    expect(sessions).toEqual(
+      new Map([
+        [MAC, true],
+        ['11:22:33:44:55:66', false],
+      ]),
+    );
+  });
+
+  it('merges persistent sessions by MAC, omits controller and preserves absent state', () => {
+    const controller = node('11:22:33:44:55:66', true);
+    const extender = node(MAC);
+
+    controller.children = [{type: 'wired', node: extender}];
+    extender.parent = {type: 'wired', node: controller};
+
+    const roots = mergePersistentSessions([controller], new Map([[MAC, true]]));
+
+    expect(roots[0]?.persistentSession).toBeUndefined();
+    expect(roots[0]?.children[0]?.node.persistentSession).toBe(true);
+    expect(roots[0]?.children[0]?.node.parent?.node).toBe(roots[0]);
+    expect(mergePersistentSessions([node(MAC)], new Map()).at(0)?.persistentSession).toBeUndefined();
   });
 });

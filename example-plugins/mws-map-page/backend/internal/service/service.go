@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"mws-map-page/internal/config"
 	"mws-map-page/internal/credentials"
 	"mws-map-page/internal/discovery"
+	"mws-map-page/internal/persistent"
 	"mws-map-page/internal/session"
 	"mws-map-page/internal/socket"
 	"mws-map-page/internal/target"
@@ -31,6 +34,7 @@ type Service struct {
 	members       []discovery.Member
 	refreshMu     sync.Mutex
 	telemetry     *telemetry.Collector
+	persistent    PersistentSource
 	clock         Clock
 	lastRefreshAt time.Time
 }
@@ -42,6 +46,11 @@ type Clock interface {
 type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now() }
+
+type PersistentSource interface {
+	Run(context.Context)
+	Snapshot() []persistent.Session
+}
 
 type OperationError struct {
 	status  int
@@ -63,12 +72,20 @@ func New(cfg config.Config) *Service {
 	store := credentials.NewStore()
 	epoch := credentials.NewEpoch()
 	holder := session.NewHolder(authenticator, store)
-	return &Service{transport: transport, authenticator: authenticator, credentials: store, epoch: epoch, holder: holder, controller: auth.Target{BaseURL: cfg.ControllerURL}, telemetry: telemetry.NewCollector(holder, epoch, telemetry.FieldAdapter{}), clock: realClock{}}
+	runtimeDir := os.Getenv("MNDW_PLUGIN_RUNTIME_DIR")
+	var persistentSource PersistentSource
+	if runtimeDir != "" {
+		persistentSource = persistent.New(persistent.Config{Path: filepath.Join(runtimeDir, "rci-session.sock"), PluginID: os.Getenv("MNDW_PLUGIN_ID")})
+	}
+	return &Service{transport: transport, authenticator: authenticator, credentials: store, epoch: epoch, holder: holder, controller: auth.Target{BaseURL: cfg.ControllerURL}, telemetry: telemetry.NewCollector(holder, epoch, telemetry.FieldAdapter{}), persistent: persistentSource, clock: realClock{}}
 }
 
 var _ socket.Service = (*Service)(nil)
 
 func (s *Service) Run(ctx context.Context) {
+	if s.persistent != nil {
+		go s.persistent.Run(ctx)
+	}
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -126,7 +143,11 @@ func (s *Service) Nodes(ctx context.Context) (any, error) {
 			return nil, classify(err)
 		}
 	}
-	return telemetry.NodesResponse{CredState: string(state), LastRefreshAt: s.lastRefreshSnapshot(), Nodes: s.nodesSnapshot()}, nil
+	return telemetry.NodesResponse{CredState: string(state), LastRefreshAt: s.lastRefreshSnapshot(), Nodes: s.nodesSnapshot(), PersistentSessions: s.persistentSessionsSnapshot()}, nil
+}
+
+func (s *Service) SetPersistentSource(source PersistentSource) {
+	s.persistent = source
 }
 
 func (s *Service) Snapshot(ctx context.Context, nodeID string) (any, error) {
@@ -275,6 +296,18 @@ func (s *Service) lastRefreshSnapshot() *time.Time {
 	}
 	lastRefresh := s.lastRefreshAt.UTC()
 	return &lastRefresh
+}
+
+func (s *Service) persistentSessionsSnapshot() []telemetry.PersistentSession {
+	if s.persistent == nil {
+		return nil
+	}
+	sessions := s.persistent.Snapshot()
+	result := make([]telemetry.PersistentSession, 0, len(sessions))
+	for _, session := range sessions {
+		result = append(result, telemetry.PersistentSession{Mac: session.Mac, Live: session.Live})
+	}
+	return result
 }
 
 func classify(err error) error {

@@ -17,6 +17,8 @@ export interface MwsdStatusSnapshot {
   readonly nodes: ReadonlyMap<string, MwsdNodeStatus>;
 }
 
+export type PersistentSessionSnapshot = ReadonlyMap<string, boolean>;
+
 export function parseMwsdNodesResponse(value: unknown, now: number): MwsdStatusSnapshot {
   const envelope = asRecord(value);
   const response = asRecord(envelope?.data) ?? envelope;
@@ -51,8 +53,38 @@ export function parseMwsdNodesResponse(value: unknown, now: number): MwsdStatusS
   return {credState, lastRefreshAt, nodes};
 }
 
+export function parsePersistentSessionsResponse(value: unknown): PersistentSessionSnapshot {
+  const envelope = asRecord(value);
+  const response = asRecord(envelope?.data) ?? envelope;
+  const sessions = new Map<string, boolean>();
+
+  if (!Array.isArray(response?.persistentSessions)) {
+    return sessions;
+  }
+
+  for (const rawSession of response.persistentSessions) {
+    const entry = asRecord(rawSession);
+
+    if (typeof entry?.mac !== 'string' || typeof entry.live !== 'boolean') {
+      continue;
+    }
+
+    try {
+      sessions.set(normalizeMac(entry.mac), entry.live);
+    } catch {
+      continue;
+    }
+  }
+
+  return sessions;
+}
+
 export function mergeMwsdStatuses(roots: MwsNode[], snapshot: MwsdStatusSnapshot, now: number): MwsNode[] {
   return roots.map((root) => mergeNode(root, snapshot, now).node);
+}
+
+export function mergePersistentSessions(roots: MwsNode[], sessions: PersistentSessionSnapshot): MwsNode[] {
+  return roots.map((root) => mergePersistentNode(root, sessions).node);
 }
 
 function mergeNode(node: MwsNode, snapshot: MwsdStatusSnapshot, now: number): {node: MwsNode; changed: boolean} {
@@ -66,6 +98,24 @@ function mergeNode(node: MwsNode, snapshot: MwsdStatusSnapshot, now: number): {n
   }
 
   const next: MwsNode = {...node, mwsdStatus: status, parent: null, children: []};
+
+  for (const {link, result} of children) {
+    next.children.push({type: link.type, node: reparent(result.node, next, link.type)});
+  }
+
+  return {node: next, changed: true};
+}
+
+function mergePersistentNode(node: MwsNode, sessions: PersistentSessionSnapshot): {node: MwsNode; changed: boolean} {
+  const persistentSession = node.isController ? undefined : sessions.get(node.mac);
+  const children = node.children.map((link) => ({link, result: mergePersistentNode(link.node, sessions)}));
+  const changed = node.persistentSession !== persistentSession || children.some(({result}) => result.changed);
+
+  if (!changed) {
+    return {node, changed: false};
+  }
+
+  const next: MwsNode = {...node, persistentSession, parent: null, children: []};
 
   for (const {link, result} of children) {
     next.children.push({type: link.type, node: reparent(result.node, next, link.type)});

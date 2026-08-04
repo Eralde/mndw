@@ -7,6 +7,7 @@
   "label": "MWS Map",
   "route": "/mws-map",
   "entry": "index.js",
+  "permissions": ["persistent-rci-session"],
   "backend": {
     "assets": [
       "backend/mwsd",

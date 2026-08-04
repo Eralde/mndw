@@ -217,6 +217,7 @@ export async function runDev(deps: DevDeps = {}): Promise<void> {
       dataDir,
       '--user-plugins-dir',
       userDir,
+      ...(env.MNDW_HOST_DEVICE === undefined ? [] : ['--controller-url', env.MNDW_HOST_DEVICE]),
     ],
     {
       cwd: resolve(repoRoot, 'packages', 'daemon'),

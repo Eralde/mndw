@@ -17,11 +17,19 @@ import (
 	"mndwd/internal/authz"
 	"mndwd/internal/dispatch"
 	"mndwd/internal/httpx"
+	keeneticauth "mndwd/internal/keenetic/auth"
 	"mndwd/internal/lifecycle"
 	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/opkg"
 	"mndwd/internal/palette"
+	"mndwd/internal/pluginruntime"
+	"mndwd/internal/rcisession"
+	"mndwd/internal/rcisession/enumeration"
+	"mndwd/internal/rcisession/minter"
+	"mndwd/internal/rcisession/model"
+	rcisessionsocket "mndwd/internal/rcisession/socket"
+	rcisessionstore "mndwd/internal/rcisession/store"
 	"mndwd/internal/readiness"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
@@ -68,7 +76,7 @@ func run(cfg Config) error {
 	}
 
 	verifier := authz.New(cfg.RouterURL, cfg.Dev, logger, authz.Options{})
-	handler, life, reg, opkgMgr, tracker := assemble(cfg, store, paletteStore, verifier, logger)
+	handler, life, reg, opkgMgr, tracker, closePersistentSession := assembleWithCleanup(cfg, store, paletteStore, verifier, logger)
 
 	// run owns all lifetimes: the signal context drives graceful HTTP shutdown, and
 	// background install work runs under a child so a signal cancels installs
@@ -97,6 +105,7 @@ func run(cfg Config) error {
 	}
 
 	err = serve(ctx, srv, logger)
+	closePersistentSession()
 
 	// Cancel background work, join it so Start cannot race Stop, then stop daemons.
 	// Deferred builtins whose Start hook never ran are excluded from shutdown.
@@ -113,6 +122,11 @@ func run(cfg Config) error {
 // and opkg manager the startup/shutdown hooks need. Kept separate from run so the
 // integration test can drive the exact same wiring over httptest.
 func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry, opkg.Manager, *readiness.Tracker) {
+	handler, life, reg, opkgMgr, tracker, _ := assembleWithCleanup(cfg, store, paletteStore, verifier, logger)
+	return handler, life, reg, opkgMgr, tracker
+}
+
+func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry, opkg.Manager, *readiness.Tracker, func()) {
 	reg := registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir)
 	opkgMgr := opkg.New(cfg.Opkg, logger)
 	runtimeRoot := cfg.PluginRuntimeRoot
@@ -146,7 +160,73 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 	mgmtHandler.Register(mgmtMux)
 	mux.Handle("/api/mgmt/", verifier.Middleware(mgmtMux))
 	accessMux := http.NewServeMux()
+	closePersistentSession := func() {}
 	access.New(store).Register(accessMux)
+	if cfg.RCISessionStateDir == "" {
+		cfg.RCISessionStateDir = cfg.DataDir
+	}
+	if cfg.RCISessionKeyDir == "" {
+		cfg.RCISessionKeyDir = filepath.Join(filepath.Dir(cfg.DataDir), "rci-session-secrets")
+	}
+	if persistentStore, storeErr := rcisessionstore.Open(rcisessionstore.Config{
+		CiphertextFile: cfg.RCISessionCiphertextFile(),
+		KeyFile:        cfg.RCISessionKeyFile(),
+	}); storeErr != nil {
+		logger.Error("persistent RCI store unavailable", "error", storeErr)
+	} else {
+		deviceClient := &http.Client{
+			Timeout: cfg.RCIProxyOperationTimeout,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+		enumerator := enumeration.NewCache(enumeration.HTTPSource{
+			Client:           deviceClient,
+			ControllerURL:    cfg.ControllerURL,
+			MaxResponseBytes: cfg.RCIProxyMaxResponseBytes,
+			ControllerToken: func() string {
+				document, err := persistentStore.Snapshot()
+				if err != nil || document.Controller == nil || document.Controller.Support == model.SupportInvalid {
+					return ""
+				}
+				return document.Controller.Token
+			},
+		}, cfg.RCIEnumerationTTL, time.Now)
+		sessionService := rcisession.NewService(persistentStore, enumerator)
+		sessionService.SetControllerURL(cfg.ControllerURL)
+		controllerTester := rcisession.ControllerHTTPTester{Client: deviceClient, Timeout: cfg.RCIProxyOperationTimeout, BaseURL: cfg.ControllerURL}
+		authTransport := keeneticauth.NewHTTPTransport(deviceClient)
+		generator := minter.HTTPGenerator{
+			Authenticator: keeneticauth.New(keeneticauth.Options{Transport: authTransport, AuthTimeout: cfg.RCIProxyOperationTimeout}),
+			Transport:     authTransport,
+			RequestBody:   minter.DefaultRequestBody,
+		}
+		rcisession.NewHandler(sessionService, controllerTester, generator).Register(accessMux)
+		sessionService.Proxy(deviceClient, cfg.RCIProxyMaxResponseBytes, cfg.RCIProxyOperationTimeout)
+		socketReconciler := rcisessionsocket.NewReconciler(rcisessionsocket.Config{
+			MaxInflight: cfg.RCIProxyMaxInflight,
+			IdleTimeout: cfg.RCIProxyIdleTimeout,
+		}, sessionService)
+		reconcileSockets := func() {
+			bindings := make([]rcisessionsocket.Binding, 0)
+			for _, plugin := range reg.ListBuiltins() {
+				if !hasPersistentRCIPermission(plugin.Manifest) {
+					continue
+				}
+				runtimeDir, err := pluginruntime.Ensure(runtimeRoot, plugin.Name)
+				if err != nil || runtimeDir == "" {
+					continue
+				}
+				bindings = append(bindings, rcisessionsocket.Binding{PluginID: plugin.Name, Path: filepath.Join(runtimeDir, "rci-session.sock")})
+			}
+			_, document := sessionService.Capability()
+			present := document.Controller != nil && document.Controller.Token != ""
+			_ = socketReconciler.Reconcile(context.Background(), bindings, present)
+		}
+		sessionService.SetMutationObserver(reconcileSockets)
+		reconcileSockets()
+		closePersistentSession = socketReconciler.Close
+	}
 	// Keep the route mounted in dev so the host exercises the same consent contract;
 	// the verifier still bypasses only session validation when cfg.Dev is true.
 	mux.Handle("/api/mndw/", verifier.Middleware(accessMux))
@@ -158,7 +238,19 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 	mux.Handle("/api/plugins/", httpx.PluginNoStoreMiddleware(pluginMux))
 	wsHandler.Register(mux)
 
-	return httpx.LogMiddleware(logger, mux), life, reg, opkgMgr, tracker
+	return httpx.LogMiddleware(logger, mux), life, reg, opkgMgr, tracker, closePersistentSession
+}
+
+func hasPersistentRCIPermission(m *manifest.Manifest) bool {
+	if m == nil {
+		return false
+	}
+	for _, permission := range m.Permissions {
+		if permission == manifest.PersistentRCISessionPermission {
+			return true
+		}
+	}
+	return false
 }
 
 // opkgInstallTimeout bounds one builtin's dependency install at startup (an install

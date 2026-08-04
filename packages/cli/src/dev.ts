@@ -67,8 +67,8 @@ interface HostEnvParams {
 }
 
 /** The daemon argv for a `mndw dev` session: dev auth bypass, opkg stub, over the temp roots. */
-export function buildDaemonArgs(dirs: DaemonDirs): string[] {
-  return [
+export function buildDaemonArgs(dirs: DaemonDirs, controllerURL?: string): string[] {
+  const args = [
     '--listen',
     dirs.listen,
     '--dev',
@@ -81,6 +81,12 @@ export function buildDaemonArgs(dirs: DaemonDirs): string[] {
     '--user-plugins-dir',
     dirs.userDir,
   ];
+
+  if (controllerURL !== undefined) {
+    args.push('--controller-url', controllerURL);
+  }
+
+  return args;
 }
 
 /**
@@ -287,10 +293,14 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
     console.log('[mndw dev] Built Go backend');
   }
 
-  const launch = resolveDaemonLaunch(buildDaemonArgs({listen, builtinDir, dataDir, userDir}), options, {
-    daemonPackageDir: findDaemonPackageDir(),
-    binaryExists: fileExists,
-  });
+  const launch = resolveDaemonLaunch(
+    buildDaemonArgs({listen, builtinDir, dataDir, userDir}, options.hostDevice),
+    options,
+    {
+      daemonPackageDir: findDaemonPackageDir(),
+      binaryExists: fileExists,
+    },
+  );
 
   const children: DevChild[] = [];
   let shuttingDown = false;

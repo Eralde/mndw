@@ -23,9 +23,15 @@ type Node struct {
 }
 
 type NodesResponse struct {
-	CredState     string     `json:"credState"`
-	LastRefreshAt *time.Time `json:"lastRefreshAt"`
-	Nodes         []Node     `json:"nodes"`
+	CredState          string              `json:"credState"`
+	LastRefreshAt      *time.Time          `json:"lastRefreshAt"`
+	Nodes              []Node              `json:"nodes"`
+	PersistentSessions []PersistentSession `json:"persistentSessions,omitempty"`
+}
+
+type PersistentSession struct {
+	Mac  string `json:"mac"`
+	Live bool   `json:"live"`
 }
 
 type Snapshot struct {

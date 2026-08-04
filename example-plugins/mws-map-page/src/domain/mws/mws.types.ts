@@ -51,6 +51,7 @@ export interface MwsNode {
   children: MwsLink[];
   clients: MwsClient[];
   mwsdStatus?: MwsdNodeStatus;
+  persistentSession?: boolean;
 }
 
 export interface MwsdNodeStatus {

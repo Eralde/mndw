@@ -40,6 +40,36 @@ describe('manifest fixture corpus', () => {
 });
 
 describe('validateManifest behavior', () => {
+  it('accepts the persistent RCI session permission', () => {
+    const result = validateManifest({
+      manifestVersion: 2,
+      name: 'persistent-session-widget',
+      version: '2.0.0',
+      type: 'widget',
+      label: 'Persistent Session Widget',
+      entry: 'index.js',
+      size: {w: 4, h: 3},
+      permissions: ['persistent-rci-session'],
+    });
+
+    expect(result.permissions).toEqual(['persistent-rci-session']);
+  });
+
+  it('rejects unknown manifest permissions', () => {
+    expect(() =>
+      validateManifest({
+        manifestVersion: 2,
+        name: 'unknown-permission-widget',
+        version: '2.0.0',
+        type: 'widget',
+        label: 'Unknown Permission Widget',
+        entry: 'index.js',
+        size: {w: 4, h: 3},
+        permissions: ['not-a-real-permission'],
+      })
+    ).toThrow(ManifestValidationError);
+  });
+
   it('returns typed widget data with the size preserved', () => {
     const result = validateManifest({
       manifestVersion: 2,

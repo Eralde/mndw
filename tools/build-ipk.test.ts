@@ -371,6 +371,19 @@ describe('stageDeployFiles', () => {
       fs.rmSync(stagingDir, {recursive: true, force: true});
     }
   });
+
+  it('keeps persistent-session ciphertext and key paths separate across lifecycle scripts', () => {
+    const repoRoot = path.resolve(import.meta.dirname, '..');
+    const init = fs.readFileSync(path.join(repoRoot, 'deploy', 'init', 'S70mndwd'), 'utf8');
+    const postrm = fs.readFileSync(path.join(repoRoot, 'deploy', 'ipk', 'postrm'), 'utf8');
+
+    expect(init).toContain('KEY_DIR="/opt/var/lib/mndw-secrets"');
+    expect(init).toContain('chmod 700 "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"');
+    expect(init).toContain('--rci-session-state-dir "$DATA_DIR"');
+    expect(init).toContain('--rci-session-key-dir "$KEY_DIR"');
+    expect(postrm).not.toContain('rm -rf /opt/var/lib/mndw-secrets');
+    expect(postrm).not.toContain('rm -rf "$KEY_DIR"');
+  });
 });
 
 describe('parseArgs', () => {

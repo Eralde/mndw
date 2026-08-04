@@ -71,6 +71,8 @@ const pluginBackendDaemonSchema = z.object({
   stop: safeRelativePathSchema.refine(hasFileName, {message: 'stop must include a file name'}),
 });
 
+const pluginPermissionSchema = z.enum(['persistent-rci-session']);
+
 const pluginBackendSchema = z.object({
   opkg: z.array(pluginBackendOpkgSchema).optional(),
   scripts: z.array(pluginBackendScriptSchema).optional(),
@@ -174,6 +176,7 @@ const widgetManifestSchema = z.object({
   label: labelField,
   entry: entryField,
   icon: iconField,
+  permissions: z.array(pluginPermissionSchema).optional(),
   size: widgetSizeSchema,
   fixedHeight: z.boolean().optional(),
   backend: pluginBackendSchema,
@@ -187,6 +190,7 @@ const pageManifestSchema = z.object({
   label: labelField,
   entry: entryField,
   icon: iconField,
+  permissions: z.array(pluginPermissionSchema).optional(),
   route: z.string().regex(/^\/[^/?#*]+$/)
     .refine(
       (r) => !['/', '/login', '/settings'].includes(r),

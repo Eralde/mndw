@@ -155,6 +155,16 @@
       }
     }
 
+    .persistent-session-dot {
+      &.persistent-live {
+        fill: var(--mndw-success);
+      }
+
+      &.persistent-failing {
+        fill: var(--mndw-warning);
+      }
+    }
+
     &.controller rect.node-body {
       stroke: var(--mndw-accent);
       stroke-width: 3;

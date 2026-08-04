@@ -22,6 +22,8 @@ if [ "$1" = "remove" ]; then
   fi
 fi
 
-# /opt/var/lib/mndw/ data dir and /opt/var/log/mndwd.log are preserved for reinstall.
+# /opt/var/lib/mndw/ data dir, /opt/var/lib/mndw-secrets/ key dir, and
+# /opt/var/log/mndwd.log are preserved for reinstall. Key dir is intentionally
+# outside exportable daemon state and is never removed by this script.
 
 exit 0

@@ -40,6 +40,15 @@
           "description": "Optional icon name shown next to the plugin in the UI.",
           "type": "string"
         },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "persistent-rci-session"
+            ]
+          }
+        },
         "size": {
           "type": "object",
           "properties": {
@@ -268,6 +277,15 @@
         "icon": {
           "description": "Optional icon name shown next to the plugin in the UI.",
           "type": "string"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "persistent-rci-session"
+            ]
+          }
         },
         "route": {
           "type": "string",

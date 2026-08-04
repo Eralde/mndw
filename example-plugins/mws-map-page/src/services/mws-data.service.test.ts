@@ -327,4 +327,31 @@ describe('MwsDataService', () => {
 
     expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('live');
   });
+
+  it('merges credential-independent persistent session state and reapplies it after topology rebuild', async () => {
+    const api = goodApi();
+    const backend = fakeBackend(vi.fn(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            credState: 'absent',
+            nodes: [],
+            persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true}],
+          }),
+          {status: 200},
+        ),
+      )
+    ));
+    const service = makeLiveServiceWithBackend(api, backend);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.persistentSession).toBe(true);
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('offline');
+
+    service.refreshNow();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.persistentSession).toBe(true);
+  });
 });

@@ -8,8 +8,18 @@ import (
 
 	"mws-map-page/internal/config"
 	"mws-map-page/internal/discovery"
+	"mws-map-page/internal/persistent"
 	"mws-map-page/internal/testsupport"
 )
+
+type fakePersistentSource struct {
+	sessions []persistent.Session
+}
+
+func (f fakePersistentSource) Run(context.Context) {}
+func (f fakePersistentSource) Snapshot() []persistent.Session {
+	return append([]persistent.Session(nil), f.sessions...)
+}
 
 type testClock struct{ now time.Time }
 
@@ -104,6 +114,31 @@ func TestNodesResponseIncludesPerNodeLastSuccessAndNullBeforeSuccess(t *testing.
 	}
 	if !containsNodeField(withSuccessJSON, "lastSuccessAt", "2026-08-03T17:42:10Z") {
 		t.Fatalf("response with success = %s", withSuccessJSON)
+	}
+}
+
+func TestNodesResponseIncludesPersistentSessionsWithoutCredentials(t *testing.T) {
+	service := New(config.Config{})
+	service.SetPersistentSource(fakePersistentSource{sessions: []persistent.Session{{Mac: "aa:bb:cc:dd:ee:ff", Live: true}, {Mac: "11:22:33:44:55:66", Live: false}}})
+
+	response, err := service.Nodes(context.Background())
+	if err != nil {
+		t.Fatalf("Nodes: %v", err)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope["credState"] != "absent" {
+		t.Fatalf("credState = %#v, want absent", envelope["credState"])
+	}
+	sessions, ok := envelope["persistentSessions"].([]any)
+	if !ok || len(sessions) != 2 {
+		t.Fatalf("persistentSessions = %#v, want two entries", envelope["persistentSessions"])
 	}
 }
 

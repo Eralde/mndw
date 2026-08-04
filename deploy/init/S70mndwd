@@ -3,10 +3,13 @@
 PID_FILE="/opt/var/run/mndwd.pid"
 DAEMON="/opt/sbin/mndwd"
 DATA_DIR="/opt/var/lib/mndw"
+KEY_DIR="/opt/var/lib/mndw-secrets"
+PLUGIN_RUNTIME_DIR="$DATA_DIR/plugin-runtime"
 LOG_FILE="/opt/var/log/mndwd.log"
 
 start() {
-  mkdir -p /opt/var/run "$DATA_DIR"
+  mkdir -p /opt/var/run "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
+  chmod 700 "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
 
   # Always regenerate proxy config on boot (IP may have changed).
   ROUTER_IP="$(ip -4 addr show br0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)"
@@ -28,6 +31,8 @@ EOF
   "$DAEMON" \
     --listen "127.0.0.1:9090" \
     --data-dir "$DATA_DIR" \
+    --rci-session-state-dir "$DATA_DIR" \
+    --rci-session-key-dir "$KEY_DIR" \
     --builtin-plugins-dir "/opt/share/www/mndw/plugins" \
     --user-plugins-dir "/opt/share/www/mndw/user-plugins" \
     --router-url "http://$ROUTER_IP" \

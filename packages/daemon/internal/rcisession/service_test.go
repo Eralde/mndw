@@ -2,7 +2,11 @@ package rcisession
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"mndwd/internal/rcisession/enumeration"
@@ -209,6 +213,107 @@ func TestSaveControllerStoresOnlyValidatedToken(t *testing.T) {
 	}
 }
 
+func TestDeleteExtendersRevokesRemoteTokensByID(t *testing.T) {
+	store := newFakeStore()
+	store.document.Extenders = map[string]model.TokenRecord{
+		"node-1": {Key: "token-id-1", Token: "token-value-1", Support: model.SupportSupported},
+	}
+	enumerator := &fakeEnumerator{members: []enumeration.Member{{Identity: "node-1", FQDN: "node-1.keenetic.io", MAC: "aa:bb:cc:dd:ee:ff"}}}
+	client := &recordingHTTPClient{}
+	service := NewService(store, enumerator)
+	service.Proxy(&http.Client{Transport: recordingRoundTripper{client: client}}, 1<<20, 0)
+
+	if err := service.DeleteExtenders(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.requests) != 1 {
+		t.Fatalf("requests = %d, want 1", len(client.requests))
+	}
+	request := client.requests[0]
+	if request.Method != http.MethodPost || request.URL.String() != "https://node-1.keenetic.io/rci/" {
+		t.Fatalf("request = %s %s", request.Method, request.URL)
+	}
+	if request.Header.Get("X-Ndma-Tkn") != "token-value-1" {
+		t.Fatalf("authentication token = %q", request.Header.Get("X-Ndma-Tkn"))
+	}
+	var body struct {
+		Authentication struct {
+			Token struct {
+				Delete struct {
+					ID string `json:"id"`
+				} `json:"delete"`
+			} `json:"token"`
+		} `json:"authentication"`
+	}
+	if err := json.Unmarshal(client.bodies[0], &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Authentication.Token.Delete.ID != "token-id-1" {
+		t.Fatalf("delete token ID = %q", body.Authentication.Token.Delete.ID)
+	}
+	document, err := store.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Extenders) != 0 {
+		t.Fatalf("extenders after clear = %#v", document.Extenders)
+	}
+}
+
+func TestDeleteExtendersRetainsFailedRevocations(t *testing.T) {
+	store := newFakeStore()
+	store.document.Extenders = map[string]model.TokenRecord{
+		"node-fail": {Key: "token-id-fail", Token: "token-value-fail", Support: model.SupportSupported},
+		"node-ok":   {Key: "token-id-ok", Token: "token-value-ok", Support: model.SupportSupported},
+	}
+	enumerator := &fakeEnumerator{members: []enumeration.Member{
+		{Identity: "node-fail", FQDN: "node-fail.keenetic.io", MAC: "aa:bb:cc:dd:ee:01"},
+		{Identity: "node-ok", FQDN: "node-ok.keenetic.io", MAC: "aa:bb:cc:dd:ee:02"},
+	}}
+	client := &recordingHTTPClient{statusByHost: map[string]int{"node-fail.keenetic.io": http.StatusBadGateway}}
+	service := NewService(store, enumerator)
+	service.Proxy(&http.Client{Transport: recordingRoundTripper{client: client}}, 1<<20, 0)
+
+	if err := service.DeleteExtenders(context.Background()); err == nil {
+		t.Fatal("DeleteExtenders succeeded after remote revocation failure")
+	}
+	document, err := store.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := document.Extenders["node-fail"]; !ok {
+		t.Fatal("failed remote token was removed locally")
+	}
+	if _, ok := document.Extenders["node-ok"]; ok {
+		t.Fatal("successfully revoked token was retained locally")
+	}
+	if len(client.requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(client.requests))
+	}
+}
+
+func TestDeleteExtendersRemovesAlreadyInvalidToken(t *testing.T) {
+	store := newFakeStore()
+	store.document.Extenders = map[string]model.TokenRecord{
+		"node-1": {Key: "token-id-1", Token: "token-value-1", Support: model.SupportSupported},
+	}
+	enumerator := &fakeEnumerator{members: []enumeration.Member{{Identity: "node-1", FQDN: "node-1.keenetic.io", MAC: "aa:bb:cc:dd:ee:ff"}}}
+	client := &recordingHTTPClient{statusByHost: map[string]int{"node-1.keenetic.io": http.StatusUnauthorized}}
+	service := NewService(store, enumerator)
+	service.Proxy(&http.Client{Transport: recordingRoundTripper{client: client}}, 1<<20, 0)
+
+	if err := service.DeleteExtenders(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	document, err := store.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Extenders) != 0 {
+		t.Fatalf("already invalid extender = %#v", document.Extenders)
+	}
+}
+
 type fakeStore struct {
 	document model.Document
 }
@@ -258,6 +363,39 @@ func (s *fakeStore) DeleteExtender(identity string) error {
 func (s *fakeStore) DeleteExtenders() error {
 	s.document.Extenders = make(map[string]model.TokenRecord)
 	return nil
+}
+
+type recordingHTTPClient struct {
+	requests     []*http.Request
+	bodies       [][]byte
+	statusByHost map[string]int
+}
+
+type recordingRoundTripper struct {
+	client *recordingHTTPClient
+}
+
+func (t recordingRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	return t.client.Do(request)
+}
+
+func (c *recordingHTTPClient) Do(request *http.Request) (*http.Response, error) {
+	body, err := io.ReadAll(request.Body)
+	if err != nil {
+		return nil, err
+	}
+	c.requests = append(c.requests, request)
+	c.bodies = append(c.bodies, body)
+	status := c.statusByHost[request.URL.Host]
+	if status == 0 {
+		status = http.StatusOK
+	}
+	return &http.Response{
+		StatusCode: status,
+		Body:       io.NopCloser(strings.NewReader(`{}`)),
+		Header:     make(http.Header),
+		Request:    request,
+	}, nil
 }
 
 type fakeEnumerator struct {

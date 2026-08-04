@@ -2,6 +2,7 @@ package rcisession
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -158,7 +159,11 @@ func (h *Handler) handleExtendersDelete(w http.ResponseWriter, r *http.Request) 
 		writeSessionError(w, http.StatusBadRequest, httpx.CodeBadRequest, "request body is not allowed")
 		return
 	}
-	if err := h.service.DeleteExtenders(); err != nil {
+	if err := h.service.DeleteExtenders(r.Context()); err != nil {
+		if errors.Is(err, ErrExtenderTokenDeletion) {
+			writeSessionError(w, http.StatusBadGateway, httpx.CodeRCIDeviceUnreachable, "failed to revoke extender sessions")
+			return
+		}
 		writeSessionError(w, http.StatusInternalServerError, httpx.CodeInternal, "failed to clear extender sessions")
 		return
 	}

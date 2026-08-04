@@ -2,6 +2,7 @@ package rcisession
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -20,7 +21,10 @@ import (
 	"mndwd/internal/rcisession/socket"
 )
 
-var ErrControllerInvalid = errors.New("controller session invalid")
+var (
+	ErrControllerInvalid     = errors.New("controller session invalid")
+	ErrExtenderTokenDeletion = errors.New("extender token deletion failed")
+)
 
 type Store interface {
 	State() model.StoreState
@@ -233,12 +237,75 @@ func (s *Service) DeleteController() error {
 	return nil
 }
 
-func (s *Service) DeleteExtenders() error {
-	if err := s.store.DeleteExtenders(); err != nil {
+func (s *Service) DeleteExtenders(ctx context.Context) error {
+	document, err := s.store.Snapshot()
+	if err != nil {
 		return err
 	}
-	s.notifyMutation()
-	return nil
+	if len(document.Extenders) == 0 {
+		if err := s.store.DeleteExtenders(); err != nil {
+			return err
+		}
+		s.notifyMutation()
+		return nil
+	}
+
+	var failures []error
+	for identity, record := range document.Extenders {
+		if record.Token == "" {
+			if err := s.store.DeleteExtender(identity); err != nil {
+				failures = append(failures, fmt.Errorf("%w: %s: remove inactive local record: %v", ErrExtenderTokenDeletion, identity, err))
+				continue
+			}
+			s.notifyMutation()
+			continue
+		}
+		if record.Key == "" {
+			failures = append(failures, fmt.Errorf("%w: %s: token ID is missing", ErrExtenderTokenDeletion, identity))
+			continue
+		}
+		if s.proxy == nil {
+			failures = append(failures, fmt.Errorf("%w: %s: proxy unavailable", ErrExtenderTokenDeletion, identity))
+			continue
+		}
+
+		response, err := s.proxy.Do(ctx, proxy.Request{
+			Target: identity,
+			Method: http.MethodPost,
+			Path:   "rci/",
+			Body:   tokenDeleteRequestBody(record.Key),
+		})
+		tokenAlreadyInvalid := errors.Is(err, proxy.ErrSessionInvalid)
+		if tokenAlreadyInvalid {
+			// A rejected token is already unusable; remove its local record.
+			err = nil
+		}
+		if err != nil {
+			failures = append(failures, fmt.Errorf("%w: %s: remote revoke: %v", ErrExtenderTokenDeletion, identity, err))
+			continue
+		}
+		if !tokenAlreadyInvalid && (response.Status < http.StatusOK || response.Status >= http.StatusMultipleChoices) {
+			failures = append(failures, fmt.Errorf("%w: %s: remote revoke returned HTTP %d", ErrExtenderTokenDeletion, identity, response.Status))
+			continue
+		}
+		if err := s.store.DeleteExtender(identity); err != nil {
+			failures = append(failures, fmt.Errorf("%w: %s: remove local record: %v", ErrExtenderTokenDeletion, identity, err))
+			continue
+		}
+		s.notifyMutation()
+	}
+	return errors.Join(failures...)
+}
+
+func tokenDeleteRequestBody(id string) []byte {
+	body, _ := json.Marshal(map[string]any{
+		"authentication": map[string]any{
+			"token": map[string]any{
+				"delete": map[string]string{"id": id},
+			},
+		},
+	})
+	return body
 }
 
 func (s *Service) DeleteExtender(identity string) error {

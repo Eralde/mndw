@@ -38,13 +38,13 @@ func TestTargetPolicyRejectsRedirect(t *testing.T) {
 	}
 }
 
-func TestResolveUsesRCIPort(t *testing.T) {
+func TestResolveUsesDefaultHTTPPortForRemoteMember(t *testing.T) {
 	target, err := Resolve(discovery.Member{CID: "node", IP: "192.168.1.8"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if target.BaseURL != "http://192.168.1.8:79" {
-		t.Fatalf("BaseURL = %q, want http://192.168.1.8:79", target.BaseURL)
+	if target.BaseURL != "http://192.168.1.8" {
+		t.Fatalf("BaseURL = %q, want http://192.168.1.8", target.BaseURL)
 	}
 }
 
@@ -70,7 +70,7 @@ func TestTargetURLAcceptsRelativeRCIPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if urlValue.String() != "http://192.168.1.8:79/rci/show/version" {
+	if urlValue.String() != "http://192.168.1.8/rci/show/version" {
 		t.Fatalf("URL = %q, want pinned RCI URL", urlValue)
 	}
 }

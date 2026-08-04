@@ -58,7 +58,7 @@ func TestExtenderUnauthorizedDropsOnlyThatToken(t *testing.T) {
 	}
 }
 
-func TestResolveExtenderUsesFreshIdentityIPAndPort79(t *testing.T) {
+func TestResolveExtenderUsesFreshIdentityIPAndDefaultHTTPPort(t *testing.T) {
 	store := newFakeStore()
 	store.document = model.Document{Extenders: map[string]model.TokenRecord{
 		"node-1": {Key: "key", Token: "token", Support: model.SupportSupported},
@@ -70,7 +70,7 @@ func TestResolveExtenderUsesFreshIdentityIPAndPort79(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if destination.BaseURL != "http://192.168.1.44:79" || destination.Token != "token" {
+	if destination.BaseURL != "http://192.168.1.44" || destination.Token != "token" {
 		t.Fatalf("destination = %#v", destination)
 	}
 }

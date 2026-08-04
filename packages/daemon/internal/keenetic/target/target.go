@@ -16,12 +16,18 @@ type Target struct {
 	BaseURL string
 }
 
+// Resolve uses the member's HTTP service. RCI port 79 is local-only on each device;
+// remote member auth and RCI requests use the default HTTP port 80.
 func Resolve(member discovery.Member) (Target, error) {
 	ip := net.ParseIP(strings.TrimSpace(member.IP))
 	if ip == nil || !AllowedIP(ip) {
 		return Target{}, fmt.Errorf("node has unsafe address")
 	}
-	return Target{ID: member.Identity(), Address: ip, BaseURL: "http://" + net.JoinHostPort(ip.String(), "79")}, nil
+	host := ip.String()
+	if ip.To4() == nil {
+		host = "[" + host + "]"
+	}
+	return Target{ID: member.Identity(), Address: ip, BaseURL: "http://" + host}, nil
 }
 
 func AllowedIP(ip net.IP) bool {

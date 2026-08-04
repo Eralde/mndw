@@ -84,4 +84,44 @@ describe('PersistentRciSessionService', () => {
       expect((error as Error).message).not.toContain('secret-token');
     }
   });
+
+  it('parses safe per-extender provisioning reasons', async () => {
+    fetchWithDeadline.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          extenders: [
+            {identity: 'node-1', support: 'unknown', reason: 'secure-endpoint-unavailable'},
+            {identity: 'node-2', support: 'supported'},
+          ],
+        }),
+        {status: 200},
+      ),
+    );
+
+    const service = new PersistentRciSessionService();
+
+    await expect(service.provisionExtenders({username: 'admin', password: 'password'})).resolves.toEqual({
+      extenders: [
+        {identity: 'node-1', support: 'unknown', reason: 'secure-endpoint-unavailable'},
+        {identity: 'node-2', support: 'supported'},
+      ],
+    });
+  });
+
+  it('rejects unknown provisioning reasons', async () => {
+    fetchWithDeadline.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          extenders: [{identity: 'node-1', support: 'unknown', reason: 'secret-detail'}],
+        }),
+        {status: 200},
+      ),
+    );
+
+    const service = new PersistentRciSessionService();
+
+    await expect(service.provisionExtenders({username: 'admin', password: 'password'})).rejects.toMatchObject({
+      code: 'MALFORMED_RESPONSE',
+    });
+  });
 });

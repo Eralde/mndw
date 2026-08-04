@@ -12,13 +12,28 @@ import (
 
 type Target struct {
 	ID      string
+	FQDN    string
 	Address net.IP
 	BaseURL string
+	Secure  bool
 }
 
-// Resolve uses the member's HTTP service. RCI port 79 is local-only on each device;
-// remote member auth and RCI requests use the default HTTP port 80.
+// Resolve prefers the controller-reported FQDN because the controller's DNS proxy
+// resolves it for the daemon. It deliberately does not resolve or pin the name locally.
 func Resolve(member discovery.Member) (Target, error) {
+	if strings.TrimSpace(member.FQDN) != "" {
+		fqdn, err := normalizeFQDN(member.FQDN)
+		if err != nil {
+			return Target{}, err
+		}
+		return Target{
+			ID:      member.Identity(),
+			FQDN:    fqdn,
+			BaseURL: (&url.URL{Scheme: "https", Host: fqdn}).String(),
+			Secure:  true,
+		}, nil
+	}
+
 	ip := net.ParseIP(strings.TrimSpace(member.IP))
 	if ip == nil || !AllowedIP(ip) {
 		return Target{}, fmt.Errorf("node has unsafe address")
@@ -28,6 +43,32 @@ func Resolve(member discovery.Member) (Target, error) {
 		host = "[" + host + "]"
 	}
 	return Target{ID: member.Identity(), Address: ip, BaseURL: "http://" + host}, nil
+}
+
+func normalizeFQDN(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	value = strings.TrimRight(value, ".")
+	if value == "" || len(value) > 253 || net.ParseIP(value) != nil {
+		return "", fmt.Errorf("node has invalid FQDN")
+	}
+	// Internationalized names are rejected rather than punycode-encoded. Firmware
+	// supplied names must use the explicit ASCII hostname policy below.
+	value = strings.ToLower(value)
+	labels := strings.Split(value, ".")
+	if len(labels) < 2 {
+		return "", fmt.Errorf("node has invalid FQDN")
+	}
+	for _, label := range labels {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return "", fmt.Errorf("node has invalid FQDN")
+		}
+		for _, character := range []byte(label) {
+			if (character < 'a' || character > 'z') && (character < '0' || character > '9') && character != '-' {
+				return "", fmt.Errorf("node has invalid FQDN")
+			}
+		}
+	}
+	return value, nil
 }
 
 func AllowedIP(ip net.IP) bool {
@@ -43,7 +84,7 @@ func AllowedIP(ip net.IP) bool {
 func (t Target) AuthTarget() auth.Target { return auth.Target{BaseURL: t.BaseURL} }
 
 func (t Target) URL(path string) (*url.URL, error) {
-	if !AllowedIP(t.Address) {
+	if !t.Secure && !AllowedIP(t.Address) {
 		return nil, fmt.Errorf("unsafe target")
 	}
 	if err := ValidateRCIPath(path); err != nil {

@@ -22,6 +22,7 @@ type Member struct {
 	Identity string
 	Name     string
 	IP       string
+	FQDN     string
 	MAC      string
 }
 
@@ -81,7 +82,7 @@ func ParseMembers(data []byte) ([]Member, error) {
 	}
 	result := make([]Member, 0, len(members))
 	for _, member := range members {
-		result = append(result, Member{Identity: member.Identity(), Name: member.Name, IP: member.IP, MAC: member.MAC})
+		result = append(result, Member{Identity: member.Identity(), Name: member.Name, IP: member.IP, FQDN: member.FQDN, MAC: member.MAC})
 	}
 	if err := validateMembers(result); err != nil {
 		return nil, err

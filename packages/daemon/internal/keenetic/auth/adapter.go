@@ -130,12 +130,47 @@ func (a *Authenticator) Authenticate(ctx context.Context, target Target, credent
 	}
 	header := headerValue(initial.Header, "WWW-Authenticate")
 	if strings.Contains(header, scramSchema) {
-		return a.authenticateNDW4(operationCtx, target, jar, credentials, initial)
+		result, scramErr := a.authenticateNDW4(operationCtx, target, jar, credentials, initial)
+		if scramErr == nil {
+			return result, nil
+		}
+		if !strings.Contains(header, legacySchema) || operationCtx.Err() != nil {
+			return AuthResult{}, scramErr
+		}
+
+		// Some devices advertise both protocols but have an incomplete or
+		// incompatible x-ndw4 implementation. Retry legacy authentication with
+		// a fresh session so cookies and handshake state cannot cross protocols.
+		legacyResult, legacyErr := a.authenticateLegacyFallback(operationCtx, target, credentials)
+		if legacyErr == nil {
+			return legacyResult, nil
+		}
+		// Put legacy error first so errors.As callers classify the protocol that
+		// was ultimately attempted last, while retaining the x-ndw4 cause.
+		return AuthResult{}, errors.Join(legacyErr, scramErr)
 	}
 	if strings.Contains(header, legacySchema) {
 		return a.authenticateNDW2(operationCtx, target, jar, credentials, initial)
 	}
 	return AuthResult{}, &AuthError{Kind: ErrorUnsupported, Err: fmt.Errorf("unsupported authentication")}
+}
+
+func (a *Authenticator) authenticateLegacyFallback(ctx context.Context, target Target, credentials Credentials) (AuthResult, error) {
+	jar, err := newJar(nil)
+	if err != nil {
+		return AuthResult{}, err
+	}
+	initial, err := a.transport.Do(ctx, target, jar, http.MethodGet, authPath, nil)
+	if err != nil {
+		return AuthResult{}, normalizeError(err)
+	}
+	if initial.Status == http.StatusOK {
+		return AuthResult{Jar: jar, Generation: "existing"}, nil
+	}
+	if !strings.Contains(headerValue(initial.Header, "WWW-Authenticate"), legacySchema) {
+		return AuthResult{}, &AuthError{Kind: ErrorUnsupported, Err: fmt.Errorf("legacy authentication not advertised")}
+	}
+	return a.authenticateNDW2(ctx, target, jar, credentials, initial)
 }
 
 func (a *Authenticator) authenticateNDW2(ctx context.Context, target Target, jar http.CookieJar, credentials Credentials, initial Response) (AuthResult, error) {
@@ -406,7 +441,9 @@ func normalizeError(err error) error {
 func headerValue(header http.Header, name string) string {
 	for key, values := range header {
 		if strings.EqualFold(key, name) && len(values) > 0 {
-			return values[0]
+			// HTTP permits repeated WWW-Authenticate fields. Keep all values so
+			// capability negotiation can see x-ndw4 when x-ndw2 appears first.
+			return strings.Join(values, ",")
 		}
 	}
 	return ""

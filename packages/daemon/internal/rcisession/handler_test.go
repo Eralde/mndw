@@ -1,13 +1,16 @@
 package rcisession
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"mndwd/internal/rcisession/enumeration"
+	"mndwd/internal/rcisession/minter"
 	"mndwd/internal/rcisession/model"
 )
 
@@ -106,6 +109,92 @@ func TestHandlerCapabilityDoesNotExposeTokens(t *testing.T) {
 	}
 }
 
+func TestHandlerProvisionReturnsSafeReasonsForNonEmptyBatches(t *testing.T) {
+	store := newFakeStore()
+	enumerator := &fakeEnumerator{members: []enumeration.Member{
+		{Identity: "node-http", IP: "192.168.1.2", MAC: "aa:bb:cc:dd:ee:01"},
+		{Identity: "node-offline", MAC: "aa:bb:cc:dd:ee:02"},
+		{Identity: "node-fail", IP: "192.168.1.4", MAC: "aa:bb:cc:dd:ee:03"},
+	}}
+	generator := handlerGeneratorFunc(func(_ context.Context, member enumeration.Member, _ minter.Credentials) (model.TokenRecord, error) {
+		switch member.Identity {
+		case "node-http":
+			return model.TokenRecord{}, minter.ErrPersistentTokenRequiresHTTPS
+		case "node-offline":
+			return model.TokenRecord{}, minter.ErrMemberOffline
+		default:
+			return model.TokenRecord{}, minter.ErrTokenGenerationUnreachable
+		}
+	})
+	handler := NewHandler(NewService(store, enumerator), &fakeControllerTester{verdict: ControllerValid}, generator)
+	mux := http.NewServeMux()
+	handler.Register(mux)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/mndw/rci-session/extenders/provision", strings.NewReader(`{"username":"admin","password":"password"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Mndw-Csrf", "1")
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", response.Code, response.Body.String())
+	}
+	if strings.Contains(response.Body.String(), "password") || strings.Contains(response.Body.String(), "token") {
+		t.Fatalf("response leaked secret: %s", response.Body.String())
+	}
+	var body struct {
+		Extenders []struct {
+			Identity string `json:"identity"`
+			Support  string `json:"support"`
+			Reason   string `json:"reason"`
+		} `json:"extenders"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Extenders) != 3 || body.Extenders[0].Reason != "secure-endpoint-unavailable" || body.Extenders[1].Reason != "offline" || body.Extenders[2].Reason != "unreachable" {
+		t.Fatalf("body = %#v", body.Extenders)
+	}
+}
+
+func TestHandlerProvisionReturnsEmptySuccessfulEnumeration(t *testing.T) {
+	handler := NewHandler(NewService(newFakeStore(), &fakeEnumerator{}), &fakeControllerTester{verdict: ControllerValid}, handlerGeneratorFunc(func(context.Context, enumeration.Member, minter.Credentials) (model.TokenRecord, error) {
+		return model.TokenRecord{}, nil
+	}))
+	mux := http.NewServeMux()
+	handler.Register(mux)
+	request := httptest.NewRequest(http.MethodPost, "/api/mndw/rci-session/extenders/provision", strings.NewReader(`{"username":"admin","password":"password"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Mndw-Csrf", "1")
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Body.String() != "{\"extenders\":[]}\n" {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestHandlerProvisionReturnsTopLevelErrorForEnumerationFailure(t *testing.T) {
+	enumerator := &fakeEnumerator{err: errors.New("controller down")}
+	handler := NewHandler(NewService(newFakeStore(), enumerator), &fakeControllerTester{verdict: ControllerValid}, handlerGeneratorFunc(func(context.Context, enumeration.Member, minter.Credentials) (model.TokenRecord, error) {
+		return model.TokenRecord{}, nil
+	}))
+	mux := http.NewServeMux()
+	handler.Register(mux)
+	request := httptest.NewRequest(http.MethodPost, "/api/mndw/rci-session/extenders/provision", strings.NewReader(`{"username":"admin","password":"password"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Mndw-Csrf", "1")
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusBadGateway || !strings.Contains(response.Body.String(), "RCI_DEVICE_UNREACHABLE") {
+		t.Fatalf("response = %d %s", response.Code, response.Body.String())
+	}
+}
+
 func structMember(identity string) []enumeration.Member {
 	return []enumeration.Member{{Identity: identity, Name: "A", IP: "192.168.1.2", MAC: "aa:bb:cc:dd:ee:ff"}}
+}
+
+type handlerGeneratorFunc func(context.Context, enumeration.Member, minter.Credentials) (model.TokenRecord, error)
+
+func (f handlerGeneratorFunc) Generate(ctx context.Context, member enumeration.Member, credentials minter.Credentials) (model.TokenRecord, error) {
+	return f(ctx, member, credentials)
 }

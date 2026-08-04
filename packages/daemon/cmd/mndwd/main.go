@@ -193,13 +193,17 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 			},
 		}, cfg.RCIEnumerationTTL, time.Now)
 		sessionService := rcisession.NewService(persistentStore, enumerator)
-		sessionService.SetControllerURL(cfg.ControllerURL)
+		if err := sessionService.SetControllerURL(cfg.ControllerURL, cfg.Dev); err != nil {
+			logger.Error("persistent RCI controller URL rejected", "error", err)
+		}
 		controllerTester := rcisession.ControllerHTTPTester{Client: deviceClient, Timeout: cfg.RCIProxyOperationTimeout, BaseURL: cfg.ControllerURL}
 		authTransport := keeneticauth.NewHTTPTransport(deviceClient)
 		generator := minter.HTTPGenerator{
-			Authenticator: keeneticauth.New(keeneticauth.Options{Transport: authTransport, AuthTimeout: cfg.RCIProxyOperationTimeout}),
-			Transport:     authTransport,
-			RequestBody:   minter.DefaultRequestBody,
+			Authenticator:    keeneticauth.New(keeneticauth.Options{Transport: authTransport, AuthTimeout: cfg.RCIProxyOperationTimeout}),
+			Transport:        authTransport,
+			RequestBody:      minter.DefaultRequestBody,
+			TokenRequestBody: minter.DefaultTokenRequestBody,
+			Logger:           logger,
 		}
 		rcisession.NewHandler(sessionService, controllerTester, generator).Register(accessMux)
 		sessionService.Proxy(deviceClient, cfg.RCIProxyMaxResponseBytes, cfg.RCIProxyOperationTimeout)

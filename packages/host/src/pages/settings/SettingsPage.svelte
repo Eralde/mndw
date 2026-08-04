@@ -9,6 +9,7 @@ import {
   type ControllerTestResult,
   type PersistentRciCapability,
   PersistentRciSessionError,
+  type ProvisionReason,
   persistentRciSessionService,
 } from '../../services/persistent-rci-session.service.js';
 
@@ -198,17 +199,43 @@ async function provisionExtenders(): Promise<void> {
       username: meshUsername,
       password: meshPassword,
     });
-    provisioningResult = `${result.extenders.length} extender session${
-      result.extenders.length === 1 ? '' : 's'
-    } checked`;
+    const failures = result.extenders.filter((extender) =>
+      extender.reason !== undefined
+    );
+    provisioningResult = failures.length > 0
+      ? failures.map((extender) =>
+        `${extender.identity}: ${provisionReasonMessage(extender.reason)}`
+      ).join('; ')
+      : `${result.extenders.length} extender session${
+        result.extenders.length === 1 ? '' : 's'
+      } checked`;
     meshUsername = '';
     meshPassword = '';
     await refreshPersistentCapability();
   } catch (error) {
     persistentError = persistentErrorMessage(error);
   } finally {
+    meshUsername = '';
     meshPassword = '';
     persistentActionLoading = false;
+  }
+}
+
+function provisionReasonMessage(reason: ProvisionReason | undefined): string {
+  if (reason === undefined) {
+    return 'provisioning failed';
+  }
+  switch (reason) {
+    case 'secure-endpoint-unavailable':
+      return 'persistent token requires extender FQDN/HTTPS';
+    case 'offline':
+      return 'extender offline';
+    case 'authentication-failed':
+      return 'authentication failed';
+    case 'unsupported-firmware':
+      return 'firmware unsupported';
+    case 'unreachable':
+      return 'extender unreachable';
   }
 }
 

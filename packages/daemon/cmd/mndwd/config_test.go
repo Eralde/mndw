@@ -85,6 +85,39 @@ func TestParseDevUsesHostDeviceAsControllerURL(t *testing.T) {
 	}
 }
 
+func TestParseDevAcceptsExplicitHTTPControllerURL(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--dev", "--controller-url", "http://192.168.1.1:80", "--data-dir", "/tmp/mndw-dev-data"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ControllerURL != "http://192.168.1.1:80" {
+		t.Fatalf("controller URL = %q", cfg.ControllerURL)
+	}
+}
+
+func TestParseDevAcceptsHTTPSControllerURL(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--dev", "--controller-url", "https://controller.example", "--data-dir", "/tmp/mndw-dev-data"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ControllerURL != "https://controller.example" {
+		t.Fatalf("controller URL = %q", cfg.ControllerURL)
+	}
+}
+
+func TestParseRejectsMalformedControllerURL(t *testing.T) {
+	for _, value := range []string{
+		"not-a-url",
+		"http://user:password@192.168.1.1",
+		"http://192.168.1.1/rci",
+		"http://192.168.1.1?token=secret",
+	} {
+		if _, _, err := parseFlags([]string{"--dev", "--controller-url", value}); err == nil {
+			t.Fatalf("controller URL %q accepted", value)
+		}
+	}
+}
+
 func TestParseDevDefaultsPersistentSessionKeyDirectoryOutsideDataDir(t *testing.T) {
 	cfg, _, err := parseFlags([]string{"--dev", "--data-dir", "/tmp/mndw-dev-data"})
 	if err != nil {
@@ -96,8 +129,8 @@ func TestParseDevDefaultsPersistentSessionKeyDirectoryOutsideDataDir(t *testing.
 	}
 }
 
-func TestParseAllowsPersistentSessionOverrides(t *testing.T) {
-	cfg, _, err := parseFlags([]string{
+func TestParseRejectsProductionControllerURLOverride(t *testing.T) {
+	_, _, err := parseFlags([]string{
 		"--data-dir", "/var/lib/mndw",
 		"--rci-session-state-dir", "/var/lib/mndw-rci",
 		"--rci-session-key-dir", "/var/secure/mndw",
@@ -108,20 +141,8 @@ func TestParseAllowsPersistentSessionOverrides(t *testing.T) {
 		"--rci-proxy-max-inflight", "4",
 		"--rci-proxy-max-response-bytes", "2048",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.RCISessionStateDir != "/var/lib/mndw-rci" || cfg.RCISessionKeyDir != "/var/secure/mndw" {
-		t.Fatalf("persistent session dirs = %q, %q", cfg.RCISessionStateDir, cfg.RCISessionKeyDir)
-	}
-	if cfg.ControllerURL != "http://192.168.1.1:80" {
-		t.Fatalf("controller URL = %q", cfg.ControllerURL)
-	}
-	if cfg.RCIEnumerationTTL != 45*time.Second || cfg.RCIProxyIdleTimeout != 3*time.Minute || cfg.RCIProxyOperationTimeout != 17*time.Second {
-		t.Fatalf("persistent session timeouts = %s, %s, %s", cfg.RCIEnumerationTTL, cfg.RCIProxyIdleTimeout, cfg.RCIProxyOperationTimeout)
-	}
-	if cfg.RCIProxyMaxInflight != 4 || cfg.RCIProxyMaxResponseBytes != 2048 {
-		t.Fatalf("persistent session limits = %d, %d", cfg.RCIProxyMaxInflight, cfg.RCIProxyMaxResponseBytes)
+	if err == nil {
+		t.Fatal("production controller override accepted")
 	}
 }
 

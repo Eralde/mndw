@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -97,6 +98,12 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	if showVersion {
 		return cfg, true, nil
 	}
+	controllerURLOverride := false
+	fs.Visit(func(flag *flag.Flag) {
+		if flag.Name == "controller-url" {
+			controllerURLOverride = true
+		}
+	})
 	if cfg.PluginRuntimeRoot == "" {
 		cfg.PluginRuntimeRoot = os.Getenv(pluginruntime.RuntimeRootEnv)
 	}
@@ -106,11 +113,15 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	if cfg.RCISessionStateDir == "" {
 		cfg.RCISessionStateDir = cfg.DataDir
 	}
-	if cfg.ControllerURL == "" {
+	if !cfg.Dev && controllerURLOverride {
+		return cfg, false, fmt.Errorf("--controller-url is available only in --dev mode")
+	}
+	if !cfg.Dev {
 		cfg.ControllerURL = rcisession.DefaultControllerURL
-		if cfg.Dev && strings.TrimSpace(os.Getenv("MNDW_HOST_DEVICE")) != "" {
-			cfg.ControllerURL = strings.TrimSpace(os.Getenv("MNDW_HOST_DEVICE"))
-		}
+	} else if !controllerURLOverride && strings.TrimSpace(os.Getenv("MNDW_HOST_DEVICE")) != "" {
+		cfg.ControllerURL = strings.TrimSpace(os.Getenv("MNDW_HOST_DEVICE"))
+	} else if cfg.ControllerURL == "" {
+		cfg.ControllerURL = rcisession.DefaultControllerURL
 	}
 	if cfg.RCISessionKeyDir == "" {
 		if cfg.Dev {
@@ -128,6 +139,9 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	if err := validateControllerURL(cfg.ControllerURL); err != nil {
 		return cfg, false, err
 	}
+	if !cfg.Dev && !isLoopbackControllerURL(cfg.ControllerURL) {
+		return cfg, false, fmt.Errorf("remote HTTP controller URL is not permitted outside --dev mode")
+	}
 
 	if cfg.Opkg != "exec" && cfg.Opkg != "stub" {
 		return cfg, false, fmt.Errorf("--opkg must be exec or stub, got %q", cfg.Opkg)
@@ -141,7 +155,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 
 func validateControllerURL(raw string) error {
 	parsed, err := url.Parse(raw)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Hostname() == "" {
 		return fmt.Errorf("--controller-url must be an absolute HTTP(S) URL, got %q", raw)
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
@@ -149,6 +163,15 @@ func validateControllerURL(raw string) error {
 	}
 
 	return nil
+}
+
+func isLoopbackControllerURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "http" {
+		return false
+	}
+	ip := net.ParseIP(parsed.Hostname())
+	return ip != nil && ip.IsLoopback()
 }
 
 func validatePersistentSessionConfig(cfg Config) error {

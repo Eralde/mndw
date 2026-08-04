@@ -12,6 +12,7 @@ type Member struct {
 	MAC      string         `json:"mac"`
 	Name     string         `json:"known-host"`
 	IP       string         `json:"ip"`
+	FQDN     string         `json:"fqdn"`
 	Firmware string         `json:"fw"`
 	System   map[string]any `json:"system"`
 	Backhaul map[string]any `json:"backhaul"`

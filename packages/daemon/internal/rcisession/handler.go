@@ -188,6 +188,11 @@ func (h *Handler) handleProvision(w http.ResponseWriter, r *http.Request) {
 			item["support"] = string(outcome.Record.Support)
 		} else {
 			item["support"] = string(model.SupportUnknown)
+			reason := outcome.Reason
+			if reason == "" {
+				reason = minter.ClassifyFailure(outcome.Err)
+			}
+			item["reason"] = string(reason)
 		}
 		response = append(response, item)
 	}

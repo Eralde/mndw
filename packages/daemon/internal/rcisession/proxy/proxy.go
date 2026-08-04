@@ -16,12 +16,13 @@ import (
 )
 
 var (
-	ErrBadRequest        = errors.New("bad proxy request")
-	ErrNoSession         = errors.New("no session for target")
-	ErrUnsupported       = errors.New("target unsupported")
-	ErrTargetUnreachable = errors.New("target unreachable")
-	ErrSessionInvalid    = errors.New("session invalid")
-	ErrResponseTooLarge  = errors.New("proxy response too large")
+	ErrBadRequest                = errors.New("bad proxy request")
+	ErrNoSession                 = errors.New("no session for target")
+	ErrUnsupported               = errors.New("target unsupported")
+	ErrTargetUnreachable         = errors.New("target unreachable")
+	ErrSecureEndpointUnavailable = errors.New("secure endpoint unavailable")
+	ErrSessionInvalid            = errors.New("session invalid")
+	ErrResponseTooLarge          = errors.New("proxy response too large")
 )
 
 type Request struct {
@@ -38,9 +39,10 @@ type Response struct {
 }
 
 type Destination struct {
-	BaseURL string
-	Token   string
-	Support model.Support
+	BaseURL       string
+	Token         string
+	Support       model.Support
+	AllowInsecure bool
 }
 
 type Resolver interface {
@@ -81,7 +83,7 @@ func (p *Proxy) Do(ctx context.Context, request Request) (Response, error) {
 	}
 	destination, err := p.resolver.Resolve(ctx, request.Target)
 	if err != nil {
-		return Response{}, fmt.Errorf("%w: target resolution failed", ErrTargetUnreachable)
+		return Response{}, errors.Join(ErrTargetUnreachable, err)
 	}
 	if destination.Support == model.SupportUnsupported {
 		return Response{}, ErrUnsupported
@@ -90,8 +92,14 @@ func (p *Proxy) Do(ctx context.Context, request Request) (Response, error) {
 		return Response{}, ErrNoSession
 	}
 	endpoint, err := url.Parse(strings.TrimRight(destination.BaseURL, "/") + "/" + request.Path)
-	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" || endpoint.RawQuery != "" || endpoint.Fragment != "" {
+	if err != nil || endpoint.Scheme == "" || endpoint.Host == "" || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
 		return Response{}, fmt.Errorf("%w: invalid target URL", ErrBadRequest)
+	}
+	if strings.EqualFold(endpoint.Scheme, "http") && !destination.AllowInsecure {
+		return Response{}, ErrSecureEndpointUnavailable
+	}
+	if !strings.EqualFold(endpoint.Scheme, "http") && !strings.EqualFold(endpoint.Scheme, "https") {
+		return Response{}, fmt.Errorf("%w: unsupported target scheme", ErrBadRequest)
 	}
 	requestCtx := ctx
 	var cancel context.CancelFunc

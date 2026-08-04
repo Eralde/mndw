@@ -48,6 +48,76 @@ func TestResolveUsesDefaultHTTPPortForRemoteMember(t *testing.T) {
 	}
 }
 
+func TestResolvePrefersNormalizedFQDNAndDoesNotRequireIP(t *testing.T) {
+	target, err := Resolve(discovery.Member{
+		CID:  "node",
+		IP:   "",
+		FQDN: "NODE-1.Keenetic.io...",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.FQDN != "node-1.keenetic.io" || target.BaseURL != "https://node-1.keenetic.io" || !target.Secure || target.Address != nil {
+		t.Fatalf("target = %#v", target)
+	}
+}
+
+func TestResolveFQDNWinsOverIP(t *testing.T) {
+	target, err := Resolve(discovery.Member{CID: "node", IP: "192.168.1.8", FQDN: "node-1.keenetic.io"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.BaseURL != "https://node-1.keenetic.io" || !target.Secure {
+		t.Fatalf("target = %#v", target)
+	}
+}
+
+func TestResolveRejectsMalformedFQDNWithoutIPFallback(t *testing.T) {
+	for _, fqdn := range []string{
+		"",
+		"node",
+		"node_.keenetic.io",
+		"node.keenetic.io/path",
+		"http://node.keenetic.io",
+		"node:443.keenetic.io",
+		"node..keenetic.io",
+		"-node.keenetic.io",
+		"node-.keenetic.io",
+		"127.0.0.1",
+		"nöde.keenetic.io",
+	} {
+		if fqdn == "" {
+			continue
+		}
+		_, err := Resolve(discovery.Member{CID: "node", IP: "192.168.1.8", FQDN: fqdn})
+		if err == nil {
+			t.Fatalf("Resolve(%q) succeeded", fqdn)
+		}
+	}
+}
+
+func TestResolveRejectsMissingOrUnsafeIPWithoutFQDN(t *testing.T) {
+	for _, ip := range []string{"", "not-an-ip", "8.8.8.8", "127.0.0.1"} {
+		if _, err := Resolve(discovery.Member{CID: "node", IP: ip}); err == nil {
+			t.Fatalf("Resolve(%q) succeeded", ip)
+		}
+	}
+}
+
+func TestTargetURLAcceptsSecureFQDNWithoutAddress(t *testing.T) {
+	target, err := Resolve(discovery.Member{CID: "node", FQDN: "node-1.keenetic.io"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	urlValue, err := target.URL("rci/show/version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if urlValue.String() != "https://node-1.keenetic.io/rci/show/version" {
+		t.Fatalf("URL = %q", urlValue)
+	}
+}
+
 func TestTargetURLRejectsUnsafeRCIPath(t *testing.T) {
 	target, err := Resolve(discovery.Member{CID: "node", IP: "192.168.1.8"})
 	if err != nil {

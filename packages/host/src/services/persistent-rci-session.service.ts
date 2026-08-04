@@ -20,8 +20,19 @@ export interface ControllerTestResult {
 }
 
 export interface ProvisionResult {
-  extenders: Array<{identity: string; support: PersistentSupport}>;
+  extenders: Array<{
+    identity: string;
+    support: PersistentSupport;
+    reason?: ProvisionReason;
+  }>;
 }
+
+export type ProvisionReason =
+  | 'offline'
+  | 'secure-endpoint-unavailable'
+  | 'authentication-failed'
+  | 'unsupported-firmware'
+  | 'unreachable';
 
 export interface PersistentRciCredentials {
   username: string;
@@ -96,7 +107,9 @@ export class PersistentRciSessionService {
   }
 
   public async provisionExtenders(credentials: PersistentRciCredentials): Promise<ProvisionResult> {
-    return await this.read<ProvisionResult>(await this.post('/extenders/provision', credentials));
+    const payload = await this.read<unknown>(await this.post('/extenders/provision', credentials));
+
+    return this.parseProvisionResult(payload);
   }
 
   public async clearExtenders(): Promise<void> {
@@ -160,6 +173,54 @@ export class PersistentRciSessionService {
       && typeof probe === 'object'
       && 'found' in probe
       && (probe as {found?: unknown}).found === true;
+  }
+
+  private parseProvisionResult(payload: unknown): ProvisionResult {
+    if (!payload || typeof payload !== 'object' || !('extenders' in payload)) {
+      throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
+    }
+
+    const record = payload as {extenders?: unknown};
+
+    if (!Array.isArray(record.extenders)) {
+      throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
+    }
+
+    const extenders: ProvisionResult['extenders'] = [];
+
+    for (const item of record.extenders) {
+      if (!item || typeof item !== 'object') {
+        throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
+      }
+
+      const entry = item as {identity?: unknown; support?: unknown; reason?: unknown};
+
+      if (typeof entry.identity !== 'string' || !this.isSupport(entry.support)) {
+        throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
+      }
+
+      const reason = entry.reason;
+
+      if (reason !== undefined && !this.isProvisionReason(reason)) {
+        throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
+      }
+
+      extenders.push({identity: entry.identity, support: entry.support, ...(reason === undefined ? {} : {reason})});
+    }
+
+    return {extenders};
+  }
+
+  private isSupport(value: unknown): value is PersistentSupport {
+    return value === 'supported' || value === 'invalid' || value === 'unsupported' || value === 'unknown';
+  }
+
+  private isProvisionReason(value: unknown): value is ProvisionReason {
+    return value === 'offline'
+      || value === 'secure-endpoint-unavailable'
+      || value === 'authentication-failed'
+      || value === 'unsupported-firmware'
+      || value === 'unreachable';
   }
 }
 

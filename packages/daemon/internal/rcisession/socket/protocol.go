@@ -155,6 +155,8 @@ func writeError(write func(any) error, id int64, err error) error {
 		code = "unsupported-firmware"
 	case errors.Is(err, proxy.ErrSessionInvalid):
 		code = "session-invalid"
+	case errors.Is(err, proxy.ErrSecureEndpointUnavailable):
+		code = "target-unreachable"
 	case errors.Is(err, proxy.ErrTargetUnreachable):
 		code = "target-unreachable"
 	}

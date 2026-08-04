@@ -7,6 +7,7 @@ import (
 
 	"mndwd/internal/rcisession/enumeration"
 	"mndwd/internal/rcisession/model"
+	"mndwd/internal/rcisession/proxy"
 )
 
 func TestControllerUnauthorizedRetainsControllerAndExtenderRecords(t *testing.T) {
@@ -66,12 +67,40 @@ func TestResolveExtenderUsesFreshIdentityIPAndDefaultHTTPPort(t *testing.T) {
 	enumerator := &fakeEnumerator{members: []enumeration.Member{{Identity: "node-1", IP: "192.168.1.44", MAC: "aa:bb:cc:dd:ee:ff"}}}
 	service := NewService(store, enumerator)
 
+	_, err := service.Resolve(context.Background(), "node-1")
+	if !errors.Is(err, proxy.ErrSecureEndpointUnavailable) {
+		t.Fatalf("Resolve error = %v, want secure endpoint unavailable", err)
+	}
+}
+
+func TestResolveExtenderUsesFreshFQDNForStoredToken(t *testing.T) {
+	store := newFakeStore()
+	store.document = model.Document{Extenders: map[string]model.TokenRecord{
+		"node-1": {Key: "key", Token: "token", Support: model.SupportSupported},
+	}}
+	enumerator := &fakeEnumerator{members: []enumeration.Member{{Identity: "node-1", IP: "", FQDN: "node-1.keenetic.io", MAC: "aa:bb:cc:dd:ee:ff"}}}
+	service := NewService(store, enumerator)
+
 	destination, err := service.Resolve(context.Background(), "node-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if destination.BaseURL != "http://192.168.1.44" || destination.Token != "token" {
+	if destination.BaseURL != "https://node-1.keenetic.io" || destination.Token != "token" || destination.AllowInsecure {
 		t.Fatalf("destination = %#v", destination)
+	}
+}
+
+func TestResolveExtenderFailsClosedWhenFQDNDisappears(t *testing.T) {
+	store := newFakeStore()
+	store.document = model.Document{Extenders: map[string]model.TokenRecord{
+		"node-1": {Key: "key", Token: "token", Support: model.SupportSupported},
+	}}
+	enumerator := &fakeEnumerator{members: []enumeration.Member{{Identity: "node-1", IP: "192.168.1.44", MAC: "aa:bb:cc:dd:ee:ff"}}}
+	service := NewService(store, enumerator)
+
+	_, err := service.Resolve(context.Background(), "node-1")
+	if !errors.Is(err, proxy.ErrSecureEndpointUnavailable) {
+		t.Fatalf("Resolve error = %v, want secure endpoint unavailable", err)
 	}
 }
 
@@ -82,14 +111,45 @@ func TestResolveControllerUsesConfiguredBaseURL(t *testing.T) {
 		Extenders:  map[string]model.TokenRecord{},
 	}
 	service := NewService(store, &fakeEnumerator{})
-	service.SetControllerURL("http://192.168.1.1:80")
+	if err := service.SetControllerURL("http://192.168.1.1:80", true); err != nil {
+		t.Fatal(err)
+	}
 
 	destination, err := service.Resolve(context.Background(), "controller")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if destination.BaseURL != "http://192.168.1.1:80" || destination.Token != "controller-token" {
+	if destination.BaseURL != "http://192.168.1.1:80" || destination.Token != "controller-token" || !destination.AllowInsecure {
 		t.Fatalf("destination = %#v", destination)
+	}
+}
+
+func TestSetControllerURLRejectsRemoteHTTPOutsideDev(t *testing.T) {
+	service := NewService(newFakeStore(), &fakeEnumerator{})
+	if err := service.SetControllerURL("http://192.168.1.1:80", false); err == nil {
+		t.Fatal("remote HTTP controller URL accepted outside dev")
+	}
+	if err := service.SetControllerURL("http://127.0.0.1:79", false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSetControllerURLRejectsMalformedURLWithoutChangingState(t *testing.T) {
+	store := newFakeStore()
+	store.document = model.Document{Controller: &model.TokenRecord{Token: "controller-token", Support: model.SupportSupported}}
+	service := NewService(store, &fakeEnumerator{})
+	if err := service.SetControllerURL("http://192.168.1.1:80", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetControllerURL("http://user:password@192.168.1.2", true); err == nil {
+		t.Fatal("malformed controller URL accepted")
+	}
+	destination, err := service.Resolve(context.Background(), "controller")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if destination.BaseURL != "http://192.168.1.1:80" {
+		t.Fatalf("controller URL changed after rejected update: %q", destination.BaseURL)
 	}
 }
 
@@ -202,12 +262,16 @@ func (s *fakeStore) DeleteExtenders() error {
 
 type fakeEnumerator struct {
 	members     []enumeration.Member
+	err         error
 	calls       int
 	invalidated bool
 }
 
 func (e *fakeEnumerator) List(context.Context) ([]enumeration.Member, error) {
 	e.calls++
+	if e.err != nil {
+		return nil, e.err
+	}
 	return append([]enumeration.Member(nil), e.members...), nil
 }
 

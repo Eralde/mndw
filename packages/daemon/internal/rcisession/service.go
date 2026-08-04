@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"mndwd/internal/keenetic/discovery"
@@ -40,23 +43,50 @@ type Service struct {
 	now           func() time.Time
 	proxy         *proxy.Proxy
 	onMutation    func()
+	mu            sync.RWMutex
 	controllerURL string
+	allowInsecure bool
 }
 
 func NewService(store Store, enumerator Enumerator) *Service {
-	return &Service{store: store, enumerator: enumerator, now: time.Now, controllerURL: DefaultControllerURL}
+	return &Service{store: store, enumerator: enumerator, now: time.Now, controllerURL: DefaultControllerURL, allowInsecure: true}
 }
 
 func (s *Service) SetMutationObserver(observer func()) { s.onMutation = observer }
 
-func (s *Service) SetControllerURL(baseURL string) {
-	if strings.TrimSpace(baseURL) == "" {
-		s.controllerURL = DefaultControllerURL
-
-		return
+func (s *Service) SetControllerURL(baseURL string, allowRemoteHTTP bool) error {
+	validatedURL, allowInsecure, err := validateControllerURL(baseURL, allowRemoteHTTP)
+	if err != nil {
+		return err
 	}
+	s.mu.Lock()
+	s.controllerURL = validatedURL
+	s.allowInsecure = allowInsecure
+	s.mu.Unlock()
+	return nil
+}
 
-	s.controllerURL = strings.TrimRight(baseURL, "/")
+func validateControllerURL(baseURL string, allowRemoteHTTP bool) (string, bool, error) {
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = DefaultControllerURL
+	}
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Hostname() == "" {
+		return "", false, fmt.Errorf("controller URL must be an absolute HTTP(S) URL")
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return "", false, fmt.Errorf("controller URL must contain only scheme and host")
+	}
+	allowInsecure := parsed.Scheme == "http" && (isLoopbackHost(parsed.Hostname()) || allowRemoteHTTP)
+	if parsed.Scheme == "http" && !allowInsecure {
+		return "", false, fmt.Errorf("remote HTTP controller URL is not permitted")
+	}
+	return strings.TrimRight(parsed.String(), "/"), allowInsecure, nil
+}
+
+func isLoopbackHost(host string) bool {
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 type ControllerVerdict string
@@ -124,7 +154,11 @@ func (s *Service) Resolve(ctx context.Context, identity string) (proxy.Destinati
 		if document.Controller.Support == model.SupportUnsupported {
 			return proxy.Destination{}, proxy.ErrUnsupported
 		}
-		return proxy.Destination{BaseURL: s.controllerURL, Token: document.Controller.Token, Support: document.Controller.Support}, nil
+		s.mu.RLock()
+		controllerURL := s.controllerURL
+		allowInsecure := s.allowInsecure
+		s.mu.RUnlock()
+		return proxy.Destination{BaseURL: controllerURL, Token: document.Controller.Token, Support: document.Controller.Support, AllowInsecure: allowInsecure}, nil
 	}
 	record, ok := document.Extenders[identity]
 	if !ok || record.Token == "" {
@@ -147,7 +181,13 @@ func (s *Service) Resolve(ctx context.Context, identity string) (proxy.Destinati
 		if member.Identity != identity {
 			continue
 		}
-		resolved, err := target.Resolve(discovery.Member{CID: member.Identity, Name: member.Name, IP: member.IP, MAC: member.MAC})
+		if strings.TrimSpace(member.FQDN) == "" {
+			if strings.TrimSpace(member.IP) == "" {
+				return proxy.Destination{}, fmt.Errorf("%w: member has no reachable endpoint", proxy.ErrTargetUnreachable)
+			}
+			return proxy.Destination{}, proxy.ErrSecureEndpointUnavailable
+		}
+		resolved, err := target.Resolve(discovery.Member{CID: member.Identity, Name: member.Name, IP: member.IP, FQDN: member.FQDN, MAC: member.MAC})
 		if err != nil {
 			return proxy.Destination{}, fmt.Errorf("%w: unsafe member address", proxy.ErrTargetUnreachable)
 		}
@@ -228,13 +268,23 @@ func (s *Service) Provision(ctx context.Context, generator minter.Generator, cre
 		record.Support = model.SupportSupported
 		if err := s.store.UpsertExtender(outcome.Member.Identity, record); err != nil {
 			outcome.Err = err
+			outcome.Reason = minter.ReasonUnreachable
 			continue
 		}
 		s.notifyMutation()
 		successes++
 	}
 	if successes == 0 && len(outcomes) > 0 {
-		return outcomes, fmt.Errorf("all extender provisioning attempts failed")
+		allPolicyRefusals := true
+		for _, outcome := range outcomes {
+			if !errors.Is(outcome.Err, minter.ErrPersistentTokenRequiresHTTPS) && !errors.Is(outcome.Err, minter.ErrMemberOffline) {
+				allPolicyRefusals = false
+				break
+			}
+		}
+		if !allPolicyRefusals {
+			return outcomes, fmt.Errorf("all extender provisioning attempts failed")
+		}
 	}
 	return outcomes, nil
 }

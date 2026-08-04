@@ -124,6 +124,48 @@ func TestAuthenticateScramChallenge(t *testing.T) {
 	}
 }
 
+func TestAuthenticateFallsBackToLegacyAfterScramFailure(t *testing.T) {
+	transport := &scriptedTransport{responses: []Response{
+		{Status: http.StatusUnauthorized, Header: http.Header{
+			"WWW-Authenticate": []string{
+				`x-ndw2-interactive realm="router"`,
+				`x-ndw4-interactive endpoint="/auth"`,
+			},
+		}},
+		{Status: http.StatusUnauthorized}, // x-ndw4 response is malformed.
+		{Status: http.StatusUnauthorized, Header: http.Header{
+			"WWW-Authenticate": []string{"x-ndw2-interactive"},
+			"X-NDM-Challenge":  []string{"challenge"},
+			"X-NDM-Realm":      []string{"router"},
+		}},
+		{Status: http.StatusOK},
+		{Status: http.StatusOK},
+	}}
+	adapter := New(Options{Transport: transport, Random: func(buffer []byte) error {
+		for index := range buffer {
+			buffer[index] = byte(index)
+		}
+		return nil
+	}})
+
+	result, err := adapter.Authenticate(context.Background(), Target{BaseURL: "http://router"}, Credentials{Username: "admin", Password: "secret"}, nil)
+	if err != nil {
+		t.Fatalf("Authenticate() error = %v, want legacy fallback success", err)
+	}
+	if result.Generation != legacySchema {
+		t.Fatalf("generation = %q, want %q", result.Generation, legacySchema)
+	}
+	if len(transport.requests) != 5 {
+		t.Fatalf("requests = %+v, want x-ndw4 attempt plus fresh x-ndw2 session", transport.requests)
+	}
+	if transport.requests[1].Method != http.MethodPost || !strings.Contains(string(transport.requests[1].Body), `"nonce"`) {
+		t.Fatalf("x-ndw4 request = %+v, want x-ndw4 request", transport.requests[1])
+	}
+	if transport.requests[3].Method != http.MethodPost || !strings.Contains(string(transport.requests[3].Body), `"password"`) {
+		t.Fatalf("x-ndw2 request = %+v, want x-ndw2 request", transport.requests[3])
+	}
+}
+
 func encodeReply(value any) string {
 	data, _ := json.Marshal(value)
 	return base64.StdEncoding.EncodeToString(data)

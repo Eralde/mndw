@@ -9,15 +9,15 @@ interface Props {
 
 let {record, query}: Props = $props();
 const messageSegments = $derived(highlightText(record.text, query));
-const levelMarker = $derived(
-  record.level === 'Info'
+const levelMarker = $derived.by(() => {
+  return record.level === 'Info'
     ? '●'
     : record.level === 'Warning'
     ? '▲'
     : record.level === 'Notice'
     ? '·'
-    : '■',
-);
+    : '■';
+});
 </script>
 
 <div

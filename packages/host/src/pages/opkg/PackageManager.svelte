@@ -14,8 +14,8 @@ let statusVariant = $state<'success' | 'error' | 'info'>('info');
 let loading = $state(false);
 let loadError = $state(false);
 
-const filtered = $derived(
-  packages.filter((p) => {
+const filtered = $derived.by(() => {
+  return packages.filter((p) => {
     if (filterMode === 'installed' && p.status === 'uninstalled') {
       return false;
     }
@@ -23,25 +23,31 @@ const filtered = $derived(
       return false;
     }
     return p.name.toLowerCase().includes(filter.toLowerCase());
-  }),
-);
+  });
+});
 const selectedCount = $derived(checked.size);
-const updateCount = $derived(
-  packages.filter((p) => p.status === 'update_available').length,
-);
-const allFilteredChecked = $derived(
-  filtered.length > 0 && filtered.every((p) => checked.has(p.name)),
-);
+const updateCount = $derived.by(() => {
+  return packages.filter((p) => p.status === 'update_available').length;
+});
+const allFilteredChecked = $derived.by(() => {
+  return filtered.length > 0 && filtered.every((p) => checked.has(p.name));
+});
 const someFilteredChecked = $derived(filtered.some((p) => checked.has(p.name)));
-const canInstall = $derived(
-  filtered.some((p) => checked.has(p.name) && p.status === 'uninstalled'),
-);
-const canRemove = $derived(
-  filtered.some((p) => checked.has(p.name) && p.status !== 'uninstalled'),
-);
-const canUpdate = $derived(
-  filtered.some((p) => checked.has(p.name) && p.status === 'update_available'),
-);
+const canInstall = $derived.by(() => {
+  return filtered.some((p) =>
+    checked.has(p.name) && p.status === 'uninstalled'
+  );
+});
+const canRemove = $derived.by(() => {
+  return filtered.some((p) =>
+    checked.has(p.name) && p.status !== 'uninstalled'
+  );
+});
+const canUpdate = $derived.by(() => {
+  return filtered.some((p) =>
+    checked.has(p.name) && p.status === 'update_available'
+  );
+});
 
 const setStatus = (
   msg: string,
@@ -52,9 +58,9 @@ const setStatus = (
 };
 
 // The class layer names the severity `danger`; this component's callers say `error`.
-const statusSeverity = $derived(
-  statusVariant === 'error' ? 'danger' : statusVariant,
-);
+const statusSeverity = $derived.by(() => {
+  return statusVariant === 'error' ? 'danger' : statusVariant;
+});
 
 const fetchPackages = async (suppressStatus = false): Promise<void> => {
   loading = true;

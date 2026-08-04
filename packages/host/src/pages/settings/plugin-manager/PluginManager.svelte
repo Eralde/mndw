@@ -25,12 +25,12 @@ let confirmingName = $state<string | null>(null);
 let actionError = $state<{name: string; message: string} | null>(null);
 let reloadPrompt = $state(false);
 let latestRequest = 0;
-let installed = $derived(
-  plugins.filter((plugin) => plugin.approval === 'approved'),
-);
-let pending = $derived(
-  plugins.filter((plugin) => plugin.approval === 'pending'),
-);
+let installed = $derived.by(() => {
+  return plugins.filter((plugin) => plugin.approval === 'approved');
+});
+let pending = $derived.by(() => {
+  return plugins.filter((plugin) => plugin.approval === 'pending');
+});
 
 async function load(): Promise<void> {
   const request = ++latestRequest;

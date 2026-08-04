@@ -17,12 +17,12 @@ interface Props {
 let {palette, warnings, busy, error, onConfirm, onDiscard}: Props = $props();
 
 const themes = ['dark', 'light'] as const;
-let byTheme = $derived(
-  themes.map((theme) => ({
+let byTheme = $derived.by(() => {
+  return themes.map((theme) => ({
     theme,
     entries: warnings.filter((warning) => warning.theme === theme),
-  })),
-);
+  }));
+});
 </script>
 
 <div class="mndw-palette-preview">

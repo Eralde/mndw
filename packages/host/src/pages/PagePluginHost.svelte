@@ -45,12 +45,12 @@ function bindHost(node: HTMLElement): {destroy(): void} {
   };
 }
 
-const pluginName = $derived(
-  routeToPluginName.get(appRouter.route.pathname) ?? null,
-);
-const depsState = $derived(
-  pluginName === null ? 'ready' : getDepsStatus(pluginName),
-);
+const pluginName = $derived.by(() => {
+  return routeToPluginName.get(appRouter.route.pathname) ?? null;
+});
+const depsState = $derived.by(() => {
+  return pluginName === null ? 'ready' : getDepsStatus(pluginName);
+});
 const mountTarget = $derived(depsState === 'ready' ? pluginName : null);
 
 // Each mount lives in its own child container inside the stable host, so disposing a

@@ -3,8 +3,14 @@ import {defineMndwUi} from '@mndw/ui';
 import {mount, unmount} from 'svelte';
 import {MNDW_TOKENS} from '@mndw/sdk';
 
-const {probeControllerTokenAuth} = vi.hoisted(() => ({
+const {getCapability, probeControllerTokenAuth, saveController} = vi.hoisted(() => ({
+  getCapability: vi.fn().mockResolvedValue({
+    store: {state: 'empty'},
+    controller: {support: 'unknown'},
+    extenders: [],
+  }),
   probeControllerTokenAuth: vi.fn().mockResolvedValue(true),
+  saveController: vi.fn(),
 }));
 
 vi.mock('../../services/mgmt-client.js', () => ({
@@ -42,14 +48,10 @@ vi.mock('../../services/extender-access.service.js', () => ({
 }));
 vi.mock('../../services/persistent-rci-session.service.js', () => ({
   persistentRciSessionService: {
-    getCapability: vi.fn().mockResolvedValue({
-      store: {state: 'empty'},
-      controller: {support: 'unknown'},
-      extenders: [],
-    }),
+    getCapability,
     probeControllerTokenAuth,
     testController: vi.fn(),
-    saveController: vi.fn(),
+    saveController,
     clearController: vi.fn(),
     provisionExtenders: vi.fn(),
     clearExtenders: vi.fn(),
@@ -67,7 +69,13 @@ describe('SettingsPage', () => {
   afterEach(() => {
     document.body.innerHTML = '';
     vi.mocked(toggleTheme).mockClear();
+    getCapability.mockReset().mockResolvedValue({
+      store: {state: 'empty'},
+      controller: {support: 'unknown'},
+      extenders: [],
+    });
     probeControllerTokenAuth.mockReset().mockResolvedValue(true);
+    saveController.mockReset();
   });
 
   it('renders plugin manager', async () => {
@@ -177,6 +185,38 @@ describe('SettingsPage', () => {
 
     await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent rci session"]')).toBeNull());
     expect(target.querySelector('section[aria-label="Persistent rci session"]')).toBeNull();
+
+    void unmount(component);
+  });
+
+  it('shows a placeholder instead of the saved controller token', async () => {
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent rci session"]')).not.toBeNull());
+    target.querySelector<HTMLElement>('#mndw-persistent-rci-enabled')?.dispatchEvent(
+      new CustomEvent('mndwchange', {bubbles: true, composed: true, detail: {checked: true}}),
+    );
+    await vi.waitFor(() => expect(target.querySelector('mndw-input[type="password"]')).not.toBeNull());
+
+    const tokenInput = target.querySelector<HTMLElement>('mndw-input[type="password"]');
+
+    tokenInput?.dispatchEvent(new CustomEvent('mndwinput', {bubbles: true, composed: true, detail: {value: 'secret'}}));
+    saveController.mockResolvedValueOnce({result: 'valid'});
+    getCapability.mockResolvedValueOnce({
+      store: {state: 'empty'},
+      controller: {support: 'supported'},
+      extenders: [],
+    });
+    target.querySelector('mndw-button[variant="primary"]')?.dispatchEvent(new Event('click', {bubbles: true}));
+
+    await vi.waitFor(() => expect(saveController).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(target.querySelector('mndw-input[type="password"]')?.getAttribute('placeholder')).toBe('<TOKEN SET>')
+    );
 
     void unmount(component);
   });

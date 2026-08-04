@@ -12,13 +12,13 @@ let {open, onAddWidget, onClose}: Props = $props();
 
 // Copy before sorting so the registry's own ordering is never mutated. Sort by label,
 // then name, matching the sidebar/router page ordering.
-let availableWidgets = $derived(
-  [...pluginRegistry.getWidgets()].sort(
+let availableWidgets = $derived.by(() => {
+  return [...pluginRegistry.getWidgets()].sort(
     (a, b) =>
       a.entry.label.localeCompare(b.entry.label)
       || a.entry.name.localeCompare(b.entry.name),
-  ),
-);
+  );
+});
 let buttonRefs: HTMLElement[] = [];
 
 $effect(() => {

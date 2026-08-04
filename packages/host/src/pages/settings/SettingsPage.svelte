@@ -17,6 +17,12 @@ let extenderAccessLoading = $state(true);
 let extenderAccessError = $state('');
 let persistentCapability = $state<PersistentRciCapability | null>(null);
 let persistentProbeAvailable = $state(false);
+let controllerTokenPlaceholder = $derived.by(() => {
+  return persistentCapability?.controller.support === 'supported'
+      || persistentCapability?.controller.support === 'invalid'
+    ? '<TOKEN SET>'
+    : '';
+});
 let persistentEnabled = $state(false);
 let persistentLoading = $state(true);
 let persistentActionLoading = $state(false);
@@ -278,6 +284,7 @@ async function clearExtenders(): Promise<void> {
           <mndw-input
             type="password"
             autocomplete="off"
+            placeholder={controllerTokenPlaceholder}
             value={controllerToken}
             disabled={persistentActionLoading}
             onmndwinput={setControllerToken}

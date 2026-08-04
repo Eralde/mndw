@@ -84,7 +84,7 @@ func TestCacheInvalidationForcesEnumeration(t *testing.T) {
 func TestHTTPSourceUsesConfiguredControllerURL(t *testing.T) {
 	transport := &enumerationRoundTripper{response: &http.Response{
 		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(strings.NewReader(`[ {"cid":"node-1","mac":"aa:bb:cc:dd:ee:ff","ip":"192.168.1.2"} ]`)),
+		Body:       io.NopCloser(strings.NewReader(`[ {"show":{"mws":{"member":[{"cid":"node-1","mac":"aa:bb:cc:dd:ee:ff","ip":"192.168.1.2"}]}}} ]`)),
 		Header:     make(http.Header),
 	}}
 	source := HTTPSource{
@@ -93,11 +93,18 @@ func TestHTTPSourceUsesConfiguredControllerURL(t *testing.T) {
 		ControllerToken: func() string { return "controller-token" },
 	}
 
-	if _, err := source.Enumerate(context.Background()); err != nil {
+	members, err := source.Enumerate(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if transport.request.URL.String() != "http://192.168.1.1:80/rci/show/mws/member" {
+	if len(members) != 1 || members[0].Identity != "node-1" {
+		t.Fatalf("members = %#v", members)
+	}
+	if transport.request.URL.String() != "http://192.168.1.1:80/rci/" || transport.request.Method != http.MethodPost {
 		t.Fatalf("request URL = %s", transport.request.URL)
+	}
+	if string(transport.requestBody) != `[{"show":{"mws":{"member":{}}}}]` {
+		t.Fatalf("request body = %s", transport.requestBody)
 	}
 }
 
@@ -116,12 +123,26 @@ func (f *fakeSource) Enumerate(context.Context) ([]Member, error) {
 }
 
 type enumerationRoundTripper struct {
-	request  *http.Request
-	response *http.Response
+	request     *http.Request
+	requestBody []byte
+	response    *http.Response
 }
 
 func (r *enumerationRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
 	r.request = request
+	r.requestBody, _ = io.ReadAll(request.Body)
 
 	return r.response, nil
+}
+
+func TestParseMemberResponseAcceptsRawAndRciEnvelopedPayloads(t *testing.T) {
+	raw := []byte(`[{"cid":"node-1","mac":"aa:bb:cc:dd:ee:ff","ip":"192.168.1.2"}]`)
+	enveloped := []byte(`[ {"show":{"mws":{"member":` + string(raw) + `}}} ]`)
+
+	for _, data := range [][]byte{raw, enveloped} {
+		members, err := parseMemberResponse(data)
+		if err != nil || len(members) != 1 || members[0].Identity != "node-1" {
+			t.Fatalf("parseMemberResponse(%s) = %#v, %v", data, members, err)
+		}
+	}
 }

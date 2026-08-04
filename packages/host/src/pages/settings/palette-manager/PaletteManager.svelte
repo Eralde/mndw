@@ -33,13 +33,13 @@ let saved = $state(false);
 let pending = $state<PaletteTokenMap | null>(null);
 let warnings = $state<PaletteContrastWarning[]>([]);
 
-let importDisabled = $derived(
-  state === 'loading'
+let importDisabled = $derived.by(() => {
+  return state === 'loading'
     || state === 'importing'
     || state === 'previewing'
     || state === 'committing'
-    || state === 'resetting',
-);
+    || state === 'resetting';
+});
 let exportDisabled = $derived(state !== 'idle');
 let resetDisabled = $derived(state !== 'idle');
 

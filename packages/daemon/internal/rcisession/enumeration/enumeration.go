@@ -132,6 +132,8 @@ type HTTPSource struct {
 	MaxResponseBytes int64
 }
 
+const memberQueryBody = `[{"show":{"mws":{"member":{}}}}]`
+
 func (s HTTPSource) Enumerate(ctx context.Context) ([]Member, error) {
 	if s.ControllerToken == nil || s.ControllerToken() == "" {
 		return nil, fmt.Errorf("controller session unavailable")
@@ -144,10 +146,12 @@ func (s HTTPSource) Enumerate(ctx context.Context) ([]Member, error) {
 	if baseURL == "" {
 		baseURL = "http://127.0.0.1:79"
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/rci/show/mws/member", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/rci/", strings.NewReader(memberQueryBody))
 	if err != nil {
 		return nil, err
 	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-Ndma-Tkn", s.ControllerToken())
 	response, err := client.Do(request)
 	if err != nil {
@@ -165,5 +169,24 @@ func (s HTTPSource) Enumerate(ctx context.Context) ([]Member, error) {
 	if err != nil || int64(len(data)) > limit {
 		return nil, fmt.Errorf("controller enumeration response invalid")
 	}
+	return parseMemberResponse(data)
+}
+
+func parseMemberResponse(data []byte) ([]Member, error) {
+	var envelope []struct {
+		Show struct {
+			MWS struct {
+				Member json.RawMessage `json:"member"`
+			} `json:"mws"`
+		} `json:"show"`
+	}
+	if err := json.Unmarshal(data, &envelope); err == nil {
+		for _, item := range envelope {
+			if item.Show.MWS.Member != nil {
+				return ParseMembers(item.Show.MWS.Member)
+			}
+		}
+	}
+
 	return ParseMembers(data)
 }

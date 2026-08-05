@@ -2,10 +2,12 @@ package socket
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"strings"
 	"testing"
@@ -96,6 +98,42 @@ func TestConnectionHelloTargetsAndRequest(t *testing.T) {
 	}
 }
 
+func TestConnectionLogsRequestFailureWithoutRequestBody(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	handler := &fakeHandler{requestError: proxy.ErrTargetUnreachable}
+	done := make(chan error, 1)
+	go func() {
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-map-page", Allowed: true, Logger: logger}, handler)
+	}()
+
+	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "mws-map-page", "proto": 1}})
+	var hello map[string]any
+	readJSON(t, client, &hello)
+	writeJSON(t, client, map[string]any{
+		"id":     1,
+		"target": "node-1",
+		"method": "POST",
+		"path":   "rci/",
+		"body":   `{"authentication":{"token":{"generate":{"value":"DO_NOT_LOG"}}}}`,
+	})
+	var response map[string]any
+	readJSON(t, client, &response)
+	client.Close()
+	<-done
+
+	output := logs.String()
+	if !strings.Contains(output, "persistent RCI request failed") || !strings.Contains(output, "target=node-1") || !strings.Contains(output, "path=rci/") {
+		t.Fatalf("request log = %s", output)
+	}
+	if strings.Contains(output, "DO_NOT_LOG") || strings.Contains(output, "authentication") {
+		t.Fatalf("request log leaked body data: %s", output)
+	}
+}
+
 func TestConnectionRejectsPermissionAndOversizeFrame(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
@@ -137,18 +175,25 @@ func TestConnectionRejectsPermissionAndOversizeFrame(t *testing.T) {
 }
 
 type fakeHandler struct {
-	targets  []TargetSummary
-	response proxy.Response
+	targets      []TargetSummary
+	response     proxy.Response
+	requestError error
+	targetsError error
 }
 
 func (f *fakeHandler) Do(context.Context, proxy.Request) (proxy.Response, error) {
+	if f.requestError != nil {
+		return proxy.Response{}, f.requestError
+	}
 	if f.response.Status == 0 {
 		f.response = proxy.Response{Status: 200, Body: []byte(`{}`)}
 	}
 	return f.response, nil
 }
 
-func (f *fakeHandler) Targets(context.Context) ([]TargetSummary, error) { return f.targets, nil }
+func (f *fakeHandler) Targets(context.Context) ([]TargetSummary, error) {
+	return f.targets, f.targetsError
+}
 
 func writeJSON(t *testing.T, connection net.Conn, value any) {
 	t.Helper()

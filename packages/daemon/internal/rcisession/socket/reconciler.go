@@ -46,6 +46,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, bindings []Binding, sessionP
 			continue
 		}
 		_ = server.Close()
+		if r.config.Logger != nil {
+			r.config.Logger.Info("persistent RCI socket binding removed", "plugin", pluginID, "reason", "reconcile")
+		}
 		r.mu.Lock()
 		delete(r.servers, pluginID)
 		r.mu.Unlock()
@@ -59,6 +62,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, bindings []Binding, sessionP
 		config.Allowed = true
 		server := NewServer(binding.Path, config, r.handler)
 		if err := server.Start(ctx); err != nil {
+			if r.config.Logger != nil {
+				r.config.Logger.Error("persistent RCI socket start failed", "plugin", pluginID, "path", binding.Path, "reason", "listen-failed")
+			}
 			return err
 		}
 		r.mu.Lock()

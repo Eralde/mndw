@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,26 +21,47 @@ import (
 )
 
 type fakePersistentSource struct {
-	sessions []persistent.Session
+	sessions    []persistent.Session
+	diagnostics persistent.Diagnostics
 }
 
 func (f fakePersistentSource) Run(context.Context) {}
 func (f fakePersistentSource) Snapshot() []persistent.Session {
 	return append([]persistent.Session(nil), f.sessions...)
 }
+func (f fakePersistentSource) Diagnostics() persistent.Diagnostics { return f.diagnostics }
 
 type testClock struct{ now time.Time }
 
 func (c testClock) Now() time.Time { return c.now }
 
 type persistentRequester struct {
+	mu        sync.Mutex
 	requests  []persistent.Request
 	responses []persistent.Response
 }
 
-func (r *persistentRequester) Do(_ context.Context, request persistent.Request) (persistent.Response, error) {
+type batchPersistentRequester struct {
+	requests []persistent.Request
+	response persistent.Response
+}
+
+func (r *batchPersistentRequester) Do(_ context.Context, request persistent.Request) (persistent.Response, error) {
 	r.requests = append(r.requests, request)
-	return r.responses[len(r.requests)-1], nil
+	return r.response, nil
+}
+
+func (r *persistentRequester) Do(_ context.Context, request persistent.Request) (persistent.Response, error) {
+	r.mu.Lock()
+	r.requests = append(r.requests, request)
+	r.mu.Unlock()
+	if strings.Contains(string(request.Body), `"cpu"`) {
+		return r.responses[1], nil
+	}
+	if strings.Contains(string(request.Body), `"memory"`) {
+		return r.responses[2], nil
+	}
+	return r.responses[0], nil
 }
 
 func TestNodesResponseTracksSuccessfulRefreshAndUsesUTC(t *testing.T) {
@@ -197,38 +219,97 @@ func TestNodesResponseIncludesPersistentTelemetryWithoutCredentials(t *testing.T
 
 func TestPersistentTelemetryPollUsesDeviceInfoQueries(t *testing.T) {
 	service := New(config.Config{})
-	requester := &persistentRequester{responses: []persistent.Response{
-		{Status: http.StatusOK, Body: []byte(`[ {"show":{"system":{"uptime":42,"cpuload":27,"memtotal":1000,"memory":"610/1024"}}} ]`)},
-		{Status: http.StatusOK, Body: []byte(`[ {"show":{"system":{"rrd":{"cpu":{"data":[{"t":1,"v":27}]}}}}} ]`)},
-		{Status: http.StatusOK, Body: []byte(`[ {"show":{"system":{"rrd":{"memory":{"data":[{"t":1,"v":610}]}}}}} ]`)},
-	}}
+	requester := &batchPersistentRequester{response: persistent.Response{Status: http.StatusOK, Body: []byte(`[
+		{"show":{"system":{"uptime":42,"cpuload":27,"memtotal":1000,"memory":"610/1024"}}},
+		{"show":{"system":{"rrd":{"cpu":{"data":[{"t":1,"v":27}]}}}}},
+		{"show":{"system":{"rrd":{"memory":{"data":[{"t":1,"v":610}]}}}}}
+	]`)}}
 
 	if err := service.pollPersistentTelemetry(context.Background(), persistent.Target{Identity: "cid-1"}, requester); err != nil {
 		t.Fatal(err)
 	}
-	if len(requester.requests) != 3 {
-		t.Fatalf("requests = %#v, want three requests", requester.requests)
+	if len(requester.requests) != 1 {
+		t.Fatalf("requests = %#v, want one batched request", requester.requests)
 	}
 
-	wantQueries := []map[string]any{
-		{"show": map[string]any{"system": map[string]any{}}},
-		{"show": map[string]any{"system": map[string]any{"rrd": map[string]any{"cpu": map[string]any{"detail": float64(0), "attribute": "avg"}}}}},
-		{"show": map[string]any{"system": map[string]any{"rrd": map[string]any{"memory": map[string]any{"detail": float64(0), "attribute": "used"}}}}},
+	wantQueries := map[string]map[string]any{
+		"system": {"show": map[string]any{"system": map[string]any{}}},
+		"cpu":    {"show": map[string]any{"system": map[string]any{"rrd": map[string]any{"cpu": map[string]any{"detail": float64(0), "attribute": "avg"}}}}},
+		"memory": {"show": map[string]any{"system": map[string]any{"rrd": map[string]any{"memory": map[string]any{"detail": float64(0), "attribute": "used"}}}}},
 	}
-	for index, request := range requester.requests {
-		if request.Method != http.MethodPost || request.Path != "rci/" {
-			t.Fatalf("request %d = %#v, want POST rci/", index, request)
-		}
-		var envelope []map[string]any
-		if err := json.Unmarshal(request.Body, &envelope); err != nil {
-			t.Fatalf("request %d body: %v", index, err)
-		}
-		if !reflect.DeepEqual(envelope[0], wantQueries[index]) {
-			t.Fatalf("request %d query = %#v, want %#v", index, envelope[0], wantQueries[index])
-		}
+	request := requester.requests[0]
+	if request.Method != http.MethodPost || request.Path != "rci/" {
+		t.Fatalf("request = %#v, want POST rci/", request)
+	}
+	var envelope []map[string]any
+	if err := json.Unmarshal(request.Body, &envelope); err != nil {
+		t.Fatalf("request body: %v", err)
+	}
+	if len(envelope) != 3 || !reflect.DeepEqual(envelope[0], wantQueries["system"]) || !reflect.DeepEqual(envelope[1], wantQueries["cpu"]) || !reflect.DeepEqual(envelope[2], wantQueries["memory"]) {
+		t.Fatalf("batched query = %#v, want system/cpu/memory queries", envelope)
 	}
 	if sample, ok := service.telemetry.Persistent("cid-1", time.Now()); !ok || sample.System.CPULoad != 27 || len(sample.CPURRD.Data) != 1 || len(sample.MemoryRRD.Data) != 1 {
 		t.Fatalf("stored sample = %#v, ok = %v", sample, ok)
+	}
+}
+
+func TestPersistentTelemetryPollUsesSingleRequest(t *testing.T) {
+	service := New(config.Config{})
+	requester := &batchPersistentRequester{response: persistent.Response{Status: http.StatusServiceUnavailable}}
+
+	if err := service.pollPersistentTelemetry(context.Background(), persistent.Target{Identity: "cid-1"}, requester); err == nil {
+		t.Fatal("poll error = nil, want request failure")
+	}
+	if len(requester.requests) != 1 {
+		t.Fatalf("requests = %d, want one batched request", len(requester.requests))
+	}
+}
+
+func TestPersistentTelemetryDiagnosticsTrackEachPhase(t *testing.T) {
+	client := persistent.New(persistent.Config{PluginID: "mws-map-page"})
+	service := New(config.Config{})
+	service.SetPersistentSource(client)
+	requester := &batchPersistentRequester{response: persistent.Response{Status: http.StatusServiceUnavailable}}
+
+	if err := service.pollPersistentTelemetry(context.Background(), persistent.Target{Identity: "cid-1"}, requester); err == nil {
+		t.Fatal("poll error = nil, want partial telemetry failure")
+	}
+	if _, ok := service.telemetry.Persistent("cid-1", time.Now()); ok {
+		t.Fatal("partial telemetry was stored")
+	}
+
+	diagnostics := client.Diagnostics()
+	if len(diagnostics.Targets) != 1 {
+		t.Fatalf("target diagnostics = %#v, want one target", diagnostics.Targets)
+	}
+	phase := diagnostics.Targets[0].Telemetry
+	if phase.CPURRD.LastError == nil || phase.CPURRD.LastAttemptAt == nil || phase.MemoryRRD.LastError == nil || phase.MemoryRRD.LastAttemptAt == nil {
+		t.Fatalf("telemetry phase diagnostics = %#v", phase)
+	}
+}
+
+func TestDiagnosticsSnapshotIncludesPersistentConfiguration(t *testing.T) {
+	service := New(config.Config{RuntimeDir: t.TempDir()})
+	snapshot := service.DiagnosticsSnapshot()
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	state, ok := envelope["persistent"].(map[string]any)
+	if !ok {
+		t.Fatalf("persistent diagnostics = %#v", envelope["persistent"])
+	}
+	if state["pollInterval"] != "5s" || state["ioTimeout"] != "5s" || state["telemetryPollEnabled"] != true {
+		t.Fatalf("persistent configuration = %#v", state)
+	}
+	for _, field := range []string{"lastTargetsAt", "lastTelemetryAt", "lastError"} {
+		if value, present := state[field]; !present || value != nil {
+			t.Fatalf("persistent %s = %#v, present = %v; want null", field, value, present)
+		}
 	}
 }
 
@@ -287,6 +368,38 @@ func TestDiagnosticsSnapshotIncludesLocalStateAndBoundsRrdData(t *testing.T) {
 		if len(series) != 60 || series[0].(map[string]any)["v"] != float64(15) || series[59].(map[string]any)["v"] != float64(74) {
 			t.Fatalf("%s = %#v", field, series)
 		}
+	}
+}
+
+func TestDiagnosticsSnapshotIncludesPersistentClientState(t *testing.T) {
+	service := New(config.Config{RuntimeDir: t.TempDir()})
+	when := time.Date(2026, time.August, 5, 6, 20, 0, 0, time.UTC)
+	service.SetPersistentSource(fakePersistentSource{diagnostics: persistent.Diagnostics{
+		Configured:      true,
+		PluginIDPresent: true,
+		SocketPath:      "/run/mws-map-page/rci-session.sock",
+		Connected:       true,
+		TargetCount:     1,
+		SessionCount:    1,
+		LastTargetsAt:   &when,
+		LastTelemetryAt: &when,
+	}})
+
+	snapshot := service.DiagnosticsSnapshot()
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	state, ok := envelope["persistent"].(map[string]any)
+	if !ok {
+		t.Fatalf("persistent diagnostics = %#v", envelope["persistent"])
+	}
+	if state["configured"] != true || state["pluginIdPresent"] != true || state["socketPath"] != "/run/mws-map-page/rci-session.sock" || state["connected"] != true || state["targetCount"] != float64(1) || state["sessionCount"] != float64(1) {
+		t.Fatalf("persistent diagnostics = %#v", state)
 	}
 }
 

@@ -56,6 +56,11 @@ func (realClock) Now() time.Time { return time.Now() }
 type PersistentSource interface {
 	Run(context.Context)
 	Snapshot() []persistent.Session
+	Diagnostics() persistent.Diagnostics
+}
+
+type persistentTelemetryRecorder interface {
+	RecordTelemetryPhase(identity, phase string, status int, err error)
 }
 
 type OperationError struct {
@@ -109,6 +114,8 @@ func New(cfg config.Config) *Service {
 		service.persistent = persistent.New(persistent.Config{
 			Path:          filepath.Join(runtimeDir, "rci-session.sock"),
 			PluginID:      os.Getenv("MNDW_PLUGIN_ID"),
+			PollInterval:  5 * time.Second,
+			IOTimeout:     cfg.IOTimeout,
 			TelemetryPoll: service.pollPersistentTelemetry,
 		})
 	}
@@ -171,6 +178,7 @@ func (s *Service) DiagnosticsSnapshot() map[string]any {
 		"lastRefreshAt":      s.lastRefreshSnapshot(),
 		"lastError":          s.lastErrorSnapshot(),
 		"nodes":              s.nodesSnapshot(),
+		"persistent":         s.persistentDiagnosticsSnapshot(),
 		"persistentSessions": s.diagnosticsPersistentSessionsSnapshot(),
 	}
 }
@@ -227,31 +235,59 @@ func (s *Service) SetPersistentSource(source PersistentSource) {
 }
 
 func (s *Service) pollPersistentTelemetry(ctx context.Context, target persistent.Target, requester persistent.Requester) error {
-	queries := []struct {
-		path string
-		data map[string]any
-	}{
-		{path: "show.system"},
-		{path: "show.system.rrd.cpu", data: map[string]any{"detail": 0, "attribute": "avg"}},
-		{path: "show.system.rrd.memory", data: map[string]any{"detail": 0, "attribute": "used"}},
+	type telemetryQuery struct {
+		phase string
+		path  string
+		data  map[string]any
+	}
+	queries := []telemetryQuery{
+		{phase: "system", path: "show.system"},
+		{phase: "cpuRrd", path: "show.system.rrd.cpu", data: map[string]any{"detail": 0, "attribute": "avg"}},
+		{phase: "memoryRrd", path: "show.system.rrd.memory", data: map[string]any{"detail": 0, "attribute": "used"}},
+	}
+	queryBatch := make([]map[string]any, 0, len(queries))
+	for _, query := range queries {
+		item := make(map[string]any)
+		if query.data == nil {
+			setQueryPath(item, query.path)
+		} else {
+			setQueryValue(item, query.path, query.data)
+		}
+		queryBatch = append(queryBatch, item)
+	}
+	requestBody, _ := json.Marshal(queryBatch)
+	response, err := requester.Do(ctx, persistent.Request{Method: http.MethodPost, Path: "rci/", Body: requestBody})
+	for _, query := range queries {
+		s.recordPersistentTelemetryPhase(target.Identity, query.phase, response.Status, err)
+	}
+	if err != nil {
+		return fmt.Errorf("persistent telemetry request failed")
+	}
+	if response.Status != http.StatusOK {
+		return fmt.Errorf("persistent telemetry request returned status %d", response.Status)
 	}
 	responses := make([][]byte, len(queries))
 	for index, query := range queries {
-		response, err := requester.Do(ctx, persistent.Request{Method: http.MethodPost, Path: "rci/", Body: buildRciQuery(query.path, query.data)})
-		if err != nil || response.Status != http.StatusOK {
-			continue
-		}
 		responses[index] = extractQueryValue(response.Body, query.path)
-	}
-	if len(responses[0]) == 0 {
-		return fmt.Errorf("persistent system telemetry unavailable")
+		if len(responses[index]) == 0 {
+			return fmt.Errorf("persistent %s telemetry response empty", query.phase)
+		}
 	}
 	sample, err := telemetry.ParsePersistentTelemetry(responses[0], responses[1], responses[2], s.clock.Now().UTC())
 	if err != nil {
+		s.recordPersistentTelemetryPhase(target.Identity, "system", http.StatusOK, err)
 		return err
 	}
 	s.telemetry.StorePersistent(target.Identity, sample)
 	return nil
+}
+
+func (s *Service) recordPersistentTelemetryPhase(identity, phase string, status int, err error) {
+	recorder, ok := s.persistent.(persistentTelemetryRecorder)
+	if !ok {
+		return
+	}
+	recorder.RecordTelemetryPhase(identity, phase, status, err)
 }
 
 func (s *Service) Snapshot(ctx context.Context, nodeID string) (any, error) {
@@ -470,6 +506,13 @@ func (s *Service) persistentSessionsSnapshot() []telemetry.PersistentSession {
 	return result
 }
 
+func (s *Service) persistentDiagnosticsSnapshot() persistent.Diagnostics {
+	if s.persistent == nil {
+		return persistent.Diagnostics{}
+	}
+	return s.persistent.Diagnostics()
+}
+
 const diagnosticsMaxRRDTicks = 60
 
 func (s *Service) diagnosticsPersistentSessionsSnapshot() []telemetry.PersistentSession {
@@ -554,17 +597,6 @@ func setQueryValue(root map[string]any, path string, value any) {
 		current[part] = next
 		current = next
 	}
-}
-
-func buildRciQuery(path string, data map[string]any) []byte {
-	query := make(map[string]any)
-	if data == nil {
-		setQueryPath(query, path)
-	} else {
-		setQueryValue(query, path, data)
-	}
-	body, _ := json.Marshal([]map[string]any{query})
-	return body
 }
 
 func extractQueryValue(data []byte, path string) []byte {

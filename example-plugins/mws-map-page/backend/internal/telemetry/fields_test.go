@@ -48,6 +48,18 @@ func TestParsePersistentTelemetryAllowsIndependentRrdFailures(t *testing.T) {
 	}
 }
 
+func TestParsePersistentTelemetryRejectsMalformedRrdResponse(t *testing.T) {
+	_, err := ParsePersistentTelemetry(
+		[]byte(`{"uptime":"42","cpuload":1,"memtotal":100,"memory":"10/100"}`),
+		[]byte(`{"data":{"unexpected":true}}`),
+		[]byte(`{"data":[{"t":1,"v":10}]}`),
+		time.Unix(100, 0).UTC(),
+	)
+	if err == nil {
+		t.Fatal("parse error = nil, want malformed CPU RRD response error")
+	}
+}
+
 func TestFieldAdapterUsesExplicitFixturePaths(t *testing.T) {
 	adapter := FieldAdapter{CPUPath: "system.cpu", MemoryUsedPath: "system.ram.used", MemoryTotalPath: "system.ram.total"}
 	sampledAt := time.Unix(100, 0)

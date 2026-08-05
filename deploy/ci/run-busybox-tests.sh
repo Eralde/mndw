@@ -8,10 +8,11 @@
 # internal/lifecycle/lifecycle.go), so these tests genuinely exercise it.
 #
 # Scope is a SUBSET by design: only the packages relevant to the sh-exec
-# path. Broaden the `go test` list below ONLY if a new package grows a
+# path. Broaden each package list below ONLY when a new package grows a
 # script-exec test. (internal/lifecycle has no test files today; it is here
 # for compile coverage, its behavior covered via cmd/mndwd's integration
-# suite.) opkg stays stubbed (test default). No -race (musl/CGO).
+# suite.) The mws-map-page lifecyclehooks package is included for its direct
+# stop-hook shell test. opkg stays stubbed (test default). No -race (musl/CGO).
 set -eu
 
 # Resolve the repo root from this script's own location so it works whether
@@ -24,3 +25,6 @@ cd "$repo_root/packages/daemon"
 
 go mod download
 go test ./cmd/mndwd/... ./internal/dispatch/... ./internal/lifecycle/...
+
+cd "$repo_root/example-plugins/mws-map-page/backend"
+go test ./internal/lifecyclehooks -run TestStopHookWaitsForProcess -count=1

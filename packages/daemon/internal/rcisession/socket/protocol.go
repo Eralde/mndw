@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ const ProtocolVersion = 1
 type Config struct {
 	PluginID     string
 	Allowed      bool
+	Logger       *slog.Logger
 	MaxLineBytes int
 	MaxInflight  int
 	IdleTimeout  time.Duration
@@ -94,6 +96,9 @@ func ServeConnection(ctx context.Context, connection net.Conn, config Config, ha
 	if err := write(map[string]any{"hello": map[string]any{"proto": ProtocolVersion, "ok": true}}); err != nil {
 		return err
 	}
+	if config.Logger != nil {
+		config.Logger.Debug("persistent RCI socket hello accepted", "plugin", config.PluginID)
+	}
 
 	semaphore := make(chan struct{}, config.MaxInflight)
 	var workers sync.WaitGroup
@@ -124,16 +129,24 @@ func ServeConnection(ctx context.Context, connection net.Conn, config Config, ha
 			if frame.Op == "targets" {
 				targets, err := handler.Targets(connectionContext)
 				if err != nil {
+					logRequestError(config.Logger, "persistent RCI target enumeration failed", config.PluginID, protocolErrorCode(err))
 					_ = writeError(write, frame.ID, err)
 					return
+				}
+				if config.Logger != nil {
+					config.Logger.Debug("persistent RCI targets enumerated", "plugin", config.PluginID, "count", len(targets))
 				}
 				_ = write(map[string]any{"id": frame.ID, "targets": targets})
 				return
 			}
 			response, err := handler.Do(connectionContext, proxy.Request{Target: frame.Target, Method: frame.Method, Path: frame.Path, Body: frame.Body})
 			if err != nil {
+				logRequestError(config.Logger, "persistent RCI request failed", config.PluginID, protocolErrorCode(err), "target", frame.Target, "method", frame.Method, "path", frame.Path)
 				_ = writeError(write, frame.ID, err)
 				return
+			}
+			if config.Logger != nil {
+				config.Logger.Debug("persistent RCI request completed", "plugin", config.PluginID, "target", frame.Target, "method", frame.Method, "path", frame.Path, "status", response.Status)
 			}
 			body := json.RawMessage(response.Body)
 			if !json.Valid(body) {
@@ -145,6 +158,11 @@ func ServeConnection(ctx context.Context, connection net.Conn, config Config, ha
 }
 
 func writeError(write func(any) error, id int64, err error) error {
+	code := protocolErrorCode(err)
+	return write(map[string]any{"id": id, "error": wireError{Code: code, Message: code}})
+}
+
+func protocolErrorCode(err error) string {
 	code := "internal-error"
 	switch {
 	case errors.Is(err, proxy.ErrBadRequest):
@@ -160,7 +178,19 @@ func writeError(write func(any) error, id int64, err error) error {
 	case errors.Is(err, proxy.ErrTargetUnreachable):
 		code = "target-unreachable"
 	}
-	return write(map[string]any{"id": id, "error": wireError{Code: code, Message: code}})
+	return code
+}
+
+func logRequestError(logger *slog.Logger, message, plugin, code string, attributes ...any) {
+	if logger == nil {
+		return
+	}
+	level := slog.LevelWarn
+	if code == "no-session-for-target" || code == "unsupported-firmware" {
+		level = slog.LevelDebug
+	}
+	args := append([]any{"plugin", plugin, "code", code}, attributes...)
+	logger.Log(context.Background(), level, message, args...)
 }
 
 type lineReader struct {

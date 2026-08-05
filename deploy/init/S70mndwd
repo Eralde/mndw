@@ -7,6 +7,44 @@ KEY_DIR="/opt/var/lib/mndw-secrets"
 PLUGIN_RUNTIME_DIR="$DATA_DIR/plugin-runtime"
 LOG_FILE="/opt/var/log/mndwd.log"
 
+wait_for_exit() {
+  wait_pid="$1"
+  wait_seconds="$2"
+  while [ "$wait_seconds" -gt 0 ] && kill -0 "$wait_pid" 2>/dev/null; do
+    sleep 1
+    wait_seconds=$((wait_seconds - 1))
+  done
+  ! kill -0 "$wait_pid" 2>/dev/null
+}
+
+reap_mwsd() {
+  reap_failed=0
+  for mwsd_pidfile in "$PLUGIN_RUNTIME_DIR"/*/mwsd.pid; do
+    [ -f "$mwsd_pidfile" ] || continue
+    mwsd_pid=$(cat "$mwsd_pidfile" 2>/dev/null || true)
+    [ -n "$mwsd_pid" ] || continue
+    mwsd_comm=$(cat "/proc/$mwsd_pid/comm" 2>/dev/null || true)
+    [ "$mwsd_comm" = "mwsd" ] || continue
+    [ "$(cat "$mwsd_pidfile" 2>/dev/null || true)" = "$mwsd_pid" ] || continue
+
+    kill "$mwsd_pid" 2>/dev/null || true
+    if ! wait_for_exit "$mwsd_pid" 10; then
+      current_mwsd_pid=$(cat "$mwsd_pidfile" 2>/dev/null || true)
+      if [ "$current_mwsd_pid" = "$mwsd_pid" ]; then
+        kill -KILL "$mwsd_pid" 2>/dev/null || true
+        wait_for_exit "$mwsd_pid" 2
+      fi
+    fi
+    if kill -0 "$mwsd_pid" 2>/dev/null; then
+      reap_failed=1
+      continue
+    fi
+    mwsd_runtime_dir=${mwsd_pidfile%/mwsd.pid}
+    rm -f "$mwsd_pidfile" "$mwsd_runtime_dir/mwsd.sock"
+  done
+  return "$reap_failed"
+}
+
 start() {
   mkdir -p /opt/var/run "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
   chmod 700 "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
@@ -43,16 +81,28 @@ EOF
 
 stop() {
   if [ ! -f "$PID_FILE" ]; then
-    return 0
+    reap_mwsd
+    return $?
   fi
-  pid="$(cat "$PID_FILE")"
+  pid="$(cat "$PID_FILE" 2>/dev/null || true)"
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
     kill "$pid" 2>/dev/null || true
+    if ! wait_for_exit "$pid" 60; then
+      current_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+      if [ "$current_pid" = "$pid" ]; then
+        kill -KILL "$pid" 2>/dev/null || true
+        wait_for_exit "$pid" 2
+      fi
+    fi
+  fi
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    return 1
   fi
   rm -f "$PID_FILE"
+  reap_mwsd
 }
 
-restart() { stop; start; }
+restart() { stop || return 1; start; }
 
 case "$1" in
   start)   start ;;

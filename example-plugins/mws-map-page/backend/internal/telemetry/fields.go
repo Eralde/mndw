@@ -21,8 +21,14 @@ func ParsePersistentTelemetry(systemData, cpuData, memoryData []byte, sampledAt 
 		return PersistentTelemetry{}, fmt.Errorf("decode system telemetry: %w", err)
 	}
 
-	cpu, _ := parseRrdResponse(cpuData)
-	memory, _ := parseRrdResponse(memoryData)
+	cpu, err := parseRrdResponse(cpuData)
+	if err != nil {
+		return PersistentTelemetry{}, fmt.Errorf("decode CPU RRD response: %w", err)
+	}
+	memory, err := parseRrdResponse(memoryData)
+	if err != nil {
+		return PersistentTelemetry{}, fmt.Errorf("decode memory RRD response: %w", err)
+	}
 	return PersistentTelemetry{SampledAt: sampledAt, System: system, CPURRD: cpu, MemoryRRD: memory}, nil
 }
 

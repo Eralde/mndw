@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -96,6 +97,103 @@ func TestClientClearsStateWhenSocketCloses(t *testing.T) {
 	cancel()
 }
 
+func TestClientReconnectsAfterServerRestart(t *testing.T) {
+	var attemptsMu sync.Mutex
+	attempts := 0
+	firstTargets := make(chan struct{}, 1)
+	client := New(Config{
+		PluginID:     "mws-map-page",
+		PollInterval: 5 * time.Millisecond,
+		RetryDelay:   5 * time.Millisecond,
+		Dial: func(context.Context) (net.Conn, error) {
+			clientConn, serverConn := net.Pipe()
+			attemptsMu.Lock()
+			attempts++
+			attempt := attempts
+			attemptsMu.Unlock()
+			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+				if frame.Op == "targets" {
+					if attempt == 1 {
+						select {
+						case firstTargets <- struct{}{}:
+						default:
+						}
+					}
+					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+				}
+				return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+			})
+			if attempt == 1 {
+				go func() {
+					<-firstTargets
+					time.Sleep(time.Millisecond)
+					_ = serverConn.Close()
+				}()
+			}
+			return clientConn, nil
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go client.Run(ctx)
+
+	waitFor(t, func() bool {
+		diagnostics := client.Diagnostics()
+		return diagnostics.ConnectionAttempts >= 2 && diagnostics.ReconnectCount >= 1 && diagnostics.Connected && diagnostics.TargetCount == 1 && diagnostics.SessionCount == 1
+	})
+	if sessions := client.Snapshot(); len(sessions) != 1 || !sessions[0].Live {
+		t.Fatalf("sessions after reconnect = %#v, want one live session", sessions)
+	}
+}
+
+func TestClientBoundsStalledTelemetryRequest(t *testing.T) {
+	telemetryFinished := make(chan error, 1)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseConnection := func() {
+		releaseOnce.Do(func() { close(release) })
+	}
+	defer releaseConnection()
+	client := New(Config{
+		PluginID:     "mws-map-page",
+		PollInterval: time.Hour,
+		IOTimeout:    20 * time.Millisecond,
+		TelemetryPoll: func(ctx context.Context, target Target, requester Requester) error {
+			_, err := requester.Do(ctx, Request{Method: "POST", Path: "rci/", Body: []byte(`{"query":"cpu"}`)})
+			telemetryFinished <- err
+			return err
+		},
+		Dial: func(context.Context) (net.Conn, error) {
+			clientConn, serverConn := net.Pipe()
+			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+				if frame.Op == "targets" {
+					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+				}
+				if frame.Method == "GET" && frame.Path == "rci/show/version" {
+					return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+				}
+				<-release
+				return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+			})
+			return clientConn, nil
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go client.Run(ctx)
+
+	select {
+	case err := <-telemetryFinished:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("telemetry error = %v, want deadline exceeded", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("stalled telemetry request was not bounded")
+	}
+}
+
 func TestClientTreatsUnavailableSocketAsEmpty(t *testing.T) {
 	client := New(Config{Dial: func(context.Context) (net.Conn, error) {
 		return nil, errors.New("socket absent")
@@ -105,6 +203,221 @@ func TestClientTreatsUnavailableSocketAsEmpty(t *testing.T) {
 	client.Run(ctx)
 	if sessions := client.Snapshot(); len(sessions) != 0 {
 		t.Fatalf("sessions = %#v, want empty", sessions)
+	}
+}
+
+func TestClientDiagnosticsReportsSocketDialFailure(t *testing.T) {
+	client := New(Config{
+		PluginID: "mws-map-page",
+		Path:     "/run/mws-map-page/rci-session.sock",
+		Dial: func(context.Context) (net.Conn, error) {
+			return nil, errors.New("socket absent")
+		},
+		RetryDelay: 5 * time.Millisecond,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	client.Run(ctx)
+
+	diagnostics := client.Diagnostics()
+	if !diagnostics.PluginIDPresent || diagnostics.SocketPath != "/run/mws-map-page/rci-session.sock" {
+		t.Fatalf("configuration diagnostics = %#v", diagnostics)
+	}
+	if diagnostics.Connected || diagnostics.TargetCount != 0 || diagnostics.SessionCount != 0 {
+		t.Fatalf("connection diagnostics = %#v", diagnostics)
+	}
+	if diagnostics.LastError == nil || diagnostics.LastError.Phase != "connection" || diagnostics.LastError.Code != "socket-unavailable" {
+		t.Fatalf("last error = %#v", diagnostics.LastError)
+	}
+	encoded, err := json.Marshal(diagnostics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "socket absent") {
+		t.Fatalf("diagnostics leaked transport error: %s", encoded)
+	}
+}
+
+func TestClientDiagnosticsReportsTargetProbeFailure(t *testing.T) {
+	client := New(Config{
+		PluginID:     "mws-map-page",
+		PollInterval: time.Hour,
+		Dial: func(context.Context) (net.Conn, error) {
+			clientConn, serverConn := net.Pipe()
+			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+				if frame.Op == "targets" {
+					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+				}
+				return wireFrame{ID: frame.ID, Error: &wireError{Code: "target-unreachable", Message: "target-unreachable"}}
+			})
+			return clientConn, nil
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go client.Run(ctx)
+
+	waitFor(t, func() bool {
+		diagnostics := client.Diagnostics()
+		return diagnostics.LastError != nil && diagnostics.LastError.Phase == "target-probe"
+	})
+
+	diagnostics := client.Diagnostics()
+	if !diagnostics.Connected || diagnostics.TargetCount != 1 || diagnostics.SessionCount != 0 {
+		t.Fatalf("target diagnostics = %#v", diagnostics)
+	}
+	if diagnostics.LastError.Identity != "cid-1" || diagnostics.LastError.Code != "target-unreachable" {
+		t.Fatalf("last error = %#v", diagnostics.LastError)
+	}
+}
+
+func TestClientDiagnosticsReportsTelemetryFailure(t *testing.T) {
+	client := New(Config{
+		PluginID:     "mws-map-page",
+		PollInterval: time.Hour,
+		TelemetryPoll: func(context.Context, Target, Requester) error {
+			return errors.New("response parse failed")
+		},
+		Dial: func(context.Context) (net.Conn, error) {
+			clientConn, serverConn := net.Pipe()
+			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+				if frame.Op == "targets" {
+					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+				}
+				return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+			})
+			return clientConn, nil
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go client.Run(ctx)
+
+	waitFor(t, func() bool {
+		diagnostics := client.Diagnostics()
+		return diagnostics.LastError != nil && diagnostics.LastError.Phase == "telemetry"
+	})
+
+	diagnostics := client.Diagnostics()
+	if diagnostics.TargetCount != 1 || diagnostics.SessionCount != 1 || diagnostics.LastTelemetryAt != nil {
+		t.Fatalf("telemetry diagnostics = %#v", diagnostics)
+	}
+	if diagnostics.LastError.Identity != "cid-1" || diagnostics.LastError.Code != "telemetry-failed" {
+		t.Fatalf("last error = %#v", diagnostics.LastError)
+	}
+	encoded, err := json.Marshal(diagnostics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "response parse failed") {
+		t.Fatalf("diagnostics leaked telemetry error: %s", encoded)
+	}
+}
+
+func TestClientDiagnosticsTracksTargetLifecycleDetails(t *testing.T) {
+	client := New(Config{PluginID: "mws-map-page"})
+	working := Target{Identity: "cid-1", Name: "Working", MAC: "aa:bb:cc:dd:ee:ff"}
+	missing := Target{Identity: "cid-2", Name: "Missing", MAC: "11:22:33:44:55:66"}
+	if err := client.updateTargets([]Target{working, missing}); err != nil {
+		t.Fatal(err)
+	}
+	client.applyResult(working, wireFrame{Status: 200}, nil)
+	client.applyResult(missing, wireFrame{}, &remoteError{code: "no-session-for-target"})
+
+	diagnostics := client.Diagnostics()
+	encoded, err := json.Marshal(diagnostics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(encoded, &state); err != nil {
+		t.Fatal(err)
+	}
+	targets, ok := state["targets"].([]any)
+	if !ok || len(targets) != 2 {
+		t.Fatalf("targets = %#v, want two target diagnostics", state["targets"])
+	}
+	workingState := targetDiagnosticMap(t, targets, "cid-1")
+	if workingState["present"] != true || workingState["sessionPresent"] != true || workingState["live"] != true || workingState["lastProbeStatus"] != float64(200) {
+		t.Fatalf("working target diagnostics = %#v", workingState)
+	}
+	missingState := targetDiagnosticMap(t, targets, "cid-2")
+	if missingState["present"] != true || missingState["sessionPresent"] != false || missingState["sessionReason"] != "evicted:no-session-for-target" {
+		t.Fatalf("missing target diagnostics = %#v", missingState)
+	}
+
+	client.clear()
+	diagnostics = client.Diagnostics()
+	encoded, err = json.Marshal(diagnostics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(encoded, &state); err != nil {
+		t.Fatal(err)
+	}
+	workingState = targetDiagnosticMap(t, state["targets"].([]any), "cid-1")
+	if workingState["present"] != false || workingState["sessionPresent"] != false || workingState["sessionReason"] != "connection-reset" {
+		t.Fatalf("reset target diagnostics = %#v", workingState)
+	}
+	change, ok := state["lastTargetChange"].(map[string]any)
+	if !ok || change["reason"] != "connection-reset" {
+		t.Fatalf("last target change = %#v", state["lastTargetChange"])
+	}
+}
+
+func TestClientDiagnosticsTracksConnectionLifecycle(t *testing.T) {
+	client := New(Config{
+		PluginID:   "mws-map-page",
+		RetryDelay: 5 * time.Millisecond,
+		Dial: func(context.Context) (net.Conn, error) {
+			return nil, errors.New("socket absent")
+		},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	client.Run(ctx)
+
+	diagnostics := client.Diagnostics()
+	if diagnostics.ConnectionAttempts == 0 || diagnostics.LastDisconnectedAt == nil || diagnostics.LastDisconnectReason == "" {
+		t.Fatalf("connection lifecycle diagnostics = %#v", diagnostics)
+	}
+}
+
+func TestClientDiagnosticsTracksTelemetryPhases(t *testing.T) {
+	client := New(Config{PluginID: "mws-map-page"})
+	target := Target{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}
+	if err := client.updateTargets([]Target{target}); err != nil {
+		t.Fatal(err)
+	}
+	client.RecordTelemetryPhase(target.Identity, "cpuRrd", 503, errors.New("secret transport detail"))
+	client.RecordTelemetryPhase(target.Identity, "memoryRrd", 200, nil)
+
+	diagnostics := client.Diagnostics()
+	encoded, err := json.Marshal(diagnostics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "secret transport detail") {
+		t.Fatalf("diagnostics leaked telemetry error: %s", encoded)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(encoded, &state); err != nil {
+		t.Fatal(err)
+	}
+	targetState := targetDiagnosticMap(t, state["targets"].([]any), target.Identity)
+	telemetryState, ok := targetState["telemetry"].(map[string]any)
+	if !ok {
+		t.Fatalf("telemetry diagnostics = %#v", targetState["telemetry"])
+	}
+	cpu, ok := telemetryState["cpuRrd"].(map[string]any)
+	if !ok || cpu["lastError"] == nil || cpu["lastAttemptAt"] == nil {
+		t.Fatalf("cpu telemetry diagnostics = %#v", telemetryState["cpuRrd"])
+	}
+	memory, ok := telemetryState["memoryRrd"].(map[string]any)
+	if !ok || memory["lastSuccessAt"] == nil || memory["lastError"] != nil {
+		t.Fatalf("memory telemetry diagnostics = %#v", telemetryState["memoryRrd"])
 	}
 }
 
@@ -188,6 +501,10 @@ func TestClientRunsTelemetryPollThroughAuthenticatedRequester(t *testing.T) {
 			t.Fatalf("request %d missing", index)
 		}
 	}
+	diagnostics := client.Diagnostics()
+	if !diagnostics.Connected || diagnostics.TargetCount != 1 || diagnostics.SessionCount != 1 || diagnostics.LastTelemetryAt == nil {
+		t.Fatalf("successful telemetry diagnostics = %#v", diagnostics)
+	}
 }
 
 func serveTestConnection(t *testing.T, connection net.Conn, respond func(wireFrame) wireFrame) {
@@ -232,4 +549,16 @@ func waitFor(t *testing.T, predicate func() bool) {
 		time.Sleep(2 * time.Millisecond)
 	}
 	t.Fatal("condition did not become true")
+}
+
+func targetDiagnosticMap(t *testing.T, targets []any, identity string) map[string]any {
+	t.Helper()
+	for _, item := range targets {
+		target, ok := item.(map[string]any)
+		if ok && target["identity"] == identity {
+			return target
+		}
+	}
+	t.Fatalf("target %q not found in %#v", identity, targets)
+	return nil
 }

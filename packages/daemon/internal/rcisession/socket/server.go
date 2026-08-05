@@ -56,6 +56,9 @@ func (s *Server) Start(ctx context.Context) error {
 	s.cancel = cancel
 	s.closing = false
 	s.mu.Unlock()
+	if s.config.Logger != nil {
+		s.config.Logger.Info("persistent RCI socket started", "plugin", s.config.PluginID, "path", s.path)
+	}
 	s.wait.Add(1)
 	go s.acceptLoop(connectionContext, listener)
 	return nil
@@ -86,6 +89,9 @@ func (s *Server) Close() error {
 	if err := os.Remove(s.path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	if s.config.Logger != nil {
+		s.config.Logger.Info("persistent RCI socket stopped", "plugin", s.config.PluginID, "path", s.path)
+	}
 	return nil
 }
 
@@ -109,6 +115,9 @@ func (s *Server) acceptLoop(ctx context.Context, listener net.Listener) {
 		}
 		s.conns[connection] = struct{}{}
 		s.mu.Unlock()
+		if s.config.Logger != nil {
+			s.config.Logger.Debug("persistent RCI socket connection accepted", "plugin", s.config.PluginID)
+		}
 		s.wait.Add(1)
 		go func() {
 			defer s.wait.Done()
@@ -118,9 +127,32 @@ func (s *Server) acceptLoop(ctx context.Context, listener net.Listener) {
 				s.mu.Unlock()
 				_ = connection.Close()
 			}()
-			_ = ServeConnection(ctx, connection, s.config, s.handler)
+			err := ServeConnection(ctx, connection, s.config, s.handler)
+			if s.config.Logger == nil {
+				return
+			}
+			if ctx.Err() != nil {
+				s.config.Logger.Debug("persistent RCI socket connection ended", "plugin", s.config.PluginID, "reason", "server-shutdown")
+				return
+			}
+			if err != nil {
+				s.config.Logger.Warn("persistent RCI socket connection ended", "plugin", s.config.PluginID, "reason", socketErrorReason(err))
+				return
+			}
+			s.config.Logger.Debug("persistent RCI socket connection ended", "plugin", s.config.PluginID, "reason", "closed")
 		}()
 	}
+}
+
+func socketErrorReason(err error) string {
+	if errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) {
+		return "closed"
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return "idle-timeout"
+	}
+	return "protocol-error"
 }
 
 func recoverSocketPath(path string) error {

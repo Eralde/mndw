@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -50,6 +51,7 @@ type Service struct {
 	mu            sync.RWMutex
 	controllerURL string
 	allowInsecure bool
+	logger        *slog.Logger
 }
 
 func NewService(store Store, enumerator Enumerator) *Service {
@@ -57,6 +59,12 @@ func NewService(store Store, enumerator Enumerator) *Service {
 }
 
 func (s *Service) SetMutationObserver(observer func()) { s.onMutation = observer }
+
+func (s *Service) SetLogger(logger *slog.Logger) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.logger = logger
+}
 
 func (s *Service) SetControllerURL(baseURL string, allowRemoteHTTP bool) error {
 	validatedURL, allowInsecure, err := validateControllerURL(baseURL, allowRemoteHTTP)
@@ -130,7 +138,7 @@ func (s *Service) SaveController(ctx context.Context, tester ControllerTester, t
 	}); err != nil {
 		return ControllerUnreachable, err
 	}
-	s.notifyMutation()
+	s.notifyMutation("controller-token-saved")
 	return verdict, nil
 }
 
@@ -213,7 +221,8 @@ func (s *Service) Unauthorized(identity string) {
 		record.Support = model.SupportInvalid
 		if err := s.store.ReplaceController(record); err == nil && s.enumerator != nil {
 			s.enumerator.Invalidate()
-			s.notifyMutation()
+			s.logTokenInvalidated("controller")
+			s.notifyMutation("controller-token-invalidated")
 		}
 		return
 	}
@@ -225,7 +234,8 @@ func (s *Service) Unauthorized(identity string) {
 	record.Token = ""
 	record.Support = model.SupportUnknown
 	if err := s.store.UpsertExtender(identity, record); err == nil {
-		s.notifyMutation()
+		s.logTokenInvalidated(identity)
+		s.notifyMutation("extender-token-invalidated")
 	}
 }
 
@@ -233,7 +243,7 @@ func (s *Service) DeleteController() error {
 	if err := s.store.DeleteController(); err != nil {
 		return err
 	}
-	s.notifyMutation()
+	s.notifyMutation("controller-token-deleted")
 	return nil
 }
 
@@ -246,7 +256,7 @@ func (s *Service) DeleteExtenders(ctx context.Context) error {
 		if err := s.store.DeleteExtenders(); err != nil {
 			return err
 		}
-		s.notifyMutation()
+		s.notifyMutation("extender-record-deleted")
 		return nil
 	}
 
@@ -257,7 +267,7 @@ func (s *Service) DeleteExtenders(ctx context.Context) error {
 				failures = append(failures, fmt.Errorf("%w: %s: remove inactive local record: %v", ErrExtenderTokenDeletion, identity, err))
 				continue
 			}
-			s.notifyMutation()
+			s.notifyMutation("extender-token-deleted")
 			continue
 		}
 		if record.Key == "" {
@@ -292,7 +302,7 @@ func (s *Service) DeleteExtenders(ctx context.Context) error {
 			failures = append(failures, fmt.Errorf("%w: %s: remove local record: %v", ErrExtenderTokenDeletion, identity, err))
 			continue
 		}
-		s.notifyMutation()
+		s.notifyMutation("extender-token-deleted")
 	}
 	return errors.Join(failures...)
 }
@@ -312,7 +322,7 @@ func (s *Service) DeleteExtender(identity string) error {
 	if err := s.store.DeleteExtender(identity); err != nil {
 		return err
 	}
-	s.notifyMutation()
+	s.notifyMutation("extender-record-deleted")
 	return nil
 }
 
@@ -338,7 +348,7 @@ func (s *Service) Provision(ctx context.Context, generator minter.Generator, cre
 			outcome.Reason = minter.ReasonUnreachable
 			continue
 		}
-		s.notifyMutation()
+		s.notifyMutation("extender-token-created")
 		successes++
 	}
 	if successes == 0 && len(outcomes) > 0 {
@@ -383,8 +393,23 @@ func (s *Service) Targets(ctx context.Context) ([]socket.TargetSummary, error) {
 	return result, nil
 }
 
-func (s *Service) notifyMutation() {
+func (s *Service) notifyMutation(reason string) {
+	if logger := s.loggerSnapshot(); logger != nil {
+		logger.Info("persistent RCI session mutation", "reason", reason)
+	}
 	if s.onMutation != nil {
 		s.onMutation()
 	}
+}
+
+func (s *Service) logTokenInvalidated(identity string) {
+	if logger := s.loggerSnapshot(); logger != nil {
+		logger.Warn("persistent RCI token invalidated", "identity", identity)
+	}
+}
+
+func (s *Service) loggerSnapshot() *slog.Logger {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.logger
 }

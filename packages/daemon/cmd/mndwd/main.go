@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"sync"
 	"syscall"
 	"time"
 
@@ -106,8 +107,12 @@ func run(cfg Config) error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	err = serve(ctx, srv, logger)
-	closePersistentSession()
+	var closePersistentOnce sync.Once
+	closePersistent := func() {
+		closePersistentOnce.Do(closePersistentSession)
+	}
+	err = serve(ctx, srv, logger, closePersistent)
+	closePersistent()
 
 	// Cancel background work, join it so Start cannot race Stop, then stop daemons.
 	// Deferred builtins whose Start hook never ran are excluded from shutdown.
@@ -203,6 +208,7 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 			},
 		}, cfg.RCIEnumerationTTL, time.Now)
 		sessionService := rcisession.NewService(persistentStore, enumerator)
+		sessionService.SetLogger(logger)
 		if err := sessionService.SetControllerURL(cfg.ControllerURL, cfg.Dev); err != nil {
 			logger.Error("persistent RCI controller URL rejected", "error", err)
 		}
@@ -218,6 +224,7 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 		rcisession.NewHandler(sessionService, controllerTester, generator).Register(accessMux)
 		sessionService.Proxy(deviceClient, cfg.RCIProxyMaxResponseBytes, cfg.RCIProxyOperationTimeout)
 		socketReconciler := rcisessionsocket.NewReconciler(rcisessionsocket.Config{
+			Logger:      logger,
 			MaxInflight: cfg.RCIProxyMaxInflight,
 			IdleTimeout: cfg.RCIProxyIdleTimeout,
 		}, sessionService)
@@ -289,13 +296,22 @@ func startupActivate(reg *registry.Registry, life daemonStarter, store *state.St
 }
 
 // shutdownDaemons stops the backend.daemon of each approved+enabled user plugin on
-// graceful shutdown so no orphaned processes survive the daemon.
+// graceful shutdown so no orphaned processes survive the daemon. Plugin discovery
+// order is retained only for selection; stop execution order is unspecified and
+// daemonStopper implementations must support concurrent Stop calls.
 func shutdownDaemons(reg *registry.Registry, life daemonStopper, store *state.Store, skip func(name string) bool, logger *slog.Logger) {
+	var wait sync.WaitGroup
 	forEachDaemonPlugin(reg, store, skip, func(name, dir string, d *manifest.Daemon) {
-		if err := life.Stop(name, dir, d.Stop); err != nil {
-			logger.Error("shutdown daemon stop failed", "plugin", name, "error", err)
-		}
+		stopPath := d.Stop
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			if err := life.Stop(name, dir, stopPath); err != nil {
+				logger.Error("shutdown daemon stop failed", "plugin", name, "error", err)
+			}
+		}()
 	})
+	wait.Wait()
 }
 
 // forEachBackendPlugin invokes fn for every approved+enabled plugin with any
@@ -377,7 +393,7 @@ func diagnosticsPlugins(reg *registry.Registry, store *state.Store, runtimeRoot 
 
 // serve runs the HTTP server until ctx is canceled or the listener fails, then
 // shuts down gracefully.
-func serve(ctx context.Context, srv *http.Server, logger *slog.Logger) error {
+func serve(ctx context.Context, srv *http.Server, logger *slog.Logger, onShutdown func()) error {
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("mndwd listening", "addr", srv.Addr, "version", version)
@@ -394,6 +410,9 @@ func serve(ctx context.Context, srv *http.Server, logger *slog.Logger) error {
 		return err
 	case <-ctx.Done():
 		logger.Info("shutdown signal received, draining")
+		if onShutdown != nil {
+			onShutdown()
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 

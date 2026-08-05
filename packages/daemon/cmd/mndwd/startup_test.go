@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -448,6 +449,57 @@ func TestStartupShutdownLifecycle(t *testing.T) {
 	}
 }
 
+type concurrentStopper struct {
+	started chan string
+	release chan struct{}
+}
+
+func (s *concurrentStopper) Stop(name, _, _ string) error {
+	s.started <- name
+	<-s.release
+	return nil
+}
+
+func TestShutdownDaemonsStopsConcurrently(t *testing.T) {
+	builtinDir := t.TempDir()
+	writeBuiltinDaemon(t, builtinDir, "first-widget", nil)
+	writeBuiltinDaemon(t, builtinDir, "second-widget", nil)
+	reg := builtinRegistry(t, builtinDir)
+	root := t.TempDir()
+	store, err := state.Open(filepath.Join(root, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopper := &concurrentStopper{started: make(chan string, 2), release: make(chan struct{})}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	done := make(chan struct{})
+	go func() {
+		shutdownDaemons(reg, stopper, store, nil, logger)
+		close(done)
+	}()
+
+	seen := make(map[string]bool)
+	for range 2 {
+		select {
+		case name := <-stopper.started:
+			seen[name] = true
+		case <-time.After(1 * time.Second):
+			close(stopper.release)
+			<-done
+			t.Fatalf("stop hooks did not start concurrently; started %v", seen)
+		}
+	}
+	close(stopper.release)
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("shutdownDaemons did not finish after releasing hooks")
+	}
+	if !seen["first-widget"] || !seen["second-widget"] {
+		t.Fatalf("started hooks = %v, want both plugins", seen)
+	}
+}
+
 func TestServeReturnsListenerError(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -460,7 +512,7 @@ func TestServeReturnsListenerError(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- serve(context.Background(), srv, logger)
+		errCh <- serve(context.Background(), srv, logger, nil)
 	}()
 
 	select {
@@ -470,6 +522,41 @@ func TestServeReturnsListenerError(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("serve did not return on listener failure")
+	}
+}
+
+func TestServeShutdownCallbackRunsBeforeReturn(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := &http.Server{Addr: "127.0.0.1:0"}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	callbackEntered := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	var calls atomic.Int32
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- serve(ctx, srv, logger, func() {
+			calls.Add(1)
+			close(callbackEntered)
+			<-releaseCallback
+		})
+	}()
+
+	cancel()
+	select {
+	case <-callbackEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("shutdown callback was not called")
+	}
+	close(releaseCallback)
+	select {
+	case <-errCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve did not return after callback release")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("shutdown callback calls = %d, want 1", got)
 	}
 }
 

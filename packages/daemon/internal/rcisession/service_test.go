@@ -1,10 +1,12 @@
 package rcisession
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -60,6 +62,26 @@ func TestExtenderUnauthorizedDropsOnlyThatToken(t *testing.T) {
 	}
 	if document.Extenders["node-2"].Token != "token-2" || document.Controller.Token != "controller-token" {
 		t.Fatalf("unrelated records changed: %#v", document)
+	}
+}
+
+func TestExtenderUnauthorizedLogsSafePersistentSessionEvent(t *testing.T) {
+	store := newFakeStore()
+	store.document.Extenders = map[string]model.TokenRecord{
+		"node-1": {Key: "token-id", Token: "DO_NOT_LOG", Support: model.SupportSupported},
+	}
+	var logs bytes.Buffer
+	service := NewService(store, &fakeEnumerator{})
+	service.SetLogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	service.Unauthorized("node-1")
+
+	output := logs.String()
+	if !strings.Contains(output, "persistent RCI token invalidated") || !strings.Contains(output, "identity=node-1") {
+		t.Fatalf("mutation log = %s", output)
+	}
+	if strings.Contains(output, "DO_NOT_LOG") || strings.Contains(output, "token-id") {
+		t.Fatalf("mutation log leaked token material: %s", output)
 	}
 }
 

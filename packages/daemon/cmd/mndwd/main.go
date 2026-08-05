@@ -10,11 +10,13 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
 	"mndwd/internal/access"
 	"mndwd/internal/authz"
+	"mndwd/internal/diagnostics"
 	"mndwd/internal/dispatch"
 	"mndwd/internal/httpx"
 	keeneticauth "mndwd/internal/keenetic/auth"
@@ -162,6 +164,14 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 	accessMux := http.NewServeMux()
 	closePersistentSession := func() {}
 	access.New(store).Register(accessMux)
+	diagnosticsLogFile := cfg.DiagnosticsLogFile
+	if diagnosticsLogFile == "" {
+		diagnosticsLogFile = defaultDiagnosticsLogFile
+	}
+	diagnostics.New(diagnostics.Config{
+		LogFile: diagnosticsLogFile,
+		Plugins: diagnosticsPlugins(reg, store, runtimeRoot),
+	}).Register(accessMux)
 	if cfg.RCISessionStateDir == "" {
 		cfg.RCISessionStateDir = cfg.DataDir
 	}
@@ -288,39 +298,78 @@ func shutdownDaemons(reg *registry.Registry, life daemonStopper, store *state.St
 	})
 }
 
-// forEachDaemonPlugin invokes fn for every approved+enabled plugin that declares a
-// backend.daemon — both user plugins tracked in state and builtins discovered on disk.
-func forEachDaemonPlugin(reg *registry.Registry, store *state.Store, skip func(name string) bool, fn func(name, dir string, d *manifest.Daemon)) {
+// forEachBackendPlugin invokes fn for every approved+enabled plugin with any
+// backend capability — both user plugins tracked in state and builtins discovered
+// on disk. User plugins are visited before builtins and duplicate IDs are emitted once.
+func forEachBackendPlugin(reg *registry.Registry, store *state.Store, skip func(name string) bool, fn func(name, dir string, plugin *registry.Plugin)) {
 	seen := make(map[string]bool)
 
 	snap := store.Snapshot()
-	for name, rec := range snap.Plugins {
+	userNames := make([]string, 0, len(snap.Plugins))
+	for name := range snap.Plugins {
+		userNames = append(userNames, name)
+	}
+	sort.Strings(userNames)
+	for _, name := range userNames {
+		rec := snap.Plugins[name]
 		if rec.Approval != state.ApprovalApproved || !rec.Enabled {
 			continue
 		}
 		plugin, ok := reg.Resolve(name)
-		if !ok || plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Daemon == nil {
+		if !ok || !plugin.Manifest.HasBackend() {
 			continue
 		}
 		if skip != nil && skip(name) {
 			continue
 		}
-		fn(name, plugin.Dir, plugin.Manifest.Backend.Daemon)
+		fn(name, plugin.Dir, plugin)
 		seen[name] = true
 	}
 
-	for _, plugin := range reg.ListBuiltins() {
+	builtins := reg.ListBuiltins()
+	sort.Slice(builtins, func(left, right int) bool { return builtins[left].Name < builtins[right].Name })
+	for _, plugin := range builtins {
 		if seen[plugin.Name] {
 			continue
 		}
-		if plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Daemon == nil {
+		if !plugin.Manifest.HasBackend() {
 			continue
 		}
 		if skip != nil && skip(plugin.Name) {
 			continue
 		}
-		fn(plugin.Name, plugin.Dir, plugin.Manifest.Backend.Daemon)
+		fn(plugin.Name, plugin.Dir, plugin)
 	}
+}
+
+// forEachDaemonPlugin invokes fn for every approved+enabled plugin that declares a
+// backend.daemon. It shares the backend traversal with diagnostics enumeration but
+// retains the daemon-only lifecycle predicate.
+func forEachDaemonPlugin(reg *registry.Registry, store *state.Store, skip func(name string) bool, fn func(name, dir string, d *manifest.Daemon)) {
+	forEachBackendPlugin(reg, store, skip, func(name, dir string, plugin *registry.Plugin) {
+		if plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Daemon == nil {
+			return
+		}
+		fn(name, dir, plugin.Manifest.Backend.Daemon)
+	})
+}
+
+func diagnosticsPlugins(reg *registry.Registry, store *state.Store, runtimeRoot string) []diagnostics.Plugin {
+	plugins := make([]diagnostics.Plugin, 0)
+	if runtimeRoot == "" {
+		return plugins
+	}
+
+	forEachBackendPlugin(reg, store, nil, func(name, _ string, _ *registry.Plugin) {
+		dir, err := pluginruntime.ForPlugin(runtimeRoot, name)
+		if err != nil || dir == "" {
+			return
+		}
+		plugins = append(plugins, diagnostics.Plugin{ID: name, RuntimeDir: dir})
+	})
+	sort.Slice(plugins, func(left, right int) bool { return plugins[left].ID < plugins[right].ID })
+
+	return plugins
 }
 
 // serve runs the HTTP server until ctx is canceled or the listener fails, then

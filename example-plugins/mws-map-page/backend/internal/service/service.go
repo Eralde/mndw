@@ -15,6 +15,7 @@ import (
 	"mws-map-page/internal/auth"
 	"mws-map-page/internal/config"
 	"mws-map-page/internal/credentials"
+	diagnosticfile "mws-map-page/internal/diagnostics"
 	"mws-map-page/internal/discovery"
 	"mws-map-page/internal/persistent"
 	"mws-map-page/internal/session"
@@ -37,6 +38,10 @@ type Service struct {
 	persistent    PersistentSource
 	clock         Clock
 	lastRefreshAt time.Time
+	runtimeDir    string
+	socketPath    string
+	pidPath       string
+	diagnostics   *diagnosticfile.Writer
 }
 
 type Clock interface {
@@ -72,9 +77,26 @@ func New(cfg config.Config) *Service {
 	store := credentials.NewStore()
 	epoch := credentials.NewEpoch()
 	holder := session.NewHolder(authenticator, store)
-	service := &Service{transport: transport, authenticator: authenticator, credentials: store, epoch: epoch, holder: holder, controller: auth.Target{BaseURL: cfg.ControllerURL}, telemetry: telemetry.NewCollector(holder, epoch, telemetry.FieldAdapter{}), clock: realClock{}}
-	runtimeDir := os.Getenv("MNDW_PLUGIN_RUNTIME_DIR")
+	runtimeDir := cfg.RuntimeDir
+	if runtimeDir == "" {
+		runtimeDir = os.Getenv("MNDW_PLUGIN_RUNTIME_DIR")
+	}
+	service := &Service{
+		transport:     transport,
+		authenticator: authenticator,
+		credentials:   store,
+		epoch:         epoch,
+		holder:        holder,
+		controller:    auth.Target{BaseURL: cfg.ControllerURL},
+		telemetry:     telemetry.NewCollector(holder, epoch, telemetry.FieldAdapter{}),
+		clock:         realClock{},
+		runtimeDir:    runtimeDir,
+		socketPath:    filepath.Join(runtimeDir, cfg.SocketName),
+		pidPath:       filepath.Join(runtimeDir, cfg.PIDName),
+	}
 	if runtimeDir != "" {
+		writer := diagnosticfile.Writer{Path: filepath.Join(runtimeDir, "diagnostics.json")}
+		service.diagnostics = &writer
 		service.persistent = persistent.New(persistent.Config{
 			Path:          filepath.Join(runtimeDir, "rci-session.sock"),
 			PluginID:      os.Getenv("MNDW_PLUGIN_ID"),
@@ -90,17 +112,56 @@ func (s *Service) Run(ctx context.Context) {
 	if s.persistent != nil {
 		go s.persistent.Run(ctx)
 	}
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+	refreshTicker := time.NewTicker(30 * time.Second)
+	defer refreshTicker.Stop()
+	diagnosticsTicker := time.NewTicker(5 * time.Minute)
+	defer diagnosticsTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-refreshTicker.C:
 			if s.credentials.State() == credentials.StatePresent {
 				_ = s.refresh(ctx)
 			}
+		case <-diagnosticsTicker.C:
+			_ = s.writeDiagnosticsTick()
 		}
+	}
+}
+
+func (s *Service) writeDiagnosticsTick() error {
+	return s.WriteDiagnostics()
+}
+
+// WriteDiagnostics publishes the current local service state for mndwd support reports.
+func (s *Service) WriteDiagnostics() error {
+	if s.diagnostics == nil {
+		return fmt.Errorf("diagnostics writer is unavailable")
+	}
+
+	return s.diagnostics.Write(s.DiagnosticsSnapshot())
+}
+
+// DiagnosticsSnapshot returns local service state without credentials or token material.
+func (s *Service) DiagnosticsSnapshot() map[string]any {
+	socketPresent := false
+	if s.socketPath != "" {
+		_, err := os.Stat(s.socketPath)
+		socketPresent = err == nil
+	}
+
+	return map[string]any{
+		"runtime": map[string]any{
+			"pid":           os.Getpid(),
+			"pidPath":       s.pidPath,
+			"socketPath":    s.socketPath,
+			"socketPresent": socketPresent,
+		},
+		"credState":          string(s.credentials.State()),
+		"lastRefreshAt":      s.lastRefreshSnapshot(),
+		"nodes":              s.nodesSnapshot(),
+		"persistentSessions": s.diagnosticsPersistentSessionsSnapshot(),
 	}
 }
 
@@ -344,6 +405,30 @@ func (s *Service) persistentSessionsSnapshot() []telemetry.PersistentSession {
 		}
 		result = append(result, item)
 	}
+	return result
+}
+
+const diagnosticsMaxRRDTicks = 60
+
+func (s *Service) diagnosticsPersistentSessionsSnapshot() []telemetry.PersistentSession {
+	sessions := s.persistentSessionsSnapshot()
+	for index := range sessions {
+		if sessions[index].Telemetry == nil {
+			continue
+		}
+		sessions[index].Telemetry.CPURRD.Data = newestRRDTicks(sessions[index].Telemetry.CPURRD.Data)
+		sessions[index].Telemetry.MemoryRRD.Data = newestRRDTicks(sessions[index].Telemetry.MemoryRRD.Data)
+	}
+
+	return sessions
+}
+
+func newestRRDTicks(ticks []telemetry.RrdTick) []telemetry.RrdTick {
+	if len(ticks) <= diagnosticsMaxRRDTicks {
+		return ticks
+	}
+	result := make([]telemetry.RrdTick, diagnosticsMaxRRDTicks)
+	copy(result, ticks[len(ticks)-diagnosticsMaxRRDTicks:])
 	return result
 }
 

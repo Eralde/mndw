@@ -25,6 +25,7 @@ func main() {
 		panic(err)
 	}
 	defer server.Close()
+	_ = mwsd.WriteDiagnostics()
 	if err := server.Serve(ctx); err != nil {
 		panic(err)
 	}

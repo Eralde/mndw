@@ -19,6 +19,30 @@ func TestParseDefaultsPluginRuntimeRootInsideDataDir(t *testing.T) {
 	}
 }
 
+func TestParseDefaultsDiagnosticsLogFile(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DiagnosticsLogFile != "/opt/var/log/mndwd.log" {
+		t.Fatalf("diagnostics log file = %q, want production default", cfg.DiagnosticsLogFile)
+	}
+}
+
+func TestParseAcceptsDiagnosticsLogFileOverride(t *testing.T) {
+	cfg, _, err := parseFlags([]string{
+		"--dev",
+		"--diagnostics-log-file", "/tmp/mndwd-test.log",
+		"--data-dir", "/tmp/mndw-dev-data",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DiagnosticsLogFile != "/tmp/mndwd-test.log" {
+		t.Fatalf("diagnostics log file = %q, want override", cfg.DiagnosticsLogFile)
+	}
+}
+
 func TestParseAllowsPluginRuntimeRootEnvironmentOverride(t *testing.T) {
 	t.Setenv("MNDW_PLUGIN_RUNTIME_ROOT", "/tmp/plugin-runtime")
 

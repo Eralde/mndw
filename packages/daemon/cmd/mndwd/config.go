@@ -18,6 +18,8 @@ import (
 // maxUploadBytes caps an upload request body at 10 MB.
 const maxUploadBytes = 10 << 20
 
+const defaultDiagnosticsLogFile = "/opt/var/log/mndwd.log"
+
 // Config is the daemon's fully-resolved runtime configuration, including package
 // manager, authentication, backend execution, and storage settings.
 type Config struct {
@@ -30,6 +32,9 @@ type Config struct {
 	UserPluginsDir     string
 	RouterURL          string
 	ControllerURL      string
+	// DiagnosticsLogFile is a read-only path that diagnostics tails. mndwd's
+	// logger continues writing stdout; deploy/init/S70mndwd redirects it here.
+	DiagnosticsLogFile string
 	Dev                bool
 	Opkg               string
 	LogLevel           string
@@ -79,6 +84,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.StringVar(&cfg.UserPluginsDir, "user-plugins-dir", "/opt/share/www/mndw/user-plugins", "directory of approved user plugins")
 	fs.StringVar(&cfg.RouterURL, "router-url", "http://127.0.0.1:80", "router base URL for session auth")
 	fs.StringVar(&cfg.ControllerURL, "controller-url", "", "controller base URL for persistent RCI requests")
+	fs.StringVar(&cfg.DiagnosticsLogFile, "diagnostics-log-file", defaultDiagnosticsLogFile, "read-only log path for diagnostics")
 	fs.BoolVar(&cfg.Dev, "dev", false, "dev mode: bypass session auth; logged loudly")
 	fs.StringVar(&cfg.Opkg, "opkg", "exec", "opkg mode: exec|stub")
 	fs.StringVar(&cfg.LogLevel, "log-level", "info", "log level: debug|info|warn|error")

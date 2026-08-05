@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -225,6 +228,79 @@ func TestPersistentTelemetryPollUsesDeviceInfoQueries(t *testing.T) {
 	}
 	if sample, ok := service.telemetry.Persistent("cid-1", time.Now()); !ok || sample.System.CPULoad != 27 || len(sample.CPURRD.Data) != 1 || len(sample.MemoryRRD.Data) != 1 {
 		t.Fatalf("stored sample = %#v, ok = %v", sample, ok)
+	}
+}
+
+func TestDiagnosticsSnapshotIncludesLocalStateAndBoundsRrdData(t *testing.T) {
+	runtimeDir := t.TempDir()
+	service := New(config.Config{RuntimeDir: runtimeDir, SocketName: "mwsd.sock", PIDName: "mwsd.pid"})
+	when := time.Date(2026, time.August, 4, 15, 30, 0, 0, time.UTC)
+	service.SetClock(testClock{now: when})
+	service.credentials.Set("admin", []byte("DO_NOT_EXPORT"), 1)
+	service.members = []discovery.Member{{CID: "cid-1", MAC: "aa:bb:cc:dd:ee:ff", IP: "192.168.1.2", Online: true}}
+	service.lastRefreshAt = when
+	service.SetPersistentSource(fakePersistentSource{sessions: []persistent.Session{{Identity: "cid-1", Mac: "aa:bb:cc:dd:ee:ff", Live: true}}})
+	ticks := make([]telemetry.RrdTick, 75)
+	for index := range ticks {
+		ticks[index] = telemetry.RrdTick{T: json.RawMessage("1"), V: float64(index)}
+	}
+	service.telemetry.StorePersistent("cid-1", telemetry.PersistentTelemetry{
+		SampledAt: when,
+		CPURRD:    telemetry.RrdResponse{Data: ticks},
+		MemoryRRD: telemetry.RrdResponse{Data: ticks},
+	})
+
+	snapshot := service.DiagnosticsSnapshot()
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "DO_NOT_EXPORT") {
+		t.Fatalf("snapshot contains credential value: %s", encoded)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	runtime, ok := envelope["runtime"].(map[string]any)
+	if !ok || runtime["pid"] != float64(os.Getpid()) || runtime["pidPath"] != filepath.Join(runtimeDir, "mwsd.pid") || runtime["socketPath"] != filepath.Join(runtimeDir, "mwsd.sock") || runtime["socketPresent"] != false {
+		t.Fatalf("runtime = %#v", envelope["runtime"])
+	}
+	if envelope["credState"] != "present" || envelope["lastRefreshAt"] != when.Format(time.RFC3339) {
+		t.Fatalf("state = %#v", envelope)
+	}
+	sessions, ok := envelope["persistentSessions"].([]any)
+	if !ok || len(sessions) != 1 {
+		t.Fatalf("persistentSessions = %#v", envelope["persistentSessions"])
+	}
+	session, ok := sessions[0].(map[string]any)
+	if !ok {
+		t.Fatalf("session = %#v", sessions[0])
+	}
+	telemetryData, ok := session["telemetry"].(map[string]any)
+	if !ok {
+		t.Fatalf("telemetry = %#v", session["telemetry"])
+	}
+	for _, field := range []string{"cpuRrd", "memoryRrd"} {
+		series := telemetryData[field].(map[string]any)["data"].([]any)
+		if len(series) != 60 || series[0].(map[string]any)["v"] != float64(15) || series[59].(map[string]any)["v"] != float64(74) {
+			t.Fatalf("%s = %#v", field, series)
+		}
+	}
+}
+
+func TestDiagnosticsTickWritesWhenCredentialsAbsent(t *testing.T) {
+	runtimeDir := t.TempDir()
+	service := New(config.Config{RuntimeDir: runtimeDir, SocketName: "mwsd.sock", PIDName: "mwsd.pid"})
+	if err := service.writeDiagnosticsTick(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(runtimeDir, "diagnostics.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"credState":"absent"`) {
+		t.Fatalf("diagnostics = %s", data)
 	}
 }
 

@@ -34,11 +34,16 @@ func buildServerMode(t *testing.T, verifier *authz.Verifier, dev bool) (*httptes
 	t.Helper()
 	root := t.TempDir()
 	cfg := Config{
-		DataDir:           filepath.Join(root, "data"),
-		UserPluginsDir:    filepath.Join(root, "user-plugins"),
-		BuiltinPluginsDir: filepath.Join(root, "builtin"),
-		Dev:               dev,
-		Opkg:              "stub",
+		DataDir:            filepath.Join(root, "data"),
+		UserPluginsDir:     filepath.Join(root, "user-plugins"),
+		BuiltinPluginsDir:  filepath.Join(root, "builtin"),
+		DiagnosticsLogFile: filepath.Join(root, "mndwd.log"),
+		PluginRuntimeRoot:  filepath.Join(root, "plugin-runtime"),
+		Dev:                dev,
+		Opkg:               "stub",
+	}
+	if err := os.WriteFile(cfg.DiagnosticsLogFile, []byte("diagnostic password=DO_NOT_EXPORT\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	store, err := state.Open(cfg.StateFile())
 	if err != nil {
@@ -132,6 +137,83 @@ func TestIntegrationDevExposesExtenderAccessRoute(t *testing.T) {
 	}
 	if body := bodyString(t, resp); !strings.Contains(body, `"enabled":false`) {
 		t.Fatalf("dev extender-access body = %q, want disabled state", body)
+	}
+}
+
+func TestIntegrationDiagnosticsRouteProtectionAndResponse(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	unauthenticated, _ := buildServer(t, authz.New("", false, logger, authz.Options{}))
+	resp := do(t, http.MethodGet, unauthenticated.URL+"/api/mndw/diagnostics", "", "", nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated diagnostics = %d, want 401", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	srv, _ := devServer(t)
+	resp = do(t, http.MethodGet, srv.URL+"/api/mndw/diagnostics", "", "", nil)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("diagnostics without CSRF = %d, want 403", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	request, err := http.NewRequest(http.MethodGet, srv.URL+"/api/mndw/diagnostics", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("X-Mndw-Csrf", "1")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := bodyString(t, response)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("diagnostics = %d, want 200; body=%s", response.StatusCode, body)
+	}
+	for _, field := range []string{"generatedAt", "mndwd", "plugins"} {
+		if !strings.Contains(body, `"`+field+`"`) {
+			t.Fatalf("diagnostics body missing %q: %s", field, body)
+		}
+	}
+	if strings.Contains(body, "DO_NOT_EXPORT") {
+		t.Fatalf("diagnostics body contains secret marker: %s", body)
+	}
+}
+
+func TestIntegrationDiagnosticsSurvivesPersistentStoreFailure(t *testing.T) {
+	root := t.TempDir()
+	keyDir := filepath.Join(root, "keydir")
+	if err := os.WriteFile(keyDir, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{
+		DataDir:            filepath.Join(root, "data"),
+		UserPluginsDir:     filepath.Join(root, "user-plugins"),
+		BuiltinPluginsDir:  filepath.Join(root, "builtin"),
+		DiagnosticsLogFile: filepath.Join(root, "mndwd.log"),
+		PluginRuntimeRoot:  filepath.Join(root, "plugin-runtime"),
+		RCISessionKeyDir:   keyDir,
+		Dev:                true,
+		Opkg:               "stub",
+	}
+	if err := os.WriteFile(cfg.DiagnosticsLogFile, []byte("diagnostic log\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := state.Open(cfg.StateFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	paletteStore, err := palette.Open(cfg.PaletteFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler, _, _, _, _ := assemble(cfg, store, paletteStore, authz.New("", true, logger, authz.Options{}), logger)
+	request := httptest.NewRequest(http.MethodGet, "/api/mndw/diagnostics", nil)
+	request.Header.Set("X-Mndw-Csrf", "1")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("diagnostics with persistent store failure = %d, want 200; body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 

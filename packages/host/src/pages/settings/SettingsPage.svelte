@@ -5,6 +5,7 @@ import {toggleTheme} from '../../services/theme.service.js';
 import {appState} from '../../state/app.svelte.js';
 import {onDestroy, onMount} from 'svelte';
 import {extenderAccessService} from '../../services/extender-access.service.js';
+import {downloadDiagnostics} from '../../services/diagnostics.service.js';
 import {
   type ControllerTestResult,
   type PersistentRciCapability,
@@ -33,6 +34,8 @@ let controllerResult = $state<ControllerTestResult | null>(null);
 let meshUsername = $state('');
 let meshPassword = $state('');
 let provisioningResult = $state('');
+let diagnosticsLoading = $state(false);
+let diagnosticsError = $state('');
 
 onMount(() => {
   void extenderAccessService.getExtenderAccess().then((state) => {
@@ -251,6 +254,18 @@ async function clearExtenders(): Promise<void> {
     persistentActionLoading = false;
   }
 }
+
+async function downloadHostDiagnostics(): Promise<void> {
+  diagnosticsLoading = true;
+  diagnosticsError = '';
+  try {
+    await downloadDiagnostics();
+  } catch {
+    diagnosticsError = 'Diagnostics download failed';
+  } finally {
+    diagnosticsLoading = false;
+  }
+}
 </script>
 
 <div class="mndw-settings">
@@ -280,6 +295,23 @@ async function clearExtenders(): Promise<void> {
       </ul>
     {:else}
       <p>Device info unavailable.</p>
+    {/if}
+  </section>
+
+  <section aria-label="Diagnostics">
+    <h3>Diagnostics</h3>
+    <p>Download recent daemon and plugin runtime state for troubleshooting.</p>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <mndw-button
+      variant="secondary"
+      disabled={diagnosticsLoading}
+      onclick={() => void downloadHostDiagnostics()}
+    >{
+      diagnosticsLoading ? 'Downloading…' : 'Download diagnostics'
+    }</mndw-button>
+    {#if diagnosticsError}
+      <p role="alert">{diagnosticsError}</p>
     {/if}
   </section>
 

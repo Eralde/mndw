@@ -3,7 +3,8 @@ import {defineMndwUi} from '@mndw/ui';
 import {mount, unmount} from 'svelte';
 import {MNDW_TOKENS} from '@mndw/sdk';
 
-const {getCapability, probeControllerTokenAuth, saveController} = vi.hoisted(() => ({
+const {downloadDiagnostics, getCapability, probeControllerTokenAuth, saveController} = vi.hoisted(() => ({
+  downloadDiagnostics: vi.fn(),
   getCapability: vi.fn().mockResolvedValue({
     store: {state: 'empty'},
     controller: {support: 'unknown'},
@@ -57,6 +58,7 @@ vi.mock('../../services/persistent-rci-session.service.js', () => ({
     clearExtenders: vi.fn(),
   },
 }));
+vi.mock('../../services/diagnostics.service.js', () => ({downloadDiagnostics}));
 
 import SettingsPage from './SettingsPage.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
@@ -76,6 +78,7 @@ describe('SettingsPage', () => {
     });
     probeControllerTokenAuth.mockReset().mockResolvedValue(true);
     saveController.mockReset();
+    downloadDiagnostics.mockReset();
   });
 
   it('renders plugin manager', async () => {
@@ -140,7 +143,7 @@ describe('SettingsPage', () => {
 
     const headings = [...target.querySelectorAll('h3')].map((heading) => heading.textContent?.trim());
 
-    expect(headings.slice(0, 4)).toEqual(['Appearance', 'Palette', 'Device', 'Persistent rci/ session']);
+    expect(headings.slice(0, 3)).toEqual(['Appearance', 'Palette', 'Device']);
     expect(target.querySelector('.mndw-palette-manager')).not.toBeNull();
     expect(target.querySelector('.mndw-plugin-manager')).not.toBeNull();
 
@@ -217,6 +220,59 @@ describe('SettingsPage', () => {
     await vi.waitFor(() =>
       expect(target.querySelector('mndw-input[type="password"]')?.getAttribute('placeholder')).toBe('<TOKEN SET>')
     );
+
+    void unmount(component);
+  });
+
+  it('shows diagnostics regardless of persistent-session capability', async () => {
+    probeControllerTokenAuth.mockResolvedValueOnce(false);
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Diagnostics"]')).not.toBeNull());
+    expect(target.querySelector('section[aria-label="Diagnostics"]')).not.toBeNull();
+    expect(target.querySelector('section[aria-label="Diagnostics"]')?.textContent).toContain('Download diagnostics');
+
+    void unmount(component);
+  });
+
+  it('disables diagnostics while downloading and reports stable failure text', async () => {
+    let resolveDownload: (() => void) | undefined;
+
+    downloadDiagnostics.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveDownload = resolve;
+      }),
+    );
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+    const button = await vi.waitFor(() => {
+      const value = target.querySelector<HTMLElement>('section[aria-label="Diagnostics"] mndw-button');
+
+      if (value === null) {
+        throw new Error('diagnostics button not rendered');
+      }
+
+      return value;
+    });
+
+    button.dispatchEvent(new Event('click', {bubbles: true}));
+    await vi.waitFor(() => expect(button.hasAttribute('disabled')).toBe(true));
+    resolveDownload?.();
+    await vi.waitFor(() => expect(button.hasAttribute('disabled')).toBe(false));
+
+    downloadDiagnostics.mockRejectedValueOnce(new Error('DO_NOT_EXPORT'));
+    button.dispatchEvent(new Event('click', {bubbles: true}));
+    await vi.waitFor(() => expect(target.textContent).toContain('Diagnostics download failed'));
+    expect(target.textContent).not.toContain('DO_NOT_EXPORT');
 
     void unmount(component);
   });

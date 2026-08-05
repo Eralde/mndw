@@ -119,17 +119,6 @@ class Transcript implements ReferenceTransport {
   }
 }
 
-async function main(): Promise<void> {
-  await verifyReference();
-  await mkdir(outputDir, {recursive: true});
-
-  const legacy = await generateLegacy();
-  const scram = await generateScram();
-
-  await writeFile(join(outputDir, 'legacy.json'), `${JSON.stringify(legacy, null, 2)}\n`);
-  await writeFile(join(outputDir, 'scram.json'), `${JSON.stringify(scram, null, 2)}\n`);
-}
-
 async function verifyReference(): Promise<void> {
   const packageJSON = JSON.parse(await (await import('node:fs/promises')).readFile(referencePackage, 'utf8')) as {
     dependencies?: {'@rci-tools/core'?: string};
@@ -260,12 +249,15 @@ function context(
 function response(status: number, headers: Record<string, string>): ReferenceResponse {
   return {status, data: {}, headers};
 }
-function encodeJSON(value: unknown): string {
-  return encodeBase64(new TextEncoder().encode(JSON.stringify(value)));
-}
+
 function encodeBase64(value: Uint8Array): string {
   return Buffer.from(value).toString('base64');
 }
+
+function encodeJSON(value: unknown): string {
+  return encodeBase64(new TextEncoder().encode(JSON.stringify(value)));
+}
+
 function requestField(transport: Transcript, field: string): string {
   for (const request of transport.requests) {
     if (request.method !== 'POST' || !request.data || typeof request.data !== 'object') {
@@ -281,6 +273,7 @@ function requestField(transport: Transcript, field: string): string {
 
   throw new Error(`reference transcript missing ${field}`);
 }
+
 async function hmacSHA3(key: Uint8Array | string, message: Uint8Array | string): Promise<Uint8Array> {
   const hasher = await createHMAC(createSHA3(512), key);
 
@@ -299,9 +292,22 @@ async function sha3Digest(data: Uint8Array): Promise<Uint8Array> {
     .digest('binary');
 }
 
-if (process.argv.includes('--check-reference')) {
+async function main(): Promise<void> {
   await verifyReference();
-  console.log(`@rci-tools/core source compiled from ${REFERENCE_COMMIT}`);
+  await mkdir(outputDir, {recursive: true});
+
+  const legacy = await generateLegacy();
+  const scram = await generateScram();
+
+  await writeFile(join(outputDir, 'legacy.json'), `${JSON.stringify(legacy, null, 2)}\n`);
+  await writeFile(join(outputDir, 'scram.json'), `${JSON.stringify(scram, null, 2)}\n`);
+}
+
+if (process.argv.includes('--check-reference')) {
+  verifyReference()
+    .then(() => {
+      console.log(`@rci-tools/core source compiled from ${REFERENCE_COMMIT}`);
+    });
 } else {
-  await main();
+  void main();
 }

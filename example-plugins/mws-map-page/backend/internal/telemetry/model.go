@@ -58,6 +58,7 @@ type NodesResponse struct {
 type PersistentSession struct {
 	Mac       string               `json:"mac"`
 	Live      bool                 `json:"live"`
+	Stale     bool                 `json:"stale"`
 	Telemetry *PersistentTelemetry `json:"telemetry,omitempty"`
 }
 

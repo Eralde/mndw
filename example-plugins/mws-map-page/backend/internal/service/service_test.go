@@ -217,6 +217,38 @@ func TestNodesResponseIncludesPersistentTelemetryWithoutCredentials(t *testing.T
 	}
 }
 
+func TestNodesResponseMarksCachedPersistentTelemetryStaleDuringReconnect(t *testing.T) {
+	service := New(config.Config{})
+	when := time.Unix(100, 0).UTC()
+	service.SetClock(testClock{now: when})
+	service.telemetry.StorePersistent("cid-1", telemetry.PersistentTelemetry{
+		SampledAt: when,
+		System:    telemetry.System{CPULoad: 27},
+	})
+	service.SetPersistentSource(fakePersistentSource{sessions: []persistent.Session{{Identity: "cid-1", Mac: "aa:bb:cc:dd:ee:ff", Live: false}}})
+
+	response, err := service.Nodes(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	sessions, ok := envelope["persistentSessions"].([]any)
+	if !ok || len(sessions) != 1 {
+		t.Fatalf("persistentSessions = %#v", envelope["persistentSessions"])
+	}
+	session, ok := sessions[0].(map[string]any)
+	if !ok || session["live"] != false || session["stale"] != true || session["telemetry"] == nil {
+		t.Fatalf("cached persistent session = %#v", sessions[0])
+	}
+}
+
 func TestPersistentTelemetryPollUsesDeviceInfoQueries(t *testing.T) {
 	service := New(config.Config{})
 	requester := &batchPersistentRequester{response: persistent.Response{Status: http.StatusOK, Body: []byte(`[

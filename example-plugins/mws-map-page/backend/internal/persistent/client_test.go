@@ -56,7 +56,7 @@ func TestClientUsesIdentityForPollingAndEmitsMacAfterTwoMisses(t *testing.T) {
 	cancel()
 }
 
-func TestClientClearsStateWhenSocketCloses(t *testing.T) {
+func TestClientRetainsStateWhenSocketCloses(t *testing.T) {
 	var attemptsMu sync.Mutex
 	attempts := 0
 	client := New(Config{
@@ -93,7 +93,10 @@ func TestClientClearsStateWhenSocketCloses(t *testing.T) {
 	go client.Run(ctx)
 
 	waitFor(t, func() bool { return len(client.Snapshot()) == 1 })
-	waitFor(t, func() bool { return len(client.Snapshot()) == 0 })
+	waitFor(t, func() bool {
+		sessions := client.Snapshot()
+		return len(sessions) == 1 && !sessions[0].Live
+	})
 	cancel()
 }
 
@@ -159,6 +162,7 @@ func TestClientBoundsStalledTelemetryRequest(t *testing.T) {
 		PluginID:     "mws-map-page",
 		PollInterval: time.Hour,
 		IOTimeout:    20 * time.Millisecond,
+		RetryDelay:   5 * time.Millisecond,
 		TelemetryPoll: func(ctx context.Context, target Target, requester Requester) error {
 			_, err := requester.Do(ctx, Request{Method: "POST", Path: "rci/", Body: []byte(`{"query":"cpu"}`)})
 			telemetryFinished <- err
@@ -192,6 +196,7 @@ func TestClientBoundsStalledTelemetryRequest(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("stalled telemetry request was not bounded")
 	}
+	waitFor(t, func() bool { return client.Diagnostics().ConnectionAttempts >= 2 })
 }
 
 func TestClientTreatsUnavailableSocketAsEmpty(t *testing.T) {
@@ -436,6 +441,38 @@ func TestClientRequiresTwoConsecutiveFailuresBeforeFalse(t *testing.T) {
 	client.applyResult(target, wireFrame{}, &remoteError{code: "target-unreachable"})
 	if sessions := client.Snapshot(); len(sessions) != 1 || sessions[0] != (Session{Identity: target.Identity, Mac: target.MAC, Live: false}) {
 		t.Fatalf("after two misses sessions = %#v, want configured failure", sessions)
+	}
+}
+
+func TestClientRetainsLastKnownSessionDuringConnectionReset(t *testing.T) {
+	client := New(Config{PluginID: "mws-map-page", SessionRetention: time.Minute})
+	target := Target{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}
+	if err := client.updateTargets([]Target{target}); err != nil {
+		t.Fatal(err)
+	}
+	client.applyResult(target, wireFrame{Status: 200}, nil)
+
+	client.markDisconnected("connection-reset")
+	sessions := client.Snapshot()
+	if len(sessions) != 1 || sessions[0].Identity != target.Identity || sessions[0].Mac != target.MAC || sessions[0].Live {
+		t.Fatalf("sessions during reconnect = %#v, want one non-live retained session", sessions)
+	}
+}
+
+func TestClientExpiresRetainedSessionAfterConnectionRetention(t *testing.T) {
+	client := New(Config{PluginID: "mws-map-page", SessionRetention: time.Minute})
+	target := Target{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}
+	if err := client.updateTargets([]Target{target}); err != nil {
+		t.Fatal(err)
+	}
+	client.mu.Lock()
+	state := client.sessions[target.Identity]
+	state.lastSeenAt = time.Now().UTC().Add(-2 * time.Minute)
+	client.sessions[target.Identity] = state
+	client.mu.Unlock()
+
+	if sessions := client.Snapshot(); len(sessions) != 0 {
+		t.Fatalf("expired sessions = %#v, want empty", sessions)
 	}
 }
 

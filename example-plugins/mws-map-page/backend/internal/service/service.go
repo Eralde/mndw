@@ -261,7 +261,7 @@ func (s *Service) pollPersistentTelemetry(ctx context.Context, target persistent
 		s.recordPersistentTelemetryPhase(target.Identity, query.phase, response.Status, err)
 	}
 	if err != nil {
-		return fmt.Errorf("persistent telemetry request failed")
+		return fmt.Errorf("persistent telemetry request failed: %w", err)
 	}
 	if response.Status != http.StatusOK {
 		return fmt.Errorf("persistent telemetry request returned status %d", response.Status)
@@ -497,7 +497,7 @@ func (s *Service) persistentSessionsSnapshot() []telemetry.PersistentSession {
 	result := make([]telemetry.PersistentSession, 0, len(sessions))
 	now := s.clock.Now()
 	for _, session := range sessions {
-		item := telemetry.PersistentSession{Mac: session.Mac, Live: session.Live}
+		item := telemetry.PersistentSession{Mac: session.Mac, Live: session.Live, Stale: !session.Live}
 		if sessionData, ok := s.telemetry.Persistent(session.Identity, now); ok {
 			item.Telemetry = &sessionData
 		}

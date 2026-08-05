@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"sort"
 	"sync"
@@ -14,6 +15,7 @@ import (
 
 const protocolVersion = 1
 const maxRecentTargetDiagnostics = 64
+const defaultSessionRetention = 3 * time.Minute
 
 type Target struct {
 	Identity string `json:"identity"`
@@ -34,6 +36,7 @@ type Diagnostics struct {
 	SocketPath           string              `json:"socketPath"`
 	PollInterval         string              `json:"pollInterval"`
 	IOTimeout            string              `json:"ioTimeout"`
+	SessionRetention     string              `json:"sessionRetention"`
 	Connected            bool                `json:"connected"`
 	ConnectionAttempts   int                 `json:"connectionAttempts"`
 	ReconnectCount       int                 `json:"reconnectCount"`
@@ -117,14 +120,15 @@ type Requester interface {
 type TelemetryPoll func(context.Context, Target, Requester) error
 
 type Config struct {
-	Path          string
-	PluginID      string
-	PollInterval  time.Duration
-	RetryDelay    time.Duration
-	IOTimeout     time.Duration
-	MaxInflight   int
-	Dial          func(context.Context) (net.Conn, error)
-	TelemetryPoll TelemetryPoll
+	Path             string
+	PluginID         string
+	PollInterval     time.Duration
+	RetryDelay       time.Duration
+	IOTimeout        time.Duration
+	SessionRetention time.Duration
+	MaxInflight      int
+	Dial             func(context.Context) (net.Conn, error)
+	TelemetryPoll    TelemetryPoll
 }
 
 type Client struct {
@@ -138,9 +142,10 @@ type Client struct {
 }
 
 type sessionState struct {
-	target Target
-	misses int
-	live   bool
+	target     Target
+	misses     int
+	live       bool
+	lastSeenAt time.Time
 }
 
 type wireFrame struct {
@@ -173,6 +178,8 @@ type remoteError struct {
 
 func (e *remoteError) Error() string { return e.code }
 
+var errPersistentSocketClosed = errors.New("persistent session socket closed")
+
 func New(config Config) *Client {
 	if config.PollInterval <= 0 {
 		config.PollInterval = 30 * time.Second
@@ -182,6 +189,9 @@ func New(config Config) *Client {
 	}
 	if config.IOTimeout <= 0 {
 		config.IOTimeout = 5 * time.Second
+	}
+	if config.SessionRetention <= 0 {
+		config.SessionRetention = defaultSessionRetention
 	}
 	if config.MaxInflight <= 0 {
 		config.MaxInflight = 8
@@ -198,6 +208,7 @@ func New(config Config) *Client {
 			SocketPath:           config.Path,
 			PollInterval:         config.PollInterval.String(),
 			IOTimeout:            config.IOTimeout.String(),
+			SessionRetention:     config.SessionRetention.String(),
 		},
 	}
 }
@@ -228,7 +239,6 @@ func (c *Client) Run(ctx context.Context) {
 			c.clear()
 			return
 		}
-		c.clear()
 		if err := c.runConnection(ctx); err != nil && ctx.Err() == nil {
 			c.wait(ctx, c.config.RetryDelay)
 		}
@@ -238,6 +248,7 @@ func (c *Client) Run(ctx context.Context) {
 func (c *Client) Snapshot() []Session {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.expireStaleSessionsLocked(time.Now().UTC())
 	result := make([]Session, 0, len(c.sessions))
 	for _, state := range c.sessions {
 		if !state.live {
@@ -268,7 +279,7 @@ func (c *Client) runConnection(ctx context.Context) error {
 	defer connection.Close()
 	var runErr error
 	defer func() {
-		c.clear("connection-reset")
+		c.markDisconnected("connection-reset")
 		reason := "connection-closed"
 		if ctx.Err() != nil {
 			reason = "context-canceled"
@@ -303,7 +314,10 @@ func (c *Client) runConnection(ctx context.Context) error {
 			return err
 		}
 		c.recordTargets()
-		c.pollTargets(ctx, rpc)
+		if err := c.pollTargets(ctx, rpc); err != nil {
+			runErr = err
+			return err
+		}
 		if err := c.wait(ctx, c.config.PollInterval); err != nil {
 			runErr = err
 			return err
@@ -397,6 +411,7 @@ func (c *Client) updateTargets(targets []Target) error {
 			}
 		}
 		state.target = target
+		state.lastSeenAt = now
 		c.sessions[identity] = state
 		diagnostic.SessionPresent = true
 		diagnostic.Misses = state.misses
@@ -411,7 +426,7 @@ func (c *Client) updateTargets(targets []Target) error {
 	return nil
 }
 
-func (c *Client) pollTargets(ctx context.Context, rpc *rpcConnection) {
+func (c *Client) pollTargets(ctx context.Context, rpc *rpcConnection) error {
 	c.mu.Lock()
 	targets := make([]Target, 0, len(c.targets))
 	for _, target := range c.targets {
@@ -420,6 +435,18 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rpcConnection) {
 	c.mu.Unlock()
 	semaphore := make(chan struct{}, c.config.MaxInflight)
 	var workers sync.WaitGroup
+	var errorMu sync.Mutex
+	var connectionErr error
+	recordConnectionError := func(err error) {
+		if !isConnectionFailure(err) {
+			return
+		}
+		errorMu.Lock()
+		defer errorMu.Unlock()
+		if connectionErr == nil {
+			connectionErr = err
+		}
+	}
 	for _, target := range targets {
 		target := target
 		workers.Add(1)
@@ -434,6 +461,7 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rpcConnection) {
 			response, err := rpc.call(ctx, wireFrame{Target: target.Identity, Method: "GET", Path: "rci/show/version"})
 			if err != nil {
 				c.recordTargetError(target, response, err)
+				recordConnectionError(err)
 			} else if response.Status != 200 {
 				c.recordTargetError(target, response, nil)
 			}
@@ -444,6 +472,7 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rpcConnection) {
 					diagnostic := DiagnosticError{Phase: "telemetry", Identity: target.Identity, Code: "telemetry-failed", Message: "telemetry polling failed"}
 					c.recordTargetTelemetryError(target, diagnostic)
 					c.recordError(diagnostic)
+					recordConnectionError(err)
 				} else {
 					c.recordTargetTelemetrySuccess(target)
 					c.recordTelemetrySuccess()
@@ -452,6 +481,18 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rpcConnection) {
 		}()
 	}
 	workers.Wait()
+	return connectionErr
+}
+
+func isConnectionFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	var remote *remoteError
+	if errors.As(err, &remote) {
+		return false
+	}
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errPersistentSocketClosed)
 }
 
 type rpcRequester struct {
@@ -552,6 +593,51 @@ func (c *Client) clear(reasons ...string) {
 	c.sessions = make(map[string]sessionState)
 	c.diagnostics.TargetCount = 0
 	c.diagnostics.SessionCount = 0
+	c.pruneTargetDiagnosticsLocked()
+}
+
+func (c *Client) markDisconnected(reason string) {
+	now := time.Now().UTC()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for identity, state := range c.sessions {
+		state.live = false
+		if state.misses < 2 {
+			state.misses = 2
+		}
+		c.sessions[identity] = state
+		diagnostic := c.targetDiagnostics[identity]
+		diagnostic.Present = true
+		diagnostic.SessionPresent = true
+		diagnostic.Live = false
+		diagnostic.Misses = state.misses
+		diagnostic.SessionReason = reason
+		diagnostic.RemovedAt = nil
+		diagnostic.LastSessionChangeAt = timePointer(now)
+		c.targetDiagnostics[identity] = diagnostic
+	}
+	c.diagnostics.TargetCount = len(c.targets)
+	c.diagnostics.SessionCount = c.sessionCountLocked()
+}
+
+func (c *Client) expireStaleSessionsLocked(now time.Time) {
+	for identity, state := range c.sessions {
+		if state.lastSeenAt.IsZero() || now.Sub(state.lastSeenAt) <= c.config.SessionRetention {
+			continue
+		}
+		delete(c.sessions, identity)
+		delete(c.targets, identity)
+		diagnostic := c.targetDiagnostics[identity]
+		diagnostic.Present = false
+		diagnostic.SessionPresent = false
+		diagnostic.Live = false
+		diagnostic.SessionReason = "retention-expired"
+		diagnostic.RemovedAt = timePointer(now)
+		diagnostic.LastSessionChangeAt = timePointer(now)
+		c.targetDiagnostics[identity] = diagnostic
+	}
+	c.diagnostics.TargetCount = len(c.targets)
+	c.diagnostics.SessionCount = c.sessionCountLocked()
 	c.pruneTargetDiagnosticsLocked()
 }
 
@@ -713,6 +799,16 @@ func targetProbeError(target Target, response wireFrame, err error, at time.Time
 		return diagnostic
 	}
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			diagnostic.Code = "request-timeout"
+			diagnostic.Message = "target probe timed out"
+			return diagnostic
+		}
+		if errors.Is(err, errPersistentSocketClosed) {
+			diagnostic.Code = "socket-closed"
+			diagnostic.Message = "persistent session socket closed"
+			return diagnostic
+		}
 		diagnostic.Code = "probe-failed"
 		diagnostic.Message = "target probe failed"
 		return diagnostic
@@ -731,6 +827,16 @@ func telemetryDiagnosticError(identity, phase string, status int, err error, at 
 		return diagnostic
 	}
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			diagnostic.Code = "request-timeout"
+			diagnostic.Message = "telemetry request timed out"
+			return diagnostic
+		}
+		if errors.Is(err, errPersistentSocketClosed) {
+			diagnostic.Code = "socket-closed"
+			diagnostic.Message = "persistent session socket closed"
+			return diagnostic
+		}
 		diagnostic.Code = "request-failed"
 		diagnostic.Message = "telemetry request failed"
 		return diagnostic
@@ -899,7 +1005,8 @@ func (r *rpcConnection) call(ctx context.Context, request wireFrame) (wireFrame,
 	r.writeMu.Unlock()
 	if err != nil {
 		r.removePending(id)
-		return wireFrame{}, err
+		r.close()
+		return wireFrame{}, fmt.Errorf("%w: %v", errPersistentSocketClosed, err)
 	}
 	select {
 	case frame := <-response:
@@ -909,10 +1016,11 @@ func (r *rpcConnection) call(ctx context.Context, request wireFrame) (wireFrame,
 		return frame, nil
 	case <-requestContext.Done():
 		r.removePending(id)
+		r.close()
 		return wireFrame{}, requestContext.Err()
 	case <-r.done:
 		r.removePending(id)
-		return wireFrame{}, errors.New("persistent session socket closed")
+		return wireFrame{}, errPersistentSocketClosed
 	}
 }
 

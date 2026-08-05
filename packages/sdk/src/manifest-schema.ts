@@ -82,6 +82,7 @@ const pluginBackendSchema = z.object({
   endpoints: z.array(pluginBackendEndpointSchema).optional(),
   websockets: z.array(pluginBackendWebSocketSchema).optional(),
   daemon: pluginBackendDaemonSchema.optional(),
+  diagnostics: z.boolean().optional(),
   public: z.boolean().optional(),
 }).optional()
   .superRefine((backend, ctx) => {

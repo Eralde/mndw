@@ -360,7 +360,10 @@ func diagnosticsPlugins(reg *registry.Registry, store *state.Store, runtimeRoot 
 		return plugins
 	}
 
-	forEachBackendPlugin(reg, store, nil, func(name, _ string, _ *registry.Plugin) {
+	forEachBackendPlugin(reg, store, nil, func(name, _ string, plugin *registry.Plugin) {
+		if plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Diagnostics == nil || !*plugin.Manifest.Backend.Diagnostics {
+			return
+		}
 		dir, err := pluginruntime.ForPlugin(runtimeRoot, name)
 		if err != nil || dir == "" {
 			return

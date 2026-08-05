@@ -224,6 +224,9 @@
               ],
               "additionalProperties": false
             },
+            "diagnostics": {
+              "type": "boolean"
+            },
             "public": {
               "type": "boolean"
             }
@@ -428,6 +431,9 @@
                 "stop"
               ],
               "additionalProperties": false
+            },
+            "diagnostics": {
+              "type": "boolean"
             },
             "public": {
               "type": "boolean"

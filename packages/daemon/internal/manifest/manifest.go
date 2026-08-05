@@ -66,12 +66,13 @@ type Daemon struct {
 
 // Backend is the optional server-side capability block.
 type Backend struct {
-	Opkg       []string    `json:"opkg,omitempty"`
-	Scripts    []Script    `json:"scripts,omitempty"`
-	Endpoints  []Endpoint  `json:"endpoints,omitempty"`
-	WebSockets []WebSocket `json:"websockets,omitempty"`
-	Daemon     *Daemon     `json:"daemon,omitempty"`
-	Public     *bool       `json:"public,omitempty"`
+	Opkg        []string    `json:"opkg,omitempty"`
+	Scripts     []Script    `json:"scripts,omitempty"`
+	Endpoints   []Endpoint  `json:"endpoints,omitempty"`
+	WebSockets  []WebSocket `json:"websockets,omitempty"`
+	Daemon      *Daemon     `json:"daemon,omitempty"`
+	Diagnostics *bool       `json:"diagnostics,omitempty"`
+	Public      *bool       `json:"public,omitempty"`
 }
 
 // Manifest is the parsed plugin manifest. Pointer fields carry presence so

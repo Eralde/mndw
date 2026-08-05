@@ -103,6 +103,18 @@ func TestValidateEndpointSecurityFlagsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestValidateBackendDiagnosticsRoundTrips(t *testing.T) {
+	data := []byte(`{"manifestVersion":2,"name":"diagnostics-backend-plugin","version":"1.0.0","type":"widget","label":"Diagnostics","entry":"index.js","size":{"w":2,"h":2},"backend":{"diagnostics":true}}`)
+
+	manifest, err := Validate(data)
+	if err != nil {
+		t.Fatalf("Validate diagnostics manifest: %v", err)
+	}
+	if manifest.Backend == nil || manifest.Backend.Diagnostics == nil || !*manifest.Backend.Diagnostics {
+		t.Fatalf("Backend.Diagnostics = %#v, want non-nil true", manifest.Backend)
+	}
+}
+
 func readFixtures(t *testing.T, kind string) []string {
 	t.Helper()
 	dir := filepath.Join(fixturesDir, kind)

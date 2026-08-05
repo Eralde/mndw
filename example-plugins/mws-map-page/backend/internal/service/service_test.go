@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -286,6 +287,51 @@ func TestDiagnosticsSnapshotIncludesLocalStateAndBoundsRrdData(t *testing.T) {
 		if len(series) != 60 || series[0].(map[string]any)["v"] != float64(15) || series[59].(map[string]any)["v"] != float64(74) {
 			t.Fatalf("%s = %#v", field, series)
 		}
+	}
+}
+
+func TestDiagnosticsSnapshotIncludesSafeCredentialFailure(t *testing.T) {
+	controller := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/auth" {
+			w.Header().Set("WWW-Authenticate", "x-ndw5-interactive")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer controller.Close()
+
+	runtimeDir := t.TempDir()
+	service := New(config.Config{ControllerURL: controller.URL, RuntimeDir: runtimeDir})
+	when := time.Date(2026, time.August, 5, 5, 40, 42, 0, time.UTC)
+	service.SetClock(testClock{now: when})
+	service.holder.SetClock(testClock{now: when})
+
+	if _, err := service.Credentials(context.Background(), "admin", "secret"); err == nil {
+		t.Fatal("Credentials error = nil, want unsupported authentication error")
+	}
+
+	snapshot := service.DiagnosticsSnapshot()
+	lastError, ok := snapshot["lastError"].(map[string]any)
+	if !ok {
+		t.Fatalf("lastError = %#v, want diagnostic error object", snapshot["lastError"])
+	}
+	if lastError["operation"] != "credentials" || lastError["status"] != 422 || lastError["code"] != "unsupported_firmware" || lastError["message"] != "unsupported firmware" || lastError["at"] != when.Format(time.RFC3339) {
+		t.Fatalf("lastError = %#v", lastError)
+	}
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "secret") || strings.Contains(string(encoded), "x-ndw5") {
+		t.Fatalf("diagnostics leaked credential or auth details: %s", encoded)
+	}
+	diagnostics, err := os.ReadFile(filepath.Join(runtimeDir, "diagnostics.json"))
+	if err != nil {
+		t.Fatalf("read diagnostics: %v", err)
+	}
+	if !strings.Contains(string(diagnostics), `"code":"unsupported_firmware"`) {
+		t.Fatalf("published diagnostics = %s", diagnostics)
 	}
 }
 

@@ -50,6 +50,8 @@ export interface PluginBackendManifest {
   endpoints?: PluginBackendEndpointDeclaration[];
   websockets?: PluginBackendWebSocketDeclaration[];
   daemon?: PluginBackendDaemonDeclaration;
+  /** true = the plugin writes the runtime diagnostics.json contract. */
+  diagnostics?: boolean;
   /** true = endpoints/websockets skip the router-session check (surfaced in the approval UI). */
   public?: boolean;
 }

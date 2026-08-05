@@ -14,6 +14,7 @@
       "backend/mwsd-client"
     ],
     "daemon": {"start": "backend/start.sh", "stop": "backend/stop.sh"},
+    "diagnostics": true,
     "scripts": [
       {"id": "credentials", "runtime": "sh", "source": "backend/credentials.sh"},
       {"id": "forget", "runtime": "sh", "source": "backend/forget.sh"},

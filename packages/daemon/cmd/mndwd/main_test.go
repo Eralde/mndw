@@ -26,16 +26,17 @@ func TestDiagnosticsPluginsEnumeratesApprovedEnabledBackends(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), testManifest(name, true, name == "alpha"), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), testManifest(name, true, name == "alpha", true), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := store.Mutate(func(st *state.State) error {
-		st.Plugins["z-user"] = &state.Plugin{Name: "z-user", Approval: state.ApprovalApproved, Enabled: true, Manifest: testManifest("z-user", true, true)}
-		st.Plugins["duplicate"] = &state.Plugin{Name: "duplicate", Approval: state.ApprovalApproved, Enabled: true, Manifest: testManifest("duplicate", true, false)}
-		st.Plugins["disabled"] = &state.Plugin{Name: "disabled", Approval: state.ApprovalApproved, Enabled: false, Manifest: testManifest("disabled", true, true)}
-		st.Plugins["pending"] = &state.Plugin{Name: "pending", Approval: state.ApprovalPending, Enabled: true, Manifest: testManifest("pending", true, true)}
-		st.Plugins["plain"] = &state.Plugin{Name: "plain", Approval: state.ApprovalApproved, Enabled: true, Manifest: testManifest("plain", false, false)}
+		st.Plugins["z-user"] = &state.Plugin{Name: "z-user", Approval: state.ApprovalApproved, Enabled: true, Manifest: testManifest("z-user", true, true, true)}
+		st.Plugins["duplicate"] = &state.Plugin{Name: "duplicate", Approval: state.ApprovalApproved, Enabled: true, Manifest: testManifest("duplicate", true, false, true)}
+		st.Plugins["disabled"] = &state.Plugin{Name: "disabled", Approval: state.ApprovalApproved, Enabled: false, Manifest: testManifest("disabled", true, true, true)}
+		st.Plugins["pending"] = &state.Plugin{Name: "pending", Approval: state.ApprovalPending, Enabled: true, Manifest: testManifest("pending", true, true, true)}
+		st.Plugins["no-diagnostics"] = &state.Plugin{Name: "no-diagnostics", Approval: state.ApprovalApproved, Enabled: true, Manifest: testManifest("no-diagnostics", true, false, false)}
+		st.Plugins["plain"] = &state.Plugin{Name: "plain", Approval: state.ApprovalApproved, Enabled: true, Manifest: testManifest("plain", false, false, false)}
 
 		return nil
 	}); err != nil {
@@ -66,12 +67,15 @@ func diagnosticPluginIDs(plugins []diagnostics.Plugin) []string {
 	return ids
 }
 
-func testManifest(name string, backend, daemon bool) json.RawMessage {
+func testManifest(name string, backend, daemon, diagnostics bool) json.RawMessage {
 	backendJSON := ""
 	if backend {
 		backendJSON = `,"backend":{"public":true}`
 		if daemon {
 			backendJSON = `,"backend":{"public":true,"daemon":{"start":"backend/start.sh","stop":"backend/stop.sh"}}`
+		}
+		if diagnostics {
+			backendJSON = backendJSON[:len(backendJSON)-1] + `,"diagnostics":true}`
 		}
 	}
 	return json.RawMessage(fmt.Sprintf(`{"manifestVersion":2,"name":"%s","version":"1.0.0","type":"widget","label":"%s","entry":"index.js","size":{"w":4,"h":3}%s}`, name, name, backendJSON))

@@ -42,6 +42,7 @@ type Service struct {
 	socketPath    string
 	pidPath       string
 	diagnostics   *diagnosticfile.Writer
+	lastError     *diagnosticError
 }
 
 type Clock interface {
@@ -62,6 +63,14 @@ type OperationError struct {
 	code    string
 	message string
 	err     error
+}
+
+type diagnosticError struct {
+	Operation string `json:"operation"`
+	Status    int    `json:"status"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	At        string `json:"at"`
 }
 
 func (e *OperationError) Error() string { return e.message }
@@ -160,6 +169,7 @@ func (s *Service) DiagnosticsSnapshot() map[string]any {
 		},
 		"credState":          string(s.credentials.State()),
 		"lastRefreshAt":      s.lastRefreshSnapshot(),
+		"lastError":          s.lastErrorSnapshot(),
 		"nodes":              s.nodesSnapshot(),
 		"persistentSessions": s.diagnosticsPersistentSessionsSnapshot(),
 	}
@@ -175,16 +185,16 @@ func (s *Service) SetClock(clock Clock) {
 
 func (s *Service) Credentials(ctx context.Context, username, password string) (any, error) {
 	if username == "" || password == "" {
-		return nil, &OperationError{status: 401, code: "authentication_failed", message: "authentication failed"}
+		return nil, s.recordError("credentials", &OperationError{status: 401, code: "authentication_failed", message: "authentication failed"})
 	}
 	token, operationCtx := s.epoch.Begin(ctx)
 	s.holder.Forget()
 	s.credentials.Set(username, []byte(password), token)
 	if err := s.holder.Authenticate(operationCtx, "controller", s.controller); err != nil {
-		return nil, classify(err)
+		return nil, s.recordError("credentials", err)
 	}
 	if err := s.refresh(operationCtx); err != nil {
-		return nil, classify(err)
+		return nil, s.recordError("credentials", err)
 	}
 	return map[string]any{"authenticated": true, "nodes": len(s.membersSnapshot())}, nil
 }
@@ -193,6 +203,7 @@ func (s *Service) Forget(ctx context.Context) (any, error) {
 	_, operationCtx := s.epoch.Begin(ctx)
 	s.holder.Forget()
 	s.credentials.Forget(s.epoch.Current())
+	s.clearError()
 	select {
 	case <-operationCtx.Done():
 		return nil, operationCtx.Err()
@@ -205,7 +216,7 @@ func (s *Service) Nodes(ctx context.Context) (any, error) {
 	state := s.credentials.State()
 	if len(s.membersSnapshot()) == 0 && state == credentials.StatePresent {
 		if err := s.refresh(ctx); err != nil {
-			return nil, classify(err)
+			return nil, s.recordError("nodes", err)
 		}
 	}
 	return telemetry.NodesResponse{CredState: string(state), LastRefreshAt: s.lastRefreshSnapshot(), Nodes: s.nodesSnapshot(), PersistentSessions: s.persistentSessionsSnapshot()}, nil
@@ -272,10 +283,12 @@ func (s *Service) refresh(ctx context.Context) error {
 	defer s.refreshMu.Unlock()
 	data, err := s.query(ctx, "controller", s.controller, "show.mws.member")
 	if err != nil {
+		s.recordError("refresh", err)
 		return err
 	}
 	members, err := discovery.ParseMembers(data)
 	if err != nil {
+		s.recordError("refresh", err)
 		return err
 	}
 	s.mu.Lock()
@@ -317,6 +330,7 @@ func (s *Service) refresh(ctx context.Context) error {
 	s.mu.Lock()
 	s.members = append([]discovery.Member(nil), members...)
 	s.lastRefreshAt = s.clock.Now().UTC()
+	s.lastError = nil
 	s.mu.Unlock()
 	return nil
 }
@@ -347,6 +361,54 @@ func (s *Service) membersSnapshot() []discovery.Member {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]discovery.Member(nil), s.members...)
+}
+
+func (s *Service) recordError(operation string, err error) *OperationError {
+	classified := operationError(err)
+	next := diagnosticError{
+		Operation: operation,
+		Status:    classified.Status(),
+		Code:      classified.Code(),
+		Message:   classified.Error(),
+		At:        s.clock.Now().UTC().Format(time.RFC3339Nano),
+	}
+	s.mu.Lock()
+	changed := s.lastError == nil
+	if !changed {
+		changed = s.lastError.Operation != next.Operation ||
+			s.lastError.Status != next.Status ||
+			s.lastError.Code != next.Code ||
+			s.lastError.Message != next.Message
+	}
+	s.lastError = &next
+	s.mu.Unlock()
+	if changed {
+		_ = s.WriteDiagnostics()
+	}
+
+	return classified
+}
+
+func (s *Service) clearError() {
+	s.mu.Lock()
+	s.lastError = nil
+	s.mu.Unlock()
+}
+
+func (s *Service) lastErrorSnapshot() map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lastError == nil {
+		return nil
+	}
+
+	return map[string]any{
+		"operation": s.lastError.Operation,
+		"status":    s.lastError.Status,
+		"code":      s.lastError.Code,
+		"message":   s.lastError.Message,
+		"at":        s.lastError.At,
+	}
 }
 
 func (s *Service) nodesSnapshot() []telemetry.Node {
@@ -450,6 +512,18 @@ func classify(err error) error {
 		return &OperationError{status: 409, code: "credentials_required", message: "credentials required", err: err}
 	}
 	return &OperationError{status: 504, code: "target_unavailable", message: "target unavailable", err: err}
+}
+
+func operationError(err error) *OperationError {
+	var classified *OperationError
+	if errors.As(err, &classified) {
+		return classified
+	}
+	classifiedError := classify(err)
+	if errors.As(classifiedError, &classified) {
+		return classified
+	}
+	return &OperationError{status: 500, code: "operation_rejected", message: "operation rejected", err: err}
 }
 
 func validNodeID(value string) bool {

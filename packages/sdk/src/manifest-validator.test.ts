@@ -176,6 +176,21 @@ describe('validateManifest behavior', () => {
     expect(result.backend?.endpoints?.[0]?.sensitive).toBe(true);
   });
 
+  it('retains the optional backend diagnostics capability', () => {
+    const result = validateManifest({
+      manifestVersion: 2,
+      name: 'diagnostics-backend-plugin',
+      version: '1.0.0',
+      type: 'widget',
+      label: 'Diagnostics Backend Plugin',
+      entry: 'index.js',
+      size: {w: 2, h: 2},
+      backend: {diagnostics: true},
+    });
+
+    expect(result.backend?.diagnostics).toBe(true);
+  });
+
   it('surfaces the plugin name in the error message', () => {
     expect(() =>
       validateManifest({

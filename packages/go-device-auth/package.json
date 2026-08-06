@@ -1,0 +1,7 @@
+{
+  "name": "@mndw/go-device-auth",
+  "private": true,
+  "scripts": {
+    "test": "go test ./..."
+  }
+}

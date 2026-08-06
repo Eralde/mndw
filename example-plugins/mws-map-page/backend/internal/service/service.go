@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,7 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"mws-map-page/internal/auth"
+	"mndw.local/device-auth"
+	rci "mndw.local/rci"
 	"mws-map-page/internal/config"
 	"mws-map-page/internal/credentials"
 	diagnosticfile "mws-map-page/internal/diagnostics"
@@ -235,42 +235,32 @@ func (s *Service) SetPersistentSource(source PersistentSource) {
 }
 
 func (s *Service) pollPersistentTelemetry(ctx context.Context, target persistent.Target, requester persistent.Requester) error {
-	type telemetryQuery struct {
-		phase string
-		path  string
-		data  map[string]any
+	phases := []string{"system", "cpuRrd", "memoryRrd"}
+	queries := []rci.Query{
+		rci.Q("show.system"),
+		{Path: "show.system.rrd.cpu", Data: map[string]any{"detail": 0, "attribute": "avg"}},
+		{Path: "show.system.rrd.memory", Data: map[string]any{"detail": 0, "attribute": "used"}},
 	}
-	queries := []telemetryQuery{
-		{phase: "system", path: "show.system"},
-		{phase: "cpuRrd", path: "show.system.rrd.cpu", data: map[string]any{"detail": 0, "attribute": "avg"}},
-		{phase: "memoryRrd", path: "show.system.rrd.memory", data: map[string]any{"detail": 0, "attribute": "used"}},
-	}
-	queryBatch := make([]map[string]any, 0, len(queries))
-	for _, query := range queries {
-		item := make(map[string]any)
-		if query.data == nil {
-			setQueryPath(item, query.path)
-		} else {
-			setQueryValue(item, query.path, query.data)
-		}
-		queryBatch = append(queryBatch, item)
-	}
-	requestBody, _ := json.Marshal(queryBatch)
-	response, err := requester.Do(ctx, persistent.Request{Method: http.MethodPost, Path: "rci/", Body: requestBody})
-	for _, query := range queries {
-		s.recordPersistentTelemetryPhase(target.Identity, query.phase, response.Status, err)
-	}
+	var reply persistent.Response
+	var transportErr error
+	send := rci.TransportFunc(func(requestCtx context.Context, body []byte) (rci.Response, error) {
+		reply, transportErr = requester.Do(requestCtx, persistent.Request{Method: http.MethodPost, Path: "rci/", Body: body})
+		return rci.Response{Status: reply.Status, Body: reply.Body}, transportErr
+	})
+	client, err := rci.New(send)
 	if err != nil {
-		return fmt.Errorf("persistent telemetry request failed: %w", err)
+		return err
 	}
-	if response.Status != http.StatusOK {
-		return fmt.Errorf("persistent telemetry request returned status %d", response.Status)
+	responses, clientErr := client.ExecuteMany(ctx, queries...)
+	for _, phase := range phases {
+		s.recordPersistentTelemetryPhase(target.Identity, phase, reply.Status, transportErr)
 	}
-	responses := make([][]byte, len(queries))
-	for index, query := range queries {
-		responses[index] = extractQueryValue(response.Body, query.path)
-		if len(responses[index]) == 0 {
-			return fmt.Errorf("persistent %s telemetry response empty", query.phase)
+	if clientErr != nil {
+		return clientErr
+	}
+	for index, response := range responses {
+		if response == nil {
+			return fmt.Errorf("persistent %s telemetry response empty", phases[index])
 		}
 	}
 	sample, err := telemetry.ParsePersistentTelemetry(responses[0], responses[1], responses[2], s.clock.Now().UTC())
@@ -374,23 +364,24 @@ func (s *Service) refresh(ctx context.Context) error {
 func (s *Service) query(ctx context.Context, id string, destination auth.Target, path string) ([]byte, error) {
 	var response []byte
 	operation := func(operationCtx context.Context, jar http.CookieJar) error {
-		query := map[string]any{}
-		setQueryPath(query, path)
-		body, _ := json.Marshal([]map[string]any{query})
-		reply, err := s.transport.Do(operationCtx, destination, jar, http.MethodPost, "/rci/", body)
+		client, err := rci.New(s.authTransport(destination, jar))
 		if err != nil {
 			return err
 		}
-		if reply.Status != http.StatusOK {
-			return fmt.Errorf("router query failed")
-		}
-		response = extractQueryValue(reply.Body, path)
-		return nil
+		response, err = client.Execute(operationCtx, rci.Q(path))
+		return err
 	}
 	if err := s.holder.WithSession(ctx, id, destination, operation); err != nil {
 		return nil, err
 	}
 	return response, nil
+}
+
+func (s *Service) authTransport(destination auth.Target, jar http.CookieJar) rci.TransportFunc {
+	return func(ctx context.Context, body []byte) (rci.Response, error) {
+		reply, err := s.transport.Do(ctx, destination, jar, http.MethodPost, "/rci/", body)
+		return rci.Response{Status: reply.Status, Body: reply.Body}, err
+	}
 }
 
 func (s *Service) membersSnapshot() []discovery.Member {
@@ -579,72 +570,4 @@ func validNodeID(value string) bool {
 		}
 	}
 	return true
-}
-
-func setQueryPath(root map[string]any, path string) {
-	setQueryValue(root, path, map[string]any{})
-}
-
-func setQueryValue(root map[string]any, path string, value any) {
-	parts := splitPath(path)
-	current := root
-	for index, part := range parts {
-		if index == len(parts)-1 {
-			current[part] = value
-			return
-		}
-		next := map[string]any{}
-		current[part] = next
-		current = next
-	}
-}
-
-func extractQueryValue(data []byte, path string) []byte {
-	var payload any
-	if json.Unmarshal(data, &payload) != nil {
-		return data
-	}
-	if value, ok := findPath(payload, splitPath(path)); ok {
-		result, _ := json.Marshal(value)
-		return result
-	}
-	return data
-}
-
-func findPath(value any, path []string) (any, bool) {
-	if len(path) == 0 {
-		return value, true
-	}
-	if list, ok := value.([]any); ok {
-		for _, item := range list {
-			if found, exists := findPath(item, path); exists {
-				return found, true
-			}
-		}
-		return nil, false
-	}
-	object, ok := value.(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	next, ok := object[path[0]]
-	if !ok {
-		return nil, false
-	}
-	return findPath(next, path[1:])
-}
-
-func splitPath(path string) []string {
-	if path == "" {
-		return nil
-	}
-	result := make([]string, 0)
-	start := 0
-	for index, char := range path {
-		if char == '.' {
-			result = append(result, path[start:index])
-			start = index + 1
-		}
-	}
-	return append(result, path[start:])
 }

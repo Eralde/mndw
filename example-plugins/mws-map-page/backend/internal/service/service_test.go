@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"mndw.local/device-auth"
+	rci "mndw.local/rci"
 	"mws-map-page/internal/config"
 	"mws-map-page/internal/discovery"
 	"mws-map-page/internal/persistent"
@@ -44,11 +48,34 @@ type persistentRequester struct {
 type batchPersistentRequester struct {
 	requests []persistent.Request
 	response persistent.Response
+	err      error
 }
 
 func (r *batchPersistentRequester) Do(_ context.Context, request persistent.Request) (persistent.Response, error) {
 	r.requests = append(r.requests, request)
-	return r.response, nil
+	return r.response, r.err
+}
+
+type telemetryPhaseCall struct {
+	phase  string
+	status int
+	err    error
+}
+
+type recordingPersistentSource struct {
+	calls []telemetryPhaseCall
+}
+
+func (r *recordingPersistentSource) Run(context.Context) {}
+
+func (r *recordingPersistentSource) Snapshot() []persistent.Session { return nil }
+
+func (r *recordingPersistentSource) Diagnostics() persistent.Diagnostics {
+	return persistent.Diagnostics{}
+}
+
+func (r *recordingPersistentSource) RecordTelemetryPhase(_ string, phase string, status int, err error) {
+	r.calls = append(r.calls, telemetryPhaseCall{phase: phase, status: status, err: err})
 }
 
 func (r *persistentRequester) Do(_ context.Context, request persistent.Request) (persistent.Response, error) {
@@ -62,6 +89,86 @@ func (r *persistentRequester) Do(_ context.Context, request persistent.Request) 
 		return r.responses[2], nil
 	}
 	return r.responses[0], nil
+}
+
+func TestQueryExtractsOnlyMemberPayload(t *testing.T) {
+	memberPayload := []byte(`{"cid":"cid-1","ip":"192.168.1.2","number":7}`)
+	controller := testsupport.NewFakeController(t, "admin", "secret", memberPayload)
+	service := New(config.Config{ControllerURL: controller.Server.URL})
+	service.credentials.Set("admin", []byte("secret"), 1)
+
+	got, err := service.query(context.Background(), "controller", auth.Target{BaseURL: controller.Server.URL}, "show.mws.member")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotValue, wantValue any
+	if err := json.Unmarshal(got, &gotValue); err != nil {
+		t.Fatalf("query payload: %v", err)
+	}
+	if err := json.Unmarshal(memberPayload, &wantValue); err != nil {
+		t.Fatalf("member payload: %v", err)
+	}
+	if !reflect.DeepEqual(gotValue, wantValue) {
+		t.Fatalf("query payload = %#v, want %#v", gotValue, wantValue)
+	}
+	if strings.Contains(string(got), `"show"`) {
+		t.Fatalf("query returned envelope: %s", got)
+	}
+}
+
+func TestQueryPreservesNon200AndAuthErrors(t *testing.T) {
+	t.Run("non-200", func(t *testing.T) {
+		service := newQueryTestService(t, func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path == "/auth" {
+				return queryTestResponse(http.StatusOK, nil), nil
+			}
+			return queryTestResponse(http.StatusServiceUnavailable, []byte("busy")), nil
+		})
+		service.credentials.Set("admin", []byte("secret"), 1)
+
+		_, err := service.query(context.Background(), "controller", auth.Target{BaseURL: "http://router"}, "show.mws.member")
+		if err == nil {
+			t.Fatal("query error = nil, want non-200 error")
+		}
+	})
+
+	t.Run("auth error remains reachable", func(t *testing.T) {
+		underlying := errors.New("transport failed")
+		service := newQueryTestService(t, func(request *http.Request) (*http.Response, error) {
+			if request.URL.Path == "/auth" {
+				return queryTestResponse(http.StatusOK, nil), nil
+			}
+			return nil, underlying
+		})
+		service.credentials.Set("admin", []byte("secret"), 1)
+
+		_, err := service.query(context.Background(), "controller", auth.Target{BaseURL: "http://router"}, "show.mws.member")
+		var authErr *auth.AuthError
+		if !errors.As(err, &authErr) {
+			t.Fatalf("query error = %v, want underlying auth.AuthError", err)
+		}
+	})
+}
+
+func newQueryTestService(t *testing.T, roundTrip roundTripperFunc) *Service {
+	t.Helper()
+	service := New(config.Config{})
+	service.transport = auth.NewHTTPTransport(&http.Client{Transport: roundTrip})
+	return service
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func queryTestResponse(status int, body []byte) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Body:       io.NopCloser(strings.NewReader(string(body))),
+		Header:     make(http.Header),
+	}
 }
 
 func TestNodesResponseTracksSuccessfulRefreshAndUsesUTC(t *testing.T) {
@@ -317,6 +424,104 @@ func TestPersistentTelemetryDiagnosticsTrackEachPhase(t *testing.T) {
 	phase := diagnostics.Targets[0].Telemetry
 	if phase.CPURRD.LastError == nil || phase.CPURRD.LastAttemptAt == nil || phase.MemoryRRD.LastError == nil || phase.MemoryRRD.LastAttemptAt == nil {
 		t.Fatalf("telemetry phase diagnostics = %#v", phase)
+	}
+}
+
+func TestPersistentTelemetryParseFailureRecordsFourPhases(t *testing.T) {
+	recorder := &recordingPersistentSource{}
+	service := New(config.Config{})
+	service.SetPersistentSource(recorder)
+	requester := &batchPersistentRequester{response: persistent.Response{Status: http.StatusOK, Body: []byte(`[
+		{"show":{"system":{"uptime":42,"cpuload":27,"memtotal":1000,"memory":"610/1024"}}},
+		{"show":{"system":{"rrd":{"cpu":"malformed"}}}},
+		{"show":{"system":{"rrd":{"memory":{"data":[]}}}}}
+	]`)}}
+
+	if err := service.pollPersistentTelemetry(context.Background(), persistent.Target{Identity: "cid-1"}, requester); err == nil {
+		t.Fatal("poll error = nil, want parse failure")
+	}
+	if len(recorder.calls) != 4 {
+		t.Fatalf("telemetry phase calls = %#v, want three request phases plus system parse phase", recorder.calls)
+	}
+	wantPhases := []string{"system", "cpuRrd", "memoryRrd", "system"}
+	for index, want := range wantPhases {
+		if recorder.calls[index].phase != want || recorder.calls[index].status != http.StatusOK {
+			t.Fatalf("phase call %d = %#v, want phase %q and status 200", index, recorder.calls[index], want)
+		}
+	}
+	if recorder.calls[0].err != nil || recorder.calls[1].err != nil || recorder.calls[2].err != nil || recorder.calls[3].err == nil {
+		t.Fatalf("phase errors = %#v, want request successes and system parse error", recorder.calls)
+	}
+}
+
+func TestPersistentTelemetryDeadlineErrorIsPreserved(t *testing.T) {
+	service := New(config.Config{})
+	requester := &batchPersistentRequester{err: context.DeadlineExceeded}
+
+	err := service.pollPersistentTelemetry(context.Background(), persistent.Target{Identity: "cid-1"}, requester)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("poll error = %v, want context.DeadlineExceeded", err)
+	}
+}
+
+func TestPersistentTelemetryAbsentPathUsesEmptyPhase(t *testing.T) {
+	recorder := &recordingPersistentSource{}
+	service := New(config.Config{})
+	service.SetPersistentSource(recorder)
+	requester := &batchPersistentRequester{response: persistent.Response{Status: http.StatusOK, Body: []byte(`[
+		{"show":{"system":{"uptime":42,"cpuload":27,"memtotal":1000,"memory":"610/1024"}}},
+		{"show":{"system":{"rrd":{"memory":{"data":[]}}}}},
+		{"show":{"system":{"rrd":{"memory":{"data":[]}}}}}
+	]`)}}
+
+	err := service.pollPersistentTelemetry(context.Background(), persistent.Target{Identity: "cid-1"}, requester)
+	if err == nil || err.Error() != "persistent cpuRrd telemetry response empty" {
+		t.Fatalf("poll error = %v, want cpuRrd empty error", err)
+	}
+	if len(recorder.calls) != 3 {
+		t.Fatalf("telemetry phase calls = %#v, want three request phases", recorder.calls)
+	}
+}
+
+func TestPersistentTelemetryEmptyAndMalformedBodiesAreInvalidResponses(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body []byte
+	}{
+		{name: "empty", body: nil},
+		{name: "malformed", body: []byte(`{"not":"a command result array"}`)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := &recordingPersistentSource{}
+			service := New(config.Config{})
+			service.SetPersistentSource(recorder)
+			requester := &batchPersistentRequester{response: persistent.Response{Status: http.StatusOK, Body: test.body}}
+
+			err := service.pollPersistentTelemetry(context.Background(), persistent.Target{Identity: "cid-1"}, requester)
+			if !errors.Is(err, rci.ErrInvalidResponse) {
+				t.Fatalf("poll error = %v, want rci.ErrInvalidResponse", err)
+			}
+			if len(recorder.calls) != 3 {
+				t.Fatalf("telemetry phase calls = %#v, want three request phases", recorder.calls)
+			}
+		})
+	}
+}
+
+func TestPersistentTelemetryPreservesLargeMemtotal(t *testing.T) {
+	service := New(config.Config{})
+	requester := &batchPersistentRequester{response: persistent.Response{Status: http.StatusOK, Body: []byte(`[
+		{"show":{"system":{"uptime":42,"cpuload":27,"memtotal":9007199254740993,"memory":"610/1024"}}},
+		{"show":{"system":{"rrd":{"cpu":{"data":[]}}}}},
+		{"show":{"system":{"rrd":{"memory":{"data":[]}}}}}
+	]`)}}
+
+	if err := service.pollPersistentTelemetry(context.Background(), persistent.Target{Identity: "cid-1"}, requester); err != nil {
+		t.Fatal(err)
+	}
+	sample, ok := service.telemetry.Persistent("cid-1", time.Now())
+	if !ok || sample.System.MemTotal != 9007199254740993 {
+		t.Fatalf("sample = %#v, ok = %v, want exact memtotal", sample, ok)
 	}
 }
 

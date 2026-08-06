@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"mndwd/internal/keenetic/target"
 	"mndwd/internal/rcisession/model"
+	"mndwd/internal/target"
 )
 
 var (

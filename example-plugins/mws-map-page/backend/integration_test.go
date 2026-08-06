@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"testing"
 
-	"mws-map-page/internal/auth"
+	"mndw.local/device-auth"
 	"mws-map-page/internal/discovery"
 	"mws-map-page/internal/target"
 	"mws-map-page/internal/testsupport"

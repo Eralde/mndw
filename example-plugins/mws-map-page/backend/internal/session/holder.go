@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"mws-map-page/internal/auth"
+	"mndw.local/device-auth"
 	"mws-map-page/internal/credentials"
 )
 

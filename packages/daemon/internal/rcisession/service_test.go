@@ -282,6 +282,62 @@ func TestDeleteExtendersRevokesRemoteTokensByID(t *testing.T) {
 	}
 }
 
+func TestDeleteExtendersRemovesMembersMissingFromFreshEnumeration(t *testing.T) {
+	store := newFakeStore()
+	store.document.Extenders = map[string]model.TokenRecord{
+		"node-deleted": {Key: "token-id-deleted", Token: "token-value-deleted", Support: model.SupportSupported},
+	}
+	enumerator := &fakeEnumerator{}
+	client := &recordingHTTPClient{}
+	service := NewService(store, enumerator)
+	service.Proxy(&http.Client{Transport: recordingRoundTripper{client: client}}, 1<<20, 0)
+
+	if err := service.DeleteExtenders(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !enumerator.invalidated || enumerator.calls != 1 {
+		t.Fatalf("enumeration invalidated=%v calls=%d, want invalidated once", enumerator.invalidated, enumerator.calls)
+	}
+	if len(client.requests) != 0 {
+		t.Fatalf("remote revoke requests = %d, want 0", len(client.requests))
+	}
+	document, err := store.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Extenders) != 0 {
+		t.Fatalf("extenders after clear = %#v", document.Extenders)
+	}
+}
+
+func TestDeleteExtendersRetainsRecordsWhenFreshEnumerationFails(t *testing.T) {
+	store := newFakeStore()
+	store.document.Extenders = map[string]model.TokenRecord{
+		"node-1": {Key: "token-id-1", Token: "token-value-1", Support: model.SupportSupported},
+	}
+	enumerator := &fakeEnumerator{err: errors.New("controller unavailable")}
+	client := &recordingHTTPClient{}
+	service := NewService(store, enumerator)
+	service.Proxy(&http.Client{Transport: recordingRoundTripper{client: client}}, 1<<20, 0)
+
+	if err := service.DeleteExtenders(context.Background()); !errors.Is(err, ErrExtenderTokenDeletion) {
+		t.Fatalf("DeleteExtenders error = %v, want extender token deletion error", err)
+	}
+	if !enumerator.invalidated || enumerator.calls != 1 {
+		t.Fatalf("enumeration invalidated=%v calls=%d, want invalidated once", enumerator.invalidated, enumerator.calls)
+	}
+	if len(client.requests) != 0 {
+		t.Fatalf("remote revoke requests = %d, want 0", len(client.requests))
+	}
+	document, err := store.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := document.Extenders["node-1"]; !ok {
+		t.Fatal("extender record was removed after enumeration failure")
+	}
+}
+
 func TestDeleteExtendersRetainsFailedRevocations(t *testing.T) {
 	store := newFakeStore()
 	store.document.Extenders = map[string]model.TokenRecord{

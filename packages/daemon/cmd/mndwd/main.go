@@ -15,12 +15,12 @@ import (
 	"syscall"
 	"time"
 
+	"mndw.local/device-auth"
 	"mndwd/internal/access"
 	"mndwd/internal/authz"
 	"mndwd/internal/diagnostics"
 	"mndwd/internal/dispatch"
 	"mndwd/internal/httpx"
-	keeneticauth "mndwd/internal/keenetic/auth"
 	"mndwd/internal/lifecycle"
 	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
@@ -213,9 +213,9 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 			logger.Error("persistent RCI controller URL rejected", "error", err)
 		}
 		controllerTester := rcisession.ControllerHTTPTester{Client: deviceClient, Timeout: cfg.RCIProxyOperationTimeout, BaseURL: cfg.ControllerURL}
-		authTransport := keeneticauth.NewHTTPTransport(deviceClient)
+		authTransport := auth.NewHTTPTransport(deviceClient)
 		generator := minter.HTTPGenerator{
-			Authenticator:    keeneticauth.New(keeneticauth.Options{Transport: authTransport, AuthTimeout: cfg.RCIProxyOperationTimeout}),
+			Authenticator:    auth.New(auth.Options{Transport: authTransport, AuthTimeout: cfg.RCIProxyOperationTimeout}),
 			Transport:        authTransport,
 			RequestBody:      minter.DefaultRequestBody,
 			TokenRequestBody: minter.DefaultTokenRequestBody,

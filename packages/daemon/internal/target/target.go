@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 
-	"mndwd/internal/keenetic/auth"
-	"mndwd/internal/keenetic/discovery"
+	"mndw.local/device-auth"
+	"mndwd/internal/discovery"
 )
 
 type Target struct {

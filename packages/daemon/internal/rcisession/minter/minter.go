@@ -8,11 +8,12 @@ import (
 	"log/slog"
 	"net/http"
 
-	"mndwd/internal/keenetic/auth"
-	"mndwd/internal/keenetic/discovery"
-	"mndwd/internal/keenetic/target"
+	"mndw.local/device-auth"
+	rci "mndw.local/rci"
+	"mndwd/internal/discovery"
 	"mndwd/internal/rcisession/enumeration"
 	"mndwd/internal/rcisession/model"
+	"mndwd/internal/target"
 )
 
 var (
@@ -208,36 +209,50 @@ func (g HTTPGenerator) Generate(ctx context.Context, member enumeration.Member, 
 }
 
 func parseTokenProbeResponse(body []byte) (bool, error) {
-	var payload struct {
-		Probe *struct {
-			Found bool `json:"found"`
-		} `json:"probe"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil || payload.Probe == nil {
+	probe, err := rci.Extract(body, "probe")
+	if err != nil || probe == nil {
 		return false, ErrTokenGenerationMalformed
 	}
-	return payload.Probe.Found, nil
+	var probeObject map[string]json.RawMessage
+	if err := json.Unmarshal(probe, &probeObject); err != nil || probeObject == nil {
+		return false, ErrTokenGenerationMalformed
+	}
+	found, err := rci.Extract(probe, "found")
+	if err != nil {
+		return false, ErrTokenGenerationMalformed
+	}
+	if found == nil {
+		return false, nil
+	}
+	var value bool
+	if err := json.Unmarshal(found, &value); err != nil {
+		return false, ErrTokenGenerationMalformed
+	}
+	return value, nil
 }
 
 func parseTokenGenerationResponse(body []byte) (string, string, error) {
-	var payload struct {
-		Authentication *struct {
-			Token *struct {
-				Generate *struct {
-					ID    json.RawMessage `json:"id"`
-					Value string          `json:"value"`
-				} `json:"generate"`
-			} `json:"token"`
-		} `json:"authentication"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil || payload.Authentication == nil || payload.Authentication.Token == nil || payload.Authentication.Token.Generate == nil {
+	generate, err := rci.Extract(body, "authentication.token.generate")
+	if err != nil || generate == nil {
 		return "", "", ErrTokenGenerationMalformed
 	}
-	key, err := jsonScalarString(payload.Authentication.Token.Generate.ID)
-	if err != nil || payload.Authentication.Token.Generate.Value == "" {
+	rawID, err := rci.Extract(generate, "id")
+	if err != nil || rawID == nil {
 		return "", "", ErrTokenGenerationMalformed
 	}
-	return key, payload.Authentication.Token.Generate.Value, nil
+	key, err := jsonScalarString(rawID)
+	if err != nil {
+		return "", "", ErrTokenGenerationMalformed
+	}
+	rawValue, err := rci.Extract(generate, "value")
+	if err != nil || rawValue == nil {
+		return "", "", ErrTokenGenerationMalformed
+	}
+	var token string
+	if err := json.Unmarshal(rawValue, &token); err != nil || token == "" {
+		return "", "", ErrTokenGenerationMalformed
+	}
+	return key, token, nil
 }
 
 func jsonScalarString(raw json.RawMessage) (string, error) {

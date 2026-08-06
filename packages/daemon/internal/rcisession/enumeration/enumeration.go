@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"regexp"
@@ -13,7 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"mndwd/internal/keenetic/discovery"
+	rci "mndw.local/rci"
+	"mndwd/internal/discovery"
 )
 
 var ErrTargetUnreachable = errors.New("target unreachable")
@@ -133,61 +133,40 @@ type HTTPSource struct {
 	MaxResponseBytes int64
 }
 
-const memberQueryBody = `[{"show":{"mws":{"member":{}}}}]`
-
 func (s HTTPSource) Enumerate(ctx context.Context) ([]Member, error) {
 	if s.ControllerToken == nil || s.ControllerToken() == "" {
 		return nil, fmt.Errorf("controller session unavailable")
 	}
-	client := s.Client
-	if client == nil {
-		client = &http.Client{}
-	}
-	baseURL := strings.TrimRight(s.ControllerURL, "/")
-	if baseURL == "" {
-		baseURL = "http://127.0.0.1:79"
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/rci/", strings.NewReader(memberQueryBody))
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-Ndma-Tkn", s.ControllerToken())
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("controller enumeration returned status")
+	controllerURL := strings.TrimRight(s.ControllerURL, "/")
+	if controllerURL == "" {
+		controllerURL = "http://127.0.0.1:79"
 	}
 	limit := s.MaxResponseBytes
 	if limit <= 0 {
 		limit = 1 << 20
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
-	if err != nil || int64(len(data)) > limit {
-		return nil, fmt.Errorf("controller enumeration response invalid")
+	options := []rci.HTTPOption{
+		rci.WithHeader("X-Ndma-Tkn", s.ControllerToken),
+		rci.WithMaxResponseBytes(limit),
 	}
-	return parseMemberResponse(data)
-}
-
-func parseMemberResponse(data []byte) ([]Member, error) {
-	var envelope []struct {
-		Show struct {
-			MWS struct {
-				Member json.RawMessage `json:"member"`
-			} `json:"mws"`
-		} `json:"show"`
+	if s.Client != nil {
+		options = append(options, rci.WithHTTPClient(s.Client))
 	}
-	if err := json.Unmarshal(data, &envelope); err == nil {
-		for _, item := range envelope {
-			if item.Show.MWS.Member != nil {
-				return ParseMembers(item.Show.MWS.Member)
-			}
-		}
+	transport, err := rci.NewHTTPTransport(controllerURL, options...)
+	if err != nil {
+		return nil, err
 	}
-
+	client, err := rci.New(transport)
+	if err != nil {
+		return nil, err
+	}
+	values, body, err := client.ExecuteRaw(ctx, rci.Q("show.mws.member"))
+	if err != nil && !errors.Is(err, rci.ErrInvalidResponse) {
+		return nil, err
+	}
+	data := body
+	if len(values) > 0 && values[0] != nil {
+		data = values[0]
+	}
 	return ParseMembers(data)
 }

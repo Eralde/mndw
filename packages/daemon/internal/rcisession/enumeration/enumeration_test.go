@@ -119,6 +119,40 @@ func TestHTTPSourceUsesConfiguredControllerURL(t *testing.T) {
 	}
 }
 
+func TestHTTPSourceEnumerateAcceptsRawMemberArray(t *testing.T) {
+	transport := &enumerationRoundTripper{response: &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(`[{
+			"cid":"node-1","mac":"aa:bb:cc:dd:ee:ff","ip":"192.168.1.2"
+		},{
+			"cid":"node-2","mac":"aa:bb:cc:dd:ee:11","ip":"192.168.1.3"
+		}]`)),
+		Header: make(http.Header),
+	}}
+	source := HTTPSource{
+		Client:          &http.Client{Transport: transport},
+		ControllerURL:   "http://192.168.1.1:80",
+		ControllerToken: func() string { return "controller-token" },
+	}
+
+	members, err := source.Enumerate(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(members) != 2 || members[0].Identity != "node-1" || members[1].Identity != "node-2" {
+		t.Fatalf("members = %#v, want two raw-array members", members)
+	}
+	if transport.request.URL.String() != "http://192.168.1.1:80/rci/" || transport.request.Method != http.MethodPost {
+		t.Fatalf("request URL = %s, method = %s", transport.request.URL, transport.request.Method)
+	}
+	if got := transport.request.Header.Get("X-Ndma-Tkn"); got != "controller-token" {
+		t.Fatalf("X-Ndma-Tkn = %q, want controller-token", got)
+	}
+	if string(transport.requestBody) != `[{"show":{"mws":{"member":{}}}}]` {
+		t.Fatalf("request body = %s", transport.requestBody)
+	}
+}
+
 type fakeSource struct {
 	members []Member
 	err     error
@@ -144,16 +178,4 @@ func (r *enumerationRoundTripper) RoundTrip(request *http.Request) (*http.Respon
 	r.requestBody, _ = io.ReadAll(request.Body)
 
 	return r.response, nil
-}
-
-func TestParseMemberResponseAcceptsRawAndRciEnvelopedPayloads(t *testing.T) {
-	raw := []byte(`[{"cid":"node-1","mac":"aa:bb:cc:dd:ee:ff","ip":"192.168.1.2","fqdn":"node-1.keenetic.io"}]`)
-	enveloped := []byte(`[ {"show":{"mws":{"member":` + string(raw) + `}}} ]`)
-
-	for _, data := range [][]byte{raw, enveloped} {
-		members, err := parseMemberResponse(data)
-		if err != nil || len(members) != 1 || members[0].Identity != "node-1" || members[0].FQDN != "node-1.keenetic.io" {
-			t.Fatalf("parseMemberResponse(%s) = %#v, %v", data, members, err)
-		}
-	}
 }

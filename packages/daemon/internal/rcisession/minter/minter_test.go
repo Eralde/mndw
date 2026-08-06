@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"mndwd/internal/keenetic/auth"
+	"mndw.local/device-auth"
 	"mndwd/internal/rcisession/enumeration"
 	"mndwd/internal/rcisession/model"
 )
@@ -50,6 +50,68 @@ func TestDefaultRequestBodyUsesAuthenticationProbe(t *testing.T) {
 	}
 	if string(DefaultTokenRequestBody()) != `{"authentication":{"token":{"generate":{"user-data":"mndw"}}}}` {
 		t.Fatalf("token request body = %s", DefaultTokenRequestBody())
+	}
+}
+
+func TestParseTokenProbeResponsePreservesProbeShapeClassification(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantFound bool
+		wantErr   error
+	}{
+		{name: "found", body: `{"probe":{"found":true}}`, wantFound: true},
+		{name: "unsupported", body: `{"probe":{"found":false}}`},
+		{name: "missing found is unsupported", body: `{"probe":{}}`},
+		{name: "missing probe", body: `{}`, wantErr: ErrTokenGenerationMalformed},
+		{name: "malformed json", body: `{`, wantErr: ErrTokenGenerationMalformed},
+		{name: "null probe", body: `{"probe":null}`, wantErr: ErrTokenGenerationMalformed},
+		{name: "array probe", body: `{"probe":[]}`, wantErr: ErrTokenGenerationMalformed},
+		{name: "scalar probe", body: `{"probe":"unexpected"}`, wantErr: ErrTokenGenerationMalformed},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			found, err := parseTokenProbeResponse([]byte(test.body))
+			if test.wantErr != nil {
+				if !errors.Is(err, test.wantErr) {
+					t.Fatalf("parseTokenProbeResponse() error = %v, want %v", err, test.wantErr)
+				}
+				return
+			}
+			if err != nil || found != test.wantFound {
+				t.Fatalf("parseTokenProbeResponse() = (%t, %v), want (%t, nil)", found, err, test.wantFound)
+			}
+		})
+	}
+}
+
+func TestParseTokenGenerationResponseAcceptsStringAndNumericIDs(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "string id", body: `{"authentication":{"token":{"generate":{"id":"generated-key","value":"generated-token"}}}}`, want: "generated-key"},
+		{name: "numeric id", body: `{"authentication":{"token":{"generate":{"id":42,"value":"generated-token"}}}}`, want: "42"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			key, token, err := parseTokenGenerationResponse([]byte(test.body))
+			if err != nil || key != test.want || token != "generated-token" {
+				t.Fatalf("parseTokenGenerationResponse() = (%q, %q, %v), want (%q, generated-token, nil)", key, token, err, test.want)
+			}
+		})
+	}
+}
+
+func TestParseTokenGenerationResponseRejectsMissingNodesAndEmptyToken(t *testing.T) {
+	for _, body := range []string{
+		`{}`,
+		`{"authentication":{"token":{"generate":{}}}}`,
+		`{"authentication":{"token":{"generate":{"id":"key","value":""}}}}`,
+	} {
+		if _, _, err := parseTokenGenerationResponse([]byte(body)); !errors.Is(err, ErrTokenGenerationMalformed) {
+			t.Fatalf("parseTokenGenerationResponse(%s) error = %v, want malformed", body, err)
+		}
 	}
 }
 

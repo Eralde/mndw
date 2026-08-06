@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"mndwd/internal/keenetic/discovery"
+	"mndwd/internal/discovery"
 )
 
 func TestResolvePinsOnlyPrivateOrLinkLocalAddress(t *testing.T) {

@@ -13,13 +13,13 @@ import (
 	"sync"
 	"time"
 
-	"mndwd/internal/keenetic/discovery"
-	"mndwd/internal/keenetic/target"
+	"mndwd/internal/discovery"
 	"mndwd/internal/rcisession/enumeration"
 	"mndwd/internal/rcisession/minter"
 	"mndwd/internal/rcisession/model"
 	"mndwd/internal/rcisession/proxy"
 	"mndwd/internal/rcisession/socket"
+	"mndwd/internal/target"
 )
 
 var (
@@ -261,14 +261,50 @@ func (s *Service) DeleteExtenders(ctx context.Context) error {
 	}
 
 	var failures []error
+	hasRemoteRecords := false
+	for identity, record := range document.Extenders {
+		if record.Token != "" {
+			hasRemoteRecords = true
+			continue
+		}
+		if err := s.store.DeleteExtender(identity); err != nil {
+			failures = append(failures, fmt.Errorf("%w: %s: remove inactive local record: %v", ErrExtenderTokenDeletion, identity, err))
+			continue
+		}
+		s.notifyMutation("extender-token-deleted")
+	}
+	if !hasRemoteRecords {
+		return errors.Join(failures...)
+	}
+
+	currentMembers := make(map[string]struct{})
+	membersKnown := false
+	if s.enumerator != nil {
+		s.enumerator.Invalidate()
+		members, err := s.enumerator.List(ctx)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("%w: enumerate current members: %v", ErrExtenderTokenDeletion, err))
+			return errors.Join(failures...)
+		}
+		for _, member := range members {
+			currentMembers[member.Identity] = struct{}{}
+		}
+		membersKnown = true
+	}
+
 	for identity, record := range document.Extenders {
 		if record.Token == "" {
-			if err := s.store.DeleteExtender(identity); err != nil {
-				failures = append(failures, fmt.Errorf("%w: %s: remove inactive local record: %v", ErrExtenderTokenDeletion, identity, err))
+			continue
+		}
+		if membersKnown {
+			if _, ok := currentMembers[identity]; !ok {
+				if err := s.store.DeleteExtender(identity); err != nil {
+					failures = append(failures, fmt.Errorf("%w: %s: remove deleted local record: %v", ErrExtenderTokenDeletion, identity, err))
+					continue
+				}
+				s.notifyMutation("extender-token-deleted")
 				continue
 			}
-			s.notifyMutation("extender-token-deleted")
-			continue
 		}
 		if record.Key == "" {
 			failures = append(failures, fmt.Errorf("%w: %s: token ID is missing", ErrExtenderTokenDeletion, identity))

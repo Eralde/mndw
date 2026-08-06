@@ -15,8 +15,8 @@ import {Subscription, switchMap, timer} from 'rxjs';
 import type {NetworkInterface, RrdTick} from '../types/rci.types';
 import {RciService} from '../services/rci.service';
 import {PLUGIN_STORAGE} from '../tokens';
-import {RrdLineChartComponent} from '../components';
 import type {OpenSettingsFn} from '../open-settings-dialog';
+import {toTxRxChartData} from '../utils/chart-data.utils';
 import {DEFAULT_REFRESH_MS, normalizeRefreshMs} from '../utils/refresh.utils';
 
 const STORAGE_KEY = 'tx-rx-rrd-chart-interface';
@@ -28,7 +28,7 @@ const DEVICE_TIME_INTERVAL = 30000;
   standalone: true,
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
-  imports: [CommonModule, RrdLineChartComponent],
+  imports: [CommonModule],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class AppComponent implements OnInit {
@@ -47,6 +47,10 @@ export class AppComponent implements OnInit {
   protected readonly error = signal<string>('');
   protected readonly loadingInterfaces = signal(true);
   protected readonly refresh = signal(DEFAULT_REFRESH_MS);
+
+  protected readonly chartData = computed(() => {
+    return toTxRxChartData(this.txData(), this.rxData(), this.clockTime());
+  });
 
   private pollingSub: Subscription | null = null;
   private deviceTimeSub: Subscription | null = null;

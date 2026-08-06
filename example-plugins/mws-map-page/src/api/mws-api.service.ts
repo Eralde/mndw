@@ -123,4 +123,4 @@ export class MwsApiService implements MwsRenameApi {
   }
 }
 
-export {MwsApiParseError};
+export { MwsApiParseError };

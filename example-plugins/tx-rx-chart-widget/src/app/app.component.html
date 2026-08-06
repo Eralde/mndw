@@ -66,11 +66,12 @@
                     </mndw-button>
                 </div>
             </div>
-            <tx-rx-rrd-line-chart
-                [txData]="txData()"
-                [rxData]="rxData()"
-                [deviceTime]="clockTime()"
-            />
+            <mndw-line-chart
+                [series]="chartData().series"
+                [domain]="chartData().domain"
+                empty-label="No data available"
+                [attr.aria-label]="'Interface traffic for ' + activeInterfaceName()"
+            ></mndw-line-chart>
         </div>
     }
 </div>

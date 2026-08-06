@@ -9,8 +9,6 @@ import type {OpenSettingsFn} from '../open-settings-dialog';
 import {PLUGIN_STORAGE, RCI_MANAGER} from '../tokens';
 import appStyles from './app.component.scss?raw';
 import appTemplate from './app.component.html?raw';
-import rrdChartStyles from '../components/rrd-line-chart/rrd-line-chart.component.scss?raw';
-import rrdChartTemplate from '../components/rrd-line-chart/rrd-line-chart.component.html?raw';
 import {AppComponent as AppComponentType} from './app.component';
 
 const interfaces = {
@@ -78,14 +76,6 @@ async function createFixture(
 
     if (url.endsWith('app.component.scss')) {
       return Promise.resolve(appStyles);
-    }
-
-    if (url.endsWith('rrd-line-chart.component.html')) {
-      return Promise.resolve(rrdChartTemplate);
-    }
-
-    if (url.endsWith('rrd-line-chart.component.scss')) {
-      return Promise.resolve(rrdChartStyles);
     }
 
     throw new Error(`resource URL: ${url}`);
@@ -199,5 +189,24 @@ describe('AppComponent', () => {
     const label = fixture.nativeElement.querySelector('.chart-header__label');
 
     expect(label).toBeNull();
+  });
+
+  it('renders the shared line chart with normalized properties', async () => {
+    const {fixture} = await createFixture('eth1', '3000');
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    const chart = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart') as HTMLElement & {
+      series?: Array<{label?: string; color?: string}>;
+      domain?: {start: number; end: number};
+    };
+
+    expect(chart.series?.map((series) => [series.label, series.color])).toEqual([
+      ['TX', 'accent'],
+      ['RX', 'success'],
+    ]);
+    expect(chart.domain?.end).toBe(new Date(2026, 0, 1, 12).getTime());
+    expect(chart.getAttribute('aria-label')).toBe('Interface traffic for WAN');
   });
 });

@@ -36,6 +36,8 @@ Without an overlay, `<mndw-select>` uses a minimal fixed-position fallback for s
 | `<mndw-tab>` | One tab; `id` (required) and `disabled` only. |
 | `<mndw-tab-panel>` | Content for one tab; `for` points at that tab's `id`. |
 | `<mndw-tooltip>` | Describes its first slotted element on hover and focus. Not form-associated. |
+| `<mndw-line-chart>` | Timestamped multi-series line/area chart; data is assigned through properties. |
+| `<mndw-bar-chart>` | Timestamped positional bar chart; data is assigned through properties. |
 
 `<mndw-select>` uses an anchored popover above `600px`, with its maximum height derived from
 available viewport space. Long desktop lists scroll inside the panel's nested native scroll area;
@@ -50,6 +52,48 @@ morph an open layer; close and reopen to use the new presentation. Host focus co
 implemented for sheets; pressing `Tab` dismisses the panel and restores focus to the trigger.
 
 Events are lowercase and hyphen-free (`mndwchange`) for vanilla, Svelte, Vue, and Angular.
+
+### Charts
+
+Charts accept normalized epoch-millisecond data. Assign arrays and objects as DOM properties;
+they are not serialized into attributes:
+
+```ts
+import type {MndwChartSeries} from '@mndw/ui';
+
+const series: MndwChartSeries[] = [
+  {
+    id: 'upload',
+    label: 'Upload',
+    color: 'accent',
+    fill: true,
+    data: [
+      {time: 1_700_000_000_000, value: 100},
+      {time: 1_700_000_060_000, value: 200},
+    ],
+  },
+];
+
+const line = document.querySelector('mndw-line-chart') as HTMLElement & {
+  series: readonly MndwChartSeries[];
+};
+line.series = series;
+```
+
+`<mndw-line-chart>` exposes `series`, optional `domain`, and `emptyLabel`. The line domain is
+property-only. `<mndw-bar-chart>` exposes `points`, `emptyLabel`, and `valueLabel`; it uses
+positional band slots and has no time-domain property. String attributes use explicit hyphenated
+names: `empty-label="No data"` and `value-label="Throughput"`.
+
+Both charts use network-speed formatting and expose `container`, `plot`, `grid`, `axis`, `tooltip`,
+and `empty` parts. Line colors map to `accent`, `success`, `warning`, or `muted`. Bars always use
+`--mndw-accent` in version 1. Tooltips are local to the plot; data redraw clears stale tooltip
+state and does not replay it until the pointer moves again.
+
+Both hosts have `role="img"`. An authored `aria-label` wins. Otherwise line labels use each
+series' `label` or `id`, while bar labels use `value-label` or neutral `Values`; empty charts use
+`empty-label`. These fallbacks never assume plugin-specific vocabulary. `formatSpeed` is exported
+for consumers that need matching text outside a chart, such as a plugin-owned summary.
 
 `<mndw-checkbox>` and `<mndw-select>` participate in form submission through `ElementInternals`.
 Unchecked checkboxes and empty or unmatched selects are omitted from `FormData`. Both controls

@@ -1,4 +1,6 @@
 import type {OverlayService} from '@mndw/sdk';
+import {MNDW_BAR_CHART_TAG, MndwBarChart} from './charts/bar-chart.js';
+import {MNDW_LINE_CHART_TAG, MndwLineChart} from './charts/line-chart.js';
 import {MNDW_BUTTON_TAG, MndwButton} from './button/button.js';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox/checkbox.js';
 import {MNDW_FIELD_TAG, MndwField} from './field/field.js';
@@ -21,6 +23,10 @@ import {MNDW_TOOLTIP_TAG, MndwTooltip} from './tooltip/tooltip.js';
 
 export {MNDW_BUTTON_TAG, MndwButton} from './button/button.js';
 export type {MndwButtonVariant} from './button/button.js';
+export {MNDW_BAR_CHART_TAG, MndwBarChart} from './charts/bar-chart.js';
+export {MNDW_LINE_CHART_TAG, MndwLineChart} from './charts/line-chart.js';
+export type {MndwChartColor, MndwChartDomain, MndwChartPoint, MndwChartSeries} from './charts/chart-types.js';
+export {formatSpeed} from './charts/chart-utils.js';
 export {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox/checkbox.js';
 export type {MndwCheckboxChangeDetail} from './checkbox/checkbox.js';
 export {MNDW_FIELD_TAG, MNDW_LABEL_CHANGE_EVENT, MndwField} from './field/field.js';
@@ -80,10 +86,12 @@ export interface MndwUiDeps {
 }
 
 const REGISTRY: [string, CustomElementConstructor][] = [
+  [MNDW_BAR_CHART_TAG, MndwBarChart],
   [MNDW_BUTTON_TAG, MndwButton],
   [MNDW_CHECKBOX_TAG, MndwCheckbox],
   [MNDW_FIELD_TAG, MndwField],
   [MNDW_INPUT_TAG, MndwInput],
+  [MNDW_LINE_CHART_TAG, MndwLineChart],
   [MNDW_OPTION_TAG, MndwOption],
   [MNDW_SCROLL_AREA_TAG, MndwScrollArea],
   [MNDW_SELECT_PANEL_TAG, MndwSelectPanel],

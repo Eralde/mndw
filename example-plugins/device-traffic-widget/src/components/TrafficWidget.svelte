@@ -1,10 +1,11 @@
 <script lang="ts">
 import {onMount} from 'svelte';
 import type {RciManager} from '@rci-tools/core';
+import {formatSpeed} from '@mndw/ui';
 import type {PluginStorage} from '@mndw/sdk';
 import {type ClockDate, RciService} from '../services/rci.js';
 import type {HostBar, HostClient} from '../types.js';
-import BarChart from './BarChart.svelte';
+import {toDeviceTrafficChartData} from '../utils/chart-data.js';
 import type {OpenSettingsArgs} from '../open-settings-dialog.js';
 
 interface Props {
@@ -27,7 +28,7 @@ const rciService = new RciService(rci);
 
 let hosts = $state<HostClient[]>([]);
 let selectedMac = $state('');
-let chartData = $state<HostBar[]>([]);
+let rawChartData = $state<HostBar[]>([]);
 let detail = $state(0);
 let deviceTime = $state<Date | null>(null);
 let error = $state('');
@@ -35,6 +36,8 @@ let isLoading = $state(true);
 
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 let deviceTimeTimer: ReturnType<typeof setInterval> | undefined;
+
+let chartData = $derived(toDeviceTrafficChartData(rawChartData, deviceTime));
 
 $effect(() => {
   const name = hosts.find((h) => h.mac === selectedMac)?.name || selectedMac;
@@ -84,7 +87,7 @@ async function loadChartData() {
   try {
     const rciChartData = await rciService.getChartData([selectedMac], detail);
 
-    chartData = rciChartData.bar || [];
+    rawChartData = rciChartData.bar || [];
     error = '';
   } catch (ex) {
     error = 'Failed to load data';
@@ -137,7 +140,7 @@ async function handleSelectDevice(mac: string) {
     await storage.delete(STORAGE_MAC);
     stopPolling();
 
-    chartData = [];
+    rawChartData = [];
   }
 }
 
@@ -260,15 +263,23 @@ onMount(() => {
           </mndw-button>
         </div>
       </div>
-      {#if chartData.length === 0 || !deviceTime}
+      {#if !deviceTime}
         <div class="msg">Loading data...</div>
       {:else}
         <div class="chart-wrap">
-          <BarChart
-            data={chartData}
-            {hosts}
-            deviceTime={deviceTime}
-          />
+          <mndw-bar-chart
+            points={chartData.points}
+            empty-label="No data"
+            aria-label="Device traffic history"
+          ></mndw-bar-chart>
+          <div
+            class="traffic-summary"
+            aria-label="Average traffic"
+          >
+            ↓ {formatSpeed(chartData.averageRx)} ↑ {
+              formatSpeed(chartData.averageTx)
+            }
+          </div>
         </div>
       {/if}
     </div>
@@ -413,8 +424,23 @@ onMount(() => {
 }
 
 .chart-wrap {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   width: 100%;
   min-height: 0;
+}
+
+.chart-wrap mndw-bar-chart {
+  flex: 1;
+  min-height: 0;
+}
+
+.traffic-summary {
+  flex: 0 0 auto;
+  padding: 4px 0 0;
+  color: var(--mndw-text-subtle);
+  font-size: 11px;
+  text-align: left;
 }
 </style>

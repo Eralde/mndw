@@ -41,6 +41,27 @@
         max-width: 320px;
       }
 
+      .chart-fixtures {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(280px, 480px));
+        gap: 16px;
+      }
+
+      .chart-fixture {
+        width: 100%;
+        height: 220px;
+        resize: horizontal;
+        overflow: hidden;
+        border: 1px solid var(--mndw-border);
+      }
+
+      .chart-fixture mndw-line-chart,
+      .chart-fixture mndw-bar-chart {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
       /* Pinned to the top edge so the tooltip above it is always clipped and has to flip. */
       #edge-trigger {
         position: fixed;
@@ -153,6 +174,14 @@
         <span>Fourth row</span>
       </div>
     </mndw-scroll-area>
+    <section class="chart-fixtures" aria-label="Chart fixtures">
+      <div id="line-chart-fixture" class="chart-fixture">
+        <mndw-line-chart id="line-chart-fixture-element"></mndw-line-chart>
+      </div>
+      <div id="bar-chart-fixture" class="chart-fixture">
+        <mndw-bar-chart id="bar-chart-fixture-element" value-label="Throughput"></mndw-bar-chart>
+      </div>
+    </section>
     <script type="module" src="./components.ts"></script>
   </body>
 </html>

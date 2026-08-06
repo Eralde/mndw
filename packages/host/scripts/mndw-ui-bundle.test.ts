@@ -11,11 +11,11 @@ describe('mndw-ui shared bundle', () => {
     expect(entry?.specifiers).toEqual(['@mndw/ui']);
   });
 
-  it('declares no externals, so Lit is inlined', () => {
-    expect(entry?.external).toBeUndefined();
+  it('declares D3 as an external host dependency', () => {
+    expect(entry?.external).toEqual(['d3']);
   });
 
-  it('bundles with Lit inlined and no runtime imports', async () => {
+  it('bundles with Lit inlined and D3 as the only runtime import', async () => {
     const result = await build({
       bundle: true,
       format: 'esm',
@@ -23,12 +23,13 @@ describe('mndw-ui shared bundle', () => {
       target: 'es2022',
       write: false,
       entryPoints: ['@mndw/ui'],
+      external: entry?.external,
       metafile: true,
     });
 
     const output = Object.values(result.metafile?.outputs ?? {})[0];
 
-    expect(output.imports.filter((item) => item.external)).toEqual([]);
+    expect(output.imports.filter((item) => item.external).map((item) => item.path)).toEqual(['d3']);
     expect(result.outputFiles[0].text).toContain('mndw-select');
   }, 30000);
 });

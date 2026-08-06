@@ -105,6 +105,31 @@ test('registers existing components and loads tokens and class styles', async ({
   await expect(page.locator('mndw-scroll-area')).toBeAttached();
 });
 
+test('renders reusable charts, accessibility state, and responsive geometry', async ({page}) => {
+  const line = page.locator('#line-chart-fixture-element');
+  const bar = page.locator('#bar-chart-fixture-element');
+
+  await expect(line).toHaveAttribute('role', 'img');
+  await expect(line).toHaveAttribute('aria-label', /Upload: latest/);
+  await expect(bar).toHaveAttribute('role', 'img');
+  await expect(bar).toHaveAttribute('aria-label', /Throughput: latest/);
+  await expect(line.locator('svg')).toBeVisible();
+  await expect(bar.locator('svg')).toBeVisible();
+  await expect(line.locator('[part="grid"]')).toBeAttached();
+  await expect(line.locator('[part="axis"]')).toHaveCount(2);
+  await expect(bar.locator('[part="tooltip"]')).toBeAttached();
+
+  await page.locator('#line-chart-fixture').evaluate((element) => {
+    element.style.width = '399px';
+  });
+  await page.locator('#bar-chart-fixture').evaluate((element) => {
+    element.style.width = '299px';
+  });
+
+  await expect.poll(async () => line.locator('svg').getAttribute('width')).toBe('399');
+  await expect.poll(async () => bar.locator('svg').getAttribute('width')).toBe('299');
+});
+
 test('queries semantic control state from hosts', async ({page}) => {
   const checkbox = await hostSemantics(page.locator('#checkbox'));
   const select = await hostSemantics(page.locator('#select'));

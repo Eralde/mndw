@@ -58,6 +58,22 @@ describe('TrafficWidget shared controls', () => {
         return of({year: 2026, month: 8, day: 1, hour: 12, min: 0, sec: 0, msec: 0});
       }
 
+      if (query.path === 'show.ip.hotspot.chart') {
+        const attribute = (query.data as {attributes?: string} | undefined)?.attributes;
+
+        return of({bar: [{
+          mac: 'AA',
+          bars: [{
+            attribute,
+            data: attribute === 'sumspeed'
+              ? [{t: 10, v: 100}, {t: 20, v: 200}]
+              : attribute === 'txspeed'
+              ? [{t: 10, v: 300}]
+              : [{t: 10, v: 150}],
+          }],
+        }]});
+      }
+
       return of({bar: []});
     });
     const storage = storageWithSelectedDevice();
@@ -76,6 +92,19 @@ describe('TrafficWidget shared controls', () => {
     await flush();
 
     await vi.waitFor(() => expect(host.querySelector('mndw-segmented')).not.toBeNull());
+
+    const chart = host.querySelector('mndw-bar-chart') as
+      | (HTMLElement & {
+        points?: Array<{time: number; value: number}>;
+        valueLabel?: string;
+      })
+      | null;
+
+    expect(chart).not.toBeNull();
+    expect(chart?.points?.map((point) => point.value)).toEqual([100, 200]);
+    expect(chart?.getAttribute('aria-label')).toBe('Device traffic history');
+    expect(chart?.valueLabel).toBe('Values');
+    expect(host.querySelector('.traffic-summary')?.textContent).toContain('↓ 150 b/s ↑ 300 b/s');
 
     expect(host.querySelectorAll('button')).toHaveLength(0);
     expect(host.querySelectorAll('mndw-segment')).toHaveLength(4);

@@ -1,5 +1,5 @@
 export interface RrdTick {
-  t: number;
+  t: string | number;
   v: number;
 }
 

@@ -5,4 +5,4 @@ export {
   SELECT_VIEWPORT_PADDING,
   selectPresentation,
 } from '../position/position.js';
-export type {ViewportSize as SelectViewport} from '../position/position.js';
+export type { ViewportSize as SelectViewport } from '../position/position.js';

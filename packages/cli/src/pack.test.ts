@@ -501,7 +501,8 @@ describe('packExamplePlugins', () => {
 
     expect(widgetBundle).toMatch(/from\s*["']rxjs["']/);
     expect(widgetBundle).not.toMatch(/["']@rci-tools\/core["']/);
-    expect(widgetBundle).toMatch(/from\s*["']d3["']/);
+    expect(widgetBundle).toMatch(/from\s*["']@mndw\/ui["']/);
+    expect(widgetBundle).not.toMatch(/from\s*["']d3["']/);
     expect(widgetBundle).not.toContain('d3-selection');
 
     const svelteBundle = bundle('device-traffic-widget');

@@ -1,10 +1,12 @@
 import type {OverlayService} from '@mndw/sdk';
 import {afterEach, describe, expect, expectTypeOf, it, vi} from 'vitest';
 import {
+  MNDW_BAR_CHART_TAG,
   MNDW_BUTTON_TAG,
   MNDW_CHECKBOX_TAG,
   MNDW_FIELD_TAG,
   MNDW_INPUT_TAG,
+  MNDW_LINE_CHART_TAG,
   MNDW_OPTION_TAG,
   MNDW_SCROLL_AREA_TAG,
   MNDW_SEGMENTED_TAG,
@@ -18,8 +20,10 @@ import {
   MNDW_TAB_TAG,
   MNDW_TEXTAREA_TAG,
   MNDW_TOOLTIP_TAG,
+  MndwBarChart,
   type MndwButton,
   type MndwCheckbox,
+  MndwLineChart,
   type MndwOption,
   type MndwScrollArea,
   type MndwSelect,
@@ -28,6 +32,7 @@ import {
   computePopoverCoords,
   computeTooltipCoords,
   defineMndwUi,
+  formatSpeed,
   resolveSizing,
 } from './index.js';
 import {getOverlayProvider, setOverlayProvider} from './overlay.js';
@@ -36,31 +41,33 @@ afterEach(() => {
   setOverlayProvider(undefined);
 });
 
+const REGISTERED_TAGS = [
+  MNDW_BUTTON_TAG,
+  MNDW_LINE_CHART_TAG,
+  MNDW_BAR_CHART_TAG,
+  MNDW_CHECKBOX_TAG,
+  MNDW_FIELD_TAG,
+  MNDW_INPUT_TAG,
+  MNDW_OPTION_TAG,
+  MNDW_SCROLL_AREA_TAG,
+  MNDW_SELECT_PANEL_TAG,
+  MNDW_SELECT_TAG,
+  MNDW_SEGMENT_TAG,
+  MNDW_SEGMENTED_TAG,
+  MNDW_SLIDER_TAG,
+  MNDW_SWITCH_TAG,
+  MNDW_TAB_PANEL_TAG,
+  MNDW_TAB_TAG,
+  MNDW_TABS_TAG,
+  MNDW_TEXTAREA_TAG,
+  MNDW_TOOLTIP_TAG,
+];
+
 describe('defineMndwUi', () => {
   it('registers every element', () => {
     defineMndwUi();
 
-    for (
-      const tag of [
-        MNDW_BUTTON_TAG,
-        MNDW_CHECKBOX_TAG,
-        MNDW_FIELD_TAG,
-        MNDW_INPUT_TAG,
-        MNDW_OPTION_TAG,
-        MNDW_SCROLL_AREA_TAG,
-        MNDW_SELECT_PANEL_TAG,
-        MNDW_SELECT_TAG,
-        MNDW_SEGMENT_TAG,
-        MNDW_SEGMENTED_TAG,
-        MNDW_SLIDER_TAG,
-        MNDW_SWITCH_TAG,
-        MNDW_TAB_PANEL_TAG,
-        MNDW_TAB_TAG,
-        MNDW_TABS_TAG,
-        MNDW_TEXTAREA_TAG,
-        MNDW_TOOLTIP_TAG,
-      ]
-    ) {
+    for (const tag of REGISTERED_TAGS) {
       expect(customElements.get(tag)).toBeDefined();
     }
   });
@@ -72,6 +79,14 @@ describe('defineMndwUi', () => {
     expectTypeOf(document.querySelector('mndw-select-panel')).toEqualTypeOf<MndwSelectPanel | null>();
     expectTypeOf(document.querySelector('mndw-option')).toEqualTypeOf<MndwOption | null>();
     expectTypeOf(document.querySelector('mndw-scroll-area')).toEqualTypeOf<MndwScrollArea | null>();
+    expectTypeOf(document.querySelector('mndw-line-chart')).toEqualTypeOf<MndwLineChart | null>();
+    expectTypeOf(document.querySelector('mndw-bar-chart')).toEqualTypeOf<MndwBarChart | null>();
+  });
+
+  it('exports chart contracts and formatting', () => {
+    expect(MndwLineChart).toBeDefined();
+    expect(MndwBarChart).toBeDefined();
+    expect(formatSpeed(1500)).toBe('1.5 Kb/s');
   });
 
   it('is idempotent — the registry is page-global and cannot be redefined', () => {

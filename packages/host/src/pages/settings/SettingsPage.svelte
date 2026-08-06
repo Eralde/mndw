@@ -29,6 +29,18 @@ let persistentEnabled = $state(false);
 let persistentLoading = $state(true);
 let persistentActionLoading = $state(false);
 let persistentError = $state('');
+let extenderTelemetryAvailable = $derived.by(() => {
+  if (
+    !persistentEnabled || !persistentProbeAvailable
+    || persistentCapability === null
+  ) {
+    return false;
+  }
+  return persistentCapability.controller.support === 'supported'
+    && persistentCapability.extenders.some((extender) =>
+      extender.support === 'supported'
+    );
+});
 let controllerToken = $state('');
 let controllerResult = $state<ControllerTestResult | null>(null);
 let meshUsername = $state('');
@@ -446,7 +458,7 @@ async function downloadHostDiagnostics(): Promise<void> {
     </section>
   {/if}
 
-  {#if persistentEnabled}
+  {#if extenderTelemetryAvailable}
     <section aria-label="Extender access">
       <mndw-field label="Allow mwsd to access extender telemetry">
         <mndw-switch

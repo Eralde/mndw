@@ -505,6 +505,8 @@ importers:
 
   packages/go-rci: {}
 
+  packages/go-rcisock: {}
+
   packages/host:
     dependencies:
       '@mndw/sdk':

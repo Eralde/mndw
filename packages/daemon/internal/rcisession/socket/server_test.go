@@ -10,9 +10,12 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"mndw.local/rcisock"
 	"mndwd/internal/rcisession/proxy"
 )
 
@@ -66,7 +69,7 @@ func TestConnectionHelloTargetsAndRequest(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
 	defer server.Close()
-	handler := &fakeHandler{targets: []TargetSummary{{Identity: "node-1", Name: "A", MAC: "aa:bb:cc:dd:ee:ff"}}, response: proxy.Response{Status: 200, Body: []byte(`{"ok":true}`)}}
+	handler := &fakeHandler{targets: []rcisock.Target{{Identity: "node-1", Name: "A", MAC: "aa:bb:cc:dd:ee:ff"}}, response: proxy.Response{Status: 200, Body: []byte(`{"ok":true}`)}}
 	done := make(chan error, 1)
 	go func() {
 		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-map-page", Allowed: true}, handler)
@@ -174,8 +177,137 @@ func TestConnectionRejectsPermissionAndOversizeFrame(t *testing.T) {
 	}
 }
 
+func TestErrorResponsesPreserveIDPresence(t *testing.T) {
+	t.Run("hello required emits zero id", func(t *testing.T) {
+		client, server := net.Pipe()
+		defer client.Close()
+		defer server.Close()
+		done := make(chan error, 1)
+		go func() {
+			done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Allowed: true}, &fakeHandler{})
+		}()
+		if _, err := client.Write([]byte(`{"op":"targets"}` + "\n")); err != nil {
+			t.Fatal(err)
+		}
+		response := readRawFrame(t, client)
+		var decoded map[string]json.RawMessage
+		if err := json.Unmarshal(response, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if string(decoded["id"]) != "0" {
+			t.Fatalf("response = %s, want id:0", response)
+		}
+		if err := <-done; err == nil {
+			t.Fatal("ServeConnection succeeded after request-before-hello")
+		}
+	})
+
+	t.Run("rejected hello omits id", func(t *testing.T) {
+		client, server := net.Pipe()
+		defer client.Close()
+		defer server.Close()
+		done := make(chan error, 1)
+		go func() {
+			done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Allowed: false}, &fakeHandler{})
+		}()
+		writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "plugin", "proto": 1}})
+		response := readRawFrame(t, client)
+		var decoded map[string]json.RawMessage
+		if err := json.Unmarshal(response, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := decoded["id"]; ok {
+			t.Fatalf("response = %s, want no id", response)
+		}
+		if err := <-done; err == nil {
+			t.Fatal("permission-denied connection stayed open")
+		}
+	})
+
+	t.Run("invalid id omits id", func(t *testing.T) {
+		client, server := net.Pipe()
+		defer client.Close()
+		defer server.Close()
+		done := make(chan error, 1)
+		go func() {
+			done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Allowed: true}, &fakeHandler{})
+		}()
+		writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "plugin", "proto": 1}})
+		_ = readRawFrame(t, client)
+		writeJSON(t, client, map[string]any{"id": 0, "op": "targets"})
+		response := readRawFrame(t, client)
+		var decoded map[string]json.RawMessage
+		if err := json.Unmarshal(response, &decoded); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := decoded["id"]; ok {
+			t.Fatalf("response = %s, want no id", response)
+		}
+		if err := <-done; err == nil {
+			t.Fatal("invalid-id connection stayed open")
+		}
+	})
+}
+
+func TestEmptyTargetsResponsePreservesArray(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Allowed: true}, &fakeHandler{targets: []rcisock.Target{}})
+	}()
+	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "plugin", "proto": 1}})
+	_ = readRawFrame(t, client)
+	writeJSON(t, client, map[string]any{"id": 1, "op": "targets"})
+	response := readRawFrame(t, client)
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(response, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if string(decoded["targets"]) != "[]" {
+		t.Fatalf("targets = %s, want []", decoded["targets"])
+	}
+	client.Close()
+	if err := <-done; err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("ServeConnection error = %v", err)
+	}
+}
+
+func TestStalledWriterHonorsWriteDeadline(t *testing.T) {
+	var input bytes.Buffer
+	if err := rcisock.WriteFrame(&input, rcisock.RequestFrame{Hello: &rcisock.ClientHello{PluginID: "plugin", Proto: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := rcisock.WriteFrame(&input, rcisock.RequestFrame{ID: 1, Op: "request"}); err != nil {
+		t.Fatal(err)
+	}
+	connection := newDeadlineAwareConn(input.Bytes())
+	done := make(chan error, 1)
+	go func() {
+		done <- ServeConnection(context.Background(), connection, Config{
+			PluginID:    "plugin",
+			Allowed:     true,
+			IdleTimeout: 20 * time.Millisecond,
+		}, &fakeHandler{response: proxy.Response{Status: 200, Body: []byte(`{"ok":true}`)}})
+	}()
+	select {
+	case <-connection.deadlineSet:
+	case <-time.After(time.Second):
+		t.Fatal("server did not set write deadline")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stalled writer did not return")
+	}
+	if connection.writeCalls.Load() < 2 {
+		t.Fatalf("write calls = %d, want hello and response", connection.writeCalls.Load())
+	}
+}
+
 type fakeHandler struct {
-	targets      []TargetSummary
+	targets      []rcisock.Target
 	response     proxy.Response
 	requestError error
 	targetsError error
@@ -191,7 +323,7 @@ func (f *fakeHandler) Do(context.Context, proxy.Request) (proxy.Response, error)
 	return f.response, nil
 }
 
-func (f *fakeHandler) Targets(context.Context) ([]TargetSummary, error) {
+func (f *fakeHandler) Targets(context.Context) ([]rcisock.Target, error) {
 	return f.targets, f.targetsError
 }
 
@@ -214,7 +346,72 @@ func readJSON(t *testing.T, connection net.Conn, destination any) {
 	}
 }
 
+func readRawFrame(t *testing.T, connection net.Conn) []byte {
+	t.Helper()
+	connection.SetReadDeadline(time.Now().Add(2 * time.Second))
+	reader := bufio.NewReader(connection)
+	frame, err := reader.ReadBytes('\n')
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bytes.TrimSuffix(frame, []byte{'\n'})
+}
+
 func mustJSON(value any) []byte {
 	data, _ := json.Marshal(value)
 	return data
 }
+
+type deadlineAwareConn struct {
+	reader       *bytes.Reader
+	closed       chan struct{}
+	closeOnce    sync.Once
+	deadlineSet  chan struct{}
+	deadlineOnce sync.Once
+	writeCalls   atomic.Int32
+}
+
+func newDeadlineAwareConn(data []byte) *deadlineAwareConn {
+	return &deadlineAwareConn{
+		reader:      bytes.NewReader(data),
+		closed:      make(chan struct{}),
+		deadlineSet: make(chan struct{}),
+	}
+}
+
+func (c *deadlineAwareConn) Read(data []byte) (int, error) {
+	return c.reader.Read(data)
+}
+
+func (c *deadlineAwareConn) Write(data []byte) (int, error) {
+	call := c.writeCalls.Add(1)
+	if call == 1 {
+		return len(data), nil
+	}
+	<-c.closed
+	return 0, net.ErrClosed
+}
+
+func (c *deadlineAwareConn) Close() error {
+	c.closeOnce.Do(func() { close(c.closed) })
+	return nil
+}
+
+func (*deadlineAwareConn) LocalAddr() net.Addr             { return socketTestAddr("local") }
+func (*deadlineAwareConn) RemoteAddr() net.Addr            { return socketTestAddr("remote") }
+func (*deadlineAwareConn) SetDeadline(time.Time) error     { return nil }
+func (*deadlineAwareConn) SetReadDeadline(time.Time) error { return nil }
+func (c *deadlineAwareConn) SetWriteDeadline(deadline time.Time) error {
+	if !deadline.IsZero() {
+		c.deadlineOnce.Do(func() { close(c.deadlineSet) })
+		time.AfterFunc(time.Until(deadline), func() { _ = c.Close() })
+	}
+	return nil
+}
+
+var _ net.Conn = (*deadlineAwareConn)(nil)
+
+type socketTestAddr string
+
+func (a socketTestAddr) Network() string { return "test" }
+func (a socketTestAddr) String() string  { return string(a) }

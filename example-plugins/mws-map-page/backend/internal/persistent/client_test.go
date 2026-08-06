@@ -1,7 +1,6 @@
 package persistent
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"mndw.local/rcisock"
 )
 
 func TestClientUsesIdentityForPollingAndEmitsMacAfterTwoMisses(t *testing.T) {
@@ -21,21 +22,21 @@ func TestClientUsesIdentityForPollingAndEmitsMacAfterTwoMisses(t *testing.T) {
 		RetryDelay:   10 * time.Millisecond,
 		Dial: func(context.Context) (net.Conn, error) {
 			clientConn, serverConn := net.Pipe()
-			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+			go serveTestConnection(t, serverConn, func(frame rcisock.RequestFrame) rcisock.ResponseFrame {
 				if frame.Op == "targets" {
-					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "AA:BB:CC:DD:EE:FF"}}}
+					return rcisock.ResponseFrame{ID: responseID(frame), Targets: []rcisock.Target{{Identity: "cid-1", Name: "Extender", MAC: "AA:BB:CC:DD:EE:FF"}}}
 				}
 				callsMu.Lock()
 				callCount++
 				current := callCount
 				callsMu.Unlock()
 				if frame.Target != "cid-1" || frame.Method != "GET" || frame.Path != "rci/show/version" {
-					return wireFrame{ID: frame.ID, Error: &wireError{Code: "bad-request", Message: "bad poll"}}
+					return rcisock.ResponseFrame{ID: responseID(frame), Error: &rcisock.Error{Code: "bad-request", Message: "bad poll"}}
 				}
 				if current == 1 {
-					return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+					return rcisock.ResponseFrame{ID: responseID(frame), Status: 200, Body: json.RawMessage(`{}`)}
 				}
-				return wireFrame{ID: frame.ID, Error: &wireError{Code: "target-unreachable", Message: "target-unreachable"}}
+				return rcisock.ResponseFrame{ID: responseID(frame), Error: &rcisock.Error{Code: "target-unreachable", Message: "target-unreachable"}}
 			})
 			return clientConn, nil
 		},
@@ -69,14 +70,14 @@ func TestClientRetainsStateWhenSocketCloses(t *testing.T) {
 			attempts++
 			attempt := attempts
 			attemptsMu.Unlock()
-			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+			go serveTestConnection(t, serverConn, func(frame rcisock.RequestFrame) rcisock.ResponseFrame {
 				if attempt == 1 && frame.Op == "targets" {
-					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+					return rcisock.ResponseFrame{ID: responseID(frame), Targets: []rcisock.Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
 				}
 				if attempt == 1 {
-					return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+					return rcisock.ResponseFrame{ID: responseID(frame), Status: 200, Body: json.RawMessage(`{}`)}
 				}
-				return wireFrame{ID: frame.ID, Error: &wireError{Code: "not-permitted", Message: "not-permitted"}}
+				return rcisock.ResponseFrame{ID: responseID(frame), Error: &rcisock.Error{Code: "not-permitted", Message: "not-permitted"}}
 			})
 			if attempt == 1 {
 				go func() {
@@ -114,7 +115,7 @@ func TestClientReconnectsAfterServerRestart(t *testing.T) {
 			attempts++
 			attempt := attempts
 			attemptsMu.Unlock()
-			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+			go serveTestConnection(t, serverConn, func(frame rcisock.RequestFrame) rcisock.ResponseFrame {
 				if frame.Op == "targets" {
 					if attempt == 1 {
 						select {
@@ -122,9 +123,9 @@ func TestClientReconnectsAfterServerRestart(t *testing.T) {
 						default:
 						}
 					}
-					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+					return rcisock.ResponseFrame{ID: responseID(frame), Targets: []rcisock.Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
 				}
-				return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+				return rcisock.ResponseFrame{ID: responseID(frame), Status: 200, Body: json.RawMessage(`{}`)}
 			})
 			if attempt == 1 {
 				go func() {
@@ -170,15 +171,15 @@ func TestClientBoundsStalledTelemetryRequest(t *testing.T) {
 		},
 		Dial: func(context.Context) (net.Conn, error) {
 			clientConn, serverConn := net.Pipe()
-			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+			go serveTestConnection(t, serverConn, func(frame rcisock.RequestFrame) rcisock.ResponseFrame {
 				if frame.Op == "targets" {
-					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+					return rcisock.ResponseFrame{ID: responseID(frame), Targets: []rcisock.Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
 				}
 				if frame.Method == "GET" && frame.Path == "rci/show/version" {
-					return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+					return rcisock.ResponseFrame{ID: responseID(frame), Status: 200, Body: json.RawMessage(`{}`)}
 				}
 				<-release
-				return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+				return rcisock.ResponseFrame{ID: responseID(frame), Status: 200, Body: json.RawMessage(`{}`)}
 			})
 			return clientConn, nil
 		},
@@ -249,11 +250,11 @@ func TestClientDiagnosticsReportsTargetProbeFailure(t *testing.T) {
 		PollInterval: time.Hour,
 		Dial: func(context.Context) (net.Conn, error) {
 			clientConn, serverConn := net.Pipe()
-			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+			go serveTestConnection(t, serverConn, func(frame rcisock.RequestFrame) rcisock.ResponseFrame {
 				if frame.Op == "targets" {
-					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+					return rcisock.ResponseFrame{ID: responseID(frame), Targets: []rcisock.Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
 				}
-				return wireFrame{ID: frame.ID, Error: &wireError{Code: "target-unreachable", Message: "target-unreachable"}}
+				return rcisock.ResponseFrame{ID: responseID(frame), Error: &rcisock.Error{Code: "target-unreachable", Message: "target-unreachable"}}
 			})
 			return clientConn, nil
 		},
@@ -286,11 +287,11 @@ func TestClientDiagnosticsReportsTelemetryFailure(t *testing.T) {
 		},
 		Dial: func(context.Context) (net.Conn, error) {
 			clientConn, serverConn := net.Pipe()
-			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+			go serveTestConnection(t, serverConn, func(frame rcisock.RequestFrame) rcisock.ResponseFrame {
 				if frame.Op == "targets" {
-					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+					return rcisock.ResponseFrame{ID: responseID(frame), Targets: []rcisock.Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
 				}
-				return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+				return rcisock.ResponseFrame{ID: responseID(frame), Status: 200, Body: json.RawMessage(`{}`)}
 			})
 			return clientConn, nil
 		},
@@ -328,8 +329,8 @@ func TestClientDiagnosticsTracksTargetLifecycleDetails(t *testing.T) {
 	if err := client.updateTargets([]Target{working, missing}); err != nil {
 		t.Fatal(err)
 	}
-	client.applyResult(working, wireFrame{Status: 200}, nil)
-	client.applyResult(missing, wireFrame{}, &remoteError{code: "no-session-for-target"})
+	client.applyResult(working, rcisock.ResponseFrame{Status: 200}, nil)
+	client.applyResult(missing, rcisock.ResponseFrame{}, &rcisock.RemoteError{Code: "no-session-for-target"})
 
 	diagnostics := client.Diagnostics()
 	encoded, err := json.Marshal(diagnostics)
@@ -433,12 +434,12 @@ func TestClientRequiresTwoConsecutiveFailuresBeforeFalse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client.applyResult(target, wireFrame{}, &remoteError{code: "target-unreachable"})
+	client.applyResult(target, rcisock.ResponseFrame{}, &rcisock.RemoteError{Code: "target-unreachable"})
 	if sessions := client.Snapshot(); len(sessions) != 0 {
 		t.Fatalf("after one miss sessions = %#v, want empty", sessions)
 	}
 
-	client.applyResult(target, wireFrame{}, &remoteError{code: "target-unreachable"})
+	client.applyResult(target, rcisock.ResponseFrame{}, &rcisock.RemoteError{Code: "target-unreachable"})
 	if sessions := client.Snapshot(); len(sessions) != 1 || sessions[0] != (Session{Identity: target.Identity, Mac: target.MAC, Live: false}) {
 		t.Fatalf("after two misses sessions = %#v, want configured failure", sessions)
 	}
@@ -450,7 +451,7 @@ func TestClientRetainsLastKnownSessionDuringConnectionReset(t *testing.T) {
 	if err := client.updateTargets([]Target{target}); err != nil {
 		t.Fatal(err)
 	}
-	client.applyResult(target, wireFrame{Status: 200}, nil)
+	client.applyResult(target, rcisock.ResponseFrame{Status: 200}, nil)
 
 	client.markDisconnected("connection-reset")
 	sessions := client.Snapshot()
@@ -502,18 +503,18 @@ func TestClientRunsTelemetryPollThroughAuthenticatedRequester(t *testing.T) {
 		},
 		Dial: func(context.Context) (net.Conn, error) {
 			clientConn, serverConn := net.Pipe()
-			go serveTestConnection(t, serverConn, func(frame wireFrame) wireFrame {
+			go serveTestConnection(t, serverConn, func(frame rcisock.RequestFrame) rcisock.ResponseFrame {
 				if frame.Op == "targets" {
-					return wireFrame{ID: frame.ID, Targets: []Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
+					return rcisock.ResponseFrame{ID: responseID(frame), Targets: []rcisock.Target{{Identity: "cid-1", Name: "Extender", MAC: "aa:bb:cc:dd:ee:ff"}}}
 				}
 				if frame.Target != "cid-1" {
 					t.Errorf("telemetry target = %q, want cid-1", frame.Target)
 				}
 				if frame.Method == "GET" && frame.Path == "rci/show/version" {
-					return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+					return rcisock.ResponseFrame{ID: responseID(frame), Status: 200, Body: json.RawMessage(`{}`)}
 				}
 				requests <- Request{Method: frame.Method, Path: frame.Path, Body: append([]byte(nil), frame.Body...)}
-				return wireFrame{ID: frame.ID, Status: 200, Body: json.RawMessage(`{}`)}
+				return rcisock.ResponseFrame{ID: responseID(frame), Status: 200, Body: json.RawMessage(`{}`)}
 			})
 			return clientConn, nil
 		},
@@ -544,36 +545,36 @@ func TestClientRunsTelemetryPollThroughAuthenticatedRequester(t *testing.T) {
 	}
 }
 
-func serveTestConnection(t *testing.T, connection net.Conn, respond func(wireFrame) wireFrame) {
+func serveTestConnection(t *testing.T, connection net.Conn, respond func(rcisock.RequestFrame) rcisock.ResponseFrame) {
 	t.Helper()
 	defer connection.Close()
-	reader := bufio.NewReader(connection)
-	var hello wireFrame
-	if err := json.NewDecoder(reader).Decode(&hello); err != nil {
+	reader := rcisock.NewReader[rcisock.RequestFrame](connection, 64<<10)
+	hello, err := reader.Next()
+	if err != nil {
 		return
 	}
 	if hello.Hello == nil || hello.Hello.PluginID != "mws-map-page" || hello.Hello.Proto != 1 {
 		t.Errorf("hello = %#v, want mws-map-page protocol 1", hello.Hello)
 		return
 	}
-	if _, err := connection.Write([]byte(`{"hello":{"proto":1,"ok":true}}
-`)); err != nil {
+	if err := rcisock.WriteFrame(connection, rcisock.ResponseFrame{Hello: &rcisock.ServerHello{Proto: rcisock.ProtocolVersion, OK: true}}); err != nil {
 		return
 	}
 	for {
-		var frame wireFrame
-		if err := json.NewDecoder(reader).Decode(&frame); err != nil {
-			return
-		}
-		response := respond(frame)
-		data, err := json.Marshal(response)
+		frame, err := reader.Next()
 		if err != nil {
 			return
 		}
-		if _, err := connection.Write(append(data, '\n')); err != nil {
+		response := respond(frame)
+		if err := rcisock.WriteFrame(connection, response); err != nil {
 			return
 		}
 	}
+}
+
+func responseID(frame rcisock.RequestFrame) *int64 {
+	id := frame.ID
+	return &id
 }
 
 func waitFor(t *testing.T, predicate func() bool) {

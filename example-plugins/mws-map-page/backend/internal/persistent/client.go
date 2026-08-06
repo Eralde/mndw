@@ -1,19 +1,16 @@
 package persistent
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	"mndw.local/rcisock"
 )
 
-const protocolVersion = 1
 const maxRecentTargetDiagnostics = 64
 const defaultSessionRetention = 3 * time.Minute
 
@@ -148,38 +145,6 @@ type sessionState struct {
 	lastSeenAt time.Time
 }
 
-type wireFrame struct {
-	Hello   *wireHello      `json:"hello,omitempty"`
-	ID      int64           `json:"id,omitempty"`
-	Op      string          `json:"op,omitempty"`
-	Target  string          `json:"target,omitempty"`
-	Method  string          `json:"method,omitempty"`
-	Path    string          `json:"path,omitempty"`
-	Status  int             `json:"status,omitempty"`
-	Body    json.RawMessage `json:"body,omitempty"`
-	Targets []Target        `json:"targets,omitempty"`
-	Error   *wireError      `json:"error,omitempty"`
-}
-
-type wireHello struct {
-	PluginID string `json:"pluginId,omitempty"`
-	Proto    int    `json:"proto"`
-	OK       bool   `json:"ok,omitempty"`
-}
-
-type wireError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-type remoteError struct {
-	code string
-}
-
-func (e *remoteError) Error() string { return e.code }
-
-var errPersistentSocketClosed = errors.New("persistent session socket closed")
-
 func New(config Config) *Client {
 	if config.PollInterval <= 0 {
 		config.PollInterval = 30 * time.Second
@@ -276,7 +241,12 @@ func (c *Client) runConnection(ctx context.Context) error {
 		c.recordDisconnected("dial-failed")
 		return err
 	}
-	defer connection.Close()
+	rpc := rcisock.NewClient(
+		connection,
+		rcisock.WithIOTimeout(c.config.IOTimeout),
+		rcisock.WithHandshakeTimeout(c.config.IOTimeout),
+	)
+	defer rpc.Close()
 	var runErr error
 	defer func() {
 		c.markDisconnected("connection-reset")
@@ -288,7 +258,7 @@ func (c *Client) runConnection(ctx context.Context) error {
 		}
 		c.recordDisconnected(reason)
 	}()
-	if err := c.handshake(connection); err != nil {
+	if err := rpc.Handshake(ctx, rcisock.ClientHello{PluginID: c.config.PluginID, Proto: rcisock.ProtocolVersion}); err != nil {
 		if ctx.Err() == nil {
 			c.recordError(DiagnosticError{Phase: "handshake", Code: "handshake-failed", Message: "persistent session handshake failed"})
 		}
@@ -296,11 +266,9 @@ func (c *Client) runConnection(ctx context.Context) error {
 		return err
 	}
 	c.recordConnected()
-	rpc := newRPC(connection, c.config.IOTimeout)
-	defer rpc.close()
 
 	for {
-		frame, err := rpc.call(ctx, wireFrame{Op: "targets"})
+		frame, err := rpc.Call(ctx, rcisock.RequestFrame{Op: "targets"})
 		if err != nil {
 			if ctx.Err() == nil {
 				c.recordError(DiagnosticError{Phase: "targets", Code: "targets-request-failed", Message: "target enumeration request failed"})
@@ -308,7 +276,7 @@ func (c *Client) runConnection(ctx context.Context) error {
 			runErr = err
 			return err
 		}
-		if err := c.updateTargets(frame.Targets); err != nil {
+		if err := c.updateTargets(convertTargets(frame.Targets)); err != nil {
 			c.recordError(DiagnosticError{Phase: "targets", Code: "invalid-targets", Message: "target enumeration response invalid"})
 			runErr = err
 			return err
@@ -335,21 +303,12 @@ func (c *Client) dial(ctx context.Context) (net.Conn, error) {
 	return (&net.Dialer{Timeout: c.config.IOTimeout}).DialContext(ctx, "unix", c.config.Path)
 }
 
-func (c *Client) handshake(connection net.Conn) error {
-	if err := connection.SetDeadline(time.Now().Add(c.config.IOTimeout)); err != nil {
-		return err
+func convertTargets(targets []rcisock.Target) []Target {
+	converted := make([]Target, len(targets))
+	for index, target := range targets {
+		converted[index] = Target{Identity: target.Identity, Name: target.Name, MAC: target.MAC}
 	}
-	if err := writeFrame(connection, wireFrame{Hello: &wireHello{PluginID: c.config.PluginID, Proto: protocolVersion}}); err != nil {
-		return err
-	}
-	var response wireFrame
-	if err := json.NewDecoder(bufio.NewReader(connection)).Decode(&response); err != nil {
-		return err
-	}
-	if response.Hello == nil || response.Hello.Proto != protocolVersion || !response.Hello.OK {
-		return errors.New("persistent session hello rejected")
-	}
-	return connection.SetDeadline(time.Time{})
+	return converted
 }
 
 func (c *Client) updateTargets(targets []Target) error {
@@ -426,7 +385,7 @@ func (c *Client) updateTargets(targets []Target) error {
 	return nil
 }
 
-func (c *Client) pollTargets(ctx context.Context, rpc *rpcConnection) error {
+func (c *Client) pollTargets(ctx context.Context, rpc *rcisock.Client) error {
 	c.mu.Lock()
 	targets := make([]Target, 0, len(c.targets))
 	for _, target := range c.targets {
@@ -458,7 +417,7 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rpcConnection) error {
 				return
 			}
 			defer func() { <-semaphore }()
-			response, err := rpc.call(ctx, wireFrame{Target: target.Identity, Method: "GET", Path: "rci/show/version"})
+			response, err := rpc.Call(ctx, rcisock.RequestFrame{Target: target.Identity, Method: "GET", Path: "rci/show/version"})
 			if err != nil {
 				c.recordTargetError(target, response, err)
 				recordConnectionError(err)
@@ -469,7 +428,10 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rpcConnection) error {
 			c.recordSessionCount()
 			if err == nil && response.Status == 200 && c.config.TelemetryPoll != nil {
 				if err := c.config.TelemetryPoll(ctx, target, rpcRequester{rpc: rpc, target: target.Identity}); err != nil {
-					diagnostic := DiagnosticError{Phase: "telemetry", Identity: target.Identity, Code: "telemetry-failed", Message: "telemetry polling failed"}
+					diagnostic := DiagnosticError{
+						Phase: "telemetry", Identity: target.Identity, Code: "telemetry-failed",
+						Message: "telemetry polling failed", At: time.Now().UTC(),
+					}
 					c.recordTargetTelemetryError(target, diagnostic)
 					c.recordError(diagnostic)
 					recordConnectionError(err)
@@ -488,27 +450,27 @@ func isConnectionFailure(err error) bool {
 	if err == nil {
 		return false
 	}
-	var remote *remoteError
+	var remote *rcisock.RemoteError
 	if errors.As(err, &remote) {
 		return false
 	}
-	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errPersistentSocketClosed)
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, rcisock.ErrClosed)
 }
 
 type rpcRequester struct {
-	rpc    *rpcConnection
+	rpc    *rcisock.Client
 	target string
 }
 
 func (r rpcRequester) Do(ctx context.Context, request Request) (Response, error) {
-	frame, err := r.rpc.call(ctx, wireFrame{Target: r.target, Method: request.Method, Path: request.Path, Body: request.Body})
+	frame, err := r.rpc.Call(ctx, rcisock.RequestFrame{Target: r.target, Method: request.Method, Path: request.Path, Body: request.Body})
 	if err != nil {
 		return Response{}, err
 	}
 	return Response{Status: frame.Status, Body: append([]byte(nil), frame.Body...)}, nil
 }
 
-func (c *Client) applyResult(target Target, response wireFrame, err error) {
+func (c *Client) applyResult(target Target, response rcisock.ResponseFrame, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	state, ok := c.sessions[target.Identity]
@@ -537,19 +499,25 @@ func (c *Client) applyResult(target Target, response wireFrame, err error) {
 		c.targetDiagnostics[target.Identity] = diagnostic
 		return
 	}
-	diagnostic.LastProbeError = targetProbeError(target, response, err, now)
-	var remote *remoteError
-	if errors.As(err, &remote) && (remote.code == "no-session-for-target" || remote.code == "unsupported-firmware" || remote.code == "not-permitted") {
+	diagnostic.LastProbeError = persistentDiagnosticError(
+		target.Identity,
+		response.Status,
+		err,
+		now,
+		targetDiagnosticMessages,
+	)
+	var remote *rcisock.RemoteError
+	if errors.As(err, &remote) && (remote.Code == "no-session-for-target" || remote.Code == "unsupported-firmware" || remote.Code == "not-permitted") {
 		delete(c.sessions, target.Identity)
 		diagnostic.SessionPresent = false
 		diagnostic.Live = false
 		diagnostic.Misses = 0
-		diagnostic.SessionReason = "evicted:" + remote.code
+		diagnostic.SessionReason = "evicted:" + remote.Code
 		diagnostic.LastSessionChangeAt = timePointer(now)
 		c.targetDiagnostics[target.Identity] = diagnostic
 		return
 	}
-	if errors.As(err, &remote) && remote.code != "session-invalid" && remote.code != "target-unreachable" {
+	if errors.As(err, &remote) && remote.Code != "session-invalid" && remote.Code != "target-unreachable" {
 		c.targetDiagnostics[target.Identity] = diagnostic
 		return
 	}
@@ -730,13 +698,25 @@ func (c *Client) RecordTelemetryPhase(identity, phase string, status int, err er
 	if err == nil && status == 200 {
 		phaseDiagnostic.LastSuccessAt = timePointer(now)
 	} else {
-		phaseDiagnostic.LastError = telemetryDiagnosticError(identity, phase, status, err, now)
+		phaseDiagnostic.LastError = persistentDiagnosticError(
+			identity,
+			status,
+			err,
+			now,
+			newTelemetryDiagnosticMessages(phase),
+		)
 	}
 	c.targetDiagnostics[identity] = diagnostic
 }
 
-func (c *Client) recordTargetError(target Target, response wireFrame, err error) {
-	diagnostic := targetProbeError(target, response, err, time.Now().UTC())
+func (c *Client) recordTargetError(target Target, response rcisock.ResponseFrame, err error) {
+	diagnostic := persistentDiagnosticError(
+		target.Identity,
+		response.Status,
+		err,
+		time.Now().UTC(),
+		targetDiagnosticMessages,
+	)
 	c.recordError(*diagnostic)
 }
 
@@ -790,59 +770,63 @@ func (c *Client) targetDiagnosticLocked(identity string) TargetDiagnostics {
 	return diagnostic
 }
 
-func targetProbeError(target Target, response wireFrame, err error, at time.Time) *DiagnosticError {
-	diagnostic := &DiagnosticError{Phase: "target-probe", Identity: target.Identity, Status: response.Status, At: at}
-	var remote *remoteError
+type diagnosticMessages struct {
+	phase          string
+	failureMessage string
+	timeoutMessage string
+	statusMessage  string
+}
+
+var targetDiagnosticMessages = diagnosticMessages{
+	phase:          "target-probe",
+	failureMessage: "target probe failed",
+	timeoutMessage: "target probe timed out",
+	statusMessage:  "target probe returned unexpected status",
+}
+
+func newTelemetryDiagnosticMessages(phase string) diagnosticMessages {
+	return diagnosticMessages{
+		phase:          "telemetry:" + phase,
+		failureMessage: "telemetry request failed",
+		timeoutMessage: "telemetry request timed out",
+		statusMessage:  "telemetry request returned unexpected status",
+	}
+}
+
+func persistentDiagnosticError(
+	identity string,
+	status int,
+	err error,
+	at time.Time,
+	messages diagnosticMessages,
+) *DiagnosticError {
+	diagnostic := &DiagnosticError{Phase: messages.phase, Identity: identity, Status: status, At: at}
+	var remote *rcisock.RemoteError
 	if errors.As(err, &remote) {
-		diagnostic.Code = remote.code
-		diagnostic.Message = remote.code
+		diagnostic.Code = remote.Code
+		diagnostic.Message = remote.Code
 		return diagnostic
 	}
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			diagnostic.Code = "request-timeout"
-			diagnostic.Message = "target probe timed out"
+			diagnostic.Message = messages.timeoutMessage
 			return diagnostic
 		}
-		if errors.Is(err, errPersistentSocketClosed) {
+		if errors.Is(err, rcisock.ErrClosed) {
 			diagnostic.Code = "socket-closed"
 			diagnostic.Message = "persistent session socket closed"
 			return diagnostic
 		}
 		diagnostic.Code = "probe-failed"
-		diagnostic.Message = "target probe failed"
+		diagnostic.Message = messages.failureMessage
+		if messages.phase != "target-probe" {
+			diagnostic.Code = "request-failed"
+		}
 		return diagnostic
 	}
 	diagnostic.Code = "unexpected-status"
-	diagnostic.Message = "target probe returned unexpected status"
-	return diagnostic
-}
-
-func telemetryDiagnosticError(identity, phase string, status int, err error, at time.Time) *DiagnosticError {
-	diagnostic := &DiagnosticError{Phase: "telemetry:" + phase, Identity: identity, Status: status, At: at}
-	var remote *remoteError
-	if errors.As(err, &remote) {
-		diagnostic.Code = remote.code
-		diagnostic.Message = remote.code
-		return diagnostic
-	}
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			diagnostic.Code = "request-timeout"
-			diagnostic.Message = "telemetry request timed out"
-			return diagnostic
-		}
-		if errors.Is(err, errPersistentSocketClosed) {
-			diagnostic.Code = "socket-closed"
-			diagnostic.Message = "persistent session socket closed"
-			return diagnostic
-		}
-		diagnostic.Code = "request-failed"
-		diagnostic.Message = "telemetry request failed"
-		return diagnostic
-	}
-	diagnostic.Code = "unexpected-status"
-	diagnostic.Message = "telemetry request returned unexpected status"
+	diagnostic.Message = messages.statusMessage
 	return diagnostic
 }
 
@@ -960,99 +944,4 @@ func normalizeMAC(value string) string {
 		return ""
 	}
 	return address.String()
-}
-
-func writeFrame(connection net.Conn, frame wireFrame) error {
-	data, err := json.Marshal(frame)
-	if err != nil {
-		return err
-	}
-	_, err = connection.Write(append(data, '\n'))
-	return err
-}
-
-type rpcConnection struct {
-	connection net.Conn
-	ioTimeout  time.Duration
-	nextID     atomic.Int64
-	writeMu    sync.Mutex
-	pendingMu  sync.Mutex
-	pending    map[int64]chan wireFrame
-	done       chan struct{}
-	closeOnce  sync.Once
-}
-
-func newRPC(connection net.Conn, ioTimeout time.Duration) *rpcConnection {
-	if ioTimeout <= 0 {
-		ioTimeout = 5 * time.Second
-	}
-	rpc := &rpcConnection{connection: connection, ioTimeout: ioTimeout, pending: make(map[int64]chan wireFrame), done: make(chan struct{})}
-	go rpc.readLoop()
-	return rpc
-}
-
-func (r *rpcConnection) call(ctx context.Context, request wireFrame) (wireFrame, error) {
-	requestContext, cancel := context.WithTimeout(ctx, r.ioTimeout)
-	defer cancel()
-	id := r.nextID.Add(1)
-	request.ID = id
-	response := make(chan wireFrame, 1)
-	r.pendingMu.Lock()
-	r.pending[id] = response
-	r.pendingMu.Unlock()
-	r.writeMu.Lock()
-	err := writeFrame(r.connection, request)
-	r.writeMu.Unlock()
-	if err != nil {
-		r.removePending(id)
-		r.close()
-		return wireFrame{}, fmt.Errorf("%w: %v", errPersistentSocketClosed, err)
-	}
-	select {
-	case frame := <-response:
-		if frame.Error != nil {
-			return frame, &remoteError{code: frame.Error.Code}
-		}
-		return frame, nil
-	case <-requestContext.Done():
-		r.removePending(id)
-		r.close()
-		return wireFrame{}, requestContext.Err()
-	case <-r.done:
-		r.removePending(id)
-		return wireFrame{}, errPersistentSocketClosed
-	}
-}
-
-func (r *rpcConnection) readLoop() {
-	decoder := json.NewDecoder(bufio.NewReader(r.connection))
-	for {
-		var frame wireFrame
-		if err := decoder.Decode(&frame); err != nil {
-			r.close()
-			return
-		}
-		r.pendingMu.Lock()
-		response, ok := r.pending[frame.ID]
-		if ok {
-			delete(r.pending, frame.ID)
-		}
-		r.pendingMu.Unlock()
-		if ok {
-			response <- frame
-		}
-	}
-}
-
-func (r *rpcConnection) removePending(id int64) {
-	r.pendingMu.Lock()
-	delete(r.pending, id)
-	r.pendingMu.Unlock()
-}
-
-func (r *rpcConnection) close() {
-	r.closeOnce.Do(func() {
-		close(r.done)
-		_ = r.connection.Close()
-	})
 }

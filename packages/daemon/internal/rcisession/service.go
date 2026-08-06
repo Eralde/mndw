@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
+	"mndw.local/rcisock"
 	"mndwd/internal/discovery"
 	"mndwd/internal/rcisession/enumeration"
 	"mndwd/internal/rcisession/minter"
 	"mndwd/internal/rcisession/model"
 	"mndwd/internal/rcisession/proxy"
-	"mndwd/internal/rcisession/socket"
 	"mndwd/internal/target"
 )
 
@@ -414,7 +414,7 @@ func (s *Service) Do(ctx context.Context, request proxy.Request) (proxy.Response
 	return s.proxy.Do(ctx, request)
 }
 
-func (s *Service) Targets(ctx context.Context) ([]socket.TargetSummary, error) {
+func (s *Service) Targets(ctx context.Context) ([]rcisock.Target, error) {
 	if s.enumerator == nil {
 		return nil, fmt.Errorf("enumeration unavailable")
 	}
@@ -422,9 +422,9 @@ func (s *Service) Targets(ctx context.Context) ([]socket.TargetSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make([]socket.TargetSummary, 0, len(members))
+	result := make([]rcisock.Target, 0, len(members))
 	for _, member := range members {
-		result = append(result, socket.TargetSummary{Identity: member.Identity, Name: member.Name, MAC: member.MAC})
+		result = append(result, rcisock.Target{Identity: member.Identity, Name: member.Name, MAC: member.MAC})
 	}
 	return result, nil
 }

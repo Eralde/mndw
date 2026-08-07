@@ -1,8 +1,24 @@
 # mndw
 
-Modular plugin-based web dashboard for Keenetic network devices.
+mndw is a modular, plugin-based web dashboard for Keenetic network devices.
+The browser host provides the dashboard and plugin UI; `mndwd` provides
+device-side plugin management and backend execution.
 
-## Quick Start
+## Architecture
+
+```text
+browser
+  └─ lighttpd :99
+      ├─ static SPA, /plugins, /user-plugins
+      ├─ /rci, /ci, /auth ───── router services
+      └─ /api, /ws ───────────── mndwd :9090
+```
+
+The Svelte 5 host owns login state, routing, dashboard tiles, plugin rendering,
+overlays, theme, and settings. `mndwd` owns plugin files, manifests, approval,
+backend processes, HTTP endpoints, WebSockets, and management APIs.
+
+## Quick start
 
 Prerequisites: Node 22+, pnpm 10+, Go 1.26+.
 
@@ -12,22 +28,28 @@ pnpm install
 pnpm dev
 ```
 
-Host SPA opens at `http://localhost:5173`, proxying `/api`/`/ws` to a local `mndwd --dev` daemon
-and `/rci`/`/auth` to a real Keenetic device (set `MNDW_HOST_DEVICE` env var).
-In production lighttpd also proxies `/ci`; the Vite dev proxy does not yet include `/ci`
-(that is a host-level change, not packaging).
+The host opens at `http://localhost:5173`. Development proxies `/api` and
+`/ws` to a local `mndwd --dev` daemon, and `/rci` and `/auth` to a real device.
+Set `MNDW_HOST_DEVICE` to select that device.
 
-## Plugin Authoring
+## Plugin authoring
 
 ```bash
-mndw create my-widget --framework svelte --type widget
-mndw dev my-widget
-mndw zip my-widget
+npx mndw create my-widget --framework svelte --type widget
+npx mndw dev my-widget
+npx mndw validate my-widget
+npx mndw pack my-widget
+npx mndw zip my-widget
 ```
 
-See [SDK plugin-author guide](packages/sdk/README.md).
+The normal loop is `create → dev → validate → pack → zip → upload`. Plugins use
+`@mndw/sdk`, implement `createInstance`, and declare a v2 `manifest.json`.
+Widgets use grid-unit dimensions; pages declare one route. Plugins can be
+vanilla TypeScript, Svelte, Vue, or Angular.
 
-## IPK Build
+See the [SDK plugin-author guide](packages/sdk/README.md).
+
+## IPK build
 
 ```bash
 pnpm build-ipk --arch mipsel-3.4
@@ -35,27 +57,31 @@ pnpm build-ipk --all
 pnpm build-ipk --all --repo
 ```
 
-Output: `out/mndw_<version>_<arch>.ipk`. Requires Go cross-compile toolchain.
+Output: `out/mndw_<version>_<arch>.ipk`. Builds require a Go cross-compile
+toolchain.
 
-## Architecture
-
-```text
-lighttpd :99
-  ├── /                          static SPA
-  ├── /rci, /ci, /auth           proxy → router br0 :80
-  ├── /api/*, /ws/*              proxy → mndwd 127.0.0.1:9090
-```
-
-## Project Layout
+## Project layout
 
 ```text
-packages/   sdk/ host/ cli/ daemon/
-example-plugins/
-deploy/     lighttpd, init, ipk scripts, install.sh
-tools/      palette, build-ipk, dev supervisor
-docs/
+packages/
+  sdk/              plugin contracts and backend client
+  host/             Svelte host application
+  ui/               reusable custom elements
+  cli/              plugin scaffolding and packaging
+  daemon/           Go device control plane
+  go-device-auth/   shared device-auth handshake
+  go-rcisock/       shared persistent RCI transport
+example-plugins/    framework and backend examples
+deploy/             lighttpd, init, IPK, install scripts
+tools/              palette, development, and IPK build tools
+docs/               documentation
 ```
 
-## Links
+## Documentation
 
-- [SDK plugin-author guide](packages/sdk/README.md)
+[Host application](docs/host-app.md)
+[Plugin system](docs/plugin-system.md)
+[Plugin author guide](docs/plugin-author-guide.md)
+[CLI and development](docs/cli-and-development.md)
+[Daemon](docs/daemon.md)
+[Deployment](docs/deployment.md)

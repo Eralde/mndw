@@ -217,6 +217,7 @@ describe('PingWidget', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('stats');
     expect(fetchMock).toHaveBeenCalledWith('hosts');
+    expect(fetchMock.mock.calls.filter(([id]) => id === 'stats')).toHaveLength(1);
     await unmount(app);
   });
 

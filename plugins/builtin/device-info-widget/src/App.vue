@@ -6,7 +6,7 @@ import {computed, onMounted, onUnmounted, ref} from 'vue';
 import CopyField from './components/CopyField.vue';
 import LoadBarChart from './components/LoadBarChart.vue';
 import {type DeviceInfo, fetchDeviceInfo, formatUptime} from './services/device-info.js';
-import {createRefreshLoop, type RefreshLoop} from './services/refresh-loop.js';
+import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 import {createUptimeBaseline, getUptimeSeconds, type UptimeBaseline} from './services/uptime.js';
 
 const props = defineProps<{ctx: PluginContext}>();

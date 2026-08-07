@@ -1,6 +1,7 @@
 <script lang="ts">
 import {onMount} from 'svelte';
 import type {BackendClient} from '@mndw/sdk';
+import {createRefreshLoop} from '@mndw/sdk/refresh';
 import {
   type DaemonAction,
   type Host,
@@ -28,8 +29,6 @@ interface RenameState {
   error: string;
 }
 
-type MndwInputHost = HTMLElement & {value: string};
-
 let {backend}: Props = $props();
 
 const hasBackend = $derived(Boolean(backend));
@@ -48,7 +47,17 @@ let daemonAction = $state<DaemonUiAction>('idle');
 const daemonBusy = $derived(daemonAction !== 'idle');
 
 const renameStates = $state<Record<string, RenameState>>({});
-let statsIntervalId: ReturnType<typeof setInterval> | undefined;
+const statsLoop = createRefreshLoop({
+  load: loadStats,
+  intervalMs: 2_000,
+  onSuccess: () => {},
+  onError: (error) => {
+    setMessage(
+      error instanceof Error ? error.message : 'Stats polling failed',
+      true,
+    );
+  },
+});
 
 function createRenameState(name: string): RenameState {
   return {original: name, draft: name, status: 'idle', error: ''};
@@ -185,19 +194,9 @@ async function runDaemonAction(
   }
 }
 
-function restartStatsPolling(): void {
-  if (statsIntervalId) {
-    clearInterval(statsIntervalId);
-  }
-  statsIntervalId = setInterval(() => {
-    void loadStats().catch((error) => {
-      setMessage(
-        error instanceof Error ? error.message : 'Stats polling failed',
-        true,
-      );
-    });
-  }, Math.max(1, pollSeconds) * 1000);
-}
+$effect(() => {
+  statsLoop.setIntervalMs(Math.max(1, pollSeconds) * 1000);
+});
 
 async function addHost(): Promise<void> {
   if (!backend) {
@@ -257,185 +256,15 @@ async function saveHostName(ip: string, draft?: string): Promise<void> {
   }
 }
 
-const htmlEscapes: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  '\'': '&#39;',
-};
-
-function escapeHtml(value: string): string {
-  return value.replace(
-    /[&<>"']/g,
-    (character) => htmlEscapes[character] ?? character,
-  );
-}
-
-function renderHostCell(row: HostStats, state: RenameState): string {
-  const label = row.name?.trim() ?? '';
-  const display = label
-    ? `<span class="host-label">${
-      escapeHtml(label)
-    }</span><span class="host-address">${escapeHtml(row.ip)}</span>`
-    : `<span class="host-label">${escapeHtml(row.ip)}</span>`;
-
-  if (
-    state.status === 'editing' || state.status === 'saving'
-    || state.status === 'error'
-  ) {
-    const inputDisabled = state.status === 'saving' ? ' disabled' : '';
-    const feedback = state.status === 'saving'
-      ? '<span class="rename-status" role="status">Saving…</span>'
-      : state.status === 'error'
-      // Inline feedback beside an input inside a table cell, so this is a badge rather than a
-      // block alert — the class layer's inline severity form.
-      ? `<span class="mndw-badge mndw-badge--danger rename-feedback" role="alert">${
-        escapeHtml(state.error)
-      }</span>`
-      : '';
-
-    return `<div class="host-editor">
-      <mndw-input type="text" aria-label="Label for ${
-      escapeHtml(row.ip)
-    }" value="${escapeHtml(state.draft)}"${inputDisabled} data-host-input="${
-      escapeHtml(row.ip)
-    }"></mndw-input>
-      ${feedback}
-    </div>`;
-  }
-
-  return `<mndw-button variant="ghost" class="host-display" aria-label="Rename host ${
-    escapeHtml(row.ip)
-  }" data-host-action="rename" data-host-ip="${
-    escapeHtml(row.ip)
-  }">${display}</mndw-button>`;
-}
-
-function renderActionsCell(row: HostStats, state: RenameState): string {
-  const disabled = state.status === 'saving' ? ' disabled' : '';
-
-  return `<mndw-button variant="danger" class="compact" aria-label="Delete host ${
-    escapeHtml(row.ip)
-  }" data-host-action="remove" data-host-ip="${
-    escapeHtml(row.ip)
-  }"${disabled}>Delete</mndw-button>`;
-}
-
-function renderStatsBody(
-  rows: HostStats[],
-  states: Record<string, RenameState>,
-): string {
-  if (rows.length === 0) {
-    return '<tr><td colspan="10" class="empty">No stats yet.</td></tr>';
-  }
-
-  return rows.map((row) => {
-    const state = states[row.ip] ?? createRenameState(row.name ?? '');
-    const lossClass = row.lossPercent > 20
-      ? 'bad'
-      : row.lossPercent > 0
-      ? 'warn'
-      : 'ok';
-
-    return `<tr class="stats-row">
-      <td class="host-cell">${renderHostCell(row, state)}</td>
-      <td class="stat-value">${escapeHtml(formatMs(row.lastMs))}</td>
-      <td class="stat-value">${escapeHtml(formatMs(row.avgMs))}</td>
-      <td class="stat-value stat-optional">${
-      escapeHtml(formatMs(row.medianMs))
-    }</td>
-      <td class="stat-value stat-optional">${
-      escapeHtml(formatMs(row.minMs))
-    }</td>
-      <td class="stat-value stat-optional">${
-      escapeHtml(formatMs(row.maxMs))
-    }</td>
-      <td class="stat-value ${lossClass}">${
-      escapeHtml(`${row.lossPercent.toFixed(1)}%`)
-    }</td>
-      <td class="stat-value stat-optional">${
-      escapeHtml(String(row.sampleCount))
-    }</td>
-      <td class="stat-value stat-optional">${
-      escapeHtml(formatUpdatedAt(row.updatedAt))
-    }</td>
-      <td class="actions-cell">${renderActionsCell(row, state)}</td>
-    </tr>`;
-  }).join('');
-}
-
-function tableTarget(event: Event): HTMLElement | null {
-  return event.target instanceof HTMLElement ? event.target : null;
-}
-
-function tableIp(target: HTMLElement): string | undefined {
-  return target.closest<HTMLElement>('[data-host-ip]')?.dataset.hostIp;
-}
-
-function handleTableClick(event: MouseEvent): void {
-  const target = tableTarget(event);
-  const action = target?.closest<HTMLElement>('[data-host-action]')?.dataset
-    .hostAction;
-  const ip = target ? tableIp(target) : undefined;
-  if (!action || !ip) {
-    return;
-  }
-
-  if (action === 'rename') {
-    const row = stats.find((item) => item.ip === ip);
-    beginRename(ip, row?.name ?? '');
-  }
-  if (action === 'remove') {
-    void removeHost(ip);
-  }
-}
-
-function tableInputTarget(event: Event): MndwInputHost | null {
-  const target = tableTarget(event);
-
-  if (target?.localName !== 'mndw-input') {
-    return null;
-  }
-
-  return target as MndwInputHost;
-}
-
-function handleTableInput(event: Event): void {
-  const target = tableInputTarget(event);
-
-  if (!target) {
-    return;
-  }
-
-  const ip = target.dataset.hostInput;
-
+function handleRenameKeydown(event: KeyboardEvent): void {
+  const input = event.target as HTMLElement;
+  const ip = input.dataset.ip;
   if (!ip) {
     return;
   }
-
-  const value = (event as CustomEvent<{value: string}>).detail.value;
-
-  if (target.value !== value) {
-    target.value = value;
-  }
-}
-
-function handleTableKeydown(event: KeyboardEvent): void {
-  const target = tableInputTarget(event);
-
-  if (!target) {
-    return;
-  }
-
-  const ip = target.dataset.hostInput;
-  if (!ip) {
-    return;
-  }
-
   if (event.key === 'Enter') {
     event.preventDefault();
-    void saveHostName(ip, target.value);
+    void saveHostName(ip, getRenameState(ip).draft);
   }
   if (event.key === 'Escape') {
     event.preventDefault();
@@ -443,21 +272,15 @@ function handleTableKeydown(event: KeyboardEvent): void {
   }
 }
 
-function handleTableFocusOut(event: FocusEvent): void {
-  const target = tableInputTarget(event);
-
-  if (!target) {
-    return;
-  }
-
-  const ip = target.dataset.hostInput;
+function handleRenameFocusOut(event: FocusEvent): void {
+  const input = event.target as HTMLElement;
+  const ip = input.dataset.ip;
   if (!ip) {
     return;
   }
-
   const state = getRenameState(ip);
   if (state.status === 'editing' || state.status === 'error') {
-    void saveHostName(ip, target.value);
+    void saveHostName(ip, state.draft);
   }
 }
 
@@ -488,11 +311,9 @@ onMount(() => {
   }
   setMessage('Monitoring…');
   void refreshNow();
-  restartStatsPolling();
+  statsLoop.start({immediate: false});
   return () => {
-    if (statsIntervalId) {
-      clearInterval(statsIntervalId);
-    }
+    statsLoop.stop();
   };
 });
 </script>
@@ -592,10 +413,6 @@ onMount(() => {
     <table
       role="grid"
       aria-label="Ping statistics"
-      onclick={handleTableClick}
-      onmndwinput={handleTableInput}
-      onkeydown={handleTableKeydown}
-      onfocusout={handleTableFocusOut}
     >
       <colgroup>
         <col class="col-host" />
@@ -624,8 +441,101 @@ onMount(() => {
         </tr>
       </thead>
       <tbody>
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderStatsBody escapes every interpolated value -->
-        {@html renderStatsBody(stats, renameStates)}
+        {#if stats.length === 0}
+          <tr>
+            <td
+              colspan="10"
+              class="empty"
+            >
+              No stats yet.
+            </td>
+          </tr>
+        {:else}
+          {#each stats as row (row.ip)}
+            {@const ip = row.ip}
+            {@const state = renameStates[ip]
+            ?? createRenameState(row.name ?? '')}
+            {@const editing = state.status === 'editing'
+            || state.status === 'saving' || state.status === 'error'}
+            {@const label = row.name?.trim() ?? ''}
+            {@const lossClass = row.lossPercent > 20
+            ? 'bad'
+            : row.lossPercent > 0
+            ? 'warn'
+            : 'ok'}
+            <tr class="stats-row">
+              <td class="host-cell">
+                {#if editing}
+                  <div class="host-editor">
+                    <mndw-input
+                      type="text"
+                      role="textbox"
+                      tabindex="0"
+                      aria-label={`Label for ${ip}`}
+                      value={state.draft}
+                      disabled={state.status === 'saving'}
+                      onmndwinput={(event: CustomEvent<{value: string}>) =>
+                      getRenameState(ip).draft = event.detail.value}
+                      onkeydown={handleRenameKeydown}
+                      onfocusout={handleRenameFocusOut}
+                      data-ip={ip}
+                    ></mndw-input>
+                    {#if state.status === 'saving'}
+                      <span
+                        class="rename-status"
+                        role="status"
+                      >Saving…</span>
+                    {/if}
+                    {#if state.status === 'error'}
+                      <span
+                        class="mndw-badge mndw-badge--danger rename-feedback"
+                        role="alert"
+                      >{state.error}</span>
+                    {/if}
+                  </div>
+                {:else}
+                  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+                  <mndw-button
+                    variant="ghost"
+                    class="host-display"
+                    aria-label={`Rename host ${ip}`}
+                    onclick={() => beginRename(ip, row.name ?? '')}
+                  >
+                    {#if label}
+                      <span class="host-label">{label}</span><span
+                        class="host-address"
+                      >{ip}</span>
+                    {:else}
+                      <span class="host-label">{ip}</span>
+                    {/if}
+                  </mndw-button>
+                {/if}
+              </td>
+              <td class="stat-value">{formatMs(row.lastMs)}</td>
+              <td class="stat-value">{formatMs(row.avgMs)}</td>
+              <td class="stat-value stat-optional">{formatMs(row.medianMs)}</td>
+              <td class="stat-value stat-optional">{formatMs(row.minMs)}</td>
+              <td class="stat-value stat-optional">{formatMs(row.maxMs)}</td>
+              <td class="stat-value {lossClass}">
+                {row.lossPercent.toFixed(1)}%
+              </td>
+              <td class="stat-value stat-optional">{row.sampleCount}</td>
+              <td class="stat-value stat-optional">
+                {formatUpdatedAt(row.updatedAt)}
+              </td>
+              <td class="actions-cell">
+                <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+                <mndw-button
+                  variant="danger"
+                  class="compact"
+                  aria-label={`Delete host ${ip}`}
+                  disabled={state.status === 'saving'}
+                  onclick={() => void removeHost(ip)}
+                >Delete</mndw-button>
+              </td>
+            </tr>
+          {/each}
+        {/if}
       </tbody>
     </table>
   </div>

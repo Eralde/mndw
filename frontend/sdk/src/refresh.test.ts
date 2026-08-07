@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {createRefreshLoop} from './refresh-loop.js';
+import {createRefreshLoop} from './refresh.js';
 
 let onSuccess: ReturnType<typeof vi.fn>;
 let onError: ReturnType<typeof vi.fn>;
@@ -38,6 +38,20 @@ describe('start', () => {
     vi.advanceTimersByTime(3000);
     await flush();
     expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not load immediately when immediate is false', async () => {
+    const load = vi.fn().mockResolvedValue('value');
+    const loop = createRefreshLoop({load, intervalMs: 3000, onSuccess, onError});
+
+    loop.start({immediate: false});
+    await flush();
+    expect(load).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(3000);
+    await flush();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(onSuccess).toHaveBeenCalledWith('value');
   });
 
   it('is idempotent — a second start does not double the schedule', async () => {

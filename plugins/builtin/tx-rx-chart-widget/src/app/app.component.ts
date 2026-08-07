@@ -72,42 +72,13 @@ export class AppComponent implements OnInit {
     });
   }
 
-  public async ngOnInit(): Promise<void> {
-    const savedInterface = await this.storage.get(STORAGE_KEY);
-    const savedRefresh = await this.storage.get(STORAGE_REFRESH);
-
-    if (savedRefresh) { this.refresh.set(normalizeRefreshMs(savedRefresh)); }
-
-    this.rciService.getInterfaces().pipe(
-      takeUntilDestroyed(this.destroyRef),
-    )
-      .subscribe({
-        next: (response) => {
-          const list = this.getInterfaceList(response);
-
-          this.interfaceList.set(list);
-          this.loadingInterfaces.set(false);
-
-          if (savedInterface && list.find((i) => i.id === savedInterface)) {
-            this.selectedInterface.set(savedInterface);
-            this.startPolling();
-          } else if (savedInterface) {
-            this.storage.delete(STORAGE_KEY);
-          }
-        },
-        error: (ex) => {
-          this.loadingInterfaces.set(false);
-          this.error.set('Failed to load interfaces');
-          console.error('[tx-rx-rrd-chart]', ex);
-        },
-      });
-
-    this.loadDeviceTime();
+  public ngOnInit(): Promise<void> {
+    return this.loadInterfaces();
   }
 
   protected retryLoad(): void {
     this.error.set('');
-    this.loadInterfaces();
+    void this.loadInterfaces();
   }
 
   protected openSettingsDialog(): void {
@@ -207,23 +178,39 @@ export class AppComponent implements OnInit {
       });
   }
 
-  private loadInterfaces(): void {
+  private async loadInterfaces(): Promise<void> {
+    let savedInterface: string | null;
+    let savedRefresh: string | null;
+
+    try {
+      savedInterface = await this.storage.get(STORAGE_KEY);
+      savedRefresh = await this.storage.get(STORAGE_REFRESH);
+    } catch {
+      this.loadingInterfaces.set(false);
+
+      return;
+    }
+
+    if (savedRefresh) {
+      this.refresh.set(normalizeRefreshMs(savedRefresh));
+    }
+
     this.rciService.getInterfaces().pipe(
       takeUntilDestroyed(this.destroyRef),
     )
       .subscribe({
         next: (response) => {
-          this.interfaceList.set(this.getInterfaceList(response));
+          const list = this.getInterfaceList(response);
+
+          this.interfaceList.set(list);
           this.loadingInterfaces.set(false);
 
-          this.storage.get(STORAGE_KEY).then((savedInterface) => {
-            if (savedInterface && this.interfaceList().find((i) => i.id === savedInterface)) {
-              this.selectedInterface.set(savedInterface);
-              this.startPolling();
-            } else if (savedInterface) {
-              this.storage.delete(STORAGE_KEY);
-            }
-          });
+          if (savedInterface && list.find((i) => i.id === savedInterface)) {
+            this.selectedInterface.set(savedInterface);
+            this.startPolling();
+          } else if (savedInterface) {
+            void this.storage.delete(STORAGE_KEY);
+          }
         },
         error: (ex) => {
           this.loadingInterfaces.set(false);
@@ -231,6 +218,8 @@ export class AppComponent implements OnInit {
           console.error('[tx-rx-rrd-chart]', ex);
         },
       });
+
+    this.loadDeviceTime();
   }
 
   private loadDeviceTime(): void {

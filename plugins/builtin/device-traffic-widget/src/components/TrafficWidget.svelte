@@ -3,6 +3,7 @@ import {onMount} from 'svelte';
 import type {RciManager} from '@rci-tools/core';
 import {formatSpeed} from '@mndw/ui';
 import type {PluginStorage} from '@mndw/sdk';
+import {createRefreshLoop} from '@mndw/sdk/refresh';
 import {type ClockDate, RciService} from '../services/rci.js';
 import type {HostBar, HostClient} from '../types.js';
 import {toDeviceTrafficChartData} from '../utils/chart-data.js';
@@ -34,8 +35,18 @@ let deviceTime = $state<Date | null>(null);
 let error = $state('');
 let isLoading = $state(true);
 
-let pollTimer: ReturnType<typeof setInterval> | undefined;
-let deviceTimeTimer: ReturnType<typeof setInterval> | undefined;
+const chartLoop = createRefreshLoop({
+  load: loadChartData,
+  intervalMs: POLL_INTERVAL,
+  onSuccess: () => {},
+  onError: () => {},
+});
+const timeLoop = createRefreshLoop({
+  load: loadDeviceTime,
+  intervalMs: DEVICE_TIME_INTERVAL,
+  onSuccess: () => {},
+  onError: () => {},
+});
 
 let chartData = $derived(toDeviceTrafficChartData(rawChartData, deviceTime));
 
@@ -97,29 +108,19 @@ async function loadChartData() {
 }
 
 function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer);
-
-    pollTimer = undefined;
-  }
-
-  if (deviceTimeTimer) {
-    clearInterval(deviceTimeTimer);
-
-    deviceTimeTimer = undefined;
-  }
+  chartLoop.stop();
+  timeLoop.stop();
 }
 
 function startPolling() {
   stopPolling();
 
-  if (selectedMac) {
-    loadDeviceTime();
-    loadChartData();
-
-    pollTimer = setInterval(loadChartData, POLL_INTERVAL);
-    deviceTimeTimer = setInterval(loadDeviceTime, DEVICE_TIME_INTERVAL);
+  if (!selectedMac) {
+    return;
   }
+
+  chartLoop.start();
+  timeLoop.start();
 }
 
 function handleOpenSettings() {

@@ -21,6 +21,10 @@
       "types": "./src/ticker.ts",
       "default": "./src/ticker.ts"
     },
+    "./refresh": {
+      "types": "./src/refresh.ts",
+      "default": "./src/refresh.ts"
+    },
     "./manifest-schema": {
       "types": "./src/manifest-schema.ts",
       "default": "./src/manifest-schema.ts"

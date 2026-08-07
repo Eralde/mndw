@@ -6,7 +6,7 @@ export interface RefreshLoopOptions<T> {
 }
 
 export interface RefreshLoop {
-  start(): void;
+  start(options?: {immediate?: boolean}): void;
   stop(): void;
   setIntervalMs(intervalMs: number): void;
 }
@@ -68,7 +68,7 @@ export function createRefreshLoop<T>(options: RefreshLoopOptions<T>): RefreshLoo
   };
 
   return {
-    start: (): void => {
+    start: (startOptions: {immediate?: boolean} = {}): void => {
       if (active) {
         return;
       }
@@ -76,7 +76,10 @@ export function createRefreshLoop<T>(options: RefreshLoopOptions<T>): RefreshLoo
       active = true;
       generation += 1;
       schedule();
-      run(true);
+
+      if (startOptions.immediate !== false) {
+        run(true);
+      }
     },
 
     stop: (): void => {

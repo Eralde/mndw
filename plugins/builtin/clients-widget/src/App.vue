@@ -5,7 +5,7 @@ import {computed, onMounted, onUnmounted, ref} from 'vue';
 import ClientsTable from './components/ClientsTable.vue';
 import {type ClientRecord, fetchClients, filterVisibleClients} from './services/clients.js';
 import {openSettingsDialog} from './services/open-settings-dialog.js';
-import {createRefreshLoop, type RefreshLoop} from './services/refresh-loop.js';
+import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 
 const props = defineProps<{ctx: PluginContext}>();
 

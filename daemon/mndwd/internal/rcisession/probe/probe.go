@@ -1,3 +1,5 @@
+// Package probe detects whether a controller's firmware supports RCI token
+// authentication, distinguishing unsupported firmware from an unknown result.
 package probe
 
 import (

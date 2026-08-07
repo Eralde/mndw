@@ -1,3 +1,5 @@
+// Package store is the encrypted at-rest record of the device's RCI credentials
+// (controller + per-extender tokens), sealed with AES-GCM and written atomically.
 package store
 
 import (

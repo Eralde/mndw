@@ -167,7 +167,6 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 	mgmtHandler.Register(mgmtMux)
 	mux.Handle("/api/mgmt/", verifier.Middleware(mgmtMux))
 	accessMux := http.NewServeMux()
-	closePersistentSession := func() {}
 	access.New(store).Register(accessMux)
 	diagnosticsLogFile := cfg.DiagnosticsLogFile
 	if diagnosticsLogFile == "" {
@@ -177,6 +176,30 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 		LogFile: diagnosticsLogFile,
 		Plugins: diagnosticsPlugins(reg, store, runtimeRoot),
 	}).Register(accessMux)
+	closePersistentSession := assembleRCISession(cfg, reg, runtimeRoot, accessMux, logger)
+	// Keep the route mounted in dev so the host exercises the same consent contract;
+	// the verifier still bypasses only session validation when cfg.Dev is true.
+	mux.Handle("/api/mndw/", verifier.Middleware(accessMux))
+	paletteHandler := palette.NewHandler(paletteStore, logger)
+	paletteHandler.RegisterPublic(mux)
+	paletteHandler.RegisterProtected(mgmtMux)
+	pluginMux := http.NewServeMux()
+	dispatchHandler.Register(pluginMux)
+	mux.Handle("/api/plugins/", httpx.PluginNoStoreMiddleware(pluginMux))
+	wsHandler.Register(mux)
+
+	return httpx.LogMiddleware(logger, mux), life, reg, opkgMgr, tracker, closePersistentSession
+}
+
+// assembleRCISession wires the persistent RCI session subsystem: it opens the
+// encrypted store, builds the device HTTP client, enumerator, service, token
+// generator, and socket reconciler, registers the RCI routes on accessMux, and
+// returns the cleanup that closes the socket reconciler. When the persistent
+// store cannot be opened the subsystem is skipped and the returned cleanup is a
+// no-op.
+func assembleRCISession(cfg Config, reg *registry.Registry, runtimeRoot string, accessMux *http.ServeMux, logger *slog.Logger) func() {
+	closePersistentSession := func() {}
+
 	if cfg.RCISessionStateDir == "" {
 		cfg.RCISessionStateDir = cfg.DataDir
 	}
@@ -248,18 +271,8 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 		reconcileSockets()
 		closePersistentSession = socketReconciler.Close
 	}
-	// Keep the route mounted in dev so the host exercises the same consent contract;
-	// the verifier still bypasses only session validation when cfg.Dev is true.
-	mux.Handle("/api/mndw/", verifier.Middleware(accessMux))
-	paletteHandler := palette.NewHandler(paletteStore, logger)
-	paletteHandler.RegisterPublic(mux)
-	paletteHandler.RegisterProtected(mgmtMux)
-	pluginMux := http.NewServeMux()
-	dispatchHandler.Register(pluginMux)
-	mux.Handle("/api/plugins/", httpx.PluginNoStoreMiddleware(pluginMux))
-	wsHandler.Register(mux)
 
-	return httpx.LogMiddleware(logger, mux), life, reg, opkgMgr, tracker, closePersistentSession
+	return closePersistentSession
 }
 
 func hasPersistentRCIPermission(m *manifest.Manifest) bool {

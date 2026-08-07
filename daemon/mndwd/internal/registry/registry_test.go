@@ -3,10 +3,12 @@ package registry
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"mndwd/internal/httpx"
 	"mndwd/internal/state"
 )
 
@@ -179,5 +181,22 @@ func TestResolveTamperedManifestIsMiss(t *testing.T) {
 	}
 	if _, ok := reg.Resolve("bad"); ok {
 		t.Errorf("a state entry with an invalid manifest must not resolve")
+	}
+}
+
+func TestBackendServable(t *testing.T) {
+	approvedEnabled := &Plugin{Approval: state.ApprovalApproved, Enabled: true}
+	if err := approvedEnabled.BackendServable(); err != nil {
+		t.Fatalf("approved+enabled should serve, got %v", err)
+	}
+
+	notApproved := &Plugin{Approval: state.ApprovalPending, Enabled: true}
+	if err := notApproved.BackendServable(); err == nil || err.Status != http.StatusForbidden || err.Code != httpx.CodeNotApproved {
+		t.Fatalf("pending plugin should be forbidden/not-approved, got %v", err)
+	}
+
+	disabled := &Plugin{Approval: state.ApprovalApproved, Enabled: false}
+	if err := disabled.BackendServable(); err == nil || err.Status != http.StatusForbidden || err.Code != httpx.CodeDisabled {
+		t.Fatalf("disabled plugin should be forbidden/disabled, got %v", err)
 	}
 }

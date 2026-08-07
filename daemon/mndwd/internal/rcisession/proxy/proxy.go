@@ -1,3 +1,5 @@
+// Package proxy forwards a single outbound RCI request to a resolved target and
+// returns its response under strict size and time caps.
 package proxy
 
 import (

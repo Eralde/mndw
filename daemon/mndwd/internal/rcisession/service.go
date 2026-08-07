@@ -1,3 +1,12 @@
+// Package rcisession owns the device's persistent RCI credentials — the tokens
+// mndwd uses to talk to the mesh controller and its extenders on the user's
+// behalf. Service is the orchestration core: it reads and writes the encrypted
+// record (sub-package store), mints tokens (minter), lists mesh members with a
+// short-lived cache (enumeration), and forwards capped outbound RCI requests
+// (proxy). The socket sub-package exposes an authenticated session to builtin
+// plugins that hold the persistent-RCI permission, and reconciles those unix
+// sockets as the credential state changes. handler.go serves the /api/mndw RCI
+// endpoints; controller.go tests controller reachability.
 package rcisession
 
 import (
@@ -6,9 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -79,26 +86,19 @@ func (s *Service) SetControllerURL(baseURL string, allowRemoteHTTP bool) error {
 }
 
 func validateControllerURL(baseURL string, allowRemoteHTTP bool) (string, bool, error) {
-	if strings.TrimSpace(baseURL) == "" {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
 		baseURL = DefaultControllerURL
 	}
-	parsed, err := url.Parse(strings.TrimSpace(baseURL))
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Hostname() == "" {
-		return "", false, fmt.Errorf("controller URL must be an absolute HTTP(S) URL")
+	parsed, err := ValidateControllerURLShape(baseURL)
+	if err != nil {
+		return "", false, err
 	}
-	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
-		return "", false, fmt.Errorf("controller URL must contain only scheme and host")
-	}
-	allowInsecure := parsed.Scheme == "http" && (isLoopbackHost(parsed.Hostname()) || allowRemoteHTTP)
+	allowInsecure := parsed.Scheme == "http" && (IsLoopbackHost(parsed.Hostname()) || allowRemoteHTTP)
 	if parsed.Scheme == "http" && !allowInsecure {
 		return "", false, fmt.Errorf("remote HTTP controller URL is not permitted")
 	}
 	return strings.TrimRight(parsed.String(), "/"), allowInsecure, nil
-}
-
-func isLoopbackHost(host string) bool {
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 type ControllerVerdict string

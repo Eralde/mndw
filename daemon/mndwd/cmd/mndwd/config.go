@@ -4,8 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -160,24 +158,20 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 }
 
 func validateControllerURL(raw string) error {
-	parsed, err := url.Parse(raw)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Hostname() == "" {
+	if _, err := rcisession.ValidateControllerURLShape(raw); err != nil {
 		return fmt.Errorf("--controller-url must be an absolute HTTP(S) URL, got %q", raw)
-	}
-	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
-		return fmt.Errorf("--controller-url must contain only scheme and host, got %q", raw)
 	}
 
 	return nil
 }
 
 func isLoopbackControllerURL(raw string) bool {
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "http" {
+	parsed, err := rcisession.ValidateControllerURLShape(raw)
+	if err != nil {
 		return false
 	}
-	ip := net.ParseIP(parsed.Hostname())
-	return ip != nil && ip.IsLoopback()
+
+	return parsed.Scheme == "http" && rcisession.IsLoopbackHost(parsed.Hostname())
 }
 
 func validatePersistentSessionConfig(cfg Config) error {

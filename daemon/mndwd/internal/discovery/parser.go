@@ -1,3 +1,7 @@
+// Package discovery parses the controller's mesh-member listing (the RCI
+// "known host" / CID records) into Member values. It normalizes each member's
+// MAC and derives a stable Identity (CID, else normalized MAC) so the RCI
+// session subsystem can address extenders consistently.
 package discovery
 
 import (

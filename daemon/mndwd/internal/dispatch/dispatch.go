@@ -25,7 +25,6 @@ import (
 	"mndwd/internal/output"
 	"mndwd/internal/pluginruntime"
 	"mndwd/internal/registry"
-	"mndwd/internal/state"
 )
 
 // Defaults applied when Config leaves a limit unset.
@@ -61,7 +60,7 @@ type Handler struct {
 	auth   Authenticator
 	logger *slog.Logger
 
-	sems *plugerSems
+	sems *pluginSems
 }
 
 // New constructs a dispatch Handler, filling unset limits with defaults.
@@ -81,7 +80,7 @@ func New(cfg Config, reg *registry.Registry, auth Authenticator, logger *slog.Lo
 		reg:    reg,
 		auth:   auth,
 		logger: logger,
-		sems:   newPlugerSems(cfg.MaxConcurrentExec),
+		sems:   newPluginSems(cfg.MaxConcurrentExec),
 	}
 }
 
@@ -131,7 +130,7 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if apiErr := approvalGate(plugin); apiErr != nil {
+	if apiErr := plugin.BackendServable(); apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
 
 		return
@@ -169,20 +168,6 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.exec(w, r, plugin, endpoint, scriptPath, body, runtimeDir)
-}
-
-// approvalGate enforces that a matched route's plugin is approved and enabled. The
-// session check is done earlier (it must precede route resolution to avoid leaking
-// existence); this is the second half of the gate.
-func approvalGate(plugin *registry.Plugin) *httpx.APIError {
-	if plugin.Approval != state.ApprovalApproved {
-		return httpx.NewError(http.StatusForbidden, httpx.CodeNotApproved, "plugin backend is not approved")
-	}
-	if !plugin.Enabled {
-		return httpx.NewError(http.StatusForbidden, httpx.CodeDisabled, "plugin backend is disabled")
-	}
-
-	return nil
 }
 
 // readBody reads the request body under the configured cap.

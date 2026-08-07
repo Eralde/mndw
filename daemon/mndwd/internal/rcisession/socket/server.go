@@ -1,3 +1,6 @@
+// Package socket exposes an authenticated RCI session to permitted builtin
+// plugins over a per-plugin unix socket, and reconciles those sockets (create,
+// keep, tear down) as the persistent credential state changes.
 package socket
 
 import (

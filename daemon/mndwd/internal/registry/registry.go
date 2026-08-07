@@ -6,9 +6,11 @@
 package registry
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 
+	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/state"
 )
@@ -35,6 +37,21 @@ func (p *Plugin) Public() bool {
 	d := manifest.Descriptor(p.Manifest)
 
 	return d != nil && d.Public
+}
+
+// BackendServable reports whether the plugin's backend may serve traffic: it
+// must be approved and enabled. It returns nil when servable, or the matching
+// 403 APIError. dispatch and wsproxy both gate on this so the rule is defined
+// in exactly one place.
+func (p *Plugin) BackendServable() *httpx.APIError {
+	if p.Approval != state.ApprovalApproved {
+		return httpx.NewError(http.StatusForbidden, httpx.CodeNotApproved, "plugin backend is not approved")
+	}
+	if !p.Enabled {
+		return httpx.NewError(http.StatusForbidden, httpx.CodeDisabled, "plugin backend is disabled")
+	}
+
+	return nil
 }
 
 // Registry resolves plugin names against live state plus the builtin plugin dir.

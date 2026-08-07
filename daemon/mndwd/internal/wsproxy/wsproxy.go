@@ -18,7 +18,6 @@ import (
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
-	"mndwd/internal/state"
 )
 
 const (
@@ -80,7 +79,7 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if apiErr := approvalGate(plugin); apiErr != nil {
+	if apiErr := plugin.BackendServable(); apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
 
 		return
@@ -127,20 +126,6 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 	client.SetReadLimit(readLimit)
 
 	h.pump(client, target)
-}
-
-// approvalGate enforces that a matched route's plugin is approved and enabled. The
-// session check runs earlier (before route resolution, to avoid leaking existence);
-// this is the second half of the gate.
-func approvalGate(plugin *registry.Plugin) *httpx.APIError {
-	if plugin.Approval != state.ApprovalApproved {
-		return httpx.NewError(http.StatusForbidden, httpx.CodeNotApproved, "plugin backend is not approved")
-	}
-	if !plugin.Enabled {
-		return httpx.NewError(http.StatusForbidden, httpx.CodeDisabled, "plugin backend is disabled")
-	}
-
-	return nil
 }
 
 // pump copies messages in both directions until either side errors (close/EOF),

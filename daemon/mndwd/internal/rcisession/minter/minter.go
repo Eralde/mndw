@@ -1,3 +1,5 @@
+// Package minter mints controller and extender RCI tokens by authenticating to
+// each device via mndw's device-auth and issuing the token-request RCI calls.
 package minter
 
 import (

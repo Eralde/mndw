@@ -135,6 +135,8 @@ func TestParseRejectsMalformedControllerURL(t *testing.T) {
 		"http://user:password@192.168.1.1",
 		"http://192.168.1.1/rci",
 		"http://192.168.1.1?token=secret",
+		" http://192.168.1.1",
+		"http://192.168.1.1 ",
 	} {
 		if _, _, err := parseFlags([]string{"--dev", "--controller-url", value}); err == nil {
 			t.Fatalf("controller URL %q accepted", value)

@@ -1,3 +1,5 @@
+// Package model holds the shared types and state enums of the RCI session
+// subsystem: the stored document shape, token records, and store/support states.
 package model
 
 import "time"

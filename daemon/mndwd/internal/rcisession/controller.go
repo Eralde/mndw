@@ -4,12 +4,39 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
 
 const DefaultControllerURL = "http://127.0.0.1:79"
+
+// ValidateControllerURLShape parses raw (without trimming) and enforces the
+// controller-URL shape shared by the daemon flag and the session service: an
+// absolute HTTP(S) URL carrying only a scheme and host — no userinfo, query,
+// fragment, or path beyond "/". It returns the parsed URL on success. Callers
+// layer their own policy (whitespace trimming, default-filling, loopback/remote
+// rules) on top.
+func ValidateControllerURLShape(raw string) (*url.URL, error) {
+	parsed, err := url.Parse(raw)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Hostname() == "" {
+		return nil, fmt.Errorf("controller URL must be an absolute HTTP(S) URL, got %q", raw)
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return nil, fmt.Errorf("controller URL must contain only scheme and host, got %q", raw)
+	}
+
+	return parsed, nil
+}
+
+// IsLoopbackHost reports whether host is a loopback IP literal.
+func IsLoopbackHost(host string) bool {
+	ip := net.ParseIP(host)
+
+	return ip != nil && ip.IsLoopback()
+}
 
 type ControllerHTTPTester struct {
 	Client  *http.Client

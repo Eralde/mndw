@@ -1,3 +1,5 @@
+// Package enumeration lists the controller's mesh members, caching the result
+// for a short TTL so a burst of session operations costs one upstream call.
 package enumeration
 
 import (

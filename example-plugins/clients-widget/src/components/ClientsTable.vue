@@ -24,12 +24,12 @@ function wirelessBandsText(bands: WifiBand[]): string {
   return bands.length === 0 ? DASH : bands.map((band) => bandText(band)).join(', ');
 }
 
-function wiredSpeedText(speed: number | undefined): string {
+function wiredSpeedText(speed: number | null | undefined): string {
   return speed === undefined || !Number.isFinite(speed) ? DASH : `${speed} Mbps`;
 }
 
-function wiredPortText(port: string | undefined): string {
-  return port === undefined || port === '' || port === 'undefined' ? DASH : `Port ${port}`;
+function wiredPortText(port: string | null | undefined): string {
+  return port === null || port === undefined || port === '' || port === 'undefined' ? DASH : `Port ${port}`;
 }
 
 function durationText(seconds: number | null): string {

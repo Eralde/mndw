@@ -6,4 +6,4 @@ export {
   POPOVER_FLIP_ORDER,
   resolveSizing,
 } from '@mndw/ui';
-export type { PopoverCoords, ResolvedSizing } from '@mndw/ui';
+export type {PopoverCoords, ResolvedSizing} from '@mndw/ui';

@@ -81,11 +81,10 @@ describe('normalizeClients — optional fields', () => {
     expect(record).toMatchObject({
       ip: '192.168.1.46',
       link: 'down',
-      speed: 1000,
-      port: '2',
       uptime: 1483,
       lastSeen: 12,
     });
+    expect(record.connection).toEqual({speed: 1000, port: '2'});
   });
 
   it('nulls missing values rather than throwing', () => {
@@ -94,11 +93,10 @@ describe('normalizeClients — optional fields', () => {
     expect(record).toMatchObject({
       ip: null,
       link: null,
-      speed: null,
-      port: null,
       uptime: null,
       lastSeen: null,
     });
+    expect(record.connection).toEqual({speed: null, port: null});
   });
 
   it.each([
@@ -111,7 +109,11 @@ describe('normalizeClients — optional fields', () => {
   ])('nulls an invalid %s instead of rejecting the response', (_label, over, field) => {
     const [record] = normalizeClients(wrap(rawHost(over)));
 
-    expect(record[field as keyof ClientRecord]).toBeNull();
+    if (field === 'speed' || field === 'port') {
+      expect(record.connection).toMatchObject({[field]: null});
+    } else {
+      expect(record[field as keyof ClientRecord]).toBeNull();
+    }
   });
 
   it('defaults active to false when missing or non-boolean', () => {

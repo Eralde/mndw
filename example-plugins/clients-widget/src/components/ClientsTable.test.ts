@@ -78,7 +78,7 @@ describe('connection column', () => {
   it('renders dashes for unusable wired values', () => {
     mountTable(makeClient({
       connectionType: 'wired',
-      connection: {speed: Number.NaN, port: 'undefined'},
+      connection: {speed: null, port: null},
     }));
 
     const cell = connectionCell();

@@ -1,6 +1,6 @@
 import type {RciManager, RciQuery} from '@rci-tools/core';
 import {firstValueFrom} from 'rxjs';
-import {get, has, pick, pickBy} from 'lodash-es';
+import {get, has, pickBy} from 'lodash-es';
 
 interface RawDeviceHost {
   mac?: unknown;
@@ -17,10 +17,10 @@ interface RawDeviceHost {
   'last-seen'?: unknown;
 }
 
-export type WiredConnectionInfo = Partial<{
-  speed: number;
-  port: string;
-}>;
+export interface WiredConnectionInfo {
+  speed: number | null;
+  port: string | null;
+}
 
 export type WifiBand = '2' | '5' | '6';
 export type HostConnectionType = 'wired' | 'wireless' | 'unknown';
@@ -53,7 +53,7 @@ export class ClientsParseError extends Error {
   }
 }
 
-const MAC_PATTERN = /^[0-9A-Fa-f][02468ACEace]([:-])[0-9A-Fa-f]{2}(?:\1[0-9A-Fa-f]{2}){4}$/;
+const MAC_PATTERN = /^[0-9A-Fa-f][02468ACEace](?::[0-9A-Fa-f]{2}){5}$/;
 const QUERY: RciQuery = {path: 'show.device-list', extractData: true};
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -82,6 +82,14 @@ function toNumber(value: unknown): number | null {
   }
 
   return null;
+}
+
+function toPort(value: unknown): string | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : null;
+  }
+
+  return toText(value);
 }
 
 function toMac(value: unknown, index: number): string {
@@ -114,17 +122,12 @@ const getHostConnectionType = (host: RawDeviceHost): HostConnectionType => {
 };
 
 const getWiredConnectionInfo = (host: RawDeviceHost): WiredConnectionInfo => {
-  let apiData: Record<string, unknown>;
-
-  if (has(host, 'mws.speed')) {
-    apiData = pick(host, ['mws.speed', 'mws.port']);
-  }
-
-  apiData = pick(host, ['speed', 'port']);
+  const speed = has(host, 'mws.speed') ? get(host, 'mws.speed') : host.speed;
+  const port = has(host, 'mws.port') ? get(host, 'mws.port') : host.port;
 
   return {
-    speed: Number(apiData.speed),
-    port: String(apiData.port),
+    speed: toNumber(speed),
+    port: toPort(port),
   };
 };
 

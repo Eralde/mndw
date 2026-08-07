@@ -37,6 +37,7 @@ type harness struct {
 	srv     *httptest.Server
 	store   *state.Store
 	userDir string
+	handler *Handler
 }
 
 func newHarness(t *testing.T, auth Authenticator, cfg Config) *harness {
@@ -51,11 +52,12 @@ func newHarness(t *testing.T, auth Authenticator, cfg Config) *harness {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	mux := http.NewServeMux()
-	New(cfg, reg, auth, logger).Register(mux)
+	handler := New(cfg, reg, auth, logger)
+	handler.Register(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	return &harness{srv: srv, store: store, userDir: userDir}
+	return &harness{srv: srv, store: store, userDir: userDir, handler: handler}
 }
 
 // install writes a plugin's manifest + files to disk and records it in state with the
@@ -262,6 +264,43 @@ func TestDispatchUnknownPluginRoute(t *testing.T) {
 	}
 	if c := codeOf(t, resp); c != "ROUTE_NOT_FOUND" {
 		t.Errorf("code = %s, want ROUTE_NOT_FOUND", c)
+	}
+}
+
+func TestResolveDispatchBuildsRequest(t *testing.T) {
+	runtimeRoot := filepath.Join(t.TempDir(), "runtime")
+	h := newHarness(t, allowAuth{}, Config{PluginRuntimeRoot: runtimeRoot})
+	h.install(t, "svc", manifestJSON("svc", stdBackend), stdFiles(), state.ApprovalApproved, true)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/plugins/svc/run", nil)
+	req.SetPathValue("name", "svc")
+	req.SetPathValue("path", "run")
+	request, apiErr := h.handler.resolveDispatch(httptest.NewRecorder(), req)
+	if apiErr != nil {
+		t.Fatalf("resolveDispatch error = %v", apiErr)
+	}
+	defer request.release()
+	if request.plugin.Name != "svc" || request.endpoint.ID != "e1" || request.script.ID != "s1" {
+		t.Fatalf("resolved request = %+v", request)
+	}
+	if request.scriptPath != filepath.Join(h.userDir, "svc", "backend", "run.sh") {
+		t.Fatalf("script path = %q", request.scriptPath)
+	}
+	if request.runtimeDir != filepath.Join(runtimeRoot, "svc") {
+		t.Fatalf("runtime dir = %q", request.runtimeDir)
+	}
+}
+
+func TestResolveDispatchRejectsOversizedBody(t *testing.T) {
+	h := newHarness(t, allowAuth{}, Config{MaxRequestBytes: 4})
+	h.install(t, "svc", manifestJSON("svc", stdBackend), stdFiles(), state.ApprovalApproved, true)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/plugins/svc/echo", strings.NewReader("too large"))
+	req.SetPathValue("name", "svc")
+	req.SetPathValue("path", "echo")
+	_, apiErr := h.handler.resolveDispatch(httptest.NewRecorder(), req)
+	if apiErr == nil || apiErr.Code != httpx.CodeBodyTooLarge {
+		t.Fatalf("resolveDispatch error = %v, want %s", apiErr, httpx.CodeBodyTooLarge)
 	}
 }
 

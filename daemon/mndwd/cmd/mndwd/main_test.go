@@ -44,7 +44,7 @@ func TestDiagnosticsPluginsEnumeratesApprovedEnabledBackends(t *testing.T) {
 	}
 
 	reg := registry.New(store, userDir, builtinDir)
-	got := diagnosticsPlugins(reg, store, filepath.Join(root, "runtime"))
+	got := diagnosticsPlugins(reg, filepath.Join(root, "runtime"))
 	wantIDs := []string{"alpha", "duplicate", "z-user"}
 	if ids := diagnosticPluginIDs(got); !reflect.DeepEqual(ids, wantIDs) {
 		t.Fatalf("plugin IDs = %#v, want %#v", ids, wantIDs)
@@ -54,7 +54,7 @@ func TestDiagnosticsPluginsEnumeratesApprovedEnabledBackends(t *testing.T) {
 			t.Fatalf("plugin %s runtime dir = %q", plugin.ID, plugin.RuntimeDir)
 		}
 	}
-	if got := diagnosticsPlugins(reg, store, ""); len(got) != 0 {
+	if got := diagnosticsPlugins(reg, ""); len(got) != 0 {
 		t.Fatalf("empty runtime root produced plugins = %#v", got)
 	}
 }

@@ -23,73 +23,9 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, ok := h.store.Get(name)
-	if !ok {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name))
-
-		return
-	}
-	if p.Approval != state.ApprovalPending {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "plugin "+name+" is not pending approval"))
-
-		return
-	}
-
-	m, err := manifest.Validate(p.Manifest)
-	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid"))
-
-		return
-	}
-
-	// 1. opkg dependencies (before any file move — failure leaves plugin pending).
-	if apiErr := h.installDeps(m); apiErr != nil {
+	m, apiErr := h.executeApprove(name)
+	if apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
-
-		return
-	}
-
-	// 2. move staging → user-plugins.
-	stagingPath := filepath.Join(h.cfg.StagingDir, name)
-	installPath := filepath.Join(h.cfg.UserPluginsDir, name)
-	if err := moveDir(stagingPath, installPath); err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to install plugin"))
-
-		return
-	}
-
-	// 3. +x declared scripts; roll back the move on failure.
-	if apiErr := markScriptsExecutable(installPath, m); apiErr != nil {
-		h.rollbackInstall(name, installPath, stagingPath)
-		httpx.WriteError(w, h.logger, apiErr)
-
-		return
-	}
-
-	// 4. start backend.daemon; roll back on failure.
-	if m.Backend != nil && m.Backend.Daemon != nil {
-		if err := h.life.Start(name, installPath, m.Backend.Daemon.Start); err != nil {
-			h.rollbackInstall(name, installPath, stagingPath)
-			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeDaemonFailed, "failed to start plugin backend daemon"))
-
-			return
-		}
-	}
-
-	// 5. record approved + enabled.
-	err = h.store.Mutate(func(st *state.State) error {
-		rec, exists := st.Plugins[name]
-		if !exists {
-			return httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "plugin vanished during approval")
-		}
-		rec.Approval = state.ApprovalApproved
-		rec.Enabled = true
-		st.AppendAudit("approve", name, "backend approved and activated")
-
-		return nil
-	})
-	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record approval"))
 
 		return
 	}

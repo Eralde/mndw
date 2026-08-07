@@ -426,7 +426,7 @@ func TestStartupShutdownLifecycle(t *testing.T) {
 	coord := newStartupCoordinator(reg, mgr, rec, tracker, nil, logger)
 
 	coord.PreRegister()
-	startupActivate(reg, rec, store, coord.Deferred, logger)
+	startupActivate(reg, rec, coord.Deferred, logger)
 
 	if got := fmt.Sprint(rec.starts); got != "[plain-widget]" {
 		t.Fatalf("immediate starts = %v, want [plain-widget]", rec.starts)
@@ -439,7 +439,7 @@ func TestStartupShutdownLifecycle(t *testing.T) {
 		t.Fatalf("post-install starts = %v, want ready-widget started, broken-widget not", rec.starts)
 	}
 
-	shutdownDaemons(reg, rec, store, func(name string) bool {
+	shutdownDaemons(reg, rec, func(name string) bool {
 		return coord.Deferred(name) && !coord.Started(name)
 	}, logger)
 
@@ -465,16 +465,11 @@ func TestShutdownDaemonsStopsConcurrently(t *testing.T) {
 	writeBuiltinDaemon(t, builtinDir, "first-widget", nil)
 	writeBuiltinDaemon(t, builtinDir, "second-widget", nil)
 	reg := builtinRegistry(t, builtinDir)
-	root := t.TempDir()
-	store, err := state.Open(filepath.Join(root, "state.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	stopper := &concurrentStopper{started: make(chan string, 2), release: make(chan struct{})}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	done := make(chan struct{})
 	go func() {
-		shutdownDaemons(reg, stopper, store, nil, logger)
+		shutdownDaemons(reg, stopper, nil, logger)
 		close(done)
 	}()
 
@@ -596,7 +591,7 @@ func TestListServesWhileInstallBlocked(t *testing.T) {
 	mgmt.New(mgmt.Config{
 		UserPluginsDir:    filepath.Join(root, "user-plugins"),
 		BuiltinPluginsDir: builtinDir,
-	}, store, mgr, rec, tracker, logger).Register(mux)
+	}, store, mgr, rec, tracker, reg, logger).Register(mux)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 

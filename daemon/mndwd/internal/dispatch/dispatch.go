@@ -92,82 +92,15 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	routePath := r.PathValue("path")
-
-	plugin, found := h.reg.Resolve(name)
-
-	// Session gate first for anything not explicitly public, so an unauthenticated
-	// client cannot enumerate installed routes (a 404 vs 403 would leak existence).
-	if !(found && plugin.Public()) {
-		if apiErr := h.auth.Authenticate(r); apiErr != nil {
-			httpx.WriteError(w, h.logger, apiErr)
-
-			return
-		}
-	}
-
-	if !found || !manifest.HasBackend(plugin.Manifest) {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, "no such plugin route"))
-
-		return
-	}
-
-	endpoint, script, matched := resolveEndpoint(plugin.Manifest, r.Method, routePath)
-	if !matched {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, "no endpoint matches "+r.Method+" "+routePath))
-
-		return
-	}
-
-	if endpoint.Sensitive {
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Referrer-Policy", "no-referrer")
-	}
-
-	if endpoint.Csrf && !httpx.RequireCSRF(w, h.logger, r) {
-
-		return
-	}
-
-	if apiErr := plugin.BackendServable(); apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
-
-		return
-	}
-
-	// Per-plugin concurrency cap: reject rather than queue so a slow plugin cannot
-	// pin the daemon's goroutines.
-	release, admitted := h.sems.acquire(name)
-	if !admitted {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusTooManyRequests, httpx.CodeTooManyRequests, "too many concurrent requests for this plugin"))
-
-		return
-	}
-	defer release()
-
-	body, apiErr := h.readBody(w, r)
+	request, apiErr := h.resolveDispatch(w, r)
 	if apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
 
 		return
 	}
+	defer request.release()
 
-	scriptPath, apiErr := safeScriptPath(plugin.Dir, script.Source)
-	if apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
-
-		return
-	}
-
-	runtimeDir, err := pluginruntime.Ensure(h.cfg.PluginRuntimeRoot, plugin.Name)
-	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to prepare plugin runtime directory"))
-
-		return
-	}
-
-	h.exec(w, r, plugin, endpoint, scriptPath, body, runtimeDir)
+	h.exec(w, r, request.plugin, request.endpoint, request.scriptPath, request.body, request.runtimeDir)
 }
 
 // readBody reads the request body under the configured cap.

@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"mndwd/internal/rcisession/model"
 )
 
 const DefaultControllerURL = "http://127.0.0.1:79"
@@ -87,4 +89,53 @@ func controllerURL(baseURL string) string {
 	}
 
 	return strings.TrimRight(baseURL, "/")
+}
+
+type ControllerVerdict string
+
+const (
+	ControllerValid        ControllerVerdict = "valid"
+	ControllerInvalidToken ControllerVerdict = "invalid-token"
+	ControllerUnsupported  ControllerVerdict = "unsupported-firmware"
+	ControllerUnreachable  ControllerVerdict = "unreachable"
+)
+
+type ControllerTester interface {
+	Test(context.Context, string) (ControllerVerdict, error)
+}
+
+func (s *Service) TestController(ctx context.Context, tester ControllerTester, token string) (ControllerVerdict, error) {
+	if token == "" {
+		return ControllerInvalidToken, nil
+	}
+	if tester == nil {
+		return ControllerUnreachable, fmt.Errorf("controller tester unavailable")
+	}
+	return tester.Test(ctx, token)
+}
+
+func (s *Service) SaveController(ctx context.Context, tester ControllerTester, token string) (ControllerVerdict, error) {
+	verdict, err := s.TestController(ctx, tester, token)
+	if err != nil || verdict != ControllerValid {
+		return verdict, err
+	}
+	checked := s.now().UTC()
+	if err := s.store.ReplaceController(model.TokenRecord{
+		Key:           "controller",
+		Token:         token,
+		Support:       model.SupportSupported,
+		LastCheckedAt: &checked,
+	}); err != nil {
+		return ControllerUnreachable, err
+	}
+	s.notifyMutation("controller-token-saved")
+	return verdict, nil
+}
+
+func (s *Service) DeleteController() error {
+	if err := s.store.DeleteController(); err != nil {
+		return err
+	}
+	s.notifyMutation("controller-token-deleted")
+	return nil
 }

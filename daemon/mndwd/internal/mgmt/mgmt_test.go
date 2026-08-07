@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,11 +13,19 @@ import (
 	"path/filepath"
 	"testing"
 
+	"mndwd/internal/httpx"
 	"mndwd/internal/lifecycle"
 	"mndwd/internal/opkg"
 	"mndwd/internal/readiness"
+	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
+
+type emptyBuiltinSource struct{}
+
+func (emptyBuiltinSource) ListBuiltinsWithError() ([]*registry.Plugin, error) {
+	return nil, nil
+}
 
 func newTestServer(t *testing.T) (*httptest.Server, Config) {
 	t.Helper()
@@ -34,7 +43,7 @@ func newTestServer(t *testing.T) (*httptest.Server, Config) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mux := http.NewServeMux()
-	New(cfg, store, opkg.New("stub", logger), lifecycle.New(logger), readiness.New(), logger).Register(mux)
+	New(cfg, store, opkg.New("stub", logger), lifecycle.New(logger), readiness.New(), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -62,7 +71,7 @@ func newTestServerWithOpkg(t *testing.T, opkgMgr opkg.Manager) (*httptest.Server
 
 	logger := discardLogger()
 	mux := http.NewServeMux()
-	New(cfg, store, opkgMgr, lifecycle.New(logger), readiness.New(), logger).Register(mux)
+	New(cfg, store, opkgMgr, lifecycle.New(logger), readiness.New(), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -95,7 +104,7 @@ func newTestServerWithReadiness(t *testing.T, ready ReadinessSource) (*httptest.
 
 	logger := discardLogger()
 	mux := http.NewServeMux()
-	New(cfg, store, opkg.New("stub", logger), lifecycle.New(logger), ready, logger).Register(mux)
+	New(cfg, store, opkg.New("stub", logger), lifecycle.New(logger), ready, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -456,6 +465,53 @@ func TestBuiltinAppearsInList(t *testing.T) {
 	}
 }
 
+func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
+	root := t.TempDir()
+	cfg := Config{
+		StagingDir:        filepath.Join(root, "staging"),
+		UserPluginsDir:    filepath.Join(root, "user-plugins"),
+		BuiltinPluginsDir: filepath.Join(root, "builtin"),
+	}
+	store, err := state.Open(filepath.Join(root, "data", "state.json"))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	if err := store.Mutate(func(st *state.State) error {
+		st.Plugins["core-demo"] = &state.Plugin{
+			Name:     "core-demo",
+			Source:   state.SourceUser,
+			Approval: state.ApprovalPending,
+			Manifest: json.RawMessage(`{"manifestVersion":2,"name":"core-demo","version":"1.0.0","type":"widget","label":"User","entry":"index.js","size":{"w":4,"h":3}}`),
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+	writeBuiltinFixture(t, cfg, "core-demo", false)
+
+	handler := New(cfg, store, opkg.New("stub", discardLogger()), lifecycle.New(discardLogger()), readiness.New(), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger())
+	mux := http.NewServeMux()
+	handler.Register(mux)
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/mgmt/list", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", recorder.Code)
+	}
+	var body struct {
+		Plugins []ListEntry `json:"plugins"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(body.Plugins) != 1 {
+		t.Fatalf("plugin count = %d, want 1: %+v", len(body.Plugins), body.Plugins)
+	}
+	if body.Plugins[0].Source != state.SourceUser || body.Plugins[0].Approval != state.ApprovalPending {
+		t.Fatalf("collision entry = %+v, want pending user entry", body.Plugins[0])
+	}
+}
+
 func TestSymlinkedBuiltinAppearsInList(t *testing.T) {
 	srv, cfg := newTestServer(t)
 	if err := os.MkdirAll(cfg.BuiltinPluginsDir, 0o755); err != nil {
@@ -643,5 +699,125 @@ func assertCode(t *testing.T, resp *http.Response, wantCode string) {
 	}
 	if env.Error.Code != wantCode {
 		t.Errorf("error code = %q, want %q", env.Error.Code, wantCode)
+	}
+}
+
+type failingApprovalStore struct {
+	state     *state.State
+	mutateErr error
+}
+
+func (s *failingApprovalStore) Get(name string) (*state.Plugin, bool) {
+	plugin, ok := s.state.Plugins[name]
+	if !ok {
+		return nil, false
+	}
+	copy := *plugin
+
+	return &copy, true
+}
+
+func (s *failingApprovalStore) Snapshot() *state.State {
+	return s.state
+}
+
+func (s *failingApprovalStore) Mutate(func(*state.State) error) error {
+	return s.mutateErr
+}
+
+type approvalLifecycleRecorder struct {
+	starts []string
+	stops  []string
+}
+
+func (r *approvalLifecycleRecorder) Start(name, _, _ string) error {
+	r.starts = append(r.starts, name)
+
+	return nil
+}
+
+func (r *approvalLifecycleRecorder) Stop(name, _, _ string) error {
+	r.stops = append(r.stops, name)
+
+	return nil
+}
+
+func TestApproveRollsBackFilesAndStopsDaemonWhenStateCommitFails(t *testing.T) {
+	root := t.TempDir()
+	cfg := Config{
+		StagingDir:        filepath.Join(root, "staging"),
+		UserPluginsDir:    filepath.Join(root, "user-plugins"),
+		BuiltinPluginsDir: filepath.Join(root, "builtin"),
+		MaxUploadBytes:    10 << 20,
+	}
+	stagingPlugin := filepath.Join(cfg.StagingDir, "svc")
+	if err := os.MkdirAll(filepath.Join(stagingPlugin, "backend"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"index.js", "backend/start.sh", "backend/stop.sh"} {
+		if err := os.WriteFile(filepath.Join(stagingPlugin, name), []byte("#!/bin/sh\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := &failingApprovalStore{
+		state: &state.State{
+			Plugins: map[string]*state.Plugin{
+				"svc": {
+					Name:     "svc",
+					Source:   state.SourceUser,
+					Approval: state.ApprovalPending,
+					Manifest: json.RawMessage(`{
+  "manifestVersion": 2,
+  "name": "svc",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Service",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3},
+  "backend": {"daemon": {"start": "backend/start.sh", "stop": "backend/stop.sh"}}
+}`),
+				},
+			},
+			Audit: []state.AuditEntry{},
+		},
+		mutateErr: errors.New("state commit failed"),
+	}
+	lifecycle := &approvalLifecycleRecorder{}
+	handler := New(cfg, store, opkg.New("stub", discardLogger()), lifecycle, readiness.New(), emptyBuiltinSource{}, discardLogger())
+	mux := http.NewServeMux()
+	handler.Register(mux)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/mgmt/approve", bytes.NewReader([]byte(`{"name":"svc"}`)))
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("approve status = %d, want 500; body=%s", recorder.Code, recorder.Body.String())
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode approval error: %v", err)
+	}
+	if envelope.Error.Code != httpx.CodeInternal {
+		t.Fatalf("approval error code = %q, want %q", envelope.Error.Code, httpx.CodeInternal)
+	}
+	if len(lifecycle.starts) != 1 || lifecycle.starts[0] != "svc" {
+		t.Fatalf("start calls = %v, want [svc]", lifecycle.starts)
+	}
+	if len(lifecycle.stops) != 1 || lifecycle.stops[0] != "svc" {
+		t.Fatalf("stop calls = %v, want [svc]", lifecycle.stops)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.StagingDir, "svc")); err != nil {
+		t.Fatalf("staging plugin missing after rollback: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, "svc")); !os.IsNotExist(err) {
+		t.Fatalf("installed plugin remains after rollback, err=%v", err)
+	}
+	if got := store.state.Plugins["svc"].Approval; got != state.ApprovalPending {
+		t.Fatalf("approval = %q, want pending", got)
 	}
 }

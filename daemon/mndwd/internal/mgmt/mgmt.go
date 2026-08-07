@@ -12,8 +12,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -21,6 +19,7 @@ import (
 	"mndwd/internal/manifest"
 	"mndwd/internal/opkg"
 	"mndwd/internal/readiness"
+	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
 
@@ -42,6 +41,12 @@ type ReadinessSource interface {
 	Get(name string) (readiness.State, bool)
 }
 
+// BuiltinSource supplies validated builtin plugins and owns builtin discovery
+// warnings/errors. Satisfied by *registry.Registry.
+type BuiltinSource interface {
+	ListBuiltinsWithError() ([]*registry.Plugin, error)
+}
+
 // Config carries the on-disk locations the handlers operate over.
 type Config struct {
 	// StagingDir holds uploaded-but-unapproved plugins.
@@ -56,17 +61,18 @@ type Config struct {
 
 // Handler serves the management API over a shared state store.
 type Handler struct {
-	cfg    Config
-	store  *state.Store
-	opkg   opkg.Manager
-	life   DaemonLifecycle
-	ready  ReadinessSource
-	logger *slog.Logger
+	cfg      Config
+	store    StateStore
+	opkg     opkg.Manager
+	life     DaemonLifecycle
+	ready    ReadinessSource
+	builtins BuiltinSource
+	logger   *slog.Logger
 }
 
 // New constructs a management Handler.
-func New(cfg Config, store *state.Store, opkgMgr opkg.Manager, life DaemonLifecycle, ready ReadinessSource, logger *slog.Logger) *Handler {
-	return &Handler{cfg: cfg, store: store, opkg: opkgMgr, life: life, ready: ready, logger: logger}
+func New(cfg Config, store StateStore, opkgMgr opkg.Manager, life DaemonLifecycle, ready ReadinessSource, builtins BuiltinSource, logger *slog.Logger) *Handler {
+	return &Handler{cfg: cfg, store: store, opkg: opkgMgr, life: life, ready: ready, builtins: builtins, logger: logger}
 }
 
 // Register wires the management routes onto mux. Method-qualified patterns give a
@@ -165,57 +171,18 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 		entries = append(entries, h.entryFrom(m, p.Source, p.Approval, p.Enabled))
 	}
 
-	builtins, err := h.scanBuiltins(snap.Plugins)
+	builtinPlugins, err := h.builtins.ListBuiltinsWithError()
 	if err != nil {
-		return nil, err
-	}
-	entries = append(entries, builtins...)
-
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
-
-	return entries, nil
-}
-
-// scanBuiltins reads valid manifests from the builtin dir, skipping any name already
-// represented in state (defense against collision). Builtins are always approved and
-// enabled.
-func (h *Handler) scanBuiltins(taken map[string]*state.Plugin) ([]ListEntry, *httpx.APIError) {
-	if h.cfg.BuiltinPluginsDir == "" {
-		return nil, nil
-	}
-
-	dirs, err := os.ReadDir(h.cfg.BuiltinPluginsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-
 		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
 	}
-
-	entries := make([]ListEntry, 0)
-	for _, d := range dirs {
-		pluginDir := filepath.Join(h.cfg.BuiltinPluginsDir, d.Name())
-		info, statErr := os.Stat(pluginDir)
-		if statErr != nil || !info.IsDir() {
+	for _, plugin := range builtinPlugins {
+		if _, exists := snap.Plugins[plugin.Name]; exists {
 			continue
 		}
-		if _, exists := taken[d.Name()]; exists {
-			continue
-		}
-
-		data, readErr := os.ReadFile(filepath.Join(pluginDir, "manifest.json"))
-		if readErr != nil {
-			continue
-		}
-		m, valErr := manifest.Validate(data)
-		if valErr != nil {
-			h.logger.Warn("builtin plugin has invalid manifest, skipping", "plugin", d.Name(), "error", valErr)
-
-			continue
-		}
-		entries = append(entries, h.entryFrom(m, state.SourceBuiltin, state.ApprovalApproved, true))
+		entries = append(entries, h.entryFrom(plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true))
 	}
+
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 
 	return entries, nil
 }

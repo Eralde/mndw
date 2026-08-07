@@ -15,7 +15,7 @@ import (
 
 func TestServerCreatesAndRemovesSocket(t *testing.T) {
 	path := shortSocketPath(t)
-	server := NewServer(path, Config{PluginID: "mws-map-page", Allowed: true}, &fakeHandler{})
+	server := NewServer(path, Config{PluginID: "mws-page", Allowed: true}, &fakeHandler{})
 	if err := server.Start(context.Background()); err != nil {
 		skipSocketEnvironment(t, err)
 		t.Fatal(err)
@@ -39,7 +39,7 @@ func TestServerRefusesLiveListener(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer listener.Close()
-	server := NewServer(path, Config{PluginID: "mws-map-page", Allowed: true}, &fakeHandler{})
+	server := NewServer(path, Config{PluginID: "mws-page", Allowed: true}, &fakeHandler{})
 	if err := server.Start(context.Background()); err == nil {
 		t.Fatal("Start stole live Unix listener")
 	}
@@ -53,7 +53,7 @@ func TestServerRecoversRefusedStaleSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	listener.Close()
-	server := NewServer(path, Config{PluginID: "mws-map-page", Allowed: true}, &fakeHandler{})
+	server := NewServer(path, Config{PluginID: "mws-page", Allowed: true}, &fakeHandler{})
 	if err := server.Start(context.Background()); err != nil {
 		skipSocketEnvironment(t, err)
 		t.Fatal(err)
@@ -67,7 +67,7 @@ func TestServerRecoversRefusedStaleSocket(t *testing.T) {
 func TestServerClosesConnectionAcceptedDuringShutdown(t *testing.T) {
 	path := shortSocketPath(t)
 	listener := newLateAcceptListener()
-	server := NewServer(path, Config{PluginID: "mws-map-page", Allowed: true}, &fakeHandler{})
+	server := NewServer(path, Config{PluginID: "mws-page", Allowed: true}, &fakeHandler{})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	server.mu.Lock()

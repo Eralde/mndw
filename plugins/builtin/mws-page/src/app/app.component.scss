@@ -1,0 +1,92 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.mws-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px;
+  color: var(--mndw-text);
+  font-family: var(--mndw-font-sans);
+
+  .page-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: baseline;
+
+    .title-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--mndw-space-2);
+      align-items: center;
+      width: 100%;
+
+      h2 {
+        margin: 0;
+      }
+
+      mndw-button {
+        min-height: var(--mndw-control-h);
+      }
+    }
+
+    .summary {
+      flex: 1 1 100%;
+      margin: 0;
+      color: var(--mndw-text-subtle);
+    }
+
+    .banner {
+      padding: 4px 12px;
+      border-radius: 4px;
+      background: var(--mndw-danger-bg);
+      color: var(--mndw-danger);
+    }
+
+    .mock-badge {
+      padding: 4px 12px;
+      border-radius: 4px;
+      background: var(--mndw-accent);
+      color: var(--mndw-accent-contrast);
+    }
+  }
+
+  .state {
+    margin: auto;
+    color: var(--mndw-text-subtle);
+    text-align: center;
+
+    mndw-button {
+      margin-top: 8px;
+    }
+  }
+
+  .map-tabs {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .map-tabs > mndw-tab-panel:not([hidden]) {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+
+    &::part(panel) {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+    }
+  }
+
+  .graph {
+    flex: 1;
+    min-height: 0;
+  }
+}

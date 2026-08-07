@@ -10,8 +10,8 @@ export interface IntakeCredentials {
 }
 
 const ACCESS_URL = '/api/mndw/extender-access';
-const CREDENTIALS_URL = '/api/plugins/mws-map-page/credentials';
-const FORGET_URL = '/api/plugins/mws-map-page/forget';
+const CREDENTIALS_URL = '/api/plugins/mws-page/credentials';
+const FORGET_URL = '/api/plugins/mws-page/forget';
 
 async function readJSON<T>(response: Response): Promise<T> {
   if (!response.ok) {

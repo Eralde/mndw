@@ -312,4 +312,4 @@ Each zip includes `mndw.lock.json` with exact shared dependency versions.
 - `ping-widget`
 - `clock-widget`
 - `dns-lookup-widget`
-- `mws-map-page`
+- `mws-page`

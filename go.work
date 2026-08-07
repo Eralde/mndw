@@ -2,7 +2,7 @@ go 1.26.1
 
 use (
 	./plugins/builtin/dns-lookup-widget/backend
-	./plugins/builtin/mws-map-page/backend
+	./plugins/builtin/mws-page/backend
 	./plugins/builtin/ping-widget/backend
 	./daemon/mndwd
 	./daemon/contracts-go

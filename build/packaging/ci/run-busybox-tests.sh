@@ -11,7 +11,7 @@
 # path. Broaden each package list below ONLY when a new package grows a
 # script-exec test. (internal/lifecycle has no test files today; it is here
 # for compile coverage, its behavior covered via cmd/mndwd's integration
-# suite.) The mws-map-page lifecyclehooks package is included for its direct
+# suite.) The mws-page lifecyclehooks package is included for its direct
 # stop-hook shell test. opkg stays stubbed (test default). No -race (musl/CGO).
 set -eu
 
@@ -26,5 +26,5 @@ cd "$repo_root/daemon/mndwd"
 go mod download
 go test ./cmd/mndwd/... ./internal/dispatch/... ./internal/lifecycle/...
 
-cd "$repo_root/plugins/builtin/mws-map-page/backend"
+cd "$repo_root/plugins/builtin/mws-page/backend"
 go test ./internal/lifecyclehooks -run TestStopHookWaitsForProcess -count=1

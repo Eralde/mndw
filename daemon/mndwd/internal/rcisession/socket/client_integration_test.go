@@ -23,13 +23,13 @@ func TestSharedClientAndServerInteroperate(t *testing.T) {
 	serverDone := make(chan error, 1)
 	go func() {
 		serverDone <- ServeConnection(context.Background(), serverConnection, Config{
-			PluginID: "mws-map-page",
+			PluginID: "mws-page",
 			Allowed:  true,
 		}, handler)
 	}()
 
 	client := rcisock.NewClient(clientConnection)
-	if err := client.Handshake(context.Background(), rcisock.ClientHello{PluginID: "mws-map-page", Proto: rcisock.ProtocolVersion}); err != nil {
+	if err := client.Handshake(context.Background(), rcisock.ClientHello{PluginID: "mws-page", Proto: rcisock.ProtocolVersion}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -75,12 +75,12 @@ func TestDirectionTypedRequestRejectsResponseKeys(t *testing.T) {
 	serverDone := make(chan error, 1)
 	go func() {
 		serverDone <- ServeConnection(context.Background(), serverConnection, Config{
-			PluginID: "mws-map-page",
+			PluginID: "mws-page",
 			Allowed:  true,
 		}, &integrationHandler{})
 	}()
 
-	if err := rcisock.WriteFrame(clientConnection, rcisock.RequestFrame{Hello: &rcisock.ClientHello{PluginID: "mws-map-page", Proto: rcisock.ProtocolVersion}}); err != nil {
+	if err := rcisock.WriteFrame(clientConnection, rcisock.RequestFrame{Hello: &rcisock.ClientHello{PluginID: "mws-page", Proto: rcisock.ProtocolVersion}}); err != nil {
 		t.Fatal(err)
 	}
 	reader := rcisock.NewReader[rcisock.ResponseFrame](clientConnection, 8<<20)

@@ -8,4 +8,4 @@ export {
   shiftLightness,
   withAlpha,
 } from '@mndw/palette-core';
-export type { Oklch } from '@mndw/palette-core';
+export type {Oklch} from '@mndw/palette-core';

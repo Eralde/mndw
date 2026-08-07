@@ -26,7 +26,7 @@ func TestConnectionRequiresHelloFirst(t *testing.T) {
 	handler := &fakeHandler{}
 	done := make(chan error, 1)
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-map-page", Allowed: true}, handler)
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Allowed: true}, handler)
 	}()
 
 	writeJSON(t, client, map[string]any{"id": 1, "target": "node-1", "method": "GET", "path": "rci/show/version"})
@@ -46,7 +46,7 @@ func TestConnectionTimesOutBeforeHello(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		done <- ServeConnection(context.Background(), server, Config{
-			PluginID:    "mws-map-page",
+			PluginID:    "mws-page",
 			Allowed:     true,
 			IdleTimeout: 25 * time.Millisecond,
 		}, &fakeHandler{})
@@ -72,10 +72,10 @@ func TestConnectionHelloTargetsAndRequest(t *testing.T) {
 	handler := &fakeHandler{targets: []rcisock.Target{{Identity: "node-1", Name: "A", MAC: "aa:bb:cc:dd:ee:ff"}}, response: proxy.Response{Status: 200, Body: []byte(`{"ok":true}`)}}
 	done := make(chan error, 1)
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-map-page", Allowed: true}, handler)
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Allowed: true}, handler)
 	}()
 
-	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "mws-map-page", "proto": 1}})
+	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "mws-page", "proto": 1}})
 	var hello map[string]any
 	readJSON(t, client, &hello)
 	if hello["hello"] == nil {
@@ -110,10 +110,10 @@ func TestConnectionLogsRequestFailureWithoutRequestBody(t *testing.T) {
 	handler := &fakeHandler{requestError: proxy.ErrTargetUnreachable}
 	done := make(chan error, 1)
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-map-page", Allowed: true, Logger: logger}, handler)
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Allowed: true, Logger: logger}, handler)
 	}()
 
-	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "mws-map-page", "proto": 1}})
+	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "mws-page", "proto": 1}})
 	var hello map[string]any
 	readJSON(t, client, &hello)
 	writeJSON(t, client, map[string]any{
@@ -143,9 +143,9 @@ func TestConnectionRejectsPermissionAndOversizeFrame(t *testing.T) {
 	defer server.Close()
 	done := make(chan error, 1)
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-map-page", Allowed: false}, &fakeHandler{})
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Allowed: false}, &fakeHandler{})
 	}()
-	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "mws-map-page", "proto": 1}})
+	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "mws-page", "proto": 1}})
 	var response map[string]any
 	readJSON(t, client, &response)
 	if response["error"] == nil {
@@ -160,9 +160,9 @@ func TestConnectionRejectsPermissionAndOversizeFrame(t *testing.T) {
 	defer server.Close()
 	done = make(chan error, 1)
 	go func() {
-		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-map-page", Allowed: true}, &fakeHandler{})
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "mws-page", Allowed: true}, &fakeHandler{})
 	}()
-	client.Write([]byte(`{"hello":{"pluginId":"mws-map-page","proto":1}}` + "\n"))
+	client.Write([]byte(`{"hello":{"pluginId":"mws-page","proto":1}}` + "\n"))
 	readJSON(t, client, &response)
 	oversizeWriteDone := make(chan error, 1)
 	go func() {

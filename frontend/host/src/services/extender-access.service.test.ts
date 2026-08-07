@@ -37,7 +37,7 @@ describe('ExtenderAccessService', () => {
     await service.postForget();
     expect(fetchWithDeadline).toHaveBeenNthCalledWith(
       1,
-      '/api/plugins/mws-map-page/credentials',
+      '/api/plugins/mws-page/credentials',
       expect.objectContaining({
         method: 'POST',
         body: '{"username":"admin","password":"secret"}',
@@ -45,7 +45,7 @@ describe('ExtenderAccessService', () => {
     );
     expect(fetchWithDeadline).toHaveBeenNthCalledWith(
       2,
-      '/api/plugins/mws-map-page/forget',
+      '/api/plugins/mws-page/forget',
       expect.objectContaining({method: 'POST'}),
     );
   });

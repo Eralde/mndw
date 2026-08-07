@@ -17,8 +17,8 @@ import {
   paletteToCss,
 } from '@mndw/palette-core';
 
-export { contrastRatio, PALETTE_CONTRAST_PAIRS, PALETTE_CSS_VARIABLES, paletteToCss };
-export type { PaletteContrastPair, PaletteCssVariable, PaletteTokenMap, ThemeName, TokenName };
+export {contrastRatio, PALETTE_CONTRAST_PAIRS, PALETTE_CSS_VARIABLES, paletteToCss};
+export type {PaletteContrastPair, PaletteCssVariable, PaletteTokenMap, ThemeName, TokenName};
 
 export interface PaletteContrastWarning {
   theme: ThemeName;

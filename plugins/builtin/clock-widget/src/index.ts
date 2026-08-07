@@ -49,6 +49,7 @@ export function createInstance(el: HTMLElement, _ctx: PluginContext): PluginInst
     unmount(): void {
       unsubscribe();
       ticker.destroy();
+
       el.innerHTML = '';
     },
   };

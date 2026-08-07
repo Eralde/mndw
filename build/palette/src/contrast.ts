@@ -1,1 +1,1 @@
-export { contrastRatio, meetsContrast } from '@mndw/palette-core/contrast';
+export {contrastRatio, meetsContrast} from '@mndw/palette-core/contrast';

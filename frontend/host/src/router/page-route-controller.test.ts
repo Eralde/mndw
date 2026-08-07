@@ -13,7 +13,7 @@ function createController(
     ...overrides,
   };
 
-  return {controller: new PageRouteController('/mws-map', initialChildPath, deps), deps};
+  return {controller: new PageRouteController('/mws', initialChildPath, deps), deps};
 }
 
 describe('PageRouteController', () => {
@@ -87,7 +87,7 @@ describe('PageRouteController', () => {
 
     await controller.pageRoute.navigate('/clients%20archive', {replace: true});
 
-    expect(navigate).toHaveBeenCalledWith('/mws-map/clients%20archive', {
+    expect(navigate).toHaveBeenCalledWith('/mws/clients%20archive', {
       replace: true,
       search: '?mode=large',
       hash: '#node-7',
@@ -101,7 +101,7 @@ describe('PageRouteController', () => {
 
     await controller.pageRoute.navigate('/clients', {scrollToTop: false});
 
-    expect(navigate).toHaveBeenCalledWith('/mws-map/clients', {
+    expect(navigate).toHaveBeenCalledWith('/mws/clients', {
       replace: false,
       search: '?mode=large',
       hash: '#node-7',

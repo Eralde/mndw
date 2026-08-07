@@ -500,7 +500,7 @@ describe('packExamplePlugins', () => {
       'device-info-widget',
       'device-traffic-widget',
       'dns-lookup-widget',
-      'mws-map-page',
+      'mws-page',
       'ping-widget',
       'system-log-page',
       'terminal-page',

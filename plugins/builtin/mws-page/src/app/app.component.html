@@ -1,0 +1,61 @@
+<div class="mws-page">
+  <header class="page-header">
+    <div class="title-row">
+      <h2>MWS Map</h2>
+    </div>
+    @if (mockOptions.mode === 'large') {
+      <span class="mock-badge">Mock data: {{ mockOptions.extenders }} extenders · {{ mockOptions.clients }} clients</span>
+    }
+    @if (summary().total > 0) {
+      <p class="summary">{{ summaryText() }}</p>
+    }
+    @if (data.pollError()) {
+      <span class="banner" role="alert">Update failed — showing the last known map.</span>
+    }
+  </header>
+
+  @switch (data.phase()) {
+    @case ('loading') {
+      <p class="state">Loading MWS topology…</p>
+    }
+    @case ('error') {
+      <div class="state">
+        <p>Failed to load MWS data.</p>
+        <mndw-button variant="danger" (click)="retry()">Retry</mndw-button>
+      </div>
+    }
+    @case ('unsupported') {
+      <p class="state">This device is not an MWS controller.</p>
+    }
+    @case ('empty') {
+      <p class="state">No extenders found.</p>
+    }
+    @case ('ready') {
+      <mndw-tabs class="map-tabs" [value]="selectedTab()" (mndwchange)="onTabChanged($event)">
+        <mndw-tab id="map">Map</mndw-tab>
+        <mndw-tab id="clients">Clients</mndw-tab>
+
+        <mndw-tab-panel for="map">
+          <mws-map-graph
+            #graph
+            class="graph"
+            [roots]="data.roots()"
+            [nodePositions]="positions.positions()"
+            [positionsLoadOutcome]="positions.loadOutcome()"
+            [editMode]="editMode()"
+            [selectedNodeId]="selectedNodeId()"
+            (nodeSelected)="onNodeSelected($event)"
+            (nodePositionChanged)="onNodePositionChanged($event)"
+            (editModeToggled)="toggleEditMode()"
+            (autoLayoutRequested)="autoLayout()"
+            (doneEditingRequested)="doneEditing()"
+          />
+        </mndw-tab-panel>
+
+        <mndw-tab-panel for="clients">
+          <mws-clients-table [roots]="data.roots()" />
+        </mndw-tab-panel>
+      </mndw-tabs>
+    }
+  }
+</div>

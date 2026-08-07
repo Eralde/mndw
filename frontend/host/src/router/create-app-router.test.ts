@@ -169,25 +169,26 @@ describe('buildPluginRoutes', () => {
 
 describe('resolvePageRoute', () => {
   const routes = [
-    {route: '/mws-map', name: 'mws-map'},
+    {route: '/mws', name: 'mws-page'},
     {route: '/status', name: 'status'},
   ] as const;
 
   it.each([
-    ['/mws-map', ''],
-    ['/mws-map/', ''],
-    ['/mws-map//', ''],
-    ['/mws-map/clients', '/clients'],
-    ['/mws-map/clients/', '/clients'],
-    ['/mws-map/clients//', '/clients/'],
-    ['/mws-map/a//b', '/a//b'],
-    ['/MWS-MAP/clients%20archive', '/clients%20archive'],
+    ['/mws', ''],
+    ['/mws/', ''],
+    ['/mws//', ''],
+    ['/mws/clients', '/clients'],
+    ['/mws/clients/', '/clients'],
+    ['/mws/clients//', '/clients/'],
+    ['/mws/a//b', '/a//b'],
+    ['/MWS/clients%20archive', '/clients%20archive'],
   ])('resolves %s to child path %s', (pathname, childPath) => {
-    expect(resolvePageRoute(pathname, routes)).toEqual({name: 'mws-map', childPath});
+    expect(resolvePageRoute(pathname, routes)).toEqual({name: 'mws-page', childPath});
   });
 
   it('requires a base-route segment boundary', () => {
-    expect(resolvePageRoute('/mws-map-extra', routes)).toBeNull();
+    expect(resolvePageRoute('/mws-extra', routes)).toBeNull();
+    expect(resolvePageRoute('/mws-map', routes)).toBeNull();
   });
 });
 
@@ -213,27 +214,27 @@ describe('createAppRouter', () => {
   });
 
   it('preserves raw child spelling at the router boundary', async () => {
-    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('map', 'Map', '/mws-map')]);
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('mws-page', 'MWS', '/mws')]);
 
     const router = createAppRouter();
 
-    await router.navigate('/mws-map/clients%20archive//');
+    await router.navigate('/mws/clients%20archive//');
 
-    expect(router.route.pathname).toBe('/mws-map/clients%20archive//');
+    expect(router.route.pathname).toBe('/mws/clients%20archive//');
     expect(resolvePageRoute(router.route.pathname, getPageRouteDefinitions())).toEqual({
-      name: 'map',
+      name: 'mws-page',
       childPath: '/clients%20archive/',
     });
     expect(router.route.params.child).toBe('clients archive');
   });
 
   it('repairs malformed page paths before initial router navigation', () => {
-    window.history.replaceState(null, '', '/mws-map/%GG?mode=large#node-7');
-    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('map', 'Map', '/mws-map')]);
+    window.history.replaceState(null, '', '/mws/%GG?mode=large#node-7');
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('mws-page', 'MWS', '/mws')]);
 
     createAppRouter();
 
-    expect(window.location.pathname).toBe('/mws-map');
+    expect(window.location.pathname).toBe('/mws');
     expect(window.location.search).toBe('?mode=large');
     expect(window.location.hash).toBe('#node-7');
   });

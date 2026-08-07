@@ -1,8 +1,8 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
+import * as d3 from 'd3';
 import type {NumberValue} from 'd3';
 import {buildBarAriaLabel, filterFinitePoints, formatSpeed, getSpeedUpperLimit} from './chart-utils.js';
 import type {MndwChartPoint} from './chart-types.js';
-import d3 from './d3.js';
 
 export const MNDW_BAR_CHART_TAG = 'mndw-bar-chart';
 

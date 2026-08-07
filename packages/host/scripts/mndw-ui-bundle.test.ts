@@ -29,7 +29,7 @@ describe('mndw-ui shared bundle', () => {
 
     const output = Object.values(result.metafile?.outputs ?? {})[0];
 
-    expect(output.imports.filter((item) => item.external).map((item) => item.path)).toEqual(['d3']);
+    expect([...new Set(output.imports.filter((item) => item.external).map((item) => item.path))]).toEqual(['d3']);
     expect(result.outputFiles[0].text).toContain('mndw-select');
   }, 30000);
 });

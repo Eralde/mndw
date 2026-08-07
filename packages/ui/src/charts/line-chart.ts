@@ -1,8 +1,8 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
+import * as d3 from 'd3';
 import type {NumberValue} from 'd3';
 import {buildLineAriaLabel, filterFinitePoints, formatSpeed, getSpeedUpperLimit, resolveDomain} from './chart-utils.js';
 import type {MndwChartColor, MndwChartDomain, MndwChartPoint, MndwChartSeries} from './chart-types.js';
-import d3 from './d3.js';
 
 export const MNDW_LINE_CHART_TAG = 'mndw-line-chart';
 

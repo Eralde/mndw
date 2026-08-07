@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
@@ -11,10 +12,16 @@ import (
 	"mws-map-page/internal/credentials"
 )
 
-type fakeAuth struct{ calls int }
+type fakeAuth struct {
+	calls int
+	err   error
+}
 
 func (f *fakeAuth) Authenticate(_ context.Context, _ auth.Target, _ auth.Credentials, jar http.CookieJar) (auth.AuthResult, error) {
 	f.calls++
+	if f.err != nil {
+		return auth.AuthResult{}, f.err
+	}
 	if jar == nil {
 		jar, _ = cookiejar.New(nil)
 	}
@@ -49,6 +56,21 @@ func TestHolderUsesOneSessionAndKeepaliveSkipsRecentActivity(t *testing.T) {
 	}
 	if called != 2 {
 		t.Fatalf("keepalive operation calls = %d, want 2", called)
+	}
+}
+
+func TestWithSessionAuthFailureDoesNotRecordBackoff(t *testing.T) {
+	store := credentials.NewStore()
+	store.Set("admin", []byte("secret"), 1)
+	holder := NewHolder(&fakeAuth{err: errors.New("transport failed")}, store)
+	target := auth.Target{BaseURL: "http://router"}
+	before, _ := holder.State().Snapshot("controller")
+	if err := holder.WithSession(context.Background(), "controller", target, func(context.Context, http.CookieJar) error { return nil }); err == nil {
+		t.Fatal("WithSession error = nil, want authentication error")
+	}
+	after, _ := holder.State().Snapshot("controller")
+	if after.Failures != before.Failures || !after.NextRetry.Equal(before.NextRetry) {
+		t.Fatalf("WithSession auth failure must not touch backoff: before=%+v after=%+v", before, after)
 	}
 }
 

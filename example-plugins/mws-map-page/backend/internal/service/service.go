@@ -13,6 +13,7 @@ import (
 
 	"mndw.local/device-auth"
 	rci "mndw.local/rci"
+	"mws-map-page/internal/clock"
 	"mws-map-page/internal/config"
 	"mws-map-page/internal/credentials"
 	diagnosticfile "mws-map-page/internal/diagnostics"
@@ -36,7 +37,7 @@ type Service struct {
 	refreshMu     sync.Mutex
 	telemetry     *telemetry.Collector
 	persistent    PersistentSource
-	clock         Clock
+	clock         clock.Clock
 	lastRefreshAt time.Time
 	runtimeDir    string
 	socketPath    string
@@ -44,14 +45,6 @@ type Service struct {
 	diagnostics   *diagnosticfile.Writer
 	lastError     *diagnosticError
 }
-
-type Clock interface {
-	Now() time.Time
-}
-
-type realClock struct{}
-
-func (realClock) Now() time.Time { return time.Now() }
 
 type PersistentSource interface {
 	Run(context.Context)
@@ -103,7 +96,7 @@ func New(cfg config.Config) *Service {
 		holder:        holder,
 		controller:    auth.Target{BaseURL: cfg.ControllerURL},
 		telemetry:     telemetry.NewCollector(holder, epoch, telemetry.FieldAdapter{}),
-		clock:         realClock{},
+		clock:         clock.Real(),
 		runtimeDir:    runtimeDir,
 		socketPath:    filepath.Join(runtimeDir, cfg.SocketName),
 		pidPath:       filepath.Join(runtimeDir, cfg.PIDName),
@@ -183,12 +176,12 @@ func (s *Service) DiagnosticsSnapshot() map[string]any {
 	}
 }
 
-func (s *Service) SetClock(clock Clock) {
-	if clock == nil {
+func (s *Service) SetClock(c clock.Clock) {
+	if c == nil {
 		return
 	}
-	s.clock = clock
-	s.holder.SetClock(clock)
+	s.clock = c
+	s.holder.SetClock(c)
 }
 
 func (s *Service) Credentials(ctx context.Context, username, password string) (any, error) {
@@ -446,6 +439,7 @@ func (s *Service) nodesSnapshot() []telemetry.Node {
 		if member.Online {
 			state = "authenticating"
 		}
+		var lastSuccessAt *time.Time
 		if snapshot, ok := s.holder.State().Snapshot(member.Identity()); ok {
 			switch snapshot.State {
 			case session.NodeOnline:
@@ -457,15 +451,16 @@ func (s *Service) nodesSnapshot() []telemetry.Node {
 					state = "reauthenticating"
 				}
 			}
-			var lastSuccessAt *time.Time
 			if !snapshot.LastSuccess.IsZero() {
 				lastSuccess := snapshot.LastSuccess.UTC()
 				lastSuccessAt = &lastSuccess
 			}
-			result = append(result, telemetry.Node{ID: member.Identity(), CID: member.CID, MAC: member.MAC, Name: member.Name, IP: member.IP, Online: member.Online, State: state, LastConnectedNode: member.LastPeer, LastSuccessAt: lastSuccessAt})
-			continue
 		}
-		result = append(result, telemetry.Node{ID: member.Identity(), CID: member.CID, MAC: member.MAC, Name: member.Name, IP: member.IP, Online: member.Online, State: state, LastConnectedNode: member.LastPeer, LastSuccessAt: nil})
+		result = append(result, telemetry.Node{
+			ID: member.Identity(), CID: member.CID, MAC: member.MAC, Name: member.Name,
+			IP: member.IP, Online: member.Online, State: state,
+			LastConnectedNode: member.LastPeer, LastSuccessAt: lastSuccessAt,
+		})
 	}
 	return result
 }

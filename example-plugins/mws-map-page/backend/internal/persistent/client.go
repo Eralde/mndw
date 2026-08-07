@@ -330,14 +330,7 @@ func (c *Client) updateTargets(targets []Target) error {
 	for identity := range c.targets {
 		if _, ok := current[identity]; !ok {
 			delete(c.sessions, identity)
-			state := c.targetDiagnostics[identity]
-			state.Present = false
-			state.SessionPresent = false
-			state.Live = false
-			state.SessionReason = "target-removed"
-			state.LastSessionChangeAt = timePointer(now)
-			state.RemovedAt = timePointer(now)
-			c.targetDiagnostics[identity] = state
+			c.markTargetGoneLocked(identity, "target-removed", now)
 			removed = append(removed, identity)
 		}
 	}
@@ -544,14 +537,7 @@ func (c *Client) clear(reasons ...string) {
 	defer c.mu.Unlock()
 	var removed []string
 	for identity := range c.targets {
-		state := c.targetDiagnostics[identity]
-		state.Present = false
-		state.SessionPresent = false
-		state.Live = false
-		state.SessionReason = reason
-		state.LastSessionChangeAt = timePointer(now)
-		state.RemovedAt = timePointer(now)
-		c.targetDiagnostics[identity] = state
+		c.markTargetGoneLocked(identity, reason, now)
 		removed = append(removed, identity)
 	}
 	if len(removed) > 0 {
@@ -595,14 +581,7 @@ func (c *Client) expireStaleSessionsLocked(now time.Time) {
 		}
 		delete(c.sessions, identity)
 		delete(c.targets, identity)
-		diagnostic := c.targetDiagnostics[identity]
-		diagnostic.Present = false
-		diagnostic.SessionPresent = false
-		diagnostic.Live = false
-		diagnostic.SessionReason = "retention-expired"
-		diagnostic.RemovedAt = timePointer(now)
-		diagnostic.LastSessionChangeAt = timePointer(now)
-		c.targetDiagnostics[identity] = diagnostic
+		c.markTargetGoneLocked(identity, "retention-expired", now)
 	}
 	c.diagnostics.TargetCount = len(c.targets)
 	c.diagnostics.SessionCount = c.sessionCountLocked()
@@ -743,6 +722,19 @@ func (c *Client) recordTargetChangeLocked(reason string, added, removed []string
 	c.diagnostics.LastTargetChange = &TargetChange{At: at, Reason: reason, Added: append([]string(nil), added...), Removed: append([]string(nil), removed...)}
 }
 
+// markTargetGoneLocked flips a target's diagnostics to fully absent. The caller
+// must hold c.mu.
+func (c *Client) markTargetGoneLocked(identity, reason string, now time.Time) {
+	state := c.targetDiagnostics[identity]
+	state.Present = false
+	state.SessionPresent = false
+	state.Live = false
+	state.SessionReason = reason
+	state.LastSessionChangeAt = timePointer(now)
+	state.RemovedAt = timePointer(now)
+	c.targetDiagnostics[identity] = state
+}
+
 func (c *Client) pruneTargetDiagnosticsLocked() {
 	removed := make([]TargetDiagnostics, 0, len(c.targetDiagnostics))
 	for _, diagnostic := range c.targetDiagnostics {
@@ -759,15 +751,6 @@ func (c *Client) pruneTargetDiagnosticsLocked() {
 	for _, diagnostic := range removed[:len(removed)-maxRecentTargetDiagnostics] {
 		delete(c.targetDiagnostics, diagnostic.Identity)
 	}
-}
-
-func (c *Client) targetDiagnosticLocked(identity string) TargetDiagnostics {
-	diagnostic := c.targetDiagnostics[identity]
-	if diagnostic.Identity == "" {
-		diagnostic.Identity = identity
-		diagnostic.FirstSeenAt = timePointer(time.Now().UTC())
-	}
-	return diagnostic
 }
 
 type diagnosticMessages struct {

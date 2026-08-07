@@ -8,34 +8,29 @@ import (
 	"time"
 
 	"mndw.local/device-auth"
+	"mws-map-page/internal/clock"
 	"mws-map-page/internal/credentials"
 	"mws-map-page/internal/session"
 )
-
-type Clock interface{ Now() time.Time }
-
-type realClock struct{}
-
-func (realClock) Now() time.Time { return time.Now() }
 
 type Collector struct {
 	mu                sync.Mutex
 	samples           map[string]Vitals
 	persistentSamples map[string]PersistentTelemetry
 	epoch             *credentials.Epoch
-	clock             Clock
+	clock             clock.Clock
 	interval          time.Duration
 	adapter           FieldAdapter
 	holder            *session.Holder
 }
 
 func NewCollector(holder *session.Holder, epoch *credentials.Epoch, adapter FieldAdapter) *Collector {
-	return &Collector{samples: make(map[string]Vitals), persistentSamples: make(map[string]PersistentTelemetry), holder: holder, epoch: epoch, clock: realClock{}, interval: time.Minute, adapter: adapter}
+	return &Collector{samples: make(map[string]Vitals), persistentSamples: make(map[string]PersistentTelemetry), holder: holder, epoch: epoch, clock: clock.Real(), interval: time.Minute, adapter: adapter}
 }
 
-func (c *Collector) SetClock(clock Clock) {
-	if clock != nil {
-		c.clock = clock
+func (c *Collector) SetClock(newClock clock.Clock) {
+	if newClock != nil {
+		c.clock = newClock
 	}
 }
 

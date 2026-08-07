@@ -8,18 +8,13 @@ import (
 	"time"
 
 	"mndw.local/device-auth"
+	"mws-map-page/internal/clock"
 	"mws-map-page/internal/credentials"
 )
 
 type Authenticator interface {
 	Authenticate(context.Context, auth.Target, auth.Credentials, http.CookieJar) (auth.AuthResult, error)
 }
-
-type Clock interface{ Now() time.Time }
-
-type realClock struct{}
-
-func (realClock) Now() time.Time { return time.Now() }
 
 type session struct {
 	mu            sync.Mutex
@@ -35,7 +30,7 @@ type session struct {
 type Holder struct {
 	auth        Authenticator
 	credentials *credentials.Store
-	clock       Clock
+	clock       clock.Clock
 	mu          sync.Mutex
 	sessions    map[string]*session
 	state       *State
@@ -43,12 +38,12 @@ type Holder struct {
 }
 
 func NewHolder(authenticator Authenticator, store *credentials.Store) *Holder {
-	return &Holder{auth: authenticator, credentials: store, clock: realClock{}, sessions: make(map[string]*session), state: NewState(), keepalive: 200 * time.Second}
+	return &Holder{auth: authenticator, credentials: store, clock: clock.Real(), sessions: make(map[string]*session), state: NewState(), keepalive: 200 * time.Second}
 }
 
-func (h *Holder) SetClock(clock Clock) {
-	if clock != nil {
-		h.clock = clock
+func (h *Holder) SetClock(c clock.Clock) {
+	if c != nil {
+		h.clock = c
 	}
 }
 
@@ -111,32 +106,7 @@ func (h *Holder) Authenticate(ctx context.Context, id string, target auth.Target
 	current := h.sessionFor(id, target)
 	current.mu.Lock()
 	defer current.mu.Unlock()
-	creds, state, ok := h.credentials.Snapshot()
-	if !ok || state != credentials.StatePresent {
-		return errors.New("credentials required")
-	}
-	defer wipe(creds.Password)
-	result, err := h.auth.Authenticate(ctx, target, auth.Credentials{Username: creds.Username, Password: string(creds.Password)}, current.jar)
-	if err != nil {
-		var authErr *auth.AuthError
-		if errors.As(err, &authErr) && authErr.Kind == auth.ErrorRejected && id == "controller" {
-			h.credentials.MarkInvalid(creds.Epoch)
-		}
-		current.jar = nil
-		current.authenticated = false
-		h.state.RecordFailure(id, h.clock.Now())
-		return err
-	}
-	if h.credentials.Epoch() != creds.Epoch {
-		return errors.New("stale authentication completion")
-	}
-	now := h.clock.Now()
-	h.state.RecordSuccess(id, now)
-	current.jar = result.Jar
-	current.authenticated = true
-	current.lastActivity = now
-	h.state.SetOnline(id, current.lastActivity)
-	return nil
+	return h.doAuthenticateLocked(ctx, id, current, target, true)
 }
 
 func (h *Holder) WithSession(ctx context.Context, id string, target auth.Target, operation func(context.Context, http.CookieJar) error) error {
@@ -144,7 +114,7 @@ func (h *Holder) WithSession(ctx context.Context, id string, target auth.Target,
 	current.mu.Lock()
 	defer current.mu.Unlock()
 	if !current.authenticated || current.jar == nil {
-		if err := h.authenticateLocked(ctx, id, current); err != nil {
+		if err := h.doAuthenticateLocked(ctx, id, current, current.target, false); err != nil {
 			return err
 		}
 	}
@@ -158,17 +128,27 @@ func (h *Holder) WithSession(ctx context.Context, id string, target auth.Target,
 	return nil
 }
 
-func (h *Holder) authenticateLocked(ctx context.Context, id string, current *session) error {
+// doAuthenticateLocked runs one authentication against target. The
+// caller must hold current.mu. On ErrorRejected for the controller it marks
+// credentials invalid. When recordFailure is true it also clears the session
+// jar and records a node failure on error (the Authenticate behavior); when
+// false it leaves session/backoff state untouched (the WithSession behavior).
+func (h *Holder) doAuthenticateLocked(ctx context.Context, id string, current *session, target auth.Target, recordFailure bool) error {
 	creds, state, ok := h.credentials.Snapshot()
 	if !ok || state != credentials.StatePresent {
 		return errors.New("credentials required")
 	}
 	defer wipe(creds.Password)
-	result, err := h.auth.Authenticate(ctx, current.target, auth.Credentials{Username: creds.Username, Password: string(creds.Password)}, current.jar)
+	result, err := h.auth.Authenticate(ctx, target, auth.Credentials{Username: creds.Username, Password: string(creds.Password)}, current.jar)
 	if err != nil {
 		var authErr *auth.AuthError
 		if errors.As(err, &authErr) && authErr.Kind == auth.ErrorRejected && id == "controller" {
 			h.credentials.MarkInvalid(creds.Epoch)
+		}
+		if recordFailure {
+			current.jar = nil
+			current.authenticated = false
+			h.state.RecordFailure(id, h.clock.Now())
 		}
 		return err
 	}

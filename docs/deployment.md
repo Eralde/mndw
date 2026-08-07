@@ -38,7 +38,7 @@ dependencies are not needed by v2.
 
 1. install locked workspace dependencies;
 2. build the host, tokens, and shared bundles;
-3. pack built-in example plugins;
+3. pack built-in plugins;
 4. build `mndwd` for the selected architecture;
 5. verify required staged files;
 6. create root-owned ustar data and control archives;
@@ -91,4 +91,3 @@ scripts that work on a development shell but fail on a router-like shell.
 An optional Entware harness exercises real opkg installation when dependency
 management changes. It is non-blocking because it downloads an external
 toolchain and feed.
-

@@ -1,0 +1,9 @@
+{
+  "manifestVersion": 2,
+  "name": "device-info-widget",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "Device Info",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 7, "minW": 3, "minH": 6}
+}

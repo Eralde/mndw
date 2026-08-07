@@ -1,0 +1,21 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "vitest": ["../frontend/host/node_modules/vitest"]
+    }
+  },
+  "include": [
+    "dev/**/*.ts",
+    "packaging/**/*.ts",
+    "contracts/**/*.ts",
+    "artifacts/**/*.ts",
+    "index.ts",
+    "index.test.ts",
+    "builtin-plugins.ts",
+    "plugin-backends.ts",
+    "targets.ts"
+  ]
+}

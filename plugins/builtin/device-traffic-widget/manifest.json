@@ -1,0 +1,9 @@
+{
+  "manifestVersion": 2,
+  "name": "device-traffic-widget",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "Host Traffic",
+  "entry": "index.js",
+  "size": { "w": 4, "h": 4, "minW": 3, "minH": 3 }
+}

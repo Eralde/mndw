@@ -1,0 +1,35 @@
+{
+  "manifestVersion": 2,
+  "name": "backend-plugin",
+  "version": "2.0.0",
+  "type": "widget",
+  "label": "Test Widget",
+  "entry": "index.js",
+  "size": {
+    "w": 4,
+    "h": 3
+  },
+  "backend": {
+    "scripts": [
+      {
+        "id": "s1",
+        "source": "script.sh",
+        "runtime": "sh"
+      }
+    ],
+    "endpoints": [
+      {
+        "id": "e1",
+        "method": "GET",
+        "path": "data1",
+        "scriptId": "s1"
+      },
+      {
+        "id": "e1",
+        "method": "POST",
+        "path": "data2",
+        "scriptId": "s1"
+      }
+    ]
+  }
+}

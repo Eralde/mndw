@@ -1,0 +1,30 @@
+{
+  "manifestVersion": 2,
+  "name": "mws-map-page",
+  "version": "0.1.0",
+  "type": "page",
+  "label": "MWS Map",
+  "route": "/mws-map",
+  "entry": "index.js",
+  "permissions": ["persistent-rci-session"],
+  "backend": {
+    "assets": [
+      "backend/mwsd",
+      "backend/mwsd-client"
+    ],
+    "daemon": {"start": "backend/start.sh", "stop": "backend/stop.sh"},
+    "diagnostics": true,
+    "scripts": [
+      {"id": "credentials", "runtime": "sh", "source": "backend/credentials.sh"},
+      {"id": "forget", "runtime": "sh", "source": "backend/forget.sh"},
+      {"id": "nodes", "runtime": "sh", "source": "backend/nodes.sh"},
+      {"id": "snapshot", "runtime": "sh", "source": "backend/snapshot.sh"}
+    ],
+    "endpoints": [
+      {"id": "credentials", "method": "POST", "path": "credentials", "scriptId": "credentials", "csrf": true, "sensitive": true},
+      {"id": "forget", "method": "POST", "path": "forget", "scriptId": "forget", "csrf": true, "sensitive": true},
+      {"id": "nodes", "method": "GET", "path": "nodes", "scriptId": "nodes", "sensitive": true},
+      {"id": "snapshot", "method": "GET", "path": "snapshot", "scriptId": "snapshot", "sensitive": true}
+    ]
+  }
+}

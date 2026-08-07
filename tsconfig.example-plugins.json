@@ -4,9 +4,9 @@
     "noEmit": true
   },
   "include": [
-    "example-plugins/**/*.ts",
-    "example-plugins/**/*.svelte",
-    "example-plugins/**/*.vue"
+    "plugins/builtin/**/*.ts",
+    "plugins/builtin/**/*.svelte",
+    "plugins/builtin/**/*.vue"
   ],
   "exclude": [
     "node_modules",

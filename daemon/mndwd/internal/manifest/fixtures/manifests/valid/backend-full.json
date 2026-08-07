@@ -1,0 +1,61 @@
+{
+  "manifestVersion": 2,
+  "name": "full-plugin",
+  "version": "2.0.0",
+  "type": "widget",
+  "label": "Test Widget",
+  "entry": "dist/index.js",
+  "size": {
+    "w": 8,
+    "h": 6,
+    "minW": 4,
+    "minH": 3
+  },
+  "backend": {
+    "opkg": [
+      "ttyd",
+      "daemonize"
+    ],
+    "scripts": [
+      {
+        "id": "server",
+        "source": "backend/server.sh",
+        "runtime": "sh"
+      },
+      {
+        "id": "helper",
+        "source": "lib/helper.sh",
+        "runtime": "sh"
+      }
+    ],
+    "endpoints": [
+      {
+        "id": "get-status",
+        "method": "get",
+        "path": "status",
+        "scriptId": "server"
+      },
+      {
+        "id": "post-data",
+        "method": "POST",
+        "path": "data",
+        "scriptId": "server"
+      }
+    ],
+    "websockets": [
+      {
+        "id": "term",
+        "path": "term",
+        "target": "127.0.0.1:7681",
+        "protocols": [
+          "tty"
+        ]
+      }
+    ],
+    "daemon": {
+      "start": "backend/start.sh",
+      "stop": "backend/stop.sh"
+    },
+    "public": false
+  }
+}

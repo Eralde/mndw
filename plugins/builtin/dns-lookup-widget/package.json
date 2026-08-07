@@ -1,0 +1,20 @@
+{
+  "name": "@mndw/example-dns-lookup-widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "mndw": {"backendBuildScript": "build-backend"},
+  "scripts": {
+    "build": "tsx scripts/build-backend.ts",
+    "build-backend": "node --import tsx scripts/build-backend.ts",
+    "pretest": "pnpm run build",
+    "test": "cd backend && go test ./... && cd .. && vitest run"
+  },
+  "devDependencies": {
+    "@mndw/sdk": "workspace:*",
+    "@types/node": "22.19.15",
+    "happy-dom": "20.11.1",
+    "tsx": "^4.23.0",
+    "vitest": "^3.2.7"
+  }
+}

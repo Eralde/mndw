@@ -46,10 +46,10 @@ jobs:
       # The daemon lands in Phase 2; until it has a go.mod there is nothing to test.
       - name: Test
         run: |
-          if [ -f packages/daemon/go.mod ]; then
-            cd packages/daemon && go test ./...
+          if [ -f daemon/mndwd/go.mod ]; then
+            cd daemon/mndwd && go test ./...
           else
-            echo "packages/daemon/go.mod not present yet — skipping go test"
+            echo "daemon/mndwd/go.mod not present yet — skipping go test"
           fi
 
   ui-e2e:
@@ -89,4 +89,4 @@ jobs:
       # glibc-linked checkout action runs on the host, and so the CI command is
       # identical to the local reproduction command. opkg stubbed; no -race.
       - name: Run daemon sh-exec suite under BusyBox ash
-        run: docker run --rm -v "$PWD":/src -w /src golang:1.26-alpine sh deploy/ci/run-busybox-tests.sh
+        run: docker run --rm -v "$PWD":/src -w /src golang:1.26-alpine sh build/packaging/ci/run-busybox-tests.sh

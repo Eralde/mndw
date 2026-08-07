@@ -263,11 +263,11 @@ module.exports = tseslint.config(
   // scaffolded plugin installs, not the host), so keep them out of every lint pass.
   {
     ignores: [
-      'packages/host/scripts/templates/**',
-      'packages/cli/templates/**',
+      'frontend/host/scripts/templates/**',
+      'tooling/cli/templates/**',
       // Built example-plugin bundles (esbuild output) are not source — never lint them.
-      'example-plugins/dist/**',
-      'example-plugins/*/dist/**',
+      'plugins/builtin/dist/**',
+      'plugins/builtin/*/dist/**',
     ],
   },
   // @see https://typescript-eslint.io/getting-started/typed-linting/
@@ -283,23 +283,27 @@ module.exports = tseslint.config(
   {
     files: ['**/*.ts'],
     ignores: [
-      'packages/*/scripts/**/*.ts',
-      'packages/*/vite.config.ts',
-      'packages/*/vitest.config.ts',
-      'tools/palette/scripts/**/*.ts',
-      'tools/palette/playground/**/*.ts',
-      'tools/palette/vite.config.ts',
-      'tools/palette/vitest.config.ts',
-      'packages/sdk/src/tokens.ts',
+      'frontend/*/scripts/**/*.ts',
+      'frontend/*/vite.config.ts',
+      'frontend/*/vitest.config.ts',
+      'tooling/*/scripts/**/*.ts',
+      'tooling/*/vite.config.ts',
+      'tooling/*/vitest.config.ts',
+      'build/palette/scripts/**/*.ts',
+      'build/palette/playground/**/*.ts',
+      'build/palette/vite.config.ts',
+      'build/palette/vitest.config.ts',
+      'frontend/sdk/src/tokens.ts',
       '**/*.vue',
       '**/*.svelte.ts',
     ],
     languageOptions: {
       parserOptions: {
         'project': [
-          './packages/*/tsconfig.json',
-          './tools/tsconfig.json',
-          './tools/palette/tsconfig.json',
+          './frontend/*/tsconfig.json',
+          './tooling/*/tsconfig.json',
+          './build/tsconfig.json',
+          './build/palette/tsconfig.json',
           './tsconfig.example-plugins.json',
         ],
       },
@@ -327,7 +331,7 @@ module.exports = tseslint.config(
   },
   // Example plugins: relax type-aware strictness for D3 and Vue h() patterns
   {
-    files: ['example-plugins/**/*.ts'],
+    files: ['plugins/builtin/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-call': OFF,
       '@typescript-eslint/no-unsafe-member-access': OFF,
@@ -347,8 +351,8 @@ module.exports = tseslint.config(
         parser: tseslint.parser,
         projectService: {
           allowDefaultProject: [
-            'example-plugins/*/src/components/*.svelte',
-            'example-plugins/*/src/*.svelte',
+            'plugins/builtin/*/src/components/*.svelte',
+            'plugins/builtin/*/src/*.svelte',
           ],
           defaultProject: './tsconfig.example-plugins.json',
         },
@@ -398,7 +402,7 @@ module.exports = tseslint.config(
   },
   // Angular plugin: relax rules only for the Angular widget
   {
-    files: ['example-plugins/tx-rx-chart-widget/src/**/*.ts'],
+    files: ['plugins/builtin/tx-rx-chart-widget/src/**/*.ts'],
     plugins: {
       '@angular-eslint': angularEslintPlugin,
     },

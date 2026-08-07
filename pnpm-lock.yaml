@@ -19,10 +19,10 @@ importers:
         version: 9.39.4
       '@mndw/cli':
         specifier: workspace:*
-        version: link:packages/cli
+        version: link:tooling/cli
       '@mndw/sdk':
         specifier: workspace:*
-        version: link:packages/sdk
+        version: link:frontend/sdk
       '@stylistic/eslint-plugin':
         specifier: 5.10.0
         version: 5.10.0(eslint@9.39.4)
@@ -105,409 +105,31 @@ importers:
         specifier: ^10.4.1
         version: 10.4.1(eslint@9.39.4)
 
-  example-plugins/backend-echo:
+  build/palette:
     devDependencies:
+      '@mndw/palette-core':
+        specifier: workspace:*
+        version: link:../../tooling/palette-core
       '@mndw/sdk':
         specifier: workspace:*
-        version: link:../../packages/sdk
-      '@types/node':
-        specifier: 22.19.15
-        version: 22.19.15
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-
-  example-plugins/clients-widget:
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
+        version: link:../../frontend/sdk
       '@mndw/ui':
         specifier: workspace:*
-        version: link:../../packages/ui
-      '@rci-tools/core':
-        specifier: ^0.2.0
-        version: 0.2.0
-      '@types/lodash-es':
-        specifier: ^4.17.12
-        version: 4.17.12
-      '@vitejs/plugin-vue':
-        specifier: ^6.0.0
-        version: 6.0.8(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))(vue@3.5.40(typescript@5.9.3))
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      lodash-es:
-        specifier: ^4.18.1
-        version: 4.18.1
-      rxjs:
-        specifier: ^7.8.0
-        version: 7.8.2
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-      vue:
-        specifier: ^3.5.39
-        version: 3.5.40(typescript@5.9.3)
-
-  example-plugins/clock-widget:
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-
-  example-plugins/demo-page:
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@mndw/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      '@rci-tools/core':
-        specifier: ^0.2.0
-        version: 0.2.0
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      rxjs:
-        specifier: ^7.8.0
-        version: 7.8.2
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-
-  example-plugins/device-info-widget:
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@mndw/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      '@rci-tools/core':
-        specifier: ^0.2.0
-        version: 0.2.0
-      '@vitejs/plugin-vue':
-        specifier: ^6.0.0
-        version: 6.0.8(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))(vue@3.5.40(typescript@5.9.3))
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      rxjs:
-        specifier: ^7.8.0
-        version: 7.8.2
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-      vue:
-        specifier: ^3.5.39
-        version: 3.5.40(typescript@5.9.3)
-
-  example-plugins/device-traffic-widget:
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@mndw/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      '@rci-tools/core':
-        specifier: ^0.2.0
-        version: 0.2.0
-      '@sveltejs/vite-plugin-svelte':
-        specifier: ^5.0.0
-        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      rxjs:
-        specifier: ^7.8.0
-        version: 7.8.2
-      svelte:
-        specifier: ^5.56.4
-        version: 5.56.8(@typescript-eslint/types@8.57.1)
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-
-  example-plugins/dns-lookup-widget:
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@types/node':
-        specifier: 22.19.15
-        version: 22.19.15
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      tsx:
-        specifier: ^4.23.0
-        version: 4.23.1
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-
-  example-plugins/mws-map-page:
-    dependencies:
-      d3-dag:
-        specifier: ^1.1.0
-        version: 1.2.2
-    devDependencies:
-      '@angular/common':
-        specifier: ^21.2.18
-        version: 21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
-      '@angular/compiler':
-        specifier: ^21.2.18
-        version: 21.2.18
-      '@angular/core':
-        specifier: ^21.2.18
-        version: 21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1)
-      '@angular/platform-browser':
-        specifier: ^21.2.18
-        version: 21.2.18(@angular/common@21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))
-      '@mndw/mws-auth-reference':
-        specifier: file:scripts/auth-reference
-        version: file:example-plugins/mws-map-page/scripts/auth-reference
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@mndw/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      '@rci-tools/core':
-        specifier: ^0.2.0
-        version: 0.2.0
-      '@types/d3':
-        specifier: ^7.4.3
-        version: 7.4.3
-      d3:
-        specifier: ^7.9.0
-        version: 7.9.0
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      hash-wasm:
-        specifier: ^4.12.0
-        version: 4.12.0
-      rxjs:
-        specifier: ^7.8.0
-        version: 7.8.2
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-      zone.js:
-        specifier: ^0.15.1
-        version: 0.15.1
-
-  example-plugins/ping-widget:
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@mndw/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      '@sveltejs/vite-plugin-svelte':
-        specifier: ^5.0.0
-        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
-      '@types/node':
-        specifier: 22.19.15
-        version: 22.19.15
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      svelte:
-        specifier: ^5.56.4
-        version: 5.56.8(@typescript-eslint/types@8.57.1)
-      tsx:
-        specifier: ^4.23.0
-        version: 4.23.1
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-
-  example-plugins/system-log-page:
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@mndw/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      '@rci-tools/core':
-        specifier: ^0.2.0
-        version: 0.2.0
-      '@sveltejs/vite-plugin-svelte':
-        specifier: ^5.0.0
-        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
-      '@types/node':
-        specifier: 22.19.15
-        version: 22.19.15
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      rxjs:
-        specifier: ^7.8.0
-        version: 7.8.2
-      svelte:
-        specifier: ^5.56.4
-        version: 5.56.8(@typescript-eslint/types@8.57.1)
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-
-  example-plugins/terminal-page:
-    dependencies:
-      '@xterm/addon-fit':
-        specifier: ^0.10.0
-        version: 0.10.0(@xterm/xterm@5.5.0)
-      '@xterm/xterm':
-        specifier: ^5.5.0
-        version: 5.5.0
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@mndw/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      '@sveltejs/vite-plugin-svelte':
-        specifier: ^5.0.0
-        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
-      '@types/node':
-        specifier: 22.19.15
-        version: 22.19.15
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      svelte:
-        specifier: ^5.56.4
-        version: 5.56.8(@typescript-eslint/types@8.57.1)
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-
-  example-plugins/tx-rx-chart-widget:
-    devDependencies:
-      '@angular/common':
-        specifier: ^21.2.18
-        version: 21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
-      '@angular/compiler':
-        specifier: ^21.2.18
-        version: 21.2.18
-      '@angular/core':
-        specifier: ^21.2.18
-        version: 21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1)
-      '@angular/platform-browser':
-        specifier: ^21.2.18
-        version: 21.2.18(@angular/common@21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@mndw/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      '@rci-tools/core':
-        specifier: ^0.2.0
-        version: 0.2.0
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      rxjs:
-        specifier: ^7.8.0
-        version: 7.8.2
-      typescript:
-        specifier: ^5.7.0
-        version: 5.9.3
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-      zone.js:
-        specifier: ^0.15.1
-        version: 0.15.1
-
-  packages/cli:
-    dependencies:
-      '@angular/common':
-        specifier: ^21.2.18
-        version: 21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
-      '@angular/compiler':
-        specifier: ^21.2.18
-        version: 21.2.18
-      '@angular/compiler-cli':
-        specifier: ^21.2.18
-        version: 21.2.18(@angular/compiler@21.2.18)(typescript@5.9.3)
-      '@angular/core':
-        specifier: ^21.2.18
-        version: 21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1)
-      '@angular/platform-browser':
-        specifier: ^21.2.18
-        version: 21.2.18(@angular/common@21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../sdk
-      commander:
-        specifier: ^15.0.0
-        version: 15.0.0
-      esbuild:
-        specifier: ^0.25.12
-        version: 0.25.12
-      esbuild-svelte:
-        specifier: ^0.9.5
-        version: 0.9.5(esbuild@0.25.12)(svelte@5.56.8(@typescript-eslint/types@8.57.1))
-      fflate:
-        specifier: ^0.8.2
-        version: 0.8.3
-      sass:
-        specifier: ^1.77.0
-        version: 1.102.0
-      svelte:
-        specifier: ^5.56.4
-        version: 5.56.8(@typescript-eslint/types@8.57.1)
+        version: link:../../frontend/ui
       tsx:
         specifier: ^4.23.0
         version: 4.23.1
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
-      unplugin-vue:
-        specifier: ^7.2.0
-        version: 7.2.0(@types/node@22.19.15)(esbuild@0.25.12)(rolldown@1.1.5)(rollup@4.62.3)(sass@1.102.0)(tsx@4.23.1)(vue@3.5.40(typescript@5.9.3))
-      vue:
-        specifier: ^3.5.39
-        version: 3.5.40(typescript@5.9.3)
-      zone.js:
-        specifier: ^0.15.1
-        version: 0.15.1
-    devDependencies:
-      '@types/node':
-        specifier: 22.19.15
-        version: 22.19.15
+      vite:
+        specifier: ^6.4.3
+        version: 6.4.3(@types/node@22.19.15)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
       vitest:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
 
-  packages/go-device-auth: {}
-
-  packages/go-rci: {}
-
-  packages/go-rcisock: {}
-
-  packages/host:
+  frontend/host:
     dependencies:
       '@mndw/sdk':
         specifier: workspace:*
@@ -589,8 +211,11 @@ importers:
         specifier: ^0.15.1
         version: 0.15.1
 
-  packages/sdk:
+  frontend/sdk:
     dependencies:
+      '@mndw/palette-core':
+        specifier: workspace:*
+        version: link:../../tooling/palette-core
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -611,7 +236,7 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
 
-  packages/ui:
+  frontend/ui:
     dependencies:
       '@lit/reactive-element':
         specifier: ^2.1.0
@@ -645,29 +270,420 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@22.19.15)(happy-dom@17.6.3)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
 
-  tools/palette:
+  packages/go-device-auth: {}
+
+  packages/go-rci: {}
+
+  packages/go-rcisock: {}
+
+  plugins/builtin/backend-echo:
     devDependencies:
       '@mndw/sdk':
         specifier: workspace:*
-        version: link:../../packages/sdk
+        version: link:../../../frontend/sdk
+      '@types/node':
+        specifier: 22.19.15
+        version: 22.19.15
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+
+  plugins/builtin/clients-widget:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
       '@mndw/ui':
         specifier: workspace:*
-        version: link:../../packages/ui
-      '@types/culori':
-        specifier: ^4.0.1
-        version: 4.0.1
-      culori:
-        specifier: ^4.0.2
-        version: 4.0.2
+        version: link:../../../frontend/ui
+      '@rci-tools/core':
+        specifier: ^0.2.0
+        version: 0.2.0
+      '@types/lodash-es':
+        specifier: ^4.17.12
+        version: 4.17.12
+      '@vitejs/plugin-vue':
+        specifier: ^6.0.0
+        version: 6.0.8(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))(vue@3.5.40(typescript@5.9.3))
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      lodash-es:
+        specifier: ^4.18.1
+        version: 4.18.1
+      rxjs:
+        specifier: ^7.8.0
+        version: 7.8.2
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+      vue:
+        specifier: ^3.5.39
+        version: 3.5.40(typescript@5.9.3)
+
+  plugins/builtin/clock-widget:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+
+  plugins/builtin/demo-page:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@rci-tools/core':
+        specifier: ^0.2.0
+        version: 0.2.0
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      rxjs:
+        specifier: ^7.8.0
+        version: 7.8.2
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+
+  plugins/builtin/device-info-widget:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@rci-tools/core':
+        specifier: ^0.2.0
+        version: 0.2.0
+      '@vitejs/plugin-vue':
+        specifier: ^6.0.0
+        version: 6.0.8(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))(vue@3.5.40(typescript@5.9.3))
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      rxjs:
+        specifier: ^7.8.0
+        version: 7.8.2
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+      vue:
+        specifier: ^3.5.39
+        version: 3.5.40(typescript@5.9.3)
+
+  plugins/builtin/device-traffic-widget:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@rci-tools/core':
+        specifier: ^0.2.0
+        version: 0.2.0
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^5.0.0
+        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      rxjs:
+        specifier: ^7.8.0
+        version: 7.8.2
+      svelte:
+        specifier: ^5.56.4
+        version: 5.56.8(@typescript-eslint/types@8.57.1)
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+
+  plugins/builtin/dns-lookup-widget:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@types/node':
+        specifier: 22.19.15
+        version: 22.19.15
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.1
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+
+  plugins/builtin/mws-map-page:
+    dependencies:
+      d3-dag:
+        specifier: ^1.1.0
+        version: 1.2.2
+    devDependencies:
+      '@angular/common':
+        specifier: ^21.2.18
+        version: 21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
+      '@angular/compiler':
+        specifier: ^21.2.18
+        version: 21.2.18
+      '@angular/core':
+        specifier: ^21.2.18
+        version: 21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1)
+      '@angular/platform-browser':
+        specifier: ^21.2.18
+        version: 21.2.18(@angular/common@21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))
+      '@mndw/mws-auth-reference':
+        specifier: file:scripts/auth-reference
+        version: file:plugins/builtin/mws-map-page/scripts/auth-reference
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@rci-tools/core':
+        specifier: ^0.2.0
+        version: 0.2.0
+      '@types/d3':
+        specifier: ^7.4.3
+        version: 7.4.3
+      d3:
+        specifier: ^7.9.0
+        version: 7.9.0
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      hash-wasm:
+        specifier: ^4.12.0
+        version: 4.12.0
+      rxjs:
+        specifier: ^7.8.0
+        version: 7.8.2
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+      zone.js:
+        specifier: ^0.15.1
+        version: 0.15.1
+
+  plugins/builtin/ping-widget:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^5.0.0
+        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
+      '@types/node':
+        specifier: 22.19.15
+        version: 22.19.15
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      svelte:
+        specifier: ^5.56.4
+        version: 5.56.8(@typescript-eslint/types@8.57.1)
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.1
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+
+  plugins/builtin/system-log-page:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@rci-tools/core':
+        specifier: ^0.2.0
+        version: 0.2.0
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^5.0.0
+        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
+      '@types/node':
+        specifier: 22.19.15
+        version: 22.19.15
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      rxjs:
+        specifier: ^7.8.0
+        version: 7.8.2
+      svelte:
+        specifier: ^5.56.4
+        version: 5.56.8(@typescript-eslint/types@8.57.1)
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+
+  plugins/builtin/terminal-page:
+    dependencies:
+      '@xterm/addon-fit':
+        specifier: ^0.10.0
+        version: 0.10.0(@xterm/xterm@5.5.0)
+      '@xterm/xterm':
+        specifier: ^5.5.0
+        version: 5.5.0
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^5.0.0
+        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
+      '@types/node':
+        specifier: 22.19.15
+        version: 22.19.15
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      svelte:
+        specifier: ^5.56.4
+        version: 5.56.8(@typescript-eslint/types@8.57.1)
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+
+  plugins/builtin/tx-rx-chart-widget:
+    devDependencies:
+      '@angular/common':
+        specifier: ^21.2.18
+        version: 21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
+      '@angular/compiler':
+        specifier: ^21.2.18
+        version: 21.2.18
+      '@angular/core':
+        specifier: ^21.2.18
+        version: 21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1)
+      '@angular/platform-browser':
+        specifier: ^21.2.18
+        version: 21.2.18(@angular/common@21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@rci-tools/core':
+        specifier: ^0.2.0
+        version: 0.2.0
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      rxjs:
+        specifier: ^7.8.0
+        version: 7.8.2
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+      zone.js:
+        specifier: ^0.15.1
+        version: 0.15.1
+
+  tooling/cli:
+    dependencies:
+      '@angular/common':
+        specifier: ^21.2.18
+        version: 21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2)
+      '@angular/compiler':
+        specifier: ^21.2.18
+        version: 21.2.18
+      '@angular/compiler-cli':
+        specifier: ^21.2.18
+        version: 21.2.18(@angular/compiler@21.2.18)(typescript@5.9.3)
+      '@angular/core':
+        specifier: ^21.2.18
+        version: 21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1)
+      '@angular/platform-browser':
+        specifier: ^21.2.18
+        version: 21.2.18(@angular/common@21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../frontend/sdk
+      commander:
+        specifier: ^15.0.0
+        version: 15.0.0
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      esbuild-svelte:
+        specifier: ^0.9.5
+        version: 0.9.5(esbuild@0.25.12)(svelte@5.56.8(@typescript-eslint/types@8.57.1))
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.3
+      sass:
+        specifier: ^1.77.0
+        version: 1.102.0
+      svelte:
+        specifier: ^5.56.4
+        version: 5.56.8(@typescript-eslint/types@8.57.1)
       tsx:
         specifier: ^4.23.0
         version: 4.23.1
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
-      vite:
-        specifier: ^6.4.3
-        version: 6.4.3(@types/node@22.19.15)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+      unplugin-vue:
+        specifier: ^7.2.0
+        version: 7.2.0(@types/node@22.19.15)(esbuild@0.25.12)(rolldown@1.1.5)(rollup@4.62.3)(sass@1.102.0)(tsx@4.23.1)(vue@3.5.40(typescript@5.9.3))
+      vue:
+        specifier: ^3.5.39
+        version: 3.5.40(typescript@5.9.3)
+      zone.js:
+        specifier: ^0.15.1
+        version: 0.15.1
+    devDependencies:
+      '@types/node':
+        specifier: 22.19.15
+        version: 22.19.15
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+
+  tooling/palette-core:
+    dependencies:
+      culori:
+        specifier: ^4.0.2
+        version: 4.0.2
+    devDependencies:
+      '@types/culori':
+        specifier: ^4.0.1
+        version: 4.0.1
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
       vitest:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
@@ -1347,8 +1363,8 @@ packages:
   '@lit/reactive-element@2.1.2':
     resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
 
-  '@mndw/mws-auth-reference@file:example-plugins/mws-map-page/scripts/auth-reference':
-    resolution: {directory: example-plugins/mws-map-page/scripts/auth-reference, type: directory}
+  '@mndw/mws-auth-reference@file:plugins/builtin/mws-map-page/scripts/auth-reference':
+    resolution: {directory: plugins/builtin/mws-map-page/scripts/auth-reference, type: directory}
 
   '@napi-rs/wasm-runtime@1.1.6':
     resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
@@ -4878,7 +4894,7 @@ snapshots:
     dependencies:
       '@lit-labs/ssr-dom-shim': 1.6.0
 
-  '@mndw/mws-auth-reference@file:example-plugins/mws-map-page/scripts/auth-reference':
+  '@mndw/mws-auth-reference@file:plugins/builtin/mws-map-page/scripts/auth-reference':
     dependencies:
       '@rci-tools/core': https://codeload.github.com/Eralde/rci-tools/tar.gz/85eb264d7d7c5e177813f858db23cff117712fad#path:/packages/core
       esbuild: 0.25.12

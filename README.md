@@ -47,7 +47,7 @@ The normal loop is `create → dev → validate → pack → zip → upload`. Pl
 Widgets use grid-unit dimensions; pages declare one route. Plugins can be
 vanilla TypeScript, Svelte, Vue, or Angular.
 
-See the [SDK plugin-author guide](packages/sdk/README.md).
+See the [SDK plugin-author guide](frontend/sdk/README.md).
 
 ## IPK build
 
@@ -63,17 +63,22 @@ toolchain.
 ## Project layout
 
 ```text
-packages/
+frontend/
   sdk/              plugin contracts and backend client
   host/             Svelte host application
   ui/               reusable custom elements
+tooling/
   cli/              plugin scaffolding and packaging
-  daemon/           Go device control plane
+  palette-core/     dependency-free palette leaf
+daemon/
+  mndwd/            Go device control plane
+  contracts-go/     generated Go contract bindings
+packages/
   go-device-auth/   shared device-auth handshake
   go-rcisock/       shared persistent RCI transport
-example-plugins/    framework and backend examples
-deploy/             lighttpd, init, IPK, install scripts
-tools/              palette, development, and IPK build tools
+plugins/builtin/    shipped built-in plugins and backend implementations
+build/packaging/             lighttpd, init, IPK, install scripts
+build/              palette, development, and IPK build tools
 docs/               documentation
 ```
 

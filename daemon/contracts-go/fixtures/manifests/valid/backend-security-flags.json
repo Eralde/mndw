@@ -1,0 +1,18 @@
+{
+  "manifestVersion": 2,
+  "name": "security-flags-plugin",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Security Flags",
+  "entry": "index.js",
+  "size": {"w": 2, "h": 2},
+  "backend": {
+    "scripts": [
+      {"id": "script", "source": "backend/script.sh", "runtime": "sh"}
+    ],
+    "endpoints": [
+      {"id": "secure-post", "method": "POST", "path": "secure", "scriptId": "script", "csrf": true, "sensitive": true},
+      {"id": "sensitive-get", "method": "GET", "path": "snapshot", "scriptId": "script", "sensitive": true}
+    ]
+  }
+}

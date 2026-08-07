@@ -27,10 +27,10 @@
   "excludes": [
     "**/node_modules",
     "**/*-lock.json",
-    "packages/host/scripts/templates",
-    "packages/sdk/src/tokens.ts",
-    "example-plugins/dist",
-    "example-plugins/*/dist",
+    "frontend/host/scripts/templates",
+    "frontend/sdk/src/tokens.ts",
+    "plugins/builtin/dist",
+    "plugins/builtin/*/dist",
     "**/*.go"
   ],
   "plugins": [

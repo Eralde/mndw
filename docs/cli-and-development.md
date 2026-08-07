@@ -82,10 +82,10 @@ filename stay unchanged. Configured file must be regular `.ts` below `src/`,
 and `src/index.ts` must still exist because `mndw validate` requires it and
 `mndw dev` loads it by path.
 
-At repository level, `pnpm dev` packs example plugins from `src/index.ts`, starts
+At repository level, `pnpm dev` packs built-in plugins from `src/index.ts`, starts
 a local daemon, waits for readiness, and starts the host under one supervisor.
 This keeps development-only behavior such as MWS mock data available. The
-ordinary `pnpm build-example-plugins` command continues to pack configured
+ordinary `pnpm build-builtin-plugins` command continues to pack configured
 production entries. The existing `MNDW_HOST_DEVICE` value continues to select
 the real router for RCI/auth calls.
 

@@ -1,0 +1,23 @@
+{
+  "kind": "backend-descriptor",
+  "descriptor": {
+    "endpoints": {
+      "status": {
+        "method": "GET",
+        "path": "/api/status"
+      }
+    },
+    "websockets": {
+      "events": {
+        "path": "/api/events",
+        "protocols": [
+          "json",
+          "cbor"
+        ]
+      }
+    },
+    "approval": "approved",
+    "enabled": true,
+    "public": false
+  }
+}

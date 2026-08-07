@@ -3,15 +3,17 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "tsx tools/dev.ts",
+    "dev": "tsx build/dev/dev.ts",
     "dev-plugin": "pnpm exec mndw dev",
     "test": "pnpm -r --if-present test",
     "gen-tokens": "pnpm --filter @mndw/palette-tools gen-tokens",
     "generate-manifest-schema": "pnpm --filter @mndw/sdk generate-manifest-schema",
-    "build-example-plugins": "tsx packages/cli/src/index.ts pack-examples --out-dir example-plugins/dist",
-    "build-ipk": "tsx tools/build-ipk.ts",
-    "fmt": "dprint fmt \"packages/**/*.*\" \"example-plugins/**/*.*\" \"tools/dev.ts\" \"tools/build-ipk.ts\" \"tools/build-ipk.test.ts\"",
-    "lint": "eslint --cache --cache-location .eslintcache --fix --no-error-on-unmatched-pattern \"packages/\" \"example-plugins/\" \"tools/dev.ts\" \"tools/build-ipk.ts\" \"tools/build-ipk.test.ts\"",
+    "generate-contracts": "node --import tsx build/contracts/generate.ts",
+    "build": "node --import tsx build/index.ts build",
+    "build-builtin-plugins": "node --import tsx build/builtin-plugins.ts",
+    "build-ipk": "node --import tsx build/packaging/build-ipk.ts",
+    "fmt": "dprint fmt \"packages/**/*.*\" \"frontend/**/*.*\" \"tooling/**/*.*\" \"plugins/builtin/**/*.*\" \"build/**/*.*\"",
+    "lint": "eslint --cache --cache-location .eslintcache --fix --no-error-on-unmatched-pattern \"packages/\" \"frontend/\" \"tooling/\" \"plugins/builtin/\" \"build/\"",
     "lint-styles": "stylelint --config .stylelintrc.js \"**/*.scss\" --fix && stylelint --config .stylelintrc.css.js \"**/*.css\" --fix"
   },
   "devDependencies": {

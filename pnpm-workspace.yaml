@@ -1,7 +1,9 @@
 packages:
   - "packages/*"
-  - "example-plugins/*"
-  - "tools/*"
+  - "frontend/*"
+  - "tooling/*"
+  - "plugins/builtin/*"
+  - "build/*"
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - dprint

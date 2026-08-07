@@ -40,8 +40,8 @@ filename stay unchanged. Configured file must be regular `.ts` below `src/`,
 and `src/index.ts` must still exist because `mndw validate` requires it and
 `mndw dev` loads it by path.
 
-Repository `pnpm dev` builds example plugins from `src/index.ts`, while
-`pnpm build-example-plugins` uses configured production entries.
+Repository `pnpm dev` builds built-in plugins from `src/index.ts`, while
+`pnpm build-builtin-plugins` uses configured production entries.
 
 ## Implement the module
 

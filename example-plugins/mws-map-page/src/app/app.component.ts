@@ -120,9 +120,15 @@ export class AppComponent implements OnDestroy, OnInit {
     this.data.start();
     void this.positions.load();
 
-    if (this.pageRoute !== null && this.pageRoute !== undefined) {
-      this.pageRouteSubscription = this.pageRoute.childPath$.subscribe((childPath) => {
+    const pageRoute = this.pageRoute;
+
+    if (pageRoute !== null && pageRoute !== undefined) {
+      this.pageRouteSubscription = pageRoute.childPath$.subscribe((childPath) => {
         this.selectedTab.set(childPath === '/clients' ? 'clients' : 'map');
+
+        if (childPath === '') {
+          void pageRoute.navigate('/topology', {replace: true}).catch(() => undefined);
+        }
       });
     }
   }

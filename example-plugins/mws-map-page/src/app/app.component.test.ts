@@ -193,6 +193,17 @@ describe('AppComponent', () => {
     expect(tabs.value).toBe('map');
   });
 
+  it('replaces the base route with the default topology child route', () => {
+    const childPath$ = new BehaviorSubject('');
+    const navigate = vi.fn(() => Promise.resolve(undefined));
+    const pageRoute = {childPath$, navigate} as unknown as PageRoute;
+
+    render(fakeData('ready', fixtureRoots()), pageRoute);
+
+    expect(navigate).toHaveBeenCalledWith('/topology', {replace: true});
+    expect(navigate).toHaveBeenCalledTimes(1);
+  });
+
   it('does not subscribe or navigate when optional page route is absent', () => {
     const fixture = render(fakeData('ready', fixtureRoots()));
     const tabs = fixture.nativeElement.querySelector('mndw-tabs') as HTMLElement & {value: string};

@@ -162,10 +162,26 @@ interface PluginContext {
   instanceId: string;
   backend?: BackendClient;
   overlay: OverlayService;
+  /** Page plugins only. Widgets receive undefined. */
+  pageRoute?: PageRoute;
 
   onThemeChange(callback: (theme: MndwThemeName) => void): () => void;
   getTokens(): PaletteTokenMap;
   onPaletteChange(callback: (tokens: PaletteTokenMap) => void): () => void;
+}
+
+interface PageRoute {
+  readonly childPath$: Observable<string>;
+  navigate(
+    childPath: string,
+    options?: {replace?: boolean; scrollToTop?: boolean},
+  ): Promise<void>;
+}
+
+type PageRouteErrorCode = 'INVALID_PATH' | 'COMPLETED' | 'NAVIGATION_FAILED';
+
+class PageRouteError extends Error {
+  readonly code: PageRouteErrorCode;
 }
 
 interface HostInfo {
@@ -207,6 +223,12 @@ interface BackendClient {
 
 The method and relative path come from endpoint declaration in manifest. Typed errors:
 `BackendNotApproved`, `BackendDisabled`, `BackendUnknownId`.
+
+Page plugins use `context.pageRoute` for child routes. `childPath$` emits the normalized child
+pathname (for example, `/clients`) and `navigate()` accepts a child pathname without query or
+hash. It preserves valid ordinary percent encoding such as `%20`, rejects malformed or ambiguous
+paths, and returns a rejected promise with `PageRouteError` (`INVALID_PATH`, `COMPLETED`, or
+`NAVIGATION_FAILED`) when navigation cannot proceed. `scrollToTop` defaults to `true`.
 
 ```ts
 const client = context.backend;

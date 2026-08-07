@@ -7,7 +7,13 @@ vi.mock('../runtime/plugin-registry.js', () => ({
 import {type LoadedPage, type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import PagePluginHost from '../pages/PagePluginHost.svelte';
-import {buildPluginRoutes, createAppRouter, routeToPluginName} from './create-app-router.js';
+import {
+  buildPluginRoutes,
+  createAppRouter,
+  getPageRouteDefinitions,
+  resolvePageRoute,
+  routeToPluginName,
+} from './create-app-router.js';
 
 const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
 
@@ -66,7 +72,14 @@ describe('buildPluginRoutes', () => {
     const routes = buildPluginRoutes();
 
     // Status/Status tie broken by name; Traffic last.
-    expect(Object.keys(routes)).toEqual(['/alpha-status', '/beta-status', '/traffic']);
+    expect(Object.keys(routes)).toEqual([
+      '/alpha-status',
+      '/alpha-status/*child',
+      '/beta-status',
+      '/beta-status/*child',
+      '/traffic',
+      '/traffic/*child',
+    ]);
     expect(Object.values(routes).every((component) => component === PagePluginHost)).toBe(true);
   });
 
@@ -104,10 +117,83 @@ describe('buildPluginRoutes', () => {
     expect(routeToPluginName.has('/old')).toBe(false);
     expect([...routeToPluginName.keys()]).toEqual(['/new']);
   });
+
+  it('uses canonical base routes and adds exact and child routes', () => {
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('map', 'Map', '/Foo/')]);
+
+    const routes = buildPluginRoutes();
+
+    expect(Object.keys(routes)).toEqual(['/foo', '/foo/*child']);
+    expect([...routeToPluginName.entries()]).toEqual([['/foo', 'map']]);
+    expect(getPageRouteDefinitions()).toEqual([{route: '/foo', name: 'map'}]);
+  });
+
+  it.each(['/foo/', '/Foo'])('rejects canonical collision for %s', (route) => {
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([
+      page('first', 'First', '/foo'),
+      page('second', 'Second', route),
+    ]);
+
+    expect(() => buildPluginRoutes()).toThrow(/second.*\/foo.*first/i);
+  });
+
+  it.each(['/', '/login', '/packages', '/settings'])('rejects reserved route %s', (route) => {
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('reserved', 'Reserved', route)]);
+
+    expect(() => buildPluginRoutes()).toThrow(/reserved|static/i);
+  });
+
+  it('rejects multi-segment runtime routes', () => {
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('nested', 'Nested', '/foo/bar')]);
+
+    expect(() => buildPluginRoutes()).toThrow(/single-segment/i);
+  });
+
+  it('keeps the previous snapshot when route construction fails', () => {
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('old', 'Old', '/old')]);
+    buildPluginRoutes();
+
+    const oldMappings = [...routeToPluginName.entries()];
+    const oldDefinitions = [...getPageRouteDefinitions()];
+
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([
+      page('first', 'First', '/foo'),
+      page('second', 'Second', '/Foo/'),
+    ]);
+
+    expect(() => buildPluginRoutes()).toThrow();
+    expect([...routeToPluginName.entries()]).toEqual(oldMappings);
+    expect(getPageRouteDefinitions()).toEqual(oldDefinitions);
+  });
+});
+
+describe('resolvePageRoute', () => {
+  const routes = [
+    {route: '/mws-map', name: 'mws-map'},
+    {route: '/status', name: 'status'},
+  ] as const;
+
+  it.each([
+    ['/mws-map', ''],
+    ['/mws-map/', ''],
+    ['/mws-map//', ''],
+    ['/mws-map/clients', '/clients'],
+    ['/mws-map/clients/', '/clients'],
+    ['/mws-map/clients//', '/clients/'],
+    ['/mws-map/a//b', '/a//b'],
+    ['/MWS-MAP/clients%20archive', '/clients%20archive'],
+  ])('resolves %s to child path %s', (pathname, childPath) => {
+    expect(resolvePageRoute(pathname, routes)).toEqual({name: 'mws-map', childPath});
+  });
+
+  it('requires a base-route segment boundary', () => {
+    expect(resolvePageRoute('/mws-map-extra', routes)).toBeNull();
+  });
 });
 
 describe('createAppRouter', () => {
   afterEach(() => {
+    window.history.replaceState(null, '', '/');
     vi.clearAllMocks();
   });
 
@@ -124,5 +210,31 @@ describe('createAppRouter', () => {
 
     await router.navigate('/');
     expect(router.route.pathname).toBe('/');
+  });
+
+  it('preserves raw child spelling at the router boundary', async () => {
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('map', 'Map', '/mws-map')]);
+
+    const router = createAppRouter();
+
+    await router.navigate('/mws-map/clients%20archive//');
+
+    expect(router.route.pathname).toBe('/mws-map/clients%20archive//');
+    expect(resolvePageRoute(router.route.pathname, getPageRouteDefinitions())).toEqual({
+      name: 'map',
+      childPath: '/clients%20archive/',
+    });
+    expect(router.route.params.child).toBe('clients archive');
+  });
+
+  it('repairs malformed page paths before initial router navigation', () => {
+    window.history.replaceState(null, '', '/mws-map/%GG?mode=large#node-7');
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('map', 'Map', '/mws-map')]);
+
+    createAppRouter();
+
+    expect(window.location.pathname).toBe('/mws-map');
+    expect(window.location.search).toBe('?mode=large');
+    expect(window.location.hash).toBe('#node-7');
   });
 });

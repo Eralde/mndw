@@ -1,7 +1,8 @@
-import {MNDW_TOKENS, type PaletteTokenMap} from '@mndw/sdk';
+import {MNDW_TOKENS, PageRouteError, type PaletteTokenMap} from '@mndw/sdk';
+import {of} from 'rxjs';
 import {describe, expect, it, vi} from 'vitest';
 import {createPluginContext} from './plugin-context.js';
-import type {PluginBackendDescriptor, WidgetListEntry} from './plugin-types.js';
+import type {PageListEntry, PluginBackendDescriptor, WidgetListEntry} from './plugin-types.js';
 
 vi.mock('../services/rci.service.js', () => ({
   rciService: {
@@ -65,7 +66,23 @@ function widgetEntry(backend: PluginBackendDescriptor = emptyBackend): WidgetLis
   };
 }
 
+function pageEntry(): PageListEntry {
+  return {
+    ...widgetEntry(),
+    type: 'page',
+    route: '/demo',
+  };
+}
+
 describe('createPluginContext', () => {
+  it('exposes stable page-route errors', () => {
+    const error = new PageRouteError('INVALID_PATH', 'invalid child path');
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe('PageRouteError');
+    expect(error.code).toBe('INVALID_PATH');
+  });
+
   it('attaches the overlay service', () => {
     const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
 
@@ -126,6 +143,16 @@ describe('createPluginContext', () => {
     const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
 
     expect(ctx.setTileTitle).toBeUndefined();
+  });
+
+  it('forwards pageRoute to page plugins and omits it for widgets', () => {
+    const pageRoute = {childPath$: of(''), navigate: vi.fn(() => Promise.resolve(undefined))};
+
+    const pageContext = createPluginContext(pageEntry(), 'demo:1', hostInfo, undefined, pageRoute);
+    const widgetContext = createPluginContext(widgetEntry(), 'demo:2', hostInfo, undefined, pageRoute);
+
+    expect(pageContext.pageRoute).toBe(pageRoute);
+    expect(widgetContext.pageRoute).toBeUndefined();
   });
 });
 

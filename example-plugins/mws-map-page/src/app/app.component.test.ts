@@ -1,6 +1,8 @@
 import '@angular/compiler';
 import {signal, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
+import type {PageRoute} from '@mndw/sdk';
+import {BehaviorSubject} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {normalizeMembers} from '../api/normalize';
 import {buildMap} from '../domain/mws/map-builder';
@@ -8,7 +10,7 @@ import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
 import {MwsDataService, type MwsViewPhase} from '../services/mws-data.service';
 import {FakePluginStorage} from '../test-support/plugin-storage.fake';
-import {MWS_MOCK_OPTIONS, PLUGIN_STORAGE} from '../tokens';
+import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, PLUGIN_STORAGE} from '../tokens';
 import {NodePositionStore} from '../services/node-position.store';
 import graphStyles from '../components/mws-graph/mws-graph.component.scss?raw';
 import clientsTableStyles from '../components/clients-table/clients-table.component.scss?raw';
@@ -39,8 +41,15 @@ function fakeData(phase: MwsViewPhase, roots: MwsNode[] = []): FakeData {
   };
 }
 
-function render(data: FakeData): ReturnType<typeof TestBed.createComponent<AppComponent>> {
+function render(
+  data: FakeData,
+  pageRoute?: PageRoute,
+): ReturnType<typeof TestBed.createComponent<AppComponent>> {
   TestBed.overrideProvider(MwsDataService, {useValue: data});
+
+  if (pageRoute !== undefined) {
+    TestBed.overrideProvider(MWS_PAGE_ROUTE, {useValue: pageRoute});
+  }
 
   const fixture = TestBed.createComponent(AppComponent);
 
@@ -148,10 +157,65 @@ describe('AppComponent', () => {
 
     expect(element.querySelector('mndw-tabs.map-tabs')).not.toBeNull();
     expect(element.querySelectorAll('mndw-tab')).toHaveLength(2);
-    expect(element.querySelector('mndw-tab#tab-map')?.textContent).toContain('Map');
-    expect(element.querySelector('mndw-tab#tab-clients')?.textContent).toContain('Clients');
-    expect(element.querySelector('mndw-tab-panel[for="tab-map"] mws-map-graph')).not.toBeNull();
-    expect(element.querySelector('mndw-tab-panel[for="tab-clients"] mws-clients-table')).not.toBeNull();
+    expect(element.querySelector('mndw-tab#map')?.textContent).toContain('Map');
+    expect(element.querySelector('mndw-tab#clients')?.textContent).toContain('Clients');
+    expect(element.querySelector('mndw-tab-panel[for="map"] mws-map-graph')).not.toBeNull();
+    expect(element.querySelector('mndw-tab-panel[for="clients"] mws-clients-table')).not.toBeNull();
+  });
+
+  it('maps page child paths to tabs and navigates tab changes', () => {
+    const childPath$ = new BehaviorSubject('/clients');
+    const navigate = vi.fn(() => Promise.resolve(undefined));
+    const pageRoute = {childPath$, navigate} as unknown as PageRoute;
+    const fixture = render(fakeData('ready', fixtureRoots()), pageRoute);
+    const tabs = fixture.nativeElement.querySelector('mndw-tabs') as HTMLElement & {value: string};
+
+    expect(tabs.value).toBe('clients');
+
+    tabs.dispatchEvent(new CustomEvent('mndwchange', {bubbles: true, detail: {value: 'map'}}));
+    fixture.detectChanges();
+
+    expect(navigate).toHaveBeenCalledWith('/topology');
+    expect(tabs.value).toBe('map');
+  });
+
+  it('maps root and unknown child paths to Map', () => {
+    const childPath$ = new BehaviorSubject('/unknown');
+    const pageRoute = {childPath$, navigate: vi.fn(() => Promise.resolve(undefined))} as unknown as PageRoute;
+    const fixture = render(fakeData('ready', fixtureRoots()), pageRoute);
+    const tabs = fixture.nativeElement.querySelector('mndw-tabs') as HTMLElement & {value: string};
+
+    expect(tabs.value).toBe('map');
+
+    childPath$.next('');
+    fixture.detectChanges();
+
+    expect(tabs.value).toBe('map');
+  });
+
+  it('does not subscribe or navigate when optional page route is absent', () => {
+    const fixture = render(fakeData('ready', fixtureRoots()));
+    const tabs = fixture.nativeElement.querySelector('mndw-tabs') as HTMLElement & {value: string};
+
+    tabs.dispatchEvent(new CustomEvent('mndwchange', {bubbles: true, detail: {value: 'clients'}}));
+    fixture.detectChanges();
+
+    expect(tabs.value).toBe('clients');
+  });
+
+  it('unsubscribes from page child paths during teardown', () => {
+    const unsubscribe = vi.fn();
+    const subscribe = vi.fn(() => ({unsubscribe}));
+    const pageRoute = {
+      childPath$: {subscribe},
+      navigate: vi.fn(() => Promise.resolve(undefined)),
+    } as unknown as PageRoute;
+    const fixture = render(fakeData('ready', fixtureRoots()), pageRoute);
+
+    fixture.destroy();
+
+    expect(subscribe).toHaveBeenCalledOnce();
+    expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
   it('shows the non-blocking banner when pollError is set', () => {

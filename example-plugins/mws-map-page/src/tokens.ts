@@ -1,7 +1,7 @@
 import {InjectionToken} from '@angular/core';
 import type {RciManager} from '@rci-tools/core';
 import type {Observable} from 'rxjs';
-import type {BackendClient, HostInfo, OverlayService, PluginContext, PluginStorage} from '@mndw/sdk';
+import type {BackendClient, HostInfo, OverlayService, PageRoute, PluginContext, PluginStorage} from '@mndw/sdk';
 
 export const RCI_MANAGER = new InjectionToken<RciManager>('RCI_MANAGER');
 export const OVERLAY = new InjectionToken<OverlayService>('OVERLAY');
@@ -26,4 +26,8 @@ export interface MwsMockOptions {
 
 export const MWS_MOCK_OPTIONS = new InjectionToken<MwsMockOptions>('MWS_MOCK_OPTIONS', {
   factory: () => ({mode: 'live', extenders: 0, clients: 0}),
+});
+
+export const MWS_PAGE_ROUTE = new InjectionToken<PageRoute | undefined>('MWS_PAGE_ROUTE', {
+  factory: () => undefined,
 });

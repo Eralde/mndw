@@ -5,6 +5,30 @@ import type {OverlayService} from './overlay.js';
 import type {BackendClient} from './backend-client.js';
 import type {PaletteTokenMap} from './palette.js';
 import type {MndwThemeName} from './tokens.js';
+import type {Observable} from 'rxjs';
+
+export interface PageRoute {
+  readonly childPath$: Observable<string>;
+  navigate(
+    childPath: string,
+    options?: {
+      replace?: boolean;
+      scrollToTop?: boolean;
+    },
+  ): Promise<void>;
+}
+
+export type PageRouteErrorCode = 'INVALID_PATH' | 'COMPLETED' | 'NAVIGATION_FAILED';
+
+export class PageRouteError extends Error {
+  public readonly code: PageRouteErrorCode;
+
+  constructor(code: PageRouteErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'PageRouteError';
+    this.code = code;
+  }
+}
 
 export interface HostInfo {
   deviceName: string;
@@ -51,6 +75,8 @@ export interface PluginContext {
   onPaletteChange(callback: (tokens: PaletteTokenMap) => void): () => void;
   /** Framework-agnostic top-layer UI (modal, drawer, popover, custom). */
   overlay: OverlayService;
+  /** Page plugins only. Navigate within the plugin's page route. Widgets receive `undefined`. */
+  pageRoute?: PageRoute;
   /**
    * Widgets only. Set the host tile title. Page plugins receive `undefined`.
    */

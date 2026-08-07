@@ -2,6 +2,7 @@ import {
   type BackendClient,
   type BackendDescriptor,
   type HostInfo,
+  type PageRoute,
   type PluginContext,
   createBackendClient,
 } from '@mndw/sdk';
@@ -73,6 +74,7 @@ export function createPluginContext(
   instanceId: string,
   hostInfo: HostInfo,
   setTileTitle?: (title: string) => void,
+  pageRoute?: PageRoute,
 ): PluginContext {
   const {service, dispose} = createPluginOverlayService(entry.name, instanceId);
 
@@ -96,6 +98,7 @@ export function createPluginContext(
       onPaletteChange: subscribePalette,
       overlay: service,
       setTileTitle,
+      pageRoute: entry.type === 'page' ? pageRoute : undefined,
     } satisfies PluginContext,
   );
 

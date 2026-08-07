@@ -2,6 +2,7 @@ import {
   CUSTOM_ELEMENTS_SCHEMA,
   Component,
   Input,
+  type OnDestroy,
   type OnInit,
   ViewChild,
   computed,
@@ -9,13 +10,14 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import type {Subscription} from 'rxjs';
 import {MwsGraphComponent} from '../components/mws-graph/mws-graph.component';
 import {MwsClientsTableComponent} from '../components/clients-table/clients-table.component';
 import {findNodeById, hasUpdate} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {NodePositionStore} from '../services/node-position.store';
 import {MwsDataService} from '../services/mws-data.service';
-import {MWS_MOCK_OPTIONS} from '../tokens';
+import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE} from '../tokens';
 
 interface MapSummary {
   total: number;
@@ -50,7 +52,7 @@ function walkForest(roots: MwsNode[], visit: (node: MwsNode) => void): void {
   imports: [MwsGraphComponent, MwsClientsTableComponent],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnDestroy, OnInit {
   @Input({required: true})
   public openNodeDrawer: (nodeId: string, title: string, onClose: () => void) => void = () => undefined;
 
@@ -59,7 +61,9 @@ export class AppComponent implements OnInit {
 
   protected readonly data = inject(MwsDataService);
   protected readonly mockOptions = inject(MWS_MOCK_OPTIONS);
+  private readonly pageRoute = inject(MWS_PAGE_ROUTE, {optional: true});
   protected readonly positions = inject(NodePositionStore);
+  protected readonly selectedTab = signal<'map' | 'clients'>('map');
   protected readonly editMode = signal(false);
   protected readonly selectedNodeId = signal<string | null>(null);
   protected readonly summary = computed<MapSummary>(() => {
@@ -100,6 +104,7 @@ export class AppComponent implements OnInit {
 
     return segments.join(' · ');
   });
+  private pageRouteSubscription?: Subscription;
 
   public constructor() {
     effect(() => {
@@ -114,6 +119,16 @@ export class AppComponent implements OnInit {
   public ngOnInit(): void {
     this.data.start();
     void this.positions.load();
+
+    if (this.pageRoute !== null && this.pageRoute !== undefined) {
+      this.pageRouteSubscription = this.pageRoute.childPath$.subscribe((childPath) => {
+        this.selectedTab.set(childPath === '/clients' ? 'clients' : 'map');
+      });
+    }
+  }
+
+  public ngOnDestroy(): void {
+    this.pageRouteSubscription?.unsubscribe();
   }
 
   protected onNodeSelected(nodeId: string): void {
@@ -146,5 +161,19 @@ export class AppComponent implements OnInit {
 
   protected retry(): void {
     this.data.retry();
+  }
+
+  protected onTabChanged(event: Event): void {
+    const value = (event as CustomEvent<{value?: string}>).detail?.value === 'clients' ? 'clients' : 'map';
+
+    this.selectedTab.set(value);
+
+    if (this.pageRoute === null || this.pageRoute === undefined) {
+      return;
+    }
+
+    const childPath = value === 'clients' ? '/clients' : '/topology';
+
+    void this.pageRoute.navigate(childPath).catch(() => undefined);
   }
 }

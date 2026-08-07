@@ -14,13 +14,20 @@ import {
   SANDBOX_RELOAD_EVENT,
   type SandboxReloadDetail,
 } from '../runtime/sandbox-loader.js';
-import {appRouter, routeToPluginName} from '../router/create-app-router.js';
+import {PageRouteController} from '../router/page-route-controller.js';
+import {
+  appRouter,
+  getPageRouteDefinitions,
+  resolvePageRoute,
+} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 
 interface ActiveMount {
   generation: number;
+  pluginName: string;
   child: HTMLElement;
+  controller: PageRouteController;
   mounted: MountedPlugin | null;
 }
 
@@ -45,9 +52,10 @@ function bindHost(node: HTMLElement): {destroy(): void} {
   };
 }
 
-const pluginName = $derived.by(() => {
-  return routeToPluginName.get(appRouter.route.pathname) ?? null;
+const routeMatch = $derived.by(() => {
+  return resolvePageRoute(appRouter.route.pathname, getPageRouteDefinitions());
 });
+const pluginName = $derived(routeMatch?.name ?? null);
 const depsState = $derived.by(() => {
   return pluginName === null ? 'ready' : getDepsStatus(pluginName);
 });
@@ -64,6 +72,7 @@ function disposeActive(): void {
     return;
   }
 
+  active.controller.complete();
   unmountPlugin(active.mounted, active.child, UNMOUNT_OPTIONS);
   active.child.remove();
   active = null;
@@ -84,7 +93,10 @@ function mountCurrent(target: string | null): void {
     return;
   }
 
-  void mountPluginRecord(plugin);
+  void mountPluginRecord(
+    plugin,
+    routeMatch?.name === target ? routeMatch.childPath : '',
+  );
 }
 
 /**
@@ -93,7 +105,10 @@ function mountCurrent(target: string | null): void {
  * failure. A navigation that supersedes this mount before an async `createInstance` resolves
  * disposes the stale instance against its own child, leaving the current page untouched.
  */
-function mountPluginRecord(plugin: LoadedPlugin): Promise<boolean> {
+function mountPluginRecord(
+  plugin: LoadedPlugin,
+  initialChildPath: string,
+): Promise<boolean> {
   if (host === undefined) {
     return Promise.resolve(false);
   }
@@ -106,8 +121,32 @@ function mountPluginRecord(plugin: LoadedPlugin): Promise<boolean> {
   child.className = 'mndw-page-plugin__mount';
   host.appendChild(child);
 
-  const record: ActiveMount = {generation: thisGeneration, child,
-    mounted: null};
+  const definition = getPageRouteDefinitions().find((route) =>
+    route.name === plugin.entry.name
+  );
+  if (definition === undefined) {
+    child.remove();
+
+    return Promise.resolve(false);
+  }
+
+  const controller = new PageRouteController(
+    definition.route,
+    initialChildPath,
+    {
+      navigate: (pathname, options) =>
+        appRouter.navigate(pathname as never, options),
+      getLocation: () => ({search: globalThis.location.search,
+        hash: globalThis.location.hash}),
+    },
+  );
+  const record: ActiveMount = {
+    generation: thisGeneration,
+    pluginName: plugin.entry.name,
+    child,
+    controller,
+    mounted: null,
+  };
 
   active = record;
 
@@ -116,6 +155,8 @@ function mountPluginRecord(plugin: LoadedPlugin): Promise<boolean> {
     plugin.entry,
     `${plugin.entry.name}:1`,
     hostInfo,
+    undefined,
+    controller.pageRoute,
   );
   const result = mountPlugin(child, plugin, context);
 
@@ -153,12 +194,12 @@ async function remountActivePage(
 ): Promise<boolean> {
   disposeActive();
 
-  if (await mountPluginRecord(next)) {
+  if (await mountPluginRecord(next, routeMatch?.childPath ?? '')) {
     return true;
   }
 
   disposeActive();
-  await mountPluginRecord(prior);
+  await mountPluginRecord(prior, routeMatch?.childPath ?? '');
 
   return false;
 }
@@ -182,6 +223,14 @@ $effect(() => {
 
   disposeActive();
   mountCurrent(mountTarget);
+});
+
+$effect(() => {
+  const match = routeMatch;
+
+  if (match !== null && active?.pluginName === match.name) {
+    active.controller.setPath(match.childPath);
+  }
 });
 
 $effect(() => {

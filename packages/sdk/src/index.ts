@@ -1,5 +1,6 @@
 export type {MndwPlugin, PluginInstance, PluginResizeSize} from './plugin.js';
-export type {HostInfo, PluginContext} from './context.js';
+export {PageRouteError} from './context.js';
+export type {HostInfo, PageRoute, PageRouteErrorCode, PluginContext} from './context.js';
 export type {PluginStorage} from './storage.js';
 export type {ServiceInjector} from './injector.js';
 export type {

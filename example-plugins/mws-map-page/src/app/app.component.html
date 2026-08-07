@@ -31,11 +31,11 @@
       <p class="state">No extenders found.</p>
     }
     @case ('ready') {
-      <mndw-tabs class="map-tabs" value="map">
-        <mndw-tab id="tab-map">Map</mndw-tab>
-        <mndw-tab id="tab-clients">Clients</mndw-tab>
+      <mndw-tabs class="map-tabs" [value]="selectedTab()" (mndwchange)="onTabChanged($event)">
+        <mndw-tab id="map">Map</mndw-tab>
+        <mndw-tab id="clients">Clients</mndw-tab>
 
-        <mndw-tab-panel for="tab-map">
+        <mndw-tab-panel for="map">
           <mws-map-graph
             #graph
             class="graph"
@@ -52,7 +52,7 @@
           />
         </mndw-tab-panel>
 
-        <mndw-tab-panel for="tab-clients">
+        <mndw-tab-panel for="clients">
           <mws-clients-table [roots]="data.roots()" />
         </mndw-tab-panel>
       </mndw-tabs>

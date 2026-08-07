@@ -11,10 +11,16 @@ vi.mock('../runtime/plugin-lifecycle.js', () => ({
 }));
 
 vi.mock('../runtime/plugin-context.js', () => ({
-  createPluginContext: vi.fn((_entry: unknown, instanceId: string) => ({instanceId})),
+  createPluginContext: vi.fn(
+    (_entry: unknown, instanceId: string, _hostInfo: unknown, _setTileTitle: unknown, pageRoute: unknown) => ({
+      instanceId,
+      pageRoute,
+    }),
+  ),
 }));
 
 import type {MndwPlugin} from '@mndw/sdk';
+import {createPluginContext} from '../runtime/plugin-context.js';
 import {type MountedPlugin, mountPlugin, unmountPlugin} from '../runtime/plugin-lifecycle.js';
 import {type LoadedPage, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry} from '../runtime/plugin-types.js';
@@ -96,7 +102,70 @@ describe('PagePluginHost', () => {
     const child = host?.querySelector('.mndw-page-plugin__mount');
 
     expect(child).not.toBeNull();
-    expect(mountPlugin).toHaveBeenCalledWith(child, pageA, {instanceId: 'page-a:1'});
+    expect(mountPlugin).toHaveBeenCalledWith(
+      child,
+      pageA,
+      expect.objectContaining({instanceId: 'page-a:1', pageRoute: expect.anything()}),
+    );
+
+    void unmount(component);
+  });
+
+  it('keeps one page instance while child routes change and exposes controller navigation', async () => {
+    vi.mocked(mountPlugin).mockReturnValue(fakeMounted('page-a'));
+
+    const {component} = await setup();
+    const pageRoute = vi.mocked(createPluginContext).mock.calls[0]?.[4];
+    const seen: string[] = [];
+    const unsubscribe = pageRoute?.childPath$.subscribe((path) => seen.push(path));
+
+    await router.navigate('/page-a/clients');
+    flushSync();
+
+    expect(mountPlugin).toHaveBeenCalledTimes(1);
+    expect(unmountPlugin).not.toHaveBeenCalled();
+    expect(seen).toEqual(['', '/clients']);
+
+    await pageRoute?.navigate('/settings');
+    expect(router.route.pathname).toBe('/page-a/settings');
+    expect(mountPlugin).toHaveBeenCalledTimes(1);
+
+    unsubscribe?.unsubscribe();
+    void unmount(component);
+  });
+
+  it('completes child route stream exactly once during teardown', async () => {
+    vi.mocked(mountPlugin).mockReturnValue(fakeMounted('page-a'));
+
+    const {component} = await setup();
+    const pageRoute = vi.mocked(createPluginContext).mock.calls[0]?.[4];
+    let completeCount = 0;
+
+    pageRoute?.childPath$.subscribe({complete: () => completeCount += 1});
+
+    void unmount(component);
+    flushSync();
+
+    expect(completeCount).toBe(1);
+  });
+
+  it('lets concurrent real router navigations settle on the later child path', async () => {
+    vi.mocked(mountPlugin).mockReturnValue(fakeMounted('page-a'));
+
+    const {component} = await setup();
+    const pageRoute = vi.mocked(createPluginContext).mock.calls[0]?.[4];
+
+    if (pageRoute === undefined) {
+      throw new Error('page route context was not created');
+    }
+
+    const first = pageRoute.navigate('/first');
+    const second = pageRoute.navigate('/second');
+
+    await Promise.all([first, second]);
+
+    expect(router.route.pathname).toBe('/page-a/second');
+    expect(mountPlugin).toHaveBeenCalledTimes(1);
 
     void unmount(component);
   });
@@ -204,7 +273,11 @@ describe('PagePluginHost', () => {
     const children = target.querySelectorAll('.mndw-page-plugin__mount');
 
     expect(children.length).toBe(1);
-    expect(mountPlugin).toHaveBeenLastCalledWith(children[0], pageB, {instanceId: 'page-b:1'});
+    expect(mountPlugin).toHaveBeenLastCalledWith(
+      children[0],
+      pageB,
+      expect.objectContaining({instanceId: 'page-b:1', pageRoute: expect.anything()}),
+    );
 
     void unmount(component);
   });
@@ -261,7 +334,11 @@ describe('PagePluginHost', () => {
       clearStorage: false,
       closeReason: 'host-navigation',
     });
-    expect(mountPlugin).toHaveBeenCalledWith(expect.anything(), next, {instanceId: 'page-a:1'});
+    expect(mountPlugin).toHaveBeenCalledWith(
+      expect.anything(),
+      next,
+      expect.objectContaining({instanceId: 'page-a:1', pageRoute: expect.anything()}),
+    );
 
     void unmount(component);
   });
@@ -283,8 +360,18 @@ describe('PagePluginHost', () => {
     const ok = await registered;
 
     expect(ok).toBe(false);
-    expect(mountPlugin).toHaveBeenNthCalledWith(1, expect.anything(), next, {instanceId: 'page-a:1'});
-    expect(mountPlugin).toHaveBeenNthCalledWith(2, expect.anything(), prior, {instanceId: 'page-a:1'});
+    expect(mountPlugin).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      next,
+      expect.objectContaining({instanceId: 'page-a:1', pageRoute: expect.anything()}),
+    );
+    expect(mountPlugin).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      prior,
+      expect.objectContaining({instanceId: 'page-a:1', pageRoute: expect.anything()}),
+    );
 
     void unmount(component);
   });

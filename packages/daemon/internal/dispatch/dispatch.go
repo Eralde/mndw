@@ -22,6 +22,7 @@ import (
 
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
+	"mndwd/internal/output"
 	"mndwd/internal/pluginruntime"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
@@ -32,8 +33,6 @@ const (
 	defaultTimeout           = 30 * time.Second
 	defaultMaxRequestBytes   = 1 << 20 // 1 MiB
 	defaultMaxConcurrentExec = 8
-	// maxStderrTail bounds how much script stderr is logged / echoed in --dev detail.
-	maxStderrTail = 4 << 10 // 4 KiB
 )
 
 // Config carries the backend script dispatch limits.
@@ -127,8 +126,7 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 	}
 
-	if endpoint.Csrf && r.Header.Get("X-Mndw-Csrf") != "1" {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusForbidden, httpx.CodeCsrfRequired, "CSRF header required"))
+	if endpoint.Csrf && !httpx.RequireCSRF(w, h.logger, r) {
 
 		return
 	}
@@ -222,7 +220,7 @@ func (h *Handler) exec(w http.ResponseWriter, r *http.Request, plugin *registry.
 
 	if stderr.Len() > 0 {
 		h.logger.Warn("plugin script stderr",
-			"plugin", plugin.Name, "endpoint", endpoint.ID, "stderr", string(tail(stderr.Bytes())))
+			"plugin", plugin.Name, "endpoint", endpoint.ID, "stderr", string(output.Tail(stderr.Bytes())))
 	}
 
 	if ctx.Err() == context.DeadlineExceeded {
@@ -255,7 +253,7 @@ func (h *Handler) exec(w http.ResponseWriter, r *http.Request, plugin *registry.
 func (h *Handler) writeScriptError(w http.ResponseWriter, code, message string, stderr []byte) {
 	apiErr := httpx.NewError(http.StatusBadGateway, code, message)
 	if h.cfg.Dev && len(stderr) > 0 {
-		apiErr = apiErr.WithDetail(map[string]string{"stderr": string(tail(stderr))})
+		apiErr = apiErr.WithDetail(map[string]string{"stderr": string(output.Tail(stderr))})
 	}
 	httpx.WriteError(w, h.logger, apiErr)
 }
@@ -315,13 +313,4 @@ func safeScriptPath(dir, source string) (string, *httpx.APIError) {
 	}
 
 	return joined, nil
-}
-
-// tail returns the last maxStderrTail bytes of b.
-func tail(b []byte) []byte {
-	if len(b) <= maxStderrTail {
-		return b
-	}
-
-	return b[len(b)-maxStderrTail:]
 }

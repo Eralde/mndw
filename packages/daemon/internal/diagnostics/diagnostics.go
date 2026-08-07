@@ -108,8 +108,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("X-Mndw-Csrf") != "1" {
-		httpx.WriteError(w, nil, httpx.NewError(http.StatusForbidden, httpx.CodeCsrfRequired, "CSRF header required"))
+	if !httpx.RequireCSRF(w, nil, r) {
 		return
 	}
 
@@ -184,7 +183,7 @@ func (h *Handler) collectPlugin(result *PluginDiagnostics, totalBytes *int64) {
 	data, readErr := io.ReadAll(io.LimitReader(file, readLimit))
 	readBytes := int64(len(data))
 	if readErr != nil {
-		*totalBytes += minInt64(readBytes, remaining)
+		*totalBytes += min(readBytes, remaining)
 		result.Errors = append(result.Errors, boundedError("read diagnostics", readErr))
 		return
 	}
@@ -302,13 +301,6 @@ func sanitizeValue(value any) any {
 func isSensitiveKey(key string) bool {
 	_, ok := sensitiveKeys[strings.ToLower(key)]
 	return ok
-}
-
-func minInt64(left, right int64) int64 {
-	if left < right {
-		return left
-	}
-	return right
 }
 
 func readTail(path string, maxBytes int64) (string, string) {

@@ -209,7 +209,7 @@ func (h *Handler) handleProvision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) csrf(w http.ResponseWriter, r *http.Request) bool {
-	if r.Header.Get("X-Mndw-Csrf") != "1" {
+	if !httpx.CSRFPresent(r) {
 		writeSessionError(w, http.StatusForbidden, httpx.CodeCsrfRequired, "CSRF header required")
 		return false
 	}

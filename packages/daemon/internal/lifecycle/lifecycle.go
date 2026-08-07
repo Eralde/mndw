@@ -18,15 +18,13 @@ import (
 	"strings"
 	"time"
 
+	"mndwd/internal/output"
 	"mndwd/internal/pluginruntime"
 )
 
 // hookTimeout bounds how long a start/stop hook may run. Hooks should return promptly
 // after (un)launching the background process.
 const hookTimeout = 30 * time.Second
-
-// outputTailBytes bounds how much hook output is kept for logging.
-const outputTailBytes = 4 << 10
 
 // Manager runs daemon hooks.
 type Manager struct {
@@ -88,7 +86,7 @@ func (m *Manager) runHook(name, dir, rel, which string) error {
 	cmd.Stderr = &out
 
 	if err := cmd.Run(); err != nil {
-		m.logger.Error("daemon hook failed", "plugin", name, "hook", which, "output", tail(out.String()))
+		m.logger.Error("daemon hook failed", "plugin", name, "hook", which, "output", output.Tail(out.String()))
 
 		return fmt.Errorf("daemon %s hook for %s: %w", which, name, err)
 	}
@@ -108,12 +106,4 @@ func safeJoin(dir, rel string) (string, error) {
 	}
 
 	return joined, nil
-}
-
-func tail(s string) string {
-	if len(s) <= outputTailBytes {
-		return s
-	}
-
-	return s[len(s)-outputTailBytes:]
 }

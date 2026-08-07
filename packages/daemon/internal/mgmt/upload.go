@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
@@ -161,6 +162,6 @@ func newRecord(m *manifest.Manifest, manifestBytes []byte, approval string, enab
 		Approval:    approval,
 		Enabled:     enabled,
 		Manifest:    append([]byte(nil), manifestBytes...),
-		InstalledAt: nowUTC(),
+		InstalledAt: time.Now().UTC(),
 	}
 }

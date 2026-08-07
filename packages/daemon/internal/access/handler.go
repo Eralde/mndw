@@ -19,8 +19,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("X-Mndw-Csrf") != "1" {
-		httpx.WriteError(w, nil, httpx.NewError(http.StatusForbidden, httpx.CodeCsrfRequired, "CSRF header required"))
+	if !httpx.RequireCSRF(w, nil, r) {
 		return
 	}
 	switch r.Method {

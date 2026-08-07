@@ -15,14 +15,13 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"mndwd/internal/output"
 )
 
 // pkgNameRe accepts a conservative opkg package name. Every name is shell-adjacent
 // (passed to exec), so it must stay within this character set.
 var pkgNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9+._-]*$`)
-
-// outputTailBytes bounds how much command output is kept for logging.
-const outputTailBytes = 4 << 10
 
 // InvalidPackageError is returned when a package name fails validation. Callers map
 // it to a 400 (INVALID_PACKAGE_NAME); a package name never reaches the shell.
@@ -87,14 +86,6 @@ func validate(packages []string) error {
 	}
 
 	return nil
-}
-
-func tail(s string) string {
-	if len(s) <= outputTailBytes {
-		return s
-	}
-
-	return s[len(s)-outputTailBytes:]
 }
 
 // ------------------------------------
@@ -181,12 +172,12 @@ func (m *execManager) mutate(ctx context.Context, action string, packages []stri
 	commandArgs = append(commandArgs, packages...)
 	out, exitCode, err := m.run(ctx, commandArgs...)
 	if err != nil {
-		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", tail(out))
+		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", output.Tail(out))
 
 		return fmt.Errorf("opkg %s: %w", action, err)
 	}
 	if exitCode != 0 {
-		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", tail(out), "exitCode", exitCode)
+		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", output.Tail(out), "exitCode", exitCode)
 
 		return fmt.Errorf("opkg %s exited %d", action, exitCode)
 	}
@@ -214,12 +205,12 @@ func (m *execManager) Update(ctx context.Context) error {
 
 	out, exitCode, err := m.run(ctx, "opkg", "update")
 	if err != nil {
-		m.logger.Error("opkg update failed", "output", tail(out))
+		m.logger.Error("opkg update failed", "output", output.Tail(out))
 
 		return fmt.Errorf("opkg update: %w", err)
 	}
 	if exitCode != 0 {
-		m.logger.Error("opkg update failed", "output", tail(out), "exitCode", exitCode)
+		m.logger.Error("opkg update failed", "output", output.Tail(out), "exitCode", exitCode)
 
 		return fmt.Errorf("opkg update exited %d", exitCode)
 	}
@@ -238,12 +229,12 @@ func (m *execManager) ListAvailable(ctx context.Context) ([]string, error) {
 func (m *execManager) list(ctx context.Context, verb string) ([]string, error) {
 	out, exitCode, err := m.run(ctx, "opkg", verb)
 	if err != nil {
-		m.logger.Error("opkg list failed", "verb", verb, "output", tail(out))
+		m.logger.Error("opkg list failed", "verb", verb, "output", output.Tail(out))
 
 		return nil, fmt.Errorf("opkg %s: %w", verb, err)
 	}
 	if exitCode != 0 {
-		m.logger.Error("opkg list failed", "verb", verb, "output", tail(out), "exitCode", exitCode)
+		m.logger.Error("opkg list failed", "verb", verb, "output", output.Tail(out), "exitCode", exitCode)
 
 		return nil, fmt.Errorf("opkg %s exited %d", verb, exitCode)
 	}
@@ -252,9 +243,9 @@ func (m *execManager) list(ctx context.Context, verb string) ([]string, error) {
 }
 
 func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
-	installedMap, installedErr := m.listInstalledMap(ctx)
+	installedMap, installedErr := m.listMap(ctx, "list-installed")
 
-	availableMap, availableErr := m.listAvailableMap(ctx)
+	availableMap, availableErr := m.listMap(ctx, "list")
 
 	if installedErr != nil && availableErr != nil {
 		return nil, fmt.Errorf("opkg list-installed: %w; opkg list: %w", installedErr, availableErr)
@@ -301,33 +292,13 @@ func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
 	return combined, nil
 }
 
-func (m *execManager) listInstalledMap(ctx context.Context) (map[string]PackageEntry, error) {
-	out, exitCode, err := m.run(ctx, "opkg", "list-installed")
+func (m *execManager) listMap(ctx context.Context, verb string) (map[string]PackageEntry, error) {
+	out, exitCode, err := m.run(ctx, "opkg", verb)
 	if err != nil {
-		return nil, fmt.Errorf("opkg list-installed: %w", err)
+		return nil, fmt.Errorf("opkg %s: %w", verb, err)
 	}
 	if exitCode != 0 {
-		return nil, fmt.Errorf("opkg list-installed exited %d", exitCode)
-	}
-	entries, err := parseEntries(out)
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[string]PackageEntry, len(entries))
-	for _, entry := range entries {
-		result[entry.Name] = entry
-	}
-
-	return result, nil
-}
-
-func (m *execManager) listAvailableMap(ctx context.Context) (map[string]PackageEntry, error) {
-	out, exitCode, err := m.run(ctx, "opkg", "list")
-	if err != nil {
-		return nil, fmt.Errorf("opkg list: %w", err)
-	}
-	if exitCode != 0 {
-		return nil, fmt.Errorf("opkg list exited %d", exitCode)
+		return nil, fmt.Errorf("opkg %s exited %d", verb, exitCode)
 	}
 	entries, err := parseEntries(out)
 	if err != nil {

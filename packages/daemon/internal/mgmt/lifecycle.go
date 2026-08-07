@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
@@ -387,8 +386,4 @@ func (h *Handler) isBuiltin(name string) bool {
 	_, err := os.Stat(filepath.Join(h.cfg.BuiltinPluginsDir, name, manifestFileName))
 
 	return err == nil
-}
-
-func nowUTC() time.Time {
-	return time.Now().UTC()
 }

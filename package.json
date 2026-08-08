@@ -13,6 +13,8 @@
     "build-builtin-plugins": "node --import tsx build/builtin-plugins.ts",
     "build-ipk": "node --import tsx build/packaging/build-ipk.ts",
     "fmt": "dprint fmt \"packages/**/*.*\" \"frontend/**/*.*\" \"tooling/**/*.*\" \"plugins/builtin/**/*.*\" \"build/**/*.*\"",
+    "fmt:go": "GOCACHE=$(pwd)/.cache/go-build go run ./tooling/go-blanklr -w daemon packages plugins",
+    "fmt:go:check": "GOCACHE=$(pwd)/.cache/go-build go run ./tooling/go-blanklr --check daemon packages plugins",
     "lint": "eslint --cache --cache-location .eslintcache --fix --no-error-on-unmatched-pattern \"packages/\" \"frontend/\" \"tooling/\" \"plugins/builtin/\" \"build/\"",
     "lint-styles": "stylelint --config .stylelintrc.js \"**/*.scss\" --fix && stylelint --config .stylelintrc.css.js \"**/*.css\" --fix"
   },

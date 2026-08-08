@@ -71,7 +71,7 @@ func run(cfg Config) error {
 	}
 
 	verifier := authz.New(cfg.RouterURL, cfg.Dev, logger, authz.Options{})
-	handler, life, reg, opkgMgr, tracker, closePersistentSession := assembleWithCleanup(cfg, store, paletteStore, verifier, logger)
+	c := assemble(cfg, store, paletteStore, verifier, logger)
 
 	// run owns all lifetimes: the signal context drives graceful HTTP shutdown, and
 	// background install work runs under a child so a signal cancels installs
@@ -82,12 +82,12 @@ func run(cfg Config) error {
 	// Builtins skip the approval flow (where user-plugin opkg deps are installed), so
 	// their deps install in the background — off the critical path, so the UI's first
 	// request is served immediately. Pre-registration must precede the listener bind.
-	coord := newStartupCoordinator(reg, opkgMgr, life, tracker, opkgInstallRetryDelays, logger)
+	coord := newStartupCoordinator(c.reg, c.opkgMgr, c.life, c.tracker, opkgInstallRetryDelays, logger)
 	coord.PreRegister()
 
 	// Start backend.daemon hooks whose dependencies need no background install;
 	// dep-declaring builtins chain behind their install.
-	startupActivate(reg, life, coord.Deferred, logger)
+	startupActivate(c.reg, c.life, coord.Deferred, logger)
 
 	bgCtx, bgCancel := context.WithCancel(ctx)
 	defer bgCancel()
@@ -95,13 +95,13 @@ func run(cfg Config) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           handler,
+		Handler:           c.handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	var closePersistentOnce sync.Once
 	closePersistent := func() {
-		closePersistentOnce.Do(closePersistentSession)
+		closePersistentOnce.Do(c.closePersistentSession)
 	}
 	err = serve(ctx, srv, logger, closePersistent)
 	closePersistent()
@@ -110,22 +110,29 @@ func run(cfg Config) error {
 	// Deferred builtins whose Start hook never ran are excluded from shutdown.
 	bgCancel()
 	coord.Wait()
-	shutdownDaemons(reg, life, func(name string) bool {
+	shutdownDaemons(c.reg, c.life, func(name string) bool {
 		return coord.Deferred(name) && !coord.Started(name)
 	}, logger)
 
 	return err
 }
 
-// assemble builds the fully-wired HTTP handler plus the lifecycle manager, registry,
-// and opkg manager the startup/shutdown hooks need. Kept separate from run so the
-// integration test can drive the exact same wiring over httptest.
-func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry, opkg.Manager, *readiness.Tracker) {
-	handler, life, reg, opkgMgr, tracker, _ := assembleWithCleanup(cfg, store, paletteStore, verifier, logger)
-	return handler, life, reg, opkgMgr, tracker
+// components is the fully-wired daemon: the HTTP handler plus the lifecycle manager,
+// registry, opkg manager, and readiness tracker the startup/shutdown hooks need, and
+// the persistent RCI session's cleanup. closePersistentSession must be called on
+// shutdown.
+type components struct {
+	handler                http.Handler
+	life                   *lifecycle.Manager
+	reg                    *registry.Registry
+	opkgMgr                opkg.Manager
+	tracker                *readiness.Tracker
+	closePersistentSession func()
 }
 
-func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger) (http.Handler, *lifecycle.Manager, *registry.Registry, opkg.Manager, *readiness.Tracker, func()) {
+// assemble builds the fully-wired daemon. Kept separate from run so the integration
+// test can drive the exact same wiring over httptest.
+func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger) components {
 	reg := registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, logger)
 	opkgMgr := opkg.New(cfg.Opkg, logger)
 	runtimeRoot := cfg.PluginRuntimeRoot
@@ -135,6 +142,28 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 	life := lifecycle.New(logger, lifecycle.Options{RuntimeRoot: runtimeRoot})
 	tracker := readiness.New()
 
+	mux := http.NewServeMux()
+	// The whole management surface is session-gated; dispatch and ws gate themselves
+	// (per-plugin, honoring backend.public), so they take the raw verifier.
+	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, life, tracker, reg, verifier, logger)
+	closePersistentSession := registerAccess(mux, cfg, store, reg, runtimeRoot, verifier, logger)
+	registerPalette(mux, mgmtMux, paletteStore, logger)
+	registerPlugins(mux, cfg, reg, verifier, runtimeRoot, logger)
+	wsproxy.New(reg, verifier, logger).Register(mux)
+
+	return components{
+		handler:                httpx.LogMiddleware(logger, mux),
+		life:                   life,
+		reg:                    reg,
+		opkgMgr:                opkgMgr,
+		tracker:                tracker,
+		closePersistentSession: closePersistentSession,
+	}
+}
+
+// registerMgmt mounts the session-gated management surface and returns its mux so
+// other session-gated routes (e.g. protected palette) can share the gate.
+func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, life *lifecycle.Manager, tracker *readiness.Tracker, reg *registry.Registry, verifier *authz.Verifier, logger *slog.Logger) *http.ServeMux {
 	mgmtHandler := mgmt.New(mgmt.Config{
 		StagingDir:        cfg.StagingDir(),
 		UserPluginsDir:    cfg.UserPluginsDir,
@@ -142,22 +171,16 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 		MaxUploadBytes:    maxUploadBytes,
 	}, store, opkgMgr, life, tracker, reg, logger)
 
-	dispatchHandler := dispatch.New(dispatch.Config{
-		Timeout:           cfg.ExecTimeout,
-		MaxRequestBytes:   cfg.MaxRequestBytes,
-		MaxConcurrentExec: cfg.MaxConcurrentExec,
-		Dev:               cfg.Dev,
-		PluginRuntimeRoot: runtimeRoot,
-	}, reg, verifier, logger)
-
-	wsHandler := wsproxy.New(reg, verifier, logger)
-
-	mux := http.NewServeMux()
-	// The whole management surface is session-gated; dispatch and ws gate themselves
-	// (per-plugin, honoring backend.public), so they take the raw verifier.
 	mgmtMux := http.NewServeMux()
 	mgmtHandler.Register(mgmtMux)
 	mux.Handle("/api/mgmt/", verifier.Middleware(mgmtMux))
+
+	return mgmtMux
+}
+
+// registerAccess mounts the consent/diagnostics surface plus the persistent RCI
+// session, returning the session's cleanup func.
+func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, verifier *authz.Verifier, logger *slog.Logger) func() {
 	accessMux := http.NewServeMux()
 	access.New(store).Register(accessMux)
 	diagnosticsLogFile := cfg.DiagnosticsLogFile
@@ -172,15 +195,30 @@ func assembleWithCleanup(cfg Config, store *state.Store, paletteStore *palette.S
 	// Keep the route mounted in dev so the host exercises the same consent contract;
 	// the verifier still bypasses only session validation when cfg.Dev is true.
 	mux.Handle("/api/mndw/", verifier.Middleware(accessMux))
+
+	return closePersistentSession
+}
+
+// registerPalette mounts the public palette route and its session-gated counterpart.
+func registerPalette(mux *http.ServeMux, mgmtMux *http.ServeMux, paletteStore *palette.Store, logger *slog.Logger) {
 	paletteHandler := palette.NewHandler(paletteStore, logger)
 	paletteHandler.RegisterPublic(mux)
 	paletteHandler.RegisterProtected(mgmtMux)
+}
+
+// registerPlugins mounts the per-plugin dispatch surface, which gates itself.
+func registerPlugins(mux *http.ServeMux, cfg Config, reg *registry.Registry, verifier *authz.Verifier, runtimeRoot string, logger *slog.Logger) {
+	dispatchHandler := dispatch.New(dispatch.Config{
+		Timeout:           cfg.ExecTimeout,
+		MaxRequestBytes:   cfg.MaxRequestBytes,
+		MaxConcurrentExec: cfg.MaxConcurrentExec,
+		Dev:               cfg.Dev,
+		PluginRuntimeRoot: runtimeRoot,
+	}, reg, verifier, logger)
+
 	pluginMux := http.NewServeMux()
 	dispatchHandler.Register(pluginMux)
 	mux.Handle("/api/plugins/", httpx.PluginNoStoreMiddleware(pluginMux))
-	wsHandler.Register(mux)
-
-	return httpx.LogMiddleware(logger, mux), life, reg, opkgMgr, tracker, closePersistentSession
 }
 
 // opkgInstallTimeout bounds one builtin's dependency install at startup (an install

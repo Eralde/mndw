@@ -54,7 +54,7 @@ func buildServerMode(t *testing.T, verifier *authz.Verifier, dev bool) (*httptes
 		t.Fatalf("palette.Open: %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler, _, _, _, _ := assemble(cfg, store, paletteStore, verifier, logger)
+	handler := assemble(cfg, store, paletteStore, verifier, logger).handler
 
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -207,7 +207,7 @@ func TestIntegrationDiagnosticsSurvivesPersistentStoreFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler, _, _, _, _ := assemble(cfg, store, paletteStore, authz.New("", true, logger, authz.Options{}), logger)
+	handler := assemble(cfg, store, paletteStore, authz.New("", true, logger, authz.Options{}), logger).handler
 	request := httptest.NewRequest(http.MethodGet, "/api/mndw/diagnostics", nil)
 	request.Header.Set("X-Mndw-Csrf", "1")
 	recorder := httptest.NewRecorder()
@@ -237,7 +237,7 @@ func TestIntegrationParsedDevConfigExposesPersistentRciCapability(t *testing.T) 
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler, _, _, _, _ := assemble(cfg, store, paletteStore, authz.New("", true, logger, authz.Options{}), logger)
+	handler := assemble(cfg, store, paletteStore, authz.New("", true, logger, authz.Options{}), logger).handler
 	request := httptest.NewRequest(http.MethodGet, "/api/mndw/rci-session/capability", nil)
 	request.Header.Set("X-Mndw-Csrf", "1")
 	response := httptest.NewRecorder()

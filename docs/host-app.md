@@ -2,7 +2,7 @@
 
 The host is the Svelte 5 SPA that users see in the browser.
 It is responsible for presentation and plugin runtime concerns.
-It does not execute plugin backend scripts or decide whether a backend is approved.
+It does not execute plugin backend commands or decide whether a backend is approved.
 
 ## Boundary
 
@@ -46,7 +46,7 @@ Dashboard behavior includes:
 - restoration of instance counters and tile geometry.
 
 The old dockview `/workspace` dashboard and pixel-to-grid conversion are not
-part of v2.
+part of v3.
 
 ## Plugin runtime
 
@@ -108,4 +108,3 @@ local `mndwd --dev` instance. The host can reload the plugin transactionally:
 
 A type or route topology change requires restart. Normal host startup remains
 daemon-list based.
-

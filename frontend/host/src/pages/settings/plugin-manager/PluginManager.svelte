@@ -4,6 +4,7 @@ import {onMount} from 'svelte';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {
   type MgmtClient,
+  type RuntimeLimits,
   messageForError,
   mgmtClient,
 } from '../../../services/mgmt-client.js';
@@ -17,6 +18,8 @@ interface Props {
 
 let {client = mgmtClient}: Props = $props();
 let plugins = $state<PluginListEntry[]>([]);
+let runtimeLimits = $state<RuntimeLimits | null>(null);
+let runtimeError = $state('');
 let loading = $state(true);
 let loadError = $state('');
 let refreshError = $state('');
@@ -71,6 +74,17 @@ async function refresh(): Promise<void> {
       loading = false;
     }
   }
+
+  void loadRuntime();
+}
+
+async function loadRuntime(): Promise<void> {
+  try {
+    runtimeLimits = await client.getRuntime();
+    runtimeError = '';
+  } catch (caught) {
+    runtimeError = messageForError(caught);
+  }
 }
 
 async function mutate(
@@ -114,6 +128,7 @@ function dismissed(): void {
 
 onMount(() => {
   void load();
+  void loadRuntime();
 });
 </script>
 
@@ -193,6 +208,31 @@ onMount(() => {
       </div>
     {/if}
 
+    {#if runtimeLimits}
+      <section
+        class="mndw-runtime-capacity"
+        aria-label="Backend capacity"
+      >
+        <strong>Backend capacity</strong>
+        <span>Exec: {runtimeLimits.currentExec}/{
+            runtimeLimits.maxConcurrentExecTotal
+          }</span>
+        <span>Services: {runtimeLimits.reservedServices}/{
+            runtimeLimits.maxSupervisedServices
+          }</span>
+        <span>Per-plugin exec limit: {
+            runtimeLimits.maxConcurrentExecPerPlugin
+          }</span>
+        <span>Service protocols: {
+            runtimeLimits.supportedServiceProtocols.join(', ')
+          }</span>
+      </section>
+    {:else if runtimeError}
+      <p class="mndw-plugin-manager__runtime-error">
+        Runtime status unavailable: {runtimeError}
+      </p>
+    {/if}
+
     {#if pending.length > 0}
       <PendingApprovals
         items={pending}
@@ -213,6 +253,7 @@ onMount(() => {
       {actionError}
       onEnable={(name) => mutate(name, () => client.enablePlugin(name), true)}
       onDisable={(name) => mutate(name, () => client.disablePlugin(name), true)}
+      onRestart={(name) => mutate(name, () => client.restartPlugin(name), false)}
       onDelete={(name) => mutate(name, () => client.deletePlugin(name), true)}
       onRequestConfirm={(name) => (confirmingName = name)}
       onCancelConfirm={() => (confirmingName = null)}
@@ -246,6 +287,23 @@ onMount(() => {
   padding: var(--mndw-space-3);
   border: 1px solid var(--mndw-accent);
   border-radius: var(--mndw-radius-sm);
+  font-size: var(--mndw-text-sm);
+}
+
+.mndw-runtime-capacity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mndw-space-2);
+  color: var(--mndw-text-muted);
+  font-size: var(--mndw-text-sm);
+}
+
+.mndw-runtime-capacity strong {
+  color: var(--mndw-text);
+}
+
+.mndw-plugin-manager__runtime-error {
+  color: var(--mndw-warning);
   font-size: var(--mndw-text-sm);
 }
 

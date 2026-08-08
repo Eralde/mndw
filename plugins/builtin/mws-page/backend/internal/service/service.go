@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -16,11 +15,9 @@ import (
 	"mws-page/internal/clock"
 	"mws-page/internal/config"
 	"mws-page/internal/credentials"
-	diagnosticfile "mws-page/internal/diagnostics"
 	"mws-page/internal/discovery"
 	"mws-page/internal/persistent"
 	"mws-page/internal/session"
-	"mws-page/internal/socket"
 	"mws-page/internal/target"
 	"mws-page/internal/telemetry"
 )
@@ -39,10 +36,6 @@ type Service struct {
 	persistent    PersistentSource
 	clock         clock.Clock
 	lastRefreshAt time.Time
-	runtimeDir    string
-	socketPath    string
-	pidPath       string
-	diagnostics   *diagnosticfile.Writer
 	lastError     *diagnosticError
 }
 
@@ -84,10 +77,6 @@ func New(cfg config.Config) *Service {
 	store := credentials.NewStore()
 	epoch := credentials.NewEpoch()
 	holder := session.NewHolder(authenticator, store)
-	runtimeDir := cfg.RuntimeDir
-	if runtimeDir == "" {
-		runtimeDir = os.Getenv("MNDW_PLUGIN_RUNTIME_DIR")
-	}
 	service := &Service{
 		transport:     transport,
 		authenticator: authenticator,
@@ -97,15 +86,10 @@ func New(cfg config.Config) *Service {
 		controller:    auth.Target{BaseURL: cfg.ControllerURL},
 		telemetry:     telemetry.NewCollector(holder, epoch, telemetry.FieldAdapter{}),
 		clock:         clock.Real(),
-		runtimeDir:    runtimeDir,
-		socketPath:    filepath.Join(runtimeDir, cfg.SocketName),
-		pidPath:       filepath.Join(runtimeDir, cfg.PIDName),
 	}
-	if runtimeDir != "" {
-		writer := diagnosticfile.Writer{Path: filepath.Join(runtimeDir, "diagnostics.json")}
-		service.diagnostics = &writer
+	if persistentPath := os.Getenv("MNDW_RCI_SESSION_SOCKET"); persistentPath != "" {
 		service.persistent = persistent.New(persistent.Config{
-			Path:          filepath.Join(runtimeDir, "rci-session.sock"),
+			Path:          persistentPath,
 			PluginID:      os.Getenv("MNDW_PLUGIN_ID"),
 			PollInterval:  5 * time.Second,
 			IOTimeout:     cfg.IOTimeout,
@@ -115,16 +99,12 @@ func New(cfg config.Config) *Service {
 	return service
 }
 
-var _ socket.Service = (*Service)(nil)
-
 func (s *Service) Run(ctx context.Context) {
 	if s.persistent != nil {
 		go s.persistent.Run(ctx)
 	}
 	refreshTicker := time.NewTicker(30 * time.Second)
 	defer refreshTicker.Stop()
-	diagnosticsTicker := time.NewTicker(5 * time.Minute)
-	defer diagnosticsTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -133,40 +113,19 @@ func (s *Service) Run(ctx context.Context) {
 			if s.credentials.State() == credentials.StatePresent {
 				_ = s.refresh(ctx)
 			}
-		case <-diagnosticsTicker.C:
-			_ = s.writeDiagnosticsTick()
 		}
 	}
 }
 
-func (s *Service) writeDiagnosticsTick() error {
-	return s.WriteDiagnostics()
-}
+// WriteDiagnostics remains a harmless source-compatible no-op. Diagnostics are
+// served on demand over the bounded service HTTP endpoint; no file is written.
+func (s *Service) WriteDiagnostics() error { return nil }
 
-// WriteDiagnostics publishes the current local service state for mndwd support reports.
-func (s *Service) WriteDiagnostics() error {
-	if s.diagnostics == nil {
-		return fmt.Errorf("diagnostics writer is unavailable")
-	}
-
-	return s.diagnostics.Write(s.DiagnosticsSnapshot())
-}
+func (s *Service) writeDiagnosticsTick() error { return nil }
 
 // DiagnosticsSnapshot returns local service state without credentials or token material.
 func (s *Service) DiagnosticsSnapshot() map[string]any {
-	socketPresent := false
-	if s.socketPath != "" {
-		_, err := os.Stat(s.socketPath)
-		socketPresent = err == nil
-	}
-
 	return map[string]any{
-		"runtime": map[string]any{
-			"pid":           os.Getpid(),
-			"pidPath":       s.pidPath,
-			"socketPath":    s.socketPath,
-			"socketPresent": socketPresent,
-		},
 		"credState":          string(s.credentials.State()),
 		"lastRefreshAt":      s.lastRefreshSnapshot(),
 		"lastError":          s.lastErrorSnapshot(),
@@ -402,10 +361,6 @@ func (s *Service) recordError(operation string, err error) *OperationError {
 	}
 	s.lastError = &next
 	s.mu.Unlock()
-	if changed {
-		_ = s.WriteDiagnostics()
-	}
-
 	return classified
 }
 

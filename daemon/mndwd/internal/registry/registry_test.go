@@ -29,7 +29,7 @@ func newRegistry(t *testing.T) (*Registry, *state.Store, string, string) {
 
 func TestResolveUserPlugin(t *testing.T) {
 	reg, store, userDir, _ := newRegistry(t)
-	m := `{"manifestVersion":2,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3},"backend":{"public":true}}`
+	m := `{"manifestVersion":3,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","routes":[{"id":"status","transport":"http","method":"GET","path":"status","access":"public","command":"backend/status.sh"}]}}`
 	if err := store.Mutate(func(st *state.State) error {
 		st.Plugins["svc"] = &state.Plugin{Name: "svc", Source: state.SourceUser, Approval: state.ApprovalApproved, Enabled: true, Manifest: json.RawMessage(m)}
 
@@ -48,9 +48,6 @@ func TestResolveUserPlugin(t *testing.T) {
 	if p.Source != state.SourceUser || p.Approval != state.ApprovalApproved || !p.Enabled {
 		t.Errorf("unexpected state: %+v", p)
 	}
-	if !p.Public() {
-		t.Errorf("expected public true")
-	}
 }
 
 func TestResolveBuiltin(t *testing.T) {
@@ -59,7 +56,7 @@ func TestResolveBuiltin(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	m := `{"manifestVersion":2,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core"}`
+	m := `{"manifestVersion":3,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core"}`
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(m), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +88,7 @@ func TestListBuiltins(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		m := fmt.Sprintf(`{"manifestVersion":2,"name":"%s","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`, name)
+		m := fmt.Sprintf(`{"manifestVersion":3,"name":"%s","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`, name)
 		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(m), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -125,7 +122,7 @@ func TestListBuiltinsIncludesDirectorySymlink(t *testing.T) {
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest := `{"manifestVersion":2,"name":"clients-widget","version":"1.0.0","type":"widget","label":"Clients","entry":"index.js","size":{"w":4,"h":3}}`
+	manifest := `{"manifestVersion":3,"name":"clients-widget","version":"1.0.0","type":"widget","label":"Clients","entry":"index.js","size":{"w":4,"h":3}}`
 	if err := os.WriteFile(filepath.Join(sourceDir, "manifest.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +148,7 @@ func TestListBuiltinsSkipsInvalidManifest(t *testing.T) {
 	if err := os.MkdirAll(goodDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(goodDir, "manifest.json"), []byte(`{"manifestVersion":2,"name":"good","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(goodDir, "manifest.json"), []byte(`{"manifestVersion":3,"name":"good","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -271,24 +268,6 @@ func TestAllBackendPluginsSkipsInvalidAndNonBackendPlugins(t *testing.T) {
 	}
 }
 
-func TestAllDaemonPluginsFiltersBackendPlugins(t *testing.T) {
-	reg, store, _, builtinDir := newRegistry(t)
-	writeRegistryBuiltin(t, builtinDir, "daemon", registryDaemonManifest("daemon"))
-	writeRegistryBuiltin(t, builtinDir, "backend", registryBackendManifest("backend", false))
-	if err := store.Mutate(func(st *state.State) error {
-		st.Plugins["user-daemon"] = registryStatePlugin("user-daemon", state.ApprovalApproved, true, registryDaemonManifest("user-daemon"))
-
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	plugins := reg.AllDaemonPlugins()
-	if len(plugins) != 2 || plugins[0].Name != "user-daemon" || plugins[1].Name != "daemon" {
-		t.Fatalf("daemon plugins = %#v, want user-daemon and daemon", plugins)
-	}
-}
-
 func TestListBuiltinsWithErrorReportsUnreadableDirectory(t *testing.T) {
 	reg, _, _, _ := newRegistry(t)
 	file := filepath.Join(t.TempDir(), "builtin-file")
@@ -347,18 +326,14 @@ func registryStatePlugin(name, approval string, enabled bool, manifest string) *
 }
 
 func registryPageManifest(name string) string {
-	return fmt.Sprintf(`{"manifestVersion":2,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s"}`, name, name, name)
+	return fmt.Sprintf(`{"manifestVersion":3,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s"}`, name, name, name)
 }
 
 func registryBackendManifest(name string, daemon bool) string {
-	backend := `"public":true`
+	access := "session"
 	if daemon {
-		backend = `"daemon":{"start":"backend/start.sh","stop":"backend/stop.sh"}`
+		access = "public"
 	}
 
-	return fmt.Sprintf(`{"manifestVersion":2,"name":"%s","version":"1.0.0","type":"widget","label":"%s","entry":"index.js","size":{"w":4,"h":3},"backend":{%s}}`, name, name, backend)
-}
-
-func registryDaemonManifest(name string) string {
-	return registryBackendManifest(name, true)
+	return fmt.Sprintf(`{"manifestVersion":3,"name":"%s","version":"1.0.0","type":"widget","label":"%s","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","routes":[{"id":"run","transport":"http","method":"GET","path":"run","access":"%s","command":"backend/run.sh"}]}}`, name, name, access)
 }

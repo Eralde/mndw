@@ -43,11 +43,7 @@ vi.mock('../services/overlay/overlay-manager.svelte.js', () => ({
 const hostInfo = {deviceName: 'Device', vendor: 'Vendor', firmwareVersion: '1.0', theme: 'dark'} as const;
 
 const emptyBackend: PluginBackendDescriptor = {
-  endpoints: {},
-  websockets: {},
-  opkg: [],
-  daemon: false,
-  public: false,
+  routes: {},
 };
 
 function widgetEntry(backend: PluginBackendDescriptor = emptyBackend): WidgetListEntry {
@@ -57,7 +53,7 @@ function widgetEntry(backend: PluginBackendDescriptor = emptyBackend): WidgetLis
     version: '1.0.0',
     label: 'Demo',
     entry: 'index.js',
-    source: 'user',
+    source: 'upload',
     approval: 'approved',
     enabled: true,
     depsStatus: 'ready',
@@ -98,14 +94,10 @@ describe('createPluginContext', () => {
     expect(ctx.backend).toBeUndefined();
   });
 
-  it('wires a backend client when endpoints are declared', () => {
+  it('wires a backend client when HTTP routes are declared', () => {
     const ctx = createPluginContext(
       widgetEntry({
-        endpoints: {e1: {method: 'GET', path: 'run'}},
-        websockets: {},
-        opkg: [],
-        daemon: false,
-        public: false,
+        routes: {e1: {transport: 'http', method: 'GET', path: 'run'}},
       }),
       'demo:1',
       hostInfo,
@@ -116,14 +108,10 @@ describe('createPluginContext', () => {
     expect(typeof ctx.backend?.socket).toBe('function');
   });
 
-  it('wires a backend client when only websockets are declared', () => {
+  it('wires a backend client when only WebSocket routes are declared', () => {
     const ctx = createPluginContext(
       widgetEntry({
-        endpoints: {},
-        websockets: {w1: {path: 'stream'}},
-        opkg: [],
-        daemon: false,
-        public: false,
+        routes: {w1: {transport: 'websocket', path: 'stream'}},
       }),
       'demo:1',
       hostInfo,

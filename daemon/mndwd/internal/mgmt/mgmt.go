@@ -3,8 +3,8 @@
 // and the /api/mgmt/opkg/* package-manager endpoints.
 //
 // The whole surface is session-gated by the authz middleware wired in cmd/mndwd.
-// approve installs a plugin's opkg dependencies and starts its backend.daemon;
-// enable/disable/delete drive the daemon lifecycle.
+// approval explicitly installs declared packages; backend.Runtime owns service
+// processes and request-scoped command execution.
 package mgmt
 
 import (
@@ -15,10 +15,10 @@ import (
 	"sort"
 	"time"
 
+	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/opkg"
-	"mndwd/internal/readiness"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
@@ -27,19 +27,6 @@ import (
 // run on a background-derived context so a client disconnect never aborts a partial
 // package install.
 const opkgTimeout = 3 * time.Minute
-
-// DaemonLifecycle runs a plugin's backend.daemon start/stop hooks. Satisfied by
-// *lifecycle.Manager; declared here so mgmt depends on the behavior, not the type.
-type DaemonLifecycle interface {
-	Start(name, dir, start string) error
-	Stop(name, dir, stop string) error
-}
-
-// ReadinessSource reports a plugin's dependency-install state. Satisfied by
-// *readiness.Tracker; declared here so mgmt depends on the behavior, not the type.
-type ReadinessSource interface {
-	Get(name string) (readiness.State, bool)
-}
 
 // BuiltinSource supplies validated builtin plugins and owns builtin discovery
 // warnings/errors. Satisfied by *registry.Registry.
@@ -57,6 +44,8 @@ type Config struct {
 	BuiltinPluginsDir string
 	// MaxUploadBytes caps the request body of an upload (design: 10 MB).
 	MaxUploadBytes int64
+	// Runtime controls manifest-v3 exec/service lifecycle.
+	Runtime backend.Runtime
 }
 
 // Handler serves the management API over a shared state store.
@@ -64,15 +53,14 @@ type Handler struct {
 	cfg      Config
 	store    StateStore
 	opkg     opkg.Manager
-	life     DaemonLifecycle
-	ready    ReadinessSource
 	builtins BuiltinSource
 	logger   *slog.Logger
+	runtime  backend.Runtime
 }
 
 // New constructs a management Handler.
-func New(cfg Config, store StateStore, opkgMgr opkg.Manager, life DaemonLifecycle, ready ReadinessSource, builtins BuiltinSource, logger *slog.Logger) *Handler {
-	return &Handler{cfg: cfg, store: store, opkg: opkgMgr, life: life, ready: ready, builtins: builtins, logger: logger}
+func New(cfg Config, store StateStore, opkgMgr opkg.Manager, builtins BuiltinSource, logger *slog.Logger) *Handler {
+	return &Handler{cfg: cfg, store: store, opkg: opkgMgr, builtins: builtins, logger: logger, runtime: cfg.Runtime}
 }
 
 // Register wires the management routes onto mux. Method-qualified patterns give a
@@ -86,6 +74,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/mgmt/enable", h.handleEnable)
 	mux.HandleFunc("POST /api/mgmt/disable", h.handleDisable)
 	mux.HandleFunc("POST /api/mgmt/delete", h.handleDelete)
+	mux.HandleFunc("POST /api/mgmt/restart", h.handleRestart)
+	mux.HandleFunc("POST /api/mgmt/update", h.handleUpdate)
+	mux.HandleFunc("GET /api/mgmt/runtime", h.handleRuntime)
 
 	mux.HandleFunc("GET /api/mgmt/opkg/list-installed", h.handleOpkgListInstalled)
 	mux.HandleFunc("GET /api/mgmt/opkg/list-available", h.handleOpkgListAvailable)
@@ -117,11 +108,11 @@ type ListEntry struct {
 	Size        *manifest.Size `json:"size,omitempty"`
 	FixedHeight *bool          `json:"fixedHeight,omitempty"`
 	Route       string         `json:"route,omitempty"`
-	// DepsStatus is the plugin's dependency-install state: "ready" | "installing" |
-	// "failed". Always present; only builtins with backend.opkg installed in the
-	// background can be non-ready.
+	// DepsStatus is always "ready" at daemon startup. Package installation is an
+	// explicit approval operation, never a background startup task.
 	DepsStatus string                      `json:"depsStatus"`
 	Backend    *manifest.BackendDescriptor `json:"backend"`
+	Runtime    *backend.RuntimeStatus      `json:"runtime,omitempty"`
 }
 
 func (h *Handler) handleList(w http.ResponseWriter, _ *http.Request) {
@@ -160,7 +151,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 
 	entries := make([]ListEntry, 0, len(snap.Plugins))
 	for _, p := range snap.Plugins {
-		m, err := manifest.Validate(p.Manifest)
+		m, err := manifest.ValidateV3(p.Manifest)
 		if err != nil {
 			// Stored manifests were validated at upload; a failure here means the
 			// state file was tampered with. Skip rather than fail the whole list.
@@ -187,16 +178,6 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 	return entries, nil
 }
 
-// depsStatusFor projects the readiness tracker's state (absence = ready) into the
-// wire value.
-func (h *Handler) depsStatusFor(name string) string {
-	if s, ok := h.ready.Get(name); ok {
-		return string(s)
-	}
-
-	return "ready"
-}
-
 // entryFrom projects a validated manifest plus runtime state into a ListEntry,
 // including its always-present depsStatus.
 func (h *Handler) entryFrom(m *manifest.Manifest, source, approval string, enabled bool) ListEntry {
@@ -215,7 +196,11 @@ func (h *Handler) entryFrom(m *manifest.Manifest, source, approval string, enabl
 		Route:       deref(m.Route),
 		Backend:     manifest.Descriptor(m),
 	}
-	e.DepsStatus = h.depsStatusFor(e.Name)
+	e.DepsStatus = "ready"
+	if h.runtime != nil && m.Backend != nil && m.Backend.Kind != nil {
+		status := h.runtime.Status(e.Name)
+		e.Runtime = &status
+	}
 
 	return e
 }

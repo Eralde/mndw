@@ -42,6 +42,7 @@ export function collectStagePaths(): {
   lighttpdConf: string;
   initScript: string;
   moduleGuard: string;
+  daemonConfig: string;
 } {
   return {
     mndwd: path.join('opt', 'sbin', 'mndwd'),
@@ -50,6 +51,7 @@ export function collectStagePaths(): {
     lighttpdConf: path.join('opt', 'etc', 'lighttpd', 'conf.d', '80-mndw.conf'),
     initScript: path.join('opt', 'etc', 'init.d', 'S70mndwd'),
     moduleGuard: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'),
+    daemonConfig: path.join('opt', 'etc', 'mndw.conf'),
   };
 }
 
@@ -66,6 +68,7 @@ export function verifyStage(
     [p.lighttpdConf, 'lighttpd config'],
     [p.initScript, 'init script'],
     [p.moduleGuard, 'module guard script'],
+    [p.daemonConfig, 'daemon config'],
   ];
 
   for (const [relPath, label] of checks) {
@@ -202,6 +205,7 @@ export function stageDeployFiles(repoRoot: string, stagingDir: string): void {
 
   copyTo(path.join('lighttpd', '80-mndw.conf'), path.join('opt', 'etc', 'lighttpd', 'conf.d', '80-mndw.conf'));
   copyTo(path.join('init', 'S70mndwd'), path.join('opt', 'etc', 'init.d', 'S70mndwd'), 0o755);
+  copyTo(path.join('files', 'opt', 'etc', 'mndw.conf'), path.join('opt', 'etc', 'mndw.conf'), 0o600);
   copyTo(
     path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'),
     path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'),

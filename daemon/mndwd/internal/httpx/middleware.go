@@ -3,6 +3,7 @@ package httpx
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -14,13 +15,46 @@ type statusRecorder struct {
 	status int
 }
 
+type noCORSWriter struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (w *noCORSWriter) WriteHeader(status int) {
+	for key := range w.Header() {
+		if strings.HasPrefix(strings.ToLower(key), "access-control-") {
+			delete(w.Header(), key)
+		}
+	}
+	w.wroteHeader = true
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *noCORSWriter) Write(data []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *noCORSWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// NoCORSHandler is the daemon-wide response boundary. Backend-specific wrappers
+// apply the same policy before proxy headers are copied; this catches management,
+// auth, palette, and diagnostics responses too.
+func NoCORSHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		next.ServeHTTP(&noCORSWriter{ResponseWriter: writer}, request)
+	})
+}
+
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)
 }
 
 // Unwrap exposes the underlying ResponseWriter so http.ResponseController (and thus
-// the http.Hijacker the WS proxy needs to upgrade a connection) can reach through the
+// the http.Hijacker the WebSocket gateway needs to upgrade a connection) can reach through the
 // wrapper. Without this, websocket.Accept on a logged route fails.
 func (r *statusRecorder) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
@@ -58,7 +92,7 @@ func LogMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 	})
 }
 
-// PluginNoStoreMiddleware is registered outside plugin dispatch, so even
+// PluginNoStoreMiddleware is registered outside backend routing, so even
 // unauthenticated route-gate errors cannot reveal whether a sensitive endpoint
 // exists through caching or referrer propagation.
 func PluginNoStoreMiddleware(next http.Handler) http.Handler {

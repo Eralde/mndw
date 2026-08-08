@@ -56,7 +56,7 @@ describe('diagnostics service', () => {
     request.mockImplementation((input) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 
-      if (url.endsWith('/api/mndw/diagnostics')) {
+      if (url.endsWith('/api/mndw/diagnostics/export')) {
         return Promise.resolve(response({
           generatedAt: '2026-08-04T15:29:00Z',
           mndwd: {logTail: 'ready'},
@@ -85,9 +85,9 @@ describe('diagnostics service', () => {
 
     expect(request).toHaveBeenCalledTimes(3);
 
-    for (const call of request.mock.calls) {
-      expect(call[1]).toEqual({headers: {'X-Mndw-Csrf': '1'}});
-    }
+    expect(request.mock.calls[0]?.[1]).toEqual({method: 'POST', headers: {'X-Mndw-Csrf': '1'}});
+    expect(request.mock.calls[1]?.[1]).toEqual({headers: {'X-Mndw-Csrf': '1'}});
+    expect(request.mock.calls[2]?.[1]).toEqual({headers: {'X-Mndw-Csrf': '1'}});
 
     const url = deps.createObjectURL.mock.calls[0]?.[0];
     const report = await url?.text();
@@ -118,7 +118,7 @@ describe('diagnostics service', () => {
         throw new Error('connection refused');
       }
 
-      if (url.endsWith('/api/mndw/diagnostics')) {
+      if (url.endsWith('/api/mndw/diagnostics/export')) {
         return Promise.resolve(response({plugins: [{pluginId: 'alpha', data: {status: 'ready'}, errors: []}]}));
       }
 

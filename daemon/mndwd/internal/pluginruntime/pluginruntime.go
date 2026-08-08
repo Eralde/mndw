@@ -13,8 +13,7 @@ import (
 // development launchers and device init scripts.
 const RuntimeRootEnv = "MNDW_PLUGIN_RUNTIME_ROOT"
 
-// RuntimeDirEnv names the per-plugin environment variable injected into hooks
-// and endpoint scripts.
+// RuntimeDirEnv names the per-plugin runtime directory environment variable.
 const RuntimeDirEnv = "MNDW_PLUGIN_RUNTIME_DIR"
 
 // Ensure creates root/name and restricts both directories to the owner. Plugin
@@ -45,8 +44,7 @@ func Ensure(root, name string) (string, error) {
 }
 
 // ForPlugin resolves one plugin's directory below root. Empty root disables
-// runtime-directory injection, which keeps direct package tests and embedders
-// that do not configure a root backwards-compatible.
+// runtime-directory injection for embedders that do not configure a root.
 func ForPlugin(root, name string) (string, error) {
 	if root == "" {
 		return "", nil

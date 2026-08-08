@@ -16,7 +16,7 @@ import type {PageListEntry} from '../runtime/plugin-types.js';
 import {appState} from '../state/app.svelte.js';
 import Sidebar from './Sidebar.svelte';
 
-const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
+const emptyBackend = {routes: {}};
 
 function page(name: string, label: string, route: string): LoadedPage {
   const entry: PageListEntry = {

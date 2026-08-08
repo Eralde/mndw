@@ -19,7 +19,7 @@ Scaffolds: `manifest.json`, `src/index.ts`, `src/App.svelte`, `src/index.css`.
 
 | Field             | Type                   | Required | Description                |
 |-------------------|------------------------|----------|----------------------------|
-| `manifestVersion` | `2`                    | yes      | Always 2                   |
+| `manifestVersion` | `3`                    | yes      | Always 3                   |
 | `name`            | string                 | yes      | `^[a-z0-9][a-z0-9-]*$`     |
 | `version`         | string                 | yes      | Semver                     |
 | `type`            | `"widget"` or `"page"` | yes      |                            |
@@ -30,7 +30,9 @@ Scaffolds: `manifest.json`, `src/index.ts`, `src/App.svelte`, `src/index.css`.
 Widgets: `size: { w, h, minW?, minH? }` in grid units (12-column grid). Pages: `route` (single
 segment, reserved: `/`, `/login`, `/settings`).
 
-Backend (optional): `opkg`, `scripts`, `endpoints`, `websockets`, `daemon`, `public`.
+Backend (optional): `kind: "exec"` with HTTP route commands, or `kind: "service"`
+with one foreground command, protocol version, and HTTP/WebSocket routes.
+Commands are relative executable paths; service args are literal values.
 
 ## 4. Plugin Module
 

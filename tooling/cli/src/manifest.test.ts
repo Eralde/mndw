@@ -23,7 +23,7 @@ function createPluginDirectory(manifest?: string): string {
 }
 
 const VALID_MANIFEST = JSON.stringify({
-  manifestVersion: 2,
+  manifestVersion: 3,
   name: 'source-entry-plugin',
   version: '0.1.0',
   type: 'page',
@@ -69,8 +69,8 @@ describe('readManifest', () => {
     expect(() => readManifest(pluginDir)).toThrow(/Failed to parse manifest.*manifest\.json/);
   });
 
-  test('surfaces SDK validation error for invalid v2 manifest', () => {
-    const pluginDir = createPluginDirectory(JSON.stringify({manifestVersion: 2, name: 'broken'}));
+  test('surfaces SDK validation error for invalid v3 manifest', () => {
+    const pluginDir = createPluginDirectory(JSON.stringify({manifestVersion: 3, name: 'broken'}));
 
     expect(() => readManifest(pluginDir)).toThrow(ManifestValidationError);
   });

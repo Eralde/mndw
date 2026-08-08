@@ -32,7 +32,7 @@ function createPluginDirectory(manifest: string): string {
 }
 
 const VALID_MANIFEST = JSON.stringify({
-  manifestVersion: 2,
+  manifestVersion: 3,
   name: 'source-entry-plugin',
   version: '0.1.0',
   type: 'page',
@@ -203,7 +203,7 @@ describe('createProgram', () => {
   });
 
   test('reports SDK-invalid manifest with its path and no stack trace', () => {
-    const pluginDir = createPluginDirectory(JSON.stringify({manifestVersion: 2, name: 'broken-plugin'}));
+    const pluginDir = createPluginDirectory(JSON.stringify({manifestVersion: 3, name: 'broken-plugin'}));
     const result = runCli(['validate', pluginDir]);
 
     expectExpectedError(result, 'Invalid manifest for "broken-plugin"', resolve(pluginDir, 'manifest.json'));
@@ -222,7 +222,7 @@ describe('createProgram', () => {
     writeFileSync(
       resolve(pluginDir, 'manifest.json'),
       JSON.stringify({
-        manifestVersion: 2,
+        manifestVersion: 3,
         name: 'cwd-plugin',
         version: '0.1.0',
         type: 'page',

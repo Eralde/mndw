@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestParseDefaultsPluginRuntimeRootInsideDataDir(t *testing.T) {
+func TestParseDefaultsPluginRuntimeRootUsesDisposableRoot(t *testing.T) {
 	t.Setenv("MNDW_PLUGIN_RUNTIME_ROOT", "")
 
 	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw"})
@@ -14,8 +14,42 @@ func TestParseDefaultsPluginRuntimeRootInsideDataDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, want := cfg.PluginRuntimeRoot, filepath.Join("/var/lib/mndw", "plugin-runtime"); got != want {
+	if got, want := cfg.PluginRuntimeRoot, "/opt/tmp/mndw/plugin-runtime"; got != want {
 		t.Fatalf("plugin runtime root = %q, want %q", got, want)
+	}
+}
+
+func TestParseDefaultsV3BackendLimitsAndTimeouts(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MaxConcurrentExecTotal != 8 || cfg.MaxConcurrentExecPerPlugin != 4 || cfg.MaxSupervisedServices != 8 {
+		t.Fatalf("backend limits = total:%d plugin:%d services:%d", cfg.MaxConcurrentExecTotal, cfg.MaxConcurrentExecPerPlugin, cfg.MaxSupervisedServices)
+	}
+	if cfg.ExecKillGrace != 2*time.Second || cfg.ServiceHTTPTimeout != 30*time.Second || cfg.HTTPDrainTimeout != 35*time.Second {
+		t.Fatalf("backend timeouts = grace:%s service:%s drain:%s", cfg.ExecKillGrace, cfg.ServiceHTTPTimeout, cfg.HTTPDrainTimeout)
+	}
+	if cfg.WebSocketCloseTimeout != 2*time.Second || cfg.ServiceStopTimeout != 10*time.Second || cfg.FinalReapTimeout != 2*time.Second || cfg.InitWaitTimeout != 60*time.Second {
+		t.Fatalf("backend lifecycle timeouts = ws:%s stop:%s reap:%s init:%s", cfg.WebSocketCloseTimeout, cfg.ServiceStopTimeout, cfg.FinalReapTimeout, cfg.InitWaitTimeout)
+	}
+	if len(cfg.SupportedServiceProtocols) != 1 || cfg.SupportedServiceProtocols[0] != 1 {
+		t.Fatalf("supported protocols = %#v, want [1]", cfg.SupportedServiceProtocols)
+	}
+}
+
+func TestParseRejectsInvalidV3BackendConfig(t *testing.T) {
+	for _, args := range [][]string{
+		{"--max-concurrent-exec-total", "0"},
+		{"--max-concurrent-exec-per-plugin", "0"},
+		{"--max-supervised-services", "0"},
+		{"--exec-kill-grace", "0s"},
+		{"--service-http-timeout", "0s"},
+		{"--http-drain-timeout", "1s"},
+	} {
+		if _, _, err := parseFlags(args); err == nil {
+			t.Errorf("parseFlags(%v) succeeded", args)
+		}
 	}
 }
 

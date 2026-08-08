@@ -17,6 +17,7 @@ type ServiceState struct {
 	hosts       map[string]model.Host
 	orderedIPs  []string
 	samplesByIP map[string][]model.Sample
+	running     bool
 }
 
 func NewServiceState(hosts []model.Host, samplesByIP map[string][]model.Sample) *ServiceState {
@@ -24,6 +25,7 @@ func NewServiceState(hosts []model.Host, samplesByIP map[string][]model.Sample) 
 		hosts:       map[string]model.Host{},
 		orderedIPs:  make([]string, 0, len(hosts)),
 		samplesByIP: map[string][]model.Sample{},
+		running:     true,
 	}
 
 	for _, host := range hosts {
@@ -97,6 +99,20 @@ func (state *ServiceState) ListHosts() []model.Host {
 	defer state.mu.RUnlock()
 
 	return state.listHostsUnsafe()
+}
+
+func (state *ServiceState) Running() bool {
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+
+	return state.running
+}
+
+func (state *ServiceState) SetRunning(running bool) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	state.running = running
 }
 
 func (state *ServiceState) RecordSample(ip string, sample model.Sample) {

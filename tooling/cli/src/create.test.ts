@@ -38,10 +38,10 @@ describe('buildManifest', () => {
     rmSync(outDir, {recursive: true, force: true});
   });
 
-  it('builds a v2 widget manifest with a grid-unit size', () => {
+  it('builds a v3 widget manifest with a grid-unit size', () => {
     const manifest = buildManifest(options({type: 'widget'}));
 
-    expect(manifest.manifestVersion).toBe(2);
+    expect(manifest.manifestVersion).toBe(3);
     expect(manifest.type).toBe('widget');
     expect(manifest.entry).toBe('index.js');
 
@@ -76,21 +76,21 @@ describe('buildManifest', () => {
     expect(manifest.label).toBe('System Health');
   });
 
-  it('adds a v2-relative backend script and endpoint for --backend sh', () => {
+  it('adds a v3 exec route for --backend sh', () => {
     const manifest = buildManifest(options({type: 'widget', backend: 'sh'}));
     const backend = manifest.backend as {
-      scripts: {id: string; source: string; runtime: string}[];
-      endpoints: {id: string; method: string; path: string; scriptId: string}[];
+      kind: string;
+      routes: {id: string; transport: string; method: string; path: string; command: string}[];
     };
 
-    expect(backend.scripts).toEqual([{id: 'main', source: 'backend/main.sh', runtime: 'sh'}]);
-    // Endpoint path is relative — no leading slash, no /api/plugins prefix (daemon namespaces it).
-    expect(backend.endpoints[0].path).toBe('hello');
-    expect(backend.endpoints[0].path.startsWith('/')).toBe(false);
-    expect(backend.endpoints[0].scriptId).toBe('main');
-    // Script source is a safe relative path.
-    expect(backend.scripts[0].source.startsWith('/')).toBe(false);
-    expect(backend.scripts[0].source.includes('..')).toBe(false);
+    expect(backend.kind).toBe('exec');
+    expect(backend.routes).toEqual([{
+      id: 'hello',
+      transport: 'http',
+      method: 'GET',
+      path: 'hello',
+      command: 'backend/main.sh',
+    }]);
   });
 });
 
@@ -143,7 +143,7 @@ describe('planCreate', () => {
     };
 
     expect(manifest.name).toBe('my-widget');
-    expect(manifest.manifestVersion).toBe(2);
+    expect(manifest.manifestVersion).toBe(3);
     expect(pkg.devDependencies['@mndw/sdk']).toBeDefined();
   });
 
@@ -213,7 +213,7 @@ describe('planCreate', () => {
     expect(pkg.dependencies ?? {}).toEqual({});
   });
 
-  it('adds an executable backend script for --backend sh', () => {
+  it('adds an executable backend command for --backend sh', () => {
     const plan = planCreate(options({type: 'widget', backend: 'sh'}));
 
     const script = plan.files.find((entry) => entry.path === 'backend/main.sh');
@@ -292,7 +292,7 @@ describe('createPlugin', () => {
     expect(existsSync(join(occupied, 'manifest.json'))).toBe(false);
   });
 
-  it('writes an executable backend script and a plain manifest', () => {
+  it('writes an executable backend command and a plain manifest', () => {
     const outDir = join(root, 'be');
 
     createPlugin({name: 'be-widget', outDir, type: 'widget', backend: 'sh'});

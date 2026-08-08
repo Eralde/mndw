@@ -40,8 +40,12 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m, err := manifest.Validate(manifestBytes)
+	m, err := manifest.ValidateV3(manifestBytes)
 	if err != nil {
+		if _, unsupported := err.(*manifest.UnsupportedVersionError); unsupported {
+			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeUnsupportedManifestVersion, "manifest version is not supported"))
+			return
+		}
 		httpx.WriteError(w, h.logger,
 			httpx.NewError(http.StatusBadRequest, httpx.CodeManifestInvalid, "manifest failed validation").WithDetail(err.Error()))
 
@@ -116,7 +120,10 @@ func (h *Handler) installDirect(w http.ResponseWriter, m *manifest.Manifest, man
 	}
 
 	err := h.store.Mutate(func(st *state.State) error {
-		st.Plugins[name] = newRecord(m, manifestBytes, state.ApprovalApproved, true)
+		record := newRecord(m, manifestBytes, state.ApprovalApproved, true)
+		record.ActiveVersion = deref(m.Version)
+		record.ActiveVersionDir = filepath.Join(h.cfg.UserPluginsDir, name)
+		st.Plugins[name] = record
 		st.AppendAudit("install", name, "no backend — installed without approval")
 
 		return nil
@@ -154,14 +161,15 @@ func (h *Handler) stagePending(w http.ResponseWriter, m *manifest.Manifest, mani
 // newRecord builds the durable state record from a validated manifest.
 func newRecord(m *manifest.Manifest, manifestBytes []byte, approval string, enabled bool) *state.Plugin {
 	return &state.Plugin{
-		Name:        *m.Name,
-		Source:      state.SourceUser,
-		Type:        deref(m.Type),
-		Version:     deref(m.Version),
-		Label:       deref(m.Label),
-		Approval:    approval,
-		Enabled:     enabled,
-		Manifest:    append([]byte(nil), manifestBytes...),
-		InstalledAt: time.Now().UTC(),
+		Name:             *m.Name,
+		Source:           state.SourceUser,
+		Type:             deref(m.Type),
+		Version:          deref(m.Version),
+		Label:            deref(m.Label),
+		Approval:         approval,
+		Enabled:          enabled,
+		Manifest:         append([]byte(nil), manifestBytes...),
+		InstalledAt:      time.Now().UTC(),
+		InstalledVersion: deref(m.Version),
 	}
 }

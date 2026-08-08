@@ -86,8 +86,8 @@ func copyZipFile(f *zip.File, target string, written int64) (int64, error) {
 	}
 	defer rc.Close()
 
-	// Uploaded plugins are static/script assets; store without the write/exec bits.
-	// Approval re-applies +x to declared scripts only.
+	// Uploaded plugins are stored without write/exec bits. Approval applies +x
+	// only to statically validated backend commands.
 	out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return written, err

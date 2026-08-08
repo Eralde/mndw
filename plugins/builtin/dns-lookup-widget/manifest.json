@@ -1,5 +1,5 @@
 {
-  "manifestVersion": 2,
+  "manifestVersion": 3,
   "name": "dns-lookup-widget",
   "version": "0.1.0",
   "type": "widget",
@@ -7,12 +7,9 @@
   "entry": "index.js",
   "size": {"w": 4, "h": 4, "minW": 3, "minH": 3},
   "backend": {
-    "assets": ["backend/dns-util"],
-    "scripts": [
-      {"id": "lookup", "runtime": "sh", "source": "backend/lookup.sh"}
-    ],
-    "endpoints": [
-      {"id": "lookup", "method": "GET", "path": "lookup", "scriptId": "lookup"}
+    "kind": "exec",
+    "routes": [
+      {"id": "lookup", "transport": "http", "method": "GET", "path": "lookup", "command": "backend/lookup.sh"}
     ]
   }
 }

@@ -1,8 +1,5 @@
-// Package registry resolves an installed plugin by name into the concrete data the
-// HTTP dispatcher and the WS proxy need: its validated manifest, on-disk directory,
-// and the approval/enabled/public gate state. It is the single route source used
-// by both backend traffic handlers, so a plugin's reachability is
-// decided in exactly one place rather than drifting between the two.
+// Package registry resolves an installed plugin by name into its validated
+// manifest, on-disk directory, and approval/enabled gate state.
 package registry
 
 import (
@@ -32,19 +29,9 @@ type Plugin struct {
 	Enabled  bool
 }
 
-// Public reports whether the plugin opted its backend out of the session gate
-// (backend.public). Public routes still require approval + enabled — public only
-// skips the cookie check.
-func (p *Plugin) Public() bool {
-	d := manifest.Descriptor(p.Manifest)
-
-	return d != nil && d.Public
-}
-
 // BackendServable reports whether the plugin's backend may serve traffic: it
 // must be approved and enabled. It returns nil when servable, or the matching
-// 403 APIError. dispatch and wsproxy both gate on this so the rule is defined
-// in exactly one place.
+// 403 APIError.
 func (p *Plugin) BackendServable() *httpx.APIError {
 	if p.Approval != state.ApprovalApproved {
 		return httpx.NewError(http.StatusForbidden, httpx.CodeNotApproved, "plugin backend is not approved")
@@ -82,14 +69,14 @@ func NewWithLogger(store *state.Store, userDir, builtinDir string, logger *slog.
 // open a backend route.
 func (r *Registry) Resolve(name string) (*Plugin, bool) {
 	if rec, ok := r.store.Get(name); ok {
-		m, err := manifest.Validate(rec.Manifest)
+		m, err := manifest.ValidateV3(rec.Manifest)
 		if err != nil {
 			return nil, false
 		}
 
 		return &Plugin{
 			Name:     name,
-			Dir:      filepath.Join(r.userDir, name),
+			Dir:      pluginDir(r.userDir, rec),
 			Manifest: m,
 			Source:   rec.Source,
 			Approval: rec.Approval,
@@ -100,7 +87,7 @@ func (r *Registry) Resolve(name string) (*Plugin, bool) {
 	if r.builtinDir != "" {
 		data, err := os.ReadFile(filepath.Join(r.builtinDir, name, "manifest.json"))
 		if err == nil {
-			if m, verr := manifest.Validate(data); verr == nil {
+			if m, verr := manifest.ValidateV3(data); verr == nil {
 				return &Plugin{
 					Name:     name,
 					Dir:      filepath.Join(r.builtinDir, name),
@@ -116,9 +103,22 @@ func (r *Registry) Resolve(name string) (*Plugin, bool) {
 	return nil, false
 }
 
+func pluginDir(userDir string, record *state.Plugin) string {
+	defaultDir := filepath.Join(userDir, record.Name)
+	if record.ActiveVersionDir == "" || !filepath.IsAbs(record.ActiveVersionDir) {
+		return defaultDir
+	}
+	rel, err := filepath.Rel(userDir, record.ActiveVersionDir)
+	if err != nil || rel == ".." || filepath.IsAbs(rel) || (len(rel) >= 3 && rel[:3] == ".."+string(filepath.Separator)) {
+		return defaultDir
+	}
+
+	return record.ActiveVersionDir
+}
+
 // ListBuiltins returns every plugin discovered in the builtin directory. Builtins are
 // always treated as approved+enabled. The caller is responsible for filtering (e.g.
-// for daemon hooks, for the mgmt list).
+// for the management list).
 func (r *Registry) ListBuiltins() []*Plugin {
 	plugins, err := r.ListBuiltinsWithError()
 	if err != nil {
@@ -158,7 +158,7 @@ func (r *Registry) ListBuiltinsWithError() ([]*Plugin, error) {
 			continue
 		}
 
-		m, verr := manifest.Validate(data)
+		m, verr := manifest.ValidateV3(data)
 		if verr != nil {
 			if r.logger != nil {
 				r.logger.Warn("builtin plugin has invalid manifest, skipping", "plugin", name, "error", verr)
@@ -215,18 +215,4 @@ func (r *Registry) AllBackendPlugins() []*Plugin {
 	}
 
 	return plugins
-}
-
-// AllDaemonPlugins returns active backend plugins that declare daemon hooks.
-func (r *Registry) AllDaemonPlugins() []*Plugin {
-	plugins := r.AllBackendPlugins()
-	daemons := make([]*Plugin, 0, len(plugins))
-	for _, plugin := range plugins {
-		if plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Daemon == nil {
-			continue
-		}
-		daemons = append(daemons, plugin)
-	}
-
-	return daemons
 }

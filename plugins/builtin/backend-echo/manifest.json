@@ -1,5 +1,5 @@
 {
-  "manifestVersion": 2,
+  "manifestVersion": 3,
   "name": "backend-echo",
   "version": "0.1.0",
   "type": "widget",
@@ -7,10 +7,10 @@
   "entry": "index.js",
   "size": {"w": 4, "h": 3, "minW": 3, "minH": 2},
   "backend": {
-    "scripts": [{"id": "echo", "runtime": "sh", "source": "backend/echo.cgi"}],
-    "endpoints": [
-      {"id": "echoGet", "method": "GET", "path": "echo", "scriptId": "echo"},
-      {"id": "echoPost", "method": "POST", "path": "echo", "scriptId": "echo"}
+    "kind": "exec",
+    "routes": [
+      {"id": "echoGet", "transport": "http", "method": "GET", "path": "echo", "command": "backend/echo.cgi"},
+      {"id": "echoPost", "transport": "http", "method": "POST", "path": "echo", "command": "backend/echo.cgi"}
     ]
   }
 }

@@ -3,15 +3,14 @@ package diagnostics
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"mndwd/internal/httpx"
@@ -21,7 +20,6 @@ const (
 	defaultMaxLogBytes         int64 = 64 * 1024
 	defaultMaxPluginBytes      int64 = 256 * 1024
 	defaultMaxTotalPluginBytes int64 = 1024 * 1024
-	diagnosticsFilename              = "diagnostics.json"
 )
 
 var sensitiveValuePatterns = []*regexp.Regexp{
@@ -39,14 +37,32 @@ var sensitiveKeys = map[string]struct{}{
 	"x-ndma-tkn":    {},
 }
 
-// Plugin identifies one daemon-owned plugin runtime directory.
+// Plugin identifies one service and its daemon-owned status/live callbacks.
 type Plugin struct {
 	ID         string
-	RuntimeDir string
+	Supervisor func() SupervisorDiagnostics
+	Live       func(context.Context) ([]byte, error)
 }
 
-// Config controls diagnostics collection. Paths are read-only inputs; diagnostics
-// never uses LogFile as a logging destination.
+// SupervisorDiagnostics is daemon-owned state reconstructed on startup.
+type SupervisorDiagnostics struct {
+	State               string   `json:"state"`
+	RestartCount        int      `json:"restartCount"`
+	ConsecutiveFailures int      `json:"consecutiveFailures"`
+	LastExit            string   `json:"lastExit,omitempty"`
+	LastError           string   `json:"lastError,omitempty"`
+	RecentStderr        []string `json:"recentStderr"`
+}
+
+// LiveDiagnostics is the optional, service-owned diagnostics snapshot. It is
+// unavailable unless supervisor state is ready and a bounded callback succeeds.
+type LiveDiagnostics struct {
+	Status string         `json:"status"`
+	Reason string         `json:"reason,omitempty"`
+	Data   map[string]any `json:"data,omitempty"`
+}
+
+// Config controls diagnostics collection. LogFile is a read-only input.
 type Config struct {
 	LogFile             string
 	Plugins             []Plugin
@@ -60,7 +76,7 @@ type Handler struct {
 	config Config
 }
 
-// Response is the JSON contract returned by GET /api/mndw/diagnostics.
+// Response is the JSON contract returned by the diagnostics endpoints.
 type Response struct {
 	GeneratedAt time.Time           `json:"generatedAt"`
 	Mndwd       MndwdDiagnostics    `json:"mndwd"`
@@ -74,16 +90,12 @@ type MndwdDiagnostics struct {
 	LogError string `json:"logError"`
 }
 
-// PluginDiagnostics contains one plugin's published diagnostics result.
+// PluginDiagnostics contains daemon supervisor state and optional live data.
 type PluginDiagnostics struct {
-	PluginID        string         `json:"pluginId"`
-	RuntimeDir      string         `json:"runtimeDir"`
-	DiagnosticsPath string         `json:"diagnosticsPath"`
-	FilePresent     bool           `json:"filePresent"`
-	FileModifiedAt  *time.Time     `json:"fileModifiedAt,omitempty"`
-	GeneratedAt     *time.Time     `json:"generatedAt,omitempty"`
-	Data            map[string]any `json:"data,omitempty"`
-	Errors          []string       `json:"errors"`
+	PluginID   string                `json:"pluginId"`
+	Supervisor SupervisorDiagnostics `json:"supervisor"`
+	Live       LiveDiagnostics       `json:"live"`
+	Errors     []string              `json:"errors"`
 }
 
 // New constructs a diagnostics handler with safe read limits.
@@ -101,10 +113,11 @@ func New(config Config) *Handler {
 	return &Handler{config: config}
 }
 
-// Register mounts the protected diagnostics route onto mux. Session protection is
-// applied by the caller's /api/mndw/ middleware, while this handler enforces CSRF.
+// Register mounts protected diagnostics routes. Session protection is applied
+// by the caller's /api/mndw/ middleware; this handler enforces CSRF.
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mndw/diagnostics", h.handle)
+	mux.HandleFunc("POST /api/mndw/diagnostics/export", h.handle)
 }
 
 func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
@@ -112,29 +125,32 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := h.collect()
+	response := h.collect(r.Context())
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	httpx.WriteJSON(w, nil, http.StatusOK, response)
 }
 
-func (h *Handler) collect() Response {
+func (h *Handler) collect(ctx context.Context) Response {
 	logTail, logError := readTail(h.config.LogFile, h.config.MaxLogBytes)
 	plugins := make([]PluginDiagnostics, 0, len(h.config.Plugins))
 	var totalBytes int64
 	for _, plugin := range h.config.Plugins {
 		result := PluginDiagnostics{
-			PluginID:   plugin.ID,
-			RuntimeDir: plugin.RuntimeDir,
-			Errors:     []string{},
+			PluginID: plugin.ID,
+			Supervisor: SupervisorDiagnostics{
+				State:        "stopped",
+				RecentStderr: []string{},
+			},
+			Errors: []string{},
 		}
-		if plugin.RuntimeDir == "" {
-			result.Errors = append(result.Errors, "plugin runtime directory is empty")
-			plugins = append(plugins, result)
-			continue
+		if plugin.Supervisor != nil {
+			result.Supervisor = plugin.Supervisor()
+			if result.Supervisor.RecentStderr == nil {
+				result.Supervisor.RecentStderr = []string{}
+			}
 		}
-		result.DiagnosticsPath = filepath.Join(plugin.RuntimeDir, diagnosticsFilename)
-		h.collectPlugin(&result, &totalBytes)
+		h.collectLive(ctx, plugin.Live, &result, &totalBytes)
 		plugins = append(plugins, result)
 	}
 
@@ -149,112 +165,71 @@ func (h *Handler) collect() Response {
 	}
 }
 
-func (h *Handler) collectPlugin(result *PluginDiagnostics, totalBytes *int64) {
+func (h *Handler) collectLive(ctx context.Context, live func(context.Context) ([]byte, error), result *PluginDiagnostics, totalBytes *int64) {
+	state := result.Supervisor.State
+	if state == "" {
+		state = "stopped"
+		result.Supervisor.State = state
+	}
+	if state != "ready" {
+		result.Live = LiveDiagnostics{Status: "unavailable", Reason: state}
+		return
+	}
+	if live == nil {
+		result.Live = LiveDiagnostics{Status: "unavailable", Reason: "live diagnostics are not configured"}
+		return
+	}
 	if *totalBytes >= h.config.MaxTotalPluginBytes {
-		result.Errors = append(result.Errors, "aggregate diagnostics byte limit reached")
+		result.Live = LiveDiagnostics{Status: "unavailable", Reason: "aggregate diagnostics byte limit reached"}
 		return
 	}
 
-	file, err := os.OpenFile(result.DiagnosticsPath, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	data, err := live(ctx)
 	if err != nil {
-		result.Errors = append(result.Errors, boundedError("open diagnostics", err))
+		result.Live = LiveDiagnostics{Status: "unavailable", Reason: boundedError("live diagnostics", err)}
 		return
 	}
-	defer file.Close()
-	result.FilePresent = true
-
-	info, err := file.Stat()
-	if err != nil {
-		result.Errors = append(result.Errors, boundedError("stat diagnostics", err))
-		return
-	}
-	modifiedAt := info.ModTime().UTC()
-	result.FileModifiedAt = &modifiedAt
-	if !info.Mode().IsRegular() {
-		result.Errors = append(result.Errors, "diagnostics file is not regular")
-		return
-	}
-
+	bytesRead := int64(len(data))
 	remaining := h.config.MaxTotalPluginBytes - *totalBytes
-	readLimit := h.config.MaxPluginBytes + 1
-	if remaining+1 < readLimit {
-		readLimit = remaining + 1
-	}
-	data, readErr := io.ReadAll(io.LimitReader(file, readLimit))
-	readBytes := int64(len(data))
-	if readErr != nil {
-		*totalBytes += min(readBytes, remaining)
-		result.Errors = append(result.Errors, boundedError("read diagnostics", readErr))
-		return
-	}
-	if readBytes > remaining {
-		*totalBytes = h.config.MaxTotalPluginBytes
-		result.Errors = append(result.Errors, "aggregate diagnostics byte limit exceeded")
-		return
-	}
-	if readBytes > h.config.MaxPluginBytes {
+	if bytesRead > h.config.MaxPluginBytes {
 		*totalBytes += h.config.MaxPluginBytes
-		result.Errors = append(result.Errors, "diagnostics file truncated at per-plugin byte limit")
+		result.Live = LiveDiagnostics{Status: "unavailable", Reason: "diagnostics response exceeds per-plugin byte limit"}
 		return
 	}
-	*totalBytes += readBytes
+	if bytesRead > remaining {
+		*totalBytes = h.config.MaxTotalPluginBytes
+		result.Live = LiveDiagnostics{Status: "unavailable", Reason: "aggregate diagnostics byte limit exceeded"}
+		return
+	}
+	*totalBytes += bytesRead
 
-	envelope, err := decodeEnvelope(data)
+	dataMap, err := decodeLive(data)
 	if err != nil {
-		result.Errors = append(result.Errors, boundedError("decode diagnostics", err))
+		result.Live = LiveDiagnostics{Status: "unavailable", Reason: boundedError("decode live diagnostics", err)}
 		return
 	}
-	generatedAt := envelope.GeneratedAt.UTC()
-	result.GeneratedAt = &generatedAt
-	result.Data = sanitizeMap(envelope.Data)
+	result.Live = LiveDiagnostics{Status: "available", Data: sanitizeMap(dataMap)}
 }
 
-type diagnosticsEnvelope struct {
-	SchemaVersion int
-	GeneratedAt   time.Time
-	Data          map[string]any
-}
-
-func decodeEnvelope(data []byte) (diagnosticsEnvelope, error) {
+func decodeLive(data []byte) (map[string]any, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil, fmt.Errorf("diagnostics response must be an object")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
-	var raw struct {
-		SchemaVersion int             `json:"schemaVersion"`
-		GeneratedAt   string          `json:"generatedAt"`
-		Data          json.RawMessage `json:"data"`
-	}
-	if err := decoder.Decode(&raw); err != nil {
-		return diagnosticsEnvelope{}, err
+	var object map[string]any
+	if err := decoder.Decode(&object); err != nil {
+		return nil, err
 	}
 	if err := rejectTrailingJSON(decoder); err != nil {
-		return diagnosticsEnvelope{}, err
-	}
-	if raw.SchemaVersion != 1 {
-		return diagnosticsEnvelope{}, fmt.Errorf("unsupported schema version %d", raw.SchemaVersion)
-	}
-	if raw.GeneratedAt == "" {
-		return diagnosticsEnvelope{}, fmt.Errorf("generatedAt is required")
-	}
-	generatedAt, err := time.Parse(time.RFC3339, raw.GeneratedAt)
-	if err != nil {
-		return diagnosticsEnvelope{}, fmt.Errorf("invalid generatedAt: %w", err)
-	}
-	if len(bytes.TrimSpace(raw.Data)) == 0 || bytes.TrimSpace(raw.Data)[0] != '{' {
-		return diagnosticsEnvelope{}, fmt.Errorf("data must be an object")
-	}
-	dataDecoder := json.NewDecoder(bytes.NewReader(raw.Data))
-	dataDecoder.UseNumber()
-	var object map[string]any
-	if err := dataDecoder.Decode(&object); err != nil {
-		return diagnosticsEnvelope{}, fmt.Errorf("decode data: %w", err)
-	}
-	if err := rejectTrailingJSON(dataDecoder); err != nil {
-		return diagnosticsEnvelope{}, fmt.Errorf("data has trailing JSON: %w", err)
+		return nil, err
 	}
 	if object == nil {
-		return diagnosticsEnvelope{}, fmt.Errorf("data must be an object")
+		return nil, fmt.Errorf("diagnostics response must be an object")
 	}
-	return diagnosticsEnvelope{SchemaVersion: raw.SchemaVersion, GeneratedAt: generatedAt.UTC(), Data: object}, nil
+
+	return object, nil
 }
 
 func rejectTrailingJSON(decoder *json.Decoder) error {
@@ -266,6 +241,7 @@ func rejectTrailingJSON(decoder *json.Decoder) error {
 	if err == nil {
 		return fmt.Errorf("trailing JSON data")
 	}
+
 	return err
 }
 
@@ -278,6 +254,7 @@ func sanitizeMap(value map[string]any) map[string]any {
 		}
 		result[key] = sanitizeValue(item)
 	}
+
 	return result
 }
 
@@ -290,6 +267,7 @@ func sanitizeValue(value any) any {
 		for index, item := range typed {
 			result[index] = sanitizeValue(item)
 		}
+
 		return result
 	case string:
 		return redact(typed)
@@ -300,6 +278,7 @@ func sanitizeValue(value any) any {
 
 func isSensitiveKey(key string) bool {
 	_, ok := sensitiveKeys[strings.ToLower(key)]
+
 	return ok
 }
 
@@ -334,6 +313,7 @@ func boundedError(operation string, err error) string {
 	if len(message) > 1024 {
 		return message[:1024]
 	}
+
 	return message
 }
 
@@ -342,5 +322,6 @@ func redact(value string) string {
 	for _, pattern := range sensitiveValuePatterns {
 		redacted = pattern.ReplaceAllString(redacted, `${1}[REDACTED]`)
 	}
+
 	return redacted
 }

@@ -25,7 +25,7 @@ QUERY_STRING="${QUERY_STRING:-}"
 CONTENT_TYPE="${CONTENT_TYPE:-}"
 CONTENT_LENGTH="${CONTENT_LENGTH:-}"
 MNDW_PLUGIN_ID="${MNDW_PLUGIN_ID:-}"
-MNDW_ENDPOINT_ID="${MNDW_ENDPOINT_ID:-}"
+MNDW_ROUTE_ID="${MNDW_ROUTE_ID:-}"
 
 # Read the whole request body from stdin. A trailing-sentinel (printf 'x') is appended
 # and then stripped so command substitution does not swallow trailing newlines — the
@@ -61,5 +61,5 @@ printf 'Status: %s\r\n' "$status"
 printf 'Content-Type: application/json\r\n'
 printf 'X-Mndw-Echo: 1\r\n'
 printf '\r\n'
-printf '{"method":"%s","query":"%s","contentType":"%s","contentLength":"%s","pluginId":"%s","endpointId":"%s","body":"%s"}\n' \
-  "$REQUEST_METHOD" "$esc_query" "$esc_ctype" "$CONTENT_LENGTH" "$MNDW_PLUGIN_ID" "$MNDW_ENDPOINT_ID" "$esc_body"
+printf '{"method":"%s","query":"%s","contentType":"%s","contentLength":"%s","pluginId":"%s","routeId":"%s","body":"%s"}\n' \
+  "$REQUEST_METHOD" "$esc_query" "$esc_ctype" "$CONTENT_LENGTH" "$MNDW_PLUGIN_ID" "$MNDW_ROUTE_ID" "$esc_body"

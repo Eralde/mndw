@@ -5,14 +5,15 @@ import (
 	"os"
 	"path/filepath"
 
+	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/state"
 )
 
-// handleApprove promotes a pending backend plugin: install opkg
-// dependencies, move staging → user-plugins, +x declared scripts, start the
-// backend.daemon, then record approved+enabled. Dependencies install first (before
+// handleApprove promotes a pending plugin: install declared packages, move
+// staging → user-plugins, validate command files, then record approved+enabled.
+// Dependencies install first (before
 // any file move) so an opkg failure leaves the plugin cleanly pending; a failure
 // after the move rolls the files back to staging so a retry is possible.
 func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
@@ -36,20 +37,29 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 
 // installDeps installs a plugin's declared opkg packages. No-op when none declared.
 func (h *Handler) installDeps(m *manifest.Manifest) *httpx.APIError {
-	if m.Backend == nil || len(m.Backend.Opkg) == 0 {
+	packages := backendPackages(m)
+	if len(packages) == 0 {
 		return nil
 	}
 
 	ctx, cancel := opkgContext()
 	defer cancel()
 
-	if err := h.opkg.Install(ctx, m.Backend.Opkg); err != nil {
-		h.logger.Error("opkg dependency install failed", "plugin", deref(m.Name), "packages", m.Backend.Opkg, "error", err)
+	if err := h.opkg.Install(ctx, packages); err != nil {
+		h.logger.Error("opkg dependency install failed", "plugin", deref(m.Name), "packages", packages, "error", err)
 
 		return httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to install plugin dependencies")
 	}
 
 	return nil
+}
+
+func backendPackages(m *manifest.Manifest) []string {
+	if m == nil || m.Backend == nil {
+		return nil
+	}
+
+	return m.Backend.Packages
 }
 
 // rollbackInstall best-effort returns an install back to staging so a failed approval
@@ -60,8 +70,7 @@ func (h *Handler) rollbackInstall(name, installPath, stagingPath string) {
 	}
 }
 
-// handleEnable re-activates a disabled (approved) plugin: start its daemon and mark
-// enabled. Idempotent when already enabled.
+// handleEnable re-activates a disabled approved plugin and marks it enabled.
 func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 	name, apiErr := decodeName(r)
 	if apiErr != nil {
@@ -87,12 +96,13 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	installPath := filepath.Join(h.cfg.UserPluginsDir, name)
-	if m.Backend != nil && m.Backend.Daemon != nil {
-		if err := h.life.Start(name, installPath, m.Backend.Daemon.Start); err != nil {
-			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeDaemonFailed, "failed to start plugin backend daemon"))
-
-			return
+	if h.runtime != nil {
+		if err := h.activateBackendPlugin(name, m, filepath.Join(h.cfg.UserPluginsDir, name), true); err != nil {
+			if serviceCapacityError(err) {
+				httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeServiceCapacityExceeded, "service capacity exceeded"))
+				return
+			}
+			h.logger.Warn("backend activation deferred", "plugin", name, "error", err)
 		}
 	}
 
@@ -106,10 +116,8 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, state.ApprovalApproved, true))
 }
 
-// handleDisable deactivates a plugin: stop its daemon and mark disabled. Routes are
-// gated on the enabled flag, so disabling immediately kills dispatch + ws access.
-// Idempotent when already disabled. A stop-hook failure still disables (routes off)
-// and is logged — a lingering process must not block the state change.
+// handleDisable deactivates a plugin and marks it disabled. Routes are gated on
+// enabled state, and service shutdown is best effort so state cannot be wedged.
 func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 	name, apiErr := decodeName(r)
 	if apiErr != nil {
@@ -130,10 +138,9 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	installPath := filepath.Join(h.cfg.UserPluginsDir, name)
-	if m.Backend != nil && m.Backend.Daemon != nil {
-		if err := h.life.Stop(name, installPath, m.Backend.Daemon.Stop); err != nil {
-			h.logger.Error("daemon stop hook failed during disable", "plugin", name, "error", err)
+	if h.runtime != nil {
+		if err := h.runtime.Deactivate(r.Context(), name, backend.StopDisable); err != nil && h.logger != nil {
+			h.logger.Error("backend stop failed during disable", "plugin", name, "error", err)
 		}
 	}
 
@@ -159,7 +166,7 @@ func (h *Handler) lookupForToggle(name string) (*state.Plugin, *manifest.Manifes
 		return nil, nil, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
 	}
 
-	m, err := manifest.Validate(p.Manifest)
+	m, err := manifest.ValidateV3(p.Manifest)
 	if err != nil {
 		return nil, nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
 	}
@@ -245,14 +252,15 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Stop the backend.daemon before removing files (best-effort — proceed with the
-	// delete even if the stop hook fails, and log it).
+	// Stop the backend before removing files. Proceed with delete if cleanup fails.
 	dir := h.cfg.UserPluginsDir
 	if p.Approval == state.ApprovalPending {
 		dir = h.cfg.StagingDir
-	} else if m, err := manifest.Validate(p.Manifest); err == nil && m.Backend != nil && m.Backend.Daemon != nil {
-		if stopErr := h.life.Stop(name, filepath.Join(dir, name), m.Backend.Daemon.Stop); stopErr != nil {
-			h.logger.Error("daemon stop hook failed during delete", "plugin", name, "error", stopErr)
+	} else if m, err := manifest.ValidateV3(p.Manifest); err == nil && m.Backend != nil {
+		if h.runtime != nil {
+			if stopErr := h.runtime.Deactivate(r.Context(), name, backend.StopDelete); stopErr != nil && h.logger != nil {
+				h.logger.Error("backend stop failed during delete", "plugin", name, "error", stopErr)
+			}
 		}
 	}
 	if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
@@ -286,28 +294,30 @@ func (h *Handler) dropRecord(name, action, detail string) *httpx.APIError {
 	return nil
 }
 
-// markScriptsExecutable applies +x to every declared backend script and daemon hook.
+// markCommandsExecutable applies +x to every declared backend command.
 // A declared-but-absent file is a packaging error and fails approval.
-func markScriptsExecutable(installPath string, m *manifest.Manifest) *httpx.APIError {
+func markCommandsExecutable(installPath string, m *manifest.Manifest) *httpx.APIError {
 	if m.Backend == nil {
 		return nil
 	}
 
-	paths := make([]string, 0)
-	for _, s := range m.Backend.Scripts {
-		paths = append(paths, s.Source)
+	paths := make([]string, 0, len(m.Backend.Routes)+1)
+	if m.Backend.Command != nil {
+		paths = append(paths, *m.Backend.Command)
 	}
-	if m.Backend.Daemon != nil {
-		paths = append(paths, m.Backend.Daemon.Start, m.Backend.Daemon.Stop)
+	for _, route := range m.Backend.Routes {
+		if route.Command != "" {
+			paths = append(paths, route.Command)
+		}
 	}
 
 	for _, rel := range paths {
 		abs, err := safeJoin(installPath, rel)
 		if err != nil {
-			return httpx.NewError(http.StatusBadRequest, httpx.CodeManifestInvalid, "script path escapes plugin dir: "+rel)
+			return httpx.NewError(http.StatusBadRequest, httpx.CodeManifestInvalid, "backend command path escapes plugin dir: "+rel)
 		}
 		if err := chmodExecutable(abs); err != nil {
-			return httpx.NewError(http.StatusBadRequest, httpx.CodeManifestInvalid, "declared script missing or unreadable: "+rel)
+			return httpx.NewError(http.StatusBadRequest, httpx.CodeManifestInvalid, "declared backend command missing or unreadable: "+rel)
 		}
 	}
 

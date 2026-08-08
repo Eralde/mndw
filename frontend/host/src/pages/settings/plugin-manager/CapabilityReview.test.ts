@@ -21,53 +21,30 @@ describe('CapabilityReview', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders declared capability values without a public warning', () => {
+  it('renders declared route values', () => {
     const {component, target} = mountReview({
-      endpoints: {
-        status: {method: 'GET', path: '/api/status'},
-        restart: {method: 'POST', path: '/api/restart'},
+      routes: {
+        status: {transport: 'http', method: 'GET', path: 'status'},
+        restart: {transport: 'http', method: 'POST', path: 'restart'},
+        events: {transport: 'websocket', path: 'events', protocols: ['json', 'cbor']},
+        logs: {transport: 'websocket', path: 'logs'},
       },
-      websockets: {
-        events: {path: '/api/events', protocols: ['json', 'cbor']},
-        logs: {path: '/api/logs'},
-      },
-      opkg: ['curl', 'ca-bundle'],
-      daemon: true,
-      public: false,
     });
 
-    expect(target.textContent).toContain('Packages');
-    expect(target.textContent).toContain('curl');
-    expect(target.textContent).toContain('ca-bundle');
-    expect(target.textContent).toContain('Endpoints');
-    expect(target.textContent).toContain('status: GET /api/status');
-    expect(target.textContent).toContain('restart: POST /api/restart');
-    expect(target.textContent).toContain('WebSockets');
-    expect(target.textContent).toContain('events: /api/events (json, cbor)');
-    expect(target.textContent).toContain('logs: /api/logs');
-    expect(target.textContent).toContain('Daemon declaration');
-    expect(target.querySelector('.mndw-cap__public')).toBeNull();
+    expect(target.textContent).toContain('status: GET status');
+    expect(target.textContent).toContain('restart: POST restart');
+    expect(target.textContent).toContain('events: events (json, cbor)');
+    expect(target.textContent).toContain('logs: logs');
 
     void unmount(component);
   });
 
-  it('renders a public warning when session-gate bypass is declared', () => {
+  it('renders no route section for an empty descriptor', () => {
     const {component, target} = mountReview({
-      endpoints: {},
-      websockets: {},
-      opkg: [],
-      daemon: false,
-      public: true,
+      routes: {},
     });
 
-    expect(target.querySelector('.mndw-cap__public')?.textContent).toContain(
-      'public: bypasses the session gate',
-    );
-    expect(target.querySelector('.mndw-cap__public')?.textContent).toContain('reachable without login');
-    expect(target.textContent).not.toContain('Packages');
-    expect(target.textContent).not.toContain('Endpoints');
-    expect(target.textContent).not.toContain('WebSockets');
-    expect(target.textContent).not.toContain('Daemon declaration');
+    expect(target.textContent).not.toContain('Routes');
 
     void unmount(component);
   });

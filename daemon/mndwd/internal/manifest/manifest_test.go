@@ -1,8 +1,10 @@
 package manifest
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -32,8 +34,8 @@ func TestValidFixturesAccepted(t *testing.T) {
 
 func TestInvalidFixturesRejected(t *testing.T) {
 	files := readFixtures(t, "invalid")
-	if len(files) < 30 {
-		t.Fatalf("expected >= 30 invalid fixtures, found %d — corpus not located?", len(files))
+	if len(files) < 20 {
+		t.Fatalf("expected >= 20 invalid fixtures, found %d — corpus not located?", len(files))
 	}
 
 	for _, path := range files {
@@ -50,7 +52,7 @@ func TestInvalidFixturesRejected(t *testing.T) {
 }
 
 func TestValidateFixedHeightRoundTrips(t *testing.T) {
-	data := []byte(`{"manifestVersion":2,"name":"fixed-widget","version":"0.1.0","type":"widget","label":"Fixed","entry":"index.js","size":{"w":4,"h":3},"fixedHeight":true}`)
+	data := []byte(`{"manifestVersion":3,"name":"fixed-widget","version":"0.1.0","type":"widget","label":"Fixed","entry":"index.js","size":{"w":4,"h":3},"fixedHeight":true}`)
 
 	manifest, err := Validate(data)
 	if err != nil {
@@ -62,7 +64,7 @@ func TestValidateFixedHeightRoundTrips(t *testing.T) {
 }
 
 func TestValidatePersistentRCIPermissionRoundTrips(t *testing.T) {
-	data := []byte(`{"manifestVersion":2,"name":"persistent-session-widget","version":"0.1.0","type":"widget","label":"Persistent","entry":"index.js","size":{"w":4,"h":3},"permissions":["persistent-rci-session"]}`)
+	data := []byte(`{"manifestVersion":3,"name":"persistent-session-widget","version":"0.1.0","type":"widget","label":"Persistent","entry":"index.js","size":{"w":4,"h":3},"permissions":["persistent-rci-session"]}`)
 
 	manifest, err := Validate(data)
 	if err != nil {
@@ -74,45 +76,89 @@ func TestValidatePersistentRCIPermissionRoundTrips(t *testing.T) {
 }
 
 func TestValidateUnknownPermissionRejects(t *testing.T) {
-	data := []byte(`{"manifestVersion":2,"name":"unknown-permission-widget","version":"0.1.0","type":"widget","label":"Unknown","entry":"index.js","size":{"w":4,"h":3},"permissions":["not-a-real-permission"]}`)
+	data := []byte(`{"manifestVersion":3,"name":"unknown-permission-widget","version":"0.1.0","type":"widget","label":"Unknown","entry":"index.js","size":{"w":4,"h":3},"permissions":["not-a-real-permission"]}`)
 
 	if _, err := Validate(data); err == nil {
 		t.Fatal("Validate unknown permission succeeded, want error")
 	}
 }
 
-func TestValidateEndpointSecurityFlagsRoundTrip(t *testing.T) {
-	data := []byte(`{"manifestVersion":2,"name":"secure-backend-plugin","version":"1.0.0","type":"widget","label":"Secure","entry":"index.js","size":{"w":2,"h":2},"backend":{"scripts":[{"id":"script","runtime":"sh","source":"backend/script.sh"}],"endpoints":[{"id":"endpoint","method":"POST","path":"secure","scriptId":"script","csrf":true,"sensitive":true}]}}`)
+func TestValidateRouteDescriptorHidesRuntimeDetails(t *testing.T) {
+	data := []byte(`{"manifestVersion":3,"name":"secure-backend-plugin","version":"1.0.0","type":"widget","label":"Secure","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"exec","routes":[{"id":"endpoint","transport":"http","method":"POST","path":"secure","command":"backend/script.sh"}]}}`)
 
 	manifest, err := Validate(data)
 	if err != nil {
 		t.Fatalf("Validate security flags manifest: %v", err)
 	}
-	if len(manifest.Backend.Endpoints) != 1 {
-		t.Fatalf("endpoint count = %d, want 1", len(manifest.Backend.Endpoints))
+	if len(manifest.Backend.Routes) != 1 {
+		t.Fatalf("route count = %d, want 1", len(manifest.Backend.Routes))
 	}
-	endpoint := manifest.Backend.Endpoints[0]
-	if !endpoint.Csrf || !endpoint.Sensitive {
-		t.Fatalf("endpoint flags = csrf:%v sensitive:%v, want both true", endpoint.Csrf, endpoint.Sensitive)
+	route := manifest.Backend.Routes[0]
+	if route.Method != "POST" || route.Path != "secure" {
+		t.Fatalf("route = %#v, want normalized POST route", route)
 	}
 
 	descriptor := Descriptor(manifest)
-	described := descriptor.Endpoints["endpoint"]
-	if !described.Csrf || !described.Sensitive {
-		t.Fatalf("descriptor flags = csrf:%v sensitive:%v, want both true", described.Csrf, described.Sensitive)
+	described := descriptor.Routes["endpoint"]
+	if described.Transport != "http" || described.Method != "POST" || described.Path != "secure" {
+		t.Fatalf("descriptor route = %#v, want command-free route", described)
 	}
 }
 
-func TestValidateBackendDiagnosticsRoundTrips(t *testing.T) {
-	data := []byte(`{"manifestVersion":2,"name":"diagnostics-backend-plugin","version":"1.0.0","type":"widget","label":"Diagnostics","entry":"index.js","size":{"w":2,"h":2},"backend":{"diagnostics":true}}`)
+func TestValidateV3ExecAndDescriptorHideRuntimeDetails(t *testing.T) {
+	data := []byte(`{"manifestVersion":3,"name":"exec-v3","version":"3.0.0","type":"widget","label":"Exec","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","routes":[{"id":"echo","transport":"http","method":"post","path":"echo","command":"backend/echo.sh"}]}}`)
 
-	manifest, err := Validate(data)
+	parsed, err := Validate(data)
 	if err != nil {
-		t.Fatalf("Validate diagnostics manifest: %v", err)
+		t.Fatalf("Validate v3 exec manifest: %v", err)
 	}
-	if manifest.Backend == nil || manifest.Backend.Diagnostics == nil || !*manifest.Backend.Diagnostics {
-		t.Fatalf("Backend.Diagnostics = %#v, want non-nil true", manifest.Backend)
+	if parsed.ManifestVersion == nil || *parsed.ManifestVersion != 3 {
+		t.Fatalf("ManifestVersion = %v, want 3", parsed.ManifestVersion)
 	}
+	if parsed.Backend == nil || parsed.Backend.Kind == nil || *parsed.Backend.Kind != BackendKindExec {
+		t.Fatalf("Backend.Kind = %#v, want exec", parsed.Backend)
+	}
+
+	descriptor := Descriptor(parsed)
+	if len(descriptor.Routes) != 1 {
+		t.Fatalf("route count = %d, want 1", len(descriptor.Routes))
+	}
+	route := descriptor.Routes["echo"]
+	if route.Transport != "http" || route.Method != "POST" || route.Path != "echo" {
+		t.Fatalf("route = %#v, want normalized command-free route", route)
+	}
+	encoded := string(mustJSON(t, descriptor))
+	for _, forbidden := range []string{"command", "backend/echo.sh", "kind", "protocolVersion"} {
+		if strings.Contains(encoded, forbidden) {
+			t.Errorf("descriptor contains forbidden runtime field %q: %s", forbidden, encoded)
+		}
+	}
+}
+
+func TestValidateV3ServiceAndReservedRules(t *testing.T) {
+	valid := []byte(`{"manifestVersion":3,"name":"service-v3","version":"3.0.0","type":"page","label":"Service","entry":"index.js","route":"/service","backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"},{"id":"term","transport":"websocket","path":"term"}]}}`)
+	if _, err := Validate(valid); err != nil {
+		t.Fatalf("Validate v3 service manifest: %v", err)
+	}
+
+	for _, data := range []string{
+		`{"manifestVersion":3,"name":"bad","version":"3","type":"widget","label":"Bad","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"exec","routes":[{"id":"ws","transport":"websocket","path":"ws","command":"backend/ws"}]}}`,
+		`{"manifestVersion":3,"name":"bad","version":"3","type":"widget","label":"Bad","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"ready","transport":"http","method":"GET","path":"_mndw/ready"}]}}`,
+	} {
+		if _, err := Validate([]byte(data)); err == nil {
+			t.Errorf("Validate accepted invalid v3 manifest: %s", data)
+		}
+	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	return data
 }
 
 func readFixtures(t *testing.T, kind string) []string {

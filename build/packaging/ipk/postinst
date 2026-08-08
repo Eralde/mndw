@@ -9,6 +9,9 @@ if [ "$1" != "configure" ] && [ -n "$1" ]; then
   exit 0
 fi
 
+mkdir -p /opt/tmp/mndw/plugin-runtime /opt/var/lib/mndw /opt/var/lib/mndw-secrets
+chmod 700 /opt/tmp/mndw/plugin-runtime /opt/var/lib/mndw /opt/var/lib/mndw-secrets
+
 # Start mndwd first so proxy-target.conf exists when lighttpd reads config.
 if [ -x "$MNDWD_INIT" ]; then
   "$MNDWD_INIT" start

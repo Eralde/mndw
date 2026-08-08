@@ -18,29 +18,38 @@ export type {
 } from './overlay.js';
 export type {
   PageManifest,
-  PluginBackendDaemonDeclaration,
-  PluginBackendEndpointDeclaration,
-  PluginBackendManifest,
-  PluginBackendScriptDeclaration,
-  PluginBackendWebSocketDeclaration,
+  PluginBackend,
+  PluginBackendAccess,
+  PluginBackendMethod,
+  PluginExecBackend,
+  PluginExecRoute,
+  PluginHttpRoute,
   PluginManifest,
   PluginManifestBase,
+  PluginServiceBackend,
+  PluginWebSocketRoute,
   WidgetManifest,
   WidgetSize,
 } from './manifest.js';
 export {pluginManifestSchema} from './manifest-schema.js';
 export type {PluginManifestInput, PluginManifestOutput} from './manifest-schema.js';
 export {ManifestValidationError, validateManifest} from './manifest-validator.js';
-export {BackendDisabled, BackendNotApproved, BackendUnknownId, createBackendClient} from './backend-client.js';
+export {
+  BackendDisabled,
+  BackendNotApproved,
+  BackendTransportMismatch,
+  BackendUnknownId,
+  createBackendClient,
+  isBackendMaintenanceClose,
+} from './backend-client.js';
 export type {
   BackendApprovalStatus,
   BackendClient,
   BackendClientDeps,
   BackendDescriptor,
-  BackendEndpointDescriptor,
   BackendFetchOptions,
+  BackendRouteDescriptor,
   BackendSocketOptions,
-  BackendWebSocketDescriptor,
 } from './backend-client.js';
 export {
   pluginDependencies,

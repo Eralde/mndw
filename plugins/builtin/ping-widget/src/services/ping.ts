@@ -31,36 +31,35 @@ interface Envelope<T> {
   message?: string;
 }
 
-export type DaemonAction = 'start' | 'stop';
+type ApiPayload<T> = Envelope<T> | T;
 
-const daemonEndpointIds: Record<DaemonAction, string> = {
-  start: 'daemonStart',
-  stop: 'daemonStop',
-};
-
-async function parseEnvelope<T>(response: Response): Promise<Envelope<T>> {
+async function parseEnvelope<T>(response: Response): Promise<ApiPayload<T>> {
   const text = await response.text();
-  let payload: Envelope<T>;
+  let payload: ApiPayload<T>;
 
   try {
-    payload = JSON.parse(text) as Envelope<T>;
+    payload = JSON.parse(text) as ApiPayload<T>;
   } catch {
     throw new Error('Backend returned non-JSON response');
   }
 
-  if (!response.ok || payload.success === false) {
-    throw new Error(payload.message ?? payload.error ?? `Request failed with ${response.status}`);
+  const envelope = !Array.isArray(payload) && typeof payload === 'object' && payload !== null
+    ? payload
+    : undefined;
+
+  if (!response.ok || envelope?.success === false) {
+    throw new Error(envelope?.message ?? envelope?.error ?? `Request failed with ${response.status}`);
   }
 
   return payload;
 }
 
-function dataArray<T>(payload: Envelope<T[]>): T[] {
-  return Array.isArray(payload.data) ? payload.data : [];
-}
+function dataArray<T>(payload: ApiPayload<T[]>): T[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
 
-export async function controlDaemon(backend: BackendClient, action: DaemonAction): Promise<void> {
-  await parseEnvelope<unknown>(await backend.fetch(daemonEndpointIds[action]));
+  return Array.isArray(payload.data) ? payload.data : [];
 }
 
 export async function fetchStats(backend: BackendClient): Promise<HostStats[]> {

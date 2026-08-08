@@ -28,9 +28,10 @@ interface SpawnApiResponse {
   success: boolean;
   port?: number;
   error?: string;
+  message?: string;
 }
 
-const SPAWN_TIMEOUT_MS = 5000;
+const SPAWN_TIMEOUT_MS = 10000;
 const MAX_RETRIES = 3;
 const RETRY_DELAYS_MS = [1000, 2000, 4000];
 
@@ -87,7 +88,7 @@ function classifyFetchError(error: unknown): ConnectionError {
 }
 
 function buildSpawnError(result: SpawnApiResponse): SpawnResult {
-  const error = result.error || 'Failed to spawn ttyd';
+  const error = result.error || result.message || 'Failed to spawn ttyd';
   const lower = error.toLowerCase();
 
   if (lower.includes('already')) {
@@ -176,7 +177,7 @@ export function connectToCli(
   element: HTMLElement,
   TerminalCtor: typeof Terminal,
   FitAddonCtor: typeof FitAddon,
-  onDisconnect?: () => void,
+  onDisconnect?: (event: CloseEvent) => void,
 ): TerminalInstance {
   const socket = backend.socket('terminal');
 
@@ -260,11 +261,11 @@ export function connectToCli(
     socket.send(packet);
   });
 
-  socket.addEventListener('close', () => {
+  socket.addEventListener('close', (event) => {
     socketReady = false;
 
     if (!disposed) {
-      onDisconnect?.();
+      onDisconnect?.(event);
     }
   });
 

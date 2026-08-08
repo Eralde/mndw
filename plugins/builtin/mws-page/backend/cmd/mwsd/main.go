@@ -7,8 +7,8 @@ import (
 	"syscall"
 
 	"mws-page/internal/config"
+	"mws-page/internal/httpapi"
 	"mws-page/internal/service"
-	"mws-page/internal/socket"
 )
 
 func main() {
@@ -20,13 +20,11 @@ func main() {
 	defer stop()
 	mwsd := service.New(cfg)
 	go mwsd.Run(ctx)
-	server := &socket.Server{Path: cfg.SocketPath(), PIDPath: cfg.PIDPath(), IOTimeout: cfg.IOTimeout, AuthTimeout: cfg.AuthOperation, RequestLimit: cfg.MaxRequestBytes, ResponseLimit: cfg.MaxResponseBytes, Service: mwsd}
-	if err := server.Listen(); err != nil {
+	server, err := httpapi.New(mwsd)
+	if err != nil {
 		panic(err)
 	}
-	defer server.Close()
-	_ = mwsd.WriteDiagnostics()
-	if err := server.Serve(ctx); err != nil {
+	if err := server.Run(ctx); err != nil {
 		panic(err)
 	}
 }

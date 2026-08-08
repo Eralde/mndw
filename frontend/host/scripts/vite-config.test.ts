@@ -17,4 +17,16 @@ describe('host Vite config', () => {
 
     expect(config.server?.fs?.allow).toContain(repoRoot);
   });
+
+  it('keeps browser origin and disables Vite CORS on daemon proxies', () => {
+    const config = viteConfig({command: 'serve', mode: 'development', isPreview: false});
+    const apiProxy = config.server?.proxy?.['/api'];
+    const wsProxy = config.server?.proxy?.['/ws'];
+
+    expect(config.server?.cors).toBe(false);
+    expect(apiProxy && typeof apiProxy !== 'function' && typeof apiProxy !== 'string' && apiProxy.changeOrigin).toBe(
+      false,
+    );
+    expect(wsProxy && typeof wsProxy !== 'function' && typeof wsProxy !== 'string' && wsProxy.changeOrigin).toBe(false);
+  });
 });

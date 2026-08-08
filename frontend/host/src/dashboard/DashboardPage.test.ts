@@ -102,7 +102,7 @@ import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {raiseInstanceCounter} from './widget-counter.js';
 import DashboardPage from './DashboardPage.svelte';
 
-const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
+const emptyBackend = {routes: {}};
 
 function widgetEntry(name: string): WidgetListEntry {
   return {

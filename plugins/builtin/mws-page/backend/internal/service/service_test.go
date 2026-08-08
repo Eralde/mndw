@@ -7,8 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -526,6 +524,7 @@ func TestPersistentTelemetryPreservesLargeMemtotal(t *testing.T) {
 }
 
 func TestDiagnosticsSnapshotIncludesPersistentConfiguration(t *testing.T) {
+	t.Setenv("MNDW_RCI_SESSION_SOCKET", "/run/mws-page/rci-session.sock")
 	service := New(config.Config{RuntimeDir: t.TempDir()})
 	snapshot := service.DiagnosticsSnapshot()
 	encoded, err := json.Marshal(snapshot)
@@ -581,9 +580,8 @@ func TestDiagnosticsSnapshotIncludesLocalStateAndBoundsRrdData(t *testing.T) {
 	if err := json.Unmarshal(encoded, &envelope); err != nil {
 		t.Fatal(err)
 	}
-	runtime, ok := envelope["runtime"].(map[string]any)
-	if !ok || runtime["pid"] != float64(os.Getpid()) || runtime["pidPath"] != filepath.Join(runtimeDir, "mwsd.pid") || runtime["socketPath"] != filepath.Join(runtimeDir, "mwsd.sock") || runtime["socketPresent"] != false {
-		t.Fatalf("runtime = %#v", envelope["runtime"])
+	if _, present := envelope["runtime"]; present {
+		t.Fatalf("diagnostics leaked runtime identity: %#v", envelope["runtime"])
 	}
 	if envelope["credState"] != "present" || envelope["lastRefreshAt"] != when.Format(time.RFC3339) {
 		t.Fatalf("state = %#v", envelope)
@@ -676,27 +674,12 @@ func TestDiagnosticsSnapshotIncludesSafeCredentialFailure(t *testing.T) {
 	if strings.Contains(string(encoded), "secret") || strings.Contains(string(encoded), "x-ndw5") {
 		t.Fatalf("diagnostics leaked credential or auth details: %s", encoded)
 	}
-	diagnostics, err := os.ReadFile(filepath.Join(runtimeDir, "diagnostics.json"))
-	if err != nil {
-		t.Fatalf("read diagnostics: %v", err)
-	}
-	if !strings.Contains(string(diagnostics), `"code":"unsupported_firmware"`) {
-		t.Fatalf("published diagnostics = %s", diagnostics)
-	}
 }
 
 func TestDiagnosticsTickWritesWhenCredentialsAbsent(t *testing.T) {
-	runtimeDir := t.TempDir()
-	service := New(config.Config{RuntimeDir: runtimeDir, SocketName: "mwsd.sock", PIDName: "mwsd.pid"})
+	service := New(config.Config{RuntimeDir: t.TempDir()})
 	if err := service.writeDiagnosticsTick(); err != nil {
 		t.Fatal(err)
-	}
-	data, err := os.ReadFile(filepath.Join(runtimeDir, "diagnostics.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), `"credState":"absent"`) {
-		t.Fatalf("diagnostics = %s", data)
 	}
 }
 

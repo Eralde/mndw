@@ -11,17 +11,13 @@ const entry: PluginListEntry = {
   version: '1.0.0',
   label: 'Network Tools',
   entry: 'index.js',
-  source: 'user',
+  source: 'upload',
   approval: 'pending',
   enabled: false,
   depsStatus: 'ready',
   route: '/network-tools',
   backend: {
-    endpoints: {},
-    websockets: {},
-    opkg: [],
-    daemon: true,
-    public: false,
+    routes: {},
   },
 };
 

@@ -3,7 +3,7 @@ import type {PaletteTokenMap} from '@mndw/sdk';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
 import {MgmtError, createMgmtClient, messageForError} from './mgmt-client.js';
 
-const backend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
+const backend = {routes: {}};
 
 function entry(name: string, over: Partial<PluginListEntry> = {}): PluginListEntry {
   return {
@@ -11,7 +11,7 @@ function entry(name: string, over: Partial<PluginListEntry> = {}): PluginListEnt
     version: '1.0.0',
     label: name,
     entry: 'index.js',
-    source: 'user',
+    source: 'upload',
     approval: 'approved',
     enabled: true,
     depsStatus: 'ready',

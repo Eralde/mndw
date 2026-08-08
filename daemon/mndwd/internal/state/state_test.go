@@ -43,6 +43,7 @@ func TestMutatePersistsAndReloads(t *testing.T) {
 			Source:   SourceUser,
 			Type:     "widget",
 			Approval: ApprovalPending,
+			Manifest: json.RawMessage(`{}`),
 		}
 		st.AppendAudit("upload", "demo", "10240 bytes")
 
@@ -110,6 +111,55 @@ func TestCorruptStateRecovered(t *testing.T) {
 	}
 	if _, err := os.Stat(path + ".bak"); err != nil {
 		t.Errorf("expected corrupt file preserved as .bak: %v", err)
+	}
+}
+
+func TestUnsupportedStateIsBackedUpWithoutMigration(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	legacy := `{"version":1,"plugins":{"old":{"name":"old","source":"user","manifest":{}}}}`
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatalf("seed legacy state: %v", err)
+	}
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open legacy state: %v", err)
+	}
+	if store.Snapshot().Version != schemaVersion || len(store.Snapshot().Plugins) != 0 {
+		t.Fatalf("legacy state was migrated instead of reset: %+v", store.Snapshot())
+	}
+	backup, err := os.ReadFile(path + ".bak")
+	if err != nil {
+		t.Fatalf("read legacy backup: %v", err)
+	}
+	if string(backup) != legacy {
+		t.Fatalf("legacy backup changed: %q", backup)
+	}
+}
+
+func TestV3StateRetainsVersionProvenance(t *testing.T) {
+	store, path := newStore(t)
+	err := store.Mutate(func(st *State) error {
+		st.Plugins["demo"] = &Plugin{
+			Name:             "demo",
+			Source:           SourceUpload,
+			Manifest:         json.RawMessage(`{}`),
+			InstalledVersion: "1.2.0",
+			ActiveVersion:    "1.2.0",
+			ActiveVersionDir: filepath.Join(filepath.Dir(path), "plugins", "demo"),
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Mutate: %v", err)
+	}
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	plugin, ok := reopened.Get("demo")
+	if !ok || plugin.Source != SourceUpload || plugin.ActiveVersion != "1.2.0" {
+		t.Fatalf("version provenance not retained: %+v", plugin)
 	}
 }
 

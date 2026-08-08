@@ -6,28 +6,23 @@ import {ManifestValidationError, validateManifest} from './manifest-validator.js
 const fixturesRoot = resolve(import.meta.dirname, '..', 'fixtures', 'manifests');
 
 const loadFixtures = (kind: 'valid' | 'invalid'): Array<{name: string; data: unknown}> => {
-  const dir = resolve(fixturesRoot, kind);
+  const directory = resolve(fixturesRoot, kind);
 
-  return readdirSync(dir)
+  return readdirSync(directory)
     .filter((file) => file.endsWith('.json'))
     .sort()
     .map((file) => {
-      return {
-        name: file,
-        data: JSON.parse(readFileSync(resolve(dir, file), 'utf8')),
-      };
+      return {name: file, data: JSON.parse(readFileSync(resolve(directory, file), 'utf8'))};
     });
 };
 
-// The shared fixture corpus is the source of truth for Zod <-> Go validator parity.
-// Every file under valid/ must parse; every file under invalid/ must be rejected.
 describe('manifest fixture corpus', () => {
   const validFixtures = loadFixtures('valid');
   const invalidFixtures = loadFixtures('invalid');
 
-  it('has a non-trivial corpus', () => {
+  it('has a non-trivial v3 corpus', () => {
     expect(validFixtures.length).toBeGreaterThanOrEqual(8);
-    expect(invalidFixtures.length).toBeGreaterThanOrEqual(30);
+    expect(invalidFixtures.length).toBeGreaterThanOrEqual(20);
   });
 
   it.each(validFixtures)('accepts valid/$name', ({data}) => {
@@ -40,202 +35,79 @@ describe('manifest fixture corpus', () => {
 });
 
 describe('validateManifest behavior', () => {
-  it('accepts the persistent RCI session permission', () => {
+  const base = {
+    manifestVersion: 3 as const,
+    name: 'v3-plugin',
+    version: '3.0.0',
+    type: 'widget' as const,
+    label: 'V3 Plugin',
+    entry: 'index.js',
+    size: {w: 4, h: 3},
+  };
+
+  it('accepts persistent RCI permission and strips editor schema metadata', () => {
     const result = validateManifest({
-      manifestVersion: 2,
-      name: 'persistent-session-widget',
-      version: '2.0.0',
-      type: 'widget',
-      label: 'Persistent Session Widget',
-      entry: 'index.js',
-      size: {w: 4, h: 3},
+      ...base,
+      $schema: '../manifest.schema.json',
       permissions: ['persistent-rci-session'],
     });
 
     expect(result.permissions).toEqual(['persistent-rci-session']);
-  });
-
-  it('rejects unknown manifest permissions', () => {
-    expect(() =>
-      validateManifest({
-        manifestVersion: 2,
-        name: 'unknown-permission-widget',
-        version: '2.0.0',
-        type: 'widget',
-        label: 'Unknown Permission Widget',
-        entry: 'index.js',
-        size: {w: 4, h: 3},
-        permissions: ['not-a-real-permission'],
-      })
-    ).toThrow(ManifestValidationError);
-  });
-
-  it('returns typed widget data with the size preserved', () => {
-    const result = validateManifest({
-      manifestVersion: 2,
-      name: 'test-widget',
-      version: '2.0.0',
-      type: 'widget',
-      label: 'Test Widget',
-      entry: 'index.js',
-      size: {w: 4, h: 3},
-    });
-
-    expect(result.type).toBe('widget');
-    expect(result.type === 'widget' && result.size.w).toBe(4);
-  });
-
-  it('retains widget fixedHeight in validated output', () => {
-    const result = validateManifest({
-      manifestVersion: 2,
-      name: 'fixed-widget',
-      version: '2.0.0',
-      type: 'widget',
-      label: 'Fixed Widget',
-      entry: 'index.js',
-      size: {w: 4, h: 3},
-      fixedHeight: true,
-    });
-
-    expect(result.type === 'widget' && result.fixedHeight).toBe(true);
-  });
-
-  it('returns typed page data with the route preserved', () => {
-    const result = validateManifest({
-      manifestVersion: 2,
-      name: 'test-page',
-      version: '2.0.0',
-      type: 'page',
-      label: 'Test Page',
-      entry: 'index.js',
-      route: '/demo',
-    });
-
-    expect(result.type).toBe('page');
-    expect(result.type === 'page' && result.route).toBe('/demo');
-  });
-
-  it('accepts and strips an editor $schema reference', () => {
-    const result = validateManifest({
-      $schema: '../manifest.schema.json',
-      manifestVersion: 2,
-      name: 'test-widget',
-      version: '2.0.0',
-      type: 'widget',
-      label: 'Test Widget',
-      entry: 'index.js',
-      size: {w: 4, h: 3},
-    });
-
     expect('$schema' in result).toBe(false);
   });
 
-  it('normalizes a lowercase endpoint method to uppercase', () => {
+  it('normalizes route method and defaults access to session', () => {
     const result = validateManifest({
-      manifestVersion: 2,
-      name: 'backend-plugin',
-      version: '2.0.0',
-      type: 'widget',
-      label: 'Backend Plugin',
-      entry: 'index.js',
-      size: {w: 4, h: 3},
-      backend: {
-        scripts: [{id: 's1', source: 'script.sh', runtime: 'sh'}],
-        endpoints: [{id: 'e1', method: 'get', path: 'data', scriptId: 's1'}],
-      },
-    });
-
-    const endpoint = result.backend?.endpoints?.[0];
-
-    expect(endpoint?.method).toBe('GET');
-  });
-
-  it('retains endpoint csrf and sensitive flags', () => {
-    const result = validateManifest({
-      manifestVersion: 2,
-      name: 'secure-backend-plugin',
-      version: '1.0.0',
-      type: 'widget',
-      label: 'Secure Backend Plugin',
-      entry: 'index.js',
-      size: {w: 2, h: 2},
-      backend: {
-        scripts: [{id: 'script', source: 'backend/script.sh', runtime: 'sh'}],
-        endpoints: [{
-          id: 'endpoint',
-          method: 'POST',
-          path: 'secure',
-          scriptId: 'script',
-          csrf: true,
-          sensitive: true,
-        }],
-      },
-    });
-
-    expect(result.backend?.endpoints?.[0]?.csrf).toBe(true);
-    expect(result.backend?.endpoints?.[0]?.sensitive).toBe(true);
-  });
-
-  it('retains the optional backend diagnostics capability', () => {
-    const result = validateManifest({
-      manifestVersion: 2,
-      name: 'diagnostics-backend-plugin',
-      version: '1.0.0',
-      type: 'widget',
-      label: 'Diagnostics Backend Plugin',
-      entry: 'index.js',
-      size: {w: 2, h: 2},
-      backend: {diagnostics: true},
-    });
-
-    expect(result.backend?.diagnostics).toBe(true);
-  });
-
-  it('surfaces the plugin name in the error message', () => {
-    expect(() =>
-      validateManifest({
-        manifestVersion: 2,
-        name: 'broken-widget',
-        version: '2.0.0',
-        type: 'widget',
-        label: 'Broken',
-        entry: 'index.js',
-        // missing size
-      })
-    ).toThrow(/broken-widget/);
-  });
-
-  it('reports "unknown" when the name is unavailable', () => {
-    expect(() => validateManifest({type: 'widget'})).toThrow(/unknown/);
-  });
-});
-
-describe('backend.assets', () => {
-  const base = {
-    manifestVersion: 2 as const,
-    name: 'asset-plugin',
-    version: '0.1.0',
-    type: 'widget' as const,
-    label: 'Asset Plugin',
-    entry: 'index.js',
-    size: {w: 2, h: 2},
-  };
-
-  it('accepts a safe relative asset path', () => {
-    const manifest = validateManifest({
       ...base,
-      backend: {assets: ['backend/ping-util']},
+      backend: {
+        kind: 'exec',
+        routes: [{id: 'echo', transport: 'http', method: 'post', path: 'echo', command: 'backend/echo.sh'}],
+      },
     });
 
-    expect(manifest.backend?.assets).toEqual(['backend/ping-util']);
+    expect(result.manifestVersion).toBe(3);
+    expect(result.backend?.kind).toBe('exec');
+    expect(result.backend?.routes[0]).toMatchObject({method: 'POST', access: 'session'});
+  });
+
+  it('accepts a service command, literal args, HTTP, and WebSocket routes', () => {
+    const result = validateManifest({
+      ...base,
+      backend: {
+        kind: 'service',
+        protocolVersion: 1,
+        command: 'backend/server',
+        args: ['--foreground'],
+        routes: [
+          {id: 'status', transport: 'http', method: 'GET', path: 'status'},
+          {id: 'terminal', transport: 'websocket', path: 'terminal', protocols: ['tty']},
+        ],
+      },
+    });
+
+    expect(result.backend?.kind).toBe('service');
+    expect(result.backend?.routes).toHaveLength(2);
   });
 
   it.each([
-    ['/abs/ping-util'],
-    ['../ping-util'],
-    ['backend\\ping-util'],
-    [''],
-  ])('rejects unsafe asset path %s', (bad) => {
-    expect(() => validateManifest({...base, backend: {assets: [bad]}})).toThrow();
+    {name: 'exec websocket',
+      backend: {kind: 'exec', routes: [{id: 'ws', transport: 'websocket', path: 'ws', command: 'backend/ws'}]}},
+    {name: 'public post',
+      backend: {kind: 'exec',
+        routes: [{id: 'post', transport: 'http', method: 'POST', path: 'post', access: 'public',
+          command: 'backend/post'}]}},
+    {name: 'reserved route',
+      backend: {kind: 'exec',
+        routes: [{id: 'ready', transport: 'http', method: 'GET', path: '_mndw/ready', command: 'backend/get'}]}},
+    {name: 'mixed backend fields',
+      backend: {kind: 'exec', legacy: [],
+        routes: [{id: 'echo', transport: 'http', method: 'GET', path: 'echo', command: 'backend/echo.sh'}]}},
+  ])('rejects $name', ({backend}) => {
+    expect(() => validateManifest({...base, backend})).toThrow(ManifestValidationError);
+  });
+
+  it('surfaces plugin name in validation errors', () => {
+    expect(() => validateManifest({...base, name: 'Bad Name'})).toThrow(/Bad Name/);
+    expect(() => validateManifest({type: 'widget'})).toThrow(/unknown/);
   });
 });

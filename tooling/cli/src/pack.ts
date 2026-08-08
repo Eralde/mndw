@@ -95,8 +95,8 @@ interface WorkerReference {
  * Builds a vanilla, Svelte, Vue, or Angular plugin into an isolated output directory: bundles its entry to a
  * browser ESM module at `dist/<manifest.entry>` (host-shared deps kept external), writes any emitted
  * CSS to the host-expected `dist/index.css`, stages module workers referenced by plugin or bundled SDK
- * source, re-serializes the validated `manifest.json`, and copies every declared backend script and
- * daemon hook. The build runs entirely in memory and only swaps the output directory into place on
+ * source, re-serializes the validated `manifest.json`, and copies every declared backend command.
+ * The build runs entirely in memory and only swaps the output directory into place on
  * success, so a failed build never leaves a partial distribution.
  */
 export async function packPlugin(pluginDir: string, options: PackOptions = {}): Promise<PackResult> {
@@ -163,9 +163,8 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
 
     const lock = serializeLock(buildLock(manifest, framework));
 
-    // Read backend assets before mutating any output, so a missing asset fails cleanly.
-    const hasCompiledBackend = typeof readPluginPackage(resolvedDir)?.mndw?.backendBuildScript === 'string';
-    const backendAssets = collectBackendAssets(manifest, resolvedDir, !hasCompiledBackend);
+    // Read backend commands before mutating output, so missing commands fail cleanly.
+    const backendAssets = collectBackendAssets(manifest, resolvedDir);
     const workerReferences = collectWorkerReferences(manifest.entry, result.metafile);
     const workerAssets = await buildWorkerAssets(workerReferences, outDir, resolvedDir, framework);
     const mainBundle = rewriteWorkerSpecifiers(jsOutput.contents, workerReferences);
@@ -194,7 +193,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
               schemaVersion: 1,
               plugin: manifest.name,
               entry: manifest.entry,
-              staticBackends: backendAssetRelPaths(manifest, !hasCompiledBackend),
+              staticBackends: backendAssetRelPaths(manifest),
             },
             null,
             2,
@@ -283,8 +282,8 @@ export async function packExamplePlugins(options: PackExamplePluginsOptions): Pr
   return names;
 }
 
-/** Relative source paths of every declared backend script and daemon hook (deduped). */
-function backendAssetRelPaths(manifest: PluginManifestOutput, includeCompiledAssets = true): string[] {
+/** Relative source paths of every declared v3 backend command (deduped). */
+function backendAssetRelPaths(manifest: PluginManifestOutput): string[] {
   const backend = manifest.backend;
 
   if (backend === undefined) {
@@ -293,18 +292,12 @@ function backendAssetRelPaths(manifest: PluginManifestOutput, includeCompiledAss
 
   const paths: string[] = [];
 
-  for (const script of backend.scripts ?? []) {
-    paths.push(script.source);
-  }
-
-  if (backend.daemon !== undefined) {
-    paths.push(backend.daemon.start, backend.daemon.stop);
-  }
-
-  if (includeCompiledAssets) {
-    for (const asset of backend.assets ?? []) {
-      paths.push(asset);
+  if (backend.kind === 'exec') {
+    for (const route of backend.routes) {
+      paths.push(route.command);
     }
+  } else {
+    paths.push(backend.command);
   }
 
   return [...new Set(paths)];
@@ -423,13 +416,17 @@ function rewriteWorkerSpecifiers(contents: Uint8Array, references: readonly Work
 function collectBackendAssets(
   manifest: PluginManifestOutput,
   pluginDir: string,
-  includeCompiledAssets: boolean,
 ): StagedAsset[] {
-  return backendAssetRelPaths(manifest, includeCompiledAssets).map((rel) => {
+  return backendAssetRelPaths(manifest).map((rel) => {
     const source = safeJoin(pluginDir, rel);
 
     try {
-      return {rel, contents: readFileSync(source), mode: statSync(source).mode};
+      const stat = statSync(source);
+      if (!stat.isFile()) {
+        throw new CliError(`Backend command is not a regular file: ${source}`);
+      }
+
+      return {rel, contents: readFileSync(source), mode: 0o755};
     } catch {
       throw new CliError(`Missing backend asset "${rel}" declared in manifest: ${source}`);
     }

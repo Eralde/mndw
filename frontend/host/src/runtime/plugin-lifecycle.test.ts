@@ -32,7 +32,7 @@ function mockPlugin(createInstanceResult: PluginInstance | Promise<PluginInstanc
       enabled: true,
       depsStatus: 'ready',
       size: {w: 4, h: 3},
-      backend: {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false},
+      backend: {routes: {}},
     },
     module: {createInstance: vi.fn(() => createInstanceResult)},
   };
@@ -78,6 +78,28 @@ describe('mountPlugin', () => {
 
     expect(mounted).not.toBeNull();
     expect(mounted?.pluginName).toBe('test-plugin');
+  });
+
+  it('resolves promise-like createInstance results from patched Promise environments', async () => {
+    const {instance, unmountSpy} = mockInstance();
+    const plugin = mockPlugin(instance);
+
+    plugin.module.createInstance = vi.fn(() => ({
+      then(resolve: (value: PluginInstance) => void): void {
+        resolve(instance);
+      },
+    } as unknown as Promise<PluginInstance>));
+
+    const container = document.createElement('div');
+    const result = mountPlugin(container, plugin, mockContext());
+
+    expect(result).toBeInstanceOf(Promise);
+
+    const mounted = await result;
+
+    expect(mounted?.instance).toBe(instance);
+    unmountPlugin(mounted, container);
+    expect(unmountSpy).toHaveBeenCalledOnce();
   });
 
   it('returns null when sync createInstance throws', () => {

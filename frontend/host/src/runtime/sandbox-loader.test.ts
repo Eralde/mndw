@@ -3,7 +3,7 @@ import {type LoadedPlugin, PluginRegistry} from './plugin-registry.js';
 import {type SandboxLoaderDeps, loadSandboxPlugin, manifestToListEntry, reloadSandboxPlugin} from './sandbox-loader.js';
 
 const widgetManifest = {
-  manifestVersion: 2,
+  manifestVersion: 3,
   name: 'sandbox-widget',
   version: '0.0.0',
   type: 'widget',
@@ -13,7 +13,7 @@ const widgetManifest = {
 };
 
 const pageManifest = {
-  manifestVersion: 2,
+  manifestVersion: 3,
   name: 'sandbox-page',
   version: '0.0.0',
   type: 'page',
@@ -25,10 +25,8 @@ const pageManifest = {
 const backendManifest = {
   ...widgetManifest,
   backend: {
-    opkg: ['ttyd'],
-    scripts: [{id: 'main', source: 'backend/main.sh', runtime: 'sh'}],
-    endpoints: [{id: 'hello', method: 'GET', path: 'hello', scriptId: 'main'}],
-    public: true,
+    kind: 'exec',
+    routes: [{id: 'hello', transport: 'http', method: 'GET', path: 'hello', command: 'backend/main.sh'}],
   },
 };
 
@@ -67,7 +65,7 @@ describe('manifestToListEntry', () => {
       approval: 'approved',
       enabled: true,
       size: {w: 4, h: 3, minW: 2, minH: 2},
-      backend: {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false},
+      backend: {routes: {}},
     });
   });
 
@@ -83,13 +81,11 @@ describe('manifestToListEntry', () => {
     expect(entry).toMatchObject({type: 'widget', fixedHeight: true});
   });
 
-  it('maps declared backend endpoints/opkg/public into the descriptor', () => {
+  it('maps declared backend routes into the descriptor', () => {
     const entry = manifestToListEntry(backendManifest as never);
 
     expect(entry.backend).toMatchObject({
-      endpoints: {hello: {method: 'GET', path: 'hello'}},
-      opkg: ['ttyd'],
-      public: true,
+      routes: {hello: {transport: 'http', method: 'GET', path: 'hello'}},
     });
   });
 });

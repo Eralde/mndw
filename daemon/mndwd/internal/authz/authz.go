@@ -2,8 +2,8 @@
 // of its own: it replays a request's cookies against the router's /auth endpoint and
 // trusts the router's verdict, caching it per cookie for a short TTL so a burst of
 // plugin calls costs one upstream check. --dev accepts everything (the bypass is
-// logged loudly at startup). backend.public routes skip this gate entirely; that
-// decision lives with the caller (dispatch/wsproxy) since it depends on the plugin.
+// logged loudly at startup). Backend route access is decided by the unified
+// backend gateway because it depends on the matched manifest capability.
 package authz
 
 import (
@@ -111,8 +111,8 @@ func (v *Verifier) Authenticate(r *http.Request) *httpx.APIError {
 }
 
 // Middleware wraps next with the session gate, writing the 401 envelope on failure.
-// Used for /api/mgmt/* which is always gated; dispatch/ws call Authenticate directly
-// so they can honor backend.public.
+// Used for /api/mgmt/*, while the backend gateway calls Authenticate after
+// resolving its route access.
 func (v *Verifier) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if apiErr := v.Authenticate(r); apiErr != nil {

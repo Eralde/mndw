@@ -1,63 +1,53 @@
 /**
- * Plugin manifest types (`manifestVersion: 2`).
+ * Plugin manifest v3 contracts.
  *
- * Widget sizing uses **grid units** (`size: {w, h, minW?, minH?}`); backend endpoint/websocket paths
- * are **relative** (the daemon composes the full URL as `/api/plugins/<name>/<path>` /
- * `/ws/plugins/<name>/<path>`); `backend.daemon` declares long-running-process hooks; and
- * `backend.public` opts a plugin's endpoints/websockets out of the session gate.
+ * Backend commands and service process details stay daemon-local. Host-facing
+ * descriptors contain only the route projection exposed by backend-client.ts.
  */
 
-export interface PluginBackendScriptDeclaration {
+export type PluginBackendAccess = 'session' | 'public';
+export type PluginBackendMethod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+export interface PluginHttpRoute {
   id: string;
-  source: string;
-  runtime: 'sh';
+  transport: 'http';
+  method: PluginBackendMethod;
+  path: string;
+  access?: PluginBackendAccess;
 }
 
-export interface PluginBackendEndpointDeclaration {
+export interface PluginWebSocketRoute {
   id: string;
-  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  /** Relative path; daemon serves it at `/api/plugins/<name>/<path>`. */
+  transport: 'websocket';
   path: string;
-  scriptId: string;
-  /** Require the daemon's custom CSRF header after session authentication. */
-  csrf?: boolean;
-  /** Mark matched responses as sensitive at the dispatch boundary. */
-  sensitive?: boolean;
-}
-
-export interface PluginBackendWebSocketDeclaration {
-  id: string;
-  /** Relative path; daemon proxies it at `/ws/plugins/<name>/<path>`. */
-  path: string;
-  target: string;
+  access?: PluginBackendAccess;
   protocols?: string[];
 }
 
-/** Long-running backend process; start/stop run on enable/disable and device boot. */
-export interface PluginBackendDaemonDeclaration {
-  start: string;
-  stop: string;
+export interface PluginExecRoute extends PluginHttpRoute {
+  command: string;
 }
 
+export interface PluginExecBackend {
+  kind: 'exec';
+  packages?: string[];
+  routes: PluginExecRoute[];
+}
+
+export interface PluginServiceBackend {
+  kind: 'service';
+  protocolVersion: number;
+  command: string;
+  args?: string[];
+  packages?: string[];
+  routes: Array<PluginHttpRoute | PluginWebSocketRoute>;
+}
+
+export type PluginBackend = PluginExecBackend | PluginServiceBackend;
 export type PluginPermission = 'persistent-rci-session';
 
-export interface PluginBackendManifest {
-  /** opkg packages the daemon installs on approval. */
-  opkg?: string[];
-  scripts?: PluginBackendScriptDeclaration[];
-  /** Non-script backend files pack must ship verbatim (e.g. compiled binaries). */
-  assets?: string[];
-  endpoints?: PluginBackendEndpointDeclaration[];
-  websockets?: PluginBackendWebSocketDeclaration[];
-  daemon?: PluginBackendDaemonDeclaration;
-  /** true = the plugin writes the runtime diagnostics.json contract. */
-  diagnostics?: boolean;
-  /** true = endpoints/websockets skip the router-session check (surfaced in the approval UI). */
-  public?: boolean;
-}
-
 export interface PluginManifestBase {
-  manifestVersion: 2;
+  manifestVersion: 3;
   name: string;
   version: string;
   type: 'widget' | 'page';
@@ -65,7 +55,7 @@ export interface PluginManifestBase {
   entry: string;
   icon?: string;
   permissions?: PluginPermission[];
-  backend?: PluginBackendManifest;
+  backend?: PluginBackend;
 }
 
 /** Widget size, in grid units on the 12-column dashboard grid. */
@@ -79,7 +69,6 @@ export interface WidgetSize {
 export interface WidgetManifest extends PluginManifestBase {
   type: 'widget';
   size: WidgetSize;
-  /** Fixed-height widgets retain desktop GridStack height on mobile (for example ttyd). */
   fixedHeight?: boolean;
 }
 

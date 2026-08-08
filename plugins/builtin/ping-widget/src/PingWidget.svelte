@@ -3,10 +3,8 @@ import {onMount} from 'svelte';
 import type {BackendClient} from '@mndw/sdk';
 import {createRefreshLoop} from '@mndw/sdk/refresh';
 import {
-  type DaemonAction,
   type Host,
   type HostStats,
-  controlDaemon,
   fetchHosts,
   fetchStats,
   updateHosts,
@@ -41,11 +39,6 @@ let isError = $state(false);
 let newHostIp = $state('');
 let newHostName = $state('');
 let pollSeconds = $state(2);
-type DaemonUiAction = 'idle' | DaemonAction | 'restart';
-
-let daemonAction = $state<DaemonUiAction>('idle');
-const daemonBusy = $derived(daemonAction !== 'idle');
-
 const renameStates = $state<Record<string, RenameState>>({});
 const statsLoop = createRefreshLoop({
   load: loadStats,
@@ -161,36 +154,6 @@ async function refreshNow(showMessage = true): Promise<void> {
     setMessage(error instanceof Error ? error.message : 'Refresh failed', true);
   } finally {
     loading = false;
-  }
-}
-
-async function runDaemonAction(
-  action: Exclude<DaemonUiAction, 'idle'>,
-): Promise<void> {
-  if (!backend || daemonBusy) {
-    return;
-  }
-
-  daemonAction = action;
-
-  try {
-    if (action === 'restart') {
-      await controlDaemon(backend, 'stop');
-      await controlDaemon(backend, 'start');
-    } else {
-      await controlDaemon(backend, action);
-    }
-
-    setMessage(
-      action === 'restart'
-        ? 'Daemon restarted'
-        : `Daemon ${action === 'start' ? 'started' : 'stopped'}`,
-    );
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : 'Request failed';
-    setMessage(`Daemon ${action} failed: ${detail}`, true);
-  } finally {
-    daemonAction = 'idle';
   }
 }
 
@@ -323,32 +286,6 @@ onMount(() => {
     <h3>Ping Utility</h3>
     <div class="header-actions">
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <mndw-button
-        variant="primary"
-        aria-label="Start daemon"
-        disabled={loading || daemonBusy || !hasBackend}
-        onclick={() => void runDaemonAction('start')}
-      >
-        Start
-      </mndw-button>
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <mndw-button
-        variant="secondary"
-        aria-label="Stop daemon"
-        disabled={loading || daemonBusy || !hasBackend}
-        onclick={() => void runDaemonAction('stop')}
-      >
-        Stop
-      </mndw-button>
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <mndw-button
-        variant="secondary"
-        aria-label="Restart daemon"
-        disabled={loading || daemonBusy || !hasBackend}
-        onclick={() => void runDaemonAction('restart')}
-      >
-        Restart
-      </mndw-button>
       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <mndw-button
         variant="secondary"

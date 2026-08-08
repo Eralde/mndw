@@ -17,18 +17,15 @@ import (
 
 	"mndwd/internal/access"
 	"mndwd/internal/authz"
+	"mndwd/internal/backend"
 	"mndwd/internal/diagnostics"
-	"mndwd/internal/dispatch"
 	"mndwd/internal/httpx"
-	"mndwd/internal/lifecycle"
+	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/opkg"
 	"mndwd/internal/palette"
-	"mndwd/internal/pluginruntime"
-	"mndwd/internal/readiness"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
-	"mndwd/internal/wsproxy"
 )
 
 // version is stamped at build time via -ldflags "-X main.version=<v>" and
@@ -79,19 +76,10 @@ func run(cfg Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Builtins skip the approval flow (where user-plugin opkg deps are installed), so
-	// their deps install in the background — off the critical path, so the UI's first
-	// request is served immediately. Pre-registration must precede the listener bind.
-	coord := newStartupCoordinator(c.reg, c.opkgMgr, c.life, c.tracker, opkgInstallRetryDelays, logger)
-	coord.PreRegister()
-
-	// Start backend.daemon hooks whose dependencies need no background install;
-	// dep-declaring builtins chain behind their install.
-	startupActivate(c.reg, c.life, coord.Deferred, logger)
-
-	bgCtx, bgCancel := context.WithCancel(ctx)
-	defer bgCancel()
-	coord.Run(bgCtx)
+	// Dependency installation is an explicit management operation. Startup only
+	// reconciles already-approved service manifests; it never runs opkg retries or
+	// executes plugin commands before the listener is available.
+	c.runtime.Reconcile(ctx, c.reg.AllBackendPlugins())
 
 	srv := &http.Server{
 		Addr:              cfg.Listen,
@@ -103,30 +91,25 @@ func run(cfg Config) error {
 	closePersistent := func() {
 		closePersistentOnce.Do(c.closePersistentSession)
 	}
-	err = serve(ctx, srv, logger, closePersistent)
+	err = serveWithDrain(ctx, srv, logger, closePersistent, cfg.HTTPDrainTimeout)
 	closePersistent()
 
-	// Cancel background work, join it so Start cannot race Stop, then stop daemons.
-	// Deferred builtins whose Start hook never ran are excluded from shutdown.
-	bgCancel()
-	coord.Wait()
-	shutdownDaemons(c.reg, c.life, func(name string) bool {
-		return coord.Deferred(name) && !coord.Started(name)
-	}, logger)
+	if shutdownErr := c.runtime.Shutdown(context.Background()); shutdownErr != nil {
+		logger.Error("v3 backend shutdown failed", "error", shutdownErr)
+		if err == nil {
+			err = shutdownErr
+		}
+	}
 
 	return err
 }
 
-// components is the fully-wired daemon: the HTTP handler plus the lifecycle manager,
-// registry, opkg manager, and readiness tracker the startup/shutdown hooks need, and
-// the persistent RCI session's cleanup. closePersistentSession must be called on
-// shutdown.
+// components is the fully-wired daemon and the persistent RCI session cleanup.
 type components struct {
 	handler                http.Handler
-	life                   *lifecycle.Manager
 	reg                    *registry.Registry
-	opkgMgr                opkg.Manager
-	tracker                *readiness.Tracker
+	runtime                *backend.RuntimeImpl
+	gateway                *backend.Gateway
 	closePersistentSession func()
 }
 
@@ -137,39 +120,58 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 	opkgMgr := opkg.New(cfg.Opkg, logger)
 	runtimeRoot := cfg.PluginRuntimeRoot
 	if runtimeRoot == "" {
-		runtimeRoot = filepath.Join(cfg.DataDir, "plugin-runtime")
+		runtimeRoot = defaultPluginRuntimeRoot
 	}
-	life := lifecycle.New(logger, lifecycle.Options{RuntimeRoot: runtimeRoot})
-	tracker := readiness.New()
+	runtime := backend.NewRuntime(backend.RuntimeConfig{
+		RuntimeRoot:    runtimeRoot,
+		PluginDataRoot: filepath.Join(cfg.DataDir, "plugin-data"),
+		Limits: backend.Limits{
+			MaxConcurrentExecTotal:     cfg.MaxConcurrentExecTotal,
+			MaxConcurrentExecPerPlugin: cfg.MaxConcurrentExecPerPlugin,
+			MaxSupervisedServices:      cfg.MaxSupervisedServices,
+		},
+		SupportedServiceProtocols: cfg.SupportedServiceProtocols,
+		Exec: backend.ExecRunnerConfig{
+			Timeout:      cfg.ExecTimeout,
+			KillGrace:    cfg.ExecKillGrace,
+			MaxBodyBytes: cfg.MaxRequestBytes,
+			Logger:       logger,
+			Dev:          cfg.Dev,
+		},
+		Supervisor: backend.SupervisorConfig{
+			ReadinessTimeout: cfg.ServiceHTTPTimeout,
+			StopTimeout:      cfg.ServiceStopTimeout,
+			FinalReapTimeout: cfg.FinalReapTimeout,
+			Logger:           logger,
+		},
+	})
 
 	mux := http.NewServeMux()
-	// The whole management surface is session-gated; dispatch and ws gate themselves
-	// (per-plugin, honoring backend.public), so they take the raw verifier.
-	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, life, tracker, reg, verifier, logger)
-	closePersistentSession := registerAccess(mux, cfg, store, reg, runtimeRoot, verifier, logger)
+	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, reg, runtime, verifier, logger)
+	closePersistentSession := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, verifier, logger)
 	registerPalette(mux, mgmtMux, paletteStore, logger)
-	registerPlugins(mux, cfg, reg, verifier, runtimeRoot, logger)
-	wsproxy.New(reg, verifier, logger).Register(mux)
+	gateway := registerPlugins(mux, cfg, reg, verifier, runtime, logger)
+	runtime.SetMaintenanceHooks(gateway.BeginPluginMaintenance, gateway.BeginPlatformMaintenance, gateway.EndPluginMaintenance)
 
 	return components{
-		handler:                httpx.LogMiddleware(logger, mux),
-		life:                   life,
+		handler:                httpx.NoCORSHandler(httpx.LogMiddleware(logger, mux)),
 		reg:                    reg,
-		opkgMgr:                opkgMgr,
-		tracker:                tracker,
+		runtime:                runtime,
+		gateway:                gateway,
 		closePersistentSession: closePersistentSession,
 	}
 }
 
 // registerMgmt mounts the session-gated management surface and returns its mux so
 // other session-gated routes (e.g. protected palette) can share the gate.
-func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, life *lifecycle.Manager, tracker *readiness.Tracker, reg *registry.Registry, verifier *authz.Verifier, logger *slog.Logger) *http.ServeMux {
+func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, verifier *authz.Verifier, logger *slog.Logger) *http.ServeMux {
 	mgmtHandler := mgmt.New(mgmt.Config{
 		StagingDir:        cfg.StagingDir(),
 		UserPluginsDir:    cfg.UserPluginsDir,
 		BuiltinPluginsDir: cfg.BuiltinPluginsDir,
 		MaxUploadBytes:    maxUploadBytes,
-	}, store, opkgMgr, life, tracker, reg, logger)
+		Runtime:           runtime,
+	}, store, opkgMgr, reg, logger)
 
 	mgmtMux := http.NewServeMux()
 	mgmtHandler.Register(mgmtMux)
@@ -180,7 +182,7 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 
 // registerAccess mounts the consent/diagnostics surface plus the persistent RCI
 // session, returning the session's cleanup func.
-func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, verifier *authz.Verifier, logger *slog.Logger) func() {
+func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, v3Runtime *backend.RuntimeImpl, verifier *authz.Verifier, logger *slog.Logger) func() {
 	accessMux := http.NewServeMux()
 	access.New(store).Register(accessMux)
 	diagnosticsLogFile := cfg.DiagnosticsLogFile
@@ -189,7 +191,7 @@ func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *reg
 	}
 	diagnostics.New(diagnostics.Config{
 		LogFile: diagnosticsLogFile,
-		Plugins: diagnosticsPlugins(reg, runtimeRoot),
+		Plugins: diagnosticsPlugins(reg, v3Runtime),
 	}).Register(accessMux)
 	closePersistentSession := assembleRCISession(cfg, reg, runtimeRoot, accessMux, logger)
 	// Keep the route mounted in dev so the host exercises the same consent contract;
@@ -206,85 +208,41 @@ func registerPalette(mux *http.ServeMux, mgmtMux *http.ServeMux, paletteStore *p
 	paletteHandler.RegisterProtected(mgmtMux)
 }
 
-// registerPlugins mounts the per-plugin dispatch surface, which gates itself.
-func registerPlugins(mux *http.ServeMux, cfg Config, reg *registry.Registry, verifier *authz.Verifier, runtimeRoot string, logger *slog.Logger) {
-	dispatchHandler := dispatch.New(dispatch.Config{
-		Timeout:           cfg.ExecTimeout,
-		MaxRequestBytes:   cfg.MaxRequestBytes,
-		MaxConcurrentExec: cfg.MaxConcurrentExec,
-		Dev:               cfg.Dev,
-		PluginRuntimeRoot: runtimeRoot,
-	}, reg, verifier, logger)
-
-	pluginMux := http.NewServeMux()
-	dispatchHandler.Register(pluginMux)
-	mux.Handle("/api/plugins/", httpx.PluginNoStoreMiddleware(pluginMux))
+// registerPlugins mounts the single manifest-v3 backend gateway.
+func registerPlugins(mux *http.ServeMux, cfg Config, reg *registry.Registry, verifier *authz.Verifier, runtime *backend.RuntimeImpl, logger *slog.Logger) *backend.Gateway {
+	v3Gateway := backend.NewGateway(backend.GatewayConfig{
+		MaxRequestBytes:    cfg.MaxRequestBytes,
+		ServiceHTTPTimeout: cfg.ServiceHTTPTimeout,
+	}, reg, verifier, runtime.ExecRunner(), runtime.Supervisor(), logger)
+	v3Gateway.Register(mux)
+	return v3Gateway
 }
 
-// opkgInstallTimeout bounds one builtin's dependency install at startup (an install
-// can pull over a slow link). Mirrors mgmt's opkgTimeout for the approval flow.
-const opkgInstallTimeout = 3 * time.Minute
-
-// opkgInstallRetryDelays are the waits between startup install attempts. When the ipk
-// postinst starts the daemon, the parent `opkg install mndw...` still holds the global
-// opkg lock, so the first attempt fails instantly — the retries land after that
-// window closes (and also absorb transient boot conditions). Failures on the lock are
-// instant, so the worst-case added startup delay stays close to the sum of the delays.
-var opkgInstallRetryDelays = []time.Duration{5 * time.Second, 15 * time.Second}
-
-// startupActivate starts the backend.daemon of each approved+enabled user plugin. A
-// hook failure is logged, never fatal — one broken plugin must not stop the daemon.
-func startupActivate(reg *registry.Registry, life daemonStarter, skip func(name string) bool, logger *slog.Logger) {
-	for _, plugin := range reg.AllDaemonPlugins() {
-		if skip != nil && skip(plugin.Name) {
-			continue
-		}
-		d := plugin.Manifest.Backend.Daemon
-		if err := life.Start(plugin.Name, plugin.Dir, d.Start); err != nil {
-			logger.Error("startup daemon activation failed", "plugin", plugin.Name, "error", err)
-		}
-	}
-}
-
-// shutdownDaemons stops the backend.daemon of each approved+enabled user plugin on
-// graceful shutdown so no orphaned processes survive the daemon. Plugin discovery
-// order is retained only for selection; stop execution order is unspecified and
-// daemonStopper implementations must support concurrent Stop calls.
-func shutdownDaemons(reg *registry.Registry, life daemonStopper, skip func(name string) bool, logger *slog.Logger) {
-	var wait sync.WaitGroup
-	for _, plugin := range reg.AllDaemonPlugins() {
-		if skip != nil && skip(plugin.Name) {
-			continue
-		}
-		name := plugin.Name
-		dir := plugin.Dir
-		stopPath := plugin.Manifest.Backend.Daemon.Stop
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
-			if err := life.Stop(name, dir, stopPath); err != nil {
-				logger.Error("shutdown daemon stop failed", "plugin", name, "error", err)
-			}
-		}()
-	}
-	wait.Wait()
-}
-
-func diagnosticsPlugins(reg *registry.Registry, runtimeRoot string) []diagnostics.Plugin {
+func diagnosticsPlugins(reg *registry.Registry, runtime *backend.RuntimeImpl) []diagnostics.Plugin {
 	plugins := make([]diagnostics.Plugin, 0)
-	if runtimeRoot == "" {
-		return plugins
-	}
-
 	for _, plugin := range reg.AllBackendPlugins() {
-		if plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Diagnostics == nil || !*plugin.Manifest.Backend.Diagnostics {
+		if plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Kind == nil || *plugin.Manifest.Backend.Kind != manifest.BackendKindService {
 			continue
 		}
-		dir, err := pluginruntime.ForPlugin(runtimeRoot, plugin.Name)
-		if err != nil || dir == "" {
-			continue
+		pluginID := plugin.Name
+		entry := diagnostics.Plugin{ID: pluginID}
+		if runtime != nil {
+			entry.Supervisor = func() diagnostics.SupervisorDiagnostics {
+				status := runtime.Status(pluginID)
+				return diagnostics.SupervisorDiagnostics{
+					State:               string(status.State),
+					RestartCount:        status.RestartCount,
+					ConsecutiveFailures: status.ConsecutiveFailures,
+					LastExit:            status.LastExit,
+					LastError:           status.LastError,
+					RecentStderr:        status.RecentStderr,
+				}
+			}
+			entry.Live = func(ctx context.Context) ([]byte, error) {
+				return runtime.LiveDiagnostics(ctx, pluginID)
+			}
 		}
-		plugins = append(plugins, diagnostics.Plugin{ID: plugin.Name, RuntimeDir: dir})
+		plugins = append(plugins, entry)
 	}
 	sort.Slice(plugins, func(left, right int) bool { return plugins[left].ID < plugins[right].ID })
 
@@ -294,6 +252,13 @@ func diagnosticsPlugins(reg *registry.Registry, runtimeRoot string) []diagnostic
 // serve runs the HTTP server until ctx is canceled or the listener fails, then
 // shuts down gracefully.
 func serve(ctx context.Context, srv *http.Server, logger *slog.Logger, onShutdown func()) error {
+	return serveWithDrain(ctx, srv, logger, onShutdown, 10*time.Second)
+}
+
+func serveWithDrain(ctx context.Context, srv *http.Server, logger *slog.Logger, onShutdown func(), drainTimeout time.Duration) error {
+	if drainTimeout <= 0 {
+		drainTimeout = 35 * time.Second
+	}
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("mndwd listening", "addr", srv.Addr, "version", version)
@@ -313,7 +278,7 @@ func serve(ctx context.Context, srv *http.Server, logger *slog.Logger, onShutdow
 		if onShutdown != nil {
 			onShutdown()
 		}
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 		defer cancel()
 
 		return srv.Shutdown(shutdownCtx)

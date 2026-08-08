@@ -4,7 +4,7 @@ const CSRF_HEADERS = {'X-Mndw-Csrf': '1'};
 const MAX_FAILURE_TEXT = 4096;
 
 const ENDPOINTS = [
-  {title: 'mndwd diagnostics', path: '/api/mndw/diagnostics'},
+  {title: 'mndwd diagnostics', path: '/api/mndw/diagnostics/export', method: 'POST'},
   {title: 'persistent rci-session capability', path: '/api/mndw/rci-session/capability'},
   {title: 'extender access permission', path: '/api/mndw/extender-access'},
 ] as const;
@@ -66,7 +66,12 @@ export async function downloadDiagnostics(
 ): Promise<void> {
   const settled = await Promise.allSettled(
     ENDPOINTS.map(async (endpoint) => {
-      return await readJSON(await dependencies.request(endpoint.path, {headers: CSRF_HEADERS}));
+      const init: RequestInit = {headers: CSRF_HEADERS};
+      if ('method' in endpoint) {
+        init.method = endpoint.method;
+      }
+
+      return await readJSON(await dependencies.request(endpoint.path, init));
     }),
   );
   const sections: DiagnosticsSection[] = settled.map((result, index) => {

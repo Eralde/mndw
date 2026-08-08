@@ -7,7 +7,7 @@ import {clearPluginVersionWarnings, setPluginVersionWarnings} from '../../../run
 import {replaceDepsStatuses} from '../../../state/deps-status.svelte.js';
 import InstalledPluginList from './InstalledPluginList.svelte';
 
-const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
+const emptyBackend = {routes: {}};
 
 function plugin(over: Partial<PluginListEntry> = {}): PluginListEntry {
   return {
@@ -16,7 +16,7 @@ function plugin(over: Partial<PluginListEntry> = {}): PluginListEntry {
     version: '1.0.0',
     label: 'Network Tools',
     entry: 'index.js',
-    source: 'user',
+    source: 'upload',
     approval: 'approved',
     enabled: true,
     size: {w: 4, h: 3},
@@ -88,7 +88,7 @@ describe('InstalledPluginList', () => {
     expect(target.textContent).toContain('Network Tools');
     expect(target.textContent).toContain('1.0.0');
     expect(target.textContent).toContain('widget');
-    expect(target.textContent).toContain('user');
+    expect(target.textContent).toContain('upload');
 
     target.querySelector<HTMLButtonElement>('.mndw-installed__toggle')?.click();
 
@@ -147,24 +147,20 @@ describe('InstalledPluginList', () => {
     void unmount(component);
   });
 
-  it('summarizes backend capabilities and public exposure', () => {
+  it('summarizes backend capabilities', () => {
     const {component, target} = mountInstalledPluginList({
       items: [plugin({
         backend: {
-          endpoints: {status: {method: 'GET', path: '/api/status'}},
-          websockets: {events: {path: '/events'}},
-          opkg: ['curl'],
-          daemon: true,
-          public: true,
+          routes: {
+            status: {transport: 'http', method: 'GET', path: 'status'},
+            events: {transport: 'websocket', path: 'events'},
+          },
         },
       })],
     });
 
     expect(target.textContent).toContain('1 endpoint');
     expect(target.textContent).toContain('1 websocket');
-    expect(target.textContent).toContain('1 opkg');
-    expect(target.textContent).toContain('Daemon');
-    expect(target.querySelector('.mndw-installed__public')?.textContent).toContain('Public backend');
 
     void unmount(component);
   });
@@ -196,5 +192,29 @@ describe('InstalledPluginList', () => {
     expect(failed.target.querySelector('.mndw-installed__deps-badge--failed')?.textContent)
       .toContain('Dependency install failed');
     void unmount(failed.component);
+  });
+
+  it('renders protocol incompatibility and bounds runtime errors', () => {
+    const {component, target} = mountInstalledPluginList({
+      items: [plugin({
+        runtime: {
+          state: 'stopped',
+          restartCount: 0,
+          consecutiveFailures: 0,
+          requiredProtocol: 2,
+          compatible: false,
+          supportedProtocols: [1],
+          lastError: 'x'.repeat(300),
+        },
+      })],
+    });
+
+    expect(target.textContent).toContain('Protocol 2');
+    expect(target.textContent).toContain('incompatible');
+    expect(target.textContent).toContain('Supported service protocols: 1');
+    expect(target.textContent).not.toContain('x'.repeat(300));
+    expect(target.textContent).toContain('…');
+
+    void unmount(component);
   });
 });

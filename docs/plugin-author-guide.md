@@ -1,6 +1,6 @@
 # Plugin author guide
 
-This guide covers the smallest useful v2 plugin and the checks it should pass.
+This guide covers the smallest useful v3 plugin and the checks it should pass.
 Use the CLI for scaffolding and packaging so generated files match the host and
 daemon contracts.
 
@@ -73,22 +73,20 @@ Names are lowercase path-safe segments. Entry and backend source paths are
 relative and cannot contain traversal or backslashes. Page routes are one
 segment and cannot use `/`, `/login`, or `/settings`.
 
-An HTTP endpoint references a declared script by id:
+An exec backend declares commands directly on HTTP routes:
 
 ```json
 {
+  "manifestVersion": 3,
   "backend": {
-    "scripts": [
-      { "id": "hello", "source": "backend/main.sh", "runtime": "sh" }
-    ],
-    "endpoints": [
-      {
-        "id": "hello",
-        "method": "GET",
-        "path": "hello",
-        "scriptId": "hello"
-      }
-    ]
+    "kind": "exec",
+    "routes": [{
+      "id": "hello",
+      "transport": "http",
+      "method": "GET",
+      "path": "hello",
+      "command": "backend/main.sh"
+    }]
   }
 }
 ```
@@ -123,9 +121,8 @@ printf '\r\n'
 printf 'hello from %s\n' "$MNDW_PLUGIN_ID"
 ```
 
-Declare every executable source in the manifest. `mndw pack` copies declared
-scripts, preserves executable intent, rejects missing files, and includes them
-in the archive.
+Declare every executable command in the manifest. `mndw pack` copies declared
+commands with mode `0755`, rejects missing files, and includes them in archive.
 
 ## Use host services
 
@@ -164,6 +161,6 @@ mndw zip .
 Check that the archive contains `manifest.json` at its root, the entry output,
 optional `index.css`, `mndw.lock.json`, and all declared backend assets.
 
-Backend plugins show their opkg packages, endpoints, WebSockets, daemon hooks,
-and public flag during approval. Treat approval as a security review: an
-approved shell backend executes with device daemon privileges.
+Backend plugins show packages, route methods/transports/access, and service
+protocol during approval. Treat approval as a security review: approved exec
+commands and service children execute with device daemon privileges.

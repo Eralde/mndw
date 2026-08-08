@@ -8,6 +8,8 @@ import {
   MGMT_ENABLE_URL,
   MGMT_LIST_URL,
   MGMT_PALETTE_URL,
+  MGMT_RESTART_URL,
+  MGMT_RUNTIME_URL,
   MGMT_UPLOAD_URL,
 } from '../constants.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
@@ -15,6 +17,15 @@ import type {PluginListEntry} from '../runtime/plugin-types.js';
 export interface UploadResult {
   status: 'installed' | 'pending';
   entry: PluginListEntry;
+}
+
+export interface RuntimeLimits {
+  maxConcurrentExecTotal: number;
+  maxConcurrentExecPerPlugin: number;
+  maxSupervisedServices: number;
+  currentExec: number;
+  reservedServices: number;
+  supportedServiceProtocols: number[];
 }
 
 export class MgmtError extends Error {
@@ -37,6 +48,8 @@ export interface MgmtClient {
   disablePlugin(name: string): Promise<PluginListEntry>;
   denyPlugin(name: string): Promise<void>;
   deletePlugin(name: string): Promise<void>;
+  restartPlugin(name: string): Promise<void>;
+  getRuntime(): Promise<RuntimeLimits>;
   getPalette(): Promise<PaletteTokenMap | null>;
   putPalette(palette: PaletteTokenMap): Promise<void>;
   deletePalette(): Promise<void>;
@@ -52,6 +65,12 @@ async function toError(response: Response): Promise<MgmtError> {
 
   return new MgmtError(error?.message ?? response.statusText, error?.code ?? 'UNKNOWN', error?.detail);
 }
+
+const csrfHeaders = (headers: HeadersInit = {}): Headers => {
+  const result = new Headers(headers);
+  result.set('X-Mndw-Csrf', '1');
+  return result;
+};
 
 export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis.fetch): MgmtClient {
   function timeout(): AbortSignal {
@@ -73,7 +92,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
   async function postName(url: string, name: string): Promise<Response> {
     const response = await fetchImpl(url, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: csrfHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({name}),
       signal: timeout(),
     });
@@ -109,7 +128,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
       // API_TIMEOUT_MS, and aborting a partial upload would be a regression.
       const response = await fetchImpl(MGMT_UPLOAD_URL, {
         method: 'POST',
-        headers: {'Content-Type': 'application/zip'},
+        headers: csrfHeaders({'Content-Type': 'application/zip'}),
         body: file,
       });
 
@@ -132,6 +151,18 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
 
     async deletePlugin(name: string): Promise<void> {
       await postName(MGMT_DELETE_URL, name);
+    },
+
+    async restartPlugin(name: string): Promise<void> {
+      await postName(MGMT_RESTART_URL, name);
+    },
+
+    async getRuntime(): Promise<RuntimeLimits> {
+      const response = await fetchImpl(MGMT_RUNTIME_URL, {method: 'GET', signal: timeout()});
+      if (!response.ok) {
+        throw await toError(response);
+      }
+      return (await response.json()) as RuntimeLimits;
     },
 
     async getPalette(): Promise<PaletteTokenMap | null> {
@@ -162,7 +193,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
     async putPalette(palette: PaletteTokenMap): Promise<void> {
       const response = await fetchImpl(MGMT_PALETTE_URL, {
         method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
+        headers: csrfHeaders({'Content-Type': 'application/json'}),
         body: JSON.stringify(palette),
         signal: timeout(),
       });
@@ -171,7 +202,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
     },
 
     async deletePalette(): Promise<void> {
-      const response = await fetchImpl(MGMT_PALETTE_URL, {method: 'DELETE', signal: timeout()});
+      const response = await fetchImpl(MGMT_PALETTE_URL, {method: 'DELETE', headers: csrfHeaders(), signal: timeout()});
 
       await expectNoContent(response);
     },
@@ -183,11 +214,17 @@ export const mgmtClient: MgmtClient = createMgmtClient();
 const MESSAGES: Record<string, string> = {
   INVALID_ZIP: 'The file is not a valid ZIP archive.',
   MANIFEST_MISSING: 'The archive has no manifest.json at its root.',
+  UNSUPPORTED_MANIFEST_VERSION: 'This plugin manifest version is no longer supported.',
   CONFLICT: 'A plugin with that name already exists.',
   UPLOAD_TOO_LARGE: 'The plugin exceeds the 10 MB upload limit.',
   OPKG_FAILED: 'Installing the plugin\'s system packages failed.',
   DAEMON_FAILED: 'Starting the plugin\'s backend failed.',
   UNAUTHORIZED: 'Your session has expired. Please log in again.',
+  SERVICE_CAPACITY_EXCEEDED: 'No service capacity is available. Stop another backend and try again.',
+  BACKEND_BUSY: 'The backend is busy. Try again shortly.',
+  BACKEND_UNAVAILABLE: 'The backend is unavailable.',
+  BACKEND_INCOMPATIBLE: 'This backend requires a protocol version unsupported by this device.',
+  BACKEND_MAINTENANCE: 'The backend is being updated. Try again shortly.',
 };
 
 export function messageForError(error: unknown): string {

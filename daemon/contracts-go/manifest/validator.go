@@ -1,17 +1,17 @@
-// Package manifest is the Go binding for the language-neutral plugin manifest
-// contract. It is locked to the Zod runtime authority by generated fixture
-// copies and parity tests; any rule change must land in both implementations.
+// Package manifest is the language-neutral manifest-v3 validator. Its verdicts
+// are kept in parity with frontend/sdk/src/manifest-schema.ts by the shared
+// fixture corpus.
 package manifest
 
 import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"regexp"
 	"strings"
 )
 
-// Type is the plugin kind (the discriminated-union discriminator).
 type Type string
 
 const (
@@ -21,9 +21,6 @@ const (
 
 const PersistentRCISessionPermission = "persistent-rci-session"
 
-// Size is a widget's grid footprint in units on the 12-column dashboard grid.
-// Fields are pointers so absence is distinguishable from a zero value; JSON
-// numbers land as float64 so non-integers can be rejected explicitly.
 type Size struct {
 	W    *float64 `json:"w"`
 	H    *float64 `json:"h"`
@@ -31,50 +28,32 @@ type Size struct {
 	MinH *float64 `json:"minH,omitempty"`
 }
 
-// Script is a declared backend script (id + safe relative source path).
-type Script struct {
-	ID      string `json:"id"`
-	Runtime string `json:"runtime"`
-	Source  string `json:"source"`
-}
+type BackendKind string
 
-// Endpoint is a declared HTTP endpoint fronting a script.
-type Endpoint struct {
-	ID        string `json:"id"`
-	Method    string `json:"method"`
-	Path      string `json:"path"`
-	ScriptID  string `json:"scriptId"`
-	Csrf      bool   `json:"csrf,omitempty"`
-	Sensitive bool   `json:"sensitive,omitempty"`
-}
+const (
+	BackendKindExec    BackendKind = "exec"
+	BackendKindService BackendKind = "service"
+)
 
-// WebSocket is a declared websocket proxy target.
-type WebSocket struct {
+type BackendRoute struct {
 	ID        string   `json:"id"`
+	Transport string   `json:"transport"`
+	Method    string   `json:"method,omitempty"`
 	Path      string   `json:"path"`
-	Target    string   `json:"target"`
+	Access    string   `json:"access,omitempty"`
+	Command   string   `json:"command,omitempty"`
 	Protocols []string `json:"protocols,omitempty"`
 }
 
-// Daemon holds optional long-running start/stop hook paths.
-type Daemon struct {
-	Start string `json:"start"`
-	Stop  string `json:"stop"`
-}
-
-// Backend is the optional server-side capability block.
 type Backend struct {
-	Opkg        []string    `json:"opkg,omitempty"`
-	Scripts     []Script    `json:"scripts,omitempty"`
-	Endpoints   []Endpoint  `json:"endpoints,omitempty"`
-	WebSockets  []WebSocket `json:"websockets,omitempty"`
-	Daemon      *Daemon     `json:"daemon,omitempty"`
-	Diagnostics *bool       `json:"diagnostics,omitempty"`
-	Public      *bool       `json:"public,omitempty"`
+	Kind            *BackendKind   `json:"kind,omitempty"`
+	ProtocolVersion *int           `json:"protocolVersion,omitempty"`
+	Command         *string        `json:"command,omitempty"`
+	Args            []string       `json:"args,omitempty"`
+	Packages        []string       `json:"packages,omitempty"`
+	Routes          []BackendRoute `json:"routes,omitempty"`
 }
 
-// Manifest is the parsed plugin manifest. Pointer fields carry presence so
-// required-field checks can distinguish "absent" from "zero".
 type Manifest struct {
 	ManifestVersion *int     `json:"manifestVersion"`
 	Name            *string  `json:"name"`
@@ -90,9 +69,6 @@ type Manifest struct {
 	Backend         *Backend `json:"backend,omitempty"`
 }
 
-// ValidationError is returned when a manifest fails validation. Reason is the
-// first rule violated (order need not match Zod — the fixture suite only asserts
-// accept/reject, and the human message is advisory).
 type ValidationError struct {
 	PluginName string
 	Reason     string
@@ -103,67 +79,38 @@ func (e *ValidationError) Error() string {
 }
 
 var (
-	nameRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-	opkgRe   = regexp.MustCompile(`^[a-z0-9][a-z0-9+_.-]*$`)
-	routeRe  = regexp.MustCompile(`^/[^/?#*]+$`)
-	methods  = map[string]struct{}{"GET": {}, "POST": {}, "PUT": {}, "PATCH": {}, "DELETE": {}}
-	reserved = map[string]struct{}{"/": {}, "/login": {}, "/settings": {}}
+	nameRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+	packageRe = regexp.MustCompile(`^[a-z0-9][a-z0-9+_.-]*$`)
+	methods   = map[string]struct{}{"GET": {}, "HEAD": {}, "POST": {}, "PUT": {}, "PATCH": {}, "DELETE": {}}
+	reserved  = map[string]struct{}{"/": {}, "/login": {}, "/settings": {}}
 )
 
 const gridColumns = 12
 
-// safeRelativePath mirrors the SDK: reject absolute paths, traversal, and
-// backslashes. Any path a plugin declares is interpolated into a filesystem/URL
-// path, so it must stay a relative subpath.
-func safeRelativePath(value string) bool {
-	return !strings.HasPrefix(value, "/") &&
-		!strings.Contains(value, "..") &&
-		!strings.Contains(value, `\`)
-}
-
-// hasFileName mirrors the SDK: the last non-empty "/"-segment must be non-empty.
-func hasFileName(value string) bool {
-	parts := strings.Split(value, "/")
-	last := ""
-	for _, p := range parts {
-		if p != "" {
-			last = p
-		}
-	}
-
-	return last != ""
-}
-
-// Validate parses and validates raw manifest JSON, returning the parsed Manifest
-// or a *ValidationError. It mirrors the SDK Zod schema verdict-for-verdict.
+// Validate parses and validates one manifest-v3 document.
 func Validate(data []byte) (*Manifest, error) {
 	var m Manifest
-	// A type mismatch (e.g. `"backend": "not-an-object"`, a non-numeric size) is a
-	// validation failure, not a daemon error — surface it as one.
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, &ValidationError{PluginName: pluginName(data), Reason: "manifest is not valid JSON of the expected shape: " + err.Error()}
 	}
-
-	if err := validate(&m); err != nil {
+	if err := validate(&m, data); err != nil {
 		return nil, err
 	}
 
 	return &m, nil
 }
 
-func validate(m *Manifest) error {
+func validate(m *Manifest, data []byte) error {
 	name := ""
 	if m.Name != nil {
 		name = *m.Name
 	}
-
 	fail := func(reason string) error {
 		return &ValidationError{PluginName: name, Reason: reason}
 	}
 
-	// --- base fields ---
-	if m.ManifestVersion == nil || *m.ManifestVersion != 2 {
-		return fail("manifestVersion must be 2")
+	if m.ManifestVersion == nil || *m.ManifestVersion != 3 {
+		return fail("manifestVersion must be 3")
 	}
 	if m.Name == nil || !nameRe.MatchString(*m.Name) {
 		return fail("name must be lowercase alphanumeric with hyphens (e.g. my-widget)")
@@ -177,14 +124,8 @@ func validate(m *Manifest) error {
 	if m.Label == nil || *m.Label == "" {
 		return fail("label is required")
 	}
-	if m.Entry == nil || *m.Entry == "" {
-		return fail("entry is required")
-	}
-	if !safeRelativePath(*m.Entry) {
-		return fail("entry must be a safe relative path")
-	}
-	if !hasFileName(*m.Entry) {
-		return fail("entry must include a file name")
+	if m.Entry == nil || *m.Entry == "" || !safeRelativePath(*m.Entry) || !hasFileName(*m.Entry) {
+		return fail("entry must be a safe relative path with a file name")
 	}
 	for _, permission := range m.Permissions {
 		if permission != PersistentRCISessionPermission {
@@ -192,23 +133,26 @@ func validate(m *Manifest) error {
 		}
 	}
 
-	// --- discriminated union on type ---
 	switch Type(*m.Type) {
 	case TypeWidget:
 		if err := validateSize(m.Size, fail); err != nil {
 			return err
 		}
 	case TypePage:
-		if err := validateRoute(m.Route, fail); err != nil {
+		if err := validatePageRoute(m.Route, fail); err != nil {
 			return err
 		}
 	default:
 		return fail(fmt.Sprintf("type must be 'widget' or 'page', got %q", *m.Type))
 	}
 
-	// --- optional backend ---
-	if err := validateBackend(m.Backend, fail); err != nil {
+	if err := validateBackendShape(data, fail); err != nil {
 		return err
+	}
+	if m.Backend != nil {
+		if err := validateBackend(m.Backend, fail); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -218,14 +162,14 @@ func validateSize(size *Size, fail func(string) error) error {
 	if size == nil {
 		return fail("size is required for widgets")
 	}
-	if err := gridColumn("size.w", size.W, fail); err != nil {
+	if err := validateGridNumber("size.w", size.W, gridColumns, fail); err != nil {
 		return err
 	}
-	if err := gridRow("size.h", size.H, fail); err != nil {
+	if err := validateGridNumber("size.h", size.H, 0, fail); err != nil {
 		return err
 	}
 	if size.MinW != nil {
-		if err := gridColumn("size.minW", size.MinW, fail); err != nil {
+		if err := validateGridNumber("size.minW", size.MinW, gridColumns, fail); err != nil {
 			return err
 		}
 		if *size.MinW > *size.W {
@@ -233,7 +177,7 @@ func validateSize(size *Size, fail func(string) error) error {
 		}
 	}
 	if size.MinH != nil {
-		if err := gridRow("size.minH", size.MinH, fail); err != nil {
+		if err := validateGridNumber("size.minH", size.MinH, 0, fail); err != nil {
 			return err
 		}
 		if *size.MinH > *size.H {
@@ -244,167 +188,215 @@ func validateSize(size *Size, fail func(string) error) error {
 	return nil
 }
 
-// gridColumn: positive integer, 1..12.
-func gridColumn(field string, v *float64, fail func(string) error) error {
-	if err := gridRow(field, v, fail); err != nil {
-		return err
+func validateGridNumber(field string, value *float64, max float64, fail func(string) error) error {
+	if value == nil {
+		return fail(field + " is required")
 	}
-	if *v > gridColumns {
+	if *value != math.Trunc(*value) || *value <= 0 {
+		return fail(field + " must be a positive integer")
+	}
+	if max > 0 && *value > max {
 		return fail(field + " must be at most 12 columns")
 	}
 
 	return nil
 }
 
-// gridRow: positive integer (rows are unbounded).
-func gridRow(field string, v *float64, fail func(string) error) error {
-	if v == nil {
-		return fail(field + " is required")
+func validatePageRoute(route *string, fail func(string) error) error {
+	if route == nil || !strings.HasPrefix(*route, "/") || strings.Count(*route, "/") != 1 || strings.ContainsAny(*route, "?#*") {
+		return fail("route must be a single leading-slash segment")
 	}
-	if *v != math.Trunc(*v) {
-		return fail(field + " must be an integer")
-	}
-	if *v <= 0 {
-		return fail(field + " must be positive")
-	}
-
-	return nil
-}
-
-func validateRoute(route *string, fail func(string) error) error {
-	if route == nil {
-		return fail("route is required for pages")
-	}
-	if !routeRe.MatchString(*route) {
-		return fail("route must be a single leading-slash segment (e.g. /demo)")
-	}
-	if _, isReserved := reserved[*route]; isReserved {
+	if _, ok := reserved[*route]; ok {
 		return fail("route is reserved by the host")
 	}
 
 	return nil
 }
 
-func validateBackend(b *Backend, fail func(string) error) error {
-	if b == nil {
+func validateBackendShape(data []byte, fail func(string) error) error {
+	var envelope struct {
+		Backend json.RawMessage `json:"backend"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil || len(envelope.Backend) == 0 {
 		return nil
 	}
-
-	for _, pkg := range b.Opkg {
-		if !opkgRe.MatchString(pkg) {
-			return fail(fmt.Sprintf("backend.opkg contains invalid package name %q", pkg))
-		}
+	var fields map[string]json.RawMessage
+	if string(envelope.Backend) == "null" {
+		return fail("backend must be an object")
 	}
-
-	scriptIDs := make(map[string]struct{}, len(b.Scripts))
-	basenames := make(map[string]struct{}, len(b.Scripts))
-	for _, s := range b.Scripts {
-		if s.ID == "" {
-			return fail("backend.scripts[].id is required")
-		}
-		if s.Runtime != "sh" {
-			return fail("backend.scripts[].runtime must be 'sh'")
-		}
-		if s.Source == "" || !safeRelativePath(s.Source) {
-			return fail("backend.scripts[].source must be a safe relative path")
-		}
-		if !hasFileName(s.Source) {
-			return fail("backend.scripts[].source must include a file name")
-		}
-		if _, dup := scriptIDs[s.ID]; dup {
-			return fail("backend.scripts contains duplicate id")
-		}
-		scriptIDs[s.ID] = struct{}{}
-
-		base := baseName(s.Source)
-		if _, dup := basenames[base]; dup {
-			return fail("backend.scripts contains duplicate source basename")
-		}
-		basenames[base] = struct{}{}
+	if err := json.Unmarshal(envelope.Backend, &fields); err != nil {
+		return fail("backend must be an object")
 	}
-
-	endpointIDs := make(map[string]struct{}, len(b.Endpoints))
-	for _, e := range b.Endpoints {
-		if e.ID == "" {
-			return fail("backend.endpoints[].id is required")
-		}
-		if e.Path == "" || !safeRelativePath(e.Path) {
-			return fail("backend.endpoints[].path must be a safe relative path")
-		}
-		if _, ok := methods[strings.ToUpper(e.Method)]; !ok {
-			return fail(fmt.Sprintf("backend.endpoints[].method %q is not a supported HTTP method", e.Method))
-		}
-		if e.ScriptID == "" {
-			return fail("backend.endpoints[].scriptId is required")
-		}
-		if _, dup := endpointIDs[e.ID]; dup {
-			return fail("backend.endpoints contains duplicate id")
-		}
-		endpointIDs[e.ID] = struct{}{}
-	}
-
-	// endpoint.scriptId must reference a declared script.
-	for _, e := range b.Endpoints {
-		if _, ok := scriptIDs[e.ScriptID]; !ok {
-			return fail("backend.endpoints[].scriptId must reference a declared script")
-		}
-	}
-
-	wsIDs := make(map[string]struct{}, len(b.WebSockets))
-	for _, ws := range b.WebSockets {
-		if ws.ID == "" {
-			return fail("backend.websockets[].id is required")
-		}
-		if ws.Path == "" || !safeRelativePath(ws.Path) {
-			return fail("backend.websockets[].path must be a safe relative path")
-		}
-		if ws.Target == "" {
-			return fail("backend.websockets[].target is required")
-		}
-		for _, p := range ws.Protocols {
-			if p == "" {
-				return fail("backend.websockets[].protocols entries must be non-empty")
-			}
-		}
-		if _, dup := wsIDs[ws.ID]; dup {
-			return fail("backend.websockets contains duplicate id")
-		}
-		wsIDs[ws.ID] = struct{}{}
-	}
-
-	if b.Daemon != nil {
-		if b.Daemon.Start == "" || !safeRelativePath(b.Daemon.Start) || !hasFileName(b.Daemon.Start) {
-			return fail("backend.daemon.start must be a safe relative path with a file name")
-		}
-		if b.Daemon.Stop == "" || !safeRelativePath(b.Daemon.Stop) || !hasFileName(b.Daemon.Stop) {
-			return fail("backend.daemon.stop must be a safe relative path with a file name")
+	allowed := map[string]struct{}{"kind": {}, "protocolVersion": {}, "command": {}, "args": {}, "packages": {}, "routes": {}}
+	for field := range fields {
+		if _, ok := allowed[field]; !ok {
+			return fail(fmt.Sprintf("backend contains unknown field %q", field))
 		}
 	}
 
 	return nil
 }
 
-// baseName returns the last non-empty "/"-segment (mirrors the SDK basename logic).
-func baseName(source string) string {
-	parts := strings.Split(source, "/")
-	for i := len(parts) - 1; i >= 0; i-- {
-		if parts[i] != "" {
-			return parts[i]
+func validateBackend(b *Backend, fail func(string) error) error {
+	if b.Kind == nil {
+		return fail("backend.kind is required")
+	}
+	if len(b.Routes) == 0 {
+		return fail("backend.routes must contain at least one route")
+	}
+
+	ids := make(map[string]struct{}, len(b.Routes))
+	tuples := make(map[string]struct{}, len(b.Routes))
+	for index := range b.Routes {
+		route := &b.Routes[index]
+		if route.ID == "" {
+			return fail("backend.routes[].id is required")
+		}
+		if _, exists := ids[route.ID]; exists {
+			return fail("backend.routes contains duplicate id")
+		}
+		ids[route.ID] = struct{}{}
+		if route.Path == "" || !safeBackendRoutePath(route.Path) {
+			return fail("backend.routes[].path must be canonical and safe")
+		}
+		if route.Access == "" {
+			route.Access = "session"
+		}
+		if route.Access != "session" && route.Access != "public" {
+			return fail("backend.routes[].access must be session or public")
+		}
+
+		switch *b.Kind {
+		case BackendKindExec:
+			if route.Transport != "http" || route.Command == "" || !safeCommand(route.Command) {
+				return fail("exec backend routes must be HTTP routes with safe commands")
+			}
+			method := strings.ToUpper(route.Method)
+			if _, ok := methods[method]; !ok {
+				return fail(fmt.Sprintf("backend.routes[].method %q is not supported", route.Method))
+			}
+			route.Method = method
+		case BackendKindService:
+			if route.Transport != "http" && route.Transport != "websocket" {
+				return fail("service backend route transport must be http or websocket")
+			}
+			if route.Transport == "http" {
+				method := strings.ToUpper(route.Method)
+				if _, ok := methods[method]; !ok {
+					return fail(fmt.Sprintf("backend.routes[].method %q is not supported", route.Method))
+				}
+				route.Method = method
+			} else {
+				route.Method = ""
+			}
+		default:
+			return fail(fmt.Sprintf("backend.kind must be 'exec' or 'service', got %q", *b.Kind))
+		}
+		if route.Transport == "http" && route.Access == "public" && route.Method != "GET" && route.Method != "HEAD" {
+			return fail("public HTTP routes may only use GET or HEAD")
+		}
+		tuple := route.Transport + ":" + route.Path
+		if route.Transport == "http" {
+			tuple += ":" + route.Method
+		}
+		if _, exists := tuples[tuple]; exists {
+			return fail("backend.routes contains duplicate route tuple")
+		}
+		tuples[tuple] = struct{}{}
+		for _, protocol := range route.Protocols {
+			if protocol == "" {
+				return fail("backend.routes[].protocols entries must be non-empty")
+			}
 		}
 	}
 
-	return ""
+	for _, packageName := range b.Packages {
+		if !packageRe.MatchString(packageName) {
+			return fail(fmt.Sprintf("backend.packages contains invalid package name %q", packageName))
+		}
+	}
+
+	switch *b.Kind {
+	case BackendKindExec:
+		if b.ProtocolVersion != nil || b.Command != nil || len(b.Args) > 0 {
+			return fail("exec backend cannot declare service process fields")
+		}
+	case BackendKindService:
+		if b.ProtocolVersion == nil || *b.ProtocolVersion <= 0 {
+			return fail("service backend protocolVersion must be positive")
+		}
+		if b.Command == nil || !safeCommand(*b.Command) {
+			return fail("service backend command must be safe")
+		}
+		for _, arg := range b.Args {
+			if arg == "" || strings.ContainsAny(arg, "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f") {
+				return fail("service backend args must be non-empty literals without control characters")
+			}
+		}
+	}
+
+	return nil
 }
 
-// pluginName best-effort extracts `name` from raw JSON for error reporting, even
-// when the manifest is otherwise malformed.
-func pluginName(data []byte) string {
-	var probe struct {
-		Name string `json:"name"`
+func safeRelativePath(value string) bool {
+	return value != "" && !strings.HasPrefix(value, "/") && !strings.Contains(value, "..") && !strings.Contains(value, `\`)
+}
+
+func safeCommand(value string) bool {
+	if !safeRelativePath(value) || !hasFileName(value) {
+		return false
 	}
-	if err := json.Unmarshal(data, &probe); err == nil && probe.Name != "" {
-		return probe.Name
+	for _, segment := range strings.Split(value, "/") {
+		if segment == "." || segment == ".." {
+			return false
+		}
 	}
 
-	return "unknown"
+	return true
+}
+
+func safeBackendRoutePath(value string) bool {
+	if value == "" || strings.HasPrefix(value, "/") || strings.ContainsAny(value, `\\?#`) {
+		return false
+	}
+	decoded, err := url.PathUnescape(value)
+	if err != nil || decoded != value || strings.Contains(decoded, "%") || strings.HasPrefix(decoded, "/") || strings.Contains(decoded, `\`) {
+		return false
+	}
+	segments := strings.Split(decoded, "/")
+	for index, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." || (index == 0 && segment == "_mndw") {
+			return false
+		}
+	}
+
+	return true
+}
+
+func hasFileName(value string) bool {
+	parts := strings.Split(value, "/")
+	for index := len(parts) - 1; index >= 0; index-- {
+		if parts[index] != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+func baseName(value string) string {
+	parts := strings.Split(value, "/")
+	return parts[len(parts)-1]
+}
+
+func pluginName(data []byte) string {
+	var envelope struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(data, &envelope)
+	if envelope.Name == "" {
+		return "unknown"
+	}
+
+	return envelope.Name
 }

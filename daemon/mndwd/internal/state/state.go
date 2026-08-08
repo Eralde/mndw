@@ -14,9 +14,10 @@ import (
 	"time"
 )
 
-// schemaVersion is the on-disk state.json format version. Bump when the shape
-// changes in a non-backward-compatible way.
-const schemaVersion = 1
+// schemaVersion is the first released v3 state format. Older pre-alpha state is
+// deliberately not field-migrated: it is preserved as a backup and plugins are
+// reinstalled with an explicit provenance.
+const schemaVersion = 3
 
 // Approval status of a plugin's backend. Plugins without a backend are installed
 // directly as approved because they do not expose executable server-side code.
@@ -25,25 +26,33 @@ const (
 	ApprovalApproved = "approved"
 )
 
-// Source of a plugin: shipped with the daemon, or user-uploaded.
+// Source of a plugin. Registry is reserved for a future signature-verified
+// install path; it is intentionally not inferred from manifest contents.
 const (
-	SourceBuiltin = "builtin"
-	SourceUser    = "user"
+	SourceBuiltin  = "builtin"
+	SourceRegistry = "registry"
+	SourceUpload   = "upload"
+	// SourceUser is retained as a source-compatible Go alias for unreleased
+	// callers. Its serialized value is the released "upload" provenance.
+	SourceUser = SourceUpload
 )
 
 // Plugin is one plugin's durable record. Manifest holds the exact validated
 // manifest bytes so descriptors can be rebuilt without re-reading the plugin dir;
 // the denormalized display fields are conveniences for the list API.
 type Plugin struct {
-	Name        string          `json:"name"`
-	Source      string          `json:"source"`
-	Type        string          `json:"type"`
-	Version     string          `json:"version"`
-	Label       string          `json:"label"`
-	Approval    string          `json:"approval"`
-	Enabled     bool            `json:"enabled"`
-	Manifest    json.RawMessage `json:"manifest"`
-	InstalledAt time.Time       `json:"installedAt"`
+	Name             string          `json:"name"`
+	Source           string          `json:"source"`
+	Type             string          `json:"type"`
+	Version          string          `json:"version"`
+	Label            string          `json:"label"`
+	Approval         string          `json:"approval"`
+	Enabled          bool            `json:"enabled"`
+	Manifest         json.RawMessage `json:"manifest"`
+	InstalledAt      time.Time       `json:"installedAt"`
+	InstalledVersion string          `json:"installedVersion,omitempty"`
+	ActiveVersion    string          `json:"activeVersion,omitempty"`
+	ActiveVersionDir string          `json:"activeVersionDir,omitempty"`
 }
 
 // AuditEntry is one durable, security-relevant state change.
@@ -113,12 +122,36 @@ func load(path string) (*State, error) {
 		return emptyState(), nil
 	}
 
+	if !validV3State(&st) {
+		// A structurally valid but unsupported state is just as unsafe to
+		// reinterpret as corrupt JSON. Preserve it before starting empty.
+		_ = os.Rename(path, path+".bak")
+
+		return emptyState(), nil
+	}
 	if st.Plugins == nil {
 		st.Plugins = map[string]*Plugin{}
 	}
-	st.Version = schemaVersion
 
 	return &st, nil
+}
+
+func validV3State(st *State) bool {
+	if st.Version != schemaVersion {
+		return false
+	}
+	for name, plugin := range st.Plugins {
+		if plugin == nil || plugin.Name != name || plugin.Manifest == nil || len(plugin.Manifest) == 0 {
+			return false
+		}
+		switch plugin.Source {
+		case SourceBuiltin, SourceRegistry, SourceUpload:
+		default:
+			return false
+		}
+	}
+
+	return true
 }
 
 func emptyState() *State {

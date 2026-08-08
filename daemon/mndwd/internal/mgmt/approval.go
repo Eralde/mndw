@@ -18,7 +18,7 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 		return nil, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "plugin "+name+" is not pending approval")
 	}
 
-	m, err := manifest.Validate(p.Manifest)
+	m, err := manifest.ValidateV3(p.Manifest)
 	if err != nil {
 		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
 	}
@@ -33,18 +33,9 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to install plugin")
 	}
 
-	if apiErr := markScriptsExecutable(installPath, m); apiErr != nil {
+	if apiErr := markCommandsExecutable(installPath, m); apiErr != nil {
 		h.rollbackInstall(name, installPath, stagingPath)
 		return nil, apiErr
-	}
-
-	daemonStarted := false
-	if m.Backend != nil && m.Backend.Daemon != nil {
-		if err := h.life.Start(name, installPath, m.Backend.Daemon.Start); err != nil {
-			h.rollbackInstall(name, installPath, stagingPath)
-			return nil, httpx.NewError(http.StatusBadGateway, httpx.CodeDaemonFailed, "failed to start plugin backend daemon")
-		}
-		daemonStarted = true
 	}
 
 	err = h.store.Mutate(func(st *state.State) error {
@@ -54,29 +45,21 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 		}
 		rec.Approval = state.ApprovalApproved
 		rec.Enabled = true
+		rec.ActiveVersion = deref(m.Version)
+		rec.ActiveVersionDir = installPath
 		st.AppendAudit("approve", name, "backend approved and activated")
 
 		return nil
 	})
 	if err != nil {
-		h.rollbackApproval(name, installPath, stagingPath, daemonStarted)
+		h.rollbackInstall(name, installPath, stagingPath)
 		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record approval")
+	}
+	if m.Backend != nil && h.runtime != nil {
+		if activationErr := h.activateBackendPlugin(name, m, installPath, true); activationErr != nil && h.logger != nil {
+			h.logger.Warn("backend activation deferred after approval", "plugin", name, "error", activationErr)
+		}
 	}
 
 	return m, nil
-}
-
-func (h *Handler) rollbackApproval(name, installPath, stagingPath string, daemonStarted bool) {
-	if daemonStarted {
-		p, ok := h.store.Get(name)
-		if ok {
-			m, err := manifest.Validate(p.Manifest)
-			if err == nil && m.Backend != nil && m.Backend.Daemon != nil {
-				if err := h.life.Stop(name, installPath, m.Backend.Daemon.Stop); err != nil {
-					h.logger.Error("failed to stop plugin during approval rollback", "plugin", name, "error", err)
-				}
-			}
-		}
-	}
-	h.rollbackInstall(name, installPath, stagingPath)
 }

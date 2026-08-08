@@ -1,5 +1,5 @@
 {
-  "manifestVersion": 2,
+  "manifestVersion": 3,
   "name": "terminal-page",
   "version": "0.1.0",
   "type": "page",
@@ -7,18 +7,14 @@
   "label": "Terminal",
   "entry": "index.js",
   "backend": {
-    "opkg": ["ttyd", "daemonize"],
-    "daemon": {"start": "backend/spawn_ttyd.sh", "stop": "backend/kill_ttyd.sh"},
-    "scripts": [
-      {"id": "spawn", "runtime": "sh", "source": "backend/spawn_ttyd.sh"},
-      {"id": "kill", "runtime": "sh", "source": "backend/kill_ttyd.sh"}
-    ],
-    "endpoints": [
-      {"id": "spawn", "method": "POST", "path": "spawn", "scriptId": "spawn"},
-      {"id": "kill", "method": "POST", "path": "kill", "scriptId": "kill"}
-    ],
-    "websockets": [
-      {"id": "terminal", "path": "terminal", "target": "127.0.0.1:7681", "protocols": ["tty"]}
+    "kind": "service",
+    "protocolVersion": 1,
+    "command": "backend/terminal-backend",
+    "packages": ["ttyd"],
+    "routes": [
+      {"id": "spawn", "transport": "http", "method": "POST", "path": "spawn"},
+      {"id": "kill", "transport": "http", "method": "POST", "path": "kill"},
+      {"id": "terminal", "transport": "websocket", "path": "terminal", "protocols": ["tty"]}
     ]
   }
 }

@@ -1,4 +1,4 @@
-import {type MndwPlugin, type PluginBackendManifest, type PluginManifest, validateManifest} from '@mndw/sdk';
+import {type MndwPlugin, type PluginManifest, validateManifest} from '@mndw/sdk';
 import {type LoadedPlugin, pluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 
@@ -57,28 +57,21 @@ function validateModule(module: unknown): MndwPlugin {
 }
 
 /** Projects a manifest's optional backend into the client-facing descriptor shape. */
-function descriptorFromManifest(backend: PluginBackendManifest | undefined): PluginBackendDescriptor {
-  const endpoints: PluginBackendDescriptor['endpoints'] = {};
+function descriptorFromManifest(backend: PluginManifest['backend'] | undefined): PluginBackendDescriptor {
+  const routes: NonNullable<PluginBackendDescriptor['routes']> = {};
 
-  for (const endpoint of backend?.endpoints ?? []) {
-    endpoints[endpoint.id] = {method: endpoint.method, path: endpoint.path};
+  if (backend === undefined) {
+    return {routes};
   }
 
-  const websockets: PluginBackendDescriptor['websockets'] = {};
-
-  for (const socket of backend?.websockets ?? []) {
-    websockets[socket.id] = socket.protocols === undefined
-      ? {path: socket.path}
-      : {path: socket.path, protocols: socket.protocols};
+  for (const route of backend.routes) {
+    routes[route.id] = route.transport === 'http'
+      ? {transport: 'http', method: route.method, path: route.path}
+      : {transport: 'websocket', path: route.path,
+        ...(route.protocols === undefined ? {} : {protocols: route.protocols})};
   }
 
-  return {
-    endpoints,
-    websockets,
-    opkg: backend?.opkg ?? [],
-    daemon: backend?.daemon !== undefined,
-    public: backend?.public === true,
-  };
+  return {routes};
 }
 
 /**

@@ -81,7 +81,7 @@ const plugin = {
     approval: 'approved',
     enabled: true,
     depsStatus: 'ready',
-    backend: {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false},
+    backend: {routes: {}},
     type: 'widget',
     size: {w: 4, h: 3},
   },

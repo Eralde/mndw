@@ -27,6 +27,14 @@ interface UnmountOptions {
   closeReason?: OverlayTeardownReason;
 }
 
+function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
+    return false;
+  }
+
+  return typeof (value as {then?: unknown}).then === 'function';
+}
+
 export function mountPlugin(
   container: HTMLElement,
   plugin: LoadedPlugin,
@@ -39,8 +47,8 @@ export function mountPlugin(
   try {
     const result = plugin.module.createInstance(container, context);
 
-    if (result instanceof Promise) {
-      return result
+    if (isPromiseLike(result)) {
+      return Promise.resolve(result)
         .then((instance) => ({
           pluginName: name,
           instanceId: context.instanceId,

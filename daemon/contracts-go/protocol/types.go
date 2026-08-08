@@ -3,27 +3,20 @@
 // plugin-specific payloads remain in their owning packages.
 package protocol
 
-// EndpointDescriptor is a resolved HTTP backend capability.
-type EndpointDescriptor struct {
-	Method    string `json:"method"`
-	Path      string `json:"path"`
-	CSRF      bool   `json:"csrf,omitempty"`
-	Sensitive bool   `json:"sensitive,omitempty"`
-}
-
-// WebSocketDescriptor is a resolved websocket backend capability.
-type WebSocketDescriptor struct {
+// RouteDescriptor is the command-free capability projection shared by all
+// manifest-v3 backends.
+type RouteDescriptor struct {
+	Transport string   `json:"transport"`
 	Path      string   `json:"path"`
+	Method    string   `json:"method,omitempty"`
 	Protocols []string `json:"protocols,omitempty"`
 }
 
 // BackendDescriptor is the generic host-facing backend capability snapshot.
 type BackendDescriptor struct {
-	Endpoints  map[string]EndpointDescriptor  `json:"endpoints"`
-	Websockets map[string]WebSocketDescriptor `json:"websockets"`
-	Approval   string                         `json:"approval"`
-	Enabled    bool                           `json:"enabled"`
-	Public     bool                           `json:"public"`
+	Routes   map[string]RouteDescriptor `json:"routes"`
+	Approval string                     `json:"approval"`
+	Enabled  bool                       `json:"enabled"`
 }
 
 // StructuredError is the stable machine-readable part of an API error.

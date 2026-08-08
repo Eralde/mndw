@@ -1,6 +1,6 @@
 # CLI and development
 
-The `mndw` CLI is the plugin author loop. It validates the same v2 manifest
+The `mndw` CLI is the plugin author loop. It validates the same v3 manifest
 contract used by the SDK and prepares the files consumed by the host and
 daemon.
 
@@ -28,12 +28,12 @@ optional shell backend. The generated project uses `@mndw/sdk` and the
 4. bundle the selected TypeScript source with esbuild;
 5. externalize host-provided shared dependencies;
 6. emit the entry and fixed `index.css` output;
-7. copy declared backend scripts and daemon hooks;
+7. copy declared backend commands once with executable mode;
 8. write a validated manifest and `mndw.lock.json`;
 9. atomically replace the output directory.
 
-The packer reads backend assets before mutating output. It rejects traversal,
-missing declared files, and shared dependencies that leaked into the bundle.
+The packer reads backend commands before mutating output. It rejects traversal,
+missing declared commands, and shared dependencies that leaked into the bundle.
 
 `mndw zip` puts `manifest.json` at archive root. This lets the daemon validate
 an archive without knowing the author's source directory layout.
@@ -57,7 +57,7 @@ such as `d3-dag` without waiting for a host change.
 ```text
 plugin source
   ├─ Vite virtual module → host frontend
-  └─ symlinked builtin dir → local mndwd backend assets
+  └─ symlinked builtin dir → local mndwd backend commands/services
 ```
 
 The CLI validates first, creates temporary data and plugin roots, starts

@@ -32,14 +32,14 @@ the current grid-unit width and height.
 
 ## Manifest contract
 
-Every manifest has `manifestVersion: 2`, a path-safe name, semantic version,
+Every manifest has `manifestVersion: 3`, a path-safe name, semantic version,
 `widget` or `page` type, label, and safe relative entry path.
 
 Widgets declare grid-unit dimensions:
 
 ```json
 {
-  "manifestVersion": 2,
+  "manifestVersion": 3,
   "name": "traffic-widget",
   "version": "1.0.0",
   "type": "widget",
@@ -64,17 +64,15 @@ different plugin's route or use an absolute backend path.
 
 ## Backend capabilities
 
-The optional backend block can declare:
+The optional backend block has one of two kinds:
 
-- `opkg`: packages required by backend scripts or processes;
-- `scripts`: executable sources and their runtime, currently `sh`;
-- `endpoints`: HTTP method, relative path, and script reference;
-- `websockets`: relative path, local target, and optional protocols;
-- `daemon`: relative start and stop hooks for a long-running process;
-- `public`: whether endpoint and WebSocket session checks are skipped.
+- `exec`: request-scoped HTTP routes, each pointing at one command;
+- `service`: one foreground command speaking HTTP/WebSocket over the daemon's
+  private Unix socket, with a positive protocol version and route list.
 
-`public: true` is an explicit security decision. It is shown in the approval
-UI and does not bypass approval or enabled-state checks.
+Both kinds may declare package names and route access (`session` or `public`).
+Public HTTP routes are limited to GET and HEAD. `_mndw/*` is reserved for the
+daemon's readiness and diagnostics protocol.
 
 ## Validation
 
@@ -85,12 +83,13 @@ suites in the same change.
 
 Validation covers:
 
-- plugin name and opkg-name character sets;
+- plugin name, package-name, and command character sets;
 - relative paths without traversal, backslashes, or leading slashes;
 - positive widget dimensions within the twelve-column grid;
 - minimum dimensions no larger than preferred dimensions;
-- duplicate ids and duplicate source basenames;
-- endpoint references to declared scripts;
+- duplicate route ids and route tuples;
+- exec HTTP-only routes and service protocol/command requirements;
+- literal service arguments;
 - reserved and malformed page routes.
 
 The SDK also generates `manifest.schema.json` for editor support. Unknown
@@ -147,5 +146,7 @@ availability, backend process lifecycle, and access control. An approved shell
 backend runs with the daemon's privileges, so approval is the trust boundary.
 
 Uploaded backend plugins remain staged and non-executable until approval.
-After approval, the daemon installs declared packages, activates routes, runs
-daemon hooks, and records the change in state.
+After approval, the daemon installs declared packages, validates and stages
+commands, starts compatible foreground services, and records the change in
+state. Command execution and service processes run with daemon/device
+privileges by design.

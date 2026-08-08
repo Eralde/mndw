@@ -27,7 +27,7 @@ function fakeFs(files: Record<string, string>): SandboxFsDeps {
 
 const manifestPath = path.join(pluginDir, 'manifest.json');
 const validManifest = JSON.stringify({
-  manifestVersion: 2,
+  manifestVersion: 3,
   name: 'sandbox-widget',
   version: '0.0.0',
   type: 'widget',

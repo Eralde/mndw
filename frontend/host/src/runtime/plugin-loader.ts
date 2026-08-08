@@ -21,6 +21,10 @@ export interface LoaderDeps {
 
 const loadedPluginStylesheets = new Set<string>();
 
+function versionedAssetUrl(dir: string, asset: string, version: string): string {
+  return `${dir}/${asset}?v=${encodeURIComponent(version)}`;
+}
+
 /**
  * Injects a plugin's optional stylesheet once. A missing stylesheet is not an error
  * (plugins may ship none) — it resolves either way.
@@ -128,11 +132,12 @@ async function loadOne(
 ): Promise<void> {
   const base = entry.source === 'builtin' ? PLUGIN_SOURCE_PATHS.builtin : PLUGIN_SOURCE_PATHS.user;
   const dir = `${base}${entry.name}`;
+  const assetUrl = (asset: string): string => versionedAssetUrl(dir, asset, entry.version);
 
-  await loadStylesheet(`${dir}/index.css`, entry.name);
+  await loadStylesheet(assetUrl('index.css'), entry.name);
 
   try {
-    const module = await importModule(`${dir}/${entry.entry}`);
+    const module = await importModule(assetUrl(entry.entry));
 
     pluginRegistry.register({entry, module: validateModule(module, entry.name)});
     console.log(`[mndw] Loaded plugin: ${entry.name} (${entry.source})`);

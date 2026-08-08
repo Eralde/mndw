@@ -15,7 +15,7 @@ import {
   routeToPluginName,
 } from './create-app-router.js';
 
-const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
+const emptyBackend = {routes: {}};
 
 function page(name: string, label: string, route: string): LoadedPage {
   const entry: PageListEntry = {

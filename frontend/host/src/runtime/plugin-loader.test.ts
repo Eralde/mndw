@@ -7,11 +7,7 @@ import {appState} from '../state/app.svelte.js';
 import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
 
 const emptyBackend: PluginBackendDescriptor = {
-  endpoints: {},
-  websockets: {},
-  opkg: [],
-  daemon: false,
-  public: false,
+  routes: {},
 };
 
 function widget(name: string, over: Partial<PluginListEntry> = {}): PluginListEntry {
@@ -21,7 +17,7 @@ function widget(name: string, over: Partial<PluginListEntry> = {}): PluginListEn
     version: '1.0.0',
     label: name,
     entry: 'index.js',
-    source: 'user',
+    source: 'upload',
     approval: 'approved',
     enabled: true,
     depsStatus: 'ready',
@@ -67,6 +63,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// eslint-disable-next-line max-lines-per-function -- loader behavior cases stay together.
 describe('loadPlugins', () => {
   it('imports and registers enabled plugins from the list', async () => {
     const h = harness([widget('alpha'), page('beta', '/beta')]);
@@ -77,8 +74,8 @@ describe('loadPlugins', () => {
       pluginRegistry.getAll().map((p) => p.entry.name)
         .sort(),
     ).toEqual(['alpha', 'beta']);
-    expect(h.importModule).toHaveBeenCalledWith('/user-plugins/alpha/index.js');
-    expect(h.importModule).toHaveBeenCalledWith('/plugins/beta/index.js');
+    expect(h.importModule).toHaveBeenCalledWith('/user-plugins/alpha/index.js?v=1.0.0');
+    expect(h.importModule).toHaveBeenCalledWith('/plugins/beta/index.js?v=1.0.0');
   });
 
   it('seeds dependency statuses from the daemon list', async () => {
@@ -98,7 +95,16 @@ describe('loadPlugins', () => {
 
     await loadPlugins(h);
 
-    expect(h.loadStylesheet).toHaveBeenCalledWith('/user-plugins/alpha/index.css', 'alpha');
+    expect(h.loadStylesheet).toHaveBeenCalledWith('/user-plugins/alpha/index.css?v=1.0.0', 'alpha');
+  });
+
+  it('version-qualifies plugin assets so updated bundles bypass browser cache', async () => {
+    const h = harness([widget('alpha', {version: '1.2.3'})]);
+
+    await loadPlugins(h);
+
+    expect(h.loadStylesheet).toHaveBeenCalledWith('/user-plugins/alpha/index.css?v=1.2.3', 'alpha');
+    expect(h.importModule).toHaveBeenCalledWith('/user-plugins/alpha/index.js?v=1.2.3');
   });
 
   it('skips disabled and pending entries', async () => {
@@ -132,7 +138,7 @@ describe('loadPlugins', () => {
 
   it('skips a module missing createInstance but keeps the others', async () => {
     const h = harness([widget('good'), widget('bad')], {
-      '/user-plugins/bad/index.js': {notCreateInstance: true},
+      '/user-plugins/bad/index.js?v=1.0.0': {notCreateInstance: true},
     });
 
     await loadPlugins(h);

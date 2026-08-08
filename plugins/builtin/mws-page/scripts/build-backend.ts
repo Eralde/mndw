@@ -9,7 +9,6 @@ const plugin = 'mws-page';
 const backendDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'backend');
 const builds = [
   ['mwsd', './cmd/mwsd'],
-  ['mwsd-client', './cmd/mwsd-client'],
 ] as const;
 
 function parseOptions(): {target: string; outDir: string} | null {

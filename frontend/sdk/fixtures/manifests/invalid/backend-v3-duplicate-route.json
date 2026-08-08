@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 3,
+  "name": "bad-duplicate-route",
+  "version": "3.0.0",
+  "type": "widget",
+  "label": "Bad",
+  "entry": "index.js",
+  "size": {"w": 2, "h": 2},
+  "backend": {
+    "kind": "exec",
+    "routes": [
+      {"id": "one", "transport": "http", "method": "GET", "path": "same", "command": "backend/a"},
+      {"id": "two", "transport": "http", "method": "GET", "path": "same", "command": "backend/b"}
+    ]
+  }
+}

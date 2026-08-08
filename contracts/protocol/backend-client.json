@@ -2,19 +2,13 @@
   "schemaVersion": 1,
   "backendDescriptor": {
     "required": [
-      "endpoints",
-      "websockets",
+      "routes",
       "approval",
-      "enabled",
-      "public"
+      "enabled"
     ],
-    "endpoint": {
-      "method": "string",
-      "path": "string",
-      "csrf": "boolean?",
-      "sensitive": "boolean?"
-    },
-    "websocket": {
+    "route": {
+      "transport": "http|websocket",
+      "method": "GET|HEAD|POST|PUT|PATCH|DELETE?",
       "path": "string",
       "protocols": "string[]?"
     },

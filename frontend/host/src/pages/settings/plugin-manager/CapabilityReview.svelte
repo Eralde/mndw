@@ -7,42 +7,23 @@ interface Props {
 
 let {descriptor}: Props = $props();
 
-let endpoints = $derived(Object.entries(descriptor.endpoints));
-let websockets = $derived(Object.entries(descriptor.websockets));
+let routes = $derived(Object.entries(descriptor.routes ?? {}));
 </script>
 
 <div class="mndw-cap">
-  {#if descriptor.opkg.length > 0}
+  {#if routes.length > 0}
     <section class="mndw-cap__section">
-      <h4>Packages</h4>
+      <h4>Routes</h4>
       <ul>
-        {#each descriptor.opkg as packageName (packageName)}
-          <li>{packageName}</li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
-
-  {#if endpoints.length > 0}
-    <section class="mndw-cap__section">
-      <h4>Endpoints</h4>
-      <ul>
-        {#each endpoints as [id, endpoint] (id)}
-          <li>{id}: {endpoint.method} {endpoint.path}</li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
-
-  {#if websockets.length > 0}
-    <section class="mndw-cap__section">
-      <h4>WebSockets</h4>
-      <ul>
-        {#each websockets as [id, websocket] (id)}
+        {#each routes as [id, route] (id)}
           <li>
-            {id}: {websocket.path}{
-              websocket.protocols?.length
-              ? ` (${websocket.protocols.join(', ')})`
+            {id}: {
+              route.transport === 'http'
+              ? `${route.method ?? 'GET'} `
+              : ''
+            }{route.path}{
+              route.protocols?.length
+              ? ` (${route.protocols.join(', ')})`
               : ''
             }
           </li>
@@ -51,16 +32,6 @@ let websockets = $derived(Object.entries(descriptor.websockets));
     </section>
   {/if}
 
-  {#if descriptor.daemon}
-    <div class="mndw-cap__row">Daemon declaration</div>
-  {/if}
-
-  {#if descriptor.public}
-    <div class="mndw-cap__public">
-      <strong>public: bypasses the session gate</strong>
-      <span>reachable without login</span>
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -95,21 +66,4 @@ let websockets = $derived(Object.entries(descriptor.websockets));
   font-size: var(--mndw-text-xs);
 }
 
-.mndw-cap__row,
-.mndw-cap__public {
-  padding: var(--mndw-space-2);
-  border: 1px solid var(--mndw-border);
-  border-radius: var(--mndw-radius-sm);
-}
-
-.mndw-cap__public {
-  display: grid;
-  gap: var(--mndw-space-1);
-  border-color: var(--mndw-warning);
-  color: var(--mndw-text);
-}
-
-.mndw-cap__public span {
-  color: var(--mndw-text-subtle);
-}
 </style>

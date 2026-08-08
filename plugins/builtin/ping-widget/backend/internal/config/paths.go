@@ -7,20 +7,14 @@ import (
 
 // Device defaults; overridable via env so dev hosts (no writable /opt) work.
 const (
-	defaultRuntimeDir = "/tmp"
-	defaultStateDir   = "/opt/var/lib/mndw/ping-widget"
+	defaultStateDir = "/opt/var/lib/mndw/ping-widget"
 )
-
-func runtimeDir() string {
-	if dir := os.Getenv("MNDW_PLUGIN_RUNTIME_DIR"); dir != "" {
-		return dir
-	}
-
-	return defaultRuntimeDir
-}
 
 // StateDir is where hosts/stats JSON persist.
 func StateDir() string {
+	if dir := os.Getenv("MNDW_PLUGIN_DATA_DIR"); dir != "" {
+		return dir
+	}
 	if dir := os.Getenv("MNDW_PING_STATE_DIR"); dir != "" {
 		return dir
 	}
@@ -28,7 +22,7 @@ func StateDir() string {
 	return defaultStateDir
 }
 
-func SocketPath() string  { return filepath.Join(runtimeDir(), "ping-widget.sock") }
-func PidFilePath() string { return filepath.Join(runtimeDir(), "ping-widget.pid") }
-func HostsFile() string   { return filepath.Join(StateDir(), "hosts.json") }
-func StatsFile() string   { return filepath.Join(StateDir(), "stats.json") }
+func BackendSocketPath() string { return os.Getenv("MNDW_BACKEND_SOCKET") }
+
+func HostsFile() string { return filepath.Join(StateDir(), "hosts.json") }
+func StatsFile() string { return filepath.Join(StateDir(), "stats.json") }

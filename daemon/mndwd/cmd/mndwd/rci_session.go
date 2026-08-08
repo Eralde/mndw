@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"mndw.local/device-auth"
+	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
-	"mndwd/internal/pluginruntime"
 	"mndwd/internal/rcisession"
 	"mndwd/internal/rcisession/enumeration"
 	"mndwd/internal/rcisession/minter"
@@ -107,19 +107,29 @@ func assembleRCISession(cfg Config, reg *registry.Registry, runtimeRoot string, 
 
 func (a *rciSessionAssembly) reconcileSockets() {
 	bindings := make([]rcisessionsocket.Binding, 0)
-	for _, plugin := range a.registry.ListBuiltins() {
+	for _, plugin := range a.registry.AllBackendPlugins() {
 		if !hasPersistentRCIPermission(plugin.Manifest) {
 			continue
 		}
-		runtimeDir, err := pluginruntime.Ensure(a.runtimeRoot, plugin.Name)
-		if err != nil || runtimeDir == "" {
+		if !isService(plugin.Manifest) {
 			continue
 		}
-		bindings = append(bindings, rcisessionsocket.Binding{PluginID: plugin.Name, Path: filepath.Join(runtimeDir, "rci-session.sock")})
+		paths, err := backend.NewRuntimePaths(a.runtimeRoot, plugin.Name)
+		if err == nil && paths.RCISessionSocket != "" {
+			bindings = append(bindings, rcisessionsocket.Binding{
+				PluginID:              plugin.Name,
+				Path:                  paths.RCISessionSocket,
+				CredentialIndependent: true,
+			})
+		}
 	}
 	_, document := a.service.Capability()
 	present := document.Controller != nil && document.Controller.Token != ""
 	_ = a.reconciler.Reconcile(context.Background(), bindings, present)
+}
+
+func isService(m *manifest.Manifest) bool {
+	return m != nil && m.Backend != nil && m.Backend.Kind != nil && *m.Backend.Kind == manifest.BackendKindService && m.Backend.ProtocolVersion != nil && *m.Backend.ProtocolVersion == 1
 }
 
 func hasPersistentRCIPermission(m *manifest.Manifest) bool {

@@ -30,7 +30,7 @@ import {createAppRouter} from '../router/create-app-router.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import PagePluginHost from './PagePluginHost.svelte';
 
-const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
+const emptyBackend = {routes: {}};
 
 function pagePlugin(name: string): LoadedPage {
   const entry: PageListEntry = {

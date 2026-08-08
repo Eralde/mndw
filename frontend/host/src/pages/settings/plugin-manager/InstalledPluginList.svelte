@@ -13,6 +13,7 @@ interface Props {
   actionError: {name: string; message: string} | null;
   onEnable: (name: string) => void;
   onDisable: (name: string) => void;
+  onRestart?: (name: string) => void;
   onDelete: (name: string) => void;
   onRequestConfirm: (name: string) => void;
   onCancelConfirm: () => void;
@@ -24,8 +25,11 @@ function countLabel(count: number, singular: string): string {
 
 function backendSummary(backend: PluginBackendDescriptor): string[] {
   const parts: string[] = [];
-  const endpointCount = Object.keys(backend.endpoints).length;
-  const websocketCount = Object.keys(backend.websockets).length;
+  const routeEntries = Object.values(backend.routes ?? {});
+  const endpointCount =
+    routeEntries.filter((route) => route.transport === 'http').length;
+  const websocketCount =
+    routeEntries.filter((route) => route.transport === 'websocket').length;
 
   if (endpointCount > 0) {
     parts.push(countLabel(endpointCount, 'endpoint'));
@@ -35,15 +39,11 @@ function backendSummary(backend: PluginBackendDescriptor): string[] {
     parts.push(countLabel(websocketCount, 'websocket'));
   }
 
-  if (backend.opkg.length > 0) {
-    parts.push(countLabel(backend.opkg.length, 'opkg'));
-  }
-
-  if (backend.daemon) {
-    parts.push('Daemon');
-  }
-
   return parts;
+}
+
+function boundedError(value: string): string {
+  return value.length > 240 ? `${value.slice(0, 240)}…` : value;
 }
 
 let {
@@ -53,6 +53,7 @@ let {
   actionError,
   onEnable,
   onDisable,
+  onRestart = () => {},
   onDelete,
   onRequestConfirm,
   onCancelConfirm,
@@ -111,10 +112,6 @@ let {
             <p class="mndw-installed__backend">{summary.join(', ')}</p>
           {/if}
 
-          {#if item.backend.public}
-            <p class="mndw-installed__public">Public backend exposure</p>
-          {/if}
-
           {#if actionError?.name === item.name}
             <div
               class="mndw-alert mndw-alert--danger"
@@ -124,7 +121,7 @@ let {
             </div>
           {/if}
 
-          {#if item.source === 'user'}
+          {#if item.source !== 'builtin'}
             <div class="mndw-installed__actions">
               <!-- svelte-ignore a11y_click_events_have_key_events -->
               <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -137,6 +134,17 @@ let {
               >
                 {item.enabled ? 'Disable' : 'Enable'}
               </mndw-button>
+              {#if item.runtime && item.runtime.state !== 'stopped'}
+                <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+                <mndw-button
+                  class="mndw-installed__restart"
+                  variant="secondary"
+                  disabled={busyName !== null}
+                  onclick={() => onRestart(item.name)}
+                >
+                  Restart backend
+                </mndw-button>
+              {/if}
               {#if confirmingName === item.name}
                 <div class="mndw-installed__confirmation">
                   <p>Delete {item.label}? This cannot be undone.</p>
@@ -174,6 +182,29 @@ let {
                 </mndw-button>
               {/if}
             </div>
+          {/if}
+
+          {#if item.runtime}
+            <p class="mndw-installed__runtime">
+              Backend: {item.runtime.state}
+              {#if item.runtime.requiredProtocol !== undefined}
+                <span> · Protocol {item.runtime.requiredProtocol}</span>
+              {/if}
+              {#if item.runtime.compatible === false}
+                <span class="mndw-installed__runtime-warning">
+                  · incompatible</span>
+              {/if}
+              {#if item.runtime.lastError}
+                — {boundedError(item.runtime.lastError)}{/if}
+            </p>
+            {#if item.runtime.compatible === false
+          && item.runtime.supportedProtocols}
+              <p class="mndw-installed__runtime-warning">
+                Supported service protocols: {
+                  item.runtime.supportedProtocols.join(', ')
+                }
+              </p>
+            {/if}
           {/if}
         </li>
       {/each}
@@ -270,9 +301,14 @@ let {
   font-size: var(--mndw-text-sm);
 }
 
-.mndw-installed__public {
+.mndw-installed__runtime {
+  color: var(--mndw-text-muted);
+  font-family: var(--mndw-font-mono);
+  font-size: var(--mndw-text-xs);
+}
+
+.mndw-installed__runtime-warning {
   color: var(--mndw-warning);
-  font-size: var(--mndw-text-sm);
 }
 
 .mndw-installed__confirmation {

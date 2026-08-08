@@ -1,14 +1,4 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {validateManifest} from '@mndw/sdk';
@@ -59,7 +49,7 @@ function scaffold(dir: string, options: ScaffoldOptions): void {
 
 function widgetManifest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    manifestVersion: 2,
+    manifestVersion: 3,
     name: 'sample-widget',
     version: '0.1.0',
     type: 'widget',
@@ -106,8 +96,8 @@ describe('packPlugin', () => {
       manifest: widgetManifest({
         name: 'compiled-widget',
         backend: {
-          assets: ['backend/mndwd'],
-          scripts: [{id: 'status', runtime: 'sh', source: 'backend/status.sh'}],
+          kind: 'exec',
+          routes: [{id: 'status', transport: 'http', method: 'GET', path: 'status', command: 'backend/status.sh'}],
         },
       }),
       index: 'export const createInstance = () => ({unmount() {}});\n',
@@ -130,6 +120,39 @@ describe('packPlugin', () => {
     });
     expect(existsSync(join(dir, 'dist', 'backend', 'mndwd'))).toBe(false);
     expect(existsSync(join(dir, 'dist', 'backend', 'status.sh'))).toBe(true);
+  });
+
+  it('stages each v3 backend command once with executable mode', async () => {
+    scaffold(dir, {
+      manifest: {
+        manifestVersion: 3,
+        name: 'exec-v3-widget',
+        version: '0.1.0',
+        type: 'widget',
+        label: 'Exec V3',
+        entry: 'index.js',
+        size: {w: 3, h: 2},
+        backend: {
+          kind: 'exec',
+          routes: [
+            {id: 'one', transport: 'http', method: 'GET', path: 'one', command: 'backend/echo.sh'},
+            {id: 'two', transport: 'http', method: 'POST', path: 'two', command: 'backend/echo.sh'},
+          ],
+        },
+      },
+      index: 'export const createInstance = () => ({unmount() {}});\n',
+      files: {'backend/echo.sh': '#!/bin/sh\n'},
+    });
+
+    await packPlugin(dir);
+
+    const artifact = JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8')) as {
+      staticBackends: string[];
+    };
+    const mode = statSync(join(dir, 'dist', 'backend', 'echo.sh')).mode.toString(8).slice(-3);
+
+    expect(artifact.staticBackends).toEqual(['backend/echo.sh']);
+    expect(mode).toBe('755');
   });
 
   it('bundles configured production source instead of the development source', async () => {
@@ -359,87 +382,39 @@ describe('packPlugin', () => {
     expect(existsSync(join(dir, 'dist'))).toBe(false);
   });
 
-  it('copies declared backend scripts and daemon hooks, including paths outside backend/', async () => {
+  it('copies declared backend commands', async () => {
     scaffold(dir, {
       manifest: widgetManifest({
         name: 'backend-widget',
         backend: {
-          scripts: [
-            {id: 'server', source: 'backend/server.sh', runtime: 'sh'},
-            {id: 'helper', source: 'lib/helper.sh', runtime: 'sh'},
-          ],
-          daemon: {start: 'backend/start.sh', stop: 'backend/stop.sh'},
+          kind: 'service',
+          protocolVersion: 1,
+          command: 'backend/server.sh',
+          routes: [{id: 'status', transport: 'http', method: 'GET', path: 'status'}],
         },
       }),
       index: 'export const createInstance = () => ({unmount() {}});\n',
       files: {
         'backend/server.sh': '#!/bin/sh\necho server\n',
-        'lib/helper.sh': '#!/bin/sh\necho helper\n',
-        'backend/start.sh': '#!/bin/sh\necho start\n',
-        'backend/stop.sh': '#!/bin/sh\necho stop\n',
       },
     });
 
     await packPlugin(dir);
 
     expect(existsSync(join(dir, 'dist', 'backend', 'server.sh'))).toBe(true);
-    expect(existsSync(join(dir, 'dist', 'lib', 'helper.sh'))).toBe(true);
-    expect(existsSync(join(dir, 'dist', 'backend', 'start.sh'))).toBe(true);
-    expect(existsSync(join(dir, 'dist', 'backend', 'stop.sh'))).toBe(true);
   });
 
-  it('fails before writing output when a declared backend asset is missing', async () => {
+  it('fails before writing output when a declared backend command is missing', async () => {
     scaffold(dir, {
       manifest: widgetManifest({
-        backend: {scripts: [{id: 'server', source: 'backend/server.sh', runtime: 'sh'}]},
+        backend: {kind: 'exec',
+          routes: [{id: 'server', transport: 'http', method: 'GET', path: 'server', command: 'backend/server.sh'}]},
       }),
       index: 'export const createInstance = () => ({unmount() {}});\n',
     });
 
     await expect(packPlugin(dir)).rejects.toBeInstanceOf(CliError);
     expect(existsSync(join(dir, 'dist'))).toBe(false);
-  });
-
-  it('copies declared backend.assets into dist, mode-preserved, and errors when missing', async () => {
-    mkdirSync(join(dir, 'src'), {recursive: true});
-    mkdirSync(join(dir, 'backend'), {recursive: true});
-    writeFileSync(join(dir, 'src', 'index.ts'), 'export function createInstance(){return {unmount(){}}}');
-    writeFileSync(join(dir, 'backend', 'blob.bin'), Buffer.from([1, 2, 3]));
-    chmodSync(join(dir, 'backend', 'blob.bin'), 0o755);
-    writeFileSync(
-      join(dir, 'manifest.json'),
-      JSON.stringify({
-        manifestVersion: 2,
-        name: 'asset-plugin',
-        version: '0.1.0',
-        type: 'widget',
-        label: 'Asset',
-        entry: 'index.js',
-        size: {w: 2, h: 2},
-        backend: {assets: ['backend/blob.bin']},
-      }),
-    );
-
-    const outDir = join(dir, 'dist');
-
-    await packPlugin(dir, {outDir});
-
-    const packed = join(outDir, 'backend', 'blob.bin');
-
-    expect(existsSync(packed)).toBe(true);
-    expect(readFileSync(packed)).toEqual(Buffer.from([1, 2, 3]));
-
-    const packedMode = statSync(packed).mode;
-    const hasExecutableBit = [0o100, 0o010, 0o001].some((bit) => Math.floor(packedMode / bit) % 2 === 1);
-
-    expect(hasExecutableBit).toBe(true);
-
-    rmSync(join(dir, 'backend', 'blob.bin'));
-
-    const missingOutDir = mkdtempSync(join(tmpdir(), 'mndw-assets-missing-'));
-
-    rmSync(missingOutDir, {recursive: true, force: true});
-    await expect(packPlugin(dir, {outDir: missingOutDir})).rejects.toThrow(/Missing backend asset/);
   });
 
   it.each([
@@ -580,14 +555,19 @@ describe('packExamplePlugins build pre-pass', () => {
     writeFileSync(
       join(plugin, 'manifest.json'),
       JSON.stringify({
-        manifestVersion: 2,
+        manifestVersion: 3,
         name: 'built-widget',
         version: '0.1.0',
         type: 'widget',
         label: 'Built',
         entry: 'index.js',
         size: {w: 2, h: 2},
-        backend: {assets: ['backend/marker.bin']},
+        backend: {
+          kind: 'service',
+          protocolVersion: 1,
+          command: 'backend/marker.bin',
+          routes: [{id: 'status', transport: 'http', method: 'GET', path: 'status'}],
+        },
       }),
     );
     writeFileSync(

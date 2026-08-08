@@ -35,7 +35,7 @@ import {
   removeTileController,
 } from './tile-controller.js';
 
-const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
+const emptyBackend = {routes: {}};
 
 function widgetPlugin(
   name: string,

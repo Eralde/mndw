@@ -8,7 +8,7 @@ import {zipDirectory, zipPlugin} from './zip.js';
 
 function widgetManifest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    manifestVersion: 2,
+    manifestVersion: 3,
     name: 'sample-widget',
     version: '0.1.0',
     type: 'widget',

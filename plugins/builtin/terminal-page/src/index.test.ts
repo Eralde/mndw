@@ -7,7 +7,7 @@ import {createInstance} from './index';
 afterEach(() => vi.restoreAllMocks());
 
 describe('createInstance', () => {
-  it('mounts with the v2 typed backend client', () => {
+  it('mounts with the typed backend client', () => {
     const host = document.createElement('div');
     const backend = {fetch: vi.fn(), socket: vi.fn()} as unknown as BackendClient;
     const context = {backend} as unknown as PluginContext;

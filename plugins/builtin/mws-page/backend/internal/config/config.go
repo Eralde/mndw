@@ -37,6 +37,7 @@ func Default() Config {
 
 func (c Config) SocketPath() string { return filepath.Join(c.RuntimeDir, c.SocketName) }
 func (c Config) PIDPath() string    { return filepath.Join(c.RuntimeDir, c.PIDName) }
+func BackendSocketPath() string     { return os.Getenv("MNDW_BACKEND_SOCKET") }
 
 func Parse(args []string, environ func(string) string) (Config, error) {
 	cfg := Default()

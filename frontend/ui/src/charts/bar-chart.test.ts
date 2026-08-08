@@ -151,4 +151,44 @@ describe('<mndw-bar-chart>', () => {
     element.remove();
     expect(disconnect).toHaveBeenCalledOnce();
   });
+
+  it('keeps tooltip rendering valid when a resize redraw follows hover', async () => {
+    type ObserverCallback = (entries: ResizeObserverEntry[]) => void;
+
+    let callback: ObserverCallback | undefined;
+
+    class TestResizeObserver {
+      constructor(nextCallback: ObserverCallback) {
+        callback = nextCallback;
+      }
+
+      public observe = vi.fn();
+      public unobserve = vi.fn();
+      public disconnect = vi.fn();
+    }
+
+    vi.stubGlobal('ResizeObserver', TestResizeObserver);
+
+    const element = await mount();
+
+    element.points = points;
+    await element.updateComplete;
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (!overlay) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 100, clientY: 100}));
+    await element.updateComplete;
+    callback?.([{contentRect: {width: 299, height: 180}} as ResizeObserverEntry]);
+
+    const refreshedOverlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    refreshedOverlay?.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 100, clientY: 100}));
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(true);
+  });
 });

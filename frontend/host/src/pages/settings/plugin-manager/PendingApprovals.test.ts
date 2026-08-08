@@ -11,17 +11,13 @@ const item: PluginListEntry = {
   version: '1.0.0',
   label: 'Network Tools',
   entry: 'index.js',
-  source: 'user',
+  source: 'upload',
   approval: 'pending',
   enabled: false,
   depsStatus: 'ready',
   route: '/network-tools',
   backend: {
-    endpoints: {status: {method: 'GET', path: '/api/status'}},
-    websockets: {},
-    opkg: ['curl'],
-    daemon: false,
-    public: false,
+    routes: {status: {transport: 'http', method: 'GET', path: 'status'}},
   },
 };
 
@@ -75,7 +71,7 @@ describe('PendingApprovals', () => {
     expect(target.textContent).toContain('Pending approvals');
     expect(target.textContent).toContain('Network Tools');
     expect(target.textContent).toContain('network-tools');
-    expect(target.textContent).toContain('status: GET /api/status');
+    expect(target.textContent).toContain('status: GET status');
 
     target.querySelector<HTMLButtonElement>('.mndw-pending__approve')?.click();
 

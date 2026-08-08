@@ -11,7 +11,7 @@ import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import FloatingAddPanel from './FloatingAddPanel.svelte';
 
-const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
+const emptyBackend = {routes: {}};
 
 function widget(name: string, label: string): LoadedWidget {
   const entry: WidgetListEntry = {

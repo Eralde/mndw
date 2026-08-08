@@ -28,7 +28,7 @@ import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import {getNextInstanceId} from './widget-counter.js';
 import {type RestoredTilePosition, addWidgetTile, resizeWidgetTile} from './grid-dashboard-setup.js';
 
-const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
+const emptyBackend = {routes: {}};
 
 function widgetPlugin(name: string): LoadedPlugin {
   const entry: WidgetListEntry = {

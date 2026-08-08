@@ -6,7 +6,7 @@ import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import type {MgmtClient, UploadResult} from '../../../services/mgmt-client.js';
 import PluginManager from './PluginManager.svelte';
 
-const emptyBackend = {endpoints: {}, websockets: {}, opkg: [], daemon: false, public: false};
+const emptyBackend = {routes: {}};
 
 function plugin(overrides: Partial<PluginListEntry> = {}): PluginListEntry {
   return {
@@ -15,7 +15,7 @@ function plugin(overrides: Partial<PluginListEntry> = {}): PluginListEntry {
     version: '1.0.0',
     label: 'Network Tools',
     entry: 'index.js',
-    source: 'user',
+    source: 'upload',
     approval: 'approved',
     enabled: true,
     size: {w: 4, h: 3},
@@ -33,6 +33,15 @@ function clientWith(items: PluginListEntry[]): Mocked<MgmtClient> {
     disablePlugin: vi.fn().mockResolvedValue(items[0]),
     denyPlugin: vi.fn().mockResolvedValue(undefined),
     deletePlugin: vi.fn().mockResolvedValue(undefined),
+    restartPlugin: vi.fn().mockResolvedValue(undefined),
+    getRuntime: vi.fn().mockResolvedValue({
+      maxConcurrentExecTotal: 8,
+      maxConcurrentExecPerPlugin: 4,
+      maxSupervisedServices: 8,
+      currentExec: 0,
+      reservedServices: 0,
+      supportedServiceProtocols: [1],
+    }),
     getPalette: vi.fn().mockResolvedValue(null),
     putPalette: vi.fn().mockResolvedValue(undefined),
     deletePalette: vi.fn().mockResolvedValue(undefined),

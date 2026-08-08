@@ -4,8 +4,17 @@ PID_FILE="/opt/var/run/mndwd.pid"
 DAEMON="/opt/sbin/mndwd"
 DATA_DIR="/opt/var/lib/mndw"
 KEY_DIR="/opt/var/lib/mndw-secrets"
-PLUGIN_RUNTIME_DIR="$DATA_DIR/plugin-runtime"
+PLUGIN_RUNTIME_DIR="/opt/tmp/mndw/plugin-runtime"
+CONFIG_FILE="/opt/etc/mndw.conf"
 LOG_FILE="/opt/var/log/mndwd.log"
+
+if [ -f "$CONFIG_FILE" ]; then
+  . "$CONFIG_FILE"
+fi
+
+: "${MNDWD_MAX_CONCURRENT_EXEC_TOTAL:=8}"
+: "${MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN:=4}"
+: "${MNDWD_MAX_SUPERVISED_SERVICES:=8}"
 
 wait_for_exit() {
   wait_pid="$1"
@@ -15,34 +24,6 @@ wait_for_exit() {
     wait_seconds=$((wait_seconds - 1))
   done
   ! kill -0 "$wait_pid" 2>/dev/null
-}
-
-reap_mwsd() {
-  reap_failed=0
-  for mwsd_pidfile in "$PLUGIN_RUNTIME_DIR"/*/mwsd.pid; do
-    [ -f "$mwsd_pidfile" ] || continue
-    mwsd_pid=$(cat "$mwsd_pidfile" 2>/dev/null || true)
-    [ -n "$mwsd_pid" ] || continue
-    mwsd_comm=$(cat "/proc/$mwsd_pid/comm" 2>/dev/null || true)
-    [ "$mwsd_comm" = "mwsd" ] || continue
-    [ "$(cat "$mwsd_pidfile" 2>/dev/null || true)" = "$mwsd_pid" ] || continue
-
-    kill "$mwsd_pid" 2>/dev/null || true
-    if ! wait_for_exit "$mwsd_pid" 10; then
-      current_mwsd_pid=$(cat "$mwsd_pidfile" 2>/dev/null || true)
-      if [ "$current_mwsd_pid" = "$mwsd_pid" ]; then
-        kill -KILL "$mwsd_pid" 2>/dev/null || true
-        wait_for_exit "$mwsd_pid" 2
-      fi
-    fi
-    if kill -0 "$mwsd_pid" 2>/dev/null; then
-      reap_failed=1
-      continue
-    fi
-    mwsd_runtime_dir=${mwsd_pidfile%/mwsd.pid}
-    rm -f "$mwsd_pidfile" "$mwsd_runtime_dir/mwsd.sock"
-  done
-  return "$reap_failed"
 }
 
 start() {
@@ -74,6 +55,10 @@ EOF
     --builtin-plugins-dir "/opt/share/www/mndw/plugins" \
     --user-plugins-dir "/opt/share/www/mndw/user-plugins" \
     --router-url "http://$ROUTER_IP" \
+    --plugin-runtime-root "$PLUGIN_RUNTIME_DIR" \
+    --max-concurrent-exec-total "$MNDWD_MAX_CONCURRENT_EXEC_TOTAL" \
+    --max-concurrent-exec-per-plugin "$MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN" \
+    --max-supervised-services "$MNDWD_MAX_SUPERVISED_SERVICES" \
     --opkg exec \
     >> "$LOG_FILE" 2>&1 &
   echo "$!" > "$PID_FILE"
@@ -81,8 +66,7 @@ EOF
 
 stop() {
   if [ ! -f "$PID_FILE" ]; then
-    reap_mwsd
-    return $?
+    return 0
   fi
   pid="$(cat "$PID_FILE" 2>/dev/null || true)"
   if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
@@ -99,7 +83,6 @@ stop() {
     return 1
   fi
   rm -f "$PID_FILE"
-  reap_mwsd
 }
 
 restart() { stop || return 1; start; }

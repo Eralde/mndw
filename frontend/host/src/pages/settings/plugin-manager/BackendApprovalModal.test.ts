@@ -16,17 +16,13 @@ const entry: PluginListEntry = {
   version: '1.0.0',
   label: 'Network Tools',
   entry: 'index.js',
-  source: 'user',
+  source: 'upload',
   approval: 'pending',
   enabled: false,
   depsStatus: 'ready',
   route: '/network-tools',
   backend: {
-    endpoints: {status: {method: 'GET', path: '/api/status'}},
-    websockets: {},
-    opkg: ['curl'],
-    daemon: true,
-    public: true,
+    routes: {status: {transport: 'http', method: 'GET', path: 'status'}},
   },
 };
 
@@ -51,13 +47,11 @@ describe('BackendApprovalModal', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders declared backend capabilities and public marker', () => {
+  it('renders declared backend routes', () => {
     const {component, target} = mountModal();
 
     expect(target.textContent).toContain('Network Tools (network-tools) declares a backend');
-    expect(target.textContent).toContain('curl');
-    expect(target.textContent).toContain('status: GET /api/status');
-    expect(target.textContent).toContain('public: bypasses the session gate');
+    expect(target.textContent).toContain('status: GET status');
 
     void unmount(component);
   });

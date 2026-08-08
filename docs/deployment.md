@@ -22,15 +22,16 @@ an upgrade.
 
 ## lighttpd
 
-The v2 lighttpd configuration is intentionally thin:
+The v3 lighttpd configuration is intentionally thin:
 
 - serve the SPA and static plugin assets;
 - proxy `/rci`, `/ci`, and `/auth` to the router with the required host header;
 - proxy `/api` and `/ws` to `mndwd` on `127.0.0.1:9090`;
 - retain SPA fallback for browser routes.
 
-The old CGI, rewrite dispatch, jq, unzip, and separate WebSocket gateway
-dependencies are not needed by v2.
+Backend commands and service processes run behind `mndwd`; lighttpd only
+provides the browser-facing static and proxy boundary. Backend operation does
+not require lighttpd CGI, jq, or unzip.
 
 ## IPK pipeline
 
@@ -48,8 +49,7 @@ The architecture map includes `mipsel-3.4`, `aarch64-3.10`, and
 `armv7-3.2`. `--all` builds the supported set. The package feed contains one
 entry per architecture.
 
-The package depends on lighttpd and its proxy/rewrite modules. It does not
-depend on lighttpd CGI, jq, or unzip for backend operation.
+The package depends on lighttpd and its proxy/rewrite modules.
 
 ## Install and upgrade
 
@@ -73,13 +73,13 @@ production:
 
 - management requires a valid router session;
 - uploaded backend plugins are staged before approval;
-- endpoint and WebSocket access is gated by approval and enabled state;
-- `backend.public: true` is explicit and visible during review;
+- HTTP/WebSocket route access is gated by approval and enabled state;
+- public route access is explicit and visible during review;
 - request size, execution time, and concurrency are bounded;
-- approved shell scripts run with the daemon's device privileges.
+- approved commands and service children run with the daemon's device privileges.
 
-The v1 service allowed unauthenticated upload, approval, and shell execution on
-`:99`; v2 removes that default. `--dev` intentionally bypasses session checks,
+The old service allowed unauthenticated upload, approval, and shell execution
+on `:99`; v3 removes that default. `--dev` intentionally bypasses session checks,
 so it must not be used as a production configuration.
 
 ## Device-like validation

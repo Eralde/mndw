@@ -49,7 +49,9 @@ export default defineConfig(({mode}) => {
   }
 
   function daemonProxy(ws = false): ProxyOptions {
-    return {target: daemonHost, changeOrigin: true, ws};
+    // Browser-origin headers must reach mndwd unchanged for CSRF and WebSocket
+    // origin policy. Production lighttpd has the same no-rewrite boundary.
+    return {target: daemonHost, changeOrigin: false, ws};
   }
 
   return {
@@ -124,6 +126,7 @@ export default defineConfig(({mode}) => {
       },
     ],
     server: {
+      cors: false,
       // Keep host source files allowed when the sandbox plugin adds its external source dir.
       // Vite merges array-valued fs.allow entries, so both workspace and plugin remain served.
       fs: {

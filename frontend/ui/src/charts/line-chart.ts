@@ -232,10 +232,7 @@ export class MndwLineChart extends LitElement {
     this.tooltipState = null;
 
     if (hadTooltip) {
-      const tooltip = this.renderRoot.querySelector<HTMLElement>('[part="tooltip"]');
-
-      tooltip?.removeAttribute('data-visible');
-      tooltip?.replaceChildren();
+      this.requestUpdate();
     }
 
     const svgElement = container.querySelector<SVGSVGElement>('svg');

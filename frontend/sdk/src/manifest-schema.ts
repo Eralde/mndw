@@ -1,19 +1,9 @@
 import {z} from 'zod';
 
-// Plugin `name` is used as a filesystem path segment (staging dir, module URL, `/api/plugins/<name>`).
-// Constrain it so it can't traverse directories or inject shell metacharacters.
-const pluginNameSchema = z.string()
-  .regex(
-    /^[a-z0-9][a-z0-9-]*$/,
-    {
-      message: 'name must be lowercase alphanumeric with hyphens (e.g. my-widget)',
-    },
-  );
+const pluginNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, {
+  message: 'name must be lowercase alphanumeric with hyphens (e.g. my-widget)',
+});
 
-// Any path a plugin declares (entry module, script source, daemon hooks) is interpolated into a
-// filesystem/URL path. Allow relative subpaths (e.g. `dist/index.js`) but reject absolute paths and
-// traversal. Endpoint/websocket paths are relative too; the daemon composes the full URL and
-// namespaces it by plugin name.
 const safeRelativePath = (value: string): boolean => {
   return !value.startsWith('/') && !value.includes('..') && !value.includes('\\');
 };
@@ -26,185 +16,172 @@ const hasFileName = (value: string): boolean => {
 
 const safeRelativePathSchema = z.string().min(1)
   .refine(safeRelativePath, {message: 'must be a safe relative path'});
-
 const pluginEntrySchema = safeRelativePathSchema
   .refine(hasFileName, {message: 'entry must include a file name'});
 
-// opkg package names: lowercase, may contain `+ _ . -` (matches Entware/opkg naming).
-const pluginBackendOpkgSchema = z.string().regex(/^[a-z0-9][a-z0-9+_.-]*$/);
+const packageSchema = z.string().regex(/^[a-z0-9][a-z0-9+_.-]*$/);
+const accessSchema = z.enum(['session', 'public']).default('session');
+const methodSchema = z.string()
+  .transform((method) => method.toUpperCase())
+  .pipe(z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']));
 
-const pluginBackendScriptSchema = z.object({
-  id: z.string().min(1),
-  runtime: z.literal('sh'),
-  source: z
-    .string()
-    .min(1)
-    .refine(safeRelativePath, {message: 'source must be a safe relative path'}),
-})
-  .refine(
-    (script) => hasFileName(script.source),
-    {message: 'source must include a file name', path: ['source']},
-  );
+// Decode one layer before checking route names. Reject encoded/double-encoded
+// separators, dot segments, and the daemon-reserved namespace.
+const safeBackendRoutePath = (value: string): boolean => {
+  if (
+    value.length === 0 || value.startsWith('/') || value.includes('\\') || value.includes('?') || value.includes('#')
+  ) {
+    return false;
+  }
 
-const pluginBackendEndpointSchema = z.object({
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    return false;
+  }
+
+  if (decoded !== value || decoded.includes('%') || decoded.startsWith('/') || decoded.includes('\\')) {
+    return false;
+  }
+
+  const segments = decoded.split('/');
+
+  return segments.every((segment) => segment.length > 0 && segment !== '.' && segment !== '..')
+    && segments[0] !== '_mndw';
+};
+
+const commandSchema = safeRelativePathSchema
+  .refine(hasFileName, {message: 'command must include a file name'})
+  .refine((command) => {
+    return !command.split('/').some((segment) => segment === '.' || segment === '..');
+  }, {message: 'command must not contain dot segments'});
+
+const literalArgumentSchema = z.string()
+  .min(1)
+  .refine((value) => {
+    return [...value].every((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+
+      return codePoint > 0x1f && codePoint !== 0x7f;
+    });
+  }, {message: 'args must not contain control characters'});
+
+const httpRouteSchema = z.object({
   id: z.string().min(1),
-  path: z.string().min(1)
-    .refine(safeRelativePath, {message: 'path must be a safe relative path'}),
-  method: z.string()
-    .transform((m) => m.toUpperCase())
-    .pipe(z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])),
-  scriptId: z.string().min(1),
-  csrf: z.boolean().optional(),
-  sensitive: z.boolean().optional(),
+  transport: z.literal('http'),
+  method: methodSchema,
+  path: z.string().refine(safeBackendRoutePath, {message: 'path must be canonical and safe'}),
+  access: accessSchema,
 });
 
-const pluginBackendWebSocketSchema = z.object({
+const websocketRouteSchema = z.object({
   id: z.string().min(1),
-  path: z.string().min(1)
-    .refine(safeRelativePath, {message: 'path must be a safe relative path'}),
-  target: z.string().min(1),
+  transport: z.literal('websocket'),
+  path: z.string().refine(safeBackendRoutePath, {message: 'path must be canonical and safe'}),
+  access: accessSchema,
   protocols: z.array(z.string().min(1)).optional(),
 });
 
-const pluginBackendDaemonSchema = z.object({
-  start: safeRelativePathSchema.refine(hasFileName, {message: 'start must include a file name'}),
-  stop: safeRelativePathSchema.refine(hasFileName, {message: 'stop must include a file name'}),
+const execRouteSchema = httpRouteSchema.extend({command: commandSchema});
+
+const validateRoutes = <T extends {id: string; transport: string; path: string; method?: string; access?: string}>(
+  routes: T[],
+  ctx: z.RefinementCtx,
+): void => {
+  const ids = routes.map((route) => route.id);
+  if (new Set(ids).size !== ids.length) {
+    ctx.addIssue({code: 'custom', message: 'backend.routes contains duplicate id'});
+  }
+
+  const tuples = routes.map((route) => {
+    return route.transport === 'http'
+      ? `${route.transport}:${route.method}:${route.path}`
+      : `${route.transport}:${route.path}`;
+  });
+  if (new Set(tuples).size !== tuples.length) {
+    ctx.addIssue({code: 'custom', message: 'backend.routes contains duplicate route tuple'});
+  }
+
+  for (const route of routes) {
+    if (route.transport === 'http' && route.access === 'public' && !['GET', 'HEAD'].includes(route.method ?? '')) {
+      ctx.addIssue({code: 'custom', message: 'public HTTP routes may only use GET or HEAD'});
+    }
+  }
+};
+
+const execBackendSchema = z.object({
+  kind: z.literal('exec'),
+  packages: z.array(packageSchema).optional(),
+  routes: z.array(execRouteSchema).min(1),
+}).strict().superRefine((backend, ctx) => {
+  validateRoutes(backend.routes, ctx);
 });
 
-const pluginPermissionSchema = z.enum(['persistent-rci-session']);
+const serviceBackendSchema = z.object({
+  kind: z.literal('service'),
+  protocolVersion: z.number().int().positive(),
+  command: commandSchema,
+  args: z.array(literalArgumentSchema).optional(),
+  packages: z.array(packageSchema).optional(),
+  routes: z.array(z.union([httpRouteSchema, websocketRouteSchema])).min(1),
+}).strict().superRefine((backend, ctx) => {
+  validateRoutes(backend.routes, ctx);
+});
 
-const pluginBackendSchema = z.object({
-  opkg: z.array(pluginBackendOpkgSchema).optional(),
-  scripts: z.array(pluginBackendScriptSchema).optional(),
-  assets: z.array(
-    safeRelativePathSchema.refine(hasFileName, {message: 'asset must include a file name'}),
-  ).optional(),
-  endpoints: z.array(pluginBackendEndpointSchema).optional(),
-  websockets: z.array(pluginBackendWebSocketSchema).optional(),
-  daemon: pluginBackendDaemonSchema.optional(),
-  diagnostics: z.boolean().optional(),
-  public: z.boolean().optional(),
-}).optional()
-  .superRefine((backend, ctx) => {
-    if (!backend) {
-      return;
-    }
+const backendSchema = z.union([execBackendSchema, serviceBackendSchema]);
 
-    const scriptIds = backend.scripts?.map((s) => s.id) ?? [];
-    const basenames = backend.scripts?.map((s) =>
-      s.source.split('/').filter(Boolean)
-        .pop() ?? ''
-    )
-      .filter(Boolean) ?? [];
-    const endpointIds = backend.endpoints?.map((endpoint) => endpoint.id) ?? [];
-    const wsIds = backend.websockets?.map((w) => w.id) ?? [];
+const gridColumns = z.number().int().positive().max(12);
+const gridRows = z.number().int().positive();
+const versionSchema = z.literal(3).describe('Manifest format version. Must be 3.');
+const nameSchema = pluginNameSchema.describe('Unique plugin id used as the on-disk folder and URL segment.');
+const versionField = z.string().min(1).describe('Semver-ish version string.');
+const labelField = z.string().min(1).describe('Human-readable name shown in the dashboard or navigation.');
+const entryField = pluginEntrySchema.describe('Relative path to the bundled entry module.');
+const iconField = z.string().optional().describe('Optional icon name.');
+const permissionSchema = z.enum(['persistent-rci-session']);
 
-    if (new Set(scriptIds).size !== scriptIds.length) {
-      ctx.addIssue({code: 'custom', message: 'backend.scripts contains duplicate id'});
-    }
+const sizeSchema = z.object({
+  w: gridColumns,
+  h: gridRows,
+  minW: gridColumns.optional(),
+  minH: gridRows.optional(),
+}).refine((size) => size.minW === undefined || size.minW <= size.w, {
+  message: 'size.minW must be less than or equal to size.w',
+  path: ['minW'],
+}).refine((size) => size.minH === undefined || size.minH <= size.h, {
+  message: 'size.minH must be less than or equal to size.h',
+  path: ['minH'],
+});
 
-    if (new Set(basenames).size !== basenames.length) {
-      ctx.addIssue({code: 'custom', message: 'backend.scripts contains duplicate source basename'});
-    }
+const pageRouteSchema = z.string().regex(/^\/[^/?#*]+$/)
+  .refine((route) => !['/', '/login', '/settings'].includes(route), {message: 'route is reserved by the host'});
 
-    if (new Set(endpointIds).size !== endpointIds.length) {
-      ctx.addIssue({code: 'custom', message: 'backend.endpoints contains duplicate id'});
-    }
-
-    if (new Set(wsIds).size !== wsIds.length) {
-      ctx.addIssue({code: 'custom', message: 'backend.websockets contains duplicate id'});
-    }
-
-    const scriptIdSet = new Set(scriptIds);
-
-    for (const endpoint of backend.endpoints ?? []) {
-      if (!scriptIdSet.has(endpoint.scriptId)) {
-        ctx.addIssue({
-          code: 'custom',
-          message: 'backend.endpoints[].scriptId must reference a declared script',
-          path: ['endpoints'],
-        });
-      }
-    }
-  });
-
-// Grid units on the 12-column dashboard. Columns cap at the grid width; rows are unbounded (tiles
-// scroll vertically).
-const gridColumns = z.number()
-  .int()
-  .positive()
-  .max(12);
-const gridRows = z.number()
-  .int()
-  .positive();
-
-const manifestVersionField = z.literal(2)
-  .describe('Manifest format version. Must be 2.');
-const nameField = pluginNameSchema
-  .describe(
-    'Unique plugin id: lowercase alphanumeric with hyphens (e.g. my-widget). Used as the on-disk folder and URL segment.',
-  );
-const versionField = z.string().min(1)
-  .describe('Semver-ish version string (e.g. 2.0.0).');
-const labelField = z.string().min(1)
-  .describe('Human-readable name shown in the dashboard / navigation.');
-const entryField = pluginEntrySchema
-  .describe('Relative path to the bundled entry module, served from /plugins/<name>/<entry> (e.g. index.js).');
-const iconField = z.string().optional()
-  .describe('Optional icon name shown next to the plugin in the UI.');
-
-const widgetSizeSchema = z.object({
-  w: gridColumns.describe('Initial widget width in grid columns (1-12).'),
-  h: gridRows.describe('Initial widget height in grid rows.'),
-  minW: gridColumns.optional().describe('Minimum widget width in grid columns; must be <= w.'),
-  minH: gridRows.optional().describe('Minimum widget height in grid rows; must be <= h.'),
-})
-  .refine(
-    (size) => size.minW === undefined || size.minW <= size.w,
-    {message: 'size.minW must be less than or equal to size.w', path: ['minW']},
-  )
-  .refine(
-    (size) => size.minH === undefined || size.minH <= size.h,
-    {message: 'size.minH must be less than or equal to size.h', path: ['minH']},
-  )
-  .describe('Widget size in grid units on the 12-column dashboard grid.');
-
-const widgetManifestSchema = z.object({
-  manifestVersion: manifestVersionField,
-  name: nameField,
+const baseFields = {
+  manifestVersion: versionSchema,
+  name: nameSchema,
   version: versionField,
-  type: z.literal('widget'),
   label: labelField,
   entry: entryField,
   icon: iconField,
-  permissions: z.array(pluginPermissionSchema).optional(),
-  size: widgetSizeSchema,
+  permissions: z.array(permissionSchema).optional(),
+  backend: backendSchema.optional(),
+};
+
+const widgetManifestSchema = z.object({
+  ...baseFields,
+  type: z.literal('widget'),
+  size: sizeSchema,
   fixedHeight: z.boolean().optional(),
-  backend: pluginBackendSchema,
 });
 
 const pageManifestSchema = z.object({
-  manifestVersion: manifestVersionField,
-  name: nameField,
-  version: versionField,
+  ...baseFields,
   type: z.literal('page'),
-  label: labelField,
-  entry: entryField,
-  icon: iconField,
-  permissions: z.array(pluginPermissionSchema).optional(),
-  route: z.string().regex(/^\/[^/?#*]+$/)
-    .refine(
-      (r) => !['/', '/login', '/settings'].includes(r),
-      {message: 'route is reserved by the host'},
-    )
-    .describe('Single-segment route the page mounts on (e.g. /demo). /, /login, /settings are reserved.'),
-  backend: pluginBackendSchema,
+  route: pageRouteSchema,
 });
 
-export const pluginManifestSchema = z.discriminatedUnion('type', [
-  widgetManifestSchema,
-  pageManifestSchema,
-]);
+export const pluginManifestSchema = z.union([widgetManifestSchema, pageManifestSchema]);
 
 export type PluginManifestInput = z.input<typeof pluginManifestSchema>;
 export type PluginManifestOutput = z.infer<typeof pluginManifestSchema>;

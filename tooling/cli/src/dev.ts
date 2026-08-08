@@ -268,7 +268,7 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
   };
 
   // Expose the plugin to the daemon as a builtin via a directory symlink to its source, so its
-  // backend (scripts/endpoints/daemon hooks) works while the frontend is served from source.
+  // backend commands/services work while frontend is served from source.
   try {
     symlinkDir(pluginSourceDir, join(builtinDir, pluginName));
   } catch (err) {
@@ -280,7 +280,7 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
     );
   }
 
-  // Build Go backend (if present) before daemon launch so scripts can find their binaries.
+  // Build Go backend (if present) before daemon launch so service commands find their binaries.
   const buildResult = buildGoBackend(pluginSourceDir);
 
   if (!buildResult.success) {

@@ -5,14 +5,17 @@ import {
   BackendNotApproved,
   BackendUnknownId,
   createBackendClient,
+  isBackendMaintenanceClose,
 } from './backend-client.js';
 
 const descriptor = (over: Partial<BackendDescriptor> = {}): BackendDescriptor => ({
-  endpoints: {stats: {method: 'GET', path: 'stats'}, submit: {method: 'POST', path: 'submit'}},
-  websockets: {term: {path: 'term', protocols: ['tty']}},
+  routes: {
+    stats: {transport: 'http', method: 'GET', path: 'stats'},
+    submit: {transport: 'http', method: 'POST', path: 'submit'},
+    term: {transport: 'websocket', path: 'term', protocols: ['tty']},
+  },
   approval: 'approved',
   enabled: true,
-  public: false,
   ...over,
 });
 
@@ -31,7 +34,28 @@ const client = (over?: Partial<BackendDescriptor>, fetchImpl?: typeof globalThis
     origin: 'https://host',
   });
 
+describe('backend maintenance close', () => {
+  it('classifies intentional update closure without reconnecting', () => {
+    expect(isBackendMaintenanceClose({code: 1012, reason: 'mndw updating'})).toBe(true);
+    expect(isBackendMaintenanceClose({code: 1012, reason: 'other'})).toBe(false);
+    expect(isBackendMaintenanceClose({code: 1000, reason: 'mndw updating'})).toBe(false);
+  });
+});
+
 describe('createBackendClient.fetch', () => {
+  it('overwrites CSRF header for unsafe routes and preserves no header for GET', async () => {
+    const fetchImpl = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('{}', {status: 200}));
+    await client({
+      routes: {submit: {transport: 'http', method: 'POST', path: 'submit'},
+        stats: {transport: 'http', method: 'GET', path: 'stats'}},
+    }, fetchImpl).fetch('submit', {headers: {'X-Mndw-Csrf': '0'}});
+    await client({
+      routes: {submit: {transport: 'http', method: 'POST', path: 'submit'},
+        stats: {transport: 'http', method: 'GET', path: 'stats'}},
+    }, fetchImpl).fetch('stats', {headers: {'X-Mndw-Csrf': '0'}});
+    expect(new Headers(fetchImpl.mock.calls[0]?.[1]?.headers).get('X-Mndw-Csrf')).toBe('1');
+    expect(new Headers(fetchImpl.mock.calls[1]?.[1]?.headers).get('X-Mndw-Csrf')).toBe('0');
+  });
   it('resolves id to a namespaced URL with the declared method', async () => {
     const fetchImpl = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('ok'));
 
@@ -114,5 +138,31 @@ describe('createBackendClient.socket', () => {
 
   it('throws BackendDisabled when the plugin is disabled', () => {
     expect(() => client({enabled: false}).socket('term')).toThrow(BackendDisabled);
+  });
+});
+
+describe('command-free route descriptors', () => {
+  it('resolves HTTP and WebSocket routes from one map', async () => {
+    const fetchImpl = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('ok'));
+    const routeDescriptor = {
+      routes: {
+        stats: {transport: 'http', method: 'GET', path: 'stats'},
+        term: {transport: 'websocket', path: 'term', protocols: ['tty']},
+      },
+      approval: 'approved',
+      enabled: true,
+    } as unknown as BackendDescriptor;
+    const backend = createBackendClient('demo', routeDescriptor, {
+      fetch: fetchImpl,
+      WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
+      origin: 'https://host',
+    });
+
+    await backend.fetch('stats');
+    const socket = backend.socket('term') as unknown as FakeWebSocket;
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://host/api/plugins/demo/stats');
+    expect(socket.url).toBe('wss://host/ws/plugins/demo/term');
+    expect(socket.protocols).toEqual(['tty']);
   });
 });

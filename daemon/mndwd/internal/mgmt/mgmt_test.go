@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,10 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"mndwd/internal/httpx"
-	"mndwd/internal/lifecycle"
 	"mndwd/internal/opkg"
-	"mndwd/internal/readiness"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
@@ -43,7 +39,7 @@ func newTestServer(t *testing.T) (*httptest.Server, Config) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mux := http.NewServeMux()
-	New(cfg, store, opkg.New("stub", logger), lifecycle.New(logger), readiness.New(), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
+	New(cfg, store, opkg.New("stub", logger), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -71,40 +67,7 @@ func newTestServerWithOpkg(t *testing.T, opkgMgr opkg.Manager) (*httptest.Server
 
 	logger := discardLogger()
 	mux := http.NewServeMux()
-	New(cfg, store, opkgMgr, lifecycle.New(logger), readiness.New(), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
-
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-
-	return srv, cfg
-}
-
-// trackerStub satisfies ReadinessSource with a fixed map.
-type trackerStub map[string]readiness.State
-
-func (s trackerStub) Get(name string) (readiness.State, bool) {
-	st, ok := s[name]
-
-	return st, ok
-}
-
-func newTestServerWithReadiness(t *testing.T, ready ReadinessSource) (*httptest.Server, Config) {
-	t.Helper()
-	root := t.TempDir()
-	cfg := Config{
-		StagingDir:        filepath.Join(root, "staging"),
-		UserPluginsDir:    filepath.Join(root, "user-plugins"),
-		BuiltinPluginsDir: filepath.Join(root, "builtin"),
-		MaxUploadBytes:    10 << 20,
-	}
-	store, err := state.Open(filepath.Join(root, "data", "state.json"))
-	if err != nil {
-		t.Fatalf("state.Open: %v", err)
-	}
-
-	logger := discardLogger()
-	mux := http.NewServeMux()
-	New(cfg, store, opkg.New("stub", logger), lifecycle.New(logger), ready, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
+	New(cfg, store, opkgMgr, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -123,7 +86,7 @@ func writeBuiltinFixture(t *testing.T, cfg Config, name string, fixedHeight bool
 	if fixedHeight {
 		fixedHeightField = `,"fixedHeight":true`
 	}
-	manifest := `{"manifestVersion":2,"name":"` + name + `","version":"0.1.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}` + fixedHeightField + `}`
+	manifest := `{"manifestVersion":3,"name":"` + name + `","version":"0.1.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}` + fixedHeightField + `}`
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -200,19 +163,19 @@ func findEntry(entries []ListEntry, name string) (ListEntry, bool) {
 }
 
 const noBackendManifest = `{
-  "manifestVersion": 2, "name": "hello", "version": "1.0.0",
+  "manifestVersion": 3, "name": "hello", "version": "1.0.0",
   "type": "widget", "label": "Hello", "entry": "index.js",
   "size": {"w": 4, "h": 3}
 }`
 
 const backendManifest = `{
-  "manifestVersion": 2, "name": "svc", "version": "1.0.0",
+  "manifestVersion": 3, "name": "svc", "version": "1.0.0",
   "type": "widget", "label": "Service", "entry": "index.js",
   "size": {"w": 6, "h": 4},
   "backend": {
-    "opkg": ["curl"],
-    "scripts": [{"id": "s1", "source": "backend/run.sh", "runtime": "sh"}],
-    "endpoints": [{"id": "e1", "method": "GET", "path": "run", "scriptId": "s1"}]
+    "kind": "exec",
+    "packages": ["curl"],
+    "routes": [{"id": "e1", "transport": "http", "method": "GET", "path": "run", "command": "backend/run.sh"}]
   }
 }`
 
@@ -269,11 +232,8 @@ func TestUploadBackendPendingThenApprove(t *testing.T) {
 	if e.Approval != state.ApprovalPending {
 		t.Errorf("expected pending, got %s", e.Approval)
 	}
-	if _, ok := e.Backend.Endpoints["e1"]; !ok {
-		t.Errorf("expected endpoint e1 in descriptor, got %+v", e.Backend.Endpoints)
-	}
-	if len(e.Backend.Opkg) != 1 || e.Backend.Opkg[0] != "curl" {
-		t.Errorf("expected opkg [curl], got %v", e.Backend.Opkg)
+	if _, ok := e.Backend.Routes["e1"]; !ok {
+		t.Errorf("expected route e1 in descriptor, got %+v", e.Backend.Routes)
 	}
 
 	// Approve.
@@ -364,7 +324,7 @@ func TestDuplicateUploadConflicts(t *testing.T) {
 
 func TestUploadInvalidManifest(t *testing.T) {
 	srv, _ := newTestServer(t)
-	bad := `{"manifestVersion": 2, "name": "BadName!!", "version": "1", "type": "widget", "label": "x", "entry": "index.js", "size": {"w":4,"h":3}}`
+	bad := `{"manifestVersion": 3, "name": "BadName!!", "version": "1", "type": "widget", "label": "x", "entry": "index.js", "size": {"w":4,"h":3}}`
 
 	resp := upload(t, srv, makeZip(t, map[string]string{"manifest.json": bad, "index.js": "x"}))
 	defer resp.Body.Close()
@@ -451,7 +411,7 @@ func TestBuiltinAppearsInList(t *testing.T) {
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	builtin := `{"manifestVersion":2,"name":"core-demo","version":"2.0.0","type":"page","label":"Demo","entry":"index.js","route":"/demo"}`
+	builtin := `{"manifestVersion":3,"name":"core-demo","version":"2.0.0","type":"page","label":"Demo","entry":"index.js","route":"/demo"}`
 	if err := os.WriteFile(filepath.Join(bdir, "manifest.json"), []byte(builtin), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +441,7 @@ func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
 			Name:     "core-demo",
 			Source:   state.SourceUser,
 			Approval: state.ApprovalPending,
-			Manifest: json.RawMessage(`{"manifestVersion":2,"name":"core-demo","version":"1.0.0","type":"widget","label":"User","entry":"index.js","size":{"w":4,"h":3}}`),
+			Manifest: json.RawMessage(`{"manifestVersion":3,"name":"core-demo","version":"1.0.0","type":"widget","label":"User","entry":"index.js","size":{"w":4,"h":3}}`),
 		}
 
 		return nil
@@ -490,7 +450,7 @@ func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
 	}
 	writeBuiltinFixture(t, cfg, "core-demo", false)
 
-	handler := New(cfg, store, opkg.New("stub", discardLogger()), lifecycle.New(discardLogger()), readiness.New(), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger())
+	handler := New(cfg, store, opkg.New("stub", discardLogger()), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger())
 	mux := http.NewServeMux()
 	handler.Register(mux)
 	recorder := httptest.NewRecorder()
@@ -522,7 +482,7 @@ func TestSymlinkedBuiltinAppearsInList(t *testing.T) {
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	builtin := `{"manifestVersion":2,"name":"clients-widget","version":"1.0.0","type":"widget","label":"Clients","entry":"index.js","size":{"w":4,"h":3}}`
+	builtin := `{"manifestVersion":3,"name":"clients-widget","version":"1.0.0","type":"widget","label":"Clients","entry":"index.js","size":{"w":4,"h":3}}`
 	if err := os.WriteFile(filepath.Join(sourceDir, "manifest.json"), []byte(builtin), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -535,35 +495,11 @@ func TestSymlinkedBuiltinAppearsInList(t *testing.T) {
 	}
 }
 
-func TestListReportsDepsStatus(t *testing.T) {
-	srv, cfg := newTestServerWithReadiness(t, trackerStub{"ttyd-widget": readiness.StateInstalling})
-	writeBuiltinFixture(t, cfg, "ttyd-widget", true)
-	writeBuiltinFixture(t, cfg, "clock-widget", false)
-
-	byName := make(map[string]ListEntry)
-	for _, e := range listPlugins(t, srv, "/api/mgmt/list") {
-		byName[e.Name] = e
-	}
-
-	if byName["ttyd-widget"].DepsStatus != "installing" {
-		t.Errorf("ttyd-widget depsStatus = %q, want installing", byName["ttyd-widget"].DepsStatus)
-	}
-	if byName["clock-widget"].DepsStatus != "ready" {
-		t.Errorf("clock-widget depsStatus = %q, want ready", byName["clock-widget"].DepsStatus)
-	}
-	if byName["ttyd-widget"].FixedHeight == nil || !*byName["ttyd-widget"].FixedHeight {
-		t.Errorf("ttyd-widget fixedHeight = %v, want non-nil true", byName["ttyd-widget"].FixedHeight)
-	}
-	if byName["clock-widget"].FixedHeight != nil {
-		t.Errorf("clock-widget fixedHeight = %v, want nil", byName["clock-widget"].FixedHeight)
-	}
-}
-
 func TestMutationResponsesCarryDepsStatus(t *testing.T) {
 	srv, _ := newTestServer(t)
 
 	zipBytes := makeZip(t, map[string]string{
-		"manifest.json": `{"manifestVersion":2,"name":"up-widget","version":"0.1.0","type":"widget","label":"up-widget","entry":"index.js","size":{"w":4,"h":3}}`,
+		"manifest.json": `{"manifestVersion":3,"name":"up-widget","version":"0.1.0","type":"widget","label":"up-widget","entry":"index.js","size":{"w":4,"h":3}}`,
 		"index.js":      "export function createInstance() {}",
 	})
 	resp := upload(t, srv, zipBytes)
@@ -699,125 +635,5 @@ func assertCode(t *testing.T, resp *http.Response, wantCode string) {
 	}
 	if env.Error.Code != wantCode {
 		t.Errorf("error code = %q, want %q", env.Error.Code, wantCode)
-	}
-}
-
-type failingApprovalStore struct {
-	state     *state.State
-	mutateErr error
-}
-
-func (s *failingApprovalStore) Get(name string) (*state.Plugin, bool) {
-	plugin, ok := s.state.Plugins[name]
-	if !ok {
-		return nil, false
-	}
-	copy := *plugin
-
-	return &copy, true
-}
-
-func (s *failingApprovalStore) Snapshot() *state.State {
-	return s.state
-}
-
-func (s *failingApprovalStore) Mutate(func(*state.State) error) error {
-	return s.mutateErr
-}
-
-type approvalLifecycleRecorder struct {
-	starts []string
-	stops  []string
-}
-
-func (r *approvalLifecycleRecorder) Start(name, _, _ string) error {
-	r.starts = append(r.starts, name)
-
-	return nil
-}
-
-func (r *approvalLifecycleRecorder) Stop(name, _, _ string) error {
-	r.stops = append(r.stops, name)
-
-	return nil
-}
-
-func TestApproveRollsBackFilesAndStopsDaemonWhenStateCommitFails(t *testing.T) {
-	root := t.TempDir()
-	cfg := Config{
-		StagingDir:        filepath.Join(root, "staging"),
-		UserPluginsDir:    filepath.Join(root, "user-plugins"),
-		BuiltinPluginsDir: filepath.Join(root, "builtin"),
-		MaxUploadBytes:    10 << 20,
-	}
-	stagingPlugin := filepath.Join(cfg.StagingDir, "svc")
-	if err := os.MkdirAll(filepath.Join(stagingPlugin, "backend"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"index.js", "backend/start.sh", "backend/stop.sh"} {
-		if err := os.WriteFile(filepath.Join(stagingPlugin, name), []byte("#!/bin/sh\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	store := &failingApprovalStore{
-		state: &state.State{
-			Plugins: map[string]*state.Plugin{
-				"svc": {
-					Name:     "svc",
-					Source:   state.SourceUser,
-					Approval: state.ApprovalPending,
-					Manifest: json.RawMessage(`{
-  "manifestVersion": 2,
-  "name": "svc",
-  "version": "1.0.0",
-  "type": "widget",
-  "label": "Service",
-  "entry": "index.js",
-  "size": {"w": 4, "h": 3},
-  "backend": {"daemon": {"start": "backend/start.sh", "stop": "backend/stop.sh"}}
-}`),
-				},
-			},
-			Audit: []state.AuditEntry{},
-		},
-		mutateErr: errors.New("state commit failed"),
-	}
-	lifecycle := &approvalLifecycleRecorder{}
-	handler := New(cfg, store, opkg.New("stub", discardLogger()), lifecycle, readiness.New(), emptyBuiltinSource{}, discardLogger())
-	mux := http.NewServeMux()
-	handler.Register(mux)
-
-	request := httptest.NewRequest(http.MethodPost, "/api/mgmt/approve", bytes.NewReader([]byte(`{"name":"svc"}`)))
-	recorder := httptest.NewRecorder()
-	mux.ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusInternalServerError {
-		t.Fatalf("approve status = %d, want 500; body=%s", recorder.Code, recorder.Body.String())
-	}
-	var envelope struct {
-		Error struct {
-			Code string `json:"code"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
-		t.Fatalf("decode approval error: %v", err)
-	}
-	if envelope.Error.Code != httpx.CodeInternal {
-		t.Fatalf("approval error code = %q, want %q", envelope.Error.Code, httpx.CodeInternal)
-	}
-	if len(lifecycle.starts) != 1 || lifecycle.starts[0] != "svc" {
-		t.Fatalf("start calls = %v, want [svc]", lifecycle.starts)
-	}
-	if len(lifecycle.stops) != 1 || lifecycle.stops[0] != "svc" {
-		t.Fatalf("stop calls = %v, want [svc]", lifecycle.stops)
-	}
-	if _, err := os.Stat(filepath.Join(cfg.StagingDir, "svc")); err != nil {
-		t.Fatalf("staging plugin missing after rollback: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, "svc")); !os.IsNotExist(err) {
-		t.Fatalf("installed plugin remains after rollback, err=%v", err)
-	}
-	if got := store.state.Plugins["svc"].Approval; got != state.ApprovalPending {
-		t.Fatalf("approval = %q, want pending", got)
 	}
 }

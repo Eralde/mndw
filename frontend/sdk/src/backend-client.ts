@@ -1,6 +1,6 @@
 /**
  * Typed backend client handed to plugins as `context.backend`.
- * It resolves endpoint and websocket ids from the daemon's capability snapshot and
+ * It resolves HTTP and WebSocket route ids from the daemon's capability snapshot and
  * applies the same approval and enabled checks before issuing a request.
  *
  * Ids resolve locally from a descriptor snapshot taken from `GET /api/mgmt/list`,
@@ -16,25 +16,21 @@
 
 export type BackendApprovalStatus = 'approved' | 'pending' | 'denied';
 
-export interface BackendEndpointDescriptor {
-  method: string;
-  path: string;
-  csrf?: boolean;
-  sensitive?: boolean;
-}
+export type BackendRouteTransport = 'http' | 'websocket';
 
-export interface BackendWebSocketDescriptor {
+export interface BackendRouteDescriptor {
+  transport: BackendRouteTransport;
   path: string;
+  method?: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   protocols?: string[];
 }
 
 /** Per-plugin backend snapshot from `GET /api/mgmt/list`. */
 export interface BackendDescriptor {
-  endpoints: Record<string, BackendEndpointDescriptor>;
-  websockets: Record<string, BackendWebSocketDescriptor>;
+  /** One command-free route map shared by exec and service backends. */
+  routes: Record<string, BackendRouteDescriptor>;
   approval: BackendApprovalStatus;
   enabled: boolean;
-  public: boolean;
 }
 
 export interface BackendFetchOptions {
@@ -54,6 +50,12 @@ export interface BackendClient {
   /** Open a websocket to the declared target. Throws synchronously on a bad/blocked id. */
   socket(id: string, options?: BackendSocketOptions): WebSocket;
 }
+
+/** Returns true for an intentional daemon maintenance close; callers must show
+ * an explicit reconnect affordance and never silently recreate the socket. */
+export const isBackendMaintenanceClose = (event: Pick<CloseEvent, 'code' | 'reason'>): boolean => {
+  return event.code === 1012 && event.reason.toLowerCase() === 'mndw updating';
+};
 
 // ------------------------------------
 // Typed errors
@@ -83,6 +85,15 @@ export class BackendDisabled extends Error {
   constructor(public readonly id: string) {
     super(`Backend "${id}" is disabled`);
     this.name = 'BackendDisabled';
+  }
+}
+
+export class BackendTransportMismatch extends Error {
+  public readonly code = 'TRANSPORT_MISMATCH';
+
+  constructor(public readonly id: string, public readonly expected: BackendRouteTransport) {
+    super(`Backend route "${id}" is not an ${expected} route`);
+    this.name = 'BackendTransportMismatch';
   }
 }
 
@@ -154,7 +165,7 @@ const gate = (descriptor: BackendDescriptor, id: string): BackendNotApproved | B
 };
 
 // Map the daemon's structured error envelope onto the typed errors. Non-matching responses pass
-// through unchanged so plugins still see their script's own error output.
+// through unchanged so plugins still see their command's own error output.
 const mapResponse = async (id: string, res: Response): Promise<Response> => {
   if (res.ok) {
     return res;
@@ -187,12 +198,15 @@ const mapResponse = async (id: string, res: Response): Promise<Response> => {
 
 const doFetch = async (
   ctx: ClientContext,
-  binding: BackendEndpointDescriptor,
+  binding: BackendRouteDescriptor,
   id: string,
   options: BackendFetchOptions,
 ): Promise<Response> => {
   const url = `${ctx.origin}/api/plugins/${ctx.pluginName}/${binding.path}${buildQuery(options.query)}`;
   const headers = new Headers(options.headers);
+  if (binding.method !== 'GET' && binding.method !== 'HEAD') {
+    headers.set('X-Mndw-Csrf', '1');
+  }
   let body: BodyInit | null | undefined;
 
   if (options.body !== undefined && options.body !== null) {
@@ -227,10 +241,14 @@ export function createBackendClient(
 
   return {
     fetch(id: string, options: BackendFetchOptions = {}): Promise<Response> {
-      const binding = descriptor.endpoints[id];
+      const binding = descriptor.routes[id];
 
       if (!binding) {
         throw new BackendUnknownId(id);
+      }
+
+      if (binding.transport !== 'http' || !binding.method) {
+        throw new BackendTransportMismatch(id, 'http');
       }
 
       const blocked = gate(descriptor, id);
@@ -243,10 +261,14 @@ export function createBackendClient(
     },
 
     socket(id: string, options: BackendSocketOptions = {}): WebSocket {
-      const binding = descriptor.websockets[id];
+      const binding = descriptor.routes[id];
 
       if (!binding) {
         throw new BackendUnknownId(id);
+      }
+
+      if (binding.transport !== 'websocket') {
+        throw new BackendTransportMismatch(id, 'websocket');
       }
 
       const blocked = gate(descriptor, id);

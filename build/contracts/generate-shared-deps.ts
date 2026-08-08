@@ -119,9 +119,9 @@ export function createProtocolDocuments(repoRoot?: string): ProtocolDocumentMap 
     'backend-client.json': {
       schemaVersion: 1,
       backendDescriptor: {
-        required: ['endpoints', 'websockets', 'approval', 'enabled', 'public'],
-        endpoint: {method: 'string', path: 'string', csrf: 'boolean?', sensitive: 'boolean?'},
-        websocket: {path: 'string', protocols: 'string[]?'},
+        required: ['routes', 'approval', 'enabled'],
+        route: {transport: 'http|websocket', method: 'GET|HEAD|POST|PUT|PATCH|DELETE?', path: 'string',
+          protocols: 'string[]?'},
         approval: ['approved', 'pending', 'denied'],
       },
       errorEnvelope: {
@@ -132,15 +132,12 @@ export function createProtocolDocuments(repoRoot?: string): ProtocolDocumentMap 
     'backend-descriptor.golden.json': {
       kind: 'backend-descriptor',
       descriptor: {
-        endpoints: {
-          status: {method: 'GET', path: '/api/status'},
-        },
-        websockets: {
-          events: {path: '/api/events', protocols: ['json', 'cbor']},
+        routes: {
+          status: {transport: 'http', method: 'GET', path: 'status'},
+          events: {transport: 'websocket', path: 'events', protocols: ['json', 'cbor']},
         },
         approval: 'approved',
         enabled: true,
-        public: false,
       },
     },
     'error-envelope.golden.json': {

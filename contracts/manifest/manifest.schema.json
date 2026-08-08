@@ -3,41 +3,37 @@
   "$id": "https://mndw/plugin-manifest.schema.json",
   "title": "mndw plugin manifest",
   "description": "Manifest for an mndw plugin (widget or page). Generated from the Zod schema — do not edit by hand; run `pnpm generate-contracts`.",
-  "oneOf": [
+  "anyOf": [
     {
       "type": "object",
       "properties": {
         "manifestVersion": {
           "type": "number",
-          "const": 2,
-          "description": "Manifest format version. Must be 2."
+          "const": 3,
+          "description": "Manifest format version. Must be 3."
         },
         "name": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9-]*$",
-          "description": "Unique plugin id: lowercase alphanumeric with hyphens (e.g. my-widget). Used as the on-disk folder and URL segment."
+          "description": "Unique plugin id used as the on-disk folder and URL segment."
         },
         "version": {
           "type": "string",
           "minLength": 1,
-          "description": "Semver-ish version string (e.g. 2.0.0)."
-        },
-        "type": {
-          "type": "string",
-          "const": "widget"
+          "description": "Semver-ish version string."
         },
         "label": {
           "type": "string",
           "minLength": 1,
-          "description": "Human-readable name shown in the dashboard / navigation."
+          "description": "Human-readable name shown in the dashboard or navigation."
         },
         "entry": {
           "type": "string",
           "minLength": 1,
-          "description": "Relative path to the bundled entry module, served from /plugins/<name>/<entry> (e.g. index.js)."
+          "description": "Relative path to the bundled entry module."
         },
         "icon": {
-          "description": "Optional icon name shown next to the plugin in the UI.",
+          "description": "Optional icon name.",
           "type": "string"
         },
         "permissions": {
@@ -49,29 +45,234 @@
             ]
           }
         },
+        "backend": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "exec"
+                },
+                "packages": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9+_.-]*$"
+                  }
+                },
+                "routes": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "transport": {
+                        "type": "string",
+                        "const": "http"
+                      },
+                      "method": {
+                        "type": "string",
+                        "enum": [
+                          "GET",
+                          "HEAD",
+                          "POST",
+                          "PUT",
+                          "PATCH",
+                          "DELETE"
+                        ]
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "access": {
+                        "default": "session",
+                        "type": "string",
+                        "enum": [
+                          "session",
+                          "public"
+                        ]
+                      },
+                      "command": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "transport",
+                      "method",
+                      "path",
+                      "access",
+                      "command"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "kind",
+                "routes"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "service"
+                },
+                "protocolVersion": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "command": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "args": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "packages": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9+_.-]*$"
+                  }
+                },
+                "routes": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "transport": {
+                            "type": "string",
+                            "const": "http"
+                          },
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "GET",
+                              "HEAD",
+                              "POST",
+                              "PUT",
+                              "PATCH",
+                              "DELETE"
+                            ]
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "access": {
+                            "default": "session",
+                            "type": "string",
+                            "enum": [
+                              "session",
+                              "public"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "transport",
+                          "method",
+                          "path",
+                          "access"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "transport": {
+                            "type": "string",
+                            "const": "websocket"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "access": {
+                            "default": "session",
+                            "type": "string",
+                            "enum": [
+                              "session",
+                              "public"
+                            ]
+                          },
+                          "protocols": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "transport",
+                          "path",
+                          "access"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "kind",
+                "protocolVersion",
+                "command",
+                "routes"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "type": {
+          "type": "string",
+          "const": "widget"
+        },
         "size": {
           "type": "object",
           "properties": {
             "w": {
               "type": "integer",
               "exclusiveMinimum": 0,
-              "maximum": 12,
-              "description": "Initial widget width in grid columns (1-12)."
+              "maximum": 12
             },
             "h": {
               "type": "integer",
               "exclusiveMinimum": 0,
-              "maximum": 9007199254740991,
-              "description": "Initial widget height in grid rows."
+              "maximum": 9007199254740991
             },
             "minW": {
-              "description": "Minimum widget width in grid columns; must be <= w.",
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 12
             },
             "minH": {
-              "description": "Minimum widget height in grid rows; must be <= h.",
               "type": "integer",
               "exclusiveMinimum": 0,
               "maximum": 9007199254740991
@@ -81,166 +282,19 @@
             "w",
             "h"
           ],
-          "additionalProperties": false,
-          "description": "Widget size in grid units on the 12-column dashboard grid."
+          "additionalProperties": false
         },
         "fixedHeight": {
           "type": "boolean"
-        },
-        "backend": {
-          "type": "object",
-          "properties": {
-            "opkg": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9+_.-]*$"
-              }
-            },
-            "scripts": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "runtime": {
-                    "type": "string",
-                    "const": "sh"
-                  },
-                  "source": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "id",
-                  "runtime",
-                  "source"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "assets": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "endpoints": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "path": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "method": {
-                    "type": "string",
-                    "enum": [
-                      "GET",
-                      "POST",
-                      "PUT",
-                      "PATCH",
-                      "DELETE"
-                    ]
-                  },
-                  "scriptId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "csrf": {
-                    "type": "boolean"
-                  },
-                  "sensitive": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "id",
-                  "path",
-                  "method",
-                  "scriptId"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "websockets": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "path": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "target": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "protocols": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  }
-                },
-                "required": [
-                  "id",
-                  "path",
-                  "target"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "daemon": {
-              "type": "object",
-              "properties": {
-                "start": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "stop": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": [
-                "start",
-                "stop"
-              ],
-              "additionalProperties": false
-            },
-            "diagnostics": {
-              "type": "boolean"
-            },
-            "public": {
-              "type": "boolean"
-            }
-          },
-          "additionalProperties": false
         }
       },
       "required": [
         "manifestVersion",
         "name",
         "version",
-        "type",
         "label",
         "entry",
+        "type",
         "size"
       ],
       "additionalProperties": false
@@ -250,35 +304,31 @@
       "properties": {
         "manifestVersion": {
           "type": "number",
-          "const": 2,
-          "description": "Manifest format version. Must be 2."
+          "const": 3,
+          "description": "Manifest format version. Must be 3."
         },
         "name": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9-]*$",
-          "description": "Unique plugin id: lowercase alphanumeric with hyphens (e.g. my-widget). Used as the on-disk folder and URL segment."
+          "description": "Unique plugin id used as the on-disk folder and URL segment."
         },
         "version": {
           "type": "string",
           "minLength": 1,
-          "description": "Semver-ish version string (e.g. 2.0.0)."
-        },
-        "type": {
-          "type": "string",
-          "const": "page"
+          "description": "Semver-ish version string."
         },
         "label": {
           "type": "string",
           "minLength": 1,
-          "description": "Human-readable name shown in the dashboard / navigation."
+          "description": "Human-readable name shown in the dashboard or navigation."
         },
         "entry": {
           "type": "string",
           "minLength": 1,
-          "description": "Relative path to the bundled entry module, served from /plugins/<name>/<entry> (e.g. index.js)."
+          "description": "Relative path to the bundled entry module."
         },
         "icon": {
-          "description": "Optional icon name shown next to the plugin in the UI.",
+          "description": "Optional icon name.",
           "type": "string"
         },
         "permissions": {
@@ -290,165 +340,227 @@
             ]
           }
         },
-        "route": {
-          "type": "string",
-          "pattern": "^\\/[^/?#*]+$",
-          "description": "Single-segment route the page mounts on (e.g. /demo). /, /login, /settings are reserved."
-        },
         "backend": {
-          "type": "object",
-          "properties": {
-            "opkg": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "pattern": "^[a-z0-9][a-z0-9+_.-]*$"
-              }
-            },
-            "scripts": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "runtime": {
-                    "type": "string",
-                    "const": "sh"
-                  },
-                  "source": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                },
-                "required": [
-                  "id",
-                  "runtime",
-                  "source"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "assets": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "endpoints": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "path": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "method": {
-                    "type": "string",
-                    "enum": [
-                      "GET",
-                      "POST",
-                      "PUT",
-                      "PATCH",
-                      "DELETE"
-                    ]
-                  },
-                  "scriptId": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "csrf": {
-                    "type": "boolean"
-                  },
-                  "sensitive": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "id",
-                  "path",
-                  "method",
-                  "scriptId"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "websockets": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "path": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "target": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "protocols": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1
-                    }
-                  }
-                },
-                "required": [
-                  "id",
-                  "path",
-                  "target"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "daemon": {
+          "anyOf": [
+            {
               "type": "object",
               "properties": {
-                "start": {
+                "kind": {
                   "type": "string",
-                  "minLength": 1
+                  "const": "exec"
                 },
-                "stop": {
-                  "type": "string",
-                  "minLength": 1
+                "packages": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9+_.-]*$"
+                  }
+                },
+                "routes": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "transport": {
+                        "type": "string",
+                        "const": "http"
+                      },
+                      "method": {
+                        "type": "string",
+                        "enum": [
+                          "GET",
+                          "HEAD",
+                          "POST",
+                          "PUT",
+                          "PATCH",
+                          "DELETE"
+                        ]
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "access": {
+                        "default": "session",
+                        "type": "string",
+                        "enum": [
+                          "session",
+                          "public"
+                        ]
+                      },
+                      "command": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "transport",
+                      "method",
+                      "path",
+                      "access",
+                      "command"
+                    ],
+                    "additionalProperties": false
+                  }
                 }
               },
               "required": [
-                "start",
-                "stop"
+                "kind",
+                "routes"
               ],
               "additionalProperties": false
             },
-            "diagnostics": {
-              "type": "boolean"
-            },
-            "public": {
-              "type": "boolean"
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "service"
+                },
+                "protocolVersion": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "command": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "args": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "packages": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9+_.-]*$"
+                  }
+                },
+                "routes": {
+                  "minItems": 1,
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "transport": {
+                            "type": "string",
+                            "const": "http"
+                          },
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "GET",
+                              "HEAD",
+                              "POST",
+                              "PUT",
+                              "PATCH",
+                              "DELETE"
+                            ]
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "access": {
+                            "default": "session",
+                            "type": "string",
+                            "enum": [
+                              "session",
+                              "public"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "transport",
+                          "method",
+                          "path",
+                          "access"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "transport": {
+                            "type": "string",
+                            "const": "websocket"
+                          },
+                          "path": {
+                            "type": "string"
+                          },
+                          "access": {
+                            "default": "session",
+                            "type": "string",
+                            "enum": [
+                              "session",
+                              "public"
+                            ]
+                          },
+                          "protocols": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "transport",
+                          "path",
+                          "access"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "kind",
+                "protocolVersion",
+                "command",
+                "routes"
+              ],
+              "additionalProperties": false
             }
-          },
-          "additionalProperties": false
+          ]
+        },
+        "type": {
+          "type": "string",
+          "const": "page"
+        },
+        "route": {
+          "type": "string",
+          "pattern": "^\\/[^/?#*]+$"
         }
       },
       "required": [
         "manifestVersion",
         "name",
         "version",
-        "type",
         "label",
         "entry",
+        "type",
         "route"
       ],
       "additionalProperties": false

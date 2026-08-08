@@ -3,8 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "mndw": {"backendBuildScript": "build-backend"},
   "scripts": {
-    "test": "vitest run"
+    "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run",
+    "build-backend": "node --import tsx scripts/build-backend.ts"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
@@ -17,6 +19,7 @@
     "@types/node": "22.19.15",
     "happy-dom": "20.11.1",
     "svelte": "^5.56.4",
-    "vitest": "^3.2.7"
+    "vitest": "^3.2.7",
+    "tsx": "^4.23.0"
   }
 }

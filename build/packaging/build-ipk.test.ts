@@ -123,6 +123,7 @@ describe('collectStagePaths', () => {
     expect(paths.lighttpdConf).toBe(path.join('opt', 'etc', 'lighttpd', 'conf.d', '80-mndw.conf'));
     expect(paths.initScript).toBe(path.join('opt', 'etc', 'init.d', 'S70mndwd'));
     expect(paths.moduleGuard).toBe(path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'));
+    expect(paths.daemonConfig).toBe(path.join('opt', 'etc', 'mndw.conf'));
   });
 });
 
@@ -160,6 +161,7 @@ describe('verifyStage', () => {
     stageFile('opt/etc/lighttpd/conf.d/80-mndw.conf');
     stageFile('opt/etc/init.d/S70mndwd');
     stageFile('opt/share/www/mndw/bin/mndw-load-modules.sh');
+    stageFile('opt/etc/mndw.conf');
   };
 
   it('passes when all required files exist', () => {
@@ -353,6 +355,8 @@ describe('stageDeployFiles', () => {
 
       expect(fs.existsSync(initPath)).toBe(true);
       expect(isExecutable(fs.statSync(initPath).mode)).toBe(true);
+
+      expect(fs.existsSync(path.join(stagingDir, 'opt', 'etc', 'mndw.conf'))).toBe(true);
 
       const guardPath = path.join(stagingDir, 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh');
 

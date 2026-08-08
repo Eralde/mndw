@@ -1,5 +1,5 @@
 {
-  "manifestVersion": 2,
+  "manifestVersion": 3,
   "version": "2.0.0",
   "type": "widget",
   "label": "Test Widget",

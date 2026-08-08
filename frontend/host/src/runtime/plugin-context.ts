@@ -42,22 +42,20 @@ const SESSION_MANAGER_METHODS = [
 
 /**
  * Constructs the backend client from the list descriptor, or returns undefined when
- * the plugin declares nothing callable (no endpoints, no websockets) - a daemon-only
+ * the plugin declares nothing callable (no routes) - a backendless
  * or backendless plugin gets no `context.backend`.
  */
 function backendClientFor(entry: PluginListEntry): BackendClient | undefined {
-  const {endpoints, websockets, public: isPublic} = entry.backend;
+  const {routes} = entry.backend;
 
-  if (Object.keys(endpoints).length === 0 && Object.keys(websockets).length === 0) {
+  if (Object.keys(routes ?? {}).length === 0) {
     return undefined;
   }
 
   const descriptor: BackendDescriptor = {
-    endpoints,
-    websockets,
+    routes: routes ?? {},
     approval: entry.approval,
     enabled: entry.enabled,
-    public: isPublic,
   };
 
   return createBackendClient(entry.name, descriptor);

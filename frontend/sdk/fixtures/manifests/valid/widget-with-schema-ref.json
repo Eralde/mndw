@@ -1,6 +1,6 @@
 {
   "$schema": "../manifest.schema.json",
-  "manifestVersion": 2,
+  "manifestVersion": 3,
   "name": "test-widget",
   "version": "2.0.0",
   "type": "widget",

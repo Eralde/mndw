@@ -31,13 +31,13 @@ func TestBackendDescriptorGolden(t *testing.T) {
 	if vector.Kind != "backend-descriptor" {
 		t.Fatalf("kind = %q, want backend-descriptor", vector.Kind)
 	}
-	if vector.Descriptor.Endpoints["status"].Method != "GET" {
-		t.Fatalf("status method = %q, want GET", vector.Descriptor.Endpoints["status"].Method)
+	if vector.Descriptor.Routes["status"].Method != "GET" {
+		t.Fatalf("status method = %q, want GET", vector.Descriptor.Routes["status"].Method)
 	}
-	if vector.Descriptor.Websockets["events"].Path != "/api/events" {
-		t.Fatalf("events path = %q, want /api/events", vector.Descriptor.Websockets["events"].Path)
+	if vector.Descriptor.Routes["events"].Path != "events" {
+		t.Fatalf("events path = %q, want events", vector.Descriptor.Routes["events"].Path)
 	}
-	if vector.Descriptor.Approval != "approved" || !vector.Descriptor.Enabled || vector.Descriptor.Public {
+	if vector.Descriptor.Approval != "approved" || !vector.Descriptor.Enabled {
 		t.Fatalf("unexpected descriptor gates: %+v", vector.Descriptor)
 	}
 }

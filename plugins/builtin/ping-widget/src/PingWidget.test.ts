@@ -64,11 +64,6 @@ function backendWithHosts(initialHosts: Array<{ip: string; name?: string}>) {
   let stats = hosts.map((host) => hostStats(host.ip, host.name));
   const updateBodies: MockHostUpdate[] = [];
   const queuedUpdates: Array<Promise<Response>> = [];
-  const daemonResponses: Record<'daemonStart' | 'daemonStop', Array<Promise<Response>>> = {
-    daemonStart: [],
-    daemonStop: [],
-  };
-
   const fetchMock = vi.fn((id: string, options?: MockFetchOptions) => {
     if (id === 'stats') {
       return Promise.resolve(response({success: true, data: stats}));
@@ -96,10 +91,6 @@ function backendWithHosts(initialHosts: Array<{ip: string; name?: string}>) {
       return queuedUpdates.shift() ?? Promise.resolve(response({success: true, data: hosts}));
     }
 
-    if (id === 'daemonStart' || id === 'daemonStop') {
-      return daemonResponses[id].shift() ?? Promise.resolve(response({success: true}));
-    }
-
     return Promise.resolve(response({success: true, data: []}));
   });
 
@@ -108,9 +99,6 @@ function backendWithHosts(initialHosts: Array<{ip: string; name?: string}>) {
     fetchMock,
     updateBodies,
     queueUpdate: (update: Promise<Response>) => queuedUpdates.push(update),
-    queueDaemonResponse: (id: 'daemonStart' | 'daemonStop', pending: Promise<Response>) => {
-      daemonResponses[id].push(pending);
-    },
     currentHostsResponse: () => response({success: true, data: hosts}),
   };
 }
@@ -221,6 +209,19 @@ describe('PingWidget', () => {
     await unmount(app);
   });
 
+  it('renders two hosts when backend routes return raw arrays', async () => {
+    const stats = [hostStats('1.1.1.1'), hostStats('9.9.9.9')];
+    const hosts = [{ip: '1.1.1.1'}, {ip: '9.9.9.9'}];
+    const fetchMock = vi.fn((id: string) => {
+      return Promise.resolve(response(id === 'stats' ? stats : hosts));
+    });
+    const backend = {fetch: fetchMock} as unknown as BackendClient;
+
+    await mountWithHosts(host, backend, ['1.1.1.1', '9.9.9.9']);
+
+    expect(host.querySelectorAll('tbody .stats-row')).toHaveLength(2);
+  });
+
   it('renders shared controls instead of native top-level controls', async () => {
     const {backend} = backendReturning({
       stats: [hostStats('9.9.9.9', 'dns')],
@@ -229,76 +230,9 @@ describe('PingWidget', () => {
 
     await mountWithHosts(host, backend, ['9.9.9.9']);
 
-    expect(host.querySelectorAll('mndw-button').length).toBeGreaterThanOrEqual(5);
+    expect(host.querySelectorAll('mndw-button').length).toBeGreaterThanOrEqual(4);
     expect(host.querySelectorAll('mndw-input')).toHaveLength(3);
     expect(host.querySelector('button')).toBeNull();
-  });
-
-  it('starts daemon from the header controls', async () => {
-    const {backend, fetchMock} = backendReturning({
-      stats: [hostStats('9.9.9.9', 'dns')],
-      hosts: [{ip: '9.9.9.9', name: 'dns'}],
-    });
-
-    await mountWithHosts(host, backend, ['9.9.9.9']);
-    host.querySelector<HTMLButtonElement>('[aria-label="Start daemon"]')?.click();
-
-    await vi.waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('daemonStart');
-      expect(host.textContent).toContain('Daemon started');
-    });
-  });
-
-  it('stops daemon from the header controls', async () => {
-    const {backend, fetchMock} = backendReturning({
-      stats: [hostStats('9.9.9.9', 'dns')],
-      hosts: [{ip: '9.9.9.9', name: 'dns'}],
-    });
-
-    await mountWithHosts(host, backend, ['9.9.9.9']);
-    host.querySelector<HTMLButtonElement>('[aria-label="Stop daemon"]')?.click();
-
-    await vi.waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('daemonStop');
-      expect(host.textContent).toContain('Daemon stopped');
-    });
-  });
-
-  it('restarts daemon only after Stop resolves and disables controls while busy', async () => {
-    const stopResponse = deferred<Response>();
-    const {backend, fetchMock, queueDaemonResponse} = backendWithHosts([{ip: '9.9.9.9', name: 'dns'}]);
-
-    queueDaemonResponse('daemonStop', stopResponse.promise);
-
-    await mountWithHosts(host, backend, ['9.9.9.9']);
-    host.querySelector<HTMLButtonElement>('[aria-label="Restart daemon"]')?.click();
-
-    await vi.waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('daemonStop');
-      expect(fetchMock).not.toHaveBeenCalledWith('daemonStart');
-      expect(host.querySelector<HTMLButtonElement>('[aria-label="Restart daemon"]')?.disabled).toBe(true);
-    });
-
-    stopResponse.resolve(response({success: true}));
-
-    await vi.waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith('daemonStart');
-      expect(host.textContent).toContain('Daemon restarted');
-    });
-  });
-
-  it('does not start daemon when Restart Stop fails', async () => {
-    const {backend, fetchMock, queueDaemonResponse} = backendWithHosts([{ip: '9.9.9.9', name: 'dns'}]);
-
-    queueDaemonResponse('daemonStop', Promise.resolve(response({success: false, message: 'Stop failed'}, 500)));
-
-    await mountWithHosts(host, backend, ['9.9.9.9']);
-    host.querySelector<HTMLButtonElement>('[aria-label="Restart daemon"]')?.click();
-
-    await vi.waitFor(() => {
-      expect(host.textContent).toContain('Daemon restart failed');
-      expect(fetchMock).not.toHaveBeenCalledWith('daemonStart');
-    });
   });
 
   it('renames a host from its stats-table cell', async () => {

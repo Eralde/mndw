@@ -1,6 +1,7 @@
 <script lang="ts">
 import {onMount, tick} from 'svelte';
 import type {BackendClient} from '@mndw/sdk';
+import {isBackendMaintenanceClose} from '@mndw/sdk';
 import {Terminal} from '@xterm/xterm';
 import {FitAddon} from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -85,9 +86,12 @@ async function startTerminal(): Promise<void> {
       terminalElement,
       Terminal,
       FitAddon,
-      () => {
+      (event) => {
         if (!disconnectExpected) {
           state = 'disconnected';
+          errorMessage = isBackendMaintenanceClose(event)
+            ? 'Session ended during update'
+            : 'Connection lost';
         }
       },
     );

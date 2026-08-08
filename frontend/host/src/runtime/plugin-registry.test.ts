@@ -3,11 +3,7 @@ import {type LoadedPlugin, PluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor} from './plugin-types.js';
 
 const emptyBackend: PluginBackendDescriptor = {
-  endpoints: {},
-  websockets: {},
-  opkg: [],
-  daemon: false,
-  public: false,
+  routes: {},
 };
 
 function widgetPlugin(name = 'test-widget'): LoadedPlugin {

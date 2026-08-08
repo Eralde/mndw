@@ -16,31 +16,40 @@ import (
 // errors / UI copy; the human-readable message is advisory only. Grow this list as
 // handlers are added — never repurpose an existing code.
 const (
-	CodeUploadTooLarge   = "UPLOAD_TOO_LARGE"
-	CodeInvalidZip       = "INVALID_ZIP"
-	CodeManifestInvalid  = "MANIFEST_INVALID"
-	CodeManifestMissing  = "MANIFEST_MISSING"
-	CodeBadRequest       = "BAD_REQUEST"
-	CodeNotFound         = "NOT_FOUND"
-	CodeConflict         = "CONFLICT"
-	CodeMethodNotAllowed = "METHOD_NOT_ALLOWED"
-	CodeInternal         = "INTERNAL"
+	CodeUploadTooLarge             = "UPLOAD_TOO_LARGE"
+	CodeInvalidZip                 = "INVALID_ZIP"
+	CodeManifestInvalid            = "MANIFEST_INVALID"
+	CodeManifestMissing            = "MANIFEST_MISSING"
+	CodeUnsupportedManifestVersion = "UNSUPPORTED_MANIFEST_VERSION"
+	CodeBadRequest                 = "BAD_REQUEST"
+	CodeNotFound                   = "NOT_FOUND"
+	CodeConflict                   = "CONFLICT"
+	CodeMethodNotAllowed           = "METHOD_NOT_ALLOWED"
+	CodeInternal                   = "INTERNAL"
 
-	// Dispatch, ws proxy, and session-gate errors. NOT_APPROVED / DISABLED /
+	// Backend route and session-gate errors. NOT_APPROVED / DISABLED /
 	// ROUTE_NOT_FOUND are the codes the SDK backend client maps onto its typed errors
 	// (frontend/sdk/src/backend-client.ts) — never repurpose them.
-	CodeRouteNotFound   = "ROUTE_NOT_FOUND"
-	CodeNotApproved     = "NOT_APPROVED"
-	CodeDisabled        = "DISABLED"
-	CodeScriptFailed    = "SCRIPT_FAILED"
-	CodeScriptTimeout   = "SCRIPT_TIMEOUT"
-	CodeBodyTooLarge    = "BODY_TOO_LARGE"
-	CodeTooManyRequests = "TOO_MANY_REQUESTS"
-	CodeCsrfRequired    = "CSRF_REQUIRED"
-	CodeUnauthorized    = "UNAUTHORIZED"
-	CodeBadGateway      = "BAD_GATEWAY"
+	CodeRouteNotFound           = "ROUTE_NOT_FOUND"
+	CodeNotApproved             = "NOT_APPROVED"
+	CodeDisabled                = "DISABLED"
+	CodeScriptFailed            = "SCRIPT_FAILED"
+	CodeScriptTimeout           = "SCRIPT_TIMEOUT"
+	CodeBodyTooLarge            = "BODY_TOO_LARGE"
+	CodeTooManyRequests         = "TOO_MANY_REQUESTS"
+	CodeBackendBusy             = "BACKEND_BUSY"
+	CodeServiceCapacityExceeded = "SERVICE_CAPACITY_EXCEEDED"
+	CodeBackendBodyTooLarge     = "BACKEND_BODY_TOO_LARGE"
+	CodeBackendOutputTooLarge   = "BACKEND_OUTPUT_TOO_LARGE"
+	CodeBackendUnavailable      = "BACKEND_UNAVAILABLE"
+	CodeBackendStarting         = "BACKEND_STARTING"
+	CodeBackendMaintenance      = "BACKEND_MAINTENANCE"
+	CodeBackendIncompatible     = "BACKEND_INCOMPATIBLE"
+	CodeCsrfRequired            = "CSRF_REQUIRED"
+	CodeUnauthorized            = "UNAUTHORIZED"
+	CodeBadGateway              = "BAD_GATEWAY"
 
-	// Opkg dependency management and backend.daemon lifecycle errors.
+	// Explicit package management and backend lifecycle errors.
 	CodeOpkgFailed             = "OPKG_FAILED"
 	CodeInvalidPackageName     = "INVALID_PACKAGE_NAME"
 	CodeDaemonFailed           = "DAEMON_FAILED"

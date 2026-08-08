@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,9 +18,10 @@ import (
 const maxUploadBytes = 10 << 20
 
 const defaultDiagnosticsLogFile = "/opt/var/log/mndwd.log"
+const defaultPluginRuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
 
 // Config is the daemon's fully-resolved runtime configuration, including package
-// manager, authentication, backend execution, and storage settings.
+// manager, authentication, exec/service runtime, and storage settings.
 type Config struct {
 	Listen             string
 	DataDir            string
@@ -37,10 +39,20 @@ type Config struct {
 	Opkg               string
 	LogLevel           string
 
-	// Backend script dispatch limits.
-	ExecTimeout       time.Duration
-	MaxRequestBytes   int64
-	MaxConcurrentExec int
+	// Exec/service runtime limits and timeouts.
+	ExecTimeout                time.Duration
+	ExecKillGrace              time.Duration
+	ServiceHTTPTimeout         time.Duration
+	HTTPDrainTimeout           time.Duration
+	WebSocketCloseTimeout      time.Duration
+	ServiceStopTimeout         time.Duration
+	FinalReapTimeout           time.Duration
+	InitWaitTimeout            time.Duration
+	MaxRequestBytes            int64
+	MaxConcurrentExecTotal     int
+	MaxConcurrentExecPerPlugin int
+	MaxSupervisedServices      int
+	SupportedServiceProtocols  []int
 
 	// Persistent RCI session limits.
 	RCIEnumerationTTL        time.Duration
@@ -86,9 +98,18 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.BoolVar(&cfg.Dev, "dev", false, "dev mode: bypass session auth; logged loudly")
 	fs.StringVar(&cfg.Opkg, "opkg", "exec", "opkg mode: exec|stub")
 	fs.StringVar(&cfg.LogLevel, "log-level", "info", "log level: debug|info|warn|error")
-	fs.DurationVar(&cfg.ExecTimeout, "exec-timeout", 30*time.Second, "per-request backend script timeout")
+	fs.DurationVar(&cfg.ExecTimeout, "exec-timeout", 30*time.Second, "per-request exec timeout")
+	fs.DurationVar(&cfg.ExecKillGrace, "exec-kill-grace", 2*time.Second, "grace period after terminating an exec process group")
+	fs.DurationVar(&cfg.ServiceHTTPTimeout, "service-http-timeout", 30*time.Second, "service backend HTTP timeout")
+	fs.DurationVar(&cfg.HTTPDrainTimeout, "http-drain-timeout", 35*time.Second, "HTTP drain timeout during maintenance")
+	fs.DurationVar(&cfg.WebSocketCloseTimeout, "websocket-close-timeout", 2*time.Second, "WebSocket maintenance close grace")
+	fs.DurationVar(&cfg.ServiceStopTimeout, "service-stop-timeout", 10*time.Second, "service process group stop timeout")
+	fs.DurationVar(&cfg.FinalReapTimeout, "final-reap-timeout", 2*time.Second, "final process group reap timeout")
+	fs.DurationVar(&cfg.InitWaitTimeout, "init-wait-timeout", 60*time.Second, "init readiness wait timeout")
 	fs.Int64Var(&cfg.MaxRequestBytes, "max-request-bytes", 1<<20, "max backend request body size in bytes")
-	fs.IntVar(&cfg.MaxConcurrentExec, "max-concurrent-exec", 8, "max concurrent script executions per plugin")
+	fs.IntVar(&cfg.MaxConcurrentExecTotal, "max-concurrent-exec-total", 8, "global max concurrent exec requests")
+	fs.IntVar(&cfg.MaxConcurrentExecPerPlugin, "max-concurrent-exec-per-plugin", 4, "per-plugin max concurrent exec requests")
+	fs.IntVar(&cfg.MaxSupervisedServices, "max-supervised-services", 8, "global max supervised services")
 	fs.DurationVar(&cfg.RCIEnumerationTTL, "rci-enumeration-ttl", 30*time.Second, "persistent RCI member enumeration cache TTL")
 	fs.DurationVar(&cfg.RCIProxyIdleTimeout, "rci-proxy-idle-timeout", 2*time.Minute, "persistent RCI socket idle timeout")
 	fs.DurationVar(&cfg.RCIProxyOperationTimeout, "rci-proxy-operation-timeout", 0, "persistent RCI outbound operation timeout; defaults to exec-timeout")
@@ -112,7 +133,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 		cfg.PluginRuntimeRoot = os.Getenv(pluginruntime.RuntimeRootEnv)
 	}
 	if cfg.PluginRuntimeRoot == "" {
-		cfg.PluginRuntimeRoot = filepath.Join(cfg.DataDir, "plugin-runtime")
+		cfg.PluginRuntimeRoot = defaultPluginRuntimeRoot
 	}
 	if cfg.RCISessionStateDir == "" {
 		cfg.RCISessionStateDir = cfg.DataDir
@@ -153,8 +174,86 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	if _, ok := parseLevel(cfg.LogLevel); !ok {
 		return cfg, false, fmt.Errorf("--log-level must be debug|info|warn|error, got %q", cfg.LogLevel)
 	}
+	for _, item := range []struct {
+		flagName string
+		envName  string
+		target   *int
+	}{
+		{flagName: "max-concurrent-exec-total", envName: "MNDWD_MAX_CONCURRENT_EXEC_TOTAL", target: &cfg.MaxConcurrentExecTotal},
+		{flagName: "max-concurrent-exec-per-plugin", envName: "MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN", target: &cfg.MaxConcurrentExecPerPlugin},
+		{flagName: "max-supervised-services", envName: "MNDWD_MAX_SUPERVISED_SERVICES", target: &cfg.MaxSupervisedServices},
+	} {
+		if flagWasSet(fs, item.flagName) {
+			continue
+		}
+		value, present := os.LookupEnv(item.envName)
+		if !present || value == "" {
+			continue
+		}
+		parsed, parseErr := strconv.Atoi(value)
+		if parseErr != nil || parsed <= 0 {
+			return cfg, false, fmt.Errorf("%s must be a positive integer", item.envName)
+		}
+		*item.target = parsed
+	}
+	if err := validateBackendConfig(cfg); err != nil {
+		return cfg, false, err
+	}
+	cfg.SupportedServiceProtocols = []int{1}
 
 	return cfg, false, nil
+}
+
+func flagWasSet(flags *flag.FlagSet, name string) bool {
+	set := false
+	flags.Visit(func(item *flag.Flag) {
+		if item.Name == name {
+			set = true
+		}
+	})
+	return set
+}
+
+func validateBackendConfig(cfg Config) error {
+	positive := []struct {
+		name  string
+		value int
+	}{
+		{"max-concurrent-exec-total", cfg.MaxConcurrentExecTotal},
+		{"max-concurrent-exec-per-plugin", cfg.MaxConcurrentExecPerPlugin},
+		{"max-supervised-services", cfg.MaxSupervisedServices},
+	}
+	for _, item := range positive {
+		if item.value <= 0 {
+			return fmt.Errorf("--%s must be positive", item.name)
+		}
+	}
+	for _, item := range []struct {
+		name  string
+		value time.Duration
+	}{
+		{"exec-timeout", cfg.ExecTimeout},
+		{"exec-kill-grace", cfg.ExecKillGrace},
+		{"service-http-timeout", cfg.ServiceHTTPTimeout},
+		{"http-drain-timeout", cfg.HTTPDrainTimeout},
+		{"websocket-close-timeout", cfg.WebSocketCloseTimeout},
+		{"service-stop-timeout", cfg.ServiceStopTimeout},
+		{"final-reap-timeout", cfg.FinalReapTimeout},
+		{"init-wait-timeout", cfg.InitWaitTimeout},
+	} {
+		if item.value <= 0 {
+			return fmt.Errorf("--%s must be positive", item.name)
+		}
+	}
+	minimumDrain := cfg.ExecTimeout + cfg.ExecKillGrace
+	if cfg.ServiceHTTPTimeout > minimumDrain {
+		minimumDrain = cfg.ServiceHTTPTimeout
+	}
+	if cfg.HTTPDrainTimeout < minimumDrain {
+		return fmt.Errorf("--http-drain-timeout must be at least %s", minimumDrain)
+	}
+
+	return nil
 }
 
 func validateControllerURL(raw string) error {

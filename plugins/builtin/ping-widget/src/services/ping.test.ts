@@ -1,6 +1,6 @@
 import {describe, expect, it, vi} from 'vitest';
 import type {BackendClient} from '@mndw/sdk';
-import {controlDaemon, fetchHosts, fetchStats, updateHosts} from './ping';
+import {fetchHosts, fetchStats, updateHosts} from './ping';
 
 function fakeBackend(response: Response) {
   const fetchMock = vi.fn().mockResolvedValue(response);
@@ -16,28 +16,6 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 }
 
 describe('ping services', () => {
-  it('calls the start daemon binding', async () => {
-    const {backend, fetchMock} = fakeBackend(jsonResponse({success: true}));
-
-    await controlDaemon(backend, 'start');
-
-    expect(fetchMock).toHaveBeenCalledWith('daemonStart');
-  });
-
-  it('calls the stop daemon binding', async () => {
-    const {backend, fetchMock} = fakeBackend(jsonResponse({success: true}));
-
-    await controlDaemon(backend, 'stop');
-
-    expect(fetchMock).toHaveBeenCalledWith('daemonStop');
-  });
-
-  it('throws the daemon envelope message on failure', async () => {
-    const {backend} = fakeBackend(jsonResponse({success: false, message: 'Daemon unavailable'}, {status: 500}));
-
-    await expect(controlDaemon(backend, 'stop')).rejects.toThrow('Daemon unavailable');
-  });
-
   it('fetchStats returns the data array from the envelope', async () => {
     const {backend, fetchMock} = fakeBackend(jsonResponse({
       success: true,
@@ -58,6 +36,23 @@ describe('ping services', () => {
     expect(fetchMock).toHaveBeenCalledWith('stats');
     expect(stats).toHaveLength(1);
     expect(stats[0].ip).toBe('1.1.1.1');
+  });
+
+  it('fetchStats accepts a raw array from the backend route', async () => {
+    const rows = [{
+      ip: '1.1.1.1',
+      lastMs: 14.404,
+      avgMs: 15.16,
+      medianMs: 14.56,
+      minMs: 14.4,
+      maxMs: 16.53,
+      lossPercent: 0,
+      sampleCount: 3,
+      updatedAt: '2026-08-08T14:33:40Z',
+    }];
+    const {backend} = fakeBackend(jsonResponse(rows));
+
+    expect(await fetchStats(backend)).toEqual(rows);
   });
 
   it('fetchHosts returns [] when data is absent', async () => {

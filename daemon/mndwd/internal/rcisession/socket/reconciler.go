@@ -7,8 +7,9 @@ import (
 )
 
 type Binding struct {
-	PluginID string
-	Path     string
+	PluginID              string
+	Path                  string
+	CredentialIndependent bool
 }
 
 type Reconciler struct {
@@ -28,11 +29,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, bindings []Binding, sessionP
 		return fmt.Errorf("socket reconciler handler is required")
 	}
 	desired := make(map[string]Binding)
-	if sessionPresent {
-		for _, binding := range bindings {
-			if binding.PluginID != "" && binding.Path != "" {
-				desired[binding.PluginID] = binding
-			}
+	for _, binding := range bindings {
+		if binding.PluginID != "" && binding.Path != "" && (sessionPresent || binding.CredentialIndependent) {
+			desired[binding.PluginID] = binding
 		}
 	}
 	r.mu.Lock()

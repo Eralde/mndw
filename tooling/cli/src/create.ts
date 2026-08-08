@@ -10,7 +10,7 @@ import {resolveSdkVersion} from './lock.js';
 /** Repo root, relative to this module (`src/` → `cli/` → `tooling/` → root). */
 const REPO_ROOT = resolve(import.meta.dirname, '..', '..', '..');
 /** On-disk manifest schema, referenced by in-repo scaffolds for editor validation. */
-const SDK_SCHEMA_PATH = resolve(REPO_ROOT, 'packages', 'sdk', 'manifest.schema.json');
+const SDK_SCHEMA_PATH = resolve(REPO_ROOT, 'frontend', 'sdk', 'manifest.schema.json');
 /** Renderable template roots, one per framework plus the shared backend starter. */
 const TEMPLATES_DIR = resolve(import.meta.dirname, '..', 'templates');
 /** This CLI's own manifest, the single source of generated dependency version ranges. */
@@ -46,7 +46,7 @@ export interface GeneratedFile {
   /** POSIX path relative to the plugin directory. */
   readonly path: string;
   readonly contents: string;
-  /** true → written with the executable bit set (backend scripts). */
+  /** true → written with the executable bit set (backend commands). */
   readonly executable?: boolean;
 }
 
@@ -102,15 +102,15 @@ function schemaReference(outDir: string): string {
 }
 
 /**
- * Builds the v2 manifest object for a scaffold: `manifestVersion: 2`, grid-unit `size` for widgets,
- * `/<name>` route for pages, and (for `--backend sh`) a relative script + endpoint the daemon namespaces.
+ * Builds the v3 manifest object for a scaffold: grid-unit `size` for widgets,
+ * `/<name>` route for pages, and (for `--backend sh`) one relative exec command route.
  */
 export function buildManifest(options: CreateOptions): Record<string, unknown> {
   const normalized = normalize(options);
 
   const manifest: Record<string, unknown> = {
     $schema: schemaReference(normalized.outDir),
-    manifestVersion: 2,
+    manifestVersion: 3,
     name: normalized.name,
     version: '0.1.0',
     type: normalized.type,
@@ -126,8 +126,8 @@ export function buildManifest(options: CreateOptions): Record<string, unknown> {
 
   if (normalized.backend !== undefined) {
     manifest.backend = {
-      scripts: [{id: 'main', source: 'backend/main.sh', runtime: 'sh'}],
-      endpoints: [{id: 'hello', method: 'GET', path: 'hello', scriptId: 'main'}],
+      kind: 'exec',
+      routes: [{id: 'hello', transport: 'http', method: 'GET', path: 'hello', command: 'backend/main.sh'}],
     };
   }
 

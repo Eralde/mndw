@@ -10,21 +10,26 @@ const backendDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'backend'
 
 function main(): void {
   const args = process.argv.slice(2).filter((argument) => argument !== '--');
+
   if (args.length === 0) {
     return build(undefined, backendDir);
   }
+
   const targetIndex = args.indexOf('--target');
   const outIndex = args.indexOf('--out-dir');
   const target = args[targetIndex + 1];
   const outDir = args[outIndex + 1];
+
   if (target === undefined || outDir === undefined || !(target in GO_TARGETS)) {
     throw new Error('build-backend requires valid --target and --out-dir');
   }
+
   build(target, outDir);
 }
 
 function build(target: string | undefined, outDir: string): void {
   mkdirSync(outDir, {recursive: true});
+
   const env = target === undefined
     ? {...process.env, CGO_ENABLED: '0', GOWORK: 'off'}
     : {...goTargetEnvironment(resolve(backendDir, '../../../..'), target), GOWORK: 'off'};
@@ -34,9 +39,11 @@ function build(target: string | undefined, outDir: string): void {
     stdio: 'inherit',
     env,
   });
+
   if (result.error || result.status !== 0) {
     throw new Error('terminal-backend build failed');
   }
+
   if (target !== undefined) {
     writeFileSync(
       join(outDir, 'backend-artifact.json'),

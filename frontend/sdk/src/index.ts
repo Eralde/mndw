@@ -26,6 +26,7 @@ export type {
   PluginHttpRoute,
   PluginManifest,
   PluginManifestBase,
+  PluginPermission,
   PluginServiceBackend,
   PluginWebSocketRoute,
   WidgetManifest,

@@ -50,12 +50,14 @@ const (
 	CodeBadGateway              = "BAD_GATEWAY"
 
 	// Explicit package management and backend lifecycle errors.
-	CodeOpkgFailed             = "OPKG_FAILED"
-	CodeInvalidPackageName     = "INVALID_PACKAGE_NAME"
-	CodeDaemonFailed           = "DAEMON_FAILED"
-	CodeRCITokenInvalid        = "RCI_TOKEN_INVALID"
-	CodeRCIFirmwareUnsupported = "RCI_FIRMWARE_UNSUPPORTED"
-	CodeRCIDeviceUnreachable   = "RCI_DEVICE_UNREACHABLE"
+	CodeOpkgFailed                   = "OPKG_FAILED"
+	CodeInvalidPackageName           = "INVALID_PACKAGE_NAME"
+	CodeDaemonFailed                 = "DAEMON_FAILED"
+	CodeRCITokenInvalid              = "RCI_TOKEN_INVALID"
+	CodeRCIFirmwareUnsupported       = "RCI_FIRMWARE_UNSUPPORTED"
+	CodeRCIDeviceUnreachable         = "RCI_DEVICE_UNREACHABLE"
+	CodeControllerSessionUnavailable = "CONTROLLER_SESSION_UNAVAILABLE"
+	CodeRCISocketStartFailed         = "RCI_SOCKET_START_FAILED"
 )
 
 // APIError is the single shape of every non-2xx response body. It also implements

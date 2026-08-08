@@ -1,4 +1,4 @@
-import type {PaletteTokenMap} from '@mndw/sdk';
+import type {PaletteTokenMap, PluginPermission} from '@mndw/sdk';
 import {
   API_TIMEOUT_MS,
   MGMT_APPROVE_URL,
@@ -8,6 +8,7 @@ import {
   MGMT_ENABLE_URL,
   MGMT_LIST_URL,
   MGMT_PALETTE_URL,
+  MGMT_PERMISSION_URL,
   MGMT_RESTART_URL,
   MGMT_RUNTIME_URL,
   MGMT_UPLOAD_URL,
@@ -46,6 +47,7 @@ export interface MgmtClient {
   approvePlugin(name: string): Promise<PluginListEntry>;
   enablePlugin(name: string): Promise<PluginListEntry>;
   disablePlugin(name: string): Promise<PluginListEntry>;
+  setPluginPermission(name: string, permission: PluginPermission, enabled: boolean): Promise<PluginListEntry>;
   denyPlugin(name: string): Promise<void>;
   deletePlugin(name: string): Promise<void>;
   restartPlugin(name: string): Promise<void>;
@@ -68,7 +70,9 @@ async function toError(response: Response): Promise<MgmtError> {
 
 const csrfHeaders = (headers: HeadersInit = {}): Headers => {
   const result = new Headers(headers);
+
   result.set('X-Mndw-Csrf', '1');
+
   return result;
 };
 
@@ -144,6 +148,20 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
     approvePlugin: (name) => mutateEntry(MGMT_APPROVE_URL, name),
     enablePlugin: (name) => mutateEntry(MGMT_ENABLE_URL, name),
     disablePlugin: (name) => mutateEntry(MGMT_DISABLE_URL, name),
+    async setPluginPermission(name: string, permission: PluginPermission, enabled: boolean): Promise<PluginListEntry> {
+      const response = await fetchImpl(MGMT_PERMISSION_URL, {
+        method: 'POST',
+        headers: csrfHeaders({'Content-Type': 'application/json'}),
+        body: JSON.stringify({name, permission, enabled}),
+        signal: timeout(),
+      });
+
+      if (!response.ok) {
+        throw await toError(response);
+      }
+
+      return (await response.json()) as PluginListEntry;
+    },
 
     async denyPlugin(name: string): Promise<void> {
       await postName(MGMT_DENY_URL, name);
@@ -159,9 +177,11 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
 
     async getRuntime(): Promise<RuntimeLimits> {
       const response = await fetchImpl(MGMT_RUNTIME_URL, {method: 'GET', signal: timeout()});
+
       if (!response.ok) {
         throw await toError(response);
       }
+
       return (await response.json()) as RuntimeLimits;
     },
 
@@ -225,6 +245,9 @@ const MESSAGES: Record<string, string> = {
   BACKEND_UNAVAILABLE: 'The backend is unavailable.',
   BACKEND_INCOMPATIBLE: 'This backend requires a protocol version unsupported by this device.',
   BACKEND_MAINTENANCE: 'The backend is being updated. Try again shortly.',
+  CONTROLLER_SESSION_UNAVAILABLE:
+    'Controller token session is unavailable. Configure it before enabling this permission.',
+  RCI_SOCKET_START_FAILED: 'Persistent RCI permission is enabled, but its session socket could not start. Try again.',
 };
 
 export function messageForError(error: unknown): string {

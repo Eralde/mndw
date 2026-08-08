@@ -32,6 +32,60 @@ func TestOpenCreatesEmptyStateFile(t *testing.T) {
 	if len(snap.Plugins) != 0 {
 		t.Errorf("expected no plugins, got %d", len(snap.Plugins))
 	}
+	if store.HasGrant("demo", "persistent-rci-session") {
+		t.Error("absent grant should default to false")
+	}
+}
+
+func TestSetGrantPersistsAndAudits(t *testing.T) {
+	store, path := newStore(t)
+
+	if err := store.SetGrant("demo", "persistent-rci-session", true); err != nil {
+		t.Fatalf("enable grant: %v", err)
+	}
+	if !store.HasGrant("demo", "persistent-rci-session") {
+		t.Fatal("enabled grant not visible")
+	}
+	snap := store.Snapshot()
+	if len(snap.Audit) != 1 || snap.Audit[0].Action != "permission-enable" || snap.Audit[0].Plugin != "demo" {
+		t.Fatalf("enable audit = %+v", snap.Audit)
+	}
+	if snap.Audit[0].Detail != "permission=persistent-rci-session" {
+		t.Fatalf("enable audit detail = %q", snap.Audit[0].Detail)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if !reopened.HasGrant("demo", "persistent-rci-session") {
+		t.Fatal("enabled grant did not reload")
+	}
+	if err := reopened.SetGrant("demo", "persistent-rci-session", false); err != nil {
+		t.Fatalf("disable grant: %v", err)
+	}
+	if reopened.HasGrant("demo", "persistent-rci-session") {
+		t.Fatal("disabled grant remains enabled")
+	}
+	if got := len(reopened.Snapshot().Audit); got != 2 {
+		t.Fatalf("audit count = %d, want 2", got)
+	}
+	if got := reopened.Snapshot().Audit[1]; got.Action != "permission-disable" || got.Detail != "permission=persistent-rci-session" {
+		t.Fatalf("disable audit = %+v", got)
+	}
+}
+
+func TestGrantSnapshotIsDeepCopied(t *testing.T) {
+	store, _ := newStore(t)
+	if err := store.SetGrant("demo", "persistent-rci-session", true); err != nil {
+		t.Fatalf("set grant: %v", err)
+	}
+
+	snap := store.Snapshot()
+	snap.PermissionGrants["demo"]["persistent-rci-session"] = false
+	if !store.HasGrant("demo", "persistent-rci-session") {
+		t.Fatal("snapshot mutation changed live grant")
+	}
 }
 
 func TestMutatePersistsAndReloads(t *testing.T) {

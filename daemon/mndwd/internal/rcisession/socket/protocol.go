@@ -22,7 +22,10 @@ type Config struct {
 	MaxLineBytes int
 	MaxInflight  int
 	IdleTimeout  time.Duration
+	DrainTimeout time.Duration
 }
+
+const DefaultDrainTimeout = 2 * time.Second
 
 type Handler interface {
 	Do(context.Context, proxy.Request) (proxy.Response, error)

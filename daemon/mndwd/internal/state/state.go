@@ -65,10 +65,11 @@ type AuditEntry struct {
 
 // State is the whole persisted document.
 type State struct {
-	Version               int                `json:"version"`
-	Plugins               map[string]*Plugin `json:"plugins"`
-	Audit                 []AuditEntry       `json:"audit"`
-	ExtenderAccessEnabled bool               `json:"extenderAccessEnabled"`
+	Version               int                        `json:"version"`
+	Plugins               map[string]*Plugin         `json:"plugins"`
+	PermissionGrants      map[string]map[string]bool `json:"permissionGrants,omitempty"`
+	Audit                 []AuditEntry               `json:"audit"`
+	ExtenderAccessEnabled bool                       `json:"extenderAccessEnabled"`
 }
 
 // Store is the concurrency-safe, atomically-persisted owner of a State.
@@ -182,6 +183,35 @@ func (s *Store) Get(name string) (*Plugin, bool) {
 	}
 
 	return clonePlugin(p), true
+}
+
+// HasGrant reports the authoritative value of a plugin permission grant. Missing
+// plugins, permissions, and nil maps all mean false.
+func (s *Store) HasGrant(plugin, permission string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.state.PermissionGrants[plugin][permission]
+}
+
+// SetGrant persists one explicit permission grant and its audit event atomically.
+func (s *Store) SetGrant(plugin, permission string, enabled bool) error {
+	return s.Mutate(func(st *State) error {
+		if st.PermissionGrants == nil {
+			st.PermissionGrants = make(map[string]map[string]bool)
+		}
+		if st.PermissionGrants[plugin] == nil {
+			st.PermissionGrants[plugin] = make(map[string]bool)
+		}
+		st.PermissionGrants[plugin][permission] = enabled
+		action := "permission-disable"
+		if enabled {
+			action = "permission-enable"
+		}
+		st.AppendAudit(action, plugin, "permission="+permission)
+
+		return nil
+	})
 }
 
 // Mutate is the single mutation primitive. It clones the current state, applies fn

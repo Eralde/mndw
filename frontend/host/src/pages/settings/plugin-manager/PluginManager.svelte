@@ -14,9 +14,15 @@ import PluginUpload from './PluginUpload.svelte';
 
 interface Props {
   client?: MgmtClient;
+  permissionVisible?: boolean;
+  permissionAvailable?: boolean;
 }
 
-let {client = mgmtClient}: Props = $props();
+let {
+  client = mgmtClient,
+  permissionVisible = false,
+  permissionAvailable = false,
+}: Props = $props();
 let plugins = $state<PluginListEntry[]>([]);
 let runtimeLimits = $state<RuntimeLimits | null>(null);
 let runtimeError = $state('');
@@ -251,8 +257,13 @@ onMount(() => {
       {busyName}
       {confirmingName}
       {actionError}
+      {permissionVisible}
+      {permissionAvailable}
       onEnable={(name) => mutate(name, () => client.enablePlugin(name), true)}
       onDisable={(name) => mutate(name, () => client.disablePlugin(name), true)}
+      onPermissionChange={(name, permission, enabled) =>
+      mutate(name, () =>
+        client.setPluginPermission(name, permission, enabled), false)}
       onRestart={(name) => mutate(name, () => client.restartPlugin(name), false)}
       onDelete={(name) => mutate(name, () => client.deletePlugin(name), true)}
       onRequestConfirm={(name) => (confirmingName = name)}

@@ -422,6 +422,7 @@ function collectBackendAssets(
 
     try {
       const stat = statSync(source);
+
       if (!stat.isFile()) {
         throw new CliError(`Backend command is not a regular file: ${source}`);
       }

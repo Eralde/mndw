@@ -1,4 +1,4 @@
-import type {BackendRouteDescriptor, WidgetSize} from '@mndw/sdk';
+import type {BackendRouteDescriptor, PluginPermission, WidgetSize} from '@mndw/sdk';
 
 /**
  * The runtime's view of a plugin, as delivered by the daemon's `GET /api/mgmt/list`.
@@ -48,6 +48,8 @@ interface PluginListEntryBase {
   source: PluginSource;
   approval: PluginApproval;
   enabled: boolean;
+  permissions?: PluginPermission[];
+  permissionGrants?: Partial<Record<PluginPermission, boolean>>;
   depsStatus: DepsStatus;
   backend: PluginBackendDescriptor;
   runtime?: PluginRuntimeStatus;

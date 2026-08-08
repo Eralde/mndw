@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"mndwd/internal/manifest"
+	"mndwd/internal/registry"
 )
 
 func TestRuntimePathsAreDeterministicAndPrivate(t *testing.T) {
@@ -111,6 +114,25 @@ func TestChildEnvironmentIsFreshAndAllowlisted(t *testing.T) {
 	}
 	if strings.Contains(joined, "HOME=") || strings.Contains(joined, "SECRET=") {
 		t.Fatalf("environment inherited arbitrary values: %s", joined)
+	}
+}
+
+func TestPersistentRCISocketPathIsDeclarationGated(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "runtime")
+	declared, err := manifest.ValidateV3([]byte(`{"manifestVersion":3,"name":"declared","version":"1.0.0","type":"widget","label":"Declared","entry":"index.js","size":{"w":2,"h":2},"permissions":["persistent-rci-session"],"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`))
+	if err != nil {
+		t.Fatalf("validate declared manifest: %v", err)
+	}
+	undeclared, err := manifest.ValidateV3([]byte(`{"manifestVersion":3,"name":"undeclared","version":"1.0.0","type":"widget","label":"Undeclared","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`))
+	if err != nil {
+		t.Fatalf("validate undeclared manifest: %v", err)
+	}
+
+	if got := persistentRCISocket(root, &registry.Plugin{Name: "declared", Manifest: declared}); got == "" {
+		t.Fatal("declared permission did not produce a deterministic socket path")
+	}
+	if got := persistentRCISocket(root, &registry.Plugin{Name: "undeclared", Manifest: undeclared}); got != "" {
+		t.Fatalf("undeclared permission produced socket path %q", got)
 	}
 }
 

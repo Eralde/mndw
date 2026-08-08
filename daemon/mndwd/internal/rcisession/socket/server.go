@@ -28,6 +28,10 @@ type Server struct {
 }
 
 func NewServer(path string, config Config, handler Handler) *Server {
+	if config.DrainTimeout <= 0 {
+		config.DrainTimeout = DefaultDrainTimeout
+	}
+
 	return &Server{path: path, config: config, handler: handler, conns: make(map[net.Conn]struct{})}
 }
 
@@ -60,7 +64,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.closing = false
 	s.mu.Unlock()
 	if s.config.Logger != nil {
-		s.config.Logger.Info("persistent RCI socket started", "plugin", s.config.PluginID, "path", s.path)
+		s.config.Logger.Info("persistent RCI socket started", "plugin", s.config.PluginID)
 	}
 	s.wait.Add(1)
 	go s.acceptLoop(connectionContext, listener)
@@ -88,14 +92,30 @@ func (s *Server) Close() error {
 	for _, connection := range connections {
 		_ = connection.Close()
 	}
-	s.wait.Wait()
+
+	removeErr := error(nil)
 	if err := os.Remove(s.path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+		removeErr = err
+	}
+	drained := make(chan struct{})
+	go func() {
+		s.wait.Wait()
+		close(drained)
+	}()
+	var drainErr error
+	select {
+	case <-drained:
+	case <-time.After(s.config.DrainTimeout):
+		drainErr = ErrDrainTimeout
+		if s.config.Logger != nil {
+			s.config.Logger.Warn("persistent RCI socket drain timed out", "plugin", s.config.PluginID)
+		}
 	}
 	if s.config.Logger != nil {
-		s.config.Logger.Info("persistent RCI socket stopped", "plugin", s.config.PluginID, "path", s.path)
+		s.config.Logger.Info("persistent RCI socket stopped", "plugin", s.config.PluginID)
 	}
-	return nil
+
+	return errors.Join(drainErr, removeErr)
 }
 
 func (s *Server) acceptLoop(ctx context.Context, listener net.Listener) {

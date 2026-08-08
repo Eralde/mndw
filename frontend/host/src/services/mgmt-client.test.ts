@@ -1,5 +1,5 @@
 import {type Mock, beforeEach, describe, expect, it, vi} from 'vitest';
-import type {PaletteTokenMap} from '@mndw/sdk';
+import type {PaletteTokenMap, PluginPermission} from '@mndw/sdk';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
 import {MgmtError, createMgmtClient, messageForError} from './mgmt-client.js';
 
@@ -132,6 +132,33 @@ describe('mgmt-client', () => {
     expect(result.name).toBe('x');
   });
 
+  it('setPluginPermission POSTs the permission mutation with CSRF and timeout', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(
+      200,
+      entry('x', {
+        permissions: ['persistent-rci-session'],
+        permissionGrants: {'persistent-rci-session': true},
+      }),
+    ));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+    const permission: PluginPermission = 'persistent-rci-session';
+    const result = await client.setPluginPermission('x', permission, true);
+    const [url, init] = fetchImpl.mock.calls[0];
+
+    expect(url).toBe('/api/mgmt/permission');
+    expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('X-Mndw-Csrf')).toBe('1');
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+    expect(JSON.parse(init?.body as string)).toEqual({
+      name: 'x',
+      permission: 'persistent-rci-session',
+      enabled: true,
+    });
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect(result.permissionGrants?.['persistent-rci-session']).toBe(true);
+  });
+
   it('denyPlugin and deletePlugin resolve void on {ok:true}', async () => {
     fetchImpl.mockResolvedValue(jsonResponse(200, {ok: true}));
 
@@ -173,6 +200,8 @@ describe('mgmt-client', () => {
   it('messageForError maps known codes and includes MANIFEST_INVALID detail', () => {
     expect(messageForError(new MgmtError('x', 'UPLOAD_TOO_LARGE'))).toContain('10 MB');
     expect(messageForError(new MgmtError('x', 'MANIFEST_INVALID', 'route reserved'))).toContain('route reserved');
+    expect(messageForError(new MgmtError('x', 'CONTROLLER_SESSION_UNAVAILABLE'))).toContain('Controller token session');
+    expect(messageForError(new MgmtError('x', 'RCI_SOCKET_START_FAILED'))).toContain('session socket');
     expect(messageForError(new Error('boom'))).toBe('boom');
   });
 });

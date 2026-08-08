@@ -113,6 +113,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin enabled", "plugin", name)
+	h.reconcilePermission(name, "plugin enable")
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, state.ApprovalApproved, true))
 }
 
@@ -151,6 +152,7 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin disabled", "plugin", name)
+	h.reconcilePermission(name, "plugin disable")
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, p.Approval, false))
 }
 
@@ -269,13 +271,14 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if apiErr := h.dropRecord(name, "delete", "plugin removed by operator"); apiErr != nil {
+	if apiErr := h.dropRecord(name, "delete", "plugin removed by operator; permission grants purged"); apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
 
 		return
 	}
 
 	h.logger.Info("plugin deleted", "plugin", name)
+	h.reconcilePermission(name, "plugin delete")
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -283,6 +286,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) dropRecord(name, action, detail string) *httpx.APIError {
 	err := h.store.Mutate(func(st *state.State) error {
 		delete(st.Plugins, name)
+		delete(st.PermissionGrants, name)
 		st.AppendAudit(action, name, detail)
 
 		return nil

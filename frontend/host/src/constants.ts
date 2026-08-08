@@ -19,6 +19,7 @@ export const FALLBACK_HOST_INFO = {
 
 /** Daemon management endpoint the runtime loads the plugin list from */
 export const MGMT_LIST_URL = '/api/mgmt/list';
+export const MGMT_PERMISSION_URL = '/api/mgmt/permission';
 export const MGMT_UPLOAD_URL = '/api/mgmt/upload';
 export const MGMT_APPROVE_URL = '/api/mgmt/approve';
 export const MGMT_DENY_URL = '/api/mgmt/deny';

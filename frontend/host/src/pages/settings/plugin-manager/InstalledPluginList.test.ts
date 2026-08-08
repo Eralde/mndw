@@ -30,8 +30,11 @@ function mountInstalledPluginList(props: Partial<{
   busyName: string | null;
   confirmingName: string | null;
   actionError: {name: string; message: string} | null;
+  permissionVisible: boolean;
+  permissionAvailable: boolean;
   onEnable: (name: string) => void;
   onDisable: (name: string) => void;
+  onPermissionChange: (name: string, permission: 'persistent-rci-session', enabled: boolean) => void;
   onDelete: (name: string) => void;
   onRequestConfirm: (name: string) => void;
   onCancelConfirm: () => void;
@@ -47,8 +50,11 @@ function mountInstalledPluginList(props: Partial<{
       busyName: null,
       confirmingName: null,
       actionError: null,
+      permissionVisible: false,
+      permissionAvailable: false,
       onEnable: vi.fn(),
       onDisable: vi.fn(),
+      onPermissionChange: vi.fn(),
       onDelete: vi.fn(),
       onRequestConfirm: vi.fn(),
       onCancelConfirm: vi.fn(),
@@ -143,6 +149,97 @@ describe('InstalledPluginList', () => {
     expect(target.querySelector('.mndw-installed__builtin')?.textContent).toContain('Built-in');
     expect(target.querySelector('.mndw-installed__toggle')).toBeNull();
     expect(target.querySelector('.mndw-installed__delete')).toBeNull();
+
+    void unmount(component);
+  });
+
+  it('hides permission switch when capability is hidden or permission is undeclared', () => {
+    const hidden = mountInstalledPluginList({
+      permissionVisible: false,
+      items: [plugin({permissions: ['persistent-rci-session']})],
+    });
+
+    expect(hidden.target.querySelector('.mndw-installed__permission-switch')).toBeNull();
+    void unmount(hidden.component);
+
+    const undeclared = mountInstalledPluginList({permissionVisible: true});
+
+    expect(undeclared.target.querySelector('.mndw-installed__permission-switch')).toBeNull();
+    void unmount(undeclared.component);
+  });
+
+  it('renders an off permission switch and reports an optimistic enable', () => {
+    const onPermissionChange = vi.fn();
+    const {component, target} = mountInstalledPluginList({
+      permissionVisible: true,
+      permissionAvailable: true,
+      onPermissionChange,
+      items: [plugin({permissions: ['persistent-rci-session']})],
+    });
+    const control = target.querySelector<HTMLElement & {checked: boolean; disabled: boolean}>(
+      '.mndw-installed__permission-switch mndw-switch',
+    );
+
+    expect(control?.checked).toBe(false);
+    expect(control?.disabled).toBe(false);
+    control?.click();
+    expect(onPermissionChange).toHaveBeenCalledWith('network-tools', 'persistent-rci-session', true);
+
+    void unmount(component);
+  });
+
+  it('disables only off permission switches when controller capability is unavailable', () => {
+    const off = mountInstalledPluginList({
+      permissionVisible: true,
+      permissionAvailable: false,
+      items: [plugin({permissions: ['persistent-rci-session']})],
+    });
+    const offControl = off.target.querySelector<HTMLElement & {disabled: boolean}>(
+      '.mndw-installed__permission-switch mndw-switch',
+    );
+
+    expect(offControl?.disabled).toBe(true);
+    void unmount(off.component);
+
+    const checked = mountInstalledPluginList({
+      permissionVisible: true,
+      permissionAvailable: false,
+      items: [plugin({permissions: ['persistent-rci-session'], permissionGrants: {'persistent-rci-session': true}})],
+    });
+    const checkedControl = checked.target.querySelector<HTMLElement & {disabled: boolean}>(
+      '.mndw-installed__permission-switch mndw-switch',
+    );
+
+    expect(checkedControl?.disabled).toBe(false);
+    void unmount(checked.component);
+  });
+
+  it('renders permission control for builtins without lifecycle controls', () => {
+    const {component, target} = mountInstalledPluginList({
+      permissionVisible: true,
+      permissionAvailable: true,
+      items: [plugin({source: 'builtin', permissions: ['persistent-rci-session']})],
+    });
+
+    expect(target.querySelector('.mndw-installed__permission-switch')).not.toBeNull();
+    expect(target.querySelector('.mndw-installed__toggle')).toBeNull();
+    expect(target.querySelector('.mndw-installed__delete')).toBeNull();
+
+    void unmount(component);
+  });
+
+  it('disables permission switch while another action is busy', () => {
+    const {component, target} = mountInstalledPluginList({
+      permissionVisible: true,
+      permissionAvailable: true,
+      busyName: 'network-tools',
+      items: [plugin({permissions: ['persistent-rci-session']})],
+    });
+    const control = target.querySelector<HTMLElement & {disabled: boolean}>(
+      '.mndw-installed__permission-switch mndw-switch',
+    );
+
+    expect(control?.disabled).toBe(true);
 
     void unmount(component);
   });

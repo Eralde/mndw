@@ -204,9 +204,11 @@ const doFetch = async (
 ): Promise<Response> => {
   const url = `${ctx.origin}/api/plugins/${ctx.pluginName}/${binding.path}${buildQuery(options.query)}`;
   const headers = new Headers(options.headers);
+
   if (binding.method !== 'GET' && binding.method !== 'HEAD') {
     headers.set('X-Mndw-Csrf', '1');
   }
+
   let body: BodyInit | null | undefined;
 
   if (options.body !== undefined && options.body !== null) {

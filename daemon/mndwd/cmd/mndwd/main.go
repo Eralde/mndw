@@ -147,8 +147,8 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 	})
 
 	mux := http.NewServeMux()
-	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, reg, runtime, verifier, logger)
-	closePersistentSession := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, verifier, logger)
+	accessRegistration := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, verifier, logger)
+	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, reg, runtime, accessRegistration.permissionController, verifier, logger)
 	registerPalette(mux, mgmtMux, paletteStore, logger)
 	gateway := registerPlugins(mux, cfg, reg, verifier, runtime, logger)
 	runtime.SetMaintenanceHooks(gateway.BeginPluginMaintenance, gateway.BeginPlatformMaintenance, gateway.EndPluginMaintenance)
@@ -158,19 +158,20 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 		reg:                    reg,
 		runtime:                runtime,
 		gateway:                gateway,
-		closePersistentSession: closePersistentSession,
+		closePersistentSession: accessRegistration.close,
 	}
 }
 
 // registerMgmt mounts the session-gated management surface and returns its mux so
 // other session-gated routes (e.g. protected palette) can share the gate.
-func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, verifier *authz.Verifier, logger *slog.Logger) *http.ServeMux {
+func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, permissionController mgmt.PersistentRCIPermissionController, verifier *authz.Verifier, logger *slog.Logger) *http.ServeMux {
 	mgmtHandler := mgmt.New(mgmt.Config{
-		StagingDir:        cfg.StagingDir(),
-		UserPluginsDir:    cfg.UserPluginsDir,
-		BuiltinPluginsDir: cfg.BuiltinPluginsDir,
-		MaxUploadBytes:    maxUploadBytes,
-		Runtime:           runtime,
+		StagingDir:                        cfg.StagingDir(),
+		UserPluginsDir:                    cfg.UserPluginsDir,
+		BuiltinPluginsDir:                 cfg.BuiltinPluginsDir,
+		MaxUploadBytes:                    maxUploadBytes,
+		Runtime:                           runtime,
+		PersistentRCIPermissionController: permissionController,
 	}, store, opkgMgr, reg, logger)
 
 	mgmtMux := http.NewServeMux()
@@ -182,7 +183,7 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 
 // registerAccess mounts the consent/diagnostics surface plus the persistent RCI
 // session, returning the session's cleanup func.
-func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, v3Runtime *backend.RuntimeImpl, verifier *authz.Verifier, logger *slog.Logger) func() {
+func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, v3Runtime *backend.RuntimeImpl, verifier *authz.Verifier, logger *slog.Logger) persistentSessionRegistration {
 	accessMux := http.NewServeMux()
 	access.New(store).Register(accessMux)
 	diagnosticsLogFile := cfg.DiagnosticsLogFile
@@ -193,12 +194,12 @@ func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *reg
 		LogFile: diagnosticsLogFile,
 		Plugins: diagnosticsPlugins(reg, v3Runtime),
 	}).Register(accessMux)
-	closePersistentSession := assembleRCISession(cfg, reg, runtimeRoot, accessMux, logger)
+	registration := assembleRCISession(cfg, store, reg, runtimeRoot, accessMux, logger)
 	// Keep the route mounted in dev so the host exercises the same consent contract;
 	// the verifier still bypasses only session validation when cfg.Dev is true.
 	mux.Handle("/api/mndw/", verifier.Middleware(accessMux))
 
-	return closePersistentSession
+	return registration
 }
 
 // registerPalette mounts the public palette route and its session-gated counterpart.

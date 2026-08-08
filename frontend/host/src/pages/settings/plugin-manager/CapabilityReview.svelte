@@ -31,7 +31,6 @@ let routes = $derived(Object.entries(descriptor.routes ?? {}));
       </ul>
     </section>
   {/if}
-
 </div>
 
 <style>
@@ -65,5 +64,4 @@ let routes = $derived(Object.entries(descriptor.routes ?? {}));
   font-family: var(--mndw-font-mono);
   font-size: var(--mndw-text-xs);
 }
-
 </style>

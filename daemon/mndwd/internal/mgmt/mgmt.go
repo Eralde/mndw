@@ -46,21 +46,32 @@ type Config struct {
 	MaxUploadBytes int64
 	// Runtime controls manifest-v3 exec/service lifecycle.
 	Runtime backend.Runtime
+	// PersistentRCIPermissionController owns grant-triggered socket reconciliation.
+	PersistentRCIPermissionController PersistentRCIPermissionController
 }
 
 // Handler serves the management API over a shared state store.
 type Handler struct {
-	cfg      Config
-	store    StateStore
-	opkg     opkg.Manager
-	builtins BuiltinSource
-	logger   *slog.Logger
-	runtime  backend.Runtime
+	cfg                  Config
+	store                StateStore
+	opkg                 opkg.Manager
+	builtins             BuiltinSource
+	logger               *slog.Logger
+	runtime              backend.Runtime
+	permissionController PersistentRCIPermissionController
 }
 
 // New constructs a management Handler.
 func New(cfg Config, store StateStore, opkgMgr opkg.Manager, builtins BuiltinSource, logger *slog.Logger) *Handler {
-	return &Handler{cfg: cfg, store: store, opkg: opkgMgr, builtins: builtins, logger: logger, runtime: cfg.Runtime}
+	return &Handler{
+		cfg:                  cfg,
+		store:                store,
+		opkg:                 opkgMgr,
+		builtins:             builtins,
+		logger:               logger,
+		runtime:              cfg.Runtime,
+		permissionController: cfg.PersistentRCIPermissionController,
+	}
 }
 
 // Register wires the management routes onto mux. Method-qualified patterns give a
@@ -77,6 +88,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/mgmt/restart", h.handleRestart)
 	mux.HandleFunc("POST /api/mgmt/update", h.handleUpdate)
 	mux.HandleFunc("GET /api/mgmt/runtime", h.handleRuntime)
+	mux.HandleFunc("POST /api/mgmt/permission", h.handlePermission)
 
 	mux.HandleFunc("GET /api/mgmt/opkg/list-installed", h.handleOpkgListInstalled)
 	mux.HandleFunc("GET /api/mgmt/opkg/list-available", h.handleOpkgListAvailable)
@@ -96,18 +108,20 @@ func opkgContext() (context.Context, context.CancelFunc) {
 // ListEntry is one plugin as surfaced by list/pending. It merges manifest display
 // fields with runtime state and the client-facing backend descriptor.
 type ListEntry struct {
-	Name        string         `json:"name"`
-	Type        string         `json:"type"`
-	Version     string         `json:"version"`
-	Label       string         `json:"label"`
-	Entry       string         `json:"entry"`
-	Icon        string         `json:"icon,omitempty"`
-	Source      string         `json:"source"`
-	Approval    string         `json:"approval"`
-	Enabled     bool           `json:"enabled"`
-	Size        *manifest.Size `json:"size,omitempty"`
-	FixedHeight *bool          `json:"fixedHeight,omitempty"`
-	Route       string         `json:"route,omitempty"`
+	Name             string          `json:"name"`
+	Type             string          `json:"type"`
+	Version          string          `json:"version"`
+	Label            string          `json:"label"`
+	Entry            string          `json:"entry"`
+	Icon             string          `json:"icon,omitempty"`
+	Source           string          `json:"source"`
+	Approval         string          `json:"approval"`
+	Enabled          bool            `json:"enabled"`
+	Permissions      []string        `json:"permissions,omitempty"`
+	PermissionGrants map[string]bool `json:"permissionGrants,omitempty"`
+	Size             *manifest.Size  `json:"size,omitempty"`
+	FixedHeight      *bool           `json:"fixedHeight,omitempty"`
+	Route            string          `json:"route,omitempty"`
 	// DepsStatus is always "ready" at daemon startup. Package installation is an
 	// explicit approval operation, never a background startup task.
 	DepsStatus string                      `json:"depsStatus"`
@@ -197,6 +211,21 @@ func (h *Handler) entryFrom(m *manifest.Manifest, source, approval string, enabl
 		Backend:     manifest.Descriptor(m),
 	}
 	e.DepsStatus = "ready"
+	for _, permission := range m.Permissions {
+		if permission != manifest.PersistentRCISessionPermission {
+			continue
+		}
+		if e.Permissions == nil {
+			e.Permissions = make([]string, 0, 1)
+		}
+		e.Permissions = append(e.Permissions, permission)
+		if h.store.HasGrant(e.Name, permission) {
+			if e.PermissionGrants == nil {
+				e.PermissionGrants = make(map[string]bool)
+			}
+			e.PermissionGrants[permission] = true
+		}
+	}
 	if h.runtime != nil && m.Backend != nil && m.Backend.Kind != nil {
 		status := h.runtime.Status(e.Name)
 		e.Runtime = &status

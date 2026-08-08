@@ -45,6 +45,7 @@ describe('backend maintenance close', () => {
 describe('createBackendClient.fetch', () => {
   it('overwrites CSRF header for unsafe routes and preserves no header for GET', async () => {
     const fetchImpl = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('{}', {status: 200}));
+
     await client({
       routes: {submit: {transport: 'http', method: 'POST', path: 'submit'},
         stats: {transport: 'http', method: 'GET', path: 'stats'}},
@@ -159,6 +160,7 @@ describe('command-free route descriptors', () => {
     });
 
     await backend.fetch('stats');
+
     const socket = backend.socket('term') as unknown as FakeWebSocket;
 
     expect(fetchImpl.mock.calls[0]?.[0]).toBe('https://host/api/plugins/demo/stats');

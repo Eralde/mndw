@@ -11,6 +11,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"mndw.local/rcisock"
+	"mndwd/internal/rcisession/proxy"
 )
 
 func TestServerCreatesAndRemovesSocket(t *testing.T) {
@@ -102,6 +105,67 @@ func TestServerClosesConnectionAcceptedDuringShutdown(t *testing.T) {
 	if !accepted.closed.Load() {
 		t.Fatal("late-accepted connection remained open after Server.Close()")
 	}
+}
+
+func TestServerCloseUnlinksBeforeBoundedDrain(t *testing.T) {
+	path := shortSocketPath(t)
+	handler := &blockingHandler{started: make(chan struct{}), release: make(chan struct{})}
+	server := NewServer(path, Config{
+		PluginID:     "mws-page",
+		Allowed:      true,
+		DrainTimeout: 25 * time.Millisecond,
+	}, handler)
+	if err := server.Start(context.Background()); err != nil {
+		skipSocketEnvironment(t, err)
+		t.Fatal(err)
+	}
+	client, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "mws-page", "proto": 1}})
+	var hello map[string]any
+	readJSON(t, client, &hello)
+	writeJSON(t, client, map[string]any{"id": 1, "target": "node-1", "method": "GET", "path": "rci/show/version"})
+	select {
+	case <-handler.started:
+	case <-time.After(time.Second):
+		t.Fatal("blocking handler did not start")
+	}
+
+	closeStarted := time.Now()
+	err = server.Close()
+	elapsed := time.Since(closeStarted)
+	if !errors.Is(err, ErrDrainTimeout) {
+		t.Fatalf("Server.Close() error = %v, want ErrDrainTimeout", err)
+	}
+	if elapsed > time.Second {
+		t.Fatalf("Server.Close() took %v, want bounded return", elapsed)
+	}
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("socket path after bounded close = %v", statErr)
+	}
+	close(handler.release)
+}
+
+type blockingHandler struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (h *blockingHandler) Do(context.Context, proxy.Request) (proxy.Response, error) {
+	select {
+	case <-h.started:
+	default:
+		close(h.started)
+	}
+	<-h.release
+	return proxy.Response{Status: 200, Body: []byte(`{}`)}, nil
+}
+
+func (*blockingHandler) Targets(context.Context) ([]rcisock.Target, error) {
+	return nil, nil
 }
 
 type closeTrackingConn struct {

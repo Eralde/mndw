@@ -11,8 +11,15 @@ interface Props {
   busyName: string | null;
   confirmingName: string | null;
   actionError: {name: string; message: string} | null;
+  permissionVisible: boolean;
+  permissionAvailable: boolean;
   onEnable: (name: string) => void;
   onDisable: (name: string) => void;
+  onPermissionChange: (
+    name: string,
+    permission: 'persistent-rci-session',
+    enabled: boolean,
+  ) => void;
   onRestart?: (name: string) => void;
   onDelete: (name: string) => void;
   onRequestConfirm: (name: string) => void;
@@ -46,13 +53,22 @@ function boundedError(value: string): string {
   return value.length > 240 ? `${value.slice(0, 240)}…` : value;
 }
 
+const PERSISTENT_RCI_PERMISSION = 'persistent-rci-session' as const;
+
+function permissionGranted(item: PluginListEntry): boolean {
+  return item.permissionGrants?.[PERSISTENT_RCI_PERMISSION] ?? false;
+}
+
 let {
   items,
   busyName,
   confirmingName,
   actionError,
+  permissionVisible = false,
+  permissionAvailable = false,
   onEnable,
   onDisable,
+  onPermissionChange,
   onRestart = () => {},
   onDelete,
   onRequestConfirm,
@@ -110,6 +126,26 @@ let {
 
           {#if summary.length > 0}
             <p class="mndw-installed__backend">{summary.join(', ')}</p>
+          {/if}
+
+          {#if permissionVisible
+          && item.permissions?.includes(PERSISTENT_RCI_PERMISSION)}
+            <mndw-field
+              class="mndw-installed__permission-switch"
+              label="Persistent RCI session"
+            >
+              <mndw-switch
+                checked={permissionGranted(item)}
+                disabled={busyName !== null
+                || (!permissionGranted(item) && !permissionAvailable)}
+                onmndwchange={(event: CustomEvent<{checked: boolean}>) =>
+                onPermissionChange(
+                  item.name,
+                  PERSISTENT_RCI_PERMISSION,
+                  event.detail.checked,
+                )}
+              ></mndw-switch>
+            </mndw-field>
           {/if}
 
           {#if actionError?.name === item.name}

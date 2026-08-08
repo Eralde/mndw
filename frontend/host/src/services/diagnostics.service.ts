@@ -67,6 +67,7 @@ export async function downloadDiagnostics(
   const settled = await Promise.allSettled(
     ENDPOINTS.map(async (endpoint) => {
       const init: RequestInit = {headers: CSRF_HEADERS};
+
       if ('method' in endpoint) {
         init.method = endpoint.method;
       }

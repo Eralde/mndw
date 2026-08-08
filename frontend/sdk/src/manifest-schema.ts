@@ -35,6 +35,7 @@ const safeBackendRoutePath = (value: string): boolean => {
   }
 
   let decoded: string;
+
   try {
     decoded = decodeURIComponent(value);
   } catch {
@@ -90,6 +91,7 @@ const validateRoutes = <T extends {id: string; transport: string; path: string; 
   ctx: z.RefinementCtx,
 ): void => {
   const ids = routes.map((route) => route.id);
+
   if (new Set(ids).size !== ids.length) {
     ctx.addIssue({code: 'custom', message: 'backend.routes contains duplicate id'});
   }
@@ -99,6 +101,7 @@ const validateRoutes = <T extends {id: string; transport: string; path: string; 
       ? `${route.transport}:${route.method}:${route.path}`
       : `${route.transport}:${route.path}`;
   });
+
   if (new Set(tuples).size !== tuples.length) {
     ctx.addIssue({code: 'custom', message: 'backend.routes contains duplicate route tuple'});
   }
@@ -114,31 +117,40 @@ const execBackendSchema = z.object({
   kind: z.literal('exec'),
   packages: z.array(packageSchema).optional(),
   routes: z.array(execRouteSchema).min(1),
-}).strict().superRefine((backend, ctx) => {
+}).strict()
+.superRefine((backend, ctx) => {
   validateRoutes(backend.routes, ctx);
 });
 
 const serviceBackendSchema = z.object({
   kind: z.literal('service'),
-  protocolVersion: z.number().int().positive(),
+  protocolVersion: z.number().int()
+.positive(),
   command: commandSchema,
   args: z.array(literalArgumentSchema).optional(),
   packages: z.array(packageSchema).optional(),
   routes: z.array(z.union([httpRouteSchema, websocketRouteSchema])).min(1),
-}).strict().superRefine((backend, ctx) => {
+}).strict()
+.superRefine((backend, ctx) => {
   validateRoutes(backend.routes, ctx);
 });
 
 const backendSchema = z.union([execBackendSchema, serviceBackendSchema]);
 
-const gridColumns = z.number().int().positive().max(12);
-const gridRows = z.number().int().positive();
+const gridColumns = z.number().int()
+.positive()
+.max(12);
+const gridRows = z.number().int()
+.positive();
 const versionSchema = z.literal(3).describe('Manifest format version. Must be 3.');
 const nameSchema = pluginNameSchema.describe('Unique plugin id used as the on-disk folder and URL segment.');
-const versionField = z.string().min(1).describe('Semver-ish version string.');
-const labelField = z.string().min(1).describe('Human-readable name shown in the dashboard or navigation.');
+const versionField = z.string().min(1)
+.describe('Semver-ish version string.');
+const labelField = z.string().min(1)
+.describe('Human-readable name shown in the dashboard or navigation.');
 const entryField = pluginEntrySchema.describe('Relative path to the bundled entry module.');
-const iconField = z.string().optional().describe('Optional icon name.');
+const iconField = z.string().optional()
+.describe('Optional icon name.');
 const permissionSchema = z.enum(['persistent-rci-session']);
 
 const sizeSchema = z.object({
@@ -149,7 +161,8 @@ const sizeSchema = z.object({
 }).refine((size) => size.minW === undefined || size.minW <= size.w, {
   message: 'size.minW must be less than or equal to size.w',
   path: ['minW'],
-}).refine((size) => size.minH === undefined || size.minH <= size.h, {
+})
+.refine((size) => size.minH === undefined || size.minH <= size.h, {
   message: 'size.minH must be less than or equal to size.h',
   path: ['minH'],
 });

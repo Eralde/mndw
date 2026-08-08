@@ -9,4 +9,6 @@ type StateStore interface {
 	Get(string) (*state.Plugin, bool)
 	Snapshot() *state.State
 	Mutate(func(*state.State) error) error
+	HasGrant(plugin, permission string) bool
+	SetGrant(plugin, permission string, enabled bool) error
 }

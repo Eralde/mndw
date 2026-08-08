@@ -3,7 +3,7 @@ import {type Mocked, afterEach, beforeAll, describe, expect, it, vi} from 'vites
 import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
-import type {MgmtClient, UploadResult} from '../../../services/mgmt-client.js';
+import {type MgmtClient, MgmtError, type UploadResult} from '../../../services/mgmt-client.js';
 import PluginManager from './PluginManager.svelte';
 
 const emptyBackend = {routes: {}};
@@ -31,6 +31,7 @@ function clientWith(items: PluginListEntry[]): Mocked<MgmtClient> {
     approvePlugin: vi.fn().mockResolvedValue(items[0]),
     enablePlugin: vi.fn().mockResolvedValue(items[0]),
     disablePlugin: vi.fn().mockResolvedValue(items[0]),
+    setPluginPermission: vi.fn().mockResolvedValue(items[0]),
     denyPlugin: vi.fn().mockResolvedValue(undefined),
     deletePlugin: vi.fn().mockResolvedValue(undefined),
     restartPlugin: vi.fn().mockResolvedValue(undefined),
@@ -50,12 +51,13 @@ function clientWith(items: PluginListEntry[]): Mocked<MgmtClient> {
 
 async function mountManager(
   client: Mocked<MgmtClient>,
+  capabilities: {permissionVisible?: boolean; permissionAvailable?: boolean} = {},
 ): Promise<{component: ReturnType<typeof mount>; target: HTMLElement}> {
   const target = document.createElement('div');
 
   document.body.appendChild(target);
 
-  const component = mount(PluginManager, {target, props: {client}});
+  const component = mount(PluginManager, {target, props: {client, ...capabilities}});
 
   await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
   flushSync();
@@ -234,6 +236,79 @@ describe('PluginManager', () => {
     await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
 
     expect(target.querySelector('.mndw-alert--danger')?.textContent).toContain('Disable failed');
+    expect(target.querySelector('.mndw-reload')).toBeNull();
+
+    void unmount(component);
+  });
+
+  it('changes a permission, refreshes without offering a reload, and keeps grant state authoritative', async () => {
+    const initial = plugin({permissions: ['persistent-rci-session']});
+    const granted = plugin({
+      permissions: ['persistent-rci-session'],
+      permissionGrants: {'persistent-rci-session': true},
+    });
+    const client = clientWith([initial]);
+
+    client.setPluginPermission.mockResolvedValue(granted);
+
+    const {component, target} = await mountManager(client, {
+      permissionVisible: true,
+      permissionAvailable: true,
+    });
+
+    client.listPlugins.mockClear();
+    target.querySelector<HTMLElement>('.mndw-installed__permission-switch mndw-switch')?.click();
+    await vi.waitFor(() =>
+      expect(client.setPluginPermission.mock.calls).toContainEqual([
+        'network-tools',
+        'persistent-rci-session',
+        true,
+      ])
+    );
+    await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
+
+    expect(target.querySelector('.mndw-reload')).toBeNull();
+
+    void unmount(component);
+  });
+
+  it('shows socket-start error while refreshed permission grant remains checked', async () => {
+    const initial = plugin({permissions: ['persistent-rci-session']});
+    const granted = plugin({
+      permissions: ['persistent-rci-session'],
+      permissionGrants: {'persistent-rci-session': true},
+    });
+    const client = clientWith([initial]);
+
+    client.setPluginPermission.mockRejectedValue(new MgmtError('socket down', 'RCI_SOCKET_START_FAILED'));
+    client.listPlugins.mockResolvedValueOnce([initial]).mockResolvedValueOnce([granted]);
+
+    const {component, target} = await mountManager(client, {
+      permissionVisible: true,
+      permissionAvailable: true,
+    });
+
+    client.listPlugins.mockClear();
+    target.querySelector<HTMLElement>('.mndw-installed__permission-switch mndw-switch')?.click();
+    await vi.waitFor(() =>
+      expect(client.setPluginPermission.mock.calls).toContainEqual([
+        'network-tools',
+        'persistent-rci-session',
+        true,
+      ])
+    );
+    await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
+    await vi.waitFor(() =>
+      expect(target.querySelector('.mndw-installed__item > .mndw-alert--danger')?.textContent).toContain(
+        'session socket',
+      )
+    );
+
+    const control = target.querySelector<HTMLElement & {checked: boolean}>(
+      '.mndw-installed__permission-switch mndw-switch',
+    );
+
+    expect(control?.checked).toBe(true);
     expect(target.querySelector('.mndw-reload')).toBeNull();
 
     void unmount(component);

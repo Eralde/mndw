@@ -2,14 +2,20 @@ package socket
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 )
 
 type Binding struct {
-	PluginID              string
-	Path                  string
-	CredentialIndependent bool
+	PluginID string
+	Path     string
+}
+
+type ReconcileReport struct {
+	Desired     map[string]bool
+	Active      map[string]bool
+	StartErrors map[string]error
 }
 
 type Reconciler struct {
@@ -21,17 +27,39 @@ type Reconciler struct {
 }
 
 func NewReconciler(config Config, handler Handler) *Reconciler {
+	if config.DrainTimeout <= 0 {
+		config.DrainTimeout = DefaultDrainTimeout
+	}
+
 	return &Reconciler{config: config, handler: handler, servers: make(map[string]*Server)}
 }
 
-func (r *Reconciler) Reconcile(ctx context.Context, bindings []Binding, sessionPresent bool) error {
+var ErrDrainTimeout = errors.New("persistent RCI socket drain timed out")
+
+func (r *Reconciler) Reconcile(ctx context.Context, bindings []Binding, sessionPresent bool) (ReconcileReport, error) {
+	report := ReconcileReport{
+		Desired:     make(map[string]bool),
+		Active:      make(map[string]bool),
+		StartErrors: make(map[string]error),
+	}
 	if r.handler == nil {
-		return fmt.Errorf("socket reconciler handler is required")
+		return report, fmt.Errorf("socket reconciler handler is required")
+	}
+	seen := make(map[string]struct{}, len(bindings))
+	for _, binding := range bindings {
+		if binding.PluginID == "" {
+			return report, fmt.Errorf("socket binding plugin ID is required")
+		}
+		if _, exists := seen[binding.PluginID]; exists {
+			return report, fmt.Errorf("duplicate socket binding plugin ID: %s", binding.PluginID)
+		}
+		seen[binding.PluginID] = struct{}{}
 	}
 	desired := make(map[string]Binding)
 	for _, binding := range bindings {
-		if binding.PluginID != "" && binding.Path != "" && (sessionPresent || binding.CredentialIndependent) {
+		if binding.Path != "" && sessionPresent {
 			desired[binding.PluginID] = binding
+			report.Desired[binding.PluginID] = true
 		}
 	}
 	r.mu.Lock()
@@ -42,9 +70,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, bindings []Binding, sessionP
 	r.mu.Unlock()
 	for pluginID, server := range current {
 		if _, keep := desired[pluginID]; keep {
+			report.Active[pluginID] = true
 			continue
 		}
-		_ = server.Close()
+		if err := server.Close(); err != nil && r.config.Logger != nil {
+			r.config.Logger.Warn("persistent RCI socket close failed", "plugin", pluginID, "reason", "reconcile")
+		}
 		if r.config.Logger != nil {
 			r.config.Logger.Info("persistent RCI socket binding removed", "plugin", pluginID, "reason", "reconcile")
 		}
@@ -61,16 +92,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, bindings []Binding, sessionP
 		config.Allowed = true
 		server := NewServer(binding.Path, config, r.handler)
 		if err := server.Start(ctx); err != nil {
+			report.StartErrors[pluginID] = err
 			if r.config.Logger != nil {
-				r.config.Logger.Error("persistent RCI socket start failed", "plugin", pluginID, "path", binding.Path, "reason", "listen-failed")
+				r.config.Logger.Error("persistent RCI socket start failed", "plugin", pluginID, "reason", "listen-failed")
 			}
-			return err
+			continue
 		}
 		r.mu.Lock()
 		r.servers[pluginID] = server
 		r.mu.Unlock()
+		report.Active[pluginID] = true
 	}
-	return nil
+	return report, nil
 }
 
 func (r *Reconciler) Close() {

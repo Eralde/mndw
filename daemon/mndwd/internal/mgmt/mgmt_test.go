@@ -23,6 +23,26 @@ func (emptyBuiltinSource) ListBuiltinsWithError() ([]*registry.Plugin, error) {
 	return nil, nil
 }
 
+type permissionTestController struct {
+	available bool
+	changeErr error
+	onChanged func()
+	changes   int
+}
+
+func (c *permissionTestController) ControllerPermissionAvailable() bool {
+	return c.available
+}
+
+func (c *permissionTestController) PermissionChanged(string) error {
+	c.changes++
+	if c.onChanged != nil {
+		c.onChanged()
+	}
+
+	return c.changeErr
+}
+
 func newTestServer(t *testing.T) (*httptest.Server, Config) {
 	t.Helper()
 	root := t.TempDir()
@@ -49,6 +69,71 @@ func newTestServer(t *testing.T) (*httptest.Server, Config) {
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func newPermissionServer(t *testing.T, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store) {
+	t.Helper()
+	root := t.TempDir()
+	cfg := Config{
+		StagingDir:                        filepath.Join(root, "staging"),
+		UserPluginsDir:                    filepath.Join(root, "user-plugins"),
+		BuiltinPluginsDir:                 filepath.Join(root, "builtin"),
+		MaxUploadBytes:                    10 << 20,
+		PersistentRCIPermissionController: controller,
+	}
+	store, err := state.Open(filepath.Join(root, "data", "state.json"))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	mux := http.NewServeMux()
+	New(cfg, store, opkg.New("stub", discardLogger()), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger()).Register(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	return srv, store
+}
+
+func permissionManifest(name string) string {
+	return `{"manifestVersion":3,"name":"` + name + `","version":"1.0.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3},"permissions":["persistent-rci-session"]}`
+}
+
+func noPermissionManifest(name string) string {
+	return `{"manifestVersion":3,"name":"` + name + `","version":"1.0.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}` + `}`
+}
+
+func installPermissionPlugin(t *testing.T, srv *httptest.Server, name string) {
+	t.Helper()
+	resp := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": permissionManifest(name),
+		"index.js":      "x",
+	}))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("permission plugin upload status = %d", resp.StatusCode)
+	}
+}
+
+func installNoPermissionPlugin(t *testing.T, srv *httptest.Server, name string) {
+	t.Helper()
+	resp := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": noPermissionManifest(name),
+		"index.js":      "x",
+	}))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("no-permission plugin upload status = %d", resp.StatusCode)
+	}
+}
+
+func postPermission(t *testing.T, srv *httptest.Server, name, permission string, enabled bool) *http.Response {
+	t.Helper()
+	body, _ := json.Marshal(map[string]any{"name": name, "permission": permission, "enabled": enabled})
+	resp, err := http.Post(srv.URL+"/api/mgmt/permission", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("permission POST: %v", err)
+	}
+
+	return resp
 }
 
 func newTestServerWithOpkg(t *testing.T, opkgMgr opkg.Manager) (*httptest.Server, Config) {
@@ -620,6 +705,151 @@ func TestOpkgInstallSuccessPreservesResponse(t *testing.T) {
 	}
 	if !result.OK || result.Message != "1 package(s) installed" || len(result.Packages) != 1 || result.Packages[0] != "curl" {
 		t.Errorf("install response = %+v", result)
+	}
+}
+
+func TestPermissionEnablePersistsBeforeReconcileFailure(t *testing.T) {
+	controller := &permissionTestController{available: true, changeErr: ErrPersistentRCISocketStart}
+	srv, store := newPermissionServer(t, controller)
+	installPermissionPlugin(t, srv, "permissioned")
+
+	resp := postPermission(t, srv, "permissioned", "persistent-rci-session", true)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+	assertCode(t, resp, "RCI_SOCKET_START_FAILED")
+	if !store.HasGrant("permissioned", "persistent-rci-session") {
+		t.Fatal("grant was not persisted before reconcile failure")
+	}
+	if controller.changes != 1 {
+		t.Fatalf("permission changes = %d, want 1", controller.changes)
+	}
+	if got := store.Snapshot().Audit[len(store.Snapshot().Audit)-1].Action; got != "permission-enable" {
+		t.Fatalf("last audit action = %q", got)
+	}
+}
+
+func TestPermissionEnableUnavailableDoesNotPersist(t *testing.T) {
+	controller := &permissionTestController{available: false}
+	srv, store := newPermissionServer(t, controller)
+	installPermissionPlugin(t, srv, "permissioned")
+
+	resp := postPermission(t, srv, "permissioned", "persistent-rci-session", true)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.StatusCode)
+	}
+	assertCode(t, resp, "CONTROLLER_SESSION_UNAVAILABLE")
+	if store.HasGrant("permissioned", "persistent-rci-session") {
+		t.Fatal("unavailable enable persisted a true grant")
+	}
+	if controller.changes != 0 {
+		t.Fatalf("permission changes = %d, want 0", controller.changes)
+	}
+}
+
+func TestPermissionDisableWithNilControllerPersistsFalse(t *testing.T) {
+	srv, store := newPermissionServer(t, nil)
+	installPermissionPlugin(t, srv, "permissioned")
+	if err := store.SetGrant("permissioned", "persistent-rci-session", true); err != nil {
+		t.Fatalf("seed grant: %v", err)
+	}
+
+	resp := postPermission(t, srv, "permissioned", "persistent-rci-session", false)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if store.HasGrant("permissioned", "persistent-rci-session") {
+		t.Fatal("nil-controller disable did not persist false")
+	}
+}
+
+func TestPermissionListProjectsOnlyDeclaredAllowlistedGrants(t *testing.T) {
+	controller := &permissionTestController{available: true}
+	srv, store := newPermissionServer(t, controller)
+	installPermissionPlugin(t, srv, "permissioned")
+	installNoPermissionPlugin(t, srv, "plain")
+	if err := store.SetGrant("permissioned", "persistent-rci-session", true); err != nil {
+		t.Fatalf("seed declared grant: %v", err)
+	}
+	if err := store.SetGrant("permissioned", "future-permission", true); err != nil {
+		t.Fatalf("seed future grant: %v", err)
+	}
+	if err := store.SetGrant("plain", "persistent-rci-session", true); err != nil {
+		t.Fatalf("seed undeclared grant: %v", err)
+	}
+
+	entries := listPlugins(t, srv, "/api/mgmt/list")
+	permissioned, ok := findEntry(entries, "permissioned")
+	if !ok {
+		t.Fatal("permissioned plugin missing")
+	}
+	if len(permissioned.Permissions) != 1 || permissioned.Permissions[0] != "persistent-rci-session" {
+		t.Fatalf("permissions = %#v", permissioned.Permissions)
+	}
+	if len(permissioned.PermissionGrants) != 1 || !permissioned.PermissionGrants["persistent-rci-session"] {
+		t.Fatalf("permission grants = %#v", permissioned.PermissionGrants)
+	}
+	plain, ok := findEntry(entries, "plain")
+	if !ok {
+		t.Fatal("plain plugin missing")
+	}
+	if len(plain.Permissions) != 0 || len(plain.PermissionGrants) != 0 {
+		t.Fatalf("undeclared projection = %+v", plain)
+	}
+}
+
+func TestDeletePurgesPermissionGrants(t *testing.T) {
+	controller := &permissionTestController{available: true}
+	srv, store := newPermissionServer(t, controller)
+	installPermissionPlugin(t, srv, "permissioned")
+	if err := store.SetGrant("permissioned", "persistent-rci-session", true); err != nil {
+		t.Fatalf("seed grant: %v", err)
+	}
+
+	resp := postName(t, srv, "/api/mgmt/delete", "permissioned")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200", resp.StatusCode)
+	}
+	if _, exists := store.Snapshot().PermissionGrants["permissioned"]; exists {
+		t.Fatal("delete retained permission grants")
+	}
+	audit := store.Snapshot().Audit
+	if len(audit) == 0 || audit[len(audit)-1].Action != "delete" || audit[len(audit)-1].Detail != "plugin removed by operator; permission grants purged" {
+		t.Fatalf("delete audit = %+v", audit)
+	}
+	if controller.changes != 1 {
+		t.Fatalf("delete permission changes = %d, want 1", controller.changes)
+	}
+}
+
+func TestPluginLifecycleReconcilesPersistentPermission(t *testing.T) {
+	controller := &permissionTestController{available: true}
+	srv, store := newPermissionServer(t, controller)
+	installPermissionPlugin(t, srv, "permissioned")
+	if err := store.SetGrant("permissioned", "persistent-rci-session", true); err != nil {
+		t.Fatalf("seed grant: %v", err)
+	}
+
+	disable := postName(t, srv, "/api/mgmt/disable", "permissioned")
+	if disable.StatusCode != http.StatusOK {
+		t.Fatalf("disable status = %d, want 200", disable.StatusCode)
+	}
+	disable.Body.Close()
+	if controller.changes != 1 {
+		t.Fatalf("disable permission changes = %d, want 1", controller.changes)
+	}
+
+	enable := postName(t, srv, "/api/mgmt/enable", "permissioned")
+	if enable.StatusCode != http.StatusOK {
+		t.Fatalf("enable status = %d, want 200", enable.StatusCode)
+	}
+	enable.Body.Close()
+	if controller.changes != 2 {
+		t.Fatalf("enable permission changes = %d, want 2", controller.changes)
 	}
 }
 

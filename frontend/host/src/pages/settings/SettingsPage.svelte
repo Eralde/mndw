@@ -475,7 +475,10 @@ async function downloadHostDiagnostics(): Promise<void> {
   {/if}
 
   <section>
-    <PluginManager />
+    <PluginManager
+      permissionVisible={persistentProbeAvailable}
+      permissionAvailable={persistentCapability?.controller.support === 'supported'}
+    />
   </section>
 </div>
 

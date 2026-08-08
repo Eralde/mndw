@@ -102,6 +102,27 @@ describe('<mndw-line-chart>', () => {
     expect(paths[2]?.getAttribute('data-color')).toBe('success');
   });
 
+  it('aligns horizontal grid lines with the plot area', async () => {
+    const element = await mount();
+
+    element.series = [uploadSeries];
+    element.domain = {start: 0, end: 3000};
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('[part="grid"]')?.getAttribute('transform')).toBe('translate(72, 0)');
+  });
+
+  it('keeps the cursor line from intercepting plot hover events', async () => {
+    const element = await mount();
+
+    element.series = [uploadSeries];
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('line[stroke-dasharray="2,2"]')?.getAttribute('pointer-events')).toBe(
+      'none',
+    );
+  });
+
   it('ignores malformed points and returns to the empty state when no valid data remains', async () => {
     const element = await mount();
 
@@ -142,7 +163,7 @@ describe('<mndw-line-chart>', () => {
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(false);
   });
 
-  it('clears stale tooltip state when data changes and does not install a window mouse listener', async () => {
+  it('updates the tooltip when data changes while the pointer remains over the plot', async () => {
     const addEventListener = vi.spyOn(window, 'addEventListener');
     const element = await mount();
 
@@ -155,8 +176,10 @@ describe('<mndw-line-chart>', () => {
     await element.updateComplete;
     element.series = [downloadSeries];
     await element.updateComplete;
+    await element.updateComplete;
 
-    expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(false);
+    expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(true);
+    expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent).toContain('Download');
     expect(addEventListener.mock.calls.some(([type]) => type === 'mousemove')).toBe(false);
   });
 

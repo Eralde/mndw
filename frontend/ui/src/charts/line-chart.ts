@@ -120,6 +120,7 @@ export class MndwLineChart extends LitElement {
   private observedContainer: HTMLElement | null = null;
   private plotElement: SVGSVGElement | null = null;
   private tooltipState: TooltipState | null = null;
+  private lastPointerPosition: [number, number] | null = null;
   private lastGeneratedAriaLabel: string | null = null;
 
   constructor() {
@@ -164,7 +165,15 @@ export class MndwLineChart extends LitElement {
 
   protected override willUpdate(changedProperties: Map<PropertyKey, unknown>): void {
     if (changedProperties.has('series') || changedProperties.has('domain') || changedProperties.has('emptyLabel')) {
-      this.tooltipState = null;
+      const hasValidSeries = this.series.some((item) => filterFinitePoints(item.data).length > 0);
+
+      if (this.lastPointerPosition === null || !hasValidSeries) {
+        this.tooltipState = null;
+      }
+
+      if (!hasValidSeries) {
+        this.lastPointerPosition = null;
+      }
     }
   }
 
@@ -182,6 +191,7 @@ export class MndwLineChart extends LitElement {
 
   public override disconnectedCallback(): void {
     this.disconnectPlot();
+    this.lastPointerPosition = null;
 
     if (this.resizeObserver !== null) {
       this.resizeObserver.disconnect();
@@ -226,14 +236,6 @@ export class MndwLineChart extends LitElement {
 
     this.observeContainer(container);
     this.disconnectPlot();
-
-    const hadTooltip = this.tooltipState !== null;
-
-    this.tooltipState = null;
-
-    if (hadTooltip) {
-      this.requestUpdate();
-    }
 
     const svgElement = container.querySelector<SVGSVGElement>('svg');
     const validSeries = this.series
@@ -305,6 +307,7 @@ export class MndwLineChart extends LitElement {
 
     const yGrid = svg.append('g')
       .attr('part', 'grid')
+      .attr('transform', `translate(${padding.left}, 0)`)
       .call(
         d3.axisLeft(yScale)
           .ticks(isSmall ? 2 : 4)
@@ -346,27 +349,29 @@ export class MndwLineChart extends LitElement {
 
     const cursorLine = svg.append('line')
       .style('stroke', 'var(--mndw-text-subtle)')
+      .attr('pointer-events', 'none')
       .attr('stroke-width', 1)
       .attr('stroke-dasharray', '2,2')
       .attr('y1', padding.top)
       .attr('y2', height - padding.bottom)
       .style('display', 'none');
 
-    const updateTooltip = (event: MouseEvent): void => {
-      const [mouseX, mouseY] = pointerPosition(event, svgElement);
-
+    const updateTooltipAtPosition = (mouseX: number, mouseY: number): void => {
       if (
         mouseX < padding.left
         || mouseX > width - padding.right
         || mouseY < padding.top
         || mouseY > height - padding.bottom
       ) {
+        this.lastPointerPosition = null;
         cursorLine.style('display', 'none');
         this.tooltipState = null;
         this.requestUpdate();
 
         return;
       }
+
+      this.lastPointerPosition = [mouseX, mouseY];
 
       const hoverTime = xScale.invert(mouseX);
       const values = validSeries.map((item) => {
@@ -411,14 +416,25 @@ export class MndwLineChart extends LitElement {
       this.requestUpdate();
     };
 
+    const updateTooltip = (event: MouseEvent): void => {
+      const [mouseX, mouseY] = pointerPosition(event, svgElement);
+
+      updateTooltipAtPosition(mouseX, mouseY);
+    };
+
     overlay.on('mousemove.chart', updateTooltip);
     overlay.on('mouseleave.chart', () => {
+      this.lastPointerPosition = null;
       cursorLine.style('display', 'none');
       this.tooltipState = null;
       this.requestUpdate();
     });
 
     this.plotElement = svgElement;
+
+    if (this.lastPointerPosition !== null) {
+      updateTooltipAtPosition(...this.lastPointerPosition);
+    }
   }
 
   private observeContainer(container: HTMLElement): void {

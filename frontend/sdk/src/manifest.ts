@@ -44,7 +44,7 @@ export interface PluginServiceBackend {
 }
 
 export type PluginBackend = PluginExecBackend | PluginServiceBackend;
-export type PluginPermission = 'persistent-rci-session';
+export type PluginPermission = 'persistent-rci-session:read' | 'persistent-rci-session:write';
 
 export interface PluginManifestBase {
   manifestVersion: 3;

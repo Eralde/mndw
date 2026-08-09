@@ -1,0 +1,28 @@
+[
+  {
+    "show": {
+      "sc": {
+        "interface": {
+          "WifiMaster0": {
+            "country-code": {"code": "AM"},
+            "channel": {"width": "20"},
+            "power": "75",
+            "up": true
+          }
+        }
+      }
+    }
+  },
+  {
+    "show": {
+      "sc": {
+        "interface": {
+          "WifiMaster1": {
+            "channel": {"width": "40-above/80"},
+            "up": true
+          }
+        }
+      }
+    }
+  }
+]

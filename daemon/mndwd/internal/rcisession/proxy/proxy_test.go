@@ -20,13 +20,15 @@ func TestProxyInjectsTokenAndSupportsFutureMethods(t *testing.T) {
 	resolver := &fakeResolver{destination: Destination{BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
 	proxy := New(resolver, &http.Client{Transport: transport}, 1024, 0)
 
-	response, err := proxy.Do(context.Background(), Request{Target: "node-1", Method: "LINK", Path: "rci/show/version", Body: []byte(`{"x":1}`)})
+	response, err := proxy.Do(context.Background(), Request{Target: "node-1", Method: "LINK", Path: "rci/show/version", Body: []byte(`{"x":1}`), AllowWrite: true})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if response.Status != http.StatusOK || string(response.Body) != "ok" {
 		t.Fatalf("response = %#v", response)
 	}
+
 	if transport.request.Method != "LINK" || transport.request.Header.Get("X-Ndma-Tkn") != "secret-token" {
 		t.Fatalf("outbound request = %s token=%q", transport.request.Method, transport.request.Header.Get("X-Ndma-Tkn"))
 	}
@@ -42,8 +44,26 @@ func TestProxyRejectsUnsafePathBeforeResolution(t *testing.T) {
 			t.Fatalf("path %q accepted", path)
 		}
 	}
+
 	if resolver.calls != 0 || transport.request != nil {
 		t.Fatalf("unsafe path reached resolver/transport: calls=%d request=%v", resolver.calls, transport.request)
+	}
+}
+
+func TestProxyRejectsWriteWithoutWriteGrantBeforeResolution(t *testing.T) {
+	resolver := &fakeResolver{destination: Destination{BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
+	proxy := New(resolver, &http.Client{Transport: &fakeRoundTripper{}}, 1024, 0)
+
+	_, err := proxy.Do(context.Background(), Request{
+		Target: "node-1", Method: "POST", Path: "rci/",
+		Body: []byte(`[{"interface":{"name":"WifiMaster0","power":75}}]`),
+	})
+	if !errors.Is(err, ErrWriteNotPermitted) {
+		t.Fatalf("error = %v, want write-not-permitted", err)
+	}
+
+	if resolver.calls != 0 {
+		t.Fatalf("resolver calls = %d, want zero", resolver.calls)
 	}
 }
 
@@ -85,6 +105,7 @@ func TestProxyRejectsInsecureTokenDestinationWithoutOutboundRequest(t *testing.T
 	if !errors.Is(err, ErrSecureEndpointUnavailable) {
 		t.Fatalf("error = %v, want secure endpoint unavailable", err)
 	}
+
 	if transport.request != nil {
 		t.Fatalf("insecure destination made outbound request: %#v", transport.request)
 	}
@@ -95,6 +116,7 @@ func TestProxyRejectsMissingOrUnsupportedSession(t *testing.T) {
 		resolver := &fakeResolver{destination: Destination{Support: support}}
 		proxy := New(resolver, &http.Client{Transport: &fakeRoundTripper{}}, 1024, 0)
 		_, err := proxy.Do(context.Background(), Request{Target: "node-1", Method: "GET", Path: "rci/show/version"})
+
 		if support == model.SupportUnsupported {
 			if !errors.Is(err, ErrUnsupported) {
 				t.Fatalf("support=%q error=%v, want unsupported", support, err)
@@ -113,6 +135,7 @@ type fakeResolver struct {
 
 func (f *fakeResolver) Resolve(context.Context, string) (Destination, error) {
 	f.calls++
+
 	return f.destination, nil
 }
 
@@ -125,5 +148,6 @@ type fakeRoundTripper struct {
 
 func (f *fakeRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
 	f.request = request
+
 	return f.response, nil
 }

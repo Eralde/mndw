@@ -10,6 +10,7 @@ import (
 type Binding struct {
 	PluginID string
 	Path     string
+	Grants   Grants
 }
 
 type ReconcileReport struct {
@@ -42,78 +43,121 @@ func (r *Reconciler) Reconcile(ctx context.Context, bindings []Binding, sessionP
 		Active:      make(map[string]bool),
 		StartErrors: make(map[string]error),
 	}
+
 	if r.handler == nil {
 		return report, fmt.Errorf("socket reconciler handler is required")
 	}
+
 	seen := make(map[string]struct{}, len(bindings))
+
 	for _, binding := range bindings {
 		if binding.PluginID == "" {
 			return report, fmt.Errorf("socket binding plugin ID is required")
 		}
+
 		if _, exists := seen[binding.PluginID]; exists {
 			return report, fmt.Errorf("duplicate socket binding plugin ID: %s", binding.PluginID)
 		}
+
 		seen[binding.PluginID] = struct{}{}
 	}
+
 	desired := make(map[string]Binding)
+
 	for _, binding := range bindings {
-		if binding.Path != "" && sessionPresent {
+		if binding.Grants.CanWrite {
+			binding.Grants.CanRead = true
+		}
+
+		if binding.Path != "" && sessionPresent && binding.Grants.CanRead {
 			desired[binding.PluginID] = binding
 			report.Desired[binding.PluginID] = true
 		}
 	}
+
 	r.mu.Lock()
+
 	current := make(map[string]*Server, len(r.servers))
+
 	for pluginID, server := range r.servers {
 		current[pluginID] = server
 	}
+
 	r.mu.Unlock()
+
 	for pluginID, server := range current {
-		if _, keep := desired[pluginID]; keep {
+		binding, keep := desired[pluginID]
+
+		if keep && server.Grants() == binding.Grants {
 			report.Active[pluginID] = true
+
 			continue
 		}
+
 		if err := server.Close(); err != nil && r.config.Logger != nil {
 			r.config.Logger.Warn("persistent RCI socket close failed", "plugin", pluginID, "reason", "reconcile")
 		}
+
 		if r.config.Logger != nil {
 			r.config.Logger.Info("persistent RCI socket binding removed", "plugin", pluginID, "reason", "reconcile")
 		}
+
 		r.mu.Lock()
 		delete(r.servers, pluginID)
 		r.mu.Unlock()
 	}
+
 	for pluginID, binding := range desired {
-		if _, exists := current[pluginID]; exists {
+		r.mu.Lock()
+
+		_, exists := r.servers[pluginID]
+
+		r.mu.Unlock()
+
+		if exists {
 			continue
 		}
+
 		config := r.config
 		config.PluginID = pluginID
-		config.Allowed = true
+		config.Grants = binding.Grants
 		server := NewServer(binding.Path, config, r.handler)
+
 		if err := server.Start(ctx); err != nil {
 			report.StartErrors[pluginID] = err
+
 			if r.config.Logger != nil {
 				r.config.Logger.Error("persistent RCI socket start failed", "plugin", pluginID, "reason", "listen-failed")
 			}
+
 			continue
 		}
+
 		r.mu.Lock()
+
 		r.servers[pluginID] = server
+
 		r.mu.Unlock()
+
 		report.Active[pluginID] = true
 	}
+
 	return report, nil
 }
 
 func (r *Reconciler) Close() {
 	r.mu.Lock()
+
 	servers := make([]*Server, 0, len(r.servers))
+
 	for _, server := range r.servers {
 		servers = append(servers, server)
 	}
+
 	r.servers = make(map[string]*Server)
+
 	r.mu.Unlock()
+
 	for _, server := range servers {
 		_ = server.Close()
 	}

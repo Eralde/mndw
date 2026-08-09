@@ -105,6 +105,7 @@ function createMember(index: number): MwsMemberRecord {
         duplex: isWireless ? null : 'full',
         portLabel: isWireless ? null : String(index % 4),
       },
+    dualBand: isWireless,
   };
 }
 

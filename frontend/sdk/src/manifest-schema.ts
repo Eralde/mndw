@@ -118,40 +118,45 @@ const execBackendSchema = z.object({
   packages: z.array(packageSchema).optional(),
   routes: z.array(execRouteSchema).min(1),
 }).strict()
-.superRefine((backend, ctx) => {
-  validateRoutes(backend.routes, ctx);
-});
+  .superRefine((backend, ctx) => {
+    validateRoutes(backend.routes, ctx);
+  });
 
 const serviceBackendSchema = z.object({
   kind: z.literal('service'),
   protocolVersion: z.number().int()
-.positive(),
+    .positive(),
   command: commandSchema,
   args: z.array(literalArgumentSchema).optional(),
   packages: z.array(packageSchema).optional(),
   routes: z.array(z.union([httpRouteSchema, websocketRouteSchema])).min(1),
 }).strict()
-.superRefine((backend, ctx) => {
-  validateRoutes(backend.routes, ctx);
-});
+  .superRefine((backend, ctx) => {
+    validateRoutes(backend.routes, ctx);
+  });
 
 const backendSchema = z.union([execBackendSchema, serviceBackendSchema]);
 
 const gridColumns = z.number().int()
-.positive()
-.max(12);
+  .positive()
+  .max(12);
 const gridRows = z.number().int()
-.positive();
+  .positive();
 const versionSchema = z.literal(3).describe('Manifest format version. Must be 3.');
 const nameSchema = pluginNameSchema.describe('Unique plugin id used as the on-disk folder and URL segment.');
 const versionField = z.string().min(1)
-.describe('Semver-ish version string.');
+  .describe('Semver-ish version string.');
 const labelField = z.string().min(1)
-.describe('Human-readable name shown in the dashboard or navigation.');
+  .describe('Human-readable name shown in the dashboard or navigation.');
 const entryField = pluginEntrySchema.describe('Relative path to the bundled entry module.');
 const iconField = z.string().optional()
-.describe('Optional icon name.');
-const permissionSchema = z.enum(['persistent-rci-session']);
+  .describe('Optional icon name.');
+const permissionSchema = z.enum(['persistent-rci-session:read', 'persistent-rci-session:write']);
+const permissionsSchema = z.array(permissionSchema).superRefine((permissions, ctx) => {
+  if (new Set(permissions).size !== permissions.length) {
+    ctx.addIssue({code: 'custom', message: 'permissions contains duplicate permission'});
+  }
+});
 
 const sizeSchema = z.object({
   w: gridColumns,
@@ -162,10 +167,10 @@ const sizeSchema = z.object({
   message: 'size.minW must be less than or equal to size.w',
   path: ['minW'],
 })
-.refine((size) => size.minH === undefined || size.minH <= size.h, {
-  message: 'size.minH must be less than or equal to size.h',
-  path: ['minH'],
-});
+  .refine((size) => size.minH === undefined || size.minH <= size.h, {
+    message: 'size.minH must be less than or equal to size.h',
+    path: ['minH'],
+  });
 
 const pageRouteSchema = z.string().regex(/^\/[^/?#*]+$/)
   .refine((route) => !['/', '/login', '/settings'].includes(route), {message: 'route is reserved by the host'});
@@ -177,7 +182,7 @@ const baseFields = {
   label: labelField,
   entry: entryField,
   icon: iconField,
-  permissions: z.array(permissionSchema).optional(),
+  permissions: permissionsSchema.optional(),
   backend: backendSchema.optional(),
 };
 

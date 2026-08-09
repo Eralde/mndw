@@ -41,7 +41,8 @@
           "items": {
             "type": "string",
             "enum": [
-              "persistent-rci-session"
+              "persistent-rci-session:read",
+              "persistent-rci-session:write"
             ]
           }
         },
@@ -336,7 +337,8 @@
           "items": {
             "type": "string",
             "enum": [
-              "persistent-rci-session"
+              "persistent-rci-session:read",
+              "persistent-rci-session:write"
             ]
           }
         },

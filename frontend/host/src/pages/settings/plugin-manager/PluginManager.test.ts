@@ -242,10 +242,10 @@ describe('PluginManager', () => {
   });
 
   it('changes a permission, refreshes without offering a reload, and keeps grant state authoritative', async () => {
-    const initial = plugin({permissions: ['persistent-rci-session']});
+    const initial = plugin({permissions: ['persistent-rci-session:write']});
     const granted = plugin({
-      permissions: ['persistent-rci-session'],
-      permissionGrants: {'persistent-rci-session': true},
+      permissions: ['persistent-rci-session:write'],
+      permissionGrants: {'persistent-rci-session:write': true},
     });
     const client = clientWith([initial]);
 
@@ -261,7 +261,7 @@ describe('PluginManager', () => {
     await vi.waitFor(() =>
       expect(client.setPluginPermission.mock.calls).toContainEqual([
         'network-tools',
-        'persistent-rci-session',
+        'persistent-rci-session:write',
         true,
       ])
     );
@@ -273,10 +273,10 @@ describe('PluginManager', () => {
   });
 
   it('shows socket-start error while refreshed permission grant remains checked', async () => {
-    const initial = plugin({permissions: ['persistent-rci-session']});
+    const initial = plugin({permissions: ['persistent-rci-session:write']});
     const granted = plugin({
-      permissions: ['persistent-rci-session'],
-      permissionGrants: {'persistent-rci-session': true},
+      permissions: ['persistent-rci-session:write'],
+      permissionGrants: {'persistent-rci-session:write': true},
     });
     const client = clientWith([initial]);
 
@@ -293,7 +293,7 @@ describe('PluginManager', () => {
     await vi.waitFor(() =>
       expect(client.setPluginPermission.mock.calls).toContainEqual([
         'network-tools',
-        'persistent-rci-session',
+        'persistent-rci-session:write',
         true,
       ])
     );

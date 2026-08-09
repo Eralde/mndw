@@ -33,6 +33,11 @@ export interface MwsBackhaul {
   portLabel: string | null;
 }
 
+export interface MwsRadioPower {
+  readonly value: number | null;
+  readonly available: boolean;
+}
+
 export interface MwsNode {
   /** Normalized MAC — also the graph identity. */
   id: string;
@@ -50,6 +55,11 @@ export interface MwsNode {
   parent: MwsLink | null;
   children: MwsLink[];
   clients: MwsClient[];
+  dualBand: boolean;
+  wifiPower?: {
+    readonly power2g: MwsRadioPower;
+    readonly power5g: MwsRadioPower;
+  };
   mwsdStatus?: MwsdNodeStatus;
   persistentSession?: boolean;
 }

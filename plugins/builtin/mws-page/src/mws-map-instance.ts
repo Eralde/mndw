@@ -8,6 +8,7 @@ import {AppComponent} from './app/app.component';
 import {LiveMapNodeDetailsSource} from './node-details-source';
 import {openNodeDrawer} from './open-node-drawer';
 import {MwsDataService} from './services/mws-data.service';
+import {MwsWriteService} from './services/mws-write.service';
 import {NodePositionStore} from './services/node-position.store';
 import {
   HOST_INFO,
@@ -63,6 +64,7 @@ export function createMwsMapInstance(
       MwsApiService,
       {provide: MWS_RENAME_API, useExisting: MwsApiService},
       dataServiceProvider,
+      MwsWriteService,
       NodePositionStore,
     ],
   }).then((ref) => {

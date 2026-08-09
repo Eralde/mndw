@@ -20,6 +20,7 @@ export interface RawMwsMember {
   model?: string;
   'known-host'?: string;
   ip?: string;
+  capabilities?: {'dual-band'?: unknown} | null;
   fw?: string;
   'fw-available'?: string;
   system?: {cpuload?: number; memory?: string; uptime?: string};
@@ -91,6 +92,7 @@ export interface MwsMemberRecord {
   fwAvailable: string | null;
   system: MwsMemberSystem | null;
   backhaul: MwsMemberBackhaul | null;
+  dualBand: boolean;
 }
 
 export interface DeviceHostRecord {

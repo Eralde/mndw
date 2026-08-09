@@ -28,6 +28,7 @@ function member(overrides: Partial<MwsMemberRecord> & {cid: string; mac: string}
     fwAvailable: null,
     system: null,
     backhaul: null,
+    dualBand: false,
     ...overrides,
   };
 }
@@ -69,8 +70,10 @@ describe('buildMap — topology', () => {
     expect(controller.children[0].type).toBe('wireless');
     expect(buddy.id).toBe('02:7d:4a:91:c3:21');
     expect(buddy.isOnline).toBe(true);
+    expect(buddy.dualBand).toBe(true);
     expect(buddy.children).toHaveLength(1);
     expect(buddy.children[0].type).toBe('wired');
+    expect(buddy.children[0].node.dualBand).toBe(false);
     expect(buddy.children[0].node.id).toBe('02:7d:4a:91:c3:32');
     expect(buddy.children[0].node.parent?.node).toBe(buddy);
   });

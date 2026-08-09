@@ -52,13 +52,16 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 	if cfg.RCISessionStateDir == "" {
 		cfg.RCISessionStateDir = cfg.DataDir
 	}
+
 	if cfg.RCISessionKeyDir == "" {
 		cfg.RCISessionKeyDir = filepath.Join(filepath.Dir(cfg.DataDir), "rci-session-secrets")
 	}
+
 	persistentStore, storeErr := rcisessionstore.Open(rcisessionstore.Config{
 		CiphertextFile: cfg.RCISessionCiphertextFile(),
 		KeyFile:        cfg.RCISessionKeyFile(),
 	})
+
 	if storeErr != nil {
 		logger.Error("persistent RCI store unavailable", "error", storeErr)
 
@@ -80,14 +83,18 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 			if err != nil || document.Controller == nil || document.Controller.Support == model.SupportInvalid {
 				return ""
 			}
+
 			return document.Controller.Token
 		},
 	}, cfg.RCIEnumerationTTL, time.Now)
 	sessionService := rcisession.NewService(persistentStore, enumerator)
+
 	sessionService.SetLogger(logger)
+
 	if err := sessionService.SetControllerURL(cfg.ControllerURL, cfg.Dev); err != nil {
 		logger.Error("persistent RCI controller URL rejected", "error", err)
 	}
+
 	controllerTester := rcisession.ControllerHTTPTester{Client: deviceClient, Timeout: cfg.RCIProxyOperationTimeout, BaseURL: cfg.ControllerURL}
 	authTransport := auth.NewHTTPTransport(deviceClient)
 	generator := minter.HTTPGenerator{
@@ -97,8 +104,10 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 		TokenRequestBody: minter.DefaultTokenRequestBody,
 		Logger:           logger,
 	}
+
 	rcisession.NewHandler(sessionService, controllerTester, generator).Register(accessMux)
 	sessionService.Proxy(deviceClient, cfg.RCIProxyMaxResponseBytes, cfg.RCIProxyOperationTimeout)
+
 	socketReconciler := rcisessionsocket.NewReconciler(rcisessionsocket.Config{
 		Logger:      logger,
 		MaxInflight: cfg.RCIProxyMaxInflight,
@@ -112,8 +121,10 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 		reconciler:  socketReconciler,
 		logger:      logger,
 	}
+
 	sessionService.SetMutationObserver(assembly.reconcileSockets)
 	assembly.reconcileSockets()
+
 	registration.close = assembly.close
 	registration.permissionController = assembly
 
@@ -122,12 +133,14 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 
 func (a *rciSessionAssembly) reconcileSockets() {
 	a.mu.Lock()
+
 	defer a.mu.Unlock()
 
 	report, err := a.reconcileSocketsLocked()
 	if err != nil {
 		a.serviceLogger().Error("persistent RCI socket reconciliation failed", "reason", "reconcile", "error", err)
 	}
+
 	for plugin := range report.StartErrors {
 		a.serviceLogger().Error("persistent RCI socket start failed", "plugin", plugin, "reason", "reconcile")
 	}
@@ -137,7 +150,9 @@ func (a *rciSessionAssembly) ControllerPermissionAvailable() bool {
 	if a == nil || a.service == nil {
 		return false
 	}
+
 	_, document := a.service.Capability()
+
 	return document.Controller != nil && document.Controller.Support == model.SupportSupported
 }
 
@@ -145,13 +160,16 @@ func (a *rciSessionAssembly) PermissionChanged(plugin string) error {
 	if a == nil || a.service == nil || a.reconciler == nil {
 		return nil
 	}
+
 	a.mu.Lock()
+
 	defer a.mu.Unlock()
 
 	report, err := a.reconcileSocketsLocked()
 	if err != nil {
 		return err
 	}
+
 	if report.Desired[plugin] && !report.Active[plugin] {
 		return fmt.Errorf("%w: plugin %s socket unavailable", mgmt.ErrPersistentRCISocketStart, plugin)
 	}
@@ -161,7 +179,9 @@ func (a *rciSessionAssembly) PermissionChanged(plugin string) error {
 
 func (a *rciSessionAssembly) close() {
 	a.mu.Lock()
+
 	defer a.mu.Unlock()
+
 	if a.reconciler != nil {
 		a.reconciler.Close()
 	}
@@ -169,26 +189,39 @@ func (a *rciSessionAssembly) close() {
 
 func (a *rciSessionAssembly) reconcileSocketsLocked() (rcisessionsocket.ReconcileReport, error) {
 	bindings := make([]rcisessionsocket.Binding, 0)
+
 	for _, plugin := range a.registry.AllBackendPlugins() {
 		if !hasPersistentRCIPermission(plugin.Manifest) {
 			continue
 		}
+
 		if !isService(plugin.Manifest) {
 			continue
 		}
-		if !a.store.HasGrant(plugin.Name, manifest.PersistentRCISessionPermission) {
+
+		grants := rcisessionsocket.Grants{
+			CanRead:  a.store.HasGrant(plugin.Name, manifest.PersistentRCISessionReadPermission),
+			CanWrite: a.store.HasGrant(plugin.Name, manifest.PersistentRCISessionWritePermission),
+		}
+		grants.CanRead = grants.CanRead || grants.CanWrite
+
+		if !grants.CanRead && !grants.CanWrite {
 			continue
 		}
+
 		paths, err := backend.NewRuntimePaths(a.runtimeRoot, plugin.Name)
 		if err == nil && paths.RCISessionSocket != "" {
 			bindings = append(bindings, rcisessionsocket.Binding{
 				PluginID: plugin.Name,
 				Path:     paths.RCISessionSocket,
+				Grants:   grants,
 			})
 		}
 	}
+
 	_, document := a.service.Capability()
 	present := document.Controller != nil && document.Controller.Token != ""
+
 	return a.reconciler.Reconcile(context.Background(), bindings, present)
 }
 
@@ -208,10 +241,12 @@ func hasPersistentRCIPermission(m *manifest.Manifest) bool {
 	if m == nil {
 		return false
 	}
+
 	for _, permission := range m.Permissions {
-		if permission == manifest.PersistentRCISessionPermission {
+		if manifest.IsPersistentRCIPermission(permission) {
 			return true
 		}
 	}
+
 	return false
 }

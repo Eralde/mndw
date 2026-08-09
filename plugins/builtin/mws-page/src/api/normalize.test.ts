@@ -42,6 +42,7 @@ describe('normalizeMembers', () => {
     expect(buddy.cid).toBe('1a2c405a-fabb-11ee-911a-2559b061cca4');
     expect(buddy.mac).toBe('02:7d:4a:91:c3:21');
     expect(buddy.knownHost).toBe('Mesh Extender A');
+    expect(buddy.dualBand).toBe(true);
     expect(buddy.system).toEqual({cpuload: 1, memoryUsed: 171412, memoryTotal: 262144, uptime: 759});
     expect(buddy.backhaul?.parentMac).toBe('02:7d:4a:91:c3:10');
     expect(buddy.backhaul?.ap).toBe('WifiMaster1/Backhaul0');
@@ -54,6 +55,23 @@ describe('normalizeMembers', () => {
     expect(atlas.backhaul?.speed).toBe('1000');
     expect(atlas.backhaul?.duplex).toBe('full');
     expect(atlas.backhaul?.portLabel).toBe('0');
+    expect(atlas.dualBand).toBe(false);
+  });
+
+  it('only treats an exact true dual-band capability as enabled', () => {
+    const [trueValue, falseValue, stringValue, numberValue, malformedValue] = normalizeMembers([
+      {cid: 'c1', mac: 'aa:00:00:00:00:01', capabilities: {'dual-band': true}},
+      {cid: 'c2', mac: 'aa:00:00:00:00:02', capabilities: {'dual-band': false}},
+      {cid: 'c3', mac: 'aa:00:00:00:00:03', capabilities: {'dual-band': 'true'}},
+      {cid: 'c4', mac: 'aa:00:00:00:00:04', capabilities: {'dual-band': 1}},
+      {cid: 'c5', mac: 'aa:00:00:00:00:05', capabilities: null},
+    ]);
+
+    expect(trueValue.dualBand).toBe(true);
+    expect(falseValue.dualBand).toBe(false);
+    expect(stringValue.dualBand).toBe(false);
+    expect(numberValue.dualBand).toBe(false);
+    expect(malformedValue.dualBand).toBe(false);
   });
 
   it('treats a missing cid or mac as a parse failure', () => {

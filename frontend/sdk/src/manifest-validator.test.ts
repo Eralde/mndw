@@ -45,15 +45,26 @@ describe('validateManifest behavior', () => {
     size: {w: 4, h: 3},
   };
 
-  it('accepts persistent RCI permission and strips editor schema metadata', () => {
+  it('accepts persistent RCI read and write permissions and strips editor schema metadata', () => {
     const result = validateManifest({
       ...base,
       $schema: '../manifest.schema.json',
-      permissions: ['persistent-rci-session'],
+      permissions: ['persistent-rci-session:read', 'persistent-rci-session:write'],
     });
 
-    expect(result.permissions).toEqual(['persistent-rci-session']);
+    expect(result.permissions).toEqual(['persistent-rci-session:read', 'persistent-rci-session:write']);
     expect('$schema' in result).toBe(false);
+  });
+
+  it.each([
+    ['persistent-rci-session:read', 'duplicate read'],
+    ['persistent-rci-session:write', 'duplicate write'],
+  ])('rejects %s permission duplicates', (permission) => {
+    expect(() => validateManifest({...base, permissions: [permission, permission]})).toThrow(ManifestValidationError);
+  });
+
+  it('rejects the retired persistent RCI permission', () => {
+    expect(() => validateManifest({...base, permissions: ['persistent-rci-session']})).toThrow(ManifestValidationError);
   });
 
   it('normalizes route method and defaults access to session', () => {

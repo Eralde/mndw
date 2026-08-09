@@ -136,13 +136,13 @@ describe('mgmt-client', () => {
     fetchImpl.mockResolvedValue(jsonResponse(
       200,
       entry('x', {
-        permissions: ['persistent-rci-session'],
-        permissionGrants: {'persistent-rci-session': true},
+        permissions: ['persistent-rci-session:write'],
+        permissionGrants: {'persistent-rci-session:write': true},
       }),
     ));
 
     const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
-    const permission: PluginPermission = 'persistent-rci-session';
+    const permission: PluginPermission = 'persistent-rci-session:write';
     const result = await client.setPluginPermission('x', permission, true);
     const [url, init] = fetchImpl.mock.calls[0];
 
@@ -152,11 +152,11 @@ describe('mgmt-client', () => {
     expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
     expect(JSON.parse(init?.body as string)).toEqual({
       name: 'x',
-      permission: 'persistent-rci-session',
+      permission: 'persistent-rci-session:write',
       enabled: true,
     });
     expect(init?.signal).toBeInstanceOf(AbortSignal);
-    expect(result.permissionGrants?.['persistent-rci-session']).toBe(true);
+    expect(result.permissionGrants?.['persistent-rci-session:write']).toBe(true);
   });
 
   it('denyPlugin and deletePlugin resolve void on {ok:true}', async () => {

@@ -1,5 +1,5 @@
 import {normalizeMac} from './normalize';
-import type {MwsNode} from '../domain/mws/mws.types';
+import type {MwsNode, MwsRadioPower} from '../domain/mws/mws.types';
 
 export const MWSD_STATUS_STALE_AFTER_MS = 90_000;
 
@@ -17,7 +17,15 @@ export interface MwsdStatusSnapshot {
   readonly nodes: ReadonlyMap<string, MwsdNodeStatus>;
 }
 
-export type PersistentSessionSnapshot = ReadonlyMap<string, boolean>;
+export type PersistentRadioPower = MwsRadioPower;
+
+export interface PersistentSessionState {
+  readonly live: boolean;
+  readonly power2g: PersistentRadioPower;
+  readonly power5g: PersistentRadioPower;
+}
+
+export type PersistentSessionSnapshot = ReadonlyMap<string, PersistentSessionState>;
 
 export function parseMwsdNodesResponse(value: unknown, now: number): MwsdStatusSnapshot {
   const envelope = asRecord(value);
@@ -56,7 +64,7 @@ export function parseMwsdNodesResponse(value: unknown, now: number): MwsdStatusS
 export function parsePersistentSessionsResponse(value: unknown): PersistentSessionSnapshot {
   const envelope = asRecord(value);
   const response = asRecord(envelope?.data) ?? envelope;
-  const sessions = new Map<string, boolean>();
+  const sessions = new Map<string, PersistentSessionState>();
 
   if (!Array.isArray(response?.persistentSessions)) {
     return sessions;
@@ -70,7 +78,11 @@ export function parsePersistentSessionsResponse(value: unknown): PersistentSessi
     }
 
     try {
-      sessions.set(normalizeMac(entry.mac), entry.live);
+      sessions.set(normalizeMac(entry.mac), {
+        live: entry.live,
+        power2g: parsePersistentRadioPower(entry.power2g),
+        power5g: parsePersistentRadioPower(entry.power5g),
+      });
     } catch {
       continue;
     }
@@ -107,15 +119,18 @@ function mergeNode(node: MwsNode, snapshot: MwsdStatusSnapshot, now: number): {n
 }
 
 function mergePersistentNode(node: MwsNode, sessions: PersistentSessionSnapshot): {node: MwsNode; changed: boolean} {
-  const persistentSession = node.isController ? undefined : sessions.get(node.mac);
+  const state = node.isController ? undefined : sessions.get(node.mac);
+  const persistentSession = state?.live;
+  const wifiPower = state === undefined ? undefined : {power2g: state.power2g, power5g: state.power5g};
   const children = node.children.map((link) => ({link, result: mergePersistentNode(link.node, sessions)}));
-  const changed = node.persistentSession !== persistentSession || children.some(({result}) => result.changed);
+  const changed = node.persistentSession !== persistentSession || !sameWifiPower(node.wifiPower, wifiPower)
+    || children.some(({result}) => result.changed);
 
   if (!changed) {
     return {node, changed: false};
   }
 
-  const next: MwsNode = {...node, persistentSession, parent: null, children: []};
+  const next: MwsNode = {...node, persistentSession, wifiPower, parent: null, children: []};
 
   for (const {link, result} of children) {
     next.children.push({type: link.type, node: reparent(result.node, next, link.type)});
@@ -189,8 +204,49 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
+function parsePersistentRadioPower(value: unknown): PersistentRadioPower {
+  const entry = asRecord(value);
+
+  if (entry === null) {
+    return unavailableRadioPower();
+  }
+
+  const available = entry.available;
+  const parsedValue = parsePowerValue(entry.value);
+
+  if (typeof available !== 'boolean' || (entry.value !== undefined && entry.value !== null && parsedValue === null)) {
+    return unavailableRadioPower();
+  }
+
+  if (available && parsedValue === null) {
+    return unavailableRadioPower();
+  }
+
+  return {value: parsedValue, available};
+}
+
+function parsePowerValue(value: unknown): number | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100 ? value : null;
+}
+
+function unavailableRadioPower(): PersistentRadioPower {
+  return {value: null, available: false};
+}
+
 function sameStatus(left: MwsNode['mwsdStatus'], right: MwsNode['mwsdStatus']): boolean {
   return left?.state === right?.state && left?.lastSuccessAt === right?.lastSuccessAt;
+}
+
+function sameWifiPower(
+  left: MwsNode['wifiPower'],
+  right: MwsNode['wifiPower'],
+): boolean {
+  return left?.power2g.value === right?.power2g.value && left?.power2g.available === right?.power2g.available
+    && left?.power5g.value === right?.power5g.value && left?.power5g.available === right?.power5g.available;
 }
 
 function reparent(node: MwsNode, parent: MwsNode, type: 'wired' | 'wireless'): MwsNode {

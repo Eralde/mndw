@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -38,9 +39,34 @@ func TestFixtureCorpusParity(t *testing.T) {
 				}
 
 				_, validationErr := Validate(data)
+
 				if (validationErr == nil) != test.wantValid {
 					t.Errorf("Validate(%s) error = %v, want valid=%t", entry.Name(), validationErr, test.wantValid)
 				}
+			}
+		})
+	}
+}
+
+func TestPersistentRCIPermissions(t *testing.T) {
+	base := `{"manifestVersion":3,"name":"permissioned","version":"1.0.0","type":"widget","label":"Permissioned","entry":"index.js","size":{"w":2,"h":2},"permissions":%s}`
+
+	for _, test := range []struct {
+		name        string
+		permissions string
+		valid       bool
+	}{
+		{name: "read", permissions: `["persistent-rci-session:read"]`, valid: true},
+		{name: "write", permissions: `["persistent-rci-session:write"]`, valid: true},
+		{name: "both", permissions: `["persistent-rci-session:read","persistent-rci-session:write"]`, valid: true},
+		{name: "duplicate read", permissions: `["persistent-rci-session:read","persistent-rci-session:read"]`},
+		{name: "duplicate write", permissions: `["persistent-rci-session:write","persistent-rci-session:write"]`},
+		{name: "retired", permissions: `["persistent-rci-session"]`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := Validate([]byte(fmt.Sprintf(base, test.permissions)))
+			if (err == nil) != test.valid {
+				t.Fatalf("Validate() error = %v, valid = %v", err, test.valid)
 			}
 		})
 	}

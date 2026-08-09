@@ -27,6 +27,7 @@ function node(id: string, isController = false): MwsNode {
     parent: null,
     children: [],
     clients: [],
+    dualBand: false,
   };
 }
 
@@ -103,7 +104,7 @@ describe('mwsd status', () => {
     expect(roots[0]?.children[0]?.node.parent?.node).toBe(roots[0]);
   });
 
-  it('parses persistent sessions separately and ignores malformed or unknown entries', () => {
+  it('parses persistent sessions and preserves legacy entries without power fields', () => {
     const sessions = parsePersistentSessionsResponse({
       ok: true,
       status: 200,
@@ -119,10 +120,45 @@ describe('mwsd status', () => {
 
     expect(sessions).toEqual(
       new Map([
-        [MAC, true],
-        ['11:22:33:44:55:66', false],
+        [MAC, {
+          live: true,
+          power2g: {value: null, available: false},
+          power5g: {value: null, available: false},
+        }],
+        ['11:22:33:44:55:66', {
+          live: false,
+          power2g: {value: null, available: false},
+          power5g: {value: null, available: false},
+        }],
       ]),
     );
+  });
+
+  it('parses retained numeric power and makes malformed radio data unavailable', () => {
+    const sessions = parsePersistentSessionsResponse({
+      persistentSessions: [{
+        mac: MAC,
+        live: true,
+        power2g: {value: 75, available: true},
+        power5g: {value: '50', available: true},
+      }, {
+        mac: '11:22:33:44:55:66',
+        live: true,
+        power2g: {value: 120, available: true},
+        power5g: {value: null, available: 'no'},
+      }],
+    });
+
+    expect(sessions.get(MAC)).toEqual({
+      live: true,
+      power2g: {value: 75, available: true},
+      power5g: {value: null, available: false},
+    });
+    expect(sessions.get('11:22:33:44:55:66')).toEqual({
+      live: true,
+      power2g: {value: null, available: false},
+      power5g: {value: null, available: false},
+    });
   });
 
   it('merges persistent sessions by MAC, omits controller and preserves absent state', () => {
@@ -132,10 +168,21 @@ describe('mwsd status', () => {
     controller.children = [{type: 'wired', node: extender}];
     extender.parent = {type: 'wired', node: controller};
 
-    const roots = mergePersistentSessions([controller], new Map([[MAC, true]]));
+    const roots = mergePersistentSessions(
+      [controller],
+      new Map([[MAC, {
+        live: true,
+        power2g: {value: 75, available: true},
+        power5g: {value: 50, available: true},
+      }]]),
+    );
 
     expect(roots[0]?.persistentSession).toBeUndefined();
     expect(roots[0]?.children[0]?.node.persistentSession).toBe(true);
+    expect(roots[0]?.children[0]?.node.wifiPower).toEqual({
+      power2g: {value: 75, available: true},
+      power5g: {value: 50, available: true},
+    });
     expect(roots[0]?.children[0]?.node.parent?.node).toBe(roots[0]);
     expect(mergePersistentSessions([node(MAC)], new Map()).at(0)?.persistentSession).toBeUndefined();
   });

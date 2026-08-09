@@ -59,7 +59,14 @@ type PersistentSession struct {
 	Mac       string               `json:"mac"`
 	Live      bool                 `json:"live"`
 	Stale     bool                 `json:"stale"`
+	Power2G   PersistentRadioPower `json:"power2g"`
+	Power5G   PersistentRadioPower `json:"power5g"`
 	Telemetry *PersistentTelemetry `json:"telemetry,omitempty"`
+}
+
+type PersistentRadioPower struct {
+	Value     *int `json:"value,omitempty"`
+	Available bool `json:"available"`
 }
 
 type Snapshot struct {

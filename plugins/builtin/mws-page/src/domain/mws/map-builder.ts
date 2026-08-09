@@ -22,6 +22,7 @@ export function buildMap(
     parent: null,
     children: [],
     clients: [],
+    dualBand: false,
   };
 
   const uniqueMembers: MwsMemberRecord[] = [];
@@ -128,6 +129,7 @@ function toMemberNode(record: MwsMemberRecord): MwsNode {
     parent: null,
     children: [],
     clients: [],
+    dualBand: record.dualBand,
   };
 }
 

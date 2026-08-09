@@ -110,6 +110,7 @@ export function normalizeMembers(raw: unknown): MwsMemberRecord[] {
       fwAvailable: toNonEmptyString(entry['fw-available']),
       system: normalizeSystem(entry.system),
       backhaul: normalizeBackhaul(entry.backhaul),
+      dualBand: entry.capabilities?.['dual-band'] === true,
     };
   });
 }

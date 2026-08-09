@@ -11,12 +11,17 @@ import (
 type Type = contractmanifest.Type
 
 const (
-	TypeWidget                     = contractmanifest.TypeWidget
-	TypePage                       = contractmanifest.TypePage
-	PersistentRCISessionPermission = contractmanifest.PersistentRCISessionPermission
-	BackendKindExec                = contractmanifest.BackendKindExec
-	BackendKindService             = contractmanifest.BackendKindService
+	TypeWidget                          = contractmanifest.TypeWidget
+	TypePage                            = contractmanifest.TypePage
+	PersistentRCISessionReadPermission  = contractmanifest.PersistentRCISessionReadPermission
+	PersistentRCISessionWritePermission = contractmanifest.PersistentRCISessionWritePermission
+	BackendKindExec                     = contractmanifest.BackendKindExec
+	BackendKindService                  = contractmanifest.BackendKindService
 )
+
+func IsPersistentRCIPermission(permission string) bool {
+	return contractmanifest.IsPersistentRCIPermission(permission)
+}
 
 type Size = contractmanifest.Size
 type BackendKind = contractmanifest.BackendKind
@@ -44,14 +49,18 @@ func ValidateV3(data []byte) (*Manifest, error) {
 	var envelope struct {
 		ManifestVersion *int `json:"manifestVersion"`
 	}
+
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, err
 	}
+
 	if envelope.ManifestVersion == nil || *envelope.ManifestVersion != 3 {
 		version := 0
+
 		if envelope.ManifestVersion != nil {
 			version = *envelope.ManifestVersion
 		}
+
 		return nil, &UnsupportedVersionError{Version: version}
 	}
 

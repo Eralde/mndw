@@ -149,6 +149,7 @@ func (h *Handler) handlePending(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	pending := make([]ListEntry, 0)
+
 	for _, e := range entries {
 		if e.Approval == state.ApprovalPending {
 			pending = append(pending, e)
@@ -164,6 +165,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 	snap := h.store.Snapshot()
 
 	entries := make([]ListEntry, 0, len(snap.Plugins))
+
 	for _, p := range snap.Plugins {
 		m, err := manifest.ValidateV3(p.Manifest)
 		if err != nil {
@@ -173,6 +175,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 
 			continue
 		}
+
 		entries = append(entries, h.entryFrom(m, p.Source, p.Approval, p.Enabled))
 	}
 
@@ -180,10 +183,12 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 	if err != nil {
 		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
 	}
+
 	for _, plugin := range builtinPlugins {
 		if _, exists := snap.Plugins[plugin.Name]; exists {
 			continue
 		}
+
 		entries = append(entries, h.entryFrom(plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true))
 	}
 
@@ -211,21 +216,27 @@ func (h *Handler) entryFrom(m *manifest.Manifest, source, approval string, enabl
 		Backend:     manifest.Descriptor(m),
 	}
 	e.DepsStatus = "ready"
+
 	for _, permission := range m.Permissions {
-		if permission != manifest.PersistentRCISessionPermission {
+		if !manifest.IsPersistentRCIPermission(permission) {
 			continue
 		}
+
 		if e.Permissions == nil {
 			e.Permissions = make([]string, 0, 1)
 		}
+
 		e.Permissions = append(e.Permissions, permission)
+
 		if h.store.HasGrant(e.Name, permission) {
 			if e.PermissionGrants == nil {
 				e.PermissionGrants = make(map[string]bool)
 			}
+
 			e.PermissionGrants[permission] = true
 		}
 	}
+
 	if h.runtime != nil && m.Backend != nil && m.Backend.Kind != nil {
 		status := h.runtime.Status(e.Name)
 		e.Runtime = &status
@@ -251,9 +262,11 @@ type nameRequest struct {
 // endpoints.
 func decodeName(r *http.Request) (string, *httpx.APIError) {
 	var req nameRequest
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return "", httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be JSON with a name field")
 	}
+
 	if req.Name == "" {
 		return "", httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "name is required")
 	}

@@ -1,4 +1,5 @@
 <script lang="ts">
+import type {PluginPermission} from '@mndw/sdk';
 import type {
   PluginBackendDescriptor,
   PluginListEntry,
@@ -17,7 +18,7 @@ interface Props {
   onDisable: (name: string) => void;
   onPermissionChange: (
     name: string,
-    permission: 'persistent-rci-session',
+    permission: PluginPermission,
     enabled: boolean,
   ) => void;
   onRestart?: (name: string) => void;
@@ -53,10 +54,22 @@ function boundedError(value: string): string {
   return value.length > 240 ? `${value.slice(0, 240)}…` : value;
 }
 
-const PERSISTENT_RCI_PERMISSION = 'persistent-rci-session' as const;
+const PERSISTENT_RCI_PERMISSIONS: PluginPermission[] = [
+  'persistent-rci-session:read',
+  'persistent-rci-session:write',
+];
 
-function permissionGranted(item: PluginListEntry): boolean {
-  return item.permissionGrants?.[PERSISTENT_RCI_PERMISSION] ?? false;
+function permissionGranted(
+  item: PluginListEntry,
+  permission: PluginPermission,
+): boolean {
+  return item.permissionGrants?.[permission] ?? false;
+}
+
+function permissionLabel(permission: PluginPermission): string {
+  return permission.endsWith(':write')
+    ? 'Persistent RCI write'
+    : 'Persistent RCI read';
 }
 
 let {
@@ -128,24 +141,28 @@ let {
             <p class="mndw-installed__backend">{summary.join(', ')}</p>
           {/if}
 
-          {#if permissionVisible
-          && item.permissions?.includes(PERSISTENT_RCI_PERMISSION)}
-            <mndw-field
-              class="mndw-installed__permission-switch"
-              label="Persistent RCI session"
-            >
-              <mndw-switch
-                checked={permissionGranted(item)}
-                disabled={busyName !== null
-                || (!permissionGranted(item) && !permissionAvailable)}
-                onmndwchange={(event: CustomEvent<{checked: boolean}>) =>
-                onPermissionChange(
-                  item.name,
-                  PERSISTENT_RCI_PERMISSION,
-                  event.detail.checked,
-                )}
-              ></mndw-switch>
-            </mndw-field>
+          {#if permissionVisible}
+            {#each PERSISTENT_RCI_PERMISSIONS as permission (permission)}
+              {#if item.permissions?.includes(permission)}
+                <mndw-field
+                  class="mndw-installed__permission-switch"
+                  label={permissionLabel(permission)}
+                >
+                  <mndw-switch
+                    checked={permissionGranted(item, permission)}
+                    disabled={busyName !== null
+                    || (!permissionGranted(item, permission)
+                      && !permissionAvailable)}
+                    onmndwchange={(event: CustomEvent<{checked: boolean}>) =>
+                    onPermissionChange(
+                      item.name,
+                      permission,
+                      event.detail.checked,
+                    )}
+                  ></mndw-switch>
+                </mndw-field>
+              {/if}
+            {/each}
           {/if}
 
           {#if actionError?.name === item.name}

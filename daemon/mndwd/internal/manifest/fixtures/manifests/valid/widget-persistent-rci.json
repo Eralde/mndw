@@ -6,5 +6,5 @@
   "label": "Persistent Session Widget",
   "entry": "index.js",
   "size": {"w": 4, "h": 3},
-  "permissions": ["persistent-rci-session"]
+  "permissions": ["persistent-rci-session:read"]
 }

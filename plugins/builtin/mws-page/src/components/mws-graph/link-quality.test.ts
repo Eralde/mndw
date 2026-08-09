@@ -19,6 +19,7 @@ function node(backhaul: MwsNode['backhaul']): MwsNode {
     parent: null,
     children: [],
     clients: [],
+    dualBand: false,
   };
 }
 

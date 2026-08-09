@@ -63,25 +63,32 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 	if config.RuntimeRoot == "" {
 		config.RuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
 	}
+
 	if config.Limits.MaxConcurrentExecTotal <= 0 {
 		config.Limits.MaxConcurrentExecTotal = 8
 	}
+
 	if config.Limits.MaxConcurrentExecPerPlugin <= 0 {
 		config.Limits.MaxConcurrentExecPerPlugin = 4
 	}
+
 	if config.Limits.MaxSupervisedServices <= 0 {
 		config.Limits.MaxSupervisedServices = 8
 	}
+
 	if len(config.SupportedServiceProtocols) == 0 {
 		config.SupportedServiceProtocols = []int{1}
 	}
+
 	config.Exec.MaxConcurrentExecTotal = config.Limits.MaxConcurrentExecTotal
 	config.Exec.MaxConcurrentExecPerPlugin = config.Limits.MaxConcurrentExecPerPlugin
 	config.Exec.RuntimeRoot = config.RuntimeRoot
 	config.Exec.PluginDataRoot = config.PluginDataRoot
+
 	if config.Supervisor.RuntimeRoot == "" {
 		config.Supervisor.RuntimeRoot = config.RuntimeRoot
 	}
+
 	config.Supervisor.PluginDataRoot = config.PluginDataRoot
 	config.Supervisor.Limits = config.Limits
 	config.Supervisor.SupportedProtocols = append([]int(nil), config.SupportedServiceProtocols...)
@@ -90,6 +97,7 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 	config.Supervisor.FinalReapTimeout = positiveDuration(config.Supervisor.FinalReapTimeout, 2*time.Second)
 
 	admission := NewAdmission(config.Limits)
+
 	return &RuntimeImpl{
 		exec:        newExecRunner(config.Exec, admission),
 		supervisor:  newSupervisor(config.Supervisor, admission),
@@ -103,25 +111,30 @@ func positiveDuration(value, fallback time.Duration) time.Duration {
 	if value <= 0 {
 		return fallback
 	}
+
 	return value
 }
 
 func (r *RuntimeImpl) Reconcile(ctx context.Context, plugins []*registry.Plugin) {
 	specs := make([]ServiceSpec, 0, len(plugins))
+
 	for _, plugin := range plugins {
 		if spec, ok := serviceSpec(plugin); ok {
 			spec.RCISessionSocket = persistentRCISocket(r.runtimeRoot, plugin)
 			specs = append(specs, spec)
 		}
 	}
+
 	r.supervisor.Reconcile(ctx, specs)
 }
 
 func (r *RuntimeImpl) Activate(ctx context.Context, plugin *registry.Plugin) error {
 	spec, ok := serviceSpec(plugin)
+
 	if !ok {
 		return nil
 	}
+
 	spec.RCISessionSocket = persistentRCISocket(r.runtimeRoot, plugin)
 
 	return r.supervisor.Start(ctx, spec)
@@ -141,6 +154,7 @@ func (r *RuntimeImpl) Status(pluginID string) RuntimeStatus {
 
 func (r *RuntimeImpl) Limits() RuntimeLimitsSnapshot {
 	execTotal, services, _ := r.supervisor.admission.Snapshot()
+
 	return RuntimeLimitsSnapshot{
 		MaxConcurrentExecTotal:     r.limits.MaxConcurrentExecTotal,
 		MaxConcurrentExecPerPlugin: r.limits.MaxConcurrentExecPerPlugin,
@@ -155,6 +169,7 @@ func (r *RuntimeImpl) BeginPluginMaintenance(ctx context.Context, pluginID strin
 	if r.maintenance != nil {
 		r.maintenance(pluginID)
 	}
+
 	return r.supervisor.Forget(ctx, pluginID, StopMaintenance)
 }
 
@@ -162,6 +177,7 @@ func (r *RuntimeImpl) BeginPlatformMaintenance(ctx context.Context) error {
 	if r.platform != nil {
 		r.platform()
 	}
+
 	return r.supervisor.StopAll(ctx, StopMaintenance)
 }
 
@@ -175,6 +191,7 @@ func (r *RuntimeImpl) Shutdown(ctx context.Context) error {
 	if r.platform != nil {
 		r.platform()
 	}
+
 	return r.supervisor.StopAll(ctx, StopShutdown)
 }
 
@@ -201,11 +218,15 @@ func serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
 	if plugin == nil || plugin.Manifest == nil || plugin.Manifest.Backend == nil {
 		return ServiceSpec{}, false
 	}
+
 	backend := plugin.Manifest.Backend
+
 	if backend.Kind == nil || *backend.Kind != manifest.BackendKindService || backend.Command == nil {
 		return ServiceSpec{}, false
 	}
+
 	protocolVersion := 1
+
 	if backend.ProtocolVersion != nil {
 		protocolVersion = *backend.ProtocolVersion
 	}
@@ -225,8 +246,9 @@ func persistentRCISocket(runtimeRoot string, plugin *registry.Plugin) string {
 	if plugin == nil || plugin.Manifest == nil {
 		return ""
 	}
+
 	for _, permission := range plugin.Manifest.Permissions {
-		if permission == manifest.PersistentRCISessionPermission {
+		if manifest.IsPersistentRCIPermission(permission) {
 			paths, err := NewRuntimePaths(runtimeRoot, plugin.Name)
 			if err == nil {
 				return paths.RCISessionSocket
@@ -241,5 +263,6 @@ func persistentRCISocket(runtimeRoot string, plugin *registry.Plugin) string {
 // probing or creating arbitrary paths when runtime root is unavailable.
 func RuntimePathExists(root string) bool {
 	_, err := os.Stat(root)
+
 	return err == nil
 }

@@ -6,7 +6,7 @@
   "label": "MWS Map",
   "route": "/mws",
   "entry": "index.js",
-  "permissions": ["persistent-rci-session"],
+  "permissions": ["persistent-rci-session:write"],
   "backend": {
     "kind": "service",
     "protocolVersion": 1,
@@ -15,7 +15,8 @@
       {"id": "credentials", "transport": "http", "method": "POST", "path": "credentials"},
       {"id": "forget", "transport": "http", "method": "POST", "path": "forget"},
       {"id": "nodes", "transport": "http", "method": "GET", "path": "nodes"},
-      {"id": "snapshot", "transport": "http", "method": "GET", "path": "snapshot"}
+      {"id": "snapshot", "transport": "http", "method": "GET", "path": "snapshot"},
+      {"id": "write", "transport": "http", "method": "POST", "path": "write"}
     ]
   }
 }

@@ -14,6 +14,7 @@ import type {MwsNode} from './domain/mws/mws.types';
 import type {NodeDetailsSource} from './node-details-source';
 import {openNodeDrawer} from './open-node-drawer';
 import {MwsDataService} from './services/mws-data.service';
+import {MwsWriteService} from './services/mws-write.service';
 import {MWS_RENAME_API} from './tokens';
 
 describe('openNodeDrawer', () => {
@@ -37,6 +38,7 @@ describe('openNodeDrawer', () => {
       providers: [
         {provide: MWS_RENAME_API, useValue: {renameNode: vi.fn(() => of(undefined))}},
         {provide: MwsDataService, useValue: {refreshNow: vi.fn()}},
+        {provide: MwsWriteService, useValue: {setPower: vi.fn()}},
       ],
     });
 
@@ -104,6 +106,7 @@ describe('openNodeDrawer', () => {
       providers: [
         {provide: MWS_RENAME_API, useValue: {renameNode: vi.fn(() => of(undefined))}},
         {provide: MwsDataService, useValue: {refreshNow: vi.fn()}},
+        {provide: MwsWriteService, useValue: {setPower: vi.fn()}},
       ],
     });
 
@@ -132,6 +135,7 @@ describe('openNodeDrawer', () => {
           parent: null,
           children: [],
           clients: [],
+          dualBand: false,
         }),
     };
 
@@ -175,6 +179,7 @@ describe('openNodeDrawer', () => {
       providers: [
         {provide: MWS_RENAME_API, useValue: {renameNode: vi.fn(() => of(undefined))}},
         {provide: MwsDataService, useValue: {refreshNow: vi.fn()}},
+        {provide: MwsWriteService, useValue: {setPower: vi.fn()}},
       ],
     });
 
@@ -211,6 +216,7 @@ describe('openNodeDrawer', () => {
       parent: null,
       children: [],
       clients: [],
+      dualBand: false,
     });
     snapshots.next({
       id: 'node-id',
@@ -228,6 +234,7 @@ describe('openNodeDrawer', () => {
       parent: null,
       children: [],
       clients: [],
+      dualBand: false,
     });
     appRef.tick();
 

@@ -86,6 +86,41 @@
       }
     </section>
 
+    @if (!n.isController) {
+      <section class="wifi-power">
+        <h4>Wi-Fi TX power</h4>
+        <mndw-field label="2.4 GHz">
+          <mndw-slider
+            data-radio="WifiMaster0"
+            min="0"
+            max="100"
+            step="1"
+            [value]="powerValue(n, 'WifiMaster0')"
+            [attr.value-text]="powerValueText(n, 'WifiMaster0')"
+            [disabled]="powerDisabled(n, 'WifiMaster0')"
+            (mndwchange)="onPowerChange(n, 'WifiMaster0', $any($event))"
+          ></mndw-slider>
+        </mndw-field>
+        @if (n.dualBand) {
+          <mndw-field label="5 GHz">
+            <mndw-slider
+              data-radio="WifiMaster1"
+              min="0"
+              max="100"
+              step="1"
+              [value]="powerValue(n, 'WifiMaster1')"
+              [attr.value-text]="powerValueText(n, 'WifiMaster1')"
+              [disabled]="powerDisabled(n, 'WifiMaster1')"
+              (mndwchange)="onPowerChange(n, 'WifiMaster1', $any($event))"
+            ></mndw-slider>
+          </mndw-field>
+        }
+        @if (powerError) {
+          <p class="power-error" role="alert">{{ powerError }}</p>
+        }
+      </section>
+    }
+
     <section class="clients">
       <h4>Clients ({{ n.clients.length }})</h4>
       @if (n.clients.length === 0) {

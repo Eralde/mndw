@@ -4,6 +4,7 @@ import {dirname, join} from 'node:path';
 import {describe, expect, it} from 'vitest';
 
 import type {PluginManifestOutput} from '@mndw/sdk';
+import {sharedDependencyVersions} from '@mndw/sdk/shared-dependencies';
 
 import {CliError} from './errors.js';
 import {buildLock, findBundledSharedDependencies, parseLock, resolveSdkVersion, serializeLock} from './lock.js';
@@ -55,6 +56,7 @@ describe('resolveSdkVersion', () => {
 describe('buildLock', () => {
   it('produces a version-1 lock with sorted base shared deps for a vanilla plugin', () => {
     const lock = buildLock(widgetManifest(), 'vanilla');
+    const sharedVersions = sharedDependencyVersions();
 
     expect(lock.lockVersion).toBe(1);
     expect(lock.plugin).toEqual({name: 'sample-widget', version: '1.2.3'});
@@ -68,9 +70,9 @@ describe('buildLock', () => {
       'rxjs',
       'rxjs/operators',
     ]);
-    expect(lock.sharedDependencies.rxjs).toBe('7.8.2');
-    expect(lock.sharedDependencies['@rci-tools/core']).toBe('0.2.0');
-    expect(lock.sharedDependencies.d3).toBe('7.9.0');
+    expect(lock.sharedDependencies.rxjs).toBe(sharedVersions.rxjs);
+    expect(lock.sharedDependencies['@rci-tools/core']).toBe(sharedVersions['@rci-tools/core']);
+    expect(lock.sharedDependencies.d3).toBe(sharedVersions.d3);
   });
 
   it('records the same base shared deps for a svelte plugin', () => {
@@ -104,12 +106,13 @@ describe('parseLock', () => {
 
 describe('findBundledSharedDependencies', () => {
   const specifiers = ['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm'];
+  const sharedVersions = sharedDependencyVersions();
 
   it('flags a shared dependency present as a bundled input', () => {
     const metafile = {
       inputs: {
         'src/index.ts': {},
-        'node_modules/.pnpm/rxjs@7.8.2/node_modules/rxjs/internal/index.js': {},
+        [`node_modules/.pnpm/rxjs@${sharedVersions.rxjs}/node_modules/rxjs/internal/index.js`]: {},
       },
     };
 

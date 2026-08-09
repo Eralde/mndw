@@ -138,8 +138,8 @@ importers:
         specifier: workspace:*
         version: link:../ui
       '@rci-tools/core':
-        specifier: ^0.2.0
-        version: 0.2.0
+        specifier: 0.4.3
+        version: 0.4.3
       gridstack:
         specifier: ^12.6.0
         version: 12.6.0
@@ -1479,6 +1479,9 @@ packages:
 
   '@rci-tools/core@0.2.0':
     resolution: {integrity: sha512-f8sn3cgnfpJ0uEtzeKvfgpweaZi0ur5FrFeSyCPAuakOuIHYZRtB5AbGnDn99BYzoIXWpDgxNI48oI9i//k27w==}
+
+  '@rci-tools/core@0.4.3':
+    resolution: {integrity: sha512-o1sL+oVLLks0EvN+u2m0NI1sQE4RDpx28iGWiGFjH6Mu5hT0+qqLi5Dn23rh0hJ0yP1BsW0xhkgrbdN9Ck+aGA==}
 
   '@rci-tools/core@https://codeload.github.com/Eralde/rci-tools/tar.gz/85eb264d7d7c5e177813f858db23cff117712fad#path:/packages/core':
     resolution: {path: /packages/core, tarball: https://codeload.github.com/Eralde/rci-tools/tar.gz/85eb264d7d7c5e177813f858db23cff117712fad}
@@ -4988,6 +4991,13 @@ snapshots:
       playwright: 1.62.0
 
   '@rci-tools/core@0.2.0':
+    dependencies:
+      hash-wasm: 4.12.0
+      jssha: 3.3.2
+      lodash-es: 4.18.1
+      rxjs: 7.8.2
+
+  '@rci-tools/core@0.4.3':
     dependencies:
       hash-wasm: 4.12.0
       jssha: 3.3.2

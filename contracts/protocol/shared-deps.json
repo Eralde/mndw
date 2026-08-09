@@ -5,12 +5,12 @@
   "bundles": [
     {
       "bundle": "rci-tools-core",
-      "version": "0.2.0",
+      "version": "0.4.3",
       "specifiers": [
         "@rci-tools/core"
       ],
       "framework": "base",
-      "url": "/shared/rci-tools-core@0.2.0.js"
+      "url": "/shared/rci-tools-core@0.4.3.js"
     },
     {
       "bundle": "rxjs",
@@ -114,7 +114,7 @@
     }
   ],
   "importMap": {
-    "@rci-tools/core": "/shared/rci-tools-core@0.2.0.js",
+    "@rci-tools/core": "/shared/rci-tools-core@0.4.3.js",
     "rxjs": "/shared/rxjs@7.8.2.js",
     "rxjs/operators": "/shared/rxjs-operators@7.8.2.js",
     "hash-wasm": "/shared/hash-wasm@4.12.0.js",

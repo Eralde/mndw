@@ -10,6 +10,16 @@ import {
   versionedBundleUrl,
 } from '../shared-dependencies.js';
 
+const dependencyFor = (bundle: string) => {
+  const dependency = SHARED_DEPENDENCIES.find((entry) => entry.bundle === bundle);
+
+  if (!dependency) {
+    throw new Error(`Missing shared dependency: ${bundle}`);
+  }
+
+  return dependency;
+};
+
 describe('shared dependencies table', () => {
   it('matches generated protocol snapshot', () => {
     const snapshot = JSON.parse(
@@ -26,20 +36,20 @@ describe('shared dependencies table', () => {
   });
 
   it('serves each bundle at a versioned /shared URL', () => {
-    const rxjs = SHARED_DEPENDENCIES.find((d) => d.bundle === 'rxjs');
+    const rxjs = dependencyFor('rxjs');
 
-    expect(rxjs && versionedBundleUrl(rxjs)).toBe('/shared/rxjs@7.8.2.js');
+    expect(versionedBundleUrl(rxjs)).toBe(sharedImportMap().rxjs);
   });
 
   it('maps every specifier to its versioned bundle in the import map', () => {
     const map = sharedImportMap();
 
-    expect(map.rxjs).toBe('/shared/rxjs@7.8.2.js');
+    expect(map.rxjs).toBe(versionedBundleUrl(dependencyFor('rxjs')));
     expect(map['@angular/core']).toBe(map['@angular/core/rxjs-interop']);
   });
 
   it('stamps a specifier→version map for the lock file', () => {
-    expect(sharedDependencyVersions()['@rci-tools/core']).toBe('0.2.0');
+    expect(sharedDependencyVersions()['@rci-tools/core']).toBe(dependencyFor('rci-tools-core').version);
   });
 
   // Angular DI invariants, encoded as data. Splitting or inlining these re-creates the
@@ -68,7 +78,7 @@ describe('shared dependencies table', () => {
   });
 
   describe('full d3 bundle', () => {
-    const d3Entry = SHARED_DEPENDENCIES.find((entry) => entry.bundle === 'd3');
+    const d3Entry = dependencyFor('d3');
 
     it('ships one complete base-framework d3 entry at the pinned version', () => {
       expect(d3Entry).toEqual({
@@ -81,8 +91,8 @@ describe('shared dependencies table', () => {
     });
 
     it('maps d3 to one versioned host URL', () => {
-      expect(sharedImportMap().d3).toBe('/shared/d3@7.9.0.js');
-      expect(sharedDependencyVersions().d3).toBe('7.9.0');
+      expect(sharedImportMap().d3).toBe(versionedBundleUrl(d3Entry));
+      expect(sharedDependencyVersions().d3).toBe(d3Entry.version);
     });
 
     it('gives every plugin framework the full d3 external', () => {

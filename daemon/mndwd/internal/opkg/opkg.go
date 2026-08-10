@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"mndw.local/shared/chansem"
 	"mndwd/internal/output"
 )
 
@@ -143,20 +144,11 @@ func (m *execManager) run(ctx context.Context, args ...string) (string, int, err
 // pre-check matters because with an empty gate and a done context both select
 // cases are ready and Go picks randomly.
 func (m *execManager) acquire(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	select {
-	case m.gate <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return chansem.Acquire(ctx, m.gate)
 }
 
 func (m *execManager) release() {
-	<-m.gate
+	chansem.Release(m.gate)
 }
 
 func (m *execManager) mutate(ctx context.Context, action string, packages []string, args ...string) error {

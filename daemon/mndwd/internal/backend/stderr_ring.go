@@ -26,7 +26,7 @@ func (r *StderrRing) Write(data []byte) (int, error) {
 		r.data = r.data[len(r.data)-r.maxBytes:]
 	}
 	if r.maxLines > 0 {
-		for len(bytes.Split(r.data, []byte{'\n'})) > r.maxLines+1 {
+		for bytes.Count(r.data, []byte{'\n'}) > r.maxLines {
 			if index := bytes.IndexByte(r.data, '\n'); index >= 0 {
 				r.data = r.data[index+1:]
 			} else {

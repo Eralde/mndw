@@ -20,13 +20,21 @@ type noCORSWriter struct {
 	wroteHeader bool
 }
 
+// NewNoCORSResponseWriter wraps a response writer and strips CORS headers
+// before the response is committed.
+func NewNoCORSResponseWriter(writer http.ResponseWriter) http.ResponseWriter {
+	return &noCORSWriter{ResponseWriter: writer}
+}
+
 func (w *noCORSWriter) WriteHeader(status int) {
 	for key := range w.Header() {
 		if strings.HasPrefix(strings.ToLower(key), "access-control-") {
 			delete(w.Header(), key)
 		}
 	}
+
 	w.wroteHeader = true
+
 	w.ResponseWriter.WriteHeader(status)
 }
 
@@ -34,6 +42,7 @@ func (w *noCORSWriter) Write(data []byte) (int, error) {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)
 	}
+
 	return w.ResponseWriter.Write(data)
 }
 
@@ -44,12 +53,13 @@ func (w *noCORSWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 // auth, palette, and diagnostics responses too.
 func NoCORSHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		next.ServeHTTP(&noCORSWriter{ResponseWriter: writer}, request)
+		next.ServeHTTP(NewNoCORSResponseWriter(writer), request)
 	})
 }
 
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
+
 	r.ResponseWriter.WriteHeader(status)
 }
 

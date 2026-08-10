@@ -11,6 +11,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"mndw.local/shared/ptr"
 )
 
 type ServiceSpec struct {
@@ -23,16 +25,6 @@ type ServiceSpec struct {
 	Builtin          bool
 	Enabled          bool
 }
-
-type StopReason string
-
-const (
-	StopDisable     StopReason = "disable"
-	StopDelete      StopReason = "delete"
-	StopUpdate      StopReason = "update"
-	StopShutdown    StopReason = "shutdown"
-	StopMaintenance StopReason = "maintenance"
-)
 
 type SupervisorConfig struct {
 	RuntimeRoot        string
@@ -66,6 +58,11 @@ type serviceRecord struct {
 }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
+	cfg = normalizeSupervisorConfig(cfg)
+	return newSupervisor(cfg, NewAdmission(cfg.Limits))
+}
+
+func normalizeSupervisorConfig(cfg SupervisorConfig) SupervisorConfig {
 	if cfg.Limits.MaxSupervisedServices <= 0 {
 		cfg.Limits.MaxSupervisedServices = 8
 	}
@@ -84,15 +81,10 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-
-	return newSupervisor(cfg, NewAdmission(cfg.Limits))
+	return cfg
 }
 
 func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
-	if cfg.Now == nil {
-		cfg.Now = time.Now
-	}
-
 	return &Supervisor{
 		cfg:       cfg,
 		admission: admission,
@@ -102,7 +94,7 @@ func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
 }
 
 // StopAll stops every supervised service and removes its runtime evidence.
-func (s *Supervisor) StopAll(ctx context.Context, reason StopReason) error {
+func (s *Supervisor) StopAll(ctx context.Context) error {
 	s.mu.Lock()
 	pluginIDs := make([]string, 0, len(s.services))
 	for pluginID := range s.services {
@@ -112,7 +104,7 @@ func (s *Supervisor) StopAll(ctx context.Context, reason StopReason) error {
 	s.mu.Unlock()
 	sort.Strings(pluginIDs)
 	for _, pluginID := range pluginIDs {
-		if err := s.Stop(ctx, pluginID, reason); err != nil {
+		if err := s.Stop(ctx, pluginID); err != nil {
 			return err
 		}
 	}
@@ -137,7 +129,7 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) {
 	s.mu.Unlock()
 	for _, spec := range ordered {
 		if !spec.Enabled {
-			_ = s.Stop(ctx, spec.PluginID, StopDisable)
+			_ = s.Stop(ctx, spec.PluginID)
 			continue
 		}
 		if err := s.Start(ctx, spec); err != nil && s.cfg.Logger != nil {
@@ -153,7 +145,7 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) {
 	}
 	s.mu.Unlock()
 	for _, pluginID := range stale {
-		_ = s.Stop(ctx, pluginID, StopDelete)
+		_ = s.Stop(ctx, pluginID)
 	}
 }
 
@@ -278,7 +270,7 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 	}
 	s.mu.Lock()
 	record.status.State = StateReady
-	record.status.StartedAt = ptrTime(s.cfg.Now())
+	record.status.StartedAt = ptr.To(s.cfg.Now())
 	record.status.NextAttemptAt = nil
 	s.mu.Unlock()
 	go s.observeExit(spec.PluginID, done)
@@ -298,18 +290,18 @@ func serviceDataDir(root string, spec ServiceSpec) string {
 	return path
 }
 
-func (s *Supervisor) Stop(ctx context.Context, pluginID string, reason StopReason) error {
-	return s.stopRecord(ctx, pluginID, reason)
+func (s *Supervisor) Stop(ctx context.Context, pluginID string) error {
+	return s.stopRecord(ctx, pluginID)
 }
 
 // Forget removes a service from desired state before stopping it. Used by
 // disable/delete flows so capacity promotion cannot immediately restart it.
-func (s *Supervisor) Forget(ctx context.Context, pluginID string, reason StopReason) error {
+func (s *Supervisor) Forget(ctx context.Context, pluginID string) error {
 	s.mu.Lock()
 	delete(s.desired, pluginID)
 	s.mu.Unlock()
 
-	return s.stopRecord(ctx, pluginID, reason)
+	return s.stopRecord(ctx, pluginID)
 }
 
 func (s *Supervisor) Restart(ctx context.Context, pluginID string) error {
@@ -323,7 +315,7 @@ func (s *Supervisor) Restart(ctx context.Context, pluginID string) error {
 	if record == nil {
 		return fmt.Errorf("service %q is not known", pluginID)
 	}
-	if err := s.stopRecord(ctx, pluginID, StopMaintenance); err != nil {
+	if err := s.stopRecord(ctx, pluginID); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -381,13 +373,19 @@ func (s *Supervisor) SupportsProtocol(protocol int) bool {
 func (s *Supervisor) failStart(pluginID string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.transitionFailureLocked(pluginID, "start failed", err)
+}
+
+func (s *Supervisor) transitionFailureLocked(pluginID, lastExit string, err error) {
 	record := s.services[pluginID]
 	if record == nil {
 		return
 	}
+	record.status.LastExit = lastExit
+	if err != nil {
+		record.status.LastError = err.Error()
+	}
 	record.status.ConsecutiveFailures++
-	record.status.LastError = err.Error()
-	record.status.LastExit = "start failed"
 	if record.status.ConsecutiveFailures >= 5 {
 		record.status.State = StateFailed
 		record.status.NextAttemptAt = nil
@@ -416,21 +414,10 @@ func (s *Supervisor) observeExit(pluginID string, done <-chan error) {
 	}
 	healthy := record.status.StartedAt != nil && s.cfg.Now().Sub(*record.status.StartedAt) >= 60*time.Second
 	record.status.LastExit = "exited"
-	if err != nil {
-		record.status.LastError = err.Error()
-	}
 	if healthy {
 		record.status.ConsecutiveFailures = 0
 	}
-	record.status.ConsecutiveFailures++
-	if record.status.ConsecutiveFailures >= 5 {
-		record.status.State = StateFailed
-	} else {
-		next := s.cfg.Now().Add(time.Second << (record.status.ConsecutiveFailures - 1))
-		record.status.State = StateBackoff
-		record.status.NextAttemptAt = &next
-		s.scheduleRetry(pluginID, time.Second<<uint(record.status.ConsecutiveFailures-1))
-	}
+	s.transitionFailureLocked(pluginID, "exited", err)
 	s.mu.Unlock()
 }
 
@@ -454,7 +441,7 @@ func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 	}()
 }
 
-func (s *Supervisor) stopRecord(ctx context.Context, pluginID string, _ StopReason) error {
+func (s *Supervisor) stopRecord(ctx context.Context, pluginID string) error {
 	return s.stopProcess(ctx, pluginID, true)
 }
 
@@ -621,5 +608,3 @@ func writeProcessLease(path string, pid int) error {
 		ExecutableIno:  identity.ExecutableIno,
 	})
 }
-
-func ptrTime(value time.Time) *time.Time { return &value }

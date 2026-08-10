@@ -2,9 +2,42 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	"mndw.local/shared/ptr"
 )
+
+func TestFailureTransitionResetsOnlyAfterHealthyObservation(t *testing.T) {
+	now := time.Date(2026, time.August, 10, 12, 0, 0, 0, time.UTC)
+	supervisor := NewSupervisor(SupervisorConfig{Now: func() time.Time { return now }, RuntimeRoot: t.TempDir()})
+	supervisor.services["demo"] = &serviceRecord{status: RuntimeStatus{State: StateReady, ConsecutiveFailures: 4, StartedAt: ptr.To(now.Add(-61 * time.Second))}}
+
+	done := make(chan error, 1)
+	done <- errors.New("process exited")
+	supervisor.observeExit("demo", done)
+
+	status := supervisor.Status("demo")
+	if status.ConsecutiveFailures != 1 {
+		t.Fatalf("healthy-exit failure count = %d, want 1", status.ConsecutiveFailures)
+	}
+	if status.LastExit != "exited" || status.LastError != "process exited" {
+		t.Fatalf("healthy-exit status = %+v", status)
+	}
+}
+
+func TestFailureTransitionDoesNotResetStartFailures(t *testing.T) {
+	supervisor := NewSupervisor(SupervisorConfig{RuntimeRoot: t.TempDir()})
+	supervisor.services["demo"] = &serviceRecord{status: RuntimeStatus{State: StateStarting, ConsecutiveFailures: 4}}
+
+	supervisor.failStart("demo", errors.New("start failed"))
+
+	status := supervisor.Status("demo")
+	if status.ConsecutiveFailures != 5 || status.State != StateFailed {
+		t.Fatalf("start-failure status = %+v", status)
+	}
+}
 
 func TestSupervisorStartsWithStoppedStatusAndReportsCapacity(t *testing.T) {
 	supervisor := NewSupervisor(SupervisorConfig{RuntimeRoot: t.TempDir(), Limits: Limits{MaxSupervisedServices: 1}, SupportedProtocols: []int{1}})

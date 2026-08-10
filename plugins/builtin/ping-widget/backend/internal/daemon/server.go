@@ -62,7 +62,7 @@ func (server *Server) runPingCycle(run func(string) model.Sample) {
 	if !server.state.Running() {
 		return
 	}
-	for _, host := range server.state.PingTargets() {
+	for _, host := range server.state.ListHosts() {
 		server.state.RecordSample(host.IP, run(host.IP))
 	}
 }
@@ -98,7 +98,7 @@ func (server *Server) UpdateHosts(input model.HostUpdateInput) ([]model.Host, er
 }
 
 func (server *Server) Persist() error {
-	if err := server.store.SaveHosts(server.state.HostSnapshot()); err != nil {
+	if err := server.store.SaveHosts(server.state.ListHosts()); err != nil {
 		return err
 	}
 	return server.store.SaveStatsState(server.state.SampleSnapshot())

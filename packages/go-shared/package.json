@@ -1,0 +1,7 @@
+{
+  "name": "@mndw/go-shared",
+  "private": true,
+  "scripts": {
+    "test": "go test ./..."
+  }
+}

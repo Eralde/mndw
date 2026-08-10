@@ -135,7 +135,7 @@ func (h *Handler) installDirect(w http.ResponseWriter, m *manifest.Manifest, man
 	}
 
 	h.logger.Info("plugin installed", "plugin", name, "backend", false)
-	httpx.WriteJSON(w, h.logger, http.StatusCreated, h.entryFrom(m, state.SourceUser, state.ApprovalApproved, true))
+	httpx.WriteJSON(w, h.logger, http.StatusCreated, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
 }
 
 // stagePending records a backend plugin as pending; it stays in staging until
@@ -155,14 +155,14 @@ func (h *Handler) stagePending(w http.ResponseWriter, m *manifest.Manifest, mani
 	}
 
 	h.logger.Info("plugin uploaded, pending approval", "plugin", name, "backend", true)
-	httpx.WriteJSON(w, h.logger, http.StatusAccepted, h.entryFrom(m, state.SourceUser, state.ApprovalPending, false))
+	httpx.WriteJSON(w, h.logger, http.StatusAccepted, h.entryFrom(m, state.SourceUpload, state.ApprovalPending, false))
 }
 
 // newRecord builds the durable state record from a validated manifest.
 func newRecord(m *manifest.Manifest, manifestBytes []byte, approval string, enabled bool) *state.Plugin {
 	return &state.Plugin{
 		Name:             *m.Name,
-		Source:           state.SourceUser,
+		Source:           state.SourceUpload,
 		Type:             deref(m.Type),
 		Version:          deref(m.Version),
 		Label:            deref(m.Label),

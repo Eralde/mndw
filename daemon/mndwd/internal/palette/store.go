@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"mndw.local/shared/fsutil"
 )
 
 const schemaVersion = 1
@@ -129,41 +131,8 @@ func (s *Store) Clear() error {
 }
 
 func (s *Store) persist(p *Palette) error {
-	data, err := json.MarshalIndent(document{Version: schemaVersion, Palette: p}, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal palette: %w", err)
+	if err := fsutil.AtomicWriteJSON(s.path, document{Version: schemaVersion, Palette: p}); err != nil {
+		return fmt.Errorf("persist palette: %w", err)
 	}
-
-	dir := filepath.Dir(s.path)
-	tmp, err := os.CreateTemp(dir, "palette-*.json.tmp")
-	if err != nil {
-		return fmt.Errorf("create temp palette: %w", err)
-	}
-	tmpPath := tmp.Name()
-	committed := false
-	defer func() {
-		if !committed {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-
-		return fmt.Errorf("write temp palette: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-
-		return fmt.Errorf("sync temp palette: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp palette: %w", err)
-	}
-	if err := os.Rename(tmpPath, s.path); err != nil {
-		return fmt.Errorf("rename temp palette: %w", err)
-	}
-	committed = true
-
 	return nil
 }

@@ -94,59 +94,49 @@ func (s *Store) Snapshot() (model.Document, error) {
 }
 
 func (s *Store) ReplaceController(record model.TokenRecord) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.availableLocked(); err != nil {
-		return err
-	}
-	s.document.Controller = cloneRecordPtr(&record)
-	return s.persistLocked()
+	return s.mutate(func(document *model.Document) {
+		document.Controller = cloneRecordPtr(&record)
+	})
 }
 
 func (s *Store) DeleteController() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.availableLocked(); err != nil {
-		return err
-	}
-	s.document.Controller = nil
-	s.document.Extenders = make(map[string]model.TokenRecord)
-	return s.persistLocked()
+	return s.mutate(func(document *model.Document) {
+		document.Controller = nil
+		document.Extenders = make(map[string]model.TokenRecord)
+	})
 }
 
 func (s *Store) UpsertExtender(identity string, record model.TokenRecord) error {
 	if identity == "" {
 		return fmt.Errorf("extender identity is required")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.availableLocked(); err != nil {
-		return err
-	}
-	if s.document.Extenders == nil {
-		s.document.Extenders = make(map[string]model.TokenRecord)
-	}
-	s.document.Extenders[identity] = record
-	return s.persistLocked()
+	return s.mutate(func(document *model.Document) {
+		if document.Extenders == nil {
+			document.Extenders = make(map[string]model.TokenRecord)
+		}
+		document.Extenders[identity] = record
+	})
 }
 
 func (s *Store) DeleteExtender(identity string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.availableLocked(); err != nil {
-		return err
-	}
-	delete(s.document.Extenders, identity)
-	return s.persistLocked()
+	return s.mutate(func(document *model.Document) {
+		delete(document.Extenders, identity)
+	})
 }
 
 func (s *Store) DeleteExtenders() error {
+	return s.mutate(func(document *model.Document) {
+		document.Extenders = make(map[string]model.TokenRecord)
+	})
+}
+
+func (s *Store) mutate(mutator func(*model.Document)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.availableLocked(); err != nil {
 		return err
 	}
-	s.document.Extenders = make(map[string]model.TokenRecord)
+	mutator(&s.document)
 	return s.persistLocked()
 }
 

@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"mndwd/internal/httpx"
 )
 
 func TestCanonicalRoutePathRejectsReservedAndNonCanonicalPaths(t *testing.T) {
@@ -21,7 +23,7 @@ func TestCanonicalRoutePathRejectsReservedAndNonCanonicalPaths(t *testing.T) {
 
 func TestNoCORSResponseWriterRemovesInternalHeaders(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	writer := NewNoCORSResponseWriter(recorder)
+	writer := httpx.NewNoCORSResponseWriter(recorder)
 	writer.Header().Set("Access-Control-Allow-Origin", "*")
 	writer.Header().Set("X-Allowed", "yes")
 	writer.WriteHeader(http.StatusOK)

@@ -5,42 +5,36 @@ import (
 	"time"
 )
 
-func TestParseAppliesRuntimeAndTimeoutOverrides(t *testing.T) {
+func TestParseRetainsControllerAndTimeoutOptions(t *testing.T) {
 	environ := func(name string) string {
 		values := map[string]string{
-			"MNDW_MWSD_RUNTIME_DIR": "/tmp/mwsd",
+			"MWSD_CONTROLLER_URL": "http://controller.test:79",
 		}
 		return values[name]
 	}
-	cfg, err := Parse([]string{"--auth-timeout=17s", "--operation-timeout=3s"}, environ)
+	cfg, err := Parse([]string{"--controller-url=http://flag.test:79", "--io-timeout=3s", "--auth-timeout=17s", "--max-response-bytes=1024"}, environ)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RuntimeDir != "/tmp/mwsd" || cfg.AuthOperation != 17*time.Second || cfg.Operation != 3*time.Second {
+	if cfg.ControllerURL != "http://flag.test:79" || cfg.IOTimeout != 3*time.Second || cfg.AuthOperation != 17*time.Second || cfg.MaxResponseBytes != 1024 {
 		t.Fatalf("config = %#v", cfg)
 	}
 }
 
-func TestParsePrefersGenericPluginRuntimeDir(t *testing.T) {
-	environ := func(name string) string {
-		values := map[string]string{
-			"MNDW_PLUGIN_RUNTIME_DIR": "/tmp/generic-plugin",
-			"MNDW_MWSD_RUNTIME_DIR":   "/tmp/legacy-mwsd",
+func TestParseRejectsRemovedOptions(t *testing.T) {
+	for _, args := range [][]string{
+		{"--runtime-dir=/tmp/mwsd"},
+		{"--operation-timeout=3s"},
+		{"--max-request-bytes=1024"},
+	} {
+		if _, err := Parse(args, func(string) string { return "" }); err == nil {
+			t.Fatalf("Parse(%v) error = nil", args)
 		}
-		return values[name]
-	}
-
-	cfg, err := Parse(nil, environ)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.RuntimeDir != "/tmp/generic-plugin" {
-		t.Fatalf("runtime dir = %q, want generic plugin runtime dir", cfg.RuntimeDir)
 	}
 }
 
-func TestParseRejectsNonPositiveLimits(t *testing.T) {
-	if _, err := Parse([]string{"--max-request-bytes=0"}, func(string) string { return "" }); err == nil {
+func TestParseRejectsNonPositiveResponseLimit(t *testing.T) {
+	if _, err := Parse([]string{"--max-response-bytes=0"}, func(string) string { return "" }); err == nil {
 		t.Fatal("Parse() error = nil")
 	}
 }

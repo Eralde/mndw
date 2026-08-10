@@ -39,9 +39,7 @@ func NewState() *State { return &State{nodes: make(map[string]*nodeState)} }
 func (s *State) Ensure(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.nodes[id]; !ok {
-		s.nodes[id] = &nodeState{Snapshot: Snapshot{ID: id, State: NodeOffline}}
-	}
+	s.ensureLocked(id)
 }
 
 func (s *State) SetOnline(id string, now time.Time) {

@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"mndw.local/shared/fsutil"
 )
 
 // schemaVersion is the first released v3 state format. Older pre-alpha state is
@@ -32,9 +34,6 @@ const (
 	SourceBuiltin  = "builtin"
 	SourceRegistry = "registry"
 	SourceUpload   = "upload"
-	// SourceUser is retained as a source-compatible Go alias for unreleased
-	// callers. Its serialized value is the released "upload" provenance.
-	SourceUser = SourceUpload
 )
 
 // Plugin is one plugin's durable record. Manifest holds the exact validated
@@ -249,44 +248,9 @@ func (st *State) AppendAudit(action, plugin, detail string) {
 
 // persist atomically writes st to disk (tmp file in the same dir, fsync, rename).
 func (s *Store) persist(st *State) error {
-	data, err := json.MarshalIndent(st, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal state: %w", err)
+	if err := fsutil.AtomicWriteJSON(s.path, st); err != nil {
+		return fmt.Errorf("persist state: %w", err)
 	}
-
-	dir := filepath.Dir(s.path)
-	tmp, err := os.CreateTemp(dir, "state-*.json.tmp")
-	if err != nil {
-		return fmt.Errorf("create temp state: %w", err)
-	}
-	tmpPath := tmp.Name()
-
-	committed := false
-	defer func() {
-		if !committed {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-
-		return fmt.Errorf("write temp state: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-
-		return fmt.Errorf("sync temp state: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp state: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, s.path); err != nil {
-		return fmt.Errorf("rename temp state: %w", err)
-	}
-	committed = true
-
 	return nil
 }
 

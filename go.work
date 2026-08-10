@@ -9,5 +9,6 @@ use (
 	./packages/go-device-auth
 	./packages/go-rci
 	./packages/go-rcisock
+	./packages/go-shared
 	./tooling/go-blanklr
 )

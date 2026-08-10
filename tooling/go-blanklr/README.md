@@ -82,14 +82,18 @@ Paths may be files or directories; directories are walked recursively
 
 ## Wiring
 
-### pnpm script (already added to root `package.json`)
+### pnpm scripts
 
 ```bash
-pnpm fmt:go              # writes — reformats all daemon/packages .go files in place
-pnpm fmt:go:check        # CI — lists changed files, exits 1 if any
+pnpm fmt:go                         # writes — default daemon/packages/plugins roots
+pnpm fmt:go -- daemon/mndwd         # writes — only this Go directory
+pnpm fmt:go:check -- daemon/mndwd   # CI — checks only this Go directory
 ```
 
-Both set `GOWORK=off` and a repo-local `GOCACHE` for sandbox reproducibility.
+With explicit paths, scripts replace default roots rather than adding to them.
+Root scripts delegate argument handling to `build/fmt-go.sh`. It accepts either
+`pnpm fmt:go path` or `pnpm fmt:go -- path` syntax.
+Both use a repo-local `GOCACHE` for sandbox reproducibility.
 
 ### Pre-commit (optional)
 

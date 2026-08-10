@@ -20,6 +20,7 @@ import {build} from 'esbuild';
 import esbuildSvelte from 'esbuild-svelte';
 import vuePlugin from 'unplugin-vue/esbuild';
 
+import {isMndwButtonA11yWarning} from '../../../build/svelte-compiler-options.js';
 import {type AngularCompileResult, compileAngular} from './angular-compiler.js';
 import {CliError} from './errors.js';
 import {type PluginFramework, detectFramework} from './framework.js';
@@ -137,7 +138,14 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
       nodePaths: [CLI_NODE_MODULES, join(resolvedDir, 'node_modules')].filter((path) => existsSync(path)),
       external: pluginDependencies(framework),
       plugins: framework === 'svelte'
-        ? [esbuildSvelte({compilerOptions: {css: 'external'}})]
+        ? [
+          esbuildSvelte({
+            compilerOptions: {
+              css: 'external',
+              warningFilter: (warning) => !isMndwButtonA11yWarning(warning),
+            },
+          }),
+        ]
         : framework === 'vue'
         ? [vuePlugin({sourceMap: false})]
         : [],

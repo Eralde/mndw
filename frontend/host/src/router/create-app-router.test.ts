@@ -206,6 +206,11 @@ describe('createAppRouter', () => {
     await router.navigate('/settings');
     expect(router.route.pathname).toBe('/settings');
 
+    for (const route of ['/settings/general', '/settings/diagnostics', '/settings/plugins'] as const) {
+      await router.navigate(route);
+      expect(router.route.pathname).toBe(route);
+    }
+
     await router.navigate('/status');
     expect(router.route.pathname).toBe('/status');
 

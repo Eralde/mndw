@@ -3,15 +3,31 @@ import {defineMndwUi} from '@mndw/ui';
 import {mount, unmount} from 'svelte';
 import {MNDW_TOKENS} from '@mndw/sdk';
 
-const {downloadDiagnostics, getCapability, probeControllerTokenAuth, saveController} = vi.hoisted(() => ({
+const {
+  downloadDiagnostics,
+  getCapability,
+  navigate,
+  probeControllerTokenAuth,
+  routerPathname,
+  saveController,
+} = vi.hoisted(() => ({
   downloadDiagnostics: vi.fn(),
   getCapability: vi.fn().mockResolvedValue({
     store: {state: 'empty'},
     controller: {support: 'unknown'},
     extenders: [],
   }),
+  navigate: vi.fn().mockResolvedValue(undefined),
   probeControllerTokenAuth: vi.fn().mockResolvedValue(true),
+  routerPathname: {pathname: '/settings/general'},
   saveController: vi.fn(),
+}));
+
+vi.mock('../../router/create-app-router.js', () => ({
+  appRouter: {
+    route: routerPathname,
+    navigate,
+  },
 }));
 
 vi.mock('../../services/mgmt-client.js', () => ({
@@ -80,6 +96,90 @@ describe('SettingsPage', () => {
     probeControllerTokenAuth.mockReset().mockResolvedValue(true);
     saveController.mockReset();
     downloadDiagnostics.mockReset();
+    navigate.mockReset().mockResolvedValue(undefined);
+    routerPathname.pathname = '/settings/general';
+  });
+
+  it('renders route-backed tabs and keeps General selected by default', async () => {
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+    const tabs = target.querySelector<HTMLElement & {updateComplete: Promise<unknown>}>('mndw-tabs');
+
+    await tabs?.updateComplete;
+    await vi.waitFor(() =>
+      expect(target.querySelector('mndw-tab#general')?.getAttribute('aria-selected'))
+        .toBe('true')
+    );
+
+    expect([...target.querySelectorAll('mndw-tab')].map((tab) => tab.id)).toEqual([
+      'general',
+      'diagnostics',
+      'plugins',
+    ]);
+    expect([...target.querySelectorAll('mndw-tab-panel')].map((panel) => panel.getAttribute('for'))).toEqual([
+      'general',
+      'diagnostics',
+      'plugins',
+    ]);
+    expect(target.querySelector('mndw-tab#diagnostics')?.getAttribute('aria-selected')).toBe('false');
+    expect(target.querySelector('mndw-tab#plugins')?.getAttribute('aria-selected')).toBe('false');
+
+    void unmount(component);
+  });
+
+  it('navigates to selected child route', () => {
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    target.querySelector('mndw-tabs')?.dispatchEvent(
+      new CustomEvent('mndwchange', {
+        bubbles: true,
+        composed: true,
+        detail: {value: 'diagnostics'},
+      }),
+    );
+
+    expect(navigate).toHaveBeenCalledWith('/settings/diagnostics');
+
+    void unmount(component);
+  });
+
+  it('redirects the settings entry route to General with history replacement', async () => {
+    routerPathname.pathname = '/settings';
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/settings/general', {replace: true}));
+
+    void unmount(component);
+  });
+
+  it('selects tab from child route', async () => {
+    routerPathname.pathname = '/settings/plugins';
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() =>
+      expect(target.querySelector('mndw-tab#plugins')?.getAttribute('aria-selected'))
+        .toBe('true')
+    );
+    expect(target.querySelector('mndw-tab#general')?.getAttribute('aria-selected')).toBe('false');
+
+    void unmount(component);
   });
 
   it('renders plugin manager', async () => {

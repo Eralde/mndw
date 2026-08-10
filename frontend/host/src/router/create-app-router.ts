@@ -4,6 +4,7 @@ import AppShell from '../layout/AppShell.svelte';
 import PagePluginHost from '../pages/PagePluginHost.svelte';
 import PackageManagerPage from '../pages/PackageManagerPage.svelte';
 import SettingsPage from '../pages/settings/SettingsPage.svelte';
+import {settingsPath} from '../pages/settings/settings-route.js';
 import {pluginRegistry} from '../runtime/plugin-registry.js';
 
 export interface PageRouteDefinition {
@@ -157,6 +158,9 @@ export function createAppRouter(): ReturnType<typeof createRouter> {
       '/': DashboardPage,
       '/packages': PackageManagerPage,
       '/settings': SettingsPage,
+      [settingsPath('general')]: SettingsPage,
+      [settingsPath('diagnostics')]: SettingsPage,
+      [settingsPath('plugins')]: SettingsPage,
       ...pluginRoutes,
       '*': DashboardPage,
     },

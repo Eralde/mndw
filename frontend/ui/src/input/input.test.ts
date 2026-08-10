@@ -93,6 +93,51 @@ describe('<mndw-input> properties', () => {
     expect(root?.querySelector('slot[name="suffix"]')?.getAttribute('part')).toBe('suffix');
   });
 
+  it('hides empty prefix and suffix slots', async () => {
+    const element = await mount('<mndw-input></mndw-input>');
+    const root = element.shadowRoot;
+    const prefix = root?.querySelector<HTMLSlotElement>('slot[name="prefix"]');
+    const suffix = root?.querySelector<HTMLSlotElement>('slot[name="suffix"]');
+
+    if (!prefix || !suffix) {
+      throw new Error('missing adornment slots');
+    }
+
+    expect(prefix.hidden).toBe(true);
+    expect(suffix.hidden).toBe(true);
+    expect(getComputedStyle(prefix).display).toBe('none');
+    expect(getComputedStyle(suffix).display).toBe('none');
+  });
+
+  it('updates adornment slot visibility when assigned nodes change', async () => {
+    const element = await mount('<mndw-input><span slot="prefix">$</span></mndw-input>');
+    const root = element.shadowRoot;
+    const suffix = document.createElement('span');
+
+    suffix.slot = 'suffix';
+    suffix.textContent = 's';
+
+    const prefixSlot = root?.querySelector<HTMLSlotElement>('slot[name="prefix"]');
+    const suffixSlot = root?.querySelector<HTMLSlotElement>('slot[name="suffix"]');
+
+    if (!prefixSlot || !suffixSlot) {
+      throw new Error('missing adornment slots');
+    }
+
+    expect(prefixSlot.hidden).toBe(false);
+    expect(suffixSlot.hidden).toBe(true);
+
+    element.appendChild(suffix);
+    await settle(element);
+
+    expect(suffixSlot.hidden).toBe(false);
+
+    suffix.remove();
+    await settle(element);
+
+    expect(suffixSlot.hidden).toBe(true);
+  });
+
   it('forwards every supported type and falls back to text for others', async () => {
     for (const supported of ['text', 'password', 'search', 'number', 'url']) {
       const element = await mount(`<mndw-input type="${supported}"></mndw-input>`);

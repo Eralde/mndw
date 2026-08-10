@@ -88,6 +88,11 @@ export class MndwInput extends LitElement {
       color: var(--mndw-text-subtle);
     }
 
+    [part='prefix'][hidden],
+    [part='suffix'][hidden] {
+      display: none;
+    }
+
     [part='password-toggle'] {
       display: inline-flex;
       align-items: center;
@@ -196,7 +201,7 @@ export class MndwInput extends LitElement {
   protected override render(): TemplateResult {
     return html`
       <div part="field">
-        <slot name="prefix" part="prefix"></slot>
+        <slot name="prefix" part="prefix" @slotchange=${this.onAdornmentSlotChange}></slot>
         <input
           part="input"
           type=${this._effectiveType}
@@ -206,12 +211,14 @@ export class MndwInput extends LitElement {
           @keydown=${this.onInnerKeyDown}
         />
         ${this.type === 'password' ? this._renderPasswordToggle() : nothing}
-        <slot name="suffix" part="suffix"></slot>
+        <slot name="suffix" part="suffix" @slotchange=${this.onAdornmentSlotChange}></slot>
       </div>
     `;
   }
 
   protected override updated(changed: PropertyValues): void {
+    this.syncAdornmentSlots();
+
     const inner = this.innerInput;
 
     if (!inner) {
@@ -227,6 +234,26 @@ export class MndwInput extends LitElement {
     this.syncFormState(inner);
     this.announcement.sync(inner);
   }
+
+  private syncAdornmentSlots(): void {
+    const slots = this.renderRoot.querySelectorAll<HTMLSlotElement>('slot[name="prefix"], slot[name="suffix"]');
+
+    for (const slot of slots) {
+      this.syncAdornmentSlot(slot);
+    }
+  }
+
+  private syncAdornmentSlot(slot: HTMLSlotElement): void {
+    slot.hidden = slot.assignedNodes().length === 0;
+  }
+
+  private readonly onAdornmentSlotChange = (event: Event): void => {
+    const slot = event.currentTarget as HTMLSlotElement | null;
+
+    if (slot) {
+      this.syncAdornmentSlot(slot);
+    }
+  };
 
   private get innerInput(): HTMLInputElement | null {
     return this.renderRoot.querySelector('input');

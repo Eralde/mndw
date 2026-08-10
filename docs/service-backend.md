@@ -373,5 +373,5 @@ Then check service-specific behavior:
 For the daemon contract itself, the focused backend test builds and runs the tested helper:
 
 ```bash
-GOCACHE=/Users/eralde/dev/mndw/.cache/go-build go test ./daemon/mndwd/internal/backend
+GOCACHE="$PWD/.cache/go-build" go test ./daemon/mndwd/internal/backend
 ```

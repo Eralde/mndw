@@ -296,9 +296,7 @@ shows HTTP plus WebSocket proxying.
 
 Go is used by current built-in and integration services, but the contract is language-neutral. Any
 runtime that can execute the declared command, listen on the supplied Unix socket, serve HTTP/1.1,
-implement readiness, and honor
-`SIGTERM` can implement a service. There is no non-Go service consumer in this repository, so no
-untested C++ example is included.
+implement readiness, and honor `SIGTERM` can implement a service.
 
 ## Call the service from a plugin
 

@@ -7,19 +7,55 @@ let username = $state('');
 let password = $state('');
 let error = $state('');
 let loading = $state(false);
+let loginBlocked = $state(false);
+
+function hasCredentials(): boolean {
+  return username.trim() !== '' && password !== '';
+}
+
+function canSubmit(): boolean {
+  return hasCredentials() && !loading && !loginBlocked;
+}
 
 // `<mndw-input>` reports through `mndwinput` rather than a bindable `value`, so the two-way flow
 // is explicit: the property writes down, the event reads back up.
 function onUsernameInput(e: CustomEvent<{value: string}>): void {
   username = e.detail.value;
+  loginBlocked = false;
 }
 
 function onPasswordInput(e: CustomEvent<{value: string}>): void {
   password = e.detail.value;
+  loginBlocked = false;
+}
+
+function handleKeydown(e: KeyboardEvent): void {
+  const target = e.target;
+  const source = e.composedPath()[0];
+
+  if (
+    e.key !== 'Enter'
+    || !(target instanceof HTMLElement)
+    || target.localName !== 'mndw-input'
+    || source instanceof HTMLButtonElement
+  ) {
+    return;
+  }
+
+  e.preventDefault();
+
+  if (canSubmit()) {
+    handleSubmit(e);
+  }
 }
 
 function handleSubmit(e: Event): void {
   e.preventDefault();
+
+  if (!canSubmit()) {
+    return;
+  }
+
   loading = true;
   error = '';
 
@@ -38,11 +74,13 @@ function handleSubmit(e: Event): void {
       } else {
         error = 'Invalid credentials';
         loading = false;
+        loginBlocked = true;
       }
     },
     error() {
       error = 'Connection failed';
       loading = false;
+      loginBlocked = true;
     },
   });
 }
@@ -55,15 +93,18 @@ function handleSubmit(e: Event): void {
   >
     <h1 class="mndw-login__title">mndw</h1>
     <mndw-field label="Username">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-input
         name="username"
         autocomplete="username"
         value={username}
         disabled={loading}
         onmndwinput={onUsernameInput}
+        onkeydown={handleKeydown}
       ></mndw-input>
     </mndw-field>
     <mndw-field label="Password">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-input
         type="password"
         name="password"
@@ -71,6 +112,7 @@ function handleSubmit(e: Event): void {
         value={password}
         disabled={loading}
         onmndwinput={onPasswordInput}
+        onkeydown={handleKeydown}
       ></mndw-input>
     </mndw-field>
     {#if error}
@@ -82,9 +124,10 @@ function handleSubmit(e: Event): void {
       </div>
     {/if}
     <mndw-button
+      class="mndw-login__submit"
       variant="primary"
       type="submit"
-      disabled={loading}
+      disabled={!canSubmit()}
     >
       {loading ? 'Logging in...' : 'Login'}
     </mndw-button>

@@ -42,6 +42,11 @@ function submit(): void {
   flushSync();
 }
 
+function pressEnter(element: HTMLElement): void {
+  element.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, composed: true}));
+  flushSync();
+}
+
 // The app defines the kit before mounting (`startup.ts`), which is what makes Svelte assign
 // properties rather than attributes on these elements — so the test registers it too.
 beforeAll(() => {
@@ -112,6 +117,23 @@ describe('LoginPage', () => {
     expect(login).toHaveBeenCalledWith('admin', 'secret');
   });
 
+  it('submits on Enter only after both credentials are filled', () => {
+    login.mockReturnValue(of(true));
+    render();
+
+    pressEnter(inputs()[0]);
+    expect(login).not.toHaveBeenCalled();
+
+    type(inputs()[0], 'admin');
+    pressEnter(inputs()[0]);
+    expect(login).not.toHaveBeenCalled();
+
+    type(inputs()[1], 'secret');
+    pressEnter(inputs()[1]);
+
+    expect(login).toHaveBeenCalledWith('admin', 'secret');
+  });
+
   it('authenticates and initialises on a successful login', () => {
     login.mockReturnValue(of(true));
     render();
@@ -126,7 +148,9 @@ describe('LoginPage', () => {
   it('announces rejected credentials as a danger alert', () => {
     login.mockReturnValue(of(false));
     render();
-    submit();
+    type(inputs()[0], 'admin');
+    type(inputs()[1], 'wrong');
+    pressEnter(inputs()[1]);
 
     const alert = target.querySelector('.mndw-alert');
 
@@ -134,12 +158,15 @@ describe('LoginPage', () => {
     expect(alert?.getAttribute('role')).toBe('alert');
     expect(alert?.textContent?.trim()).toBe('Invalid credentials');
     expect(target.querySelector('.mndw-login__error')).toBeNull();
+    expect(target.querySelector('mndw-button')?.disabled).toBe(true);
     expect(appState.authenticated).toBe(false);
   });
 
   it('announces a transport failure the same way', () => {
     login.mockReturnValue(throwError(() => new Error('offline')));
     render();
+    type(inputs()[0], 'admin');
+    type(inputs()[1], 'secret');
     submit();
 
     expect(target.querySelector('.mndw-alert')?.textContent?.trim()).toBe('Connection failed');
@@ -150,6 +177,8 @@ describe('LoginPage', () => {
 
     login.mockReturnValue(pending.asObservable());
     render();
+    type(inputs()[0], 'admin');
+    type(inputs()[1], 'secret');
     submit();
 
     expect(inputs().every((control) => control.disabled)).toBe(true);
@@ -163,9 +192,38 @@ describe('LoginPage', () => {
     expect(target.querySelector('mndw-button')?.textContent?.trim()).toBe('Login');
   });
 
+  it('disables Login after failure and re-enables it when either input changes', () => {
+    login.mockReturnValue(of(false));
+    render();
+    type(inputs()[0], 'admin');
+    type(inputs()[1], 'wrong');
+    submit();
+
+    const button = target.querySelector('mndw-button');
+
+    expect(button?.disabled).toBe(true);
+
+    type(inputs()[0], 'admin2');
+    expect(button?.disabled).toBe(false);
+
+    submit();
+    expect(button?.disabled).toBe(true);
+
+    type(inputs()[1], 'correct');
+    expect(button?.disabled).toBe(false);
+  });
+
+  it('marks the Login button for extra spacing below the fields', () => {
+    render();
+
+    expect(target.querySelector('mndw-button')?.classList.contains('mndw-login__submit')).toBe(true);
+  });
+
   it('clears a previous error when the form is resubmitted', () => {
     login.mockReturnValue(of(false));
     render();
+    type(inputs()[0], 'admin');
+    type(inputs()[1], 'wrong');
     submit();
 
     expect(target.querySelector('.mndw-alert')).not.toBeNull();
@@ -173,6 +231,7 @@ describe('LoginPage', () => {
     const pending = new Subject<boolean>();
 
     login.mockReturnValue(pending.asObservable());
+    type(inputs()[0], 'admin2');
     submit();
 
     expect(target.querySelector('.mndw-alert')).toBeNull();

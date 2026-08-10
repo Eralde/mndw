@@ -257,6 +257,10 @@ body {
   display: block;
 }
 
+.mndw-login__submit {
+  margin-top: var(--mndw-space-2);
+}
+
 .mndw-login__form mndw-button::part(button) {
   width: 100%;
   padding: 8px;

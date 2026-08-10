@@ -128,16 +128,29 @@ describe('AppComponent', () => {
     expect(data.retry).toHaveBeenCalledOnce();
   });
 
-  it('shows the unsupported and empty states', () => {
+  it('shows the unsupported state', () => {
     const unsupported = fakeData('unsupported');
 
     expect((render(unsupported).nativeElement as HTMLElement).textContent).toContain('not an MWS controller');
   });
 
-  it('shows the empty state', () => {
-    const empty = fakeData('empty');
+  it('renders a controller-only map when no extenders are ready', () => {
+    const controllerOnly = fakeData(
+      'ready',
+      buildMap([], [], {
+        mac: '02:7d:4a:91:c3:10',
+        ip: null,
+        name: 'Router',
+        model: null,
+        firmware: null,
+        interfaceUptime: null,
+        isOnline: true,
+      }),
+    );
+    const element = render(controllerOnly).nativeElement as HTMLElement;
 
-    expect((render(empty).nativeElement as HTMLElement).textContent).toContain('No extenders found');
+    expect(element.querySelector('mws-map-graph')).not.toBeNull();
+    expect(element.textContent).not.toContain('No extenders found');
   });
 
   it('renders the graph when ready and opens the drawer on node selection', () => {

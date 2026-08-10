@@ -36,6 +36,12 @@ describe('MwsApiService', () => {
     expect(result.members[0].mac).toBe('02:7d:4a:91:c3:21');
   });
 
+  it('treats an empty show.mws.member object as no members', async () => {
+    const {service} = serviceWith(() => of({}));
+
+    await expect(firstValueFrom(service.showMwsMember())).resolves.toEqual({kind: 'ok', members: []});
+  });
+
   it('classifies the pinned unsupported response', async () => {
     const {service} = serviceWith(() => of(loadFixture('show-mws-member-unsupported.json')));
 

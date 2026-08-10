@@ -37,7 +37,7 @@ export const POLL_INTERVAL_MS = 3_000;
 export const MWSD_STATUS_POLL_INTERVAL_MS = 3_000;
 export const MWSD_STATUS_REQUEST_TIMEOUT_MS = 5_000;
 
-export type MwsViewPhase = 'loading' | 'error' | 'unsupported' | 'empty' | 'ready';
+export type MwsViewPhase = 'loading' | 'error' | 'unsupported' | 'ready';
 
 interface MwsdPollSnapshot {
   readonly status: MwsdStatusSnapshot;
@@ -279,7 +279,7 @@ export class MwsDataService {
     this.lastUpdatedAt.set(Date.now());
     this.hasSnapshot = true;
     this.pollError.set(false);
-    this.phase.set(result.members.length === 0 ? 'empty' : 'ready');
+    this.phase.set('ready');
   }
 
   private mergeCurrentMwsdStatus(): void {

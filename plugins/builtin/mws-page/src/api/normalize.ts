@@ -88,6 +88,10 @@ function normalizeBackhaul(raw: RawMwsMemberBackhaul | undefined): MwsMemberBack
 }
 
 export function normalizeMembers(raw: unknown): MwsMemberRecord[] {
+  if (typeof raw === 'object' && raw !== null && !Array.isArray(raw) && Object.keys(raw).length === 0) {
+    return [];
+  }
+
   if (!Array.isArray(raw)) {
     throw new MwsApiParseError('show.mws.member: expected an array');
   }

@@ -58,6 +58,10 @@ describe('normalizeMembers', () => {
     expect(atlas.dualBand).toBe(false);
   });
 
+  it('normalizes an empty object as no members', () => {
+    expect(normalizeMembers({})).toEqual([]);
+  });
+
   it('only treats an exact true dual-band capability as enabled', () => {
     const [trueValue, falseValue, stringValue, numberValue, malformedValue] = normalizeMembers([
       {cid: 'c1', mac: 'aa:00:00:00:00:01', capabilities: {'dual-band': true}},

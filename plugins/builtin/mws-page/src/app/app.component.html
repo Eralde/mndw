@@ -27,9 +27,6 @@
     @case ('unsupported') {
       <p class="state">This device is not an MWS controller.</p>
     }
-    @case ('empty') {
-      <p class="state">No extenders found.</p>
-    }
     @case ('ready') {
       <mndw-tabs class="map-tabs" [value]="selectedTab()" (mndwchange)="onTabChanged($event)">
         <mndw-tab id="map">Map</mndw-tab>

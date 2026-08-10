@@ -97,7 +97,7 @@ describe('MwsDataService', () => {
     expect(service.pollError()).toBe(false);
   });
 
-  it('maps an empty member list to the empty phase (controller-only forest still built)', async () => {
+  it('maps an empty member list to ready with a controller-only forest', async () => {
     const api = goodApi();
 
     api.showMwsMember.mockReturnValue(of<MwsMemberResult>({kind: 'ok', members: []}));
@@ -107,7 +107,7 @@ describe('MwsDataService', () => {
     service.start();
     await vi.advanceTimersByTimeAsync(0);
 
-    expect(service.phase()).toBe('empty');
+    expect(service.phase()).toBe('ready');
     expect(service.roots()).toHaveLength(1);
     expect(service.lastUpdatedAt()).not.toBeNull();
   });

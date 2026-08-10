@@ -59,6 +59,10 @@ and CORS headers are removed, output/stderr are bounded, and responses use
 
 ## Service backends
 
+Plugin authors should use the [service backend guide](service-backend.md) for
+the child-facing contract. This page covers daemon-owned supervision and
+security behavior.
+
 Each service is a foreground child speaking HTTP/1.1 and optional WebSocket on
 `backend.sock` under `/opt/tmp/mndw/plugin-runtime/<plugin-id>`. The daemon
 owns readiness (`GET /_mndw/ready`), protocol compatibility, Unix-socket

@@ -94,6 +94,12 @@ An exec backend declares commands directly on HTTP routes:
 The path is `hello`, not `/api/plugins/hello/hello`. `mndwd` supplies the
 plugin namespace.
 
+## Implement a service backend
+
+For a resident HTTP/WebSocket backend, follow the [service backend
+guide](service-backend.md). It covers the manifest, Unix-socket/readiness
+contract, lifecycle, security boundary, and tested Go reference.
+
 ## Call a backend
 
 Use the declared id, not a URL assembled by hand:

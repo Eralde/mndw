@@ -68,7 +68,9 @@ The optional backend block has one of two kinds:
 
 - `exec`: request-scoped HTTP routes, each pointing at one command;
 - `service`: one foreground command speaking HTTP/WebSocket over the daemon's
-  private Unix socket, with a positive protocol version and route list.
+  private Unix socket, with a positive protocol version and route list. See
+  the [service backend guide](service-backend.md) for the child-facing
+  contract and implementation examples.
 
 Both kinds may declare package names and route access (`session` or `public`).
 Public HTTP routes are limited to GET and HEAD. `_mndw/*` is reserved for the

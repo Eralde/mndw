@@ -138,7 +138,6 @@ onMount(() => {
         onChange={(next) => filterState = next}
       />
       <div class="system-log-page__actions">
-        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <mndw-button
           data-download-log
           variant="secondary"
@@ -146,7 +145,6 @@ onMount(() => {
         >
           Download
         </mndw-button>
-        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <mndw-button
           data-clear-log
           variant="danger"

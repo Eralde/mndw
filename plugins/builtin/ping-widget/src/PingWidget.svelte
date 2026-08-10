@@ -285,8 +285,6 @@ onMount(() => {
   <div class="header">
     <h3>Ping Utility</h3>
     <div class="header-actions">
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <mndw-button
         variant="secondary"
         disabled={loading || !hasBackend}
@@ -316,7 +314,6 @@ onMount(() => {
         newHostName = event.detail.value}
       ></mndw-input>
     </mndw-field>
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <mndw-button
       variant="primary"
       disabled={loading || !hasBackend}
@@ -431,7 +428,6 @@ onMount(() => {
                     {/if}
                   </div>
                 {:else}
-                  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                   <mndw-button
                     variant="ghost"
                     class="host-display"
@@ -461,7 +457,6 @@ onMount(() => {
                 {formatUpdatedAt(row.updatedAt)}
               </td>
               <td class="actions-cell">
-                <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                 <mndw-button
                   variant="danger"
                   class="compact"

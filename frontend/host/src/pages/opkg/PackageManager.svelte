@@ -176,8 +176,6 @@ onMount(() => {
   <div class="header-row">
     <h1>Package Manager</h1>
     <div class="header-actions">
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-button
         variant="secondary"
         disabled={loading}
@@ -185,8 +183,6 @@ onMount(() => {
       >
         Refresh Metadata
       </mndw-button>
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-button
         variant="secondary"
         disabled={loading}
@@ -216,8 +212,6 @@ onMount(() => {
 
   <div class="bulk-bar">
     <span class="bulk-label">With selected:</span>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       variant="primary"
       disabled={loading || !canInstall}
@@ -227,8 +221,6 @@ onMount(() => {
     >
       Install
     </mndw-button>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       variant="danger"
       disabled={loading || !canRemove}
@@ -238,8 +230,6 @@ onMount(() => {
     >
       Remove
     </mndw-button>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       variant="primary"
       disabled={loading || !canUpdate}

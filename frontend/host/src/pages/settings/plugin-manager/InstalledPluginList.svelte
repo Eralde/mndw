@@ -176,8 +176,6 @@ let {
 
           {#if item.source !== 'builtin'}
             <div class="mndw-installed__actions">
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <mndw-button
                 class="mndw-installed__toggle"
                 variant="primary"
@@ -188,7 +186,6 @@ let {
                 {item.enabled ? 'Disable' : 'Enable'}
               </mndw-button>
               {#if item.runtime && item.runtime.state !== 'stopped'}
-                <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                 <mndw-button
                   class="mndw-installed__restart"
                   variant="secondary"
@@ -201,8 +198,6 @@ let {
               {#if confirmingName === item.name}
                 <div class="mndw-installed__confirmation">
                   <p>Delete {item.label}? This cannot be undone.</p>
-                  <!-- svelte-ignore a11y_click_events_have_key_events -->
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <mndw-button
                     class="mndw-installed__cancel"
                     variant="ghost"
@@ -211,8 +206,6 @@ let {
                   >
                     Cancel
                   </mndw-button>
-                  <!-- svelte-ignore a11y_click_events_have_key_events -->
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <mndw-button
                     class="mndw-installed__confirm"
                     variant="danger"
@@ -223,8 +216,6 @@ let {
                   </mndw-button>
                 </div>
               {:else}
-                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <mndw-button
                   class="mndw-installed__delete"
                   variant="danger"

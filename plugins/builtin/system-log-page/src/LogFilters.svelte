@@ -30,7 +30,6 @@ function resetFilters(): void {
 >
   <div class="log-filters__header">
     <div class="log-filters__summary">
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <mndw-button
         data-filter-toggle
         variant="ghost"
@@ -55,7 +54,6 @@ function resetFilters(): void {
         </span>
       </span>
       {#if isFilterActive(filterState)}
-        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <mndw-button
           data-reset-filters
           variant="secondary"

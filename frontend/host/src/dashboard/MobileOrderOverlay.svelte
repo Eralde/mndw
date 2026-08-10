@@ -102,8 +102,6 @@ function handlePointerUp(): void {
     >
       <div class="mndw-floating-panel__header">
         <h3 id="arrange-widgets-title">Arrange widgets</h3>
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <mndw-button
           variant="ghost"
           class="mndw-floating-panel__close"
@@ -129,8 +127,6 @@ function handlePointerUp(): void {
             >☰</span>
             <span class="mndw-order-card__label">{card.label}</span>
             <span class="mndw-order-card__moves">
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <mndw-button
                 variant="ghost"
                 onclick={() => move(index, -1)}
@@ -139,8 +135,6 @@ function handlePointerUp(): void {
               >
                 ▲
               </mndw-button>
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <mndw-button
                 variant="ghost"
                 onclick={() => move(index, 1)}

@@ -54,8 +54,6 @@ let {
           <div class="mndw-pending__confirmation">
             <p>Deny {item.label}? This cannot be undone.</p>
             <div class="mndw-pending__actions">
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <mndw-button
                 class="mndw-pending__cancel"
                 variant="ghost"
@@ -63,8 +61,6 @@ let {
               >
                 Cancel
               </mndw-button>
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <mndw-button
                 class="mndw-pending__confirm"
                 variant="danger"
@@ -77,8 +73,6 @@ let {
           </div>
         {:else}
           <div class="mndw-pending__actions">
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <mndw-button
               class="mndw-pending__deny"
               variant="danger"
@@ -87,8 +81,6 @@ let {
             >
               Deny
             </mndw-button>
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <mndw-button
               class="mndw-pending__approve"
               variant="primary"

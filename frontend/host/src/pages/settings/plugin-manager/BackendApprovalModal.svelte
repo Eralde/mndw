@@ -19,8 +19,6 @@ let {entry, close}: Props = $props();
   <CapabilityReview descriptor={entry.backend} />
 
   <div class="mndw-approval__actions">
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       class="mndw-approval__deny"
       variant="danger"
@@ -28,8 +26,6 @@ let {entry, close}: Props = $props();
     >
       Deny
     </mndw-button>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       class="mndw-approval__approve"
       variant="primary"

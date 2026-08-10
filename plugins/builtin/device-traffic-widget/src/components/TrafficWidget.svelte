@@ -188,7 +188,6 @@ onMount(() => {
       role="alert"
     >
       {error}
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <mndw-button
         variant="danger"
         class="retry-btn"
@@ -252,7 +251,6 @@ onMount(() => {
               </mndw-segment>
             {/each}
           </mndw-segmented>
-          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <mndw-button
             class="gear-btn"
             variant="ghost"

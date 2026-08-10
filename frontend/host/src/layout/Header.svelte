@@ -23,8 +23,6 @@ async function handleLogout(): Promise<void> {
 
 <header class="mndw-header">
   <div class="mndw-header__left">
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       variant="ghost"
       class="mndw-header__menu-toggle"
@@ -39,8 +37,6 @@ async function handleLogout(): Promise<void> {
     {/if}
   </div>
   <div class="mndw-header__right">
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       variant="ghost"
       class="mndw-header__theme-toggle"
@@ -52,8 +48,6 @@ async function handleLogout(): Promise<void> {
     >
       {appState.theme === 'dark' ? '☀' : '☾'}
     </mndw-button>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       variant="danger"
       class="mndw-header__logout"

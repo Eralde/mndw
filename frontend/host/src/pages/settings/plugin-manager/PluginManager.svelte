@@ -147,16 +147,12 @@ onMount(() => {
       role="status"
     >
       <span>Reload to apply plugin changes.</span>
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-button
         variant="primary"
         onclick={() => window.location.reload()}
       >
         Reload now
       </mndw-button>
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-button
         variant="ghost"
         onclick={() => (reloadPrompt = false)}
@@ -187,8 +183,6 @@ onMount(() => {
       role="alert"
     >
       <p>{loadError}</p>
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-button
         variant="secondary"
         onclick={() => void load()}
@@ -203,8 +197,6 @@ onMount(() => {
         role="alert"
       >
         <span>{refreshError}</span>
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <mndw-button
           variant="ghost"
           onclick={() => (refreshError = '')}

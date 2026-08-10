@@ -313,8 +313,6 @@ async function downloadHostDiagnostics(): Promise<void> {
   <section aria-label="Diagnostics">
     <h3>Diagnostics</h3>
     <p>Download recent daemon and plugin runtime state for troubleshooting.</p>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       variant="secondary"
       disabled={diagnosticsLoading}
@@ -362,15 +360,11 @@ async function downloadHostDiagnostics(): Promise<void> {
           ></mndw-input>
         </mndw-field>
         <div class="persistent-rci-actions">
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <mndw-button
             variant="secondary"
             disabled={persistentActionLoading || controllerToken === ''}
             onclick={() => void testController()}
           >Test</mndw-button>
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <mndw-button
             variant="primary"
             disabled={persistentActionLoading || controllerToken === ''}
@@ -378,8 +372,6 @@ async function downloadHostDiagnostics(): Promise<void> {
           >Save</mndw-button>
           {#if persistentCapability?.controller.support === 'supported'
           || persistentCapability?.controller.support === 'invalid'}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <mndw-button
               variant="danger"
               disabled={persistentActionLoading}
@@ -423,16 +415,12 @@ async function downloadHostDiagnostics(): Promise<void> {
               ></mndw-input>
             </mndw-field>
             <div class="persistent-rci-actions">
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <mndw-button
                 variant="primary"
                 disabled={persistentActionLoading || meshUsername === ''
                 || meshPassword === ''}
                 onclick={() => void provisionExtenders()}
               >Provision extenders</mndw-button>
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <mndw-button
                 variant="danger"
                 disabled={persistentActionLoading}

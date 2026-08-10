@@ -294,15 +294,11 @@ onDestroy(() => {
 
   <div class="mndw-dashboard__toolbar">
     {#if pluginRegistry.getWidgets().length > 0}
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-button
         variant="secondary"
         onclick={() => (addPanelOpen = true)}
       >+ Add Widget</mndw-button>
       {#if isMobile && mobileOrder.length > 1}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <mndw-button
           variant="secondary"
           onclick={() => (orderOverlayOpen = true)}

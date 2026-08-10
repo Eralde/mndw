@@ -71,8 +71,6 @@ let byTheme = $derived.by(() => {
   {/if}
 
   <div class="mndw-palette-preview__actions">
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       variant="primary"
       disabled={busy}
@@ -80,8 +78,6 @@ let byTheme = $derived.by(() => {
     >
       Confirm
     </mndw-button>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <mndw-button
       variant="ghost"
       disabled={busy}

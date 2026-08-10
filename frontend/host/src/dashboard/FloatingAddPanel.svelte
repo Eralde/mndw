@@ -53,8 +53,6 @@ function handleKeydown(event: KeyboardEvent): void {
     >
       <div class="mndw-floating-panel__header">
         <h3 id="add-widget-title">Add Widget</h3>
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <mndw-button
           variant="ghost"
           class="mndw-floating-panel__close"
@@ -69,8 +67,6 @@ function handleKeydown(event: KeyboardEvent): void {
       {:else}
         {#each availableWidgets as widget, index (widget.entry.name)}
           {@const deps = getDepsStatus(widget.entry.name)}
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <mndw-button
             variant="secondary"
             bind:this={buttonRefs[index]}

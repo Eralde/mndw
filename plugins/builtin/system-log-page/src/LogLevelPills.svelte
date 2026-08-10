@@ -29,7 +29,6 @@ function toggle(level: LogLevel): void {
   aria-label="Log levels"
 >
   {#each ALL_LOG_LEVELS as level (level)}
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <mndw-button
       class={`log-level-pills__pill log-level-pills__pill--${level.toLocaleLowerCase()}`}
       data-level={level}

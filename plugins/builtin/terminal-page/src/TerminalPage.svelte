@@ -142,14 +142,12 @@ onMount(() => {
   {#if state === 'idle'}
     <div class="screen">
       <div class="console-choice">
-        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <mndw-button
           variant="primary"
           onclick={() => selectConsole('router')}
         >
           Router CLI
         </mndw-button>
-        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <mndw-button
           variant="primary"
           onclick={() => selectConsole('entware')}
@@ -175,7 +173,6 @@ onMount(() => {
       >
         {errorMessage}
       </div>
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <mndw-button
         variant="primary"
         onclick={retryTerminal}
@@ -191,7 +188,6 @@ onMount(() => {
       >
         Connection lost
       </div>
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <mndw-button
         variant="primary"
         onclick={retryTerminal}
@@ -203,7 +199,6 @@ onMount(() => {
     <div class="terminal-wrap">
       <div class="terminal-header">
         <span class="status">Connected</span>
-        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <mndw-button
           variant="secondary"
           onclick={stopTerminal}

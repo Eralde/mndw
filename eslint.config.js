@@ -12,6 +12,7 @@ const sveltePlugin = require('eslint-plugin-svelte');
 const vueParser = require('vue-eslint-parser');
 const vuePlugin = require('eslint-plugin-vue');
 const angularEslintPlugin = require('@angular-eslint/eslint-plugin');
+const {isMndwButtonA11yWarning} = require('./build/svelte-compiler-options.js');
 
 const OFF = 'off';
 const WARN = 'warn';
@@ -349,6 +350,9 @@ module.exports = tseslint.config(
       parser: svelteParser,
       parserOptions: {
         parser: tseslint.parser,
+        svelteConfig: {
+          warningFilter: (warning) => !isMndwButtonA11yWarning(warning),
+        },
         projectService: {
           allowDefaultProject: [
             'plugins/builtin/*/src/components/*.svelte',

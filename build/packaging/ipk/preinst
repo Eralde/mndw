@@ -1,3 +1,29 @@
 #!/bin/sh
-set -e
+set -u
+
+MNDW_ROOT=${MNDW_ROOT:-/opt}
+
+case "${1:-}" in
+  install|upgrade) ;;
+  *) exit 0 ;;
+esac
+
+legacy_file="$MNDW_ROOT/etc/lighttpd/conf.d/80-mndw.conf"
+backup_dir="$MNDW_ROOT/var/lib/mndw/legacy"
+backup_file="$backup_dir/80-mndw.conf"
+
+if [ -f "$legacy_file" ]; then
+  mkdir -p "$backup_dir"
+  if [ -e "$backup_file" ]; then
+    suffix=1
+    while [ -e "$backup_file.$suffix" ]; do
+      suffix=$((suffix + 1))
+    done
+    backup_file="$backup_file.$suffix"
+  fi
+
+  mv "$legacy_file" "$backup_file"
+  echo "[mndw] preserved legacy lighttpd config at $backup_file"
+fi
+
 exit 0

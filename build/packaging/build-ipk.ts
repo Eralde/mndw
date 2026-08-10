@@ -42,15 +42,19 @@ export function collectStagePaths(): {
   lighttpdConf: string;
   initScript: string;
   moduleGuard: string;
+  portHelper: string;
+  renderer: string;
   daemonConfig: string;
 } {
   return {
     mndwd: path.join('opt', 'sbin', 'mndwd'),
     indexHtml: path.join('opt', 'share', 'www', 'mndw', 'index.html'),
     assets: path.join('opt', 'share', 'www', 'mndw', 'assets'),
-    lighttpdConf: path.join('opt', 'etc', 'lighttpd', 'conf.d', '80-mndw.conf'),
+    lighttpdConf: path.join('opt', 'etc', 'lighttpd', 'conf.d', '81-mndw.conf'),
     initScript: path.join('opt', 'etc', 'init.d', 'S70mndwd'),
     moduleGuard: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'),
+    portHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'),
+    renderer: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-render-lighttpd.sh'),
     daemonConfig: path.join('opt', 'etc', 'mndw.conf'),
   };
 }
@@ -68,6 +72,8 @@ export function verifyStage(
     [p.lighttpdConf, 'lighttpd config'],
     [p.initScript, 'init script'],
     [p.moduleGuard, 'module guard script'],
+    [p.portHelper, 'lighttpd port helper'],
+    [p.renderer, 'lighttpd renderer'],
     [p.daemonConfig, 'daemon config'],
   ];
 
@@ -203,12 +209,22 @@ export function stageDeployFiles(repoRoot: string, stagingDir: string): void {
     if (chmod !== undefined) { fs.chmodSync(dst, chmod); }
   };
 
-  copyTo(path.join('lighttpd', '80-mndw.conf'), path.join('opt', 'etc', 'lighttpd', 'conf.d', '80-mndw.conf'));
+  copyTo(path.join('lighttpd', '81-mndw.conf'), path.join('opt', 'etc', 'lighttpd', 'conf.d', '81-mndw.conf'));
   copyTo(path.join('init', 'S70mndwd'), path.join('opt', 'etc', 'init.d', 'S70mndwd'), 0o755);
   copyTo(path.join('files', 'opt', 'etc', 'mndw.conf'), path.join('opt', 'etc', 'mndw.conf'), 0o600);
   copyTo(
     path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'),
     path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'),
+    0o755,
+  );
+  copyTo(
+    path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'),
+    path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'),
+    0o755,
+  );
+  copyTo(
+    path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-render-lighttpd.sh'),
+    path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-render-lighttpd.sh'),
     0o755,
   );
 }

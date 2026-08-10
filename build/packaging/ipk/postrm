@@ -1,25 +1,31 @@
 #!/bin/sh
-set -e
+set -u
 
-APP_ROOT="/opt/share/www/mndw"
-
-if [ -x "/opt/etc/init.d/S70mndwd" ]; then
-  "/opt/etc/init.d/S70mndwd" stop || true
+if [ "${1:-}" != "remove" ]; then
+  exit 0
 fi
 
-# On remove: clean up runtime state and config so lighttpd doesn't reference deleted paths.
-# On upgrade ($1 = "upgrade"): stop daemon but keep config + data intact.
-if [ "$1" = "remove" ]; then
-  rm -f /opt/var/run/mndwd.pid
-  rm -f /opt/etc/lighttpd/conf.d/80-mndw.conf
+MNDW_ROOT=${MNDW_ROOT:-/opt}
+APP_ROOT="$MNDW_ROOT/share/www/mndw"
+MNDWD_INIT=${MNDW_MNDWD_INIT:-$MNDW_ROOT/etc/init.d/S70mndwd}
+LIGHTTPD_INIT=${MNDW_LIGHTTPD_INIT:-$MNDW_ROOT/etc/init.d/S80lighttpd}
 
-  if [ -x "/opt/etc/init.d/S80lighttpd" ]; then
-    "/opt/etc/init.d/S80lighttpd" restart >/dev/null 2>&1 || true
-  fi
+if [ -x "$MNDWD_INIT" ]; then
+  sh "$MNDWD_INIT" stop || true
+fi
 
-  if [ -d "$APP_ROOT" ]; then
-    rm -rf "$APP_ROOT"
+rm -f "$MNDW_ROOT/var/run/mndwd.pid"
+rm -f "$MNDW_ROOT/etc/lighttpd/conf.d/81-mndw.conf"
+rm -f "$MNDW_ROOT/var/lib/mndw/lighttpd-runtime.conf"
+
+if [ -x "$LIGHTTPD_INIT" ]; then
+  if ! sh "$LIGHTTPD_INIT" restart >/dev/null 2>&1; then
+    echo '[mndw] warning: remaining lighttpd configuration could not restart after removal' >&2
   fi
+fi
+
+if [ -d "$APP_ROOT" ]; then
+  rm -rf "$APP_ROOT"
 fi
 
 # /opt/var/lib/mndw/ data dir, /opt/var/lib/mndw-secrets/ key dir, and

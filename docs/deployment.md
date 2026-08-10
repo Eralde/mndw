@@ -11,14 +11,18 @@ The installed layout is centered under `/opt`:
 ```text
 /opt/share/www/mndw/       host SPA and built-in plugin assets
 /opt/sbin/mndwd            daemon binary
-/opt/etc/lighttpd/         mndw lighttpd snippets
+/opt/etc/lighttpd/         package-owned loader plus base lighttpd config
 /opt/etc/init.d/           daemon init script
-/opt/var/lib/mndw/          state.json, staging, and audit data
+/opt/var/lib/mndw/          selected port, generated runtime config, state, staging
+/opt/var/lib/mndw/legacy/   preserved legacy 80-mndw.conf files
+/opt/tmp/mndw/              install-time lighttpd probe diagnostics on failure
 ```
 
 User plugins live separately from built-ins. The local lighttpd override is a
-conffile and survives package upgrades. The state directory is not replaced by
-an upgrade.
+package-owned loader and survives only as long as mndw is installed. Generated
+runtime rules and selected-port state live outside `conf.d`; the state directory
+is not replaced by an upgrade. A legacy `80-mndw.conf` is moved to
+`/opt/var/lib/mndw/legacy/` before unpacking the new package.
 
 ## lighttpd
 
@@ -53,18 +57,24 @@ The package depends on lighttpd and its proxy/rewrite modules.
 
 ## Install and upgrade
 
-Installation validates lighttpd configuration, installs files, restarts
-lighttpd, and starts the `mndwd` init service. A deployment should verify:
+Installation starts `mndwd`, selects or reuses a free dashboard port in
+`99..199`, probes the complete lighttpd configuration, renders runtime rules,
+validates the configuration, and restarts lighttpd. The installer prints the
+selected URL. A deployment should verify:
 
 1. the daemon is listening on `127.0.0.1:9090`;
-2. the browser can reach the host at `http://<router>:99`;
+2. the browser can reach the host at `http://<router>:<selected-port>`;
 3. authentication reaches the router;
 4. built-in plugins appear in the list;
 5. upload, approval, and backend dispatch work.
 
-After an upgrade, verify that `state.json` and the local lighttpd override
-remain intact. A real-device smoke test is mandatory even when local and CI
-tests pass.
+If port 80 is occupied by firmware nginx, mndw prints a warning and renders an
+override that moves lighttpd's global listener to the selected port while
+scoping mndw rules to that listener. This decision is made during install;
+rerun package configuration if port-80 ownership changes later. After an
+upgrade, verify the selected port, generated runtime config, legacy backup,
+and `/opt/etc/mndw.conf`. A real-device smoke test is mandatory even when
+local and CI tests pass.
 
 ## Security boundary
 

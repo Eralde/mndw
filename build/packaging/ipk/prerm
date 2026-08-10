@@ -1,8 +1,15 @@
 #!/bin/sh
-set -e
+set -u
 
-if [ -x "/opt/etc/init.d/S70mndwd" ]; then
-  "/opt/etc/init.d/S70mndwd" stop || true
+if [ "${1:-}" != "remove" ]; then
+  exit 0
+fi
+
+MNDW_ROOT=${MNDW_ROOT:-/opt}
+MNDWD_INIT=${MNDW_MNDWD_INIT:-$MNDW_ROOT/etc/init.d/S70mndwd}
+
+if [ -x "$MNDWD_INIT" ]; then
+  sh "$MNDWD_INIT" stop || true
 fi
 
 exit 0

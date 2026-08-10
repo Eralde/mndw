@@ -30,6 +30,7 @@
     @case ('ready') {
       <mndw-tabs class="map-tabs" [value]="selectedTab()" (mndwchange)="onTabChanged($event)">
         <mndw-tab id="map">Map</mndw-tab>
+        <mndw-tab id="nodes">Nodes</mndw-tab>
         <mndw-tab id="clients">Clients</mndw-tab>
 
         <mndw-tab-panel for="map">
@@ -46,6 +47,13 @@
             (editModeToggled)="toggleEditMode()"
             (autoLayoutRequested)="autoLayout()"
             (doneEditingRequested)="doneEditing()"
+          />
+        </mndw-tab-panel>
+
+        <mndw-tab-panel for="nodes">
+          <mws-nodes-table
+            [roots]="data.roots()"
+            (nodeActivated)="onNodeSelected($event)"
           />
         </mndw-tab-panel>
 

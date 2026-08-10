@@ -1,0 +1,117 @@
+<div class="nodes-toolbar">
+  <mndw-input
+    type="search"
+    aria-label="Filter nodes"
+    placeholder="Filter nodes"
+    [value]="search()"
+    (mndwinput)="onSearch($event)"
+  ></mndw-input>
+  <mndw-button
+    type="button"
+    variant="secondary"
+    aria-label="Table settings"
+    (click)="toggleSettings()"
+  >Table settings</mndw-button>
+</div>
+
+@if (settingsOpen()) {
+  <div class="table-settings" role="dialog" aria-label="Table settings">
+    <h3>Table settings</h3>
+    @for (column of columns; track column.id) {
+      @if (column.id !== 'name') {
+        <label class="settings-option">
+          <span>{{ column.label }}</span>
+          <mndw-switch
+            [id]="'mws-node-column-' + column.id"
+            [attr.checked]="isColumnVisible(column.id) ? '' : null"
+            (mndwchange)="onColumnVisibility(column.id, $event)"
+          ></mndw-switch>
+        </label>
+      }
+    }
+  </div>
+}
+
+@if (allRows().length === 0) {
+  <p class="status" role="status">No nodes connected.</p>
+} @else if (rows().length === 0) {
+  <p class="status" role="status">No nodes match your filter.</p>
+} @else {
+  <div class="table-scroll">
+    <table class="mndw-table">
+      <caption>All mesh nodes</caption>
+      <thead>
+        <tr>
+          @for (column of visibleColumns(); track column.id) {
+            <th
+              scope="col"
+              [class]="column.id"
+              [attr.aria-sort]="column.sortKey === undefined
+                ? null
+                : sortKey() === column.sortKey
+                ? sortDir() === 'asc' ? 'ascending' : 'descending'
+                : 'none'"
+            >
+              @if (column.sortKey === undefined) {
+                <span>{{ column.label }}</span>
+              } @else {
+                <button type="button" (click)="onSort(column.sortKey)">{{ column.label }}</button>
+              }
+            </th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        @for (row of rows(); track row.id) {
+          <tr>
+            @for (column of visibleColumns(); track column.id) {
+              @switch (column.id) {
+                @case ('name') {
+                  <td class="node-name">
+                    <button
+                      type="button"
+                      [attr.aria-label]="'Open ' + row.node.name"
+                      (click)="activateNode(row.id)"
+                    >
+                      <span>{{ row.node.name }}</span>
+                      @if (row.node.isController) {
+                        <span class="role-badge">Controller</span>
+                      }
+                    </button>
+                  </td>
+                }
+                @case ('clients') {
+                  <td>{{ row.node.clients.length }}</td>
+                }
+                @case ('status') {
+                  <td>{{ status(row.node) }}</td>
+                }
+                @case ('uptime') {
+                  <td>{{ uptime(row.node) }}</td>
+                }
+                @case ('ip') {
+                  <td>
+                    @if (row.node.ip === null) {
+                      {{ dash }}
+                    } @else {
+                      <a [href]="'http://' + row.node.ip" target="_blank" rel="noreferrer">{{ row.node.ip }}</a>
+                    }
+                  </td>
+                }
+                @case ('via') {
+                  <td>{{ row.node.parent?.node?.name ?? dash }}</td>
+                }
+                @case ('connection') {
+                  <td>{{ connection(row.node) }}</td>
+                }
+                @case ('firmware') {
+                  <td>{{ row.node.fw ?? dash }}</td>
+                }
+              }
+            }
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

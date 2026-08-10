@@ -13,6 +13,7 @@ import {
 import type {Subscription} from 'rxjs';
 import {MwsGraphComponent} from '../components/mws-graph/mws-graph.component';
 import {MwsClientsTableComponent} from '../components/clients-table/clients-table.component';
+import {MwsNodesTableComponent} from '../components/nodes-table/nodes-table.component';
 import {findNodeById, hasUpdate} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {NodePositionStore} from '../services/node-position.store';
@@ -49,7 +50,7 @@ function walkForest(roots: MwsNode[], visit: (node: MwsNode) => void): void {
   standalone: true,
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
-  imports: [MwsGraphComponent, MwsClientsTableComponent],
+  imports: [MwsGraphComponent, MwsNodesTableComponent, MwsClientsTableComponent],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class AppComponent implements OnDestroy, OnInit {
@@ -63,7 +64,7 @@ export class AppComponent implements OnDestroy, OnInit {
   protected readonly mockOptions = inject(MWS_MOCK_OPTIONS);
   private readonly pageRoute = inject(MWS_PAGE_ROUTE, {optional: true});
   protected readonly positions = inject(NodePositionStore);
-  protected readonly selectedTab = signal<'map' | 'clients'>('map');
+  protected readonly selectedTab = signal<'map' | 'nodes' | 'clients'>('map');
   protected readonly editMode = signal(false);
   protected readonly selectedNodeId = signal<string | null>(null);
   protected readonly summary = computed<MapSummary>(() => {
@@ -124,7 +125,7 @@ export class AppComponent implements OnDestroy, OnInit {
 
     if (pageRoute !== null && pageRoute !== undefined) {
       this.pageRouteSubscription = pageRoute.childPath$.subscribe((childPath) => {
-        this.selectedTab.set(childPath === '/clients' ? 'clients' : 'map');
+        this.selectedTab.set(childPath === '/clients' ? 'clients' : childPath === '/nodes' ? 'nodes' : 'map');
 
         if (childPath === '') {
           void pageRoute.navigate('/topology', {replace: true}).catch(() => undefined);
@@ -170,7 +171,8 @@ export class AppComponent implements OnDestroy, OnInit {
   }
 
   protected onTabChanged(event: Event): void {
-    const value = (event as CustomEvent<{value?: string}>).detail?.value === 'clients' ? 'clients' : 'map';
+    const rawValue = (event as CustomEvent<{value?: string}>).detail?.value;
+    const value = rawValue === 'clients' || rawValue === 'nodes' ? rawValue : 'map';
 
     this.selectedTab.set(value);
 
@@ -178,7 +180,7 @@ export class AppComponent implements OnDestroy, OnInit {
       return;
     }
 
-    const childPath = value === 'clients' ? '/clients' : '/topology';
+    const childPath = value === 'clients' ? '/clients' : value === 'nodes' ? '/nodes' : '/topology';
 
     void this.pageRoute.navigate(childPath).catch(() => undefined);
   }

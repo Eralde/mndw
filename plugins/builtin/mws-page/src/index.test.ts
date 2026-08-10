@@ -7,6 +7,8 @@ import drawerStyles from './components/node-drawer/node-drawer.component.scss?ra
 import drawerTemplate from './components/node-drawer/node-drawer.component.html?raw';
 import clientsTableStyles from './components/clients-table/clients-table.component.scss?raw';
 import clientsTableTemplate from './components/clients-table/clients-table.component.html?raw';
+import nodesTableStyles from './components/nodes-table/nodes-table.component.scss?raw';
+import nodesTableTemplate from './components/nodes-table/nodes-table.component.html?raw';
 import graphStyles from './components/mws-graph/mws-graph.component.scss?raw';
 import appStyles from './app/app.component.scss?raw';
 import appTemplate from './app/app.component.html?raw';
@@ -60,6 +62,14 @@ describe('createInstance', () => {
 
       if (url.endsWith('clients-table.component.scss')) {
         return Promise.resolve(clientsTableStyles);
+      }
+
+      if (url.endsWith('nodes-table.component.html')) {
+        return Promise.resolve(nodesTableTemplate);
+      }
+
+      if (url.endsWith('nodes-table.component.scss')) {
+        return Promise.resolve(nodesTableStyles);
       }
 
       if (url.endsWith('node-drawer.component.html')) {

@@ -10,11 +10,14 @@ import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
 import {MwsDataService, type MwsViewPhase} from '../services/mws-data.service';
 import {FakePluginStorage} from '../test-support/plugin-storage.fake';
-import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, PLUGIN_STORAGE} from '../tokens';
+import {NodeTableColumnsStore} from '../services/node-table-columns.store';
+import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, PLUGIN_STORAGE, SHARED_PLUGIN_STORAGE} from '../tokens';
 import {NodePositionStore} from '../services/node-position.store';
 import graphStyles from '../components/mws-graph/mws-graph.component.scss?raw';
 import clientsTableStyles from '../components/clients-table/clients-table.component.scss?raw';
 import clientsTableTemplate from '../components/clients-table/clients-table.component.html?raw';
+import nodesTableStyles from '../components/nodes-table/nodes-table.component.scss?raw';
+import nodesTableTemplate from '../components/nodes-table/nodes-table.component.html?raw';
 import appStyles from './app.component.scss?raw';
 import appTemplate from './app.component.html?raw';
 import {AppComponent} from './app.component';
@@ -95,6 +98,14 @@ describe('AppComponent', () => {
         return Promise.resolve(clientsTableStyles);
       }
 
+      if (url.endsWith('nodes-table.component.html')) {
+        return Promise.resolve(nodesTableTemplate);
+      }
+
+      if (url.endsWith('nodes-table.component.scss')) {
+        return Promise.resolve(nodesTableStyles);
+      }
+
       throw new Error(`resource URL: ${url}`);
     });
     await TestBed.configureTestingModule({
@@ -102,7 +113,9 @@ describe('AppComponent', () => {
       providers: [
         {provide: MwsDataService, useValue: undefined},
         {provide: PLUGIN_STORAGE, useValue: new FakePluginStorage()},
+        {provide: SHARED_PLUGIN_STORAGE, useValue: new FakePluginStorage()},
         NodePositionStore,
+        NodeTableColumnsStore,
       ],
     }).compileComponents();
   });
@@ -164,16 +177,47 @@ describe('AppComponent', () => {
     expect(open).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(Function));
   });
 
-  it('renders Map and Clients tabs when ready', () => {
+  it('renders Map, Nodes, and Clients tabs when ready', () => {
     const fixture = render(fakeData('ready', fixtureRoots()));
     const element = fixture.nativeElement as HTMLElement;
 
     expect(element.querySelector('mndw-tabs.map-tabs')).not.toBeNull();
-    expect(element.querySelectorAll('mndw-tab')).toHaveLength(2);
+    expect(element.querySelectorAll('mndw-tab')).toHaveLength(3);
     expect(element.querySelector('mndw-tab#map')?.textContent).toContain('Map');
+    expect(element.querySelector('mndw-tab#nodes')?.textContent).toContain('Nodes');
     expect(element.querySelector('mndw-tab#clients')?.textContent).toContain('Clients');
     expect(element.querySelector('mndw-tab-panel[for="map"] mws-map-graph')).not.toBeNull();
+    expect(element.querySelector('mndw-tab-panel[for="nodes"] mws-nodes-table')).not.toBeNull();
     expect(element.querySelector('mndw-tab-panel[for="clients"] mws-clients-table')).not.toBeNull();
+  });
+
+  it('maps the Nodes child path and tab change to /nodes', () => {
+    const childPath$ = new BehaviorSubject('/nodes');
+    const navigate = vi.fn(() => Promise.resolve(undefined));
+    const pageRoute = {childPath$, navigate} as unknown as PageRoute;
+    const fixture = render(fakeData('ready', fixtureRoots()), pageRoute);
+    const tabs = fixture.nativeElement.querySelector('mndw-tabs') as HTMLElement & {value: string};
+
+    expect(tabs.value).toBe('nodes');
+
+    tabs.dispatchEvent(new CustomEvent('mndwchange', {bubbles: true, detail: {value: 'nodes'}}));
+    fixture.detectChanges();
+
+    expect(navigate).toHaveBeenCalledWith('/nodes');
+  });
+
+  it('shares Nodes activation with map selection and the drawer', () => {
+    const fixture = render(fakeData('ready', fixtureRoots()));
+    const open = fixture.componentInstance.openNodeDrawer as ReturnType<typeof vi.fn>;
+    const button = fixture.nativeElement.querySelector<HTMLButtonElement>(
+      'mws-nodes-table tbody td.node-name button[aria-label="Open Router"]',
+    );
+
+    button?.click();
+    fixture.detectChanges();
+
+    expect(open).toHaveBeenCalledWith('02:7d:4a:91:c3:10', 'Router', expect.any(Function));
+    expect(fixture.nativeElement.querySelector('mws-map-graph g.node.selected')).not.toBeNull();
   });
 
   it('maps page child paths to tabs and navigates tab changes', () => {

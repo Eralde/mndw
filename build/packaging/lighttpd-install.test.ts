@@ -88,7 +88,8 @@ const writeProcListeners = (fixture: Fixture, ports: number[], ipv6Ports: number
   const rows = ['  sl  local_address rem_address   st'];
 
   for (const port of ports) {
-    rows.push(`   0: 00000000:${port.toString(16).padStart(4, '0').toUpperCase()} 00000000:0000 0A`);
+    rows.push(`   0: 00000000:${port.toString(16).padStart(4, '0')
+.toUpperCase()} 00000000:0000 0A`);
   }
 
   fs.writeFileSync(path.join(fixture.proc, 'net', 'tcp'), `${rows.join('\n')}\n`);
@@ -98,7 +99,8 @@ const writeProcListeners = (fixture: Fixture, ports: number[], ipv6Ports: number
   for (const port of ipv6Ports) {
     rows6.push(
       `   0: 00000000000000000000000000000000:${
-        port.toString(16).padStart(4, '0').toUpperCase()
+        port.toString(16).padStart(4, '0')
+.toUpperCase()
       } 00000000000000000000000000000000:0000 0A`,
     );
   }
@@ -308,7 +310,9 @@ describe('mndw-lighttpd-port.sh', () => {
 
   it('skips occupied candidates and returns the first free port', () => {
     const fixture = makeFixture();
+
     writeProcListeners(fixture, [99, 100]);
+
     const result = runScript(portHelper, ['select-port'], fixture);
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
@@ -344,6 +348,7 @@ describe('mndw-lighttpd-port.sh', () => {
 
   it('falls back to IPv4 and IPv6 proc fixtures when netstat is unavailable', () => {
     const fixture = makeFixture();
+
     writeProcListeners(fixture, [99], [100]);
 
     expect(runScript(portHelper, ['is-listening', '99'], fixture).status).toBe(0);
@@ -370,10 +375,12 @@ describe('mndw-lighttpd-port.sh', () => {
     const snapshot = path.join(fixture.root, 'snapshot');
 
     writeProcListeners(fixture, [99], [100]);
+
     const result = runScript(portHelper, ['snapshot-listeners', snapshot], fixture);
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(fs.readFileSync(snapshot, 'utf8').trim().split('\n')).toEqual(['tcp4|99', 'tcp6|100']);
+    expect(fs.readFileSync(snapshot, 'utf8').trim()
+.split('\n')).toEqual(['tcp4|99', 'tcp6|100']);
   });
 
   it('rejects invalid persisted ports and invalid writes', () => {
@@ -395,6 +402,7 @@ describe('mndw-render-lighttpd.sh', () => {
     const result = runScript(renderer, ['--mode', 'socket', '--port', '99', '--output', output], fixture);
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+
     const content = fs.readFileSync(output, 'utf8');
 
     expect(content).toContain('$SERVER["socket"] == ":99"');
@@ -408,6 +416,7 @@ describe('mndw-render-lighttpd.sh', () => {
     const result = runScript(renderer, ['--mode', 'override', '--port', '101', '--output', output], fixture);
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+
     const content = fs.readFileSync(output, 'utf8');
 
     expect(content.match(/server\.port\s*=\s*101/g)).toHaveLength(1);
@@ -420,6 +429,7 @@ describe('mndw-render-lighttpd.sh', () => {
     const output = path.join(fixture.root, 'runtime.conf');
 
     fs.writeFileSync(output, 'keep');
+
     const result = runScript(renderer, ['--mode', 'socket', '--port', '80', '--output', output], fixture);
 
     expect(result.status).not.toBe(0);
@@ -520,7 +530,9 @@ describe('mndw-lighttpd-port.sh install', () => {
 
   it('reports candidate exhaustion without a success message', () => {
     const fixture = makeInstallFixture('selected');
+
     writeProcListeners(fixture, Array.from({length: 101}, (_unused, index) => 99 + index));
+
     const result = runInstall(fixture, {
       FAKE_PROBE_MODE: 'ready',
     });

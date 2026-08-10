@@ -10,9 +10,11 @@ const fixtures: string[] = [];
 
 const makeRoot = (): string => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-lifecycle-test-'));
+
   fixtures.push(root);
   fs.mkdirSync(path.join(root, 'etc', 'init.d'), {recursive: true});
   fs.mkdirSync(path.join(root, 'share', 'www', 'mndw'), {recursive: true});
+
   return root;
 };
 

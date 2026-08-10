@@ -10,6 +10,7 @@ import {openNodeDrawer} from './open-node-drawer';
 import {MwsDataService} from './services/mws-data.service';
 import {MwsWriteService} from './services/mws-write.service';
 import {NodePositionStore} from './services/node-position.store';
+import {NodeTableColumnsStore} from './services/node-table-columns.store';
 import {
   HOST_INFO,
   MWSD_BACKEND,
@@ -21,6 +22,7 @@ import {
   OVERLAY,
   PLUGIN_STORAGE,
   RCI_MANAGER,
+  SHARED_PLUGIN_STORAGE,
 } from './tokens';
 
 export interface MwsInstanceOptions {
@@ -36,6 +38,7 @@ export function createMwsMapInstance(
   let appRef: ApplicationRef | null = null;
   let componentRef: ReturnType<typeof createComponent> | null = null;
   let positions: NodePositionStore | null = null;
+  let columns: NodeTableColumnsStore | null = null;
   let cancelled = false;
   const onThemeChange = ctx.onThemeChange.bind(ctx);
   const dataServiceProvider = options.dataService === undefined
@@ -59,6 +62,7 @@ export function createMwsMapInstance(
       {provide: MWSD_BACKEND, useValue: ctx.backend ?? null},
       {provide: MWS_PAGE_ROUTE, useValue: ctx.pageRoute},
       {provide: PLUGIN_STORAGE, useValue: ctx.storage},
+      {provide: SHARED_PLUGIN_STORAGE, useValue: ctx.sharedStorage},
       ...mockOptionsProvider,
       {provide: ON_THEME_CHANGE, useValue: onThemeChange},
       MwsApiService,
@@ -66,6 +70,7 @@ export function createMwsMapInstance(
       dataServiceProvider,
       MwsWriteService,
       NodePositionStore,
+      NodeTableColumnsStore,
     ],
   }).then((ref) => {
     if (cancelled) {
@@ -81,6 +86,7 @@ export function createMwsMapInstance(
     const detailsSource = new LiveMapNodeDetailsSource(dataService.snapshots$);
 
     positions = ref.injector.get(NodePositionStore);
+    columns = ref.injector.get(NodeTableColumnsStore);
 
     el.innerHTML = '';
     componentRef = createComponent(AppComponent, {hostElement: el, environmentInjector: injector});
@@ -96,6 +102,7 @@ export function createMwsMapInstance(
       unsubscribeTheme();
       ctx.overlay.closeAll();
       void positions?.flush();
+      void columns?.flush();
 
       if (componentRef !== null) {
         componentRef.destroy();

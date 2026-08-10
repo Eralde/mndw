@@ -1,0 +1,128 @@
+:host {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--mndw-text);
+  font-family: var(--mndw-font-sans);
+}
+
+.nodes-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--mndw-space-2);
+  align-items: center;
+  margin-bottom: var(--mndw-space-2);
+
+  mndw-input {
+    flex: 1 1 auto;
+  }
+}
+
+.table-settings {
+  position: absolute;
+  top: var(--mndw-control-h);
+  right: 0;
+  z-index: 10;
+  display: grid;
+  gap: var(--mndw-space-2);
+  min-width: 220px;
+  padding: var(--mndw-space-3);
+  border: var(--mndw-border-w) solid var(--mndw-border);
+  border-radius: var(--mndw-radius-md);
+  background: var(--mndw-surface);
+  box-shadow: var(--mndw-shadow-2);
+
+  h3 {
+    margin: 0;
+    font-size: var(--mndw-text-sm);
+  }
+}
+
+.settings-option {
+  display: flex;
+  gap: var(--mndw-space-3);
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.table-scroll {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+.mndw-table {
+  min-width: 900px;
+}
+
+.mndw-table th button,
+.node-name button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.mndw-table th button:focus-visible,
+.node-name button:focus-visible {
+  outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
+  outline-offset: 2px;
+}
+
+.mndw-table th[aria-sort]::after {
+  color: var(--mndw-text-subtle);
+  transition: color var(--mndw-duration-fast) var(--mndw-easing);
+}
+
+.mndw-table th[aria-sort='ascending']::after,
+.mndw-table th[aria-sort='descending']::after {
+  color: var(--mndw-text-muted);
+}
+
+.mndw-table th[aria-sort]:hover::after {
+  color: var(--mndw-text);
+}
+
+.mndw-table th.name,
+.mndw-table td.node-name {
+  position: sticky;
+  left: 0;
+  background: var(--mndw-surface);
+}
+
+.mndw-table th.name {
+  z-index: 3;
+}
+
+.mndw-table td.node-name {
+  z-index: 2;
+  min-width: 170px;
+  box-shadow: 2px 0 4px rgb(0 0 0 / 10%);
+}
+
+.node-name button {
+  display: inline-flex;
+  gap: var(--mndw-space-2);
+  align-items: center;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid var(--mndw-border);
+  border-radius: 999px;
+  color: var(--mndw-text-subtle);
+  font-size: 11px;
+}
+
+.status {
+  margin: auto;
+  color: var(--mndw-text-subtle);
+  text-align: center;
+}

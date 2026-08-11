@@ -3,7 +3,7 @@ package daemon
 import (
 	"errors"
 	"math"
-	"slices"
+	"sort"
 	"strings"
 	"sync"
 
@@ -141,6 +141,13 @@ func (state *ServiceState) Stats() []model.HostStats {
 	return stats
 }
 
+func (state *ServiceState) HostSnapshot() []model.Host {
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+
+	return state.listHostsUnsafe()
+}
+
 func (state *ServiceState) SampleSnapshot() map[string][]model.Sample {
 	state.mu.RLock()
 	defer state.mu.RUnlock()
@@ -153,6 +160,10 @@ func (state *ServiceState) SampleSnapshot() map[string][]model.Sample {
 	}
 
 	return snapshot
+}
+
+func (state *ServiceState) PingTargets() []model.Host {
+	return state.ListHosts()
 }
 
 func (state *ServiceState) listHostsUnsafe() []model.Host {
@@ -199,29 +210,42 @@ func buildStats(host model.Host, samples []model.Sample) model.HostStats {
 	}
 
 	stats.UpdatedAt = updatedAt
-	stats.LossPercent = roundTo2(float64(failed) * 100 / float64(len(samples)))
+	if len(samples) > 0 {
+		stats.LossPercent = roundTo2(float64(failed) * 100 / float64(len(samples)))
+	}
 
 	if len(latencies) == 0 {
 		return stats
 	}
 
+	minValue := latencies[0]
+	maxValue := latencies[0]
 	sum := 0.0
+	sortedLatencies := make([]float64, len(latencies))
+	copy(sortedLatencies, latencies)
+
 	for _, value := range latencies {
 		sum += value
+		if value < minValue {
+			minValue = value
+		}
+		if value > maxValue {
+			maxValue = value
+		}
 	}
 
-	slices.Sort(latencies)
-	median := latencies[len(latencies)/2]
-	if len(latencies)%2 == 0 {
-		upper := latencies[len(latencies)/2]
-		lower := latencies[(len(latencies)/2)-1]
+	sort.Float64s(sortedLatencies)
+	median := sortedLatencies[len(sortedLatencies)/2]
+	if len(sortedLatencies)%2 == 0 {
+		upper := sortedLatencies[len(sortedLatencies)/2]
+		lower := sortedLatencies[(len(sortedLatencies)/2)-1]
 		median = (upper + lower) / 2
 	}
 
 	stats.AvgMs = roundTo2(sum / float64(len(latencies)))
 	stats.MedianMs = roundTo2(median)
-	stats.MinMs = roundTo2(slices.Min(latencies))
-	stats.MaxMs = roundTo2(slices.Max(latencies))
+	stats.MinMs = roundTo2(minValue)
+	stats.MaxMs = roundTo2(maxValue)
 
 	return stats
 }

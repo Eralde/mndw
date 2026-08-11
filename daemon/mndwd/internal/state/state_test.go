@@ -94,7 +94,7 @@ func TestMutatePersistsAndReloads(t *testing.T) {
 	err := store.Mutate(func(st *State) error {
 		st.Plugins["demo"] = &Plugin{
 			Name:     "demo",
-			Source:   SourceUpload,
+			Source:   SourceUser,
 			Type:     "widget",
 			Approval: ApprovalPending,
 			Manifest: json.RawMessage(`{}`),

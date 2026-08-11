@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
+	"time"
 
-	"mndw.local/shared/httpsocket"
 	"mws-page/internal/service"
 )
 
@@ -34,6 +36,22 @@ func New(serviceValue *service.Service) (*Server, error) {
 }
 
 func (server *Server) Run(ctx context.Context) error {
+	if err := os.MkdirAll(filepath.Dir(server.socket), 0o700); err != nil {
+		return err
+	}
+
+	_ = os.Remove(server.socket)
+	listener, err := net.Listen("unix", server.socket)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_ = listener.Close()
+		_ = os.Remove(server.socket)
+	}()
+
+	_ = os.Chmod(server.socket, 0o600)
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /_mndw/ready", server.ready)
@@ -44,7 +62,20 @@ func (server *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("GET /snapshot", server.snapshot)
 	mux.HandleFunc("POST /write", server.write)
 
-	return httpsocket.Serve(ctx, server.socket, mux)
+	webServer := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+
+	go func() {
+		<-ctx.Done()
+
+		_ = webServer.Shutdown(context.Background())
+	}()
+
+	err = webServer.Serve(listener)
+	if err == http.ErrServerClosed {
+		return nil
+	}
+
+	return err
 }
 
 func (server *Server) ready(writer http.ResponseWriter, _ *http.Request) {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/state"
@@ -31,7 +32,7 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin approved", "plugin", name)
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, state.ApprovalApproved, true))
 }
 
 // installDeps installs a plugin's declared opkg packages. No-op when none declared.
@@ -90,7 +91,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p.Enabled {
-		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, true))
+		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, p.Approval, true))
 
 		return
 	}
@@ -113,7 +114,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("plugin enabled", "plugin", name)
 	h.reconcilePermission(name, "plugin enable")
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, state.ApprovalApproved, true))
 }
 
 // handleDisable deactivates a plugin and marks it disabled. Routes are gated on
@@ -133,13 +134,13 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !p.Enabled {
-		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false))
+		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, p.Approval, false))
 
 		return
 	}
 
 	if h.runtime != nil {
-		if err := h.runtime.Deactivate(r.Context(), name); err != nil && h.logger != nil {
+		if err := h.runtime.Deactivate(r.Context(), name, backend.StopDisable); err != nil && h.logger != nil {
 			h.logger.Error("backend stop failed during disable", "plugin", name, "error", err)
 		}
 	}
@@ -152,7 +153,7 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("plugin disabled", "plugin", name)
 	h.reconcilePermission(name, "plugin disable")
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUser, p.Approval, false))
 }
 
 // lookupForToggle resolves a user plugin and its manifest for enable/disable,
@@ -259,7 +260,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		dir = h.cfg.StagingDir
 	} else if m, err := manifest.ValidateV3(p.Manifest); err == nil && m.Backend != nil {
 		if h.runtime != nil {
-			if stopErr := h.runtime.Deactivate(r.Context(), name); stopErr != nil && h.logger != nil {
+			if stopErr := h.runtime.Deactivate(r.Context(), name, backend.StopDelete); stopErr != nil && h.logger != nil {
 				h.logger.Error("backend stop failed during delete", "plugin", name, "error", stopErr)
 			}
 		}

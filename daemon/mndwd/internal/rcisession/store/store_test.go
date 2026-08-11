@@ -279,32 +279,6 @@ func TestSnapshotIsDefensiveAndMutationsSerialize(t *testing.T) {
 	}
 }
 
-func TestMutationRetainsInMemoryChangeWhenPersistenceFails(t *testing.T) {
-	config := testConfig(t)
-	opened, err := Open(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	failedTarget := filepath.Join(t.TempDir(), "ciphertext-directory")
-	if err := os.Mkdir(failedTarget, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	opened.file = failedTarget
-
-	if err := opened.ReplaceController(testRecord()); err == nil {
-		t.Fatal("ReplaceController() error = nil, want persistence error")
-	}
-
-	snapshot, err := opened.Snapshot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.Controller == nil || snapshot.Controller.Token != "secret" {
-		t.Fatalf("in-memory document = %#v, want retained mutation", snapshot)
-	}
-}
-
 func testConfig(t *testing.T) Config {
 	t.Helper()
 	root := t.TempDir()

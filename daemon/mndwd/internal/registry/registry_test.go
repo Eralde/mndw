@@ -31,7 +31,7 @@ func TestResolveUserPlugin(t *testing.T) {
 	reg, store, userDir, _ := newRegistry(t)
 	m := `{"manifestVersion":3,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","routes":[{"id":"status","transport":"http","method":"GET","path":"status","access":"public","command":"backend/status.sh"}]}}`
 	if err := store.Mutate(func(st *state.State) error {
-		st.Plugins["svc"] = &state.Plugin{Name: "svc", Source: state.SourceUpload, Approval: state.ApprovalApproved, Enabled: true, Manifest: json.RawMessage(m)}
+		st.Plugins["svc"] = &state.Plugin{Name: "svc", Source: state.SourceUser, Approval: state.ApprovalApproved, Enabled: true, Manifest: json.RawMessage(m)}
 
 		return nil
 	}); err != nil {
@@ -45,7 +45,7 @@ func TestResolveUserPlugin(t *testing.T) {
 	if p.Dir != filepath.Join(userDir, "svc") {
 		t.Errorf("dir = %q", p.Dir)
 	}
-	if p.Source != state.SourceUpload || p.Approval != state.ApprovalApproved || !p.Enabled {
+	if p.Source != state.SourceUser || p.Approval != state.ApprovalApproved || !p.Enabled {
 		t.Errorf("unexpected state: %+v", p)
 	}
 }
@@ -172,7 +172,7 @@ func TestListBuiltinsSkipsInvalidManifest(t *testing.T) {
 func TestResolveTamperedManifestIsMiss(t *testing.T) {
 	reg, store, _, _ := newRegistry(t)
 	if err := store.Mutate(func(st *state.State) error {
-		st.Plugins["bad"] = &state.Plugin{Name: "bad", Source: state.SourceUpload, Approval: state.ApprovalApproved, Enabled: true, Manifest: json.RawMessage(`{"name":"bad"}`)}
+		st.Plugins["bad"] = &state.Plugin{Name: "bad", Source: state.SourceUser, Approval: state.ApprovalApproved, Enabled: true, Manifest: json.RawMessage(`{"name":"bad"}`)}
 
 		return nil
 	}); err != nil {
@@ -318,7 +318,7 @@ func writeRegistryBuiltin(t *testing.T, builtinDir, name, manifest string) {
 func registryStatePlugin(name, approval string, enabled bool, manifest string) *state.Plugin {
 	return &state.Plugin{
 		Name:     name,
-		Source:   state.SourceUpload,
+		Source:   state.SourceUser,
 		Approval: approval,
 		Enabled:  enabled,
 		Manifest: json.RawMessage(manifest),

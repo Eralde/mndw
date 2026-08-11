@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"mndw.local/shared/fsutil"
-
 	"ping-widget/internal/config"
 	"ping-widget/internal/model"
 )
@@ -50,10 +48,7 @@ func (store *JSONStore) SaveHosts(hosts []model.Host) error {
 	if hosts == nil {
 		hosts = []model.Host{}
 	}
-	if err := os.MkdirAll(store.stateDir, 0o755); err != nil {
-		return err
-	}
-	return fsutil.AtomicWriteJSON(store.hostsFile, hosts)
+	return store.atomicWriteJSON(store.hostsFile, hosts)
 }
 
 func (store *JSONStore) LoadStatsState() (map[string][]model.Sample, error) {
@@ -71,10 +66,52 @@ func (store *JSONStore) SaveStatsState(samplesByHost map[string][]model.Sample) 
 	if samplesByHost == nil {
 		samplesByHost = map[string][]model.Sample{}
 	}
+	return store.atomicWriteJSON(store.statsFile, samplesByHost)
+}
+
+func (store *JSONStore) atomicWriteJSON(targetPath string, value any) error {
 	if err := os.MkdirAll(store.stateDir, 0o755); err != nil {
 		return err
 	}
-	return fsutil.AtomicWriteJSON(store.statsFile, samplesByHost)
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+
+	tempFile, err := os.CreateTemp(store.stateDir, "write-*.json")
+	if err != nil {
+		return err
+	}
+
+	tempPath := tempFile.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tempPath)
+		}
+	}()
+
+	if _, err = tempFile.Write(data); err != nil {
+		_ = tempFile.Close()
+		return err
+	}
+
+	if err = tempFile.Sync(); err != nil {
+		_ = tempFile.Close()
+		return err
+	}
+
+	if err = tempFile.Close(); err != nil {
+		return err
+	}
+
+	if err = os.Rename(tempPath, targetPath); err != nil {
+		return err
+	}
+
+	cleanup = false
+	return nil
 }
 
 func (store *JSONStore) loadJSONWithBackup(path string, destination any) error {

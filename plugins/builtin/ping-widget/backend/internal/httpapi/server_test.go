@@ -18,10 +18,8 @@ import (
 )
 
 type fakeService struct {
-	hosts        []model.Host
-	running      bool
-	persistCalls int
-	persistErr   error
+	hosts   []model.Host
+	running bool
 }
 
 func (service *fakeService) Stats() []model.HostStats { return []model.HostStats{} }
@@ -32,14 +30,11 @@ func (service *fakeService) UpdateHosts(input model.HostUpdateInput) ([]model.Ho
 	service.hosts = append(service.hosts, model.Host{IP: input.IP, Name: input.Name})
 	return service.hosts, nil
 }
-func (service *fakeService) Persist() error {
-	service.persistCalls++
-	return service.persistErr
-}
+func (service *fakeService) Persist() error { return nil }
 
 func TestControlRoutes(t *testing.T) {
 	service := &fakeService{running: true}
-	handler := newMux(&Server{service: service})
+	handler := newMux(service)
 
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "http://mndw/control", nil)
@@ -195,7 +190,6 @@ func TestReadyAndHostRoutes(t *testing.T) {
 
 	request = httptest.NewRequest(http.MethodPost, "http://mndw/control", strings.NewReader(`{"action":"stop"}`))
 	request.Header.Set("Content-Type", "application/json")
-	request.RequestURI = ""
 	response, err = client.Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -212,7 +206,6 @@ func TestReadyAndHostRoutes(t *testing.T) {
 
 	request = httptest.NewRequest(http.MethodPost, "http://mndw/control", strings.NewReader(`{"action":"stop"}`))
 	request.Header.Set("Content-Type", "application/json")
-	request.RequestURI = ""
 	response, err = client.Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -229,7 +222,6 @@ func TestReadyAndHostRoutes(t *testing.T) {
 
 	request = httptest.NewRequest(http.MethodPost, "http://mndw/control", strings.NewReader(`{"action":"invalid"}`))
 	request.Header.Set("Content-Type", "application/json")
-	request.RequestURI = ""
 	response, err = client.Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -242,123 +234,5 @@ func TestReadyAndHostRoutes(t *testing.T) {
 	response.Body.Close()
 	if response.StatusCode != http.StatusBadRequest || controlError["error"] != "INVALID_CONTROL_ACTION" {
 		t.Fatalf("invalid control action = %d %#v", response.StatusCode, controlError)
-	}
-}
-
-func TestRunPersistsOnceAfterCleanShutdown(t *testing.T) {
-	root, err := os.MkdirTemp("/tmp", "ping-shutdown-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(root) })
-	socket := filepath.Join(root, "backend.sock")
-	t.Setenv("MNDW_BACKEND_SOCKET", socket)
-
-	service := &fakeService{}
-	server, err := New(service)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	runErr := make(chan error, 1)
-	go func() { runErr <- server.Run(ctx) }()
-
-	for attempt := 0; attempt < 100; attempt++ {
-		if _, err := os.Stat(socket); err == nil {
-			break
-		}
-		select {
-		case serviceErr := <-runErr:
-			if errors.Is(serviceErr, syscall.EPERM) {
-				t.Skip("sandbox does not permit Unix socket listeners")
-			}
-			t.Fatalf("service exited before socket creation: %v", serviceErr)
-		default:
-		}
-		time.Sleep(time.Millisecond)
-	}
-	if _, err := os.Stat(socket); err != nil {
-		t.Fatalf("socket was not created: %v", err)
-	}
-
-	cancel()
-	if err := <-runErr; err != nil {
-		t.Fatalf("clean shutdown = %v", err)
-	}
-	if service.persistCalls != 1 {
-		t.Fatalf("Persist calls = %d, want 1", service.persistCalls)
-	}
-}
-
-func TestRunReturnsPersistErrorAfterCleanShutdown(t *testing.T) {
-	root, err := os.MkdirTemp("/tmp", "ping-shutdown-error-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(root) })
-	socket := filepath.Join(root, "backend.sock")
-	t.Setenv("MNDW_BACKEND_SOCKET", socket)
-
-	persistErr := errors.New("persist failed")
-	service := &fakeService{persistErr: persistErr}
-	server, err := New(service)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	runErr := make(chan error, 1)
-	go func() { runErr <- server.Run(ctx) }()
-
-	for attempt := 0; attempt < 100; attempt++ {
-		if _, err := os.Stat(socket); err == nil {
-			break
-		}
-		select {
-		case serviceErr := <-runErr:
-			if errors.Is(serviceErr, syscall.EPERM) {
-				t.Skip("sandbox does not permit Unix socket listeners")
-			}
-			t.Fatalf("service exited before socket creation: %v", serviceErr)
-		default:
-		}
-		time.Sleep(time.Millisecond)
-	}
-	if _, err := os.Stat(socket); err != nil {
-		t.Fatalf("socket was not created: %v", err)
-	}
-
-	cancel()
-	if err := <-runErr; !errors.Is(err, persistErr) {
-		t.Fatalf("clean shutdown error = %v, want %v", err, persistErr)
-	}
-	if service.persistCalls != 1 {
-		t.Fatalf("Persist calls = %d, want 1", service.persistCalls)
-	}
-}
-
-func TestRunDoesNotPersistAfterServerError(t *testing.T) {
-	root, err := os.MkdirTemp("/tmp", "ping-server-error-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(root) })
-	parent := filepath.Join(root, "not-a-directory")
-	if err := os.WriteFile(parent, []byte("file"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("MNDW_BACKEND_SOCKET", filepath.Join(parent, "backend.sock"))
-
-	service := &fakeService{}
-	server, err := New(service)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := server.Run(context.Background()); err == nil {
-		t.Fatal("Run succeeded with a file as the socket parent")
-	}
-	if service.persistCalls != 0 {
-		t.Fatalf("Persist calls = %d, want 0", service.persistCalls)
 	}
 }

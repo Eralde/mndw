@@ -9,10 +9,9 @@ import (
 	"time"
 
 	"mndw.local/rcisock"
-	"mndw.local/shared/chansem"
-	"mndw.local/shared/ptr"
 )
 
+const maxRecentTargetDiagnostics = 64
 const defaultSessionRetention = 3 * time.Minute
 
 var ErrNoSession = errors.New("persistent RCI session unavailable")
@@ -29,6 +28,79 @@ type Session struct {
 	Live     bool       `json:"live"`
 	Power2G  PowerState `json:"power2g"`
 	Power5G  PowerState `json:"power5g"`
+}
+
+type Diagnostics struct {
+	Configured           bool                `json:"configured"`
+	PluginIDPresent      bool                `json:"pluginIdPresent"`
+	TelemetryPollEnabled bool                `json:"telemetryPollEnabled"`
+	SocketPath           string              `json:"socketPath"`
+	PollInterval         string              `json:"pollInterval"`
+	IOTimeout            string              `json:"ioTimeout"`
+	SessionRetention     string              `json:"sessionRetention"`
+	Connected            bool                `json:"connected"`
+	ConnectionAttempts   int                 `json:"connectionAttempts"`
+	ReconnectCount       int                 `json:"reconnectCount"`
+	LastConnectedAt      *time.Time          `json:"lastConnectedAt"`
+	LastDisconnectedAt   *time.Time          `json:"lastDisconnectedAt"`
+	LastDisconnectReason string              `json:"lastDisconnectReason,omitempty"`
+	TargetCount          int                 `json:"targetCount"`
+	TargetEnumerations   int                 `json:"targetEnumerations"`
+	SessionCount         int                 `json:"sessionCount"`
+	LastTargetsAt        *time.Time          `json:"lastTargetsAt"`
+	LastTargetChange     *TargetChange       `json:"lastTargetChange"`
+	LastTelemetryAt      *time.Time          `json:"lastTelemetryAt"`
+	LastError            *DiagnosticError    `json:"lastError"`
+	Targets              []TargetDiagnostics `json:"targets"`
+}
+
+type TargetChange struct {
+	At      time.Time `json:"at"`
+	Reason  string    `json:"reason"`
+	Added   []string  `json:"added,omitempty"`
+	Removed []string  `json:"removed,omitempty"`
+}
+
+type TargetDiagnostics struct {
+	Identity            string               `json:"identity"`
+	Name                string               `json:"name,omitempty"`
+	MAC                 string               `json:"mac,omitempty"`
+	Present             bool                 `json:"present"`
+	SessionPresent      bool                 `json:"sessionPresent"`
+	Live                bool                 `json:"live"`
+	Misses              int                  `json:"misses"`
+	SessionReason       string               `json:"sessionReason,omitempty"`
+	FirstSeenAt         *time.Time           `json:"firstSeenAt"`
+	LastSeenAt          *time.Time           `json:"lastSeenAt"`
+	RemovedAt           *time.Time           `json:"removedAt"`
+	LastProbeAt         *time.Time           `json:"lastProbeAt"`
+	LastProbeStatus     *int                 `json:"lastProbeStatus"`
+	LastProbeError      *DiagnosticError     `json:"lastProbeError"`
+	LastTelemetryAt     *time.Time           `json:"lastTelemetryAt"`
+	LastTelemetryError  *DiagnosticError     `json:"lastTelemetryError"`
+	Telemetry           TelemetryDiagnostics `json:"telemetry"`
+	LastSessionChangeAt *time.Time           `json:"lastSessionChangeAt"`
+}
+
+type TelemetryDiagnostics struct {
+	System    TelemetryPhaseDiagnostics `json:"system"`
+	CPURRD    TelemetryPhaseDiagnostics `json:"cpuRrd"`
+	MemoryRRD TelemetryPhaseDiagnostics `json:"memoryRrd"`
+}
+
+type TelemetryPhaseDiagnostics struct {
+	LastAttemptAt *time.Time       `json:"lastAttemptAt"`
+	LastSuccessAt *time.Time       `json:"lastSuccessAt"`
+	LastError     *DiagnosticError `json:"lastError"`
+}
+
+type DiagnosticError struct {
+	Phase    string    `json:"phase"`
+	Identity string    `json:"identity,omitempty"`
+	Code     string    `json:"code"`
+	Message  string    `json:"message"`
+	Status   int       `json:"status,omitempty"`
+	At       time.Time `json:"at"`
 }
 
 type Request struct {
@@ -144,7 +216,7 @@ func (c *Client) Send(ctx context.Context, nodeID string, request Request) (Resp
 	c.mu.Lock()
 
 	rpc := c.rpc
-	_, known := c.targetLocks[nodeID]
+	targetLock, known := c.targetLocks[nodeID]
 	_, present := c.targets[nodeID]
 
 	c.mu.Unlock()
@@ -153,11 +225,56 @@ func (c *Client) Send(ctx context.Context, nodeID string, request Request) (Resp
 		return Response{}, ErrNoSession
 	}
 
+	if err := acquire(ctx, c.inflight); err != nil {
+		return Response{}, err
+	}
+
+	defer release(c.inflight)
+
+	if err := acquireTarget(ctx, targetLock); err != nil {
+		return Response{}, err
+	}
+
+	defer releaseTarget(targetLock)
+
 	callContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.config.IOTimeout)
 
 	defer cancel()
 
-	return c.call(callContext, rpc, nodeID, request)
+	frame, err := rpc.Call(callContext, rcisock.RequestFrame{
+		Target: nodeID, Method: request.Method, Path: request.Path, Body: request.Body,
+	})
+	if err != nil {
+		return Response{}, err
+	}
+
+	return Response{Status: frame.Status, Body: append([]byte(nil), frame.Body...)}, nil
+}
+
+func acquire(ctx context.Context, semaphore chan struct{}) error {
+	select {
+	case semaphore <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func release(semaphore chan struct{}) {
+	<-semaphore
+}
+
+func acquireTarget(ctx context.Context, lock chan struct{}) error {
+	select {
+	case <-lock:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func releaseTarget(lock chan struct{}) {
+	lock <- struct{}{}
 }
 
 func (c *Client) Diagnostics() Diagnostics {
@@ -172,7 +289,9 @@ func (c *Client) Diagnostics() Diagnostics {
 		diagnostics.Targets = append(diagnostics.Targets, cloneTargetDiagnostics(target))
 	}
 
-	sortTargetDiagnostics(diagnostics.Targets)
+	sort.Slice(diagnostics.Targets, func(i, j int) bool {
+		return diagnostics.Targets[i].Identity < diagnostics.Targets[j].Identity
+	})
 
 	return diagnostics
 }
@@ -209,11 +328,19 @@ func (c *Client) Snapshot() []Session {
 	result := make([]Session, 0, len(c.sessions))
 
 	for _, state := range c.sessions {
-		if !visibleSession(state) {
+		if !state.live {
 			continue
 		}
 
-		result = append(result, Session{Identity: state.target.Identity, Mac: state.target.MAC, Live: state.live, Power2G: state.power2G, Power5G: state.power5G})
+		result = append(result, Session{Identity: state.target.Identity, Mac: state.target.MAC, Live: true, Power2G: state.power2G, Power5G: state.power5G})
+	}
+
+	for _, state := range c.sessions {
+		if state.live || state.misses < 2 {
+			continue
+		}
+
+		result = append(result, Session{Identity: state.target.Identity, Mac: state.target.MAC, Live: false, Power2G: state.power2G, Power5G: state.power5G})
 	}
 
 	sort.Slice(result, func(i, j int) bool { return result[i].Mac < result[j].Mac })
@@ -369,26 +496,27 @@ func (c *Client) updateTargets(targets []Target) error {
 	for identity, target := range current {
 		if _, exists := c.targetLocks[identity]; !exists {
 			c.targetLocks[identity] = make(chan struct{}, 1)
+			c.targetLocks[identity] <- struct{}{}
 		}
 
 		diagnostic, known := c.targetDiagnostics[identity]
 		wasPresent := known && diagnostic.Present
 
 		if !known {
-			diagnostic = TargetDiagnostics{Identity: identity, FirstSeenAt: ptr.To(now)}
+			diagnostic = TargetDiagnostics{Identity: identity, FirstSeenAt: timePointer(now)}
 		}
 
 		diagnostic.Identity = identity
 		diagnostic.Name = target.Name
 		diagnostic.MAC = target.MAC
 		diagnostic.Present = true
-		diagnostic.LastSeenAt = ptr.To(now)
+		diagnostic.LastSeenAt = timePointer(now)
 		diagnostic.RemovedAt = nil
 
 		if !wasPresent {
 			added = append(added, identity)
 			diagnostic.SessionReason = "target-added"
-			diagnostic.LastSessionChangeAt = ptr.To(now)
+			diagnostic.LastSessionChangeAt = timePointer(now)
 		}
 
 		state, ok := c.sessions[identity]
@@ -401,7 +529,7 @@ func (c *Client) updateTargets(targets []Target) error {
 
 			if wasPresent {
 				diagnostic.SessionReason = "session-created"
-				diagnostic.LastSessionChangeAt = ptr.To(now)
+				diagnostic.LastSessionChangeAt = timePointer(now)
 			}
 		}
 
@@ -437,15 +565,19 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rcisock.Client) error {
 	c.mu.Unlock()
 
 	var workers sync.WaitGroup
-	connectionErrors := make(chan error, 1)
+	var errorMu sync.Mutex
+	var connectionErr error
 	recordConnectionError := func(err error) {
 		if !isConnectionFailure(err) {
 			return
 		}
 
-		select {
-		case connectionErrors <- err:
-		default:
+		errorMu.Lock()
+
+		defer errorMu.Unlock()
+
+		if connectionErr == nil {
+			connectionErr = err
 		}
 	}
 
@@ -494,12 +626,7 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rcisock.Client) error {
 
 	workers.Wait()
 
-	select {
-	case err := <-connectionErrors:
-		return err
-	default:
-		return nil
-	}
+	return connectionErr
 }
 
 func isConnectionFailure(err error) bool {
@@ -523,7 +650,16 @@ type rpcRequester struct {
 }
 
 func (r rpcRequester) Do(ctx context.Context, request Request) (Response, error) {
-	return r.client.call(ctx, r.rpc, r.target, request)
+	if r.client != nil {
+		return r.client.call(ctx, r.rpc, r.target, request)
+	}
+
+	frame, err := r.rpc.Call(ctx, rcisock.RequestFrame{Target: r.target, Method: request.Method, Path: request.Path, Body: request.Body})
+	if err != nil {
+		return Response{}, err
+	}
+
+	return Response{Status: frame.Status, Body: append([]byte(nil), frame.Body...)}, nil
 }
 
 func (c *Client) call(ctx context.Context, rpc *rcisock.Client, nodeID string, request Request) (Response, error) {
@@ -533,21 +669,21 @@ func (c *Client) call(ctx context.Context, rpc *rcisock.Client, nodeID string, r
 
 	c.mu.Unlock()
 
-	if targetLock == nil || rpc == nil {
+	if targetLock == nil {
 		return Response{}, ErrNoSession
 	}
 
-	if err := chansem.Acquire(ctx, c.inflight); err != nil {
+	if err := acquire(ctx, c.inflight); err != nil {
 		return Response{}, err
 	}
 
-	defer chansem.Release(c.inflight)
+	defer release(c.inflight)
 
-	if err := chansem.Acquire(ctx, targetLock); err != nil {
+	if err := acquireTarget(ctx, targetLock); err != nil {
 		return Response{}, err
 	}
 
-	defer chansem.Release(targetLock)
+	defer releaseTarget(targetLock)
 
 	frame, err := rpc.Call(ctx, rcisock.RequestFrame{
 		Target: nodeID, Method: request.Method, Path: request.Path, Body: request.Body,
@@ -590,7 +726,7 @@ func (c *Client) applyResult(target Target, response rcisock.ResponseFrame, err 
 
 	diagnostic := c.targetDiagnostics[target.Identity]
 	now := time.Now().UTC()
-	diagnostic.LastProbeAt = ptr.To(now)
+	diagnostic.LastProbeAt = timePointer(now)
 
 	if response.Status != 0 {
 		status := response.Status
@@ -608,7 +744,7 @@ func (c *Client) applyResult(target Target, response rcisock.ResponseFrame, err 
 		diagnostic.Live = true
 		diagnostic.Misses = 0
 		diagnostic.SessionReason = "probe-success"
-		diagnostic.LastSessionChangeAt = ptr.To(now)
+		diagnostic.LastSessionChangeAt = timePointer(now)
 		c.targetDiagnostics[target.Identity] = diagnostic
 
 		return
@@ -630,7 +766,7 @@ func (c *Client) applyResult(target Target, response rcisock.ResponseFrame, err 
 		diagnostic.Live = false
 		diagnostic.Misses = 0
 		diagnostic.SessionReason = "evicted:" + remote.Code
-		diagnostic.LastSessionChangeAt = ptr.To(now)
+		diagnostic.LastSessionChangeAt = timePointer(now)
 		c.targetDiagnostics[target.Identity] = diagnostic
 
 		return
@@ -653,7 +789,7 @@ func (c *Client) applyResult(target Target, response rcisock.ResponseFrame, err 
 	diagnostic.Live = state.live
 	diagnostic.Misses = state.misses
 	diagnostic.SessionReason = "probe-miss"
-	diagnostic.LastSessionChangeAt = ptr.To(now)
+	diagnostic.LastSessionChangeAt = timePointer(now)
 	c.targetDiagnostics[target.Identity] = diagnostic
 }
 
@@ -713,7 +849,7 @@ func (c *Client) markDisconnected(reason string) {
 		diagnostic.Misses = state.misses
 		diagnostic.SessionReason = reason
 		diagnostic.RemovedAt = nil
-		diagnostic.LastSessionChangeAt = ptr.To(now)
+		diagnostic.LastSessionChangeAt = timePointer(now)
 		c.targetDiagnostics[identity] = diagnostic
 	}
 
@@ -758,7 +894,7 @@ func (c *Client) recordConnected() {
 	}
 
 	c.diagnostics.Connected = true
-	c.diagnostics.LastConnectedAt = ptr.To(now)
+	c.diagnostics.LastConnectedAt = timePointer(now)
 }
 
 func (c *Client) recordDisconnected(reason string) {
@@ -769,7 +905,7 @@ func (c *Client) recordDisconnected(reason string) {
 	defer c.mu.Unlock()
 
 	c.diagnostics.Connected = false
-	c.diagnostics.LastDisconnectedAt = ptr.To(now)
+	c.diagnostics.LastDisconnectedAt = timePointer(now)
 	c.diagnostics.LastDisconnectReason = reason
 }
 
@@ -782,7 +918,7 @@ func (c *Client) recordTargets() {
 	c.diagnostics.TargetCount = len(c.targets)
 	c.diagnostics.TargetEnumerations++
 	c.diagnostics.SessionCount = c.sessionCountLocked()
-	c.diagnostics.LastTargetsAt = ptr.To(now)
+	c.diagnostics.LastTargetsAt = timePointer(now)
 }
 
 func (c *Client) recordSessionCount() {
@@ -799,7 +935,7 @@ func (c *Client) recordTelemetrySuccess() {
 	defer c.mu.Unlock()
 
 	now := time.Now().UTC()
-	c.diagnostics.LastTelemetryAt = ptr.To(now)
+	c.diagnostics.LastTelemetryAt = timePointer(now)
 }
 
 func (c *Client) recordTargetTelemetrySuccess(target Target) {
@@ -810,7 +946,7 @@ func (c *Client) recordTargetTelemetrySuccess(target Target) {
 	defer c.mu.Unlock()
 
 	diagnostic := c.targetDiagnostics[target.Identity]
-	diagnostic.LastTelemetryAt = ptr.To(now)
+	diagnostic.LastTelemetryAt = timePointer(now)
 	diagnostic.LastTelemetryError = nil
 	c.targetDiagnostics[target.Identity] = diagnostic
 }
@@ -840,7 +976,7 @@ func (c *Client) RecordTelemetryPhase(identity, phase string, status int, err er
 
 	if diagnostic.Identity == "" {
 		diagnostic.Identity = identity
-		diagnostic.FirstSeenAt = ptr.To(now)
+		diagnostic.FirstSeenAt = timePointer(now)
 		diagnostic.Present = true
 		diagnostic.SessionPresent = true
 	}
@@ -851,10 +987,10 @@ func (c *Client) RecordTelemetryPhase(identity, phase string, status int, err er
 		return
 	}
 
-	phaseDiagnostic.LastAttemptAt = ptr.To(now)
+	phaseDiagnostic.LastAttemptAt = timePointer(now)
 
 	if err == nil && status == 200 {
-		phaseDiagnostic.LastSuccessAt = ptr.To(now)
+		phaseDiagnostic.LastSuccessAt = timePointer(now)
 	} else {
 		phaseDiagnostic.LastError = persistentDiagnosticError(
 			identity,
@@ -894,16 +1030,12 @@ func (c *Client) sessionCountLocked() int {
 	count := 0
 
 	for _, state := range c.sessions {
-		if visibleSession(state) {
+		if state.live || state.misses >= 2 {
 			count++
 		}
 	}
 
 	return count
-}
-
-func visibleSession(state sessionState) bool {
-	return state.live || state.misses >= 2
 }
 
 func (c *Client) recordTargetChangeLocked(reason string, added, removed []string, at time.Time) {
@@ -921,8 +1053,8 @@ func (c *Client) markTargetGoneLocked(identity, reason string, now time.Time) {
 	state.SessionPresent = false
 	state.Live = false
 	state.SessionReason = reason
-	state.LastSessionChangeAt = ptr.To(now)
-	state.RemovedAt = ptr.To(now)
+	state.LastSessionChangeAt = timePointer(now)
+	state.RemovedAt = timePointer(now)
 	c.targetDiagnostics[identity] = state
 }
 
@@ -1030,6 +1162,102 @@ func telemetryPhase(diagnostics *TelemetryDiagnostics, phase string) *TelemetryP
 	default:
 		return nil
 	}
+}
+
+func cloneDiagnostics(diagnostics Diagnostics) Diagnostics {
+	clone := diagnostics
+	clone.LastConnectedAt = cloneTime(diagnostics.LastConnectedAt)
+	clone.LastDisconnectedAt = cloneTime(diagnostics.LastDisconnectedAt)
+	clone.LastTargetsAt = cloneTime(diagnostics.LastTargetsAt)
+	clone.LastTelemetryAt = cloneTime(diagnostics.LastTelemetryAt)
+	clone.LastError = cloneDiagnosticError(diagnostics.LastError)
+
+	if diagnostics.LastTargetChange != nil {
+		change := *diagnostics.LastTargetChange
+		change.Added = append([]string(nil), diagnostics.LastTargetChange.Added...)
+		change.Removed = append([]string(nil), diagnostics.LastTargetChange.Removed...)
+		clone.LastTargetChange = &change
+	}
+
+	clone.Targets = nil
+
+	return clone
+}
+
+func cloneTargetDiagnostics(diagnostic TargetDiagnostics) TargetDiagnostics {
+	clone := diagnostic
+	clone.FirstSeenAt = cloneTime(diagnostic.FirstSeenAt)
+	clone.LastSeenAt = cloneTime(diagnostic.LastSeenAt)
+	clone.RemovedAt = cloneTime(diagnostic.RemovedAt)
+	clone.LastProbeAt = cloneTime(diagnostic.LastProbeAt)
+	clone.LastProbeStatus = cloneInt(diagnostic.LastProbeStatus)
+	clone.LastProbeError = cloneDiagnosticError(diagnostic.LastProbeError)
+	clone.LastTelemetryAt = cloneTime(diagnostic.LastTelemetryAt)
+	clone.LastTelemetryError = cloneDiagnosticError(diagnostic.LastTelemetryError)
+	clone.LastSessionChangeAt = cloneTime(diagnostic.LastSessionChangeAt)
+	clone.Telemetry = cloneTelemetryDiagnostics(diagnostic.Telemetry)
+
+	return clone
+}
+
+func cloneTelemetryDiagnostics(diagnostics TelemetryDiagnostics) TelemetryDiagnostics {
+	return TelemetryDiagnostics{
+		System:    cloneTelemetryPhaseDiagnostics(diagnostics.System),
+		CPURRD:    cloneTelemetryPhaseDiagnostics(diagnostics.CPURRD),
+		MemoryRRD: cloneTelemetryPhaseDiagnostics(diagnostics.MemoryRRD),
+	}
+}
+
+func cloneTelemetryPhaseDiagnostics(diagnostics TelemetryPhaseDiagnostics) TelemetryPhaseDiagnostics {
+	return TelemetryPhaseDiagnostics{
+		LastAttemptAt: cloneTime(diagnostics.LastAttemptAt),
+		LastSuccessAt: cloneTime(diagnostics.LastSuccessAt),
+		LastError:     cloneDiagnosticError(diagnostics.LastError),
+	}
+}
+
+func cloneDiagnosticError(diagnostic *DiagnosticError) *DiagnosticError {
+	if diagnostic == nil {
+		return nil
+	}
+
+	clone := *diagnostic
+
+	return &clone
+}
+
+func cloneTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+
+	clone := *value
+
+	return &clone
+}
+
+func cloneInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+
+	clone := *value
+
+	return &clone
+}
+
+func timePointer(value time.Time) *time.Time {
+	clone := value
+
+	return &clone
+}
+
+func diagnosticTime(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+
+	return *value
 }
 
 func (c *Client) wait(ctx context.Context, duration time.Duration) error {

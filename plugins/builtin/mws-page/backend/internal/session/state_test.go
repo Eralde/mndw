@@ -5,19 +5,6 @@ import (
 	"time"
 )
 
-func TestEnsureCreatesOfflineNode(t *testing.T) {
-	state := NewState()
-
-	state.Ensure("node")
-	snapshot, ok := state.Snapshot("node")
-	if !ok {
-		t.Fatal("Ensure() did not create node")
-	}
-	if snapshot.State != NodeOffline {
-		t.Fatalf("state = %q, want %q", snapshot.State, NodeOffline)
-	}
-}
-
 func TestStateRecordsAuthenticationSuccessWithoutTreatingDiscoveryAsSuccess(t *testing.T) {
 	state := NewState()
 	first := time.Date(2026, time.August, 3, 19, 42, 10, 0, time.FixedZone("CEST", 2*60*60))

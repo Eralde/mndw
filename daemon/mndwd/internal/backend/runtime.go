@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"os"
+	"time"
 
 	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
@@ -25,7 +26,7 @@ type RuntimeLimitsSnapshot struct {
 type Runtime interface {
 	Reconcile(context.Context, []*registry.Plugin)
 	Activate(context.Context, *registry.Plugin) error
-	Deactivate(context.Context, string) error
+	Deactivate(context.Context, string, StopReason) error
 	Restart(context.Context, string) error
 	Status(string) RuntimeStatus
 	Limits() RuntimeLimitsSnapshot
@@ -91,7 +92,9 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 	config.Supervisor.PluginDataRoot = config.PluginDataRoot
 	config.Supervisor.Limits = config.Limits
 	config.Supervisor.SupportedProtocols = append([]int(nil), config.SupportedServiceProtocols...)
-	config.Supervisor = normalizeSupervisorConfig(config.Supervisor)
+	config.Supervisor.ReadinessTimeout = positiveDuration(config.Supervisor.ReadinessTimeout, 30*time.Second)
+	config.Supervisor.StopTimeout = positiveDuration(config.Supervisor.StopTimeout, 10*time.Second)
+	config.Supervisor.FinalReapTimeout = positiveDuration(config.Supervisor.FinalReapTimeout, 2*time.Second)
 
 	admission := NewAdmission(config.Limits)
 
@@ -102,6 +105,14 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 		protocols:   append([]int(nil), config.SupportedServiceProtocols...),
 		runtimeRoot: config.RuntimeRoot,
 	}
+}
+
+func positiveDuration(value, fallback time.Duration) time.Duration {
+	if value <= 0 {
+		return fallback
+	}
+
+	return value
 }
 
 func (r *RuntimeImpl) Reconcile(ctx context.Context, plugins []*registry.Plugin) {
@@ -129,8 +140,8 @@ func (r *RuntimeImpl) Activate(ctx context.Context, plugin *registry.Plugin) err
 	return r.supervisor.Start(ctx, spec)
 }
 
-func (r *RuntimeImpl) Deactivate(ctx context.Context, pluginID string) error {
-	return r.supervisor.Forget(ctx, pluginID)
+func (r *RuntimeImpl) Deactivate(ctx context.Context, pluginID string, reason StopReason) error {
+	return r.supervisor.Forget(ctx, pluginID, reason)
 }
 
 func (r *RuntimeImpl) Restart(ctx context.Context, pluginID string) error {
@@ -159,7 +170,7 @@ func (r *RuntimeImpl) BeginPluginMaintenance(ctx context.Context, pluginID strin
 		r.maintenance(pluginID)
 	}
 
-	return r.supervisor.Forget(ctx, pluginID)
+	return r.supervisor.Forget(ctx, pluginID, StopMaintenance)
 }
 
 func (r *RuntimeImpl) BeginPlatformMaintenance(ctx context.Context) error {
@@ -167,7 +178,7 @@ func (r *RuntimeImpl) BeginPlatformMaintenance(ctx context.Context) error {
 		r.platform()
 	}
 
-	return r.supervisor.StopAll(ctx)
+	return r.supervisor.StopAll(ctx, StopMaintenance)
 }
 
 func (r *RuntimeImpl) EndPluginMaintenance(pluginID string) {
@@ -181,7 +192,7 @@ func (r *RuntimeImpl) Shutdown(ctx context.Context) error {
 		r.platform()
 	}
 
-	return r.supervisor.StopAll(ctx)
+	return r.supervisor.StopAll(ctx, StopShutdown)
 }
 
 func (r *RuntimeImpl) SetMaintenanceHooks(plugin func(string), platform func(), endPlugin func(string)) {

@@ -69,7 +69,7 @@ func (g *Gateway) Register(mux *http.ServeMux) {
 }
 
 func (g *Gateway) handle(writer http.ResponseWriter, request *http.Request) {
-	writer = httpx.NewNoCORSResponseWriter(writer)
+	writer = NewNoCORSResponseWriter(writer)
 	writer.Header().Set("Cache-Control", "no-store")
 	path, canonical := CanonicalRoutePath(request.PathValue("path"))
 	if !canonical {
@@ -217,7 +217,7 @@ func (g *Gateway) serveService(writer http.ResponseWriter, request *http.Request
 }
 
 func (g *Gateway) handleWebSocket(writer http.ResponseWriter, request *http.Request) {
-	writer = httpx.NewNoCORSResponseWriter(writer)
+	writer = NewNoCORSResponseWriter(writer)
 	writer.Header().Set("Cache-Control", "no-store")
 	path, canonical := CanonicalRoutePath(request.PathValue("path"))
 	if !canonical {

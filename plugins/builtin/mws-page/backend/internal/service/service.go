@@ -23,26 +23,33 @@ import (
 )
 
 type Service struct {
-	transport     *auth.HTTPTransport
-	authenticator *auth.Authenticator
-	credentials   *credentials.Store
-	epoch         *credentials.Epoch
-	holder        *session.Holder
-	controller    auth.Target
-	mu            sync.Mutex
-	members       []discovery.Member
-	refreshMu     sync.Mutex
-	telemetry     *telemetry.Collector
-	persistent    PersistentSource
-	clock         clock.Clock
-	lastRefreshAt time.Time
-	lastError     *diagnosticError
+	transport        *auth.HTTPTransport
+	authenticator    *auth.Authenticator
+	credentials      *credentials.Store
+	epoch            *credentials.Epoch
+	holder           *session.Holder
+	controller       auth.Target
+	mu               sync.Mutex
+	members          []discovery.Member
+	refreshMu        sync.Mutex
+	telemetry        *telemetry.Collector
+	persistent       PersistentSource
+	persistentWriter PersistentWriter
+	clock            clock.Clock
+	lastRefreshAt    time.Time
+	lastError        *diagnosticError
 }
 
 type PersistentSource interface {
 	Run(context.Context)
 	Snapshot() []persistent.Session
 	Diagnostics() persistent.Diagnostics
+}
+
+type PersistentWriter interface {
+	PersistentSource
+	Send(context.Context, string, persistent.Request) (persistent.Response, error)
+	HasTarget(string) bool
 }
 
 type persistentTelemetryRecorder interface {
@@ -97,6 +104,7 @@ func New(cfg config.Config) *Service {
 			TelemetryPoll: service.pollPersistentTelemetry,
 		})
 		service.persistent = client
+		service.persistentWriter = client
 	}
 
 	return service
@@ -122,6 +130,12 @@ func (s *Service) Run(ctx context.Context) {
 		}
 	}
 }
+
+// WriteDiagnostics remains a harmless source-compatible no-op. Diagnostics are
+// served on demand over the bounded service HTTP endpoint; no file is written.
+func (s *Service) WriteDiagnostics() error { return nil }
+
+func (s *Service) writeDiagnosticsTick() error { return nil }
 
 // DiagnosticsSnapshot returns local service state without credentials or token material.
 func (s *Service) DiagnosticsSnapshot() map[string]any {
@@ -195,6 +209,7 @@ func (s *Service) Nodes(ctx context.Context) (any, error) {
 
 func (s *Service) SetPersistentSource(source PersistentSource) {
 	s.persistent = source
+	s.persistentWriter, _ = source.(PersistentWriter)
 }
 
 func (s *Service) pollPersistentTelemetry(ctx context.Context, target persistent.Target, requester persistent.Requester) error {
@@ -402,7 +417,7 @@ func (s *Service) membersSnapshot() []discovery.Member {
 }
 
 func (s *Service) recordError(operation string, err error) *OperationError {
-	classified := classify(err)
+	classified := operationError(err)
 	next := diagnosticError{
 		Operation: operation,
 		Status:    classified.Status(),
@@ -575,12 +590,7 @@ func newestRRDTicks(ticks []telemetry.RrdTick) []telemetry.RrdTick {
 	return result
 }
 
-func classify(err error) *OperationError {
-	var existing *OperationError
-	if errors.As(err, &existing) {
-		return existing
-	}
-
+func classify(err error) error {
 	var authErr *auth.AuthError
 
 	if errors.As(err, &authErr) {
@@ -601,6 +611,22 @@ func classify(err error) *OperationError {
 	}
 
 	return &OperationError{status: 504, code: "target_unavailable", message: "target unavailable", err: err}
+}
+
+func operationError(err error) *OperationError {
+	var classified *OperationError
+
+	if errors.As(err, &classified) {
+		return classified
+	}
+
+	classifiedError := classify(err)
+
+	if errors.As(classifiedError, &classified) {
+		return classified
+	}
+
+	return &OperationError{status: 500, code: "operation_rejected", message: "operation rejected", err: err}
 }
 
 func validNodeID(value string) bool {

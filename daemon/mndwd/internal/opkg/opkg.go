@@ -79,6 +79,7 @@ func validate(packages []string) error {
 	if len(packages) == 0 {
 		return fmt.Errorf("packages must be a non-empty list")
 	}
+
 	for _, p := range packages {
 		if !pkgNameRe.MatchString(p) {
 			return &InvalidPackageError{Name: p}
@@ -113,14 +114,17 @@ func execRun(ctx context.Context, args ...string) (string, int, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
+
 	if ctx.Err() != nil {
 		return "", 0, ctx.Err()
 	}
+
 	if err == nil {
 		return stdout.String(), 0, nil
 	}
 
 	var exitErr *exec.ExitError
+
 	if errors.As(err, &exitErr) {
 		// Non-zero exit: append stderr — opkg reports its failure reason there, and
 		// the callers log this output. Exit-0 output stays stdout-only, as it is
@@ -163,9 +167,11 @@ func (m *execManager) mutate(ctx context.Context, action string, packages []stri
 	if err := validate(packages); err != nil {
 		return err
 	}
+
 	if err := m.acquire(ctx); err != nil {
 		return fmt.Errorf("opkg %s: %w", action, err)
 	}
+
 	defer m.release()
 
 	commandArgs := append([]string{"opkg"}, args...)
@@ -176,6 +182,7 @@ func (m *execManager) mutate(ctx context.Context, action string, packages []stri
 
 		return fmt.Errorf("opkg %s: %w", action, err)
 	}
+
 	if exitCode != 0 {
 		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", output.Tail(out), "exitCode", exitCode)
 
@@ -201,6 +208,7 @@ func (m *execManager) Update(ctx context.Context) error {
 	if err := m.acquire(ctx); err != nil {
 		return fmt.Errorf("opkg update: %w", err)
 	}
+
 	defer m.release()
 
 	out, exitCode, err := m.run(ctx, "opkg", "update")
@@ -209,6 +217,7 @@ func (m *execManager) Update(ctx context.Context) error {
 
 		return fmt.Errorf("opkg update: %w", err)
 	}
+
 	if exitCode != 0 {
 		m.logger.Error("opkg update failed", "output", output.Tail(out), "exitCode", exitCode)
 
@@ -233,6 +242,7 @@ func (m *execManager) list(ctx context.Context, verb string) ([]string, error) {
 
 		return nil, fmt.Errorf("opkg %s: %w", verb, err)
 	}
+
 	if exitCode != 0 {
 		m.logger.Error("opkg list failed", "verb", verb, "output", output.Tail(out), "exitCode", exitCode)
 
@@ -252,8 +262,10 @@ func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
 	}
 
 	combined := make([]PackageEntry, 0, len(installedMap)+len(availableMap))
+
 	for name, available := range availableMap {
 		installed, ok := installedMap[name]
+
 		if !ok {
 			available.Status = "uninstalled"
 			combined = append(combined, available)
@@ -262,6 +274,7 @@ func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
 		}
 
 		description := installed.Description
+
 		if available.Description != "" {
 			description = available.Description
 		}
@@ -272,16 +285,20 @@ func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
 			Description: description,
 			Status:      "installed",
 		}
+
 		if installed.Version != available.Version {
 			entry.Status = "update_available"
 			entry.NewVersion = available.Version
 		}
+
 		combined = append(combined, entry)
 	}
+
 	for name, installed := range installedMap {
 		if _, ok := availableMap[name]; ok {
 			continue
 		}
+
 		installed.Status = "installed"
 		installed.NewVersion = ""
 		combined = append(combined, installed)
@@ -297,14 +314,18 @@ func (m *execManager) listMap(ctx context.Context, verb string) (map[string]Pack
 	if err != nil {
 		return nil, fmt.Errorf("opkg %s: %w", verb, err)
 	}
+
 	if exitCode != 0 {
 		return nil, fmt.Errorf("opkg %s exited %d", verb, exitCode)
 	}
+
 	entries, err := parseEntries(out)
 	if err != nil {
 		return nil, err
 	}
+
 	result := make(map[string]PackageEntry, len(entries))
+
 	for _, entry := range entries {
 		result[entry.Name] = entry
 	}
@@ -316,11 +337,14 @@ func (m *execManager) listMap(ctx context.Context, verb string) (map[string]Pack
 // name in `opkg list` / `opkg list-installed` output ("name - version - desc").
 func parseNames(out string) []string {
 	names := make([]string, 0)
+
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
+
 		if len(fields) == 0 {
 			continue
 		}
+
 		names = append(names, fields[0])
 	}
 
@@ -329,24 +353,32 @@ func parseNames(out string) []string {
 
 func parseEntries(out string) ([]PackageEntry, error) {
 	entries := make([]PackageEntry, 0)
+
 	for i, rawLine := range strings.Split(out, "\n") {
 		if strings.TrimSpace(rawLine) == "" {
 			continue
 		}
+
 		line := strings.TrimSuffix(rawLine, "\r")
 		parts := strings.SplitN(line, " - ", 3)
+
 		if len(parts) < 2 {
 			return nil, fmt.Errorf("malformed opkg output line %d: %q", i+1, strings.TrimSpace(line))
 		}
+
 		name := strings.TrimSpace(parts[0])
 		version := strings.TrimSpace(parts[1])
+
 		if name == "" || version == "" {
 			return nil, fmt.Errorf("malformed opkg output line %d: %q", i+1, strings.TrimSpace(line))
 		}
+
 		description := ""
+
 		if len(parts) >= 3 {
 			description = strings.TrimSpace(parts[2])
 		}
+
 		entries = append(entries, PackageEntry{
 			Name:        name,
 			Version:     version,

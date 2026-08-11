@@ -32,9 +32,6 @@ const (
 	SourceBuiltin  = "builtin"
 	SourceRegistry = "registry"
 	SourceUpload   = "upload"
-	// SourceUser is retained as a source-compatible Go alias for unreleased
-	// callers. Its serialized value is the released "upload" provenance.
-	SourceUser = SourceUpload
 )
 
 // Plugin is one plugin's durable record. Manifest holds the exact validated
@@ -93,6 +90,7 @@ func Open(path string) (*Store, error) {
 	}
 
 	store := &Store{path: path, state: st}
+
 	// Persist immediately so a fresh install lands a valid file on disk.
 	if err := store.persist(st); err != nil {
 		return nil, err
@@ -116,6 +114,7 @@ func load(path string) (*State, error) {
 	}
 
 	var st State
+
 	if err := json.Unmarshal(data, &st); err != nil {
 		// Corrupt file: keep it for forensics, start clean rather than crash-loop.
 		_ = os.Rename(path, path+".bak")
@@ -130,6 +129,7 @@ func load(path string) (*State, error) {
 
 		return emptyState(), nil
 	}
+
 	if st.Plugins == nil {
 		st.Plugins = map[string]*Plugin{}
 	}
@@ -141,10 +141,12 @@ func validV3State(st *State) bool {
 	if st.Version != schemaVersion {
 		return false
 	}
+
 	for name, plugin := range st.Plugins {
 		if plugin == nil || plugin.Name != name || plugin.Manifest == nil || len(plugin.Manifest) == 0 {
 			return false
 		}
+
 		switch plugin.Source {
 		case SourceBuiltin, SourceRegistry, SourceUpload:
 		default:
@@ -167,6 +169,7 @@ func emptyState() *State {
 // without affecting the store.
 func (s *Store) Snapshot() *State {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	return clone(s.state)
@@ -175,9 +178,11 @@ func (s *Store) Snapshot() *State {
 // Get returns a copy of the named plugin's record and whether it exists.
 func (s *Store) Get(name string) (*Plugin, bool) {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	p, ok := s.state.Plugins[name]
+
 	if !ok {
 		return nil, false
 	}
@@ -189,6 +194,7 @@ func (s *Store) Get(name string) (*Plugin, bool) {
 // plugins, permissions, and nil maps all mean false.
 func (s *Store) HasGrant(plugin, permission string) bool {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	return s.state.PermissionGrants[plugin][permission]
@@ -200,14 +206,18 @@ func (s *Store) SetGrant(plugin, permission string, enabled bool) error {
 		if st.PermissionGrants == nil {
 			st.PermissionGrants = make(map[string]map[string]bool)
 		}
+
 		if st.PermissionGrants[plugin] == nil {
 			st.PermissionGrants[plugin] = make(map[string]bool)
 		}
+
 		st.PermissionGrants[plugin][permission] = enabled
 		action := "permission-disable"
+
 		if enabled {
 			action = "permission-enable"
 		}
+
 		st.AppendAudit(action, plugin, "permission="+permission)
 
 		return nil
@@ -220,9 +230,11 @@ func (s *Store) SetGrant(plugin, permission string, enabled bool) error {
 // untouched, keeping memory and disk in agreement.
 func (s *Store) Mutate(fn func(*State) error) error {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	next := clone(s.state)
+
 	if err := fn(next); err != nil {
 		return err
 	}
@@ -259,9 +271,11 @@ func (s *Store) persist(st *State) error {
 	if err != nil {
 		return fmt.Errorf("create temp state: %w", err)
 	}
+
 	tmpPath := tmp.Name()
 
 	committed := false
+
 	defer func() {
 		if !committed {
 			_ = os.Remove(tmpPath)
@@ -273,11 +287,13 @@ func (s *Store) persist(st *State) error {
 
 		return fmt.Errorf("write temp state: %w", err)
 	}
+
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 
 		return fmt.Errorf("sync temp state: %w", err)
 	}
+
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp state: %w", err)
 	}
@@ -285,6 +301,7 @@ func (s *Store) persist(st *State) error {
 	if err := os.Rename(tmpPath, s.path); err != nil {
 		return fmt.Errorf("rename temp state: %w", err)
 	}
+
 	committed = true
 
 	return nil
@@ -300,6 +317,7 @@ func clone(st *State) *State {
 	}
 
 	var out State
+
 	if err := json.Unmarshal(data, &out); err != nil {
 		panic(fmt.Sprintf("state: clone unmarshal failed: %v", err))
 	}
@@ -307,6 +325,7 @@ func clone(st *State) *State {
 	if out.Plugins == nil {
 		out.Plugins = map[string]*Plugin{}
 	}
+
 	if out.Audit == nil {
 		out.Audit = []AuditEntry{}
 	}
@@ -316,6 +335,7 @@ func clone(st *State) *State {
 
 func clonePlugin(p *Plugin) *Plugin {
 	cp := *p
+
 	if p.Manifest != nil {
 		cp.Manifest = append(json.RawMessage(nil), p.Manifest...)
 	}

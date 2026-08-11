@@ -6,6 +6,20 @@ import (
 	"time"
 )
 
+func TestNormalizeSupervisorConfigAppliesDefaults(t *testing.T) {
+	now := func() time.Time { return time.Unix(123, 0) }
+	cfg := normalizeSupervisorConfig(SupervisorConfig{Now: now})
+	if cfg.Limits.MaxSupervisedServices != 8 {
+		t.Fatalf("MaxSupervisedServices = %d, want 8", cfg.Limits.MaxSupervisedServices)
+	}
+	if cfg.ReadinessTimeout != 30*time.Second || cfg.StopTimeout != 10*time.Second || cfg.DiagnosticsTimeout != 2*time.Second || cfg.FinalReapTimeout != 2*time.Second {
+		t.Fatalf("timeouts = %#v", cfg)
+	}
+	if cfg.Now == nil || cfg.Now() != now() {
+		t.Fatal("injected Now was not preserved")
+	}
+}
+
 func TestSupervisorStartsWithStoppedStatusAndReportsCapacity(t *testing.T) {
 	supervisor := NewSupervisor(SupervisorConfig{RuntimeRoot: t.TempDir(), Limits: Limits{MaxSupervisedServices: 1}, SupportedProtocols: []int{1}})
 	if got := supervisor.Status("missing").State; got != StateStopped {

@@ -9,5 +9,7 @@ use (
 	./packages/go-device-auth
 	./packages/go-rci
 	./packages/go-rcisock
+	./packages/go-httpsocket
+	./packages/go-mws-members
 	./tooling/go-blanklr
 )

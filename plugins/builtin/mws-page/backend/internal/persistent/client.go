@@ -30,79 +30,6 @@ type Session struct {
 	Power5G  PowerState `json:"power5g"`
 }
 
-type Diagnostics struct {
-	Configured           bool                `json:"configured"`
-	PluginIDPresent      bool                `json:"pluginIdPresent"`
-	TelemetryPollEnabled bool                `json:"telemetryPollEnabled"`
-	SocketPath           string              `json:"socketPath"`
-	PollInterval         string              `json:"pollInterval"`
-	IOTimeout            string              `json:"ioTimeout"`
-	SessionRetention     string              `json:"sessionRetention"`
-	Connected            bool                `json:"connected"`
-	ConnectionAttempts   int                 `json:"connectionAttempts"`
-	ReconnectCount       int                 `json:"reconnectCount"`
-	LastConnectedAt      *time.Time          `json:"lastConnectedAt"`
-	LastDisconnectedAt   *time.Time          `json:"lastDisconnectedAt"`
-	LastDisconnectReason string              `json:"lastDisconnectReason,omitempty"`
-	TargetCount          int                 `json:"targetCount"`
-	TargetEnumerations   int                 `json:"targetEnumerations"`
-	SessionCount         int                 `json:"sessionCount"`
-	LastTargetsAt        *time.Time          `json:"lastTargetsAt"`
-	LastTargetChange     *TargetChange       `json:"lastTargetChange"`
-	LastTelemetryAt      *time.Time          `json:"lastTelemetryAt"`
-	LastError            *DiagnosticError    `json:"lastError"`
-	Targets              []TargetDiagnostics `json:"targets"`
-}
-
-type TargetChange struct {
-	At      time.Time `json:"at"`
-	Reason  string    `json:"reason"`
-	Added   []string  `json:"added,omitempty"`
-	Removed []string  `json:"removed,omitempty"`
-}
-
-type TargetDiagnostics struct {
-	Identity            string               `json:"identity"`
-	Name                string               `json:"name,omitempty"`
-	MAC                 string               `json:"mac,omitempty"`
-	Present             bool                 `json:"present"`
-	SessionPresent      bool                 `json:"sessionPresent"`
-	Live                bool                 `json:"live"`
-	Misses              int                  `json:"misses"`
-	SessionReason       string               `json:"sessionReason,omitempty"`
-	FirstSeenAt         *time.Time           `json:"firstSeenAt"`
-	LastSeenAt          *time.Time           `json:"lastSeenAt"`
-	RemovedAt           *time.Time           `json:"removedAt"`
-	LastProbeAt         *time.Time           `json:"lastProbeAt"`
-	LastProbeStatus     *int                 `json:"lastProbeStatus"`
-	LastProbeError      *DiagnosticError     `json:"lastProbeError"`
-	LastTelemetryAt     *time.Time           `json:"lastTelemetryAt"`
-	LastTelemetryError  *DiagnosticError     `json:"lastTelemetryError"`
-	Telemetry           TelemetryDiagnostics `json:"telemetry"`
-	LastSessionChangeAt *time.Time           `json:"lastSessionChangeAt"`
-}
-
-type TelemetryDiagnostics struct {
-	System    TelemetryPhaseDiagnostics `json:"system"`
-	CPURRD    TelemetryPhaseDiagnostics `json:"cpuRrd"`
-	MemoryRRD TelemetryPhaseDiagnostics `json:"memoryRrd"`
-}
-
-type TelemetryPhaseDiagnostics struct {
-	LastAttemptAt *time.Time       `json:"lastAttemptAt"`
-	LastSuccessAt *time.Time       `json:"lastSuccessAt"`
-	LastError     *DiagnosticError `json:"lastError"`
-}
-
-type DiagnosticError struct {
-	Phase    string    `json:"phase"`
-	Identity string    `json:"identity,omitempty"`
-	Code     string    `json:"code"`
-	Message  string    `json:"message"`
-	Status   int       `json:"status,omitempty"`
-	At       time.Time `json:"at"`
-}
-
 type Request struct {
 	Method string
 	Path   string
@@ -152,6 +79,10 @@ type sessionState struct {
 	lastSeenAt time.Time
 	power2G    PowerState
 	power5G    PowerState
+}
+
+func (state sessionState) visible() bool {
+	return state.live || state.misses >= 2
 }
 
 func New(config Config) *Client {
@@ -225,33 +156,18 @@ func (c *Client) Send(ctx context.Context, nodeID string, request Request) (Resp
 		return Response{}, ErrNoSession
 	}
 
-	if err := acquire(ctx, c.inflight); err != nil {
-		return Response{}, err
-	}
-
-	defer release(c.inflight)
-
-	if err := acquireTarget(ctx, targetLock); err != nil {
-		return Response{}, err
-	}
-
-	defer releaseTarget(targetLock)
-
 	callContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.config.IOTimeout)
 
 	defer cancel()
 
-	frame, err := rpc.Call(callContext, rcisock.RequestFrame{
-		Target: nodeID, Method: request.Method, Path: request.Path, Body: request.Body,
-	})
-	if err != nil {
-		return Response{}, err
-	}
-
-	return Response{Status: frame.Status, Body: append([]byte(nil), frame.Body...)}, nil
+	return c.callRPC(callContext, rpc, nodeID, targetLock, request)
 }
 
 func acquire(ctx context.Context, semaphore chan struct{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	select {
 	case semaphore <- struct{}{}:
 		return nil
@@ -265,6 +181,10 @@ func release(semaphore chan struct{}) {
 }
 
 func acquireTarget(ctx context.Context, lock chan struct{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	select {
 	case <-lock:
 		return nil
@@ -328,7 +248,7 @@ func (c *Client) Snapshot() []Session {
 	result := make([]Session, 0, len(c.sessions))
 
 	for _, state := range c.sessions {
-		if !state.live {
+		if !state.visible() || !state.live {
 			continue
 		}
 
@@ -336,7 +256,7 @@ func (c *Client) Snapshot() []Session {
 	}
 
 	for _, state := range c.sessions {
-		if state.live || state.misses < 2 {
+		if !state.visible() || state.live {
 			continue
 		}
 
@@ -673,6 +593,10 @@ func (c *Client) call(ctx context.Context, rpc *rcisock.Client, nodeID string, r
 		return Response{}, ErrNoSession
 	}
 
+	return c.callRPC(ctx, rpc, nodeID, targetLock, request)
+}
+
+func (c *Client) callRPC(ctx context.Context, rpc *rcisock.Client, nodeID string, targetLock chan struct{}, request Request) (Response, error) {
 	if err := acquire(ctx, c.inflight); err != nil {
 		return Response{}, err
 	}
@@ -1030,7 +954,7 @@ func (c *Client) sessionCountLocked() int {
 	count := 0
 
 	for _, state := range c.sessions {
-		if state.live || state.misses >= 2 {
+		if state.visible() {
 			count++
 		}
 	}
@@ -1162,102 +1086,6 @@ func telemetryPhase(diagnostics *TelemetryDiagnostics, phase string) *TelemetryP
 	default:
 		return nil
 	}
-}
-
-func cloneDiagnostics(diagnostics Diagnostics) Diagnostics {
-	clone := diagnostics
-	clone.LastConnectedAt = cloneTime(diagnostics.LastConnectedAt)
-	clone.LastDisconnectedAt = cloneTime(diagnostics.LastDisconnectedAt)
-	clone.LastTargetsAt = cloneTime(diagnostics.LastTargetsAt)
-	clone.LastTelemetryAt = cloneTime(diagnostics.LastTelemetryAt)
-	clone.LastError = cloneDiagnosticError(diagnostics.LastError)
-
-	if diagnostics.LastTargetChange != nil {
-		change := *diagnostics.LastTargetChange
-		change.Added = append([]string(nil), diagnostics.LastTargetChange.Added...)
-		change.Removed = append([]string(nil), diagnostics.LastTargetChange.Removed...)
-		clone.LastTargetChange = &change
-	}
-
-	clone.Targets = nil
-
-	return clone
-}
-
-func cloneTargetDiagnostics(diagnostic TargetDiagnostics) TargetDiagnostics {
-	clone := diagnostic
-	clone.FirstSeenAt = cloneTime(diagnostic.FirstSeenAt)
-	clone.LastSeenAt = cloneTime(diagnostic.LastSeenAt)
-	clone.RemovedAt = cloneTime(diagnostic.RemovedAt)
-	clone.LastProbeAt = cloneTime(diagnostic.LastProbeAt)
-	clone.LastProbeStatus = cloneInt(diagnostic.LastProbeStatus)
-	clone.LastProbeError = cloneDiagnosticError(diagnostic.LastProbeError)
-	clone.LastTelemetryAt = cloneTime(diagnostic.LastTelemetryAt)
-	clone.LastTelemetryError = cloneDiagnosticError(diagnostic.LastTelemetryError)
-	clone.LastSessionChangeAt = cloneTime(diagnostic.LastSessionChangeAt)
-	clone.Telemetry = cloneTelemetryDiagnostics(diagnostic.Telemetry)
-
-	return clone
-}
-
-func cloneTelemetryDiagnostics(diagnostics TelemetryDiagnostics) TelemetryDiagnostics {
-	return TelemetryDiagnostics{
-		System:    cloneTelemetryPhaseDiagnostics(diagnostics.System),
-		CPURRD:    cloneTelemetryPhaseDiagnostics(diagnostics.CPURRD),
-		MemoryRRD: cloneTelemetryPhaseDiagnostics(diagnostics.MemoryRRD),
-	}
-}
-
-func cloneTelemetryPhaseDiagnostics(diagnostics TelemetryPhaseDiagnostics) TelemetryPhaseDiagnostics {
-	return TelemetryPhaseDiagnostics{
-		LastAttemptAt: cloneTime(diagnostics.LastAttemptAt),
-		LastSuccessAt: cloneTime(diagnostics.LastSuccessAt),
-		LastError:     cloneDiagnosticError(diagnostics.LastError),
-	}
-}
-
-func cloneDiagnosticError(diagnostic *DiagnosticError) *DiagnosticError {
-	if diagnostic == nil {
-		return nil
-	}
-
-	clone := *diagnostic
-
-	return &clone
-}
-
-func cloneTime(value *time.Time) *time.Time {
-	if value == nil {
-		return nil
-	}
-
-	clone := *value
-
-	return &clone
-}
-
-func cloneInt(value *int) *int {
-	if value == nil {
-		return nil
-	}
-
-	clone := *value
-
-	return &clone
-}
-
-func timePointer(value time.Time) *time.Time {
-	clone := value
-
-	return &clone
-}
-
-func diagnosticTime(value *time.Time) time.Time {
-	if value == nil {
-		return time.Time{}
-	}
-
-	return *value
 }
 
 func (c *Client) wait(ctx context.Context, duration time.Duration) error {

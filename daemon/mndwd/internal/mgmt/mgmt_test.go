@@ -610,7 +610,7 @@ func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
 	if err := store.Mutate(func(st *state.State) error {
 		st.Plugins["core-demo"] = &state.Plugin{
 			Name:     "core-demo",
-			Source:   state.SourceUser,
+			Source:   state.SourceUpload,
 			Approval: state.ApprovalPending,
 			Manifest: json.RawMessage(`{"manifestVersion":3,"name":"core-demo","version":"1.0.0","type":"widget","label":"User","entry":"index.js","size":{"w":4,"h":3}}`),
 		}
@@ -647,7 +647,7 @@ func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
 		t.Fatalf("plugin count = %d, want 1: %+v", len(body.Plugins), body.Plugins)
 	}
 
-	if body.Plugins[0].Source != state.SourceUser || body.Plugins[0].Approval != state.ApprovalPending {
+	if body.Plugins[0].Source != state.SourceUpload || body.Plugins[0].Approval != state.ApprovalPending {
 		t.Fatalf("collision entry = %+v, want pending user entry", body.Plugins[0])
 	}
 }

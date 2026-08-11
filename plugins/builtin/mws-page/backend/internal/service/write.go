@@ -37,9 +37,9 @@ type setPowerParams struct {
 }
 
 func (s *Service) Write(ctx context.Context, request WriteRequest) (WriteResult, error) {
-	writer := s.persistentWriter
+	writer, ok := s.persistent.(PersistentWriter)
 
-	if writer == nil {
+	if !ok {
 		return WriteResult{}, &OperationError{status: 503, code: "persistent_session_unavailable", message: "persistent RCI session unavailable", err: persistent.ErrNoSession}
 	}
 

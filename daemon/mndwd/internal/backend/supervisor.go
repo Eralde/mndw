@@ -24,16 +24,6 @@ type ServiceSpec struct {
 	Enabled          bool
 }
 
-type StopReason string
-
-const (
-	StopDisable     StopReason = "disable"
-	StopDelete      StopReason = "delete"
-	StopUpdate      StopReason = "update"
-	StopShutdown    StopReason = "shutdown"
-	StopMaintenance StopReason = "maintenance"
-)
-
 type SupervisorConfig struct {
 	RuntimeRoot        string
 	PluginDataRoot     string
@@ -66,33 +56,40 @@ type serviceRecord struct {
 }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
-	if cfg.Limits.MaxSupervisedServices <= 0 {
-		cfg.Limits.MaxSupervisedServices = 8
-	}
-	if cfg.ReadinessTimeout <= 0 {
-		cfg.ReadinessTimeout = 30 * time.Second
-	}
-	if cfg.StopTimeout <= 0 {
-		cfg.StopTimeout = 10 * time.Second
-	}
-	if cfg.DiagnosticsTimeout <= 0 {
-		cfg.DiagnosticsTimeout = 2 * time.Second
-	}
-	if cfg.FinalReapTimeout <= 0 {
-		cfg.FinalReapTimeout = 2 * time.Second
-	}
-	if cfg.Now == nil {
-		cfg.Now = time.Now
-	}
+	cfg = normalizeSupervisorConfig(cfg)
 
 	return newSupervisor(cfg, NewAdmission(cfg.Limits))
 }
 
-func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
+func normalizeSupervisorConfig(cfg SupervisorConfig) SupervisorConfig {
+	if cfg.Limits.MaxSupervisedServices <= 0 {
+		cfg.Limits.MaxSupervisedServices = 8
+	}
+
+	if cfg.ReadinessTimeout <= 0 {
+		cfg.ReadinessTimeout = 30 * time.Second
+	}
+
+	if cfg.StopTimeout <= 0 {
+		cfg.StopTimeout = 10 * time.Second
+	}
+
+	if cfg.DiagnosticsTimeout <= 0 {
+		cfg.DiagnosticsTimeout = 2 * time.Second
+	}
+
+	if cfg.FinalReapTimeout <= 0 {
+		cfg.FinalReapTimeout = 2 * time.Second
+	}
+
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
 
+	return cfg
+}
+
+func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
 	return &Supervisor{
 		cfg:       cfg,
 		admission: admission,
@@ -102,17 +99,22 @@ func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
 }
 
 // StopAll stops every supervised service and removes its runtime evidence.
-func (s *Supervisor) StopAll(ctx context.Context, reason StopReason) error {
+func (s *Supervisor) StopAll(ctx context.Context) error {
 	s.mu.Lock()
+
 	pluginIDs := make([]string, 0, len(s.services))
+
 	for pluginID := range s.services {
 		pluginIDs = append(pluginIDs, pluginID)
 	}
+
 	s.desired = make(map[string]ServiceSpec)
+
 	s.mu.Unlock()
 	sort.Strings(pluginIDs)
+
 	for _, pluginID := range pluginIDs {
-		if err := s.Stop(ctx, pluginID, reason); err != nil {
+		if err := s.Stop(ctx, pluginID); err != nil {
 			return err
 		}
 	}
@@ -122,38 +124,53 @@ func (s *Supervisor) StopAll(ctx context.Context, reason StopReason) error {
 
 func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) {
 	ordered := append([]ServiceSpec(nil), specs...)
+
 	sort.SliceStable(ordered, func(left, right int) bool {
 		if ordered[left].Builtin != ordered[right].Builtin {
 			return ordered[left].Builtin
 		}
+
 		return ordered[left].PluginID < ordered[right].PluginID
 	})
+
 	desired := make(map[string]ServiceSpec, len(ordered))
+
 	for _, spec := range ordered {
 		desired[spec.PluginID] = spec
 	}
+
 	s.mu.Lock()
+
 	s.desired = desired
+
 	s.mu.Unlock()
+
 	for _, spec := range ordered {
 		if !spec.Enabled {
-			_ = s.Stop(ctx, spec.PluginID, StopDisable)
+			_ = s.Stop(ctx, spec.PluginID)
+
 			continue
 		}
+
 		if err := s.Start(ctx, spec); err != nil && s.cfg.Logger != nil {
 			s.cfg.Logger.Warn("service start deferred", "plugin", spec.PluginID, "error", err)
 		}
 	}
+
 	s.mu.Lock()
+
 	stale := make([]string, 0)
+
 	for pluginID := range s.services {
 		if _, exists := desired[pluginID]; !exists {
 			stale = append(stale, pluginID)
 		}
 	}
+
 	s.mu.Unlock()
+
 	for _, pluginID := range stale {
-		_ = s.Stop(ctx, pluginID, StopDelete)
+		_ = s.Stop(ctx, pluginID)
 	}
 }
 
@@ -161,14 +178,17 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 	if !spec.Enabled {
 		return nil
 	}
+
 	paths, err := NewRuntimePaths(s.cfg.RuntimeRoot, spec.PluginID)
 	if err != nil {
 		return err
 	}
 
 	s.mu.Lock()
+
 	s.desired[spec.PluginID] = spec
 	record := s.services[spec.PluginID]
+
 	if record == nil {
 		record = &serviceRecord{spec: spec, paths: paths, status: RuntimeStatus{State: StateStopped}}
 		s.services[spec.PluginID] = record
@@ -176,69 +196,99 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 		record.spec = spec
 		record.paths = paths
 	}
+
 	record.status.RequiredProtocol = spec.ProtocolVersion
 	record.status.SupportedProtocols = append([]int(nil), s.cfg.SupportedProtocols...)
 	compatible := s.supportedProtocol(spec.ProtocolVersion)
 	record.status.Compatible = &compatible
+
 	if !compatible {
 		hadRuntime := record.command != nil || record.reservation != nil
+
 		s.mu.Unlock()
+
 		// An updated service may already own a slot. Stop that old process before
 		// leaving the incompatible manifest represented as stopped, without
 		// exposing a listener or scheduling retries for the unsupported version.
 		if hadRuntime {
 			_ = s.stopProcess(ctx, spec.PluginID, true)
+
 			s.mu.Lock()
+
 			record = s.services[spec.PluginID]
+
 			if record != nil {
 				record.status.RequiredProtocol = spec.ProtocolVersion
 				record.status.SupportedProtocols = append([]int(nil), s.cfg.SupportedProtocols...)
 				record.status.Compatible = &compatible
 			}
+
 			s.mu.Unlock()
 		}
+
 		return fmt.Errorf("unsupported service protocol %d", spec.ProtocolVersion)
 	}
+
 	now := s.cfg.Now()
+
 	if record.status.State == StateReady || record.status.State == StateStarting {
 		s.mu.Unlock()
+
 		return nil
 	}
+
 	if record.status.State == StateBackoff && record.status.NextAttemptAt != nil && now.Before(*record.status.NextAttemptAt) {
 		s.mu.Unlock()
+
 		return fmt.Errorf("service is in backoff until %s", record.status.NextAttemptAt.Format(time.RFC3339))
 	}
+
 	if record.reservation == nil {
 		reservation, admitted := s.admission.TryReserveService(spec.PluginID)
+
 		if !admitted {
 			record.status.State = StateCapacityBlocked
+
 			s.mu.Unlock()
+
 			return fmt.Errorf("service capacity exceeded")
 		}
+
 		record.reservation = reservation
 	}
+
 	record.status.State = StateStarting
 	record.status.NextAttemptAt = nil
+
 	s.mu.Unlock()
+
 	if err := paths.Ensure(); err != nil {
 		s.failStart(spec.PluginID, err)
+
 		return err
 	}
+
 	if err := recoverStaleRuntime(paths, s.cfg.FinalReapTimeout); err != nil && s.cfg.Logger != nil {
 		s.cfg.Logger.Warn("stale service recovery failed", "plugin", spec.PluginID, "error", err)
 	}
+
 	if err := removeRuntimeEvidence(paths); err != nil {
 		s.failStart(spec.PluginID, err)
+
 		return err
 	}
 
 	validated, err := ValidateCommand(spec.Dir, spec.Command)
 	if err != nil {
 		s.failStart(spec.PluginID, err)
+
 		return err
 	}
+
 	command := exec.Command(validated.Path, spec.Args...)
+
 	configureExecCommand(command)
+
 	command.Dir = spec.Dir
 	command.Env = BuildChildEnvironment(EnvironmentSpec{
 		Path:             os.Getenv("PATH"),
@@ -253,34 +303,50 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 	})
 	stderr := NewStderrRing(4<<10, 64)
 	command.Stderr = stderr
+
 	if err := command.Start(); err != nil {
 		s.failStart(spec.PluginID, err)
+
 		return err
 	}
+
 	if err := writeProcessLease(paths.ServiceLease, command.Process.Pid); err != nil && s.cfg.Logger != nil {
 		s.cfg.Logger.Warn("service lease unavailable", "plugin", spec.PluginID, "error", err)
 	}
+
 	done := make(chan error, 1)
+
 	s.mu.Lock()
+
 	record.command = command
 	record.done = done
 	record.stderr = stderr
+
 	s.mu.Unlock()
+
 	go func() { done <- command.Wait() }()
 
 	readinessCtx, cancel := context.WithTimeout(ctx, s.cfg.ReadinessTimeout)
 	err = ProbeReadiness(readinessCtx, paths.BackendSocket, spec.PluginID, spec.ProtocolVersion, s.cfg.ReadinessTimeout)
+
 	cancel()
+
 	if err != nil {
 		_ = s.stopProcess(ctx, spec.PluginID, false)
+
 		s.failStart(spec.PluginID, err)
+
 		return err
 	}
+
 	s.mu.Lock()
+
 	record.status.State = StateReady
 	record.status.StartedAt = ptrTime(s.cfg.Now())
 	record.status.NextAttemptAt = nil
+
 	s.mu.Unlock()
+
 	go s.observeExit(spec.PluginID, done)
 
 	return nil
@@ -290,7 +356,9 @@ func serviceDataDir(root string, spec ServiceSpec) string {
 	if root == "" {
 		return spec.Dir
 	}
+
 	path := filepath.Join(root, spec.PluginID)
+
 	if err := os.MkdirAll(path, 0o700); err == nil {
 		_ = os.Chmod(path, 0o700)
 	}
@@ -298,39 +366,48 @@ func serviceDataDir(root string, spec ServiceSpec) string {
 	return path
 }
 
-func (s *Supervisor) Stop(ctx context.Context, pluginID string, reason StopReason) error {
-	return s.stopRecord(ctx, pluginID, reason)
+func (s *Supervisor) Stop(ctx context.Context, pluginID string) error {
+	return s.stopRecord(ctx, pluginID)
 }
 
 // Forget removes a service from desired state before stopping it. Used by
 // disable/delete flows so capacity promotion cannot immediately restart it.
-func (s *Supervisor) Forget(ctx context.Context, pluginID string, reason StopReason) error {
+func (s *Supervisor) Forget(ctx context.Context, pluginID string) error {
 	s.mu.Lock()
 	delete(s.desired, pluginID)
 	s.mu.Unlock()
 
-	return s.stopRecord(ctx, pluginID, reason)
+	return s.stopRecord(ctx, pluginID)
 }
 
 func (s *Supervisor) Restart(ctx context.Context, pluginID string) error {
 	s.mu.Lock()
+
 	record := s.services[pluginID]
 	var spec ServiceSpec
+
 	if record != nil {
 		spec = record.spec
 	}
+
 	s.mu.Unlock()
+
 	if record == nil {
 		return fmt.Errorf("service %q is not known", pluginID)
 	}
-	if err := s.stopRecord(ctx, pluginID, StopMaintenance); err != nil {
+
+	if err := s.stopRecord(ctx, pluginID); err != nil {
 		return err
 	}
+
 	s.mu.Lock()
+
 	if record.status.RestartCount < 0 {
 		record.status.RestartCount = 0
 	}
+
 	record.status.RestartCount++
+
 	s.mu.Unlock()
 
 	return s.Start(ctx, spec)
@@ -338,12 +415,16 @@ func (s *Supervisor) Restart(ctx context.Context, pluginID string) error {
 
 func (s *Supervisor) Status(pluginID string) RuntimeStatus {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
+
 	if record := s.services[pluginID]; record != nil {
 		status := record.status
+
 		if record.stderr != nil {
 			status.RecentStderr = redactStderrLines(record.stderr.Lines())
 		}
+
 		return status
 	}
 
@@ -352,8 +433,11 @@ func (s *Supervisor) Status(pluginID string) RuntimeStatus {
 
 func (s *Supervisor) SocketPath(pluginID string) (string, bool) {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
+
 	record := s.services[pluginID]
+
 	if record == nil {
 		return "", false
 	}
@@ -367,12 +451,14 @@ func (s *Supervisor) supportedProtocol(protocol int) bool {
 			return true
 		}
 	}
+
 	return len(s.cfg.SupportedProtocols) == 0 && protocol == 1
 }
 
 // SupportsProtocol reports exact membership in daemon-supported protocol versions.
 func (s *Supervisor) SupportsProtocol(protocol int) bool {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	return s.supportedProtocol(protocol)
@@ -380,118 +466,152 @@ func (s *Supervisor) SupportsProtocol(protocol int) bool {
 
 func (s *Supervisor) failStart(pluginID string, err error) {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
+
 	record := s.services[pluginID]
+
 	if record == nil {
 		return
 	}
-	record.status.ConsecutiveFailures++
-	record.status.LastError = err.Error()
-	record.status.LastExit = "start failed"
-	if record.status.ConsecutiveFailures >= 5 {
-		record.status.State = StateFailed
-		record.status.NextAttemptAt = nil
-		return
-	}
-	delay := time.Second << (record.status.ConsecutiveFailures - 1)
-	next := s.cfg.Now().Add(delay)
-	record.status.State = StateBackoff
-	record.status.NextAttemptAt = &next
-	s.scheduleRetry(pluginID, delay)
+
+	s.transitionFailureLocked(record, pluginID, "start failed", err)
 }
 
 func (s *Supervisor) observeExit(pluginID string, done <-chan error) {
 	err := <-done
+
 	s.mu.Lock()
+
 	record := s.services[pluginID]
+
 	if record == nil {
 		s.mu.Unlock()
+
 		return
 	}
+
 	record.command = nil
 	record.done = nil
+
 	if record.status.State == StateStopped {
 		s.mu.Unlock()
+
 		return
 	}
+
 	healthy := record.status.StartedAt != nil && s.cfg.Now().Sub(*record.status.StartedAt) >= 60*time.Second
-	record.status.LastExit = "exited"
-	if err != nil {
-		record.status.LastError = err.Error()
-	}
+
 	if healthy {
 		record.status.ConsecutiveFailures = 0
 	}
+
+	s.transitionFailureLocked(record, pluginID, "exited", err)
+	s.mu.Unlock()
+}
+
+func (s *Supervisor) transitionFailureLocked(record *serviceRecord, pluginID, lastExit string, err error) {
 	record.status.ConsecutiveFailures++
+	record.status.LastExit = lastExit
+
+	if err != nil {
+		record.status.LastError = err.Error()
+	}
+
 	if record.status.ConsecutiveFailures >= 5 {
 		record.status.State = StateFailed
-	} else {
-		next := s.cfg.Now().Add(time.Second << (record.status.ConsecutiveFailures - 1))
-		record.status.State = StateBackoff
-		record.status.NextAttemptAt = &next
-		s.scheduleRetry(pluginID, time.Second<<uint(record.status.ConsecutiveFailures-1))
+		record.status.NextAttemptAt = nil
+
+		return
 	}
-	s.mu.Unlock()
+
+	delay := time.Second << (record.status.ConsecutiveFailures - 1)
+	next := s.cfg.Now().Add(delay)
+	record.status.State = StateBackoff
+	record.status.NextAttemptAt = &next
+
+	s.scheduleRetry(pluginID, delay)
 }
 
 func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 	go func() {
 		timer := time.NewTimer(delay)
+
 		defer timer.Stop()
+
 		<-timer.C
 
 		s.mu.Lock()
+
 		spec, desired := s.desired[pluginID]
 		record := s.services[pluginID]
 		eligible := desired && spec.Enabled && record != nil && record.status.State == StateBackoff
+
 		s.mu.Unlock()
+
 		if !eligible {
 			return
 		}
+
 		if err := s.Start(context.Background(), spec); err != nil && s.cfg.Logger != nil {
 			s.cfg.Logger.Warn("service retry deferred", "plugin", pluginID, "error", err)
 		}
 	}()
 }
 
-func (s *Supervisor) stopRecord(ctx context.Context, pluginID string, _ StopReason) error {
+func (s *Supervisor) stopRecord(ctx context.Context, pluginID string) error {
 	return s.stopProcess(ctx, pluginID, true)
 }
 
 func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseReservation bool) error {
 	s.mu.Lock()
+
 	record := s.services[pluginID]
+
 	if record == nil {
 		s.mu.Unlock()
+
 		return nil
 	}
+
 	command, done, reservation, paths := record.command, record.done, record.reservation, record.paths
 	restartCount := record.status.RestartCount
+
 	if releaseReservation {
 		record.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
 	}
+
 	record.command = nil
 	record.done = nil
+
 	if releaseReservation {
 		record.reservation = nil
 	}
+
 	s.mu.Unlock()
+
 	var stopErr error
+
 	if command != nil && done != nil {
 		_ = terminateExecProcess(command.Process)
+
 		if !waitForProcessExit(done, s.cfg.StopTimeout) {
 			_ = killExecProcess(command.Process)
+
 			if !waitForProcessExit(done, s.cfg.FinalReapTimeout) {
 				stopErr = fmt.Errorf("service %q did not exit after kill", pluginID)
 			}
 		}
 	}
+
 	if releaseReservation && reservation != nil {
 		reservation.Release()
 	}
+
 	if err := removeRuntimeEvidence(paths); err != nil {
 		return err
 	}
+
 	if releaseReservation {
 		s.promoteBlocked()
 	}
@@ -510,7 +630,9 @@ func waitForProcessExit(done <-chan error, timeout time.Duration) bool {
 	}
 
 	timer := time.NewTimer(timeout)
+
 	defer timer.Stop()
+
 	select {
 	case <-done:
 		return true
@@ -521,19 +643,24 @@ func waitForProcessExit(done <-chan error, timeout time.Duration) bool {
 
 func (s *Supervisor) promoteBlocked() {
 	s.mu.Lock()
+
 	blocked := make([]ServiceSpec, 0)
+
 	for pluginID, spec := range s.desired {
 		if record := s.services[pluginID]; record != nil && record.status.State == StateCapacityBlocked && spec.Enabled {
 			blocked = append(blocked, spec)
 		}
 	}
+
 	s.mu.Unlock()
 	sort.SliceStable(blocked, func(left, right int) bool {
 		if blocked[left].Builtin != blocked[right].Builtin {
 			return blocked[left].Builtin
 		}
+
 		return blocked[left].PluginID < blocked[right].PluginID
 	})
+
 	for _, spec := range blocked {
 		_ = s.Start(context.Background(), spec)
 	}
@@ -564,34 +691,45 @@ func recoverStaleRuntime(paths RuntimePaths, timeout time.Duration) error {
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
+
 	if err != nil {
 		_ = removeIfExists(paths.ServiceLease)
+
 		return err
 	}
+
 	matched, err := ValidateServiceLease(lease, systemProcessReader{})
 	if err != nil {
 		_ = removeRuntimeEvidence(paths)
+
 		return err
 	}
+
 	if !matched {
 		return removeRuntimeEvidence(paths)
 	}
+
 	if err := terminateExecGroup(lease.PGID); err != nil {
 		return err
 	}
+
 	if timeout > 0 {
 		deadline := time.NewTimer(timeout)
 		ticker := time.NewTicker(10 * time.Millisecond)
+
 		for processGroupAlive(lease.PGID) {
 			select {
 			case <-deadline.C:
 				_ = killExecGroup(lease.PGID)
+
 				deadline.Stop()
 				ticker.Stop()
+
 				goto reaped
 			case <-ticker.C:
 			}
 		}
+
 		deadline.Stop()
 		ticker.Stop()
 	}
@@ -606,6 +744,7 @@ func writeProcessLease(path string, pid int) error {
 	if err != nil || bootID == "" {
 		return err
 	}
+
 	identity, err := reader.ProcessIdentity(pid)
 	if err != nil {
 		return err

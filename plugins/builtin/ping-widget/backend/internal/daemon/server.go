@@ -27,27 +27,34 @@ func NewServer() (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	samplesByHost, err := store.LoadStatsState()
 	if err != nil {
 		return nil, err
 	}
+
 	return &Server{store: store, state: NewServiceState(hosts, samplesByHost)}, nil
 }
 
 func (server *Server) Start(ctx context.Context) {
 	go server.runPingLoop(ctx)
+
 	go server.runPersistLoop(ctx)
 }
 
 func (server *Server) runPingLoop(ctx context.Context) {
 	ticker := time.NewTicker(pingInterval)
+
 	defer ticker.Stop()
+
 	run := func() {
 		server.runPingCycle(func(hostIP string) model.Sample {
 			return ping.RunOnce(hostIP, 4*time.Second)
 		})
 	}
+
 	run()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -62,18 +69,22 @@ func (server *Server) runPingCycle(run func(string) model.Sample) {
 	if !server.state.Running() {
 		return
 	}
-	for _, host := range server.state.PingTargets() {
+
+	for _, host := range server.state.ListHosts() {
 		server.state.RecordSample(host.IP, run(host.IP))
 	}
 }
 
 func (server *Server) runPersistLoop(ctx context.Context) {
 	ticker := time.NewTicker(persistInterval)
+
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			_ = server.Persist()
+
 			return
 		case <-ticker.C:
 			_ = server.Persist()
@@ -94,12 +105,14 @@ func (server *Server) UpdateHosts(input model.HostUpdateInput) ([]model.Host, er
 	if err != nil {
 		return nil, err
 	}
+
 	return hosts, server.Persist()
 }
 
 func (server *Server) Persist() error {
-	if err := server.store.SaveHosts(server.state.HostSnapshot()); err != nil {
+	if err := server.store.SaveHosts(server.state.ListHosts()); err != nil {
 		return err
 	}
+
 	return server.store.SaveStatsState(server.state.SampleSnapshot())
 }

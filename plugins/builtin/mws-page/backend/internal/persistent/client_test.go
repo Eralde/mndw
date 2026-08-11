@@ -136,6 +136,116 @@ func TestClientUsesIdentityForPollingAndEmitsMacAfterTwoMisses(t *testing.T) {
 	cancel()
 }
 
+func TestClientSendKeepsRPCAliveAfterCallerCancellation(t *testing.T) {
+	requestStarted := make(chan struct{})
+	releaseResponse := make(chan struct{})
+	rpc := newTestRPC(t, func(frame rcisock.RequestFrame) rcisock.ResponseFrame {
+		close(requestStarted)
+		<-releaseResponse
+
+		return rcisock.ResponseFrame{ID: responseID(frame), Status: 200, Body: json.RawMessage(`{"ok":true}`)}
+	})
+
+	defer rpc.Close()
+
+	client := New(Config{PluginID: "mws-page", IOTimeout: time.Second})
+
+	if err := client.updateTargets([]Target{{Identity: "cid-1", MAC: "aa:bb:cc:dd:ee:ff"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	client.setRPC(rpc)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	responseCh := make(chan struct {
+		response Response
+		err      error
+	}, 1)
+
+	go func() {
+		response, err := client.Send(ctx, "cid-1", Request{Method: "POST", Path: "rci/"})
+		responseCh <- struct {
+			response Response
+			err      error
+		}{response: response, err: err}
+	}()
+
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("RPC request did not start")
+	}
+
+	cancel()
+	close(releaseResponse)
+
+	select {
+	case result := <-responseCh:
+		if result.err != nil || result.response.Status != 200 || string(result.response.Body) != `{"ok":true}` {
+			t.Fatalf("Send result = %#v, err = %v", result.response, result.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Send did not finish after RPC response")
+	}
+}
+
+func TestClientPollTargetsPropagatesContextCancellationToRPC(t *testing.T) {
+	requestStarted := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	rpc := newTestRPC(t, func(frame rcisock.RequestFrame) rcisock.ResponseFrame {
+		close(requestStarted)
+		<-ctx.Done()
+
+		return rcisock.ResponseFrame{ID: responseID(frame), Status: 200}
+	})
+
+	defer rpc.Close()
+
+	client := New(Config{PluginID: "mws-page"})
+
+	if err := client.updateTargets([]Target{{Identity: "cid-1", MAC: "aa:bb:cc:dd:ee:ff"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+
+	go func() { done <- client.pollTargets(ctx, rpc) }()
+
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("poll request did not start")
+	}
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("pollTargets did not stop after cancellation")
+	}
+}
+
+func TestClientSnapshotUsesVisibilityPredicateAndMacOrdering(t *testing.T) {
+	client := New(Config{PluginID: "mws-page"})
+	now := time.Now().UTC()
+	client.sessions = map[string]sessionState{
+		"live":  {target: Target{Identity: "live", MAC: "cc:cc:cc:cc:cc:cc"}, live: true, lastSeenAt: now},
+		"miss1": {target: Target{Identity: "miss1", MAC: "dd:dd:dd:dd:dd:dd"}, misses: 1, lastSeenAt: now},
+		"miss2": {target: Target{Identity: "miss2", MAC: "aa:aa:aa:aa:aa:aa"}, misses: 2, lastSeenAt: now},
+	}
+
+	sessions := client.Snapshot()
+
+	if len(sessions) != 2 {
+		t.Fatalf("sessions = %#v, want live and two-miss sessions", sessions)
+	}
+
+	if sessions[0].Identity != "miss2" || sessions[0].Live || sessions[1].Identity != "live" || !sessions[1].Live {
+		t.Fatalf("sessions = %#v, want MAC order with one-miss session omitted", sessions)
+	}
+}
+
 func TestClientRetainsStateWhenSocketCloses(t *testing.T) {
 	var attemptsMu sync.Mutex
 	attempts := 0
@@ -912,6 +1022,7 @@ func assertInterfacePowerRequest(t *testing.T, body []byte) {
 	t.Helper()
 
 	var queries []map[string]any
+
 	if err := json.Unmarshal(body, &queries); err != nil {
 		t.Fatalf("power request body = %s: %v", body, err)
 	}
@@ -922,16 +1033,19 @@ func assertInterfacePowerRequest(t *testing.T, body []byte) {
 
 	for index, name := range []string{"WifiMaster0", "WifiMaster1"} {
 		show, ok := queries[index]["show"].(map[string]any)
+
 		if !ok {
 			t.Fatalf("query %d show = %#v", index, queries[index]["show"])
 		}
 
 		sc, ok := show["sc"].(map[string]any)
+
 		if !ok {
 			t.Fatalf("query %d sc = %#v", index, show["sc"])
 		}
 
 		interfaceQuery, ok := sc["interface"].(map[string]any)
+
 		if !ok || interfaceQuery["name"] != name {
 			t.Fatalf("query %d interface = %#v, want name %s", index, sc["interface"], name)
 		}
@@ -971,6 +1085,23 @@ func serveTestConnection(t *testing.T, connection net.Conn, respond func(rcisock
 			return
 		}
 	}
+}
+
+func newTestRPC(t *testing.T, respond func(rcisock.RequestFrame) rcisock.ResponseFrame) *rcisock.Client {
+	t.Helper()
+
+	clientConn, serverConn := net.Pipe()
+
+	go serveTestConnection(t, serverConn, respond)
+
+	rpc := rcisock.NewClient(clientConn, rcisock.WithIOTimeout(time.Second), rcisock.WithHandshakeTimeout(time.Second))
+
+	if err := rpc.Handshake(context.Background(), rcisock.ClientHello{PluginID: "mws-page", Proto: rcisock.ProtocolVersion}); err != nil {
+		rpc.Close()
+		t.Fatalf("test RPC handshake: %v", err)
+	}
+
+	return rpc
 }
 
 func responseID(frame rcisock.RequestFrame) *int64 {

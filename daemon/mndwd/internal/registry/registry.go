@@ -36,6 +36,7 @@ func (p *Plugin) BackendServable() *httpx.APIError {
 	if p.Approval != state.ApprovalApproved {
 		return httpx.NewError(http.StatusForbidden, httpx.CodeNotApproved, "plugin backend is not approved")
 	}
+
 	if !p.Enabled {
 		return httpx.NewError(http.StatusForbidden, httpx.CodeDisabled, "plugin backend is disabled")
 	}
@@ -105,9 +106,11 @@ func (r *Registry) Resolve(name string) (*Plugin, bool) {
 
 func pluginDir(userDir string, record *state.Plugin) string {
 	defaultDir := filepath.Join(userDir, record.Name)
+
 	if record.ActiveVersionDir == "" || !filepath.IsAbs(record.ActiveVersionDir) {
 		return defaultDir
 	}
+
 	rel, err := filepath.Rel(userDir, record.ActiveVersionDir)
 	if err != nil || rel == ".." || filepath.IsAbs(rel) || (len(rel) >= 3 && rel[:3] == ".."+string(filepath.Separator)) {
 		return defaultDir
@@ -145,24 +148,29 @@ func (r *Registry) ListBuiltinsWithError() ([]*Plugin, error) {
 	}
 
 	var plugins []*Plugin
+
 	for _, entry := range entries {
 		name := entry.Name()
 		pluginDir := filepath.Join(r.builtinDir, name)
 		info, statErr := os.Stat(pluginDir)
+
 		if statErr != nil || !info.IsDir() {
 			continue
 		}
 
 		data, readErr := os.ReadFile(filepath.Join(pluginDir, "manifest.json"))
+
 		if readErr != nil {
 			continue
 		}
 
 		m, verr := manifest.ValidateV3(data)
+
 		if verr != nil {
 			if r.logger != nil {
 				r.logger.Warn("builtin plugin has invalid manifest, skipping", "plugin", name, "error", verr)
 			}
+
 			continue
 		}
 
@@ -186,31 +194,41 @@ func (r *Registry) AllBackendPlugins() []*Plugin {
 	snapshot := r.store.Snapshot()
 	reserved := make(map[string]struct{}, len(snapshot.Plugins))
 	userNames := make([]string, 0, len(snapshot.Plugins))
+
 	for name := range snapshot.Plugins {
 		reserved[name] = struct{}{}
 		userNames = append(userNames, name)
 	}
+
 	sort.Strings(userNames)
 
 	plugins := make([]*Plugin, 0)
+
 	for _, name := range userNames {
 		record := snapshot.Plugins[name]
+
 		if record == nil || record.Approval != state.ApprovalApproved || !record.Enabled {
 			continue
 		}
+
 		plugin, ok := r.Resolve(name)
+
 		if !ok || !manifest.HasBackend(plugin.Manifest) {
 			continue
 		}
+
 		plugins = append(plugins, plugin)
 	}
 
 	builtins := r.ListBuiltins()
+
 	sort.Slice(builtins, func(left, right int) bool { return builtins[left].Name < builtins[right].Name })
+
 	for _, plugin := range builtins {
 		if _, exists := reserved[plugin.Name]; exists || !manifest.HasBackend(plugin.Manifest) {
 			continue
 		}
+
 		plugins = append(plugins, plugin)
 	}
 

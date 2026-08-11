@@ -338,6 +338,7 @@ func TestNodesResponseIncludesPersistentSessionsWithoutCredentials(t *testing.T)
 func TestNodesResponseIncludesPersistentRadioPower(t *testing.T) {
 	value := 75
 	service := New(config.Config{})
+
 	service.SetPersistentSource(fakePersistentSource{sessions: []persistent.Session{{
 		Mac:     "aa:bb:cc:dd:ee:ff",
 		Live:    true,
@@ -356,6 +357,7 @@ func TestNodesResponseIncludesPersistentRadioPower(t *testing.T) {
 	}
 
 	var envelope map[string]any
+
 	if err := json.Unmarshal(encoded, &envelope); err != nil {
 		t.Fatal(err)
 	}
@@ -659,7 +661,7 @@ func TestPersistentTelemetryPreservesLargeMemtotal(t *testing.T) {
 func TestDiagnosticsSnapshotIncludesPersistentConfiguration(t *testing.T) {
 	t.Setenv("MNDW_RCI_SESSION_SOCKET", "/run/mws-page/rci-session.sock")
 
-	service := New(config.Config{RuntimeDir: t.TempDir()})
+	service := New(config.Config{})
 	snapshot := service.DiagnosticsSnapshot()
 	encoded, err := json.Marshal(snapshot)
 	if err != nil {
@@ -690,8 +692,7 @@ func TestDiagnosticsSnapshotIncludesPersistentConfiguration(t *testing.T) {
 }
 
 func TestDiagnosticsSnapshotIncludesLocalStateAndBoundsRrdData(t *testing.T) {
-	runtimeDir := t.TempDir()
-	service := New(config.Config{RuntimeDir: runtimeDir, SocketName: "mwsd.sock", PIDName: "mwsd.pid"})
+	service := New(config.Config{})
 	when := time.Date(2026, time.August, 4, 15, 30, 0, 0, time.UTC)
 
 	service.SetClock(testClock{now: when})
@@ -766,7 +767,7 @@ func TestDiagnosticsSnapshotIncludesLocalStateAndBoundsRrdData(t *testing.T) {
 }
 
 func TestDiagnosticsSnapshotIncludesPersistentClientState(t *testing.T) {
-	service := New(config.Config{RuntimeDir: t.TempDir()})
+	service := New(config.Config{})
 	when := time.Date(2026, time.August, 5, 6, 20, 0, 0, time.UTC)
 
 	service.SetPersistentSource(fakePersistentSource{diagnostics: persistent.Diagnostics{
@@ -817,8 +818,7 @@ func TestDiagnosticsSnapshotIncludesSafeCredentialFailure(t *testing.T) {
 
 	defer controller.Close()
 
-	runtimeDir := t.TempDir()
-	service := New(config.Config{ControllerURL: controller.URL, RuntimeDir: runtimeDir})
+	service := New(config.Config{ControllerURL: controller.URL})
 	when := time.Date(2026, time.August, 5, 5, 40, 42, 0, time.UTC)
 
 	service.SetClock(testClock{now: when})
@@ -846,14 +846,6 @@ func TestDiagnosticsSnapshotIncludesSafeCredentialFailure(t *testing.T) {
 
 	if strings.Contains(string(encoded), "secret") || strings.Contains(string(encoded), "x-ndw5") {
 		t.Fatalf("diagnostics leaked credential or auth details: %s", encoded)
-	}
-}
-
-func TestDiagnosticsTickWritesWhenCredentialsAbsent(t *testing.T) {
-	service := New(config.Config{RuntimeDir: t.TempDir()})
-
-	if err := service.writeDiagnosticsTick(); err != nil {
-		t.Fatal(err)
 	}
 }
 

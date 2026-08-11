@@ -32,6 +32,7 @@ func NewServiceState(hosts []model.Host, samplesByIP map[string][]model.Sample) 
 		if host.IP == "" {
 			continue
 		}
+
 		state.hosts[host.IP] = host
 		state.orderedIPs = append(state.orderedIPs, host.IP)
 	}
@@ -40,6 +41,7 @@ func NewServiceState(hosts []model.Host, samplesByIP map[string][]model.Sample) 
 		if _, exists := state.hosts[ip]; !exists {
 			continue
 		}
+
 		state.samplesByIP[ip] = trimSamples(samples)
 	}
 
@@ -48,6 +50,7 @@ func NewServiceState(hosts []model.Host, samplesByIP map[string][]model.Sample) 
 
 func (state *ServiceState) ApplyHostUpdate(input model.HostUpdateInput) ([]model.Host, error) {
 	state.mu.Lock()
+
 	defer state.mu.Unlock()
 
 	action := strings.TrimSpace(strings.ToLower(input.Action))
@@ -63,29 +66,36 @@ func (state *ServiceState) ApplyHostUpdate(input model.HostUpdateInput) ([]model
 		if _, exists := state.hosts[ip]; exists {
 			return nil, errors.New("host already exists")
 		}
+
 		host := model.Host{IP: ip, Name: name}
 		state.hosts[ip] = host
 		state.orderedIPs = append(state.orderedIPs, ip)
 		state.samplesByIP[ip] = []model.Sample{}
 	case "update":
 		host, exists := state.hosts[ip]
+
 		if !exists {
 			return nil, errors.New("host does not exist")
 		}
+
 		host.Name = name
 		state.hosts[ip] = host
 	case "remove":
 		if _, exists := state.hosts[ip]; !exists {
 			return nil, errors.New("host does not exist")
 		}
+
 		delete(state.hosts, ip)
 		delete(state.samplesByIP, ip)
+
 		nextOrder := make([]string, 0, len(state.orderedIPs))
+
 		for _, candidate := range state.orderedIPs {
 			if candidate != ip {
 				nextOrder = append(nextOrder, candidate)
 			}
 		}
+
 		state.orderedIPs = nextOrder
 	default:
 		return nil, errors.New("action must be add, update, or remove")
@@ -96,6 +106,7 @@ func (state *ServiceState) ApplyHostUpdate(input model.HostUpdateInput) ([]model
 
 func (state *ServiceState) ListHosts() []model.Host {
 	state.mu.RLock()
+
 	defer state.mu.RUnlock()
 
 	return state.listHostsUnsafe()
@@ -103,6 +114,7 @@ func (state *ServiceState) ListHosts() []model.Host {
 
 func (state *ServiceState) Running() bool {
 	state.mu.RLock()
+
 	defer state.mu.RUnlock()
 
 	return state.running
@@ -110,6 +122,7 @@ func (state *ServiceState) Running() bool {
 
 func (state *ServiceState) SetRunning(running bool) {
 	state.mu.Lock()
+
 	defer state.mu.Unlock()
 
 	state.running = running
@@ -117,6 +130,7 @@ func (state *ServiceState) SetRunning(running bool) {
 
 func (state *ServiceState) RecordSample(ip string, sample model.Sample) {
 	state.mu.Lock()
+
 	defer state.mu.Unlock()
 
 	if _, exists := state.hosts[ip]; !exists {
@@ -129,9 +143,11 @@ func (state *ServiceState) RecordSample(ip string, sample model.Sample) {
 
 func (state *ServiceState) Stats() []model.HostStats {
 	state.mu.RLock()
+
 	defer state.mu.RUnlock()
 
 	stats := make([]model.HostStats, 0, len(state.orderedIPs))
+
 	for _, ip := range state.orderedIPs {
 		host := state.hosts[ip]
 		samples := state.samplesByIP[ip]
@@ -141,39 +157,35 @@ func (state *ServiceState) Stats() []model.HostStats {
 	return stats
 }
 
-func (state *ServiceState) HostSnapshot() []model.Host {
-	state.mu.RLock()
-	defer state.mu.RUnlock()
-
-	return state.listHostsUnsafe()
-}
-
 func (state *ServiceState) SampleSnapshot() map[string][]model.Sample {
 	state.mu.RLock()
+
 	defer state.mu.RUnlock()
 
 	snapshot := make(map[string][]model.Sample, len(state.samplesByIP))
+
 	for ip, samples := range state.samplesByIP {
 		copied := make([]model.Sample, len(samples))
+
 		copy(copied, samples)
+
 		snapshot[ip] = copied
 	}
 
 	return snapshot
 }
 
-func (state *ServiceState) PingTargets() []model.Host {
-	return state.ListHosts()
-}
-
 func (state *ServiceState) listHostsUnsafe() []model.Host {
 	hosts := make([]model.Host, 0, len(state.orderedIPs))
+
 	for _, ip := range state.orderedIPs {
 		host, exists := state.hosts[ip]
+
 		if exists {
 			hosts = append(hosts, host)
 		}
 	}
+
 	return hosts
 }
 
@@ -181,6 +193,7 @@ func trimSamples(samples []model.Sample) []model.Sample {
 	if len(samples) <= maxSamplesPerHost {
 		return samples
 	}
+
 	return samples[len(samples)-maxSamplesPerHost:]
 }
 
@@ -202,17 +215,17 @@ func buildStats(host model.Host, samples []model.Sample) model.HostStats {
 	for _, sample := range samples {
 		if !sample.Success {
 			failed++
+
 			continue
 		}
+
 		latencies = append(latencies, sample.LatencyMs)
 		stats.LastMs = sample.LatencyMs
 		updatedAt = sample.At
 	}
 
 	stats.UpdatedAt = updatedAt
-	if len(samples) > 0 {
-		stats.LossPercent = roundTo2(float64(failed) * 100 / float64(len(samples)))
-	}
+	stats.LossPercent = roundTo2(float64(failed) * 100 / float64(len(samples)))
 
 	if len(latencies) == 0 {
 		return stats
@@ -221,24 +234,26 @@ func buildStats(host model.Host, samples []model.Sample) model.HostStats {
 	minValue := latencies[0]
 	maxValue := latencies[0]
 	sum := 0.0
-	sortedLatencies := make([]float64, len(latencies))
-	copy(sortedLatencies, latencies)
 
 	for _, value := range latencies {
 		sum += value
+
 		if value < minValue {
 			minValue = value
 		}
+
 		if value > maxValue {
 			maxValue = value
 		}
 	}
 
-	sort.Float64s(sortedLatencies)
-	median := sortedLatencies[len(sortedLatencies)/2]
-	if len(sortedLatencies)%2 == 0 {
-		upper := sortedLatencies[len(sortedLatencies)/2]
-		lower := sortedLatencies[(len(sortedLatencies)/2)-1]
+	sort.Float64s(latencies)
+
+	median := latencies[len(latencies)/2]
+
+	if len(latencies)%2 == 0 {
+		upper := latencies[len(latencies)/2]
+		lower := latencies[(len(latencies)/2)-1]
 		median = (upper + lower) / 2
 	}
 

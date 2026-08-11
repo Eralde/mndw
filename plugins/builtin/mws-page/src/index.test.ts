@@ -27,7 +27,6 @@ function fakeContext(backend: BackendClient | null = null): {
   const ctx = {
     rciManager: {queue},
     backend,
-    sessionManager: {},
     storage: new FakePluginStorage(),
     sharedStorage: {},
     hostInfo: {deviceName: 'Router', vendor: 'Keenetic', firmwareVersion: '5.1.1', theme: 'light'},

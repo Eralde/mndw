@@ -41,7 +41,6 @@ function mockPlugin(createInstanceResult: PluginInstance | Promise<PluginInstanc
 function mockContext(instanceId = 'test:1'): PluginContext {
   return {
     rciManager: {} as never,
-    sessionManager: {} as never,
     storage: {} as never,
     sharedStorage: {} as never,
     hostInfo: {deviceName: 'Test', vendor: 'Test', firmwareVersion: '1.0', theme: 'dark'},

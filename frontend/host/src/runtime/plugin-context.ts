@@ -6,7 +6,7 @@ import {
   type PluginContext,
   createBackendClient,
 } from '@mndw/sdk';
-import type {RciManager, SessionManager} from '@rci-tools/core';
+import type {RciManager} from '@rci-tools/core';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {injector} from '../services/injector.service.js';
 import {createPluginOverlayService} from '../services/overlay/overlay-manager.svelte.js';
@@ -31,14 +31,6 @@ const RCI_MANAGER_METHODS = [
   'initBackgroundProcess',
   'queueBackgroundProcess',
 ] as const satisfies readonly (keyof RciManager)[];
-
-const SESSION_MANAGER_METHODS = [
-  'isAuthenticated',
-  'getRealmHeader',
-  'login',
-  'logout',
-  'toggleErrorLogging',
-] as const satisfies readonly (keyof SessionManager)[];
 
 /**
  * Constructs the backend client from the list descriptor, or returns undefined when
@@ -84,7 +76,6 @@ export function createPluginContext(
       // SDK exposes concrete classes with private fields; runtime facades intentionally contain only
       // public methods, so cast narrowed facades at this plugin-context boundary.
       rciManager: createServiceFacade(rciService.driver, RCI_MANAGER_METHODS) as unknown as RciManager,
-      sessionManager: createServiceFacade(rciService.auth, SESSION_MANAGER_METHODS) as unknown as SessionManager,
       storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
       sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
       hostInfo: Object.freeze(Object.assign(Object.create(null), {...hostInfo, theme: getTheme()})),

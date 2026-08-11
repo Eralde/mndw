@@ -156,7 +156,6 @@ plugin distribution automatically.
 ```ts
 interface PluginContext {
   rciManager: RciManager;
-  sessionManager: SessionManager;
   storage: PluginStorage;
   sharedStorage: PluginStorage;
   hostInfo: HostInfo;

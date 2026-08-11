@@ -29,10 +29,13 @@ export function openSettingsDialog(
     title: 'Widget Settings',
     closeOnOutsideClick: true,
     mount(target, layer) {
-      const ref = createComponent(SettingsDialogComponent, {
-        hostElement: target,
-        environmentInjector: injector,
-      });
+      const ref = createComponent(
+        SettingsDialogComponent,
+        {
+          hostElement: target,
+          environmentInjector: injector,
+        },
+      );
 
       ref.setInput('interfaces', args.interfaces);
       ref.setInput('selectedInterface', args.selectedInterface);

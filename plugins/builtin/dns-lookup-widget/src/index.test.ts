@@ -8,7 +8,6 @@ function fakeContext(overrides?: Partial<BackendClient>): PluginContext {
 
   return {
     rciManager: {} as PluginContext['rciManager'],
-    sessionManager: {} as PluginContext['sessionManager'],
     storage: {get: vi.fn(), set: vi.fn(), delete: vi.fn(), has: vi.fn(), keys: vi.fn()},
     sharedStorage: {get: vi.fn(), set: vi.fn(), delete: vi.fn(), has: vi.fn(), keys: vi.fn()},
     hostInfo: {deviceName: 'test-device', vendor: 'Keenetic', firmwareVersion: '4.2', theme: 'light'},

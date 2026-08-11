@@ -136,7 +136,7 @@ Prefer SDK and context surfaces:
 
 - `storage` for state belonging to one widget instance;
 - `sharedStorage` for state shared by instances of one plugin;
-- RCI/session managers for device communication;
+- `rciManager` for device communication;
 - `hostInfo` for device identity and theme;
 - `overlay` for modal, drawer, popover, or custom top-layer UI. At viewport widths
   `<=600px`, host-presented modals and drawers become full-width, content-sized

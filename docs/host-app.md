@@ -73,7 +73,7 @@ widget/page queries to the dashboard and router.
 
 Each plugin instance receives a context containing:
 
-- RCI and session managers shared by the host;
+- the RCI manager shared by the host;
 - per-instance `storage` and per-plugin `sharedStorage`;
 - device name, vendor, firmware, and theme in `hostInfo`;
 - host service lookup through `injector`;

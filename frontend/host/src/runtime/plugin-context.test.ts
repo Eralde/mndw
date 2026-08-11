@@ -12,13 +12,6 @@ vi.mock('../services/rci.service.js', () => ({
       initBackgroundProcess: vi.fn(),
       queueBackgroundProcess: vi.fn(),
     },
-    auth: {
-      isAuthenticated: vi.fn(),
-      getRealmHeader: vi.fn(),
-      login: vi.fn(() => 'login-result'),
-      logout: vi.fn(),
-      toggleErrorLogging: vi.fn(),
-    },
   },
 }));
 vi.mock('../services/storage.service.js', () => ({
@@ -194,27 +187,10 @@ describe('palette access', () => {
 });
 
 describe('createPluginContext security boundaries', () => {
-  it('hands out a facade, not the shared sessionManager singleton', async () => {
-    const {rciService} = await import('../services/rci.service.js');
-    const auth = rciService.auth as unknown as Record<string, unknown>;
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
-    const facade = ctx.sessionManager as unknown as Record<string, unknown>;
-
-    expect(ctx.sessionManager).not.toBe(auth);
-    expect(facade.isAuthenticated).toBeInstanceOf(Function);
-  });
-
-  it('forwards facade calls to the shared sessionManager and returns its result', async () => {
-    const {rciService} = await import('../services/rci.service.js');
-    const auth = rciService.auth as unknown as Record<string, unknown>;
+  it('does not expose host session lifecycle to plugins', () => {
     const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
 
-    const result = ctx.sessionManager.login('user', 'pass');
-
-    const login = auth.login as ReturnType<typeof vi.fn>;
-
-    expect(login).toHaveBeenCalledWith('user', 'pass');
-    expect(result).toBe('login-result');
+    expect('sessionManager' in ctx).toBe(false);
   });
 
   it('exposes a read-only injector without register', () => {
@@ -229,7 +205,6 @@ describe('createPluginContext security boundaries', () => {
 
     expect(Object.isFrozen(ctx)).toBe(true);
     expect(Object.isFrozen(ctx.rciManager)).toBe(true);
-    expect(Object.isFrozen(ctx.sessionManager)).toBe(true);
     expect(Object.isFrozen(ctx.injector)).toBe(true);
     expect(Object.isFrozen(ctx.hostInfo)).toBe(true);
   });
@@ -239,7 +214,6 @@ describe('createPluginContext security boundaries', () => {
 
     expect(Object.getPrototypeOf(ctx)).toBeNull();
     expect(Object.getPrototypeOf(ctx.rciManager)).toBeNull();
-    expect(Object.getPrototypeOf(ctx.sessionManager)).toBeNull();
     expect(Object.getPrototypeOf(ctx.injector)).toBeNull();
     expect(Object.getPrototypeOf(ctx.hostInfo)).toBeNull();
   });
@@ -249,6 +223,5 @@ describe('createPluginContext security boundaries', () => {
     const b = createPluginContext(widgetEntry(), 'demo:2', hostInfo);
 
     expect(a.rciManager).not.toBe(b.rciManager);
-    expect(a.sessionManager).not.toBe(b.sessionManager);
   });
 });

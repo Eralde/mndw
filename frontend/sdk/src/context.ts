@@ -1,4 +1,4 @@
-import type {RciManager, SessionManager} from '@rci-tools/core';
+import type {RciManager} from '@rci-tools/core';
 import type {PluginStorage} from './storage.js';
 import type {ServiceInjector} from './injector.js';
 import type {OverlayService} from './overlay.js';
@@ -40,7 +40,6 @@ export interface HostInfo {
 
 export interface PluginContext {
   rciManager: RciManager;
-  sessionManager: SessionManager;
   storage: PluginStorage;
   sharedStorage: PluginStorage;
   hostInfo: HostInfo;

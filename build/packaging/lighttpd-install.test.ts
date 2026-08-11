@@ -88,8 +88,11 @@ const writeProcListeners = (fixture: Fixture, ports: number[], ipv6Ports: number
   const rows = ['  sl  local_address rem_address   st'];
 
   for (const port of ports) {
-    rows.push(`   0: 00000000:${port.toString(16).padStart(4, '0')
-.toUpperCase()} 00000000:0000 0A`);
+    const portChunk = port.toString(16)
+      .padStart(4, '0')
+      .toUpperCase();
+
+    rows.push(`   0: 00000000:${portChunk} 00000000:0000 0A`);
   }
 
   fs.writeFileSync(path.join(fixture.proc, 'net', 'tcp'), `${rows.join('\n')}\n`);
@@ -97,11 +100,12 @@ const writeProcListeners = (fixture: Fixture, ports: number[], ipv6Ports: number
   const rows6 = ['  sl  local_address rem_address   st'];
 
   for (const port of ipv6Ports) {
+    const portChunk = port.toString(16)
+      .padStart(4, '0')
+      .toUpperCase();
+
     rows6.push(
-      `   0: 00000000000000000000000000000000:${
-        port.toString(16).padStart(4, '0')
-.toUpperCase()
-      } 00000000000000000000000000000000:0000 0A`,
+      `   0: 00000000000000000000000000000000:${portChunk} 00000000000000000000000000000000:0000 0A`,
     );
   }
 
@@ -379,8 +383,12 @@ describe('mndw-lighttpd-port.sh', () => {
     const result = runScript(portHelper, ['snapshot-listeners', snapshot], fixture);
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(fs.readFileSync(snapshot, 'utf8').trim()
-.split('\n')).toEqual(['tcp4|99', 'tcp6|100']);
+
+    const lines = fs.readFileSync(snapshot, 'utf8')
+      .trim()
+      .split('\n')
+
+    expect(lines).toEqual(['tcp4|99', 'tcp6|100']);
   });
 
   it('rejects invalid persisted ports and invalid writes', () => {

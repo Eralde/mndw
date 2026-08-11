@@ -6,7 +6,7 @@ import {
 
 import {CliError} from './errors.js';
 
-export type { AngularCompileResult };
+export type {AngularCompileResult};
 
 export function compileAngular(pluginDir: string, sourceEntry = 'src/index.ts'): AngularCompileResult {
   try {

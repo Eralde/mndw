@@ -16,7 +16,7 @@ import {compileString} from 'sass';
 const COMPILER_NODE_MODULES = resolve(import.meta.dirname, '..', 'node_modules');
 
 export class AngularCompilerError extends Error {
-  public constructor(message: string) {
+  constructor(message: string) {
     super(message);
     this.name = 'AngularCompilerError';
   }
@@ -158,6 +158,7 @@ export function createAngularCompiler(
         sourceToOutput: (sourcePath: string): string | undefined => sourceToOutput(pluginDir, outputDir, sourcePath),
       };
       const previous = current;
+
       current = next;
       program = result.program;
 
@@ -301,7 +302,7 @@ function writeStagedTsconfig(tsconfigJson: string, staging: string, pluginDir: s
               '@angular/platform-browser/testing': [
                 join(COMPILER_NODE_MODULES, '@angular/platform-browser/types/testing.d.ts'),
               ],
-              d3: [
+              'd3': [
                 join(pluginDir, 'node_modules/@types/d3/index.d.ts'),
                 join(pluginDir, 'node_modules/d3'),
                 join(COMPILER_NODE_MODULES, 'd3'),
@@ -412,10 +413,12 @@ function writeGlobalStyles(styles: readonly string[], outputDir: string): string
 
   if (nonEmptyStyles.length === 0) {
     rmSync(globalStylesPath, {force: true});
+
     return undefined;
   }
 
   writeFileSync(globalStylesPath, `${nonEmptyStyles.join('\n')}\n`);
+
   return globalStylesPath;
 }
 

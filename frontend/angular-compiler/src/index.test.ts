@@ -17,6 +17,7 @@ afterEach(() => {
 
 function makePlugin(includeGlobalStyles = false): string {
   const pluginDir = mkdtempSync(join(tmpdir(), 'mndw-angular-compiler-test-'));
+
   temporaryDirectories.push(pluginDir);
 
   writeFileSync(
@@ -39,6 +40,7 @@ function makePlugin(includeGlobalStyles = false): string {
   writeFileSync(join(pluginDir, 'manifest.json'), '{}');
 
   const sourceDir = join(pluginDir, 'src');
+
   mkdirSync(sourceDir);
   writeFileSync(join(sourceDir, 'index.ts'), 'export {AppComponent} from \'./app.component\';\n');
   writeFileSync(
@@ -99,6 +101,7 @@ describe('createAngularCompiler', () => {
 
     expect(first.sourceToOutput(componentSource)).toBe(join(first.outputDir, 'app.component.js'));
     expect(first.globalStylesPath).toBeDefined();
+
     const firstGlobalStylesPath = first.globalStylesPath;
 
     expect(firstGlobalStylesPath).toBeDefined();
@@ -109,16 +112,20 @@ describe('createAngularCompiler', () => {
       .toBe(join(first.outputDir, 'nested', 'child.js'));
 
     writeFileSync(componentSource, readFileSync(componentSource, 'utf8').replace('initial', 'updated'));
+
     const second = compiler.update([componentSource]);
 
     expect(second.outputDir).not.toBe(first.outputDir);
+
     const secondComponentOutput = second.sourceToOutput(componentSource);
 
     expect(secondComponentOutput).toBeDefined();
     expect(secondComponentOutput === undefined ? '' : readFileSync(secondComponentOutput, 'utf8')).toContain('updated');
 
     const templatePath = join(pluginDir, 'src', 'app.component.html');
+
     writeFileSync(templatePath, '<h1>{{ label() }}</h1>\n');
+
     const third = compiler.update([templatePath]);
 
     const thirdComponentOutput = third.sourceToOutput(componentSource);
@@ -127,7 +134,9 @@ describe('createAngularCompiler', () => {
     expect(thirdComponentOutput === undefined ? '' : readFileSync(thirdComponentOutput, 'utf8')).toContain('<h1>');
 
     const stylePath = join(pluginDir, 'src', 'app.component.scss');
+
     writeFileSync(stylePath, '.component { color: green; }\n');
+
     const fourth = compiler.update([stylePath]);
 
     const fourthComponentOutput = fourth.sourceToOutput(componentSource);

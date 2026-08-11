@@ -5,6 +5,7 @@ import {type ProxyOptions, defineConfig, loadEnv} from 'vite';
 import {svelte} from '@sveltejs/vite-plugin-svelte';
 import vue from '@vitejs/plugin-vue';
 import {sharedImportMap, sharedSpecifiers} from '@mndw/sdk/shared-dependencies';
+import {angularSandboxPlugin, isAngularPlugin} from './scripts/angular-sandbox-plugin.js';
 import {resolveSandboxPluginPath, sandboxPlugin} from './scripts/sandbox-plugin.js';
 import {resolvePluginRequest} from './scripts/serve-plugins.js';
 
@@ -30,6 +31,9 @@ export default defineConfig(({mode}) => {
     process.env.MNDW_SANDBOX_PLUGIN || env.MNDW_SANDBOX_PLUGIN,
     repoRoot,
   );
+  const angularSandbox = sandboxPluginPath !== null && isAngularPlugin(sandboxPluginPath)
+    ? angularSandboxPlugin(sandboxPluginPath)
+    : null;
 
   function deviceProxy(apiPath: string, ws = false): ProxyOptions {
     return {
@@ -59,6 +63,7 @@ export default defineConfig(({mode}) => {
       // Always registered so the virtual:sandbox-* ids resolve in every build; serves inert
       // stubs when sandbox mode is off (sandboxPluginPath === null).
       sandboxPlugin(sandboxPluginPath),
+      ...(angularSandbox === null ? [] : [angularSandbox]),
       svelte(),
       vue(),
       {

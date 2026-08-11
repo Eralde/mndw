@@ -1,7 +1,7 @@
 import {spawn as nodeSpawn, spawnSync} from 'node:child_process';
 import {existsSync, mkdtempSync, readdirSync, rmSync, symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join, resolve} from 'node:path';
+import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {CliError} from './errors.js';
@@ -163,7 +163,8 @@ async function defaultWaitForDaemon(baseUrl: string, pluginName: string): Promis
 
 /** Locates `daemon/mndwd` relative to this file, or null outside a source checkout. */
 function defaultFindDaemonPackageDir(): string | null {
-  const daemonDir = resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'daemon');
+  const cliSourceDir = dirname(fileURLToPath(import.meta.url));
+  const daemonDir = resolve(cliSourceDir, '..', '..', '..', 'daemon', 'mndwd');
 
   return existsSync(join(daemonDir, 'go.mod')) ? daemonDir : null;
 }

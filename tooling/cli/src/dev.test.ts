@@ -251,6 +251,19 @@ describe('runDev', () => {
     );
   });
 
+  it('discovers the repository daemon source checkout without injected dependencies', async () => {
+    const h = harness({findDaemonPackageDir: undefined});
+
+    await runDev('plugins/builtin/demo-page', {}, h.deps);
+
+    expect(h.spawn).toHaveBeenNthCalledWith(
+      1,
+      'go',
+      expect.arrayContaining(['run', './cmd/mndwd']),
+      expect.objectContaining({cwd: resolve(import.meta.dirname, '..', '..', '..', 'daemon', 'mndwd')}),
+    );
+  });
+
   it('builds the Go backend before spawning the daemon', async () => {
     const buildGoBackend = vi.fn(() => ({success: true, skipped: false}));
     const h = harness({buildGoBackend});

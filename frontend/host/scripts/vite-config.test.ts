@@ -18,6 +18,24 @@ describe('host Vite config', () => {
     expect(config.server?.fs?.allow).toContain(repoRoot);
   });
 
+  it('registers Angular source compilation only for Angular sandbox plugins', () => {
+    vi.stubEnv('MNDW_SANDBOX_PLUGIN', path.join(repoRoot, 'plugins/builtin', 'tx-rx-chart-widget'));
+
+    const config = viteConfig({command: 'serve', mode: 'development', isPreview: false});
+    const pluginNames = config.plugins?.map((plugin) => plugin && 'name' in plugin ? plugin.name : undefined);
+
+    expect(pluginNames).toContain('mndw-angular-sandbox');
+  });
+
+  it('leaves non-Angular sandbox plugins on existing source-HMR path', () => {
+    vi.stubEnv('MNDW_SANDBOX_PLUGIN', path.join(repoRoot, 'plugins/builtin', 'clients-widget'));
+
+    const config = viteConfig({command: 'serve', mode: 'development', isPreview: false});
+    const pluginNames = config.plugins?.map((plugin) => plugin && 'name' in plugin ? plugin.name : undefined);
+
+    expect(pluginNames).not.toContain('mndw-angular-sandbox');
+  });
+
   it('keeps browser origin and disables Vite CORS on daemon proxies', () => {
     const config = viteConfig({command: 'serve', mode: 'development', isPreview: false});
     const apiProxy = config.server?.proxy?.['/api'];

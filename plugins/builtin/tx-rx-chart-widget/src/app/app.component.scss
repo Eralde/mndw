@@ -11,132 +11,128 @@
   color: var(--mndw-text);
   font-size: 14px;
   font-family: var(--mndw-font-sans);
-}
 
-/* Layout only. `.mndw-alert--danger` owns the box and the severity colours. */
-.tx-rx-widget .notice {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  align-self: stretch;
-  margin: 8px 12px;
-  font-size: 13px;
-}
+  .notice {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    align-self: stretch;
+    margin: 8px 12px;
+    font-size: 13px;
 
-.tx-rx-widget .notice__retry {
-  flex-shrink: 0;
-  margin-left: auto;
-}
+    &__retry {
+      flex-shrink: 0;
+      margin-left: auto;
+    }
 
-.tx-rx-widget .notice__retry::part(button) {
-  min-height: auto;
-  padding: 4px 10px;
-  font-size: 12px;
-}
+    &__retry::part(button) {
+      min-height: auto;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+  }
 
-.tx-rx-widget .loading {
-  padding: 20px;
-  color: var(--mndw-text-subtle);
-  text-align: center;
-}
+  .loading {
+    padding: 20px;
+    color: var(--mndw-text-subtle);
+    text-align: center;
+  }
 
-.tx-rx-widget .empty-state {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  max-width: 320px;
-  margin: auto;
-  text-align: center;
-}
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    max-width: 320px;
+    margin: auto;
+    text-align: center;
 
-.tx-rx-widget .empty-state__heading {
-  margin: 0;
-  color: var(--mndw-text);
-  font-weight: 600;
-  font-size: 16px;
-}
+    &__heading {
+      margin: 0;
+      color: var(--mndw-text);
+      font-weight: 600;
+      font-size: 16px;
+    }
 
-.tx-rx-widget .empty-state__subtitle {
-  margin: 0 0 4px;
-  color: var(--mndw-text-subtle);
-  font-size: 13px;
-  line-height: 1.4;
-}
+    &__subtitle {
+      margin: 0 0 4px;
+      color: var(--mndw-text-subtle);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+  }
 
-.tx-rx-widget .chart-view {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  width: 100%;
-  min-height: 0;
-}
+  .chart-view {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    width: 100%;
+    min-height: 0;
+  }
 
-.tx-rx-widget .chart-header {
-  display: flex;
-  flex-shrink: 0;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 12px;
-}
+  .chart-header {
+    display: flex;
+    flex-shrink: 0;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 12px;
 
-.tx-rx-widget .chart-header__left {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  min-width: 0;
-}
+    &__left {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+    }
 
-.tx-rx-widget .chart-header__label {
-  color: var(--mndw-text);
-  font-weight: 600;
-  font-size: 14px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
+    &__label {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--mndw-text);
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
 
-.tx-rx-widget .chart-header__legend {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
+    &__legend-item {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      color: var(--mndw-text-subtle);
+      font-size: 11px;
+      white-space: nowrap;
+    }
 
-.tx-rx-widget .chart-header__legend-item {
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-  color: var(--mndw-text-subtle);
-  font-size: 11px;
-  white-space: nowrap;
-}
+    &__legend-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 3px;
+      border-radius: 2px;
 
-.tx-rx-widget .chart-header__legend-swatch {
-  display: inline-block;
-  width: 12px;
-  height: 3px;
-  border-radius: 2px;
-}
+      &--tx {
+        background: var(--mndw-accent);
+      }
 
-.tx-rx-widget .chart-header__legend-swatch--tx {
-  background: var(--mndw-accent);
-}
+      &--rx {
+        background: var(--mndw-success);
+      }
+    }
 
-.tx-rx-widget .chart-header__legend-swatch--rx {
-  background: var(--mndw-success);
-}
+    &__actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+  }
 
-.tx-rx-widget .chart-header__actions {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.tx-rx-widget .gear-btn {
-  flex-shrink: 0;
-  font-size: 18px;
+  .gear-btn {
+    flex-shrink: 0;
+    font-size: 18px;
+  }
 }
 
 /* 720px matches the host's MOBILE_BREAKPOINT_PX (frontend/host/src/layout/breakpoint.ts).

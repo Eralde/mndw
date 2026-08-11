@@ -135,6 +135,15 @@ describe('sandboxPlugin', () => {
     expect(config.server?.fs?.allow).toContain(pluginDir);
   });
 
+  it('adds external sandbox source to Vite watcher', () => {
+    const plugin = sandboxPlugin(pluginDir, fakeFs({[manifestPath]: validManifest}));
+    const watcher = {add: vi.fn()};
+
+    callHook(plugin.configureServer, {watcher});
+
+    expect(watcher.add).toHaveBeenCalledWith(pluginDir);
+  });
+
   it('invalidates both virtual modules on a sandbox source change and returns them', () => {
     const plugin = sandboxPlugin(pluginDir, fakeFs({[manifestPath]: validManifest}));
     const mods = {

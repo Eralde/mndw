@@ -112,6 +112,11 @@ export function sandboxPlugin(resolvedPath: string | null, deps: SandboxFsDeps =
     config() {
       return resolvedPath === null ? {} : {server: {fs: {allow: [resolvedPath]}}};
     },
+    configureServer(server) {
+      if (resolvedPath !== null) {
+        server.watcher.add(resolvedPath);
+      }
+    },
     handleHotUpdate({file, server}) {
       if (resolvedPath === null || !isSandboxFile(file, resolvedPath)) {
         return undefined;

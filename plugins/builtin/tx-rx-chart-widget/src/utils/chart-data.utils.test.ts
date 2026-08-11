@@ -26,6 +26,18 @@ describe('toTxRxChartData', () => {
     expect(result.series[1]?.data.at(-1)).toEqual({time: deviceTime.getTime(), value: 50});
   });
 
+  it('filters invalid ticks before sparse-data padding', () => {
+    const result = toTxRxChartData(
+      [{t: 'bad', v: 100}, {t: '10', v: 7}],
+      [{t: Number.NaN, v: 5}],
+      deviceTime,
+    );
+
+    expect(result.series[0]?.data).toHaveLength(EXPECTED_POINTS);
+    expect(result.series[0]?.data.at(-1)).toEqual({time: deviceTime.getTime(), value: 7});
+    expect(result.series[1]?.data).toEqual([]);
+  });
+
   it('sets plugin series labels, colors, fills, and fixed window domain', () => {
     const result = toTxRxChartData([{t: 10, v: 100}], [{t: 10, v: 50}], deviceTime);
 

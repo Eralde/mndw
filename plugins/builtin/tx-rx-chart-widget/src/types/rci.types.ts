@@ -1,8 +1,3 @@
-export interface RrdTick {
-  t: string | number;
-  v: number;
-}
-
 export interface NetworkInterface {
   id: string;
   description?: string;

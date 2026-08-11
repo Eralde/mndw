@@ -147,3 +147,19 @@ describe('compileAngular happy path', () => {
     rmSync(dir, {recursive: true, force: true});
   });
 });
+
+describe('compileAngular SDK subpaths', () => {
+  it('resolves SDK subpath imports through the staged compiler', () => {
+    const dir = ngPlugin({
+      'tsconfig.json': TSCONFIG,
+      'src/index.ts': 'import type {RrdTick} from "@mndw/sdk/rrd";\nexport const tick: RrdTick = {t: 1, v: 1};\n',
+    });
+
+    const result = compileAngular(dir);
+
+    expect(result.entryPath.endsWith('index.js')).toBe(true);
+
+    result.cleanup();
+    rmSync(dir, {recursive: true, force: true});
+  });
+});

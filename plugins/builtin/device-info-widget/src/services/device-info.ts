@@ -1,5 +1,6 @@
 import type {RciManager, RciQuery} from '@rci-tools/core';
 import {firstValueFrom} from 'rxjs';
+import {type RrdResponse, type RrdTick, filterValidRrdTicks, sortRrdTicks} from '@mndw/sdk/rrd';
 
 import {normalizeHistory, normalizePercent} from './load-history.js';
 
@@ -36,20 +37,8 @@ interface Version {
   model?: string;
 }
 
-export interface RrdTick {
-  t: string | number;
-  v: number;
-}
-
-export interface RrdResponse {
-  data?: RrdTick[];
-}
-
 function getRrdHistory(response: RrdResponse, valueMapper: (tick: RrdTick) => number): number[] {
-  const values = (response.data ?? [])
-    .filter((tick) => Number.isFinite(Number(tick.t)) && Number.isFinite(tick.v))
-    .sort((left, right) => Number(left.t) - Number(right.t))
-    .map(valueMapper);
+  const values = sortRrdTicks(filterValidRrdTicks(response.data ?? [])).map(valueMapper);
 
   return normalizeHistory(values);
 }

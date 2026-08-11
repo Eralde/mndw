@@ -1,3 +1,5 @@
+import type {RrdTick} from '@mndw/sdk/rrd';
+
 export interface HostClient {
   mac: string;
   name: string;
@@ -5,14 +7,9 @@ export interface HostClient {
   active: boolean;
 }
 
-export interface BarTick {
-  t: number;
-  v: number;
-}
-
 export interface HostBarAttribute {
   attribute: string;
-  data: BarTick[];
+  data: RrdTick[];
 }
 
 export interface HostBar {

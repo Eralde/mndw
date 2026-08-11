@@ -12,7 +12,8 @@ import {
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {CommonModule} from '@angular/common';
 import {Subscription, switchMap, timer} from 'rxjs';
-import type {NetworkInterface, RrdTick} from '../types/rci.types';
+import type {RrdTick} from '@mndw/sdk/rrd';
+import type {NetworkInterface} from '../types/rci.types';
 import {RciService} from '../services/rci.service';
 import {PLUGIN_STORAGE} from '../tokens';
 import type {OpenSettingsFn} from '../open-settings-dialog';

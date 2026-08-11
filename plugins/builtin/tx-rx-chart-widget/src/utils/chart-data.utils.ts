@@ -1,5 +1,5 @@
 import type {MndwChartDomain, MndwChartPoint, MndwChartSeries} from '@mndw/ui';
-import type {RrdTick} from '../types/rci.types';
+import {type NumericRrdTick, type RrdTick, filterValidRrdTicks, toDeviceTimeMs} from '@mndw/sdk/rrd';
 
 export const EXPECTED_POINTS = 64;
 export const INTERVAL_SECONDS = 3;
@@ -10,20 +10,16 @@ export interface TxRxChartData {
   domain: MndwChartDomain | undefined;
 }
 
-const validTicks = (ticks: readonly RrdTick[]): RrdTick[] => {
-  return ticks.filter((tick) => Number.isFinite(Number(tick.t)) && Number.isFinite(tick.v));
-};
-
-const padData = (ticks: readonly RrdTick[]): RrdTick[] => {
-  const valid = validTicks(ticks);
+const padData = (ticks: readonly RrdTick[]): NumericRrdTick[] => {
+  const valid = filterValidRrdTicks(ticks);
 
   if (valid.length === 0 || valid.length >= EXPECTED_POINTS) {
     return [...valid];
   }
 
-  const minT = Math.min(...valid.map((tick) => Number(tick.t)));
+  const minT = Math.min(...valid.map((tick) => tick.t));
   const padCount = EXPECTED_POINTS - valid.length;
-  const pads: RrdTick[] = [];
+  const pads: NumericRrdTick[] = [];
 
   for (let index = 0; index < padCount; index += 1) {
     pads.push({t: minT - (padCount - index) * INTERVAL_SECONDS, v: 0});
@@ -36,12 +32,12 @@ const toSeries = (
   id: string,
   label: string,
   color: 'accent' | 'success',
-  ticks: readonly RrdTick[],
+  ticks: readonly NumericRrdTick[],
   deviceTime: Date,
   mostRecentT: number,
 ): MndwChartSeries => {
   const data: MndwChartPoint[] = ticks.map((tick) => ({
-    time: deviceTime.getTime() - (mostRecentT - Number(tick.t)) * 1000,
+    time: toDeviceTimeMs(tick.t, mostRecentT, deviceTime.getTime()),
     value: tick.v,
   }));
 
@@ -76,7 +72,7 @@ export function toTxRxChartData(
     };
   }
 
-  const mostRecentT = Math.max(...allTicks.map((tick) => Number(tick.t)));
+  const mostRecentT = Math.max(...allTicks.map((tick) => tick.t));
 
   return {
     series: [

@@ -135,6 +135,10 @@ function writeStagedTsconfig(tsconfig: object, staging: string, pluginDir: strin
                 join(pluginDir, 'node_modules/d3'),
                 join(CLI_NODE_MODULES, 'd3'),
               ],
+              '@mndw/sdk/*': [
+                join(pluginDir, 'node_modules/@mndw/sdk/src/*'),
+                join(CLI_NODE_MODULES, '@mndw/sdk/src/*'),
+              ],
               '*': [join(pluginDir, 'node_modules/*'), join(CLI_NODE_MODULES, '*')],
               ...paths,
             },

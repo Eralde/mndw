@@ -25,6 +25,10 @@
       "types": "./src/refresh.ts",
       "default": "./src/refresh.ts"
     },
+    "./rrd": {
+      "types": "./src/rrd.ts",
+      "default": "./src/rrd.ts"
+    },
     "./manifest-schema": {
       "types": "./src/manifest-schema.ts",
       "default": "./src/manifest-schema.ts"

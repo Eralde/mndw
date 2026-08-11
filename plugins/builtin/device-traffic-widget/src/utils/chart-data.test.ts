@@ -9,7 +9,7 @@ describe('toDeviceTrafficChartData', () => {
     bars: [
       {
         attribute: 'sumspeed',
-        data: [{t: 20, v: 200}, {t: 10, v: 100}],
+        data: [{t: 'bad', v: 999}, {t: '20', v: 200}, {t: 10, v: 100}],
       },
       {
         attribute: 'txspeed',
@@ -22,7 +22,7 @@ describe('toDeviceTrafficChartData', () => {
     ],
   };
 
-  it('extracts and sorts sumspeed points and maps the latest point to device time', () => {
+  it('filters, sorts, and maps sumspeed points to device time', () => {
     const result = toDeviceTrafficChartData([host], deviceTime);
 
     expect(result.points).toEqual([

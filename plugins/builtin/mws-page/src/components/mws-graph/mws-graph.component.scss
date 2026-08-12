@@ -183,15 +183,13 @@
     }
 
     &.on-path rect.node-body {
+      filter: drop-shadow(0 0 4px var(--mndw-accent));
+      stroke: var(--mndw-accent);
       stroke-width: 3;
     }
 
     &.selected rect.node-body {
       filter: drop-shadow(0 0 6px var(--mndw-accent));
-    }
-
-    &.dimmed {
-      opacity: 0.35;
     }
 
     &:focus-visible rect {
@@ -202,11 +200,8 @@
 
   .edge {
     &.on-path {
-      opacity: 1;
-    }
-
-    &.dimmed {
-      opacity: 0.35;
+      filter: drop-shadow(0 0 4px var(--mndw-accent));
+      stroke: var(--mndw-accent);
     }
   }
 }

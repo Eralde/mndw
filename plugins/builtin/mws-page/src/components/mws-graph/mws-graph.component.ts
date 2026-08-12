@@ -853,7 +853,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
         ? ''
         : selection.path.has(node.id)
         ? 'on-path'
-        : 'dimmed',
+        : '',
     ].filter((value) => value !== '');
 
     return ['node', ...stateClass].join(' ');
@@ -867,7 +867,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       return '';
     }
 
-    return selection.path.has(edge.source.node.id) && selection.path.has(edge.target.node.id) ? 'on-path' : 'dimmed';
+    return selection.path.has(edge.source.node.id) && selection.path.has(edge.target.node.id) ? 'on-path' : '';
   }
 
   private nodeLabel(node: MwsNode): string {

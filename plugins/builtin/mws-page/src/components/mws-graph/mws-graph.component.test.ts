@@ -324,12 +324,11 @@ describe('MwsGraphComponent', () => {
 
     dispatchNodeEvent(fixture, firstChild.id, 'pointerenter');
     expect(fixture.nativeElement.querySelectorAll('path.edge.on-path')).toHaveLength(1);
-    expect(fixture.nativeElement.querySelectorAll('path.edge.dimmed')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelectorAll('path.edge:not(.on-path)')).toHaveLength(1);
     expect(visibleRing(fixture, firstChild.id)).toBe(true);
 
     dispatchNodeEvent(fixture, firstChild.id, 'pointerleave');
     expect(fixture.nativeElement.querySelectorAll('path.edge.on-path').length).toBeGreaterThan(0);
-    expect(fixture.nativeElement.querySelector('path.edge.dimmed')).toBeNull();
     expect(visibleRing(fixture, secondChild.id)).toBe(true);
   });
 
@@ -408,7 +407,6 @@ describe('MwsGraphComponent', () => {
 
     fixture.componentRef.setInput('roots', controllerOnly);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('path.edge.dimmed')).toBeNull();
 
     const orphan = {...firstChild, id: 'orphan', mac: 'orphan', name: 'Orphan', parent: null, children: []};
 
@@ -417,12 +415,9 @@ describe('MwsGraphComponent', () => {
     dispatchNodeEvent(fixture, orphan.id, 'pointerenter');
 
     expect(visibleRing(fixture, orphan.id)).toBe(true);
-    expect(fixture.nativeElement.querySelector('g.node.dimmed')).toBeNull();
-    expect(fixture.nativeElement.querySelector('path.edge.dimmed')).toBeNull();
 
     dispatchNodeEvent(fixture, controller.id, 'pointerenter');
     expect(visibleRing(fixture, controller.id)).toBe(true);
-    expect(fixture.nativeElement.querySelectorAll('g.node.dimmed').length).toBeGreaterThan(0);
   });
 
   it('clears hover when a node is selected', () => {

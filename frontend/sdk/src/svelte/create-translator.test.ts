@@ -26,6 +26,7 @@ describe('createTranslator', () => {
     const store = createTranslator(i18n);
 
     expect(onChange).not.toHaveBeenCalled();
+
     const first = store.subscribe(() => {});
     const second = store.subscribe(() => {});
 

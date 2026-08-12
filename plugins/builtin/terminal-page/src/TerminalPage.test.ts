@@ -31,8 +31,9 @@ function clickButton(host: HTMLElement, label: RegExp): void {
 
 function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
   const messages = {
-    en: {'action.router-cli': 'Router CLI', 'action.entware-shell': 'Entware Shell', l10n: {probe: 'Terminal English'}},
-    ru: {'action.router-cli': 'CLI роутера', 'action.entware-shell': 'Оболочка Entware', l10n: {probe: 'Терминал русский'}},
+    en: {'action.router-cli': 'Router CLI', 'action.entware-shell': 'Entware Shell', 'l10n': {probe: 'Terminal English'}},
+    ru: {'action.router-cli': 'CLI роутера', 'action.entware-shell': 'Оболочка Entware',
+      'l10n': {probe: 'Терминал русский'}},
   };
   const i18n = createTestI18n(messages.en);
 
@@ -75,9 +76,13 @@ describe('TerminalPage (dev path)', () => {
 
     flushSync();
     expect(host.textContent).toContain('Router CLI');
+
     const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+
     expect(probe).not.toBeNull();
+
     const enValue = probe?.textContent;
+
     expect(enValue).toBe('Terminal English');
 
     changing.setLocale('ru');

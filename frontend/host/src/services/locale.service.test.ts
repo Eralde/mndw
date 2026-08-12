@@ -1,12 +1,12 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {FALLBACK_HOST_INFO, SUPPORTED_LOCALES} from '../constants.js';
 import {
+  getAvailableLocales,
   getLocale,
   hostFormatDate,
   hostFormatNumber,
   hostT,
   initLocale,
-  getAvailableLocales,
   setLocale,
   subscribeLocale,
 } from './locale.service.js';
@@ -103,6 +103,7 @@ describe('locale service', () => {
 
   it('notifies only after locale commit and supports unsubscription', async () => {
     initLocale();
+
     const listener = vi.fn();
     const unsubscribe = subscribeLocale(listener);
 

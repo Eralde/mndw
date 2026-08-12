@@ -29,11 +29,11 @@ describe('createTestI18n', () => {
     const callback = vi.fn();
     const unsubscribe = i18n.onChange(callback);
 
-    i18n.setLocale('ru', {'message': 'Привет'});
+    i18n.setLocale('ru', {message: 'Привет'});
     expect(callback).toHaveBeenCalledTimes(1);
 
     unsubscribe();
-    i18n.setLocale('en', {'message': 'Hello again'});
+    i18n.setLocale('en', {message: 'Hello again'});
     expect(callback).toHaveBeenCalledTimes(1);
   });
 

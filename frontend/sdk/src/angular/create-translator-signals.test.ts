@@ -2,8 +2,8 @@
 
 import 'zone.js';
 import '@angular/compiler';
-import {Component, DestroyRef, inject, InjectionToken} from '@angular/core';
-import {getTestBed, TestBed} from '@angular/core/testing';
+import {Component, DestroyRef, InjectionToken, inject} from '@angular/core';
+import {TestBed, getTestBed} from '@angular/core/testing';
 import {BrowserTestingModule, platformBrowserTesting} from '@angular/platform-browser/testing';
 import {beforeAll, describe, expect, it} from 'vitest';
 import {createTestI18n} from '../testing/i18n.js';
@@ -32,8 +32,11 @@ describe('createTranslatorSignals', () => {
       imports: [ProbeComponent],
       providers: [{provide: TRANSLATOR, useFactory: () => createTranslatorSignals(i18n, inject(DestroyRef))}],
     });
+
     const fixture = TestBed.createComponent(ProbeComponent);
+
     fixture.detectChanges();
+
     const root = fixture.nativeElement as HTMLElement;
     const node = root.firstElementChild as HTMLElement;
 

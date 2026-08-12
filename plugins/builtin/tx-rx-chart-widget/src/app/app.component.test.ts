@@ -125,7 +125,9 @@ describe('AppComponent', () => {
   it('updates the same probe after a locale switch', async () => {
     const i18n = createTestI18n(enCatalog);
     const {fixture} = await createFixture(null, null, undefined, i18n);
+
     fixture.detectChanges();
+
     const probe = fixture.nativeElement.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
 
     expect(probe?.textContent).toBe('Traffic English probe');

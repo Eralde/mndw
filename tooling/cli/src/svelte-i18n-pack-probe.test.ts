@@ -13,23 +13,29 @@ const temporaryDirectories: string[] = [];
 
 function createFixture(): string {
   const root = mkdtempSync(join(tmpdir(), 'mndw-svelte-i18n-probe-'));
+
   temporaryDirectories.push(root);
   mkdirSync(join(root, 'src'));
   mkdirSync(join(root, 'i18n'));
   writeFileSync(join(root, 'package.json'), JSON.stringify({name: 'svelte-probe', version: '0.1.0'}));
-  writeFileSync(join(root, 'manifest.json'), JSON.stringify({
-    manifestVersion: 3,
-    name: 'svelte-probe',
-    version: '0.1.0',
-    type: 'widget',
-    label: 'Svelte Probe',
-    entry: 'index.js',
-    size: {w: 4, h: 3},
-    i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'}},
-  }));
+  writeFileSync(
+    join(root, 'manifest.json'),
+    JSON.stringify({
+      manifestVersion: 3,
+      name: 'svelte-probe',
+      version: '0.1.0',
+      type: 'widget',
+      label: 'Svelte Probe',
+      entry: 'index.js',
+      size: {w: 4, h: 3},
+      i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'}},
+    }),
+  );
   writeFileSync(join(root, 'i18n/en.json'), JSON.stringify({l10n: {probe: 'English probe'}}));
   writeFileSync(join(root, 'i18n/ru.json'), JSON.stringify({l10n: {probe: 'Русский probe'}}));
-  writeFileSync(join(root, 'src/App.svelte'), `<script lang="ts">
+  writeFileSync(
+    join(root, 'src/App.svelte'),
+    `<script lang="ts">
 import {createTranslator} from '@mndw/sdk/svelte';
 import type {PluginI18n} from '@mndw/sdk';
 
@@ -38,8 +44,11 @@ const translator = createTranslator(i18n);
 </script>
 
 <span data-testid="l10n-probe">{$translator.t('l10n.probe')}</span>
-`);
-  writeFileSync(join(root, 'src/index.ts'), `import {mount, unmount} from 'svelte';
+`,
+  );
+  writeFileSync(
+    join(root, 'src/index.ts'),
+    `import {mount, unmount} from 'svelte';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import App from './App.svelte';
 
@@ -47,7 +56,8 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
   const app = mount(App, {target: el, props: {i18n: ctx.i18n}});
   return {unmount: () => void unmount(app)};
 }
-`);
+`,
+  );
 
   return root;
 }
@@ -72,7 +82,9 @@ describe('Svelte i18n pack path', () => {
     const context = {i18n} as unknown as PluginContext;
 
     const instance = bundle.createInstance(host, context);
+
     flushSync();
+
     const node = host.querySelector('[data-testid="l10n-probe"]');
     const enValue = i18n.t('l10n.probe');
     const ruValue = 'Русский probe';

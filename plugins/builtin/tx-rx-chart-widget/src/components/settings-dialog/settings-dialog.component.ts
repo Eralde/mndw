@@ -1,11 +1,4 @@
-import {
-  CUSTOM_ELEMENTS_SCHEMA,
-  Component,
-  EventEmitter,
-  Input,
-  Output,
-  inject,
-} from '@angular/core';
+import {CUSTOM_ELEMENTS_SCHEMA, Component, EventEmitter, Input, Output, inject} from '@angular/core';
 import type {MndwSliderInputDetail} from '@mndw/ui';
 import type {NetworkInterface} from '../../types/rci.types';
 import {refreshMsToSeconds, refreshSecondsToMs} from '../../utils/refresh.utils';

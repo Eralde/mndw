@@ -192,7 +192,10 @@ onMount(() => {
 </script>
 
 <div class="traffic-widget">
-  <span class="sr-only" data-testid="l10n-probe">{t('l10n.probe')}</span>
+  <span
+    class="sr-only"
+    data-testid="l10n-probe"
+  >{t('l10n.probe')}</span>
   {#if error}
     <div
       class="mndw-alert mndw-alert--danger notice"

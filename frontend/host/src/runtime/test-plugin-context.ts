@@ -1,4 +1,11 @@
-import {MNDW_TOKENS, type OverlayLayer, type OverlayService, type PageRoute, type PluginContext, type PluginStorage} from '@mndw/sdk';
+import {
+  MNDW_TOKENS,
+  type OverlayLayer,
+  type OverlayService,
+  type PageRoute,
+  type PluginContext,
+  type PluginStorage,
+} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {createTestI18n} from '@mndw/sdk/testing';
 
@@ -11,10 +18,12 @@ function createStorage(): PluginStorage {
     get: (key) => Promise.resolve(values.get(key) ?? null),
     set: (key, value) => {
       values.set(key, value);
+
       return Promise.resolve();
     },
     delete: (key) => {
       values.delete(key);
+
       return Promise.resolve();
     },
     keys: () => Promise.resolve([...values.keys()]),

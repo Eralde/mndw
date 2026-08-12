@@ -23,7 +23,7 @@ function mountSettings(): void {
     onChange,
     onRefreshIntervalChange,
     translator: useTranslator(createTestI18n({
-      columns: 'Columns',
+      'columns': 'Columns',
       'refresh-interval': 'Refresh interval',
       'column.ip': 'IP Address',
       'column.connection': 'Connection',

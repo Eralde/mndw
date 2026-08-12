@@ -81,7 +81,9 @@ export function createPluginContext(
       rciManager: createServiceFacade(rciService.driver, RCI_MANAGER_METHODS) as unknown as PluginContext['rciManager'],
       storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
       sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
-      hostInfo: Object.freeze(Object.assign(Object.create(null), {...hostInfo, locale: getLocale(), theme: getTheme()})),
+      hostInfo: Object.freeze(
+        Object.assign(Object.create(null), {...hostInfo, locale: getLocale(), theme: getTheme()}),
+      ),
       i18n: createPluginI18n(catalogCell, getLocale, (callback) => subscribeLocale(() => callback())),
       injector: createReadonlyInjector(injector),
       instanceId,

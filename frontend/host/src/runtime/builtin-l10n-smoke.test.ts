@@ -8,8 +8,8 @@ import type {
   PluginContext,
   PluginManifestI18n,
 } from '@mndw/sdk';
-import {parseCatalog, type PluginCatalog} from '@mndw/sdk/catalog';
-import {createTestI18n, type TestI18n} from '@mndw/sdk/testing';
+import {type PluginCatalog, parseCatalog} from '@mndw/sdk/catalog';
+import {type TestI18n, createTestI18n} from '@mndw/sdk/testing';
 import {of} from 'rxjs';
 import {flushSync, mount, unmount} from 'svelte';
 import {nextTick} from 'vue';
@@ -111,7 +111,9 @@ const packedReady = EXPECTED_PLUGINS.every((name) => {
     return false;
   }
 
-  return Object.values(manifest.i18n.locales).every((path) => packedCatalogFiles[`${PACKED_GLOB}/${name}/${path}`] !== undefined);
+  return Object.values(manifest.i18n.locales).every((path) =>
+    packedCatalogFiles[`${PACKED_GLOB}/${name}/${path}`] !== undefined
+  );
 });
 
 if (!packedReady) {
@@ -250,7 +252,7 @@ const smoke = packedReady ? describe : describe.skip;
 class SmokeWorker {
   public onmessage: ((event: MessageEvent) => void) | null = null;
 
-  public constructor(_url: URL, _options?: WorkerOptions) {}
+  constructor(_url: URL, _options?: WorkerOptions) {}
 
   public postMessage(_message: unknown): void {}
 
@@ -295,9 +297,12 @@ smoke('packed built-in l10n smoke', () => {
 
     if (loaded.entry.type === 'widget') {
       const container = document.createElement('div');
+
       document.body.append(container);
+
       const context = createSmokeContext(testI18n);
       const handle = mountWidgetTile(container, loaded, context);
+
       expect(await handle.whenReady()).toBe(true);
       await flushPlugin(name);
 
@@ -317,14 +322,21 @@ smoke('packed built-in l10n smoke', () => {
     }
 
     const context = createSmokeContext(testI18n);
+
     pageContexts.set(name, context);
     pluginRegistry.register(loaded);
     replaceDepsStatuses([loaded.entry]);
+
     const router = createAppRouter();
+
     await router.navigate(loaded.entry.route as `/${string}`);
+
     const target = document.createElement('div');
+
     document.body.append(target);
+
     const component = mount(PagePluginHost, {target});
+
     flushSync();
     await flushPlugin(name);
 

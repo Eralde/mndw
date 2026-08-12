@@ -154,8 +154,11 @@ describe('TrafficWidget shared controls', () => {
     flushSync();
 
     const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+
     expect(probe?.textContent).toBe('Traffic English');
+
     const enValue = probe?.textContent;
+
     i18n.setLocale('ru', {l10n: {probe: 'Трафик русский'}});
     flushSync();
 

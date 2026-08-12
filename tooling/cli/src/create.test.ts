@@ -235,7 +235,9 @@ describe('planCreate', () => {
     for (const framework of ['vanilla', 'svelte', 'vue', 'angular'] as const) {
       const plan = planCreate(options({name: `${framework}-plugin`, framework, type: 'widget'}));
       const source = plan.files
-        .filter((file) => file.path.startsWith('src/') && !file.path.endsWith('.css') && !file.path.endsWith('.test.ts'))
+        .filter((file) =>
+          file.path.startsWith('src/') && !file.path.endsWith('.css') && !file.path.endsWith('.test.ts')
+        )
         .map((file) => file.contents)
         .join('\n');
 

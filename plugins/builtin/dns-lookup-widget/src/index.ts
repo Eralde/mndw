@@ -8,6 +8,7 @@ const NAME = 'dns-lookup-widget';
 
 export function createInstance(container: HTMLElement, context: PluginContext): PluginInstance {
   const i18n = context.i18n;
+
   container.replaceChildren();
 
   const rootEl = document.createElement('div');

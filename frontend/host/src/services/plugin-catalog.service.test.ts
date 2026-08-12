@@ -41,6 +41,7 @@ describe('plugin catalog loading', () => {
     });
 
     const ruCell = createPluginCatalogCell(source, 'en');
+
     await loadInitialPluginCatalog(ruCell, 'ru-RU');
 
     expect(urls).toEqual([
@@ -68,6 +69,7 @@ describe('plugin catalog loading', () => {
     );
 
     const cell = createPluginCatalogCell(source, 'en');
+
     await loadInitialPluginCatalog(cell, 'en');
 
     expect(formatPluginTranslation(cell, 'field.host-ip', undefined, 'en')).toBe('Host IP');
@@ -83,6 +85,7 @@ describe('plugin catalog loading', () => {
     });
 
     const cell = createPluginCatalogCell(source, 'en-XA');
+
     await loadInitialPluginCatalog(cell, 'en-XA');
 
     expect(urls).toEqual(['/plugins/demo/i18n/en.json?v=1.2.3']);
@@ -103,8 +106,10 @@ describe('plugin catalog loading', () => {
       .mockResolvedValue({title: 'Recovered'});
 
     setPluginCatalogFetchForTests(failing);
+
     const first = createPluginCatalogCell({...source, version: '2.0.0'}, 'en');
     const second = createPluginCatalogCell({...source, version: '2.0.0'}, 'en');
+
     await loadInitialPluginCatalog(first, 'ru', 20);
     await loadInitialPluginCatalog(second, 'ru', 20);
 
@@ -122,6 +127,7 @@ describe('plugin catalog loading', () => {
     });
 
     const cell = createPluginCatalogCell(source, 'en');
+
     await loadInitialPluginCatalog(cell, 'ru', 20);
 
     expect(cell.readCurrentState().fallbackStatus).toBe('default');
@@ -133,6 +139,7 @@ describe('plugin catalog loading', () => {
     setPluginCatalogFetchForTests(() => Promise.reject(new Error('offline')));
 
     const cell = createPluginCatalogCell(source, 'en');
+
     await loadInitialPluginCatalog(cell, 'ru', 20);
 
     expect(cell.readCurrentState().fallbackStatus).toBe('key');
@@ -143,6 +150,7 @@ describe('plugin catalog loading', () => {
 describe('plugin catalog generation', () => {
   it('commits cells atomically after the dynamic barrier and lets late cells enroll', async () => {
     const resolveRu: Array<(catalog: Record<string, string>) => void> = [];
+
     setPluginCatalogFetchForTests((url) => {
       if (url.includes('/ru.json')) {
         return new Promise((resolve) => {
@@ -156,14 +164,17 @@ describe('plugin catalog generation', () => {
     const first = createPluginCatalogCell(source, 'en');
     const generation = preparePluginCatalogGeneration('ru');
     const callbacks: string[] = [];
+
     first.subscribe(() => callbacks.push('first'));
 
     const late = createPluginCatalogCell({...source, name: 'late'}, 'en');
+
     late.subscribe(() => callbacks.push('late'));
 
     for (const resolve of resolveRu) {
       resolve({title: 'Привет'});
     }
+
     await generation.promise;
 
     expect(first.readCurrentState().hostLocale).toBe('en');
@@ -185,6 +196,7 @@ describe('plugin catalog generation', () => {
     const cell = createPluginCatalogCell(source, 'en');
     const generation = preparePluginCatalogGeneration('ru');
     const completion = vi.fn();
+
     void generation.promise.then(completion);
 
     await vi.advanceTimersByTimeAsync(PLUGIN_CATALOG_TIMEOUT_MS);

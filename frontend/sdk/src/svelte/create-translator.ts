@@ -1,4 +1,4 @@
-import {readable, type Readable} from 'svelte/store';
+import {type Readable, readable} from 'svelte/store';
 import type {PluginI18n} from '../i18n.js';
 import type {Translator} from '../translator.js';
 

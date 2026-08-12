@@ -181,7 +181,9 @@ describe('createProgram', () => {
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('Warning: localized-command-plugin locale ru has extra key extra not present in en');
+    expect(result.stdout).toContain(
+      'Warning: localized-command-plugin locale ru has extra key extra not present in en',
+    );
     expect(result.stdout).toContain('Validated localized-command-plugin');
   });
 

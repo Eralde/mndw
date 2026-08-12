@@ -6,7 +6,7 @@ describe('catalog parser', () => {
     expect(parseCatalog({
       wifi: {
         encryption: {disabled: 'Unsecured'},
-        band: {'2': '2.4 GHz Wi-Fi', '5': '5 GHz Wi-Fi'},
+        band: {2: '2.4 GHz Wi-Fi', 5: '5 GHz Wi-Fi'},
       },
       error: {'integer-only': 'Only integer values are allowed'},
     }, 'test.json')).toEqual({
@@ -25,7 +25,7 @@ describe('catalog parser', () => {
   });
 
   it('rejects duplicate flattened keys', () => {
-    expect(() => parseCatalog({'wifi.band': 'flat', wifi: {band: 'nested'}}, 'test.json')).toThrow(
+    expect(() => parseCatalog({'wifi.band': 'flat', 'wifi': {band: 'nested'}}, 'test.json')).toThrow(
       'duplicate key "wifi.band"',
     );
   });

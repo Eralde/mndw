@@ -4,7 +4,12 @@ import type {NumberValue} from 'd3';
 import {buildBarAriaLabel, filterFinitePoints, formatSpeed, getSpeedUpperLimit} from './chart-utils.js';
 import type {MndwChartPoint} from './chart-types.js';
 import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
-import {createGeneratedAttribute, createLocalizedProperty, type GeneratedAttributeState, type LocalizedPropertyState} from '../localized-property.js';
+import {
+  type GeneratedAttributeState,
+  type LocalizedPropertyState,
+  createGeneratedAttribute,
+  createLocalizedProperty,
+} from '../localized-property.js';
 
 export const MNDW_BAR_CHART_TAG = 'mndw-bar-chart';
 

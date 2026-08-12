@@ -386,7 +386,7 @@ describe('mndw-lighttpd-port.sh', () => {
 
     const lines = fs.readFileSync(snapshot, 'utf8')
       .trim()
-      .split('\n')
+      .split('\n');
 
     expect(lines).toEqual(['tcp4|99', 'tcp6|100']);
   });

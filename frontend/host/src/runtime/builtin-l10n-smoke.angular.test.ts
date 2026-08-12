@@ -10,8 +10,8 @@ import type {
   PluginContext,
   PluginManifestI18n,
 } from '@mndw/sdk';
-import {parseCatalog, type PluginCatalog} from '@mndw/sdk/catalog';
-import {createTestI18n, type TestI18n} from '@mndw/sdk/testing';
+import {type PluginCatalog, parseCatalog} from '@mndw/sdk/catalog';
+import {type TestI18n, createTestI18n} from '@mndw/sdk/testing';
 import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {mountWidgetTile} from '../dashboard/widget-mount.js';
@@ -97,7 +97,9 @@ const packedReady = EXPECTED_PLUGINS.every((name) => {
     return false;
   }
 
-  return Object.values(manifest.i18n.locales).every((path) => packedCatalogFiles[`${PACKED_GLOB}/${name}/${path}`] !== undefined);
+  return Object.values(manifest.i18n.locales).every((path) =>
+    packedCatalogFiles[`${PACKED_GLOB}/${name}/${path}`] !== undefined
+  );
 });
 
 if (!packedReady) {
@@ -249,7 +251,7 @@ function queryDeep(root: ParentNode, selector: string): HTMLElement | null {
 class SmokeWorker {
   public onmessage: ((event: MessageEvent) => void) | null = null;
 
-  public constructor(_url: URL, _options?: WorkerOptions) {}
+  constructor(_url: URL, _options?: WorkerOptions) {}
 
   public postMessage(_message: unknown): void {}
 
@@ -257,7 +259,7 @@ class SmokeWorker {
 }
 
 class SmokeMutationObserver {
-  public constructor(_callback: MutationCallback) {}
+  constructor(_callback: MutationCallback) {}
 
   public observe(_target: Node, _options?: MutationObserverInit): void {}
 
@@ -301,14 +303,18 @@ smoke('packed Angular built-in l10n smoke', () => {
     const ruValue = ru['l10n.probe'];
 
     expect(enValue).not.toBe(ruValue);
+
     const testI18n: TestI18n = createTestI18n(en);
     const loaded = {entry: pluginEntry('tx-rx-chart-widget'), module: await packedModule('tx-rx-chart-widget')};
     const container = document.createElement('div');
+
     document.body.append(container);
+
     const handle = mountWidgetTile(container, loaded, createSmokeContext(testI18n));
 
     expect(await handle.whenReady()).toBe(true);
     await stabilizeAngular(4);
+
     const probe = container.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
 
     expect(probe?.textContent).toBe(enValue);
@@ -328,11 +334,16 @@ smoke('packed Angular built-in l10n smoke', () => {
     const ruValue = ru['l10n.probe'];
 
     expect(enValue).not.toBe(ruValue);
+
     const testI18n: TestI18n = createTestI18n(en);
     const loaded = {entry: pluginEntry('mws-page'), module: await packedModule('mws-page')};
+
     pluginRegistry.register(loaded);
+
     const target = document.createElement('div');
+
     document.body.append(target);
+
     const context = createSmokeContext(testI18n, (title) => tileTitles.set('mws-page', title));
     const mounted = mountPlugin(target, loaded, context);
 
@@ -347,7 +358,7 @@ smoke('packed Angular built-in l10n smoke', () => {
 
     expect(rootProbe?.textContent).toBe(enValue);
     expect(childProbe).not.toBeNull();
-    expect(tileTitles.get('mws-page')).toBe(en['title']);
+    expect(tileTitles.get('mws-page')).toBe(en.title);
     testI18n.setLocale('ru', ru);
     await stabilizeAngular();
 
@@ -355,7 +366,7 @@ smoke('packed Angular built-in l10n smoke', () => {
     expect(queryDeep(target, '[data-testid="l10n-child-probe"]')).toBe(childProbe);
     expect(rootProbe?.textContent).toBe(ruValue);
     expect(childProbe?.textContent).toBe(ruValue);
-    expect(tileTitles.get('mws-page')).toBe(ru['title']);
+    expect(tileTitles.get('mws-page')).toBe(ru.title);
 
     unmountPlugin(mounted, target);
     expect(target.childElementCount).toBe(0);

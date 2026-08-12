@@ -206,9 +206,13 @@ describe('PingWidget', () => {
 
     flushSync();
     expect(host.querySelector('h3')?.textContent).toBe('Ping English');
+
     const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+
     expect(probe).not.toBeNull();
+
     const enValue = probe?.textContent;
+
     expect(enValue).toBe('Ping English');
 
     changing.setLocale('ru');

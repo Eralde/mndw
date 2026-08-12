@@ -3,7 +3,7 @@
 import 'zone.js';
 import '@angular/compiler';
 import {createApplication} from '@angular/platform-browser';
-import {Component, createComponent, DestroyRef, inject, InjectionToken} from '@angular/core';
+import {Component, DestroyRef, InjectionToken, createComponent, inject} from '@angular/core';
 import {createTestI18n} from '@mndw/sdk/testing';
 import type {Translator} from '@mndw/sdk';
 import {describe, expect, it} from 'vitest';

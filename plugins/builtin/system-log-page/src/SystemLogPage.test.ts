@@ -31,8 +31,8 @@ function process(): {value: RciBackgroundProcess; abort: ReturnType<typeof vi.fn
 
 function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
   const messages = {
-    en: {title: 'System Log', 'filter.label': 'Filters', l10n: {probe: 'System Log English'}},
-    ru: {title: 'Системный журнал', 'filter.label': 'Фильтры', l10n: {probe: 'Системный журнал русский'}},
+    en: {'title': 'System Log', 'filter.label': 'Filters', 'l10n': {probe: 'System Log English'}},
+    ru: {'title': 'Системный журнал', 'filter.label': 'Фильтры', 'l10n': {probe: 'Системный журнал русский'}},
   };
   const i18n = createTestI18n(messages.en);
 
@@ -106,9 +106,13 @@ describe('SystemLogPage lifecycle', () => {
 
     flushSync();
     expect(host.querySelector('h1')?.textContent).toBe('System Log English');
+
     const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+
     expect(probe).not.toBeNull();
+
     const enValue = probe?.textContent;
+
     expect(enValue).toBe('System Log English');
 
     changing.setLocale('ru');
@@ -136,7 +140,8 @@ describe('SystemLogPage lifecycle', () => {
       clearLog: () => of({}),
     };
 
-    const app = mount(SystemLogPage, {target: host, props: {api, overlay: {} as OverlayService, i18n: createTestI18n(enCatalog)}});
+    const app = mount(SystemLogPage, {target: host,
+      props: {api, overlay: {} as OverlayService, i18n: createTestI18n(enCatalog)}});
 
     flushSync();
     expect(snapshotCounters.subscriptions).toBe(1);
@@ -171,7 +176,8 @@ describe('SystemLogPage lifecycle', () => {
       startLogStream: () => ({process: streamProcess, data$: stream$.asObservable()}),
       clearLog: () => of({}),
     };
-    const app = mount(SystemLogPage, {target: host, props: {api, overlay: {} as OverlayService, i18n: createTestI18n(enCatalog)}});
+    const app = mount(SystemLogPage, {target: host,
+      props: {api, overlay: {} as OverlayService, i18n: createTestI18n(enCatalog)}});
 
     flushSync();
 

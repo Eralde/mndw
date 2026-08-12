@@ -33,6 +33,7 @@ export function parseCatalog(value: unknown, url: string): PluginCatalog {
   }
 
   const catalog: Record<string, string> = {};
+
   flattenCatalog(value, url, '', catalog);
 
   return Object.freeze(catalog);

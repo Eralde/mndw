@@ -9,7 +9,13 @@ let count = $state(0);
 </script>
 
 <div class="wrap">
-    <h3 class="title" data-testid="l10n-probe" data-plugin-label="__MNDW_LABEL__">{$translator.t('l10n.probe')}</h3>
+  <h3
+    class="title"
+    data-testid="l10n-probe"
+    data-plugin-label="__MNDW_LABEL__"
+  >
+    {$translator.t('l10n.probe')}
+  </h3>
   <p class="device">Device: {ctx.hostInfo.deviceName}</p>
   <button
     class="count"

@@ -47,9 +47,11 @@ describe('manifest i18n contract', () => {
   });
 
   it('rejects non-canonical locale spellings', () => {
-    expect(() => validateManifest({
-      ...baseManifest,
-      i18n: {...validI18n, locales: {'EN-us': 'i18n/en-us.json'}},
-    })).toThrow(ManifestValidationError);
+    expect(() =>
+      validateManifest({
+        ...baseManifest,
+        i18n: {...validI18n, locales: {'EN-us': 'i18n/en-us.json'}},
+      })
+    ).toThrow(ManifestValidationError);
   });
 });

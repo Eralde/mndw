@@ -8,7 +8,10 @@ import {readManifest} from './manifest.js';
 
 const fixturesRoot = resolve(import.meta.dirname, '../fixtures/i18n-packages');
 
-const loadFixture = (kind: 'valid' | 'invalid', name: string): {pluginDir: string; manifest: ReturnType<typeof readManifest>['manifest']} => {
+const loadFixture = (
+  kind: 'valid' | 'invalid',
+  name: string,
+): {pluginDir: string; manifest: ReturnType<typeof readManifest>['manifest']} => {
   const pluginDir = resolve(fixturesRoot, kind, name);
 
   return {pluginDir, manifest: readManifest(pluginDir).manifest};

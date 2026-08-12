@@ -1,4 +1,4 @@
-import {Component, inject, input, InjectionToken, signal} from '@angular/core';
+import {Component, InjectionToken, inject, input, signal} from '@angular/core';
 import type {Translator} from '@mndw/sdk';
 
 export const TRANSLATOR = new InjectionToken<Translator>('TRANSLATOR');

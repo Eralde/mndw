@@ -1,6 +1,10 @@
 import {type MndwPlugin, type PluginManifest, validateManifest} from '@mndw/sdk';
 import {getLocale} from '../services/locale.service.js';
-import {createPluginCatalogCell, createPluginCatalogSource, loadInitialPluginCatalog} from '../services/plugin-catalog.service.js';
+import {
+  createPluginCatalogCell,
+  createPluginCatalogSource,
+  loadInitialPluginCatalog,
+} from '../services/plugin-catalog.service.js';
 import {type LoadedPlugin, pluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 
@@ -125,7 +129,12 @@ async function buildLoadedPlugin(deps: SandboxLoaderDeps): Promise<LoadedPlugin>
   const manifest = validateManifest(manifestModule.default);
   const catalogBaseUrl = deps.catalogBaseUrl ?? manifestModule.__catalogBaseUrl;
   const entry = manifestToListEntry(manifest, catalogBaseUrl);
-  const source = createPluginCatalogSource(entry.name, entry.version, catalogBaseUrl ?? `/plugins/${entry.name}`, entry.i18n);
+  const source = createPluginCatalogSource(
+    entry.name,
+    entry.version,
+    catalogBaseUrl ?? `/plugins/${entry.name}`,
+    entry.i18n,
+  );
   const catalog = source === undefined ? undefined : createPluginCatalogCell(source, getLocale());
 
   if (catalog !== undefined) {

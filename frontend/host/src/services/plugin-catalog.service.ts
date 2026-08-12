@@ -2,7 +2,7 @@ import type {PluginI18n, PluginManifestI18n} from '@mndw/sdk';
 import {type PluginCatalog, parseCatalog} from '@mndw/sdk/catalog';
 import {formatMessage, normalizeFormatterLocale} from '@mndw/sdk/i18n-format';
 
-export type { PluginCatalog };
+export type {PluginCatalog};
 export type PluginCatalogFallbackStatus = 'primary' | 'default' | 'key';
 
 export interface PluginCatalogSource {
@@ -173,7 +173,7 @@ class CatalogCell implements PluginCatalogCell {
   private state: PluginCatalogState;
   private listeners = new Set<() => void>();
 
-  public constructor(source: PluginCatalogSource, locale: string) {
+  constructor(source: PluginCatalogSource, locale: string) {
     this.source = Object.freeze({...source, locales: Object.freeze({...source.locales})});
     this.state = emptyState(this.source, locale);
   }
@@ -203,6 +203,7 @@ class CatalogCell implements PluginCatalogCell {
 
 export function createPluginCatalogCell(source: PluginCatalogSource, locale: string): PluginCatalogCell {
   const cell = new CatalogCell(source, locale);
+
   catalogCells.add(cell);
 
   if (activeGeneration !== undefined) {
@@ -259,7 +260,7 @@ class Generation implements CatalogGeneration {
   private resolvedStates = new Map<PluginCatalogCell, PluginCatalogState>();
   private resolvePromise!: () => void;
 
-  public constructor(targetLocale: string) {
+  constructor(targetLocale: string) {
     this.token = ++nextGenerationToken;
     this.targetLocale = targetLocale;
     this.deadline = Date.now() + CATALOG_TIMEOUT_MS;
@@ -275,8 +276,10 @@ class Generation implements CatalogGeneration {
     }
 
     this.pending += 1;
+
     const statePromise = loadState(cell.source, this.targetLocale, this.deadline)
       .catch(() => emptyState(cell.source, this.targetLocale));
+
     this.cells.set(cell, statePromise);
     void statePromise.then((state) => {
       this.resolvedStates.set(cell, state);

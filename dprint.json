@@ -16,6 +16,7 @@
     "module.sortExportDeclarations": "maintain",
     "importDeclaration.sortNamedImports": "caseSensitive",
     "importDeclaration.spaceSurroundingNamedImports": false,
+    "exportDeclaration.spaceSurroundingNamedExports": false,
     "spaceSurroundingProperties": false,
     "objectPattern.preferHanging": true,
     "objectExpression.preferHanging": true,

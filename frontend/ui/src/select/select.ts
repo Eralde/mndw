@@ -3,7 +3,7 @@ import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
 import {deepActiveElement} from '../focus.js';
 import {FormAssociatedController} from '../forms/form-associated.js';
 import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
-import {createLocalizedProperty, type LocalizedPropertyState} from '../localized-property.js';
+import {type LocalizedPropertyState, createLocalizedProperty} from '../localized-property.js';
 import {type UiCloseReason, type UiLayer, type UiLayerPresentation, getOverlayProvider} from '../overlay.js';
 import {SELECT_VIEWPORT_PADDING, availablePopoverHeight, selectPresentation} from '../position/position.js';
 import {controlBase, focusRing, hostTypography} from '../styles/base.js';

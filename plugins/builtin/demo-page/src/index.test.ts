@@ -44,12 +44,12 @@ describe('createInstance', () => {
 
   it('updates the same control and probe after a locale switch', async () => {
     const i18n = createTestI18n({
-      l10n: {probe: 'Demo English'},
+      'l10n': {probe: 'Demo English'},
       'instance-id': 'Instance EN',
-      device: 'Device EN',
-      vendor: 'Vendor EN',
-      count: 'Count EN: {count}',
-      save: 'Save EN',
+      'device': 'Device EN',
+      'vendor': 'Vendor EN',
+      'count': 'Count EN: {count}',
+      'save': 'Save EN',
     });
     const ctx = {
       instanceId: 'demo-1',
@@ -57,6 +57,7 @@ describe('createInstance', () => {
       storage: {get: vi.fn().mockResolvedValue(null), set: vi.fn()},
       i18n,
     } as unknown as PluginContext;
+
     host = document.createElement('div');
     document.body.append(host);
     instance = await createInstance(host, ctx);
@@ -67,12 +68,12 @@ describe('createInstance', () => {
     expect(probe?.textContent).toBe('Demo English');
     expect(save?.textContent).toBe('Save EN');
     i18n.setLocale('ru', {
-      l10n: {probe: 'Демо русский'},
+      'l10n': {probe: 'Демо русский'},
       'instance-id': 'Экземпляр RU',
-      device: 'Устройство RU',
-      vendor: 'Производитель RU',
-      count: 'Счётчик RU: {count}',
-      save: 'Сохранить RU',
+      'device': 'Устройство RU',
+      'vendor': 'Производитель RU',
+      'count': 'Счётчик RU: {count}',
+      'save': 'Сохранить RU',
     });
 
     expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);

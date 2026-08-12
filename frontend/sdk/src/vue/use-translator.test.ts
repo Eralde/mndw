@@ -18,6 +18,7 @@ describe('useTranslator', () => {
     });
 
     app.mount(host);
+
     const node = host.firstElementChild;
 
     expect(node?.textContent).toBe('Hello');

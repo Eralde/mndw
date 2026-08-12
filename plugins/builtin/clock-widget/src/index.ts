@@ -39,6 +39,7 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
       if (probeEl) {
         probeEl.textContent = i18n.t('l10n.probe');
       }
+
       timeEl.textContent = i18n.formatDate(new Date(), {timeStyle: 'medium'});
       timeEl.setAttribute('aria-label', i18n.t('title'));
     }
@@ -50,6 +51,7 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
   const unsubscribe = ticker.onTick(() => {
     render();
   });
+
   ticker.start(1000);
 
   return {

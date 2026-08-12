@@ -99,7 +99,8 @@ export function initLocale(): string {
   const stored = readStoredLocale();
   const persisted = stored === undefined ? undefined : exactSupported(stored);
   const next = persisted
-    ?? navigatorCandidates().map(navigatorSupported).find((locale): locale is string => locale !== undefined)
+    ?? navigatorCandidates().map(navigatorSupported)
+.find((locale): locale is string => locale !== undefined)
     ?? 'en';
 
   commitLocale(next);

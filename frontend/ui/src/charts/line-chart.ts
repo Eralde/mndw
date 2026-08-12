@@ -4,7 +4,12 @@ import type {NumberValue} from 'd3';
 import {buildLineAriaLabel, filterFinitePoints, formatSpeed, getSpeedUpperLimit, resolveDomain} from './chart-utils.js';
 import type {MndwChartColor, MndwChartDomain, MndwChartPoint, MndwChartSeries} from './chart-types.js';
 import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
-import {createGeneratedAttribute, createLocalizedProperty, type GeneratedAttributeState, type LocalizedPropertyState} from '../localized-property.js';
+import {
+  type GeneratedAttributeState,
+  type LocalizedPropertyState,
+  createGeneratedAttribute,
+  createLocalizedProperty,
+} from '../localized-property.js';
 
 export const MNDW_LINE_CHART_TAG = 'mndw-line-chart';
 

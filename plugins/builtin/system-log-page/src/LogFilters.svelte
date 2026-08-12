@@ -13,7 +13,8 @@ interface Props {
   onChange: (state: FilterState) => void;
 }
 
-let {state: filterState, filteredCount, totalCount, translator, onChange}: Props = $props();
+let {state: filterState, filteredCount, totalCount, translator, onChange}:
+  Props = $props();
 let expanded = $state(false);
 
 function translate(key: string, values?: Record<string, unknown>): string {

@@ -1,9 +1,9 @@
 import type {MndwPlugin} from '@mndw/sdk';
 import {
+  type PluginCatalogCell,
   clearPluginCatalogCells,
   registerPluginCatalogCell,
   unregisterPluginCatalogCell,
-  type PluginCatalogCell,
 } from '../services/plugin-catalog.service.js';
 import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-types.js';
 
@@ -31,6 +31,7 @@ export class PluginRegistry {
     }
 
     this.plugins.set(plugin.entry.name, plugin);
+
     if (plugin.catalog !== undefined) {
       registerPluginCatalogCell(plugin.catalog);
     }
@@ -68,9 +69,11 @@ export class PluginRegistry {
     }
 
     this.plugins.set(plugin.entry.name, plugin);
+
     if (prior.catalog !== undefined) {
       unregisterPluginCatalogCell(prior.catalog);
     }
+
     if (plugin.catalog !== undefined) {
       registerPluginCatalogCell(plugin.catalog);
     }
@@ -100,6 +103,7 @@ export class PluginRegistry {
         unregisterPluginCatalogCell(plugin.catalog);
       }
     }
+
     this.plugins.clear();
     clearPluginCatalogCells();
   }

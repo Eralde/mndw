@@ -64,7 +64,9 @@ export function renderSandboxManifest(resolvedPath: string, deps: SandboxFsDeps 
 
   const catalogBaseUrl = `/@fs${resolvedPath.replace(/\/$/, '')}`;
 
-  return `export const __catalogBaseUrl = ${JSON.stringify(catalogBaseUrl)};\nexport default ${JSON.stringify(parsed)};`;
+  return `export const __catalogBaseUrl = ${JSON.stringify(catalogBaseUrl)};\nexport default ${
+    JSON.stringify(parsed)
+  };`;
 }
 
 /** True when a changed file belongs to the sandbox plugin directory (source or manifest). */

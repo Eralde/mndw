@@ -26,6 +26,7 @@ const messages: Record<string, string> = {
   'level.debug': 'Debug',
   'level.notice': 'Notice',
 };
+
 function translator() {
   return createTranslator(createTestI18n(messages));
 }

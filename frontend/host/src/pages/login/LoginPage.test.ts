@@ -71,6 +71,7 @@ afterEach(() => {
 describe('LoginPage', () => {
   it('offers a language selector before authentication', () => {
     const setLocale = vi.spyOn(localeService, 'setLocale').mockResolvedValue();
+
     render();
 
     const select = target.querySelector<HTMLElement & {value: string}>('.mndw-login__locale-select');

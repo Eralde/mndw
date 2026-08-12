@@ -1,8 +1,10 @@
 <script lang="ts">
+import type {MndwSelectChangeDetail} from '@mndw/ui';
 import {initAuthenticated} from '../../services/init-auth.js';
 import {rciService} from '../../services/rci.service.js';
 import {appState, resetToLogin} from '../../state/app.svelte.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
+import {setLocale} from '../../services/locale.service.js';
 
 let username = $state('');
 let password = $state('');
@@ -16,6 +18,10 @@ function hasCredentials(): boolean {
 
 function canSubmit(): boolean {
   return hasCredentials() && !loading && !loginBlocked;
+}
+
+function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
+  void setLocale(event.detail.value).catch(() => {});
 }
 
 // `<mndw-input>` reports through `mndwinput` rather than a bindable `value`, so the two-way flow
@@ -95,6 +101,16 @@ function handleSubmit(e: Event): void {
     class="mndw-login__form"
     onsubmit={handleSubmit}
   >
+    <mndw-select
+      class="mndw-login__locale-select"
+      label={hostT('nav.language')}
+      value={appState.locale}
+      disabled={appState.localeSwitchPending}
+      onmndwchange={handleLocaleChange}
+    >
+      <mndw-option value="en">EN</mndw-option>
+      <mndw-option value="ru">RU</mndw-option>
+    </mndw-select>
     <h1 class="mndw-login__title">mndw</h1>
     <mndw-field label={hostT('login.username')}>
       <!-- svelte-ignore a11y_no_static_element_interactions -->

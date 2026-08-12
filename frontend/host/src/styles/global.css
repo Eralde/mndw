@@ -137,16 +137,8 @@ body {
   line-height: 1;
 }
 
-.mndw-header__locale-toggle {
-  display: flex;
-  gap: 2px;
-  align-items: center;
-}
-
-.mndw-header__locale-button::part(button) {
-  min-width: 32px;
-  padding: 4px;
-  line-height: 1;
+.mndw-header__locale-select {
+  width: 64px;
 }
 
 .mndw-header__logout {
@@ -263,6 +255,11 @@ body {
   padding: 32px;
   border-radius: 8px;
   background: var(--mndw-surface);
+}
+
+.mndw-login__locale-select {
+  align-self: flex-end;
+  width: 72px;
 }
 
 .mndw-login__form mndw-button {

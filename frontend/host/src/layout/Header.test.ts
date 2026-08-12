@@ -1,6 +1,7 @@
 import {of} from 'rxjs';
+import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 
 const {events, postForget, logout} = vi.hoisted(() => {
   const eventLog: string[] = [];
@@ -29,6 +30,10 @@ import Header from './Header.svelte';
 import * as localeService from '../services/locale.service.js';
 import {appState} from '../state/app.svelte.js';
 
+beforeAll(() => {
+  defineMndwUi();
+});
+
 describe('Header logout', () => {
   afterEach(() => {
     events.length = 0;
@@ -39,18 +44,26 @@ describe('Header logout', () => {
     vi.restoreAllMocks();
   });
 
-  it('offers EN and RU controls and requests the selected locale', () => {
+  it('offers one language selector with EN and RU options', () => {
     const setLocale = vi.spyOn(localeService, 'setLocale').mockResolvedValue();
     const target = document.createElement('div');
 
     document.body.appendChild(target);
 
     const component = mount(Header, {target});
-    const buttons = [...target.querySelectorAll('.mndw-header__locale-button')];
+    const select = target.querySelector<HTMLElement & {value: string}>('.mndw-header__locale-select');
+    const options = [...target.querySelectorAll('mndw-option')];
 
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['EN', 'RU']);
+    expect(select).not.toBeNull();
+    expect(select?.value).toBe('en');
+    expect(options.map((option) => option.textContent?.trim())).toEqual(['EN', 'RU']);
 
-    buttons[1]?.dispatchEvent(new Event('click', {bubbles: true}));
+    select?.dispatchEvent(
+      new CustomEvent('mndwchange', {
+        bubbles: true,
+        detail: {value: 'ru'},
+      }),
+    );
     expect(setLocale).toHaveBeenCalledWith('ru');
     void unmount(component);
   });
@@ -64,10 +77,7 @@ describe('Header logout', () => {
 
     const component = mount(Header, {target});
 
-    expect(
-      [...target.querySelectorAll('.mndw-header__locale-button')].every((button) => button.hasAttribute('disabled')),
-    )
-      .toBe(true);
+    expect(target.querySelector<HTMLElement & {disabled: boolean}>('.mndw-header__locale-select')?.disabled).toBe(true);
 
     void unmount(component);
   });
@@ -86,6 +96,7 @@ describe('Header logout', () => {
       flushSync();
 
       expect(target.querySelector('.mndw-header__logout')?.textContent?.trim()).toBe('Выйти');
+      expect(target.querySelector<HTMLElement & {value: string}>('.mndw-header__locale-select')?.value).toBe('ru');
     } finally {
       await unmount(component);
       await localeService.setLocale('en');

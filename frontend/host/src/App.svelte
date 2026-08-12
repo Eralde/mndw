@@ -6,13 +6,13 @@ import {appState} from './state/app.svelte.js';
 import {hostT} from './services/host-i18n.svelte.js';
 </script>
 
+<!-- Global top-layer host stays mounted across login, loading, and navigation. -->
+<OverlayHost />
+
 {#if !appState.authenticated}
   <LoginPage />
 {:else if appState.ready}
   <Router />
-
-  <!-- Global top-layer host for plugin overlays; stays mounted across navigation. -->
-  <OverlayHost />
 {:else}
   <div
     class="mndw-loading"

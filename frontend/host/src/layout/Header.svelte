@@ -1,4 +1,5 @@
 <script lang="ts">
+import type {MndwSelectChangeDetail} from '@mndw/ui';
 import {rciService} from '../services/rci.service.js';
 import {extenderAccessService} from '../services/extender-access.service.js';
 import {toggleTheme} from '../services/theme.service.js';
@@ -6,8 +7,8 @@ import {appState, resetToLogin} from '../state/app.svelte.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {setLocale} from '../services/locale.service.js';
 
-function switchLocale(locale: string): void {
-  void setLocale(locale).catch(() => {});
+function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
+  void setLocale(event.detail.value).catch(() => {});
 }
 
 async function handleLogout(): Promise<void> {
@@ -46,34 +47,16 @@ async function handleLogout(): Promise<void> {
     {/if}
   </div>
   <div class="mndw-header__right">
-    <div
-      class="mndw-header__locale-toggle"
-      role="group"
-      aria-label={hostT('nav.language')}
+    <mndw-select
+      class="mndw-header__locale-select"
+      label={hostT('nav.language')}
+      value={appState.locale}
+      disabled={appState.localeSwitchPending}
+      onmndwchange={handleLocaleChange}
     >
-      <mndw-button
-        variant={appState.locale === 'en' ? 'primary' : 'ghost'}
-        class="mndw-header__locale-button"
-        aria-label={hostT('nav.language-english')}
-        aria-pressed={appState.locale === 'en'}
-        title={hostT('nav.language-english')}
-        disabled={appState.localeSwitchPending}
-        onclick={() => switchLocale('en')}
-      >
-        EN
-      </mndw-button>
-      <mndw-button
-        variant={appState.locale === 'ru' ? 'primary' : 'ghost'}
-        class="mndw-header__locale-button"
-        aria-label={hostT('nav.language-russian')}
-        aria-pressed={appState.locale === 'ru'}
-        title={hostT('nav.language-russian')}
-        disabled={appState.localeSwitchPending}
-        onclick={() => switchLocale('ru')}
-      >
-        RU
-      </mndw-button>
-    </div>
+      <mndw-option value="en">EN</mndw-option>
+      <mndw-option value="ru">RU</mndw-option>
+    </mndw-select>
     <mndw-button
       variant="ghost"
       class="mndw-header__theme-toggle"

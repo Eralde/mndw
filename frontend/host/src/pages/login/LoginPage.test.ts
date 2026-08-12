@@ -17,6 +17,7 @@ vi.mock('../../services/init-auth.js', () => ({
 }));
 
 import LoginPage from './LoginPage.svelte';
+import * as localeService from '../../services/locale.service.js';
 import {appState} from '../../state/app.svelte.js';
 
 let target: HTMLDivElement;
@@ -58,6 +59,8 @@ beforeEach(() => {
   initAuthenticated.mockReset();
   initAuthenticated.mockResolvedValue(undefined);
   appState.authenticated = false;
+  appState.locale = 'en';
+  appState.localeSwitchPending = false;
 });
 
 afterEach(() => {
@@ -66,6 +69,27 @@ afterEach(() => {
 });
 
 describe('LoginPage', () => {
+  it('offers a language selector before authentication', () => {
+    const setLocale = vi.spyOn(localeService, 'setLocale').mockResolvedValue();
+    render();
+
+    const select = target.querySelector<HTMLElement & {value: string}>('.mndw-login__locale-select');
+    const options = [...target.querySelectorAll('mndw-option')];
+
+    expect(select).not.toBeNull();
+    expect(select?.value).toBe('en');
+    expect(options.map((option) => option.textContent?.trim())).toEqual(['EN', 'RU']);
+
+    select?.dispatchEvent(
+      new CustomEvent('mndwchange', {
+        bubbles: true,
+        detail: {value: 'ru'},
+      }),
+    );
+
+    expect(setLocale).toHaveBeenCalledWith('ru');
+  });
+
   it('renders both credentials as kit text controls inside labelled fields', async () => {
     render();
 

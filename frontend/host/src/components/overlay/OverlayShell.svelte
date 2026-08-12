@@ -1,5 +1,7 @@
 <script lang="ts">
 import type {OverlayLayerView} from '../../services/overlay/overlay-manager.svelte.js';
+import {hostT} from '../../services/host-i18n.svelte.js';
+import {appState} from '../../state/app.svelte.js';
 
 interface Props {
   layer: OverlayLayerView;
@@ -43,6 +45,7 @@ const sizeStyle = $derived.by(() => {
 
 <div
   class="mndw-overlay-dialog mndw-overlay-dialog--{layer.kind} mndw-overlay-dialog--{layer.placement} {layer.mobileSheet ? 'mndw-overlay-dialog--sheet' : ''} {layer.className ?? ''}"
+  data-locale={appState.locale}
   role="dialog"
   aria-modal={layer.kind === 'modal' ? 'true' : undefined}
   aria-labelledby={layer.shell?.title ? titleId : undefined}
@@ -64,7 +67,7 @@ const sizeStyle = $derived.by(() => {
         <button
           type="button"
           class="mndw-overlay-dialog__close"
-          aria-label="Close"
+          aria-label={hostT('common.close')}
           onclick={() => layer.close(undefined, 'action')}
         >
           &times;

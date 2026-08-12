@@ -19,6 +19,84 @@ const safeRelativePathSchema = z.string().min(1)
 const pluginEntrySchema = safeRelativePathSchema
   .refine(hasFileName, {message: 'entry must include a file name'});
 
+const canonicalLocale = (value: string): string | undefined => {
+  try {
+    if (typeof Intl.getCanonicalLocales === 'function') {
+      return Intl.getCanonicalLocales(value)[0];
+    }
+
+    if (typeof Intl.Locale === 'function') {
+      return new Intl.Locale(value).toString();
+    }
+  } catch {
+    // Fall through to the unsupported-runtime result below.
+  }
+
+  return undefined;
+};
+
+const localeTagSchema = z.string().min(1)
+  .superRefine((value, ctx) => {
+    const canonical = canonicalLocale(value);
+
+    if (canonical === undefined) {
+      ctx.addIssue({code: 'custom', message: 'must be a valid BCP-47 locale tag'});
+    } else if (canonical !== value) {
+      ctx.addIssue({code: 'custom', message: `must use canonical BCP-47 spelling (${canonical})`});
+    }
+  });
+const catalogPathSchema = safeRelativePathSchema
+  .refine((value) => value.endsWith('.json'), {message: 'catalog path must end with .json'});
+const i18nSchema = z.object({
+  defaultLocale: localeTagSchema,
+  locales: z.record(z.string(), catalogPathSchema),
+}).strict()
+  .superRefine((i18n, ctx) => {
+    const localeKeys = Object.keys(i18n.locales);
+
+    if (localeKeys.length === 0) {
+      ctx.addIssue({code: 'custom', path: ['locales'], message: 'locales must contain at least one locale'});
+    }
+
+    const canonicalKeys = new Map<string, string>();
+
+    for (const key of localeKeys) {
+      const canonical = canonicalLocale(key);
+
+      if (canonical === undefined) {
+        ctx.addIssue({code: 'custom', path: ['locales', key], message: 'must be a valid BCP-47 locale tag'});
+
+        continue;
+      }
+
+      if (canonical !== key) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['locales', key],
+          message: `must use canonical BCP-47 spelling (${canonical})`,
+        });
+      }
+
+      const previousKey = canonicalKeys.get(canonical);
+
+      if (previousKey !== undefined && previousKey !== key) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['locales', key],
+          message: `canonical locale collides with ${previousKey}`,
+        });
+      } else {
+        canonicalKeys.set(canonical, key);
+      }
+    }
+
+    const canonicalDefault = canonicalLocale(i18n.defaultLocale);
+
+    if (canonicalDefault !== undefined && !canonicalKeys.has(canonicalDefault)) {
+      ctx.addIssue({code: 'custom', path: ['defaultLocale'], message: 'defaultLocale must be present in locales'});
+    }
+  });
+
 const packageSchema = z.string().regex(/^[a-z0-9][a-z0-9+_.-]*$/);
 const accessSchema = z.enum(['session', 'public']).default('session');
 const methodSchema = z.string()
@@ -183,6 +261,7 @@ const baseFields = {
   entry: entryField,
   icon: iconField,
   permissions: permissionsSchema.optional(),
+  i18n: i18nSchema.optional(),
   backend: backendSchema.optional(),
 };
 

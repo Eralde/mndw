@@ -3,6 +3,8 @@ import {flushSync, mount, settled, unmount} from 'svelte';
 import type {RciManager, RciQuery} from '@rci-tools/core';
 import type {PluginStorage} from '@mndw/sdk';
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import {createTestI18n} from '@mndw/sdk/testing';
+import enCatalog from '../../i18n/en.json';
 import {of} from 'rxjs';
 import TrafficWidget from './TrafficWidget.svelte';
 
@@ -87,6 +89,7 @@ describe('TrafficWidget shared controls', () => {
         rci: fakeRci(queue),
         storage,
         openSettings,
+        i18n: createTestI18n(enCatalog),
       },
     });
     await flush();
@@ -129,5 +132,35 @@ describe('TrafficWidget shared controls', () => {
     await flush();
 
     expect(storage.set).toHaveBeenCalledWith('detail', '3');
+  });
+
+  it('updates the mounted probe when locale changes', () => {
+    const i18n = createTestI18n({l10n: {probe: 'Traffic English'}});
+    const queue = vi.fn(() => of({host: []}));
+    const storage = {
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+      keys: vi.fn().mockResolvedValue([]),
+    } as unknown as PluginStorage;
+    const openSettings = vi.fn();
+
+    host = document.createElement('div');
+    document.body.append(host);
+    app = mount(TrafficWidget, {
+      target: host,
+      props: {rci: fakeRci(queue), storage, openSettings, i18n},
+    });
+    flushSync();
+
+    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+    expect(probe?.textContent).toBe('Traffic English');
+    const enValue = probe?.textContent;
+    i18n.setLocale('ru', {l10n: {probe: 'Трафик русский'}});
+    flushSync();
+
+    expect(enValue).not.toBe('Трафик русский');
+    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(probe?.textContent).toBe('Трафик русский');
   });
 });

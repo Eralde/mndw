@@ -22,14 +22,14 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@mndw/angular-compiler": "workspace:*",
     "@angular/common": "^21.2.18",
     "@angular/compiler": "^21.2.18",
     "@angular/core": "^21.2.18",
     "@angular/platform-browser": "^21.2.18",
-    "@vitejs/plugin-vue": "^6.0.0",
+    "@mndw/angular-compiler": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@types/node": "22.19.15",
+    "@vitejs/plugin-vue": "^6.0.0",
     "d3": "^7.9.0",
     "esbuild": "^0.25.0",
     "happy-dom": "^20.11.1",

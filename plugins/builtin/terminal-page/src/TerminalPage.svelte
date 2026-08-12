@@ -1,7 +1,8 @@
 <script lang="ts">
 import {onMount, tick} from 'svelte';
-import type {BackendClient} from '@mndw/sdk';
+import type {BackendClient, PluginI18n} from '@mndw/sdk';
 import {isBackendMaintenanceClose} from '@mndw/sdk';
+import {createTranslator} from '@mndw/sdk/svelte';
 import {Terminal} from '@xterm/xterm';
 import {FitAddon} from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -14,11 +15,19 @@ import {
 
 interface Props {
   backend?: BackendClient;
+  i18n: PluginI18n;
 }
 
 let {
   backend,
+  i18n,
 }: Props = $props();
+// svelte-ignore state_referenced_locally
+const translator = createTranslator(i18n);
+
+function t(key: string, values?: Record<string, unknown>): string {
+  return $translator.t(key, values);
+}
 
 type PageState = 'idle' | 'starting' | 'connected' | 'error' | 'disconnected';
 
@@ -62,13 +71,13 @@ async function startTerminal(): Promise<void> {
 
   try {
     if (!backend) {
-      throw new Error('Backend bindings are missing for terminal-page');
+      throw new Error(t('error.backend-missing'));
     }
 
     const spawnResult = await spawnCli(backend, consoleChoice);
 
     if (!spawnResult.success) {
-      throw new Error(spawnResult.error || 'Failed to start terminal service');
+      throw new Error(spawnResult.error || t('error.start-failed'));
     }
 
     await sleep(1000);
@@ -90,8 +99,8 @@ async function startTerminal(): Promise<void> {
         if (!disconnectExpected) {
           state = 'disconnected';
           errorMessage = isBackendMaintenanceClose(event)
-            ? 'Session ended during update'
-            : 'Connection lost';
+            ? t('status.update-ended')
+            : t('status.connection-lost');
         }
       },
     );
@@ -101,7 +110,7 @@ async function startTerminal(): Promise<void> {
   } catch (error) {
     clearSpawnDelay();
     state = 'error';
-    errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    errorMessage = error instanceof Error ? error.message : t('error.unknown');
     console.error('[terminal-page] Failed to start terminal:', error);
   }
 }
@@ -139,6 +148,7 @@ onMount(() => {
 </script>
 
 <div class="ttyd-terminal">
+  <span class="sr-only" data-testid="l10n-probe">{t('l10n.probe')}</span>
   {#if state === 'idle'}
     <div class="screen">
       <div class="console-choice">
@@ -146,13 +156,13 @@ onMount(() => {
           variant="primary"
           onclick={() => selectConsole('router')}
         >
-          Router CLI
+          {t('action.router-cli')}
         </mndw-button>
         <mndw-button
           variant="primary"
           onclick={() => selectConsole('entware')}
         >
-          Entware Shell
+          {t('action.entware-shell')}
         </mndw-button>
       </div>
     </div>
@@ -163,7 +173,7 @@ onMount(() => {
         aria-hidden="true"
       >
       </div>
-      <span>Starting terminal...</span>
+      <span>{t('status.starting')}</span>
     </div>
   {:else if state === 'error'}
     <div class="screen">
@@ -177,7 +187,7 @@ onMount(() => {
         variant="primary"
         onclick={retryTerminal}
       >
-        Retry
+        {t('action.retry')}
       </mndw-button>
     </div>
   {:else if state === 'disconnected'}
@@ -186,24 +196,24 @@ onMount(() => {
         class="mndw-alert mndw-alert--danger"
         role="alert"
       >
-        Connection lost
+        {t('status.connection-lost')}
       </div>
       <mndw-button
         variant="primary"
         onclick={retryTerminal}
       >
-        Reconnect
+        {t('action.reconnect')}
       </mndw-button>
     </div>
   {:else}
     <div class="terminal-wrap">
       <div class="terminal-header">
-        <span class="status">Connected</span>
+        <span class="status">{t('status.connected')}</span>
         <mndw-button
           variant="secondary"
           onclick={stopTerminal}
         >
-          Disconnect
+          {t('action.disconnect')}
         </mndw-button>
       </div>
       <div

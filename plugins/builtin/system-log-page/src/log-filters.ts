@@ -8,7 +8,7 @@ export interface FilterState {
 export const ALL_LOG_LEVELS: readonly LogLevel[] = ['Info', 'Warning', 'Error', 'Critical', 'Debug', 'Notice'];
 
 export function filterRecords(records: readonly NormalizedLogRecord[], state: FilterState): NormalizedLogRecord[] {
-  const query = state.query.toLocaleLowerCase();
+  const query = state.query.toLowerCase();
 
   return records.filter((record) => {
     if (!state.levels.has(record.level)) {
@@ -21,7 +21,7 @@ export function filterRecords(records: readonly NormalizedLogRecord[], state: Fi
 
     return [record.timestamp, record.ident, record.level, record.label, record.text]
       .join(' ')
-      .toLocaleLowerCase()
+      .toLowerCase()
       .includes(query);
   });
 }

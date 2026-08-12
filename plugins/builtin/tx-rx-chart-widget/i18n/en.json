@@ -1,0 +1,27 @@
+{
+  "l10n": {
+    "probe": "Traffic English probe"
+  },
+  "title": "Network Traffic Monitor",
+  "action": {
+    "retry": "Retry",
+    "settings": "Widget settings",
+    "close": "Close"
+  },
+  "status": {
+    "loading-interfaces": "Loading interfaces…",
+    "select-interface": "Select a network interface to begin monitoring TX/RX traffic",
+    "no-interfaces": "No network interfaces found",
+    "no-data": "No data available"
+  },
+  "field": {
+    "interface": "Interface",
+    "select-interface": "Select interface…",
+    "refresh-interval": "Refresh interval",
+    "seconds": "seconds"
+  },
+  "error": {
+    "load-traffic": "Failed to load traffic data",
+    "load-interfaces": "Failed to load interfaces"
+  }
+}

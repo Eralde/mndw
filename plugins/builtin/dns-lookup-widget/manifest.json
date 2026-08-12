@@ -5,6 +5,7 @@
   "type": "widget",
   "label": "DNS Lookup",
   "entry": "index.js",
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
   "size": {"w": 4, "h": 4, "minW": 3, "minH": 3},
   "backend": {
     "kind": "exec",

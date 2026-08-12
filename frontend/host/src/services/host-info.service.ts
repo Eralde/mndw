@@ -3,6 +3,7 @@ import {firstValueFrom, timeout} from 'rxjs';
 import {API_TIMEOUT_MS} from '../constants.js';
 import {getShowVersion} from './rci/show-version/index.js';
 import {getTheme} from './theme.service.js';
+import {getLocale} from './locale.service.js';
 
 export async function fetchHostInfo(): Promise<HostInfo> {
   const showVersion$ = getShowVersion();
@@ -16,5 +17,6 @@ export async function fetchHostInfo(): Promise<HostInfo> {
     vendor: version.vendor ?? 'Unknown',
     firmwareVersion: version.title ?? 'Unknown',
     theme: getTheme(),
+    locale: getLocale(),
   };
 }

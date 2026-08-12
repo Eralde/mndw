@@ -1,6 +1,9 @@
 <script lang="ts">
 import PaletteManager from './palette-manager/PaletteManager.svelte';
+import type {MndwSelectChangeDetail} from '@mndw/ui';
 import {toggleTheme} from '../../services/theme.service.js';
+import {getAvailableLocales, setLocale} from '../../services/locale.service.js';
+import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
 import {onDestroy, onMount} from 'svelte';
 import {extenderAccessService} from '../../services/extender-access.service.js';
@@ -66,7 +69,7 @@ onMount(() => {
   void extenderAccessService.getExtenderAccess().then((state) => {
     extenderAccessEnabled = state.enabled;
   }).catch(() => {
-    extenderAccessError = 'Extender access state unavailable';
+    extenderAccessError = hostT('settings.extender-access-unavailable');
   }).finally(() => {
     extenderAccessLoading = false;
   });
@@ -101,7 +104,7 @@ async function setExtenderAccess(
     const state = await extenderAccessService.setExtenderAccess(enabled);
     extenderAccessEnabled = state.enabled;
   } catch {
-    extenderAccessError = 'Could not update extender access';
+    extenderAccessError = hostT('settings.extender-access-update-failed');
   } finally {
     extenderAccessLoading = false;
   }
@@ -123,7 +126,7 @@ async function refreshPersistentCapability(): Promise<void> {
     persistentEnabled = persistentCapability.controller.support === 'supported'
       || persistentCapability.controller.support === 'invalid';
   } catch {
-    persistentError = 'Persistent rci/ session state unavailable';
+    persistentError = hostT('settings.persistent-state-unavailable');
   } finally {
     persistentLoading = false;
   }
@@ -157,16 +160,16 @@ function setMeshPassword(event: CustomEvent<{value: string}>): void {
 function persistentErrorMessage(error: unknown): string {
   if (error instanceof PersistentRciSessionError) {
     if (error.code === 'RCI_TOKEN_INVALID') {
-      return 'Controller token rejected';
+      return hostT('settings.controller-token-rejected');
     }
     if (error.code === 'RCI_FIRMWARE_UNSUPPORTED') {
-      return 'Device firmware does not support persistent rci/ sessions';
+      return hostT('settings.firmware-unsupported');
     }
     if (error.code === 'RCI_DEVICE_UNREACHABLE') {
-      return 'Device unreachable';
+      return hostT('settings.device-unreachable');
     }
   }
-  return 'Persistent rci/ session request failed';
+  return hostT('settings.persistent-request-failed');
 }
 
 async function testController(): Promise<void> {
@@ -234,9 +237,7 @@ async function provisionExtenders(): Promise<void> {
       ? failures.map((extender) =>
         `${extender.identity}: ${provisionReasonMessage(extender.reason)}`
       ).join('; ')
-      : `${result.extenders.length} extender session${
-        result.extenders.length === 1 ? '' : 's'
-      } checked`;
+      : hostT('settings.extenders-checked', {count: result.extenders.length});
     meshUsername = '';
     meshPassword = '';
     await refreshPersistentCapability();
@@ -251,20 +252,28 @@ async function provisionExtenders(): Promise<void> {
 
 function provisionReasonMessage(reason: ProvisionReason | undefined): string {
   if (reason === undefined) {
-    return 'provisioning failed';
+    return hostT('settings.provisioning-failed');
   }
   switch (reason) {
     case 'secure-endpoint-unavailable':
-      return 'persistent token requires extender FQDN/HTTPS';
+      return hostT('settings.secure-endpoint-unavailable');
     case 'offline':
-      return 'extender offline';
+      return hostT('settings.extender-offline');
     case 'authentication-failed':
-      return 'authentication failed';
+      return hostT('settings.authentication-failed');
     case 'unsupported-firmware':
-      return 'firmware unsupported';
+      return hostT('settings.firmware-unsupported-short');
     case 'unreachable':
-      return 'extender unreachable';
+      return hostT('settings.extender-unreachable');
   }
+}
+
+function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
+  if (appState.localeSwitchPending) {
+    return;
+  }
+
+  void setLocale(event.detail.value).catch(() => {});
 }
 
 async function clearExtenders(): Promise<void> {
@@ -281,11 +290,14 @@ async function clearExtenders(): Promise<void> {
 }
 </script>
 
-<div class="mndw-general-settings">
+<div
+  class="mndw-general-settings"
+  data-locale={appState.locale}
+>
   <section>
-    <h3>Appearance</h3>
+    <h3>{hostT('settings.appearance')}</h3>
     <!-- A switch, not a checkbox: the theme applies at once rather than travelling with a form. -->
-    <mndw-field label="Dark theme">
+    <mndw-field label={hostT('settings.dark-theme')}>
       <mndw-switch
         id="mndw-theme-switch"
         checked={appState.theme === 'dark'}
@@ -297,26 +309,53 @@ async function clearExtenders(): Promise<void> {
   <PaletteManager />
 
   <section>
-    <h3>Device</h3>
+    <h3>{hostT('settings.device')}</h3>
+    <mndw-field label={hostT('settings.language.label')}>
+      <mndw-select
+        value={appState.locale}
+        disabled={appState.localeSwitchPending}
+        onmndwchange={handleLocaleChange}
+      >
+        <mndw-option value="en">{
+          hostT('settings.language.english')
+        }</mndw-option>
+        <mndw-option value="ru">{
+          hostT('settings.language.russian')
+        }</mndw-option>
+        {#if getAvailableLocales().includes('en-XA')}
+          <mndw-option value="en-XA">Pseudo (en-XA)</mndw-option>
+        {/if}
+      </mndw-select>
+      {#if appState.localeSwitchPending}
+        <span role="status">{hostT('settings.language.pending')}</span>
+      {/if}
+    </mndw-field>
     {#if appState.hostInfo}
       <ul>
-        <li><strong>Name:</strong> {appState.hostInfo.deviceName}</li>
-        <li><strong>Vendor:</strong> {appState.hostInfo.vendor}</li>
-        <li><strong>Firmware:</strong> {appState.hostInfo.firmwareVersion}</li>
+        <li>
+          <strong>{hostT('settings.name')}</strong> {
+            appState.hostInfo.deviceName
+          }
+        </li>
+        <li>
+          <strong>{hostT('settings.vendor')}</strong> {appState.hostInfo.vendor}
+        </li>
+        <li>
+          <strong>{hostT('settings.firmware')}</strong> {
+            appState.hostInfo.firmwareVersion
+          }
+        </li>
       </ul>
     {:else}
-      <p>Device info unavailable.</p>
+      <p>{hostT('settings.device-unavailable')}</p>
     {/if}
   </section>
 
   {#if persistentProbeAvailable}
-    <section aria-label="Persistent rci session">
-      <h3>Persistent rci/ session</h3>
-      <p>
-        Keep rci/ access in mndwd for permitted plugins. Tokens never leave
-        mndwd.
-      </p>
-      <mndw-field label="Configure persistent controller session">
+    <section aria-label={hostT('settings.persistent-rci-title')}>
+      <h3>{hostT('settings.persistent-rci-title')}</h3>
+      <p>{hostT('settings.persistent-rci-description')}</p>
+      <mndw-field label={hostT('settings.configure-persistent')}>
         <mndw-switch
           id="mndw-persistent-rci-enabled"
           checked={persistentEnabled}
@@ -328,12 +367,14 @@ async function clearExtenders(): Promise<void> {
         <p role="alert">{persistentError}</p>
       {/if}
       {#if persistentCapability?.store.state === 'disabled'}
-        <p role="alert">Persistent session storage is disabled.</p>
+        <p role="alert">{hostT('settings.persistent-storage-disabled')}</p>
       {:else if persistentCapability?.store.state === 'decrypt-failed'}
-        <p role="alert">Persistent session storage could not be decrypted.</p>
+        <p role="alert">
+          {hostT('settings.persistent-storage-decrypt-failed')}
+        </p>
       {/if}
       {#if persistentEnabled}
-        <mndw-field label="Controller token">
+        <mndw-field label={hostT('settings.controller-token')}>
           <mndw-input
             type="password"
             autocomplete="off"
@@ -348,19 +389,19 @@ async function clearExtenders(): Promise<void> {
             variant="secondary"
             disabled={persistentActionLoading || controllerToken === ''}
             onclick={() => void testController()}
-          >Test</mndw-button>
+          >{hostT('settings.test')}</mndw-button>
           <mndw-button
             variant="primary"
             disabled={persistentActionLoading || controllerToken === ''}
             onclick={() => void saveController()}
-          >Save</mndw-button>
+          >{hostT('settings.save')}</mndw-button>
           {#if persistentCapability?.controller.support === 'supported'
           || persistentCapability?.controller.support === 'invalid'}
             <mndw-button
               variant="danger"
               disabled={persistentActionLoading}
               onclick={() => void clearController()}
-            >Clear controller session</mndw-button>
+            >{hostT('settings.clear-controller-session')}</mndw-button>
           {/if}
         </div>
         {#if controllerResult}
@@ -369,19 +410,23 @@ async function clearExtenders(): Promise<void> {
               class="unsupported-banner"
               role="alert"
             >
-              Update device firmware to enable persistent rci/ sessions.
+              {hostT('settings.update-firmware-persistent')}
             </p>
           {:else}
-            <p>Controller: {controllerResult.result}</p>
+            <p>
+              {
+                hostT('settings.controller-result', {
+                  result: controllerResult.result,
+                })
+              }
+            </p>
           {/if}
         {/if}
         {#if persistentCapability?.controller.support === 'supported'}
           <div class="persistent-rci-extenders">
-            <h4>Persistent extenders session</h4>
-            <p>
-              Mesh credentials are used once for provisioning and then cleared.
-            </p>
-            <mndw-field label="Mesh username">
+            <h4>{hostT('settings.persistent-extenders-title')}</h4>
+            <p>{hostT('settings.mesh-credentials-description')}</p>
+            <mndw-field label={hostT('settings.mesh-username')}>
               <mndw-input
                 autocomplete="username"
                 value={meshUsername}
@@ -389,7 +434,7 @@ async function clearExtenders(): Promise<void> {
                 onmndwinput={setMeshUsername}
               ></mndw-input>
             </mndw-field>
-            <mndw-field label="Mesh password">
+            <mndw-field label={hostT('settings.mesh-password')}>
               <mndw-input
                 type="password"
                 autocomplete="current-password"
@@ -404,12 +449,12 @@ async function clearExtenders(): Promise<void> {
                 disabled={persistentActionLoading || meshUsername === ''
                 || meshPassword === ''}
                 onclick={() => void provisionExtenders()}
-              >Provision extenders</mndw-button>
+              >{hostT('settings.provision-extenders')}</mndw-button>
               <mndw-button
                 variant="danger"
                 disabled={persistentActionLoading}
                 onclick={() => void clearExtenders()}
-              >Clear extender sessions</mndw-button>
+              >{hostT('settings.clear-extender-sessions')}</mndw-button>
             </div>
             {#if provisioningResult}<p>{provisioningResult}</p>{/if}
             {#if persistentCapability.extenders.length > 0}
@@ -431,8 +476,8 @@ async function clearExtenders(): Promise<void> {
   {/if}
 
   {#if extenderTelemetryAvailable}
-    <section aria-label="Extender access">
-      <mndw-field label="Allow mwsd to access extender telemetry">
+    <section aria-label={hostT('settings.extender-access')}>
+      <mndw-field label={hostT('settings.allow-extender-telemetry')}>
         <mndw-switch
           id="mndw-extender-access"
           checked={extenderAccessEnabled}

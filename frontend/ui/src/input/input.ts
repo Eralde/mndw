@@ -1,6 +1,7 @@
 import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html, nothing} from 'lit';
 import {FormAssociatedController} from '../forms/form-associated.js';
 import {CommitTracker, TextAnnouncementController, setOrRemove, validityFlagsFrom} from '../forms/text-control.js';
+import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
 import {controlBase, focusRing, hostTypography} from '../styles/base.js';
 
 export const MNDW_INPUT_TAG = 'mndw-input';
@@ -143,6 +144,7 @@ export class MndwInput extends LitElement {
     isInvalid: () => this.invalid,
   });
   private readonly commits = new CommitTracker((value) => this.emitChange(value));
+  private localeUnsubscribe: (() => void) | null = null;
   private _showPassword = false;
 
   constructor() {
@@ -164,12 +166,15 @@ export class MndwInput extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    this.localeUnsubscribe = subscribeMndwUiLocale(this.onLocaleChange);
     this.formState.captureInitialAttributes(['value']);
     this.announcement.connect();
     this.requestUpdate();
   }
 
   public override disconnectedCallback(): void {
+    this.localeUnsubscribe?.();
+    this.localeUnsubscribe = null;
     super.disconnectedCallback();
     this.announcement.disconnect();
   }
@@ -335,12 +340,16 @@ export class MndwInput extends LitElement {
     });
   };
 
+  private readonly onLocaleChange = (): void => {
+    this.requestUpdate();
+  };
+
   private _renderPasswordToggle(): TemplateResult {
     return html`
       <button
         part="password-toggle"
         type="button"
-        aria-label=${this._showPassword ? 'Hide password' : 'Show password'}
+        aria-label=${getMndwUiText(this._showPassword ? 'input.password.hide' : 'input.password.show')}
         ?disabled=${this.formState.effectiveDisabled}
         @click=${this._onTogglePassword}
       >

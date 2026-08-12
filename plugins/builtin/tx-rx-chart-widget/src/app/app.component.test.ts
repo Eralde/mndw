@@ -1,15 +1,19 @@
 import '@angular/compiler';
-import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {DestroyRef, inject, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {createTranslatorSignals} from '@mndw/sdk/angular';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {type ComponentFixture, TestBed} from '@angular/core/testing';
 import type {PluginStorage} from '@mndw/sdk';
 import type {RciManager, RciQuery} from '@rci-tools/core';
 import {of} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {OpenSettingsFn} from '../open-settings-dialog';
-import {PLUGIN_STORAGE, RCI_MANAGER} from '../tokens';
+import {PLUGIN_STORAGE, RCI_MANAGER, TRANSLATOR} from '../tokens';
 import appStyles from './app.component.scss?raw';
 import appTemplate from './app.component.html?raw';
 import {AppComponent as AppComponentType} from './app.component';
+import enCatalog from '../../i18n/en.json';
+import ruCatalog from '../../i18n/ru.json';
 
 const interfaces = {
   eth0: {id: 'eth0', description: 'LAN', traits: ['Ip']},
@@ -62,6 +66,7 @@ async function createFixture(
   savedInterface: string | null,
   savedRefresh: string | null,
   setTileTitle?: ((title: string) => void) | null,
+  i18n = createTestI18n(enCatalog),
 ): Promise<
   {
     fixture: ComponentFixture<AppComponentType>;
@@ -89,6 +94,7 @@ async function createFixture(
     providers: [
       {provide: RCI_MANAGER, useValue: fakeManager()},
       {provide: PLUGIN_STORAGE, useValue: fakeStorage(savedInterface, savedRefresh)},
+      {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(i18n, inject(DestroyRef))},
     ],
   }).compileComponents();
 
@@ -116,6 +122,19 @@ afterEach(() => {
 });
 
 describe('AppComponent', () => {
+  it('updates the same probe after a locale switch', async () => {
+    const i18n = createTestI18n(enCatalog);
+    const {fixture} = await createFixture(null, null, undefined, i18n);
+    fixture.detectChanges();
+    const probe = fixture.nativeElement.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+
+    expect(probe?.textContent).toBe('Traffic English probe');
+    i18n.setLocale('ru', ruCatalog);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(probe?.textContent).toBe('Проба трафика');
+  });
   it('passes normalized persisted refresh to settings opener', async () => {
     const {fixture, openSettings} = await createFixture('eth1', '6000');
 

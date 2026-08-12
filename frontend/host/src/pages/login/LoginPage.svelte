@@ -2,6 +2,7 @@
 import {initAuthenticated} from '../../services/init-auth.js';
 import {rciService} from '../../services/rci.service.js';
 import {appState, resetToLogin} from '../../state/app.svelte.js';
+import {hostT} from '../../services/host-i18n.svelte.js';
 
 let username = $state('');
 let password = $state('');
@@ -65,20 +66,20 @@ function handleSubmit(e: Event): void {
         appState.authenticated = true;
         void initAuthenticated({username, password}).catch(() => {
           resetToLogin();
-          error = 'Extender access setup failed';
+          error = hostT('login.extender-setup-failed');
           loading = false;
         }).finally(() => {
           username = '';
           password = '';
         });
       } else {
-        error = 'Invalid credentials';
+        error = hostT('login.invalid-credentials');
         loading = false;
         loginBlocked = true;
       }
     },
     error() {
-      error = 'Connection failed';
+      error = hostT('login.connection-failed');
       loading = false;
       loginBlocked = true;
     },
@@ -86,13 +87,16 @@ function handleSubmit(e: Event): void {
 }
 </script>
 
-<div class="mndw-login">
+<div
+  class="mndw-login"
+  data-locale={appState.locale}
+>
   <form
     class="mndw-login__form"
     onsubmit={handleSubmit}
   >
     <h1 class="mndw-login__title">mndw</h1>
-    <mndw-field label="Username">
+    <mndw-field label={hostT('login.username')}>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-input
         name="username"
@@ -103,7 +107,7 @@ function handleSubmit(e: Event): void {
         onkeydown={handleKeydown}
       ></mndw-input>
     </mndw-field>
-    <mndw-field label="Password">
+    <mndw-field label={hostT('login.password')}>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-input
         type="password"
@@ -129,7 +133,7 @@ function handleSubmit(e: Event): void {
       type="submit"
       disabled={!canSubmit()}
     >
-      {loading ? 'Logging in...' : 'Login'}
+      {loading ? hostT('login.logging-in') : hostT('login.submit')}
     </mndw-button>
   </form>
 </div>

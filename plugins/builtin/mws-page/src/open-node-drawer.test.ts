@@ -6,6 +6,7 @@ import {
 } from '@angular/core';
 import {TestBed} from '@angular/core/testing';
 import type {OverlayLayer, OverlayOpenOptions, PluginContext} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {Observable, Subject, of} from 'rxjs';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import drawerStyles from './components/node-drawer/node-drawer.component.scss?raw';
@@ -15,7 +16,8 @@ import type {NodeDetailsSource} from './node-details-source';
 import {openNodeDrawer} from './open-node-drawer';
 import {MwsDataService} from './services/mws-data.service';
 import {MwsWriteService} from './services/mws-write.service';
-import {MWS_RENAME_API} from './tokens';
+import {MWS_RENAME_API, TRANSLATOR} from './tokens';
+import enCatalog from '../i18n/en.json';
 
 describe('openNodeDrawer', () => {
   beforeEach(() => {
@@ -39,6 +41,7 @@ describe('openNodeDrawer', () => {
         {provide: MWS_RENAME_API, useValue: {renameNode: vi.fn(() => of(undefined))}},
         {provide: MwsDataService, useValue: {refreshNow: vi.fn()}},
         {provide: MwsWriteService, useValue: {setPower: vi.fn()}},
+        {provide: TRANSLATOR, useValue: createTestI18n(enCatalog)},
       ],
     });
 
@@ -107,6 +110,7 @@ describe('openNodeDrawer', () => {
         {provide: MWS_RENAME_API, useValue: {renameNode: vi.fn(() => of(undefined))}},
         {provide: MwsDataService, useValue: {refreshNow: vi.fn()}},
         {provide: MwsWriteService, useValue: {setPower: vi.fn()}},
+        {provide: TRANSLATOR, useValue: createTestI18n(enCatalog)},
       ],
     });
 
@@ -180,6 +184,7 @@ describe('openNodeDrawer', () => {
         {provide: MWS_RENAME_API, useValue: {renameNode: vi.fn(() => of(undefined))}},
         {provide: MwsDataService, useValue: {refreshNow: vi.fn()}},
         {provide: MwsWriteService, useValue: {setPower: vi.fn()}},
+        {provide: TRANSLATOR, useValue: createTestI18n(enCatalog)},
       ],
     });
 

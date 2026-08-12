@@ -1,5 +1,6 @@
 import type {OverlayCloseReason, OverlayService} from '@mndw/sdk';
 import type {UiCloseReason, UiLayer, UiLayerOptions, UiOverlayProvider} from './overlay.js';
+import {getMndwUiText} from './i18n.js';
 
 function toUiReason(reason: OverlayCloseReason): UiCloseReason {
   switch (reason) {
@@ -23,7 +24,7 @@ export function adaptOverlayService(service: OverlayService): UiOverlayProvider 
         const session = service.open({
           kind: 'drawer',
           placement: 'bottom',
-          title: options.title ?? 'Select option',
+          title: options.title ?? getMndwUiText('select.overlay.title'),
           showCloseButton: true,
           closeOnEscape: true,
           closeOnOutsideClick: true,

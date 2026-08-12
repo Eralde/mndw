@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed} from 'vue';
+import type {Translator} from '@mndw/sdk';
 import type {ClientRecord, WifiBand} from '../services/clients.js';
 import {formatCompactDuration, formatElapsed, formatFullDuration} from '../services/format-duration.js';
 
@@ -9,12 +10,15 @@ interface Props {
   error: string | null;
   loading: boolean;
   showOffline: boolean;
+  translator: Translator;
 }
 
 const props = defineProps<Props>();
 const DASH = '—';
 const shows = (key: string): boolean => props.columnVisibility[key] !== false;
-const emptyMessage = computed(() => props.showOffline ? 'No clients found' : 'No clients connected');
+const emptyMessage = computed(() => {
+  return props.showOffline ? props.translator.t('empty.found') : props.translator.t('empty.connected');
+});
 
 function bandText(band: WifiBand): string {
   return `${band === '2' ? '2.4' : band} GHz`;
@@ -29,7 +33,9 @@ function wiredSpeedText(speed: number | null | undefined): string {
 }
 
 function wiredPortText(port: string | null | undefined): string {
-  return port === null || port === undefined || port === '' || port === 'undefined' ? DASH : `Port ${port}`;
+  return port === null || port === undefined || port === '' || port === 'undefined'
+    ? DASH
+    : `${props.translator.t('port')} ${port}`;
 }
 
 function durationText(seconds: number | null): string {
@@ -47,10 +53,10 @@ function fullText(seconds: number | null): string | undefined {
 
 <template>
   <p v-if="loading && clients.length === 0" class="clients-table__status" role="status">
-    Loading clients…
+    {{ props.translator.t('loading') }}
   </p>
   <div v-else-if="error !== null" class="mndw-alert mndw-alert--danger" role="alert">
-    show device-list failed: {{ error }}
+    {{ props.translator.t('error') }}: {{ error }}
   </div>
   <p v-else-if="clients.length === 0" class="clients-table__status" role="status">
     {{ emptyMessage }}
@@ -58,12 +64,12 @@ function fullText(seconds: number | null): string | undefined {
   <table v-else class="clients-table">
     <thead>
     <tr>
-      <th scope="col">Name</th>
-      <th scope="col">Link</th>
-      <th v-if="shows('ip')" scope="col">IP Address</th>
-      <th v-if="shows('connection')" scope="col">Connection</th>
-      <th v-if="shows('uptime')" scope="col">Uptime</th>
-      <th v-if="shows('lastSeen')" scope="col">Last Seen</th>
+      <th scope="col">{{ props.translator.t('column.name') }}</th>
+      <th scope="col">{{ props.translator.t('column.link') }}</th>
+      <th v-if="shows('ip')" scope="col">{{ props.translator.t('column.ip') }}</th>
+      <th v-if="shows('connection')" scope="col">{{ props.translator.t('column.connection') }}</th>
+      <th v-if="shows('uptime')" scope="col">{{ props.translator.t('column.uptime') }}</th>
+      <th v-if="shows('lastSeen')" scope="col">{{ props.translator.t('column.last-seen') }}</th>
     </tr>
     </thead>
     <tbody>
@@ -76,14 +82,14 @@ function fullText(seconds: number | null): string | undefined {
                 class="clients-table__dot"
                 :class="client.link === 'up' ? 'clients-table__dot--up' : 'clients-table__dot--down'"
             />
-          {{ client.link }}
+          {{ client.link === 'up' ? props.translator.t('link.up') : props.translator.t('link.down') }}
         </template>
       </td>
       <td v-if="shows('ip')">{{ client.ip ?? DASH }}</td>
       <td v-if="shows('connection')">
         <template v-if="client.connectionType === 'unknown' || client.connection === null">{{ DASH }}</template>
         <template v-else-if="'accessPointId' in client.connection">
-          RSSI: {{ client.connection.rssi }}; {{ client.connection.txrate }} Mbps;
+          {{ props.translator.t('rssi') }}: {{ client.connection.rssi }}; {{ client.connection.txrate }} Mbps;
           {{ wirelessBandsText(client.connection.bands) }}
         </template>
         <template v-else>

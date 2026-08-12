@@ -23,5 +23,7 @@ export function createWidgetContext(
     throw new Error(`No loaded plugin "${pluginName}"`);
   }
 
-  return createPluginContext(plugin.entry, instanceId, effectiveHostInfo, setTileTitle);
+  return plugin.catalog === undefined
+    ? createPluginContext(plugin.entry, instanceId, effectiveHostInfo, setTileTitle)
+    : createPluginContext(plugin.entry, instanceId, effectiveHostInfo, setTileTitle, undefined, plugin.catalog);
 }

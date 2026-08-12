@@ -13,6 +13,7 @@ import {
 import type {MwsNode} from '../../domain/mws/mws.types';
 import {DASH, formatRate, formatSpeed, formatUptime} from '../../format';
 import {NodeTableColumnsStore, type OptionalNodeColumnId} from '../../services/node-table-columns.store';
+import {TRANSLATOR} from '../../tokens';
 import {
   type NodeRow,
   type NodeSortDir,
@@ -27,19 +28,19 @@ type NodeColumnId = 'name' | OptionalNodeColumnId;
 
 interface NodeColumn {
   id: NodeColumnId;
-  label: string;
+  labelKey: string;
   sortKey?: NodeSortKey;
 }
 
 const NODE_COLUMNS: readonly NodeColumn[] = [
-  {id: 'name', label: 'Node name', sortKey: 'name'},
-  {id: 'clients', label: 'Clients', sortKey: 'clients'},
-  {id: 'status', label: 'Status'},
-  {id: 'uptime', label: 'Uptime', sortKey: 'uptime'},
-  {id: 'ip', label: 'IP address', sortKey: 'ip'},
-  {id: 'via', label: 'Via', sortKey: 'via'},
-  {id: 'connection', label: 'Connection'},
-  {id: 'firmware', label: 'KeeneticOS', sortKey: 'firmware'},
+  {id: 'name', labelKey: 'nodes.name', sortKey: 'name'},
+  {id: 'clients', labelKey: 'nodes.clients', sortKey: 'clients'},
+  {id: 'status', labelKey: 'nodes.status'},
+  {id: 'uptime', labelKey: 'nodes.uptime', sortKey: 'uptime'},
+  {id: 'ip', labelKey: 'nodes.ip', sortKey: 'ip'},
+  {id: 'via', labelKey: 'nodes.via', sortKey: 'via'},
+  {id: 'connection', labelKey: 'nodes.connection'},
+  {id: 'firmware', labelKey: 'nodes.firmware', sortKey: 'firmware'},
 ];
 
 @Component({
@@ -50,6 +51,7 @@ const NODE_COLUMNS: readonly NodeColumn[] = [
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class MwsNodesTableComponent implements OnDestroy, OnInit {
+  private readonly translator = inject(TRANSLATOR);
   private readonly columnsStore = inject(NodeTableColumnsStore);
   private readonly rootsState = signal<MwsNode[]>([]);
   private readonly allRowsState = signal<NodeRow[]>([]);
@@ -141,7 +143,7 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
   }
 
   protected status(node: MwsNode): string {
-    return node.isOnline ? 'Online' : 'Offline';
+    return node.isOnline ? this.t('nodes.online') : this.t('nodes.offline');
   }
 
   protected connection(node: MwsNode): string {
@@ -166,6 +168,10 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
 
   protected uptime(node: MwsNode): string {
     return formatUptime(node.system?.uptime);
+  }
+
+  protected t(key: string, values?: Record<string, unknown>): string {
+    return this.translator.t(key, values);
   }
 
   private sortedRows(rows: NodeRow[]): NodeRow[] {

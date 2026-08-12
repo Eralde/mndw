@@ -1,37 +1,38 @@
 <div class="mws-page">
   <header class="page-header">
     <div class="title-row">
-      <h2>MWS Map</h2>
+      <h2>{{ t('title') }}</h2>
+      <span data-testid="l10n-probe" hidden>{{ t('l10n.probe') }}</span>
     </div>
     @if (mockOptions.mode === 'large') {
-      <span class="mock-badge">Mock data: {{ mockOptions.extenders }} extenders · {{ mockOptions.clients }} clients</span>
+      <span class="mock-badge">{{ t('summary.mock-data', {extenders: mockOptions.extenders, clients: mockOptions.clients}) }}</span>
     }
     @if (summary().total > 0) {
       <p class="summary">{{ summaryText() }}</p>
     }
     @if (data.pollError()) {
-      <span class="banner" role="alert">Update failed — showing the last known map.</span>
+      <span class="banner" role="alert">{{ t('state.update-failed') }}</span>
     }
   </header>
 
   @switch (data.phase()) {
     @case ('loading') {
-      <p class="state">Loading MWS topology…</p>
+      <p class="state">{{ t('state.loading') }}</p>
     }
     @case ('error') {
       <div class="state">
-        <p>Failed to load MWS data.</p>
-        <mndw-button variant="danger" (click)="retry()">Retry</mndw-button>
+        <p>{{ t('state.load-failed') }}</p>
+        <mndw-button variant="danger" (click)="retry()">{{ t('action.retry') }}</mndw-button>
       </div>
     }
     @case ('unsupported') {
-      <p class="state">This device is not an MWS controller.</p>
+      <p class="state">{{ t('state.unsupported') }}</p>
     }
     @case ('ready') {
       <mndw-tabs class="map-tabs" [value]="selectedTab()" (mndwchange)="onTabChanged($event)">
-        <mndw-tab id="map">Map</mndw-tab>
-        <mndw-tab id="nodes">Nodes</mndw-tab>
-        <mndw-tab id="clients">Clients</mndw-tab>
+        <mndw-tab id="map">{{ t('tab.map') }}</mndw-tab>
+        <mndw-tab id="nodes">{{ t('tab.nodes') }}</mndw-tab>
+        <mndw-tab id="clients">{{ t('tab.clients') }}</mndw-tab>
 
         <mndw-tab-panel for="map">
           <mws-map-graph

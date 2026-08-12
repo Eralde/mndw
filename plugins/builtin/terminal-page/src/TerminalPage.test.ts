@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import type {BackendClient} from '@mndw/sdk';
+import type {BackendClient, PluginI18n} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
+import enCatalog from '../i18n/en.json';
 import TerminalPage from './TerminalPage.svelte';
 
 afterEach(() => vi.restoreAllMocks());
@@ -27,6 +29,21 @@ function clickButton(host: HTMLElement, label: RegExp): void {
   button.click();
 }
 
+function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
+  const messages = {
+    en: {'action.router-cli': 'Router CLI', 'action.entware-shell': 'Entware Shell', l10n: {probe: 'Terminal English'}},
+    ru: {'action.router-cli': 'CLI роутера', 'action.entware-shell': 'Оболочка Entware', l10n: {probe: 'Терминал русский'}},
+  };
+  const i18n = createTestI18n(messages.en);
+
+  return {
+    i18n,
+    setLocale: (nextLocale) => {
+      i18n.setLocale(nextLocale, messages[nextLocale]);
+    },
+  };
+}
+
 describe('TerminalPage (dev path)', () => {
   it('renders both console buttons on the idle screen', () => {
     const {backend} = notInstalledBackend();
@@ -34,7 +51,7 @@ describe('TerminalPage (dev path)', () => {
 
     document.body.appendChild(host);
 
-    const app = mount(TerminalPage, {target: host, props: {backend}});
+    const app = mount(TerminalPage, {target: host, props: {backend, i18n: createTestI18n(enCatalog)}});
 
     flushSync();
 
@@ -42,6 +59,34 @@ describe('TerminalPage (dev path)', () => {
 
     expect(labels.some((t) => /router cli/i.test(t))).toBe(true);
     expect(labels.some((t) => /entware shell/i.test(t))).toBe(true);
+
+    void unmount(app);
+    host.remove();
+  });
+
+  it('updates console buttons when locale changes', () => {
+    const {backend} = notInstalledBackend();
+    const changing = changingI18n();
+    const host = document.createElement('div');
+
+    document.body.appendChild(host);
+
+    const app = mount(TerminalPage, {target: host, props: {backend, i18n: changing.i18n}});
+
+    flushSync();
+    expect(host.textContent).toContain('Router CLI');
+    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+    expect(probe).not.toBeNull();
+    const enValue = probe?.textContent;
+    expect(enValue).toBe('Terminal English');
+
+    changing.setLocale('ru');
+    flushSync();
+
+    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(enValue).not.toBe('Терминал русский');
+    expect(probe?.textContent).toBe('Терминал русский');
+    expect(host.textContent).toContain('CLI роутера');
 
     void unmount(app);
     host.remove();
@@ -55,7 +100,7 @@ describe('TerminalPage (dev path)', () => {
 
     document.body.appendChild(host);
 
-    const app = mount(TerminalPage, {target: host, props: {backend}});
+    const app = mount(TerminalPage, {target: host, props: {backend, i18n: createTestI18n(enCatalog)}});
 
     flushSync();
     clickButton(host, /router cli/i);
@@ -76,7 +121,7 @@ describe('TerminalPage (dev path)', () => {
 
     document.body.appendChild(host);
 
-    const app = mount(TerminalPage, {target: host, props: {backend}});
+    const app = mount(TerminalPage, {target: host, props: {backend, i18n: createTestI18n(enCatalog)}});
 
     flushSync();
     clickButton(host, /entware shell/i);

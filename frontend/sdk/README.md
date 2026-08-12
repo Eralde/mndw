@@ -200,6 +200,84 @@ interface PluginStorage {
 }
 ```
 
+## Localization
+
+`PluginContext.i18n` is required. It is a synchronous `PluginI18n` snapshot for the committed host
+locale. Catalog JSON is nested; dotted lookup uses the path through that tree, and hyphens separate
+words inside one key part:
+
+```json
+{
+  "wifi": {
+    "encryption": {"disabled": "Unsecured"},
+    "band": {"2": "2.4 GHz Wi-Fi"}
+  },
+  "error": {"integer-only": "Only integer values are allowed"}
+}
+```
+
+Use `wifi.encryption.disabled`, `wifi.band.2`, and `error.integer-only` in code. `i18n.t()` returns
+the raw key when no catalog value exists; it never renders an empty string. `formatNumber()` and
+`formatDate()` follow the committed host locale. `direction` is the reserved literal `'ltr'`; RTL is
+out of scope for this plan.
+
+Use framework helpers so child components observe the same locale revision:
+
+```svelte
+<script lang="ts">
+  import type {PluginI18n} from '@mndw/sdk';
+  import {createTranslator} from '@mndw/sdk/svelte';
+
+  let {i18n}: {i18n: PluginI18n} = $props();
+  const translator = createTranslator(i18n);
+</script>
+
+<h1>{$translator.t('wifi.encryption.disabled')}</h1>
+```
+
+```ts
+import {useTranslator} from '@mndw/sdk/vue';
+
+const translator = useTranslator(props.ctx.i18n);
+const label = translator.t('wifi.band.2');
+```
+
+```ts
+import {DestroyRef, inject} from '@angular/core';
+import {createTranslatorSignals} from '@mndw/sdk/angular';
+
+const translator = createTranslatorSignals(ctx.i18n, inject(DestroyRef));
+```
+
+```ts
+import {bindLocale} from '@mndw/sdk/bind-locale';
+
+const unsubscribe = bindLocale(ctx.i18n, render);
+// Call unsubscribe from PluginInstance.unmount().
+```
+
+Angular plugins provide one translator through their root `TRANSLATOR` token and child components
+inject that token. Svelte children receive the translator store/helper, not raw `PluginI18n`.
+Vanilla translation calls belong in audited render modules with `bindLocale` teardown. Template-
+reachable code must not call raw `PluginI18n.t`, `formatNumber`, or `formatDate`; the typed lint rule
+enforces this for Svelte and Angular, with the MWS tile-label adapter as an explicit exemption.
+
+The Vue SFC parser remains outside typed enforcement and has no textual raw-i18n rule. Generated
+locale-switch tests and the packed smoke test provide behavioral coverage for Vue.
+
+Shared catalog parsing is available from `@mndw/sdk/catalog`:
+
+```ts
+import {parseCatalog} from '@mndw/sdk/catalog';
+
+const catalog = parseCatalog({wifi: {band: {'2': '2.4 GHz Wi-Fi'}}}, '<catalog>');
+```
+
+`@mndw/sdk/testing` exports `createTestI18n`, accepting either nested catalogs like production or
+flat dotted-key maps for terse tests. Every generated/plugin/packed smoke probe must have different
+English and Russian values and assert `enValue !== ruValue` before switching; otherwise a test could
+pass without proving that the DOM reacted.
+
 ### Overlay
 
 ```ts

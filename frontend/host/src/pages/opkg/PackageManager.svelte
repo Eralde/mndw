@@ -4,6 +4,8 @@ import {onMount} from 'svelte';
 import {SvelteSet} from 'svelte/reactivity';
 import {OpkgError, opkgClient} from '../../services/opkg-client.js';
 import type {PackageEntry} from '../../services/opkg-client.js';
+import {hostT} from '../../services/host-i18n.svelte.js';
+import {appState} from '../../state/app.svelte.js';
 
 let packages = $state<PackageEntry[]>([]);
 let checked = new SvelteSet<string>();
@@ -69,14 +71,16 @@ const fetchPackages = async (suppressStatus = false): Promise<void> => {
     loadError = false;
     checked.clear();
     if (!suppressStatus) {
-      setStatus(`${packages.length} packages loaded`, 'info');
+      setStatus(hostT('packages.loaded', {count: packages.length}), 'info');
     }
   } catch (error) {
     packages = [];
     checked.clear();
     loadError = true;
     setStatus(
-      error instanceof OpkgError ? error.message : 'Failed to load packages',
+      error instanceof OpkgError
+        ? error.message
+        : hostT('packages.load-failed'),
       'error',
     );
   } finally {
@@ -86,7 +90,6 @@ const fetchPackages = async (suppressStatus = false): Promise<void> => {
 
 const runAction = async (
   action: 'install' | 'remove' | 'upgrade',
-  label: string,
   pkgFilter: (p: PackageEntry) => boolean,
 ): Promise<void> => {
   const names = Array.from(checked).filter((name) => {
@@ -98,7 +101,12 @@ const runAction = async (
   }
 
   loading = true;
-  setStatus(`${label}ing...`, 'info');
+  const actionKey = action === 'install'
+    ? 'packages.installing'
+    : action === 'remove'
+    ? 'packages.removing'
+    : 'packages.updating';
+  setStatus(hostT(actionKey), 'info');
   try {
     const result = action === 'install'
       ? await opkgClient.install(names)
@@ -109,7 +117,9 @@ const runAction = async (
     setStatus(result.message, 'success');
   } catch (error) {
     setStatus(
-      error instanceof OpkgError ? error.message : `${label} failed`,
+      error instanceof OpkgError
+        ? error.message
+        : hostT('packages.action-failed', {action: hostT(actionKey)}),
       'error',
     );
   } finally {
@@ -119,14 +129,14 @@ const runAction = async (
 
 const handleRefresh = async (): Promise<void> => {
   loading = true;
-  setStatus('Refreshing metadata...', 'info');
+  setStatus(hostT('packages.refresh'), 'info');
   try {
     const result = await opkgClient.update();
     await fetchPackages(true);
     setStatus(result.message, 'success');
   } catch (error) {
     setStatus(
-      error instanceof OpkgError ? error.message : 'Refresh failed',
+      error instanceof OpkgError ? error.message : hostT('app.error'),
       'error',
     );
   } finally {
@@ -172,23 +182,26 @@ onMount(() => {
 });
 </script>
 
-<div class="opkg-manager">
+<div
+  class="opkg-manager"
+  data-locale={appState.locale}
+>
   <div class="header-row">
-    <h1>Package Manager</h1>
+    <h1>{hostT('packages.title')}</h1>
     <div class="header-actions">
       <mndw-button
         variant="secondary"
         disabled={loading}
         onclick={() => void handleRefresh()}
       >
-        Refresh Metadata
+        {hostT('packages.refresh')}
       </mndw-button>
       <mndw-button
         variant="secondary"
         disabled={loading}
         onclick={() => void fetchPackages()}
       >
-        Reload
+        {hostT('packages.reload')}
       </mndw-button>
     </div>
   </div>
@@ -197,50 +210,49 @@ onMount(() => {
     <input
       type="search"
       bind:value={filter}
-      placeholder="Search packages..."
+      placeholder={hostT('packages.search')}
       class="filter-input"
     />
     <mndw-tabs
       value={filterMode}
       onmndwchange={handleFilterChange}
     >
-      <mndw-tab id="all">All</mndw-tab>
-      <mndw-tab id="installed">Installed</mndw-tab>
-      <mndw-tab id="updates">Updates ({updateCount})</mndw-tab>
+      <mndw-tab id="all">{hostT('packages.all')}</mndw-tab>
+      <mndw-tab id="installed">{hostT('packages.installed')}</mndw-tab>
+      <mndw-tab id="updates">{
+        hostT('packages.updates', {count: updateCount})
+      }</mndw-tab>
     </mndw-tabs>
   </div>
 
   <div class="bulk-bar">
-    <span class="bulk-label">With selected:</span>
+    <span class="bulk-label">{hostT('packages.with-selected')}</span>
     <mndw-button
       variant="primary"
       disabled={loading || !canInstall}
-      onclick={() =>
-      void runAction('install', 'Install', (p) =>
-        p.status === 'uninstalled')}
+      onclick={() => void runAction('install', (p) => p.status === 'uninstalled')}
     >
-      Install
+      {hostT('packages.install')}
     </mndw-button>
     <mndw-button
       variant="danger"
       disabled={loading || !canRemove}
-      onclick={() =>
-      void runAction('remove', 'Remove', (p) =>
-        p.status !== 'uninstalled')}
+      onclick={() => void runAction('remove', (p) => p.status !== 'uninstalled')}
     >
-      Remove
+      {hostT('packages.remove')}
     </mndw-button>
     <mndw-button
       variant="primary"
       disabled={loading || !canUpdate}
       onclick={() =>
-      void runAction('upgrade', 'Upgrade', (p) =>
-        p.status === 'update_available')}
+      void runAction('upgrade', (p) => p.status === 'update_available')}
     >
-      Update
+      {hostT('packages.update')}
     </mndw-button>
     {#if selectedCount > 0}
-      <span class="selected-count">({selectedCount} selected)</span>
+      <span class="selected-count">{
+        hostT('packages.selected', {count: selectedCount})
+      }</span>
     {/if}
   </div>
 
@@ -252,14 +264,14 @@ onMount(() => {
             <mndw-checkbox
               checked={allFilteredChecked}
               indeterminate={someFilteredChecked && !allFilteredChecked}
-              aria-label="Select all filtered packages"
+              aria-label={hostT('packages.select-all')}
               onmndwchange={handleSelectAllChange}
             ></mndw-checkbox>
           </th>
-          <th class="col-name">Package</th>
-          <th class="col-ver">Version</th>
-          <th class="col-status">Status</th>
-          <th class="col-desc">Description</th>
+          <th class="col-name">{hostT('packages.package')}</th>
+          <th class="col-ver">{hostT('packages.version')}</th>
+          <th class="col-status">{hostT('packages.status')}</th>
+          <th class="col-desc">{hostT('packages.description')}</th>
         </tr>
       </thead>
       <tbody>
@@ -269,7 +281,7 @@ onMount(() => {
               colspan="5"
               class="msg-cell"
             >
-              Loading...
+              {hostT('packages.loading')}
             </td>
           </tr>
         {:else if loadError}
@@ -278,7 +290,7 @@ onMount(() => {
               colspan="5"
               class="msg-cell"
             >
-              Failed to load packages
+              {hostT('packages.load-failed')}
             </td>
           </tr>
         {:else if packages.length === 0}
@@ -287,7 +299,7 @@ onMount(() => {
               colspan="5"
               class="msg-cell"
             >
-              No packages found
+              {hostT('packages.empty')}
             </td>
           </tr>
         {:else if filtered.length === 0}
@@ -296,7 +308,7 @@ onMount(() => {
               colspan="5"
               class="msg-cell"
             >
-              No packages match your filter
+              {hostT('packages.no-match')}
             </td>
           </tr>
         {:else}
@@ -305,7 +317,7 @@ onMount(() => {
               <td class="col-check">
                 <mndw-checkbox
                   checked={checked.has(pkg.name)}
-                  aria-label={`Select ${pkg.name}`}
+                  aria-label={hostT('packages.select-package', {name: pkg.name})}
                   onmndwchange={(event: CustomEvent<MndwCheckboxChangeDetail>) =>
                   handlePackageChange(pkg.name, event)}
                 ></mndw-checkbox>
@@ -326,7 +338,7 @@ onMount(() => {
                 <span class="badge badge-{pkg.status}">
                   {
                     pkg.status === 'update_available'
-                    ? 'update available'
+                    ? hostT('packages.update-available')
                     : pkg.status
                   }
                 </span>

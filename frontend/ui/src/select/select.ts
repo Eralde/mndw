@@ -2,6 +2,8 @@ import {LitElement, type PropertyDeclarations, type PropertyValues, type Templat
 import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
 import {deepActiveElement} from '../focus.js';
 import {FormAssociatedController} from '../forms/form-associated.js';
+import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
+import {createLocalizedProperty, type LocalizedPropertyState} from '../localized-property.js';
 import {type UiCloseReason, type UiLayer, type UiLayerPresentation, getOverlayProvider} from '../overlay.js';
 import {SELECT_VIEWPORT_PADDING, availablePopoverHeight, selectPresentation} from '../position/position.js';
 import {controlBase, focusRing, hostTypography} from '../styles/base.js';
@@ -121,7 +123,7 @@ export class MndwSelect extends LitElement {
   `;
 
   declare public value: string;
-  declare public placeholder: string;
+  declare public placeholder: string | undefined;
   declare public disabled: boolean;
   declare public required: boolean;
   declare public invalid: boolean;
@@ -137,6 +139,8 @@ export class MndwSelect extends LitElement {
   private popoverFrame: number | null = null;
   private popoverGeometry: PopoverGeometry | null = null;
   private popoverNeedsReposition = false;
+  private readonly placeholderState: LocalizedPropertyState<string | undefined>;
+  private localeUnsubscribe: (() => void) | null = null;
   private readonly formState = new FormAssociatedController(this, {
     isExplicitlyDisabled: () => this.disabled,
     onReset: () => this.resetForm(),
@@ -148,8 +152,8 @@ export class MndwSelect extends LitElement {
 
   constructor() {
     super();
+    this.placeholderState = createLocalizedProperty<string | undefined>(this, 'placeholder');
     this.value = '';
-    this.placeholder = 'Select…';
     this.disabled = false;
     this.required = false;
     this.invalid = false;
@@ -163,11 +167,15 @@ export class MndwSelect extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    this.localeUnsubscribe = subscribeMndwUiLocale(this.onLocaleChange);
+    this.applyLocale();
     this.formState.captureInitialAttributes(['value']);
     this.addEventListener(MNDW_OPTION_CHANGE_EVENT, this.onOptionChange);
   }
 
   public override disconnectedCallback(): void {
+    this.localeUnsubscribe?.();
+    this.localeUnsubscribe = null;
     super.disconnectedCallback();
     this.removeEventListener(MNDW_OPTION_CHANGE_EVENT, this.onOptionChange);
     this.closePanel(false);
@@ -199,7 +207,7 @@ export class MndwSelect extends LitElement {
         @keydown=${this.onTriggerKeydown}
       >
         <span class="value ${selected ? '' : 'placeholder'}" part="value">
-          ${selected ? selected.label : this.placeholder}
+          ${selected ? selected.label : this.placeholder ?? getMndwUiText('select.placeholder')}
         </span>
         <span class="indicator" part="indicator" aria-hidden="true">▾</span>
       </div>
@@ -247,7 +255,7 @@ export class MndwSelect extends LitElement {
     this.formState.setFormValue(submittedValue, this.value);
 
     if (this.required && !selected) {
-      this.formState.setValidity({valueMissing: true}, 'Please select an option.');
+      this.formState.setValidity({valueMissing: true}, getMndwUiText('select.validation.required'));
     } else {
       this.formState.clearValidity();
     }
@@ -271,6 +279,16 @@ export class MndwSelect extends LitElement {
 
   private options(): OptionModel[] {
     return readOptions(this);
+  }
+
+  private readonly onLocaleChange = (): void => {
+    this.placeholderState.setGenerated(getMndwUiText('select.placeholder'));
+    this.layer?.setTitle?.(this.label || getMndwUiText('select.overlay.title'));
+    this.requestUpdate();
+  };
+
+  private applyLocale(): void {
+    this.placeholderState.setGenerated(getMndwUiText('select.placeholder'));
   }
 
   private readonly onSlotChange = (): void => {
@@ -332,7 +350,7 @@ export class MndwSelect extends LitElement {
     const layer = getOverlayProvider().open({
       anchor: this,
       presentation,
-      title: this.label || 'Select option',
+      title: this.label || getMndwUiText('select.overlay.title'),
       className: this.panelClass || undefined,
     });
 

@@ -1,3 +1,5 @@
+import type {PluginI18n} from '@mndw/sdk';
+
 export interface EchoResult {
   httpStatus: number;
   echoHeader: string | null;
@@ -12,7 +14,7 @@ export type EchoView =
   | {state: 'error'; message: string}
   | {state: 'result'; result: EchoResult};
 
-export function render(root: HTMLElement, view: EchoView): void {
+export function render(root: HTMLElement, view: EchoView, i18n: PluginI18n): void {
   root.replaceChildren();
 
   const el = document.createElement('div');
@@ -20,19 +22,19 @@ export function render(root: HTMLElement, view: EchoView): void {
   switch (view.state) {
     case 'idle':
       el.className = 'mndw-echo__idle';
-      el.textContent = 'Press GET or POST to call the backend.';
+      el.textContent = i18n.t('idle');
       break;
     case 'pending':
       el.className = 'mndw-echo__pending';
-      el.textContent = 'Backend is pending approval — approve it in Settings, then retry.';
+      el.textContent = i18n.t('pending');
       break;
     case 'disabled':
       el.className = 'mndw-echo__disabled';
-      el.textContent = 'Backend is disabled — enable it in Settings, then retry.';
+      el.textContent = i18n.t('disabled');
       break;
     case 'unavailable':
       el.className = 'mndw-echo__unavailable';
-      el.textContent = 'This plugin has no backend available.';
+      el.textContent = i18n.t('unavailable');
       break;
     case 'error':
       el.className = 'mndw-alert mndw-alert--danger';

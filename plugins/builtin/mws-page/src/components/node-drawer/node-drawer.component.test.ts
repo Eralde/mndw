@@ -1,6 +1,7 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {Subject, of, throwError} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {normalizeDeviceHosts, normalizeMembers} from '../../api/normalize';
@@ -9,10 +10,11 @@ import type {ControllerInfo, MwsNode} from '../../domain/mws/mws.types';
 import {loadFixture} from '../../fixtures/load';
 import {MwsDataService} from '../../services/mws-data.service';
 import {MwsWriteService} from '../../services/mws-write.service';
-import {MWS_RENAME_API} from '../../tokens';
+import {MWS_RENAME_API, TRANSLATOR} from '../../tokens';
 import drawerStyles from './node-drawer.component.scss?raw';
 import drawerTemplate from './node-drawer.component.html?raw';
 import {NodeDrawerComponent} from './node-drawer.component';
+import enCatalog from '../../../i18n/en.json';
 
 const CONTROLLER: ControllerInfo = {
   mac: '02:7d:4a:91:c3:10',
@@ -83,6 +85,7 @@ describe('NodeDrawerComponent', () => {
         {provide: MWS_RENAME_API, useValue: {renameNode}},
         {provide: MwsDataService, useValue: {refreshNow}},
         {provide: MwsWriteService, useValue: {setPower}},
+        {provide: TRANSLATOR, useValue: createTestI18n(enCatalog)},
       ],
     }).compileComponents();
   });

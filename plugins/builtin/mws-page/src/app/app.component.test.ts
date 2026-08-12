@@ -1,7 +1,9 @@
 import '@angular/compiler';
-import {signal, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {DestroyRef, inject, signal, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
 import type {PageRoute} from '@mndw/sdk';
+import {createTranslatorSignals} from '@mndw/sdk/angular';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {BehaviorSubject} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {normalizeMembers} from '../api/normalize';
@@ -11,7 +13,7 @@ import {loadFixture} from '../fixtures/load';
 import {MwsDataService, type MwsViewPhase} from '../services/mws-data.service';
 import {FakePluginStorage} from '../test-support/plugin-storage.fake';
 import {NodeTableColumnsStore} from '../services/node-table-columns.store';
-import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, PLUGIN_STORAGE, SHARED_PLUGIN_STORAGE} from '../tokens';
+import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, PLUGIN_STORAGE, SHARED_PLUGIN_STORAGE, TRANSLATOR} from '../tokens';
 import {NodePositionStore} from '../services/node-position.store';
 import graphStyles from '../components/mws-graph/mws-graph.component.scss?raw';
 import clientsTableStyles from '../components/clients-table/clients-table.component.scss?raw';
@@ -21,6 +23,8 @@ import nodesTableTemplate from '../components/nodes-table/nodes-table.component.
 import appStyles from './app.component.scss?raw';
 import appTemplate from './app.component.html?raw';
 import {AppComponent} from './app.component';
+import enCatalog from '../../i18n/en.json';
+import ruCatalog from '../../i18n/ru.json';
 
 interface FakeData {
   phase: ReturnType<typeof signal<MwsViewPhase>>;
@@ -31,6 +35,8 @@ interface FakeData {
   start: ReturnType<typeof vi.fn>;
   retry: ReturnType<typeof vi.fn>;
 }
+
+let testI18n = createTestI18n(enCatalog);
 
 function fakeData(phase: MwsViewPhase, roots: MwsNode[] = []): FakeData {
   return {
@@ -75,8 +81,25 @@ function fixtureRoots(): MwsNode[] {
 }
 
 describe('AppComponent', () => {
+  it('updates root and child probes after a locale switch without recreation', () => {
+    const fixture = render(fakeData('ready', fixtureRoots()));
+    const rootProbe = fixture.nativeElement.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+    const childProbe = fixture.nativeElement.querySelector<HTMLElement>('[data-testid="l10n-child-probe"]');
+
+    expect(rootProbe?.textContent).toBe('MWS English probe');
+    expect(childProbe?.textContent).toBe('MWS English probe');
+    testI18n.setLocale('ru', ruCatalog);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="l10n-probe"]')).toBe(rootProbe);
+    expect(fixture.nativeElement.querySelector('[data-testid="l10n-child-probe"]')).toBe(childProbe);
+    expect(rootProbe?.textContent).toBe('Проба MWS');
+    expect(childProbe?.textContent).toBe('Проба MWS');
+  });
+
   beforeEach(async () => {
     TestBed.resetTestingModule();
+    testI18n = createTestI18n(enCatalog);
     await resolveComponentResources((url: string) => {
       if (url.endsWith('app.component.html')) {
         return Promise.resolve(appTemplate);
@@ -114,6 +137,7 @@ describe('AppComponent', () => {
         {provide: MwsDataService, useValue: undefined},
         {provide: PLUGIN_STORAGE, useValue: new FakePluginStorage()},
         {provide: SHARED_PLUGIN_STORAGE, useValue: new FakePluginStorage()},
+        {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(testI18n, inject(DestroyRef))},
         NodePositionStore,
         NodeTableColumnsStore,
       ],

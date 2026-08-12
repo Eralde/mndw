@@ -5,6 +5,7 @@ import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, getPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
+import {resetPluginCatalogServiceForTests, setPluginCatalogFetchForTests} from '../services/plugin-catalog.service.js';
 
 const emptyBackend: PluginBackendDescriptor = {
   routes: {},
@@ -61,6 +62,7 @@ afterEach(() => {
   replaceDepsStatuses([]);
   appState.pluginLoadError = null;
   vi.restoreAllMocks();
+  resetPluginCatalogServiceForTests();
 });
 
 // eslint-disable-next-line max-lines-per-function -- loader behavior cases stay together.
@@ -105,6 +107,33 @@ describe('loadPlugins', () => {
 
     expect(h.loadStylesheet).toHaveBeenCalledWith('/user-plugins/alpha/index.css?v=1.2.3', 'alpha');
     expect(h.importModule).toHaveBeenCalledWith('/user-plugins/alpha/index.js?v=1.2.3');
+  });
+
+  it('imports module before publishing a plugin with its populated catalog cell', async () => {
+    const h = harness([widget('localized', {
+      i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'}},
+    })]);
+    const events: string[] = [];
+
+    h.importModule.mockImplementation((url) => {
+      events.push(`module:${url}`);
+
+      return Promise.resolve(goodModule);
+    });
+    setPluginCatalogFetchForTests((url) => {
+      events.push(`catalog:${url}`);
+
+      return Promise.resolve({title: 'Hello'});
+    });
+
+    await loadPlugins(h);
+
+    const loaded = pluginRegistry.get('localized');
+
+    expect(loaded?.catalog).toBeDefined();
+    expect(loaded?.catalog?.readCurrentState().primaryCatalog).toEqual({title: 'Hello'});
+    expect(events[0]).toContain('module:');
+    expect(events[1]).toContain('catalog:');
   });
 
   it('skips disabled and pending entries', async () => {

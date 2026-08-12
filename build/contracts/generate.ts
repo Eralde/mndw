@@ -33,6 +33,10 @@ const fixtureMappings: readonly FixtureMapping[] = [
     destinations: ['frontend/sdk/fixtures/palettes', 'daemon/mndwd/internal/palette/fixtures/palettes'],
   },
   {
+    source: 'contracts/i18n-packages',
+    destinations: ['tooling/cli/fixtures/i18n-packages', 'daemon/mndwd/internal/mgmt/fixtures/i18n-packages'],
+  },
+  {
     source: 'contracts/protocol',
     destinations: ['daemon/contracts-go/fixtures/protocol'],
     include: (relativePath) => relativePath.endsWith('.golden.json'),

@@ -1,9 +1,17 @@
-import {CUSTOM_ELEMENTS_SCHEMA, Component, EventEmitter, Input, Output, inject} from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  Component,
+  EventEmitter,
+  Input,
+  type OnDestroy,
+  Output,
+  inject,
+} from '@angular/core';
 import type {MwsNode, MwsRadioPower} from '../../domain/mws/mws.types';
 import {formatCpuLoad, formatMemory, formatRate, formatRssi, formatSpeed, formatUptime} from '../../format';
 import {MwsDataService} from '../../services/mws-data.service';
 import {type MwsWriteResult, MwsWriteService} from '../../services/mws-write.service';
-import {MWS_RENAME_API, type MwsRenameApi} from '../../tokens';
+import {MWS_RENAME_API, type MwsRenameApi, TRANSLATOR} from '../../tokens';
 import {validateNodeName} from '../../api/node-name';
 
 export type MwsWifiInterface = 'WifiMaster0' | 'WifiMaster1';
@@ -24,7 +32,8 @@ const UNAVAILABLE_POWER: MwsRadioPower = {value: null, available: false};
   styleUrls: ['./node-drawer.component.scss'],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
-export class NodeDrawerComponent {
+export class NodeDrawerComponent implements OnDestroy {
+  private readonly translator = inject(TRANSLATOR);
   private readonly renameApi = inject<MwsRenameApi>(MWS_RENAME_API);
   private readonly data = inject(MwsDataService);
   private readonly write = inject(MwsWriteService);
@@ -105,7 +114,7 @@ export class NodeDrawerComponent {
     const validation = validateNodeName(this.draft);
 
     if (validation.value === null) {
-      this.error = validation.error ?? 'Invalid name.';
+      this.error = validation.error ?? this.t('error.invalid-name');
 
       return;
     }
@@ -126,7 +135,7 @@ export class NodeDrawerComponent {
       },
       error: (error: unknown) => {
         this.pending = false;
-        this.error = error instanceof Error ? error.message : 'Rename failed.';
+        this.error = error instanceof Error ? error.message : this.t('error.rename-failed');
       },
     });
   }
@@ -168,7 +177,7 @@ export class NodeDrawerComponent {
   protected powerValueText(node: MwsNode, interfaceName: MwsWifiInterface): string {
     const power = this.powerFor(node, interfaceName);
 
-    return power.available ? String(this.powerValue(node, interfaceName)) : 'Unavailable';
+    return power.available ? String(this.powerValue(node, interfaceName)) : this.t('drawer.unavailable');
   }
 
   protected powerDisabled(node: MwsNode, interfaceName: MwsWifiInterface): boolean {
@@ -203,7 +212,7 @@ export class NodeDrawerComponent {
         state.pending = false;
       })
       .then(undefined, (error: unknown) => {
-        this.failPowerWrite(interfaceName, error instanceof Error ? error.message : 'TX power update failed.');
+        this.failPowerWrite(interfaceName, error instanceof Error ? error.message : this.t('error.tx-power-failed'));
       });
   }
 
@@ -263,7 +272,7 @@ export class NodeDrawerComponent {
       }
     }
 
-    return 'TX power update failed.';
+    return this.t('error.tx-power-failed');
   }
 
   private copyPower(power: MwsRadioPower): MwsRadioPower {
@@ -272,5 +281,12 @@ export class NodeDrawerComponent {
 
   private samePower(left: MwsRadioPower | null, right: MwsRadioPower | null): boolean {
     return left?.value === right?.value && left?.available === right?.available;
+  }
+
+  protected t(key: string, values?: Record<string, unknown>): string {
+    return this.translator.t(key, values);
+  }
+
+  public ngOnDestroy(): void {
   }
 }

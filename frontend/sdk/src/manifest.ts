@@ -1,3 +1,5 @@
+import type {PluginManifestI18n} from './i18n.js';
+
 /**
  * Plugin manifest v3 contracts.
  *
@@ -55,6 +57,7 @@ export interface PluginManifestBase {
   entry: string;
   icon?: string;
   permissions?: PluginPermission[];
+  i18n?: PluginManifestI18n;
   backend?: PluginBackend;
 }
 

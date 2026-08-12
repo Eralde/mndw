@@ -6,6 +6,7 @@
   "route": "/terminal",
   "label": "Terminal",
   "entry": "index.js",
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
   "backend": {
     "kind": "service",
     "protocolVersion": 1,

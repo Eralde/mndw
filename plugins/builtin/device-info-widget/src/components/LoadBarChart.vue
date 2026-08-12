@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref} from 'vue';
+import type {Translator} from '@mndw/sdk';
 
 import {barIndexAt, computeChartBars, prepareChartHistory} from './load-bar-chart-data.js';
 
-const props = defineProps<{label: string; value: number; history: number[]}>();
+const props = withDefaults(defineProps<{
+  label: string;
+  value: number;
+  history: number[];
+  translator: Translator;
+}>(), {
+});
 
 const CHART_HEIGHT = 28;
 const BAR_GAP = 1;
@@ -85,7 +92,7 @@ onUnmounted(() => {
         class="load-bar-chart__svg"
         :viewBox="`0 0 ${chartWidth} ${CHART_HEIGHT}`"
         preserveAspectRatio="none"
-        :aria-label="`${label} history`"
+        :aria-label="`${label} ${props.translator.t('history')}`"
       >
         <rect
           v-for="(bar, index) in bars"
@@ -112,7 +119,7 @@ onUnmounted(() => {
           :y2="CHART_HEIGHT - 0.5"
         />
       </svg>
-      <span v-else class="load-bar-chart__empty">No data</span>
+      <span v-else class="load-bar-chart__empty">{{ props.translator.t('no-data') }}</span>
       <div v-if="tooltip !== null" class="load-bar-chart__tooltip" :style="{left: `${tooltip.left}px`}">
         {{ tooltip.value }}%
       </div>

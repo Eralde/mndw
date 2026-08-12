@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {BackendDisabled, BackendNotApproved, type PluginContext} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {mountEchoWidget} from './backend-echo.js';
+import enCatalog from '../i18n/en.json';
 
 type Backend = NonNullable<PluginContext['backend']>;
 
@@ -32,7 +34,7 @@ describe('mountEchoWidget', () => {
     );
     const el = container();
 
-    mountEchoWidget(el, fakeBackend(fetchImpl));
+    mountEchoWidget(el, fakeBackend(fetchImpl), createTestI18n(enCatalog));
 
     el.querySelector<HTMLButtonElement>('.mndw-echo__get')?.click();
 
@@ -47,7 +49,7 @@ describe('mountEchoWidget', () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', {status: 418}));
     const el = container();
 
-    mountEchoWidget(el, fakeBackend(fetchImpl));
+    mountEchoWidget(el, fakeBackend(fetchImpl), createTestI18n(enCatalog));
 
     const input = el.querySelector<HTMLInputElement>('.mndw-echo__status-input');
 
@@ -65,7 +67,7 @@ describe('mountEchoWidget', () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response('{}', {status: 200}));
     const el = container();
 
-    mountEchoWidget(el, fakeBackend(fetchImpl));
+    mountEchoWidget(el, fakeBackend(fetchImpl), createTestI18n(enCatalog));
 
     el.querySelector<HTMLButtonElement>('.mndw-echo__post')?.click();
 
@@ -77,7 +79,7 @@ describe('mountEchoWidget', () => {
     const fetchImpl = vi.fn().mockRejectedValue(new BackendNotApproved('echoGet'));
     const el = container();
 
-    mountEchoWidget(el, fakeBackend(fetchImpl));
+    mountEchoWidget(el, fakeBackend(fetchImpl), createTestI18n(enCatalog));
 
     el.querySelector<HTMLButtonElement>('.mndw-echo__get')?.click();
 
@@ -90,7 +92,7 @@ describe('mountEchoWidget', () => {
     const fetchImpl = vi.fn().mockRejectedValue(new BackendDisabled('echoGet'));
     const el = container();
 
-    mountEchoWidget(el, fakeBackend(fetchImpl));
+    mountEchoWidget(el, fakeBackend(fetchImpl), createTestI18n(enCatalog));
 
     el.querySelector<HTMLButtonElement>('.mndw-echo__get')?.click();
 
@@ -102,10 +104,35 @@ describe('mountEchoWidget', () => {
   it('renders unavailable and never fetches when no backend is present', () => {
     const el = container();
 
-    mountEchoWidget(el, undefined);
+    mountEchoWidget(el, undefined, createTestI18n(enCatalog));
 
     el.querySelector<HTMLButtonElement>('.mndw-echo__get')?.click();
 
     expect(el.querySelector('.mndw-echo__unavailable')).not.toBeNull();
+  });
+
+  it('updates controls and result surface without remounting', () => {
+    const i18n = createTestI18n({l10n: {probe: 'Echo English'}, status: 'Status EN', get: 'Get EN', post: 'Post EN', idle: 'Idle EN'});
+    const el = container();
+
+    mountEchoWidget(el, undefined, i18n);
+
+    const input = el.querySelector<HTMLInputElement>('.mndw-echo__status-input');
+    const get = el.querySelector<HTMLButtonElement>('.mndw-echo__get');
+    const post = el.querySelector<HTMLButtonElement>('.mndw-echo__post');
+    const result = el.querySelector<HTMLElement>('.mndw-echo__result');
+    const probe = el.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+
+    expect(probe?.textContent).toBe('Echo English');
+    expect(result?.textContent).toContain('Idle EN');
+    i18n.setLocale('ru', {l10n: {probe: 'Эхо русский'}, status: 'Статус RU', get: 'Получить RU', post: 'Отправить RU', idle: 'Простой RU'});
+
+    expect(el.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(probe?.textContent).toBe('Эхо русский');
+    expect(input?.placeholder).toBe('Статус RU');
+    expect(get?.textContent).toBe('Получить RU');
+    expect(post?.textContent).toBe('Отправить RU');
+    expect(el.querySelector('.mndw-echo__result')).toBe(result);
+    expect(result?.textContent).toContain('Простой RU');
   });
 });

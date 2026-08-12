@@ -1,6 +1,7 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import type {BackendClient, PluginContext} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import drawerStyles from './components/node-drawer/node-drawer.component.scss?raw';
@@ -14,6 +15,7 @@ import appStyles from './app/app.component.scss?raw';
 import appTemplate from './app/app.component.html?raw';
 import {createInstance} from './index';
 import {FakePluginStorage} from './test-support/plugin-storage.fake';
+import enCatalog from '../i18n/en.json';
 
 function fakeContext(backend: BackendClient | null = null): {
   ctx: PluginContext;
@@ -34,6 +36,7 @@ function fakeContext(backend: BackendClient | null = null): {
     instanceId: 'test',
     onThemeChange: vi.fn(() => unsubscribe),
     overlay: {open: vi.fn(), createLayer: vi.fn(), closeAll},
+    i18n: createTestI18n(enCatalog),
   } as unknown as PluginContext;
 
   return {ctx, closeAll, unsubscribe, queue};

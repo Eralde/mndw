@@ -1,7 +1,15 @@
-import {CUSTOM_ELEMENTS_SCHEMA, Component, EventEmitter, Input, Output} from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  Component,
+  EventEmitter,
+  Input,
+  Output,
+  inject,
+} from '@angular/core';
 import type {MndwSliderInputDetail} from '@mndw/ui';
 import type {NetworkInterface} from '../../types/rci.types';
 import {refreshMsToSeconds, refreshSecondsToMs} from '../../utils/refresh.utils';
+import {TRANSLATOR} from '../../tokens';
 
 /**
  * Settings form body. Rendered inside a host-managed overlay shell (see open-settings-dialog.ts).
@@ -14,6 +22,8 @@ import {refreshMsToSeconds, refreshSecondsToMs} from '../../utils/refresh.utils'
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class SettingsDialogComponent {
+  protected readonly translator = inject(TRANSLATOR);
+
   @Input({required: true})
   public interfaces: NetworkInterface[] = [];
 
@@ -33,6 +43,10 @@ export class SettingsDialogComponent {
   public readonly closeDialogEvent = new EventEmitter<void>();
 
   protected readonly refreshMsToSeconds = refreshMsToSeconds;
+
+  protected t(key: string): string {
+    return this.translator.t(key);
+  }
 
   protected onRefreshChange(value: string): void {
     this.refresh = refreshSecondsToMs(value);

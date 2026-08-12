@@ -1,10 +1,17 @@
 import type {MndwPlugin} from '@mndw/sdk';
+import {
+  clearPluginCatalogCells,
+  registerPluginCatalogCell,
+  unregisterPluginCatalogCell,
+  type PluginCatalogCell,
+} from '../services/plugin-catalog.service.js';
 import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-types.js';
 
 /** A plugin whose module has been imported and registered, keyed by its list entry. */
 export interface LoadedPlugin {
   entry: PluginListEntry;
   module: MndwPlugin;
+  catalog?: PluginCatalogCell;
 }
 
 export interface LoadedWidget extends LoadedPlugin {
@@ -24,6 +31,9 @@ export class PluginRegistry {
     }
 
     this.plugins.set(plugin.entry.name, plugin);
+    if (plugin.catalog !== undefined) {
+      registerPluginCatalogCell(plugin.catalog);
+    }
   }
 
   /**
@@ -58,6 +68,12 @@ export class PluginRegistry {
     }
 
     this.plugins.set(plugin.entry.name, plugin);
+    if (prior.catalog !== undefined) {
+      unregisterPluginCatalogCell(prior.catalog);
+    }
+    if (plugin.catalog !== undefined) {
+      registerPluginCatalogCell(plugin.catalog);
+    }
 
     return prior;
   }
@@ -79,7 +95,13 @@ export class PluginRegistry {
   }
 
   public clear(): void {
+    for (const plugin of this.plugins.values()) {
+      if (plugin.catalog !== undefined) {
+        unregisterPluginCatalogCell(plugin.catalog);
+      }
+    }
     this.plugins.clear();
+    clearPluginCatalogCells();
   }
 }
 

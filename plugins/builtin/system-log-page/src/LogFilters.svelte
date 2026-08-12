@@ -1,5 +1,7 @@
 <script lang="ts">
 import {SvelteSet} from 'svelte/reactivity';
+import type {Readable} from 'svelte/store';
+import type {Translator} from '@mndw/sdk';
 import {ALL_LOG_LEVELS, type FilterState, isFilterActive} from './log-filters';
 import LogLevelPills from './LogLevelPills.svelte';
 
@@ -7,11 +9,16 @@ interface Props {
   state: FilterState;
   filteredCount: number;
   totalCount: number;
+  translator: Readable<Translator>;
   onChange: (state: FilterState) => void;
 }
 
-let {state: filterState, filteredCount, totalCount, onChange}: Props = $props();
+let {state: filterState, filteredCount, totalCount, translator, onChange}: Props = $props();
 let expanded = $state(false);
+
+function translate(key: string, values?: Record<string, unknown>): string {
+  return $translator.t(key, values);
+}
 
 function updateQuery(query: string): void {
   onChange({query, levels: filterState.levels});
@@ -26,7 +33,7 @@ function resetFilters(): void {
   class="log-filters"
   data-filter-panel
   data-expanded={expanded}
-  aria-label="Log filters"
+  aria-label={translate('filter.aria-label')}
 >
   <div class="log-filters__header">
     <div class="log-filters__summary">
@@ -34,11 +41,11 @@ function resetFilters(): void {
         data-filter-toggle
         variant="ghost"
         aria-expanded={expanded}
-        aria-label={expanded ? 'Hide filters' : 'Show filters'}
+        aria-label={translate(expanded ? 'filter.hide' : 'filter.show')}
         onclick={() => expanded = !expanded}
       >
         <span class:log-filters__toggle--active={isFilterActive(filterState)}>
-          Filters {expanded ? '▲' : '▼'}
+          {translate('filter.label')} {expanded ? '▲' : '▼'}
         </span>
       </mndw-button>
       <span class="log-filters__count">
@@ -47,10 +54,18 @@ function resetFilters(): void {
           data-filtered-count={filteredCount}
           data-loaded-count={totalCount}
         >
-          Showing {filteredCount} of {totalCount} items
+          {
+            translate('filter.showing', {filtered: filteredCount,
+            total: totalCount})
+          }
         </span>
         <span class="log-filters__count-compact">
-          Showing {filteredCount}/{totalCount}
+          {
+            translate('filter.showing-compact', {
+              filtered: filteredCount,
+              total: totalCount,
+            })
+          }
         </span>
       </span>
       {#if isFilterActive(filterState)}
@@ -59,7 +74,7 @@ function resetFilters(): void {
           variant="secondary"
           onclick={resetFilters}
         >
-          Reset
+          {translate('filter.reset')}
         </mndw-button>
       {/if}
     </div>
@@ -71,14 +86,15 @@ function resetFilters(): void {
   >
     <mndw-input
       type="text"
-      aria-label="Search logs"
-      placeholder="Filter by substring"
+      aria-label={translate('filter.search')}
+      placeholder={translate('filter.placeholder')}
       value={filterState.query}
       onmndwinput={(event: CustomEvent<{value: string}>) =>
       updateQuery(event.detail.value)}
     ></mndw-input>
     <LogLevelPills
       activeLevels={filterState.levels}
+      {translator}
       onChange={(levels) => onChange({query: filterState.query, levels})}
     />
   </div>

@@ -157,6 +157,7 @@ function mountPluginRecord(
     hostInfo,
     undefined,
     controller.pageRoute,
+    plugin.catalog,
   );
   const result = mountPlugin(child, plugin, context);
 

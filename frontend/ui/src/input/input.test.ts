@@ -1,5 +1,6 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_FIELD_TAG, MndwField} from '../field/field.js';
+import {setMndwUiLocale} from '../i18n.js';
 import {MNDW_INPUT_TAG, MndwInput} from './input.js';
 
 beforeAll(() => {
@@ -25,6 +26,10 @@ async function mount(html: string): Promise<MndwInput> {
 
   return element;
 }
+
+afterEach(() => {
+  setMndwUiLocale('en');
+});
 
 async function settle(element: MndwInput): Promise<void> {
   await new Promise((resolve) => {
@@ -577,7 +582,7 @@ describe('<mndw-input> invalid announcement', () => {
 describe('<mndw-input> password toggle', () => {
   it('renders a password toggle button when type is password', async () => {
     const element = await mount('<mndw-input type="password"></mndw-input>');
-    const toggle = element.shadowRoot?.querySelector('[part="password-toggle"]');
+    const toggle = element.shadowRoot?.querySelector<HTMLElement>('[part="password-toggle"]');
 
     expect(toggle).not.toBeNull();
     expect(toggle?.getAttribute('type')).toBe('button');
@@ -591,7 +596,11 @@ describe('<mndw-input> password toggle', () => {
 
   it('toggles between Show password / Hide password aria-label', async () => {
     const element = await mount('<mndw-input type="password"></mndw-input>');
-    const toggle = element.shadowRoot?.querySelector('[part="password-toggle"]')!;
+    const toggle = element.shadowRoot?.querySelector<HTMLElement>('[part="password-toggle"]');
+
+    if (!toggle) {
+      throw new Error('missing password toggle');
+    }
 
     expect(toggle.getAttribute('aria-label')).toBe('Show password');
 
@@ -606,12 +615,30 @@ describe('<mndw-input> password toggle', () => {
     expect(toggle.getAttribute('aria-label')).toBe('Show password');
   });
 
+  it('updates password toggle labels when UI locale changes', async () => {
+    const element = await mount('<mndw-input type="password"></mndw-input>');
+    const toggle = element.shadowRoot?.querySelector<HTMLElement>('[part="password-toggle"]');
+
+    if (!toggle) {
+      throw new Error('missing password toggle');
+    }
+
+    setMndwUiLocale('ru');
+    await element.updateComplete;
+
+    expect(toggle.getAttribute('aria-label')).toBe('Показать пароль');
+  });
+
   it('changes the native input type between password and text', async () => {
     const element = await mount('<mndw-input type="password"></mndw-input>');
 
     expect(inner(element).getAttribute('type')).toBe('password');
 
-    const toggle = element.shadowRoot?.querySelector('[part="password-toggle"]')!;
+    const toggle = element.shadowRoot?.querySelector<HTMLElement>('[part="password-toggle"]');
+
+    if (!toggle) {
+      throw new Error('missing password toggle');
+    }
 
     toggle.click();
     await element.updateComplete;
@@ -636,7 +663,11 @@ describe('<mndw-input> password toggle', () => {
     element.value = 's3cret';
     await element.updateComplete;
 
-    const toggle = element.shadowRoot?.querySelector('[part="password-toggle"]')!;
+    const toggle = element.shadowRoot?.querySelector<HTMLElement>('[part="password-toggle"]');
+
+    if (!toggle) {
+      throw new Error('missing password toggle');
+    }
 
     toggle.click();
     await element.updateComplete;

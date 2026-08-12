@@ -2,6 +2,7 @@ import {
   CUSTOM_ELEMENTS_SCHEMA,
   Component,
   DestroyRef,
+  type OnDestroy,
   type OnInit,
   computed,
   effect,
@@ -15,7 +16,7 @@ import {Subscription, switchMap, timer} from 'rxjs';
 import type {RrdTick} from '@mndw/sdk/rrd';
 import type {NetworkInterface} from '../types/rci.types';
 import {RciService} from '../services/rci.service';
-import {PLUGIN_STORAGE} from '../tokens';
+import {PLUGIN_STORAGE, TRANSLATOR} from '../tokens';
 import type {OpenSettingsFn} from '../open-settings-dialog';
 import {toTxRxChartData} from '../utils/chart-data.utils';
 import {DEFAULT_REFRESH_MS, normalizeRefreshMs} from '../utils/refresh.utils';
@@ -32,13 +33,14 @@ const DEVICE_TIME_INTERVAL = 30000;
   imports: [CommonModule],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   public readonly openSettings = input.required<OpenSettingsFn>();
   public readonly setTileTitle = input<(title: string) => void>();
 
   private readonly rciService = inject(RciService);
   private readonly storage = inject(PLUGIN_STORAGE);
   private readonly destroyRef = inject(DestroyRef);
+  protected readonly translator = inject(TRANSLATOR);
 
   protected readonly interfaceList = signal<NetworkInterface[]>([]);
   protected readonly selectedInterface = signal<string>('');
@@ -75,6 +77,14 @@ export class AppComponent implements OnInit {
 
   public ngOnInit(): Promise<void> {
     return this.loadInterfaces();
+  }
+
+  public ngOnDestroy(): void {
+    this.stopPolling();
+  }
+
+  protected t(key: string): string {
+    return this.translator.t(key);
   }
 
   protected retryLoad(): void {
@@ -160,7 +170,7 @@ export class AppComponent implements OnInit {
           this.error.set('');
         },
         error: (ex) => {
-          this.error.set('Failed to load traffic data');
+          this.error.set(this.t('error.load-traffic'));
           console.error('[tx-rx-rrd-chart] Failed to load RRD data', ex);
         },
       });
@@ -215,7 +225,7 @@ export class AppComponent implements OnInit {
         },
         error: (ex) => {
           this.loadingInterfaces.set(false);
-          this.error.set('Failed to load interfaces');
+          this.error.set(this.t('error.load-interfaces'));
           console.error('[tx-rx-rrd-chart]', ex);
         },
       });

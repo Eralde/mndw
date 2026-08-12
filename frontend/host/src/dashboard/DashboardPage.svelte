@@ -25,6 +25,8 @@ import {
 } from './tile-controller.js';
 import {getNextInstanceId, raiseInstanceCounter} from './widget-counter.js';
 import type {WidgetSize} from './widget-size.js';
+import {hostT} from '../services/host-i18n.svelte.js';
+import {appState} from '../state/app.svelte.js';
 
 const PERSIST_DEBOUNCE_MS = 500;
 
@@ -274,7 +276,10 @@ onDestroy(() => {
 });
 </script>
 
-<div class="mndw-dashboard-page">
+<div
+  class="mndw-dashboard-page"
+  data-locale={appState.locale}
+>
   {#if isMobile}
     <MobileDashboard
       order={mobileOrder}
@@ -297,17 +302,19 @@ onDestroy(() => {
       <mndw-button
         variant="secondary"
         onclick={() => (addPanelOpen = true)}
-      >+ Add Widget</mndw-button>
+      >{hostT('dashboard.add-widget')}</mndw-button>
       {#if isMobile && mobileOrder.length > 1}
         <mndw-button
           variant="secondary"
           onclick={() => (orderOverlayOpen = true)}
         >
-          Arrange widgets
+          {hostT('dashboard.arrange-widgets')}
         </mndw-button>
       {/if}
     {:else}
-      <span class="mndw-dashboard__toolbar--empty">No widgets available</span>
+      <span class="mndw-dashboard__toolbar--empty">{
+        hostT('dashboard.no-widgets')
+      }</span>
     {/if}
   </div>
 </div>

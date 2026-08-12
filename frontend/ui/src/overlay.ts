@@ -1,3 +1,5 @@
+import {getMndwUiText} from './i18n.js';
+
 export type UiCloseReason = 'escape' | 'outside' | 'api' | 'detached';
 
 export type UiLayerPresentation = 'popover' | 'sheet';
@@ -12,6 +14,7 @@ export interface UiLayerOptions {
 export interface UiLayer {
   readonly contentElement: HTMLElement;
   readonly closed: Promise<UiCloseReason>;
+  setTitle?(title: string): void;
   close(): void;
   reposition(): void;
 }
@@ -106,6 +109,7 @@ export function createFallbackProvider(): UiOverlayProvider {
       return {
         contentElement,
         closed,
+        setTitle: () => {},
         close: () => {
           close('api');
         },
@@ -154,12 +158,12 @@ function createFallbackSheet(options: UiLayerOptions): UiLayer {
 
   const title = document.createElement('span');
 
-  title.textContent = options.title ?? 'Select option';
+  title.textContent = options.title ?? getMndwUiText('select.overlay.title');
 
   const closeButton = document.createElement('button');
 
   closeButton.type = 'button';
-  closeButton.setAttribute('aria-label', 'Close');
+  closeButton.setAttribute('aria-label', getMndwUiText('overlay.close'));
   closeButton.textContent = '×';
 
   const body = document.createElement('div');
@@ -231,6 +235,9 @@ function createFallbackSheet(options: UiLayerOptions): UiLayer {
   return {
     contentElement,
     closed,
+    setTitle: (nextTitle: string): void => {
+      title.textContent = nextTitle;
+    },
     close: () => {
       close('api');
     },

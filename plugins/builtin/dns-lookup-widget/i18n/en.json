@@ -1,0 +1,13 @@
+{
+  "l10n": {
+    "probe": "DNS English probe"
+  },
+  "title": "DNS Lookup",
+  "hostname": "Hostname (e.g. google.com)",
+  "lookup": "Lookup",
+  "enter": "Please enter a hostname.",
+  "idle": "Enter a hostname and press Lookup.",
+  "unavailable": "This plugin has no backend available.",
+  "loading": "Looking up {hostname}…",
+  "not-found": "Hostname \"{hostname}\" not found."
+}

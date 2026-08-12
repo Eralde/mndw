@@ -29,6 +29,7 @@ func readManifestFromZip(zr *zip.Reader) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
+
 			defer rc.Close()
 
 			return io.ReadAll(io.LimitReader(rc, maxUncompressedBytes))
@@ -52,6 +53,7 @@ func extractZip(zr *zip.Reader, dest string) error {
 	}
 
 	var written int64
+
 	for _, f := range zr.File {
 		target, err := safeJoin(dest, f.Name)
 		if err != nil {
@@ -84,6 +86,7 @@ func copyZipFile(f *zip.File, target string, written int64) (int64, error) {
 	if err != nil {
 		return written, err
 	}
+
 	defer rc.Close()
 
 	// Uploaded plugins are stored without write/exec bits. Approval applies +x
@@ -92,14 +95,17 @@ func copyZipFile(f *zip.File, target string, written int64) (int64, error) {
 	if err != nil {
 		return written, err
 	}
+
 	defer out.Close()
 
 	remaining := maxUncompressedBytes - written
 	n, err := io.Copy(out, io.LimitReader(rc, remaining+1))
 	written += n
+
 	if err != nil {
 		return written, err
 	}
+
 	if written > maxUncompressedBytes {
 		return written, fmt.Errorf("archive exceeds uncompressed size limit (%d bytes)", maxUncompressedBytes)
 	}
@@ -116,6 +122,7 @@ func safeJoin(base, name string) (string, error) {
 	}
 
 	joined := filepath.Join(base, name) // Join cleans, resolving any traversal
+
 	if joined != base && !strings.HasPrefix(joined, base+string(os.PathSeparator)) {
 		return "", fmt.Errorf("illegal path in archive escapes plugin dir: %q", name)
 	}
@@ -129,6 +136,7 @@ func moveDir(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
+
 	_ = os.RemoveAll(dst)
 
 	if err := os.Rename(src, dst); err == nil {
@@ -147,10 +155,12 @@ func copyTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
+
 		rel, err := filepath.Rel(src, path)
 		if err != nil {
 			return err
 		}
+
 		target := filepath.Join(dst, rel)
 
 		if info.IsDir() {
@@ -161,12 +171,14 @@ func copyTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
+
 		defer in.Close()
 
 		out, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode().Perm())
 		if err != nil {
 			return err
 		}
+
 		defer out.Close()
 
 		_, err = io.Copy(out, in)

@@ -21,7 +21,7 @@ const levelMarker = $derived.by(() => {
 </script>
 
 <div
-  class={`log-row log-row--${record.level.toLocaleLowerCase()}`}
+  class={`log-row log-row--${record.level.toLowerCase()}`}
   data-log-id={record.id}
   data-level={record.level}
   role="listitem"

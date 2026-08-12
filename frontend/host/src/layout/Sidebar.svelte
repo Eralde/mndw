@@ -2,6 +2,7 @@
 import {pluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
 import {mobileMediaQuery} from './breakpoint.js';
+import {hostT} from '../services/host-i18n.svelte.js';
 
 // The registry is populated before authenticated startup builds this shell, so a plain
 // copy-and-sort (label, then name) matches the router/picker ordering without a store.
@@ -25,7 +26,7 @@ function closeOnMobile(): void {
     class="mndw-sidebar-backdrop"
     role="button"
     tabindex="0"
-    aria-label="Close navigation"
+    aria-label={hostT('nav.close')}
     onclick={closeOnMobile}
     onkeydown={(event) => {
       if (event.key === 'Enter' || event.key === ' ') {
@@ -39,22 +40,23 @@ function closeOnMobile(): void {
 
 <nav
   class="mndw-sidebar"
+  data-locale={appState.locale}
   class:collapsed={appState.sidebarCollapsed}
 >
   <a
     href="/"
     class="mndw-sidebar__link"
     onclick={closeOnMobile}
-  >Dashboard</a>
+  >{hostT('nav.dashboard')}</a>
 
   <a
     href="/packages"
     class="mndw-sidebar__link"
     onclick={closeOnMobile}
-  >Package Manager</a>
+  >{hostT('nav.package-manager')}</a>
 
   {#if pagePlugins.length > 0}
-    <div class="mndw-sidebar__section-label">Plugins</div>
+    <div class="mndw-sidebar__section-label">{hostT('nav.plugins')}</div>
     {#each pagePlugins as plugin (plugin.entry.name)}
       <a
         href={plugin.entry.route}
@@ -71,5 +73,5 @@ function closeOnMobile(): void {
     href="/settings"
     class="mndw-sidebar__link"
     onclick={closeOnMobile}
-  >Settings</a>
+  >{hostT('nav.settings')}</a>
 </nav>

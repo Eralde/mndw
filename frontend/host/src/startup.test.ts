@@ -3,6 +3,11 @@ import {type StartupDeps, initialize} from './startup.js';
 
 function depsFor(events: string[], authenticated = false, triggerAuthError = false): StartupDeps {
   return {
+    initLocale: () => {
+      events.push('locale');
+
+      return 'en';
+    },
     defineUi: () => events.push('define-ui'),
     initTheme: () => events.push('theme'),
     initPalette: () =>
@@ -37,6 +42,7 @@ describe('initialize', () => {
     await initialize(depsFor(events, true));
 
     expect(events).toEqual([
+      'locale',
       'define-ui',
       'theme',
       'palette',
@@ -52,6 +58,11 @@ describe('initialize', () => {
     const order: string[] = [];
 
     await initialize({
+      initLocale: () => {
+        order.push('initLocale');
+
+        return 'en';
+      },
       defineUi: () => order.push('defineUi'),
       initTheme: () => order.push('initTheme'),
       initPalette: () =>
@@ -66,7 +77,7 @@ describe('initialize', () => {
       mountApp: () => order.push('mountApp'),
     });
 
-    expect(order[0]).toBe('defineUi');
+    expect(order.slice(0, 2)).toEqual(['initLocale', 'defineUi']);
   });
 
   it('does not start auth check until palette initialization resolves', async () => {
@@ -82,7 +93,7 @@ describe('initialize', () => {
     const pending = initialize(deps);
 
     await Promise.resolve();
-    expect(events).toEqual(['define-ui', 'theme']);
+    expect(events).toEqual(['locale', 'define-ui', 'theme']);
 
     releasePalette();
     await pending;

@@ -88,6 +88,16 @@ describe('manifestToListEntry', () => {
       routes: {hello: {transport: 'http', method: 'GET', path: 'hello'}},
     });
   });
+
+  it('passes the manifest catalog descriptor and dev-served base through the boundary', () => {
+    const entry = manifestToListEntry({
+      ...widgetManifest,
+      i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json'}},
+    } as never, '/@fs/repo/plugins/demo');
+
+    expect(entry.i18n).toEqual({defaultLocale: 'en', locales: {en: 'i18n/en.json'}});
+    expect(entry.catalogBaseUrl).toBe('/@fs/repo/plugins/demo');
+  });
 });
 
 describe('loadSandboxPlugin', () => {

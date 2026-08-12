@@ -12,6 +12,7 @@ const sveltePlugin = require('eslint-plugin-svelte');
 const vueParser = require('vue-eslint-parser');
 const vuePlugin = require('eslint-plugin-vue');
 const angularEslintPlugin = require('@angular-eslint/eslint-plugin');
+const noRawPluginI18n = require('./tooling/eslint/no-raw-plugin-i18n.cjs');
 const {isMndwButtonA11yWarning} = require('./build/svelte-compiler-options.js');
 
 const OFF = 'off';
@@ -402,6 +403,32 @@ module.exports = tseslint.config(
       ...vuePlugin.configs['flat/essential'].rules,
       'no-unused-vars': OFF,
       '@typescript-eslint/no-unused-vars': OFF,
+    },
+  },
+  // Reactive l10n enforcement for migrated framework plugin surfaces. Vanilla render modules and
+  // the MWS map adapter are explicit, audited exemptions in no-raw-plugin-i18n.cjs. Vue remains
+  // outside typed enforcement because its SFC parser configuration has no TypeScript project.
+  {
+    files: [
+      'frontend/host/src/**/*.svelte',
+      'plugins/builtin/ping-widget/src/**/*.{ts,svelte}',
+      'plugins/builtin/system-log-page/src/**/*.{ts,svelte}',
+      'plugins/builtin/terminal-page/src/**/*.{ts,svelte}',
+      'plugins/builtin/device-traffic-widget/src/**/*.{ts,svelte}',
+      'plugins/builtin/clients-widget/src/**/*.{ts,vue}',
+      'plugins/builtin/device-info-widget/src/**/*.{ts,vue}',
+      'plugins/builtin/mws-page/src/**/*.ts',
+      'plugins/builtin/tx-rx-chart-widget/src/**/*.ts',
+    ],
+    plugins: {
+      mndw: {
+        rules: {
+          'no-raw-plugin-i18n': noRawPluginI18n,
+        },
+      },
+    },
+    rules: {
+      'mndw/no-raw-plugin-i18n': ERROR,
     },
   },
   // Angular plugin: relax rules only for the Angular widget

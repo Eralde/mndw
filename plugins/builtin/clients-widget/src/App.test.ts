@@ -1,12 +1,14 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {PluginContext} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
 import type {RciManager, RciQuery} from '@rci-tools/core';
 import {type Observable, of, throwError} from 'rxjs';
-import {type App as VueApp, createApp} from 'vue';
+import {type App as VueApp, createApp, nextTick} from 'vue';
 import fixture from './fixtures/show-device-list.json' with {type: 'json'};
 import {openSettingsDialog} from './services/open-settings-dialog.js';
 import App from './App.vue';
+import enCatalog from '../i18n/en.json';
 
 vi.mock('./services/open-settings-dialog.js', () => ({
   openSettingsDialog: vi.fn(),
@@ -21,7 +23,7 @@ let storageSet: ReturnType<typeof vi.fn>;
 let overlayOpen: ReturnType<typeof vi.fn>;
 let warn: ReturnType<typeof vi.spyOn>;
 
-function createContext(): PluginContext {
+function createContext(i18n = createTestI18n(enCatalog)): PluginContext {
   return {
     rciManager: {queue} as unknown as RciManager,
     storage: {
@@ -31,13 +33,14 @@ function createContext(): PluginContext {
       keys: vi.fn().mockResolvedValue([]),
     },
     overlay: {open: overlayOpen, createLayer: vi.fn(), closeAll: vi.fn()},
+    i18n,
   } as unknown as PluginContext;
 }
 
-function mountWidget(): void {
+function mountWidget(i18n = createTestI18n(enCatalog)): void {
   host = document.createElement('div');
   document.body.append(host);
-  app = createApp(App, {ctx: createContext()});
+  app = createApp(App, {ctx: createContext(i18n)});
   app.mount(host);
 }
 
@@ -150,6 +153,33 @@ describe('initial render', () => {
     } finally {
       document.documentElement.style.removeProperty('--mndw-control-h');
     }
+  });
+});
+
+describe('locale reactivity', () => {
+  it('updates the same probe and child labels without remounting', async () => {
+    const i18n = createTestI18n({
+      l10n: {probe: 'Clients English'},
+      title: 'Clients EN',
+      'show-offline': 'Offline EN',
+    });
+    mountWidget(i18n);
+
+    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+
+    expect(probe?.textContent).toBe('Clients English');
+    expect(text()).toContain('Clients EN');
+    i18n.setLocale('ru', {
+      l10n: {probe: 'Клиенты русский'},
+      title: 'Клиенты RU',
+      'show-offline': 'Не в сети RU',
+    });
+    await nextTick();
+
+    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(probe?.textContent).toBe('Клиенты русский');
+    expect(text()).toContain('Клиенты RU');
+    expect(text()).toContain('Не в сети RU');
   });
 });
 

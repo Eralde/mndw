@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it} from 'vitest';
 import type {ClientRecord, WifiBand} from '../services/clients.js';
+import {createTestI18n} from '@mndw/sdk/testing';
+import {useTranslator} from '@mndw/sdk/vue';
 import {type App as VueApp, createApp} from 'vue';
 import ClientsTable from './ClientsTable.vue';
 
@@ -31,6 +33,22 @@ function mountTable(client: ClientRecord): void {
     error: null,
     loading: false,
     showOffline: false,
+    translator: useTranslator(createTestI18n({
+      'column.name': 'Name',
+      'column.link': 'Link',
+      'column.ip': 'IP Address',
+      'column.connection': 'Connection',
+      'column.uptime': 'Uptime',
+      'column.last-seen': 'Last Seen',
+      'empty.found': 'No clients found',
+      'empty.connected': 'No clients connected',
+      loading: 'Loading clients…',
+      error: 'show device-list failed',
+      port: 'Port',
+      rssi: 'RSSI',
+      'link.up': 'up',
+      'link.down': 'down',
+    })),
   });
   app.mount(host);
 }

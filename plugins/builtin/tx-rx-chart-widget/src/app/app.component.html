@@ -1,4 +1,5 @@
 <div class="tx-rx-widget">
+    <span data-testid="l10n-probe" hidden>{{ t('l10n.probe') }}</span>
     @if (error()) {
         <div
             class="mndw-alert mndw-alert--danger notice"
@@ -10,19 +11,19 @@
                 class="notice__retry"
                 (click)="retryLoad()"
             >
-                Retry
+                {{ t('action.retry') }}
             </mndw-button>
         </div>
     }
     @if (loadingInterfaces()) {
-        <div class="loading">Loading interfaces...</div>
+        <div class="loading">{{ t('status.loading-interfaces') }}</div>
     } @else if (!selectedInterface()) {
         <div class="empty-state">
-            <h3 class="empty-state__heading">Network Traffic Monitor</h3>
-            <p class="empty-state__subtitle">Select a network interface to begin monitoring TX/RX traffic</p>
+            <h3 class="empty-state__heading">{{ t('title') }}</h3>
+            <p class="empty-state__subtitle">{{ t('status.select-interface') }}</p>
             <mndw-select
-                label="Interface"
-                placeholder="Select interface…"
+                [label]="t('field.interface')"
+                [attr.placeholder]="t('field.select-interface')"
                 [value]="selectedInterface()"
                 (mndwchange)="onInterfaceChange($any($event).detail.value)"
             >
@@ -31,7 +32,7 @@
               }
             </mndw-select>
             @if (interfaceList().length === 0 && !loadingInterfaces()) {
-                <p class="mndw-alert mndw-alert--danger">No network interfaces found</p>
+                <p class="mndw-alert mndw-alert--danger">{{ t('status.no-interfaces') }}</p>
             }
         </div>
     } @else {
@@ -59,8 +60,8 @@
                         class="gear-btn"
                         variant="ghost"
                         (click)="openSettingsDialog()"
-                        title="Widget Settings"
-                        aria-label="Widget settings"
+                        [title]="t('action.settings')"
+                        [attr.aria-label]="t('action.settings')"
                     >
                         &#9881;
                     </mndw-button>
@@ -69,7 +70,7 @@
             <mndw-line-chart
                 [series]="chartData().series"
                 [domain]="chartData().domain"
-                empty-label="No data available"
+                [empty-label]="t('status.no-data')"
                 [attr.aria-label]="'Interface traffic for ' + activeInterfaceName()"
             ></mndw-line-chart>
         </div>

@@ -4,6 +4,7 @@ import type {OverlayTeardownReason} from '../runtime/plugin-lifecycle.js';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
+import {hostT} from '../services/locale.service.js';
 import {createWidgetContext} from './widget-context.js';
 import {type WidgetTileHandle, mountWidgetTile} from './widget-mount.js';
 
@@ -27,9 +28,6 @@ export interface TileController {
 
 const controllers = new Map<string, TileController>();
 
-const PREPARING_TEXT = 'Preparing… installing dependencies';
-const FAILED_TEXT = 'Dependency install failed';
-
 /** A no-op handle for a placeholder tile with no mounted plugin instance. */
 function placeholderTileHandle(): WidgetTileHandle {
   return {
@@ -50,7 +48,9 @@ function renderTileNotice(body: HTMLElement, kind: 'installing' | 'failed'): voi
   const notice = document.createElement('div');
 
   notice.className = `mndw-grid-tile__notice mndw-grid-tile__notice--${kind}`;
-  notice.textContent = kind === 'installing' ? PREPARING_TEXT : FAILED_TEXT;
+  notice.textContent = kind === 'installing'
+    ? hostT('dashboard.preparing-dependencies')
+    : hostT('dashboard.dependency-install-failed');
   body.appendChild(notice);
 }
 
@@ -75,7 +75,7 @@ function buildTileFrame(
   removeBtn.type = 'button';
   removeBtn.className = 'mndw-grid-tile__close';
   removeBtn.textContent = '×';
-  removeBtn.setAttribute('aria-label', `Remove ${label}`);
+  removeBtn.setAttribute('aria-label', hostT('dashboard.remove-widget', {label}));
   removeBtn.onclick = (event) => {
     event.stopPropagation();
     onRemove();
@@ -90,7 +90,7 @@ function buildTileFrame(
     const effectiveTitle = tileTitle || fallback;
 
     title.textContent = effectiveTitle;
-    removeBtn.setAttribute('aria-label', `Remove ${fallback}`);
+    removeBtn.setAttribute('aria-label', hostT('dashboard.remove-widget', {label: fallback}));
   };
 
   frame.append(title, removeBtn, body);
@@ -219,7 +219,10 @@ function refreshTileFrame(frame: HTMLElement, label: string): void {
     title.setAttribute('data-manifest-label', label);
   }
 
-  frame.querySelector('.mndw-grid-tile__close')?.setAttribute('aria-label', `Remove ${label}`);
+  frame.querySelector('.mndw-grid-tile__close')?.setAttribute(
+    'aria-label',
+    hostT('dashboard.remove-widget', {label}),
+  );
 }
 
 /**
@@ -254,7 +257,16 @@ export async function remountWidgetTiles(
       controller.handle = mountWidgetTile(
         controller.body,
         plugin,
-        createPluginContext(plugin.entry, controller.instanceId, hostInfo, controller.setTileTitle),
+        plugin.catalog === undefined
+          ? createPluginContext(plugin.entry, controller.instanceId, hostInfo, controller.setTileTitle)
+          : createPluginContext(
+            plugin.entry,
+            controller.instanceId,
+            hostInfo,
+            controller.setTileTitle,
+            undefined,
+            plugin.catalog,
+          ),
       );
 
       return controller.handle;

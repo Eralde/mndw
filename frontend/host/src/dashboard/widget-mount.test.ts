@@ -43,6 +43,7 @@ const explicitHostInfo: HostInfo = {
   deviceName: 'Keenetic',
   vendor: 'Keenetic',
   firmwareVersion: '4.0',
+  locale: 'en',
   theme: 'light',
 };
 

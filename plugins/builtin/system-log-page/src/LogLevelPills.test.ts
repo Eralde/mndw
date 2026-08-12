@@ -1,9 +1,23 @@
 // @vitest-environment happy-dom
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import {createTestI18n} from '@mndw/sdk/testing';
+import {createTranslator} from '@mndw/sdk/svelte';
 import {ALL_LOG_LEVELS} from './log-filters';
 import type {LogLevel} from './log-types';
 import LogLevelPills from './LogLevelPills.svelte';
+
+function translator() {
+  return createTranslator(createTestI18n({
+    'filter.levels': 'Log levels',
+    'level.info': 'Info',
+    'level.warning': 'Warning',
+    'level.error': 'Error',
+    'level.critical': 'Critical',
+    'level.debug': 'Debug',
+    'level.notice': 'Notice',
+  }));
+}
 
 describe('LogLevelPills', () => {
   let hosts: HTMLElement[] = [];
@@ -29,7 +43,7 @@ describe('LogLevelPills', () => {
     const host = createHost();
     const app = mount(LogLevelPills, {
       target: host,
-      props: {activeLevels: new Set(ALL_LOG_LEVELS), onChange: vi.fn()},
+      props: {activeLevels: new Set(ALL_LOG_LEVELS), translator: translator(), onChange: vi.fn()},
     });
 
     flushSync();
@@ -54,7 +68,7 @@ describe('LogLevelPills', () => {
     const initialLevels = new Set<LogLevel>(ALL_LOG_LEVELS);
     const app = mount(LogLevelPills, {
       target: host,
-      props: {activeLevels: initialLevels, onChange},
+      props: {activeLevels: initialLevels, translator: translator(), onChange},
     });
 
     flushSync();
@@ -70,7 +84,7 @@ describe('LogLevelPills', () => {
     const secondHost = createHost();
     const secondApp = mount(LogLevelPills, {
       target: secondHost,
-      props: {activeLevels: withoutInfo, onChange},
+      props: {activeLevels: withoutInfo, translator: translator(), onChange},
     });
 
     flushSync();

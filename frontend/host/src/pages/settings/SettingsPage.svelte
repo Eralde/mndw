@@ -5,6 +5,8 @@ import DiagnosticsSettings from './DiagnosticsSettings.svelte';
 import GeneralSettings from './GeneralSettings.svelte';
 import PluginSettings from './PluginSettings.svelte';
 import {appRouter} from '../../router/create-app-router.js';
+import {hostT} from '../../services/host-i18n.svelte.js';
+import {appState} from '../../state/app.svelte.js';
 import {
   SETTINGS_DEFAULT_TAB,
   SETTINGS_TABS,
@@ -52,16 +54,19 @@ function handlePermissionStateChange(state: PermissionState): void {
 }
 </script>
 
-<div class="mndw-settings">
-  <h2>Settings</h2>
+<div
+  class="mndw-settings"
+  data-locale={appState.locale}
+>
+  <h2>{hostT('settings.title')}</h2>
 
   <mndw-tabs
     value={activeTab}
     onmndwchange={handleTabChange}
   >
-    <mndw-tab id="general">General</mndw-tab>
-    <mndw-tab id="diagnostics">Diagnostics</mndw-tab>
-    <mndw-tab id="plugins">Plugins</mndw-tab>
+    <mndw-tab id="general">{hostT('settings.general-tab')}</mndw-tab>
+    <mndw-tab id="diagnostics">{hostT('settings.diagnostics-tab')}</mndw-tab>
+    <mndw-tab id="plugins">{hostT('settings.plugins-tab')}</mndw-tab>
     <mndw-tab-panel for="general">
       <GeneralSettings onPermissionStateChange={handlePermissionStateChange} />
     </mndw-tab-panel>

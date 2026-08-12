@@ -91,6 +91,34 @@ describe('packPlugin', () => {
     expect(packedManifest.name).toBe('sample-widget');
   });
 
+  it('stages every manifest-declared catalog without adding artifact metadata', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({
+        name: 'localized-widget',
+        i18n: {
+          defaultLocale: 'en',
+          locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'},
+        },
+      }),
+      index: 'export const createInstance = () => ({unmount() {}});\n',
+      files: {
+        'i18n/en.json': '{"title":"Title"}\n',
+        'i18n/ru.json': '{"title":"Заголовок"}\n',
+      },
+    });
+
+    await packPlugin(dir);
+
+    expect(readFileSync(join(dir, 'dist', 'i18n', 'en.json'), 'utf8')).toContain('Title');
+    expect(readFileSync(join(dir, 'dist', 'i18n', 'ru.json'), 'utf8')).toContain('Заголовок');
+    expect(JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8'))).toEqual({
+      schemaVersion: 1,
+      plugin: 'localized-widget',
+      entry: 'index.js',
+      staticBackends: [],
+    });
+  });
+
   it('emits target-independent artifact metadata and omits compiled backend assets', async () => {
     scaffold(dir, {
       manifest: widgetManifest({

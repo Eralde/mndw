@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import {createTestI18n} from '@mndw/sdk/testing';
+import {useTranslator} from '@mndw/sdk/vue';
 import {type App as VueApp, createApp, nextTick} from 'vue';
 import CopyField from './CopyField.vue';
 
@@ -20,7 +22,11 @@ describe('CopyField', () => {
     vi.stubGlobal('navigator', {clipboard: {writeText}});
     host = document.createElement('div');
     document.body.append(host);
-    app = createApp(CopyField, {label: 'Serial', value: 'SN-123'});
+    app = createApp(CopyField, {
+      label: 'Serial',
+      value: 'SN-123',
+      translator: useTranslator(createTestI18n({copy: 'Copy', copied: 'Copied!'})),
+    });
     app.mount(host);
 
     expect(host.querySelector('button')).toBeNull();

@@ -122,6 +122,7 @@ type ListEntry struct {
 	Size             *manifest.Size  `json:"size,omitempty"`
 	FixedHeight      *bool           `json:"fixedHeight,omitempty"`
 	Route            string          `json:"route,omitempty"`
+	I18n             *manifest.I18n  `json:"i18n,omitempty"`
 	// DepsStatus is always "ready" at daemon startup. Package installation is an
 	// explicit approval operation, never a background startup task.
 	DepsStatus string                      `json:"depsStatus"`
@@ -213,6 +214,7 @@ func (h *Handler) entryFrom(m *manifest.Manifest, source, approval string, enabl
 		Size:        m.Size,
 		FixedHeight: m.FixedHeight,
 		Route:       deref(m.Route),
+		I18n:        m.I18n,
 		Backend:     manifest.Descriptor(m),
 	}
 	e.DepsStatus = "ready"

@@ -1,26 +1,27 @@
 <div class="nodes-toolbar">
+  <span data-testid="l10n-child-probe" hidden>{{ t('l10n.probe') }}</span>
   <mndw-input
     type="search"
-    aria-label="Filter nodes"
-    placeholder="Filter nodes"
+    [attr.aria-label]="t('nodes.search')"
+    [attr.placeholder]="t('nodes.search')"
     [value]="search()"
     (mndwinput)="onSearch($event)"
   ></mndw-input>
   <mndw-button
     type="button"
     variant="secondary"
-    aria-label="Table settings"
+    [attr.aria-label]="t('nodes.settings')"
     (click)="toggleSettings()"
-  >Table settings</mndw-button>
+  >{{ t('nodes.settings') }}</mndw-button>
 </div>
 
 @if (settingsOpen()) {
-  <div class="table-settings" role="dialog" aria-label="Table settings">
-    <h3>Table settings</h3>
+  <div class="table-settings" role="dialog" [attr.aria-label]="t('nodes.settings')">
+    <h3>{{ t('nodes.settings') }}</h3>
     @for (column of columns; track column.id) {
       @if (column.id !== 'name') {
         <label class="settings-option">
-          <span>{{ column.label }}</span>
+          <span>{{ t(column.labelKey) }}</span>
           <mndw-switch
             [id]="'mws-node-column-' + column.id"
             [attr.checked]="isColumnVisible(column.id) ? '' : null"
@@ -33,13 +34,13 @@
 }
 
 @if (allRows().length === 0) {
-  <p class="status" role="status">No nodes connected.</p>
+  <p class="status" role="status">{{ t('nodes.no-connected') }}</p>
 } @else if (rows().length === 0) {
-  <p class="status" role="status">No nodes match your filter.</p>
+  <p class="status" role="status">{{ t('nodes.no-match') }}</p>
 } @else {
   <div class="table-scroll">
     <table class="mndw-table">
-      <caption>All mesh nodes</caption>
+      <caption>{{ t('nodes.caption') }}</caption>
       <thead>
         <tr>
           @for (column of visibleColumns(); track column.id) {
@@ -53,9 +54,9 @@
                 : 'none'"
             >
               @if (column.sortKey === undefined) {
-                <span>{{ column.label }}</span>
+                <span>{{ t(column.labelKey) }}</span>
               } @else {
-                <button type="button" (click)="onSort(column.sortKey)">{{ column.label }}</button>
+                <button type="button" (click)="onSort(column.sortKey)">{{ t(column.labelKey) }}</button>
               }
             </th>
           }
@@ -70,12 +71,12 @@
                   <td class="node-name">
                     <button
                       type="button"
-                      [attr.aria-label]="'Open ' + row.node.name"
+                      [attr.aria-label]="t('nodes.open', {name: row.node.name})"
                       (click)="activateNode(row.id)"
                     >
                       <span>{{ row.node.name }}</span>
                       @if (row.node.isController) {
-                        <span class="role-badge">Controller</span>
+                        <span class="role-badge">{{ t('nodes.controller') }}</span>
                       }
                     </button>
                   </td>

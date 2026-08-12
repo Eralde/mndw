@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import {setMndwUiLocale} from './i18n.js';
 import {
   type UiLayer,
   type UiOverlayProvider,
@@ -16,6 +17,8 @@ function track(layer: UiLayer): UiLayer {
 }
 
 afterEach(() => {
+  setMndwUiLocale('en');
+
   for (const layer of openLayers.splice(0)) {
     layer.close();
   }
@@ -198,6 +201,18 @@ describe('fallback provider', () => {
     expect(document.querySelector('[aria-label="Close"]')).not.toBeNull();
     expect(layer.contentElement.style.visibility).toBe('');
     expect(layer.contentElement.style.position).toBe('');
+  });
+
+  it('localizes generated sheet chrome', () => {
+    setMndwUiLocale('ru');
+
+    const layer = openFallback(anchor(), {presentation: 'sheet'});
+
+    expect(document.querySelector('.mndw-ui-sheet__header span')?.textContent).toBe('Выберите вариант');
+    expect(document.querySelector('[aria-label="Закрыть"]')).not.toBeNull();
+
+    layer.setTitle?.('Custom title');
+    expect(document.querySelector('.mndw-ui-sheet__header span')?.textContent).toBe('Custom title');
   });
 
   it('sizes a fallback sheet to content up to the viewport', () => {

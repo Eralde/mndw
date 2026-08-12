@@ -64,9 +64,16 @@ function includeSegment(segments: string[], value: string | null | undefined): v
   }
 }
 
-export function edgeTooltip(node: MwsNode): string {
+export function edgeTooltip(
+  node: MwsNode,
+  translate: (key: string) => string = (key) => ({
+    'graph.wireless': 'Wireless',
+    'graph.wired': 'Wired',
+    'graph.duplex': 'duplex',
+  }[key] ?? key),
+): string {
   const backhaul = node.backhaul;
-  const segments: string[] = [edgeType(node) === 'wireless' ? 'Wireless' : 'Wired'];
+  const segments: string[] = [edgeType(node) === 'wireless' ? translate('graph.wireless') : translate('graph.wired')];
 
   if (backhaul === null) {
     return segments[0];
@@ -78,7 +85,12 @@ export function edgeTooltip(node: MwsNode): string {
     includeSegment(segments, backhaul.mode);
   } else {
     includeSegment(segments, formatSpeed(backhaul.speed));
-    includeSegment(segments, backhaul.duplex === null || backhaul.duplex === '' ? null : `${backhaul.duplex} duplex`);
+    includeSegment(
+      segments,
+      backhaul.duplex === null || backhaul.duplex === ''
+        ? null
+        : `${backhaul.duplex} ${translate('graph.duplex')}`,
+    );
   }
 
   return segments.join(' · ');

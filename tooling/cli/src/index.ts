@@ -8,6 +8,7 @@ import {ManifestValidationError} from '@mndw/sdk';
 import {createPlugin} from './create.js';
 import {runDev} from './dev.js';
 import {CliError} from './errors.js';
+import {validatePluginCatalogs} from './i18n-validator.js';
 import {readManifest} from './manifest.js';
 import {packPlugin} from './pack.js';
 import {resolvePluginDir} from './paths.js';
@@ -26,6 +27,10 @@ interface DevCommandOptions {
   readonly daemon?: string;
   readonly port?: number;
   readonly hostDevice?: string;
+}
+
+interface ValidateCommandOptions {
+  readonly strict?: boolean;
 }
 
 /** Rewrites an SDK manifest-validation failure into a CLI error naming the offending manifest path. */
@@ -83,17 +88,28 @@ export function createProgram(): Command {
       });
     });
 
-  program.command('validate <plugin-dir>').action((pluginDir: string) => {
-    let result;
+  program
+    .command('validate <plugin-dir>')
+    .option('--strict', 'treat catalog key-parity warnings as errors')
+    .action((pluginDir: string, options: ValidateCommandOptions) => {
+      let result;
 
-    try {
-      result = readManifest(pluginDir);
-    } catch (error) {
-      rethrowManifestError(pluginDir, error);
-    }
+      try {
+        result = readManifest(pluginDir);
+      } catch (error) {
+        rethrowManifestError(pluginDir, error);
+      }
 
-    process.stdout.write(`Validated ${result.manifest.name}: ${result.path}\n`);
-  });
+      const warnings = validatePluginCatalogs(resolvePluginDir(pluginDir), result.manifest, {
+        strict: options.strict === true,
+      });
+
+      for (const warning of warnings) {
+        process.stdout.write(`Warning: ${warning}\n`);
+      }
+
+      process.stdout.write(`Validated ${result.manifest.name}: ${result.path}\n`);
+    });
 
   program
     .command('pack <plugin-dir>')
@@ -106,6 +122,10 @@ export function createProgram(): Command {
         result = await packPlugin(pluginDir, {outDir: options.outDir, development: options.dev});
       } catch (error) {
         rethrowManifestError(pluginDir, error);
+      }
+
+      for (const warning of result.warnings) {
+        process.stdout.write(`Warning: ${warning}\n`);
       }
 
       process.stdout.write(`Packed ${result.manifest.name} (${result.framework}) → ${result.outDir}\n`);

@@ -1,8 +1,10 @@
 <script lang="ts">
 import {onMount, tick} from 'svelte';
+import type {Readable} from 'svelte/store';
 import {SvelteSet} from 'svelte/reactivity';
 import {firstValueFrom} from 'rxjs';
-import type {OverlayService} from '@mndw/sdk';
+import type {OverlayService, PluginI18n, Translator} from '@mndw/sdk';
+import {createTranslator} from '@mndw/sdk/svelte';
 import {openClearConfirmation} from './clear-log-confirmation';
 import {ALL_LOG_LEVELS, type FilterState, filterRecords} from './log-filters';
 import LogFilters from './LogFilters.svelte';
@@ -16,9 +18,16 @@ import type {NormalizedLogRecord} from './log-types';
 interface Props {
   api: SystemLogApi;
   overlay: OverlayService;
+  i18n: PluginI18n;
 }
 
-let {api, overlay: _overlay}: Props = $props();
+let {api, overlay: _overlay, i18n}: Props = $props();
+// svelte-ignore state_referenced_locally
+const translator: Readable<Translator> = createTranslator(i18n);
+
+function t(key: string, values?: Record<string, unknown>): string {
+  return $translator.t(key, values);
+}
 let records = $state<NormalizedLogRecord[]>([]);
 let errorMessage = $state('');
 let loading = $state(true);
@@ -129,12 +138,13 @@ onMount(() => {
   data-system-log-page
 >
   <header class="system-log-page__header">
-    <h1 class="system-log-page__title">System Log</h1>
+    <h1 class="system-log-page__title" data-testid="l10n-probe">{t('l10n.probe')}</h1>
     <div class="system-log-page__header-row">
       <LogFilters
         state={filterState}
         filteredCount={filteredRecords.length}
         totalCount={records.length}
+        {translator}
         onChange={(next) => filterState = next}
       />
       <div class="system-log-page__actions">
@@ -143,14 +153,14 @@ onMount(() => {
           variant="secondary"
           onclick={downloadAll}
         >
-          Download
+          {t('action.download')}
         </mndw-button>
         <mndw-button
           data-clear-log
           variant="danger"
           onclick={requestClear}
         >
-          Clear log
+          {t('action.clear')}
         </mndw-button>
       </div>
     </div>
@@ -164,20 +174,20 @@ onMount(() => {
       {errorMessage}
     </p>
   {:else if loading}
-    <p class="system-log-page__status">Loading system log…</p>
+    <p class="system-log-page__status">{t('status.loading')}</p>
   {/if}
 
   <div
     class="system-log-page__viewport"
     data-log-viewport
     role="region"
-    aria-label="System log entries"
+    aria-label={t('aria.entries')}
     bind:this={logViewport}
     onscroll={updateStickiness}
   >
     {#if filteredRecords.length === 0 && !loading}
       <p class="system-log-page__empty">
-        No log records match current filters.
+        {t('status.empty')}
       </p>
     {:else}
       {#each filteredRecords as record (record.id)}

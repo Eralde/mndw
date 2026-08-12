@@ -9,6 +9,7 @@ import {initAuthenticated} from './services/init-auth.js';
 import './services/pristine-fetch.js';
 import {initPalette} from './services/palette.service.js';
 import {rciService} from './services/rci.service.js';
+import {initLocale} from './services/locale.service.js';
 import {initTheme} from './services/theme.service.js';
 import {uiOverlayService} from './services/overlay/ui-overlay.js';
 import {appState, resetToLogin} from './state/app.svelte.js';
@@ -67,7 +68,8 @@ async function init(): Promise<void> {
   registerPluginErrorGuards();
 
   await initialize({
-    defineUi: () => defineMndwUi({overlay: uiOverlayService}),
+    initLocale,
+    defineUi: (locale) => defineMndwUi({overlay: uiOverlayService, initialLocale: locale}),
     initTheme,
     initPalette,
     checkAuthenticated,

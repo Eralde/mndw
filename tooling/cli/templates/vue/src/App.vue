@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import type {PluginContext} from '@mndw/sdk';
+import {useTranslator} from '@mndw/sdk/vue';
 
 const {ctx} = defineProps<{ctx: PluginContext}>();
+const translator = useTranslator(ctx.i18n);
 </script>
 
 <template>
   <div class="wrap">
-    <h3 class="title">__MNDW_LABEL__</h3>
+    <h3 class="title" data-testid="l10n-probe" data-plugin-label="__MNDW_LABEL__">{{ translator.t('l10n.probe') }}</h3>
     <p class="device">Device: {{ ctx.hostInfo.deviceName }}</p>
+    <p class="result">{{ translator.t('l10n.result') }}</p>
   </div>
 </template>
 

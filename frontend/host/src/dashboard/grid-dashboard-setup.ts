@@ -19,7 +19,7 @@ export interface RestoredTilePosition {
  * unavailable, is not a widget, or GridStack produced no content element.
  *
  * New tiles omit `x`/`y` so GridStack auto-places them; restored tiles override
- * `x`/`y`/`w`/`h`/`instanceId` while the current manifest `minW`/`minH` stay
+ * `x`/`y`/`w`/`h`/`instance-id` while the current manifest `minW`/`minH` stay
  * authoritative. A controller that already exists (returning from the mobile
  * renderer) is reused — its frame reparents into the new grid item, keeping the
  * live plugin instance.

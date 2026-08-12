@@ -2,6 +2,12 @@ import type {MndwPlugin} from '@mndw/sdk';
 import {MGMT_LIST_URL, PLUGIN_SOURCE_PATHS} from '../constants.js';
 import {appState} from '../state/app.svelte.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
+import {getLocale} from '../services/locale.service.js';
+import {
+  createPluginCatalogCell,
+  createPluginCatalogSource,
+  loadInitialPluginCatalog,
+} from '../services/plugin-catalog.service.js';
 import {checkPluginVersions, readPluginLock} from './plugin-lock.js';
 import {pluginRegistry} from './plugin-registry.js';
 import type {PluginListEntry} from './plugin-types.js';
@@ -138,8 +144,20 @@ async function loadOne(
 
   try {
     const module = await importModule(assetUrl(entry.entry));
+    const pluginModule = validateModule(module, entry.name);
+    const source = createPluginCatalogSource(
+      entry.name,
+      entry.version,
+      entry.catalogBaseUrl ?? dir,
+      entry.i18n,
+    );
+    const catalog = source === undefined ? undefined : createPluginCatalogCell(source, getLocale());
 
-    pluginRegistry.register({entry, module: validateModule(module, entry.name)});
+    if (catalog !== undefined) {
+      await loadInitialPluginCatalog(catalog, getLocale());
+    }
+
+    pluginRegistry.register({entry, module: pluginModule, ...(catalog === undefined ? {} : {catalog})});
     console.log(`[mndw] Loaded plugin: ${entry.name} (${entry.source})`);
 
     void Promise.resolve()

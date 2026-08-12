@@ -11,6 +11,7 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
       storage: ctx.storage,
       openSettings: (args: OpenSettingsArgs) => openSettingsDialog(ctx, args),
       setTileTitle: ctx.setTileTitle,
+      i18n: ctx.i18n,
     },
   });
 

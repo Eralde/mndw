@@ -1,0 +1,34 @@
+{
+  "select": {
+    "placeholder": "Выберите…",
+    "validation": {
+      "required": "Выберите вариант."
+    },
+    "overlay": {
+      "title": "Выберите вариант"
+    }
+  },
+  "overlay": {
+    "close": "Закрыть"
+  },
+  "chart": {
+    "empty": "Нет данных",
+    "values": "Значения"
+  },
+  "input": {
+    "password": {
+      "show": "Показать пароль",
+      "hide": "Скрыть пароль"
+    }
+  },
+  "checkbox": {
+    "validation": {
+      "required": "Выберите этот вариант."
+    }
+  },
+  "segmented": {
+    "validation": {
+      "required": "Выберите вариант."
+    }
+  }
+}

@@ -2,6 +2,7 @@ import {MNDW_TOKENS, PageRouteError, type PaletteTokenMap} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {describe, expect, it, vi} from 'vitest';
 import {createPluginContext} from './plugin-context.js';
+import {createPluginCatalogCell} from '../services/plugin-catalog.service.js';
 import type {PageListEntry, PluginBackendDescriptor, WidgetListEntry} from './plugin-types.js';
 
 vi.mock('../services/rci.service.js', () => ({
@@ -33,7 +34,7 @@ vi.mock('../services/overlay/overlay-manager.svelte.js', () => ({
   })),
 }));
 
-const hostInfo = {deviceName: 'Device', vendor: 'Vendor', firmwareVersion: '1.0', theme: 'dark'} as const;
+const hostInfo = {deviceName: 'Device', vendor: 'Vendor', firmwareVersion: '1.0', locale: 'en', theme: 'dark'} as const;
 
 const emptyBackend: PluginBackendDescriptor = {
   routes: {},
@@ -64,6 +65,30 @@ function pageEntry(): PageListEntry {
 }
 
 describe('createPluginContext', () => {
+  it('exposes a frozen synchronous translator backed by the host catalog cell', () => {
+    const cell = createPluginCatalogCell({
+      name: 'demo',
+      version: '1.0.0',
+      baseUrl: '/plugins/demo',
+      defaultLocale: 'en',
+      locales: {en: 'i18n/en.json'},
+    }, 'en');
+
+    cell.commit({
+      hostLocale: 'en',
+      resolvedCatalogLocale: 'en',
+      primaryCatalog: {title: 'Hello {name}'},
+      defaultCatalog: {fallback: 'Fallback'},
+      fallbackStatus: 'primary',
+    });
+
+    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo, undefined, undefined, cell);
+
+    expect(ctx.i18n.t('title', {name: 'Ada'})).toBe('Hello Ada');
+    expect(ctx.i18n.t('missing')).toBe('missing');
+    expect(Object.isFrozen(ctx.i18n)).toBe(true);
+  });
+
   it('exposes stable page-route errors', () => {
     const error = new PageRouteError('INVALID_PATH', 'invalid child path');
 

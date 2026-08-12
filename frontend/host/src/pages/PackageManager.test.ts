@@ -2,6 +2,7 @@ import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {type PackageEntry} from '../services/opkg-client.js';
+import {setLocale} from '../services/locale.service.js';
 
 const mockList = vi.fn<(...args: unknown[]) => Promise<PackageEntry[]>>();
 const mockUpdate = vi.fn<(...args: unknown[]) => Promise<{message: string}>>();
@@ -60,6 +61,29 @@ describe('PackageManager', () => {
 
     expect(host.textContent).toContain('No packages found');
     await unmount(app);
+  });
+
+  it('updates package-manager labels after a locale commit', async () => {
+    mockList.mockResolvedValue([]);
+
+    const app = mount(PackageManager, {target: host});
+
+    try {
+      flushSync();
+      await vi.waitFor(() => {
+        flushSync();
+        expect(host.textContent).toContain('No packages found');
+      });
+
+      await setLocale('ru');
+      flushSync();
+
+      expect(host.textContent).toContain('Пакеты не найдены');
+      expect(host.textContent).toContain('Менеджер пакетов');
+    } finally {
+      await unmount(app);
+      await setLocale('en');
+    }
   });
 
   it('shows a load error for a rejected list', async () => {

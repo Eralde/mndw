@@ -1,0 +1,30 @@
+{
+  "l10n": {
+    "probe": "Clients English probe"
+  },
+  "title": "Clients",
+  "show-offline": "Show offline",
+  "settings": "Client settings",
+  "columns": "Columns",
+  "refresh-interval": "Refresh interval",
+  "column": {
+    "name": "Name",
+    "link": "Link",
+    "ip": "IP Address",
+    "connection": "Connection",
+    "uptime": "Uptime",
+    "last-seen": "Last Seen"
+  },
+  "empty": {
+    "found": "No clients found",
+    "connected": "No clients connected"
+  },
+  "loading": "Loading clients…",
+  "error": "show device-list failed",
+  "port": "Port",
+  "rssi": "RSSI",
+  "link": {
+    "up": "up",
+    "down": "down"
+  }
+}

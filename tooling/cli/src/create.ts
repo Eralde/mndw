@@ -137,22 +137,39 @@ export function buildManifest(options: CreateOptions): Record<string, unknown> {
 interface CliMetadata {
   readonly version: string;
   readonly svelteRange: string;
+  readonly svelteVitePluginRange: string;
   readonly vueRange: string;
+  readonly vueVitePluginRange: string;
   readonly angular: Record<string, string>;
+  readonly viteRange: string;
+  readonly vitestRange: string;
+  readonly happyDomRange: string;
+}
+
+function caretRange(name: string, value: string | undefined): string {
+  if (value === undefined || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value)) {
+    throw new CliError(`CLI package devDependency ${name} must be an exact semver version`);
+  }
+
+  return `^${value}`;
 }
 
 function readCliMetadata(): CliMetadata {
   const parsed = JSON.parse(readFileSync(CLI_PACKAGE_JSON, 'utf8')) as {
     version?: string;
     dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
   };
 
   const dependencies = parsed.dependencies ?? {};
+  const devDependencies = parsed.devDependencies ?? {};
 
   return {
     version: parsed.version ?? '0.0.0',
     svelteRange: dependencies.svelte ?? '^5.0.0',
+    svelteVitePluginRange: devDependencies['@sveltejs/vite-plugin-svelte'] ?? '^5.0.0',
     vueRange: dependencies.vue ?? '^3.5.39',
+    vueVitePluginRange: devDependencies['@vitejs/plugin-vue'] ?? '^6.0.0',
     angular: {
       '@angular/core': dependencies['@angular/core'] ?? '^21.2.18',
       '@angular/common': dependencies['@angular/common'] ?? '^21.2.18',
@@ -161,6 +178,9 @@ function readCliMetadata(): CliMetadata {
       'zone.js': dependencies['zone.js'] ?? '^0.15.1',
       'typescript': dependencies.typescript ?? '^5.7.0',
     },
+    viteRange: devDependencies.vite ?? '^6.4.3',
+    vitestRange: caretRange('vitest', devDependencies.vitest),
+    happyDomRange: caretRange('happy-dom', devDependencies['happy-dom']),
   };
 }
 
@@ -174,12 +194,18 @@ function buildPackageJson(normalized: NormalizedOptions): Record<string, unknown
   const devDependencies: Record<string, string> = {
     '@mndw/sdk': sdkRange,
     '@mndw/cli': inside ? 'workspace:*' : `^${cli.version}`,
+    'happy-dom': cli.happyDomRange,
+    'vitest': cli.vitestRange,
   };
 
   if (normalized.framework === 'svelte') {
     devDependencies.svelte = cli.svelteRange;
+    devDependencies['@sveltejs/vite-plugin-svelte'] = cli.svelteVitePluginRange;
+    devDependencies.vite = cli.viteRange;
   } else if (normalized.framework === 'vue') {
     devDependencies.vue = cli.vueRange;
+    devDependencies['@vitejs/plugin-vue'] = cli.vueVitePluginRange;
+    devDependencies.vite = cli.viteRange;
   } else if (normalized.framework === 'angular') {
     Object.assign(devDependencies, cli.angular);
   }
@@ -189,6 +215,7 @@ function buildPackageJson(normalized: NormalizedOptions): Record<string, unknown
     version: '0.1.0',
     private: true,
     type: 'module',
+    scripts: {test: 'vitest run'},
     devDependencies,
   };
 }

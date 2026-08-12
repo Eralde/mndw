@@ -1,3 +1,5 @@
+import type {PluginI18n} from '@mndw/sdk';
+
 export interface DnsLookupResult {
   hostname: string;
   addresses: string[];
@@ -22,26 +24,26 @@ function createEl(className: string, text: string): HTMLDivElement {
   return el;
 }
 
-export function render(root: HTMLElement, view: DnsView): void {
+export function render(root: HTMLElement, view: DnsView, i18n: PluginI18n): void {
   root.replaceChildren();
 
   const NAME = 'dns-lookup-widget';
 
   switch (view.state) {
     case 'idle': {
-      const el = createEl(`${NAME}__idle`, 'Enter a hostname and press Lookup.');
+      const el = createEl(`${NAME}__idle`, i18n.t('idle'));
 
       root.append(el);
       break;
     }
     case 'unavailable': {
-      const el = createEl(`${NAME}__unavailable`, 'This plugin has no backend available.');
+      const el = createEl(`${NAME}__unavailable`, i18n.t('unavailable'));
 
       root.append(el);
       break;
     }
     case 'loading': {
-      const el = createEl(`${NAME}__loading`, `Looking up ${view.hostname}...`);
+      const el = createEl(`${NAME}__loading`, i18n.t('loading', {hostname: view.hostname}));
 
       root.append(el);
       break;
@@ -54,7 +56,7 @@ export function render(root: HTMLElement, view: DnsView): void {
       break;
     }
     case 'not-found': {
-      const el = createEl(`${NAME}__not-found`, `Hostname "${view.hostname}" not found.`);
+      const el = createEl(`${NAME}__not-found`, i18n.t('not-found', {hostname: view.hostname}));
 
       root.append(el);
       break;
@@ -67,7 +69,10 @@ export function render(root: HTMLElement, view: DnsView): void {
       el.className = `${NAME}__result`;
 
       const hostname = createEl(`${NAME}__result-hostname`, r.hostname);
-      const duration = createEl(`${NAME}__result-duration`, `${r.durationMs.toFixed(1)} ms`);
+      const duration = createEl(
+        `${NAME}__result-duration`,
+        `${i18n.formatNumber(r.durationMs, {minimumFractionDigits: 1, maximumFractionDigits: 1})} ms`,
+      );
 
       const addrList = document.createElement('ul');
 

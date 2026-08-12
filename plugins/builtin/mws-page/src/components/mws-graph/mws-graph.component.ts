@@ -11,6 +11,7 @@ import {
   type OnDestroy,
   Output,
   ViewChild,
+  inject,
 } from '@angular/core';
 import * as d3 from 'd3';
 import type {MwsNode} from '../../domain/mws/mws.types';
@@ -25,6 +26,7 @@ import {
   topologySignature,
 } from './graph-layout';
 import {edgeTooltip, edgeType, linkQuality} from './link-quality';
+import {TRANSLATOR} from '../../tokens';
 
 export const FIT_PADDING = 40;
 export const CLICK_SLOP = 4;
@@ -46,34 +48,36 @@ interface DragState {
   selector: 'mws-map-graph',
   standalone: true,
   template: `
-    <div class="graph-controls" aria-label="Map view controls">
-      <div class="graph-view-controls" aria-label="View controls">
-        <mndw-button variant="secondary" aria-label="Zoom in" (click)="zoomIn()">+</mndw-button>
-        <mndw-button variant="secondary" aria-label="Zoom out" (click)="zoomOut()">−</mndw-button>
-        <mndw-button variant="secondary" aria-label="Fit to content" (click)="recenter()">⌖</mndw-button>
+    <div class="graph.controls" [attr.aria-label]="t('graph.controls')">
+      <span data-testid="l10n-child-probe" hidden>{{ t('l10n.probe') }}</span>
+      <div class="graph-view-controls" [attr.aria-label]="t('graph.view-controls')">
+        <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-in')" (click)="zoomIn()">+</mndw-button>
+        <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-out')" (click)="zoomOut()">−</mndw-button>
+        <mndw-button variant="secondary" [attr.aria-label]="t('action.fit')" (click)="recenter()">⌖</mndw-button>
       </div>
-      <div class="graph-edit-controls" aria-label="Layout controls">
+      <div class="graph-edit-controls" [attr.aria-label]="t('graph.layout-controls')">
         @if (editMode) {
-          <mndw-button variant="primary" class="graph-action" aria-label="Auto layout" (click)="requestAutoLayout()">Auto layout</mndw-button>
-          <mndw-button variant="primary" class="graph-action" aria-label="Done" (click)="requestDoneEditing()">Done</mndw-button>
+          <mndw-button variant="primary" class="graph-action" [attr.aria-label]="t('action.auto-layout')" (click)="requestAutoLayout()">{{ t('action.auto-layout') }}</mndw-button>
+          <mndw-button variant="primary" class="graph-action" [attr.aria-label]="t('action.done')" (click)="requestDoneEditing()">{{ t('action.done') }}</mndw-button>
         }
         <mndw-button
           variant="secondary"
           type="button"
           class="graph-action"
-          aria-label="Rearrange"
+          [attr.aria-label]="t('action.rearrange')"
           [attr.aria-pressed]="editMode"
           [disabled]="editMode"
           (click)="toggleEditMode()"
-        >Rearrange</mndw-button>
+        >{{ t('action.rearrange') }}</mndw-button>
       </div>
     </div>
-    <svg #svg class="mws-graph" role="group" aria-label="MWS topology" tabindex="0"></svg>
+    <svg #svg class="mws-graph" role="group" [attr.aria-label]="t('graph.topology')" tabindex="0"></svg>
   `,
   styleUrls: ['./mws-graph.component.scss'],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
+  private readonly translator = inject(TRANSLATOR);
   @Input({required: true})
   public roots: MwsNode[] = [];
 
@@ -379,7 +383,7 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       })
       .attr('d', (edge) => this.edgePath(edge))
       .select('title')
-      .text((edge) => edgeTooltip(edge.target.node));
+      .text((edge) => edgeTooltip(edge.target.node, (key) => this.t(key)));
   }
 
   private renderNodes(
@@ -463,7 +467,11 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
     nodeGroups.select('text.client-count')
       .attr('text-anchor', 'middle')
       .attr('y', 18)
-      .text((positioned) => positioned.node.clients.length > 0 ? `${positioned.node.clients.length} clients` : '');
+      .text((positioned) =>
+        positioned.node.clients.length > 0
+          ? `${positioned.node.clients.length} ${this.t('graph.clients')}`
+          : ''
+      );
 
     nodeGroups.select('g.client-badge')
       .attr('transform', `translate(${nodeWidth / 2 - 4},${-nodeHeight / 2 + 4})`)
@@ -496,7 +504,11 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
         (positioned) => positioned.node.isController || positioned.node.mwsdStatus === undefined ? 'none' : null,
       )
       .select('title')
-      .text((positioned) => positioned.node.mwsdStatus === undefined ? '' : `mwsd ${positioned.node.mwsdStatus.state}`);
+      .text((positioned) =>
+        positioned.node.mwsdStatus === undefined
+          ? ''
+          : `${this.t('graph.mwsd')} ${positioned.node.mwsdStatus.state}`
+      );
 
     nodeGroups.select<SVGCircleElement>('circle.persistent-session-dot')
       .attr('class', (positioned) => {
@@ -518,8 +530,8 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
         positioned.node.persistentSession === undefined
           ? ''
           : positioned.node.persistentSession
-          ? 'persistent session live'
-          : 'persistent session failing'
+          ? this.t('graph.persistent-live')
+          : this.t('graph.persistent-failing')
       );
 
     this.applyDragBehavior(nodeGroups);
@@ -710,18 +722,22 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
     const parts = [
       node.name,
       node.model ?? '',
-      node.isController ? 'controller' : 'extender',
-      node.isOnline ? '' : 'offline',
-      node.mwsdStatus === undefined || node.isController ? '' : `mwsd ${node.mwsdStatus.state}`,
+      node.isController ? this.t('graph.controller') : this.t('graph.extender'),
+      node.isOnline ? '' : this.t('graph.offline'),
+      node.mwsdStatus === undefined || node.isController ? '' : `${this.t('graph.mwsd')} ${node.mwsdStatus.state}`,
       node.persistentSession === undefined || node.isController
         ? ''
         : node.persistentSession
-        ? 'persistent session live'
-        : 'persistent session failing',
-      `${node.clients.length} clients`,
+        ? this.t('graph.persistent-live')
+        : this.t('graph.persistent-failing'),
+      `${node.clients.length} ${this.t('graph.clients')}`,
     ];
 
     return parts.filter((part) => part !== '').join(', ');
+  }
+
+  protected t(key: string): string {
+    return this.translator.t(key);
   }
 
   private fitToContent(animate: boolean): void {

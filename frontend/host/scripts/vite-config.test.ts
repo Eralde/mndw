@@ -47,4 +47,12 @@ describe('host Vite config', () => {
     );
     expect(wsProxy && typeof wsProxy !== 'function' && typeof wsProxy !== 'string' && wsProxy.changeOrigin).toBe(false);
   });
+
+  it('exposes pseudo locale only in development builds', () => {
+    const development = viteConfig({command: 'serve', mode: 'development', isPreview: false});
+    const production = viteConfig({command: 'build', mode: 'production', isPreview: false});
+
+    expect(development.define?.__MNDW_PSEUDO_LOCALE_ENABLED__).toBe('true');
+    expect(production.define?.__MNDW_PSEUDO_LOCALE_ENABLED__).toBe('false');
+  });
 });

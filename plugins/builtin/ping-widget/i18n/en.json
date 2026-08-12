@@ -1,0 +1,46 @@
+{
+  "l10n": {
+    "probe": "Ping English probe"
+  },
+  "title": "Ping Utility",
+  "action": {
+    "refresh": "Refresh now",
+    "add": "Add",
+    "delete": "Delete"
+  },
+  "field": {
+    "host-ip": "Host IP",
+    "label-optional": "Label (optional)",
+    "poll": "Poll"
+  },
+  "table": {
+    "aria-label": "Ping statistics",
+    "host": "Host",
+    "last": "Last",
+    "average": "Avg",
+    "median": "Median",
+    "min": "Min",
+    "max": "Max",
+    "loss": "Loss",
+    "samples": "Samples",
+    "updated": "Updated",
+    "actions": "Actions"
+  },
+  "status": {
+    "monitoring": "Monitoring…",
+    "data-refreshed": "Data refreshed",
+    "host-added": "Host added",
+    "host-removed": "Host removed",
+    "no-stats": "No stats yet.",
+    "saving": "Saving…"
+  },
+  "error": {
+    "stats-polling-failed": "Stats polling failed",
+    "refresh-failed": "Refresh failed",
+    "host-ip-required": "Host IP is required",
+    "add-host-failed": "Add host failed",
+    "update-host-failed": "Update host failed",
+    "remove-host-failed": "Remove host failed",
+    "backend-unavailable": "Backend is unavailable for this plugin instance"
+  }
+}

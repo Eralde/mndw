@@ -1,6 +1,7 @@
 import {LitElement, type PropertyDeclarations, css, html} from 'lit';
 import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
 import {FormAssociatedController} from '../forms/form-associated.js';
+import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
 import {focusRing, hostTypography} from '../styles/base.js';
 
 export const MNDW_CHECKBOX_TAG = 'mndw-checkbox';
@@ -121,6 +122,7 @@ export class MndwCheckbox extends LitElement {
   });
   private readonly labelObserver: MutationObserver;
   private labelSlot: HTMLSlotElement | null = null;
+  private localeUnsubscribe: (() => void) | null = null;
 
   constructor() {
     super();
@@ -140,11 +142,14 @@ export class MndwCheckbox extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    this.localeUnsubscribe = subscribeMndwUiLocale(this.onLocaleChange);
     this.formState.captureInitialAttributes(['checked']);
     this.labelObserver.observe(this, {childList: true, subtree: true, characterData: true});
   }
 
   public override disconnectedCallback(): void {
+    this.localeUnsubscribe?.();
+    this.localeUnsubscribe = null;
     this.labelObserver.disconnect();
     this.labelSlot?.removeEventListener('slotchange', this.onLabelSlotChange);
     this.labelSlot = null;
@@ -230,7 +235,7 @@ export class MndwCheckbox extends LitElement {
     }
 
     if (this.required && !this.checked) {
-      this.formState.setValidity({valueMissing: true}, 'Please select this option.');
+      this.formState.setValidity({valueMissing: true}, getMndwUiText('checkbox.validation.required'));
     } else {
       this.formState.clearValidity();
     }
@@ -248,6 +253,10 @@ export class MndwCheckbox extends LitElement {
 
   private readonly onLabelSlotChange = (): void => {
     this.dispatchLabelChange();
+  };
+
+  private readonly onLocaleChange = (): void => {
+    this.requestUpdate();
   };
 
   private dispatchLabelChange(): void {

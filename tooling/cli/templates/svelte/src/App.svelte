@@ -1,21 +1,24 @@
 <script lang="ts">
 import type {PluginContext} from '@mndw/sdk';
+import {createTranslator} from '@mndw/sdk/svelte';
 
 const {ctx}: {ctx: PluginContext} = $props();
+const translator = createTranslator(ctx.i18n);
 
 let count = $state(0);
 </script>
 
 <div class="wrap">
-  <h3 class="title">__MNDW_LABEL__</h3>
+    <h3 class="title" data-testid="l10n-probe" data-plugin-label="__MNDW_LABEL__">{$translator.t('l10n.probe')}</h3>
   <p class="device">Device: {ctx.hostInfo.deviceName}</p>
   <button
     class="count"
     type="button"
     onclick={() => count++}
   >
-    Clicked {count}
+    {$translator.t('l10n.button')} {count}
   </button>
+  <p class="result">{$translator.t('l10n.result')}</p>
 </div>
 
 <style>

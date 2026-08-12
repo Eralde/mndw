@@ -62,7 +62,9 @@ export function renderSandboxManifest(resolvedPath: string, deps: SandboxFsDeps 
     throw new Error(`[mndw-sandbox] manifest.json is not valid JSON: ${(err as Error).message}`);
   }
 
-  return `export default ${JSON.stringify(parsed)};`;
+  const catalogBaseUrl = `/@fs${resolvedPath.replace(/\/$/, '')}`;
+
+  return `export const __catalogBaseUrl = ${JSON.stringify(catalogBaseUrl)};\nexport default ${JSON.stringify(parsed)};`;
 }
 
 /** True when a changed file belongs to the sandbox plugin directory (source or manifest). */
@@ -74,7 +76,7 @@ export function isSandboxFile(file: string, resolvedPath: string): boolean {
 // the `virtual:sandbox-*` dynamic imports reachable from the app; the runtime never loads
 // them because the `__MNDW_SANDBOX__` flag is false.
 const INERT_PLUGIN_MODULE = 'export const createInstance = undefined;';
-const INERT_MANIFEST_MODULE = 'export default null;';
+const INERT_MANIFEST_MODULE = 'export const __catalogBaseUrl = undefined; export default null;';
 
 /**
  * Vite plugin exposing the sandbox plugin's source and manifest as virtual modules. It is

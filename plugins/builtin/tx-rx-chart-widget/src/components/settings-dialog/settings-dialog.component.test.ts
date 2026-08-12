@@ -1,11 +1,14 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {type ComponentFixture, TestBed} from '@angular/core/testing';
+import {createTestI18n} from '@mndw/sdk/testing';
 import type {NetworkInterface} from '../../types/rci.types.js';
 import {afterEach, describe, expect, it} from 'vitest';
 import {SettingsDialogComponent} from './settings-dialog.component.js';
 import settingsDialogStyles from './settings-dialog.component.scss?raw';
 import settingsDialogTemplate from './settings-dialog.component.html?raw';
+import {TRANSLATOR} from '../../tokens';
+import enCatalog from '../../../i18n/en.json';
 
 const interfaces: NetworkInterface[] = [
   {id: 'eth0', description: 'LAN'},
@@ -39,6 +42,7 @@ async function createFixture(
   });
   await TestBed.configureTestingModule({
     imports: [SettingsDialogComponent],
+    providers: [{provide: TRANSLATOR, useValue: createTestI18n(enCatalog)}],
   }).compileComponents();
 
   const fixture = TestBed.createComponent(SettingsDialogComponent);

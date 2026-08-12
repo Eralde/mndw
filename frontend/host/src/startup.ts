@@ -1,5 +1,6 @@
 export interface StartupDeps {
-  defineUi: () => void;
+  initLocale: () => string;
+  defineUi: (locale: string) => void;
   initTheme: () => void;
   initPalette: () => Promise<void>;
   checkAuthenticated: () => Promise<boolean>;
@@ -11,7 +12,9 @@ export interface StartupDeps {
 }
 
 export async function initialize(deps: StartupDeps): Promise<void> {
-  deps.defineUi();
+  const locale = deps.initLocale();
+
+  deps.defineUi(locale);
   deps.initTheme();
 
   try {

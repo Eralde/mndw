@@ -1,5 +1,7 @@
 <script lang="ts">
 import {downloadDiagnostics} from '../../services/diagnostics.service.js';
+import {hostT} from '../../services/host-i18n.svelte.js';
+import {appState} from '../../state/app.svelte.js';
 
 let diagnosticsLoading = $state(false);
 let diagnosticsError = $state('');
@@ -10,7 +12,7 @@ async function downloadHostDiagnostics(): Promise<void> {
   try {
     await downloadDiagnostics();
   } catch {
-    diagnosticsError = 'Diagnostics download failed';
+    diagnosticsError = hostT('settings.diagnostics-failed');
   } finally {
     diagnosticsLoading = false;
   }
@@ -19,15 +21,20 @@ async function downloadHostDiagnostics(): Promise<void> {
 
 <section
   class="mndw-diagnostics-settings"
-  aria-label="Diagnostics"
+  data-locale={appState.locale}
+  aria-label={hostT('settings.diagnostics-tab')}
 >
-  <h3>Diagnostics</h3>
-  <p>Download recent daemon and plugin runtime state for troubleshooting.</p>
+  <h3>{hostT('settings.diagnostics-tab')}</h3>
+  <p>{hostT('settings.diagnostics-description')}</p>
   <mndw-button
     variant="secondary"
     disabled={diagnosticsLoading}
     onclick={() => void downloadHostDiagnostics()}
-  >{diagnosticsLoading ? 'Downloading…' : 'Download diagnostics'}</mndw-button>
+  >{
+    diagnosticsLoading
+    ? hostT('settings.downloading')
+    : hostT('settings.download-diagnostics')
+  }</mndw-button>
   {#if diagnosticsError}
     <p role="alert">{diagnosticsError}</p>
   {/if}

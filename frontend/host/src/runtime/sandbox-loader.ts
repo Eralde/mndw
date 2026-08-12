@@ -1,4 +1,6 @@
 import {type MndwPlugin, type PluginManifest, validateManifest} from '@mndw/sdk';
+import {getLocale} from '../services/locale.service.js';
+import {createPluginCatalogCell, createPluginCatalogSource, loadInitialPluginCatalog} from '../services/plugin-catalog.service.js';
 import {type LoadedPlugin, pluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 
@@ -33,11 +35,12 @@ export interface SandboxRegistry {
  */
 export interface SandboxImports {
   importPluginModule: () => Promise<unknown>;
-  importManifestModule: () => Promise<{default?: unknown}>;
+  importManifestModule: () => Promise<{default?: unknown; __catalogBaseUrl?: string}>;
 }
 
 /** Injected boundaries so the loader is unit-testable without Vite virtual modules or the DOM. */
 export interface SandboxLoaderDeps extends Partial<SandboxImports> {
+  catalogBaseUrl?: string;
   registry?: SandboxRegistry;
   remountWidgets?: (name: string, next: LoadedPlugin, prior: LoadedPlugin) => Promise<boolean>;
   reloadPage?: (name: string, next: LoadedPlugin, prior: LoadedPlugin) => Promise<boolean>;
@@ -79,13 +82,15 @@ function descriptorFromManifest(backend: PluginManifest['backend'] | undefined):
  * manifest. A sandbox plugin is always treated as an approved+enabled builtin — the daemon
  * is bypassed in `mndw dev`, so there is no approval flow.
  */
-export function manifestToListEntry(manifest: PluginManifest): PluginListEntry {
+export function manifestToListEntry(manifest: PluginManifest, catalogBaseUrl?: string): PluginListEntry {
   const base = {
     name: manifest.name,
     version: manifest.version,
     label: manifest.label,
     entry: manifest.entry,
     ...(manifest.icon !== undefined ? {icon: manifest.icon} : {}),
+    ...(manifest.i18n === undefined ? {} : {i18n: manifest.i18n}),
+    ...(catalogBaseUrl === undefined ? {} : {catalogBaseUrl}),
     source: 'builtin' as const,
     approval: 'approved' as const,
     enabled: true,
@@ -118,8 +123,16 @@ async function buildLoadedPlugin(deps: SandboxLoaderDeps): Promise<LoadedPlugin>
   }
 
   const manifest = validateManifest(manifestModule.default);
+  const catalogBaseUrl = deps.catalogBaseUrl ?? manifestModule.__catalogBaseUrl;
+  const entry = manifestToListEntry(manifest, catalogBaseUrl);
+  const source = createPluginCatalogSource(entry.name, entry.version, catalogBaseUrl ?? `/plugins/${entry.name}`, entry.i18n);
+  const catalog = source === undefined ? undefined : createPluginCatalogCell(source, getLocale());
 
-  return {entry: manifestToListEntry(manifest), module};
+  if (catalog !== undefined) {
+    await loadInitialPluginCatalog(catalog, getLocale());
+  }
+
+  return {entry, module, ...(catalog === undefined ? {} : {catalog})};
 }
 
 /**

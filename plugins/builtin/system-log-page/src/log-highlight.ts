@@ -4,13 +4,13 @@ export interface HighlightSegment {
 }
 
 export function highlightText(text: string, query: string): HighlightSegment[] {
-  const normalizedQuery = query.toLocaleLowerCase();
+  const normalizedQuery = query.toLowerCase();
 
   if (normalizedQuery.length === 0) {
     return [{text, match: false}];
   }
 
-  const normalizedText = text.toLocaleLowerCase();
+  const normalizedText = text.toLowerCase();
   const segments: HighlightSegment[] = [];
   let cursor = 0;
 

@@ -1,4 +1,5 @@
-import {BackendDisabled, BackendNotApproved, type PluginContext} from '@mndw/sdk';
+import {BackendDisabled, BackendNotApproved, type PluginContext, type PluginI18n} from '@mndw/sdk';
+import {bindLocale} from '@mndw/sdk/bind-locale';
 import {type EchoView, render} from './render.js';
 
 type Backend = PluginContext['backend'];
@@ -7,7 +8,7 @@ export interface EchoWidget {
   unmount(): void;
 }
 
-export function mountEchoWidget(container: HTMLElement, backend: Backend): EchoWidget {
+export function mountEchoWidget(container: HTMLElement, backend: Backend, i18n: PluginI18n): EchoWidget {
   container.replaceChildren();
 
   const rootEl = document.createElement('div');
@@ -22,17 +23,17 @@ export function mountEchoWidget(container: HTMLElement, backend: Backend): EchoW
 
   statusInput.type = 'number';
   statusInput.className = 'mndw-echo__status-input';
-  statusInput.placeholder = 'status';
+  statusInput.placeholder = i18n.t('status');
 
   const getBtn = document.createElement('button');
 
   getBtn.className = 'mndw-echo__get';
-  getBtn.textContent = 'GET /echo';
+  getBtn.textContent = i18n.t('get');
 
   const postBtn = document.createElement('button');
 
   postBtn.className = 'mndw-echo__post';
-  postBtn.textContent = 'POST /echo';
+  postBtn.textContent = i18n.t('post');
 
   controls.append(statusInput, getBtn, postBtn);
 
@@ -40,14 +41,34 @@ export function mountEchoWidget(container: HTMLElement, backend: Backend): EchoW
 
   resultEl.className = 'mndw-echo__result';
 
-  rootEl.append(controls, resultEl);
+  const probeEl = document.createElement('span');
+
+  probeEl.dataset.testid = 'l10n-probe';
+  probeEl.hidden = true;
+
+  rootEl.append(probeEl, controls, resultEl);
   container.append(rootEl);
 
-  render(resultEl, {state: 'idle'});
+  let currentView: EchoView = {state: 'idle'};
+
+  const renderView = (view: EchoView): void => {
+    currentView = view;
+    render(resultEl, view, i18n);
+  };
+
+  const renderLocale = (): void => {
+    probeEl.textContent = i18n.t('l10n.probe');
+    statusInput.placeholder = i18n.t('status');
+    getBtn.textContent = i18n.t('get');
+    postBtn.textContent = i18n.t('post');
+    render(resultEl, currentView, i18n);
+  };
+
+  const unsubscribeLocale = bindLocale(i18n, renderLocale);
 
   async function call(id: 'echoGet' | 'echoPost', withBody: boolean): Promise<void> {
     if (!backend) {
-      render(resultEl, {state: 'unavailable'});
+      renderView({state: 'unavailable'});
 
       return;
     }
@@ -76,21 +97,21 @@ export function mountEchoWidget(container: HTMLElement, backend: Backend): EchoW
         },
       };
 
-      render(resultEl, view);
+      renderView(view);
     } catch (error) {
       if (error instanceof BackendNotApproved) {
-        render(resultEl, {state: 'pending'});
+        renderView({state: 'pending'});
 
         return;
       }
 
       if (error instanceof BackendDisabled) {
-        render(resultEl, {state: 'disabled'});
+        renderView({state: 'disabled'});
 
         return;
       }
 
-      render(resultEl, {state: 'error', message: error instanceof Error ? error.message : String(error)});
+      renderView({state: 'error', message: error instanceof Error ? error.message : String(error)});
     }
   }
 
@@ -108,6 +129,7 @@ export function mountEchoWidget(container: HTMLElement, backend: Backend): EchoW
     unmount(): void {
       getBtn.removeEventListener('click', onGet);
       postBtn.removeEventListener('click', onPost);
+      unsubscribeLocale();
       container.replaceChildren();
     },
   };

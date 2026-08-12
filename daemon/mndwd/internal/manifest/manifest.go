@@ -27,6 +27,7 @@ type Size = contractmanifest.Size
 type BackendKind = contractmanifest.BackendKind
 type BackendRoute = contractmanifest.BackendRoute
 type Backend = contractmanifest.Backend
+type I18n = contractmanifest.I18n
 type Manifest = contractmanifest.Manifest
 type ValidationError = contractmanifest.ValidationError
 

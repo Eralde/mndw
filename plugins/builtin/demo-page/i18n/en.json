@@ -1,0 +1,12 @@
+{
+  "l10n": {
+    "probe": "Demo English probe"
+  },
+  "title": "Demo Page",
+  "device": "Device",
+  "vendor": "Vendor",
+  "instance-id": "Plugin instance id:",
+  "hello": "Hello Page Plugin",
+  "count": "Count: {count}",
+  "save": "Save count"
+}

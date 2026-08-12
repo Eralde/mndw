@@ -14,6 +14,7 @@ import {
   MGMT_UPLOAD_URL,
 } from '../constants.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
+import {hostT} from './locale.service.js';
 
 export interface UploadResult {
   status: 'installed' | 'pending';
@@ -231,39 +232,40 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
 
 export const mgmtClient: MgmtClient = createMgmtClient();
 
-const MESSAGES: Record<string, string> = {
-  INVALID_ZIP: 'The file is not a valid ZIP archive.',
-  MANIFEST_MISSING: 'The archive has no manifest.json at its root.',
-  UNSUPPORTED_MANIFEST_VERSION: 'This plugin manifest version is no longer supported.',
-  CONFLICT: 'A plugin with that name already exists.',
-  UPLOAD_TOO_LARGE: 'The plugin exceeds the 10 MB upload limit.',
-  OPKG_FAILED: 'Installing the plugin\'s system packages failed.',
-  DAEMON_FAILED: 'Starting the plugin\'s backend failed.',
-  UNAUTHORIZED: 'Your session has expired. Please log in again.',
-  SERVICE_CAPACITY_EXCEEDED: 'No service capacity is available. Stop another backend and try again.',
-  BACKEND_BUSY: 'The backend is busy. Try again shortly.',
-  BACKEND_UNAVAILABLE: 'The backend is unavailable.',
-  BACKEND_INCOMPATIBLE: 'This backend requires a protocol version unsupported by this device.',
-  BACKEND_MAINTENANCE: 'The backend is being updated. Try again shortly.',
-  CONTROLLER_SESSION_UNAVAILABLE:
-    'Controller token session is unavailable. Configure it before enabling this permission.',
-  RCI_SOCKET_START_FAILED: 'Persistent RCI permission is enabled, but its session socket could not start. Try again.',
+const MESSAGE_KEYS: Record<string, string> = {
+  INVALID_ZIP: 'errors.invalid-zip',
+  MANIFEST_MISSING: 'errors.manifest-missing',
+  UNSUPPORTED_MANIFEST_VERSION: 'errors.unsupported-manifest-version',
+  CONFLICT: 'errors.conflict',
+  UPLOAD_TOO_LARGE: 'errors.upload-too-large',
+  OPKG_FAILED: 'errors.opkg-failed',
+  DAEMON_FAILED: 'errors.daemon-failed',
+  UNAUTHORIZED: 'errors.unauthorized',
+  SERVICE_CAPACITY_EXCEEDED: 'errors.service-capacity',
+  BACKEND_BUSY: 'errors.backend-busy',
+  BACKEND_UNAVAILABLE: 'errors.backend-unavailable',
+  BACKEND_INCOMPATIBLE: 'errors.backend-incompatible',
+  BACKEND_MAINTENANCE: 'errors.backend-maintenance',
+  CONTROLLER_SESSION_UNAVAILABLE: 'errors.controller-session-unavailable',
+  RCI_SOCKET_START_FAILED: 'errors.rci-socket-start-failed',
 };
 
 export function messageForError(error: unknown): string {
   if (error instanceof DOMException && error.name === 'TimeoutError') {
-    return 'The device did not respond.';
+    return hostT('errors.device-timeout');
   }
 
   if (error instanceof MgmtError) {
     if (error.code === 'MANIFEST_INVALID') {
-      return error.detail ? `Invalid manifest: ${error.detail}` : 'The plugin manifest is invalid.';
+      return error.detail ? `${hostT('errors.invalid-manifest')}: ${error.detail}` : hostT('errors.invalid-manifest');
     }
 
-    const message = MESSAGES[error.code] ?? error.message;
+    const message = MESSAGE_KEYS[error.code] === undefined
+      ? error.message
+      : hostT(MESSAGE_KEYS[error.code]);
 
-    return message || 'Something went wrong.';
+    return message || hostT('app.error');
   }
 
-  return error instanceof Error ? error.message : 'Something went wrong.';
+  return error instanceof Error ? error.message : hostT('app.error');
 }

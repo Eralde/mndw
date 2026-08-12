@@ -2,6 +2,7 @@ import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {MNDW_OPTION_TAG, MndwOption} from './option.js';
 import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select-panel.js';
 import {MNDW_SELECT_TAG, MndwSelect} from './select.js';
+import {setMndwUiLocale} from '../i18n.js';
 import {type UiCloseReason, type UiLayerOptions, type UiOverlayProvider, setOverlayProvider} from '../overlay.js';
 
 beforeAll(() => {
@@ -19,6 +20,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  setMndwUiLocale('en');
   setOverlayProvider(undefined);
   document.body.innerHTML = '';
   setViewport(DEFAULT_INNER_WIDTH, DEFAULT_INNER_HEIGHT);
@@ -156,6 +158,21 @@ describe('<mndw-select> trigger', () => {
     const element = await mount();
 
     expect(trigger(element).textContent).toContain('-- Choose --');
+  });
+
+  it('updates generated placeholder while preserving an authored property', async () => {
+    const element = await mount('<mndw-select></mndw-select>');
+
+    setMndwUiLocale('ru');
+    await element.updateComplete;
+    expect(trigger(element).textContent).toContain('Выберите…');
+
+    element.placeholder = 'Custom placeholder';
+    await element.updateComplete;
+    setMndwUiLocale('en');
+    await element.updateComplete;
+
+    expect(trigger(element).textContent).toContain('Custom placeholder');
   });
 
   it('shows the label of the selected option', async () => {

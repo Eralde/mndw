@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
 import type {PluginContext} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
 import type {RciManager, RciQuery} from '@rci-tools/core';
 import {createApp, nextTick} from 'vue';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {type Observable, Subject, of, throwError} from 'rxjs';
 
 import App from './App.vue';
+import enCatalog from '../i18n/en.json';
 
 interface FakeWorkerInstance {
   messages: unknown[];
@@ -57,19 +59,26 @@ function successfulResponse(query: RciQuery): Observable<unknown> {
   }
 }
 
-function createContext(queue: (query: RciQuery) => Observable<unknown>): PluginContext {
+function createContext(
+  queue: (query: RciQuery) => Observable<unknown>,
+  i18n = createTestI18n(enCatalog),
+): PluginContext {
   return {
     hostInfo: {firmwareVersion: '1.0.0', deviceName: 'Router'},
     rciManager: {queue} as unknown as RciManager,
+    i18n,
   } as unknown as PluginContext;
 }
 
-function mountWidget(queue: (query: RciQuery) => Observable<unknown>): ReturnType<typeof createApp> {
+function mountWidget(
+  queue: (query: RciQuery) => Observable<unknown>,
+  i18n = createTestI18n(enCatalog),
+): ReturnType<typeof createApp> {
   const host = document.createElement('div');
 
   document.body.append(host);
 
-  const app = createApp(App, {ctx: createContext(queue)});
+  const app = createApp(App, {ctx: createContext(queue, i18n)});
 
   app.mount(host);
 
@@ -99,6 +108,20 @@ afterEach(() => {
 });
 
 describe('App', () => {
+  it('updates the same probe after a locale switch', async () => {
+    const i18n = createTestI18n({l10n: {probe: 'Device English'}});
+    const app = mountWidget(() => new Observable<unknown>(() => {}), i18n);
+    const probe = document.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+
+    expect(probe?.textContent).toBe('Device English');
+    i18n.setLocale('ru', {l10n: {probe: 'Устройство русский'}});
+    await nextTick();
+
+    expect(document.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(probe?.textContent).toBe('Устройство русский');
+    app.unmount();
+  });
+
   it('renders uptime, current load values, and both charts after a successful mount', async () => {
     const app = mountWidget(successfulResponse);
 

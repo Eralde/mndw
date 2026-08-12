@@ -147,6 +147,7 @@ export default defineConfig(({mode}) => {
     // Compile-time flag the runtime reads to pick the sandbox loader over the daemon list.
     define: {
       __MNDW_SANDBOX__: JSON.stringify(sandboxPluginPath !== null),
+      __MNDW_PSEUDO_LOCALE_ENABLED__: JSON.stringify(mode === 'development'),
     },
     build: {
       rollupOptions: {

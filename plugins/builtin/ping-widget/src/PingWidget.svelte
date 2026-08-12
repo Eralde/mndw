@@ -1,7 +1,8 @@
 <script lang="ts">
 import {onMount} from 'svelte';
-import type {BackendClient} from '@mndw/sdk';
+import type {BackendClient, PluginI18n} from '@mndw/sdk';
 import {createRefreshLoop} from '@mndw/sdk/refresh';
+import {createTranslator} from '@mndw/sdk/svelte';
 import {
   type Host,
   type HostStats,
@@ -12,6 +13,7 @@ import {
 
 interface Props {
   backend?: BackendClient;
+  i18n: PluginI18n;
 }
 
 type RenameStatus =
@@ -27,7 +29,13 @@ interface RenameState {
   error: string;
 }
 
-let {backend}: Props = $props();
+let {backend, i18n}: Props = $props();
+// svelte-ignore state_referenced_locally
+const translator = createTranslator(i18n);
+
+function t(key: string, values?: Record<string, unknown>): string {
+  return $translator.t(key, values);
+}
 
 const hasBackend = $derived(Boolean(backend));
 
@@ -46,7 +54,7 @@ const statsLoop = createRefreshLoop({
   onSuccess: () => {},
   onError: (error) => {
     setMessage(
-      error instanceof Error ? error.message : 'Stats polling failed',
+      error instanceof Error ? error.message : t('error.stats-polling-failed'),
       true,
     );
   },
@@ -107,7 +115,12 @@ function setMessage(text: string, error = false): void {
 }
 
 function formatMs(value: number): string {
-  return !Number.isFinite(value) || value <= 0 ? '-' : `${value.toFixed(2)} ms`;
+  return !Number.isFinite(value) || value <= 0
+    ? '-'
+    : `${
+      $translator.formatNumber(value, {minimumFractionDigits: 2,
+        maximumFractionDigits: 2})
+    } ms`;
 }
 
 function formatUpdatedAt(value: string): string {
@@ -115,7 +128,9 @@ function formatUpdatedAt(value: string): string {
     return '-';
   }
   const parsed = new Date(value);
-  return Number.isNaN(parsed.valueOf()) ? '-' : parsed.toLocaleTimeString();
+  return Number.isNaN(parsed.valueOf())
+    ? '-'
+    : $translator.formatDate(parsed, {timeStyle: 'medium'});
 }
 
 async function loadHosts(): Promise<void> {
@@ -148,10 +163,13 @@ async function refreshNow(showMessage = true): Promise<void> {
     await Promise.all([loadHosts(), loadStats()]);
 
     if (showMessage) {
-      setMessage('Data refreshed');
+      setMessage(t('status.data-refreshed'));
     }
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : 'Refresh failed', true);
+    setMessage(
+      error instanceof Error ? error.message : t('error.refresh-failed'),
+      true,
+    );
   } finally {
     loading = false;
   }
@@ -167,7 +185,7 @@ async function addHost(): Promise<void> {
   }
   const ip = newHostIp.trim();
   if (!ip) {
-    setMessage('Host IP is required', true);
+    setMessage(t('error.host-ip-required'), true);
     return;
   }
   loading = true;
@@ -180,10 +198,10 @@ async function addHost(): Promise<void> {
     newHostIp = '';
     newHostName = '';
     await refreshNow();
-    setMessage('Host added');
+    setMessage(t('status.host-added'));
   } catch (error) {
     setMessage(
-      error instanceof Error ? error.message : 'Add host failed',
+      error instanceof Error ? error.message : t('error.add-host-failed'),
       true,
     );
   } finally {
@@ -214,7 +232,9 @@ async function saveHostName(ip: string, draft?: string): Promise<void> {
     state.status = 'idle';
   } catch (error) {
     state.status = 'error';
-    state.error = error instanceof Error ? error.message : 'Update host failed';
+    state.error = error instanceof Error
+      ? error.message
+      : t('error.update-host-failed');
     stats = [...stats];
   }
 }
@@ -256,10 +276,10 @@ async function removeHost(ip: string): Promise<void> {
     await updateHosts(backend, {action: 'remove', ip});
     delete renameStates[ip];
     await refreshNow();
-    setMessage('Host removed');
+    setMessage(t('status.host-removed'));
   } catch (error) {
     setMessage(
-      error instanceof Error ? error.message : 'Remove host failed',
+      error instanceof Error ? error.message : t('error.remove-host-failed'),
       true,
     );
   } finally {
@@ -269,10 +289,10 @@ async function removeHost(ip: string): Promise<void> {
 
 onMount(() => {
   if (!backend) {
-    setMessage('Backend is unavailable for this plugin instance', true);
+    setMessage(t('error.backend-unavailable'), true);
     return;
   }
-  setMessage('Monitoring…');
+  setMessage(t('status.monitoring'));
   void refreshNow();
   statsLoop.start({immediate: false});
   return () => {
@@ -281,34 +301,36 @@ onMount(() => {
 });
 </script>
 
-<div class="ping-widget">
+<div
+  class="ping-widget"
+>
   <div class="header">
-    <h3>Ping Utility</h3>
+    <h3 data-testid="l10n-probe">{t('l10n.probe')}</h3>
     <div class="header-actions">
       <mndw-button
         variant="secondary"
         disabled={loading || !hasBackend}
         onclick={() => void refreshNow()}
       >
-        Refresh now
+        {t('action.refresh')}
       </mndw-button>
     </div>
   </div>
 
   <div class="controls">
-    <mndw-field label="Host IP">
+    <mndw-field label={t('field.host-ip')}>
       <mndw-input
         type="text"
-        placeholder="Host IP"
+        placeholder={t('field.host-ip')}
         value={newHostIp}
         onmndwinput={(event: CustomEvent<{value: string}>) =>
         newHostIp = event.detail.value}
       ></mndw-input>
     </mndw-field>
-    <mndw-field label="Label (optional)">
+    <mndw-field label={t('field.label-optional')}>
       <mndw-input
         type="text"
-        placeholder="Label (optional)"
+        placeholder={t('field.label-optional')}
         value={newHostName}
         onmndwinput={(event: CustomEvent<{value: string}>) =>
         newHostName = event.detail.value}
@@ -319,9 +341,9 @@ onMount(() => {
       disabled={loading || !hasBackend}
       onclick={addHost}
     >
-      Add
+      {t('action.add')}
     </mndw-button>
-    <mndw-field label="Poll">
+    <mndw-field label={t('field.poll')}>
       <mndw-input
         type="number"
         min="1"
@@ -346,7 +368,7 @@ onMount(() => {
   <div class="table-wrap">
     <table
       role="grid"
-      aria-label="Ping statistics"
+      aria-label={t('table.aria-label')}
     >
       <colgroup>
         <col class="col-host" />
@@ -362,16 +384,16 @@ onMount(() => {
       </colgroup>
       <thead>
         <tr>
-          <th>Host</th>
-          <th>Last</th>
-          <th>Avg</th>
-          <th class="stat-optional">Median</th>
-          <th class="stat-optional">Min</th>
-          <th class="stat-optional">Max</th>
-          <th>Loss</th>
-          <th class="stat-optional">Samples</th>
-          <th class="stat-optional">Updated</th>
-          <th>Actions</th>
+          <th>{t('table.host')}</th>
+          <th>{t('table.last')}</th>
+          <th>{t('table.average')}</th>
+          <th class="stat-optional">{t('table.median')}</th>
+          <th class="stat-optional">{t('table.min')}</th>
+          <th class="stat-optional">{t('table.max')}</th>
+          <th>{t('table.loss')}</th>
+          <th class="stat-optional">{t('table.samples')}</th>
+          <th class="stat-optional">{t('table.updated')}</th>
+          <th>{t('table.actions')}</th>
         </tr>
       </thead>
       <tbody>
@@ -381,7 +403,7 @@ onMount(() => {
               colspan="10"
               class="empty"
             >
-              No stats yet.
+              {t('status.no-stats')}
             </td>
           </tr>
         {:else}
@@ -418,7 +440,7 @@ onMount(() => {
                       <span
                         class="rename-status"
                         role="status"
-                      >Saving…</span>
+                      >{t('status.saving')}</span>
                     {/if}
                     {#if state.status === 'error'}
                       <span
@@ -463,7 +485,7 @@ onMount(() => {
                   aria-label={`Delete host ${ip}`}
                   disabled={state.status === 'saving'}
                   onclick={() => void removeHost(ip)}
-                >Delete</mndw-button>
+                >{t('action.delete')}</mndw-button>
               </td>
             </tr>
           {/each}

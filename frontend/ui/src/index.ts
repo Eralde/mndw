@@ -20,6 +20,7 @@ import {MNDW_TAB_TAG, MndwTab} from './tabs/tab.js';
 import {MNDW_TABS_TAG, MndwTabs} from './tabs/tabs.js';
 import {MNDW_TEXTAREA_TAG, MndwTextarea} from './textarea/textarea.js';
 import {MNDW_TOOLTIP_TAG, MndwTooltip} from './tooltip/tooltip.js';
+import {setMndwUiLocale} from './i18n.js';
 
 export {MNDW_BUTTON_TAG, MndwButton} from './button/button.js';
 export type {MndwButtonVariant} from './button/button.js';
@@ -54,6 +55,8 @@ export {MNDW_TEXTAREA_TAG, MndwTextarea} from './textarea/textarea.js';
 export type {MndwTextareaChangeDetail} from './textarea/textarea.js';
 export {MNDW_TOOLTIP_TAG, MndwTooltip} from './tooltip/tooltip.js';
 export type {MndwTooltipPlacement} from './tooltip/tooltip.js';
+export {getMndwUiLocale, getMndwUiText, setMndwUiLocale, subscribeMndwUiLocale} from './i18n.js';
+export {createGeneratedAttribute, createLocalizedProperty} from './localized-property.js';
 export type {UiCloseReason, UiLayer, UiLayerOptions, UiLayerPresentation, UiOverlayProvider} from './overlay.js';
 export {
   availablePopoverHeight,
@@ -83,6 +86,7 @@ export type {
 
 export interface MndwUiDeps {
   overlay?: OverlayService;
+  initialLocale?: string;
 }
 
 const REGISTRY: [string, CustomElementConstructor][] = [
@@ -108,6 +112,10 @@ const REGISTRY: [string, CustomElementConstructor][] = [
 ];
 
 export function defineMndwUi(deps?: MndwUiDeps): void {
+  if (deps?.initialLocale !== undefined) {
+    setMndwUiLocale(deps.initialLocale);
+  }
+
   if (deps?.overlay) {
     setOverlayProvider(adaptOverlayService(deps.overlay));
   }

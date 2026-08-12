@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from 'vitest';
+import {createTestI18n} from '@mndw/sdk/testing';
+import enCatalog from '../i18n/en.json';
 import {type DnsView, render} from './render.js';
 
 function renderView(view: DnsView): string {
   const root = document.createElement('div');
 
-  render(root, view);
+  render(root, view, createTestI18n(enCatalog));
 
   return root.innerHTML;
 }

@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"golang.org/x/text/language"
 )
 
 type Type string
@@ -61,6 +63,11 @@ type Backend struct {
 	Routes          []BackendRoute `json:"routes,omitempty"`
 }
 
+type I18n struct {
+	DefaultLocale *string           `json:"defaultLocale"`
+	Locales       map[string]string `json:"locales"`
+}
+
 type Manifest struct {
 	ManifestVersion *int     `json:"manifestVersion"`
 	Name            *string  `json:"name"`
@@ -74,6 +81,7 @@ type Manifest struct {
 	FixedHeight     *bool    `json:"fixedHeight,omitempty"`
 	Route           *string  `json:"route,omitempty"`
 	Backend         *Backend `json:"backend,omitempty"`
+	I18n            *I18n    `json:"i18n,omitempty"`
 }
 
 type ValidationError struct {
@@ -175,10 +183,96 @@ func validate(m *Manifest, data []byte) error {
 		return err
 	}
 
+	if err := validateI18nShape(data, fail); err != nil {
+		return err
+	}
+
 	if m.Backend != nil {
 		if err := validateBackend(m.Backend, fail); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func validateI18nShape(data []byte, fail func(string) error) error {
+	var envelope struct {
+		I18n json.RawMessage `json:"i18n"`
+	}
+
+	if err := json.Unmarshal(data, &envelope); err != nil || len(envelope.I18n) == 0 {
+		return nil
+	}
+
+	if string(envelope.I18n) == "null" {
+		return fail("i18n must be an object")
+	}
+
+	var fields map[string]json.RawMessage
+
+	if err := json.Unmarshal(envelope.I18n, &fields); err != nil || fields == nil {
+		return fail("i18n must be an object")
+	}
+
+	for field := range fields {
+		if field != "defaultLocale" && field != "locales" {
+			return fail(fmt.Sprintf("i18n contains unknown field %q", field))
+		}
+	}
+
+	var descriptor I18n
+
+	if err := json.Unmarshal(envelope.I18n, &descriptor); err != nil {
+		return fail("i18n has invalid fields: " + err.Error())
+	}
+
+	if descriptor.DefaultLocale == nil {
+		return fail("i18n.defaultLocale is required")
+	}
+
+	if descriptor.Locales == nil || len(descriptor.Locales) == 0 {
+		return fail("i18n.locales must contain at least one locale")
+	}
+
+	canonicalKeys := make(map[string]string, len(descriptor.Locales))
+
+	for key, path := range descriptor.Locales {
+		canonical, err := language.Parse(key)
+
+		if err != nil {
+			return fail(fmt.Sprintf("i18n locale %q is invalid: %v", key, err))
+		}
+
+		canonicalKey := canonical.String()
+
+		if canonicalKey != key {
+			return fail(fmt.Sprintf("i18n locale %q must use canonical BCP-47 spelling %q", key, canonicalKey))
+		}
+
+		if previous, exists := canonicalKeys[canonicalKey]; exists && previous != key {
+			return fail(fmt.Sprintf("i18n locales %q and %q collide after canonicalization", previous, key))
+		}
+
+		canonicalKeys[canonicalKey] = key
+
+		if !safeRelativePath(path) || !strings.HasSuffix(path, ".json") {
+			return fail(fmt.Sprintf("i18n catalog path for %q must be a safe relative .json path", key))
+		}
+	}
+
+	canonicalDefault, err := language.Parse(*descriptor.DefaultLocale)
+
+	if err != nil {
+		return fail(fmt.Sprintf("i18n.defaultLocale is invalid: %v", err))
+	}
+
+	if canonicalDefault.String() != *descriptor.DefaultLocale {
+		return fail(fmt.Sprintf("i18n.defaultLocale must use canonical BCP-47 spelling %q", canonicalDefault.String()))
+	}
+
+	if _, exists := canonicalKeys[*descriptor.DefaultLocale]; !exists {
+		return fail("i18n.defaultLocale must be present in i18n.locales")
 	}
 
 	return nil

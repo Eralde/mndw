@@ -1,11 +1,14 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {beforeEach, describe, expect, it} from 'vitest';
 import type {MwsClient, MwsNode} from '../../domain/mws/mws.types';
 import {MwsClientsTableComponent} from './clients-table.component';
 import tableStyles from './clients-table.component.scss?raw';
 import tableTemplate from './clients-table.component.html?raw';
+import {TRANSLATOR} from '../../tokens';
+import enCatalog from '../../../i18n/en.json';
 
 function client(mac: string, name: string, ip: string | null, uptime: number | null, wired: boolean): MwsClient {
   return {mac, name, ip, uptime, lastSeen: null, wired};
@@ -70,7 +73,10 @@ describe('MwsClientsTableComponent', () => {
 
       throw new Error(`resource URL: ${url}`);
     });
-    await TestBed.configureTestingModule({imports: [MwsClientsTableComponent]}).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [MwsClientsTableComponent],
+      providers: [{provide: TRANSLATOR, useValue: createTestI18n(enCatalog)}],
+    }).compileComponents();
   });
 
   it('renders one row per client and accessible sortable headers', () => {

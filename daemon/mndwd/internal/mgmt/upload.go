@@ -20,6 +20,7 @@ import (
 // directly | (backend) leave pending for approval.
 func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 	data, apiErr := h.readUploadBody(w, r)
+
 	if apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
 
@@ -44,15 +45,25 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if _, unsupported := err.(*manifest.UnsupportedVersionError); unsupported {
 			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeUnsupportedManifestVersion, "manifest version is not supported"))
+
 			return
 		}
+
 		httpx.WriteError(w, h.logger,
 			httpx.NewError(http.StatusBadRequest, httpx.CodeManifestInvalid, "manifest failed validation").WithDetail(err.Error()))
 
 		return
 	}
 
+	if err := h.validateCatalogArchive(zr, m); err != nil {
+		httpx.WriteError(w, h.logger,
+			httpx.NewError(http.StatusBadRequest, httpx.CodeManifestInvalid, "manifest failed catalog validation").WithDetail(err.Error()))
+
+		return
+	}
+
 	name := *m.Name
+
 	if apiErr := h.ensureNameFree(name); apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
 
@@ -60,6 +71,7 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stagingPath := filepath.Join(h.cfg.StagingDir, name)
+
 	if err := extractZip(zr, stagingPath); err != nil {
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeInvalidZip, "failed to extract archive: "+err.Error()))
 
@@ -82,12 +94,14 @@ func (h *Handler) readUploadBody(w http.ResponseWriter, r *http.Request) ([]byte
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		var tooLarge *http.MaxBytesError
+
 		if errors.As(err, &tooLarge) {
 			return nil, httpx.NewError(http.StatusRequestEntityTooLarge, httpx.CodeUploadTooLarge, "upload exceeds size limit")
 		}
 
 		return nil, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "failed to read upload body")
 	}
+
 	if len(data) == 0 {
 		return nil, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "upload body is empty")
 	}
@@ -102,6 +116,7 @@ func (h *Handler) ensureNameFree(name string) *httpx.APIError {
 	if _, exists := h.store.Get(name); exists {
 		return httpx.NewError(http.StatusConflict, httpx.CodeConflict, "a plugin named "+name+" already exists; deny or delete it first")
 	}
+
 	if h.isBuiltin(name) {
 		return httpx.NewError(http.StatusConflict, httpx.CodeConflict, "a builtin plugin named "+name+" exists")
 	}
@@ -113,6 +128,7 @@ func (h *Handler) ensureNameFree(name string) *httpx.APIError {
 // — approval exists for shell execution, not static assets.
 func (h *Handler) installDirect(w http.ResponseWriter, m *manifest.Manifest, manifestBytes []byte, stagingPath string) {
 	name := *m.Name
+
 	if err := moveDir(stagingPath, filepath.Join(h.cfg.UserPluginsDir, name)); err != nil {
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to install plugin"))
 
@@ -124,6 +140,7 @@ func (h *Handler) installDirect(w http.ResponseWriter, m *manifest.Manifest, man
 		record.ActiveVersion = deref(m.Version)
 		record.ActiveVersionDir = filepath.Join(h.cfg.UserPluginsDir, name)
 		st.Plugins[name] = record
+
 		st.AppendAudit("install", name, "no backend — installed without approval")
 
 		return nil
@@ -144,6 +161,7 @@ func (h *Handler) stagePending(w http.ResponseWriter, m *manifest.Manifest, mani
 	name := *m.Name
 	err := h.store.Mutate(func(st *state.State) error {
 		st.Plugins[name] = newRecord(m, manifestBytes, state.ApprovalPending, false)
+
 		st.AppendAudit("upload", name, "backend declared — awaiting approval")
 
 		return nil

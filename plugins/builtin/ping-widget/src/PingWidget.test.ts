@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import {flushSync, mount, settled, unmount} from 'svelte';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import type {BackendClient} from '@mndw/sdk';
+import type {BackendClient, PluginI18n} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
+import enCatalog from '../i18n/en.json';
 import PingWidget from './PingWidget.svelte';
 
 interface MockFetchOptions {
@@ -108,7 +110,7 @@ async function mountWithHosts(
   backend: BackendClient,
   ips: string[],
 ): Promise<ReturnType<typeof mount<typeof PingWidget>>> {
-  const app = mount(PingWidget, {target, props: {backend}});
+  const app = mount(PingWidget, {target, props: {backend, i18n: createTestI18n(enCatalog)}});
 
   mountedApps.push(app);
 
@@ -157,6 +159,21 @@ function backendReturning(byId: Record<string, unknown>) {
   return {backend: {fetch: fetchMock} as unknown as BackendClient, fetchMock};
 }
 
+function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
+  const messages = {
+    en: {title: 'Ping Utility', unavailable: 'Backend unavailable', l10n: {probe: 'Ping English'}},
+    ru: {title: 'Утилита ping', unavailable: 'Сервис недоступен', l10n: {probe: 'Пинг русский'}},
+  };
+  const i18n = createTestI18n(messages.en);
+
+  return {
+    i18n,
+    setLocale: (nextLocale) => {
+      i18n.setLocale(nextLocale, messages[nextLocale]);
+    },
+  };
+}
+
 describe('PingWidget', () => {
   let host: HTMLElement;
 
@@ -175,7 +192,7 @@ describe('PingWidget', () => {
   });
 
   it('renders "unavailable" when backend is undefined', async () => {
-    const app = mount(PingWidget, {target: host, props: {backend: undefined}});
+    const app = mount(PingWidget, {target: host, props: {backend: undefined, i18n: createTestI18n(enCatalog)}});
 
     flushSync();
 
@@ -183,12 +200,33 @@ describe('PingWidget', () => {
     await unmount(app);
   });
 
+  it('updates mounted translated controls when locale changes', () => {
+    const changing = changingI18n();
+    const app = mount(PingWidget, {target: host, props: {backend: undefined, i18n: changing.i18n}});
+
+    flushSync();
+    expect(host.querySelector('h3')?.textContent).toBe('Ping English');
+    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+    expect(probe).not.toBeNull();
+    const enValue = probe?.textContent;
+    expect(enValue).toBe('Ping English');
+
+    changing.setLocale('ru');
+    flushSync();
+
+    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(enValue).not.toBe('Пинг русский');
+    expect(probe?.textContent).toBe('Пинг русский');
+    expect(host.querySelector('h3')?.textContent).toBe('Пинг русский');
+    void unmount(app);
+  });
+
   it('loads stats and hosts on mount', async () => {
     const {backend, fetchMock} = backendReturning({
       stats: [hostStats('9.9.9.9', 'dns')],
       hosts: [{ip: '9.9.9.9', name: 'dns'}],
     });
-    const app = mount(PingWidget, {target: host, props: {backend}});
+    const app = mount(PingWidget, {target: host, props: {backend, i18n: createTestI18n(enCatalog)}});
 
     flushSync();
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {PluginContext} from '@mndw/sdk';
+import {useTranslator} from '@mndw/sdk/vue';
 import type {MndwCheckboxChangeDetail} from '@mndw/ui';
 import {computed, onMounted, onUnmounted, ref} from 'vue';
 import ClientsTable from './components/ClientsTable.vue';
@@ -25,12 +26,17 @@ const columnVisibility = ref<Record<string, boolean>>(
 const loading = ref(true);
 const hasSuccessfulFetch = ref(false);
 const dirty = new Set<string>();
+const translator = useTranslator(props.ctx.i18n);
+const t = (key: string): string => translator.t(key);
 
 let refreshLoop: RefreshLoop | null = null;
 
 const visibleClients = computed(() => filterVisibleClients(allClients.value, showOffline.value));
-const headerLabel = computed(() =>
-  hasSuccessfulFetch.value ? `Clients (${visibleClients.value.length})` : 'Clients');
+const headerLabel = computed(() => {
+  return hasSuccessfulFetch.value
+    ? `${t('title')} (${visibleClients.value.length})`
+    : t('title');
+});
 
 function persist(key: string, value: string): void {
   dirty.add(key);
@@ -62,6 +68,7 @@ function openSettings(): void {
     refreshIntervalSeconds.value,
     onColumnChange,
     onIntervalChange,
+    translator,
   );
 }
 
@@ -167,14 +174,15 @@ onUnmounted(() => {
   <div class="clients-widget">
     <header class="clients-widget__header">
       <span>{{ headerLabel }}</span>
+      <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
       <mndw-checkbox
         class="clients-widget__toggle"
         :checked="showOffline"
         @mndwchange="onOfflineChange"
       >
-        Show offline
+        {{ t('show-offline') }}
       </mndw-checkbox>
-      <mndw-button variant="ghost" aria-label="Client settings" @click="openSettings">⚙</mndw-button>
+      <mndw-button variant="ghost" :aria-label="t('settings')" @click="openSettings">⚙</mndw-button>
     </header>
     <ClientsTable
       :clients="visibleClients"
@@ -182,6 +190,7 @@ onUnmounted(() => {
       :error="error"
       :loading="loading"
       :show-offline="showOffline"
+      :translator="translator"
     />
   </div>
 </template>

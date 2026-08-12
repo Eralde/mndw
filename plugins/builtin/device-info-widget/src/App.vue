@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {PluginContext} from '@mndw/sdk';
+import {useTranslator} from '@mndw/sdk/vue';
 import {Ticker} from '@mndw/sdk/ticker';
 import {computed, onMounted, onUnmounted, ref} from 'vue';
 
@@ -15,6 +16,8 @@ const loading = ref(true);
 const error = ref(false);
 const info = ref<DeviceInfo | null>(null);
 const uptimeSeconds = ref<number | null>(null);
+const translator = useTranslator(props.ctx.i18n);
+const t = (key: string): string => translator.t(key);
 
 let baseline: UptimeBaseline | null = null;
 let ticker: Ticker | null = null;
@@ -25,7 +28,7 @@ const firmware = computed(() => props.ctx.hostInfo.firmwareVersion);
 const uptime = computed(() =>
     uptimeSeconds.value !== null
         ? formatUptime(uptimeSeconds.value)
-        : 'Unknown');
+        : t('unknown'));
 
 const handleInfoSuccess = (nextInfo: DeviceInfo): void => {
   const syncedAtMs = Date.now();
@@ -74,31 +77,32 @@ onUnmounted(() => {
 
 <template>
   <div class="app">
-    <div v-if="loading" class="app__loading">Loading&#8230;</div>
+    <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
+    <div v-if="loading" class="app__loading">{{ t('loading') }}</div>
     <div v-else-if="error || info === null" class="mndw-alert mndw-alert--danger" role="alert">
-      Failed to load device info
+      {{ t('error') }}
     </div>
     <div v-else>
       <div class="app__loads">
-        <LoadBarChart label="CPU" :value="info.cpuLoadPercent" :history="info.cpuHistory"/>
-        <LoadBarChart label="RAM" :value="info.ramLoadPercent" :history="info.ramHistory"/>
+        <LoadBarChart :label="t('cpu')" :value="info.cpuLoadPercent" :history="info.cpuHistory" :translator="translator"/>
+        <LoadBarChart :label="t('ram')" :value="info.ramLoadPercent" :history="info.ramHistory" :translator="translator"/>
       </div>
       <hr class="app__divider">
       <div class="app__grid">
-        <span class="app__label">Device:</span>
+        <span class="app__label">{{ t('device') }}:</span>
         <span class="app__value">{{ info.model }}</span>
-        <span class="app__label">Firmware:</span>
+        <span class="app__label">{{ t('firmware') }}:</span>
         <span class="app__value">{{ firmware }}</span>
-        <span class="app__label">Uptime:</span>
+        <span class="app__label">{{ t('uptime') }}:</span>
         <span class="app__value">{{ uptime }}</span>
       </div>
       <hr class="app__divider">
       <div class="app__grid">
-        <CopyField label="Serial" :value="info.serial"/>
-        <CopyField label="Service Tag" :value="info.serviceTag"/>
-        <CopyField label="MAC" :value="info.mac"/>
-        <CopyField label="HW ID" :value="info.hwid"/>
-        <CopyField label="CID" :value="info.cid"/>
+        <CopyField :label="t('serial')" :value="info.serial" :translator="translator"/>
+        <CopyField :label="t('service-tag')" :value="info.serviceTag" :translator="translator"/>
+        <CopyField :label="t('mac')" :value="info.mac" :translator="translator"/>
+        <CopyField :label="t('hwid')" :value="info.hwid" :translator="translator"/>
+        <CopyField :label="t('cid')" :value="info.cid" :translator="translator"/>
       </div>
     </div>
   </div>

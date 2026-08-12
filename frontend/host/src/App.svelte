@@ -3,6 +3,7 @@ import {Router} from 'sv-router';
 import OverlayHost from './components/overlay/OverlayHost.svelte';
 import LoginPage from './pages/login/LoginPage.svelte';
 import {appState} from './state/app.svelte.js';
+import {hostT} from './services/host-i18n.svelte.js';
 </script>
 
 {#if !appState.authenticated}
@@ -13,5 +14,10 @@ import {appState} from './state/app.svelte.js';
   <!-- Global top-layer host for plugin overlays; stays mounted across navigation. -->
   <OverlayHost />
 {:else}
-  <div class="mndw-loading">Loading…</div>
+  <div
+    class="mndw-loading"
+    data-locale={appState.locale}
+  >
+    {hostT('app.loading')}
+  </div>
 {/if}

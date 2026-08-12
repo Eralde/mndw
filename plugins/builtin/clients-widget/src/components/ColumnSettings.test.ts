@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import {createTestI18n} from '@mndw/sdk/testing';
+import {useTranslator} from '@mndw/sdk/vue';
 import {type App as VueApp, createApp} from 'vue';
 import ColumnSettings from './ColumnSettings.vue';
 
@@ -20,6 +22,14 @@ function mountSettings(): void {
     refreshIntervalSeconds: 3,
     onChange,
     onRefreshIntervalChange,
+    translator: useTranslator(createTestI18n({
+      columns: 'Columns',
+      'refresh-interval': 'Refresh interval',
+      'column.ip': 'IP Address',
+      'column.connection': 'Connection',
+      'column.uptime': 'Uptime',
+      'column.last-seen': 'Last Seen',
+    })),
   });
   app.mount(host);
 }

@@ -1,11 +1,13 @@
 import {mount, unmount} from 'svelte';
-import type {PluginContext} from '@mndw/sdk';
+import type {Readable} from 'svelte/store';
+import type {PluginContext, Translator} from '@mndw/sdk';
 import SettingsForm from './components/SettingsForm.svelte';
 import type {HostClient} from './types.js';
 
 export interface OpenSettingsArgs {
   hosts: HostClient[];
   selectedMac: string;
+  translator: Readable<Translator>;
   onSelect: (mac: string) => void;
 }
 
@@ -27,6 +29,7 @@ export function openSettingsDialog(ctx: PluginContext, args: OpenSettingsArgs): 
         props: {
           hosts: args.hosts,
           selectedMac: args.selectedMac,
+          translator: args.translator,
           onSelect: (mac: string) => {
             args.onSelect(mac);
             layer.close(undefined, 'action');

@@ -1,4 +1,6 @@
 <script lang="ts">
+import {hostT} from '../services/host-i18n.svelte.js';
+import {appState} from '../state/app.svelte.js';
 interface OrderCard {
   id: string;
   label: string;
@@ -99,14 +101,15 @@ function handlePointerUp(): void {
       tabindex="-1"
       aria-modal="true"
       aria-labelledby="arrange-widgets-title"
+      data-locale={appState.locale}
     >
       <div class="mndw-floating-panel__header">
-        <h3 id="arrange-widgets-title">Arrange widgets</h3>
+        <h3 id="arrange-widgets-title">{hostT('dashboard.arrange-widgets')}</h3>
         <mndw-button
           variant="ghost"
           class="mndw-floating-panel__close"
           onclick={commit}
-          aria-label="Close"
+          aria-label={hostT('common.close')}
         >
           ×
         </mndw-button>
@@ -131,7 +134,7 @@ function handlePointerUp(): void {
                 variant="ghost"
                 onclick={() => move(index, -1)}
                 disabled={index === 0}
-                aria-label={`Move ${card.label} up`}
+                aria-label={hostT('dashboard.move-up', {label: card.label})}
               >
                 ▲
               </mndw-button>
@@ -139,7 +142,7 @@ function handlePointerUp(): void {
                 variant="ghost"
                 onclick={() => move(index, 1)}
                 disabled={index === draft.length - 1}
-                aria-label={`Move ${card.label} down`}
+                aria-label={hostT('dashboard.move-down', {label: card.label})}
               >
                 ▼
               </mndw-button>

@@ -137,6 +137,18 @@ body {
   line-height: 1;
 }
 
+.mndw-header__locale-toggle {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.mndw-header__locale-button::part(button) {
+  min-width: 32px;
+  padding: 4px;
+  line-height: 1;
+}
+
 .mndw-header__logout {
   display: inline-block;
 }

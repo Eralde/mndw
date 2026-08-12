@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import {ref} from 'vue';
+import type {Translator} from '@mndw/sdk';
 
-const props = defineProps<{label: string; value: string}>();
+const props = withDefaults(defineProps<{
+  label: string;
+  value: string;
+  translator: Translator;
+}>(), {
+});
 
 const copied = ref(false);
 
@@ -26,11 +32,11 @@ const handleCopy = (): void => {
     <mndw-button
       variant="ghost"
       class="copy-field__btn"
-      :aria-label="`Copy ${label}`"
-      :title="`Copy ${label}`"
+      :aria-label="`${props.translator.t('copy')} ${label}`"
+      :title="`${props.translator.t('copy')} ${label}`"
       @click="handleCopy"
     >
-      {{ copied ? 'Copied!' : '⧉' }}
+      {{ copied ? props.translator.t('copied') : '⧉' }}
     </mndw-button>
   </span>
 </template>

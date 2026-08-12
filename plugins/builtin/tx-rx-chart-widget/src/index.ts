@@ -1,11 +1,12 @@
 import 'zone.js';
 import '@angular/compiler';
 import {createApplication} from '@angular/platform-browser';
-import {EnvironmentInjector, createComponent} from '@angular/core';
+import {DestroyRef, EnvironmentInjector, createComponent, inject} from '@angular/core';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
+import {createTranslatorSignals} from '@mndw/sdk/angular';
 import {AppComponent} from './app/app.component';
 import {type SettingsDialogArgs, openSettingsDialog} from './open-settings-dialog';
-import {PLUGIN_STORAGE, RCI_MANAGER} from './tokens';
+import {PLUGIN_STORAGE, RCI_MANAGER, TRANSLATOR} from './tokens';
 
 export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInstance {
   let appRef: Awaited<ReturnType<typeof createApplication>> | null = null;
@@ -15,6 +16,7 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
     providers: [
       {provide: RCI_MANAGER, useValue: ctx.rciManager},
       {provide: PLUGIN_STORAGE, useValue: ctx.storage},
+      {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(ctx.i18n, inject(DestroyRef))},
     ],
   };
 

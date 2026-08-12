@@ -6,6 +6,7 @@ import type {BackendClient} from './backend-client.js';
 import type {PaletteTokenMap} from './palette.js';
 import type {MndwThemeName} from './tokens.js';
 import type {Observable} from 'rxjs';
+import type {PluginI18n} from './i18n.js';
 
 export interface PageRoute {
   readonly childPath$: Observable<string>;
@@ -34,6 +35,8 @@ export interface HostInfo {
   deviceName: string;
   vendor: string;
   firmwareVersion: string;
+  /** Active UI locale at the time this context was created. */
+  locale: string;
   /** Active UI theme at the time this context was created. */
   theme: MndwThemeName;
 }
@@ -43,6 +46,7 @@ export interface PluginContext {
   storage: PluginStorage;
   sharedStorage: PluginStorage;
   hostInfo: HostInfo;
+  i18n: PluginI18n;
   injector: ServiceInjector;
   instanceId: string;
   /**

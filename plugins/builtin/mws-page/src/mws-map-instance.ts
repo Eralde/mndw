@@ -1,8 +1,9 @@
 import 'zone.js';
 import '@angular/compiler';
-import {type ApplicationRef, EnvironmentInjector, type Type, createComponent} from '@angular/core';
+import {DestroyRef, type ApplicationRef, EnvironmentInjector, type Type, createComponent, inject} from '@angular/core';
 import {createApplication} from '@angular/platform-browser';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
+import {createTranslatorSignals} from '@mndw/sdk/angular';
 import {MwsApiService} from './api/mws-api.service';
 import {AppComponent} from './app/app.component';
 import {LiveMapNodeDetailsSource} from './node-details-source';
@@ -23,6 +24,7 @@ import {
   PLUGIN_STORAGE,
   RCI_MANAGER,
   SHARED_PLUGIN_STORAGE,
+  TRANSLATOR,
 } from './tokens';
 
 export interface MwsInstanceOptions {
@@ -49,6 +51,13 @@ export function createMwsMapInstance(
     : [{provide: MWS_MOCK_OPTIONS, useValue: options.mockOptions}];
 
   el.dataset.mndwTheme = ctx.hostInfo.theme;
+  const setLocaleLabel = (): void => {
+    const title = ctx.i18n.t('title');
+    el.setAttribute('aria-label', title);
+    ctx.setTileTitle?.(title);
+  };
+  setLocaleLabel();
+  const unsubscribeLocale = ctx.i18n.onChange(setLocaleLabel);
 
   const unsubscribeTheme = onThemeChange((theme) => {
     el.dataset.mndwTheme = theme;
@@ -65,6 +74,7 @@ export function createMwsMapInstance(
       {provide: SHARED_PLUGIN_STORAGE, useValue: ctx.sharedStorage},
       ...mockOptionsProvider,
       {provide: ON_THEME_CHANGE, useValue: onThemeChange},
+      {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(ctx.i18n, inject(DestroyRef))},
       MwsApiService,
       {provide: MWS_RENAME_API, useExisting: MwsApiService},
       dataServiceProvider,
@@ -100,6 +110,7 @@ export function createMwsMapInstance(
     unmount(): void {
       cancelled = true;
       unsubscribeTheme();
+      unsubscribeLocale();
       ctx.overlay.closeAll();
       void positions?.flush();
       void columns?.flush();

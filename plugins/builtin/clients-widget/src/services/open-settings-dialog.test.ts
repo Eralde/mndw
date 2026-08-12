@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import {describe, expect, it, vi} from 'vitest';
 import type {OverlayLayer, OverlayOpenOptions, PluginContext} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
+import {useTranslator} from '@mndw/sdk/vue';
 import {openSettingsDialog} from './open-settings-dialog.js';
 
 interface Opened {
@@ -51,7 +53,9 @@ function openDialog(): {
   const onChange = vi.fn();
   const onRefreshIntervalChange = vi.fn();
 
-  openSettingsDialog(ctx, visibility, 3, onChange, onRefreshIntervalChange);
+  openSettingsDialog(ctx, visibility, 3, onChange, onRefreshIntervalChange,
+    useTranslator(createTestI18n({settings: 'Client settings', columns: 'Columns', 'refresh-interval': 'Refresh interval',
+      'column.ip': 'IP Address', 'column.connection': 'Connection', 'column.uptime': 'Uptime', 'column.last-seen': 'Last Seen'})));
 
   return {opened: opened[0], onChange, onRefreshIntervalChange};
 }
@@ -79,7 +83,8 @@ describe('overlay options', () => {
   it('returns void — the session is intentionally discarded', () => {
     const {ctx} = createContext();
 
-    expect(openSettingsDialog(ctx, visibility, 3, vi.fn(), vi.fn())).toBeUndefined();
+    expect(openSettingsDialog(ctx, visibility, 3, vi.fn(), vi.fn(),
+      useTranslator(createTestI18n({settings: 'Client settings'})))).toBeUndefined();
   });
 });
 

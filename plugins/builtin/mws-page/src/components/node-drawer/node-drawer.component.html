@@ -1,11 +1,12 @@
 @if (node; as n) {
   <div class="drawer">
+    <span data-testid="l10n-overlay-probe" hidden>{{ t('l10n.probe') }}</span>
     <section class="identity">
       @if (editing) {
         <div class="rename-editor">
           <mndw-input
             type="text"
-            aria-label="Node name"
+            [attr.aria-label]="t('drawer.node-name')"
             [value]="draft"
             [disabled]="pending"
             [maxlength]="64"
@@ -18,13 +19,13 @@
               data-action="save-name"
               [disabled]="pending"
               (click)="saveRename()"
-            >{{ pending ? 'Saving…' : 'Save' }}</mndw-button>
+            >{{ pending ? t('drawer.saving') : t('drawer.save') }}</mndw-button>
             <mndw-button
               variant="secondary"
               data-action="cancel-name"
               [disabled]="pending"
               (click)="cancelRename()"
-            >Cancel</mndw-button>
+            >{{ t('drawer.cancel') }}</mndw-button>
           </div>
           @if (error) {
             <p class="rename-error" role="alert">{{ error }}</p>
@@ -36,59 +37,59 @@
           <mndw-button
             variant="ghost"
             data-action="edit-name"
-            aria-label="Edit node name"
+            [attr.aria-label]="t('drawer.edit-name')"
             (click)="beginRename()"
-          >Edit</mndw-button>
+          >{{ t('drawer.edit') }}</mndw-button>
         </div>
       }
       <dl>
-        <dt>Model</dt><dd>{{ dash(n.model) }}</dd>
-        <dt>MAC</dt><dd>{{ n.mac }}</dd>
-        <dt>IP</dt><dd>{{ dash(n.ip) }}</dd>
-        <dt>Firmware</dt>
+        <dt>{{ t('drawer.model') }}</dt><dd>{{ dash(n.model) }}</dd>
+        <dt>{{ t('drawer.mac') }}</dt><dd>{{ n.mac }}</dd>
+        <dt>{{ t('drawer.ip') }}</dt><dd>{{ dash(n.ip) }}</dd>
+        <dt>{{ t('drawer.firmware') }}</dt>
         <dd>
           {{ dash(n.fw) }}
           @if (n.fw && n.fwAvailable && n.fw !== n.fwAvailable) {
-            <span class="update-hint">update available: {{ n.fwAvailable }}</span>
+            <span class="update-hint">{{ t('drawer.update-available', {version: n.fwAvailable}) }}</span>
           }
         </dd>
-        <dt>Uptime</dt><dd>{{ uptime(n.system?.uptime) }}</dd>
-        <dt>CPU load</dt><dd>{{ cpuLoad(n.system?.cpuload) }}</dd>
-        <dt>Memory</dt><dd>{{ memory(n) }}</dd>
+        <dt>{{ t('drawer.uptime') }}</dt><dd>{{ uptime(n.system?.uptime) }}</dd>
+        <dt>{{ t('drawer.cpu-load') }}</dt><dd>{{ cpuLoad(n.system?.cpuload) }}</dd>
+        <dt>{{ t('drawer.memory') }}</dt><dd>{{ memory(n) }}</dd>
       </dl>
     </section>
 
     <section class="backhaul">
-      <h4>Backhaul</h4>
+      <h4>{{ t('drawer.backhaul') }}</h4>
       @if (n.isController) {
-        <p>Controller — root of the MWS. No backhaul metrics.</p>
+        <p>{{ t('drawer.controller-backhaul') }}</p>
       } @else if (!n.backhaul) {
-        <p>Offline — no backhaul reported.</p>
+        <p>{{ t('drawer.offline-backhaul') }}</p>
       } @else if (isWirelessBackhaul(n)) {
         <dl>
-          <dt>Type</dt><dd>Wireless</dd>
-          <dt>Uplink</dt><dd>{{ dash(n.backhaul.uplink) }}</dd>
-          <dt>AP</dt><dd>{{ dash(n.backhaul.ap) }}</dd>
-          <dt>Mode</dt><dd>{{ dash(n.backhaul.mode) }}</dd>
-          <dt>RSSI</dt><dd>{{ rssi(n.backhaul.rssi) }}</dd>
-          <dt>TX rate</dt><dd>{{ rate(n.backhaul.txrate) }}</dd>
-          <dt>Security</dt><dd>{{ dash(n.backhaul.security) }}</dd>
-          <dt>STP cost</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
+          <dt>{{ t('drawer.type') }}</dt><dd>{{ t('drawer.wireless') }}</dd>
+          <dt>{{ t('drawer.uplink') }}</dt><dd>{{ dash(n.backhaul.uplink) }}</dd>
+          <dt>{{ t('drawer.ap') }}</dt><dd>{{ dash(n.backhaul.ap) }}</dd>
+          <dt>{{ t('drawer.mode') }}</dt><dd>{{ dash(n.backhaul.mode) }}</dd>
+          <dt>{{ t('drawer.rssi') }}</dt><dd>{{ rssi(n.backhaul.rssi) }}</dd>
+          <dt>{{ t('drawer.tx-rate') }}</dt><dd>{{ rate(n.backhaul.txrate) }}</dd>
+          <dt>{{ t('drawer.security') }}</dt><dd>{{ dash(n.backhaul.security) }}</dd>
+          <dt>{{ t('drawer.stp-cost') }}</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
         </dl>
       } @else {
         <dl>
-          <dt>Type</dt><dd>Wired</dd>
-          <dt>Speed</dt><dd>{{ speed(n.backhaul.speed) }}</dd>
-          <dt>Duplex</dt><dd>{{ dash(n.backhaul.duplex) }}</dd>
-          <dt>Port</dt><dd>{{ dash(n.backhaul.portLabel) }}</dd>
-          <dt>STP cost</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
+          <dt>{{ t('drawer.type') }}</dt><dd>{{ t('drawer.wired') }}</dd>
+          <dt>{{ t('drawer.speed') }}</dt><dd>{{ speed(n.backhaul.speed) }}</dd>
+          <dt>{{ t('drawer.duplex') }}</dt><dd>{{ dash(n.backhaul.duplex) }}</dd>
+          <dt>{{ t('drawer.port') }}</dt><dd>{{ dash(n.backhaul.portLabel) }}</dd>
+          <dt>{{ t('drawer.stp-cost') }}</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
         </dl>
       }
     </section>
 
     @if (!n.isController) {
       <section class="wifi-power">
-        <h4>Wi-Fi TX power</h4>
+        <h4>{{ t('drawer.wifi-power') }}</h4>
         <mndw-field label="2.4 GHz">
           <mndw-slider
             data-radio="WifiMaster0"
@@ -122,13 +123,13 @@
     }
 
     <section class="clients">
-      <h4>Clients ({{ n.clients.length }})</h4>
+      <h4>{{ t('drawer.clients', {count: n.clients.length}) }}</h4>
       @if (n.clients.length === 0) {
-        <p>No active clients.</p>
+        <p>{{ t('drawer.no-active-clients') }}</p>
       } @else {
         <table>
           <thead>
-            <tr><th>Name</th><th>IP</th><th>MAC</th><th>Link</th><th>Uptime</th></tr>
+            <tr><th>{{ t('drawer.client-name') }}</th><th>{{ t('drawer.client-ip') }}</th><th>{{ t('drawer.client-mac') }}</th><th>{{ t('drawer.client-link') }}</th><th>{{ t('drawer.client-uptime') }}</th></tr>
           </thead>
           <tbody>
             @for (client of n.clients; track client.mac) {
@@ -138,7 +139,7 @@
                 <td>{{ client.mac }}</td>
                 <td>
                   <span class="link-badge" [class.wired]="client.wired">
-                    {{ client.wired ? 'wired' : 'wireless' }}
+                    {{ client.wired ? t('clients.wired') : t('clients.wireless') }}
                   </span>
                 </td>
                 <td>{{ uptime(client.uptime) }}</td>
@@ -150,5 +151,5 @@
     </section>
   </div>
 } @else {
-  <p class="gone">This node is offline / no longer reported by the controller.</p>
+  <p class="gone">{{ t('drawer.gone') }}</p>
 }

@@ -1,5 +1,6 @@
 import type {HostInfo, MndwThemeName} from '@mndw/sdk';
 import {mobileMediaQuery} from '../layout/breakpoint.js';
+import {getLocale, subscribeLocale, subscribeLocalePending} from '../services/locale.service.js';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import {stopDepsPolling} from './deps-status.svelte.js';
 
@@ -13,6 +14,8 @@ interface AppState {
   pluginLoadError: string | null;
   sidebarCollapsed: boolean;
   theme: MndwThemeName;
+  locale: string;
+  localeSwitchPending: boolean;
 }
 
 export const appState: AppState = $state({
@@ -22,6 +25,8 @@ export const appState: AppState = $state({
   pluginLoadError: null,
   sidebarCollapsed: mobileMediaQuery().matches,
   theme: getTheme(),
+  locale: getLocale(),
+  localeSwitchPending: false,
 });
 
 /** Resets app to login and stops dependency polling for prior session. */
@@ -35,4 +40,12 @@ export function resetToLogin(): void {
 // Keep the reactive UI mirror in sync with the theme service (source of truth).
 subscribeTheme((theme) => {
   appState.theme = theme;
+});
+
+subscribeLocale((locale) => {
+  appState.locale = locale;
+});
+
+subscribeLocalePending((pending) => {
+  appState.localeSwitchPending = pending;
 });

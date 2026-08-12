@@ -213,6 +213,38 @@ describe('planCreate', () => {
     expect(pkg.dependencies ?? {}).toEqual({});
   });
 
+  it('generates live i18n regression tests and test dependencies from CLI metadata', () => {
+    for (const framework of ['vanilla', 'svelte', 'vue', 'angular'] as const) {
+      const plan = planCreate(options({name: `${framework}-plugin`, framework, type: 'widget'}));
+      const pkg = JSON.parse(fileContents(plan, 'package.json')) as {
+        scripts?: Record<string, string>;
+        devDependencies: Record<string, string>;
+      };
+      const test = fileContents(plan, 'src/l10n.test.ts');
+
+      expect(test).toContain('createTestI18n');
+      expect(test).toContain('setLocale');
+      expect(pkg.scripts?.test).toBe('vitest run');
+      expect(pkg.devDependencies.vitest).toBe('^3.2.7');
+      expect(pkg.devDependencies['happy-dom']).toBe('^20.11.1');
+      expect(pkg.devDependencies).not.toHaveProperty('intl-messageformat');
+    }
+  });
+
+  it('requires ctx.i18n in every generated framework entry', () => {
+    for (const framework of ['vanilla', 'svelte', 'vue', 'angular'] as const) {
+      const plan = planCreate(options({name: `${framework}-plugin`, framework, type: 'widget'}));
+      const source = plan.files
+        .filter((file) => file.path.startsWith('src/') && !file.path.endsWith('.css') && !file.path.endsWith('.test.ts'))
+        .map((file) => file.contents)
+        .join('\n');
+
+      expect(source).toContain('ctx.i18n');
+      expect(source).not.toContain('FALLBACK_I18N');
+      expect(source).not.toContain('providedI18n ??');
+    }
+  });
+
   it('adds an executable backend command for --backend sh', () => {
     const plan = planCreate(options({type: 'widget', backend: 'sh'}));
 

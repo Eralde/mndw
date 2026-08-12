@@ -71,3 +71,59 @@ func TestPersistentRCIPermissions(t *testing.T) {
 		})
 	}
 }
+
+func TestI18nManifestValidation(t *testing.T) {
+	base := func(i18n string) []byte {
+		return []byte(fmt.Sprintf(`{"manifestVersion":3,"name":"i18n-plugin","version":"1.0.0","type":"widget","label":"I18n plugin","entry":"index.js","size":{"w":2,"h":2},"i18n":%s}`, i18n))
+	}
+
+	tests := []struct {
+		name  string
+		i18n  string
+		valid bool
+	}{
+		{
+			name:  "default and alternate locales",
+			i18n:  `{"defaultLocale":"en","locales":{"en":"i18n/en.json","ru":"i18n/ru.json"}}`,
+			valid: true,
+		},
+		{
+			name: "default locale missing",
+			i18n: `{"defaultLocale":"de","locales":{"en":"i18n/en.json"}}`,
+		},
+		{
+			name: "empty locales",
+			i18n: `{"defaultLocale":"en","locales":{}}`,
+		},
+		{
+			name: "unsafe path",
+			i18n: `{"defaultLocale":"en","locales":{"en":"../en.json"}}`,
+		},
+		{
+			name: "non-json path",
+			i18n: `{"defaultLocale":"en","locales":{"en":"i18n/en.txt"}}`,
+		},
+		{
+			name: "malformed locale",
+			i18n: `{"defaultLocale":"en","locales":{"not a tag":"i18n/en.json"}}`,
+		},
+		{
+			name: "non-canonical locale",
+			i18n: `{"defaultLocale":"en","locales":{"EN-us":"i18n/en-us.json"}}`,
+		},
+		{
+			name: "canonical collision",
+			i18n: `{"defaultLocale":"en","locales":{"en":"i18n/en.json","EN-us":"i18n/en-us.json","en-US":"i18n/en-us-2.json"}}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := Validate(base(test.i18n))
+
+			if (err == nil) != test.valid {
+				t.Fatalf("Validate() error = %v, valid = %v", err, test.valid)
+			}
+		})
+	}
+}

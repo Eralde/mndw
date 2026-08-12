@@ -26,6 +26,7 @@ import {CliError} from './errors.js';
 import {type PluginFramework, detectFramework} from './framework.js';
 import {buildLock, findBundledSharedDependencies, serializeLock} from './lock.js';
 import {readManifest} from './manifest.js';
+import {validatePluginCatalogs} from './i18n-validator.js';
 import {resolvePluginDir} from './paths.js';
 import {readPluginPackage} from './plugin-package.js';
 import {resolveDevelopmentSourceEntry, resolveProductionSourceEntry} from './source-entry.js';
@@ -50,6 +51,7 @@ export interface PackResult {
   readonly manifest: PluginManifestOutput;
   readonly manifestPath: string;
   readonly entryPath: string;
+  readonly warnings: readonly string[];
 }
 
 export interface PackExamplePluginsOptions {
@@ -103,6 +105,7 @@ interface WorkerReference {
 export async function packPlugin(pluginDir: string, options: PackOptions = {}): Promise<PackResult> {
   const resolvedDir = resolvePluginDir(pluginDir);
   const {manifest} = readManifest(pluginDir);
+  const warnings = validatePluginCatalogs(resolvedDir, manifest, {strict: false});
   const sourceEntry = options.development
     ? resolveDevelopmentSourceEntry(resolvedDir)
     : resolveProductionSourceEntry(resolvedDir);
@@ -173,6 +176,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
 
     // Read backend commands before mutating output, so missing commands fail cleanly.
     const backendAssets = collectBackendAssets(manifest, resolvedDir);
+    const catalogAssets = collectCatalogAssets(manifest, resolvedDir);
     const workerReferences = collectWorkerReferences(manifest.entry, result.metafile);
     const workerAssets = await buildWorkerAssets(workerReferences, outDir, resolvedDir, framework);
     const mainBundle = rewriteWorkerSpecifiers(jsOutput.contents, workerReferences);
@@ -229,6 +233,10 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
         writeStaged(staging, asset.rel, asset.contents, asset.mode);
       }
 
+      for (const asset of catalogAssets) {
+        writeStaged(staging, asset.rel, asset.contents);
+      }
+
       promoteStaging(staging, outDir);
     } catch (error) {
       rmSync(staging, {recursive: true, force: true});
@@ -242,6 +250,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
       manifest,
       manifestPath: join(outDir, 'manifest.json'),
       entryPath: join(outDir, manifest.entry),
+      warnings,
     };
   } finally {
     angularCompile?.cleanup();
@@ -438,6 +447,35 @@ function collectBackendAssets(
       return {rel, contents: readFileSync(source), mode: 0o755};
     } catch {
       throw new CliError(`Missing backend asset "${rel}" declared in manifest: ${source}`);
+    }
+  });
+}
+
+function collectCatalogAssets(
+  manifest: PluginManifestOutput,
+  pluginDir: string,
+): StagedAsset[] {
+  if (manifest.i18n === undefined) {
+    return [];
+  }
+
+  return Object.values(manifest.i18n.locales).map((rel) => {
+    const source = safeJoin(pluginDir, rel);
+
+    try {
+      const stat = statSync(source);
+
+      if (!stat.isFile()) {
+        throw new CliError(`Catalog is not a regular file: ${source}`);
+      }
+
+      return {rel, contents: readFileSync(source)};
+    } catch (error) {
+      if (error instanceof CliError) {
+        throw error;
+      }
+
+      throw new CliError(`Missing catalog declared in manifest: ${source}`);
     }
   });
 }

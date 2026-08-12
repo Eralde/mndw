@@ -8,6 +8,8 @@ import {
 } from '@mndw/sdk';
 import type {RciManager} from '@rci-tools/core';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
+import {getLocale, subscribeLocale} from '../services/locale.service.js';
+import {createPluginI18n} from '../services/plugin-catalog.service.js';
 import {injector} from '../services/injector.service.js';
 import {createPluginOverlayService} from '../services/overlay/overlay-manager.svelte.js';
 import {rciService} from '../services/rci.service.js';
@@ -65,6 +67,7 @@ export function createPluginContext(
   hostInfo: HostInfo,
   setTileTitle?: (title: string) => void,
   pageRoute?: PageRoute,
+  catalogCell?: import('../services/plugin-catalog.service.js').PluginCatalogCell,
 ): PluginContext {
   const {service, dispose} = createPluginOverlayService(entry.name, instanceId);
 
@@ -75,10 +78,11 @@ export function createPluginContext(
     {
       // SDK exposes concrete classes with private fields; runtime facades intentionally contain only
       // public methods, so cast narrowed facades at this plugin-context boundary.
-      rciManager: createServiceFacade(rciService.driver, RCI_MANAGER_METHODS) as unknown as RciManager,
+      rciManager: createServiceFacade(rciService.driver, RCI_MANAGER_METHODS) as unknown as PluginContext['rciManager'],
       storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
       sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
-      hostInfo: Object.freeze(Object.assign(Object.create(null), {...hostInfo, theme: getTheme()})),
+      hostInfo: Object.freeze(Object.assign(Object.create(null), {...hostInfo, locale: getLocale(), theme: getTheme()})),
+      i18n: createPluginI18n(catalogCell, getLocale, (callback) => subscribeLocale(() => callback())),
       injector: createReadonlyInjector(injector),
       instanceId,
       backend: backendClientFor(entry),

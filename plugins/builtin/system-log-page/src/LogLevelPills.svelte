@@ -1,14 +1,21 @@
 <script lang="ts">
 import {SvelteSet} from 'svelte/reactivity';
+import type {Readable} from 'svelte/store';
+import type {Translator} from '@mndw/sdk';
 import {ALL_LOG_LEVELS} from './log-filters';
 import type {LogLevel} from './log-types';
 
 interface Props {
   activeLevels: ReadonlySet<LogLevel>;
+  translator: Readable<Translator>;
   onChange: (levels: ReadonlySet<LogLevel>) => void;
 }
 
-let {activeLevels, onChange}: Props = $props();
+let {activeLevels, translator, onChange}: Props = $props();
+
+function translate(key: string): string {
+  return $translator.t(key);
+}
 
 function toggle(level: LogLevel): void {
   const nextLevels = new SvelteSet(activeLevels);
@@ -26,18 +33,18 @@ function toggle(level: LogLevel): void {
 <div
   class="log-level-pills"
   role="group"
-  aria-label="Log levels"
+  aria-label={translate('filter.levels')}
 >
   {#each ALL_LOG_LEVELS as level (level)}
     <mndw-button
-      class={`log-level-pills__pill log-level-pills__pill--${level.toLocaleLowerCase()}`}
+      class={`log-level-pills__pill log-level-pills__pill--${level.toLowerCase()}`}
       data-level={level}
       data-active={activeLevels.has(level)}
       aria-pressed={activeLevels.has(level)}
       variant={activeLevels.has(level) ? 'secondary' : 'ghost'}
       onclick={() => toggle(level)}
     >
-      {level}
+      {translate(`level.${level.toLowerCase()}`)}
     </mndw-button>
   {/each}
 </div>

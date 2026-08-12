@@ -1,9 +1,11 @@
 <script lang="ts">
 import {onMount} from 'svelte';
+import type {Readable} from 'svelte/store';
 import type {RciManager} from '@rci-tools/core';
 import {formatSpeed} from '@mndw/ui';
-import type {PluginStorage} from '@mndw/sdk';
+import type {PluginI18n, PluginStorage, Translator} from '@mndw/sdk';
 import {createRefreshLoop} from '@mndw/sdk/refresh';
+import {createTranslator} from '@mndw/sdk/svelte';
 import {type ClockDate, RciService} from '../services/rci.js';
 import type {HostBar, HostClient} from '../types.js';
 import {toDeviceTrafficChartData} from '../utils/chart-data.js';
@@ -14,9 +16,16 @@ interface Props {
   storage: PluginStorage;
   openSettings: (args: OpenSettingsArgs) => void;
   setTileTitle?: (title: string) => void;
+  i18n: PluginI18n;
 }
 
-let {rci, storage, openSettings, setTileTitle}: Props = $props();
+let {rci, storage, openSettings, setTileTitle, i18n}: Props = $props();
+// svelte-ignore state_referenced_locally
+const translator: Readable<Translator> = createTranslator(i18n);
+
+function t(key: string, values?: Record<string, unknown>): string {
+  return $translator.t(key, values);
+}
 
 const POLL_INTERVAL = 5000;
 const DEVICE_TIME_INTERVAL = 30000;
@@ -101,7 +110,7 @@ async function loadChartData() {
     rawChartData = rciChartData.bar || [];
     error = '';
   } catch (ex) {
-    error = 'Failed to load data';
+    error = t('error.load-data');
 
     console.error('[device-traffic-widget]', ex);
   }
@@ -127,6 +136,7 @@ function handleOpenSettings() {
   openSettings({
     hosts,
     selectedMac,
+    translator,
     onSelect: handleSelectDevice,
   });
 }
@@ -182,6 +192,7 @@ onMount(() => {
 </script>
 
 <div class="traffic-widget">
+  <span class="sr-only" data-testid="l10n-probe">{t('l10n.probe')}</span>
   {#if error}
     <div
       class="mndw-alert mndw-alert--danger notice"
@@ -198,20 +209,20 @@ onMount(() => {
           }
         }}
       >
-        Retry
+        {t('action.retry')}
       </mndw-button>
     </div>
   {/if}
 
   {#if isLoading}
-    <div class="msg">Loading...</div>
+    <div class="msg">{t('status.loading')}</div>
   {:else if !selectedMac}
     <div class="empty-state">
-      <h3 class="empty-state__heading">Device Traffic Monitor</h3>
-      <p class="empty-state__subtitle">Select a device to monitor traffic</p>
+      <h3 class="empty-state__heading">{t('title')}</h3>
+      <p class="empty-state__subtitle">{t('status.select-device')}</p>
       <mndw-select
-        label="Device"
-        placeholder="Select device…"
+        label={t('field.device')}
+        placeholder={t('field.select-device')}
         value={selectedMac}
         onmndwchange={(e: CustomEvent<{value: string}>) =>
         handleSelectDevice(e.detail.value)}
@@ -223,7 +234,7 @@ onMount(() => {
         {/each}
       </mndw-select>
       {#if hosts.length === 0}
-        <p class="mndw-alert mndw-alert--danger">No devices found</p>
+        <p class="mndw-alert mndw-alert--danger">{t('status.no-devices')}</p>
       {/if}
     </div>
   {:else}
@@ -240,7 +251,7 @@ onMount(() => {
         <div class="header-actions">
           <mndw-segmented
             class="btn-group"
-            label="Detail"
+            label={t('field.detail')}
             value={String(detail)}
             onmndwchange={(event: CustomEvent<{value: string}>) =>
             handleDetailChange(Number(event.detail.value))}
@@ -254,8 +265,8 @@ onMount(() => {
           <mndw-button
             class="gear-btn"
             variant="ghost"
-            title="Widget Settings"
-            aria-label="Widget settings"
+            title={t('action.settings')}
+            aria-label={t('action.settings')}
             onclick={handleOpenSettings}
           >
             &#9881;
@@ -263,17 +274,17 @@ onMount(() => {
         </div>
       </div>
       {#if !deviceTime}
-        <div class="msg">Loading data...</div>
+        <div class="msg">{t('status.loading-data')}</div>
       {:else}
         <div class="chart-wrap">
           <mndw-bar-chart
             points={chartData.points}
-            empty-label="No data"
-            aria-label="Device traffic history"
+            empty-label={t('status.no-data')}
+            aria-label={t('aria.history')}
           ></mndw-bar-chart>
           <div
             class="traffic-summary"
-            aria-label="Average traffic"
+            aria-label={t('aria.average')}
           >
             ↓ {formatSpeed(chartData.averageRx)} ↑ {
               formatSpeed(chartData.averageTx)

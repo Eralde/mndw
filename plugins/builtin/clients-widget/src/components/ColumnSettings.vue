@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type {Translator} from '@mndw/sdk';
 import type {MndwCheckboxChangeDetail, MndwSliderInputDetail} from '@mndw/ui';
 
 interface Props {
@@ -6,15 +7,16 @@ interface Props {
   refreshIntervalSeconds: number;
   onChange: (key: string, value: boolean) => void;
   onRefreshIntervalChange: (value: number) => void;
+  translator: Translator;
 }
 
 const props = defineProps<Props>();
 
 const COLUMNS: readonly {key: string; label: string}[] = [
-  {key: 'ip', label: 'IP Address'},
-  {key: 'connection', label: 'Connection'},
-  {key: 'uptime', label: 'Uptime'},
-  {key: 'lastSeen', label: 'Last Seen'},
+  {key: 'ip', label: 'column.ip'},
+  {key: 'connection', label: 'column.connection'},
+  {key: 'uptime', label: 'column.uptime'},
+  {key: 'lastSeen', label: 'column.last-seen'},
 ];
 
 function onToggle(key: string, event: CustomEvent<MndwCheckboxChangeDetail>): void {
@@ -29,7 +31,7 @@ function onInterval(event: CustomEvent<MndwSliderInputDetail>): void {
 <template>
   <div class="clients-settings">
     <fieldset class="clients-settings__group">
-      <legend>Columns</legend>
+      <legend>{{ props.translator.t('columns') }}</legend>
       <mndw-checkbox
         v-for="column in COLUMNS"
         :key="column.key"
@@ -37,12 +39,12 @@ function onInterval(event: CustomEvent<MndwSliderInputDetail>): void {
         :checked="visibility[column.key] !== false"
         @mndwchange="onToggle(column.key, $event)"
       >
-        {{ column.label }}
+        {{ props.translator.t(column.label) }}
       </mndw-checkbox>
     </fieldset>
 
     <div class="clients-settings__group">
-      <mndw-field label="Refresh interval">
+      <mndw-field :label="props.translator.t('refresh-interval')">
         <mndw-slider
         min="1"
         max="10"

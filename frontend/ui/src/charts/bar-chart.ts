@@ -3,6 +3,8 @@ import * as d3 from 'd3';
 import type {NumberValue} from 'd3';
 import {buildBarAriaLabel, filterFinitePoints, formatSpeed, getSpeedUpperLimit} from './chart-utils.js';
 import type {MndwChartPoint} from './chart-types.js';
+import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
+import {createGeneratedAttribute, createLocalizedProperty, type GeneratedAttributeState, type LocalizedPropertyState} from '../localized-property.js';
 
 export const MNDW_BAR_CHART_TAG = 'mndw-bar-chart';
 
@@ -104,25 +106,31 @@ export class MndwBarChart extends LitElement {
   `;
 
   declare public points: readonly MndwChartPoint[];
-  declare public emptyLabel: string;
-  declare public valueLabel: string;
+  declare public emptyLabel: string | undefined;
+  declare public valueLabel: string | undefined;
 
   private resizeObserver: ResizeObserver | null = null;
   private observedContainer: HTMLElement | null = null;
   private plotElement: SVGSVGElement | null = null;
   private tooltipState: TooltipState | null = null;
-  private lastGeneratedAriaLabel: string | null = null;
+  private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
+  private readonly valueLabelState: LocalizedPropertyState<string | undefined>;
+  private readonly ariaLabelState: GeneratedAttributeState;
+  private localeUnsubscribe: (() => void) | null = null;
 
   constructor() {
     super();
 
     this.points = [];
-    this.emptyLabel = 'No data available';
-    this.valueLabel = 'Values';
+    this.emptyLabelState = createLocalizedProperty<string | undefined>(this, 'emptyLabel', 'empty-label');
+    this.valueLabelState = createLocalizedProperty<string | undefined>(this, 'valueLabel', 'value-label');
+    this.ariaLabelState = createGeneratedAttribute(this, 'aria-label');
   }
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    this.localeUnsubscribe = subscribeMndwUiLocale(this.onLocaleChange);
+    this.applyLocale();
     this.setAttribute('role', 'img');
   }
 
@@ -134,7 +142,7 @@ export class MndwBarChart extends LitElement {
         ${
       hasValidPoints
         ? html`<svg part="plot" aria-hidden="true"></svg>`
-        : html`<div class="empty" part="empty">${this.emptyLabel}</div>`
+        : html`<div class="empty" part="empty">${this.emptyLabel ?? getMndwUiText('chart.empty')}</div>`
     }
         <div
           class="tooltip"
@@ -145,7 +153,7 @@ export class MndwBarChart extends LitElement {
           ${
       this.tooltipState === null ? '' : html`
             <div>${this.tooltipState.time}</div>
-            <div>${this.valueLabel}: <strong>${this.tooltipState.value}</strong></div>
+            <div>${this.valueLabel ?? getMndwUiText('chart.values')}: <strong>${this.tooltipState.value}</strong></div>
           `
     }
         </div>
@@ -172,6 +180,8 @@ export class MndwBarChart extends LitElement {
   }
 
   public override disconnectedCallback(): void {
+    this.localeUnsubscribe?.();
+    this.localeUnsubscribe = null;
     this.disconnectPlot();
 
     if (this.resizeObserver !== null) {
@@ -192,19 +202,21 @@ export class MndwBarChart extends LitElement {
   }
 
   private updateAccessibilityLabel(): void {
-    const current = this.getAttribute('aria-label');
+    this.ariaLabelState.setGenerated(buildBarAriaLabel(
+      this.points,
+      this.valueLabel ?? getMndwUiText('chart.values'),
+      this.emptyLabel ?? getMndwUiText('chart.empty'),
+    ));
+  }
 
-    if (current !== null && current !== this.lastGeneratedAriaLabel) {
-      return;
-    }
+  private readonly onLocaleChange = (): void => {
+    this.applyLocale();
+    this.requestUpdate();
+  };
 
-    const next = buildBarAriaLabel(this.points, this.valueLabel, this.emptyLabel);
-
-    if (current !== next) {
-      this.setAttribute('aria-label', next);
-    }
-
-    this.lastGeneratedAriaLabel = next;
+  private applyLocale(): void {
+    this.emptyLabelState.setGenerated(getMndwUiText('chart.empty'));
+    this.valueLabelState.setGenerated(getMndwUiText('chart.values'));
   }
 
   // eslint-disable-next-line max-lines-per-function -- D3 rendering keeps chart geometry local.

@@ -46,6 +46,30 @@
             ]
           }
         },
+        "i18n": {
+          "type": "object",
+          "properties": {
+            "defaultLocale": {
+              "type": "string",
+              "minLength": 1
+            },
+            "locales": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "defaultLocale",
+            "locales"
+          ],
+          "additionalProperties": false
+        },
         "backend": {
           "anyOf": [
             {
@@ -341,6 +365,30 @@
               "persistent-rci-session:write"
             ]
           }
+        },
+        "i18n": {
+          "type": "object",
+          "properties": {
+            "defaultLocale": {
+              "type": "string",
+              "minLength": 1
+            },
+            "locales": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "defaultLocale",
+            "locales"
+          ],
+          "additionalProperties": false
         },
         "backend": {
           "anyOf": [

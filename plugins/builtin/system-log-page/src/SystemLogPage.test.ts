@@ -2,7 +2,9 @@
 import {NEVER, Observable, Subject, of, throwError} from 'rxjs';
 import {flushSync, mount, settled, unmount} from 'svelte';
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import type {OverlayLayer, OverlayOpenOptions, OverlayService} from '@mndw/sdk';
+import type {OverlayLayer, OverlayOpenOptions, OverlayService, PluginI18n} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
+import enCatalog from '../i18n/en.json';
 import type {RciBackgroundProcess} from '@rci-tools/core';
 import type {SystemLogApi} from './system-log-api';
 import type {NormalizedLogRecord} from './log-types';
@@ -24,6 +26,21 @@ function process(): {value: RciBackgroundProcess; abort: ReturnType<typeof vi.fn
       abort,
     } as unknown as RciBackgroundProcess,
     abort,
+  };
+}
+
+function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
+  const messages = {
+    en: {title: 'System Log', 'filter.label': 'Filters', l10n: {probe: 'System Log English'}},
+    ru: {title: 'Системный журнал', 'filter.label': 'Фильтры', l10n: {probe: 'Системный журнал русский'}},
+  };
+  const i18n = createTestI18n(messages.en);
+
+  return {
+    i18n,
+    setLocale: (nextLocale) => {
+      i18n.setLocale(nextLocale, messages[nextLocale]);
+    },
   };
 }
 
@@ -71,6 +88,40 @@ describe('SystemLogPage lifecycle', () => {
     host?.remove();
   });
 
+  it('updates mounted translated controls when locale changes', () => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+
+    const streamProcess = process().value;
+    const api: SystemLogApi = {
+      showLogOnce: () => NEVER,
+      startLogStream: () => ({process: streamProcess, data$: NEVER}),
+      clearLog: () => of({}),
+    };
+    const changing = changingI18n();
+    const app = mount(SystemLogPage, {
+      target: host,
+      props: {api, overlay: {} as OverlayService, i18n: changing.i18n},
+    });
+
+    flushSync();
+    expect(host.querySelector('h1')?.textContent).toBe('System Log English');
+    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+    expect(probe).not.toBeNull();
+    const enValue = probe?.textContent;
+    expect(enValue).toBe('System Log English');
+
+    changing.setLocale('ru');
+    flushSync();
+
+    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(enValue).not.toBe('Системный журнал русский');
+    expect(probe?.textContent).toBe('Системный журнал русский');
+    expect(host.querySelector('h1')?.textContent).toBe('Системный журнал русский');
+    expect(host.querySelector('[data-filter-panel]')?.textContent).toContain('Фильтры');
+    void unmount(app);
+  });
+
   it('subscribes to snapshot and stream and tears both down with process abort', async () => {
     host = document.createElement('div');
     document.body.appendChild(host);
@@ -85,7 +136,7 @@ describe('SystemLogPage lifecycle', () => {
       clearLog: () => of({}),
     };
 
-    const app = mount(SystemLogPage, {target: host, props: {api, overlay: {} as OverlayService}});
+    const app = mount(SystemLogPage, {target: host, props: {api, overlay: {} as OverlayService, i18n: createTestI18n(enCatalog)}});
 
     flushSync();
     expect(snapshotCounters.subscriptions).toBe(1);
@@ -98,7 +149,7 @@ describe('SystemLogPage lifecycle', () => {
     expect(header?.querySelector('[data-download-log]')).not.toBeNull();
     expect(header?.querySelector('[data-clear-log]')).not.toBeNull();
     expect(host.querySelector('.system-log-page > [data-filter-panel]')).toBeNull();
-    expect(host.querySelector('h1')?.textContent).toContain('System Log');
+    expect(host.querySelector('h1')?.textContent).toContain('System log English');
     expect(host.textContent).not.toMatch(/refresh/i);
 
     await unmount(app);
@@ -120,7 +171,7 @@ describe('SystemLogPage lifecycle', () => {
       startLogStream: () => ({process: streamProcess, data$: stream$.asObservable()}),
       clearLog: () => of({}),
     };
-    const app = mount(SystemLogPage, {target: host, props: {api, overlay: {} as OverlayService}});
+    const app = mount(SystemLogPage, {target: host, props: {api, overlay: {} as OverlayService, i18n: createTestI18n(enCatalog)}});
 
     flushSync();
 
@@ -183,7 +234,7 @@ describe('SystemLogPage lifecycle', () => {
     };
     const app = mount(SystemLogPage, {
       target: host,
-      props: {api, overlay: immediateConfirmationOverlay(true)},
+      props: {api, overlay: immediateConfirmationOverlay(true), i18n: createTestI18n(enCatalog)},
     });
 
     await settled();
@@ -213,7 +264,7 @@ describe('SystemLogPage lifecycle', () => {
     };
     const app = mount(SystemLogPage, {
       target: host,
-      props: {api, overlay: immediateConfirmationOverlay(false)},
+      props: {api, overlay: immediateConfirmationOverlay(false), i18n: createTestI18n(enCatalog)},
     });
 
     await settled();
@@ -228,7 +279,7 @@ describe('SystemLogPage lifecycle', () => {
 
     const failedApp = mount(SystemLogPage, {
       target: host,
-      props: {api, overlay: immediateConfirmationOverlay(true)},
+      props: {api, overlay: immediateConfirmationOverlay(true), i18n: createTestI18n(enCatalog)},
     });
 
     await settled();

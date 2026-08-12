@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import {type BackendClient, MNDW_TOKENS, type PluginContext} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {describe, expect, it, vi} from 'vitest';
+import enCatalog from '../i18n/en.json';
 import {createInstance} from './index.js';
 
 function fakeContext(overrides?: Partial<BackendClient>): PluginContext {
@@ -18,6 +20,7 @@ function fakeContext(overrides?: Partial<BackendClient>): PluginContext {
     onPaletteChange: vi.fn(() => () => {}),
     overlay: {} as PluginContext['overlay'],
     backend: {fetch, socket: vi.fn(), ...overrides} as BackendClient,
+    i18n: createTestI18n(enCatalog),
   };
 }
 
@@ -165,5 +168,40 @@ describe('createInstance', () => {
     instance.unmount();
 
     expect(() => instance.unmount()).not.toThrow();
+  });
+
+  it('updates controls and result surface without remounting', () => {
+    const container = document.createElement('div');
+    const i18n = createTestI18n({
+      l10n: {probe: 'DNS English'},
+      hostname: 'Hostname EN',
+      lookup: 'Lookup EN',
+      idle: 'Idle EN',
+    });
+    const ctx = fakeContext();
+
+    ctx.i18n = i18n;
+    createInstance(container, ctx);
+
+    const input = queryElement<HTMLInputElement>(container, '.mndw-dns-lookup-widget__input');
+    const button = queryElement<HTMLButtonElement>(container, '.mndw-dns-lookup-widget__btn');
+    const result = queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__result');
+    const probe = queryElement<HTMLElement>(container, '[data-testid="l10n-probe"]');
+
+    expect(probe.textContent).toBe('DNS English');
+    expect(result.textContent).toContain('Idle EN');
+    i18n.setLocale('ru', {
+      l10n: {probe: 'DNS русский'},
+      hostname: 'Имя RU',
+      lookup: 'Найти RU',
+      idle: 'Простой RU',
+    });
+
+    expect(container.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(probe.textContent).toBe('DNS русский');
+    expect(input.placeholder).toBe('Имя RU');
+    expect(button.textContent).toBe('Найти RU');
+    expect(container.querySelector('.mndw-dns-lookup-widget__result')).toBe(result);
+    expect(result.textContent).toContain('Простой RU');
   });
 });

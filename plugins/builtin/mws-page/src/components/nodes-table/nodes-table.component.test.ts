@@ -1,14 +1,16 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {beforeEach, describe, expect, it} from 'vitest';
 import type {MwsNode} from '../../domain/mws/mws.types';
 import {FakePluginStorage} from '../../test-support/plugin-storage.fake';
-import {SHARED_PLUGIN_STORAGE} from '../../tokens';
+import {SHARED_PLUGIN_STORAGE, TRANSLATOR} from '../../tokens';
 import {NodeTableColumnsStore} from '../../services/node-table-columns.store';
 import tableStyles from './nodes-table.component.scss?raw';
 import tableTemplate from './nodes-table.component.html?raw';
 import {MwsNodesTableComponent} from './nodes-table.component';
+import enCatalog from '../../../i18n/en.json';
 
 function node(id: string, name: string, children: MwsNode[] = []): MwsNode {
   return {
@@ -83,6 +85,7 @@ describe('MwsNodesTableComponent', () => {
       providers: [
         NodeTableColumnsStore,
         {provide: SHARED_PLUGIN_STORAGE, useValue: new FakePluginStorage()},
+        {provide: TRANSLATOR, useValue: createTestI18n(enCatalog)},
       ],
     }).compileComponents();
   });

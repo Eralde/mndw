@@ -1,6 +1,7 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {normalizeMembers} from '../../api/normalize';
 import {buildMap} from '../../domain/mws/map-builder';
@@ -9,6 +10,8 @@ import {loadFixture} from '../../fixtures/load';
 import {DEFAULT_LAYOUT_CONFIG} from './graph-layout';
 import {MwsGraphComponent} from './mws-graph.component';
 import graphStyles from './mws-graph.component.scss?raw';
+import {TRANSLATOR} from '../../tokens';
+import enCatalog from '../../../i18n/en.json';
 
 const CONTROLLER: ControllerInfo = {
   mac: '02:7d:4a:91:c3:10',
@@ -34,7 +37,10 @@ describe('MwsGraphComponent', () => {
 
       throw new Error(`resource URL: ${url}`);
     });
-    await TestBed.configureTestingModule({imports: [MwsGraphComponent]}).compileComponents();
+    await TestBed.configureTestingModule({
+      imports: [MwsGraphComponent],
+      providers: [{provide: TRANSLATOR, useValue: createTestI18n(enCatalog)}],
+    }).compileComponents();
   });
 
   it('renders a group per node and a path per edge without getBBox', () => {

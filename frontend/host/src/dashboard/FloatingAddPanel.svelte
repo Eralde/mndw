@@ -1,6 +1,8 @@
 <script lang="ts">
 import {pluginRegistry} from '../runtime/plugin-registry.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
+import {hostT} from '../services/host-i18n.svelte.js';
+import {appState} from '../state/app.svelte.js';
 
 interface Props {
   open: boolean;
@@ -50,20 +52,23 @@ function handleKeydown(event: KeyboardEvent): void {
       tabindex="-1"
       aria-modal="true"
       aria-labelledby="add-widget-title"
+      data-locale={appState.locale}
     >
       <div class="mndw-floating-panel__header">
-        <h3 id="add-widget-title">Add Widget</h3>
+        <h3 id="add-widget-title">{hostT('dashboard.add-widget')}</h3>
         <mndw-button
           variant="ghost"
           class="mndw-floating-panel__close"
           onclick={onClose}
-          aria-label="Close"
+          aria-label={hostT('common.close')}
         >
           ×
         </mndw-button>
       </div>
       {#if availableWidgets.length === 0}
-        <p class="mndw-floating-panel__empty">No widgets available</p>
+        <p class="mndw-floating-panel__empty">
+          {hostT('dashboard.no-widgets')}
+        </p>
       {:else}
         {#each availableWidgets as widget, index (widget.entry.name)}
           {@const deps = getDepsStatus(widget.entry.name)}
@@ -74,11 +79,13 @@ function handleKeydown(event: KeyboardEvent): void {
           >
             {widget.entry.label}
             {#if deps === 'installing'}
-              <span class="mndw-floating-panel__deps">preparing…</span>
+              <span class="mndw-floating-panel__deps">{
+                hostT('dashboard.preparing')
+              }</span>
             {:else if deps === 'failed'}
               <span
                 class="mndw-floating-panel__deps mndw-floating-panel__deps--failed"
-              >unavailable</span>
+              >{hostT('dashboard.unavailable')}</span>
             {/if}
           </mndw-button>
         {/each}

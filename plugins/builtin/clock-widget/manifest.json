@@ -5,5 +5,6 @@
   "type": "widget",
   "label": "Clock",
   "entry": "index.js",
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
   "size": { "w": 3, "h": 2 }
 }

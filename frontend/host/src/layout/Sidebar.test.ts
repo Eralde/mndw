@@ -13,6 +13,7 @@ vi.mock('../runtime/plugin-registry.js', () => ({
 
 import {type LoadedPage, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry} from '../runtime/plugin-types.js';
+import {setLocale} from '../services/locale.service.js';
 import {appState} from '../state/app.svelte.js';
 import Sidebar from './Sidebar.svelte';
 
@@ -59,12 +60,14 @@ describe('Sidebar', () => {
   beforeEach(() => {
     mobileState.matches = false;
     appState.sidebarCollapsed = false;
+    appState.locale = 'en';
   });
 
   afterEach(() => {
     document.body.innerHTML = '';
     vi.clearAllMocks();
     appState.sidebarCollapsed = false;
+    appState.locale = 'en';
   });
 
   describe('with page plugins', () => {
@@ -95,6 +98,25 @@ describe('Sidebar', () => {
       const {component, target} = mountSidebar();
 
       expect(target.querySelector('.mndw-sidebar__section-label')?.textContent).toBe('Plugins');
+
+      void unmount(component);
+    });
+
+    it('updates navigation labels after a locale commit', async () => {
+      const {component, target} = mountSidebar();
+
+      await setLocale('ru');
+      flushSync();
+
+      expect(appState.locale).toBe('ru');
+      expect(links(target).map(({text}) => text)).toEqual([
+        'Панель управления',
+        'Менеджер пакетов',
+        'Status',
+        'Status',
+        'Traffic',
+        'Настройки',
+      ]);
 
       void unmount(component);
     });

@@ -6,6 +6,7 @@
   "label": "MWS Map",
   "route": "/mws",
   "entry": "index.js",
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
   "permissions": ["persistent-rci-session:write"],
   "backend": {
     "kind": "service",

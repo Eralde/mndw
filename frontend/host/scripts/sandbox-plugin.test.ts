@@ -34,6 +34,7 @@ const validManifest = JSON.stringify({
   label: 'Sandbox Widget',
   entry: 'index.js',
   size: {w: 4, h: 3},
+  i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'}},
 });
 
 /** Vite hooks are typed as ObjectHook unions; call the function form directly in tests. */
@@ -71,6 +72,8 @@ describe('renderSandboxManifest', () => {
 
     expect(src).toContain('export default');
     expect(src).toContain('"name":"sandbox-widget"');
+    expect(src).toContain('"i18n/en.json"');
+    expect(src).toContain('__catalogBaseUrl');
   });
 
   it('throws visibly when the manifest is missing (no fake fallback)', () => {

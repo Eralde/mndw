@@ -18,6 +18,7 @@ type packagesRequest struct {
 
 func (h *Handler) handleOpkgListInstalled(w http.ResponseWriter, _ *http.Request) {
 	ctx, cancel := opkgContext()
+
 	defer cancel()
 
 	packages, err := h.opkg.ListInstalled(ctx)
@@ -32,6 +33,7 @@ func (h *Handler) handleOpkgListInstalled(w http.ResponseWriter, _ *http.Request
 
 func (h *Handler) handleOpkgListAvailable(w http.ResponseWriter, _ *http.Request) {
 	ctx, cancel := opkgContext()
+
 	defer cancel()
 
 	packages, err := h.opkg.ListAvailable(ctx)
@@ -46,6 +48,7 @@ func (h *Handler) handleOpkgListAvailable(w http.ResponseWriter, _ *http.Request
 
 func (h *Handler) handleOpkgList(w http.ResponseWriter, _ *http.Request) {
 	ctx, cancel := opkgContext()
+
 	defer cancel()
 
 	packages, err := h.opkg.List(ctx)
@@ -78,6 +81,7 @@ func (h *Handler) handleOpkgUpgrade(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleOpkgUpdate(w http.ResponseWriter, _ *http.Request) {
 	ctx, cancel := opkgContext()
+
 	defer cancel()
 
 	if err := h.opkg.Update(ctx); err != nil {
@@ -103,11 +107,13 @@ func opkgActionMessage(action string, count int) string {
 // upgrade, mapping opkg's typed errors onto the envelope.
 func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action string, run func(context.Context, []string) error) {
 	var req packagesRequest
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be JSON with a packages array"))
 
 		return
 	}
+
 	if len(req.Packages) == 0 {
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "packages must be a non-empty array"))
 
@@ -115,15 +121,18 @@ func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action stri
 	}
 
 	ctx, cancel := opkgContext()
+
 	defer cancel()
 
 	if err := run(ctx, req.Packages); err != nil {
 		var invalid *opkg.InvalidPackageError
+
 		if errors.As(err, &invalid) {
 			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeInvalidPackageName, "invalid package name: "+invalid.Name))
 
 			return
 		}
+
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "opkg "+action+" failed"))
 
 		return

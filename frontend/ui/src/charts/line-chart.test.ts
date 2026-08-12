@@ -1,4 +1,5 @@
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {setMndwUiLocale} from '../i18n.js';
 import {MNDW_LINE_CHART_TAG, MndwLineChart} from './line-chart.js';
 
 beforeAll(() => {
@@ -8,6 +9,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  setMndwUiLocale('en');
   document.body.innerHTML = '';
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -62,6 +64,16 @@ describe('<mndw-line-chart>', () => {
     expect(element.getAttribute('role')).toBe('img');
     expect(element.shadowRoot?.querySelector('[part="empty"]')?.textContent).toContain('No data available');
     expect(element.getAttribute('aria-label')).toBe('No data available');
+  });
+
+  it('updates generated empty labels with the UI locale', async () => {
+    const element = await mount();
+
+    setMndwUiLocale('ru');
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('[part="empty"]')?.textContent).toContain('Нет данных');
+    expect(element.getAttribute('aria-label')).toBe('Нет данных');
   });
 
   it('preserves an explicit aria-label', async () => {

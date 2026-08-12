@@ -31,6 +31,30 @@ function createPluginDirectory(manifest: string): string {
   return pluginDir;
 }
 
+function createLocalizedPluginDirectory(): string {
+  const pluginDir = createPluginDirectory(JSON.stringify({
+    manifestVersion: 3,
+    name: 'localized-command-plugin',
+    version: '0.1.0',
+    type: 'widget',
+    label: 'Localized Command Plugin',
+    entry: 'index.js',
+    size: {w: 3, h: 2},
+    i18n: {
+      defaultLocale: 'en',
+      locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'},
+    },
+  }));
+
+  mkdirSync(resolve(pluginDir, 'src'));
+  writeFileSync(resolve(pluginDir, 'src/index.ts'), 'export {}');
+  mkdirSync(resolve(pluginDir, 'i18n'));
+  writeFileSync(resolve(pluginDir, 'i18n/en.json'), '{"title":"Title"}');
+  writeFileSync(resolve(pluginDir, 'i18n/ru.json'), '{"title":"Заголовок","extra":"Extra"}');
+
+  return pluginDir;
+}
+
 const VALID_MANIFEST = JSON.stringify({
   manifestVersion: 3,
   name: 'source-entry-plugin',
@@ -123,7 +147,7 @@ describe('createProgram', () => {
 
     await expect(execution.run).rejects.toMatchObject({code: 'commander.helpDisplayed', exitCode: 0});
     expect(execution.result.stdout).toContain('Usage: mndw');
-    expect(execution.result.stdout).toContain('validate <plugin-dir>');
+    expect(execution.result.stdout).toContain('validate [options] <plugin-dir>');
     expect(execution.result.stderr).toBe('');
   });
 
@@ -149,6 +173,25 @@ describe('createProgram', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('demo-page');
     expect(result.stdout).toContain(resolve(WORKSPACE_ROOT, pluginDir));
+  });
+
+  test('prints catalog parity warnings during validation', () => {
+    const pluginDir = createLocalizedPluginDirectory();
+    const result = runCli(['validate', pluginDir]);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('Warning: localized-command-plugin locale ru has extra key extra not present in en');
+    expect(result.stdout).toContain('Validated localized-command-plugin');
+  });
+
+  test('fails catalog parity validation in strict mode', () => {
+    const pluginDir = createLocalizedPluginDirectory();
+    const result = runCli(['validate', pluginDir, '--strict']);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('localized-command-plugin locale ru has extra key extra not present in en');
+    expect(result.stdout).not.toContain('Validated localized-command-plugin');
   });
 
   test('exits nonzero without a stack trace for expected validation errors', () => {

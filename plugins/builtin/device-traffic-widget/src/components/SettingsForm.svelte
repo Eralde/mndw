@@ -1,14 +1,17 @@
 <script lang="ts">
+import type {Readable} from 'svelte/store';
+import type {Translator} from '@mndw/sdk';
 import type {HostClient} from '../types.js';
 
 interface Props {
   hosts: HostClient[];
   selectedMac: string;
+  translator: Readable<Translator>;
   onSelect: (mac: string) => void;
   onClose: () => void;
 }
 
-let {hosts, selectedMac, onSelect, onClose}: Props = $props();
+let {hosts, selectedMac, translator, onSelect, onClose}: Props = $props();
 // Intentional: seed local edit state from the initial prop value.
 // svelte-ignore state_referenced_locally
 let chosen = $state(selectedMac);
@@ -17,8 +20,8 @@ let chosen = $state(selectedMac);
 <div class="settings-form">
   <mndw-select
     value={chosen}
-    label="Device"
-    placeholder="-- Choose --"
+    label={$translator.t('field.device')}
+    placeholder={$translator.t('field.select-device')}
     onmndwchange={(e: CustomEvent<{value: string}>) => chosen = e.detail.value}
   >
     {#each hosts as host (host.mac)}
@@ -31,13 +34,13 @@ let chosen = $state(selectedMac);
     <mndw-button
       variant="secondary"
       onclick={onClose}
-    >Cancel</mndw-button>
+    >{$translator.t('action.cancel')}</mndw-button>
     <mndw-button
       variant="primary"
       onclick={() => onSelect(chosen)}
       disabled={!chosen}
     >
-      Apply
+      {$translator.t('action.apply')}
     </mndw-button>
   </div>
 </div>

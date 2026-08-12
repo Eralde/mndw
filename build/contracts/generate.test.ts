@@ -12,6 +12,8 @@ const generatedDirectories = [
   'frontend/sdk/fixtures/manifests',
   'daemon/mndwd/internal/manifest/fixtures/manifests',
   'daemon/contracts-go/fixtures/manifests',
+  'tooling/cli/fixtures/i18n-packages',
+  'daemon/mndwd/internal/mgmt/fixtures/i18n-packages',
   'frontend/sdk/fixtures/palettes',
   'daemon/mndwd/internal/palette/fixtures/palettes',
   'daemon/contracts-go/fixtures/protocol',

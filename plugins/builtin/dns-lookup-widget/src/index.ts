@@ -1,4 +1,5 @@
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
+import {bindLocale} from '@mndw/sdk/bind-locale';
 import {type DnsLookupResult, type DnsView, render} from './render.js';
 
 import './index.css';
@@ -6,6 +7,7 @@ import './index.css';
 const NAME = 'dns-lookup-widget';
 
 export function createInstance(container: HTMLElement, context: PluginContext): PluginInstance {
+  const i18n = context.i18n;
   container.replaceChildren();
 
   const rootEl = document.createElement('div');
@@ -20,13 +22,13 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
 
   hostnameInput.type = 'text';
   hostnameInput.className = `mndw-${NAME}__input`;
-  hostnameInput.placeholder = 'Hostname (e.g. google.com)';
+  hostnameInput.placeholder = i18n.t('hostname');
 
   const lookupBtn = document.createElement('button');
 
   lookupBtn.type = 'button';
   lookupBtn.className = `mndw-${NAME}__btn`;
-  lookupBtn.textContent = 'Lookup';
+  lookupBtn.textContent = i18n.t('lookup');
 
   controls.append(hostnameInput, lookupBtn);
 
@@ -34,13 +36,32 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
 
   resultEl.className = `mndw-${NAME}__result`;
 
-  rootEl.append(controls, resultEl);
+  const probeEl = document.createElement('span');
+
+  probeEl.dataset.testid = 'l10n-probe';
+  probeEl.hidden = true;
+
+  rootEl.append(probeEl, controls, resultEl);
   container.append(rootEl);
 
-  render(resultEl, {state: 'idle'});
+  let currentView: DnsView = {state: 'idle'};
+
+  const renderView = (view: DnsView): void => {
+    currentView = view;
+    render(resultEl, view, i18n);
+  };
+
+  const renderLocale = (): void => {
+    probeEl.textContent = i18n.t('l10n.probe');
+    hostnameInput.placeholder = i18n.t('hostname');
+    lookupBtn.textContent = i18n.t('lookup');
+    render(resultEl, currentView, i18n);
+  };
+
+  const unsubscribeLocale = bindLocale(i18n, renderLocale);
 
   function displayError(message: string): void {
-    render(resultEl, {state: 'error', message});
+    renderView({state: 'error', message});
   }
 
   async function doLookup(): Promise<void> {
@@ -48,27 +69,27 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
     const backend = context.backend;
 
     if (hostname === '') {
-      displayError('Please enter a hostname.');
+      displayError(i18n.t('enter'));
 
       return;
     }
 
     if (backend === undefined) {
-      render(resultEl, {state: 'unavailable'});
+      renderView({state: 'unavailable'});
 
       return;
     }
 
     hostnameInput.disabled = true;
     lookupBtn.disabled = true;
-    render(resultEl, {state: 'loading', hostname});
+    renderView({state: 'loading', hostname});
 
     try {
       const response = await backend.fetch('lookup', {query: {hostname}});
       const payload = (await response.json()) as DnsLookupResult & {success?: boolean; error?: string};
 
       if (payload.error === 'NXDOMAIN') {
-        render(resultEl, {state: 'not-found', hostname});
+        renderView({state: 'not-found', hostname});
 
         return;
       }
@@ -80,7 +101,7 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
       }
 
       if (payload.addresses === undefined || payload.addresses.length === 0) {
-        render(resultEl, {state: 'not-found', hostname});
+        renderView({state: 'not-found', hostname});
 
         return;
       }
@@ -95,7 +116,7 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
         },
       };
 
-      render(resultEl, resultView);
+      renderView(resultView);
     } catch (err) {
       displayError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -120,6 +141,7 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
     unmount(): void {
       lookupBtn.removeEventListener('click', onClick);
       hostnameInput.removeEventListener('keydown', onKeydown);
+      unsubscribeLocale();
       container.replaceChildren();
     },
   };

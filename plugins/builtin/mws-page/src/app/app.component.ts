@@ -18,7 +18,7 @@ import {findNodeById, hasUpdate} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {NodePositionStore} from '../services/node-position.store';
 import {MwsDataService} from '../services/mws-data.service';
-import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE} from '../tokens';
+import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, TRANSLATOR} from '../tokens';
 
 interface MapSummary {
   total: number;
@@ -61,6 +61,7 @@ export class AppComponent implements OnDestroy, OnInit {
   private graph?: MwsGraphComponent;
 
   protected readonly data = inject(MwsDataService);
+  protected readonly translator = inject(TRANSLATOR);
   protected readonly mockOptions = inject(MWS_MOCK_OPTIONS);
   private readonly pageRoute = inject(MWS_PAGE_ROUTE, {optional: true});
   protected readonly positions = inject(NodePositionStore);
@@ -81,18 +82,18 @@ export class AppComponent implements OnDestroy, OnInit {
   });
   protected readonly summaryText = computed<string>(() => {
     const summary = this.summary();
-    const segments = [`${summary.total} ${summary.total === 1 ? 'node' : 'nodes'}`];
+    const segments = [this.t('summary.nodes', {count: summary.total})];
 
     if (summary.offline > 0) {
-      segments.push(`${summary.offline} offline`);
+      segments.push(this.t('summary.offline', {count: summary.offline}));
     }
 
     if (summary.clients > 0) {
-      segments.push(`${summary.clients} ${summary.clients === 1 ? 'client' : 'clients'}`);
+      segments.push(this.t('summary.clients', {count: summary.clients}));
     }
 
     if (summary.updates > 0) {
-      segments.push(`${summary.updates} ${summary.updates === 1 ? 'update' : 'updates'} available`);
+      segments.push(this.t('summary.updates', {count: summary.updates}));
     }
 
     const updatedAt = this.data.lastUpdatedAt();
@@ -100,7 +101,7 @@ export class AppComponent implements OnDestroy, OnInit {
     if (updatedAt !== null) {
       const age = Math.max(0, Math.floor((this.data.freshnessNow() - updatedAt) / 1000));
 
-      segments.push(`updated ${age}s ago`);
+      segments.push(this.t('summary.updated', {seconds: age}));
     }
 
     return segments.join(' · ');
@@ -136,6 +137,10 @@ export class AppComponent implements OnDestroy, OnInit {
 
   public ngOnDestroy(): void {
     this.pageRouteSubscription?.unsubscribe();
+  }
+
+  protected t(key: string, values?: Record<string, unknown>): string {
+    return this.translator.t(key, values);
   }
 
   protected onNodeSelected(nodeId: string): void {

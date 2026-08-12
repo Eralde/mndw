@@ -1,11 +1,34 @@
 // @vitest-environment happy-dom
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import {createTestI18n} from '@mndw/sdk/testing';
+import {createTranslator} from '@mndw/sdk/svelte';
 import type {LogLevel} from './log-types';
 import {ALL_LOG_LEVELS, type FilterState} from './log-filters';
 import LogFilters from './LogFilters.svelte';
 
 const allLevels = new Set<LogLevel>(ALL_LOG_LEVELS);
+const messages: Record<string, string> = {
+  'filter.aria-label': 'Log filters',
+  'filter.hide': 'Hide filters',
+  'filter.show': 'Show filters',
+  'filter.label': 'Filters',
+  'filter.showing': 'Showing {filtered} of {total} items',
+  'filter.showing-compact': 'Showing {filtered}/{total}',
+  'filter.reset': 'Reset',
+  'filter.search': 'Search logs',
+  'filter.placeholder': 'Filter by substring',
+  'filter.levels': 'Log levels',
+  'level.info': 'Info',
+  'level.warning': 'Warning',
+  'level.error': 'Error',
+  'level.critical': 'Critical',
+  'level.debug': 'Debug',
+  'level.notice': 'Notice',
+};
+function translator() {
+  return createTranslator(createTestI18n(messages));
+}
 
 describe('LogFilters', () => {
   let host: HTMLElement;
@@ -22,7 +45,7 @@ describe('LogFilters', () => {
     const onChange = vi.fn();
     const app = mount(LogFilters, {
       target: host,
-      props: {state, filteredCount: 2, totalCount: 6, onChange},
+      props: {state, filteredCount: 2, totalCount: 6, translator: translator(), onChange},
     });
 
     flushSync();
@@ -61,7 +84,13 @@ describe('LogFilters', () => {
     const onChange = vi.fn();
     const app = mount(LogFilters, {
       target: host,
-      props: {state: {query: 'router', levels: allLevels}, filteredCount: 1, totalCount: 6, onChange},
+      props: {
+        state: {query: 'router', levels: allLevels},
+        filteredCount: 1,
+        totalCount: 6,
+        translator: translator(),
+        onChange,
+      },
     });
 
     flushSync();

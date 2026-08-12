@@ -33,11 +33,14 @@ import {
   computeTooltipCoords,
   defineMndwUi,
   formatSpeed,
+  getMndwUiText,
   resolveSizing,
+  setMndwUiLocale,
 } from './index.js';
 import {getOverlayProvider, setOverlayProvider} from './overlay.js';
 
 afterEach(() => {
+  setMndwUiLocale('en');
   setOverlayProvider(undefined);
 });
 
@@ -118,6 +121,12 @@ describe('defineMndwUi', () => {
     defineMndwUi({overlay: second});
 
     expect(getOverlayProvider()).not.toBe(before);
+  });
+
+  it('accepts an initial locale without changing the setter contract', () => {
+    defineMndwUi({initialLocale: 'ru'});
+
+    expect(getMndwUiText('select.placeholder')).toBe('Выберите…');
   });
 });
 

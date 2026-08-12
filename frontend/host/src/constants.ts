@@ -1,6 +1,8 @@
 export const STORAGE_PREFIX = 'mndw';
 export const PLUGIN_STORAGE_PREFIX = `${STORAGE_PREFIX}:plugin`;
 
+export const SUPPORTED_LOCALES = ['en', 'ru'] as const;
+
 export const API_TIMEOUT_MS = 5000;
 
 /**
@@ -15,6 +17,8 @@ export const FALLBACK_HOST_INFO = {
   vendor: 'Unknown',
   firmwareVersion: 'Unknown',
   theme: 'dark',
+  // Defensive value only; initLocale commits browser locale before runtime contexts exist.
+  locale: 'en',
 } as const;
 
 /** Daemon management endpoint the runtime loads the plugin list from */

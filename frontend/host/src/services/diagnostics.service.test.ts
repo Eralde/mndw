@@ -50,7 +50,7 @@ describe('diagnostics service', () => {
     vi.restoreAllMocks();
   });
 
-  it('collects three labeled sections in the required order with CSRF headers', async () => {
+  it('collects labeled sections in the required order with CSRF headers', async () => {
     const request = vi.fn<RequestFn>();
 
     request.mockImplementation((input) => {
@@ -72,10 +72,6 @@ describe('diagnostics service', () => {
         return Promise.resolve(response({controller: {support: 'supported'}}));
       }
 
-      if (url.endsWith('/api/mndw/extender-access')) {
-        return Promise.resolve(response({enabled: true}));
-      }
-
       throw new Error(`unexpected endpoint: ${url}`);
     });
 
@@ -83,24 +79,19 @@ describe('diagnostics service', () => {
 
     await downloadDiagnostics(deps);
 
-    expect(request).toHaveBeenCalledTimes(3);
+    expect(request).toHaveBeenCalledTimes(2);
 
     expect(request.mock.calls[0]?.[1]).toEqual({method: 'POST', headers: {'X-Mndw-Csrf': '1'}});
     expect(request.mock.calls[1]?.[1]).toEqual({headers: {'X-Mndw-Csrf': '1'}});
-    expect(request.mock.calls[2]?.[1]).toEqual({headers: {'X-Mndw-Csrf': '1'}});
 
     const url = deps.createObjectURL.mock.calls[0]?.[0];
     const report = await url?.text();
 
     expect(report).toContain('mndwd diagnostics');
     expect(report).toContain('persistent rci-session capability');
-    expect(report).toContain('extender access permission');
     expect(report).not.toContain('mwsd nodes');
     expect(report?.indexOf('mndwd diagnostics')).toBeLessThan(
       report?.indexOf('persistent rci-session capability') ?? 0,
-    );
-    expect(report?.indexOf('persistent rci-session capability')).toBeLessThan(
-      report?.indexOf('extender access permission') ?? 0,
     );
     expect(report).toContain('alpha');
     expect(report).toContain('beta');
@@ -120,10 +111,6 @@ describe('diagnostics service', () => {
 
       if (url.endsWith('/api/mndw/diagnostics/export')) {
         return Promise.resolve(response({plugins: [{pluginId: 'alpha', data: {status: 'ready'}, errors: []}]}));
-      }
-
-      if (url.endsWith('/api/mndw/extender-access')) {
-        return Promise.resolve(response({enabled: true}));
       }
 
       throw new Error(`unexpected endpoint: ${url}`);

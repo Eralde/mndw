@@ -50,6 +50,7 @@ describe('MwsGraphComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.roots()).toHaveLength(1);
+
     const element: HTMLElement = fixture.nativeElement;
 
     expect(element.querySelectorAll('g.node')).toHaveLength(3);
@@ -131,8 +132,8 @@ describe('MwsGraphComponent', () => {
       .filter((node) => !node.isController);
     const fixture = TestBed.createComponent(MwsGraphComponent);
 
-    extenders[0].mwsdStatus = {state: 'live', lastSuccessAt: Date.now()};
-    extenders[1].mwsdStatus = {state: 'stale', lastSuccessAt: Date.now() - 100_000};
+    extenders[0].mwsdStatus = {state: 'live', lastTelemetryAt: Date.now()};
+    extenders[1].mwsdStatus = {state: 'stale', lastTelemetryAt: Date.now() - 100_000};
     fixture.componentRef.setInput('roots', roots);
     fixture.detectChanges();
 
@@ -154,8 +155,8 @@ describe('MwsGraphComponent', () => {
       .flatMap((root) => collectNodes(root))
       .filter((node) => !node.isController);
 
-    updatedExtenders[0].mwsdStatus = {state: 'stale', lastSuccessAt: Date.now() - 100_000};
-    updatedExtenders[1].mwsdStatus = {state: 'offline', lastSuccessAt: null};
+    updatedExtenders[0].mwsdStatus = {state: 'stale', lastTelemetryAt: Date.now() - 100_000};
+    updatedExtenders[1].mwsdStatus = {state: 'offline', lastTelemetryAt: null};
     fixture.componentRef.setInput('roots', updatedRoots);
     fixture.detectChanges();
 
@@ -277,7 +278,9 @@ describe('MwsGraphComponent', () => {
     }
 
     const fullName = 'A node name that is deliberately much longer than the visible label';
+
     controller.name = fullName;
+
     const fixture = TestBed.createComponent(MwsGraphComponent);
 
     fixture.componentRef.setInput('roots', roots);
@@ -314,6 +317,7 @@ describe('MwsGraphComponent', () => {
     }
 
     const fixture = TestBed.createComponent(MwsGraphComponent);
+
     fixture.componentRef.setInput('roots', roots);
     fixture.componentRef.setInput('selectedNodeId', secondChild.id);
     fixture.detectChanges();
@@ -341,6 +345,7 @@ describe('MwsGraphComponent', () => {
     }
 
     const fixture = TestBed.createComponent(MwsGraphComponent);
+
     fixture.componentRef.setInput('roots', roots);
     fixture.componentRef.setInput('editMode', false);
     fixture.detectChanges();
@@ -365,6 +370,7 @@ describe('MwsGraphComponent', () => {
     }
 
     const fixture = TestBed.createComponent(MwsGraphComponent);
+
     fixture.componentRef.setInput('roots', roots);
     fixture.componentRef.setInput('selectedNodeId', null);
     fixture.componentRef.setInput('editMode', false);
@@ -393,16 +399,19 @@ describe('MwsGraphComponent', () => {
     }
 
     const fixture = TestBed.createComponent(MwsGraphComponent);
+
     fixture.componentRef.setInput('roots', roots);
     fixture.detectChanges();
     dispatchNodeEvent(fixture, firstChild.id, 'pointerenter');
 
     const controllerOnly = buildMap([], [], CONTROLLER);
+
     fixture.componentRef.setInput('roots', controllerOnly);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('path.edge.dimmed')).toBeNull();
 
     const orphan = {...firstChild, id: 'orphan', mac: 'orphan', name: 'Orphan', parent: null, children: []};
+
     fixture.componentRef.setInput('roots', [...fixtureRoots(), orphan]);
     fixture.detectChanges();
     dispatchNodeEvent(fixture, orphan.id, 'pointerenter');
@@ -425,6 +434,7 @@ describe('MwsGraphComponent', () => {
     }
 
     const fixture = TestBed.createComponent(MwsGraphComponent);
+
     fixture.componentRef.setInput('roots', roots);
     fixture.detectChanges();
     dispatchNodeEvent(fixture, child.id, 'pointerenter');

@@ -3,20 +3,12 @@ package telemetry
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 )
 
-// FieldAdapter isolates firmware-dependent paths. Task 10 fills production
-// paths only after live hardware confirms them.
-type FieldAdapter struct {
-	CPUPath         string
-	MemoryUsedPath  string
-	MemoryTotalPath string
-}
-
 func ParsePersistentTelemetry(systemData, cpuData, memoryData []byte, sampledAt time.Time) (PersistentTelemetry, error) {
 	var system System
+
 	if err := json.Unmarshal(systemData, &system); err != nil {
 		return PersistentTelemetry{}, fmt.Errorf("decode system telemetry: %w", err)
 	}
@@ -25,10 +17,12 @@ func ParsePersistentTelemetry(systemData, cpuData, memoryData []byte, sampledAt 
 	if err != nil {
 		return PersistentTelemetry{}, fmt.Errorf("decode CPU RRD response: %w", err)
 	}
+
 	memory, err := parseRrdResponse(memoryData)
 	if err != nil {
 		return PersistentTelemetry{}, fmt.Errorf("decode memory RRD response: %w", err)
 	}
+
 	return PersistentTelemetry{SampledAt: sampledAt, System: system, CPURRD: cpu, MemoryRRD: memory}, nil
 }
 
@@ -36,55 +30,12 @@ func parseRrdResponse(data []byte) (RrdResponse, error) {
 	if len(data) == 0 {
 		return RrdResponse{Data: []RrdTick{}}, nil
 	}
+
 	var response RrdResponse
+
 	if err := json.Unmarshal(data, &response); err != nil {
 		return RrdResponse{}, fmt.Errorf("decode RRD response: %w", err)
 	}
+
 	return response, nil
-}
-
-func (a FieldAdapter) Parse(data []byte, sampledAt interface{}) (Vitals, error) {
-	var payload map[string]any
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return Vitals{}, fmt.Errorf("decode vitals: %w", err)
-	}
-	cpu, err := numberAt(payload, a.CPUPath)
-	if err != nil {
-		return Vitals{}, err
-	}
-	used, err := numberAt(payload, a.MemoryUsedPath)
-	if err != nil {
-		return Vitals{}, err
-	}
-	total, err := numberAt(payload, a.MemoryTotalPath)
-	if err != nil {
-		return Vitals{}, err
-	}
-	now, ok := sampledAt.(time.Time)
-	if !ok {
-		return Vitals{}, fmt.Errorf("invalid sample time")
-	}
-	return Vitals{CPU: cpu, MemoryUsed: uint64(used), MemoryTotal: uint64(total), SampledAt: now}, nil
-}
-
-func numberAt(payload map[string]any, path string) (float64, error) {
-	var current any = payload
-	for _, part := range strings.Split(path, ".") {
-		object, ok := current.(map[string]any)
-		if !ok {
-			return 0, fmt.Errorf("vitals field %q missing", path)
-		}
-		current, ok = object[part]
-		if !ok {
-			return 0, fmt.Errorf("vitals field %q missing", path)
-		}
-	}
-	switch value := current.(type) {
-	case float64:
-		return value, nil
-	case json.Number:
-		return value.Float64()
-	default:
-		return 0, fmt.Errorf("vitals field %q is not numeric", path)
-	}
 }

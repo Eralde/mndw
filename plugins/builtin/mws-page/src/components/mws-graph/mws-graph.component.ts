@@ -134,7 +134,9 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     this.roots();
     this.nodePositions();
     this.positionsLoadOutcome();
+
     const editMode = this.editMode();
+
     this.selectedNodeId();
 
     if (editMode) {

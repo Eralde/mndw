@@ -245,9 +245,10 @@ describe('MwsDataService', () => {
       Promise.resolve(
         new Response(
           JSON.stringify({
-            credState: 'present',
             lastRefreshAt: new Date().toISOString(),
-            nodes: [{mac: '02:7d:4a:91:c3:21', state: 'live', lastSuccessAt: new Date().toISOString()}],
+            persistentAvailable: true,
+            persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true,
+              telemetry: {sampledAt: new Date().toISOString()}}],
           }),
           {status: 200, headers: {'content-type': 'application/json'}},
         ),
@@ -271,8 +272,10 @@ describe('MwsDataService', () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            credState: 'present',
-            nodes: [{mac: '02:7d:4a:91:c3:21', state: 'live', lastSuccessAt: new Date().toISOString()}],
+            lastRefreshAt: new Date().toISOString(),
+            persistentAvailable: true,
+            persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true,
+              telemetry: {sampledAt: new Date().toISOString()}}],
           }),
           {status: 200},
         ),
@@ -296,7 +299,12 @@ describe('MwsDataService', () => {
     const pending = new Promise<Response>(() => undefined);
     const fetch = vi.fn()
       .mockReturnValueOnce(pending)
-      .mockResolvedValueOnce(new Response(JSON.stringify({credState: 'present', nodes: []}), {status: 200}));
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({lastRefreshAt: new Date().toISOString(), persistentAvailable: true, persistentSessions: []}),
+          {status: 200},
+        ),
+      );
     const service = makeLiveServiceWithBackend(api, fakeBackend(fetch));
 
     service.start();
@@ -314,8 +322,10 @@ describe('MwsDataService', () => {
       Promise.resolve(
         new Response(
           JSON.stringify({
-            credState: 'present',
-            nodes: [{mac: '02:7d:4a:91:c3:21', state: 'live', lastSuccessAt: new Date().toISOString()}],
+            lastRefreshAt: new Date().toISOString(),
+            persistentAvailable: true,
+            persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true,
+              telemetry: {sampledAt: new Date().toISOString()}}],
           }),
           {status: 200},
         ),
@@ -339,8 +349,8 @@ describe('MwsDataService', () => {
       Promise.resolve(
         new Response(
           JSON.stringify({
-            credState: 'absent',
-            nodes: [],
+            lastRefreshAt: new Date().toISOString(),
+            persistentAvailable: true,
             persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true}],
           }),
           {status: 200},
@@ -352,7 +362,7 @@ describe('MwsDataService', () => {
     service.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.persistentSession).toBe(true);
-    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('offline');
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('starting');
 
     service.refreshNow();
     await vi.advanceTimersByTimeAsync(0);

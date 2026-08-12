@@ -65,8 +65,8 @@ export interface MwsNode {
 }
 
 export interface MwsdNodeStatus {
-  readonly state: 'starting' | 'live' | 'stale' | 'offline';
-  readonly lastSuccessAt: number | null;
+  readonly state: 'starting' | 'live' | 'stale' | 'offline' | 'unavailable';
+  readonly lastTelemetryAt: number | null;
 }
 
 export interface ControllerInfo {

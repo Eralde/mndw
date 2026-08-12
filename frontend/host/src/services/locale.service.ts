@@ -100,7 +100,7 @@ export function initLocale(): string {
   const persisted = stored === undefined ? undefined : exactSupported(stored);
   const next = persisted
     ?? navigatorCandidates().map(navigatorSupported)
-.find((locale): locale is string => locale !== undefined)
+      .find((locale): locale is string => locale !== undefined)
     ?? 'en';
 
   commitLocale(next);

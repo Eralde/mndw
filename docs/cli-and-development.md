@@ -7,11 +7,11 @@ daemon.
 ## Commands
 
 ```text
-mndw create <name>       scaffold a plugin
-mndw dev <plugin>        run source plugin with local host and daemon
-mndw validate <path>     validate manifest and entry checks
-mndw pack <path>         build an isolated loadable plugin directory
-mndw zip <path>          pack and create an uploadable archive
+npx mndw create <name>       scaffold a plugin
+npx mndw dev <plugin>        run source plugin with local host and daemon
+npx mndw validate <path>     validate manifest and entry checks
+npx mndw pack <path>         build an isolated loadable plugin directory
+npx mndw zip <path>          pack and create an uploadable archive
 ```
 
 Common `create` choices are widget or page, vanilla/Svelte/Vue/Angular, and an

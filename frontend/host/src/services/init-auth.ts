@@ -5,8 +5,6 @@ import {createAppRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {anyInstalling, startDepsPolling} from '../state/deps-status.svelte.js';
 import {fetchHostInfo} from './host-info.service.js';
-import {type IntakeCredentials, extenderAccessService} from './extender-access.service.js';
-import {startOptionalStartupWork} from './optional-startup.js';
 
 /** True only in a `mndw dev` build; `typeof` guards the undefined case (e.g. under vitest). */
 function isSandboxMode(): boolean {
@@ -23,18 +21,7 @@ function isSandboxMode(): boolean {
  * `mndw dev` (the `__MNDW_SANDBOX__` build flag) the single plugin under development is loaded
  * from source and HMR is wired instead.
  */
-export async function initAuthenticated(credentials?: IntakeCredentials): Promise<void> {
-  startOptionalStartupWork(async () => {
-    const access = await extenderAccessService.getExtenderAccess();
-
-    if (!access.enabled) {
-      // Forget is idempotent and deliberately unconditional across reloads.
-      await extenderAccessService.postForget();
-    } else if (credentials) {
-      await extenderAccessService.postCredentials(credentials);
-    }
-  });
-
+export async function initAuthenticated(): Promise<void> {
   try {
     appState.hostInfo = await fetchHostInfo();
   } catch (err) {

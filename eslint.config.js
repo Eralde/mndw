@@ -267,6 +267,8 @@ module.exports = tseslint.config(
     ignores: [
       'frontend/host/scripts/templates/**',
       'tooling/cli/templates/**',
+      // CLI fixture packages are test input, not host source — never lint their payloads.
+      'tooling/cli/fixtures/**',
       // Built example-plugin bundles (esbuild output) are not source — never lint them.
       'plugins/builtin/dist/**',
       'plugins/builtin/*/dist/**',

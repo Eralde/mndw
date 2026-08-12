@@ -6,7 +6,6 @@ import {getAvailableLocales, setLocale} from '../../services/locale.service.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
 import {onDestroy, onMount} from 'svelte';
-import {extenderAccessService} from '../../services/extender-access.service.js';
 import {
   type ControllerTestResult,
   type PersistentRciCapability,
@@ -25,9 +24,6 @@ interface Props {
 }
 
 let {onPermissionStateChange}: Props = $props();
-let extenderAccessEnabled = $state(false);
-let extenderAccessLoading = $state(true);
-let extenderAccessError = $state('');
 let persistentCapability = $state<PersistentRciCapability | null>(null);
 let persistentProbeAvailable = $state(false);
 let controllerTokenPlaceholder = $derived.by(() => {
@@ -40,18 +36,6 @@ let persistentEnabled = $state(false);
 let persistentLoading = $state(true);
 let persistentActionLoading = $state(false);
 let persistentError = $state('');
-let extenderTelemetryAvailable = $derived.by(() => {
-  if (
-    !persistentEnabled || !persistentProbeAvailable
-    || persistentCapability === null
-  ) {
-    return false;
-  }
-  return persistentCapability.controller.support === 'supported'
-    && persistentCapability.extenders.some((extender) =>
-      extender.support === 'supported'
-    );
-});
 let controllerToken = $state('');
 let controllerResult = $state<ControllerTestResult | null>(null);
 let meshUsername = $state('');
@@ -66,16 +50,6 @@ $effect(() => {
 });
 
 onMount(() => {
-  void extenderAccessService.getExtenderAccess().then((state) => {
-    extenderAccessEnabled = state.enabled;
-  }).catch(() => {
-    extenderAccessError = hostT('settings.extender-access-unavailable');
-  }).finally(() => {
-    extenderAccessLoading = false;
-  });
-});
-
-onMount(() => {
   void refreshPersistentCapability();
 });
 
@@ -84,31 +58,6 @@ onDestroy(() => {
   meshUsername = '';
   meshPassword = '';
 });
-
-async function setExtenderAccess(
-  event: CustomEvent<{checked?: boolean; value?: boolean}>,
-): Promise<void> {
-  const enabled = event.detail.checked ?? event.detail.value ?? false;
-  if (
-    enabled
-    && !window.confirm('Allow mwsd to access configured extender credentials?')
-  ) {
-    return;
-  }
-  extenderAccessLoading = true;
-  extenderAccessError = '';
-  try {
-    if (!enabled) {
-      await extenderAccessService.postForget();
-    }
-    const state = await extenderAccessService.setExtenderAccess(enabled);
-    extenderAccessEnabled = state.enabled;
-  } catch {
-    extenderAccessError = hostT('settings.extender-access-update-failed');
-  } finally {
-    extenderAccessLoading = false;
-  }
-}
 
 async function refreshPersistentCapability(): Promise<void> {
   persistentLoading = true;
@@ -471,22 +420,6 @@ async function clearExtenders(): Promise<void> {
             {/if}
           </div>
         {/if}
-      {/if}
-    </section>
-  {/if}
-
-  {#if extenderTelemetryAvailable}
-    <section aria-label={hostT('settings.extender-access')}>
-      <mndw-field label={hostT('settings.allow-extender-telemetry')}>
-        <mndw-switch
-          id="mndw-extender-access"
-          checked={extenderAccessEnabled}
-          disabled={extenderAccessLoading}
-          onmndwchange={setExtenderAccess}
-        ></mndw-switch>
-      </mndw-field>
-      {#if extenderAccessError}
-        <p role="alert">{extenderAccessError}</p>
       {/if}
     </section>
   {/if}

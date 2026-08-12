@@ -154,7 +154,12 @@ describe('createInstance', () => {
     window.history.replaceState({}, '', '/mws');
 
     const fetch = vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify({credState: 'present', nodes: []}), {status: 200}))
+      Promise.resolve(
+        new Response(
+          JSON.stringify({lastRefreshAt: new Date().toISOString(), persistentAvailable: true, persistentSessions: []}),
+          {status: 200},
+        ),
+      )
     );
     const backend = {
       fetch,

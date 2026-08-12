@@ -164,6 +164,7 @@ describe('MwsNodesTableComponent', () => {
     }
 
     initialController.isOnline = false;
+
     const fixture = TestBed.createComponent(MwsNodesTableComponent);
 
     fixture.componentRef.setInput('roots', initial);

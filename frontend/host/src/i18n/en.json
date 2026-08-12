@@ -66,10 +66,6 @@
     "mesh-password": "Mesh password",
     "provision-extenders": "Provision extenders",
     "clear-extender-sessions": "Clear extender sessions",
-    "allow-extender-telemetry": "Allow mwsd to access extender telemetry",
-    "extender-access": "Extender access",
-    "extender-access-unavailable": "Extender access state unavailable",
-    "extender-access-update-failed": "Could not update extender access",
     "persistent-state-unavailable": "Persistent rci/ session state unavailable",
     "persistent-request-failed": "Persistent rci/ session request failed",
     "controller-token-rejected": "Controller token rejected",
@@ -99,8 +95,7 @@
     "submit": "Login",
     "logging-in": "Logging in...",
     "invalid-credentials": "Invalid credentials",
-    "connection-failed": "Connection failed",
-    "extender-setup-failed": "Extender access setup failed"
+    "connection-failed": "Connection failed"
   },
   "packages": {
     "title": "Package Manager",

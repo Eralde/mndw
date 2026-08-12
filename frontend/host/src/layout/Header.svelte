@@ -1,7 +1,6 @@
 <script lang="ts">
 import type {MndwSelectChangeDetail} from '@mndw/ui';
 import {rciService} from '../services/rci.service.js';
-import {extenderAccessService} from '../services/extender-access.service.js';
 import {toggleTheme} from '../services/theme.service.js';
 import {appState, resetToLogin} from '../state/app.svelte.js';
 import {hostT} from '../services/host-i18n.svelte.js';
@@ -12,11 +11,6 @@ function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
 }
 
 async function handleLogout(): Promise<void> {
-  try {
-    await extenderAccessService.postForget();
-  } catch {
-    // Router logout and local reset must proceed even when mwsd is unavailable.
-  }
   try {
     await new Promise<void>((resolve) => {
       rciService.logout().subscribe({next: () => resolve(), error: () =>

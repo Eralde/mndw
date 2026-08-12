@@ -34,7 +34,7 @@ describe('getNodeStatusLabels', () => {
     const labels = getNodeStatusLabels(
       node({
         isOnline: false,
-        mwsdStatus: {state: 'stale', lastSuccessAt: 1},
+        mwsdStatus: {state: 'stale', lastTelemetryAt: 1},
         persistentSession: false,
         clients: [{mac: 'client-1', name: 'Client', ip: null, uptime: null, lastSeen: null, wired: false}],
       }),
@@ -56,11 +56,12 @@ describe('getNodeStatusLabels', () => {
       ['live', 'Telemetry: live'],
       ['stale', 'Telemetry: stale'],
       ['offline', 'Telemetry: offline'],
+      ['unavailable', 'Telemetry: unavailable'],
     ] as const;
 
     for (const [state, expected] of states) {
       expect(
-        getNodeStatusLabels(node({mwsdStatus: state === undefined ? undefined : {state, lastSuccessAt: null}}), t)
+        getNodeStatusLabels(node({mwsdStatus: state === undefined ? undefined : {state, lastTelemetryAt: null}}), t)
           .telemetry,
       )
         .toBe(expected);

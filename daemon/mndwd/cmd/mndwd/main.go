@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"mndwd/internal/access"
 	"mndwd/internal/authz"
 	"mndwd/internal/backend"
 	"mndwd/internal/diagnostics"
@@ -185,7 +184,6 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 // session, returning the session's cleanup func.
 func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, v3Runtime *backend.RuntimeImpl, verifier *authz.Verifier, logger *slog.Logger) persistentSessionRegistration {
 	accessMux := http.NewServeMux()
-	access.New(store).Register(accessMux)
 	diagnosticsLogFile := cfg.DiagnosticsLogFile
 	if diagnosticsLogFile == "" {
 		diagnosticsLogFile = defaultDiagnosticsLogFile

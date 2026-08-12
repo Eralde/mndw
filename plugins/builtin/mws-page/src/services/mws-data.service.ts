@@ -21,12 +21,11 @@ import {
 import type {BackendClient} from '@mndw/sdk';
 import {MwsApiService} from '../api/mws-api.service';
 import {
-  type MwsdStatusSnapshot,
   type PersistentSessionSnapshot,
-  mergeMwsdStatuses,
   mergePersistentSessions,
-  parseMwsdNodesResponse,
+  newPersistentSessionSnapshot,
   parsePersistentSessionsResponse,
+  retainPersistentSessionsForNodes,
 } from '../api/mwsd-status';
 import type {BridgeInterfaceRecord, DeviceHostRecord, MwsMemberRecord, ShowVersionRecord} from '../api/rci.types';
 import {buildMap} from '../domain/mws/map-builder';
@@ -38,11 +37,6 @@ export const MWSD_STATUS_POLL_INTERVAL_MS = 3_000;
 export const MWSD_STATUS_REQUEST_TIMEOUT_MS = 5_000;
 
 export type MwsViewPhase = 'loading' | 'error' | 'unsupported' | 'ready';
-
-interface MwsdPollSnapshot {
-  readonly status: MwsdStatusSnapshot;
-  readonly persistentSessions: PersistentSessionSnapshot;
-}
 
 type PollResult =
   | {
@@ -81,8 +75,7 @@ export class MwsDataService {
   private pollInFlight = false;
   private refreshPending = false;
   private hasSnapshot = false;
-  private lastMwsdSnapshot: MwsdStatusSnapshot = emptyMwsdSnapshot();
-  private lastPersistentSessions: PersistentSessionSnapshot = new Map();
+  private lastPersistentSessions: PersistentSessionSnapshot = newPersistentSessionSnapshot(false, new Map());
 
   public constructor() {
     const freshnessTimer = setInterval(() => this.freshnessNow.set(Date.now()), 5_000);
@@ -137,8 +130,7 @@ export class MwsDataService {
     this.mwsdStatusSub = null;
     this.refreshTimerSub?.unsubscribe();
     this.refreshTimerSub = null;
-    this.lastMwsdSnapshot = emptyMwsdSnapshot();
-    this.lastPersistentSessions = new Map();
+    this.lastPersistentSessions = newPersistentSessionSnapshot(false, new Map());
   }
 
   private startPolling(): void {
@@ -201,8 +193,7 @@ export class MwsDataService {
       )
       .subscribe((snapshot) => {
         if (snapshot !== null) {
-          this.lastMwsdSnapshot = snapshot.status;
-          this.lastPersistentSessions = snapshot.persistentSessions;
+          this.lastPersistentSessions = snapshot;
         }
 
         this.mergeCurrentMwsdStatus();
@@ -216,13 +207,14 @@ export class MwsDataService {
       timeout({each: MWSD_STATUS_REQUEST_TIMEOUT_MS}),
       switchMap((response) =>
         response.ok
-          ? defer(() => from(response.json())).pipe(map((value): MwsdPollSnapshot => ({
-            status: parseMwsdNodesResponse(value, Date.now()),
-            persistentSessions: parsePersistentSessionsResponse(value),
-          })))
-          : of<MwsdPollSnapshot | null>(null)
+          ? defer(() => from(response.json())).pipe(
+            map((value): PersistentSessionSnapshot =>
+              parsePersistentSessionsResponse(value, this.lastPersistentSessions)
+            ),
+          )
+          : of<PersistentSessionSnapshot | null>(null)
       ),
-      catchError(() => of<MwsdStatusSnapshot | null>(null)),
+      catchError(() => of<PersistentSessionSnapshot | null>(null)),
       finalize(() => controller.abort()),
     );
   }
@@ -270,8 +262,8 @@ export class MwsDataService {
     let roots = buildMap(result.members, result.hosts, controller);
 
     if (applyMwsdStatus && this.backend !== null) {
-      roots = mergeMwsdStatuses(roots, this.lastMwsdSnapshot, Date.now());
-      roots = mergePersistentSessions(roots, this.lastPersistentSessions);
+      this.lastPersistentSessions = retainPersistentSessionsForNodes(roots, this.lastPersistentSessions);
+      roots = mergePersistentSessions(roots, this.lastPersistentSessions, Date.now());
     }
 
     this.roots.set(roots);
@@ -287,14 +279,9 @@ export class MwsDataService {
       return;
     }
 
-    const roots = mergeMwsdStatuses(this.roots(), this.lastMwsdSnapshot, Date.now());
-    const merged = mergePersistentSessions(roots, this.lastPersistentSessions);
+    const merged = mergePersistentSessions(this.roots(), this.lastPersistentSessions, Date.now());
 
     this.roots.set(merged);
     this.snapshotSubject.next(merged);
   }
-}
-
-function emptyMwsdSnapshot(): MwsdStatusSnapshot {
-  return {credState: 'absent', lastRefreshAt: null, nodes: new Map()};
 }

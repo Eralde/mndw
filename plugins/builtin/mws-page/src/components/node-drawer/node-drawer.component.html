@@ -49,8 +49,8 @@
           <dt>{{ t('drawer.status') }}</dt><dd>{{ labels.online }}</dd>
           <dt>{{ t('drawer.telemetry') }}</dt><dd>{{ labels.telemetry }}</dd>
           <dt>{{ t('drawer.remote-control') }}</dt><dd>{{ labels.remoteControl }}</dd>
-          @if (telemetryLastSuccess(n); as lastSuccess) {
-            <dt>{{ t('drawer.last-success') }}</dt><dd>{{ lastSuccess }}</dd>
+          @if (telemetryLastTelemetry(n); as lastTelemetry) {
+            <dt>{{ t('drawer.last-telemetry') }}</dt><dd>{{ lastTelemetry }}</dd>
           }
           <dt>{{ t('drawer.client-count') }}</dt><dd>{{ labels.clients }}</dd>
         </dl>

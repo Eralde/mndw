@@ -3,72 +3,64 @@ import type {MwsNode, MwsRadioPower} from '../domain/mws/mws.types';
 
 export const MWSD_STATUS_STALE_AFTER_MS = 90_000;
 
-export type MwsdNodeState = 'starting' | 'live' | 'stale' | 'offline';
-export type MwsdCredentialState = 'present' | 'invalid' | 'absent';
+export type MwsdNodeState = 'starting' | 'live' | 'stale' | 'offline' | 'unavailable';
 
 export interface MwsdNodeStatus {
   readonly state: MwsdNodeState;
-  readonly lastSuccessAt: number | null;
-}
-
-export interface MwsdStatusSnapshot {
-  readonly credState: MwsdCredentialState;
-  readonly lastRefreshAt: number | null;
-  readonly nodes: ReadonlyMap<string, MwsdNodeStatus>;
+  readonly lastTelemetryAt: number | null;
 }
 
 export type PersistentRadioPower = MwsRadioPower;
 
 export interface PersistentSessionState {
   readonly live: boolean;
+  readonly lastTelemetryAt: number | null;
   readonly power2g: PersistentRadioPower;
   readonly power5g: PersistentRadioPower;
 }
 
-export type PersistentSessionSnapshot = ReadonlyMap<string, PersistentSessionState>;
-
-export function parseMwsdNodesResponse(value: unknown, now: number): MwsdStatusSnapshot {
-  const envelope = asRecord(value);
-  const response = asRecord(envelope?.data) ?? envelope;
-  const credState = parseCredentialState(response?.credState);
-  const lastRefreshAt = parseTimestamp(response?.lastRefreshAt);
-  const nodes = new Map<string, MwsdNodeStatus>();
-  const rawNodes = response?.nodes;
-
-  if (Array.isArray(rawNodes)) {
-    for (const rawNode of rawNodes) {
-      const entry = asRecord(rawNode);
-      const rawMac = entry?.mac;
-
-      if (typeof rawMac !== 'string') {
-        continue;
-      }
-
-      let mac: string;
-
-      try {
-        mac = normalizeMac(rawMac);
-      } catch {
-        continue;
-      }
-
-      const lastSuccessAt = parseTimestamp(entry?.lastSuccessAt);
-
-      nodes.set(mac, {state: projectState(entry?.state, lastSuccessAt, credState, now), lastSuccessAt});
-    }
-  }
-
-  return {credState, lastRefreshAt, nodes};
+export interface PersistentSessionSnapshot {
+  readonly available: boolean;
+  readonly sessions: ReadonlyMap<string, PersistentSessionState>;
 }
 
-export function parsePersistentSessionsResponse(value: unknown): PersistentSessionSnapshot {
+export function newPersistentSessionSnapshot(
+  available: boolean,
+  sessions: ReadonlyMap<string, PersistentSessionState>,
+): PersistentSessionSnapshot {
+  return {available, sessions};
+}
+
+export function parsePersistentSessionsResponse(
+  value: unknown,
+  previous: PersistentSessionSnapshot,
+): PersistentSessionSnapshot {
   const envelope = asRecord(value);
   const response = asRecord(envelope?.data) ?? envelope;
-  const sessions = new Map<string, PersistentSessionState>();
 
-  if (!Array.isArray(response?.persistentSessions)) {
-    return sessions;
+  if (typeof response?.persistentAvailable !== 'boolean' || !Array.isArray(response.persistentSessions)) {
+    return newPersistentSessionSnapshot(false, previous.sessions);
   }
+
+  if (response.lastRefreshAt === null) {
+    return response.persistentAvailable ? previous : newPersistentSessionSnapshot(false, previous.sessions);
+  }
+
+  if (parseTimestamp(response.lastRefreshAt) === null) {
+    return newPersistentSessionSnapshot(false, previous.sessions);
+  }
+
+  // Defensive-only: current backend emits unavailable together with null lastRefreshAt.
+  if (!response.persistentAvailable) {
+    return newPersistentSessionSnapshot(false, previous.sessions);
+  }
+
+  const sessions = new Map<string, PersistentSessionState>(
+    [...previous.sessions].map(([mac, session]): [string, PersistentSessionState] => [
+      mac,
+      {...session, live: false},
+    ]),
+  );
 
   for (const rawSession of response.persistentSessions) {
     const entry = asRecord(rawSession);
@@ -78,8 +70,12 @@ export function parsePersistentSessionsResponse(value: unknown): PersistentSessi
     }
 
     try {
-      sessions.set(normalizeMac(entry.mac), {
+      const mac = normalizeMac(entry.mac);
+      const sampledAt = parseTimestamp(asRecord(entry.telemetry)?.sampledAt);
+
+      sessions.set(mac, {
         live: entry.live,
+        lastTelemetryAt: sampledAt ?? previous.sessions.get(mac)?.lastTelemetryAt ?? null,
         power2g: parsePersistentRadioPower(entry.power2g),
         power5g: parsePersistentRadioPower(entry.power5g),
       });
@@ -88,49 +84,63 @@ export function parsePersistentSessionsResponse(value: unknown): PersistentSessi
     }
   }
 
-  return sessions;
+  return newPersistentSessionSnapshot(true, sessions);
 }
 
-export function mergeMwsdStatuses(roots: MwsNode[], snapshot: MwsdStatusSnapshot, now: number): MwsNode[] {
-  return roots.map((root) => mergeNode(root, snapshot, now).node);
+export function retainPersistentSessionsForNodes(
+  roots: MwsNode[],
+  snapshot: PersistentSessionSnapshot,
+): PersistentSessionSnapshot {
+  const macs = new Set<string>();
+  const visit = (node: MwsNode): void => {
+    if (!node.isController) {
+      macs.add(node.mac);
+    }
+
+    node.children.forEach((link) => visit(link.node));
+  };
+
+  roots.forEach(visit);
+
+  return newPersistentSessionSnapshot(
+    snapshot.available,
+    new Map([...snapshot.sessions].filter(([mac]) => macs.has(mac))),
+  );
 }
 
-export function mergePersistentSessions(roots: MwsNode[], sessions: PersistentSessionSnapshot): MwsNode[] {
-  return roots.map((root) => mergePersistentNode(root, sessions).node);
+export function mergePersistentSessions(
+  roots: MwsNode[],
+  snapshot: PersistentSessionSnapshot,
+  now: number,
+): MwsNode[] {
+  return roots.map((root) => mergePersistentNode(root, snapshot, now).node);
 }
 
-function mergeNode(node: MwsNode, snapshot: MwsdStatusSnapshot, now: number): {node: MwsNode; changed: boolean} {
-  const status = node.isController ? undefined : statusForNode(node.mac, snapshot, now);
-  const children = node.children.map((link) => ({link, result: mergeNode(link.node, snapshot, now)}));
-  const statusChanged = !sameStatus(node.mwsdStatus, status);
-  const changed = statusChanged || children.some(({result}) => result.changed);
-
-  if (!changed) {
-    return {node, changed: false};
-  }
-
-  const next: MwsNode = {...node, mwsdStatus: status, parent: null, children: []};
-
-  for (const {link, result} of children) {
-    next.children.push({type: link.type, node: reparent(result.node, next, link.type)});
-  }
-
-  return {node: next, changed: true};
-}
-
-function mergePersistentNode(node: MwsNode, sessions: PersistentSessionSnapshot): {node: MwsNode; changed: boolean} {
-  const state = node.isController ? undefined : sessions.get(node.mac);
-  const persistentSession = state?.live;
-  const wifiPower = state === undefined ? undefined : {power2g: state.power2g, power5g: state.power5g};
-  const children = node.children.map((link) => ({link, result: mergePersistentNode(link.node, sessions)}));
-  const changed = node.persistentSession !== persistentSession || !sameWifiPower(node.wifiPower, wifiPower)
+function mergePersistentNode(
+  node: MwsNode,
+  snapshot: PersistentSessionSnapshot,
+  now: number,
+): {node: MwsNode; changed: boolean} {
+  const session = node.isController || !snapshot.available ? undefined : snapshot.sessions.get(node.mac);
+  const unavailable = !node.isController && !snapshot.available;
+  const persistentSession = session?.live;
+  const mwsdStatus: MwsdNodeStatus | undefined = unavailable
+    ? {state: 'unavailable', lastTelemetryAt: null}
+    : session === undefined
+    ? undefined
+    : {state: deriveSessionState(session.live, session.lastTelemetryAt, now), lastTelemetryAt: session.lastTelemetryAt};
+  const wifiPower = session === undefined ? undefined : {power2g: session.power2g, power5g: session.power5g};
+  const children = node.children.map((link) => ({link, result: mergePersistentNode(link.node, snapshot, now)}));
+  const changed = node.persistentSession !== persistentSession
+    || !sameStatus(node.mwsdStatus, mwsdStatus)
+    || !sameWifiPower(node.wifiPower, wifiPower)
     || children.some(({result}) => result.changed);
 
   if (!changed) {
     return {node, changed: false};
   }
 
-  const next: MwsNode = {...node, persistentSession, wifiPower, parent: null, children: []};
+  const next: MwsNode = {...node, persistentSession, mwsdStatus, wifiPower, parent: null, children: []};
 
   for (const {link, result} of children) {
     next.children.push({type: link.type, node: reparent(result.node, next, link.type)});
@@ -139,55 +149,20 @@ function mergePersistentNode(node: MwsNode, sessions: PersistentSessionSnapshot)
   return {node: next, changed: true};
 }
 
-function statusForNode(mac: string, snapshot: MwsdStatusSnapshot, now: number): MwsdNodeStatus {
-  if (snapshot.credState !== 'present') {
-    return {state: 'offline', lastSuccessAt: null};
-  }
-
-  const status = snapshot.nodes.get(mac);
-
-  if (status === undefined) {
-    return {state: 'starting', lastSuccessAt: null};
-  }
-
-  if (status.state === 'live' && isStale(status.lastSuccessAt, now)) {
-    return {...status, state: 'stale'};
-  }
-
-  return status;
-}
-
-function projectState(
-  rawState: unknown,
-  lastSuccessAt: number | null,
-  credState: MwsdCredentialState,
-  now: number,
-): MwsdNodeState {
-  if (credState !== 'present') {
+function deriveSessionState(live: boolean, lastTelemetryAt: number | null, now: number): MwsdNodeState {
+  if (!live) {
     return 'offline';
   }
 
-  if (rawState === 'live') {
-    return lastSuccessAt === null ? 'starting' : isStale(lastSuccessAt, now) ? 'stale' : 'live';
-  }
-
-  if (rawState === 'reauthenticating') {
-    return lastSuccessAt === null ? 'starting' : 'stale';
-  }
-
-  if (rawState === 'authenticating' || rawState === 'starting' || rawState === undefined) {
+  if (lastTelemetryAt === null) {
     return 'starting';
   }
 
-  return 'offline';
+  return isTelemetryStale(lastTelemetryAt, now) ? 'stale' : 'live';
 }
 
-function isStale(lastSuccessAt: number | null, now: number): boolean {
-  return lastSuccessAt !== null && now - lastSuccessAt >= MWSD_STATUS_STALE_AFTER_MS;
-}
-
-function parseCredentialState(value: unknown): MwsdCredentialState {
-  return value === 'present' || value === 'invalid' || value === 'absent' ? value : 'absent';
+function isTelemetryStale(lastTelemetryAt: number, now: number): boolean {
+  return now - lastTelemetryAt >= MWSD_STATUS_STALE_AFTER_MS;
 }
 
 function parseTimestamp(value: unknown): number | null {
@@ -238,13 +213,10 @@ function unavailableRadioPower(): PersistentRadioPower {
 }
 
 function sameStatus(left: MwsNode['mwsdStatus'], right: MwsNode['mwsdStatus']): boolean {
-  return left?.state === right?.state && left?.lastSuccessAt === right?.lastSuccessAt;
+  return left?.state === right?.state && left?.lastTelemetryAt === right?.lastTelemetryAt;
 }
 
-function sameWifiPower(
-  left: MwsNode['wifiPower'],
-  right: MwsNode['wifiPower'],
-): boolean {
+function sameWifiPower(left: MwsNode['wifiPower'], right: MwsNode['wifiPower']): boolean {
   return left?.power2g.value === right?.power2g.value && left?.power2g.available === right?.power2g.available
     && left?.power5g.value === right?.power5g.value && left?.power5g.available === right?.power5g.available;
 }

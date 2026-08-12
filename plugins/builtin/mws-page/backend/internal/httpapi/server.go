@@ -34,21 +34,22 @@ func New(serviceValue *service.Service) (*Server, error) {
 }
 
 func (server *Server) Run(ctx context.Context) error {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("GET /_mndw/ready", server.ready)
-	mux.HandleFunc("GET /_mndw/diagnostics", server.diagnostics)
-	mux.HandleFunc("POST /credentials", server.credentials)
-	mux.HandleFunc("POST /forget", server.forget)
-	mux.HandleFunc("GET /nodes", server.nodes)
-	mux.HandleFunc("GET /snapshot", server.snapshot)
-	mux.HandleFunc("POST /write", server.write)
-
-	if err := httpsocket.Serve(ctx, server.socket, mux); err != nil {
+	if err := httpsocket.Serve(ctx, server.socket, server.handler()); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (server *Server) handler() http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /_mndw/ready", server.ready)
+	mux.HandleFunc("GET /_mndw/diagnostics", server.diagnostics)
+	mux.HandleFunc("GET /nodes", server.nodes)
+	mux.HandleFunc("POST /write", server.write)
+
+	return mux
 }
 
 func (server *Server) ready(writer http.ResponseWriter, _ *http.Request) {
@@ -61,35 +62,8 @@ func (server *Server) ready(writer http.ResponseWriter, _ *http.Request) {
 	writeJSON(writer, http.StatusOK, map[string]any{"pluginId": os.Getenv("MNDW_PLUGIN_ID"), "protocolVersion": protocol})
 }
 
-func (server *Server) credentials(writer http.ResponseWriter, request *http.Request) {
-	var input struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-
-	if !decodeBody(writer, request, &input) {
-		return
-	}
-
-	data, err := server.service.Credentials(request.Context(), input.Username, input.Password)
-
-	server.writeResult(writer, data, err)
-}
-
-func (server *Server) forget(writer http.ResponseWriter, request *http.Request) {
-	data, err := server.service.Forget(request.Context())
-
-	server.writeResult(writer, data, err)
-}
-
 func (server *Server) nodes(writer http.ResponseWriter, request *http.Request) {
 	data, err := server.service.Nodes(request.Context())
-
-	server.writeResult(writer, data, err)
-}
-
-func (server *Server) snapshot(writer http.ResponseWriter, request *http.Request) {
-	data, err := server.service.Snapshot(request.Context(), request.URL.Query().Get("nodeId"))
 
 	server.writeResult(writer, data, err)
 }

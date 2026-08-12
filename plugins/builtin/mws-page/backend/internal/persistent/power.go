@@ -24,6 +24,7 @@ func parseInterfacePower(raw json.RawMessage, interfaceName string) (PowerState,
 	}
 
 	var interfaces map[string]json.RawMessage
+
 	if err := json.Unmarshal(raw, &interfaces); err != nil {
 		if _, ok := err.(*json.SyntaxError); ok {
 			return PowerState{}, fmt.Errorf("parse interface response: %w", err)
@@ -33,21 +34,25 @@ func parseInterfacePower(raw json.RawMessage, interfaceName string) (PowerState,
 	}
 
 	interfaceRaw, ok := interfaces[interfaceName]
+
 	if !ok {
 		return availablePower(100), nil
 	}
 
 	var fields map[string]json.RawMessage
+
 	if err := json.Unmarshal(interfaceRaw, &fields); err != nil {
 		return availablePower(100), nil
 	}
 
 	powerRaw, ok := fields["power"]
+
 	if !ok {
 		return availablePower(100), nil
 	}
 
 	value, ok := parsePowerValue(powerRaw)
+
 	if !ok {
 		return availablePower(100), nil
 	}
@@ -58,6 +63,7 @@ func parseInterfacePower(raw json.RawMessage, interfaceName string) (PowerState,
 func parsePowerValue(raw json.RawMessage) (int, bool) {
 	var value any
 	decoder := json.NewDecoder(bytes.NewReader(raw))
+
 	decoder.UseNumber()
 
 	if err := decoder.Decode(&value); err != nil {
@@ -148,6 +154,7 @@ func (c *Client) pollInterfacePower(ctx context.Context, requester Requester, ta
 		}
 
 		state, parseErr := parseInterfacePower(responses[index], interfaceName)
+
 		if parseErr != nil {
 			c.markPowerUnavailable(target.Identity, index)
 
@@ -164,11 +171,13 @@ func (c *Client) updatePowerState(identity string, update func(*sessionState)) {
 	defer c.mu.Unlock()
 
 	state, ok := c.sessions[identity]
+
 	if !ok {
 		return
 	}
 
 	update(&state)
+
 	c.sessions[identity] = state
 }
 

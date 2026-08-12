@@ -4,22 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"mndw.local/device-auth"
 	rci "mndw.local/rci"
 	"mws-page/internal/config"
-	"mws-page/internal/discovery"
 	"mws-page/internal/persistent"
 	"mws-page/internal/telemetry"
-	"mws-page/internal/testsupport"
 )
 
 type fakePersistentSource struct {
@@ -95,110 +90,8 @@ func (r *persistentRequester) Do(_ context.Context, request persistent.Request) 
 	return r.responses[0], nil
 }
 
-func TestQueryExtractsOnlyMemberPayload(t *testing.T) {
-	memberPayload := []byte(`{"cid":"cid-1","ip":"192.168.1.2","number":7}`)
-	controller := testsupport.NewFakeController(t, "admin", "secret", memberPayload)
-	service := New(config.Config{ControllerURL: controller.Server.URL})
-
-	service.credentials.Set("admin", []byte("secret"), 1)
-
-	got, err := service.query(context.Background(), "controller", auth.Target{BaseURL: controller.Server.URL}, "show.mws.member")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var gotValue, wantValue any
-
-	if err := json.Unmarshal(got, &gotValue); err != nil {
-		t.Fatalf("query payload: %v", err)
-	}
-
-	if err := json.Unmarshal(memberPayload, &wantValue); err != nil {
-		t.Fatalf("member payload: %v", err)
-	}
-
-	if !reflect.DeepEqual(gotValue, wantValue) {
-		t.Fatalf("query payload = %#v, want %#v", gotValue, wantValue)
-	}
-
-	if strings.Contains(string(got), `"show"`) {
-		t.Fatalf("query returned envelope: %s", got)
-	}
-}
-
-func TestQueryPreservesNon200AndAuthErrors(t *testing.T) {
-	t.Run("non-200", func(t *testing.T) {
-		service := newQueryTestService(t, func(request *http.Request) (*http.Response, error) {
-			if request.URL.Path == "/auth" {
-				return queryTestResponse(http.StatusOK, nil), nil
-			}
-
-			return queryTestResponse(http.StatusServiceUnavailable, []byte("busy")), nil
-		})
-
-		service.credentials.Set("admin", []byte("secret"), 1)
-
-		_, err := service.query(context.Background(), "controller", auth.Target{BaseURL: "http://router"}, "show.mws.member")
-		if err == nil {
-			t.Fatal("query error = nil, want non-200 error")
-		}
-	})
-
-	t.Run("auth error remains reachable", func(t *testing.T) {
-		underlying := errors.New("transport failed")
-		service := newQueryTestService(t, func(request *http.Request) (*http.Response, error) {
-			if request.URL.Path == "/auth" {
-				return queryTestResponse(http.StatusOK, nil), nil
-			}
-
-			return nil, underlying
-		})
-
-		service.credentials.Set("admin", []byte("secret"), 1)
-
-		_, err := service.query(context.Background(), "controller", auth.Target{BaseURL: "http://router"}, "show.mws.member")
-		var authErr *auth.AuthError
-
-		if !errors.As(err, &authErr) {
-			t.Fatalf("query error = %v, want underlying auth.AuthError", err)
-		}
-	})
-}
-
-func newQueryTestService(t *testing.T, roundTrip roundTripperFunc) *Service {
-	t.Helper()
-
+func TestNodesResponseUsesPersistentEnvelopeWithoutSource(t *testing.T) {
 	service := New(config.Config{})
-	service.transport = auth.NewHTTPTransport(&http.Client{Transport: roundTrip})
-
-	return service
-}
-
-type roundTripperFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
-	return f(request)
-}
-
-func queryTestResponse(status int, body []byte) *http.Response {
-	return &http.Response{
-		StatusCode: status,
-		Body:       io.NopCloser(strings.NewReader(string(body))),
-		Header:     make(http.Header),
-	}
-}
-
-func TestNodesResponseTracksSuccessfulRefreshAndUsesUTC(t *testing.T) {
-	controller := testsupport.NewFakeController(t, "admin", "secret", []byte(`[]`))
-	service := New(config.Config{ControllerURL: controller.Server.URL})
-	when := time.Date(2026, time.August, 3, 19, 42, 10, 0, time.FixedZone("CEST", 2*60*60))
-
-	service.SetClock(testClock{now: when})
-	service.holder.SetClock(testClock{now: when})
-
-	if _, err := service.Credentials(context.Background(), "admin", "secret"); err != nil {
-		t.Fatalf("Credentials: %v", err)
-	}
 
 	response, err := service.Nodes(context.Background())
 	if err != nil {
@@ -210,96 +103,68 @@ func TestNodesResponseTracksSuccessfulRefreshAndUsesUTC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := string(encoded); got != `{"credState":"present","lastRefreshAt":"2026-08-03T17:42:10Z","nodes":[]}` {
-		t.Fatalf("response = %s", got)
+	var envelope map[string]json.RawMessage
+
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := envelope["credState"]; ok {
+		t.Fatal("response still carries credState")
+	}
+
+	if _, ok := envelope["nodes"]; ok {
+		t.Fatal("response still carries nodes")
+	}
+
+	if got := string(envelope["persistentAvailable"]); got != "false" {
+		t.Fatalf("persistentAvailable = %s, want false", got)
+	}
+
+	if got := string(envelope["persistentSessions"]); got != "[]" {
+		t.Fatalf("persistentSessions = %s, want []", got)
+	}
+
+	if got := string(envelope["lastRefreshAt"]); got != "null" {
+		t.Fatalf("lastRefreshAt = %s, want null", got)
 	}
 }
 
-func TestNodesResponsePreservesRefreshTimestampAfterFailedRefresh(t *testing.T) {
-	controller := testsupport.NewFakeController(t, "admin", "secret", []byte(`[]`))
-	service := New(config.Config{ControllerURL: controller.Server.URL})
-	when := time.Unix(100, 0).UTC()
-
-	service.SetClock(testClock{now: when})
-	service.holder.SetClock(testClock{now: when})
-
-	if _, err := service.Credentials(context.Background(), "admin", "secret"); err != nil {
-		t.Fatalf("Credentials: %v", err)
-	}
-
-	previous := service.lastRefreshAt
-
-	controller.SetMembers([]byte(`{"not":"members"}`))
-
-	if err := service.refresh(context.Background()); err == nil {
-		t.Fatal("refresh error = nil")
-	}
-
-	if service.lastRefreshAt.IsZero() || previous.IsZero() || !service.lastRefreshAt.Equal(previous) {
-		t.Fatalf("last refresh changed after failed refresh: previous=%v current=%v", previous, service.lastRefreshAt)
-	}
-}
-
-func TestNodesResponseIncludesPerNodeLastSuccessAndNullBeforeSuccess(t *testing.T) {
+func TestNodesResponseUsesPersistentEnvelopeWithSource(t *testing.T) {
+	when := time.Date(2026, time.August, 12, 10, 0, 0, 0, time.UTC)
 	service := New(config.Config{})
 
-	service.credentials.Set("admin", []byte("secret"), 1)
+	service.SetPersistentSource(fakePersistentSource{
+		sessions:    []persistent.Session{{Mac: "aa:bb:cc:dd:ee:ff", Live: true}},
+		diagnostics: persistent.Diagnostics{LastTargetsAt: &when},
+	})
 
-	member := discovery.Member{CID: "cid-1", MAC: "aa:bb:cc:dd:ee:ff", IP: "192.168.1.2", Online: true}
-	service.members = []discovery.Member{member}
-
-	withoutSuccess, err := service.Nodes(context.Background())
+	response, err := service.Nodes(context.Background())
 	if err != nil {
-		t.Fatalf("Nodes without success: %v", err)
+		t.Fatalf("Nodes: %v", err)
 	}
 
-	withoutSuccessJSON, err := json.Marshal(withoutSuccess)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var withoutSuccessEnvelope map[string]any
-
-	if err := json.Unmarshal(withoutSuccessJSON, &withoutSuccessEnvelope); err != nil {
-		t.Fatal(err)
-	}
-
-	if withoutSuccessEnvelope["lastRefreshAt"] != nil {
-		t.Fatalf("lastRefreshAt = %v, want null", withoutSuccessEnvelope["lastRefreshAt"])
-	}
-
-	nodes, ok := withoutSuccessEnvelope["nodes"].([]any)
-
-	if !ok || len(nodes) != 1 {
-		t.Fatalf("nodes = %#v, want one node", withoutSuccessEnvelope["nodes"])
-	}
-
-	node, ok := nodes[0].(map[string]any)
-
-	if !ok || node["lastSuccessAt"] != nil {
-		t.Fatalf("lastSuccessAt = %#v, want null", node["lastSuccessAt"])
-	}
-
-	when := time.Date(2026, time.August, 3, 19, 42, 10, 0, time.FixedZone("CEST", 2*60*60))
-
-	service.holder.State().RecordSuccess(member.Identity(), when)
-
-	withSuccess, err := service.Nodes(context.Background())
-	if err != nil {
-		t.Fatalf("Nodes with success: %v", err)
-	}
-
-	withSuccessJSON, err := json.Marshal(withSuccess)
+	encoded, err := json.Marshal(response)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if string(withSuccessJSON) == string(withoutSuccessJSON) {
-		t.Fatalf("success timestamp did not change response: %s", withSuccessJSON)
+	var envelope map[string]json.RawMessage
+
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
 	}
 
-	if !containsNodeField(withSuccessJSON, "lastSuccessAt", "2026-08-03T17:42:10Z") {
-		t.Fatalf("response with success = %s", withSuccessJSON)
+	if got := string(envelope["persistentAvailable"]); got != "true" {
+		t.Fatalf("persistentAvailable = %s, want true", got)
+	}
+
+	if got := string(envelope["persistentSessions"]); got == "[]" {
+		t.Fatalf("persistentSessions = %s, want session", got)
+	}
+
+	if got := string(envelope["lastRefreshAt"]); got != `"2026-08-12T10:00:00Z"` {
+		t.Fatalf("lastRefreshAt = %s", got)
 	}
 }
 
@@ -324,8 +189,8 @@ func TestNodesResponseIncludesPersistentSessionsWithoutCredentials(t *testing.T)
 		t.Fatal(err)
 	}
 
-	if envelope["credState"] != "absent" {
-		t.Fatalf("credState = %#v, want absent", envelope["credState"])
+	if envelope["persistentAvailable"] != true {
+		t.Fatalf("persistentAvailable = %#v, want true", envelope["persistentAvailable"])
 	}
 
 	sessions, ok := envelope["persistentSessions"].([]any)
@@ -419,46 +284,6 @@ func TestNodesResponseIncludesPersistentTelemetryWithoutCredentials(t *testing.T
 
 	if !ok || telemetry["system"].(map[string]any)["cpuload"] != float64(27) {
 		t.Fatalf("telemetry = %#v", session["telemetry"])
-	}
-}
-
-func TestNodesResponseMarksCachedPersistentTelemetryStaleDuringReconnect(t *testing.T) {
-	service := New(config.Config{})
-	when := time.Unix(100, 0).UTC()
-
-	service.SetClock(testClock{now: when})
-	service.telemetry.StorePersistent("cid-1", telemetry.PersistentTelemetry{
-		SampledAt: when,
-		System:    telemetry.System{CPULoad: 27},
-	})
-	service.SetPersistentSource(fakePersistentSource{sessions: []persistent.Session{{Identity: "cid-1", Mac: "aa:bb:cc:dd:ee:ff", Live: false}}})
-
-	response, err := service.Nodes(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	encoded, err := json.Marshal(response)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var envelope map[string]any
-
-	if err := json.Unmarshal(encoded, &envelope); err != nil {
-		t.Fatal(err)
-	}
-
-	sessions, ok := envelope["persistentSessions"].([]any)
-
-	if !ok || len(sessions) != 1 {
-		t.Fatalf("persistentSessions = %#v", envelope["persistentSessions"])
-	}
-
-	session, ok := sessions[0].(map[string]any)
-
-	if !ok || session["live"] != false || session["stale"] != true || session["telemetry"] == nil {
-		t.Fatalf("cached persistent session = %#v", sessions[0])
 	}
 }
 
@@ -696,12 +521,10 @@ func TestDiagnosticsSnapshotIncludesLocalStateAndBoundsRrdData(t *testing.T) {
 	when := time.Date(2026, time.August, 4, 15, 30, 0, 0, time.UTC)
 
 	service.SetClock(testClock{now: when})
-	service.credentials.Set("admin", []byte("DO_NOT_EXPORT"), 1)
-
-	service.members = []discovery.Member{{CID: "cid-1", MAC: "aa:bb:cc:dd:ee:ff", IP: "192.168.1.2", Online: true}}
-	service.lastRefreshAt = when
-
-	service.SetPersistentSource(fakePersistentSource{sessions: []persistent.Session{{Identity: "cid-1", Mac: "aa:bb:cc:dd:ee:ff", Live: true}}})
+	service.SetPersistentSource(fakePersistentSource{
+		sessions:    []persistent.Session{{Identity: "cid-1", Mac: "aa:bb:cc:dd:ee:ff", Live: true}},
+		diagnostics: persistent.Diagnostics{LastTargetsAt: &when},
+	})
 
 	ticks := make([]telemetry.RrdTick, 75)
 
@@ -721,10 +544,6 @@ func TestDiagnosticsSnapshotIncludesLocalStateAndBoundsRrdData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if strings.Contains(string(encoded), "DO_NOT_EXPORT") {
-		t.Fatalf("snapshot contains credential value: %s", encoded)
-	}
-
 	var envelope map[string]any
 
 	if err := json.Unmarshal(encoded, &envelope); err != nil {
@@ -735,7 +554,7 @@ func TestDiagnosticsSnapshotIncludesLocalStateAndBoundsRrdData(t *testing.T) {
 		t.Fatalf("diagnostics leaked runtime identity: %#v", envelope["runtime"])
 	}
 
-	if envelope["credState"] != "present" || envelope["lastRefreshAt"] != when.Format(time.RFC3339) {
+	if envelope["lastRefreshAt"] != when.Format(time.RFC3339) {
 		t.Fatalf("state = %#v", envelope)
 	}
 
@@ -801,51 +620,6 @@ func TestDiagnosticsSnapshotIncludesPersistentClientState(t *testing.T) {
 
 	if state["configured"] != true || state["pluginIdPresent"] != true || state["socketPath"] != "/run/mws-page/rci-session.sock" || state["connected"] != true || state["targetCount"] != float64(1) || state["sessionCount"] != float64(1) {
 		t.Fatalf("persistent diagnostics = %#v", state)
-	}
-}
-
-func TestDiagnosticsSnapshotIncludesSafeCredentialFailure(t *testing.T) {
-	controller := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/auth" {
-			w.Header().Set("WWW-Authenticate", "x-ndw5-interactive")
-			w.WriteHeader(http.StatusUnauthorized)
-
-			return
-		}
-
-		w.WriteHeader(http.StatusNotFound)
-	}))
-
-	defer controller.Close()
-
-	service := New(config.Config{ControllerURL: controller.URL})
-	when := time.Date(2026, time.August, 5, 5, 40, 42, 0, time.UTC)
-
-	service.SetClock(testClock{now: when})
-	service.holder.SetClock(testClock{now: when})
-
-	if _, err := service.Credentials(context.Background(), "admin", "secret"); err == nil {
-		t.Fatal("Credentials error = nil, want unsupported authentication error")
-	}
-
-	snapshot := service.DiagnosticsSnapshot()
-	lastError, ok := snapshot["lastError"].(map[string]any)
-
-	if !ok {
-		t.Fatalf("lastError = %#v, want diagnostic error object", snapshot["lastError"])
-	}
-
-	if lastError["operation"] != "credentials" || lastError["status"] != 422 || lastError["code"] != "unsupported_firmware" || lastError["message"] != "unsupported firmware" || lastError["at"] != when.Format(time.RFC3339) {
-		t.Fatalf("lastError = %#v", lastError)
-	}
-
-	encoded, err := json.Marshal(snapshot)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if strings.Contains(string(encoded), "secret") || strings.Contains(string(encoded), "x-ndw5") {
-		t.Fatalf("diagnostics leaked credential or auth details: %s", encoded)
 	}
 }
 

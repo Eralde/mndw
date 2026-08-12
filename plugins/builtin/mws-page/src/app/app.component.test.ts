@@ -236,6 +236,7 @@ describe('AppComponent', () => {
       lastSeen: null,
       wired: false,
     });
+
     const data = fakeData('ready', roots);
     const now = Date.now();
 
@@ -287,7 +288,9 @@ describe('AppComponent', () => {
     const overlay = {
       open: vi.fn(() => ({closed: Promise.resolve({reason: 'action', result: 'confirm'})})),
     };
+
     TestBed.overrideProvider(OVERLAY, {useValue: overlay});
+
     const fixture = render(fakeData('ready', fixtureRoots()));
     const positions = fixture.componentInstance.positions;
 
@@ -303,7 +306,9 @@ describe('AppComponent', () => {
     const overlay = {
       open: vi.fn(() => ({closed: Promise.resolve({reason: 'escape'})})),
     };
+
     TestBed.overrideProvider(OVERLAY, {useValue: overlay});
+
     const fixture = render(fakeData('ready', fixtureRoots()));
 
     vi.spyOn(fixture.componentInstance.positions, 'clear').mockImplementation(clear);

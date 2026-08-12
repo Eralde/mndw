@@ -16,14 +16,20 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+
 	defer stop()
+
 	mwsd := service.New(cfg)
+
 	go mwsd.Run(ctx)
+
 	server, err := httpapi.New(mwsd)
 	if err != nil {
 		panic(err)
 	}
+
 	if err := server.Run(ctx); err != nil {
 		panic(err)
 	}

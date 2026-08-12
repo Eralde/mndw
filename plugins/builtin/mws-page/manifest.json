@@ -13,10 +13,7 @@
     "protocolVersion": 1,
     "command": "backend/mwsd",
     "routes": [
-      {"id": "credentials", "transport": "http", "method": "POST", "path": "credentials"},
-      {"id": "forget", "transport": "http", "method": "POST", "path": "forget"},
       {"id": "nodes", "transport": "http", "method": "GET", "path": "nodes"},
-      {"id": "snapshot", "transport": "http", "method": "GET", "path": "snapshot"},
       {"id": "write", "transport": "http", "method": "POST", "path": "write"}
     ]
   }

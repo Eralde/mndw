@@ -1,13 +1,14 @@
 import {describe, expect, it} from 'vitest';
 import {
-  mergeMwsdStatuses,
+  MWSD_STATUS_STALE_AFTER_MS,
   mergePersistentSessions,
-  parseMwsdNodesResponse,
+  newPersistentSessionSnapshot,
   parsePersistentSessionsResponse,
+  retainPersistentSessionsForNodes,
 } from './mwsd-status';
+import {normalizeMac} from './normalize';
 import type {MwsNode} from '../domain/mws/mws.types';
 
-const NOW = Date.parse('2026-08-03T18:00:00Z');
 const MAC = 'aa:bb:cc:dd:ee:ff';
 
 function node(id: string, isController = false): MwsNode {
@@ -32,158 +33,139 @@ function node(id: string, isController = false): MwsNode {
 }
 
 describe('mwsd status', () => {
-  it('normalizes timestamps and joins status by MAC even when nodeId is a CID', () => {
-    const snapshot = parseMwsdNodesResponse({
-      credState: 'present',
-      lastRefreshAt: '2026-08-03T17:59:59+02:00',
-      nodes: [{nodeId: 'cid-1', mac: MAC.toUpperCase(), state: 'live', lastSuccessAt: '2026-08-03T19:59:00+02:00'}],
-    }, NOW);
+  it('marks a live session with fresh telemetry as live', () => {
+    const now = Date.parse('2026-08-12T10:00:00Z');
+    const snapshot = parsePersistentSessionsResponse({
+      lastRefreshAt: new Date(now).toISOString(),
+      persistentAvailable: true,
+      persistentSessions: [{mac: MAC, live: true, telemetry: {sampledAt: new Date(now - 1_000).toISOString()}}],
+    }, newPersistentSessionSnapshot(true, new Map()));
 
-    expect(snapshot.lastRefreshAt).toBe(Date.parse('2026-08-03T15:59:59Z'));
-    expect(snapshot.nodes.get(MAC)).toEqual({state: 'live', lastSuccessAt: Date.parse('2026-08-03T17:59:00Z')});
+    const roots = mergePersistentSessions([node(MAC)], snapshot, now);
 
-    const roots = mergeMwsdStatuses([node(MAC)], snapshot, NOW);
-
-    expect(roots[0]?.mwsdStatus).toEqual({state: 'live', lastSuccessAt: Date.parse('2026-08-03T17:59:00Z')});
+    expect(roots[0]?.mwsdStatus).toEqual({state: 'live', lastTelemetryAt: now - 1_000});
+    expect(roots[0]?.persistentSession).toBe(true);
   });
 
-  it('accepts the mwsd-client success envelope', () => {
-    const snapshot = parseMwsdNodesResponse({
-      ok: true,
-      status: 200,
-      data: {credState: 'present', nodes: [{mac: MAC, state: 'authenticating', lastSuccessAt: null}]},
-    }, NOW);
+  it('ages cached live telemetry to stale at merge time', () => {
+    const now = Date.parse('2026-08-12T10:00:00Z');
+    const snapshot = parsePersistentSessionsResponse({
+      lastRefreshAt: new Date(now).toISOString(),
+      persistentAvailable: true,
+      persistentSessions: [{mac: MAC, live: true, telemetry: {sampledAt: new Date(now - 1_000).toISOString()}}],
+    }, newPersistentSessionSnapshot(true, new Map()));
+    const roots = [node(MAC)];
 
-    expect(snapshot.credState).toBe('present');
-    expect(snapshot.nodes.get(MAC)?.state).toBe('starting');
+    expect(mergePersistentSessions(roots, snapshot, now)[0]?.mwsdStatus?.state).toBe('live');
+    expect(mergePersistentSessions(roots, snapshot, now + MWSD_STATUS_STALE_AFTER_MS)[0]?.mwsdStatus?.state)
+      .toBe('stale');
   });
 
-  it('projects stale, reauthenticating, and first-check states', () => {
-    const snapshot = parseMwsdNodesResponse({
-      credState: 'present',
-      nodes: [
-        {mac: 'aa:bb:cc:dd:ee:01', state: 'live', lastSuccessAt: '2026-08-03T17:57:00Z'},
-        {mac: 'aa:bb:cc:dd:ee:02', state: 'reauthenticating', lastSuccessAt: '2026-08-03T17:59:00Z'},
-        {mac: 'aa:bb:cc:dd:ee:03', state: 'reauthenticating', lastSuccessAt: null},
-        {mac: 'aa:bb:cc:dd:ee:04', state: 'live', lastSuccessAt: null},
-      ],
-    }, NOW);
+  it('marks non-live sessions offline', () => {
+    const snapshot = parsePersistentSessionsResponse({
+      lastRefreshAt: '2026-08-12T10:00:00Z',
+      persistentAvailable: true,
+      persistentSessions: [{mac: MAC, live: false}],
+    }, newPersistentSessionSnapshot(true, new Map()));
 
-    expect(snapshot.nodes.get('aa:bb:cc:dd:ee:01')?.state).toBe('stale');
-    expect(snapshot.nodes.get('aa:bb:cc:dd:ee:02')?.state).toBe('stale');
-    expect(snapshot.nodes.get('aa:bb:cc:dd:ee:03')?.state).toBe('starting');
-    expect(snapshot.nodes.get('aa:bb:cc:dd:ee:04')?.state).toBe('starting');
+    expect(mergePersistentSessions([node(MAC)], snapshot, Date.now())[0]?.mwsdStatus?.state).toBe('offline');
   });
 
-  it('marks known extenders offline when credentials are absent or invalid', () => {
-    const snapshot = parseMwsdNodesResponse({credState: 'invalid', nodes: []}, NOW);
-    const roots = mergeMwsdStatuses([node('11:22:33:44:55:66', true), node(MAC)], snapshot, NOW);
+  it('retains the last-good timestamp when a present session omits telemetry', () => {
+    const mac = normalizeMac(MAC);
+    const sampledAt = Date.parse('2026-08-12T09:59:59Z');
+    const previous = parsePersistentSessionsResponse({
+      lastRefreshAt: '2026-08-12T09:59:59Z',
+      persistentAvailable: true,
+      persistentSessions: [{mac, live: true, telemetry: {sampledAt: new Date(sampledAt).toISOString()}}],
+    }, newPersistentSessionSnapshot(true, new Map()));
+    const next = parsePersistentSessionsResponse({
+      lastRefreshAt: '2026-08-12T10:00:00Z',
+      persistentAvailable: true,
+      persistentSessions: [{mac, live: true}],
+    }, previous);
+
+    expect(next.sessions.get(mac)?.lastTelemetryAt).toBe(sampledAt);
+  });
+
+  it('turns absent sessions into offline tombstones until topology pruning', () => {
+    const previous = parsePersistentSessionsResponse({
+      lastRefreshAt: '2026-08-12T09:59:59Z',
+      persistentAvailable: true,
+      persistentSessions: [{mac: MAC, live: true}],
+    }, newPersistentSessionSnapshot(true, new Map()));
+    const reconciled = parsePersistentSessionsResponse({
+      lastRefreshAt: '2026-08-12T10:00:00Z',
+      persistentAvailable: true,
+      persistentSessions: [],
+    }, previous);
+
+    expect(reconciled.sessions.get(MAC)).toMatchObject({live: false});
+    expect(mergePersistentSessions([node(MAC)], reconciled, Date.now())[0]?.mwsdStatus?.state).toBe('offline');
+    expect(retainPersistentSessionsForNodes([], reconciled).sessions.has(MAC)).toBe(false);
+  });
+
+  it('marks malformed envelopes unavailable while preserving raw session state', () => {
+    const previous = parsePersistentSessionsResponse({
+      lastRefreshAt: '2026-08-12T09:59:59Z',
+      persistentAvailable: true,
+      persistentSessions: [{mac: MAC, live: false}],
+    }, newPersistentSessionSnapshot(true, new Map()));
+
+    const next = parsePersistentSessionsResponse({lastRefreshAt: '2026-08-12T10:00:00Z'}, previous);
+
+    expect(next.available).toBe(false);
+    expect(next.sessions).toBe(previous.sessions);
+  });
+
+  it('preserves the prior snapshot until first enumeration completes', () => {
+    const previous = parsePersistentSessionsResponse({
+      lastRefreshAt: '2026-08-12T09:59:59Z',
+      persistentAvailable: true,
+      persistentSessions: [{mac: MAC, live: true}],
+    }, newPersistentSessionSnapshot(true, new Map()));
+
+    const next = parsePersistentSessionsResponse({
+      lastRefreshAt: null,
+      persistentAvailable: true,
+      persistentSessions: [],
+    }, previous);
+
+    expect(next).toBe(previous);
+  });
+
+  it('marks missing persistent source unavailable while preserving sessions', () => {
+    const previous = parsePersistentSessionsResponse({
+      lastRefreshAt: '2026-08-12T09:59:59Z',
+      persistentAvailable: true,
+      persistentSessions: [{mac: MAC, live: true}],
+    }, newPersistentSessionSnapshot(true, new Map()));
+    const snapshot = parsePersistentSessionsResponse({
+      lastRefreshAt: null,
+      persistentAvailable: false,
+      persistentSessions: [],
+    }, previous);
+    const roots = mergePersistentSessions([node(MAC)], snapshot, Date.now());
+
+    expect(snapshot.available).toBe(false);
+    expect(snapshot.sessions).toBe(previous.sessions);
+    expect(roots[0]?.mwsdStatus).toEqual({state: 'unavailable', lastTelemetryAt: null});
+    expect(roots[0]?.persistentSession).toBeUndefined();
+  });
+
+  it('omits persistent-derived fields on controller nodes', () => {
+    const roots = mergePersistentSessions(
+      [node(MAC, true)],
+      parsePersistentSessionsResponse({
+        lastRefreshAt: '2026-08-12T10:00:00Z',
+        persistentAvailable: true,
+        persistentSessions: [{mac: MAC, live: true}],
+      }, newPersistentSessionSnapshot(true, new Map())),
+      Date.now(),
+    );
 
     expect(roots[0]?.mwsdStatus).toBeUndefined();
-    expect(roots[1]?.mwsdStatus).toEqual({state: 'offline', lastSuccessAt: null});
-  });
-
-  it('ignores malformed backend entries and preserves topology links', () => {
-    const child = node(MAC);
-    const controller = node('11:22:33:44:55:66', true);
-
-    child.parent = {type: 'wired', node: controller};
-    controller.children = [{type: 'wired', node: child}];
-
-    const snapshot = parseMwsdNodesResponse({
-      credState: 'present',
-      nodes: [
-        {mac: 'not-a-mac', state: 'live', lastSuccessAt: '2026-08-03T17:59:00Z'},
-        {mac: MAC, state: 'node_offline', lastSuccessAt: null},
-      ],
-    }, NOW);
-
-    const roots = mergeMwsdStatuses([controller], snapshot, NOW);
-
-    expect(roots[0]?.children[0]?.node.mwsdStatus?.state).toBe('offline');
-    expect(roots[0]?.children[0]?.node.parent?.node).toBe(roots[0]);
-  });
-
-  it('parses persistent sessions and preserves legacy entries without power fields', () => {
-    const sessions = parsePersistentSessionsResponse({
-      ok: true,
-      status: 200,
-      data: {
-        persistentSessions: [
-          {mac: MAC.toUpperCase(), live: true},
-          {mac: '11:22:33:44:55:66', live: false},
-          {mac: 'not-a-mac', live: true},
-          {mac: MAC, live: 'true'},
-        ],
-      },
-    });
-
-    expect(sessions).toEqual(
-      new Map([
-        [MAC, {
-          live: true,
-          power2g: {value: null, available: false},
-          power5g: {value: null, available: false},
-        }],
-        ['11:22:33:44:55:66', {
-          live: false,
-          power2g: {value: null, available: false},
-          power5g: {value: null, available: false},
-        }],
-      ]),
-    );
-  });
-
-  it('parses retained numeric power and makes malformed radio data unavailable', () => {
-    const sessions = parsePersistentSessionsResponse({
-      persistentSessions: [{
-        mac: MAC,
-        live: true,
-        power2g: {value: 75, available: true},
-        power5g: {value: '50', available: true},
-      }, {
-        mac: '11:22:33:44:55:66',
-        live: true,
-        power2g: {value: 120, available: true},
-        power5g: {value: null, available: 'no'},
-      }],
-    });
-
-    expect(sessions.get(MAC)).toEqual({
-      live: true,
-      power2g: {value: 75, available: true},
-      power5g: {value: null, available: false},
-    });
-    expect(sessions.get('11:22:33:44:55:66')).toEqual({
-      live: true,
-      power2g: {value: null, available: false},
-      power5g: {value: null, available: false},
-    });
-  });
-
-  it('merges persistent sessions by MAC, omits controller and preserves absent state', () => {
-    const controller = node('11:22:33:44:55:66', true);
-    const extender = node(MAC);
-
-    controller.children = [{type: 'wired', node: extender}];
-    extender.parent = {type: 'wired', node: controller};
-
-    const roots = mergePersistentSessions(
-      [controller],
-      new Map([[MAC, {
-        live: true,
-        power2g: {value: 75, available: true},
-        power5g: {value: 50, available: true},
-      }]]),
-    );
-
     expect(roots[0]?.persistentSession).toBeUndefined();
-    expect(roots[0]?.children[0]?.node.persistentSession).toBe(true);
-    expect(roots[0]?.children[0]?.node.wifiPower).toEqual({
-      power2g: {value: 75, available: true},
-      power5g: {value: 50, available: true},
-    });
-    expect(roots[0]?.children[0]?.node.parent?.node).toBe(roots[0]);
-    expect(mergePersistentSessions([node(MAC)], new Map()).at(0)?.persistentSession).toBeUndefined();
+    expect(roots[0]?.wifiPower).toBeUndefined();
   });
 });

@@ -118,6 +118,7 @@ export class NodeDrawerComponent implements OnDestroy {
     }
 
     const name = validation.value;
+
     this.pending = true;
     this.error = '';
 
@@ -148,17 +149,17 @@ export class NodeDrawerComponent implements OnDestroy {
     return getNodeStatusLabels(node, (key, values) => this.t(key, values));
   }
 
-  protected telemetryLastSuccess(node: MwsNode): string | null {
-    const lastSuccessAt = node.mwsdStatus?.lastSuccessAt;
+  protected telemetryLastTelemetry(node: MwsNode): string | null {
+    const lastTelemetryAt = node.mwsdStatus?.lastTelemetryAt;
 
-    if (lastSuccessAt === null || lastSuccessAt === undefined) {
+    if (lastTelemetryAt === null || lastTelemetryAt === undefined) {
       return null;
     }
 
     const now = this.data.freshnessNow?.() ?? Date.now();
-    const seconds = Math.max(0, Math.floor((now - lastSuccessAt) / 1000));
+    const seconds = Math.max(0, Math.floor((now - lastTelemetryAt) / 1000));
 
-    return this.t('drawer.telemetry-last-success', {seconds});
+    return this.t('drawer.telemetry-last-telemetry', {seconds});
   }
 
   protected uptime(value: number | null | undefined): string {

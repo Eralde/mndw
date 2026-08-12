@@ -153,6 +153,10 @@
       &.mwsd-offline {
         fill: var(--mndw-danger);
       }
+
+      &.mwsd-unavailable {
+        fill: var(--mndw-text-muted);
+      }
     }
 
     .persistent-session-dot {

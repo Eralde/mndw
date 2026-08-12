@@ -524,9 +524,6 @@ importers:
       '@angular/platform-browser':
         specifier: ^21.2.18
         version: 21.2.18(@angular/common@21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))
-      '@mndw/mws-auth-reference':
-        specifier: file:scripts/auth-reference
-        version: file:plugins/builtin/mws-page/scripts/auth-reference
       '@mndw/sdk':
         specifier: workspace:*
         version: link:../../../frontend/sdk
@@ -545,9 +542,6 @@ importers:
       happy-dom:
         specifier: 20.11.1
         version: 20.11.1
-      hash-wasm:
-        specifier: ^4.12.0
-        version: 4.12.0
       rxjs:
         specifier: ^7.8.0
         version: 7.8.2
@@ -1470,9 +1464,6 @@ packages:
   '@lit/reactive-element@2.1.2':
     resolution: {integrity: sha512-pbCDiVMnne1lYUIaYNN5wrwQXDtHaYtg7YEFPeW+hws6U47WeFvISGUWekPGKWOP1ygrs0ef0o1VJMk1exos5A==}
 
-  '@mndw/mws-auth-reference@file:plugins/builtin/mws-page/scripts/auth-reference':
-    resolution: {directory: plugins/builtin/mws-page/scripts/auth-reference, type: directory}
-
   '@napi-rs/wasm-runtime@1.1.6':
     resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
     peerDependencies:
@@ -1586,10 +1577,6 @@ packages:
 
   '@rci-tools/core@0.4.3':
     resolution: {integrity: sha512-o1sL+oVLLks0EvN+u2m0NI1sQE4RDpx28iGWiGFjH6Mu5hT0+qqLi5Dn23rh0hJ0yP1BsW0xhkgrbdN9Ck+aGA==}
-
-  '@rci-tools/core@https://codeload.github.com/Eralde/rci-tools/tar.gz/85eb264d7d7c5e177813f858db23cff117712fad#path:/packages/core':
-    resolution: {path: /packages/core, tarball: https://codeload.github.com/Eralde/rci-tools/tar.gz/85eb264d7d7c5e177813f858db23cff117712fad}
-    version: 0.4.1
 
   '@rolldown/binding-android-arm64@1.1.5':
     resolution: {integrity: sha512-lZg8fqIv2v7FF237bwMgzGZEJvGL79/s5knJ/i6FmsGF4XXlzccZ4jb+TrFIxtSSxFtIpdsgrPZeMk1I9AFcyQ==}
@@ -5058,14 +5045,6 @@ snapshots:
     dependencies:
       '@lit-labs/ssr-dom-shim': 1.6.0
 
-  '@mndw/mws-auth-reference@file:plugins/builtin/mws-page/scripts/auth-reference':
-    dependencies:
-      '@rci-tools/core': https://codeload.github.com/Eralde/rci-tools/tar.gz/85eb264d7d7c5e177813f858db23cff117712fad#path:/packages/core
-      esbuild: 0.25.12
-      hash-wasm: 4.12.0
-      jssha: 3.3.2
-      rxjs: 7.8.2
-
   '@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
     dependencies:
       '@emnapi/core': 1.11.1
@@ -5156,13 +5135,6 @@ snapshots:
       rxjs: 7.8.2
 
   '@rci-tools/core@0.4.3':
-    dependencies:
-      hash-wasm: 4.12.0
-      jssha: 3.3.2
-      lodash-es: 4.18.1
-      rxjs: 7.8.2
-
-  '@rci-tools/core@https://codeload.github.com/Eralde/rci-tools/tar.gz/85eb264d7d7c5e177813f858db23cff117712fad#path:/packages/core':
     dependencies:
       hash-wasm: 4.12.0
       jssha: 3.3.2

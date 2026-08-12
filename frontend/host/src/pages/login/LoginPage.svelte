@@ -70,9 +70,9 @@ function handleSubmit(e: Event): void {
     next(success) {
       if (success) {
         appState.authenticated = true;
-        void initAuthenticated({username, password}).catch(() => {
+        void initAuthenticated().catch(() => {
           resetToLogin();
-          error = hostT('login.extender-setup-failed');
+          error = hostT('login.connection-failed');
           loading = false;
         }).finally(() => {
           username = '';

@@ -3,25 +3,17 @@ import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 
-const {events, postForget, logout} = vi.hoisted(() => {
+const {events, logout} = vi.hoisted(() => {
   const eventLog: string[] = [];
-  const postForgetMock = vi.fn(() => {
-    eventLog.push('forget');
-
-    return Promise.resolve();
-  });
   const logoutMock = vi.fn(() => {
     eventLog.push('logout-start');
 
     return of(undefined);
   });
 
-  return {events: eventLog, postForget: postForgetMock, logout: logoutMock};
+  return {events: eventLog, logout: logoutMock};
 });
 
-vi.mock('../services/extender-access.service.js', () => ({
-  extenderAccessService: {postForget},
-}));
 vi.mock('../services/rci.service.js', () => ({
   rciService: {logout},
 }));
@@ -37,7 +29,6 @@ beforeAll(() => {
 describe('Header logout', () => {
   afterEach(() => {
     events.length = 0;
-    postForget.mockClear();
     logout.mockClear();
     appState.locale = 'en';
     appState.localeSwitchPending = false;
@@ -103,7 +94,7 @@ describe('Header logout', () => {
     }
   });
 
-  it('forgets extender credentials before logging out of the router', async () => {
+  it('logs out of the router', async () => {
     const target = document.createElement('div');
 
     document.body.appendChild(target);
@@ -113,7 +104,7 @@ describe('Header logout', () => {
     target.querySelector('.mndw-header__logout')?.dispatchEvent(new Event('click', {bubbles: true}));
     await vi.waitFor(() => expect(logout).toHaveBeenCalledTimes(1));
 
-    expect(events).toEqual(['forget', 'logout-start']);
+    expect(events).toEqual(['logout-start']);
     void unmount(component);
   });
 });

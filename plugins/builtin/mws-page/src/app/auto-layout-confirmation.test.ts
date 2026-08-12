@@ -74,7 +74,9 @@ describe('openAutoLayoutConfirmation', () => {
 
   it('opens a modal with localized confirmation actions', async () => {
     const fake = createOverlay();
+
     opened = fake.opened;
+
     const resultPromise = openAutoLayoutConfirmation(fake.overlay, t);
     const modal = fake.opened[0];
 
@@ -93,14 +95,18 @@ describe('openAutoLayoutConfirmation', () => {
 
   it('returns explicit cancel and preserves host dismissal without confirmation', async () => {
     const cancelFake = createOverlay();
+
     opened = cancelFake.opened;
+
     const cancelPromise = openAutoLayoutConfirmation(cancelFake.overlay, t);
 
     cancelFake.opened[0]?.target.querySelectorAll<HTMLElement>('mndw-button')[1]?.click();
     await expect(cancelPromise).resolves.toEqual({reason: 'action', result: 'cancel'});
 
     const dismissFake = createOverlay();
+
     opened.push(...dismissFake.opened);
+
     const dismissPromise = openAutoLayoutConfirmation(dismissFake.overlay, t);
 
     dismissFake.opened[0]?.emitClose({reason: 'escape'});
@@ -109,6 +115,7 @@ describe('openAutoLayoutConfirmation', () => {
 
   it('registers cleanup for modal listeners', () => {
     const fake = createOverlay();
+
     opened = fake.opened;
     openAutoLayoutConfirmation(fake.overlay, t);
 

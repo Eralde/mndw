@@ -155,7 +155,7 @@ describe('NodeDrawerComponent', () => {
     }
 
     node.isOnline = false;
-    node.mwsdStatus = {state: 'live', lastSuccessAt: 5_000};
+    node.mwsdStatus = {state: 'live', lastTelemetryAt: 5_000};
     node.persistentSession = true;
     node.clients = [{
       mac: 'client-1',
@@ -182,15 +182,16 @@ describe('NodeDrawerComponent', () => {
     expect(health.textContent).toContain('Offline');
     expect(health.textContent).toContain('Telemetry: live');
     expect(health.textContent).toContain('Remote control: connected');
-    expect(health.textContent).toContain('Telemetry last success 5s ago');
+    expect(health.textContent).toContain('Telemetry update 5s ago');
     expect(health.textContent).toContain('1 client');
 
-    const updatedNode = {...node, mwsdStatus: {state: 'starting' as const, lastSuccessAt: null}};
+    const updatedNode = {...node, mwsdStatus: {state: 'starting' as const, lastTelemetryAt: null}};
+
     fixture.componentRef.setInput('node', updatedNode);
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.health')?.textContent)
-      .not.toContain('Telemetry last success');
+      .not.toContain('Telemetry update');
   });
 
   it('explains each disabled TX-power reason through the field hint', () => {

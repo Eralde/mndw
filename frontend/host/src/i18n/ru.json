@@ -66,10 +66,6 @@
     "mesh-password": "Пароль mesh",
     "provision-extenders": "Настроить расширители",
     "clear-extender-sessions": "Очистить сеансы расширителей",
-    "allow-extender-telemetry": "Разрешить mwsd доступ к телеметрии расширителей",
-    "extender-access": "Доступ к расширителям",
-    "extender-access-unavailable": "Состояние доступа к расширителям недоступно",
-    "extender-access-update-failed": "Не удалось обновить доступ к расширителям",
     "persistent-state-unavailable": "Состояние постоянного сеанса rci/ недоступно",
     "persistent-request-failed": "Не удалось выполнить запрос постоянного сеанса rci/",
     "controller-token-rejected": "Токен контроллера отклонён",
@@ -99,8 +95,7 @@
     "submit": "Войти",
     "logging-in": "Выполняется вход...",
     "invalid-credentials": "Неверные учётные данные",
-    "connection-failed": "Ошибка соединения",
-    "extender-setup-failed": "Не удалось настроить доступ к расширителю"
+    "connection-failed": "Ошибка соединения"
   },
   "packages": {
     "title": "Менеджер пакетов",

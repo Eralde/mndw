@@ -86,6 +86,7 @@ func loadInterfacePowerFixture(t *testing.T) []json.RawMessage {
 	}
 
 	var results []json.RawMessage
+
 	if err := json.Unmarshal(body, &results); err != nil {
 		t.Fatal(err)
 	}

@@ -1,13 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 vi.mock('./host-info.service.js', () => ({fetchHostInfo: vi.fn()}));
-vi.mock('./extender-access.service.js', () => ({
-  extenderAccessService: {
-    getExtenderAccess: vi.fn().mockResolvedValue({enabled: false}),
-    postForget: vi.fn().mockResolvedValue(undefined),
-    postCredentials: vi.fn().mockResolvedValue(undefined),
-  },
-}));
 vi.mock('../runtime/plugin-loader.js', () => ({loadPlugins: vi.fn()}));
 vi.mock('../runtime/sandbox-loader.js', () => ({loadSandboxPlugin: vi.fn()}));
 vi.mock('../runtime/sandbox-virtual.js', () => ({
@@ -22,7 +15,6 @@ import {sandboxVirtualImports, setupSandboxHmr} from '../runtime/sandbox-virtual
 import {createAppRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {fetchHostInfo} from './host-info.service.js';
-import {extenderAccessService} from './extender-access.service.js';
 import {initAuthenticated} from './init-auth.js';
 
 const hostInfo = {
@@ -50,8 +42,6 @@ describe('initAuthenticated', () => {
   it('loads plugins from the daemon and never touches the sandbox loader in normal mode', async () => {
     await initAuthenticated();
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(vi.mocked(extenderAccessService).postForget).toHaveBeenCalledTimes(1);
     expect(loadPlugins).toHaveBeenCalledTimes(1);
     expect(loadSandboxPlugin).not.toHaveBeenCalled();
     expect(setupSandboxHmr).not.toHaveBeenCalled();
@@ -68,28 +58,6 @@ describe('initAuthenticated', () => {
     expect(loadPlugins).not.toHaveBeenCalled();
     expect(createAppRouter).toHaveBeenCalledTimes(1);
     expect(appState.ready).toBe(true);
-  });
-
-  it('does not wait for optional backend work before making the host ready', async () => {
-    let resolveAccess: (state: {enabled: boolean}) => void = () => {};
-    const accessRequest = new Promise<{enabled: boolean}>((resolve) => {
-      resolveAccess = resolve;
-    });
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const getExtenderAccess = vi.mocked(extenderAccessService).getExtenderAccess;
-
-    getExtenderAccess.mockReturnValueOnce(accessRequest);
-
-    const pending = initAuthenticated();
-
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-
-    try {
-      expect(appState.ready).toBe(true);
-    } finally {
-      resolveAccess({enabled: false});
-      await pending;
-    }
   });
 
   it('loads plugins before creating the router and only then marks ready', async () => {
@@ -134,45 +102,6 @@ describe('initAuthenticated', () => {
     expect(appState.ready).toBe(true);
 
     errorSpy.mockRestore();
-  });
-
-  it('continues startup when optional cleanup work fails', async () => {
-    const warningSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const postForget = vi.mocked(extenderAccessService).postForget;
-
-    postForget.mockRejectedValueOnce(new Error('502'));
-
-    await expect(initAuthenticated()).resolves.toBeUndefined();
-
-    expect(loadPlugins).toHaveBeenCalledTimes(1);
-    expect(createAppRouter).toHaveBeenCalledTimes(1);
-    expect(appState.ready).toBe(true);
-    expect(warningSpy).toHaveBeenCalled();
-
-    warningSpy.mockRestore();
-  });
-
-  it('continues startup when optional credential work fails', async () => {
-    const warningSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const getExtenderAccess = vi.mocked(extenderAccessService).getExtenderAccess;
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    const postCredentials = vi.mocked(extenderAccessService).postCredentials;
-
-    getExtenderAccess.mockResolvedValueOnce({enabled: true});
-    postCredentials.mockRejectedValueOnce(new Error('502'));
-
-    await expect(initAuthenticated({username: 'admin', password: 'secret'})).resolves.toBeUndefined();
-
-    expect(loadPlugins).toHaveBeenCalledTimes(1);
-    expect(createAppRouter).toHaveBeenCalledTimes(1);
-    expect(appState.ready).toBe(true);
-    expect(warningSpy).toHaveBeenCalled();
-
-    warningSpy.mockRestore();
   });
 
   it('still creates the router when the loader records a list failure', async () => {

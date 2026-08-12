@@ -6,7 +6,6 @@ const MAX_FAILURE_TEXT = 4096;
 const ENDPOINTS = [
   {title: 'mndwd diagnostics', path: '/api/mndw/diagnostics/export', method: 'POST'},
   {title: 'persistent rci-session capability', path: '/api/mndw/rci-session/capability'},
-  {title: 'extender access permission', path: '/api/mndw/extender-access'},
 ] as const;
 
 const SENSITIVE_VALUE_PATTERNS = [

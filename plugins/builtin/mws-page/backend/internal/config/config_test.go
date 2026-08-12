@@ -6,20 +6,13 @@ import (
 	"time"
 )
 
-func TestParseAppliesControllerAndAuthOverrides(t *testing.T) {
-	environ := func(name string) string {
-		values := map[string]string{
-			"MWSD_CONTROLLER_URL": "http://192.0.2.1:79",
-		}
-
-		return values[name]
-	}
-	cfg, err := Parse([]string{"--auth-timeout=17s"}, environ)
+func TestParseAppliesIOTimeoutOverride(t *testing.T) {
+	cfg, err := Parse([]string{"--io-timeout=17s"}, func(string) string { return "" })
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if cfg.ControllerURL != "http://192.0.2.1:79" || cfg.AuthOperation != 17*time.Second {
+	if cfg.IOTimeout != 17*time.Second {
 		t.Fatalf("config = %#v", cfg)
 	}
 }
@@ -46,13 +39,13 @@ func TestParseIgnoresRemovedRuntimeDirectoryEnvironment(t *testing.T) {
 }
 
 func TestParseRejectsNonPositiveLimits(t *testing.T) {
-	if _, err := Parse([]string{"--max-response-bytes=0"}, func(string) string { return "" }); err == nil {
+	if _, err := Parse([]string{"--io-timeout=0"}, func(string) string { return "" }); err == nil {
 		t.Fatal("Parse() error = nil")
 	}
 }
 
 func TestParseRejectsRemovedFlags(t *testing.T) {
-	for _, argument := range []string{"--runtime-dir=/tmp/mwsd", "--operation-timeout=3s", "--max-request-bytes=1"} {
+	for _, argument := range []string{"--controller-url=http://192.0.2.1:79", "--auth-timeout=3s", "--max-response-bytes=1"} {
 		t.Run(argument, func(t *testing.T) {
 			if _, err := Parse([]string{argument}, func(string) string { return "" }); err == nil {
 				t.Fatalf("Parse(%q) error = nil, want removed-flag error", argument)

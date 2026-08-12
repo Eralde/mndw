@@ -1,20 +1,22 @@
 import {
   CUSTOM_ELEMENTS_SCHEMA,
   Component,
-  EventEmitter,
-  Input,
   type OnDestroy,
   type OnInit,
-  Output,
   computed,
+  effect,
   inject,
+  input,
+  output,
   signal,
+  untracked,
 } from '@angular/core';
 import type {MwsNode} from '../../domain/mws/mws.types';
 import {DASH, formatRate, formatSpeed, formatUptime} from '../../format';
 import {NodeTableColumnsStore, type OptionalNodeColumnId} from '../../services/node-table-columns.store';
 import {TRANSLATOR} from '../../tokens';
 import {
+  type NodeQuickFilter,
   type NodeRow,
   type NodeSortDir,
   type NodeSortKey,
@@ -53,16 +55,20 @@ const NODE_COLUMNS: readonly NodeColumn[] = [
 export class MwsNodesTableComponent implements OnDestroy, OnInit {
   private readonly translator = inject(TRANSLATOR);
   private readonly columnsStore = inject(NodeTableColumnsStore);
-  private readonly rootsState = signal<MwsNode[]>([]);
   private readonly allRowsState = signal<NodeRow[]>([]);
   private readonly rowsState = signal<NodeRow[]>([]);
   private projectionInitialized = false;
 
-  @Input({required: true})
-  public set roots(value: MwsNode[]) {
-    const nextRows = buildNodeRows(value);
+  public readonly roots = input.required<MwsNode[]>();
+  public readonly quickFilter = input<NodeQuickFilter>('none');
+  public readonly nodeActivated = output<string>();
 
-    this.rootsState.set(value);
+  private readonly inputEffect = effect(() => {
+    const nextRows = buildNodeRows(this.roots());
+    const quickFilter = this.quickFilter();
+    const previousRows = untracked(() => this.rowsState());
+    const search = untracked(() => this.search());
+
     this.allRowsState.set(nextRows);
 
     if (!this.projectionInitialized) {
@@ -72,15 +78,8 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
       return;
     }
 
-    this.rowsState.set(reconcileNodeRows(this.rowsState(), nextRows, this.search()));
-  }
-
-  public get roots(): MwsNode[] {
-    return this.rootsState();
-  }
-
-  @Output()
-  public readonly nodeActivated = new EventEmitter<string>();
+    this.rowsState.set(reconcileNodeRows(previousRows, nextRows, search, quickFilter));
+  });
   protected readonly search = signal('');
   protected readonly sortKey = signal<NodeSortKey>('name');
   protected readonly sortDir = signal<NodeSortDir>('asc');
@@ -175,7 +174,11 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
   }
 
   private sortedRows(rows: NodeRow[]): NodeRow[] {
-    return sortNodeRows(filterNodeRows(rows, this.search()), this.sortKey(), this.sortDir());
+    return sortNodeRows(
+      filterNodeRows(rows, this.search(), this.quickFilter()),
+      this.sortKey(),
+      this.sortDir(),
+    );
   }
 
   private reproject(): void {

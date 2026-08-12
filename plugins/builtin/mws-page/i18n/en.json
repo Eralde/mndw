@@ -5,11 +5,13 @@
   "title": "MWS Map",
   "summary": {
     "mock-data": "Mock data: {extenders} extenders · {clients} clients",
+    "label": "Map summary",
     "nodes": "{count, plural, one {# node} other {# nodes}}",
     "offline": "{count, plural, one {# offline} other {# offline}}",
     "clients": "{count, plural, one {# client} other {# clients}}",
     "updates": "{count, plural, one {# update available} other {# updates available}}",
-    "updated": "updated {seconds}s ago"
+    "updated": "updated {seconds}s ago",
+    "map-updated": "Map updated {seconds}s ago"
   },
   "state": {
     "update-failed": "Update failed — showing the last known map.",
@@ -17,14 +19,37 @@
     "load-failed": "Failed to load MWS data.",
     "unsupported": "This device is not an MWS controller."
   },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "no-telemetry": "No telemetry",
+    "telemetry-not-available": "Telemetry: not available",
+    "telemetry-starting": "Telemetry: starting",
+    "telemetry-live": "Telemetry: live",
+    "telemetry-stale": "Telemetry: stale",
+    "telemetry-offline": "Telemetry: offline",
+    "remote-control-not-available": "Remote control: not available",
+    "remote-control-disconnected": "Remote control: disconnected",
+    "remote-control-connected": "Remote control: connected",
+    "clients": "{count, plural, one {# client} other {# clients}}",
+    "power-disabled-session": "Remote control is disconnected.",
+    "power-disabled-unavailable": "TX power is unavailable.",
+    "power-disabled-pending": "TX power update is pending."
+  },
   "action": {
     "retry": "Retry",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
     "zoom-in": "Zoom in",
     "zoom-out": "Zoom out",
     "fit": "Fit to content",
     "auto-layout": "Auto layout",
     "done": "Done",
     "rearrange": "Rearrange"
+  },
+  "auto-layout": {
+    "title": "Reset map layout?",
+    "description": "This removes saved node positions for this session."
   },
   "tab": {
     "map": "Map",
@@ -39,9 +64,6 @@
     "controller": "controller",
     "extender": "extender",
     "offline": "offline",
-    "mwsd": "mwsd",
-    "persistent-live": "persistent session live",
-    "persistent-failing": "persistent session failing",
     "wireless": "Wireless",
     "wired": "Wired",
     "clients": "clients",
@@ -87,6 +109,13 @@
     "cancel": "Cancel",
     "edit": "Edit",
     "edit-name": "Edit node name",
+    "health": "Health",
+    "status": "Status",
+    "telemetry": "Telemetry",
+    "remote-control": "Remote control",
+    "last-success": "Last success",
+    "telemetry-last-success": "Telemetry last success {seconds}s ago",
+    "client-count": "Clients",
     "model": "Model",
     "mac": "MAC",
     "ip": "IP",

@@ -25,6 +25,13 @@
     }
   }
 
+  .health {
+    padding: 8px 12px;
+    border: 1px solid var(--mndw-border);
+    border-radius: var(--mndw-radius-md);
+    background: var(--mndw-surface-raised);
+  }
+
   .rename-editor {
     display: flex;
     flex-direction: column;

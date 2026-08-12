@@ -1,6 +1,6 @@
 import 'zone.js';
 import '@angular/compiler';
-import {DestroyRef, type ApplicationRef, EnvironmentInjector, type Type, createComponent, inject} from '@angular/core';
+import {type ApplicationRef, DestroyRef, EnvironmentInjector, type Type, createComponent, inject} from '@angular/core';
 import {createApplication} from '@angular/platform-browser';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {createTranslatorSignals} from '@mndw/sdk/angular';
@@ -51,12 +51,16 @@ export function createMwsMapInstance(
     : [{provide: MWS_MOCK_OPTIONS, useValue: options.mockOptions}];
 
   el.dataset.mndwTheme = ctx.hostInfo.theme;
+
   const setLocaleLabel = (): void => {
     const title = ctx.i18n.t('title');
+
     el.setAttribute('aria-label', title);
     ctx.setTileTitle?.(title);
   };
+
   setLocaleLabel();
+
   const unsubscribeLocale = ctx.i18n.onChange(setLocaleLabel);
 
   const unsubscribeTheme = onThemeChange((theme) => {

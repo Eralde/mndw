@@ -49,6 +49,7 @@ describe('MwsGraphComponent', () => {
     fixture.componentRef.setInput('roots', fixtureRoots());
     fixture.detectChanges();
 
+    expect(fixture.componentInstance.roots()).toHaveLength(1);
     const element: HTMLElement = fixture.nativeElement;
 
     expect(element.querySelectorAll('g.node')).toHaveLength(3);
@@ -73,6 +74,7 @@ describe('MwsGraphComponent', () => {
     expect(element.querySelector('rect.node-body')?.getAttribute('height')).toBe(
       String(DEFAULT_LAYOUT_CONFIG.nodeHeight),
     );
+    expect(DEFAULT_LAYOUT_CONFIG.nodeWidth).toBe(180);
     expect([...element.querySelectorAll<SVGRectElement>('rect.selection-ring')]
       .every((ring) => ring.style.display === 'none')).toBe(true);
   });
@@ -87,6 +89,7 @@ describe('MwsGraphComponent', () => {
     expect(secondNode).toBeDefined();
 
     fixture.componentRef.setInput('roots', roots);
+    fixture.componentRef.setInput('selectedNodeId', null);
     fixture.detectChanges();
 
     fixture.componentRef.setInput('selectedNodeId', firstNode?.id ?? null);
@@ -141,8 +144,10 @@ describe('MwsGraphComponent', () => {
     expect(controllerDot?.style.display).toBe('none');
     expect(element.querySelector('circle.mwsd-status-dot.mwsd-live')).not.toBeNull();
     expect(element.querySelector('circle.mwsd-status-dot.mwsd-stale')).not.toBeNull();
-    expect(element.querySelector('g.node.mwsd-live')?.getAttribute('aria-label')).toContain('mwsd live');
-    expect(element.querySelector('g.node.mwsd-stale')?.getAttribute('aria-label')).toContain('mwsd stale');
+    expect(element.querySelector('g.node.mwsd-live')?.getAttribute('aria-label')).toContain('Telemetry: live');
+    expect(element.querySelector('g.node.mwsd-stale')?.getAttribute('aria-label')).toContain('Telemetry: stale');
+    expect(element.querySelector('circle.mwsd-status-dot.mwsd-live title')?.textContent).toBe('Telemetry: live');
+    expect(element.querySelector('circle.mwsd-status-dot.mwsd-stale title')?.textContent).toBe('Telemetry: stale');
 
     const updatedRoots = fixtureRoots();
     const updatedExtenders = updatedRoots
@@ -180,11 +185,15 @@ describe('MwsGraphComponent', () => {
     expect(element.querySelector('circle.persistent-session-dot.persistent-failing')).not.toBeNull();
     expect(element.querySelector('g.node.controller circle.persistent-session-dot')?.style.display).toBe('none');
     expect(element.querySelector('g.node.persistent-live')?.getAttribute('aria-label')).toContain(
-      'persistent session live',
+      'Remote control: connected',
     );
     expect(element.querySelector('g.node.persistent-failing')?.getAttribute('aria-label')).toContain(
-      'persistent session failing',
+      'Remote control: disconnected',
     );
+    expect(element.querySelector('circle.persistent-session-dot.persistent-live title')?.textContent)
+      .toBe('Remote control: connected');
+    expect(element.querySelector('circle.persistent-session-dot.persistent-failing title')?.textContent)
+      .toBe('Remote control: disconnected');
   });
 
   it('emits nodeSelected on click and on Enter', () => {
@@ -222,6 +231,8 @@ describe('MwsGraphComponent', () => {
 
     const element = fixture.nativeElement as HTMLElement;
 
+    expect(element.querySelector('.graph-controls')).not.toBeNull();
+
     element.querySelector<HTMLElement>('[aria-label="Rearrange"]')?.click();
     expect(toggled).toHaveBeenCalledOnce();
     expect(element.querySelector('[aria-label="Auto layout"]')).toBeNull();
@@ -255,6 +266,175 @@ describe('MwsGraphComponent', () => {
       'Done',
       'Rearrange',
     ]);
+  });
+
+  it('truncates visible names while retaining one top-level full-name title across rerenders', () => {
+    const roots = fixtureRoots();
+    const controller = roots[0];
+
+    if (controller === undefined) {
+      throw new Error('fixture roots missing controller');
+    }
+
+    const fullName = 'A node name that is deliberately much longer than the visible label';
+    controller.name = fullName;
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const node = element.querySelector<SVGGElement>('g.node[data-node-id="02:7d:4a:91:c3:10"]');
+    const title = node?.firstElementChild;
+    const name = node?.querySelector('text.name');
+
+    expect(title?.matches('title.node-name-title')).toBe(true);
+    expect(title?.textContent).toBe(fullName);
+    expect(name?.textContent).not.toBe(fullName);
+    expect(name?.textContent?.endsWith('…')).toBe(true);
+    expect(node?.querySelectorAll('title.node-name-title')).toHaveLength(1);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const rerenderedNode = element.querySelector<SVGGElement>('g.node[data-node-id="02:7d:4a:91:c3:10"]');
+
+    expect(rerenderedNode?.querySelectorAll('title.node-name-title')).toHaveLength(1);
+  });
+
+  it('highlights pointer paths and restores selected paths after pointerleave', () => {
+    const roots = fixtureRoots();
+    const controller = roots.find((node) => node.isController);
+    const extenders = roots.flatMap((root) => collectNodes(root)).filter((node) => !node.isController);
+    const firstChild = extenders[0];
+    const secondChild = extenders[1];
+
+    if (controller === undefined || firstChild === undefined || secondChild === undefined) {
+      throw new Error('fixture roots missing expected topology');
+    }
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+    fixture.componentRef.setInput('roots', roots);
+    fixture.componentRef.setInput('selectedNodeId', secondChild.id);
+    fixture.detectChanges();
+
+    dispatchNodeEvent(fixture, firstChild.id, 'pointerenter');
+    expect(fixture.nativeElement.querySelectorAll('path.edge.on-path')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelectorAll('path.edge.dimmed')).toHaveLength(1);
+    expect(visibleRing(fixture, firstChild.id)).toBe(true);
+
+    dispatchNodeEvent(fixture, firstChild.id, 'pointerleave');
+    expect(fixture.nativeElement.querySelectorAll('path.edge.on-path').length).toBeGreaterThan(0);
+    expect(fixture.nativeElement.querySelector('path.edge.dimmed')).toBeNull();
+    expect(visibleRing(fixture, secondChild.id)).toBe(true);
+  });
+
+  it('lets focus override pointer and falls back to pointer after focusout', () => {
+    const roots = fixtureRoots();
+    const controller = roots.find((node) => node.isController);
+    const extenders = roots.flatMap((root) => collectNodes(root)).filter((node) => !node.isController);
+    const firstChild = extenders[0];
+    const secondChild = extenders[1];
+
+    if (controller === undefined || firstChild === undefined || secondChild === undefined) {
+      throw new Error('fixture roots missing expected topology');
+    }
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+    fixture.componentRef.setInput('roots', roots);
+    fixture.componentRef.setInput('editMode', false);
+    fixture.detectChanges();
+
+    dispatchNodeEvent(fixture, firstChild.id, 'pointerenter');
+    dispatchNodeEvent(fixture, secondChild.id, 'focusin');
+    expect(visibleRing(fixture, secondChild.id)).toBe(true);
+
+    dispatchNodeEvent(fixture, secondChild.id, 'focusout');
+    expect(visibleRing(fixture, firstChild.id)).toBe(true);
+  });
+
+  it('ignores stale pointerleave and clears hover when edit mode starts', () => {
+    const roots = fixtureRoots();
+    const controller = roots.find((node) => node.isController);
+    const extenders = roots.flatMap((root) => collectNodes(root)).filter((node) => !node.isController);
+    const firstChild = extenders[0];
+    const secondChild = extenders[1];
+
+    if (controller === undefined || firstChild === undefined || secondChild === undefined) {
+      throw new Error('fixture roots missing expected topology');
+    }
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+    fixture.componentRef.setInput('roots', roots);
+    fixture.componentRef.setInput('selectedNodeId', null);
+    fixture.componentRef.setInput('editMode', false);
+    fixture.detectChanges();
+
+    dispatchNodeEvent(fixture, firstChild.id, 'pointerenter');
+    dispatchNodeEvent(fixture, secondChild.id, 'pointerenter');
+    dispatchNodeEvent(fixture, firstChild.id, 'pointerleave');
+    expect(visibleRing(fixture, secondChild.id)).toBe(true);
+
+    fixture.componentRef.setInput('editMode', true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('g.node.selected')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('path.edge.on-path')).toHaveLength(0);
+    expect([...fixture.nativeElement.querySelectorAll<SVGRectElement>('rect.selection-ring')]
+      .every((ring) => ring.style.display === 'none')).toBe(true);
+  });
+
+  it('sweeps disappeared hover targets and does not dim orphan forests', () => {
+    const roots = fixtureRoots();
+    const controller = roots.find((node) => node.isController);
+    const firstChild = roots.flatMap((root) => collectNodes(root)).find((node) => !node.isController);
+
+    if (controller === undefined || firstChild === undefined) {
+      throw new Error('fixture roots missing expected topology');
+    }
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+    dispatchNodeEvent(fixture, firstChild.id, 'pointerenter');
+
+    const controllerOnly = buildMap([], [], CONTROLLER);
+    fixture.componentRef.setInput('roots', controllerOnly);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('path.edge.dimmed')).toBeNull();
+
+    const orphan = {...firstChild, id: 'orphan', mac: 'orphan', name: 'Orphan', parent: null, children: []};
+    fixture.componentRef.setInput('roots', [...fixtureRoots(), orphan]);
+    fixture.detectChanges();
+    dispatchNodeEvent(fixture, orphan.id, 'pointerenter');
+
+    expect(visibleRing(fixture, orphan.id)).toBe(true);
+    expect(fixture.nativeElement.querySelector('g.node.dimmed')).toBeNull();
+    expect(fixture.nativeElement.querySelector('path.edge.dimmed')).toBeNull();
+
+    dispatchNodeEvent(fixture, controller.id, 'pointerenter');
+    expect(visibleRing(fixture, controller.id)).toBe(true);
+    expect(fixture.nativeElement.querySelectorAll('g.node.dimmed').length).toBeGreaterThan(0);
+  });
+
+  it('clears hover when a node is selected', () => {
+    const roots = fixtureRoots();
+    const child = roots.flatMap((root) => collectNodes(root)).find((node) => !node.isController);
+
+    if (child === undefined) {
+      throw new Error('fixture roots missing child');
+    }
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+    dispatchNodeEvent(fixture, child.id, 'pointerenter');
+    dispatchNodeEvent(fixture, child.id, 'click');
+    fixture.componentRef.setInput('selectedNodeId', child.id);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('g.node.selected')).not.toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('path.edge.on-path').length).toBeGreaterThan(0);
+    expect(visibleRing(fixture, child.id)).toBe(true);
   });
 
   it('marks offline nodes and re-renders on input change without throwing', () => {
@@ -301,4 +481,32 @@ describe('MwsGraphComponent', () => {
 
 function collectNodes(root: MwsNode): MwsNode[] {
   return [root, ...root.children.flatMap((link) => collectNodes(link.node))];
+}
+
+function nodeElement(
+  fixture: ReturnType<typeof TestBed.createComponent<MwsGraphComponent>>,
+  id: string,
+): SVGGElement | null {
+  return fixture.nativeElement.querySelector(`g.node[data-node-id="${id}"]`);
+}
+
+function visibleRing(
+  fixture: ReturnType<typeof TestBed.createComponent<MwsGraphComponent>>,
+  id: string,
+): boolean {
+  return nodeElement(fixture, id)?.querySelector<SVGRectElement>('rect.selection-ring')?.style.display !== 'none';
+}
+
+function dispatchNodeEvent(
+  fixture: ReturnType<typeof TestBed.createComponent<MwsGraphComponent>>,
+  id: string,
+  type: string,
+): void {
+  const node = nodeElement(fixture, id);
+
+  if (node === null) {
+    throw new Error(`node ${id} not found`);
+  }
+
+  node.dispatchEvent(new Event(type, {bubbles: true}));
 }

@@ -1,4 +1,5 @@
 import type {MwsNode} from '../../domain/mws/mws.types';
+import {hasUpdate} from '../../domain/mws/map-builder';
 
 export interface NodeRow {
   id: string;
@@ -7,6 +8,7 @@ export interface NodeRow {
 
 export type NodeSortKey = 'name' | 'clients' | 'uptime' | 'ip' | 'via' | 'firmware';
 export type NodeSortDir = 'asc' | 'desc';
+export type NodeQuickFilter = 'none' | 'offline' | 'updates';
 
 type Ipv4 = readonly [number, number, number, number];
 
@@ -28,19 +30,24 @@ export function buildNodeRows(roots: MwsNode[]): NodeRow[] {
   return rows;
 }
 
-export function filterNodeRows(rows: NodeRow[], query: string): NodeRow[] {
+export function filterNodeRows(rows: NodeRow[], query: string, quickFilter: NodeQuickFilter = 'none'): NodeRow[] {
   const normalizedQuery = query.trim().toLowerCase();
 
-  if (normalizedQuery === '') {
-    return rows;
-  }
+  return rows.filter((row) => {
+    const matchesQuery = normalizedQuery === '' || row.node.name.toLowerCase().includes(normalizedQuery);
 
-  return rows.filter((row) => row.node.name.toLowerCase().includes(normalizedQuery));
+    return matchesQuery && matchesQuickFilter(row.node, quickFilter);
+  });
 }
 
-export function reconcileNodeRows(previous: NodeRow[], next: NodeRow[], query: string): NodeRow[] {
+export function reconcileNodeRows(
+  previous: NodeRow[],
+  next: NodeRow[],
+  query: string,
+  quickFilter: NodeQuickFilter = 'none',
+): NodeRow[] {
   const nextById = new Map(next.map((row) => [row.id, row]));
-  const visibleNext = filterNodeRows(next, query);
+  const visibleNext = filterNodeRows(next, query, quickFilter);
   const visibleIds = new Set(visibleNext.map((row) => row.id));
   const result: NodeRow[] = [];
   const retainedIds = new Set<string>();
@@ -61,6 +68,18 @@ export function reconcileNodeRows(previous: NodeRow[], next: NodeRow[], query: s
   }
 
   return result;
+}
+
+function matchesQuickFilter(node: MwsNode, quickFilter: NodeQuickFilter): boolean {
+  if (quickFilter === 'offline') {
+    return !node.isOnline;
+  }
+
+  if (quickFilter === 'updates') {
+    return hasUpdate(node);
+  }
+
+  return true;
 }
 
 function compareText(left: string, right: string): number {

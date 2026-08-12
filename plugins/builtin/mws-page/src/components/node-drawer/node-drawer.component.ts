@@ -1,18 +1,11 @@
-import {
-  CUSTOM_ELEMENTS_SCHEMA,
-  Component,
-  EventEmitter,
-  Input,
-  type OnDestroy,
-  Output,
-  inject,
-} from '@angular/core';
+import {CUSTOM_ELEMENTS_SCHEMA, Component, type OnDestroy, inject, input, output} from '@angular/core';
 import type {MwsNode, MwsRadioPower} from '../../domain/mws/mws.types';
 import {formatCpuLoad, formatMemory, formatRate, formatRssi, formatSpeed, formatUptime} from '../../format';
 import {MwsDataService} from '../../services/mws-data.service';
 import {type MwsWriteResult, MwsWriteService} from '../../services/mws-write.service';
 import {MWS_RENAME_API, type MwsRenameApi, TRANSLATOR} from '../../tokens';
 import {validateNodeName} from '../../api/node-name';
+import {type NodeStatusLabels, getNodeStatusLabels, getPowerDisabledHint} from '../../status-labels';
 
 export type MwsWifiInterface = 'WifiMaster0' | 'WifiMaster1';
 
@@ -38,33 +31,16 @@ export class NodeDrawerComponent implements OnDestroy {
   private readonly data = inject(MwsDataService);
   private readonly write = inject(MwsWriteService);
 
-  private nodeValue: MwsNode | null = null;
   private observedMac: string | null = null;
   private readonly powerState: Record<MwsWifiInterface, PowerControlState> = {
     WifiMaster0: this.newPowerControl(),
     WifiMaster1: this.newPowerControl(),
   };
 
-  @Input()
-  public set node(value: MwsNode | null) {
-    if (this.observedMac !== value?.mac) {
-      this.resetPowerControls();
-      this.observedMac = value?.mac ?? null;
-    }
-
-    this.nodeValue = value;
-    this.observePower(value);
-  }
-
-  public get node(): MwsNode | null {
-    return this.nodeValue;
-  }
-
-  @Input()
-  public setTitle: (title: string) => void = () => undefined;
-
-  @Output()
-  public readonly renamed = new EventEmitter<string>();
+  public readonly node = input<MwsNode | null>(null);
+  public readonly setTitle = input<(title: string) => void>(() => undefined);
+  public readonly renamed = output<string>();
+  private observedNode: MwsNode | null | undefined;
 
   protected editing = false;
   protected draft = '';
@@ -72,12 +48,32 @@ export class NodeDrawerComponent implements OnDestroy {
   protected error = '';
   protected powerError = '';
 
+  protected currentNode(): MwsNode | null {
+    const node = this.node();
+
+    if (this.observedNode === node) {
+      return node;
+    }
+
+    if (this.observedMac !== node?.mac) {
+      this.resetPowerControls();
+      this.observedMac = node?.mac ?? null;
+    }
+
+    this.observedNode = node;
+    this.observePower(node);
+
+    return node;
+  }
+
   protected beginRename(): void {
-    if (this.node === null || this.pending) {
+    const node = this.node();
+
+    if (node === null || this.pending) {
       return;
     }
 
-    this.draft = this.node.name;
+    this.draft = node.name;
     this.error = '';
     this.editing = true;
   }
@@ -107,7 +103,9 @@ export class NodeDrawerComponent implements OnDestroy {
   }
 
   protected saveRename(): void {
-    if (this.pending || this.node === null) {
+    const node = this.node();
+
+    if (this.pending || node === null) {
       return;
     }
 
@@ -120,8 +118,6 @@ export class NodeDrawerComponent implements OnDestroy {
     }
 
     const name = validation.value;
-    const node = this.node;
-
     this.pending = true;
     this.error = '';
 
@@ -130,7 +126,7 @@ export class NodeDrawerComponent implements OnDestroy {
         this.pending = false;
         this.editing = false;
         this.renamed.emit(name);
-        this.setTitle(name);
+        this.setTitle()(name);
         this.data.refreshNow();
       },
       error: (error: unknown) => {
@@ -146,6 +142,23 @@ export class NodeDrawerComponent implements OnDestroy {
 
   protected memory(node: MwsNode): string {
     return formatMemory(node.system?.memoryUsed, node.system?.memoryTotal);
+  }
+
+  protected statusLabels(node: MwsNode): NodeStatusLabels {
+    return getNodeStatusLabels(node, (key, values) => this.t(key, values));
+  }
+
+  protected telemetryLastSuccess(node: MwsNode): string | null {
+    const lastSuccessAt = node.mwsdStatus?.lastSuccessAt;
+
+    if (lastSuccessAt === null || lastSuccessAt === undefined) {
+      return null;
+    }
+
+    const now = this.data.freshnessNow?.() ?? Date.now();
+    const seconds = Math.max(0, Math.floor((now - lastSuccessAt) / 1000));
+
+    return this.t('drawer.telemetry-last-success', {seconds});
   }
 
   protected uptime(value: number | null | undefined): string {
@@ -185,6 +198,13 @@ export class NodeDrawerComponent implements OnDestroy {
     const state = this.powerState[interfaceName];
 
     return !power.available || state.pending || node.persistentSession !== true;
+  }
+
+  protected powerDisabledHint(node: MwsNode, interfaceName: MwsWifiInterface): string | null {
+    const power = this.powerFor(node, interfaceName);
+    const state = this.powerState[interfaceName];
+
+    return getPowerDisabledHint(node, power.available, state.pending, (key, values) => this.t(key, values));
   }
 
   protected onPowerChange(node: MwsNode, interfaceName: MwsWifiInterface, event: CustomEvent<{value: number}>): void {

@@ -5,11 +5,13 @@
   "title": "Карта MWS",
   "summary": {
     "mock-data": "Тестовые данные: экстендеров — {extenders}, клиентов — {clients}",
+    "label": "Сводка карты",
     "nodes": "{count, plural, one {# узел} few {# узла} many {# узлов} other {# узла}}",
     "offline": "{count, plural, one {# отключённый} few {# отключённых} many {# отключённых} other {# отключённых}}",
     "clients": "{count, plural, one {# клиент} few {# клиента} many {# клиентов} other {# клиента}}",
     "updates": "{count, plural, one {доступно обновление} few {доступны обновления} many {доступны обновления} other {доступны обновления}}",
-    "updated": "обновлено {seconds} с назад"
+    "updated": "обновлено {seconds} с назад",
+    "map-updated": "Карта обновлена {seconds} с назад"
   },
   "state": {
     "update-failed": "Не удалось обновить — показана последняя известная карта.",
@@ -17,14 +19,37 @@
     "load-failed": "Не удалось загрузить данные MWS.",
     "unsupported": "Это устройство не является контроллером MWS."
   },
+  "status": {
+    "online": "В сети",
+    "offline": "Не в сети",
+    "no-telemetry": "Телеметрия отсутствует",
+    "telemetry-not-available": "Телеметрия: недоступна",
+    "telemetry-starting": "Телеметрия: запуск",
+    "telemetry-live": "Телеметрия: активна",
+    "telemetry-stale": "Телеметрия: устарела",
+    "telemetry-offline": "Телеметрия: не в сети",
+    "remote-control-not-available": "Удалённое управление: недоступно",
+    "remote-control-disconnected": "Удалённое управление: отключено",
+    "remote-control-connected": "Удалённое управление: подключено",
+    "clients": "{count, plural, one {# клиент} few {# клиента} many {# клиентов} other {# клиента}}",
+    "power-disabled-session": "Удалённое управление отключено.",
+    "power-disabled-unavailable": "Мощность TX недоступна.",
+    "power-disabled-pending": "Изменение мощности TX выполняется."
+  },
   "action": {
     "retry": "Повторить",
+    "confirm": "Подтвердить",
+    "cancel": "Отмена",
     "zoom-in": "Увеличить",
     "zoom-out": "Уменьшить",
     "fit": "Вписать содержимое",
     "auto-layout": "Автоматическая раскладка",
     "done": "Готово",
     "rearrange": "Перестроить"
+  },
+  "auto-layout": {
+    "title": "Сбросить раскладку карты?",
+    "description": "Сохранённые позиции узлов будут удалены на время этой сессии."
   },
   "tab": {
     "map": "Карта",
@@ -39,9 +64,6 @@
     "controller": "контроллер",
     "extender": "экстендер",
     "offline": "не в сети",
-    "mwsd": "mwsd",
-    "persistent-live": "постоянная сессия активна",
-    "persistent-failing": "ошибка постоянной сессии",
     "wireless": "Беспроводное",
     "wired": "Проводное",
     "clients": "клиентов",
@@ -87,6 +109,13 @@
     "cancel": "Отмена",
     "edit": "Изменить",
     "edit-name": "Изменить имя узла",
+    "health": "Состояние",
+    "status": "Состояние",
+    "telemetry": "Телеметрия",
+    "remote-control": "Удалённое управление",
+    "last-success": "Последний успех",
+    "telemetry-last-success": "Последний успех телеметрии: {seconds} с назад",
+    "client-count": "Клиенты",
     "model": "Модель",
     "mac": "MAC",
     "ip": "IP",

@@ -1,4 +1,4 @@
-import {CUSTOM_ELEMENTS_SCHEMA, Component, Input, type OnDestroy, computed, inject, signal} from '@angular/core';
+import {CUSTOM_ELEMENTS_SCHEMA, Component, type OnDestroy, computed, inject, input, signal} from '@angular/core';
 import type {MwsNode} from '../../domain/mws/mws.types';
 import {DASH, formatUptime} from '../../format';
 import {TRANSLATOR} from '../../tokens';
@@ -18,21 +18,12 @@ interface SortColumn {
 })
 export class MwsClientsTableComponent implements OnDestroy {
   private readonly translator = inject(TRANSLATOR);
-  private readonly rootsState = signal<MwsNode[]>([]);
-
-  @Input({required: true})
-  public set roots(value: MwsNode[]) {
-    this.rootsState.set(value);
-  }
-
-  public get roots(): MwsNode[] {
-    return this.rootsState();
-  }
+  public readonly roots = input.required<MwsNode[]>();
 
   protected readonly search = signal('');
   protected readonly sortKey = signal<SortKey>('name');
   protected readonly sortDir = signal<SortDir>('asc');
-  protected readonly allRows = computed<ClientRow[]>(() => buildClientRows(this.rootsState()));
+  protected readonly allRows = computed<ClientRow[]>(() => buildClientRows(this.roots()));
   protected readonly rows = computed<ClientRow[]>(() =>
     sortRows(filterRows(this.allRows(), this.search()), this.sortKey(), this.sortDir())
   );

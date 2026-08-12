@@ -83,7 +83,7 @@ describe('NodeDrawerComponent', () => {
       imports: [NodeDrawerComponent],
       providers: [
         {provide: MWS_RENAME_API, useValue: {renameNode}},
-        {provide: MwsDataService, useValue: {refreshNow}},
+        {provide: MwsDataService, useValue: {refreshNow, freshnessNow: () => 10_000}},
         {provide: MwsWriteService, useValue: {setPower}},
         {provide: TRANSLATOR, useValue: createTestI18n(enCatalog)},
       ],
@@ -144,6 +144,81 @@ describe('NodeDrawerComponent', () => {
     fixture.componentRef.setInput('node', null);
     fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('no longer reported');
+  });
+
+  it('renders health before identity details with semantic status and telemetry age', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
+
+    if (node === null) {
+      throw new Error('expected extender fixture node');
+    }
+
+    node.isOnline = false;
+    node.mwsdStatus = {state: 'live', lastSuccessAt: 5_000};
+    node.persistentSession = true;
+    node.clients = [{
+      mac: 'client-1',
+      name: 'Client 1',
+      ip: null,
+      uptime: null,
+      lastSeen: null,
+      wired: false,
+    }];
+    fixture.componentRef.setInput('node', node);
+    fixture.detectChanges();
+
+    const identity = fixture.nativeElement.querySelector('.identity') as HTMLElement;
+    const health = identity.querySelector('.health');
+    const identityDetails = identity.querySelector('.identity-details');
+
+    if (health === null || identityDetails === null) {
+      throw new Error('drawer health or identity details missing');
+    }
+
+    expect(health).not.toBeNull();
+    expect(identityDetails).not.toBeNull();
+    expect([...identity.children].indexOf(health)).toBeLessThan([...identity.children].indexOf(identityDetails));
+    expect(health.textContent).toContain('Offline');
+    expect(health.textContent).toContain('Telemetry: live');
+    expect(health.textContent).toContain('Remote control: connected');
+    expect(health.textContent).toContain('Telemetry last success 5s ago');
+    expect(health.textContent).toContain('1 client');
+
+    const updatedNode = {...node, mwsdStatus: {state: 'starting' as const, lastSuccessAt: null}};
+    fixture.componentRef.setInput('node', updatedNode);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.health')?.textContent)
+      .not.toContain('Telemetry last success');
+  });
+
+  it('explains each disabled TX-power reason through the field hint', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
+
+    if (node === null) {
+      throw new Error('expected extender fixture node');
+    }
+
+    fixture.componentRef.setInput('node', withPower(node, false, {value: 75, available: true}));
+    fixture.detectChanges();
+    expect((slider(fixture, 'WifiMaster0').parentElement as HTMLElement & {hint: string}).hint)
+      .toBe('Remote control is disconnected.');
+
+    fixture.componentRef.setInput('node', withPower(node, true, {value: 75, available: false}));
+    fixture.detectChanges();
+    expect((slider(fixture, 'WifiMaster0').parentElement as HTMLElement & {hint: string}).hint)
+      .toBe('TX power is unavailable.');
+
+    setPower.mockReturnValue(new Promise(() => undefined));
+    fixture.componentRef.setInput('node', withPower(node, true, {value: 75, available: true}));
+    fixture.detectChanges();
+    slider(fixture, 'WifiMaster0').dispatchEvent(new CustomEvent('mndwchange', {detail: {value: 65}, bubbles: true}));
+    fixture.detectChanges();
+
+    expect((slider(fixture, 'WifiMaster0').parentElement as HTMLElement & {hint: string}).hint)
+      .toBe('TX power update is pending.');
   });
 
   it('submits a trimmed controller name and updates the title without mutating the node', () => {
@@ -305,12 +380,18 @@ describe('NodeDrawerComponent', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
     const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
 
-    fixture.componentRef.setInput('node', node === null ? null : withPower(node, true, {value: 100, available: true}));
+    fixture.componentRef.setInput(
+      'node',
+      node === null ? null : withPower(node, true, {value: 100, available: true}),
+    );
     fixture.detectChanges();
     expect(slider(fixture, 'WifiMaster0').value).toBe(100);
     expect(slider(fixture, 'WifiMaster0').disabled).toBe(false);
 
-    fixture.componentRef.setInput('node', node === null ? null : withPower(node, true, {value: 75, available: false}));
+    fixture.componentRef.setInput(
+      'node',
+      node === null ? null : withPower(node, true, {value: 75, available: false}),
+    );
     fixture.detectChanges();
     expect(slider(fixture, 'WifiMaster0').value).toBe(75);
     expect(slider(fixture, 'WifiMaster0').disabled).toBe(true);
@@ -321,7 +402,10 @@ describe('NodeDrawerComponent', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
     const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
 
-    fixture.componentRef.setInput('node', node === null ? null : withPower(node, false, {value: 75, available: true}));
+    fixture.componentRef.setInput(
+      'node',
+      node === null ? null : withPower(node, false, {value: 75, available: true}),
+    );
     fixture.detectChanges();
 
     expect(slider(fixture, 'WifiMaster0').disabled).toBe(true);
@@ -331,7 +415,10 @@ describe('NodeDrawerComponent', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
     const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
 
-    fixture.componentRef.setInput('node', node === null ? null : withPower(node, true, {value: 75, available: true}));
+    fixture.componentRef.setInput(
+      'node',
+      node === null ? null : withPower(node, true, {value: 75, available: true}),
+    );
     fixture.detectChanges();
     slider(fixture, 'WifiMaster0').dispatchEvent(new CustomEvent('mndwchange', {detail: {value: 65}, bubbles: true}));
     fixture.detectChanges();
@@ -352,7 +439,10 @@ describe('NodeDrawerComponent', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
     const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
 
-    fixture.componentRef.setInput('node', node === null ? null : withPower(node, true, {value: 75, available: true}));
+    fixture.componentRef.setInput(
+      'node',
+      node === null ? null : withPower(node, true, {value: 75, available: true}),
+    );
     fixture.detectChanges();
     slider(fixture, 'WifiMaster0').dispatchEvent(new CustomEvent('mndwchange', {detail: {value: 65}, bubbles: true}));
     fixture.detectChanges();
@@ -399,7 +489,10 @@ describe('NodeDrawerComponent', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
     const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
 
-    fixture.componentRef.setInput('node', node === null ? null : withPower(node, true, {value: 75, available: true}));
+    fixture.componentRef.setInput(
+      'node',
+      node === null ? null : withPower(node, true, {value: 75, available: true}),
+    );
     fixture.detectChanges();
     slider(fixture, 'WifiMaster0').dispatchEvent(new CustomEvent('mndwchange', {detail: {value: 65}, bubbles: true}));
     await Promise.resolve();

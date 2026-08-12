@@ -154,6 +154,46 @@ describe('MwsNodesTableComponent', () => {
     expect(clientsHeader?.getAttribute('aria-sort')).toBe('ascending');
   });
 
+  it('keeps quick filters through roots updates and restores all rows when cleared', () => {
+    const initial = roots();
+    const initialController = initial[0];
+    const initialExtender = initialController?.children[0]?.node;
+
+    if (initialController === undefined || initialExtender === undefined) {
+      throw new Error('fixture roots missing expected nodes');
+    }
+
+    initialController.isOnline = false;
+    const fixture = TestBed.createComponent(MwsNodesTableComponent);
+
+    fixture.componentRef.setInput('roots', initial);
+    fixture.componentRef.setInput('quickFilter', 'offline');
+    fixture.detectChanges();
+
+    expect(tableRows(fixture)).toHaveLength(1);
+    expect(tableRows(fixture)[0]?.textContent).toContain('Node A');
+
+    const updated = roots();
+    const updatedController = updated[0];
+    const updatedExtender = updatedController?.children[0]?.node;
+
+    if (updatedController === undefined || updatedExtender === undefined) {
+      throw new Error('updated fixture roots missing expected nodes');
+    }
+
+    updatedExtender.isOnline = false;
+    fixture.componentRef.setInput('roots', updated);
+    fixture.detectChanges();
+
+    expect(tableRows(fixture)).toHaveLength(1);
+    expect(tableRows(fixture)[0]?.textContent).toContain('Node B');
+
+    fixture.componentRef.setInput('quickFilter', 'none');
+    fixture.detectChanges();
+
+    expect(tableRows(fixture)).toHaveLength(2);
+  });
+
   it('opens table settings and hides optional columns without hiding Node name', () => {
     const fixture = render(roots());
     const element = fixture.nativeElement as HTMLElement;

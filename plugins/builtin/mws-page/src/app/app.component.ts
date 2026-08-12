@@ -1,13 +1,13 @@
 import {
   CUSTOM_ELEMENTS_SCHEMA,
   Component,
-  Input,
   type OnDestroy,
   type OnInit,
   ViewChild,
   computed,
   effect,
   inject,
+  input,
   signal,
 } from '@angular/core';
 import type {Subscription} from 'rxjs';
@@ -18,7 +18,9 @@ import {findNodeById, hasUpdate} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {NodePositionStore} from '../services/node-position.store';
 import {MwsDataService} from '../services/mws-data.service';
-import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, TRANSLATOR} from '../tokens';
+import {openAutoLayoutConfirmation} from './auto-layout-confirmation';
+import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, TRANSLATOR} from '../tokens';
+import type {NodeQuickFilter} from '../components/nodes-table/node-rows';
 
 interface MapSummary {
   total: number;
@@ -54,8 +56,9 @@ function walkForest(roots: MwsNode[], visit: (node: MwsNode) => void): void {
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class AppComponent implements OnDestroy, OnInit {
-  @Input({required: true})
-  public openNodeDrawer: (nodeId: string, title: string, onClose: () => void) => void = () => undefined;
+  public readonly openNodeDrawer = input.required<
+    (nodeId: string, title: string, onClose: () => void) => void
+  >();
 
   @ViewChild(MwsGraphComponent)
   private graph?: MwsGraphComponent;
@@ -64,8 +67,10 @@ export class AppComponent implements OnDestroy, OnInit {
   protected readonly translator = inject(TRANSLATOR);
   protected readonly mockOptions = inject(MWS_MOCK_OPTIONS);
   private readonly pageRoute = inject(MWS_PAGE_ROUTE, {optional: true});
+  private readonly overlay = inject(OVERLAY);
   protected readonly positions = inject(NodePositionStore);
   protected readonly selectedTab = signal<'map' | 'nodes' | 'clients'>('map');
+  protected readonly quickFilter = signal<NodeQuickFilter>('none');
   protected readonly editMode = signal(false);
   protected readonly selectedNodeId = signal<string | null>(null);
   protected readonly summary = computed<MapSummary>(() => {
@@ -80,31 +85,16 @@ export class AppComponent implements OnDestroy, OnInit {
 
     return result;
   });
-  protected readonly summaryText = computed<string>(() => {
-    const summary = this.summary();
-    const segments = [this.t('summary.nodes', {count: summary.total})];
-
-    if (summary.offline > 0) {
-      segments.push(this.t('summary.offline', {count: summary.offline}));
-    }
-
-    if (summary.clients > 0) {
-      segments.push(this.t('summary.clients', {count: summary.clients}));
-    }
-
-    if (summary.updates > 0) {
-      segments.push(this.t('summary.updates', {count: summary.updates}));
-    }
-
+  protected readonly mapUpdatedText = computed<string | null>(() => {
     const updatedAt = this.data.lastUpdatedAt();
 
     if (updatedAt !== null) {
       const age = Math.max(0, Math.floor((this.data.freshnessNow() - updatedAt) / 1000));
 
-      segments.push(this.t('summary.updated', {seconds: age}));
+      return this.t('summary.map-updated', {seconds: age});
     }
 
-    return segments.join(' · ');
+    return null;
   });
   private pageRouteSubscription?: Subscription;
 
@@ -151,7 +141,7 @@ export class AppComponent implements OnDestroy, OnInit {
     }
 
     this.selectedNodeId.set(nodeId);
-    this.openNodeDrawer(nodeId, node.name, () => this.selectedNodeId.set(null));
+    this.openNodeDrawer()(nodeId, node.name, () => this.selectedNodeId.set(null));
   }
 
   protected onNodePositionChanged(position: {id: string; x: number; y: number}): void {
@@ -162,8 +152,14 @@ export class AppComponent implements OnDestroy, OnInit {
     this.editMode.update((value) => !value);
   }
 
-  protected autoLayout(): void {
-    void this.positions.clear();
+  protected async autoLayout(): Promise<void> {
+    const closed = await openAutoLayoutConfirmation(this.overlay, (key, values) => this.t(key, values));
+
+    if (closed.result !== 'confirm') {
+      return;
+    }
+
+    await this.positions.clear();
     this.graph?.resetView();
   }
 
@@ -179,6 +175,19 @@ export class AppComponent implements OnDestroy, OnInit {
     const rawValue = (event as CustomEvent<{value?: string}>).detail?.value;
     const value = rawValue === 'clients' || rawValue === 'nodes' ? rawValue : 'map';
 
+    this.navigateToTab(value);
+  }
+
+  protected toggleQuickFilter(filter: Exclude<NodeQuickFilter, 'none'>): void {
+    this.quickFilter.set(this.quickFilter() === filter ? 'none' : filter);
+    this.navigateToTab('nodes');
+  }
+
+  protected isQuickFilterActive(filter: Exclude<NodeQuickFilter, 'none'>): boolean {
+    return this.quickFilter() === filter;
+  }
+
+  private navigateToTab(value: 'map' | 'nodes' | 'clients'): void {
     this.selectedTab.set(value);
 
     if (this.pageRoute === null || this.pageRoute === undefined) {

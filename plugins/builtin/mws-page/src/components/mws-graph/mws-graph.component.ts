@@ -3,15 +3,14 @@ import {
   CUSTOM_ELEMENTS_SCHEMA,
   Component,
   ElementRef,
-  EventEmitter,
   HostBinding,
   HostListener,
-  Input,
-  type OnChanges,
   type OnDestroy,
-  Output,
   ViewChild,
+  effect,
   inject,
+  input,
+  output,
 } from '@angular/core';
 import * as d3 from 'd3';
 import type {MwsNode} from '../../domain/mws/mws.types';
@@ -27,6 +26,7 @@ import {
 } from './graph-layout';
 import {edgeTooltip, edgeType, linkQuality} from './link-quality';
 import {TRANSLATOR} from '../../tokens';
+import {getNodeStatusLabels} from '../../status-labels';
 
 export const FIT_PADDING = 40;
 export const CLICK_SLOP = 4;
@@ -44,11 +44,17 @@ interface DragState {
   moved: boolean;
 }
 
+interface SelectionState {
+  selected: MwsNode | null;
+  path: Set<string>;
+  reachedController: boolean;
+}
+
 @Component({
   selector: 'mws-map-graph',
   standalone: true,
   template: `
-    <div class="graph.controls" [attr.aria-label]="t('graph.controls')">
+    <div class="graph-controls" [attr.aria-label]="t('graph.controls')">
       <span data-testid="l10n-child-probe" hidden>{{ t('l10n.probe') }}</span>
       <div class="graph-view-controls" [attr.aria-label]="t('graph.view-controls')">
         <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-in')" (click)="zoomIn()">+</mndw-button>
@@ -56,7 +62,7 @@ interface DragState {
         <mndw-button variant="secondary" [attr.aria-label]="t('action.fit')" (click)="recenter()">⌖</mndw-button>
       </div>
       <div class="graph-edit-controls" [attr.aria-label]="t('graph.layout-controls')">
-        @if (editMode) {
+        @if (editMode()) {
           <mndw-button variant="primary" class="graph-action" [attr.aria-label]="t('action.auto-layout')" (click)="requestAutoLayout()">{{ t('action.auto-layout') }}</mndw-button>
           <mndw-button variant="primary" class="graph-action" [attr.aria-label]="t('action.done')" (click)="requestDoneEditing()">{{ t('action.done') }}</mndw-button>
         }
@@ -65,8 +71,8 @@ interface DragState {
           type="button"
           class="graph-action"
           [attr.aria-label]="t('action.rearrange')"
-          [attr.aria-pressed]="editMode"
-          [disabled]="editMode"
+          [attr.aria-pressed]="editMode()"
+          [disabled]="editMode()"
           (click)="toggleEditMode()"
         >{{ t('action.rearrange') }}</mndw-button>
       </div>
@@ -76,41 +82,31 @@ interface DragState {
   styleUrls: ['./mws-graph.component.scss'],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
-export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
+export class MwsGraphComponent implements AfterViewInit, OnDestroy {
   private readonly translator = inject(TRANSLATOR);
-  @Input({required: true})
-  public roots: MwsNode[] = [];
+  public readonly roots = input.required<MwsNode[]>();
 
-  @Input()
-  public nodePositions: ReadonlyMap<string, Position> = new Map();
+  public readonly nodePositions = input<ReadonlyMap<string, Position>>(new Map());
 
-  @Input()
-  public positionsLoadOutcome: PositionsLoadOutcome = 'pending';
+  public readonly positionsLoadOutcome = input<PositionsLoadOutcome>('pending');
 
-  @Input()
-  public editMode = false;
+  public readonly editMode = input(false);
 
-  @Input()
-  public selectedNodeId: string | null = null;
+  public readonly selectedNodeId = input<string | null>(null);
 
-  @Output()
-  public readonly nodeSelected = new EventEmitter<string>();
+  public readonly nodeSelected = output<string>();
 
-  @Output()
-  public readonly nodePositionChanged = new EventEmitter<Position & {id: string}>();
+  public readonly nodePositionChanged = output<Position & {id: string}>();
 
-  @Output()
-  public readonly editModeToggled = new EventEmitter<void>();
+  public readonly editModeToggled = output<void>();
 
-  @Output()
-  public readonly autoLayoutRequested = new EventEmitter<void>();
+  public readonly autoLayoutRequested = output<void>();
 
-  @Output()
-  public readonly doneEditingRequested = new EventEmitter<void>();
+  public readonly doneEditingRequested = output<void>();
 
   @HostBinding('class.editing')
   public get editingClass(): boolean {
-    return this.editMode;
+    return this.editMode();
   }
 
   @ViewChild('svg', {static: true})
@@ -130,6 +126,30 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
   private dragState: DragState | null = null;
   private readonly dragPositions = new Map<string, Position>();
   private skippedChangeDuringDrag = false;
+  private pointerNodeId: string | null = null;
+  private focusNodeId: string | null = null;
+  private activeSource: 'pointer' | 'focus' | null = null;
+
+  private readonly inputEffect = effect(() => {
+    this.roots();
+    this.nodePositions();
+    this.positionsLoadOutcome();
+    const editMode = this.editMode();
+    this.selectedNodeId();
+
+    if (editMode) {
+      this.clearHoverState();
+    }
+
+    if (this.dragState !== null) {
+      this.skippedChangeDuringDrag = true;
+
+      return;
+    }
+
+    this.reconcileDragPositions();
+    this.render();
+  });
 
   public ngAfterViewInit(): void {
     const svgElement = this.svgRef?.nativeElement;
@@ -157,17 +177,6 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.render();
   }
 
-  public ngOnChanges(): void {
-    if (this.dragState !== null) {
-      this.skippedChangeDuringDrag = true;
-
-      return;
-    }
-
-    this.reconcileDragPositions();
-    this.render();
-  }
-
   public ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
@@ -178,7 +187,7 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.userAdjusted = false;
     this.forceFit = true;
 
-    if (this.nodePositions.size === 0) {
+    if (this.nodePositions().size === 0) {
       this.render();
     }
   }
@@ -262,11 +271,11 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       return;
     }
 
-    const signature = topologySignature(this.roots);
+    const signature = topologySignature(this.roots());
     const topologyChanged = signature !== this.lastTopologySignature;
 
     if (topologyChanged || this.layout === null) {
-      this.layout = layoutForest(this.roots);
+      this.layout = layoutForest(this.roots());
       this.lastTopologySignature = signature;
     } else {
       this.repointLayout(this.layout);
@@ -279,9 +288,9 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     const positionLoadFinished = !this.initialPositionFit
       && this.previousPositionsLoadOutcome === 'pending'
-      && this.positionsLoadOutcome !== 'pending';
+      && this.positionsLoadOutcome() !== 'pending';
 
-    this.previousPositionsLoadOutcome = this.positionsLoadOutcome;
+    this.previousPositionsLoadOutcome = this.positionsLoadOutcome();
 
     if (positionLoadFinished) {
       this.initialPositionFit = true;
@@ -289,7 +298,7 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     const shouldFit = this.forceFit
       || (topologyChanged && !this.userAdjusted)
-      || (positionLoadFinished && this.positionsLoadOutcome === 'applied' && !this.userAdjusted);
+      || (positionLoadFinished && this.positionsLoadOutcome() === 'applied' && !this.userAdjusted);
 
     if (shouldFit) {
       this.fitToContent(false);
@@ -310,7 +319,7 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       }
     };
 
-    for (const root of this.roots) {
+    for (const root of this.roots()) {
       visit(root);
     }
 
@@ -341,7 +350,7 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       return dragged;
     }
 
-    const manual = this.nodePositions.get(positioned.node.id);
+    const manual = this.nodePositions().get(positioned.node.id);
 
     return manual === undefined ? {x: positioned.x, y: positioned.y} : manual;
   }
@@ -397,6 +406,7 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       .join((enter) => {
         const nodeGroup = enter.append('g');
 
+        nodeGroup.append('title').attr('class', 'node-name-title');
         nodeGroup.append('rect').attr('class', 'selection-ring');
         nodeGroup.append('rect').attr('class', 'node-body');
         nodeGroup.append('text').attr('class', 'name');
@@ -416,6 +426,7 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
         return nodeGroup;
       })
       .attr('class', (positioned) => this.nodeClass(positioned.node, selected))
+      .attr('data-node-id', (positioned) => positioned.node.id)
       .attr('transform', (positioned) => {
         const position = this.effectivePosition(positioned);
 
@@ -424,18 +435,30 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       .attr('role', 'button')
       .attr('tabindex', 0)
       .attr('aria-label', (positioned) => this.nodeLabel(positioned.node))
+      .on('pointerenter', (_event: PointerEvent, positioned: PositionedNode) => {
+        this.onPointerEnter(positioned.node.id);
+      })
+      .on('pointerleave', (_event: PointerEvent, positioned: PositionedNode) => {
+        this.onPointerLeave(positioned.node.id);
+      })
+      .on('focusin', (_event: FocusEvent, positioned: PositionedNode) => {
+        this.onFocusIn(positioned.node.id);
+      })
+      .on('focusout', (_event: FocusEvent, positioned: PositionedNode) => {
+        this.onFocusOut(positioned.node.id);
+      })
       .on('keydown', (event: KeyboardEvent, positioned) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          this.nodeSelected.emit(positioned.node.id);
+          this.selectNode(positioned.node.id);
         }
       });
 
-    if (this.editMode) {
+    if (this.editMode()) {
       nodeGroups.on('click', null);
     } else {
       nodeGroups.on('click', (_event: MouseEvent, positioned: PositionedNode) => {
-        this.nodeSelected.emit(positioned.node.id);
+        this.selectNode(positioned.node.id);
       });
     }
 
@@ -454,10 +477,13 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       .attr('height', nodeHeight)
       .attr('rx', 6);
 
+    nodeGroups.select('title.node-name-title')
+      .text((positioned) => positioned.node.name);
+
     nodeGroups.select('text.name')
       .attr('text-anchor', 'middle')
       .attr('y', -15)
-      .text((positioned) => positioned.node.name);
+      .text((positioned) => truncateNodeName(positioned.node.name));
 
     nodeGroups.select('text.model')
       .attr('text-anchor', 'middle')
@@ -505,9 +531,9 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       )
       .select('title')
       .text((positioned) =>
-        positioned.node.mwsdStatus === undefined
+        positioned.node.isController
           ? ''
-          : `${this.t('graph.mwsd')} ${positioned.node.mwsdStatus.state}`
+          : getNodeStatusLabels(positioned.node, (key, values) => this.t(key, values)).telemetry
       );
 
     nodeGroups.select<SVGCircleElement>('circle.persistent-session-dot')
@@ -527,18 +553,16 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       )
       .select('title')
       .text((positioned) =>
-        positioned.node.persistentSession === undefined
+        positioned.node.isController
           ? ''
-          : positioned.node.persistentSession
-          ? this.t('graph.persistent-live')
-          : this.t('graph.persistent-failing')
+          : getNodeStatusLabels(positioned.node, (key, values) => this.t(key, values)).remoteControl
       );
 
     this.applyDragBehavior(nodeGroups);
   }
 
   private applyDragBehavior(nodeGroups: d3.Selection<SVGGElement, PositionedNode, SVGGElement, unknown>): void {
-    if (!this.editMode || this.zoomGroup === null) {
+    if (!this.editMode() || this.zoomGroup === null) {
       nodeGroups.on('.drag', null);
 
       return;
@@ -614,7 +638,7 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
 
     if (isClick || next === undefined) {
       this.dragPositions.delete(state.id);
-      this.nodeSelected.emit(state.id);
+      this.selectNode(state.id);
     } else {
       this.nodePositionChanged.emit({id: state.id, ...next});
     }
@@ -657,37 +681,161 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   private reconcileDragPositions(): void {
     for (const [id, position] of this.dragPositions) {
-      const input = this.nodePositions.get(id);
+      const manualPosition = this.nodePositions().get(id);
 
-      if (input?.x === position.x && input?.y === position.y) {
+      if (manualPosition?.x === position.x && manualPosition?.y === position.y) {
         this.dragPositions.delete(id);
       }
     }
   }
 
-  private selectionState(): {selected: MwsNode | null; path: Set<string>} {
-    if (this.selectedNodeId === null) {
-      return {selected: null, path: new Set()};
+  private selectNode(id: string): void {
+    this.clearHoverState();
+    this.nodeSelected.emit(id);
+  }
+
+  private onPointerEnter(id: string): void {
+    if (this.editMode()) {
+      return;
     }
 
-    const selected = findNodeById(this.roots, this.selectedNodeId);
+    this.pointerNodeId = id;
+    this.activeSource = 'pointer';
+    this.applySelectionVisuals();
+  }
+
+  private onPointerLeave(id: string): void {
+    if (this.editMode() || this.pointerNodeId !== id) {
+      return;
+    }
+
+    this.pointerNodeId = null;
+
+    if (this.activeSource === 'pointer') {
+      this.activeSource = this.focusNodeId === null ? null : 'focus';
+    }
+
+    this.applySelectionVisuals();
+  }
+
+  private onFocusIn(id: string): void {
+    if (this.editMode()) {
+      return;
+    }
+
+    this.focusNodeId = id;
+    this.activeSource = 'focus';
+    this.applySelectionVisuals();
+  }
+
+  private onFocusOut(id: string): void {
+    if (this.editMode() || this.focusNodeId !== id) {
+      return;
+    }
+
+    this.focusNodeId = null;
+
+    if (this.activeSource === 'focus') {
+      this.activeSource = this.pointerNodeId === null ? null : 'pointer';
+    }
+
+    this.applySelectionVisuals();
+  }
+
+  private clearHoverState(): void {
+    this.pointerNodeId = null;
+    this.focusNodeId = null;
+    this.activeSource = null;
+  }
+
+  private applySelectionVisuals(): void {
+    const group = this.zoomGroup;
+
+    if (group === null) {
+      return;
+    }
+
+    const selection = this.selectionState();
+    const {nodeWidth, nodeHeight} = DEFAULT_LAYOUT_CONFIG;
+
+    group.selectAll<SVGGElement, PositionedNode>('g.node')
+      .attr('class', (positioned) => this.nodeClass(positioned.node, selection))
+      .select('rect.selection-ring')
+      .attr('x', -(nodeWidth / 2 + 5))
+      .attr('y', -(nodeHeight / 2 + 5))
+      .attr('width', nodeWidth + 10)
+      .attr('height', nodeHeight + 10)
+      .attr('rx', 11)
+      .style('display', (positioned) => positioned.node.id === selection.selected?.id ? null : 'none');
+
+    group.selectAll<SVGPathElement, PositionedEdge>('path.edge')
+      .attr('class', (edge) => {
+        const pathClass = this.pathSelectionClass(edge, selection);
+
+        return ['edge', edgeType(edge.target.node), linkQuality(edge.target.node), pathClass]
+          .filter((value) => value !== '')
+          .join(' ');
+      });
+  }
+
+  private selectionState(): SelectionState {
+    this.sweepHoverState();
+
+    const hoveredNodeId = this.effectiveHoveredNodeId();
+    const selectedId = hoveredNodeId ?? this.selectedNodeId();
+
+    if (selectedId === null) {
+      return {selected: null, path: new Set(), reachedController: false};
+    }
+
+    const selected = findNodeById(this.roots(), selectedId);
 
     if (selected === null) {
-      return {selected: null, path: new Set()};
+      return {selected: null, path: new Set(), reachedController: false};
     }
 
     const path = new Set<string>();
+    let reachedController = false;
     let current: MwsNode | null = selected;
 
     while (current !== null) {
       path.add(current.id);
+      reachedController = reachedController || current.isController;
       current = current.parent?.node ?? null;
     }
 
-    return {selected, path};
+    return {selected, path, reachedController};
   }
 
-  private nodeClass(node: MwsNode, selection: {selected: MwsNode | null; path: Set<string>}): string {
+  private sweepHoverState(): void {
+    if (this.pointerNodeId !== null && findNodeById(this.roots(), this.pointerNodeId) === null) {
+      this.pointerNodeId = null;
+    }
+
+    if (this.focusNodeId !== null && findNodeById(this.roots(), this.focusNodeId) === null) {
+      this.focusNodeId = null;
+    }
+
+    if (this.activeSource === 'pointer' && this.pointerNodeId === null) {
+      this.activeSource = this.focusNodeId === null ? null : 'focus';
+    } else if (this.activeSource === 'focus' && this.focusNodeId === null) {
+      this.activeSource = this.pointerNodeId === null ? null : 'pointer';
+    } else if (this.activeSource === null) {
+      this.activeSource = this.pointerNodeId === null
+        ? this.focusNodeId === null ? null : 'focus'
+        : 'pointer';
+    }
+  }
+
+  private effectiveHoveredNodeId(): string | null {
+    return this.activeSource === 'pointer'
+      ? this.pointerNodeId
+      : this.activeSource === 'focus'
+      ? this.focusNodeId
+      : null;
+  }
+
+  private nodeClass(node: MwsNode, selection: SelectionState): string {
     const stateClass = [
       node.isController ? 'controller' : '',
       node.isOnline ? '' : 'offline',
@@ -699,6 +847,8 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
         : 'persistent-failing',
       selection.selected === null ? '' : node.id === selection.selected.id
         ? 'selected'
+        : !selection.reachedController
+        ? ''
         : selection.path.has(node.id)
         ? 'on-path'
         : 'dimmed',
@@ -709,9 +859,9 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   private pathSelectionClass(
     edge: PositionedEdge,
-    selection: {selected: MwsNode | null; path: Set<string>},
+    selection: SelectionState,
   ): string {
-    if (selection.selected === null) {
+    if (selection.selected === null || !selection.reachedController) {
       return '';
     }
 
@@ -719,25 +869,22 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   private nodeLabel(node: MwsNode): string {
+    const labels = getNodeStatusLabels(node, (key, values) => this.t(key, values));
     const parts = [
       node.name,
       node.model ?? '',
       node.isController ? this.t('graph.controller') : this.t('graph.extender'),
-      node.isOnline ? '' : this.t('graph.offline'),
-      node.mwsdStatus === undefined || node.isController ? '' : `${this.t('graph.mwsd')} ${node.mwsdStatus.state}`,
-      node.persistentSession === undefined || node.isController
-        ? ''
-        : node.persistentSession
-        ? this.t('graph.persistent-live')
-        : this.t('graph.persistent-failing'),
-      `${node.clients.length} ${this.t('graph.clients')}`,
+      labels.online,
+      node.isController ? '' : labels.telemetry,
+      node.isController ? '' : labels.remoteControl,
+      labels.clients,
     ];
 
     return parts.filter((part) => part !== '').join(', ');
   }
 
-  protected t(key: string): string {
-    return this.translator.t(key);
+  protected t(key: string, values?: Record<string, unknown>): string {
+    return this.translator.t(key, values);
   }
 
   private fitToContent(animate: boolean): void {
@@ -791,4 +938,8 @@ export class MwsGraphComponent implements AfterViewInit, OnChanges, OnDestroy {
       height: host?.clientHeight || svgElement?.clientHeight || 0,
     };
   }
+}
+
+function truncateNodeName(name: string): string {
+  return name.length <= 28 ? name : `${name.slice(0, 28)}…`;
 }

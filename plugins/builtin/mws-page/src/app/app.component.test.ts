@@ -13,7 +13,7 @@ import {loadFixture} from '../fixtures/load';
 import {MwsDataService, type MwsViewPhase} from '../services/mws-data.service';
 import {FakePluginStorage} from '../test-support/plugin-storage.fake';
 import {NodeTableColumnsStore} from '../services/node-table-columns.store';
-import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, PLUGIN_STORAGE, SHARED_PLUGIN_STORAGE, TRANSLATOR} from '../tokens';
+import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, PLUGIN_STORAGE, SHARED_PLUGIN_STORAGE, TRANSLATOR} from '../tokens';
 import {NodePositionStore} from '../services/node-position.store';
 import graphStyles from '../components/mws-graph/mws-graph.component.scss?raw';
 import clientsTableStyles from '../components/clients-table/clients-table.component.scss?raw';
@@ -53,6 +53,7 @@ function fakeData(phase: MwsViewPhase, roots: MwsNode[] = []): FakeData {
 function render(
   data: FakeData,
   pageRoute?: PageRoute,
+  openNodeDrawer: ReturnType<typeof vi.fn> = vi.fn(),
 ): ReturnType<typeof TestBed.createComponent<AppComponent>> {
   TestBed.overrideProvider(MwsDataService, {useValue: data});
 
@@ -62,7 +63,7 @@ function render(
 
   const fixture = TestBed.createComponent(AppComponent);
 
-  fixture.componentRef.setInput('openNodeDrawer', vi.fn());
+  fixture.componentRef.setInput('openNodeDrawer', openNodeDrawer);
   fixture.detectChanges();
 
   return fixture;
@@ -137,6 +138,7 @@ describe('AppComponent', () => {
         {provide: MwsDataService, useValue: undefined},
         {provide: PLUGIN_STORAGE, useValue: new FakePluginStorage()},
         {provide: SHARED_PLUGIN_STORAGE, useValue: new FakePluginStorage()},
+        {provide: OVERLAY, useValue: {open: vi.fn(), closeAll: vi.fn()}},
         {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(testI18n, inject(DestroyRef))},
         NodePositionStore,
         NodeTableColumnsStore,
@@ -192,8 +194,8 @@ describe('AppComponent', () => {
 
   it('renders the graph when ready and opens the drawer on node selection', () => {
     const data = fakeData('ready', fixtureRoots());
-    const fixture = render(data);
-    const open = fixture.componentInstance.openNodeDrawer as ReturnType<typeof vi.fn>;
+    const open = vi.fn();
+    const fixture = render(data, undefined, open);
     const node = (fixture.nativeElement as HTMLElement).querySelector<SVGGElement>('g.node');
 
     expect(node).not.toBeNull();
@@ -215,6 +217,101 @@ describe('AppComponent', () => {
     expect(element.querySelector('mndw-tab-panel[for="clients"] mws-clients-table')).not.toBeNull();
   });
 
+  it('renders discrete summary chips and keeps map freshness separate from telemetry', () => {
+    const roots = fixtureRoots();
+    const controller = roots[0];
+
+    if (controller === undefined) {
+      throw new Error('fixture roots missing controller');
+    }
+
+    controller.isOnline = false;
+    controller.fw = '5.2';
+    controller.fwAvailable = '5.3';
+    controller.clients.push({
+      mac: 'client-1',
+      name: 'Client 1',
+      ip: null,
+      uptime: null,
+      lastSeen: null,
+      wired: false,
+    });
+    const data = fakeData('ready', roots);
+    const now = Date.now();
+
+    data.lastUpdatedAt.set(now - 5_000);
+    data.freshnessNow.set(now);
+
+    const element = render(data).nativeElement as HTMLElement;
+    const chips = [...element.querySelectorAll<HTMLElement>('.summary-chip')];
+
+    expect(chips.map((chip) => chip.textContent?.trim())).toEqual([
+      '3 nodes',
+      '1 offline',
+      '1 client',
+      '1 update available',
+      'Map updated 5s ago',
+    ]);
+  });
+
+  it('routes summary filter chips to Nodes and toggles their active state', () => {
+    const navigate = vi.fn(() => Promise.resolve(undefined));
+    const pageRoute = {
+      childPath$: new BehaviorSubject('/topology'),
+      navigate,
+    } as unknown as PageRoute;
+    const roots = fixtureRoots();
+
+    if (roots[0] !== undefined) {
+      roots[0].isOnline = false;
+    }
+
+    const fixture = render(fakeData('ready', roots), pageRoute);
+    const chip = fixture.nativeElement.querySelector<HTMLElement>('[data-filter="offline"]');
+
+    chip?.click();
+    fixture.detectChanges();
+
+    expect(chip?.getAttribute('aria-pressed')).toBe('true');
+    expect((fixture.nativeElement.querySelector('mndw-tabs') as HTMLElement & {value: string}).value).toBe('nodes');
+    expect(navigate).toHaveBeenCalledWith('/nodes');
+
+    chip?.click();
+    fixture.detectChanges();
+
+    expect(chip?.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('clears positions only after auto-layout confirmation', async () => {
+    const clear = vi.fn(() => Promise.resolve());
+    const overlay = {
+      open: vi.fn(() => ({closed: Promise.resolve({reason: 'action', result: 'confirm'})})),
+    };
+    TestBed.overrideProvider(OVERLAY, {useValue: overlay});
+    const fixture = render(fakeData('ready', fixtureRoots()));
+    const positions = fixture.componentInstance.positions;
+
+    vi.spyOn(positions, 'clear').mockImplementation(clear);
+    await (fixture.componentInstance as unknown as {autoLayout: () => Promise<void>}).autoLayout();
+
+    expect(overlay.open).toHaveBeenCalledOnce();
+    expect(clear).toHaveBeenCalledOnce();
+  });
+
+  it('does not clear positions after auto-layout cancellation or host dismissal', async () => {
+    const clear = vi.fn(() => Promise.resolve());
+    const overlay = {
+      open: vi.fn(() => ({closed: Promise.resolve({reason: 'escape'})})),
+    };
+    TestBed.overrideProvider(OVERLAY, {useValue: overlay});
+    const fixture = render(fakeData('ready', fixtureRoots()));
+
+    vi.spyOn(fixture.componentInstance.positions, 'clear').mockImplementation(clear);
+    await (fixture.componentInstance as unknown as {autoLayout: () => Promise<void>}).autoLayout();
+
+    expect(clear).not.toHaveBeenCalled();
+  });
+
   it('maps the Nodes child path and tab change to /nodes', () => {
     const childPath$ = new BehaviorSubject('/nodes');
     const navigate = vi.fn(() => Promise.resolve(undefined));
@@ -231,8 +328,8 @@ describe('AppComponent', () => {
   });
 
   it('shares Nodes activation with map selection and the drawer', () => {
-    const fixture = render(fakeData('ready', fixtureRoots()));
-    const open = fixture.componentInstance.openNodeDrawer as ReturnType<typeof vi.fn>;
+    const open = vi.fn();
+    const fixture = render(fakeData('ready', fixtureRoots()), undefined, open);
     const button = fixture.nativeElement.querySelector<HTMLButtonElement>(
       'mws-nodes-table tbody td.node-name button[aria-label="Open Router"]',
     );

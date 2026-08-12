@@ -9,7 +9,7 @@ export interface GraphLayoutConfig {
 }
 
 export const DEFAULT_LAYOUT_CONFIG: GraphLayoutConfig = {
-  nodeWidth: 140,
+  nodeWidth: 180,
   nodeHeight: 64,
   nodePadding: 24,
   treeSpacing: 120,

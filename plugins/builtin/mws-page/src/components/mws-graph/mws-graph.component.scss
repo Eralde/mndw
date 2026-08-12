@@ -184,8 +184,6 @@
 
     &.selected rect.node-body {
       filter: drop-shadow(0 0 6px var(--mndw-accent));
-      stroke: var(--mndw-accent);
-      stroke-width: 3;
     }
 
     &.dimmed {

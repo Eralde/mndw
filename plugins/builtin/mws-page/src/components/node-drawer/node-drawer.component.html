@@ -1,4 +1,5 @@
-@if (node; as n) {
+@if (currentNode(); as n) {
+  @let labels = statusLabels(n);
   <div class="drawer">
     <span data-testid="l10n-overlay-probe" hidden>{{ t('l10n.probe') }}</span>
     <section class="identity">
@@ -42,7 +43,19 @@
           >{{ t('drawer.edit') }}</mndw-button>
         </div>
       }
-      <dl>
+      <div class="health">
+        <h4>{{ t('drawer.health') }}</h4>
+        <dl>
+          <dt>{{ t('drawer.status') }}</dt><dd>{{ labels.online }}</dd>
+          <dt>{{ t('drawer.telemetry') }}</dt><dd>{{ labels.telemetry }}</dd>
+          <dt>{{ t('drawer.remote-control') }}</dt><dd>{{ labels.remoteControl }}</dd>
+          @if (telemetryLastSuccess(n); as lastSuccess) {
+            <dt>{{ t('drawer.last-success') }}</dt><dd>{{ lastSuccess }}</dd>
+          }
+          <dt>{{ t('drawer.client-count') }}</dt><dd>{{ labels.clients }}</dd>
+        </dl>
+      </div>
+      <dl class="identity-details">
         <dt>{{ t('drawer.model') }}</dt><dd>{{ dash(n.model) }}</dd>
         <dt>{{ t('drawer.mac') }}</dt><dd>{{ n.mac }}</dd>
         <dt>{{ t('drawer.ip') }}</dt><dd>{{ dash(n.ip) }}</dd>
@@ -90,7 +103,7 @@
     @if (!n.isController) {
       <section class="wifi-power">
         <h4>{{ t('drawer.wifi-power') }}</h4>
-        <mndw-field label="2.4 GHz">
+        <mndw-field label="2.4 GHz" [hint]="powerDisabledHint(n, 'WifiMaster0')">
           <mndw-slider
             data-radio="WifiMaster0"
             min="0"
@@ -103,7 +116,7 @@
           ></mndw-slider>
         </mndw-field>
         @if (n.dualBand) {
-          <mndw-field label="5 GHz">
+          <mndw-field label="5 GHz" [hint]="powerDisabledHint(n, 'WifiMaster1')">
             <mndw-slider
               data-radio="WifiMaster1"
               min="0"

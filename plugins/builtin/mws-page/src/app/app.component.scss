@@ -34,9 +34,36 @@
     }
 
     .summary {
+      display: flex;
       flex: 1 1 100%;
+      flex-wrap: wrap;
+      gap: var(--mndw-space-2);
       margin: 0;
       color: var(--mndw-text-subtle);
+
+      .summary-chip {
+        padding: 2px 8px;
+        border: 1px solid var(--mndw-border);
+        border-radius: 999px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+      }
+
+      .summary-filter-chip {
+        cursor: pointer;
+
+        &[aria-pressed='true'] {
+          border-color: var(--mndw-accent);
+          background: var(--mndw-accent);
+          color: var(--mndw-accent-contrast);
+        }
+
+        &:focus-visible {
+          outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
+          outline-offset: 2px;
+        }
+      }
     }
 
     .banner {

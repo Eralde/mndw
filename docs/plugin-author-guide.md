@@ -43,6 +43,9 @@ and `src/index.ts` must still exist because `mndw validate` requires it and
 Repository `pnpm dev` builds built-in plugins from `src/index.ts`, while
 `pnpm build-builtin-plugins` uses configured production entries.
 
+Uploadable examples live under `plugins/examples` and are built with
+`pnpm build-example-plugins`.
+
 ## Implement the module
 
 The entry exports `createInstance`. Mount UI into the supplied container and

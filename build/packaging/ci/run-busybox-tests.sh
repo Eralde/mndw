@@ -23,7 +23,7 @@ cd "$repo_root/daemon/mndwd"
 export GOCACHE="$repo_root/.cache/go-build"
 go test ./cmd/mndwd/... ./internal/backend/... ./internal/httpx/...
 
-cd "$repo_root/plugins/builtin/ping-widget/backend"
+cd "$repo_root/plugins/examples/ping-widget/backend"
 go test ./...
 
 cd "$repo_root/plugins/builtin/mws-page/backend"

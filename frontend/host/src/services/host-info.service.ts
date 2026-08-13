@@ -16,6 +16,7 @@ export async function fetchHostInfo(): Promise<HostInfo> {
     deviceName: version.device ?? 'Unknown',
     vendor: version.vendor ?? 'Unknown',
     firmwareVersion: version.title ?? 'Unknown',
+    architecture: version.arch,
     theme: getTheme(),
     locale: getLocale(),
   };

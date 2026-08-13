@@ -5,12 +5,16 @@ import crypto from 'node:crypto';
 import {execSync, spawnSync} from 'node:child_process';
 import zlib from 'node:zlib';
 import {GO_TARGETS} from '../../daemon/mndwd/scripts/build-target.js';
-import {PRODUCT_TARGETS, type ProductTarget, isProductTarget} from '../targets.js';
+import {PRODUCT_TARGETS, PRODUCT_TARGET_CONFIG, type ProductTarget, isProductTarget} from '../targets.js';
 import {buildProductTargetWithDefaults} from '../index.js';
 import type {ArtifactDescriptor, SharedArtifacts} from '../artifacts/descriptor.js';
 
-/** Compatibility export; target mapping authority lives with daemon build entries. */
+/** Compatibility export; values derive from shared product target metadata. */
 export const ARCH_MAP = GO_TARGETS;
+
+export function opkgArchForTarget(target: ProductTarget): string {
+  return PRODUCT_TARGET_CONFIG[target].opkgArch;
+}
 
 interface SharedDependencySnapshot {
   readonly bundles: readonly {readonly url: string}[];
@@ -107,43 +111,54 @@ export function verifyStage(
   }
 }
 
-const FILE_ARCH_MARKERS: Record<string, string[]> = {
-  'mipsel-3.4': ['ELF 32-bit', 'MIPS'],
-  'aarch64-3.10': ['ELF 64-bit', 'aarch64'],
-  'armv7-3.2': ['ELF 32-bit', 'ARM', 'not aarch64'],
-};
-
-export function verifyElfWithExec(binaryPath: string, targetArch: string, execFn: () => string): void {
-  const fileOutput = execFn();
-  const markers = FILE_ARCH_MARKERS[targetArch];
-
-  if (!markers) {
-    throw new Error(`Unknown target arch: ${targetArch}`);
+export function verifyElfBytes(binary: Uint8Array, target: ProductTarget): void {
+  if (binary.length < 20) {
+    throw new Error(`ELF header is truncated for target ${target}`);
   }
 
-  for (const marker of markers) {
-    if (marker.startsWith('not ')) {
-      const excluded = marker.slice(4);
+  if (binary[0] !== 0x7f || binary[1] !== 0x45 || binary[2] !== 0x4c || binary[3] !== 0x46) {
+    throw new Error(`binary is not an ELF file for target ${target}`);
+  }
 
-      if (fileOutput.includes(excluded)) {
-        throw new Error(
-          `Binary at ${binaryPath} does not match target ${targetArch}: contains excluded marker ${excluded}: ${fileOutput}`,
-        );
-      }
-    } else if (!fileOutput.includes(marker)) {
-      throw new Error(
-        `Binary at ${binaryPath} does not match target ${targetArch}: missing marker ${marker}: ${fileOutput}`,
-      );
-    }
+  const elfClass = binary[4];
+  const dataEncoding = binary[5];
+
+  if (elfClass !== 1 && elfClass !== 2) {
+    throw new Error(`unsupported ELF class for target ${target}`);
+  }
+
+  if (dataEncoding !== 1 && dataEncoding !== 2) {
+    throw new Error(`unsupported ELF byte order for target ${target}`);
+  }
+
+  const expectedClass = target === 'aarch64' ? 2 : 1;
+  const expectedDataEncoding = target === 'mips' ? 2 : 1;
+
+  if (elfClass !== expectedClass) {
+    throw new Error(`ELF class does not match target ${target}`);
+  }
+
+  if (dataEncoding !== expectedDataEncoding) {
+    throw new Error(`ELF byte order does not match target ${target}`);
+  }
+
+  const view = new DataView(binary.buffer, binary.byteOffset, binary.byteLength);
+  const machine = view.getUint16(18, dataEncoding === 1);
+  const expectedMachine = target === 'aarch64' ? 183 : 8;
+
+  if (machine !== expectedMachine) {
+    throw new Error(`ELF machine does not match target ${target}`);
   }
 }
 
-export function verifyElf(binaryPath: string, targetArch: string): void {
-  verifyElfWithExec(binaryPath, targetArch, () => execSync(`file "${binaryPath}"`, {encoding: 'utf8'}).trim());
+export function verifyElf(binaryPath: string, target: ProductTarget): void {
+  const binary = fs.readFileSync(binaryPath);
+
+  verifyElfBytes(binary, target);
 }
 
-export function verifyAllElf(stagingDir: string, targetArch: string): void {
-  verifyElf(path.join(stagingDir, 'opt', 'sbin', 'mndwd'), targetArch);
+export function verifyAllElf(stagingDir: string, target: ProductTarget): void {
+  verifyElf(path.join(stagingDir, 'opt', 'sbin', 'mndwd'), target);
 
   const pluginsDir = path.join(stagingDir, 'opt', 'share', 'www', 'mndw', 'plugins');
 
@@ -159,11 +174,11 @@ export function verifyAllElf(stagingDir: string, targetArch: string): void {
 
       if (!fs.statSync(fullPath).isFile()) { continue; }
 
-      const fileType = execSync(`file "${fullPath}"`, {encoding: 'utf8'}).trim();
+      const bytes = fs.readFileSync(fullPath);
 
-      if (!fileType.includes('ELF')) { continue; }
+      if (bytes.length < 4 || bytes.subarray(0, 4).toString('ascii') !== '\x7fELF') { continue; }
 
-      verifyElf(fullPath, targetArch);
+      verifyElf(fullPath, target);
     }
   }
 }
@@ -346,12 +361,15 @@ export function writeFeed(ipkPaths: string[], version: string, repoDir: string):
   fs.mkdirSync(repoDir, {recursive: true});
 
   const ipks: IpkInfo[] = [];
+  const supportedOpkgArches = new Set(PRODUCT_TARGETS.map((target) => opkgArchForTarget(target)));
 
   for (const ipkPath of ipkPaths) {
     const filename = path.basename(ipkPath);
     const archMatch = filename.match(/^mndw_[^_]+_(.+)\.ipk$/);
 
-    if (!archMatch) { throw new Error(`Unexpected ipk filename: ${filename}`); }
+    if (!archMatch || !supportedOpkgArches.has(archMatch[1])) {
+      throw new Error(`Unexpected ipk filename: ${filename}`);
+    }
 
     const stat = fs.statSync(ipkPath);
     const sha256 = crypto.createHash('sha256').update(fs.readFileSync(ipkPath))
@@ -478,6 +496,8 @@ function stageTargetArtifacts(
 export function buildOneArch(arch: string, repoRoot: string, version: string): string {
   if (!isProductTarget(arch)) { throw new Error(`Unknown architecture: ${arch}`); }
 
+  const targetConfig = PRODUCT_TARGET_CONFIG[arch];
+
   const outDir = path.join(repoRoot, 'out');
 
   fs.mkdirSync(outDir, {recursive: true});
@@ -502,9 +522,14 @@ export function buildOneArch(arch: string, repoRoot: string, version: string): s
     verifyAllElf(stagingDir, arch);
 
     const dataTarPath = buildDataTar(stagingDir, buildDir);
-    const controlTarPath = buildControlTar(path.join(repoRoot, 'build', 'packaging', 'ipk'), buildDir, version, arch);
+    const controlTarPath = buildControlTar(
+      path.join(repoRoot, 'build', 'packaging', 'ipk'),
+      buildDir,
+      version,
+      targetConfig.opkgArch,
+    );
 
-    return buildIpk(dataTarPath, controlTarPath, outDir, version, arch);
+    return buildIpk(dataTarPath, controlTarPath, outDir, version, targetConfig.opkgArch);
   } finally {
     fs.rmSync(stagingDir, {recursive: true, force: true});
     fs.rmSync(buildDir, {recursive: true, force: true});

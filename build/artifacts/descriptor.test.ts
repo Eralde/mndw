@@ -8,9 +8,9 @@ const validDescriptor = (): ArtifactDescriptor => ({
     plugins: [{name: 'demo', bundle: 'plugins/demo', staticBackends: ['backend/status']}],
   },
   targets: {
-    'mipsel-3.4': {
+    mipsel: {
       daemon: 'opt/sbin/mndwd',
-      pluginBinaries: [{plugin: 'demo', source: 'build/demo/mipsel-3.4/mndwd', destination: 'backend/mndwd'}],
+      pluginBinaries: [{plugin: 'demo', source: 'build/demo/mipsel/mndwd', destination: 'backend/mndwd'}],
     },
   },
 });
@@ -24,7 +24,7 @@ const run = (): void => {
     () =>
       validateArtifactDescriptor({
         ...validDescriptor(),
-        targets: {...validDescriptor().targets, 'x86-64': validDescriptor().targets['mipsel-3.4']},
+        targets: {...validDescriptor().targets, 'x86-64': validDescriptor().targets.mipsel},
       } as unknown as ArtifactDescriptor),
     /unknown product target/,
   );
@@ -51,7 +51,7 @@ const run = (): void => {
     () =>
       validateArtifactDescriptor({
         ...validDescriptor(),
-        targets: {'mipsel-3.4': {
+        targets: {mipsel: {
           daemon: 'opt/sbin/mndwd',
           pluginBinaries: [
             {plugin: 'demo', source: 'a', destination: 'backend/mndwd'},
@@ -65,7 +65,7 @@ const run = (): void => {
     () =>
       validateArtifactDescriptor({
         ...validDescriptor(),
-        targets: {'mipsel-3.4': {daemon: '../mndwd', pluginBinaries: []}},
+        targets: {mipsel: {daemon: '../mndwd', pluginBinaries: []}},
       }),
     /outside/,
   );

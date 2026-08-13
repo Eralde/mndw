@@ -287,7 +287,7 @@ log.Fatal(server.Serve(listener))
 Production code should remove an old socket only when it has established that the path is its own
 stale runtime evidence, restrict socket permissions, bound request bodies at endpoint boundaries,
 and shut down on `SIGTERM`. The built-in
-[`ping-widget` service](../plugins/builtin/ping-widget/backend/internal/httpapi/server.go)
+[`ping-widget` service](../plugins/examples/ping-widget/backend/internal/httpapi/server.go)
 shows JSON HTTP routes; the
 [`terminal-page` service](../plugins/builtin/terminal-page/backend/internal/server/server.go)
 shows HTTP plus WebSocket proxying.

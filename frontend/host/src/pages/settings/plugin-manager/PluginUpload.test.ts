@@ -88,6 +88,18 @@ describe('PluginUpload', () => {
     void unmount(component);
   });
 
+  it('rejects a known ping archive when its target mismatches device architecture', async () => {
+    const uploadFile = vi.fn();
+    const {component, target} = mountUpload({uploadFile, architecture: 'mips'});
+
+    await drop(target, new File(['plugin'], 'ping-widget-mipsel.zip', {type: 'application/zip'}));
+
+    expect(uploadFile).not.toHaveBeenCalled();
+    expect(target.querySelector('.mndw-alert--danger')?.textContent).toContain('mipsel');
+
+    void unmount(component);
+  });
+
   it('shows labeled installed success and notifies manager', async () => {
     const onInstalled = vi.fn();
     const uploadFile = vi.fn().mockResolvedValue({status: 'installed', entry} satisfies UploadResult);

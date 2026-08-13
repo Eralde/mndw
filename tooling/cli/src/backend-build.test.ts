@@ -31,7 +31,7 @@ describe('buildBackend', () => {
 
     writeFileSync(join(dir, 'package.json'), JSON.stringify({scripts: {build: 'ignored'}}));
 
-    expect(buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel-3.4', outDir: join(dir, 'out')})).toBeNull();
+    expect(buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel', outDir: join(dir, 'out')})).toBeNull();
   });
 
   it('invokes hook with target and output directory and validates its artifact manifest', () => {
@@ -46,7 +46,7 @@ describe('buildBackend', () => {
         join(outDir, 'backend-artifact.json'),
         JSON.stringify({
           plugin: 'demo',
-          target: 'mipsel-3.4',
+          target: 'mipsel',
           binaries: [{source: 'mndsd', destination: 'backend/mndsd'}],
         }),
       );
@@ -54,12 +54,12 @@ describe('buildBackend', () => {
       return {status: 0};
     };
 
-    const result = buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel-3.4', outDir, spawn});
+    const result = buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel', outDir, spawn});
 
-    expect(calls[0]).toEqual(['pnpm', 'run', 'build-backend', '--', '--target', 'mipsel-3.4', '--out-dir', outDir]);
+    expect(calls[0]).toEqual(['pnpm', 'run', 'build-backend', '--', '--target', 'mipsel', '--out-dir', outDir]);
     expect(result).toEqual<BackendBuildResult>({
       plugin: 'demo',
-      target: 'mipsel-3.4',
+      target: 'mipsel',
       binaries: [{source: 'mndsd', destination: 'backend/mndsd'}],
     });
   });
@@ -72,7 +72,7 @@ describe('buildBackend', () => {
       buildBackend({
         pluginDir: dir,
         plugin: 'demo',
-        target: 'mipsel-3.4',
+        target: 'mipsel',
         outDir,
         spawn: () => ({status: 1}),
       })
@@ -82,13 +82,13 @@ describe('buildBackend', () => {
       mkdirSync(outDir, {recursive: true});
       writeFileSync(
         join(outDir, 'backend-artifact.json'),
-        JSON.stringify({plugin: 'demo', target: 'armv7-3.2', binaries: []}),
+        JSON.stringify({plugin: 'demo', target: 'aarch64', binaries: []}),
       );
 
       return {status: 0};
     };
 
-    expect(() => buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel-3.4', outDir, spawn: wrongTargetSpawn}))
+    expect(() => buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel', outDir, spawn: wrongTargetSpawn}))
       .toThrow(
         'target mismatch',
       );
@@ -99,7 +99,7 @@ describe('buildBackend', () => {
         join(outDir, 'backend-artifact.json'),
         JSON.stringify({
           plugin: 'demo',
-          target: 'mipsel-3.4',
+          target: 'mipsel',
           binaries: [{source: '../escape', destination: 'backend/escape'}],
         }),
       );
@@ -107,7 +107,7 @@ describe('buildBackend', () => {
       return {status: 0};
     };
 
-    expect(() => buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel-3.4', outDir, spawn: traversalSpawn}))
+    expect(() => buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel', outDir, spawn: traversalSpawn}))
       .toThrow(
         'outside output directory',
       );

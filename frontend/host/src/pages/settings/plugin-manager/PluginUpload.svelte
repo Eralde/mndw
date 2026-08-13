@@ -7,6 +7,7 @@ import {
 } from '../../../services/mgmt-client.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {openApprovalModal} from './approval-modal.js';
+import {validateExampleUploadTarget} from './upload-target.js';
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
@@ -16,6 +17,7 @@ interface Props {
   onApprove: (name: string) => Promise<boolean>;
   onDeny: (name: string) => Promise<boolean>;
   onDismiss: () => void;
+  architecture?: string;
   openApproval?: (
     entry: PluginListEntry,
     signal?: AbortSignal,
@@ -28,6 +30,7 @@ let {
   onApprove,
   onDeny,
   onDismiss,
+  architecture,
   openApproval = openApprovalModal,
 }: Props = $props();
 let status = $state<'idle' | 'uploading' | 'busy' | 'success' | 'error'>(
@@ -100,6 +103,15 @@ async function upload(file: File): Promise<void> {
   const validationError = validate(file);
   if (validationError) {
     error = validationError;
+    status = 'error';
+
+    return;
+  }
+
+  const targetError = validateExampleUploadTarget(file.name, architecture);
+
+  if (targetError !== undefined) {
+    error = targetError;
     status = 'error';
 
     return;

@@ -12,11 +12,12 @@ import {
   collectStagePaths,
   detectTar,
   generateFeed,
+  opkgArchForTarget,
   parseArgs,
   readVersion,
   stageDeployFiles,
   substituteControl,
-  verifyElfWithExec,
+  verifyElfBytes,
   verifyStage,
 } from './build-ipk.js';
 
@@ -57,20 +58,28 @@ const expectUstarArchive = (archivePath: string): void => {
 };
 
 describe('ARCH_MAP', () => {
-  it('maps mipsel-3.4 to mipsle softfloat', () => {
-    expect(ARCH_MAP['mipsel-3.4']).toEqual({GOARCH: 'mipsle', GOMIPS: 'softfloat'});
+  it('maps mipsel to mipsle softfloat', () => {
+    expect(ARCH_MAP.mipsel).toEqual({GOARCH: 'mipsle', GOMIPS: 'softfloat'});
   });
 
-  it('maps aarch64-3.10 to arm64', () => {
-    expect(ARCH_MAP['aarch64-3.10']).toEqual({GOARCH: 'arm64'});
+  it('maps aarch64 to arm64', () => {
+    expect(ARCH_MAP.aarch64).toEqual({GOARCH: 'arm64'});
   });
 
-  it('maps armv7-3.2 to arm with GOARM 7', () => {
-    expect(ARCH_MAP['armv7-3.2']).toEqual({GOARCH: 'arm', GOARM: '7'});
+  it('maps mips to big-endian softfloat MIPS', () => {
+    expect(ARCH_MAP.mips).toEqual({GOARCH: 'mips', GOMIPS: 'softfloat'});
   });
 
   it('returns undefined for unknown arch', () => {
-    expect((ARCH_MAP as Record<string, unknown>)['x86_64-3.2']).toBeUndefined();
+    expect((ARCH_MAP as Record<string, unknown>)['legacy-target']).toBeUndefined();
+  });
+});
+
+describe('IPK target package surfaces', () => {
+  it('maps bare targets to kernel-suffixed opkg architectures', () => {
+    expect(opkgArchForTarget('aarch64')).toBe('aarch64-3.10');
+    expect(opkgArchForTarget('mips')).toBe('mips-3.4');
+    expect(opkgArchForTarget('mipsel')).toBe('mipsel-3.4');
   });
 });
 
@@ -107,9 +116,9 @@ describe('substituteControl', () => {
   });
 
   it('replaces every placeholder occurrence', () => {
-    const result = substituteControl('__VERSION__ __VERSION__ __ARCH__ __ARCH__', '2.0.0', 'armv7-3.2');
+    const result = substituteControl('__VERSION__ __VERSION__ __ARCH__ __ARCH__', '2.0.0', 'aarch64-3.10');
 
-    expect(result).toBe('2.0.0 2.0.0 armv7-3.2 armv7-3.2');
+    expect(result).toBe('2.0.0 2.0.0 aarch64-3.10 aarch64-3.10');
   });
 });
 
@@ -231,11 +240,13 @@ describe('generateFeed', () => {
     const ipks = [
       {arch: 'mipsel-3.4', filename: 'mndw_0.1.0_mipsel-3.4.ipk', size: 100, sha256: 'aaa'},
       {arch: 'aarch64-3.10', filename: 'mndw_0.1.0_aarch64-3.10.ipk', size: 200, sha256: 'bbb'},
+      {arch: 'mips-3.4', filename: 'mndw_0.1.0_mips-3.4.ipk', size: 300, sha256: 'ccc'},
     ];
     const packages = generateFeed('0.1.0', ipks);
     const count = (packages.match(/^Package: mndw$/gm) || []).length;
 
-    expect(count).toBe(2);
+    expect(count).toBe(3);
+    expect(packages).toContain('Architecture: mips-3.4');
   });
 
   it('generates distinct sha256 per arch', () => {
@@ -251,16 +262,33 @@ describe('generateFeed', () => {
 });
 
 describe('verifyElf', () => {
-  it('rejects aarch64 binary passed as armv7 target', () => {
-    const fakeExec = (): string => 'ELF 64-bit LSB executable, ARM aarch64';
+  const header = (target: 'aarch64' | 'mips' | 'mipsel', machine = target === 'aarch64' ? 183 : 8): Uint8Array => {
+    const bytes = new Uint8Array(target === 'aarch64' ? 64 : 52);
 
-    expect(() => verifyElfWithExec('/fake/path', 'armv7-3.2', fakeExec)).toThrow('does not match target');
+    bytes.set([0x7f, 0x45, 0x4c, 0x46, target === 'aarch64' ? 2 : 1, target === 'mips' ? 2 : 1], 0);
+
+    const view = new DataView(bytes.buffer);
+
+    view.setUint16(18, machine, target !== 'mips');
+
+    return bytes;
+  };
+
+  it('accepts the expected ELF class, machine, and byte order', () => {
+    expect(() => verifyElfBytes(header('aarch64'), 'aarch64')).not.toThrow();
+    expect(() => verifyElfBytes(header('mips'), 'mips')).not.toThrow();
+    expect(() => verifyElfBytes(header('mipsel'), 'mipsel')).not.toThrow();
   });
 
-  it('accepts valid armv7 binary', () => {
-    const fakeExec = (): string => 'ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV)';
+  it('rejects little-endian MIPS presented as big-endian mips', () => {
+    expect(() => verifyElfBytes(header('mipsel'), 'mips')).toThrow('byte order');
+  });
 
-    expect(() => verifyElfWithExec('/fake/path', 'armv7-3.2', fakeExec)).not.toThrow();
+  it('rejects malformed, wrong-class, and wrong-machine ELF headers', () => {
+    expect(() => verifyElfBytes(new Uint8Array([0x7f, 0x45]), 'mips')).toThrow('truncated');
+    expect(() => verifyElfBytes(header('aarch64').map((byte, index) => index === 4 ? 1 : byte), 'aarch64'))
+      .toThrow('class');
+    expect(() => verifyElfBytes(header('mips', 183), 'mips')).toThrow('machine');
   });
 });
 
@@ -400,7 +428,7 @@ describe('stageDeployFiles', () => {
 
 describe('parseArgs', () => {
   it('parses --arch', () => {
-    expect(parseArgs(['--arch', 'mipsel-3.4']).arch).toBe('mipsel-3.4');
+    expect(parseArgs(['--arch', 'mipsel']).arch).toBe('mipsel');
   });
 
   it('parses --all', () => {
@@ -408,7 +436,7 @@ describe('parseArgs', () => {
   });
 
   it('parses --repo', () => {
-    expect(parseArgs(['--arch', 'aarch64-3.10', '--repo']).repo).toBe(true);
+    expect(parseArgs(['--arch', 'aarch64', '--repo']).repo).toBe(true);
   });
 
   it('requires --arch or --all', () => {
@@ -417,6 +445,7 @@ describe('parseArgs', () => {
 
   it('rejects unknown arch', () => {
     expect(() => parseArgs(['--arch', 'bad-arch'])).toThrow('Unknown architecture');
+    expect(() => parseArgs(['--arch', 'mipsel-3.4'])).toThrow('Unknown architecture');
   });
 
   it('rejects missing value for --arch', () => {

@@ -461,33 +461,6 @@ importers:
         specifier: ^3.5.39
         version: 3.5.40(typescript@5.9.3)
 
-  plugins/builtin/device-traffic-widget:
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../../frontend/sdk
-      '@mndw/ui':
-        specifier: workspace:*
-        version: link:../../../frontend/ui
-      '@rci-tools/core':
-        specifier: 0.4.3
-        version: 0.4.3
-      '@sveltejs/vite-plugin-svelte':
-        specifier: ^5.0.0
-        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      rxjs:
-        specifier: ^7.8.0
-        version: 7.8.2
-      svelte:
-        specifier: ^5.56.4
-        version: 5.56.8(@typescript-eslint/types@8.57.1)
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
-
   plugins/builtin/dns-lookup-widget:
     devDependencies:
       '@mndw/sdk':
@@ -554,33 +527,6 @@ importers:
       zone.js:
         specifier: ^0.15.1
         version: 0.15.1
-
-  plugins/builtin/ping-widget:
-    devDependencies:
-      '@mndw/sdk':
-        specifier: workspace:*
-        version: link:../../../frontend/sdk
-      '@mndw/ui':
-        specifier: workspace:*
-        version: link:../../../frontend/ui
-      '@sveltejs/vite-plugin-svelte':
-        specifier: ^5.0.0
-        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
-      '@types/node':
-        specifier: 22.19.15
-        version: 22.19.15
-      happy-dom:
-        specifier: 20.11.1
-        version: 20.11.1
-      svelte:
-        specifier: ^5.56.4
-        version: 5.56.8(@typescript-eslint/types@8.57.1)
-      tsx:
-        specifier: ^4.23.0
-        version: 4.23.1
-      vitest:
-        specifier: ^3.2.7
-        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
 
   plugins/builtin/system-log-page:
     devDependencies:
@@ -684,6 +630,60 @@ importers:
       zone.js:
         specifier: ^0.15.1
         version: 0.15.1
+
+  plugins/examples/device-traffic-widget:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@rci-tools/core':
+        specifier: 0.4.3
+        version: 0.4.3
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^5.0.0
+        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      rxjs:
+        specifier: ^7.8.0
+        version: 7.8.2
+      svelte:
+        specifier: ^5.56.4
+        version: 5.56.8(@typescript-eslint/types@8.57.1)
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
+
+  plugins/examples/ping-widget:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@sveltejs/vite-plugin-svelte':
+        specifier: ^5.0.0
+        version: 5.1.1(svelte@5.56.8(@typescript-eslint/types@8.57.1))(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(sass@1.102.0)(tsx@4.23.1))
+      '@types/node':
+        specifier: 22.19.15
+        version: 22.19.15
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      svelte:
+        specifier: ^5.56.4
+        version: 5.56.8(@typescript-eslint/types@8.57.1)
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.1
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)
 
   tooling/cli:
     dependencies:

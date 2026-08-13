@@ -1,6 +1,7 @@
 <script lang="ts">
 import {onMount} from 'svelte';
 
+import {appState} from '../../../state/app.svelte.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {
   type MgmtClient,
@@ -163,6 +164,7 @@ onMount(() => {
   {/if}
 
   <PluginUpload
+    architecture={appState.hostInfo?.architecture}
     uploadFile={(file) => client.uploadPlugin(file)}
     {onInstalled}
     onApprove={(name) => mutate(name, () => client.approvePlugin(name), true)}

@@ -49,11 +49,23 @@ not require lighttpd CGI, jq, or unzip.
 6. create root-owned ustar data and control archives;
 7. emit an architecture-specific IPK.
 
-The architecture map includes `mipsel-3.4`, `aarch64-3.10`, and
-`armv7-3.2`. `--all` builds the supported set. The package feed contains one
-entry per architecture.
+The bare target map includes `aarch64`, `mips`, and `mipsel`. IPK package
+surfaces use `aarch64-3.10`, `mips-3.4`, and `mipsel-3.4` respectively.
+`--all` builds the supported set. The package feed contains one entry per
+architecture.
 
 The package depends on lighttpd and its proxy/rewrite modules.
+
+Uploadable example archives are produced separately with
+`pnpm build-example-plugins`: `device-traffic-widget.zip` and one
+target-labelled ping archive per target. The UI can reject a known ping
+archive when `show.version.arch` identifies a different target; unknown or
+renamed archives retain normal upload behavior. Ping uploads require approval
+before activation; the traffic widget has no backend and installs directly.
+
+Publishing an IPK/feed entry does not provision a device architecture. The
+configured opkg architecture list and Entware feed must include the matching
+kernel-suffixed target, including `mips-3.4` for big-endian MIPS.
 
 ## Install and upgrade
 

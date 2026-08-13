@@ -1,11 +1,11 @@
 import {spawn} from 'node:child_process';
-import {existsSync, readFileSync, readdirSync, statSync} from 'node:fs';
+import {existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync} from 'node:fs';
 import {availableParallelism} from 'node:os';
 import {join, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const sourceRoot = join(repoRoot, 'plugins/builtin');
-const outputRoot = join(sourceRoot, 'dist');
 const development = process.argv.includes('--dev');
 
 interface CommandStep {
@@ -38,7 +38,15 @@ function run(step: CommandStep): Promise<string> {
   });
 }
 
-function stepsFor(name: string): CommandStep[] {
+export function discoverBuiltinPlugins(root = sourceRoot): string[] {
+  return readdirSync(root)
+    .filter((name) => name !== 'dist' && !name.startsWith('.'))
+    .filter((name) => existsSync(join(root, name, 'manifest.json')))
+    .filter((name) => statSync(join(root, name)).isDirectory())
+    .sort();
+}
+
+function stepsFor(name: string, outputRoot: string): CommandStep[] {
   const pluginDir = join(sourceRoot, name);
   const outDir = join(outputRoot, name);
   const packageJson = join(pluginDir, 'package.json');
@@ -71,10 +79,10 @@ function stepsFor(name: string): CommandStep[] {
 }
 
 // Build a single plugin: its steps run sequentially, output flushed as one block.
-async function buildPlugin(name: string): Promise<void> {
+async function buildPlugin(name: string, outputRoot: string): Promise<void> {
   const outputs: string[] = [];
 
-  for (const step of stepsFor(name)) {
+  for (const step of stepsFor(name, outputRoot)) {
     outputs.push(await run(step));
   }
 
@@ -82,14 +90,14 @@ async function buildPlugin(name: string): Promise<void> {
 }
 
 // Bounded worker pool: at most `limit` plugins build concurrently.
-async function runPool(names: readonly string[], limit: number): Promise<void> {
+async function runPool(names: readonly string[], outputRoot: string, limit: number): Promise<void> {
   let next = 0;
 
   async function worker(): Promise<void> {
     while (next < names.length) {
       const name = names[next++];
 
-      await buildPlugin(name);
+      await buildPlugin(name, outputRoot);
     }
   }
 
@@ -99,23 +107,51 @@ async function runPool(names: readonly string[], limit: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const plugins = readdirSync(sourceRoot)
-    .filter((name) => name !== 'dist')
-    .filter((name) => existsSync(join(sourceRoot, name, 'manifest.json')))
-    .filter((name) => statSync(join(sourceRoot, name)).isDirectory())
-    .sort();
+  const plugins = discoverBuiltinPlugins();
+  const outputRoot = mkdtempSync(join(sourceRoot, '.mndw-builtin-'));
 
   const concurrencyArg = process.argv.find((arg) => arg.startsWith('--concurrency='));
   const parsed = concurrencyArg === undefined ? Number.NaN : Number.parseInt(concurrencyArg.split('=')[1], 10);
   const limit = Number.isInteger(parsed) && parsed > 0 ? parsed : availableParallelism();
 
-  await runPool(plugins, limit);
+  try {
+    await runPool(plugins, outputRoot, limit);
+
+    const publishedRoot = join(sourceRoot, 'dist');
+    const backupRoot = `${publishedRoot}.previous`;
+
+    if (existsSync(publishedRoot)) {
+      renameSync(publishedRoot, backupRoot);
+    }
+
+    try {
+      renameSync(outputRoot, publishedRoot);
+    } catch (error) {
+      if (existsSync(backupRoot)) {
+        renameSync(backupRoot, publishedRoot);
+      }
+
+      throw error;
+    }
+
+    if (existsSync(backupRoot)) {
+      rmSync(backupRoot, {recursive: true, force: true});
+    }
+  } catch (error) {
+    if (existsSync(outputRoot)) {
+      rmSync(outputRoot, {recursive: true, force: true});
+    }
+
+    throw error;
+  }
 
   process.stdout.write(`\nPacked ${plugins.length} built-in plugins: ${plugins.join(', ')}\n`);
 }
 
-main()
-  .catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
-  });
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main()
+    .catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : error);
+      process.exitCode = 1;
+    });
+}

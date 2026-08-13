@@ -272,6 +272,8 @@ module.exports = tseslint.config(
       // Built example-plugin bundles (esbuild output) are not source — never lint them.
       'plugins/builtin/dist/**',
       'plugins/builtin/*/dist/**',
+      'plugins/examples/dist/**',
+      'plugins/examples/*/dist/**',
     ],
   },
   // @see https://typescript-eslint.io/getting-started/typed-linting/
@@ -335,7 +337,7 @@ module.exports = tseslint.config(
   },
   // Example plugins: relax type-aware strictness for D3 and Vue h() patterns
   {
-    files: ['plugins/builtin/**/*.ts'],
+    files: ['plugins/builtin/**/*.ts', 'plugins/examples/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-call': OFF,
       '@typescript-eslint/no-unsafe-member-access': OFF,
@@ -360,6 +362,8 @@ module.exports = tseslint.config(
           allowDefaultProject: [
             'plugins/builtin/*/src/components/*.svelte',
             'plugins/builtin/*/src/*.svelte',
+            'plugins/examples/*/src/components/*.svelte',
+            'plugins/examples/*/src/*.svelte',
           ],
           defaultProject: './tsconfig.example-plugins.json',
         },
@@ -413,10 +417,10 @@ module.exports = tseslint.config(
   {
     files: [
       'frontend/host/src/**/*.svelte',
-      'plugins/builtin/ping-widget/src/**/*.{ts,svelte}',
+      'plugins/examples/ping-widget/src/**/*.{ts,svelte}',
       'plugins/builtin/system-log-page/src/**/*.{ts,svelte}',
       'plugins/builtin/terminal-page/src/**/*.{ts,svelte}',
-      'plugins/builtin/device-traffic-widget/src/**/*.{ts,svelte}',
+      'plugins/examples/device-traffic-widget/src/**/*.{ts,svelte}',
       'plugins/builtin/clients-widget/src/**/*.{ts,vue}',
       'plugins/builtin/device-info-widget/src/**/*.{ts,vue}',
       'plugins/builtin/mws-page/src/**/*.ts',

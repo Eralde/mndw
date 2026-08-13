@@ -3,6 +3,7 @@ import {existsSync, readFileSync, statSync} from 'node:fs';
 import {isAbsolute, relative, resolve} from 'node:path';
 
 import {CliError} from './errors.js';
+import {type ProductTarget, isProductTarget} from '../../../build/targets.js';
 
 export interface BackendArtifact {
   readonly source: string;
@@ -11,7 +12,7 @@ export interface BackendArtifact {
 
 export interface BackendBuildResult {
   readonly plugin: string;
-  readonly target: string;
+  readonly target: ProductTarget;
   readonly binaries: readonly BackendArtifact[];
 }
 
@@ -58,7 +59,7 @@ function isSafeRelativePath(value: unknown): value is string {
     && !value.split('/').includes('..');
 }
 
-function readBackendArtifact(outDir: string, plugin: string, target: string): BackendBuildResult {
+function readBackendArtifact(outDir: string, plugin: string, target: ProductTarget): BackendBuildResult {
   const artifactPath = resolve(outDir, 'backend-artifact.json');
 
   if (!existsSync(artifactPath)) {
@@ -137,6 +138,10 @@ export function buildBackend(options: BackendBuildOptions): BackendBuildResult |
 
   if (typeof script !== 'string' || script.length === 0) {
     return null;
+  }
+
+  if (!isProductTarget(options.target)) {
+    throw new CliError(`unknown product target: ${options.target}`);
   }
 
   if (packageJson.scripts?.[script] === undefined) {

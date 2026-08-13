@@ -183,6 +183,46 @@ describe('packPlugin', () => {
     expect(mode).toBe('755');
   });
 
+  it('injects a target backend and records its final digest', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({
+        name: 'targeted-widget',
+        backend: {
+          kind: 'service',
+          protocolVersion: 1,
+          command: 'backend/ping-util',
+          routes: [{id: 'ping', transport: 'http', method: 'GET', path: 'ping'}],
+        },
+      }),
+      index: 'export const createInstance = () => ({unmount() {}});\n',
+    });
+
+    const backendPath = join(dir, 'target-build', 'ping-util');
+    const backendBytes = Buffer.from('target backend');
+
+    mkdirSync(join(dir, 'target-build'), {recursive: true});
+    writeFileSync(backendPath, backendBytes);
+
+    await packPlugin(dir, {
+      backendOverride: {
+        target: 'mipsel',
+        sourceRoot: join(dir, 'target-build'),
+        files: [{source: backendPath, destination: 'backend/ping-util', mode: 0o755}],
+      },
+    });
+
+    const artifact = JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8')) as {
+      backend: {target: string; files: {path: string; sha256: string}[]};
+    };
+
+    expect(readFileSync(join(dir, 'dist', 'backend', 'ping-util'))).toEqual(backendBytes);
+    expect(artifact.backend.target).toBe('mipsel');
+    expect(artifact.backend.files).toEqual([{
+      path: 'backend/ping-util',
+      sha256: '81f1557e4ad8e28f7900eadff63cb52a314ad75145ca70f0882af382e8b5963d',
+    }]);
+  });
+
   it('bundles configured production source instead of the development source', async () => {
     scaffold(dir, {
       manifest: widgetManifest({name: 'configured-entry-widget'}),
@@ -483,7 +523,7 @@ describe('packExamplePlugins', () => {
 
   beforeEach(async () => {
     outDir = mkdtempSync(join(tmpdir(), 'mndw-example-plugins-'));
-    names = await packExamplePlugins({outDir, sourceDir: join(repoRoot, 'plugins/builtin')});
+    names = await packExamplePlugins({outDir, sourceDir: join(repoRoot, 'plugins/examples')});
   }, 60_000);
 
   afterEach(() => {
@@ -495,31 +535,12 @@ describe('packExamplePlugins', () => {
   }
 
   it('builds every example plugin into one output destination', () => {
-    expect(names).toEqual([
-      'backend-echo',
-      'clients-widget',
-      'clock-widget',
-      'demo-page',
-      'device-info-widget',
-      'device-traffic-widget',
-      'dns-lookup-widget',
-      'mws-page',
-      'ping-widget',
-      'system-log-page',
-      'terminal-page',
-      'tx-rx-chart-widget',
-    ]);
+    expect(names).toEqual(['device-traffic-widget', 'ping-widget']);
 
     for (const name of names) {
       expect(existsSync(join(outDir, name, 'index.js'))).toBe(true);
       expect(existsSync(join(outDir, name, 'manifest.json'))).toBe(true);
     }
-
-    const scriptMode = statSync(join(outDir, 'backend-echo', 'backend', 'echo.cgi')).mode;
-
-    const hasExecutableBit = [0o100, 0o010, 0o001].some((bit) => Math.floor(scriptMode / bit) % 2 === 1);
-
-    expect(hasExecutableBit).toBe(true);
   });
 
   it('preserves manifests, emitted CSS, bundled dependencies, and shared externals', () => {

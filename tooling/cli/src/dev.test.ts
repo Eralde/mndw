@@ -24,7 +24,8 @@ describe('defaultBuildGoBackend', () => {
     ['ping-widget', 'ping-util'],
   ])('builds %s command using its discovered executable name', (pluginName, commandName) => {
     const runBuild = vi.fn(() => ({status: 0})) as unknown as typeof spawnSync;
-    const pluginDir = resolve(import.meta.dirname, '..', '..', '..', 'plugins/builtin', pluginName);
+    const sourceRoot = pluginName === 'ping-widget' ? 'plugins/examples' : 'plugins/builtin';
+    const pluginDir = resolve(import.meta.dirname, '..', '..', '..', sourceRoot, pluginName);
 
     const result = defaultBuildGoBackend(pluginDir, runBuild);
 

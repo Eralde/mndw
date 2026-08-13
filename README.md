@@ -35,11 +35,11 @@ Set `MNDW_HOST_DEVICE` to select that device.
 ## Plugin authoring
 
 ```bash
-npx mndw create my-widget --framework svelte --type widget
-npx mndw dev my-widget
-npx mndw validate my-widget
-npx mndw pack my-widget
-npx mndw zip my-widget
+pnpm exec mndw create my-widget --framework svelte --type widget
+pnpm exec mndw dev my-widget
+pnpm exec mndw validate my-widget
+pnpm exec mndw pack my-widget
+pnpm exec mndw zip my-widget
 ```
 
 The normal loop is `create → dev → validate → pack → zip → upload`. Plugins use
@@ -52,13 +52,13 @@ See the [SDK plugin-author guide](frontend/sdk/README.md).
 ## IPK build
 
 ```bash
-pnpm build-ipk --arch mipsel-3.4
+pnpm build-ipk --arch mipsel
 pnpm build-ipk --all
 pnpm build-ipk --all --repo
 ```
 
-Output: `out/mndw_<version>_<arch>.ipk`. Builds require a Go cross-compile
-toolchain.
+Output: `out/mndw_<version>_<opkg-arch>.ipk` (for example,
+`mndw_<version>_mipsel-3.4.ipk`). Builds require a Go cross-compile toolchain.
 
 ## Project layout
 
@@ -77,6 +77,7 @@ packages/
   go-device-auth/   shared device-auth handshake
   go-rcisock/       shared persistent RCI transport
 plugins/builtin/    shipped built-in plugins and backend implementations
+plugins/examples/   uploadable example plugins
 build/packaging/             lighttpd, init, IPK, install scripts
 build/              palette, development, and IPK build tools
 docs/               documentation

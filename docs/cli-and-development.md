@@ -89,6 +89,13 @@ ordinary `pnpm build-builtin-plugins` command continues to pack configured
 production entries. The existing `MNDW_HOST_DEVICE` value continues to select
 the real router for RCI/auth calls.
 
+Uploadable repository examples live under `plugins/examples`. Build their
+archives with `pnpm build-example-plugins`; this produces
+`device-traffic-widget.zip` plus `ping-widget-aarch64.zip`,
+`ping-widget-mips.zip`, and `ping-widget-mipsel.zip`. The ping archives contain
+target-specific backend binaries and follow upload → approval → activation.
+The traffic widget has no backend and installs directly.
+
 ## Author loop
 
 Use this sequence for a new plugin:

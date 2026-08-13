@@ -2,18 +2,12 @@ import {spawnSync} from 'node:child_process';
 import {existsSync, mkdirSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 
-import type {ProductTarget} from '../../../build/targets.js';
-
-export interface GoTargetConfig {
-  readonly GOARCH: string;
-  readonly GOARM?: string;
-  readonly GOMIPS?: string;
-}
+import {type GoTargetConfig, PRODUCT_TARGET_CONFIG, type ProductTarget} from '../../../build/targets.js';
 
 export const GO_TARGETS: Record<ProductTarget, GoTargetConfig> = {
-  'mipsel-3.4': {GOARCH: 'mipsle', GOMIPS: 'softfloat'},
-  'aarch64-3.10': {GOARCH: 'arm64'},
-  'armv7-3.2': {GOARCH: 'arm', GOARM: '7'},
+  aarch64: PRODUCT_TARGET_CONFIG.aarch64.go,
+  mips: PRODUCT_TARGET_CONFIG.mips.go,
+  mipsel: PRODUCT_TARGET_CONFIG.mipsel.go,
 };
 
 export function goTargetEnvironment(repoRoot: string, target: ProductTarget): NodeJS.ProcessEnv {

@@ -4,11 +4,12 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {GO_TARGETS, goTargetEnvironment} from '../../../../daemon/mndwd/scripts/build-target.js';
+import {type ProductTarget, isProductTarget} from '../../../../build/targets.js';
 
 const plugin = 'ping-widget';
 const backendDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'backend');
 
-function parseOptions(): {target: string; outDir: string} | null {
+function parseOptions(): {target: ProductTarget; outDir: string} | null {
   const args = process.argv.slice(2).filter((argument) => argument !== '--');
 
   if (args.length === 0) {
@@ -32,7 +33,7 @@ function parseOptions(): {target: string; outDir: string} | null {
     throw new Error('build-backend requires --target and --out-dir');
   }
 
-  if (!(target in GO_TARGETS)) {
+  if (target === undefined || !isProductTarget(target) || !(target in GO_TARGETS)) {
     throw new Error(`unknown product target: ${target}`);
   }
 

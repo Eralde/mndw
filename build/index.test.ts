@@ -15,7 +15,7 @@ const run = (): void => {
     repoRoot,
     outputRoot,
     descriptorPath,
-    target: 'mipsel-3.4',
+    target: 'mipsel',
     version: '0.0.0',
     shared: {
       frontend: {root: 'frontend/host/dist', sharedBundles: ['shared/rxjs@7.8.2.js']},
@@ -38,8 +38,8 @@ const run = (): void => {
   });
 
   assert.deepEqual(calls.map((call) => call.split(':')[0]), ['daemon', 'plugins']);
-  assert.equal(descriptor.targets['mipsel-3.4']?.daemon, 'artifacts/targets/mipsel-3.4/opt/sbin/mndwd');
-  assert.equal(descriptor.targets['mipsel-3.4']?.pluginBinaries[0]?.plugin, 'demo');
+  assert.equal(descriptor.targets.mipsel?.daemon, 'artifacts/targets/mipsel/opt/sbin/mndwd');
+  assert.equal(descriptor.targets.mipsel?.pluginBinaries[0]?.plugin, 'demo');
   assert.deepEqual(JSON.parse(readFileSync(descriptorPath, 'utf8')), descriptor);
   rmSync(repoRoot, {recursive: true, force: true});
 };

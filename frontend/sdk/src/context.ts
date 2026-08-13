@@ -35,6 +35,8 @@ export interface HostInfo {
   deviceName: string;
   vendor: string;
   firmwareVersion: string;
+  /** Raw `show.version.arch`; absent when host information was unavailable. */
+  architecture?: string;
   /** Active UI locale at the time this context was created. */
   locale: string;
   /** Active UI theme at the time this context was created. */

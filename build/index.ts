@@ -50,6 +50,37 @@ interface PackedPluginArtifact {
   readonly plugin: string;
   readonly entry: string;
   readonly staticBackends: readonly string[];
+  readonly backend?: PackedBackendMetadata;
+}
+
+interface PackedBackendMetadata {
+  readonly target: ProductTarget;
+  readonly files: readonly {readonly path: string; readonly sha256: string}[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPackedBackendFile(value: unknown): value is {readonly path: string; readonly sha256: string} {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value.path === 'string'
+    && value.path.length > 0
+    && !value.path.startsWith('/')
+    && !value.path.split('/').includes('..')
+    && typeof value.sha256 === 'string'
+    && /^[0-9a-f]{64}$/.test(value.sha256);
+}
+
+function isPackedBackendMetadata(value: unknown): value is PackedBackendMetadata {
+  return isRecord(value)
+    && typeof value.target === 'string'
+    && isProductTarget(value.target)
+    && Array.isArray(value.files)
+    && value.files.every(isPackedBackendFile);
 }
 
 function readPackedPluginArtifact(pluginDist: string, name: string): PackedPluginArtifact | null {
@@ -69,6 +100,12 @@ function readPackedPluginArtifact(pluginDist: string, name: string): PackedPlugi
     || artifact.staticBackends.some((path) => typeof path !== 'string')
   ) {
     throw new Error(`invalid packed plugin artifact: ${artifactPath}`);
+  }
+
+  if (artifact.backend !== undefined) {
+    if (!isPackedBackendMetadata(artifact.backend)) {
+      throw new Error(`invalid packed backend metadata: ${artifactPath}`);
+    }
   }
 
   return artifact as PackedPluginArtifact;

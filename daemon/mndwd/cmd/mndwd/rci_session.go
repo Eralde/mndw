@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"mndw.local/device-auth"
@@ -26,18 +27,25 @@ import (
 // rciSessionAssembly owns the persistent-RCI socket bindings and their
 // reconciliation with the encrypted credential state.
 type rciSessionAssembly struct {
-	registry    *registry.Registry
-	store       *state.Store
-	runtimeRoot string
-	service     *rcisession.Service
-	reconciler  *rcisessionsocket.Reconciler
-	logger      *slog.Logger
-	mu          sync.Mutex
+	registry       *registry.Registry
+	store          *state.Store
+	runtimeRoot    string
+	service        *rcisession.Service
+	reconciler     *rcisessionsocket.Reconciler
+	logger         *slog.Logger
+	activation     atomic.Pointer[activationSnapshot]
+	activationPoke func()
+	mu             sync.Mutex
+}
+
+type activationSnapshot struct {
+	satisfied map[string]bool
 }
 
 type persistentSessionRegistration struct {
 	close                func()
 	permissionController mgmt.PersistentRCIPermissionController
+	activationAssembly   *rciSessionAssembly
 }
 
 // assembleRCISession wires the persistent RCI session subsystem: it opens the
@@ -46,7 +54,7 @@ type persistentSessionRegistration struct {
 // returns the cleanup that closes the socket reconciler. When the persistent
 // store cannot be opened the subsystem is skipped and the returned cleanup is a
 // no-op.
-func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, accessMux *http.ServeMux, logger *slog.Logger) persistentSessionRegistration {
+func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, accessMux *http.ServeMux, activationGates *backend.ActivationGateRegistry, logger *slog.Logger) persistentSessionRegistration {
 	registration := persistentSessionRegistration{close: func() {}}
 
 	if cfg.RCISessionStateDir == "" {
@@ -121,28 +129,61 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 		reconciler:  socketReconciler,
 		logger:      logger,
 	}
+	gate := backend.ActivationGateFunc(func(pluginName string) bool {
+		return assembly.activationSatisfied(pluginName)
+	})
+
+	if activationGates != nil {
+		activationGates.Register(manifest.PersistentRCISessionReadPermission, gate)
+		activationGates.Register(manifest.PersistentRCISessionWritePermission, gate)
+	}
 
 	sessionService.SetMutationObserver(assembly.reconcileSockets)
 	assembly.reconcileSockets()
 
 	registration.close = assembly.close
 	registration.permissionController = assembly
+	registration.activationAssembly = assembly
 
 	return registration
+}
+
+func (a *rciSessionAssembly) activationSatisfied(pluginName string) bool {
+	snapshot := a.activation.Load()
+
+	if snapshot == nil {
+		return false
+	}
+
+	return snapshot.satisfied[pluginName]
+}
+
+func (a *rciSessionAssembly) SetActivationPoke(poke func()) {
+	a.mu.Lock()
+
+	a.activationPoke = poke
+
+	a.mu.Unlock()
 }
 
 func (a *rciSessionAssembly) reconcileSockets() {
 	a.mu.Lock()
 
-	defer a.mu.Unlock()
+	report, changed, err := a.reconcileSocketsLocked()
+	poke := a.activationPoke
 
-	report, err := a.reconcileSocketsLocked()
+	a.mu.Unlock()
+
 	if err != nil {
 		a.serviceLogger().Error("persistent RCI socket reconciliation failed", "reason", "reconcile", "error", err)
 	}
 
 	for plugin := range report.StartErrors {
 		a.serviceLogger().Error("persistent RCI socket start failed", "plugin", plugin, "reason", "reconcile")
+	}
+
+	if changed && poke != nil {
+		poke()
 	}
 }
 
@@ -163,14 +204,21 @@ func (a *rciSessionAssembly) PermissionChanged(plugin string) error {
 
 	a.mu.Lock()
 
-	defer a.mu.Unlock()
+	report, changed, err := a.reconcileSocketsLocked()
+	poke := a.activationPoke
+	available := report.Desired[plugin] && !report.Active[plugin]
 
-	report, err := a.reconcileSocketsLocked()
+	a.mu.Unlock()
+
+	if changed && poke != nil {
+		poke()
+	}
+
 	if err != nil {
 		return err
 	}
 
-	if report.Desired[plugin] && !report.Active[plugin] {
+	if available {
 		return fmt.Errorf("%w: plugin %s socket unavailable", mgmt.ErrPersistentRCISocketStart, plugin)
 	}
 
@@ -187,7 +235,7 @@ func (a *rciSessionAssembly) close() {
 	}
 }
 
-func (a *rciSessionAssembly) reconcileSocketsLocked() (rcisessionsocket.ReconcileReport, error) {
+func (a *rciSessionAssembly) reconcileSocketsLocked() (rcisessionsocket.ReconcileReport, bool, error) {
 	bindings := make([]rcisessionsocket.Binding, 0)
 
 	for _, plugin := range a.registry.AllBackendPlugins() {
@@ -220,9 +268,49 @@ func (a *rciSessionAssembly) reconcileSocketsLocked() (rcisessionsocket.Reconcil
 	}
 
 	_, document := a.service.Capability()
-	present := document.Controller != nil && document.Controller.Token != ""
+	present := controllerTokenPresent(document)
 
-	return a.reconciler.Reconcile(context.Background(), bindings, present)
+	report, err := a.reconciler.Reconcile(context.Background(), bindings, present)
+	changed := a.publishActivationSnapshotLocked(present)
+
+	return report, changed, err
+}
+
+func controllerTokenPresent(document model.Document) bool {
+	return document.Controller != nil && document.Controller.Token != ""
+}
+
+func (a *rciSessionAssembly) publishActivationSnapshotLocked(present bool) bool {
+	next := make(map[string]bool)
+
+	for _, plugin := range a.registry.AllBackendPlugins() {
+		read := a.store.HasGrant(plugin.Name, manifest.PersistentRCISessionReadPermission)
+		write := a.store.HasGrant(plugin.Name, manifest.PersistentRCISessionWritePermission)
+		next[plugin.Name] = present && (read || write)
+	}
+
+	previous := a.activation.Load()
+	changed := previous == nil || !sameActivationSnapshot(previous.satisfied, next)
+
+	a.activation.Store(&activationSnapshot{satisfied: next})
+
+	return changed
+}
+
+func sameActivationSnapshot(previous, next map[string]bool) bool {
+	if len(previous) != len(next) {
+		return false
+	}
+
+	for pluginName, satisfied := range previous {
+		nextSatisfied, ok := next[pluginName]
+
+		if !ok || nextSatisfied != satisfied {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (a *rciSessionAssembly) serviceLogger() *slog.Logger {

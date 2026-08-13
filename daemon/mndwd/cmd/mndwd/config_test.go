@@ -24,15 +24,19 @@ func TestParseDefaultsV3BackendLimitsAndTimeouts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if cfg.MaxConcurrentExecTotal != 8 || cfg.MaxConcurrentExecPerPlugin != 4 || cfg.MaxSupervisedServices != 8 {
 		t.Fatalf("backend limits = total:%d plugin:%d services:%d", cfg.MaxConcurrentExecTotal, cfg.MaxConcurrentExecPerPlugin, cfg.MaxSupervisedServices)
 	}
+
 	if cfg.ExecKillGrace != 2*time.Second || cfg.ServiceHTTPTimeout != 30*time.Second || cfg.HTTPDrainTimeout != 35*time.Second {
 		t.Fatalf("backend timeouts = grace:%s service:%s drain:%s", cfg.ExecKillGrace, cfg.ServiceHTTPTimeout, cfg.HTTPDrainTimeout)
 	}
+
 	if cfg.WebSocketCloseTimeout != 2*time.Second || cfg.ServiceStopTimeout != 10*time.Second || cfg.FinalReapTimeout != 2*time.Second || cfg.InitWaitTimeout != 60*time.Second {
 		t.Fatalf("backend lifecycle timeouts = ws:%s stop:%s reap:%s init:%s", cfg.WebSocketCloseTimeout, cfg.ServiceStopTimeout, cfg.FinalReapTimeout, cfg.InitWaitTimeout)
 	}
+
 	if len(cfg.SupportedServiceProtocols) != 1 || cfg.SupportedServiceProtocols[0] != 1 {
 		t.Fatalf("supported protocols = %#v, want [1]", cfg.SupportedServiceProtocols)
 	}
@@ -58,6 +62,7 @@ func TestParseDefaultsDiagnosticsLogFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if cfg.DiagnosticsLogFile != "/opt/var/log/mndwd.log" {
 		t.Fatalf("diagnostics log file = %q, want production default", cfg.DiagnosticsLogFile)
 	}
@@ -72,6 +77,7 @@ func TestParseAcceptsDiagnosticsLogFileOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if cfg.DiagnosticsLogFile != "/tmp/mndwd-test.log" {
 		t.Fatalf("diagnostics log file = %q, want override", cfg.DiagnosticsLogFile)
 	}
@@ -101,30 +107,39 @@ func TestParseDefaultsPersistentSessionConfig(t *testing.T) {
 	if got, want := cfg.RCISessionStateDir, "/var/lib/mndw"; got != want {
 		t.Fatalf("RCI session state dir = %q, want %q", got, want)
 	}
+
 	if got, want := cfg.ControllerURL, "http://127.0.0.1:79"; got != want {
 		t.Fatalf("controller URL = %q, want %q", got, want)
 	}
+
 	if got, want := cfg.RCISessionKeyDir, "/opt/var/lib/mndw-secrets"; got != want {
 		t.Fatalf("RCI session key dir = %q, want %q", got, want)
 	}
+
 	if got, want := cfg.RCISessionCiphertextFile(), "/var/lib/mndw/rci-session.enc"; got != want {
 		t.Fatalf("RCI ciphertext file = %q, want %q", got, want)
 	}
+
 	if got, want := cfg.RCISessionKeyFile(), "/opt/var/lib/mndw-secrets/rci-session.key"; got != want {
 		t.Fatalf("RCI key file = %q, want %q", got, want)
 	}
+
 	if cfg.RCIEnumerationTTL != 30*time.Second {
 		t.Fatalf("RCI enumeration TTL = %s, want 30s", cfg.RCIEnumerationTTL)
 	}
+
 	if cfg.RCIProxyIdleTimeout != 2*time.Minute {
 		t.Fatalf("RCI proxy idle timeout = %s, want 2m", cfg.RCIProxyIdleTimeout)
 	}
+
 	if cfg.RCIProxyOperationTimeout != cfg.ExecTimeout {
 		t.Fatalf("RCI proxy operation timeout = %s, want exec timeout %s", cfg.RCIProxyOperationTimeout, cfg.ExecTimeout)
 	}
+
 	if cfg.RCIProxyMaxInflight != 8 {
 		t.Fatalf("RCI proxy max inflight = %d, want 8", cfg.RCIProxyMaxInflight)
 	}
+
 	if cfg.RCIProxyMaxResponseBytes != 1<<20 {
 		t.Fatalf("RCI proxy max response bytes = %d, want 1 MiB", cfg.RCIProxyMaxResponseBytes)
 	}
@@ -148,6 +163,7 @@ func TestParseDevAcceptsExplicitHTTPControllerURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if cfg.ControllerURL != "http://192.168.1.1:80" {
 		t.Fatalf("controller URL = %q", cfg.ControllerURL)
 	}
@@ -158,6 +174,7 @@ func TestParseDevAcceptsHTTPSControllerURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if cfg.ControllerURL != "https://controller.example" {
 		t.Fatalf("controller URL = %q", cfg.ControllerURL)
 	}

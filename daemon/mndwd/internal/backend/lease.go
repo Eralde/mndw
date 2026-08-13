@@ -21,27 +21,38 @@ func WriteServiceLease(path string, lease ServiceLease) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("create lease directory: %w", err)
 	}
+
 	temporary, err := os.CreateTemp(filepath.Dir(path), ".service-lease-")
 	if err != nil {
 		return fmt.Errorf("create lease temp file: %w", err)
 	}
+
 	temporaryPath := temporary.Name()
+
 	defer os.Remove(temporaryPath)
+
 	if err := temporary.Chmod(0o600); err != nil {
 		_ = temporary.Close()
+
 		return fmt.Errorf("restrict lease temp file: %w", err)
 	}
+
 	if err := json.NewEncoder(temporary).Encode(lease); err != nil {
 		_ = temporary.Close()
+
 		return fmt.Errorf("encode lease: %w", err)
 	}
+
 	if err := temporary.Sync(); err != nil {
 		_ = temporary.Close()
+
 		return fmt.Errorf("sync lease: %w", err)
 	}
+
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close lease: %w", err)
 	}
+
 	if err := os.Rename(temporaryPath, path); err != nil {
 		return fmt.Errorf("install lease: %w", err)
 	}
@@ -54,15 +65,20 @@ func ReadServiceLease(path string) (ServiceLease, error) {
 	if err != nil {
 		return ServiceLease{}, err
 	}
+
 	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
 		return ServiceLease{}, fmt.Errorf("lease is not a private regular file")
 	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		return ServiceLease{}, err
 	}
+
 	defer file.Close()
+
 	var lease ServiceLease
+
 	if err := json.NewDecoder(file).Decode(&lease); err != nil {
 		return ServiceLease{}, fmt.Errorf("decode lease: %w", err)
 	}
@@ -76,16 +92,22 @@ func ReapStaleLease(path string, reader ProcessReader) (bool, error) {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
+
 		_ = os.Remove(path)
+
 		return false, err
 	}
+
 	matched, err := ValidateServiceLease(lease, reader)
 	if err != nil {
 		_ = os.Remove(path)
+
 		return false, err
 	}
+
 	if !matched {
 		_ = os.Remove(path)
+
 		return false, nil
 	}
 

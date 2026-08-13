@@ -53,6 +53,8 @@ func processGroupAlive(pgid int) bool {
 	if pgid <= 0 {
 		return false
 	}
+
 	err := syscall.Kill(-pgid, 0)
+
 	return err == nil || !errors.Is(err, syscall.ESRCH)
 }

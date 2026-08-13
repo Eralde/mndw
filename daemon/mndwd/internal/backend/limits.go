@@ -36,13 +36,17 @@ func NewAdmission(limits Limits) *Admission {
 
 func (a *Admission) TryAcquireExec(pluginID string) (*Reservation, bool) {
 	a.mu.Lock()
+
 	defer a.mu.Unlock()
+
 	if a.totalExec >= a.limits.MaxConcurrentExecTotal {
 		return nil, false
 	}
+
 	if a.pluginExec[pluginID] >= a.limits.MaxConcurrentExecPerPlugin {
 		return nil, false
 	}
+
 	a.totalExec++
 	a.pluginExec[pluginID]++
 
@@ -51,13 +55,17 @@ func (a *Admission) TryAcquireExec(pluginID string) (*Reservation, bool) {
 
 func (a *Admission) TryReserveService(pluginID string) (*Reservation, bool) {
 	a.mu.Lock()
+
 	defer a.mu.Unlock()
+
 	if a.serviceOwners[pluginID] {
 		return &Reservation{admission: a, pluginID: pluginID, kind: reservationService}, true
 	}
+
 	if a.services >= a.limits.MaxSupervisedServices {
 		return nil, false
 	}
+
 	a.services++
 	a.serviceOwners[pluginID] = true
 
@@ -68,22 +76,28 @@ func (r *Reservation) Release() {
 	if r == nil || r.admission == nil {
 		return
 	}
+
 	r.once.Do(func() {
 		if r.kind == reservationService && !r.owner {
 			return
 		}
+
 		r.admission.mu.Lock()
+
 		defer r.admission.mu.Unlock()
+
 		switch r.kind {
 		case reservationExec:
 			r.admission.totalExec--
 			r.admission.pluginExec[r.pluginID]--
+
 			if r.admission.pluginExec[r.pluginID] == 0 {
 				delete(r.admission.pluginExec, r.pluginID)
 			}
 		case reservationService:
 			if r.admission.serviceOwners[r.pluginID] {
 				delete(r.admission.serviceOwners, r.pluginID)
+
 				r.admission.services--
 			}
 		}
@@ -92,8 +106,11 @@ func (r *Reservation) Release() {
 
 func (a *Admission) Snapshot() (execTotal, services int, perPlugin map[string]int) {
 	a.mu.Lock()
+
 	defer a.mu.Unlock()
+
 	perPlugin = make(map[string]int, len(a.pluginExec))
+
 	for pluginID, count := range a.pluginExec {
 		perPlugin[pluginID] = count
 	}

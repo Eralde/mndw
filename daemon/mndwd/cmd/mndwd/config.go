@@ -85,6 +85,7 @@ func (c Config) RCISessionKeyFile() string {
 // was passed so main can print and exit before doing any work.
 func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs := flag.NewFlagSet("mndwd", flag.ContinueOnError)
+
 	fs.StringVar(&cfg.Listen, "listen", "127.0.0.1:9090", "address to listen on")
 	fs.StringVar(&cfg.DataDir, "data-dir", "/opt/var/lib/mndw", "directory for state.json and staging")
 	fs.StringVar(&cfg.RCISessionStateDir, "rci-session-state-dir", "", "directory for encrypted persistent RCI session ciphertext")
@@ -120,27 +121,35 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	if err = fs.Parse(args); err != nil {
 		return cfg, false, err
 	}
+
 	if showVersion {
 		return cfg, true, nil
 	}
+
 	controllerURLOverride := false
+
 	fs.Visit(func(flag *flag.Flag) {
 		if flag.Name == "controller-url" {
 			controllerURLOverride = true
 		}
 	})
+
 	if cfg.PluginRuntimeRoot == "" {
 		cfg.PluginRuntimeRoot = os.Getenv(pluginruntime.RuntimeRootEnv)
 	}
+
 	if cfg.PluginRuntimeRoot == "" {
 		cfg.PluginRuntimeRoot = defaultPluginRuntimeRoot
 	}
+
 	if cfg.RCISessionStateDir == "" {
 		cfg.RCISessionStateDir = cfg.DataDir
 	}
+
 	if !cfg.Dev && controllerURLOverride {
 		return cfg, false, fmt.Errorf("--controller-url is available only in --dev mode")
 	}
+
 	if !cfg.Dev {
 		cfg.ControllerURL = rcisession.DefaultControllerURL
 	} else if !controllerURLOverride && strings.TrimSpace(os.Getenv("MNDW_HOST_DEVICE")) != "" {
@@ -148,6 +157,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	} else if cfg.ControllerURL == "" {
 		cfg.ControllerURL = rcisession.DefaultControllerURL
 	}
+
 	if cfg.RCISessionKeyDir == "" {
 		if cfg.Dev {
 			cfg.RCISessionKeyDir = filepath.Join(filepath.Dir(cfg.DataDir), "rci-session-secrets")
@@ -155,15 +165,19 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 			cfg.RCISessionKeyDir = "/opt/var/lib/mndw-secrets"
 		}
 	}
+
 	if cfg.RCIProxyOperationTimeout == 0 {
 		cfg.RCIProxyOperationTimeout = cfg.ExecTimeout
 	}
+
 	if err := validatePersistentSessionConfig(cfg); err != nil {
 		return cfg, false, err
 	}
+
 	if err := validateControllerURL(cfg.ControllerURL); err != nil {
 		return cfg, false, err
 	}
+
 	if !cfg.Dev && !isLoopbackControllerURL(cfg.ControllerURL) {
 		return cfg, false, fmt.Errorf("remote HTTP controller URL is not permitted outside --dev mode")
 	}
@@ -171,9 +185,11 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	if cfg.Opkg != "exec" && cfg.Opkg != "stub" {
 		return cfg, false, fmt.Errorf("--opkg must be exec or stub, got %q", cfg.Opkg)
 	}
+
 	if _, ok := parseLevel(cfg.LogLevel); !ok {
 		return cfg, false, fmt.Errorf("--log-level must be debug|info|warn|error, got %q", cfg.LogLevel)
 	}
+
 	for _, item := range []struct {
 		flagName string
 		envName  string
@@ -186,19 +202,26 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 		if flagWasSet(fs, item.flagName) {
 			continue
 		}
+
 		value, present := os.LookupEnv(item.envName)
+
 		if !present || value == "" {
 			continue
 		}
+
 		parsed, parseErr := strconv.Atoi(value)
+
 		if parseErr != nil || parsed <= 0 {
 			return cfg, false, fmt.Errorf("%s must be a positive integer", item.envName)
 		}
+
 		*item.target = parsed
 	}
+
 	if err := validateBackendConfig(cfg); err != nil {
 		return cfg, false, err
 	}
+
 	cfg.SupportedServiceProtocols = []int{1}
 
 	return cfg, false, nil
@@ -206,11 +229,13 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 
 func flagWasSet(flags *flag.FlagSet, name string) bool {
 	set := false
+
 	flags.Visit(func(item *flag.Flag) {
 		if item.Name == name {
 			set = true
 		}
 	})
+
 	return set
 }
 
@@ -223,11 +248,13 @@ func validateBackendConfig(cfg Config) error {
 		{"max-concurrent-exec-per-plugin", cfg.MaxConcurrentExecPerPlugin},
 		{"max-supervised-services", cfg.MaxSupervisedServices},
 	}
+
 	for _, item := range positive {
 		if item.value <= 0 {
 			return fmt.Errorf("--%s must be positive", item.name)
 		}
 	}
+
 	for _, item := range []struct {
 		name  string
 		value time.Duration
@@ -245,10 +272,13 @@ func validateBackendConfig(cfg Config) error {
 			return fmt.Errorf("--%s must be positive", item.name)
 		}
 	}
+
 	minimumDrain := cfg.ExecTimeout + cfg.ExecKillGrace
+
 	if cfg.ServiceHTTPTimeout > minimumDrain {
 		minimumDrain = cfg.ServiceHTTPTimeout
 	}
+
 	if cfg.HTTPDrainTimeout < minimumDrain {
 		return fmt.Errorf("--http-drain-timeout must be at least %s", minimumDrain)
 	}
@@ -277,33 +307,42 @@ func validatePersistentSessionConfig(cfg Config) error {
 	if !filepath.IsAbs(cfg.RCISessionStateDir) {
 		return fmt.Errorf("--rci-session-state-dir must be absolute, got %q", cfg.RCISessionStateDir)
 	}
+
 	if !filepath.IsAbs(cfg.RCISessionKeyDir) {
 		return fmt.Errorf("--rci-session-key-dir must be absolute, got %q", cfg.RCISessionKeyDir)
 	}
+
 	stateDir := filepath.Clean(cfg.RCISessionStateDir)
 	keyDir := filepath.Clean(cfg.RCISessionKeyDir)
 	rel, err := filepath.Rel(stateDir, keyDir)
 	if err != nil {
 		return fmt.Errorf("compare persistent RCI directories: %w", err)
 	}
+
 	if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
 		return fmt.Errorf("--rci-session-key-dir must be outside --rci-session-state-dir")
 	}
+
 	if cfg.RCIEnumerationTTL <= 0 {
 		return fmt.Errorf("--rci-enumeration-ttl must be positive")
 	}
+
 	if cfg.RCIProxyIdleTimeout <= 0 {
 		return fmt.Errorf("--rci-proxy-idle-timeout must be positive")
 	}
+
 	if cfg.RCIProxyOperationTimeout <= 0 {
 		return fmt.Errorf("--rci-proxy-operation-timeout must be positive")
 	}
+
 	if cfg.RCIProxyMaxInflight <= 0 {
 		return fmt.Errorf("--rci-proxy-max-inflight must be positive")
 	}
+
 	if cfg.RCIProxyMaxResponseBytes <= 0 {
 		return fmt.Errorf("--rci-proxy-max-response-bytes must be positive")
 	}
+
 	return nil
 }
 

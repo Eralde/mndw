@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"os"
+	"sync"
 
 	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
@@ -40,6 +41,7 @@ type RuntimeConfig struct {
 	PluginDataRoot            string
 	Limits                    Limits
 	SupportedServiceProtocols []int
+	ActivationGates           *ActivationGateRegistry
 	Exec                      ExecRunnerConfig
 	Supervisor                SupervisorConfig
 }
@@ -48,11 +50,16 @@ type RuntimeConfig struct {
 // long-running services. This prevents separate subsystems from exceeding a
 // shared platform limit during startup or shutdown races.
 type RuntimeImpl struct {
-	exec           *ExecRunner
-	supervisor     *Supervisor
-	limits         Limits
-	protocols      []int
-	runtimeRoot    string
+	exec            *ExecRunner
+	supervisor      *Supervisor
+	limits          Limits
+	protocols       []int
+	runtimeRoot     string
+	activationGates *ActivationGateRegistry
+	// reconcileMu serializes caller-driven lifecycle passes. Supervisor retry
+	// and capacity-promotion starts intentionally bypass it; a later full pass
+	// reapplies activation gates and converges any stale desired spec.
+	reconcileMu    sync.Mutex
 	maintenance    func(string)
 	maintenanceEnd func(string)
 	platform       func()
@@ -79,6 +86,10 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 		config.SupportedServiceProtocols = []int{1}
 	}
 
+	if config.ActivationGates == nil {
+		config.ActivationGates = NewActivationGateRegistry()
+	}
+
 	config.Exec.MaxConcurrentExecTotal = config.Limits.MaxConcurrentExecTotal
 	config.Exec.MaxConcurrentExecPerPlugin = config.Limits.MaxConcurrentExecPerPlugin
 	config.Exec.RuntimeRoot = config.RuntimeRoot
@@ -96,19 +107,24 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 	admission := NewAdmission(config.Limits)
 
 	return &RuntimeImpl{
-		exec:        newExecRunner(config.Exec, admission),
-		supervisor:  newSupervisor(config.Supervisor, admission),
-		limits:      config.Limits,
-		protocols:   append([]int(nil), config.SupportedServiceProtocols...),
-		runtimeRoot: config.RuntimeRoot,
+		exec:            newExecRunner(config.Exec, admission),
+		supervisor:      newSupervisor(config.Supervisor, admission),
+		limits:          config.Limits,
+		protocols:       append([]int(nil), config.SupportedServiceProtocols...),
+		runtimeRoot:     config.RuntimeRoot,
+		activationGates: config.ActivationGates,
 	}
 }
 
 func (r *RuntimeImpl) Reconcile(ctx context.Context, plugins []*registry.Plugin) {
+	r.reconcileMu.Lock()
+
+	defer r.reconcileMu.Unlock()
+
 	specs := make([]ServiceSpec, 0, len(plugins))
 
 	for _, plugin := range plugins {
-		if spec, ok := serviceSpec(plugin); ok {
+		if spec, ok := serviceSpec(plugin, r.activationGates); ok {
 			spec.RCISessionSocket = persistentRCISocket(r.runtimeRoot, plugin)
 			specs = append(specs, spec)
 		}
@@ -118,7 +134,11 @@ func (r *RuntimeImpl) Reconcile(ctx context.Context, plugins []*registry.Plugin)
 }
 
 func (r *RuntimeImpl) Activate(ctx context.Context, plugin *registry.Plugin) error {
-	spec, ok := serviceSpec(plugin)
+	r.reconcileMu.Lock()
+
+	defer r.reconcileMu.Unlock()
+
+	spec, ok := serviceSpec(plugin, r.activationGates)
 
 	if !ok {
 		return nil
@@ -130,10 +150,18 @@ func (r *RuntimeImpl) Activate(ctx context.Context, plugin *registry.Plugin) err
 }
 
 func (r *RuntimeImpl) Deactivate(ctx context.Context, pluginID string) error {
+	r.reconcileMu.Lock()
+
+	defer r.reconcileMu.Unlock()
+
 	return r.supervisor.Forget(ctx, pluginID)
 }
 
 func (r *RuntimeImpl) Restart(ctx context.Context, pluginID string) error {
+	r.reconcileMu.Lock()
+
+	defer r.reconcileMu.Unlock()
+
 	return r.supervisor.Restart(ctx, pluginID)
 }
 
@@ -203,7 +231,7 @@ func (r *RuntimeImpl) LiveDiagnostics(ctx context.Context, pluginID string) ([]b
 	return r.supervisor.LiveDiagnostics(ctx, pluginID)
 }
 
-func serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
+func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (ServiceSpec, bool) {
 	if plugin == nil || plugin.Manifest == nil || plugin.Manifest.Backend == nil {
 		return ServiceSpec{}, false
 	}
@@ -220,6 +248,20 @@ func serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
 		protocolVersion = *backend.ProtocolVersion
 	}
 
+	enabled := plugin.Enabled && plugin.Approval == "approved"
+
+	if enabled && gates != nil {
+		for _, permission := range plugin.Manifest.Permissions {
+			gate, registered := gates.Lookup(permission)
+
+			if registered && !gate.Satisfied(plugin.Name) {
+				enabled = false
+
+				break
+			}
+		}
+	}
+
 	return ServiceSpec{
 		PluginID:        plugin.Name,
 		Dir:             plugin.Dir,
@@ -227,7 +269,7 @@ func serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
 		Args:            append([]string(nil), backend.Args...),
 		ProtocolVersion: protocolVersion,
 		Builtin:         plugin.Source == "builtin",
-		Enabled:         plugin.Enabled && plugin.Approval == "approved",
+		Enabled:         enabled,
 	}, true
 }
 

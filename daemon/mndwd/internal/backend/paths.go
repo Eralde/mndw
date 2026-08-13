@@ -20,6 +20,7 @@ func NewRuntimePaths(root, pluginID string) (RuntimePaths, error) {
 	if root == "" {
 		return RuntimePaths{}, fmt.Errorf("runtime root is required")
 	}
+
 	if pluginID == "" || pluginID == "." || pluginID == ".." || filepath.Base(pluginID) != pluginID || strings.ContainsAny(pluginID, `/\\`) {
 		return RuntimePaths{}, fmt.Errorf("invalid plugin ID %q", pluginID)
 	}
@@ -40,12 +41,15 @@ func (p RuntimePaths) Ensure() error {
 	if err := os.MkdirAll(p.Root, 0o700); err != nil {
 		return fmt.Errorf("create backend runtime root: %w", err)
 	}
+
 	if err := os.Chmod(p.Root, 0o700); err != nil {
 		return fmt.Errorf("restrict backend runtime root: %w", err)
 	}
+
 	if err := os.MkdirAll(p.PluginDir, 0o700); err != nil {
 		return fmt.Errorf("create backend runtime directory: %w", err)
 	}
+
 	if err := os.Chmod(p.PluginDir, 0o700); err != nil {
 		return fmt.Errorf("restrict backend runtime directory: %w", err)
 	}

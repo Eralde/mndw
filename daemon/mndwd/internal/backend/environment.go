@@ -25,11 +25,13 @@ func BuildChildEnvironment(spec EnvironmentSpec) []string {
 		"MNDW_PLUGIN_DATA_DIR=" + spec.PluginDataDir,
 		"MNDW_PLUGIN_RUNTIME_DIR=" + spec.PluginRuntimeDir,
 	}
+
 	if spec.Service {
 		env = append(env,
 			"MNDW_BACKEND_SOCKET="+spec.BackendSocket,
 			"MNDW_BACKEND_PROTOCOL="+strconv.Itoa(spec.ProtocolVersion),
 		)
+
 		if spec.RCISessionSocket != "" {
 			env = append(env, "MNDW_RCI_SESSION_SOCKET="+spec.RCISessionSocket)
 		}
@@ -40,6 +42,7 @@ func BuildChildEnvironment(spec EnvironmentSpec) []string {
 
 func EnvironmentValue(env []string, name string) (string, bool) {
 	prefix := name + "="
+
 	for _, entry := range env {
 		if strings.HasPrefix(entry, prefix) {
 			return strings.TrimPrefix(entry, prefix), true

@@ -37,6 +37,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
+
 	if showVersion {
 		fmt.Println("mndwd", version)
 
@@ -61,6 +62,7 @@ func run(cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("open state: %w", err)
 	}
+
 	paletteStore, err := palette.Open(cfg.PaletteFile())
 	if err != nil {
 		return fmt.Errorf("open palette store: %w", err)
@@ -73,7 +75,17 @@ func run(cfg Config) error {
 	// background install work runs under a child so a signal cancels installs
 	// immediately — without waiting for HTTP drain.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+
 	defer stop()
+
+	if c.activationAssembly != nil {
+		// Supervisor.Start only launches the child and probes its local backend
+		// readiness socket; it makes no controller-RCI call. The synchronous poke
+		// therefore cannot re-enter this mutation observer while holding its mutex.
+		c.activationAssembly.SetActivationPoke(func() {
+			c.runtime.Reconcile(ctx, c.reg.AllBackendPlugins())
+		})
+	}
 
 	// Dependency installation is an explicit management operation. Startup only
 	// reconciles already-approved service manifests; it never runs opkg retries or
@@ -91,10 +103,12 @@ func run(cfg Config) error {
 		closePersistentOnce.Do(c.closePersistentSession)
 	}
 	err = serveWithDrain(ctx, srv, logger, closePersistent, cfg.HTTPDrainTimeout)
+
 	closePersistent()
 
 	if shutdownErr := c.runtime.Shutdown(context.Background()); shutdownErr != nil {
 		logger.Error("v3 backend shutdown failed", "error", shutdownErr)
+
 		if err == nil {
 			err = shutdownErr
 		}
@@ -109,6 +123,7 @@ type components struct {
 	reg                    *registry.Registry
 	runtime                *backend.RuntimeImpl
 	gateway                *backend.Gateway
+	activationAssembly     *rciSessionAssembly
 	closePersistentSession func()
 }
 
@@ -117,13 +132,17 @@ type components struct {
 func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger) components {
 	reg := registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, logger)
 	opkgMgr := opkg.New(cfg.Opkg, logger)
+	activationGates := backend.NewActivationGateRegistry()
 	runtimeRoot := cfg.PluginRuntimeRoot
+
 	if runtimeRoot == "" {
 		runtimeRoot = defaultPluginRuntimeRoot
 	}
+
 	runtime := backend.NewRuntime(backend.RuntimeConfig{
-		RuntimeRoot:    runtimeRoot,
-		PluginDataRoot: filepath.Join(cfg.DataDir, "plugin-data"),
+		RuntimeRoot:     runtimeRoot,
+		PluginDataRoot:  filepath.Join(cfg.DataDir, "plugin-data"),
+		ActivationGates: activationGates,
 		Limits: backend.Limits{
 			MaxConcurrentExecTotal:     cfg.MaxConcurrentExecTotal,
 			MaxConcurrentExecPerPlugin: cfg.MaxConcurrentExecPerPlugin,
@@ -146,10 +165,13 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 	})
 
 	mux := http.NewServeMux()
-	accessRegistration := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, verifier, logger)
+	accessRegistration := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, activationGates, verifier, logger)
 	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, reg, runtime, accessRegistration.permissionController, verifier, logger)
+
 	registerPalette(mux, mgmtMux, paletteStore, logger)
+
 	gateway := registerPlugins(mux, cfg, reg, verifier, runtime, logger)
+
 	runtime.SetMaintenanceHooks(gateway.BeginPluginMaintenance, gateway.BeginPlatformMaintenance, gateway.EndPluginMaintenance)
 
 	return components{
@@ -157,6 +179,7 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 		reg:                    reg,
 		runtime:                runtime,
 		gateway:                gateway,
+		activationAssembly:     accessRegistration.activationAssembly,
 		closePersistentSession: accessRegistration.close,
 	}
 }
@@ -174,6 +197,7 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 	}, store, opkgMgr, reg, logger)
 
 	mgmtMux := http.NewServeMux()
+
 	mgmtHandler.Register(mgmtMux)
 	mux.Handle("/api/mgmt/", verifier.Middleware(mgmtMux))
 
@@ -182,17 +206,21 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 
 // registerAccess mounts the consent/diagnostics surface plus the persistent RCI
 // session, returning the session's cleanup func.
-func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, v3Runtime *backend.RuntimeImpl, verifier *authz.Verifier, logger *slog.Logger) persistentSessionRegistration {
+func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, v3Runtime *backend.RuntimeImpl, activationGates *backend.ActivationGateRegistry, verifier *authz.Verifier, logger *slog.Logger) persistentSessionRegistration {
 	accessMux := http.NewServeMux()
 	diagnosticsLogFile := cfg.DiagnosticsLogFile
+
 	if diagnosticsLogFile == "" {
 		diagnosticsLogFile = defaultDiagnosticsLogFile
 	}
+
 	diagnostics.New(diagnostics.Config{
 		LogFile: diagnosticsLogFile,
 		Plugins: diagnosticsPlugins(reg, v3Runtime),
 	}).Register(accessMux)
-	registration := assembleRCISession(cfg, store, reg, runtimeRoot, accessMux, logger)
+
+	registration := assembleRCISession(cfg, store, reg, runtimeRoot, accessMux, activationGates, logger)
+
 	// Keep the route mounted in dev so the host exercises the same consent contract;
 	// the verifier still bypasses only session validation when cfg.Dev is true.
 	mux.Handle("/api/mndw/", verifier.Middleware(accessMux))
@@ -203,6 +231,7 @@ func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *reg
 // registerPalette mounts the public palette route and its session-gated counterpart.
 func registerPalette(mux *http.ServeMux, mgmtMux *http.ServeMux, paletteStore *palette.Store, logger *slog.Logger) {
 	paletteHandler := palette.NewHandler(paletteStore, logger)
+
 	paletteHandler.RegisterPublic(mux)
 	paletteHandler.RegisterProtected(mgmtMux)
 }
@@ -213,21 +242,27 @@ func registerPlugins(mux *http.ServeMux, cfg Config, reg *registry.Registry, ver
 		MaxRequestBytes:    cfg.MaxRequestBytes,
 		ServiceHTTPTimeout: cfg.ServiceHTTPTimeout,
 	}, reg, verifier, runtime.ExecRunner(), runtime.Supervisor(), logger)
+
 	v3Gateway.Register(mux)
+
 	return v3Gateway
 }
 
 func diagnosticsPlugins(reg *registry.Registry, runtime *backend.RuntimeImpl) []diagnostics.Plugin {
 	plugins := make([]diagnostics.Plugin, 0)
+
 	for _, plugin := range reg.AllBackendPlugins() {
 		if plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Kind == nil || *plugin.Manifest.Backend.Kind != manifest.BackendKindService {
 			continue
 		}
+
 		pluginID := plugin.Name
 		entry := diagnostics.Plugin{ID: pluginID}
+
 		if runtime != nil {
 			entry.Supervisor = func() diagnostics.SupervisorDiagnostics {
 				status := runtime.Status(pluginID)
+
 				return diagnostics.SupervisorDiagnostics{
 					State:               string(status.State),
 					RestartCount:        status.RestartCount,
@@ -241,8 +276,10 @@ func diagnosticsPlugins(reg *registry.Registry, runtime *backend.RuntimeImpl) []
 				return runtime.LiveDiagnostics(ctx, pluginID)
 			}
 		}
+
 		plugins = append(plugins, entry)
 	}
+
 	sort.Slice(plugins, func(left, right int) bool { return plugins[left].ID < plugins[right].ID })
 
 	return plugins
@@ -258,14 +295,18 @@ func serveWithDrain(ctx context.Context, srv *http.Server, logger *slog.Logger, 
 	if drainTimeout <= 0 {
 		drainTimeout = 35 * time.Second
 	}
+
 	errCh := make(chan error, 1)
+
 	go func() {
 		logger.Info("mndwd listening", "addr", srv.Addr, "version", version)
+
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 
 			return
 		}
+
 		errCh <- nil
 	}()
 
@@ -274,10 +315,13 @@ func serveWithDrain(ctx context.Context, srv *http.Server, logger *slog.Logger, 
 		return err
 	case <-ctx.Done():
 		logger.Info("shutdown signal received, draining")
+
 		if onShutdown != nil {
 			onShutdown()
 		}
+
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
+
 		defer cancel()
 
 		return srv.Shutdown(shutdownCtx)

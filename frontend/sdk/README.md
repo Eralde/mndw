@@ -154,18 +154,39 @@ plugin distribution automatically.
 ## 6. PluginContext API
 
 ```ts
-interface PluginContext {
+type PluginContext = WidgetPluginContext | PagePluginContext;
+
+interface WidgetPluginContext {
+  kind: 'widget';
   rciManager: RciManager;
   storage: PluginStorage;
   sharedStorage: PluginStorage;
   hostInfo: HostInfo;
+  i18n: PluginI18n;
   injector: ServiceInjector;
   instanceId: string;
   backend?: BackendClient;
   overlay: OverlayService;
-  /** Page plugins only. Widgets receive undefined. */
-  pageRoute?: PageRoute;
+  setTileTitle?: (title: string) => void;
+  onThemeChange(callback: (theme: MndwThemeName) => void): () => void;
+  getTokens(): PaletteTokenMap;
+  onPaletteChange(callback: (tokens: PaletteTokenMap) => void): () => void;
+  // pageRoute is unavailable on widget contexts.
+}
 
+interface PagePluginContext {
+  kind: 'page';
+  rciManager: RciManager;
+  storage: PluginStorage;
+  sharedStorage: PluginStorage;
+  hostInfo: HostInfo;
+  i18n: PluginI18n;
+  injector: ServiceInjector;
+  instanceId: string;
+  backend?: BackendClient;
+  overlay: OverlayService;
+  pageRoute: PageRoute;
+  // setTileTitle is unavailable on page contexts.
   onThemeChange(callback: (theme: MndwThemeName) => void): () => void;
   getTokens(): PaletteTokenMap;
   onPaletteChange(callback: (tokens: PaletteTokenMap) => void): () => void;
@@ -199,6 +220,26 @@ interface PluginStorage {
   keys(): Promise<string[]>;
 }
 ```
+
+`PluginContext` is host-created. Narrow variant-specific fields with `context.kind`; plugins do not
+author the discriminant. `success` means current settled data, `refreshing` retains prior data while
+a request is active, and `error` may retain prior data after a failed refresh. `unsupported` is a
+terminal capability outcome for that plugin lifetime.
+
+## 6.1 Canonical async state
+
+```ts
+type LoadState<T, E = unknown> =
+  | {status: 'idle'}
+  | {status: 'loading'}
+  | {status: 'success'; data: T}
+  | {status: 'refreshing'; data: T}
+  | {status: 'error'; error: E; data?: T}
+  | {status: 'unsupported'; reason: string};
+```
+
+Reducers must carry `data` into `error` whenever the failed request started from a state that had
+data. Initial `idle`/`loading` failures may omit it.
 
 ## Localization
 
@@ -301,7 +342,8 @@ interface BackendClient {
 ```
 
 The method and relative path come from endpoint declaration in manifest. Typed errors:
-`BackendNotApproved`, `BackendDisabled`, `BackendUnknownId`.
+`BackendNotApproved`, `BackendDisabled`, `BackendUnknownId`, and
+`BackendTransportMismatch`.
 
 Page plugins use `context.pageRoute` for child routes. `childPath$` emits the normalized child
 pathname (for example, `/clients`) and `navigate()` accepts a child pathname without query or
@@ -313,11 +355,16 @@ paths, and returns a rejected promise with `PageRouteError` (`INVALID_PATH`, `CO
 const client = context.backend;
 
 if (client) {
-  const res = await client.fetch('stats');
-  const socket = client.socket('term');
-
-  void res;
-  void socket;
+  try {
+    const res = await client.fetch('stats');
+    void res;
+  } catch (error) {
+    if (error instanceof BackendNotApproved || error instanceof BackendDisabled) {
+      // Show approval/availability UI.
+    } else if (error instanceof BackendUnknownId || error instanceof BackendTransportMismatch) {
+      // Fix a stale declaration or route transport mismatch.
+    }
+  }
 }
 ```
 

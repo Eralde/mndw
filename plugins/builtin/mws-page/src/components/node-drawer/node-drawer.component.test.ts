@@ -1,7 +1,7 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {type TestI18n, createTestI18n} from '@mndw/sdk/testing';
 import {Subject, of, throwError} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {normalizeDeviceHosts, normalizeMembers} from '../../api/normalize';
@@ -15,6 +15,7 @@ import drawerStyles from './node-drawer.component.scss?raw';
 import drawerTemplate from './node-drawer.component.html?raw';
 import {NodeDrawerComponent} from './node-drawer.component';
 import enCatalog from '../../../i18n/en.json';
+import ruCatalog from '../../../i18n/ru.json';
 
 const CONTROLLER: ControllerInfo = {
   mac: '02:7d:4a:91:c3:10',
@@ -62,12 +63,14 @@ describe('NodeDrawerComponent', () => {
   let renameNode: ReturnType<typeof vi.fn>;
   let refreshNow: ReturnType<typeof vi.fn>;
   let setPower: ReturnType<typeof vi.fn>;
+  let testI18n: TestI18n;
 
   beforeEach(async () => {
     TestBed.resetTestingModule();
     renameNode = vi.fn(() => of(undefined));
     refreshNow = vi.fn();
     setPower = vi.fn(() => Promise.resolve({ok: true, steps: []}));
+    testI18n = createTestI18n(enCatalog);
     await resolveComponentResources((url: string) => {
       if (url.endsWith('node-drawer.component.html')) {
         return Promise.resolve(drawerTemplate);
@@ -85,7 +88,7 @@ describe('NodeDrawerComponent', () => {
         {provide: MWS_RENAME_API, useValue: {renameNode}},
         {provide: MwsDataService, useValue: {refreshNow, freshnessNow: () => 10_000}},
         {provide: MwsWriteService, useValue: {setPower}},
-        {provide: TRANSLATOR, useValue: createTestI18n(enCatalog)},
+        {provide: TRANSLATOR, useValue: testI18n},
       ],
     }).compileComponents();
   });
@@ -288,6 +291,29 @@ describe('NodeDrawerComponent', () => {
     expect(refreshNow).not.toHaveBeenCalled();
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Name cannot be empty.');
     expect(fixture.nativeElement.querySelector('mndw-input')).not.toBeNull();
+  });
+
+  it('translates local validation errors after switching locale', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:10'));
+    fixture.detectChanges();
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('[data-action="edit-name"]')?.click();
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector<HTMLElement & {value: string}>('mndw-input');
+
+    input.value = '   ';
+    input.dispatchEvent(new CustomEvent('mndwinput', {detail: {value: input.value}, bubbles: true, composed: true}));
+    fixture.nativeElement.querySelector<HTMLElement>('[data-action="save-name"]')?.click();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Name cannot be empty.');
+
+    testI18n.setLocale('ru', ruCatalog);
+    fixture.changeDetectorRef.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Имя не может быть пустым.');
   });
 
   it('cancels on Escape and keeps Save disabled while a write is pending', () => {

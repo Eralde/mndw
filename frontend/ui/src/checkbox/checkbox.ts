@@ -1,11 +1,10 @@
 import {LitElement, type PropertyDeclarations, css, html} from 'lit';
 import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
-import {FormAssociatedController} from '../forms/form-associated.js';
+import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
 import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
 import {focusRing, hostTypography} from '../styles/base.js';
 
 export const MNDW_CHECKBOX_TAG = 'mndw-checkbox';
-let nextGeneratedLabelId = 0;
 
 export interface MndwCheckboxChangeDetail {
   checked: boolean;
@@ -28,11 +27,10 @@ export class MndwCheckbox extends LitElement {
     name: {type: String, reflect: true},
   };
 
-  public static override readonly styles = [
-    hostTypography,
-    focusRing,
-    css`
+  public static override readonly styles = css`
       :host {
+        ${hostTypography}
+
         display: inline-flex;
         align-items: center;
         gap: var(--mndw-space-2);
@@ -99,10 +97,9 @@ export class MndwCheckbox extends LitElement {
       }
 
       :host(:focus-visible) {
-        outline: none;
+        ${focusRing}
       }
-    `,
-  ];
+    `;
 
   declare public checked: boolean;
   declare public indeterminate: boolean;
@@ -120,6 +117,7 @@ export class MndwCheckbox extends LitElement {
       this.requestUpdate();
     },
   });
+  private readonly labelController = new FormLabelController(this);
   private readonly labelObserver: MutationObserver;
   private labelSlot: HTMLSlotElement | null = null;
   private localeUnsubscribe: (() => void) | null = null;
@@ -199,21 +197,7 @@ export class MndwCheckbox extends LitElement {
     this.tabIndex = effectiveDisabled ? -1 : 0;
 
     const labels = this.formState.labels;
-
-    if (labels.length > 0) {
-      const ids = labels.map((label) => {
-        if (!label.id) {
-          nextGeneratedLabelId += 1;
-          label.id = `mndw-checkbox-label-${nextGeneratedLabelId}`;
-        }
-
-        return label.id;
-      });
-
-      this.setAttribute('aria-labelledby', ids.join(' '));
-    } else {
-      this.removeAttribute('aria-labelledby');
-    }
+    this.labelController.sync(labels, this.formState.internals);
 
     this.formState.internals?.setFormValue(
       this.checked ? this.value : null,
@@ -225,8 +209,6 @@ export class MndwCheckbox extends LitElement {
       this.formState.internals.ariaChecked = ariaChecked;
       this.formState.internals.ariaDisabled = String(effectiveDisabled);
       this.formState.internals.ariaRequired = String(this.required);
-      this.formState.internals.ariaLabelledByElements = labels;
-
       if (this.checked) {
         this.formState.internals.states.add('checked');
       } else {

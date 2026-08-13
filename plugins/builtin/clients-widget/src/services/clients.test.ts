@@ -156,6 +156,22 @@ describe('normalizeClients — mesh filtering', () => {
   });
 });
 
+describe('normalizeClients — wireless connection', () => {
+  it('maps txss, txrate, and rssi from their own source fields', () => {
+    const [record] = normalizeClients(wrap(rawHost({
+      mws: {ap: 'ap-1', txss: 2, txrate: 866, rssi: -42},
+    })));
+
+    expect(record.connection).toEqual({
+      accessPointId: 'ap-1',
+      bands: ['2'],
+      txss: 2,
+      txrate: 866,
+      rssi: -42,
+    });
+  });
+});
+
 describe('normalizeClients — sorting', () => {
   it('sorts by displayName ascending, locale-aware', () => {
     const records = normalizeClients(wrap(

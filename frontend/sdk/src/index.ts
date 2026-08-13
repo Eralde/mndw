@@ -1,10 +1,18 @@
 export type {MndwPlugin, PluginInstance, PluginResizeSize} from './plugin.js';
 export {PageRouteError} from './context.js';
-export type {HostInfo, PageRoute, PageRouteErrorCode, PluginContext} from './context.js';
+export type {
+  HostInfo,
+  PagePluginContext,
+  PageRoute,
+  PageRouteErrorCode,
+  PluginContext,
+  WidgetPluginContext,
+} from './context.js';
 export type {PluginI18n, PluginManifestI18n} from './i18n.js';
 export type {Translator} from './translator.js';
 export type {PluginStorage} from './storage.js';
 export type {ServiceInjector} from './injector.js';
+export type {LoadState} from './load-state.js';
 export type {
   OverlayAnchor,
   OverlayCloseEvent,

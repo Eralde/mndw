@@ -111,6 +111,13 @@ describe('<mndw-checkbox>', () => {
     expect(cssText).not.toContain('--mndw-color-');
   });
 
+  it('scopes shared typography and focus-ring styles to the checkbox host', () => {
+    const cssText = String(MndwCheckbox.styles);
+
+    expect(cssText).toMatch(/:host\s*\{[\s\S]*font-family:/);
+    expect(cssText).toMatch(/:host\(:focus-visible\)\s*\{[\s\S]*outline:/);
+  });
+
   it('reveals the mark from the reflected checked attribute, not the box aria-checked', () => {
     const cssText = String(MndwCheckbox.styles);
 

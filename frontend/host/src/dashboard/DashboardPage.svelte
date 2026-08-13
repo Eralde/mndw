@@ -203,10 +203,10 @@ function handleAddWidget(pluginName: string): void {
   const id = addWidgetTile(activeGrid, pluginName, requestRemoveTile);
 
   if (id !== null) {
-    // tiles updates arrive via the grid's added/change events; the order entry is
-    // ours to append (spec: adds update both collections regardless of breakpoint).
+    // The grid's added/change event owns the complete post-add geometry projection
+    // and schedules persistence. The order entry is ours to append before that
+    // scheduled snapshot runs.
     mobileOrder = [...mobileOrder, id];
-    scheduleSave();
   }
 }
 

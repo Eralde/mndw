@@ -1,14 +1,20 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {createPluginOverlayService, overlayStore, resetOverlayStateForTests} from './overlay-manager.svelte.js';
+import {type OverlayRuntime, createOverlayRuntime, createPluginOverlayService} from './overlay-manager.svelte.js';
 
 describe('overlay manager', () => {
+  let runtime: OverlayRuntime;
+
   beforeEach(() => {
-    resetOverlayStateForTests();
+    runtime = createOverlayRuntime();
     document.body.innerHTML = '';
   });
 
+  const createService = (pluginName: string, instanceId: string) => {
+    return createPluginOverlayService(pluginName, instanceId, runtime);
+  };
+
   it('creates shell-backed sessions via open()', async () => {
-    const {service} = createPluginOverlayService('demo', 'demo:1');
+    const {service} = createService('demo', 'demo:1');
 
     const session = service.open({
       kind: 'modal',
@@ -22,12 +28,12 @@ describe('overlay manager', () => {
     await Promise.resolve();
 
     expect(session.state).toBe('open');
-    expect(overlayStore.layers).toHaveLength(1);
+    expect(runtime.store.layers).toHaveLength(1);
     expect(session.contentElement.textContent).toBe('body');
   });
 
   it('aborts opening layers when closeAll() runs', async () => {
-    const {service} = createPluginOverlayService('demo', 'demo:1');
+    const {service} = createService('demo', 'demo:1');
 
     const session = service.open({
       kind: 'drawer',
@@ -44,7 +50,7 @@ describe('overlay manager', () => {
   });
 
   it('restores focus to anchor when a closing popover owned focus', async () => {
-    const {service} = createPluginOverlayService('demo', 'demo:1');
+    const {service} = createService('demo', 'demo:1');
     const anchor = document.createElement('button');
 
     document.body.appendChild(anchor);
@@ -68,7 +74,7 @@ describe('overlay manager', () => {
   });
 
   it('closes a same-plugin popover with reason replaced when a modal opens above it', async () => {
-    const {service} = createPluginOverlayService('demo', 'demo:1');
+    const {service} = createService('demo', 'demo:1');
     const anchor = document.createElement('button');
 
     document.body.appendChild(anchor);
@@ -94,7 +100,7 @@ describe('overlay manager', () => {
   });
 
   it('resizes a createLayer() layer via update()', () => {
-    const {service} = createPluginOverlayService('demo', 'demo:1');
+    const {service} = createService('demo', 'demo:1');
     const anchor = document.createElement('button');
 
     document.body.appendChild(anchor);
@@ -108,7 +114,7 @@ describe('overlay manager', () => {
     layer.setCleanup(() => {});
     layer.markReady();
 
-    const [view] = overlayStore.layers;
+    const [view] = runtime.store.layers;
 
     expect(view.sizing.width).toBe('240px');
 
@@ -119,14 +125,14 @@ describe('overlay manager', () => {
   });
 
   it('preserves bottom placement for drawer sessions', () => {
-    const {service} = createPluginOverlayService('demo', 'demo:1');
+    const {service} = createService('demo', 'demo:1');
 
     const layer = service.open({
       kind: 'drawer',
       placement: 'bottom',
       mount() {},
     });
-    const view = overlayStore.layers[0];
+    const view = runtime.store.layers[0];
 
     expect(layer.state).toBe('open');
     expect(view?.kind).toBe('drawer');
@@ -138,7 +144,7 @@ describe('overlay manager', () => {
   it('times out stuck opening layers with mount-failed', async () => {
     vi.useFakeTimers();
 
-    const {service} = createPluginOverlayService('demo', 'demo:1');
+    const {service} = createService('demo', 'demo:1');
     const layer = service.createLayer({kind: 'custom'});
 
     vi.advanceTimersByTime(10000);
@@ -152,7 +158,7 @@ describe('overlay manager', () => {
 
     document.body.appendChild(anchor);
 
-    const {service, dispose} = createPluginOverlayService(pluginName, `${pluginName}:1`);
+    const {service, dispose} = createService(pluginName, `${pluginName}:1`);
     const layer = service.createLayer({kind: 'popover', anchor: {element: anchor}});
 
     layer.setCleanup(() => {});
@@ -164,10 +170,10 @@ describe('overlay manager', () => {
   }
 
   function viewFor(layer: {contentElement: HTMLElement}) {
-    const view = overlayStore.layers.find((candidate) => candidate.contentElement === layer.contentElement);
+    const view = runtime.store.layers.find((candidate) => candidate.contentElement === layer.contentElement);
 
     if (!view) {
-      throw new Error('layer view not found in overlayStore');
+      throw new Error('layer view not found in test overlay runtime');
     }
 
     return view;

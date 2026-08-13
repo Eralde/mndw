@@ -154,6 +154,8 @@
   },
   "error": {
     "invalid-name": "Invalid name.",
+    "name-empty": "Name cannot be empty.",
+    "name-too-long": "Name must be 64 characters or fewer.",
     "rename-failed": "Rename failed.",
     "tx-power-failed": "TX power update failed."
   }

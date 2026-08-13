@@ -56,7 +56,9 @@ export function createMwsMapInstance(
     const title = ctx.i18n.t('title');
 
     el.setAttribute('aria-label', title);
-    ctx.setTileTitle?.(title);
+    if (ctx.kind === 'widget') {
+      ctx.setTileTitle?.(title);
+    }
   };
 
   setLocaleLabel();
@@ -73,7 +75,7 @@ export function createMwsMapInstance(
       {provide: OVERLAY, useValue: ctx.overlay},
       {provide: HOST_INFO, useValue: ctx.hostInfo},
       {provide: MWSD_BACKEND, useValue: ctx.backend ?? null},
-      {provide: MWS_PAGE_ROUTE, useValue: ctx.pageRoute},
+      {provide: MWS_PAGE_ROUTE, useValue: ctx.kind === 'page' ? ctx.pageRoute : undefined},
       {provide: PLUGIN_STORAGE, useValue: ctx.storage},
       {provide: SHARED_PLUGIN_STORAGE, useValue: ctx.sharedStorage},
       ...mockOptionsProvider,

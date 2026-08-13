@@ -1,5 +1,5 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
-import {FormAssociatedController} from '../forms/form-associated.js';
+import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
 import {focusRing, hostTypography} from '../styles/base.js';
 
 export const MNDW_SLIDER_TAG = 'mndw-slider';
@@ -140,6 +140,7 @@ export class MndwSlider extends LitElement {
       this.requestUpdate();
     },
   });
+  private readonly labelController = new FormLabelController(this);
   private dragPointer: number | null = null;
   private dragBaseline = 0;
 
@@ -262,15 +263,8 @@ export class MndwSlider extends LitElement {
 
   private syncLabels(): void {
     const labels = this.formState.labels;
-    const labelIds = labels.map((label) => label.id).filter((id) => id !== '');
-
-    if (labelIds.length > 0) {
-      this.setAttribute('aria-labelledby', labelIds.join(' '));
-    } else {
-      this.removeAttribute('aria-labelledby');
-    }
-
     const internals = this.formState.internals;
+    this.labelController.sync(labels, internals);
 
     if (!internals) {
       return;
@@ -283,9 +277,6 @@ export class MndwSlider extends LitElement {
     internals.ariaValueText = this.valueText || null;
     internals.ariaOrientation = 'horizontal';
     internals.ariaDisabled = String(this.formState.effectiveDisabled);
-    // Element references cross tree boundaries. The reflected IDs above cover engines that do not
-    // expose ElementInternals naming relationships to their accessibility tree.
-    internals.ariaLabelledByElements = labels;
   }
 
   /**

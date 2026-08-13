@@ -1,12 +1,11 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {flushSync} from 'svelte';
-import {overlayStore, resetOverlayStateForTests} from './overlay-manager.svelte.js';
+import {defaultOverlayRuntime} from './overlay-manager.svelte.js';
 import {openHostModal} from './host-overlay.js';
 import HostOverlayProbe from './host-overlay-probe.svelte';
 
 describe('openHostModal', () => {
   afterEach(() => {
-    resetOverlayStateForTests();
     document.body.innerHTML = '';
   });
 
@@ -17,16 +16,16 @@ describe('openHostModal', () => {
 
     flushSync();
 
-    expect(overlayStore.layers).toHaveLength(1);
-    expect(overlayStore.layers[0]?.kind).toBe('modal');
+    const [layer] = defaultOverlayRuntime.store.layers;
 
-    const approve = overlayStore.layers[0]?.contentElement.querySelector<HTMLButtonElement>('.probe-approve');
+    expect(layer).not.toBeNull();
+    const approve = layer?.contentElement.querySelector<HTMLButtonElement>('.probe-approve');
 
     expect(approve).not.toBeNull();
     approve?.click();
 
     await expect(closed).resolves.toMatchObject({event: {result: 'approve'}, teardownCalls: 1});
-    expect(overlayStore.layers).toEqual([]);
+    expect(defaultOverlayRuntime.store.layers).toEqual([]);
   });
 
   it('waits for teardown when the component closes during initialization', async () => {
@@ -38,6 +37,6 @@ describe('openHostModal', () => {
     const closed = session.closed.then((event) => ({event, teardownCalls: onTeardown.mock.calls.length}));
 
     await expect(closed).resolves.toMatchObject({event: {result: 'approve'}, teardownCalls: 1});
-    expect(overlayStore.layers).toEqual([]);
+    expect(defaultOverlayRuntime.store.layers).toEqual([]);
   });
 });

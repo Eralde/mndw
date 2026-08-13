@@ -1,14 +1,15 @@
 import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
 import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
 import {deepActiveElement} from '../focus.js';
-import {FormAssociatedController} from '../forms/form-associated.js';
+import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
 import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
 import {type LocalizedPropertyState, createLocalizedProperty} from '../localized-property.js';
 import {type UiCloseReason, type UiLayer, type UiLayerPresentation, getOverlayProvider} from '../overlay.js';
-import {SELECT_VIEWPORT_PADDING, availablePopoverHeight, selectPresentation} from '../position/position.js';
+import {selectPresentation} from '../position/position.js';
 import {controlBase, focusRing, hostTypography} from '../styles/base.js';
 import {MNDW_OPTION_CHANGE_EVENT} from './option.js';
 import {type OptionModel, readOptions} from './option-model.js';
+import {SelectPopoverTracker, applySelectPopoverSizing} from './select-popover.js';
 import {
   MNDW_SELECT_PANEL_TAG,
   type MndwSelectPanel,
@@ -22,39 +23,7 @@ export interface MndwSelectChangeDetail {
   value: string;
 }
 
-const PANEL_MIN_WIDTH = 180;
-let nextGeneratedLabelId = 0;
-
 type SelectOpenFocus = 'selected' | 'first' | 'last';
-
-interface PopoverGeometry {
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-  width: number;
-  height: number;
-}
-
-const readPopoverGeometry = (rect: DOMRect): PopoverGeometry => {
-  return {
-    top: rect.top,
-    right: rect.right,
-    bottom: rect.bottom,
-    left: rect.left,
-    width: rect.width,
-    height: rect.height,
-  };
-};
-
-const samePopoverGeometry = (left: PopoverGeometry | null, right: PopoverGeometry): boolean => {
-  return left?.top === right.top
-    && left.right === right.right
-    && left.bottom === right.bottom
-    && left.left === right.left
-    && left.width === right.width
-    && left.height === right.height;
-};
 
 export class MndwSelect extends LitElement {
   public static readonly formAssociated = true;
@@ -136,9 +105,6 @@ export class MndwSelect extends LitElement {
   private panel: MndwSelectPanel | null = null;
   private panelHadFocus = false;
   private presentation: UiLayerPresentation | null = null;
-  private popoverFrame: number | null = null;
-  private popoverGeometry: PopoverGeometry | null = null;
-  private popoverNeedsReposition = false;
   private readonly placeholderState: LocalizedPropertyState<string | undefined>;
   private localeUnsubscribe: (() => void) | null = null;
   private readonly formState = new FormAssociatedController(this, {
@@ -148,6 +114,18 @@ export class MndwSelect extends LitElement {
     onDisabledChange: () => {
       this.requestUpdate();
     },
+  });
+  private readonly labelController = new FormLabelController(this);
+  private readonly popoverTracker = new SelectPopoverTracker({
+    isActive: () => this.presentation === 'popover' && this.layer !== null,
+    isConnected: () => this.layer?.contentElement.isConnected === true,
+    readAnchorRect: () => this.getBoundingClientRect(),
+    onGeometryChange: (rect) => {
+      if (this.layer !== null) {
+        this.applyPopoverSizing(this.layer, rect);
+      }
+    },
+    onReposition: () => this.layer?.reposition(),
   });
 
   constructor() {
@@ -243,8 +221,7 @@ export class MndwSelect extends LitElement {
 
         const labels = this.formState.labels;
 
-        this.setExternalLabelIds(labels);
-        this.formState.internals.ariaLabelledByElements = labels;
+        this.labelController.sync(labels, this.formState.internals);
       }
     } else if (this.label) {
       this.setAttribute('aria-label', this.label);
@@ -355,7 +332,7 @@ export class MndwSelect extends LitElement {
     });
 
     if (presentation === 'popover') {
-      this.applyPopoverSizing(layer, this);
+      this.applyPopoverSizing(layer);
       window.addEventListener('resize', this.onViewportChange);
       window.addEventListener('scroll', this.onViewportChange, true);
     }
@@ -411,61 +388,20 @@ export class MndwSelect extends LitElement {
     });
   }
 
-  private applyPopoverSizing(layer: UiLayer, anchor: HTMLElement, rect = anchor.getBoundingClientRect()): void {
-    this.popoverGeometry = readPopoverGeometry(rect);
-
-    layer.contentElement.style.minWidth = `${Math.max(rect.width, PANEL_MIN_WIDTH)}px`;
-    layer.contentElement.style.maxWidth = `calc(100vw - ${SELECT_VIEWPORT_PADDING * 2}px)`;
-    layer.contentElement.style.maxHeight = `${
-      availablePopoverHeight(rect, {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      })
-    }px`;
-    layer.contentElement.style.overflow = 'hidden';
-    layer.contentElement.style.display = 'flex';
-    layer.contentElement.style.flexDirection = 'column';
+  private applyPopoverSizing(layer: UiLayer, rect = this.getBoundingClientRect()): void {
+    applySelectPopoverSizing(layer.contentElement, rect, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
   }
 
   private startPopoverTracking(): void {
-    // Widget layout can move the anchor without emitting window resize or scroll.
-    this.cancelPopoverTracking();
-    this.popoverNeedsReposition = true;
-    this.popoverFrame = requestAnimationFrame(this.trackPopover);
+    this.popoverTracker.start();
   }
 
   private cancelPopoverTracking(): void {
-    if (this.popoverFrame !== null) {
-      cancelAnimationFrame(this.popoverFrame);
-      this.popoverFrame = null;
-    }
+    this.popoverTracker.cancel();
   }
-
-  private readonly trackPopover = (): void => {
-    this.popoverFrame = null;
-
-    const layer = this.layer;
-
-    if (this.presentation !== 'popover' || !layer) {
-      return;
-    }
-
-    const rect = this.getBoundingClientRect();
-    const geometry = readPopoverGeometry(rect);
-
-    const geometryChanged = !samePopoverGeometry(this.popoverGeometry, geometry);
-
-    if (geometryChanged) {
-      this.applyPopoverSizing(layer, this, rect);
-    }
-
-    if ((this.popoverNeedsReposition || geometryChanged) && layer.contentElement.isConnected) {
-      layer.reposition();
-      this.popoverNeedsReposition = false;
-    }
-
-    this.popoverFrame = requestAnimationFrame(this.trackPopover);
-  };
 
   private readonly onViewportChange = (): void => {
     const layer = this.layer;
@@ -474,9 +410,8 @@ export class MndwSelect extends LitElement {
       return;
     }
 
-    this.applyPopoverSizing(layer, this);
+    this.applyPopoverSizing(layer);
     layer.reposition();
-    this.popoverNeedsReposition = false;
   };
 
   private restoreFocus(reason: UiCloseReason, hadFocus: boolean): void {
@@ -554,8 +489,6 @@ export class MndwSelect extends LitElement {
     this.panel = null;
     this.layer = null;
     this.presentation = null;
-    this.popoverGeometry = null;
-    this.popoverNeedsReposition = false;
     this.open = false;
     this.panelHadFocus = false;
   }
@@ -582,25 +515,6 @@ export class MndwSelect extends LitElement {
     if (typeof state === 'string') {
       this.value = state;
     }
-  }
-
-  private setExternalLabelIds(labels: readonly HTMLLabelElement[]): void {
-    if (labels.length === 0) {
-      this.removeAttribute('aria-labelledby');
-
-      return;
-    }
-
-    const ids = labels.map((label) => {
-      if (!label.id) {
-        nextGeneratedLabelId += 1;
-        label.id = `mndw-select-label-${nextGeneratedLabelId}`;
-      }
-
-      return label.id;
-    });
-
-    this.setAttribute('aria-labelledby', ids.join(' '));
   }
 }
 

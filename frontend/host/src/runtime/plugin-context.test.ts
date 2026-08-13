@@ -84,6 +84,7 @@ describe('createPluginContext', () => {
 
     const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo, undefined, undefined, cell);
 
+    expect(ctx.kind).toBe('widget');
     expect(ctx.i18n.t('title', {name: 'Ada'})).toBe('Hello Ada');
     expect(ctx.i18n.t('missing')).toBe('missing');
     expect(Object.isFrozen(ctx.i18n)).toBe(true);
@@ -158,7 +159,15 @@ describe('createPluginContext', () => {
     const widgetContext = createPluginContext(widgetEntry(), 'demo:2', hostInfo, undefined, pageRoute);
 
     expect(pageContext.pageRoute).toBe(pageRoute);
+    expect(pageContext.kind).toBe('page');
     expect(widgetContext.pageRoute).toBeUndefined();
+    expect(widgetContext.kind).toBe('widget');
+  });
+
+  it('rejects page contexts without a host-created route', () => {
+    expect(() => createPluginContext(pageEntry(), 'demo:1', hostInfo)).toThrow(
+      'Page plugin "demo" requires a page route',
+    );
   });
 });
 

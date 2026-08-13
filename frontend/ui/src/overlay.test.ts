@@ -153,9 +153,25 @@ describe('fallback provider', () => {
     layer.contentElement.appendChild(document.createElement('div'));
     layer.reposition();
 
-    expect(layer.contentElement.style.top).toBe('104px');
+    expect(layer.contentElement.style.top).toBe('108px');
     expect(layer.contentElement.style.left).toBe('40px');
     expect(layer.contentElement.style.visibility).toBe('visible');
+  });
+
+  it('uses the canonical flip order when the preferred side is clipped', () => {
+    const trigger = anchor();
+
+    trigger.getBoundingClientRect = () => ({bottom: 700, top: 668, left: 40, right: 240, width: 200} as DOMRect);
+
+    const layer = openFallback(trigger);
+
+    Object.defineProperty(layer.contentElement, 'offsetHeight', {configurable: true, value: 100});
+    Object.defineProperty(layer.contentElement, 'offsetWidth', {configurable: true, value: 100});
+    vi.stubGlobal('innerHeight', 768);
+    vi.stubGlobal('innerWidth', 1024);
+    layer.reposition();
+
+    expect(layer.contentElement.style.top).toBe('560px');
   });
 
   it('sets no width of its own', () => {

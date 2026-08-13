@@ -125,6 +125,24 @@ describe('MwsDataService', () => {
     expect(service.phase()).toBe('unsupported');
   });
 
+  it('treats unsupported as terminal until the service is remounted', async () => {
+    const api = goodApi();
+    api.showMwsMember.mockReturnValue(of<MwsMemberResult>({kind: 'unsupported'}));
+
+    const service = makeLiveService(api);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const callsAfterUnsupported = api.showMwsMember.mock.calls.length;
+
+    service.retry();
+    service.start();
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+
+    expect(service.phase()).toBe('unsupported');
+    expect(api.showMwsMember).toHaveBeenCalledTimes(callsAfterUnsupported);
+  });
+
   it('skips polls while hidden and refreshes immediately on becoming visible', async () => {
     const api = goodApi();
     const service = makeLiveService(api);

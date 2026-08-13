@@ -3,7 +3,7 @@
   "$id": "https://mndw/plugin-manifest.schema.json",
   "title": "mndw plugin manifest",
   "description": "Manifest for an mndw plugin (widget or page). Generated from the Zod schema — do not edit by hand; run `pnpm generate-contracts`.",
-  "anyOf": [
+  "oneOf": [
     {
       "type": "object",
       "properties": {

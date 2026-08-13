@@ -101,6 +101,65 @@ describe('validateManifest behavior', () => {
   });
 
   it.each([
+    ['absolute entry', '/dist/index.js'],
+    ['backslash entry', 'dist\\index.js'],
+    ['parent entry', 'dist/../index.js'],
+    ['dot-segment entry', 'dist/./index.js'],
+  ])('rejects unsafe %s paths', (_label, entry) => {
+    expect(() => validateManifest({...base, entry})).toThrow(ManifestValidationError);
+  });
+
+  it.each([
+    ['absolute command', '/backend/run.sh'],
+    ['backslash command', 'backend\\run.sh'],
+    ['parent command', 'backend/../run.sh'],
+    ['dot-segment command', 'backend/./run.sh'],
+  ])('rejects unsafe %s paths', (_label, command) => {
+    expect(() =>
+      validateManifest({
+        ...base,
+        backend: {
+          kind: 'exec',
+          routes: [{id: 'run', transport: 'http', method: 'GET', path: 'run', command}],
+        },
+      })
+    ).toThrow(ManifestValidationError);
+  });
+
+  it.each([
+    ['encoded separator', 'run%2Fnow'],
+    ['double-encoded separator', 'run%252Fnow'],
+    ['dot segment', 'run/./now'],
+    ['parent segment', 'run/../now'],
+    ['query', 'run?next'],
+    ['fragment', 'run#next'],
+    ['reserved namespace', '_mndw/status'],
+  ])('rejects unsafe backend route %s', (_label, path) => {
+    expect(() =>
+      validateManifest({
+        ...base,
+        backend: {
+          kind: 'exec',
+          routes: [{id: 'run', transport: 'http', method: 'GET', path, command: 'backend/run.sh'}],
+        },
+      })
+    ).toThrow(ManifestValidationError);
+  });
+
+  it('accepts safe nested relative paths', () => {
+    expect(() =>
+      validateManifest({
+        ...base,
+        entry: 'dist/index.js',
+        backend: {
+          kind: 'exec',
+          routes: [{id: 'run', transport: 'http', method: 'GET', path: 'api/run', command: 'backend/run.sh'}],
+        },
+      })
+    ).not.toThrow();
+  });
+
+  it.each([
     {name: 'exec websocket',
       backend: {kind: 'exec', routes: [{id: 'ws', transport: 'websocket', path: 'ws', command: 'backend/ws'}]}},
     {name: 'public post',
@@ -120,5 +179,52 @@ describe('validateManifest behavior', () => {
   it('surfaces plugin name in validation errors', () => {
     expect(() => validateManifest({...base, name: 'Bad Name'})).toThrow(/Bad Name/);
     expect(() => validateManifest({type: 'widget'})).toThrow(/unknown/);
+  });
+
+  it('aggregates invalid fields with their paths', () => {
+    try {
+      validateManifest({
+        ...base,
+        name: 'Bad Name',
+        entry: '/dist/index.js',
+        size: {w: 13, h: 0},
+        backend: {
+          kind: 'exec',
+          routes: [{id: '', transport: 'http', method: 'POST', path: 'run?next', command: '/backend/run.sh'}],
+        },
+      });
+      throw new Error('expected validation to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ManifestValidationError);
+
+      const validationError = error as ManifestValidationError;
+      const paths = validationError.issues.map((issue) => issue.path);
+
+      expect(paths).toEqual(expect.arrayContaining([
+        'name',
+        'entry',
+        'size.w',
+        'size.h',
+        'backend.routes.0.id',
+        'backend.routes.0.path',
+        'backend.routes.0.command',
+      ]));
+      expect(validationError.message).toContain('backend.routes.0.path');
+    }
+  });
+
+  it('uses the existing type discriminator to select widget and page branches', () => {
+    const page = validateManifest({
+      manifestVersion: 3,
+      name: 'page-plugin',
+      version: '3.0.0',
+      type: 'page',
+      label: 'Page Plugin',
+      entry: 'index.js',
+      route: '/page-plugin',
+    });
+
+    expect(page.type).toBe('page');
+    expect('route' in page).toBe(true);
   });
 });

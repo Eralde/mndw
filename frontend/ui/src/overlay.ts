@@ -1,4 +1,5 @@
 import {getMndwUiText} from './i18n.js';
+import {computePopoverCoords} from './position/position.js';
 
 export type UiCloseReason = 'escape' | 'outside' | 'api' | 'detached';
 
@@ -22,9 +23,6 @@ export interface UiLayer {
 export interface UiOverlayProvider {
   open(options: UiLayerOptions): UiLayer;
 }
-
-const GAP = 4;
-const VIEWPORT_PADDING = 8;
 
 export function createFallbackProvider(): UiOverlayProvider {
   return {
@@ -82,22 +80,19 @@ export function createFallbackProvider(): UiOverlayProvider {
           return;
         }
 
-        const rect = options.anchor.getBoundingClientRect();
         const viewportHeight = window.innerHeight;
         const viewportWidth = window.innerWidth;
         const height = contentElement.offsetHeight;
         const width = contentElement.offsetWidth;
-        const below = viewportHeight - rect.bottom - GAP - VIEWPORT_PADDING;
-        const above = rect.top - GAP - VIEWPORT_PADDING;
-        const flip = below < height && above > below;
+        const coords = computePopoverCoords(
+          {element: options.anchor},
+          {width, height},
+          'bottom-start',
+          {width: viewportWidth, height: viewportHeight},
+        );
 
-        contentElement.style.left = `${
-          Math.min(
-            Math.max(rect.left, VIEWPORT_PADDING),
-            Math.max(viewportWidth - width - VIEWPORT_PADDING, VIEWPORT_PADDING),
-          )
-        }px`;
-        contentElement.style.top = flip ? `${rect.top - GAP - height}px` : `${rect.bottom + GAP}px`;
+        contentElement.style.left = `${coords.left}px`;
+        contentElement.style.top = `${coords.top}px`;
         contentElement.style.visibility = 'visible';
       }
 

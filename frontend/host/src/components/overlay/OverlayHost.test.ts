@@ -2,19 +2,21 @@ import {describe, expect, it} from 'vitest';
 import {mount, unmount} from 'svelte';
 import OverlayHost from './OverlayHost.svelte';
 import {
+  type OverlayRuntime,
+  createOverlayRuntime,
   createPluginOverlayService,
-  overlayStore,
-  resetOverlayStateForTests,
 } from '../../services/overlay/overlay-manager.svelte.js';
 
+let testRuntime: OverlayRuntime;
+
 function mountHost() {
-  resetOverlayStateForTests();
+  testRuntime = createOverlayRuntime();
 
   const root = document.createElement('div');
 
   document.body.appendChild(root);
 
-  const host = mount(OverlayHost, {target: root});
+  const host = mount(OverlayHost, {target: root, props: {runtime: testRuntime}});
 
   return {
     root,
@@ -24,6 +26,10 @@ function mountHost() {
       document.body.innerHTML = '';
     },
   };
+}
+
+function createTestService(pluginName: string, instanceId: string) {
+  return createPluginOverlayService(pluginName, instanceId, testRuntime);
 }
 
 async function nextAnimationFrame(): Promise<void> {
@@ -36,7 +42,7 @@ async function anchoredPopover() {
 
   document.body.appendChild(anchor);
 
-  const {service} = createPluginOverlayService('probe', 'probe:1');
+  const {service} = createTestService('probe', 'probe:1');
   const layer = service.createLayer({kind: 'popover', anchor: {element: anchor}});
 
   layer.contentElement.textContent = 'Popover body';
@@ -51,7 +57,7 @@ async function anchoredPopover() {
 
 async function bottomDrawer() {
   const harness = mountHost();
-  const {service} = createPluginOverlayService('probe', 'probe:1');
+  const {service} = createTestService('probe', 'probe:1');
   const layer = service.open({
     kind: 'drawer',
     placement: 'bottom',
@@ -79,7 +85,7 @@ describe('OverlayHost', () => {
 
     try {
       const harness = mountHost();
-      const {service} = createPluginOverlayService('probe', 'probe:1');
+      const {service} = createTestService('probe', 'probe:1');
       const layer = service.open({
         kind: 'modal',
         title: 'Settings',
@@ -117,7 +123,7 @@ describe('OverlayHost', () => {
 
     try {
       const harness = mountHost();
-      const {service} = createPluginOverlayService('probe', 'probe:1');
+      const {service} = createTestService('probe', 'probe:1');
       const layer = service.open({
         kind: 'modal',
         title: 'Settings',
@@ -152,7 +158,7 @@ describe('OverlayHost', () => {
 
     try {
       const harness = mountHost();
-      const {service} = createPluginOverlayService('probe', 'probe:1');
+      const {service} = createTestService('probe', 'probe:1');
       const layer = service.open({
         kind: 'drawer',
         placement: 'right',
@@ -184,14 +190,8 @@ describe('OverlayHost', () => {
   });
 
   it('renders host shell metadata for open() sessions', async () => {
-    resetOverlayStateForTests();
-
-    const root = document.createElement('div');
-
-    document.body.appendChild(root);
-
-    const host = mount(OverlayHost, {target: root});
-    const {service} = createPluginOverlayService('demo', 'demo:1');
+    const harness = mountHost();
+    const {service} = createTestService('demo', 'demo:1');
 
     service.open({
       kind: 'modal',
@@ -205,23 +205,16 @@ describe('OverlayHost', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(root.querySelector('[role="dialog"]')).not.toBeNull();
-    expect(root.textContent).toContain('Widget settings');
-    expect(root.textContent).toContain('Dialog body');
+    expect(harness.root.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(harness.root.textContent).toContain('Widget settings');
+    expect(harness.root.textContent).toContain('Dialog body');
 
-    void unmount(host);
-    root.remove();
+    harness.dispose();
   });
 
   it('renders shellless createLayer() content directly', async () => {
-    resetOverlayStateForTests();
-
-    const root = document.createElement('div');
-
-    document.body.appendChild(root);
-
-    const host = mount(OverlayHost, {target: root});
-    const {service} = createPluginOverlayService('demo', 'demo:1');
+    const harness = mountHost();
+    const {service} = createTestService('demo', 'demo:1');
     const anchor = document.createElement('button');
 
     document.body.appendChild(anchor);
@@ -235,11 +228,10 @@ describe('OverlayHost', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(root.querySelector('[role="dialog"]')).toBeNull();
-    expect(root.textContent).toContain('Popover body');
+    expect(harness.root.querySelector('[role="dialog"]')).toBeNull();
+    expect(harness.root.textContent).toContain('Popover body');
 
-    void unmount(host);
-    root.remove();
+    harness.dispose();
     anchor.remove();
   });
 
@@ -249,7 +241,7 @@ describe('OverlayHost', () => {
 
     document.body.appendChild(anchor);
 
-    const {service} = createPluginOverlayService('probe', 'probe:1');
+    const {service} = createTestService('probe', 'probe:1');
     const layer = service.createLayer({kind: 'popover', anchor: {element: anchor}});
 
     layer.markReady();
@@ -272,7 +264,7 @@ describe('OverlayHost', () => {
 
     document.body.appendChild(anchor);
 
-    const {service} = createPluginOverlayService('probe', 'probe:1');
+    const {service} = createTestService('probe', 'probe:1');
     const layer = service.createLayer({kind: 'popover', anchor: {element: anchor}});
 
     layer.contentElement.textContent = 'Popover body';
@@ -371,7 +363,7 @@ describe('OverlayHost', () => {
 
   it('keeps bottom drawer behavior flags enabled', async () => {
     const {layer, dispose} = await bottomDrawer();
-    const [view] = overlayStore.layers;
+    const [view] = testRuntime.store.layers;
 
     expect(view?.trapFocus).toBe(true);
     expect(view?.closeOnEscape).toBe(true);
@@ -385,7 +377,7 @@ describe('OverlayHost', () => {
 
   it('stacks a bottom drawer above a modal and restores nested scroll lock', async () => {
     const harness = mountHost();
-    const {service} = createPluginOverlayService('probe', 'probe:1');
+    const {service} = createTestService('probe', 'probe:1');
     const modal = service.open({
       kind: 'modal',
       title: 'Settings',
@@ -410,8 +402,8 @@ describe('OverlayHost', () => {
     await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(overlayStore.layers).toHaveLength(2);
-    expect(overlayStore.layers[1]?.kind).toBe('drawer');
+    expect(testRuntime.store.layers).toHaveLength(2);
+    expect(testRuntime.store.layers[1]?.kind).toBe('drawer');
 
     const overlayLayers = Array.from(harness.root.children).filter((element) =>
       element.classList.contains('mndw-overlay-layer')

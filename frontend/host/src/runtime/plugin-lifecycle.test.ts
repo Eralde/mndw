@@ -40,6 +40,7 @@ function mockPlugin(createInstanceResult: PluginInstance | Promise<PluginInstanc
 
 function mockContext(instanceId = 'test:1'): PluginContext {
   return {
+    kind: 'widget',
     rciManager: {} as never,
     storage: {} as never,
     sharedStorage: {} as never,

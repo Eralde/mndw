@@ -14,12 +14,13 @@ describe('createTestPluginContext', () => {
     expect(context.i18n.t('missing')).toBe('missing');
     expect(context.injector.has('missing')).toBe(false);
     expect(context.instanceId).toBe('test:1');
+    expect(context.kind).toBe('widget');
     expect(context.backend).toBeUndefined();
     expect(context.onThemeChange(() => {})).toBeTypeOf('function');
     expect(context.getTokens()).toEqual(MNDW_TOKENS);
     expect(context.onPaletteChange(() => {})).toBeTypeOf('function');
     expect(typeof context.overlay.closeAll).toBe('function');
-    expect(context.pageRoute?.navigate('')).toBeInstanceOf(Promise);
+    expect(context.pageRoute).toBeUndefined();
     expect(context.setTileTitle).toBeTypeOf('function');
     expect(Object.isFrozen(context)).toBe(true);
   });

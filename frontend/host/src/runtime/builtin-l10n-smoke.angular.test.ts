@@ -31,7 +31,7 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
   return {
     ...actual,
     createPluginContext: vi.fn((
-      entry: {name: string},
+      entry: {name: string; type: 'widget' | 'page'},
       instanceId: string,
       hostInfo: HostInfo,
       setTileTitle: ((title: string) => void) | undefined,
@@ -43,13 +43,19 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
         throw new Error(`No smoke context for ${entry.name}`);
       }
 
+      const variant = entry.type === 'page'
+        ? {kind: 'page' as const, pageRoute}
+        : {
+          kind: 'widget' as const,
+          setTileTitle: setTileTitle ?? ((title: string) => tileTitles.set(entry.name, title)),
+        };
+
       return Object.freeze({
         ...template,
         hostInfo,
         instanceId,
-        pageRoute,
-        setTileTitle: setTileTitle ?? ((title: string) => tileTitles.set(entry.name, title)),
-      });
+        ...variant,
+      }) as PluginContext;
     }),
   };
 });

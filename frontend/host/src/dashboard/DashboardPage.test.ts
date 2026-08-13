@@ -370,11 +370,21 @@ describe('DashboardPage', () => {
   });
 
   it('appends a desktop-added widget to mobileOrder and persists both collections', () => {
+    const events: string[] = [];
+
     vi.mocked(pluginRegistry).getWidgets.mockReturnValue([
       {entry: widgetEntry('clock'), module: {createInstance: vi.fn()}},
     ]);
     vi.mocked(addWidgetTile).mockReturnValue('widget-clock:1');
     save.mockReturnValue([{id: 'widget-clock:1', x: 0, y: 0, w: 4, h: 3}]);
+    vi.mocked(addWidgetTile).mockImplementation(() => {
+      events.push('tile-added');
+
+      return 'widget-clock:1';
+    });
+    vi.mocked(saveDashboardLayout).mockImplementation(() => {
+      events.push('persisted');
+    });
 
     const {component, target} = mountPage();
 
@@ -383,9 +393,11 @@ describe('DashboardPage', () => {
     document.body.querySelector<HTMLElement>('.mndw-floating-panel mndw-button:not(.mndw-floating-panel__close)')
       ?.click();
     flushSync();
+    events.push('grid-added');
     gridHandlers.get('added')?.();
     vi.advanceTimersByTime(500);
 
+    expect(events).toEqual(['tile-added', 'grid-added', 'persisted']);
     expect(saveDashboardLayout).toHaveBeenCalledWith({
       tiles: [{id: 'widget-clock:1', x: 0, y: 0, w: 4, h: 3}],
       mobileOrder: ['widget-clock:1'],
@@ -453,6 +465,8 @@ describe('DashboardPage', () => {
   });
 
   it('mobile add places the tile below the desktop layout and persists both collections', () => {
+    const events: string[] = [];
+
     mobileState.matches = true;
     vi.mocked(loadDashboardLayout).mockReturnValue({
       tiles: [{id: 'widget-clock:1', x: 0, y: 0, w: 2, h: 4}],
@@ -465,6 +479,9 @@ describe('DashboardPage', () => {
     vi.mocked(pluginRegistry).getWidgets.mockReturnValue([
       {entry: widgetEntry('weather'), module: {createInstance: vi.fn()}},
     ]);
+    vi.mocked(saveDashboardLayout).mockImplementation(() => {
+      events.push('persisted');
+    });
 
     const {component, target} = mountPage();
 
@@ -475,6 +492,7 @@ describe('DashboardPage', () => {
       ?.click();
     flushSync();
 
+    expect(events).toEqual(['persisted']);
     expect(saveDashboardLayout).toHaveBeenCalledWith({
       tiles: [
         {id: 'widget-clock:1', x: 0, y: 0, w: 2, h: 4},

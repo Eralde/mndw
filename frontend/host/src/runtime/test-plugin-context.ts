@@ -2,14 +2,12 @@ import {
   MNDW_TOKENS,
   type OverlayLayer,
   type OverlayService,
-  type PageRoute,
-  type PluginContext,
   type PluginStorage,
+  type WidgetPluginContext,
 } from '@mndw/sdk';
-import {of} from 'rxjs';
 import {createTestI18n} from '@mndw/sdk/testing';
 
-export type TestPluginContextOverrides = Partial<PluginContext>;
+export type TestPluginContextOverrides = Partial<Omit<WidgetPluginContext, 'kind'>> & {kind?: 'widget'};
 
 function createStorage(): PluginStorage {
   const values = new Map<string, string>();
@@ -57,23 +55,17 @@ function createOverlay(): OverlayService {
   };
 }
 
-function createPageRoute(): PageRoute {
-  return {
-    childPath$: of(''),
-    navigate: () => Promise.resolve(),
-  };
-}
-
-export function createTestPluginContext(overrides: TestPluginContextOverrides = {}): PluginContext {
-  const themeListeners = new Set<Parameters<PluginContext['onThemeChange']>[0]>();
-  const paletteListeners = new Set<Parameters<PluginContext['onPaletteChange']>[0]>();
-  const context: PluginContext = {
+export function createTestPluginContext(overrides: TestPluginContextOverrides = {}): WidgetPluginContext {
+  const themeListeners = new Set<Parameters<WidgetPluginContext['onThemeChange']>[0]>();
+  const paletteListeners = new Set<Parameters<WidgetPluginContext['onPaletteChange']>[0]>();
+  const context: WidgetPluginContext = {
+    kind: 'widget',
     rciManager: {
       execute: () => Promise.resolve(undefined),
       queue: () => Promise.resolve(undefined),
       initBackgroundProcess: () => Promise.resolve(undefined),
       queueBackgroundProcess: () => Promise.resolve(undefined),
-    } as unknown as PluginContext['rciManager'],
+    } as unknown as WidgetPluginContext['rciManager'],
     storage: createStorage(),
     sharedStorage: createStorage(),
     hostInfo: Object.freeze({
@@ -102,7 +94,6 @@ export function createTestPluginContext(overrides: TestPluginContextOverrides = 
       return () => paletteListeners.delete(callback);
     },
     overlay: createOverlay(),
-    pageRoute: createPageRoute(),
     setTileTitle: () => {},
   };
 

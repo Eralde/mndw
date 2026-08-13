@@ -1,4 +1,4 @@
-import {DestroyRef, Injectable, inject, signal} from '@angular/core';
+import {DestroyRef, Injectable, computed, inject, signal} from '@angular/core';
 import {
   ReplaySubject,
   Subject,
@@ -18,7 +18,7 @@ import {
   timeout,
   timer,
 } from 'rxjs';
-import type {BackendClient} from '@mndw/sdk';
+import type {BackendClient, LoadState} from '@mndw/sdk';
 import {MwsApiService} from '../api/mws-api.service';
 import {
   type PersistentSessionSnapshot,
@@ -38,6 +38,10 @@ export const MWSD_STATUS_REQUEST_TIMEOUT_MS = 5_000;
 
 export type MwsViewPhase = 'loading' | 'error' | 'unsupported' | 'ready';
 
+export interface MwsRequestError {
+  message: string;
+}
+
 type PollResult =
   | {
     kind: 'ok';
@@ -46,8 +50,8 @@ type PollResult =
     bridge: BridgeInterfaceRecord;
     controllerName: string | null;
   }
-  | {kind: 'unsupported'}
-  | {kind: 'error'};
+  | {kind: 'unsupported'; reason: string}
+  | {kind: 'error'; error: MwsRequestError};
 
 @Injectable()
 export class MwsDataService {
@@ -56,9 +60,41 @@ export class MwsDataService {
   private readonly backend = inject(MWSD_BACKEND);
   private readonly destroyRef = inject(DestroyRef);
 
-  public readonly phase = signal<MwsViewPhase>('loading');
-  public readonly roots = signal<MwsNode[]>([]);
-  public readonly pollError = signal<boolean>(false);
+  private readonly loadState = signal<LoadState<MwsNode[], MwsRequestError>>({status: 'loading'});
+  public readonly phase = computed<MwsViewPhase>(() => {
+    const state = this.loadState();
+
+    if (state.status === 'unsupported') {
+      return 'unsupported';
+    }
+
+    if (state.status === 'error' && state.data === undefined) {
+      return 'error';
+    }
+
+    if (
+      state.status === 'success' || state.status === 'refreshing'
+      || (state.status === 'error' && state.data !== undefined)
+    ) {
+      return 'ready';
+    }
+
+    return 'loading';
+  });
+  public readonly roots = computed<MwsNode[]>(() => {
+    const state = this.loadState();
+
+    return state.status === 'success' || state.status === 'refreshing'
+      ? state.data
+      : state.status === 'error'
+      ? state.data ?? []
+      : [];
+  });
+  public readonly pollError = computed<boolean>(() => {
+    const state = this.loadState();
+
+    return state.status === 'error' && state.data !== undefined;
+  });
   public readonly lastUpdatedAt = signal<number | null>(null);
   public readonly freshnessNow = signal(Date.now());
 
@@ -74,7 +110,6 @@ export class MwsDataService {
   private pollingStarted = false;
   private pollInFlight = false;
   private refreshPending = false;
-  private hasSnapshot = false;
   private lastPersistentSessions: PersistentSessionSnapshot = newPersistentSessionSnapshot(false, new Map());
 
   public constructor() {
@@ -85,7 +120,11 @@ export class MwsDataService {
   }
 
   public start(): void {
-    this.phase.set('loading');
+    if (this.loadState().status === 'unsupported') {
+      return;
+    }
+
+    this.loadState.set({status: 'loading'});
 
     this.versionSub = this.api.showVersion().subscribe({
       next: (version) => {
@@ -93,13 +132,18 @@ export class MwsDataService {
         this.startPolling();
         this.startMwsdPolling();
       },
-      error: () => this.phase.set('error'),
+      error: (error: unknown) => {
+        this.loadState.set({status: 'error', error: this.toRequestError(error)});
+      },
     });
   }
 
   public retry(): void {
+    if (this.loadState().status === 'unsupported') {
+      return;
+    }
+
     this.stop();
-    this.hasSnapshot = false;
     this.start();
   }
 
@@ -133,6 +177,22 @@ export class MwsDataService {
     this.lastPersistentSessions = newPersistentSessionSnapshot(false, new Map());
   }
 
+  private toRequestError(error: unknown): MwsRequestError {
+    return {message: error instanceof Error ? error.message : String(error)};
+  }
+
+  private markRequestStarted(): void {
+    const state = this.loadState();
+
+    if (state.status === 'success' || state.status === 'refreshing') {
+      this.loadState.set({status: 'refreshing', data: state.data});
+    } else if (state.status === 'error' && state.data !== undefined) {
+      this.loadState.set({status: 'refreshing', data: state.data});
+    } else if (state.status !== 'unsupported') {
+      this.loadState.set({status: 'loading'});
+    }
+  }
+
   private startPolling(): void {
     this.pollingStarted = true;
 
@@ -143,6 +203,7 @@ export class MwsDataService {
         filter(() => !document.hidden),
         exhaustMap(() =>
           defer(() => {
+            this.markRequestStarted();
             this.pollInFlight = true;
 
             return forkJoin({
@@ -153,10 +214,15 @@ export class MwsDataService {
             }).pipe(
               map(({memberResult, hosts, bridge, controllerName}): PollResult =>
                 memberResult.kind === 'unsupported'
-                  ? {kind: 'unsupported'}
+                  ? {kind: 'unsupported', reason: 'MWS is unsupported by this device'}
                   : {kind: 'ok', members: memberResult.members, hosts, bridge, controllerName}
               ),
-              catchError(() => of<PollResult>({kind: 'error'})),
+              catchError((error: unknown) =>
+                of<PollResult>({
+                  kind: 'error',
+                  error: this.toRequestError(error),
+                })
+              ),
               finalize(() => {
                 this.pollInFlight = false;
 
@@ -231,17 +297,20 @@ export class MwsDataService {
 
   private applyPoll(result: PollResult, applyMwsdStatus = this.backend !== null): void {
     if (result.kind === 'error') {
-      if (this.hasSnapshot) {
-        this.pollError.set(true);
-      } else {
-        this.phase.set('error');
-      }
+      const state = this.loadState();
+
+      this.loadState.set(
+        state.status === 'refreshing'
+          ? {status: 'error', error: result.error, data: state.data}
+          : {status: 'error', error: result.error},
+      );
 
       return;
     }
 
     if (result.kind === 'unsupported') {
-      this.phase.set('unsupported');
+      this.loadState.set({status: 'unsupported', reason: result.reason});
+      this.stop();
 
       return;
     }
@@ -266,22 +335,30 @@ export class MwsDataService {
       roots = mergePersistentSessions(roots, this.lastPersistentSessions, Date.now());
     }
 
-    this.roots.set(roots);
+    this.loadState.set({status: 'success', data: roots});
     this.snapshotSubject.next(roots);
     this.lastUpdatedAt.set(Date.now());
-    this.hasSnapshot = true;
-    this.pollError.set(false);
-    this.phase.set('ready');
   }
 
   private mergeCurrentMwsdStatus(): void {
-    if (this.backend === null || !this.hasSnapshot) {
+    if (this.backend === null) {
       return;
     }
 
     const merged = mergePersistentSessions(this.roots(), this.lastPersistentSessions, Date.now());
 
-    this.roots.set(merged);
+    const state = this.loadState();
+
+    if (state.status === 'success') {
+      this.loadState.set({status: 'success', data: merged});
+    } else if (state.status === 'refreshing') {
+      this.loadState.set({status: 'refreshing', data: merged});
+    } else if (state.status === 'error' && state.data !== undefined) {
+      this.loadState.set({status: 'error', error: state.error, data: merged});
+    } else {
+      return;
+    }
+
     this.snapshotSubject.next(merged);
   }
 }

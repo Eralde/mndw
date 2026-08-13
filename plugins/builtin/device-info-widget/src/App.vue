@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type {PluginContext} from '@mndw/sdk';
+import type {LoadState, PluginContext} from '@mndw/sdk';
 import {useTranslator} from '@mndw/sdk/vue';
 import {Ticker} from '@mndw/sdk/ticker';
 import {computed, onMounted, onUnmounted, ref} from 'vue';
@@ -12,9 +12,7 @@ import {createUptimeBaseline, getUptimeSeconds, type UptimeBaseline} from './ser
 
 const props = defineProps<{ctx: PluginContext}>();
 
-const loading = ref(true);
-const error = ref(false);
-const info = ref<DeviceInfo | null>(null);
+const loadState = ref<LoadState<DeviceInfo>>({status: 'loading'});
 const uptimeSeconds = ref<number | null>(null);
 const translator = useTranslator(props.ctx.i18n);
 const t = (key: string): string => translator.t(key);
@@ -25,6 +23,9 @@ let unsubscribeTicker: (() => void) | null = null;
 let refreshLoop: RefreshLoop | null = null;
 
 const firmware = computed(() => props.ctx.hostInfo.firmwareVersion);
+const info = computed<DeviceInfo | null>(() => {
+  return loadState.value.status === 'success' ? loadState.value.data : null;
+});
 const uptime = computed(() =>
     uptimeSeconds.value !== null
         ? formatUptime(uptimeSeconds.value)
@@ -33,9 +34,7 @@ const uptime = computed(() =>
 const handleInfoSuccess = (nextInfo: DeviceInfo): void => {
   const syncedAtMs = Date.now();
 
-  info.value = nextInfo;
-  error.value = false;
-  loading.value = false;
+  loadState.value = {status: 'success', data: nextInfo};
   baseline = createUptimeBaseline(nextInfo.uptimeSeconds, syncedAtMs);
   uptimeSeconds.value = getUptimeSeconds(baseline, syncedAtMs);
 };
@@ -44,8 +43,7 @@ const handleLoadError = (loadError: unknown, isInitial: boolean): void => {
   console.error('[device-info-widget] device info refresh failed', loadError);
 
   if (isInitial) {
-    loading.value = false;
-    error.value = true;
+    loadState.value = {status: 'error', error: loadError};
   }
 };
 
@@ -78,8 +76,8 @@ onUnmounted(() => {
 <template>
   <div class="app">
     <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
-    <div v-if="loading" class="app__loading">{{ t('loading') }}</div>
-    <div v-else-if="error || info === null" class="mndw-alert mndw-alert--danger" role="alert">
+    <div v-if="loadState.status === 'loading'" class="app__loading">{{ t('loading') }}</div>
+    <div v-else-if="loadState.status === 'error' || info === null" class="mndw-alert mndw-alert--danger" role="alert">
       {{ t('error') }}
     </div>
     <div v-else>

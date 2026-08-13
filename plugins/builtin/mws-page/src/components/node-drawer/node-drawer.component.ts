@@ -4,7 +4,7 @@ import {formatCpuLoad, formatMemory, formatRate, formatRssi, formatSpeed, format
 import {MwsDataService} from '../../services/mws-data.service';
 import {type MwsWriteResult, MwsWriteService} from '../../services/mws-write.service';
 import {MWS_RENAME_API, type MwsRenameApi, TRANSLATOR} from '../../tokens';
-import {validateNodeName} from '../../api/node-name';
+import {type NodeNameValidationErrorCode, validateNodeName} from '../../api/node-name';
 import {type NodeStatusLabels, getNodeStatusLabels, getPowerDisabledHint} from '../../status-labels';
 
 export type MwsWifiInterface = 'WifiMaster0' | 'WifiMaster1';
@@ -17,6 +17,17 @@ interface PowerControlState {
 }
 
 const UNAVAILABLE_POWER: MwsRadioPower = {value: null, available: false};
+
+type ErrorTranslationKey =
+  | 'error.invalid-name'
+  | 'error.name-empty'
+  | 'error.name-too-long'
+  | 'error.rename-failed';
+
+const NODE_NAME_ERROR_KEYS: Record<NodeNameValidationErrorCode, Exclude<ErrorTranslationKey, 'error.invalid-name'>> = {
+  'empty': 'error.name-empty',
+  'too-long': 'error.name-too-long',
+};
 
 @Component({
   selector: 'mws-map-node-drawer',
@@ -47,6 +58,8 @@ export class NodeDrawerComponent implements OnDestroy {
   protected pending = false;
   protected error = '';
   protected powerError = '';
+  private renameErrorKey: ErrorTranslationKey | null = null;
+  private powerErrorKey: 'error.tx-power-failed' | null = null;
 
   protected currentNode(): MwsNode | null {
     const node = this.node();
@@ -74,7 +87,7 @@ export class NodeDrawerComponent implements OnDestroy {
     }
 
     this.draft = node.name;
-    this.error = '';
+    this.clearRenameError();
     this.editing = true;
   }
 
@@ -84,12 +97,12 @@ export class NodeDrawerComponent implements OnDestroy {
     }
 
     this.editing = false;
-    this.error = '';
+    this.clearRenameError();
   }
 
   protected onNameInput(event: CustomEvent<{value: string}>): void {
     this.draft = event.detail.value;
-    this.error = '';
+    this.clearRenameError();
   }
 
   protected onNameKeydown(event: KeyboardEvent): void {
@@ -112,7 +125,10 @@ export class NodeDrawerComponent implements OnDestroy {
     const validation = validateNodeName(this.draft);
 
     if (validation.value === null) {
-      this.error = validation.error ?? this.t('error.invalid-name');
+      this.error = '';
+      this.renameErrorKey = validation.errorCode === null
+        ? 'error.invalid-name'
+        : NODE_NAME_ERROR_KEYS[validation.errorCode];
 
       return;
     }
@@ -120,7 +136,7 @@ export class NodeDrawerComponent implements OnDestroy {
     const name = validation.value;
 
     this.pending = true;
-    this.error = '';
+    this.clearRenameError();
 
     this.renameApi.renameNode(node.mac, node.isController, name).subscribe({
       next: () => {
@@ -132,9 +148,20 @@ export class NodeDrawerComponent implements OnDestroy {
       },
       error: (error: unknown) => {
         this.pending = false;
-        this.error = error instanceof Error ? error.message : this.t('error.rename-failed');
+
+        if (error instanceof Error) {
+          this.error = error.message;
+          this.renameErrorKey = null;
+        } else {
+          this.error = '';
+          this.renameErrorKey = 'error.rename-failed';
+        }
       },
     });
+  }
+
+  protected renameErrorMessage(): string {
+    return this.renameErrorKey === null ? this.error : this.t(this.renameErrorKey);
   }
 
   protected dash(value: string | number | null | undefined): string {
@@ -220,12 +247,18 @@ export class NodeDrawerComponent implements OnDestroy {
     state.baseline = this.copyPower(state.lastObserved);
     state.optimistic = event.detail.value;
     state.pending = true;
-    this.powerError = '';
+    this.clearPowerError();
 
     void this.write.setPower(cid, interfaceName, event.detail.value, true)
       .then((result) => {
         if (!result.ok) {
-          this.failPowerWrite(interfaceName, this.writeError(result));
+          const message = this.writeError(result);
+
+          this.failPowerWrite(
+            interfaceName,
+            message ?? '',
+            message === null ? 'error.tx-power-failed' : null,
+          );
 
           return;
         }
@@ -233,7 +266,11 @@ export class NodeDrawerComponent implements OnDestroy {
         state.pending = false;
       })
       .then(undefined, (error: unknown) => {
-        this.failPowerWrite(interfaceName, error instanceof Error ? error.message : this.t('error.tx-power-failed'));
+        if (error instanceof Error) {
+          this.failPowerWrite(interfaceName, error.message);
+        } else {
+          this.failPowerWrite(interfaceName, '', 'error.tx-power-failed');
+        }
       });
   }
 
@@ -248,7 +285,7 @@ export class NodeDrawerComponent implements OnDestroy {
   private resetPowerControls(): void {
     this.powerState.WifiMaster0 = this.newPowerControl();
     this.powerState.WifiMaster1 = this.newPowerControl();
-    this.powerError = '';
+    this.clearPowerError();
   }
 
   private observePower(node: MwsNode | null): void {
@@ -275,16 +312,25 @@ export class NodeDrawerComponent implements OnDestroy {
     return power === undefined ? UNAVAILABLE_POWER : power;
   }
 
-  private failPowerWrite(interfaceName: MwsWifiInterface, message: string): void {
+  private failPowerWrite(
+    interfaceName: MwsWifiInterface,
+    message: string,
+    errorKey: 'error.tx-power-failed' | null = null,
+  ): void {
     const state = this.powerState[interfaceName];
 
     state.pending = false;
     state.optimistic = null;
     state.baseline = null;
     this.powerError = message;
+    this.powerErrorKey = errorKey;
   }
 
-  private writeError(result: MwsWriteResult): string {
+  protected powerErrorMessage(): string {
+    return this.powerErrorKey === null ? this.powerError : this.t(this.powerErrorKey);
+  }
+
+  private writeError(result: MwsWriteResult): string | null {
     for (const step of result.steps) {
       for (const status of step.status) {
         if (status.message !== '') {
@@ -293,7 +339,17 @@ export class NodeDrawerComponent implements OnDestroy {
       }
     }
 
-    return this.t('error.tx-power-failed');
+    return null;
+  }
+
+  private clearRenameError(): void {
+    this.error = '';
+    this.renameErrorKey = null;
+  }
+
+  private clearPowerError(): void {
+    this.powerError = '';
+    this.powerErrorKey = null;
   }
 
   private copyPower(power: MwsRadioPower): MwsRadioPower {

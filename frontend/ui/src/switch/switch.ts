@@ -1,5 +1,5 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
-import {FormAssociatedController} from '../forms/form-associated.js';
+import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
 import {focusRing, hostTypography} from '../styles/base.js';
 
 export const MNDW_SWITCH_TAG = 'mndw-switch';
@@ -99,6 +99,7 @@ export class MndwSwitch extends LitElement {
       this.requestUpdate();
     },
   });
+  private readonly labelController = new FormLabelController(this);
 
   constructor() {
     super();
@@ -155,16 +156,9 @@ export class MndwSwitch extends LitElement {
     // which means no `aria-required` and no validity flag — see the form-association contract.
     this.formState.setFormValue(this.checked ? this.value : null, this.checked ? 'checked' : 'unchecked');
 
-    const labels = this.formState.labels;
-    const labelIds = labels.map((label) => label.id).filter((id) => id !== '');
-
-    if (labelIds.length > 0) {
-      this.setAttribute('aria-labelledby', labelIds.join(' '));
-    } else {
-      this.removeAttribute('aria-labelledby');
-    }
-
     const internals = this.formState.internals;
+    const labels = this.formState.labels;
+    this.labelController.sync(labels, internals);
 
     if (!internals) {
       return;
@@ -173,10 +167,6 @@ export class MndwSwitch extends LitElement {
     internals.role = 'switch';
     internals.ariaChecked = checked;
     internals.ariaDisabled = String(effectiveDisabled);
-    // Element references cross tree boundaries. The reflected IDs above cover engines that do not
-    // expose ElementInternals naming relationships to their accessibility tree.
-    internals.ariaLabelledByElements = labels;
-
     if (this.checked) {
       internals.states.add('checked');
     } else {

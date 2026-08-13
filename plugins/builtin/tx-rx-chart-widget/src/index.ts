@@ -34,7 +34,7 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
         'openSettings',
         (args: SettingsDialogArgs) => openSettingsDialog(ctx, ref, injector, args),
       );
-      componentRef.setInput('setTileTitle', ctx.setTileTitle);
+      componentRef.setInput('setTileTitle', ctx.kind === 'widget' ? ctx.setTileTitle : undefined);
 
       appRef.attachView(componentRef.hostView);
     });

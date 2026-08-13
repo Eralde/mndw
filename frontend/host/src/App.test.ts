@@ -3,7 +3,6 @@ import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import App from './App.svelte';
 import {uiOverlayService} from './services/overlay/ui-overlay.js';
-import {resetOverlayStateForTests} from './services/overlay/overlay-manager.svelte.js';
 import {appState} from './state/app.svelte.js';
 
 type MndwSelectElement = HTMLElement & {
@@ -44,13 +43,13 @@ beforeEach(() => {
   appState.ready = false;
   appState.locale = 'en';
   appState.localeSwitchPending = false;
-  resetOverlayStateForTests();
+  uiOverlayService.closeAll();
 });
 
 afterEach(() => {
   uiOverlayService.closeAll();
   void unmount(component);
-  resetOverlayStateForTests();
+  uiOverlayService.closeAll();
   document.body.innerHTML = '';
 });
 

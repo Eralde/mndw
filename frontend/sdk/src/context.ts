@@ -43,7 +43,7 @@ export interface HostInfo {
   theme: MndwThemeName;
 }
 
-export interface PluginContext {
+interface PluginContextBase {
   rciManager: RciManager;
   storage: PluginStorage;
   sharedStorage: PluginStorage;
@@ -80,10 +80,23 @@ export interface PluginContext {
   onPaletteChange(callback: (tokens: PaletteTokenMap) => void): () => void;
   /** Framework-agnostic top-layer UI (modal, drawer, popover, custom). */
   overlay: OverlayService;
-  /** Page plugins only. Navigate within the plugin's page route. Widgets receive `undefined`. */
-  pageRoute?: PageRoute;
-  /**
-   * Widgets only. Set the host tile title. Page plugins receive `undefined`.
-   */
-  setTileTitle?: (title: string) => void;
 }
+
+export interface WidgetPluginContext extends PluginContextBase {
+  readonly kind: 'widget';
+  /** Widgets do not receive page navigation. */
+  readonly pageRoute?: never;
+  /** Set the host tile title. */
+  readonly setTileTitle?: (title: string) => void;
+}
+
+export interface PagePluginContext extends PluginContextBase {
+  readonly kind: 'page';
+  /** Navigate within the plugin's page route. */
+  readonly pageRoute: PageRoute;
+  /** Page plugins do not receive a dashboard tile title setter. */
+  readonly setTileTitle?: never;
+}
+
+/** Compatibility alias for plugins that consume both widget and page contexts. */
+export type PluginContext = WidgetPluginContext | PagePluginContext;

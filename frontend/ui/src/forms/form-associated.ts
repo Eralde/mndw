@@ -8,6 +8,62 @@ export interface FormAssociatedOptions {
   onDisabledChange?: (effectiveDisabled: boolean) => void;
 }
 
+let nextFormLabelHostId = 0;
+
+/**
+ * Synchronizes labels associated through ElementInternals without crossing a shadow boundary.
+ * Existing label IDs are authoritative; only unlabeled labels receive a host-scoped ID.
+ */
+export class FormLabelController<Host extends HTMLElement = HTMLElement> {
+  private readonly host: Host;
+  private readonly baseId: string;
+  private readonly generatedIds = new Map<HTMLLabelElement, string>();
+
+  constructor(host: Host) {
+    this.host = host;
+    this.baseId = `mndw-${host.localName}-${nextFormLabelHostId}`;
+    nextFormLabelHostId += 1;
+  }
+
+  public sync(labels: readonly HTMLLabelElement[], internals: ElementInternals | null = null): void {
+    const usedIds = new Set<string>();
+    const ids = labels.map((label, index) => {
+      if (label.id === '') {
+        const priorId = this.generatedIds.get(label);
+
+        if (priorId !== undefined) {
+          label.id = priorId;
+        } else {
+          let generatedIndex = index;
+
+          while (usedIds.has(`${this.baseId}-label-${generatedIndex}`)) {
+            generatedIndex += 1;
+          }
+
+          const generatedId = `${this.baseId}-label-${generatedIndex}`;
+
+          this.generatedIds.set(label, generatedId);
+          label.id = generatedId;
+        }
+      }
+
+      usedIds.add(label.id);
+
+      return label.id;
+    });
+
+    if (ids.length === 0) {
+      this.host.removeAttribute('aria-labelledby');
+    } else {
+      this.host.setAttribute('aria-labelledby', ids.join(' '));
+    }
+
+    if (internals !== null) {
+      internals.ariaLabelledByElements = Array.from(labels);
+    }
+  }
+}
+
 export class FormAssociatedController<Host extends HTMLElement> {
   public readonly internals: ElementInternals | null;
 

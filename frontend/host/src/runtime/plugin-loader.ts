@@ -4,9 +4,9 @@ import {appState} from '../state/app.svelte.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {getLocale} from '../services/locale.service.js';
 import {
-  createPluginCatalogCell,
+  type PluginCatalogService,
   createPluginCatalogSource,
-  loadInitialPluginCatalog,
+  pluginCatalogService,
 } from '../services/plugin-catalog.service.js';
 import {checkPluginVersions, readPluginLock} from './plugin-lock.js';
 import {pluginRegistry} from './plugin-registry.js';
@@ -23,6 +23,7 @@ export interface LoaderDeps {
   importModule?: (url: string) => Promise<unknown>;
   loadStylesheet?: (href: string, pluginName: string) => Promise<void>;
   checkVersions?: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
+  catalogService?: PluginCatalogService;
 }
 
 const loadedPluginStylesheets = new Set<string>();
@@ -135,6 +136,7 @@ async function loadOne(
   importModule: (url: string) => Promise<unknown>,
   loadStylesheet: (href: string, pluginName: string) => Promise<void>,
   checkVersions: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>,
+  catalogService: PluginCatalogService,
 ): Promise<void> {
   const base = entry.source === 'builtin' ? PLUGIN_SOURCE_PATHS.builtin : PLUGIN_SOURCE_PATHS.user;
   const dir = `${base}${entry.name}`;
@@ -151,10 +153,10 @@ async function loadOne(
       entry.catalogBaseUrl ?? dir,
       entry.i18n,
     );
-    const catalog = source === undefined ? undefined : createPluginCatalogCell(source, getLocale());
+    const catalog = source === undefined ? undefined : catalogService.createPluginCatalogCell(source, getLocale());
 
     if (catalog !== undefined) {
-      await loadInitialPluginCatalog(catalog, getLocale());
+      await catalogService.loadInitialPluginCatalog(catalog, getLocale());
     }
 
     pluginRegistry.register({entry, module: pluginModule, ...(catalog === undefined ? {} : {catalog})});
@@ -184,6 +186,7 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   const importModule = deps.importModule ?? ((url) => import(/* @vite-ignore */ url));
   const loadStylesheet = deps.loadStylesheet ?? ensurePluginStylesheet;
   const checkVersions = deps.checkVersions ?? defaultCheckVersions;
+  const catalogService = deps.catalogService ?? pluginCatalogService;
 
   pluginRegistry.clear();
   replaceDepsStatuses([]);
@@ -207,5 +210,7 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   // ones appear in the list (for the settings UI) but must not load into the runtime.
   const runnable = dedupe(entries.filter((entry) => entry.enabled));
 
-  await Promise.all(runnable.map((entry) => loadOne(entry, importModule, loadStylesheet, checkVersions)));
+  await Promise.all(
+    runnable.map((entry) => loadOne(entry, importModule, loadStylesheet, checkVersions, catalogService)),
+  );
 }

@@ -115,7 +115,12 @@ export interface OverlayLayerView {
   reposition(): void;
 }
 
-let nextLayerId = 1;
+export interface OverlayRuntime {
+  readonly store: OverlayStore;
+  allocateLayerId(): number;
+  addLayer(layer: OverlayLayerView): void;
+  removeLayer(layer: OverlayLayerView): void;
+}
 
 class LayerController<Result = unknown> implements OverlaySession<Result> {
   public readonly id: number;
@@ -152,14 +157,17 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
   private openTimeout: ReturnType<typeof setTimeout> | undefined;
   private repositionHandler: (() => void) | null = null;
   private anchorObserver: MutationObserver | null = null;
+  private readonly runtime: OverlayRuntime;
 
   constructor(
+    runtime: OverlayRuntime,
     pluginName: string,
     instanceId: string,
     options: OverlayLayerOptions,
     shell: ShellConfig | null,
   ) {
-    this.id = nextLayerId++;
+    this.runtime = runtime;
+    this.id = runtime.allocateLayerId();
     this.pluginName = pluginName;
     this.instanceId = instanceId;
     this.kind = options.kind;
@@ -412,7 +420,7 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
     }
 
     this.restoreFocusOnClose();
-    removeLayer(this);
+    this.runtime.removeLayer(this);
     this.state = 'closed';
 
     const event: OverlayCloseEvent<Result> = {reason, result};
@@ -448,32 +456,41 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
   }
 }
 
-class OverlayStore {
+export class OverlayStore {
   public layers = $state<OverlayLayerView[]>([]);
 }
 
-export const overlayStore = new OverlayStore();
+export function createOverlayRuntime(): OverlayRuntime {
+  const store = new OverlayStore();
+  let nextLayerId = 1;
 
-function removeLayer(layer: OverlayLayerView): void {
-  const index = overlayStore.layers.indexOf(layer);
+  return {
+    store,
+    allocateLayerId: () => nextLayerId++,
+    removeLayer: (layer) => {
+      const index = store.layers.indexOf(layer);
 
-  if (index !== -1) {
-    overlayStore.layers.splice(index, 1);
-  }
-}
-
-function addLayer(layer: OverlayLayerView): void {
-  // Opening a modal supersedes earlier same-plugin popovers (reason 'replaced').
-  if (layer.kind === 'modal') {
-    for (const existing of [...overlayStore.layers]) {
-      if (existing.instanceId === layer.instanceId && existing.kind === 'popover') {
-        existing.closeWithReason('replaced');
+      if (index !== -1) {
+        store.layers.splice(index, 1);
       }
-    }
-  }
+    },
+    addLayer: (layer) => {
+      // Opening a modal supersedes earlier same-plugin popovers (reason 'replaced').
+      if (layer.kind === 'modal') {
+        for (const existing of [...store.layers]) {
+          if (existing.instanceId === layer.instanceId && existing.kind === 'popover') {
+            existing.closeWithReason('replaced');
+          }
+        }
+      }
 
-  overlayStore.layers.push(layer);
+      store.layers.push(layer);
+    },
+  };
 }
+
+const defaultRuntime = createOverlayRuntime();
+export const defaultOverlayRuntime = defaultRuntime;
 
 export interface PluginOverlayBundle {
   service: OverlayService;
@@ -489,6 +506,7 @@ export interface PluginOverlayBundle {
 export function createPluginOverlayService(
   pluginName: string,
   instanceId: string,
+  runtime: OverlayRuntime = defaultRuntime,
 ): PluginOverlayBundle {
   let disposed = false;
 
@@ -502,16 +520,16 @@ export function createPluginOverlayService(
   }
 
   function instanceLayers(): OverlayLayerView[] {
-    return overlayStore.layers.filter((layer) => layer.instanceId === instanceId);
+    return runtime.store.layers.filter((layer) => layer.instanceId === instanceId);
   }
 
   const service: OverlayService = {
     createLayer<Result = unknown>(options: OverlayLayerOptions): OverlayLayer<Result> {
       assertLive();
 
-      const layer = new LayerController<Result>(pluginName, instanceId, options, null);
+      const layer = new LayerController<Result>(runtime, pluginName, instanceId, options, null);
 
-      addLayer(layer);
+      runtime.addLayer(layer);
 
       return layer;
     },
@@ -520,13 +538,14 @@ export function createPluginOverlayService(
 
       const {title, description, showCloseButton, mount, kind, ...rest} = options;
       const layer = new LayerController<Result>(
+        runtime,
         pluginName,
         instanceId,
         {kind, ...rest},
         {title, description, showCloseButton: showCloseButton ?? true},
       );
 
-      addLayer(layer);
+      runtime.addLayer(layer);
 
       try {
         const result = mount(layer.contentElement, layer, layer.signal);
@@ -566,10 +585,4 @@ export function createPluginOverlayService(
   }
 
   return {service, dispose};
-}
-
-/** Test-only: clears all overlay state between cases. */
-export function resetOverlayStateForTests(): void {
-  overlayStore.layers.splice(0, overlayStore.layers.length);
-  nextLayerId = 1;
 }

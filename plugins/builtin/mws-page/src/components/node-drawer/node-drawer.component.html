@@ -28,8 +28,8 @@
               (click)="cancelRename()"
             >{{ t('drawer.cancel') }}</mndw-button>
           </div>
-          @if (error) {
-            <p class="rename-error" role="alert">{{ error }}</p>
+          @if (renameErrorMessage(); as errorMessage) {
+            <p class="rename-error" role="alert">{{ errorMessage }}</p>
           }
         </div>
       } @else {
@@ -129,8 +129,8 @@
             ></mndw-slider>
           </mndw-field>
         }
-        @if (powerError) {
-          <p class="power-error" role="alert">{{ powerError }}</p>
+        @if (powerErrorMessage(); as errorMessage) {
+          <p class="power-error" role="alert">{{ errorMessage }}</p>
         }
       </section>
     }

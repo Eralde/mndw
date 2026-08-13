@@ -5,7 +5,7 @@ import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, getPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
-import {resetPluginCatalogServiceForTests, setPluginCatalogFetchForTests} from '../services/plugin-catalog.service.js';
+import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
 
 const emptyBackend: PluginBackendDescriptor = {
   routes: {},
@@ -52,8 +52,9 @@ function harness(entries: PluginListEntry[], modules: Record<string, unknown> = 
   const loadStylesheet = vi.fn((): Promise<void> => Promise.resolve());
   const fetchList = vi.fn((): Promise<PluginListEntry[]> => Promise.resolve(entries));
   const checkVersions = vi.fn((): string[] => []);
+  const catalogService = createPluginCatalogService();
 
-  return {importModule, loadStylesheet, fetchList, checkVersions};
+  return {importModule, loadStylesheet, fetchList, checkVersions, catalogService};
 }
 
 afterEach(() => {
@@ -62,7 +63,6 @@ afterEach(() => {
   replaceDepsStatuses([]);
   appState.pluginLoadError = null;
   vi.restoreAllMocks();
-  resetPluginCatalogServiceForTests();
 });
 
 // eslint-disable-next-line max-lines-per-function -- loader behavior cases stay together.
@@ -120,13 +120,13 @@ describe('loadPlugins', () => {
 
       return Promise.resolve(goodModule);
     });
-    setPluginCatalogFetchForTests((url) => {
+    const catalogService = createPluginCatalogService({fetchCatalog: (url) => {
       events.push(`catalog:${url}`);
 
       return Promise.resolve({title: 'Hello'});
-    });
+    }});
 
-    await loadPlugins(h);
+    await loadPlugins({...h, catalogService});
 
     const loaded = pluginRegistry.get('localized');
 

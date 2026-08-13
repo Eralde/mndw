@@ -7,8 +7,11 @@ import {
 import OverlayShell from './OverlayShell.svelte';
 import {
   type OverlayLayerView,
-  overlayStore,
+  type OverlayRuntime,
+  defaultOverlayRuntime,
 } from '../../services/overlay/overlay-manager.svelte.js';
+
+let {runtime = defaultOverlayRuntime}: {runtime?: OverlayRuntime} = $props();
 
 // NOTE: The host-owned BackendApprovalModal.svelte still uses a standalone fixed
 // overlay at z-index: 2000 and is intentionally NOT migrated in this rollout. The
@@ -16,7 +19,7 @@ import {
 // approval prompts always win. Migrating that modal is a follow-up.
 const Z_BASE = 1000;
 
-const layers = $derived(overlayStore.layers);
+const layers = $derived(runtime.store.layers);
 
 function layerZ(index: number): number {
   return Z_BASE + index;

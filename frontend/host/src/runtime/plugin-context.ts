@@ -69,10 +69,25 @@ export function createPluginContext(
   pageRoute?: PageRoute,
   catalogCell?: import('../services/plugin-catalog.service.js').PluginCatalogCell,
 ): PluginContext {
+  if (entry.type === 'page' && pageRoute === undefined) {
+    throw new Error(`Page plugin "${entry.name}" requires a page route`);
+  }
+
   const {service, dispose} = createPluginOverlayService(entry.name, instanceId);
 
   pendingOverlayDisposers.set(instanceId, dispose);
 
+  const variant = entry.type === 'page'
+    ? (() => {
+      if (pageRoute === undefined) {
+        throw new Error(`Page plugin "${entry.name}" requires a page route`);
+      }
+
+      return {kind: 'page' as const, pageRoute};
+    })()
+    : setTileTitle === undefined
+    ? {kind: 'widget' as const}
+    : {kind: 'widget' as const, setTileTitle};
   const context: PluginContext = Object.assign(
     Object.create(null),
     {
@@ -92,9 +107,8 @@ export function createPluginContext(
       getTokens,
       onPaletteChange: subscribePalette,
       overlay: service,
-      setTileTitle,
-      pageRoute: entry.type === 'page' ? pageRoute : undefined,
-    } satisfies PluginContext,
+    },
+    variant,
   );
 
   return Object.freeze(context);

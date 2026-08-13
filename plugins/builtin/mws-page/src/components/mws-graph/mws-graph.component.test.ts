@@ -1,5 +1,6 @@
 import '@angular/compiler';
-import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {DestroyRef, inject, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {createTranslatorSignals} from '@mndw/sdk/angular';
 import {TestBed} from '@angular/core/testing';
 import {createTestI18n} from '@mndw/sdk/testing';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
@@ -12,6 +13,9 @@ import {MwsGraphComponent} from './mws-graph.component';
 import graphStyles from './mws-graph.component.scss?raw';
 import {TRANSLATOR} from '../../tokens';
 import enCatalog from '../../../i18n/en.json';
+import ruCatalog from '../../../i18n/ru.json';
+
+let testI18n = createTestI18n(enCatalog);
 
 const CONTROLLER: ControllerInfo = {
   mac: '02:7d:4a:91:c3:10',
@@ -30,6 +34,7 @@ function fixtureRoots(): MwsNode[] {
 describe('MwsGraphComponent', () => {
   beforeEach(async () => {
     TestBed.resetTestingModule();
+    testI18n = createTestI18n(enCatalog);
     await resolveComponentResources((url: string) => {
       if (url.endsWith('mws-graph.component.scss')) {
         return Promise.resolve(graphStyles);
@@ -39,7 +44,10 @@ describe('MwsGraphComponent', () => {
     });
     await TestBed.configureTestingModule({
       imports: [MwsGraphComponent],
-      providers: [{provide: TRANSLATOR, useValue: createTestI18n(enCatalog)}],
+      providers: [{
+        provide: TRANSLATOR,
+        useFactory: () => createTranslatorSignals(testI18n, inject(DestroyRef)),
+      }],
     }).compileComponents();
   });
 
@@ -78,6 +86,22 @@ describe('MwsGraphComponent', () => {
     expect(DEFAULT_LAYOUT_CONFIG.nodeWidth).toBe(180);
     expect([...element.querySelectorAll<SVGRectElement>('rect.selection-ring')]
       .every((ring) => ring.style.display === 'none')).toBe(true);
+  });
+
+  it('refreshes imperative SVG translations after a locale switch', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const edgeTitle = fixture.nativeElement.querySelector<SVGTitleElement>('path.edge.wireless title');
+
+    expect(edgeTitle?.textContent).toContain('Wireless');
+
+    testI18n.setLocale('ru', ruCatalog);
+    fixture.changeDetectorRef.detectChanges();
+
+    expect(edgeTitle?.textContent).toContain('Беспроводное');
   });
 
   it('shows the selection ring only on the selected node and moves it when selection changes', () => {

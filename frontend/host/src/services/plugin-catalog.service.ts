@@ -28,7 +28,7 @@ export interface PluginCatalogCell {
   commit(state: PluginCatalogState, notify?: boolean): void;
 }
 
-interface CatalogGeneration {
+export interface CatalogGeneration {
   readonly token: number;
   readonly targetLocale: string;
   readonly deadline: number;
@@ -40,11 +40,37 @@ interface CatalogGeneration {
 }
 
 const CATALOG_TIMEOUT_MS = 3000;
-const catalogSuccessCache = new Map<string, PluginCatalog>();
-const catalogCells = new Set<PluginCatalogCell>();
-let activeGeneration: CatalogGeneration | undefined;
-let nextGenerationToken = 0;
-let fetchCatalog: (url: string) => Promise<PluginCatalog> = fetchCatalogFromNetwork;
+
+export interface PluginCatalogDeps {
+  fetchCatalog?: (url: string) => Promise<PluginCatalog>;
+  now?: () => number;
+  setTimeout?: typeof globalThis.setTimeout;
+  queueMicrotask?: typeof globalThis.queueMicrotask;
+}
+
+interface CatalogRuntime {
+  readonly catalogSuccessCache: Map<string, PluginCatalog>;
+  readonly catalogCells: Set<PluginCatalogCell>;
+  activeGeneration: CatalogGeneration | undefined;
+  nextGenerationToken: number;
+  readonly fetchCatalog: (url: string) => Promise<PluginCatalog>;
+  readonly now: () => number;
+  readonly setTimeout: typeof globalThis.setTimeout;
+  readonly queueMicrotask: typeof globalThis.queueMicrotask;
+}
+
+function createRuntime(deps: PluginCatalogDeps = {}): CatalogRuntime {
+  return {
+    catalogSuccessCache: new Map<string, PluginCatalog>(),
+    catalogCells: new Set<PluginCatalogCell>(),
+    activeGeneration: undefined,
+    nextGenerationToken: 0,
+    fetchCatalog: deps.fetchCatalog ?? fetchCatalogFromNetwork,
+    now: deps.now ?? Date.now,
+    setTimeout: deps.setTimeout ?? globalThis.setTimeout.bind(globalThis),
+    queueMicrotask: deps.queueMicrotask ?? globalThis.queueMicrotask.bind(globalThis),
+  };
+}
 
 function cacheKey(source: PluginCatalogSource, locale: string): string {
   return `${source.name}/${source.version}/${locale}`;
@@ -88,8 +114,13 @@ async function fetchCatalogFromNetwork(url: string): Promise<PluginCatalog> {
   return parseCatalog(await response.json(), url);
 }
 
-async function loadCatalog(source: PluginCatalogSource, locale: string, deadline?: number): Promise<PluginCatalog> {
-  const cached = catalogSuccessCache.get(cacheKey(source, locale));
+async function loadCatalog(
+  runtime: CatalogRuntime,
+  source: PluginCatalogSource,
+  locale: string,
+  deadline?: number,
+): Promise<PluginCatalog> {
+  const cached = runtime.catalogSuccessCache.get(cacheKey(source, locale));
 
   if (cached !== undefined) {
     return cached;
@@ -102,46 +133,47 @@ async function loadCatalog(source: PluginCatalogSource, locale: string, deadline
   }
 
   try {
-    const catalog = await fetchCatalog(url);
+    const catalog = await runtime.fetchCatalog(url);
 
-    if (deadline !== undefined && Date.now() > deadline) {
+    if (deadline !== undefined && runtime.now() > deadline) {
       throw new Error('catalog request completed after deadline');
     }
 
-    catalogSuccessCache.set(cacheKey(source, locale), catalog);
+    runtime.catalogSuccessCache.set(cacheKey(source, locale), catalog);
 
     return catalog;
   } catch (error) {
     // Rejections and timeouts intentionally never enter the success cache.
-    catalogSuccessCache.delete(cacheKey(source, locale));
+    runtime.catalogSuccessCache.delete(cacheKey(source, locale));
 
     throw error;
   }
 }
 
-function deadlinePromise(deadline: number): Promise<never> {
-  const remaining = Math.max(0, deadline - Date.now());
+function deadlinePromise(runtime: CatalogRuntime, deadline: number): Promise<never> {
+  const remaining = Math.max(0, deadline - runtime.now());
 
   return new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('catalog deadline exceeded')), remaining);
+    runtime.setTimeout(() => reject(new Error('catalog deadline exceeded')), remaining);
   });
 }
 
 async function loadState(
+  runtime: CatalogRuntime,
   source: PluginCatalogSource,
   targetLocale: string,
   deadline: number,
 ): Promise<PluginCatalogState> {
   const resolvedCatalogLocale = resolveCatalogLocale(source, targetLocale);
   const defaultLocale = source.defaultLocale;
-  const primaryPromise = loadCatalog(source, resolvedCatalogLocale, deadline);
+  const primaryPromise = loadCatalog(runtime, source, resolvedCatalogLocale, deadline);
   const defaultPromise = resolvedCatalogLocale === defaultLocale
     ? primaryPromise
-    : loadCatalog(source, defaultLocale, deadline);
+    : loadCatalog(runtime, source, defaultLocale, deadline);
 
   const settled = await Promise.race([
     Promise.allSettled([primaryPromise, defaultPromise]),
-    deadlinePromise(deadline),
+    deadlinePromise(runtime, deadline),
   ]).catch(() => undefined);
 
   const primary = Array.isArray(settled) && settled[0]?.status === 'fulfilled'
@@ -201,30 +233,34 @@ class CatalogCell implements PluginCatalogCell {
   }
 }
 
-export function createPluginCatalogCell(source: PluginCatalogSource, locale: string): PluginCatalogCell {
+function createPluginCatalogCellForRuntime(
+  runtime: CatalogRuntime,
+  source: PluginCatalogSource,
+  locale: string,
+): PluginCatalogCell {
   const cell = new CatalogCell(source, locale);
 
-  catalogCells.add(cell);
+  runtime.catalogCells.add(cell);
 
-  if (activeGeneration !== undefined) {
-    activeGeneration.add(cell);
+  if (runtime.activeGeneration !== undefined) {
+    runtime.activeGeneration.add(cell);
   }
 
   return cell;
 }
 
-export function registerPluginCatalogCell(cell: PluginCatalogCell): void {
-  catalogCells.add(cell);
+function registerPluginCatalogCellForRuntime(runtime: CatalogRuntime, cell: PluginCatalogCell): void {
+  runtime.catalogCells.add(cell);
 }
 
-export function unregisterPluginCatalogCell(cell: PluginCatalogCell): void {
-  catalogCells.delete(cell);
+function unregisterPluginCatalogCellForRuntime(runtime: CatalogRuntime, cell: PluginCatalogCell): void {
+  runtime.catalogCells.delete(cell);
 }
 
-export function clearPluginCatalogCells(): void {
-  activeGeneration?.discard();
-  catalogCells.clear();
-  activeGeneration = undefined;
+function clearPluginCatalogCellsForRuntime(runtime: CatalogRuntime): void {
+  runtime.activeGeneration?.discard();
+  runtime.catalogCells.clear();
+  runtime.activeGeneration = undefined;
 }
 
 export function createPluginCatalogSource(
@@ -240,15 +276,17 @@ export function createPluginCatalogSource(
   return {name, version, baseUrl, defaultLocale: i18n.defaultLocale, locales: i18n.locales};
 }
 
-export async function loadInitialPluginCatalog(
+async function loadInitialPluginCatalogForRuntime(
+  runtime: CatalogRuntime,
   cell: PluginCatalogCell,
   activeLocale: string,
   timeoutMs = CATALOG_TIMEOUT_MS,
 ): Promise<void> {
-  cell.commit(await loadState(cell.source, activeLocale, Date.now() + timeoutMs));
+  cell.commit(await loadState(runtime, cell.source, activeLocale, runtime.now() + timeoutMs));
 }
 
 class Generation implements CatalogGeneration {
+  private readonly runtime: CatalogRuntime;
   public readonly token: number;
   public readonly targetLocale: string;
   public readonly deadline: number;
@@ -260,24 +298,25 @@ class Generation implements CatalogGeneration {
   private resolvedStates = new Map<PluginCatalogCell, PluginCatalogState>();
   private resolvePromise!: () => void;
 
-  constructor(targetLocale: string) {
-    this.token = ++nextGenerationToken;
+  constructor(runtime: CatalogRuntime, targetLocale: string) {
+    this.runtime = runtime;
+    this.token = ++runtime.nextGenerationToken;
     this.targetLocale = targetLocale;
-    this.deadline = Date.now() + CATALOG_TIMEOUT_MS;
+    this.deadline = runtime.now() + CATALOG_TIMEOUT_MS;
     this.promise = new Promise((resolve) => {
       this.resolvePromise = resolve;
     });
-    setTimeout(() => this.settle(), CATALOG_TIMEOUT_MS);
+    runtime.setTimeout(() => this.settle(), CATALOG_TIMEOUT_MS);
   }
 
   public add(cell: PluginCatalogCell): void {
-    if (this.settled || Date.now() >= this.deadline || this.cells.has(cell)) {
+    if (this.settled || this.runtime.now() >= this.deadline || this.cells.has(cell)) {
       return;
     }
 
     this.pending += 1;
 
-    const statePromise = loadState(cell.source, this.targetLocale, this.deadline)
+    const statePromise = loadState(this.runtime, cell.source, this.targetLocale, this.deadline)
       .catch(() => emptyState(cell.source, this.targetLocale));
 
     this.cells.set(cell, statePromise);
@@ -308,7 +347,7 @@ class Generation implements CatalogGeneration {
       return;
     }
 
-    queueMicrotask(() => {
+    this.runtime.queueMicrotask(() => {
       if (this.settled || !this.initialEnrollmentDone || this.pending > 0) {
         return;
       }
@@ -319,7 +358,7 @@ class Generation implements CatalogGeneration {
   }
 
   public commit(beforeNotify: () => void): void {
-    if (activeGeneration !== this) {
+    if (this.runtime.activeGeneration !== this) {
       return;
     }
 
@@ -332,25 +371,25 @@ class Generation implements CatalogGeneration {
     for (const cell of this.resolvedStates.keys()) {
       const state = this.resolvedStates.get(cell);
 
-      if (activeGeneration === this && state !== undefined) {
+      if (this.runtime.activeGeneration === this && state !== undefined) {
         cell.commit(state);
       }
     }
 
-    activeGeneration = undefined;
+    this.runtime.activeGeneration = undefined;
   }
 }
 
-export function preparePluginCatalogGeneration(targetLocale: string): CatalogGeneration {
-  if (activeGeneration !== undefined) {
+function preparePluginCatalogGenerationForRuntime(runtime: CatalogRuntime, targetLocale: string): CatalogGeneration {
+  if (runtime.activeGeneration !== undefined) {
     throw new Error('A plugin catalog generation is already pending');
   }
 
-  const generation = new Generation(targetLocale);
+  const generation = new Generation(runtime, targetLocale);
 
-  activeGeneration = generation;
+  runtime.activeGeneration = generation;
 
-  for (const cell of catalogCells) {
+  for (const cell of runtime.catalogCells) {
     generation.add(cell);
   }
 
@@ -359,20 +398,23 @@ export function preparePluginCatalogGeneration(targetLocale: string): CatalogGen
   return generation;
 }
 
-export function commitPluginCatalogGeneration(generation: CatalogGeneration, beforeNotify: () => void): void {
+function commitPluginCatalogGenerationForRuntime(
+  generation: CatalogGeneration,
+  beforeNotify: () => void,
+): void {
   generation.commit(beforeNotify);
 }
 
-export function discardPluginCatalogGeneration(generation: CatalogGeneration): void {
+function discardPluginCatalogGenerationForRuntime(runtime: CatalogRuntime, generation: CatalogGeneration): void {
   generation.discard();
 
-  if (activeGeneration === generation) {
-    activeGeneration = undefined;
+  if (runtime.activeGeneration === generation) {
+    runtime.activeGeneration = undefined;
   }
 }
 
-export function getActivePluginCatalogGeneration(): CatalogGeneration | undefined {
-  return activeGeneration;
+function getActivePluginCatalogGenerationForRuntime(runtime: CatalogRuntime): CatalogGeneration | undefined {
+  return runtime.activeGeneration;
 }
 
 export function formatPluginTranslation(
@@ -410,16 +452,67 @@ export function createPluginI18n(
   return Object.freeze(facade);
 }
 
-export function setPluginCatalogFetchForTests(fetcher: (url: string) => Promise<PluginCatalog>): void {
-  fetchCatalog = fetcher;
+export interface PluginCatalogService {
+  createPluginCatalogCell(source: PluginCatalogSource, locale: string): PluginCatalogCell;
+  registerPluginCatalogCell(cell: PluginCatalogCell): void;
+  unregisterPluginCatalogCell(cell: PluginCatalogCell): void;
+  clearPluginCatalogCells(): void;
+  loadInitialPluginCatalog(cell: PluginCatalogCell, activeLocale: string, timeoutMs?: number): Promise<void>;
+  preparePluginCatalogGeneration(targetLocale: string): CatalogGeneration;
+  commitPluginCatalogGeneration(generation: CatalogGeneration, beforeNotify: () => void): void;
+  discardPluginCatalogGeneration(generation: CatalogGeneration): void;
+  getActivePluginCatalogGeneration(): CatalogGeneration | undefined;
 }
 
-export function resetPluginCatalogServiceForTests(): void {
-  catalogSuccessCache.clear();
-  catalogCells.clear();
-  activeGeneration = undefined;
-  fetchCatalog = fetchCatalogFromNetwork;
-  nextGenerationToken = 0;
+export function createPluginCatalogService(deps: PluginCatalogDeps = {}): PluginCatalogService {
+  const runtime = createRuntime(deps);
+
+  return {
+    createPluginCatalogCell: (source, locale) => createPluginCatalogCellForRuntime(runtime, source, locale),
+    registerPluginCatalogCell: (cell) => registerPluginCatalogCellForRuntime(runtime, cell),
+    unregisterPluginCatalogCell: (cell) => unregisterPluginCatalogCellForRuntime(runtime, cell),
+    clearPluginCatalogCells: () => clearPluginCatalogCellsForRuntime(runtime),
+    loadInitialPluginCatalog: (cell, activeLocale, timeoutMs) =>
+      loadInitialPluginCatalogForRuntime(runtime, cell, activeLocale, timeoutMs),
+    preparePluginCatalogGeneration: (targetLocale) => preparePluginCatalogGenerationForRuntime(runtime, targetLocale),
+    commitPluginCatalogGeneration: (generation, beforeNotify) =>
+      commitPluginCatalogGenerationForRuntime(generation, beforeNotify),
+    discardPluginCatalogGeneration: (generation) => discardPluginCatalogGenerationForRuntime(runtime, generation),
+    getActivePluginCatalogGeneration: () => getActivePluginCatalogGenerationForRuntime(runtime),
+  };
 }
+
+const defaultService = createPluginCatalogService();
+export const pluginCatalogService = defaultService;
+
+export const createPluginCatalogCell = (source: PluginCatalogSource, locale: string): PluginCatalogCell =>
+  defaultService.createPluginCatalogCell(source, locale);
+export const registerPluginCatalogCell = (cell: PluginCatalogCell): void => {
+  defaultService.registerPluginCatalogCell(cell);
+};
+export const unregisterPluginCatalogCell = (cell: PluginCatalogCell): void => {
+  defaultService.unregisterPluginCatalogCell(cell);
+};
+export const clearPluginCatalogCells = (): void => {
+  defaultService.clearPluginCatalogCells();
+};
+export const loadInitialPluginCatalog = (
+  cell: PluginCatalogCell,
+  activeLocale: string,
+  timeoutMs?: number,
+): Promise<void> => defaultService.loadInitialPluginCatalog(cell, activeLocale, timeoutMs);
+export const preparePluginCatalogGeneration = (targetLocale: string): CatalogGeneration =>
+  defaultService.preparePluginCatalogGeneration(targetLocale);
+export const commitPluginCatalogGeneration = (
+  generation: CatalogGeneration,
+  beforeNotify: () => void,
+): void => {
+  defaultService.commitPluginCatalogGeneration(generation, beforeNotify);
+};
+export const discardPluginCatalogGeneration = (generation: CatalogGeneration): void => {
+  defaultService.discardPluginCatalogGeneration(generation);
+};
+export const getActivePluginCatalogGeneration = (): CatalogGeneration | undefined =>
+  defaultService.getActivePluginCatalogGeneration();
 
 export const PLUGIN_CATALOG_TIMEOUT_MS = CATALOG_TIMEOUT_MS;

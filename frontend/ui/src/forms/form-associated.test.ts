@@ -1,5 +1,46 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {FormAssociatedController, type FormValue} from './form-associated.js';
+import {FormAssociatedController, FormLabelController, type FormValue} from './form-associated.js';
+
+describe('FormLabelController', () => {
+  it('assigns stable host-scoped IDs only to unlabeled labels', () => {
+    const host = document.createElement('mndw-label-probe');
+    const existing = document.createElement('label');
+    const generated = document.createElement('label');
+    existing.id = 'explicit-label';
+    const controller = new FormLabelController(host);
+
+    controller.sync([existing, generated]);
+    const generatedId = generated.id;
+
+    expect(generatedId).toMatch(/^mndw-mndw-label-probe-\d+-label-1$/);
+    expect(existing.id).toBe('explicit-label');
+    expect(host.getAttribute('aria-labelledby')).toBe(`explicit-label ${generatedId}`);
+
+    controller.sync([existing, generated]);
+
+    expect(generated.id).toBe(generatedId);
+
+    controller.sync([generated, existing]);
+
+    expect(generated.id).toBe(generatedId);
+  });
+
+  it('updates ElementInternals with label element references without cross-root queries', () => {
+    const host = document.createElement('mndw-label-probe');
+    const label = document.createElement('label');
+    const labelledBy: Element[] = [];
+    const internals = {
+      set ariaLabelledByElements(value: Element[]) {
+        labelledBy.splice(0, labelledBy.length, ...value);
+      },
+    } as unknown as ElementInternals;
+
+    new FormLabelController(host).sync([label], internals);
+
+    expect(labelledBy).toEqual([label]);
+    expect(host.querySelector('label')).toBeNull();
+  });
+});
 
 interface FakeInternals {
   form: HTMLFormElement | null;

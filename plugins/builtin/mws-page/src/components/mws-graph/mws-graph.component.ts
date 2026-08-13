@@ -27,6 +27,8 @@ import {
 import {edgeTooltip, edgeType, linkQuality} from './link-quality';
 import {TRANSLATOR} from '../../tokens';
 import {getNodeStatusLabels} from '../../status-labels';
+import {dragPosition, isClickWithinSlop} from './graph-interaction';
+import {type GraphSelectionState, edgePath, effectivePosition, nodeClass, pathSelectionClass} from './graph-rendering';
 
 export const FIT_PADDING = 40;
 export const CLICK_SLOP = 4;
@@ -42,12 +44,6 @@ interface DragState {
   pointerOrigin: Position;
   screenOrigin: Position;
   moved: boolean;
-}
-
-interface SelectionState {
-  selected: MwsNode | null;
-  path: Set<string>;
-  reachedController: boolean;
 }
 
 @Component({
@@ -134,6 +130,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     this.roots();
     this.nodePositions();
     this.positionsLoadOutcome();
+    void this.translator.locale;
 
     const editMode = this.editMode();
 
@@ -345,31 +342,6 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       .filter((edge): edge is PositionedEdge => edge.source !== undefined && edge.target !== undefined);
   }
 
-  private effectivePosition(positioned: PositionedNode): Position {
-    const dragged = this.dragPositions.get(positioned.node.id);
-
-    if (dragged !== undefined) {
-      return dragged;
-    }
-
-    const manual = this.nodePositions().get(positioned.node.id);
-
-    return manual === undefined ? {x: positioned.x, y: positioned.y} : manual;
-  }
-
-  private edgePath(edge: PositionedEdge): string {
-    const half = DEFAULT_LAYOUT_CONFIG.nodeHeight / 2;
-    const source = this.effectivePosition(edge.source);
-    const target = this.effectivePosition(edge.target);
-    const x1 = source.x;
-    const y1 = source.y + half;
-    const x2 = target.x;
-    const y2 = target.y - half;
-    const midY = (y1 + y2) / 2;
-
-    return `M ${x1} ${y1} C ${x1} ${midY} ${x2} ${midY} ${x2} ${y2}`;
-  }
-
   private renderEdges(
     group: d3.Selection<SVGGElement, unknown, null, undefined>,
     edges: PositionedEdge[],
@@ -386,13 +358,17 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
         return path;
       })
       .attr('class', (edge) => {
-        const pathClass = this.pathSelectionClass(edge, selected);
+        const pathClass = pathSelectionClass(edge, selected);
 
         return ['edge', edgeType(edge.target.node), linkQuality(edge.target.node), pathClass]
           .filter((value) => value !== '')
           .join(' ');
       })
-      .attr('d', (edge) => this.edgePath(edge))
+      .attr('d', (edge) =>
+        edgePath({
+          source: effectivePosition(edge.source, this.nodePositions(), this.dragPositions),
+          target: effectivePosition(edge.target, this.nodePositions(), this.dragPositions),
+        }))
       .select('title')
       .text((edge) => edgeTooltip(edge.target.node, (key) => this.t(key)));
   }
@@ -427,10 +403,10 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
         return nodeGroup;
       })
-      .attr('class', (positioned) => this.nodeClass(positioned.node, selected))
+      .attr('class', (positioned) => nodeClass(positioned.node, selected))
       .attr('data-node-id', (positioned) => positioned.node.id)
       .attr('transform', (positioned) => {
-        const position = this.effectivePosition(positioned);
+        const position = effectivePosition(positioned, this.nodePositions(), this.dragPositions);
 
         return `translate(${position.x},${position.y})`;
       })
@@ -588,7 +564,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     }
 
     const source = this.screenPoint(event.sourceEvent);
-    const position = this.effectivePosition(positioned);
+    const position = effectivePosition(positioned, this.nodePositions(), this.dragPositions);
     const pointer = d3.pointer(event.sourceEvent, group.node());
 
     this.dragState = {
@@ -609,15 +585,9 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     }
 
     const pointer = d3.pointer(event.sourceEvent, group.node());
-    const next = {
-      x: state.origin.x + pointer[0] - state.pointerOrigin.x,
-      y: state.origin.y + pointer[1] - state.pointerOrigin.y,
-    };
+    const next = dragPosition(state.origin, {x: pointer[0], y: pointer[1]}, state.pointerOrigin);
     const source = this.screenPoint(event.sourceEvent);
-    const dx = source.x - state.screenOrigin.x;
-    const dy = source.y - state.screenOrigin.y;
-
-    state.moved = state.moved || Math.sqrt(dx * dx + dy * dy) >= CLICK_SLOP;
+    state.moved = state.moved || !isClickWithinSlop(state.screenOrigin, source, CLICK_SLOP);
     this.dragPositions.set(state.id, next);
     this.updateDraggedNode(positioned.node.id, next);
     this.updateIncidentEdges(positioned.node.id);
@@ -631,9 +601,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     }
 
     const source = this.screenPoint(event.sourceEvent);
-    const dx = source.x - state.screenOrigin.x;
-    const dy = source.y - state.screenOrigin.y;
-    const isClick = Math.sqrt(dx * dx + dy * dy) < CLICK_SLOP;
+    const isClick = isClickWithinSlop(state.screenOrigin, source, CLICK_SLOP);
     const next = this.dragPositions.get(state.id);
 
     this.dragState = null;
@@ -678,7 +646,11 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
     this.zoomGroup.selectAll<SVGPathElement, PositionedEdge>('path.edge')
       .filter((edge) => edge.source.node.id === id || edge.target.node.id === id)
-      .attr('d', (edge) => this.edgePath(edge));
+      .attr('d', (edge) =>
+        edgePath({
+          source: effectivePosition(edge.source, this.nodePositions(), this.dragPositions),
+          target: effectivePosition(edge.target, this.nodePositions(), this.dragPositions),
+        }));
   }
 
   private reconcileDragPositions(): void {
@@ -761,7 +733,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     const {nodeWidth, nodeHeight} = DEFAULT_LAYOUT_CONFIG;
 
     group.selectAll<SVGGElement, PositionedNode>('g.node')
-      .attr('class', (positioned) => this.nodeClass(positioned.node, selection))
+      .attr('class', (positioned) => nodeClass(positioned.node, selection))
       .select('rect.selection-ring')
       .attr('x', -(nodeWidth / 2 + 5))
       .attr('y', -(nodeHeight / 2 + 5))
@@ -772,7 +744,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
     group.selectAll<SVGPathElement, PositionedEdge>('path.edge')
       .attr('class', (edge) => {
-        const pathClass = this.pathSelectionClass(edge, selection);
+        const pathClass = pathSelectionClass(edge, selection);
 
         return ['edge', edgeType(edge.target.node), linkQuality(edge.target.node), pathClass]
           .filter((value) => value !== '')
@@ -780,7 +752,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       });
   }
 
-  private selectionState(): SelectionState {
+  private selectionState(): GraphSelectionState {
     this.sweepHoverState();
 
     const hoveredNodeId = this.effectiveHoveredNodeId();
@@ -837,39 +809,6 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       : null;
   }
 
-  private nodeClass(node: MwsNode, selection: SelectionState): string {
-    const stateClass = [
-      node.isController ? 'controller' : '',
-      node.isOnline ? '' : 'offline',
-      node.mwsdStatus === undefined || node.isController ? '' : `mwsd-${node.mwsdStatus.state}`,
-      node.persistentSession === undefined || node.isController
-        ? ''
-        : node.persistentSession
-        ? 'persistent-live'
-        : 'persistent-failing',
-      selection.selected === null ? '' : node.id === selection.selected.id
-        ? 'selected'
-        : !selection.reachedController
-        ? ''
-        : selection.path.has(node.id)
-        ? 'on-path'
-        : '',
-    ].filter((value) => value !== '');
-
-    return ['node', ...stateClass].join(' ');
-  }
-
-  private pathSelectionClass(
-    edge: PositionedEdge,
-    selection: SelectionState,
-  ): string {
-    if (selection.selected === null || !selection.reachedController) {
-      return '';
-    }
-
-    return selection.path.has(edge.source.node.id) && selection.path.has(edge.target.node.id) ? 'on-path' : '';
-  }
-
   private nodeLabel(node: MwsNode): string {
     const labels = getNodeStatusLabels(node, (key, values) => this.t(key, values));
     const parts = [
@@ -903,7 +842,9 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     }
 
     const {nodeWidth, nodeHeight} = DEFAULT_LAYOUT_CONFIG;
-    const positions = this.layout.nodes.map((positioned) => this.effectivePosition(positioned));
+    const positions = this.layout.nodes.map((positioned) =>
+      effectivePosition(positioned, this.nodePositions(), this.dragPositions)
+    );
     const minX = Math.min(...positions.map((position) => position.x)) - nodeWidth / 2 - FIT_PADDING;
     const maxX = Math.max(...positions.map((position) => position.x)) + nodeWidth / 2 + FIT_PADDING;
     const minY = Math.min(...positions.map((position) => position.y)) - nodeHeight / 2 - FIT_PADDING;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type {PluginContext} from '@mndw/sdk';
+import type {LoadState, PluginContext} from '@mndw/sdk';
 import {useTranslator} from '@mndw/sdk/vue';
 import type {MndwCheckboxChangeDetail} from '@mndw/ui';
 import {computed, onMounted, onUnmounted, ref} from 'vue';
@@ -16,24 +16,44 @@ const KEY_OFFLINE = 'show-offline';
 const KEY_INTERVAL = 'refresh-interval';
 const DEFAULT_INTERVAL_SECONDS = 3;
 
-const allClients = ref<ClientRecord[]>([]);
-const error = ref<string | null>(null);
+type ClientLoadError = string;
+
+const loadState = ref<LoadState<ClientRecord[], ClientLoadError>>({status: 'loading'});
 const showOffline = ref(false);
 const refreshIntervalSeconds = ref(DEFAULT_INTERVAL_SECONDS);
 const columnVisibility = ref<Record<string, boolean>>(
   Object.fromEntries(COLUMN_KEYS.map((key) => [key, true])),
 );
-const loading = ref(true);
-const hasSuccessfulFetch = ref(false);
 const dirty = new Set<string>();
 const translator = useTranslator(props.ctx.i18n);
 const t = (key: string): string => translator.t(key);
 
 let refreshLoop: RefreshLoop | null = null;
 
+const allClients = computed<ClientRecord[]>(() => {
+  const state = loadState.value;
+
+  return state.status === 'success' || state.status === 'refreshing'
+    ? state.data
+    : state.status === 'error'
+    ? state.data ?? []
+    : [];
+});
+const hasClientData = computed(() => {
+  const state = loadState.value;
+
+  return state.status === 'success'
+    || state.status === 'refreshing'
+    || (state.status === 'error' && state.data !== undefined);
+});
+const tableError = computed<string | null>(() => {
+  const state = loadState.value;
+
+  return state.status === 'error' && state.data === undefined ? state.error : null;
+});
 const visibleClients = computed(() => filterVisibleClients(allClients.value, showOffline.value));
 const headerLabel = computed(() => {
-  return hasSuccessfulFetch.value
+  return hasClientData.value
     ? `${t('title')} (${visibleClients.value.length})`
     : t('title');
 });
@@ -137,20 +157,31 @@ function restore(key: string, apply: (raw: string) => void): void {
 
 onMounted(() => {
   refreshLoop = createRefreshLoop({
-    load: () => fetchClients(props.ctx.rciManager),
+    load: () => {
+      const state = loadState.value;
+
+      if (state.status === 'success' || state.status === 'refreshing') {
+        loadState.value = {status: 'refreshing', data: state.data};
+      } else if (state.status === 'error' && state.data !== undefined) {
+        loadState.value = {status: 'refreshing', data: state.data};
+      } else {
+        loadState.value = {status: 'loading'};
+      }
+
+      return fetchClients(props.ctx.rciManager);
+    },
     intervalMs: refreshIntervalSeconds.value * 1000,
     onSuccess: (clients) => {
-      allClients.value = clients;
-      error.value = null;
-      loading.value = false;
-      hasSuccessfulFetch.value = true;
+      loadState.value = {status: 'success', data: clients};
     },
     onError: (caught, isInitial) => {
-      if (isInitial && !hasSuccessfulFetch.value) {
-        error.value = caught instanceof Error ? caught.message : String(caught);
-        loading.value = false;
+      const errorMessage = caught instanceof Error ? caught.message : String(caught);
+      const state = loadState.value;
 
-        return;
+      if (state.status === 'refreshing') {
+        loadState.value = {status: 'error', error: errorMessage, data: state.data};
+      } else if (isInitial || state.status === 'loading') {
+        loadState.value = {status: 'error', error: errorMessage};
       }
 
       console.warn('[clients-widget] refresh failed', caught);
@@ -187,8 +218,8 @@ onUnmounted(() => {
     <ClientsTable
       :clients="visibleClients"
       :column-visibility="columnVisibility"
-      :error="error"
-      :loading="loading"
+      :error="tableError"
+      :loading="loadState.status === 'loading'"
       :show-offline="showOffline"
       :translator="translator"
     />

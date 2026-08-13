@@ -5,7 +5,10 @@ const pluginNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, {
 });
 
 const safeRelativePath = (value: string): boolean => {
-  return !value.startsWith('/') && !value.includes('..') && !value.includes('\\');
+  return !value.startsWith('/')
+    && !value.includes('..')
+    && !value.includes('\\')
+    && !value.split('/').some((segment) => segment === '.' || segment === '..');
 };
 
 const hasFileName = (value: string): boolean => {
@@ -278,7 +281,7 @@ const pageManifestSchema = z.object({
   route: pageRouteSchema,
 });
 
-export const pluginManifestSchema = z.union([widgetManifestSchema, pageManifestSchema]);
+export const pluginManifestSchema = z.discriminatedUnion('type', [widgetManifestSchema, pageManifestSchema]);
 
 export type PluginManifestInput = z.input<typeof pluginManifestSchema>;
 export type PluginManifestOutput = z.infer<typeof pluginManifestSchema>;

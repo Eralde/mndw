@@ -152,8 +152,8 @@ const getWirelessConnectionInfo = (host: RawDeviceHost): WirelessConnectionInfo 
     accessPointId,
     bands,
     txss: connectionInfo.txss ?? 0,
-    txrate: connectionInfo.txss ?? 0,
-    rssi: connectionInfo.txss ?? 0,
+    txrate: connectionInfo.txrate ?? 0,
+    rssi: connectionInfo.rssi ?? 0,
   };
 };
 

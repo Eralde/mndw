@@ -9,7 +9,7 @@ import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
 import {
   SETTINGS_DEFAULT_TAB,
-  SETTINGS_TABS,
+  SETTINGS_TAB_DEFS,
   settingsPath,
   settingsTabFromPath,
 } from './settings-route.js';
@@ -36,8 +36,8 @@ onMount(() => {
 });
 
 function handleTabChange(event: CustomEvent<MndwTabsChangeDetail>): void {
-  const tab = SETTINGS_TABS.find((candidate) =>
-    candidate === event.detail.value
+  const tab = SETTINGS_TAB_DEFS.find((candidate) =>
+    candidate.id === event.detail.value
   );
   const router = appRouter;
 
@@ -45,7 +45,7 @@ function handleTabChange(event: CustomEvent<MndwTabsChangeDetail>): void {
     return;
   }
 
-  void router.navigate(settingsPath(tab));
+  void router.navigate(settingsPath(tab.id));
 }
 
 function handlePermissionStateChange(state: PermissionState): void {
@@ -64,9 +64,12 @@ function handlePermissionStateChange(state: PermissionState): void {
     value={activeTab}
     onmndwchange={handleTabChange}
   >
-    <mndw-tab id="general">{hostT('settings.general-tab')}</mndw-tab>
-    <mndw-tab id="diagnostics">{hostT('settings.diagnostics-tab')}</mndw-tab>
-    <mndw-tab id="plugins">{hostT('settings.plugins-tab')}</mndw-tab>
+    {#each SETTINGS_TAB_DEFS as tab (tab.id)}
+      <mndw-tab
+        id={tab.id}
+        data-icon={tab.icon}
+      >{hostT(tab.labelKey)}</mndw-tab>
+    {/each}
     <mndw-tab-panel for="general">
       <GeneralSettings onPermissionStateChange={handlePermissionStateChange} />
     </mndw-tab-panel>

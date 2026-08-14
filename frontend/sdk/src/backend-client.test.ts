@@ -1,8 +1,13 @@
 import {describe, expect, it, vi} from 'vitest';
 import {
+  BackendBadGateway,
   type BackendDescriptor,
   BackendDisabled,
+  BackendIncompatible,
+  BackendMaintenance,
   BackendNotApproved,
+  BackendStarting,
+  BackendUnavailable,
   BackendUnknownId,
   createBackendClient,
   isBackendMaintenanceClose,
@@ -105,6 +110,68 @@ describe('createBackendClient.fetch', () => {
     );
 
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toBeInstanceOf(BackendUnknownId);
+  });
+
+  it.each(
+    [
+      ['BACKEND_UNAVAILABLE', BackendUnavailable],
+      ['BACKEND_INCOMPATIBLE', BackendIncompatible],
+      ['BAD_GATEWAY', BackendBadGateway],
+    ] as const,
+  )('maps daemon %s envelopes', async (code, ErrorType) => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({error: {code, message: 'x'}}), {status: 503}),
+    );
+
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
+      id: 'stats',
+      daemonCode: code,
+    });
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toBeInstanceOf(ErrorType);
+  });
+
+  it.each(
+    [
+      ['BACKEND_STARTING', BackendStarting],
+      ['BACKEND_MAINTENANCE', BackendMaintenance],
+    ] as const,
+  )('maps %s with a valid retry delay', async (code, ErrorType) => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({error: {code, message: 'x'}}), {
+        status: 503,
+        headers: {'Retry-After': '4'},
+      }),
+    );
+
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
+      id: 'stats',
+      daemonCode: code,
+      retryAfterSeconds: 4,
+    });
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toBeInstanceOf(ErrorType);
+  });
+
+  it.each([undefined, '', '-1', '1.5', 'soon'])('maps invalid retry delay %s to null', async (retryAfter) => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({error: {code: 'BACKEND_STARTING', message: 'x'}}), {
+        status: 503,
+        headers: retryAfter === undefined ? undefined : {'Retry-After': retryAfter},
+      }),
+    );
+
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
+      id: 'stats',
+      daemonCode: 'BACKEND_STARTING',
+      retryAfterSeconds: null,
+    });
+  });
+
+  it('does not add daemonCode to existing backend errors', async () => {
+    await expect(client({enabled: false}).fetch('stats')).rejects.toMatchObject({
+      id: 'stats',
+      code: 'DISABLED',
+    });
+    await expect(client({enabled: false}).fetch('stats')).rejects.not.toHaveProperty('daemonCode');
   });
 
   it('passes non-envelope error responses through to the caller', async () => {

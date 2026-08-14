@@ -1,7 +1,7 @@
 import '@angular/compiler';
 import {DestroyRef, inject, signal, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
-import type {PageRoute} from '@mndw/sdk';
+import type {OverlayCloseEvent, OverlayLayer, OverlayService, PageRoute} from '@mndw/sdk';
 import {createTranslatorSignals} from '@mndw/sdk/angular';
 import {createTestI18n} from '@mndw/sdk/testing';
 import {BehaviorSubject} from 'rxjs';
@@ -10,7 +10,8 @@ import {normalizeMembers} from '../api/normalize';
 import {buildMap} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
-import {MwsDataService, type MwsViewPhase} from '../services/mws-data.service';
+import {ExtraFeaturesBannerStore} from '../services/extra-features-banner.store';
+import {type ExtraFeaturesAvailability, MwsDataService, type MwsViewPhase} from '../services/mws-data.service';
 import {FakePluginStorage} from '../test-support/plugin-storage.fake';
 import {NodeTableColumnsStore} from '../services/node-table-columns.store';
 import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, PLUGIN_STORAGE, SHARED_PLUGIN_STORAGE, TRANSLATOR} from '../tokens';
@@ -30,6 +31,8 @@ interface FakeData {
   phase: ReturnType<typeof signal<MwsViewPhase>>;
   roots: ReturnType<typeof signal<MwsNode[]>>;
   pollError: ReturnType<typeof signal<boolean>>;
+  extraFeaturesAvailability: ReturnType<typeof signal<ExtraFeaturesAvailability>>;
+  extraFeaturesPresentation: ReturnType<typeof signal<ExtraFeaturesAvailability>>;
   lastUpdatedAt: ReturnType<typeof signal<number | null>>;
   freshnessNow: ReturnType<typeof signal<number>>;
   start: ReturnType<typeof vi.fn>;
@@ -43,6 +46,8 @@ function fakeData(phase: MwsViewPhase, roots: MwsNode[] = []): FakeData {
     phase: signal<MwsViewPhase>(phase),
     roots: signal<MwsNode[]>(roots),
     pollError: signal(false),
+    extraFeaturesAvailability: signal<ExtraFeaturesAvailability>('active'),
+    extraFeaturesPresentation: signal<ExtraFeaturesAvailability>('active'),
     lastUpdatedAt: signal<number | null>(null),
     freshnessNow: signal(Date.now()),
     start: vi.fn(),
@@ -136,6 +141,7 @@ describe('AppComponent', () => {
       imports: [AppComponent],
       providers: [
         {provide: MwsDataService, useValue: undefined},
+        ExtraFeaturesBannerStore,
         {provide: PLUGIN_STORAGE, useValue: new FakePluginStorage()},
         {provide: SHARED_PLUGIN_STORAGE, useValue: new FakePluginStorage()},
         {provide: OVERLAY, useValue: {open: vi.fn(), closeAll: vi.fn()}},
@@ -420,6 +426,130 @@ describe('AppComponent', () => {
     const fixture = render(data);
 
     expect((fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')).not.toBeNull();
+  });
+
+  it.each(
+    [
+      ['checking', 'Checking extra features…', 'extra-features-badge--info'],
+      ['active', 'Extra features active', 'extra-features-badge--success'],
+      ['starting', 'Extra features starting…', 'extra-features-badge--info'],
+      ['unavailable', 'Extra features unavailable', 'extra-features-badge--neutral'],
+      ['degraded', 'Extra features temporarily unavailable', 'extra-features-badge--neutral'],
+      ['blocked', 'Extra features need access', 'extra-features-badge--neutral'],
+      ['incompatible', 'Extra features need an update', 'extra-features-badge--warning'],
+    ] as const,
+  )('renders %s badge text and semantic tone', (state, text, tone) => {
+    const data = fakeData('ready', fixtureRoots());
+
+    data.extraFeaturesPresentation.set(state);
+
+    const fixture = render(data);
+    const badge = fixture.nativeElement.querySelector<HTMLButtonElement>('.extra-features-badge');
+
+    expect(badge?.textContent).toContain(text);
+    expect(badge?.classList.contains(tone)).toBe(true);
+    expect(badge?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('shows and dismisses the unavailable setup banner after storage load', async () => {
+    const data = fakeData('ready', fixtureRoots());
+
+    data.extraFeaturesPresentation.set('unavailable');
+
+    const fixture = render(data);
+
+    await vi.waitFor(() => {
+      expect(fixture.nativeElement.querySelector('.extra-features-setup')).not.toBeNull();
+    });
+
+    const banner = fixture.nativeElement.querySelector<HTMLElement>('.extra-features-setup');
+
+    expect(banner?.getAttribute('role')).toBe('status');
+    expect(banner?.querySelector('a[href="/settings/general"]')).not.toBeNull();
+    banner?.querySelector<HTMLButtonElement>('[data-action="dismiss-extra-features"]')?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.extra-features-setup')).toBeNull();
+  });
+
+  it('replaces setup banner with non-dismissible degraded status', async () => {
+    const data = fakeData('ready', fixtureRoots());
+
+    data.extraFeaturesPresentation.set('unavailable');
+
+    const fixture = render(data);
+
+    await vi.waitFor(() => expect(fixture.nativeElement.querySelector('.extra-features-setup')).not.toBeNull());
+    data.extraFeaturesPresentation.set('degraded');
+    fixture.detectChanges();
+
+    const status = fixture.nativeElement.querySelector<HTMLElement>('.extra-features-degraded');
+
+    expect(status?.getAttribute('role')).toBe('status');
+    expect(status?.textContent).toContain('Extra features are temporarily unavailable. Retrying…');
+    expect(status?.querySelector('button')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.extra-features-setup')).toBeNull();
+  });
+
+  it('opens against the badge, updates from immediate truth, and closes on dismissal or destroy', async () => {
+    let resolveClosed: (event: OverlayCloseEvent) => void = () => undefined;
+    const closed = new Promise<OverlayCloseEvent>((resolve) => {
+      resolveClosed = resolve;
+    });
+    const contentElement = document.createElement('div');
+    const layer = {
+      hostElement: document.createElement('div'),
+      contentElement,
+      isOpen: true,
+      state: 'open',
+      signal: new AbortController().signal,
+      closed,
+      close: vi.fn(),
+      setCleanup: vi.fn(),
+      markReady: vi.fn(),
+      update: vi.fn(),
+      onClose: vi.fn(() => () => undefined),
+    } as unknown as OverlayLayer;
+    const secondClose = vi.fn();
+    const secondLayer = {
+      ...layer,
+      closed: new Promise<OverlayCloseEvent>(() => undefined),
+      close: secondClose,
+    } as unknown as OverlayLayer;
+    let layerNumber = 0;
+    const overlay = {
+      createLayer: vi.fn(() => {
+        layerNumber += 1;
+
+        return layerNumber === 1 ? layer : secondLayer;
+      }),
+      open: vi.fn(),
+      closeAll: vi.fn(),
+    };
+
+    TestBed.overrideProvider(OVERLAY, {useValue: overlay as unknown as OverlayService});
+
+    const data = fakeData('ready', fixtureRoots());
+    const fixture = render(data);
+    const badge = fixture.nativeElement.querySelector<HTMLButtonElement>('.extra-features-badge');
+
+    badge?.click();
+    fixture.detectChanges();
+    expect(overlay.createLayer).toHaveBeenCalledWith(expect.objectContaining({anchor: {element: badge}}));
+    expect(badge?.getAttribute('aria-expanded')).toBe('true');
+
+    data.extraFeaturesAvailability.set('degraded');
+    fixture.detectChanges();
+    expect(contentElement.textContent).toContain('Features are temporarily unreachable');
+
+    resolveClosed({reason: 'escape'});
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(badge?.getAttribute('aria-expanded')).toBe('false');
+
+    badge?.click();
+    fixture.destroy();
+    expect(secondClose).toHaveBeenCalledOnce();
   });
 
   it('labels large mock mode with its generated size', () => {

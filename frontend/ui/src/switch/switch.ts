@@ -158,6 +158,7 @@ export class MndwSwitch extends LitElement {
 
     const internals = this.formState.internals;
     const labels = this.formState.labels;
+
     this.labelController.sync(labels, internals);
 
     if (!internals) {
@@ -167,6 +168,7 @@ export class MndwSwitch extends LitElement {
     internals.role = 'switch';
     internals.ariaChecked = checked;
     internals.ariaDisabled = String(effectiveDisabled);
+
     if (this.checked) {
       internals.states.add('checked');
     } else {

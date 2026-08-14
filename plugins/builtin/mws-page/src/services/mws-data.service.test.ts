@@ -1,10 +1,29 @@
 import {TestBed} from '@angular/core/testing';
+import {
+  BackendBadGateway,
+  BackendDisabled,
+  BackendIncompatible,
+  BackendMaintenance,
+  BackendNotApproved,
+  BackendStarting,
+  BackendUnavailable,
+} from '@mndw/sdk';
 import {Subject, of, throwError} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {MwsMemberResult} from '../api/mws-api.service';
 import {findNodeById} from '../domain/mws/map-builder';
 import {fakeBackend, goodApi, makeLiveService, makeLiveServiceWithBackend} from '../test-support/mws-data-test-support';
 import {MWSD_STATUS_POLL_INTERVAL_MS, MWSD_STATUS_REQUEST_TIMEOUT_MS, POLL_INTERVAL_MS} from './mws-data.service';
+
+const activeResponse = (): Response =>
+  new Response(
+    JSON.stringify({
+      lastRefreshAt: new Date().toISOString(),
+      persistentAvailable: true,
+      persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true, telemetry: {sampledAt: new Date().toISOString()}}],
+    }),
+    {status: 200},
+  );
 
 describe('MwsDataService', () => {
   beforeEach(() => {
@@ -32,6 +51,82 @@ describe('MwsDataService', () => {
     expect(service.roots()[0].name).toBe('My Router');
     expect(service.pollError()).toBe(false);
     expect(service.lastUpdatedAt()).not.toBeNull();
+  });
+
+  it('starts in checking and marks absent backend unavailable without affecting topology', async () => {
+    const service = makeLiveService(goodApi());
+
+    expect(service.extraFeaturesAvailability()).toBe('checking');
+    expect(service.extraFeaturesPresentation()).toBe('checking');
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(service.phase()).toBe('ready');
+    expect(service.extraFeaturesAvailability()).toBe('unavailable');
+    expect(service.extraFeaturesPresentation()).toBe('unavailable');
+  });
+
+  it('debounces degraded header presentation while invalidating persistent projection immediately', async () => {
+    const api = goodApi();
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(activeResponse())
+      .mockRejectedValueOnce(new BackendBadGateway('nodes'))
+      .mockRejectedValueOnce(new BackendBadGateway('nodes'));
+    const service = makeLiveServiceWithBackend(api, fakeBackend(fetch));
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.extraFeaturesAvailability()).toBe('active');
+    expect(service.extraFeaturesPresentation()).toBe('active');
+
+    await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS);
+    expect(service.extraFeaturesAvailability()).toBe('degraded');
+    expect(service.extraFeaturesPresentation()).toBe('active');
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('unavailable');
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.wifiPower).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS);
+    expect(service.extraFeaturesPresentation()).toBe('degraded');
+  });
+
+  it.each(
+    [
+      ['starting', new BackendStarting('nodes', null)],
+      ['starting', new BackendMaintenance('nodes', 4)],
+      ['unavailable', new BackendUnavailable('nodes')],
+      ['blocked', new BackendDisabled('nodes')],
+      ['blocked', new BackendNotApproved('nodes')],
+      ['incompatible', new BackendIncompatible('nodes')],
+    ] as const,
+  )('maps lifecycle error to immediate %s availability', async (expected, error) => {
+    const service = makeLiveServiceWithBackend(
+      goodApi(),
+      fakeBackend(vi.fn().mockRejectedValueOnce(error)),
+    );
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(service.extraFeaturesAvailability()).toBe(expected);
+    expect(service.extraFeaturesPresentation()).toBe(expected);
+  });
+
+  it('resets availability and presentation before every reconnect cycle', async () => {
+    const fetch = vi.fn(() => Promise.resolve(activeResponse()));
+    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch));
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.extraFeaturesAvailability()).toBe('active');
+
+    service.start();
+    expect(service.extraFeaturesAvailability()).toBe('checking');
+    expect(service.extraFeaturesPresentation()).toBe('checking');
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.extraFeaturesAvailability()).toBe('active');
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('uses the refreshed typed controller description as the graph name', async () => {
@@ -123,16 +218,20 @@ describe('MwsDataService', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(service.phase()).toBe('unsupported');
+    expect(service.extraFeaturesAvailability()).toBe('unavailable');
+    expect(service.extraFeaturesPresentation()).toBe('unavailable');
   });
 
   it('treats unsupported as terminal until the service is remounted', async () => {
     const api = goodApi();
+
     api.showMwsMember.mockReturnValue(of<MwsMemberResult>({kind: 'unsupported'}));
 
     const service = makeLiveService(api);
 
     service.start();
     await vi.advanceTimersByTimeAsync(0);
+
     const callsAfterUnsupported = api.showMwsMember.mock.calls.length;
 
     service.retry();

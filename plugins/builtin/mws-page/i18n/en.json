@@ -24,7 +24,6 @@
     "offline": "Offline",
     "no-telemetry": "No telemetry",
     "telemetry-not-available": "Telemetry: not available",
-    "telemetry-unavailable": "Telemetry: unavailable",
     "telemetry-starting": "Telemetry: starting",
     "telemetry-live": "Telemetry: live",
     "telemetry-stale": "Telemetry: stale",
@@ -33,9 +32,60 @@
     "remote-control-disconnected": "Remote control: disconnected",
     "remote-control-connected": "Remote control: connected",
     "clients": "{count, plural, one {# client} other {# clients}}",
+    "power-disabled-extra-features": "Remote controls require extra features.",
     "power-disabled-session": "Remote control is disconnected.",
     "power-disabled-unavailable": "TX power is unavailable.",
     "power-disabled-pending": "TX power update is pending."
+  },
+  "extra-features": {
+    "badge": {
+      "checking": "Checking extra features…",
+      "active": "Extra features active",
+      "starting": "Extra features starting…",
+      "unavailable": "Extra features unavailable",
+      "degraded": "Extra features temporarily unavailable",
+      "blocked": "Extra features need access",
+      "incompatible": "Extra features need an update"
+    },
+    "setup": {
+      "title": "Enable live extender insights",
+      "body": "See telemetry and control extender radios after configuring a controller session.",
+      "action": "View requirements.",
+      "dismiss": "Dismiss extra-features explanation"
+    },
+    "degraded": "Extra features are temporarily unavailable. Retrying…",
+    "popover": {
+      "accessible-title": "Extra features",
+      "checking": {
+        "title": "Checking extra features",
+        "body": "Availability is being checked."
+      },
+      "active": {
+        "title": "Extra features active",
+        "body": "Live extender telemetry and controls are active."
+      },
+      "starting": {
+        "title": "Extra features starting",
+        "body": "Features are starting and will retry automatically."
+      },
+      "unavailable": {
+        "title": "Extra features unavailable",
+        "body": "Configure a controller session to enable live telemetry and extender controls. If already configured, try again later."
+      },
+      "degraded": {
+        "title": "Extra features temporarily unavailable",
+        "body": "Features are temporarily unreachable and will retry automatically."
+      },
+      "blocked": {
+        "title": "Extra features need access",
+        "body": "Plugin access for extra features is not enabled."
+      },
+      "incompatible": {
+        "title": "Extra features need an update",
+        "body": "Installed components need a system update."
+      },
+      "view-requirements": "View requirements."
+    }
   },
   "action": {
     "retry": "Retry",

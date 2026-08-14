@@ -56,7 +56,7 @@ describe('getNodeStatusLabels', () => {
       ['live', 'Telemetry: live'],
       ['stale', 'Telemetry: stale'],
       ['offline', 'Telemetry: offline'],
-      ['unavailable', 'Telemetry: unavailable'],
+      ['unavailable', 'Telemetry: not available'],
     ] as const;
 
     for (const [state, expected] of states) {
@@ -87,21 +87,26 @@ describe('getNodeStatusLabels', () => {
 
 describe('getPowerDisabledHint', () => {
   it('uses remote-control reason before hardware availability and pending state', () => {
-    expect(getPowerDisabledHint(node({persistentSession: false}), false, true, t))
+    expect(getPowerDisabledHint(true, node({persistentSession: false}), false, true, t))
       .toBe('Remote control is disconnected.');
   });
 
   it('uses hardware availability reason before pending state', () => {
-    expect(getPowerDisabledHint(node({persistentSession: true}), false, true, t))
+    expect(getPowerDisabledHint(true, node({persistentSession: true}), false, true, t))
       .toBe('TX power is unavailable.');
   });
 
   it('uses pending reason when connection and hardware are available', () => {
-    expect(getPowerDisabledHint(node({persistentSession: true}), true, true, t))
+    expect(getPowerDisabledHint(true, node({persistentSession: true}), true, true, t))
       .toBe('TX power update is pending.');
   });
 
   it('returns no hint when power control is enabled', () => {
-    expect(getPowerDisabledHint(node({persistentSession: true}), true, false, t)).toBeNull();
+    expect(getPowerDisabledHint(true, node({persistentSession: true}), true, false, t)).toBeNull();
+  });
+
+  it('uses extra-features reason before node-specific reasons', () => {
+    expect(getPowerDisabledHint(false, node({persistentSession: false}), false, true, t))
+      .toBe('Remote controls require extra features.');
   });
 });

@@ -3,6 +3,17 @@
     <div class="title-row">
       <h2>{{ t('title') }}</h2>
       <span data-testid="l10n-probe" hidden>{{ t('l10n.probe') }}</span>
+      <button
+        type="button"
+        class="extra-features-badge"
+        [class.extra-features-badge--neutral]="extraFeaturesTone() === 'neutral'"
+        [class.extra-features-badge--info]="extraFeaturesTone() === 'info'"
+        [class.extra-features-badge--success]="extraFeaturesTone() === 'success'"
+        [class.extra-features-badge--warning]="extraFeaturesTone() === 'warning'"
+        [attr.aria-expanded]="popoverOpen()"
+        [attr.aria-label]="extraFeaturesBadgeText()"
+        (click)="openExtraFeatures($event)"
+      ><span class="extra-features-icon" aria-hidden="true">{{ extraFeaturesIcon() }}</span>{{ extraFeaturesBadgeText() }}</button>
     </div>
     @if (mockOptions.mode === 'large') {
       <span class="mock-badge">{{ t('summary.mock-data', {extenders: mockOptions.extenders, clients: mockOptions.clients}) }}</span>
@@ -32,8 +43,28 @@
           >{{ t('summary.updates', {count: summary().updates}) }}</button>
         }
         @if (mapUpdatedText(); as updatedText) {
-          <span class="summary-chip">{{ updatedText }}</span>
-        }
+        <span class="summary-chip">{{ updatedText }}</span>
+      }
+    </div>
+    }
+    @if (showExtraFeaturesSetup()) {
+      <div class="extra-features-status-slot extra-features-setup" role="status">
+        <div>
+          <strong>{{ t('extra-features.setup.title') }}</strong>
+          <span>{{ t('extra-features.setup.body') }}</span>
+          <a href="/settings/general">{{ t('extra-features.setup.action') }}</a>
+        </div>
+        <button
+          type="button"
+          class="extra-features-dismiss"
+          data-action="dismiss-extra-features"
+          [attr.aria-label]="t('extra-features.setup.dismiss')"
+          (click)="dismissExtraFeaturesBanner()"
+        >×</button>
+      </div>
+    } @else if (data.extraFeaturesPresentation() === 'degraded') {
+      <div class="extra-features-status-slot extra-features-degraded" role="status">
+        {{ t('extra-features.degraded') }}
       </div>
     }
     @if (data.pollError()) {

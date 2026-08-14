@@ -105,7 +105,7 @@ describe('mwsd status', () => {
     expect(retainPersistentSessionsForNodes([], reconciled).sessions.has(MAC)).toBe(false);
   });
 
-  it('marks malformed envelopes unavailable while preserving raw session state', () => {
+  it('returns null for malformed envelopes', () => {
     const previous = parsePersistentSessionsResponse({
       lastRefreshAt: '2026-08-12T09:59:59Z',
       persistentAvailable: true,
@@ -114,8 +114,17 @@ describe('mwsd status', () => {
 
     const next = parsePersistentSessionsResponse({lastRefreshAt: '2026-08-12T10:00:00Z'}, previous);
 
-    expect(next.available).toBe(false);
-    expect(next.sessions).toBe(previous.sessions);
+    expect(next).toBeNull();
+  });
+
+  it('returns null for invalid non-null timestamps', () => {
+    const previous = newPersistentSessionSnapshot(true, new Map());
+
+    expect(parsePersistentSessionsResponse({
+      lastRefreshAt: 'not-a-timestamp',
+      persistentAvailable: true,
+      persistentSessions: [],
+    }, previous)).toBeNull();
   });
 
   it('preserves the prior snapshot until first enumeration completes', () => {

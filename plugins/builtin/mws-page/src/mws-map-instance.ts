@@ -10,6 +10,7 @@ import {LiveMapNodeDetailsSource} from './node-details-source';
 import {openNodeDrawer} from './open-node-drawer';
 import {MwsDataService} from './services/mws-data.service';
 import {MwsWriteService} from './services/mws-write.service';
+import {ExtraFeaturesBannerStore} from './services/extra-features-banner.store';
 import {NodePositionStore} from './services/node-position.store';
 import {NodeTableColumnsStore} from './services/node-table-columns.store';
 import {
@@ -56,6 +57,7 @@ export function createMwsMapInstance(
     const title = ctx.i18n.t('title');
 
     el.setAttribute('aria-label', title);
+
     if (ctx.kind === 'widget') {
       ctx.setTileTitle?.(title);
     }
@@ -85,6 +87,7 @@ export function createMwsMapInstance(
       {provide: MWS_RENAME_API, useExisting: MwsApiService},
       dataServiceProvider,
       MwsWriteService,
+      ExtraFeaturesBannerStore,
       NodePositionStore,
       NodeTableColumnsStore,
     ],

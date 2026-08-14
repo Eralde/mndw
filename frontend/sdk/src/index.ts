@@ -46,9 +46,14 @@ export {pluginManifestSchema} from './manifest-schema.js';
 export type {PluginManifestInput, PluginManifestOutput} from './manifest-schema.js';
 export {ManifestValidationError, validateManifest} from './manifest-validator.js';
 export {
+  BackendBadGateway,
   BackendDisabled,
+  BackendIncompatible,
+  BackendMaintenance,
   BackendNotApproved,
+  BackendStarting,
   BackendTransportMismatch,
+  BackendUnavailable,
   BackendUnknownId,
   createBackendClient,
   isBackendMaintenanceClose,

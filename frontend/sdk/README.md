@@ -341,9 +341,12 @@ interface BackendClient {
 }
 ```
 
-The method and relative path come from endpoint declaration in manifest. Typed errors:
-`BackendNotApproved`, `BackendDisabled`, `BackendUnknownId`, and
-`BackendTransportMismatch`.
+The method and relative path come from endpoint declaration in manifest. Typed errors include
+descriptor errors (`BackendNotApproved`, `BackendDisabled`, `BackendUnknownId`, and
+`BackendTransportMismatch`) plus daemon lifecycle errors:
+`BackendStarting`, `BackendUnavailable`, `BackendIncompatible`, `BackendMaintenance`, and
+`BackendBadGateway`. Lifecycle errors carry `id` and literal `daemonCode`; starting and
+maintenance also carry parsed integer `retryAfterSeconds` or `null`.
 
 Page plugins use `context.pageRoute` for child routes. `childPath$` emits the normalized child
 pathname (for example, `/clients`) and `navigate()` accepts a child pathname without query or
@@ -361,6 +364,11 @@ if (client) {
   } catch (error) {
     if (error instanceof BackendNotApproved || error instanceof BackendDisabled) {
       // Show approval/availability UI.
+    } else if (error instanceof BackendStarting || error instanceof BackendMaintenance) {
+      // Show retrying UI; retryAfterSeconds is informational in this slice.
+    } else if (error instanceof BackendUnavailable || error instanceof BackendIncompatible
+      || error instanceof BackendBadGateway) {
+      // Classify daemon lifecycle state or degraded transport.
     } else if (error instanceof BackendUnknownId || error instanceof BackendTransportMismatch) {
       // Fix a stale declaration or route transport mismatch.
     }

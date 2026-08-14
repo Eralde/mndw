@@ -10,6 +10,7 @@ export class MwsMockDataService extends MwsDataService {
   public override start(): void {
     const snapshot = createLargeMockSnapshot(this.mockOptions.extenders, this.mockOptions.clients);
 
+    this.setExtraFeaturesAvailability('unavailable');
     this.publishSnapshot(snapshot.version, snapshot.members, snapshot.hosts, snapshot.bridge);
   }
 }

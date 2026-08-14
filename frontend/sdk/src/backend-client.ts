@@ -97,6 +97,51 @@ export class BackendTransportMismatch extends Error {
   }
 }
 
+export class BackendStarting extends Error {
+  public readonly daemonCode = 'BACKEND_STARTING';
+
+  constructor(public readonly id: string, public readonly retryAfterSeconds: number | null) {
+    super(`Backend "${id}" is starting`);
+    this.name = 'BackendStarting';
+  }
+}
+
+export class BackendUnavailable extends Error {
+  public readonly daemonCode = 'BACKEND_UNAVAILABLE';
+
+  constructor(public readonly id: string) {
+    super(`Backend "${id}" is unavailable`);
+    this.name = 'BackendUnavailable';
+  }
+}
+
+export class BackendIncompatible extends Error {
+  public readonly daemonCode = 'BACKEND_INCOMPATIBLE';
+
+  constructor(public readonly id: string) {
+    super(`Backend "${id}" is incompatible`);
+    this.name = 'BackendIncompatible';
+  }
+}
+
+export class BackendMaintenance extends Error {
+  public readonly daemonCode = 'BACKEND_MAINTENANCE';
+
+  constructor(public readonly id: string, public readonly retryAfterSeconds: number | null) {
+    super(`Backend "${id}" is under maintenance`);
+    this.name = 'BackendMaintenance';
+  }
+}
+
+export class BackendBadGateway extends Error {
+  public readonly daemonCode = 'BAD_GATEWAY';
+
+  constructor(public readonly id: string) {
+    super(`Backend "${id}" returned a bad gateway response`);
+    this.name = 'BackendBadGateway';
+  }
+}
+
 // ------------------------------------
 // Implementation
 // ------------------------------------
@@ -109,7 +154,28 @@ export interface BackendClientDeps {
   origin?: string;
 }
 
-const DAEMON_ERROR_CODES = new Set(['NOT_APPROVED', 'DISABLED', 'ROUTE_NOT_FOUND']);
+const DAEMON_ERROR_CODES = new Set([
+  'NOT_APPROVED',
+  'DISABLED',
+  'ROUTE_NOT_FOUND',
+  'BACKEND_STARTING',
+  'BACKEND_UNAVAILABLE',
+  'BACKEND_INCOMPATIBLE',
+  'BACKEND_MAINTENANCE',
+  'BAD_GATEWAY',
+]);
+
+const parseRetryAfterSeconds = (response: Response): number | null => {
+  const raw = response.headers.get('Retry-After');
+
+  if (raw === null || !/^\d+$/.test(raw)) {
+    return null;
+  }
+
+  const value = Number(raw);
+
+  return Number.isSafeInteger(value) ? value : null;
+};
 
 const buildQuery = (query: BackendFetchOptions['query']): string => {
   if (!query) {
@@ -191,6 +257,26 @@ const mapResponse = async (id: string, res: Response): Promise<Response> => {
 
   if (code === 'NOT_APPROVED') {
     throw new BackendNotApproved(id);
+  }
+
+  if (code === 'BACKEND_STARTING') {
+    throw new BackendStarting(id, parseRetryAfterSeconds(res));
+  }
+
+  if (code === 'BACKEND_UNAVAILABLE') {
+    throw new BackendUnavailable(id);
+  }
+
+  if (code === 'BACKEND_INCOMPATIBLE') {
+    throw new BackendIncompatible(id);
+  }
+
+  if (code === 'BACKEND_MAINTENANCE') {
+    throw new BackendMaintenance(id, parseRetryAfterSeconds(res));
+  }
+
+  if (code === 'BAD_GATEWAY') {
+    throw new BackendBadGateway(id);
   }
 
   throw new BackendUnknownId(id);

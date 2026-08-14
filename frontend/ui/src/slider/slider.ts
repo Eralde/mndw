@@ -264,6 +264,7 @@ export class MndwSlider extends LitElement {
   private syncLabels(): void {
     const labels = this.formState.labels;
     const internals = this.formState.internals;
+
     this.labelController.sync(labels, internals);
 
     if (!internals) {

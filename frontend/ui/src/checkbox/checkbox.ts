@@ -197,6 +197,7 @@ export class MndwCheckbox extends LitElement {
     this.tabIndex = effectiveDisabled ? -1 : 0;
 
     const labels = this.formState.labels;
+
     this.labelController.sync(labels, this.formState.internals);
 
     this.formState.internals?.setFormValue(
@@ -209,6 +210,7 @@ export class MndwCheckbox extends LitElement {
       this.formState.internals.ariaChecked = ariaChecked;
       this.formState.internals.ariaDisabled = String(effectiveDisabled);
       this.formState.internals.ariaRequired = String(this.required);
+
       if (this.checked) {
         this.formState.internals.states.add('checked');
       } else {

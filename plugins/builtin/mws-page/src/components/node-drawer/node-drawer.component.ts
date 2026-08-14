@@ -225,14 +225,21 @@ export class NodeDrawerComponent implements OnDestroy {
     const power = this.powerFor(node, interfaceName);
     const state = this.powerState[interfaceName];
 
-    return !power.available || state.pending || node.persistentSession !== true;
+    return this.data.extraFeaturesAvailability() !== 'active'
+      || !power.available || state.pending || node.persistentSession !== true;
   }
 
   protected powerDisabledHint(node: MwsNode, interfaceName: MwsWifiInterface): string | null {
     const power = this.powerFor(node, interfaceName);
     const state = this.powerState[interfaceName];
 
-    return getPowerDisabledHint(node, power.available, state.pending, (key, values) => this.t(key, values));
+    return getPowerDisabledHint(
+      this.data.extraFeaturesAvailability() === 'active',
+      node,
+      power.available,
+      state.pending,
+      (key, values) => this.t(key, values),
+    );
   }
 
   protected onPowerChange(node: MwsNode, interfaceName: MwsWifiInterface, event: CustomEvent<{value: number}>): void {
@@ -240,7 +247,10 @@ export class NodeDrawerComponent implements OnDestroy {
     const state = this.powerState[interfaceName];
     const cid = node.cid;
 
-    if (node.isController || cid === null || node.persistentSession !== true || !power.available || state.pending) {
+    if (
+      this.data.extraFeaturesAvailability() !== 'active'
+      || node.isController || cid === null || node.persistentSession !== true || !power.available || state.pending
+    ) {
       return;
     }
 

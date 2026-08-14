@@ -26,6 +26,8 @@ describe('MwsMockDataService', () => {
     expect(api.showDeviceList).not.toHaveBeenCalled();
     expect(api.showBridge0).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
+    expect(service.extraFeaturesAvailability()).toBe('unavailable');
+    expect(service.extraFeaturesPresentation()).toBe('unavailable');
     expect(service.roots().some((node) => node.mwsdStatus !== undefined)).toBe(false);
   });
 });

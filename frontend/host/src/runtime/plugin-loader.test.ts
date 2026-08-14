@@ -120,6 +120,7 @@ describe('loadPlugins', () => {
 
       return Promise.resolve(goodModule);
     });
+
     const catalogService = createPluginCatalogService({fetchCatalog: (url) => {
       events.push(`catalog:${url}`);
 

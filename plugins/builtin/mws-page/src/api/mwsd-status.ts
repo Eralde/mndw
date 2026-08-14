@@ -34,12 +34,12 @@ export function newPersistentSessionSnapshot(
 export function parsePersistentSessionsResponse(
   value: unknown,
   previous: PersistentSessionSnapshot,
-): PersistentSessionSnapshot {
+): PersistentSessionSnapshot | null {
   const envelope = asRecord(value);
   const response = asRecord(envelope?.data) ?? envelope;
 
   if (typeof response?.persistentAvailable !== 'boolean' || !Array.isArray(response.persistentSessions)) {
-    return newPersistentSessionSnapshot(false, previous.sessions);
+    return null;
   }
 
   if (response.lastRefreshAt === null) {
@@ -47,7 +47,7 @@ export function parsePersistentSessionsResponse(
   }
 
   if (parseTimestamp(response.lastRefreshAt) === null) {
-    return newPersistentSessionSnapshot(false, previous.sessions);
+    return null;
   }
 
   // Defensive-only: current backend emits unavailable together with null lastRefreshAt.

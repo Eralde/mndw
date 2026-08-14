@@ -31,6 +31,51 @@
       mndw-button {
         min-height: var(--mndw-control-h);
       }
+
+      .extra-features-badge {
+        display: inline-flex;
+        gap: var(--mndw-space-2);
+        align-items: center;
+        padding: 4px 10px;
+        border: 1px solid currentcolor;
+        border-radius: 999px;
+        color: var(--mndw-text-muted);
+        font: inherit;
+        cursor: pointer;
+
+        &:focus-visible {
+          outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
+          outline-offset: 2px;
+        }
+      }
+
+      .extra-features-badge--neutral {
+        border-color: var(--mndw-text-subtle);
+        background: var(--mndw-surface-raised);
+        color: var(--mndw-text-muted);
+      }
+
+      .extra-features-badge--info {
+        border-color: var(--mndw-info);
+        background: var(--mndw-info-bg);
+        color: var(--mndw-info);
+      }
+
+      .extra-features-badge--success {
+        border-color: var(--mndw-success);
+        background: var(--mndw-success-bg);
+        color: var(--mndw-success);
+      }
+
+      .extra-features-badge--warning {
+        border-color: var(--mndw-warning);
+        background: var(--mndw-warning-bg);
+        color: var(--mndw-warning);
+      }
+
+      .extra-features-icon {
+        font-weight: 700;
+      }
     }
 
     .summary {
@@ -71,6 +116,53 @@
       border-radius: 4px;
       background: var(--mndw-danger-bg);
       color: var(--mndw-danger);
+    }
+
+    .extra-features-status-slot {
+      display: flex;
+      flex: 1 1 100%;
+      gap: var(--mndw-space-3);
+      justify-content: space-between;
+      align-items: flex-start;
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--mndw-border);
+      border-radius: 4px;
+
+      > div {
+        display: grid;
+        gap: 4px;
+      }
+
+      a {
+        color: inherit;
+        font-weight: 600;
+      }
+    }
+
+    .extra-features-setup {
+      background: var(--mndw-info-bg);
+      color: var(--mndw-info);
+    }
+
+    .extra-features-degraded {
+      background: var(--mndw-surface-raised);
+      color: var(--mndw-text-muted);
+    }
+
+    .extra-features-dismiss {
+      min-width: 28px;
+      min-height: 28px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 1.25rem;
+      cursor: pointer;
+
+      &:focus-visible {
+        outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
+        outline-offset: 2px;
+      }
     }
 
     .mock-badge {

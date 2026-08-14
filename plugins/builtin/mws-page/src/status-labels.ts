@@ -19,11 +19,16 @@ export function getNodeStatusLabels(node: MwsNode, t: TranslatorFn): NodeStatusL
 }
 
 export function getPowerDisabledHint(
+  extraFeaturesActive: boolean,
   node: MwsNode,
   powerAvailable: boolean,
   pending: boolean,
   t: TranslatorFn,
 ): string | null {
+  if (!extraFeaturesActive) {
+    return t('status.power-disabled-extra-features');
+  }
+
   if (node.persistentSession !== true) {
     return t('status.power-disabled-session');
   }
@@ -46,7 +51,7 @@ function telemetryLabel(node: MwsNode, t: TranslatorFn): string {
 
   const state = node.mwsdStatus?.state;
 
-  return state === undefined
+  return state === undefined || state === 'unavailable'
     ? t('status.telemetry-not-available')
     : t(`status.telemetry-${state}`);
 }

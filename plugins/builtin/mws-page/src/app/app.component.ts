@@ -17,8 +17,10 @@ import {MwsNodesTableComponent} from '../components/nodes-table/nodes-table.comp
 import {findNodeById, hasUpdate} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {NodePositionStore} from '../services/node-position.store';
+import {ExtraFeaturesBannerStore} from '../services/extra-features-banner.store';
 import {MwsDataService} from '../services/mws-data.service';
 import {openAutoLayoutConfirmation} from './auto-layout-confirmation';
+import {type ExtraFeaturesPopoverController, openExtraFeaturesPopover} from './extra-features-popover';
 import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, TRANSLATOR} from '../tokens';
 import type {NodeQuickFilter} from '../components/nodes-table/node-rows';
 
@@ -68,11 +70,13 @@ export class AppComponent implements OnDestroy, OnInit {
   protected readonly mockOptions = inject(MWS_MOCK_OPTIONS);
   private readonly pageRoute = inject(MWS_PAGE_ROUTE, {optional: true});
   private readonly overlay = inject(OVERLAY);
+  private readonly bannerStore = inject(ExtraFeaturesBannerStore);
   protected readonly positions = inject(NodePositionStore);
   protected readonly selectedTab = signal<'map' | 'nodes' | 'clients'>('map');
   protected readonly quickFilter = signal<NodeQuickFilter>('none');
   protected readonly editMode = signal(false);
   protected readonly selectedNodeId = signal<string | null>(null);
+  protected readonly popoverOpen = signal(false);
   protected readonly summary = computed<MapSummary>(() => {
     const result: MapSummary = {total: 0, offline: 0, clients: 0, updates: 0};
 
@@ -97,6 +101,7 @@ export class AppComponent implements OnDestroy, OnInit {
     return null;
   });
   private pageRouteSubscription?: Subscription;
+  private popoverController: ExtraFeaturesPopoverController | null = null;
 
   public constructor() {
     effect(() => {
@@ -106,10 +111,16 @@ export class AppComponent implements OnDestroy, OnInit {
         this.selectedNodeId.set(null);
       }
     });
+    effect(() => {
+      const availability = this.data.extraFeaturesAvailability();
+
+      this.popoverController?.update(availability);
+    });
   }
 
   public ngOnInit(): void {
     this.data.start();
+    void this.bannerStore.load();
     void this.positions.load();
 
     const pageRoute = this.pageRoute;
@@ -127,6 +138,76 @@ export class AppComponent implements OnDestroy, OnInit {
 
   public ngOnDestroy(): void {
     this.pageRouteSubscription?.unsubscribe();
+    this.popoverController?.close();
+    this.popoverController = null;
+  }
+
+  protected extraFeaturesTone(): 'neutral' | 'info' | 'success' | 'warning' {
+    const state = this.data.extraFeaturesPresentation();
+
+    return state === 'active'
+      ? 'success'
+      : state === 'incompatible'
+      ? 'warning'
+      : state === 'checking' || state === 'starting'
+      ? 'info'
+      : 'neutral';
+  }
+
+  protected extraFeaturesBadgeText(): string {
+    return this.t(`extra-features.badge.${this.data.extraFeaturesPresentation()}`);
+  }
+
+  protected extraFeaturesIcon(): string {
+    const state = this.data.extraFeaturesPresentation();
+
+    return state === 'active'
+      ? '✓'
+      : state === 'incompatible'
+      ? '!'
+      : state === 'checking' || state === 'starting'
+      ? '…'
+      : 'i';
+  }
+
+  protected showExtraFeaturesSetup(): boolean {
+    return this.data.extraFeaturesPresentation() === 'unavailable'
+      && this.bannerStore.loaded()
+      && !this.bannerStore.dismissed();
+  }
+
+  protected dismissExtraFeaturesBanner(): void {
+    this.bannerStore.dismiss();
+  }
+
+  protected openExtraFeatures(event: Event): void {
+    const anchor = event.currentTarget;
+
+    if (!(anchor instanceof HTMLElement)) {
+      return;
+    }
+
+    if (this.popoverController !== null) {
+      this.popoverController.close();
+
+      return;
+    }
+
+    const controller = openExtraFeaturesPopover(
+      this.overlay,
+      anchor,
+      this.data.extraFeaturesAvailability(),
+      (key, values) => this.t(key, values),
+    );
+
+    this.popoverController = controller;
+    this.popoverOpen.set(true);
+    void controller.closed.then(() => {
+      if (this.popoverController === controller) {
+        this.popoverController = null;
+        this.popoverOpen.set(false);
+      }
+    });
   }
 
   protected t(key: string, values?: Record<string, unknown>): string {

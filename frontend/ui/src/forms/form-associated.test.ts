@@ -6,10 +6,13 @@ describe('FormLabelController', () => {
     const host = document.createElement('mndw-label-probe');
     const existing = document.createElement('label');
     const generated = document.createElement('label');
+
     existing.id = 'explicit-label';
+
     const controller = new FormLabelController(host);
 
     controller.sync([existing, generated]);
+
     const generatedId = generated.id;
 
     expect(generatedId).toMatch(/^mndw-mndw-label-probe-\d+-label-1$/);

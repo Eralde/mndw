@@ -1,4 +1,4 @@
-import {SELECT_VIEWPORT_PADDING, availablePopoverHeight, type ViewportSize} from '../position/position.js';
+import {SELECT_VIEWPORT_PADDING, type ViewportSize, availablePopoverHeight} from '../position/position.js';
 
 const PANEL_MIN_WIDTH = 180;
 

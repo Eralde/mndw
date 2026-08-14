@@ -19,6 +19,7 @@ describe('openHostModal', () => {
     const [layer] = defaultOverlayRuntime.store.layers;
 
     expect(layer).not.toBeNull();
+
     const approve = layer?.contentElement.querySelector<HTMLButtonElement>('.probe-approve');
 
     expect(approve).not.toBeNull();

@@ -1,5 +1,16 @@
 import {DestroyRef, Injectable, computed, inject, signal} from '@angular/core';
 import {
+  type BackendClient,
+  BackendDisabled,
+  BackendIncompatible,
+  BackendMaintenance,
+  BackendNotApproved,
+  BackendStarting,
+  BackendUnavailable,
+  type LoadState,
+} from '@mndw/sdk';
+import {
+  type Observable,
   ReplaySubject,
   Subject,
   type Subscription,
@@ -18,7 +29,6 @@ import {
   timeout,
   timer,
 } from 'rxjs';
-import type {BackendClient, LoadState} from '@mndw/sdk';
 import {MwsApiService} from '../api/mws-api.service';
 import {
   type PersistentSessionSnapshot,
@@ -42,6 +52,15 @@ export interface MwsRequestError {
   message: string;
 }
 
+export type ExtraFeaturesAvailability =
+  | 'checking'
+  | 'active'
+  | 'starting'
+  | 'unavailable'
+  | 'degraded'
+  | 'blocked'
+  | 'incompatible';
+
 type PollResult =
   | {
     kind: 'ok';
@@ -53,6 +72,10 @@ type PollResult =
   | {kind: 'unsupported'; reason: string}
   | {kind: 'error'; error: MwsRequestError};
 
+type MwsdPollOutcome =
+  | {kind: 'snapshot'; snapshot: PersistentSessionSnapshot}
+  | {kind: 'availability'; availability: Exclude<ExtraFeaturesAvailability, 'checking' | 'active'>};
+
 @Injectable()
 export class MwsDataService {
   private readonly api = inject(MwsApiService);
@@ -61,6 +84,8 @@ export class MwsDataService {
   private readonly destroyRef = inject(DestroyRef);
 
   private readonly loadState = signal<LoadState<MwsNode[], MwsRequestError>>({status: 'loading'});
+  public readonly extraFeaturesAvailability = signal<ExtraFeaturesAvailability>('checking');
+  public readonly extraFeaturesPresentation = signal<ExtraFeaturesAvailability>('checking');
   public readonly phase = computed<MwsViewPhase>(() => {
     const state = this.loadState();
 
@@ -110,6 +135,7 @@ export class MwsDataService {
   private pollingStarted = false;
   private pollInFlight = false;
   private refreshPending = false;
+  private consecutiveDegradedPolls = 0;
   private lastPersistentSessions: PersistentSessionSnapshot = newPersistentSessionSnapshot(false, new Map());
 
   public constructor() {
@@ -124,7 +150,9 @@ export class MwsDataService {
       return;
     }
 
+    this.stop();
     this.loadState.set({status: 'loading'});
+    this.setExtraFeaturesAvailability(this.backend === null ? 'unavailable' : 'checking');
 
     this.versionSub = this.api.showVersion().subscribe({
       next: (version) => {
@@ -143,7 +171,6 @@ export class MwsDataService {
       return;
     }
 
-    this.stop();
     this.start();
   }
 
@@ -257,16 +284,10 @@ export class MwsDataService {
         filter(() => !document.hidden),
         exhaustMap(() => this.fetchMwsdStatus(backend)),
       )
-      .subscribe((snapshot) => {
-        if (snapshot !== null) {
-          this.lastPersistentSessions = snapshot;
-        }
-
-        this.mergeCurrentMwsdStatus();
-      });
+      .subscribe((outcome) => this.applyMwsdOutcome(outcome));
   }
 
-  private fetchMwsdStatus(backend: BackendClient): ReturnType<typeof defer> {
+  private fetchMwsdStatus(backend: BackendClient): Observable<MwsdPollOutcome> {
     const controller = new AbortController();
 
     return defer(() => from(backend.fetch('nodes', {signal: controller.signal}))).pipe(
@@ -274,15 +295,72 @@ export class MwsDataService {
       switchMap((response) =>
         response.ok
           ? defer(() => from(response.json())).pipe(
-            map((value): PersistentSessionSnapshot =>
-              parsePersistentSessionsResponse(value, this.lastPersistentSessions)
-            ),
+            map((value): MwsdPollOutcome => {
+              const snapshot = parsePersistentSessionsResponse(value, this.lastPersistentSessions);
+
+              return snapshot === null
+                ? {kind: 'availability', availability: 'degraded'}
+                : {kind: 'snapshot', snapshot};
+            }),
           )
-          : of<PersistentSessionSnapshot | null>(null)
+          : of<MwsdPollOutcome>({kind: 'availability', availability: 'degraded'})
       ),
-      catchError(() => of<PersistentSessionSnapshot | null>(null)),
+      catchError((error: unknown) => of(this.classifyMwsdError(error))),
       finalize(() => controller.abort()),
     );
+  }
+
+  private classifyMwsdError(error: unknown): MwsdPollOutcome {
+    if (error instanceof BackendStarting || error instanceof BackendMaintenance) {
+      return {kind: 'availability', availability: 'starting'};
+    }
+
+    if (error instanceof BackendUnavailable) {
+      return {kind: 'availability', availability: 'unavailable'};
+    }
+
+    if (error instanceof BackendDisabled || error instanceof BackendNotApproved) {
+      return {kind: 'availability', availability: 'blocked'};
+    }
+
+    if (error instanceof BackendIncompatible) {
+      return {kind: 'availability', availability: 'incompatible'};
+    }
+
+    return {kind: 'availability', availability: 'degraded'};
+  }
+
+  private applyMwsdOutcome(outcome: MwsdPollOutcome): void {
+    if (outcome.kind === 'snapshot') {
+      this.lastPersistentSessions = outcome.snapshot;
+      this.setExtraFeaturesAvailability(outcome.snapshot.available ? 'active' : 'unavailable');
+    } else {
+      this.makePersistentProjectionUnavailable();
+      this.setExtraFeaturesAvailability(outcome.availability);
+    }
+
+    this.mergeCurrentMwsdStatus();
+  }
+
+  protected setExtraFeaturesAvailability(next: ExtraFeaturesAvailability): void {
+    this.extraFeaturesAvailability.set(next);
+
+    if (next !== 'degraded') {
+      this.consecutiveDegradedPolls = 0;
+      this.extraFeaturesPresentation.set(next);
+
+      return;
+    }
+
+    this.consecutiveDegradedPolls += 1;
+
+    if (this.consecutiveDegradedPolls >= 2) {
+      this.extraFeaturesPresentation.set('degraded');
+    }
+  }
+
+  private makePersistentProjectionUnavailable(): void {
+    this.lastPersistentSessions = newPersistentSessionSnapshot(false, this.lastPersistentSessions.sessions);
   }
 
   protected publishSnapshot(
@@ -310,6 +388,7 @@ export class MwsDataService {
 
     if (result.kind === 'unsupported') {
       this.loadState.set({status: 'unsupported', reason: result.reason});
+      this.setExtraFeaturesAvailability('unavailable');
       this.stop();
 
       return;

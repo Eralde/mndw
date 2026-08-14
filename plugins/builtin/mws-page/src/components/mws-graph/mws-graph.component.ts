@@ -587,6 +587,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     const pointer = d3.pointer(event.sourceEvent, group.node());
     const next = dragPosition(state.origin, {x: pointer[0], y: pointer[1]}, state.pointerOrigin);
     const source = this.screenPoint(event.sourceEvent);
+
     state.moved = state.moved || !isClickWithinSlop(state.screenOrigin, source, CLICK_SLOP);
     this.dragPositions.set(state.id, next);
     this.updateDraggedNode(positioned.node.id, next);

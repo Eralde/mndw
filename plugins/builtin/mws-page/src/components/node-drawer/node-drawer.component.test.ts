@@ -1,5 +1,5 @@
 import '@angular/compiler';
-import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {signal, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
 import {type TestI18n, createTestI18n} from '@mndw/sdk/testing';
 import {Subject, of, throwError} from 'rxjs';
@@ -8,7 +8,7 @@ import {normalizeDeviceHosts, normalizeMembers} from '../../api/normalize';
 import {buildMap, findNodeById} from '../../domain/mws/map-builder';
 import type {ControllerInfo, MwsNode} from '../../domain/mws/mws.types';
 import {loadFixture} from '../../fixtures/load';
-import {MwsDataService} from '../../services/mws-data.service';
+import {type ExtraFeaturesAvailability, MwsDataService} from '../../services/mws-data.service';
 import {MwsWriteService} from '../../services/mws-write.service';
 import {MWS_RENAME_API, TRANSLATOR} from '../../tokens';
 import drawerStyles from './node-drawer.component.scss?raw';
@@ -63,6 +63,7 @@ describe('NodeDrawerComponent', () => {
   let renameNode: ReturnType<typeof vi.fn>;
   let refreshNow: ReturnType<typeof vi.fn>;
   let setPower: ReturnType<typeof vi.fn>;
+  let availability: ReturnType<typeof signal<ExtraFeaturesAvailability>>;
   let testI18n: TestI18n;
 
   beforeEach(async () => {
@@ -70,6 +71,7 @@ describe('NodeDrawerComponent', () => {
     renameNode = vi.fn(() => of(undefined));
     refreshNow = vi.fn();
     setPower = vi.fn(() => Promise.resolve({ok: true, steps: []}));
+    availability = signal<ExtraFeaturesAvailability>('active');
     testI18n = createTestI18n(enCatalog);
     await resolveComponentResources((url: string) => {
       if (url.endsWith('node-drawer.component.html')) {
@@ -86,7 +88,8 @@ describe('NodeDrawerComponent', () => {
       imports: [NodeDrawerComponent],
       providers: [
         {provide: MWS_RENAME_API, useValue: {renameNode}},
-        {provide: MwsDataService, useValue: {refreshNow, freshnessNow: () => 10_000}},
+        {provide: MwsDataService, useValue: {refreshNow, freshnessNow: () =>
+          10_000, extraFeaturesAvailability: availability}},
         {provide: MwsWriteService, useValue: {setPower}},
         {provide: TRANSLATOR, useValue: testI18n},
       ],
@@ -223,6 +226,32 @@ describe('NodeDrawerComponent', () => {
 
     expect((slider(fixture, 'WifiMaster0').parentElement as HTMLElement & {hint: string}).hint)
       .toBe('TX power update is pending.');
+  });
+
+  it('uses extra-features hint and disables live controls before node-specific reasons', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
+
+    fixture.componentRef.setInput('node', node === null ? null : withPower(node, true, {value: 75, available: true}));
+    fixture.detectChanges();
+    availability.set('degraded');
+    fixture.detectChanges();
+
+    expect(slider(fixture, 'WifiMaster0').disabled).toBe(true);
+    expect((slider(fixture, 'WifiMaster0').parentElement as HTMLElement & {hint: string}).hint)
+      .toBe('Remote controls require extra features.');
+  });
+
+  it('does not dispatch a power change after immediate availability changes', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
+
+    fixture.componentRef.setInput('node', node === null ? null : withPower(node, true, {value: 75, available: true}));
+    fixture.detectChanges();
+    availability.set('unavailable');
+    slider(fixture, 'WifiMaster0').dispatchEvent(new CustomEvent('mndwchange', {detail: {value: 65}, bubbles: true}));
+
+    expect(setPower).not.toHaveBeenCalled();
   });
 
   it('submits a trimmed controller name and updates the title without mutating the node', () => {

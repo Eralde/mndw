@@ -47,7 +47,14 @@ rc=$?
 log_dev "result: exit_code=$rc output_length=${#output}"
 
 json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r/\\r/g; s/\n/\\n/g'
+  awk 'BEGIN { RS = "\0" } {
+    gsub(/\\/, "\\\\")
+    gsub(/"/, "\\\"")
+    gsub(/\t/, "\\t")
+    gsub(/\r/, "\\r")
+    gsub(/\n/, "\\n")
+    printf "%s", $0
+  }'
 }
 
 if [ "$rc" -ne 0 ]; then
@@ -63,7 +70,7 @@ if [ "$rc" -ne 0 ]; then
   fi
 
   printf '{"success":false,"error":"LOOKUP_FAILED","message":"DNS lookup failed","raw":"%s","hostname":"%s"}\n' \
-    "$(json_escape "$output")" "$(json_escape "$hostname")"
+    "$(printf '%s' "$output" | json_escape)" "$(printf '%s' "$hostname" | json_escape)"
   exit 0
 fi
 

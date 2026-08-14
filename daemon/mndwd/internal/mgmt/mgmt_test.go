@@ -3,15 +3,20 @@ package mgmt
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
+	"mndwd/internal/backend"
 	"mndwd/internal/opkg"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
@@ -29,6 +34,57 @@ type permissionTestController struct {
 	onChanged func()
 	changes   int
 }
+
+type lifecycleTestRuntime struct {
+	store  *state.Store
+	events []string
+}
+
+func (r *lifecycleTestRuntime) Reconcile(context.Context, []*registry.Plugin) {}
+
+func (r *lifecycleTestRuntime) Activate(_ context.Context, plugin *registry.Plugin) error {
+	storedEnabled := false
+
+	if r.store != nil {
+		if record, ok := r.store.Get(plugin.Name); ok {
+			storedEnabled = record.Enabled
+		}
+	}
+
+	r.events = append(r.events, fmt.Sprintf("activate:stored=%t:requested=%t", storedEnabled, plugin.Enabled))
+
+	return nil
+}
+
+func (r *lifecycleTestRuntime) Deactivate(_ context.Context, pluginID string) error {
+	storedEnabled := false
+
+	if r.store != nil {
+		if record, ok := r.store.Get(pluginID); ok {
+			storedEnabled = record.Enabled
+		}
+	}
+
+	r.events = append(r.events, fmt.Sprintf("deactivate:stored=%t", storedEnabled))
+
+	return nil
+}
+
+func (r *lifecycleTestRuntime) Restart(context.Context, string) error { return nil }
+
+func (r *lifecycleTestRuntime) Status(string) backend.RuntimeStatus { return backend.RuntimeStatus{} }
+
+func (r *lifecycleTestRuntime) Limits() backend.RuntimeLimitsSnapshot {
+	return backend.RuntimeLimitsSnapshot{}
+}
+
+func (r *lifecycleTestRuntime) BeginPluginMaintenance(context.Context, string) error { return nil }
+
+func (r *lifecycleTestRuntime) EndPluginMaintenance(string) {}
+
+func (r *lifecycleTestRuntime) BeginPlatformMaintenance(context.Context) error { return nil }
+
+func (r *lifecycleTestRuntime) Shutdown(context.Context) error { return nil }
 
 func (c *permissionTestController) ControllerPermissionAvailable() bool {
 	return c.available
@@ -94,6 +150,35 @@ func newPermissionServer(t *testing.T, controller PersistentRCIPermissionControl
 	mux := http.NewServeMux()
 
 	New(cfg, store, opkg.New("stub", discardLogger()), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger()).Register(mux)
+
+	srv := httptest.NewServer(mux)
+
+	t.Cleanup(srv.Close)
+
+	return srv, store
+}
+
+func newLifecycleServer(t *testing.T, runtime backend.Runtime, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store) {
+	t.Helper()
+
+	root := t.TempDir()
+	cfg := Config{
+		StagingDir:                        filepath.Join(root, "staging"),
+		UserPluginsDir:                    filepath.Join(root, "user-plugins"),
+		BuiltinPluginsDir:                 filepath.Join(root, "builtin"),
+		MaxUploadBytes:                    10 << 20,
+		Runtime:                           runtime,
+		PersistentRCIPermissionController: controller,
+	}
+	store, err := state.Open(filepath.Join(root, "data", "state.json"))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+
+	logger := discardLogger()
+	mux := http.NewServeMux()
+
+	New(cfg, store, opkg.New("stub", logger), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -298,6 +383,16 @@ const backendManifest = `{
   }
 }`
 
+const serviceBackendManifest = `{
+  "manifestVersion": 3, "name": "svc", "version": "1.0.0",
+  "type": "widget", "label": "Service", "entry": "index.js",
+  "size": {"w": 6, "h": 4},
+  "backend": {
+    "kind": "service", "protocolVersion": 1, "command": "backend/run.sh",
+    "routes": [{"id": "e1", "transport": "http", "method": "GET", "path": "run"}]
+  }
+}`
+
 func TestUploadNoBackendInstallsDirectly(t *testing.T) {
 	srv, cfg := newTestServer(t)
 
@@ -422,6 +517,35 @@ func TestDenyRemovesStaging(t *testing.T) {
 
 	if entries := listPlugins(t, srv, "/api/mgmt/list"); len(entries) != 0 {
 		t.Errorf("denied plugin should not be listed, got %d", len(entries))
+	}
+}
+
+func TestDenyDoesNotReconcilePermission(t *testing.T) {
+	controller := &permissionTestController{available: true}
+	srv, store := newPermissionServer(t, controller)
+
+	resp := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json":  serviceBackendManifest,
+		"index.js":       "x",
+		"backend/run.sh": "#!/bin/sh\n",
+	}))
+	resp.Body.Close()
+
+	deny := postName(t, srv, "/api/mgmt/deny", "svc")
+	defer deny.Body.Close()
+
+	if deny.StatusCode != http.StatusOK {
+		t.Fatalf("deny status = %d, want 200", deny.StatusCode)
+	}
+
+	if controller.changes != 0 {
+		t.Fatalf("deny permission changes = %d, want 0", controller.changes)
+	}
+
+	audit := store.Snapshot().Audit
+
+	if len(audit) == 0 || audit[len(audit)-1].Action != "deny" || audit[len(audit)-1].Detail != "upload denied by operator" {
+		t.Fatalf("deny audit = %+v", audit)
 	}
 }
 
@@ -756,6 +880,68 @@ func TestEnableDisableTogglesState(t *testing.T) {
 	}
 }
 
+func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
+	runtime := &lifecycleTestRuntime{}
+	controller := &permissionTestController{available: true}
+	srv, store := newLifecycleServer(t, runtime, controller)
+	runtime.store = store
+	controller.onChanged = func() {
+		record, ok := store.Get("svc")
+		if !ok {
+			runtime.events = append(runtime.events, "permission:missing")
+
+			return
+		}
+
+		runtime.events = append(runtime.events, fmt.Sprintf("permission:stored=%t", record.Enabled))
+	}
+
+	resp := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json":  serviceBackendManifest,
+		"index.js":       "x",
+		"backend/run.sh": "#!/bin/sh\n",
+	}))
+	resp.Body.Close()
+
+	approve := postName(t, srv, "/api/mgmt/approve", "svc")
+	approve.Body.Close()
+
+	runtime.events = nil
+	disable := postName(t, srv, "/api/mgmt/disable", "svc")
+	disable.Body.Close()
+
+	if disable.StatusCode != http.StatusOK {
+		t.Fatalf("disable status = %d, want 200", disable.StatusCode)
+	}
+
+	if want := []string{"deactivate:stored=true", "permission:stored=false"}; !reflect.DeepEqual(runtime.events, want) {
+		t.Fatalf("disable event order = %#v, want %#v", runtime.events, want)
+	}
+
+	runtime.events = nil
+	enable := postName(t, srv, "/api/mgmt/enable", "svc")
+	enable.Body.Close()
+
+	if enable.StatusCode != http.StatusOK {
+		t.Fatalf("enable status = %d, want 200", enable.StatusCode)
+	}
+
+	if want := []string{"activate:stored=false:requested=true", "permission:stored=true"}; !reflect.DeepEqual(runtime.events, want) {
+		t.Fatalf("enable event order = %#v, want %#v", runtime.events, want)
+	}
+
+	audit := store.Snapshot().Audit
+	gotActions := make([]string, 0, 4)
+
+	for _, entry := range audit[len(audit)-4:] {
+		gotActions = append(gotActions, entry.Action)
+	}
+
+	if want := []string{"upload", "approve", "disable", "enable"}; !reflect.DeepEqual(gotActions, want) {
+		t.Fatalf("lifecycle audit actions = %#v, want %#v", gotActions, want)
+	}
+}
+
 func TestEnableUnknownPlugin(t *testing.T) {
 	srv, _ := newTestServer(t)
 	resp := postName(t, srv, "/api/mgmt/enable", "ghost")
@@ -1040,5 +1226,23 @@ func assertCode(t *testing.T, resp *http.Response, wantCode string) {
 
 	if env.Error.Code != wantCode {
 		t.Errorf("error code = %q, want %q", env.Error.Code, wantCode)
+	}
+}
+
+func TestServiceCapacityErrorRequiresSentinel(t *testing.T) {
+	if !serviceCapacityError(backend.ErrServiceCapacityExceeded) {
+		t.Fatal("service capacity sentinel was not classified as service capacity")
+	}
+
+	if !serviceCapacityError(fmt.Errorf("activation failed: %w", backend.ErrServiceCapacityExceeded)) {
+		t.Fatal("wrapped service capacity sentinel was not classified as service capacity")
+	}
+
+	if serviceCapacityError(errors.New("service capacity exceeded")) {
+		t.Fatal("same-message non-sentinel error was classified as service capacity")
+	}
+
+	if serviceCapacityError(fmt.Errorf("activation failed: %w", errors.New("service capacity exceeded"))) {
+		t.Fatal("wrapped same-message non-sentinel error was classified as service capacity")
 	}
 }

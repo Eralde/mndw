@@ -62,6 +62,21 @@ describe('lookup.sh', () => {
     expect(body).toMatchObject({success: false, error: 'NXDOMAIN'});
   });
 
+  it('escapes multiline stderr as a valid JSON error field', () => {
+    const {status, body} = run({
+      REQUEST_METHOD: 'GET',
+      QUERY_STRING: 'hostname=example.com',
+      MNDW_LOOKUP_TEST_BINARY: resolve(import.meta.dirname, 'lookup-test-dns-util-multiline.sh'),
+    });
+
+    expect(status).toBe(0);
+    expect(body).toMatchObject({
+      success: false,
+      error: 'LOOKUP_FAILED',
+      raw: 'lookup failed: backslash=\\ quote=" tab=\t carriage=\r\nsecond line',
+    });
+  });
+
   it('decodes a percent-encoded IPv6 hostname before lookup', () => {
     const {status, body} = run({
       REQUEST_METHOD: 'GET',

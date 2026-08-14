@@ -16,24 +16,22 @@ import (
 // any file move) so an opkg failure leaves the plugin cleanly pending; a failure
 // after the move rolls the files back to staging so a retry is possible.
 func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
-	name, apiErr := decodeName(r)
+	name, ok := h.decodeLifecycleName(w, r)
 
-	if apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
-
+	if !ok {
 		return
 	}
 
 	m, apiErr := h.executeApprove(name)
 
 	if apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
+		h.writeLifecycleError(w, apiErr)
 
 		return
 	}
 
 	h.logger.Info("plugin approved", "plugin", name)
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
+	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
 }
 
 // installDeps installs a plugin's declared opkg packages. No-op when none declared.
@@ -75,30 +73,28 @@ func (h *Handler) rollbackInstall(name, installPath, stagingPath string) {
 
 // handleEnable re-activates a disabled approved plugin and marks it enabled.
 func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
-	name, apiErr := decodeName(r)
+	name, ok := h.decodeLifecycleName(w, r)
 
-	if apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
-
+	if !ok {
 		return
 	}
 
 	p, m, apiErr := h.lookupForToggle(name)
 
 	if apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
+		h.writeLifecycleError(w, apiErr)
 
 		return
 	}
 
 	if p.Approval != state.ApprovalApproved {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "plugin "+name+" must be approved before it can be enabled"))
+		h.writeLifecycleError(w, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "plugin "+name+" must be approved before it can be enabled"))
 
 		return
 	}
 
 	if p.Enabled {
-		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, true))
+		h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, true))
 
 		return
 	}
@@ -106,7 +102,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 	if h.runtime != nil {
 		if err := h.activateBackendPlugin(name, m, filepath.Join(h.cfg.UserPluginsDir, name), true); err != nil {
 			if serviceCapacityError(err) {
-				httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeServiceCapacityExceeded, "service capacity exceeded"))
+				h.writeLifecycleError(w, httpx.NewError(http.StatusConflict, httpx.CodeServiceCapacityExceeded, "service capacity exceeded"))
 
 				return
 			}
@@ -116,56 +112,50 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if apiErr := h.setEnabled(name, true, "enable", "plugin enabled by operator"); apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
+		h.writeLifecycleError(w, apiErr)
 
 		return
 	}
 
 	h.logger.Info("plugin enabled", "plugin", name)
 	h.reconcilePermission(name, "plugin enable")
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
+	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
 }
 
 // handleDisable deactivates a plugin and marks it disabled. Routes are gated on
 // enabled state, and service shutdown is best effort so state cannot be wedged.
 func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
-	name, apiErr := decodeName(r)
+	name, ok := h.decodeLifecycleName(w, r)
 
-	if apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
-
+	if !ok {
 		return
 	}
 
 	p, m, apiErr := h.lookupForToggle(name)
 
 	if apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
+		h.writeLifecycleError(w, apiErr)
 
 		return
 	}
 
 	if !p.Enabled {
-		httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false))
+		h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false))
 
 		return
 	}
 
-	if h.runtime != nil {
-		if err := h.runtime.Deactivate(r.Context(), name); err != nil && h.logger != nil {
-			h.logger.Error("backend stop failed during disable", "plugin", name, "error", err)
-		}
-	}
+	h.deactivateBackend(r.Context(), name, "backend stop failed during disable")
 
 	if apiErr := h.setEnabled(name, false, "disable", "plugin disabled by operator"); apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
+		h.writeLifecycleError(w, apiErr)
 
 		return
 	}
 
 	h.logger.Info("plugin disabled", "plugin", name)
 	h.reconcilePermission(name, "plugin disable")
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false))
+	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false))
 }
 
 // lookupForToggle resolves a user plugin and its manifest for enable/disable,
@@ -191,7 +181,7 @@ func (h *Handler) lookupForToggle(name string) (*state.Plugin, *manifest.Manifes
 
 // setEnabled flips the enabled flag and audits the change.
 func (h *Handler) setEnabled(name string, enabled bool, action, detail string) *httpx.APIError {
-	err := h.store.Mutate(func(st *state.State) error {
+	return h.mutateWithAudit(action, name, detail, func(st *state.State) error {
 		rec, exists := st.Plugins[name]
 
 		if !exists {
@@ -200,78 +190,67 @@ func (h *Handler) setEnabled(name string, enabled bool, action, detail string) *
 
 		rec.Enabled = enabled
 
-		st.AppendAudit(action, name, detail)
-
 		return nil
 	})
-	if err != nil {
-		return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to update state")
-	}
-
-	return nil
 }
 
 // handleDeny drops a pending plugin: its staging tree is removed and the record deleted.
 func (h *Handler) handleDeny(w http.ResponseWriter, r *http.Request) {
-	name, apiErr := decodeName(r)
+	name, ok := h.decodeLifecycleName(w, r)
 
-	if apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
-
+	if !ok {
 		return
 	}
 
-	p, ok := h.store.Get(name)
+	p, apiErr := h.lookupStoredPlugin(name)
 
-	if !ok {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name))
+	if apiErr != nil {
+		h.writeLifecycleError(w, apiErr)
 
 		return
 	}
 
 	if p.Approval != state.ApprovalPending {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "plugin "+name+" is not pending approval"))
+		h.writeLifecycleError(w, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "plugin "+name+" is not pending approval"))
 
 		return
 	}
 
 	if err := os.RemoveAll(filepath.Join(h.cfg.StagingDir, name)); err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to remove staged plugin"))
+		h.writeLifecycleError(w, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to remove staged plugin"))
 
 		return
 	}
 
 	if apiErr := h.dropRecord(name, "deny", "upload denied by operator"); apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
+		h.writeLifecycleError(w, apiErr)
 
 		return
 	}
 
 	h.logger.Info("plugin denied", "plugin", name)
-	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"ok": true})
+	h.writeLifecycleJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // handleDelete removes an installed (or still-pending) user plugin and its files.
 // Builtins cannot be deleted.
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
-	name, apiErr := decodeName(r)
+	name, ok := h.decodeLifecycleName(w, r)
 
-	if apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
-
+	if !ok {
 		return
 	}
 
-	p, ok := h.store.Get(name)
+	p, apiErr := h.lookupStoredPlugin(name)
 
-	if !ok {
+	if apiErr != nil {
 		if h.isBuiltin(name) {
-			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "builtin plugins cannot be deleted"))
+			h.writeLifecycleError(w, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "builtin plugins cannot be deleted"))
 
 			return
 		}
 
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name))
+		h.writeLifecycleError(w, apiErr)
 
 		return
 	}
@@ -282,44 +261,34 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	if p.Approval == state.ApprovalPending {
 		dir = h.cfg.StagingDir
 	} else if m, err := manifest.ValidateV3(p.Manifest); err == nil && m.Backend != nil {
-		if h.runtime != nil {
-			if stopErr := h.runtime.Deactivate(r.Context(), name); stopErr != nil && h.logger != nil {
-				h.logger.Error("backend stop failed during delete", "plugin", name, "error", stopErr)
-			}
-		}
+		h.deactivateBackend(r.Context(), name, "backend stop failed during delete")
 	}
 
 	if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to remove plugin files"))
+		h.writeLifecycleError(w, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to remove plugin files"))
 
 		return
 	}
 
 	if apiErr := h.dropRecord(name, "delete", "plugin removed by operator; permission grants purged"); apiErr != nil {
-		httpx.WriteError(w, h.logger, apiErr)
+		h.writeLifecycleError(w, apiErr)
 
 		return
 	}
 
 	h.logger.Info("plugin deleted", "plugin", name)
 	h.reconcilePermission(name, "plugin delete")
-	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"ok": true})
+	h.writeLifecycleJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 // dropRecord removes a plugin's state entry and audits the removal.
 func (h *Handler) dropRecord(name, action, detail string) *httpx.APIError {
-	err := h.store.Mutate(func(st *state.State) error {
+	return h.mutateWithAudit(action, name, detail, func(st *state.State) error {
 		delete(st.Plugins, name)
 		delete(st.PermissionGrants, name)
-		st.AppendAudit(action, name, detail)
 
 		return nil
 	})
-	if err != nil {
-		return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to update state")
-	}
-
-	return nil
 }
 
 // markCommandsExecutable applies +x to every declared backend command.

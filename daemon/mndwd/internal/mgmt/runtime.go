@@ -3,6 +3,7 @@ package mgmt
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"mndwd/internal/backend"
@@ -95,7 +96,7 @@ func (h *Handler) activateBackendPlugin(name string, m *manifest.Manifest, dir s
 }
 
 func serviceCapacityError(err error) bool {
-	return err != nil && err.Error() == "service capacity exceeded"
+	return errors.Is(err, backend.ErrServiceCapacityExceeded)
 }
 
 func decodeRuntimeResponse(data []byte) (backend.RuntimeStatus, error) {

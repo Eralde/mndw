@@ -184,6 +184,49 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 		return err
 	}
 
+	record, shouldStart, err := s.reserveStart(ctx, spec, paths)
+	if err != nil {
+		return err
+	}
+
+	if !shouldStart {
+		return nil
+	}
+
+	validated, err := s.prepareStart(paths, spec)
+	if err != nil {
+		s.failStart(spec.PluginID, err)
+
+		return err
+	}
+
+	command, stderr, err := s.launchService(spec, paths, validated)
+	if err != nil {
+		s.failStart(spec.PluginID, err)
+
+		return err
+	}
+
+	done := s.registerServiceProcess(record, spec.PluginID, paths, command, stderr)
+
+	go func() { done <- command.Wait() }()
+
+	if err := s.probeServiceReadiness(ctx, paths, spec); err != nil {
+		_ = s.stopProcess(ctx, spec.PluginID, false)
+
+		s.failStart(spec.PluginID, err)
+
+		return err
+	}
+
+	s.markServiceReady(record)
+
+	go s.observeExit(spec.PluginID, done)
+
+	return nil
+}
+
+func (s *Supervisor) reserveStart(ctx context.Context, spec ServiceSpec, paths RuntimePaths) (*serviceRecord, bool, error) {
 	s.mu.Lock()
 
 	s.desired[spec.PluginID] = spec
@@ -226,7 +269,7 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 			s.mu.Unlock()
 		}
 
-		return fmt.Errorf("unsupported service protocol %d", spec.ProtocolVersion)
+		return nil, false, fmt.Errorf("unsupported service protocol %d", spec.ProtocolVersion)
 	}
 
 	now := s.cfg.Now()
@@ -234,13 +277,13 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 	if record.status.State == StateReady || record.status.State == StateStarting {
 		s.mu.Unlock()
 
-		return nil
+		return nil, false, nil
 	}
 
 	if record.status.State == StateBackoff && record.status.NextAttemptAt != nil && now.Before(*record.status.NextAttemptAt) {
 		s.mu.Unlock()
 
-		return fmt.Errorf("service is in backoff until %s", record.status.NextAttemptAt.Format(time.RFC3339))
+		return nil, false, fmt.Errorf("service is in backoff until %s", record.status.NextAttemptAt.Format(time.RFC3339))
 	}
 
 	if record.reservation == nil {
@@ -251,7 +294,7 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 
 			s.mu.Unlock()
 
-			return fmt.Errorf("service capacity exceeded")
+			return nil, false, ErrServiceCapacityExceeded
 		}
 
 		record.reservation = reservation
@@ -262,10 +305,12 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 
 	s.mu.Unlock()
 
-	if err := paths.Ensure(); err != nil {
-		s.failStart(spec.PluginID, err)
+	return record, true, nil
+}
 
-		return err
+func (s *Supervisor) prepareStart(paths RuntimePaths, spec ServiceSpec) (ValidatedCommand, error) {
+	if err := paths.Ensure(); err != nil {
+		return ValidatedCommand{}, err
 	}
 
 	if err := recoverStaleRuntime(paths, s.cfg.FinalReapTimeout); err != nil && s.cfg.Logger != nil {
@@ -273,18 +318,13 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 	}
 
 	if err := removeRuntimeEvidence(paths); err != nil {
-		s.failStart(spec.PluginID, err)
-
-		return err
+		return ValidatedCommand{}, err
 	}
 
-	validated, err := ValidateCommand(spec.Dir, spec.Command)
-	if err != nil {
-		s.failStart(spec.PluginID, err)
+	return ValidateCommand(spec.Dir, spec.Command)
+}
 
-		return err
-	}
-
+func (s *Supervisor) launchService(spec ServiceSpec, paths RuntimePaths, validated ValidatedCommand) (*exec.Cmd, *StderrRing, error) {
 	command := exec.Command(validated.Path, spec.Args...)
 
 	configureExecCommand(command)
@@ -305,13 +345,15 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 	command.Stderr = stderr
 
 	if err := command.Start(); err != nil {
-		s.failStart(spec.PluginID, err)
-
-		return err
+		return nil, nil, err
 	}
 
+	return command, stderr, nil
+}
+
+func (s *Supervisor) registerServiceProcess(record *serviceRecord, pluginID string, paths RuntimePaths, command *exec.Cmd, stderr *StderrRing) chan error {
 	if err := writeProcessLease(paths.ServiceLease, command.Process.Pid); err != nil && s.cfg.Logger != nil {
-		s.cfg.Logger.Warn("service lease unavailable", "plugin", spec.PluginID, "error", err)
+		s.cfg.Logger.Warn("service lease unavailable", "plugin", pluginID, "error", err)
 	}
 
 	done := make(chan error, 1)
@@ -324,21 +366,19 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 
 	s.mu.Unlock()
 
-	go func() { done <- command.Wait() }()
+	return done
+}
 
+func (s *Supervisor) probeServiceReadiness(ctx context.Context, paths RuntimePaths, spec ServiceSpec) error {
 	readinessCtx, cancel := context.WithTimeout(ctx, s.cfg.ReadinessTimeout)
-	err = ProbeReadiness(readinessCtx, paths.BackendSocket, spec.PluginID, spec.ProtocolVersion, s.cfg.ReadinessTimeout)
+	err := ProbeReadiness(readinessCtx, paths.BackendSocket, spec.PluginID, spec.ProtocolVersion, s.cfg.ReadinessTimeout)
 
 	cancel()
 
-	if err != nil {
-		_ = s.stopProcess(ctx, spec.PluginID, false)
+	return err
+}
 
-		s.failStart(spec.PluginID, err)
-
-		return err
-	}
-
+func (s *Supervisor) markServiceReady(record *serviceRecord) {
 	s.mu.Lock()
 
 	record.status.State = StateReady
@@ -346,10 +386,6 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 	record.status.NextAttemptAt = nil
 
 	s.mu.Unlock()
-
-	go s.observeExit(spec.PluginID, done)
-
-	return nil
 }
 
 func serviceDataDir(root string, spec ServiceSpec) string {

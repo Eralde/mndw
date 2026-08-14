@@ -43,6 +43,33 @@ func TestSupervisorStartsWithStoppedStatusAndReportsCapacity(t *testing.T) {
 	}
 }
 
+func TestSupervisorStartReturnsBareServiceCapacitySentinel(t *testing.T) {
+	supervisor := NewSupervisor(SupervisorConfig{
+		RuntimeRoot:        t.TempDir(),
+		Limits:             Limits{MaxSupervisedServices: 1},
+		SupportedProtocols: []int{1},
+	})
+	reservation, ok := supervisor.admission.TryReserveService("occupied")
+
+	if !ok {
+		t.Fatal("occupied service reservation rejected")
+	}
+
+	defer reservation.Release()
+
+	err := supervisor.Start(context.Background(), ServiceSpec{
+		PluginID:        "blocked",
+		Dir:             t.TempDir(),
+		Command:         "backend/server",
+		ProtocolVersion: 1,
+		Enabled:         true,
+	})
+
+	if err != ErrServiceCapacityExceeded {
+		t.Fatalf("capacity error = %v, want bare ErrServiceCapacityExceeded", err)
+	}
+}
+
 func TestSupervisorRecordsIncompatibleServiceWithoutStartingIt(t *testing.T) {
 	supervisor := NewSupervisor(SupervisorConfig{
 		RuntimeRoot:        t.TempDir(),
@@ -71,6 +98,39 @@ func TestSupervisorRecordsIncompatibleServiceWithoutStartingIt(t *testing.T) {
 
 	if len(status.SupportedProtocols) != 1 || status.SupportedProtocols[0] != 1 {
 		t.Fatalf("supported protocols = %#v, want [1]", status.SupportedProtocols)
+	}
+}
+
+func TestSupervisorStartFailureRecordsBackoffBeforeForgetStopsService(t *testing.T) {
+	supervisor := NewSupervisor(SupervisorConfig{
+		RuntimeRoot:        t.TempDir(),
+		SupportedProtocols: []int{1},
+	})
+
+	err := supervisor.Start(context.Background(), ServiceSpec{
+		PluginID:        "invalid-command",
+		Dir:             t.TempDir(),
+		Command:         "backend/missing.sh",
+		ProtocolVersion: 1,
+		Enabled:         true,
+	})
+
+	if err == nil {
+		t.Fatal("start with missing command succeeded")
+	}
+
+	status := supervisor.Status("invalid-command")
+
+	if status.State != StateBackoff || status.ConsecutiveFailures != 1 || status.LastExit != "start failed" || status.LastError == "" || status.NextAttemptAt == nil {
+		t.Fatalf("failed start status = %+v", status)
+	}
+
+	if err := supervisor.Forget(context.Background(), "invalid-command"); err != nil {
+		t.Fatalf("Forget failed service: %v", err)
+	}
+
+	if status := supervisor.Status("invalid-command"); status.State != StateStopped {
+		t.Fatalf("status after Forget = %q, want stopped", status.State)
 	}
 }
 

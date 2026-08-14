@@ -29,9 +29,11 @@ type PersistentTelemetry struct {
 }
 
 type NodesResponse struct {
-	LastRefreshAt       *time.Time          `json:"lastRefreshAt"`
-	PersistentAvailable bool                `json:"persistentAvailable"`
-	PersistentSessions  []PersistentSession `json:"persistentSessions"`
+	LastRefreshAt          *time.Time          `json:"lastRefreshAt"`
+	PersistentAvailable    bool                `json:"persistentAvailable"`
+	PersistentTargetCount  int                 `json:"persistentTargetCount"`
+	PersistentSessionCount int                 `json:"persistentSessionCount"`
+	PersistentSessions     []PersistentSession `json:"persistentSessions"`
 }
 
 type PersistentSession struct {

@@ -35,7 +35,13 @@ func TestServiceSpecActivationGates(t *testing.T) {
 				permission := permission
 				satisfied := satisfied
 
-				gates.Register(permission, ActivationGateFunc(func(_ string) bool { return satisfied }))
+				gates.Register(permission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+					if satisfied {
+						return nil
+					}
+
+					return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
+				}))
 			}
 
 			spec, ok := serviceSpec(plugin, gates)
@@ -54,7 +60,7 @@ func TestServiceSpecActivationGates(t *testing.T) {
 func TestServiceSpecActivationGatesPreserveApprovalAndEnabledState(t *testing.T) {
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_ string) bool { return true }))
+	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_, _ string) []ActivationBlocker { return nil }))
 
 	for _, test := range []struct {
 		name     string

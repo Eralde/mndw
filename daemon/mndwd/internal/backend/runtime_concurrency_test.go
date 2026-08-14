@@ -36,13 +36,13 @@ func TestRuntimeCallerPathsSerialize(t *testing.T) {
 			var firstCall atomic.Bool
 			gates := NewActivationGateRegistry()
 
-			gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(string) bool {
+			gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(string, _ string) []ActivationBlocker {
 				if firstCall.CompareAndSwap(false, true) {
 					close(entered)
 					<-release
 				}
 
-				return true
+				return nil
 			}))
 
 			runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), ActivationGates: gates})
@@ -96,8 +96,12 @@ func TestBackgroundStaleSpecConvergesOnFullReconcile(t *testing.T) {
 	var gateState atomic.Bool
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(string) bool {
-		return gateState.Load()
+	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+		if gateState.Load() {
+			return nil
+		}
+
+		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
 	}))
 
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), ActivationGates: gates})
@@ -241,13 +245,13 @@ func TestRuntimeRestartWaitsForFullReconcile(t *testing.T) {
 	var firstCall atomic.Bool
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(string) bool {
+	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(string, _ string) []ActivationBlocker {
 		if firstCall.CompareAndSwap(false, true) {
 			close(entered)
 			<-release
 		}
 
-		return true
+		return nil
 	}))
 
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), ActivationGates: gates})

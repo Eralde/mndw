@@ -1,16 +1,23 @@
 package backend
 
-// ActivationGate reports whether a plugin's declared activation condition is
-// currently satisfied.
+// ActivationBlocker is a machine-readable reason a declared activation
+// permission is not currently available.
+type ActivationBlocker struct {
+	Permission   string
+	Reason       string
+	Prerequisite string
+}
+
+// ActivationGate evaluates one declared permission for one plugin.
 type ActivationGate interface {
-	Satisfied(pluginName string) bool
+	Evaluate(pluginName, permission string) []ActivationBlocker
 }
 
 // ActivationGateFunc adapts a function to ActivationGate.
-type ActivationGateFunc func(pluginName string) bool
+type ActivationGateFunc func(pluginName, permission string) []ActivationBlocker
 
-func (f ActivationGateFunc) Satisfied(pluginName string) bool {
-	return f(pluginName)
+func (f ActivationGateFunc) Evaluate(pluginName, permission string) []ActivationBlocker {
+	return f(pluginName, permission)
 }
 
 // ActivationGateRegistry maps manifest permission IDs to their activation
@@ -43,4 +50,50 @@ func (r *ActivationGateRegistry) Lookup(permissionID string) (ActivationGate, bo
 	gate, ok := r.gates[permissionID]
 
 	return gate, ok
+}
+
+// Evaluate returns active blockers in manifest permission order, retaining only
+// the first instance of each blocker tuple.
+func (r *ActivationGateRegistry) Evaluate(pluginName string, permissions []string) []ActivationBlocker {
+	if r == nil {
+		return nil
+	}
+
+	blockers := make([]ActivationBlocker, 0)
+	seen := make(map[activationBlockerKey]struct{})
+
+	for _, permission := range permissions {
+		gate, ok := r.Lookup(permission)
+
+		if !ok {
+			continue
+		}
+
+		for _, blocker := range gate.Evaluate(pluginName, permission) {
+			key := activationBlockerKey{
+				permission:   blocker.Permission,
+				reason:       blocker.Reason,
+				prerequisite: blocker.Prerequisite,
+			}
+
+			if _, ok := seen[key]; ok {
+				continue
+			}
+
+			seen[key] = struct{}{}
+			blockers = append(blockers, blocker)
+		}
+	}
+
+	return blockers
+}
+
+func (r *ActivationGateRegistry) Satisfied(pluginName string, permissions []string) bool {
+	return len(r.Evaluate(pluginName, permissions)) == 0
+}
+
+type activationBlockerKey struct {
+	permission   string
+	reason       string
+	prerequisite string
 }

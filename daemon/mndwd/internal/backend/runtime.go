@@ -251,15 +251,7 @@ func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (Servic
 	enabled := plugin.Enabled && plugin.Approval == "approved"
 
 	if enabled && gates != nil {
-		for _, permission := range plugin.Manifest.Permissions {
-			gate, registered := gates.Lookup(permission)
-
-			if registered && !gate.Satisfied(plugin.Name) {
-				enabled = false
-
-				break
-			}
-		}
+		enabled = gates.Satisfied(plugin.Name, plugin.Manifest.Permissions)
 	}
 
 	return ServiceSpec{

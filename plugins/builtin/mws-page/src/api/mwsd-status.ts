@@ -21,14 +21,20 @@ export interface PersistentSessionState {
 
 export interface PersistentSessionSnapshot {
   readonly available: boolean;
+  readonly targetCount: number;
+  readonly sessionCount: number;
+  readonly countsKnown: boolean;
   readonly sessions: ReadonlyMap<string, PersistentSessionState>;
 }
 
 export function newPersistentSessionSnapshot(
   available: boolean,
   sessions: ReadonlyMap<string, PersistentSessionState>,
+  targetCount = 0,
+  sessionCount = 0,
+  countsKnown = true,
 ): PersistentSessionSnapshot {
-  return {available, sessions};
+  return {available, targetCount, sessionCount, countsKnown, sessions};
 }
 
 export function parsePersistentSessionsResponse(
@@ -41,6 +47,10 @@ export function parsePersistentSessionsResponse(
   if (typeof response?.persistentAvailable !== 'boolean' || !Array.isArray(response.persistentSessions)) {
     return null;
   }
+
+  const targetCount = parseNonNegativeCount(response.persistentTargetCount);
+  const sessionCount = parseNonNegativeCount(response.persistentSessionCount);
+  const countsKnown = targetCount !== null && sessionCount !== null;
 
   if (response.lastRefreshAt === null) {
     return response.persistentAvailable ? previous : newPersistentSessionSnapshot(false, previous.sessions);
@@ -84,7 +94,7 @@ export function parsePersistentSessionsResponse(
     }
   }
 
-  return newPersistentSessionSnapshot(true, sessions);
+  return newPersistentSessionSnapshot(true, sessions, targetCount ?? 0, sessionCount ?? 0, countsKnown);
 }
 
 export function retainPersistentSessionsForNodes(
@@ -105,6 +115,9 @@ export function retainPersistentSessionsForNodes(
   return newPersistentSessionSnapshot(
     snapshot.available,
     new Map([...snapshot.sessions].filter(([mac]) => macs.has(mac))),
+    snapshot.targetCount,
+    snapshot.sessionCount,
+    snapshot.countsKnown,
   );
 }
 
@@ -173,6 +186,10 @@ function parseTimestamp(value: unknown): number | null {
   const timestamp = Date.parse(value);
 
   return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function parseNonNegativeCount(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

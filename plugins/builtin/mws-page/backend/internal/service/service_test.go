@@ -136,7 +136,7 @@ func TestNodesResponseUsesPersistentEnvelopeWithSource(t *testing.T) {
 
 	service.SetPersistentSource(fakePersistentSource{
 		sessions:    []persistent.Session{{Mac: "aa:bb:cc:dd:ee:ff", Live: true}},
-		diagnostics: persistent.Diagnostics{LastTargetsAt: &when},
+		diagnostics: persistent.Diagnostics{LastTargetsAt: &when, TargetCount: 2, SessionCount: 1},
 	})
 
 	response, err := service.Nodes(context.Background())
@@ -161,6 +161,14 @@ func TestNodesResponseUsesPersistentEnvelopeWithSource(t *testing.T) {
 
 	if got := string(envelope["persistentSessions"]); got == "[]" {
 		t.Fatalf("persistentSessions = %s, want session", got)
+	}
+
+	if got := string(envelope["persistentTargetCount"]); got != "2" {
+		t.Fatalf("persistentTargetCount = %s, want 2", got)
+	}
+
+	if got := string(envelope["persistentSessionCount"]); got != "1" {
+		t.Fatalf("persistentSessionCount = %s, want 1", got)
 	}
 
 	if got := string(envelope["lastRefreshAt"]); got != `"2026-08-12T10:00:00Z"` {

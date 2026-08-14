@@ -51,7 +51,7 @@
       <div class="extra-features-status-slot extra-features-setup" role="status">
         <div>
           <strong>{{ t('extra-features.setup.title') }}</strong>
-          <span>{{ t('extra-features.setup.body') }}</span>
+          <span>{{ extraFeaturesSetupBody() }}</span>
           <a href="/settings/general">{{ t('extra-features.setup.action') }}</a>
         </div>
         <button
@@ -62,9 +62,9 @@
           (click)="dismissExtraFeaturesBanner()"
         >×</button>
       </div>
-    } @else if (data.extraFeaturesPresentation() === 'degraded') {
-      <div class="extra-features-status-slot extra-features-degraded" role="status">
-        {{ t('extra-features.degraded') }}
+    } @else if (data.extraFeaturesAvailability() === 'limited' && data.extraFeaturesPresentation() === 'limited') {
+      <div class="extra-features-status-slot extra-features-limited" role="status">
+        {{ t('extra-features.limited') }}
       </div>
     }
     @if (data.pollError()) {

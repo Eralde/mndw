@@ -170,7 +170,7 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 
 	registerPalette(mux, mgmtMux, paletteStore, logger)
 
-	gateway := registerPlugins(mux, cfg, reg, verifier, runtime, logger)
+	gateway := registerPlugins(mux, cfg, reg, activationGates, verifier, runtime, logger)
 
 	runtime.SetMaintenanceHooks(gateway.BeginPluginMaintenance, gateway.BeginPlatformMaintenance, gateway.EndPluginMaintenance)
 
@@ -237,10 +237,11 @@ func registerPalette(mux *http.ServeMux, mgmtMux *http.ServeMux, paletteStore *p
 }
 
 // registerPlugins mounts the single manifest-v3 backend gateway.
-func registerPlugins(mux *http.ServeMux, cfg Config, reg *registry.Registry, verifier *authz.Verifier, runtime *backend.RuntimeImpl, logger *slog.Logger) *backend.Gateway {
+func registerPlugins(mux *http.ServeMux, cfg Config, reg *registry.Registry, activationGates *backend.ActivationGateRegistry, verifier *authz.Verifier, runtime *backend.RuntimeImpl, logger *slog.Logger) *backend.Gateway {
 	v3Gateway := backend.NewGateway(backend.GatewayConfig{
 		MaxRequestBytes:    cfg.MaxRequestBytes,
 		ServiceHTTPTimeout: cfg.ServiceHTTPTimeout,
+		ActivationGates:    activationGates,
 	}, reg, verifier, runtime.ExecRunner(), runtime.Supervisor(), logger)
 
 	v3Gateway.Register(mux)

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -161,11 +162,17 @@ func skipUnixSocketUnavailable(t *testing.T, root string) {
 	t.Fatalf("probe Unix listener: %v", err)
 }
 
-func TestActivationSatisfiedReturnsFalseBeforeFirstPublish(t *testing.T) {
+func TestActivationEvaluateReportsBothBlockersBeforeFirstPublish(t *testing.T) {
 	assembly := &rciSessionAssembly{}
 
-	if assembly.activationSatisfied("demo") {
-		t.Fatal("nil activation snapshot reported satisfied")
+	got := assembly.activationEvaluate("demo", manifest.PersistentRCISessionWritePermission)
+	want := []backend.ActivationBlocker{
+		{Permission: manifest.PersistentRCISessionWritePermission, Reason: "not-granted"},
+		{Permission: manifest.PersistentRCISessionWritePermission, Reason: "prerequisite-unavailable", Prerequisite: "controller-token"},
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("activationEvaluate() = %#v, want %#v", got, want)
 	}
 }
 
@@ -199,8 +206,53 @@ func TestActivationSnapshotUsesGrantUnionAndTokenPresence(t *testing.T) {
 
 			assembly.mu.Unlock()
 
-			if !changed || assembly.activationSatisfied("demo") != test.want {
-				t.Fatalf("changed=%v satisfied=%v, want changed=true satisfied=%v", changed, assembly.activationSatisfied("demo"), test.want)
+			got := len(assembly.activationEvaluate("demo", manifest.PersistentRCISessionReadPermission)) == 0
+
+			if !changed || got != test.want {
+				t.Fatalf("changed=%v satisfied=%v, want changed=true satisfied=%v", changed, got, test.want)
+			}
+		})
+	}
+}
+
+func TestActivationEvaluateAppliesReadWriteGrantSemantics(t *testing.T) {
+	tests := []struct {
+		name       string
+		readGrant  bool
+		writeGrant bool
+		controller *model.TokenRecord
+		permission string
+		want       []backend.ActivationBlocker
+	}{
+		{name: "read missing grant and token", permission: manifest.PersistentRCISessionReadPermission, want: []backend.ActivationBlocker{
+			{Permission: manifest.PersistentRCISessionReadPermission, Reason: "not-granted"},
+			{Permission: manifest.PersistentRCISessionReadPermission, Reason: "prerequisite-unavailable", Prerequisite: "controller-token"},
+		}},
+		{name: "read grant missing token", readGrant: true, permission: manifest.PersistentRCISessionReadPermission, want: []backend.ActivationBlocker{
+			{Permission: manifest.PersistentRCISessionReadPermission, Reason: "prerequisite-unavailable", Prerequisite: "controller-token"},
+		}},
+		{name: "read accepts write grant", writeGrant: true, controller: &model.TokenRecord{Token: "token"}, permission: manifest.PersistentRCISessionReadPermission},
+		{name: "write rejects read grant", readGrant: true, controller: &model.TokenRecord{Token: "token"}, permission: manifest.PersistentRCISessionWritePermission, want: []backend.ActivationBlocker{
+			{Permission: manifest.PersistentRCISessionWritePermission, Reason: "not-granted"},
+		}},
+		{name: "write accepts write grant", writeGrant: true, controller: &model.TokenRecord{Token: "token"}, permission: manifest.PersistentRCISessionWritePermission},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assembly := newActivationSnapshotAssembly(t, map[string]bool{
+				manifest.PersistentRCISessionReadPermission:  test.readGrant,
+				manifest.PersistentRCISessionWritePermission: test.writeGrant,
+			})
+
+			assembly.mu.Lock()
+			assembly.publishActivationSnapshotLocked(controllerTokenPresent(model.Document{Controller: test.controller}))
+			assembly.mu.Unlock()
+
+			got := assembly.activationEvaluate("demo", test.permission)
+
+			if len(got) != len(test.want) || (len(got) > 0 && !reflect.DeepEqual(got, test.want)) {
+				t.Fatalf("activationEvaluate() = %#v, want %#v", got, test.want)
 			}
 		})
 	}

@@ -1,3 +1,5 @@
+import type {PluginPermission} from './manifest.js';
+
 /**
  * Typed backend client handed to plugins as `context.backend`.
  * It resolves HTTP and WebSocket route ids from the daemon's capability snapshot and
@@ -11,7 +13,8 @@
  *    `NOT_APPROVED` / `DISABLED` / `ROUTE_NOT_FOUND` map onto the same
  *    typed errors when state changed after load.
  *
- * Plugins handle one error family either way.
+ * Plugins handle one error family either way. `status()` is separate: it is a
+ * live, passive, bound-plugin query and is not a readiness probe.
  */
 
 export type BackendApprovalStatus = 'approved' | 'pending' | 'denied';
@@ -33,6 +36,40 @@ export interface BackendDescriptor {
   enabled: boolean;
 }
 
+export type BackendStatusState =
+  | 'ready'
+  | 'starting'
+  | 'unavailable'
+  | 'incompatible'
+  | 'maintenance'
+  | 'blocked'
+  | 'disabled'
+  | 'not-approved';
+
+export interface BackendBlocker {
+  permission: PluginPermission;
+  reason: string;
+  prerequisite?: string;
+}
+
+interface BackendStatusBase {
+  kind: 'exec' | 'service';
+  retryAfterSeconds: number | null;
+}
+
+export type BackendStatus =
+  | (BackendStatusBase & {state: 'blocked'; blockers: BackendBlocker[]})
+  | (BackendStatusBase & {
+    state: 'incompatible';
+    requiredProtocol: number;
+    supportedProtocols: number[];
+  })
+  | (BackendStatusBase & {state: Exclude<BackendStatusState, 'blocked' | 'incompatible'>});
+
+export interface BackendStatusOptions {
+  signal?: AbortSignal;
+}
+
 export interface BackendFetchOptions {
   query?: Record<string, string | number | boolean>;
   body?: BodyInit | Record<string, unknown> | unknown[] | null;
@@ -49,6 +86,8 @@ export interface BackendClient {
   fetch(id: string, options?: BackendFetchOptions): Promise<Response>;
   /** Open a websocket to the declared target. Throws synchronously on a bad/blocked id. */
   socket(id: string, options?: BackendSocketOptions): WebSocket;
+  /** Query live daemon-owned backend availability without executing a backend route. */
+  status(options?: BackendStatusOptions): Promise<BackendStatus>;
 }
 
 /** Returns true for an intentional daemon maintenance close; callers must show
@@ -142,6 +181,15 @@ export class BackendBadGateway extends Error {
   }
 }
 
+export class BackendStatusQueryError extends Error {
+  public readonly code = 'STATUS_QUERY_FAILED';
+
+  constructor(public readonly httpStatus: number | null, message: string) {
+    super(message);
+    this.name = 'BackendStatusQueryError';
+  }
+}
+
 // ------------------------------------
 // Implementation
 // ------------------------------------
@@ -175,6 +223,134 @@ const parseRetryAfterSeconds = (response: Response): number | null => {
   const value = Number(raw);
 
   return Number.isSafeInteger(value) ? value : null;
+};
+
+const parseNonNegativeInteger = (value: unknown, field: string): number | null => {
+  if (value === null) {
+    return null;
+  }
+
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`Invalid ${field}`);
+  }
+
+  return value;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+};
+
+const isPluginPermission = (value: unknown): value is PluginPermission => {
+  return value === 'persistent-rci-session:read' || value === 'persistent-rci-session:write';
+};
+
+const hasOwn = (value: Record<string, unknown>, key: string): boolean => {
+  return Object.prototype.hasOwnProperty.call(value, key);
+};
+
+const parseBackendStatusPayload: (value: unknown) => BackendStatus = (value) => {
+  if (!isRecord(value)) {
+    throw new Error('Invalid backend status payload');
+  }
+
+  const kind = value.kind;
+
+  if (kind !== 'exec' && kind !== 'service') {
+    throw new Error('Invalid backend status kind');
+  }
+
+  const state = value.state;
+  const states: BackendStatusState[] = [
+    'ready',
+    'starting',
+    'unavailable',
+    'incompatible',
+    'maintenance',
+    'blocked',
+    'disabled',
+    'not-approved',
+  ];
+
+  if (typeof state !== 'string' || !states.includes(state as BackendStatusState)) {
+    throw new Error('Invalid backend status state');
+  }
+
+  const parsedState = state as BackendStatusState;
+
+  const retryAfterSeconds = parseNonNegativeInteger(value.retryAfterSeconds, 'retryAfterSeconds');
+
+  if (!hasOwn(value, 'retryAfterSeconds')) {
+    throw new Error('Missing retryAfterSeconds');
+  }
+
+  if (parsedState === 'blocked') {
+    if (!Array.isArray(value.blockers) || value.blockers.length === 0) {
+      throw new Error('Invalid blockers');
+    }
+
+    if (hasOwn(value, 'requiredProtocol') || hasOwn(value, 'supportedProtocols')) {
+      throw new Error('Invalid blocked status fields');
+    }
+
+    const blockers = value.blockers.map((rawBlocker): BackendBlocker => {
+      if (!isRecord(rawBlocker) || !isPluginPermission(rawBlocker.permission)) {
+        throw new Error('Invalid blocker permission');
+      }
+
+      if (typeof rawBlocker.reason !== 'string' || rawBlocker.reason.length === 0) {
+        throw new Error('Invalid blocker reason');
+      }
+
+      if (hasOwn(rawBlocker, 'prerequisite')
+        && (typeof rawBlocker.prerequisite !== 'string' || rawBlocker.prerequisite.length === 0)) {
+        throw new Error('Invalid blocker prerequisite');
+      }
+
+      const blocker: BackendBlocker = {
+        permission: rawBlocker.permission,
+        reason: rawBlocker.reason,
+      };
+
+      if (typeof rawBlocker.prerequisite === 'string') {
+        blocker.prerequisite = rawBlocker.prerequisite;
+      }
+
+      return blocker;
+    });
+
+    return {kind, state: parsedState, retryAfterSeconds, blockers};
+  }
+
+  if (parsedState === 'incompatible') {
+    const requiredProtocol = value.requiredProtocol;
+    const supportedProtocols = value.supportedProtocols;
+
+    if (typeof requiredProtocol !== 'number'
+      || !Number.isSafeInteger(requiredProtocol)
+      || !Array.isArray(supportedProtocols)
+      || !supportedProtocols.every((candidate): candidate is number => typeof candidate === 'number' && Number.isSafeInteger(candidate))) {
+      throw new Error('Invalid incompatible status fields');
+    }
+
+    if (hasOwn(value, 'blockers')) {
+      throw new Error('Invalid incompatible status fields');
+    }
+
+    return {
+      kind,
+      state: parsedState,
+      retryAfterSeconds,
+      requiredProtocol,
+      supportedProtocols,
+    };
+  }
+
+  if (hasOwn(value, 'blockers') || hasOwn(value, 'requiredProtocol') || hasOwn(value, 'supportedProtocols')) {
+    throw new Error('Invalid backend status variant fields');
+  }
+
+  return {kind, state: parsedState, retryAfterSeconds};
 };
 
 const buildQuery = (query: BackendFetchOptions['query']): string => {
@@ -370,6 +546,29 @@ export function createBackendClient(
       const protocols = options.protocols ?? binding.protocols;
 
       return new ctx.WebSocketCtor(url, protocols);
+    },
+
+    status(options: BackendStatusOptions = {}): Promise<BackendStatus> {
+      const url = `${ctx.origin}/api/plugins/${ctx.pluginName}/_mndw/status`;
+
+      return ctx.fetchImpl(url, {method: 'GET', signal: options.signal}).then(async (response) => {
+        if (!response.ok) {
+          throw new BackendStatusQueryError(
+            response.status,
+            `Backend status query failed with HTTP ${response.status}`,
+          );
+        }
+
+        try {
+          return parseBackendStatusPayload(await response.json());
+        } catch (error) {
+          if (error instanceof BackendStatusQueryError) {
+            throw error;
+          }
+
+          throw new BackendStatusQueryError(response.status, 'Backend status response is invalid');
+        }
+      });
     },
   };
 }

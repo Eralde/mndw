@@ -23,6 +23,7 @@ import (
 type GatewayConfig struct {
 	MaxRequestBytes    int64
 	ServiceHTTPTimeout time.Duration
+	ActivationGates    *ActivationGateRegistry
 }
 
 type Authenticator interface {
@@ -35,6 +36,7 @@ type Gateway struct {
 	auth                Authenticator
 	exec                *ExecRunner
 	supervisor          *Supervisor
+	activationGates     *ActivationGateRegistry
 	logger              *slog.Logger
 	activeMu            sync.Mutex
 	activeWS            map[*websocket.Conn]string
@@ -53,18 +55,20 @@ func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticat
 	}
 
 	return &Gateway{
-		cfg:         cfg,
-		registry:    registry,
-		auth:        auth,
-		exec:        execRunner,
-		supervisor:  supervisor,
-		logger:      logger,
-		activeWS:    make(map[*websocket.Conn]string),
-		maintenance: make(map[string]struct{}),
+		cfg:             cfg,
+		registry:        registry,
+		auth:            auth,
+		exec:            execRunner,
+		supervisor:      supervisor,
+		activationGates: cfg.ActivationGates,
+		logger:          logger,
+		activeWS:        make(map[*websocket.Conn]string),
+		maintenance:     make(map[string]struct{}),
 	}
 }
 
 func (g *Gateway) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/plugins/{name}/_mndw/status", g.handleStatus)
 	mux.HandleFunc("/api/plugins/{name}/{path...}", g.handle)
 	mux.HandleFunc("/ws/plugins/{name}/{path...}", g.handleWebSocket)
 }

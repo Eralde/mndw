@@ -35,7 +35,7 @@ func TestPersistentNodesResponseContract(t *testing.T) {
 			{Mac: "aa:bb:cc:dd:ee:ff", Live: true},
 			{Mac: "11:22:33:44:55:66", Live: false},
 		},
-		diagnostics: persistent.Diagnostics{LastTargetsAt: &lastTargetsAt},
+		diagnostics: persistent.Diagnostics{LastTargetsAt: &lastTargetsAt, TargetCount: 2, SessionCount: 1},
 	})
 
 	result, err := backend.Nodes(context.Background())
@@ -54,11 +54,11 @@ func TestPersistentNodesResponseContract(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(envelope) != 3 {
-		t.Fatalf("envelope keys = %#v, want exactly three fields", envelope)
+	if len(envelope) != 5 {
+		t.Fatalf("envelope keys = %#v, want exactly five fields", envelope)
 	}
 
-	for _, key := range []string{"lastRefreshAt", "persistentAvailable", "persistentSessions"} {
+	for _, key := range []string{"lastRefreshAt", "persistentAvailable", "persistentTargetCount", "persistentSessionCount", "persistentSessions"} {
 		if _, ok := envelope[key]; !ok {
 			t.Fatalf("missing envelope field %q", key)
 		}
@@ -72,6 +72,10 @@ func TestPersistentNodesResponseContract(t *testing.T) {
 
 	if string(envelope["persistentAvailable"]) != "true" {
 		t.Fatalf("persistentAvailable = %s", envelope["persistentAvailable"])
+	}
+
+	if string(envelope["persistentTargetCount"]) != "2" || string(envelope["persistentSessionCount"]) != "1" {
+		t.Fatalf("persistent counts = %s/%s", envelope["persistentTargetCount"], envelope["persistentSessionCount"])
 	}
 
 	var sessions []map[string]any
@@ -102,7 +106,10 @@ func TestPersistentNodesResponseMarksMissingSourceUnavailable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if string(envelope["persistentAvailable"]) != "false" || string(envelope["persistentSessions"]) != "[]" {
+	if string(envelope["persistentAvailable"]) != "false" ||
+		string(envelope["persistentTargetCount"]) != "0" ||
+		string(envelope["persistentSessionCount"]) != "0" ||
+		string(envelope["persistentSessions"]) != "[]" {
 		t.Fatalf("unavailable envelope = %s", encoded)
 	}
 }

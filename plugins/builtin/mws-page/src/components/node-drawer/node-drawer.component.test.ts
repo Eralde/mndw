@@ -234,7 +234,7 @@ describe('NodeDrawerComponent', () => {
 
     fixture.componentRef.setInput('node', node === null ? null : withPower(node, true, {value: 75, available: true}));
     fixture.detectChanges();
-    availability.set('degraded');
+    availability.set('limited');
     fixture.detectChanges();
 
     expect(slider(fixture, 'WifiMaster0').disabled).toBe(true);

@@ -57,6 +57,37 @@ CGI output is parsed before response commit. Forbidden hop-by-hop, credential,
 and CORS headers are removed, output/stderr are bounded, and responses use
 `Cache-Control: no-store`.
 
+## Live backend status
+
+`GET /api/plugins/{name}/_mndw/status` is a session-authenticated,
+`Cache-Control: no-store` status route. Authentication happens before plugin
+resolution; unknown and backendless names return `404` only after
+authentication. The specific route is separate from generic plugin path
+canonicalization, so an ordinary manifest route named `status` remains valid.
+
+Projection precedence is `disabled`, `not-approved`, `maintenance`; exec then
+returns `ready`; service backends continue through static protocol
+`incompatible`, structured activation `blocked`, and supervisor runtime
+projection. Activation blockers apply only to services because activation gates
+control service scheduling; exec request admission has no equivalent gate.
+
+Service `starting` and `backoff` map to `starting`, with a future
+`NextAttemptAt` rounded up to whole seconds. Missing, equal, or expired
+timestamps map to `retryAfterSeconds: null`. `capacity_blocked` maps to
+`starting` with no retry hint; stopped, failed, or missing runtime maps to
+`unavailable`.
+
+Compatibility uses manifest `protocolVersion` and the daemon's configured
+supported protocol list, independent of supervisor diagnostic compatibility
+fields. Responses contain only `kind`, `state`, `retryAfterSeconds`, blocker
+tuples, or incompatible protocol fields. They never contain errors, stderr,
+restart counters, process data, socket paths, credentials, or tokens.
+
+SDK plugin-name binding is ergonomic scoping, not an authorization identity.
+Any authenticated router session may query a known plugin name; there is no
+enumeration endpoint. This disclosure matches the existing authenticated
+router-session trust tier.
+
 ## Service backends
 
 Plugin authors should use the [service backend guide](service-backend.md) for

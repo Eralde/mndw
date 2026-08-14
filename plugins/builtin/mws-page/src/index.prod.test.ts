@@ -99,6 +99,7 @@ describe('production createInstance', () => {
     const backend = {
       fetch,
       socket: vi.fn(),
+      status: vi.fn(),
     } as unknown as BackendClient;
     const {ctx, queue} = fakeContext(backend);
     const el = document.createElement('div');

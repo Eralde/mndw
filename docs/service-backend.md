@@ -87,6 +87,52 @@ sequenceDiagram
 The SDK resolves route IDs from a descriptor snapshot. `mndwd` repeats authorization because
 approval or enabled state can change after that snapshot was loaded.
 
+## Query live backend status
+
+Plugins with a backend client can query live daemon state without executing a
+route:
+
+``ts
+const status = await context.backend?.status({signal});
+
+if (status?.state === 'blocked') {
+  for (const blocker of status.blockers) {
+    // Use blocker.reason and blocker.prerequisite as machine-readable codes.
+  }
+}
+``
+
+`status()` always performs an authenticated, live request to
+`GET /api/plugins/<plugin-name>/_mndw/status`. It is passive, bound to the
+client's plugin name, and never runs a command or returns management
+diagnostics. A non-2xx response or malformed payload rejects with
+`BackendStatusQueryError`; abort and network errors retain their original
+errors. It does not replace `fetch()` or `socket()` request errors.
+
+States are:
+
+| State | Meaning |
+| --- | --- |
+| `ready` | Requests may be admitted; a later request can still fail. |
+| `starting` | Service is starting or retrying; `retryAfterSeconds` may be present. |
+| `unavailable` | Service is stopped or failed. |
+| `incompatible` | Service protocol is unsupported; protocol fields are present. |
+| `maintenance` | Platform or plugin maintenance is active. |
+| `blocked` | Service activation permission or prerequisite is unavailable. |
+| `disabled` | Plugin is disabled. |
+| `not-approved` | Plugin approval is not complete. |
+
+`blocked` includes non-empty `blockers` in manifest permission order. Reason
+and prerequisite strings are open machine-readable codes; consumers must
+preserve unknown values. `incompatible` includes `requiredProtocol` and
+`supportedProtocols`. Future retry times round remaining duration up to whole
+seconds. Missing, equal, or expired retry timestamps produce `null`.
+
+Exec backends report `ready` after lifecycle and maintenance checks because
+activation gates schedule resident services and do not gate the exec request
+path. Exec `ready` does not guarantee command input, environment, or execution
+success.
+
 ## `mndwd` <-> service contract
 
 Contract details below link to their current implementation. The Go integration fixture is the

@@ -43,17 +43,18 @@
       "active": "Extra features active",
       "starting": "Extra features starting…",
       "unavailable": "Extra features unavailable",
-      "degraded": "Extra features temporarily unavailable",
+      "limited": "Extra features temporarily unavailable",
       "blocked": "Extra features need access",
       "incompatible": "Extra features need an update"
     },
     "setup": {
       "title": "Enable live extender insights",
       "body": "See telemetry and control extender radios after configuring a controller session.",
+      "extender-session-body": "Configure authenticated extender sessions to see telemetry and control extender radios.",
       "action": "View requirements.",
       "dismiss": "Dismiss extra-features explanation"
     },
-    "degraded": "Extra features are temporarily unavailable. Retrying…",
+    "limited": "Extra features are temporarily unavailable. Retrying…",
     "popover": {
       "accessible-title": "Extra features",
       "checking": {
@@ -70,21 +71,36 @@
       },
       "unavailable": {
         "title": "Extra features unavailable",
-        "body": "Configure a controller session to enable live telemetry and extender controls. If already configured, try again later."
+        "body": "Configure a controller session to enable live telemetry and extender controls. If already configured, try again later.",
+        "extender-session": {
+          "body": "Configure authenticated extender sessions to enable live telemetry and extender controls."
+        }
       },
-      "degraded": {
+      "limited": {
         "title": "Extra features temporarily unavailable",
         "body": "Features are temporarily unreachable and will retry automatically."
       },
       "blocked": {
         "title": "Extra features need access",
-        "body": "Plugin access for extra features is not enabled."
+        "body": "Plugin access for extra features is not enabled.",
+        "permission": {
+          "body": "Grant the required plugin permission in Settings."
+        },
+        "controller-token": {
+          "body": "Configure a controller token in Settings."
+        },
+        "combined": {
+          "body": "Grant the required plugin permission and configure a controller token in Settings."
+        },
+        "generic": {
+          "body": "Complete extra-feature setup in Settings."
+        }
       },
       "incompatible": {
         "title": "Extra features need an update",
         "body": "Installed components need a system update."
       },
-      "view-requirements": "View requirements."
+      "view-settings": "Open Settings."
     }
   },
   "action": {

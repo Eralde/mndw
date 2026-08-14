@@ -6,6 +6,7 @@ import {
   BackendMaintenance,
   BackendNotApproved,
   BackendStarting,
+  type BackendStatus,
   BackendUnavailable,
 } from '@mndw/sdk';
 import {Subject, of, throwError} from 'rxjs';
@@ -67,7 +68,7 @@ describe('MwsDataService', () => {
     expect(service.extraFeaturesPresentation()).toBe('unavailable');
   });
 
-  it('debounces degraded header presentation while invalidating persistent projection immediately', async () => {
+  it('debounces limited header presentation while invalidating persistent projection immediately', async () => {
     const api = goodApi();
     const fetch = vi.fn()
       .mockResolvedValueOnce(activeResponse())
@@ -81,13 +82,13 @@ describe('MwsDataService', () => {
     expect(service.extraFeaturesPresentation()).toBe('active');
 
     await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS);
-    expect(service.extraFeaturesAvailability()).toBe('degraded');
+    expect(service.extraFeaturesAvailability()).toBe('limited');
     expect(service.extraFeaturesPresentation()).toBe('active');
     expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('unavailable');
     expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.wifiPower).toBeUndefined();
 
     await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS);
-    expect(service.extraFeaturesPresentation()).toBe('degraded');
+    expect(service.extraFeaturesPresentation()).toBe('limited');
   });
 
   it.each(
@@ -103,6 +104,31 @@ describe('MwsDataService', () => {
     const service = makeLiveServiceWithBackend(
       goodApi(),
       fakeBackend(vi.fn().mockRejectedValueOnce(error)),
+    );
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(service.extraFeaturesAvailability()).toBe(expected);
+    expect(service.extraFeaturesPresentation()).toBe(expected);
+  });
+
+  it.each(
+    [
+      ['blocked', 'DISABLED'],
+      ['blocked', 'NOT_APPROVED'],
+      ['starting', 'BACKEND_STARTING'],
+      ['unavailable', 'BACKEND_UNAVAILABLE'],
+      ['incompatible', 'BACKEND_INCOMPATIBLE'],
+      ['limited', 'BAD_GATEWAY'],
+    ] as const,
+  )('classifies stable backend code %s across SDK bundle boundaries', async (expected, code) => {
+    const foreignError = code === 'DISABLED' || code === 'NOT_APPROVED'
+      ? Object.assign(new Error(`foreign ${code}`), {code})
+      : Object.assign(new Error(`foreign ${code}`), {daemonCode: code});
+    const service = makeLiveServiceWithBackend(
+      goodApi(),
+      fakeBackend(vi.fn().mockRejectedValueOnce(foreignError)),
     );
 
     service.start();
@@ -371,7 +397,8 @@ describe('MwsDataService', () => {
         ),
       )
     );
-    const backend = fakeBackend(fetch);
+    const status = vi.fn();
+    const backend = fakeBackend(fetch, status);
     const service = makeLiveServiceWithBackend(api, backend);
 
     service.start();
@@ -379,7 +406,105 @@ describe('MwsDataService', () => {
 
     expect(service.phase()).toBe('ready');
     expect(fetch).toHaveBeenCalledWith('nodes', expect.objectContaining({signal: expect.any(AbortSignal)}));
+    expect(status).not.toHaveBeenCalled();
     expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('live');
+  });
+
+  it('asks status before showing extender-session setup when targets have no sessions', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          lastRefreshAt: new Date().toISOString(),
+          persistentAvailable: true,
+          persistentTargetCount: 2,
+          persistentSessionCount: 0,
+          persistentSessions: [],
+        }),
+        {status: 200},
+      ),
+    );
+    const status = vi.fn().mockResolvedValue({
+      kind: 'service',
+      state: 'ready',
+      retryAfterSeconds: null,
+    } as BackendStatus);
+    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch, status));
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(status).toHaveBeenCalledTimes(1);
+    expect(service.extraFeaturesAvailability()).toBe('unavailable');
+    expect(service.extraFeaturesSetupReasons()).toEqual(['extender-session']);
+  });
+
+  it.each(
+    [
+      [{state: 'disabled'}, 'blocked', ['generic']],
+      [{state: 'not-approved'}, 'blocked', ['generic']],
+      [{state: 'maintenance', retryAfterSeconds: 2}, 'starting', []],
+      [{state: 'starting', retryAfterSeconds: 3}, 'starting', []],
+      [{state: 'incompatible', requiredProtocol: 2, supportedProtocols: [1]}, 'incompatible', []],
+      [{state: 'unavailable'}, 'unavailable', []],
+      [{state: 'blocked', blockers: [{permission: 'persistent-rci-session:write', reason: 'not-granted'}]}, 'blocked', [
+        'permission',
+      ]],
+      [
+        {state: 'blocked',
+          blockers: [{permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
+            prerequisite: 'controller-token'}]},
+        'blocked',
+        ['controller-token'],
+      ],
+    ] as const,
+  )('maps live backend status %o to %s', async (backendStatus, expected, reasons) => {
+    const fetch = vi.fn().mockRejectedValue(new Error('nodes unavailable'));
+    const status = vi.fn().mockResolvedValue(
+      {kind: 'service', retryAfterSeconds: null, ...backendStatus} as BackendStatus,
+    );
+    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch, status));
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(service.extraFeaturesAvailability()).toBe(expected);
+    expect(service.extraFeaturesSetupReasons()).toEqual(reasons);
+    expect(status).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves both blocker setup reasons and maps unknown codes to generic', async () => {
+    const fetch = vi.fn().mockRejectedValue(new Error('nodes unavailable'));
+    const status = vi.fn().mockResolvedValue({
+      kind: 'service',
+      state: 'blocked',
+      retryAfterSeconds: null,
+      blockers: [
+        {permission: 'persistent-rci-session:write', reason: 'not-granted'},
+        {permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
+          prerequisite: 'controller-token'},
+        {permission: 'persistent-rci-session:write', reason: 'future-reason', prerequisite: 'future-code'},
+      ],
+    } as BackendStatus);
+    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch, status));
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(service.extraFeaturesSetupReasons()).toEqual(['permission', 'controller-token', 'generic']);
+  });
+
+  it('maps a failed nodes request with ready status to limited', async () => {
+    const fetch = vi.fn().mockRejectedValue(new Error('nodes unavailable'));
+    const status = vi.fn().mockResolvedValue(
+      {kind: 'service', state: 'ready', retryAfterSeconds: null} as BackendStatus,
+    );
+    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch, status));
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(service.extraFeaturesAvailability()).toBe('limited');
+    expect(service.extraFeaturesSetupReasons()).toEqual([]);
   });
 
   it('keeps RCI ready when mwsd rejects and recovers on a later status tick', async () => {

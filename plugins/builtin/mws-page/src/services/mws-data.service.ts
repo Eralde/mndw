@@ -1,14 +1,5 @@
 import {DestroyRef, Injectable, computed, inject, signal} from '@angular/core';
-import {
-  type BackendClient,
-  BackendDisabled,
-  BackendIncompatible,
-  BackendMaintenance,
-  BackendNotApproved,
-  BackendStarting,
-  BackendUnavailable,
-  type LoadState,
-} from '@mndw/sdk';
+import {type BackendBlocker, type BackendClient, type BackendStatus, type LoadState} from '@mndw/sdk';
 import {
   type Observable,
   ReplaySubject,
@@ -57,9 +48,11 @@ export type ExtraFeaturesAvailability =
   | 'active'
   | 'starting'
   | 'unavailable'
-  | 'degraded'
+  | 'limited'
   | 'blocked'
   | 'incompatible';
+
+export type ExtraFeaturesSetupReason = 'permission' | 'controller-token' | 'extender-session' | 'generic';
 
 type PollResult =
   | {
@@ -74,7 +67,25 @@ type PollResult =
 
 type MwsdPollOutcome =
   | {kind: 'snapshot'; snapshot: PersistentSessionSnapshot}
-  | {kind: 'availability'; availability: Exclude<ExtraFeaturesAvailability, 'checking' | 'active'>};
+  | {
+    kind: 'availability';
+    availability: Exclude<ExtraFeaturesAvailability, 'checking' | 'active'>;
+    setupReasons?: ExtraFeaturesSetupReason[];
+  };
+
+const backendErrorCode = (error: unknown): string | null => {
+  if (typeof error !== 'object' || error === null) {
+    return null;
+  }
+
+  const candidate = error as {code?: unknown; daemonCode?: unknown};
+
+  if (typeof candidate.daemonCode === 'string') {
+    return candidate.daemonCode;
+  }
+
+  return typeof candidate.code === 'string' ? candidate.code : null;
+};
 
 @Injectable()
 export class MwsDataService {
@@ -86,6 +97,7 @@ export class MwsDataService {
   private readonly loadState = signal<LoadState<MwsNode[], MwsRequestError>>({status: 'loading'});
   public readonly extraFeaturesAvailability = signal<ExtraFeaturesAvailability>('checking');
   public readonly extraFeaturesPresentation = signal<ExtraFeaturesAvailability>('checking');
+  public readonly extraFeaturesSetupReasons = signal<ExtraFeaturesSetupReason[]>([]);
   public readonly phase = computed<MwsViewPhase>(() => {
     const state = this.loadState();
 
@@ -135,7 +147,7 @@ export class MwsDataService {
   private pollingStarted = false;
   private pollInFlight = false;
   private refreshPending = false;
-  private consecutiveDegradedPolls = 0;
+  private consecutiveLimitedPolls = 0;
   private lastPersistentSessions: PersistentSessionSnapshot = newPersistentSessionSnapshot(false, new Map());
 
   public constructor() {
@@ -152,6 +164,7 @@ export class MwsDataService {
 
     this.stop();
     this.loadState.set({status: 'loading'});
+    this.extraFeaturesSetupReasons.set([]);
     this.setExtraFeaturesAvailability(this.backend === null ? 'unavailable' : 'checking');
 
     this.versionSub = this.api.showVersion().subscribe({
@@ -299,43 +312,135 @@ export class MwsDataService {
               const snapshot = parsePersistentSessionsResponse(value, this.lastPersistentSessions);
 
               return snapshot === null
-                ? {kind: 'availability', availability: 'degraded'}
+                ? {kind: 'availability', availability: 'limited'}
                 : {kind: 'snapshot', snapshot};
             }),
+            switchMap((outcome) =>
+              outcome.kind === 'snapshot'
+                ? this.classifyPersistentSnapshot(backend, controller.signal, outcome.snapshot)
+                : of(outcome)
+            ),
           )
-          : of<MwsdPollOutcome>({kind: 'availability', availability: 'degraded'})
+          : this.queryBackendStatus(backend, controller.signal)
       ),
-      catchError((error: unknown) => of(this.classifyMwsdError(error))),
+      catchError((error: unknown) => this.queryBackendStatus(backend, controller.signal, error)),
       finalize(() => controller.abort()),
     );
   }
 
-  private classifyMwsdError(error: unknown): MwsdPollOutcome {
-    if (error instanceof BackendStarting || error instanceof BackendMaintenance) {
+  private classifyPersistentSnapshot(
+    backend: BackendClient,
+    abortSignal: AbortSignal,
+    snapshot: PersistentSessionSnapshot,
+  ): Observable<MwsdPollOutcome> {
+    if (
+      !snapshot.available
+      || !snapshot.countsKnown
+      || snapshot.targetCount === 0
+      || snapshot.sessionCount > 0
+      || typeof backend.status !== 'function'
+    ) {
+      return of({kind: 'snapshot', snapshot});
+    }
+
+    return defer(() => from(backend.status?.({signal: abortSignal}))).pipe(
+      map((status): MwsdPollOutcome =>
+        status.state === 'ready'
+          ? {kind: 'availability', availability: 'unavailable',
+            setupReasons: ['extender-session'] as ExtraFeaturesSetupReason[]}
+          : this.classifyBackendStatus(status)
+      ),
+      catchError(() => of<MwsdPollOutcome>({kind: 'availability', availability: 'limited'})),
+    );
+  }
+
+  private queryBackendStatus(
+    backend: BackendClient,
+    abortSignal: AbortSignal,
+    nodesError?: unknown,
+  ): Observable<MwsdPollOutcome> {
+    if (typeof backend.status !== 'function') {
+      return of(
+        nodesError === undefined ? {kind: 'availability', availability: 'limited'} : this.classifyMwsdError(nodesError),
+      );
+    }
+
+    return defer(() => from(backend.status({signal: abortSignal}))).pipe(
+      map((status) => this.classifyBackendStatus(status)),
+      catchError(() => of<MwsdPollOutcome>({kind: 'availability', availability: 'limited'})),
+    );
+  }
+
+  private classifyBackendStatus(status: BackendStatus): MwsdPollOutcome {
+    if (status.state === 'starting' || status.state === 'maintenance') {
       return {kind: 'availability', availability: 'starting'};
     }
 
-    if (error instanceof BackendUnavailable) {
+    if (status.state === 'unavailable') {
       return {kind: 'availability', availability: 'unavailable'};
     }
 
-    if (error instanceof BackendDisabled || error instanceof BackendNotApproved) {
-      return {kind: 'availability', availability: 'blocked'};
-    }
-
-    if (error instanceof BackendIncompatible) {
+    if (status.state === 'incompatible') {
       return {kind: 'availability', availability: 'incompatible'};
     }
 
-    return {kind: 'availability', availability: 'degraded'};
+    if (status.state === 'blocked' || status.state === 'disabled' || status.state === 'not-approved') {
+      return {
+        kind: 'availability',
+        availability: 'blocked',
+        setupReasons: status.state === 'blocked' ? this.classifySetupReasons(status.blockers) : ['generic'],
+      };
+    }
+
+    return {kind: 'availability', availability: 'limited'};
+  }
+
+  private classifySetupReasons(blockers: BackendBlocker[]): ExtraFeaturesSetupReason[] {
+    const reasons = new Set<ExtraFeaturesSetupReason>();
+
+    for (const blocker of blockers) {
+      if (blocker.reason === 'not-granted' && blocker.prerequisite === undefined) {
+        reasons.add('permission');
+      } else if (blocker.reason === 'prerequisite-unavailable' && blocker.prerequisite === 'controller-token') {
+        reasons.add('controller-token');
+      } else {
+        reasons.add('generic');
+      }
+    }
+
+    return [...reasons];
+  }
+
+  private classifyMwsdError(error: unknown): MwsdPollOutcome {
+    const code = backendErrorCode(error);
+
+    if (code === 'BACKEND_STARTING' || code === 'BACKEND_MAINTENANCE') {
+      return {kind: 'availability', availability: 'starting'};
+    }
+
+    if (code === 'BACKEND_UNAVAILABLE') {
+      return {kind: 'availability', availability: 'unavailable'};
+    }
+
+    if (code === 'DISABLED' || code === 'NOT_APPROVED') {
+      return {kind: 'availability', availability: 'blocked'};
+    }
+
+    if (code === 'BACKEND_INCOMPATIBLE') {
+      return {kind: 'availability', availability: 'incompatible'};
+    }
+
+    return {kind: 'availability', availability: 'limited'};
   }
 
   private applyMwsdOutcome(outcome: MwsdPollOutcome): void {
     if (outcome.kind === 'snapshot') {
       this.lastPersistentSessions = outcome.snapshot;
+      this.extraFeaturesSetupReasons.set([]);
       this.setExtraFeaturesAvailability(outcome.snapshot.available ? 'active' : 'unavailable');
     } else {
       this.makePersistentProjectionUnavailable();
+      this.extraFeaturesSetupReasons.set(outcome.setupReasons ?? []);
       this.setExtraFeaturesAvailability(outcome.availability);
     }
 
@@ -345,17 +450,17 @@ export class MwsDataService {
   protected setExtraFeaturesAvailability(next: ExtraFeaturesAvailability): void {
     this.extraFeaturesAvailability.set(next);
 
-    if (next !== 'degraded') {
-      this.consecutiveDegradedPolls = 0;
+    if (next !== 'limited') {
+      this.consecutiveLimitedPolls = 0;
       this.extraFeaturesPresentation.set(next);
 
       return;
     }
 
-    this.consecutiveDegradedPolls += 1;
+    this.consecutiveLimitedPolls += 1;
 
-    if (this.consecutiveDegradedPolls >= 2) {
-      this.extraFeaturesPresentation.set('degraded');
+    if (this.consecutiveLimitedPolls >= 2) {
+      this.extraFeaturesPresentation.set('limited');
     }
   }
 

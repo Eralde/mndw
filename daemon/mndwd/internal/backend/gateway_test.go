@@ -9,7 +9,7 @@ import (
 )
 
 func TestCanonicalRoutePathRejectsReservedAndNonCanonicalPaths(t *testing.T) {
-	for _, path := range []string{"_mndw/ready", "%5Fmndw/ready", "a//b", "a/./b", "a/../b", "a\\b", "a%252Fb"} {
+	for _, path := range []string{"_mndw/ready", "_mndw/status", "%5Fmndw/ready", "a//b", "a/./b", "a/../b", "a\\b", "a%252Fb"} {
 		if _, ok := CanonicalRoutePath(path); ok {
 			t.Errorf("CanonicalRoutePath(%q) accepted", path)
 		}
@@ -19,6 +19,26 @@ func TestCanonicalRoutePathRejectsReservedAndNonCanonicalPaths(t *testing.T) {
 		if got, ok := CanonicalRoutePath(path); !ok || got != path {
 			t.Errorf("CanonicalRoutePath(%q) = %q, %v", path, got, ok)
 		}
+	}
+}
+
+func TestSupportsProtocolUsesConfiguredStaticMembership(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		required  int
+		supported []int
+		want      bool
+	}{
+		{name: "configured", required: 2, supported: []int{1, 2}, want: true},
+		{name: "unsupported", required: 2, supported: []int{1}, want: false},
+		{name: "default protocol", required: 1, supported: nil, want: true},
+		{name: "empty does not support other", required: 2, supported: nil, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := supportsProtocol(test.required, test.supported); got != test.want {
+				t.Fatalf("supportsProtocol() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 

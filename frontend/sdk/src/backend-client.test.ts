@@ -1,6 +1,7 @@
 import {describe, expect, it, vi} from 'vitest';
 import {
   BackendBadGateway,
+  BackendStatusQueryError,
   type BackendDescriptor,
   BackendDisabled,
   BackendIncompatible,
@@ -206,6 +207,110 @@ describe('createBackendClient.socket', () => {
 
   it('throws BackendDisabled when the plugin is disabled', () => {
     expect(() => client({enabled: false}).socket('term')).toThrow(BackendDisabled);
+  });
+});
+
+describe('createBackendClient.status', () => {
+  it('queries the bound plugin status URL without descriptor fast paths', async () => {
+    const fetchImpl = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({kind: 'service', state: 'disabled', retryAfterSeconds: null}), {status: 200}),
+    );
+    const backend = client({enabled: false}, fetchImpl);
+
+    await expect(backend.status()).resolves.toMatchObject({state: 'disabled'});
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://host/api/plugins/demo/_mndw/status',
+      {method: 'GET', signal: undefined},
+    );
+  });
+
+  it('parses blocked and preserves unknown blocker codes', async () => {
+    const fetchImpl = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({
+        kind: 'service',
+        state: 'blocked',
+        retryAfterSeconds: 0,
+        blockers: [{permission: 'persistent-rci-session:read', reason: 'future-reason', prerequisite: 'future-code'}],
+      }), {status: 200}),
+    );
+
+    await expect(client(undefined, fetchImpl).status()).resolves.toEqual({
+      kind: 'service',
+      state: 'blocked',
+      retryAfterSeconds: 0,
+      blockers: [{permission: 'persistent-rci-session:read', reason: 'future-reason', prerequisite: 'future-code'}],
+    });
+  });
+
+  it.each([
+    'ready',
+    'starting',
+    'unavailable',
+    'maintenance',
+    'disabled',
+    'not-approved',
+  ] as const)('parses %s status', async (state) => {
+    const fetchImpl = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({kind: 'exec', state, retryAfterSeconds: null}), {status: 200}),
+    );
+
+    await expect(client(undefined, fetchImpl).status()).resolves.toMatchObject({kind: 'exec', state});
+  });
+
+  it('parses incompatible protocol fields', async () => {
+    const fetchImpl = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({
+        kind: 'service',
+        state: 'incompatible',
+        retryAfterSeconds: null,
+        requiredProtocol: 2,
+        supportedProtocols: [1],
+      }), {status: 200}),
+    );
+
+    await expect(client(undefined, fetchImpl).status()).resolves.toMatchObject({
+      state: 'incompatible',
+      requiredProtocol: 2,
+      supportedProtocols: [1],
+    });
+  });
+
+  it.each([
+    {state: 'blocked', blockers: undefined},
+    {state: 'blocked', blockers: []},
+    {state: 'blocked', blockers: [{permission: 'bad', reason: 'x'}]},
+    {state: 'blocked', blockers: [{permission: 'persistent-rci-session:read', reason: ''}]},
+    {state: 'blocked', blockers: [{permission: 'persistent-rci-session:read', reason: 'x', prerequisite: ''}]},
+    {state: 'ready', blockers: [{permission: 'persistent-rci-session:read', reason: 'x'}]},
+    {state: 'incompatible', requiredProtocol: 1},
+    {state: 'ready', retryAfterSeconds: -1},
+    {state: 'ready', retryAfterSeconds: 1.5},
+    {state: 'unknown', retryAfterSeconds: null},
+  ])('rejects malformed status payload %#', async (payload) => {
+    const fetchImpl = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({kind: 'service', retryAfterSeconds: null, ...payload}), {status: 200}),
+    );
+
+    await expect(client(undefined, fetchImpl).status()).rejects.toBeInstanceOf(BackendStatusQueryError);
+  });
+
+  it('propagates abort and network errors', async () => {
+    const abort = new DOMException('Aborted', 'AbortError');
+    const abortedFetch = vi.fn<typeof globalThis.fetch>().mockRejectedValue(abort);
+    const networkError = new Error('network');
+    const failedFetch = vi.fn<typeof globalThis.fetch>().mockRejectedValue(networkError);
+
+    await expect(client(undefined, abortedFetch).status()).rejects.toBe(abort);
+    await expect(client(undefined, failedFetch).status()).rejects.toBe(networkError);
+  });
+
+  it.each([404, 500])('wraps HTTP %s as BackendStatusQueryError', async (status) => {
+    const fetchImpl = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('failure', {status}));
+
+    await expect(client(undefined, fetchImpl).status()).rejects.toMatchObject({
+      name: 'BackendStatusQueryError',
+      httpStatus: status,
+    });
   });
 });
 

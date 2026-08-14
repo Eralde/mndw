@@ -136,7 +136,7 @@ describe('createInstance', () => {
     window.history.replaceState({}, '', '/mws?mock=large&extenders=3&clients=7');
 
     const fetch = vi.fn();
-    const backend = {fetch, socket: vi.fn()} as unknown as BackendClient;
+    const backend = {fetch, socket: vi.fn(), status: vi.fn()} as unknown as BackendClient;
     const {ctx, queue} = fakeContext(backend);
     const el = document.createElement('div');
     const instance = createInstance(el, ctx);
@@ -164,6 +164,7 @@ describe('createInstance', () => {
     const backend = {
       fetch,
       socket: vi.fn(),
+      status: vi.fn(),
     } as unknown as BackendClient;
     const {ctx, queue} = fakeContext(backend);
     const el = document.createElement('div');

@@ -113,8 +113,9 @@ export class AppComponent implements OnDestroy, OnInit {
     });
     effect(() => {
       const availability = this.data.extraFeaturesAvailability();
+      const setupReasons = this.data.extraFeaturesSetupReasons();
 
-      this.popoverController?.update(availability);
+      this.popoverController?.update(availability, setupReasons);
     });
   }
 
@@ -172,12 +173,27 @@ export class AppComponent implements OnDestroy, OnInit {
 
   protected showExtraFeaturesSetup(): boolean {
     return this.data.extraFeaturesPresentation() === 'unavailable'
+      && this.hasPhysicalExtenders()
       && this.bannerStore.loaded()
       && !this.bannerStore.dismissed();
   }
 
+  protected extraFeaturesSetupBody(): string {
+    return this.data.extraFeaturesSetupReasons().includes('extender-session')
+      ? this.t('extra-features.setup.extender-session-body')
+      : this.t('extra-features.setup.body');
+  }
+
   protected dismissExtraFeaturesBanner(): void {
     this.bannerStore.dismiss();
+  }
+
+  private hasPhysicalExtenders(): boolean {
+    return this.data.roots().some((root) => this.containsExtender(root));
+  }
+
+  private containsExtender(node: MwsNode): boolean {
+    return !node.isController || node.children.some((link) => this.containsExtender(link.node));
   }
 
   protected openExtraFeatures(event: Event): void {
@@ -198,6 +214,7 @@ export class AppComponent implements OnDestroy, OnInit {
       anchor,
       this.data.extraFeaturesAvailability(),
       (key, values) => this.t(key, values),
+      this.data.extraFeaturesSetupReasons(),
     );
 
     this.popoverController = controller;

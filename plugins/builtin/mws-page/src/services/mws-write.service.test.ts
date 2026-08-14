@@ -51,7 +51,7 @@ describe('MwsWriteService', () => {
       'checking',
       'starting',
       'unavailable',
-      'degraded',
+      'limited',
       'blocked',
       'incompatible',
     ] as const,
@@ -87,7 +87,7 @@ describe('MwsWriteService', () => {
 
     const call = TestBed.inject(MwsWriteService).setPower('cid-1', 'WifiMaster0', 75, true);
 
-    availability.set('degraded');
+    availability.set('limited');
     resolveResponse(new Response(JSON.stringify({ok: true, steps: []}), {status: 200}));
 
     await expect(call).resolves.toEqual({ok: true, steps: []});

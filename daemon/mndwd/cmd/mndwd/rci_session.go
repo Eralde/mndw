@@ -39,7 +39,13 @@ type rciSessionAssembly struct {
 }
 
 type activationSnapshot struct {
-	satisfied map[string]bool
+	grants          map[string]activationGrantFacts
+	controllerToken bool
+}
+
+type activationGrantFacts struct {
+	read  bool
+	write bool
 }
 
 type persistentSessionRegistration struct {
@@ -129,8 +135,8 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 		reconciler:  socketReconciler,
 		logger:      logger,
 	}
-	gate := backend.ActivationGateFunc(func(pluginName string) bool {
-		return assembly.activationSatisfied(pluginName)
+	gate := backend.ActivationGateFunc(func(pluginName, permission string) []backend.ActivationBlocker {
+		return assembly.activationEvaluate(pluginName, permission)
 	})
 
 	if activationGates != nil {
@@ -148,14 +154,42 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 	return registration
 }
 
-func (a *rciSessionAssembly) activationSatisfied(pluginName string) bool {
+func (a *rciSessionAssembly) activationEvaluate(pluginName, permission string) []backend.ActivationBlocker {
+	if permission != manifest.PersistentRCISessionReadPermission && permission != manifest.PersistentRCISessionWritePermission {
+		return nil
+	}
+
 	snapshot := a.activation.Load()
 
 	if snapshot == nil {
-		return false
+		return []backend.ActivationBlocker{
+			{Permission: permission, Reason: "not-granted"},
+			{Permission: permission, Reason: "prerequisite-unavailable", Prerequisite: "controller-token"},
+		}
 	}
 
-	return snapshot.satisfied[pluginName]
+	facts := snapshot.grants[pluginName]
+	grant := facts.read || facts.write
+
+	if permission == manifest.PersistentRCISessionWritePermission {
+		grant = facts.write
+	}
+
+	blockers := make([]backend.ActivationBlocker, 0, 2)
+
+	if !grant {
+		blockers = append(blockers, backend.ActivationBlocker{Permission: permission, Reason: "not-granted"})
+	}
+
+	if !snapshot.controllerToken {
+		blockers = append(blockers, backend.ActivationBlocker{
+			Permission:   permission,
+			Reason:       "prerequisite-unavailable",
+			Prerequisite: "controller-token",
+		})
+	}
+
+	return blockers
 }
 
 func (a *rciSessionAssembly) SetActivationPoke(poke func()) {
@@ -281,31 +315,31 @@ func controllerTokenPresent(document model.Document) bool {
 }
 
 func (a *rciSessionAssembly) publishActivationSnapshotLocked(present bool) bool {
-	next := make(map[string]bool)
+	next := make(map[string]activationGrantFacts)
 
 	for _, plugin := range a.registry.AllBackendPlugins() {
 		read := a.store.HasGrant(plugin.Name, manifest.PersistentRCISessionReadPermission)
 		write := a.store.HasGrant(plugin.Name, manifest.PersistentRCISessionWritePermission)
-		next[plugin.Name] = present && (read || write)
+		next[plugin.Name] = activationGrantFacts{read: read, write: write}
 	}
 
 	previous := a.activation.Load()
-	changed := previous == nil || !sameActivationSnapshot(previous.satisfied, next)
+	changed := previous == nil || previous.controllerToken != present || !sameActivationSnapshot(previous.grants, next)
 
-	a.activation.Store(&activationSnapshot{satisfied: next})
+	a.activation.Store(&activationSnapshot{grants: next, controllerToken: present})
 
 	return changed
 }
 
-func sameActivationSnapshot(previous, next map[string]bool) bool {
+func sameActivationSnapshot(previous, next map[string]activationGrantFacts) bool {
 	if len(previous) != len(next) {
 		return false
 	}
 
-	for pluginName, satisfied := range previous {
-		nextSatisfied, ok := next[pluginName]
+	for pluginName, facts := range previous {
+		nextFacts, ok := next[pluginName]
 
-		if !ok || nextSatisfied != satisfied {
+		if !ok || nextFacts != facts {
 			return false
 		}
 	}

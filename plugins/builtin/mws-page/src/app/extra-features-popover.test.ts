@@ -1,6 +1,6 @@
 import type {OverlayCloseEvent, OverlayLayer, OverlayService} from '@mndw/sdk';
 import {describe, expect, it, vi} from 'vitest';
-import type {ExtraFeaturesAvailability} from '../services/mws-data.service';
+import type {ExtraFeaturesAvailability, ExtraFeaturesSetupReason} from '../services/mws-data.service';
 import {openExtraFeaturesPopover} from './extra-features-popover';
 
 interface FakeLayer extends OverlayLayer {
@@ -54,7 +54,7 @@ const states: ExtraFeaturesAvailability[] = [
   'active',
   'starting',
   'unavailable',
-  'degraded',
+  'limited',
   'blocked',
   'incompatible',
 ];
@@ -92,24 +92,34 @@ describe('openExtraFeaturesPopover', () => {
     expect(body?.textContent).toContain(`extra-features.popover.${state}.body`);
   });
 
-  it('shows settings action only for unavailable state', () => {
-    const unavailable = createOverlay();
+  it('renders an opaque token-backed surface', () => {
+    const {overlay, layer, anchor} = createOverlay();
 
-    openExtraFeaturesPopover(unavailable.overlay, unavailable.anchor, 'unavailable', (key) => key);
-    expect(unavailable.layer.contentElement.querySelector('a[href="/settings/general"]')).not.toBeNull();
+    openExtraFeaturesPopover(overlay, anchor, 'active', (key) => key);
 
-    const blocked = createOverlay();
+    const group = layer.contentElement.querySelector<HTMLElement>('[role="group"]');
 
-    openExtraFeaturesPopover(blocked.overlay, blocked.anchor, 'blocked', (key) => key);
-    expect(blocked.layer.contentElement.querySelector('a')).toBeNull();
+    expect(group?.style.background).toBe('var(--mndw-surface-raised)');
+    expect(group?.style.color).toBe('var(--mndw-text)');
+    expect(group?.style.borderWidth).toBe('1px');
+    expect(group?.style.borderStyle).toBe('solid');
+    expect(group?.style.borderColor).toBe('var(--mndw-border)');
+  });
+
+  it.each(states)('links %s popover content to Settings', (state) => {
+    const popover = createOverlay();
+
+    openExtraFeaturesPopover(popover.overlay, popover.anchor, state, (key) => key);
+
+    expect(popover.layer.contentElement.querySelector('a[href="/settings/general"]')).not.toBeNull();
   });
 
   it('updates current content, delegates close, and cleans mounted DOM', () => {
     const {overlay, layer, anchor, close} = createOverlay();
     const controller = openExtraFeaturesPopover(overlay, anchor, 'active', (key) => key);
 
-    controller.update('degraded');
-    expect(layer.contentElement.textContent).toContain('extra-features.popover.degraded.body');
+    controller.update('limited');
+    expect(layer.contentElement.textContent).toContain('extra-features.popover.limited.body');
     expect(layer.contentElement.textContent).not.toContain('extra-features.popover.active.body');
 
     controller.close();
@@ -118,5 +128,22 @@ describe('openExtraFeaturesPopover', () => {
 
     layer.runCleanup();
     expect(layer.contentElement.childElementCount).toBe(0);
+  });
+
+  it('renders combined blocker setup copy from machine-readable reasons', () => {
+    const {overlay, layer, anchor} = createOverlay();
+    const reasons: ExtraFeaturesSetupReason[] = ['permission', 'controller-token'];
+
+    openExtraFeaturesPopover(overlay, anchor, 'blocked', (key) => key, reasons);
+
+    expect(layer.contentElement.textContent).toContain('extra-features.popover.blocked.combined.body');
+  });
+
+  it('renders extender-session setup copy for unavailable availability', () => {
+    const {overlay, layer, anchor} = createOverlay();
+
+    openExtraFeaturesPopover(overlay, anchor, 'unavailable', (key) => key, ['extender-session']);
+
+    expect(layer.contentElement.textContent).toContain('extra-features.popover.unavailable.extender-session.body');
   });
 });

@@ -34,7 +34,7 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 
 	fixture := newActivationIntegrationFixture(t, false)
 
-	if fixture.assembly.activationSatisfied("demo") {
+	if len(fixture.assembly.activationEvaluate("demo", manifest.PersistentRCISessionWritePermission)) != 0 {
 		t.Fatal("initial assembly satisfied gate without controller token")
 	}
 
@@ -44,9 +44,13 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 		t.Fatalf("initial reconcile without token = %q, want stopped", status.State)
 	}
 
+	if status := readGatewayStatus(t, fixture); status.State != "blocked" || len(status.Blockers) != 2 {
+		t.Fatalf("initial status = %#v, want blocked with two blockers", status)
+	}
+
 	fixture = newActivationIntegrationFixture(t, true)
 
-	if !fixture.assembly.activationSatisfied("demo") {
+	if len(fixture.assembly.activationEvaluate("demo", manifest.PersistentRCISessionWritePermission)) != 0 {
 		t.Fatal("initial assembly did not publish granted controller-token snapshot")
 	}
 
@@ -54,6 +58,10 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 
 	if status := fixture.runtime.Status("demo"); status.State != backend.StateReady {
 		t.Fatalf("first reconcile with grant and token = %q, want ready", status.State)
+	}
+
+	if status := readGatewayStatus(t, fixture); status.State != "ready" {
+		t.Fatalf("ready status = %#v, want ready", status)
 	}
 
 	var pokes atomic.Int32
@@ -76,6 +84,10 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 
 	if status := fixture.runtime.Status("demo"); status.State != backend.StateStopped {
 		t.Fatalf("after delete = %q, want stopped", status.State)
+	}
+
+	if status := readGatewayStatus(t, fixture); status.State != "blocked" {
+		t.Fatalf("blocked status after delete = %#v, want blocked", status)
 	}
 
 	if got := fixture.runtime.Limits().ReservedServices; got != 0 {
@@ -133,6 +145,8 @@ type activationIntegrationFixture struct {
 	registry *registry.Registry
 	runtime  *backend.RuntimeImpl
 	assembly *rciSessionAssembly
+	gateway  *backend.Gateway
+	mux      *http.ServeMux
 }
 
 func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIntegrationFixture {
@@ -228,11 +242,16 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 		t.Fatal("activation assembly was not wired")
 	}
 
+	gatewayMux := http.NewServeMux()
+	gateway := registerPlugins(gatewayMux, cfg, reg, activationGates, nil, runtime, logger)
+
 	fixture := &activationIntegrationFixture{
 		store:    store,
 		registry: reg,
 		runtime:  runtime,
 		assembly: registration.activationAssembly,
+		gateway:  gateway,
+		mux:      gatewayMux,
 	}
 
 	t.Cleanup(func() {
@@ -242,6 +261,31 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 	})
 
 	return fixture
+}
+
+func readGatewayStatus(t *testing.T, fixture *activationIntegrationFixture) backendStatusResult {
+	t.Helper()
+
+	response := httptest.NewRecorder()
+
+	fixture.mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/plugins/demo/_mndw/status", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status response = %d body=%s", response.Code, response.Body.String())
+	}
+
+	var result backendStatusResult
+
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode status response: %v", err)
+	}
+
+	return result
+}
+
+type backendStatusResult struct {
+	State    string           `json:"state"`
+	Blockers []map[string]any `json:"blockers"`
 }
 
 func (f *activationIntegrationFixture) registryPlugins() []*registry.Plugin {

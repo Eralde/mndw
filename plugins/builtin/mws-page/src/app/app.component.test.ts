@@ -11,7 +11,12 @@ import {buildMap} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
 import {ExtraFeaturesBannerStore} from '../services/extra-features-banner.store';
-import {type ExtraFeaturesAvailability, MwsDataService, type MwsViewPhase} from '../services/mws-data.service';
+import {
+  type ExtraFeaturesAvailability,
+  type ExtraFeaturesSetupReason,
+  MwsDataService,
+  type MwsViewPhase,
+} from '../services/mws-data.service';
 import {FakePluginStorage} from '../test-support/plugin-storage.fake';
 import {NodeTableColumnsStore} from '../services/node-table-columns.store';
 import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, PLUGIN_STORAGE, SHARED_PLUGIN_STORAGE, TRANSLATOR} from '../tokens';
@@ -33,6 +38,7 @@ interface FakeData {
   pollError: ReturnType<typeof signal<boolean>>;
   extraFeaturesAvailability: ReturnType<typeof signal<ExtraFeaturesAvailability>>;
   extraFeaturesPresentation: ReturnType<typeof signal<ExtraFeaturesAvailability>>;
+  extraFeaturesSetupReasons: ReturnType<typeof signal<ExtraFeaturesSetupReason[]>>;
   lastUpdatedAt: ReturnType<typeof signal<number | null>>;
   freshnessNow: ReturnType<typeof signal<number>>;
   start: ReturnType<typeof vi.fn>;
@@ -48,6 +54,7 @@ function fakeData(phase: MwsViewPhase, roots: MwsNode[] = []): FakeData {
     pollError: signal(false),
     extraFeaturesAvailability: signal<ExtraFeaturesAvailability>('active'),
     extraFeaturesPresentation: signal<ExtraFeaturesAvailability>('active'),
+    extraFeaturesSetupReasons: signal<ExtraFeaturesSetupReason[]>([]),
     lastUpdatedAt: signal<number | null>(null),
     freshnessNow: signal(Date.now()),
     start: vi.fn(),
@@ -434,7 +441,7 @@ describe('AppComponent', () => {
       ['active', 'Extra features active', 'extra-features-badge--success'],
       ['starting', 'Extra features starting…', 'extra-features-badge--info'],
       ['unavailable', 'Extra features unavailable', 'extra-features-badge--neutral'],
-      ['degraded', 'Extra features temporarily unavailable', 'extra-features-badge--neutral'],
+      ['limited', 'Extra features temporarily unavailable', 'extra-features-badge--neutral'],
       ['blocked', 'Extra features need access', 'extra-features-badge--neutral'],
       ['incompatible', 'Extra features need an update', 'extra-features-badge--warning'],
     ] as const,
@@ -472,7 +479,42 @@ describe('AppComponent', () => {
     expect(fixture.nativeElement.querySelector('.extra-features-setup')).toBeNull();
   });
 
-  it('replaces setup banner with non-dismissible degraded status', async () => {
+  it('does not show setup banner when unavailable state has no extenders', async () => {
+    const roots = fixtureRoots();
+    const controller = roots[0];
+
+    if (controller === undefined) {
+      throw new Error('fixture roots missing controller');
+    }
+
+    const data = fakeData('ready', [{...controller, children: []}]);
+
+    data.extraFeaturesPresentation.set('unavailable');
+
+    const fixture = render(data);
+    await vi.waitFor(() =>
+      expect(
+        (fixture.componentInstance as unknown as {bannerStore: {loaded: () => boolean}}).bannerStore.loaded(),
+      ).toBe(true)
+    );
+
+    expect(fixture.nativeElement.querySelector('.extra-features-setup')).toBeNull();
+  });
+
+  it('uses extender-session setup copy when extender authentication is missing', async () => {
+    const data = fakeData('ready', fixtureRoots());
+
+    data.extraFeaturesPresentation.set('unavailable');
+    data.extraFeaturesSetupReasons.set(['extender-session']);
+
+    const fixture = render(data);
+    await vi.waitFor(() => expect(fixture.nativeElement.querySelector('.extra-features-setup')).not.toBeNull());
+
+    expect((fixture.nativeElement.querySelector('.extra-features-setup') as HTMLElement).textContent)
+      .toContain('Configure authenticated extender sessions');
+  });
+
+  it('replaces setup banner with non-dismissible limited status', async () => {
     const data = fakeData('ready', fixtureRoots());
 
     data.extraFeaturesPresentation.set('unavailable');
@@ -480,15 +522,27 @@ describe('AppComponent', () => {
     const fixture = render(data);
 
     await vi.waitFor(() => expect(fixture.nativeElement.querySelector('.extra-features-setup')).not.toBeNull());
-    data.extraFeaturesPresentation.set('degraded');
+    data.extraFeaturesAvailability.set('limited');
+    data.extraFeaturesPresentation.set('limited');
     fixture.detectChanges();
 
-    const status = fixture.nativeElement.querySelector<HTMLElement>('.extra-features-degraded');
+    const status = fixture.nativeElement.querySelector<HTMLElement>('.extra-features-limited');
 
     expect(status?.getAttribute('role')).toBe('status');
     expect(status?.textContent).toContain('Extra features are temporarily unavailable. Retrying…');
     expect(status?.querySelector('button')).toBeNull();
     expect(fixture.nativeElement.querySelector('.extra-features-setup')).toBeNull();
+  });
+
+  it('does not show limited retry status when current availability is blocked', () => {
+    const data = fakeData('ready', fixtureRoots());
+
+    data.extraFeaturesAvailability.set('blocked');
+    data.extraFeaturesPresentation.set('limited');
+
+    const fixture = render(data);
+
+    expect(fixture.nativeElement.querySelector('.extra-features-limited')).toBeNull();
   });
 
   it('opens against the badge, updates from immediate truth, and closes on dismissal or destroy', async () => {
@@ -538,7 +592,7 @@ describe('AppComponent', () => {
     expect(overlay.createLayer).toHaveBeenCalledWith(expect.objectContaining({anchor: {element: badge}}));
     expect(badge?.getAttribute('aria-expanded')).toBe('true');
 
-    data.extraFeaturesAvailability.set('degraded');
+    data.extraFeaturesAvailability.set('limited');
     fixture.detectChanges();
     expect(contentElement.textContent).toContain('Features are temporarily unreachable');
 

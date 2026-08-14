@@ -42,7 +42,9 @@ func TestNewRuntimeInitializesSupervisorClock(t *testing.T) {
 func TestRuntimeGatedServiceReservesNoSlotAndActivateDoesNotSpawn(t *testing.T) {
 	gates := NewActivationGateRegistry()
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(string) bool { return false }))
+	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
+	}))
 
 	runtime := NewRuntime(RuntimeConfig{
 		RuntimeRoot:     t.TempDir(),

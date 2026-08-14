@@ -54,8 +54,14 @@ export function makeLiveServiceWithBackend(api: FakeApi, backend: BackendClient 
   return TestBed.inject(MwsDataService);
 }
 
-export function fakeBackend(fetch: BackendClient['fetch']): BackendClient {
-  return {fetch, socket: vi.fn()} as unknown as BackendClient;
+export function fakeBackend(fetch: BackendClient['fetch'], status?: BackendClient['status']): BackendClient {
+  const backend = {fetch, socket: vi.fn()} as unknown as BackendClient;
+
+  if (status !== undefined) {
+    backend.status = status;
+  }
+
+  return backend;
 }
 
 export function makeMockService(

@@ -125,6 +125,7 @@ describe('createPluginContext', () => {
     expect(ctx.backend).toBeDefined();
     expect(typeof ctx.backend?.fetch).toBe('function');
     expect(typeof ctx.backend?.socket).toBe('function');
+    expect(typeof ctx.backend?.status).toBe('function');
   });
 
   it('wires a backend client when only WebSocket routes are declared', () => {

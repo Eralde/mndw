@@ -92,10 +92,21 @@ func (s *Service) SetClock(c clock.Clock) {
 }
 
 func (s *Service) Nodes(_ context.Context) (any, error) {
+	targetCount := 0
+	sessionCount := 0
+
+	if s.persistent != nil {
+		diagnostics := s.persistent.Diagnostics()
+		targetCount = diagnostics.TargetCount
+		sessionCount = diagnostics.SessionCount
+	}
+
 	return telemetry.NodesResponse{
-		LastRefreshAt:       s.lastPersistentTargetsAt(),
-		PersistentAvailable: s.persistent != nil,
-		PersistentSessions:  s.persistentSessionsSnapshot(),
+		LastRefreshAt:          s.lastPersistentTargetsAt(),
+		PersistentAvailable:    s.persistent != nil,
+		PersistentTargetCount:  targetCount,
+		PersistentSessionCount: sessionCount,
+		PersistentSessions:     s.persistentSessionsSnapshot(),
 	}, nil
 }
 

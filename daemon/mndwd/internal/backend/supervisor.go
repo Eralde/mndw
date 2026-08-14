@@ -446,13 +446,17 @@ func (s *Supervisor) SocketPath(pluginID string) (string, bool) {
 }
 
 func (s *Supervisor) supportedProtocol(protocol int) bool {
-	for _, supported := range s.cfg.SupportedProtocols {
-		if supported == protocol {
+	return supportsProtocol(protocol, s.cfg.SupportedProtocols)
+}
+
+func supportsProtocol(required int, supported []int) bool {
+	for _, candidate := range supported {
+		if candidate == required {
 			return true
 		}
 	}
 
-	return len(s.cfg.SupportedProtocols) == 0 && protocol == 1
+	return len(supported) == 0 && required == 1
 }
 
 // SupportsProtocol reports exact membership in daemon-supported protocol versions.
@@ -462,6 +466,14 @@ func (s *Supervisor) SupportsProtocol(protocol int) bool {
 	defer s.mu.Unlock()
 
 	return s.supportedProtocol(protocol)
+}
+
+func (s *Supervisor) SupportedProtocols() []int {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	return append([]int{}, s.cfg.SupportedProtocols...)
 }
 
 func (s *Supervisor) failStart(pluginID string, err error) {

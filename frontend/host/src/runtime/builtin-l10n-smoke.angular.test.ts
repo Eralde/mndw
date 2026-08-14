@@ -209,6 +209,7 @@ function createSmokeContext(i18n: PluginContext['i18n'], setTileTitle?: (title: 
   });
   const backend: BackendClient = {
     fetch: vi.fn(() => Promise.resolve(new Response(JSON.stringify({success: true, data: []})))),
+    status: vi.fn(() => Promise.resolve({kind: 'exec', state: 'ready', retryAfterSeconds: null})),
     socket: vi.fn(() => {
       throw new Error('Smoke test socket was not expected');
     }),

@@ -1,12 +1,12 @@
 import type {OverlayCloseEvent, OverlayService} from '@mndw/sdk';
-import type {ExtraFeaturesAvailability} from '../services/mws-data.service';
+import type {ExtraFeaturesAvailability, ExtraFeaturesSetupReason} from '../services/mws-data.service';
 import type {TranslatorFn} from '../status-labels';
 
 let nextPopoverId = 0;
 
 export interface ExtraFeaturesPopoverController {
   readonly closed: Promise<OverlayCloseEvent>;
-  update(availability: ExtraFeaturesAvailability): void;
+  update(availability: ExtraFeaturesAvailability, setupReasons?: readonly ExtraFeaturesSetupReason[]): void;
   close(): void;
 }
 
@@ -15,6 +15,7 @@ export function openExtraFeaturesPopover(
   anchor: HTMLElement,
   availability: ExtraFeaturesAvailability,
   t: TranslatorFn,
+  setupReasons: readonly ExtraFeaturesSetupReason[] = [],
 ): ExtraFeaturesPopoverController {
   const layer = overlay.createLayer({
     kind: 'popover',
@@ -41,18 +42,38 @@ export function openExtraFeaturesPopover(
   group.style.gap = 'var(--mndw-space-3, 0.75rem)';
   group.style.padding = 'var(--mndw-space-4, 1rem)';
   group.style.maxWidth = '22rem';
+  group.style.background = 'var(--mndw-surface-raised)';
+  group.style.color = 'var(--mndw-text)';
+  group.style.borderWidth = '1px';
+  group.style.borderStyle = 'solid';
+  group.style.borderColor = 'var(--mndw-border)';
+  group.style.borderRadius = 'var(--mndw-radius-md)';
+  group.style.boxShadow = 'var(--mndw-shadow-2)';
   group.append(title, body);
 
-  const render = (next: ExtraFeaturesAvailability): void => {
+  const render = (
+    next: ExtraFeaturesAvailability,
+    reasons: readonly ExtraFeaturesSetupReason[] = setupReasons,
+  ): void => {
     title.textContent = t(`extra-features.popover.${next}.title`);
-    body.textContent = t(`extra-features.popover.${next}.body`);
-    action.remove();
+    const bodyKey = next === 'unavailable' && reasons.includes('extender-session')
+      ? 'extra-features.popover.unavailable.extender-session.body'
+      : next === 'blocked'
+      ? reasons.length === 0
+        ? 'extra-features.popover.blocked.body'
+        : reasons.includes('permission') && reasons.includes('controller-token')
+        ? 'extra-features.popover.blocked.combined.body'
+        : reasons.includes('permission')
+        ? 'extra-features.popover.blocked.permission.body'
+        : reasons.includes('controller-token')
+        ? 'extra-features.popover.blocked.controller-token.body'
+        : 'extra-features.popover.blocked.generic.body'
+      : `extra-features.popover.${next}.body`;
 
-    if (next === 'unavailable') {
-      action.textContent = t('extra-features.popover.view-requirements');
-      action.href = '/settings/general';
-      group.append(action);
-    }
+    body.textContent = t(bodyKey);
+    action.textContent = t('extra-features.popover.view-settings');
+    action.href = '/settings/general';
+    group.append(action);
   };
 
   const cleanup = (): void => {
@@ -61,6 +82,7 @@ export function openExtraFeaturesPopover(
     }
 
     cleaned = true;
+
     layer.signal.removeEventListener('abort', cleanup);
     group.remove();
   };

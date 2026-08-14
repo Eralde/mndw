@@ -52,6 +52,7 @@ export {
   BackendMaintenance,
   BackendNotApproved,
   BackendStarting,
+  BackendStatusQueryError,
   BackendTransportMismatch,
   BackendUnavailable,
   BackendUnknownId,
@@ -60,12 +61,16 @@ export {
 } from './backend-client.js';
 export type {
   BackendApprovalStatus,
+  BackendBlocker,
   BackendClient,
   BackendClientDeps,
   BackendDescriptor,
   BackendFetchOptions,
   BackendRouteDescriptor,
   BackendSocketOptions,
+  BackendStatus,
+  BackendStatusOptions,
+  BackendStatusState,
 } from './backend-client.js';
 export {
   pluginDependencies,

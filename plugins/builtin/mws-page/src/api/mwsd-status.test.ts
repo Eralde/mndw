@@ -33,6 +33,18 @@ function node(id: string, isController = false): MwsNode {
 }
 
 describe('mwsd status', () => {
+  it('parses target and authenticated-session counts for setup decisions', () => {
+    const snapshot = parsePersistentSessionsResponse({
+      lastRefreshAt: '2026-08-12T10:00:00Z',
+      persistentAvailable: true,
+      persistentTargetCount: 2,
+      persistentSessionCount: 0,
+      persistentSessions: [],
+    }, newPersistentSessionSnapshot(true, new Map()));
+
+    expect(snapshot).toMatchObject({available: true, targetCount: 2, sessionCount: 0, countsKnown: true});
+  });
+
   it('marks a live session with fresh telemetry as live', () => {
     const now = Date.parse('2026-08-12T10:00:00Z');
     const snapshot = parsePersistentSessionsResponse({

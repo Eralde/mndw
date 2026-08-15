@@ -30,6 +30,18 @@ type Authenticator interface {
 	Authenticate(*http.Request) *httpx.APIError
 }
 
+type transportKind int
+
+const (
+	transportHTTP transportKind = iota
+	transportWebSocket
+)
+
+type routeDecision struct {
+	plugin *registry.Plugin
+	route  manifest.BackendRoute
+}
+
 type Gateway struct {
 	cfg                 GatewayConfig
 	registry            *registry.Registry
@@ -73,54 +85,107 @@ func (g *Gateway) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/ws/plugins/{name}/{path...}", g.handleWebSocket)
 }
 
-func (g *Gateway) handle(writer http.ResponseWriter, request *http.Request) {
-	writer = httpx.NewNoCORSResponseWriter(writer)
-
-	writer.Header().Set("Cache-Control", "no-store")
-
+// resolveAuthorizedRoute runs the prelude shared by the HTTP and WebSocket
+// backend handlers: path canonicalization, WebSocket origin validation,
+// maintenance gating, registry resolution, route matching, authentication, and
+// the backend-servable check. It writes any error response itself and returns
+// ok=false when the caller must stop.
+//
+// Non-disclosure invariant: an unauthenticated caller must receive the same
+// response whether or not a route exists. Every not-found branch therefore
+// authenticates FIRST and returns the authentication error on failure; only an
+// authenticated caller is ever told a route is missing (404). Do not reorder
+// these checks or discard the authenticate() result.
+func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *http.Request, kind transportKind) (routeDecision, bool) {
 	path, canonical := CanonicalRoutePath(request.PathValue("path"))
 
 	if !canonical {
-		g.writeError(writer, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "non-canonical backend path"))
+		if kind == transportWebSocket {
+			g.writeError(writer, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "invalid websocket path"))
+		} else {
+			g.writeError(writer, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "non-canonical backend path"))
+		}
 
-		return
+		return routeDecision{}, false
+	}
+
+	if kind == transportWebSocket && !ValidWebSocketOrigin(request) {
+		g.writeError(writer, httpx.NewError(http.StatusForbidden, httpx.CodeUnauthorized, "invalid websocket origin"))
+
+		return routeDecision{}, false
 	}
 
 	if g.isMaintenance(request.PathValue("name")) {
 		g.writeMaintenance(writer)
 
-		return
+		return routeDecision{}, false
 	}
 
 	plugin, found := g.registry.Resolve(request.PathValue("name"))
 
 	if !found || plugin.Manifest == nil || plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Kind == nil {
-		g.authenticate(writer, request)
+		if !g.authenticate(writer, request) {
+			return routeDecision{}, false
+		}
+
 		g.writeError(writer, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, "no such backend route"))
 
-		return
+		return routeDecision{}, false
 	}
 
-	route, matched := resolveV3Route(plugin.Manifest, request.Method, path)
+	route, matched := g.matchRoute(plugin.Manifest, request, kind, path)
 
 	if !matched {
-		g.authenticate(writer, request)
-		g.writeError(writer, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, "no backend route matches request"))
+		if !g.authenticate(writer, request) {
+			return routeDecision{}, false
+		}
 
-		return
+		g.writeError(writer, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, noRouteMessage(kind)))
+
+		return routeDecision{}, false
 	}
 
-	if route.Access != "public" {
-		if !g.authenticate(writer, request) {
-			return
-		}
+	if route.Access != "public" && !g.authenticate(writer, request) {
+		return routeDecision{}, false
 	}
 
 	if apiErr := plugin.BackendServable(); apiErr != nil {
 		g.writeError(writer, apiErr)
 
+		return routeDecision{}, false
+	}
+
+	return routeDecision{plugin: plugin, route: route}, true
+}
+
+func (g *Gateway) matchRoute(m *manifest.Manifest, request *http.Request, kind transportKind, path string) (manifest.BackendRoute, bool) {
+	if kind == transportWebSocket {
+		return resolveV3WebSocketRoute(m, path)
+	}
+
+	return resolveV3Route(m, request.Method, path)
+}
+
+func noRouteMessage(kind transportKind) string {
+	if kind == transportWebSocket {
+		return "no websocket route matches request"
+	}
+
+	return "no backend route matches request"
+}
+
+func (g *Gateway) handle(writer http.ResponseWriter, request *http.Request) {
+	writer = httpx.NewNoCORSResponseWriter(writer)
+
+	writer.Header().Set("Cache-Control", "no-store")
+
+	decision, ok := g.resolveAuthorizedRoute(writer, request, transportHTTP)
+
+	if !ok {
 		return
 	}
+
+	plugin, route := decision.plugin, decision.route
 
 	if route.Transport == "http" && route.Access != "public" && request.Method != http.MethodGet && request.Method != http.MethodHead {
 		if !httpx.RequireCSRF(writer, g.logger, request) {
@@ -271,56 +336,13 @@ func (g *Gateway) handleWebSocket(writer http.ResponseWriter, request *http.Requ
 
 	writer.Header().Set("Cache-Control", "no-store")
 
-	path, canonical := CanonicalRoutePath(request.PathValue("path"))
+	decision, ok := g.resolveAuthorizedRoute(writer, request, transportWebSocket)
 
-	if !canonical {
-		g.writeError(writer, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "invalid websocket path"))
-
+	if !ok {
 		return
 	}
 
-	if !ValidWebSocketOrigin(request) {
-		g.writeError(writer, httpx.NewError(http.StatusForbidden, httpx.CodeUnauthorized, "invalid websocket origin"))
-
-		return
-	}
-
-	if g.isMaintenance(request.PathValue("name")) {
-		g.writeMaintenance(writer)
-
-		return
-	}
-
-	plugin, found := g.registry.Resolve(request.PathValue("name"))
-
-	if !found || plugin.Manifest == nil || plugin.Manifest.Backend == nil || plugin.Manifest.Backend.Kind == nil {
-		g.authenticate(writer, request)
-		g.writeError(writer, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, "no such backend route"))
-
-		return
-	}
-
-	route, matched := resolveV3WebSocketRoute(plugin.Manifest, path)
-
-	if !matched {
-		if !g.authenticate(writer, request) {
-			return
-		}
-
-		g.writeError(writer, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, "no websocket route matches request"))
-
-		return
-	}
-
-	if route.Access != "public" && !g.authenticate(writer, request) {
-		return
-	}
-
-	if apiErr := plugin.BackendServable(); apiErr != nil {
-		g.writeError(writer, apiErr)
-
-		return
-	}
+	plugin, route := decision.plugin, decision.route
 
 	if g.supervisor == nil || g.supervisor.Status(plugin.Name).State != StateReady {
 		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendUnavailable, "service backend is unavailable"))

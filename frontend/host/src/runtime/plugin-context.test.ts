@@ -82,7 +82,8 @@ describe('createPluginContext', () => {
       fallbackStatus: 'primary',
     });
 
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo, undefined, undefined, cell);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo,
+      catalogCell: cell});
 
     expect(ctx.kind).toBe('widget');
     expect(ctx.i18n.t('title', {name: 'Ada'})).toBe('Hello Ada');
@@ -99,7 +100,7 @@ describe('createPluginContext', () => {
   });
 
   it('attaches the overlay service', () => {
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
 
     expect(ctx.overlay).toBeDefined();
     expect(typeof ctx.overlay.createLayer).toBe('function');
@@ -108,19 +109,19 @@ describe('createPluginContext', () => {
   });
 
   it('omits backend when the plugin declares nothing callable', () => {
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
 
     expect(ctx.backend).toBeUndefined();
   });
 
   it('wires a backend client when HTTP routes are declared', () => {
-    const ctx = createPluginContext(
-      widgetEntry({
+    const {context: ctx} = createPluginContext({
+      entry: widgetEntry({
         routes: {e1: {transport: 'http', method: 'GET', path: 'run'}},
       }),
-      'demo:1',
+      instanceId: 'demo:1',
       hostInfo,
-    );
+    });
 
     expect(ctx.backend).toBeDefined();
     expect(typeof ctx.backend?.fetch).toBe('function');
@@ -129,26 +130,26 @@ describe('createPluginContext', () => {
   });
 
   it('wires a backend client when only WebSocket routes are declared', () => {
-    const ctx = createPluginContext(
-      widgetEntry({
+    const {context: ctx} = createPluginContext({
+      entry: widgetEntry({
         routes: {w1: {transport: 'websocket', path: 'stream'}},
       }),
-      'demo:1',
+      instanceId: 'demo:1',
       hostInfo,
-    );
+    });
 
     expect(ctx.backend).toBeDefined();
   });
 
   it('forwards setTileTitle when provided', () => {
     const setTileTitle = vi.fn();
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo, setTileTitle);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, setTileTitle});
 
     expect(ctx.setTileTitle).toBe(setTileTitle);
   });
 
   it('leaves setTileTitle undefined when not provided', () => {
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
 
     expect(ctx.setTileTitle).toBeUndefined();
   });
@@ -156,8 +157,9 @@ describe('createPluginContext', () => {
   it('forwards pageRoute to page plugins and omits it for widgets', () => {
     const pageRoute = {childPath$: of(''), navigate: vi.fn(() => Promise.resolve(undefined))};
 
-    const pageContext = createPluginContext(pageEntry(), 'demo:1', hostInfo, undefined, pageRoute);
-    const widgetContext = createPluginContext(widgetEntry(), 'demo:2', hostInfo, undefined, pageRoute);
+    const {context: pageContext} = createPluginContext({entry: pageEntry(), instanceId: 'demo:1', hostInfo, pageRoute});
+    const {context: widgetContext} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:2', hostInfo,
+      pageRoute});
 
     expect(pageContext.pageRoute).toBe(pageRoute);
     expect(pageContext.kind).toBe('page');
@@ -166,7 +168,7 @@ describe('createPluginContext', () => {
   });
 
   it('rejects page contexts without a host-created route', () => {
-    expect(() => createPluginContext(pageEntry(), 'demo:1', hostInfo)).toThrow(
+    expect(() => createPluginContext({entry: pageEntry(), instanceId: 'demo:1', hostInfo})).toThrow(
       'Page plugin "demo" requires a page route',
     );
   });
@@ -176,7 +178,7 @@ describe('createPluginContext service boundaries', () => {
   it('hands out a facade, not the shared rciManager singleton', async () => {
     const {rciService} = await import('../services/rci.service.js');
     const driver = rciService.driver as unknown as Record<string, unknown>;
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
     const facade = ctx.rciManager as unknown as Record<string, unknown>;
 
     expect(ctx.rciManager).not.toBe(driver);
@@ -186,7 +188,7 @@ describe('createPluginContext service boundaries', () => {
   it('forwards facade calls to the shared rciManager and returns its result', async () => {
     const {rciService} = await import('../services/rci.service.js');
     const driver = rciService.driver as unknown as Record<string, unknown>;
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
 
     const result = ctx.rciManager.execute({path: 'x'});
 
@@ -200,7 +202,7 @@ describe('createPluginContext service boundaries', () => {
 describe('palette access', () => {
   it('exposes the applied palette and notifies on change', async () => {
     const service = await import('../services/palette.service.js');
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
 
     expect(ctx.getTokens()).toEqual(service.getTokens());
 
@@ -223,20 +225,20 @@ describe('palette access', () => {
 
 describe('createPluginContext security boundaries', () => {
   it('does not expose host session lifecycle to plugins', () => {
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
 
     expect('sessionManager' in ctx).toBe(false);
   });
 
   it('exposes a read-only injector without register', () => {
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
 
     expect(typeof ctx.injector.get).toBe('function');
     expect((ctx.injector as unknown as Record<string, unknown>).register).toBeUndefined();
   });
 
   it('freezes the context and every security-boundary object on it', () => {
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
 
     expect(Object.isFrozen(ctx)).toBe(true);
     expect(Object.isFrozen(ctx.rciManager)).toBe(true);
@@ -245,7 +247,7 @@ describe('createPluginContext security boundaries', () => {
   });
 
   it('gives every security-boundary object a null prototype', () => {
-    const ctx = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
 
     expect(Object.getPrototypeOf(ctx)).toBeNull();
     expect(Object.getPrototypeOf(ctx.rciManager)).toBeNull();
@@ -254,9 +256,44 @@ describe('createPluginContext security boundaries', () => {
   });
 
   it('gives separate instances their own facade objects', () => {
-    const a = createPluginContext(widgetEntry(), 'demo:1', hostInfo);
-    const b = createPluginContext(widgetEntry(), 'demo:2', hostInfo);
+    const {context: a} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
+    const {context: b} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:2', hostInfo});
 
     expect(a.rciManager).not.toBe(b.rciManager);
+  });
+});
+
+describe('createPluginContext ownership', () => {
+  it('returns the overlay dispose alongside the context', async () => {
+    const {createPluginOverlayService} = await import('../services/overlay/overlay-manager.svelte.js');
+    const disposeSpy = vi.fn();
+
+    vi.mocked(createPluginOverlayService).mockReturnValueOnce({
+      service: {createLayer: vi.fn(), open: vi.fn(), closeAll: vi.fn()} as never,
+      dispose: disposeSpy,
+    });
+
+    const handle = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo});
+
+    expect(handle.dispose).toBe(disposeSpy);
+  });
+
+  it('gives each context an independent disposer for a shared instanceId', () => {
+    const first = createPluginContext({entry: widgetEntry(), instanceId: 'dup:1', hostInfo});
+    const second = createPluginContext({entry: widgetEntry(), instanceId: 'dup:1', hostInfo});
+
+    expect(first.dispose).not.toBe(second.dispose);
+
+    first.dispose('plugin-unmount');
+    second.dispose('plugin-unmount');
+
+    expect(first.dispose).toBeTypeOf('function');
+    expect(second.dispose).toBeTypeOf('function');
+  });
+
+  it('exposes no global disposer side channel', async () => {
+    const mod = await import('./plugin-context.js');
+
+    expect((mod as Record<string, unknown>).consumeOverlayDispose).toBeUndefined();
   });
 });

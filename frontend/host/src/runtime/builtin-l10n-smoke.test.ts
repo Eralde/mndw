@@ -30,13 +30,14 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
 
   return {
     ...actual,
-    createPluginContext: vi.fn((
-      entry: {name: string; type: 'widget' | 'page'},
-      instanceId: string,
-      hostInfo: HostInfo,
-      setTileTitle: ((title: string) => void) | undefined,
-      pageRoute: PluginContext['pageRoute'],
-    ) => {
+    createPluginContext: vi.fn((options: {
+      entry: {name: string; type: 'widget' | 'page'};
+      instanceId: string;
+      hostInfo: HostInfo;
+      setTileTitle: ((title: string) => void) | undefined;
+      pageRoute: PluginContext['pageRoute'];
+    }) => {
+      const {entry, instanceId, hostInfo, setTileTitle, pageRoute} = options;
       const template = pageContexts.get(entry.name);
 
       if (template === undefined) {
@@ -47,12 +48,14 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
         ? {kind: 'page' as const, pageRoute}
         : {kind: 'widget' as const, setTileTitle};
 
-      return Object.freeze({
+      const context = Object.freeze({
         ...template,
         hostInfo,
         instanceId,
         ...variant,
       }) as PluginContext;
+
+      return {context, dispose: (): void => {}};
     }),
   };
 });
@@ -304,8 +307,10 @@ smoke('packed built-in l10n smoke', () => {
 
       document.body.append(container);
 
-      const context = createSmokeContext(testI18n);
-      const handle = mountWidgetTile(container, loaded, context);
+      const handle = mountWidgetTile(container, loaded, {
+        context: createSmokeContext(testI18n),
+        dispose: (): void => {},
+      });
 
       expect(await handle.whenReady()).toBe(true);
       await flushPlugin(name);

@@ -47,7 +47,8 @@ const explicitHostInfo: HostInfo = {
   theme: 'light',
 };
 
-const context = {instanceId: 'traffic:1'} as PluginContext;
+const dispose = vi.fn();
+const handle = {context: {instanceId: 'traffic:1'} as PluginContext, dispose};
 
 function fakeMounted(): MountedPlugin {
   return {pluginName: 'traffic', instanceId: 'traffic:1', instance: {unmount: vi.fn()}};
@@ -58,7 +59,7 @@ describe('createWidgetContext', () => {
     pluginRegistry.clear();
     appState.hostInfo = null;
     vi.mocked(createPluginContext).mockReset();
-    vi.mocked(createPluginContext).mockReturnValue(context);
+    vi.mocked(createPluginContext).mockReturnValue(handle);
   });
 
   afterEach(() => {
@@ -75,7 +76,13 @@ describe('createWidgetContext', () => {
 
     createWidgetContext('traffic', 'traffic:1', explicitHostInfo);
 
-    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', explicitHostInfo, undefined);
+    expect(createPluginContext).toHaveBeenCalledWith({
+      entry: plugin.entry,
+      instanceId: 'traffic:1',
+      hostInfo: explicitHostInfo,
+      setTileTitle: undefined,
+      catalogCell: undefined,
+    });
   });
 
   it('falls back to app-state host info when none is passed', () => {
@@ -89,7 +96,13 @@ describe('createWidgetContext', () => {
 
     createWidgetContext('traffic', 'traffic:1');
 
-    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', stateHostInfo, undefined);
+    expect(createPluginContext).toHaveBeenCalledWith({
+      entry: plugin.entry,
+      instanceId: 'traffic:1',
+      hostInfo: stateHostInfo,
+      setTileTitle: undefined,
+      catalogCell: undefined,
+    });
   });
 
   it('falls back to FALLBACK_HOST_INFO when neither explicit nor app-state host info exists', () => {
@@ -99,7 +112,13 @@ describe('createWidgetContext', () => {
 
     createWidgetContext('traffic', 'traffic:1');
 
-    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', FALLBACK_HOST_INFO, undefined);
+    expect(createPluginContext).toHaveBeenCalledWith({
+      entry: plugin.entry,
+      instanceId: 'traffic:1',
+      hostInfo: FALLBACK_HOST_INFO,
+      setTileTitle: undefined,
+      catalogCell: undefined,
+    });
   });
 
   it('forwards setTileTitle to createPluginContext', () => {
@@ -110,7 +129,13 @@ describe('createWidgetContext', () => {
 
     createWidgetContext('traffic', 'traffic:1', explicitHostInfo, setTileTitle);
 
-    expect(createPluginContext).toHaveBeenCalledWith(plugin.entry, 'traffic:1', explicitHostInfo, setTileTitle);
+    expect(createPluginContext).toHaveBeenCalledWith({
+      entry: plugin.entry,
+      instanceId: 'traffic:1',
+      hostInfo: explicitHostInfo,
+      setTileTitle,
+      catalogCell: undefined,
+    });
   });
 
   it('throws when the plugin is not in the registry', () => {
@@ -132,9 +157,9 @@ describe('mountWidgetTile', () => {
 
     const container = document.createElement('div');
 
-    mountWidgetTile(container, plugin, context);
+    mountWidgetTile(container, plugin, handle);
 
-    expect(mountPlugin).toHaveBeenCalledWith(container, plugin, context, {
+    expect(mountPlugin).toHaveBeenCalledWith(container, plugin, handle.context, dispose, {
       errorText: 'Error loading widget',
     });
   });
@@ -145,11 +170,11 @@ describe('mountWidgetTile', () => {
     vi.mocked(mountPlugin).mockReturnValue(mounted);
 
     const container = document.createElement('div');
-    const handle = mountWidgetTile(container, plugin, context);
+    const tileHandle = mountWidgetTile(container, plugin, handle);
 
-    expect(handle.getMounted()).toBe(mounted);
+    expect(tileHandle.getMounted()).toBe(mounted);
 
-    handle.dispose({clearStorage: true, closeReason: 'plugin-unmount'});
+    tileHandle.dispose({clearStorage: true, closeReason: 'plugin-unmount'});
 
     expect(unmountPlugin).toHaveBeenCalledWith(mounted, container, {
       clearStorage: true,
@@ -167,9 +192,9 @@ describe('mountWidgetTile', () => {
     vi.mocked(mountPlugin).mockReturnValue(pending);
 
     const container = document.createElement('div');
-    const handle = mountWidgetTile(container, plugin, context);
+    const tileHandle = mountWidgetTile(container, plugin, handle);
 
-    handle.dispose({clearStorage: false, closeReason: 'host-navigation'});
+    tileHandle.dispose({clearStorage: false, closeReason: 'host-navigation'});
     expect(unmountPlugin).not.toHaveBeenCalled();
 
     resolveMount(mounted);
@@ -180,7 +205,7 @@ describe('mountWidgetTile', () => {
       clearStorage: false,
       closeReason: 'host-navigation',
     });
-    expect(handle.getMounted()).toBeNull();
+    expect(tileHandle.getMounted()).toBeNull();
   });
 
   it('unmounts async mounts that resolved before disposal', async () => {
@@ -190,14 +215,14 @@ describe('mountWidgetTile', () => {
     vi.mocked(mountPlugin).mockReturnValue(pending);
 
     const container = document.createElement('div');
-    const handle = mountWidgetTile(container, plugin, context);
+    const tileHandle = mountWidgetTile(container, plugin, handle);
 
     await pending;
     await Promise.resolve();
 
-    expect(handle.getMounted()).toBe(mounted);
+    expect(tileHandle.getMounted()).toBe(mounted);
 
-    handle.dispose();
+    tileHandle.dispose();
 
     expect(unmountPlugin).toHaveBeenCalledWith(mounted, container, undefined);
   });
@@ -208,10 +233,10 @@ describe('mountWidgetTile', () => {
     vi.mocked(mountPlugin).mockReturnValue(mounted);
 
     const container = document.createElement('div');
-    const handle = mountWidgetTile(container, plugin, context);
+    const tileHandle = mountWidgetTile(container, plugin, handle);
 
-    handle.dispose({clearStorage: true});
-    handle.dispose({clearStorage: false});
+    tileHandle.dispose({clearStorage: true});
+    tileHandle.dispose({clearStorage: false});
 
     expect(unmountPlugin).toHaveBeenCalledTimes(1);
     expect(unmountPlugin).toHaveBeenCalledWith(mounted, container, {clearStorage: true});

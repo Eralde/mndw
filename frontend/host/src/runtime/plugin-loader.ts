@@ -130,21 +130,25 @@ function dedupe(entries: PluginListEntry[]): PluginListEntry[] {
   });
 }
 
+interface ResolvedLoaderDeps {
+  importModule: (url: string) => Promise<unknown>;
+  loadStylesheet: (href: string, pluginName: string) => Promise<void>;
+  checkVersions: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
+  catalogService: PluginCatalogService;
+}
+
 async function loadOne(
   entry: PluginListEntry,
-  importModule: (url: string) => Promise<unknown>,
-  loadStylesheet: (href: string, pluginName: string) => Promise<void>,
-  checkVersions: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>,
-  catalogService: PluginCatalogService,
+  deps: ResolvedLoaderDeps,
 ): Promise<void> {
   const base = entry.source === 'builtin' ? PLUGIN_SOURCE_PATHS.builtin : PLUGIN_SOURCE_PATHS.user;
   const dir = `${base}${entry.name}`;
   const assetUrl = (asset: string): string => versionedAssetUrl(dir, asset, entry.version);
 
-  await loadStylesheet(assetUrl('index.css'), entry.name);
+  await deps.loadStylesheet(assetUrl('index.css'), entry.name);
 
   try {
-    const module = await importModule(assetUrl(entry.entry));
+    const module = await deps.importModule(assetUrl(entry.entry));
     const pluginModule = validateModule(module, entry.name);
     const source = createPluginCatalogSource(
       entry.name,
@@ -152,17 +156,17 @@ async function loadOne(
       entry.catalogBaseUrl ?? dir,
       entry.i18n,
     );
-    const catalog = source === undefined ? undefined : catalogService.createPluginCatalogCell(source, getLocale());
+    const catalog = source === undefined ? undefined : deps.catalogService.createPluginCatalogCell(source, getLocale());
 
     if (catalog !== undefined) {
-      await catalogService.loadInitialPluginCatalog(catalog, getLocale());
+      await deps.catalogService.loadInitialPluginCatalog(catalog, getLocale());
     }
 
     pluginRegistry.register({entry, module: pluginModule, ...(catalog === undefined ? {} : {catalog})});
     console.log(`[mndw] Loaded plugin: ${entry.name} (${entry.source})`);
 
     void Promise.resolve()
-      .then(() => checkVersions(entry, dir))
+      .then(() => deps.checkVersions(entry, dir))
       .then((mismatches) => {
         setPluginVersionWarnings(entry.name, mismatches);
       })
@@ -182,10 +186,12 @@ async function loadOne(
  */
 export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   const fetchList = deps.fetchList ?? defaultFetchList;
-  const importModule = deps.importModule ?? ((url) => import(/* @vite-ignore */ url));
-  const loadStylesheet = deps.loadStylesheet ?? ensurePluginStylesheet;
-  const checkVersions = deps.checkVersions ?? defaultCheckVersions;
-  const catalogService = deps.catalogService ?? pluginCatalogService;
+  const resolved: ResolvedLoaderDeps = {
+    importModule: deps.importModule ?? ((url) => import(/* @vite-ignore */ url)),
+    loadStylesheet: deps.loadStylesheet ?? ensurePluginStylesheet,
+    checkVersions: deps.checkVersions ?? defaultCheckVersions,
+    catalogService: deps.catalogService ?? pluginCatalogService,
+  };
 
   pluginRegistry.clear();
   replaceDepsStatuses([]);
@@ -210,6 +216,6 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   const runnable = dedupe(entries.filter((entry) => entry.enabled));
 
   await Promise.all(
-    runnable.map((entry) => loadOne(entry, importModule, loadStylesheet, checkVersions, catalogService)),
+    runnable.map((entry) => loadOne(entry, resolved)),
   );
 }

@@ -1,10 +1,10 @@
-import type {PluginContext} from '@mndw/sdk';
 import {
   type MountedPlugin,
   type OverlayTeardownReason,
   mountPlugin,
   unmountPlugin,
 } from '../runtime/plugin-lifecycle.js';
+import type {PluginContextHandle} from '../runtime/plugin-context.js';
 import type {LoadedPlugin} from '../runtime/plugin-registry.js';
 
 export interface WidgetTileDisposeOptions {
@@ -32,13 +32,13 @@ export interface WidgetTileHandle {
 export function mountWidgetTile(
   container: HTMLElement,
   plugin: LoadedPlugin,
-  context: PluginContext,
+  handle: PluginContextHandle,
 ): WidgetTileHandle {
   let mounted: MountedPlugin | null = null;
   let disposed = false;
   let disposeOptions: WidgetTileDisposeOptions | undefined;
 
-  const result = mountPlugin(container, plugin, context, {errorText: 'Error loading widget'});
+  const result = mountPlugin(container, plugin, handle.context, handle.dispose, {errorText: 'Error loading widget'});
 
   let ready: Promise<boolean>;
 

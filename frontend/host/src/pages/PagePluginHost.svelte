@@ -151,15 +151,14 @@ function mountPluginRecord(
   active = record;
 
   const hostInfo: HostInfo = appState.hostInfo ?? FALLBACK_HOST_INFO;
-  const context = createPluginContext(
-    plugin.entry,
-    `${plugin.entry.name}:1`,
+  const {context, dispose} = createPluginContext({
+    entry: plugin.entry,
+    instanceId: `${plugin.entry.name}:1`,
     hostInfo,
-    undefined,
-    controller.pageRoute,
-    plugin.catalog,
-  );
-  const result = mountPlugin(child, plugin, context);
+    pageRoute: controller.pageRoute,
+    catalogCell: plugin.catalog,
+  });
+  const result = mountPlugin(child, plugin, context, dispose);
 
   if (result instanceof Promise) {
     return result.then((nextMounted) => {

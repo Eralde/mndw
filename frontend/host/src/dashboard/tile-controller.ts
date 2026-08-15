@@ -257,16 +257,13 @@ export async function remountWidgetTiles(
       controller.handle = mountWidgetTile(
         controller.body,
         plugin,
-        plugin.catalog === undefined
-          ? createPluginContext(plugin.entry, controller.instanceId, hostInfo, controller.setTileTitle)
-          : createPluginContext(
-            plugin.entry,
-            controller.instanceId,
-            hostInfo,
-            controller.setTileTitle,
-            undefined,
-            plugin.catalog,
-          ),
+        createPluginContext({
+          entry: plugin.entry,
+          instanceId: controller.instanceId,
+          hostInfo,
+          setTileTitle: controller.setTileTitle,
+          catalogCell: plugin.catalog,
+        }),
       );
 
       return controller.handle;

@@ -64,9 +64,11 @@ function mockContext(instanceId = 'test:1'): PluginContext {
 }
 
 describe('mountPlugin', () => {
+  const noopDispose = vi.fn();
+
   it('returns a MountedPlugin immediately for sync createInstance', () => {
     const {instance} = mockInstance();
-    const result = mountPlugin(document.createElement('div'), mockPlugin(instance), mockContext());
+    const result = mountPlugin(document.createElement('div'), mockPlugin(instance), mockContext(), noopDispose);
 
     expect(result).not.toBeNull();
 
@@ -78,7 +80,12 @@ describe('mountPlugin', () => {
 
   it('resolves and returns a MountedPlugin for async createInstance', async () => {
     const {instance} = mockInstance();
-    const result = mountPlugin(document.createElement('div'), mockPlugin(Promise.resolve(instance)), mockContext());
+    const result = mountPlugin(
+      document.createElement('div'),
+      mockPlugin(Promise.resolve(instance)),
+      mockContext(),
+      noopDispose,
+    );
 
     expect(result).toBeInstanceOf(Promise);
 
@@ -99,7 +106,7 @@ describe('mountPlugin', () => {
     } as unknown as Promise<PluginInstance>));
 
     const container = document.createElement('div');
-    const result = mountPlugin(container, plugin, mockContext());
+    const result = mountPlugin(container, plugin, mockContext(), noopDispose);
 
     expect(result).toBeInstanceOf(Promise);
 
@@ -118,7 +125,7 @@ describe('mountPlugin', () => {
     });
 
     const container = document.createElement('div');
-    const result = mountPlugin(container, plugin, mockContext(), {errorText: 'Error loading widget'});
+    const result = mountPlugin(container, plugin, mockContext(), noopDispose, {errorText: 'Error loading widget'});
 
     expect(result).toBeNull();
     expect(container.textContent).toBe('Error loading widget');
@@ -127,7 +134,7 @@ describe('mountPlugin', () => {
   it('returns null when async createInstance rejects', async () => {
     const plugin = mockPlugin(Promise.reject(new Error('async fail')));
     const container = document.createElement('div');
-    const result = mountPlugin(container, plugin, mockContext(), {errorText: 'Error loading widget'});
+    const result = mountPlugin(container, plugin, mockContext(), noopDispose, {errorText: 'Error loading widget'});
 
     expect(result).toBeInstanceOf(Promise);
 
@@ -135,6 +142,59 @@ describe('mountPlugin', () => {
 
     expect(mounted).toBeNull();
     expect(container.textContent).toBe('Error loading widget');
+  });
+
+  it('disposes the overlay service when sync createInstance throws', () => {
+    const plugin = mockPlugin(Promise.resolve(mockInstance().instance));
+
+    plugin.module.createInstance = vi.fn(() => {
+      throw new Error('sync fail');
+    });
+
+    const dispose = vi.fn();
+
+    void mountPlugin(document.createElement('div'), plugin, mockContext(), dispose, {errorText: 'x'});
+
+    expect(dispose).toHaveBeenCalledWith('plugin-unmount');
+  });
+
+  it('disposes the overlay service when async createInstance rejects', async () => {
+    const plugin = mockPlugin(Promise.reject(new Error('async fail')));
+    const dispose = vi.fn();
+
+    await mountPlugin(document.createElement('div'), plugin, mockContext(), dispose, {errorText: 'x'});
+
+    expect(dispose).toHaveBeenCalledWith('plugin-unmount');
+  });
+
+  it('retains the passed disposer on a successful sync mount', () => {
+    const {instance} = mockInstance();
+    const dispose = vi.fn();
+
+    const mounted = mountPlugin(document.createElement('div'), mockPlugin(instance), mockContext(), dispose);
+
+    expect(mounted).not.toBeNull();
+
+    if (mounted instanceof Promise) {
+      throw new Error('Expected synchronous mount');
+    }
+
+    expect(mounted?.disposeOverlayService).toBe(dispose);
+  });
+
+  it('retains the passed disposer on a successful async mount', async () => {
+    const {instance} = mockInstance();
+    const dispose = vi.fn();
+
+    const mounted = await mountPlugin(
+      document.createElement('div'),
+      mockPlugin(Promise.resolve(instance)),
+      mockContext(),
+      dispose,
+    );
+
+    expect(mounted).not.toBeNull();
+    expect(mounted?.disposeOverlayService).toBe(dispose);
   });
 });
 

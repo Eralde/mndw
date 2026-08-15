@@ -9,7 +9,7 @@ import {
 import type {RciManager} from '@rci-tools/core';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {getLocale, subscribeLocale} from '../services/locale.service.js';
-import {createPluginI18n} from '../services/plugin-catalog.service.js';
+import {type PluginCatalogCell, createPluginI18n} from '../services/plugin-catalog.service.js';
 import {injector} from '../services/injector.service.js';
 import {createPluginOverlayService} from '../services/overlay/overlay-manager.svelte.js';
 import {rciService} from '../services/rci.service.js';
@@ -19,11 +19,12 @@ import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {createReadonlyInjector, createServiceFacade} from './service-facade.js';
 
-type OverlayDispose = (reason?: 'plugin-unmount' | 'host-navigation') => void;
+export type OverlayDispose = (reason?: 'plugin-unmount' | 'host-navigation') => void;
 
-// Holds each instance's host-internal overlay teardown until the lifecycle layer
-// claims it (see consumeOverlayDispose). Plugins only ever see the public service.
-const pendingOverlayDisposers = new Map<string, OverlayDispose>();
+export interface PluginContextHandle {
+  context: PluginContext;
+  dispose: OverlayDispose;
+}
 
 // Plugin-facing method allowlists - the full current public surface of each shared
 // service (capability parity). This is the seam for future per-plugin scoping.
@@ -61,21 +62,23 @@ function backendClientFor(entry: PluginListEntry): BackendClient | undefined {
  * so the daemon is authoritative for approval/enabled state and the client maps
  * its error envelope to typed errors.
  */
-export function createPluginContext(
-  entry: PluginListEntry,
-  instanceId: string,
-  hostInfo: HostInfo,
-  setTileTitle?: (title: string) => void,
-  pageRoute?: PageRoute,
-  catalogCell?: import('../services/plugin-catalog.service.js').PluginCatalogCell,
-): PluginContext {
+export interface CreatePluginContextOptions {
+  entry: PluginListEntry;
+  instanceId: string;
+  hostInfo: HostInfo;
+  setTileTitle?: (title: string) => void;
+  pageRoute?: PageRoute;
+  catalogCell?: PluginCatalogCell;
+}
+
+export function createPluginContext(options: CreatePluginContextOptions): PluginContextHandle {
+  const {entry, instanceId, hostInfo, setTileTitle, pageRoute, catalogCell} = options;
+
   if (entry.type === 'page' && pageRoute === undefined) {
     throw new Error(`Page plugin "${entry.name}" requires a page route`);
   }
 
   const {service, dispose} = createPluginOverlayService(entry.name, instanceId);
-
-  pendingOverlayDisposers.set(instanceId, dispose);
 
   const variant = entry.type === 'page'
     ? (() => {
@@ -111,17 +114,5 @@ export function createPluginContext(
     variant,
   );
 
-  return Object.freeze(context);
-}
-
-/**
- * Claims the overlay teardown hook for a freshly created context so the plugin
- * lifecycle can run it on unmount. Returns a no-op if none is pending.
- */
-export function consumeOverlayDispose(instanceId: string): OverlayDispose {
-  const dispose = pendingOverlayDisposers.get(instanceId);
-
-  pendingOverlayDisposers.delete(instanceId);
-
-  return dispose ?? (() => {});
+  return {context: Object.freeze(context), dispose};
 }

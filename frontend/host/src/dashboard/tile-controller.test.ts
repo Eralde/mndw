@@ -8,21 +8,22 @@ vi.mock('../runtime/plugin-registry.js', () => ({
 }));
 
 vi.mock('../runtime/plugin-context.js', () => ({
-  createPluginContext: vi.fn((_entry: unknown, instanceId: string, _hostInfo: unknown, _setTileTitle?: unknown) => ({
-    instanceId,
+  createPluginContext: vi.fn((options: {instanceId: string}) => ({
+    context: {instanceId: options.instanceId},
+    dispose: vi.fn(),
   })),
 }));
 
 vi.mock('./widget-context.js', () => ({
   createWidgetContext: vi.fn((_name: string, instanceId: string, _hostInfo?: unknown, setTileTitle?: unknown) => ({
-    instanceId,
-    setTileTitle,
+    context: {instanceId, setTileTitle},
+    dispose: vi.fn(),
   })),
 }));
 
 vi.mock('./widget-mount.js', () => ({mountWidgetTile}));
 
-import type {PluginInstance} from '@mndw/sdk';
+import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
@@ -188,7 +189,8 @@ describe('tile controller', () => {
       capturedContext = ctx;
 
       try {
-        const instance = loadedPlugin.module.createInstance(body, ctx as never);
+        const handle = ctx as {context: PluginContext};
+        const instance = loadedPlugin.module.createInstance(body, handle.context);
         const mounted = instance instanceof Promise ? null : instance;
 
         return {
@@ -216,9 +218,11 @@ describe('tile controller', () => {
 
     expect(createInstance).toHaveBeenCalledTimes(1);
     expect(controller?.pending).toBe(false);
-    expect(capturedContext).toEqual(expect.objectContaining({setTileTitle: controller?.setTileTitle}));
+    expect(capturedContext).toEqual(
+      expect.objectContaining({context: expect.objectContaining({setTileTitle: controller?.setTileTitle})}),
+    );
 
-    const setTileTitle = (capturedContext as {setTileTitle: (title: string) => void}).setTileTitle;
+    const setTileTitle = (capturedContext as {context: {setTileTitle: (title: string) => void}}).context.setTileTitle;
 
     setTileTitle('eth0');
     expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('eth0');

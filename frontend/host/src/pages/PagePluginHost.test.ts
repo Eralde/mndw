@@ -11,12 +11,10 @@ vi.mock('../runtime/plugin-lifecycle.js', () => ({
 }));
 
 vi.mock('../runtime/plugin-context.js', () => ({
-  createPluginContext: vi.fn(
-    (_entry: unknown, instanceId: string, _hostInfo: unknown, _setTileTitle: unknown, pageRoute: unknown) => ({
-      instanceId,
-      pageRoute,
-    }),
-  ),
+  createPluginContext: vi.fn((options: {instanceId: string; pageRoute: unknown}) => ({
+    context: {instanceId: options.instanceId, pageRoute: options.pageRoute},
+    dispose: vi.fn(),
+  })),
 }));
 
 import type {MndwPlugin} from '@mndw/sdk';
@@ -106,6 +104,7 @@ describe('PagePluginHost', () => {
       child,
       pageA,
       expect.objectContaining({instanceId: 'page-a:1', pageRoute: expect.anything()}),
+      expect.any(Function),
     );
 
     void unmount(component);
@@ -115,7 +114,7 @@ describe('PagePluginHost', () => {
     vi.mocked(mountPlugin).mockReturnValue(fakeMounted('page-a'));
 
     const {component} = await setup();
-    const pageRoute = vi.mocked(createPluginContext).mock.calls[0]?.[4];
+    const pageRoute = vi.mocked(createPluginContext).mock.calls[0]?.[0]?.pageRoute;
     const seen: string[] = [];
     const unsubscribe = pageRoute?.childPath$.subscribe((path) => seen.push(path));
 
@@ -138,7 +137,7 @@ describe('PagePluginHost', () => {
     vi.mocked(mountPlugin).mockReturnValue(fakeMounted('page-a'));
 
     const {component} = await setup();
-    const pageRoute = vi.mocked(createPluginContext).mock.calls[0]?.[4];
+    const pageRoute = vi.mocked(createPluginContext).mock.calls[0]?.[0]?.pageRoute;
     let completeCount = 0;
 
     pageRoute?.childPath$.subscribe({complete: () => completeCount += 1});
@@ -153,7 +152,7 @@ describe('PagePluginHost', () => {
     vi.mocked(mountPlugin).mockReturnValue(fakeMounted('page-a'));
 
     const {component} = await setup();
-    const pageRoute = vi.mocked(createPluginContext).mock.calls[0]?.[4];
+    const pageRoute = vi.mocked(createPluginContext).mock.calls[0]?.[0]?.pageRoute;
 
     if (pageRoute === undefined) {
       throw new Error('page route context was not created');
@@ -277,6 +276,7 @@ describe('PagePluginHost', () => {
       children[0],
       pageB,
       expect.objectContaining({instanceId: 'page-b:1', pageRoute: expect.anything()}),
+      expect.any(Function),
     );
 
     void unmount(component);
@@ -338,6 +338,7 @@ describe('PagePluginHost', () => {
       expect.anything(),
       next,
       expect.objectContaining({instanceId: 'page-a:1', pageRoute: expect.anything()}),
+      expect.any(Function),
     );
 
     void unmount(component);
@@ -365,12 +366,14 @@ describe('PagePluginHost', () => {
       expect.anything(),
       next,
       expect.objectContaining({instanceId: 'page-a:1', pageRoute: expect.anything()}),
+      expect.any(Function),
     );
     expect(mountPlugin).toHaveBeenNthCalledWith(
       2,
       expect.anything(),
       prior,
       expect.objectContaining({instanceId: 'page-a:1', pageRoute: expect.anything()}),
+      expect.any(Function),
     );
 
     void unmount(component);

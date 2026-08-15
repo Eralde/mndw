@@ -1,6 +1,6 @@
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {clearInstanceStorage} from '../services/storage.service.js';
-import {consumeOverlayDispose} from './plugin-context.js';
+import type {OverlayDispose} from './plugin-context.js';
 import type {LoadedPlugin} from './plugin-registry.js';
 
 export type OverlayTeardownReason = 'plugin-unmount' | 'host-navigation';
@@ -39,9 +39,9 @@ export function mountPlugin(
   container: HTMLElement,
   plugin: LoadedPlugin,
   context: PluginContext,
+  disposeOverlayService: OverlayDispose,
   options?: MountOptions,
 ): Promise<MountedPlugin | null> | MountedPlugin | null {
-  const disposeOverlayService = consumeOverlayDispose(context.instanceId);
   const name = plugin.entry.name;
 
   try {

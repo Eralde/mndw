@@ -30,13 +30,14 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
 
   return {
     ...actual,
-    createPluginContext: vi.fn((
-      entry: {name: string; type: 'widget' | 'page'},
-      instanceId: string,
-      hostInfo: HostInfo,
-      setTileTitle: ((title: string) => void) | undefined,
-      pageRoute: PluginContext['pageRoute'],
-    ) => {
+    createPluginContext: vi.fn((options: {
+      entry: {name: string; type: 'widget' | 'page'};
+      instanceId: string;
+      hostInfo: HostInfo;
+      setTileTitle: ((title: string) => void) | undefined;
+      pageRoute: PluginContext['pageRoute'];
+    }) => {
+      const {entry, instanceId, hostInfo, setTileTitle, pageRoute} = options;
       const template = pageContexts.get(entry.name);
 
       if (template === undefined) {
@@ -50,12 +51,14 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
           setTileTitle: setTileTitle ?? ((title: string) => tileTitles.set(entry.name, title)),
         };
 
-      return Object.freeze({
+      const context = Object.freeze({
         ...template,
         hostInfo,
         instanceId,
         ...variant,
       }) as PluginContext;
+
+      return {context, dispose: (): void => {}};
     }),
   };
 });
@@ -317,7 +320,10 @@ smoke('packed Angular built-in l10n smoke', () => {
 
     document.body.append(container);
 
-    const handle = mountWidgetTile(container, loaded, createSmokeContext(testI18n));
+    const handle = mountWidgetTile(container, loaded, {
+      context: createSmokeContext(testI18n),
+      dispose: (): void => {},
+    });
 
     expect(await handle.whenReady()).toBe(true);
     await stabilizeAngular(4);
@@ -352,7 +358,7 @@ smoke('packed Angular built-in l10n smoke', () => {
     document.body.append(target);
 
     const context = createSmokeContext(testI18n, (title) => tileTitles.set('mws-page', title));
-    const mounted = mountPlugin(target, loaded, context);
+    const mounted = mountPlugin(target, loaded, context, (): void => {});
 
     if (mounted === null || mounted instanceof Promise) {
       throw new Error('MWS packed smoke mount did not settle synchronously');

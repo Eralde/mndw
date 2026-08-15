@@ -1,6 +1,6 @@
-import type {HostInfo, PluginContext} from '@mndw/sdk';
+import type {HostInfo} from '@mndw/sdk';
 import {FALLBACK_HOST_INFO} from '../constants.js';
-import {createPluginContext} from '../runtime/plugin-context.js';
+import {type PluginContextHandle, createPluginContext} from '../runtime/plugin-context.js';
 import {pluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
 
@@ -15,7 +15,7 @@ export function createWidgetContext(
   instanceId: string,
   hostInfo?: HostInfo,
   setTileTitle?: (title: string) => void,
-): PluginContext {
+): PluginContextHandle {
   const effectiveHostInfo = hostInfo ?? appState.hostInfo ?? FALLBACK_HOST_INFO;
   const plugin = pluginRegistry.get(pluginName);
 
@@ -23,7 +23,11 @@ export function createWidgetContext(
     throw new Error(`No loaded plugin "${pluginName}"`);
   }
 
-  return plugin.catalog === undefined
-    ? createPluginContext(plugin.entry, instanceId, effectiveHostInfo, setTileTitle)
-    : createPluginContext(plugin.entry, instanceId, effectiveHostInfo, setTileTitle, undefined, plugin.catalog);
+  return createPluginContext({
+    entry: plugin.entry,
+    instanceId,
+    hostInfo: effectiveHostInfo,
+    setTileTitle,
+    catalogCell: plugin.catalog,
+  });
 }

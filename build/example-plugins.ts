@@ -1,10 +1,11 @@
 import {createHash} from 'node:crypto';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {buildBackend} from '../tooling/cli/src/backend-build.js';
 import {packPlugin} from '../tooling/cli/src/pack.js';
+import {promoteDirectory} from '../tooling/cli/src/promote-directory.js';
 import {zipDirectory} from '../tooling/cli/src/zip.js';
 import {PRODUCT_TARGETS, type ProductTarget} from './targets.js';
 import {verifyElfBytes} from './packaging/build-ipk.js';
@@ -47,28 +48,6 @@ function verifyPackedBackend(packedRoot: string, target: ProductTarget): void {
 
   if (file?.path !== 'backend/ping-util' || file.sha256 !== digest) {
     throw new Error(`ping-widget metadata does not match injected backend for ${target}`);
-  }
-}
-
-function promoteOutput(stagingRoot: string, outputRoot: string): void {
-  const backupRoot = `${outputRoot}.previous`;
-
-  if (existsSync(outputRoot)) {
-    renameSync(outputRoot, backupRoot);
-  }
-
-  try {
-    renameSync(stagingRoot, outputRoot);
-  } catch (error) {
-    if (existsSync(backupRoot)) {
-      renameSync(backupRoot, outputRoot);
-    }
-
-    throw error;
-  }
-
-  if (existsSync(backupRoot)) {
-    rmSync(backupRoot, {recursive: true, force: true});
   }
 }
 
@@ -122,7 +101,7 @@ export async function buildExamplePlugins(options: ExampleBuildOptions = {}): Pr
 
     const names = expectedExampleArchiveNames();
 
-    promoteOutput(archiveRoot, outputRoot);
+    promoteDirectory(archiveRoot, outputRoot);
     rmSync(stagingRoot, {recursive: true, force: true});
 
     return names;

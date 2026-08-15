@@ -8,7 +8,6 @@ import {
   readFileSync,
   readdirSync,
   realpathSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -30,6 +29,7 @@ import {readManifest} from './manifest.js';
 import {validatePluginCatalogs} from './i18n-validator.js';
 import {resolvePluginDir} from './paths.js';
 import {readPluginPackage} from './plugin-package.js';
+import {promoteDirectory} from './promote-directory.js';
 import {resolveDevelopmentSourceEntry, resolveProductionSourceEntry} from './source-entry.js';
 import type {ProductTarget} from '../../../build/targets.js';
 
@@ -264,7 +264,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
         writeStaged(staging, asset.rel, asset.contents);
       }
 
-      promoteStaging(staging, outDir);
+      promoteDirectory(staging, outDir);
     } catch (error) {
       rmSync(staging, {recursive: true, force: true});
 
@@ -281,30 +281,6 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
     };
   } finally {
     angularCompile?.cleanup();
-  }
-}
-
-/** Atomically replaces output where possible, restoring the prior output if promotion fails. */
-function promoteStaging(staging: string, outDir: string): void {
-  const backup = `${staging}.previous`;
-  const hasExistingOutput = existsSync(outDir);
-
-  if (hasExistingOutput) {
-    renameSync(outDir, backup);
-  }
-
-  try {
-    renameSync(staging, outDir);
-  } catch (error) {
-    if (hasExistingOutput) {
-      renameSync(backup, outDir);
-    }
-
-    throw error;
-  }
-
-  if (hasExistingOutput) {
-    rmSync(backup, {recursive: true, force: true});
   }
 }
 

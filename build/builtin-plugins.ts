@@ -1,8 +1,10 @@
 import {spawn} from 'node:child_process';
-import {existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync} from 'node:fs';
+import {existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync} from 'node:fs';
 import {availableParallelism} from 'node:os';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+
+import {promoteDirectory} from '../tooling/cli/src/promote-directory.js';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const sourceRoot = join(repoRoot, 'plugins/builtin');
@@ -117,26 +119,7 @@ async function main(): Promise<void> {
   try {
     await runPool(plugins, outputRoot, limit);
 
-    const publishedRoot = join(sourceRoot, 'dist');
-    const backupRoot = `${publishedRoot}.previous`;
-
-    if (existsSync(publishedRoot)) {
-      renameSync(publishedRoot, backupRoot);
-    }
-
-    try {
-      renameSync(outputRoot, publishedRoot);
-    } catch (error) {
-      if (existsSync(backupRoot)) {
-        renameSync(backupRoot, publishedRoot);
-      }
-
-      throw error;
-    }
-
-    if (existsSync(backupRoot)) {
-      rmSync(backupRoot, {recursive: true, force: true});
-    }
+    promoteDirectory(outputRoot, join(sourceRoot, 'dist'));
   } catch (error) {
     if (existsSync(outputRoot)) {
       rmSync(outputRoot, {recursive: true, force: true});

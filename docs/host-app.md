@@ -6,13 +6,11 @@ It does not execute plugin backend commands or decide whether a backend is appro
 
 ## Boundary
 
-The host talks to two upstreams:
+Request routing, listener ports, and upstream targets are owned by
+[`contracts/routing.md`](../contracts/routing.md).
 
-- `/rci`, `/ci`, and `/auth` go through lighttpd to the router.
-- `/api` and `/ws` go to `mndwd` on `127.0.0.1:9090`.
-
-In development, Vite keeps the same split. `MNDW_HOST_DEVICE` selects the
-router target, while `MNDW_DAEMON` selects the local daemon target.
+In development, Vite uses `MNDW_HOST_DEVICE` and `MNDW_DAEMON` to select its
+upstream targets.
 
 ## Startup
 

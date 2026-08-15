@@ -8,15 +8,17 @@ device-side plugin management and backend execution.
 
 ```text
 browser
-  └─ lighttpd :99
-      ├─ static SPA, /plugins, /user-plugins
-      ├─ /rci, /ci, /auth ───── router services
-      └─ /api, /ws ───────────── mndwd :9090
+  └─ lighttpd
+      ├─ static dashboard and plugin assets
+      ├─ router services
+      └─ mndwd gateway
 ```
 
 The Svelte 5 host owns login state, routing, dashboard tiles, plugin rendering,
 overlays, theme, and settings. `mndwd` owns plugin files, manifests, approval,
 backend processes, HTTP endpoints, WebSockets, and management APIs.
+Request routing, listener ports, and upstream targets are owned by
+[`contracts/routing.md`](contracts/routing.md).
 
 ## Quick start
 
@@ -28,9 +30,8 @@ pnpm install
 pnpm dev
 ```
 
-The host opens at `http://localhost:5173`. Development proxies `/api` and
-`/ws` to a local `mndwd --dev` daemon, and `/rci` and `/auth` to a real device.
-Set `MNDW_HOST_DEVICE` to select that device.
+Development starts the host and connects browser traffic to a local `mndwd --dev`
+daemon and a real device. Set `MNDW_HOST_DEVICE` to select that device.
 
 ## Plugin authoring
 
@@ -43,7 +44,7 @@ pnpm exec mndw zip my-widget
 ```
 
 The normal loop is `create → dev → validate → pack → zip → upload`. Plugins use
-`@mndw/sdk`, implement `createInstance`, and declare a v2 `manifest.json`.
+`@mndw/sdk`, implement `createInstance`, and declare a v3 `manifest.json`.
 Widgets use grid-unit dimensions; pages declare one route. Plugins can be
 vanilla TypeScript, Svelte, Vue, or Angular.
 

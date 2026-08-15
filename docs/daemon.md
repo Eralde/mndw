@@ -7,21 +7,23 @@ foreground `service` processes.
 ## Runtime topology
 
 ```text
-lighttpd :99
-  ├─ /                    static host SPA and plugin assets
-  ├─ /rci, /ci, /auth    router at :80
-  └─ /api, /ws           mndwd at 127.0.0.1:9090
+browser
+  └─ lighttpd
+      ├─ static host SPA and plugin assets
+      ├─ router services
+      └─ mndwd gateway
 
 mndwd
-  ├─ /api/mgmt/*         session-gated management
-  ├─ /api/plugins/*      exec and service HTTP routes
-  ├─ /ws/plugins/*       service WebSocket routes
+  ├─ session-gated management
+  ├─ declared HTTP and WebSocket routes
   └─ state.json          durable state and audit trail
 ```
 
 The gateway resolves plugin, route id, transport, method, access, approval,
 and enabled state from one manifest-derived registry. Service sockets, command
 paths, process ids, args, and package requirements never enter host descriptors.
+Request routing, listener ports, and upstream targets are owned by
+[`contracts/routing.md`](../contracts/routing.md).
 
 ## Upload and approval
 

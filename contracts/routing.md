@@ -14,8 +14,21 @@ inside their owning runtime.
 | `/user-plugins/<name>/**` | lighttpd alias | Vite plugin static middleware | Approved user-plugin assets |
 | `/shared/<bundle>@<version>.js` | lighttpd document root | Vite shared-bundle middleware | Host-provided shared JavaScript bundles and import-map targets |
 | `/rci/**` | router proxy selected by lighttpd | Vite device proxy | Router RCI API; not owned by `mndwd` |
-| `/ci/**` | router proxy selected by lighttpd | Vite device proxy | Router CI API; not owned by `mndwd` |
+| `/ci/**` | router proxy selected by lighttpd | Not proxied or exposed by Vite | Router CI API; not owned by `mndwd` |
 | `/auth/**` | router proxy selected by lighttpd | Vite device proxy | Router authentication API; `mndwd` calls `/auth` for session validation |
+
+## Listener and upstream targets
+
+Production listener and upstream facts:
+
+- lighttpd selects or reuses the first free mndw dashboard port in `99..199` and persists it in
+  `/opt/var/lib/mndw/lighttpd-port`;
+- `mndwd` listens on `127.0.0.1:9090` by default;
+- mndwd's router session-validation upstream defaults to `http://127.0.0.1:80`.
+
+Development proxy targets are configured by `frontend/host/vite.config.ts`: `/api` and `/ws` use
+`MNDW_DAEMON` (default `http://127.0.0.1:9090`), while `/rci` and `/auth` use
+`MNDW_HOST_DEVICE`.
 
 Ownership rules:
 

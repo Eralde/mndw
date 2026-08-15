@@ -208,9 +208,8 @@ explicitly in the declared query or body when needed.
 The default service HTTP timeout is 30 seconds and the default request-body limit is 1 MiB. The
 daemon filters CORS, hop-by-hop, `Set-Cookie`, and
 `Content-Length` response headers and sets `Cache-Control: no-store`. See
-[`gateway.go`](../daemon/mndwd/internal/backend/gateway.go),
-[`proxy.go`](../daemon/mndwd/internal/backend/proxy.go), and
-[`headers.go`](../daemon/mndwd/internal/backend/headers.go) for the current limits and filters.
+[`gateway.go`](../daemon/mndwd/internal/backend/gateway.go) and
+[`proxy.go`](../daemon/mndwd/internal/backend/proxy.go) for the current limits and filters.
 
 ### WebSocket routes
 
@@ -379,7 +378,7 @@ reason `mndw updating` and show explicit reconnect UX.
 | Approval/enabled/session checks and route method/transport matching      | [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go), management/authz paths                                                                    |
 | Private WebSocket Origin validation and declared subprotocol negotiation | [`origin.go`](../daemon/mndwd/internal/backend/origin.go), [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go)                                 |
 | Request-body, admission, and service-timeout limits                      | [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go), [`limits.go`](../daemon/mndwd/internal/backend/limits.go)                                 |
-| CORS, hop-by-hop, credential response filtering, and `no-store`          | [`headers.go`](../daemon/mndwd/internal/backend/headers.go), [`proxy.go`](../daemon/mndwd/internal/backend/proxy.go)                                   |
+| CORS, hop-by-hop, credential response filtering, and `no-store`          | [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go), [`proxy.go`](../daemon/mndwd/internal/backend/proxy.go)                                   |
 | Bounded stderr capture/redaction and aggregate diagnostics sanitization  | [`stderr_redaction.go`](../daemon/mndwd/internal/backend/stderr_redaction.go), [`diagnostics.go`](../daemon/mndwd/internal/diagnostics/diagnostics.go) |
 | Process groups, restart/backoff, and runtime socket/lease cleanup        | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go), [`runtime.go`](../daemon/mndwd/internal/backend/runtime.go)                         |
 

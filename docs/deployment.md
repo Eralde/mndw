@@ -29,13 +29,13 @@ is not replaced by an upgrade. A legacy `80-mndw.conf` is moved to
 The v3 lighttpd configuration is intentionally thin:
 
 - serve the SPA and static plugin assets;
-- proxy `/rci`, `/ci`, and `/auth` to the router with the required host header;
-- proxy `/api` and `/ws` to `mndwd` on `127.0.0.1:9090`;
 - retain SPA fallback for browser routes.
 
 Backend commands and service processes run behind `mndwd`; lighttpd only
 provides the browser-facing static and proxy boundary. Backend operation does
 not require lighttpd CGI, jq, or unzip.
+Request routing, listener ports, and upstream targets are owned by
+[`contracts/routing.md`](../contracts/routing.md).
 
 ## IPK pipeline
 
@@ -69,24 +69,21 @@ kernel-suffixed target, including `mips-3.4` for big-endian MIPS.
 
 ## Install and upgrade
 
-Installation starts `mndwd`, selects or reuses a free dashboard port in
-`99..199`, probes the complete lighttpd configuration, renders runtime rules,
-validates the configuration, and restarts lighttpd. The installer prints the
-selected URL. A deployment should verify:
+Installation starts `mndwd`, probes the complete lighttpd configuration, renders
+runtime rules, validates the configuration, and restarts lighttpd. A deployment
+should verify:
 
-1. the daemon is listening on `127.0.0.1:9090`;
-2. the browser can reach the host at `http://<router>:<selected-port>`;
-3. authentication reaches the router;
-4. built-in plugins appear in the list;
-5. upload, approval, and backend dispatch work.
+1. the browser can reach the host;
+2. authentication reaches the router;
+3. built-in plugins appear in the list;
+4. upload, approval, and backend dispatch work.
 
-If port 80 is occupied by firmware nginx, mndw prints a warning and renders an
-override that moves lighttpd's global listener to the selected port while
-scoping mndw rules to that listener. This decision is made during install;
-rerun package configuration if port-80 ownership changes later. After an
-upgrade, verify the selected port, generated runtime config, legacy backup,
-and `/opt/etc/mndw.conf`. A real-device smoke test is mandatory even when
-local and CI tests pass.
+If the base listener is unavailable, mndw prints a warning and renders an
+override that scopes its rules to the selected listener. This decision is made
+during install; rerun package configuration if listener ownership changes later.
+After an upgrade, verify the generated runtime config, legacy backup, and
+`/opt/etc/mndw.conf`. A real-device smoke test is mandatory even when local and
+CI tests pass.
 
 ## Security boundary
 
@@ -100,9 +97,9 @@ production:
 - request size, execution time, and concurrency are bounded;
 - approved commands and service children run with the daemon's device privileges.
 
-The old service allowed unauthenticated upload, approval, and shell execution
-on `:99`; v3 removes that default. `--dev` intentionally bypasses session checks,
-so it must not be used as a production configuration.
+The old service allowed unauthenticated upload, approval, and shell execution;
+v3 removes that default. `--dev` intentionally bypasses session checks, so it
+must not be used as a production configuration.
 
 ## Device-like validation
 

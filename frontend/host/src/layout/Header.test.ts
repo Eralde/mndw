@@ -21,6 +21,8 @@ vi.mock('../services/rci.service.js', () => ({
 import Header from './Header.svelte';
 import * as localeService from '../services/locale.service.js';
 import {appState} from '../state/app.svelte.js';
+import {defaultHostServices} from '../host-services.js';
+import {createHostServicesContext} from '../host-services-context.js';
 
 beforeAll(() => {
   defineMndwUi();
@@ -36,12 +38,16 @@ describe('Header logout', () => {
   });
 
   it('offers one language selector with EN and RU options', () => {
-    const setLocale = vi.spyOn(localeService, 'setLocale').mockResolvedValue();
+    const setLocale = vi.fn().mockResolvedValue(undefined);
+    const services = defaultHostServices();
     const target = document.createElement('div');
 
     document.body.appendChild(target);
 
-    const component = mount(Header, {target});
+    const component = mount(Header, {
+      target,
+      context: createHostServicesContext({...services, locale: {...services.locale, setLocale}}),
+    });
     const select = target.querySelector<HTMLElement & {value: string}>('.mndw-header__locale-select');
     const options = [...target.querySelectorAll('mndw-option')];
 
@@ -66,7 +72,7 @@ describe('Header logout', () => {
 
     document.body.appendChild(target);
 
-    const component = mount(Header, {target});
+    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
 
     expect(target.querySelector<HTMLElement & {disabled: boolean}>('.mndw-header__locale-select')?.disabled).toBe(true);
 
@@ -78,19 +84,19 @@ describe('Header logout', () => {
 
     document.body.appendChild(target);
 
-    const component = mount(Header, {target});
+    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
 
     try {
       expect(target.querySelector('.mndw-header__logout')?.textContent?.trim()).toBe('Logout');
 
-      await localeService.setLocale('ru');
+      await localeService.localeService.setLocale('ru');
       flushSync();
 
       expect(target.querySelector('.mndw-header__logout')?.textContent?.trim()).toBe('Выйти');
       expect(target.querySelector<HTMLElement & {value: string}>('.mndw-header__locale-select')?.value).toBe('ru');
     } finally {
       await unmount(component);
-      await localeService.setLocale('en');
+      await localeService.localeService.setLocale('en');
     }
   });
 
@@ -99,7 +105,7 @@ describe('Header logout', () => {
 
     document.body.appendChild(target);
 
-    const component = mount(Header, {target});
+    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
 
     target.querySelector('.mndw-header__logout')?.dispatchEvent(new Event('click', {bubbles: true}));
     await vi.waitFor(() => expect(logout).toHaveBeenCalledTimes(1));

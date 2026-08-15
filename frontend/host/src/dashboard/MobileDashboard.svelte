@@ -1,6 +1,7 @@
 <script lang="ts">
 import {parseWidgetTileId} from './grid-layout-persistence.js';
 import {ensureTileController} from './tile-controller.js';
+import {getHostServices} from '../host-services-context.js';
 
 interface Props {
   order: string[];
@@ -8,6 +9,9 @@ interface Props {
 }
 
 let {order, onRemoveRequest}: Props = $props();
+const services = getHostServices();
+const registry = services.registry;
+const pluginContextServices = {locale: services.locale, palette: services.palette};
 
 /**
  * Svelte action: adopts the shared tile controller's frame into this flow shell.
@@ -25,6 +29,8 @@ function adoptTile(node: HTMLElement, tileId: string): void {
   }
 
   const controller = ensureTileController(
+    pluginContextServices,
+    registry,
     parsed.pluginName,
     `${parsed.pluginName}:${parsed.counter}`,
     onRemoveRequest,

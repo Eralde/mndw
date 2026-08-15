@@ -1,6 +1,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {FALLBACK_HOST_INFO, SUPPORTED_LOCALES} from '../constants.js';
 import {
+  createLocaleService,
   getAvailableLocales,
   getLocale,
   hostFormatDate,
@@ -10,6 +11,7 @@ import {
   setLocale,
   subscribeLocale,
 } from './locale.service.js';
+import {createPluginCatalogService} from './plugin-catalog.service.js';
 
 const originalLanguages = navigator.languages;
 const originalLanguage = navigator.language;
@@ -56,6 +58,36 @@ describe('pseudo locale gating', () => {
 });
 
 describe('locale service', () => {
+  it('supports isolated injected storage, document, catalog, and UI locale sink', async () => {
+    const isolatedDocument = document.implementation.createHTMLDocument('isolated');
+    const stored = new Map<string, string>();
+    const storage = {
+      getItem: (key: string): string | null => stored.get(key) ?? null,
+      setItem: (key: string, value: string): void => {
+        stored.set(key, value);
+      },
+    };
+    const setUiLocale = vi.fn();
+    const service = createLocaleService({
+      catalog: createPluginCatalogService(),
+      storage,
+      document: isolatedDocument,
+      setUiLocale,
+    });
+
+    stored.set('mndw:locale', 'ru');
+
+    expect(service.initLocale()).toBe('ru');
+    expect(isolatedDocument.documentElement.lang).toBe('ru');
+    expect(setUiLocale).toHaveBeenCalledWith('ru');
+
+    await service.setLocale('en');
+
+    expect(stored.get('mndw:locale')).toBe('en');
+    expect(isolatedDocument.documentElement.lang).toBe('en');
+    expect(document.documentElement.lang).toBe('');
+  });
+
   it('exposes fixed production locales and a typed fallback locale', () => {
     expect(SUPPORTED_LOCALES).toEqual(['en', 'ru']);
     expect(FALLBACK_HOST_INFO.locale).toBe('en');

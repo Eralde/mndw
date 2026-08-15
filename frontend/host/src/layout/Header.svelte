@@ -1,19 +1,20 @@
 <script lang="ts">
 import type {MndwSelectChangeDetail} from '@mndw/ui';
-import {rciService} from '../services/rci.service.js';
 import {toggleTheme} from '../services/theme.service.js';
 import {appState, resetToLogin} from '../state/app.svelte.js';
 import {hostT} from '../services/host-i18n.svelte.js';
-import {setLocale} from '../services/locale.service.js';
+import {getHostServices} from '../host-services-context.js';
+
+const services = getHostServices();
 
 function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
-  void setLocale(event.detail.value).catch(() => {});
+  void services.locale.setLocale(event.detail.value).catch(() => {});
 }
 
 async function handleLogout(): Promise<void> {
   try {
     await new Promise<void>((resolve) => {
-      rciService.logout().subscribe({next: () => resolve(), error: () =>
+      services.rci.logout().subscribe({next: () => resolve(), error: () =>
         resolve()});
     });
   } finally {

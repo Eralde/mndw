@@ -43,7 +43,7 @@ vi.mock('../state/deps-status.svelte.js', () => ({
 vi.mock('./widget-mount.js', () => ({mountWidgetTile}));
 
 vi.mock('./tile-controller.js', () => ({
-  ensureTileController: vi.fn((_pluginName: string, instanceId: string) => {
+  ensureTileController: vi.fn((_services: unknown, _registry: unknown, _pluginName: string, instanceId: string) => {
     const id = `widget-${instanceId}`;
     let controller = controllers.get(id);
 
@@ -66,10 +66,16 @@ vi.mock('./tile-controller.js', () => ({
 }));
 
 import {pluginRegistry} from '../runtime/plugin-registry.js';
+import {localeService} from '../services/locale.service.js';
+import {paletteService} from '../services/palette.service.js';
+import {defaultHostServices} from '../host-services.js';
+import {createHostServicesContext} from '../host-services-context.js';
 import {addWidgetTile} from './grid-dashboard-setup.js';
 import DashboardGrid from './DashboardGrid.svelte';
 import MobileDashboard from './MobileDashboard.svelte';
 import {getTileController, removeTileController} from './tile-controller.js';
+
+const pluginContextServices = {locale: localeService, palette: paletteService};
 
 const plugin = {
   entry: {
@@ -124,7 +130,7 @@ describe('dashboard renderer transition', () => {
         onWidgetResized: vi.fn(),
       },
     });
-    const id = addWidgetTile(fakeGrid as never, 'traffic', vi.fn());
+    const id = addWidgetTile(pluginContextServices, pluginRegistry, fakeGrid as never, 'traffic', vi.fn());
 
     if (id === null) {
       throw new Error('addWidgetTile unexpectedly returned null');
@@ -140,6 +146,7 @@ describe('dashboard renderer transition', () => {
     const mobile = mount(MobileDashboard, {
       target: mobileTarget,
       props: {order: [id], onRemoveRequest: vi.fn()},
+      context: createHostServicesContext(defaultHostServices()),
     });
 
     flushSync();
@@ -163,6 +170,7 @@ describe('dashboard renderer transition', () => {
     const mobile = mount(MobileDashboard, {
       target: mobileTarget,
       props: {order: ['widget-traffic:1'], onRemoveRequest: vi.fn()},
+      context: createHostServicesContext(defaultHostServices()),
     });
 
     flushSync();

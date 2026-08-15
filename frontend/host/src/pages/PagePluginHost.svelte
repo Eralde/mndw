@@ -9,7 +9,6 @@ import {
   unmountPlugin,
 } from '../runtime/plugin-lifecycle.js';
 import type {LoadedPlugin} from '../runtime/plugin-registry.js';
-import {pluginRegistry} from '../runtime/plugin-registry.js';
 import {
   SANDBOX_RELOAD_EVENT,
   type SandboxReloadDetail,
@@ -22,6 +21,7 @@ import {
 } from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
+import {getHostServices} from '../host-services-context.js';
 
 interface ActiveMount {
   generation: number;
@@ -38,6 +38,9 @@ let host: HTMLElement | undefined;
 let currentPluginName: string | null = null;
 let generation = 0;
 let active: ActiveMount | null = null;
+const services = getHostServices();
+const registry = services.registry;
+const pluginContextServices = {locale: services.locale, palette: services.palette};
 
 // Capture the host node via an action (not bind:this) so host-managed child containers
 // can be appended imperatively — Svelte never renders into this element, so it does not
@@ -85,7 +88,7 @@ function mountCurrent(target: string | null): void {
     return;
   }
 
-  const plugin = pluginRegistry.get(target);
+  const plugin = registry.get(target);
 
   if (
     host === undefined || plugin === undefined || plugin.entry.type !== 'page'
@@ -157,6 +160,7 @@ function mountPluginRecord(
     hostInfo,
     pageRoute: controller.pageRoute,
     catalogCell: plugin.catalog,
+    services: pluginContextServices,
   });
   const result = mountPlugin(child, plugin, context, dispose);
 

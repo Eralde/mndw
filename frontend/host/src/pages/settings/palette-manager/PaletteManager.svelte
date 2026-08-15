@@ -2,18 +2,11 @@
 import {onMount} from 'svelte';
 import type {PaletteContrastWarning, PaletteTokenMap} from '@mndw/sdk';
 import {messageForError} from '../../../services/mgmt-client.js';
-import {
-  commitOverride,
-  discardPreview,
-  getExportable,
-  previewOverride,
-  refreshPalette,
-  resetToDefault,
-} from '../../../services/palette.service.js';
 import PaletteExport from './PaletteExport.svelte';
 import PaletteImport from './PaletteImport.svelte';
 import PalettePreview from './PalettePreview.svelte';
 import PaletteReset from './PaletteReset.svelte';
+import {getHostServices} from '../../../host-services-context.js';
 
 type State =
   | 'loading'
@@ -25,6 +18,7 @@ type State =
   | 'importError';
 
 let paletteState = $state<State>('loading');
+const paletteService = getHostServices().palette;
 let refreshError = $state('');
 let importErrors = $state<string[]>([]);
 let commitError = $state('');
@@ -51,7 +45,7 @@ async function load(): Promise<void> {
   paletteState = 'loading';
 
   try {
-    await refreshPalette();
+    await paletteService.refreshPalette();
     refreshError = '';
   } catch (caught) {
     refreshError = messageForError(caught);
@@ -84,7 +78,7 @@ function onPreview(
   saved = false;
   pending = palette;
   warnings = next;
-  previewOverride(palette);
+  paletteService.previewOverride(palette);
   paletteState = 'previewing';
 }
 
@@ -107,7 +101,7 @@ async function confirm(): Promise<void> {
   commitError = '';
 
   try {
-    await commitOverride(pending);
+    await paletteService.commitOverride(pending);
     pending = null;
     warnings = [];
     saved = true;
@@ -119,7 +113,7 @@ async function confirm(): Promise<void> {
 }
 
 function discard(): void {
-  discardPreview();
+  paletteService.discardPreview();
   pending = null;
   warnings = [];
   commitError = '';
@@ -131,7 +125,7 @@ async function reset(): Promise<void> {
   resetError = '';
 
   try {
-    await resetToDefault();
+    await paletteService.resetToDefault();
     saved = false;
   } catch (caught) {
     resetError = messageForError(caught);
@@ -219,7 +213,7 @@ async function reset(): Promise<void> {
     <div class="mndw-palette-manager__actions">
       <PaletteExport
         disabled={exportDisabled}
-        read={getExportable}
+        read={paletteService.getExportable}
       />
       <PaletteReset
         busy={paletteState === 'resetting'}

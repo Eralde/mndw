@@ -2,6 +2,7 @@ import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import App from './App.svelte';
+import {defaultHostServices} from './host-services.js';
 import {uiOverlayService} from './services/overlay/ui-overlay.js';
 import {appState} from './state/app.svelte.js';
 
@@ -16,7 +17,7 @@ let component: ReturnType<typeof mount>;
 function render(): void {
   target = document.createElement('div');
   document.body.appendChild(target);
-  component = mount(App, {target});
+  component = mount(App, {target, props: {services: defaultHostServices()}});
   flushSync();
 }
 

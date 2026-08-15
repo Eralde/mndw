@@ -16,6 +16,7 @@ import {rciService} from '../services/rci.service.js';
 import {ScopedPluginStorage} from '../services/storage.service.js';
 import {getTokens, subscribePalette} from '../services/palette.service.js';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';
+import type {HostServices} from '../host-services.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {createReadonlyInjector, createServiceFacade} from './service-facade.js';
 
@@ -69,10 +70,24 @@ export interface CreatePluginContextOptions {
   setTileTitle?: (title: string) => void;
   pageRoute?: PageRoute;
   catalogCell?: PluginCatalogCell;
+  services?: Pick<HostServices, 'locale' | 'palette'>;
 }
 
 export function createPluginContext(options: CreatePluginContextOptions): PluginContextHandle {
   const {entry, instanceId, hostInfo, setTileTitle, pageRoute, catalogCell} = options;
+  const getHostLocale = options.services?.locale === undefined
+    ? getLocale
+    : () => options.services?.locale?.getLocale() ?? getLocale();
+  const subscribeHostLocale = options.services?.locale === undefined
+    ? (callback: () => void): () => void => subscribeLocale(() => callback())
+    : (callback: () => void): () => void => options.services?.locale?.subscribeLocale(() => callback()) ?? (() => {});
+  const getPaletteTokens = options.services?.palette === undefined
+    ? getTokens
+    : () => options.services?.palette?.getTokens() ?? getTokens();
+  const subscribeHostPalette = options.services?.palette === undefined
+    ? subscribePalette
+    : (callback: (tokens: ReturnType<typeof getTokens>) => void): () => void =>
+      options.services?.palette?.subscribePalette(callback) ?? (() => {});
 
   if (entry.type === 'page' && pageRoute === undefined) {
     throw new Error(`Page plugin "${entry.name}" requires a page route`);
@@ -100,15 +115,15 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
       storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
       sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
       hostInfo: Object.freeze(
-        Object.assign(Object.create(null), {...hostInfo, locale: getLocale(), theme: getTheme()}),
+        Object.assign(Object.create(null), {...hostInfo, locale: getHostLocale(), theme: getTheme()}),
       ),
-      i18n: createPluginI18n(catalogCell, getLocale, (callback) => subscribeLocale(() => callback())),
+      i18n: createPluginI18n(catalogCell, getHostLocale, subscribeHostLocale),
       injector: createReadonlyInjector(injector),
       instanceId,
       backend: backendClientFor(entry),
       onThemeChange: subscribeTheme,
-      getTokens,
-      onPaletteChange: subscribePalette,
+      getTokens: getPaletteTokens,
+      onPaletteChange: subscribeHostPalette,
       overlay: service,
     },
     variant,

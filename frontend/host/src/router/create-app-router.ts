@@ -5,7 +5,7 @@ import PagePluginHost from '../pages/PagePluginHost.svelte';
 import PackageManagerPage from '../pages/PackageManagerPage.svelte';
 import SettingsPage from '../pages/settings/SettingsPage.svelte';
 import {SETTINGS_TAB_DEFS} from '../pages/settings/settings-tabs.js';
-import {pluginRegistry} from '../runtime/plugin-registry.js';
+import {type PluginRegistry, pluginRegistry} from '../runtime/plugin-registry.js';
 
 export interface PageRouteDefinition {
   readonly route: string;
@@ -41,8 +41,10 @@ function assertRouteIsAvailable(route: string, name: string): void {
  * Builds dynamic page-plugin routes from registry, sorted by label then name. Each page gets
  * exact and child-wildcard entries, both resolving to shared {@link PagePluginHost}.
  */
-export function buildPluginRoutes(): Record<string, typeof PagePluginHost> {
-  const pages = pluginRegistry
+export function buildPluginRoutes(
+  registry: Pick<PluginRegistry, 'getPages'> = pluginRegistry,
+): Record<string, typeof PagePluginHost> {
+  const pages = registry
     .getPages()
     .slice()
     .sort((a, b) => a.entry.label.localeCompare(b.entry.label) || a.entry.name.localeCompare(b.entry.name));
@@ -149,8 +151,10 @@ export function repairMalformedPagePath(): void {
  * Build authenticated app router. Must run after loadPlugins() so registry is populated.
  * Malformed page wildcard paths are repaired before Router's initial navigation can decode them.
  */
-export function createAppRouter(): ReturnType<typeof createRouter> {
-  const pluginRoutes = buildPluginRoutes();
+export function createAppRouter(
+  registry: Pick<PluginRegistry, 'getPages'> = pluginRegistry,
+): ReturnType<typeof createRouter> {
+  const pluginRoutes = buildPluginRoutes(registry);
 
   const router = createRouter({
     '/': {

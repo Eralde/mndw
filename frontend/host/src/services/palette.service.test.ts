@@ -34,6 +34,25 @@ beforeEach(async () => {
 });
 
 describe('initPalette', () => {
+  it('uses injected management client and document state', async () => {
+    const isolatedDocument = document.implementation.createHTMLDocument('isolated');
+    const isolatedGetPalette = vi.fn<() => Promise<PaletteTokenMap | null>>().mockResolvedValue(override);
+    const isolatedService = service.createPaletteService({
+      mgmtClient: {
+        getPalette: isolatedGetPalette,
+        putPalette: vi.fn(),
+        deletePalette: vi.fn(),
+      },
+      document: isolatedDocument,
+    });
+
+    await isolatedService.initPalette();
+
+    expect(isolatedGetPalette).toHaveBeenCalledTimes(1);
+    expect(isolatedDocument.getElementById('mndw-palette-override')).not.toBeNull();
+    expect(document.getElementById('mndw-palette-override')).toBeNull();
+  });
+
   it('applies a stored override with boosted selectors', async () => {
     getPalette.mockResolvedValue(override);
 

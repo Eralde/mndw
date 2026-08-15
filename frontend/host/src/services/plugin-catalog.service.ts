@@ -482,37 +482,7 @@ export function createPluginCatalogService(deps: PluginCatalogDeps = {}): Plugin
   };
 }
 
-const defaultService = createPluginCatalogService();
-export const pluginCatalogService = defaultService;
-
-export const createPluginCatalogCell = (source: PluginCatalogSource, locale: string): PluginCatalogCell =>
-  defaultService.createPluginCatalogCell(source, locale);
-export const registerPluginCatalogCell = (cell: PluginCatalogCell): void => {
-  defaultService.registerPluginCatalogCell(cell);
-};
-export const unregisterPluginCatalogCell = (cell: PluginCatalogCell): void => {
-  defaultService.unregisterPluginCatalogCell(cell);
-};
-export const clearPluginCatalogCells = (): void => {
-  defaultService.clearPluginCatalogCells();
-};
-export const loadInitialPluginCatalog = (
-  cell: PluginCatalogCell,
-  activeLocale: string,
-  timeoutMs?: number,
-): Promise<void> => defaultService.loadInitialPluginCatalog(cell, activeLocale, timeoutMs);
-export const preparePluginCatalogGeneration = (targetLocale: string): CatalogGeneration =>
-  defaultService.preparePluginCatalogGeneration(targetLocale);
-export const commitPluginCatalogGeneration = (
-  generation: CatalogGeneration,
-  beforeNotify: () => void,
-): void => {
-  defaultService.commitPluginCatalogGeneration(generation, beforeNotify);
-};
-export const discardPluginCatalogGeneration = (generation: CatalogGeneration): void => {
-  defaultService.discardPluginCatalogGeneration(generation);
-};
-export const getActivePluginCatalogGeneration = (): CatalogGeneration | undefined =>
-  defaultService.getActivePluginCatalogGeneration();
+/** Production catalog runtime; isolated consumers construct one with createPluginCatalogService. */
+export const pluginCatalogService = createPluginCatalogService();
 
 export const PLUGIN_CATALOG_TIMEOUT_MS = CATALOG_TIMEOUT_MS;

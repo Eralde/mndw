@@ -5,7 +5,7 @@ import {flushSync, mount, unmount} from 'svelte';
 const controllers = vi.hoisted(() => new Map<string, {frame: HTMLElement}>());
 
 vi.mock('./tile-controller.js', () => ({
-  ensureTileController: vi.fn((_pluginName: string, instanceId: string) => {
+  ensureTileController: vi.fn((_services: unknown, _registry: unknown, _pluginName: string, instanceId: string) => {
     const id = `widget-${instanceId}`;
 
     if (!controllers.has(id)) {
@@ -22,13 +22,19 @@ vi.mock('./tile-controller.js', () => ({
 
 import {ensureTileController} from './tile-controller.js';
 import MobileDashboard from './MobileDashboard.svelte';
+import {defaultHostServices} from '../host-services.js';
+import {createHostServicesContext} from '../host-services-context.js';
 
 function mountList(order: string[], onRemoveRequest = vi.fn()) {
   const target = document.createElement('div');
 
   document.body.appendChild(target);
 
-  const component = mount(MobileDashboard, {target, props: {order, onRemoveRequest}});
+  const component = mount(MobileDashboard, {
+    target,
+    props: {order, onRemoveRequest},
+    context: createHostServicesContext(defaultHostServices()),
+  });
 
   flushSync();
 
@@ -50,7 +56,13 @@ describe('MobileDashboard', () => {
     expect(wrappers).toHaveLength(2);
     expect(wrappers[0]?.querySelector('.mndw-grid-tile')?.getAttribute('data-tile')).toBe('widget-clock:1');
     expect(wrappers[1]?.querySelector('.mndw-grid-tile')?.getAttribute('data-tile')).toBe('widget-traffic:2');
-    expect(ensureTileController).toHaveBeenCalledWith('clock', 'clock:1', expect.any(Function));
+    expect(ensureTileController).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      'clock',
+      'clock:1',
+      expect.any(Function),
+    );
 
     void unmount(component);
   });

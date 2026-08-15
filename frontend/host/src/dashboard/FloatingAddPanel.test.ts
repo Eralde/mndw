@@ -9,6 +9,8 @@ vi.mock('../runtime/plugin-registry.js', () => ({
 import {type LoadedWidget, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
+import {defaultHostServices} from '../host-services.js';
+import {createHostServicesContext} from '../host-services-context.js';
 import FloatingAddPanel from './FloatingAddPanel.svelte';
 
 const emptyBackend = {routes: {}};
@@ -47,7 +49,11 @@ function mountPanel(open = true): PanelHandles {
 
   const onAddWidget = vi.fn();
   const onClose = vi.fn();
-  const component = mount(FloatingAddPanel, {target, props: {open, onAddWidget, onClose}});
+  const component = mount(FloatingAddPanel, {
+    target,
+    props: {open, onAddWidget, onClose},
+    context: createHostServicesContext(defaultHostServices()),
+  });
 
   flushSync();
 

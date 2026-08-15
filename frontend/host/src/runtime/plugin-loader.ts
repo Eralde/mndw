@@ -9,7 +9,7 @@ import {
   pluginCatalogService,
 } from '../services/plugin-catalog.service.js';
 import {checkPluginVersions, readPluginLock} from './plugin-lock.js';
-import {pluginRegistry} from './plugin-registry.js';
+import {type PluginRegistry, pluginRegistry} from './plugin-registry.js';
 import {decodeMgmtList} from './mgmt-list-schema.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
@@ -25,6 +25,8 @@ export interface LoaderDeps {
   loadStylesheet?: (href: string, pluginName: string) => Promise<void>;
   checkVersions?: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
   catalogService?: PluginCatalogService;
+  registry?: Pick<PluginRegistry, 'register' | 'clear'>;
+  getLocale?: () => string;
 }
 
 const loadedPluginStylesheets = new Set<string>();
@@ -135,6 +137,8 @@ interface ResolvedLoaderDeps {
   loadStylesheet: (href: string, pluginName: string) => Promise<void>;
   checkVersions: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
   catalogService: PluginCatalogService;
+  registry: Pick<PluginRegistry, 'register' | 'clear'>;
+  getLocale: () => string;
 }
 
 async function loadOne(
@@ -156,13 +160,15 @@ async function loadOne(
       entry.catalogBaseUrl ?? dir,
       entry.i18n,
     );
-    const catalog = source === undefined ? undefined : deps.catalogService.createPluginCatalogCell(source, getLocale());
+    const catalog = source === undefined
+      ? undefined
+      : deps.catalogService.createPluginCatalogCell(source, deps.getLocale());
 
     if (catalog !== undefined) {
-      await deps.catalogService.loadInitialPluginCatalog(catalog, getLocale());
+      await deps.catalogService.loadInitialPluginCatalog(catalog, deps.getLocale());
     }
 
-    pluginRegistry.register({entry, module: pluginModule, ...(catalog === undefined ? {} : {catalog})});
+    deps.registry.register({entry, module: pluginModule, ...(catalog === undefined ? {} : {catalog})});
     console.log(`[mndw] Loaded plugin: ${entry.name} (${entry.source})`);
 
     void Promise.resolve()
@@ -191,9 +197,11 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
     loadStylesheet: deps.loadStylesheet ?? ensurePluginStylesheet,
     checkVersions: deps.checkVersions ?? defaultCheckVersions,
     catalogService: deps.catalogService ?? pluginCatalogService,
+    registry: deps.registry ?? pluginRegistry,
+    getLocale: deps.getLocale ?? getLocale,
   };
 
-  pluginRegistry.clear();
+  resolved.registry.clear();
   replaceDepsStatuses([]);
   appState.pluginLoadError = null;
   clearPluginVersionWarnings();

@@ -9,13 +9,14 @@ vi.mock('../runtime/sandbox-virtual.js', () => ({
 }));
 vi.mock('../router/create-app-router.js', () => ({createAppRouter: vi.fn()}));
 
-import {loadPlugins} from '../runtime/plugin-loader.js';
+import {type LoaderDeps, loadPlugins} from '../runtime/plugin-loader.js';
 import {loadSandboxPlugin} from '../runtime/sandbox-loader.js';
 import {sandboxVirtualImports, setupSandboxHmr} from '../runtime/sandbox-virtual.js';
 import {createAppRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {fetchHostInfo} from './host-info.service.js';
 import {initAuthenticated} from './init-auth.js';
+import {createHostServices} from '../host-services.js';
 
 const hostInfo = {
   deviceName: 'Keenetic',
@@ -47,13 +48,38 @@ describe('initAuthenticated', () => {
     expect(setupSandboxHmr).not.toHaveBeenCalled();
   });
 
+  it('loads and routes through the injected host service graph', async () => {
+    const services = createHostServices();
+    const loaded: LoaderDeps[] = [];
+    let routedRegistry: unknown;
+
+    await initAuthenticated(services, {
+      loadPlugins: (deps) => {
+        loaded.push(deps);
+
+        return Promise.resolve();
+      },
+      createRouter: (registry) => {
+        routedRegistry = registry;
+      },
+    });
+
+    expect(loaded[0]?.registry).toBe(services.registry);
+    expect(loaded[0]?.catalogService).toBe(services.catalog);
+    expect(loaded[0]?.getLocale?.()).toBe(services.locale.getLocale());
+    expect(routedRegistry).toBe(services.registry);
+  });
+
   it('loads the sandbox plugin and wires HMR instead of the daemon list in sandbox mode', async () => {
     vi.stubGlobal('__MNDW_SANDBOX__', true);
     vi.mocked(loadSandboxPlugin).mockResolvedValue(undefined);
 
     await initAuthenticated();
 
-    expect(loadSandboxPlugin).toHaveBeenCalledWith(sandboxVirtualImports);
+    expect(loadSandboxPlugin).toHaveBeenCalledWith(expect.objectContaining({
+      ...sandboxVirtualImports,
+      registry: expect.anything(),
+    }));
     expect(setupSandboxHmr).toHaveBeenCalledTimes(1);
     expect(loadPlugins).not.toHaveBeenCalled();
     expect(createAppRouter).toHaveBeenCalledTimes(1);

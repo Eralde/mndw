@@ -1,6 +1,8 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {type LoadedPlugin, PluginRegistry} from './plugin-registry.js';
 import {type SandboxLoaderDeps, loadSandboxPlugin, manifestToListEntry, reloadSandboxPlugin} from './sandbox-loader.js';
+import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
+import {createHostServices} from '../host-services.js';
 
 const widgetManifest = {
   manifestVersion: 3,
@@ -101,6 +103,31 @@ describe('manifestToListEntry', () => {
 });
 
 describe('loadSandboxPlugin', () => {
+  it('uses the injected catalog service and locale', async () => {
+    const registry = new PluginRegistry();
+    const catalogService = createPluginCatalogService({
+      fetchCatalog: () => Promise.resolve({title: 'Hello'}),
+    });
+    const createCell = vi.spyOn(catalogService, 'createPluginCatalogCell');
+    const getLocale = vi.fn(() => 'ru');
+
+    await loadSandboxPlugin(deps({
+      registry,
+      catalogService,
+      getLocale,
+      importManifestModule: () =>
+        Promise.resolve({
+          default: {
+            ...widgetManifest,
+            i18n: {defaultLocale: 'en', locales: {en: 'en.json', ru: 'ru.json'}},
+          },
+        }),
+    }));
+
+    expect(createCell).toHaveBeenCalledWith(expect.anything(), 'ru');
+    expect(getLocale).toHaveBeenCalled();
+  });
+
   it('validates and registers the sandbox plugin from the virtual modules', async () => {
     const registry = new PluginRegistry();
 
@@ -146,16 +173,27 @@ describe('reloadSandboxPlugin', () => {
 
   it('replaces the registry module and remounts widgets on a compatible reload', async () => {
     const registry = new PluginRegistry();
+    const services = createHostServices();
 
     seed(registry);
 
     const remountWidgets = vi.fn(() => Promise.resolve(true));
 
-    const result = await reloadSandboxPlugin(deps({registry: registry as never, remountWidgets}));
+    const result = await reloadSandboxPlugin(deps({
+      registry: registry as never,
+      remountWidgets,
+      pluginContextServices: {locale: services.locale, palette: services.palette},
+    }));
 
     expect(result).toBe('reloaded');
     expect(registry.get('sandbox-widget')?.module).toBe(sandboxModule);
-    expect(remountWidgets).toHaveBeenCalledWith('sandbox-widget', expect.anything(), expect.anything());
+    expect(remountWidgets).toHaveBeenCalledWith(
+      'sandbox-widget',
+      expect.anything(),
+      expect.anything(),
+      registry,
+      {locale: services.locale, palette: services.palette},
+    );
   });
 
   it('remounts the page for a page-type sandbox plugin', async () => {

@@ -224,4 +224,8 @@ export class PersistentRciSessionService {
   }
 }
 
-export const persistentRciSessionService = new PersistentRciSessionService();
+export function createPersistentRciSessionService(): PersistentRciSessionService {
+  return new PersistentRciSessionService();
+}
+
+export const persistentRciSessionService = createPersistentRciSessionService();

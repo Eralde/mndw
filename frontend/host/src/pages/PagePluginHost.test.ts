@@ -27,6 +27,8 @@ import {appState} from '../state/app.svelte.js';
 import {createAppRouter} from '../router/create-app-router.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import PagePluginHost from './PagePluginHost.svelte';
+import {defaultHostServices} from '../host-services.js';
+import {createHostServicesContext} from '../host-services-context.js';
 
 const emptyBackend = {routes: {}};
 
@@ -70,7 +72,10 @@ async function setup(): Promise<{component: ReturnType<typeof mount>; target: HT
 
   document.body.appendChild(target);
 
-  const component = mount(PagePluginHost, {target});
+  const component = mount(PagePluginHost, {
+    target,
+    context: createHostServicesContext(defaultHostServices()),
+  });
 
   flushSync();
 

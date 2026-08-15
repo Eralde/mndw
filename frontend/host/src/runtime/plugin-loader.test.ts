@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {loadPlugins} from './plugin-loader.js';
-import {pluginRegistry} from './plugin-registry.js';
+import {PluginRegistry, pluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, getPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
 import {appState} from '../state/app.svelte.js';
@@ -67,6 +67,20 @@ afterEach(() => {
 
 // eslint-disable-next-line max-lines-per-function -- loader behavior cases stay together.
 describe('loadPlugins', () => {
+  it('registers into the injected registry using the injected locale', async () => {
+    const registry = new PluginRegistry();
+    const getLocale = vi.fn(() => 'ru');
+    const h = harness([widget('localized', {
+      i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'}},
+    })]);
+
+    await loadPlugins({...h, registry, getLocale});
+
+    expect(registry.get('localized')).toBeDefined();
+    expect(pluginRegistry.get('localized')).toBeUndefined();
+    expect(getLocale).toHaveBeenCalled();
+  });
+
   it('imports and registers enabled plugins from the list', async () => {
     const h = harness([widget('alpha'), page('beta', '/beta')]);
 

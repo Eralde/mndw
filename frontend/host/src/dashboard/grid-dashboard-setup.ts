@@ -1,8 +1,9 @@
 import type {GridStack} from 'gridstack';
-import {pluginRegistry} from '../runtime/plugin-registry.js';
 import {ensureTileController, getTileController} from './tile-controller.js';
 import {getNextInstanceId} from './widget-counter.js';
 import {getWidgetSize} from './widget-size.js';
+import type {HostServices} from '../host-services.js';
+import type {PluginRegistry} from '../runtime/plugin-registry.js';
 
 /** A restored tile's persisted geometry plus its parsed instance id. */
 export interface RestoredTilePosition {
@@ -25,19 +26,21 @@ export interface RestoredTilePosition {
  * live plugin instance.
  */
 export function addWidgetTile(
+  pluginContextServices: Pick<HostServices, 'locale' | 'palette'>,
+  registry: Pick<PluginRegistry, 'get'>,
   grid: GridStack,
   pluginName: string,
   onRemoveRequest: (tileId: string) => void,
   position?: RestoredTilePosition,
 ): string | null {
-  const plugin = pluginRegistry.get(pluginName);
+  const plugin = registry.get(pluginName);
 
   if (plugin?.entry.type !== 'widget') {
     return null;
   }
 
   const instanceId = position?.instanceId ?? getNextInstanceId(pluginName);
-  const controller = ensureTileController(pluginName, instanceId, onRemoveRequest);
+  const controller = ensureTileController(pluginContextServices, registry, pluginName, instanceId, onRemoveRequest);
 
   if (controller === null) {
     return null;

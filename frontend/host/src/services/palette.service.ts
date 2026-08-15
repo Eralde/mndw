@@ -1,139 +1,162 @@
 import {MNDW_TOKENS, type PaletteTokenMap, paletteToCss, validateImportedPalette} from '@mndw/sdk';
-import {mgmtClient} from './mgmt-client.js';
+import {type MgmtClient, mgmtClient} from './mgmt-client.js';
 
 const OVERRIDE_ELEMENT_ID = 'mndw-palette-override';
 const OVERRIDE_SELECTOR = ':root:root';
 
 type PaletteListener = (tokens: PaletteTokenMap) => void;
 
-let applied: PaletteTokenMap | null = null;
-const listeners = new Set<PaletteListener>();
-
-function element(): HTMLStyleElement {
-  const existing = document.getElementById(OVERRIDE_ELEMENT_ID);
+function element(hostDocument: Document): HTMLStyleElement {
+  const existing = hostDocument.getElementById(OVERRIDE_ELEMENT_ID);
 
   if (existing instanceof HTMLStyleElement) {
     return existing;
   }
 
-  const created = document.createElement('style');
+  const created = hostDocument.createElement('style');
 
   created.id = OVERRIDE_ELEMENT_ID;
-  document.head.appendChild(created);
+  hostDocument.head.appendChild(created);
 
   return created;
 }
 
-function applyOverride(map: PaletteTokenMap | null): void {
+function applyOverride(hostDocument: Document, map: PaletteTokenMap | null): void {
   if (map === null) {
-    document.getElementById(OVERRIDE_ELEMENT_ID)?.remove();
+    hostDocument.getElementById(OVERRIDE_ELEMENT_ID)?.remove();
 
     return;
   }
 
-  element().textContent = paletteToCss(map, {selector: OVERRIDE_SELECTOR});
+  element(hostDocument).textContent = paletteToCss(map, {selector: OVERRIDE_SELECTOR});
 }
 
 function clonePalette(palette: PaletteTokenMap): PaletteTokenMap {
-  return {
+  return Object.freeze({
     dark: {...palette.dark},
     light: {...palette.light},
-  };
+  });
 }
 
 function paletteChanged(previous: PaletteTokenMap | null, next: PaletteTokenMap | null): boolean {
   return JSON.stringify(previous) !== JSON.stringify(next);
 }
 
-function notify(): void {
-  const tokens = getTokens();
-
-  for (const listener of listeners) {
-    listener(clonePalette(tokens));
-  }
+export interface PaletteServiceDeps {
+  mgmtClient: Pick<MgmtClient, 'getPalette' | 'putPalette' | 'deletePalette'>;
+  document?: Document;
 }
 
-export function getApplied(): PaletteTokenMap | null {
-  return applied === null ? null : clonePalette(applied);
+export interface PaletteService {
+  getApplied(): PaletteTokenMap | null;
+  getExportable(): PaletteTokenMap;
+  getTokens(): PaletteTokenMap;
+  refreshPalette(): Promise<void>;
+  initPalette(): Promise<void>;
+  previewOverride(palette: PaletteTokenMap): void;
+  discardPreview(): void;
+  commitOverride(palette: PaletteTokenMap): Promise<void>;
+  resetToDefault(): Promise<void>;
+  subscribePalette(callback: PaletteListener): () => void;
 }
 
-export function getExportable(): PaletteTokenMap {
-  return clonePalette(applied ?? MNDW_TOKENS);
-}
+export function createPaletteService(deps: PaletteServiceDeps): PaletteService {
+  const hostDocument = deps.document ?? globalThis.document;
+  let applied: PaletteTokenMap | null = null;
+  const listeners = new Set<PaletteListener>();
 
-export function getTokens(): PaletteTokenMap {
-  return getExportable();
-}
+  const getExportable = (): PaletteTokenMap => clonePalette(applied ?? MNDW_TOKENS);
 
-async function loadPalette(notifyListeners: boolean): Promise<void> {
-  const stored = await mgmtClient.getPalette();
-  let next: PaletteTokenMap | null = null;
+  const notify = (): void => {
+    const tokens = getExportable();
 
-  if (stored !== null) {
-    const validation = validateImportedPalette(stored);
+    for (const listener of listeners) {
+      listener(clonePalette(tokens));
+    }
+  };
 
-    if (validation.palette === null) {
-      throw new Error('The device returned an invalid palette.');
+  const loadPalette = async (notifyListeners: boolean): Promise<void> => {
+    const stored = await deps.mgmtClient.getPalette();
+    let next: PaletteTokenMap | null = null;
+
+    if (stored !== null) {
+      const validation = validateImportedPalette(stored);
+
+      if (validation.palette === null) {
+        throw new Error('The device returned an invalid palette.');
+      }
+
+      next = validation.palette;
     }
 
-    next = validation.palette;
-  }
+    const changed = paletteChanged(applied, next);
 
-  const changed = paletteChanged(applied, next);
+    applied = next;
+    applyOverride(hostDocument, next);
 
-  applied = next;
-  applyOverride(next);
+    if (notifyListeners && changed) {
+      notify();
+    }
+  };
 
-  if (notifyListeners && changed) {
-    notify();
-  }
-}
+  return {
+    getApplied: () => applied === null ? null : clonePalette(applied),
+    getExportable,
+    getTokens: getExportable,
+    refreshPalette: async (): Promise<void> => {
+      await loadPalette(true);
+    },
+    initPalette: async (): Promise<void> => {
+      try {
+        await loadPalette(false);
+      } catch (error) {
+        console.warn('[mndw] Could not load the device palette; using defaults.', error);
+      }
+    },
+    previewOverride: (palette): void => {
+      const snapshot = clonePalette(palette);
 
-export async function refreshPalette(): Promise<void> {
-  await loadPalette(true);
-}
+      applyOverride(hostDocument, snapshot);
 
-export async function initPalette(): Promise<void> {
-  try {
-    await loadPalette(false);
-  } catch (error) {
-    console.warn('[mndw] Could not load the device palette; using defaults.', error);
-  }
-}
+      for (const listener of listeners) {
+        listener(clonePalette(snapshot));
+      }
+    },
+    discardPreview: (): void => {
+      applyOverride(hostDocument, applied);
+      notify();
+    },
+    commitOverride: async (palette): Promise<void> => {
+      await deps.mgmtClient.putPalette(palette);
+      applied = clonePalette(palette);
+      applyOverride(hostDocument, applied);
+      notify();
+    },
+    resetToDefault: async (): Promise<void> => {
+      await deps.mgmtClient.deletePalette();
+      applied = null;
+      applyOverride(hostDocument, null);
+      notify();
+    },
+    subscribePalette: (callback): () => void => {
+      listeners.add(callback);
 
-export function previewOverride(palette: PaletteTokenMap): void {
-  const snapshot = clonePalette(palette);
-
-  applyOverride(snapshot);
-
-  for (const listener of listeners) {
-    listener(clonePalette(snapshot));
-  }
-}
-
-export function discardPreview(): void {
-  applyOverride(applied);
-  notify();
-}
-
-export async function commitOverride(palette: PaletteTokenMap): Promise<void> {
-  await mgmtClient.putPalette(palette);
-  applied = clonePalette(palette);
-  applyOverride(applied);
-  notify();
-}
-
-export async function resetToDefault(): Promise<void> {
-  await mgmtClient.deletePalette();
-  applied = null;
-  applyOverride(null);
-  notify();
-}
-
-export function subscribePalette(callback: PaletteListener): () => void {
-  listeners.add(callback);
-
-  return () => {
-    listeners.delete(callback);
+      return () => {
+        listeners.delete(callback);
+      };
+    },
   };
 }
+
+export const paletteService = createPaletteService({mgmtClient});
+
+export const getApplied = (): PaletteTokenMap | null => paletteService.getApplied();
+export const getExportable = (): PaletteTokenMap => paletteService.getExportable();
+export const getTokens = (): PaletteTokenMap => paletteService.getTokens();
+export const refreshPalette = (): Promise<void> => paletteService.refreshPalette();
+export const initPalette = (): Promise<void> => paletteService.initPalette();
+export const previewOverride = (palette: PaletteTokenMap): void => paletteService.previewOverride(palette);
+export const discardPreview = (): void => paletteService.discardPreview();
+export const commitOverride = (palette: PaletteTokenMap): Promise<void> => paletteService.commitOverride(palette);
+export const resetToDefault = (): Promise<void> => paletteService.resetToDefault();
+export const subscribePalette = (callback: PaletteListener): () => void => paletteService.subscribePalette(callback);

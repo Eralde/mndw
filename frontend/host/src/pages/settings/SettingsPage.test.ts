@@ -1,6 +1,6 @@
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {defineMndwUi} from '@mndw/ui';
-import {mount, unmount} from 'svelte';
+import {mount as mountComponent, unmount} from 'svelte';
 import {MNDW_TOKENS} from '@mndw/sdk';
 
 const {
@@ -56,6 +56,14 @@ vi.mock('../../services/palette.service.js', () => ({
   resetToDefault: vi.fn().mockResolvedValue(undefined),
   getExportable: vi.fn(() => MNDW_TOKENS),
   getApplied: vi.fn(() => null),
+  paletteService: {
+    refreshPalette: vi.fn().mockResolvedValue(undefined),
+    previewOverride: vi.fn(),
+    discardPreview: vi.fn(),
+    commitOverride: vi.fn().mockResolvedValue(undefined),
+    resetToDefault: vi.fn().mockResolvedValue(undefined),
+    getExportable: vi.fn(() => MNDW_TOKENS),
+  },
 }));
 vi.mock('../../services/persistent-rci-session.service.js', () => ({
   persistentRciSessionService: {
@@ -72,6 +80,11 @@ vi.mock('../../services/diagnostics.service.js', () => ({downloadDiagnostics}));
 
 import SettingsPage from './SettingsPage.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
+import {defaultHostServices} from '../../host-services.js';
+import {createHostServicesContext} from '../../host-services-context.js';
+
+const mount = (component: typeof SettingsPage, options: {target: HTMLElement}) =>
+  mountComponent(component, {...options, context: createHostServicesContext(defaultHostServices())});
 
 beforeAll(() => {
   defineMndwUi();

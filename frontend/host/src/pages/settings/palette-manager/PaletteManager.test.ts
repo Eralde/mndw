@@ -18,9 +18,19 @@ vi.mock('../../../services/palette.service.js', () => ({
   resetToDefault: (): Promise<void> => resetToDefault(),
   getExportable: (): PaletteTokenMap => getExportable(),
   getApplied: () => null,
+  paletteService: {
+    refreshPalette: (): Promise<void> => refreshPalette(),
+    previewOverride: (palette: PaletteTokenMap): void => previewOverride(palette),
+    discardPreview: (): void => discardPreview(),
+    commitOverride: (palette: PaletteTokenMap): Promise<void> => commitOverride(palette),
+    resetToDefault: (): Promise<void> => resetToDefault(),
+    getExportable: (): PaletteTokenMap => getExportable(),
+  },
 }));
 
 import PaletteManager from './PaletteManager.svelte';
+import {defaultHostServices} from '../../../host-services.js';
+import {createHostServicesContext} from '../../../host-services-context.js';
 
 const valid = JSON.parse(JSON.stringify(MNDW_TOKENS)) as PaletteTokenMap;
 
@@ -30,7 +40,11 @@ let component: ReturnType<typeof mount>;
 function render(): void {
   target = document.createElement('div');
   document.body.appendChild(target);
-  component = mount(PaletteManager, {target, props: {}});
+  component = mount(PaletteManager, {
+    target,
+    props: {},
+    context: createHostServicesContext(defaultHostServices()),
+  });
   flushSync();
 }
 

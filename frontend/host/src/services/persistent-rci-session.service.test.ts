@@ -6,10 +6,18 @@ const {fetchWithDeadline} = vi.hoisted(() => ({
 
 vi.mock('./pristine-fetch.js', () => ({fetchWithDeadline}));
 
-import {PersistentRciSessionError, PersistentRciSessionService} from './persistent-rci-session.service.js';
+import {
+  PersistentRciSessionError,
+  PersistentRciSessionService,
+  createPersistentRciSessionService,
+} from './persistent-rci-session.service.js';
 
 describe('PersistentRciSessionService', () => {
   beforeEach(() => fetchWithDeadline.mockReset());
+
+  it('creates independent service instances', () => {
+    expect(createPersistentRciSessionService()).not.toBe(createPersistentRciSessionService());
+  });
 
   it('loads capability with CSRF header', async () => {
     fetchWithDeadline.mockResolvedValue(

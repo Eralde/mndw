@@ -1,12 +1,14 @@
 <script lang="ts">
-import {pluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
 import {mobileMediaQuery} from './breakpoint.js';
 import {hostT} from '../services/host-i18n.svelte.js';
+import {getHostServices} from '../host-services-context.js';
+
+const registry = getHostServices().registry;
 
 // The registry is populated before authenticated startup builds this shell, so a plain
 // copy-and-sort (label, then name) matches the router/picker ordering without a store.
-const pagePlugins = pluginRegistry
+const pagePlugins = registry
   .getPages()
   .slice()
   .sort((a, b) =>

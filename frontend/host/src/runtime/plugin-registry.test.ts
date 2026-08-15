@@ -1,5 +1,6 @@
 import {beforeEach, describe, expect, it} from 'vitest';
 import {type LoadedPlugin, PluginRegistry} from './plugin-registry.js';
+import type {PluginCatalogCell} from '../services/plugin-catalog.service.js';
 import type {PluginBackendDescriptor} from './plugin-types.js';
 
 const emptyBackend: PluginBackendDescriptor = {
@@ -51,6 +52,49 @@ beforeEach(() => {
 });
 
 describe('PluginRegistry', () => {
+  it('register() forwards catalog cells to the injected collaborator', () => {
+    const registered: PluginCatalogCell[] = [];
+    const catalog = {
+      registerPluginCatalogCell: (cell: PluginCatalogCell): void => {
+        registered.push(cell);
+      },
+      unregisterPluginCatalogCell: (): void => {},
+      clearPluginCatalogCells: (): void => {},
+    };
+    const injected = new PluginRegistry({catalog});
+    const cell = {} as PluginCatalogCell;
+
+    injected.register({...widgetPlugin('catalog'), catalog: cell});
+
+    expect(registered).toEqual([cell]);
+  });
+
+  it('clear() uses the injected catalog collaborator', () => {
+    const unregistered: PluginCatalogCell[] = [];
+    let cleared = 0;
+    const catalog = {
+      registerPluginCatalogCell: (): void => {},
+      unregisterPluginCatalogCell: (cell: PluginCatalogCell): void => {
+        unregistered.push(cell);
+      },
+      clearPluginCatalogCells: (): void => {
+        cleared += 1;
+      },
+    };
+    const injected = new PluginRegistry({catalog});
+    const cell = {} as PluginCatalogCell;
+
+    injected.register({...widgetPlugin('catalog'), catalog: cell});
+    injected.clear();
+
+    expect(unregistered).toEqual([cell]);
+    expect(cleared).toBe(1);
+  });
+
+  it('new PluginRegistry() remains default-constructible', () => {
+    expect(() => new PluginRegistry()).not.toThrow();
+  });
+
   it('register() adds a plugin to the registry', () => {
     const plugin = widgetPlugin('my-plugin');
 

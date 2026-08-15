@@ -2,16 +2,15 @@
 import PaletteManager from './palette-manager/PaletteManager.svelte';
 import type {MndwSelectChangeDetail} from '@mndw/ui';
 import {toggleTheme} from '../../services/theme.service.js';
-import {getAvailableLocales, setLocale} from '../../services/locale.service.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
+import {getHostServices} from '../../host-services-context.js';
 import {onDestroy, onMount} from 'svelte';
 import {
   type ControllerTestResult,
   type PersistentRciCapability,
   PersistentRciSessionError,
   type ProvisionReason,
-  persistentRciSessionService,
 } from '../../services/persistent-rci-session.service.js';
 
 interface PermissionState {
@@ -24,6 +23,9 @@ interface Props {
 }
 
 let {onPermissionStateChange}: Props = $props();
+const services = getHostServices();
+const locale = services.locale;
+const persistentRci = services.persistentRci;
 let persistentCapability = $state<PersistentRciCapability | null>(null);
 let persistentProbeAvailable = $state(false);
 let controllerTokenPlaceholder = $derived.by(() => {
@@ -64,14 +66,14 @@ async function refreshPersistentCapability(): Promise<void> {
   persistentError = '';
   persistentProbeAvailable = false;
   try {
-    if (!await persistentRciSessionService.probeControllerTokenAuth()) {
+    if (!await persistentRci.probeControllerTokenAuth()) {
       persistentCapability = null;
       persistentEnabled = false;
       return;
     }
 
     persistentProbeAvailable = true;
-    persistentCapability = await persistentRciSessionService.getCapability();
+    persistentCapability = await persistentRci.getCapability();
     persistentEnabled = persistentCapability.controller.support === 'supported'
       || persistentCapability.controller.support === 'invalid';
   } catch {
@@ -126,7 +128,7 @@ async function testController(): Promise<void> {
   persistentError = '';
   controllerResult = null;
   try {
-    controllerResult = await persistentRciSessionService.testController(
+    controllerResult = await persistentRci.testController(
       controllerToken,
     );
   } catch (error) {
@@ -141,7 +143,7 @@ async function saveController(): Promise<void> {
   persistentError = '';
   controllerResult = null;
   try {
-    controllerResult = await persistentRciSessionService.saveController(
+    controllerResult = await persistentRci.saveController(
       controllerToken,
     );
     controllerToken = '';
@@ -158,7 +160,7 @@ async function clearController(): Promise<void> {
   persistentActionLoading = true;
   persistentError = '';
   try {
-    await persistentRciSessionService.clearController();
+    await persistentRci.clearController();
     persistentEnabled = false;
     controllerToken = '';
     controllerResult = null;
@@ -175,7 +177,7 @@ async function provisionExtenders(): Promise<void> {
   persistentError = '';
   provisioningResult = '';
   try {
-    const result = await persistentRciSessionService.provisionExtenders({
+    const result = await persistentRci.provisionExtenders({
       username: meshUsername,
       password: meshPassword,
     });
@@ -222,14 +224,14 @@ function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
     return;
   }
 
-  void setLocale(event.detail.value).catch(() => {});
+  void locale.setLocale(event.detail.value).catch(() => {});
 }
 
 async function clearExtenders(): Promise<void> {
   persistentActionLoading = true;
   persistentError = '';
   try {
-    await persistentRciSessionService.clearExtenders();
+    await persistentRci.clearExtenders();
     await refreshPersistentCapability();
   } catch (error) {
     persistentError = persistentErrorMessage(error);
@@ -271,7 +273,7 @@ async function clearExtenders(): Promise<void> {
         <mndw-option value="ru">{
           hostT('settings.language.russian')
         }</mndw-option>
-        {#if getAvailableLocales().includes('en-XA')}
+        {#if locale.getAvailableLocales().includes('en-XA')}
           <mndw-option value="en-XA">Pseudo (en-XA)</mndw-option>
         {/if}
       </mndw-select>

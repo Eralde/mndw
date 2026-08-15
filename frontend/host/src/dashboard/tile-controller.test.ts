@@ -15,7 +15,14 @@ vi.mock('../runtime/plugin-context.js', () => ({
 }));
 
 vi.mock('./widget-context.js', () => ({
-  createWidgetContext: vi.fn((_name: string, instanceId: string, _hostInfo?: unknown, setTileTitle?: unknown) => ({
+  createWidgetContext: vi.fn((
+    _services: unknown,
+    _registry: unknown,
+    _name: string,
+    instanceId: string,
+    _hostInfo?: unknown,
+    setTileTitle?: unknown,
+  ) => ({
     context: {instanceId, setTileTitle},
     dispose: vi.fn(),
   })),
@@ -25,6 +32,8 @@ vi.mock('./widget-mount.js', () => ({mountWidgetTile}));
 
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
+import {localeService} from '../services/locale.service.js';
+import {paletteService} from '../services/palette.service.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {
@@ -35,6 +44,8 @@ import {
   remountWidgetTiles,
   removeTileController,
 } from './tile-controller.js';
+
+const pluginContextServices = {locale: localeService, palette: paletteService};
 
 const emptyBackend = {routes: {}};
 
@@ -125,7 +136,7 @@ describe('tile controller', () => {
   it('builds a frame with title, close control, and body, and mounts a ready plugin', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
 
-    const controller = ensureTileController('clock', 'clock:1', vi.fn());
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'clock', 'clock:1', vi.fn());
 
     expect(controller?.id).toBe('widget-clock:1');
     expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('clock');
@@ -136,7 +147,7 @@ describe('tile controller', () => {
   it('updates the tile title and close aria-label via setTileTitle', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
 
-    const controller = ensureTileController('clock', 'clock:1', vi.fn());
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'clock', 'clock:1', vi.fn());
 
     controller?.setTileTitle('eth0');
 
@@ -152,7 +163,7 @@ describe('tile controller', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', noop));
     replaceDepsStatuses([{name: 'traffic', depsStatus: 'installing'}]);
 
-    const controller = ensureTileController('traffic', 'traffic:1', vi.fn());
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1', vi.fn());
 
     expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('traffic');
     expect(controller?.body.textContent).toBe('Preparing… installing dependencies');
@@ -162,8 +173,8 @@ describe('tile controller', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
 
     const onRemove = vi.fn();
-    const first = ensureTileController('clock', 'clock:1', onRemove);
-    const second = ensureTileController('clock', 'clock:1', vi.fn());
+    const first = ensureTileController(pluginContextServices, pluginRegistry, 'clock', 'clock:1', onRemove);
+    const second = ensureTileController(pluginContextServices, pluginRegistry, 'clock', 'clock:1', vi.fn());
 
     expect(second).toBe(first);
     expect(mountWidgetTile).toHaveBeenCalledTimes(1);
@@ -171,10 +182,10 @@ describe('tile controller', () => {
 
   it('returns null for unknown plugins and non-widget entries', () => {
     vi.mocked(pluginRegistry).get.mockReturnValueOnce(undefined);
-    expect(ensureTileController('missing', 'missing:1', vi.fn())).toBeNull();
+    expect(ensureTileController(pluginContextServices, pluginRegistry, 'missing', 'missing:1', vi.fn())).toBeNull();
 
     vi.mocked(pluginRegistry).get.mockReturnValueOnce(pagePlugin('settings'));
-    expect(ensureTileController('settings', 'settings:1', vi.fn())).toBeNull();
+    expect(ensureTileController(pluginContextServices, pluginRegistry, 'settings', 'settings:1', vi.fn())).toBeNull();
   });
 
   it('renders the installing notice and hydrates once deps become ready', () => {
@@ -208,13 +219,13 @@ describe('tile controller', () => {
     });
     replaceDepsStatuses([{name: 'traffic', depsStatus: 'installing'}]);
 
-    const controller = ensureTileController('traffic', 'traffic:1', vi.fn());
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1', vi.fn());
 
     expect(controller?.body.textContent).toBe('Preparing… installing dependencies');
     expect(createInstance).not.toHaveBeenCalled();
 
     replaceDepsStatuses([{name: 'traffic', depsStatus: 'ready'}]);
-    hydratePendingTiles();
+    hydratePendingTiles(pluginContextServices, pluginRegistry);
 
     expect(createInstance).toHaveBeenCalledTimes(1);
     expect(controller?.pending).toBe(false);
@@ -234,10 +245,10 @@ describe('tile controller', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', createInstance));
     replaceDepsStatuses([{name: 'traffic', depsStatus: 'installing'}]);
 
-    const controller = ensureTileController('traffic', 'traffic:1', vi.fn());
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1', vi.fn());
 
     replaceDepsStatuses([{name: 'traffic', depsStatus: 'failed'}]);
-    hydratePendingTiles();
+    hydratePendingTiles(pluginContextServices, pluginRegistry);
 
     expect(controller?.body.textContent).toBe('Dependency install failed');
     expect(createInstance).not.toHaveBeenCalled();
@@ -247,7 +258,7 @@ describe('tile controller', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
 
     const onRemove = vi.fn();
-    const controller = ensureTileController('clock', 'clock:1', onRemove);
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'clock', 'clock:1', onRemove);
 
     controller?.frame.querySelector<HTMLButtonElement>('.mndw-grid-tile__close')?.click();
 
@@ -257,7 +268,7 @@ describe('tile controller', () => {
   it('removeTileController disposes with storage clearing and detaches the frame', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', noop));
 
-    const controller = ensureTileController('traffic', 'traffic:1', vi.fn());
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1', vi.fn());
 
     document.body.appendChild(controller?.frame ?? document.createElement('div'));
     removeTileController('widget-traffic:1');
@@ -274,8 +285,8 @@ describe('tile controller', () => {
   it('destroyAllTiles disposes every controller with host-navigation options', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', noop));
 
-    const first = ensureTileController('traffic', 'traffic:1', vi.fn());
-    const second = ensureTileController('traffic', 'traffic:2', vi.fn());
+    const first = ensureTileController(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1', vi.fn());
+    const second = ensureTileController(pluginContextServices, pluginRegistry, 'traffic', 'traffic:2', vi.fn());
 
     destroyAllTiles('host-navigation');
 
@@ -294,9 +305,11 @@ describe('tile controller', () => {
   it('remountWidgetTiles preserves controllers on success and rolls back on failure', async () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(labelledWidget('traffic', 'before'));
 
-    const controller = ensureTileController('traffic', 'traffic:1', vi.fn());
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1', vi.fn());
 
     const ok = await remountWidgetTiles(
+      pluginContextServices,
+      pluginRegistry,
       'traffic',
       labelledWidget('traffic', 'after'),
       labelledWidget('traffic', 'before'),
@@ -309,7 +322,13 @@ describe('tile controller', () => {
     const failing = widgetPlugin('traffic', () => {
       throw new Error('boom');
     });
-    const rollback = await remountWidgetTiles('traffic', failing, labelledWidget('traffic', 'restored'));
+    const rollback = await remountWidgetTiles(
+      pluginContextServices,
+      pluginRegistry,
+      'traffic',
+      failing,
+      labelledWidget('traffic', 'restored'),
+    );
 
     expect(rollback).toBe(false);
     expect(controller?.body.textContent).toBe('restored');

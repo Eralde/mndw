@@ -4,7 +4,7 @@ import enCatalog from '../i18n/en.json';
 import ruCatalog from '../i18n/ru.json';
 import {STORAGE_PREFIX, SUPPORTED_LOCALES} from '../constants.js';
 import {type CatalogNode, pseudoLocalizeCatalog} from './pseudo-locale.js';
-import {commitPluginCatalogGeneration, preparePluginCatalogGeneration} from './plugin-catalog.service.js';
+import {type PluginCatalogService, pluginCatalogService} from './plugin-catalog.service.js';
 
 type HostCatalog = Record<string, CatalogNode>;
 type LocaleListener = (locale: string) => void;
@@ -15,11 +15,6 @@ const HOST_CATALOGS: Record<string, HostCatalog> = {
   ru: ruCatalog as HostCatalog,
 };
 const PSEUDO_HOST_CATALOG = pseudoLocalizeCatalog(enCatalog);
-
-let committedLocale: string = SUPPORTED_LOCALES[0];
-let localeSwitchPending = false;
-const listeners = new Set<LocaleListener>();
-const pendingListeners = new Set<(pending: boolean) => void>();
 
 function canonicalize(locale: string): string | undefined {
   try {
@@ -62,9 +57,9 @@ function navigatorSupported(locale: string): string | undefined {
   return exactSupported(canonical) ?? getAvailableLocales().find((candidate) => candidate === canonical.split('-')[0]);
 }
 
-function readStoredLocale(): string | undefined {
+function readStoredLocale(storage: Pick<Storage, 'getItem'> | undefined): string | undefined {
   try {
-    return localStorage.getItem(LOCALE_STORAGE_KEY) ?? undefined;
+    return storage?.getItem(LOCALE_STORAGE_KEY) ?? undefined;
   } catch {
     return undefined;
   }
@@ -80,117 +75,164 @@ function navigatorCandidates(): string[] {
   return candidates;
 }
 
-function applyLocaleMetadata(locale: string): void {
-  document.documentElement.lang = locale;
-  document.documentElement.dir = 'ltr';
+export interface LocaleServiceDeps {
+  catalog: Pick<
+    PluginCatalogService,
+    'preparePluginCatalogGeneration' | 'commitPluginCatalogGeneration'
+  >;
+  storage?: Pick<Storage, 'getItem' | 'setItem'>;
+  document?: Document;
+  setUiLocale?: (locale: string) => void;
 }
 
-function commitLocale(locale: string): void {
-  committedLocale = locale;
-  setMndwUiLocale(locale);
-  applyLocaleMetadata(locale);
-
-  for (const listener of listeners) {
-    listener(locale);
-  }
+export interface LocaleService {
+  initLocale(): string;
+  getLocale(): string;
+  setLocale(locale: string): Promise<void>;
+  subscribeLocale(listener: LocaleListener): () => void;
+  isLocaleSwitchPending(): boolean;
+  subscribeLocalePending(listener: (pending: boolean) => void): () => void;
+  hostT(key: string, values?: Record<string, unknown>, locale?: string): string;
+  hostFormatNumber(value: number, options?: Intl.NumberFormatOptions): string;
+  hostFormatDate(value: Date | number, options?: Intl.DateTimeFormatOptions): string;
+  getAvailableLocales(): readonly string[];
+  isPseudoLocaleEnabled(): boolean;
 }
 
-export function initLocale(): string {
-  const stored = readStoredLocale();
-  const persisted = stored === undefined ? undefined : exactSupported(stored);
-  const next = persisted
-    ?? navigatorCandidates().map(navigatorSupported)
-      .find((locale): locale is string => locale !== undefined)
-    ?? 'en';
+export function createLocaleService(deps: LocaleServiceDeps): LocaleService {
+  const catalog = deps.catalog;
+  const storage = deps.storage ?? globalThis.localStorage;
+  const hostDocument = deps.document ?? globalThis.document;
+  const setUiLocale = deps.setUiLocale ?? setMndwUiLocale;
+  let committedLocale: string = SUPPORTED_LOCALES[0];
+  let localeSwitchPending = false;
+  const listeners = new Set<LocaleListener>();
+  const pendingListeners = new Set<(pending: boolean) => void>();
 
-  commitLocale(next);
+  const applyLocaleMetadata = (locale: string): void => {
+    hostDocument.documentElement.lang = locale;
+    hostDocument.documentElement.dir = 'ltr';
+  };
 
-  return next;
-}
+  const commitLocale = (locale: string): void => {
+    committedLocale = locale;
+    setUiLocale(locale);
+    applyLocaleMetadata(locale);
 
-export function getLocale(): string {
-  return committedLocale;
-}
+    for (const listener of listeners) {
+      listener(locale);
+    }
+  };
 
-export async function setLocale(locale: string): Promise<void> {
-  const next = navigatorSupported(locale) ?? 'en';
+  const initLocale = (): string => {
+    const stored = readStoredLocale(storage);
+    const persisted = stored === undefined ? undefined : exactSupported(stored);
+    const next = persisted
+      ?? navigatorCandidates().map(navigatorSupported)
+        .find((locale): locale is string => locale !== undefined)
+      ?? 'en';
 
-  if (next === committedLocale) {
-    return;
-  }
-
-  localeSwitchPending = true;
-
-  for (const listener of pendingListeners) {
-    listener(true);
-  }
-
-  const generation = preparePluginCatalogGeneration(next);
-
-  await generation.promise;
-
-  commitPluginCatalogGeneration(generation, () => {
     commitLocale(next);
 
-    try {
-      localStorage.setItem(LOCALE_STORAGE_KEY, next);
-    } catch {
-      // Locale persistence is best-effort in private/embedded browser contexts.
+    return next;
+  };
+
+  const setLocale = async (locale: string): Promise<void> => {
+    const next = navigatorSupported(locale) ?? 'en';
+
+    if (next === committedLocale) {
+      return;
     }
+
+    localeSwitchPending = true;
+
+    for (const listener of pendingListeners) {
+      listener(true);
+    }
+
+    const generation = catalog.preparePluginCatalogGeneration(next);
+
+    await generation.promise;
+
+    catalog.commitPluginCatalogGeneration(generation, () => {
+      commitLocale(next);
+
+      try {
+        storage?.setItem(LOCALE_STORAGE_KEY, next);
+      } catch {
+        // Locale persistence is best-effort in private/embedded browser contexts.
+      }
+    });
+
+    localeSwitchPending = false;
+
+    for (const listener of pendingListeners) {
+      listener(false);
+    }
+  };
+
+  const subscribeLocale = (listener: LocaleListener): () => void => {
+    listeners.add(listener);
+
+    return () => {
+      listeners.delete(listener);
+    };
+  };
+
+  const subscribeLocalePending = (listener: (pending: boolean) => void): () => void => {
+    pendingListeners.add(listener);
+
+    return () => {
+      pendingListeners.delete(listener);
+    };
+  };
+
+  return Object.freeze({
+    initLocale,
+    getLocale: () => committedLocale,
+    setLocale,
+    subscribeLocale,
+    isLocaleSwitchPending: () => localeSwitchPending,
+    subscribeLocalePending,
+    hostT: (key: string, values?: Record<string, unknown>, locale = committedLocale): string => {
+      const hostCatalog = locale === 'en-XA' && isPseudoLocaleEnabled()
+        ? PSEUDO_HOST_CATALOG
+        : HOST_CATALOGS[locale] ?? HOST_CATALOGS.en;
+      const message = catalogMessage(hostCatalog, key)
+        ?? catalogMessage(HOST_CATALOGS.en, key)
+        ?? key;
+
+      if (values === undefined) {
+        return message;
+      }
+
+      return formatMessage(message, values, locale);
+    },
+    hostFormatNumber: (value: number, options?: Intl.NumberFormatOptions): string =>
+      new Intl.NumberFormat(normalizeFormatterLocale(committedLocale), options).format(value),
+    hostFormatDate: (value: Date | number, options?: Intl.DateTimeFormatOptions): string =>
+      new Intl.DateTimeFormat(normalizeFormatterLocale(committedLocale), options).format(value),
+    getAvailableLocales,
+    isPseudoLocaleEnabled,
   });
-
-  localeSwitchPending = false;
-
-  for (const listener of pendingListeners) {
-    listener(false);
-  }
 }
 
-export function subscribeLocale(listener: LocaleListener): () => void {
-  listeners.add(listener);
+const defaultService = createLocaleService({catalog: pluginCatalogService});
+export const localeService = defaultService;
 
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-export function isLocaleSwitchPending(): boolean {
-  return localeSwitchPending;
-}
-
-export function subscribeLocalePending(listener: (pending: boolean) => void): () => void {
-  pendingListeners.add(listener);
-
-  return () => {
-    pendingListeners.delete(listener);
-  };
-}
-
-export function hostT(key: string, values?: Record<string, unknown>, locale = committedLocale): string {
-  const catalog = locale === 'en-XA' && isPseudoLocaleEnabled()
-    ? PSEUDO_HOST_CATALOG
-    : HOST_CATALOGS[locale] ?? HOST_CATALOGS.en;
-  const message = catalogMessage(catalog, key)
-    ?? catalogMessage(HOST_CATALOGS.en, key)
-    ?? key;
-
-  if (values === undefined) {
-    return message;
-  }
-
-  return formatMessage(message, values, locale);
-}
-
-export function hostFormatNumber(value: number, options?: Intl.NumberFormatOptions): string {
-  return new Intl.NumberFormat(normalizeFormatterLocale(committedLocale), options).format(value);
-}
-
-export function hostFormatDate(
-  value: Date | number,
-  options?: Intl.DateTimeFormatOptions,
-): string {
-  return new Intl.DateTimeFormat(normalizeFormatterLocale(committedLocale), options).format(value);
-}
+export const initLocale = (): string => defaultService.initLocale();
+export const getLocale = (): string => defaultService.getLocale();
+export const setLocale = (locale: string): Promise<void> => defaultService.setLocale(locale);
+export const subscribeLocale = (listener: LocaleListener): () => void => defaultService.subscribeLocale(listener);
+export const isLocaleSwitchPending = (): boolean => defaultService.isLocaleSwitchPending();
+export const subscribeLocalePending = (listener: (pending: boolean) => void): () => void =>
+  defaultService.subscribeLocalePending(listener);
+export const hostT = (key: string, values?: Record<string, unknown>, locale?: string): string =>
+  defaultService.hostT(key, values, locale);
+export const hostFormatNumber = (value: number, options?: Intl.NumberFormatOptions): string =>
+  defaultService.hostFormatNumber(value, options);
+export const hostFormatDate = (value: Date | number, options?: Intl.DateTimeFormatOptions): string =>
+  defaultService.hostFormatDate(value, options);
 
 function catalogMessage(catalog: HostCatalog, key: string): string | undefined {
   let value: CatalogNode | undefined = catalog;

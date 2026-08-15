@@ -16,6 +16,8 @@ import {type MountedPlugin, mountPlugin, unmountPlugin} from '../runtime/plugin-
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {appState} from '../state/app.svelte.js';
+import {localeService} from '../services/locale.service.js';
+import {paletteService} from '../services/palette.service.js';
 import {createWidgetContext} from './widget-context.js';
 import {mountWidgetTile} from './widget-mount.js';
 
@@ -49,6 +51,7 @@ const explicitHostInfo: HostInfo = {
 
 const dispose = vi.fn();
 const handle = {context: {instanceId: 'traffic:1'} as PluginContext, dispose};
+const pluginContextServices = {locale: localeService, palette: paletteService};
 
 function fakeMounted(): MountedPlugin {
   return {pluginName: 'traffic', instanceId: 'traffic:1', instance: {unmount: vi.fn()}};
@@ -74,7 +77,7 @@ describe('createWidgetContext', () => {
 
     pluginRegistry.register(plugin);
 
-    createWidgetContext('traffic', 'traffic:1', explicitHostInfo);
+    createWidgetContext(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1', explicitHostInfo);
 
     expect(createPluginContext).toHaveBeenCalledWith({
       entry: plugin.entry,
@@ -82,6 +85,7 @@ describe('createWidgetContext', () => {
       hostInfo: explicitHostInfo,
       setTileTitle: undefined,
       catalogCell: undefined,
+      services: pluginContextServices,
     });
   });
 
@@ -94,7 +98,7 @@ describe('createWidgetContext', () => {
 
     pluginRegistry.register(plugin);
 
-    createWidgetContext('traffic', 'traffic:1');
+    createWidgetContext(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1');
 
     expect(createPluginContext).toHaveBeenCalledWith({
       entry: plugin.entry,
@@ -102,6 +106,7 @@ describe('createWidgetContext', () => {
       hostInfo: stateHostInfo,
       setTileTitle: undefined,
       catalogCell: undefined,
+      services: pluginContextServices,
     });
   });
 
@@ -110,7 +115,7 @@ describe('createWidgetContext', () => {
 
     pluginRegistry.register(plugin);
 
-    createWidgetContext('traffic', 'traffic:1');
+    createWidgetContext(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1');
 
     expect(createPluginContext).toHaveBeenCalledWith({
       entry: plugin.entry,
@@ -118,6 +123,7 @@ describe('createWidgetContext', () => {
       hostInfo: FALLBACK_HOST_INFO,
       setTileTitle: undefined,
       catalogCell: undefined,
+      services: pluginContextServices,
     });
   });
 
@@ -127,7 +133,7 @@ describe('createWidgetContext', () => {
 
     pluginRegistry.register(plugin);
 
-    createWidgetContext('traffic', 'traffic:1', explicitHostInfo, setTileTitle);
+    createWidgetContext(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1', explicitHostInfo, setTileTitle);
 
     expect(createPluginContext).toHaveBeenCalledWith({
       entry: plugin.entry,
@@ -135,11 +141,12 @@ describe('createWidgetContext', () => {
       hostInfo: explicitHostInfo,
       setTileTitle,
       catalogCell: undefined,
+      services: pluginContextServices,
     });
   });
 
   it('throws when the plugin is not in the registry', () => {
-    expect(() => createWidgetContext('missing', 'missing:1')).toThrow(/missing/);
+    expect(() => createWidgetContext(pluginContextServices, pluginRegistry, 'missing', 'missing:1')).toThrow(/missing/);
     expect(createPluginContext).not.toHaveBeenCalled();
   });
 });

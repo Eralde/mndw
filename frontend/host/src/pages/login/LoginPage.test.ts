@@ -16,16 +16,17 @@ vi.mock('../../services/init-auth.js', () => ({
 }));
 
 import LoginPage from './LoginPage.svelte';
-import * as localeService from '../../services/locale.service.js';
 import {appState} from '../../state/app.svelte.js';
+import {defaultHostServices} from '../../host-services.js';
+import {createHostServicesContext} from '../../host-services-context.js';
 
 let target: HTMLDivElement;
 let component: ReturnType<typeof mount>;
 
-function render(): void {
+function render(context = createHostServicesContext(defaultHostServices())): void {
   target = document.createElement('div');
   document.body.appendChild(target);
-  component = mount(LoginPage, {target});
+  component = mount(LoginPage, {target, context});
 }
 
 function inputs(): (HTMLElement & {value: string; disabled: boolean})[] {
@@ -69,9 +70,10 @@ afterEach(() => {
 
 describe('LoginPage', () => {
   it('offers a language selector before authentication', () => {
-    const setLocale = vi.spyOn(localeService, 'setLocale').mockResolvedValue();
+    const setLocale = vi.fn().mockResolvedValue(undefined);
+    const services = defaultHostServices();
 
-    render();
+    render(createHostServicesContext({...services, locale: {...services.locale, setLocale}}));
 
     const select = target.querySelector<HTMLElement & {value: string}>('.mndw-login__locale-select');
     const options = [...target.querySelectorAll('mndw-option')];

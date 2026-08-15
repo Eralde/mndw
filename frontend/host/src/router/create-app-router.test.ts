@@ -83,6 +83,15 @@ describe('buildPluginRoutes', () => {
     expect(Object.values(routes).every((component) => component === PagePluginHost)).toBe(true);
   });
 
+  it('uses an injected registry instead of the production singleton', () => {
+    const injectedRegistry = {getPages: vi.fn(() => [page('injected', 'Injected', '/injected')])};
+
+    const routes = buildPluginRoutes(injectedRegistry);
+
+    expect(Object.keys(routes)).toEqual(['/injected', '/injected/*child']);
+    expect(injectedRegistry.getPages).toHaveBeenCalledTimes(1);
+  });
+
   it('records each entry.route -> entry.name lookup, excluding widgets', () => {
     vi.mocked(pluginRegistry).getPages.mockReturnValue([
       page('status', 'Status', '/status'),

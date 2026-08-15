@@ -1,4 +1,5 @@
 import {type SandboxImports, reloadSandboxPlugin} from './sandbox-loader.js';
+import type {HostServices} from '../host-services.js';
 
 /**
  * The one place the `virtual:sandbox-*` specifiers appear as literals so Vite's sandbox
@@ -27,6 +28,7 @@ function pendingModule(): PendingModule {
 }
 
 export function setupSandboxHmr(
+  services: HostServices,
   hot: NonNullable<ImportMeta['hot']> | undefined = import.meta.hot,
   imports: SandboxImports = sandboxVirtualImports,
 ): void {
@@ -64,7 +66,14 @@ export function setupSandboxHmr(
       };
 
       reloadChain = reloadChain
-        .then(() => reloadSandboxPlugin(reloadImports))
+        .then(() =>
+          reloadSandboxPlugin({
+            ...reloadImports,
+            registry: services.registry,
+            catalogService: services.catalog,
+            getLocale: () => services.locale.getLocale(),
+          })
+        )
         .then(() => undefined)
         .catch((error: unknown) => {
           console.error('[mndw] Sandbox HMR transaction failed:', error);

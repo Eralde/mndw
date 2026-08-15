@@ -58,7 +58,13 @@ vi.mock('./grid-dashboard-setup.js', () => ({
 
 vi.mock('./tile-controller.js', () => ({
   removeTileController: vi.fn(),
-  ensureTileController: vi.fn((_pluginName: string, instanceId: string, onRemoveRequest: (tileId: string) => void) => {
+  ensureTileController: vi.fn((
+    _services: unknown,
+    _registry: unknown,
+    _pluginName: string,
+    instanceId: string,
+    onRemoveRequest: (tileId: string) => void,
+  ) => {
     const id = `widget-${instanceId}`;
     let frame = mobileFrames.get(id);
 
@@ -101,6 +107,8 @@ import {pluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {raiseInstanceCounter} from './widget-counter.js';
 import DashboardPage from './DashboardPage.svelte';
+import {defaultHostServices} from '../host-services.js';
+import {createHostServicesContext} from '../host-services-context.js';
 
 const emptyBackend = {routes: {}};
 
@@ -143,7 +151,10 @@ function mountPage(): {component: ReturnType<typeof mount>; target: HTMLElement}
 
   document.body.appendChild(target);
 
-  const component = mount(DashboardPage, {target});
+  const component = mount(DashboardPage, {
+    target,
+    context: createHostServicesContext(defaultHostServices()),
+  });
 
   flushSync();
 
@@ -199,20 +210,36 @@ describe('DashboardPage', () => {
 
     const {component, target} = mountPage();
 
-    expect(addWidgetTile).toHaveBeenNthCalledWith(1, fakeGrid, 'traffic', expect.any(Function), {
-      x: 0,
-      y: 0,
-      w: 4,
-      h: 3,
-      instanceId: 'traffic:2',
-    });
-    expect(addWidgetTile).toHaveBeenNthCalledWith(2, fakeGrid, 'traffic', expect.any(Function), {
-      x: 4,
-      y: 0,
-      w: 4,
-      h: 3,
-      instanceId: 'traffic:5',
-    });
+    expect(addWidgetTile).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      pluginRegistry,
+      fakeGrid,
+      'traffic',
+      expect.any(Function),
+      {
+        x: 0,
+        y: 0,
+        w: 4,
+        h: 3,
+        instanceId: 'traffic:2',
+      },
+    );
+    expect(addWidgetTile).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      pluginRegistry,
+      fakeGrid,
+      'traffic',
+      expect.any(Function),
+      {
+        x: 4,
+        y: 0,
+        w: 4,
+        h: 3,
+        instanceId: 'traffic:5',
+      },
+    );
     expect(raiseInstanceCounter).toHaveBeenCalledWith('traffic', 5);
     // Restoration must not eagerly persist the normalized layout.
     expect(saveDashboardLayout).not.toHaveBeenCalled();
@@ -266,7 +293,10 @@ describe('DashboardPage', () => {
     document.body.appendChild(target);
 
     expect(() => {
-      component = mount(DashboardPage, {target});
+      component = mount(DashboardPage, {
+        target,
+        context: createHostServicesContext(defaultHostServices()),
+      });
       flushSync();
     }).toThrow('add failed');
 
@@ -362,7 +392,13 @@ describe('DashboardPage', () => {
     pickerButton?.click();
     flushSync();
 
-    expect(addWidgetTile).toHaveBeenCalledWith(fakeGrid, 'traffic', expect.any(Function));
+    expect(addWidgetTile).toHaveBeenCalledWith(
+      expect.anything(),
+      pluginRegistry,
+      fakeGrid,
+      'traffic',
+      expect.any(Function),
+    );
     expect(document.querySelector('.mndw-floating-panel')).toBeNull();
 
     void unmount(component);
@@ -439,13 +475,20 @@ describe('DashboardPage', () => {
     expect(removeTileController).not.toHaveBeenCalled();
     expect(destroyAllTiles).not.toHaveBeenCalled();
     expect(saveDashboardLayout).not.toHaveBeenCalled();
-    expect(addWidgetTile).toHaveBeenLastCalledWith(fakeGrid, 'clock', expect.any(Function), {
-      x: 3,
-      y: 2,
-      w: 4,
-      h: 3,
-      instanceId: 'clock:1',
-    });
+    expect(addWidgetTile).toHaveBeenLastCalledWith(
+      expect.anything(),
+      pluginRegistry,
+      fakeGrid,
+      'clock',
+      expect.any(Function),
+      {
+        x: 3,
+        y: 2,
+        w: 4,
+        h: 3,
+        instanceId: 'clock:1',
+      },
+    );
 
     void unmount(component);
   });

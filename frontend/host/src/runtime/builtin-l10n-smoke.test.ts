@@ -22,6 +22,8 @@ import {createAppRouter} from '../router/create-app-router.js';
 import PagePluginHost from '../pages/PagePluginHost.svelte';
 import {pluginRegistry} from './plugin-registry.js';
 import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-types.js';
+import {defaultHostServices} from '../host-services.js';
+import {createHostServicesContext} from '../host-services-context.js';
 
 const pageContexts = vi.hoisted(() => new Map<string, PluginContext>());
 
@@ -344,7 +346,10 @@ smoke('packed built-in l10n smoke', () => {
 
     document.body.append(target);
 
-    const component = mount(PagePluginHost, {target});
+    const component = mount(PagePluginHost, {
+      target,
+      context: createHostServicesContext(defaultHostServices()),
+    });
 
     flushSync();
     await flushPlugin(name);

@@ -7,13 +7,12 @@ import {mount} from 'svelte';
 import App from './App.svelte';
 import {initAuthenticated} from './services/init-auth.js';
 import './services/pristine-fetch.js';
-import {initPalette} from './services/palette.service.js';
-import {rciService} from './services/rci.service.js';
-import {initLocale} from './services/locale.service.js';
 import {initTheme} from './services/theme.service.js';
-import {uiOverlayService} from './services/overlay/ui-overlay.js';
 import {appState, resetToLogin} from './state/app.svelte.js';
 import {initialize} from './startup.js';
+import {defaultHostServices} from './host-services.js';
+
+const services = defaultHostServices();
 
 // A broken plugin must never take down the host. These window-level guards swallow
 // errors originating from plugin bundle URLs; the per-widget error boundary
@@ -50,33 +49,38 @@ function registerPluginErrorGuards(): void {
 }
 
 function mountApp(): void {
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-  mount(App, {target: document.getElementById('app')!});
+  const target = document.getElementById('app');
+
+  if (target === null) {
+    throw new Error('Missing #app mount target');
+  }
+
+  mount(App, {target, props: {services}});
 }
 
 async function checkAuthenticated(): Promise<boolean> {
-  const isAuthenticated$ = rciService.isAuthenticated().pipe(timeout(5000));
+  const isAuthenticated$ = services.rci.isAuthenticated().pipe(timeout(5000));
 
   return firstValueFrom(isAuthenticated$);
 }
 
 function subscribeAuthErrors(callback: () => void): void {
-  rciService.authError$.subscribe(callback);
+  services.rci.authError$.subscribe(callback);
 }
 
 async function init(): Promise<void> {
   registerPluginErrorGuards();
 
   await initialize({
-    initLocale,
-    defineUi: (locale) => defineMndwUi({overlay: uiOverlayService, initialLocale: locale}),
+    initLocale: () => services.locale.initLocale(),
+    defineUi: (locale) => defineMndwUi({overlay: services.overlay, initialLocale: locale}),
     initTheme,
-    initPalette,
+    initPalette: () => services.palette.initPalette(),
     checkAuthenticated,
     setAuthenticated: (authenticated) => {
       appState.authenticated = authenticated;
     },
-    initAuthenticated,
+    initAuthenticated: () => initAuthenticated(services),
     subscribeAuthErrors,
     resetToLogin,
     mountApp,

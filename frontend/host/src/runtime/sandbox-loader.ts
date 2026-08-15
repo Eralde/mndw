@@ -1,12 +1,13 @@
 import {type MndwPlugin, type PluginManifest, validateManifest} from '@mndw/sdk';
 import {getLocale} from '../services/locale.service.js';
 import {
-  createPluginCatalogCell,
+  type PluginCatalogService,
   createPluginCatalogSource,
-  loadInitialPluginCatalog,
+  pluginCatalogService,
 } from '../services/plugin-catalog.service.js';
 import {type LoadedPlugin, pluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
+import {type HostServices, defaultHostServices} from '../host-services.js';
 
 /** Window event the sandbox HMR transaction dispatches so the active page host remounts. */
 export const SANDBOX_RELOAD_EVENT = 'mndw:sandbox-reloaded';
@@ -46,7 +47,16 @@ export interface SandboxImports {
 export interface SandboxLoaderDeps extends Partial<SandboxImports> {
   catalogBaseUrl?: string;
   registry?: SandboxRegistry;
-  remountWidgets?: (name: string, next: LoadedPlugin, prior: LoadedPlugin) => Promise<boolean>;
+  catalogService?: PluginCatalogService;
+  getLocale?: () => string;
+  pluginContextServices?: Pick<HostServices, 'locale' | 'palette'>;
+  remountWidgets?: (
+    name: string,
+    next: LoadedPlugin,
+    prior: LoadedPlugin,
+    registry: SandboxRegistry,
+    pluginContextServices: Pick<HostServices, 'locale' | 'palette'>,
+  ) => Promise<boolean>;
   reloadPage?: (name: string, next: LoadedPlugin, prior: LoadedPlugin) => Promise<boolean>;
 }
 
@@ -129,16 +139,18 @@ async function buildLoadedPlugin(deps: SandboxLoaderDeps): Promise<LoadedPlugin>
   const manifest = validateManifest(manifestModule.default);
   const catalogBaseUrl = deps.catalogBaseUrl ?? manifestModule.__catalogBaseUrl;
   const entry = manifestToListEntry(manifest, catalogBaseUrl);
+  const catalogService = deps.catalogService ?? pluginCatalogService;
+  const localeOf = deps.getLocale ?? getLocale;
   const source = createPluginCatalogSource(
     entry.name,
     entry.version,
     catalogBaseUrl ?? `/plugins/${entry.name}`,
     entry.i18n,
   );
-  const catalog = source === undefined ? undefined : createPluginCatalogCell(source, getLocale());
+  const catalog = source === undefined ? undefined : catalogService.createPluginCatalogCell(source, localeOf());
 
   if (catalog !== undefined) {
-    await loadInitialPluginCatalog(catalog, getLocale());
+    await catalogService.loadInitialPluginCatalog(catalog, localeOf());
   }
 
   return {entry, module, ...(catalog === undefined ? {} : {catalog})};
@@ -174,6 +186,11 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise
   const registry = deps.registry ?? pluginRegistry;
   const remountWidgets = deps.remountWidgets ?? defaultRemountWidgets;
   const reloadPage = deps.reloadPage ?? defaultReloadPage;
+  const pluginContextServices = deps.pluginContextServices ?? (() => {
+    const services = defaultHostServices();
+
+    return {locale: services.locale, palette: services.palette};
+  })();
 
   let candidate: LoadedPlugin;
 
@@ -206,7 +223,7 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise
   }
 
   try {
-    const widgetsOk = await remountWidgets(name, candidate, prior);
+    const widgetsOk = await remountWidgets(name, candidate, prior, registry, pluginContextServices);
     const pageOk = await reloadPage(name, candidate, prior);
 
     if (!widgetsOk || !pageOk) {
@@ -225,10 +242,16 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise
 }
 
 /** Default widget remount: lazily reaches the grid setup so this module stays DOM-free for tests. */
-async function defaultRemountWidgets(name: string, next: LoadedPlugin, prior: LoadedPlugin): Promise<boolean> {
+async function defaultRemountWidgets(
+  name: string,
+  next: LoadedPlugin,
+  prior: LoadedPlugin,
+  registry: SandboxRegistry,
+  pluginContextServices: Pick<HostServices, 'locale' | 'palette'>,
+): Promise<boolean> {
   const {remountWidgetTiles} = await import('../dashboard/tile-controller.js');
 
-  return remountWidgetTiles(name, next, prior);
+  return remountWidgetTiles(pluginContextServices, registry, name, next, prior);
 }
 
 /** Default page reload: dispatches the reload event and awaits any matching page host's report. */

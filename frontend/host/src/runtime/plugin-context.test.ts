@@ -2,7 +2,9 @@ import {MNDW_TOKENS, PageRouteError, type PaletteTokenMap} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {describe, expect, it, vi} from 'vitest';
 import {createPluginContext} from './plugin-context.js';
-import {createPluginCatalogCell} from '../services/plugin-catalog.service.js';
+import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
+import {localeService} from '../services/locale.service.js';
+import {paletteService} from '../services/palette.service.js';
 import type {PageListEntry, PluginBackendDescriptor, WidgetListEntry} from './plugin-types.js';
 
 vi.mock('../services/rci.service.js', () => ({
@@ -66,7 +68,7 @@ function pageEntry(): PageListEntry {
 
 describe('createPluginContext', () => {
   it('exposes a frozen synchronous translator backed by the host catalog cell', () => {
-    const cell = createPluginCatalogCell({
+    const cell = createPluginCatalogService().createPluginCatalogCell({
       name: 'demo',
       version: '1.0.0',
       baseUrl: '/plugins/demo',
@@ -175,6 +177,24 @@ describe('createPluginContext', () => {
 });
 
 describe('createPluginContext service boundaries', () => {
+  it('uses injected locale and palette services for plugin-facing context reads', () => {
+    const localeSpy = vi.fn(() => 'ru');
+    const paletteSpy = vi.fn(() => MNDW_TOKENS);
+    const injectedLocale = {...localeService, getLocale: localeSpy};
+    const injectedPalette = {...paletteService, getTokens: paletteSpy};
+    const {context: ctx} = createPluginContext({
+      entry: widgetEntry(),
+      instanceId: 'demo:1',
+      hostInfo,
+      services: {locale: injectedLocale, palette: injectedPalette},
+    });
+
+    expect(ctx.hostInfo.locale).toBe('ru');
+    expect(ctx.getTokens()).toBe(MNDW_TOKENS);
+    expect(localeSpy).toHaveBeenCalled();
+    expect(paletteSpy).toHaveBeenCalled();
+  });
+
   it('hands out a facade, not the shared rciManager singleton', async () => {
     const {rciService} = await import('../services/rci.service.js');
     const driver = rciService.driver as unknown as Record<string, unknown>;

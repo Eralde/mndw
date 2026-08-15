@@ -1,10 +1,11 @@
 <script lang="ts">
 import type {MndwSelectChangeDetail} from '@mndw/ui';
 import {initAuthenticated} from '../../services/init-auth.js';
-import {rciService} from '../../services/rci.service.js';
 import {appState, resetToLogin} from '../../state/app.svelte.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
-import {setLocale} from '../../services/locale.service.js';
+import {getHostServices} from '../../host-services-context.js';
+
+const services = getHostServices();
 
 let username = $state('');
 let password = $state('');
@@ -21,7 +22,7 @@ function canSubmit(): boolean {
 }
 
 function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
-  void setLocale(event.detail.value).catch(() => {});
+  void services.locale.setLocale(event.detail.value).catch(() => {});
 }
 
 // `<mndw-input>` reports through `mndwinput` rather than a bindable `value`, so the two-way flow
@@ -66,11 +67,11 @@ function handleSubmit(e: Event): void {
   loading = true;
   error = '';
 
-  rciService.login(username, password).subscribe({
+  services.rci.login(username, password).subscribe({
     next(success) {
       if (success) {
         appState.authenticated = true;
-        void initAuthenticated().catch(() => {
+        void initAuthenticated(services).catch(() => {
           resetToLogin();
           error = hostT('login.connection-failed');
           loading = false;

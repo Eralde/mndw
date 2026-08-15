@@ -3,7 +3,6 @@ import type {GridStack as GridStackType} from 'gridstack';
 import {onDestroy, onMount} from 'svelte';
 import {SvelteMap} from 'svelte/reactivity';
 import {mobileMediaQuery} from '../layout/breakpoint.js';
-import {pluginRegistry} from '../runtime/plugin-registry.js';
 import {depsStatusMap} from '../state/deps-status.svelte.js';
 import DashboardGrid from './DashboardGrid.svelte';
 import FloatingAddPanel from './FloatingAddPanel.svelte';
@@ -27,11 +26,15 @@ import {getNextInstanceId, raiseInstanceCounter} from './widget-counter.js';
 import type {WidgetSize} from './widget-size.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {appState} from '../state/app.svelte.js';
+import {getHostServices} from '../host-services-context.js';
 
 const PERSIST_DEBOUNCE_MS = 500;
+const services = getHostServices();
+const registry = services.registry;
+const pluginContextServices = {locale: services.locale, palette: services.palette};
 
 function resolveWidgetSize(pluginName: string): WidgetSize | undefined {
-  const plugin = pluginRegistry.get(pluginName);
+  const plugin = registry.get(pluginName);
 
   return plugin?.entry.type === 'widget' ? plugin.entry.size : undefined;
 }
@@ -127,7 +130,7 @@ function handleGridReady(readyGrid: GridStackType): void {
         continue;
       }
 
-      addWidgetTile(readyGrid, parsed.pluginName, requestRemoveTile, {
+      addWidgetTile(pluginContextServices, registry, readyGrid, parsed.pluginName, requestRemoveTile, {
         x: tile.x,
         y: tile.y,
         w: tile.w,
@@ -169,6 +172,8 @@ function addMobileWidget(pluginName: string): void {
 
   const instanceId = getNextInstanceId(pluginName);
   const controller = ensureTileController(
+    pluginContextServices,
+    registry,
     pluginName,
     instanceId,
     requestRemoveTile,
@@ -200,7 +205,7 @@ function handleAddWidget(pluginName: string): void {
     return;
   }
 
-  const id = addWidgetTile(activeGrid, pluginName, requestRemoveTile);
+  const id = addWidgetTile(pluginContextServices, registry, activeGrid, pluginName, requestRemoveTile);
 
   if (id !== null) {
     // The grid's added/change event owns the complete post-add geometry projection
@@ -236,7 +241,7 @@ const overlayCards = $derived.by(() => {
       return [];
     }
 
-    const label = pluginRegistry.get(parsed.pluginName)?.entry.label
+    const label = registry.get(parsed.pluginName)?.entry.label
       ?? parsed.pluginName;
 
     return [{
@@ -258,7 +263,7 @@ $effect(() => {
   // Read the reactive map so status transitions re-run this effect even when no tile
   // is pending yet; hydration itself is idempotent and cheap.
   void [...depsStatusMap.entries()];
-  hydratePendingTiles();
+  hydratePendingTiles(pluginContextServices, registry);
 });
 
 onMount(() => {
@@ -298,7 +303,7 @@ onDestroy(() => {
   {/if}
 
   <div class="mndw-dashboard__toolbar">
-    {#if pluginRegistry.getWidgets().length > 0}
+    {#if registry.getWidgets().length > 0}
       <mndw-button
         variant="secondary"
         onclick={() => (addPanelOpen = true)}

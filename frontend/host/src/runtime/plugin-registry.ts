@@ -1,9 +1,8 @@
 import type {MndwPlugin} from '@mndw/sdk';
 import {
   type PluginCatalogCell,
-  clearPluginCatalogCells,
-  registerPluginCatalogCell,
-  unregisterPluginCatalogCell,
+  type PluginCatalogService,
+  pluginCatalogService,
 } from '../services/plugin-catalog.service.js';
 import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-types.js';
 
@@ -22,8 +21,22 @@ export interface LoadedPage extends LoadedPlugin {
   entry: PageListEntry;
 }
 
+export type RegistryCatalog = Pick<
+  PluginCatalogService,
+  'registerPluginCatalogCell' | 'unregisterPluginCatalogCell' | 'clearPluginCatalogCells'
+>;
+
+export interface PluginRegistryDeps {
+  catalog: RegistryCatalog;
+}
+
 export class PluginRegistry {
   private plugins = new Map<string, LoadedPlugin>();
+  private readonly catalog: RegistryCatalog;
+
+  constructor(deps: PluginRegistryDeps = {catalog: pluginCatalogService}) {
+    this.catalog = deps.catalog;
+  }
 
   public register(plugin: LoadedPlugin): void {
     if (this.plugins.has(plugin.entry.name)) {
@@ -33,7 +46,7 @@ export class PluginRegistry {
     this.plugins.set(plugin.entry.name, plugin);
 
     if (plugin.catalog !== undefined) {
-      registerPluginCatalogCell(plugin.catalog);
+      this.catalog.registerPluginCatalogCell(plugin.catalog);
     }
   }
 
@@ -71,11 +84,11 @@ export class PluginRegistry {
     this.plugins.set(plugin.entry.name, plugin);
 
     if (prior.catalog !== undefined) {
-      unregisterPluginCatalogCell(prior.catalog);
+      this.catalog.unregisterPluginCatalogCell(prior.catalog);
     }
 
     if (plugin.catalog !== undefined) {
-      registerPluginCatalogCell(plugin.catalog);
+      this.catalog.registerPluginCatalogCell(plugin.catalog);
     }
 
     return prior;
@@ -100,13 +113,17 @@ export class PluginRegistry {
   public clear(): void {
     for (const plugin of this.plugins.values()) {
       if (plugin.catalog !== undefined) {
-        unregisterPluginCatalogCell(plugin.catalog);
+        this.catalog.unregisterPluginCatalogCell(plugin.catalog);
       }
     }
 
     this.plugins.clear();
-    clearPluginCatalogCells();
+    this.catalog.clearPluginCatalogCells();
   }
+}
+
+export function createPluginRegistry(deps: PluginRegistryDeps): PluginRegistry {
+  return new PluginRegistry(deps);
 }
 
 export const pluginRegistry = new PluginRegistry();

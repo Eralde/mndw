@@ -1,8 +1,8 @@
 <script lang="ts">
-import {pluginRegistry} from '../runtime/plugin-registry.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {appState} from '../state/app.svelte.js';
+import {getHostServices} from '../host-services-context.js';
 
 interface Props {
   open: boolean;
@@ -11,11 +11,13 @@ interface Props {
 }
 
 let {open, onAddWidget, onClose}: Props = $props();
+const services = getHostServices();
+const registry = services.registry;
 
 // Copy before sorting so the registry's own ordering is never mutated. Sort by label,
 // then name, matching the sidebar/router page ordering.
 let availableWidgets = $derived.by(() => {
-  return [...pluginRegistry.getWidgets()].sort(
+  return [...registry.getWidgets()].sort(
     (a, b) =>
       a.entry.label.localeCompare(b.entry.label)
       || a.entry.name.localeCompare(b.entry.name),

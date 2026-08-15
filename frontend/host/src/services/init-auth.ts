@@ -1,14 +1,23 @@
-import {loadPlugins} from '../runtime/plugin-loader.js';
-import {loadSandboxPlugin} from '../runtime/sandbox-loader.js';
+import {type LoaderDeps, loadPlugins} from '../runtime/plugin-loader.js';
+import {type SandboxLoaderDeps, loadSandboxPlugin} from '../runtime/sandbox-loader.js';
 import {sandboxVirtualImports, setupSandboxHmr} from '../runtime/sandbox-virtual.js';
+import {type PluginRegistry} from '../runtime/plugin-registry.js';
 import {createAppRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {anyInstalling, startDepsPolling} from '../state/deps-status.svelte.js';
 import {fetchHostInfo} from './host-info.service.js';
+import {type HostServices, defaultHostServices} from '../host-services.js';
 
 /** True only in a `mndw dev` build; `typeof` guards the undefined case (e.g. under vitest). */
 function isSandboxMode(): boolean {
   return typeof __MNDW_SANDBOX__ !== 'undefined' && __MNDW_SANDBOX__ === true;
+}
+
+export interface InitAuthDeps {
+  loadPlugins?: (deps: LoaderDeps) => Promise<void>;
+  loadSandboxPlugin?: (deps: SandboxLoaderDeps) => Promise<void>;
+  setupHmr?: (services: HostServices) => void;
+  createRouter?: (registry: Pick<PluginRegistry, 'getPages'>) => void;
 }
 
 /**
@@ -21,7 +30,15 @@ function isSandboxMode(): boolean {
  * `mndw dev` (the `__MNDW_SANDBOX__` build flag) the single plugin under development is loaded
  * from source and HMR is wired instead.
  */
-export async function initAuthenticated(): Promise<void> {
+export async function initAuthenticated(
+  services: HostServices = defaultHostServices(),
+  deps: InitAuthDeps = {},
+): Promise<void> {
+  const loadPluginsFn = deps.loadPlugins ?? loadPlugins;
+  const loadSandboxPluginFn = deps.loadSandboxPlugin ?? loadSandboxPlugin;
+  const setupHmrFn = deps.setupHmr ?? setupSandboxHmr;
+  const createRouterFn = deps.createRouter ?? createAppRouter;
+
   try {
     appState.hostInfo = await fetchHostInfo();
   } catch (err) {
@@ -29,16 +46,25 @@ export async function initAuthenticated(): Promise<void> {
   }
 
   if (isSandboxMode()) {
-    await loadSandboxPlugin(sandboxVirtualImports);
-    setupSandboxHmr();
+    await loadSandboxPluginFn({
+      ...sandboxVirtualImports,
+      registry: services.registry,
+      catalogService: services.catalog,
+      getLocale: () => services.locale.getLocale(),
+    });
+    setupHmrFn(services);
   } else {
-    await loadPlugins();
+    await loadPluginsFn({
+      registry: services.registry,
+      catalogService: services.catalog,
+      getLocale: () => services.locale.getLocale(),
+    });
 
     if (anyInstalling()) {
       startDepsPolling();
     }
   }
 
-  createAppRouter();
+  createRouterFn(services.registry);
   appState.ready = true;
 }

@@ -1,12 +1,13 @@
 import {FALLBACK_HOST_INFO} from '../constants.js';
 import {createPluginContext} from '../runtime/plugin-context.js';
 import type {OverlayTeardownReason} from '../runtime/plugin-lifecycle.js';
-import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
+import {type LoadedPlugin, type PluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {hostT} from '../services/locale.service.js';
 import {createWidgetContext} from './widget-context.js';
 import {type WidgetTileHandle, mountWidgetTile} from './widget-mount.js';
+import type {HostServices} from '../host-services.js';
 
 /**
  * A renderer-agnostic dashboard tile: the host-owned frame (title, close control,
@@ -105,6 +106,8 @@ function buildTileFrame(
  * switches reparent instead of remount — the second renderer gets the same frame.
  */
 export function ensureTileController(
+  pluginContextServices: Pick<HostServices, 'locale' | 'palette'>,
+  registry: Pick<PluginRegistry, 'get'>,
   pluginName: string,
   instanceId: string,
   onRemoveRequest: (tileId: string) => void,
@@ -116,7 +119,7 @@ export function ensureTileController(
     return existing;
   }
 
-  const plugin = pluginRegistry.get(pluginName);
+  const plugin = registry.get(pluginName);
 
   if (plugin?.entry.type !== 'widget') {
     return null;
@@ -128,7 +131,11 @@ export function ensureTileController(
   let handle: WidgetTileHandle;
 
   if (status === 'ready') {
-    handle = mountWidgetTile(body, plugin, createWidgetContext(pluginName, instanceId, undefined, setTileTitle));
+    handle = mountWidgetTile(
+      body,
+      plugin,
+      createWidgetContext(pluginContextServices, registry, pluginName, instanceId, undefined, setTileTitle),
+    );
   } else {
     renderTileNotice(body, status);
 
@@ -156,7 +163,10 @@ export function getTileController(tileId: string): TileController | undefined {
 }
 
 /** Mounts pending placeholders when dependency status transitions to ready or failed. */
-export function hydratePendingTiles(): void {
+export function hydratePendingTiles(
+  pluginContextServices: Pick<HostServices, 'locale' | 'palette'>,
+  registry: Pick<PluginRegistry, 'get'>,
+): void {
   for (const controller of controllers.values()) {
     if (!controller.pending) {
       continue;
@@ -175,7 +185,7 @@ export function hydratePendingTiles(): void {
       continue;
     }
 
-    const plugin = pluginRegistry.get(controller.pluginName);
+    const plugin = registry.get(controller.pluginName);
 
     if (plugin?.entry.type !== 'widget') {
       controller.pending = false;
@@ -187,7 +197,14 @@ export function hydratePendingTiles(): void {
     controller.handle = mountWidgetTile(
       controller.body,
       plugin,
-      createWidgetContext(controller.pluginName, controller.instanceId, undefined, controller.setTileTitle),
+      createWidgetContext(
+        pluginContextServices,
+        registry,
+        controller.pluginName,
+        controller.instanceId,
+        undefined,
+        controller.setTileTitle,
+      ),
     );
     controller.pending = false;
   }
@@ -232,6 +249,8 @@ function refreshTileFrame(frame: HTMLElement, label: string): void {
  * `false` in that case. No-op returning `true` when no tile matches.
  */
 export async function remountWidgetTiles(
+  pluginContextServices: Pick<HostServices, 'locale' | 'palette'>,
+  _registry: Pick<PluginRegistry, 'get'>,
   pluginName: string,
   next: LoadedPlugin,
   prior: LoadedPlugin,
@@ -263,6 +282,7 @@ export async function remountWidgetTiles(
           hostInfo,
           setTileTitle: controller.setTileTitle,
           catalogCell: plugin.catalog,
+          services: pluginContextServices,
         }),
       );
 

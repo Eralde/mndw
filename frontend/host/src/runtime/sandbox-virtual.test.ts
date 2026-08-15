@@ -6,6 +6,7 @@ vi.mock('./sandbox-loader.js', () => ({
 
 import {type SandboxImports, reloadSandboxPlugin} from './sandbox-loader.js';
 import {setupSandboxHmr} from './sandbox-virtual.js';
+import {createHostServices} from '../host-services.js';
 
 interface FakeHot {
   callbacks: Record<string, (module: unknown) => void>;
@@ -44,8 +45,9 @@ describe('setupSandboxHmr', () => {
     const previousManifest = {default: {name: 'previous'}};
     const freshPlugin = {createInstance: vi.fn()};
     const freshManifest = {default: {name: 'fresh'}};
+    const services = createHostServices();
 
-    setupSandboxHmr(hot as never, baseImports(previousPlugin, previousManifest));
+    setupSandboxHmr(services, hot as never, baseImports(previousPlugin, previousManifest));
 
     hot.callbacks['virtual:sandbox-plugin']?.(freshPlugin);
     hot.callbacks['virtual:sandbox-manifest']?.(freshManifest);
@@ -63,6 +65,9 @@ describe('setupSandboxHmr', () => {
 
     expect(imports.importPluginModule).toBeDefined();
     expect(imports.importManifestModule).toBeDefined();
+    expect(imports.registry).toBe(services.registry);
+    expect(imports.catalogService).toBe(services.catalog);
+    expect(imports.getLocale?.()).toBe(services.locale.getLocale());
 
     if (imports.importPluginModule === undefined || imports.importManifestModule === undefined) {
       return;
@@ -77,8 +82,9 @@ describe('setupSandboxHmr', () => {
     const previousPlugin = {createInstance: vi.fn()};
     const previousManifest = {default: {name: 'previous'}};
     const freshPlugin = {createInstance: vi.fn()};
+    const services = createHostServices();
 
-    setupSandboxHmr(hot as never, baseImports(previousPlugin, previousManifest));
+    setupSandboxHmr(services, hot as never, baseImports(previousPlugin, previousManifest));
 
     hot.callbacks['virtual:sandbox-plugin']?.(freshPlugin);
     await flushMicrotasks();

@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -144,5 +145,213 @@ func TestWaitForProcessExitHasBoundedFinalReap(t *testing.T) {
 
 	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
 		t.Fatalf("waitForProcessExit took %s", elapsed)
+	}
+}
+
+func TestRecordFailureDelaysAndCutoff(t *testing.T) {
+	base := time.Unix(2_000, 0)
+	status := RuntimeStatus{State: StateStarting}
+
+	for attempt, wantDelay := range []time.Duration{1, 2, 4, 8} {
+		delay, retry := recordFailure(&status, base, "exited", errors.New("x"))
+
+		if !retry {
+			t.Fatalf("attempt %d retry = false, want true", attempt+1)
+		}
+
+		if delay != time.Duration(wantDelay)*time.Second {
+			t.Fatalf("attempt %d delay = %s, want %ds", attempt+1, delay, wantDelay)
+		}
+
+		if status.State != StateBackoff {
+			t.Fatalf("attempt %d state = %q, want backoff", attempt+1, status.State)
+		}
+	}
+
+	delay, retry := recordFailure(&status, base, "exited", errors.New("x"))
+
+	if retry || delay != 0 {
+		t.Fatalf("fifth failure retry=%v delay=%s, want false + 0", retry, delay)
+	}
+
+	if status.State != StateFailed || status.NextAttemptAt != nil {
+		t.Fatalf("fifth failure status = %+v", status)
+	}
+}
+
+func TestTransitionFailureLockedBackoffProgression(t *testing.T) {
+	base := time.Unix(1_000, 0)
+	supervisor := newSupervisor(
+		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return base }}),
+		NewAdmission(Limits{MaxSupervisedServices: 1}),
+	)
+	record := &serviceRecord{status: RuntimeStatus{State: StateStarting}}
+	supervisor.services["svc"] = record
+
+	wantDelays := []time.Duration{
+		1 * time.Second,
+		2 * time.Second,
+		4 * time.Second,
+		8 * time.Second,
+	}
+
+	for attempt, wantDelay := range wantDelays {
+		supervisor.mu.Lock()
+		supervisor.transitionFailureLocked(record, "svc", "exited", errors.New("boom"))
+		supervisor.mu.Unlock()
+
+		status := supervisor.Status("svc")
+
+		if status.State != StateBackoff {
+			t.Fatalf("attempt %d state = %q, want backoff", attempt+1, status.State)
+		}
+
+		if status.ConsecutiveFailures != attempt+1 {
+			t.Fatalf("attempt %d failures = %d, want %d", attempt+1, status.ConsecutiveFailures, attempt+1)
+		}
+
+		if status.NextAttemptAt == nil {
+			t.Fatalf("attempt %d NextAttemptAt = nil", attempt+1)
+		}
+
+		if got := status.NextAttemptAt.Sub(base); got != wantDelay {
+			t.Fatalf("attempt %d delay = %s, want %s", attempt+1, got, wantDelay)
+		}
+	}
+
+	// Fifth consecutive failure crosses the cutoff into StateFailed with no retry.
+	supervisor.mu.Lock()
+	supervisor.transitionFailureLocked(record, "svc", "exited", errors.New("boom"))
+	supervisor.mu.Unlock()
+
+	status := supervisor.Status("svc")
+
+	if status.State != StateFailed {
+		t.Fatalf("fifth failure state = %q, want failed", status.State)
+	}
+
+	if status.NextAttemptAt != nil {
+		t.Fatalf("failed state NextAttemptAt = %v, want nil", status.NextAttemptAt)
+	}
+}
+
+func TestTransitionFailureLockedRecordsExitAndError(t *testing.T) {
+	supervisor := newSupervisor(
+		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }}),
+		NewAdmission(Limits{MaxSupervisedServices: 1}),
+	)
+	record := &serviceRecord{status: RuntimeStatus{State: StateReady, ConsecutiveFailures: 0}}
+	supervisor.services["svc"] = record
+
+	supervisor.mu.Lock()
+	supervisor.transitionFailureLocked(record, "svc", "start failed", errors.New("no binary"))
+	supervisor.mu.Unlock()
+
+	status := supervisor.Status("svc")
+
+	if status.LastExit != "start failed" {
+		t.Fatalf("LastExit = %q", status.LastExit)
+	}
+
+	if status.LastError != "no binary" {
+		t.Fatalf("LastError = %q", status.LastError)
+	}
+}
+
+func TestPlanStartIncompatibleWithoutRuntimeIsNoop(t *testing.T) {
+	supervisor := newSupervisor(
+		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}}),
+		NewAdmission(Limits{MaxSupervisedServices: 1}),
+	)
+	paths, err := NewRuntimePaths(t.TempDir(), "svc")
+	if err != nil {
+		t.Fatalf("paths: %v", err)
+	}
+
+	plan := supervisor.planStart(ServiceSpec{PluginID: "svc", ProtocolVersion: 2, Enabled: true}, paths)
+
+	if plan.action != startNoop {
+		t.Fatalf("action = %d, want startNoop", plan.action)
+	}
+
+	if plan.err == nil {
+		t.Fatal("err = nil, want unsupported protocol")
+	}
+
+	status := supervisor.Status("svc")
+
+	if status.RequiredProtocol != 2 || status.Compatible == nil || *status.Compatible {
+		t.Fatalf("status = %+v", status)
+	}
+}
+
+func TestPlanStartCapacityBlocked(t *testing.T) {
+	supervisor := newSupervisor(
+		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}}),
+		NewAdmission(Limits{MaxSupervisedServices: 1}),
+	)
+	occupied, ok := supervisor.admission.TryReserveService("occupied")
+
+	if !ok {
+		t.Fatal("occupied reservation rejected")
+	}
+
+	defer occupied.Release()
+
+	paths, err := NewRuntimePaths(t.TempDir(), "svc")
+	if err != nil {
+		t.Fatalf("paths: %v", err)
+	}
+
+	plan := supervisor.planStart(ServiceSpec{PluginID: "svc", ProtocolVersion: 1, Enabled: true}, paths)
+
+	if plan.action != startNoop || plan.err != ErrServiceCapacityExceeded {
+		t.Fatalf("action=%d err=%v, want startNoop + ErrServiceCapacityExceeded", plan.action, plan.err)
+	}
+
+	if supervisor.Status("svc").State != StateCapacityBlocked {
+		t.Fatalf("state = %q, want capacity_blocked", supervisor.Status("svc").State)
+	}
+}
+
+func TestPlanStartProceedReservesAndMarksStarting(t *testing.T) {
+	supervisor := newSupervisor(
+		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 2}}),
+		NewAdmission(Limits{MaxSupervisedServices: 2}),
+	)
+	paths, err := NewRuntimePaths(t.TempDir(), "svc")
+	if err != nil {
+		t.Fatalf("paths: %v", err)
+	}
+
+	plan := supervisor.planStart(ServiceSpec{PluginID: "svc", ProtocolVersion: 1, Enabled: true}, paths)
+
+	if plan.action != startProceed || plan.err != nil {
+		t.Fatalf("action=%d err=%v, want startProceed + nil", plan.action, plan.err)
+	}
+
+	if supervisor.Status("svc").State != StateStarting {
+		t.Fatalf("state = %q, want starting", supervisor.Status("svc").State)
+	}
+}
+
+func TestPlanStartBackoffNotElapsedIsNoop(t *testing.T) {
+	now := time.Unix(1_000, 0)
+	supervisor := newSupervisor(
+		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return now }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}}),
+		NewAdmission(Limits{MaxSupervisedServices: 1}),
+	)
+	future := now.Add(5 * time.Second)
+	supervisor.services["svc"] = &serviceRecord{status: RuntimeStatus{State: StateBackoff, NextAttemptAt: &future}}
+
+	paths, err := NewRuntimePaths(t.TempDir(), "svc")
+	if err != nil {
+		t.Fatalf("paths: %v", err)
+	}
+
+	plan := supervisor.planStart(ServiceSpec{PluginID: "svc", ProtocolVersion: 1, Enabled: true}, paths)
+
+	if plan.action != startNoop || plan.err == nil {
+		t.Fatalf("action=%d err=%v, want startNoop + backoff error", plan.action, plan.err)
 	}
 }

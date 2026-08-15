@@ -43,7 +43,7 @@ func TestTargetStoreKeepsStableLockAcrossRemoveReAdd(t *testing.T) {
 	}
 }
 
-func TestTargetStoreSnapshotReflectsReEnumeratedMAC(t *testing.T) {
+func TestTargetStoreReenumerationPreservesSessionAndUpdatesMetadata(t *testing.T) {
 	fixed := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 	store := newTestStore(func() time.Time { return fixed })
 
@@ -53,7 +53,7 @@ func TestTargetStoreSnapshotReflectsReEnumeratedMAC(t *testing.T) {
 
 	store.applyResult(Target{Identity: "cid-1", MAC: "aa:bb:cc:dd:ee:ff"}, rcisockOK(), nil)
 
-	if err := store.updateTargets([]Target{{Identity: "cid-1", Name: "new", MAC: "11:22:33:44:55:66"}}); err != nil {
+	if err := store.updateTargets([]Target{{Identity: "cid-1", Name: "new", MAC: "aa:bb:cc:dd:ee:ff"}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -63,8 +63,18 @@ func TestTargetStoreSnapshotReflectsReEnumeratedMAC(t *testing.T) {
 		t.Fatalf("snapshot len = %d, want 1", len(sessions))
 	}
 
-	if sessions[0].Mac != "11:22:33:44:55:66" {
-		t.Fatalf("snapshot MAC = %q, want re-enumerated value (single source of truth)", sessions[0].Mac)
+	if sessions[0].Identity != "cid-1" || sessions[0].Mac != "aa:bb:cc:dd:ee:ff" || !sessions[0].Live {
+		t.Fatalf("snapshot after re-enumeration = %#v, want same live session", sessions[0])
+	}
+
+	store.mu.Lock()
+
+	diagnostics := store.diag.snapshotLocked()
+
+	store.mu.Unlock()
+
+	if len(diagnostics.Targets) != 1 || diagnostics.Targets[0].Name != "new" {
+		t.Fatalf("target diagnostics after re-enumeration = %#v, want updated name", diagnostics.Targets)
 	}
 }
 

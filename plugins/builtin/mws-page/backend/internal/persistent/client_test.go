@@ -28,8 +28,8 @@ func TestClientSendReturnsRawResponseAndRejectsUnknownTarget(t *testing.T) {
 		t.Fatalf("Send unknown target error = %v", err)
 	}
 
-	if len(client.targetLocks) != 1 {
-		t.Fatalf("target locks = %d, want one admitted identity", len(client.targetLocks))
+	if len(client.store.locks) != 1 {
+		t.Fatalf("target locks = %d, want one admitted identity", len(client.store.locks))
 	}
 
 	ready := make(chan struct{}, 1)
@@ -154,7 +154,7 @@ func TestClientSendKeepsRPCAliveAfterCallerCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client.setRPC(rpc)
+	client.dispatch.setRPC(rpc)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	responseCh := make(chan struct {
@@ -229,10 +229,10 @@ func TestClientPollTargetsPropagatesContextCancellationToRPC(t *testing.T) {
 func TestClientSnapshotUsesVisibilityPredicateAndMacOrdering(t *testing.T) {
 	client := New(Config{PluginID: "mws-page"})
 	now := time.Now().UTC()
-	client.sessions = map[string]sessionState{
-		"live":  {target: Target{Identity: "live", MAC: "cc:cc:cc:cc:cc:cc"}, live: true, lastSeenAt: now},
-		"miss1": {target: Target{Identity: "miss1", MAC: "dd:dd:dd:dd:dd:dd"}, misses: 1, lastSeenAt: now},
-		"miss2": {target: Target{Identity: "miss2", MAC: "aa:aa:aa:aa:aa:aa"}, misses: 2, lastSeenAt: now},
+	client.store.records = map[string]targetRecord{
+		"live":  {target: Target{Identity: "live", MAC: "cc:cc:cc:cc:cc:cc"}, session: &sessionState{live: true, lastSeenAt: now}},
+		"miss1": {target: Target{Identity: "miss1", MAC: "dd:dd:dd:dd:dd:dd"}, session: &sessionState{misses: 1, lastSeenAt: now}},
+		"miss2": {target: Target{Identity: "miss2", MAC: "aa:aa:aa:aa:aa:aa"}, session: &sessionState{misses: 2, lastSeenAt: now}},
 	}
 
 	sessions := client.Snapshot()
@@ -760,9 +760,9 @@ func TestClientExpiresRetainedSessionAfterConnectionRetention(t *testing.T) {
 
 	client.mu.Lock()
 
-	state := client.sessions[target.Identity]
-	state.lastSeenAt = time.Now().UTC().Add(-2 * time.Minute)
-	client.sessions[target.Identity] = state
+	record := client.store.records[target.Identity]
+	record.session.lastSeenAt = time.Now().UTC().Add(-2 * time.Minute)
+	client.store.records[target.Identity] = record
 
 	client.mu.Unlock()
 

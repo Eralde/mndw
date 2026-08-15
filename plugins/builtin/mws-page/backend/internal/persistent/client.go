@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"sort"
 	"sync"
 	"time"
 
@@ -57,23 +56,20 @@ type Config struct {
 	MaxInflight      int
 	Dial             func(context.Context) (net.Conn, error)
 	TelemetryPoll    TelemetryPoll
+	Now              Clock
 }
 
 type Client struct {
 	config Config
+	now    Clock
 
-	mu                sync.Mutex
-	rpc               *rcisock.Client
-	inflight          chan struct{}
-	targetLocks       map[string]chan struct{}
-	targets           map[string]Target
-	sessions          map[string]sessionState
-	targetDiagnostics map[string]TargetDiagnostics
-	diagnostics       Diagnostics
+	mu       sync.Mutex
+	diag     *diagnosticsRecorder
+	store    *targetStore
+	dispatch *dispatcher
 }
 
 type sessionState struct {
-	target     Target
 	misses     int
 	live       bool
 	lastSeenAt time.Time
@@ -86,6 +82,10 @@ func (state sessionState) visible() bool {
 }
 
 func New(config Config) *Client {
+	if config.Now == nil {
+		config.Now = wallClockUTC
+	}
+
 	if config.PollInterval <= 0 {
 		config.PollInterval = 30 * time.Second
 	}
@@ -106,23 +106,23 @@ func New(config Config) *Client {
 		config.MaxInflight = 8
 	}
 
-	return &Client{
-		config:            config,
-		inflight:          make(chan struct{}, config.MaxInflight),
-		targetLocks:       make(map[string]chan struct{}),
-		targets:           make(map[string]Target),
-		sessions:          make(map[string]sessionState),
-		targetDiagnostics: make(map[string]TargetDiagnostics),
-		diagnostics: Diagnostics{
-			Configured:           config.Path != "",
-			PluginIDPresent:      config.PluginID != "",
-			TelemetryPollEnabled: config.TelemetryPoll != nil,
-			SocketPath:           config.Path,
-			PollInterval:         config.PollInterval.String(),
-			IOTimeout:            config.IOTimeout.String(),
-			SessionRetention:     config.SessionRetention.String(),
-		},
+	client := &Client{
+		config: config,
+		now:    config.Now,
 	}
+	client.diag = newDiagnosticsRecorder(&client.mu, config.Now, Diagnostics{
+		Configured:           config.Path != "",
+		PluginIDPresent:      config.PluginID != "",
+		TelemetryPollEnabled: config.TelemetryPoll != nil,
+		SocketPath:           config.Path,
+		PollInterval:         config.PollInterval.String(),
+		IOTimeout:            config.IOTimeout.String(),
+		SessionRetention:     config.SessionRetention.String(),
+	})
+	client.store = newTargetStore(&client.mu, config.Now, client.diag, config.SessionRetention)
+	client.dispatch = newDispatcher(&client.mu, config.MaxInflight, client.store, config.IOTimeout)
+
+	return client
 }
 
 func (c *Client) HasTarget(identity string) bool {
@@ -130,13 +130,7 @@ func (c *Client) HasTarget(identity string) bool {
 		return false
 	}
 
-	c.mu.Lock()
-
-	defer c.mu.Unlock()
-
-	_, ok := c.targets[identity]
-
-	return ok
+	return c.store.has(identity)
 }
 
 func (c *Client) Send(ctx context.Context, nodeID string, request Request) (Response, error) {
@@ -144,57 +138,7 @@ func (c *Client) Send(ctx context.Context, nodeID string, request Request) (Resp
 		return Response{}, ErrNoSession
 	}
 
-	c.mu.Lock()
-
-	rpc := c.rpc
-	targetLock, known := c.targetLocks[nodeID]
-	_, present := c.targets[nodeID]
-
-	c.mu.Unlock()
-
-	if !known || !present || rpc == nil {
-		return Response{}, ErrNoSession
-	}
-
-	callContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.config.IOTimeout)
-
-	defer cancel()
-
-	return c.callRPC(callContext, rpc, nodeID, targetLock, request)
-}
-
-func acquire(ctx context.Context, semaphore chan struct{}) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	select {
-	case semaphore <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func release(semaphore chan struct{}) {
-	<-semaphore
-}
-
-func acquireTarget(ctx context.Context, lock chan struct{}) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	select {
-	case <-lock:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func releaseTarget(lock chan struct{}) {
-	lock <- struct{}{}
+	return c.dispatch.send(ctx, nodeID, request)
 }
 
 func (c *Client) Diagnostics() Diagnostics {
@@ -202,18 +146,7 @@ func (c *Client) Diagnostics() Diagnostics {
 
 	defer c.mu.Unlock()
 
-	diagnostics := cloneDiagnostics(c.diagnostics)
-	diagnostics.Targets = make([]TargetDiagnostics, 0, len(c.targetDiagnostics))
-
-	for _, target := range c.targetDiagnostics {
-		diagnostics.Targets = append(diagnostics.Targets, cloneTargetDiagnostics(target))
-	}
-
-	sort.Slice(diagnostics.Targets, func(i, j int) bool {
-		return diagnostics.Targets[i].Identity < diagnostics.Targets[j].Identity
-	})
-
-	return diagnostics
+	return c.diag.snapshotLocked()
 }
 
 func (c *Client) Run(ctx context.Context) {
@@ -239,33 +172,7 @@ func (c *Client) Run(ctx context.Context) {
 }
 
 func (c *Client) Snapshot() []Session {
-	c.mu.Lock()
-
-	defer c.mu.Unlock()
-
-	c.expireStaleSessionsLocked(time.Now().UTC())
-
-	result := make([]Session, 0, len(c.sessions))
-
-	for _, state := range c.sessions {
-		if !state.visible() || !state.live {
-			continue
-		}
-
-		result = append(result, Session{Identity: state.target.Identity, Mac: state.target.MAC, Live: true, Power2G: state.power2G, Power5G: state.power5G})
-	}
-
-	for _, state := range c.sessions {
-		if !state.visible() || state.live {
-			continue
-		}
-
-		result = append(result, Session{Identity: state.target.Identity, Mac: state.target.MAC, Live: false, Power2G: state.power2G, Power5G: state.power5G})
-	}
-
-	sort.Slice(result, func(i, j int) bool { return result[i].Mac < result[j].Mac })
-
-	return result
+	return c.store.snapshot()
 }
 
 func (c *Client) runConnection(ctx context.Context) error {
@@ -290,7 +197,7 @@ func (c *Client) runConnection(ctx context.Context) error {
 
 	defer rpc.Close()
 
-	defer c.clearRPC(rpc)
+	defer c.dispatch.clearRPC(rpc)
 
 	var runErr error
 
@@ -318,7 +225,7 @@ func (c *Client) runConnection(ctx context.Context) error {
 		return err
 	}
 
-	c.setRPC(rpc)
+	c.dispatch.setRPC(rpc)
 	c.recordConnected()
 
 	for {
@@ -380,109 +287,11 @@ func convertTargets(targets []rcisock.Target) []Target {
 }
 
 func (c *Client) updateTargets(targets []Target) error {
-	current := make(map[string]Target, len(targets))
-
-	for _, target := range targets {
-		if target.Identity == "" {
-			return errors.New("persistent session target has no identity")
-		}
-
-		target.MAC = normalizeMAC(target.MAC)
-
-		if target.MAC == "" {
-			continue
-		}
-
-		current[target.Identity] = target
-	}
-
-	now := time.Now().UTC()
-
-	c.mu.Lock()
-
-	defer c.mu.Unlock()
-
-	var added, removed []string
-
-	for identity := range c.targets {
-		if _, ok := current[identity]; !ok {
-			delete(c.sessions, identity)
-			c.markTargetGoneLocked(identity, "target-removed", now)
-
-			removed = append(removed, identity)
-		}
-	}
-
-	for identity, target := range current {
-		if _, exists := c.targetLocks[identity]; !exists {
-			c.targetLocks[identity] = make(chan struct{}, 1)
-			c.targetLocks[identity] <- struct{}{}
-		}
-
-		diagnostic, known := c.targetDiagnostics[identity]
-		wasPresent := known && diagnostic.Present
-
-		if !known {
-			diagnostic = TargetDiagnostics{Identity: identity, FirstSeenAt: timePointer(now)}
-		}
-
-		diagnostic.Identity = identity
-		diagnostic.Name = target.Name
-		diagnostic.MAC = target.MAC
-		diagnostic.Present = true
-		diagnostic.LastSeenAt = timePointer(now)
-		diagnostic.RemovedAt = nil
-
-		if !wasPresent {
-			added = append(added, identity)
-			diagnostic.SessionReason = "target-added"
-			diagnostic.LastSessionChangeAt = timePointer(now)
-		}
-
-		state, ok := c.sessions[identity]
-
-		if !ok {
-			state = sessionState{}
-			diagnostic.SessionPresent = true
-			diagnostic.Live = false
-			diagnostic.Misses = 0
-
-			if wasPresent {
-				diagnostic.SessionReason = "session-created"
-				diagnostic.LastSessionChangeAt = timePointer(now)
-			}
-		}
-
-		state.target = target
-		state.lastSeenAt = now
-		c.sessions[identity] = state
-		diagnostic.SessionPresent = true
-		diagnostic.Misses = state.misses
-		diagnostic.Live = state.live
-		c.targetDiagnostics[identity] = diagnostic
-	}
-
-	c.targets = current
-
-	if len(added) > 0 || len(removed) > 0 {
-		c.recordTargetChangeLocked("enumeration", added, removed, now)
-	}
-
-	c.pruneTargetDiagnosticsLocked()
-
-	return nil
+	return c.store.updateTargets(targets)
 }
 
 func (c *Client) pollTargets(ctx context.Context, rpc *rcisock.Client) error {
-	c.mu.Lock()
-
-	targets := make([]Target, 0, len(c.targets))
-
-	for _, target := range c.targets {
-		targets = append(targets, target)
-	}
-
-	c.mu.Unlock()
+	targets := c.store.identities()
 
 	var workers sync.WaitGroup
 	var errorMu sync.Mutex
@@ -509,7 +318,7 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rcisock.Client) error {
 		go func() {
 			defer workers.Done()
 
-			response, err := c.call(ctx, rpc, target.Identity, Request{Method: "GET", Path: "rci/show/version"})
+			response, err := c.dispatch.call(ctx, rpc, target.Identity, Request{Method: "GET", Path: "rci/show/version"})
 			if err != nil {
 				c.recordTargetError(target, rcisock.ResponseFrame{Status: response.Status, Body: response.Body}, err)
 				recordConnectionError(err)
@@ -521,13 +330,13 @@ func (c *Client) pollTargets(ctx context.Context, rpc *rcisock.Client) error {
 			c.recordSessionCount()
 
 			if err == nil && response.Status == 200 {
-				requester := rpcRequester{client: c, rpc: rpc, target: target.Identity}
+				requester := rpcRequester{dispatch: c.dispatch, rpc: rpc, target: target.Identity}
 
 				if c.config.TelemetryPoll != nil {
 					if err := c.config.TelemetryPoll(ctx, target, requester); err != nil {
 						diagnostic := DiagnosticError{
 							Phase: "telemetry", Identity: target.Identity, Code: "telemetry-failed",
-							Message: "telemetry polling failed", At: time.Now().UTC(),
+							Message: "telemetry polling failed", At: c.now(),
 						}
 
 						c.recordTargetTelemetryError(target, diagnostic)
@@ -563,158 +372,8 @@ func isConnectionFailure(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, rcisock.ErrClosed)
 }
 
-type rpcRequester struct {
-	client *Client
-	rpc    *rcisock.Client
-	target string
-}
-
-func (r rpcRequester) Do(ctx context.Context, request Request) (Response, error) {
-	if r.client != nil {
-		return r.client.call(ctx, r.rpc, r.target, request)
-	}
-
-	frame, err := r.rpc.Call(ctx, rcisock.RequestFrame{Target: r.target, Method: request.Method, Path: request.Path, Body: request.Body})
-	if err != nil {
-		return Response{}, err
-	}
-
-	return Response{Status: frame.Status, Body: append([]byte(nil), frame.Body...)}, nil
-}
-
-func (c *Client) call(ctx context.Context, rpc *rcisock.Client, nodeID string, request Request) (Response, error) {
-	c.mu.Lock()
-
-	targetLock := c.targetLocks[nodeID]
-
-	c.mu.Unlock()
-
-	if targetLock == nil {
-		return Response{}, ErrNoSession
-	}
-
-	return c.callRPC(ctx, rpc, nodeID, targetLock, request)
-}
-
-func (c *Client) callRPC(ctx context.Context, rpc *rcisock.Client, nodeID string, targetLock chan struct{}, request Request) (Response, error) {
-	if err := acquire(ctx, c.inflight); err != nil {
-		return Response{}, err
-	}
-
-	defer release(c.inflight)
-
-	if err := acquireTarget(ctx, targetLock); err != nil {
-		return Response{}, err
-	}
-
-	defer releaseTarget(targetLock)
-
-	frame, err := rpc.Call(ctx, rcisock.RequestFrame{
-		Target: nodeID, Method: request.Method, Path: request.Path, Body: request.Body,
-	})
-	if err != nil {
-		return Response{}, err
-	}
-
-	return Response{Status: frame.Status, Body: append([]byte(nil), frame.Body...)}, nil
-}
-
-func (c *Client) setRPC(rpc *rcisock.Client) {
-	c.mu.Lock()
-
-	c.rpc = rpc
-
-	c.mu.Unlock()
-}
-
-func (c *Client) clearRPC(rpc *rcisock.Client) {
-	c.mu.Lock()
-
-	if c.rpc == rpc {
-		c.rpc = nil
-	}
-
-	c.mu.Unlock()
-}
-
 func (c *Client) applyResult(target Target, response rcisock.ResponseFrame, err error) {
-	c.mu.Lock()
-
-	defer c.mu.Unlock()
-
-	state, ok := c.sessions[target.Identity]
-
-	if !ok {
-		return
-	}
-
-	diagnostic := c.targetDiagnostics[target.Identity]
-	now := time.Now().UTC()
-	diagnostic.LastProbeAt = timePointer(now)
-
-	if response.Status != 0 {
-		status := response.Status
-		diagnostic.LastProbeStatus = &status
-	} else {
-		diagnostic.LastProbeStatus = nil
-	}
-
-	if err == nil && response.Status == 200 {
-		state.misses = 0
-		state.live = true
-		c.sessions[target.Identity] = state
-		diagnostic.LastProbeError = nil
-		diagnostic.SessionPresent = true
-		diagnostic.Live = true
-		diagnostic.Misses = 0
-		diagnostic.SessionReason = "probe-success"
-		diagnostic.LastSessionChangeAt = timePointer(now)
-		c.targetDiagnostics[target.Identity] = diagnostic
-
-		return
-	}
-
-	diagnostic.LastProbeError = persistentDiagnosticError(
-		target.Identity,
-		response.Status,
-		err,
-		now,
-		targetDiagnosticMessages,
-	)
-	var remote *rcisock.RemoteError
-
-	if errors.As(err, &remote) && (remote.Code == "no-session-for-target" || remote.Code == "unsupported-firmware" || remote.Code == "not-permitted") {
-		delete(c.sessions, target.Identity)
-
-		diagnostic.SessionPresent = false
-		diagnostic.Live = false
-		diagnostic.Misses = 0
-		diagnostic.SessionReason = "evicted:" + remote.Code
-		diagnostic.LastSessionChangeAt = timePointer(now)
-		c.targetDiagnostics[target.Identity] = diagnostic
-
-		return
-	}
-
-	if errors.As(err, &remote) && remote.Code != "session-invalid" && remote.Code != "target-unreachable" {
-		c.targetDiagnostics[target.Identity] = diagnostic
-
-		return
-	}
-
-	state.misses++
-
-	if state.misses >= 2 {
-		state.live = false
-	}
-
-	c.sessions[target.Identity] = state
-	diagnostic.SessionPresent = true
-	diagnostic.Live = state.live
-	diagnostic.Misses = state.misses
-	diagnostic.SessionReason = "probe-miss"
-	diagnostic.LastSessionChangeAt = timePointer(now)
-	c.targetDiagnostics[target.Identity] = diagnostic
+	c.store.applyResult(target, response, err)
 }
 
 func (c *Client) clear(reasons ...string) {
@@ -724,78 +383,11 @@ func (c *Client) clear(reasons ...string) {
 		reason = reasons[0]
 	}
 
-	now := time.Now().UTC()
-
-	c.mu.Lock()
-
-	defer c.mu.Unlock()
-
-	var removed []string
-
-	for identity := range c.targets {
-		c.markTargetGoneLocked(identity, reason, now)
-
-		removed = append(removed, identity)
-	}
-
-	if len(removed) > 0 {
-		c.recordTargetChangeLocked(reason, nil, removed, now)
-	}
-
-	c.targets = make(map[string]Target)
-	c.targetLocks = make(map[string]chan struct{})
-	c.sessions = make(map[string]sessionState)
-	c.diagnostics.TargetCount = 0
-	c.diagnostics.SessionCount = 0
-
-	c.pruneTargetDiagnosticsLocked()
+	c.store.clear(reason)
 }
 
 func (c *Client) markDisconnected(reason string) {
-	now := time.Now().UTC()
-
-	c.mu.Lock()
-
-	defer c.mu.Unlock()
-
-	for identity, state := range c.sessions {
-		state.live = false
-
-		if state.misses < 2 {
-			state.misses = 2
-		}
-
-		c.sessions[identity] = state
-		diagnostic := c.targetDiagnostics[identity]
-		diagnostic.Present = true
-		diagnostic.SessionPresent = true
-		diagnostic.Live = false
-		diagnostic.Misses = state.misses
-		diagnostic.SessionReason = reason
-		diagnostic.RemovedAt = nil
-		diagnostic.LastSessionChangeAt = timePointer(now)
-		c.targetDiagnostics[identity] = diagnostic
-	}
-
-	c.diagnostics.TargetCount = len(c.targets)
-	c.diagnostics.SessionCount = c.sessionCountLocked()
-}
-
-func (c *Client) expireStaleSessionsLocked(now time.Time) {
-	for identity, state := range c.sessions {
-		if state.lastSeenAt.IsZero() || now.Sub(state.lastSeenAt) <= c.config.SessionRetention {
-			continue
-		}
-
-		delete(c.sessions, identity)
-		delete(c.targets, identity)
-		c.markTargetGoneLocked(identity, "retention-expired", now)
-	}
-
-	c.diagnostics.TargetCount = len(c.targets)
-	c.diagnostics.SessionCount = c.sessionCountLocked()
-
-	c.pruneTargetDiagnosticsLocked()
+	c.store.markDisconnected(reason)
 }
 
 func (c *Client) recordConnectionAttempt() {
@@ -803,34 +395,23 @@ func (c *Client) recordConnectionAttempt() {
 
 	defer c.mu.Unlock()
 
-	c.diagnostics.ConnectionAttempts++
+	c.diag.recordConnectionAttemptLocked()
 }
 
 func (c *Client) recordConnected() {
-	now := time.Now().UTC()
-
 	c.mu.Lock()
 
 	defer c.mu.Unlock()
 
-	if c.diagnostics.LastConnectedAt != nil {
-		c.diagnostics.ReconnectCount++
-	}
-
-	c.diagnostics.Connected = true
-	c.diagnostics.LastConnectedAt = timePointer(now)
+	c.diag.recordConnectedLocked()
 }
 
 func (c *Client) recordDisconnected(reason string) {
-	now := time.Now().UTC()
-
 	c.mu.Lock()
 
 	defer c.mu.Unlock()
 
-	c.diagnostics.Connected = false
-	c.diagnostics.LastDisconnectedAt = timePointer(now)
-	c.diagnostics.LastDisconnectReason = reason
+	c.diag.recordDisconnectedLocked(reason)
 }
 
 func (c *Client) recordTargets() {
@@ -838,11 +419,9 @@ func (c *Client) recordTargets() {
 
 	defer c.mu.Unlock()
 
-	now := time.Now().UTC()
-	c.diagnostics.TargetCount = len(c.targets)
-	c.diagnostics.TargetEnumerations++
-	c.diagnostics.SessionCount = c.sessionCountLocked()
-	c.diagnostics.LastTargetsAt = timePointer(now)
+	targetCount, sessionCount := c.store.countsLocked()
+
+	c.diag.recordTargetsLocked(targetCount, sessionCount)
 }
 
 func (c *Client) recordSessionCount() {
@@ -850,7 +429,9 @@ func (c *Client) recordSessionCount() {
 
 	defer c.mu.Unlock()
 
-	c.diagnostics.SessionCount = c.sessionCountLocked()
+	_, sessionCount := c.store.countsLocked()
+
+	c.diag.recordSessionCountLocked(sessionCount)
 }
 
 func (c *Client) recordTelemetrySuccess() {
@@ -858,150 +439,48 @@ func (c *Client) recordTelemetrySuccess() {
 
 	defer c.mu.Unlock()
 
-	now := time.Now().UTC()
-	c.diagnostics.LastTelemetryAt = timePointer(now)
+	c.diag.recordTelemetrySuccessLocked()
 }
 
 func (c *Client) recordTargetTelemetrySuccess(target Target) {
-	now := time.Now().UTC()
-
 	c.mu.Lock()
 
 	defer c.mu.Unlock()
 
-	diagnostic := c.targetDiagnostics[target.Identity]
-	diagnostic.LastTelemetryAt = timePointer(now)
-	diagnostic.LastTelemetryError = nil
-	c.targetDiagnostics[target.Identity] = diagnostic
+	c.diag.recordTargetTelemetrySuccessLocked(target.Identity)
 }
 
 func (c *Client) recordTargetTelemetryError(target Target, diagnostic DiagnosticError) {
-	now := time.Now().UTC()
-	diagnostic.At = now
-
 	c.mu.Lock()
 
 	defer c.mu.Unlock()
 
-	targetDiagnostic := c.targetDiagnostics[target.Identity]
-	targetDiagnostic.LastTelemetryError = cloneDiagnosticError(&diagnostic)
-	c.targetDiagnostics[target.Identity] = targetDiagnostic
+	c.diag.recordTargetTelemetryErrorLocked(target.Identity, diagnostic)
 }
 
 // RecordTelemetryPhase records one persistent telemetry request without exposing response bodies or transport errors.
 func (c *Client) RecordTelemetryPhase(identity, phase string, status int, err error) {
-	now := time.Now().UTC()
-
 	c.mu.Lock()
 
 	defer c.mu.Unlock()
 
-	diagnostic := c.targetDiagnostics[identity]
-
-	if diagnostic.Identity == "" {
-		diagnostic.Identity = identity
-		diagnostic.FirstSeenAt = timePointer(now)
-		diagnostic.Present = true
-		diagnostic.SessionPresent = true
-	}
-
-	phaseDiagnostic := telemetryPhase(&diagnostic.Telemetry, phase)
-
-	if phaseDiagnostic == nil {
-		return
-	}
-
-	phaseDiagnostic.LastAttemptAt = timePointer(now)
-
-	if err == nil && status == 200 {
-		phaseDiagnostic.LastSuccessAt = timePointer(now)
-	} else {
-		phaseDiagnostic.LastError = persistentDiagnosticError(
-			identity,
-			status,
-			err,
-			now,
-			newTelemetryDiagnosticMessages(phase),
-		)
-	}
-
-	c.targetDiagnostics[identity] = diagnostic
+	c.diag.recordTelemetryPhaseLocked(identity, phase, status, err)
 }
 
 func (c *Client) recordTargetError(target Target, response rcisock.ResponseFrame, err error) {
-	diagnostic := persistentDiagnosticError(
-		target.Identity,
-		response.Status,
-		err,
-		time.Now().UTC(),
-		targetDiagnosticMessages,
-	)
-
-	c.recordError(*diagnostic)
-}
-
-func (c *Client) recordError(diagnostic DiagnosticError) {
-	diagnostic.At = time.Now().UTC()
-
 	c.mu.Lock()
 
 	defer c.mu.Unlock()
 
-	c.diagnostics.LastError = &diagnostic
+	c.diag.recordTargetErrorLocked(target.Identity, response.Status, err)
 }
 
-func (c *Client) sessionCountLocked() int {
-	count := 0
+func (c *Client) recordError(diagnostic DiagnosticError) {
+	c.mu.Lock()
 
-	for _, state := range c.sessions {
-		if state.visible() {
-			count++
-		}
-	}
+	defer c.mu.Unlock()
 
-	return count
-}
-
-func (c *Client) recordTargetChangeLocked(reason string, added, removed []string, at time.Time) {
-	sort.Strings(added)
-	sort.Strings(removed)
-
-	c.diagnostics.LastTargetChange = &TargetChange{At: at, Reason: reason, Added: append([]string(nil), added...), Removed: append([]string(nil), removed...)}
-}
-
-// markTargetGoneLocked flips a target's diagnostics to fully absent. The caller
-// must hold c.mu.
-func (c *Client) markTargetGoneLocked(identity, reason string, now time.Time) {
-	state := c.targetDiagnostics[identity]
-	state.Present = false
-	state.SessionPresent = false
-	state.Live = false
-	state.SessionReason = reason
-	state.LastSessionChangeAt = timePointer(now)
-	state.RemovedAt = timePointer(now)
-	c.targetDiagnostics[identity] = state
-}
-
-func (c *Client) pruneTargetDiagnosticsLocked() {
-	removed := make([]TargetDiagnostics, 0, len(c.targetDiagnostics))
-
-	for _, diagnostic := range c.targetDiagnostics {
-		if !diagnostic.Present {
-			removed = append(removed, diagnostic)
-		}
-	}
-
-	if len(removed) <= maxRecentTargetDiagnostics {
-		return
-	}
-
-	sort.Slice(removed, func(i, j int) bool {
-		return diagnosticTime(removed[i].RemovedAt).Before(diagnosticTime(removed[j].RemovedAt))
-	})
-
-	for _, diagnostic := range removed[:len(removed)-maxRecentTargetDiagnostics] {
-		delete(c.targetDiagnostics, diagnostic.Identity)
-	}
+	c.diag.recordErrorLocked(diagnostic)
 }
 
 type diagnosticMessages struct {

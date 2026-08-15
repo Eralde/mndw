@@ -116,7 +116,7 @@ func cloneIntPointer(value *int) *int {
 
 func (c *Client) pollInterfacePower(ctx context.Context, requester Requester, target Target) {
 	markBothPowerUnavailable := func() {
-		c.updatePowerState(target.Identity, func(state *sessionState) {
+		c.store.updatePowerState(target.Identity, func(state *sessionState) {
 			state.power2G = unavailablePower(state.power2G)
 			state.power5G = unavailablePower(state.power5G)
 		})
@@ -148,7 +148,7 @@ func (c *Client) pollInterfacePower(ctx context.Context, requester Requester, ta
 
 	for index, interfaceName := range []string{"WifiMaster0", "WifiMaster1"} {
 		if index >= len(responses) || responses[index] == nil {
-			c.markPowerUnavailable(target.Identity, index)
+			c.store.markPowerUnavailable(target.Identity, index)
 
 			continue
 		}
@@ -156,51 +156,11 @@ func (c *Client) pollInterfacePower(ctx context.Context, requester Requester, ta
 		state, parseErr := parseInterfacePower(responses[index], interfaceName)
 
 		if parseErr != nil {
-			c.markPowerUnavailable(target.Identity, index)
+			c.store.markPowerUnavailable(target.Identity, index)
 
 			continue
 		}
 
-		c.setPowerState(target.Identity, index, state)
+		c.store.setPowerState(target.Identity, index, state)
 	}
-}
-
-func (c *Client) updatePowerState(identity string, update func(*sessionState)) {
-	c.mu.Lock()
-
-	defer c.mu.Unlock()
-
-	state, ok := c.sessions[identity]
-
-	if !ok {
-		return
-	}
-
-	update(&state)
-
-	c.sessions[identity] = state
-}
-
-func (c *Client) setPowerState(identity string, index int, power PowerState) {
-	c.updatePowerState(identity, func(state *sessionState) {
-		if index == 0 {
-			state.power2G = power
-
-			return
-		}
-
-		state.power5G = power
-	})
-}
-
-func (c *Client) markPowerUnavailable(identity string, index int) {
-	c.updatePowerState(identity, func(state *sessionState) {
-		if index == 0 {
-			state.power2G = unavailablePower(state.power2G)
-
-			return
-		}
-
-		state.power5G = unavailablePower(state.power5G)
-	})
 }

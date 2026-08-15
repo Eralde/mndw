@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"mndwd/internal/manifest"
+	"mndwd/internal/state"
 )
 
 func fixtureArchive(t *testing.T, relativeDir string) ([]byte, []byte) {
@@ -184,7 +185,7 @@ func TestListEntryI18nJSONShape(t *testing.T) {
 		t.Fatalf("valid fixture rejected: %v", err)
 	}
 
-	entry := h.entryFrom(m, "upload", "approved", true)
+	entry := h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true)
 	encoded, err := json.Marshal(entry)
 	if err != nil {
 		t.Fatalf("marshal list entry: %v", err)

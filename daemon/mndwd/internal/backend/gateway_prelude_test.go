@@ -72,7 +72,6 @@ func newPreludeGateway(t *testing.T, auth Authenticator) *Gateway {
 			Name:     "pending",
 			Source:   state.SourceUpload,
 			Approval: state.ApprovalPending,
-			Enabled:  true,
 			Manifest: json.RawMessage(demoManifest),
 		}
 

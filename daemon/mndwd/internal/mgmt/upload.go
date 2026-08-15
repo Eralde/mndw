@@ -177,7 +177,7 @@ func (h *Handler) stagePending(w http.ResponseWriter, m *manifest.Manifest, mani
 }
 
 // newRecord builds the durable state record from a validated manifest.
-func newRecord(m *manifest.Manifest, manifestBytes []byte, approval string, enabled bool) *state.Plugin {
+func newRecord(m *manifest.Manifest, manifestBytes []byte, approval state.Approval, enabled bool) *state.Plugin {
 	return &state.Plugin{
 		Name:             *m.Name,
 		Source:           state.SourceUpload,

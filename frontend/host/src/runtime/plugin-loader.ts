@@ -213,7 +213,7 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
 
   // Only enabled+approved plugins are runnable and served on disk; pending/disabled
   // ones appear in the list (for the settings UI) but must not load into the runtime.
-  const runnable = dedupe(entries.filter((entry) => entry.enabled));
+  const runnable = dedupe(entries.filter((entry) => entry.enabled && entry.approval === 'approved'));
 
   await Promise.all(
     runnable.map((entry) => loadOne(entry, resolved)),

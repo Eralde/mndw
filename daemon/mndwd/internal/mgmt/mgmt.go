@@ -114,8 +114,8 @@ type ListEntry struct {
 	Label            string          `json:"label"`
 	Entry            string          `json:"entry"`
 	Icon             string          `json:"icon,omitempty"`
-	Source           string          `json:"source"`
-	Approval         string          `json:"approval"`
+	Source           state.Source    `json:"source"`
+	Approval         state.Approval  `json:"approval"`
 	Enabled          bool            `json:"enabled"`
 	Permissions      []string        `json:"permissions,omitempty"`
 	PermissionGrants map[string]bool `json:"permissionGrants,omitempty"`
@@ -200,7 +200,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 
 // entryFrom projects a validated manifest plus runtime state into a ListEntry,
 // including its always-present depsStatus.
-func (h *Handler) entryFrom(m *manifest.Manifest, source, approval string, enabled bool) ListEntry {
+func (h *Handler) entryFrom(m *manifest.Manifest, source state.Source, approval state.Approval, enabled bool) ListEntry {
 	e := ListEntry{
 		Name:        deref(m.Name),
 		Type:        deref(m.Type),

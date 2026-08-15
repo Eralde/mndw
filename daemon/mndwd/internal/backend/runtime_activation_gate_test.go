@@ -64,7 +64,7 @@ func TestServiceSpecActivationGatesPreserveApprovalAndEnabledState(t *testing.T)
 
 	for _, test := range []struct {
 		name     string
-		approval string
+		approval state.Approval
 		enabled  bool
 	}{
 		{name: "not approved", approval: state.ApprovalPending, enabled: true},

@@ -19,19 +19,23 @@ import (
 // reinstalled with an explicit provenance.
 const schemaVersion = 3
 
-// Approval status of a plugin's backend. Plugins without a backend are installed
-// directly as approved because they do not expose executable server-side code.
+// Approval is a plugin backend's approval status. Plugins without a backend are installed
+// directly as approved because they expose no executable server-side code.
+type Approval string
+
 const (
-	ApprovalPending  = "pending"
-	ApprovalApproved = "approved"
+	ApprovalPending  Approval = "pending"
+	ApprovalApproved Approval = "approved"
 )
 
 // Source of a plugin. Registry is reserved for a future signature-verified
 // install path; it is intentionally not inferred from manifest contents.
+type Source string
+
 const (
-	SourceBuiltin  = "builtin"
-	SourceRegistry = "registry"
-	SourceUpload   = "upload"
+	SourceBuiltin  Source = "builtin"
+	SourceRegistry Source = "registry"
+	SourceUpload   Source = "upload"
 )
 
 // Plugin is one plugin's durable record. Manifest holds the exact validated
@@ -39,11 +43,11 @@ const (
 // the denormalized display fields are conveniences for the list API.
 type Plugin struct {
 	Name             string          `json:"name"`
-	Source           string          `json:"source"`
+	Source           Source          `json:"source"`
 	Type             string          `json:"type"`
 	Version          string          `json:"version"`
 	Label            string          `json:"label"`
-	Approval         string          `json:"approval"`
+	Approval         Approval        `json:"approval"`
 	Enabled          bool            `json:"enabled"`
 	Manifest         json.RawMessage `json:"manifest"`
 	InstalledAt      time.Time       `json:"installedAt"`
@@ -146,14 +150,42 @@ func validV3State(st *State) bool {
 			return false
 		}
 
-		switch plugin.Source {
-		case SourceBuiltin, SourceRegistry, SourceUpload:
-		default:
+		if err := validatePlugin(name, plugin); err != nil {
 			return false
 		}
 	}
 
 	return true
+}
+
+func validApproval(a Approval) bool {
+	return a == ApprovalPending || a == ApprovalApproved
+}
+
+func validSource(s Source) bool {
+	return s == SourceBuiltin || s == SourceRegistry || s == SourceUpload
+}
+
+// validatePlugin enforces the durable approval invariant: known source and
+// approval values, and enabled implying approved. pending+enabled is invalid.
+func validatePlugin(name string, p *Plugin) error {
+	if p == nil {
+		return fmt.Errorf("plugin %q: nil record", name)
+	}
+
+	if !validSource(p.Source) {
+		return fmt.Errorf("plugin %q: invalid source %q", name, p.Source)
+	}
+
+	if !validApproval(p.Approval) {
+		return fmt.Errorf("plugin %q: invalid approval %q", name, p.Approval)
+	}
+
+	if p.Enabled && p.Approval != ApprovalApproved {
+		return fmt.Errorf("plugin %q: enabled requires approved", name)
+	}
+
+	return nil
 }
 
 func emptyState() *State {
@@ -236,6 +268,12 @@ func (s *Store) Mutate(fn func(*State) error) error {
 
 	if err := fn(next); err != nil {
 		return err
+	}
+
+	for name, plugin := range next.Plugins {
+		if err := validatePlugin(name, plugin); err != nil {
+			return err
+		}
 	}
 
 	if err := s.persist(next); err != nil {

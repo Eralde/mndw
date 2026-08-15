@@ -113,7 +113,7 @@ func (h *Handler) reconcilePermission(plugin, reason string) {
 	}
 }
 
-func (h *Handler) permissionTarget(name string) (*manifest.Manifest, string, string, bool, *httpx.APIError) {
+func (h *Handler) permissionTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, *httpx.APIError) {
 	if plugin, ok := h.store.Get(name); ok {
 		m, err := manifest.ValidateV3(plugin.Manifest)
 		if err != nil {

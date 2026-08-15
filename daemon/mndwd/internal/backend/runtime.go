@@ -7,6 +7,7 @@ import (
 
 	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
+	"mndwd/internal/state"
 )
 
 // RuntimeLimitsSnapshot is the public, command-free capacity view used by
@@ -248,7 +249,7 @@ func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (Servic
 		protocolVersion = *backend.ProtocolVersion
 	}
 
-	enabled := plugin.Enabled && plugin.Approval == "approved"
+	enabled := plugin.Enabled && plugin.Approval == state.ApprovalApproved
 
 	if enabled && gates != nil {
 		enabled = gates.Satisfied(plugin.Name, plugin.Manifest.Permissions)
@@ -260,7 +261,7 @@ func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (Servic
 		Command:         *backend.Command,
 		Args:            append([]string(nil), backend.Args...),
 		ProtocolVersion: protocolVersion,
-		Builtin:         plugin.Source == "builtin",
+		Builtin:         plugin.Source == state.SourceBuiltin,
 		Enabled:         enabled,
 	}, true
 }

@@ -272,7 +272,7 @@ func newStatusTestSupervisor(now time.Time) *Supervisor {
 	}, NewAdmission(Limits{MaxSupervisedServices: 1}))
 }
 
-func statusTestPlugin(t *testing.T, name string, kind manifest.BackendKind, protocol int, approval string, enabled bool, permissions []string) *registry.Plugin {
+func statusTestPlugin(t *testing.T, name string, kind manifest.BackendKind, protocol int, approval state.Approval, enabled bool, permissions []string) *registry.Plugin {
 	t.Helper()
 
 	permissionJSON := "[]"

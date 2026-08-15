@@ -142,6 +142,7 @@ describe('loadPlugins', () => {
       widget('on'),
       widget('off', {enabled: false}),
       widget('pending', {enabled: false, approval: 'pending'}),
+      widget('pending-live', {enabled: true, approval: 'pending'}),
     ]);
 
     await loadPlugins(h);

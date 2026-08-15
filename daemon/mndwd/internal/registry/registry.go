@@ -23,9 +23,9 @@ type Plugin struct {
 	// Manifest is the re-validated manifest, the source of endpoint/ws routes.
 	Manifest *manifest.Manifest
 	// Source is builtin or user (state.Source*).
-	Source string
+	Source state.Source
 	// Approval and Enabled are the runtime gate; only approved+enabled plugins serve.
-	Approval string
+	Approval state.Approval
 	Enabled  bool
 }
 

@@ -492,6 +492,7 @@ describe('AppComponent', () => {
     data.extraFeaturesPresentation.set('unavailable');
 
     const fixture = render(data);
+
     await vi.waitFor(() =>
       expect(
         (fixture.componentInstance as unknown as {bannerStore: {loaded: () => boolean}}).bannerStore.loaded(),
@@ -508,6 +509,7 @@ describe('AppComponent', () => {
     data.extraFeaturesSetupReasons.set(['extender-session']);
 
     const fixture = render(data);
+
     await vi.waitFor(() => expect(fixture.nativeElement.querySelector('.extra-features-setup')).not.toBeNull());
 
     expect((fixture.nativeElement.querySelector('.extra-features-setup') as HTMLElement).textContent)

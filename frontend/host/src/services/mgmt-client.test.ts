@@ -82,6 +82,14 @@ describe('mgmt-client', () => {
     expect(result.map((p) => p.name)).toEqual(['a', 'b']);
   });
 
+  it('rejects malformed list responses instead of returning a cast payload', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, {plugins: [{}]}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.listPlugins()).rejects.toThrow();
+  });
+
   it('uploadPlugin POSTs the raw zip body and discriminates 201 installed', async () => {
     fetchImpl.mockResolvedValue(jsonResponse(201, entry('fresh')));
 
@@ -116,6 +124,14 @@ describe('mgmt-client', () => {
     expect(result.status).toBe('pending');
   });
 
+  it('rejects malformed upload entry responses', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(201, {notAnEntry: true}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.uploadPlugin(new File([new Uint8Array([1])], 'p.zip'))).rejects.toThrow();
+  });
+
   it('approvePlugin POSTs {name} and returns the entry', async () => {
     fetchImpl.mockResolvedValue(jsonResponse(200, entry('x')));
 
@@ -130,6 +146,14 @@ describe('mgmt-client', () => {
     expect(typeof init?.body).toBe('string');
     expect(JSON.parse(init?.body as string)).toEqual({name: 'x'});
     expect(result.name).toBe('x');
+  });
+
+  it('rejects malformed mutation entry responses', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, {notAnEntry: true}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.approvePlugin('x')).rejects.toThrow();
   });
 
   it('setPluginPermission POSTs the permission mutation with CSRF and timeout', async () => {
@@ -157,6 +181,14 @@ describe('mgmt-client', () => {
     });
     expect(init?.signal).toBeInstanceOf(AbortSignal);
     expect(result.permissionGrants?.['persistent-rci-session:write']).toBe(true);
+  });
+
+  it('rejects malformed permission mutation responses', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, {notAnEntry: true}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.setPluginPermission('x', 'persistent-rci-session:write', true)).rejects.toThrow();
   });
 
   it('denyPlugin and deletePlugin resolve void on {ok:true}', async () => {

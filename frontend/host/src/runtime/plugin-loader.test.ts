@@ -181,6 +181,15 @@ describe('loadPlugins', () => {
 
     await loadPlugins({fetchList, importModule: vi.fn(), loadStylesheet: vi.fn()});
 
+    expect(appState.pluginLoadError).toBe('Failed to load plugins. Check the console for details.');
+    expect(pluginRegistry.getAll()).toHaveLength(0);
+  });
+
+  it('fails closed when the default list fetch receives a malformed payload', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({plugins: [{}]}), {status: 200}));
+
+    await loadPlugins({importModule: vi.fn(), loadStylesheet: vi.fn()});
+
     expect(appState.pluginLoadError).toContain('Failed to load plugins');
     expect(pluginRegistry.getAll()).toHaveLength(0);
   });

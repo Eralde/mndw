@@ -10,6 +10,7 @@ import {
 } from '../services/plugin-catalog.service.js';
 import {checkPluginVersions, readPluginLock} from './plugin-lock.js';
 import {pluginRegistry} from './plugin-registry.js';
+import {decodeMgmtList} from './mgmt-list-schema.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
 
@@ -88,9 +89,7 @@ async function defaultFetchList(): Promise<PluginListEntry[]> {
     throw new Error(`HTTP ${response.status}`);
   }
 
-  const data = await response.json() as {plugins?: unknown};
-
-  return Array.isArray(data.plugins) ? data.plugins as PluginListEntry[] : [];
+  return decodeMgmtList(await response.json());
 }
 
 async function defaultCheckVersions(entry: PluginListEntry, dir: string): Promise<string[]> {

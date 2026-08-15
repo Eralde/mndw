@@ -1,4 +1,4 @@
-import type {PluginPermission} from './manifest.js';
+import {z} from 'zod';
 
 /**
  * Typed backend client handed to plugins as `context.backend`.
@@ -19,6 +19,75 @@ import type {PluginPermission} from './manifest.js';
 
 export type BackendApprovalStatus = 'approved' | 'pending' | 'denied';
 
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+};
+
+const backendBlockerSchema = z.object({
+  permission: z.enum(['persistent-rci-session:read', 'persistent-rci-session:write']),
+  reason: z.string().min(1),
+  prerequisite: z.string().min(1)
+    .optional(),
+});
+
+const retryAfterSchema = z.number().int()
+  .nonnegative()
+  .nullable();
+
+const blockedStatusSchema = z.object({
+  kind: z.enum(['exec', 'service']),
+  state: z.literal('blocked'),
+  retryAfterSeconds: retryAfterSchema,
+  blockers: z.array(backendBlockerSchema).min(1),
+});
+
+const incompatibleStatusSchema = z.object({
+  kind: z.enum(['exec', 'service']),
+  state: z.literal('incompatible'),
+  retryAfterSeconds: retryAfterSchema,
+  requiredProtocol: z.number().int(),
+  supportedProtocols: z.array(z.number().int()),
+});
+
+const plainStatusSchema = z.object({
+  kind: z.enum(['exec', 'service']),
+  state: z.enum(['ready', 'starting', 'unavailable', 'maintenance', 'disabled', 'not-approved']),
+  retryAfterSeconds: retryAfterSchema,
+});
+
+const rejectVariantOnlyFields = (value: unknown): unknown => {
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const forbiddenByState: Record<string, string[]> = {
+    'blocked': ['requiredProtocol', 'supportedProtocols'],
+    'incompatible': ['blockers'],
+    'ready': ['blockers', 'requiredProtocol', 'supportedProtocols'],
+    'starting': ['blockers', 'requiredProtocol', 'supportedProtocols'],
+    'unavailable': ['blockers', 'requiredProtocol', 'supportedProtocols'],
+    'maintenance': ['blockers', 'requiredProtocol', 'supportedProtocols'],
+    'disabled': ['blockers', 'requiredProtocol', 'supportedProtocols'],
+    'not-approved': ['blockers', 'requiredProtocol', 'supportedProtocols'],
+  };
+  const forbidden = forbiddenByState[String(value.state)] ?? [];
+
+  if (forbidden.some((key) => Object.prototype.hasOwnProperty.call(value, key))) {
+    throw new Error('backend status contains fields for a different variant');
+  }
+
+  return value;
+};
+
+const backendStatusSchema = z.preprocess(
+  rejectVariantOnlyFields,
+  z.discriminatedUnion('state', [blockedStatusSchema, incompatibleStatusSchema, plainStatusSchema]),
+);
+
+export type BackendBlocker = z.infer<typeof backendBlockerSchema>;
+export type BackendStatus = z.infer<typeof backendStatusSchema>;
+export type BackendStatusState = BackendStatus['state'];
+
 export type BackendRouteTransport = 'http' | 'websocket';
 
 export interface BackendRouteDescriptor {
@@ -29,42 +98,16 @@ export interface BackendRouteDescriptor {
 }
 
 /** Per-plugin backend snapshot from `GET /api/mgmt/list`. */
+/**
+ * Host-assembled input bundle for a plugin's backend client. The route map comes from the
+ * daemon descriptor; approval and enabled state come from the management-list entry.
+ */
 export interface BackendDescriptor {
   /** One command-free route map shared by exec and service backends. */
   routes: Record<string, BackendRouteDescriptor>;
   approval: BackendApprovalStatus;
   enabled: boolean;
 }
-
-export type BackendStatusState =
-  | 'ready'
-  | 'starting'
-  | 'unavailable'
-  | 'incompatible'
-  | 'maintenance'
-  | 'blocked'
-  | 'disabled'
-  | 'not-approved';
-
-export interface BackendBlocker {
-  permission: PluginPermission;
-  reason: string;
-  prerequisite?: string;
-}
-
-interface BackendStatusBase {
-  kind: 'exec' | 'service';
-  retryAfterSeconds: number | null;
-}
-
-export type BackendStatus =
-  | (BackendStatusBase & {state: 'blocked'; blockers: BackendBlocker[]})
-  | (BackendStatusBase & {
-    state: 'incompatible';
-    requiredProtocol: number;
-    supportedProtocols: number[];
-  })
-  | (BackendStatusBase & {state: Exclude<BackendStatusState, 'blocked' | 'incompatible'>});
 
 export interface BackendStatusOptions {
   signal?: AbortSignal;
@@ -223,134 +266,6 @@ const parseRetryAfterSeconds = (response: Response): number | null => {
   const value = Number(raw);
 
   return Number.isSafeInteger(value) ? value : null;
-};
-
-const parseNonNegativeInteger = (value: unknown, field: string): number | null => {
-  if (value === null) {
-    return null;
-  }
-
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`Invalid ${field}`);
-  }
-
-  return value;
-};
-
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-};
-
-const isPluginPermission = (value: unknown): value is PluginPermission => {
-  return value === 'persistent-rci-session:read' || value === 'persistent-rci-session:write';
-};
-
-const hasOwn = (value: Record<string, unknown>, key: string): boolean => {
-  return Object.prototype.hasOwnProperty.call(value, key);
-};
-
-const parseBackendStatusPayload: (value: unknown) => BackendStatus = (value) => {
-  if (!isRecord(value)) {
-    throw new Error('Invalid backend status payload');
-  }
-
-  const kind = value.kind;
-
-  if (kind !== 'exec' && kind !== 'service') {
-    throw new Error('Invalid backend status kind');
-  }
-
-  const state = value.state;
-  const states: BackendStatusState[] = [
-    'ready',
-    'starting',
-    'unavailable',
-    'incompatible',
-    'maintenance',
-    'blocked',
-    'disabled',
-    'not-approved',
-  ];
-
-  if (typeof state !== 'string' || !states.includes(state as BackendStatusState)) {
-    throw new Error('Invalid backend status state');
-  }
-
-  const parsedState = state as BackendStatusState;
-
-  const retryAfterSeconds = parseNonNegativeInteger(value.retryAfterSeconds, 'retryAfterSeconds');
-
-  if (!hasOwn(value, 'retryAfterSeconds')) {
-    throw new Error('Missing retryAfterSeconds');
-  }
-
-  if (parsedState === 'blocked') {
-    if (!Array.isArray(value.blockers) || value.blockers.length === 0) {
-      throw new Error('Invalid blockers');
-    }
-
-    if (hasOwn(value, 'requiredProtocol') || hasOwn(value, 'supportedProtocols')) {
-      throw new Error('Invalid blocked status fields');
-    }
-
-    const blockers = value.blockers.map((rawBlocker): BackendBlocker => {
-      if (!isRecord(rawBlocker) || !isPluginPermission(rawBlocker.permission)) {
-        throw new Error('Invalid blocker permission');
-      }
-
-      if (typeof rawBlocker.reason !== 'string' || rawBlocker.reason.length === 0) {
-        throw new Error('Invalid blocker reason');
-      }
-
-      if (hasOwn(rawBlocker, 'prerequisite')
-        && (typeof rawBlocker.prerequisite !== 'string' || rawBlocker.prerequisite.length === 0)) {
-        throw new Error('Invalid blocker prerequisite');
-      }
-
-      const blocker: BackendBlocker = {
-        permission: rawBlocker.permission,
-        reason: rawBlocker.reason,
-      };
-
-      if (typeof rawBlocker.prerequisite === 'string') {
-        blocker.prerequisite = rawBlocker.prerequisite;
-      }
-
-      return blocker;
-    });
-
-    return {kind, state: parsedState, retryAfterSeconds, blockers};
-  }
-
-  if (parsedState === 'incompatible') {
-    const requiredProtocol = value.requiredProtocol;
-    const supportedProtocols = value.supportedProtocols;
-
-    if (typeof requiredProtocol !== 'number'
-      || !Number.isSafeInteger(requiredProtocol)
-      || !Array.isArray(supportedProtocols)
-      || !supportedProtocols.every((candidate): candidate is number => typeof candidate === 'number' && Number.isSafeInteger(candidate))) {
-      throw new Error('Invalid incompatible status fields');
-    }
-
-    if (hasOwn(value, 'blockers')) {
-      throw new Error('Invalid incompatible status fields');
-    }
-
-    return {
-      kind,
-      state: parsedState,
-      retryAfterSeconds,
-      requiredProtocol,
-      supportedProtocols,
-    };
-  }
-
-  if (hasOwn(value, 'blockers') || hasOwn(value, 'requiredProtocol') || hasOwn(value, 'supportedProtocols')) {
-    throw new Error('Invalid backend status variant fields');
-  }
-
-  return {kind, state: parsedState, retryAfterSeconds};
 };
 
 const buildQuery = (query: BackendFetchOptions['query']): string => {
@@ -560,7 +475,7 @@ export function createBackendClient(
         }
 
         try {
-          return parseBackendStatusPayload(await response.json());
+          return backendStatusSchema.parse(await response.json());
         } catch (error) {
           if (error instanceof BackendStatusQueryError) {
             throw error;

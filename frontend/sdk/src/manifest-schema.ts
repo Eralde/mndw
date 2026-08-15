@@ -1,3 +1,10 @@
+// Runtime authority for the plugin manifest shape (Zod). Generation flow:
+//   this file  ->  contracts/manifest/manifest.schema.json  (generated contract)
+//               ->  frontend/sdk/manifest.schema.json        (editor-hint copy)
+// Neither JSON file is a source of truth; regenerate with `pnpm generate-contracts`.
+// manifest.ts derives its TypeScript types from this schema via z.infer — do not
+// re-declare the manifest shape by hand anywhere.
+
 import {z} from 'zod';
 
 const pluginNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, {
@@ -283,5 +290,15 @@ const pageManifestSchema = z.object({
 
 export const pluginManifestSchema = z.discriminatedUnion('type', [widgetManifestSchema, pageManifestSchema]);
 
+export type PluginBackendAccessOutput = z.infer<typeof accessSchema>;
+export type PluginBackendMethodOutput = z.infer<typeof methodSchema>;
+export type PluginPermissionOutput = z.infer<typeof permissionSchema>;
+export type PluginHttpRouteOutput = z.infer<typeof httpRouteSchema>;
+export type PluginWebSocketRouteOutput = z.infer<typeof websocketRouteSchema>;
+export type PluginExecRouteOutput = z.infer<typeof execRouteSchema>;
+export type PluginExecBackendOutput = z.infer<typeof execBackendSchema>;
+export type PluginServiceBackendOutput = z.infer<typeof serviceBackendSchema>;
+export type PluginBackendOutput = z.infer<typeof backendSchema>;
+export type WidgetSizeOutput = z.infer<typeof sizeSchema>;
 export type PluginManifestInput = z.input<typeof pluginManifestSchema>;
 export type PluginManifestOutput = z.infer<typeof pluginManifestSchema>;

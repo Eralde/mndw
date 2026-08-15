@@ -13,6 +13,7 @@ import {
   MGMT_RUNTIME_URL,
   MGMT_UPLOAD_URL,
 } from '../constants.js';
+import {decodeMgmtList, decodeMgmtListEntry} from '../runtime/mgmt-list-schema.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
 import {hostT} from './locale.service.js';
 
@@ -112,7 +113,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
   async function mutateEntry(url: string, name: string): Promise<PluginListEntry> {
     const response = await postName(url, name);
 
-    return (await response.json()) as PluginListEntry;
+    return decodeMgmtListEntry(await response.json());
   }
 
   return {
@@ -123,9 +124,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
         throw await toError(response);
       }
 
-      const body = (await response.json()) as {plugins: PluginListEntry[]};
-
-      return body.plugins;
+      return decodeMgmtList(await response.json());
     },
 
     async uploadPlugin(file: File): Promise<UploadResult> {
@@ -138,7 +137,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
       });
 
       if (response.status === 201 || response.status === 202) {
-        const entry = (await response.json()) as PluginListEntry;
+        const entry = decodeMgmtListEntry(await response.json());
 
         return {status: response.status === 201 ? 'installed' : 'pending', entry};
       }
@@ -161,7 +160,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
         throw await toError(response);
       }
 
-      return (await response.json()) as PluginListEntry;
+      return decodeMgmtListEntry(await response.json());
     },
 
     async denyPlugin(name: string): Promise<void> {

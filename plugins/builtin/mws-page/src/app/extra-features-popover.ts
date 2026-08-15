@@ -56,6 +56,7 @@ export function openExtraFeaturesPopover(
     reasons: readonly ExtraFeaturesSetupReason[] = setupReasons,
   ): void => {
     title.textContent = t(`extra-features.popover.${next}.title`);
+
     const bodyKey = next === 'unavailable' && reasons.includes('extender-session')
       ? 'extra-features.popover.unavailable.extender-session.body'
       : next === 'blocked'

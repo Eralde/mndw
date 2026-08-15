@@ -1,5 +1,6 @@
 import {SvelteMap} from 'svelte/reactivity';
 import {MGMT_LIST_URL} from '../constants.js';
+import {decodeMgmtList} from '../runtime/mgmt-list-schema.js';
 import type {DepsStatus} from '../runtime/plugin-types.js';
 
 /** Reactive plugin-name → depsStatus map. Absence means ready. */
@@ -49,11 +50,7 @@ async function defaultFetchStatuses(signal: AbortSignal): Promise<Array<{name: s
     throw new Error(`HTTP ${response.status}`);
   }
 
-  const data = await response.json() as {plugins?: unknown};
-
-  return Array.isArray(data.plugins)
-    ? data.plugins as Array<{name: string; depsStatus: DepsStatus}>
-    : [];
+  return decodeMgmtList(await response.json()).map((entry) => ({name: entry.name, depsStatus: entry.depsStatus}));
 }
 
 /**

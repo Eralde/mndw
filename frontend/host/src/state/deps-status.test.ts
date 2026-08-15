@@ -99,6 +99,24 @@ describe('deps polling', () => {
     expect(getDepsStatus('a')).toBe('ready');
   });
 
+  it('keeps the previous status when the default fetch receives a malformed payload', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          plugins: [{name: 'a', depsStatus: 'not-real'}],
+        }),
+        {status: 200},
+      ),
+    );
+
+    replaceDepsStatuses([{name: 'a', depsStatus: 'installing'}]);
+    startDepsPolling();
+
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+
+    expect(getDepsStatus('a')).toBe('installing');
+  });
+
   it('discards a response that resolves after stopDepsPolling', async () => {
     let resolveLate: (v: Array<{name: string; depsStatus: 'installing'}>) => void = () => {};
     const fetchList = vi.fn(

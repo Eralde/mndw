@@ -151,6 +151,7 @@ onMount(() => {
   <span
     class="sr-only"
     data-testid="l10n-probe"
+    hidden
   >{t('l10n.probe')}</span>
   {#if state === 'idle'}
     <div class="screen">

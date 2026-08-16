@@ -81,6 +81,7 @@ describe('TerminalPage (dev path)', () => {
     const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
 
     expect(probe).not.toBeNull();
+    expect(probe?.hidden).toBe(true);
 
     const enValue = probe?.textContent;
 

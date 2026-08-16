@@ -55,6 +55,35 @@ func TestResolveUserPlugin(t *testing.T) {
 	}
 }
 
+func TestResolveUserPluginLegacyAbsoluteDirFallsBack(t *testing.T) {
+	reg, store, userDir, _ := newRegistry(t)
+	m := `{"manifestVersion":3,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`
+
+	if err := store.Mutate(func(st *state.State) error {
+		st.Plugins["svc"] = &state.Plugin{
+			Name:             "svc",
+			Source:           state.SourceUpload,
+			Approval:         state.ApprovalApproved,
+			Enabled:          true,
+			Manifest:         json.RawMessage(m),
+			ActiveVersionDir: "/opt/share/www/mndw/user-plugins/svc",
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	plugin, ok := reg.Resolve("svc")
+	if !ok {
+		t.Fatal("expected to resolve svc")
+	}
+
+	if got, want := plugin.Dir, filepath.Join(userDir, "svc"); got != want {
+		t.Fatalf("dir = %q, want %q", got, want)
+	}
+}
+
 func TestResolveBuiltin(t *testing.T) {
 	reg, _, _, builtinDir := newRegistry(t)
 	dir := filepath.Join(builtinDir, "core")

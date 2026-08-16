@@ -2,6 +2,7 @@
 set -u
 
 MNDW_ROOT=${MNDW_ROOT:-/opt}
+MNDW_CONFIG_FILE=${MNDW_CONFIG_FILE:-$MNDW_ROOT/etc/mndw.conf}
 MNDW_PROC_ROOT=${MNDW_PROC_ROOT:-/proc}
 MNDW_STATE_FILE=${MNDW_STATE_FILE:-$MNDW_ROOT/var/lib/mndw/lighttpd-port}
 MNDW_TMP_ROOT=${MNDW_TMP_ROOT:-$MNDW_ROOT/tmp/mndw}
@@ -16,6 +17,7 @@ MNDW_PROBE_LOG=${MNDW_PROBE_LOG:-$MNDW_TMP_ROOT/lighttpd-probe.log}
 MNDW_INIT_LOG=${MNDW_INIT_LOG:-$MNDW_TMP_ROOT/lighttpd-init.log}
 MNDW_PROBE_PID_FILE=${MNDW_PROBE_PID_FILE:-$MNDW_TMP_ROOT/lighttpd-probe.pid}
 MNDW_PROBE_READY_TIMEOUT=${MNDW_PROBE_READY_TIMEOUT:-10}
+MNDW_HANDOFF_READY_TIMEOUT=${MNDW_HANDOFF_READY_TIMEOUT:-10}
 MNDW_PROBE_TERM_TIMEOUT=${MNDW_PROBE_TERM_TIMEOUT:-2}
 MNDW_PROBE_KILL_TIMEOUT=${MNDW_PROBE_KILL_TIMEOUT:-2}
 MNDW_SLEEP=${MNDW_SLEEP:-sleep}
@@ -109,6 +111,17 @@ is_listening() {
   result=$?
   rm -f "$snapshot_file"
   return $result
+}
+
+wait_for_listener() {
+  port_value=$1
+  elapsed=0
+
+  while ! is_listening "$port_value"; do
+    [ "$elapsed" -ge "$MNDW_HANDOFF_READY_TIMEOUT" ] && return 1
+    "$MNDW_SLEEP" 1
+    elapsed=$((elapsed + 1))
+  done
 }
 
 read_state() {
@@ -321,12 +334,19 @@ probe_once() {
 run_install() {
   install_script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
   render_helper=${MNDW_RENDER_HELPER:-$install_script_dir/mndw-render-lighttpd.sh}
-  MNDW_RUNTIME_CONF=${MNDW_RUNTIME_CONF:-$MNDW_ROOT/var/lib/mndw/lighttpd-runtime.conf}
-  MNDW_PROXY_TARGET=${MNDW_PROXY_TARGET:-$MNDW_ROOT/var/lib/mndw/proxy-target.conf}
-  export MNDW_PROXY_TARGET
 
-  mkdir -p "$MNDW_ROOT/tmp/mndw/plugin-runtime" "$MNDW_ROOT/var/lib/mndw" "$MNDW_ROOT/var/lib/mndw-secrets" "$MNDW_TMP_ROOT" || return 1
-  chmod 700 "$MNDW_ROOT/tmp/mndw/plugin-runtime" "$MNDW_ROOT/var/lib/mndw" "$MNDW_ROOT/var/lib/mndw-secrets" 2>/dev/null || true
+  if [ -f "$MNDW_CONFIG_FILE" ]; then
+    . "$MNDW_CONFIG_FILE"
+  fi
+
+  : "${DATA_DIR:=$MNDW_ROOT/var/lib/mndw}"
+  MNDW_USER_PLUGINS_DIR=${MNDW_USER_PLUGINS_DIR:-$DATA_DIR/user-plugins}
+  MNDW_RUNTIME_CONF=${MNDW_RUNTIME_CONF:-$MNDW_ROOT/var/lib/mndw/lighttpd-runtime.conf}
+  MNDW_PROXY_TARGET=${MNDW_PROXY_TARGET:-$DATA_DIR/proxy-target.conf}
+  export MNDW_PROXY_TARGET MNDW_USER_PLUGINS_DIR
+
+  mkdir -p "$MNDW_ROOT/tmp/mndw/plugin-runtime" "$DATA_DIR" "$MNDW_ROOT/var/lib/mndw" "$MNDW_ROOT/var/lib/mndw-secrets" "$MNDW_TMP_ROOT" || return 1
+  chmod 700 "$MNDW_ROOT/tmp/mndw/plugin-runtime" "$DATA_DIR" "$MNDW_ROOT/var/lib/mndw" "$MNDW_ROOT/var/lib/mndw-secrets" 2>/dev/null || true
   : > "$MNDW_PROBE_LOG" || return 1
   : > "$MNDW_INIT_LOG" || return 1
 
@@ -339,8 +359,8 @@ run_install() {
     return 1
   }
 
-  "$MNDW_MNDWD_INIT" start >> "$MNDW_INIT_LOG" 2>&1 || {
-    echo "mndw: mndwd failed to start; see $MNDW_INIT_LOG" >&2
+  "$MNDW_MNDWD_INIT" restart >> "$MNDW_INIT_LOG" 2>&1 || {
+    echo "mndw: mndwd failed to restart; see $MNDW_INIT_LOG" >&2
     return 1
   }
   [ -s "$MNDW_PROXY_TARGET" ] || {
@@ -417,7 +437,7 @@ run_install() {
       return 1
     fi
 
-    if ! is_listening "$candidate"; then
+    if ! wait_for_listener "$candidate"; then
       echo "mndw: lighttpd started without selected port $candidate listening; see $MNDW_INIT_LOG" >&2
       return 1
     fi

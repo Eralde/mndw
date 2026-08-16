@@ -12,6 +12,9 @@ if [ -f "$CONFIG_FILE" ]; then
   . "$CONFIG_FILE"
 fi
 
+: "${MNDW_USER_PLUGINS_DIR:=$DATA_DIR/user-plugins}"
+export MNDW_USER_PLUGINS_DIR
+
 : "${MNDWD_MAX_CONCURRENT_EXEC_TOTAL:=8}"
 : "${MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN:=4}"
 : "${MNDWD_MAX_SUPERVISED_SERVICES:=8}"
@@ -53,7 +56,7 @@ EOF
     --rci-session-state-dir "$DATA_DIR" \
     --rci-session-key-dir "$KEY_DIR" \
     --builtin-plugins-dir "/opt/share/www/mndw/plugins" \
-    --user-plugins-dir "/opt/share/www/mndw/user-plugins" \
+    --user-plugins-dir "$MNDW_USER_PLUGINS_DIR" \
     --router-url "http://$ROUTER_IP" \
     --plugin-runtime-root "$PLUGIN_RUNTIME_DIR" \
     --max-concurrent-exec-total "$MNDWD_MAX_CONCURRENT_EXEC_TOTAL" \

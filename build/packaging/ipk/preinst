@@ -8,8 +8,43 @@ case "${1:-}" in
   *) exit 0 ;;
 esac
 
+MNDW_CONFIG_FILE=${MNDW_CONFIG_FILE:-$MNDW_ROOT/etc/mndw.conf}
+if [ -f "$MNDW_CONFIG_FILE" ]; then
+  . "$MNDW_CONFIG_FILE"
+fi
+
+: "${DATA_DIR:=$MNDW_ROOT/var/lib/mndw}"
+MNDW_USER_PLUGINS_DIR=${MNDW_USER_PLUGINS_DIR:-$DATA_DIR/user-plugins}
+MNDW_LEGACY_USER_PLUGIN_ROOT=$MNDW_ROOT/share/www/mndw/user-plugins
+
+migrate_legacy_user_plugins() {
+  [ -d "$MNDW_LEGACY_USER_PLUGIN_ROOT" ] || return 0
+
+  mkdir -p "$MNDW_USER_PLUGINS_DIR" || return 1
+  chmod 0755 "$MNDW_USER_PLUGINS_DIR" || return 1
+  chown 0:0 "$MNDW_USER_PLUGINS_DIR" || return 1
+
+  for plugin_dir in "$MNDW_LEGACY_USER_PLUGIN_ROOT"/*; do
+    [ -d "$plugin_dir" ] || continue
+    plugin_name=${plugin_dir##*/}
+    destination="$MNDW_USER_PLUGINS_DIR/$plugin_name"
+
+    if [ -e "$destination" ]; then
+      echo "[mndw] refusing to overwrite migrated user plugin: $destination" >&2
+      return 1
+    fi
+
+    mv "$plugin_dir" "$destination" || return 1
+  done
+
+  rmdir "$MNDW_LEGACY_USER_PLUGIN_ROOT" 2>/dev/null || true
+  return 0
+}
+
+migrate_legacy_user_plugins || exit 1
+
 legacy_file="$MNDW_ROOT/etc/lighttpd/conf.d/80-mndw.conf"
-backup_dir="$MNDW_ROOT/var/lib/mndw/legacy"
+backup_dir="$DATA_DIR/legacy"
 backup_file="$backup_dir/80-mndw.conf"
 
 if [ -f "$legacy_file" ]; then

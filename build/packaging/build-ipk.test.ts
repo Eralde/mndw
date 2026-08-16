@@ -424,6 +424,16 @@ describe('stageDeployFiles', () => {
     expect(postrm).not.toContain('rm -rf /opt/var/lib/mndw-secrets');
     expect(postrm).not.toContain('rm -rf "$KEY_DIR"');
   });
+
+  it('passes the durable user-plugin root to mndwd', () => {
+    const repoRoot = path.resolve(import.meta.dirname, '..', '..');
+    const init = fs.readFileSync(path.join(repoRoot, 'build', 'packaging', 'init', 'S70mndwd'), 'utf8');
+
+    expect(init).toContain(': "${MNDW_USER_PLUGINS_DIR:=$DATA_DIR/user-plugins}"');
+    expect(init).toContain('export MNDW_USER_PLUGINS_DIR');
+    expect(init).toContain('--user-plugins-dir "$MNDW_USER_PLUGINS_DIR"');
+    expect(init).not.toContain('--user-plugins-dir "/opt/share/www/mndw/user-plugins"');
+  });
 });
 
 describe('parseArgs', () => {

@@ -3,7 +3,7 @@ set -u
 
 MNDW_PROXY_TARGET=${MNDW_PROXY_TARGET:-/opt/var/lib/mndw/proxy-target.conf}
 MNDW_DOCROOT=${MNDW_DOCROOT:-/opt/share/www/mndw}
-MNDW_PLUGIN_ROOT=${MNDW_PLUGIN_ROOT:-/opt/share/www/mndw/user-plugins}
+MNDW_USER_PLUGINS_DIR=${MNDW_USER_PLUGINS_DIR:-/opt/var/lib/mndw/user-plugins}
 
 mode=
 port=
@@ -67,7 +67,7 @@ if [ "$mode" = 'socket' ]; then
 \$SERVER["socket"] == ":$port" {
   server.document-root = "$MNDW_DOCROOT"
   index-file.names = ("index.html")
-  alias.url += ( "/user-plugins/" => "$MNDW_PLUGIN_ROOT/" )
+  alias.url += ( "/user-plugins/" => "$MNDW_USER_PLUGINS_DIR/" )
 
   \$HTTP["url"] =~ "^/(api|ws)/" {
     proxy.server = ( "" => (( "host" => "127.0.0.1", "port" => 9090 )) )
@@ -90,7 +90,7 @@ server.port = $port
 \$SERVER["socket"] == ":$port" {
   server.document-root = "$MNDW_DOCROOT"
   index-file.names = ("index.html")
-  alias.url += ( "/user-plugins/" => "$MNDW_PLUGIN_ROOT/" )
+  alias.url += ( "/user-plugins/" => "$MNDW_USER_PLUGINS_DIR/" )
 
   \$HTTP["url"] =~ "^/(api|ws)/" {
     proxy.server = ( "" => (( "host" => "127.0.0.1", "port" => 9090 )) )

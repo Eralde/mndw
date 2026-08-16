@@ -25,19 +25,33 @@ const writeExecutable = (file: string, content: string): void => {
 };
 
 const runScript = (scriptName: string, args: string[], root: string): ReturnType<typeof spawnSync> =>
-  spawnSync(
-    '/bin/sh',
-    [path.join(packagingRoot, scriptName), ...args],
-    {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        MNDW_ROOT: root,
-        MNDW_MNDWD_INIT: path.join(root, 'etc', 'init.d', 'S70mndwd'),
-        MNDW_LIGHTTPD_INIT: path.join(root, 'etc', 'init.d', 'S80lighttpd'),
+  (() => {
+    const testBin = path.join(root, 'test-bin');
+    const chownStub = path.join(testBin, 'chown');
+    const chownMarker = path.join(root, 'chown-called');
+
+    fs.mkdirSync(testBin, {recursive: true});
+    fs.writeFileSync(chownStub, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$MNDW_CHOWN_MARKER"\n');
+    fs.chmodSync(chownStub, 0o755);
+
+    return spawnSync(
+      '/bin/sh',
+      [path.join(packagingRoot, scriptName), ...args],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${testBin}:${process.env.PATH ?? ''}`,
+          MNDW_ROOT: root,
+          MNDW_CONFIG_FILE: path.join(root, 'etc', 'mndw.conf'),
+          MNDW_USER_PLUGINS_DIR: '',
+          MNDW_CHOWN_MARKER: chownMarker,
+          MNDW_MNDWD_INIT: path.join(root, 'etc', 'init.d', 'S70mndwd'),
+          MNDW_LIGHTTPD_INIT: path.join(root, 'etc', 'init.d', 'S80lighttpd'),
+        },
       },
-    },
-  );
+    );
+  })();
 
 afterEach(() => {
   for (const root of fixtures.splice(0)) {
@@ -75,6 +89,131 @@ describe('preinst legacy migration', () => {
     expect(runScript('preinst', ['upgrade'], root).status).toBe(0);
     expect(fs.readFileSync(backup, 'utf8')).toBe('old backup\n');
     expect(fs.readFileSync(`${backup}.1`, 'utf8')).toBe('new legacy\n');
+  });
+
+  it('moves legacy user plugins into the durable root before upgrade', () => {
+    const root = makeRoot();
+    const legacyRoot = path.join(root, 'share', 'www', 'mndw', 'user-plugins');
+    const pluginDir = path.join(legacyRoot, 'device-traffic-widget');
+
+    fs.mkdirSync(pluginDir, {recursive: true});
+    fs.writeFileSync(path.join(pluginDir, 'index.js'), 'export const version = 1;');
+    fs.writeFileSync(path.join(pluginDir, 'manifest.json'), '{}');
+
+    const result = runScript('preinst', ['upgrade'], root);
+    const durableRoot = path.join(root, 'var', 'lib', 'mndw', 'user-plugins');
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.readFileSync(path.join(durableRoot, 'device-traffic-widget', 'index.js'), 'utf8'))
+      .toBe('export const version = 1;');
+    expect(fs.existsSync(legacyRoot)).toBe(false);
+    expect(fs.statSync(durableRoot).mode % 0o1000).toBe(0o755);
+  });
+
+  it('keeps the legacy root when a stray file prevents best-effort teardown', () => {
+    const root = makeRoot();
+    const legacyRoot = path.join(root, 'share', 'www', 'mndw', 'user-plugins');
+    const pluginDir = path.join(legacyRoot, 'device-traffic-widget');
+
+    fs.mkdirSync(pluginDir, {recursive: true});
+    fs.writeFileSync(path.join(pluginDir, 'index.js'), 'plugin');
+    fs.writeFileSync(path.join(legacyRoot, 'stray-file'), 'keep');
+
+    const result = runScript('preinst', ['upgrade'], root);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.existsSync(path.join(root, 'var', 'lib', 'mndw', 'user-plugins', 'device-traffic-widget'))).toBe(true);
+    expect(fs.existsSync(legacyRoot)).toBe(true);
+    expect(fs.readFileSync(path.join(legacyRoot, 'stray-file'), 'utf8')).toBe('keep');
+  });
+
+  it('is idempotent when the legacy root has already been migrated', () => {
+    const root = makeRoot();
+    const legacyRoot = path.join(root, 'share', 'www', 'mndw', 'user-plugins');
+    const pluginDir = path.join(legacyRoot, 'device-traffic-widget');
+
+    fs.mkdirSync(pluginDir, {recursive: true});
+    fs.writeFileSync(path.join(pluginDir, 'index.js'), 'plugin');
+
+    expect(runScript('preinst', ['upgrade'], root).status).toBe(0);
+
+    const second = runScript('preinst', ['upgrade'], root);
+
+    expect(second.status, `${second.stdout}\n${second.stderr}`).toBe(0);
+    expect(
+      fs.readFileSync(
+        path.join(root, 'var', 'lib', 'mndw', 'user-plugins', 'device-traffic-widget', 'index.js'),
+        'utf8',
+      ),
+    )
+      .toBe('plugin');
+  });
+
+  it('moves update backup directories without filtering their names', () => {
+    const root = makeRoot();
+    const legacyBackup = path.join(
+      root,
+      'share',
+      'www',
+      'mndw',
+      'user-plugins',
+      'device-traffic-widget.previous-1.0.0',
+      'index.js',
+    );
+
+    fs.mkdirSync(path.dirname(legacyBackup), {recursive: true});
+    fs.writeFileSync(legacyBackup, 'backup');
+
+    expect(runScript('preinst', ['upgrade'], root).status).toBe(0);
+    expect(
+      fs.readFileSync(
+        path.join(root, 'var', 'lib', 'mndw', 'user-plugins', 'device-traffic-widget.previous-1.0.0', 'index.js'),
+        'utf8',
+      ),
+    )
+      .toBe('backup');
+  });
+
+  it('aborts without changing either copy on a legacy/durable collision', () => {
+    const root = makeRoot();
+    const legacyPlugin = path.join(root, 'share', 'www', 'mndw', 'user-plugins', 'device-traffic-widget', 'index.js');
+    const durablePlugin = path.join(root, 'var', 'lib', 'mndw', 'user-plugins', 'device-traffic-widget', 'index.js');
+
+    fs.mkdirSync(path.dirname(legacyPlugin), {recursive: true});
+    fs.mkdirSync(path.dirname(durablePlugin), {recursive: true});
+    fs.writeFileSync(legacyPlugin, 'legacy');
+    fs.writeFileSync(durablePlugin, 'durable');
+
+    const result = runScript('preinst', ['upgrade'], root);
+
+    expect(result.status).not.toBe(0);
+    expect(fs.readFileSync(legacyPlugin, 'utf8')).toBe('legacy');
+    expect(fs.readFileSync(durablePlugin, 'utf8')).toBe('durable');
+  });
+
+  it.each(['preinst', 'postrm'])('does nothing to durable data when %s sees no legacy root', (scriptName) => {
+    const root = makeRoot();
+    const durableRoot = path.join(root, 'var', 'lib', 'mndw', 'user-plugins');
+    const durableFile = path.join(durableRoot, 'existing', 'index.js');
+    const stagingFile = path.join(root, 'var', 'lib', 'mndw', 'staging', 'pending.zip');
+    const stateFile = path.join(root, 'var', 'lib', 'mndw', 'state.json');
+
+    fs.mkdirSync(path.dirname(durableFile), {recursive: true});
+    fs.mkdirSync(path.dirname(stagingFile), {recursive: true});
+    fs.writeFileSync(durableFile, 'durable');
+    fs.writeFileSync(stagingFile, 'staged');
+    fs.writeFileSync(stateFile, '{"state":"keep"}');
+    fs.chmodSync(durableRoot, 0o700);
+
+    const result = runScript(scriptName, [scriptName === 'preinst' ? 'upgrade' : 'remove'], root);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.readFileSync(durableFile, 'utf8')).toBe('durable');
+    expect(fs.readFileSync(stagingFile, 'utf8')).toBe('staged');
+    expect(fs.readFileSync(stateFile, 'utf8')).toBe('{"state":"keep"}');
+    expect(fs.statSync(durableRoot).mode % 0o1000).toBe(0o700);
+    expect(fs.existsSync(path.join(root, 'share', 'www', 'mndw', 'user-plugins'))).toBe(false);
+    expect(fs.existsSync(path.join(root, 'chown-called'))).toBe(false);
   });
 });
 
@@ -160,6 +299,67 @@ describe('final removal', () => {
     expect(fs.existsSync(runtime)).toBe(false);
     expect(fs.existsSync(path.join(root, 'var', 'run', 'mndwd.pid'))).toBe(false);
     expect(fs.existsSync(path.join(root, 'share', 'www', 'mndw'))).toBe(false);
+  });
+
+  it('migrates legacy user plugins before removing the app root', () => {
+    const root = makeRoot();
+    const legacyPlugin = path.join(root, 'share', 'www', 'mndw', 'user-plugins', 'device-traffic-widget', 'index.js');
+    const daemonMarker = path.join(root, 'daemon-marker');
+    const lighttpdMarker = path.join(root, 'lighttpd-marker');
+
+    fs.mkdirSync(path.dirname(legacyPlugin), {recursive: true});
+    fs.writeFileSync(legacyPlugin, 'plugin');
+    writeExecutable(path.join(root, 'etc', 'init.d', 'S70mndwd'), `#!/bin/sh\necho stop > "${daemonMarker}"\n`);
+    writeExecutable(path.join(root, 'etc', 'init.d', 'S80lighttpd'), `#!/bin/sh\necho restart > "${lighttpdMarker}"\n`);
+
+    const result = runScript('postrm', ['remove'], root);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(
+      fs.readFileSync(
+        path.join(root, 'var', 'lib', 'mndw', 'user-plugins', 'device-traffic-widget', 'index.js'),
+        'utf8',
+      ),
+    )
+      .toBe('plugin');
+    expect(fs.existsSync(path.join(root, 'share', 'www', 'mndw'))).toBe(false);
+    expect(fs.readFileSync(daemonMarker, 'utf8')).toBe('stop\n');
+    expect(fs.readFileSync(lighttpdMarker, 'utf8')).toBe('restart\n');
+  });
+
+  it('aborts removal without changing either copy on a legacy/durable collision', () => {
+    const root = makeRoot();
+    const legacyPlugin = path.join(root, 'share', 'www', 'mndw', 'user-plugins', 'device-traffic-widget', 'index.js');
+    const durablePlugin = path.join(root, 'var', 'lib', 'mndw', 'user-plugins', 'device-traffic-widget', 'index.js');
+
+    fs.mkdirSync(path.dirname(legacyPlugin), {recursive: true});
+    fs.mkdirSync(path.dirname(durablePlugin), {recursive: true});
+    fs.writeFileSync(legacyPlugin, 'legacy');
+    fs.writeFileSync(durablePlugin, 'durable');
+
+    const result = runScript('postrm', ['remove'], root);
+
+    expect(result.status).not.toBe(0);
+    expect(fs.existsSync(path.join(root, 'share', 'www', 'mndw', 'user-plugins'))).toBe(true);
+    expect(fs.readFileSync(legacyPlugin, 'utf8')).toBe('legacy');
+    expect(fs.readFileSync(durablePlugin, 'utf8')).toBe('durable');
+  });
+
+  it('preserves durable user-plugin and staging data on purge', () => {
+    const root = makeRoot();
+    const durableFile = path.join(root, 'var', 'lib', 'mndw', 'user-plugins', 'existing', 'index.js');
+    const stagingFile = path.join(root, 'var', 'lib', 'mndw', 'staging', 'pending.zip');
+
+    fs.mkdirSync(path.dirname(durableFile), {recursive: true});
+    fs.mkdirSync(path.dirname(stagingFile), {recursive: true});
+    fs.writeFileSync(durableFile, 'durable');
+    fs.writeFileSync(stagingFile, 'staged');
+
+    const result = runScript('postrm', ['purge'], root);
+
+    expect(result.status).toBe(0);
+    expect(fs.readFileSync(durableFile, 'utf8')).toBe('durable');
+    expect(fs.readFileSync(stagingFile, 'utf8')).toBe('staged');
   });
 });
 

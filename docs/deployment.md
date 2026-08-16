@@ -9,13 +9,16 @@ configuration, and an init script.
 The installed layout is centered under `/opt`:
 
 ```text
-/opt/share/www/mndw/       host SPA and built-in plugin assets
-/opt/sbin/mndwd            daemon binary
-/opt/etc/lighttpd/         package-owned loader plus base lighttpd config
-/opt/etc/init.d/           daemon init script
-/opt/var/lib/mndw/          selected port, generated runtime config, state, staging
-/opt/var/lib/mndw/legacy/   preserved legacy 80-mndw.conf files
-/opt/tmp/mndw/              install-time lighttpd probe diagnostics on failure
+/opt/share/www/mndw/                 package-owned host SPA
+/opt/share/www/mndw/plugins/         package-owned built-in plugins
+/opt/sbin/mndwd                      daemon binary
+/opt/etc/lighttpd/                   package-owned loader plus base lighttpd config
+/opt/etc/init.d/                     daemon init script
+/opt/var/lib/mndw/                   selected port, generated runtime config, staging
+/opt/var/lib/mndw/user-plugins/      durable uploaded user-plugin files
+/opt/var/lib/mndw/state.json         durable plugin metadata and manifests
+/opt/var/lib/mndw/legacy/             preserved legacy 80-mndw.conf files
+/opt/tmp/mndw/                       install-time lighttpd probe diagnostics on failure
 ```
 
 User plugins live separately from built-ins. The local lighttpd override is a
@@ -23,6 +26,16 @@ package-owned loader and survives only as long as mndw is installed. Generated
 runtime rules and selected-port state live outside `conf.d`; the state directory
 is not replaced by an upgrade. A legacy `80-mndw.conf` is moved to
 `/opt/var/lib/mndw/legacy/` before unpacking the new package.
+
+Approved user-plugin files are runtime data, not package-tracked files. During
+an upgrade, `preinst` moves them from the legacy
+`/opt/share/www/mndw/user-plugins/` directory because the new lighttpd alias
+serves `/opt/var/lib/mndw/user-plugins/`. During removal, `postrm` performs the
+same migration before deleting the old app root. `/opt/var/lib/mndw`, its
+`state.json`, staging area, and user-plugin files survive remove and reinstall;
+`purge` does not change this package-level data-preservation contract. Delete
+plugins through management or deliberately remove their durable files for a
+clean wipe.
 
 ## lighttpd
 
@@ -81,9 +94,12 @@ should verify:
 If the base listener is unavailable, mndw prints a warning and renders an
 override that scopes its rules to the selected listener. This decision is made
 during install; rerun package configuration if listener ownership changes later.
-After an upgrade, verify the generated runtime config, legacy backup, and
-`/opt/etc/mndw.conf`. A real-device smoke test is mandatory even when local and
-CI tests pass.
+After an upgrade, verify the generated runtime config, legacy backup, durable
+user-plugin files, and `/opt/etc/mndw.conf`. A real-device smoke test is
+mandatory even when local and CI tests pass. Release of this migration also
+requires target Entware verification of opkg lifecycle ordering and that
+`/opt/share/www` and `/opt/var/lib` share a filesystem; host shell tests do not
+prove either condition.
 
 ## Security boundary
 

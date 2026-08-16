@@ -573,6 +573,29 @@ func TestDeleteInstalledPlugin(t *testing.T) {
 	}
 }
 
+func TestDeleteStalePluginRecordAfterFilesDisappear(t *testing.T) {
+	srv, cfg := newTestServer(t)
+
+	upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": noBackendManifest, "index.js": "x",
+	})).Body.Close()
+
+	if err := os.RemoveAll(filepath.Join(cfg.UserPluginsDir, "hello")); err != nil {
+		t.Fatal(err)
+	}
+
+	del := postName(t, srv, "/api/mgmt/delete", "hello")
+	defer del.Body.Close()
+
+	if del.StatusCode != http.StatusOK {
+		t.Fatalf("delete stale record status = %d, want 200", del.StatusCode)
+	}
+
+	if entries := listPlugins(t, srv, "/api/mgmt/list"); len(entries) != 0 {
+		t.Fatalf("stale deleted plugin should not remain in list")
+	}
+}
+
 func TestDuplicateUploadConflicts(t *testing.T) {
 	srv, _ := newTestServer(t)
 	z := makeZip(t, map[string]string{"manifest.json": noBackendManifest, "index.js": "x"})

@@ -6,6 +6,61 @@ import (
 	"time"
 )
 
+func TestParseDefaultsUserPluginsDirUsesDurableDataRoot(t *testing.T) {
+	t.Setenv("MNDW_USER_PLUGINS_DIR", "")
+
+	cfg, _, err := parseFlags([]string{"--data-dir", "/opt/var/lib/mndw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := cfg.UserPluginsDir, "/opt/var/lib/mndw/user-plugins"; got != want {
+		t.Fatalf("user plugins dir = %q, want %q", got, want)
+	}
+}
+
+func TestParseDefaultsUserPluginsDirUsesCustomDataRoot(t *testing.T) {
+	t.Setenv("MNDW_USER_PLUGINS_DIR", "")
+
+	cfg, _, err := parseFlags([]string{"--data-dir", "/mnt/usb/mndw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := cfg.UserPluginsDir, "/mnt/usb/mndw/user-plugins"; got != want {
+		t.Fatalf("user plugins dir = %q, want %q", got, want)
+	}
+}
+
+func TestParseUserPluginsDirEnvironmentOverride(t *testing.T) {
+	t.Setenv("MNDW_USER_PLUGINS_DIR", "/tmp/user-plugins")
+
+	cfg, _, err := parseFlags([]string{"--data-dir", "/mnt/usb/mndw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := cfg.UserPluginsDir, "/tmp/user-plugins"; got != want {
+		t.Fatalf("user plugins dir = %q, want %q", got, want)
+	}
+}
+
+func TestParseUserPluginsDirFlagOverridesEnvironment(t *testing.T) {
+	t.Setenv("MNDW_USER_PLUGINS_DIR", "/tmp/env-user-plugins")
+
+	cfg, _, err := parseFlags([]string{
+		"--data-dir", "/mnt/usb/mndw",
+		"--user-plugins-dir", "/tmp/flag-user-plugins",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := cfg.UserPluginsDir, "/tmp/flag-user-plugins"; got != want {
+		t.Fatalf("user plugins dir = %q, want %q", got, want)
+	}
+}
+
 func TestParseDefaultsPluginRuntimeRootUsesDisposableRoot(t *testing.T) {
 	t.Setenv("MNDW_PLUGIN_RUNTIME_ROOT", "")
 

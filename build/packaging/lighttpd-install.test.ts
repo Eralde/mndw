@@ -230,9 +230,10 @@ exit 1
     installFixture.mndwdInit,
     `#!/bin/sh
 echo "mndwd:$1" >> "$FAKE_ORDER"
-if [ "$1" = "start" ]; then
-  mkdir -p "$(dirname "$MNDW_PROXY_TARGET")"
-  echo 'proxy.server = ( "" => (( "host" => "192.0.2.1", "port" => 80 )) )' > "$MNDW_PROXY_TARGET"
+if [ "$1" = "start" ] || [ "$1" = "restart" ]; then
+  proxy_target=\${MNDW_PROXY_TARGET:-\${DATA_DIR:-\$MNDW_ROOT/var/lib/mndw}/proxy-target.conf}
+  mkdir -p "$(dirname "$proxy_target")"
+  echo 'proxy.server = ( "" => (( "host" => "192.0.2.1", "port" => 80 )) )' > "$proxy_target"
 fi
 `,
   );
@@ -241,7 +242,7 @@ fi
     installFixture.lighttpdInit,
     `#!/bin/sh
 echo "lighttpd-init:$1" >> "$FAKE_ORDER"
-  case "$1" in
+case "$1" in
   stop)
     if [ "$FAKE_STOP_STATUS" = "dead" ]; then
       echo "Checking lighttpd... dead." >&2
@@ -254,6 +255,13 @@ echo "lighttpd-init:$1" >> "$FAKE_ORDER"
       : > "$FAKE_DAEMON_ATTEMPT"
       echo "bind() 0.0.0.0:$MNDW_SELECTED_PORT: Address already in use" >&2
       exit 1
+    fi
+    if [ "$FAKE_DAEMON_MODE" = "delayed" ]; then
+      (
+        sleep 1
+        printf '%s\\n' "$MNDW_SELECTED_PORT" > "$FAKE_LISTENER_FILE"
+      ) &
+      exit 0
     fi
     if grep -q 'server.port = ' "$FAKE_RUNTIME_FILE"; then
       printf '%s\\n' "$MNDW_SELECTED_PORT" > "$FAKE_LISTENER_FILE"
@@ -283,11 +291,13 @@ const runInstall = (fixture: InstallFixture, extraEnv: Record<string, string> = 
       MNDW_LIGHTTPD_CONF: path.join(fixture.root, 'etc', 'lighttpd.conf'),
       MNDW_LIGHTTPD_ERRORLOG: fixture.errorLog,
       MNDW_RENDER_HELPER: renderer,
-      MNDW_PROXY_TARGET: fixture.proxyTarget,
       MNDW_RUNTIME_CONF: fixture.runtime,
+      MNDW_CONFIG_FILE: path.join(fixture.root, 'etc', 'mndw.conf'),
+      MNDW_USER_PLUGINS_DIR: '',
       MNDW_PROBE_LOG: fixture.probeLog,
       MNDW_LIGHTTPD_ERRORLOG_LINES: '50',
       MNDW_PROBE_READY_TIMEOUT: '3',
+      MNDW_HANDOFF_READY_TIMEOUT: '3',
       MNDW_PROBE_TERM_TIMEOUT: '2',
       MNDW_PROBE_KILL_TIMEOUT: '2',
       MNDW_PROBE_MODE: 'ready',
@@ -407,7 +417,9 @@ describe('mndw-render-lighttpd.sh', () => {
   it('renders socket mode without a global server.port', () => {
     const fixture = makeFixture();
     const output = path.join(fixture.root, 'runtime.conf');
-    const result = runScript(renderer, ['--mode', 'socket', '--port', '99', '--output', output], fixture);
+    const result = runScript(renderer, ['--mode', 'socket', '--port', '99', '--output', output], fixture, {
+      MNDW_USER_PLUGINS_DIR: '',
+    });
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
 
@@ -416,6 +428,21 @@ describe('mndw-render-lighttpd.sh', () => {
     expect(content).toContain('$SERVER["socket"] == ":99"');
     expect(content).not.toContain('server.port =');
     expect(content).toContain('/opt/var/lib/mndw/proxy-target.conf');
+    expect(content).toContain('alias.url += ( "/user-plugins/" => "/opt/var/lib/mndw/user-plugins/" )');
+  });
+
+  it('renders socket mode with a canonical user-plugin root override', () => {
+    const fixture = makeFixture();
+    const output = path.join(fixture.root, 'runtime.conf');
+    const result = runScript(renderer, ['--mode', 'socket', '--port', '99', '--output', output], fixture, {
+      MNDW_USER_PLUGINS_DIR: '/fixture/custom-user-plugins',
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+
+    const content = fs.readFileSync(output, 'utf8');
+
+    expect(content).toContain('alias.url += ( "/user-plugins/" => "/fixture/custom-user-plugins/" )');
   });
 
   it('renders override mode with socket-scoped rules and one global server.port', () => {
@@ -456,7 +483,7 @@ describe('mndw-lighttpd-port.sh install', () => {
     expect(result.stdout).toContain('bypassed');
     expect(fs.readFileSync(fixture.runtime, 'utf8')).toContain('server.port = 99');
     expect(fs.existsSync(fixture.probeLog)).toBe(false);
-    expect(fs.readFileSync(fixture.order, 'utf8')).toMatch(/mndwd:start[\s\S]*lighttpd:-D/);
+    expect(fs.readFileSync(fixture.order, 'utf8')).toMatch(/mndwd:restart[\s\S]*lighttpd:-D/);
   });
 
   it('continues when lighttpd stop reports an already-dead service', () => {
@@ -508,6 +535,39 @@ describe('mndw-lighttpd-port.sh install', () => {
     expect(fs.readFileSync(fixture.listeners, 'utf8').split('\n')).toContain('8080');
   });
 
+  it('uses the configured canonical user-plugin root when rendering during install', () => {
+    const fixture = makeInstallFixture('ready');
+    const configuredRoot = path.join(fixture.root, 'custom-user-plugins');
+
+    fs.mkdirSync(path.dirname(path.join(fixture.root, 'etc', 'mndw.conf')), {recursive: true});
+    fs.writeFileSync(path.join(fixture.root, 'etc', 'mndw.conf'), `MNDW_USER_PLUGINS_DIR="${configuredRoot}"\n`);
+
+    const result = runInstall(fixture);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.readFileSync(fixture.runtime, 'utf8')).toContain(
+      `alias.url += ( "/user-plugins/" => "${configuredRoot}/" )`,
+    );
+  });
+
+  it('derives install helper plugin and proxy paths from custom DATA_DIR', () => {
+    const fixture = makeInstallFixture('ready');
+    const dataDir = path.join(fixture.root, 'custom-data');
+
+    fs.mkdirSync(path.dirname(path.join(fixture.root, 'etc', 'mndw.conf')), {recursive: true});
+    fs.writeFileSync(path.join(fixture.root, 'etc', 'mndw.conf'), `DATA_DIR="${dataDir}"\n`);
+
+    const result = runInstall(fixture);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.existsSync(path.join(dataDir, 'proxy-target.conf'))).toBe(true);
+    expect(fs.readFileSync(fixture.runtime, 'utf8')).toContain(
+      `alias.url += ( "/user-plugins/" => "${dataDir}/user-plugins/" )`,
+    );
+    expect(fs.readFileSync(fixture.runtime, 'utf8')).toContain(path.join(dataDir, 'proxy-target.conf'));
+    expect(fs.readFileSync(path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port'), 'utf8').trim()).toBe('99');
+  });
+
   it('accepts a base listener that appears before the readiness deadline', () => {
     const fixture = makeInstallFixture('delayed-ready');
     const result = runInstall(fixture, {FAKE_PROBE_MODE: 'delayed-ready'});
@@ -535,6 +595,14 @@ describe('mndw-lighttpd-port.sh install', () => {
     expect(result.stdout).toContain('port 100');
     expect(fs.existsSync(fixture.probeLog)).toBe(false);
   }, 15000);
+
+  it('waits for the selected listener after daemon handoff', () => {
+    const fixture = makeInstallFixture('ready');
+    const result = runInstall(fixture, {FAKE_DAEMON_MODE: 'delayed'});
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('installed');
+  }, 10000);
 
   it('reports candidate exhaustion without a success message', () => {
     const fixture = makeInstallFixture('selected');

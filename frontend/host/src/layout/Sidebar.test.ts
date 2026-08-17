@@ -58,6 +58,11 @@ function links(target: HTMLElement): {text: string; href: string}[] {
   }));
 }
 
+function activeHrefs(target: HTMLElement): string[] {
+  return [...target.querySelectorAll<HTMLAnchorElement>('.mndw-sidebar__link[aria-current="page"]')]
+    .map((a) => a.getAttribute('href') ?? '');
+}
+
 describe('Sidebar', () => {
   beforeEach(() => {
     mobileState.matches = false;
@@ -67,6 +72,7 @@ describe('Sidebar', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    window.history.replaceState(null, '', '/');
     vi.clearAllMocks();
     appState.sidebarCollapsed = false;
     appState.locale = 'en';
@@ -142,6 +148,38 @@ describe('Sidebar', () => {
       void unmount(component);
     });
 
+    it('marks only Dashboard active at the root route', () => {
+      window.history.replaceState(null, '', '/');
+
+      const {component, target} = mountSidebar();
+
+      expect(activeHrefs(target)).toEqual(['/']);
+      expect(target.querySelector('a[href="/"]')?.classList.contains('active')).toBe(true);
+
+      void unmount(component);
+    });
+
+    it('marks Settings active for a nested settings route', () => {
+      window.history.replaceState(null, '', '/settings/plugins');
+
+      const {component, target} = mountSidebar();
+
+      expect(activeHrefs(target)).toEqual(['/settings']);
+      expect(target.querySelector('a[href="/settings"]')?.classList.contains('active')).toBe(true);
+
+      void unmount(component);
+    });
+
+    it('does not mark Dashboard active for another route', () => {
+      window.history.replaceState(null, '', '/packages');
+
+      const {component, target} = mountSidebar();
+
+      expect(activeHrefs(target)).toEqual(['/packages']);
+
+      void unmount(component);
+    });
+
     it('closes an open mobile drawer when its backdrop is clicked', () => {
       mobileState.matches = true;
 
@@ -194,5 +232,19 @@ describe('Sidebar', () => {
 
       void unmount(component);
     });
+  });
+
+  it('marks a plugin parent active for a nested plugin route', () => {
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([
+      page('traffic', 'Traffic', '/traffic'),
+    ]);
+    window.history.replaceState(null, '', '/traffic/details');
+
+    const {component, target} = mountSidebar();
+
+    expect(activeHrefs(target)).toEqual(['/traffic']);
+    expect(target.querySelector('a[href="/traffic"]')?.classList.contains('active')).toBe(true);
+
+    void unmount(component);
   });
 });

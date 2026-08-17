@@ -181,6 +181,12 @@ body {
   background: color-mix(in srgb, var(--mndw-accent) 10%, transparent);
 }
 
+.mndw-sidebar__link.active {
+  background: color-mix(in srgb, var(--mndw-accent) 16%, transparent);
+  color: var(--mndw-accent);
+  font-weight: 600;
+}
+
 .mndw-sidebar__section-label {
   margin-top: 12px;
   padding: 6px 16px;

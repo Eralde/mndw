@@ -3,6 +3,7 @@ import {appState} from '../state/app.svelte.js';
 import {mobileMediaQuery} from './breakpoint.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {getHostServices} from '../host-services-context.js';
+import {appRouter} from '../router/create-app-router.js';
 
 const registry = getHostServices().registry;
 
@@ -15,6 +16,27 @@ const pagePlugins = registry
     a.entry.label.localeCompare(b.entry.label)
     || a.entry.name.localeCompare(b.entry.name)
   );
+
+const currentPath = $derived.by(() => {
+  return appRouter?.route.pathname ?? globalThis.location.pathname;
+});
+
+function normalizePath(pathname: string): string {
+  const withoutTrailingSlash = pathname.length > 1 && pathname.endsWith('/')
+    ? pathname.slice(0, -1)
+    : pathname;
+
+  return withoutTrailingSlash.toLowerCase();
+}
+
+function isActive(route: string): boolean {
+  const current = normalizePath(currentPath);
+  const target = normalizePath(route);
+
+  return target === '/'
+    ? current === '/'
+    : current === target || current.startsWith(`${target}/`);
+}
 
 function closeOnMobile(): void {
   if (mobileMediaQuery().matches) {
@@ -48,14 +70,22 @@ function closeOnMobile(): void {
   <a
     href="/"
     class="mndw-sidebar__link"
+    class:active={isActive('/')}
+    aria-current={isActive('/') ? 'page' : undefined}
     onclick={closeOnMobile}
-  >{hostT('nav.dashboard')}</a>
+  >
+    {hostT('nav.dashboard')}
+  </a>
 
   <a
     href="/packages"
     class="mndw-sidebar__link"
+    class:active={isActive('/packages')}
+    aria-current={isActive('/packages') ? 'page' : undefined}
     onclick={closeOnMobile}
-  >{hostT('nav.package-manager')}</a>
+  >
+    {hostT('nav.package-manager')}
+  </a>
 
   {#if pagePlugins.length > 0}
     <div class="mndw-sidebar__section-label">{hostT('nav.plugins')}</div>
@@ -63,6 +93,8 @@ function closeOnMobile(): void {
       <a
         href={plugin.entry.route}
         class="mndw-sidebar__link"
+        class:active={isActive(plugin.entry.route)}
+        aria-current={isActive(plugin.entry.route) ? 'page' : undefined}
         onclick={closeOnMobile}
       >
         {plugin.entry.label}
@@ -74,6 +106,10 @@ function closeOnMobile(): void {
   <a
     href="/settings"
     class="mndw-sidebar__link"
+    class:active={isActive('/settings')}
+    aria-current={isActive('/settings') ? 'page' : undefined}
     onclick={closeOnMobile}
-  >{hostT('nav.settings')}</a>
+  >
+    {hostT('nav.settings')}
+  </a>
 </nav>

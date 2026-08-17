@@ -303,7 +303,7 @@ onMount(() => {
 
 <div class="ping-widget">
   <div class="header">
-    <h3 data-testid="l10n-probe">{t('l10n.probe')}</h3>
+    <h3 data-testid="l10n-probe" hidden>{t('l10n.probe')}</h3>
     <div class="header-actions">
       <mndw-button
         variant="secondary"

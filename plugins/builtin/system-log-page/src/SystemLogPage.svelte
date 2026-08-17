@@ -141,6 +141,7 @@ onMount(() => {
     <h1
       class="system-log-page__title"
       data-testid="l10n-probe"
+      hidden
     >
       {t('l10n.probe')}
     </h1>

@@ -156,6 +156,7 @@ describe('TrafficWidget shared controls', () => {
     const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
 
     expect(probe?.textContent).toBe('Traffic English');
+    expect(probe?.hasAttribute('hidden')).toBe(true);
 
     const enValue = probe?.textContent;
 

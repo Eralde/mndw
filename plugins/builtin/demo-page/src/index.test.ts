@@ -66,6 +66,7 @@ describe('createInstance', () => {
     const save = host.querySelector<HTMLElement>('#hello-page-save');
 
     expect(probe?.textContent).toBe('Demo English');
+    expect(probe?.hidden).toBe(true);
     expect(save?.textContent).toBe('Save EN');
     i18n.setLocale('ru', {
       'l10n': {probe: 'Демо русский'},

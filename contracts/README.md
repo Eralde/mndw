@@ -30,6 +30,21 @@ frontend/sdk/shared-dependencies.ts
 contracts/protocol/*.golden.json
   → daemon/contracts-go/fixtures/protocol
 
+contracts/mws-member/fixtures
+  → frontend/sdk/fixtures/mws-members
+  → packages/go-mws-members/fixtures
+
+The Zod member schema in `frontend/sdk/src/mws-member-schema.ts` owns member
+input shape and eligibility precedence. The Go sessionmanager snapshot plus
+handler JSON projection owns the capability-report shape; host runtime
+validation consumes generated capability fixtures rather than becoming a
+second report authority. Go `rcisession/status.Values()` generates the shared
+failure-category JSON and TypeScript `as const` contract.
+
+contracts/rci-session/fixtures/capability
+  → frontend/host/src/services/fixtures/rci-session/capability
+  → daemon/mndwd/internal/rcisession/testdata/capability
+
 contracts/routing.md records runtime route ownership; it is descriptive, not a
 second router configuration.
 ```

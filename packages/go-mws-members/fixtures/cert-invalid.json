@@ -1,0 +1,9 @@
+{
+  "cid": "node-cert-invalid",
+  "mac": "aa:bb:cc:dd:ee:02",
+  "ip": "192.0.2.2",
+  "fqdn": "cert-invalid.keenetic.io",
+  "fqdn-certificate-valid": false,
+  "capabilities": {"auth-token": true},
+  "known-host": "Cert invalid"
+}

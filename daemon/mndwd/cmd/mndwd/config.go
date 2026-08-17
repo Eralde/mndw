@@ -20,6 +20,12 @@ const maxUploadBytes = 10 << 20
 const defaultDiagnosticsLogFile = "/opt/var/log/mndwd.log"
 const defaultPluginRuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
 
+const (
+	defaultRCIHeartbeatInterval = 60 * time.Second
+	minRCIHeartbeatInterval     = 45 * time.Second
+	maxRCIHeartbeatInterval     = 147 * time.Second
+)
+
 // Config is the daemon's fully-resolved runtime configuration, including package
 // manager, authentication, exec/service runtime, and storage settings.
 type Config struct {
@@ -56,6 +62,7 @@ type Config struct {
 
 	// Persistent RCI session limits.
 	RCIEnumerationTTL        time.Duration
+	RCIHeartbeatInterval     time.Duration
 	RCIProxyIdleTimeout      time.Duration
 	RCIProxyOperationTimeout time.Duration
 	RCIProxyMaxInflight      int
@@ -113,6 +120,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.IntVar(&cfg.MaxConcurrentExecPerPlugin, "max-concurrent-exec-per-plugin", 4, "per-plugin max concurrent exec requests")
 	fs.IntVar(&cfg.MaxSupervisedServices, "max-supervised-services", 8, "global max supervised services")
 	fs.DurationVar(&cfg.RCIEnumerationTTL, "rci-enumeration-ttl", 30*time.Second, "persistent RCI member enumeration cache TTL")
+	fs.DurationVar(&cfg.RCIHeartbeatInterval, "rci-heartbeat-interval", defaultRCIHeartbeatInterval, "persistent RCI session heartbeat interval")
 	fs.DurationVar(&cfg.RCIProxyIdleTimeout, "rci-proxy-idle-timeout", 2*time.Minute, "persistent RCI socket idle timeout")
 	fs.DurationVar(&cfg.RCIProxyOperationTimeout, "rci-proxy-operation-timeout", 0, "persistent RCI outbound operation timeout; defaults to exec-timeout")
 	fs.IntVar(&cfg.RCIProxyMaxInflight, "rci-proxy-max-inflight", 8, "max persistent RCI requests in flight per socket")
@@ -330,6 +338,10 @@ func validatePersistentSessionConfig(cfg Config) error {
 
 	if cfg.RCIEnumerationTTL <= 0 {
 		return fmt.Errorf("--rci-enumeration-ttl must be positive")
+	}
+
+	if cfg.RCIHeartbeatInterval < minRCIHeartbeatInterval || cfg.RCIHeartbeatInterval > maxRCIHeartbeatInterval {
+		return fmt.Errorf("--rci-heartbeat-interval must be between %s and %s", minRCIHeartbeatInterval, maxRCIHeartbeatInterval)
 	}
 
 	if cfg.RCIProxyIdleTimeout <= 0 {

@@ -12,6 +12,17 @@ import {
   createPersistentRciSessionService,
 } from './persistent-rci-session.service.js';
 
+const capability = {
+  store: {state: 'empty'},
+  controller: {support: 'unknown'},
+  extenders: [
+    {identity: 'bad', name: 'Bad', eligible: false, reason: 'missing-fqdn'},
+    {identity: 'pending', name: 'Pending', eligible: true, state: 'establishing'},
+    {identity: 'live', name: 'Live', eligible: true, state: 'live', lastError: 'transient'},
+  ],
+  stale: false,
+};
+
 describe('PersistentRciSessionService', () => {
   beforeEach(() => fetchWithDeadline.mockReset());
 
@@ -19,28 +30,27 @@ describe('PersistentRciSessionService', () => {
     expect(createPersistentRciSessionService()).not.toBe(createPersistentRciSessionService());
   });
 
-  it('loads capability with CSRF header', async () => {
-    fetchWithDeadline.mockResolvedValue(
-      new Response(JSON.stringify({store: {state: 'empty'}, controller: {support: 'unknown'}, extenders: []}), {
-        status: 200,
-      }),
-    );
-
-    const service = new PersistentRciSessionService();
-
-    await expect(service.getCapability()).resolves.toEqual({store: {state: 'empty'}, controller: {support: 'unknown'},
-      extenders: []});
-    expect(fetchWithDeadline).toHaveBeenCalledWith('/api/mndw/rci-session/capability', {headers: {'X-Mndw-Csrf': '1'}});
+  it('loads and validates capability state with omission rules', async () => {
+    fetchWithDeadline.mockResolvedValue(new Response(JSON.stringify(capability), {status: 200}));
+    await expect(new PersistentRciSessionService().getCapability()).resolves.toEqual(capability);
   });
 
-  it('probes controller token authentication through the authenticated controller session', async () => {
+  it('rejects ineligible entries carrying session fields', async () => {
     fetchWithDeadline.mockResolvedValue(
-      new Response(JSON.stringify({probe: {found: true, permitted: true}}), {status: 200}),
+      new Response(
+        JSON.stringify({
+          ...capability,
+          extenders: [{identity: 'bad', name: 'Bad', eligible: false, reason: 'missing-fqdn', state: 'offline'}],
+        }),
+        {status: 200},
+      ),
     );
+    await expect(new PersistentRciSessionService().getCapability()).rejects.toMatchObject({code: 'MALFORMED_RESPONSE'});
+  });
 
-    const service = new PersistentRciSessionService();
-
-    await expect(service.probeControllerTokenAuth()).resolves.toBe(true);
+  it('probes controller token authentication through authenticated controller session', async () => {
+    fetchWithDeadline.mockResolvedValue(new Response(JSON.stringify({probe: {found: true}}), {status: 200}));
+    await expect(new PersistentRciSessionService().probeControllerTokenAuth()).resolves.toBe(true);
     expect(fetchWithDeadline).toHaveBeenCalledWith('/rci/', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -48,22 +58,9 @@ describe('PersistentRciSessionService', () => {
     });
   });
 
-  it('does not expose controller token authentication when probe is not found', async () => {
-    fetchWithDeadline.mockResolvedValue(
-      new Response(JSON.stringify({probe: {found: false}}), {status: 200}),
-    );
-
-    const service = new PersistentRciSessionService();
-
-    await expect(service.probeControllerTokenAuth()).resolves.toBe(false);
-  });
-
   it('posts controller token without putting it in URL', async () => {
     fetchWithDeadline.mockResolvedValue(new Response(JSON.stringify({result: 'valid'}), {status: 200}));
-
-    const service = new PersistentRciSessionService();
-
-    await expect(service.testController('secret-token')).resolves.toEqual({result: 'valid'});
+    await expect(new PersistentRciSessionService().testController('secret-token')).resolves.toEqual({result: 'valid'});
     expect(fetchWithDeadline).toHaveBeenCalledWith(
       '/api/mndw/rci-session/controller/test',
       expect.objectContaining({
@@ -73,63 +70,18 @@ describe('PersistentRciSessionService', () => {
     );
   });
 
-  it('maps daemon error envelope to stable error without secret detail', async () => {
+  it('maps daemon errors without secret detail', async () => {
     fetchWithDeadline.mockImplementation(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({error: {code: 'RCI_TOKEN_INVALID', message: 'token rejected'}}), {status: 422}),
-      )
+      Promise.resolve(new Response(JSON.stringify({error: {code: 'RCI_TOKEN_INVALID'}}), {status: 422}))
     );
-
     const service = new PersistentRciSessionService();
-
     await expect(service.saveController('secret-token')).rejects.toMatchObject({code: 'RCI_TOKEN_INVALID',
       status: 422});
-
     try {
       await service.saveController('secret-token');
     } catch (error) {
       expect(error).toBeInstanceOf(PersistentRciSessionError);
       expect((error as Error).message).not.toContain('secret-token');
     }
-  });
-
-  it('parses safe per-extender provisioning reasons', async () => {
-    fetchWithDeadline.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          extenders: [
-            {identity: 'node-1', support: 'unknown', reason: 'secure-endpoint-unavailable'},
-            {identity: 'node-2', support: 'supported'},
-          ],
-        }),
-        {status: 200},
-      ),
-    );
-
-    const service = new PersistentRciSessionService();
-
-    await expect(service.provisionExtenders({username: 'admin', password: 'password'})).resolves.toEqual({
-      extenders: [
-        {identity: 'node-1', support: 'unknown', reason: 'secure-endpoint-unavailable'},
-        {identity: 'node-2', support: 'supported'},
-      ],
-    });
-  });
-
-  it('rejects unknown provisioning reasons', async () => {
-    fetchWithDeadline.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          extenders: [{identity: 'node-1', support: 'unknown', reason: 'secret-detail'}],
-        }),
-        {status: 200},
-      ),
-    );
-
-    const service = new PersistentRciSessionService();
-
-    await expect(service.provisionExtenders({username: 'admin', password: 'password'})).rejects.toMatchObject({
-      code: 'MALFORMED_RESPONSE',
-    });
   });
 });

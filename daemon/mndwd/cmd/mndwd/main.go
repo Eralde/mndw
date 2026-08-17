@@ -70,6 +70,9 @@ func run(cfg Config) error {
 
 	verifier := authz.New(cfg.RouterURL, cfg.Dev, logger, authz.Options{})
 	c := assemble(cfg, store, paletteStore, verifier, logger)
+	if c.startupErr != nil {
+		return c.startupErr
+	}
 
 	// run owns all lifetimes: the signal context drives graceful HTTP shutdown, and
 	// background install work runs under a child so a signal cancels installs
@@ -125,6 +128,7 @@ type components struct {
 	gateway                *backend.Gateway
 	activationAssembly     *rciSessionAssembly
 	closePersistentSession func()
+	startupErr             error
 }
 
 // assemble builds the fully-wired daemon. Kept separate from run so the integration
@@ -181,6 +185,7 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 		gateway:                gateway,
 		activationAssembly:     accessRegistration.activationAssembly,
 		closePersistentSession: accessRegistration.close,
+		startupErr:             accessRegistration.err,
 	}
 }
 

@@ -111,7 +111,19 @@ func (s *Service) TestController(ctx context.Context, tester ControllerTester, t
 	if tester == nil {
 		return ControllerUnreachable, fmt.Errorf("controller tester unavailable")
 	}
-	return tester.Test(ctx, token)
+	verdict, err := tester.Test(ctx, token)
+	if err == nil && verdict == ControllerValid {
+		document, snapshotErr := s.store.Snapshot()
+		if snapshotErr == nil && document.Controller != nil && document.Controller.Token == token && document.Controller.Support == model.SupportInvalid {
+			record := *document.Controller
+			record.Support = model.SupportSupported
+			if replaceErr := s.store.ReplaceController(record); replaceErr == nil {
+				s.bumpControllerEpoch(true)
+				s.notifyMutation("controller-token-recovered")
+			}
+		}
+	}
+	return verdict, err
 }
 
 func (s *Service) SaveController(ctx context.Context, tester ControllerTester, token string) (ControllerVerdict, error) {
@@ -119,14 +131,25 @@ func (s *Service) SaveController(ctx context.Context, tester ControllerTester, t
 	if err != nil || verdict != ControllerValid {
 		return verdict, err
 	}
+	document, snapshotErr := s.store.Snapshot()
+	previousToken := ""
+	if snapshotErr == nil && document.Controller != nil {
+		previousToken = document.Controller.Token
+	}
 	checked := s.now().UTC()
 	if err := s.store.ReplaceController(model.TokenRecord{
-		Key:           "controller",
 		Token:         token,
 		Support:       model.SupportSupported,
 		LastCheckedAt: &checked,
 	}); err != nil {
 		return ControllerUnreachable, err
+	}
+	changed := previousToken != token
+	if changed {
+		s.bumpControllerEpoch(true)
+		if manager := s.SessionManager(); manager != nil {
+			manager.BumpForControllerTokenChange()
+		}
 	}
 	s.notifyMutation("controller-token-saved")
 	return verdict, nil
@@ -136,6 +159,16 @@ func (s *Service) DeleteController() error {
 	if err := s.store.DeleteController(); err != nil {
 		return err
 	}
+	s.bumpControllerEpoch(true)
+	if manager := s.SessionManager(); manager != nil {
+		manager.DiscardAll()
+	}
 	s.notifyMutation("controller-token-deleted")
 	return nil
+}
+
+func (s *Service) bumpControllerEpoch(_ bool) {
+	s.mu.Lock()
+	s.controllerEpoch++
+	s.mu.Unlock()
 }

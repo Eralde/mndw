@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -10,15 +11,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	"mndw.local/device-auth"
 	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/rcisession"
 	"mndwd/internal/rcisession/enumeration"
-	"mndwd/internal/rcisession/minter"
+	"mndwd/internal/rcisession/establisher"
+	"mndwd/internal/rcisession/heartbeat"
 	"mndwd/internal/rcisession/model"
+	"mndwd/internal/rcisession/sessionmanager"
 	rcisessionsocket "mndwd/internal/rcisession/socket"
+	"mndwd/internal/rcisession/status"
 	rcisessionstore "mndwd/internal/rcisession/store"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
@@ -27,15 +30,27 @@ import (
 // rciSessionAssembly owns the persistent-RCI socket bindings and their
 // reconciliation with the encrypted credential state.
 type rciSessionAssembly struct {
-	registry       *registry.Registry
-	store          *state.Store
-	runtimeRoot    string
-	service        *rcisession.Service
-	reconciler     *rcisessionsocket.Reconciler
-	logger         *slog.Logger
-	activation     atomic.Pointer[activationSnapshot]
-	activationPoke func()
-	mu             sync.Mutex
+	registry        *registry.Registry
+	store           *state.Store
+	runtimeRoot     string
+	service         *rcisession.Service
+	enumerator      *enumeration.Cache
+	manager         *sessionmanager.Manager
+	establisher     establisher.Establisher
+	heartbeat       heartbeat.Probe
+	lifetime        context.Context
+	cancel          context.CancelFunc
+	tickDone        chan struct{}
+	poke            chan struct{}
+	activeCancel    context.CancelFunc
+	establishSem    chan struct{}
+	heartbeatEvery  time.Duration
+	reconciler      *rcisessionsocket.Reconciler
+	logger          *slog.Logger
+	activation      atomic.Pointer[activationSnapshot]
+	activationPoke  func()
+	mu              sync.Mutex
+	establishmentWG sync.WaitGroup
 }
 
 type activationSnapshot struct {
@@ -50,16 +65,15 @@ type activationGrantFacts struct {
 
 type persistentSessionRegistration struct {
 	close                func()
+	err                  error
 	permissionController mgmt.PersistentRCIPermissionController
 	activationAssembly   *rciSessionAssembly
 }
 
 // assembleRCISession wires the persistent RCI session subsystem: it opens the
-// encrypted store, builds the device HTTP client, enumerator, service, token
-// generator, and socket reconciler, registers the RCI routes on accessMux, and
-// returns the cleanup that closes the socket reconciler. When the persistent
-// store cannot be opened the subsystem is skipped and the returned cleanup is a
-// no-op.
+// encrypted store, builds the device HTTP client, enumerator, service, and
+// socket reconciler, registers the RCI routes on accessMux, and returns cleanup
+// plus a startup error when the persistent store cannot be opened.
 func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, accessMux *http.ServeMux, activationGates *backend.ActivationGateRegistry, logger *slog.Logger) persistentSessionRegistration {
 	registration := persistentSessionRegistration{close: func() {}}
 
@@ -77,7 +91,8 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 	})
 
 	if storeErr != nil {
-		logger.Error("persistent RCI store unavailable", "error", storeErr)
+		logger.Error("persistent RCI store unavailable", "reason", "store-open-failed")
+		registration.err = fmt.Errorf("open persistent RCI store: %w", storeErr)
 
 		return registration
 	}
@@ -88,20 +103,27 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 			return http.ErrUseLastResponse
 		},
 	}
-	enumerator := enumeration.NewCache(enumeration.HTTPSource{
+	var sessionService *rcisession.Service
+	controllerSource := enumeration.HTTPSource{
 		Client:           deviceClient,
 		ControllerURL:    cfg.ControllerURL,
 		MaxResponseBytes: cfg.RCIProxyMaxResponseBytes,
-		ControllerToken: func() string {
-			document, err := persistentStore.Snapshot()
-			if err != nil || document.Controller == nil || document.Controller.Support == model.SupportInvalid {
-				return ""
+		CaptureController: func() enumeration.ControllerSnapshot {
+			if sessionService == nil {
+				return enumeration.ControllerSnapshot{}
 			}
-
-			return document.Controller.Token
+			return sessionService.CaptureController()
 		},
-	}, cfg.RCIEnumerationTTL, time.Now)
-	sessionService := rcisession.NewService(persistentStore, enumerator)
+		CurrentEpoch: func() uint64 {
+			if sessionService == nil {
+				return 0
+			}
+			return sessionService.ControllerEpoch()
+		},
+	}
+	enumerator := enumeration.NewCache(controllerSource, cfg.RCIEnumerationTTL, time.Now)
+	sessionService = rcisession.NewService(persistentStore, enumerator)
+	sessionService.SetControllerClient(deviceClient)
 
 	sessionService.SetLogger(logger)
 
@@ -110,16 +132,12 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 	}
 
 	controllerTester := rcisession.ControllerHTTPTester{Client: deviceClient, Timeout: cfg.RCIProxyOperationTimeout, BaseURL: cfg.ControllerURL}
-	authTransport := auth.NewHTTPTransport(deviceClient)
-	generator := minter.HTTPGenerator{
-		Authenticator:    auth.New(auth.Options{Transport: authTransport, AuthTimeout: cfg.RCIProxyOperationTimeout}),
-		Transport:        authTransport,
-		RequestBody:      minter.DefaultRequestBody,
-		TokenRequestBody: minter.DefaultTokenRequestBody,
-		Logger:           logger,
-	}
-
-	rcisession.NewHandler(sessionService, controllerTester, generator).Register(accessMux)
+	lifetime, cancel := context.WithCancel(context.Background())
+	manager := sessionmanager.New(sessionmanager.Options{Context: lifetime})
+	sessionService.SetSessionManager(manager)
+	rciMux := http.NewServeMux()
+	rcisession.NewHandler(sessionService, controllerTester).Register(rciMux)
+	accessMux.Handle("/api/mndw/rci-session/", rcisession.BodyLimit(4096)(rciMux))
 	sessionService.Proxy(deviceClient, cfg.RCIProxyMaxResponseBytes, cfg.RCIProxyOperationTimeout)
 
 	socketReconciler := rcisessionsocket.NewReconciler(rcisessionsocket.Config{
@@ -128,12 +146,22 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 		IdleTimeout: cfg.RCIProxyIdleTimeout,
 	}, sessionService)
 	assembly := &rciSessionAssembly{
-		registry:    reg,
-		store:       store,
-		runtimeRoot: runtimeRoot,
-		service:     sessionService,
-		reconciler:  socketReconciler,
-		logger:      logger,
+		registry:       reg,
+		store:          store,
+		runtimeRoot:    runtimeRoot,
+		service:        sessionService,
+		enumerator:     enumerator,
+		manager:        manager,
+		establisher:    establisher.Establisher{AuthURLer: sessionService, HTTPClient: deviceClient, MaxResponseBytes: cfg.RCIProxyMaxResponseBytes},
+		heartbeat:      heartbeat.Probe{Timeout: rciHeartbeatTimeout, MaxResponseBytes: cfg.RCIProxyMaxResponseBytes},
+		lifetime:       lifetime,
+		cancel:         cancel,
+		tickDone:       make(chan struct{}),
+		poke:           make(chan struct{}, 1),
+		establishSem:   make(chan struct{}, rciEstablishWorkers),
+		heartbeatEvery: heartbeatInterval(cfg.RCIHeartbeatInterval),
+		reconciler:     socketReconciler,
+		logger:         logger,
 	}
 	gate := backend.ActivationGateFunc(func(pluginName, permission string) []backend.ActivationBlocker {
 		return assembly.activationEvaluate(pluginName, permission)
@@ -144,14 +172,169 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 		activationGates.Register(manifest.PersistentRCISessionWritePermission, gate)
 	}
 
-	sessionService.SetMutationObserver(assembly.reconcileSockets)
+	sessionService.SetMutationObserver(func() {
+		assembly.reconcileSockets()
+		assembly.Poke()
+	})
 	assembly.reconcileSockets()
+	assembly.start()
 
 	registration.close = assembly.close
 	registration.permissionController = assembly
 	registration.activationAssembly = assembly
 
 	return registration
+}
+
+const (
+	rciListDeadline     = 20 * time.Second
+	rciHeartbeatTimeout = 5 * time.Second
+	rciEstablishTimeout = 15 * time.Second
+	rciEstablishWorkers = 4
+	rciHeartbeatWorkers = 16
+)
+
+func heartbeatInterval(value time.Duration) time.Duration {
+	if value <= 0 {
+		return defaultRCIHeartbeatInterval
+	}
+	return value
+}
+
+func (a *rciSessionAssembly) start() {
+	go a.loop()
+	a.Poke()
+}
+
+func (a *rciSessionAssembly) loop() {
+	defer close(a.tickDone)
+	ticker := time.NewTicker(a.heartbeatEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-a.lifetime.Done():
+			return
+		case <-ticker.C:
+			a.tick()
+		case <-a.poke:
+			a.tick()
+		}
+	}
+}
+
+func (a *rciSessionAssembly) Poke() {
+	if a == nil || a.enumerator == nil {
+		return
+	}
+	a.mu.Lock()
+	if a.activeCancel != nil {
+		a.activeCancel()
+	}
+	select {
+	case a.poke <- struct{}{}:
+	default:
+	}
+	a.mu.Unlock()
+	a.enumerator.Invalidate()
+}
+
+func (a *rciSessionAssembly) tick() {
+	tickContext, cancel := context.WithCancel(a.lifetime)
+	a.mu.Lock()
+	a.activeCancel = cancel
+	a.mu.Unlock()
+	a.reconcileSessions(tickContext)
+	cancel()
+	a.mu.Lock()
+	a.activeCancel = nil
+	a.mu.Unlock()
+}
+
+func (a *rciSessionAssembly) reconcileSessions(ctx context.Context) {
+	controller := a.service.CaptureController()
+	if controller.Token != "" {
+		listContext, cancel := context.WithTimeout(ctx, rciListDeadline)
+		members, err := a.enumerator.List(listContext)
+		cancel()
+		if err == nil && ctx.Err() == nil && a.service.ControllerEpoch() == controller.Epoch {
+			a.manager.ApplyEnumeration(members)
+			a.startEstablishments(ctx, members)
+		} else if err != nil {
+			var controllerError enumeration.ControllerHTTPError
+			if errors.As(err, &controllerError) {
+				a.service.InvalidateController(controllerError.Epoch)
+			}
+		}
+	}
+	if ctx.Err() != nil {
+		return
+	}
+	targets := a.manager.LiveHeartbeatTargets()
+	heartbeat.RunBounded(ctx, targets, rciHeartbeatWorkers, a.heartbeat, func(target heartbeat.Target, result heartbeat.Result) {
+		a.manager.CommitHeartbeat(target.Identity, target.Generation, result)
+		if result.Unauthorized {
+			a.Poke()
+		}
+	})
+}
+
+func (a *rciSessionAssembly) startEstablishments(parent context.Context, members []enumeration.Member) {
+	tickEpoch := a.manager.Epoch()
+	for _, member := range members {
+		if parent.Err() != nil {
+			return
+		}
+		establishContext, epoch, ok := a.manager.BeginEstablishment(member.Identity, tickEpoch)
+		if !ok {
+			continue
+		}
+		generation := a.manager.Snapshot().Member(member.Identity).Generation
+		a.establishmentWG.Add(1)
+		go func(member enumeration.Member, establishContext context.Context, epoch, generation uint64) {
+			defer a.establishmentWG.Done()
+			select {
+			case a.establishSem <- struct{}{}:
+			case <-establishContext.Done():
+				return
+			case <-a.lifetime.Done():
+				return
+			}
+			defer func() { <-a.establishSem }()
+			boundedContext, cancel := context.WithTimeout(establishContext, rciEstablishTimeout)
+			result, err := a.establisher.Establish(boundedContext, member)
+			cancel()
+			if err == nil {
+				a.manager.CommitEstablishment(member.Identity, epoch, generation, sessionmanager.Candidate{BaseURL: result.BaseURL, Jar: result.Jar, Client: result.Client})
+				return
+			}
+			var establishError establisher.EstablishError
+			if errors.As(err, &establishError) && establishError.Kind == "stale" {
+				return
+			}
+			if errors.As(err, &establishError) && establishError.Kind == "unauthorized" {
+				a.service.InvalidateController(establishError.Epoch)
+				return
+			}
+			a.manager.FailEstablishment(member.Identity, epoch, establishmentCategory(err), false)
+		}(member, establishContext, epoch, generation)
+	}
+}
+
+func establishmentCategory(err error) status.Category {
+	var establishError establisher.EstablishError
+	if errors.As(err, &establishError) {
+		switch establishError.Kind {
+		case "validation":
+			return status.Validation
+		case "malformed-response":
+			return status.MalformedResponse
+		case "redemption-failed":
+			return status.RedemptionFailed
+		case "controller-unavailable":
+			return status.ControllerUnavailable
+		}
+	}
+	return status.Transient
 }
 
 func (a *rciSessionAssembly) activationEvaluate(pluginName, permission string) []backend.ActivationBlocker {
@@ -260,13 +443,21 @@ func (a *rciSessionAssembly) PermissionChanged(plugin string) error {
 }
 
 func (a *rciSessionAssembly) close() {
+	if a.cancel != nil {
+		a.cancel()
+	}
+	if a.manager != nil {
+		a.manager.DiscardAll()
+	}
+	if a.tickDone != nil {
+		<-a.tickDone
+	}
+	a.establishmentWG.Wait()
 	a.mu.Lock()
-
-	defer a.mu.Unlock()
-
 	if a.reconciler != nil {
 		a.reconciler.Close()
 	}
+	a.mu.Unlock()
 }
 
 func (a *rciSessionAssembly) reconcileSocketsLocked() (rcisessionsocket.ReconcileReport, bool, error) {

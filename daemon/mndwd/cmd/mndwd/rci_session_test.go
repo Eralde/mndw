@@ -289,8 +289,8 @@ func TestActivationPokeRunsOnlyAfterSnapshotDeltaAndOutsideAssemblyMutex(t *test
 		t.Fatalf("unchanged snapshots invoked poke %d times, want 1", got)
 	}
 
-	assembly.service.Unauthorized("controller")
-	assembly.service.Unauthorized("controller")
+	assembly.service.Unauthorized("controller", assembly.service.ControllerEpoch())
+	assembly.service.Unauthorized("controller", assembly.service.ControllerEpoch())
 
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("retained-token Unauthorized events invoked poke %d times, want 1", got)
@@ -390,18 +390,11 @@ type assemblySessionStore struct {
 func (s *assemblySessionStore) State() model.StoreState { return model.StateOK }
 
 func (s *assemblySessionStore) Snapshot() (model.Document, error) {
-	document := model.Document{Extenders: make(map[string]model.TokenRecord)}
-
 	if s.document.Controller != nil {
 		controller := *s.document.Controller
-		document.Controller = &controller
+		return model.Document{Controller: &controller}, nil
 	}
-
-	for identity, record := range s.document.Extenders {
-		document.Extenders[identity] = record
-	}
-
-	return document, nil
+	return model.Document{}, nil
 }
 
 func (s *assemblySessionStore) ReplaceController(record model.TokenRecord) error {
@@ -412,29 +405,6 @@ func (s *assemblySessionStore) ReplaceController(record model.TokenRecord) error
 
 func (s *assemblySessionStore) DeleteController() error {
 	s.document.Controller = nil
-	s.document.Extenders = make(map[string]model.TokenRecord)
-
-	return nil
-}
-
-func (s *assemblySessionStore) UpsertExtender(identity string, record model.TokenRecord) error {
-	if s.document.Extenders == nil {
-		s.document.Extenders = make(map[string]model.TokenRecord)
-	}
-
-	s.document.Extenders[identity] = record
-
-	return nil
-}
-
-func (s *assemblySessionStore) DeleteExtender(identity string) error {
-	delete(s.document.Extenders, identity)
-
-	return nil
-}
-
-func (s *assemblySessionStore) DeleteExtenders() error {
-	s.document.Extenders = make(map[string]model.TokenRecord)
 
 	return nil
 }

@@ -16,6 +16,7 @@ const {
     store: {state: 'empty'},
     controller: {support: 'unknown'},
     extenders: [],
+    stale: false,
   }),
   navigate: vi.fn().mockResolvedValue(undefined),
   probeControllerTokenAuth: vi.fn().mockResolvedValue(true),
@@ -72,8 +73,6 @@ vi.mock('../../services/persistent-rci-session.service.js', () => ({
     testController: vi.fn(),
     saveController,
     clearController: vi.fn(),
-    provisionExtenders: vi.fn(),
-    clearExtenders: vi.fn(),
   },
 }));
 vi.mock('../../services/diagnostics.service.js', () => ({downloadDiagnostics}));
@@ -98,6 +97,7 @@ describe('SettingsPage', () => {
       store: {state: 'empty'},
       controller: {support: 'unknown'},
       extenders: [],
+      stale: false,
     });
     probeControllerTokenAuth.mockReset().mockResolvedValue(true);
     saveController.mockReset();
@@ -294,6 +294,7 @@ describe('SettingsPage', () => {
       store: {state: 'empty'},
       controller: {support: 'supported'},
       extenders: [],
+      stale: false,
     });
     target.querySelector('mndw-button[variant="primary"]')?.dispatchEvent(new Event('click', {bubbles: true}));
 

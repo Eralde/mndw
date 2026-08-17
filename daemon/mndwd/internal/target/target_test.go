@@ -101,6 +101,16 @@ func TestResolvePrefersNormalizedFQDNAndDoesNotRequireIP(t *testing.T) {
 	}
 }
 
+func TestNormalizeFQDNCanonicalizesCaseAndTrailingDot(t *testing.T) {
+	got, err := NormalizeFQDN(" Node-1.Keenetic.IO. ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "node-1.keenetic.io" {
+		t.Fatalf("NormalizeFQDN() = %q", got)
+	}
+}
+
 func TestResolveFQDNWinsOverIP(t *testing.T) {
 	target, err := Resolve(discovery.Member{CID: "node", IP: "192.168.1.8", FQDN: "node-1.keenetic.io"})
 	if err != nil {

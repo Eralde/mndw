@@ -182,6 +182,9 @@ func TestParseDefaultsPersistentSessionConfig(t *testing.T) {
 	if cfg.RCIEnumerationTTL != 30*time.Second {
 		t.Fatalf("RCI enumeration TTL = %s, want 30s", cfg.RCIEnumerationTTL)
 	}
+	if cfg.RCIHeartbeatInterval != 60*time.Second {
+		t.Fatalf("RCI heartbeat interval = %s, want 60s", cfg.RCIHeartbeatInterval)
+	}
 
 	if cfg.RCIProxyIdleTimeout != 2*time.Minute {
 		t.Fatalf("RCI proxy idle timeout = %s, want 2m", cfg.RCIProxyIdleTimeout)
@@ -197,6 +200,14 @@ func TestParseDefaultsPersistentSessionConfig(t *testing.T) {
 
 	if cfg.RCIProxyMaxResponseBytes != 1<<20 {
 		t.Fatalf("RCI proxy max response bytes = %d, want 1 MiB", cfg.RCIProxyMaxResponseBytes)
+	}
+}
+
+func TestParseRejectsHeartbeatIntervalOutsideBounds(t *testing.T) {
+	for _, value := range []string{"44s", "148s"} {
+		if _, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--rci-heartbeat-interval", value}); err == nil {
+			t.Fatalf("heartbeat interval %s accepted", value)
+		}
 	}
 }
 

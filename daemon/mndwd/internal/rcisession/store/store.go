@@ -1,5 +1,5 @@
-// Package store is the encrypted at-rest record of the device's RCI credentials
-// (controller + per-extender tokens), sealed with AES-GCM and written atomically.
+// Package store is the encrypted at-rest controller token record, sealed with
+// AES-GCM and written atomically.
 package store
 
 import (
@@ -76,7 +76,7 @@ func Open(config Config) (*Store, error) {
 		return store, nil
 	}
 
-	document, err := decryptDocument(store.key, ciphertext)
+	document, legacyExtenders, err := decryptDocument(store.key, ciphertext)
 	if err != nil {
 		store.state = model.StateDecryptFailed
 
@@ -85,6 +85,11 @@ func Open(config Config) (*Store, error) {
 
 	store.document = normalizeDocument(document)
 	store.state = model.StateOK
+	if legacyExtenders {
+		if err := store.persistLocked(); err != nil {
+			return nil, fmt.Errorf("migrate persistent RCI store: unable to remove legacy extender records")
+		}
+	}
 
 	return store, nil
 }
@@ -118,33 +123,6 @@ func (s *Store) ReplaceController(record model.TokenRecord) error {
 func (s *Store) DeleteController() error {
 	return s.mutate(func(document *model.Document) {
 		document.Controller = nil
-		document.Extenders = make(map[string]model.TokenRecord)
-	})
-}
-
-func (s *Store) UpsertExtender(identity string, record model.TokenRecord) error {
-	if identity == "" {
-		return fmt.Errorf("extender identity is required")
-	}
-
-	return s.mutate(func(document *model.Document) {
-		if document.Extenders == nil {
-			document.Extenders = make(map[string]model.TokenRecord)
-		}
-
-		document.Extenders[identity] = record
-	})
-}
-
-func (s *Store) DeleteExtender(identity string) error {
-	return s.mutate(func(document *model.Document) {
-		delete(document.Extenders, identity)
-	})
-}
-
-func (s *Store) DeleteExtenders() error {
-	return s.mutate(func(document *model.Document) {
-		document.Extenders = make(map[string]model.TokenRecord)
 	})
 }
 
@@ -289,30 +267,35 @@ func readSecureFile(path string, expectedSize int) ([]byte, error) {
 	return data, nil
 }
 
-func decryptDocument(key, ciphertext []byte) (model.Document, error) {
+func decryptDocument(key, ciphertext []byte) (model.Document, bool, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return model.Document{}, err
+		return model.Document{}, false, err
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil || len(ciphertext) < gcm.NonceSize() {
-		return model.Document{}, fmt.Errorf("persistent RCI ciphertext is invalid")
+		return model.Document{}, false, fmt.Errorf("persistent RCI ciphertext is invalid")
 	}
 
 	nonce := ciphertext[:gcm.NonceSize()]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext[gcm.NonceSize():], nil)
 	if err != nil {
-		return model.Document{}, fmt.Errorf("persistent RCI ciphertext authentication failed")
+		return model.Document{}, false, fmt.Errorf("persistent RCI ciphertext authentication failed")
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(plaintext, &raw); err != nil {
+		return model.Document{}, false, fmt.Errorf("persistent RCI document is invalid")
 	}
 
 	var document model.Document
 
 	if err := json.Unmarshal(plaintext, &document); err != nil {
-		return model.Document{}, fmt.Errorf("persistent RCI document is invalid")
+		return model.Document{}, false, fmt.Errorf("persistent RCI document is invalid")
 	}
 
-	return document, nil
+	_, legacyExtenders := raw["extenders"]
+	return document, legacyExtenders, nil
 }
 
 func writeAtomic(path string, data []byte) error {
@@ -379,16 +362,10 @@ func ensureDirectory(path string) error {
 }
 
 func emptyDocument() model.Document {
-	return model.Document{Extenders: make(map[string]model.TokenRecord)}
+	return model.Document{}
 }
 
-func normalizeDocument(document model.Document) model.Document {
-	if document.Extenders == nil {
-		document.Extenders = make(map[string]model.TokenRecord)
-	}
-
-	return document
-}
+func normalizeDocument(document model.Document) model.Document { return document }
 
 func cloneRecordPtr(record *model.TokenRecord) *model.TokenRecord {
 	if record == nil {
@@ -402,21 +379,9 @@ func cloneRecordPtr(record *model.TokenRecord) *model.TokenRecord {
 		clone.LastCheckedAt = &value
 	}
 
-	if record.RetryAfter != nil {
-		value := *record.RetryAfter
-		clone.RetryAfter = &value
-	}
-
 	return &clone
 }
 
 func cloneDocument(document model.Document) model.Document {
-	clone := model.Document{Extenders: make(map[string]model.TokenRecord, len(document.Extenders))}
-	clone.Controller = cloneRecordPtr(document.Controller)
-
-	for identity, record := range document.Extenders {
-		clone.Extenders[identity] = *cloneRecordPtr(&record)
-	}
-
-	return clone
+	return model.Document{Controller: cloneRecordPtr(document.Controller)}
 }

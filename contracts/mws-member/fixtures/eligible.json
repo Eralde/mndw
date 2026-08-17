@@ -1,0 +1,12 @@
+{
+  "cid": "node-eligible",
+  "mac": "aa:bb:cc:dd:ee:01",
+  "ip": "192.0.2.1",
+  "fqdn": "eligible.keenetic.io",
+  "fqdn-certificate-valid": true,
+  "capabilities": {
+    "auth-token": true,
+    "security-level": {"level": "admin"}
+  },
+  "known-host": "Eligible"
+}

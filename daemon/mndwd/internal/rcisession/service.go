@@ -1,12 +1,4 @@
-// Package rcisession owns the device's persistent RCI credentials — the tokens
-// mndwd uses to talk to the mesh controller and its extenders on the user's
-// behalf. Service is the orchestration core: it reads and writes the encrypted
-// record (sub-package store), mints tokens (minter), lists mesh members with a
-// short-lived cache (enumeration), and forwards capped outbound RCI requests
-// (proxy). The socket sub-package exposes an authenticated session to builtin
-// plugins that hold the persistent-RCI permission, and reconciles those unix
-// sockets as the credential state changes. handler.go serves the /api/mndw RCI
-// endpoints; controller.go tests controller reachability.
+// Package rcisession owns controller persistence and RAM-only extender sessions.
 package rcisession
 
 import (
@@ -19,17 +11,17 @@ import (
 	"sync"
 	"time"
 
+	rci "mndw.local/rci"
 	"mndw.local/rcisock"
-	"mndwd/internal/discovery"
 	"mndwd/internal/rcisession/enumeration"
+	"mndwd/internal/rcisession/establisher"
 	"mndwd/internal/rcisession/model"
 	"mndwd/internal/rcisession/proxy"
-	"mndwd/internal/target"
+	"mndwd/internal/rcisession/sessionmanager"
 )
 
 var (
-	ErrControllerInvalid     = errors.New("controller session invalid")
-	ErrExtenderTokenDeletion = errors.New("extender token deletion failed")
+	ErrControllerInvalid = errors.New("controller session invalid")
 )
 
 type Store interface {
@@ -37,9 +29,6 @@ type Store interface {
 	Snapshot() (model.Document, error)
 	ReplaceController(model.TokenRecord) error
 	DeleteController() error
-	UpsertExtender(string, model.TokenRecord) error
-	DeleteExtender(string) error
-	DeleteExtenders() error
 }
 
 type Enumerator interface {
@@ -48,19 +37,36 @@ type Enumerator interface {
 }
 
 type Service struct {
-	store         Store
-	enumerator    Enumerator
-	now           func() time.Time
-	proxy         *proxy.Proxy
-	onMutation    func()
-	mu            sync.RWMutex
-	controllerURL string
-	allowInsecure bool
-	logger        *slog.Logger
+	store            Store
+	enumerator       Enumerator
+	now              func() time.Time
+	proxy            *proxy.Proxy
+	onMutation       func()
+	mu               sync.RWMutex
+	controllerURL    string
+	allowInsecure    bool
+	controllerClient *http.Client
+	manager          *sessionmanager.Manager
+	controllerEpoch  uint64
+	logger           *slog.Logger
 }
 
 func NewService(store Store, enumerator Enumerator) *Service {
-	return &Service{store: store, enumerator: enumerator, now: time.Now, controllerURL: DefaultControllerURL, allowInsecure: true}
+	return &Service{store: store, enumerator: enumerator, now: time.Now, controllerURL: DefaultControllerURL, allowInsecure: true, manager: sessionmanager.New()}
+}
+
+func (s *Service) SetSessionManager(manager *sessionmanager.Manager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if manager != nil {
+		s.manager = manager
+	}
+}
+
+func (s *Service) SessionManager() *sessionmanager.Manager {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.manager
 }
 
 func (s *Service) SetMutationObserver(observer func()) { s.onMutation = observer }
@@ -69,6 +75,12 @@ func (s *Service) SetLogger(logger *slog.Logger) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.logger = logger
+}
+
+func (s *Service) SetControllerClient(client *http.Client) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.controllerClient = client
 }
 
 func (s *Service) SetControllerURL(baseURL string, allowRemoteHTTP bool) error {
@@ -103,66 +115,40 @@ func (s *Service) Capability() (model.StoreState, model.Document) {
 	state := s.store.State()
 	document, err := s.store.Snapshot()
 	if err != nil {
-		return state, model.Document{Extenders: make(map[string]model.TokenRecord)}
+		return state, model.Document{}
 	}
 	return state, document
 }
 
-func (s *Service) Resolve(ctx context.Context, identity string) (proxy.Destination, error) {
-	document, err := s.store.Snapshot()
-	if err != nil {
-		return proxy.Destination{}, err
+func (s *Service) Resolve(_ context.Context, identity string) (proxy.Destination, error) {
+	if identity != "controller" {
+		manager := s.SessionManager()
+		if manager != nil && manager.HasMember(identity) {
+			return manager.Resolve(identity)
+		}
+		return proxy.Destination{}, proxy.ErrNoSession
 	}
+
 	if identity == "controller" {
-		if document.Controller == nil || document.Controller.Token == "" {
+		snapshot, support, err := s.captureController()
+		if err != nil {
+			return proxy.Destination{}, err
+		}
+		if snapshot.Token == "" {
 			return proxy.Destination{}, proxy.ErrNoSession
 		}
-		if document.Controller.Support == model.SupportInvalid {
+		if support == model.SupportInvalid {
 			return proxy.Destination{}, ErrControllerInvalid
 		}
-		if document.Controller.Support == model.SupportUnsupported {
+		if support == model.SupportUnsupported {
 			return proxy.Destination{}, proxy.ErrUnsupported
 		}
 		s.mu.RLock()
-		controllerURL := s.controllerURL
 		allowInsecure := s.allowInsecure
 		s.mu.RUnlock()
-		return proxy.Destination{BaseURL: controllerURL, Token: document.Controller.Token, Support: document.Controller.Support, AllowInsecure: allowInsecure}, nil
+		return proxy.Destination{BaseURL: snapshot.BaseURL, Token: snapshot.Token, Support: support, AllowInsecure: allowInsecure, ControllerEpoch: snapshot.Epoch}, nil
 	}
-	record, ok := document.Extenders[identity]
-	if !ok || record.Token == "" {
-		return proxy.Destination{}, proxy.ErrNoSession
-	}
-	if record.Support == model.SupportUnsupported {
-		return proxy.Destination{}, proxy.ErrUnsupported
-	}
-	if document.Controller != nil && document.Controller.Support == model.SupportInvalid {
-		return proxy.Destination{}, ErrControllerInvalid
-	}
-	if s.enumerator == nil {
-		return proxy.Destination{}, fmt.Errorf("%w: enumeration unavailable", proxy.ErrTargetUnreachable)
-	}
-	members, err := s.enumerator.List(ctx)
-	if err != nil {
-		return proxy.Destination{}, err
-	}
-	for _, member := range members {
-		if member.Identity != identity {
-			continue
-		}
-		if strings.TrimSpace(member.FQDN) == "" {
-			if strings.TrimSpace(member.IP) == "" {
-				return proxy.Destination{}, fmt.Errorf("%w: member has no reachable endpoint", proxy.ErrTargetUnreachable)
-			}
-			return proxy.Destination{}, proxy.ErrSecureEndpointUnavailable
-		}
-		resolved, err := target.Resolve(discovery.Member{CID: member.Identity, Name: member.Name, IP: member.IP, FQDN: member.FQDN, MAC: member.MAC})
-		if err != nil {
-			return proxy.Destination{}, fmt.Errorf("%w: unsafe member address", proxy.ErrTargetUnreachable)
-		}
-		return proxy.Destination{BaseURL: resolved.BaseURL, Token: record.Token, Support: record.Support}, nil
-	}
-	return proxy.Destination{}, fmt.Errorf("%w: member not found", proxy.ErrTargetUnreachable)
+	return proxy.Destination{}, proxy.ErrNoSession
 }
 
 func (s *Service) Proxy(client *http.Client, maxResponseBytes int64, operationTimeout time.Duration) *proxy.Proxy {
@@ -201,14 +187,111 @@ func (s *Service) notifyMutation(reason string) {
 	}
 }
 
-func (s *Service) logTokenInvalidated(identity string) {
-	if logger := s.loggerSnapshot(); logger != nil {
-		logger.Warn("persistent RCI token invalidated", "identity", identity)
-	}
-}
-
 func (s *Service) loggerSnapshot() *slog.Logger {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.logger
+}
+
+func (s *Service) InvalidateController(capturedEpoch uint64) {
+	s.mu.Lock()
+	if capturedEpoch != s.controllerEpoch {
+		s.mu.Unlock()
+		return
+	}
+	s.controllerEpoch++
+	s.mu.Unlock()
+
+	document, err := s.store.Snapshot()
+	if err == nil && document.Controller != nil && document.Controller.Support != model.SupportInvalid {
+		record := *document.Controller
+		record.Support = model.SupportInvalid
+		_ = s.store.ReplaceController(record)
+	}
+	if s.enumerator != nil {
+		s.enumerator.Invalidate()
+	}
+	if manager := s.SessionManager(); manager != nil {
+		manager.DiscardAll()
+	}
+	s.notifyMutation("controller-token-invalidated")
+}
+
+func (s *Service) ControllerEpoch() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.controllerEpoch
+}
+
+// CaptureController snapshots controller trust inputs for one request. The
+// token and epoch are read together so late results can be fenced.
+func (s *Service) CaptureController() enumeration.ControllerSnapshot {
+	snapshot, support, err := s.captureController()
+	if err != nil || snapshot.Token == "" || support != model.SupportSupported {
+		return enumeration.ControllerSnapshot{}
+	}
+	return snapshot
+}
+
+func (s *Service) captureController() (enumeration.ControllerSnapshot, model.Support, error) {
+	document, err := s.store.Snapshot()
+	if err != nil {
+		return enumeration.ControllerSnapshot{}, model.SupportUnknown, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if document.Controller == nil {
+		return enumeration.ControllerSnapshot{BaseURL: s.controllerURL, Epoch: s.controllerEpoch}, model.SupportUnknown, nil
+	}
+	return enumeration.ControllerSnapshot{BaseURL: s.controllerURL, Token: document.Controller.Token, Epoch: s.controllerEpoch}, document.Controller.Support, nil
+}
+
+// AuthURL mints one controller-mediated extender relay URL. Returned errors
+// are intentionally coarse except for the typed HTTP status used for epoch
+// invalidation.
+func (s *Service) AuthURL(ctx context.Context, identity string) (string, uint64, error) {
+	snapshot := s.CaptureController()
+	if snapshot.Token == "" || snapshot.BaseURL == "" {
+		return "", snapshot.Epoch, fmt.Errorf("controller auth-url unavailable")
+	}
+	s.mu.RLock()
+	controllerClient := s.controllerClient
+	s.mu.RUnlock()
+	options := []rci.HTTPOption{
+		rci.WithHeader("X-Ndma-Tkn", func() string { return snapshot.Token }),
+		rci.WithMaxResponseBytes(1 << 20),
+	}
+	if controllerClient != nil {
+		options = append(options, rci.WithHTTPClient(controllerClient))
+	}
+	transport, err := rci.NewHTTPTransport(snapshot.BaseURL, options...)
+	if err != nil {
+		return "", snapshot.Epoch, fmt.Errorf("controller auth-url unavailable")
+	}
+	client, err := rci.New(transport)
+	if err != nil {
+		return "", snapshot.Epoch, fmt.Errorf("controller auth-url unavailable")
+	}
+	values, _, err := client.ExecuteRaw(ctx, rci.Q("mws.member.auth-url", map[string]string{"member": identity}))
+	if err != nil {
+		var httpErr *rci.HTTPError
+		if errors.As(err, &httpErr) && (httpErr.StatusCode == http.StatusUnauthorized || httpErr.StatusCode == http.StatusForbidden) {
+			return "", snapshot.Epoch, httpErr
+		}
+		if errors.Is(err, rci.ErrInvalidResponse) || errors.Is(err, rci.ErrResponseTooLarge) {
+			return "", snapshot.Epoch, establisher.AuthURLResponseError{}
+		}
+		return "", snapshot.Epoch, fmt.Errorf("controller auth-url unavailable")
+	}
+	if len(values) == 0 || values[0] == nil {
+		return "", snapshot.Epoch, establisher.AuthURLResponseError{}
+	}
+	rawURL, err := establisher.ParseAuthURLResponse(values[0])
+	if err != nil {
+		return "", snapshot.Epoch, establisher.AuthURLResponseError{}
+	}
+	if s.ControllerEpoch() != snapshot.Epoch {
+		return "", snapshot.Epoch, establisher.StaleControllerResultError{}
+	}
+	return rawURL, snapshot.Epoch, nil
 }

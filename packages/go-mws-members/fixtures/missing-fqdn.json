@@ -1,0 +1,9 @@
+{
+  "cid": "node-missing-fqdn",
+  "mac": "aa:bb:cc:dd:ee:05",
+  "ip": "192.0.2.5",
+  "fqdn": "",
+  "fqdn-certificate-valid": true,
+  "capabilities": {"auth-token": true},
+  "known-host": "Missing FQDN"
+}

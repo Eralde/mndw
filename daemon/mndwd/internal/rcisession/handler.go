@@ -1,8 +1,8 @@
 package rcisession
 
 import (
+	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -10,18 +10,17 @@ import (
 
 	"mndwd/internal/httpx"
 	"mndwd/internal/rcisession/enumeration"
-	"mndwd/internal/rcisession/minter"
 	"mndwd/internal/rcisession/model"
+	"mndwd/internal/rcisession/sessionmanager"
 )
 
 type Handler struct {
-	service   *Service
-	tester    ControllerTester
-	generator minter.Generator
+	service *Service
+	tester  ControllerTester
 }
 
-func NewHandler(service *Service, tester ControllerTester, generator minter.Generator) *Handler {
-	return &Handler{service: service, tester: tester, generator: generator}
+func NewHandler(service *Service, tester ControllerTester, _ ...any) *Handler {
+	return &Handler{service: service, tester: tester}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -29,9 +28,44 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/mndw/rci-session/controller/test", h.handleControllerTest)
 	mux.HandleFunc("POST /api/mndw/rci-session/controller", h.handleControllerSave)
 	mux.HandleFunc("DELETE /api/mndw/rci-session/controller", h.handleControllerDelete)
-	mux.HandleFunc("POST /api/mndw/rci-session/extenders/provision", h.handleProvision)
-	mux.HandleFunc("GET /api/mndw/rci-session/extenders", h.handleCapability)
-	mux.HandleFunc("DELETE /api/mndw/rci-session/extenders", h.handleExtendersDelete)
+	mux.HandleFunc("/api/mndw/rci-session/extenders", h.handleExtenders)
+}
+
+func BodyLimit(limit int64) func(http.Handler) http.Handler {
+	if limit <= 0 {
+		limit = 4096
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Body == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if r.ContentLength > limit {
+				writeSessionError(w, http.StatusRequestEntityTooLarge, httpx.CodeBadRequest, "request body is too large")
+				return
+			}
+			body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+			if err != nil {
+				writeSessionError(w, http.StatusBadRequest, httpx.CodeBadRequest, "request body could not be read")
+				return
+			}
+			if int64(len(body)) > limit {
+				writeSessionError(w, http.StatusRequestEntityTooLarge, httpx.CodeBadRequest, "request body is too large")
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func (h *Handler) handleExtenders(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.NotFound(w, r)
+		return
+	}
+	h.handleCapability(w, r)
 }
 
 func (h *Handler) handleCapability(w http.ResponseWriter, r *http.Request) {
@@ -39,28 +73,26 @@ func (h *Handler) handleCapability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state, document := h.service.Capability()
-	extenders := make([]ExtenderCapability, 0, len(document.Extenders))
-	if h.service.enumerator != nil {
-		if members, err := h.service.enumerator.List(r.Context()); err == nil {
-			for _, member := range members {
-				record, ok := document.Extenders[member.Identity]
-				if !ok {
-					continue
+	extenders := make([]ExtenderCapability, 0)
+	if manager := h.service.SessionManager(); manager != nil {
+		snapshot := manager.Snapshot()
+		extenders = make([]ExtenderCapability, 0, len(snapshot.Members))
+		for _, member := range snapshot.Members {
+			entry := ExtenderCapability{
+				Identity: member.Identity,
+				Name:     member.Name,
+				Eligible: member.Eligible,
+			}
+			if !member.Eligible {
+				entry.Reason = member.Reason
+			} else {
+				entry.State = member.State
+				if member.HasSession {
+					entry.LastError = string(member.LastError)
+					entry.LastHeartbeatAt = member.LastHeartbeatAt
 				}
-				extenders = append(extenders, extenderCapability(member, record))
 			}
-		}
-	}
-	for identity, record := range document.Extenders {
-		found := false
-		for _, extender := range extenders {
-			if extender.Identity == identity {
-				found = true
-				break
-			}
-		}
-		if !found {
-			extenders = append(extenders, extenderCapability(enumeration.Member{Identity: identity}, record))
+			extenders = append(extenders, entry)
 		}
 	}
 	controller := ControllerCapability{Support: model.SupportUnknown}
@@ -68,11 +100,25 @@ func (h *Handler) handleCapability(w http.ResponseWriter, r *http.Request) {
 		controller.Support = document.Controller.Support
 		controller.LastCheckedAt = document.Controller.LastCheckedAt
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	report := map[string]any{
 		"store":      map[string]any{"state": state},
 		"controller": controller,
 		"extenders":  extenders,
-	})
+		"stale":      false,
+	}
+	if enumerator, ok := h.service.enumerator.(interface {
+		Status() enumeration.CacheStatus
+	}); ok {
+		cacheStatus := enumerator.Status()
+		report["stale"] = cacheStatus.Stale
+		if cacheStatus.LastError != "" {
+			report["lastEnumerationError"] = cacheStatus.LastError
+		}
+		if cacheStatus.LastErrorAt != nil {
+			report["lastEnumerationErrorAt"] = cacheStatus.LastErrorAt
+		}
+	}
+	writeJSON(w, http.StatusOK, report)
 }
 
 type ControllerCapability struct {
@@ -81,15 +127,13 @@ type ControllerCapability struct {
 }
 
 type ExtenderCapability struct {
-	Identity      string        `json:"identity"`
-	Name          string        `json:"name"`
-	Support       model.Support `json:"support"`
-	LastCheckedAt *time.Time    `json:"lastCheckedAt,omitempty"`
-	LastError     string        `json:"lastError,omitempty"`
-}
-
-func extenderCapability(member enumeration.Member, record model.TokenRecord) ExtenderCapability {
-	return ExtenderCapability{Identity: member.Identity, Name: member.Name, Support: record.Support, LastCheckedAt: record.LastCheckedAt, LastError: record.LastError}
+	Identity        string               `json:"identity"`
+	Name            string               `json:"name"`
+	Eligible        bool                 `json:"eligible"`
+	Reason          string               `json:"reason,omitempty"`
+	State           sessionmanager.State `json:"state,omitempty"`
+	LastError       string               `json:"lastError,omitempty"`
+	LastHeartbeatAt *time.Time           `json:"lastHeartbeatAt,omitempty"`
 }
 
 func (h *Handler) handleControllerTest(w http.ResponseWriter, r *http.Request) {
@@ -149,63 +193,6 @@ func (h *Handler) handleControllerDelete(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"result": "cleared"})
-}
-
-func (h *Handler) handleExtendersDelete(w http.ResponseWriter, r *http.Request) {
-	if !h.csrf(w, r) {
-		return
-	}
-	if r.ContentLength > 0 {
-		writeSessionError(w, http.StatusBadRequest, httpx.CodeBadRequest, "request body is not allowed")
-		return
-	}
-	if err := h.service.DeleteExtenders(r.Context()); err != nil {
-		if errors.Is(err, ErrExtenderTokenDeletion) {
-			writeSessionError(w, http.StatusBadGateway, httpx.CodeRCIDeviceUnreachable, "failed to revoke extender sessions")
-			return
-		}
-		writeSessionError(w, http.StatusInternalServerError, httpx.CodeInternal, "failed to clear extender sessions")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"result": "cleared"})
-}
-
-func (h *Handler) handleProvision(w http.ResponseWriter, r *http.Request) {
-	if !h.csrf(w, r) {
-		return
-	}
-	var request struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	if err := decodeJSON(w, r, &request); err != nil {
-		return
-	}
-	if h.generator == nil {
-		writeSessionError(w, http.StatusBadGateway, httpx.CodeRCIDeviceUnreachable, "extender provisioning unavailable")
-		return
-	}
-	outcomes, err := h.service.Provision(r.Context(), h.generator, minter.Credentials{Username: request.Username, Password: request.Password})
-	response := make([]map[string]string, 0, len(outcomes))
-	for _, outcome := range outcomes {
-		item := map[string]string{"identity": outcome.Member.Identity}
-		if outcome.Err == nil {
-			item["support"] = string(outcome.Record.Support)
-		} else {
-			item["support"] = string(model.SupportUnknown)
-			reason := outcome.Reason
-			if reason == "" {
-				reason = minter.ClassifyFailure(outcome.Err)
-			}
-			item["reason"] = string(reason)
-		}
-		response = append(response, item)
-	}
-	if err != nil && len(response) == 0 {
-		writeSessionError(w, http.StatusBadGateway, httpx.CodeRCIDeviceUnreachable, "extender provisioning failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"extenders": response})
 }
 
 func (h *Handler) csrf(w http.ResponseWriter, r *http.Request) bool {

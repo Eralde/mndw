@@ -17,6 +17,10 @@ const generatedDirectories = [
   'frontend/sdk/fixtures/palettes',
   'daemon/mndwd/internal/palette/fixtures/palettes',
   'daemon/contracts-go/fixtures/protocol',
+  'frontend/sdk/fixtures/mws-members',
+  'packages/go-mws-members/fixtures',
+  'frontend/host/src/services/fixtures/rci-session/capability',
+  'daemon/mndwd/internal/rcisession/testdata/capability',
 ] as const;
 
 const listFiles = (root: string, current = ''): string[] => {
@@ -42,6 +46,9 @@ const generatedPaths = [
   ...Object.keys(createProtocolDocuments()).map((file) => join('contracts/protocol', file)),
   'contracts/tokens.json',
   'frontend/sdk/manifest.schema.json',
+  'contracts/mws-member/mws-member.schema.json',
+  'contracts/rci-session/status-categories.json',
+  'frontend/host/src/services/rci-session-status-categories.ts',
   'frontend/sdk/src/tokens.ts',
   'frontend/sdk/src/tokens.css',
   'daemon/mndwd/internal/palette/theme_tokens_generated.go',

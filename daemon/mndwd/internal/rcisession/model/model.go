@@ -1,5 +1,4 @@
-// Package model holds the shared types and state enums of the RCI session
-// subsystem: the stored document shape, token records, and store/support states.
+// Package model holds shared types and state enums of the RCI session subsystem.
 package model
 
 import "time"
@@ -23,15 +22,11 @@ const (
 )
 
 type TokenRecord struct {
-	Key           string     `json:"key"`
 	Token         string     `json:"token"`
 	Support       Support    `json:"support"`
 	LastCheckedAt *time.Time `json:"lastCheckedAt,omitempty"`
-	LastError     string     `json:"lastError,omitempty"`
-	RetryAfter    *time.Time `json:"retryAfter,omitempty"`
 }
 
 type Document struct {
-	Controller *TokenRecord           `json:"controller,omitempty"`
-	Extenders  map[string]TokenRecord `json:"extenders,omitempty"`
+	Controller *TokenRecord `json:"controller,omitempty"`
 }

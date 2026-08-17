@@ -1,8 +1,10 @@
-import {copyFileSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import {dirname, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {createManifestSchemaDocument} from '../../frontend/sdk/scripts/manifest-schema-document.js';
+import {createMwsMemberSchemaDocument} from '../../frontend/sdk/src/mws-member-schema.js';
 import {PALETTE_CONTRAST_PAIRS, PALETTE_CSS_VARIABLES, buildPalette} from '../../tooling/palette-core/src/index.js';
 import {renderCss, renderTs} from '../../build/palette/scripts/gen-tokens.js';
 import {SCALE} from '../../build/palette/src/scale.js';
@@ -41,12 +43,27 @@ const fixtureMappings: readonly FixtureMapping[] = [
     destinations: ['daemon/contracts-go/fixtures/protocol'],
     include: (relativePath) => relativePath.endsWith('.golden.json'),
   },
+  {
+    source: 'contracts/mws-member/fixtures',
+    destinations: ['frontend/sdk/fixtures/mws-members', 'packages/go-mws-members/fixtures'],
+  },
+  {
+    source: 'contracts/rci-session/fixtures/capability',
+    destinations: [
+      'frontend/host/src/services/fixtures/rci-session/capability',
+      'daemon/mndwd/internal/rcisession/testdata/capability',
+    ],
+  },
 ];
 
 const manifestSchemaPaths = [
   'contracts/manifest/manifest.schema.json',
   'frontend/sdk/manifest.schema.json',
 ] as const;
+
+const mwsMemberSchemaPath = 'contracts/mws-member/mws-member.schema.json';
+const rciSessionStatusCategoriesPath = 'contracts/rci-session/status-categories.json';
+const hostRciSessionStatusCategoriesPath = 'frontend/host/src/services/rci-session-status-categories.ts';
 
 const tokenContractPath = 'contracts/tokens.json';
 const generatedGoThemeTokensPath = 'daemon/mndwd/internal/palette/theme_tokens_generated.go';
@@ -102,6 +119,37 @@ export function generateManifestSchema(options: GenerateContractsOptions): void 
     mkdirSync(dirname(outputPath), {recursive: true});
     writeFileSync(outputPath, contents);
   }
+}
+
+function generateMwsMemberSchema(options: GenerateContractsOptions): void {
+  const outputRoot = resolve(options.outputRoot ?? options.repoRoot);
+  const outputPath = join(outputRoot, mwsMemberSchemaPath);
+  const document = createMwsMemberSchemaDocument();
+
+  mkdirSync(dirname(outputPath), {recursive: true});
+  writeFileSync(outputPath, `${JSON.stringify(document, null, 2)}\n`);
+}
+
+function generateRciSessionStatusCategories(options: GenerateContractsOptions): void {
+  const outputRoot = resolve(options.outputRoot ?? options.repoRoot);
+  const jsonPath = join(outputRoot, rciSessionStatusCategoriesPath);
+  const daemonRoot = join(options.repoRoot, 'daemon/mndwd');
+  execFileSync('go', ['run', './cmd/generate-rci-session-contract', '--output', jsonPath], {
+    cwd: daemonRoot,
+    env: {...process.env, GOCACHE: resolve(options.repoRoot, '.cache/go-build')},
+    stdio: 'pipe',
+  });
+  const categories = JSON.parse(readFileSync(jsonPath, 'utf8')) as unknown;
+  if (!Array.isArray(categories) || !categories.every((value): value is string => typeof value === 'string')) {
+    throw new Error('Generated RCI session status categories must be a string array.');
+  }
+  const hostPath = join(outputRoot, hostRciSessionStatusCategoriesPath);
+  mkdirSync(dirname(hostPath), {recursive: true});
+  const renderedCategories = categories.map((category) => `  '${category}',`).join('\n');
+  writeFileSync(
+    hostPath,
+    `// GENERATED from daemon/mndwd/internal/rcisession/status — do not edit by hand.\nexport const persistentFailureCategories = [\n${renderedCategories}\n] as const;\n`,
+  );
 }
 
 function goIdentifier(token: string): string {
@@ -167,6 +215,8 @@ export function generateContracts(options: GenerateContractsOptions): void {
   const outputRoot = resolve(options.outputRoot ?? repoRoot);
 
   generateManifestSchema({repoRoot, outputRoot});
+  generateMwsMemberSchema({repoRoot, outputRoot});
+  generateRciSessionStatusCategories({repoRoot, outputRoot});
   generateTokenBindings({repoRoot, outputRoot});
   generateSharedDependencyContracts(repoRoot, outputRoot);
 

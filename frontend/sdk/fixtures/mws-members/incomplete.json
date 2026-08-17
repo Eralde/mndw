@@ -1,0 +1,8 @@
+{
+  "cid": "node-incomplete",
+  "mac": "aa:bb:cc:dd:ee:04",
+  "ip": "",
+  "fqdn": "incomplete.keenetic.io",
+  "capabilities": {},
+  "known-host": "Incomplete"
+}

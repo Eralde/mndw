@@ -43,15 +43,19 @@ type Response struct {
 }
 
 type Destination struct {
-	BaseURL       string
-	Token         string
-	Support       model.Support
-	AllowInsecure bool
+	BaseURL         string
+	Token           string
+	Client          *http.Client
+	Support         model.Support
+	AllowInsecure   bool
+	Generation      uint64
+	ControllerEpoch uint64
 }
 
 type Resolver interface {
 	Resolve(context.Context, string) (Destination, error)
-	Unauthorized(string)
+	InvalidateController(uint64)
+	Unauthorized(string, uint64)
 }
 
 type Proxy struct {
@@ -103,7 +107,8 @@ func (p *Proxy) Do(ctx context.Context, request Request) (Response, error) {
 		return Response{}, ErrUnsupported
 	}
 
-	if destination.Support == "" || destination.Token == "" {
+	isController := destination.Token != ""
+	if destination.Support == "" || (!isController && destination.Client == nil) {
 		return Response{}, ErrNoSession
 	}
 
@@ -139,9 +144,15 @@ func (p *Proxy) Do(ctx context.Context, request Request) (Response, error) {
 	}
 
 	outbound.Header.Set("Accept", "application/json")
-	outbound.Header.Set("X-Ndma-Tkn", destination.Token)
+	if isController {
+		outbound.Header.Set("X-Ndma-Tkn", destination.Token)
+	}
 
-	response, err := p.client.Do(outbound)
+	client := p.client
+	if !isController {
+		client = destination.Client
+	}
+	response, err := client.Do(outbound)
 	if err != nil {
 		return Response{}, fmt.Errorf("%w: outbound request failed", ErrTargetUnreachable)
 	}
@@ -152,8 +163,12 @@ func (p *Proxy) Do(ctx context.Context, request Request) (Response, error) {
 		return Response{}, fmt.Errorf("%w: redirect rejected", ErrTargetUnreachable)
 	}
 
-	if response.StatusCode == http.StatusUnauthorized {
-		p.resolver.Unauthorized(request.Target)
+	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
+		if isController {
+			p.resolver.InvalidateController(destination.ControllerEpoch)
+		} else {
+			p.resolver.Unauthorized(request.Target, destination.Generation)
+		}
 
 		return Response{}, ErrSessionInvalid
 	}

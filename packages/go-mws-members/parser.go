@@ -9,17 +9,19 @@ import (
 )
 
 type Member struct {
-	CID      string         `json:"cid"`
-	Model    string         `json:"model"`
-	MAC      string         `json:"mac"`
-	Name     string         `json:"known-host"`
-	IP       string         `json:"ip"`
-	FQDN     string         `json:"fqdn"`
-	Firmware string         `json:"fw"`
-	System   map[string]any `json:"system"`
-	Backhaul map[string]any `json:"backhaul"`
-	Online   bool           `json:"-"`
-	LastPeer string         `json:"-"`
+	CID                    string                     `json:"cid"`
+	Model                  string                     `json:"model"`
+	MAC                    string                     `json:"mac"`
+	Name                   string                     `json:"known-host"`
+	IP                     string                     `json:"ip"`
+	FQDN                   string                     `json:"fqdn"`
+	FQDNCertificateValid  bool                       `json:"fqdn-certificate-valid"`
+	Capabilities           map[string]json.RawMessage `json:"capabilities"`
+	Firmware               string                     `json:"fw"`
+	System                 map[string]any             `json:"system"`
+	Backhaul               map[string]any             `json:"backhaul"`
+	Online                 bool                       `json:"-"`
+	LastPeer               string                     `json:"-"`
 }
 
 type statusReply struct {
@@ -73,4 +75,18 @@ func (member Member) Identity() string {
 	}
 
 	return NormalizeMAC(member.MAC)
+}
+
+func (member Member) AuthTokenCapable() bool {
+	value, ok := member.Capabilities["auth-token"]
+	if !ok {
+		return false
+	}
+
+	var capable bool
+	if err := json.Unmarshal(value, &capable); err != nil {
+		return false
+	}
+
+	return capable
 }

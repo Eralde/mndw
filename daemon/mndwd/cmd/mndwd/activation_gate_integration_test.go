@@ -108,8 +108,8 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 		t.Fatalf("controller tester calls = %d, want 1", got)
 	}
 
-	fixture.assembly.service.Unauthorized("controller")
-	fixture.assembly.service.Unauthorized("controller")
+	fixture.assembly.service.Unauthorized("controller", fixture.assembly.service.ControllerEpoch())
+	fixture.assembly.service.Unauthorized("controller", fixture.assembly.service.ControllerEpoch())
 
 	if got := pokes.Load(); got != 2 {
 		t.Fatalf("retained-token Unauthorized pokes = %d, want 2", got)

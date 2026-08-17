@@ -73,7 +73,7 @@ func TestProxyMapsUnauthorizedAndNotifiesResolver(t *testing.T) {
 		Header:     make(http.Header),
 		Body:       io.NopCloser(strings.NewReader("no")),
 	}}
-	resolver := &fakeResolver{destination: Destination{BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
+	resolver := &fakeResolver{destination: Destination{BaseURL: "https://node.keenetic.io", Client: &http.Client{Transport: transport}, Support: model.SupportSupported}}
 	proxy := New(resolver, &http.Client{Transport: transport}, 1024, 0)
 
 	_, err := proxy.Do(context.Background(), Request{Target: "node-1", Method: "GET", Path: "rci/show/version"})
@@ -131,6 +131,8 @@ type fakeResolver struct {
 	destination  Destination
 	calls        int
 	unauthorized bool
+	generation   uint64
+	epoch        uint64
 }
 
 func (f *fakeResolver) Resolve(context.Context, string) (Destination, error) {
@@ -139,7 +141,12 @@ func (f *fakeResolver) Resolve(context.Context, string) (Destination, error) {
 	return f.destination, nil
 }
 
-func (f *fakeResolver) Unauthorized(string) { f.unauthorized = true }
+func (f *fakeResolver) InvalidateController(epoch uint64) { f.epoch = epoch }
+
+func (f *fakeResolver) Unauthorized(_ string, generation uint64) {
+	f.unauthorized = true
+	f.generation = generation
+}
 
 type fakeRoundTripper struct {
 	request  *http.Request

@@ -177,7 +177,7 @@ func Resolve(member discovery.Member) (Target, error) {
 	return Target{ID: member.Identity(), Address: ip, BaseURL: "http://" + host}, nil
 }
 
-func normalizeFQDN(value string) (string, error) {
+func NormalizeFQDN(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	value = strings.TrimRight(value, ".")
 
@@ -207,6 +207,10 @@ func normalizeFQDN(value string) (string, error) {
 	}
 
 	return value, nil
+}
+
+func normalizeFQDN(value string) (string, error) {
+	return NormalizeFQDN(value)
 }
 
 func AllowedIP(ip net.IP) bool {

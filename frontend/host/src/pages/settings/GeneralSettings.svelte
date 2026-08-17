@@ -10,7 +10,6 @@ import {
   type ControllerTestResult,
   type PersistentRciCapability,
   PersistentRciSessionError,
-  type ProvisionReason,
 } from '../../services/persistent-rci-session.service.js';
 
 interface PermissionState {
@@ -40,9 +39,7 @@ let persistentActionLoading = $state(false);
 let persistentError = $state('');
 let controllerToken = $state('');
 let controllerResult = $state<ControllerTestResult | null>(null);
-let meshUsername = $state('');
-let meshPassword = $state('');
-let provisioningResult = $state('');
+let capabilityPollController: AbortController | null = null;
 
 $effect(() => {
   onPermissionStateChange({
@@ -57,8 +54,8 @@ onMount(() => {
 
 onDestroy(() => {
   controllerToken = '';
-  meshUsername = '';
-  meshPassword = '';
+  capabilityPollController?.abort();
+  capabilityPollController = null;
 });
 
 async function refreshPersistentCapability(): Promise<void> {
@@ -76,6 +73,7 @@ async function refreshPersistentCapability(): Promise<void> {
     persistentCapability = await persistentRci.getCapability();
     persistentEnabled = persistentCapability.controller.support === 'supported'
       || persistentCapability.controller.support === 'invalid';
+    startCapabilityPolling();
   } catch {
     persistentError = hostT('settings.persistent-state-unavailable');
   } finally {
@@ -91,21 +89,13 @@ function setPersistentEnabled(
   persistentError = '';
   if (!persistentEnabled) {
     controllerToken = '';
-    meshUsername = '';
-    meshPassword = '';
+    capabilityPollController?.abort();
+    capabilityPollController = null;
   }
 }
 
 function setControllerToken(event: CustomEvent<{value: string}>): void {
   controllerToken = event.detail.value;
-}
-
-function setMeshUsername(event: CustomEvent<{value: string}>): void {
-  meshUsername = event.detail.value;
-}
-
-function setMeshPassword(event: CustomEvent<{value: string}>): void {
-  meshPassword = event.detail.value;
 }
 
 function persistentErrorMessage(error: unknown): string {
@@ -172,53 +162,6 @@ async function clearController(): Promise<void> {
   }
 }
 
-async function provisionExtenders(): Promise<void> {
-  persistentActionLoading = true;
-  persistentError = '';
-  provisioningResult = '';
-  try {
-    const result = await persistentRci.provisionExtenders({
-      username: meshUsername,
-      password: meshPassword,
-    });
-    const failures = result.extenders.filter((extender) =>
-      extender.reason !== undefined
-    );
-    provisioningResult = failures.length > 0
-      ? failures.map((extender) =>
-        `${extender.identity}: ${provisionReasonMessage(extender.reason)}`
-      ).join('; ')
-      : hostT('settings.extenders-checked', {count: result.extenders.length});
-    meshUsername = '';
-    meshPassword = '';
-    await refreshPersistentCapability();
-  } catch (error) {
-    persistentError = persistentErrorMessage(error);
-  } finally {
-    meshUsername = '';
-    meshPassword = '';
-    persistentActionLoading = false;
-  }
-}
-
-function provisionReasonMessage(reason: ProvisionReason | undefined): string {
-  if (reason === undefined) {
-    return hostT('settings.provisioning-failed');
-  }
-  switch (reason) {
-    case 'secure-endpoint-unavailable':
-      return hostT('settings.secure-endpoint-unavailable');
-    case 'offline':
-      return hostT('settings.extender-offline');
-    case 'authentication-failed':
-      return hostT('settings.authentication-failed');
-    case 'unsupported-firmware':
-      return hostT('settings.firmware-unsupported-short');
-    case 'unreachable':
-      return hostT('settings.extender-unreachable');
-  }
-}
-
 function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
   if (appState.localeSwitchPending) {
     return;
@@ -227,16 +170,56 @@ function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
   void locale.setLocale(event.detail.value).catch(() => {});
 }
 
-async function clearExtenders(): Promise<void> {
-  persistentActionLoading = true;
-  persistentError = '';
-  try {
-    await persistentRci.clearExtenders();
-    await refreshPersistentCapability();
-  } catch (error) {
-    persistentError = persistentErrorMessage(error);
-  } finally {
-    persistentActionLoading = false;
+function startCapabilityPolling(): void {
+  capabilityPollController?.abort();
+  if (!persistentCapability || !capabilityNeedsPolling(persistentCapability)) {
+    capabilityPollController = null;
+    return;
+  }
+  const controller = new AbortController();
+  capabilityPollController = controller;
+  void pollCapability(controller.signal);
+}
+
+function capabilityNeedsPolling(capability: PersistentRciCapability): boolean {
+  return capability.controller.support === 'invalid'
+    || capability.extenders.some((extender) =>
+      extender.state === 'establishing' || extender.state === 'dead'
+    );
+}
+
+async function pollCapability(signal: AbortSignal): Promise<void> {
+  let deadSince: number | null = null;
+  while (
+    !signal.aborted && persistentCapability
+    && capabilityNeedsPolling(persistentCapability)
+  ) {
+    if (
+      persistentCapability.extenders.some((extender) =>
+        extender.state === 'establishing'
+      )
+    ) {
+      deadSince = null;
+    } else if (deadSince === null) {
+      deadSince = Date.now();
+    } else if (Date.now() - deadSince >= 60_000) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const timeout = window.setTimeout(resolve, 2_000);
+      signal.addEventListener('abort', () => {
+        window.clearTimeout(timeout);
+        resolve();
+      }, {once: true});
+    });
+    if (signal.aborted) {
+      return;
+    }
+    try {
+      persistentCapability = await persistentRci.getCapability();
+    } catch {
+      // Keep polling through transient capability fetch failures.
+    }
   }
 }
 </script>
@@ -376,38 +359,11 @@ async function clearExtenders(): Promise<void> {
         {#if persistentCapability?.controller.support === 'supported'}
           <div class="persistent-rci-extenders">
             <h4>{hostT('settings.persistent-extenders-title')}</h4>
-            <p>{hostT('settings.mesh-credentials-description')}</p>
-            <mndw-field label={hostT('settings.mesh-username')}>
-              <mndw-input
-                autocomplete="username"
-                value={meshUsername}
-                disabled={persistentActionLoading}
-                onmndwinput={setMeshUsername}
-              ></mndw-input>
-            </mndw-field>
-            <mndw-field label={hostT('settings.mesh-password')}>
-              <mndw-input
-                type="password"
-                autocomplete="current-password"
-                value={meshPassword}
-                disabled={persistentActionLoading}
-                onmndwinput={setMeshPassword}
-              ></mndw-input>
-            </mndw-field>
-            <div class="persistent-rci-actions">
-              <mndw-button
-                variant="primary"
-                disabled={persistentActionLoading || meshUsername === ''
-                || meshPassword === ''}
-                onclick={() => void provisionExtenders()}
-              >{hostT('settings.provision-extenders')}</mndw-button>
-              <mndw-button
-                variant="danger"
-                disabled={persistentActionLoading}
-                onclick={() => void clearExtenders()}
-              >{hostT('settings.clear-extender-sessions')}</mndw-button>
-            </div>
-            {#if provisioningResult}<p>{provisioningResult}</p>{/if}
+            {#if persistentCapability.stale}
+              <p role="status">
+                {hostT('settings.persistent-enumeration-stale')}
+              </p>
+            {/if}
             {#if persistentCapability.extenders.length > 0}
               <ul>
                 {#each persistentCapability.extenders as
@@ -415,7 +371,18 @@ async function clearExtenders(): Promise<void> {
                   (extender.identity)
                 }
                   <li>
-                    {extender.name || extender.identity}: {extender.support}
+                    {extender.name || extender.identity}:
+                    {#if !extender.eligible}
+                      {hostT(`settings.extender-reason-${extender.reason}`)}
+                    {:else}
+                      {
+                        hostT(
+                          `settings.extender-state-${
+                            extender.state ?? 'establishing'
+                          }`,
+                        )
+                      }
+                    {/if}
                   </li>
                 {/each}
               </ul>

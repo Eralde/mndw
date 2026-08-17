@@ -1,0 +1,9 @@
+{
+  "cid": "node-no-capability",
+  "mac": "aa:bb:cc:dd:ee:03",
+  "ip": "192.0.2.3",
+  "fqdn": "no-capability.keenetic.io",
+  "fqdn-certificate-valid": true,
+  "capabilities": {"security-level": {"level": "user"}},
+  "known-host": "Capability absent"
+}

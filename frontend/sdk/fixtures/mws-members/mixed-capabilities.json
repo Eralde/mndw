@@ -1,0 +1,13 @@
+{
+  "cid": "node-mixed",
+  "mac": "aa:bb:cc:dd:ee:06",
+  "ip": "192.0.2.6",
+  "fqdn": "mixed.keenetic.io",
+  "fqdn-certificate-valid": true,
+  "capabilities": {
+    "auth-token": true,
+    "security-level": {"level": "admin", "source": "firmware"},
+    "legacy-flag": false
+  },
+  "firmware-owned": {"future": [1, 2, 3]}
+}

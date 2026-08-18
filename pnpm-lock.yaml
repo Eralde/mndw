@@ -466,6 +466,9 @@ importers:
       '@mndw/sdk':
         specifier: workspace:*
         version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
       '@types/node':
         specifier: 22.19.15
         version: 22.19.15

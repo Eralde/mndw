@@ -77,6 +77,21 @@ describe('lookup.sh', () => {
     });
   });
 
+  it('preserves nested JSON text in the raw error field', () => {
+    const {status, body} = run({
+      REQUEST_METHOD: 'GET',
+      QUERY_STRING: 'hostname=example.com',
+      MNDW_LOOKUP_TEST_BINARY: resolve(import.meta.dirname, 'lookup-test-dns-util-nested-json.sh'),
+    });
+
+    expect(status).toBe(0);
+    expect(body).toMatchObject({
+      success: false,
+      error: 'LOOKUP_FAILED',
+      raw: '{"reason":"blocked","details":"line 1\\nline 2"}',
+    });
+  });
+
   it('decodes a percent-encoded IPv6 hostname before lookup', () => {
     const {status, body} = run({
       REQUEST_METHOD: 'GET',

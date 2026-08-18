@@ -1,10 +1,9 @@
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {bindLocale} from '@mndw/sdk/bind-locale';
-import {type DnsLookupResult, type DnsView, render} from './render.js';
+import type {MndwButton, MndwInput} from '@mndw/ui';
+import {type DnsErrorCode, type DnsLookupResult, type DnsView, WIDGET_CLASS, render} from './render.js';
 
 import './index.css';
-
-const NAME = 'dns-lookup-widget';
 
 export function createInstance(container: HTMLElement, context: PluginContext): PluginInstance {
   const i18n = context.i18n;
@@ -13,29 +12,55 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
 
   const rootEl = document.createElement('div');
 
-  rootEl.className = `mndw-${NAME}`;
+  rootEl.className = WIDGET_CLASS;
 
-  const controls = document.createElement('div');
+  const controls = document.createElement('form');
 
-  controls.className = `mndw-${NAME}__controls`;
+  controls.className = `${WIDGET_CLASS}__controls`;
 
-  const hostnameInput = document.createElement('input');
+  const field = document.createElement('div');
+
+  field.className = `${WIDGET_CLASS}__field`;
+
+  const fieldLabel = document.createElement('label');
+
+  fieldLabel.className = `${WIDGET_CLASS}__label`;
+  fieldLabel.htmlFor = `${WIDGET_CLASS}__hostname`;
+  fieldLabel.textContent = i18n.t('hostname-label');
+
+  const hostnameInput: MndwInput = document.createElement('mndw-input');
 
   hostnameInput.type = 'text';
-  hostnameInput.className = `mndw-${NAME}__input`;
+  hostnameInput.id = `${WIDGET_CLASS}__hostname`;
+  hostnameInput.name = 'hostname';
+  hostnameInput.className = `${WIDGET_CLASS}__input`;
   hostnameInput.placeholder = i18n.t('hostname');
 
-  const lookupBtn = document.createElement('button');
+  const hostnameHint = document.createElement('span');
 
-  lookupBtn.type = 'button';
-  lookupBtn.className = `mndw-${NAME}__btn`;
+  hostnameHint.className = `${WIDGET_CLASS}__hint`;
+  hostnameHint.id = `${WIDGET_CLASS}__hostname-hint`;
+  hostnameHint.textContent = i18n.t('hostname-hint');
+  hostnameInput.setAttribute('aria-describedby', hostnameHint.id);
+
+  const controlRow = document.createElement('div');
+
+  controlRow.className = `${WIDGET_CLASS}__control-row`;
+
+  const lookupBtn: MndwButton = document.createElement('mndw-button');
+
+  lookupBtn.type = 'submit';
+  lookupBtn.variant = 'primary';
+  lookupBtn.className = `${WIDGET_CLASS}__btn`;
   lookupBtn.textContent = i18n.t('lookup');
 
-  controls.append(hostnameInput, lookupBtn);
+  controlRow.append(hostnameInput, lookupBtn);
+  field.append(fieldLabel, controlRow, hostnameHint);
+  controls.append(field);
 
   const resultEl = document.createElement('div');
 
-  resultEl.className = `mndw-${NAME}__result`;
+  resultEl.className = `${WIDGET_CLASS}__result`;
 
   const probeEl = document.createElement('span');
 
@@ -54,15 +79,17 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
 
   const renderLocale = (): void => {
     probeEl.textContent = i18n.t('l10n.probe');
+    fieldLabel.textContent = i18n.t('hostname-label');
     hostnameInput.placeholder = i18n.t('hostname');
+    hostnameHint.textContent = i18n.t('hostname-hint');
     lookupBtn.textContent = i18n.t('lookup');
     render(resultEl, currentView, i18n);
   };
 
   const unsubscribeLocale = bindLocale(i18n, renderLocale);
 
-  function displayError(message: string): void {
-    renderView({state: 'error', message});
+  function displayError(code: DnsErrorCode): void {
+    renderView({state: 'error', code});
   }
 
   async function doLookup(): Promise<void> {
@@ -70,7 +97,7 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
     const backend = context.backend;
 
     if (hostname === '') {
-      displayError(i18n.t('enter'));
+      displayError('empty-hostname');
 
       return;
     }
@@ -96,7 +123,7 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
       }
 
       if (payload.success === false || payload.error !== undefined) {
-        displayError(payload.error ?? 'Backend returned an error');
+        displayError('lookup-failed');
 
         return;
       }
@@ -118,30 +145,24 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
       };
 
       renderView(resultView);
-    } catch (err) {
-      displayError(err instanceof Error ? err.message : String(err));
+    } catch {
+      displayError('lookup-failed');
     } finally {
       hostnameInput.disabled = false;
       lookupBtn.disabled = false;
     }
   }
 
-  const onClick = (): void => {
+  const onSubmit = (event: SubmitEvent): void => {
+    event.preventDefault();
     void doLookup();
   };
-  const onKeydown = (event: KeyboardEvent): void => {
-    if (event.key === 'Enter') {
-      void doLookup();
-    }
-  };
 
-  lookupBtn.addEventListener('click', onClick);
-  hostnameInput.addEventListener('keydown', onKeydown);
+  controls.addEventListener('submit', onSubmit);
 
   return {
     unmount(): void {
-      lookupBtn.removeEventListener('click', onClick);
-      hostnameInput.removeEventListener('keydown', onKeydown);
+      controls.removeEventListener('submit', onSubmit);
       unsubscribeLocale();
       container.replaceChildren();
     },

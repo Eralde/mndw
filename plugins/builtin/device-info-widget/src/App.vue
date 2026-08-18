@@ -1,13 +1,12 @@
 <script setup lang="ts">
+import {computed, onMounted, onUnmounted, ref} from 'vue';
 import type {LoadState, PluginContext} from '@mndw/sdk';
 import {useTranslator} from '@mndw/sdk/vue';
 import {Ticker} from '@mndw/sdk/ticker';
-import {computed, onMounted, onUnmounted, ref} from 'vue';
-
+import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 import CopyField from './components/CopyField.vue';
 import LoadBarChart from './components/LoadBarChart.vue';
 import {type DeviceInfo, fetchDeviceInfo, formatUptime} from './services/device-info.js';
-import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 import {createUptimeBaseline, getUptimeSeconds, type UptimeBaseline} from './services/uptime.js';
 
 const props = defineProps<{ctx: PluginContext}>();
@@ -26,10 +25,12 @@ const firmware = computed(() => props.ctx.hostInfo.firmwareVersion);
 const info = computed<DeviceInfo | null>(() => {
   return loadState.value.status === 'success' ? loadState.value.data : null;
 });
-const uptime = computed(() =>
-    uptimeSeconds.value !== null
-        ? formatUptime(uptimeSeconds.value)
-        : t('unknown'));
+
+const uptime = computed(() => {
+  return uptimeSeconds.value !== null
+    ? formatUptime(uptimeSeconds.value)
+    : t('unknown');
+});
 
 const handleInfoSuccess = (nextInfo: DeviceInfo): void => {
   const syncedAtMs = Date.now();
@@ -49,9 +50,11 @@ const handleLoadError = (loadError: unknown, isInitial: boolean): void => {
 
 onMounted(() => {
   ticker = new Ticker();
+
   unsubscribeTicker = ticker.onTick(() => {
     uptimeSeconds.value = getUptimeSeconds(baseline, Date.now());
   });
+
   ticker.start(1000);
 
   refreshLoop = createRefreshLoop({
@@ -82,8 +85,10 @@ onUnmounted(() => {
     </div>
     <div v-else>
       <div class="app__loads">
-        <LoadBarChart :label="t('cpu')" :value="info.cpuLoadPercent" :history="info.cpuHistory" :translator="translator"/>
-        <LoadBarChart :label="t('ram')" :value="info.ramLoadPercent" :history="info.ramHistory" :translator="translator"/>
+        <LoadBarChart :label="t('cpu')" :value="info.cpuLoadPercent" :history="info.cpuHistory"
+                      :translator="translator"/>
+        <LoadBarChart :label="t('ram')" :value="info.ramLoadPercent" :history="info.ramHistory"
+                      :translator="translator"/>
       </div>
       <hr class="app__divider">
       <div class="app__grid">

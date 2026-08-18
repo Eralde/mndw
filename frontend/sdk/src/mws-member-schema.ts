@@ -1,12 +1,12 @@
 import {z} from 'zod';
 
 const mwsMemberFocusedSchema = z.object({
-  cid: z.string().optional(),
-  mac: z.string().optional(),
-  ip: z.string().optional(),
-  fqdn: z.string().optional(),
+  'cid': z.string().optional(),
+  'mac': z.string().optional(),
+  'ip': z.string().optional(),
+  'fqdn': z.string().optional(),
   'fqdn-certificate-valid': z.boolean().optional(),
-  capabilities: z.record(z.string(), z.unknown()).optional(),
+  'capabilities': z.record(z.string(), z.unknown()).optional(),
 }).passthrough();
 
 export const mwsMemberSchema = mwsMemberFocusedSchema;
@@ -20,8 +20,12 @@ export interface MwsMemberEligibility {
   readonly reason?: MwsMemberEligibilityReason;
 }
 
-export function normalizeMwsMemberFQDN(value: string | undefined): string {
-  const normalized = (value ?? '').trim().toLowerCase().replace(/\.+$/, '');
+export function normalizeMwsMemberFqdn(value: string | undefined): string {
+  const normalized = (value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.+$/, '');
+
   if (
     normalized === ''
     || normalized.length > 253
@@ -30,7 +34,9 @@ export function normalizeMwsMemberFQDN(value: string | undefined): string {
   ) {
     return '';
   }
+
   const labels = normalized.split('.');
+
   if (
     labels.length < 2
     || labels.some((label) =>
@@ -39,6 +45,7 @@ export function normalizeMwsMemberFQDN(value: string | undefined): string {
   ) {
     return '';
   }
+
   return normalized;
 }
 
@@ -48,7 +55,7 @@ export function classifyMwsMemberEligibility(member: unknown): MwsMemberEligibil
     : {};
   const fqdn = typeof value.fqdn === 'string' ? value.fqdn : undefined;
 
-  if (normalizeMwsMemberFQDN(fqdn) === '') {
+  if (normalizeMwsMemberFqdn(fqdn) === '') {
     return {eligible: false, reason: 'missing-fqdn'};
   }
 

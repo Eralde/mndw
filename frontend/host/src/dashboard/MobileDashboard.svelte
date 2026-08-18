@@ -11,7 +11,10 @@ interface Props {
 let {order, onRemoveRequest}: Props = $props();
 const services = getHostServices();
 const registry = services.registry;
-const pluginContextServices = {locale: services.locale, palette: services.palette};
+const pluginContextServices = {
+  locale: services.locale,
+  palette: services.palette,
+};
 
 /**
  * Svelte action: adopts the shared tile controller's frame into this flow shell.

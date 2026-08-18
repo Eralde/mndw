@@ -11,16 +11,16 @@ const expectationPath = join(fixtureRoot, 'eligibility-expectations.json');
 describe('mws member schema', () => {
   it('accepts mixed capability values and unknown legacy fields', () => {
     const result = mwsMemberSchema.parse({
-      cid: 'node-1',
-      mac: 'aa:bb:cc:dd:ee:ff',
-      ip: '192.0.2.1',
-      fqdn: 'node-1.keenetic.io',
+      'cid': 'node-1',
+      'mac': 'aa:bb:cc:dd:ee:ff',
+      'ip': '192.0.2.1',
+      'fqdn': 'node-1.keenetic.io',
       'fqdn-certificate-valid': true,
-      capabilities: {
+      'capabilities': {
         'auth-token': true,
         'security-level': {level: 'admin'},
       },
-      legacy: {firmware: 1},
+      'legacy': {firmware: 1},
     });
 
     expect(result.capabilities?.['security-level']).toEqual({level: 'admin'});
@@ -55,7 +55,9 @@ describe('mws member eligibility', () => {
     const fixtureFiles = readdirSync(fixtureRoot).filter((entry) =>
       entry.endsWith('.json') && entry !== 'eligibility-expectations.json'
     );
+
     expect(Object.keys(expectations).sort()).toEqual(fixtureFiles.sort());
+
     for (const filename of fixtureFiles) {
       const parsed = JSON.parse(readFileSync(join(fixtureRoot, filename), 'utf8')) as unknown;
       const member = Array.isArray(parsed) ? parsed[0] : parsed;
@@ -68,23 +70,23 @@ describe('mws member eligibility', () => {
 
   it('uses missing FQDN, certificate, then capability precedence', () => {
     expect(classifyMwsMemberEligibility({
-      fqdn: ' ',
+      'fqdn': ' ',
       'fqdn-certificate-valid': false,
-      capabilities: {'auth-token': false},
+      'capabilities': {'auth-token': false},
     })).toEqual({eligible: false, reason: 'missing-fqdn'});
     expect(classifyMwsMemberEligibility({
-      fqdn: 'node.keenetic.io',
+      'fqdn': 'node.keenetic.io',
       'fqdn-certificate-valid': false,
-      capabilities: {'auth-token': false},
+      'capabilities': {'auth-token': false},
     })).toEqual({eligible: false, reason: 'certificate-invalid'});
     expect(classifyMwsMemberEligibility({
-      fqdn: 'node.keenetic.io',
+      'fqdn': 'node.keenetic.io',
       'fqdn-certificate-valid': true,
-      capabilities: {'auth-token': false},
+      'capabilities': {'auth-token': false},
     })).toEqual({eligible: false, reason: 'no-auth-token'});
     expect(
-      classifyMwsMemberEligibility({fqdn: '192.0.2.1', 'fqdn-certificate-valid': true,
-        capabilities: {'auth-token': true}}),
+      classifyMwsMemberEligibility({'fqdn': '192.0.2.1', 'fqdn-certificate-valid': true,
+        'capabilities': {'auth-token': true}}),
     ).toEqual({
       eligible: false,
       reason: 'missing-fqdn',

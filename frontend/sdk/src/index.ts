@@ -44,7 +44,7 @@ export type {
 } from './manifest.js';
 export {pluginManifestSchema} from './manifest-schema.js';
 export type {PluginManifestInput, PluginManifestOutput} from './manifest-schema.js';
-export {classifyMwsMemberEligibility, mwsMemberSchema, normalizeMwsMemberFQDN} from './mws-member-schema.js';
+export {classifyMwsMemberEligibility, mwsMemberSchema, normalizeMwsMemberFqdn} from './mws-member-schema.js';
 export type {MwsMember, MwsMemberEligibility, MwsMemberEligibilityReason} from './mws-member-schema.js';
 export {ManifestValidationError, validateManifest} from './manifest-validator.js';
 export {

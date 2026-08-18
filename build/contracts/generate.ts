@@ -134,18 +134,25 @@ function generateRciSessionStatusCategories(options: GenerateContractsOptions): 
   const outputRoot = resolve(options.outputRoot ?? options.repoRoot);
   const jsonPath = join(outputRoot, rciSessionStatusCategoriesPath);
   const daemonRoot = join(options.repoRoot, 'daemon/mndwd');
+
   execFileSync('go', ['run', './cmd/generate-rci-session-contract', '--output', jsonPath], {
     cwd: daemonRoot,
     env: {...process.env, GOCACHE: resolve(options.repoRoot, '.cache/go-build')},
     stdio: 'pipe',
   });
+
   const categories = JSON.parse(readFileSync(jsonPath, 'utf8')) as unknown;
+
   if (!Array.isArray(categories) || !categories.every((value): value is string => typeof value === 'string')) {
     throw new Error('Generated RCI session status categories must be a string array.');
   }
+
   const hostPath = join(outputRoot, hostRciSessionStatusCategoriesPath);
+
   mkdirSync(dirname(hostPath), {recursive: true});
+
   const renderedCategories = categories.map((category) => `  '${category}',`).join('\n');
+
   writeFileSync(
     hostPath,
     `// GENERATED from daemon/mndwd/internal/rcisession/status — do not edit by hand.\nexport const persistentFailureCategories = [\n${renderedCategories}\n] as const;\n`,

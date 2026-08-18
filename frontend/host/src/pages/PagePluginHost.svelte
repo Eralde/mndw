@@ -40,7 +40,10 @@ let generation = 0;
 let active: ActiveMount | null = null;
 const services = getHostServices();
 const registry = services.registry;
-const pluginContextServices = {locale: services.locale, palette: services.palette};
+const pluginContextServices = {
+  locale: services.locale,
+  palette: services.palette,
+};
 
 // Capture the host node via an action (not bind:this) so host-managed child containers
 // can be appended imperatively — Svelte never renders into this element, so it does not

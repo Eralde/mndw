@@ -55,13 +55,17 @@ export class PersistentRciSessionService {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(CONTROLLER_TOKEN_PROBE),
       });
+
       if (!response.ok) {
         return false;
       }
+
       const text = await response.text();
+
       if (text === '') {
         return false;
       }
+
       return this.controllerProbeFound(JSON.parse(text) as unknown);
     } catch {
       return false;
@@ -74,6 +78,7 @@ export class PersistentRciSessionService {
         headers: {'X-Mndw-Csrf': '1'},
       }),
     );
+
     return this.parseCapability(payload);
   }
 
@@ -105,15 +110,19 @@ export class PersistentRciSessionService {
   private async read<T = unknown>(response: Response): Promise<T> {
     const text = await response.text();
     let payload: unknown;
+
     try {
       payload = text === '' ? undefined : JSON.parse(text);
     } catch {
       throw new PersistentRciSessionError('MALFORMED_RESPONSE', response.status);
     }
+
     if (!response.ok) {
       const code = this.errorCode(payload) ?? `HTTP_${response.status}`;
+
       throw new PersistentRciSessionError(code, response.status);
     }
+
     return payload as T;
   }
 
@@ -125,13 +134,17 @@ export class PersistentRciSessionService {
     ) {
       throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
     }
+
     const controller = {support: payload.controller.support} as PersistentRciCapability['controller'];
+
     if (payload.controller.lastCheckedAt !== undefined) {
       if (typeof payload.controller.lastCheckedAt !== 'string') {
         throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
       }
+
       controller.lastCheckedAt = payload.controller.lastCheckedAt;
     }
+
     const extenders = payload.extenders.map((value) => this.parseExtender(value));
     const result: PersistentRciCapability = {
       store: {state: payload.store.state},
@@ -139,18 +152,23 @@ export class PersistentRciSessionService {
       extenders,
       stale: payload.stale,
     };
+
     if (payload.lastEnumerationError !== undefined) {
       if (!this.isFailureCategory(payload.lastEnumerationError)) {
         throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
       }
+
       result.lastEnumerationError = payload.lastEnumerationError;
     }
+
     if (payload.lastEnumerationErrorAt !== undefined) {
       if (typeof payload.lastEnumerationErrorAt !== 'string') {
         throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
       }
+
       result.lastEnumerationErrorAt = payload.lastEnumerationErrorAt;
     }
+
     return result;
   }
 
@@ -161,6 +179,7 @@ export class PersistentRciSessionService {
     ) {
       throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
     }
+
     if (!value.eligible) {
       if (
         !this.isEligibilityReason(value.reason) || value.state !== undefined || value.lastError !== undefined
@@ -168,8 +187,10 @@ export class PersistentRciSessionService {
       ) {
         throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
       }
+
       return {identity: value.identity, name: value.name, eligible: false, reason: value.reason};
     }
+
     if (
       value.reason !== undefined || (value.state !== undefined && !this.isSessionState(value.state))
       || (value.lastError !== undefined && !this.isFailureCategory(value.lastError))
@@ -177,14 +198,25 @@ export class PersistentRciSessionService {
     ) {
       throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
     }
+
     const result: PersistentRciCapability['extenders'][number] = {
       identity: value.identity,
       name: value.name,
       eligible: true,
     };
-    if (value.state !== undefined) { result.state = value.state; }
-    if (value.lastError !== undefined) { result.lastError = value.lastError; }
-    if (value.lastHeartbeatAt !== undefined) { result.lastHeartbeatAt = value.lastHeartbeatAt; }
+
+    if (value.state !== undefined) {
+      result.state = value.state;
+    }
+
+    if (value.lastError !== undefined) {
+      result.lastError = value.lastError;
+    }
+
+    if (value.lastHeartbeatAt !== undefined) {
+      result.lastHeartbeatAt = value.lastHeartbeatAt;
+    }
+
     return result;
   }
 
@@ -192,6 +224,7 @@ export class PersistentRciSessionService {
     if (this.isRecord(payload) && this.isRecord(payload.error) && typeof payload.error.code === 'string') {
       return payload.error.code;
     }
+
     return undefined;
   }
 

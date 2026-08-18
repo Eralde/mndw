@@ -74,9 +74,12 @@ describe('PersistentRciSessionService', () => {
     fetchWithDeadline.mockImplementation(() =>
       Promise.resolve(new Response(JSON.stringify({error: {code: 'RCI_TOKEN_INVALID'}}), {status: 422}))
     );
+
     const service = new PersistentRciSessionService();
+
     await expect(service.saveController('secret-token')).rejects.toMatchObject({code: 'RCI_TOKEN_INVALID',
       status: 422});
+
     try {
       await service.saveController('secret-token');
     } catch (error) {

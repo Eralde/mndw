@@ -31,7 +31,10 @@ import {getHostServices} from '../host-services-context.js';
 const PERSIST_DEBOUNCE_MS = 500;
 const services = getHostServices();
 const registry = services.registry;
-const pluginContextServices = {locale: services.locale, palette: services.palette};
+const pluginContextServices = {
+  locale: services.locale,
+  palette: services.palette,
+};
 
 function resolveWidgetSize(pluginName: string): WidgetSize | undefined {
   const plugin = registry.get(pluginName);
@@ -130,13 +133,20 @@ function handleGridReady(readyGrid: GridStackType): void {
         continue;
       }
 
-      addWidgetTile(pluginContextServices, registry, readyGrid, parsed.pluginName, requestRemoveTile, {
-        x: tile.x,
-        y: tile.y,
-        w: tile.w,
-        h: tile.h,
-        instanceId: `${parsed.pluginName}:${parsed.counter}`,
-      });
+      addWidgetTile(
+        pluginContextServices,
+        registry,
+        readyGrid,
+        parsed.pluginName,
+        requestRemoveTile,
+        {
+          x: tile.x,
+          y: tile.y,
+          w: tile.w,
+          h: tile.h,
+          instanceId: `${parsed.pluginName}:${parsed.counter}`,
+        },
+      );
     }
   } finally {
     restoring = false;
@@ -205,7 +215,13 @@ function handleAddWidget(pluginName: string): void {
     return;
   }
 
-  const id = addWidgetTile(pluginContextServices, registry, activeGrid, pluginName, requestRemoveTile);
+  const id = addWidgetTile(
+    pluginContextServices,
+    registry,
+    activeGrid,
+    pluginName,
+    requestRemoveTile,
+  );
 
   if (id !== null) {
     // The grid's added/change event owns the complete post-add geometry projection

@@ -44,10 +44,20 @@ const toSeries = (
   return {id, label, color, fill: true, data};
 };
 
+export const getMostRecentRrdTimestamp = (
+  txData: readonly RrdTick[],
+  rxData: readonly RrdTick[],
+): number | null => {
+  const ticks = [...filterValidRrdTicks(txData), ...filterValidRrdTicks(rxData)];
+
+  return ticks.length === 0 ? null : Math.max(...ticks.map((tick) => tick.t));
+};
+
 export function toTxRxChartData(
   txData: readonly RrdTick[],
   rxData: readonly RrdTick[],
   deviceTime: Date | null,
+  deviceTimeRrdTimestamp: number | null = null,
 ): TxRxChartData {
   const emptySeries: MndwChartSeries[] = [
     {id: 'tx', label: 'TX', color: 'accent', fill: true, data: []},
@@ -73,15 +83,19 @@ export function toTxRxChartData(
   }
 
   const mostRecentT = Math.max(...allTicks.map((tick) => tick.t));
+  const projectedDeviceTime = new Date(
+    deviceTime.getTime()
+      + (deviceTimeRrdTimestamp === null ? 0 : mostRecentT - deviceTimeRrdTimestamp) * 1000,
+  );
 
   return {
     series: [
-      toSeries('tx', 'TX', 'accent', paddedTx, deviceTime, mostRecentT),
-      toSeries('rx', 'RX', 'success', paddedRx, deviceTime, mostRecentT),
+      toSeries('tx', 'TX', 'accent', paddedTx, projectedDeviceTime, mostRecentT),
+      toSeries('rx', 'RX', 'success', paddedRx, projectedDeviceTime, mostRecentT),
     ],
     domain: {
-      start: deviceTime.getTime() - WINDOW_SECONDS * 1000,
-      end: deviceTime.getTime(),
+      start: projectedDeviceTime.getTime() - WINDOW_SECONDS * 1000,
+      end: projectedDeviceTime.getTime(),
     },
   };
 }

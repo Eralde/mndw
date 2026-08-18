@@ -4,6 +4,7 @@ import type {NetworkInterface} from './types/rci.types';
 import {SettingsDialogComponent} from './components/settings-dialog/settings-dialog.component';
 
 export interface SettingsDialogArgs {
+  title: string;
   interfaces: NetworkInterface[];
   selectedInterface: string;
   refresh: number;
@@ -26,7 +27,7 @@ export function openSettingsDialog(
 ): void {
   ctx.overlay.open({
     kind: 'modal',
-    title: 'Widget Settings',
+    title: args.title,
     closeOnOutsideClick: true,
     mount(target, layer) {
       const ref = createComponent(

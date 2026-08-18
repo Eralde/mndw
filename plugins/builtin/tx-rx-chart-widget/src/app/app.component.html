@@ -42,18 +42,16 @@
                     @if (!setTileTitle()) {
                         <span class="chart-header__label">{{ activeInterfaceName() }}</span>
                     }
-                    @if (txData().length > 0 || rxData().length > 0) {
-                        <div class="chart-header__legend">
-                          <span class="chart-header__legend-item">
+                    <div class="chart-header__legend">
+                        <span class="chart-header__legend-item">
                             <span class="chart-header__legend-swatch chart-header__legend-swatch--tx"></span>
                             TX
-                          </span>
-                            <span class="chart-header__legend-item">
+                        </span>
+                        <span class="chart-header__legend-item">
                             <span class="chart-header__legend-swatch chart-header__legend-swatch--rx"></span>
-                                RX
-                            </span>
-                        </div>
-                    }
+                            RX
+                        </span>
+                    </div>
                 </div>
                 <div class="chart-header__actions">
                     <mndw-button
@@ -67,12 +65,16 @@
                     </mndw-button>
                 </div>
             </div>
-            <mndw-line-chart
-                [series]="chartData().series"
-                [domain]="chartData().domain"
-                [empty-label]="t('status.no-data')"
-                [attr.aria-label]="'Interface traffic for ' + activeInterfaceName()"
-            ></mndw-line-chart>
+            @if (awaitingFirstTick()) {
+                <div class="loading">{{ t('status.loading-data') }}</div>
+            } @else {
+                <mndw-line-chart
+                    [series]="chartData().series"
+                    [domain]="chartData().domain"
+                    [empty-label]="t('status.no-data')"
+                    [attr.aria-label]="t('a11y.chart-label', { interface: activeInterfaceName() })"
+                ></mndw-line-chart>
+            }
         </div>
     }
 </div>

@@ -3,6 +3,9 @@
     "probe": "Traffic English probe"
   },
   "title": "Network Traffic Monitor",
+  "a11y": {
+    "chart-label": "Interface traffic for {interface}"
+  },
   "action": {
     "retry": "Retry",
     "settings": "Widget settings",
@@ -10,6 +13,7 @@
   },
   "status": {
     "loading-interfaces": "Loading interfaces…",
+    "loading-data": "Loading traffic data…",
     "select-interface": "Select a network interface to begin monitoring TX/RX traffic",
     "no-interfaces": "No network interfaces found",
     "no-data": "No data available"

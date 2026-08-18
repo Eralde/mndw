@@ -26,6 +26,13 @@ describe('toTxRxChartData', () => {
     expect(result.series[1]?.data.at(-1)).toEqual({time: deviceTime.getTime(), value: 50});
   });
 
+  it('projects newer RRD timestamps beyond the device-clock sample', () => {
+    const result = toTxRxChartData([{t: 103, v: 200}], [{t: 103, v: 50}], deviceTime, 100);
+
+    expect(result.series[0]?.data.at(-1)).toEqual({time: deviceTime.getTime() + 3_000, value: 200});
+    expect(result.domain?.end).toBe(deviceTime.getTime() + 3_000);
+  });
+
   it('filters invalid ticks before sparse-data padding', () => {
     const result = toTxRxChartData(
       [{t: 'bad', v: 100}, {t: '10', v: 7}],

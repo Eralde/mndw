@@ -14,11 +14,11 @@ import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {CommonModule} from '@angular/common';
 import {Subscription, switchMap, timer} from 'rxjs';
 import type {RrdTick} from '@mndw/sdk/rrd';
-import type {NetworkInterface} from '../types/rci.types';
+import type {ClockDate, NetworkInterface} from '../types/rci.types';
 import {RciService} from '../services/rci.service';
 import {PLUGIN_STORAGE, TRANSLATOR} from '../tokens';
 import type {OpenSettingsFn} from '../open-settings-dialog';
-import {toTxRxChartData} from '../utils/chart-data.utils';
+import {getMostRecentRrdTimestamp, toTxRxChartData} from '../utils/chart-data.utils';
 import {DEFAULT_REFRESH_MS, normalizeRefreshMs} from '../utils/refresh.utils';
 
 const STORAGE_KEY = 'tx-rx-rrd-chart-interface';
@@ -47,12 +47,19 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly txData = signal<RrdTick[]>([]);
   protected readonly rxData = signal<RrdTick[]>([]);
   protected readonly clockTime = signal<Date | null>(null);
+  protected readonly deviceTimeRrdTimestamp = signal<number | null>(null);
   protected readonly error = signal<string>('');
   protected readonly loadingInterfaces = signal(true);
   protected readonly refresh = signal(DEFAULT_REFRESH_MS);
+  protected readonly awaitingFirstTick = signal(false);
 
   protected readonly chartData = computed(() => {
-    return toTxRxChartData(this.txData(), this.rxData(), this.clockTime());
+    return toTxRxChartData(
+      this.txData(),
+      this.rxData(),
+      this.clockTime(),
+      this.deviceTimeRrdTimestamp(),
+    );
   });
 
   private pollingSub: Subscription | null = null;
@@ -83,8 +90,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.stopPolling();
   }
 
-  protected t(key: string): string {
-    return this.translator.t(key);
+  protected t(key: string, values?: Record<string, unknown>): string {
+    return this.translator.t(key, values);
   }
 
   protected retryLoad(): void {
@@ -94,6 +101,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   protected openSettingsDialog(): void {
     this.openSettings()({
+      title: this.t('action.settings'),
       interfaces: this.interfaceList(),
       selectedInterface: this.selectedInterface(),
       refresh: this.refresh(),
@@ -113,6 +121,8 @@ export class AppComponent implements OnInit, OnDestroy {
       this.stopPolling();
       this.txData.set([]);
       this.rxData.set([]);
+      this.deviceTimeRrdTimestamp.set(null);
+      this.awaitingFirstTick.set(false);
     }
   }
 
@@ -159,17 +169,29 @@ export class AppComponent implements OnInit, OnDestroy {
 
     const interfaceId = this.selectedInterface();
 
+    if (this.txData().length === 0 && this.rxData().length === 0) {
+      this.awaitingFirstTick.set(true);
+    }
+
     this.pollingSub = timer(0, this.refresh()).pipe(
       switchMap(() => this.rciService.getInterfaceRrd(interfaceId, 0)),
       takeUntilDestroyed(this.destroyRef),
     )
       .subscribe({
         next: ({tx, rx}) => {
+          const mostRecentTimestamp = getMostRecentRrdTimestamp(tx, rx);
+
+          if (this.deviceTimeRrdTimestamp() === null && this.clockTime() !== null && mostRecentTimestamp !== null) {
+            this.deviceTimeRrdTimestamp.set(mostRecentTimestamp);
+          }
+
           this.txData.set(tx);
           this.rxData.set(rx);
+          this.awaitingFirstTick.set(false);
           this.error.set('');
         },
         error: (ex) => {
+          this.awaitingFirstTick.set(false);
           this.error.set(this.t('error.load-traffic'));
           console.error('[tx-rx-rrd-chart] Failed to load RRD data', ex);
         },
@@ -181,7 +203,7 @@ export class AppComponent implements OnInit, OnDestroy {
     )
       .subscribe({
         next: (d) => {
-          this.clockTime.set(new Date(d.year, d.month - 1, d.day, d.hour, d.min, d.sec, d.msec));
+          this.setDeviceTime(d);
         },
         error: (ex) => {
           console.error('[tx-rx-rrd-chart]', ex);
@@ -239,11 +261,26 @@ export class AppComponent implements OnInit, OnDestroy {
     )
       .subscribe({
         next: (d) => {
-          this.clockTime.set(new Date(d.year, d.month - 1, d.day, d.hour, d.min, d.sec, d.msec));
+          this.setDeviceTime(d);
         },
         error: (ex) => {
           console.error('[tx-rx-rrd-chart]', ex);
         },
       });
+  }
+
+  private setDeviceTime(deviceTime: ClockDate): void {
+    this.deviceTimeRrdTimestamp.set(getMostRecentRrdTimestamp(this.txData(), this.rxData()));
+    this.clockTime.set(
+      new Date(
+        deviceTime.year,
+        deviceTime.month - 1,
+        deviceTime.day,
+        deviceTime.hour,
+        deviceTime.min,
+        deviceTime.sec,
+        deviceTime.msec,
+      ),
+    );
   }
 }

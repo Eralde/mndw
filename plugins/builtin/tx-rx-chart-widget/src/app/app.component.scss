@@ -107,6 +107,12 @@
       white-space: nowrap;
     }
 
+    &__legend {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
     &__legend-swatch {
       display: inline-block;
       width: 12px;

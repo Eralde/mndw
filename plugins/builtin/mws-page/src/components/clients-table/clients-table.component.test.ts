@@ -44,10 +44,17 @@ function fixtureRoots(): MwsNode[] {
   ];
 }
 
-function tableRows(
-  fixture: ReturnType<typeof TestBed.createComponent<MwsClientsTableComponent>>,
-): HTMLTableRowElement[] {
-  return [...fixture.nativeElement.querySelectorAll<HTMLTableRowElement>('tbody tr')];
+interface TableElement extends HTMLElement {
+  shadowRoot: ShadowRoot;
+  updateComplete: Promise<unknown>;
+}
+
+function tableOf(fixture: ReturnType<typeof TestBed.createComponent<MwsClientsTableComponent>>): TableElement {
+  return fixture.nativeElement.querySelector('mndw-table') as TableElement;
+}
+
+function shadowRows(table: TableElement): HTMLTableRowElement[] {
+  return [...table.shadowRoot.querySelectorAll<HTMLTableRowElement>('tbody tr')];
 }
 
 function render(roots: MwsNode[]): ReturnType<typeof TestBed.createComponent<MwsClientsTableComponent>> {
@@ -57,6 +64,11 @@ function render(roots: MwsNode[]): ReturnType<typeof TestBed.createComponent<Mws
   fixture.detectChanges();
 
   return fixture;
+}
+
+async function settle(table: TableElement): Promise<void> {
+  await Promise.resolve();
+  await table.updateComplete;
 }
 
 describe('MwsClientsTableComponent', () => {
@@ -79,23 +91,27 @@ describe('MwsClientsTableComponent', () => {
     }).compileComponents();
   });
 
-  it('renders one row per client and accessible sortable headers', () => {
+  it('renders one row per client and accessible sortable headers', async () => {
     const fixture = render(fixtureRoots());
+    const table = tableOf(fixture);
 
-    const element = fixture.nativeElement as HTMLElement;
-    const headers = [...element.querySelectorAll<HTMLTableCellElement>('th[scope="col"]')];
+    await settle(table);
 
-    expect(tableRows(fixture)).toHaveLength(3);
+    const headers = [...table.shadowRoot.querySelectorAll('th[scope="col"]')];
+
+    expect(shadowRows(table)).toHaveLength(3);
     expect(headers).toHaveLength(6);
     expect(headers.every((header) => header.querySelector('button[type="button"]') !== null)).toBe(true);
-    expect(headers[0]?.getAttribute('aria-sort')).toBe('ascending');
-    expect(headers.slice(1).every((header) => header.getAttribute('aria-sort') === 'none')).toBe(true);
-    expect(tableRows(fixture)[0]?.textContent).toContain('Alpha');
-    expect(tableRows(fixture)[0]?.textContent).toContain('Node A');
+    expect(table.shadowRoot.querySelector('th[aria-sort="ascending"] button[data-sort-column="name"]')).not.toBeNull();
+    expect(shadowRows(table)[0]?.textContent).toContain('Alpha');
+    expect(shadowRows(table)[0]?.textContent).toContain('Node A');
   });
 
-  it('filters rows from the mndwinput event value', () => {
+  it('filters rows from the mndwinput event value', async () => {
     const fixture = render(fixtureRoots());
+    const table = tableOf(fixture);
+
+    await settle(table);
 
     const input = fixture.nativeElement.querySelector<HTMLElement>('mndw-input');
 
@@ -107,41 +123,49 @@ describe('MwsClientsTableComponent', () => {
       }),
     );
     fixture.detectChanges();
+    await settle(table);
 
-    expect(tableRows(fixture)).toHaveLength(1);
-    expect(tableRows(fixture)[0]?.textContent).toContain('Gamma');
+    expect(shadowRows(table)).toHaveLength(1);
+    expect(shadowRows(table)[0]?.textContent).toContain('Gamma');
   });
 
-  it('sorts by a new header and toggles direction on the active header', () => {
+  it('sorts by a new header and toggles direction on the active header', async () => {
     const fixture = render(fixtureRoots());
+    const table = tableOf(fixture);
 
-    const headers = [...fixture.nativeElement.querySelectorAll<HTMLTableCellElement>('th[scope="col"]')];
-    const nodeButton = headers[1]?.querySelector<HTMLButtonElement>('button');
+    await settle(table);
+
+    const nodeButton = table.shadowRoot.querySelector<HTMLButtonElement>('button[data-sort-column="node"]');
 
     nodeButton?.click();
     fixture.detectChanges();
+    await settle(table);
 
-    expect(headers[1]?.getAttribute('aria-sort')).toBe('ascending');
-    expect(headers[0]?.getAttribute('aria-sort')).toBe('none');
-    expect(tableRows(fixture)[0]?.textContent).toContain('Node A');
+    expect(table.shadowRoot.querySelector('th[aria-sort="ascending"] button[data-sort-column="node"]')).not.toBeNull();
+    expect(shadowRows(table)[0]?.textContent).toContain('Node A');
 
-    nodeButton?.click();
+    table.shadowRoot.querySelector<HTMLButtonElement>('button[data-sort-column="node"]')?.click();
     fixture.detectChanges();
+    await settle(table);
 
-    expect(headers[1]?.getAttribute('aria-sort')).toBe('descending');
-    expect(tableRows(fixture)[0]?.textContent).toContain('Node B');
+    expect(table.shadowRoot.querySelector('th[aria-sort="descending"] button[data-sort-column="node"]')).not.toBeNull();
+    expect(shadowRows(table)[0]?.textContent).toContain('Node B');
   });
 
-  it('rerenders rows when the signal input receives a new roots array', () => {
+  it('rerenders rows when the signal input receives a new roots array', async () => {
     const fixture = render(fixtureRoots());
+    const table = tableOf(fixture);
+
+    await settle(table);
 
     fixture.componentRef.setInput('roots', [
       node('node-c', 'Node C', [client('client-4', 'New Client', null, 1, true)]),
     ]);
     fixture.detectChanges();
+    await settle(table);
 
-    expect(tableRows(fixture)).toHaveLength(1);
-    expect(tableRows(fixture)[0]?.textContent).toContain('New Client');
+    expect(shadowRows(table)).toHaveLength(1);
+    expect(shadowRows(table)[0]?.textContent).toContain('New Client');
   });
 
   it('shows distinct empty mesh and no-match states', () => {

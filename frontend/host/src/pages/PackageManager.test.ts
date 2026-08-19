@@ -139,6 +139,13 @@ describe('PackageManager', () => {
 
     await vi.waitFor(() => expect(host.textContent).toContain('Installed package'));
 
+    const nameCell = host.querySelector('.col-name .package-name');
+
+    expect(nameCell?.textContent).toBe('installed');
+    expect(nameCell?.getAttribute('title')).toBe('installed');
+    expect(host.querySelector('.badge-installed')?.textContent).toBe('installed');
+    expect(host.querySelector('.badge-update_available')?.textContent).toBe('Update available');
+
     expect(host.querySelectorAll('mndw-checkbox')).toHaveLength(4);
 
     const checkboxes = [...host.querySelectorAll<MndwCheckboxHost>('mndw-checkbox')];

@@ -57,6 +57,8 @@ export function adaptOverlayService(service: OverlayService): UiOverlayProvider 
         placement: 'bottom-start',
         closeOnEscape: true,
         closeOnOutsideClick: true,
+        trapFocus: options.trapFocus,
+        restoreFocus: options.restoreFocus,
         className: options.className,
       });
 

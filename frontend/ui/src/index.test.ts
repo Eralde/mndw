@@ -4,6 +4,7 @@ import {
   MNDW_BAR_CHART_TAG,
   MNDW_BUTTON_TAG,
   MNDW_CHECKBOX_TAG,
+  MNDW_COLUMN_MENU_TAG,
   MNDW_FIELD_TAG,
   MNDW_INPUT_TAG,
   MNDW_LINE_CHART_TAG,
@@ -15,6 +16,7 @@ import {
   MNDW_SELECT_TAG,
   MNDW_SLIDER_TAG,
   MNDW_SWITCH_TAG,
+  MNDW_TABLE_TAG,
   MNDW_TABS_TAG,
   MNDW_TAB_PANEL_TAG,
   MNDW_TAB_TAG,
@@ -23,11 +25,13 @@ import {
   MndwBarChart,
   type MndwButton,
   type MndwCheckbox,
+  type MndwColumnMenu,
   MndwLineChart,
   type MndwOption,
   type MndwScrollArea,
   type MndwSelect,
   type MndwSelectPanel,
+  type MndwTable,
   POPOVER_FLIP_ORDER,
   computePopoverCoords,
   computeTooltipCoords,
@@ -64,6 +68,8 @@ const REGISTERED_TAGS = [
   MNDW_TABS_TAG,
   MNDW_TEXTAREA_TAG,
   MNDW_TOOLTIP_TAG,
+  MNDW_TABLE_TAG,
+  MNDW_COLUMN_MENU_TAG,
 ];
 
 describe('defineMndwUi', () => {
@@ -84,6 +90,8 @@ describe('defineMndwUi', () => {
     expectTypeOf(document.querySelector('mndw-scroll-area')).toEqualTypeOf<MndwScrollArea | null>();
     expectTypeOf(document.querySelector('mndw-line-chart')).toEqualTypeOf<MndwLineChart | null>();
     expectTypeOf(document.querySelector('mndw-bar-chart')).toEqualTypeOf<MndwBarChart | null>();
+    expectTypeOf(document.querySelector('mndw-table')).toEqualTypeOf<MndwTable | null>();
+    expectTypeOf(document.querySelector('mndw-column-menu')).toEqualTypeOf<MndwColumnMenu | null>();
   });
 
   it('exports chart contracts and formatting', () => {

@@ -38,6 +38,8 @@ Without an overlay, `<mndw-select>` uses a minimal fixed-position fallback for s
 | `<mndw-tooltip>` | Describes its first slotted element on hover and focus. Not form-associated. |
 | `<mndw-line-chart>` | Timestamped multi-series line/area chart; data is assigned through properties. |
 | `<mndw-bar-chart>` | Timestamped positional bar chart; data is assigned through properties. |
+| `<mndw-table>` | Framework-neutral data table; `columns`/`rows` as properties, controlled sort/selection/visibility, custom light-DOM cell renderers. |
+| `<mndw-column-menu>` | Portaled ARIA `menu` column-visibility panel owned by `<mndw-table>`; not opened directly. |
 
 `<mndw-select>` uses an anchored popover above `600px`, with its maximum height derived from
 available viewport space. Long desktop lists scroll inside the panel's nested native scroll area;
@@ -99,6 +101,78 @@ for consumers that need matching text outside a chart, such as a plugin-owned su
 Unchecked checkboxes and empty or unmatched selects are omitted from `FormData`. Both controls
 restore authored defaults on form reset and compose with `<fieldset disabled>`. Their roles and
 focus targets live on the host, so external `<label for>` elements work as expected.
+
+### `<mndw-table>`
+
+The shared framework-neutral data table. Plugins declare `columns` (via the curried `column<Row>()`
+builder) and assign `rows` as a new array reference on each update; the table owns sorting, checkbox
+selection with select-all, row drag/keyboard reorder, and uniform column show/hide. Complex values
+(`columns`, `rows`, `rowKey`, `selected`, `sort`, `hiddenColumns`, `rowLabel`, `labels`) are property-only;
+the string/enum fields use explicit kebab-case attributes: `row-key` (string form only), `sort-mode`,
+`empty-label`, `caption`, and `column-menu-panel-class`.
+
+```ts
+import {column} from '@mndw/ui';
+
+interface NodeRow { id: string; node: { name: string; ip: string; clients: number }; }
+
+const columns = [
+  column<NodeRow>()({ id: 'name', label: 'Name', accessor: (row) => row.node.name, sortable: true }),
+  column<NodeRow>()({ id: 'ip', label: 'IP', accessor: (row) => row.node.ip }),
+  column<NodeRow>()({ id: 'clients', label: 'Clients', accessor: (row) => row.node.clients, kind: 'number', sortable: true }),
+];
+
+const table = document.querySelector('mndw-table');
+table.rowKey = 'id';
+table.columns = columns;
+table.rows = nodeRows;
+table.sort = { columnId: 'name', direction: 'asc' };
+```
+
+Sort and selection are controlled: the table renders from `sort` and `selected` and emits
+`mndwsortchange` / `mndwselectionchange` / `mndwrowreorder` / `mndwcolumnvisibilitychange` /
+`mndwerror` (all `{ bubbles: true, composed: true }`); the plugin writes the prop back. Column
+visibility supports both modes: with `hiddenColumns` it is controlled; without it the built-in
+column menu (the portaled `<mndw-column-menu>`) drives `internalHidden` and still emits
+`mndwcolumnvisibilitychange` informationally. `columnMenu={false}` suppresses the menu.
+
+`rowKey` is required and resolves to a non-empty string per row (a field name or
+`(row) => string`). Empty or duplicate keys and duplicate column ids drop the offending rows/columns,
+render a visible `error` part with `role="alert"`, and emit `mndwerror` once per violation-set change.
+
+#### Framework adapters
+
+Built-in `kind`s are `text`, `number`, `badge`, and a non-interactive `boolean` glyph. Rich cells use
+a `CellRenderer` (`mount`/`update`/`destroy`), supplied through `column.renderer`, and render in a
+parked light-DOM node so the plugin cell's scoped styles apply. Framework adapters
+(`@mndw/ui-svelte`, `@mndw/ui-vue`, `@mndw/ui-angular`) turn native cells into renderers. Parts:
+`viewport`, `table`, `caption`, `header`, `header-cell`, `sort-indicator`, `row`, `cell`, `select-cell`,
+`select-all`, `drag-handle`, `column-menu-trigger`, `empty`, `error`. The menu panel is portaled, so it
+is styled through `column-menu-panel-class`, not `mndw-table::part(...)`.
+
+Adapters render into the parked node on mount/update and unmount on destroy; host startup registers
+`@mndw/ui` before plugin mount, so they never wait on `customElements.whenDefined()`.
+
+```ts
+// Angular — mndwCell directive on an ng-template
+column<NodeRow>()({id: 'name', label: 'Name', accessor: (r) => r.node.name, sortable: true})
+// <ng-template mndwCell="name" [mndwCellRows]="rows()" let-row>{{ row.node.name }}</ng-template>
+```
+
+```svelte
+<script lang="ts">
+  import {svelteCell} from '@mndw/ui-svelte';
+  import PackageNameCell from './PackageNameCell.svelte';
+  export const nameCell = svelteCell<PackageEntry, string>()(PackageNameCell)();
+</script>
+```
+
+```ts
+// Vue — defineComponent or functional component
+import {vueCell} from '@mndw/ui-vue';
+import ClientNameCell from './ClientNameCell.vue';
+const nameCell = vueCell<ClientRecord, string>()(ClientNameCell)();
+```
 
 ### `<mndw-field>`
 

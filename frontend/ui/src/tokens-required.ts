@@ -12,6 +12,7 @@ export const TOKENS_REQUIRED = [
   '--mndw-easing',
   '--mndw-focus-ring',
   '--mndw-focus-w',
+  '--mndw-font-mono',
   '--mndw-font-sans',
   '--mndw-info',
   '--mndw-info-bg',

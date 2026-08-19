@@ -49,10 +49,17 @@ function roots(): MwsNode[] {
   return [node('node-a', 'Node A', [node('node-b', 'Node B')])];
 }
 
-function tableRows(
-  fixture: ReturnType<typeof TestBed.createComponent<MwsNodesTableComponent>>,
-): HTMLTableRowElement[] {
-  return [...fixture.nativeElement.querySelectorAll<HTMLTableRowElement>('tbody tr')];
+interface TableElement extends HTMLElement {
+  shadowRoot: ShadowRoot;
+  updateComplete: Promise<unknown>;
+}
+
+function tableOf(fixture: ReturnType<typeof TestBed.createComponent<MwsNodesTableComponent>>): TableElement {
+  return fixture.nativeElement.querySelector('mndw-table') as TableElement;
+}
+
+function shadowRows(table: TableElement): HTMLTableRowElement[] {
+  return [...table.shadowRoot.querySelectorAll<HTMLTableRowElement>('tbody tr')];
 }
 
 function render(
@@ -64,6 +71,11 @@ function render(
   fixture.detectChanges();
 
   return fixture;
+}
+
+async function settle(table: TableElement): Promise<void> {
+  await Promise.resolve();
+  await table.updateComplete;
 }
 
 describe('MwsNodesTableComponent', () => {
@@ -90,39 +102,40 @@ describe('MwsNodesTableComponent', () => {
     }).compileComponents();
   });
 
-  it('renders the eight read-only columns and controller badge', () => {
+  it('renders the eight columns and controller badge in the shared table', async () => {
     const fixture = render(roots());
-    const element = fixture.nativeElement as HTMLElement;
-    const headers = [...element.querySelectorAll<HTMLTableCellElement>('th[scope="col"]')];
+    const table = tableOf(fixture);
 
-    expect(headers).toHaveLength(8);
-    expect(headers.map((header) => header.textContent?.trim())).toEqual([
-      'Node name',
-      'Clients',
-      'Status',
-      'Uptime',
-      'IP address',
-      'Via',
-      'Connection',
-      'KeeneticOS',
-    ]);
-    expect(tableRows(fixture)).toHaveLength(2);
-    expect(tableRows(fixture)[0]?.textContent).toContain('Controller');
-    expect(element.textContent).not.toContain('Alert');
+    await settle(table);
+
+    const headers = [...table.shadowRoot.querySelectorAll('th[scope="col"]')];
+
+    expect(headers).toHaveLength(9);
+    expect(table.shadowRoot.querySelector('tbody')?.textContent).toContain('Online');
+    expect(table.querySelector('.node-name')?.textContent).toContain('Node A');
+    expect(table.querySelector('.node-name')?.textContent).toContain('Controller');
   });
 
-  it('emits node ID from the Node name activation button', () => {
+  it('emits node ID from the Node name activation button', async () => {
     const fixture = render(roots());
+    const table = tableOf(fixture);
+
+    await settle(table);
+
     const activated: string[] = [];
 
     fixture.componentInstance.nodeActivated.subscribe((id) => activated.push(id));
-    fixture.nativeElement.querySelector<HTMLButtonElement>('tbody td.node-name button')?.click();
+    table.querySelector<HTMLButtonElement>('.node-name')?.click();
 
     expect(activated).toEqual(['node-a']);
   });
 
-  it('filters by node name and sorts only on explicit header interaction', () => {
+  it('filters by node name and sorts only on explicit header interaction', async () => {
     const fixture = render(roots());
+    const table = tableOf(fixture);
+
+    await settle(table);
+
     const input = fixture.nativeElement.querySelector<HTMLElement>('mndw-input');
 
     input?.dispatchEvent(
@@ -133,9 +146,10 @@ describe('MwsNodesTableComponent', () => {
       }),
     );
     fixture.detectChanges();
+    await settle(table);
 
-    expect(tableRows(fixture)).toHaveLength(1);
-    expect(tableRows(fixture)[0]?.textContent).toContain('Node B');
+    expect(shadowRows(table)).toHaveLength(1);
+    expect(table.querySelector('.node-name')?.textContent).toContain('Node B');
 
     input?.dispatchEvent(
       new CustomEvent('mndwinput', {
@@ -145,16 +159,18 @@ describe('MwsNodesTableComponent', () => {
       }),
     );
     fixture.detectChanges();
+    await settle(table);
 
-    const clientsHeader = fixture.nativeElement.querySelector<HTMLTableCellElement>('th.clients');
+    const clientsButton = table.shadowRoot.querySelector<HTMLButtonElement>('button[data-sort-column="clients"]');
 
-    clientsHeader?.querySelector<HTMLButtonElement>('button')?.click();
+    clientsButton?.click();
     fixture.detectChanges();
+    await settle(table);
 
-    expect(clientsHeader?.getAttribute('aria-sort')).toBe('ascending');
+    expect(table.shadowRoot.querySelector('th[aria-sort="ascending"]')?.textContent).toContain('Clients');
   });
 
-  it('keeps quick filters through roots updates and restores all rows when cleared', () => {
+  it('keeps quick filters through roots updates and restores all rows when cleared', async () => {
     const initial = roots();
     const initialController = initial[0];
     const initialExtender = initialController?.children[0]?.node;
@@ -171,8 +187,12 @@ describe('MwsNodesTableComponent', () => {
     fixture.componentRef.setInput('quickFilter', 'offline');
     fixture.detectChanges();
 
-    expect(tableRows(fixture)).toHaveLength(1);
-    expect(tableRows(fixture)[0]?.textContent).toContain('Node A');
+    const table = tableOf(fixture);
+
+    await settle(table);
+
+    expect(shadowRows(table)).toHaveLength(1);
+    expect(table.querySelector('.node-name')?.textContent).toContain('Node A');
 
     const updated = roots();
     const updatedController = updated[0];
@@ -185,55 +205,64 @@ describe('MwsNodesTableComponent', () => {
     updatedExtender.isOnline = false;
     fixture.componentRef.setInput('roots', updated);
     fixture.detectChanges();
+    await settle(table);
 
-    expect(tableRows(fixture)).toHaveLength(1);
-    expect(tableRows(fixture)[0]?.textContent).toContain('Node B');
+    expect(shadowRows(table)).toHaveLength(1);
+    expect(table.querySelector('.node-name')?.textContent).toContain('Node B');
 
     fixture.componentRef.setInput('quickFilter', 'none');
     fixture.detectChanges();
+    await settle(table);
 
-    expect(tableRows(fixture)).toHaveLength(2);
+    expect(shadowRows(table)).toHaveLength(2);
   });
 
-  it('opens table settings and hides optional columns without hiding Node name', () => {
+  it('hides optional columns through the column menu without hiding Node name', async () => {
     const fixture = render(roots());
-    const element = fixture.nativeElement as HTMLElement;
+    const table = tableOf(fixture);
 
-    element.querySelector<HTMLElement>('mndw-button[aria-label="Table settings"]')?.click();
+    await settle(table);
+
+    table.shadowRoot.querySelector<HTMLButtonElement>('[part="column-menu-trigger"]')?.click();
+    await settle(table);
+
+    const menu = document.querySelector('mndw-column-menu') as unknown as TableElement | null;
+
+    expect(menu).not.toBeNull();
+    await menu?.updateComplete;
+
+    const options = menu?.shadowRoot.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]');
+
+    expect(options).toHaveLength(7);
+
+    menu?.shadowRoot.querySelector<HTMLButtonElement>('button[data-column-id="clients"]')?.click();
     fixture.detectChanges();
+    await settle(table);
 
-    expect(element.querySelector('[role="dialog"][aria-label="Table settings"]')).not.toBeNull();
-    expect(element.querySelectorAll('mndw-switch')).toHaveLength(7);
-
-    element.querySelector<HTMLElement>('#mws-node-column-clients')?.dispatchEvent(
-      new CustomEvent('mndwchange', {detail: {checked: false}, bubbles: true, composed: true}),
-    );
-    fixture.detectChanges();
-
-    expect(element.querySelector('th.clients')).toBeNull();
-    expect(element.querySelector('th.name')).not.toBeNull();
+    expect(table.shadowRoot.querySelector('button[data-sort-column="clients"]')).toBeNull();
+    expect(table.shadowRoot.querySelector('button[data-sort-column="name"]')).not.toBeNull();
   });
 
-  it('resets sorting to Node name when hiding the active sort column', () => {
+  it('resets sorting to Node name when hiding the active sort column', async () => {
     const fixture = render(roots());
-    const element = fixture.nativeElement as HTMLElement;
+    const table = tableOf(fixture);
 
-    element.querySelector<HTMLButtonElement>('th.clients button')?.click();
+    await settle(table);
+
+    table.shadowRoot.querySelector<HTMLButtonElement>('button[data-sort-column="clients"]')?.click();
     fixture.detectChanges();
-    element.querySelector<HTMLElement>('mndw-button[aria-label="Table settings"]')?.click();
+    await settle(table);
+
+    table.shadowRoot.querySelector<HTMLButtonElement>('[part="column-menu-trigger"]')?.click();
+    await settle(table);
+
+    const menu = document.querySelector('mndw-column-menu') as unknown as TableElement;
+
+    await menu.updateComplete;
+    menu.shadowRoot.querySelector<HTMLButtonElement>('button[data-column-id="clients"]')?.click();
     fixture.detectChanges();
-    element.querySelector<HTMLElement>('#mws-node-column-clients')?.dispatchEvent(
-      new CustomEvent('mndwchange', {detail: {checked: false}, bubbles: true, composed: true}),
-    );
-    fixture.detectChanges();
+    await settle(table);
 
-    expect(element.querySelector('th.name')?.getAttribute('aria-sort')).toBe('ascending');
-  });
-
-  it('keeps Node name header and cells identifiable for sticky styling', () => {
-    const fixture = render(roots());
-
-    expect(fixture.nativeElement.querySelector('th.name')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('td.node-name')).not.toBeNull();
+    expect(table.shadowRoot.querySelector('th[aria-sort="ascending"]')?.textContent).toContain('Node name');
   });
 });

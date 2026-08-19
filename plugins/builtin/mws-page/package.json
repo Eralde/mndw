@@ -13,6 +13,7 @@
     "@angular/platform-browser": "^21.2.18",
     "@mndw/sdk": "workspace:*",
     "@mndw/ui": "workspace:*",
+    "@mndw/ui-angular": "workspace:*",
     "@rci-tools/core": "0.4.3",
     "@types/d3": "^7.4.3",
     "d3": "^7.9.0",

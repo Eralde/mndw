@@ -93,6 +93,25 @@ describe('adaptOverlayService', () => {
     expect(markReady).toHaveBeenCalledTimes(1);
   });
 
+  it('forwards trapFocus and restoreFocus when supplied', () => {
+    const {service, calls} = fakeService();
+
+    adaptOverlayService(service).open({anchor: document.createElement('button'), trapFocus: false,
+      restoreFocus: false});
+
+    expect(calls[0].trapFocus).toBe(false);
+    expect(calls[0].restoreFocus).toBe(false);
+  });
+
+  it('omits trapFocus and restoreFocus when not supplied', () => {
+    const {service, calls} = fakeService();
+
+    adaptOverlayService(service).open({anchor: document.createElement('button')});
+
+    expect(calls[0].trapFocus).toBeUndefined();
+    expect(calls[0].restoreFocus).toBeUndefined();
+  });
+
   it('repositions by re-supplying the anchor through update()', () => {
     const {service, update} = fakeService();
     const anchor = document.createElement('button');

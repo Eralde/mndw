@@ -10,6 +10,8 @@ export interface UiLayerOptions {
   presentation?: UiLayerPresentation;
   title?: string;
   className?: string;
+  trapFocus?: boolean;
+  restoreFocus?: boolean;
 }
 
 export interface UiLayer {

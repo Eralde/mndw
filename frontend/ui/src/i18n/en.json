@@ -30,5 +30,14 @@
     "validation": {
       "required": "Please select an option."
     }
+  },
+  "table": {
+    "selectRow": "Select {rowName}",
+    "selectAll": "Select all",
+    "sortBy": "Sort by {column}",
+    "columnMenu": "Column menu",
+    "rowFallback": "Row {index}",
+    "reordered": "{rowName} moved to position {pos} of {total}",
+    "invalidData": "Table data is invalid"
   }
 }

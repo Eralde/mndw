@@ -3,6 +3,7 @@ import {computed} from 'vue';
 import type {Translator} from '@mndw/sdk';
 import type {ClientRecord, WifiBand} from '../services/clients.js';
 import {formatCompactDuration, formatElapsed, formatFullDuration} from '../services/format-duration.js';
+import ClientNameCell from './ClientNameCell.vue';
 
 interface Props {
   clients: ClientRecord[];
@@ -74,7 +75,13 @@ function fullText(seconds: number | null): string | undefined {
     </thead>
     <tbody>
     <tr v-for="client in clients" :key="client.mac">
-      <td>{{ client.displayName }}</td>
+      <td>
+        <ClientNameCell
+          :row="client"
+          :value="client.displayName"
+          col-id="name"
+        />
+      </td>
       <td>
         <template v-if="client.link === null">{{ DASH }}</template>
         <template v-else>

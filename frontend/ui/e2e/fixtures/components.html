@@ -62,6 +62,24 @@
         height: 100%;
       }
 
+      .table-fixtures {
+        width: 640px;
+        border: 1px solid var(--mndw-border);
+      }
+
+      #table-fixture {
+        width: 640px;
+      }
+
+      #table-fixture::part(viewport) {
+        max-height: 320px;
+      }
+
+      /* Wider than the element so the internal viewport must scroll horizontally. */
+      #table-fixture::part(table) {
+        width: 960px;
+      }
+
       /* Pinned to the top edge so the tooltip above it is always clipped and has to flip. */
       #edge-trigger {
         position: fixed;
@@ -181,6 +199,12 @@
       <div id="bar-chart-fixture" class="chart-fixture">
         <mndw-bar-chart id="bar-chart-fixture-element" value-label="Throughput"></mndw-bar-chart>
       </div>
+    </section>
+    <section class="table-fixtures" aria-label="Table fixtures">
+      <mndw-table
+        id="table-fixture"
+        caption="Device fixtures"
+      ></mndw-table>
     </section>
     <script type="module" src="./components.ts"></script>
   </body>

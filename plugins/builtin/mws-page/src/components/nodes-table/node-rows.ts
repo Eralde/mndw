@@ -125,6 +125,17 @@ function compareIpv4(left: Ipv4, right: Ipv4): number {
   return 0;
 }
 
+export function compareIpStrings(left: string, right: string): number {
+  const leftIpv4 = parseIpv4(left);
+  const rightIpv4 = parseIpv4(right);
+
+  if (leftIpv4 === null || rightIpv4 === null) {
+    return 0;
+  }
+
+  return compareIpv4(leftIpv4, rightIpv4);
+}
+
 function sortValue(row: NodeRow, key: NodeSortKey): string | number | Ipv4 | null {
   if (key === 'name') {
     return row.node.name;

@@ -7,112 +7,35 @@
     [value]="search()"
     (mndwinput)="onSearch($event)"
   ></mndw-input>
-  <mndw-button
-    type="button"
-    variant="secondary"
-    [attr.aria-label]="t('nodes.settings')"
-    (click)="toggleSettings()"
-  >{{ t('nodes.settings') }}</mndw-button>
 </div>
-
-@if (settingsOpen()) {
-  <div class="table-settings" role="dialog" [attr.aria-label]="t('nodes.settings')">
-    <h3>{{ t('nodes.settings') }}</h3>
-    @for (column of columns; track column.id) {
-      @if (column.id !== 'name') {
-        <label class="settings-option">
-          <span>{{ t(column.labelKey) }}</span>
-          <mndw-switch
-            [id]="'mws-node-column-' + column.id"
-            [attr.checked]="isColumnVisible(column.id) ? '' : null"
-            (mndwchange)="onColumnVisibility(column.id, $event)"
-          ></mndw-switch>
-        </label>
-      }
-    }
-  </div>
-}
 
 @if (allRows().length === 0) {
   <p class="status" role="status">{{ t('nodes.no-connected') }}</p>
 } @else if (rows().length === 0) {
   <p class="status" role="status">{{ t('nodes.no-match') }}</p>
 } @else {
-  <div class="table-scroll">
-    <table class="mndw-table">
-      <caption>{{ t('nodes.caption') }}</caption>
-      <thead>
-        <tr>
-          @for (column of visibleColumns(); track column.id) {
-            <th
-              scope="col"
-              [class]="column.id"
-              [attr.aria-sort]="column.sortKey === undefined
-                ? null
-                : sortKey() === column.sortKey
-                ? sortDir() === 'asc' ? 'ascending' : 'descending'
-                : 'none'"
-            >
-              @if (column.sortKey === undefined) {
-                <span>{{ t(column.labelKey) }}</span>
-              } @else {
-                <button type="button" (click)="onSort(column.sortKey)">{{ t(column.labelKey) }}</button>
-              }
-            </th>
-          }
-        </tr>
-      </thead>
-      <tbody>
-        @for (row of rows(); track row.id) {
-          <tr>
-            @for (column of visibleColumns(); track column.id) {
-              @switch (column.id) {
-                @case ('name') {
-                  <td class="node-name">
-                    <button
-                      type="button"
-                      [attr.aria-label]="t('nodes.open', {name: row.node.name})"
-                      (click)="activateNode(row.id)"
-                    >
-                      <span>{{ row.node.name }}</span>
-                      @if (row.node.isController) {
-                        <span class="role-badge">{{ t('nodes.controller') }}</span>
-                      }
-                    </button>
-                  </td>
-                }
-                @case ('clients') {
-                  <td>{{ row.node.clients.length }}</td>
-                }
-                @case ('status') {
-                  <td>{{ status(row.node) }}</td>
-                }
-                @case ('uptime') {
-                  <td>{{ uptime(row.node) }}</td>
-                }
-                @case ('ip') {
-                  <td>
-                    @if (row.node.ip === null) {
-                      {{ dash }}
-                    } @else {
-                      <a [href]="'http://' + row.node.ip" target="_blank" rel="noreferrer">{{ row.node.ip }}</a>
-                    }
-                  </td>
-                }
-                @case ('via') {
-                  <td>{{ row.node.parent?.node?.name ?? dash }}</td>
-                }
-                @case ('connection') {
-                  <td>{{ connection(row.node) }}</td>
-                }
-                @case ('firmware') {
-                  <td>{{ row.node.fw ?? dash }}</td>
-                }
-              }
-            }
-          </tr>
+  <mndw-table
+    [columns]="columns"
+    [rows]="rows()"
+    rowKey="id"
+    [sort]="sort()"
+    [hiddenColumns]="hiddenColumns()"
+    [caption]="t('nodes.caption')"
+    (mndwsortchange)="onSortChange($event)"
+    (mndwcolumnvisibilitychange)="onVisibilityChange($event)"
+  >
+    <ng-template mndwCell="name" [mndwCellRows]="rows" let-row>
+      <button
+        class="node-name"
+        type="button"
+        [attr.aria-label]="t('nodes.open', {name: row.node.name})"
+        (click)="activateNode(row.id)"
+      >
+        <span>{{ row.node.name }}</span>
+        @if (row.node.isController) {
+          <span class="role-badge">{{ t('nodes.controller') }}</span>
         }
-      </tbody>
-    </table>
-  </div>
+      </button>
+    </ng-template>
+  </mndw-table>
 }

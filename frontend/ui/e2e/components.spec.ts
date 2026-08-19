@@ -998,3 +998,262 @@ test('focuses invalid select host when form validity is reported', async ({page}
 
   expect(result).toEqual({valid: false, activeId: 'field-select'});
 });
+
+async function tableRowTexts(table: Locator): Promise<string[]> {
+  return table.evaluate((element) => {
+    const shadow = element.shadowRoot;
+
+    if (shadow === null) {
+      return [];
+    }
+
+    return [...shadow.querySelectorAll('tbody tr')].map((row) => row.textContent ?? '');
+  });
+}
+
+async function sortedColumn(table: Locator): Promise<string> {
+  return table.evaluate((element) => {
+    const header = element.shadowRoot?.querySelector('th[aria-sort]');
+    const button = header?.querySelector('button[data-sort-column]');
+    const columnId = button?.getAttribute('data-sort-column');
+    const aria = header?.getAttribute('aria-sort');
+    const direction = aria === 'ascending' ? 'asc' : aria === 'descending' ? 'desc' : '';
+
+    return header === null || header === undefined || columnId === null || columnId === undefined
+      ? ''
+      : `${columnId}|${direction}`;
+  });
+}
+
+async function valueCellText(table: Locator): Promise<string> {
+  return table.evaluate((element) => {
+    const cells = [...(element.shadowRoot?.querySelectorAll('tbody tr td') ?? [])];
+
+    return cells[4]?.textContent ?? '';
+  });
+}
+
+async function clickSortButton(table: Locator, columnId: string): Promise<void> {
+  await table.locator(`button[data-sort-column="${columnId}"]`).click();
+}
+
+async function selectAllState(table: Locator): Promise<{checked: boolean; indeterminate: boolean}> {
+  return table.evaluate((element) => {
+    const checkbox = element.shadowRoot?.querySelector('mndw-checkbox[data-select-all]') as
+      | (HTMLElement & {checked: boolean; indeterminate: boolean})
+      | null;
+
+    return {checked: checkbox?.checked ?? false, indeterminate: checkbox?.indeterminate ?? false};
+  });
+}
+
+async function focusedOption(menu: Locator): Promise<string | null> {
+  return menu.evaluate((element) => element.shadowRoot?.activeElement?.getAttribute('data-column-id') ?? null);
+}
+
+async function ariaChecked(menu: Locator, columnId: string): Promise<string | null> {
+  return menu.evaluate((element, id) => {
+    const button = [...(element.shadowRoot?.querySelectorAll('button[data-column-id]') ?? [])]
+      .find((candidate) => candidate.getAttribute('data-column-id') === id);
+
+    return button?.getAttribute('aria-checked') ?? null;
+  }, columnId);
+}
+
+async function tableHasColumn(table: Locator, columnId: string): Promise<boolean> {
+  return table.evaluate(
+    (element, id) => element.shadowRoot?.querySelector(`button[data-sort-column="${id}"]`) !== null,
+    columnId,
+  );
+}
+
+async function triggerFocused(table: Locator): Promise<boolean> {
+  return table.evaluate((element) => element.shadowRoot?.activeElement?.getAttribute('part') === 'column-menu-trigger');
+}
+
+async function reorderIntents(page: Page): Promise<{key: string; beforeKey: string | null}[]> {
+  return page.evaluate(() =>
+    (window as unknown as {__fixtureReorderIntents: {key: string; beforeKey: string | null}[]}).__fixtureReorderIntents
+  );
+}
+
+test.describe('mndw-table', () => {
+  test.use({viewport: {width: 1280, height: 2400}});
+
+  test('renders native table semantics with a caption, scoped headers, and a light-DOM cell', async ({page}) => {
+    const semantics = await page.locator('#table-fixture').evaluate((element) => {
+      const shadow = element.shadowRoot;
+      const headers = [...(shadow?.querySelectorAll('th') ?? [])];
+
+      return {
+        hasTable: shadow?.querySelector('table') !== null,
+        hasThead: shadow?.querySelector('thead') !== null,
+        hasTbody: shadow?.querySelector('tbody') !== null,
+        caption: shadow?.querySelector('caption')?.textContent ?? null,
+        headerCount: headers.length,
+        headerScopesCol: headers.every((header) => header.getAttribute('scope') === 'col'),
+        rowCount: shadow?.querySelectorAll('tbody tr').length ?? 0,
+        customCell: element.querySelector('a.fixture-link')?.textContent ?? null,
+      };
+    });
+
+    expect(semantics).toEqual({
+      hasTable: true,
+      hasThead: true,
+      hasTbody: true,
+      caption: 'Device fixtures',
+      headerCount: 10,
+      headerScopesCol: true,
+      rowCount: 5,
+      customCell: 'Open',
+    });
+  });
+
+  test('sorts on header click with controlled write-back and indicators', async ({page}) => {
+    const locator = page.locator('#table-fixture');
+
+    await expect.poll(async () => sortedColumn(locator)).toBe('name|asc');
+    await expect.poll(async () => tableRowTexts(locator)).toEqual([
+      expect.stringContaining('Alpha'),
+      expect.stringContaining('Beta'),
+      expect.stringContaining('Delta'),
+      expect.stringContaining('Epsilon'),
+      expect.stringContaining('Gamma'),
+    ]);
+
+    await clickSortButton(locator, 'value');
+    await expect.poll(async () => sortedColumn(locator)).toBe('value|asc');
+    await expect.poll(async () => valueCellText(locator)).toBe('0');
+
+    await clickSortButton(locator, 'value');
+    await expect.poll(async () => sortedColumn(locator)).toBe('value|desc');
+    await expect.poll(async () => valueCellText(locator)).toBe('780');
+
+    await clickSortButton(locator, 'value');
+    await expect.poll(async () => sortedColumn(locator)).toBe('');
+  });
+
+  test('reflects select-all checked and indeterminate states through controlled write-back', async ({page}) => {
+    const locator = page.locator('#table-fixture');
+
+    await expect.poll(async () => selectAllState(locator)).toEqual({checked: false, indeterminate: false});
+
+    await locator.locator('mndw-checkbox[data-row-key="dev-1"]').click();
+    await expect.poll(async () => selectAllState(locator)).toEqual({checked: false, indeterminate: true});
+
+    await locator.locator('mndw-checkbox[data-select-all]').click();
+    await expect.poll(async () => selectAllState(locator)).toEqual({checked: true, indeterminate: false});
+
+    await locator.locator('mndw-checkbox[data-select-all]').click();
+    await expect.poll(async () => selectAllState(locator)).toEqual({checked: false, indeterminate: false});
+  });
+
+  test('emits row reorder intent and resets order optimistically without a consumer write-back', async ({page}) => {
+    const locator = page.locator('#table-fixture');
+
+    await clickSortButton(locator, 'name');
+    await clickSortButton(locator, 'name');
+    await expect.poll(async () => sortedColumn(locator)).toBe('');
+
+    const handles = locator.locator('button[part="drag-handle"]');
+    const handle = handles.first();
+
+    await handle.focus();
+    await page.keyboard.press('ArrowDown');
+
+    await expect.poll(async () => reorderIntents(page)).toEqual([{key: 'dev-1', beforeKey: 'dev-3'}]);
+    await expect.poll(async () => tableRowTexts(locator)).toEqual([
+      expect.stringContaining('Alpha'),
+      expect.stringContaining('Beta'),
+      expect.stringContaining('Gamma'),
+      expect.stringContaining('Delta'),
+      expect.stringContaining('Epsilon'),
+    ]);
+  });
+
+  test('column menu focuses, toggles, and closes via keyboard', async ({page}) => {
+    const locator = page.locator('#table-fixture');
+
+    await locator.locator('[part="column-menu-trigger"]').click();
+
+    const menu = page.locator('mndw-column-menu');
+
+    await expect(menu).toBeVisible();
+    await expect.poll(async () => focusedOption(menu)).toBe('model');
+
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(async () => focusedOption(menu)).toBe('status');
+
+    await page.keyboard.press('Space');
+    await expect.poll(async () => ariaChecked(menu, 'status')).toBe('false');
+    await expect.poll(async () => tableHasColumn(locator, 'status')).toBe(false);
+
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect.poll(async () => triggerFocused(locator)).toBe(true);
+
+    await locator.locator('[part="column-menu-trigger"]').click();
+
+    const reopened = page.locator('mndw-column-menu');
+
+    await expect(reopened).toBeVisible();
+    await page.keyboard.press('Tab');
+    await expect(reopened).toHaveCount(0);
+    await expect.poll(async () => triggerFocused(locator)).toBe(false);
+  });
+
+  test('keeps the non-hideable column locked while hiding hideable ones', async ({page}) => {
+    const locator = page.locator('#table-fixture');
+
+    await locator.locator('[part="column-menu-trigger"]').click();
+
+    const menu = page.locator('mndw-column-menu');
+
+    await expect(menu).toBeVisible();
+
+    const optionIds = await menu.evaluate((element) => {
+      return [...(element.shadowRoot?.querySelectorAll('button[data-column-id]') ?? [])]
+        .map((button) => button.getAttribute('data-column-id'));
+    });
+
+    expect(optionIds).toEqual(['model', 'status', 'value', 'link', 'note', 'detail']);
+    expect(optionIds).not.toContain('name');
+
+    await page.keyboard.press('Space');
+    await expect.poll(async () => tableHasColumn(locator, 'model')).toBe(false);
+    await expect.poll(async () => tableHasColumn(locator, 'name')).toBe(true);
+  });
+
+  test('contains horizontal overflow inside the viewport rather than the page', async ({page}) => {
+    const dimensions = await page.evaluate(() => {
+      const table = document.querySelector('#table-fixture');
+
+      if (!table?.shadowRoot) {
+        return null;
+      }
+
+      const viewport = table.shadowRoot.querySelector('[part="viewport"]');
+      const tablePart = table.shadowRoot.querySelector('table');
+
+      if (!viewport || !tablePart) {
+        return null;
+      }
+
+      return {
+        viewportClientWidth: viewport.clientWidth,
+        viewportScrollWidth: viewport.scrollWidth,
+        pageScrollWidth: document.documentElement.scrollWidth,
+        windowWidth: window.innerWidth,
+      };
+    });
+
+    expect(dimensions).not.toBeNull();
+
+    if (dimensions === null) {
+      throw new Error('table fixture geometry unavailable');
+    }
+
+    expect(dimensions.viewportScrollWidth).toBeGreaterThan(dimensions.viewportClientWidth);
+    expect(dimensions.pageScrollWidth).toBeLessThanOrEqual(dimensions.windowWidth);
+  });
+});

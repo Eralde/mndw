@@ -9,6 +9,7 @@
   "devDependencies": {
     "@mndw/sdk": "workspace:*",
     "@mndw/ui": "workspace:*",
+    "@mndw/ui-vue": "workspace:*",
     "@rci-tools/core": "0.4.3",
     "@types/lodash-es": "^4.17.12",
     "@vitejs/plugin-vue": "^6.0.0",

@@ -4,16 +4,22 @@ import {
   type OnDestroy,
   type OnInit,
   computed,
-  effect,
   inject,
   input,
   output,
   signal,
-  untracked,
 } from '@angular/core';
+import {
+  type Column,
+  type MndwColumnVisibilityChangeDetail,
+  type MndwSortChangeDetail,
+  type SortState,
+  column,
+} from '@mndw/ui';
+import {MndwCellDirective, MndwTableDirective} from '@mndw/ui-angular';
 import type {MwsNode} from '../../domain/mws/mws.types';
-import {DASH, formatRate, formatSpeed, formatUptime} from '../../format';
-import {NodeTableColumnsStore, type OptionalNodeColumnId} from '../../services/node-table-columns.store';
+import {DASH, formatRate, formatSpeed} from '../../format';
+import {NodeTableColumnsStore, OPTIONAL_NODE_COLUMN_IDS} from '../../services/node-table-columns.store';
 import {TRANSLATOR} from '../../tokens';
 import {
   type NodeQuickFilter,
@@ -21,33 +27,14 @@ import {
   type NodeSortDir,
   type NodeSortKey,
   buildNodeRows,
+  compareIpStrings,
   filterNodeRows,
-  reconcileNodeRows,
-  sortNodeRows,
 } from './node-rows';
-
-type NodeColumnId = 'name' | OptionalNodeColumnId;
-
-interface NodeColumn {
-  id: NodeColumnId;
-  labelKey: string;
-  sortKey?: NodeSortKey;
-}
-
-const NODE_COLUMNS: readonly NodeColumn[] = [
-  {id: 'name', labelKey: 'nodes.name', sortKey: 'name'},
-  {id: 'clients', labelKey: 'nodes.clients', sortKey: 'clients'},
-  {id: 'status', labelKey: 'nodes.status'},
-  {id: 'uptime', labelKey: 'nodes.uptime', sortKey: 'uptime'},
-  {id: 'ip', labelKey: 'nodes.ip', sortKey: 'ip'},
-  {id: 'via', labelKey: 'nodes.via', sortKey: 'via'},
-  {id: 'connection', labelKey: 'nodes.connection'},
-  {id: 'firmware', labelKey: 'nodes.firmware', sortKey: 'firmware'},
-];
 
 @Component({
   selector: 'mws-nodes-table',
   standalone: true,
+  imports: [MndwTableDirective, MndwCellDirective],
   templateUrl: './nodes-table.component.html',
   styleUrls: ['./nodes-table.component.scss'],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -55,42 +42,39 @@ const NODE_COLUMNS: readonly NodeColumn[] = [
 export class MwsNodesTableComponent implements OnDestroy, OnInit {
   private readonly translator = inject(TRANSLATOR);
   private readonly columnsStore = inject(NodeTableColumnsStore);
-  private readonly allRowsState = signal<NodeRow[]>([]);
-  private readonly rowsState = signal<NodeRow[]>([]);
-  private projectionInitialized = false;
 
   public readonly roots = input.required<MwsNode[]>();
   public readonly quickFilter = input<NodeQuickFilter>('none');
   public readonly nodeActivated = output<string>();
 
-  private readonly inputEffect = effect(() => {
-    const nextRows = buildNodeRows(this.roots());
-    const quickFilter = this.quickFilter();
-    const previousRows = untracked(() => this.rowsState());
-    const search = untracked(() => this.search());
-
-    this.allRowsState.set(nextRows);
-
-    if (!this.projectionInitialized) {
-      this.rowsState.set(this.sortedRows(nextRows));
-      this.projectionInitialized = true;
-
-      return;
-    }
-
-    this.rowsState.set(reconcileNodeRows(previousRows, nextRows, search, quickFilter));
-  });
   protected readonly search = signal('');
   protected readonly sortKey = signal<NodeSortKey>('name');
   protected readonly sortDir = signal<NodeSortDir>('asc');
-  protected readonly settingsOpen = signal(false);
-  protected readonly rows = this.rowsState.asReadonly();
-  protected readonly allRows = this.allRowsState.asReadonly();
-  protected readonly columns = NODE_COLUMNS;
-  protected readonly visibleColumns = computed(() =>
-    this.columns.filter((column) => column.id === 'name' || this.columnsStore.visibleColumns().has(column.id))
+
+  protected readonly columns: Column<NodeRow>[] = [
+    column<NodeRow>()({id: 'name', label: this.t('nodes.name'), accessor: (row) => row.node.name, sortable: true,
+      hideable: false}),
+    column<NodeRow>()({id: 'clients', label: this.t('nodes.clients'), accessor: (row) => row.node.clients.length,
+      kind: 'number', sortable: true}),
+    column<NodeRow>()({id: 'status', label: this.t('nodes.status'), accessor: (row) => this.status(row.node)}),
+    column<NodeRow>()({id: 'uptime', label: this.t('nodes.uptime'), accessor: (row) => row.node.system?.uptime ?? null,
+      kind: 'number', sortable: true}),
+    column<NodeRow>()({id: 'ip', label: this.t('nodes.ip'), accessor: (row) => row.node.ip, sortable: true,
+      comparator: (a, b) => compareIpStrings(a ?? '', b ?? '')}),
+    column<NodeRow>()({id: 'via', label: this.t('nodes.via'), accessor: (row) => row.node.parent?.node.name ?? null,
+      sortable: true}),
+    column<NodeRow>()({id: 'connection', label: this.t('nodes.connection'), accessor: (row) =>
+      this.connection(row.node)}),
+    column<NodeRow>()({id: 'firmware', label: this.t('nodes.firmware'), accessor: (row) => row.node.fw ?? null,
+      sortable: true}),
+  ];
+
+  protected readonly allRows = computed(() => buildNodeRows(this.roots()));
+  protected readonly rows = computed(() => filterNodeRows(this.allRows(), this.search(), this.quickFilter()));
+  protected readonly hiddenColumns = computed(() =>
+    OPTIONAL_NODE_COLUMN_IDS.filter((id) => !this.columnsStore.visibleColumns().has(id))
   );
-  protected readonly dash = DASH;
+  protected readonly sort = computed<SortState>(() => ({columnId: this.sortKey(), direction: this.sortDir()}));
 
   public ngOnInit(): void {
     void this.columnsStore.load();
@@ -102,39 +86,37 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
 
   protected onSearch(event: CustomEvent<{value?: string}>): void {
     this.search.set(event.detail.value ?? '');
-    this.reproject();
   }
 
-  protected onSort(key: NodeSortKey): void {
-    if (key === this.sortKey()) {
-      this.sortDir.update((dir) => dir === 'asc' ? 'desc' : 'asc');
-    } else {
-      this.sortKey.set(key);
+  protected onSortChange(event: CustomEvent<MndwSortChangeDetail>): void {
+    const sort = event.detail.sort;
+
+    if (sort === null) {
+      this.sortKey.set('name');
       this.sortDir.set('asc');
+
+      return;
     }
 
-    this.reproject();
+    this.sortKey.set(sort.columnId as NodeSortKey);
+    this.sortDir.set(sort.direction);
   }
 
-  protected onColumnVisibility(id: OptionalNodeColumnId, event: CustomEvent<{checked?: boolean}>): void {
-    const visible = event.detail.checked ?? false;
+  protected onVisibilityChange(event: CustomEvent<MndwColumnVisibilityChangeDetail>): void {
+    const hidden = new Set(event.detail.hidden);
 
-    this.columnsStore.setVisible(id, visible);
+    for (const id of OPTIONAL_NODE_COLUMN_IDS) {
+      const visible = !hidden.has(id);
 
-    if (!visible && id === this.sortKey()) {
+      if (this.columnsStore.visibleColumns().has(id) !== visible) {
+        this.columnsStore.setVisible(id, visible);
+      }
+    }
+
+    if (this.sortKey() !== 'name' && hidden.has(this.sortKey())) {
       this.sortKey.set('name');
       this.sortDir.set('asc');
     }
-
-    this.reproject();
-  }
-
-  protected isColumnVisible(id: OptionalNodeColumnId): boolean {
-    return this.columnsStore.visibleColumns().has(id);
-  }
-
-  protected toggleSettings(): void {
-    this.settingsOpen.update((open) => !open);
   }
 
   protected activateNode(id: string): void {
@@ -165,23 +147,7 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
     return present.length === 0 ? DASH : present.join(' · ');
   }
 
-  protected uptime(node: MwsNode): string {
-    return formatUptime(node.system?.uptime);
-  }
-
   protected t(key: string, values?: Record<string, unknown>): string {
     return this.translator.t(key, values);
-  }
-
-  private sortedRows(rows: NodeRow[]): NodeRow[] {
-    return sortNodeRows(
-      filterNodeRows(rows, this.search(), this.quickFilter()),
-      this.sortKey(),
-      this.sortDir(),
-    );
-  }
-
-  private reproject(): void {
-    this.rowsState.set(this.sortedRows(this.allRowsState()));
   }
 }

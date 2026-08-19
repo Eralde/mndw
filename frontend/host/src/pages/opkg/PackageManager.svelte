@@ -6,6 +6,7 @@ import {OpkgError, opkgClient} from '../../services/opkg-client.js';
 import type {PackageEntry} from '../../services/opkg-client.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
+import PackageNameCell from './PackageNameCell.svelte';
 
 let packages = $state<PackageEntry[]>([]);
 let checked = new SvelteSet<string>();
@@ -322,11 +323,12 @@ onMount(() => {
                   handlePackageChange(pkg.name, event)}
                 ></mndw-checkbox>
               </td>
-              <td
-                class="col-name"
-                title={pkg.name}
-              >
-                {pkg.name}
+              <td class="col-name">
+                <PackageNameCell
+                  row={pkg}
+                  value={pkg.name}
+                  colId="name"
+                />
               </td>
               <td class="col-ver">
                 {pkg.version}
@@ -488,10 +490,6 @@ tr:last-child td {
 
 .col-name {
   width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 500;
 }
 
 .col-ver {

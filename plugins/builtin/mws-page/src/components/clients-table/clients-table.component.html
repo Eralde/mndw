@@ -14,37 +14,19 @@
 } @else if (rows().length === 0) {
   <p class="status" role="status">{{ t('clients.no-match') }}</p>
 } @else {
-  <div class="table-scroll">
-    <table class="mndw-table">
-      <caption>{{ t('clients.caption') }}</caption>
-      <thead>
-        <tr>
-          @for (column of columns; track column.key) {
-            <th
-              scope="col"
-              [attr.aria-sort]="sortKey() === column.key ? sortDir() === 'asc' ? 'ascending' : 'descending' : 'none'"
-            >
-              <button type="button" (click)="onSort(column.key)">{{ t(column.labelKey) }}</button>
-            </th>
-          }
-        </tr>
-      </thead>
-      <tbody>
-        @for (row of rows(); track row.node.id + ':' + row.client.mac) {
-          <tr>
-            <td>{{ row.client.name }}</td>
-            <td>{{ row.node.name }}</td>
-            <td>
-              <span class="link-badge" [class.wired]="row.client.wired">
-                {{ row.client.wired ? t('clients.wired') : t('clients.wireless') }}
-              </span>
-            </td>
-            <td>{{ row.client.ip ?? dash }}</td>
-            <td>{{ row.client.mac }}</td>
-            <td>{{ uptime(row.client.uptime) }}</td>
-          </tr>
-        }
-      </tbody>
-    </table>
-  </div>
+  <mndw-table
+    [columns]="columns"
+    [rows]="rows()"
+    [rowKey]="rowKey"
+    [sort]="sort()"
+    [columnMenu]="false"
+    [caption]="t('clients.caption')"
+    (mndwsortchange)="onSortChange($event)"
+  >
+    <ng-template mndwCell="link" [mndwCellRows]="rows" let-row>
+      <span class="link-badge" [class.wired]="row.client.wired">
+        {{ row.client.wired ? t('clients.wired') : t('clients.wireless') }}
+      </span>
+    </ng-template>
+  </mndw-table>
 }

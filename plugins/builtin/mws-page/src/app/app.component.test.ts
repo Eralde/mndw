@@ -345,11 +345,15 @@ describe('AppComponent', () => {
     expect(navigate).toHaveBeenCalledWith('/nodes');
   });
 
-  it('shares Nodes activation with map selection and the drawer', () => {
+  it('shares Nodes activation with map selection and the drawer', async () => {
     const open = vi.fn();
     const fixture = render(fakeData('ready', fixtureRoots()), undefined, open);
+    const table = fixture.nativeElement.querySelector('mndw-table') as HTMLElement & {updateComplete: Promise<unknown>};
+
+    await table.updateComplete;
+
     const button = fixture.nativeElement.querySelector<HTMLButtonElement>(
-      'mws-nodes-table tbody td.node-name button[aria-label="Open Router"]',
+      'mws-nodes-table button.node-name[aria-label="Open Router"]',
     );
 
     button?.click();

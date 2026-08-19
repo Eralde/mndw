@@ -76,6 +76,16 @@ afterEach(() => {
   host?.remove();
 });
 
+describe('name column', () => {
+  it('renders the display name through the extracted cell', () => {
+    mountTable(makeClient({displayName: 'Alpha client'}));
+
+    const nameCell = host.querySelector('tbody tr td .client-name');
+
+    expect(nameCell?.textContent).toBe('Alpha client');
+  });
+});
+
 describe('connection column', () => {
   it('renders wired speed and port on separate lines', () => {
     mountTable(makeClient({

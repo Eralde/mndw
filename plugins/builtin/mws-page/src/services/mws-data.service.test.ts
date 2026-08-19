@@ -135,7 +135,9 @@ describe('MwsDataService', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(service.extraFeaturesAvailability()).toBe(expected);
-    expect(service.extraFeaturesPresentation()).toBe(expected);
+    // 'limited' presentation is debounced (>=2 consecutive limited polls); a single poll leaves
+    // presentation at its initial 'checking'. See the dedicated debounce test above.
+    expect(service.extraFeaturesPresentation()).toBe(expected === 'limited' ? 'checking' : expected);
   });
 
   it('resets availability and presentation before every reconnect cycle', async () => {

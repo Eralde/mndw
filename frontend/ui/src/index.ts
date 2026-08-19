@@ -21,6 +21,8 @@ import {MNDW_TABS_TAG, MndwTabs} from './tabs/tabs.js';
 import {MNDW_TEXTAREA_TAG, MndwTextarea} from './textarea/textarea.js';
 import {MNDW_TOOLTIP_TAG, MndwTooltip} from './tooltip/tooltip.js';
 import {setMndwUiLocale} from './i18n.js';
+import {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './table/column-menu.js';
+import {MNDW_TABLE_TAG, MndwTable} from './table/table.js';
 
 export {MNDW_BUTTON_TAG, MndwButton} from './button/button.js';
 export type {MndwButtonVariant} from './button/button.js';
@@ -55,7 +57,39 @@ export {MNDW_TEXTAREA_TAG, MndwTextarea} from './textarea/textarea.js';
 export type {MndwTextareaChangeDetail} from './textarea/textarea.js';
 export {MNDW_TOOLTIP_TAG, MndwTooltip} from './tooltip/tooltip.js';
 export type {MndwTooltipPlacement} from './tooltip/tooltip.js';
+export {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './table/column-menu.js';
+export {MNDW_TABLE_TAG, MndwTable} from './table/table.js';
 export {getMndwUiLocale, getMndwUiText, setMndwUiLocale, subscribeMndwUiLocale} from './i18n.js';
+export {column} from './table/table-builder.js';
+export type {ColumnBuilder} from './table/table-builder.js';
+export {
+  MNDW_COLUMN_VISIBILITY_CHANGE_EVENT,
+  MNDW_ERROR_EVENT,
+  MNDW_ROW_REORDER_EVENT,
+  MNDW_SELECTION_CHANGE_EVENT,
+  MNDW_SORT_CHANGE_EVENT,
+} from './table/table-types.js';
+export type {
+  BadgeTone,
+  CellAlign,
+  CellContext,
+  CellKind,
+  CellProps,
+  CellRenderer,
+  Column,
+  ColumnDef,
+  MndwColumnVisibilityChangeDetail,
+  MndwErrorDetail,
+  MndwRowReorderDetail,
+  MndwSelectionChangeDetail,
+  MndwSortChangeDetail,
+  MndwTableLabels,
+  MndwTableProps,
+  RowKey,
+  SortState,
+  StringKeyOf,
+  Violation,
+} from './table/table-types.js';
 export {createGeneratedAttribute, createLocalizedProperty} from './localized-property.js';
 export type {UiCloseReason, UiLayer, UiLayerOptions, UiLayerPresentation, UiOverlayProvider} from './overlay.js';
 export {
@@ -109,6 +143,8 @@ const REGISTRY: [string, CustomElementConstructor][] = [
   [MNDW_TABS_TAG, MndwTabs],
   [MNDW_TEXTAREA_TAG, MndwTextarea],
   [MNDW_TOOLTIP_TAG, MndwTooltip],
+  [MNDW_TABLE_TAG, MndwTable],
+  [MNDW_COLUMN_MENU_TAG, MndwColumnMenu],
 ];
 
 export function defineMndwUi(deps?: MndwUiDeps): void {

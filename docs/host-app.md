@@ -28,8 +28,8 @@ errors so a broken plugin does not take down the host.
 
 ## Routing and dashboard
 
-Static routes are `/` and `/settings`. Enabled page plugins contribute routes
-with one path segment. Widget plugins never become routes.
+Static routes are `/`, `/packages`, and `/settings`. Enabled page plugins
+contribute routes with one path segment. Widget plugins never become routes.
 
 The default dashboard uses GridStack with twelve columns. A tile contains a
 host-owned frame and a plugin-owned content element. The frame supplies title,
@@ -80,9 +80,9 @@ Each plugin instance receives a context containing:
 - the framework-neutral overlay service;
 - an optional typed backend client.
 
-The host owns overlay stacking, focus trapping, escape and outside dismissal,
-scroll locking, and cleanup. A plugin supplies content; it does not own the
-top layer or global focus behavior.
+The host owns overlay stacking, escape and outside dismissal, scroll locking,
+and cleanup. A plugin supplies content; it does not own the top layer or
+global focus behavior.
 
 ## Theme and settings
 

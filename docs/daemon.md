@@ -55,9 +55,9 @@ cancellation. It supplies bounded CGI metadata including `REQUEST_METHOD`,
 `MNDW_ROUTE_ID`; cookies, authorization, CSRF values, and arbitrary daemon
 environment are not forwarded.
 
-CGI output is parsed before response commit. Forbidden hop-by-hop, credential,
-and CORS headers are removed, output/stderr are bounded, and responses use
-`Cache-Control: no-store`.
+CGI output is parsed before response commit. Forbidden hop-by-hop, CORS,
+proxy-credential, `Set-Cookie`, and `Content-Length` headers are removed,
+output/stderr are bounded, and responses use `Cache-Control: no-store`.
 
 ## Live backend status
 

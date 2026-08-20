@@ -55,7 +55,7 @@ Request routing, listener ports, and upstream targets are owned by
 `pnpm build-ipk --arch <arch>` performs the following work:
 
 1. install locked workspace dependencies;
-2. build the host, tokens, and shared bundles;
+2. build the host and shared bundles;
 3. pack built-in plugins;
 4. build `mndwd` for the selected architecture;
 5. verify required staged files;

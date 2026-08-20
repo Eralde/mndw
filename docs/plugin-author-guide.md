@@ -15,6 +15,7 @@ mndw dev .
 For a page, use `--type page` and choose a route that is not reserved. For a
 vanilla plugin, use `--framework vanilla`. Vue and Angular use the same
 manifest and lifecycle contracts but add framework-specific shared bundles.
+Reserved page routes are `/`, `/login`, `/settings`, and `/packages`.
 
 The generated project has this shape:
 
@@ -74,7 +75,8 @@ the manifest's `size` object.
 
 Names are lowercase path-safe segments. Entry and backend source paths are
 relative and cannot contain traversal or backslashes. Page routes are one
-segment and cannot use `/`, `/login`, or `/settings`.
+segment and cannot use `/`, `/login`, or `/settings`; the host additionally
+reserves `/packages`.
 
 An exec backend declares commands directly on HTTP routes:
 
@@ -170,6 +172,6 @@ mndw zip .
 Check that the archive contains `manifest.json` at its root, the entry output,
 optional `index.css`, `mndw.lock.json`, and all declared backend assets.
 
-Backend plugins show packages, route methods/transports/access, and service
-protocol during approval. Treat approval as a security review: approved exec
-commands and service children execute with device daemon privileges.
+Backend plugins show route id, method/path, and WebSocket protocols during
+approval. Treat approval as a security review: approved exec commands and
+service children execute with device daemon privileges.

@@ -50,7 +50,8 @@ Widgets declare grid-unit dimensions:
 ```
 
 Pages declare a single-segment route such as `/traffic`. `/`, `/login`, and
-`/settings` are reserved. A page may also declare an icon.
+`/settings` are reserved; the host also reserves `/packages`. A page may also
+declare an icon.
 
 Backend paths are relative strings. The daemon composes them into:
 
@@ -132,14 +133,15 @@ server consume that same table and import map. `mndw.lock.json` records the
 versions used to build a plugin. Major-version mismatches warn but do not block
 loading.
 
-The base shared set includes the complete `d3@7.9.0` package under the `d3`
-specifier. Official d3 APIs therefore share one browser module and one prototype
-identity. Third-party extensions such as `d3-dag` remain plugin-bundled unless a
-later shared-dependency decision promotes them.
+The base shared set includes `@mndw/ui@0.1.0` and the complete `d3@7.9.0`
+package under the `d3` specifier. Official d3 APIs therefore share one browser
+module and one prototype identity. Third-party extensions such as `d3-dag`
+remain plugin-bundled unless a later shared-dependency decision promotes them.
 
-Angular bundles have an identity invariant: every Angular bundle keeps
-`@angular/core` external, and core plus `rxjs-interop` share one bundle. An
-executable regression suite protects this from duplicate class identities.
+Angular bundles have an identity invariant: the `angular-core` bundle provides
+`@angular/core` plus `@angular/core/rxjs-interop` in one file, and the other
+Angular bundles keep `@angular/core` external. An executable regression suite
+protects this from duplicate class identities.
 
 ## Lifecycle and trust boundary
 

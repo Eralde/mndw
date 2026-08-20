@@ -1,55 +1,26 @@
 import 'zone.js';
 import '@angular/compiler';
-import {createApplication} from '@angular/platform-browser';
-import {DestroyRef, EnvironmentInjector, createComponent, inject} from '@angular/core';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
-import {createTranslatorSignals} from '@mndw/sdk/angular';
+import {createAngularPluginInstance, provideTranslator} from '@mndw/sdk/angular';
 import {AppComponent} from './app/app.component';
 import {type SettingsDialogArgs, openSettingsDialog} from './open-settings-dialog';
-import {PLUGIN_STORAGE, RCI_MANAGER, TRANSLATOR} from './tokens';
+import {PLUGIN_STORAGE, RCI_MANAGER} from './tokens';
 
 export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInstance {
-  let appRef: Awaited<ReturnType<typeof createApplication>> | null = null;
-  let componentRef: ReturnType<typeof createComponent> | null = null;
-
-  const appConfig = {
+  return createAngularPluginInstance(el, {
+    rootComponent: AppComponent,
     providers: [
       {provide: RCI_MANAGER, useValue: ctx.rciManager},
       {provide: PLUGIN_STORAGE, useValue: ctx.storage},
-      {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(ctx.i18n, inject(DestroyRef))},
+      provideTranslator(ctx.i18n),
     ],
-  };
-
-  createApplication(appConfig)
-    .then((ref) => {
-      appRef = ref;
-
-      const injector = appRef.injector.get(EnvironmentInjector);
-      const hostElement = el;
-
-      hostElement.innerHTML = '';
-      componentRef = createComponent(AppComponent, {hostElement, environmentInjector: injector});
-
-      componentRef.setInput(
+    configure: ({appRef, component}) => {
+      component.setInput(
         'openSettings',
-        (args: SettingsDialogArgs) => openSettingsDialog(ctx, ref, injector, args),
+        (args: SettingsDialogArgs) => openSettingsDialog(ctx, appRef, args),
       );
-      componentRef.setInput('setTileTitle', ctx.kind === 'widget' ? ctx.setTileTitle : undefined);
-
-      appRef.attachView(componentRef.hostView);
-    });
-
-  return {
-    unmount() {
-      if (componentRef) {
-        componentRef.destroy();
-        componentRef = null;
-      }
-
-      if (appRef) {
-        appRef.destroy();
-        appRef = null;
-      }
+      component.setInput('setTileTitle', ctx.kind === 'widget' ? ctx.setTileTitle : undefined);
     },
-  };
+    onUnmount: () => ctx.overlay.closeAll(),
+  });
 }

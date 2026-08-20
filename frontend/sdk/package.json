@@ -81,11 +81,13 @@
     "@rci-tools/core": ">=0.2.0",
     "rxjs": ">=7.0.0",
     "@angular/core": ">=21.0.0",
+    "@angular/platform-browser": ">=21.0.0",
     "svelte": ">=5.0.0",
     "vue": ">=3.0.0"
   },
   "peerDependenciesMeta": {
     "@angular/core": {"optional": true},
+    "@angular/platform-browser": {"optional": true},
     "svelte": {"optional": true},
     "vue": {"optional": true}
   },

@@ -1,9 +1,8 @@
 import 'zone.js';
 import '@angular/compiler';
-import {type ApplicationRef, DestroyRef, EnvironmentInjector, type Type, createComponent, inject} from '@angular/core';
-import {createApplication} from '@angular/platform-browser';
+import type {Type} from '@angular/core';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
-import {createTranslatorSignals} from '@mndw/sdk/angular';
+import {createAngularPluginInstance, provideTranslator} from '@mndw/sdk/angular';
 import {MwsApiService} from './api/mws-api.service';
 import {AppComponent} from './app/app.component';
 import {LiveMapNodeDetailsSource} from './node-details-source';
@@ -25,7 +24,6 @@ import {
   PLUGIN_STORAGE,
   RCI_MANAGER,
   SHARED_PLUGIN_STORAGE,
-  TRANSLATOR,
 } from './tokens';
 
 export interface MwsInstanceOptions {
@@ -38,11 +36,8 @@ export function createMwsMapInstance(
   ctx: PluginContext,
   options: MwsInstanceOptions = {},
 ): PluginInstance {
-  let appRef: ApplicationRef | null = null;
-  let componentRef: ReturnType<typeof createComponent> | null = null;
   let positions: NodePositionStore | null = null;
   let columns: NodeTableColumnsStore | null = null;
-  let cancelled = false;
   const onThemeChange = ctx.onThemeChange.bind(ctx);
   const dataServiceProvider = options.dataService === undefined
     ? MwsDataService
@@ -71,7 +66,8 @@ export function createMwsMapInstance(
     el.dataset.mndwTheme = theme;
   });
 
-  createApplication({
+  return createAngularPluginInstance(el, {
+    rootComponent: AppComponent,
     providers: [
       {provide: RCI_MANAGER, useValue: ctx.rciManager},
       {provide: OVERLAY, useValue: ctx.overlay},
@@ -82,7 +78,7 @@ export function createMwsMapInstance(
       {provide: SHARED_PLUGIN_STORAGE, useValue: ctx.sharedStorage},
       ...mockOptionsProvider,
       {provide: ON_THEME_CHANGE, useValue: onThemeChange},
-      {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(ctx.i18n, inject(DestroyRef))},
+      provideTranslator(ctx.i18n),
       MwsApiService,
       {provide: MWS_RENAME_API, useExisting: MwsApiService},
       dataServiceProvider,
@@ -91,52 +87,22 @@ export function createMwsMapInstance(
       NodePositionStore,
       NodeTableColumnsStore,
     ],
-  }).then((ref) => {
-    if (cancelled) {
-      ref.destroy();
+    configure: ({appRef, injector, component}) => {
+      const dataService = injector.get(MwsDataService);
+      const detailsSource = new LiveMapNodeDetailsSource(dataService.snapshots$);
 
-      return;
-    }
-
-    appRef = ref;
-
-    const injector = ref.injector.get(EnvironmentInjector);
-    const dataService = ref.injector.get(MwsDataService);
-    const detailsSource = new LiveMapNodeDetailsSource(dataService.snapshots$);
-
-    positions = ref.injector.get(NodePositionStore);
-    columns = ref.injector.get(NodeTableColumnsStore);
-
-    el.innerHTML = '';
-    componentRef = createComponent(AppComponent, {hostElement: el, environmentInjector: injector});
-    componentRef.setInput('openNodeDrawer', (nodeId: string, title: string, onClose: () => void) => {
-      openNodeDrawer(ctx, ref, injector, detailsSource, nodeId, title, onClose);
-    });
-    ref.attachView(componentRef.hostView);
-  });
-
-  return {
-    unmount(): void {
-      cancelled = true;
+      positions = injector.get(NodePositionStore);
+      columns = injector.get(NodeTableColumnsStore);
+      component.setInput('openNodeDrawer', (nodeId: string, title: string, onClose: () => void) => {
+        openNodeDrawer(ctx, appRef, detailsSource, nodeId, title, onClose);
+      });
+    },
+    onUnmount: () => {
       unsubscribeTheme();
       unsubscribeLocale();
       ctx.overlay.closeAll();
       void positions?.flush();
       void columns?.flush();
-
-      if (componentRef !== null) {
-        componentRef.destroy();
-        componentRef = null;
-      }
-
-      if (appRef !== null) {
-        appRef.destroy();
-        appRef = null;
-      }
-
-      positions = null;
-
-      el.replaceChildren();
     },
-  };
+  });
 }

@@ -1,5 +1,6 @@
-import {type ApplicationRef, type EnvironmentInjector, createComponent} from '@angular/core';
+import type {ApplicationRef} from '@angular/core';
 import type {PluginContext} from '@mndw/sdk';
+import {mountComponentInOverlay} from '@mndw/sdk/angular';
 import type {NetworkInterface} from './types/rci.types';
 import {SettingsDialogComponent} from './components/settings-dialog/settings-dialog.component';
 
@@ -22,7 +23,6 @@ export type OpenSettingsFn = (args: SettingsDialogArgs) => void;
 export function openSettingsDialog(
   ctx: PluginContext,
   appRef: ApplicationRef,
-  injector: EnvironmentInjector,
   args: SettingsDialogArgs,
 ): void {
   ctx.overlay.open({
@@ -30,33 +30,28 @@ export function openSettingsDialog(
     title: args.title,
     closeOnOutsideClick: true,
     mount(target, layer) {
-      const ref = createComponent(
-        SettingsDialogComponent,
-        {
-          hostElement: target,
-          environmentInjector: injector,
+      mountComponentInOverlay({
+        appRef,
+        target,
+        layer,
+        component: SettingsDialogComponent,
+        setup: (ref) => {
+          ref.setInput('interfaces', args.interfaces);
+          ref.setInput('selectedInterface', args.selectedInterface);
+          ref.setInput('refresh', args.refresh);
+
+          const subscriptions = [
+            ref.instance.interfaceChange.subscribe((id: string) => args.onInterfaceChange(id)),
+            ref.instance.refreshChange.subscribe((refresh: number) => args.onRefreshChange(refresh)),
+            ref.instance.closeDialogEvent.subscribe(() => layer.close(undefined, 'action')),
+          ];
+
+          return () => {
+            for (const subscription of subscriptions) {
+              subscription.unsubscribe();
+            }
+          };
         },
-      );
-
-      ref.setInput('interfaces', args.interfaces);
-      ref.setInput('selectedInterface', args.selectedInterface);
-      ref.setInput('refresh', args.refresh);
-
-      const subscriptions = [
-        ref.instance.interfaceChange.subscribe((id: string) => args.onInterfaceChange(id)),
-        ref.instance.refreshChange.subscribe((refresh: number) => args.onRefreshChange(refresh)),
-        ref.instance.closeDialogEvent.subscribe(() => layer.close(undefined, 'action')),
-      ];
-
-      appRef.attachView(ref.hostView);
-
-      layer.setCleanup(() => {
-        for (const subscription of subscriptions) {
-          subscription.unsubscribe();
-        }
-
-        appRef.detachView(ref.hostView);
-        ref.destroy();
       });
     },
   });

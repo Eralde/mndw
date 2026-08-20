@@ -1,12 +1,12 @@
-import {type ApplicationRef, type EnvironmentInjector, createComponent} from '@angular/core';
+import type {ApplicationRef} from '@angular/core';
 import type {OverlaySession, PluginContext} from '@mndw/sdk';
+import {mountComponentInOverlay} from '@mndw/sdk/angular';
 import {NodeDrawerComponent} from './components/node-drawer/node-drawer.component';
 import type {NodeDetailsSource} from './node-details-source';
 
 export function openNodeDrawer(
   ctx: PluginContext,
   appRef: ApplicationRef,
-  injector: EnvironmentInjector,
   source: NodeDetailsSource,
   nodeId: string,
   title: string,
@@ -21,35 +21,32 @@ export function openNodeDrawer(
     width: 400,
     closeOnOutsideClick: true,
     mount(target, layer) {
-      const ref = createComponent(NodeDrawerComponent, {
-        hostElement: target,
-        environmentInjector: injector,
-      });
+      mountComponentInOverlay({
+        appRef,
+        target,
+        layer,
+        component: NodeDrawerComponent,
+        setup: (ref) => {
+          ref.setInput('setTitle', (nextTitle: string) => {
+            if (nextTitle === lastAppliedTitle) {
+              return;
+            }
 
-      ref.setInput('setTitle', (nextTitle: string) => {
-        if (nextTitle === lastAppliedTitle) {
-          return;
-        }
+            lastAppliedTitle = nextTitle;
+            session?.update({title: nextTitle});
+          });
 
-        lastAppliedTitle = nextTitle;
-        session?.update({title: nextTitle});
-      });
+          const subscription = source.open(nodeId, layer.signal).subscribe((node) => {
+            ref.setInput('node', node);
 
-      const subscription = source.open(nodeId, layer.signal).subscribe((node) => {
-        ref.setInput('node', node);
+            if (node !== null && node.name !== lastAppliedTitle) {
+              lastAppliedTitle = node.name;
+              session?.update({title: node.name});
+            }
+          });
 
-        if (node !== null && node.name !== lastAppliedTitle) {
-          lastAppliedTitle = node.name;
-          session?.update({title: node.name});
-        }
-      });
-
-      appRef.attachView(ref.hostView);
-
-      layer.setCleanup(() => {
-        subscription.unsubscribe();
-        appRef.detachView(ref.hostView);
-        ref.destroy();
+          return () => subscription.unsubscribe();
+        },
       });
     },
   });

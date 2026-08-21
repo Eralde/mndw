@@ -32,7 +32,10 @@ function assertPageBaseRoute(route: string, name: string): void {
 }
 
 function assertRouteIsAvailable(route: string, name: string): void {
-  if (route === '/' || route === '/login' || route === '/packages' || route === '/settings') {
+  if (
+    route === '/' || route === '/login' || route === '/packages' || route === '/packages/services'
+    || route === '/settings'
+  ) {
     throw new Error(`Page plugin "${name}" route "${route}" conflicts with a reserved static route`);
   }
 }
@@ -161,6 +164,7 @@ export function createAppRouter(
       'layout': AppShell,
       '/': DashboardPage,
       '/packages': PackageManagerPage,
+      '/packages/services': PackageManagerPage,
       '/settings': SettingsPage,
       ...Object.fromEntries(SETTINGS_TAB_DEFS.map((tab) => [tab.route, SettingsPage])),
       ...pluginRoutes,

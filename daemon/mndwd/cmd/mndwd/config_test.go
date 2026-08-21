@@ -97,6 +97,29 @@ func TestParseDefaultsV3BackendLimitsAndTimeouts(t *testing.T) {
 	}
 }
 
+func TestParseServiceDefaultsToOpkg(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--opkg", "stub"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Service != "stub" {
+		t.Fatalf("service mode = %q, want stub", cfg.Service)
+	}
+}
+
+func TestParseServiceOverrideAndValidation(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--opkg", "stub", "--service", "exec"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Service != "exec" {
+		t.Fatalf("service mode = %q, want exec", cfg.Service)
+	}
+	if _, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--service", "invalid"}); err == nil {
+		t.Fatal("invalid service mode succeeded")
+	}
+}
+
 func TestParseRejectsInvalidV3BackendConfig(t *testing.T) {
 	for _, args := range [][]string{
 		{"--max-concurrent-exec-total", "0"},

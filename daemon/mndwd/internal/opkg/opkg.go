@@ -11,10 +11,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"mndwd/internal/output"
 )
@@ -23,10 +26,32 @@ import (
 // (passed to exec), so it must stay within this character set.
 var pkgNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9+._-]*$`)
 
+var ErrOpkgUnavailable = errors.New("opkg unavailable")
+
 // InvalidPackageError is returned when a package name fails validation. Callers map
 // it to a 400 (INVALID_PACKAGE_NAME); a package name never reaches the shell.
 type InvalidPackageError struct {
 	Name string
+}
+
+type ProtectedPackageError struct{ Name string }
+
+func (e *ProtectedPackageError) Error() string { return "protected package: " + e.Name }
+
+type PackageInfo struct {
+	Name          string   `json:"name"`
+	Version       string   `json:"version"`
+	Description   string   `json:"description"`
+	Size          string   `json:"size,omitempty"`
+	InstalledSize string   `json:"installedSize,omitempty"`
+	Dependencies  []string `json:"dependencies"`
+	Status        string   `json:"status"`
+	InstalledTime string   `json:"installedTime,omitempty"`
+}
+
+type PackageList struct {
+	Packages          []PackageEntry `json:"packages"`
+	MetadataUpdatedAt *time.Time     `json:"metadataUpdatedAt"`
 }
 
 func (e *InvalidPackageError) Error() string {
@@ -61,17 +86,22 @@ type Manager interface {
 	ListInstalled(ctx context.Context) ([]string, error)
 	// ListAvailable returns the names of packages available to install.
 	ListAvailable(ctx context.Context) ([]string, error)
-	// List returns a merged, version-aware package listing.
-	List(ctx context.Context) ([]PackageEntry, error)
+	// List returns a merged package listing and device metadata freshness.
+	List(ctx context.Context) (PackageList, error)
+	// Info returns available-feed details overlaid with installed-only fields.
+	Info(ctx context.Context, name string) (PackageInfo, error)
 }
 
 // New returns an exec-backed Manager, or a stub when mode is "stub".
 func New(mode string, logger *slog.Logger) Manager {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	if mode == "stub" {
 		return newStub(logger)
 	}
 
-	return &execManager{logger: logger, gate: make(chan struct{}, 1)}
+	return &execManager{logger: logger, listsDir: "/opt/var/opkg-lists/", gate: make(chan struct{}, 1)}
 }
 
 // validate rejects an empty list or any malformed package name before exec.
@@ -94,13 +124,29 @@ func validate(packages []string) error {
 // ------------------------------------
 
 type execManager struct {
-	logger *slog.Logger
-	runner func(ctx context.Context, args ...string) (string, int, error)
+	logger   *slog.Logger
+	runner   func(ctx context.Context, args ...string) (string, int, error)
+	listsDir string
 	// gate is a 1-slot semaphore serializing mutating operations. A plain mutex
 	// would defeat cancellation: Lock() cannot be interrupted, so a shutdown
 	// arriving while another install holds the lock would stall the caller for
 	// the full remaining install. Acquisition selects on ctx instead.
-	gate chan struct{}
+	gate       chan struct{}
+	defaultsMu sync.Mutex
+}
+
+func (m *execManager) defaults() {
+	m.defaultsMu.Lock()
+	defer m.defaultsMu.Unlock()
+	if m.logger == nil {
+		m.logger = slog.Default()
+	}
+	if m.listsDir == "" {
+		m.listsDir = "/opt/var/opkg-lists/"
+	}
+	if m.gate == nil {
+		m.gate = make(chan struct{}, 1)
+	}
 }
 
 func execRun(ctx context.Context, args ...string) (string, int, error) {
@@ -122,6 +168,9 @@ func execRun(ctx context.Context, args ...string) (string, int, error) {
 	if err == nil {
 		return stdout.String(), 0, nil
 	}
+	if errors.Is(err, exec.ErrNotFound) || os.IsNotExist(err) {
+		return "", 0, fmt.Errorf("%w: %v", ErrOpkgUnavailable, err)
+	}
 
 	var exitErr *exec.ExitError
 
@@ -136,6 +185,7 @@ func execRun(ctx context.Context, args ...string) (string, int, error) {
 }
 
 func (m *execManager) run(ctx context.Context, args ...string) (string, int, error) {
+	m.defaults()
 	if m.runner != nil {
 		return m.runner(ctx, args...)
 	}
@@ -164,6 +214,7 @@ func (m *execManager) release() {
 }
 
 func (m *execManager) mutate(ctx context.Context, action string, packages []string, args ...string) error {
+	m.defaults()
 	if err := validate(packages); err != nil {
 		return err
 	}
@@ -197,14 +248,21 @@ func (m *execManager) Install(ctx context.Context, packages []string) error {
 }
 
 func (m *execManager) Remove(ctx context.Context, packages []string) error {
+	if err := rejectProtected(packages); err != nil {
+		return err
+	}
 	return m.mutate(ctx, "remove", packages, "remove")
 }
 
 func (m *execManager) Upgrade(ctx context.Context, packages []string) error {
+	if err := rejectProtected(packages); err != nil {
+		return err
+	}
 	return m.mutate(ctx, "upgrade", packages, "upgrade")
 }
 
 func (m *execManager) Update(ctx context.Context) error {
+	m.defaults()
 	if err := m.acquire(ctx); err != nil {
 		return fmt.Errorf("opkg update: %w", err)
 	}
@@ -224,6 +282,15 @@ func (m *execManager) Update(ctx context.Context) error {
 		return fmt.Errorf("opkg update exited %d", exitCode)
 	}
 
+	return nil
+}
+
+func rejectProtected(packages []string) error {
+	for _, name := range packages {
+		if name == "mndw" || name == "lighttpd" {
+			return &ProtectedPackageError{Name: name}
+		}
+	}
 	return nil
 }
 
@@ -252,22 +319,31 @@ func (m *execManager) list(ctx context.Context, verb string) ([]string, error) {
 	return parseNames(out), nil
 }
 
-func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
+func (m *execManager) List(ctx context.Context) (PackageList, error) {
 	installedMap, installedErr := m.listMap(ctx, "list-installed")
 
 	availableMap, availableErr := m.listMap(ctx, "list")
 
 	if installedErr != nil && availableErr != nil {
-		return nil, fmt.Errorf("opkg list-installed: %w; opkg list: %w", installedErr, availableErr)
+		return PackageList{}, fmt.Errorf("opkg list-installed: %w; opkg list: %w", installedErr, availableErr)
 	}
 
+	combined := mergePackageMaps(installedMap, availableMap)
+	metadataUpdatedAt, err := m.metadataUpdatedAt()
+	if err != nil {
+		return PackageList{}, err
+	}
+	return PackageList{Packages: combined, MetadataUpdatedAt: metadataUpdatedAt}, nil
+}
+
+func mergePackageMaps(installedMap, availableMap map[string]PackageEntry) []PackageEntry {
 	combined := make([]PackageEntry, 0, len(installedMap)+len(availableMap))
 
 	for name, available := range availableMap {
 		installed, ok := installedMap[name]
 
 		if !ok {
-			available.Status = "uninstalled"
+			available.Status = "available"
 			combined = append(combined, available)
 
 			continue
@@ -306,7 +382,182 @@ func (m *execManager) List(ctx context.Context) ([]PackageEntry, error) {
 
 	sort.Slice(combined, func(i, j int) bool { return combined[i].Name < combined[j].Name })
 
-	return combined, nil
+	return combined
+}
+
+type packageInfoBlock struct {
+	Name          string
+	Version       string
+	Description   string
+	Size          string
+	Dependencies  []string
+	InstalledSize string
+	InstalledTime string
+}
+
+type PackageNotFoundError struct{ Name string }
+
+func (e *PackageNotFoundError) Error() string { return "package not found: " + e.Name }
+
+func (m *execManager) Info(ctx context.Context, name string) (PackageInfo, error) {
+	m.defaults()
+	if !pkgNameRe.MatchString(name) {
+		return PackageInfo{}, &InvalidPackageError{Name: name}
+	}
+	out, exitCode, err := m.run(ctx, "opkg", "info", name)
+	if err != nil {
+		return PackageInfo{}, fmt.Errorf("opkg info: %w", err)
+	}
+	if exitCode != 0 {
+		return PackageInfo{}, &PackageNotFoundError{Name: name}
+	}
+	blocks, err := parseInfoBlocks(out)
+	if err != nil {
+		return PackageInfo{}, err
+	}
+
+	installedMap, _ := m.listMap(ctx, "list-installed")
+	availableMap, _ := m.listMap(ctx, "list")
+	installedVersion := ""
+	if installed, ok := installedMap[name]; ok {
+		installedVersion = installed.Version
+	}
+	selected, err := selectInfoBlock(blocks, name, installedVersion)
+	if err != nil {
+		return PackageInfo{}, err
+	}
+
+	info := PackageInfo{
+		Name:         selected.Name,
+		Version:      selected.Version,
+		Description:  selected.Description,
+		Size:         selected.Size,
+		Dependencies: selected.Dependencies,
+		Status:       derivePackageStatus(name, installedMap, availableMap),
+	}
+	statusOut, statusExit, statusErr := m.run(ctx, "opkg", "status", name)
+	if statusErr == nil && statusExit == 0 {
+		statusBlocks, parseErr := parseInfoBlocks(statusOut)
+		if parseErr == nil {
+			if statusBlock, findErr := selectInfoBlock(statusBlocks, name, installedVersion); findErr == nil {
+				info.InstalledSize = statusBlock.InstalledSize
+				info.InstalledTime = statusBlock.InstalledTime
+			}
+		}
+	}
+	return info, nil
+}
+
+func derivePackageStatus(name string, installedMap, availableMap map[string]PackageEntry) string {
+	installed, installedOK := installedMap[name]
+	available, availableOK := availableMap[name]
+	if !installedOK {
+		return "available"
+	}
+	if availableOK && installed.Version != available.Version {
+		return "update_available"
+	}
+	return "installed"
+}
+
+func parseInfoBlocks(out string) ([]packageInfoBlock, error) {
+	blocks := make([]packageInfoBlock, 0)
+	for _, rawBlock := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n\n") {
+		blockText := strings.TrimSpace(rawBlock)
+		if blockText == "" {
+			continue
+		}
+		block := packageInfoBlock{Dependencies: []string{}}
+		lastField := ""
+		for _, line := range strings.Split(blockText, "\n") {
+			rawLine := strings.TrimRight(line, "\r")
+			line = strings.TrimSpace(rawLine)
+			if line == "" {
+				continue
+			}
+			key, value, ok := strings.Cut(line, ":")
+			if !ok {
+				// A line without a colon is a continuation of the previous
+				// field: either a wrapped Description line, or an entry in a
+				// multi-valued field such as Conffiles (a path plus checksum).
+				if lastField == "Description" {
+					if block.Description != "" {
+						block.Description += "\n"
+					}
+					block.Description += line
+				}
+
+				continue
+			}
+			lastField = strings.TrimSpace(key)
+			value = strings.TrimSpace(value)
+			switch lastField {
+			case "Package":
+				block.Name = value
+			case "Version":
+				block.Version = value
+			case "Description":
+				block.Description = value
+			case "Size":
+				block.Size = value
+			case "Depends":
+				if value != "" {
+					for _, dependency := range strings.Split(value, ",") {
+						block.Dependencies = append(block.Dependencies, strings.TrimSpace(dependency))
+					}
+				}
+			case "Installed-Size":
+				block.InstalledSize = value
+			case "Installed-Time":
+				block.InstalledTime = value
+			}
+		}
+		if block.Name == "" || block.Version == "" {
+			return nil, fmt.Errorf("malformed opkg info block: missing package or version")
+		}
+		blocks = append(blocks, block)
+	}
+	return blocks, nil
+}
+
+func selectInfoBlock(blocks []packageInfoBlock, name, installedVersion string) (packageInfoBlock, error) {
+	for _, block := range blocks {
+		if block.Name == name && installedVersion != "" && block.Version == installedVersion {
+			return block, nil
+		}
+	}
+	for _, block := range blocks {
+		if block.Name == name {
+			return block, nil
+		}
+	}
+	return packageInfoBlock{}, &PackageNotFoundError{Name: name}
+}
+
+func (m *execManager) metadataUpdatedAt() (*time.Time, error) {
+	m.defaults()
+	entries, err := os.ReadDir(m.listsDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read opkg lists directory: %w", err)
+	}
+	var newest time.Time
+	for _, entry := range entries {
+		info, infoErr := entry.Info()
+		if infoErr != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		modified := info.ModTime().UTC()
+		if newest.IsZero() || modified.After(newest) {
+			newest = modified
+		}
+	}
+	if newest.IsZero() {
+		return nil, nil
+	}
+	return &newest, nil
 }
 
 func (m *execManager) listMap(ctx context.Context, verb string) (map[string]PackageEntry, error) {

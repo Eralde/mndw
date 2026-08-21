@@ -24,6 +24,7 @@ import (
 	"mndwd/internal/opkg"
 	"mndwd/internal/palette"
 	"mndwd/internal/registry"
+	"mndwd/internal/service"
 	"mndwd/internal/state"
 )
 
@@ -69,17 +70,15 @@ func run(cfg Config) error {
 	}
 
 	verifier := authz.New(cfg.RouterURL, cfg.Dev, logger, authz.Options{})
-	c := assemble(cfg, store, paletteStore, verifier, logger)
+	// The lifetime context is created before management wiring so service actions can
+	// survive request cancellation but still stop when the daemon shuts down.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	c := assemble(cfg, store, paletteStore, verifier, logger, ctx)
 	if c.startupErr != nil {
 		return c.startupErr
 	}
-
-	// run owns all lifetimes: the signal context drives graceful HTTP shutdown, and
-	// background install work runs under a child so a signal cancels installs
-	// immediately — without waiting for HTTP drain.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-
-	defer stop()
 
 	if c.activationAssembly != nil {
 		// Supervisor.Start only launches the child and probes its local backend
@@ -133,9 +132,10 @@ type components struct {
 
 // assemble builds the fully-wired daemon. Kept separate from run so the integration
 // test can drive the exact same wiring over httptest.
-func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger) components {
+func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) components {
 	reg := registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, logger)
 	opkgMgr := opkg.New(cfg.Opkg, logger)
+	serviceMgr := service.New(cfg.Service, logger)
 	activationGates := backend.NewActivationGateRegistry()
 	runtimeRoot := cfg.PluginRuntimeRoot
 
@@ -170,7 +170,7 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 
 	mux := http.NewServeMux()
 	accessRegistration := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, activationGates, verifier, logger)
-	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, reg, runtime, accessRegistration.permissionController, verifier, logger)
+	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, serviceMgr, reg, runtime, accessRegistration.permissionController, verifier, logger, lifetime)
 
 	registerPalette(mux, mgmtMux, paletteStore, logger)
 
@@ -191,7 +191,7 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 
 // registerMgmt mounts the session-gated management surface and returns its mux so
 // other session-gated routes (e.g. protected palette) can share the gate.
-func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, permissionController mgmt.PersistentRCIPermissionController, verifier *authz.Verifier, logger *slog.Logger) *http.ServeMux {
+func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, serviceMgr service.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, permissionController mgmt.PersistentRCIPermissionController, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) *http.ServeMux {
 	mgmtHandler := mgmt.New(mgmt.Config{
 		StagingDir:                        cfg.StagingDir(),
 		UserPluginsDir:                    cfg.UserPluginsDir,
@@ -199,7 +199,8 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 		MaxUploadBytes:                    maxUploadBytes,
 		Runtime:                           runtime,
 		PersistentRCIPermissionController: permissionController,
-	}, store, opkgMgr, reg, logger)
+		ServiceActionRoot:                 lifetime,
+	}, store, opkgMgr, serviceMgr, reg, logger)
 
 	mgmtMux := http.NewServeMux()
 

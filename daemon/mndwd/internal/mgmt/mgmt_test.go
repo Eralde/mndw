@@ -118,7 +118,7 @@ func newTestServer(t *testing.T) (*httptest.Server, Config) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mux := http.NewServeMux()
 
-	New(cfg, store, opkg.New("stub", logger), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
+	New(cfg, store, opkg.New("stub", logger), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -149,7 +149,7 @@ func newPermissionServer(t *testing.T, controller PersistentRCIPermissionControl
 
 	mux := http.NewServeMux()
 
-	New(cfg, store, opkg.New("stub", discardLogger()), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger()).Register(mux)
+	New(cfg, store, opkg.New("stub", discardLogger()), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger()).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -178,7 +178,7 @@ func newLifecycleServer(t *testing.T, runtime backend.Runtime, controller Persis
 	logger := discardLogger()
 	mux := http.NewServeMux()
 
-	New(cfg, store, opkg.New("stub", logger), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
+	New(cfg, store, opkg.New("stub", logger), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -255,7 +255,7 @@ func newTestServerWithOpkg(t *testing.T, opkgMgr opkg.Manager) (*httptest.Server
 	logger := discardLogger()
 	mux := http.NewServeMux()
 
-	New(cfg, store, opkgMgr, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
+	New(cfg, store, opkgMgr, nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -769,7 +769,7 @@ func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
 
 	writeBuiltinFixture(t, cfg, "core-demo", false)
 
-	handler := New(cfg, store, opkg.New("stub", discardLogger()), registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger())
+	handler := New(cfg, store, opkg.New("stub", discardLogger()), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger())
 	mux := http.NewServeMux()
 
 	handler.Register(mux)

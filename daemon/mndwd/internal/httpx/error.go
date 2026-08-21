@@ -51,7 +51,15 @@ const (
 
 	// Explicit package management and backend lifecycle errors.
 	CodeOpkgFailed                   = "OPKG_FAILED"
+	CodeOpkgUnavailable              = "OPKG_UNAVAILABLE"
 	CodeInvalidPackageName           = "INVALID_PACKAGE_NAME"
+	CodeProtectedPackage             = "PROTECTED_PACKAGE"
+	CodeInvalidServiceName           = "INVALID_SERVICE_NAME"
+	CodeProtectedService             = "PROTECTED_SERVICE"
+	CodeServiceUnavailable           = "SERVICE_UNAVAILABLE"
+	CodeActionFailed                 = "ACTION_FAILED"
+	CodeActionTimeout                = "ACTION_TIMEOUT"
+	CodeUnknown                      = "UNKNOWN"
 	CodeDaemonFailed                 = "DAEMON_FAILED"
 	CodeRCITokenInvalid              = "RCI_TOKEN_INVALID"
 	CodeRCIFirmwareUnsupported       = "RCI_FIRMWARE_UNSUPPORTED"

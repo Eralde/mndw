@@ -39,6 +39,13 @@ export const OPKG_INSTALL_URL = '/api/mgmt/opkg/install';
 export const OPKG_REMOVE_URL = '/api/mgmt/opkg/remove';
 export const OPKG_UPDATE_URL = '/api/mgmt/opkg/update';
 export const OPKG_UPGRADE_URL = '/api/mgmt/opkg/upgrade';
+export const OPKG_INFO_URL = '/api/mgmt/opkg/info';
+export const SERVICE_LIST_URL = '/api/mgmt/service/list';
+export const SERVICE_STATUS_URL = '/api/mgmt/service/status';
+export const SERVICE_START_URL = '/api/mgmt/service/start';
+export const SERVICE_STOP_URL = '/api/mgmt/service/stop';
+export const SERVICE_RESTART_URL = '/api/mgmt/service/restart';
+export const SERVICE_SET_ENABLED_URL = '/api/mgmt/service/set-enabled';
 
 /** URL prefixes plugin assets are served from, by source */
 export const PLUGIN_SOURCE_PATHS = {

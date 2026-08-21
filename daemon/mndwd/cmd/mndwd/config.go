@@ -43,6 +43,7 @@ type Config struct {
 	DiagnosticsLogFile string
 	Dev                bool
 	Opkg               string
+	Service            string
 	LogLevel           string
 
 	// Exec/service runtime limits and timeouts.
@@ -106,6 +107,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.StringVar(&cfg.DiagnosticsLogFile, "diagnostics-log-file", defaultDiagnosticsLogFile, "read-only log path for diagnostics")
 	fs.BoolVar(&cfg.Dev, "dev", false, "dev mode: bypass session auth; logged loudly")
 	fs.StringVar(&cfg.Opkg, "opkg", "exec", "opkg mode: exec|stub")
+	fs.StringVar(&cfg.Service, "service", "", "service mode: exec|stub; defaults to --opkg")
 	fs.StringVar(&cfg.LogLevel, "log-level", "info", "log level: debug|info|warn|error")
 	fs.DurationVar(&cfg.ExecTimeout, "exec-timeout", 30*time.Second, "per-request exec timeout")
 	fs.DurationVar(&cfg.ExecKillGrace, "exec-kill-grace", 2*time.Second, "grace period after terminating an exec process group")
@@ -197,6 +199,12 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 
 	if cfg.Opkg != "exec" && cfg.Opkg != "stub" {
 		return cfg, false, fmt.Errorf("--opkg must be exec or stub, got %q", cfg.Opkg)
+	}
+	if cfg.Service == "" {
+		cfg.Service = cfg.Opkg
+	}
+	if cfg.Service != "exec" && cfg.Service != "stub" {
+		return cfg, false, fmt.Errorf("--service must be exec or stub, got %q", cfg.Service)
 	}
 
 	if _, ok := parseLevel(cfg.LogLevel); !ok {

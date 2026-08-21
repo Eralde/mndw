@@ -49,8 +49,8 @@ type failingListManager struct {
 	opkg.Manager
 }
 
-func (m failingListManager) List(context.Context) ([]opkg.PackageEntry, error) {
-	return nil, errors.New("list failed")
+func (m failingListManager) List(context.Context) (opkg.PackageList, error) {
+	return opkg.PackageList{}, errors.New("list failed")
 }
 
 func TestOpkgListOpkgFailure(t *testing.T) {

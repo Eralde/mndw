@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sort"
 	"sync"
+	"time"
 )
 
 type stubPackage struct {
@@ -27,9 +28,10 @@ var stubCatalog = map[string]stubPackage{
 // stubManager is an in-memory opkg for --dev and tests: it tracks installed versions so
 // list/install/remove/upgrade behave consistently, and logs each operation.
 type stubManager struct {
-	logger    *slog.Logger
-	mu        sync.Mutex
-	installed map[string]string
+	logger            *slog.Logger
+	mu                sync.Mutex
+	installed         map[string]string
+	metadataUpdatedAt *time.Time
 }
 
 func newStub(logger *slog.Logger) *stubManager {
@@ -67,6 +69,9 @@ func (m *stubManager) Remove(ctx context.Context, packages []string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := rejectProtected(packages); err != nil {
+		return err
+	}
 	if err := validate(packages); err != nil {
 		return err
 	}
@@ -85,6 +90,9 @@ func (m *stubManager) Upgrade(ctx context.Context, packages []string) error {
 		return err
 	}
 	if err := validate(packages); err != nil {
+		return err
+	}
+	if err := rejectProtected(packages); err != nil {
 		return err
 	}
 	m.logger.Info("opkg upgrade (stub)", "packages", packages)
@@ -141,9 +149,9 @@ func (m *stubManager) ListAvailable(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (m *stubManager) List(ctx context.Context) ([]PackageEntry, error) {
+func (m *stubManager) List(ctx context.Context) (PackageList, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return PackageList{}, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -155,7 +163,7 @@ func (m *stubManager) List(ctx context.Context) ([]PackageEntry, error) {
 			Name:        name,
 			Version:     catalog.version,
 			Description: catalog.description,
-			Status:      "uninstalled",
+			Status:      "available",
 		}
 		if installed {
 			entry.Version = installedVersion
@@ -176,5 +184,38 @@ func (m *stubManager) List(ctx context.Context) ([]PackageEntry, error) {
 
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
 
-	return entries, nil
+	return PackageList{Packages: entries, MetadataUpdatedAt: m.metadataUpdatedAt}, nil
+}
+
+func (m *stubManager) Info(ctx context.Context, name string) (PackageInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return PackageInfo{}, err
+	}
+	if !pkgNameRe.MatchString(name) {
+		return PackageInfo{}, &InvalidPackageError{Name: name}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	catalog, available := stubCatalog[name]
+	installedVersion, installed := m.installed[name]
+	if !available && !installed {
+		return PackageInfo{}, &PackageNotFoundError{Name: name}
+	}
+	version := catalog.version
+	description := catalog.description
+	status := "available"
+	if installed {
+		version = installedVersion
+		status = "installed"
+		if available && installedVersion != catalog.version {
+			status = "update_available"
+		}
+	}
+	return PackageInfo{
+		Name:         name,
+		Version:      version,
+		Description:  description,
+		Dependencies: []string{},
+		Status:       status,
+	}, nil
 }

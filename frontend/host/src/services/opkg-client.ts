@@ -1,11 +1,34 @@
-import {OPKG_INSTALL_URL, OPKG_LIST_URL, OPKG_REMOVE_URL, OPKG_UPDATE_URL, OPKG_UPGRADE_URL} from '../constants.js';
+import {
+  OPKG_INFO_URL,
+  OPKG_INSTALL_URL,
+  OPKG_LIST_URL,
+  OPKG_REMOVE_URL,
+  OPKG_UPDATE_URL,
+  OPKG_UPGRADE_URL,
+} from '../constants.js';
 
 export interface PackageEntry {
   name: string;
   version: string;
   description: string;
-  status: 'installed' | 'update_available' | 'uninstalled';
+  status: 'installed' | 'update_available' | 'available';
   newVersion?: string;
+}
+
+export interface PackageList {
+  packages: PackageEntry[];
+  metadataUpdatedAt: string | null;
+}
+
+export interface PackageInfo {
+  name: string;
+  version: string;
+  description: string;
+  size?: string;
+  installedSize?: string;
+  dependencies: string[];
+  status: 'installed' | 'update_available' | 'available';
+  installedTime?: string;
 }
 
 export class OpkgError extends Error {
@@ -19,7 +42,8 @@ export class OpkgError extends Error {
 }
 
 export interface OpkgClient {
-  list(): Promise<PackageEntry[]>;
+  list(): Promise<PackageList>;
+  info(name: string): Promise<PackageInfo>;
   install(packages: string[]): Promise<{message: string; packages: string[]}>;
   remove(packages: string[]): Promise<{message: string; packages: string[]}>;
   upgrade(packages: string[]): Promise<{message: string; packages: string[]}>;
@@ -74,7 +98,7 @@ function validatePackageEntry(value: unknown): PackageEntry {
   const description = value.description;
   const status = value.status;
   const newVersion = value.newVersion;
-  const validStatus = status === 'installed' || status === 'update_available' || status === 'uninstalled';
+  const validStatus = status === 'installed' || status === 'update_available' || status === 'available';
 
   if (
     typeof name !== 'string' || name.length === 0 || typeof version !== 'string' || typeof description !== 'string'
@@ -83,7 +107,7 @@ function validatePackageEntry(value: unknown): PackageEntry {
     throw malformedResponse();
   }
 
-  if ((status === 'uninstalled' || status === 'update_available') && version.length === 0) {
+  if ((status === 'available' || status === 'update_available') && version.length === 0) {
     throw malformedResponse();
   }
 
@@ -104,12 +128,62 @@ function validatePackageEntry(value: unknown): PackageEntry {
   };
 }
 
-function validateListResponse(body: unknown): PackageEntry[] {
+function validateListResponse(body: unknown): PackageList {
   if (!isRecord(body) || !Array.isArray(body.packages)) {
     throw malformedResponse();
   }
 
-  return body.packages.map((entry) => validatePackageEntry(entry));
+  const metadataUpdatedAt = body.metadataUpdatedAt;
+
+  if (metadataUpdatedAt !== null && typeof metadataUpdatedAt !== 'string') {
+    throw malformedResponse();
+  }
+
+  if (typeof metadataUpdatedAt === 'string' && Number.isNaN(Date.parse(metadataUpdatedAt))) {
+    throw malformedResponse();
+  }
+
+  return {packages: body.packages.map((entry) => validatePackageEntry(entry)), metadataUpdatedAt};
+}
+
+function validatePackageInfo(value: unknown): PackageInfo {
+  if (!isRecord(value)) {
+    throw malformedResponse();
+  }
+
+  const status = value.status;
+
+  if (
+    typeof value.name !== 'string' || value.name.length === 0 || typeof value.version !== 'string'
+    || typeof value.description !== 'string' || !Array.isArray(value.dependencies)
+    || !value.dependencies.every((dependency): dependency is string => typeof dependency === 'string')
+    || (status !== 'installed' && status !== 'update_available' && status !== 'available')
+  ) {
+    throw malformedResponse();
+  }
+
+  const optionalStrings = ['size', 'installedSize', 'installedTime'] as const;
+
+  for (const field of optionalStrings) {
+    if (value[field] !== undefined && typeof value[field] !== 'string') {
+      throw malformedResponse();
+    }
+  }
+
+  const size = typeof value.size === 'string' ? value.size : undefined;
+  const installedSize = typeof value.installedSize === 'string' ? value.installedSize : undefined;
+  const installedTime = typeof value.installedTime === 'string' ? value.installedTime : undefined;
+
+  return {
+    name: value.name,
+    version: value.version,
+    description: value.description,
+    dependencies: value.dependencies,
+    status,
+    ...(size === undefined ? {} : {size}),
+    ...(installedSize === undefined ? {} : {installedSize}),
+    ...(installedTime === undefined ? {} : {installedTime}),
+  };
 }
 
 function validateActionResponse(body: unknown): {message: string; packages: string[]} {
@@ -154,10 +228,17 @@ export function createOpkgClient(fetchImpl: typeof globalThis.fetch = globalThis
   }
 
   return {
-    async list(): Promise<PackageEntry[]> {
+    async list(): Promise<PackageList> {
       const body = await request(OPKG_LIST_URL, {method: 'GET'});
 
       return validateListResponse(body);
+    },
+
+    async info(name: string): Promise<PackageInfo> {
+      const params = new URLSearchParams({name});
+      const body = await request(`${OPKG_INFO_URL}?${params.toString()}`, {method: 'GET'});
+
+      return validatePackageInfo(body);
     },
 
     install: (packages) => postPackages(OPKG_INSTALL_URL, packages),

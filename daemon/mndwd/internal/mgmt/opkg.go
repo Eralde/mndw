@@ -23,7 +23,7 @@ func (h *Handler) handleOpkgListInstalled(w http.ResponseWriter, _ *http.Request
 
 	packages, err := h.opkg.ListInstalled(ctx)
 	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to list installed packages").WithDetail(err.Error()))
+		h.writeOpkgError(w, "failed to list installed packages", err)
 
 		return
 	}
@@ -38,7 +38,7 @@ func (h *Handler) handleOpkgListAvailable(w http.ResponseWriter, _ *http.Request
 
 	packages, err := h.opkg.ListAvailable(ctx)
 	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to list available packages").WithDetail(err.Error()))
+		h.writeOpkgError(w, "failed to list available packages", err)
 
 		return
 	}
@@ -51,14 +51,35 @@ func (h *Handler) handleOpkgList(w http.ResponseWriter, _ *http.Request) {
 
 	defer cancel()
 
-	packages, err := h.opkg.List(ctx)
+	result, err := h.opkg.List(ctx)
 	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to list packages").WithDetail(err.Error()))
+		h.writeOpkgError(w, "failed to list packages", err)
 
 		return
 	}
 
-	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"packages": packages})
+	httpx.WriteJSON(w, h.logger, http.StatusOK, result)
+}
+
+func (h *Handler) handleOpkgInfo(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	ctx, cancel := opkgContext()
+	defer cancel()
+	info, err := h.opkg.Info(ctx, name)
+	if err != nil {
+		var invalid *opkg.InvalidPackageError
+		var notFound *opkg.PackageNotFoundError
+		switch {
+		case errors.As(err, &invalid):
+			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeInvalidPackageName, invalid.Error()))
+		case errors.As(err, &notFound):
+			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, notFound.Error()))
+		default:
+			h.writeOpkgError(w, "failed to read package info", err)
+		}
+		return
+	}
+	httpx.WriteJSON(w, h.logger, http.StatusOK, info)
 }
 
 func (h *Handler) handleOpkgInstall(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +106,7 @@ func (h *Handler) handleOpkgUpdate(w http.ResponseWriter, _ *http.Request) {
 	defer cancel()
 
 	if err := h.opkg.Update(ctx); err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to refresh package metadata"))
+		h.writeOpkgError(w, "failed to refresh package metadata", err)
 
 		return
 	}
@@ -126,14 +147,20 @@ func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action stri
 
 	if err := run(ctx, req.Packages); err != nil {
 		var invalid *opkg.InvalidPackageError
+		var protected *opkg.ProtectedPackageError
 
-		if errors.As(err, &invalid) {
+		switch {
+		case errors.As(err, &invalid):
 			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeInvalidPackageName, "invalid package name: "+invalid.Name))
+
+			return
+		case errors.As(err, &protected):
+			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusForbidden, httpx.CodeProtectedPackage, protected.Error()))
 
 			return
 		}
 
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "opkg "+action+" failed"))
+		h.writeOpkgError(w, "opkg "+action+" failed", err)
 
 		return
 	}
@@ -143,4 +170,14 @@ func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action stri
 		"message":  opkgActionMessage(action, len(req.Packages)),
 		"packages": req.Packages,
 	})
+}
+
+func (h *Handler) writeOpkgError(w http.ResponseWriter, message string, err error) {
+	status := http.StatusBadGateway
+	code := httpx.CodeOpkgFailed
+	if errors.Is(err, opkg.ErrOpkgUnavailable) {
+		status = http.StatusServiceUnavailable
+		code = httpx.CodeOpkgUnavailable
+	}
+	httpx.WriteError(w, h.logger, httpx.NewError(status, code, message).WithDetail(err.Error()))
 }

@@ -24,12 +24,12 @@ beforeEach(() => {
 
 describe('opkg-client', () => {
   it('lists packages with a GET request', async () => {
-    fetchImpl.mockResolvedValue(jsonResponse(200, {packages: [packageEntry]}));
+    fetchImpl.mockResolvedValue(jsonResponse(200, {packages: [packageEntry], metadataUpdatedAt: null}));
 
     const result = await createOpkgClient(fetchImpl).list();
 
     expect(fetchImpl).toHaveBeenCalledWith('/api/mgmt/opkg/list', {method: 'GET'});
-    expect(result).toEqual([packageEntry]);
+    expect(result).toEqual({packages: [packageEntry], metadataUpdatedAt: null});
   });
 
   it.each(
@@ -122,10 +122,40 @@ describe('opkg-client validation', () => {
   });
 
   it('returns a non-null empty list', async () => {
-    fetchImpl.mockResolvedValue(jsonResponse(200, {packages: []}));
+    fetchImpl.mockResolvedValue(jsonResponse(200, {packages: [], metadataUpdatedAt: null}));
 
     const result = await createOpkgClient(fetchImpl).list();
 
-    expect(result).toEqual([]);
+    expect(result).toEqual({packages: [], metadataUpdatedAt: null});
+  });
+
+  it('reads package detail with an encoded name', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, {
+      name: 'foo bar',
+      version: '1.0',
+      description: 'desc',
+      status: 'available',
+      dependencies: ['lib foo'],
+    }));
+
+    const result = await createOpkgClient(fetchImpl).info('foo bar');
+
+    expect(fetchImpl).toHaveBeenCalledWith('/api/mgmt/opkg/info?name=foo+bar', {method: 'GET'});
+    expect(result).toEqual({
+      name: 'foo bar',
+      version: '1.0',
+      description: 'desc',
+      status: 'available',
+      dependencies: ['lib foo'],
+    });
+  });
+
+  it.each([
+    {packages: [], metadataUpdatedAt: 'not-a-date'},
+    {packages: [], metadataUpdatedAt: 3},
+  ])('rejects malformed freshness %j', async (body) => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, body));
+
+    await expect(createOpkgClient(fetchImpl).list()).rejects.toBeInstanceOf(OpkgError);
   });
 });

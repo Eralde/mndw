@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -116,6 +118,172 @@ func TestParseEntries(t *testing.T) {
 	}
 }
 
+func TestParseInfoBlocksSelectsInstalledExactBlock(t *testing.T) {
+	out := "Package: curl\nVersion: 8.0.1-1\nDescription: Feed description\nSize: 100\nDepends: libc, libcurl | libssl\n\n" +
+		"Package: curl\nVersion: 7.55.1-1\nDescription: Installed description\nSize: 90\nDepends: libc, libcurl | libssl\n"
+	blocks, err := parseInfoBlocks(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := selectInfoBlock(blocks, "curl", "7.55.1-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Version != "7.55.1-1" || got.Description != "Installed description" {
+		t.Fatalf("selected block = %+v", got)
+	}
+	if !slices.Equal(got.Dependencies, []string{"libc", "libcurl | libssl"}) {
+		t.Fatalf("dependencies = %v", got.Dependencies)
+	}
+}
+
+func TestParseInfoBlocksFallsBackToFirstFeedBlock(t *testing.T) {
+	out := "Package: curl\nVersion: 8.0.1-1\nDescription: First\n\nPackage: curl\nVersion: 9.0.0-1\nDescription: Second\n"
+	blocks, err := parseInfoBlocks(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := selectInfoBlock(blocks, "curl", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Version != "8.0.1-1" {
+		t.Fatalf("selected version = %q", got.Version)
+	}
+}
+
+func TestParseInfoBlocksAcceptsDescriptionContinuationLines(t *testing.T) {
+	out := "Package: antiscan2\nVersion: 2-alpha26\nDescription: Anti-scan utility\n /opt/etc/antiscan/ascn.conf 81f1eaf851c2d60ce907bc59c1061f0a3cb52813e1879f0b1bad7d9721f78601\nSize: 123\n"
+
+	blocks, err := parseInfoBlocks(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("len(blocks) = %d, want 1", len(blocks))
+	}
+	if blocks[0].Description != "Anti-scan utility\n/opt/etc/antiscan/ascn.conf 81f1eaf851c2d60ce907bc59c1061f0a3cb52813e1879f0b1bad7d9721f78601" {
+		t.Fatalf("description = %q", blocks[0].Description)
+	}
+}
+
+func TestParseInfoBlocksAcceptsConffilesListLines(t *testing.T) {
+	out := "Package: antiscan2\n" +
+		"Version: 2.0-alpha26\n" +
+		"Status: install ok installed\n" +
+		"Architecture: aarch64-3.10\n" +
+		"Size: 74141\n" +
+		"Conffiles:\n" +
+		" /opt/etc/antiscan/ascn.conf 81f1eaf851c2d60ce907bc59c1061f0a3cb52813e1879f0b1bad7d9721f78601\n" +
+		" /opt/etc/antiscan/ascn_crontab.conf 2ea489b2c8a2cafbb982101a0defb40afe15cb6b47b0e526ea81037f26bc9706\n" +
+		"Description: Antiscan2 utility\n" +
+		"Installed-Time: 1787315636\n"
+
+	blocks, err := parseInfoBlocks(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("len(blocks) = %d, want 1", len(blocks))
+	}
+	if blocks[0].Description != "Antiscan2 utility" {
+		t.Fatalf("description = %q", blocks[0].Description)
+	}
+	if blocks[0].InstalledTime != "1787315636" {
+		t.Fatalf("installed time = %q", blocks[0].InstalledTime)
+	}
+}
+
+func TestParseInfoBlocksAcceptsUnindentedDescriptionContinuationLines(t *testing.T) {
+	out := "Package: antiscan2\nVersion: 2-alpha26\nDescription: Anti-scan utility\n/opt/etc/antiscan/ascn.conf 81f1eaf851c2d60ce907bc59c1061f0a3cb52813e1879f0b1bad7d9721f78601\nSize: 123\n"
+
+	blocks, err := parseInfoBlocks(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != 1 {
+		t.Fatalf("len(blocks) = %d, want 1", len(blocks))
+	}
+	if blocks[0].Description == "" {
+		t.Fatal("description is empty")
+	}
+}
+
+func TestExecInfoDerivesUpdateAvailableWithStringInequality(t *testing.T) {
+	runner := func(_ context.Context, args ...string) (string, int, error) {
+		switch strings.Join(args, " ") {
+		case "opkg info curl":
+			return "Package: curl\nVersion: 10-1\nDescription: Feed\nSize: 10\n", 0, nil
+		case "opkg status curl":
+			return "Package: curl\nVersion: 9-1\nStatus: install user installed\nInstalled-Size: 20\nInstalled-Time: 123\n", 0, nil
+		case "opkg list-installed":
+			return "curl - 9-1 - Installed\n", 0, nil
+		case "opkg list":
+			return "curl - 10-1 - Feed\n", 0, nil
+		default:
+			return "", 0, errors.New("unexpected command: " + strings.Join(args, " "))
+		}
+	}
+	m := newExecManagerWithRunner(runner)
+	info, err := m.Info(context.Background(), "curl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Status != "update_available" || info.Version != "10-1" || info.InstalledSize != "20" || info.InstalledTime != "123" {
+		t.Fatalf("info = %+v", info)
+	}
+}
+
+func TestProtectedPackageRejectedBeforeRunner(t *testing.T) {
+	calls := 0
+	m := newExecManagerWithRunner(func(context.Context, ...string) (string, int, error) {
+		calls++
+		return "", 0, nil
+	})
+	err := m.Remove(context.Background(), []string{"mndw"})
+	var protected *ProtectedPackageError
+	if !errors.As(err, &protected) || calls != 0 {
+		t.Fatalf("error = %v, calls = %d", err, calls)
+	}
+}
+
+func TestMetadataUpdatedAtUsesNewestEntryMtime(t *testing.T) {
+	dir := t.TempDir()
+	oldPath := filepath.Join(dir, "old")
+	newPath := filepath.Join(dir, "new")
+	if err := os.WriteFile(oldPath, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newPath, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Unix(100, 0)
+	newer := time.Unix(200, 0)
+	if err := os.Chtimes(oldPath, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(newPath, newer, newer); err != nil {
+		t.Fatal(err)
+	}
+	runner := func(_ context.Context, args ...string) (string, int, error) {
+		switch strings.Join(args, " ") {
+		case "opkg list-installed", "opkg list":
+			return "", 0, nil
+		default:
+			return "", 0, errors.New("unexpected command")
+		}
+	}
+	m := newExecManagerWithRunner(runner)
+	m.listsDir = dir
+	result, err := m.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.MetadataUpdatedAt == nil || !result.MetadataUpdatedAt.Equal(newer.UTC()) {
+		t.Fatalf("metadataUpdatedAt = %v, want %v", result.MetadataUpdatedAt, newer.UTC())
+	}
+}
+
 func TestExecListMergeAndOrphan(t *testing.T) {
 	runner := func(_ context.Context, args ...string) (string, int, error) {
 		switch strings.Join(args, " ") {
@@ -128,10 +296,11 @@ func TestExecListMergeAndOrphan(t *testing.T) {
 		}
 	}
 
-	entries, err := newExecManagerWithRunner(runner).List(context.Background())
+	result, err := newExecManagerWithRunner(runner).List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	entries := result.Packages
 	if len(entries) != 3 {
 		t.Fatalf("len(entries) = %d, want 3", len(entries))
 	}
@@ -141,7 +310,7 @@ func TestExecListMergeAndOrphan(t *testing.T) {
 	if entries[1].Name != "orphan" || entries[1].Version != "2.1.0-1" || entries[1].Description != "Custom tool" || entries[1].Status != "installed" || entries[1].NewVersion != "" {
 		t.Errorf("orphan entry = %+v", entries[1])
 	}
-	if entries[2].Name != "socat" || entries[2].Status != "uninstalled" {
+	if entries[2].Name != "socat" || entries[2].Status != "available" {
 		t.Errorf("socat entry = %+v", entries[2])
 	}
 }
@@ -151,10 +320,11 @@ func TestExecListEmptyOutput(t *testing.T) {
 		return "", 0, nil
 	}
 
-	entries, err := newExecManagerWithRunner(runner).List(context.Background())
+	result, err := newExecManagerWithRunner(runner).List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	entries := result.Packages
 	if entries == nil || len(entries) != 0 {
 		t.Errorf("entries = %#v, want non-nil empty slice", entries)
 	}
@@ -164,17 +334,18 @@ func TestStubListStatusesAndTransitions(t *testing.T) {
 	m := New("stub", discard())
 	ctx := context.Background()
 
-	entries, err := m.List(ctx)
+	result, err := m.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	entries := result.Packages
 	statuses := map[string]string{}
 	for _, entry := range entries {
 		statuses[entry.Name] = entry.Status
 	}
 	want := map[string]string{
-		"bash": "installed", "curl": "uninstalled", "daemonize": "uninstalled",
-		"jq": "update_available", "socat": "uninstalled", "ttyd": "uninstalled",
+		"bash": "installed", "curl": "available", "daemonize": "available",
+		"jq": "update_available", "socat": "available", "ttyd": "available",
 	}
 	if !mapsEqual(statuses, want) {
 		t.Errorf("statuses = %v, want %v", statuses, want)
@@ -189,15 +360,16 @@ func TestStubListStatusesAndTransitions(t *testing.T) {
 	if err := m.Upgrade(ctx, []string{"jq"}); err != nil {
 		t.Fatal(err)
 	}
-	entries, err = m.List(ctx)
+	result, err = m.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	entries = result.Packages
 	for _, entry := range entries {
 		if entry.Name == "curl" && (entry.Status != "installed" || entry.Version != "8.0.1-1") {
 			t.Errorf("curl after install = %+v", entry)
 		}
-		if entry.Name == "bash" && entry.Status != "uninstalled" {
+		if entry.Name == "bash" && entry.Status != "available" {
 			t.Errorf("bash after remove = %+v", entry)
 		}
 		if entry.Name == "jq" && (entry.Status != "installed" || entry.Version != "1.7-1" || entry.NewVersion != "") {

@@ -20,6 +20,7 @@ import (
 	"mndwd/internal/manifest"
 	"mndwd/internal/opkg"
 	"mndwd/internal/registry"
+	"mndwd/internal/service"
 	"mndwd/internal/state"
 )
 
@@ -27,6 +28,8 @@ import (
 // run on a background-derived context so a client disconnect never aborts a partial
 // package install.
 const opkgTimeout = 3 * time.Minute
+const serviceStatusTimeout = 3 * time.Second
+const serviceActionTimeout = 30 * time.Second
 
 // BuiltinSource supplies validated builtin plugins and owns builtin discovery
 // warnings/errors. Satisfied by *registry.Registry.
@@ -48,6 +51,8 @@ type Config struct {
 	Runtime backend.Runtime
 	// PersistentRCIPermissionController owns grant-triggered socket reconciliation.
 	PersistentRCIPermissionController PersistentRCIPermissionController
+	ServiceActionRoot                 context.Context
+	ServiceActionTimeout              time.Duration
 }
 
 // Handler serves the management API over a shared state store.
@@ -55,6 +60,7 @@ type Handler struct {
 	cfg                  Config
 	store                StateStore
 	opkg                 opkg.Manager
+	service              service.Manager
 	builtins             BuiltinSource
 	logger               *slog.Logger
 	runtime              backend.Runtime
@@ -62,11 +68,21 @@ type Handler struct {
 }
 
 // New constructs a management Handler.
-func New(cfg Config, store StateStore, opkgMgr opkg.Manager, builtins BuiltinSource, logger *slog.Logger) *Handler {
+
+func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr service.Manager, builtins BuiltinSource, logger *slog.Logger) *Handler {
+	if cfg.ServiceActionRoot == nil {
+		cfg.ServiceActionRoot = context.Background()
+	}
+
+	if cfg.ServiceActionTimeout <= 0 {
+		cfg.ServiceActionTimeout = serviceActionTimeout
+	}
+
 	return &Handler{
 		cfg:                  cfg,
 		store:                store,
 		opkg:                 opkgMgr,
+		service:              serviceMgr,
 		builtins:             builtins,
 		logger:               logger,
 		runtime:              cfg.Runtime,
@@ -93,10 +109,17 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mgmt/opkg/list-installed", h.handleOpkgListInstalled)
 	mux.HandleFunc("GET /api/mgmt/opkg/list-available", h.handleOpkgListAvailable)
 	mux.HandleFunc("GET /api/mgmt/opkg/list", h.handleOpkgList)
+	mux.HandleFunc("GET /api/mgmt/opkg/info", h.handleOpkgInfo)
 	mux.HandleFunc("POST /api/mgmt/opkg/install", h.handleOpkgInstall)
 	mux.HandleFunc("POST /api/mgmt/opkg/remove", h.handleOpkgRemove)
 	mux.HandleFunc("POST /api/mgmt/opkg/update", h.handleOpkgUpdate)
 	mux.HandleFunc("POST /api/mgmt/opkg/upgrade", h.handleOpkgUpgrade)
+	mux.HandleFunc("GET /api/mgmt/service/list", h.handleServiceList)
+	mux.HandleFunc("GET /api/mgmt/service/status", h.handleServiceStatus)
+	mux.HandleFunc("POST /api/mgmt/service/start", h.handleServiceStart)
+	mux.HandleFunc("POST /api/mgmt/service/stop", h.handleServiceStop)
+	mux.HandleFunc("POST /api/mgmt/service/restart", h.handleServiceRestart)
+	mux.HandleFunc("POST /api/mgmt/service/set-enabled", h.handleServiceSetEnabled)
 }
 
 // opkgContext returns a background-derived context bounded by opkgTimeout, so a

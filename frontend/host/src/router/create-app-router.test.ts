@@ -146,7 +146,7 @@ describe('buildPluginRoutes', () => {
     expect(() => buildPluginRoutes()).toThrow(/second.*\/foo.*first/i);
   });
 
-  it.each(['/', '/login', '/packages', '/settings'])('rejects reserved route %s', (route) => {
+  it.each(['/', '/login', '/packages', '/packages/services', '/settings'])('rejects reserved route %s', (route) => {
     vi.mocked(pluginRegistry).getPages.mockReturnValue([page('reserved', 'Reserved', route)]);
 
     expect(() => buildPluginRoutes()).toThrow(/reserved|static/i);
@@ -222,6 +222,11 @@ describe('createAppRouter', () => {
 
     await router.navigate('/status');
     expect(router.route.pathname).toBe('/status');
+
+    await router.navigate('/packages');
+    expect(router.route.pathname).toBe('/packages');
+    await router.navigate('/packages/services');
+    expect(router.route.pathname).toBe('/packages/services');
 
     await router.navigate('/');
     expect(router.route.pathname).toBe('/');

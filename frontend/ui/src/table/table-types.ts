@@ -57,12 +57,17 @@ export interface MndwTableLabels {
   rowFallback: (index1Based: number) => string;
   reordered: (rowName: string, pos: number, total: number) => string;
   invalidData: string;
+  expandRow: (rowName: string) => string;
+  collapseRow: (rowName: string) => string;
 }
 
 export interface MndwTableProps<Row> {
   columns: Column<Row>[];
   rows: Row[];
   rowKey: RowKey<Row>;
+  virtual?: boolean;
+  estimatedRowHeight?: number;
+  overscan?: number;
   selectable?: boolean;
   selected?: string[];
   reorderable?: boolean;
@@ -75,12 +80,23 @@ export interface MndwTableProps<Row> {
   rowLabel?: (row: Row) => string;
   labels?: Partial<MndwTableLabels>;
   emptyLabel?: string;
+  expandable?: boolean;
+  expandOn?: 'toggle' | 'row';
+  toggleCell?: 'leading' | 'trailing';
+  toggleAfterColumn?: string;
+  expanded?: string[];
+  expandedRenderer?: () => CellRenderer<Row, Row>;
+}
+
+export interface ScrollToRowOptions {
+  align?: 'start' | 'center' | 'end' | 'nearest';
 }
 
 export type Violation =
   | {category: 'duplicate-row-key'; rowKeys: string[]}
   | {category: 'empty-row-key'; count: number}
-  | {category: 'duplicate-column-id'; columnIds: string[]};
+  | {category: 'duplicate-column-id'; columnIds: string[]}
+  | {category: 'reserved-column-id'; columnIds: string[]};
 
 export interface MndwErrorDetail {
   violations: Violation[];
@@ -108,3 +124,10 @@ export const MNDW_SORT_CHANGE_EVENT = 'mndwsortchange';
 export const MNDW_ROW_REORDER_EVENT = 'mndwrowreorder';
 export const MNDW_COLUMN_VISIBILITY_CHANGE_EVENT = 'mndwcolumnvisibilitychange';
 export const MNDW_ERROR_EVENT = 'mndwerror';
+
+export interface MndwRowExpandDetail {
+  expanded: string[];
+}
+
+export const MNDW_ROW_EXPAND_EVENT = 'mndwrowexpand';
+export const DETAIL_COL_ID = '__mndw_detail__';

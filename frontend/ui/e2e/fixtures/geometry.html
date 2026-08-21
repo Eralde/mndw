@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Table geometry fixture</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        padding: 24px;
+        background: white;
+      }
+
+      #geometry-table {
+        width: 480px;
+        border: 1px solid #999;
+      }
+
+      #geometry-table::part(viewport) {
+        height: 240px;
+        max-height: 240px;
+        overflow: auto;
+        scrollbar-gutter: stable;
+      }
+
+      #geometry-table::part(table) {
+        min-width: 760px;
+      }
+
+      #geometry-table::part(header-cell) {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: white;
+      }
+
+      #geometry-table::part(cell) {
+        padding: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <mndw-table id="geometry-table" column-menu="false"></mndw-table>
+    <script type="module" src="./geometry.ts"></script>
+  </body>
+</html>

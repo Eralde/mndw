@@ -9,13 +9,15 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./test-geometry": "./src/table/table-test-geometry.ts",
     "./styles.css": "./src/styles/kit.css"
   },
   "files": ["src", "README.md"],
   "scripts": {
     "test": "vitest run",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:geometry": "playwright test --config playwright.geometry.config.ts"
   },
   "dependencies": {
     "@lit/reactive-element": "^2.1.0",

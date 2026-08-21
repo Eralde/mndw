@@ -1,4 +1,4 @@
-import type {CellContext, CellRenderer, Column} from './table-types.js';
+import {type CellContext, type CellRenderer, type Column, DETAIL_COL_ID} from './table-types.js';
 
 export interface CellEntry<Row> {
   readonly slotId: string;
@@ -24,11 +24,22 @@ export class CellRegistry<Row> {
     columns: Column<Row>[],
     visibleColumnIds: ReadonlySet<string>,
     readValue: (column: Column<Row>, row: Row) => unknown,
+    expandedKeys: ReadonlySet<string> = new Set(),
+    expandedRenderer?: () => CellRenderer<Row>,
   ): void {
     const desiredKeys = new Set<string>();
 
     for (const row of rows) {
-      this.reconcileRow(row, resolveKey(row), columns, visibleColumnIds, readValue, desiredKeys);
+      this.reconcileRow(
+        row,
+        resolveKey(row),
+        columns,
+        visibleColumnIds,
+        readValue,
+        desiredKeys,
+        expandedKeys,
+        expandedRenderer,
+      );
     }
 
     this.pruneRemoved(desiredKeys);
@@ -41,6 +52,8 @@ export class CellRegistry<Row> {
     visibleColumnIds: ReadonlySet<string>,
     readValue: (column: Column<Row>, row: Row) => unknown,
     desiredKeys: Set<string>,
+    expandedKeys: ReadonlySet<string>,
+    expandedRenderer: (() => CellRenderer<Row>) | undefined,
   ): void {
     let colMap = this.entries.get(rowKey);
 
@@ -93,6 +106,42 @@ export class CellRegistry<Row> {
       renderer.mount({node, row, value: context.value, colId: column.id});
       colMap.set(column.id, entry);
     }
+
+    if (expandedRenderer !== undefined && expandedKeys.has(rowKey)) {
+      desiredKeys.add(`${rowKey}\u0000${DETAIL_COL_ID}`);
+
+      const existing = colMap.get(DETAIL_COL_ID);
+      const context: CellContext<Row> = {
+        node: existing?.node ?? document.createElement('div'),
+        row,
+        value: row,
+        colId: DETAIL_COL_ID,
+      };
+
+      if (existing?.rendererFactory === expandedRenderer) {
+        existing.renderer.update(context);
+      } else {
+        if (existing !== undefined) {
+          existing.renderer.destroy();
+          existing.node.remove();
+        }
+
+        const renderer = expandedRenderer();
+        const node = context.node;
+
+        node.setAttribute('slot', `mc-${this.nextSlotId++}`);
+        this.host.appendChild(node);
+        renderer.mount({node, row, value: row, colId: DETAIL_COL_ID});
+        colMap.set(DETAIL_COL_ID, {
+          slotId: node.getAttribute('slot') ?? '',
+          node,
+          renderer,
+          rendererFactory: expandedRenderer,
+          rowKey,
+          colId: DETAIL_COL_ID,
+        });
+      }
+    }
   }
 
   private pruneRemoved(desiredKeys: ReadonlySet<string>): void {
@@ -113,6 +162,18 @@ export class CellRegistry<Row> {
 
   public getSlotId(rowKey: string, colId: string): string | undefined {
     return this.entries.get(rowKey)?.get(colId)?.slotId;
+  }
+
+  public getRowKeyForNode(node: Node): string | undefined {
+    for (const [rowKey, colMap] of this.entries) {
+      for (const entry of colMap.values()) {
+        if (entry.node === node || entry.node.contains(node)) {
+          return rowKey;
+        }
+      }
+    }
+
+    return undefined;
   }
 
   public drain(): void {

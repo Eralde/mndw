@@ -140,6 +140,32 @@ column menu (the portaled `<mndw-column-menu>`) drives `internalHidden` and stil
 `(row) => string`). Empty or duplicate keys and duplicate column ids drop the offending rows/columns,
 render a visible `error` part with `role="alert"`, and emit `mndwerror` once per violation-set change.
 
+Expandable tables render a controlled inline detail row with `expandable`, `expandOn`, and
+`expandedRenderer`. Set `toggleCell` to `leading` or `trailing` for utility-column placement, or set
+`toggleAfterColumn` to a visible column id to place its chevron beside that column. Column `width`
+values apply to their header and body cells; selection and expand utility columns stay narrow.
+
+#### Dynamic virtualization
+
+Set `virtual`, `estimatedRowHeight` (default `49`), and pixel `overscan` (default `400`) to render a
+bounded contiguous window while keeping validation, sorting, selection, expansion, and
+`scrollToRow()` lookup over the complete `rows` array. `estimatedRowHeight` is a pre-measurement
+estimate only; after four valid summary measurements, the running mean replaces it for the current
+width epoch. `overscan={0}` is valid. Invalid tuning values use defaults and do not create data
+violations. Numeric attributes are `estimated-row-height` and `overscan`.
+
+Virtual mode requires a bounded viewport for bounded DOM work. It uses native positive-height
+`virtual-spacer` rows, direct `<tr>` measurement, keyed anchor correction, and `ResizeObserver`.
+Custom-cell renderers outside the live window are destroyed; scrolling them back mounts fresh
+instances. Keep data needed across that boundary in consumer state. The viewport owns scrolling and
+enforces `overflow-anchor: none`, instant internal movement, and `scrollbar-gutter: stable`.
+
+`scrollToRow(key, {align})` accepts `start`, `center`, `end`, or `nearest` (default). It returns
+`false` for an absent valid key and otherwise returns `true`; deep unmeasured targets first land on
+estimates and then correct after measurement. `virtual && reorderable` falls back to full rendering
+and exposes `data-mndw-virtual-inactive="reorderable"`. If `ResizeObserver` is unavailable, the
+fallback reason is `resize-observer-unavailable`. Neither fallback changes logical behavior.
+
 #### Framework adapters
 
 Built-in `kind`s are `text`, `number`, `badge`, and a non-interactive `boolean` glyph. Rich cells use

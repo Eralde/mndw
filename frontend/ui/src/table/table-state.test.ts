@@ -98,6 +98,14 @@ describe('validateColumns', () => {
 
     expect(validateColumns(cols)).toEqual([]);
   });
+
+  it('reports reserved synthetic column ids', () => {
+    const cols = [makeColumn<Row>({id: '__mndw_detail__', label: 'Detail'})];
+
+    expect(validateColumns(cols)).toEqual([
+      {category: 'reserved-column-id', columnIds: ['__mndw_detail__']},
+    ]);
+  });
 });
 
 describe('resolveCellValue', () => {

@@ -4,11 +4,14 @@ import {type UiLayer, type UiLayerOptions, type UiOverlayProvider, setOverlayPro
 import {column} from './table-builder.js';
 import {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './column-menu.js';
 import {MNDW_TABLE_TAG, MndwTable} from './table.js';
-import type {
-  MndwColumnVisibilityChangeDetail,
-  MndwErrorDetail,
-  MndwRowReorderDetail,
-  MndwSortChangeDetail,
+import {createFakeTableGeometryProvider} from './table-test-geometry.js';
+import {
+  MNDW_ROW_EXPAND_EVENT,
+  type MndwColumnVisibilityChangeDetail,
+  type MndwErrorDetail,
+  type MndwRowExpandDetail,
+  type MndwRowReorderDetail,
+  type MndwSortChangeDetail,
 } from './table-types.js';
 
 interface TestRow {
@@ -90,6 +93,391 @@ function nonNull<T>(value: T | null | undefined, what: string): T {
 }
 
 describe('MndwTable rendering and properties', () => {
+  it('renders a bounded virtual window with native spacer rows', async () => {
+    const provider = createFakeTableGeometryProvider({
+      viewport: {width: 480, height: 120},
+      header: {width: 480, height: 32},
+      rowHeights: new Map(),
+      defaultSummaryHeight: 40,
+      defaultDetailHeight: 160,
+      scrollTop: 0,
+    });
+    const el = new MndwTable<{id: string; name: string}>(provider);
+    const virtualRows = Array.from({length: 20}, (_value, index) => ({id: `row-${index}`, name: `Row ${index}`}));
+
+    el.columns = [{id: 'name', label: 'Name', accessor: (row: {id: string; name: string}) => row.name}];
+    el.rows = virtualRows;
+    el.rowKey = 'id';
+    el.virtual = true;
+    el.overscan = 0;
+    document.body.append(el);
+    await el.updateComplete;
+
+    const summaryRows = el.shadowRoot?.querySelectorAll('[part="row"]') ?? [];
+    const spacers = el.shadowRoot?.querySelectorAll('[part="virtual-spacer"]') ?? [];
+
+    expect(summaryRows.length).toBeGreaterThan(0);
+    expect(summaryRows.length).toBeLessThan(virtualRows.length);
+    expect(spacers.length).toBeLessThanOrEqual(2);
+
+    for (const spacer of spacers) {
+      expect(spacer.parentElement?.tagName).toBe('TBODY');
+      expect(spacer.querySelectorAll('td')).toHaveLength(1);
+    }
+  });
+
+  it('keeps selection and sorting logical when rows are off-screen', async () => {
+    const provider = createFakeTableGeometryProvider({
+      viewport: {width: 480, height: 80},
+      header: {width: 480, height: 20},
+      rowHeights: new Map(),
+      defaultSummaryHeight: 40,
+      defaultDetailHeight: 160,
+      scrollTop: 0,
+    });
+    const el = new MndwTable<{id: string; name: string}>(provider);
+    const virtualRows = Array.from({length: 12}, (_value, index) => ({
+      id: `row-${index}`,
+      name: `Name ${String(12 - index).padStart(2, '0')}`,
+    }));
+    const selection = vi.fn<(event: Event) => void>();
+
+    el.columns = [
+      column<{id: string; name: string}>()({
+        id: 'name',
+        label: 'Name',
+        accessor: (row) => row.name,
+        sortable: true,
+      }),
+    ];
+    el.rows = virtualRows;
+    el.rowKey = 'id';
+    el.virtual = true;
+    el.overscan = 0;
+    el.selectable = true;
+    el.addEventListener('mndwselectionchange', selection);
+    el.sort = {columnId: 'name', direction: 'asc'};
+    document.body.append(el);
+    await el.updateComplete;
+
+    const firstRendered = shadowQuery<HTMLElement>(el, '[part="row"]');
+
+    expect(firstRendered.getAttribute('data-row-key')).toBe('row-11');
+
+    const selectAll = shadowQuery<HTMLElement>(el, '[part="select-all"]');
+
+    selectAll.click();
+
+    expect(selection).toHaveBeenCalledWith(
+      expect.objectContaining({detail: {selected: virtualRows.map((row) => row.id).reverse()}}),
+    );
+  });
+
+  it('samples rendered summary and detail rows through one scheduled geometry frame', async () => {
+    const provider = createFakeTableGeometryProvider({
+      viewport: {width: 480, height: 120},
+      header: {width: 480, height: 32},
+      rowHeights: new Map([
+        ['row-0', {summary: 60, detail: 130}],
+        ['row-1', {summary: 45}],
+      ]),
+      defaultSummaryHeight: 40,
+      defaultDetailHeight: 160,
+      scrollTop: 0,
+    });
+    const el = new MndwTable<{id: string; name: string}>(provider);
+
+    el.columns = [{id: 'name', label: 'Name', accessor: (row) => row.name}];
+    el.rows = Array.from({length: 12}, (_value, index) => ({id: `row-${index}`, name: `Row ${index}`}));
+    el.rowKey = 'id';
+    el.virtual = true;
+    el.overscan = 0;
+    el.expandable = true;
+    el.expanded = ['row-0'];
+    el.expandedRenderer = () => ({
+      mount: (): void => {},
+      update: (): void => {},
+      destroy: (): void => {},
+    });
+    document.body.append(el);
+
+    await el.updateComplete;
+    provider.flushFrame();
+    await el.updateComplete;
+    provider.flushFrame();
+    await el.updateComplete;
+
+    const viewport = shadowQuery<HTMLElement>(el, '[part="viewport"]');
+    const header = shadowQuery<HTMLElement>(el, '[part="header-row"]');
+    const renderedRows = [...shadowOf(el).querySelectorAll<HTMLElement>('[part="row"], [part="detail-row"]')];
+    const frame = vi.spyOn(provider, 'requestAnimationFrame');
+
+    provider.deliverResize([viewport, header, ...renderedRows]);
+    provider.deliverResize([viewport, header, ...renderedRows]);
+
+    expect(frame).toHaveBeenCalledTimes(1);
+
+    provider.flushFrame();
+    await el.updateComplete;
+
+    expect(shadowOf(el).querySelectorAll('[part="row"]').length).toBeGreaterThan(0);
+    expect(shadowOf(el).querySelectorAll('[part="detail-row"]').length).toBeGreaterThan(0);
+  });
+
+  it('ignores sub-pixel row changes without rebuilding the rendered window', async () => {
+    const provider = createFakeTableGeometryProvider({
+      viewport: {width: 480, height: 120},
+      header: {width: 480, height: 32},
+      rowHeights: new Map(
+        Array.from({length: 12}, (_value, index) => [`row-${index}`, {summary: 40}] as const),
+      ),
+      defaultSummaryHeight: 40,
+      defaultDetailHeight: 160,
+      scrollTop: 0,
+    });
+    const el = new MndwTable<{id: string; name: string}>(provider);
+    const update = vi.spyOn(el, 'requestUpdate');
+
+    el.columns = [{id: 'name', label: 'Name', accessor: (row) => row.name}];
+    el.rows = Array.from({length: 12}, (_value, index) => ({id: `row-${index}`, name: `Row ${index}`}));
+    el.rowKey = 'id';
+    el.virtual = true;
+    el.overscan = 0;
+    document.body.append(el);
+    await el.updateComplete;
+    provider.flushFrame();
+    await el.updateComplete;
+    provider.flushFrame();
+    await el.updateComplete;
+    provider.flushFrame();
+    await el.updateComplete;
+    provider.flushFrame();
+    await el.updateComplete;
+    update.mockClear();
+
+    provider.setRowHeights(new Map([['row-0', {summary: 40.1}]]));
+
+    const row = nonNull(shadowOf(el).querySelector<HTMLElement>('[part="row"]'), 'rendered row');
+
+    provider.deliverResize([row]);
+    provider.flushFrame();
+    await el.updateComplete;
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('scrolls to valid logical rows through the provider and rejects absent keys', async () => {
+    const provider = createFakeTableGeometryProvider({
+      viewport: {width: 480, height: 100},
+      header: {width: 480, height: 20},
+      rowHeights: new Map(
+        Array.from({length: 8}, (_value, index) => [`row-${index}`, {summary: 40}] as const),
+      ),
+      defaultSummaryHeight: 40,
+      defaultDetailHeight: 160,
+      scrollTop: 0,
+    });
+    const el = new MndwTable<{id: string; name: string}>(provider);
+    const setScrollTop = vi.spyOn(provider, 'setViewportScrollTop');
+
+    el.columns = [{id: 'name', label: 'Name', accessor: (row) => row.name}];
+    el.rows = Array.from({length: 8}, (_value, index) => ({id: `row-${index}`, name: `Row ${index}`}));
+    el.rowKey = 'id';
+    el.virtual = true;
+    el.estimatedRowHeight = 40;
+    el.overscan = 0;
+    document.body.append(el);
+    await el.updateComplete;
+
+    for (let index = 0; index < 4; index += 1) {
+      provider.flushFrame();
+      await el.updateComplete;
+    }
+
+    setScrollTop.mockClear();
+
+    expect(el.scrollToRow('missing', {align: 'start'})).toBe(false);
+    expect(setScrollTop).not.toHaveBeenCalled();
+    expect(el.scrollToRow('row-3', {align: 'start'})).toBe(true);
+    expect(setScrollTop).toHaveBeenLastCalledWith(expect.anything(), 140);
+
+    provider.setScrollTop(0);
+    expect(el.scrollToRow('row-3', {align: 'center'})).toBe(true);
+    expect(setScrollTop).toHaveBeenLastCalledWith(expect.anything(), 110);
+
+    provider.setScrollTop(0);
+    expect(el.scrollToRow('row-3', {align: 'end'})).toBe(true);
+    expect(setScrollTop).toHaveBeenLastCalledWith(expect.anything(), 80);
+
+    provider.setScrollTop(110);
+    expect(el.scrollToRow('row-3', {align: 'nearest'})).toBe(true);
+    expect(setScrollTop).toHaveBeenLastCalledWith(expect.anything(), 110);
+  });
+
+  it('preserves the first visible key and intra-row offset when a measured row above changes', async () => {
+    const provider = createFakeTableGeometryProvider({
+      viewport: {width: 480, height: 100},
+      header: {width: 480, height: 20},
+      rowHeights: new Map(
+        Array.from({length: 8}, (_value, index) => [`row-${index}`, {summary: 40}] as const),
+      ),
+      defaultSummaryHeight: 40,
+      defaultDetailHeight: 160,
+      scrollTop: 0,
+    });
+    const el = new MndwTable<{id: string; name: string}>(provider);
+
+    el.columns = [{id: 'name', label: 'Name', accessor: (row) => row.name}];
+    el.rows = Array.from({length: 8}, (_value, index) => ({id: `row-${index}`, name: `Row ${index}`}));
+    el.rowKey = 'id';
+    el.virtual = true;
+    el.overscan = 200;
+    document.body.append(el);
+    await el.updateComplete;
+
+    for (let index = 0; index < 5; index += 1) {
+      provider.flushFrame();
+      await el.updateComplete;
+    }
+
+    provider.setScrollTop(160);
+
+    const viewport = shadowQuery<HTMLElement>(el, '[part="viewport"]');
+
+    provider.deliverResize([viewport]);
+    provider.flushFrame();
+    await el.updateComplete;
+
+    provider.setRowHeights(new Map([['row-0', {summary: 70}]]));
+
+    const firstRow = nonNull(
+      [...shadowOf(el).querySelectorAll<HTMLElement>('[part="row"]')]
+        .find((row) => row.getAttribute('data-row-key') === 'row-0'),
+      'row-0',
+    );
+
+    provider.deliverResize([firstRow]);
+    provider.flushFrame();
+    await el.updateComplete;
+
+    expect(provider.getViewportScrollTop(viewport)).toBe(190);
+  });
+
+  it('reports complete logical row counts and indices for virtual summary/detail rows', async () => {
+    const provider = createFakeTableGeometryProvider({
+      viewport: {width: 480, height: 100},
+      header: {width: 480, height: 20},
+      rowHeights: new Map(),
+      defaultSummaryHeight: 40,
+      defaultDetailHeight: 160,
+      scrollTop: 0,
+    });
+    const el = new MndwTable<{id: string; name: string}>(provider);
+
+    el.columns = [{id: 'name', label: 'Name', accessor: (row) => row.name}];
+    el.rows = Array.from({length: 10}, (_value, index) => ({id: `row-${index}`, name: `Row ${index}`}));
+    el.rowKey = 'id';
+    el.virtual = true;
+    el.overscan = 0;
+    el.expandable = true;
+    el.expanded = ['row-0'];
+    el.expandedRenderer = () => ({mount(): void {}, update(): void {}, destroy(): void {}});
+    document.body.append(el);
+    await el.updateComplete;
+
+    const table = shadowQuery<HTMLTableElement>(el, '[part="table"]');
+    const header = shadowQuery<HTMLElement>(el, '[part="header-row"]');
+    const contentRows = [...table.querySelectorAll<HTMLElement>('tbody tr:not([part="virtual-spacer"])')];
+    const indices = contentRows.map((row) => Number(row.getAttribute('aria-rowindex')));
+
+    expect(table.getAttribute('aria-rowcount')).toBe('12');
+    expect(header.getAttribute('aria-rowindex')).toBe('1');
+    expect(indices.every((index) => Number.isInteger(index) && index > 1)).toBe(true);
+    expect(indices).toEqual([...indices].sort((left, right) => left - right));
+    expect(shadowOf(el).querySelectorAll('[part="virtual-spacer"][aria-rowindex]')).toHaveLength(0);
+  });
+
+  it('falls back to full rendering when virtualization conflicts with reorder or observer support', async () => {
+    const reorderProvider = createFakeTableGeometryProvider({
+      viewport: {width: 480, height: 100},
+      header: {width: 480, height: 20},
+      rowHeights: new Map(),
+      defaultSummaryHeight: 40,
+      defaultDetailHeight: 160,
+      scrollTop: 0,
+    });
+    const reorderTable = new MndwTable<{id: string; name: string}>(reorderProvider);
+    const allRows = Array.from({length: 8}, (_value, index) => ({id: `row-${index}`, name: `Row ${index}`}));
+
+    reorderTable.columns = [{id: 'name', label: 'Name', accessor: (row) => row.name}];
+    reorderTable.rows = allRows;
+    reorderTable.rowKey = 'id';
+    reorderTable.virtual = true;
+    reorderTable.reorderable = true;
+    document.body.append(reorderTable);
+    await reorderTable.updateComplete;
+
+    expect(reorderTable.getAttribute('data-mndw-virtual-inactive')).toBe('reorderable');
+    expect(reorderTable.shadowRoot?.querySelectorAll('[part="row"]')).toHaveLength(allRows.length);
+    expect(reorderTable.shadowRoot?.querySelectorAll('[part="virtual-spacer"]')).toHaveLength(0);
+
+    const unavailableProvider = {
+      ...createFakeTableGeometryProvider({
+        viewport: {width: 480, height: 100},
+        header: {width: 480, height: 20},
+        rowHeights: new Map(),
+        defaultSummaryHeight: 40,
+        defaultDetailHeight: 160,
+        scrollTop: 0,
+      }),
+      createResizeObserver: (): null => null,
+    };
+    const unavailableTable = new MndwTable<{id: string; name: string}>(unavailableProvider);
+
+    unavailableTable.columns = reorderTable.columns;
+    unavailableTable.rows = allRows;
+    unavailableTable.rowKey = 'id';
+    unavailableTable.virtual = true;
+    document.body.append(unavailableTable);
+    await unavailableTable.updateComplete;
+
+    expect(unavailableTable.getAttribute('data-mndw-virtual-inactive')).toBe('resize-observer-unavailable');
+    expect(unavailableTable.shadowRoot?.querySelectorAll('[part="row"]')).toHaveLength(allRows.length);
+    expect(unavailableTable.shadowRoot?.querySelectorAll('[part="virtual-spacer"]')).toHaveLength(0);
+  });
+
+  it('defaults virtualization tuning and reflects valid public properties', async () => {
+    const el = makeTable();
+
+    expect(el.virtual).toBe(false);
+    expect(el.estimatedRowHeight).toBe(49);
+    expect(el.overscan).toBe(400);
+
+    el.virtual = true;
+    el.estimatedRowHeight = 72;
+    el.overscan = 0;
+    await el.updateComplete;
+
+    expect(el.hasAttribute('virtual')).toBe(true);
+    expect(el.getAttribute('estimated-row-height')).toBe('72');
+    expect(el.getAttribute('overscan')).toBe('0');
+  });
+
+  it('normalizes invalid tuning without creating data violations', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.estimatedRowHeight = Number.NaN;
+    el.overscan = -1;
+    await el.updateComplete;
+
+    expect(el.estimatedRowHeight).toBe(Number.NaN);
+    expect(el.overscan).toBe(-1);
+    expect(shadowOf(el).querySelector('[part="error"]')).toBeNull();
+  });
+
   it('renders a native table with caption, headers, and rows', async () => {
     const el = makeTable();
 
@@ -186,6 +574,248 @@ describe('MndwTable rendering and properties', () => {
 
     expect(errorPart?.getAttribute('role')).toBe('alert');
     expect(errorPart?.textContent).toBe('Bad data');
+  });
+
+  it('does not render reserved synthetic columns', async () => {
+    const el = makeTable();
+
+    el.columns = [
+      ...makeColumns(),
+      {id: '__mndw_detail__', label: 'Reserved', accessor: (row: TestRow) => row.name},
+    ];
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.columnMenu = false;
+    await el.updateComplete;
+
+    expect(shadowOf(el).querySelectorAll('thead th')).toHaveLength(4);
+    expect(shadowOf(el).querySelector('th')?.textContent).not.toContain('Reserved');
+  });
+
+  it('renders no expand cell when not expandable (backward compat)', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    await el.updateComplete;
+
+    expect(shadowOf(el).querySelector('[part="expand-toggle"]')).toBeNull();
+  });
+
+  it('renders a toggle per row and a detail row with correct colspan when expanded', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.selectable = true;
+    el.columnMenu = true;
+    el.expandable = true;
+    el.expanded = ['a'];
+    el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+    await el.updateComplete;
+
+    expect(shadowOf(el).querySelectorAll('[part="expand-toggle"]')).toHaveLength(rows.length);
+    expect(
+      shadowOf(el).querySelector('[part="detail-cell"]')
+        ?.getAttribute('colspan'),
+    ).toBe('7');
+    expect(shadowOf(el).querySelectorAll('[part="detail-row"]')).toHaveLength(1);
+  });
+
+  it('computes detail colspan across cell combinations', async () => {
+    const colspanFor = async (setup: (table: MndwTable<TestRow>) => void): Promise<string | null> => {
+      const el = makeTable();
+
+      el.columns = makeColumns();
+      el.rows = rows;
+      el.rowKey = 'id';
+      el.expandable = true;
+      el.expanded = ['a'];
+      el.columnMenu = false;
+      el.selectable = false;
+      el.reorderable = false;
+      el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+      setup(el);
+      await el.updateComplete;
+
+      return shadowOf(el).querySelector('[part="detail-cell"]')
+        ?.getAttribute('colspan') ?? null;
+    };
+
+    expect(await colspanFor(() => {})).toBe('5');
+    expect(
+      await colspanFor((table) => {
+        table.selectable = true;
+      }),
+    ).toBe('6');
+    expect(
+      await colspanFor((table) => {
+        table.columnMenu = true;
+      }),
+    ).toBe('6');
+    expect(
+      await colspanFor((table) => {
+        table.reorderable = true;
+        table.sort = null;
+      }),
+    ).toBe('6');
+    expect(
+      await colspanFor((table) => {
+        table.reorderable = true;
+        table.sort = {columnId: 'name', direction: 'asc'};
+      }),
+    ).toBe('5');
+    expect(
+      await colspanFor((table) => {
+        table.hiddenColumns = ['count'];
+      }),
+    ).toBe('4');
+  });
+
+  it('places the toggle cell first for leading and last for trailing', async () => {
+    const makeHeaderCells = async (placement: 'leading' | 'trailing'): Promise<Element[]> => {
+      const el = makeTable();
+
+      el.columns = makeColumns();
+      el.rows = rows;
+      el.rowKey = 'id';
+      el.expandable = true;
+      el.toggleCell = placement;
+      el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+      await el.updateComplete;
+
+      return [...shadowOf(el).querySelectorAll('[part~="header-cell"]')];
+    };
+
+    const leading = await makeHeaderCells('leading');
+
+    expect(leading[0]?.getAttribute('part')).toContain('expand-cell');
+
+    const trailing = await makeHeaderCells('trailing');
+
+    expect(trailing.at(-1)?.getAttribute('part')).toContain('expand-cell');
+  });
+
+  it('places the toggle cell after the configured column', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.expandable = true;
+    el.toggleAfterColumn = 'name';
+    el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+    await el.updateComplete;
+
+    const headerCells = [...shadowOf(el).querySelectorAll('[part~="header-cell"]')];
+    const rowCells = [...shadowOf(el).querySelectorAll('[part="row"]:first-of-type > [part~="cell"]')];
+
+    expect(headerCells[0]?.textContent).toContain('Name');
+    expect(headerCells[1]?.getAttribute('part')).toContain('expand-cell');
+    expect(rowCells[0]?.textContent).toContain('cherry');
+    expect(rowCells[1]?.getAttribute('part')).toContain('expand-cell');
+  });
+
+  it('applies declared column widths to header and body cells', async () => {
+    const el = makeTable();
+    const columns = makeColumns();
+
+    columns[0] = {...columns[0], width: '180px'};
+
+    el.columns = columns;
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.columnMenu = false;
+    await el.updateComplete;
+
+    const header = shadowOf(el).querySelector<HTMLTableCellElement>('thead th');
+    const cell = shadowOf(el).querySelector<HTMLTableCellElement>('[part="row"] td');
+
+    expect(header?.style.width).toBe('180px');
+    expect(cell?.style.width).toBe('180px');
+  });
+
+  it('keeps selection utility cells narrow', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.selectable = true;
+    await el.updateComplete;
+
+    const selectCell = shadowQuery<HTMLElement>(el, '[part~="select-cell"]');
+
+    expect(getComputedStyle(selectCell).width).toBe('40px');
+  });
+
+  it('applies row cell styling to compound expand cells and enlarges the toggle', async () => {
+    const previousTextLg = document.documentElement.style.getPropertyValue('--mndw-text-lg');
+
+    document.documentElement.style.setProperty('--mndw-text-lg', '16px');
+
+    try {
+      const el = makeTable();
+
+      el.columns = makeColumns();
+      el.rows = rows;
+      el.rowKey = 'id';
+      el.expandable = true;
+      el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+      await el.updateComplete;
+
+      const regularCell = shadowQuery<HTMLElement>(el, '[part="row"] > [part="cell"]');
+      const expandCell = shadowQuery<HTMLElement>(el, '[part="row"] > [part="cell expand-cell"]');
+      const expandToggle = shadowQuery<HTMLButtonElement>(el, '[part="expand-toggle"]');
+
+      expect(getComputedStyle(expandCell).borderBottomStyle).toBe(getComputedStyle(regularCell).borderBottomStyle);
+      expect(getComputedStyle(expandCell).borderBottomWidth).toBe(getComputedStyle(regularCell).borderBottomWidth);
+      expect(getComputedStyle(expandToggle).fontSize).toBe('16px');
+    } finally {
+      if (previousTextLg === '') {
+        document.documentElement.style.removeProperty('--mndw-text-lg');
+      } else {
+        document.documentElement.style.setProperty('--mndw-text-lg', previousTextLg);
+      }
+    }
+  });
+
+  it('labels the toggle with the expand/collapse label', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.expandable = true;
+    el.expanded = [];
+    el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+    await el.updateComplete;
+
+    expect(
+      shadowOf(el).querySelector('[part="expand-toggle"]')
+        ?.getAttribute('aria-label'),
+    ).toMatch(/expand/i);
+  });
+
+  it('keeps header and body column counts aligned when reorderable and sorted', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.reorderable = true;
+    el.selectable = false;
+    el.columnMenu = false;
+    el.sort = {columnId: 'name', direction: 'asc'};
+    await el.updateComplete;
+
+    const headerCells = shadowOf(el).querySelectorAll('[part~="header-cell"]').length;
+    const firstRowCells = shadowOf(el).querySelector('[part="row"]')
+      ?.querySelectorAll('[part~="cell"]').length;
+
+    expect(headerCells).toBe(firstRowCells);
   });
 });
 
@@ -352,6 +982,141 @@ describe('MndwTable interaction and events', () => {
     });
   });
 
+  it('emits mndwrowexpand on chevron click without mutating state', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.expandable = true;
+    el.expanded = [];
+    el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+    await el.updateComplete;
+
+    const detail = vi.fn();
+
+    el.addEventListener(MNDW_ROW_EXPAND_EVENT, (event) => {
+      detail((event as CustomEvent<MndwRowExpandDetail>).detail);
+    });
+
+    shadowQuery<HTMLButtonElement>(el, '[part="expand-toggle"][data-expand-key="a"]').click();
+
+    expect(detail).toHaveBeenCalledWith({expanded: ['a']});
+    expect(el.expanded).toEqual([]);
+  });
+
+  it('expandOn=row toggles on a data-cell click but not on interactive targets', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.selectable = true;
+    el.expandable = true;
+    el.expandOn = 'row';
+    el.expanded = [];
+    el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+    await el.updateComplete;
+
+    const detail = vi.fn();
+
+    el.addEventListener(MNDW_ROW_EXPAND_EVENT, (event) => {
+      detail((event as CustomEvent<MndwRowExpandDetail>).detail);
+    });
+
+    const firstRow = nonNull(shadowOf(el).querySelector('[part="row"]'), 'first row');
+    const dataCell = nonNull(
+      firstRow.querySelector(
+        '[part~="cell"]:not([part~="select-cell"]):not([part~="expand-cell"])',
+      ),
+      'data cell',
+    );
+
+    dataCell.dispatchEvent(new MouseEvent('click', {bubbles: true, composed: true}));
+    expect(detail).toHaveBeenCalledTimes(1);
+
+    detail.mockClear();
+    nonNull(firstRow.querySelector('mndw-checkbox'), 'row checkbox').click();
+    expect(detail).not.toHaveBeenCalled();
+  });
+
+  it('expandOn=row excludes every interactive target', async () => {
+    const el = makeTable();
+
+    el.columns = [
+      column<TestRow>()({id: 'name', label: 'Name', accessor: (row) => row.name}),
+      column<TestRow>()({
+        id: 'controls',
+        label: 'Controls',
+        accessor: (row) => row.name,
+        renderer: () => ({
+          mount: (context) => {
+            context.node.innerHTML = '<button>b</button><a href="#">a</a><input /><span data-no-expand>x</span>';
+          },
+          update: () => {},
+          destroy: () => {},
+        }),
+      }),
+    ];
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.selectable = true;
+    el.reorderable = true;
+    el.sort = null;
+    el.expandable = true;
+    el.expandOn = 'row';
+    el.expanded = [];
+    el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+    await el.updateComplete;
+
+    const detail = vi.fn();
+
+    el.addEventListener(MNDW_ROW_EXPAND_EVENT, () => {
+      detail();
+    });
+
+    const firstRow = nonNull(shadowOf(el).querySelector('[part="row"]'), 'first row');
+    const clickAndAssertNoToggle = (node: Element | null, label: string): void => {
+      detail.mockClear();
+      expect(node, `${label} should exist`).not.toBeNull();
+      (node as HTMLElement).click();
+      expect(detail, `${label} should not toggle`).not.toHaveBeenCalled();
+    };
+    const slotName = shadowOf(el).querySelector('[part="row"] [part~="cell"] slot')
+      ?.getAttribute('name');
+    const rendererNode = nonNull(el.querySelector(`[slot="${slotName}"]`), 'renderer node');
+
+    clickAndAssertNoToggle(rendererNode.querySelector('button'), 'renderer <button>');
+    clickAndAssertNoToggle(rendererNode.querySelector('a'), 'renderer <a>');
+    clickAndAssertNoToggle(rendererNode.querySelector('input'), 'renderer <input>');
+    clickAndAssertNoToggle(rendererNode.querySelector('[data-no-expand]'), '[data-no-expand]');
+    clickAndAssertNoToggle(firstRow.querySelector('mndw-checkbox'), 'checkbox');
+    clickAndAssertNoToggle(firstRow.querySelector('[part="drag-handle"]'), 'drag-handle');
+  });
+
+  it('expandOn=toggle ignores body clicks', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.expandable = true;
+    el.expanded = [];
+    el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+    await el.updateComplete;
+
+    const detail = vi.fn();
+
+    el.addEventListener(MNDW_ROW_EXPAND_EVENT, () => {
+      detail();
+    });
+    nonNull(shadowOf(el).querySelector('[part~="cell"]'), 'cell').dispatchEvent(
+      new MouseEvent('click', {bubbles: true, composed: true}),
+    );
+
+    expect(detail).not.toHaveBeenCalled();
+  });
+
   it('emits mndwerror once per violation-set change', async () => {
     const el = makeTable();
 
@@ -448,6 +1213,31 @@ describe('MndwTable interaction and events', () => {
 });
 
 describe('MndwTable lifecycle', () => {
+  it('mounts the detail renderer only when expanded and destroys on collapse', async () => {
+    const el = makeTable();
+    const renderer = {mount: vi.fn(), update: vi.fn(), destroy: vi.fn()};
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.expandable = true;
+    el.expandedRenderer = () => renderer;
+    el.expanded = [];
+    await el.updateComplete;
+
+    expect(renderer.mount).not.toHaveBeenCalled();
+
+    el.expanded = ['a'];
+    await el.updateComplete;
+
+    expect(renderer.mount).toHaveBeenCalledTimes(1);
+
+    el.expanded = [];
+    await el.updateComplete;
+
+    expect(renderer.destroy).toHaveBeenCalledTimes(1);
+  });
+
   it('mounts once and updates on same-key replacement', async () => {
     const el = makeTable();
     const renderer = {mount: vi.fn(), update: vi.fn(), destroy: vi.fn()};

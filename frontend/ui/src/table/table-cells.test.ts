@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {CellRegistry} from './table-cells.js';
-import type {CellRenderer, Column} from './table-types.js';
+import {type CellRenderer, type Column, DETAIL_COL_ID} from './table-types.js';
 
 interface Row {
   id: string;
@@ -135,5 +135,37 @@ describe('CellRegistry', () => {
     registry.drain();
 
     expect(host.querySelectorAll('[slot]')).toHaveLength(0);
+  });
+
+  it('mounts, updates, and prunes a detail renderer for expanded rows', () => {
+    const detail = createSpyRenderer();
+    const rows = [{id: 'a', name: 'A'}, {id: 'b', name: 'B'}];
+    const detailFactory = () => detail;
+    const readValue = () => undefined;
+
+    registry.reconcile(rows, keyOf, [], new Set(['a']), readValue, new Set(['a']), detailFactory);
+    expect(detail.mount).toHaveBeenCalledTimes(1);
+    expect(registry.getSlotId('a', DETAIL_COL_ID)).toBeDefined();
+
+    registry.reconcile(rows, keyOf, [], new Set(['a']), readValue, new Set(['a']), detailFactory);
+    expect(detail.mount).toHaveBeenCalledTimes(1);
+    expect(detail.update).toHaveBeenCalledTimes(1);
+
+    registry.reconcile(rows, keyOf, [], new Set(['a']), readValue, new Set(), detailFactory);
+    expect(detail.destroy).toHaveBeenCalledTimes(1);
+    expect(registry.getSlotId('a', DETAIL_COL_ID)).toBeUndefined();
+  });
+
+  it('resolves a parked custom-cell node to its owning row key', () => {
+    const renderer = createSpyRenderer();
+    const column = rendererColumn('name', () => renderer);
+
+    registry.reconcile([{id: 'a', name: 'A'}], keyOf, [column], new Set(['name']), readName);
+
+    const parkedNode = host.querySelector('[slot]');
+
+    expect(parkedNode).not.toBeNull();
+    expect(registry.getRowKeyForNode(parkedNode as Node)).toBe('a');
+    expect(registry.getRowKeyForNode(document.createElement('div'))).toBeUndefined();
   });
 });

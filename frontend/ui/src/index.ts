@@ -63,8 +63,10 @@ export {getMndwUiLocale, getMndwUiText, setMndwUiLocale, subscribeMndwUiLocale} 
 export {column} from './table/table-builder.js';
 export type {ColumnBuilder} from './table/table-builder.js';
 export {
+  DETAIL_COL_ID,
   MNDW_COLUMN_VISIBILITY_CHANGE_EVENT,
   MNDW_ERROR_EVENT,
+  MNDW_ROW_EXPAND_EVENT,
   MNDW_ROW_REORDER_EVENT,
   MNDW_SELECTION_CHANGE_EVENT,
   MNDW_SORT_CHANGE_EVENT,
@@ -80,12 +82,14 @@ export type {
   ColumnDef,
   MndwColumnVisibilityChangeDetail,
   MndwErrorDetail,
+  MndwRowExpandDetail,
   MndwRowReorderDetail,
   MndwSelectionChangeDetail,
   MndwSortChangeDetail,
   MndwTableLabels,
   MndwTableProps,
   RowKey,
+  ScrollToRowOptions,
   SortState,
   StringKeyOf,
   Violation,

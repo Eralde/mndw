@@ -61,6 +61,7 @@ export function validateRows<Row>(rows: Row[], rowKey: RowKey<Row>): RowValidati
 }
 
 export function validateColumns<Row>(columns: Column<Row>[]): Violation[] {
+  const violations: Violation[] = [];
   const seen = new Set<string>();
   const duplicates = new Set<string>();
 
@@ -73,10 +74,16 @@ export function validateColumns<Row>(columns: Column<Row>[]): Violation[] {
   }
 
   if (duplicates.size > 0) {
-    return [{category: 'duplicate-column-id', columnIds: [...duplicates]}];
+    violations.push({category: 'duplicate-column-id', columnIds: [...duplicates]});
   }
 
-  return [];
+  const reserved = columns.map((column) => column.id).filter((id) => id.startsWith('__mndw_'));
+
+  if (reserved.length > 0) {
+    violations.push({category: 'reserved-column-id', columnIds: reserved});
+  }
+
+  return violations;
 }
 
 export function getColumn<Row>(columns: Column<Row>[], id: string): Column<Row> | undefined {

@@ -1102,7 +1102,7 @@ test.describe('mndw-table', () => {
       hasThead: true,
       hasTbody: true,
       caption: 'Device fixtures',
-      headerCount: 10,
+      headerCount: 9,
       headerScopesCol: true,
       rowCount: 5,
       customCell: 'Open',

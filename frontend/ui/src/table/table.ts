@@ -4,6 +4,15 @@ import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
 import {type UiLayer, getOverlayProvider} from '../overlay.js';
 import {focusRing, hostTypography} from '../styles/base.js';
 import {CellRegistry} from './table-cells.js';
+import {type FocusChainEntry, resolveFocusedRowKey} from './table-focus.js';
+import {
+  type TableGeometryProvider,
+  type TableMeasurementTarget,
+  createDomTableGeometryProvider,
+  lookupTableMeasurementTarget,
+  registerTableMeasurementTarget,
+} from './table-geometry.js';
+import {type ScrollAnchor, TableVirtualizer, type VirtualRange} from './table-virtualizer.js';
 import {
   MNDW_COLUMN_MENU_CHECK_EVENT,
   MNDW_COLUMN_MENU_TAG,
@@ -26,19 +35,24 @@ import {
 } from './table-state.js';
 import {
   type BadgeTone,
+  type CellRenderer,
   type Column,
+  DETAIL_COL_ID,
   MNDW_COLUMN_VISIBILITY_CHANGE_EVENT,
   MNDW_ERROR_EVENT,
+  MNDW_ROW_EXPAND_EVENT,
   MNDW_ROW_REORDER_EVENT,
   MNDW_SELECTION_CHANGE_EVENT,
   MNDW_SORT_CHANGE_EVENT,
   type MndwColumnVisibilityChangeDetail,
   type MndwErrorDetail,
+  type MndwRowExpandDetail,
   type MndwRowReorderDetail,
   type MndwSelectionChangeDetail,
   type MndwSortChangeDetail,
   type MndwTableLabels,
   type RowKey,
+  type ScrollToRowOptions,
   type SortState,
   type Violation,
 } from './table-types.js';
@@ -64,6 +78,8 @@ function defaultLabels(): MndwTableLabels {
     rowFallback: (index1Based) => formatTemplate(getMndwUiText('table.rowFallback'), {index: index1Based}),
     reordered: (rowName, pos, total) => formatTemplate(getMndwUiText('table.reordered'), {rowName, pos, total}),
     invalidData: getMndwUiText('table.invalidData'),
+    expandRow: (rowName) => `Expand ${rowName}`,
+    collapseRow: (rowName) => `Collapse ${rowName}`,
   };
 }
 
@@ -72,9 +88,18 @@ export class MndwTable<Row = unknown> extends LitElement {
     columns: {type: Array, attribute: false},
     rows: {type: Array, attribute: false},
     rowKey: {type: String, attribute: 'row-key'},
+    virtual: {type: Boolean, reflect: true},
+    estimatedRowHeight: {type: Number, attribute: 'estimated-row-height', reflect: true},
+    overscan: {type: Number, attribute: 'overscan', reflect: true},
     selectable: {type: Boolean, reflect: true},
     selected: {type: Array, attribute: false},
     reorderable: {type: Boolean, reflect: true},
+    expandable: {type: Boolean, attribute: false},
+    expandOn: {type: String, attribute: 'expand-on'},
+    toggleCell: {type: String, attribute: 'toggle-cell'},
+    toggleAfterColumn: {type: String, attribute: 'toggle-after-column'},
+    expanded: {type: Array, attribute: false},
+    expandedRenderer: {type: Object, attribute: false},
     sort: {type: Object, attribute: false},
     sortMode: {type: String, attribute: 'sort-mode'},
     hiddenColumns: {type: Array, attribute: false},
@@ -96,6 +121,35 @@ export class MndwTable<Row = unknown> extends LitElement {
     [part='viewport'] {
       overflow: auto;
       min-height: 0;
+      overflow-anchor: none;
+      scroll-behavior: auto !important;
+      scrollbar-gutter: stable;
+      /* Keep native table scrolling visually aligned with <mndw-scroll-area>'s custom scrollbar. */
+      scrollbar-width: thin;
+      scrollbar-color: var(--mndw-scrollbar-thumb) var(--mndw-scrollbar-track);
+    }
+
+    [part='viewport']::-webkit-scrollbar {
+      width: var(--mndw-scrollbar-size);
+      height: var(--mndw-scrollbar-size);
+    }
+
+    [part='viewport']::-webkit-scrollbar-track {
+      background: var(--mndw-scrollbar-track);
+    }
+
+    [part='viewport']::-webkit-scrollbar-thumb {
+      border: var(--mndw-focus-w) solid var(--mndw-scrollbar-track);
+      border-radius: var(--mndw-scrollbar-radius);
+      background: var(--mndw-scrollbar-thumb);
+    }
+
+    [part='viewport']::-webkit-scrollbar-thumb:hover {
+      background: var(--mndw-scrollbar-thumb-hover);
+    }
+
+    [part='viewport']::-webkit-scrollbar-corner {
+      background: var(--mndw-scrollbar-track);
     }
 
     [part='table'] {
@@ -108,7 +162,7 @@ export class MndwTable<Row = unknown> extends LitElement {
       text-align: start;
     }
 
-    [part='header-cell'] {
+    [part~='header-cell'] {
       text-align: start;
       padding: var(--mndw-space-2);
       border-bottom: 1px solid var(--mndw-border);
@@ -116,12 +170,48 @@ export class MndwTable<Row = unknown> extends LitElement {
       color: var(--mndw-text-muted);
     }
 
-    [part='cell'] {
+    [part~='cell'] {
       padding: var(--mndw-space-2);
       border-bottom: 1px solid var(--mndw-border);
     }
 
-    [part='row']:hover [part='cell'] {
+    [part~='select-cell'] {
+      width: 2.5rem;
+      padding-inline: var(--mndw-space-1);
+      text-align: center;
+    }
+
+    [part~='expand-cell'] {
+      width: 2.5rem;
+      padding-inline: var(--mndw-space-1);
+      text-align: center;
+    }
+
+    [part='expand-toggle'] {
+      border: 0;
+      background: none;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      padding: var(--mndw-space-1);
+      font-size: var(--mndw-text-lg);
+      line-height: 1;
+    }
+
+    [part='expand-toggle']:focus-visible {
+      ${focusRing}
+    }
+
+    [part='detail-cell'] {
+      padding: 0;
+      border-bottom: 1px solid var(--mndw-border);
+    }
+
+    [part='detail-row'] [part='detail-cell'] {
+      background: var(--mndw-surface-raised);
+    }
+
+    [part='row']:hover [part~='cell'] {
       background: var(--mndw-surface-hover);
     }
 
@@ -197,9 +287,18 @@ export class MndwTable<Row = unknown> extends LitElement {
   declare public columns: Column<Row>[];
   declare public rows: Row[];
   declare public rowKey: RowKey<Row>;
+  declare public virtual: boolean;
+  declare public estimatedRowHeight: number;
+  declare public overscan: number;
   declare public selectable: boolean;
   declare public selected: string[];
   declare public reorderable: boolean;
+  declare public expandable: boolean;
+  declare public expandOn: 'toggle' | 'row';
+  declare public toggleCell: 'leading' | 'trailing';
+  declare public toggleAfterColumn: string | undefined;
+  declare public expanded: string[];
+  declare public expandedRenderer: (() => CellRenderer<Row, Row>) | undefined;
   declare public sort: SortState | null;
   declare public sortMode: 'client' | 'manual';
   declare public hiddenColumns: string[] | undefined;
@@ -211,6 +310,17 @@ export class MndwTable<Row = unknown> extends LitElement {
   declare public emptyLabel: string;
 
   private readonly visibilityState = new ColumnVisibilityState();
+  private readonly geometryProvider: TableGeometryProvider;
+  private virtualizer: TableVirtualizer | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  private readonly observedElements = new Set<Element>();
+  private observedViewport: HTMLElement | null = null;
+  private pendingGeometryFrame: number | null = null;
+  private observerAttempted = false;
+  private warnedInactiveReason: string | null = null;
+  private lastViewportContentWidth: number | undefined;
+  private pendingScrollTarget: {key: string; align: 'start' | 'center' | 'end' | 'nearest'} | null = null;
+  private expectedProgrammaticScrollTop: number | undefined;
   private cellRegistry: CellRegistry<Row> | null = null;
   private localeUnsubscribe: (() => void) | null = null;
   private menuLayer: UiLayer | null = null;
@@ -219,20 +329,37 @@ export class MndwTable<Row = unknown> extends LitElement {
   private displayRows: Row[] = [];
   private effectiveHidden = new Set<string>();
   private effectiveSortState: SortState | null = null;
+  private selectedKeySet = new Set<string>();
+  private lastCellReconcileSignature: string | null = null;
+  private lastExpandedKeys = new Set<string>();
+  private windowRows: Row[] = [];
+  private virtualRange: VirtualRange | null = null;
   private violations: Violation[] = [];
   private lastViolationSignature = '';
   private optimisticOrder: Row[] | null = null;
   private dragKey: string | null = null;
   private announceText = '';
 
-  constructor() {
+  private static readonly WIDTH_EPSILON = 1;
+
+  constructor(geometryProvider?: TableGeometryProvider) {
     super();
+    this.geometryProvider = geometryProvider ?? createDomTableGeometryProvider();
     this.columns = [];
     this.rows = [];
     this.rowKey = 'id' as RowKey<Row>;
+    this.virtual = false;
+    this.estimatedRowHeight = 49;
+    this.overscan = 400;
     this.selectable = false;
     this.selected = [];
     this.reorderable = false;
+    this.expandable = false;
+    this.expandOn = 'toggle';
+    this.toggleCell = 'leading';
+    this.toggleAfterColumn = undefined;
+    this.expanded = [];
+    this.expandedRenderer = undefined;
     this.sort = null;
     this.sortMode = 'client';
     this.hiddenColumns = undefined;
@@ -250,11 +377,14 @@ export class MndwTable<Row = unknown> extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
+    this.observerAttempted = false;
     this.cellRegistry = new CellRegistry<Row>(this);
+    this.lastCellReconcileSignature = null;
     this.localeUnsubscribe = subscribeMndwUiLocale(this.onLocaleChange);
   }
 
   public override disconnectedCallback(): void {
+    this.teardownGeometry();
     this.localeUnsubscribe?.();
     this.localeUnsubscribe = null;
     this.closeColumnMenu();
@@ -263,23 +393,37 @@ export class MndwTable<Row = unknown> extends LitElement {
     super.disconnectedCallback();
   }
 
-  public override willUpdate(_changedProperties: Map<string | number | symbol, unknown>): void {
-    this.reconcileState();
+  public override willUpdate(changedProperties: Map<string | number | symbol, unknown>): void {
+    if (!this.hasUpdated || changedProperties.size > 0) {
+      this.reconcileState(true);
+    } else {
+      this.updateVirtualWindow();
+    }
+
+    this.unobserveStaleGeometryTargets();
   }
 
-  private reconcileState(): void {
+  private reconcileState(forceCellReconcile: boolean): void {
+    const previousSortState = this.effectiveSortState;
+    const previousStructureSignature = this.logicalStructureSignature(this.displayRows, this.lastExpandedKeys);
+    const anchorBeforeLogicalChange = this.captureCurrentAnchor();
+
+    this.configureGeometryMode();
+
     const columnViolations = validateColumns(this.columns);
     const {rows: validRows, violations: rowViolations} = validateRows(this.rows, this.rowKey);
 
     this.violations = [...columnViolations, ...rowViolations];
     this.emitErrorIfChanged();
 
-    this.effectiveColumns = this.columns.filter((column, index, all) => {
-      return all.findIndex((candidate) => candidate.id === column.id) === index;
-    });
+    this.effectiveColumns = this.columns
+      .filter((column, index, all) => all.findIndex((candidate) => candidate.id === column.id) === index)
+      .filter((column) => !column.id.startsWith('__mndw_'));
 
     this.effectiveHidden = this.visibilityState.effectiveHidden(this.effectiveColumns, this.hiddenColumns);
     this.effectiveSortState = effectiveSort(this.effectiveColumns, this.sort, this.effectiveHidden);
+
+    const sortChanged = !this.sameSortState(previousSortState, this.effectiveSortState);
 
     const visibleColumnIds = new Set(
       this.effectiveColumns.filter((column) => !this.effectiveHidden.has(column.id)).map((column) => column.id),
@@ -293,13 +437,86 @@ export class MndwTable<Row = unknown> extends LitElement {
       this.displayRows = validRows;
     }
 
-    this.cellRegistry?.reconcile(
-      this.displayRows,
-      (row) => resolveRowKey(this.rowKey, row),
-      this.effectiveColumns,
-      visibleColumnIds,
-      resolveCellValue,
-    );
+    const expandedKeys = this.expandedSet();
+
+    this.selectedKeySet = new Set(this.selected);
+
+    const structureChanged =
+      previousStructureSignature !== this.logicalStructureSignature(this.displayRows, expandedKeys);
+
+    if (this.isVirtualRenderingActive()) {
+      const virtualizer = this.getVirtualizer();
+      const keys = this.displayRows.map((row) => resolveRowKey(this.rowKey, row));
+
+      for (const key of this.lastExpandedKeys) {
+        if (!expandedKeys.has(key)) {
+          virtualizer.clearDetailMeasurement(key);
+        }
+      }
+
+      virtualizer.configure({
+        estimatedRowHeight: this.normalizedEstimatedRowHeight(),
+        detailEstimate: 160,
+      });
+      virtualizer.setRows(keys, expandedKeys);
+
+      this.updateVirtualWindow(false);
+
+      if (sortChanged) {
+        const viewport = this.viewportElement();
+        const header = this.headerElement();
+
+        if (viewport !== null && header !== null) {
+          this.pendingScrollTarget = null;
+          this.writeBodyScrollOffset(viewport, header, 0);
+          this.updateVirtualWindow(false);
+        }
+      } else if (structureChanged && anchorBeforeLogicalChange !== undefined) {
+        const viewport = this.viewportElement();
+        const header = this.headerElement();
+
+        if (viewport !== null && header !== null) {
+          const currentRange = virtualizer.range(
+            this.bodyScrollOffset(viewport, header),
+            this.geometryProvider.getViewportClientHeight(viewport),
+            this.normalizedOverscan(),
+          );
+          const maxBodyOffset = Math.max(
+            0,
+            currentRange.totalHeight - this.geometryProvider.getViewportClientHeight(viewport),
+          );
+          const restoredOffset = virtualizer.restoreAnchor(anchorBeforeLogicalChange, maxBodyOffset);
+
+          this.writeBodyScrollOffset(viewport, header, restoredOffset);
+          this.updateVirtualWindow(false);
+        }
+      }
+
+      this.lastExpandedKeys = new Set(expandedKeys);
+    } else {
+      this.virtualRange = null;
+      this.windowRows = this.displayRows;
+    }
+
+    if (
+      this.pendingScrollTarget !== null
+      && !this.displayRows.some((row) => resolveRowKey(this.rowKey, row) === this.pendingScrollTarget?.key)
+    ) {
+      this.pendingScrollTarget = null;
+    }
+
+    this.reconcileVisibleCells(forceCellReconcile, visibleColumnIds);
+  }
+
+  protected override updated(_changedProperties: Map<string | number | symbol, unknown>): void {
+    if (!this.isVirtualRenderingActive()) {
+      this.teardownGeometry();
+
+      return;
+    }
+
+    this.syncGeometryTargets();
+    this.scheduleGeometryFrame();
   }
 
   protected override render(): unknown {
@@ -312,18 +529,23 @@ export class MndwTable<Row = unknown> extends LitElement {
       showEmpty
         ? html`<div part="empty">${this.emptyLabel}</div>`
         : html`
-          <div part="viewport">
-            <table part="table">
+          <div part="viewport" tabindex="-1">
+            <table
+              part="table"
+              aria-rowcount=${this.virtual ? this.logicalRowCount() : nothing}
+            >
               ${this.caption ? html`<caption part="caption">${this.caption}</caption>` : nothing}
               ${this.renderHeader(labels)}
               <tbody>
+                ${this.virtualRange === null ? nothing : this.renderSpacer(this.virtualRange.paddingBefore)}
                 ${
           repeat(
-            this.displayRows,
+            this.windowRows,
             (row) => resolveRowKey(this.rowKey, row),
             (row, index) => this.renderRow(row, index, labels),
           )
         }
+                ${this.virtualRange === null ? nothing : this.renderSpacer(this.virtualRange.paddingAfter)}
               </tbody>
             </table>
           </div>`
@@ -332,10 +554,21 @@ export class MndwTable<Row = unknown> extends LitElement {
     `;
   }
 
+  private renderSpacer(height: number): unknown {
+    if (!Number.isFinite(height) || height <= 0) {
+      return nothing;
+    }
+
+    return html`<tr part="virtual-spacer" aria-hidden="true">
+      <td colspan=${this.columnSpan()} style="height: ${height}px; padding: 0; border: 0;"></td>
+    </tr>`;
+  }
+
   private renderHeader(labels: MndwTableLabels): unknown {
     return html`
       <thead part="header">
-        <tr part="header-row">
+        <tr part="header-row" aria-rowindex=${this.virtual ? 1 : nothing}>
+          ${this.shouldRenderLeadingToggle() ? this.renderExpandHeaderCell() : nothing}
           ${
       this.selectable
         ? html`<th part="header-cell select-cell" scope="col">
@@ -350,11 +583,20 @@ export class MndwTable<Row = unknown> extends LitElement {
             </th>`
         : nothing
     }
-          ${this.reorderable ? html`<th part="header-cell" scope="col"></th>` : nothing}
+          ${
+      this.reorderable && this.effectiveSortState === null
+        ? html`<th part="header-cell" scope="col"></th>`
+        : nothing
+    }
           ${
       this.effectiveColumns
         .filter((column) => !this.effectiveHidden.has(column.id))
-        .map((column) => this.renderHeaderCell(column, labels))
+        .map((column) =>
+          html`
+          ${this.renderHeaderCell(column, labels)}
+          ${this.shouldRenderToggleAfter(column.id) ? this.renderExpandHeaderCell() : nothing}
+        `
+        )
     }
           ${
       this.columnMenu
@@ -368,16 +610,22 @@ export class MndwTable<Row = unknown> extends LitElement {
             </th>`
         : nothing
     }
+          ${this.shouldRenderTrailingToggle() ? this.renderExpandHeaderCell() : nothing}
         </tr>
       </thead>
     `;
   }
 
+  private renderExpandHeaderCell(): unknown {
+    return html`<th part="header-cell expand-cell" scope="col"></th>`;
+  }
+
   private renderHeaderCell(column: Column<Row>, labels: MndwTableLabels): unknown {
     const align = classAttr(this.alignClassList(column));
+    const style = this.columnStyle(column);
 
     if (column.sortable !== true) {
-      return html`<th part="header-cell" scope="col" class=${align}>${column.label}</th>`;
+      return html`<th part="header-cell" scope="col" class=${align} style=${style}>${column.label}</th>`;
     }
 
     const direction = this.effectiveSortState?.columnId === column.id ? this.effectiveSortState?.direction : undefined;
@@ -385,7 +633,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     const indicator = direction === 'asc' ? '▲' : direction === 'desc' ? '▼' : '';
 
     return html`
-      <th part="header-cell" scope="col" class=${align} aria-sort=${ariaSort}>
+      <th part="header-cell" scope="col" class=${align} style=${style} aria-sort=${ariaSort}>
         <button
           class="sort-button"
           type="button"
@@ -398,16 +646,19 @@ export class MndwTable<Row = unknown> extends LitElement {
 
   private renderRow(row: Row, index: number, labels: MndwTableLabels): unknown {
     const key = resolveRowKey(this.rowKey, row);
+    const isExpanded = this.expandedSet().has(key);
+    const detailSlot = this.cellRegistry?.getSlotId(key, DETAIL_COL_ID);
 
     return html`
-      <tr part="row">
+      <tr part="row" data-row-key=${key} aria-rowindex=${this.virtual ? this.logicalRowIndex(key, false) : nothing}>
+        ${this.shouldRenderLeadingToggle() ? this.renderExpandCell(row, index, key, labels) : nothing}
         ${
       this.selectable
         ? html`<td part="select-cell cell">
             ${
           this.renderCheckbox({
             ariaLabel: labels.selectRow(this.rowName(row, index)),
-            checked: this.selected.includes(key),
+            checked: this.selectedKeySet.has(key),
             indeterminate: false,
             rowKey: key,
           })
@@ -430,28 +681,65 @@ export class MndwTable<Row = unknown> extends LitElement {
         ${
       this.effectiveColumns
         .filter((column) => !this.effectiveHidden.has(column.id))
-        .map((column) => this.renderCell(column, row))
+        .map((column) =>
+          html`
+          ${this.renderCell(column, row)}
+          ${this.shouldRenderToggleAfter(column.id) ? this.renderExpandCell(row, index, key, labels) : nothing}
+        `
+        )
     }
         ${this.columnMenu ? html`<td part="cell"></td>` : nothing}
+        ${this.shouldRenderTrailingToggle() ? this.renderExpandCell(row, index, key, labels) : nothing}
       </tr>
+      ${
+      this.expandable && isExpanded
+        ? html`<tr
+          part="detail-row"
+          data-row-key=${key}
+          aria-rowindex=${this.virtual ? this.logicalRowIndex(key, true) : nothing}
+        ><td part="detail-cell" colspan=${this.columnSpan()}>${
+          detailSlot !== undefined
+            ? html`<slot name=${detailSlot}></slot>`
+            : nothing
+        }</td></tr>`
+        : nothing
+    }
     `;
+  }
+
+  private renderExpandCell(row: Row, index: number, key: string, labels: MndwTableLabels): unknown {
+    const isExpanded = this.expandedSet().has(key);
+    const name = this.rowName(row, index);
+
+    return html`<td part="cell expand-cell">
+      <button
+        part="expand-toggle"
+        type="button"
+        data-expand-key=${key}
+        aria-expanded=${isExpanded ? 'true' : 'false'}
+        aria-label=${isExpanded ? labels.collapseRow(name) : labels.expandRow(name)}
+      >${isExpanded ? '▾' : '▸'}</button>
+    </td>`;
   }
 
   private renderCell(column: Column<Row>, row: Row): unknown {
     const align = this.alignClassList(column);
+    const style = this.columnStyle(column);
     const slotId = column.renderer !== undefined
       ? this.cellRegistry?.getSlotId(resolveRowKey(this.rowKey, row), column.id)
       : undefined;
 
     // Custom-renderer cells: align classes only, NO cell-kind-number (matches the old build order).
     if (slotId !== undefined) {
-      return html`<td part="cell" class=${classAttr(align)}><slot name=${slotId}></slot></td>`;
+      return html`<td part="cell" class=${classAttr(align)} style=${style}><slot name=${slotId}></slot></td>`;
     }
 
     const classes = column.kind === 'number' ? [...align, 'cell-kind-number'] : align;
     const value = resolveCellValue(column, row);
 
-    return html`<td part="cell" class=${classAttr(classes)}>${this.renderBuiltIn(column, value, row)}</td>`;
+    return html`<td part="cell" class=${classAttr(classes)} style=${style}>${
+      this.renderBuiltIn(column, value, row)
+    }</td>`;
   }
 
   private renderBuiltIn(column: Column<Row>, value: unknown, row: Row): unknown {
@@ -492,6 +780,500 @@ export class MndwTable<Row = unknown> extends LitElement {
     ></mndw-checkbox>`;
   }
 
+  private expandedSet(): Set<string> {
+    return new Set(this.expanded);
+  }
+
+  private getVirtualizer(): TableVirtualizer {
+    if (this.virtualizer === null) {
+      this.virtualizer = new TableVirtualizer({
+        estimatedRowHeight: this.normalizedEstimatedRowHeight(),
+        detailEstimate: 160,
+      });
+    }
+
+    return this.virtualizer;
+  }
+
+  private captureCurrentAnchor(): ScrollAnchor | undefined {
+    if (!this.isVirtualRenderingActive() || this.virtualizer === null) {
+      return undefined;
+    }
+
+    const viewport = this.viewportElement();
+    const header = this.headerElement();
+
+    return viewport === null || header === null
+      ? undefined
+      : this.virtualizer.captureAnchor(this.bodyScrollOffset(viewport, header));
+  }
+
+  private logicalStructureSignature(rows: readonly Row[], expandedKeys: ReadonlySet<string>): string {
+    return [
+      rows.map((row) => resolveRowKey(this.rowKey, row)).join('\u0000'),
+      [...expandedKeys].join('\u0000'),
+    ].join('\u0001');
+  }
+
+  private configureGeometryMode(): void {
+    if (!this.virtual) {
+      this.setVirtualInactiveReason(null);
+      this.teardownGeometry();
+
+      return;
+    }
+
+    if (this.resizeObserver === null && !this.observerAttempted) {
+      this.observerAttempted = true;
+      this.resizeObserver = this.geometryProvider.createResizeObserver(this.handleGeometryResize);
+    }
+
+    if (this.resizeObserver === null) {
+      this.setVirtualInactiveReason('resize-observer-unavailable');
+
+      return;
+    }
+
+    if (this.reorderable) {
+      this.teardownGeometry();
+      this.setVirtualInactiveReason('reorderable');
+
+      return;
+    }
+
+    this.setVirtualInactiveReason(null);
+  }
+
+  private isVirtualRenderingActive(): boolean {
+    return this.virtual && !this.reorderable && this.resizeObserver !== null;
+  }
+
+  private setVirtualInactiveReason(reason: string | null): void {
+    if (reason === null) {
+      this.removeAttribute('data-mndw-virtual-inactive');
+    } else {
+      this.setAttribute('data-mndw-virtual-inactive', reason);
+
+      if (this.warnedInactiveReason !== reason) {
+        this.warnedInactiveReason = reason;
+        console.warn(`<${MNDW_TABLE_TAG}> virtualization inactive: ${reason}`);
+      }
+    }
+  }
+
+  private updateVirtualWindow(reconcileCells = true): void {
+    if (!this.isVirtualRenderingActive() || this.virtualizer === null) {
+      return;
+    }
+
+    const viewport = this.viewportElement();
+    const header = this.headerElement();
+    const scrollOffset = viewport === null || header === null ? 0 : this.bodyScrollOffset(viewport, header);
+    const viewportHeight = viewport === null ? 0 : this.geometryProvider.getViewportClientHeight(viewport);
+
+    this.virtualRange = this.virtualizer.range(scrollOffset, viewportHeight, this.normalizedOverscan());
+
+    const nextRows = this.displayRows.slice(this.virtualRange.start, this.virtualRange.end);
+
+    if (viewport !== null && this.windowRows !== nextRows) {
+      const previousWindow = this.windowRows.map((row) => resolveRowKey(this.rowKey, row)).join('\u0000');
+      const nextWindow = nextRows.map((row) => resolveRowKey(this.rowKey, row)).join('\u0000');
+
+      if (previousWindow !== nextWindow) {
+        this.evacuateFocusBeforeWindowRemoval(viewport, this.windowRows, nextRows);
+      }
+    }
+
+    this.windowRows = nextRows;
+
+    if (reconcileCells) {
+      this.reconcileVisibleCells(false);
+    }
+  }
+
+  private reconcileVisibleCells(force: boolean, visibleColumnIds?: ReadonlySet<string>): void {
+    const visibleIds = visibleColumnIds ?? new Set(
+      this.effectiveColumns.filter((column) => !this.effectiveHidden.has(column.id)).map((column) => column.id),
+    );
+    const signature = [
+      this.windowRows.map((row) => resolveRowKey(this.rowKey, row)).join('\u0000'),
+      [...visibleIds].join('\u0000'),
+      [...this.expandedSet()].join('\u0000'),
+    ].join('\u0001');
+
+    if (!force && signature === this.lastCellReconcileSignature) {
+      return;
+    }
+
+    this.cellRegistry?.reconcile(
+      this.windowRows,
+      (row) => resolveRowKey(this.rowKey, row),
+      this.effectiveColumns,
+      visibleIds,
+      resolveCellValue,
+      this.expandedSet(),
+      this.expandedRenderer as (() => CellRenderer<Row>) | undefined,
+    );
+    this.lastCellReconcileSignature = signature;
+  }
+
+  private bodyScrollOffset(viewport: HTMLElement, header: HTMLElement): number {
+    return Math.max(
+      0,
+      this.geometryProvider.getViewportScrollTop(viewport) - this.geometryProvider.measure(header).height,
+    );
+  }
+
+  private writeBodyScrollOffset(viewport: HTMLElement, header: HTMLElement, bodyOffset: number): void {
+    if (this.virtualizer === null) {
+      return;
+    }
+
+    const headerHeight = this.geometryProvider.measure(header).height;
+    const viewportHeight = this.geometryProvider.getViewportClientHeight(viewport);
+    const currentScrollTop = this.geometryProvider.getViewportScrollTop(viewport);
+    const totalHeight = this.virtualizer.range(
+      this.bodyScrollOffset(viewport, header),
+      viewportHeight,
+      this.normalizedOverscan(),
+    ).totalHeight;
+    const maxScrollTop = Math.max(0, headerHeight + totalHeight - viewportHeight);
+    const requestedScrollTop = bodyOffset <= 0 && currentScrollTop < headerHeight
+      ? currentScrollTop
+      : headerHeight + Math.max(0, bodyOffset);
+
+    const nextScrollTop = Math.min(maxScrollTop, Math.max(0, requestedScrollTop));
+
+    this.expectedProgrammaticScrollTop = nextScrollTop;
+    this.geometryProvider.setViewportScrollTop(viewport, nextScrollTop);
+  }
+
+  private syncGeometryTargets(): void {
+    const observer = this.resizeObserver;
+    const viewport = this.viewportElement();
+    const header = this.headerElement();
+
+    if (observer === null || viewport === null || header === null) {
+      return;
+    }
+
+    const targets = new Map<Element, TableMeasurementTarget>();
+
+    targets.set(viewport, {kind: 'viewport'});
+    targets.set(header, {kind: 'header'});
+
+    for (const row of this.shadowRoot?.querySelectorAll<HTMLElement>('[part="row"]') ?? []) {
+      const rowKey = row.getAttribute('data-row-key');
+
+      if (rowKey !== null && rowKey !== '') {
+        targets.set(row, {kind: 'summary', rowKey});
+      }
+    }
+
+    for (const detail of this.shadowRoot?.querySelectorAll<HTMLElement>('[part="detail-row"]') ?? []) {
+      const rowKey = detail.getAttribute('data-row-key');
+
+      if (rowKey !== null && rowKey !== '') {
+        targets.set(detail, {kind: 'detail', rowKey});
+      }
+    }
+
+    for (const element of this.observedElements) {
+      if (!targets.has(element)) {
+        observer.unobserve(element);
+        this.observedElements.delete(element);
+      }
+    }
+
+    for (const [element, target] of targets) {
+      registerTableMeasurementTarget(element, target);
+
+      if (!this.observedElements.has(element)) {
+        observer.observe(element);
+        this.observedElements.add(element);
+      }
+    }
+
+    if (this.observedViewport !== viewport) {
+      this.observedViewport?.removeEventListener('scroll', this.handleViewportScroll);
+      viewport.addEventListener('scroll', this.handleViewportScroll);
+      this.observedViewport = viewport;
+    }
+  }
+
+  private unobserveStaleGeometryTargets(): void {
+    if (this.resizeObserver === null) {
+      return;
+    }
+
+    const desiredKeys = new Set(this.windowRows.map((row) => resolveRowKey(this.rowKey, row)));
+    const expandedKeys = this.expandedSet();
+
+    for (const element of this.observedElements) {
+      const target = lookupTableMeasurementTarget(element);
+
+      if (
+        target?.kind === 'summary' && !desiredKeys.has(target.rowKey)
+        || target?.kind === 'detail' && (!desiredKeys.has(target.rowKey) || !expandedKeys.has(target.rowKey))
+      ) {
+        this.resizeObserver.unobserve(element);
+        this.observedElements.delete(element);
+      }
+    }
+  }
+
+  private scheduleGeometryFrame(): void {
+    if (!this.isVirtualRenderingActive() || this.pendingGeometryFrame !== null) {
+      return;
+    }
+
+    this.pendingGeometryFrame = this.geometryProvider.requestAnimationFrame(this.handleGeometryFrame);
+  }
+
+  private readonly handleGeometryResize: ResizeObserverCallback = (): void => {
+    this.scheduleGeometryFrame();
+  };
+
+  private readonly handleViewportScroll = (): void => {
+    const viewport = this.observedViewport;
+
+    if (viewport !== null && this.expectedProgrammaticScrollTop !== undefined) {
+      const current = this.geometryProvider.getViewportScrollTop(viewport);
+
+      if (Math.abs(current - this.expectedProgrammaticScrollTop) <= 0.25) {
+        this.expectedProgrammaticScrollTop = undefined;
+        this.scheduleGeometryFrame();
+
+        return;
+      }
+    }
+
+    this.pendingScrollTarget = null;
+    this.scheduleGeometryFrame();
+  };
+
+  private readonly handleGeometryFrame: FrameRequestCallback = (): void => {
+    this.pendingGeometryFrame = null;
+
+    if (!this.isConnected || !this.isVirtualRenderingActive() || this.virtualizer === null) {
+      return;
+    }
+
+    const viewport = this.viewportElement();
+    const header = this.headerElement();
+
+    if (viewport === null || header === null) {
+      return;
+    }
+
+    this.geometryProvider.measure(viewport);
+
+    const headerRect = this.geometryProvider.measure(header);
+    const nextWidth = this.geometryProvider.getViewportContentWidth(viewport);
+    const bodyOffsetBeforeMeasure = this.bodyScrollOffset(viewport, header);
+    const anchor = this.virtualizer.captureAnchor(bodyOffsetBeforeMeasure);
+    let geometryChanged = false;
+
+    if (this.lastViewportContentWidth === undefined) {
+      this.lastViewportContentWidth = nextWidth;
+    } else if (
+      Number.isFinite(nextWidth)
+      && Math.abs(nextWidth - this.lastViewportContentWidth) >= MndwTable.WIDTH_EPSILON
+    ) {
+      this.lastViewportContentWidth = nextWidth;
+      this.virtualizer.resetWidthEpoch();
+      geometryChanged = true;
+    }
+
+    for (const element of this.observedElements) {
+      const target = lookupTableMeasurementTarget(element);
+
+      if (target?.kind === 'summary') {
+        geometryChanged =
+          this.virtualizer.recordSummaryMeasurement(target.rowKey, this.geometryProvider.measure(element).height)
+          || geometryChanged;
+      } else if (target?.kind === 'detail') {
+        geometryChanged =
+          this.virtualizer.recordDetailMeasurement(target.rowKey, this.geometryProvider.measure(element).height)
+          || geometryChanged;
+      }
+    }
+
+    const scrollOffset = Math.max(
+      0,
+      this.geometryProvider.getViewportScrollTop(viewport) - headerRect.height,
+    );
+    const nextRange = this.virtualizer.range(
+      scrollOffset,
+      this.geometryProvider.getViewportClientHeight(viewport),
+      this.normalizedOverscan(),
+    );
+    const previousWindow = this.windowRows.map((row) => resolveRowKey(this.rowKey, row)).join('\u0000');
+    const nextRows = this.displayRows.slice(nextRange.start, nextRange.end);
+    const nextWindow = nextRows.map((row) => resolveRowKey(this.rowKey, row)).join('\u0000');
+
+    if (previousWindow !== nextWindow) {
+      this.evacuateFocusBeforeWindowRemoval(viewport, this.windowRows, nextRows);
+    }
+
+    this.virtualRange = nextRange;
+    this.windowRows = nextRows;
+    this.reconcileVisibleCells(false);
+
+    let targetCorrected = false;
+
+    if (this.pendingScrollTarget !== null) {
+      const target = this.pendingScrollTarget;
+      const targetElement = [...this.observedElements].find((element) => {
+        const measurementTarget = lookupTableMeasurementTarget(element);
+
+        return measurementTarget?.kind === 'summary' && measurementTarget.rowKey === target.key;
+      });
+
+      if (targetElement !== undefined) {
+        const targetOffset = this.virtualizer.offsetForRow(
+          target.key,
+          target.align,
+          this.geometryProvider.getViewportClientHeight(viewport),
+          scrollOffset,
+        );
+
+        if (targetOffset !== undefined) {
+          this.writeBodyScrollOffset(viewport, header, targetOffset);
+        }
+
+        this.pendingScrollTarget = null;
+        targetCorrected = true;
+      }
+    }
+
+    if (geometryChanged && !targetCorrected && anchor !== undefined) {
+      const maxBodyOffset = Math.max(
+        0,
+        nextRange.totalHeight - this.geometryProvider.getViewportClientHeight(viewport),
+      );
+      const restoredOffset = this.virtualizer.restoreAnchor(anchor, maxBodyOffset);
+
+      this.writeBodyScrollOffset(viewport, header, restoredOffset);
+    }
+
+    if (geometryChanged || previousWindow !== nextWindow) {
+      this.requestUpdate();
+    }
+  };
+
+  private teardownGeometry(): void {
+    this.observedViewport?.removeEventListener('scroll', this.handleViewportScroll);
+    this.observedViewport = null;
+
+    if (this.resizeObserver !== null) {
+      for (const element of this.observedElements) {
+        this.resizeObserver.unobserve(element);
+      }
+
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
+
+    this.observedElements.clear();
+    this.observerAttempted = false;
+
+    if (this.pendingGeometryFrame !== null) {
+      this.geometryProvider.cancelAnimationFrame(this.pendingGeometryFrame);
+      this.pendingGeometryFrame = null;
+    }
+
+    this.lastViewportContentWidth = undefined;
+    this.expectedProgrammaticScrollTop = undefined;
+  }
+
+  private normalizedEstimatedRowHeight(): number {
+    return Number.isFinite(this.estimatedRowHeight) && this.estimatedRowHeight > 0
+      ? this.estimatedRowHeight
+      : 49;
+  }
+
+  private normalizedOverscan(): number {
+    return Number.isFinite(this.overscan) && this.overscan >= 0 ? this.overscan : 400;
+  }
+
+  private viewportElement(): HTMLElement | null {
+    return this.shadowRoot?.querySelector<HTMLElement>('[part="viewport"]') ?? null;
+  }
+
+  private headerElement(): HTMLElement | null {
+    return this.shadowRoot?.querySelector<HTMLElement>('[part="header-row"]') ?? null;
+  }
+
+  private collectFocusChain(): FocusChainEntry[] {
+    const chain: FocusChainEntry[] = [];
+    let activeElement: Element | null = document.activeElement;
+
+    while (activeElement !== null) {
+      chain.push({rowKey: this.focusedRowKeyForElement(activeElement)});
+
+      const nestedActive = activeElement.shadowRoot?.activeElement;
+
+      if (!(nestedActive instanceof Element) || nestedActive === activeElement) {
+        break;
+      }
+
+      activeElement = nestedActive;
+    }
+
+    return chain;
+  }
+
+  private focusedRowKeyForElement(element: Element): string | undefined {
+    const parkedRowKey = this.cellRegistry?.getRowKeyForNode(element);
+
+    if (parkedRowKey !== undefined) {
+      return parkedRowKey;
+    }
+
+    return element.closest('[part="row"], [part="detail-row"]')?.getAttribute('data-row-key') ?? undefined;
+  }
+
+  private evacuateFocusBeforeWindowRemoval(
+    viewport: HTMLElement,
+    previousRows: readonly Row[],
+    nextRows: readonly Row[],
+  ): void {
+    const previousKeys = new Set(previousRows.map((row) => resolveRowKey(this.rowKey, row)));
+    const nextKeys = new Set(nextRows.map((row) => resolveRowKey(this.rowKey, row)));
+    const focusedKey = resolveFocusedRowKey(this.collectFocusChain());
+
+    if (focusedKey !== undefined && previousKeys.has(focusedKey) && !nextKeys.has(focusedKey)) {
+      viewport.focus();
+    }
+  }
+
+  private shouldRenderLeadingToggle(): boolean {
+    return this.expandable && this.toggleAfterColumn === undefined && this.toggleCell === 'leading';
+  }
+
+  private shouldRenderTrailingToggle(): boolean {
+    return this.expandable && this.toggleAfterColumn === undefined && this.toggleCell === 'trailing';
+  }
+
+  private shouldRenderToggleAfter(columnId: string): boolean {
+    return this.expandable && this.toggleAfterColumn === columnId;
+  }
+
+  private columnStyle(column: Column<Row>): string | typeof nothing {
+    return column.width === undefined ? nothing : `width: ${column.width};`;
+  }
+
+  private columnSpan(): number {
+    const visibleData = this.effectiveColumns.filter((column) => !this.effectiveHidden.has(column.id)).length;
+
+    return (this.expandable ? 1 : 0)
+      + (this.selectable ? 1 : 0)
+      + (this.reorderable && this.effectiveSortState === null ? 1 : 0)
+      + visibleData
+      + (this.columnMenu ? 1 : 0);
+  }
+
   private alignClassList(column: Column<Row>): string[] {
     const classes: string[] = [];
 
@@ -518,17 +1300,50 @@ export class MndwTable<Row = unknown> extends LitElement {
     return this.rowLabel?.(row) ?? this.resolveLabels().rowFallback(index + 1);
   }
 
+  private sameSortState(left: SortState | null, right: SortState | null): boolean {
+    return left?.columnId === right?.columnId && left?.direction === right?.direction;
+  }
+
+  private logicalRowCount(): number {
+    const expandedKeys = this.expandedSet();
+    const validKeys = new Set(this.displayRows.map((row) => resolveRowKey(this.rowKey, row)));
+    const detailCount = [...expandedKeys].filter((key) => validKeys.has(key)).length;
+
+    return 1 + this.displayRows.length + detailCount;
+  }
+
+  private logicalRowIndex(key: string, detail: boolean): number {
+    let rowIndex = 2;
+    const expandedKeys = this.expandedSet();
+
+    for (const row of this.displayRows) {
+      const rowKey = resolveRowKey(this.rowKey, row);
+
+      if (rowKey === key) {
+        return detail ? rowIndex + 1 : rowIndex;
+      }
+
+      rowIndex += 1;
+
+      if (expandedKeys.has(rowKey)) {
+        rowIndex += 1;
+      }
+    }
+
+    return rowIndex;
+  }
+
   private locale(): string {
     return document.documentElement.lang || 'en';
   }
 
   private isAllSelected(): boolean {
-    return selectAllState(new Set(this.selected), this.displayRows.map((row) => resolveRowKey(this.rowKey, row)))
+    return selectAllState(this.selectedKeySet, this.displayRows.map((row) => resolveRowKey(this.rowKey, row)))
       === 'all';
   }
 
   private isIndeterminate(): boolean {
-    return selectAllState(new Set(this.selected), this.displayRows.map((row) => resolveRowKey(this.rowKey, row)))
+    return selectAllState(this.selectedKeySet, this.displayRows.map((row) => resolveRowKey(this.rowKey, row)))
       === 'indeterminate';
   }
 
@@ -591,6 +1406,37 @@ export class MndwTable<Row = unknown> extends LitElement {
 
   private readonly handleClick = (event: Event): void => {
     const target = (event.composedPath()[0] ?? null) as HTMLElement | null;
+    const expandToggle = target?.closest?.('[part="expand-toggle"]');
+
+    if (expandToggle !== null && expandToggle !== undefined) {
+      this.emitExpand(expandToggle.getAttribute('data-expand-key') ?? '');
+
+      return;
+    }
+
+    if (this.expandable && this.expandOn === 'row') {
+      const path = event.composedPath();
+      const interactive = path.some((node) =>
+        node instanceof HTMLElement && (
+          node.tagName === 'BUTTON'
+          || node.tagName === 'A'
+          || node.tagName === 'INPUT'
+          || node.tagName === 'MNDW-CHECKBOX'
+          || node.getAttribute('part') === 'drag-handle'
+          || node.hasAttribute('data-no-expand')
+        )
+      );
+
+      if (!interactive) {
+        const row = path.find((node) => node instanceof HTMLElement && node.getAttribute('part') === 'row');
+        const key = row instanceof HTMLElement ? row.getAttribute('data-row-key') : null;
+
+        if (key !== null && key !== undefined && key !== '') {
+          this.emitExpand(key);
+        }
+      }
+    }
+
     const sortButton = target?.closest?.('[data-sort-column]');
 
     if (sortButton !== null && sortButton !== undefined) {
@@ -606,6 +1452,23 @@ export class MndwTable<Row = unknown> extends LitElement {
       this.openColumnMenu(target);
     }
   };
+
+  private emitExpand(key: string): void {
+    const expanded = new Set(this.expanded);
+
+    if (expanded.has(key)) {
+      expanded.delete(key);
+    } else {
+      expanded.add(key);
+    }
+
+    this.dispatchEvent(
+      new CustomEvent<MndwRowExpandDetail>(MNDW_ROW_EXPAND_EVENT, {
+        ...EVENT_OPTIONS,
+        detail: {expanded: [...expanded]},
+      }),
+    );
+  }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     const handle = (event.composedPath()[0] ?? null) as HTMLElement | null;
@@ -689,6 +1552,54 @@ export class MndwTable<Row = unknown> extends LitElement {
 
   public getVisibleColumnIds(): string[] {
     return this.effectiveColumns.filter((column) => !this.effectiveHidden.has(column.id)).map((column) => column.id);
+  }
+
+  public scrollToRow(key: string, options: ScrollToRowOptions = {}): boolean {
+    const rowExists = this.displayRows.some((row) => resolveRowKey(this.rowKey, row) === key);
+
+    if (!rowExists) {
+      return false;
+    }
+
+    const viewport = this.viewportElement();
+    const header = this.headerElement();
+
+    if (viewport === null || header === null) {
+      return false;
+    }
+
+    const virtualizer = this.getVirtualizer();
+
+    virtualizer.configure({estimatedRowHeight: this.normalizedEstimatedRowHeight(), detailEstimate: 160});
+    virtualizer.setRows(
+      this.displayRows.map((row) => resolveRowKey(this.rowKey, row)),
+      this.expandedSet(),
+    );
+
+    const align = options.align ?? 'nearest';
+    const bodyOffset = virtualizer.offsetForRow(
+      key,
+      align,
+      this.geometryProvider.getViewportClientHeight(viewport),
+      this.bodyScrollOffset(viewport, header),
+    );
+
+    if (bodyOffset === undefined) {
+      return false;
+    }
+
+    if (this.isVirtualRenderingActive()) {
+      this.pendingScrollTarget = {key, align};
+    }
+
+    this.writeBodyScrollOffset(viewport, header, bodyOffset);
+    this.updateVirtualWindow();
+
+    if (this.isVirtualRenderingActive()) {
+      this.requestUpdate();
+    }
+
+    return true;
   }
 
   private openColumnMenu(trigger: HTMLElement): void {

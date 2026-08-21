@@ -40,6 +40,7 @@ export const TOKENS_REQUIRED = [
   '--mndw-surface-hover',
   '--mndw-surface-raised',
   '--mndw-text',
+  '--mndw-text-lg',
   '--mndw-text-md',
   '--mndw-text-muted',
   '--mndw-text-sm',

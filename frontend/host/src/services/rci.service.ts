@@ -20,15 +20,16 @@ export class RciService {
   }
 
   public login(username: string, password: string): Observable<boolean> {
-    return this.auth.login(username, password).pipe(
-      tap((authenticated) => {
-        if (authenticated) {
-          this.startHeartbeat();
-        } else {
-          this.stopHeartbeat();
-        }
-      }),
-    );
+    return this.auth.login(username, password)
+      .pipe(
+        tap((authenticated) => {
+          if (authenticated) {
+            this.startHeartbeat();
+          } else {
+            this.stopHeartbeat();
+          }
+        }),
+      );
   }
 
   public logout(): Observable<unknown> {
@@ -38,35 +39,41 @@ export class RciService {
   }
 
   public isAuthenticated(): Observable<boolean> {
-    return this.auth.isAuthenticated().pipe(
-      tap((authenticated) => {
-        if (authenticated) {
-          this.startHeartbeat();
-        } else {
-          this.stopHeartbeat();
-        }
-      }),
-    );
+    return this.auth.isAuthenticated()
+      .pipe(
+        tap((authenticated) => {
+          if (authenticated) {
+            this.startHeartbeat();
+          } else {
+            this.stopHeartbeat();
+          }
+        }),
+      );
   }
 
-  public startHeartbeat(): void {
+  public get authError$(): Observable<void> {
+    return this.transport.authError$
+      .pipe(tap(() => this.stopHeartbeat()));
+  }
+
+  private startHeartbeat(): void {
     if (this.heartbeatSubscription !== null) {
       return;
     }
 
-    this.heartbeatSubscription = timer(0, RCI_HEARTBEAT_INTERVAL_MS).pipe(
-      exhaustMap(() => this.driver.queue(RCI_HEARTBEAT_QUERY).pipe(catchError(() => EMPTY))),
-    )
+    this.heartbeatSubscription = timer(0, RCI_HEARTBEAT_INTERVAL_MS)
+      .pipe(exhaustMap(() => this.heartbeatRequest()))
       .subscribe();
   }
 
-  public stopHeartbeat(): void {
+  private stopHeartbeat(): void {
     this.heartbeatSubscription?.unsubscribe();
+
     this.heartbeatSubscription = null;
   }
 
-  public get authError$(): Observable<void> {
-    return this.transport.authError$.pipe(tap(() => this.stopHeartbeat()));
+  private heartbeatRequest(): Observable<unknown> {
+    return this.driver.queue(RCI_HEARTBEAT_QUERY).pipe(catchError(() => EMPTY));
   }
 }
 

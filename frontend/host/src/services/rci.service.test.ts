@@ -7,6 +7,7 @@ const services: RciService[] = [];
 function createService(): RciService {
   const service = new RciService();
 
+  vi.spyOn(service.auth, 'logout').mockReturnValue(of({}));
   services.push(service);
 
   return service;
@@ -26,7 +27,7 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const service of services) {
-    service.stopHeartbeat();
+    service.logout().subscribe();
   }
 
   services.length = 0;
@@ -103,7 +104,6 @@ describe('RciService authentication lifecycle', () => {
     const queue = mockQueue(service);
 
     vi.spyOn(service.auth, 'isAuthenticated').mockReturnValue(of(true));
-    vi.spyOn(service.auth, 'logout').mockReturnValue(of({}));
 
     service.isAuthenticated().subscribe();
     await vi.advanceTimersByTimeAsync(0);

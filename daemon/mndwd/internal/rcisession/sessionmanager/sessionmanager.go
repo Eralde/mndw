@@ -126,10 +126,6 @@ func New(options ...Options) *Manager {
 	}
 }
 
-func NewManager(options ...Options) *Manager {
-	return New(options...)
-}
-
 func (m *Manager) ApplyEnumeration(values []enumeration.Member) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

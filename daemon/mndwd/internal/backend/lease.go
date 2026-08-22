@@ -85,31 +85,3 @@ func ReadServiceLease(path string) (ServiceLease, error) {
 
 	return lease, nil
 }
-
-func ReapStaleLease(path string, reader ProcessReader) (bool, error) {
-	lease, err := ReadServiceLease(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-
-		_ = os.Remove(path)
-
-		return false, err
-	}
-
-	matched, err := ValidateServiceLease(lease, reader)
-	if err != nil {
-		_ = os.Remove(path)
-
-		return false, err
-	}
-
-	if !matched {
-		_ = os.Remove(path)
-
-		return false, nil
-	}
-
-	return true, nil
-}

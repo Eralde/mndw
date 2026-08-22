@@ -2,7 +2,6 @@ package mgmt
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 
@@ -97,11 +96,4 @@ func (h *Handler) activateBackendPlugin(name string, m *manifest.Manifest, dir s
 
 func serviceCapacityError(err error) bool {
 	return errors.Is(err, backend.ErrServiceCapacityExceeded)
-}
-
-func decodeRuntimeResponse(data []byte) (backend.RuntimeStatus, error) {
-	var status backend.RuntimeStatus
-	err := json.Unmarshal(data, &status)
-
-	return status, err
 }

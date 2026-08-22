@@ -106,15 +106,6 @@ func validAuthorityPort(host string) bool {
 	return !strings.Contains(host, ":")
 }
 
-func normalizeHost(host string) string {
-	parsed, err := url.Parse("http://" + host)
-	if err != nil || parsed.Host == "" {
-		return ""
-	}
-
-	return normalizeAuthority(parsed.Scheme, parsed.Host)
-}
-
 func normalizeAuthority(scheme, host string) string {
 	hostname := strings.ToLower(strings.TrimSuffix(hostnameOnly(host), "."))
 	port := portOnly(host)

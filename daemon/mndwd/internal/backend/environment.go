@@ -2,7 +2,6 @@ package backend
 
 import (
 	"strconv"
-	"strings"
 )
 
 type EnvironmentSpec struct {
@@ -38,16 +37,4 @@ func BuildChildEnvironment(spec EnvironmentSpec) []string {
 	}
 
 	return env
-}
-
-func EnvironmentValue(env []string, name string) (string, bool) {
-	prefix := name + "="
-
-	for _, entry := range env {
-		if strings.HasPrefix(entry, prefix) {
-			return strings.TrimPrefix(entry, prefix), true
-		}
-	}
-
-	return "", false
 }

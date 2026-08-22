@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"strings"
 
-	"mndw.local/device-auth"
 	"mndwd/internal/discovery"
 )
 
@@ -224,8 +223,6 @@ func AllowedIP(ip net.IP) bool {
 
 	return ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
-
-func (t Target) AuthTarget() auth.Target { return auth.Target{BaseURL: t.BaseURL} }
 
 func (t Target) URL(path string) (*url.URL, error) {
 	if !t.Secure && !AllowedIP(t.Address) {

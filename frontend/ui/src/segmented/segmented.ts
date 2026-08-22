@@ -1,7 +1,8 @@
 import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
 import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
 import {FormAssociatedController} from '../forms/form-associated.js';
-import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
+import {getMndwUiText} from '../i18n.js';
+import {LocaleController} from '../locale-controller.js';
 import {focusRing, hostTypography} from '../styles/base.js';
 import {MNDW_SEGMENT_CHANGE_EVENT, MNDW_SEGMENT_TAG, type MndwSegment} from './segment.js';
 
@@ -79,7 +80,7 @@ export class MndwSegmented extends LitElement {
   private owned: MndwSegment[] = [];
   private ownsAriaLabel = false;
   private ownedAriaLabel: string | null = null;
-  private localeUnsubscribe: (() => void) | null = null;
+  private readonly localeController = new LocaleController(this);
 
   constructor() {
     super();
@@ -95,14 +96,11 @@ export class MndwSegmented extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
-    this.localeUnsubscribe = subscribeMndwUiLocale(this.onLocaleChange);
     this.formState.captureInitialAttributes(['value']);
     this.addEventListener(MNDW_SEGMENT_CHANGE_EVENT, this.onSegmentChange);
   }
 
   public override disconnectedCallback(): void {
-    this.localeUnsubscribe?.();
-    this.localeUnsubscribe = null;
     super.disconnectedCallback();
     this.removeEventListener(MNDW_SEGMENT_CHANGE_EVENT, this.onSegmentChange);
     this.releaseSegments(this.owned);
@@ -243,10 +241,6 @@ export class MndwSegmented extends LitElement {
   }
 
   private readonly onSlotChange = (): void => {
-    this.requestUpdate();
-  };
-
-  private readonly onLocaleChange = (): void => {
     this.requestUpdate();
   };
 

@@ -1,7 +1,8 @@
 import {LitElement, type PropertyDeclarations, css, html} from 'lit';
 import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
 import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
-import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
+import {getMndwUiText} from '../i18n.js';
+import {LocaleController} from '../locale-controller.js';
 import {focusRing, hostTypography} from '../styles/base.js';
 
 export const MNDW_CHECKBOX_TAG = 'mndw-checkbox';
@@ -120,7 +121,7 @@ export class MndwCheckbox extends LitElement {
   private readonly labelController = new FormLabelController(this);
   private readonly labelObserver: MutationObserver;
   private labelSlot: HTMLSlotElement | null = null;
-  private localeUnsubscribe: (() => void) | null = null;
+  private readonly localeController = new LocaleController(this);
 
   constructor() {
     super();
@@ -140,14 +141,11 @@ export class MndwCheckbox extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
-    this.localeUnsubscribe = subscribeMndwUiLocale(this.onLocaleChange);
     this.formState.captureInitialAttributes(['checked']);
     this.labelObserver.observe(this, {childList: true, subtree: true, characterData: true});
   }
 
   public override disconnectedCallback(): void {
-    this.localeUnsubscribe?.();
-    this.localeUnsubscribe = null;
     this.labelObserver.disconnect();
     this.labelSlot?.removeEventListener('slotchange', this.onLabelSlotChange);
     this.labelSlot = null;
@@ -237,10 +235,6 @@ export class MndwCheckbox extends LitElement {
 
   private readonly onLabelSlotChange = (): void => {
     this.dispatchLabelChange();
-  };
-
-  private readonly onLocaleChange = (): void => {
-    this.requestUpdate();
   };
 
   private dispatchLabelChange(): void {

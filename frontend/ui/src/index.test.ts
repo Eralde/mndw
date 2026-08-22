@@ -1,6 +1,8 @@
 import type {OverlayService} from '@mndw/sdk';
 import {afterEach, describe, expect, expectTypeOf, it, vi} from 'vitest';
 import {
+  LocaleController,
+  type LocaleControllerOptions,
   MNDW_BAR_CHART_TAG,
   MNDW_BUTTON_TAG,
   MNDW_CHECKBOX_TAG,
@@ -97,6 +99,8 @@ describe('defineMndwUi', () => {
   it('exports chart contracts and formatting', () => {
     expect(MndwLineChart).toBeDefined();
     expect(MndwBarChart).toBeDefined();
+    expect(LocaleController).toBeDefined();
+    expectTypeOf<LocaleControllerOptions>().toEqualTypeOf<{applyLocale?: () => void}>();
     expect(formatSpeed(1500)).toBe('1.5 Kb/s');
   });
 

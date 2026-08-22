@@ -2,7 +2,8 @@ import {LitElement, type PropertyDeclarations, type PropertyValues, type Templat
 import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
 import {deepActiveElement} from '../focus.js';
 import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
-import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
+import {getMndwUiText} from '../i18n.js';
+import {LocaleController} from '../locale-controller.js';
 import {type LocalizedPropertyState, createLocalizedProperty} from '../localized-property.js';
 import {type UiCloseReason, type UiLayer, type UiLayerPresentation, getOverlayProvider} from '../overlay.js';
 import {selectPresentation} from '../position/position.js';
@@ -106,7 +107,11 @@ export class MndwSelect extends LitElement {
   private panelHadFocus = false;
   private presentation: UiLayerPresentation | null = null;
   private readonly placeholderState: LocalizedPropertyState<string | undefined>;
-  private localeUnsubscribe: (() => void) | null = null;
+  private readonly localeController = new LocaleController(this, {
+    applyLocale: (): void => {
+      this.applyLocale();
+    },
+  });
   private readonly formState = new FormAssociatedController(this, {
     isExplicitlyDisabled: () => this.disabled,
     onReset: () => this.resetForm(),
@@ -145,15 +150,11 @@ export class MndwSelect extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
-    this.localeUnsubscribe = subscribeMndwUiLocale(this.onLocaleChange);
-    this.applyLocale();
     this.formState.captureInitialAttributes(['value']);
     this.addEventListener(MNDW_OPTION_CHANGE_EVENT, this.onOptionChange);
   }
 
   public override disconnectedCallback(): void {
-    this.localeUnsubscribe?.();
-    this.localeUnsubscribe = null;
     super.disconnectedCallback();
     this.removeEventListener(MNDW_OPTION_CHANGE_EVENT, this.onOptionChange);
     this.closePanel(false);
@@ -258,14 +259,9 @@ export class MndwSelect extends LitElement {
     return readOptions(this);
   }
 
-  private readonly onLocaleChange = (): void => {
-    this.placeholderState.setGenerated(getMndwUiText('select.placeholder'));
-    this.layer?.setTitle?.(this.label || getMndwUiText('select.overlay.title'));
-    this.requestUpdate();
-  };
-
   private applyLocale(): void {
     this.placeholderState.setGenerated(getMndwUiText('select.placeholder'));
+    this.layer?.setTitle?.(this.label || getMndwUiText('select.overlay.title'));
   }
 
   private readonly onSlotChange = (): void => {

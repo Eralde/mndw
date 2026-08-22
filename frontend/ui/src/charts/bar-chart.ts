@@ -3,7 +3,8 @@ import * as d3 from 'd3';
 import type {NumberValue} from 'd3';
 import {buildBarAriaLabel, filterFinitePoints, formatSpeed, getSpeedUpperLimit} from './chart-utils.js';
 import type {MndwChartPoint} from './chart-types.js';
-import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
+import {getMndwUiText} from '../i18n.js';
+import {LocaleController} from '../locale-controller.js';
 import {
   type GeneratedAttributeState,
   type LocalizedPropertyState,
@@ -121,7 +122,11 @@ export class MndwBarChart extends LitElement {
   private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
   private readonly valueLabelState: LocalizedPropertyState<string | undefined>;
   private readonly ariaLabelState: GeneratedAttributeState;
-  private localeUnsubscribe: (() => void) | null = null;
+  private readonly localeController = new LocaleController(this, {
+    applyLocale: (): void => {
+      this.applyLocale();
+    },
+  });
 
   constructor() {
     super();
@@ -134,8 +139,6 @@ export class MndwBarChart extends LitElement {
 
   public override connectedCallback(): void {
     super.connectedCallback();
-    this.localeUnsubscribe = subscribeMndwUiLocale(this.onLocaleChange);
-    this.applyLocale();
     this.setAttribute('role', 'img');
   }
 
@@ -185,8 +188,6 @@ export class MndwBarChart extends LitElement {
   }
 
   public override disconnectedCallback(): void {
-    this.localeUnsubscribe?.();
-    this.localeUnsubscribe = null;
     this.disconnectPlot();
 
     if (this.resizeObserver !== null) {
@@ -213,11 +214,6 @@ export class MndwBarChart extends LitElement {
       this.emptyLabel ?? getMndwUiText('chart.empty'),
     ));
   }
-
-  private readonly onLocaleChange = (): void => {
-    this.applyLocale();
-    this.requestUpdate();
-  };
 
   private applyLocale(): void {
     this.emptyLabelState.setGenerated(getMndwUiText('chart.empty'));

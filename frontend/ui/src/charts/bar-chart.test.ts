@@ -1,4 +1,5 @@
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {setMndwUiLocale} from '../i18n.js';
 import {MNDW_BAR_CHART_TAG, MndwBarChart} from './bar-chart.js';
 
 beforeAll(() => {
@@ -8,6 +9,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  setMndwUiLocale('en');
   document.body.innerHTML = '';
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -51,6 +53,17 @@ describe('<mndw-bar-chart>', () => {
     expect(element.getAttribute('role')).toBe('img');
     expect(element.getAttribute('aria-label')).toBe('No data available');
     expect(element.shadowRoot?.querySelector('[part="empty"]')?.textContent).toContain('No data available');
+  });
+
+  it('re-derives the empty-state aria-label when the locale changes', async () => {
+    const element = await mount();
+
+    expect(element.getAttribute('aria-label')).toBe('No data available');
+
+    setMndwUiLocale('ru');
+    await element.updateComplete;
+
+    expect(element.getAttribute('aria-label')).toBe('Нет данных');
   });
 
   it('binds the documented hyphenated value-label attribute', async () => {

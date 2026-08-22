@@ -1,6 +1,7 @@
 import {LitElement, type PropertyDeclarations, css, html, nothing} from 'lit';
 import {repeat} from 'lit/directives/repeat.js';
-import {getMndwUiText, subscribeMndwUiLocale} from '../i18n.js';
+import {getMndwUiText} from '../i18n.js';
+import {LocaleController} from '../locale-controller.js';
 import {type UiLayer, getOverlayProvider} from '../overlay.js';
 import {focusRing, hostTypography} from '../styles/base.js';
 import {CellRegistry} from './table-cells.js';
@@ -322,7 +323,7 @@ export class MndwTable<Row = unknown> extends LitElement {
   private pendingScrollTarget: {key: string; align: 'start' | 'center' | 'end' | 'nearest'} | null = null;
   private expectedProgrammaticScrollTop: number | undefined;
   private cellRegistry: CellRegistry<Row> | null = null;
-  private localeUnsubscribe: (() => void) | null = null;
+  private readonly localeController = new LocaleController(this);
   private menuLayer: UiLayer | null = null;
 
   private effectiveColumns: Column<Row>[] = [];
@@ -380,13 +381,10 @@ export class MndwTable<Row = unknown> extends LitElement {
     this.observerAttempted = false;
     this.cellRegistry = new CellRegistry<Row>(this);
     this.lastCellReconcileSignature = null;
-    this.localeUnsubscribe = subscribeMndwUiLocale(this.onLocaleChange);
   }
 
   public override disconnectedCallback(): void {
     this.teardownGeometry();
-    this.localeUnsubscribe?.();
-    this.localeUnsubscribe = null;
     this.closeColumnMenu();
     this.cellRegistry?.drain();
     this.cellRegistry = null;
@@ -1364,10 +1362,6 @@ export class MndwTable<Row = unknown> extends LitElement {
       new CustomEvent<MndwErrorDetail>(MNDW_ERROR_EVENT, {...EVENT_OPTIONS, detail: {violations: this.violations}}),
     );
   }
-
-  private readonly onLocaleChange = (): void => {
-    this.requestUpdate();
-  };
 
   private readonly handleCheckboxChange = (event: Event): void => {
     const target = (event.composedPath()[0] ?? null) as HTMLElement | null;

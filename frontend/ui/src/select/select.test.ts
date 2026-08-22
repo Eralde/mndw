@@ -90,6 +90,7 @@ interface FakeLayer {
   closed: Promise<UiCloseReason>;
   close: ReturnType<typeof vi.fn>;
   reposition: ReturnType<typeof vi.fn>;
+  setTitle: ReturnType<typeof vi.fn>;
   settle: (reason: UiCloseReason) => void;
 }
 
@@ -120,6 +121,7 @@ function fakeProvider(): {
           settle('api');
         }),
         reposition: vi.fn(),
+        setTitle: vi.fn(),
         settle: (reason: UiCloseReason) => {
           contentElement.remove();
           settle(reason);
@@ -152,6 +154,22 @@ describe('<mndw-select> trigger', () => {
     await element.updateComplete;
 
     expect(element.open).toBe(true);
+  });
+
+  it('updates an open fallback overlay title when the locale changes', async () => {
+    const probe = fakeProvider();
+
+    setOverlayProvider(probe.provider);
+
+    const element = await mount('<mndw-select></mndw-select>');
+
+    await openPanel(element);
+    expect(probe.calls[0]?.title).toBe('Select option');
+
+    setMndwUiLocale('ru');
+    await element.updateComplete;
+
+    expect(probe.layers[0]?.setTitle).toHaveBeenCalledWith('Выберите вариант');
   });
 
   it('shows the placeholder when nothing is selected', async () => {

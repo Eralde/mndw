@@ -1,5 +1,6 @@
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from '../checkbox/checkbox.js';
+import {setMndwUiLocale} from '../i18n.js';
 import {type UiLayer, type UiLayerOptions, type UiOverlayProvider, setOverlayProvider} from '../overlay.js';
 import {column} from './table-builder.js';
 import {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './column-menu.js';
@@ -52,6 +53,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  setMndwUiLocale('en');
   setOverlayProvider(undefined);
   document.body.innerHTML = '';
 });
@@ -529,6 +531,44 @@ describe('MndwTable rendering and properties', () => {
     expect(el.hasAttribute('reorderable')).toBe(true);
     expect(shadowOf(el).querySelector('[part="select-all"]')).not.toBeNull();
     expect(shadowOf(el).querySelector('[part="drag-handle"]')).not.toBeNull();
+  });
+
+  it('re-renders localized aria labels when the locale changes', async () => {
+    const element = makeTable();
+
+    element.columns = makeColumns();
+    element.rows = rows;
+    element.rowKey = 'id';
+    element.selectable = true;
+    await element.updateComplete;
+
+    const selectAll = shadowQuery<HTMLElement>(element, '[part="select-all"]');
+
+    expect(selectAll.getAttribute('aria-label')).toBe('Select all');
+
+    setMndwUiLocale('ru');
+    await element.updateComplete;
+
+    expect(selectAll.getAttribute('aria-label')).toBe('Выбрать все');
+  });
+
+  it('does not re-render after disconnect when the locale changes', async () => {
+    const element = makeTable();
+
+    element.columns = makeColumns();
+    element.rows = rows;
+    element.rowKey = 'id';
+    element.selectable = true;
+    await element.updateComplete;
+
+    const requestUpdate = vi.spyOn(element, 'requestUpdate');
+
+    element.remove();
+    requestUpdate.mockClear();
+
+    setMndwUiLocale('ru');
+
+    expect(requestUpdate).not.toHaveBeenCalled();
   });
 
   it('exposes explicit string attributes', async () => {

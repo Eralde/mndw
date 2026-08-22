@@ -247,7 +247,7 @@ func TestStatusReportsPIDFromCmdlineResolver(t *testing.T) {
 		return "running", 0, nil
 	})
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 1516, cmdline: "/usr/sbin/ntpd --foreground", comm: "ntpd"}}, nil
+		return []procRecord{{pid: 1516, cmdline: "/opt/sbin/ntpd --foreground", comm: "ntpd", exe: "/opt/sbin/ntpd"}}, nil
 	}
 
 	writeInitScriptBody(t, m.initDir, "S77ntpd", "#!/bin/sh\nPROCS=ntpd\n")
@@ -294,7 +294,7 @@ func TestStatusKnownStoppedIgnoresMatchingProcess(t *testing.T) {
 		return "stopped", 1, nil
 	})
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 1516, cmdline: "/usr/sbin/ntpd --foreground", comm: "ntpd"}}, nil
+		return []procRecord{{pid: 1516, cmdline: "/opt/sbin/ntpd --foreground", comm: "ntpd", exe: "/opt/sbin/ntpd"}}, nil
 	}
 
 	writeInitScriptBody(t, m.initDir, "S77ntpd", "#!/bin/sh\nPROCS=ntpd\n")
@@ -312,7 +312,7 @@ func TestStatusKnownStoppedIgnoresMatchingProcess(t *testing.T) {
 func TestStatusFallbackUsesResolverPID(t *testing.T) {
 	m := testExecManager(t, usageRunner())
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 100, cmdline: "transmission-daemon --foreground", comm: "transmission-daemon"}}, nil
+		return []procRecord{{pid: 100, cmdline: "/opt/sbin/transmission-daemon --foreground", comm: "transmission-daemon", exe: "/opt/sbin/transmission-daemon"}}, nil
 	}
 
 	writeInitScriptBody(t, m.initDir, "S99transmission",
@@ -325,6 +325,24 @@ func TestStatusFallbackUsesResolverPID(t *testing.T) {
 
 	if got.State != "running" || got.Pid != 100 {
 		t.Fatalf("entry = %+v, want running with PID 100", got)
+	}
+}
+
+func TestStatusIgnoresFirmwareProcessForOptService(t *testing.T) {
+	m := testExecManager(t, usageRunner())
+	m.procSnapshot = func(context.Context) ([]procRecord, error) {
+		return []procRecord{{pid: 726, cmdline: "/usr/sbin/dropbear", comm: "dropbear", exe: "/usr/sbin/dropbear"}}, nil
+	}
+
+	writeInitScriptBody(t, m.initDir, "K51dropbear", "#!/bin/sh\nPROCS=dropbear\n")
+
+	got, err := m.Status(context.Background(), "K51dropbear")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.State != "unknown" || got.Pid != 0 {
+		t.Fatalf("entry = %+v, want unknown without firmware PID", got)
 	}
 }
 
@@ -392,7 +410,7 @@ func TestStatusS70mndwdUsesSnapshotValidatedPidfile(t *testing.T) {
 	}
 
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 42, comm: "mndwd"}}, nil
+		return []procRecord{{pid: 42, cmdline: "/opt/bin/mndwd", comm: "mndwd", exe: "/opt/bin/mndwd"}}, nil
 	}
 
 	got, err := m.Status(context.Background(), "S70mndwd")
@@ -408,7 +426,7 @@ func TestStatusS70mndwdUsesSnapshotValidatedPidfile(t *testing.T) {
 func TestStatusProcsFallbackReportsRunning(t *testing.T) {
 	m := testExecManager(t, usageRunner())
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 100, cmdline: "transmission-daemon --foreground", comm: "transmission-daemon"}}, nil
+		return []procRecord{{pid: 100, cmdline: "/opt/sbin/transmission-daemon --foreground", comm: "transmission-daemon", exe: "/opt/sbin/transmission-daemon"}}, nil
 	}
 
 	writeInitScriptBody(t, m.initDir, "S99transmission",
@@ -433,7 +451,7 @@ func TestStatusPidFileFallbackForOwnScript(t *testing.T) {
 	}
 
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 7, comm: "svc"}}, nil
+		return []procRecord{{pid: 7, cmdline: "/opt/bin/svc", comm: "svc", exe: "/opt/bin/svc"}}, nil
 	}
 
 	writeInitScriptBody(t, m.initDir, "S99svc", "#!/bin/sh\nPID_FILE=\""+pidPath+"\"\n")
@@ -457,7 +475,7 @@ func TestStatusReportsPidFromPidfile(t *testing.T) {
 	}
 
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 4321, comm: "svc"}}, nil
+		return []procRecord{{pid: 4321, cmdline: "/opt/bin/svc", comm: "svc", exe: "/opt/bin/svc"}}, nil
 	}
 
 	writeInitScriptBody(t, m.initDir, "S99svc", "#!/bin/sh\nPID_FILE=\""+pidPath+"\"\n")
@@ -487,7 +505,7 @@ func TestStatusReportsPidFromPidfileWhenStatusSucceeds(t *testing.T) {
 	}
 
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 4321, comm: "svc"}}, nil
+		return []procRecord{{pid: 4321, cmdline: "/opt/bin/svc", comm: "svc", exe: "/opt/bin/svc"}}, nil
 	}
 
 	writeInitScriptBody(t, m.initDir, "S99svc", "#!/bin/sh\nPID_FILE=\""+pidPath+"\"\n")
@@ -509,7 +527,7 @@ func TestStatusReportsPidFromPidfileWhenStatusSucceeds(t *testing.T) {
 func TestStatusProcsFallbackReportsPid(t *testing.T) {
 	m := testExecManager(t, usageRunner())
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 101, cmdline: "transmission-daemon --foreground", comm: "transmission-daemon"}}, nil
+		return []procRecord{{pid: 101, cmdline: "/opt/sbin/transmission-daemon --foreground", comm: "transmission-daemon", exe: "/opt/sbin/transmission-daemon"}}, nil
 	}
 
 	writeInitScriptBody(t, m.initDir, "S99transmission",
@@ -577,7 +595,7 @@ func TestListEnrichesLivenessFromSnapshot(t *testing.T) {
 		return "", 0, nil
 	})
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 1516, cmdline: "/usr/sbin/ntpd --foreground", comm: "ntpd"}}, nil
+		return []procRecord{{pid: 1516, cmdline: "/opt/sbin/ntpd --foreground", comm: "ntpd", exe: "/opt/sbin/ntpd"}}, nil
 	}
 
 	writeInitScriptBody(t, m.initDir, "S77ntpd", "#!/bin/sh\nPROCS=ntpd\n")
@@ -600,6 +618,28 @@ func TestListEnrichesLivenessFromSnapshot(t *testing.T) {
 
 	if absent := byName["S99absent"]; absent.State != "unknown" || absent.Pid != 0 {
 		t.Errorf("S99absent = %+v, want unknown with no PID when unmatched", absent)
+	}
+}
+
+func TestListIgnoresFirmwareProcessForOptService(t *testing.T) {
+	m := testExecManager(t, func(context.Context, ...string) (string, int, error) {
+		t.Fatal("List must not run per-script status verbs")
+
+		return "", 0, nil
+	})
+	m.procSnapshot = func(context.Context) ([]procRecord, error) {
+		return []procRecord{{pid: 726, cmdline: "/usr/sbin/dropbear", comm: "dropbear", exe: "/usr/sbin/dropbear"}}, nil
+	}
+
+	writeInitScriptBody(t, m.initDir, "K51dropbear", "#!/bin/sh\nPROCS=dropbear\n")
+
+	got, err := m.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != 1 || got[0].State != "unknown" || got[0].Pid != 0 {
+		t.Fatalf("services = %+v, want unknown without firmware PID", got)
 	}
 }
 

@@ -23,6 +23,17 @@ func writeFakeProc(t *testing.T, root string, pid int, cmdline []byte, comm, sta
 		if err := os.WriteFile(filepath.Join(dir, "cmdline"), cmdline, 0o644); err != nil {
 			t.Fatal(err)
 		}
+
+		executable := filepath.Join("/opt/bin", strconv.Itoa(pid))
+		fields := strings.Fields(strings.ReplaceAll(string(cmdline), "\x00", " "))
+
+		if len(fields) > 0 && filepath.IsAbs(fields[0]) {
+			executable = fields[0]
+		}
+
+		if err := os.Symlink(executable, filepath.Join(dir, "exe")); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	if comm != "" {
@@ -62,7 +73,7 @@ func TestReadProcSnapshotNormalizesIdentityAndSkipsZombies(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(got) != 1 || got[0].pid != 1516 || got[0].cmdline != "/usr/sbin/ntpd --foreground" || got[0].comm != "ntpd" || got[0].zombie {
+	if len(got) != 1 || got[0].pid != 1516 || got[0].cmdline != "/usr/sbin/ntpd --foreground" || got[0].comm != "ntpd" || got[0].exe != "/usr/sbin/ntpd" || got[0].zombie {
 		t.Fatalf("snapshot = %+v, want one normalized live record", got)
 	}
 }
@@ -153,9 +164,9 @@ func TestResolvePIDUsesFirstWinningSourceAndLowestPIDWithinIt(t *testing.T) {
 	m := testExecManager(t, nil)
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
 		return []procRecord{
-			{pid: 300, cmdline: "/opt/bin/daemon", comm: "daemon"},
-			{pid: 200, cmdline: "/opt/bin/daemon --worker", comm: "daemon"},
-			{pid: 100, cmdline: "/opt/bin/other", comm: "other"},
+			{pid: 300, cmdline: "/opt/bin/daemon", comm: "daemon", exe: "/opt/bin/daemon"},
+			{pid: 200, cmdline: "/opt/bin/daemon --worker", comm: "daemon", exe: "/opt/bin/daemon"},
+			{pid: 100, cmdline: "/opt/bin/other", comm: "other", exe: "/opt/bin/other"},
 		}, nil
 	}
 
@@ -185,17 +196,17 @@ func TestResolvePIDValidatesExplicitPIDFileAgainstSnapshot(t *testing.T) {
 	}{
 		{
 			name:    "live",
-			records: []procRecord{{pid: 42, comm: "svc"}},
+			records: []procRecord{{pid: 42, cmdline: "/opt/bin/svc", comm: "svc", exe: "/opt/bin/svc"}},
 			want:    42,
 		},
 		{
 			name:    "absent",
-			records: []procRecord{{pid: 43, comm: "other"}},
+			records: []procRecord{{pid: 43, cmdline: "/opt/bin/other", comm: "other", exe: "/opt/bin/other"}},
 			want:    0,
 		},
 		{
 			name:    "injected zombie",
-			records: []procRecord{{pid: 42, comm: "svc", zombie: true}},
+			records: []procRecord{{pid: 42, cmdline: "/opt/bin/svc", comm: "svc", exe: "/opt/bin/svc", zombie: true}},
 			want:    0,
 		},
 	}
@@ -226,7 +237,7 @@ func TestResolvePIDUsesConfiguredMndwdPIDFile(t *testing.T) {
 	writeFakePIDFile(t, m.pidfile, "42\n")
 
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 42, comm: "mndwd"}}, nil
+		return []procRecord{{pid: 42, cmdline: "/opt/bin/mndwd", comm: "mndwd", exe: "/opt/bin/mndwd"}}, nil
 	}
 
 	got, err := m.resolvePIDWithMeta(context.Background(), "S70mndwd", scriptMeta{})
@@ -249,7 +260,7 @@ func TestResolvePIDUsesConventionalPIDFileRootsAndOrdering(t *testing.T) {
 			writeFakePIDFile(t, filepath.Join(root, "foo.pid"), "77\n")
 
 			m.procSnapshot = func(context.Context) ([]procRecord, error) {
-				return []procRecord{{pid: 77, comm: "foo"}}, nil
+				return []procRecord{{pid: 77, cmdline: "/opt/bin/foo", comm: "foo", exe: "/opt/bin/foo"}}, nil
 			}
 
 			got, err := m.resolvePIDWithMeta(context.Background(), "S99foo", scriptMeta{})
@@ -272,7 +283,10 @@ func TestResolvePIDUsesConventionalPIDFileRootsAndOrdering(t *testing.T) {
 		writeFakePIDFile(t, filepath.Join(root, "foo"), "200\n")
 
 		m.procSnapshot = func(context.Context) ([]procRecord, error) {
-			return []procRecord{{pid: 100, comm: "foo"}, {pid: 200, comm: "foo"}}, nil
+			return []procRecord{
+				{pid: 100, cmdline: "/opt/bin/foo", comm: "foo", exe: "/opt/bin/foo"},
+				{pid: 200, cmdline: "/opt/bin/foo", comm: "foo", exe: "/opt/bin/foo"},
+			}, nil
 		}
 
 		got, err := m.resolvePIDWithMeta(context.Background(), "S99foo", scriptMeta{})
@@ -293,11 +307,11 @@ func TestResolvePIDUsesMetadataAndNameFallbacks(t *testing.T) {
 		records []procRecord
 		want    int
 	}{
-		{name: "NAME", meta: scriptMeta{name: "cron"}, records: []procRecord{{pid: 10, cmdline: "/usr/sbin/cron -f"}}, want: 10},
-		{name: "DAEMON", meta: scriptMeta{daemon: "/opt/sbin/ntpd"}, records: []procRecord{{pid: 11, cmdline: "/opt/sbin/ntpd --foreground"}}, want: 11},
-		{name: "base name", meta: scriptMeta{}, records: []procRecord{{pid: 12, cmdline: "/opt/bin/foo"}}, want: 12},
-		{name: "full name", meta: scriptMeta{}, records: []procRecord{{pid: 13, cmdline: "/opt/bin/S99foo"}}, want: 13},
-		{name: "script basename", meta: scriptMeta{script: "/opt/etc/init.d/custom-script"}, records: []procRecord{{pid: 14, cmdline: "/opt/bin/custom-script --run"}}, want: 14},
+		{name: "NAME", meta: scriptMeta{name: "cron"}, records: []procRecord{{pid: 10, cmdline: "/opt/sbin/cron -f", exe: "/opt/sbin/cron"}}, want: 10},
+		{name: "DAEMON", meta: scriptMeta{daemon: "/opt/sbin/ntpd"}, records: []procRecord{{pid: 11, cmdline: "/opt/sbin/ntpd --foreground", exe: "/opt/sbin/ntpd"}}, want: 11},
+		{name: "base name", meta: scriptMeta{}, records: []procRecord{{pid: 12, cmdline: "/opt/bin/foo", exe: "/opt/bin/foo"}}, want: 12},
+		{name: "full name", meta: scriptMeta{}, records: []procRecord{{pid: 13, cmdline: "/opt/bin/S99foo", exe: "/opt/bin/S99foo"}}, want: 13},
+		{name: "script basename", meta: scriptMeta{script: "/opt/etc/init.d/custom-script"}, records: []procRecord{{pid: 14, cmdline: "/opt/bin/custom-script --run", exe: "/opt/bin/custom-script"}}, want: 14},
 	}
 
 	for _, test := range tests {
@@ -323,8 +337,8 @@ func TestResolvePIDPrefersFullPathBeforePathBasename(t *testing.T) {
 	m := testExecManager(t, nil)
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
 		return []procRecord{
-			{pid: 50, cmdline: "/usr/sbin/ntpd --foreground", comm: "ntpd"},
-			{pid: 60, cmdline: "/opt/sbin/ntpd --foreground", comm: "ntpd"},
+			{pid: 50, cmdline: "/usr/sbin/ntpd --foreground", comm: "ntpd", exe: "/usr/sbin/ntpd"},
+			{pid: 60, cmdline: "/opt/sbin/ntpd --foreground", comm: "ntpd", exe: "/opt/sbin/ntpd"},
 		}, nil
 	}
 
@@ -338,10 +352,87 @@ func TestResolvePIDPrefersFullPathBeforePathBasename(t *testing.T) {
 	}
 }
 
+func TestResolvePIDIgnoresFirmwareProcessForOptService(t *testing.T) {
+	m := testExecManager(t, nil)
+	m.procSnapshot = func(context.Context) ([]procRecord, error) {
+		return []procRecord{
+			{pid: 726, cmdline: "/usr/sbin/dropbear", comm: "dropbear", exe: "/usr/sbin/dropbear"},
+			{pid: 1112, cmdline: "/opt/sbin/dropbear -p 222", comm: "dropbear", exe: "/opt/sbin/dropbear"},
+		}, nil
+	}
+
+	got, err := m.resolvePIDWithMeta(context.Background(), "K51dropbear", scriptMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got != 1112 {
+		t.Fatalf("pid = %d, want 1112 from /opt dropbear, not firmware PID 726", got)
+	}
+}
+
+func TestResolvePIDUsesExecutablePathWhenArgv0IsBare(t *testing.T) {
+	m := testExecManager(t, nil)
+	m.procSnapshot = func(context.Context) ([]procRecord, error) {
+		return []procRecord{{pid: 1112, cmdline: "dropbear -p 222", comm: "dropbear", exe: "/opt/sbin/dropbear"}}, nil
+	}
+
+	got, err := m.resolvePIDWithMeta(context.Background(), "K51dropbear", scriptMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got != 1112 {
+		t.Fatalf("pid = %d, want 1112 from executable path", got)
+	}
+}
+
+func TestResolvePIDAcceptsDeletedOptExecutable(t *testing.T) {
+	m := testExecManager(t, nil)
+	m.procSnapshot = func(context.Context) ([]procRecord, error) {
+		return []procRecord{{
+			pid:     1112,
+			cmdline: "dropbear -p 222",
+			comm:    "dropbear",
+			exe:     "/opt/sbin/dropbear (deleted)",
+		}}, nil
+	}
+
+	got, err := m.resolvePIDWithMeta(context.Background(), "K51dropbear", scriptMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got != 1112 {
+		t.Fatalf("pid = %d, want 1112 from deleted /opt executable", got)
+	}
+}
+
+func TestResolvePIDRejectsOptPrefixCollisions(t *testing.T) {
+	m := testExecManager(t, nil)
+	m.procSnapshot = func(context.Context) ([]procRecord, error) {
+		return []procRecord{{
+			pid:     1112,
+			cmdline: "/optx/sbin/dropbear -p 222",
+			comm:    "dropbear",
+			exe:     "/optx/sbin/dropbear",
+		}}, nil
+	}
+
+	got, err := m.resolvePIDWithMeta(context.Background(), "K51dropbear", scriptMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got != 0 {
+		t.Fatalf("pid = %d, want no match outside /opt", got)
+	}
+}
+
 func TestResolvePIDUsesCommFallbackWithKernelTruncation(t *testing.T) {
 	m := testExecManager(t, nil)
 	m.procSnapshot = func(context.Context) ([]procRecord, error) {
-		return []procRecord{{pid: 15, comm: "long-process-na"}}, nil
+		return []procRecord{{pid: 15, cmdline: "/opt/bin/launcher", comm: "long-process-na", exe: "/opt/bin/launcher"}}, nil
 	}
 
 	got, err := m.resolvePIDWithMeta(context.Background(), "S99long-process-name", scriptMeta{})

@@ -13,12 +13,14 @@ const (
 	cmdlineReadLimit = 4096
 	commReadLimit    = 64
 	statusReadLimit  = 512
+	entwareRoot      = "/opt"
 )
 
 type procRecord struct {
 	pid     int
 	cmdline string
 	comm    string
+	exe     string
 	zombie  bool
 }
 
@@ -46,6 +48,12 @@ func readProcSnapshot(ctx context.Context, procRoot string) ([]procRecord, error
 		}
 
 		processDir := filepath.Join(procRoot, entry.Name())
+		exe, readErr := os.Readlink(filepath.Join(processDir, "exe"))
+
+		if readErr != nil {
+			continue
+		}
+
 		cmdline, readErr := readProcValue(filepath.Join(processDir, "cmdline"), cmdlineReadLimit)
 
 		if readErr != nil {
@@ -72,6 +80,7 @@ func readProcSnapshot(ctx context.Context, procRoot string) ([]procRecord, error
 			pid:     pid,
 			cmdline: strings.TrimSpace(strings.ReplaceAll(cmdline, "\x00", " ")),
 			comm:    strings.TrimSpace(comm),
+			exe:     strings.TrimSpace(exe),
 		})
 	}
 
@@ -138,6 +147,8 @@ func deriveProcessNames(name string) (fullName, serviceName, baseName string) {
 }
 
 func resolveFromRecords(records []procRecord, name string, meta scriptMeta, pidFileDirs []string, mndwdPidfile string) int {
+	records = optProcessRecords(records)
+
 	live := make(map[int]struct{}, len(records))
 
 	for _, record := range records {
@@ -180,6 +191,33 @@ func resolveFromRecords(records []procRecord, name string, meta scriptMeta, pidF
 	}
 
 	return 0
+}
+
+func optProcessRecords(records []procRecord) []procRecord {
+	filtered := make([]procRecord, 0, len(records))
+
+	for _, record := range records {
+		if processExecutableUnder(record, entwareRoot) {
+			filtered = append(filtered, record)
+		}
+	}
+
+	return filtered
+}
+
+func processExecutableUnder(record procRecord, root string) bool {
+	// Process names are shared with firmware services, so only binaries from
+	// Entware's executable tree may satisfy an Entware init.d service.
+	executable := strings.TrimSuffix(strings.TrimSpace(record.exe), " (deleted)")
+
+	if executable == "" {
+		return false
+	}
+
+	executable = filepath.Clean(executable)
+	root = filepath.Clean(root)
+
+	return executable == root || strings.HasPrefix(executable, root+string(filepath.Separator))
 }
 
 func pidFileCandidates(name string, meta scriptMeta, dirs []string, mndwdPidfile string) []string {

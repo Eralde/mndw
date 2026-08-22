@@ -19,7 +19,8 @@
     "lint": "run-s --continue-on-error lint:cached lint:svelte",
     "lint:cached": "eslint --cache --cache-location .cache/eslint-nonsvelte --fix --no-error-on-unmatched-pattern --ignore-pattern \"**/*.svelte\" --ignore-pattern \"**/*.svelte.ts\" \"packages/\" \"frontend/\" \"tooling/\" \"plugins/builtin/\" \"plugins/examples/\" \"build/\"",
     "lint:svelte": "eslint --no-cache --fix --no-error-on-unmatched-pattern \"packages/**/*.svelte\" \"packages/**/*.svelte.ts\" \"frontend/**/*.svelte\" \"frontend/**/*.svelte.ts\" \"tooling/**/*.svelte\" \"tooling/**/*.svelte.ts\" \"plugins/builtin/**/*.svelte\" \"plugins/builtin/**/*.svelte.ts\" \"plugins/examples/**/*.svelte\" \"plugins/examples/**/*.svelte.ts\" \"build/**/*.svelte\" \"build/**/*.svelte.ts\"",
-    "lint-styles": "stylelint --config .stylelintrc.js \"**/*.scss\" --fix && stylelint --config .stylelintrc.css.js \"**/*.css\" --fix"
+    "lint-styles": "stylelint --config .stylelintrc.js \"**/*.scss\" --fix && stylelint --config .stylelintrc.css.js \"**/*.css\" --fix",
+    "knip": "knip --no-progress"
   },
   "devDependencies": {
     "@angular-eslint/eslint-plugin": "^21.4.0",
@@ -40,6 +41,7 @@
     "eslint-plugin-svelte": "^3.20.0",
     "eslint-plugin-vue": "^10.9.2",
     "fast-glob": "3.3.3",
+    "knip": "^6.32.2",
     "npm-run-all2": "9.0.3",
     "postcss-html": "^1.8.1",
     "stylelint": "^17.14.0",

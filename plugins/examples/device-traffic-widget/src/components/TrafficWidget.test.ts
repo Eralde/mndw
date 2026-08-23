@@ -52,7 +52,7 @@ afterEach(() => {
 describe('TrafficWidget shared controls', () => {
   it('uses segmented controls and button for detail and settings actions', async () => {
     const queue = vi.fn((query: RciQuery) => {
-      if (query.path === 'show.ip.hotspot') {
+      if (query.path === 'show.device-list') {
         return of({host: [{mac: 'AA', name: 'Router', hostname: 'router', active: true}]});
       }
 

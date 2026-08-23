@@ -18,8 +18,7 @@ export class RciService {
 
   public async getHosts(): Promise<HostClient[]> {
     const query: RciQuery = {
-      path: 'show.ip.hotspot',
-      data: {details: 'internet-access'},
+      path: 'show.device-list',
       extractData: true,
     };
     const response = await firstValueFrom(this.rci.queue(query));

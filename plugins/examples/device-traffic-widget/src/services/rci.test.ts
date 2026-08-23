@@ -10,17 +10,23 @@ function fakeRci(handler: (q: RciQuery) => unknown): RciManager {
 }
 
 describe('RciService.getHosts', () => {
-  it('maps hotspot rows to HostClient with name/hostname/mac fallbacks', async () => {
-    const svc = new RciService(fakeRci(() => ({
-      host: [
-        {mac: 'AA', hostname: 'pc', active: true},
-        {mac: 'BB', name: 'Phone', hostname: '', active: false},
-        {mac: 'CC'},
-      ],
-    })));
+  it('maps device-list rows to HostClient with name/hostname/mac fallbacks', async () => {
+    const queries: RciQuery[] = [];
+    const svc = new RciService(fakeRci((query) => {
+      queries.push(query);
+
+      return {
+        host: [
+          {mac: 'AA', hostname: 'pc', active: true},
+          {mac: 'BB', name: 'Phone', hostname: '', active: false},
+          {mac: 'CC'},
+        ],
+      };
+    }));
 
     const hosts = await svc.getHosts();
 
+    expect(queries).toEqual([{path: 'show.device-list', extractData: true}]);
     expect(hosts).toEqual([
       {mac: 'AA', name: 'pc', hostname: 'pc', active: true},
       {mac: 'BB', name: 'Phone', hostname: '', active: false},

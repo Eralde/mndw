@@ -3,7 +3,6 @@
 package backend
 
 import (
-	"context"
 	"errors"
 	"net"
 	"os"
@@ -54,11 +53,11 @@ func TestSupervisorStartIncompatibleStopsExistingRuntimeAndRestampsProtocol(t *t
 		Enabled:         true,
 	}
 
-	if err := supervisor.Start(context.Background(), compatible); err != nil {
+	if err := startSupervisorForTest(supervisor, compatible); err != nil {
 		t.Fatalf("start compatible service: %v; status=%+v", err, supervisor.Status("svc"))
 	}
 
-	t.Cleanup(func() { _ = supervisor.Forget(context.Background(), "svc") })
+	t.Cleanup(func() { _ = stopSupervisorForTest(supervisor, "svc") })
 
 	if status := supervisor.Status("svc"); status.State != StateReady {
 		t.Fatalf("initial state = %q, want ready", status.State)
@@ -73,7 +72,7 @@ func TestSupervisorStartIncompatibleStopsExistingRuntimeAndRestampsProtocol(t *t
 	incompatible := compatible
 	incompatible.ProtocolVersion = 2
 
-	if err := supervisor.Start(context.Background(), incompatible); err == nil {
+	if err := startSupervisorForTest(supervisor, incompatible); err == nil {
 		t.Fatal("incompatible update succeeded")
 	}
 

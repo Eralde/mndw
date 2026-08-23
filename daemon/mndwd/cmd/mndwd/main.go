@@ -165,6 +165,7 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 			StopTimeout:      cfg.ServiceStopTimeout,
 			FinalReapTimeout: cfg.FinalReapTimeout,
 			Logger:           logger,
+			LifetimeCtx:      lifetime,
 		},
 	})
 
@@ -176,7 +177,9 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 
 	gateway := registerPlugins(mux, cfg, reg, activationGates, verifier, runtime, logger)
 
-	runtime.SetMaintenanceHooks(gateway.BeginPluginMaintenance, gateway.BeginPlatformMaintenance, gateway.EndPluginMaintenance)
+	gateway.SetTrafficBlockPredicate(runtime.BlocksTraffic)
+	runtime.SetLifecycleHooks(gateway.ClosePluginSockets)
+	runtime.SetPlatformMaintenanceHook(gateway.BeginPlatformMaintenance)
 
 	return components{
 		handler:                httpx.NoCORSHandler(httpx.LogMiddleware(logger, mux)),

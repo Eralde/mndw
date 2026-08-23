@@ -202,7 +202,7 @@ func TestResolveAuthorizedRouteMaintenanceGate(t *testing.T) {
 			auth := authFail()
 			gateway := newPreludeGateway(t, auth)
 
-			gateway.BeginPluginMaintenance("demo")
+			gateway.SetTrafficBlockPredicate(func(pluginID string) bool { return pluginID == "demo" })
 
 			recorder := httptest.NewRecorder()
 			_, ok := gateway.resolveAuthorizedRoute(recorder, gateRequest(http.MethodGet, "demo", "status", ""), kind)

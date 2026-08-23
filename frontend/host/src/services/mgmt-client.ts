@@ -6,7 +6,9 @@ import {
   MGMT_DENY_URL,
   MGMT_DISABLE_URL,
   MGMT_ENABLE_URL,
+  MGMT_INSTALL_TIMEOUT_MS,
   MGMT_LIST_URL,
+  MGMT_MUTATION_TIMEOUT_MS,
   MGMT_PALETTE_URL,
   MGMT_PERMISSION_URL,
   MGMT_RESTART_URL,
@@ -59,6 +61,20 @@ export interface MgmtClient {
   deletePalette(): Promise<void>;
 }
 
+export type MgmtTimeoutKind = 'read' | 'mutation' | 'install';
+export type MutationOutcome = 'ok' | 'ambiguous' | 'rejected-maintenance' | 'error';
+
+function timeoutMs(kind: MgmtTimeoutKind): number {
+  switch (kind) {
+    case 'read':
+      return API_TIMEOUT_MS;
+    case 'mutation':
+      return MGMT_MUTATION_TIMEOUT_MS;
+    case 'install':
+      return MGMT_INSTALL_TIMEOUT_MS;
+  }
+}
+
 interface Envelope {
   error?: {code?: string; message?: string; detail?: string};
 }
@@ -78,9 +94,28 @@ const csrfHeaders = (headers: HeadersInit = {}): Headers => {
   return result;
 };
 
-export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis.fetch): MgmtClient {
-  function timeout(): AbortSignal {
-    return AbortSignal.timeout(API_TIMEOUT_MS);
+export function classifyMutationFailure(error: unknown): MutationOutcome {
+  if (error instanceof DOMException && error.name === 'TimeoutError') {
+    return 'ambiguous';
+  }
+
+  if (error instanceof TypeError) {
+    return 'ambiguous';
+  }
+
+  if (error instanceof MgmtError && error.code === 'BACKEND_MAINTENANCE') {
+    return 'rejected-maintenance';
+  }
+
+  return 'error';
+}
+
+export function createMgmtClient(
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+  makeSignal: (kind: MgmtTimeoutKind) => AbortSignal = (kind) => AbortSignal.timeout(timeoutMs(kind)),
+): MgmtClient {
+  function timeout(kind: MgmtTimeoutKind): AbortSignal {
+    return makeSignal(kind);
   }
 
   async function expectNoContent(response: Response): Promise<void> {
@@ -95,12 +130,12 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
     throw new MgmtError('The device returned an unexpected response.', 'UNKNOWN');
   }
 
-  async function postName(url: string, name: string): Promise<Response> {
+  async function postName(url: string, name: string, kind: MgmtTimeoutKind): Promise<Response> {
     const response = await fetchImpl(url, {
       method: 'POST',
       headers: csrfHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({name}),
-      signal: timeout(),
+      signal: timeout(kind),
     });
 
     if (!response.ok) {
@@ -111,14 +146,14 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
   }
 
   async function mutateEntry(url: string, name: string): Promise<PluginListEntry> {
-    const response = await postName(url, name);
+    const response = await postName(url, name, url === MGMT_APPROVE_URL ? 'install' : 'mutation');
 
     return decodeMgmtListEntry(await response.json());
   }
 
   return {
     async listPlugins(): Promise<PluginListEntry[]> {
-      const response = await fetchImpl(MGMT_LIST_URL, {method: 'GET', signal: timeout()});
+      const response = await fetchImpl(MGMT_LIST_URL, {method: 'GET', signal: timeout('read')});
 
       if (!response.ok) {
         throw await toError(response);
@@ -153,7 +188,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
         method: 'POST',
         headers: csrfHeaders({'Content-Type': 'application/json'}),
         body: JSON.stringify({name, permission, enabled}),
-        signal: timeout(),
+        signal: timeout('mutation'),
       });
 
       if (!response.ok) {
@@ -164,19 +199,19 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
     },
 
     async denyPlugin(name: string): Promise<void> {
-      await postName(MGMT_DENY_URL, name);
+      await postName(MGMT_DENY_URL, name, 'mutation');
     },
 
     async deletePlugin(name: string): Promise<void> {
-      await postName(MGMT_DELETE_URL, name);
+      await postName(MGMT_DELETE_URL, name, 'mutation');
     },
 
     async restartPlugin(name: string): Promise<void> {
-      await postName(MGMT_RESTART_URL, name);
+      await postName(MGMT_RESTART_URL, name, 'mutation');
     },
 
     async getRuntime(): Promise<RuntimeLimits> {
-      const response = await fetchImpl(MGMT_RUNTIME_URL, {method: 'GET', signal: timeout()});
+      const response = await fetchImpl(MGMT_RUNTIME_URL, {method: 'GET', signal: timeout('read')});
 
       if (!response.ok) {
         throw await toError(response);
@@ -189,7 +224,7 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
       const response = await fetchImpl(MGMT_PALETTE_URL, {
         method: 'GET',
         cache: 'no-store',
-        signal: timeout(),
+        signal: timeout('read'),
       });
 
       if (!response.ok) {
@@ -215,14 +250,18 @@ export function createMgmtClient(fetchImpl: typeof globalThis.fetch = globalThis
         method: 'PUT',
         headers: csrfHeaders({'Content-Type': 'application/json'}),
         body: JSON.stringify(palette),
-        signal: timeout(),
+        signal: timeout('mutation'),
       });
 
       await expectNoContent(response);
     },
 
     async deletePalette(): Promise<void> {
-      const response = await fetchImpl(MGMT_PALETTE_URL, {method: 'DELETE', headers: csrfHeaders(), signal: timeout()});
+      const response = await fetchImpl(MGMT_PALETTE_URL, {
+        method: 'DELETE',
+        headers: csrfHeaders(),
+        signal: timeout('mutation'),
+      });
 
       await expectNoContent(response);
     },

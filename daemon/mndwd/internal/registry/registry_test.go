@@ -55,6 +55,35 @@ func TestResolveUserPlugin(t *testing.T) {
 	}
 }
 
+func TestResolveRemovalPendingPluginForcesDisabled(t *testing.T) {
+	reg, store, _, _ := newRegistry(t)
+	manifestJSON := `{"manifestVersion":3,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`
+
+	if err := store.Mutate(func(st *state.State) error {
+		st.Plugins["svc"] = &state.Plugin{
+			Name:           "svc",
+			Source:         state.SourceUpload,
+			Approval:       state.ApprovalApproved,
+			Enabled:        true,
+			RemovalPending: true,
+			Manifest:       json.RawMessage(manifestJSON),
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	plugin, ok := reg.Resolve("svc")
+	if !ok {
+		t.Fatal("expected to resolve removal-pending plugin")
+	}
+
+	if !plugin.RemovalPending || plugin.Enabled {
+		t.Fatalf("resolved plugin = %+v, want removal pending and disabled", plugin)
+	}
+}
+
 func TestResolveUserPluginLegacyAbsoluteDirFallsBack(t *testing.T) {
 	reg, store, userDir, _ := newRegistry(t)
 	m := `{"manifestVersion":3,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
 	"sort"
 	"time"
 
@@ -65,6 +66,9 @@ type Handler struct {
 	logger               *slog.Logger
 	runtime              backend.Runtime
 	permissionController PersistentRCIPermissionController
+	removeAll            func(string) error
+	newTimer             func(time.Duration) <-chan time.Time
+	removalWatchdog      time.Duration
 }
 
 // New constructs a management Handler.
@@ -87,6 +91,9 @@ func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr service.
 		logger:               logger,
 		runtime:              cfg.Runtime,
 		permissionController: cfg.PersistentRCIPermissionController,
+		removeAll:            os.RemoveAll,
+		newTimer:             time.After,
+		removalWatchdog:      30 * time.Second,
 	}
 }
 
@@ -122,10 +129,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/mgmt/service/set-enabled", h.handleServiceSetEnabled)
 }
 
-// opkgContext returns a background-derived context bounded by opkgTimeout, so a
-// client disconnect cannot abort a partial package operation.
-func opkgContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), opkgTimeout)
+// opkgContext returns a daemon-lifetime-derived context bounded by opkgTimeout,
+// so a client disconnect cannot abort a partial package operation while daemon
+// shutdown still cancels it.
+func (h *Handler) opkgContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(h.cfg.ServiceActionRoot, opkgTimeout)
 }
 
 // ListEntry is one plugin as surfaced by list/pending. It merges manifest display

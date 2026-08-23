@@ -45,6 +45,25 @@ func TestOpkgList(t *testing.T) {
 	}
 }
 
+func TestOpkgContextDerivesFromServiceActionRoot(t *testing.T) {
+	root, cancelRoot := context.WithCancel(context.Background())
+	h := New(Config{ServiceActionRoot: root}, nil, nil, nil, nil, discardLogger())
+
+	ctx, cancel := h.opkgContext()
+	defer cancel()
+
+	cancelRoot()
+
+	select {
+	case <-ctx.Done():
+		if !errors.Is(ctx.Err(), context.Canceled) {
+			t.Fatalf("opkg context error = %v, want context canceled", ctx.Err())
+		}
+	default:
+		t.Fatal("opkg context survived daemon lifetime cancellation")
+	}
+}
+
 type failingListManager struct {
 	opkg.Manager
 }

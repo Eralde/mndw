@@ -51,11 +51,9 @@ func TestProjectBackendStatusMapsLifecycleAndRuntimeStates(t *testing.T) {
 				supervisor.services[test.plugin.Name] = &serviceRecord{status: test.status}
 			}
 
-			gateway.maintenance = map[string]struct{}{}
-
-			if test.maintenance {
-				gateway.maintenance[test.plugin.Name] = struct{}{}
-			}
+			gateway.SetTrafficBlockPredicate(func(pluginID string) bool {
+				return test.maintenance && pluginID == test.plugin.Name
+			})
 
 			got := gateway.projectBackendStatus(test.plugin, now)
 
@@ -90,11 +88,9 @@ func TestProjectBackendStatusUsesLifecyclePrecedenceAndStaticCompatibility(t *te
 		{name: "incompatible", plugin: incompatible, wantState: "incompatible"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			gateway.maintenance = map[string]struct{}{}
-
-			if test.maintenance {
-				gateway.maintenance[test.plugin.Name] = struct{}{}
-			}
+			gateway.SetTrafficBlockPredicate(func(pluginID string) bool {
+				return test.maintenance && pluginID == test.plugin.Name
+			})
 
 			got := gateway.projectBackendStatus(test.plugin, now)
 

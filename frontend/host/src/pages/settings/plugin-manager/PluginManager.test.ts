@@ -188,10 +188,11 @@ describe('PluginManager', () => {
     void unmount(component);
   });
 
-  it('keeps first mutation busy while rejecting a concurrent action from another UI path', async () => {
+  it('keeps only the active plugin row busy while another row remains interactive', async () => {
     const disabled = deferred<PluginListEntry>();
     const disablePlugin = vi.fn().mockReturnValue(disabled.promise);
-    const approvePlugin = vi.fn();
+    const approved = deferred<PluginListEntry>();
+    const approvePlugin = vi.fn().mockReturnValue(approved.promise);
     const client = clientWith([
       plugin(),
       plugin({name: 'needs-review', label: 'Needs Review', approval: 'pending', enabled: false}),
@@ -209,15 +210,14 @@ describe('PluginManager', () => {
 
     const approve = target.querySelector<HTMLButtonElement>('.mndw-pending__approve');
 
-    approve?.removeAttribute('disabled');
     approve?.click();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(approvePlugin).toHaveBeenCalledWith('needs-review'));
 
-    expect(approvePlugin).not.toHaveBeenCalled();
     expect(toggle?.disabled).toBe(true);
 
     disabled.resolve(plugin({enabled: false}));
-    await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(2));
+    approved.resolve(plugin({name: 'needs-review', approval: 'approved', enabled: true}));
+    await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(3));
     await vi.waitFor(() => expect(toggle?.disabled).toBe(false));
 
     void unmount(component);
@@ -237,6 +237,57 @@ describe('PluginManager', () => {
 
     expect(target.querySelector('.mndw-alert--danger')?.textContent).toContain('Disable failed');
     expect(target.querySelector('.mndw-reload')).toBeNull();
+
+    void unmount(component);
+  });
+
+  it('does not poll after maintenance rejection and clears its notice when retried', async () => {
+    const retry = deferred<PluginListEntry>();
+    const client = clientWith([plugin()]);
+
+    client.disablePlugin
+      .mockRejectedValueOnce(new MgmtError('busy', 'BACKEND_MAINTENANCE'))
+      .mockReturnValueOnce(retry.promise);
+
+    const {component, target} = await mountManager(client);
+
+    client.listPlugins.mockClear();
+    target.querySelector<HTMLButtonElement>('.mndw-installed__toggle')?.click();
+
+    await vi.waitFor(() => expect(target.textContent).toContain('another maintenance operation'));
+    expect(client.listPlugins.mock.calls).toHaveLength(0);
+
+    target.querySelector<HTMLButtonElement>('.mndw-installed__toggle')?.click();
+    await vi.waitFor(() => expect(client.disablePlugin.mock.calls).toHaveLength(2));
+    expect(target.textContent).not.toContain('another maintenance operation');
+
+    retry.resolve(plugin({enabled: false}));
+    await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
+
+    void unmount(component);
+  });
+
+  it('keeps a finishing notice until refreshed state reaches its predicate', async () => {
+    const client = clientWith([plugin()]);
+
+    client.disablePlugin.mockRejectedValue(new TypeError('network error'));
+
+    const {component, target} = await mountManager(client);
+
+    client.listPlugins.mockClear();
+    target.querySelector<HTMLButtonElement>('.mndw-installed__toggle')?.click();
+    await vi.waitFor(() => expect(target.textContent).toContain('still finishing'), {timeout: 4000});
+
+    const toggle = target.querySelector<HTMLButtonElement>('.mndw-installed__toggle');
+
+    expect(toggle?.disabled).toBe(false);
+    target.querySelector<HTMLButtonElement>('.mndw-installed__refresh')?.click();
+    await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(4));
+    expect(target.textContent).toContain('still finishing');
+
+    client.listPlugins.mockResolvedValue([plugin({enabled: false})]);
+    target.querySelector<HTMLButtonElement>('.mndw-installed__refresh')?.click();
+    await vi.waitFor(() => expect(target.textContent).not.toContain('still finishing'));
 
     void unmount(component);
   });

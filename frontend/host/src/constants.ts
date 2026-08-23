@@ -4,6 +4,8 @@ export const PLUGIN_STORAGE_PREFIX = `${STORAGE_PREFIX}:plugin`;
 export const SUPPORTED_LOCALES = ['en', 'ru'] as const;
 
 export const API_TIMEOUT_MS = 5000;
+export const MGMT_MUTATION_TIMEOUT_MS = 60000;
+export const MGMT_INSTALL_TIMEOUT_MS = 240000;
 
 /**
  * Host info handed to a plugin context when neither an explicit value

@@ -17,7 +17,7 @@ type packagesRequest struct {
 }
 
 func (h *Handler) handleOpkgListInstalled(w http.ResponseWriter, _ *http.Request) {
-	ctx, cancel := opkgContext()
+	ctx, cancel := h.opkgContext()
 
 	defer cancel()
 
@@ -32,7 +32,7 @@ func (h *Handler) handleOpkgListInstalled(w http.ResponseWriter, _ *http.Request
 }
 
 func (h *Handler) handleOpkgListAvailable(w http.ResponseWriter, _ *http.Request) {
-	ctx, cancel := opkgContext()
+	ctx, cancel := h.opkgContext()
 
 	defer cancel()
 
@@ -47,7 +47,7 @@ func (h *Handler) handleOpkgListAvailable(w http.ResponseWriter, _ *http.Request
 }
 
 func (h *Handler) handleOpkgList(w http.ResponseWriter, _ *http.Request) {
-	ctx, cancel := opkgContext()
+	ctx, cancel := h.opkgContext()
 
 	defer cancel()
 
@@ -63,7 +63,7 @@ func (h *Handler) handleOpkgList(w http.ResponseWriter, _ *http.Request) {
 
 func (h *Handler) handleOpkgInfo(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
-	ctx, cancel := opkgContext()
+	ctx, cancel := h.opkgContext()
 	defer cancel()
 	info, err := h.opkg.Info(ctx, name)
 	if err != nil {
@@ -101,7 +101,7 @@ func (h *Handler) handleOpkgUpgrade(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleOpkgUpdate(w http.ResponseWriter, _ *http.Request) {
-	ctx, cancel := opkgContext()
+	ctx, cancel := h.opkgContext()
 
 	defer cancel()
 
@@ -141,7 +141,7 @@ func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action stri
 		return
 	}
 
-	ctx, cancel := opkgContext()
+	ctx, cancel := h.opkgContext()
 
 	defer cancel()
 

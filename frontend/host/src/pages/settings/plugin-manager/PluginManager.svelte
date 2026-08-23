@@ -1,17 +1,25 @@
 <script lang="ts">
 import {onMount} from 'svelte';
+import {SvelteMap} from 'svelte/reactivity';
 
 import {appState} from '../../../state/app.svelte.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {
   type MgmtClient,
   type RuntimeLimits,
+  classifyMutationFailure,
   messageForError,
   mgmtClient,
 } from '../../../services/mgmt-client.js';
 import InstalledPluginList from './InstalledPluginList.svelte';
 import PendingApprovals from './PendingApprovals.svelte';
 import PluginUpload from './PluginUpload.svelte';
+import {
+  type LifecycleOp,
+  type PluginRowState,
+  expectedStateReached,
+  reconcile,
+} from './reconcile.js';
 
 interface Props {
   client?: MgmtClient;
@@ -30,17 +38,32 @@ let runtimeError = $state('');
 let loading = $state(true);
 let loadError = $state('');
 let refreshError = $state('');
-let busyName = $state<string | null>(null);
 let confirmingName = $state<string | null>(null);
-let actionError = $state<{name: string; message: string} | null>(null);
 let reloadPrompt = $state(false);
 let latestRequest = 0;
+const rowStates = new SvelteMap<string, PluginRowState>();
+const RECONCILE_OPTIONS = {polls: 3, intervalMs: 1000};
 let installed = $derived.by(() => {
   return plugins.filter((plugin) => plugin.approval === 'approved');
 });
 let pending = $derived.by(() => {
   return plugins.filter((plugin) => plugin.approval === 'pending');
 });
+
+function rowStateFor(name: string): PluginRowState | undefined {
+  return rowStates.get(name);
+}
+
+function clearSatisfiedNotices(list: PluginListEntry[]): void {
+  for (const [name, row] of rowStates) {
+    if (
+      row.state === 'notice-finishing' && row.operation !== undefined
+      && expectedStateReached(row.operation, name, list)
+    ) {
+      rowStates.delete(name);
+    }
+  }
+}
 
 async function load(): Promise<void> {
   const request = ++latestRequest;
@@ -52,6 +75,7 @@ async function load(): Promise<void> {
     if (request === latestRequest) {
       plugins = listed;
       refreshError = '';
+      clearSatisfiedNotices(listed);
     }
   } catch (caught) {
     if (request === latestRequest) {
@@ -74,6 +98,7 @@ async function refresh(): Promise<void> {
       loadError = '';
       refreshError = '';
       loading = false;
+      clearSatisfiedNotices(listed);
     }
   } catch (caught) {
     if (request === latestRequest) {
@@ -96,28 +121,87 @@ async function loadRuntime(): Promise<void> {
 
 async function mutate(
   name: string,
+  operation: LifecycleOp,
   run: () => Promise<unknown>,
   reload: boolean,
 ): Promise<boolean> {
-  if (busyName !== null) {
+  const existing = rowStates.get(name);
+
+  if (existing?.state === 'working' || existing?.state === 'reconciling') {
     return false;
   }
 
-  busyName = name;
-  actionError = null;
+  rowStates.set(name, {state: 'working', message: '', operation});
   let succeeded = false;
 
   try {
     await run();
     succeeded = true;
+    rowStates.delete(name);
     if (reload) {
       reloadPrompt = true;
     }
-  } catch (caught) {
-    actionError = {name, message: messageForError(caught)};
-  } finally {
     await refresh();
-    busyName = null;
+  } catch (caught) {
+    const outcome = classifyMutationFailure(caught);
+
+    if (outcome === 'rejected-maintenance') {
+      rowStates.set(name, {
+        state: 'notice-rejected',
+        message:
+          'Plugin is busy with another maintenance operation. Try again shortly.',
+        operation,
+      });
+    } else if (outcome === 'ambiguous') {
+      rowStates.set(name, {
+        state: 'reconciling',
+        message: 'Confirming plugin state…',
+        operation,
+      });
+
+      try {
+        const result = await reconcile(
+          operation,
+          name,
+          () => client.listPlugins(),
+          RECONCILE_OPTIONS,
+        );
+
+        if (result === 'ok') {
+          rowStates.delete(name);
+          succeeded = true;
+          if (reload) {
+            reloadPrompt = true;
+          }
+          await refresh();
+        } else if (result === 'notice-finishing') {
+          rowStates.set(name, {
+            state: 'notice-finishing',
+            message:
+              'Plugin operation is still finishing. Refresh to check again.',
+            operation,
+          });
+        } else {
+          rowStates.set(name, {
+            state: 'outcome-unknown',
+            message:
+              'Could not confirm restart outcome. Refresh to check plugin status.',
+            operation,
+          });
+        }
+      } catch (reconcileError) {
+        rowStates.set(name, {
+          state: 'outcome-unknown',
+          message: messageForError(reconcileError),
+          operation,
+        });
+      }
+    } else {
+      rowStates.set(name, {state: 'error', message: messageForError(caught),
+        operation});
+      await refresh();
+    }
+  } finally {
     confirmingName = null;
   }
 
@@ -167,8 +251,15 @@ onMount(() => {
     architecture={appState.hostInfo?.architecture}
     uploadFile={(file) => client.uploadPlugin(file)}
     {onInstalled}
-    onApprove={(name) => mutate(name, () => client.approvePlugin(name), true)}
-    onDeny={(name) => mutate(name, () => client.denyPlugin(name), false)}
+    onApprove={(name) =>
+    mutate(
+      name,
+      {kind: 'approve'},
+      () => client.approvePlugin(name),
+      true,
+    )}
+    onDeny={(name) =>
+    mutate(name, {kind: 'deny'}, () => client.denyPlugin(name), false)}
     onDismiss={dismissed}
   />
 
@@ -236,32 +327,49 @@ onMount(() => {
     {#if pending.length > 0}
       <PendingApprovals
         items={pending}
-        {busyName}
         {confirmingName}
-        {actionError}
-        onApprove={(name) => mutate(name, () => client.approvePlugin(name), true)}
-        onDeny={(name) => mutate(name, () => client.denyPlugin(name), false)}
+        {rowStateFor}
+        onApprove={(name) =>
+        mutate(
+          name,
+          {kind: 'approve'},
+          () => client.approvePlugin(name),
+          true,
+        )}
+        onDeny={(name) =>
+        mutate(name, {kind: 'deny'}, () => client.denyPlugin(name), false)}
         onRequestConfirm={(name) => (confirmingName = name)}
         onCancelConfirm={() => (confirmingName = null)}
+        onRefresh={() => void refresh()}
       />
     {/if}
 
     <InstalledPluginList
       items={installed}
-      {busyName}
       {confirmingName}
-      {actionError}
+      {rowStateFor}
       {permissionVisible}
       {permissionAvailable}
-      onEnable={(name) => mutate(name, () => client.enablePlugin(name), true)}
-      onDisable={(name) => mutate(name, () => client.disablePlugin(name), true)}
+      onEnable={(name) =>
+      mutate(name, {kind: 'enable'}, () => client.enablePlugin(name), true)}
+      onDisable={(name) =>
+      mutate(
+        name,
+        {kind: 'disable'},
+        () => client.disablePlugin(name),
+        true,
+      )}
       onPermissionChange={(name, permission, enabled) =>
-      mutate(name, () =>
+      mutate(name, {kind: 'permission', permission, enabled}, () =>
         client.setPluginPermission(name, permission, enabled), false)}
-      onRestart={(name) => mutate(name, () => client.restartPlugin(name), false)}
-      onDelete={(name) => mutate(name, () => client.deletePlugin(name), true)}
+      onRestart={(name) =>
+      mutate(name, {kind: 'restart'}, () =>
+        client.restartPlugin(name), false)}
+      onDelete={(name) =>
+      mutate(name, {kind: 'delete'}, () => client.deletePlugin(name), true)}
       onRequestConfirm={(name) => (confirmingName = name)}
       onCancelConfirm={() => (confirmingName = null)}
+      onRefresh={() => void refresh()}
     />
   {/if}
 </section>

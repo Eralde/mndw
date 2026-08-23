@@ -1,27 +1,28 @@
 <script lang="ts">
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import CapabilityReview from './CapabilityReview.svelte';
+import type {PluginRowState} from './reconcile.js';
 
 interface Props {
   items: PluginListEntry[];
-  busyName: string | null;
   confirmingName: string | null;
-  actionError: {name: string; message: string} | null;
+  rowStateFor: (name: string) => PluginRowState | undefined;
   onApprove: (name: string) => void;
   onDeny: (name: string) => void;
   onRequestConfirm: (name: string) => void;
   onCancelConfirm: () => void;
+  onRefresh: () => void;
 }
 
 let {
   items,
-  busyName,
   confirmingName,
-  actionError,
+  rowStateFor = () => undefined,
   onApprove,
   onDeny,
   onRequestConfirm,
   onCancelConfirm,
+  onRefresh = () => {},
 }: Props = $props();
 </script>
 
@@ -33,6 +34,8 @@ let {
 
   <ul class="mndw-pending__list">
     {#each items as item (item.name)}
+      {@const row = rowStateFor(item.name)}
+      {@const busy = row?.state === 'working' || row?.state === 'reconciling'}
       <li class="mndw-pending__item">
         <div class="mndw-pending__identity">
           <strong>{item.label}</strong>
@@ -41,12 +44,21 @@ let {
 
         <CapabilityReview descriptor={item.backend} />
 
-        {#if actionError?.name === item.name}
+        {#if row !== undefined && row.message !== ''}
           <div
             class="mndw-alert mndw-alert--danger"
             role="alert"
           >
-            {actionError.message}
+            {row.message}
+            {#if row.state === 'notice-finishing'}
+              <mndw-button
+                class="mndw-pending__refresh"
+                variant="ghost"
+                onclick={onRefresh}
+              >
+                Refresh
+              </mndw-button>
+            {/if}
           </div>
         {/if}
 
@@ -64,7 +76,7 @@ let {
               <mndw-button
                 class="mndw-pending__confirm"
                 variant="danger"
-                disabled={busyName !== null}
+                disabled={busy}
                 onclick={() => onDeny(item.name)}
               >
                 Deny plugin
@@ -76,7 +88,7 @@ let {
             <mndw-button
               class="mndw-pending__deny"
               variant="danger"
-              disabled={busyName !== null}
+              disabled={busy}
               onclick={() => onRequestConfirm(item.name)}
             >
               Deny
@@ -84,7 +96,7 @@ let {
             <mndw-button
               class="mndw-pending__approve"
               variant="primary"
-              disabled={busyName !== null}
+              disabled={busy}
               onclick={() => onApprove(item.name)}
             >
               Approve

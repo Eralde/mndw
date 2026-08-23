@@ -7,6 +7,78 @@ import (
 	"time"
 )
 
+func TestReconcileSeedsEnabledStartupCandidate(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 4}))
+	plan := supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("svc")})
+
+	if !containsID(plan.startIDs, "svc") {
+		t.Fatal("initial reconcile did not return enabled startup candidate")
+	}
+}
+
+func TestReconcileSkipsRemoveIntent(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 4}))
+	supervisor.withLock(func() { supervisor.coord.begin("svc", OpDeleting, IntentRemove) })
+	plan := supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("svc")})
+
+	if len(plan.startIDs) != 0 || len(plan.stopIDs) != 0 {
+		t.Fatalf("reconcile planned work under remove intent: %+v", plan)
+	}
+}
+
+func TestReconcileSeedsDurableRemovalMarker(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 4}))
+	spec := enabledSpec("svc")
+	spec.RemovalPending = true
+	plan := supervisor.Reconcile(context.Background(), []ServiceSpec{spec})
+
+	if len(plan.startIDs) != 0 {
+		t.Fatalf("reconcile planned startup with durable removal pending: %+v", plan)
+	}
+
+	if got := supervisor.intentOf("svc"); got != IntentRemove {
+		t.Fatalf("removal-pending intent = %v, want IntentRemove", got)
+	}
+}
+
+func TestStaleStartupCannotPublishFailureOrReadiness(t *testing.T) {
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 4}))
+	start := supervisor.beginLifecycle("svc", OpStarting, IntentRun)
+	record := &serviceRecord{status: RuntimeStatus{State: StateStarting}}
+	supervisor.services["svc"] = record
+	supervisor.beginLifecycle("svc", OpDeleting, IntentRemove)
+	supervisor.failStart(start.run, "svc", errors.New("late failure"))
+	supervisor.markServiceReady(start.run, record)
+
+	if got := supervisor.Status("svc").State; got != StateStarting {
+		t.Fatalf("stale startup changed service state to %q", got)
+	}
+}
+
+func testSupervisorConfig(t *testing.T) SupervisorConfig {
+	t.Helper()
+
+	return normalizeSupervisorConfig(SupervisorConfig{
+		RuntimeRoot:        t.TempDir(),
+		SupportedProtocols: []int{1},
+		Limits:             Limits{MaxSupervisedServices: 4},
+	})
+}
+
+func enabledSpec(pluginID string) ServiceSpec {
+	return ServiceSpec{PluginID: pluginID, ProtocolVersion: 1, Enabled: true}
+}
+
+func containsID(ids []string, want string) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+
+	return false
+}
+
 func TestNormalizeSupervisorConfigAppliesDefaults(t *testing.T) {
 	now := func() time.Time { return time.Unix(123, 0) }
 	cfg := normalizeSupervisorConfig(SupervisorConfig{Now: now})
@@ -58,7 +130,7 @@ func TestSupervisorStartReturnsBareServiceCapacitySentinel(t *testing.T) {
 
 	defer reservation.Release()
 
-	err := supervisor.Start(context.Background(), ServiceSpec{
+	err := startSupervisorForTest(supervisor, ServiceSpec{
 		PluginID:        "blocked",
 		Dir:             t.TempDir(),
 		Command:         "backend/server",
@@ -76,7 +148,7 @@ func TestSupervisorRecordsIncompatibleServiceWithoutStartingIt(t *testing.T) {
 		RuntimeRoot:        t.TempDir(),
 		SupportedProtocols: []int{1},
 	})
-	err := supervisor.Start(context.Background(), ServiceSpec{
+	err := startSupervisorForTest(supervisor, ServiceSpec{
 		PluginID:        "incompatible",
 		Dir:             t.TempDir(),
 		Command:         "backend/server",
@@ -108,7 +180,7 @@ func TestSupervisorStartFailureRecordsBackoffBeforeForgetStopsService(t *testing
 		SupportedProtocols: []int{1},
 	})
 
-	err := supervisor.Start(context.Background(), ServiceSpec{
+	err := startSupervisorForTest(supervisor, ServiceSpec{
 		PluginID:        "invalid-command",
 		Dir:             t.TempDir(),
 		Command:         "backend/missing.sh",
@@ -126,7 +198,7 @@ func TestSupervisorStartFailureRecordsBackoffBeforeForgetStopsService(t *testing
 		t.Fatalf("failed start status = %+v", status)
 	}
 
-	if err := supervisor.Forget(context.Background(), "invalid-command"); err != nil {
+	if err := stopSupervisorForTest(supervisor, "invalid-command"); err != nil {
 		t.Fatalf("Forget failed service: %v", err)
 	}
 
@@ -135,8 +207,38 @@ func TestSupervisorStartFailureRecordsBackoffBeforeForgetStopsService(t *testing
 	}
 }
 
+func startSupervisorForTest(supervisor *Supervisor, spec ServiceSpec) error {
+	outcome := supervisor.beginLifecycle(spec.PluginID, OpStarting, IntentRun)
+	err := supervisor.startService(outcome.run, spec)
+	close(outcome.run.workDone)
+	supervisor.withLock(func() {
+		if err == nil {
+			supervisor.coord.commitRun(outcome.run)
+		} else {
+			supervisor.coord.failRestore(outcome.run, err)
+		}
+	})
+
+	return err
+}
+
+func stopSupervisorForTest(supervisor *Supervisor, pluginID string) error {
+	outcome := supervisor.beginLifecycle(pluginID, OpDeleting, IntentRemove)
+	err := supervisor.stopService(outcome.run)
+	close(outcome.run.workDone)
+	supervisor.withLock(func() {
+		if err == nil {
+			supervisor.coord.commitRemove(outcome.run)
+		} else {
+			supervisor.coord.failRemoved(outcome.run, err)
+		}
+	})
+
+	return err
+}
+
 func TestWaitForProcessExitHasBoundedFinalReap(t *testing.T) {
-	done := make(chan error)
+	done := make(chan struct{})
 	started := time.Now()
 
 	if waitForProcessExit(done, 10*time.Millisecond) {
@@ -145,6 +247,21 @@ func TestWaitForProcessExitHasBoundedFinalReap(t *testing.T) {
 
 	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
 		t.Fatalf("waitForProcessExit took %s", elapsed)
+	}
+}
+
+func TestProcessExitResultIsBroadcastToStopAndObserver(t *testing.T) {
+	wantErr := errors.New("service exited")
+	exit := newProcessExit()
+	exit.err = wantErr
+	close(exit.done)
+
+	if !waitForProcessExit(exit.done, time.Second) {
+		t.Fatal("stop path did not observe process exit")
+	}
+
+	if err := exit.wait(); !errors.Is(err, wantErr) {
+		t.Fatalf("observer error = %v, want %v", err, wantErr)
 	}
 }
 

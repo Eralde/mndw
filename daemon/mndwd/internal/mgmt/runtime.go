@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"path/filepath"
 
 	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
-	"mndwd/internal/state"
 )
 
 func (h *Handler) handleRuntime(w http.ResponseWriter, _ *http.Request) {
@@ -52,8 +52,16 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.runtime.Restart(r.Context(), name); err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadGateway, httpx.CodeBackendUnavailable, "service restart failed"))
+	err := h.executeLifecycle(name, backend.OpRestarting, backend.IntentRun, backend.TerminalRun, backend.FailRestore,
+		func(_ context.Context, ctrl backend.LifecycleControl) error {
+			if err := ctrl.StopService(); err != nil {
+				return err
+			}
+
+			return ctrl.StartPlugin(plugin)
+		})
+	if err != nil {
+		httpx.WriteError(w, h.logger, lifecycleError(err, http.StatusBadGateway, httpx.CodeBackendUnavailable, "service restart failed"))
 
 		return
 	}
@@ -81,17 +89,20 @@ func (h *Handler) resolveRuntimePlugin(name string) (*registry.Plugin, bool) {
 		return nil, false
 	}
 
-	return &registry.Plugin{Name: name, Manifest: m, Approval: pluginState.Approval, Enabled: pluginState.Enabled}, true
-}
-
-func (h *Handler) activateBackendPlugin(name string, m *manifest.Manifest, dir string, enabled bool) error {
-	if h.runtime == nil || m == nil || m.Backend == nil || m.Backend.Kind == nil {
-		return nil
+	dir := pluginState.ActiveVersionDir
+	if dir == "" {
+		dir = filepath.Join(h.cfg.UserPluginsDir, name)
 	}
 
-	return h.runtime.Activate(context.Background(), &registry.Plugin{
-		Name: name, Dir: dir, Manifest: m, Approval: state.ApprovalApproved, Enabled: enabled,
-	})
+	return &registry.Plugin{
+		Name:           name,
+		Dir:            dir,
+		Manifest:       m,
+		Source:         pluginState.Source,
+		Approval:       pluginState.Approval,
+		Enabled:        pluginState.Enabled && !pluginState.RemovalPending,
+		RemovalPending: pluginState.RemovalPending,
+	}, true
 }
 
 func serviceCapacityError(err error) bool {

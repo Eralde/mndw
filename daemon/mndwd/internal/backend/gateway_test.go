@@ -59,23 +59,17 @@ func TestNoCORSResponseWriterRemovesInternalHeaders(t *testing.T) {
 	}
 }
 
-func TestGatewayMaintenanceGateHasPluginAndPlatformScopes(t *testing.T) {
+func TestGatewayMaintenanceGateUsesTrafficPredicateAndPlatformScope(t *testing.T) {
 	gateway := NewGateway(GatewayConfig{}, nil, nil, nil, nil, nil)
 
 	if gateway.isMaintenance("demo") {
 		t.Fatal("fresh gateway is in maintenance")
 	}
 
-	gateway.BeginPluginMaintenance("demo")
+	gateway.SetTrafficBlockPredicate(func(pluginID string) bool { return pluginID == "demo" })
 
 	if !gateway.isMaintenance("demo") || gateway.isMaintenance("other") {
 		t.Fatal("plugin maintenance scope is incorrect")
-	}
-
-	gateway.EndPluginMaintenance("demo")
-
-	if gateway.isMaintenance("demo") {
-		t.Fatal("plugin maintenance did not end")
 	}
 
 	gateway.BeginPlatformMaintenance()

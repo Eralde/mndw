@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ type ServiceSpec struct {
 	RCISessionSocket string
 	Builtin          bool
 	Enabled          bool
+	RemovalPending   bool
 }
 
 type SupervisorConfig struct {
@@ -35,14 +37,17 @@ type SupervisorConfig struct {
 	FinalReapTimeout   time.Duration
 	Logger             *slog.Logger
 	Now                func() time.Time
+	LifetimeCtx        context.Context
 }
 
 type Supervisor struct {
-	mu        sync.Mutex
-	cfg       SupervisorConfig
-	admission *Admission
-	services  map[string]*serviceRecord
-	desired   map[string]ServiceSpec
+	mu           sync.Mutex
+	cfg          SupervisorConfig
+	admission    *Admission
+	services     map[string]*serviceRecord
+	desired      map[string]ServiceSpec
+	coord        *coordinator
+	startDesired func(ServiceSpec)
 }
 
 type serviceRecord struct {
@@ -51,8 +56,25 @@ type serviceRecord struct {
 	status      RuntimeStatus
 	reservation *Reservation
 	command     *exec.Cmd
-	done        chan error
+	done        *processExit
 	stderr      *StderrRing
+}
+
+// processExit broadcasts one command.Wait result to every lifecycle observer.
+// Closing done synchronizes publication of err with all waiters.
+type processExit struct {
+	done chan struct{}
+	err  error
+}
+
+func newProcessExit() *processExit {
+	return &processExit{done: make(chan struct{})}
+}
+
+func (p *processExit) wait() error {
+	<-p.done
+
+	return p.err
 }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
@@ -95,7 +117,46 @@ func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
 		admission: admission,
 		services:  make(map[string]*serviceRecord),
 		desired:   make(map[string]ServiceSpec),
+		coord:     newCoordinator(cfg.LifetimeCtx),
 	}
+}
+
+func (s *Supervisor) beginLifecycle(name string, op Operation, intent Intent) beginOutcome {
+	return withLockValue(s, func() beginOutcome { return s.coord.begin(name, op, intent) })
+}
+
+func (s *Supervisor) beginDesiredStartup(spec ServiceSpec) beginOutcome {
+	return withLockValue(s, func() beginOutcome {
+		desired, exists := s.desired[spec.PluginID]
+		record := s.coord.records[spec.PluginID]
+
+		if !exists || !desired.Enabled || !reflect.DeepEqual(desired, spec) || record == nil ||
+			record.intent != IntentRun || record.operation != OpNone {
+			return beginOutcome{conflict: true}
+		}
+
+		return s.coord.begin(spec.PluginID, OpStarting, IntentRun)
+	})
+}
+
+func (s *Supervisor) isCurrent(run *operationRun) bool {
+	return withLockValue(s, func() bool { return s.coord.isCurrent(run) })
+}
+
+func (s *Supervisor) operationOf(name string) Operation {
+	return withLockValue(s, func() Operation {
+		record := s.coord.records[name]
+
+		if record == nil {
+			return OpNone
+		}
+
+		return record.operation
+	})
+}
+
+func (s *Supervisor) intentOf(name string) Intent {
+	return withLockValue(s, func() Intent { return s.coord.intentOf(name) })
 }
 
 // withLock runs fn with the supervisor mutex held, guaranteeing release even
@@ -134,7 +195,7 @@ func (s *Supervisor) StopAll(ctx context.Context) error {
 	sort.Strings(pluginIDs)
 
 	for _, pluginID := range pluginIDs {
-		if err := s.Stop(ctx, pluginID); err != nil {
+		if err := s.stopRecord(ctx, pluginID); err != nil {
 			return err
 		}
 	}
@@ -142,7 +203,13 @@ func (s *Supervisor) StopAll(ctx context.Context) error {
 	return nil
 }
 
-func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) {
+type reconcilePlan struct {
+	startIDs  []string
+	stopIDs   []string
+	removeIDs []string
+}
+
+func (s *Supervisor) Reconcile(_ context.Context, specs []ServiceSpec) reconcilePlan {
 	ordered := append([]ServiceSpec(nil), specs...)
 
 	sort.SliceStable(ordered, func(left, right int) bool {
@@ -153,45 +220,88 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) {
 		return ordered[left].PluginID < ordered[right].PluginID
 	})
 
-	desired := make(map[string]ServiceSpec, len(ordered))
-
-	for _, spec := range ordered {
-		desired[spec.PluginID] = spec
-	}
-
 	s.mu.Lock()
 
-	s.desired = desired
+	defer s.mu.Unlock()
 
-	s.mu.Unlock()
+	plan := reconcilePlan{}
+	authoritative := make(map[string]struct{}, len(ordered))
 
 	for _, spec := range ordered {
-		if !spec.Enabled {
-			_ = s.Stop(ctx, spec.PluginID)
+		authoritative[spec.PluginID] = struct{}{}
+		want := IntentStop
+
+		if spec.RemovalPending {
+			want = IntentRemove
+		} else if spec.Enabled {
+			want = IntentRun
+		}
+
+		transitionRecord := s.coord.records[spec.PluginID]
+
+		if transitionRecord == nil {
+			transitionRecord = &transition{intent: want, operation: OpNone, phaseSince: s.cfg.Now()}
+			s.coord.records[spec.PluginID] = transitionRecord
+		} else if transitionRecord.operation == OpNone && transitionRecord.intent != IntentRemove {
+			transitionRecord.intent = want
+			transitionRecord.phaseSince = s.cfg.Now()
+		}
+
+		if transitionRecord.operation != OpNone {
+			continue
+		}
+
+		if transitionRecord.intent == IntentRemove {
+			delete(s.desired, spec.PluginID)
+			plan.removeIDs = append(plan.removeIDs, spec.PluginID)
 
 			continue
 		}
 
-		if err := s.Start(ctx, spec); err != nil && s.cfg.Logger != nil {
-			s.cfg.Logger.Warn("service start deferred", "plugin", spec.PluginID, "error", err)
+		spec.Enabled = transitionRecord.intent == IntentRun && spec.Enabled
+		s.desired[spec.PluginID] = spec
+		service := s.services[spec.PluginID]
+
+		if transitionRecord.intent == IntentStop {
+			if service != nil && service.status.State != StateStopped {
+				plan.stopIDs = append(plan.stopIDs, spec.PluginID)
+			}
+
+			continue
+		}
+
+		if service == nil || service.status.State == StateStopped || !reflect.DeepEqual(service.spec, spec) {
+			plan.startIDs = append(plan.startIDs, spec.PluginID)
 		}
 	}
-
-	s.mu.Lock()
-
-	stale := make([]string, 0)
 
 	for pluginID := range s.services {
-		if _, exists := desired[pluginID]; !exists {
-			stale = append(stale, pluginID)
+		if _, exists := authoritative[pluginID]; exists {
+			continue
 		}
+
+		delete(s.desired, pluginID)
+		transitionRecord := s.coord.records[pluginID]
+
+		if transitionRecord != nil && transitionRecord.operation != OpNone {
+			continue
+		}
+
+		if transitionRecord == nil {
+			s.coord.records[pluginID] = &transition{intent: IntentRemove, operation: OpNone, phaseSince: s.cfg.Now()}
+		} else {
+			transitionRecord.intent = IntentRemove
+			transitionRecord.phaseSince = s.cfg.Now()
+		}
+
+		plan.removeIDs = append(plan.removeIDs, pluginID)
 	}
 
-	s.mu.Unlock()
+	sort.Strings(plan.startIDs)
+	sort.Strings(plan.stopIDs)
+	sort.Strings(plan.removeIDs)
 
-	for _, pluginID := range stale {
-		_ = s.Stop(ctx, pluginID)
-	}
+	return plan
 }
 
 type startAction int
@@ -204,6 +314,9 @@ const (
 	// startStopIncompatible means an old runtime must be stopped, then the
 	// incompatible protocol status re-stamped, before returning plan.err.
 	startStopIncompatible
+	// startReplace means a live service has a different desired spec and must
+	// be stopped before the replacement process is launched.
+	startReplace
 )
 
 type startPlan struct {
@@ -217,66 +330,93 @@ type startPlan struct {
 // effects implied by the returned action.
 func (s *Supervisor) planStart(spec ServiceSpec, paths RuntimePaths) startPlan {
 	return withLockValue(s, func() startPlan {
-		s.desired[spec.PluginID] = spec
-		record := s.services[spec.PluginID]
-
-		if record == nil {
-			record = &serviceRecord{spec: spec, paths: paths, status: RuntimeStatus{State: StateStopped}}
-			s.services[spec.PluginID] = record
-		} else {
-			record.spec = spec
-			record.paths = paths
-		}
-
-		record.status.RequiredProtocol = spec.ProtocolVersion
-		record.status.SupportedProtocols = append([]int(nil), s.cfg.SupportedProtocols...)
-		compatible := s.supportedProtocol(spec.ProtocolVersion)
-		record.status.Compatible = &compatible
-
-		if !compatible {
-			unsupported := fmt.Errorf("unsupported service protocol %d", spec.ProtocolVersion)
-
-			if record.command != nil || record.reservation != nil {
-				return startPlan{record: record, action: startStopIncompatible, err: unsupported}
-			}
-
-			return startPlan{record: record, action: startNoop, err: unsupported}
-		}
-
-		now := s.cfg.Now()
-
-		if record.status.State == StateReady || record.status.State == StateStarting {
-			return startPlan{action: startNoop}
-		}
-
-		if record.status.State == StateBackoff && record.status.NextAttemptAt != nil && now.Before(*record.status.NextAttemptAt) {
-			return startPlan{action: startNoop, err: fmt.Errorf("service is in backoff until %s", record.status.NextAttemptAt.Format(time.RFC3339))}
-		}
-
-		if record.reservation == nil {
-			reservation, admitted := s.admission.TryReserveService(spec.PluginID)
-
-			if !admitted {
-				record.status.State = StateCapacityBlocked
-
-				return startPlan{action: startNoop, err: ErrServiceCapacityExceeded}
-			}
-
-			record.reservation = reservation
-		}
-
-		record.status.State = StateStarting
-		record.status.NextAttemptAt = nil
-
-		return startPlan{record: record, action: startProceed}
+		return s.planStartLocked(spec, paths)
 	})
+}
+
+func (s *Supervisor) planStartForRun(run *operationRun, spec ServiceSpec, paths RuntimePaths) startPlan {
+	return withLockValue(s, func() startPlan {
+		if !s.coord.isCurrent(run) {
+			return startPlan{action: startNoop, err: errSuperseded}
+		}
+
+		return s.planStartLocked(spec, paths)
+	})
+}
+
+func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) startPlan {
+	s.desired[spec.PluginID] = spec
+	record := s.services[spec.PluginID]
+	previousSpec := ServiceSpec{}
+
+	if record != nil {
+		previousSpec = record.spec
+	}
+
+	if record == nil {
+		record = &serviceRecord{spec: spec, paths: paths, status: RuntimeStatus{State: StateStopped}}
+		s.services[spec.PluginID] = record
+	} else {
+		record.spec = spec
+		record.paths = paths
+	}
+
+	record.status.RequiredProtocol = spec.ProtocolVersion
+	record.status.SupportedProtocols = append([]int(nil), s.cfg.SupportedProtocols...)
+	compatible := s.supportedProtocol(spec.ProtocolVersion)
+	record.status.Compatible = &compatible
+
+	if !compatible {
+		unsupported := fmt.Errorf("unsupported service protocol %d", spec.ProtocolVersion)
+
+		if record.command != nil || record.reservation != nil {
+			return startPlan{record: record, action: startStopIncompatible, err: unsupported}
+		}
+
+		return startPlan{record: record, action: startNoop, err: unsupported}
+	}
+
+	now := s.cfg.Now()
+
+	if record.status.State == StateReady || record.status.State == StateStarting {
+		if !reflect.DeepEqual(previousSpec, spec) {
+			return startPlan{record: record, action: startReplace}
+		}
+
+		return startPlan{action: startNoop}
+	}
+
+	if record.status.State == StateBackoff && record.status.NextAttemptAt != nil && now.Before(*record.status.NextAttemptAt) {
+		return startPlan{action: startNoop, err: fmt.Errorf("service is in backoff until %s", record.status.NextAttemptAt.Format(time.RFC3339))}
+	}
+
+	if record.reservation == nil {
+		reservation, admitted := s.admission.TryReserveService(spec.PluginID)
+
+		if !admitted {
+			record.status.State = StateCapacityBlocked
+
+			return startPlan{action: startNoop, err: ErrServiceCapacityExceeded}
+		}
+
+		record.reservation = reservation
+	}
+
+	record.status.State = StateStarting
+	record.status.NextAttemptAt = nil
+
+	return startPlan{record: record, action: startProceed}
 }
 
 // restampIncompatible re-applies the protocol status fields that stopProcess
 // resets, so an updated-but-unsupported service stays represented as stopped
 // and incompatible rather than as a bare stopped record.
-func (s *Supervisor) restampIncompatible(spec ServiceSpec) {
+func (s *Supervisor) restampIncompatible(run *operationRun, spec ServiceSpec) {
 	s.withLock(func() {
+		if !s.coord.isCurrent(run) {
+			return
+		}
+
 		record := s.services[spec.PluginID]
 
 		if record == nil {
@@ -290,7 +430,11 @@ func (s *Supervisor) restampIncompatible(spec ServiceSpec) {
 	})
 }
 
-func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
+func (s *Supervisor) startService(run *operationRun, spec ServiceSpec) error {
+	if !s.isCurrent(run) {
+		return errSuperseded
+	}
+
 	if !spec.Enabled {
 		return nil
 	}
@@ -300,18 +444,36 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 		return err
 	}
 
-	plan := s.planStart(spec, paths)
+	plan := s.planStartForRun(run, spec, paths)
+
+	if !s.isCurrent(run) {
+		return errSuperseded
+	}
 
 	switch plan.action {
 	case startStopIncompatible:
 		// An updated service may already own a slot. Stop that old process,
 		// then leave the incompatible manifest represented as stopped without
 		// exposing a listener or scheduling retries for the unsupported version.
-		_ = s.stopProcess(ctx, spec.PluginID, true)
+		_ = s.stopProcess(run.ctx, spec.PluginID, true)
 
-		s.restampIncompatible(spec)
+		s.restampIncompatible(run, spec)
 
 		return plan.err
+	case startReplace:
+		if err := s.stopProcess(run.ctx, spec.PluginID, true); err != nil {
+			return err
+		}
+
+		if !s.isCurrent(run) {
+			return errSuperseded
+		}
+
+		plan = s.planStartForRun(run, spec, paths)
+
+		if plan.action != startProceed {
+			return plan.err
+		}
 	case startNoop:
 		return plan.err
 	}
@@ -320,31 +482,47 @@ func (s *Supervisor) Start(ctx context.Context, spec ServiceSpec) error {
 
 	validated, err := s.prepareStart(paths, spec)
 	if err != nil {
-		s.failStart(spec.PluginID, err)
+		s.failStart(run, spec.PluginID, err)
 
 		return err
+	}
+
+	if !s.isCurrent(run) {
+		return errSuperseded
 	}
 
 	command, stderr, err := s.launchService(spec, paths, validated)
 	if err != nil {
-		s.failStart(spec.PluginID, err)
+		s.failStart(run, spec.PluginID, err)
 
 		return err
 	}
 
-	done := s.registerServiceProcess(record, spec.PluginID, paths, command, stderr)
+	done := newProcessExit()
+	go func() {
+		done.err = command.Wait()
+		close(done.done)
+	}()
 
-	go func() { done <- command.Wait() }()
+	if !s.registerServiceProcess(run, record, spec.PluginID, paths, command, stderr, done) {
+		s.reapUnregisteredProcess(command, done)
 
-	if err := s.probeServiceReadiness(ctx, paths, spec); err != nil {
-		_ = s.stopProcess(ctx, spec.PluginID, false)
+		return errSuperseded
+	}
 
-		s.failStart(spec.PluginID, err)
+	if err := s.probeServiceReadiness(run.ctx, paths, spec); err != nil {
+		_ = s.stopProcess(run.ctx, spec.PluginID, false)
+
+		s.failStart(run, spec.PluginID, err)
 
 		return err
 	}
 
-	s.markServiceReady(record)
+	if !s.markServiceReady(run, record) {
+		_ = s.stopProcess(run.ctx, spec.PluginID, false)
+
+		return errSuperseded
+	}
 
 	go s.observeExit(spec.PluginID, done)
 
@@ -394,20 +572,36 @@ func (s *Supervisor) launchService(spec ServiceSpec, paths RuntimePaths, validat
 	return command, stderr, nil
 }
 
-func (s *Supervisor) registerServiceProcess(record *serviceRecord, pluginID string, paths RuntimePaths, command *exec.Cmd, stderr *StderrRing) chan error {
+func (s *Supervisor) registerServiceProcess(
+	run *operationRun,
+	record *serviceRecord,
+	pluginID string,
+	paths RuntimePaths,
+	command *exec.Cmd,
+	stderr *StderrRing,
+	done *processExit,
+) bool {
+	registered := withLockValue(s, func() bool {
+		if !s.coord.isCurrent(run) {
+			return false
+		}
+
+		record.command = command
+		record.done = done
+		record.stderr = stderr
+
+		return true
+	})
+
+	if !registered {
+		return false
+	}
+
 	if err := writeProcessLease(paths.ServiceLease, command.Process.Pid); err != nil && s.cfg.Logger != nil {
 		s.cfg.Logger.Warn("service lease unavailable", "plugin", pluginID, "error", err)
 	}
 
-	done := make(chan error, 1)
-
-	s.withLock(func() {
-		record.command = command
-		record.done = done
-		record.stderr = stderr
-	})
-
-	return done
+	return true
 }
 
 func (s *Supervisor) probeServiceReadiness(ctx context.Context, paths RuntimePaths, spec ServiceSpec) error {
@@ -419,12 +613,29 @@ func (s *Supervisor) probeServiceReadiness(ctx context.Context, paths RuntimePat
 	return err
 }
 
-func (s *Supervisor) markServiceReady(record *serviceRecord) {
-	s.withLock(func() {
+func (s *Supervisor) markServiceReady(run *operationRun, record *serviceRecord) bool {
+	return withLockValue(s, func() bool {
+		if !s.coord.isCurrent(run) {
+			return false
+		}
+
 		record.status.State = StateReady
 		record.status.StartedAt = ptrTime(s.cfg.Now())
 		record.status.NextAttemptAt = nil
+
+		return true
 	})
+}
+
+func (s *Supervisor) reapUnregisteredProcess(command *exec.Cmd, done *processExit) {
+	_ = terminateExecProcess(command.Process)
+
+	if waitForProcessExit(done.done, s.cfg.StopTimeout) {
+		return
+	}
+
+	_ = killExecProcess(command.Process)
+	_ = waitForProcessExit(done.done, s.cfg.FinalReapTimeout)
 }
 
 func serviceDataDir(root string, spec ServiceSpec) string {
@@ -441,47 +652,16 @@ func serviceDataDir(root string, spec ServiceSpec) string {
 	return path
 }
 
-func (s *Supervisor) Stop(ctx context.Context, pluginID string) error {
-	return s.stopRecord(ctx, pluginID)
-}
-
-// Forget removes a service from desired state before stopping it. Used by
-// disable/delete flows so capacity promotion cannot immediately restart it.
-func (s *Supervisor) Forget(ctx context.Context, pluginID string) error {
-	s.withLock(func() { delete(s.desired, pluginID) })
-
-	return s.stopRecord(ctx, pluginID)
-}
-
-func (s *Supervisor) Restart(ctx context.Context, pluginID string) error {
-	s.mu.Lock()
-
-	record := s.services[pluginID]
-	var spec ServiceSpec
-
-	if record != nil {
-		spec = record.spec
+func (s *Supervisor) stopService(run *operationRun) error {
+	if !s.isCurrent(run) {
+		return errSuperseded
 	}
 
-	s.mu.Unlock()
+	stopCtx, cancel := context.WithTimeout(run.ctx, s.cfg.StopTimeout)
 
-	if record == nil {
-		return fmt.Errorf("service %q is not known", pluginID)
-	}
+	defer cancel()
 
-	if err := s.stopRecord(ctx, pluginID); err != nil {
-		return err
-	}
-
-	s.withLock(func() {
-		if record.status.RestartCount < 0 {
-			record.status.RestartCount = 0
-		}
-
-		record.status.RestartCount++
-	})
-
-	return s.Start(ctx, spec)
+	return s.stopRecord(stopCtx, run.name)
 }
 
 func (s *Supervisor) Status(pluginID string) RuntimeStatus {
@@ -547,22 +727,22 @@ func (s *Supervisor) SupportedProtocols() []int {
 	return append([]int{}, s.cfg.SupportedProtocols...)
 }
 
-func (s *Supervisor) failStart(pluginID string, err error) {
+func (s *Supervisor) failStart(run *operationRun, pluginID string, err error) {
 	s.mu.Lock()
 
 	defer s.mu.Unlock()
 
 	record := s.services[pluginID]
 
-	if record == nil {
+	if record == nil || !s.coord.isCurrent(run) {
 		return
 	}
 
 	s.transitionFailureLocked(record, pluginID, "start failed", err)
 }
 
-func (s *Supervisor) observeExit(pluginID string, done <-chan error) {
-	err := <-done
+func (s *Supervisor) observeExit(pluginID string, done *processExit) {
+	err := done.wait()
 
 	s.withLock(func() {
 		record := s.services[pluginID]
@@ -642,8 +822,8 @@ func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 			return
 		}
 
-		if err := s.Start(context.Background(), spec); err != nil && s.cfg.Logger != nil {
-			s.cfg.Logger.Warn("service retry deferred", "plugin", pluginID, "error", err)
+		if s.startDesired != nil {
+			s.startDesired(spec)
 		}
 	}()
 }
@@ -684,10 +864,10 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 	if command != nil && done != nil {
 		_ = terminateExecProcess(command.Process)
 
-		if !waitForProcessExit(done, s.cfg.StopTimeout) {
+		if !waitForProcessExit(done.done, s.cfg.StopTimeout) {
 			_ = killExecProcess(command.Process)
 
-			if !waitForProcessExit(done, s.cfg.FinalReapTimeout) {
+			if !waitForProcessExit(done.done, s.cfg.FinalReapTimeout) {
 				stopErr = fmt.Errorf("service %q did not exit after kill", pluginID)
 			}
 		}
@@ -708,7 +888,7 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 	return stopErr
 }
 
-func waitForProcessExit(done <-chan error, timeout time.Duration) bool {
+func waitForProcessExit(done <-chan struct{}, timeout time.Duration) bool {
 	if timeout <= 0 {
 		select {
 		case <-done:
@@ -751,7 +931,9 @@ func (s *Supervisor) promoteBlocked() {
 	})
 
 	for _, spec := range blocked {
-		_ = s.Start(context.Background(), spec)
+		if s.startDesired != nil {
+			s.startDesired(spec)
+		}
 	}
 }
 

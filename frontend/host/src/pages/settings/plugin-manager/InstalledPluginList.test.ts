@@ -7,6 +7,7 @@ import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 import {replaceDepsStatuses} from '../../../state/deps-status.svelte.js';
 import InstalledPluginList from './InstalledPluginList.svelte';
+import type {PluginRowState} from './reconcile.js';
 
 const emptyBackend = {routes: {}};
 
@@ -28,9 +29,8 @@ function plugin(over: Partial<PluginListEntry> = {}): PluginListEntry {
 
 function mountInstalledPluginList(props: Partial<{
   items: PluginListEntry[];
-  busyName: string | null;
   confirmingName: string | null;
-  actionError: {name: string; message: string} | null;
+  rowStateFor: (name: string) => PluginRowState | undefined;
   permissionVisible: boolean;
   permissionAvailable: boolean;
   onEnable: (name: string) => void;
@@ -39,6 +39,7 @@ function mountInstalledPluginList(props: Partial<{
   onDelete: (name: string) => void;
   onRequestConfirm: (name: string) => void;
   onCancelConfirm: () => void;
+  onRefresh: () => void;
 }> = {}): {component: ReturnType<typeof mount>; target: HTMLElement} {
   const target = document.createElement('div');
 
@@ -48,9 +49,8 @@ function mountInstalledPluginList(props: Partial<{
     target,
     props: {
       items: [plugin()],
-      busyName: null,
       confirmingName: null,
-      actionError: null,
+      rowStateFor: () => undefined,
       permissionVisible: false,
       permissionAvailable: false,
       onEnable: vi.fn(),
@@ -59,6 +59,7 @@ function mountInstalledPluginList(props: Partial<{
       onDelete: vi.fn(),
       onRequestConfirm: vi.fn(),
       onCancelConfirm: vi.fn(),
+      onRefresh: vi.fn(),
       ...props,
     },
   });
@@ -133,7 +134,10 @@ describe('InstalledPluginList', () => {
 
   it('disables cancellation while an action is busy', () => {
     const {component, target} = mountInstalledPluginList({
-      busyName: 'network-tools',
+      rowStateFor: (name) =>
+        name === 'network-tools'
+          ? {state: 'working', message: ''}
+          : undefined,
       confirmingName: 'network-tools',
     });
 
@@ -236,7 +240,10 @@ describe('InstalledPluginList', () => {
     const {component, target} = mountInstalledPluginList({
       permissionVisible: true,
       permissionAvailable: true,
-      busyName: 'network-tools',
+      rowStateFor: (name) =>
+        name === 'network-tools'
+          ? {state: 'working', message: ''}
+          : undefined,
       items: [plugin({permissions: ['persistent-rci-session:write']})],
     });
     const control = target.querySelector<HTMLElement & {disabled: boolean}>(

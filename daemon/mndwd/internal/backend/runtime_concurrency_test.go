@@ -4,168 +4,138 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"testing"
 	"time"
 
-	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
 )
 
-func TestRuntimeCallerPathsSerialize(t *testing.T) {
-	tests := []struct {
-		name      string
-		operation func(*RuntimeImpl, context.Context, string, *registry.Plugin) error
-		wantError bool
-	}{
-		{name: "activate", operation: func(runtime *RuntimeImpl, ctx context.Context, _ string, plugin *registry.Plugin) error {
-			return runtime.Activate(ctx, plugin)
-		}, wantError: true},
-		{name: "deactivate", operation: func(runtime *RuntimeImpl, ctx context.Context, pluginID string, _ *registry.Plugin) error {
-			return runtime.Deactivate(ctx, pluginID)
-		}},
-		{name: "restart", operation: func(runtime *RuntimeImpl, ctx context.Context, pluginID string, _ *registry.Plugin) error {
-			return runtime.Restart(ctx, pluginID)
-		}, wantError: true},
-	}
+func TestLifecycleRunsForDifferentPluginsDoNotSerialize(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	firstEntered := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstDone := make(chan error, 1)
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			entered := make(chan struct{})
-			release := make(chan struct{})
-			var firstCall atomic.Bool
-			gates := NewActivationGateRegistry()
-
-			gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(string, _ string) []ActivationBlocker {
-				if firstCall.CompareAndSwap(false, true) {
-					close(entered)
-					<-release
-				}
+	go func() {
+		firstDone <- runtime.ExecuteLifecycle("first", OpUpdating, IntentRun, TerminalRun, FailRestore,
+			func(context.Context, LifecycleControl) error {
+				close(firstEntered)
+				<-releaseFirst
 
 				return nil
-			}))
+			})
+	}()
 
-			runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), ActivationGates: gates})
-			plugin := unsupportedServicePlugin(t, "serialized", []string{manifest.PersistentRCISessionReadPermission})
-			reconcileDone := make(chan struct{})
+	<-firstEntered
 
-			go func() {
-				runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
-				close(reconcileDone)
-			}()
+	if err := runtime.ExecuteLifecycle("second", OpInstalling, IntentRun, TerminalRun, FailRestore,
+		func(context.Context, LifecycleControl) error { return nil }); err != nil {
+		t.Fatalf("independent lifecycle = %v", err)
+	}
 
-			select {
-			case <-entered:
-			case <-time.After(time.Second):
-				t.Fatal("Reconcile did not reach activation gate")
-			}
+	close(releaseFirst)
 
-			operationDone := make(chan error, 1)
-
-			go func() {
-				operationDone <- test.operation(runtime, context.Background(), plugin.Name, plugin)
-			}()
-
-			select {
-			case err := <-operationDone:
-				t.Fatalf("%s completed while Reconcile held the pass: %v", test.name, err)
-			case <-time.After(50 * time.Millisecond):
-			}
-
-			close(release)
-
-			select {
-			case <-reconcileDone:
-			case <-time.After(time.Second):
-				t.Fatal("Reconcile did not finish after releasing gate")
-			}
-
-			select {
-			case err := <-operationDone:
-				if (err != nil) != test.wantError {
-					t.Fatalf("%s result = %v, wantError=%v", test.name, err, test.wantError)
-				}
-			case <-time.After(time.Second):
-				t.Fatalf("%s remained blocked after Reconcile", test.name)
-			}
-		})
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first lifecycle = %v", err)
 	}
 }
 
-func TestBackgroundStaleSpecConvergesOnFullReconcile(t *testing.T) {
-	var gateState atomic.Bool
-	gates := NewActivationGateRegistry()
+func TestReconcileStartupFailureTerminalizes(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	plugin := testServicePlugin(t, "missing", nil, "backend/does-not-exist", true)
+	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
+	waitForLifecycleAttempt(t, runtime, plugin.Name)
 
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
-		if gateState.Load() {
-			return nil
+	if got := runtime.operationOf(plugin.Name); got != OpNone {
+		t.Fatalf("failed startup operation = %v, want OpNone", got)
+	}
+
+	if got := runtime.intentOf(plugin.Name); got != IntentRun {
+		t.Fatalf("failed startup intent = %v, want IntentRun", got)
+	}
+
+	if got := runtime.Status(plugin.Name).State; got != StateBackoff {
+		t.Fatalf("failed startup state = %q, want backoff", got)
+	}
+}
+
+func TestDeleteWinsOverSlowStartupIntegration(t *testing.T) {
+	runtime, plugin := slowStartupRuntime(t, "slow")
+	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
+	waitForOperation(t, runtime, plugin.Name, OpStarting)
+	done := make(chan error, 1)
+
+	go func() {
+		done <- runtime.ExecuteLifecycle(plugin.Name, OpDeleting, IntentRemove, TerminalRemove, FailRemoved,
+			func(_ context.Context, control LifecycleControl) error { return control.StopService() })
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("delete = %v", err)
 		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("delete blocked behind slow startup")
+	}
 
-		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
-	}))
+	if got := runtime.Status(plugin.Name).State; got != StateStopped {
+		t.Fatalf("service after delete = %q, want stopped", got)
+	}
+}
 
-	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), ActivationGates: gates})
-	plugin := unsupportedServicePlugin(t, "stale", []string{manifest.PersistentRCISessionReadPermission})
-
+func TestRepeatedReconcileDoesNotDuplicateStartingRun(t *testing.T) {
+	runtime, plugin := slowStartupRuntime(t, "repeat")
+	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
+	waitForOperation(t, runtime, plugin.Name, OpStarting)
+	firstGeneration := runtime.generationOf(plugin.Name)
 	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
 
-	gateState.Store(true)
+	if got := runtime.generationOf(plugin.Name); got != firstGeneration {
+		t.Fatalf("generation after repeated reconcile = %d, want %d", got, firstGeneration)
+	}
 
-	spec := ServiceSpec{
+	if err := runtime.ExecuteLifecycle(plugin.Name, OpDeleting, IntentRemove, TerminalRemove, FailRemoved,
+		func(_ context.Context, control LifecycleControl) error { return control.StopService() }); err != nil {
+		t.Fatalf("cleanup delete = %v", err)
+	}
+}
+
+func TestReconcileChangedSpecRestartsExistingService(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	plugin := testServicePlugin(t, "changed", nil, "backend/new-missing", true)
+	oldSpec := ServiceSpec{
 		PluginID:        plugin.Name,
 		Dir:             plugin.Dir,
-		Command:         "backend/server",
-		ProtocolVersion: 2,
+		Command:         "backend/old",
+		ProtocolVersion: 1,
 		Enabled:         true,
 	}
+	runtime.supervisor.withLock(func() {
+		runtime.supervisor.coord.records[plugin.Name] = &transition{intent: IntentRun, operation: OpNone}
+		runtime.supervisor.desired[plugin.Name] = oldSpec
+		runtime.supervisor.services[plugin.Name] = &serviceRecord{
+			spec:   oldSpec,
+			status: RuntimeStatus{State: StateReady},
+		}
+	})
 
-	runtime.supervisor.mu.Lock()
-
-	runtime.supervisor.desired[plugin.Name] = spec
-	runtime.supervisor.services[plugin.Name] = &serviceRecord{
-		spec:   spec,
-		status: RuntimeStatus{State: StateCapacityBlocked},
-	}
-
-	runtime.supervisor.mu.Unlock()
-
-	runtime.supervisor.promoteBlocked()
-
-	runtime.supervisor.mu.Lock()
-
-	resurrected, exists := runtime.supervisor.desired[plugin.Name]
-
-	runtime.supervisor.mu.Unlock()
-
-	if !exists || !resurrected.Enabled {
-		t.Fatal("background stale start did not reproduce Enabled=true resurrection")
-	}
-
-	gateState.Store(false)
 	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
+	waitForLifecycleAttempt(t, runtime, plugin.Name)
 
-	if status := runtime.Status(plugin.Name); status.State != StateStopped {
-		t.Fatalf("later full reconcile state = %q, want stopped", status.State)
-	}
-
-	runtime.supervisor.mu.Lock()
-
-	converged, exists := runtime.supervisor.desired[plugin.Name]
-
-	runtime.supervisor.mu.Unlock()
-
-	if exists && converged.Enabled {
-		t.Fatal("later full reconcile retained stale enabled spec")
+	if got := runtime.Status(plugin.Name).State; got != StateBackoff {
+		t.Fatalf("changed service state = %q, want restart attempt/backoff", got)
 	}
 }
 
-func TestRuntimeMutexCoversReadinessProbe(t *testing.T) {
+func slowStartupRuntime(t *testing.T, pluginID string) (*RuntimeImpl, *registry.Plugin) {
+	t.Helper()
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "plugin")
 	commandPath := filepath.Join(pluginDir, "backend", "stall.sh")
 
 	if err := os.MkdirAll(filepath.Dir(commandPath), 0o700); err != nil {
-		t.Fatalf("create service command directory: %v", err)
+		t.Fatalf("create command directory: %v", err)
 	}
 
 	if err := os.WriteFile(commandPath, []byte("#!/bin/sh\nsleep 10\n"), 0o700); err != nil {
@@ -175,150 +145,32 @@ func TestRuntimeMutexCoversReadinessProbe(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{
 		RuntimeRoot: t.TempDir(),
 		Supervisor: SupervisorConfig{
-			ReadinessTimeout: time.Second,
-			StopTimeout:      time.Second,
-			FinalReapTimeout: time.Second,
+			ReadinessTimeout: 10 * time.Second,
+			StopTimeout:      500 * time.Millisecond,
+			FinalReapTimeout: 500 * time.Millisecond,
 		},
 	})
-	plugin := testServicePlugin(t, "slow", nil, "backend/stall.sh", true)
+	plugin := testServicePlugin(t, pluginID, nil, "backend/stall.sh", true)
 	plugin.Dir = pluginDir
 
-	ctx, cancel := context.WithCancel(context.Background())
+	return runtime, plugin
+}
 
-	defer cancel()
+func waitForLifecycleAttempt(t *testing.T, runtime *RuntimeImpl, pluginID string) {
+	t.Helper()
+	deadline := time.After(2 * time.Second)
+	ticker := time.NewTicker(time.Millisecond)
 
-	reconcileDone := make(chan struct{})
+	defer ticker.Stop()
 
-	go func() {
-		runtime.Reconcile(ctx, []*registry.Plugin{plugin})
-		close(reconcileDone)
-	}()
-
-	deadline := time.After(time.Second)
-
-	for runtime.Status(plugin.Name).State != StateStarting {
+	for {
 		select {
 		case <-deadline:
-			t.Fatalf("service never entered readiness probe; status=%q", runtime.Status(plugin.Name).State)
-		default:
-			time.Sleep(time.Millisecond)
+			t.Fatalf("startup did not finish: op=%v state=%q", runtime.operationOf(pluginID), runtime.Status(pluginID).State)
+		case <-ticker.C:
+			if runtime.operationOf(pluginID) == OpNone && runtime.Status(pluginID).State == StateBackoff {
+				return
+			}
 		}
 	}
-
-	operationStarted := make(chan struct{})
-	operationDone := make(chan error, 1)
-
-	go func() {
-		close(operationStarted)
-
-		operationDone <- runtime.Deactivate(context.Background(), plugin.Name)
-	}()
-
-	<-operationStarted
-
-	select {
-	case err := <-operationDone:
-		t.Fatalf("Deactivate completed during readiness probe: %v", err)
-	default:
-	}
-
-	cancel()
-
-	select {
-	case <-reconcileDone:
-	case <-time.After(time.Second):
-		t.Fatal("Reconcile did not finish after readiness context cancellation")
-	}
-
-	if err := <-operationDone; err != nil {
-		t.Fatalf("Deactivate after readiness probe = %v", err)
-	}
-
-	if status := runtime.Status(plugin.Name); status.State != StateStopped {
-		t.Fatalf("service state after Deactivate = %q, want stopped", status.State)
-	}
-}
-
-func TestRuntimeRestartWaitsForFullReconcile(t *testing.T) {
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	var firstCall atomic.Bool
-	gates := NewActivationGateRegistry()
-
-	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(string, _ string) []ActivationBlocker {
-		if firstCall.CompareAndSwap(false, true) {
-			close(entered)
-			<-release
-		}
-
-		return nil
-	}))
-
-	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), ActivationGates: gates})
-	plugin := unsupportedServicePlugin(t, "restart", []string{manifest.PersistentRCISessionReadPermission})
-	spec := ServiceSpec{
-		PluginID:        plugin.Name,
-		Dir:             plugin.Dir,
-		Command:         "backend/server",
-		ProtocolVersion: 2,
-		Enabled:         true,
-	}
-
-	runtime.supervisor.mu.Lock()
-
-	runtime.supervisor.desired[plugin.Name] = spec
-	runtime.supervisor.services[plugin.Name] = &serviceRecord{spec: spec, status: RuntimeStatus{State: StateStopped}}
-
-	runtime.supervisor.mu.Unlock()
-
-	reconcileDone := make(chan struct{})
-
-	go func() {
-		runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
-		close(reconcileDone)
-	}()
-
-	select {
-	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("Reconcile did not reach activation gate")
-	}
-
-	restartDone := make(chan error, 1)
-
-	go func() {
-		restartDone <- runtime.Restart(context.Background(), plugin.Name)
-	}()
-
-	select {
-	case err := <-restartDone:
-		t.Fatalf("Restart completed while Reconcile held the mutex: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	close(release)
-
-	select {
-	case <-reconcileDone:
-	case <-time.After(time.Second):
-		t.Fatal("Reconcile did not finish after releasing gate")
-	}
-
-	if err := <-restartDone; err == nil {
-		t.Fatal("Restart succeeded with intentionally unsupported service protocol")
-	}
-
-	if status := runtime.Status(plugin.Name); status.RestartCount != 1 {
-		t.Fatalf("restart count = %d, want 1", status.RestartCount)
-	}
-}
-
-func unsupportedServicePlugin(t *testing.T, name string, permissions []string) *registry.Plugin {
-	t.Helper()
-
-	plugin := testServicePlugin(t, name, permissions, "backend/server", true)
-	protocol := 2
-	plugin.Manifest.Backend.ProtocolVersion = &protocol
-
-	return plugin
 }

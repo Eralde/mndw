@@ -114,7 +114,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.DurationVar(&cfg.ServiceHTTPTimeout, "service-http-timeout", 30*time.Second, "service backend HTTP timeout")
 	fs.DurationVar(&cfg.HTTPDrainTimeout, "http-drain-timeout", 35*time.Second, "HTTP drain timeout during maintenance")
 	fs.DurationVar(&cfg.WebSocketCloseTimeout, "websocket-close-timeout", 2*time.Second, "WebSocket maintenance close grace")
-	fs.DurationVar(&cfg.ServiceStopTimeout, "service-stop-timeout", 10*time.Second, "service process group stop timeout")
+	fs.DurationVar(&cfg.ServiceStopTimeout, "service-stop-timeout", 15*time.Second, "service process group stop timeout")
 	fs.DurationVar(&cfg.FinalReapTimeout, "final-reap-timeout", 2*time.Second, "final process group reap timeout")
 	fs.DurationVar(&cfg.InitWaitTimeout, "init-wait-timeout", 60*time.Second, "init readiness wait timeout")
 	fs.Int64Var(&cfg.MaxRequestBytes, "max-request-bytes", 1<<20, "max backend request body size in bytes")

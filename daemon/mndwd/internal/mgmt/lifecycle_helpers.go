@@ -2,11 +2,90 @@ package mgmt
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"time"
 
+	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
+	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
+
+type localLifecycleControl struct{}
+
+func (localLifecycleControl) StartPlugin(*registry.Plugin) error { return nil }
+
+func (localLifecycleControl) StopService() error { return nil }
+
+func (localLifecycleControl) IsCurrent() bool { return true }
+
+func (localLifecycleControl) Generation() uint64 { return 0 }
+
+func (h *Handler) executeLifecycle(
+	name string,
+	op backend.Operation,
+	intent backend.Intent,
+	success backend.TerminalKind,
+	onFail backend.FailurePolicy,
+	work func(context.Context, backend.LifecycleControl) error,
+) error {
+	if h.runtime == nil {
+		return work(h.cfg.ServiceActionRoot, localLifecycleControl{})
+	}
+
+	return h.runtime.ExecuteLifecycle(name, op, intent, success, onFail, work)
+}
+
+func lifecycleError(err error, status int, code, message string) *httpx.APIError {
+	if err == nil {
+		return nil
+	}
+
+	var apiErr *httpx.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr
+	}
+
+	if errors.Is(err, backend.ErrLifecycleConflict) {
+		return httpx.NewError(http.StatusConflict, httpx.CodeBackendMaintenance, "plugin lifecycle operation already in progress")
+	}
+
+	if serviceCapacityError(err) {
+		return httpx.NewError(http.StatusConflict, httpx.CodeServiceCapacityExceeded, "service capacity exceeded")
+	}
+
+	return httpx.NewError(status, code, message).WithDetail(err.Error())
+}
+
+func (h *Handler) removePluginFiles(name, path string) error {
+	started := time.Now()
+	done := make(chan error, 1)
+
+	go func() {
+		done <- h.removeAll(path)
+	}()
+
+	select {
+	case err := <-done:
+		if h.logger != nil {
+			h.logger.Info("files removed", "plugin", name, "elapsed", time.Since(started))
+		}
+
+		return err
+	case <-h.newTimer(h.removalWatchdog):
+		if h.logger != nil {
+			h.logger.Warn("removal phase exceeded watchdog", "plugin", name, "elapsed", time.Since(started))
+		}
+
+		err := <-done
+		if h.logger != nil {
+			h.logger.Info("files removed", "plugin", name, "elapsed", time.Since(started))
+		}
+
+		return err
+	}
+}
 
 func (h *Handler) decodeLifecycleName(w http.ResponseWriter, r *http.Request) (string, bool) {
 	name, apiErr := decodeName(r)
@@ -45,16 +124,6 @@ func (h *Handler) mutateWithAudit(action, name, detail string, mutate func(*stat
 	}
 
 	return nil
-}
-
-func (h *Handler) deactivateBackend(ctx context.Context, name, failureMessage string) {
-	if h.runtime == nil {
-		return
-	}
-
-	if err := h.runtime.Deactivate(ctx, name); err != nil && h.logger != nil {
-		h.logger.Error(failureMessage, "plugin", name, "error", err)
-	}
 }
 
 func (h *Handler) writeLifecycleError(w http.ResponseWriter, apiErr *httpx.APIError) {

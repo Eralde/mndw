@@ -39,7 +39,7 @@ func TestNewRuntimeInitializesSupervisorClock(t *testing.T) {
 	}
 }
 
-func TestRuntimeGatedServiceReservesNoSlotAndActivateDoesNotSpawn(t *testing.T) {
+func TestRuntimeGatedServiceReservesNoSlotAndLifecycleStartDoesNotSpawn(t *testing.T) {
 	gates := NewActivationGateRegistry()
 
 	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
@@ -63,7 +63,8 @@ func TestRuntimeGatedServiceReservesNoSlotAndActivateDoesNotSpawn(t *testing.T) 
 		t.Fatalf("gated status = %q, want stopped", got)
 	}
 
-	if err := runtime.Activate(context.Background(), plugin); err != nil {
-		t.Fatalf("gated Activate() = %v, want nil", err)
+	if err := runtime.ExecuteLifecycle(plugin.Name, OpStarting, IntentRun, TerminalRun, FailRestore,
+		func(_ context.Context, control LifecycleControl) error { return control.StartPlugin(plugin) }); err != nil {
+		t.Fatalf("gated lifecycle start = %v, want nil", err)
 	}
 }

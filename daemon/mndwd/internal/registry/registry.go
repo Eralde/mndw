@@ -27,6 +27,8 @@ type Plugin struct {
 	// Approval and Enabled are the runtime gate; only approved+enabled plugins serve.
 	Approval state.Approval
 	Enabled  bool
+	// RemovalPending is the durable crash-recovery tombstone for cleanup.
+	RemovalPending bool
 }
 
 // BackendServable reports whether the plugin's backend may serve traffic: it
@@ -76,12 +78,13 @@ func (r *Registry) Resolve(name string) (*Plugin, bool) {
 		}
 
 		return &Plugin{
-			Name:     name,
-			Dir:      pluginDir(r.userDir, rec),
-			Manifest: m,
-			Source:   rec.Source,
-			Approval: rec.Approval,
-			Enabled:  rec.Enabled,
+			Name:           name,
+			Dir:            pluginDir(r.userDir, rec),
+			Manifest:       m,
+			Source:         rec.Source,
+			Approval:       rec.Approval,
+			Enabled:        rec.Enabled && !rec.RemovalPending,
+			RemovalPending: rec.RemovalPending,
 		}, true
 	}
 

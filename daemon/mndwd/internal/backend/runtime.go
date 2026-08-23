@@ -2,8 +2,8 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"os"
-	"sync"
 
 	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
@@ -26,13 +26,10 @@ type RuntimeLimitsSnapshot struct {
 // daemon startup/shutdown paths.
 type Runtime interface {
 	Reconcile(context.Context, []*registry.Plugin)
-	Activate(context.Context, *registry.Plugin) error
-	Deactivate(context.Context, string) error
-	Restart(context.Context, string) error
+	ExecuteLifecycle(string, Operation, Intent, TerminalKind, FailurePolicy, func(context.Context, LifecycleControl) error) error
+	BlocksTraffic(string) bool
 	Status(string) RuntimeStatus
 	Limits() RuntimeLimitsSnapshot
-	BeginPluginMaintenance(context.Context, string) error
-	EndPluginMaintenance(string)
 	BeginPlatformMaintenance(context.Context) error
 	Shutdown(context.Context) error
 }
@@ -51,19 +48,14 @@ type RuntimeConfig struct {
 // long-running services. This prevents separate subsystems from exceeding a
 // shared platform limit during startup or shutdown races.
 type RuntimeImpl struct {
-	exec            *ExecRunner
-	supervisor      *Supervisor
-	limits          Limits
-	protocols       []int
-	runtimeRoot     string
-	activationGates *ActivationGateRegistry
-	// reconcileMu serializes caller-driven lifecycle passes. Supervisor retry
-	// and capacity-promotion starts intentionally bypass it; a later full pass
-	// reapplies activation gates and converges any stale desired spec.
-	reconcileMu    sync.Mutex
-	maintenance    func(string)
-	maintenanceEnd func(string)
-	platform       func()
+	exec               *ExecRunner
+	supervisor         *Supervisor
+	limits             Limits
+	protocols          []int
+	runtimeRoot        string
+	activationGates    *ActivationGateRegistry
+	closePluginSockets func(string)
+	platform           func()
 }
 
 func NewRuntime(config RuntimeConfig) *RuntimeImpl {
@@ -107,7 +99,7 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 
 	admission := NewAdmission(config.Limits)
 
-	return &RuntimeImpl{
+	runtime := &RuntimeImpl{
 		exec:            newExecRunner(config.Exec, admission),
 		supervisor:      newSupervisor(config.Supervisor, admission),
 		limits:          config.Limits,
@@ -115,55 +107,94 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 		runtimeRoot:     config.RuntimeRoot,
 		activationGates: config.ActivationGates,
 	}
+	runtime.supervisor.startDesired = runtime.executeDesiredStartup
+
+	return runtime
 }
 
 func (r *RuntimeImpl) Reconcile(ctx context.Context, plugins []*registry.Plugin) {
-	r.reconcileMu.Lock()
-
-	defer r.reconcileMu.Unlock()
-
 	specs := make([]ServiceSpec, 0, len(plugins))
+	pluginsByID := make(map[string]*registry.Plugin, len(plugins))
 
 	for _, plugin := range plugins {
-		if spec, ok := serviceSpec(plugin, r.activationGates); ok {
-			spec.RCISessionSocket = persistentRCISocket(r.runtimeRoot, plugin)
+		if spec, ok := r.serviceSpec(plugin); ok {
 			specs = append(specs, spec)
+			pluginsByID[plugin.Name] = plugin
 		}
 	}
 
-	r.supervisor.Reconcile(ctx, specs)
-}
+	plan := r.supervisor.Reconcile(ctx, specs)
 
-func (r *RuntimeImpl) Activate(ctx context.Context, plugin *registry.Plugin) error {
-	r.reconcileMu.Lock()
+	for _, pluginID := range plan.startIDs {
+		plugin := pluginsByID[pluginID]
 
-	defer r.reconcileMu.Unlock()
-
-	spec, ok := serviceSpec(plugin, r.activationGates)
-
-	if !ok {
-		return nil
+		if plugin != nil {
+			go r.executeStartup(plugin)
+		}
 	}
 
-	spec.RCISessionSocket = persistentRCISocket(r.runtimeRoot, plugin)
+	for _, pluginID := range plan.stopIDs {
+		go r.executeReconcileStop(pluginID, false)
+	}
 
-	return r.supervisor.Start(ctx, spec)
+	for _, pluginID := range plan.removeIDs {
+		go r.executeReconcileStop(pluginID, true)
+	}
 }
 
-func (r *RuntimeImpl) Deactivate(ctx context.Context, pluginID string) error {
-	r.reconcileMu.Lock()
+func (r *RuntimeImpl) executeStartup(plugin *registry.Plugin) {
+	spec, ok := r.serviceSpec(plugin)
 
-	defer r.reconcileMu.Unlock()
+	if !ok {
+		return
+	}
 
-	return r.supervisor.Forget(ctx, pluginID)
+	outcome := r.supervisor.beginDesiredStartup(spec)
+	err := r.executeLifecycleOutcome(plugin.Name, OpStarting, TerminalRun, FailRestore,
+		func(_ context.Context, control LifecycleControl) error { return control.StartPlugin(plugin) }, outcome)
+
+	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.supervisor.cfg.Logger != nil {
+		r.supervisor.cfg.Logger.Warn("service start deferred", "plugin", plugin.Name, "error", err)
+	}
 }
 
-func (r *RuntimeImpl) Restart(ctx context.Context, pluginID string) error {
-	r.reconcileMu.Lock()
+func (r *RuntimeImpl) executeDesiredStartup(spec ServiceSpec) {
+	outcome := r.supervisor.beginDesiredStartup(spec)
+	err := r.executeLifecycleOutcome(spec.PluginID, OpStarting, TerminalRun, FailRestore,
+		func(_ context.Context, control LifecycleControl) error {
+			concrete, ok := control.(*lifecycleControl)
 
-	defer r.reconcileMu.Unlock()
+			if !ok || !concrete.IsCurrent() {
+				return errSuperseded
+			}
 
-	return r.supervisor.Restart(ctx, pluginID)
+			return r.supervisor.startService(concrete.run, spec)
+		}, outcome)
+
+	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.supervisor.cfg.Logger != nil {
+		r.supervisor.cfg.Logger.Warn("service retry deferred", "plugin", spec.PluginID, "error", err)
+	}
+}
+
+func (r *RuntimeImpl) executeReconcileStop(pluginID string, remove bool) {
+	op := OpStopping
+	intent := IntentStop
+	success := TerminalStop
+	failure := FailKeep
+
+	if remove {
+		op = OpDeleting
+		intent = IntentRemove
+		success = TerminalRemove
+		failure = FailRemoved
+	}
+
+	err := r.ExecuteLifecycle(pluginID, op, intent, success, failure,
+		func(_ context.Context, control LifecycleControl) error { return control.StopService() })
+
+	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.supervisor.cfg.Logger != nil {
+		r.supervisor.cfg.Logger.Warn("service stop deferred", "plugin", pluginID, "error", err)
+	}
 }
 
 func (r *RuntimeImpl) Status(pluginID string) RuntimeStatus {
@@ -183,26 +214,12 @@ func (r *RuntimeImpl) Limits() RuntimeLimitsSnapshot {
 	}
 }
 
-func (r *RuntimeImpl) BeginPluginMaintenance(ctx context.Context, pluginID string) error {
-	if r.maintenance != nil {
-		r.maintenance(pluginID)
-	}
-
-	return r.supervisor.Forget(ctx, pluginID)
-}
-
 func (r *RuntimeImpl) BeginPlatformMaintenance(ctx context.Context) error {
 	if r.platform != nil {
 		r.platform()
 	}
 
 	return r.supervisor.StopAll(ctx)
-}
-
-func (r *RuntimeImpl) EndPluginMaintenance(pluginID string) {
-	if r.maintenanceEnd != nil {
-		r.maintenanceEnd(pluginID)
-	}
 }
 
 func (r *RuntimeImpl) Shutdown(ctx context.Context) error {
@@ -213,10 +230,24 @@ func (r *RuntimeImpl) Shutdown(ctx context.Context) error {
 	return r.supervisor.StopAll(ctx)
 }
 
-func (r *RuntimeImpl) SetMaintenanceHooks(plugin func(string), platform func(), endPlugin func(string)) {
-	r.maintenance = plugin
+func (r *RuntimeImpl) SetLifecycleHooks(closePluginSockets func(string)) {
+	r.closePluginSockets = closePluginSockets
+}
+
+func (r *RuntimeImpl) SetPlatformMaintenanceHook(platform func()) {
 	r.platform = platform
-	r.maintenanceEnd = endPlugin
+}
+
+func (r *RuntimeImpl) serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
+	spec, ok := serviceSpec(plugin, r.activationGates)
+
+	if !ok {
+		return ServiceSpec{}, false
+	}
+
+	spec.RCISessionSocket = persistentRCISocket(r.runtimeRoot, plugin)
+
+	return spec, true
 }
 
 // ExecRunner exposes request execution to the v3 gateway without exposing its
@@ -249,7 +280,7 @@ func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (Servic
 		protocolVersion = *backend.ProtocolVersion
 	}
 
-	enabled := plugin.Enabled && plugin.Approval == state.ApprovalApproved
+	enabled := plugin.Enabled && plugin.Approval == state.ApprovalApproved && !plugin.RemovalPending
 
 	if enabled && gates != nil {
 		enabled = gates.Satisfied(plugin.Name, plugin.Manifest.Permissions)
@@ -263,6 +294,7 @@ func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (Servic
 		ProtocolVersion: protocolVersion,
 		Builtin:         plugin.Source == state.SourceBuiltin,
 		Enabled:         enabled,
+		RemovalPending:  plugin.RemovalPending,
 	}, true
 }
 

@@ -1,11 +1,14 @@
 package mgmt
 
 import (
+	"context"
 	"net/http"
 	"path/filepath"
 
+	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
+	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
 
@@ -25,49 +28,69 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
 	}
 
-	if apiErr := h.installDeps(m); apiErr != nil {
-		return nil, apiErr
-	}
-
 	stagingPath := filepath.Join(h.cfg.StagingDir, name)
 	installPath := filepath.Join(h.cfg.UserPluginsDir, name)
-
-	if err := moveDir(stagingPath, installPath); err != nil {
-		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to install plugin")
+	desired := &registry.Plugin{
+		Name: name, Dir: installPath, Manifest: m, Source: p.Source,
+		Approval: state.ApprovalApproved, Enabled: true,
 	}
+	err = h.executeLifecycle(name, backend.OpInstalling, backend.IntentRun, backend.TerminalRun, backend.FailRestore,
+		func(ctx context.Context, ctrl backend.LifecycleControl) error {
+			if apiErr := h.installDeps(ctx, m); apiErr != nil {
+				return apiErr
+			}
 
-	if apiErr := markCommandsExecutable(installPath, m); apiErr != nil {
-		h.rollbackInstall(name, installPath, stagingPath)
+			if err := moveDir(stagingPath, installPath); err != nil {
+				return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to install plugin")
+			}
 
-		return nil, apiErr
-	}
+			if apiErr := markCommandsExecutable(installPath, m); apiErr != nil {
+				h.rollbackInstall(name, installPath, stagingPath)
 
-	err = h.store.Mutate(func(st *state.State) error {
-		rec, exists := st.Plugins[name]
+				return apiErr
+			}
 
-		if !exists {
-			return httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "plugin vanished during approval")
-		}
+			if err := ctrl.StartPlugin(desired); err != nil {
+				h.rollbackInstall(name, installPath, stagingPath)
 
-		rec.Approval = state.ApprovalApproved
-		rec.Enabled = true
-		rec.ActiveVersion = deref(m.Version)
-		rec.ActiveVersionDir = installPath
+				return err
+			}
 
-		st.AppendAudit("approve", name, "backend approved and activated")
+			if err := ctx.Err(); err != nil || !ctrl.IsCurrent() {
+				_ = ctrl.StopService()
+				h.rollbackInstall(name, installPath, stagingPath)
+				if err != nil {
+					return err
+				}
 
-		return nil
-	})
+				return backend.ErrLifecycleConflict
+			}
+
+			if err := h.store.Mutate(func(st *state.State) error {
+				rec, exists := st.Plugins[name]
+				if !exists {
+					return httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "plugin vanished during approval")
+				}
+
+				rec.Approval = state.ApprovalApproved
+				rec.Enabled = true
+				rec.RemovalPending = false
+				rec.ActiveVersion = deref(m.Version)
+				rec.ActiveVersionDir = installPath
+				st.AppendAudit("approve", name, "backend approved and activated")
+
+				return nil
+			}); err != nil {
+				_ = ctrl.StopService()
+				h.rollbackInstall(name, installPath, stagingPath)
+
+				return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record approval")
+			}
+
+			return nil
+		})
 	if err != nil {
-		h.rollbackInstall(name, installPath, stagingPath)
-
-		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record approval")
-	}
-
-	if m.Backend != nil && h.runtime != nil {
-		if activationErr := h.activateBackendPlugin(name, m, installPath, true); activationErr != nil && h.logger != nil {
-			h.logger.Warn("backend activation deferred after approval", "plugin", name, "error", activationErr)
-		}
+		return nil, lifecycleError(err, http.StatusBadGateway, httpx.CodeBackendUnavailable, "backend activation failed")
 	}
 
 	return m, nil

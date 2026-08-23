@@ -1,7 +1,13 @@
 import {type Mock, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {PaletteTokenMap, PluginPermission} from '@mndw/sdk';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
-import {MgmtError, createMgmtClient, messageForError} from './mgmt-client.js';
+import {
+  MgmtError,
+  type MgmtTimeoutKind,
+  classifyMutationFailure,
+  createMgmtClient,
+  messageForError,
+} from './mgmt-client.js';
 
 const backend = {routes: {}};
 
@@ -318,6 +324,65 @@ describe('mgmt-client palette', () => {
 });
 
 describe('mgmt-client timeouts', () => {
+  it.each(
+    [
+      [
+        'listPlugins',
+        (client: ReturnType<typeof createMgmtClient>) => client.listPlugins(),
+        {plugins: [entry('p')]},
+        'read',
+      ],
+      [
+        'deletePlugin',
+        (client: ReturnType<typeof createMgmtClient>) => client.deletePlugin('p'),
+        {ok: true},
+        'mutation',
+      ],
+      [
+        'enablePlugin',
+        (client: ReturnType<typeof createMgmtClient>) => client.enablePlugin('p'),
+        entry('p'),
+        'mutation',
+      ],
+      [
+        'restartPlugin',
+        (client: ReturnType<typeof createMgmtClient>) => client.restartPlugin('p'),
+        {ok: true},
+        'mutation',
+      ],
+      [
+        'approvePlugin',
+        (client: ReturnType<typeof createMgmtClient>) => client.approvePlugin('p'),
+        entry('p'),
+        'install',
+      ],
+    ] as const,
+  )('selects the %s timeout tier', async (_method, invoke, response, expectedKind) => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, response));
+
+    const kinds: MgmtTimeoutKind[] = [];
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch, (kind) => {
+      kinds.push(kind);
+
+      return new AbortController().signal;
+    });
+
+    await invoke(client);
+
+    expect(kinds).toEqual([expectedKind]);
+  });
+
+  it('leaves upload unbounded without a timeout signal', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(201, entry('fresh')));
+
+    const makeSignal = vi.fn<(kind: MgmtTimeoutKind) => AbortSignal>();
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch, makeSignal);
+
+    await client.uploadPlugin(new File([new Uint8Array([1])], 'p.zip'));
+
+    expect(makeSignal).not.toHaveBeenCalled();
+  });
+
   it('passes an abort signal on regular requests but not upload', async () => {
     fetchImpl.mockResolvedValue(jsonResponse(200, {palette: null}));
 
@@ -337,5 +402,12 @@ describe('mgmt-client timeouts', () => {
     expect(messageForError(new DOMException('signal timed out', 'TimeoutError'))).toBe(
       'The device did not respond.',
     );
+  });
+
+  it('classifies transport ambiguity, maintenance rejection, and hard errors', () => {
+    expect(classifyMutationFailure(new DOMException('timed out', 'TimeoutError'))).toBe('ambiguous');
+    expect(classifyMutationFailure(new TypeError('network error'))).toBe('ambiguous');
+    expect(classifyMutationFailure(new MgmtError('busy', 'BACKEND_MAINTENANCE'))).toBe('rejected-maintenance');
+    expect(classifyMutationFailure(new MgmtError('nope', 'CONFLICT'))).toBe('error');
   });
 });

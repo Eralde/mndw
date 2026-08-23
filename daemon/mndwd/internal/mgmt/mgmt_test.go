@@ -36,51 +36,106 @@ type permissionTestController struct {
 }
 
 type lifecycleTestRuntime struct {
-	store  *state.Store
-	events []string
+	store         *state.Store
+	events        []string
+	calls         []lifecycleTestCall
+	startErr      error
+	startErrors   []error
+	startVersions []string
+	stopErr       error
+	stopHook      func()
+	blocked       bool
+}
+
+type lifecycleTestCall struct {
+	name    string
+	op      backend.Operation
+	intent  backend.Intent
+	success backend.TerminalKind
+	onFail  backend.FailurePolicy
+}
+
+type lifecycleTestControl struct {
+	runtime *lifecycleTestRuntime
+	name    string
+}
+
+func (c *lifecycleTestControl) StartPlugin(plugin *registry.Plugin) error {
+	storedEnabled := false
+	storedApproval := state.Approval("")
+
+	if c.runtime.store != nil {
+		if record, ok := c.runtime.store.Get(plugin.Name); ok {
+			storedEnabled = record.Enabled
+			storedApproval = record.Approval
+		}
+	}
+
+	c.runtime.events = append(c.runtime.events, fmt.Sprintf("start:stored=%s/%t:requested=%s/%t", storedApproval, storedEnabled, plugin.Approval, plugin.Enabled))
+	if plugin.Manifest != nil {
+		c.runtime.startVersions = append(c.runtime.startVersions, deref(plugin.Manifest.Version))
+	}
+
+	if len(c.runtime.startErrors) > 0 {
+		err := c.runtime.startErrors[0]
+		c.runtime.startErrors = c.runtime.startErrors[1:]
+
+		return err
+	}
+
+	return c.runtime.startErr
+}
+
+func (c *lifecycleTestControl) StopService() error {
+	if c.runtime.stopHook != nil {
+		c.runtime.stopHook()
+	}
+
+	storedEnabled := false
+
+	if c.runtime.store != nil {
+		if record, ok := c.runtime.store.Get(c.name); ok {
+			storedEnabled = record.Enabled
+		}
+	}
+
+	c.runtime.events = append(c.runtime.events, fmt.Sprintf("stop:stored=%t", storedEnabled))
+
+	return c.runtime.stopErr
+}
+
+func (*lifecycleTestControl) IsCurrent() bool { return true }
+
+func (*lifecycleTestControl) Generation() uint64 { return 1 }
+
+func (r *lifecycleTestRuntime) ExecuteLifecycle(
+	name string,
+	op backend.Operation,
+	intent backend.Intent,
+	success backend.TerminalKind,
+	onFail backend.FailurePolicy,
+	work func(context.Context, backend.LifecycleControl) error,
+) error {
+	r.calls = append(r.calls, lifecycleTestCall{name: name, op: op, intent: intent, success: success, onFail: onFail})
+	r.events = append(r.events, fmt.Sprintf("execute:%d/%d/%d/%d", op, intent, success, onFail))
+
+	err := work(context.Background(), &lifecycleTestControl{runtime: r, name: name})
+	if errors.Is(err, backend.ErrForceStopTerminal) {
+		r.blocked = true
+	}
+
+	return err
 }
 
 func (r *lifecycleTestRuntime) Reconcile(context.Context, []*registry.Plugin) {}
 
-func (r *lifecycleTestRuntime) Activate(_ context.Context, plugin *registry.Plugin) error {
-	storedEnabled := false
-
-	if r.store != nil {
-		if record, ok := r.store.Get(plugin.Name); ok {
-			storedEnabled = record.Enabled
-		}
-	}
-
-	r.events = append(r.events, fmt.Sprintf("activate:stored=%t:requested=%t", storedEnabled, plugin.Enabled))
-
-	return nil
-}
-
-func (r *lifecycleTestRuntime) Deactivate(_ context.Context, pluginID string) error {
-	storedEnabled := false
-
-	if r.store != nil {
-		if record, ok := r.store.Get(pluginID); ok {
-			storedEnabled = record.Enabled
-		}
-	}
-
-	r.events = append(r.events, fmt.Sprintf("deactivate:stored=%t", storedEnabled))
-
-	return nil
-}
-
-func (r *lifecycleTestRuntime) Restart(context.Context, string) error { return nil }
-
 func (r *lifecycleTestRuntime) Status(string) backend.RuntimeStatus { return backend.RuntimeStatus{} }
+
+func (r *lifecycleTestRuntime) BlocksTraffic(string) bool { return r.blocked }
 
 func (r *lifecycleTestRuntime) Limits() backend.RuntimeLimitsSnapshot {
 	return backend.RuntimeLimitsSnapshot{}
 }
-
-func (r *lifecycleTestRuntime) BeginPluginMaintenance(context.Context, string) error { return nil }
-
-func (r *lifecycleTestRuntime) EndPluginMaintenance(string) {}
 
 func (r *lifecycleTestRuntime) BeginPlatformMaintenance(context.Context) error { return nil }
 
@@ -159,6 +214,12 @@ func newPermissionServer(t *testing.T, controller PersistentRCIPermissionControl
 }
 
 func newLifecycleServer(t *testing.T, runtime backend.Runtime, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store) {
+	srv, store, _, _ := newLifecycleHarness(t, runtime, controller)
+
+	return srv, store
+}
+
+func newLifecycleHarness(t *testing.T, runtime backend.Runtime, controller PersistentRCIPermissionController) (*httptest.Server, *state.Store, *Handler, Config) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -178,13 +239,14 @@ func newLifecycleServer(t *testing.T, runtime backend.Runtime, controller Persis
 	logger := discardLogger()
 	mux := http.NewServeMux()
 
-	New(cfg, store, opkg.New("stub", logger), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
+	handler := New(cfg, store, opkg.New("stub", logger), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger)
+	handler.Register(mux)
 
 	srv := httptest.NewServer(mux)
 
 	t.Cleanup(srv.Close)
 
-	return srv, store
+	return srv, store, handler, cfg
 }
 
 func permissionManifest(name string) string {
@@ -937,7 +999,7 @@ func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
 		t.Fatalf("disable status = %d, want 200", disable.StatusCode)
 	}
 
-	if want := []string{"deactivate:stored=true", "permission:stored=false"}; !reflect.DeepEqual(runtime.events, want) {
+	if want := []string{"execute:2/1/1/1", "stop:stored=true", "permission:stored=false"}; !reflect.DeepEqual(runtime.events, want) {
 		t.Fatalf("disable event order = %#v, want %#v", runtime.events, want)
 	}
 
@@ -949,7 +1011,7 @@ func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
 		t.Fatalf("enable status = %d, want 200", enable.StatusCode)
 	}
 
-	if want := []string{"activate:stored=false:requested=true", "permission:stored=true"}; !reflect.DeepEqual(runtime.events, want) {
+	if want := []string{"execute:1/0/0/0", "start:stored=approved/false:requested=approved/true", "permission:stored=true"}; !reflect.DeepEqual(runtime.events, want) {
 		t.Fatalf("enable event order = %#v, want %#v", runtime.events, want)
 	}
 

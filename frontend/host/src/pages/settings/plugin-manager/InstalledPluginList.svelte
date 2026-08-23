@@ -6,12 +6,12 @@ import type {
 } from '../../../runtime/plugin-types.js';
 import {getPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 import {getDepsStatus} from '../../../state/deps-status.svelte.js';
+import type {PluginRowState} from './reconcile.js';
 
 interface Props {
   items: PluginListEntry[];
-  busyName: string | null;
   confirmingName: string | null;
-  actionError: {name: string; message: string} | null;
+  rowStateFor: (name: string) => PluginRowState | undefined;
   permissionVisible: boolean;
   permissionAvailable: boolean;
   onEnable: (name: string) => void;
@@ -25,6 +25,7 @@ interface Props {
   onDelete: (name: string) => void;
   onRequestConfirm: (name: string) => void;
   onCancelConfirm: () => void;
+  onRefresh: () => void;
 }
 
 function countLabel(count: number, singular: string): string {
@@ -74,9 +75,8 @@ function permissionLabel(permission: PluginPermission): string {
 
 let {
   items,
-  busyName,
   confirmingName,
-  actionError,
+  rowStateFor = () => undefined,
   permissionVisible = false,
   permissionAvailable = false,
   onEnable,
@@ -86,6 +86,7 @@ let {
   onDelete,
   onRequestConfirm,
   onCancelConfirm,
+  onRefresh = () => {},
 }: Props = $props();
 </script>
 
@@ -103,6 +104,8 @@ let {
         {@const summary = backendSummary(item.backend)}
         {@const versionWarnings = getPluginVersionWarnings(item.name)}
         {@const deps = getDepsStatus(item.name)}
+        {@const row = rowStateFor(item.name)}
+        {@const busy = row?.state === 'working' || row?.state === 'reconciling'}
         <li class="mndw-installed__item">
           <div class="mndw-installed__identity">
             <strong>{item.label}</strong>
@@ -150,7 +153,7 @@ let {
                 >
                   <mndw-switch
                     checked={permissionGranted(item, permission)}
-                    disabled={busyName !== null
+                    disabled={busy
                     || (!permissionGranted(item, permission)
                       && !permissionAvailable)}
                     onmndwchange={(event: CustomEvent<{checked: boolean}>) =>
@@ -165,12 +168,21 @@ let {
             {/each}
           {/if}
 
-          {#if actionError?.name === item.name}
+          {#if row !== undefined && row.message !== ''}
             <div
               class="mndw-alert mndw-alert--danger"
               role="alert"
             >
-              {actionError.message}
+              {row.message}
+              {#if row.state === 'notice-finishing'}
+                <mndw-button
+                  class="mndw-installed__refresh"
+                  variant="ghost"
+                  onclick={onRefresh}
+                >
+                  Refresh
+                </mndw-button>
+              {/if}
             </div>
           {/if}
 
@@ -179,7 +191,7 @@ let {
               <mndw-button
                 class="mndw-installed__toggle"
                 variant="primary"
-                disabled={busyName !== null}
+                disabled={busy}
                 onclick={() =>
                 item.enabled ? onDisable(item.name) : onEnable(item.name)}
               >
@@ -189,7 +201,7 @@ let {
                 <mndw-button
                   class="mndw-installed__restart"
                   variant="secondary"
-                  disabled={busyName !== null}
+                  disabled={busy}
                   onclick={() => onRestart(item.name)}
                 >
                   Restart backend
@@ -201,7 +213,7 @@ let {
                   <mndw-button
                     class="mndw-installed__cancel"
                     variant="ghost"
-                    disabled={busyName !== null}
+                    disabled={busy}
                     onclick={onCancelConfirm}
                   >
                     Cancel
@@ -209,7 +221,7 @@ let {
                   <mndw-button
                     class="mndw-installed__confirm"
                     variant="danger"
-                    disabled={busyName !== null}
+                    disabled={busy}
                     onclick={() => onDelete(item.name)}
                   >
                     Delete plugin
@@ -219,7 +231,7 @@ let {
                 <mndw-button
                   class="mndw-installed__delete"
                   variant="danger"
-                  disabled={busyName !== null}
+                  disabled={busy}
                   onclick={() => onRequestConfirm(item.name)}
                 >
                   Delete

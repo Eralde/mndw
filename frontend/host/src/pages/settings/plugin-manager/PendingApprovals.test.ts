@@ -4,6 +4,7 @@ import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import PendingApprovals from './PendingApprovals.svelte';
+import type {PluginRowState} from './reconcile.js';
 
 const item: PluginListEntry = {
   type: 'page',
@@ -23,13 +24,13 @@ const item: PluginListEntry = {
 
 function mountPendingApprovals(props: Partial<{
   items: PluginListEntry[];
-  busyName: string | null;
   confirmingName: string | null;
-  actionError: {name: string; message: string} | null;
+  rowStateFor: (name: string) => PluginRowState | undefined;
   onApprove: (name: string) => void;
   onDeny: (name: string) => void;
   onRequestConfirm: (name: string) => void;
   onCancelConfirm: () => void;
+  onRefresh: () => void;
 }> = {}): {component: ReturnType<typeof mount>; target: HTMLElement} {
   const target = document.createElement('div');
 
@@ -39,13 +40,13 @@ function mountPendingApprovals(props: Partial<{
     target,
     props: {
       items: [item],
-      busyName: null,
       confirmingName: null,
-      actionError: null,
+      rowStateFor: () => undefined,
       onApprove: vi.fn(),
       onDeny: vi.fn(),
       onRequestConfirm: vi.fn(),
       onCancelConfirm: vi.fn(),
+      onRefresh: vi.fn(),
       ...props,
     },
   });
@@ -114,7 +115,10 @@ describe('PendingApprovals', () => {
 
   it('renders an error for matching pending plugin', () => {
     const {component, target} = mountPendingApprovals({
-      actionError: {name: 'network-tools', message: 'Approval failed'},
+      rowStateFor: (name) =>
+        name === 'network-tools'
+          ? {state: 'error', message: 'Approval failed'}
+          : undefined,
     });
 
     const error = target.querySelector('.mndw-alert--danger');

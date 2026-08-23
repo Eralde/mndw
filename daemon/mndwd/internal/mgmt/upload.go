@@ -3,14 +3,18 @@ package mgmt
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
+	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
+	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
 
@@ -71,20 +75,112 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stagingPath := filepath.Join(h.cfg.StagingDir, name)
-
-	if err := extractZip(zr, stagingPath); err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeInvalidZip, "failed to extract archive: "+err.Error()))
-
-		return
-	}
+	activePath := filepath.Join(h.cfg.UserPluginsDir, name)
+	previous, hadPrevious := h.store.Get(name)
+	intent := backend.IntentRun
+	success := backend.TerminalRun
+	approval := state.ApprovalApproved
+	enabled := true
+	status := http.StatusCreated
+	auditDetail := "no backend — installed without approval"
+	auditAction := "install"
 
 	if manifest.HasBackend(m) {
-		h.stagePending(w, m, manifestBytes)
+		intent = backend.IntentStop
+		success = backend.TerminalStop
+		approval = state.ApprovalPending
+		enabled = false
+		status = http.StatusAccepted
+		auditDetail = "backend declared — awaiting approval"
+		auditAction = "upload"
+	}
+
+	err = h.executeLifecycle(name, backend.OpInstalling, intent, success, backend.FailRestore,
+		func(ctx context.Context, ctrl backend.LifecycleControl) error {
+			if err := ctx.Err(); err != nil || !ctrl.IsCurrent() {
+				if err != nil {
+					return err
+				}
+
+				return backend.ErrLifecycleConflict
+			}
+
+			_ = h.removeAll(stagingPath)
+			if err := extractZip(zr, stagingPath); err != nil {
+				return httpx.NewError(http.StatusBadRequest, httpx.CodeInvalidZip, "failed to extract archive: "+err.Error())
+			}
+
+			backupPath := filepath.Join(h.cfg.StagingDir, name+"-reinstall-backup")
+			backedUp := false
+			if hadPrevious && previous.RemovalPending {
+				oldPath := previous.ActiveVersionDir
+				if oldPath == "" {
+					oldPath = activePath
+				}
+
+				if _, statErr := os.Stat(oldPath); statErr == nil {
+					if err := moveDir(oldPath, backupPath); err != nil {
+						return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to retain removal-pending plugin tree")
+					}
+
+					backedUp = true
+				}
+			}
+
+			installed := false
+			if approval == state.ApprovalApproved {
+				if err := moveDir(stagingPath, activePath); err != nil {
+					h.restoreUploadFiles(activePath, backupPath, backedUp)
+
+					return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to install plugin")
+				}
+
+				installed = true
+			}
+
+			record := newRecord(m, manifestBytes, approval, enabled)
+			record.RemovalPending = false
+			if installed {
+				record.ActiveVersion = deref(m.Version)
+				record.ActiveVersionDir = activePath
+			}
+
+			if err := h.store.Mutate(func(st *state.State) error {
+				st.Plugins[name] = record
+				st.AppendAudit(auditAction, name, auditDetail)
+
+				return nil
+			}); err != nil {
+				h.restoreUploadFiles(activePath, backupPath, backedUp)
+
+				return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record plugin state")
+			}
+
+			if installed {
+				desired := &registry.Plugin{
+					Name: name, Dir: activePath, Manifest: m, Source: state.SourceUpload,
+					Approval: state.ApprovalApproved, Enabled: true,
+				}
+				if err := ctrl.StartPlugin(desired); err != nil {
+					_ = h.restoreUploadRecord(name, previous, hadPrevious)
+					h.restoreUploadFiles(activePath, backupPath, backedUp)
+
+					return err
+				}
+			}
+
+			_ = h.removeAll(backupPath)
+
+			return nil
+		})
+	if err != nil {
+		httpx.WriteError(w, h.logger, lifecycleError(err, http.StatusInternalServerError, httpx.CodeInternal, "failed to install plugin"))
 
 		return
 	}
 
-	h.installDirect(w, m, manifestBytes, stagingPath)
+	h.logger.Info("plugin upload completed", "plugin", name, "backend", manifest.HasBackend(m))
+	httpx.WriteJSON(w, h.logger, status, h.entryFrom(m, state.SourceUpload, approval, enabled))
 }
 
 // readUploadBody reads the request body under the configured size cap, translating
@@ -113,7 +209,7 @@ func (h *Handler) readUploadBody(w http.ResponseWriter, r *http.Request) ([]byte
 // a builtin. For 2a a re-upload requires an explicit deny/delete first — predictable
 // and collision-safe.
 func (h *Handler) ensureNameFree(name string) *httpx.APIError {
-	if _, exists := h.store.Get(name); exists {
+	if record, exists := h.store.Get(name); exists && !record.RemovalPending {
 		return httpx.NewError(http.StatusConflict, httpx.CodeConflict, "a plugin named "+name+" already exists; deny or delete it first")
 	}
 
@@ -122,6 +218,25 @@ func (h *Handler) ensureNameFree(name string) *httpx.APIError {
 	}
 
 	return nil
+}
+
+func (h *Handler) restoreUploadFiles(activePath, backupPath string, backedUp bool) {
+	_ = h.removeAll(activePath)
+	if backedUp {
+		_ = moveDir(backupPath, activePath)
+	}
+}
+
+func (h *Handler) restoreUploadRecord(name string, previous *state.Plugin, hadPrevious bool) error {
+	return h.store.Mutate(func(st *state.State) error {
+		if hadPrevious {
+			st.Plugins[name] = previous
+		} else {
+			delete(st.Plugins, name)
+		}
+
+		return nil
+	})
 }
 
 // installDirect promotes a no-backend plugin straight to installed (approved+enabled)

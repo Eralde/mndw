@@ -1,12 +1,15 @@
 package mgmt
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"path/filepath"
 
+	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
+	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
 
@@ -35,14 +38,14 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 }
 
 // installDeps installs a plugin's declared opkg packages. No-op when none declared.
-func (h *Handler) installDeps(m *manifest.Manifest) *httpx.APIError {
+func (h *Handler) installDeps(parent context.Context, m *manifest.Manifest) *httpx.APIError {
 	packages := backendPackages(m)
 
 	if len(packages) == 0 {
 		return nil
 	}
 
-	ctx, cancel := opkgContext()
+	ctx, cancel := context.WithTimeout(parent, opkgTimeout)
 
 	defer cancel()
 
@@ -99,26 +102,41 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.runtime != nil {
-		if err := h.activateBackendPlugin(name, m, filepath.Join(h.cfg.UserPluginsDir, name), true); err != nil {
-			if serviceCapacityError(err) {
-				h.writeLifecycleError(w, httpx.NewError(http.StatusConflict, httpx.CodeServiceCapacityExceeded, "service capacity exceeded"))
-
-				return
+	desired := &registry.Plugin{
+		Name: name, Dir: filepath.Join(h.cfg.UserPluginsDir, name), Manifest: m,
+		Source: p.Source, Approval: state.ApprovalApproved, Enabled: true,
+	}
+	err := h.executeLifecycle(name, backend.OpStarting, backend.IntentRun, backend.TerminalRun, backend.FailRestore,
+		func(ctx context.Context, ctrl backend.LifecycleControl) error {
+			if err := ctrl.StartPlugin(desired); err != nil {
+				return err
 			}
 
-			h.logger.Warn("backend activation deferred", "plugin", name, "error", err)
-		}
-	}
+			if err := ctx.Err(); err != nil || !ctrl.IsCurrent() {
+				if err != nil {
+					return err
+				}
 
-	if apiErr := h.setEnabled(name, true, "enable", "plugin enabled by operator"); apiErr != nil {
-		h.writeLifecycleError(w, apiErr)
+				return backend.ErrLifecycleConflict
+			}
+
+			if apiErr := h.setEnabled(name, true, "enable", "plugin enabled by operator"); apiErr != nil {
+				_ = ctrl.StopService()
+
+				return apiErr
+			}
+
+			h.reconcilePermission(name, "plugin enable")
+
+			return nil
+		})
+	if err != nil {
+		h.writeLifecycleError(w, lifecycleError(err, http.StatusBadGateway, httpx.CodeBackendUnavailable, "backend activation failed"))
 
 		return
 	}
 
 	h.logger.Info("plugin enabled", "plugin", name)
-	h.reconcilePermission(name, "plugin enable")
 	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
 }
 
@@ -145,16 +163,32 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.deactivateBackend(r.Context(), name, "backend stop failed during disable")
+	err := h.executeLifecycle(name, backend.OpStopping, backend.IntentStop, backend.TerminalStop, backend.FailKeep,
+		func(_ context.Context, ctrl backend.LifecycleControl) error {
+			stopErr := ctrl.StopService()
+			persistErr := h.setEnabled(name, false, "disable", "plugin disabled by operator")
 
-	if apiErr := h.setEnabled(name, false, "disable", "plugin disabled by operator"); apiErr != nil {
-		h.writeLifecycleError(w, apiErr)
+			if persistErr == nil {
+				h.reconcilePermission(name, "plugin disable")
+			}
+
+			if stopErr != nil {
+				return stopErr
+			}
+
+			if persistErr != nil {
+				return persistErr
+			}
+
+			return nil
+		})
+	if err != nil {
+		h.writeLifecycleError(w, lifecycleError(err, http.StatusBadGateway, httpx.CodeBackendUnavailable, "backend stop failed during disable"))
 
 		return
 	}
 
 	h.logger.Info("plugin disabled", "plugin", name)
-	h.reconcilePermission(name, "plugin disable")
 	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false))
 }
 
@@ -216,14 +250,32 @@ func (h *Handler) handleDeny(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.RemoveAll(filepath.Join(h.cfg.StagingDir, name)); err != nil {
-		h.writeLifecycleError(w, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to remove staged plugin"))
+	err := h.executeLifecycle(name, backend.OpDeleting, backend.IntentRemove, backend.TerminalRemove, backend.FailRemoved,
+		func(ctx context.Context, ctrl backend.LifecycleControl) error {
+			if apiErr := h.markRemovalPending(name); apiErr != nil {
+				return apiErr
+			}
 
-		return
-	}
+			if err := ctx.Err(); err != nil || !ctrl.IsCurrent() {
+				if err != nil {
+					return err
+				}
 
-	if apiErr := h.dropRecord(name, "deny", "upload denied by operator"); apiErr != nil {
-		h.writeLifecycleError(w, apiErr)
+				return backend.ErrLifecycleConflict
+			}
+
+			if err := h.removePluginFiles(name, filepath.Join(h.cfg.StagingDir, name)); err != nil {
+				return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to remove staged plugin")
+			}
+
+			if apiErr := h.dropRecord(name, "deny", "upload denied by operator"); apiErr != nil {
+				return apiErr
+			}
+
+			return nil
+		})
+	if err != nil {
+		h.writeLifecycleError(w, lifecycleError(err, http.StatusInternalServerError, httpx.CodeInternal, "failed to deny plugin"))
 
 		return
 	}
@@ -241,37 +293,52 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, apiErr := h.lookupStoredPlugin(name)
-
-	if apiErr != nil {
-		if h.isBuiltin(name) {
-			h.writeLifecycleError(w, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "builtin plugins cannot be deleted"))
-
-			return
-		}
-
-		h.writeLifecycleError(w, apiErr)
+	if h.isBuiltin(name) {
+		h.writeLifecycleError(w, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "builtin plugins cannot be deleted"))
 
 		return
 	}
 
-	// Stop the backend before removing files. Proceed with delete if cleanup fails.
-	dir := h.cfg.UserPluginsDir
+	err := h.executeLifecycle(name, backend.OpDeleting, backend.IntentRemove, backend.TerminalRemove, backend.FailRemoved,
+		func(ctx context.Context, ctrl backend.LifecycleControl) error {
+			p, exists := h.store.Get(name)
+			if !exists {
+				return nil
+			}
 
-	if p.Approval == state.ApprovalPending {
-		dir = h.cfg.StagingDir
-	} else if m, err := manifest.ValidateV3(p.Manifest); err == nil && m.Backend != nil {
-		h.deactivateBackend(r.Context(), name, "backend stop failed during delete")
-	}
+			if apiErr := h.markRemovalPending(name); apiErr != nil {
+				return apiErr
+			}
 
-	if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
-		h.writeLifecycleError(w, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to remove plugin files"))
+			if err := ctx.Err(); err != nil || !ctrl.IsCurrent() {
+				if err != nil {
+					return err
+				}
 
-		return
-	}
+				return backend.ErrLifecycleConflict
+			}
 
-	if apiErr := h.dropRecord(name, "delete", "plugin removed by operator; permission grants purged"); apiErr != nil {
-		h.writeLifecycleError(w, apiErr)
+			if err := ctrl.StopService(); err != nil {
+				return err
+			}
+
+			dir := h.cfg.UserPluginsDir
+			if p.Approval == state.ApprovalPending {
+				dir = h.cfg.StagingDir
+			}
+
+			if err := h.removePluginFiles(name, filepath.Join(dir, name)); err != nil {
+				return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to remove plugin files")
+			}
+
+			if apiErr := h.dropRecord(name, "delete", "plugin removed by operator; permission grants purged"); apiErr != nil {
+				return apiErr
+			}
+
+			return nil
+		})
+	if err != nil {
+		h.writeLifecycleError(w, lifecycleError(err, http.StatusInternalServerError, httpx.CodeInternal, "failed to delete plugin"))
 
 		return
 	}
@@ -279,6 +346,25 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("plugin deleted", "plugin", name)
 	h.reconcilePermission(name, "plugin delete")
 	h.writeLifecycleJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (h *Handler) markRemovalPending(name string) *httpx.APIError {
+	err := h.store.Mutate(func(st *state.State) error {
+		record := st.Plugins[name]
+		if record == nil {
+			return httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
+		}
+
+		record.RemovalPending = true
+		record.Enabled = false
+
+		return nil
+	})
+	if err != nil {
+		return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to persist plugin removal marker")
+	}
+
+	return nil
 }
 
 // dropRecord removes a plugin's state entry and audits the removal.

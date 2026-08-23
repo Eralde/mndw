@@ -88,7 +88,7 @@ func TestParseDefaultsV3BackendLimitsAndTimeouts(t *testing.T) {
 		t.Fatalf("backend timeouts = grace:%s service:%s drain:%s", cfg.ExecKillGrace, cfg.ServiceHTTPTimeout, cfg.HTTPDrainTimeout)
 	}
 
-	if cfg.WebSocketCloseTimeout != 2*time.Second || cfg.ServiceStopTimeout != 10*time.Second || cfg.FinalReapTimeout != 2*time.Second || cfg.InitWaitTimeout != 60*time.Second {
+	if cfg.WebSocketCloseTimeout != 2*time.Second || cfg.ServiceStopTimeout != 15*time.Second || cfg.FinalReapTimeout != 2*time.Second || cfg.InitWaitTimeout != 60*time.Second {
 		t.Fatalf("backend lifecycle timeouts = ws:%s stop:%s reap:%s init:%s", cfg.WebSocketCloseTimeout, cfg.ServiceStopTimeout, cfg.FinalReapTimeout, cfg.InitWaitTimeout)
 	}
 

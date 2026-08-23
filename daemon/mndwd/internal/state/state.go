@@ -49,6 +49,7 @@ type Plugin struct {
 	Label            string          `json:"label"`
 	Approval         Approval        `json:"approval"`
 	Enabled          bool            `json:"enabled"`
+	RemovalPending   bool            `json:"removalPending,omitempty"`
 	Manifest         json.RawMessage `json:"manifest"`
 	InstalledAt      time.Time       `json:"installedAt"`
 	InstalledVersion string          `json:"installedVersion,omitempty"`

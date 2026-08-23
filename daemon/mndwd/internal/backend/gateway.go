@@ -53,7 +53,7 @@ type Gateway struct {
 	activeMu            sync.Mutex
 	activeWS            map[*websocket.Conn]string
 	maintenanceMu       sync.RWMutex
-	maintenance         map[string]struct{}
+	trafficBlock        func(string) bool
 	platformMaintenance bool
 }
 
@@ -75,7 +75,6 @@ func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticat
 		activationGates: cfg.ActivationGates,
 		logger:          logger,
 		activeWS:        make(map[*websocket.Conn]string),
-		maintenance:     make(map[string]struct{}),
 	}
 }
 
@@ -425,20 +424,10 @@ func (g *Gateway) CloseAllSockets() {
 	g.closeSockets(func(string) bool { return true })
 }
 
-// BeginPluginMaintenance rejects new traffic before stopping the service and
-// closes existing browser sockets with the maintenance close code.
-func (g *Gateway) BeginPluginMaintenance(pluginID string) {
+// SetTrafficBlockPredicate installs the lifecycle coordinator traffic gate.
+func (g *Gateway) SetTrafficBlockPredicate(predicate func(string) bool) {
 	g.maintenanceMu.Lock()
-
-	g.maintenance[pluginID] = struct{}{}
-
-	g.maintenanceMu.Unlock()
-	g.ClosePluginSockets(pluginID)
-}
-
-func (g *Gateway) EndPluginMaintenance(pluginID string) {
-	g.maintenanceMu.Lock()
-	delete(g.maintenance, pluginID)
+	g.trafficBlock = predicate
 	g.maintenanceMu.Unlock()
 }
 
@@ -455,16 +444,19 @@ func (g *Gateway) BeginPlatformMaintenance() {
 
 func (g *Gateway) isMaintenance(pluginID string) bool {
 	g.maintenanceMu.RLock()
+	platformMaintenance := g.platformMaintenance
+	predicate := g.trafficBlock
+	g.maintenanceMu.RUnlock()
 
-	defer g.maintenanceMu.RUnlock()
-
-	if g.platformMaintenance {
+	if platformMaintenance {
 		return true
 	}
 
-	_, active := g.maintenance[pluginID]
+	if predicate == nil {
+		return false
+	}
 
-	return active
+	return predicate(pluginID)
 }
 
 func (g *Gateway) trackWebSocket(connection *websocket.Conn, pluginID string) {

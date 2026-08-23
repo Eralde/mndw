@@ -37,13 +37,13 @@ describe('readPluginPackage', () => {
     const dir = makePlugin(JSON.stringify({
       name: 'sample',
       scripts: {build: 'pnpm run generate'},
-      mndw: {productionEntry: 'src/index.prod.ts'},
+      mndw: {productionEntry: 'src/index.prod.ts', backendAssets: ['backend/dns-util']},
     }));
 
     expect(readPluginPackage(dir)).toEqual({
       name: 'sample',
       scripts: {build: 'pnpm run generate'},
-      mndw: {productionEntry: 'src/index.prod.ts'},
+      mndw: {productionEntry: 'src/index.prod.ts', backendAssets: ['backend/dns-util']},
     });
   });
 
@@ -57,6 +57,18 @@ describe('readPluginPackage', () => {
     const dir = makePlugin(JSON.stringify(['not', 'an', 'object']));
 
     expect(() => readPluginPackage(dir)).toThrow(/package\.json/);
+  });
+
+  it.each([
+    ['empty', []],
+    ['non-array', 'backend/dns-util'],
+    ['absolute', ['/tmp/dns-util']],
+    ['traversal', ['backend/../dns-util']],
+    ['duplicate', ['backend/dns-util', 'backend/dns-util']],
+  ])('rejects %s backend asset metadata', (_name, backendAssets) => {
+    const dir = makePlugin(JSON.stringify({mndw: {backendAssets}}));
+
+    expect(() => readPluginPackage(dir)).toThrow(/backendAssets/);
   });
 
   it('does not modify package contents while reading', () => {

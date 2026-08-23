@@ -91,10 +91,11 @@ the real router for RCI/auth calls.
 
 Uploadable repository examples live under `plugins/examples`. Build their
 archives with `pnpm build-example-plugins`; this produces
-`device-traffic-widget.zip` plus `ping-widget-aarch64.zip`,
-`ping-widget-mips.zip`, and `ping-widget-mipsel.zip`. The ping archives contain
-target-specific backend binaries and follow upload → approval → activation.
-The traffic widget has no backend and installs directly.
+one archive for every direct example directory with a manifest. Examples with
+`mndw.backendBuildScript` produce one target-labelled archive for each of
+`aarch64`, `mips`, and `mipsel`; examples without a backend produce one archive.
+Backend archives contain target-specific binaries and follow upload → approval
+→ activation.
 
 ## Author loop
 

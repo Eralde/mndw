@@ -1,9 +1,6 @@
 go 1.26.1
 
 use (
-	./plugins/builtin/dns-lookup-widget/backend
-	./plugins/builtin/mws-page/backend
-	./plugins/examples/ping-widget/backend
 	./daemon/mndwd
 	./daemon/contracts-go
 	./packages/go-device-auth

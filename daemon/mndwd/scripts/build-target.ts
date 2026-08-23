@@ -2,25 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {existsSync, mkdirSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 
-import {type GoTargetConfig, PRODUCT_TARGET_CONFIG, type ProductTarget} from '../../../build/targets.js';
-
-export const GO_TARGETS: Record<ProductTarget, GoTargetConfig> = {
-  aarch64: PRODUCT_TARGET_CONFIG.aarch64.go,
-  mips: PRODUCT_TARGET_CONFIG.mips.go,
-  mipsel: PRODUCT_TARGET_CONFIG.mipsel.go,
-};
-
-export function goTargetEnvironment(repoRoot: string, target: ProductTarget): NodeJS.ProcessEnv {
-  const config = GO_TARGETS[target];
-
-  return {
-    ...process.env,
-    ...config,
-    GOOS: 'linux',
-    CGO_ENABLED: '0',
-    GOCACHE: process.env.GOCACHE ?? join(repoRoot, '.cache/go-build'),
-  };
-}
+import {type ProductTarget, goTargetEnvironment} from '@mndw/cli/go-target';
 
 export interface BuildDaemonTargetOptions {
   readonly repoRoot: string;
@@ -44,11 +26,15 @@ export function buildDaemonTarget(options: BuildDaemonTargetOptions): void {
     '-o',
     options.outputPath,
     '-ldflags',
-    `-X main.version=${options.version}`,
+    `-s -w -X main.version=${options.version}`,
     './cmd/mndwd',
   ], {
     cwd: daemonDir,
-    env: goTargetEnvironment(options.repoRoot, options.target),
+    env: {
+      ...goTargetEnvironment(options.target),
+      GOWORK: 'off',
+      GOCACHE: process.env.GOCACHE ?? join(options.repoRoot, '.cache/go-build'),
+    },
     stdio: 'inherit',
   });
 

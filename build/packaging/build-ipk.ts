@@ -4,7 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {execSync, spawnSync} from 'node:child_process';
 import zlib from 'node:zlib';
-import {GO_TARGETS} from '../../daemon/mndwd/scripts/build-target.js';
+import {GO_TARGETS} from '@mndw/cli/go-target';
 import {PRODUCT_TARGETS, PRODUCT_TARGET_CONFIG, type ProductTarget, isProductTarget} from '../targets.js';
 import {buildProductTargetWithDefaults} from '../index.js';
 import type {ArtifactDescriptor, SharedArtifacts} from '../artifacts/descriptor.js';

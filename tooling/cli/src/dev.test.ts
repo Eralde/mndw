@@ -1,9 +1,11 @@
-import {spawnSync} from 'node:child_process';
-import {resolve} from 'node:path';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join, resolve} from 'node:path';
 
 import {describe, expect, it, vi} from 'vitest';
 
 import {CliError} from './errors.js';
+import {type GoBuildSpawn} from './go-backend-build.js';
 import {
   type DevDeps,
   buildDaemonArgs,
@@ -23,7 +25,7 @@ describe('defaultBuildGoBackend', () => {
     ['dns-lookup-widget', 'dns-util'],
     ['ping-widget', 'ping-util'],
   ])('builds %s command using its discovered executable name', (pluginName, commandName) => {
-    const runBuild = vi.fn(() => ({status: 0})) as unknown as typeof spawnSync;
+    const runBuild = vi.fn<GoBuildSpawn>(() => ({status: 0, signal: null}));
     const sourceRoot = pluginName === 'ping-widget' ? 'plugins/examples' : 'plugins/builtin';
     const pluginDir = resolve(import.meta.dirname, '..', '..', '..', sourceRoot, pluginName);
 
@@ -32,9 +34,12 @@ describe('defaultBuildGoBackend', () => {
     expect(result).toEqual({success: true, skipped: false});
     expect(runBuild).toHaveBeenCalledWith(
       'go',
-      ['build', '-ldflags', '-s -w', '-o', commandName, `./cmd/${commandName}`],
-      expect.objectContaining({cwd: resolve(pluginDir, 'backend'), stdio: 'inherit'}),
+      ['build', '-ldflags', '-s -w', '-o', resolve(pluginDir, 'backend', commandName), `./cmd/${commandName}`],
+      expect.objectContaining({cwd: resolve(pluginDir, 'backend')}),
     );
+    expect(runBuild.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      env: expect.objectContaining({GOWORK: 'off', CGO_ENABLED: '0'}),
+    }));
   });
 });
 
@@ -273,6 +278,39 @@ describe('runDev', () => {
 
     expect(buildGoBackend).toHaveBeenCalledWith(expect.stringContaining('demo-page'));
     expect(h.spawn).toHaveBeenCalled();
+  });
+
+  it('runs the shared Go helper before either dev child for a generated-style backend', async () => {
+    const pluginDir = mkdtempSync(join(tmpdir(), 'mndw-generated-dev-'));
+    const backendDir = join(pluginDir, 'backend');
+    const commandDir = join(backendDir, 'cmd', 'generated-go-paged');
+    const buildCalls: Array<{args: string[]; cwd: string; env: NodeJS.ProcessEnv}> = [];
+
+    mkdirSync(commandDir, {recursive: true});
+    writeFileSync(join(backendDir, 'go.mod'), 'module generated-go-page\ngo 1.26\n');
+    writeFileSync(join(commandDir, 'main.go'), 'package main\nfunc main() {}\n');
+
+    try {
+      const spawnGo: GoBuildSpawn = (_command, args, options) => {
+        buildCalls.push({args, cwd: options.cwd, env: options.env});
+
+        return {status: 0, signal: null};
+      };
+      const buildBackend = vi.fn(() => defaultBuildGoBackend(pluginDir, spawnGo));
+      const h = harness({
+        readManifest: stubReadManifest('generated-go-page'),
+        buildGoBackend: buildBackend,
+      });
+
+      await runDev(pluginDir, {}, h.deps);
+
+      expect(buildCalls).toHaveLength(1);
+      expect(buildCalls[0]?.args).toContain('-s -w');
+      expect(buildCalls[0]?.env.GOWORK).toBe('off');
+      expect(h.spawn).toHaveBeenCalled();
+    } finally {
+      rmSync(pluginDir, {recursive: true, force: true});
+    }
   });
 
   it('proceeds when Go backend build is skipped (no go.mod)', async () => {

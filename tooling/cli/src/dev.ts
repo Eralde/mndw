@@ -1,10 +1,11 @@
 import {spawn as nodeSpawn, spawnSync} from 'node:child_process';
 import {existsSync, mkdtempSync, readdirSync, rmSync, symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {dirname, join, resolve} from 'node:path';
+import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {CliError} from './errors.js';
+import {type GoBuildSpawn, buildGoBackend} from './go-backend-build.js';
 import {type LoadedManifest, readManifest} from './manifest.js';
 import {resolvePluginDir} from './paths.js';
 
@@ -173,7 +174,13 @@ function defaultFindDaemonPackageDir(): string | null {
  * Builds every command under a plugin's Go backend before daemon launch. Skips plugins without
  * a `backend/go.mod` or `backend/cmd` directory. Returns a result indicating success, skip, or failure.
  */
-export function defaultBuildGoBackend(pluginSourceDir: string, runBuild: typeof spawnSync = spawnSync): GoBuildResult {
+const defaultGoBuildSpawn: GoBuildSpawn = (command, args, options) =>
+  spawnSync(command, args, {cwd: options.cwd, env: options.env, stdio: 'inherit'});
+
+export function defaultBuildGoBackend(
+  pluginSourceDir: string,
+  runBuild: GoBuildSpawn = defaultGoBuildSpawn,
+): GoBuildResult {
   const backendDir = join(pluginSourceDir, 'backend');
   const goModPath = join(backendDir, 'go.mod');
   const cmdDir = join(backendDir, 'cmd');
@@ -191,16 +198,18 @@ export function defaultBuildGoBackend(pluginSourceDir: string, runBuild: typeof 
     return {success: true, skipped: true};
   }
 
-  for (const commandName of commandNames) {
-    const result = runBuild(
-      'go',
-      ['build', '-ldflags', '-s -w', '-o', commandName, `./cmd/${commandName}`],
-      {cwd: backendDir, stdio: 'inherit', env: {...process.env, CGO_ENABLED: '0'}},
-    );
-
-    if (result.status !== 0) {
-      return {success: false, skipped: false, error: `go build failed for ${commandName}`};
+  try {
+    for (const commandName of commandNames) {
+      buildGoBackend({
+        plugin: basename(resolve(pluginSourceDir)),
+        backendDir,
+        binaryName: commandName,
+        entryPackage: `./cmd/${commandName}`,
+        spawn: runBuild,
+      });
     }
+  } catch (error) {
+    return {success: false, skipped: false, error: error instanceof Error ? error.message : String(error)};
   }
 
   return {success: true, skipped: false};
@@ -236,7 +245,7 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
   const onShutdownSignal = deps.onShutdownSignal ?? defaultOnShutdownSignal;
   const findDaemonPackageDir = deps.findDaemonPackageDir ?? defaultFindDaemonPackageDir;
   const fileExists = deps.fileExists ?? existsSync;
-  const buildGoBackend = deps.buildGoBackend ?? defaultBuildGoBackend;
+  const buildBackend = deps.buildGoBackend ?? defaultBuildGoBackend;
   const baseEnv = deps.env ?? process.env;
 
   // Validate before launching anything so a bad plugin fails fast with no side effects.
@@ -282,7 +291,7 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
   }
 
   // Build Go backend (if present) before daemon launch so service commands find their binaries.
-  const buildResult = buildGoBackend(pluginSourceDir);
+  const buildResult = buildBackend(pluginSourceDir);
 
   if (!buildResult.success) {
     cleanupDirs();

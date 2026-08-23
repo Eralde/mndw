@@ -1,6 +1,7 @@
 import {accessSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
+import {validateManifest} from '@mndw/sdk';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 
 import {CliError} from './errors.js';
@@ -91,6 +92,17 @@ describe('buildManifest', () => {
       path: 'hello',
       command: 'backend/main.sh',
     }]);
+  });
+
+  it('adds the fixed service hello contract for --backend go', () => {
+    const manifest = buildManifest(options({name: 'foo', type: 'page', backend: 'go'}));
+
+    expect(manifest.backend).toEqual({
+      kind: 'service',
+      protocolVersion: 1,
+      command: 'backend/food',
+      routes: [{id: 'hello', transport: 'http', method: 'GET', path: 'hello'}],
+    });
   });
 });
 
@@ -264,6 +276,69 @@ describe('planCreate', () => {
     expect(plan.files.some((entry) => entry.path.startsWith('backend/'))).toBe(false);
   });
 
+  it('renders a complete Go page scaffold with aligned backend consumers', () => {
+    const plan = planCreate({
+      name: 'foo',
+      backend: 'go',
+      framework: 'vanilla',
+      type: 'page',
+      outDir: join(REPO_ROOT, 'tooling', 'cli', '.go-plan-fixture'),
+    });
+    const file = (path: string): string => {
+      const found = plan.files.find((entry) => entry.path === path);
+
+      if (found === undefined) {
+        throw new Error(`missing generated file: ${path}`);
+      }
+
+      return found.contents;
+    };
+    const rawManifest = JSON.parse(file('manifest.json')) as Record<string, unknown>;
+    const validated = validateManifest(rawManifest);
+    const backend = validated.backend;
+
+    expect(rawManifest.backend).toEqual({
+      kind: 'service',
+      protocolVersion: 1,
+      command: 'backend/food',
+      routes: [{id: 'hello', transport: 'http', method: 'GET', path: 'hello'}],
+    });
+    expect(rawManifest.i18n).toEqual({
+      defaultLocale: 'en',
+      locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'},
+    });
+    expect(backend?.routes.find((route) => route.id === 'hello')?.access).toBe('session');
+    expect(file('backend/internal/httpapi/server.go')).toContain('mux.HandleFunc("GET /hello"');
+    expect(file('src/index.ts')).toContain('ctx.backend.fetch(\'hello\')');
+    expect(file('src/index.ts')).toContain('button?.addEventListener(\'click\'');
+    expect(file('i18n/en.json')).toContain('Backend response');
+    expect(file('i18n/ru.json')).toContain('Ответ сервера');
+    expect(file('scripts/build-backend.ts')).toContain('entryPackage: \'./cmd/food\'');
+    expect(plan.files.map((entry) => entry.path).sort()).toEqual([
+      '.gitignore',
+      'backend/cmd/food/main.go',
+      'backend/go.mod',
+      'backend/integration_test.go',
+      'backend/internal/httpapi/server.go',
+      'backend/internal/httpapi/server_test.go',
+      'i18n/en.json',
+      'i18n/ru.json',
+      'manifest.json',
+      'package.json',
+      'scripts/build-backend.ts',
+      'src/index.css',
+      'src/index.test.ts',
+      'src/index.ts',
+      'src/l10n.test.ts',
+      'src/test-helpers.ts',
+    ]);
+
+    for (const entry of plan.files) {
+      expect(entry.contents).not.toContain('__MNDW_');
+      expect(entry.contents).not.toContain('mndw.local/');
+    }
+  });
+
   it('uses workspace dependencies inside the repo and version ranges outside it', () => {
     const insidePlan = planCreate({
       name: 'inside-plugin',
@@ -313,6 +388,18 @@ describe('createPlugin', () => {
 
     expect(() => createPlugin({name: 'settings-clone', outDir, type: 'page', route: '/settings'})).toThrow(CliError);
     expect(existsSync(outDir)).toBe(false);
+  });
+
+  it('rejects Go outside the repository and incompatible Go combinations before writing', () => {
+    const outside = join(root, 'outside-go');
+    const widget = join(root, 'widget-go');
+
+    expect(() => createPlugin({name: 'foo', outDir: outside, backend: 'go', type: 'page'})).toThrow(
+      /inside the mndw repository/,
+    );
+    expect(() => createPlugin({name: 'foo', outDir: widget, backend: 'go', type: 'widget'})).toThrow(/vanilla.*page/i);
+    expect(existsSync(outside)).toBe(false);
+    expect(existsSync(widget)).toBe(false);
   });
 
   it('refuses a non-empty destination and leaves pre-existing files untouched', () => {

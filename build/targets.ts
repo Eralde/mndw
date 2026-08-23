@@ -1,12 +1,7 @@
-export const PRODUCT_TARGETS = ['aarch64', 'mips', 'mipsel'] as const;
+import {GO_TARGETS, type GoTargetConfig, type ProductTarget} from '@mndw/cli/go-target';
 
-export type ProductTarget = (typeof PRODUCT_TARGETS)[number];
-
-export interface GoTargetConfig {
-  readonly GOARCH: string;
-  readonly GOARM?: string;
-  readonly GOMIPS?: string;
-}
+export {isProductTarget, PRODUCT_TARGETS} from '@mndw/cli/go-target';
+export type {GoTargetConfig, ProductTarget} from '@mndw/cli/go-target';
 
 export interface ProductTargetConfig {
   readonly go: GoTargetConfig;
@@ -16,22 +11,18 @@ export interface ProductTargetConfig {
 
 export const PRODUCT_TARGET_CONFIG: Readonly<Record<ProductTarget, ProductTargetConfig>> = {
   aarch64: {
-    go: {GOARCH: 'arm64'},
+    go: GO_TARGETS.aarch64,
     opkgArch: 'aarch64-3.10',
     entwareFeed: 'aarch64-k3.10',
   },
   mips: {
-    go: {GOARCH: 'mips', GOMIPS: 'softfloat'},
+    go: GO_TARGETS.mips,
     opkgArch: 'mips-3.4',
     entwareFeed: 'mipssf-k3.4',
   },
   mipsel: {
-    go: {GOARCH: 'mipsle', GOMIPS: 'softfloat'},
+    go: GO_TARGETS.mipsel,
     opkgArch: 'mipsel-3.4',
     entwareFeed: 'mipselsf-k3.4',
   },
 };
-
-export function isProductTarget(value: string): value is ProductTarget {
-  return (PRODUCT_TARGETS as readonly string[]).includes(value);
-}

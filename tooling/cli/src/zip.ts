@@ -22,12 +22,13 @@ export interface ZipResult {
  * `.DS_Store`) are excluded.
  */
 export async function zipPlugin(pluginDir: string, options: ZipOptions = {}): Promise<ZipResult> {
-  const pack = await packPlugin(pluginDir, {outDir: options.outDir});
+  const {output, ...packOptions} = options;
+  const pack = await packPlugin(pluginDir, packOptions);
   const archive = zipDirectory(pack.outDir);
 
-  const outputPath = options.output === undefined
+  const outputPath = output === undefined
     ? join(resolvePluginDir(pluginDir), `${pack.manifest.name}.zip`)
-    : resolve(process.cwd(), options.output);
+    : resolve(process.cwd(), output);
 
   mkdirSync(dirname(outputPath), {recursive: true});
   writeFileSync(outputPath, archive);

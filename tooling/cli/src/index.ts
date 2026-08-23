@@ -56,7 +56,7 @@ export function createProgram(): Command {
     .option('--out <dir>', 'output directory (default: ./<name>)')
     .option('--route <route>', 'page route (page type only; default /<name>)')
     .option('--label <label>', 'human-readable label (default derived from name)')
-    .option('--backend <runtime>', 'include a backend starter (only "sh")')
+    .option('--backend <runtime>', 'include a backend starter ("sh" or "go")')
     .action((name: string, options: CreateCommandOptions) => {
       const outDir = resolve(process.cwd(), options.out ?? name);
       const result = createPlugin({
@@ -66,7 +66,7 @@ export function createProgram(): Command {
         framework: options.framework as 'vanilla' | 'svelte' | 'vue' | 'angular' | undefined,
         route: options.route,
         label: options.label,
-        backend: options.backend as 'sh' | undefined,
+        backend: options.backend as 'sh' | 'go' | undefined,
       });
 
       process.stdout.write(

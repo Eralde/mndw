@@ -13,6 +13,7 @@
     "@xterm/xterm": "^5.5.0"
   },
   "devDependencies": {
+    "@mndw/cli": "workspace:*",
     "@mndw/sdk": "workspace:*",
     "@mndw/ui": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",

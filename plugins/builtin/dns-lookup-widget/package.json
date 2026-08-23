@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "mndw": {"backendBuildScript": "build-backend"},
+  "mndw": {"backendBuildScript": "build-backend", "backendAssets": ["backend/dns-util"]},
   "scripts": {
-    "build": "tsx scripts/build-backend.ts",
     "build-backend": "node --import tsx scripts/build-backend.ts",
-    "pretest": "pnpm run build",
-    "test": "cd backend && go test ./... && cd .. && vitest run"
+    "pretest": "pnpm run build-backend",
+    "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run"
   },
   "devDependencies": {
+    "@mndw/cli": "workspace:*",
     "@mndw/sdk": "workspace:*",
     "@mndw/ui": "workspace:*",
     "@types/node": "22.19.15",

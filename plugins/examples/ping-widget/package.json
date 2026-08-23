@@ -5,11 +5,11 @@
   "type": "module",
   "mndw": {"backendBuildScript": "build-backend"},
   "scripts": {
-    "build": "tsx scripts/build-backend.ts",
     "build-backend": "node --import tsx scripts/build-backend.ts",
-    "test": "cd backend && go test ./... && cd .. && vitest run"
+    "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run"
   },
   "devDependencies": {
+    "@mndw/cli": "workspace:*",
     "@mndw/sdk": "workspace:*",
     "@mndw/ui": "workspace:*",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",

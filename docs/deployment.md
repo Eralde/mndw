@@ -70,11 +70,12 @@ architecture.
 The package depends on lighttpd and its proxy/rewrite modules.
 
 Uploadable example archives are produced separately with
-`pnpm build-example-plugins`: `device-traffic-widget.zip` and one
-target-labelled ping archive per target. The UI can reject a known ping
-archive when `show.version.arch` identifies a different target; unknown or
-renamed archives retain normal upload behavior. Ping uploads require approval
-before activation; the traffic widget has no backend and installs directly.
+`pnpm build-example-plugins`: one archive for every direct example directory
+with a manifest. Backend examples produce one target-labelled archive per
+target; no-backend examples produce one archive. The UI can reject a known
+target archive when `show.version.arch` identifies a different target; unknown
+or renamed archives retain normal upload behavior. Backend uploads require
+approval before activation; no-backend examples install directly.
 
 Publishing an IPK/feed entry does not provision a device architecture. The
 configured opkg architecture list and Entware feed must include the matching

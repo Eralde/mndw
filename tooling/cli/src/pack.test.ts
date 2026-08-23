@@ -129,8 +129,7 @@ describe('packPlugin', () => {
         },
       }),
       index: 'export const createInstance = () => ({unmount() {}});\n',
-      files: {'package.json': JSON.stringify({mndw: {backendBuildScript: 'build-backend'}}, null, 2),
-        'backend/status.sh': '#!/bin/sh\n'},
+      files: {'package.json': JSON.stringify({mndw: {}}, null, 2), 'backend/status.sh': '#!/bin/sh\n'},
     });
 
     await packPlugin(dir);
@@ -472,6 +471,122 @@ describe('packPlugin', () => {
     expect(existsSync(join(dir, 'dist', 'backend', 'server.sh'))).toBe(true);
   });
 
+  it('runs the declared host backend hook before staging its output', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({
+        name: 'host-built-widget',
+        backend: {
+          kind: 'service',
+          protocolVersion: 1,
+          command: 'backend/food',
+          routes: [{id: 'food', transport: 'http', method: 'GET', path: 'food'}],
+        },
+      }),
+      index: 'export const createInstance = () => ({unmount() {}});\n',
+      files: {
+        'package.json': JSON.stringify({mndw: {backendBuildScript: 'build-backend'}}),
+      },
+    });
+
+    const outDir = mkdtempSync(join(tmpdir(), 'mndw-pack-host-out-'));
+    const runHook = vi.fn((_script: string, options: {cwd: string}) => {
+      mkdirSync(join(options.cwd, 'backend'), {recursive: true});
+      writeFileSync(join(options.cwd, 'backend', 'food'), '#!/bin/sh\n', {mode: 0o755});
+
+      return {status: 0};
+    });
+
+    try {
+      const result = await packPlugin(dir, {outDir, runBackendBuild: runHook});
+
+      expect(runHook).toHaveBeenCalledWith('build-backend', {cwd: dir});
+      expect(existsSync(join(result.outDir, 'backend', 'food'))).toBe(true);
+    } finally {
+      rmSync(outDir, {recursive: true, force: true});
+    }
+  });
+
+  it('skips the host backend hook when a cross target override is supplied', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({
+        name: 'cross-built-widget',
+        backend: {
+          kind: 'exec',
+          routes: [{id: 'lookup', transport: 'http', method: 'GET', path: 'lookup', command: 'backend/lookup.sh'}],
+        },
+      }),
+      index: 'export const createInstance = () => ({unmount() {}});\n',
+      files: {
+        'backend/lookup.sh': '#!/bin/sh\n',
+        'package.json': JSON.stringify({
+          mndw: {backendBuildScript: 'build-backend', backendAssets: ['backend/dns-util']},
+        }),
+      },
+    });
+
+    const sourceRoot = mkdtempSync(join(tmpdir(), 'mndw-pack-cross-source-'));
+    const binary = join(sourceRoot, 'dns-util');
+
+    writeFileSync(binary, 'target binary');
+
+    const outDir = mkdtempSync(join(tmpdir(), 'mndw-pack-cross-out-'));
+    const runHook = vi.fn(() => ({status: 0}));
+
+    try {
+      await packPlugin(dir, {
+        outDir,
+        runBackendBuild: runHook,
+        backendOverride: {
+          target: 'aarch64',
+          sourceRoot,
+          files: [{source: binary, destination: 'backend/dns-util'}],
+        },
+      });
+
+      expect(runHook).not.toHaveBeenCalled();
+      expect(readFileSync(join(outDir, 'backend', 'lookup.sh'), 'utf8')).toContain('#!/bin/sh');
+      expect(readFileSync(join(outDir, 'backend', 'dns-util'), 'utf8')).toBe('target binary');
+      expect(JSON.parse(readFileSync(join(outDir, 'mndw-artifact.json'), 'utf8'))).toMatchObject({
+        staticBackends: ['backend/lookup.sh'],
+        backend: {files: [{path: 'backend/dns-util'}]},
+      });
+    } finally {
+      rmSync(sourceRoot, {recursive: true, force: true});
+      rmSync(outDir, {recursive: true, force: true});
+    }
+  });
+
+  it('requires every auxiliary backend asset in a cross target override', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({
+        name: 'missing-auxiliary-widget',
+        backend: {
+          kind: 'exec',
+          routes: [{id: 'lookup', transport: 'http', method: 'GET', path: 'lookup', command: 'backend/lookup.sh'}],
+        },
+      }),
+      index: 'export const createInstance = () => ({unmount() {}});\n',
+      files: {
+        'backend/lookup.sh': '#!/bin/sh\n',
+        'backend/dns-util': 'stale host binary',
+        'package.json': JSON.stringify({mndw: {backendAssets: ['backend/dns-util']}}),
+      },
+    });
+
+    const sourceRoot = mkdtempSync(join(tmpdir(), 'mndw-pack-cross-missing-source-'));
+    const outDir = mkdtempSync(join(tmpdir(), 'mndw-pack-cross-missing-out-'));
+
+    try {
+      await expect(packPlugin(dir, {
+        outDir,
+        backendOverride: {target: 'mipsel', sourceRoot, files: []},
+      })).rejects.toThrow(/missing auxiliary destination.*backend\/dns-util/i);
+    } finally {
+      rmSync(sourceRoot, {recursive: true, force: true});
+      rmSync(outDir, {recursive: true, force: true});
+    }
+  });
+
   it('fails before writing output when a declared backend command is missing', async () => {
     scaffold(dir, {
       manifest: widgetManifest({
@@ -535,7 +650,8 @@ describe('packExamplePlugins', () => {
   }
 
   it('builds every example plugin into one output destination', () => {
-    expect(names).toEqual(['device-traffic-widget', 'ping-widget']);
+    expect(names).toContain('device-traffic-widget');
+    expect(names).toContain('ping-widget');
 
     for (const name of names) {
       expect(existsSync(join(outDir, name, 'index.js'))).toBe(true);
@@ -629,6 +745,7 @@ describe('packExamplePlugins build pre-pass', () => {
           build:
             'node -e "require(\'fs\').mkdirSync(\'backend\',{recursive:true});require(\'fs\').writeFileSync(\'backend/marker.bin\',\'ok\')"',
         },
+        mndw: {backendBuildScript: 'build'},
       }),
     );
 

@@ -47,6 +47,13 @@ export interface PackOptions {
   readonly development?: boolean;
   /** Replace manifest-declared backend files with binaries built for one product target. */
   readonly backendOverride?: BackendOverride;
+  /** Runs a package-declared host backend build script. */
+  readonly runBackendBuild?: (script: string, options: {cwd: string}) => BackendBuildRunResult;
+}
+
+export interface BackendBuildRunResult {
+  readonly error?: Error;
+  readonly status: number | null;
 }
 
 export interface BackendOverride {
@@ -75,24 +82,6 @@ export interface PackExamplePluginsOptions {
   readonly sourceDir?: string;
   /** Pack development entries so repository dev serves source-only behavior. */
   readonly development?: boolean;
-}
-
-function runPluginBuild(pluginDir: string): void {
-  const pkg = readPluginPackage(pluginDir);
-
-  if (pkg === null) {
-    return;
-  }
-
-  if (pkg.scripts?.build === undefined) {
-    return;
-  }
-
-  const result = spawnSync('pnpm', ['run', 'build'], {cwd: pluginDir, stdio: 'inherit'});
-
-  if (result.status !== 0) {
-    throw new CliError(`Plugin build failed for ${pkg.name ?? pluginDir} (exit ${result.status ?? 'signal'})`);
-  }
 }
 
 interface StagedAsset {
@@ -188,15 +177,36 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
 
     const lock = serializeLock(buildLock(manifest, framework));
 
+    const pkg = readPluginPackage(resolvedDir);
+    const buildScript = pkg?.mndw?.backendBuildScript;
+
+    if (typeof buildScript === 'string' && options.backendOverride === undefined) {
+      const runner = options.runBackendBuild
+        ?? ((script, runnerOptions) =>
+          spawnSync('pnpm', ['run', script], {
+            cwd: runnerOptions.cwd,
+            stdio: 'inherit',
+          }));
+      const buildResult = runner(buildScript, {cwd: resolvedDir});
+
+      if (buildResult.error || buildResult.status !== 0) {
+        throw new CliError(`Host backend build failed for ${manifest.name} (script "${buildScript}")`);
+      }
+    }
+
     // Read backend commands before mutating output, so missing commands fail cleanly.
+    const auxiliaryBackendAssets = pkg?.mndw?.backendAssets ?? [];
+    const overrideAssets = options.backendOverride === undefined
+      ? undefined
+      : collectBackendOverrideAssets(manifest, resolvedDir, options.backendOverride, auxiliaryBackendAssets);
     const backendAssets = options.backendOverride === undefined
-      ? collectBackendAssets(manifest, resolvedDir)
-      : collectBackendOverrideAssets(manifest, options.backendOverride);
+      ? collectBackendAssets(manifest, resolvedDir, auxiliaryBackendAssets)
+      : overrideAssets?.assets ?? [];
     const backendMetadata = options.backendOverride === undefined
       ? undefined
       : {
         target: options.backendOverride.target,
-        files: backendAssets.map((asset) => ({
+        files: (overrideAssets?.overrideAssets ?? []).map((asset) => ({
           path: asset.rel,
           sha256: createHash('sha256').update(asset.contents)
             .digest('hex'),
@@ -295,7 +305,6 @@ export async function packExamplePlugins(options: PackExamplePluginsOptions): Pr
     .sort();
 
   for (const name of names) {
-    runPluginBuild(join(sourceDir, name));
     await packPlugin(join(sourceDir, name), {outDir: join(outDir, name), development: options.development});
   }
 
@@ -321,6 +330,13 @@ function backendAssetRelPaths(manifest: PluginManifestOutput): string[] {
   }
 
   return [...new Set(paths)];
+}
+
+function allBackendAssetRelPaths(
+  manifest: PluginManifestOutput,
+  auxiliaryAssets: readonly string[],
+): string[] {
+  return [...new Set([...backendAssetRelPaths(manifest), ...auxiliaryAssets])];
 }
 
 const WORKER_URL_PATTERN = /new\s+Worker\s*\(\s*new\s+URL\s*\(\s*(['"])([^'"]+)\1\s*,\s*import\.meta\.url\s*\)/g;
@@ -436,29 +452,22 @@ function rewriteWorkerSpecifiers(contents: Uint8Array, references: readonly Work
 function collectBackendAssets(
   manifest: PluginManifestOutput,
   pluginDir: string,
+  auxiliaryAssets: readonly string[],
 ): StagedAsset[] {
-  return backendAssetRelPaths(manifest).map((rel) => {
-    const source = safeJoin(pluginDir, rel);
-
-    try {
-      const stat = statSync(source);
-
-      if (!stat.isFile()) {
-        throw new CliError(`Backend command is not a regular file: ${source}`);
-      }
-
-      return {rel, contents: readFileSync(source), mode: 0o755};
-    } catch {
-      throw new CliError(`Missing backend asset "${rel}" declared in manifest: ${source}`);
-    }
-  });
+  return allBackendAssetRelPaths(manifest, auxiliaryAssets).map((rel) =>
+    collectSourceBackendAsset(rel, pluginDir, auxiliaryAssets.includes(rel) ? 'package metadata' : 'manifest')
+  );
 }
 
 function collectBackendOverrideAssets(
   manifest: PluginManifestOutput,
+  pluginDir: string,
   override: BackendOverride,
-): StagedAsset[] {
-  const declared = new Set(backendAssetRelPaths(manifest));
+  auxiliaryAssets: readonly string[],
+): {assets: StagedAsset[]; overrideAssets: StagedAsset[]} {
+  const manifestAssets = backendAssetRelPaths(manifest);
+  const auxiliaryAssetSet = new Set(auxiliaryAssets);
+  const declared = new Set(allBackendAssetRelPaths(manifest, auxiliaryAssets));
   const destinations = new Set<string>();
   const sourceRoot = resolve(override.sourceRoot);
 
@@ -466,13 +475,13 @@ function collectBackendOverrideAssets(
     throw new CliError(`Backend override supplied for plugin without a declared backend: ${manifest.name}`);
   }
 
-  const assets = override.files.map((file) => {
+  const overrideAssets = override.files.map((file) => {
     if (destinations.has(file.destination)) {
       throw new CliError(`Duplicate target backend destination: ${file.destination}`);
     }
 
     if (!declared.has(file.destination)) {
-      throw new CliError(`Target backend destination is not declared in manifest: ${file.destination}`);
+      throw new CliError(`Target backend destination is not declared as a backend asset: ${file.destination}`);
     }
 
     const source = resolve(file.source);
@@ -496,13 +505,45 @@ function collectBackendOverrideAssets(
     };
   });
 
-  for (const destination of declared) {
-    if (!destinations.has(destination)) {
-      throw new CliError(`Target backend override is missing declared destination: ${destination}`);
-    }
+  const assets: StagedAsset[] = [];
+
+  for (const destination of manifestAssets) {
+    const overrideAsset = overrideAssets.find((asset) => asset.rel === destination);
+
+    assets.push(overrideAsset ?? collectSourceBackendAsset(destination, pluginDir, 'manifest'));
   }
 
-  return assets;
+  for (const destination of auxiliaryAssetSet) {
+    const overrideAsset = overrideAssets.find((asset) => asset.rel === destination);
+
+    if (overrideAsset === undefined) {
+      throw new CliError(`Target backend override is missing auxiliary destination: ${destination}`);
+    }
+
+    assets.push(overrideAsset);
+  }
+
+  return {assets, overrideAssets};
+}
+
+function collectSourceBackendAsset(rel: string, pluginDir: string, declaredBy: string): StagedAsset {
+  const source = safeJoin(pluginDir, rel);
+
+  try {
+    const stat = statSync(source);
+
+    if (!stat.isFile()) {
+      throw new CliError(`Backend asset is not a regular file: ${source}`);
+    }
+
+    return {rel, contents: readFileSync(source), mode: 0o755};
+  } catch (error) {
+    if (error instanceof CliError) {
+      throw error;
+    }
+
+    throw new CliError(`Missing backend asset "${rel}" declared by ${declaredBy}: ${source}`);
+  }
 }
 
 function collectCatalogAssets(

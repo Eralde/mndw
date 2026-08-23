@@ -1,61 +1,53 @@
-import {spawnSync} from 'node:child_process';
-import {mkdirSync, writeFileSync} from 'node:fs';
-import {dirname, join, resolve} from 'node:path';
+import {dirname, join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-import {GO_TARGETS, goTargetEnvironment} from '../../../../daemon/mndwd/scripts/build-target.js';
+import {buildGoBackend} from '@mndw/cli/go-backend';
+import {type ProductTarget, isProductTarget} from '@mndw/cli/go-target';
 
 const plugin = 'terminal-page';
 const backendDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'backend');
 
-function main(): void {
-  const args = process.argv.slice(2).filter((argument) => argument !== '--');
+function parseOptions(): {target: ProductTarget; outDir: string} | null {
+  const rawArgs = process.argv.slice(2);
+  const args = rawArgs[0] === '--' ? rawArgs.slice(1) : rawArgs;
+
+  if (args.includes('--')) {
+    throw new Error('build-backend does not accept leaked -- separators');
+  }
 
   if (args.length === 0) {
-    return build(undefined, backendDir);
+    return null;
   }
 
-  const targetIndex = args.indexOf('--target');
-  const outIndex = args.indexOf('--out-dir');
-  const target = args[targetIndex + 1];
-  const outDir = args[outIndex + 1];
-
-  if (target === undefined || outDir === undefined || !(target in GO_TARGETS)) {
-    throw new Error('build-backend requires valid --target and --out-dir');
+  if (args.length !== 4 || args[0] !== '--target' || args[2] !== '--out-dir') {
+    throw new Error('build-backend accepts either no arguments or --target <target> --out-dir <dir>');
   }
 
-  build(target, outDir);
+  const target = args[1];
+  const outDir = args[3];
+
+  if (target === undefined || outDir === undefined || !isProductTarget(target)) {
+    throw new Error(`unknown product target: ${target ?? ''}`);
+  }
+
+  if (outDir.length === 0) {
+    throw new Error('--out-dir must be a non-empty path');
+  }
+
+  return {target, outDir};
 }
 
-function build(target: string | undefined, outDir: string): void {
-  mkdirSync(outDir, {recursive: true});
+function main(): void {
+  const options = parseOptions();
 
-  const env = target === undefined
-    ? {...process.env, CGO_ENABLED: '0', GOWORK: 'off'}
-    : {...goTargetEnvironment(resolve(backendDir, '../../../..'), target), GOWORK: 'off'};
-  const output = join(outDir, 'terminal-backend');
-  const result = spawnSync('go', ['build', '-ldflags', '-s -w', '-o', output, './cmd/terminal-backend'], {
-    cwd: backendDir,
-    stdio: 'inherit',
-    env,
+  buildGoBackend({
+    plugin,
+    backendDir,
+    binaryName: 'terminal-backend',
+    entryPackage: './cmd/terminal-backend',
+    target: options?.target,
+    outDir: options?.outDir,
   });
-
-  if (result.error || result.status !== 0) {
-    throw new Error('terminal-backend build failed');
-  }
-
-  if (target !== undefined) {
-    writeFileSync(
-      join(outDir, 'backend-artifact.json'),
-      `${
-        JSON.stringify(
-          {plugin, target, binaries: [{source: 'terminal-backend', destination: 'backend/terminal-backend'}]},
-          null,
-          2,
-        )
-      }\n`,
-    );
-  }
 }
 
 try {

@@ -556,6 +556,9 @@ importers:
 
   plugins/builtin/dns-lookup-widget:
     devDependencies:
+      '@mndw/cli':
+        specifier: workspace:*
+        version: link:../../../tooling/cli
       '@mndw/sdk':
         specifier: workspace:*
         version: link:../../../frontend/sdk
@@ -593,6 +596,9 @@ importers:
       '@angular/platform-browser':
         specifier: ^21.2.18
         version: 21.2.18(@angular/common@21.2.18(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))(rxjs@7.8.2))(@angular/core@21.2.18(@angular/compiler@21.2.18)(rxjs@7.8.2)(zone.js@0.15.1))
+      '@mndw/cli':
+        specifier: workspace:*
+        version: link:../../../tooling/cli
       '@mndw/sdk':
         specifier: workspace:*
         version: link:../../../frontend/sdk
@@ -666,6 +672,9 @@ importers:
         specifier: ^5.5.0
         version: 5.5.0
     devDependencies:
+      '@mndw/cli':
+        specifier: workspace:*
+        version: link:../../../tooling/cli
       '@mndw/sdk':
         specifier: workspace:*
         version: link:../../../frontend/sdk
@@ -757,8 +766,29 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)(yaml@2.9.0)
 
+  plugins/examples/generated-go-page:
+    devDependencies:
+      '@mndw/cli':
+        specifier: workspace:*
+        version: link:../../../tooling/cli
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      happy-dom:
+        specifier: ^20.11.1
+        version: 20.11.1
+      tsx:
+        specifier: ^4.23.0
+        version: 4.23.1
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)(yaml@2.9.0)
+
   plugins/examples/ping-widget:
     devDependencies:
+      '@mndw/cli':
+        specifier: workspace:*
+        version: link:../../../tooling/cli
       '@mndw/sdk':
         specifier: workspace:*
         version: link:../../../frontend/sdk

@@ -6,6 +6,11 @@
   "bin": {
     "mndw": "./src/index.ts"
   },
+  "exports": {
+    ".": "./src/index.ts",
+    "./go-backend": "./src/go-backend-build.ts",
+    "./go-target": "./src/go-target.ts"
+  },
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run"

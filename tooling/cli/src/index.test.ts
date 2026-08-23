@@ -308,6 +308,26 @@ describe('createProgram', () => {
     expect(existsSync(resolve(workdir, 'ng-cmd', 'src', 'app.component.ts'))).toBe(true);
   });
 
+  test('create --backend go forwards the backend option to the Go scaffold', () => {
+    const outDir = mkdtempSync(resolve(CLI_ROOT, '.mndw-cli-go-'));
+
+    temporaryDirectories.push(outDir);
+
+    const result = runCliFrom(WORKSPACE_ROOT, [
+      'create',
+      'go-cmd',
+      '--backend',
+      'go',
+      '--type',
+      'page',
+      '--out',
+      outDir,
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(existsSync(resolve(outDir, 'backend', 'cmd', 'go-cmdd', 'main.go'))).toBe(true);
+  });
+
   test('create --help lists all framework options', () => {
     const result = runCliFrom(WORKSPACE_ROOT, ['create', '--help']);
 

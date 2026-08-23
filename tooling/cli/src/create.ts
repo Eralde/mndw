@@ -28,8 +28,8 @@ export interface CreateOptions {
   readonly label?: string;
   /** Page route (page type only); defaults to `/<name>`. */
   readonly route?: string;
-  /** Backend starter runtime. Only `sh` is supported; omit for no backend. */
-  readonly backend?: 'sh';
+  /** Backend starter runtime. Omit for no backend. */
+  readonly backend?: 'sh' | 'go';
 }
 
 interface NormalizedOptions {
@@ -39,7 +39,7 @@ interface NormalizedOptions {
   readonly outDir: string;
   readonly label: string;
   readonly route: string;
-  readonly backend?: 'sh';
+  readonly backend?: 'sh' | 'go';
 }
 
 export interface GeneratedFile {
@@ -103,7 +103,7 @@ function schemaReference(outDir: string): string {
 
 /**
  * Builds the v3 manifest object for a scaffold: grid-unit `size` for widgets,
- * `/<name>` route for pages, and (for `--backend sh`) one relative exec command route.
+ * `/<name>` route for pages, and fixed exec/service routes for the supported backend starters.
  */
 export function buildManifest(options: CreateOptions): Record<string, unknown> {
   const normalized = normalize(options);
@@ -124,7 +124,14 @@ export function buildManifest(options: CreateOptions): Record<string, unknown> {
     manifest.route = normalized.route;
   }
 
-  if (normalized.backend !== undefined) {
+  if (normalized.backend === 'go') {
+    manifest.backend = {
+      kind: 'service',
+      protocolVersion: 1,
+      command: `backend/${normalized.name}d`,
+      routes: [{id: 'hello', transport: 'http', method: 'GET', path: 'hello'}],
+    };
+  } else if (normalized.backend === 'sh') {
     manifest.backend = {
       kind: 'exec',
       routes: [{id: 'hello', transport: 'http', method: 'GET', path: 'hello', command: 'backend/main.sh'}],
@@ -223,7 +230,9 @@ function buildPackageJson(normalized: NormalizedOptions): Record<string, unknown
 function renderPlaceholders(contents: string, normalized: NormalizedOptions): string {
   return contents
     .replaceAll('__MNDW_LABEL__', normalized.label)
-    .replaceAll('__MNDW_NAME__', normalized.name);
+    .replaceAll('__MNDW_NAME__', normalized.name)
+    .replaceAll('__MNDW_ROUTE__', normalized.route)
+    .replaceAll('__MNDW_SCHEMA__', schemaReference(normalized.outDir));
 }
 
 /** Collects a template directory's files as plugin-relative POSIX paths. */
@@ -238,7 +247,14 @@ function walkTemplate(dir: string, prefix: string): {rel: string; abs: string}[]
 
 function renderTemplateDir(framework: PluginFramework, normalized: NormalizedOptions): GeneratedFile[] {
   return walkTemplate(join(TEMPLATES_DIR, framework), '').map(({rel, abs}) => ({
-    path: rel,
+    path: renderPlaceholders(rel, normalized),
+    contents: renderPlaceholders(readFileSync(abs, 'utf8'), normalized),
+  }));
+}
+
+function renderGoTemplate(normalized: NormalizedOptions): GeneratedFile[] {
+  return walkTemplate(join(TEMPLATES_DIR, 'go'), '').map(({rel, abs}) => ({
+    path: renderPlaceholders(rel, normalized),
     contents: renderPlaceholders(readFileSync(abs, 'utf8'), normalized),
   }));
 }
@@ -256,13 +272,15 @@ function renderBackendFile(normalized: NormalizedOptions): GeneratedFile {
 export function planCreate(options: CreateOptions): CreatePlan {
   const normalized = normalize(options);
 
-  const files: GeneratedFile[] = [
-    {path: 'manifest.json', contents: `${JSON.stringify(buildManifest(options), null, 2)}\n`},
-    {path: 'package.json', contents: `${JSON.stringify(buildPackageJson(normalized), null, 2)}\n`},
-    ...renderTemplateDir(normalized.framework, normalized),
-  ];
+  const files: GeneratedFile[] = normalized.backend === 'go'
+    ? renderGoTemplate(normalized)
+    : [
+      {path: 'manifest.json', contents: `${JSON.stringify(buildManifest(options), null, 2)}\n`},
+      {path: 'package.json', contents: `${JSON.stringify(buildPackageJson(normalized), null, 2)}\n`},
+      ...renderTemplateDir(normalized.framework, normalized),
+    ];
 
-  if (normalized.backend !== undefined) {
+  if (normalized.backend === 'sh') {
     files.push(renderBackendFile(normalized));
   }
 
@@ -298,8 +316,21 @@ function assertSupportedOptions(options: CreateOptions): void {
     );
   }
 
-  if (options.backend !== undefined && options.backend !== 'sh') {
-    throw new CliError(`Invalid --backend "${String(options.backend)}": only "sh" is supported`);
+  if (options.backend !== undefined && options.backend !== 'sh' && options.backend !== 'go') {
+    throw new CliError(`Invalid --backend "${String(options.backend)}": expected "sh" or "go"`);
+  }
+
+  if (options.backend === 'go') {
+    if (framework !== 'vanilla' || type !== 'page') {
+      throw new CliError('--backend go requires --framework vanilla and --type page');
+    }
+
+    if (!isInsideRepo(options.outDir)) {
+      throw new CliError(
+        '--backend go is only supported inside the mndw repository: the generated build script depends on '
+          + 'workspace-relative tooling (@mndw/cli/go-backend and workspace:* devDependencies)',
+      );
+    }
   }
 }
 

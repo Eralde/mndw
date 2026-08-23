@@ -2,7 +2,7 @@ import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync}
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {unzipSync} from 'fflate';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 import {zipDirectory, zipPlugin} from './zip.js';
 
@@ -89,5 +89,49 @@ describe('zipPlugin', () => {
 
     expect(result.outputPath).toBe(output);
     expect(existsSync(output)).toBe(true);
+  });
+
+  it('forwards cross backend overrides and skips the host build hook', async () => {
+    scaffold(dir, {
+      ...widgetManifest({
+        name: 'cross-zipped-widget',
+        backend: {
+          kind: 'service',
+          protocolVersion: 1,
+          command: 'backend/food',
+          routes: [{id: 'food', transport: 'http', method: 'GET', path: 'food'}],
+        },
+      }),
+    });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({mndw: {backendBuildScript: 'build-backend'}}));
+
+    const sourceRoot = mkdtempSync(join(tmpdir(), 'mndw-zip-source-'));
+    const binary = join(sourceRoot, 'food');
+
+    writeFileSync(binary, 'target binary');
+
+    const output = join(tmpdir(), 'mndw-cross.zip');
+    const outDir = mkdtempSync(join(tmpdir(), 'mndw-zip-cross-out-'));
+    const runHook = vi.fn(() => ({status: 0}));
+
+    try {
+      await zipPlugin(dir, {
+        outDir,
+        output,
+        runBackendBuild: runHook,
+        backendOverride: {
+          target: 'aarch64',
+          sourceRoot,
+          files: [{source: binary, destination: 'backend/food'}],
+        },
+      });
+
+      expect(runHook).not.toHaveBeenCalled();
+      expect(Object.keys(unzipSync(readFileSync(output)))).toContain('backend/food');
+    } finally {
+      rmSync(sourceRoot, {recursive: true, force: true});
+      rmSync(outDir, {recursive: true, force: true});
+      rmSync(output, {force: true});
+    }
   });
 });

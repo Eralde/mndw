@@ -3,6 +3,8 @@ import * as d3 from 'd3';
 import type {NumberValue} from 'd3';
 import {buildLineAriaLabel, filterFinitePoints, formatSpeed, getSpeedUpperLimit, resolveDomain} from './chart-utils.js';
 import type {MndwChartColor, MndwChartDomain, MndwChartPoint, MndwChartSeries} from './chart-types.js';
+import {ChartFrameController} from './chart-frame-controller.js';
+import {chartFrameStyles, renderChartFrame} from './chart-frame.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
 import {
@@ -50,83 +52,19 @@ export class MndwLineChart extends LitElement {
     emptyLabel: {type: String, attribute: 'empty-label'},
   };
 
-  public static styles = css`
-    :host {
-      display: block;
-      width: 100%;
-      height: 100%;
-      min-width: 0;
-      min-height: 0;
-      color: var(--mndw-text);
-      font-family: inherit;
-    }
-
-    .container {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      min-height: 120px;
-    }
-
-    svg {
-      display: block;
-      width: 100%;
-      height: 100%;
-      overflow: visible;
-    }
-
-    .empty {
-      display: grid;
-      height: 100%;
-      min-height: 120px;
-      place-items: center;
-      color: var(--mndw-text-subtle);
-      text-align: center;
-    }
-
-    .tooltip {
-      position: absolute;
-      z-index: 1;
-      display: none;
-      min-width: 120px;
-      padding: 4px 8px;
-      border: 1px solid var(--mndw-border);
-      border-radius: 4px;
-      background: var(--mndw-surface-raised);
-      color: var(--mndw-text);
-      font-size: 11px;
-      line-height: 1.4;
-      pointer-events: none;
-      white-space: nowrap;
-    }
-
-    .tooltip[data-visible] {
-      display: block;
-    }
-
-    [part='grid'] .tick line {
-      stroke: var(--mndw-border);
-      stroke-dasharray: 4, 4;
-    }
-
-    [part='grid'] .domain,
-    [part='axis'] .domain {
-      display: none;
-    }
-
-    [part='grid'] text,
-    [part='axis'] text {
-      fill: var(--mndw-text-subtle);
-    }
-  `;
+  public static styles = [
+    chartFrameStyles,
+    css`
+      .tooltip {
+        min-width: 120px;
+      }
+    `,
+  ];
 
   declare public series: readonly MndwChartSeries[];
   declare public domain: MndwChartDomain | undefined;
   declare public emptyLabel: string | undefined;
 
-  private resizeObserver: ResizeObserver | null = null;
-  private observedContainer: HTMLElement | null = null;
-  private plotElement: SVGSVGElement | null = null;
   private tooltipState: TooltipState | null = null;
   private lastPointerPosition: [number, number] | null = null;
   private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
@@ -135,6 +73,9 @@ export class MndwLineChart extends LitElement {
     applyLocale: (): void => {
       this.applyLocale();
     },
+  });
+  private readonly frame = new ChartFrameController(this, (size): void => {
+    this.drawChart(size);
   });
 
   constructor() {
@@ -146,36 +87,18 @@ export class MndwLineChart extends LitElement {
     this.ariaLabelState = createGeneratedAttribute(this, 'aria-label');
   }
 
-  public override connectedCallback(): void {
-    super.connectedCallback();
-    this.setAttribute('role', 'img');
-  }
-
   protected override render(): TemplateResult {
     const validSeries = this.series.some((item) => filterFinitePoints(item.data).length > 0);
 
-    return html`
-      <div class="container" part="container">
-        ${
-      validSeries
-        ? html`<svg part="plot" aria-hidden="true"></svg>`
-        : html`<div class="empty" part="empty">${this.emptyLabel ?? getMndwUiText('chart.empty')}</div>`
-    }
-        <div
-          class="tooltip"
-          part="tooltip"
-          ?data-visible=${this.tooltipState !== null}
-          style=${this.tooltipStyle()}
-        >
-          ${
-      this.tooltipState === null ? '' : html`
-            <div>${this.tooltipState.time}</div>
-            ${this.tooltipState.values.map((item) => html`<div>${item.label}: <strong>${item.value}</strong></div>`)}
-          `
-    }
-        </div>
-      </div>
-    `;
+    return renderChartFrame({
+      hasContent: validSeries,
+      emptyLabel: this.emptyLabel ?? getMndwUiText('chart.empty'),
+      tooltip: this.tooltipState,
+      tooltipBody: this.tooltipState === null ? '' : html`
+        <div>${this.tooltipState.time}</div>
+        ${this.tooltipState.values.map((item) => html`<div>${item.label}: <strong>${item.value}</strong></div>`)}
+      `,
+    });
   }
 
   protected override willUpdate(changedProperties: Map<PropertyKey, unknown>): void {
@@ -197,7 +120,7 @@ export class MndwLineChart extends LitElement {
       changedProperties.has('series')
       || changedProperties.has('domain')
       || changedProperties.has('emptyLabel')
-      || this.plotElement === null
+      || this.frame.plotElement === null
     ) {
       this.updateAccessibilityLabel();
       this.drawChart();
@@ -205,24 +128,8 @@ export class MndwLineChart extends LitElement {
   }
 
   public override disconnectedCallback(): void {
-    this.disconnectPlot();
     this.lastPointerPosition = null;
-
-    if (this.resizeObserver !== null) {
-      this.resizeObserver.disconnect();
-      this.resizeObserver = null;
-    }
-
-    this.observedContainer = null;
     super.disconnectedCallback();
-  }
-
-  private tooltipStyle(): string {
-    if (this.tooltipState === null) {
-      return '';
-    }
-
-    return `left: ${this.tooltipState.left}px; top: ${this.tooltipState.top}px;`;
   }
 
   private updateAccessibilityLabel(): void {
@@ -244,8 +151,8 @@ export class MndwLineChart extends LitElement {
       return;
     }
 
-    this.observeContainer(container);
-    this.disconnectPlot();
+    this.frame.observeContainer(container);
+    this.frame.disconnectPlot();
 
     const svgElement = container.querySelector<SVGSVGElement>('svg');
     const validSeries = this.series
@@ -440,46 +347,12 @@ export class MndwLineChart extends LitElement {
       this.requestUpdate();
     });
 
-    this.plotElement = svgElement;
+    this.frame.setPlot(svgElement, (): void => {
+      overlay.on('.chart', null);
+    });
 
     if (this.lastPointerPosition !== null) {
       updateTooltipAtPosition(...this.lastPointerPosition);
-    }
-  }
-
-  private observeContainer(container: HTMLElement): void {
-    if (typeof ResizeObserver === 'undefined') {
-      return;
-    }
-
-    if (this.resizeObserver === null) {
-      this.resizeObserver = new ResizeObserver((entries) => {
-        const entry = entries[0];
-
-        this.drawChart(
-          entry === undefined
-            ? undefined
-            : {width: entry.contentRect.width, height: entry.contentRect.height},
-        );
-      });
-    }
-
-    if (this.observedContainer === container) {
-      return;
-    }
-
-    if (this.observedContainer !== null) {
-      this.resizeObserver.unobserve(this.observedContainer);
-    }
-
-    this.resizeObserver.observe(container);
-    this.observedContainer = container;
-  }
-
-  private disconnectPlot(): void {
-    if (this.plotElement !== null) {
-      d3.select(this.plotElement).on('.chart', null);
-      this.plotElement = null;
     }
   }
 }

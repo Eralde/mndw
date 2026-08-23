@@ -135,6 +135,71 @@ describe('<mndw-bar-chart>', () => {
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(false);
   });
 
+  it('detaches the overlay pointer handler on disconnect (no requestUpdate after removal)', async () => {
+    const element = await mount();
+
+    element.points = points;
+    await element.updateComplete;
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (!overlay) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    element.remove();
+
+    const requestUpdate = vi.spyOn(element, 'requestUpdate');
+
+    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 100, clientY: 100}));
+
+    expect(requestUpdate).not.toHaveBeenCalled();
+  });
+
+  it('re-renders and re-observes the container after a disconnect/reconnect', async () => {
+    type ObserverCallback = (entries: ResizeObserverEntry[]) => void;
+
+    let callback: ObserverCallback = () => {
+      throw new Error('stale resize observer callback');
+    };
+    let constructCount = 0;
+
+    class TestResizeObserver {
+      constructor(next: ObserverCallback) {
+        constructCount += 1;
+        callback = next;
+      }
+      public observe = vi.fn();
+      public unobserve = vi.fn();
+      public disconnect = vi.fn();
+    }
+
+    vi.stubGlobal('ResizeObserver', TestResizeObserver);
+
+    const element = await mount();
+
+    element.points = points;
+    await element.updateComplete;
+    expect(constructCount).toBe(1);
+
+    // Clear the stale callback: the first observer's closure would still redraw the
+    // reconnected element, so leaving it set lets broken code pass. Proving re-observation
+    // requires a NEW observer to repopulate `callback`.
+    element.remove();
+    callback = () => {
+      throw new Error('stale resize observer callback');
+    };
+    document.body.append(element);
+    await element.updateComplete; // hostConnected requested an update; flush the redraw
+
+    // Reconnect must have created a second observer (finding #3), and a resize through it
+    // must reach drawChart — not through a stale first-mount observer.
+    expect(constructCount).toBe(2);
+
+    callback([{contentRect: {width: 321, height: 181}} as ResizeObserverEntry]);
+    expect(element.shadowRoot?.querySelector('svg')?.getAttribute('width')).toBe('321');
+  });
+
   it('uses observer dimensions and disconnects on teardown', async () => {
     type ObserverCallback = (entries: ResizeObserverEntry[]) => void;
 

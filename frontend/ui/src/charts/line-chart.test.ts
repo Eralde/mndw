@@ -175,6 +175,27 @@ describe('<mndw-line-chart>', () => {
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(false);
   });
 
+  it('detaches the overlay pointer handler on disconnect (no requestUpdate after removal)', async () => {
+    const element = await mount();
+
+    element.series = [uploadSeries];
+    await element.updateComplete;
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (!overlay) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    element.remove();
+
+    const requestUpdate = vi.spyOn(element, 'requestUpdate');
+
+    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 100, clientY: 100}));
+
+    expect(requestUpdate).not.toHaveBeenCalled();
+  });
+
   it('updates the tooltip when data changes while the pointer remains over the plot', async () => {
     const addEventListener = vi.spyOn(window, 'addEventListener');
     const element = await mount();

@@ -486,8 +486,8 @@ panels are portaled, so `panel-class` must be global and is applied to the overl
 ```
 
 ```css
-.tx-rx-iface-panel mndw-select-panel::part(option) { padding: 10px; }
-.tx-rx-iface-panel mndw-select-panel::part(listbox) { padding-inline-end: 20px; }
+.tx-rx-iface-panel mndw-select-panel::part(option) { padding: 0.625rem; }
+.tx-rx-iface-panel mndw-select-panel::part(listbox) { padding-inline-end: 1.25rem; }
 .tx-rx-iface-panel mndw-select-panel::part(thumb) { background: var(--mndw-accent); }
 ```
 
@@ -529,7 +529,7 @@ cannot see, or `viewportElement` for direct native `scrollTop`/`scrollTo` access
 
 Scrollbar hooks are `--mndw-scrollbar-size`, `--mndw-scrollbar-thumb`,
 `--mndw-scrollbar-thumb-hover`, `--mndw-scrollbar-track`, `--mndw-scrollbar-radius`, and
-`--mndw-scrollbar-thumb-min-size` (default `24px`). Generator emits defaults; ancestor overrides
+`--mndw-scrollbar-thumb-min-size` (default `1.5rem`). Generator emits defaults; ancestor overrides
 inherit correctly. Scrollbar chrome is `aria-hidden`; native viewport and listbox remain accessible
 interaction surface.
 

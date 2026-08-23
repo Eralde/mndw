@@ -7,7 +7,7 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
   let count = saved ? parseInt(saved, 10) || 0 : 0;
 
   el.innerHTML = `
-    <div style="padding: 24px; font-family: sans-serif;">
+    <div style="padding: 1.5rem; font-family: sans-serif;">
       <div><b id="hello-page-instance-label"></b> ${ctx.instanceId}</div><br/>
 
       <h2 data-testid="l10n-probe" hidden></h2>

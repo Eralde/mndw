@@ -22,7 +22,7 @@ function renderStaticTokens(): string {
   --mndw-weight-normal: ${SCALE.weight.normal};
   --mndw-weight-semibold: ${SCALE.weight.semibold};
 
-  /* spacing (4px scale) */
+  /* spacing (0.25rem scale) */
   --mndw-space-1: ${SCALE.space[1]};
   --mndw-space-2: ${SCALE.space[2]};
   --mndw-space-3: ${SCALE.space[3]};

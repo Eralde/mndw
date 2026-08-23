@@ -250,8 +250,8 @@ export class MndwTable<Row = unknown> extends LitElement {
     }
 
     [part='badge-dot'] {
-      width: 8px;
-      height: 8px;
+      width: 0.5rem;
+      height: 0.5rem;
       border-radius: 50%;
     }
 

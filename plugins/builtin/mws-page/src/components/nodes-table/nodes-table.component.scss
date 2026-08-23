@@ -34,16 +34,16 @@
 
 .node-name:focus-visible {
   outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
-  outline-offset: 2px;
+  outline-offset: 0.125rem;
 }
 
 .role-badge {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 0.125rem 0.375rem;
   border: 1px solid var(--mndw-border);
-  border-radius: 999px;
+  border-radius: 62.4375rem;
   color: var(--mndw-text-subtle);
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .status {
@@ -58,5 +58,5 @@ mndw-table {
 }
 
 mndw-table::part(table) {
-  min-width: 900px;
+  min-width: 56.25rem;
 }

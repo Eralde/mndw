@@ -46,7 +46,7 @@ export class MndwTooltip extends LitElement {
     [part='tooltip'] {
       position: fixed;
       z-index: 1000;
-      max-width: 240px;
+      max-width: 15rem;
       padding: var(--mndw-space-1) var(--mndw-space-2);
       border: var(--mndw-border-w) solid var(--mndw-border);
       border-radius: var(--mndw-radius-sm);

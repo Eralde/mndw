@@ -7,14 +7,14 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 16px;
+  padding: 1rem;
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
 
   .page-header {
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
+    gap: 1rem;
     align-items: baseline;
 
     .title-row {
@@ -36,16 +36,16 @@
         display: inline-flex;
         gap: var(--mndw-space-2);
         align-items: center;
-        padding: 4px 10px;
+        padding: 0.25rem 0.625rem;
         border: 1px solid currentcolor;
-        border-radius: 999px;
+        border-radius: 62.4375rem;
         color: var(--mndw-text-muted);
         font: inherit;
         cursor: pointer;
 
         &:focus-visible {
           outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
-          outline-offset: 2px;
+          outline-offset: 0.125rem;
         }
       }
 
@@ -87,9 +87,9 @@
       color: var(--mndw-text-subtle);
 
       .summary-chip {
-        padding: 2px 8px;
+        padding: 0.125rem 0.5rem;
         border: 1px solid var(--mndw-border);
-        border-radius: 999px;
+        border-radius: 62.4375rem;
         background: transparent;
         color: inherit;
         font: inherit;
@@ -106,14 +106,14 @@
 
         &:focus-visible {
           outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
-          outline-offset: 2px;
+          outline-offset: 0.125rem;
         }
       }
     }
 
     .banner {
-      padding: 4px 12px;
-      border-radius: 4px;
+      padding: 0.25rem 0.75rem;
+      border-radius: 0.25rem;
       background: var(--mndw-danger-bg);
       color: var(--mndw-danger);
     }
@@ -125,13 +125,13 @@
       justify-content: space-between;
       align-items: flex-start;
       width: 100%;
-      padding: 10px 12px;
+      padding: 0.625rem 0.75rem;
       border: 1px solid var(--mndw-border);
-      border-radius: 4px;
+      border-radius: 0.25rem;
 
       > div {
         display: grid;
-        gap: 4px;
+        gap: 0.25rem;
       }
 
       a {
@@ -151,8 +151,8 @@
     }
 
     .extra-features-dismiss {
-      min-width: 28px;
-      min-height: 28px;
+      min-width: 1.75rem;
+      min-height: 1.75rem;
       border: 0;
       background: transparent;
       color: inherit;
@@ -161,13 +161,13 @@
 
       &:focus-visible {
         outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
-        outline-offset: 2px;
+        outline-offset: 0.125rem;
       }
     }
 
     .mock-badge {
-      padding: 4px 12px;
-      border-radius: 4px;
+      padding: 0.25rem 0.75rem;
+      border-radius: 0.25rem;
       background: var(--mndw-accent);
       color: var(--mndw-accent-contrast);
     }
@@ -179,7 +179,7 @@
     text-align: center;
 
     mndw-button {
-      margin-top: 8px;
+      margin-top: 0.5rem;
     }
   }
 

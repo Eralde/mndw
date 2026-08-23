@@ -6,7 +6,7 @@ import {type CSSResult, css} from 'lit';
  */
 export const focusRing: CSSResult = css`
   outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
-  outline-offset: 1px;
+  outline-offset: 0.0625rem;
 `;
 
 /**
@@ -16,7 +16,7 @@ export const focusRing: CSSResult = css`
  * (see `hostTypography`), because a declaration on the inner element wins over anything a
  * consumer sets on the custom element, and there would then be no way to resize a control
  * from outside without reaching through `::part()`. Icon buttons need exactly that: the
- * existing `.gear-btn` rules set `font-size: 18px` on the element.
+ * existing `.gear-btn` rules set `font-size: 1.125rem` on the element.
  */
 export const controlBase: CSSResult = css`
   box-sizing: border-box;

@@ -14,21 +14,21 @@ describe('SCALE', () => {
       sans: '-apple-system, \'BlinkMacSystemFont\', \'Segoe UI\', \'Roboto\', sans-serif',
       mono: 'ui-monospace, \'SF Mono\', \'Menlo\', monospace',
     });
-    expect(SCALE.text).toEqual({xs: '11px', sm: '13px', md: '14px', lg: '16px'});
+    expect(SCALE.text).toEqual({xs: '0.6875rem', sm: '0.8125rem', md: '0.875rem', lg: '1rem'});
     expect(SCALE.leading).toBe('1.4');
     expect(SCALE.weight).toEqual({normal: '400', semibold: '600'});
-    expect(SCALE.space).toEqual({1: '4px', 2: '8px', 3: '12px', 4: '16px', 5: '24px', 6: '32px'});
-    expect(SCALE.radius).toEqual({sm: '3px', md: '6px', lg: '8px'});
+    expect(SCALE.space).toEqual({1: '0.25rem', 2: '0.5rem', 3: '0.75rem', 4: '1rem', 5: '1.5rem', 6: '2rem'});
+    expect(SCALE.radius).toEqual({sm: '0.1875rem', md: '0.375rem', lg: '0.5rem'});
   });
 
   it('contains shared control and component geometry', () => {
-    expect(SCALE.control).toEqual({base: '32px', sm: '28px', lg: '40px'});
+    expect(SCALE.control).toEqual({base: '2rem', sm: '1.75rem', lg: '2.5rem'});
     expect(SCALE.border).toEqual({width: '1px', focusWidth: '2px'});
     expect(SCALE.motion).toEqual({fast: '120ms', base: '180ms', easing: 'ease'});
-    expect(SCALE.scrollbar).toEqual({size: '10px', radius: '6px', thumbMinSize: '24px'});
-    expect(SCALE.switch).toEqual({width: '36px', height: '20px'});
-    expect(SCALE.slider).toEqual({trackHeight: '4px', thumbSize: '16px'});
-    expect(SCALE.table).toEqual({stickyTop: '0px'});
+    expect(SCALE.scrollbar).toEqual({size: '0.625rem', radius: '0.375rem', thumbMinSize: '1.5rem'});
+    expect(SCALE.switch).toEqual({width: '2.25rem', height: '1.25rem'});
+    expect(SCALE.slider).toEqual({trackHeight: '0.25rem', thumbSize: '1rem'});
+    expect(SCALE.table).toEqual({stickyTop: '0'});
   });
 
   it('keeps shadow aliases centralized for generated output', () => {
@@ -47,9 +47,9 @@ describe('SCALE', () => {
 
     for (
       const declaration of [
-        '--mndw-scrollbar-size: 10px;',
-        '--mndw-scrollbar-radius: 6px;',
-        '--mndw-scrollbar-thumb-min-size: 24px;',
+        '--mndw-scrollbar-size: 0.625rem;',
+        '--mndw-scrollbar-radius: 0.375rem;',
+        '--mndw-scrollbar-thumb-min-size: 1.5rem;',
         '--mndw-scrollbar-track: var(--mndw-surface);',
         '--mndw-scrollbar-thumb: var(--mndw-accent);',
         '--mndw-scrollbar-thumb-hover: var(--mndw-accent-hover);',
@@ -57,15 +57,15 @@ describe('SCALE', () => {
         '--mndw-shadow-2: 0 8px 24px var(--mndw-shadow-color);',
         '--mndw-border-w: 1px;',
         '--mndw-focus-w: 2px;',
-        '--mndw-control-h-sm: 28px;',
-        '--mndw-control-h-lg: 40px;',
+        '--mndw-control-h-sm: 1.75rem;',
+        '--mndw-control-h-lg: 2.5rem;',
         '--mndw-duration-fast: 120ms;',
         '--mndw-easing: ease;',
-        '--mndw-switch-w: 36px;',
-        '--mndw-switch-h: 20px;',
-        '--mndw-slider-track-h: 4px;',
-        '--mndw-slider-thumb-size: 16px;',
-        '--mndw-table-sticky-top: 0px;',
+        '--mndw-switch-w: 2.25rem;',
+        '--mndw-switch-h: 1.25rem;',
+        '--mndw-slider-track-h: 0.25rem;',
+        '--mndw-slider-thumb-size: 1rem;',
+        '--mndw-table-sticky-top: 0;',
       ]
     ) {
       expect(css).toContain(declaration);

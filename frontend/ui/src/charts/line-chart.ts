@@ -56,7 +56,7 @@ export class MndwLineChart extends LitElement {
     chartFrameStyles,
     css`
       .tooltip {
-        min-width: 120px;
+        min-width: 7.5rem;
       }
     `,
   ];

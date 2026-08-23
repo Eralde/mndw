@@ -65,7 +65,7 @@ function gallery(prefix: string): string {
         <mndw-field label="Dark theme">
           <mndw-switch checked></mndw-switch>
         </mndw-field>
-        <mndw-select placeholder="Interface…" label="Interface" style="width: 220px">
+        <mndw-select placeholder="Interface…" label="Interface" style="width: 13.75rem">
           <mndw-option value="isp">Wired</mndw-option>
           <mndw-option value="wifi">Wireless</mndw-option>
           <mndw-option value="lte" disabled>LTE (unavailable)</mndw-option>
@@ -204,7 +204,7 @@ function paintPane(pane: Pane, palette: Record<TokenName, string>): void {
 
   pane.el.style.background = palette.bg;
   pane.el.style.color = palette.text;
-  pane.el.style.border = `1px solid ${palette.border}`;
+  pane.el.style.border = `0.0625rem solid ${palette.border}`;
 }
 
 function onInput(): void {

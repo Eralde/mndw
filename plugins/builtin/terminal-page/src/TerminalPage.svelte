@@ -249,19 +249,19 @@ onMount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 16px;
+  gap: 0.75rem;
+  padding: 1rem;
   text-align: center;
 }
 
 .console-choice {
   display: flex;
-  gap: 12px;
+  gap: 0.75rem;
 }
 
 .ttyd-terminal :global(mndw-button) {
   font-family: inherit;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .terminal-wrap {
@@ -279,13 +279,13 @@ onMount(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 10px;
+  padding: 0.5rem 0.625rem;
   background: #1f242d;
   border-bottom: 1px solid #2a3039;
 }
 
 .status {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: #7ee787;
 }
 
@@ -316,9 +316,9 @@ onMount(() => {
 }
 
 .spinner {
-  width: 20px;
-  height: 20px;
-  border-radius: 9999px;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 624.9375rem;
   border: 2px solid #2a3039;
   border-top-color: #2f81f7;
   animation: spin 0.8s linear infinite;

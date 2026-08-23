@@ -58,9 +58,9 @@ function toggle(level: LogLevel): void {
 }
 
 .log-level-pills__pill::part(button) {
-  min-height: 28px;
+  min-height: 1.75rem;
   padding: var(--mndw-space-1) var(--mndw-space-2);
-  border-radius: 999px;
+  border-radius: 62.4375rem;
   font-size: var(--mndw-text-xs);
   line-height: 1;
 }

@@ -269,7 +269,7 @@ p {
 }
 
 .system-log-page__actions mndw-button::part(button) {
-  min-height: 28px;
+  min-height: 1.75rem;
   padding: var(--mndw-space-1) var(--mndw-space-2);
   font-size: var(--mndw-text-xs);
 }

@@ -53,7 +53,7 @@ export class MndwSwitch extends LitElement {
       height: var(--mndw-switch-h);
       flex: 0 0 auto;
       align-items: center;
-      padding: 2px;
+      padding: 0.125rem;
       border: var(--mndw-border-w) solid var(--mndw-border);
       border-radius: var(--mndw-switch-h);
       background: var(--mndw-surface);
@@ -71,8 +71,8 @@ export class MndwSwitch extends LitElement {
     }
 
     [part='thumb'] {
-      width: calc(var(--mndw-switch-h) - 8px);
-      height: calc(var(--mndw-switch-h) - 8px);
+      width: calc(var(--mndw-switch-h) - 0.5rem);
+      height: calc(var(--mndw-switch-h) - 0.5rem);
       border-radius: 50%;
       background: var(--mndw-text-subtle);
       transition: transform var(--mndw-duration-fast) var(--mndw-easing);

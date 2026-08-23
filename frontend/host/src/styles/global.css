@@ -7,7 +7,7 @@
  *   --scrollbar-thumb        thumb color            (default var(--mndw-accent))
  *   --scrollbar-thumb-hover  thumb color on hover   (default var(--mndw-accent-hover))
  *   --scrollbar-track        track/background color (default var(--mndw-surface))
- *   --scrollbar-size         thumb thickness in px  (default 10)
+ *   --scrollbar-size         unitless 1/16-rem steps (default 10 = 0.625rem)
  */
 
 .mndw-scrollbar {
@@ -18,8 +18,8 @@
 
 /* Chrome / Safari / Edge */
 .mndw-scrollbar::-webkit-scrollbar {
-  width: calc(var(--scrollbar-size, 10) * 1px);
-  height: calc(var(--scrollbar-size, 10) * 1px);
+  width: calc(var(--scrollbar-size, 10) * 0.0625rem);
+  height: calc(var(--scrollbar-size, 10) * 0.0625rem);
 }
 
 .mndw-scrollbar::-webkit-scrollbar-track {
@@ -28,7 +28,7 @@
 
 .mndw-scrollbar::-webkit-scrollbar-thumb {
   border: 2px solid var(--scrollbar-track, var(--mndw-surface));
-  border-radius: 6px;
+  border-radius: 0.375rem;
   background: var(--scrollbar-thumb, var(--mndw-accent));
 }
 
@@ -43,7 +43,7 @@
 /* === Reset & Base === */
 
 :root {
-  --mndw-header-height: 48px;
+  --mndw-header-height: 3rem;
 }
 
 *,
@@ -83,7 +83,7 @@ body {
 .mndw-app-shell__content {
   flex: 1;
   overflow: auto;
-  padding: 16px;
+  padding: 1rem;
 }
 
 /* === Header === */
@@ -92,14 +92,14 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 16px;
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--mndw-border);
   background: var(--mndw-surface);
 }
 
 .mndw-header__left {
   display: flex;
-  gap: 12px;
+  gap: 0.75rem;
   align-items: center;
 }
 
@@ -118,13 +118,13 @@ body {
 }
 
 .mndw-header__menu-toggle::part(button) {
-  padding: 4px;
+  padding: 0.25rem;
   line-height: 1;
 }
 
 .mndw-header__right {
   display: flex;
-  gap: 12px;
+  gap: 0.75rem;
   align-items: center;
 }
 
@@ -133,12 +133,12 @@ body {
 }
 
 .mndw-header__theme-toggle::part(button) {
-  padding: 4px;
+  padding: 0.25rem;
   line-height: 1;
 }
 
 .mndw-header__locale-select {
-  width: 64px;
+  width: 4rem;
 }
 
 .mndw-header__logout {
@@ -146,7 +146,7 @@ body {
 }
 
 .mndw-header__logout::part(button) {
-  padding: 4px 12px;
+  padding: 0.25rem 0.75rem;
 }
 
 /* === Sidebar === */
@@ -156,8 +156,8 @@ body {
   flex-shrink: 0;
   flex-direction: column;
   overflow-y: auto;
-  width: 200px;
-  padding: 8px 0;
+  width: 12.5rem;
+  padding: 0.5rem 0;
   border-right: 1px solid var(--mndw-border);
   background: var(--mndw-surface);
   transition: width 0.2s;
@@ -171,7 +171,7 @@ body {
 
 .mndw-sidebar__link {
   display: block;
-  padding: 8px 16px;
+  padding: 0.5rem 1rem;
   color: var(--mndw-text-muted);
   font-size: 0.9em;
   text-decoration: none;
@@ -188,8 +188,8 @@ body {
 }
 
 .mndw-sidebar__section-label {
-  margin-top: 12px;
-  padding: 6px 16px;
+  margin-top: 0.75rem;
+  padding: 0.375rem 1rem;
   color: var(--mndw-text-subtle);
   font-size: 0.75em;
   text-transform: uppercase;
@@ -222,7 +222,7 @@ body {
     inset: var(--mndw-header-height) auto 0 0;
     z-index: 89;
     width: min(80vw, 280px);
-    padding: 8px 0;
+    padding: 0.5rem 0;
     transition: transform 0.2s ease;
     transform: translateX(0);
   }
@@ -230,7 +230,7 @@ body {
   .mndw-sidebar.collapsed {
     overflow: hidden;
     width: min(80vw, 280px);
-    padding: 8px 0;
+    padding: 0.5rem 0;
     transform: translateX(-100%);
   }
 
@@ -256,16 +256,16 @@ body {
 .mndw-login__form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  width: 300px;
-  padding: 32px;
-  border-radius: 8px;
+  gap: 0.75rem;
+  width: 18.75rem;
+  padding: 2rem;
+  border-radius: 0.5rem;
   background: var(--mndw-surface);
 }
 
 .mndw-login__locale-select {
   align-self: flex-end;
-  width: 72px;
+  width: 4.5rem;
 }
 
 .mndw-login__form mndw-button {
@@ -278,7 +278,7 @@ body {
 
 .mndw-login__form mndw-button::part(button) {
   width: 100%;
-  padding: 8px;
+  padding: 0.5rem;
 }
 
 .mndw-login__title {
@@ -289,15 +289,15 @@ body {
 /* === Settings === */
 
 .mndw-settings {
-  max-width: 600px;
+  max-width: 37.5rem;
 }
 
 .mndw-settings h2 {
-  margin-bottom: 16px;
+  margin-bottom: 1rem;
 }
 
 .mndw-settings h3 {
-  margin: 16px 0 8px;
+  margin: 1rem 0 0.5rem;
   color: var(--mndw-text-muted);
 }
 
@@ -307,7 +307,7 @@ body {
 }
 
 .mndw-settings li {
-  padding: 6px 0;
+  padding: 0.375rem 0;
   border-bottom: 1px solid var(--mndw-border);
 }
 
@@ -342,18 +342,18 @@ body {
 
 .mndw-dashboard-page .grid-stack {
   height: 100%;
-  padding: 6px;
+  padding: 0.375rem;
 }
 
 .mndw-dashboard-page .grid-stack-item {
   position: relative;
   box-sizing: border-box;
-  padding: 4px;
+  padding: 0.25rem;
 }
 
 .mndw-dashboard-page .grid-stack-item-content {
   border: 1px solid var(--mndw-border);
-  border-radius: 4px;
+  border-radius: 0.25rem;
   background: var(--mndw-surface);
 }
 
@@ -367,11 +367,11 @@ body {
 .mndw-grid-tile__title {
   flex-shrink: 0;
   overflow: hidden;
-  padding: 6px 28px 6px 10px;
+  padding: 0.375rem 1.75rem 0.375rem 0.625rem;
   border-bottom: 1px solid var(--mndw-border);
   color: var(--mndw-text-muted);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 0.8125rem;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: grab;
@@ -386,7 +386,7 @@ body {
   flex: 1;
   overflow: auto;
   min-height: 0;
-  padding: 8px;
+  padding: 0.5rem;
 }
 
 .mndw-grid-tile__notice {
@@ -394,7 +394,7 @@ body {
   justify-content: center;
   align-items: center;
   height: 100%;
-  padding: 8px;
+  padding: 0.5rem;
   font-size: 0.85rem;
   text-align: center;
   opacity: 0.7;
@@ -407,17 +407,17 @@ body {
 
 .mndw-grid-tile__close {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 0.25rem;
+  right: 0.25rem;
   z-index: 2;
-  width: 20px;
-  height: 20px;
+  width: 1.25rem;
+  height: 1.25rem;
   padding: 0;
   border: none;
-  border-radius: 3px;
+  border-radius: 0.1875rem;
   background: var(--mndw-surface-raised);
   color: var(--mndw-text-subtle);
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1;
   opacity: 0;
   cursor: pointer;
@@ -441,18 +441,18 @@ body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 10px;
+  gap: 0.625rem;
   overflow-y: auto;
   height: auto;
   min-height: 0;
-  padding: 10px;
+  padding: 0.625rem;
 }
 
 .mndw-mobile-tile {
   position: relative;
   flex-shrink: 0;
   border: 1px solid var(--mndw-border);
-  border-radius: 4px;
+  border-radius: 0.25rem;
   background: var(--mndw-surface);
 }
 
@@ -493,9 +493,9 @@ body {
 .mndw-dashboard__toolbar {
   display: flex;
   flex-shrink: 0;
-  gap: 8px;
+  gap: 0.5rem;
   align-items: center;
-  padding: 8px 12px;
+  padding: 0.5rem 0.75rem;
   border-top: 1px solid var(--mndw-border);
   background: var(--mndw-surface);
 }
@@ -505,13 +505,13 @@ body {
 }
 
 .mndw-dashboard__toolbar mndw-button::part(button) {
-  padding: 6px 12px;
-  font-size: 13px;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
 }
 
 .mndw-dashboard__toolbar--empty {
   color: var(--mndw-text-subtle);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 /* === Floating Add Panel === */
@@ -530,9 +530,9 @@ body {
   overflow-y: auto;
   width: min(360px, calc(100vw - 32px));
   max-height: 80vh;
-  padding: 16px;
+  padding: 1rem;
   border: 1px solid var(--mndw-border);
-  border-radius: 8px;
+  border-radius: 0.5rem;
   background: var(--mndw-surface);
 }
 
@@ -540,47 +540,47 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 0.75rem;
 }
 
 .mndw-floating-panel__header h3 {
   margin: 0;
   color: var(--mndw-text);
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .mndw-floating-panel__close {
-  font-size: 18px;
+  font-size: 1.125rem;
 }
 
 .mndw-floating-panel__close::part(button) {
-  padding: 0 4px;
+  padding: 0 0.25rem;
   line-height: 1;
 }
 
 .mndw-floating-panel > mndw-button:not(.mndw-floating-panel__close) {
   display: block;
   width: 100%;
-  margin-bottom: 6px;
+  margin-bottom: 0.375rem;
 }
 
 .mndw-floating-panel > mndw-button:not(.mndw-floating-panel__close)::part(button) {
   justify-content: flex-start;
   width: 100%;
-  padding: 10px 12px;
-  font-size: 14px;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
   text-align: left;
 }
 
 .mndw-floating-panel__empty {
-  padding: 20px 0;
+  padding: 1.25rem 0;
   color: var(--mndw-text-subtle);
-  font-size: 14px;
+  font-size: 0.875rem;
   text-align: center;
 }
 
 .mndw-floating-panel__deps {
-  margin-left: 6px;
+  margin-left: 0.375rem;
   color: var(--mndw-text-subtle);
   font-size: 0.8em;
 }
@@ -593,7 +593,7 @@ body {
 .mndw-order-overlay__list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0.375rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -601,11 +601,11 @@ body {
 
 .mndw-order-card {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
   align-items: center;
-  padding: 8px 10px;
+  padding: 0.5rem 0.625rem;
   border: 1px solid var(--mndw-border);
-  border-radius: 4px;
+  border-radius: 0.25rem;
   background: var(--mndw-surface);
 }
 
@@ -625,20 +625,20 @@ body {
 .mndw-order-card__label {
   flex: 1;
   overflow: hidden;
-  font-size: 13px;
+  font-size: 0.8125rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .mndw-order-card__moves {
   display: flex;
-  gap: 4px;
+  gap: 0.25rem;
 }
 
 .mndw-order-card__moves mndw-button {
   display: inline-block;
-  width: 28px;
-  height: 28px;
+  width: 1.75rem;
+  height: 1.75rem;
 }
 
 .mndw-order-card__moves mndw-button::part(button) {
@@ -665,7 +665,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 16px;
+  padding: 1rem;
   text-align: center;
   opacity: 0.7;
 }

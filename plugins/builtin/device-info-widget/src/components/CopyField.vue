@@ -55,7 +55,7 @@ const handleCopy = (): void => {
 
 .copy-field__btn {
   display: inline-block;
-  margin-left: 4px;
+  margin-left: 0.25rem;
   user-select: none;
 }
 

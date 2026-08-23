@@ -118,7 +118,7 @@ function resetFilters(): void {
 }
 
 .log-filters__header {
-  min-height: 32px;
+  min-height: 2rem;
 }
 
 .log-filters__summary {
@@ -140,9 +140,9 @@ function resetFilters(): void {
 }
 
 .log-filters__controls {
-  --log-filter-focus-gutter: calc(var(--mndw-focus-w) + 1px);
+  --log-filter-focus-gutter: calc(var(--mndw-focus-w) + 0.0625rem);
 
-  max-height: 300px;
+  max-height: 18.75rem;
   padding: 0 var(--log-filter-focus-gutter) var(--log-filter-focus-gutter);
   opacity: 1;
   overflow: hidden;
@@ -161,8 +161,8 @@ function resetFilters(): void {
 }
 
 mndw-input {
-  flex: 0 1 190px;
-  min-width: 120px;
+  flex: 0 1 11.875rem;
+  min-width: 7.5rem;
 }
 
 @container log-filters (max-width: 420px) {

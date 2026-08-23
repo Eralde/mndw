@@ -46,7 +46,7 @@ export class MndwTab extends LitElement {
 
     :host(:focus-visible) [part='tab'] {
       outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
-      outline-offset: -1px;
+      outline-offset: -0.0625rem;
     }
 
     :host([aria-selected='true']) [part='tab'] {

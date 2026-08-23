@@ -106,7 +106,7 @@ const sizeStyle = $derived.by(() => {
 }
 
 .mndw-overlay-dialog--modal {
-  border-radius: 8px;
+  border-radius: 0.5rem;
 }
 
 .mndw-overlay-dialog--drawer {
@@ -118,21 +118,21 @@ const sizeStyle = $derived.by(() => {
   border-right: none;
   border-bottom: none;
   border-left: none;
-  border-radius: 12px 12px 0 0;
+  border-radius: 0.75rem 0.75rem 0 0;
 }
 .mndw-overlay-dialog--sheet {
   border-right: none;
   border-bottom: none;
   border-left: none;
-  border-radius: 12px 12px 0 0;
+  border-radius: 0.75rem 0.75rem 0 0;
 }
 
 .mndw-overlay-dialog__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--mndw-border);
 }
 
@@ -142,19 +142,19 @@ const sizeStyle = $derived.by(() => {
 
 .mndw-overlay-dialog__title {
   margin: 0;
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 600;
 }
 
 .mndw-overlay-dialog__close {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 1.75rem;
+  height: 1.75rem;
   border: none;
-  border-radius: 4px;
+  border-radius: 0.25rem;
   background: transparent;
   color: var(--mndw-text-subtle);
-  font-size: 20px;
+  font-size: 1.25rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -166,8 +166,8 @@ const sizeStyle = $derived.by(() => {
 
 .mndw-overlay-dialog__description {
   margin: 0;
-  padding: 8px 16px 0;
-  font-size: 13px;
+  padding: 0.5rem 1rem 0;
+  font-size: 0.8125rem;
   color: var(--mndw-text-subtle);
 }
 
@@ -175,7 +175,7 @@ const sizeStyle = $derived.by(() => {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px;
+  padding: 1rem;
 }
 .mndw-overlay-dialog--sheet .mndw-overlay-dialog__body {
   flex: 0 1 auto;

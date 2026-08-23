@@ -154,7 +154,7 @@ describe('<mndw-checkbox>', () => {
 
     // Indeterminate keeps its bar dimensions.
     expect(cssText).toMatch(
-      /:host\(\[indeterminate\]\)\s+\[part='mark'\]\s*\{[^}]*width: 9px;[^}]*height: 2px;/,
+      /:host\(\[indeterminate\]\)\s+\[part='mark'\]\s*\{[^}]*width: 0\.5625rem;[^}]*height: 0\.125rem;/,
     );
   });
 

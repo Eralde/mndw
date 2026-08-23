@@ -16,5 +16,5 @@ let {row, value, colId}: Props = $props();
 
 <style>
 .ver-value { display: inline-block; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
-.new-version { color: var(--mndw-warning); margin-left: 2px; }
+.new-version { color: var(--mndw-warning); margin-left: 0.125rem; }
 </style>

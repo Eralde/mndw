@@ -183,6 +183,8 @@ describe('planCreate', () => {
     const plan = planCreate(options({name: 'ng', framework: 'angular', type: 'widget'}));
 
     expect(fileContents(plan, 'src/app.component.ts')).toContain('Ng');
+    expect(fileContents(plan, 'src/app.component.ts')).toContain('padding:var(--mndw-space-4)');
+    expect(fileContents(plan, 'src/app.component.ts')).not.toContain('padding:16px');
     expect(fileContents(plan, 'src/index.ts')).toContain('createApplication');
     expect(JSON.parse(fileContents(plan, 'tsconfig.json'))).toHaveProperty('angularCompilerOptions');
   });

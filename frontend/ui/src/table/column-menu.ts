@@ -33,7 +33,7 @@ export class MndwColumnMenu extends LitElement {
     [part='menu'] {
       display: flex;
       flex-direction: column;
-      min-width: 180px;
+      min-width: 11.25rem;
       padding: var(--mndw-space-2);
       gap: var(--mndw-space-1);
       background: var(--mndw-surface-raised);

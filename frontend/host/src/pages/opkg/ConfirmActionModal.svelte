@@ -25,12 +25,12 @@ let {message, confirmLabel, close}: Props = $props();
 <style>
 .confirm-modal {
   display: grid;
-  gap: 16px;
+  gap: 1rem;
   min-width: min(420px, calc(100vw - 32px));
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
 }
 
 p { margin: 0; }
-.actions { display: flex; justify-content: flex-end; gap: 8px; }
+.actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 </style>

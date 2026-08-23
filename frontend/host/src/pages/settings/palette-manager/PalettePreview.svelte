@@ -112,8 +112,8 @@ let byTheme = $derived.by(() => {
 
 .mndw-palette-preview__chip {
   display: inline-block;
-  width: 16px;
-  height: 16px;
+  width: 1rem;
+  height: 1rem;
   border: 1px solid var(--mndw-border);
   border-radius: var(--mndw-radius-sm);
 }

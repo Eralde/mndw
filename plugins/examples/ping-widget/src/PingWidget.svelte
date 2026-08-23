@@ -569,8 +569,8 @@ h3 {
 }
 
 .ping-widget :global(mndw-button.compact)::part(button) {
-  min-height: 28px;
-  padding: 2px 8px;
+  min-height: 1.75rem;
+  padding: 0.125rem 0.5rem;
   font-size: var(--mndw-text-xs);
 }
 
@@ -770,7 +770,7 @@ thead {
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 45rem) {
   .controls {
     grid-template-columns: minmax(0, 1fr);
   }

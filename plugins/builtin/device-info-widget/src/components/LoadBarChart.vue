@@ -131,7 +131,7 @@ onUnmounted(() => {
 .load-bar-chart {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0.125rem;
   min-width: 0;
 }
 
@@ -139,7 +139,7 @@ onUnmounted(() => {
   display: flex;
   align-items: baseline;
   justify-content: flex-start;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .load-bar-chart__label {
@@ -155,7 +155,7 @@ onUnmounted(() => {
 .load-bar-chart__chart {
   position: relative;
   width: 100%;
-  height: 28px;
+  height: 1.75rem;
 }
 
 .load-bar-chart__svg {
@@ -167,8 +167,8 @@ onUnmounted(() => {
 .load-bar-chart__empty {
   display: block;
   color: var(--mndw-text-subtle);
-  font-size: 11px;
-  line-height: 28px;
+  font-size: 0.6875rem;
+  line-height: 1.75rem;
 }
 
 .load-bar-chart__bar {
@@ -189,14 +189,14 @@ onUnmounted(() => {
 
 .load-bar-chart__tooltip {
   position: absolute;
-  bottom: calc(100% + 2px);
+  bottom: calc(100% + 0.125rem);
   transform: translateX(-50%);
-  padding: 1px 5px;
+  padding: 0.0625rem 0.3125rem;
   border: 1px solid var(--mndw-border);
-  border-radius: 3px;
+  border-radius: 0.1875rem;
   background: var(--mndw-surface);
   color: var(--mndw-text);
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;

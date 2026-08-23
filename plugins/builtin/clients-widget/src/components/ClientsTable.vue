@@ -145,8 +145,8 @@ function fullText(seconds: number | null): string | undefined {
 
 .clients-table__dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
   margin-right: var(--mndw-space-1);
 }

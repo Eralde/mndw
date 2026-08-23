@@ -21,7 +21,7 @@ const label = $derived.by(() =>
 >{label}</span>
 
 <style>
-.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: .75rem; text-transform: capitalize; }
+.badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 0.625rem; font-size: .75rem; text-transform: capitalize; }
 .badge-installed { color: var(--mndw-success); }
 .badge-update_available { color: var(--mndw-warning); }
 .badge-available { color: var(--mndw-text-subtle); }

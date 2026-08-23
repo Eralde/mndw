@@ -18,7 +18,7 @@ export interface ChartFrameOptions {
 }
 
 // min-width is intentionally NOT set here — it is coupled to each chart's tooltip
-// placement math, so each chart supplies its own (bar 100px, line 120px).
+// placement math, so each chart supplies its own (bar 6.25rem, line 7.5rem).
 export const chartFrameStyles = css`
   :host {
     display: block;
@@ -34,7 +34,7 @@ export const chartFrameStyles = css`
     position: relative;
     width: 100%;
     height: 100%;
-    min-height: 120px;
+    min-height: 7.5rem;
   }
 
   svg {
@@ -47,7 +47,7 @@ export const chartFrameStyles = css`
   .empty {
     display: grid;
     height: 100%;
-    min-height: 120px;
+    min-height: 7.5rem;
     place-items: center;
     color: var(--mndw-text-subtle);
     text-align: center;
@@ -57,12 +57,12 @@ export const chartFrameStyles = css`
     position: absolute;
     z-index: 1;
     display: none;
-    padding: 4px 8px;
+    padding: 0.25rem 0.5rem;
     border: 1px solid var(--mndw-border);
-    border-radius: 4px;
+    border-radius: 0.25rem;
     background: var(--mndw-surface-raised);
     color: var(--mndw-text);
-    font-size: 11px;
+    font-size: 0.6875rem;
     line-height: 1.4;
     pointer-events: none;
     white-space: nowrap;

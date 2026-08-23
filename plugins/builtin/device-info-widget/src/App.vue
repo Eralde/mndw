@@ -117,21 +117,21 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 100%;
   box-sizing: border-box;
-  padding: 16px;
+  padding: 1rem;
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .app__loading {
-  padding: 16px;
+  padding: 1rem;
   color: var(--mndw-text-subtle);
 }
 
 .app__grid {
   display: flex;
   flex-direction: column;
-  gap: 4px 12px;
+  gap: 0.25rem 0.75rem;
   align-items: baseline;
 }
 
@@ -149,7 +149,7 @@ onUnmounted(() => {
 .app__divider {
   border: none;
   border-top: 1px solid var(--mndw-border);
-  margin: 12px 0;
+  margin: 0.75rem 0;
 }
 
 .app__loads {
@@ -157,7 +157,7 @@ onUnmounted(() => {
   container-name: device-info-loads;
   display: flex;
   flex-direction: row;
-  gap: 24px;
+  gap: 1.5rem;
   min-width: 0;
 
   .load-bar-chart {

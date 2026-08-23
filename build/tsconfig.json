@@ -18,6 +18,7 @@
     "builtin-plugins.test.ts",
     "example-plugins.ts",
     "example-plugins.test.ts",
+    "scripts/audit-px.test.ts",
     "plugin-backends.ts",
     "targets.ts",
     "targets.test.ts"

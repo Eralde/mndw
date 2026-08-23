@@ -57,8 +57,8 @@ export class MndwCheckbox extends LitElement {
       [part='box'] {
         position: relative;
         display: inline-grid;
-        width: 18px;
-        height: 18px;
+        width: 1.125rem;
+        height: 1.125rem;
         place-items: center;
         border: 1px solid var(--mndw-border);
         border-radius: var(--mndw-radius-sm);
@@ -91,8 +91,8 @@ export class MndwCheckbox extends LitElement {
 
       :host([indeterminate]) [part='mark'] {
         visibility: visible;
-        width: 9px;
-        height: 2px;
+        width: 0.5625rem;
+        height: 0.125rem;
         background: currentColor;
         font-size: 0;
       }

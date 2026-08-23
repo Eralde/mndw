@@ -200,7 +200,7 @@ $effect(() => {
 .mndw-overlay-positioner--modal {
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 1rem;
 }
 .mndw-overlay-positioner--drawer {
   align-items: stretch;

@@ -69,7 +69,7 @@ $effect(() => {
 
 <style>
 .detail { color: var(--mndw-text); font-family: var(--mndw-font-sans); }
-dl { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 8px 16px; margin: 0; max-width: 100%; }
+dl { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 0.5rem 1rem; margin: 0; max-width: 100%; }
 dt { color: var(--mndw-text-subtle); }
 dd { margin: 0; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
 </style>

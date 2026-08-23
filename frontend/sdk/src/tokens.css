@@ -5,33 +5,33 @@
   /* typography */
   --mndw-font-sans: -apple-system, 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', sans-serif;
   --mndw-font-mono: ui-monospace, 'SF Mono', 'Menlo', monospace;
-  --mndw-text-xs: 11px;
-  --mndw-text-sm: 13px;
-  --mndw-text-md: 14px;
-  --mndw-text-lg: 16px;
+  --mndw-text-xs: 0.6875rem;
+  --mndw-text-sm: 0.8125rem;
+  --mndw-text-md: 0.875rem;
+  --mndw-text-lg: 1rem;
   --mndw-leading: 1.4;
   --mndw-weight-normal: 400;
   --mndw-weight-semibold: 600;
 
-  /* spacing (4px scale) */
-  --mndw-space-1: 4px;
-  --mndw-space-2: 8px;
-  --mndw-space-3: 12px;
-  --mndw-space-4: 16px;
-  --mndw-space-5: 24px;
-  --mndw-space-6: 32px;
+  /* spacing (0.25rem scale) */
+  --mndw-space-1: 0.25rem;
+  --mndw-space-2: 0.5rem;
+  --mndw-space-3: 0.75rem;
+  --mndw-space-4: 1rem;
+  --mndw-space-5: 1.5rem;
+  --mndw-space-6: 2rem;
 
   /* radius + elevation */
-  --mndw-radius-sm: 3px;
-  --mndw-radius-md: 6px;
-  --mndw-radius-lg: 8px;
+  --mndw-radius-sm: 0.1875rem;
+  --mndw-radius-md: 0.375rem;
+  --mndw-radius-lg: 0.5rem;
   --mndw-shadow-1: 0 1px 2px var(--mndw-shadow-color);
   --mndw-shadow-2: 0 8px 24px var(--mndw-shadow-color);
 
   /* controls */
-  --mndw-control-h: 32px;
-  --mndw-control-h-sm: 28px;
-  --mndw-control-h-lg: 40px;
+  --mndw-control-h: 2rem;
+  --mndw-control-h-sm: 1.75rem;
+  --mndw-control-h-lg: 2.5rem;
   --mndw-border-w: 1px;
   --mndw-focus-w: 2px;
 
@@ -41,19 +41,19 @@
   --mndw-easing: ease;
 
   /* scrollbars */
-  --mndw-scrollbar-size: 10px;
-  --mndw-scrollbar-radius: 6px;
-  --mndw-scrollbar-thumb-min-size: 24px;
+  --mndw-scrollbar-size: 0.625rem;
+  --mndw-scrollbar-radius: 0.375rem;
+  --mndw-scrollbar-thumb-min-size: 1.5rem;
   --mndw-scrollbar-track: var(--mndw-surface);
   --mndw-scrollbar-thumb: var(--mndw-accent);
   --mndw-scrollbar-thumb-hover: var(--mndw-accent-hover);
 
   /* component geometry */
-  --mndw-switch-w: 36px;
-  --mndw-switch-h: 20px;
-  --mndw-slider-track-h: 4px;
-  --mndw-slider-thumb-size: 16px;
-  --mndw-table-sticky-top: 0px;
+  --mndw-switch-w: 2.25rem;
+  --mndw-switch-h: 1.25rem;
+  --mndw-slider-track-h: 0.25rem;
+  --mndw-slider-thumb-size: 1rem;
+  --mndw-table-sticky-top: 0;
 }
 
 :root,

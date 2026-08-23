@@ -54,7 +54,7 @@ let chosen = $state(selectedMac);
 
 .actions {
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
   justify-content: flex-end;
 }
 </style>

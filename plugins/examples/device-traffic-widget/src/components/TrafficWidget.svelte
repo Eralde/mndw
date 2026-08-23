@@ -310,18 +310,18 @@ onMount(() => {
   height: 100%;
   padding: 0;
   color: var(--mndw-text);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-family: var(--mndw-font-sans);
 }
 
 /* Layout only. `.mndw-alert--danger` owns the box and the severity colours. */
 .notice {
   display: flex;
-  gap: 6px;
+  gap: 0.375rem;
   align-items: center;
   align-self: stretch;
-  margin: 8px 12px;
-  font-size: 12px;
+  margin: 0.5rem 0.75rem;
+  font-size: 0.75rem;
 }
 
 .retry-btn {
@@ -331,20 +331,20 @@ onMount(() => {
 
 .retry-btn::part(button) {
   min-height: auto;
-  padding: 2px 8px;
-  font-size: 11px;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
 }
 
 .empty-state {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0.5rem;
   justify-content: center;
   align-items: center;
   width: 100%;
-  max-width: 320px;
+  max-width: 20rem;
   margin: auto;
-  padding: 16px;
+  padding: 1rem;
   text-align: center;
 }
 
@@ -352,13 +352,13 @@ onMount(() => {
   margin: 0;
   color: var(--mndw-text);
   font-weight: 600;
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .empty-state__subtitle {
-  margin: 0 0 4px;
+  margin: 0 0 0.25rem;
   color: var(--mndw-text-subtle);
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.4;
 }
 
@@ -369,7 +369,7 @@ onMount(() => {
   box-sizing: border-box;
   width: 100%;
   min-height: 0;
-  padding: 8px;
+  padding: 0.5rem;
 }
 
 .widget-header {
@@ -377,7 +377,7 @@ onMount(() => {
   flex-shrink: 0;
   justify-content: space-between;
   align-items: center;
-  padding: 0 4px 6px;
+  padding: 0 0.25rem 0.375rem;
 }
 
 .device-label {
@@ -386,7 +386,7 @@ onMount(() => {
   min-width: 0;
   color: var(--mndw-text);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 0.8125rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -394,7 +394,7 @@ onMount(() => {
 .header-actions {
   display: flex;
   flex-shrink: 0;
-  gap: 8px;
+  gap: 0.5rem;
   align-items: center;
 }
 
@@ -406,19 +406,19 @@ onMount(() => {
 }
 
 .btn-group mndw-segment::part(segment) {
-  padding: 3px 8px;
+  padding: 0.1875rem 0.5rem;
   border: 1px solid var(--mndw-border);
   border-radius: 0;
   background: var(--mndw-surface);
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .btn-group mndw-segment:first-child::part(segment) {
-  border-radius: 3px 0 0 3px;
+  border-radius: 0.1875rem 0 0 0.1875rem;
 }
 
 .btn-group mndw-segment:last-child::part(segment) {
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 0.1875rem 0.1875rem 0;
 }
 
 .btn-group mndw-segment:not(:last-child)::part(segment) {
@@ -427,13 +427,13 @@ onMount(() => {
 
 .gear-btn {
   flex-shrink: 0;
-  font-size: 18px;
+  font-size: 1.125rem;
 }
 
 .msg {
-  padding: 16px;
+  padding: 1rem;
   color: var(--mndw-text-subtle);
-  font-size: 13px;
+  font-size: 0.8125rem;
   text-align: center;
 }
 
@@ -452,9 +452,9 @@ onMount(() => {
 
 .traffic-summary {
   flex: 0 0 auto;
-  padding: 4px 0 0;
+  padding: 0.25rem 0 0;
   color: var(--mndw-text-subtle);
-  font-size: 11px;
+  font-size: 0.6875rem;
   text-align: left;
 }
 </style>

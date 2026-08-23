@@ -60,17 +60,15 @@ const rejectVariantOnlyFields = (value: unknown): unknown => {
     return value;
   }
 
+  // Every state forbids all three variant-only fields except the two that own them: `blocked`
+  // carries `blockers`, `incompatible` carries the protocol pair.
   const forbiddenByState: Record<string, string[]> = {
-    'blocked': ['requiredProtocol', 'supportedProtocols'],
-    'incompatible': ['blockers'],
-    'ready': ['blockers', 'requiredProtocol', 'supportedProtocols'],
-    'starting': ['blockers', 'requiredProtocol', 'supportedProtocols'],
-    'unavailable': ['blockers', 'requiredProtocol', 'supportedProtocols'],
-    'maintenance': ['blockers', 'requiredProtocol', 'supportedProtocols'],
-    'disabled': ['blockers', 'requiredProtocol', 'supportedProtocols'],
-    'not-approved': ['blockers', 'requiredProtocol', 'supportedProtocols'],
+    blocked: ['requiredProtocol', 'supportedProtocols'],
+    incompatible: ['blockers'],
   };
-  const forbidden = forbiddenByState[String(value.state)] ?? [];
+
+  const forbidden = forbiddenByState[String(value.state)]
+    ?? ['blockers', 'requiredProtocol', 'supportedProtocols'];
 
   if (forbidden.some((key) => Object.prototype.hasOwnProperty.call(value, key))) {
     throw new Error('backend status contains fields for a different variant');
@@ -245,17 +243,6 @@ export interface BackendClientDeps {
   origin?: string;
 }
 
-const DAEMON_ERROR_CODES = new Set([
-  'NOT_APPROVED',
-  'DISABLED',
-  'ROUTE_NOT_FOUND',
-  'BACKEND_STARTING',
-  'BACKEND_UNAVAILABLE',
-  'BACKEND_INCOMPATIBLE',
-  'BACKEND_MAINTENANCE',
-  'BAD_GATEWAY',
-]);
-
 const parseRetryAfterSeconds = (response: Response): number | null => {
   const raw = response.headers.get('Retry-After');
 
@@ -266,6 +253,20 @@ const parseRetryAfterSeconds = (response: Response): number | null => {
   const value = Number(raw);
 
   return Number.isSafeInteger(value) ? value : null;
+};
+
+// Single source of truth for the daemon's structured error codes: each maps to the typed error it
+// throws. Membership (`code in ERROR_BY_CODE`) replaces a separate code Set — adding a code here is
+// enough to both recognize and handle it.
+const ERROR_BY_CODE: Record<string, (id: string, res: Response) => Error> = {
+  DISABLED: (id) => new BackendDisabled(id),
+  NOT_APPROVED: (id) => new BackendNotApproved(id),
+  ROUTE_NOT_FOUND: (id) => new BackendUnknownId(id),
+  BACKEND_STARTING: (id, res) => new BackendStarting(id, parseRetryAfterSeconds(res)),
+  BACKEND_UNAVAILABLE: (id) => new BackendUnavailable(id),
+  BACKEND_INCOMPATIBLE: (id) => new BackendIncompatible(id),
+  BACKEND_MAINTENANCE: (id, res) => new BackendMaintenance(id, parseRetryAfterSeconds(res)),
+  BAD_GATEWAY: (id) => new BackendBadGateway(id),
 };
 
 const buildQuery = (query: BackendFetchOptions['query']): string => {
@@ -338,39 +339,13 @@ const mapResponse = async (id: string, res: Response): Promise<Response> => {
     return res;
   }
 
-  if (!code || !DAEMON_ERROR_CODES.has(code)) {
+  const make = code ? ERROR_BY_CODE[code] : undefined;
+
+  if (!make) {
     return res;
   }
 
-  if (code === 'DISABLED') {
-    throw new BackendDisabled(id);
-  }
-
-  if (code === 'NOT_APPROVED') {
-    throw new BackendNotApproved(id);
-  }
-
-  if (code === 'BACKEND_STARTING') {
-    throw new BackendStarting(id, parseRetryAfterSeconds(res));
-  }
-
-  if (code === 'BACKEND_UNAVAILABLE') {
-    throw new BackendUnavailable(id);
-  }
-
-  if (code === 'BACKEND_INCOMPATIBLE') {
-    throw new BackendIncompatible(id);
-  }
-
-  if (code === 'BACKEND_MAINTENANCE') {
-    throw new BackendMaintenance(id, parseRetryAfterSeconds(res));
-  }
-
-  if (code === 'BAD_GATEWAY') {
-    throw new BackendBadGateway(id);
-  }
-
-  throw new BackendUnknownId(id);
+  throw make(id, res);
 };
 
 const doFetch = async (

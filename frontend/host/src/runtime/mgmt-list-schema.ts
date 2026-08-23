@@ -80,10 +80,7 @@ export const pluginListEntrySchema = z.discriminatedUnion('type', [widgetListEnt
 
 export const mgmtListSchema = z.object({plugins: z.array(pluginListEntrySchema)});
 
-export type PluginSource = z.infer<typeof sourceSchema>;
-export type PluginApproval = z.infer<typeof approvalSchema>;
 export type DepsStatus = z.infer<typeof depsStatusSchema>;
-export type PluginRuntimeStatus = z.infer<typeof runtimeStatusSchema>;
 /** Daemon wire-shape descriptor; the SDK `BackendDescriptor` is host-assembled input. */
 export type PluginBackendDescriptor = z.infer<typeof backendDescriptorSchema>;
 export type WidgetListEntry = z.infer<typeof widgetListEntrySchema>;

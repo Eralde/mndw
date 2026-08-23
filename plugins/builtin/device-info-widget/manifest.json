@@ -5,6 +5,17 @@
   "type": "widget",
   "label": "Device Info",
   "entry": "index.js",
-  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
-  "size": {"w": 4, "h": 7, "minW": 3, "minH": 6}
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": "i18n/en.json",
+      "ru": "i18n/ru.json"
+    }
+  },
+  "size": {
+    "w": 4,
+    "h": 8,
+    "minW": 4,
+    "minH": 8
+  }
 }

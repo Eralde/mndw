@@ -70,6 +70,18 @@ function mountGrid(): MountResult {
   return {component, target, ...props};
 }
 
+function createResizeItem(id = 'widget-a:1', w = 4, h = 3): {
+  item: HTMLElement;
+  node: {id: string; w: number; h: number};
+} {
+  const item = document.createElement('div');
+  const node = {id, w, h};
+
+  Object.assign(item, {gridstackNode: node});
+
+  return {item, node};
+}
+
 describe('DashboardGrid', () => {
   beforeEach(() => {
     order.length = 0;
@@ -91,7 +103,16 @@ describe('DashboardGrid', () => {
   it('registers every listener before signalling grid ready', () => {
     const {component, target} = mountGrid();
 
-    expect(order).toEqual(['init', 'on:removed', 'on:added', 'on:change', 'on:resizestop', 'ready']);
+    expect(order).toEqual([
+      'init',
+      'on:removed',
+      'on:added',
+      'on:change',
+      'on:resizestart',
+      'on:resize',
+      'on:resizestop',
+      'ready',
+    ]);
 
     void unmount(component);
     target.remove();
@@ -123,7 +144,14 @@ describe('DashboardGrid', () => {
 
     void unmount(component);
 
-    expect(offEvents).toEqual(expect.arrayContaining(['removed', 'added', 'change', 'resizestop']));
+    expect(offEvents).toEqual(expect.arrayContaining([
+      'removed',
+      'added',
+      'change',
+      'resizestart',
+      'resize',
+      'resizestop',
+    ]));
     expect(destroy).toHaveBeenCalledWith(false);
     expect(onGridDestroyed).toHaveBeenCalledTimes(1);
 
@@ -190,10 +218,9 @@ describe('DashboardGrid', () => {
 
   it('forwards integer resize dimensions from the resized node', () => {
     const {component, target, onWidgetResized} = mountGrid();
+    const {item} = createResizeItem('widget-a:1', 6, 4);
 
-    handlers.get('resizestop')?.(new Event('resizestop'), {
-      gridstackNode: {id: 'widget-a:1', w: 6, h: 4},
-    });
+    handlers.get('resizestop')?.(new Event('resizestop'), item);
 
     expect(onWidgetResized).toHaveBeenCalledWith('widget-a:1', {w: 6, h: 4});
 
@@ -203,13 +230,64 @@ describe('DashboardGrid', () => {
 
   it('ignores resize events with missing or non-integer node data', () => {
     const {component, target, onWidgetResized} = mountGrid();
+    const missingNodeItem = document.createElement('div');
+    const nonIntegerItem = createResizeItem('widget-a:1', 6.5, 4).item;
 
-    handlers.get('resizestop')?.(new Event('resizestop'), {gridstackNode: undefined});
-    handlers.get('resizestop')?.(new Event('resizestop'), {
-      gridstackNode: {id: 'widget-a:1', w: 6.5, h: 4},
-    });
+    Object.assign(missingNodeItem, {gridstackNode: undefined});
+
+    handlers.get('resizestop')?.(new Event('resizestop'), missingNodeItem);
+    handlers.get('resizestop')?.(new Event('resizestop'), nonIntegerItem);
 
     expect(onWidgetResized).not.toHaveBeenCalled();
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('shows and updates the current grid dimensions while resizing', () => {
+    const {component, target} = mountGrid();
+    const {item, node} = createResizeItem();
+
+    handlers.get('resizestart')?.(new Event('resizestart'), item);
+
+    expect(item.querySelector('.mndw-grid-resize-indicator')?.textContent).toBe('4 × 3');
+
+    node.w = 6;
+    node.h = 4;
+    handlers.get('resize')?.(new Event('resize'), item);
+
+    expect(item.querySelector('.mndw-grid-resize-indicator')?.textContent).toBe('6 × 4');
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('removes the indicator on resize stop and forwards final dimensions', () => {
+    const {component, target, onWidgetResized} = mountGrid();
+    const {item, node} = createResizeItem();
+
+    handlers.get('resizestart')?.(new Event('resizestart'), item);
+    node.w = 7;
+    node.h = 5;
+    handlers.get('resizestop')?.(new Event('resizestop'), item);
+
+    expect(item.querySelector('.mndw-grid-resize-indicator')).toBeNull();
+    expect(onWidgetResized).toHaveBeenCalledWith('widget-a:1', {w: 7, h: 5});
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('ignores resize-preview events without valid integer dimensions', () => {
+    const {component, target} = mountGrid();
+    const item = document.createElement('div');
+
+    Object.assign(item, {gridstackNode: {id: 'widget-a:1', w: 6.5, h: 4}});
+
+    handlers.get('resizestart')?.(new Event('resizestart'), item);
+    handlers.get('resize')?.(new Event('resize'), item);
+
+    expect(item.querySelector('.mndw-grid-resize-indicator')).toBeNull();
 
     void unmount(component);
     target.remove();

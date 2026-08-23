@@ -340,10 +340,11 @@ describe('DashboardPage', () => {
 
   it('forwards resize events to the tile registry', () => {
     const {component, target} = mountPage();
+    const item = document.createElement('div');
 
-    gridHandlers.get('resizestop')?.(new Event('resizestop'), {
-      gridstackNode: {id: 'widget-a:1', w: 6, h: 4},
-    });
+    Object.assign(item, {gridstackNode: {id: 'widget-a:1', w: 6, h: 4}});
+
+    gridHandlers.get('resizestop')?.(new Event('resizestop'), item);
 
     expect(resizeWidgetTile).toHaveBeenCalledWith('widget-a:1', {w: 6, h: 4});
 

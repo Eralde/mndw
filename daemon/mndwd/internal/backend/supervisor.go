@@ -209,15 +209,21 @@ type reconcilePlan struct {
 	removeIDs []string
 }
 
+// lessServiceSpec is the supervisor's ordering policy: builtin services first, then by PluginID.
+// Both start (Reconcile) and promotion (promoteBlocked) sort by it so they act in one consistent order.
+func lessServiceSpec(a, b ServiceSpec) bool {
+	if a.Builtin != b.Builtin {
+		return a.Builtin
+	}
+
+	return a.PluginID < b.PluginID
+}
+
 func (s *Supervisor) Reconcile(_ context.Context, specs []ServiceSpec) reconcilePlan {
 	ordered := append([]ServiceSpec(nil), specs...)
 
 	sort.SliceStable(ordered, func(left, right int) bool {
-		if ordered[left].Builtin != ordered[right].Builtin {
-			return ordered[left].Builtin
-		}
-
-		return ordered[left].PluginID < ordered[right].PluginID
+		return lessServiceSpec(ordered[left], ordered[right])
 	})
 
 	s.mu.Lock()
@@ -923,11 +929,7 @@ func (s *Supervisor) promoteBlocked() {
 
 	s.mu.Unlock()
 	sort.SliceStable(blocked, func(left, right int) bool {
-		if blocked[left].Builtin != blocked[right].Builtin {
-			return blocked[left].Builtin
-		}
-
-		return blocked[left].PluginID < blocked[right].PluginID
+		return lessServiceSpec(blocked[left], blocked[right])
 	})
 
 	for _, spec := range blocked {

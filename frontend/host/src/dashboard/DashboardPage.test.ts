@@ -30,6 +30,7 @@ const mobileState = vi.hoisted(() => {
 
 const removeCallbacks = vi.hoisted(() => new Map<string, (tileId: string) => void>());
 const mobileFrames = vi.hoisted(() => new Map<string, HTMLElement>());
+const currentTitles = vi.hoisted(() => new Map<string, string>());
 
 const gridHandlers = new Map<string, Handler>();
 const teardownLog: string[] = [];
@@ -58,6 +59,9 @@ vi.mock('./grid-dashboard-setup.js', () => ({
 
 vi.mock('./tile-controller.js', () => ({
   removeTileController: vi.fn(),
+  getTileController: vi.fn((id: string) => ({
+    getTileTitle: () => currentTitles.get(id) ?? '',
+  })),
   ensureTileController: vi.fn((
     _services: unknown,
     _registry: unknown,
@@ -174,6 +178,7 @@ describe('DashboardPage', () => {
     mobileState.removeEventListener.mockClear();
     removeCallbacks.clear();
     mobileFrames.clear();
+    currentTitles.clear();
     gridHandlers.clear();
     teardownLog.length = 0;
     save.mockReturnValue([]);
@@ -583,6 +588,26 @@ describe('DashboardPage', () => {
     void unmount(mobile.component);
   });
 
+  it('uses current tile titles in the arrange overlay', () => {
+    configureTwoClockWidgets();
+    currentTitles.set('widget-clock:1', 'WAN download');
+    currentTitles.set('widget-clock:2', 'WAN upload');
+    mobileState.matches = true;
+
+    const {component, target} = mountPage();
+
+    arrangeButton(target)?.click();
+    flushSync();
+
+    expect([...target.querySelectorAll('.mndw-order-card__label')].map((label) => label.textContent)).toEqual([
+      'WAN download',
+      'WAN upload',
+    ]);
+    expect(target.querySelector('[aria-label="Move WAN download down"]')).not.toBeNull();
+
+    void unmount(component);
+  });
+
   it('hides an open overlay when the viewport switches to desktop', () => {
     configureTwoClockWidgets();
     mobileState.matches = true;
@@ -610,7 +635,7 @@ describe('DashboardPage', () => {
 
     arrangeButton(target)?.click();
     flushSync();
-    target.querySelector<HTMLButtonElement>('[aria-label="Move clock 1 down"]')?.click();
+    target.querySelector<HTMLButtonElement>('[aria-label="Move clock down"]')?.click();
     flushSync();
     target.querySelector<HTMLButtonElement>('.mndw-floating-panel__close')?.click();
     flushSync();

@@ -159,6 +159,22 @@ describe('tile controller', () => {
     expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('clock');
   });
 
+  it('returns the current effective title', () => {
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
+
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'clock', 'clock:1', vi.fn());
+
+    expect(controller?.getTileTitle()).toBe('clock');
+
+    controller?.setTileTitle('eth0');
+
+    expect(controller?.getTileTitle()).toBe('eth0');
+
+    controller?.setTileTitle('');
+
+    expect(controller?.getTileTitle()).toBe('clock');
+  });
+
   it('keeps the manifest label on placeholder tiles', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', noop));
     replaceDepsStatuses([{name: 'traffic', depsStatus: 'installing'}]);

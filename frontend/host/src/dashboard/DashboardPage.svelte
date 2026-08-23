@@ -1,7 +1,6 @@
 <script lang="ts">
 import type {GridStack as GridStackType} from 'gridstack';
 import {onDestroy, onMount} from 'svelte';
-import {SvelteMap} from 'svelte/reactivity';
 import {mobileMediaQuery} from '../layout/breakpoint.js';
 import {depsStatusMap} from '../state/deps-status.svelte.js';
 import DashboardGrid from './DashboardGrid.svelte';
@@ -19,6 +18,7 @@ import {
 import {
   destroyAllTiles,
   ensureTileController,
+  getTileController,
   hydratePendingTiles,
   removeTileController,
 } from './tile-controller.js';
@@ -240,14 +240,10 @@ const handleBreakpointChange = (event: MediaQueryListEvent): void => {
 };
 
 const overlayCards = $derived.by(() => {
-  const counts = new SvelteMap<string, number>();
-
-  for (const id of mobileOrder) {
-    const parsed = parseWidgetTileId(id);
-
-    if (parsed !== null) {
-      counts.set(parsed.pluginName, (counts.get(parsed.pluginName) ?? 0) + 1);
-    }
+  // Snapshot current titles when overlay opens. Avoid changing card labels while
+  // user is arranging widgets if a plugin updates its title concurrently.
+  if (!orderOverlayOpen) {
+    return [];
   }
 
   return mobileOrder.flatMap((id) => {
@@ -257,14 +253,13 @@ const overlayCards = $derived.by(() => {
       return [];
     }
 
-    const label = registry.get(parsed.pluginName)?.entry.label
+    const fallback = registry.get(parsed.pluginName)?.entry.label
       ?? parsed.pluginName;
+    const currentTitle = getTileController(id)?.getTileTitle() ?? '';
 
     return [{
       id,
-      label: (counts.get(parsed.pluginName) ?? 0) > 1
-        ? `${label} ${parsed.counter}`
-        : label,
+      label: currentTitle || fallback,
     }];
   });
 });

@@ -23,6 +23,7 @@ export interface TileController {
   body: HTMLElement;
   handle: WidgetTileHandle;
   setTileTitle: (title: string) => void;
+  getTileTitle: () => string;
   /** True while the tile shows the installing placeholder awaiting hydration. */
   pending: boolean;
 }
@@ -59,7 +60,12 @@ function renderTileNotice(body: HTMLElement, kind: 'installing' | 'failed'): voi
 function buildTileFrame(
   label: string,
   onRemove: () => void,
-): {frame: HTMLElement; body: HTMLElement; setTileTitle: (title: string) => void} {
+): {
+  frame: HTMLElement;
+  body: HTMLElement;
+  setTileTitle: (title: string) => void;
+  getTileTitle: () => string;
+} {
   const frame = document.createElement('div');
 
   frame.className = 'mndw-grid-tile';
@@ -70,6 +76,8 @@ function buildTileFrame(
   title.textContent = label;
 
   title.setAttribute('data-manifest-label', label);
+
+  let currentTitle = label;
 
   const removeBtn = document.createElement('button');
 
@@ -90,13 +98,16 @@ function buildTileFrame(
     const fallback = title.getAttribute('data-manifest-label') ?? label;
     const effectiveTitle = tileTitle || fallback;
 
+    currentTitle = effectiveTitle;
     title.textContent = effectiveTitle;
     removeBtn.setAttribute('aria-label', hostT('dashboard.remove-widget', {label: fallback}));
   };
 
+  const getTileTitle = (): string => currentTitle;
+
   frame.append(title, removeBtn, body);
 
-  return {frame, body, setTileTitle};
+  return {frame, body, setTileTitle, getTileTitle};
 }
 
 /**
@@ -125,7 +136,7 @@ export function ensureTileController(
     return null;
   }
 
-  const {frame, body, setTileTitle} = buildTileFrame(plugin.entry.label, () => onRemoveRequest(id));
+  const {frame, body, setTileTitle, getTileTitle} = buildTileFrame(plugin.entry.label, () => onRemoveRequest(id));
   const status = getDepsStatus(pluginName);
 
   let handle: WidgetTileHandle;
@@ -150,6 +161,7 @@ export function ensureTileController(
     body,
     handle,
     setTileTitle,
+    getTileTitle,
     pending: status === 'installing',
   };
 

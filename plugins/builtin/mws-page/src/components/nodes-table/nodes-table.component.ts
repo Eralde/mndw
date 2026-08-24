@@ -51,7 +51,7 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
   protected readonly sortKey = signal<NodeSortKey>('name');
   protected readonly sortDir = signal<NodeSortDir>('asc');
 
-  protected readonly columns: Column<NodeRow>[] = [
+  protected readonly columns = [
     column<NodeRow>()({id: 'name', label: this.t('nodes.name'), accessor: (row) => row.node.name, sortable: true,
       hideable: false}),
     column<NodeRow>()({id: 'clients', label: this.t('nodes.clients'), accessor: (row) => row.node.clients.length,
@@ -67,7 +67,7 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
       this.connection(row.node)}),
     column<NodeRow>()({id: 'firmware', label: this.t('nodes.firmware'), accessor: (row) => row.node.fw ?? null,
       sortable: true}),
-  ];
+  ] as Column<unknown>[];
 
   protected readonly allRows = computed(() => buildNodeRows(this.roots()));
   protected readonly rows = computed(() => filterNodeRows(this.allRows(), this.search(), this.quickFilter()));
@@ -84,12 +84,12 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
     void this.columnsStore.flush();
   }
 
-  protected onSearch(event: CustomEvent<{value?: string}>): void {
-    this.search.set(event.detail.value ?? '');
+  protected onSearch(event: Event): void {
+    this.search.set((event as CustomEvent<{value?: string}>).detail?.value ?? '');
   }
 
-  protected onSortChange(event: CustomEvent<MndwSortChangeDetail>): void {
-    const sort = event.detail.sort;
+  protected onSortChange(event: Event): void {
+    const sort = (event as CustomEvent<MndwSortChangeDetail>).detail.sort;
 
     if (sort === null) {
       this.sortKey.set('name');
@@ -102,8 +102,8 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
     this.sortDir.set(sort.direction);
   }
 
-  protected onVisibilityChange(event: CustomEvent<MndwColumnVisibilityChangeDetail>): void {
-    const hidden = new Set(event.detail.hidden);
+  protected onVisibilityChange(event: Event): void {
+    const hidden = new Set((event as CustomEvent<MndwColumnVisibilityChangeDetail>).detail.hidden);
 
     for (const id of OPTIONAL_NODE_COLUMN_IDS) {
       const visible = !hidden.has(id);

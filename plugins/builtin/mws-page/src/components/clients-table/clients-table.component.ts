@@ -22,7 +22,7 @@ export class MwsClientsTableComponent implements OnDestroy {
   protected readonly sortKey = signal<SortKey>('name');
   protected readonly sortDir = signal<SortDir>('asc');
 
-  protected readonly columns: Column<ClientRow>[] = [
+  protected readonly columns = [
     column<ClientRow>()({id: 'name', label: this.t('clients.name'), accessor: (row) => row.client.name,
       sortable: true}),
     column<ClientRow>()({id: 'node', label: this.t('clients.node'), accessor: (row) => row.node.name, sortable: true}),
@@ -33,7 +33,7 @@ export class MwsClientsTableComponent implements OnDestroy {
     column<ClientRow>()({id: 'mac', label: this.t('clients.mac'), accessor: (row) => row.client.mac, sortable: true}),
     column<ClientRow>()({id: 'uptime', label: this.t('clients.uptime'), accessor: (row) => row.client.uptime,
       kind: 'number', sortable: true}),
-  ];
+  ] as Column<unknown>[];
 
   protected readonly rowKey = (row: ClientRow): string => `${row.node.id}:${row.client.mac}`;
   protected readonly allRows = computed<ClientRow[]>(() => buildClientRows(this.roots()));
@@ -42,12 +42,12 @@ export class MwsClientsTableComponent implements OnDestroy {
 
   public ngOnDestroy(): void {}
 
-  protected onSearch(event: CustomEvent<{value: string}>): void {
-    this.search.set(event.detail.value);
+  protected onSearch(event: Event): void {
+    this.search.set((event as CustomEvent<{value?: string}>).detail?.value ?? '');
   }
 
-  protected onSortChange(event: CustomEvent<MndwSortChangeDetail>): void {
-    const sort = event.detail.sort;
+  protected onSortChange(event: Event): void {
+    const sort = (event as CustomEvent<MndwSortChangeDetail>).detail.sort;
 
     if (sort === null) {
       this.sortKey.set('name');

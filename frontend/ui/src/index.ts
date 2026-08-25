@@ -89,6 +89,8 @@ export type {
   MndwSortChangeDetail,
   MndwTableLabels,
   MndwTableProps,
+  PinDescriptor,
+  PinState,
   RowKey,
   ScrollToRowOptions,
   SortState,

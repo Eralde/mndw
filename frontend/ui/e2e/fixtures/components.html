@@ -80,6 +80,14 @@
         width: 960px;
       }
 
+      #table-sticky-fixture {
+        width: 480px;
+      }
+
+      #table-sticky-fixture::part(viewport) {
+        max-height: 200px;
+      }
+
       /* Pinned to the top edge so the tooltip above it is always clipped and has to flip. */
       #edge-trigger {
         position: fixed;
@@ -204,6 +212,12 @@
       <mndw-table
         id="table-fixture"
         caption="Device fixtures"
+      ></mndw-table>
+      <mndw-table
+        id="table-sticky-fixture"
+        layout="auto"
+        min-width="960px"
+        sticky-header
       ></mndw-table>
     </section>
     <script type="module" src="./components.ts"></script>

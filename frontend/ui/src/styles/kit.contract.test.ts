@@ -179,6 +179,8 @@ describe('kit.css class contract', () => {
     expect(css).toMatch(/\.mndw-field:has\(> mndw-switch\)[\s\S]*flex-direction:\s*row/u);
     expect(css).toMatch(/\.mndw-field:has\(> mndw-switch\)[\s\S]*gap:\s*var\(--mndw-space-1\)/u);
     expect(css).not.toMatch(/\.mndw-field:has\(> mndw-switch\)[\s\S]*space-between/u);
-    expect(css).toMatch(/\.mndw-field:has\(> mndw-switch\) > \.mndw-field__hint,[\s\S]*\.mndw-field__error[\s\S]*flex:\s*0\s+0\s+100%/u);
+    expect(css).toMatch(
+      /\.mndw-field:has\(> mndw-switch\) > \.mndw-field__hint,[\s\S]*\.mndw-field__error[\s\S]*flex:\s*0\s+0\s+100%/u,
+    );
   });
 });

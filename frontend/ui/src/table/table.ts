@@ -52,6 +52,8 @@ import {
   type MndwSelectionChangeDetail,
   type MndwSortChangeDetail,
   type MndwTableLabels,
+  type PinDescriptor,
+  type PinState,
   type RowKey,
   type ScrollToRowOptions,
   type SortState,
@@ -110,6 +112,9 @@ export class MndwTable<Row = unknown> extends LitElement {
     rowLabel: {type: Object, attribute: false},
     labels: {type: Object, attribute: false},
     emptyLabel: {type: String, attribute: 'empty-label'},
+    layout: {type: String, reflect: true},
+    minWidth: {type: String, attribute: 'min-width'},
+    stickyHeader: {type: Boolean, attribute: 'sticky-header', reflect: true},
   };
 
   public static override readonly styles = css`
@@ -157,6 +162,16 @@ export class MndwTable<Row = unknown> extends LitElement {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
+    }
+
+    :host([layout='auto']) [part='table'] {
+      table-layout: auto;
+      width: max-content;
+    }
+
+    :host([virtual][layout='auto']) [part='table'] {
+      table-layout: fixed;
+      width: 100%;
     }
 
     [part='caption'] {
@@ -214,6 +229,35 @@ export class MndwTable<Row = unknown> extends LitElement {
 
     [part='row']:hover [part~='cell'] {
       background: var(--mndw-surface-hover);
+    }
+
+    .nowrap {
+      white-space: nowrap;
+    }
+
+    .pinned {
+      position: sticky;
+      z-index: 1;
+      background: var(--mndw-surface);
+    }
+
+    [part~='header-cell'].pinned {
+      z-index: 2;
+    }
+
+    .pinned-last {
+      border-inline-end: 1px solid var(--mndw-border);
+    }
+
+    :host([sticky-header]) [part~='header-cell'] {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--mndw-surface);
+    }
+
+    :host([sticky-header]) [part~='header-cell'].pinned {
+      z-index: 3;
     }
 
     [part='sort-indicator'] {
@@ -309,6 +353,9 @@ export class MndwTable<Row = unknown> extends LitElement {
   declare public rowLabel: ((row: Row) => string) | undefined;
   declare public labels: Partial<MndwTableLabels> | undefined;
   declare public emptyLabel: string;
+  declare public layout: 'fixed' | 'auto';
+  declare public minWidth: string;
+  declare public stickyHeader: boolean;
 
   private readonly visibilityState = new ColumnVisibilityState();
   private readonly geometryProvider: TableGeometryProvider;
@@ -319,6 +366,8 @@ export class MndwTable<Row = unknown> extends LitElement {
   private pendingGeometryFrame: number | null = null;
   private observerAttempted = false;
   private warnedInactiveReason: string | null = null;
+  private warnedStickyReason: string | null = null;
+  private pinState: PinState = {byKey: new Map(), inactiveReason: null, inactiveColumnId: null};
   private lastViewportContentWidth: number | undefined;
   private pendingScrollTarget: {key: string; align: 'start' | 'center' | 'end' | 'nearest'} | null = null;
   private expectedProgrammaticScrollTop: number | undefined;
@@ -342,6 +391,12 @@ export class MndwTable<Row = unknown> extends LitElement {
   private announceText = '';
 
   private static readonly WIDTH_EPSILON = 1;
+  private static readonly UTILITY_COL_WIDTH = '2.5rem';
+  private static readonly PIN_KEYS = {
+    expandLead: '__mndw_pin_expandLead',
+    select: '__mndw_pin_select',
+    drag: '__mndw_pin_drag',
+  } as const;
 
   constructor(geometryProvider?: TableGeometryProvider) {
     super();
@@ -370,6 +425,9 @@ export class MndwTable<Row = unknown> extends LitElement {
     this.rowLabel = undefined;
     this.labels = undefined;
     this.emptyLabel = '';
+    this.layout = 'fixed';
+    this.minWidth = '';
+    this.stickyHeader = false;
 
     this.addEventListener('mndwchange', this.handleCheckboxChange);
     this.addEventListener('click', this.handleClick);
@@ -407,6 +465,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     const anchorBeforeLogicalChange = this.captureCurrentAnchor();
 
     this.configureGeometryMode();
+    this.configureLayoutMode();
 
     const columnViolations = validateColumns(this.columns);
     const {rows: validRows, violations: rowViolations} = validateRows(this.rows, this.rowKey);
@@ -420,6 +479,8 @@ export class MndwTable<Row = unknown> extends LitElement {
 
     this.effectiveHidden = this.visibilityState.effectiveHidden(this.effectiveColumns, this.hiddenColumns);
     this.effectiveSortState = effectiveSort(this.effectiveColumns, this.sort, this.effectiveHidden);
+    this.pinState = this.computePinState();
+    this.applyStickyInactive(this.pinState);
 
     const sortChanged = !this.sameSortState(previousSortState, this.effectiveSortState);
 
@@ -530,6 +591,7 @@ export class MndwTable<Row = unknown> extends LitElement {
           <div class="mndw-table-viewport" part="viewport" tabindex="-1">
             <table
               part="table"
+              style=${this.tableStyle()}
               aria-rowcount=${this.virtual ? this.logicalRowCount() : nothing}
             >
               ${this.caption ? html`<caption part="caption">${this.caption}</caption>` : nothing}
@@ -566,10 +628,15 @@ export class MndwTable<Row = unknown> extends LitElement {
     return html`
       <thead part="header">
         <tr part="header-row" aria-rowindex=${this.virtual ? 1 : nothing}>
-          ${this.shouldRenderLeadingToggle() ? this.renderExpandHeaderCell() : nothing}
+          ${this.shouldRenderLeadingToggle() ? this.renderExpandHeaderCell(MndwTable.PIN_KEYS.expandLead) : nothing}
           ${
       this.selectable
-        ? html`<th part="header-cell select-cell" scope="col">
+        ? html`<th
+            part="header-cell select-cell"
+            scope="col"
+            class=${classAttr(this.pinClasses(MndwTable.PIN_KEYS.select))}
+            style=${this.utilityPinStyle(MndwTable.PIN_KEYS.select)}
+          >
               ${
           this.renderCheckbox({
             ariaLabel: labels.selectAll,
@@ -583,7 +650,12 @@ export class MndwTable<Row = unknown> extends LitElement {
     }
           ${
       this.reorderable && this.effectiveSortState === null
-        ? html`<th part="header-cell" scope="col"></th>`
+        ? html`<th
+            part="header-cell"
+            scope="col"
+            class=${classAttr(this.pinClasses(MndwTable.PIN_KEYS.drag))}
+            style=${this.utilityPinStyle(MndwTable.PIN_KEYS.drag)}
+          ></th>`
         : nothing
     }
           ${
@@ -614,12 +686,17 @@ export class MndwTable<Row = unknown> extends LitElement {
     `;
   }
 
-  private renderExpandHeaderCell(): unknown {
-    return html`<th part="header-cell expand-cell" scope="col"></th>`;
+  private renderExpandHeaderCell(pinKey?: string): unknown {
+    return html`<th
+      part="header-cell expand-cell"
+      scope="col"
+      class=${classAttr(pinKey === undefined ? [] : this.pinClasses(pinKey))}
+      style=${pinKey === undefined ? nothing : this.utilityPinStyle(pinKey)}
+    ></th>`;
   }
 
   private renderHeaderCell(column: Column<Row>, labels: MndwTableLabels): unknown {
-    const align = classAttr(this.alignClassList(column));
+    const align = classAttr([...this.alignClassList(column), ...this.pinClasses(column.id)]);
     const style = this.columnStyle(column);
 
     if (column.sortable !== true) {
@@ -649,10 +726,18 @@ export class MndwTable<Row = unknown> extends LitElement {
 
     return html`
       <tr part="row" data-row-key=${key} aria-rowindex=${this.virtual ? this.logicalRowIndex(key, false) : nothing}>
-        ${this.shouldRenderLeadingToggle() ? this.renderExpandCell(row, index, key, labels) : nothing}
+        ${
+      this.shouldRenderLeadingToggle()
+        ? this.renderExpandCell(row, index, key, labels, MndwTable.PIN_KEYS.expandLead)
+        : nothing
+    }
         ${
       this.selectable
-        ? html`<td part="select-cell cell">
+        ? html`<td
+            part="select-cell cell"
+            class=${classAttr(this.pinClasses(MndwTable.PIN_KEYS.select))}
+            style=${this.utilityPinStyle(MndwTable.PIN_KEYS.select)}
+          >
             ${
           this.renderCheckbox({
             ariaLabel: labels.selectRow(this.rowName(row, index)),
@@ -666,7 +751,11 @@ export class MndwTable<Row = unknown> extends LitElement {
     }
         ${
       this.reorderable && this.effectiveSortState === null
-        ? html`<td part="cell">
+        ? html`<td
+            part="cell"
+            class=${classAttr(this.pinClasses(MndwTable.PIN_KEYS.drag))}
+            style=${this.utilityPinStyle(MndwTable.PIN_KEYS.drag)}
+          >
             <button
               part="drag-handle"
               type="button"
@@ -705,11 +794,15 @@ export class MndwTable<Row = unknown> extends LitElement {
     `;
   }
 
-  private renderExpandCell(row: Row, index: number, key: string, labels: MndwTableLabels): unknown {
+  private renderExpandCell(row: Row, index: number, key: string, labels: MndwTableLabels, pinKey?: string): unknown {
     const isExpanded = this.expandedSet().has(key);
     const name = this.rowName(row, index);
 
-    return html`<td part="cell expand-cell">
+    return html`<td
+      part="cell expand-cell"
+      class=${classAttr(pinKey === undefined ? [] : this.pinClasses(pinKey))}
+      style=${pinKey === undefined ? nothing : this.utilityPinStyle(pinKey)}
+    >
       <button
         part="expand-toggle"
         type="button"
@@ -721,7 +814,7 @@ export class MndwTable<Row = unknown> extends LitElement {
   }
 
   private renderCell(column: Column<Row>, row: Row): unknown {
-    const align = this.alignClassList(column);
+    const align = [...this.alignClassList(column), ...this.pinClasses(column.id)];
     const style = this.columnStyle(column);
     const slotId = column.renderer !== undefined
       ? this.cellRegistry?.getSlotId(resolveRowKey(this.rowKey, row), column.id)
@@ -840,6 +933,16 @@ export class MndwTable<Row = unknown> extends LitElement {
     }
 
     this.setVirtualInactiveReason(null);
+  }
+
+  private configureLayoutMode(): void {
+    const inactive = this.virtual && this.layout === 'auto';
+
+    if (inactive) {
+      this.setAttribute('data-mndw-layout-inactive', 'virtual');
+    } else {
+      this.removeAttribute('data-mndw-layout-inactive');
+    }
   }
 
   private isVirtualRenderingActive(): boolean {
@@ -1258,8 +1361,141 @@ export class MndwTable<Row = unknown> extends LitElement {
     return this.expandable && this.toggleAfterColumn === columnId;
   }
 
+  private leadingUtilityKeys(): string[] {
+    const keys: string[] = [];
+
+    if (this.shouldRenderLeadingToggle()) {
+      keys.push(MndwTable.PIN_KEYS.expandLead);
+    }
+
+    if (this.selectable) {
+      keys.push(MndwTable.PIN_KEYS.select);
+    }
+
+    if (this.reorderable && this.effectiveSortState === null) {
+      keys.push(MndwTable.PIN_KEYS.drag);
+    }
+
+    return keys;
+  }
+
+  private computePinState(): PinState {
+    const visible = this.effectiveColumns.filter((column) => !this.effectiveHidden.has(column.id));
+    const pinnedData: (Column<Row> & {width: string})[] = [];
+    let inactiveReason: PinState['inactiveReason'] = null;
+    let inactiveColumnId: string | null = null;
+
+    for (const column of visible) {
+      if (column.sticky !== 'start') {
+        break;
+      }
+
+      if (column.width === undefined) {
+        inactiveReason = 'missing-width';
+        inactiveColumnId = column.id;
+        break;
+      }
+
+      pinnedData.push({...column, width: column.width});
+    }
+
+    if (inactiveReason === null) {
+      const offending = visible.slice(pinnedData.length).find((column) => column.sticky === 'start');
+
+      if (offending !== undefined) {
+        inactiveReason = 'not-leading';
+        inactiveColumnId = offending.id;
+      }
+    }
+
+    const byKey = new Map<string, PinDescriptor>();
+
+    if (pinnedData.length > 0) {
+      const slots: {key: string; width: string}[] = [
+        ...this.leadingUtilityKeys().map((key) => ({key, width: MndwTable.UTILITY_COL_WIDTH})),
+        ...pinnedData.map((column) => ({key: column.id, width: column.width})),
+      ];
+      const widthsSoFar: string[] = [];
+
+      slots.forEach((slot, index) => {
+        const inset = widthsSoFar.length === 0
+          ? '0'
+          : widthsSoFar.length === 1
+          ? widthsSoFar[0]
+          : `calc(${widthsSoFar.join(' + ')})`;
+
+        byKey.set(slot.key, {insetInlineStart: inset, isLast: index === slots.length - 1});
+        widthsSoFar.push(slot.width);
+      });
+    }
+
+    return {byKey, inactiveReason, inactiveColumnId};
+  }
+
+  private applyStickyInactive(state: PinState): void {
+    if (state.inactiveReason === null) {
+      this.removeAttribute('data-mndw-sticky-inactive');
+      this.warnedStickyReason = null;
+
+      return;
+    }
+
+    this.setAttribute('data-mndw-sticky-inactive', state.inactiveReason);
+
+    const signature = `${state.inactiveReason}:${state.inactiveColumnId ?? ''}`;
+
+    if (this.warnedStickyReason !== signature) {
+      this.warnedStickyReason = signature;
+      console.warn(
+        `<${MNDW_TABLE_TAG}> sticky column "${state.inactiveColumnId ?? ''}" inactive: ${state.inactiveReason}`,
+      );
+    }
+  }
+
+  private tableStyle(): string | typeof nothing {
+    return this.minWidth === '' ? nothing : `min-width: ${this.minWidth};`;
+  }
+
   private columnStyle(column: Column<Row>): string | typeof nothing {
-    return column.width === undefined ? nothing : `width: ${column.width};`;
+    const pin = this.pinState.byKey.get(column.id);
+    const parts: string[] = [];
+
+    if (column.width !== undefined) {
+      parts.push(`width: ${column.width};`);
+    }
+
+    if (pin !== undefined && column.width !== undefined) {
+      parts.push(
+        `min-width: ${column.width};`,
+        `max-width: ${column.width};`,
+        'box-sizing: border-box;',
+        `inset-inline-start: ${pin.insetInlineStart};`,
+      );
+    }
+
+    return parts.length === 0 ? nothing : parts.join(' ');
+  }
+
+  private pinClasses(key: string): string[] {
+    const pin = this.pinState.byKey.get(key);
+
+    if (pin === undefined) {
+      return [];
+    }
+
+    return pin.isLast ? ['pinned', 'pinned-last'] : ['pinned'];
+  }
+
+  private utilityPinStyle(key: string): string | typeof nothing {
+    const pin = this.pinState.byKey.get(key);
+
+    if (pin === undefined) {
+      return nothing;
+    }
+
+    const width = MndwTable.UTILITY_COL_WIDTH;
+
+    return `width: ${width}; min-width: ${width}; max-width: ${width}; box-sizing: border-box; inset-inline-start: ${pin.insetInlineStart};`;
   }
 
   private columnSpan(): number {
@@ -1281,6 +1517,10 @@ export class MndwTable<Row = unknown> extends LitElement {
 
     if (column.align === 'center') {
       classes.push('align-center');
+    }
+
+    if (column.nowrap === true) {
+      classes.push('nowrap');
     }
 
     return classes;

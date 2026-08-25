@@ -14,6 +14,10 @@ export interface Column<Row, Value = unknown> {
   hideable?: boolean;
   align?: CellAlign;
   width?: string;
+  /** Pin this column to the inline-start edge. Valid only on the contiguous leading run of visible data columns; requires an explicit width. */
+  sticky?: 'start';
+  /** Apply white-space: nowrap to this column's header and body cells. */
+  nowrap?: boolean;
   renderer?: () => CellRenderer<Row, Value>;
   badge?: (value: Value, row: Row) => {text: string; tone: BadgeTone};
   comparator?: (a: Value, b: Value) => number;
@@ -80,6 +84,9 @@ export interface MndwTableProps<Row> {
   rowLabel?: (row: Row) => string;
   labels?: Partial<MndwTableLabels>;
   emptyLabel?: string;
+  layout?: 'fixed' | 'auto';
+  minWidth?: string;
+  stickyHeader?: boolean;
   expandable?: boolean;
   expandOn?: 'toggle' | 'row';
   toggleCell?: 'leading' | 'trailing';
@@ -131,3 +138,15 @@ export interface MndwRowExpandDetail {
 
 export const MNDW_ROW_EXPAND_EVENT = 'mndwrowexpand';
 export const DETAIL_COL_ID = '__mndw_detail__';
+
+export interface PinDescriptor {
+  insetInlineStart: string;
+  isLast: boolean;
+}
+
+export interface PinState {
+  byKey: Map<string, PinDescriptor>;
+  inactiveReason: 'not-leading' | 'missing-width' | null;
+  /** Column id that caused inactiveReason; used for the dev warning. null when no reason. */
+  inactiveColumnId: string | null;
+}

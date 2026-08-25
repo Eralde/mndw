@@ -109,7 +109,7 @@ builder) and assign `rows` as a new array reference on each update; the table ow
 selection with select-all, row drag/keyboard reorder, and uniform column show/hide. Complex values
 (`columns`, `rows`, `rowKey`, `selected`, `sort`, `hiddenColumns`, `rowLabel`, `labels`) are property-only;
 the string/enum fields use explicit kebab-case attributes: `row-key` (string form only), `sort-mode`,
-`empty-label`, `caption`, and `column-menu-panel-class`.
+`empty-label`, `caption`, `column-menu-panel-class`, `layout`, `min-width`, and `sticky-header`.
 
 ```ts
 import {column} from '@mndw/ui';
@@ -144,6 +144,21 @@ Expandable tables render a controlled inline detail row with `expandable`, `expa
 `expandedRenderer`. Set `toggleCell` to `leading` or `trailing` for utility-column placement, or set
 `toggleAfterColumn` to a visible column id to place its chevron beside that column. Column `width`
 values apply to their header and body cells; selection and expand utility columns stay narrow.
+
+Set `Column.sticky: 'start'` to pin a contiguous leading run of visible data columns to the logical
+inline-start edge. Every pinned column must declare `width`; a non-leading or widthless sticky column
+stays unpinned, sets `data-mndw-sticky-inactive="not-leading"` or `"missing-width"`, and emits one
+development warning. Leading selection, drag, and expand utility cells pin ahead of that run. Offsets
+use logical `inset-inline-start` and `border-inline-end`, so pinning is RTL-correct; pinned cells
+assume a `--mndw-surface` background. With `reorderable`, the pinned drag column is clamped to
+`2.5rem`, a known cosmetic limitation.
+
+Set `Column.nowrap: true` to apply `white-space: nowrap` to that column's header and body cells.
+`layout="auto"` uses `table-layout: auto` and `width: max-content` for content sizing and horizontal
+scroll; virtualization keeps fixed layout and exposes `data-mndw-layout-inactive="virtual"`.
+`min-width` applies inline `min-width` to the table and can force horizontal overflow. Set
+`sticky-header` to make the header component-owned and sticky; combined with a pinned column, the
+top-left cell sticks on both axes.
 
 #### Dynamic virtualization
 

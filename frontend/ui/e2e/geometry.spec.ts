@@ -96,7 +96,9 @@ test('keeps shared scroll-area scrolling bounded and exposes a visible themed th
   await expect.poll(async () => viewport.evaluate((element) => element.scrollHeight)).toBeGreaterThan(
     await viewport.evaluate((element) => element.clientHeight),
   );
-  await expect.poll(async () => area.locator('[part="scrollbar"]').evaluate((element) => getComputedStyle(element).display))
+  await expect.poll(async () =>
+    area.locator('[part="scrollbar"]').evaluate((element) => getComputedStyle(element).display)
+  )
     .toBe('block');
 
   await viewport.evaluate((element) => {

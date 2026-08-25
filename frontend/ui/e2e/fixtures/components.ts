@@ -149,5 +149,27 @@ table.selectable = true;
 table.reorderable = true;
 table.sort = {columnId: 'name', direction: 'asc'};
 
-await Promise.all([lineChart.updateComplete, barChart.updateComplete, table.updateComplete]);
+const stickyTable = document.querySelector<MndwTable<FixtureDeviceRow>>('#table-sticky-fixture');
+
+if (stickyTable !== null) {
+  stickyTable.rowKey = 'id';
+  stickyTable.columnMenu = false;
+  stickyTable.columns = [
+    {...fixtureColumns[0], sticky: 'start', width: '200px'},
+    {...fixtureColumns[1], width: '200px', nowrap: true},
+    ...fixtureColumns.slice(2).map((column) => ({...column, width: '200px'})),
+  ];
+  stickyTable.rows = Array.from({length: 40}, (_value, index) => {
+    const base = fixtureRows[index % fixtureRows.length];
+
+    return {...base, id: `${base.id}-${index}`};
+  });
+}
+
+await Promise.all([
+  lineChart.updateComplete,
+  barChart.updateComplete,
+  table.updateComplete,
+  ...(stickyTable === null ? [] : [stickyTable.updateComplete]),
+]);
 document.documentElement.dataset.ready = 'true';

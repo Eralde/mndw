@@ -1256,4 +1256,54 @@ test.describe('mndw-table', () => {
     expect(dimensions.viewportScrollWidth).toBeGreaterThan(dimensions.viewportClientWidth);
     expect(dimensions.pageScrollWidth).toBeLessThanOrEqual(dimensions.windowWidth);
   });
+
+  test('keeps the pinned first column fixed while the table scrolls horizontally', async ({page}) => {
+    const table = page.locator('#table-sticky-fixture');
+    const viewport = table.locator('[part="viewport"]');
+    const firstHeader = table.locator('[part~="header-cell"]').first();
+    const secondHeader = table.locator('[part~="header-cell"]').nth(1);
+
+    await firstHeader.waitFor();
+
+    const viewportLeft = await viewport.evaluate((element) => element.getBoundingClientRect().left);
+    const firstBefore = await firstHeader.evaluate((element) => element.getBoundingClientRect().left);
+    const secondBefore = await secondHeader.evaluate((element) => element.getBoundingClientRect().left);
+
+    await viewport.evaluate((element) => {
+      element.scrollLeft = 240;
+    });
+    await expect.poll(async () => viewport.evaluate((element) => element.scrollLeft)).toBe(240);
+
+    const firstAfter = await firstHeader.evaluate((element) => element.getBoundingClientRect().left);
+    const secondAfter = await secondHeader.evaluate((element) => element.getBoundingClientRect().left);
+
+    expect(Math.abs(firstAfter - firstBefore)).toBeLessThan(2);
+    expect(Math.abs(firstAfter - viewportLeft)).toBeLessThan(2);
+    expect(secondAfter - secondBefore).toBeLessThan(-100);
+  });
+
+  test('keeps the header fixed while the table scrolls vertically', async ({page}) => {
+    const table = page.locator('#table-sticky-fixture');
+    const viewport = table.locator('[part="viewport"]');
+    const headerCell = table.locator('[part~="header-cell"]').nth(1);
+    const firstBody = table.locator('[part="row"] [part~="cell"]').nth(1);
+
+    await headerCell.waitFor();
+
+    const viewportTop = await viewport.evaluate((element) => element.getBoundingClientRect().top);
+    const before = await headerCell.evaluate((element) => element.getBoundingClientRect().top);
+    const bodyBefore = await firstBody.evaluate((element) => element.getBoundingClientRect().top);
+
+    await viewport.evaluate((element) => {
+      element.scrollTop = 300;
+    });
+    await expect.poll(async () => viewport.evaluate((element) => element.scrollTop)).toBe(300);
+
+    const after = await headerCell.evaluate((element) => element.getBoundingClientRect().top);
+    const bodyAfter = await firstBody.evaluate((element) => element.getBoundingClientRect().top);
+
+    expect(Math.abs(after - before)).toBeLessThan(2);
+    expect(Math.abs(after - viewportTop)).toBeLessThan(2);
+    expect(bodyAfter - bodyBefore).toBeLessThan(-100);
+  });
 });

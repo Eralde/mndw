@@ -1,5 +1,6 @@
 <script lang="ts">
-import type {MndwSwitchChangeDetail} from '@mndw/ui';
+import {column} from '@mndw/ui';
+import {svelteCell} from '@mndw/ui-svelte';
 import {onMount} from 'svelte';
 import {ServiceError, serviceClient} from '../../services/service-client.js';
 import type {ServiceEntry} from '../../services/service-client.js';
@@ -7,6 +8,14 @@ import {openHostModal} from '../../services/overlay/host-overlay.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
 import ConfirmActionModal from './ConfirmActionModal.svelte';
+import ServiceNameCell from './ServiceNameCell.svelte';
+import ServiceStateCell from './ServiceStateCell.svelte';
+import type {ServiceRow} from './service-row.js';
+import {
+  type ServiceAction,
+  serviceActionsRenderer,
+} from './service-actions-renderer.svelte.js';
+import {serviceAutostartRenderer} from './service-autostart-renderer.svelte.js';
 
 let services = $state<ServiceEntry[]>([]);
 let rowErrors = $state<Record<string, boolean>>({});
@@ -19,6 +28,51 @@ let generation = 0;
 let controller: AbortController | undefined;
 
 const MAX_CONCURRENT_PROBES = 3;
+
+const rows = $derived.by<ServiceRow[]>(() =>
+  services.map((service) => ({
+    service,
+    busy,
+    rowError: rowErrors[service.name] ?? false,
+  }))
+);
+
+const serviceNameRenderer = svelteCell<ServiceRow>()(ServiceNameCell);
+const stateRenderer = svelteCell<ServiceRow>()(ServiceStateCell);
+const autostartRenderer = serviceAutostartRenderer((service, enabled) =>
+  void toggleBoot(service, enabled)
+);
+const actionsRenderer = serviceActionsRenderer((action: ServiceAction, name) =>
+  void runAction(action, name)
+);
+
+const columns = $derived.by(() => [
+  column<ServiceRow>()({
+    id: 'service',
+    label: hostT('services.service'),
+    width: '10rem',
+    renderer: serviceNameRenderer,
+  }),
+  column<ServiceRow>()({
+    id: 'state',
+    label: hostT('services.state'),
+    width: '7.1rem',
+    renderer: stateRenderer,
+  }),
+  column<ServiceRow>()({
+    id: 'autostart',
+    label: hostT('services.autostart'),
+    width: '6.7rem',
+    align: 'center',
+    renderer: autostartRenderer,
+  }),
+  column<ServiceRow>()({
+    id: 'actions',
+    label: hostT('services.actions'),
+    width: '18rem',
+    renderer: actionsRenderer,
+  }),
+]);
 
 function replaceEntryByName(previousName: string, entry: ServiceEntry): void {
   services = services.map((candidate) =>
@@ -215,18 +269,13 @@ async function runAction(
 
 async function toggleBoot(
   service: ServiceEntry,
-  event: CustomEvent<MndwSwitchChangeDetail>,
+  enabled: boolean,
 ): Promise<void> {
   if (busy || service.protected || service.autostartPinned) {
     return;
   }
 
-  const switchControl = event.currentTarget as HTMLElement & {checked: boolean};
-
-  switchControl.checked = service.enabledAtBoot;
-
   const previousName = service.name;
-  const enabled = !service.enabledAtBoot;
 
   if (!(await confirmBoot(previousName, enabled))) {
     return;
@@ -257,44 +306,6 @@ async function toggleBoot(
     busy = false;
   }
 }
-
-function stateLabel(service: ServiceEntry): string {
-  return rowErrors[service.name]
-    ? hostT('services.probe-failed')
-    : service.state;
-}
-
-function bootDisabled(service: ServiceEntry): boolean {
-  return busy || service.protected || service.autostartPinned;
-}
-
-function bootAriaLabel(service: ServiceEntry): string {
-  return service.enabledAtBoot
-    ? hostT('services.disable-at-boot')
-    : hostT('services.enable-at-boot');
-}
-
-function bootTitle(service: ServiceEntry): string {
-  if (service.protected) {
-    return hostT('services.protected');
-  }
-
-  if (service.autostartPinned) {
-    return hostT('services.autostart-pinned');
-  }
-
-  return bootAriaLabel(service);
-}
-
-function protectedTitle(service: ServiceEntry): Record<string, string> {
-  return service.protected ? {title: hostT('services.protected')} : {};
-}
-
-const rowActions = [
-  {action: 'start', label: 'services.start', guardProtected: false},
-  {action: 'stop', label: 'services.stop', guardProtected: true},
-  {action: 'restart', label: 'services.restart', guardProtected: true},
-] as const;
 
 onMount(() => {
   void loadServices();
@@ -341,63 +352,16 @@ onMount(() => {
       {hostT('services.empty')}
     </div>
   {:else}
-    <div class="mndw-table-viewport table-wrap">
-      <table>
-        <colgroup>
-          <col class="service-column" />
-          <col class="state-column" />
-          <col class="autostart-column" />
-          <col class="actions-column" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>{hostT('services.service')}</th>
-            <th>{hostT('services.state')}</th>
-            <th class="autostart">{hostT('services.autostart')}</th>
-            <th>{hostT('services.actions')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each services as service (service.name)}
-            <tr>
-              <td>
-                <strong>{service.label}</strong><small>{service.name}</small>
-              </td>
-              <td>
-                <span class="badge badge-{service.state}">
-                  {stateLabel(service)}
-                </span>
-                {#if service.pid !== undefined}
-                  <small class="pid">
-                    {hostT('services.pid', {pid: service.pid})}
-                  </small>
-                {/if}
-              </td>
-              <td class="autostart">
-                <mndw-switch
-                  checked={service.enabledAtBoot}
-                  disabled={bootDisabled(service)}
-                  aria-label={bootAriaLabel(service)}
-                  title={bootTitle(service)}
-                  onmndwchange={(event: CustomEvent<MndwSwitchChangeDetail>) =>
-                  void toggleBoot(service, event)}
-                >
-                </mndw-switch>
-              </td>
-              <td class="actions">
-                {#each rowActions as {action, label, guardProtected} (action)}
-                  <mndw-button
-                    variant="secondary"
-                    disabled={busy || (guardProtected && service.protected)}
-                    {...(guardProtected ? protectedTitle(service) : {})}
-                    onclick={() => void runAction(action, service.name)}
-                  >{hostT(label)}</mndw-button>
-                {/each}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+    <div class="table-wrap">
+      <mndw-table
+        columns={columns}
+        rows={rows}
+        rowKey={(row: ServiceRow) => row.service.name}
+        min-width="42rem"
+        columnMenu={false}
+        rowLabel={(row: ServiceRow) => row.service.label}
+        emptyLabel={hostT('services.empty')}
+      ></mndw-table>
     </div>
   {/if}
 </section>
@@ -405,8 +369,9 @@ onMount(() => {
 <style>
 .services-panel { min-width: 0; padding: 1rem; font-family: var(--mndw-font-sans); color: var(--mndw-text); max-width: 75rem; }
 .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; }.header-row h1 { margin: 0; font-size: 1.25rem; }.header-row p { margin: 0.25rem 0 0; color: var(--mndw-text-subtle); font-size: .8125rem; }
-.table-wrap { min-width: 0; overflow: auto; border: 1px solid var(--mndw-border); border-radius: 0.375rem; }.empty { display: grid; gap: 0.5rem; padding: 2.5rem 1rem; text-align: center; color: var(--mndw-text-subtle); }.capability strong { color: var(--mndw-text); }
-table { width: max-content; min-width: 42rem; table-layout: fixed; border-collapse: collapse; font-size: .8125rem; } .service-column { width: 24%; } .state-column { width: 17%; } .autostart-column { width: 16%; } .actions-column { width: 43%; } th, td { padding: 0.5rem 0.625rem; text-align: left; border-bottom: 1px solid var(--mndw-border); } th { color: var(--mndw-text-muted); } tr:last-child td { border-bottom: 0; } td small { display: block; color: var(--mndw-text-subtle); }.actions { display: flex; flex-wrap: wrap; gap: 0.25rem; }.actions mndw-button { margin: 0; }
-.autostart { text-align: center; }
-.badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 0.625rem; text-transform: capitalize; font-size: .75rem; }.badge-running { color: var(--mndw-success); }.badge-stopped { color: var(--mndw-warning); }.badge-unknown { color: var(--mndw-text-subtle); }
+.table-wrap { min-width: 0; border: 1px solid var(--mndw-border); border-radius: 0.375rem; overflow: hidden; }
+mndw-table { display: block; min-width: 0; font-size: .8125rem; }
+mndw-table::part(viewport) { max-height: calc(100vh - 250px); overflow: auto; }
+mndw-table::part(header-cell) { position: sticky; top: 0; z-index: 1; background: var(--mndw-surface); }
+.empty { display: grid; gap: 0.5rem; padding: 2.5rem 1rem; text-align: center; color: var(--mndw-text-subtle); }.capability strong { color: var(--mndw-text); }
 </style>

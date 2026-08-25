@@ -1,7 +1,8 @@
-import {defineMndwUi} from '@mndw/ui';
+import {type MndwTable, defineMndwUi} from '@mndw/ui';
 import {mount, unmount} from 'svelte';
 import {beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {ServiceEntry} from '../../services/service-client.js';
+import type {ServiceRow} from './service-row.js';
 
 const mockList = vi.fn<() => Promise<ServiceEntry[]>>();
 const mockStatus = vi.fn<(name: string, signal?: AbortSignal) => Promise<ServiceEntry>>();
@@ -29,6 +30,45 @@ vi.mock('../../services/service-client.js', () => ({
 
 import ServicesPanel from './ServicesPanel.svelte';
 
+function tableRoot(host: HTMLElement): ShadowRoot {
+  const table = host.querySelector('mndw-table');
+
+  if (table?.shadowRoot === null || table?.shadowRoot === undefined) {
+    throw new Error('expected service table shadow root');
+  }
+
+  return table.shadowRoot;
+}
+
+function rendererCell(host: HTMLElement, index: number): HTMLElement {
+  const table = host.querySelector('mndw-table');
+  const cells = Array.from(table?.children ?? []).filter((node): node is HTMLElement =>
+    node instanceof HTMLElement && node.getAttribute('slot')?.startsWith('mc-') === true
+  );
+  const cell = cells[index];
+
+  if (cell === undefined) {
+    throw new Error(`expected renderer cell at index ${index}`);
+  }
+
+  return cell;
+}
+
+async function waitForTable(host: HTMLElement): Promise<void> {
+  await vi.waitFor(() => {
+    const table = host.querySelector('mndw-table');
+
+    expect(table).not.toBeNull();
+  });
+  await vi.waitFor(() => expect(host.querySelector('mndw-switch')).not.toBeNull());
+  await vi.waitFor(() => expect(host.querySelector('mndw-table')?.shadowRoot).not.toBeNull());
+}
+
+async function waitForRendererCells(host: HTMLElement, expectedCount = 4): Promise<void> {
+  await waitForTable(host);
+  await vi.waitFor(() => expect(host.querySelectorAll('[slot^="mc-"]').length).toBe(expectedCount));
+}
+
 const entry = (
   name: string,
   state: ServiceEntry['state'] = 'unknown',
@@ -42,7 +82,17 @@ const entry = (
   protected: false,
 });
 
-beforeAll(() => defineMndwUi());
+function createTarget(): HTMLElement {
+  const target = document.createElement('div');
+
+  document.body.appendChild(target);
+
+  return target;
+}
+
+beforeAll(() => {
+  defineMndwUi();
+});
 
 beforeEach(() => {
   mockList.mockReset();
@@ -62,19 +112,22 @@ describe('ServicesPanel', () => {
     mockList.mockResolvedValue([row]);
     mockStatus.mockResolvedValue(row);
 
-    const target = document.createElement('div');
+    const target = createTarget();
     const app = mount(ServicesPanel, {target});
 
     await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(1));
+    await waitForTable(target);
 
     const controls = target.querySelector('.mndw-table-controls');
-    const viewport = target.querySelector('.mndw-table-viewport');
+    const table = target.querySelector('mndw-table');
+    const viewport = tableRoot(target).querySelector('[part="viewport"]');
 
     expect(controls).not.toBeNull();
-    expect(viewport).not.toBeNull();
-    expect(controls?.contains(viewport ?? document.createElement('div'))).toBe(false);
+    expect(table).not.toBeNull();
+    expect(controls?.contains(table ?? document.createElement('div'))).toBe(false);
     expect(viewport?.querySelector('table')).not.toBeNull();
     await unmount(app);
+    target.remove();
   });
 
   it('probes every discovered row with at most three calls in flight', async () => {
@@ -94,13 +147,15 @@ describe('ServicesPanel', () => {
       return entry(name, 'running');
     });
 
-    const target = document.createElement('div');
+    const target = createTarget();
     const app = mount(ServicesPanel, {target});
 
     await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(rows.length));
+    await waitForRendererCells(target, rows.length * 4);
     expect(peak).toBeLessThanOrEqual(3);
     expect(target.textContent).toContain('running');
     await unmount(app);
+    target.remove();
   });
 });
 
@@ -111,12 +166,14 @@ describe('ServicesPanel boot controls', () => {
     mockList.mockResolvedValue(rows);
     mockStatus.mockResolvedValue({...rows[0], state: 'running', pid: 1516});
 
-    const target = document.createElement('div');
+    const target = createTarget();
     const app = mount(ServicesPanel, {target});
 
     await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(1));
+    await waitForRendererCells(target);
     expect(target.textContent).toContain('PID 1516');
     await unmount(app);
+    target.remove();
   });
 
   it('renders Autostart as a switch and swaps the row after confirmation', async () => {
@@ -126,13 +183,15 @@ describe('ServicesPanel boot controls', () => {
     mockStatus.mockResolvedValue(row);
     mockSetEnabled.mockResolvedValue({ok: true, service: entry('K99foo', 'stopped')});
 
-    const target = document.createElement('div');
+    const target = createTarget();
     const app = mount(ServicesPanel, {target});
 
     await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(1));
+    await waitForRendererCells(target);
 
-    const headers = Array.from(target.querySelectorAll('thead th')).map((header) => header.textContent);
-    const autostartSwitch = target.querySelector<HTMLElement & {checked: boolean}>('tbody tr mndw-switch');
+    const headers = Array.from(tableRoot(target).querySelectorAll('[part="header-cell"]'))
+      .map((header) => header.textContent);
+    const autostartSwitch = rendererCell(target, 2).querySelector<HTMLElement & {checked: boolean}>('mndw-switch');
 
     expect(headers).toContain('Autostart');
     expect(autostartSwitch?.checked).toBe(true);
@@ -140,9 +199,10 @@ describe('ServicesPanel boot controls', () => {
     autostartSwitch?.click();
 
     await vi.waitFor(() => expect(mockSetEnabled).toHaveBeenCalledWith('S99foo', false));
-    expect(target.querySelector('tbody tr small')?.textContent).toBe('K99foo');
+    expect(rendererCell(target, 0).querySelector('small')?.textContent).toBe('K99foo');
     expect(openHostModal).toHaveBeenCalled();
     await unmount(app);
+    target.remove();
   });
 
   it('does not add an undefined tooltip to unprotected action buttons', async () => {
@@ -151,17 +211,19 @@ describe('ServicesPanel boot controls', () => {
     mockList.mockResolvedValue([row]);
     mockStatus.mockResolvedValue(row);
 
-    const target = document.createElement('div');
+    const target = createTarget();
     const app = mount(ServicesPanel, {target});
 
     await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(1));
+    await waitForRendererCells(target);
 
-    const actionButtons = Array.from(target.querySelectorAll('tbody tr mndw-button'));
+    const actionButtons = Array.from(rendererCell(target, 3).querySelectorAll('mndw-button'));
 
     expect(actionButtons).toHaveLength(3);
     expect(actionButtons[1]?.getAttribute('title')).toBeNull();
     expect(actionButtons[2]?.getAttribute('title')).toBeNull();
     await unmount(app);
+    target.remove();
   });
 });
 
@@ -172,16 +234,18 @@ describe('ServicesPanel pinned controls', () => {
     mockList.mockResolvedValue([row]);
     mockStatus.mockResolvedValue(row);
 
-    const target = document.createElement('div');
+    const target = createTarget();
     const app = mount(ServicesPanel, {target});
 
     await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(1));
+    await waitForRendererCells(target);
 
-    const autostartSwitch = target.querySelector<HTMLElement & {disabled: boolean}>('tbody tr mndw-switch');
+    const autostartSwitch = rendererCell(target, 2).querySelector<HTMLElement & {disabled: boolean}>('mndw-switch');
 
     expect(autostartSwitch?.disabled).toBe(true);
     expect(autostartSwitch?.getAttribute('title')).toBe('Autostart is fixed by ENABLED= in the script');
     await unmount(app);
+    target.remove();
   });
 
   it('pins a row when a stale toggle receives a conflict', async () => {
@@ -191,18 +255,56 @@ describe('ServicesPanel pinned controls', () => {
     mockStatus.mockResolvedValue(row);
     mockSetEnabled.mockRejectedValue(Object.assign(new Error('autostart is pinned'), {code: 'CONFLICT'}));
 
-    const target = document.createElement('div');
+    const target = createTarget();
     const app = mount(ServicesPanel, {target});
 
     await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(1));
-    target.querySelector<HTMLElement>('tbody tr mndw-switch')?.click();
+    await waitForRendererCells(target);
+    rendererCell(target, 2).querySelector<HTMLElement>('mndw-switch')
+      ?.click();
 
     await vi.waitFor(() =>
-      expect(target.querySelector<HTMLElement & {disabled: boolean}>('tbody tr mndw-switch')?.disabled).toBe(true)
+      expect(rendererCell(target, 2).querySelector<HTMLElement & {disabled: boolean}>('mndw-switch')?.disabled).toBe(
+        true,
+      )
     );
-    expect(target.querySelector('tbody tr mndw-switch')?.getAttribute('title')).toBe(
+    expect(
+      rendererCell(target, 2).querySelector('mndw-switch')
+        ?.getAttribute('title'),
+    ).toBe(
       'Autostart is fixed by ENABLED= in the script',
     );
     await unmount(app);
+    target.remove();
+  });
+});
+
+describe('ServicesPanel table sizing', () => {
+  it('maps the legacy widths and min-width onto the mndw-table', async () => {
+    const row = entry('S01a', 'running');
+
+    mockList.mockResolvedValue([row]);
+    mockStatus.mockResolvedValue(row);
+
+    const target = createTarget();
+    const app = mount(ServicesPanel, {target});
+
+    await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(1));
+
+    const table = target.querySelector<MndwTable<ServiceRow>>('mndw-table');
+
+    if (table === null) {
+      throw new Error('mndw-table not rendered');
+    }
+
+    expect(table.columns.map((column) => column.width)).toEqual([
+      '10rem',
+      '7.1rem',
+      '6.7rem',
+      '18rem',
+    ]);
+    expect(table.minWidth).toBe('42rem');
+    await unmount(app);
+    target.remove();
   });
 });

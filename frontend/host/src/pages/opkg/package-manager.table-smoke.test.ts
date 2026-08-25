@@ -63,6 +63,6 @@ describe('table scroll-owner contract', () => {
     expect(packagesPanelSource).toContain('mndw-table-controls');
     expect(packagesPanelSource).toContain('mndw-table::part(viewport)');
     expect(servicesPanelSource).toContain('mndw-table-controls');
-    expect(servicesPanelSource).toContain('mndw-table-viewport table-wrap');
+    expect(servicesPanelSource).toContain('mndw-table::part(viewport)');
   });
 });

@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {PluginContext} from '@mndw/sdk';
+import type {MndwTable} from '@mndw/ui';
 import {createTestI18n} from '@mndw/sdk/testing';
 import type {RciManager, RciQuery} from '@rci-tools/core';
-import {type Observable, of, throwError} from 'rxjs';
+import {Observable, of, throwError} from 'rxjs';
 import {type App as VueApp, createApp, nextTick} from 'vue';
 import fixture from './fixtures/show-device-list.json' with {type: 'json'};
+import type {ClientRecord} from './services/clients.js';
 import {openSettingsDialog} from './services/open-settings-dialog.js';
 import App from './App.vue';
 import enCatalog from '../i18n/en.json';
@@ -44,23 +46,40 @@ function mountWidget(i18n = createTestI18n(enCatalog)): void {
   app.mount(host);
 }
 
-async function flush(): Promise<void> {
-  for (let index = 0; index < 12; index += 1) {
-    await Promise.resolve();
-  }
-}
-
 function text(): string {
   return host.textContent ?? '';
 }
 
+function tableEl(): MndwTable<ClientRecord> | null {
+  return host.querySelector<MndwTable<ClientRecord>>('mndw-table');
+}
+
+async function flush(): Promise<void> {
+  for (let index = 0; index < 12; index += 1) {
+    await Promise.resolve();
+  }
+
+  await tableEl()?.updateComplete;
+}
+
+function tableShadow(): ShadowRoot {
+  const shadow = tableEl()?.shadowRoot;
+
+  if (shadow === null || shadow === undefined) {
+    throw new Error('mndw-table has no shadow root');
+  }
+
+  return shadow;
+}
+
 function rowNames(): string[] {
-  return [...host.querySelectorAll('tbody tr')]
-    .map((row) => row.querySelector('td')?.textContent?.trim() ?? '');
+  return (tableEl()?.rows ?? []).map((row) => row.displayName);
 }
 
 function headers(): string[] {
-  return [...host.querySelectorAll('thead th')].map((cell) => cell.textContent?.trim() ?? '');
+  return [...tableShadow().querySelectorAll('[part~="header-cell"]')]
+    .map((cell) => cell.textContent?.trim() ?? '')
+    .filter((label) => label !== '');
 }
 
 type MndwCheckboxHost = HTMLElement & {checked: boolean};
@@ -137,23 +156,11 @@ describe('initial render', () => {
     expect(header.classList.contains('mndw-table-controls')).toBe(true);
   });
 
-  it('keeps table headers sticky below the widget header', async () => {
-    document.documentElement.style.setProperty('--mndw-control-h', '32px');
+  it('makes the table header sticky via the built-in attribute', async () => {
     mountWidget();
     await flush();
 
-    const tableHead = host.querySelector<HTMLElement>('.clients-table thead');
-
-    try {
-      if (tableHead === null) {
-        throw new Error('table header was not rendered');
-      }
-
-      expect(getComputedStyle(tableHead).position).toBe('sticky');
-      expect(getComputedStyle(tableHead).top).toBe('0px');
-    } finally {
-      document.documentElement.style.removeProperty('--mndw-control-h');
-    }
+    expect(tableEl()?.hasAttribute('sticky-header')).toBe(true);
   });
 });
 
@@ -205,12 +212,17 @@ describe('successful load', () => {
     expect(rowNames()).not.toContain('Backhaul Link');
   });
 
-  it('always renders Name and Link columns', async () => {
+  it('renders the activity indicator before each client name', async () => {
     mountWidget();
     await flush();
 
     expect(headers()[0]).toBe('Name');
-    expect(headers()).toContain('Online');
+    expect(headers()).not.toContain('Online');
+
+    const nameCell = host.querySelector('.client-name-cell');
+
+    expect(nameCell?.firstElementChild?.classList.contains('clients-table__status-indicator')).toBe(true);
+    expect(nameCell?.querySelector('.client-name')?.textContent).toBe('Client A');
   });
 });
 
@@ -326,9 +338,10 @@ describe('cell formatting', () => {
     mountWidget();
     await flush();
 
-    const cells = [...host.querySelectorAll('tbody td')].map((cell) => cell.textContent?.trim());
+    const shadowText = tableShadow().textContent ?? '';
+    const rendered = text();
 
-    expect(cells.filter((cell) => cell === '—').length).toBeGreaterThan(0);
+    expect(`${shadowText} ${rendered}`).toContain('—');
   });
 
   it('renders speed and port in one Connection cell', async () => {
@@ -336,11 +349,7 @@ describe('cell formatting', () => {
     await flush();
 
     expect(text()).toContain('1000 Mbps');
-
-    const connectionIndex = headers().indexOf('Connection');
-    const cell = host.querySelectorAll('tbody tr')[0]?.querySelectorAll('td')[connectionIndex];
-
-    expect(cell?.textContent?.replace(/\s+/g, ' ').trim()).toBe('1000 Mbps Port 2');
+    expect(text().replace(/\s+/g, ' ')).toContain('1000 Mbps Port 2');
   });
 });
 
@@ -349,7 +358,7 @@ describe('storage', () => {
     mountWidget();
     await flush();
 
-    expect(headers()).toEqual(['Name', 'Online', 'IP Address', 'Connection', 'Uptime', 'Last Seen']);
+    expect(headers()).toEqual(['Name', 'IP Address', 'Connection', 'Uptime', 'Last Seen']);
     expect(offlineToggle().checked).toBe(false);
   });
 

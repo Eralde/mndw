@@ -9,7 +9,6 @@
   "refresh-interval": "Refresh interval",
   "column": {
     "name": "Name",
-    "link": "Online",
     "ip": "IP Address",
     "connection": "Connection",
     "uptime": "Uptime",

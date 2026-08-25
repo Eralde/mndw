@@ -19,10 +19,10 @@ const handleBreakpointChange = (event: MediaQueryListEvent): void => {
 const pagePlugins = registry
   .getPages()
   .slice()
-  .sort((a, b) =>
-    a.entry.label.localeCompare(b.entry.label)
-    || a.entry.name.localeCompare(b.entry.name)
-  );
+  .sort((a, b) => {
+    return a.entry.label.localeCompare(b.entry.label)
+      || a.entry.name.localeCompare(b.entry.name);
+  });
 
 const currentPath = $derived.by(() => {
   return appRouter?.route.pathname ?? globalThis.location.pathname;
@@ -54,7 +54,9 @@ function closeOnMobile(): void {
 onMount(() => {
   mobileQuery.addEventListener('change', handleBreakpointChange);
 
-  return () => mobileQuery.removeEventListener('change', handleBreakpointChange);
+  return () => {
+    mobileQuery.removeEventListener('change', handleBreakpointChange);
+  };
 });
 </script>
 

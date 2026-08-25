@@ -52,7 +52,6 @@ afterEach(() => {
 });
 
 describe('Header locale controls', () => {
-
   it('offers one language selector with EN and RU options', () => {
     const setLocale = vi.fn().mockResolvedValue(undefined);
     const services = defaultHostServices();
@@ -115,7 +114,6 @@ describe('Header locale controls', () => {
       await localeService.localeService.setLocale('en');
     }
   });
-
 });
 
 describe('Header logout', () => {

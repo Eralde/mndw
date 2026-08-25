@@ -44,7 +44,8 @@ describe('LogFilters', () => {
 
     const app = mount(LogFilters, {
       target: host,
-      props: {state: {query: '', levels: allLevels}, filteredCount: 2, totalCount: 6, translator: translator(), onChange: vi.fn()},
+      props: {state: {query: '', levels: allLevels}, filteredCount: 2, totalCount: 6, translator: translator(),
+        onChange: vi.fn()},
     });
 
     flushSync();

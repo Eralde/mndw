@@ -300,7 +300,9 @@ describe('SystemLogPage lifecycle', () => {
 
 describe('SystemLogPage scrollbar contract', () => {
   it('keeps native log scrolling visibly tokenized in dark theme', () => {
-    expect(systemLogPageSource).toMatch(/scrollbar-color:\s*var\(--mndw-scrollbar-thumb\)\s+var\(--mndw-scrollbar-track\)/u);
+    expect(systemLogPageSource).toMatch(
+      /scrollbar-color:\s*var\(--mndw-scrollbar-thumb\)\s+var\(--mndw-scrollbar-track\)/u,
+    );
     expect(systemLogPageSource).toMatch(/system-log-page__viewport::-webkit-scrollbar-thumb/u);
   });
 });

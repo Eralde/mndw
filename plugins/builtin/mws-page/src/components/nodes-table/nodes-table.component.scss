@@ -22,10 +22,10 @@
 
 .node-name {
   display: inline-flex;
-  max-width: 100%;
-  min-width: 0;
   gap: var(--mndw-space-2);
   align-items: center;
+  min-width: 0;
+  max-width: 100%;
   padding: 0;
   border: 0;
   background: transparent;

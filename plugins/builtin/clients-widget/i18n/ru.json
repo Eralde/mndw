@@ -9,7 +9,6 @@
   "refresh-interval": "Интервал обновления",
   "column": {
     "name": "Имя",
-    "link": "Онлайн",
     "ip": "IP-адрес",
     "connection": "Подключение",
     "uptime": "Время работы",

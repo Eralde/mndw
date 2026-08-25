@@ -224,7 +224,7 @@ onMount(() => {
 </script>
 
 <section class="mndw-plugin-manager">
-  <h2>Plugin manager</h2>
+  <h3>Plugin manager</h3>
 
   {#if reloadPrompt}
     <div
@@ -382,13 +382,13 @@ onMount(() => {
   font-family: var(--mndw-font-sans);
 }
 
-.mndw-plugin-manager h2,
+.mndw-plugin-manager h3,
 .mndw-plugin-manager p {
   margin: 0;
 }
 
-.mndw-plugin-manager h2 {
-  font-size: var(--mndw-text-xl);
+.mndw-plugin-manager h3 {
+  font-size: var(--mndw-text-lg);
   font-weight: var(--mndw-weight-semibold);
 }
 

@@ -24,18 +24,34 @@ import {appState} from '../state/app.svelte.js';
 import {defaultHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 
+const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+
+function restoreMatchMedia(): void {
+  if (originalMatchMedia === undefined) {
+    Reflect.deleteProperty(window, 'matchMedia');
+  } else {
+    Object.defineProperty(window, 'matchMedia', originalMatchMedia);
+  }
+}
+
 beforeAll(() => {
   defineMndwUi();
 });
 
-describe('Header logout', () => {
-  afterEach(() => {
-    events.length = 0;
-    logout.mockClear();
-    appState.locale = 'en';
-    appState.localeSwitchPending = false;
-    vi.restoreAllMocks();
-  });
+afterEach(() => {
+  events.length = 0;
+  logout.mockClear();
+  appState.locale = 'en';
+  appState.localeSwitchPending = false;
+  appState.mobileSidebarOpen = false;
+  appState.desktopSidebarCollapsed = false;
+
+  restoreMatchMedia();
+
+  vi.restoreAllMocks();
+});
+
+describe('Header locale controls', () => {
 
   it('offers one language selector with EN and RU options', () => {
     const setLocale = vi.fn().mockResolvedValue(undefined);
@@ -100,6 +116,9 @@ describe('Header logout', () => {
     }
   });
 
+});
+
+describe('Header logout', () => {
   it('logs out of the router', async () => {
     const target = document.createElement('div');
 
@@ -112,5 +131,32 @@ describe('Header logout', () => {
 
     expect(events).toEqual(['logout-start']);
     void unmount(component);
+  });
+});
+
+describe('Header menu toggle', () => {
+  it('toggles breakpoint-specific sidebar intent from the menu control', async () => {
+    const matchMedia = vi.fn(() => ({matches: true}));
+
+    vi.stubGlobal('matchMedia', matchMedia);
+    Object.defineProperty(window, 'matchMedia', {configurable: true, value: matchMedia});
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
+    const menu = target.querySelector<HTMLElement>('.mndw-header__menu-toggle');
+
+    menu?.click();
+    expect(appState.mobileSidebarOpen).toBe(true);
+    expect(appState.desktopSidebarCollapsed).toBe(false);
+
+    matchMedia.mockReturnValue({matches: false});
+    menu?.click();
+
+    expect(appState.mobileSidebarOpen).toBe(true);
+    expect(appState.desktopSidebarCollapsed).toBe(true);
+    await unmount(component);
   });
 });

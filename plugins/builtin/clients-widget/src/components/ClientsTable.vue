@@ -62,58 +62,95 @@ function fullText(seconds: number | null): string | undefined {
   <p v-else-if="clients.length === 0" class="clients-table__status" role="status">
     {{ emptyMessage }}
   </p>
-  <table v-else class="clients-table">
-    <thead>
-    <tr>
-      <th scope="col">{{ props.translator.t('column.name') }}</th>
-      <th scope="col">{{ props.translator.t('column.link') }}</th>
-      <th v-if="shows('ip')" scope="col">{{ props.translator.t('column.ip') }}</th>
-      <th v-if="shows('connection')" scope="col">{{ props.translator.t('column.connection') }}</th>
-      <th v-if="shows('uptime')" scope="col">{{ props.translator.t('column.uptime') }}</th>
-      <th v-if="shows('lastSeen')" scope="col">{{ props.translator.t('column.last-seen') }}</th>
-    </tr>
-    </thead>
-    <tbody>
-    <tr v-for="client in clients" :key="client.mac">
-      <td>
+  <div v-else class="clients-table__surface">
+    <div class="mndw-table-viewport clients-table__viewport">
+      <table class="clients-table">
+        <thead>
+        <tr>
+          <th class="clients-table__sticky-column" scope="col">{{ props.translator.t('column.name') }}</th>
+          <th scope="col">{{ props.translator.t('column.link') }}</th>
+          <th v-if="shows('ip')" scope="col">{{ props.translator.t('column.ip') }}</th>
+          <th v-if="shows('connection')" scope="col">{{ props.translator.t('column.connection') }}</th>
+          <th v-if="shows('uptime')" scope="col">{{ props.translator.t('column.uptime') }}</th>
+          <th v-if="shows('lastSeen')" scope="col">{{ props.translator.t('column.last-seen') }}</th>
+        </tr>
+        </thead>
+        <tbody>
+        <tr v-for="client in clients" :key="client.mac">
+          <td class="clients-table__sticky-column">
         <ClientNameCell
           :row="client"
           :value="client.displayName"
           col-id="name"
         />
-      </td>
-      <td>
-        <template v-if="client.link === null">{{ DASH }}</template>
-        <template v-else>
+          </td>
+          <td>
             <span
-                class="clients-table__dot"
-                :class="client.link === 'up' ? 'clients-table__dot--up' : 'clients-table__dot--down'"
-            />
-          {{ client.link === 'up' ? props.translator.t('link.up') : props.translator.t('link.down') }}
-        </template>
-      </td>
-      <td v-if="shows('ip')">{{ client.ip ?? DASH }}</td>
-      <td v-if="shows('connection')">
-        <template v-if="client.connectionType === 'unknown' || client.connection === null">{{ DASH }}</template>
-        <template v-else-if="'accessPointId' in client.connection">
-          {{ props.translator.t('rssi') }}: {{ client.connection.rssi }}; {{ client.connection.txrate }} Mbps;
-          {{ wirelessBandsText(client.connection.bands) }}
-        </template>
-        <template v-else>
-          {{ wiredSpeedText(client.connection.speed) }}<br>
-          {{ wiredPortText(client.connection.port) }}
-        </template>
-      </td>
-      <td v-if="shows('uptime')" :title="fullText(client.uptime)">{{ durationText(client.uptime) }}</td>
-      <td v-if="shows('lastSeen')" :title="fullText(client.lastSeen)">{{ elapsedText(client.lastSeen) }}</td>
-    </tr>
-    </tbody>
-  </table>
+              class="clients-table__status-indicator"
+              :class="client.link === 'up'
+                ? 'clients-table__dot--up'
+                : client.link === 'down'
+                ? 'clients-table__dot--down'
+                : 'clients-table__dot--unavailable'"
+              role="img"
+              :title="client.link === 'up'
+                ? props.translator.t('link.online')
+                : client.link === 'down'
+                ? props.translator.t('link.offline')
+                : props.translator.t('link.unavailable')"
+            >
+              <span class="clients-table__sr-only">{{ client.link === 'up'
+                ? props.translator.t('link.online')
+                : client.link === 'down'
+                ? props.translator.t('link.offline')
+                : props.translator.t('link.unavailable') }}</span>
+            </span>
+          </td>
+          <td v-if="shows('ip')">{{ client.ip ?? DASH }}</td>
+          <td v-if="shows('connection')">
+            <template v-if="client.connectionType === 'unknown' || client.connection === null">{{ DASH }}</template>
+            <template v-else-if="'accessPointId' in client.connection">
+              {{ props.translator.t('rssi') }}: {{ client.connection.rssi }}; {{ client.connection.txrate }} Mbps;
+              {{ wirelessBandsText(client.connection.bands) }}
+            </template>
+            <template v-else>
+              {{ wiredSpeedText(client.connection.speed) }}<br>
+              {{ wiredPortText(client.connection.port) }}
+            </template>
+          </td>
+          <td v-if="shows('uptime')" class="clients-table__nowrap" :title="fullText(client.uptime)">
+            {{ durationText(client.uptime) }}
+          </td>
+          <td v-if="shows('lastSeen')" class="clients-table__nowrap" :title="fullText(client.lastSeen)">
+            {{ elapsedText(client.lastSeen) }}
+          </td>
+        </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.clients-table {
+.clients-table__surface {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.clients-table__viewport {
   width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--mndw-border);
+  border-radius: var(--mndw-radius-lg);
+}
+
+.clients-table {
+  width: max-content;
+  min-width: 44rem;
   border-collapse: collapse;
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
@@ -122,14 +159,14 @@ function fullText(seconds: number | null): string | undefined {
 
 .clients-table thead {
   position: sticky;
-  top: var(--mndw-control-h);
+  top: 0;
   z-index: 1;
   background: var(--mndw-surface);
 }
 
 .clients-table th {
   position: sticky;
-  top: var(--mndw-control-h);
+  top: 0;
   border-bottom: 1px solid var(--mndw-border);
   padding: var(--mndw-space-1) var(--mndw-space-2);
   background: var(--mndw-surface);
@@ -143,12 +180,25 @@ function fullText(seconds: number | null): string | undefined {
   padding: var(--mndw-space-1) var(--mndw-space-2);
 }
 
-.clients-table__dot {
+.clients-table__sticky-column {
+  position: sticky !important;
+  left: 0;
+  z-index: 2;
+  min-width: 12rem;
+  background: var(--mndw-surface);
+  box-shadow: 1px 0 0 var(--mndw-border);
+}
+
+.clients-table th.clients-table__sticky-column {
+  z-index: 3;
+  background: var(--mndw-surface);
+}
+
+.clients-table__status-indicator {
   display: inline-block;
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.625rem;
+  height: 0.625rem;
   border-radius: 50%;
-  margin-right: var(--mndw-space-1);
 }
 
 .clients-table__dot--up {
@@ -157,6 +207,26 @@ function fullText(seconds: number | null): string | undefined {
 
 .clients-table__dot--down {
   background: var(--mndw-danger);
+}
+
+.clients-table__dot--unavailable {
+  background: var(--mndw-text-subtle);
+}
+
+.clients-table__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.clients-table__nowrap {
+  white-space: nowrap;
 }
 
 .clients-table__status {

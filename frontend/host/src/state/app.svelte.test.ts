@@ -24,15 +24,35 @@ describe('app state mobile default', () => {
     }
   });
 
-  it('starts sidebar collapsed when imported on mobile', async () => {
+  it('starts mobile drawer closed without setting desktop collapse intent', async () => {
     const {appState} = await loadAppState(true);
 
-    expect(appState.sidebarCollapsed).toBe(true);
+    expect(appState.mobileSidebarOpen).toBe(false);
+    expect(appState.desktopSidebarCollapsed).toBe(false);
   });
 
-  it('starts sidebar open when imported on desktop', async () => {
+  it('starts desktop sidebar open and mobile drawer closed on desktop', async () => {
     const {appState} = await loadAppState(false);
 
-    expect(appState.sidebarCollapsed).toBe(false);
+    expect(appState.mobileSidebarOpen).toBe(false);
+    expect(appState.desktopSidebarCollapsed).toBe(false);
+  });
+
+  it('toggles mobile drawer state independently from desktop collapse intent', async () => {
+    const {appState, toggleSidebar} = await loadAppState(true);
+
+    toggleSidebar();
+
+    expect(appState.mobileSidebarOpen).toBe(true);
+    expect(appState.desktopSidebarCollapsed).toBe(false);
+  });
+
+  it('toggles desktop collapse intent without changing mobile drawer state', async () => {
+    const {appState, toggleSidebar} = await loadAppState(false);
+
+    toggleSidebar();
+
+    expect(appState.mobileSidebarOpen).toBe(false);
+    expect(appState.desktopSidebarCollapsed).toBe(true);
   });
 });

@@ -31,6 +31,7 @@ function handleTabChange(event: CustomEvent<MndwTabsChangeDetail>): void {
   data-locale={appState.locale}
 >
   <mndw-tabs
+    class="mndw-table-controls"
     value={activeTab}
     onmndwchange={handleTabChange}
   >
@@ -47,5 +48,5 @@ function handleTabChange(event: CustomEvent<MndwTabsChangeDetail>): void {
 </div>
 
 <style>
-.package-manager { color: var(--mndw-text); }
+.package-manager { min-width: 0; color: var(--mndw-text); }
 </style>

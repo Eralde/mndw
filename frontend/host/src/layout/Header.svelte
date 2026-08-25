@@ -1,7 +1,7 @@
 <script lang="ts">
 import type {MndwSelectChangeDetail} from '@mndw/ui';
 import {toggleTheme} from '../services/theme.service.js';
-import {appState, resetToLogin} from '../state/app.svelte.js';
+import {appState, resetToLogin, toggleSidebar} from '../state/app.svelte.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {getHostServices} from '../host-services-context.js';
 
@@ -32,7 +32,7 @@ async function handleLogout(): Promise<void> {
       variant="ghost"
       class="mndw-header__menu-toggle"
       aria-label={hostT('nav.toggle-menu')}
-      onclick={() => appState.sidebarCollapsed = !appState.sidebarCollapsed}
+      onclick={toggleSidebar}
     >
       ☰
     </mndw-button>

@@ -22,6 +22,7 @@ export interface SpawnResult {
   port?: number;
   error?: string;
   errorType?: ConnectionError;
+  errorCode?: string;
 }
 
 interface SpawnApiResponse {
@@ -29,6 +30,9 @@ interface SpawnApiResponse {
   port?: number;
   error?: string;
   message?: string;
+  code?: string;
+  errorCode?: string;
+  daemonCode?: string;
 }
 
 const SPAWN_TIMEOUT_MS = 10000;
@@ -91,7 +95,9 @@ function buildSpawnError(result: SpawnApiResponse): SpawnResult {
   const error = result.error || result.message || 'Failed to spawn ttyd';
   const lower = error.toLowerCase();
 
-  if (lower.includes('already')) {
+  const backendErrorCode = result.code ?? result.errorCode ?? result.daemonCode;
+
+  if (backendErrorCode === undefined && lower.includes('already')) {
     return {
       success: true,
       port: result.port || 7681,
@@ -102,6 +108,7 @@ function buildSpawnError(result: SpawnApiResponse): SpawnResult {
     success: false,
     error,
     errorType: 'SPAWN_FAILED',
+    errorCode: backendErrorCode,
   };
 }
 

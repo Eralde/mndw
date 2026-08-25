@@ -1,5 +1,6 @@
 import {BackendDisabled, BackendNotApproved, type PluginContext, type PluginI18n} from '@mndw/sdk';
 import {bindLocale} from '@mndw/sdk/bind-locale';
+import type {MndwButton, MndwInput} from '@mndw/ui';
 import {type EchoView, render} from './render.js';
 
 type Backend = PluginContext['backend'];
@@ -19,20 +20,22 @@ export function mountEchoWidget(container: HTMLElement, backend: Backend, i18n: 
 
   controls.className = 'mndw-echo__controls';
 
-  const statusInput = document.createElement('input');
+  const statusInput: MndwInput = document.createElement('mndw-input');
 
   statusInput.type = 'number';
   statusInput.className = 'mndw-echo__status-input';
   statusInput.placeholder = i18n.t('status');
 
-  const getBtn = document.createElement('button');
+  const getBtn: MndwButton = document.createElement('mndw-button');
 
   getBtn.className = 'mndw-echo__get';
+  getBtn.variant = 'primary';
   getBtn.textContent = i18n.t('get');
 
-  const postBtn = document.createElement('button');
+  const postBtn: MndwButton = document.createElement('mndw-button');
 
   postBtn.className = 'mndw-echo__post';
+  postBtn.variant = 'secondary';
   postBtn.textContent = i18n.t('post');
 
   controls.append(statusInput, getBtn, postBtn);

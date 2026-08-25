@@ -13,6 +13,7 @@ import {loadFixture} from '../fixtures/load';
 import {ExtraFeaturesBannerStore} from '../services/extra-features-banner.store';
 import {
   type ExtraFeaturesAvailability,
+  type ExtraFeaturesPresentation,
   type ExtraFeaturesSetupReason,
   MwsDataService,
   type MwsViewPhase,
@@ -37,7 +38,7 @@ interface FakeData {
   roots: ReturnType<typeof signal<MwsNode[]>>;
   pollError: ReturnType<typeof signal<boolean>>;
   extraFeaturesAvailability: ReturnType<typeof signal<ExtraFeaturesAvailability>>;
-  extraFeaturesPresentation: ReturnType<typeof signal<ExtraFeaturesAvailability>>;
+  extraFeaturesPresentation: ReturnType<typeof signal<ExtraFeaturesPresentation>>;
   extraFeaturesSetupReasons: ReturnType<typeof signal<ExtraFeaturesSetupReason[]>>;
   lastUpdatedAt: ReturnType<typeof signal<number | null>>;
   freshnessNow: ReturnType<typeof signal<number>>;
@@ -53,7 +54,7 @@ function fakeData(phase: MwsViewPhase, roots: MwsNode[] = []): FakeData {
     roots: signal<MwsNode[]>(roots),
     pollError: signal(false),
     extraFeaturesAvailability: signal<ExtraFeaturesAvailability>('active'),
-    extraFeaturesPresentation: signal<ExtraFeaturesAvailability>('active'),
+    extraFeaturesPresentation: signal<ExtraFeaturesPresentation>('active'),
     extraFeaturesSetupReasons: signal<ExtraFeaturesSetupReason[]>([]),
     lastUpdatedAt: signal<number | null>(null),
     freshnessNow: signal(Date.now()),
@@ -460,6 +461,19 @@ describe('AppComponent', () => {
     expect(badge?.textContent).toContain(text);
     expect(badge?.classList.contains(tone)).toBe(true);
     expect(badge?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('offers retry when starting takes longer than expected', () => {
+    const data = fakeData('ready', fixtureRoots());
+
+    data.extraFeaturesPresentation.set('taking-longer');
+
+    const fixture = render(data);
+    const banner = fixture.nativeElement.querySelector<HTMLElement>('.extra-features-taking-longer');
+
+    expect(banner?.textContent).toContain('taking longer than expected');
+    banner?.querySelector('mndw-button')?.dispatchEvent(new Event('click', {bubbles: true}));
+    expect(data.retry).toHaveBeenCalledOnce();
   });
 
   it('shows and dismisses the unavailable setup banner after storage load', async () => {

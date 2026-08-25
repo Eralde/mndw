@@ -2,6 +2,7 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {BackendDisabled, BackendNotApproved, type PluginContext} from '@mndw/sdk';
 import {createTestI18n} from '@mndw/sdk/testing';
+import type {MndwButton, MndwInput} from '@mndw/ui';
 import {mountEchoWidget} from './backend-echo.js';
 import enCatalog from '../i18n/en.json';
 
@@ -25,6 +26,20 @@ afterEach(() => {
 });
 
 describe('mountEchoWidget', () => {
+  it('uses shared input and button controls', () => {
+    const el = container();
+
+    mountEchoWidget(el, fakeBackend(vi.fn()), createTestI18n(enCatalog));
+
+    expect(el.querySelector('mndw-input')).not.toBeNull();
+    expect(el.querySelectorAll('mndw-button')).toHaveLength(2);
+    expect(el.querySelector('input')).toBeNull();
+    expect(el.querySelector('button')).toBeNull();
+    expect(el.querySelector<MndwInput>('mndw-input')?.type).toBe('number');
+    expect([...el.querySelectorAll<MndwButton>('mndw-button')].map((button) => button.variant))
+      .toEqual(['primary', 'secondary']);
+  });
+
   it('GET click calls fetch("echoGet") and renders the response', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({method: 'GET'}), {
@@ -51,7 +66,7 @@ describe('mountEchoWidget', () => {
 
     mountEchoWidget(el, fakeBackend(fetchImpl), createTestI18n(enCatalog));
 
-    const input = el.querySelector<HTMLInputElement>('.mndw-echo__status-input');
+    const input = el.querySelector<MndwInput>('.mndw-echo__status-input');
 
     if (input) {
       input.value = '418';

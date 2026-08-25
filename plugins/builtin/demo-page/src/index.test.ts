@@ -29,6 +29,9 @@ describe('createInstance', () => {
 
     instance = await createInstance(host, ctx);
 
+    expect(host.querySelector('.demo-page')).not.toBeNull();
+    expect(host.querySelector('.demo-page__content')).not.toBeNull();
+    expect(host.querySelector('.demo-page__actions')).not.toBeNull();
     expect(host.querySelector('button')).toBeNull();
 
     const saveButton = host.querySelector<HTMLElement>('#hello-page-save');

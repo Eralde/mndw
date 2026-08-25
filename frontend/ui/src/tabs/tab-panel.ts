@@ -20,7 +20,7 @@ export class MndwTabPanel extends LitElement {
       ${hostTypography}
 
       display: block;
-      padding: var(--mndw-space-3) 0;
+      padding: var(--mndw-space-3);
       color: var(--mndw-text);
     }
 

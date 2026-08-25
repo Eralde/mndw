@@ -28,14 +28,32 @@ describe('cli.service', () => {
   });
 
   it('spawnCli maps "ttyd is not installed" to a spawn failure', async () => {
-    const fetch = vi.fn().mockResolvedValue(jsonResponse({success: false, error: 'ttyd is not installed'}));
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({
+      success: false,
+      code: 'TTYD_START_FAILED',
+      error: 'ttyd is not installed',
+    }));
 
     const result = await spawnCli(backend(fetch), 'entware');
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe('SPAWN_FAILED');
+    expect(result.errorCode).toBe('TTYD_START_FAILED');
     expect(result.error).toMatch(/not installed/i);
     expect(fetch).toHaveBeenCalledWith('spawn', expect.objectContaining({body: {console: 'entware'}}));
+  });
+
+  it('preserves unknown backend error codes for page-level copy mapping', async () => {
+    const fetch = vi.fn().mockResolvedValue(jsonResponse({
+      success: false,
+      code: 'PORT_IN_USE',
+      error: 'port 7681 is already in use',
+    }));
+
+    const result = await spawnCli(backend(fetch), 'router');
+
+    expect(result.errorCode).toBe('PORT_IN_USE');
+    expect(result.error).toContain('already in use');
   });
 
   it('spawnCli forwards the console on every retry', async () => {

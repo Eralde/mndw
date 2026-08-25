@@ -94,6 +94,7 @@ describe('MwsClientsTableComponent', () => {
   it('renders one row per client and accessible sortable headers', async () => {
     const fixture = render(fixtureRoots());
     const table = tableOf(fixture);
+    const controls = fixture.nativeElement.querySelector('.mndw-table-controls');
 
     await settle(table);
 
@@ -105,6 +106,8 @@ describe('MwsClientsTableComponent', () => {
     expect(table.shadowRoot.querySelector('th[aria-sort="ascending"] button[data-sort-column="name"]')).not.toBeNull();
     expect(shadowRows(table)[0]?.textContent).toContain('Alpha');
     expect(shadowRows(table)[0]?.textContent).toContain('Node A');
+    expect(controls).not.toBeNull();
+    expect(controls?.contains(table)).toBe(false);
   });
 
   it('filters rows from the mndwinput event value', async () => {

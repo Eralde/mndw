@@ -19,6 +19,8 @@
   "error": {
     "backend-missing": "Backend bindings are missing for terminal-page",
     "start-failed": "Failed to start terminal service",
+    "ttyd-start-failed": "The terminal service could not be started.",
+    "ttyd-unavailable": "The terminal service is unavailable on this device.",
     "unknown": "Unknown error"
   }
 }

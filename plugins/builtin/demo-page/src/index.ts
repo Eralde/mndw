@@ -7,15 +7,22 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
   let count = saved ? parseInt(saved, 10) || 0 : 0;
 
   el.innerHTML = `
-    <div style="padding: 1.5rem; font-family: sans-serif;">
-      <div><b id="hello-page-instance-label"></b> ${ctx.instanceId}</div><br/>
+    <div
+      class="demo-page"
+      style="display: grid; gap: var(--mndw-space-3); padding: var(--mndw-space-4); font-family: var(--mndw-font-sans);"
+    >
+      <div class="demo-page__content" style="display: grid; gap: var(--mndw-space-2);">
+        <div><b id="hello-page-instance-label"></b> ${ctx.instanceId}</div>
 
-      <h2 data-testid="l10n-probe" hidden></h2>
-      <p id="hello-page-device"></p>
-      <p id="hello-page-vendor"></p>
-      <div id="hello-page-counter"></div>
-      <mndw-button id="hello-page-save" variant="primary"></mndw-button>
-      <div id="hello-page-stored"></div>
+        <h2 data-testid="l10n-probe" hidden></h2>
+        <p id="hello-page-device"></p>
+        <p id="hello-page-vendor"></p>
+        <div id="hello-page-counter"></div>
+        <div id="hello-page-stored"></div>
+      </div>
+      <div class="demo-page__actions">
+        <mndw-button id="hello-page-save" variant="primary"></mndw-button>
+      </div>
     </div>
   `;
 

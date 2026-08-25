@@ -12,7 +12,8 @@ interface AppState {
   hostInfo: HostInfo | null;
   /** User-facing message set by the plugin loader when the plugin list can't be loaded. */
   pluginLoadError: string | null;
-  sidebarCollapsed: boolean;
+  mobileSidebarOpen: boolean;
+  desktopSidebarCollapsed: boolean;
   theme: MndwThemeName;
   locale: string;
   localeSwitchPending: boolean;
@@ -23,11 +24,20 @@ export const appState: AppState = $state({
   ready: false,
   hostInfo: null,
   pluginLoadError: null,
-  sidebarCollapsed: mobileMediaQuery().matches,
+  mobileSidebarOpen: false,
+  desktopSidebarCollapsed: false,
   theme: getTheme(),
   locale: getLocale(),
   localeSwitchPending: false,
 });
+
+export function toggleSidebar(): void {
+  if (mobileMediaQuery().matches) {
+    appState.mobileSidebarOpen = !appState.mobileSidebarOpen;
+  } else {
+    appState.desktopSidebarCollapsed = !appState.desktopSidebarCollapsed;
+  }
+}
 
 /** Resets app to login and stops dependency polling for prior session. */
 export function resetToLogin(): void {

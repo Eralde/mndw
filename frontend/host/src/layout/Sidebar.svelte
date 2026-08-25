@@ -1,4 +1,5 @@
 <script lang="ts">
+import {onMount} from 'svelte';
 import {appState} from '../state/app.svelte.js';
 import {mobileMediaQuery} from './breakpoint.js';
 import {hostT} from '../services/host-i18n.svelte.js';
@@ -6,6 +7,12 @@ import {getHostServices} from '../host-services-context.js';
 import {appRouter} from '../router/create-app-router.js';
 
 const registry = getHostServices().registry;
+const mobileQuery = mobileMediaQuery();
+let isMobile = $state(mobileQuery.matches);
+
+const handleBreakpointChange = (event: MediaQueryListEvent): void => {
+  isMobile = event.matches;
+};
 
 // The registry is populated before authenticated startup builds this shell, so a plain
 // copy-and-sort (label, then name) matches the router/picker ordering without a store.
@@ -39,13 +46,19 @@ function isActive(route: string): boolean {
 }
 
 function closeOnMobile(): void {
-  if (mobileMediaQuery().matches) {
-    appState.sidebarCollapsed = true;
+  if (isMobile) {
+    appState.mobileSidebarOpen = false;
   }
 }
+
+onMount(() => {
+  mobileQuery.addEventListener('change', handleBreakpointChange);
+
+  return () => mobileQuery.removeEventListener('change', handleBreakpointChange);
+});
 </script>
 
-{#if !appState.sidebarCollapsed}
+{#if isMobile && appState.mobileSidebarOpen}
   <div
     class="mndw-sidebar-backdrop"
     role="button"
@@ -65,7 +78,8 @@ function closeOnMobile(): void {
 <nav
   class="mndw-sidebar"
   data-locale={appState.locale}
-  class:collapsed={appState.sidebarCollapsed}
+  class:collapsed={!isMobile && appState.desktopSidebarCollapsed}
+  class:mobile-collapsed={isMobile && !appState.mobileSidebarOpen}
 >
   <a
     href="/"

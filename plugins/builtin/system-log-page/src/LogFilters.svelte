@@ -81,24 +81,23 @@ function resetFilters(): void {
     </div>
   </div>
 
-  <div
-    class="log-filters__controls"
-    class:collapsed={!expanded}
-  >
-    <mndw-input
-      type="text"
-      aria-label={translate('filter.search')}
-      placeholder={translate('filter.placeholder')}
-      value={filterState.query}
-      onmndwinput={(event: CustomEvent<{value: string}>) =>
-      updateQuery(event.detail.value)}
-    ></mndw-input>
-    <LogLevelPills
-      activeLevels={filterState.levels}
-      {translator}
-      onChange={(levels) => onChange({query: filterState.query, levels})}
-    />
-  </div>
+  {#if expanded}
+    <div class="log-filters__controls">
+      <mndw-input
+        type="text"
+        aria-label={translate('filter.search')}
+        placeholder={translate('filter.placeholder')}
+        value={filterState.query}
+        onmndwinput={(event: CustomEvent<{value: string}>) =>
+        updateQuery(event.detail.value)}
+      ></mndw-input>
+      <LogLevelPills
+        activeLevels={filterState.levels}
+        {translator}
+        onChange={(levels) => onChange({query: filterState.query, levels})}
+      />
+    </div>
+  {/if}
 </section>
 
 <style>
@@ -142,22 +141,7 @@ function resetFilters(): void {
 .log-filters__controls {
   --log-filter-focus-gutter: calc(var(--mndw-focus-w) + 0.0625rem);
 
-  max-height: 18.75rem;
-  padding: 0 var(--log-filter-focus-gutter) var(--log-filter-focus-gutter);
-  opacity: 1;
-  overflow: hidden;
-  transition: max-height 0.3s ease-out, opacity 0.3s ease-out, padding 0.3s ease-out;
-}
-
-.log-filters__controls:not(.collapsed) {
   padding-top: calc(var(--mndw-space-2) + var(--log-filter-focus-gutter));
-}
-
-.log-filters__controls.collapsed {
-  max-height: 0;
-  padding: 0;
-  opacity: 0;
-  pointer-events: none;
 }
 
 mndw-input {

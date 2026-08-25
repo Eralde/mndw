@@ -200,6 +200,18 @@ describe('PingWidget', () => {
     await unmount(app);
   });
 
+  it('marks Add control as aligned with the input control row', () => {
+    const app = mount(PingWidget, {target: host, props: {backend: undefined, i18n: createTestI18n(enCatalog)}});
+
+    flushSync();
+
+    const addButton = [...host.querySelectorAll('mndw-button')]
+      .find((button) => button.textContent?.includes('Add'));
+
+    expect(addButton?.classList.contains('add-host-button')).toBe(true);
+    void unmount(app);
+  });
+
   it('updates mounted translated controls when locale changes', () => {
     const changing = changingI18n();
     const app = mount(PingWidget, {target: host, props: {backend: undefined, i18n: changing.i18n}});

@@ -39,3 +39,15 @@ async function downloadHostDiagnostics(): Promise<void> {
     <p role="alert">{diagnosticsError}</p>
   {/if}
 </section>
+
+<style>
+.mndw-diagnostics-settings {
+  display: grid;
+  gap: var(--mndw-space-2);
+}
+
+.mndw-diagnostics-settings h3,
+.mndw-diagnostics-settings p {
+  margin: 0;
+}
+</style>

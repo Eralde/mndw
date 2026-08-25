@@ -35,7 +35,7 @@ function mountTable(client: ClientRecord): void {
     showOffline: false,
     translator: useTranslator(createTestI18n({
       'column.name': 'Name',
-      'column.link': 'Link',
+      'column.link': 'Online',
       'column.ip': 'IP Address',
       'column.connection': 'Connection',
       'column.uptime': 'Uptime',
@@ -46,8 +46,9 @@ function mountTable(client: ClientRecord): void {
       'error': 'show device-list failed',
       'port': 'Port',
       'rssi': 'RSSI',
-      'link.up': 'up',
-      'link.down': 'down',
+      'link.online': 'Online',
+      'link.offline': 'Offline',
+      'link.unavailable': 'Unavailable',
     })),
   });
   app.mount(host);
@@ -83,6 +84,47 @@ describe('name column', () => {
     const nameCell = host.querySelector('tbody tr td .client-name');
 
     expect(nameCell?.textContent).toBe('Alpha client');
+  });
+});
+
+describe('table layout and status semantics', () => {
+  it('owns horizontal scrolling in a bounded viewport', () => {
+    mountTable(makeClient());
+
+    const viewport = host.querySelector('.mndw-table-viewport');
+
+    expect(viewport).not.toBeNull();
+    expect(viewport?.querySelector('table')).not.toBeNull();
+    expect(host.querySelector('.mndw-table-controls')).toBeNull();
+    expect(host.querySelector('.clients-table')?.parentElement).toBe(viewport);
+  });
+
+  it.each([
+    ['up' as const, 'Online', 'clients-table__dot--up'],
+    ['down' as const, 'Offline', 'clients-table__dot--down'],
+    [null, 'Unavailable', 'clients-table__dot--unavailable'],
+  ])('renders %s link state as an indicator with accessible text', (link, label, stateClass) => {
+    mountTable(makeClient({link}));
+
+    const cell = host.querySelectorAll('tbody td')[1];
+    const status = cell?.querySelector('.clients-table__status-indicator');
+
+    expect(status).not.toBeNull();
+    expect(status?.querySelector('.clients-table__sr-only')?.textContent).toBe(label);
+    expect(status?.classList.contains(stateClass)).toBe(true);
+    expect(cell?.textContent?.trim()).toBe(label);
+  });
+
+  it('pins first column and keeps duration cells on one line', () => {
+    mountTable(makeClient({uptime: 3661, lastSeen: 62}));
+
+    const firstHeader = host.querySelector('thead th');
+    const firstCell = host.querySelector('tbody td');
+
+    expect(firstHeader?.classList.contains('clients-table__sticky-column')).toBe(true);
+    expect(firstCell?.classList.contains('clients-table__sticky-column')).toBe(true);
+    expect(host.querySelector('td.clients-table__nowrap')).not.toBeNull();
+    expect(host.querySelectorAll('td.clients-table__nowrap')).toHaveLength(2);
   });
 });
 

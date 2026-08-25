@@ -203,7 +203,7 @@ onUnmounted(() => {
 
 <template>
   <div class="clients-widget">
-    <header class="clients-widget__header">
+    <header class="clients-widget__header mndw-table-controls">
       <span>{{ headerLabel }}</span>
       <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
       <mndw-checkbox
@@ -229,10 +229,12 @@ onUnmounted(() => {
 <style scoped>
 .clients-widget {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: var(--mndw-space-2);
   height: 100%;
   min-height: 0;
-  overflow: auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
 }

@@ -99,6 +99,15 @@ describe('PluginManager', () => {
     document.body.innerHTML = '';
   });
 
+  it('uses a Settings subsection heading hierarchy', async () => {
+    const {component, target} = await mountManager(clientWith([plugin()]));
+
+    expect(target.querySelector('.mndw-plugin-manager h3')?.textContent).toBe('Plugin manager');
+    expect(target.querySelector('.mndw-plugin-manager h2')).toBeNull();
+
+    void unmount(component);
+  });
+
   it('loads plugins and partitions pending approvals from installed plugins', async () => {
     const client = clientWith([
       plugin(),

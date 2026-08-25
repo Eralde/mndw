@@ -54,6 +54,11 @@
   padding: 0;
 }
 
+/* Document reset rules override shadow-host `:host` styles, so restore shared panel spacing here. */
+mndw-tab-panel {
+  padding: var(--mndw-space-3);
+}
+
 html,
 body,
 #app {
@@ -227,7 +232,7 @@ body {
     transform: translateX(0);
   }
 
-  .mndw-sidebar.collapsed {
+  .mndw-sidebar.mobile-collapsed {
     overflow: hidden;
     width: min(80vw, 280px);
     padding: 0.5rem 0;
@@ -297,8 +302,13 @@ body {
 }
 
 .mndw-settings h3 {
-  margin: 1rem 0 0.5rem;
+  margin: 1.5rem 0 0.5rem;
   color: var(--mndw-text-muted);
+}
+
+.mndw-settings mndw-tab-panel > :first-child > h3,
+.mndw-settings mndw-tab-panel > :first-child > :first-child > h3 {
+  margin-top: 0;
 }
 
 .mndw-settings ul {

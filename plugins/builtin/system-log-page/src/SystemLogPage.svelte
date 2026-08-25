@@ -183,6 +183,7 @@ onMount(() => {
     <p class="system-log-page__status">{t('status.loading')}</p>
   {/if}
 
+  <!-- Native viewport is intentional fallback until mndw-scroll-area parity covers binding, stickiness, and focus. -->
   <div
     class="system-log-page__viewport"
     data-log-viewport
@@ -285,8 +286,33 @@ p {
   flex: 1 1 0%;
   min-height: 0;
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--mndw-scrollbar-thumb) var(--mndw-scrollbar-track);
   padding: var(--mndw-space-3) var(--mndw-space-5) var(--mndw-space-5);
   font-family: var(--mndw-font-mono);
+}
+
+.system-log-page__viewport::-webkit-scrollbar {
+  width: var(--mndw-scrollbar-size);
+  height: var(--mndw-scrollbar-size);
+}
+
+.system-log-page__viewport::-webkit-scrollbar-track {
+  background: var(--mndw-scrollbar-track);
+}
+
+.system-log-page__viewport::-webkit-scrollbar-thumb {
+  border: var(--mndw-focus-w) solid var(--mndw-scrollbar-track);
+  border-radius: var(--mndw-scrollbar-radius);
+  background: var(--mndw-scrollbar-thumb);
+}
+
+.system-log-page__viewport::-webkit-scrollbar-thumb:hover {
+  background: var(--mndw-scrollbar-thumb-hover);
+}
+
+.system-log-page__viewport::-webkit-scrollbar-corner {
+  background: var(--mndw-scrollbar-track);
 }
 
 @media (max-width: 700px) {

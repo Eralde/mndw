@@ -306,7 +306,7 @@ onMount(() => {
   class="services-panel"
   data-locale={appState.locale}
 >
-  <div class="header-row">
+  <div class="header-row mndw-table-controls">
     <div>
       <h1>{hostT('services.title')}</h1>
       <p>{hostT('services.description')}</p>
@@ -341,7 +341,7 @@ onMount(() => {
       {hostT('services.empty')}
     </div>
   {:else}
-    <div class="table-wrap">
+    <div class="mndw-table-viewport table-wrap">
       <table>
         <colgroup>
           <col class="service-column" />
@@ -403,10 +403,10 @@ onMount(() => {
 </section>
 
 <style>
-.services-panel { padding: 1rem; font-family: var(--mndw-font-sans); color: var(--mndw-text); max-width: 75rem; }
+.services-panel { min-width: 0; padding: 1rem; font-family: var(--mndw-font-sans); color: var(--mndw-text); max-width: 75rem; }
 .header-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; }.header-row h1 { margin: 0; font-size: 1.25rem; }.header-row p { margin: 0.25rem 0 0; color: var(--mndw-text-subtle); font-size: .8125rem; }
-.table-wrap { overflow: auto; border: 1px solid var(--mndw-border); border-radius: 0.375rem; }.empty { display: grid; gap: 0.5rem; padding: 2.5rem 1rem; text-align: center; color: var(--mndw-text-subtle); }.capability strong { color: var(--mndw-text); }
-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .8125rem; } .service-column { width: 24%; } .state-column { width: 17%; } .autostart-column { width: 16%; } .actions-column { width: 43%; } th, td { padding: 0.5rem 0.625rem; text-align: left; border-bottom: 1px solid var(--mndw-border); } th { color: var(--mndw-text-muted); } tr:last-child td { border-bottom: 0; } td small { display: block; color: var(--mndw-text-subtle); }.actions { white-space: nowrap; }.actions mndw-button { margin-right: 0.25rem; }
+.table-wrap { min-width: 0; overflow: auto; border: 1px solid var(--mndw-border); border-radius: 0.375rem; }.empty { display: grid; gap: 0.5rem; padding: 2.5rem 1rem; text-align: center; color: var(--mndw-text-subtle); }.capability strong { color: var(--mndw-text); }
+table { width: max-content; min-width: 42rem; table-layout: fixed; border-collapse: collapse; font-size: .8125rem; } .service-column { width: 24%; } .state-column { width: 17%; } .autostart-column { width: 16%; } .actions-column { width: 43%; } th, td { padding: 0.5rem 0.625rem; text-align: left; border-bottom: 1px solid var(--mndw-border); } th { color: var(--mndw-text-muted); } tr:last-child td { border-bottom: 0; } td small { display: block; color: var(--mndw-text-subtle); }.actions { display: flex; flex-wrap: wrap; gap: 0.25rem; }.actions mndw-button { margin: 0; }
 .autostart { text-align: center; }
 .badge { display: inline-block; padding: 0.125rem 0.5rem; border-radius: 0.625rem; text-transform: capitalize; font-size: .75rem; }.badge-running { color: var(--mndw-success); }.badge-stopped { color: var(--mndw-warning); }.badge-unknown { color: var(--mndw-text-subtle); }
 </style>

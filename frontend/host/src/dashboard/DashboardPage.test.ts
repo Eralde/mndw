@@ -360,18 +360,23 @@ describe('DashboardPage', () => {
   it('clears pending persistence and destroys tiles on teardown', () => {
     const {component, target} = mountPage();
 
-    // Leave a debounce timer pending to prove it is cleared before it can fire.
+    // Leave a debounce timer pending to prove teardown flushes it exactly once.
     save.mockReturnValue([{id: 'widget-a:1', x: 0, y: 0, w: 4, h: 3}]);
     gridHandlers.get('change')?.(new Event('change'));
+    expect(save).toHaveBeenCalledWith(false);
 
     void unmount(component);
     flushSync();
 
     expect(teardownLog).toContain('destroyAll');
     expect(destroyAllTiles).toHaveBeenCalledWith('host-navigation');
+    expect(saveDashboardLayout).toHaveBeenCalledWith({
+      tiles: [{id: 'widget-a:1', x: 0, y: 0, w: 4, h: 3}],
+      mobileOrder: [],
+    });
 
     vi.advanceTimersByTime(500);
-    expect(saveDashboardLayout).not.toHaveBeenCalled();
+    expect(saveDashboardLayout).toHaveBeenCalledTimes(1);
 
     target.remove();
   });
@@ -417,10 +422,10 @@ describe('DashboardPage', () => {
     vi.mocked(pluginRegistry).getWidgets.mockReturnValue([
       {entry: widgetEntry('clock'), module: {createInstance: vi.fn()}},
     ]);
-    vi.mocked(addWidgetTile).mockReturnValue('widget-clock:1');
     save.mockReturnValue([{id: 'widget-clock:1', x: 0, y: 0, w: 4, h: 3}]);
     vi.mocked(addWidgetTile).mockImplementation(() => {
       events.push('tile-added');
+      gridHandlers.get('added')?.();
 
       return 'widget-clock:1';
     });
@@ -435,17 +440,49 @@ describe('DashboardPage', () => {
     document.body.querySelector<HTMLElement>('.mndw-floating-panel mndw-button:not(.mndw-floating-panel__close)')
       ?.click();
     flushSync();
-    events.push('grid-added');
-    gridHandlers.get('added')?.();
     vi.advanceTimersByTime(500);
 
-    expect(events).toEqual(['tile-added', 'grid-added', 'persisted']);
+    expect(events).toEqual(['tile-added', 'persisted']);
     expect(saveDashboardLayout).toHaveBeenCalledWith({
       tiles: [{id: 'widget-clock:1', x: 0, y: 0, w: 4, h: 3}],
       mobileOrder: ['widget-clock:1'],
     });
 
     void unmount(component);
+    target.remove();
+  });
+
+  it('reproduces desktop add loss when navigation unmounts before debounce flush', () => {
+    vi.mocked(pluginRegistry).getWidgets.mockReturnValue([
+      {entry: widgetEntry('clock'), module: {createInstance: vi.fn()}},
+    ]);
+    vi.mocked(addWidgetTile).mockImplementation(() => {
+      // GridStack emits `added` during addWidget(), before addWidgetTile returns.
+      gridHandlers.get('added')?.();
+
+      return 'widget-clock:1';
+    });
+    save.mockReturnValue([{id: 'widget-clock:1', x: 0, y: 0, w: 4, h: 3}]);
+
+    const {component, target} = mountPage();
+
+    target.querySelector<HTMLElement>('.mndw-dashboard__toolbar mndw-button')?.click();
+    flushSync();
+    document.body.querySelector<HTMLElement>(
+      '.mndw-floating-panel mndw-button:not(.mndw-floating-panel__close)',
+    )?.click();
+    flushSync();
+
+    // GridStack supplied complete geometry before the add handler returned.
+    expect(saveDashboardLayout).toHaveBeenCalledWith({
+      tiles: [{id: 'widget-clock:1', x: 0, y: 0, w: 4, h: 3}],
+      mobileOrder: ['widget-clock:1'],
+    });
+
+    void unmount(component);
+
+    // Defense-in-depth flush must not create a duplicate write when no debounce is pending.
+    expect(saveDashboardLayout).toHaveBeenCalledTimes(1);
     target.remove();
   });
 
@@ -456,6 +493,17 @@ describe('DashboardPage', () => {
 
     expect(target.querySelector('.mndw-dashboard__grid-wrapper')).toBeNull();
     expect(target.querySelector('.mndw-mobile-dashboard')).not.toBeNull();
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('keeps the dashboard toolbar before the widget renderer', () => {
+    const {component, target} = mountPage();
+    const page = target.querySelector('.mndw-dashboard-page');
+    const toolbar = page?.querySelector('.mndw-dashboard__toolbar');
+
+    expect(page?.firstElementChild).toBe(toolbar);
 
     void unmount(component);
     target.remove();

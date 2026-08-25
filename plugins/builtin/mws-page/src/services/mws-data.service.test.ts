@@ -14,7 +14,12 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {MwsMemberResult} from '../api/mws-api.service';
 import {findNodeById} from '../domain/mws/map-builder';
 import {fakeBackend, goodApi, makeLiveService, makeLiveServiceWithBackend} from '../test-support/mws-data-test-support';
-import {MWSD_STATUS_POLL_INTERVAL_MS, MWSD_STATUS_REQUEST_TIMEOUT_MS, POLL_INTERVAL_MS} from './mws-data.service';
+import {
+  EXTRA_FEATURES_STARTING_TIMEOUT_MS,
+  MWSD_STATUS_POLL_INTERVAL_MS,
+  MWSD_STATUS_REQUEST_TIMEOUT_MS,
+  POLL_INTERVAL_MS,
+} from './mws-data.service';
 
 const activeResponse = (): Response =>
   new Response(
@@ -89,6 +94,24 @@ describe('MwsDataService', () => {
 
     await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS);
     expect(service.extraFeaturesPresentation()).toBe('limited');
+  });
+
+  it('shows taking-longer presentation after continuous starting and resets on retry', async () => {
+    const api = goodApi();
+    const fetch = vi.fn().mockRejectedValue(new BackendStarting('nodes', null));
+    const service = makeLiveServiceWithBackend(api, fakeBackend(fetch));
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.extraFeaturesAvailability()).toBe('starting');
+    expect(service.extraFeaturesPresentation()).toBe('starting');
+
+    await vi.advanceTimersByTimeAsync(EXTRA_FEATURES_STARTING_TIMEOUT_MS);
+    expect(service.extraFeaturesAvailability()).toBe('starting');
+    expect(service.extraFeaturesPresentation()).toBe('taking-longer');
+
+    service.retry();
+    expect(service.extraFeaturesPresentation()).toBe('checking');
   });
 
   it.each(

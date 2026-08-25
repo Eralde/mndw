@@ -22,6 +22,8 @@
 
 .node-name {
   display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
   gap: var(--mndw-space-2);
   align-items: center;
   padding: 0;
@@ -29,6 +31,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 
@@ -54,6 +57,7 @@
 
 mndw-table {
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 

@@ -176,6 +176,10 @@ parked light-DOM node so the plugin cell's scoped styles apply. Framework adapte
 `select-all`, `drag-handle`, `column-menu-trigger`, `empty`, `error`. The menu panel is portaled, so it
 is styled through `column-menu-panel-class`, not `mndw-table::part(...)`.
 
+The internal viewport also has class `mndw-table-viewport`. Consumers must keep table controls in a
+light-DOM sibling region named `mndw-table-controls`; the viewport is the sole horizontal scroll owner.
+The class and `part="viewport"` are both stable hooks for host, Vue, and Angular consumers.
+
 Adapters render into the parked node on mount/update and unmount on destroy; host startup registers
 `@mndw/ui` before plugin mount, so they never wait on `customElements.whenDefined()`.
 

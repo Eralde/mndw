@@ -514,6 +514,7 @@ describe('MndwTable rendering and properties', () => {
 
     expect(table.getAttribute('part')).toBe('table');
     expect(viewport).not.toBeNull();
+    expect(viewport.classList.contains('mndw-table-viewport')).toBe(true);
     expect(table.parentElement).toBe(viewport);
   });
 

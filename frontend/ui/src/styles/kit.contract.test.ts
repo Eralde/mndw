@@ -170,4 +170,15 @@ describe('kit.css class contract', () => {
     expect(css).not.toMatch(/#[0-9a-f]{3,8}/i);
     expect(css).not.toMatch(/\b(?:rgb|rgba|hsl|hsla)\(/i);
   });
+
+  it('lays switch fields out as a compact flex row while keeping messages below', async () => {
+    const css = await readFile(resolve(process.cwd(), 'src/styles/kit.css'), 'utf8');
+
+    expect(css).toContain('.mndw-field:has(> mndw-switch)');
+    expect(css).toMatch(/\.mndw-field:has\(> mndw-switch\)[\s\S]*display:\s*flex/u);
+    expect(css).toMatch(/\.mndw-field:has\(> mndw-switch\)[\s\S]*flex-direction:\s*row/u);
+    expect(css).toMatch(/\.mndw-field:has\(> mndw-switch\)[\s\S]*gap:\s*var\(--mndw-space-1\)/u);
+    expect(css).not.toMatch(/\.mndw-field:has\(> mndw-switch\)[\s\S]*space-between/u);
+    expect(css).toMatch(/\.mndw-field:has\(> mndw-switch\) > \.mndw-field__hint,[\s\S]*\.mndw-field__error[\s\S]*flex:\s*0\s+0\s+100%/u);
+  });
 });

@@ -1,10 +1,31 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
-const mobileState = vi.hoisted(() => ({matches: false}));
+const mobileState = vi.hoisted(() => {
+  const state: {
+    matches: boolean;
+    listener: ((event: MediaQueryListEvent) => void) | undefined;
+    addEventListener: ReturnType<typeof vi.fn>;
+    removeEventListener: ReturnType<typeof vi.fn>;
+  } = {
+    matches: false,
+    listener: undefined,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  };
+
+  state.addEventListener.mockImplementation((_event: string, listener: (event: MediaQueryListEvent) => void) => {
+    state.listener = listener;
+  });
+  state.removeEventListener.mockImplementation(() => {
+    state.listener = undefined;
+  });
+
+  return state;
+});
 
 vi.mock('./breakpoint.js', () => ({
-  mobileMediaQuery: vi.fn(() => ({matches: mobileState.matches})),
+  mobileMediaQuery: vi.fn(() => mobileState),
 }));
 
 vi.mock('../runtime/plugin-registry.js', () => ({
@@ -66,7 +87,11 @@ function activeHrefs(target: HTMLElement): string[] {
 describe('Sidebar', () => {
   beforeEach(() => {
     mobileState.matches = false;
-    appState.sidebarCollapsed = false;
+    mobileState.listener = undefined;
+    mobileState.addEventListener.mockClear();
+    mobileState.removeEventListener.mockClear();
+    appState.mobileSidebarOpen = false;
+    appState.desktopSidebarCollapsed = false;
     appState.locale = 'en';
   });
 
@@ -74,7 +99,8 @@ describe('Sidebar', () => {
     document.body.innerHTML = '';
     window.history.replaceState(null, '', '/');
     vi.clearAllMocks();
-    appState.sidebarCollapsed = false;
+    appState.mobileSidebarOpen = false;
+    appState.desktopSidebarCollapsed = false;
     appState.locale = 'en';
   });
 
@@ -87,12 +113,12 @@ describe('Sidebar', () => {
       ]);
     });
 
-    it('keeps Dashboard first, Package Manager second, sorts plugin links, and Settings last', () => {
+    it('keeps Dashboard first, Entware second, sorts plugin links, and Settings last', () => {
       const {component, target} = mountSidebar();
 
       expect(links(target)).toEqual([
         {text: 'Dashboard', href: '/'},
-        {text: 'Package Manager', href: '/packages'},
+        {text: 'Entware', href: '/packages'},
         {text: 'Status', href: '/alpha-status'},
         {text: 'Status', href: '/beta-status'},
         {text: 'Traffic', href: '/traffic'},
@@ -119,7 +145,7 @@ describe('Sidebar', () => {
       expect(appState.locale).toBe('ru');
       expect(links(target).map(({text}) => text)).toEqual([
         'Панель управления',
-        'Менеджер пакетов',
+        'Entware',
         'Status',
         'Status',
         'Traffic',
@@ -135,13 +161,13 @@ describe('Sidebar', () => {
       vi.mocked(pluginRegistry).getPages.mockReturnValue([]);
     });
 
-    it('omits the Plugins heading and shows only Dashboard, Package Manager and Settings', () => {
+    it('omits the Plugins heading and shows only Dashboard, Entware and Settings', () => {
       const {component, target} = mountSidebar();
 
       expect(target.querySelector('.mndw-sidebar__section-label')).toBeNull();
       expect(links(target)).toEqual([
         {text: 'Dashboard', href: '/'},
-        {text: 'Package Manager', href: '/packages'},
+        {text: 'Entware', href: '/packages'},
         {text: 'Settings', href: '/settings'},
       ]);
 
@@ -182,13 +208,14 @@ describe('Sidebar', () => {
 
     it('closes an open mobile drawer when its backdrop is clicked', () => {
       mobileState.matches = true;
+      appState.mobileSidebarOpen = true;
 
       const {component, target} = mountSidebar();
 
       target.querySelector<HTMLElement>('.mndw-sidebar-backdrop')?.click();
       flushSync();
 
-      expect(appState.sidebarCollapsed).toBe(true);
+      expect(appState.mobileSidebarOpen).toBe(false);
       expect(target.querySelector('.mndw-sidebar-backdrop')).toBeNull();
 
       void unmount(component);
@@ -196,12 +223,13 @@ describe('Sidebar', () => {
 
     it('closes an open mobile drawer when any sidebar link is clicked', () => {
       mobileState.matches = true;
+      appState.mobileSidebarOpen = true;
 
       const {component, target} = mountSidebar();
 
       target.querySelector<HTMLAnchorElement>('.mndw-sidebar__link')?.click();
 
-      expect(appState.sidebarCollapsed).toBe(true);
+      expect(appState.mobileSidebarOpen).toBe(false);
 
       void unmount(component);
     });
@@ -213,13 +241,14 @@ describe('Sidebar', () => {
 
       target.querySelector<HTMLAnchorElement>('.mndw-sidebar__link')?.click();
 
-      expect(appState.sidebarCollapsed).toBe(false);
+      expect(appState.desktopSidebarCollapsed).toBe(false);
 
       void unmount(component);
     });
 
     it('renders the backdrop as a sibling of the sidebar nav', () => {
       mobileState.matches = true;
+      appState.mobileSidebarOpen = true;
 
       const {component, target} = mountSidebar();
 
@@ -229,6 +258,25 @@ describe('Sidebar', () => {
       expect(backdrop?.parentElement).toBe(target);
       expect(nav?.parentElement).toBe(target);
       expect(backdrop?.nextElementSibling).toBe(nav);
+
+      void unmount(component);
+    });
+
+    it('does not leak mobile drawer closure into desktop presentation', () => {
+      mobileState.matches = true;
+      appState.mobileSidebarOpen = true;
+
+      const {component, target} = mountSidebar();
+
+      target.querySelector<HTMLElement>('.mndw-sidebar-backdrop')?.click();
+      flushSync();
+      mobileState.listener?.({matches: false} as MediaQueryListEvent);
+      flushSync();
+
+      expect(appState.mobileSidebarOpen).toBe(false);
+      expect(appState.desktopSidebarCollapsed).toBe(false);
+      expect(target.querySelector('.mndw-sidebar')?.classList.contains('collapsed')).toBe(false);
+      expect(target.querySelector('.mndw-sidebar')?.classList.contains('mobile-collapsed')).toBe(false);
 
       void unmount(component);
     });

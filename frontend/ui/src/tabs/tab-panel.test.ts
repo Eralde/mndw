@@ -85,4 +85,9 @@ describe('<mndw-tab-panel>', () => {
     expect(MndwTabPanel.styles.cssText).toContain(':host([hidden])');
     expect(element.hidden).toBe(false);
   });
+
+  it('insets panel content with small uniform padding', () => {
+    expect(MndwTabPanel.styles.cssText).toMatch(/padding:\s*var\(--mndw-space-3\);/u);
+    expect(MndwTabPanel.styles.cssText).not.toContain('padding: var(--mndw-space-3) 0;');
+  });
 });

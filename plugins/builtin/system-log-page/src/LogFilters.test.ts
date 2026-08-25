@@ -38,6 +38,29 @@ describe('LogFilters', () => {
     host?.remove();
   });
 
+  it('removes collapsed controls from layout and accessibility tree', () => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+
+    const app = mount(LogFilters, {
+      target: host,
+      props: {state: {query: '', levels: allLevels}, filteredCount: 2, totalCount: 6, translator: translator(), onChange: vi.fn()},
+    });
+
+    flushSync();
+    expect(host.querySelector('.log-filters__controls')).toBeNull();
+
+    host.querySelector<HTMLElement>('mndw-button[data-filter-toggle]')?.click();
+    flushSync();
+    expect(host.querySelector('.log-filters__controls')).not.toBeNull();
+
+    host.querySelector<HTMLElement>('mndw-button[data-filter-toggle]')?.click();
+    flushSync();
+    expect(host.querySelector('.log-filters__controls')).toBeNull();
+
+    void unmount(app);
+  });
+
   it('emits typed search and level changes and resets active filters', async () => {
     host = document.createElement('div');
     document.body.appendChild(host);

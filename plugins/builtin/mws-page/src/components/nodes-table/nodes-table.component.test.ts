@@ -105,6 +105,7 @@ describe('MwsNodesTableComponent', () => {
   it('renders the eight columns and controller badge in the shared table', async () => {
     const fixture = render(roots());
     const table = tableOf(fixture);
+    const controls = fixture.nativeElement.querySelector('.mndw-table-controls');
 
     await settle(table);
 
@@ -114,6 +115,8 @@ describe('MwsNodesTableComponent', () => {
     expect(table.shadowRoot.querySelector('tbody')?.textContent).toContain('Online');
     expect(table.querySelector('.node-name')?.textContent).toContain('Node A');
     expect(table.querySelector('.node-name')?.textContent).toContain('Controller');
+    expect(controls).not.toBeNull();
+    expect(controls?.contains(table)).toBe(false);
   });
 
   it('emits node ID from the Node name activation button', async () => {

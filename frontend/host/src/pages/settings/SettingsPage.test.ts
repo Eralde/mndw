@@ -78,6 +78,7 @@ vi.mock('../../services/persistent-rci-session.service.js', () => ({
 vi.mock('../../services/diagnostics.service.js', () => ({downloadDiagnostics}));
 
 import SettingsPage from './SettingsPage.svelte';
+import generalSettingsSource from './GeneralSettings.svelte?raw';
 import {toggleTheme} from '../../services/theme.service.js';
 import {defaultHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
@@ -218,6 +219,21 @@ describe('SettingsPage', () => {
     expect(control?.id).toBe('mndw-theme-switch');
     expect(field?.label).toContain('Dark theme');
     expect(label?.textContent?.trim()).toContain('Dark theme');
+
+    void unmount(component);
+  });
+
+  it('leaves General Settings field layout to shared CSS', () => {
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    expect(generalSettingsSource).toMatch(/\.mndw-general-settings mndw-field\s*\{\s*margin:\s*0\.75rem 0;/u);
+    expect(generalSettingsSource).not.toMatch(
+      /\.mndw-general-settings mndw-field\s*\{[^}]*\b(?:display|flex-direction|gap):/u,
+    );
 
     void unmount(component);
   });

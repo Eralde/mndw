@@ -10,7 +10,7 @@ afterEach(() => vi.restoreAllMocks());
 
 function notInstalledBackend(): {backend: BackendClient; fetch: ReturnType<typeof vi.fn>} {
   const fetch = vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({success: false, error: 'ttyd is not installed'}), {
+    new Response(JSON.stringify({success: false, code: 'TTYD_START_FAILED', error: 'ttyd is not installed'}), {
       status: 200,
       headers: {'content-type': 'application/json'},
     }),
@@ -134,6 +134,7 @@ describe('TerminalPage (dev path)', () => {
     clickButton(host, /entware shell/i);
 
     await vi.waitFor(() => expect(host.textContent ?? '').toMatch(/not installed/i));
+    expect(host.textContent ?? '').toMatch(/could not be started/i);
     clickButton(host, /retry/i);
     await vi.waitFor(() => expect(fetch.mock.calls.filter((c) => c[0] === 'spawn').length).toBe(2));
 

@@ -254,6 +254,9 @@ function onDrop(event: DragEvent): void {
 }
 
 .mndw-upload__zone input {
+  min-height: var(--mndw-control-h);
+  box-sizing: border-box;
+  padding: var(--mndw-space-1) var(--mndw-space-2);
   max-width: 100%;
 }
 

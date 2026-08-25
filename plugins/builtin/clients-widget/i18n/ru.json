@@ -9,7 +9,7 @@
   "refresh-interval": "Интервал обновления",
   "column": {
     "name": "Имя",
-    "link": "Связь",
+    "link": "Онлайн",
     "ip": "IP-адрес",
     "connection": "Подключение",
     "uptime": "Время работы",
@@ -24,7 +24,8 @@
   "port": "Порт",
   "rssi": "RSSI",
   "link": {
-    "up": "в сети",
-    "down": "не в сети"
+    "online": "В сети",
+    "offline": "Не в сети",
+    "unavailable": "Недоступно"
   }
 }

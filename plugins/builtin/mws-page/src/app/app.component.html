@@ -62,6 +62,11 @@
           (click)="dismissExtraFeaturesBanner()"
         >×</button>
       </div>
+    } @else if (data.extraFeaturesPresentation() === 'taking-longer') {
+      <div class="extra-features-status-slot extra-features-taking-longer" role="status">
+        <span>{{ t('extra-features.taking-longer') }}</span>
+        <mndw-button variant="secondary" (click)="retry()">{{ t('action.retry') }}</mndw-button>
+      </div>
     } @else if (data.extraFeaturesAvailability() === 'limited' && data.extraFeaturesPresentation() === 'limited') {
       <div class="extra-features-status-slot extra-features-limited" role="status">
         {{ t('extra-features.limited') }}

@@ -150,6 +150,11 @@
       color: var(--mndw-text-muted);
     }
 
+    .extra-features-taking-longer {
+      background: var(--mndw-warning-bg);
+      color: var(--mndw-warning);
+    }
+
     .extra-features-dismiss {
       min-width: 1.75rem;
       min-height: 1.75rem;

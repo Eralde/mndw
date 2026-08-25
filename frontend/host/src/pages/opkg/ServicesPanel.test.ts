@@ -56,6 +56,27 @@ beforeEach(() => {
 });
 
 describe('ServicesPanel', () => {
+  it('keeps refresh controls outside the bounded table viewport', async () => {
+    const row = entry('S01a', 'running');
+
+    mockList.mockResolvedValue([row]);
+    mockStatus.mockResolvedValue(row);
+
+    const target = document.createElement('div');
+    const app = mount(ServicesPanel, {target});
+
+    await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(1));
+
+    const controls = target.querySelector('.mndw-table-controls');
+    const viewport = target.querySelector('.mndw-table-viewport');
+
+    expect(controls).not.toBeNull();
+    expect(viewport).not.toBeNull();
+    expect(controls?.contains(viewport ?? document.createElement('div'))).toBe(false);
+    expect(viewport?.querySelector('table')).not.toBeNull();
+    await unmount(app);
+  });
+
   it('probes every discovered row with at most three calls in flight', async () => {
     const rows = [entry('S01a'), entry('S02b'), entry('S03c'), entry('S04d')];
 

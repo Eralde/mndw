@@ -52,6 +52,8 @@ let tiles: PersistedGridTile[] = $state([]);
 let mobileOrder: string[] = $state([]);
 let restoring = false;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+// @dprint-ignore
+let pendingPersist: {tiles: PersistedGridTile[]; mobileOrder: string[]} | null = null;
 
 // Load once, synchronously, before either renderer mounts (children mount before
 // the parent's onMount, so handleGridReady needs `tiles` populated already).
@@ -82,17 +84,35 @@ let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   }
 }
 
-function persistNow(): void {
-  clearTimeout(debounceTimer);
-  saveDashboardLayout({
+function persistNow(
+  layout = {
     tiles: $state.snapshot(tiles),
     mobileOrder: $state.snapshot(mobileOrder),
-  });
+  },
+): void {
+  clearTimeout(debounceTimer);
+
+  pendingPersist = null;
+
+  saveDashboardLayout(layout);
 }
 
 function scheduleSave(): void {
   clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(persistNow, PERSIST_DEBOUNCE_MS);
+
+  pendingPersist = {
+    tiles: $state.snapshot(tiles),
+    mobileOrder: $state.snapshot(mobileOrder),
+  };
+
+  debounceTimer = setTimeout(
+    () => {
+      if (pendingPersist !== null) {
+        persistNow(pendingPersist);
+      }
+    },
+    PERSIST_DEBOUNCE_MS,
+  );
 }
 
 function handleWidgetRemoved(tileId: string): void {
@@ -224,10 +244,12 @@ function handleAddWidget(pluginName: string): void {
   );
 
   if (id !== null) {
-    // The grid's added/change event owns the complete post-add geometry projection
-    // and schedules persistence. The order entry is ours to append before that
-    // scheduled snapshot runs.
+    // GridStack emits added during addWidget(), so `tiles` already contains complete
+    // geometry here. Persist both collections immediately; a queued save can be lost
+    // when navigation destroys this page before its debounce expires.
     mobileOrder = [...mobileOrder, id];
+
+    persistNow();
   }
 }
 
@@ -285,7 +307,10 @@ onMount(() => {
 });
 
 onDestroy(() => {
-  clearTimeout(debounceTimer);
+  // Flush any pending layout change before host navigation tears down this page.
+  if (pendingPersist !== null) {
+    persistNow(pendingPersist);
+  }
   // Leaving the dashboard view is a host navigation, not instance disposal, so
   // instance storage is preserved for when the persisted layout is restored.
   destroyAllTiles('host-navigation');
@@ -296,23 +321,6 @@ onDestroy(() => {
   class="mndw-dashboard-page"
   data-locale={appState.locale}
 >
-  {#if isMobile}
-    <MobileDashboard
-      order={mobileOrder}
-      onRemoveRequest={requestRemoveTile}
-    />
-  {:else}
-    <div class="mndw-dashboard__grid-wrapper">
-      <DashboardGrid
-        onGridReady={handleGridReady}
-        onGridDestroyed={handleGridDestroyed}
-        onWidgetRemoved={handleWidgetRemoved}
-        onLayoutChanged={handleLayoutChanged}
-        onWidgetResized={handleWidgetResized}
-      />
-    </div>
-  {/if}
-
   <div class="mndw-dashboard__toolbar">
     {#if registry.getWidgets().length > 0}
       <mndw-button
@@ -333,6 +341,23 @@ onDestroy(() => {
       }</span>
     {/if}
   </div>
+
+  {#if isMobile}
+    <MobileDashboard
+      order={mobileOrder}
+      onRemoveRequest={requestRemoveTile}
+    />
+  {:else}
+    <div class="mndw-dashboard__grid-wrapper">
+      <DashboardGrid
+        onGridReady={handleGridReady}
+        onGridDestroyed={handleGridDestroyed}
+        onWidgetRemoved={handleWidgetRemoved}
+        onLayoutChanged={handleLayoutChanged}
+        onWidgetResized={handleWidgetResized}
+      />
+    </div>
+  {/if}
 </div>
 
 <FloatingAddPanel

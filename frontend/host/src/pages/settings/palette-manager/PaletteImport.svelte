@@ -105,6 +105,9 @@ function onDrop(event: DragEvent): void {
 }
 
 .mndw-palette-import input {
+  min-height: var(--mndw-control-h);
+  box-sizing: border-box;
+  padding: var(--mndw-space-1) var(--mndw-space-2);
   max-width: 100%;
 }
 </style>

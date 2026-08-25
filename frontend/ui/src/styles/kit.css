@@ -161,6 +161,18 @@
   gap: var(--mndw-space-1);
 }
 
+.mndw-field:has(> mndw-switch) {
+  display: flex;
+  flex-flow: row wrap;
+  gap: var(--mndw-space-2);
+  align-items: center;
+}
+
+.mndw-field:has(> mndw-switch) > .mndw-field__hint,
+.mndw-field:has(> mndw-switch) > .mndw-field__error {
+  flex: 0 0 100%;
+}
+
 .mndw-field__label {
   color: var(--mndw-text);
   font-weight: var(--mndw-weight-semibold);

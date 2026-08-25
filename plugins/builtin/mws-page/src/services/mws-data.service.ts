@@ -36,6 +36,7 @@ import {HOST_INFO, MWSD_BACKEND} from '../tokens';
 export const POLL_INTERVAL_MS = 3_000;
 export const MWSD_STATUS_POLL_INTERVAL_MS = 3_000;
 export const MWSD_STATUS_REQUEST_TIMEOUT_MS = 5_000;
+export const EXTRA_FEATURES_STARTING_TIMEOUT_MS = 30_000;
 
 export type MwsViewPhase = 'loading' | 'error' | 'unsupported' | 'ready';
 
@@ -51,6 +52,8 @@ export type ExtraFeaturesAvailability =
   | 'limited'
   | 'blocked'
   | 'incompatible';
+
+export type ExtraFeaturesPresentation = ExtraFeaturesAvailability | 'taking-longer';
 
 export type ExtraFeaturesSetupReason = 'permission' | 'controller-token' | 'extender-session' | 'generic';
 
@@ -96,7 +99,7 @@ export class MwsDataService {
 
   private readonly loadState = signal<LoadState<MwsNode[], MwsRequestError>>({status: 'loading'});
   public readonly extraFeaturesAvailability = signal<ExtraFeaturesAvailability>('checking');
-  public readonly extraFeaturesPresentation = signal<ExtraFeaturesAvailability>('checking');
+  public readonly extraFeaturesPresentation = signal<ExtraFeaturesPresentation>('checking');
   public readonly extraFeaturesSetupReasons = signal<ExtraFeaturesSetupReason[]>([]);
   public readonly phase = computed<MwsViewPhase>(() => {
     const state = this.loadState();
@@ -148,6 +151,7 @@ export class MwsDataService {
   private pollInFlight = false;
   private refreshPending = false;
   private consecutiveLimitedPolls = 0;
+  private startingSince: number | null = null;
   private lastPersistentSessions: PersistentSessionSnapshot = newPersistentSessionSnapshot(false, new Map());
 
   public constructor() {
@@ -165,6 +169,7 @@ export class MwsDataService {
     this.stop();
     this.loadState.set({status: 'loading'});
     this.extraFeaturesSetupReasons.set([]);
+    this.startingSince = null;
     this.setExtraFeaturesAvailability(this.backend === null ? 'unavailable' : 'checking');
 
     this.versionSub = this.api.showVersion().subscribe({
@@ -205,6 +210,7 @@ export class MwsDataService {
     this.pollingStarted = false;
     this.pollInFlight = false;
     this.refreshPending = false;
+    this.startingSince = null;
 
     this.versionSub?.unsubscribe();
     this.versionSub = null;
@@ -449,6 +455,22 @@ export class MwsDataService {
 
   protected setExtraFeaturesAvailability(next: ExtraFeaturesAvailability): void {
     this.extraFeaturesAvailability.set(next);
+
+    if (next === 'starting') {
+      const now = Date.now();
+
+      this.startingSince ??= now;
+      this.consecutiveLimitedPolls = 0;
+      this.extraFeaturesPresentation.set(
+        now - this.startingSince >= EXTRA_FEATURES_STARTING_TIMEOUT_MS
+          ? 'taking-longer'
+          : 'starting',
+      );
+
+      return;
+    }
+
+    this.startingSince = null;
 
     if (next !== 'limited') {
       this.consecutiveLimitedPolls = 0;

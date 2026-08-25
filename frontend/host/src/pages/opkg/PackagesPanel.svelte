@@ -382,7 +382,7 @@ onMount(() => {
   class="packages-panel"
   data-locale={appState.locale}
 >
-  <div class="header-row">
+  <div class="header-row mndw-table-controls">
     <div>
       <h1>{hostT('packages.title')}</h1>
       <span
@@ -403,7 +403,7 @@ onMount(() => {
       >{hostT('packages.reload')}</mndw-button>
     </div>
   </div>
-  <div class="filter-row">
+  <div class="filter-row mndw-table-controls">
     <input
       type="search"
       bind:value={filter}
@@ -421,7 +421,7 @@ onMount(() => {
       }</mndw-tab>
     </mndw-tabs>
   </div>
-  <div class="bulk-bar">
+  <div class="bulk-bar mndw-table-controls">
     <span class="bulk-label">{hostT('packages.with-selected')}</span>
     <mndw-button
       variant="primary"
@@ -486,19 +486,19 @@ onMount(() => {
 </section>
 
 <style>
-.packages-panel { padding: 1rem; font-family: var(--mndw-font-sans); color: var(--mndw-text); max-width: 75rem; }
+.packages-panel { min-width: 0; padding: 1rem; font-family: var(--mndw-font-sans); color: var(--mndw-text); max-width: 75rem; }
 .header-row, .filter-row, .bulk-bar { display: flex; align-items: center; gap: 0.5rem; }
 .header-row { justify-content: space-between; margin-bottom: 0.75rem; }
 h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
 .header-actions { display: flex; gap: 0.5rem; }
 .freshness { color: var(--mndw-text-subtle); font-size: .75rem; }
 .freshness.stale { color: var(--mndw-warning); }
-.filter-row { margin-bottom: 0.5rem; }
+.filter-row { min-width: 0; margin-bottom: 0.5rem; flex-wrap: wrap; }
 .filter-input { flex: 1; max-width: 20rem; padding: 0.375rem 0.625rem; font-size: .8125rem; border: 1px solid var(--mndw-border); border-radius: 0.25rem; background: var(--mndw-surface-raised); color: var(--mndw-text); }
 .bulk-bar { margin-bottom: 0.5rem; font-size: .8125rem; }
 .bulk-label, .selected-count { color: var(--mndw-text-subtle); }
-.table-wrap { border: 1px solid var(--mndw-border); border-radius: 0.375rem; overflow: hidden; }
-mndw-table { font-size: .8125rem; }
+.table-wrap { min-width: 0; border: 1px solid var(--mndw-border); border-radius: 0.375rem; overflow: hidden; }
+mndw-table { display: block; min-width: 0; font-size: .8125rem; }
 mndw-table::part(viewport) { max-height: calc(100vh - 250px); overflow: auto; }
 mndw-table::part(header-cell) { position: sticky; top: 0; z-index: 1; background: var(--mndw-surface); }
 .msg-cell { text-align: center; padding: 2rem 0.625rem; color: var(--mndw-text-subtle); font-style: italic; }

@@ -148,7 +148,7 @@ export class AppComponent implements OnDestroy, OnInit {
 
     return state === 'active'
       ? 'success'
-      : state === 'incompatible'
+      : state === 'incompatible' || state === 'taking-longer'
       ? 'warning'
       : state === 'checking' || state === 'starting'
       ? 'info'
@@ -164,7 +164,7 @@ export class AppComponent implements OnDestroy, OnInit {
 
     return state === 'active'
       ? '✓'
-      : state === 'incompatible'
+      : state === 'incompatible' || state === 'taking-longer'
       ? '!'
       : state === 'checking' || state === 'starting'
       ? '…'

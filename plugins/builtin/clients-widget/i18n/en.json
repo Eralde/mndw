@@ -9,7 +9,7 @@
   "refresh-interval": "Refresh interval",
   "column": {
     "name": "Name",
-    "link": "Link",
+    "link": "Online",
     "ip": "IP Address",
     "connection": "Connection",
     "uptime": "Uptime",
@@ -24,7 +24,8 @@
   "port": "Port",
   "rssi": "RSSI",
   "link": {
-    "up": "up",
-    "down": "down"
+    "online": "Online",
+    "offline": "Offline",
+    "unavailable": "Unavailable"
   }
 }

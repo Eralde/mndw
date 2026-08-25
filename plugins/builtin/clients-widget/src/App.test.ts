@@ -131,9 +131,10 @@ describe('initial render', () => {
       throw new Error('widget header was not rendered');
     }
 
-    expect(getComputedStyle(widget).overflow).toBe('auto');
+    expect(getComputedStyle(widget).overflow).toBe('hidden');
     expect(getComputedStyle(header).position).toBe('sticky');
     expect(getComputedStyle(header).top).toBe('0px');
+    expect(header.classList.contains('mndw-table-controls')).toBe(true);
   });
 
   it('keeps table headers sticky below the widget header', async () => {
@@ -149,7 +150,7 @@ describe('initial render', () => {
       }
 
       expect(getComputedStyle(tableHead).position).toBe('sticky');
-      expect(getComputedStyle(tableHead).top).toBe('32px');
+      expect(getComputedStyle(tableHead).top).toBe('0px');
     } finally {
       document.documentElement.style.removeProperty('--mndw-control-h');
     }
@@ -209,7 +210,7 @@ describe('successful load', () => {
     await flush();
 
     expect(headers()[0]).toBe('Name');
-    expect(headers()).toContain('Link');
+    expect(headers()).toContain('Online');
   });
 });
 
@@ -348,7 +349,7 @@ describe('storage', () => {
     mountWidget();
     await flush();
 
-    expect(headers()).toEqual(['Name', 'Link', 'IP Address', 'Connection', 'Uptime', 'Last Seen']);
+    expect(headers()).toEqual(['Name', 'Online', 'IP Address', 'Connection', 'Uptime', 'Last Seen']);
     expect(offlineToggle().checked).toBe(false);
   });
 

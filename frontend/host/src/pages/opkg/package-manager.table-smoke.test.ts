@@ -3,6 +3,9 @@ import {flushSync} from 'svelte';
 import {afterEach, describe, expect, it} from 'vitest';
 import type {PackageEntry} from '../../services/opkg-client.js';
 import PackageNameCell from './PackageNameCell.svelte';
+import packageManagerSource from './PackageManager.svelte?raw';
+import packagesPanelSource from './PackagesPanel.svelte?raw';
+import servicesPanelSource from './ServicesPanel.svelte?raw';
 
 const installed: PackageEntry = {
   name: 'installed',
@@ -51,5 +54,15 @@ describe('PackageNameCell through svelteCell', () => {
     renderer.destroy();
 
     expect(node.textContent).toBe('');
+  });
+});
+
+describe('table scroll-owner contract', () => {
+  it('keeps package and service controls outside their table viewports', () => {
+    expect(packageManagerSource).toContain('mndw-table-controls');
+    expect(packagesPanelSource).toContain('mndw-table-controls');
+    expect(packagesPanelSource).toContain('mndw-table::part(viewport)');
+    expect(servicesPanelSource).toContain('mndw-table-controls');
+    expect(servicesPanelSource).toContain('mndw-table-viewport table-wrap');
   });
 });

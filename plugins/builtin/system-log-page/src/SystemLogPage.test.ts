@@ -10,6 +10,7 @@ import type {SystemLogApi} from './system-log-api';
 import type {NormalizedLogRecord} from './log-types';
 import type {ClearResult} from './clear-log-confirmation';
 import SystemLogPage from './SystemLogPage.svelte';
+import systemLogPageSource from './SystemLogPage.svelte?raw';
 
 function record(id: number, text = `record ${id}`): NormalizedLogRecord {
   return {id, timestamp: 'Aug  1 12:00:00', ident: 'system', level: 'Info', label: 'Info', text};
@@ -294,5 +295,12 @@ describe('SystemLogPage lifecycle', () => {
     await vi.waitFor(() => expect(host.textContent).toMatch(/clear failed/i));
     expect(host.textContent).toContain('preserve me');
     await unmount(failedApp);
+  });
+});
+
+describe('SystemLogPage scrollbar contract', () => {
+  it('keeps native log scrolling visibly tokenized in dark theme', () => {
+    expect(systemLogPageSource).toMatch(/scrollbar-color:\s*var\(--mndw-scrollbar-thumb\)\s+var\(--mndw-scrollbar-track\)/u);
+    expect(systemLogPageSource).toMatch(/system-log-page__viewport::-webkit-scrollbar-thumb/u);
   });
 });

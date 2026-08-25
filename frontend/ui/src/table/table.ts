@@ -527,7 +527,7 @@ export class MndwTable<Row = unknown> extends LitElement {
       showEmpty
         ? html`<div part="empty">${this.emptyLabel}</div>`
         : html`
-          <div part="viewport" tabindex="-1">
+          <div class="mndw-table-viewport" part="viewport" tabindex="-1">
             <table
               part="table"
               aria-rowcount=${this.virtual ? this.logicalRowCount() : nothing}

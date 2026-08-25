@@ -396,7 +396,6 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
 
 <style>
 .mndw-general-settings mndw-field {
-  display: block;
   margin: 0.75rem 0;
 }
 

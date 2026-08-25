@@ -33,11 +33,20 @@ type PageState = 'idle' | 'starting' | 'connected' | 'error' | 'disconnected';
 
 let state = $state<PageState>('idle');
 let errorMessage = $state('');
+let errorCode = $state<string | null>(null);
 let consoleChoice = $state<import('./cli.service.js').ConsoleChoice>('router');
 let terminalElement = $state<HTMLDivElement | undefined>(undefined);
 let terminalInstance: TerminalInstance | null = null;
 let spawnDelayId: ReturnType<typeof setTimeout> | undefined;
 let disconnectExpected = false;
+const terminalErrorCopy: Record<string, string> = {
+  TTYD_START_FAILED: 'error.ttyd-start-failed',
+  TTYD_UNAVAILABLE: 'error.ttyd-unavailable',
+};
+
+function terminalErrorSummary(): string {
+  return t(terminalErrorCopy[errorCode ?? ''] ?? 'error.start-failed');
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -68,6 +77,7 @@ async function startTerminal(): Promise<void> {
 
   state = 'starting';
   errorMessage = '';
+  errorCode = null;
 
   try {
     if (!backend) {
@@ -77,7 +87,11 @@ async function startTerminal(): Promise<void> {
     const spawnResult = await spawnCli(backend, consoleChoice);
 
     if (!spawnResult.success) {
-      throw new Error(spawnResult.error || t('error.start-failed'));
+      errorCode = spawnResult.errorCode ?? null;
+      errorMessage = spawnResult.error || t('error.start-failed');
+      state = 'error';
+
+      return;
     }
 
     await sleep(1000);
@@ -110,6 +124,7 @@ async function startTerminal(): Promise<void> {
   } catch (error) {
     clearSpawnDelay();
     state = 'error';
+    errorCode = null;
     errorMessage = error instanceof Error ? error.message : t('error.unknown');
     console.error('[terminal-page] Failed to start terminal:', error);
   }
@@ -185,7 +200,8 @@ onMount(() => {
         class="mndw-alert mndw-alert--danger"
         role="alert"
       >
-        {errorMessage}
+        <strong>{terminalErrorSummary()}</strong>
+        <span class="terminal-error-detail">{errorMessage}</span>
       </div>
       <mndw-button
         variant="primary"
@@ -252,6 +268,15 @@ onMount(() => {
   gap: 0.75rem;
   padding: 1rem;
   text-align: center;
+}
+
+.ttyd-terminal .mndw-alert--danger {
+  display: grid;
+  gap: var(--mndw-space-1);
+}
+
+.terminal-error-detail {
+  overflow-wrap: anywhere;
 }
 
 .console-choice {

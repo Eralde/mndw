@@ -341,6 +341,7 @@ onMount(() => {
     </mndw-field>
     <mndw-button
       variant="primary"
+      class="add-host-button"
       disabled={loading || !hasBackend}
       onclick={addHost}
     >
@@ -556,6 +557,10 @@ h3 {
 .controls :global(mndw-input) {
   display: block;
   width: 100%;
+}
+
+.controls :global(mndw-button.add-host-button) {
+  align-self: end;
 }
 
 .ping-widget :global(mndw-button) {

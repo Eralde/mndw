@@ -1,4 +1,5 @@
 /* eslint id-blacklist: 0 */
+import type {GridStackNode, GridStackWidget, SaveFcn} from 'gridstack';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
@@ -196,8 +197,44 @@ describe('DashboardGrid', () => {
 
     handlers.get('added')?.(new Event('added'));
 
-    expect(save).toHaveBeenCalledWith(false);
+    expect(save).toHaveBeenCalledWith(false, false, expect.any(Function));
     expect(onLayoutChanged).toHaveBeenCalledWith([{id: 'widget-a:1', x: 0, y: 0, w: 4, h: 3}]);
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('recovers dimensions omitted when GridStack serializes min-sized widgets', () => {
+    const {component, target, onLayoutChanged} = mountGrid();
+
+    save.mockImplementation((_saveContent: boolean, _saveGridOpt: boolean, saveCB?: SaveFcn) => {
+      const node: GridStackNode = {
+        id: 'widget-device-info:1',
+        x: 7,
+        y: 4,
+        w: 4,
+        h: 8,
+        minW: 4,
+        minH: 8,
+      };
+      const serialized: GridStackWidget = {
+        id: node.id,
+        x: node.x,
+        y: node.y,
+        minW: node.minW,
+        minH: node.minH,
+      };
+
+      saveCB?.(node, serialized);
+
+      return [serialized];
+    });
+
+    handlers.get('added')?.(new Event('added'));
+
+    expect(onLayoutChanged).toHaveBeenCalledWith([
+      {id: 'widget-device-info:1', x: 7, y: 4, w: 4, h: 8},
+    ]);
 
     void unmount(component);
     target.remove();

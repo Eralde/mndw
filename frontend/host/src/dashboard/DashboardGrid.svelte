@@ -95,7 +95,12 @@ onMount(() => {
   });
 
   const emitLayout = (): void => {
-    const saved = grid.save(false);
+    const saved = grid.save(false, false, (node, widget) => {
+      widget.x ??= node.x;
+      widget.y ??= node.y;
+      widget.w ??= node.w;
+      widget.h ??= node.h;
+    });
     const layout = Array.isArray(saved)
       ? (saved as GridStackWidget[])
         .map(projectPersistedTile)

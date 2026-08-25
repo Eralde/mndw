@@ -363,7 +363,7 @@ describe('DashboardPage', () => {
     // Leave a debounce timer pending to prove teardown flushes it exactly once.
     save.mockReturnValue([{id: 'widget-a:1', x: 0, y: 0, w: 4, h: 3}]);
     gridHandlers.get('change')?.(new Event('change'));
-    expect(save).toHaveBeenCalledWith(false);
+    expect(save).toHaveBeenCalledWith(false, false, expect.any(Function));
 
     void unmount(component);
     flushSync();

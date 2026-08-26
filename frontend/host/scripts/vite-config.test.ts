@@ -1,6 +1,15 @@
 import path from 'node:path';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 
+vi.mock('./angular-sandbox-plugin.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./angular-sandbox-plugin.js')>();
+
+  return {
+    ...actual,
+    angularSandboxPlugin: () => ({name: 'mndw-angular-sandbox'}),
+  };
+});
+
 import viteConfig from '../vite.config.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..', '..');

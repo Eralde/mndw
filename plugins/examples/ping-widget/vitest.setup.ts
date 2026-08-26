@@ -1,3 +1,1 @@
-import {defineMndwUi} from '@mndw/ui';
-
-defineMndwUi();
+import '@mndw/ui/testing/setup';

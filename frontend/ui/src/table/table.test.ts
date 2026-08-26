@@ -1,7 +1,9 @@
+import {nonNull, shadowOf, shadowQuery} from '@mndw/sdk/testing';
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from '../checkbox/checkbox.js';
 import {setMndwUiLocale} from '../i18n.js';
 import {type UiLayer, type UiLayerOptions, type UiOverlayProvider, setOverlayProvider} from '../overlay.js';
+import {resetUiTestState} from '../testing/index.js';
 import {column} from './table-builder.js';
 import {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './column-menu.js';
 import {MNDW_TABLE_TAG, MndwTable} from './table.js';
@@ -53,9 +55,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
-  setMndwUiLocale('en');
-  setOverlayProvider(undefined);
-  document.body.innerHTML = '';
+  resetUiTestState();
 });
 
 function makeTable(): MndwTable<TestRow> {
@@ -64,34 +64,6 @@ function makeTable(): MndwTable<TestRow> {
   document.body.appendChild(el);
 
   return el;
-}
-
-function shadowOf(el: HTMLElement): ShadowRoot {
-  const root = el.shadowRoot;
-
-  if (root === null) {
-    throw new Error('expected open shadow root');
-  }
-
-  return root;
-}
-
-function shadowQuery<T extends Element>(el: HTMLElement, selector: string): T {
-  const node = shadowOf(el).querySelector<T>(selector);
-
-  if (node === null) {
-    throw new Error(`expected shadow element: ${selector}`);
-  }
-
-  return node;
-}
-
-function nonNull<T>(value: T | null | undefined, what: string): T {
-  if (value === null || value === undefined) {
-    throw new Error(`expected ${what}`);
-  }
-
-  return value;
 }
 
 describe('MndwTable rendering and properties', () => {

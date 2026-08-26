@@ -33,6 +33,10 @@
       "types": "./src/testing/index.ts",
       "default": "./src/testing/index.ts"
     },
+    "./testing/vitest-project": {
+      "types": "./src/testing/vitest-project.ts",
+      "default": "./src/testing/vitest-project.ts"
+    },
     "./svelte": {
       "types": "./src/svelte/index.ts",
       "default": "./src/svelte/index.ts"

@@ -1,5 +1,3 @@
-import {configDefaults, defineConfig} from 'vitest/config';
+import {defineMndwVitestProject} from '@mndw/sdk/testing/vitest-project';
 
-export default defineConfig({
-  test: {environment: 'happy-dom', exclude: [...configDefaults.exclude, 'e2e/**']},
-});
+export default defineMndwVitestProject({environment: 'happy-dom', extraExclude: ['e2e/**']});

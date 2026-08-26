@@ -10,6 +10,11 @@
       "default": "./src/index.ts"
     },
     "./test-geometry": "./src/table/table-test-geometry.ts",
+    "./testing": {
+      "types": "./src/testing/index.ts",
+      "default": "./src/testing/index.ts"
+    },
+    "./testing/setup": "./src/testing/setup.ts",
     "./styles.css": "./src/styles/kit.css"
   },
   "files": ["src", "README.md"],

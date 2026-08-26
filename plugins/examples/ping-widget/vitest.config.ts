@@ -1,21 +1,10 @@
 import {svelte} from '@sveltejs/vite-plugin-svelte';
-import {defineConfig} from 'vitest/config';
+import {defineMndwVitestProject} from '@mndw/sdk/testing/vitest-project';
 import {isMndwButtonA11yWarning} from '../../../build/svelte-compiler-options.js';
 
-export default defineConfig({
-  plugins: [
-    svelte({
-      hot: false,
-      compilerOptions: {
-        warningFilter: (warning) => !isMndwButtonA11yWarning(warning),
-      },
-    }),
-  ],
-  resolve: {
-    conditions: ['browser'],
-  },
-  test: {
-    environment: 'happy-dom',
-    setupFiles: ['./vitest.setup.ts'],
-  },
+export default defineMndwVitestProject({
+  environment: 'happy-dom',
+  setupFiles: ['./vitest.setup.ts'],
+  resolve: {conditions: ['browser']},
+  plugins: [svelte({hot: false, compilerOptions: {warningFilter: (warning) => !isMndwButtonA11yWarning(warning)}})],
 });

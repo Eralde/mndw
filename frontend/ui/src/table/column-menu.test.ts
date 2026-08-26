@@ -1,3 +1,4 @@
+import {shadowOf, shadowQuery} from '@mndw/sdk/testing';
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {
   MNDW_COLUMN_MENU_CHECK_EVENT,
@@ -24,26 +25,6 @@ function makeMenu(columns: {id: string; label: string}[], hidden: string[] = [])
   document.body.appendChild(menu);
 
   return menu;
-}
-
-function shadowOf(el: HTMLElement): ShadowRoot {
-  const root = el.shadowRoot;
-
-  if (root === null) {
-    throw new Error('expected open shadow root');
-  }
-
-  return root;
-}
-
-function shadowQuery<T extends Element>(el: HTMLElement, selector: string): T {
-  const node = shadowOf(el).querySelector<T>(selector);
-
-  if (node === null) {
-    throw new Error(`expected shadow element: ${selector}`);
-  }
-
-  return node;
 }
 
 describe('MndwColumnMenu', () => {

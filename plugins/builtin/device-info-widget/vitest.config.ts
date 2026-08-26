@@ -1,7 +1,8 @@
 import vue from '@vitejs/plugin-vue';
-import {defineConfig} from 'vitest/config';
+import {defineMndwVitestProject} from '@mndw/sdk/testing/vitest-project';
 
-export default defineConfig({
+export default defineMndwVitestProject({
+  environment: 'node',
+  setupFiles: ['./vitest.setup.ts'],
   plugins: [vue({template: {compilerOptions: {isCustomElement: (tag) => tag.startsWith('mndw-')}}})],
-  test: {environment: 'node', setupFiles: ['./vitest.setup.ts']},
 });

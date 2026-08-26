@@ -1,5 +1,1 @@
-if (typeof Element !== 'undefined') {
-  const {defineMndwUi} = await import('@mndw/ui');
-
-  defineMndwUi();
-}
+import '@mndw/ui/testing/setup';

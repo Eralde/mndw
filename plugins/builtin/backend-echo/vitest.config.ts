@@ -1,8 +1,3 @@
-import {defineConfig} from 'vitest/config';
+import {defineMndwVitestProject} from '@mndw/sdk/testing/vitest-project';
 
-export default defineConfig({
-  test: {
-    environment: 'happy-dom',
-    setupFiles: ['./vitest.setup.ts'],
-  },
-});
+export default defineMndwVitestProject({environment: 'happy-dom', setupFiles: ['./vitest.setup.ts']});

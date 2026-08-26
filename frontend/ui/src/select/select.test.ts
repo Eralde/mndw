@@ -4,6 +4,7 @@ import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select-panel.js';
 import {MNDW_SELECT_TAG, MndwSelect} from './select.js';
 import {setMndwUiLocale} from '../i18n.js';
 import {type UiCloseReason, type UiLayerOptions, type UiOverlayProvider, setOverlayProvider} from '../overlay.js';
+import {resetUiTestState} from '../testing/index.js';
 
 beforeAll(() => {
   if (!customElements.get(MNDW_OPTION_TAG)) {
@@ -20,9 +21,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
-  setMndwUiLocale('en');
-  setOverlayProvider(undefined);
-  document.body.innerHTML = '';
+  resetUiTestState();
   setViewport(DEFAULT_INNER_WIDTH, DEFAULT_INNER_HEIGHT);
 });
 

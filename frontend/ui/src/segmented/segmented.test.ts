@@ -1,5 +1,6 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_FIELD_TAG, MndwField} from '../field/field.js';
+import {defineComponents, mount as mountComponent, press, settle} from '../testing/index.js';
 import {MNDW_SEGMENT_TAG, MndwSegment} from './segment.js';
 import {MNDW_SEGMENTED_TAG, MndwSegmented} from './segmented.js';
 
@@ -7,35 +8,17 @@ const THREE_SEGMENTS = '<mndw-segment value="day">Day</mndw-segment>'
   + '<mndw-segment value="week">Week</mndw-segment>'
   + '<mndw-segment value="month">Month</mndw-segment>';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_SEGMENT_TAG)) {
-    customElements.define(MNDW_SEGMENT_TAG, MndwSegment);
-  }
-
-  if (!customElements.get(MNDW_SEGMENTED_TAG)) {
-    customElements.define(MNDW_SEGMENTED_TAG, MndwSegmented);
-  }
-
-  if (!customElements.get(MNDW_FIELD_TAG)) {
-    customElements.define(MNDW_FIELD_TAG, MndwField);
-  }
-});
-
-async function settle(element: MndwSegmented): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  await element.updateComplete;
-}
+defineComponents(
+  [MNDW_SEGMENT_TAG, MndwSegment],
+  [MNDW_SEGMENTED_TAG, MndwSegmented],
+  [MNDW_FIELD_TAG, MndwField],
+);
 
 async function mount(inner: string, attributes = ''): Promise<MndwSegmented> {
-  document.body.innerHTML = `<mndw-segmented ${attributes}>${inner}</mndw-segmented>`;
-
-  const element = document.body.querySelector<MndwSegmented>(MNDW_SEGMENTED_TAG);
-
-  if (!element) {
-    throw new Error('missing segmented');
-  }
+  const element = await mountComponent(
+    `<mndw-segmented ${attributes}>${inner}</mndw-segmented>`,
+    MNDW_SEGMENTED_TAG,
+  );
 
   await settle(element);
 
@@ -52,15 +35,6 @@ function tabStops(element: MndwSegmented): (string | null)[] {
 
 function checkedStates(element: MndwSegmented): (string | null)[] {
   return segments(element).map((segment) => segment.getAttribute('aria-checked'));
-}
-
-async function press(element: MndwSegmented, key: string, from?: MndwSegment): Promise<KeyboardEvent> {
-  const event = new KeyboardEvent('keydown', {key, bubbles: true, composed: true, cancelable: true});
-
-  (from ?? element).dispatchEvent(event);
-  await element.updateComplete;
-
-  return event;
 }
 
 describe('<mndw-segmented> semantics', () => {

@@ -1,50 +1,16 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_FIELD_TAG, MndwField} from '../field/field.js';
+import {defineComponents, mount, press, settle} from '../testing/index.js';
 import {MNDW_SWITCH_TAG, MndwSwitch} from './switch.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_SWITCH_TAG)) {
-    customElements.define(MNDW_SWITCH_TAG, MndwSwitch);
-  }
-
-  if (!customElements.get(MNDW_FIELD_TAG)) {
-    customElements.define(MNDW_FIELD_TAG, MndwField);
-  }
-});
-
-async function mount(html: string): Promise<MndwSwitch> {
-  document.body.innerHTML = html;
-
-  const element = document.body.querySelector<MndwSwitch>(MNDW_SWITCH_TAG);
-
-  if (!element) {
-    throw new Error('missing switch');
-  }
-
-  await element.updateComplete;
-
-  return element;
-}
-
-async function settle(element: MndwSwitch): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  await element.updateComplete;
-}
-
-async function press(element: MndwSwitch, key: string): Promise<KeyboardEvent> {
-  const event = new KeyboardEvent('keydown', {key, bubbles: true, composed: true, cancelable: true});
-
-  element.dispatchEvent(event);
-  await element.updateComplete;
-
-  return event;
-}
+defineComponents(
+  [MNDW_SWITCH_TAG, MndwSwitch],
+  [MNDW_FIELD_TAG, MndwField],
+);
 
 describe('<mndw-switch> semantics', () => {
   it('applies the documented defaults', async () => {
-    const element = await mount('<mndw-switch></mndw-switch>');
+    const element = await mount('<mndw-switch></mndw-switch>', MNDW_SWITCH_TAG);
 
     expect(element.checked).toBe(false);
     expect(element.value).toBe('on');
@@ -55,7 +21,7 @@ describe('<mndw-switch> semantics', () => {
   });
 
   it('carries switch semantics and the tab stop on the host', async () => {
-    const element = await mount('<mndw-switch></mndw-switch>');
+    const element = await mount('<mndw-switch></mndw-switch>', MNDW_SWITCH_TAG);
 
     expect(element.getAttribute('role')).toBe('switch');
     expect(element.getAttribute('aria-checked')).toBe('false');
@@ -64,7 +30,7 @@ describe('<mndw-switch> semantics', () => {
   });
 
   it('reflects checked and announces it', async () => {
-    const element = await mount('<mndw-switch checked></mndw-switch>');
+    const element = await mount('<mndw-switch checked></mndw-switch>', MNDW_SWITCH_TAG);
 
     expect(element.checked).toBe(true);
     expect(element.getAttribute('aria-checked')).toBe('true');
@@ -77,7 +43,7 @@ describe('<mndw-switch> semantics', () => {
   });
 
   it('reflects value as configuration', async () => {
-    const element = await mount('<mndw-switch value="dark"></mndw-switch>');
+    const element = await mount('<mndw-switch value="dark"></mndw-switch>', MNDW_SWITCH_TAG);
 
     expect(element.value).toBe('dark');
 
@@ -88,7 +54,7 @@ describe('<mndw-switch> semantics', () => {
   });
 
   it('exposes track, thumb, and label parts', async () => {
-    const element = await mount('<mndw-switch>Dark theme</mndw-switch>');
+    const element = await mount('<mndw-switch>Dark theme</mndw-switch>', MNDW_SWITCH_TAG);
     const root = element.shadowRoot;
 
     expect(root?.querySelector('[part="track"]')).not.toBeNull();
@@ -97,7 +63,7 @@ describe('<mndw-switch> semantics', () => {
   });
 
   it('keeps no interactive descendant inside the shadow root', async () => {
-    const element = await mount('<mndw-switch>Dark theme</mndw-switch>');
+    const element = await mount('<mndw-switch>Dark theme</mndw-switch>', MNDW_SWITCH_TAG);
     const root = element.shadowRoot;
 
     expect(root?.querySelector('button, input, a, [tabindex]')).toBeNull();
@@ -108,7 +74,7 @@ describe('<mndw-switch> semantics', () => {
 
 describe('<mndw-switch> interaction', () => {
   it('toggles on click and reports the new state', async () => {
-    const element = await mount('<mndw-switch></mndw-switch>');
+    const element = await mount('<mndw-switch></mndw-switch>', MNDW_SWITCH_TAG);
     const changes = vi.fn();
 
     element.addEventListener('mndwchange', changes);
@@ -128,7 +94,7 @@ describe('<mndw-switch> interaction', () => {
   });
 
   it('toggles on Space and Enter and consumes the keystroke', async () => {
-    const element = await mount('<mndw-switch></mndw-switch>');
+    const element = await mount('<mndw-switch></mndw-switch>', MNDW_SWITCH_TAG);
     const changes = vi.fn();
 
     element.addEventListener('mndwchange', changes);
@@ -146,7 +112,7 @@ describe('<mndw-switch> interaction', () => {
   });
 
   it('ignores other keys', async () => {
-    const element = await mount('<mndw-switch></mndw-switch>');
+    const element = await mount('<mndw-switch></mndw-switch>', MNDW_SWITCH_TAG);
 
     await press(element, 'a');
 
@@ -154,7 +120,7 @@ describe('<mndw-switch> interaction', () => {
   });
 
   it('does not toggle while disabled and leaves the tab order', async () => {
-    const element = await mount('<mndw-switch disabled></mndw-switch>');
+    const element = await mount('<mndw-switch disabled></mndw-switch>', MNDW_SWITCH_TAG);
     const changes = vi.fn();
 
     element.addEventListener('mndwchange', changes);
@@ -168,7 +134,7 @@ describe('<mndw-switch> interaction', () => {
   });
 
   it('does not toggle while an ancestor fieldset is disabled', async () => {
-    const element = await mount('<mndw-switch></mndw-switch>');
+    const element = await mount('<mndw-switch></mndw-switch>', MNDW_SWITCH_TAG);
 
     element.formDisabledCallback(true);
     await element.updateComplete;
@@ -189,7 +155,7 @@ describe('<mndw-switch> interaction', () => {
   });
 
   it('emits nothing for a programmatic change', async () => {
-    const element = await mount('<mndw-switch></mndw-switch>');
+    const element = await mount('<mndw-switch></mndw-switch>', MNDW_SWITCH_TAG);
     const changes = vi.fn();
 
     element.addEventListener('mndwchange', changes);
@@ -202,7 +168,7 @@ describe('<mndw-switch> interaction', () => {
 
 describe('<mndw-switch> form lifecycle', () => {
   it('restores the checked attribute on reset', async () => {
-    const element = await mount('<mndw-switch checked></mndw-switch>');
+    const element = await mount('<mndw-switch checked></mndw-switch>', MNDW_SWITCH_TAG);
 
     element.checked = false;
     await element.updateComplete;
@@ -213,7 +179,7 @@ describe('<mndw-switch> form lifecycle', () => {
   });
 
   it('restores submitted state', async () => {
-    const element = await mount('<mndw-switch></mndw-switch>');
+    const element = await mount('<mndw-switch></mndw-switch>', MNDW_SWITCH_TAG);
 
     element.formStateRestoreCallback('checked', 'restore');
     await element.updateComplete;
@@ -227,7 +193,7 @@ describe('<mndw-switch> form lifecycle', () => {
   });
 
   it('accepts required without announcing or enforcing it', async () => {
-    const element = await mount('<mndw-switch required></mndw-switch>');
+    const element = await mount('<mndw-switch required></mndw-switch>', MNDW_SWITCH_TAG);
 
     expect(element.required).toBe(true);
     expect(element.hasAttribute('aria-required')).toBe(false);

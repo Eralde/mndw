@@ -18,3 +18,5 @@ export function resetUiTestState(): void {
   setOverlayProvider(undefined);
   document.body.innerHTML = '';
 }
+
+export {defineComponents, mount, press, settle} from './harness.js';

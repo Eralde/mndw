@@ -1,46 +1,12 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_FIELD_TAG, MndwField} from '../field/field.js';
+import {defineComponents, mount, press, settle} from '../testing/index.js';
 import {MNDW_SLIDER_TAG, MndwSlider} from './slider.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_SLIDER_TAG)) {
-    customElements.define(MNDW_SLIDER_TAG, MndwSlider);
-  }
-
-  if (!customElements.get(MNDW_FIELD_TAG)) {
-    customElements.define(MNDW_FIELD_TAG, MndwField);
-  }
-});
-
-async function mount(html: string): Promise<MndwSlider> {
-  document.body.innerHTML = html;
-
-  const element = document.body.querySelector<MndwSlider>(MNDW_SLIDER_TAG);
-
-  if (!element) {
-    throw new Error('missing slider');
-  }
-
-  await element.updateComplete;
-
-  return element;
-}
-
-async function settle(element: MndwSlider): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  await element.updateComplete;
-}
-
-async function press(element: MndwSlider, key: string): Promise<KeyboardEvent> {
-  const event = new KeyboardEvent('keydown', {key, bubbles: true, composed: true, cancelable: true});
-
-  element.dispatchEvent(event);
-  await element.updateComplete;
-
-  return event;
-}
+defineComponents(
+  [MNDW_SLIDER_TAG, MndwSlider],
+  [MNDW_FIELD_TAG, MndwField],
+);
 
 /** happy-dom lays nothing out, so the drag geometry comes from a stubbed track rect. */
 function stubTrack(element: MndwSlider, left = 0, width = 200): void {
@@ -71,7 +37,7 @@ function detailValues(spy: ReturnType<typeof vi.fn>): number[] {
 
 describe('<mndw-slider> semantics', () => {
   it('applies the documented defaults', async () => {
-    const element = await mount('<mndw-slider></mndw-slider>');
+    const element = await mount('<mndw-slider></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.min).toBe(0);
     expect(element.max).toBe(100);
@@ -85,13 +51,13 @@ describe('<mndw-slider> semantics', () => {
   });
 
   it('starts at min when no value is authored', async () => {
-    const element = await mount('<mndw-slider min="10" max="20"></mndw-slider>');
+    const element = await mount('<mndw-slider min="10" max="20"></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.value).toBe(10);
   });
 
   it('carries slider semantics and the tab stop on the host', async () => {
-    const element = await mount('<mndw-slider value="30"></mndw-slider>');
+    const element = await mount('<mndw-slider value="30"></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.getAttribute('role')).toBe('slider');
     expect(element.getAttribute('aria-valuenow')).toBe('30');
@@ -103,7 +69,7 @@ describe('<mndw-slider> semantics', () => {
   });
 
   it('omits aria-valuetext while valueText is empty', async () => {
-    const element = await mount('<mndw-slider value="30"></mndw-slider>');
+    const element = await mount('<mndw-slider value="30"></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.hasAttribute('aria-valuetext')).toBe(false);
 
@@ -119,7 +85,7 @@ describe('<mndw-slider> semantics', () => {
   });
 
   it('takes valueText from its attribute without reflecting an empty one back', async () => {
-    const element = await mount('<mndw-slider value="30" value-text="Balanced"></mndw-slider>');
+    const element = await mount('<mndw-slider value="30" value-text="Balanced"></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.valueText).toBe('Balanced');
 
@@ -131,7 +97,7 @@ describe('<mndw-slider> semantics', () => {
   });
 
   it('reflects configuration but never the value', async () => {
-    const element = await mount('<mndw-slider value="30"></mndw-slider>');
+    const element = await mount('<mndw-slider value="30"></mndw-slider>', MNDW_SLIDER_TAG);
 
     element.min = 10;
     element.max = 50;
@@ -146,7 +112,7 @@ describe('<mndw-slider> semantics', () => {
   });
 
   it('exposes track, fill, thumb, and output parts', async () => {
-    const element = await mount('<mndw-slider value="25"></mndw-slider>');
+    const element = await mount('<mndw-slider value="25"></mndw-slider>', MNDW_SLIDER_TAG);
     const root = element.shadowRoot;
 
     expect(root?.querySelector('[part="track"]')).not.toBeNull();
@@ -156,13 +122,13 @@ describe('<mndw-slider> semantics', () => {
   });
 
   it('shows valueText in the output when it is set', async () => {
-    const element = await mount('<mndw-slider value="25" value-text="Quarter"></mndw-slider>');
+    const element = await mount('<mndw-slider value="25" value-text="Quarter"></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('Quarter');
   });
 
   it('keeps no interactive descendant inside the shadow root', async () => {
-    const element = await mount('<mndw-slider></mndw-slider>');
+    const element = await mount('<mndw-slider></mndw-slider>', MNDW_SLIDER_TAG);
     const root = element.shadowRoot;
 
     expect(root?.querySelector('button, input, a, [tabindex]')).toBeNull();
@@ -173,7 +139,7 @@ describe('<mndw-slider> semantics', () => {
 
 describe('<mndw-slider> value normalization', () => {
   it('clamps a value outside the range', async () => {
-    const element = await mount('<mndw-slider min="10" max="20" value="99"></mndw-slider>');
+    const element = await mount('<mndw-slider min="10" max="20" value="99"></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.value).toBe(20);
 
@@ -184,7 +150,7 @@ describe('<mndw-slider> value normalization', () => {
   });
 
   it('snaps to the step grid measured from min', async () => {
-    const element = await mount('<mndw-slider min="1" max="21" step="5" value="8"></mndw-slider>');
+    const element = await mount('<mndw-slider min="1" max="21" step="5" value="8"></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.value).toBe(6);
 
@@ -195,7 +161,7 @@ describe('<mndw-slider> value normalization', () => {
   });
 
   it('keeps fractional steps free of binary drift', async () => {
-    const element = await mount('<mndw-slider min="0" max="1" step="0.1" value="0.3"></mndw-slider>');
+    const element = await mount('<mndw-slider min="0" max="1" step="0.1" value="0.3"></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.value).toBe(0.3);
 
@@ -206,13 +172,13 @@ describe('<mndw-slider> value normalization', () => {
   });
 
   it('stops at the last aligned step below max', async () => {
-    const element = await mount('<mndw-slider min="0" max="10" step="3" value="10"></mndw-slider>');
+    const element = await mount('<mndw-slider min="0" max="10" step="3" value="10"></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.value).toBe(9);
   });
 
   it('follows a constraint that moves past the current value', async () => {
-    const element = await mount('<mndw-slider value="10"></mndw-slider>');
+    const element = await mount('<mndw-slider value="10"></mndw-slider>', MNDW_SLIDER_TAG);
 
     element.min = 40;
     await element.updateComplete;
@@ -226,7 +192,10 @@ describe('<mndw-slider> value normalization', () => {
   });
 
   it('falls back to the documented defaults for unparseable configuration', async () => {
-    const element = await mount('<mndw-slider min="low" max="high" step="none" value="mid"></mndw-slider>');
+    const element = await mount(
+      '<mndw-slider min="low" max="high" step="none" value="mid"></mndw-slider>',
+      MNDW_SLIDER_TAG,
+    );
 
     expect(element.min).toBe(0);
     expect(element.max).toBe(100);
@@ -237,7 +206,7 @@ describe('<mndw-slider> value normalization', () => {
 
 describe('<mndw-slider> keyboard', () => {
   it('steps with the arrow keys and commits on the same keystroke', async () => {
-    const element = await mount('<mndw-slider value="50"></mndw-slider>');
+    const element = await mount('<mndw-slider value="50"></mndw-slider>', MNDW_SLIDER_TAG);
     const inputs = vi.fn();
     const changes = vi.fn();
 
@@ -261,7 +230,7 @@ describe('<mndw-slider> keyboard', () => {
   });
 
   it('jumps a tenth of the range with PageUp and PageDown', async () => {
-    const element = await mount('<mndw-slider value="50"></mndw-slider>');
+    const element = await mount('<mndw-slider value="50"></mndw-slider>', MNDW_SLIDER_TAG);
 
     await press(element, 'PageUp');
 
@@ -273,7 +242,7 @@ describe('<mndw-slider> keyboard', () => {
   });
 
   it('never pages by less than a step', async () => {
-    const element = await mount('<mndw-slider min="0" max="10" step="4" value="0"></mndw-slider>');
+    const element = await mount('<mndw-slider min="0" max="10" step="4" value="0"></mndw-slider>', MNDW_SLIDER_TAG);
 
     await press(element, 'PageUp');
 
@@ -281,7 +250,7 @@ describe('<mndw-slider> keyboard', () => {
   });
 
   it('jumps to the bounds with Home and End', async () => {
-    const element = await mount('<mndw-slider min="5" max="25" value="10"></mndw-slider>');
+    const element = await mount('<mndw-slider min="5" max="25" value="10"></mndw-slider>', MNDW_SLIDER_TAG);
 
     await press(element, 'End');
 
@@ -293,7 +262,7 @@ describe('<mndw-slider> keyboard', () => {
   });
 
   it('emits nothing when a keystroke cannot move the value', async () => {
-    const element = await mount('<mndw-slider max="10" value="10"></mndw-slider>');
+    const element = await mount('<mndw-slider max="10" value="10"></mndw-slider>', MNDW_SLIDER_TAG);
     const inputs = vi.fn();
     const changes = vi.fn();
 
@@ -308,7 +277,7 @@ describe('<mndw-slider> keyboard', () => {
   });
 
   it('ignores keys outside the slider matrix', async () => {
-    const element = await mount('<mndw-slider value="50"></mndw-slider>');
+    const element = await mount('<mndw-slider value="50"></mndw-slider>', MNDW_SLIDER_TAG);
     const other = await press(element, 'a');
 
     expect(element.value).toBe(50);
@@ -316,7 +285,7 @@ describe('<mndw-slider> keyboard', () => {
   });
 
   it('does not move while disabled and leaves the tab order', async () => {
-    const element = await mount('<mndw-slider value="50" disabled></mndw-slider>');
+    const element = await mount('<mndw-slider value="50" disabled></mndw-slider>', MNDW_SLIDER_TAG);
     const inputs = vi.fn();
 
     element.addEventListener('mndwinput', inputs);
@@ -329,7 +298,7 @@ describe('<mndw-slider> keyboard', () => {
   });
 
   it('stays disabled under a fieldset and recovers when it is released', async () => {
-    const element = await mount('<mndw-slider value="50"></mndw-slider>');
+    const element = await mount('<mndw-slider value="50"></mndw-slider>', MNDW_SLIDER_TAG);
 
     element.formDisabledCallback(true);
     await element.updateComplete;
@@ -346,7 +315,7 @@ describe('<mndw-slider> keyboard', () => {
   });
 
   it('emits nothing for a programmatic change', async () => {
-    const element = await mount('<mndw-slider value="50"></mndw-slider>');
+    const element = await mount('<mndw-slider value="50"></mndw-slider>', MNDW_SLIDER_TAG);
     const inputs = vi.fn();
     const changes = vi.fn();
 
@@ -362,7 +331,7 @@ describe('<mndw-slider> keyboard', () => {
 
 describe('<mndw-slider> pointer drag', () => {
   it('jumps on pointerdown and commits once on pointerup', async () => {
-    const element = await mount('<mndw-slider value="0"></mndw-slider>');
+    const element = await mount('<mndw-slider value="0"></mndw-slider>', MNDW_SLIDER_TAG);
     const inputs = vi.fn();
     const changes = vi.fn();
 
@@ -382,7 +351,7 @@ describe('<mndw-slider> pointer drag', () => {
   });
 
   it('tracks pointer moves and commits the final value once', async () => {
-    const element = await mount('<mndw-slider value="0"></mndw-slider>');
+    const element = await mount('<mndw-slider value="0"></mndw-slider>', MNDW_SLIDER_TAG);
     const inputs = vi.fn();
     const changes = vi.fn();
 
@@ -408,7 +377,7 @@ describe('<mndw-slider> pointer drag', () => {
   });
 
   it('commits on pointercancel', async () => {
-    const element = await mount('<mndw-slider value="0"></mndw-slider>');
+    const element = await mount('<mndw-slider value="0"></mndw-slider>', MNDW_SLIDER_TAG);
     const changes = vi.fn();
 
     stubTrack(element);
@@ -422,7 +391,7 @@ describe('<mndw-slider> pointer drag', () => {
   });
 
   it('does not commit a drag that ends where it started', async () => {
-    const element = await mount('<mndw-slider value="25"></mndw-slider>');
+    const element = await mount('<mndw-slider value="25"></mndw-slider>', MNDW_SLIDER_TAG);
     const changes = vi.fn();
 
     stubTrack(element);
@@ -438,7 +407,7 @@ describe('<mndw-slider> pointer drag', () => {
   });
 
   it('ignores the pointer while disabled', async () => {
-    const element = await mount('<mndw-slider value="0" disabled></mndw-slider>');
+    const element = await mount('<mndw-slider value="0" disabled></mndw-slider>', MNDW_SLIDER_TAG);
     const inputs = vi.fn();
 
     stubTrack(element);
@@ -452,7 +421,7 @@ describe('<mndw-slider> pointer drag', () => {
   });
 
   it('stops tracking a pointer once it is disconnected', async () => {
-    const element = await mount('<mndw-slider value="0"></mndw-slider>');
+    const element = await mount('<mndw-slider value="0"></mndw-slider>', MNDW_SLIDER_TAG);
 
     stubTrack(element);
     await pointer(element, 'pointerdown', 50);
@@ -466,7 +435,7 @@ describe('<mndw-slider> pointer drag', () => {
 
 describe('<mndw-slider> form lifecycle', () => {
   it('resets to the value attribute', async () => {
-    const element = await mount('<mndw-slider value="30"></mndw-slider>');
+    const element = await mount('<mndw-slider value="30"></mndw-slider>', MNDW_SLIDER_TAG);
 
     element.value = 70;
     await element.updateComplete;
@@ -477,7 +446,7 @@ describe('<mndw-slider> form lifecycle', () => {
   });
 
   it('resets to min when no value was authored', async () => {
-    const element = await mount('<mndw-slider min="5" max="25"></mndw-slider>');
+    const element = await mount('<mndw-slider min="5" max="25"></mndw-slider>', MNDW_SLIDER_TAG);
 
     element.value = 20;
     await element.updateComplete;
@@ -488,7 +457,7 @@ describe('<mndw-slider> form lifecycle', () => {
   });
 
   it('restores submitted state', async () => {
-    const element = await mount('<mndw-slider></mndw-slider>');
+    const element = await mount('<mndw-slider></mndw-slider>', MNDW_SLIDER_TAG);
 
     element.formStateRestoreCallback('42', 'restore');
     await element.updateComplete;
@@ -502,7 +471,7 @@ describe('<mndw-slider> form lifecycle', () => {
   });
 
   it('accepts required without announcing or enforcing it', async () => {
-    const element = await mount('<mndw-slider required></mndw-slider>');
+    const element = await mount('<mndw-slider required></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.required).toBe(true);
     expect(element.hasAttribute('aria-required')).toBe(false);

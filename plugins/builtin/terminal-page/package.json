@@ -3,10 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "mndw": {"backendBuildScript": "build-backend"},
+  "mndw": {
+    "backendBuildScript": "build-backend",
+    "backend": {
+      "binaryName": "terminal-backend",
+      "entryPackage": "./cmd/terminal-backend"
+    }
+  },
   "scripts": {
     "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run",
-    "build-backend": "node --import tsx scripts/build-backend.ts"
+    "build-backend": "mndw build-backend"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",

@@ -12,6 +12,7 @@ import {validatePluginCatalogs} from './i18n-validator.js';
 import {readManifest} from './manifest.js';
 import {packPlugin} from './pack.js';
 import {resolvePluginDir} from './paths.js';
+import {runBuildBackendCommand} from './backend-build-run.js';
 import {zipPlugin} from './zip.js';
 
 interface CreateCommandOptions {
@@ -145,6 +146,17 @@ export function createProgram(): Command {
       }
 
       process.stdout.write(`Zipped ${result.pack.manifest.name} → ${result.outputPath}\n`);
+    });
+
+  program
+    .command('build-backend')
+    .description(
+      'build the current plugin\'s Go backend (name from manifest.json, binary/entry from package.json mndw.backend)',
+    )
+    .allowUnknownOption()
+    .allowExcessArguments()
+    .action((_options: unknown, command: Command) => {
+      runBuildBackendCommand({pluginDir: process.cwd(), args: command.args});
     });
 
   return program;

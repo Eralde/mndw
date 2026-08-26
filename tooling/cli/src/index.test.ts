@@ -139,7 +139,15 @@ describe('createProgram', () => {
       'validate',
       'pack',
       'zip',
+      'build-backend',
     ]);
+  });
+
+  test('registers the build-backend command', () => {
+    const command = createProgram().commands.find((entry) => entry.name() === 'build-backend');
+
+    expect(command).toBeDefined();
+    expect(command?.name()).toBe('build-backend');
   });
 
   test('prints help', async () => {

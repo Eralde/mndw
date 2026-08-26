@@ -12,6 +12,7 @@ npx mndw dev <plugin>        run source plugin with local host and daemon
 npx mndw validate <path>     validate manifest and entry checks
 npx mndw pack <path>         build an isolated loadable plugin directory
 npx mndw zip <path>          pack and create an uploadable archive
+npx mndw build-backend       build configured Go backend for current plugin
 ```
 
 Common `create` choices are widget or page, vanilla/Svelte/Vue/Angular, and an
@@ -34,6 +35,24 @@ optional shell backend. The generated project uses `@mndw/sdk` and the
 
 The packer reads backend commands before mutating output. It rejects traversal,
 missing declared commands, and shared dependencies that leaked into the bundle.
+
+Go plugins use a declarative backend build hook. Keep the hook name in
+`mndw.backendBuildScript` and configure its binary in `mndw.backend`:
+
+```json
+{
+  "scripts": {"build-backend": "mndw build-backend"},
+  "mndw": {
+    "backendBuildScript": "build-backend",
+    "backend": {"binaryName": "food", "entryPackage": "./cmd/food"}
+  }
+}
+```
+
+`mndw build-backend` reads the artifact plugin id from `manifest.json` `name`,
+then reads `binaryName` and `entryPackage` from `mndw.backend`. With no
+arguments it builds a host binary. Cross builds require both
+`--target <target>` and `--out-dir <dir>`.
 
 `mndw zip` puts `manifest.json` at archive root. This lets the daemon validate
 an archive without knowing the author's source directory layout.
@@ -92,7 +111,7 @@ the real router for RCI/auth calls.
 Uploadable repository examples live under `plugins/examples`. Build their
 archives with `pnpm build-example-plugins`; this produces
 one archive for every direct example directory with a manifest. Examples with
-`mndw.backendBuildScript` produce one target-labelled archive for each of
+`mndw.backendBuildScript` and `mndw.backend` produce one target-labelled archive for each of
 `aarch64`, `mips`, and `mipsel`; examples without a backend produce one archive.
 Backend archives contain target-specific binaries and follow upload → approval
 → activation.

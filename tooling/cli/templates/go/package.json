@@ -2,11 +2,15 @@
   "name": "__MNDW_NAME__",
   "type": "module",
   "scripts": {
-    "build-backend": "tsx scripts/build-backend.ts",
+    "build-backend": "mndw build-backend",
     "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run"
   },
   "mndw": {
-    "backendBuildScript": "build-backend"
+    "backendBuildScript": "build-backend",
+    "backend": {
+      "binaryName": "__MNDW_NAME__d",
+      "entryPackage": "./cmd/__MNDW_NAME__d"
+    }
   },
   "devDependencies": {
     "@mndw/cli": "workspace:*",

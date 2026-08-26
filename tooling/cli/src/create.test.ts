@@ -315,7 +315,15 @@ describe('planCreate', () => {
     expect(file('src/index.ts')).toContain('button?.addEventListener(\'click\'');
     expect(file('i18n/en.json')).toContain('Backend response');
     expect(file('i18n/ru.json')).toContain('Ответ сервера');
-    expect(file('scripts/build-backend.ts')).toContain('entryPackage: \'./cmd/food\'');
+
+    const pkg = JSON.parse(file('package.json')) as {
+      mndw?: {backend?: {binaryName?: string; entryPackage?: string}};
+      scripts?: Record<string, string>;
+    };
+
+    expect(pkg.mndw?.backend).toEqual({binaryName: 'food', entryPackage: './cmd/food'});
+    expect(pkg.scripts?.['build-backend']).toBe('mndw build-backend');
+    expect(plan.files.some((entry) => entry.path === ['scripts', 'build-backend.ts'].join('/'))).toBe(false);
     expect(plan.files.map((entry) => entry.path).sort()).toEqual([
       '.gitignore',
       'backend/cmd/food/main.go',
@@ -327,7 +335,6 @@ describe('planCreate', () => {
       'i18n/ru.json',
       'manifest.json',
       'package.json',
-      'scripts/build-backend.ts',
       'src/index.css',
       'src/index.test.ts',
       'src/index.ts',

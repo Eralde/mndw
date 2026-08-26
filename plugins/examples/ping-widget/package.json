@@ -3,9 +3,15 @@
   "version": "1.1.1",
   "private": true,
   "type": "module",
-  "mndw": {"backendBuildScript": "build-backend"},
+  "mndw": {
+    "backendBuildScript": "build-backend",
+    "backend": {
+      "binaryName": "ping-util",
+      "entryPackage": "./cmd/ping-util"
+    }
+  },
   "scripts": {
-    "build-backend": "node --import tsx scripts/build-backend.ts",
+    "build-backend": "mndw build-backend",
     "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run"
   },
   "devDependencies": {

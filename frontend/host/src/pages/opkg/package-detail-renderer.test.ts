@@ -6,11 +6,11 @@ import type {CellContext} from '@mndw/ui';
 import {packageDetailRenderer} from './package-detail-renderer.svelte.js';
 import type {PackageDetailState} from './PackageDetailCell.svelte';
 
-describe('packageDetailRenderer', () => {
-  afterEach(() => {
-    document.body.innerHTML = '';
-  });
+afterEach(() => {
+  document.body.innerHTML = '';
+});
 
+describe('packageDetailRenderer cache', () => {
   it('reuses cached success after a renderer is destroyed and remounted', () => {
     const cache = new SvelteMap<string, PackageDetailState>();
     const row: PackageEntry = {
@@ -56,5 +56,47 @@ describe('packageDetailRenderer', () => {
     expect(secondNode.textContent).toContain('summary');
     expect(requests).toBe(1);
     second.destroy();
+  });
+});
+
+describe('packageDetailRenderer updates', () => {
+  it('updates value and colId in place without remounting', () => {
+    const cache = new SvelteMap<string, PackageDetailState>();
+    const first: PackageEntry = {
+      name: 'first',
+      version: '1',
+      description: 'first description',
+      status: 'installed',
+    };
+    const second: PackageEntry = {
+      name: 'second',
+      version: '2',
+      description: 'second description',
+      status: 'installed',
+    };
+
+    cache.set('first', {status: 'success', info: {...first, dependencies: []}});
+    cache.set('second', {status: 'success', info: {...second, dependencies: []}});
+
+    const renderer = packageDetailRenderer({
+      cache,
+      load: () => {},
+      retry: () => {},
+    })();
+    const node = document.createElement('div');
+
+    renderer.mount({node, row: first, value: first, colId: 'first'});
+    flushSync();
+
+    const detail = node.querySelector('.detail');
+
+    renderer.update({node, row: second, value: second, colId: 'second'});
+    flushSync();
+
+    expect(node.querySelector('.detail')).toBe(detail);
+    expect(detail?.getAttribute('data-package')).toBe('second');
+    expect(detail?.getAttribute('data-col')).toBe('second');
+    expect(detail?.textContent).toContain('second description');
+    renderer.destroy();
   });
 });

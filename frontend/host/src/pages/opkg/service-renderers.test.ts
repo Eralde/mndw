@@ -68,4 +68,22 @@ describe('serviceActionsRenderer', () => {
     expect(runs).toEqual([{action: 'start', name: 'sshd'}]);
     renderer.destroy();
   });
+
+  it('keeps the action callback bound to the current row after an update', () => {
+    const runs: Array<{action: string; name: string}> = [];
+    const renderer = serviceActionsRenderer((action, name) => runs.push({action, name}))();
+    const first: ServiceRow = {service: entry({name: 'first'}), busy: false, rowError: false};
+    const second: ServiceRow = {service: entry({name: 'second'}), busy: false, rowError: false};
+
+    renderer.mount({node: host, row: first, value: undefined, colId: 'actions'});
+    flushSync();
+    renderer.update({node: host, row: second, value: undefined, colId: 'actions'});
+    flushSync();
+
+    Array.from(host.querySelectorAll<HTMLElement>('mndw-button'))[0]
+      ?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+
+    expect(runs).toEqual([{action: 'start', name: 'second'}]);
+    renderer.destroy();
+  });
 });

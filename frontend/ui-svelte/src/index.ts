@@ -1,1 +1,1 @@
-export {svelteCell} from './svelte-cell.svelte.js';
+export {svelteCell, svelteCellWith} from './svelte-cell.svelte.js';

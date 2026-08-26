@@ -287,13 +287,18 @@ describe('<mndw-select> opening', () => {
     expect(panel()).not.toBeNull();
   });
 
-  it('opens on Home with the first enabled option active', async () => {
+  it.each([
+    {key: 'Home', preset: 'wifi', activeIndex: 0, label: 'opens on Home with the first enabled option active'},
+    {key: 'End', preset: undefined, activeIndex: 1, label: 'opens on End with the last enabled option active'},
+  ])('$label', async ({key, preset, activeIndex}) => {
     const element = await mount();
 
-    element.value = 'wifi';
-    await element.updateComplete;
-    trigger(element).dispatchEvent(new KeyboardEvent('keydown', {key: 'Home', bubbles: true}));
+    if (preset !== undefined) {
+      element.value = preset;
+      await element.updateComplete;
+    }
 
+    trigger(element).dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true}));
     await element.updateComplete;
 
     const opened = panel();
@@ -304,25 +309,7 @@ describe('<mndw-select> opening', () => {
 
     await opened.updateComplete;
 
-    expect(opened.activeIndex).toBe(0);
-  });
-
-  it('opens on End with the last enabled option active', async () => {
-    const element = await mount();
-
-    trigger(element).dispatchEvent(new KeyboardEvent('keydown', {key: 'End', bubbles: true}));
-
-    await element.updateComplete;
-
-    const opened = panel();
-
-    if (!opened) {
-      throw new Error('panel did not open');
-    }
-
-    await opened.updateComplete;
-
-    expect(opened.activeIndex).toBe(1);
+    expect(opened.activeIndex).toBe(activeIndex);
   });
 
   it('does not emit aria-controls when ElementInternals support is absent', async () => {
@@ -522,7 +509,10 @@ describe('<mndw-select> opening', () => {
     expect(probe.calls[0]?.title).toBe('Select option');
   });
 
-  it('gives the panel at least the trigger width', async () => {
+  it.each([
+    {triggerWidth: 320, minWidth: '320px', label: 'gives the panel at least the trigger width'},
+    {triggerWidth: 60, minWidth: '180px', label: 'floors the panel width for a narrow trigger'},
+  ])('$label', async ({triggerWidth, minWidth}) => {
     const probe = fakeProvider();
 
     setOverlayProvider(probe.provider);
@@ -530,42 +520,18 @@ describe('<mndw-select> opening', () => {
     const element = await mount();
 
     Object.defineProperty(element, 'getBoundingClientRect', {
-      value: () => ({top: 100, bottom: 132, width: 320} as DOMRect),
+      value: () => ({top: 100, bottom: 132, width: triggerWidth} as DOMRect),
       configurable: true,
     });
 
     const opened = await openPanel(element);
-
     const wrapper = opened.parentElement;
 
     if (!wrapper) {
       throw new Error('missing overlay wrapper');
     }
 
-    expect(wrapper.style.minWidth).toBe('320px');
-  });
-
-  it('floors the panel width for a narrow trigger', async () => {
-    const probe = fakeProvider();
-
-    setOverlayProvider(probe.provider);
-
-    const element = await mount();
-
-    Object.defineProperty(element, 'getBoundingClientRect', {
-      value: () => ({top: 100, bottom: 132, width: 60} as DOMRect),
-      configurable: true,
-    });
-
-    const opened = await openPanel(element);
-
-    const wrapper = opened.parentElement;
-
-    if (!wrapper) {
-      throw new Error('missing overlay wrapper');
-    }
-
-    expect(wrapper.style.minWidth).toBe('180px');
+    expect(wrapper.style.minWidth).toBe(minWidth);
   });
 
   it('uses the injected overlay provider', async () => {
@@ -683,23 +649,23 @@ describe('<mndw-select> selection', () => {
     expect(element.open).toBe(false);
   });
 
-  it('restores focus to the trigger after selecting', async () => {
+  it.each([
+    {
+      eventName: 'mndwpanelselect',
+      detail: {value: 'isp'},
+      label: 'restores focus to the trigger after selecting',
+    },
+    {
+      eventName: 'mndwpaneldismiss',
+      detail: {restoreFocus: true},
+      label: 'restores focus to the trigger on panel dismiss',
+    },
+  ])('$label', async ({eventName, detail}) => {
     const element = await mount();
     const focus = vi.spyOn(element, 'focus');
     const opened = await openPanel(element);
 
-    opened.dispatchEvent(new CustomEvent('mndwpanelselect', {detail: {value: 'isp'}}));
-    await element.updateComplete;
-
-    expect(focus).toHaveBeenCalled();
-  });
-
-  it('restores focus to the trigger on panel dismiss', async () => {
-    const element = await mount();
-    const focus = vi.spyOn(element, 'focus');
-    const opened = await openPanel(element);
-
-    opened.dispatchEvent(new CustomEvent('mndwpaneldismiss', {detail: {restoreFocus: true}}));
+    opened.dispatchEvent(new CustomEvent(eventName, {detail}));
     await element.updateComplete;
 
     expect(focus).toHaveBeenCalled();
@@ -750,7 +716,12 @@ describe('<mndw-select> externally closed layers', () => {
     expect(element.open).toBe(false);
   });
 
-  it('DOES restore focus when an outside dismissal orphans it', async () => {
+  it.each(
+    [
+      {reason: 'outside', label: 'DOES restore focus when an outside dismissal orphans it'},
+      {reason: 'api', label: 'restores focus when the layer closes with reason api'},
+    ] as const,
+  )('$label', async ({reason}) => {
     const probe = fakeProvider();
 
     setOverlayProvider(probe.provider);
@@ -759,23 +730,7 @@ describe('<mndw-select> externally closed layers', () => {
     const focus = vi.spyOn(element, 'focus');
 
     await openPanel(element);
-    probe.layers[0].settle('outside');
-    await probe.layers[0].closed;
-    await element.updateComplete;
-
-    expect(focus).toHaveBeenCalled();
-  });
-
-  it('restores focus when the layer closes with reason api', async () => {
-    const probe = fakeProvider();
-
-    setOverlayProvider(probe.provider);
-
-    const element = await mount();
-    const focus = vi.spyOn(element, 'focus');
-
-    await openPanel(element);
-    probe.layers[0].settle('api');
+    probe.layers[0].settle(reason);
     await probe.layers[0].closed;
     await element.updateComplete;
 

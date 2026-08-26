@@ -23,6 +23,45 @@ export const SEED: Seed = {
 
 export const PAIRS = PALETTE_CONTRAST_PAIRS;
 
+const SURFACE_SHIFT = {
+  dark: {surface: 0.06, raised: 0.1},
+  light: {surface: -0.03, raised: -0.015},
+} as const;
+
+const STATUS_BG_LIGHTNESS = {dark: 0.22, light: 0.95} as const;
+const STATUS_BG_CHROMA = 0.4;
+
+const STATUS_DEFAULTS = {
+  success: {c: 0.13, h: 150, l: {dark: 0.7, light: 0.5}},
+  warning: {c: 0.15, h: 75, l: {dark: 0.78, light: 0.62}},
+} as const;
+
+const ACCENT_SHIFT = {
+  hover: {dark: 0.08, light: -0.08},
+  focus: {dark: 0.1, light: -0.1},
+} as const;
+
+const SURFACE_HOVER_SHIFT = {dark: 0.04, light: -0.03} as const;
+
+const SHADOW = {
+  shift: {dark: -0.02, light: -0.6},
+  alpha: {dark: 0.55, light: 0.18},
+} as const;
+
+const TEXT_INDEX = {border: 5, textSubtle: 9, textMuted: 10} as const;
+
+function statusBg(color: string, theme: ThemeName): string {
+  const {c, h} = oklchOf(color);
+
+  return oklchToHex(STATUS_BG_LIGHTNESS[theme], c * STATUS_BG_CHROMA, h);
+}
+
+function statusDefault(name: keyof typeof STATUS_DEFAULTS, theme: ThemeName): string {
+  const {c, h, l} = STATUS_DEFAULTS[name];
+
+  return oklchToHex(l[theme], c, h);
+}
+
 function enforceContrast(palette: Record<TokenName, string>): void {
   const nudge = (token: TokenName, against: TokenName, min: number): void => {
     if (contrastRatio(palette[token], palette[against]) < min) {
@@ -51,31 +90,33 @@ function enforceContrast(palette: Record<TokenName, string>): void {
 export function buildPalette(theme: ThemeName, seed: Seed = SEED): Record<TokenName, string> {
   const neutral = rampBetween(seed.bg[theme], seed.text[theme], seed.steps);
   const bg = neutral[0];
-  const surfaceShift = theme === 'dark' ? {surface: 0.06, raised: 0.1} : {surface: -0.03, raised: -0.015};
-  const surface = shiftLightness(bg, surfaceShift.surface);
-  const surfaceRaised = shiftLightness(bg, surfaceShift.raised);
-  const border = neutral[5];
-  const textSubtle = neutral[9];
-  const textMuted = neutral[10];
+  const surface = shiftLightness(bg, SURFACE_SHIFT[theme].surface);
+  const surfaceRaised = shiftLightness(bg, SURFACE_SHIFT[theme].raised);
+
+  const border = neutral[TEXT_INDEX.border];
+  const textSubtle = neutral[TEXT_INDEX.textSubtle];
+  const textMuted = neutral[TEXT_INDEX.textMuted];
   const text = neutral[seed.steps - 1];
+
   const accent = seed.primary;
-  const accentHover = shiftLightness(accent, theme === 'dark' ? 0.08 : -0.08);
+  const accentHover = shiftLightness(accent, ACCENT_SHIFT.hover[theme]);
   const accentContrast = contrastRatio('#ffffff', accent) >= contrastRatio('#111111', accent) ? '#ffffff' : '#111111';
+
   const danger = seed.danger;
-  const dangerHue = oklchOf(danger);
-  const dangerBg = oklchToHex(theme === 'dark' ? 0.22 : 0.95, dangerHue.c * 0.4, dangerHue.h);
-  const success = seed.success ?? oklchToHex(theme === 'dark' ? 0.7 : 0.5, 0.13, 150);
-  const successHue = oklchOf(success);
-  const successBg = oklchToHex(theme === 'dark' ? 0.22 : 0.95, successHue.c * 0.4, successHue.h);
-  const warning = seed.warning ?? oklchToHex(theme === 'dark' ? 0.78 : 0.62, 0.15, 75);
-  const warningHue = oklchOf(warning);
-  const warningBg = oklchToHex(theme === 'dark' ? 0.22 : 0.95, warningHue.c * 0.4, warningHue.h);
+  const dangerBg = statusBg(danger, theme);
+
+  const success = seed.success ?? statusDefault('success', theme);
+  const successBg = statusBg(success, theme);
+
+  const warning = seed.warning ?? statusDefault('warning', theme);
+  const warningBg = statusBg(warning, theme);
+
   const info = seed.info ?? seed.primary;
-  const infoHue = oklchOf(info);
-  const infoBg = oklchToHex(theme === 'dark' ? 0.22 : 0.95, infoHue.c * 0.4, infoHue.h);
-  const focusRing = shiftLightness(accent, theme === 'dark' ? 0.1 : -0.1);
-  const surfaceHover = shiftLightness(surfaceRaised, theme === 'dark' ? 0.04 : -0.03);
-  const shadowColor = withAlpha(shiftLightness(bg, theme === 'dark' ? -0.02 : -0.6), theme === 'dark' ? 0.55 : 0.18);
+  const infoBg = statusBg(info, theme);
+
+  const focusRing = shiftLightness(accent, ACCENT_SHIFT.focus[theme]);
+  const surfaceHover = shiftLightness(surfaceRaised, SURFACE_HOVER_SHIFT[theme]);
+  const shadowColor = withAlpha(shiftLightness(bg, SHADOW.shift[theme]), SHADOW.alpha[theme]);
 
   const palette: Record<TokenName, string> = {
     bg,

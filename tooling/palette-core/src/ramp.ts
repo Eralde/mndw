@@ -31,10 +31,13 @@ export function shiftLightness(hex: string, delta: number): string {
 
 export function withAlpha(hex: string, alpha: number): string {
   const normalized = hex.replace('#', '');
+
   const rgb = normalized.length === 3
-    ? normalized.split('').map((channel) => channel + channel)
+    ? normalized.split('')
+      .map((channel) => channel + channel)
       .join('')
     : normalized.slice(0, 6);
+
   const alphaByte = Math.round(Math.min(1, Math.max(0, alpha)) * 255).toString(16)
     .padStart(2, '0');
 
@@ -87,10 +90,13 @@ export function nudgeForContrast(
 ): string {
   const {hue, chroma, bgHex, target} = opts;
   const step = 0.01;
+
   let l = opts.l;
+
   const towardLight = contrastRatio(oklchToHex(1, 0, hue), bgHex);
   const towardDark = contrastRatio(oklchToHex(0, 0, hue), bgHex);
   const direction = towardLight >= towardDark ? step : -step;
+
   let hex = oklchToHex(l, chroma, hue);
 
   while (contrastRatio(hex, bgHex) < target && l > 0 && l < 1) {
@@ -102,18 +108,7 @@ export function nudgeForContrast(
 }
 
 export function nudgeHexForContrast(fgHex: string, bgHex: string, target: number): string {
-  const {c, h} = oklchOf(fgHex);
-  const step = 0.01;
-  let l = oklchOf(fgHex).l;
-  const towardLight = contrastRatio(oklchToHex(1, 0, h), bgHex);
-  const towardDark = contrastRatio(oklchToHex(0, 0, h), bgHex);
-  const direction = towardLight >= towardDark ? step : -step;
-  let hex = oklchToHex(l, c, h);
+  const {l, c, h} = oklchOf(fgHex);
 
-  while (contrastRatio(hex, bgHex) < target && l > 0 && l < 1) {
-    l = Math.min(1, Math.max(0, l + direction));
-    hex = oklchToHex(l, c, h);
-  }
-
-  return hex;
+  return nudgeForContrast({hue: h, chroma: c, l, bgHex, target});
 }

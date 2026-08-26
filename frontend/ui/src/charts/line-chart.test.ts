@@ -1,12 +1,9 @@
-import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {setMndwUiLocale} from '../i18n.js';
+import {defineComponents} from '../testing/index.js';
 import {MNDW_LINE_CHART_TAG, MndwLineChart} from './line-chart.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_LINE_CHART_TAG)) {
-    customElements.define(MNDW_LINE_CHART_TAG, MndwLineChart);
-  }
-});
+defineComponents([MNDW_LINE_CHART_TAG, MndwLineChart]);
 
 afterEach(() => {
   setMndwUiLocale('en');

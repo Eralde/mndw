@@ -1,9 +1,9 @@
 import {nonNull, shadowOf, shadowQuery} from '@mndw/sdk/testing';
-import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from '../checkbox/checkbox.js';
 import {setMndwUiLocale} from '../i18n.js';
 import {type UiLayer, type UiLayerOptions, type UiOverlayProvider, setOverlayProvider} from '../overlay.js';
-import {resetUiTestState} from '../testing/index.js';
+import {defineComponents, resetUiTestState} from '../testing/index.js';
 import {column} from './table-builder.js';
 import {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './column-menu.js';
 import {MNDW_TABLE_TAG, MndwTable} from './table.js';
@@ -40,19 +40,11 @@ function makeColumns() {
   ];
 }
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_TABLE_TAG)) {
-    customElements.define(MNDW_TABLE_TAG, MndwTable);
-  }
-
-  if (!customElements.get(MNDW_CHECKBOX_TAG)) {
-    customElements.define(MNDW_CHECKBOX_TAG, MndwCheckbox);
-  }
-
-  if (!customElements.get(MNDW_COLUMN_MENU_TAG)) {
-    customElements.define(MNDW_COLUMN_MENU_TAG, MndwColumnMenu);
-  }
-});
+defineComponents(
+  [MNDW_TABLE_TAG, MndwTable],
+  [MNDW_CHECKBOX_TAG, MndwCheckbox],
+  [MNDW_COLUMN_MENU_TAG, MndwColumnMenu],
+);
 
 afterEach(() => {
   resetUiTestState();

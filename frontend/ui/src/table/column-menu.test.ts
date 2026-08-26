@@ -1,5 +1,6 @@
 import {shadowOf, shadowQuery} from '@mndw/sdk/testing';
-import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import {defineComponents} from '../testing/index.js';
 import {
   MNDW_COLUMN_MENU_CHECK_EVENT,
   MNDW_COLUMN_MENU_TAG,
@@ -7,11 +8,7 @@ import {
   type MndwColumnMenuCheckDetail,
 } from './column-menu.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_COLUMN_MENU_TAG)) {
-    customElements.define(MNDW_COLUMN_MENU_TAG, MndwColumnMenu);
-  }
-});
+defineComponents([MNDW_COLUMN_MENU_TAG, MndwColumnMenu]);
 
 afterEach(() => {
   document.body.innerHTML = '';

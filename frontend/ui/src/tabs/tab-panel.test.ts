@@ -1,29 +1,12 @@
-import {beforeAll, describe, expect, it} from 'vitest';
+import {describe, expect, it} from 'vitest';
+import {defineComponents, mount} from '../testing/index.js';
 import {MNDW_TAB_PANEL_TAG, MndwTabPanel} from './tab-panel.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_TAB_PANEL_TAG)) {
-    customElements.define(MNDW_TAB_PANEL_TAG, MndwTabPanel);
-  }
-});
-
-async function mount(html: string): Promise<MndwTabPanel> {
-  document.body.innerHTML = html;
-
-  const element = document.body.querySelector<MndwTabPanel>(MNDW_TAB_PANEL_TAG);
-
-  if (!element) {
-    throw new Error('missing tab panel');
-  }
-
-  await element.updateComplete;
-
-  return element;
-}
+defineComponents([MNDW_TAB_PANEL_TAG, MndwTabPanel]);
 
 describe('<mndw-tab-panel>', () => {
   it('reads and reflects the tab it points at', async () => {
-    const element = await mount('<mndw-tab-panel for="general">Body</mndw-tab-panel>');
+    const element = await mount('<mndw-tab-panel for="general">Body</mndw-tab-panel>', MNDW_TAB_PANEL_TAG);
 
     expect(element.for).toBe('general');
 
@@ -34,7 +17,7 @@ describe('<mndw-tab-panel>', () => {
   });
 
   it('generates a stable id when the consumer supplies none', async () => {
-    const element = await mount('<mndw-tab-panel for="general">Body</mndw-tab-panel>');
+    const element = await mount('<mndw-tab-panel for="general">Body</mndw-tab-panel>', MNDW_TAB_PANEL_TAG);
     const generated = element.id;
 
     expect(generated).toMatch(/^mndw-tab-panel-\d+$/u);
@@ -46,7 +29,7 @@ describe('<mndw-tab-panel>', () => {
   });
 
   it('keeps a consumer id', async () => {
-    const element = await mount('<mndw-tab-panel id="mine" for="general">Body</mndw-tab-panel>');
+    const element = await mount('<mndw-tab-panel id="mine" for="general">Body</mndw-tab-panel>', MNDW_TAB_PANEL_TAG);
 
     expect(element.id).toBe('mine');
   });
@@ -65,7 +48,7 @@ describe('<mndw-tab-panel>', () => {
   });
 
   it('exposes the panel part and slots its content', async () => {
-    const element = await mount('<mndw-tab-panel for="general">Body</mndw-tab-panel>');
+    const element = await mount('<mndw-tab-panel for="general">Body</mndw-tab-panel>', MNDW_TAB_PANEL_TAG);
     const part = element.shadowRoot?.querySelector('[part="panel"]');
 
     expect(part).not.toBeNull();
@@ -73,14 +56,14 @@ describe('<mndw-tab-panel>', () => {
   });
 
   it('carries no semantics of its own — the group writes them', async () => {
-    const element = await mount('<mndw-tab-panel for="general">Body</mndw-tab-panel>');
+    const element = await mount('<mndw-tab-panel for="general">Body</mndw-tab-panel>', MNDW_TAB_PANEL_TAG);
 
     expect(element.hasAttribute('role')).toBe(false);
     expect(element.hasAttribute('aria-labelledby')).toBe(false);
   });
 
   it('collapses out of flow while hidden', async () => {
-    const element = await mount('<mndw-tab-panel for="general">Body</mndw-tab-panel>');
+    const element = await mount('<mndw-tab-panel for="general">Body</mndw-tab-panel>', MNDW_TAB_PANEL_TAG);
 
     expect(MndwTabPanel.styles.cssText).toContain(':host([hidden])');
     expect(element.hidden).toBe(false);

@@ -1,42 +1,17 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_FIELD_TAG, MndwField} from '../field/field.js';
 import {setMndwUiLocale} from '../i18n.js';
+import {defineComponents, mount, settle} from '../testing/index.js';
 import {MNDW_INPUT_TAG, MndwInput} from './input.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_INPUT_TAG)) {
-    customElements.define(MNDW_INPUT_TAG, MndwInput);
-  }
-
-  if (!customElements.get(MNDW_FIELD_TAG)) {
-    customElements.define(MNDW_FIELD_TAG, MndwField);
-  }
-});
-
-async function mount(html: string): Promise<MndwInput> {
-  document.body.innerHTML = html;
-
-  const element = document.body.querySelector<MndwInput>(MNDW_INPUT_TAG);
-
-  if (!element) {
-    throw new Error('missing input');
-  }
-
-  await element.updateComplete;
-
-  return element;
-}
+defineComponents(
+  [MNDW_INPUT_TAG, MndwInput],
+  [MNDW_FIELD_TAG, MndwField],
+);
 
 afterEach(() => {
   setMndwUiLocale('en');
 });
-
-async function settle(element: MndwInput): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  await element.updateComplete;
-}
 
 function inner(element: MndwInput): HTMLInputElement {
   const found = element.shadowRoot?.querySelector<HTMLInputElement>('input');
@@ -70,7 +45,7 @@ function pressEnter(element: MndwInput): void {
 
 describe('<mndw-input> properties', () => {
   it('applies the documented defaults', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
 
     expect(element.value).toBe('');
     expect(element.type).toBe('text');
@@ -88,7 +63,7 @@ describe('<mndw-input> properties', () => {
   });
 
   it('renders one native input with the documented parts and slots', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
     const root = element.shadowRoot;
 
     expect(root?.querySelectorAll('input')).toHaveLength(1);
@@ -99,7 +74,7 @@ describe('<mndw-input> properties', () => {
   });
 
   it('hides empty prefix and suffix slots', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
     const root = element.shadowRoot;
     const prefix = root?.querySelector<HTMLSlotElement>('slot[name="prefix"]');
     const suffix = root?.querySelector<HTMLSlotElement>('slot[name="suffix"]');
@@ -115,7 +90,7 @@ describe('<mndw-input> properties', () => {
   });
 
   it('updates adornment slot visibility when assigned nodes change', async () => {
-    const element = await mount('<mndw-input><span slot="prefix">$</span></mndw-input>');
+    const element = await mount('<mndw-input><span slot="prefix">$</span></mndw-input>', MNDW_INPUT_TAG);
     const root = element.shadowRoot;
     const suffix = document.createElement('span');
 
@@ -145,12 +120,12 @@ describe('<mndw-input> properties', () => {
 
   it('forwards every supported type and falls back to text for others', async () => {
     for (const supported of ['text', 'password', 'search', 'number', 'url']) {
-      const element = await mount(`<mndw-input type="${supported}"></mndw-input>`);
+      const element = await mount(`<mndw-input type="${supported}"></mndw-input>`, MNDW_INPUT_TAG);
 
       expect(inner(element).getAttribute('type')).toBe(supported);
     }
 
-    const unsupported = await mount('<mndw-input type="email"></mndw-input>');
+    const unsupported = await mount('<mndw-input type="email"></mndw-input>', MNDW_INPUT_TAG);
 
     expect(unsupported.type).toBe('email');
     expect(inner(unsupported).getAttribute('type')).toBe('text');
@@ -160,6 +135,7 @@ describe('<mndw-input> properties', () => {
     const element = await mount(
       '<mndw-input type="number" placeholder="Port" autocomplete="off" readonly min="1" max="65535" step="2"'
         + ' maxlength="5"></mndw-input>',
+      MNDW_INPUT_TAG,
     );
     const control = inner(element);
 
@@ -173,7 +149,7 @@ describe('<mndw-input> properties', () => {
   });
 
   it('never writes an empty optional attribute to the inner input', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
     const control = inner(element);
 
     for (const attribute of ['placeholder', 'autocomplete', 'min', 'max', 'step', 'maxlength', 'aria-label']) {
@@ -182,7 +158,7 @@ describe('<mndw-input> properties', () => {
   });
 
   it('keeps value as state: it does not reflect and the attribute stays the authored default', async () => {
-    const element = await mount('<mndw-input value="first"></mndw-input>');
+    const element = await mount('<mndw-input value="first"></mndw-input>', MNDW_INPUT_TAG);
 
     expect(element.value).toBe('first');
     expect(inner(element).value).toBe('first');
@@ -197,7 +173,7 @@ describe('<mndw-input> properties', () => {
 
 describe('<mndw-input> events', () => {
   it('emits mndwinput for every native input event with the updated value', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
     const seen: string[] = [];
 
     element.addEventListener('mndwinput', (event) => {
@@ -214,7 +190,7 @@ describe('<mndw-input> events', () => {
   });
 
   it('commits on blur only when the value changed since focus', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
     const changes = vi.fn();
 
     element.addEventListener('mndwchange', changes);
@@ -233,7 +209,7 @@ describe('<mndw-input> events', () => {
   });
 
   it('commits on Enter and does not repeat the commit on the following blur', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
     const changes = vi.fn();
 
     element.addEventListener('mndwchange', changes);
@@ -250,7 +226,7 @@ describe('<mndw-input> events', () => {
   });
 
   it('emits nothing for a programmatic write and does not commit it on blur', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
     const events = vi.fn();
 
     element.addEventListener('mndwinput', events);
@@ -269,7 +245,7 @@ describe('<mndw-input> events', () => {
   });
 
   it('still commits user editing that follows a programmatic write', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
     const changes = vi.fn();
 
     element.addEventListener('mndwchange', changes);
@@ -287,7 +263,7 @@ describe('<mndw-input> events', () => {
 
 describe('<mndw-input> form participation', () => {
   it('resets to the authored value attribute', async () => {
-    const element = await mount('<mndw-input value="default"></mndw-input>');
+    const element = await mount('<mndw-input value="default"></mndw-input>', MNDW_INPUT_TAG);
 
     element.value = 'typed';
     await element.updateComplete;
@@ -299,7 +275,7 @@ describe('<mndw-input> form participation', () => {
   });
 
   it('restores submitted state', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
 
     element.formStateRestoreCallback('restored', 'restore');
     await element.updateComplete;
@@ -308,7 +284,7 @@ describe('<mndw-input> form participation', () => {
   });
 
   it('mirrors effective disabled from an ancestor fieldset onto the inner input', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
 
     element.formDisabledCallback(true);
     await element.updateComplete;
@@ -322,7 +298,7 @@ describe('<mndw-input> form participation', () => {
   });
 
   it('mirrors required from the property and from host aria-required', async () => {
-    const element = await mount('<mndw-input required></mndw-input>');
+    const element = await mount('<mndw-input required></mndw-input>', MNDW_INPUT_TAG);
 
     expect(inner(element).hasAttribute('required')).toBe(true);
 
@@ -471,7 +447,7 @@ describe('<mndw-input> against ElementInternals', () => {
 
 describe('<mndw-input> accessible name and description forwarding', () => {
   it('forwards a host aria-label to the inner input', async () => {
-    const element = await mount('<mndw-input aria-label="Host name"></mndw-input>');
+    const element = await mount('<mndw-input aria-label="Host name"></mndw-input>', MNDW_INPUT_TAG);
 
     expect(inner(element).getAttribute('aria-label')).toBe('Host name');
   });
@@ -479,19 +455,23 @@ describe('<mndw-input> accessible name and description forwarding', () => {
   it('prefers host aria-labelledby over aria-label and resolves it to text', async () => {
     const element = await mount(
       '<span id="naming">Interface  name</span><mndw-input aria-labelledby="naming" aria-label="Ignored"></mndw-input>',
+      MNDW_INPUT_TAG,
     );
 
     expect(inner(element).getAttribute('aria-label')).toBe('Interface name');
   });
 
   it('forwards the text of an associated label', async () => {
-    const element = await mount('<label for="named">Host name</label><mndw-input id="named"></mndw-input>');
+    const element = await mount(
+      '<label for="named">Host name</label><mndw-input id="named"></mndw-input>',
+      MNDW_INPUT_TAG,
+    );
 
     expect(inner(element).getAttribute('aria-label')).toBe('Host name');
   });
 
   it('re-resolves when a host naming attribute changes', async () => {
-    const element = await mount('<mndw-input aria-label="First"></mndw-input>');
+    const element = await mount('<mndw-input aria-label="First"></mndw-input>', MNDW_INPUT_TAG);
 
     element.setAttribute('aria-label', 'Second');
     await settle(element);
@@ -505,7 +485,10 @@ describe('<mndw-input> accessible name and description forwarding', () => {
   });
 
   it('re-resolves when the text of a referenced node is edited in place', async () => {
-    const element = await mount('<span id="naming">Before</span><mndw-input aria-labelledby="naming"></mndw-input>');
+    const element = await mount(
+      '<span id="naming">Before</span><mndw-input aria-labelledby="naming"></mndw-input>',
+      MNDW_INPUT_TAG,
+    );
     const target = document.getElementById('naming');
 
     if (!target) {
@@ -519,7 +502,7 @@ describe('<mndw-input> accessible name and description forwarding', () => {
   });
 
   it('re-resolves on demand through refreshAccessibleName', async () => {
-    const element = await mount('<label for="named">First</label><mndw-input id="named"></mndw-input>');
+    const element = await mount('<label for="named">First</label><mndw-input id="named"></mndw-input>', MNDW_INPUT_TAG);
     const label = document.querySelector('label');
 
     if (!label) {
@@ -536,6 +519,7 @@ describe('<mndw-input> accessible name and description forwarding', () => {
   it('forwards the resolved description text', async () => {
     const element = await mount(
       '<span id="hint">Shown in the device list</span><mndw-input aria-describedby="hint"></mndw-input>',
+      MNDW_INPUT_TAG,
     );
 
     expect(inner(element).getAttribute('aria-description')).toBe('Shown in the device list');
@@ -549,7 +533,7 @@ describe('<mndw-input> accessible name and description forwarding', () => {
 
 describe('<mndw-input> invalid announcement', () => {
   it('lets the host aria-invalid attribute outrank the invalid property', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
 
     element.invalid = true;
     await element.updateComplete;
@@ -568,7 +552,7 @@ describe('<mndw-input> invalid announcement', () => {
   });
 
   it('announces the invalid property when no attribute is present', async () => {
-    const element = await mount('<mndw-input></mndw-input>');
+    const element = await mount('<mndw-input></mndw-input>', MNDW_INPUT_TAG);
 
     expect(inner(element).hasAttribute('aria-invalid')).toBe(false);
 
@@ -581,7 +565,7 @@ describe('<mndw-input> invalid announcement', () => {
 
 describe('<mndw-input> password toggle', () => {
   it('renders a password toggle button when type is password', async () => {
-    const element = await mount('<mndw-input type="password"></mndw-input>');
+    const element = await mount('<mndw-input type="password"></mndw-input>', MNDW_INPUT_TAG);
     const toggle = element.shadowRoot?.querySelector<HTMLElement>('[part="password-toggle"]');
 
     expect(toggle).not.toBeNull();
@@ -589,13 +573,13 @@ describe('<mndw-input> password toggle', () => {
   });
 
   it('does not render a password toggle when type is not password', async () => {
-    const element = await mount('<mndw-input type="text"></mndw-input>');
+    const element = await mount('<mndw-input type="text"></mndw-input>', MNDW_INPUT_TAG);
 
     expect(element.shadowRoot?.querySelector('[part="password-toggle"]')).toBeNull();
   });
 
   it('toggles between Show password / Hide password aria-label', async () => {
-    const element = await mount('<mndw-input type="password"></mndw-input>');
+    const element = await mount('<mndw-input type="password"></mndw-input>', MNDW_INPUT_TAG);
     const toggle = element.shadowRoot?.querySelector<HTMLElement>('[part="password-toggle"]');
 
     if (!toggle) {
@@ -616,7 +600,7 @@ describe('<mndw-input> password toggle', () => {
   });
 
   it('updates password toggle labels when UI locale changes', async () => {
-    const element = await mount('<mndw-input type="password"></mndw-input>');
+    const element = await mount('<mndw-input type="password"></mndw-input>', MNDW_INPUT_TAG);
     const toggle = element.shadowRoot?.querySelector<HTMLElement>('[part="password-toggle"]');
 
     if (!toggle) {
@@ -630,7 +614,7 @@ describe('<mndw-input> password toggle', () => {
   });
 
   it('changes the native input type between password and text', async () => {
-    const element = await mount('<mndw-input type="password"></mndw-input>');
+    const element = await mount('<mndw-input type="password"></mndw-input>', MNDW_INPUT_TAG);
 
     expect(inner(element).getAttribute('type')).toBe('password');
 
@@ -652,13 +636,13 @@ describe('<mndw-input> password toggle', () => {
   });
 
   it('does not affect the input type when the component type is not password', async () => {
-    const element = await mount('<mndw-input type="text"></mndw-input>');
+    const element = await mount('<mndw-input type="text"></mndw-input>', MNDW_INPUT_TAG);
 
     expect(inner(element).getAttribute('type')).toBe('text');
   });
 
   it('preserves the input value when toggling visibility', async () => {
-    const element = await mount('<mndw-input type="password"></mndw-input>');
+    const element = await mount('<mndw-input type="password"></mndw-input>', MNDW_INPUT_TAG);
 
     element.value = 's3cret';
     await element.updateComplete;

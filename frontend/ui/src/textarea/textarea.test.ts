@@ -1,37 +1,12 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_FIELD_TAG, MndwField} from '../field/field.js';
+import {defineComponents, mount, settle} from '../testing/index.js';
 import {MNDW_TEXTAREA_TAG, MndwTextarea} from './textarea.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_TEXTAREA_TAG)) {
-    customElements.define(MNDW_TEXTAREA_TAG, MndwTextarea);
-  }
-
-  if (!customElements.get(MNDW_FIELD_TAG)) {
-    customElements.define(MNDW_FIELD_TAG, MndwField);
-  }
-});
-
-async function mount(html: string): Promise<MndwTextarea> {
-  document.body.innerHTML = html;
-
-  const element = document.body.querySelector<MndwTextarea>(MNDW_TEXTAREA_TAG);
-
-  if (!element) {
-    throw new Error('missing textarea');
-  }
-
-  await element.updateComplete;
-
-  return element;
-}
-
-async function settle(element: MndwTextarea): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  await element.updateComplete;
-}
+defineComponents(
+  [MNDW_TEXTAREA_TAG, MndwTextarea],
+  [MNDW_FIELD_TAG, MndwField],
+);
 
 function inner(element: MndwTextarea): HTMLTextAreaElement {
   const found = element.shadowRoot?.querySelector<HTMLTextAreaElement>('textarea');
@@ -65,7 +40,7 @@ function pressEnter(element: MndwTextarea): void {
 
 describe('<mndw-textarea> properties', () => {
   it('applies the documented defaults', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     expect(element.value).toBe('');
     expect(element.rows).toBe(3);
@@ -79,7 +54,7 @@ describe('<mndw-textarea> properties', () => {
   });
 
   it('renders one native textarea with the documented parts', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
     const root = element.shadowRoot;
 
     expect(root?.querySelectorAll('textarea')).toHaveLength(1);
@@ -88,7 +63,7 @@ describe('<mndw-textarea> properties', () => {
   });
 
   it('sizes the inner textarea from rows', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     expect(inner(element).getAttribute('rows')).toBe('3');
 
@@ -99,7 +74,7 @@ describe('<mndw-textarea> properties', () => {
   });
 
   it('forwards maxlength and omits it when unset', async () => {
-    const element = await mount('<mndw-textarea maxlength="120"></mndw-textarea>');
+    const element = await mount('<mndw-textarea maxlength="120"></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     expect(inner(element).getAttribute('maxlength')).toBe('120');
 
@@ -110,7 +85,7 @@ describe('<mndw-textarea> properties', () => {
   });
 
   it('mirrors readonly onto the inner textarea', async () => {
-    const element = await mount('<mndw-textarea readonly></mndw-textarea>');
+    const element = await mount('<mndw-textarea readonly></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     expect(inner(element).hasAttribute('readonly')).toBe(true);
 
@@ -121,7 +96,7 @@ describe('<mndw-textarea> properties', () => {
   });
 
   it('keeps value as state: it does not reflect and the attribute stays the authored default', async () => {
-    const element = await mount('<mndw-textarea value="first"></mndw-textarea>');
+    const element = await mount('<mndw-textarea value="first"></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     expect(element.value).toBe('first');
     expect(inner(element).value).toBe('first');
@@ -136,21 +111,21 @@ describe('<mndw-textarea> properties', () => {
 
 describe('<mndw-textarea> autosize', () => {
   it('keeps rows and adds no inline height while autosize is off', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     expect(inner(element).getAttribute('rows')).toBe('3');
     expect(inner(element).style.height).toBe('');
   });
 
   it('drops rows and drives height from content when opted in', async () => {
-    const element = await mount('<mndw-textarea autosize></mndw-textarea>');
+    const element = await mount('<mndw-textarea autosize></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     expect(inner(element).hasAttribute('rows')).toBe(false);
     expect(inner(element).style.height).not.toBe('');
   });
 
   it('restores rows sizing when autosize is turned back off', async () => {
-    const element = await mount('<mndw-textarea autosize rows="4"></mndw-textarea>');
+    const element = await mount('<mndw-textarea autosize rows="4"></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     element.autosize = false;
     await element.updateComplete;
@@ -162,7 +137,7 @@ describe('<mndw-textarea> autosize', () => {
 
 describe('<mndw-textarea> events', () => {
   it('emits mndwinput for every native input event with the updated value', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
     const seen: string[] = [];
 
     element.addEventListener('mndwinput', (event: Event) => {
@@ -178,7 +153,7 @@ describe('<mndw-textarea> events', () => {
   });
 
   it('keeps newlines and does not commit on Enter', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
     const changes = vi.fn();
 
     element.addEventListener('mndwchange', changes);
@@ -197,7 +172,7 @@ describe('<mndw-textarea> events', () => {
   });
 
   it('commits on blur only when the value changed since focus', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
     const changes = vi.fn();
 
     element.addEventListener('mndwchange', changes);
@@ -209,7 +184,7 @@ describe('<mndw-textarea> events', () => {
   });
 
   it('emits nothing for a programmatic write and does not commit it on blur', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
     const events = vi.fn();
 
     element.addEventListener('mndwinput', events);
@@ -227,7 +202,7 @@ describe('<mndw-textarea> events', () => {
 
 describe('<mndw-textarea> form participation', () => {
   it('resets to the authored value attribute', async () => {
-    const element = await mount('<mndw-textarea value="default"></mndw-textarea>');
+    const element = await mount('<mndw-textarea value="default"></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     element.value = 'typed';
     await element.updateComplete;
@@ -239,7 +214,7 @@ describe('<mndw-textarea> form participation', () => {
   });
 
   it('restores submitted state', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     element.formStateRestoreCallback('restored', 'restore');
     await element.updateComplete;
@@ -248,7 +223,7 @@ describe('<mndw-textarea> form participation', () => {
   });
 
   it('mirrors effective disabled from an ancestor fieldset onto the inner textarea', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     element.formDisabledCallback(true);
     await element.updateComplete;
@@ -262,7 +237,7 @@ describe('<mndw-textarea> form participation', () => {
   });
 
   it('mirrors required from the property and from host aria-required', async () => {
-    const element = await mount('<mndw-textarea required></mndw-textarea>');
+    const element = await mount('<mndw-textarea required></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     expect(inner(element).hasAttribute('required')).toBe(true);
 
@@ -280,13 +255,16 @@ describe('<mndw-textarea> form participation', () => {
 
 describe('<mndw-textarea> accessible name and description forwarding', () => {
   it('forwards a host aria-label to the inner textarea', async () => {
-    const element = await mount('<mndw-textarea aria-label="Release notes"></mndw-textarea>');
+    const element = await mount('<mndw-textarea aria-label="Release notes"></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     expect(inner(element).getAttribute('aria-label')).toBe('Release notes');
   });
 
   it('forwards the text of an associated label', async () => {
-    const element = await mount('<label for="named">Release notes</label><mndw-textarea id="named"></mndw-textarea>');
+    const element = await mount(
+      '<label for="named">Release notes</label><mndw-textarea id="named"></mndw-textarea>',
+      MNDW_TEXTAREA_TAG,
+    );
 
     expect(inner(element).getAttribute('aria-label')).toBe('Release notes');
   });
@@ -294,6 +272,7 @@ describe('<mndw-textarea> accessible name and description forwarding', () => {
   it('forwards the resolved description text and clears it again', async () => {
     const element = await mount(
       '<span id="hint">Markdown is supported</span><mndw-textarea aria-describedby="hint"></mndw-textarea>',
+      MNDW_TEXTAREA_TAG,
     );
 
     expect(inner(element).getAttribute('aria-description')).toBe('Markdown is supported');
@@ -305,7 +284,10 @@ describe('<mndw-textarea> accessible name and description forwarding', () => {
   });
 
   it('re-resolves on demand through refreshAccessibleName', async () => {
-    const element = await mount('<label for="named">Release notes</label><mndw-textarea id="named"></mndw-textarea>');
+    const element = await mount(
+      '<label for="named">Release notes</label><mndw-textarea id="named"></mndw-textarea>',
+      MNDW_TEXTAREA_TAG,
+    );
 
     document.querySelector('label')?.remove();
     element.refreshAccessibleName();
@@ -315,7 +297,7 @@ describe('<mndw-textarea> accessible name and description forwarding', () => {
   });
 
   it('announces the invalid property on the inner textarea', async () => {
-    const element = await mount('<mndw-textarea></mndw-textarea>');
+    const element = await mount('<mndw-textarea></mndw-textarea>', MNDW_TEXTAREA_TAG);
 
     expect(inner(element).hasAttribute('aria-invalid')).toBe(false);
 

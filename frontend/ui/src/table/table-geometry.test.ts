@@ -1,16 +1,13 @@
-import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import {defineComponents} from '../testing/index.js';
 import {MNDW_TABLE_TAG, MndwTable} from './table.js';
 import {registerTableMeasurementTarget} from './table-geometry.js';
 import {type FakeTableGeometryProvider, createFakeTableGeometryProvider} from './table-test-geometry.js';
 
+defineComponents([MNDW_TABLE_TAG, MndwTable]);
+
 describe('table geometry provider', () => {
   let provider: FakeTableGeometryProvider;
-
-  beforeAll(() => {
-    if (!customElements.get(MNDW_TABLE_TAG)) {
-      customElements.define(MNDW_TABLE_TAG, MndwTable);
-    }
-  });
 
   afterEach(() => {
     document.body.innerHTML = '';

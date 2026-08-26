@@ -1,36 +1,18 @@
-import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import {defineComponents, mount as mountComponent, settle} from '../testing/index.js';
 import {MNDW_TOOLTIP_TAG, MndwTooltip} from './tooltip.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_TOOLTIP_TAG)) {
-    customElements.define(MNDW_TOOLTIP_TAG, MndwTooltip);
-  }
-});
+defineComponents([MNDW_TOOLTIP_TAG, MndwTooltip]);
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
-async function settle(element: MndwTooltip): Promise<void> {
-  for (let turn = 0; turn < 2; turn += 1) {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
-    });
-    await element.updateComplete;
-  }
-}
-
 async function mount(html: string): Promise<MndwTooltip> {
-  document.body.innerHTML = html;
+  const element = await mountComponent(html, MNDW_TOOLTIP_TAG);
 
-  const element = document.body.querySelector<MndwTooltip>(MNDW_TOOLTIP_TAG);
-
-  if (!element) {
-    throw new Error('missing tooltip');
-  }
-
-  await settle(element);
+  await settle(element, 2);
 
   return element;
 }
@@ -103,12 +85,12 @@ describe('<mndw-tooltip> semantics', () => {
     expect(element.hasAttribute('role')).toBe(false);
 
     element.text = 'Restarts now';
-    await settle(element);
+    await settle(element, 2);
 
     expect(element.getAttribute('role')).toBe('tooltip');
 
     element.text = '';
-    await settle(element);
+    await settle(element, 2);
 
     expect(element.hasAttribute('role')).toBe(false);
   });
@@ -119,7 +101,7 @@ describe('<mndw-tooltip> semantics', () => {
     expect(bubble(element)).toBeNull();
 
     element.text = 'Restarts now';
-    await settle(element);
+    await settle(element, 2);
 
     expect(bubble(element)?.textContent?.trim()).toBe('Restarts now');
   });
@@ -134,7 +116,7 @@ describe('<mndw-tooltip> semantics', () => {
 
     element.placement = 'bottom';
     element.delay = 200;
-    await settle(element);
+    await settle(element, 2);
 
     expect(element.getAttribute('placement')).toBe('bottom');
     expect(element.getAttribute('delay')).toBe('200');
@@ -166,7 +148,7 @@ describe('<mndw-tooltip> trigger ownership', () => {
     expect(warn).toHaveBeenCalledTimes(1);
 
     element.text = 'Restarts the device now';
-    await settle(element);
+    await settle(element, 2);
 
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -189,7 +171,7 @@ describe('<mndw-tooltip> trigger ownership', () => {
     `);
 
     element.text = '';
-    await settle(element);
+    await settle(element, 2);
 
     expect(describedBy(element)).toEqual(['hint']);
   });
@@ -198,7 +180,7 @@ describe('<mndw-tooltip> trigger ownership', () => {
     const element = await mount('<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>');
 
     element.text = '';
-    await settle(element);
+    await settle(element, 2);
 
     expect(trigger(element).hasAttribute('aria-describedby')).toBe(false);
   });
@@ -207,7 +189,7 @@ describe('<mndw-tooltip> trigger ownership', () => {
     const element = await mount('<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>');
 
     element.id = 'renamed';
-    await settle(element);
+    await settle(element, 2);
 
     expect(describedBy(element)).toEqual(['renamed']);
   });
@@ -216,7 +198,7 @@ describe('<mndw-tooltip> trigger ownership', () => {
     const element = await mount('<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>');
 
     trigger(element).setAttribute('aria-describedby', 'consumer');
-    await settle(element);
+    await settle(element, 2);
 
     expect(describedBy(element)).toEqual(['consumer', element.id]);
   });
@@ -228,7 +210,7 @@ describe('<mndw-tooltip> trigger ownership', () => {
 
     incoming.textContent = 'Reboot';
     outgoing.replaceWith(incoming);
-    await settle(element);
+    await settle(element, 2);
 
     expect(outgoing.hasAttribute('aria-describedby')).toBe(false);
     expect(incoming.getAttribute('aria-describedby')).toBe(element.id);
@@ -243,7 +225,7 @@ describe('<mndw-tooltip> trigger ownership', () => {
     const button = trigger(element);
 
     element.remove();
-    await settle(element);
+    await settle(element, 2);
 
     expect((button.getAttribute('aria-describedby') ?? '').split(/\s+/u)).toEqual(['hint']);
   });

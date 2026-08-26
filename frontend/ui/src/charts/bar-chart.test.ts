@@ -1,12 +1,9 @@
-import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {setMndwUiLocale} from '../i18n.js';
+import {defineComponents} from '../testing/index.js';
 import {MNDW_BAR_CHART_TAG, MndwBarChart} from './bar-chart.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_BAR_CHART_TAG)) {
-    customElements.define(MNDW_BAR_CHART_TAG, MndwBarChart);
-  }
-});
+defineComponents([MNDW_BAR_CHART_TAG, MndwBarChart]);
 
 afterEach(() => {
   setMndwUiLocale('en');

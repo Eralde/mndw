@@ -1,24 +1,16 @@
-import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_OPTION_TAG, MndwOption} from './option.js';
 import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select-panel.js';
 import {MNDW_SELECT_TAG, MndwSelect} from './select.js';
 import {setMndwUiLocale} from '../i18n.js';
 import {type UiCloseReason, type UiLayerOptions, type UiOverlayProvider, setOverlayProvider} from '../overlay.js';
-import {resetUiTestState} from '../testing/index.js';
+import {defineComponents, mount as mountComponent, resetUiTestState} from '../testing/index.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_OPTION_TAG)) {
-    customElements.define(MNDW_OPTION_TAG, MndwOption);
-  }
-
-  if (!customElements.get(MNDW_SELECT_PANEL_TAG)) {
-    customElements.define(MNDW_SELECT_PANEL_TAG, MndwSelectPanel);
-  }
-
-  if (!customElements.get(MNDW_SELECT_TAG)) {
-    customElements.define(MNDW_SELECT_TAG, MndwSelect);
-  }
-});
+defineComponents(
+  [MNDW_OPTION_TAG, MndwOption],
+  [MNDW_SELECT_PANEL_TAG, MndwSelectPanel],
+  [MNDW_SELECT_TAG, MndwSelect],
+);
 
 afterEach(() => {
   resetUiTestState();
@@ -41,13 +33,7 @@ function setViewport(width: number, height = 768): void {
 }
 
 async function mount(markup = MARKUP): Promise<MndwSelect> {
-  document.body.innerHTML = markup;
-
-  const element = document.body.firstElementChild as MndwSelect;
-
-  await element.updateComplete;
-
-  return element;
+  return mountComponent(markup, MNDW_SELECT_TAG);
 }
 
 function trigger(element: MndwSelect): HTMLElement {

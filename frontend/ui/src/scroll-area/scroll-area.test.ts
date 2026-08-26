@@ -1,4 +1,5 @@
-import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {defineComponents} from '../testing/index.js';
 import {MNDW_SCROLL_AREA_TAG, MndwScrollArea} from './scroll-area.js';
 
 class TestResizeObserver {
@@ -23,11 +24,7 @@ class TestResizeObserver {
   }
 }
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_SCROLL_AREA_TAG)) {
-    customElements.define(MNDW_SCROLL_AREA_TAG, MndwScrollArea);
-  }
-});
+defineComponents([MNDW_SCROLL_AREA_TAG, MndwScrollArea]);
 
 beforeEach(() => {
   TestResizeObserver.instances = [];

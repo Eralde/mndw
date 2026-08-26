@@ -87,4 +87,13 @@ describe('ui test harness', () => {
       vi.useRealTimers();
     }
   });
+
+  it('settles for exactly two turns when requested', async () => {
+    const timer = vi.spyOn(globalThis, 'setTimeout');
+    const element = Object.assign(document.createElement('div'), {updateComplete: Promise.resolve()});
+
+    await settle(element, 2);
+
+    expect(timer).toHaveBeenCalledTimes(2);
+  });
 });

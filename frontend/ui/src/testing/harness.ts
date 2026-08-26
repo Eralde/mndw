@@ -31,11 +31,13 @@ export async function mount(html: string, tag: string): Promise<UpdateCompleteEl
   return element;
 }
 
-export async function settle(element: UpdateCompleteElement): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  await element.updateComplete;
+export async function settle(element: UpdateCompleteElement, turns: 1 | 2 = 1): Promise<void> {
+  for (let turn = 0; turn < turns; turn += 1) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    await element.updateComplete;
+  }
 }
 
 export async function press(

@@ -1,36 +1,19 @@
-import {beforeAll, describe, expect, it, vi} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
+import {defineComponents, mount} from '../testing/index.js';
 import {MNDW_SEGMENT_CHANGE_EVENT, MNDW_SEGMENT_TAG, MndwSegment} from './segment.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_SEGMENT_TAG)) {
-    customElements.define(MNDW_SEGMENT_TAG, MndwSegment);
-  }
-});
-
-async function mount(html: string): Promise<MndwSegment> {
-  document.body.innerHTML = html;
-
-  const element = document.body.querySelector<MndwSegment>(MNDW_SEGMENT_TAG);
-
-  if (!element) {
-    throw new Error('missing segment');
-  }
-
-  await element.updateComplete;
-
-  return element;
-}
+defineComponents([MNDW_SEGMENT_TAG, MndwSegment]);
 
 describe('<mndw-segment>', () => {
   it('applies the documented defaults', async () => {
-    const element = await mount('<mndw-segment></mndw-segment>');
+    const element = await mount('<mndw-segment></mndw-segment>', MNDW_SEGMENT_TAG);
 
     expect(element.value).toBe('');
     expect(element.disabled).toBe(false);
   });
 
   it('reflects value and disabled as configuration', async () => {
-    const element = await mount('<mndw-segment value="day"></mndw-segment>');
+    const element = await mount('<mndw-segment value="day"></mndw-segment>', MNDW_SEGMENT_TAG);
 
     expect(element.value).toBe('day');
 
@@ -43,7 +26,7 @@ describe('<mndw-segment>', () => {
   });
 
   it('renders slotted content inside its segment part', async () => {
-    const element = await mount('<mndw-segment value="day">Day</mndw-segment>');
+    const element = await mount('<mndw-segment value="day">Day</mndw-segment>', MNDW_SEGMENT_TAG);
     const root = element.shadowRoot;
 
     expect(root?.querySelector('[part="segment"]')).not.toBeNull();
@@ -52,13 +35,13 @@ describe('<mndw-segment>', () => {
   });
 
   it('keeps no interactive descendant inside the shadow root', async () => {
-    const element = await mount('<mndw-segment value="day">Day</mndw-segment>');
+    const element = await mount('<mndw-segment value="day">Day</mndw-segment>', MNDW_SEGMENT_TAG);
 
     expect(element.shadowRoot?.querySelector('button, input, a, [tabindex]')).toBeNull();
   });
 
   it('announces configuration changes so its group can rewire', async () => {
-    const element = await mount('<mndw-segment value="day">Day</mndw-segment>');
+    const element = await mount('<mndw-segment value="day">Day</mndw-segment>', MNDW_SEGMENT_TAG);
     const announced = vi.fn();
 
     element.addEventListener(MNDW_SEGMENT_CHANGE_EVENT, announced);

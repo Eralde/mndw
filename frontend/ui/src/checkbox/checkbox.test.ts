@@ -1,22 +1,9 @@
 import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_LABEL_CHANGE_EVENT} from '../field/field.js';
+import {defineComponents, mount} from '../testing/index.js';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_CHECKBOX_TAG)) {
-    customElements.define(MNDW_CHECKBOX_TAG, MndwCheckbox);
-  }
-});
-
-async function mount(html: string): Promise<MndwCheckbox> {
-  document.body.innerHTML = html;
-
-  const element = document.body.firstElementChild as MndwCheckbox;
-
-  await element.updateComplete;
-
-  return element;
-}
+defineComponents([MNDW_CHECKBOX_TAG, MndwCheckbox]);
 
 function box(element: MndwCheckbox): HTMLElement {
   const found = element.shadowRoot?.querySelector<HTMLElement>('[part="box"]');
@@ -30,14 +17,14 @@ function box(element: MndwCheckbox): HTMLElement {
 
 describe('<mndw-checkbox>', () => {
   it('renders unchecked by default', async () => {
-    const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     expect(element.checked).toBe(false);
     expect(element.getAttribute('aria-checked')).toBe('false');
   });
 
   it('dispatches mndwlabelchange when slotted label text changes', async () => {
-    const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>', MNDW_CHECKBOX_TAG);
     const listener = vi.fn();
 
     element.addEventListener(MNDW_LABEL_CHANGE_EVENT, listener);
@@ -57,7 +44,7 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('reflects the checked attribute for external styling', async () => {
-    const element = await mount('<mndw-checkbox checked>On</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox checked>On</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     expect(element.checked).toBe(true);
     expect(element.hasAttribute('checked')).toBe(true);
@@ -65,13 +52,13 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('reports indeterminate as mixed', async () => {
-    const element = await mount('<mndw-checkbox indeterminate>Some</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox indeterminate>Some</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     expect(element.getAttribute('aria-checked')).toBe('mixed');
   });
 
   it('restores checked from its authored attribute and clears indeterminate', async () => {
-    const element = await mount('<mndw-checkbox>Some</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox>Some</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     element.checked = true;
     element.indeterminate = true;
@@ -83,7 +70,7 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('restores checkbox state without changing its value', async () => {
-    const element = await mount('<mndw-checkbox value="wifi6">Some</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox value="wifi6">Some</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     element.formStateRestoreCallback('indeterminate', 'restore');
     await element.updateComplete;
@@ -94,7 +81,7 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('exposes box, mark, and label parts', async () => {
-    const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox>Show offline</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     expect(element.shadowRoot?.querySelector('[part="box"]')).not.toBeNull();
     expect(element.shadowRoot?.querySelector('[part="mark"]')).not.toBeNull();
@@ -168,7 +155,7 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('toggles on click and emits mndwchange', async () => {
-    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>', MNDW_CHECKBOX_TAG);
     const onChange = vi.fn();
 
     element.addEventListener('mndwchange', onChange);
@@ -184,7 +171,7 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('exposes checkbox semantics on the host and makes its shadow box presentational', async () => {
-    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     expect(element.getAttribute('role')).toBe('checkbox');
     expect(element.getAttribute('aria-checked')).toBe('false');
@@ -194,7 +181,7 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('exposes form lifecycle callbacks', async () => {
-    const element = await mount('<mndw-checkbox checked>Toggle</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox checked>Toggle</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     expect(typeof element.formResetCallback).toBe('function');
     expect(typeof element.formStateRestoreCallback).toBe('function');
@@ -202,7 +189,7 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('emits a composed event that escapes the shadow root', async () => {
-    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>', MNDW_CHECKBOX_TAG);
     const onChange = vi.fn();
 
     document.body.addEventListener('mndwchange', onChange);
@@ -212,7 +199,7 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('toggles on Space and clears indeterminate', async () => {
-    const element = await mount('<mndw-checkbox indeterminate>Some</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox indeterminate>Some</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     element.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true}));
     await element.updateComplete;
@@ -222,7 +209,7 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('ignores interaction when disabled', async () => {
-    const element = await mount('<mndw-checkbox disabled>Off</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox disabled>Off</mndw-checkbox>', MNDW_CHECKBOX_TAG);
     const onChange = vi.fn();
 
     element.addEventListener('mndwchange', onChange);
@@ -238,7 +225,7 @@ describe('<mndw-checkbox>', () => {
   });
 
   it('reflects name to the attribute so form submission finds it', async () => {
-    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     element.name = 'show-offline';
     await element.updateComplete;
@@ -249,7 +236,7 @@ describe('<mndw-checkbox>', () => {
   it('survives an environment with no attachInternals', async () => {
     // happy-dom 17 has no HTMLElement.prototype.attachInternals; this asserts the guard
     // rather than a shim, so the code path under test is the one that ships.
-    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>');
+    const element = await mount('<mndw-checkbox>Toggle</mndw-checkbox>', MNDW_CHECKBOX_TAG);
 
     expect(() => box(element).click()).not.toThrow();
   });

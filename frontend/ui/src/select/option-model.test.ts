@@ -1,12 +1,9 @@
-import {beforeAll, describe, expect, it, vi} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
+import {defineComponents} from '../testing/index.js';
 import {MNDW_OPTION_TAG, MndwOption} from './option.js';
 import {readOptions} from './option-model.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_OPTION_TAG)) {
-    customElements.define(MNDW_OPTION_TAG, MndwOption);
-  }
-});
+defineComponents([MNDW_OPTION_TAG, MndwOption]);
 
 function host(html: string): HTMLElement {
   document.body.innerHTML = `<div>${html}</div>`;

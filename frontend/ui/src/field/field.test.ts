@@ -1,5 +1,6 @@
-import {beforeAll, describe, expect, it, vi} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 import {MNDW_FIELD_TAG, MNDW_LABEL_CHANGE_EVENT, MndwField, type MndwLabelSource} from './field.js';
+import {defineComponents, mount as mountComponent, settle} from '../testing/index.js';
 
 const LABEL_PROPERTY_TAG = 'field-test-label-property';
 const SLOT_TAG = 'field-test-slot';
@@ -19,31 +20,15 @@ class SlotControl extends HTMLElement {
 
 class PlainControl extends HTMLElement {}
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_FIELD_TAG)) {
-    customElements.define(MNDW_FIELD_TAG, MndwField);
-  }
-
-  customElements.define(LABEL_PROPERTY_TAG, LabelPropertyControl);
-  customElements.define(SLOT_TAG, SlotControl);
-  customElements.define(PLAIN_TAG, PlainControl);
-});
-
-async function settle(element: MndwField): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  await element.updateComplete;
-}
+defineComponents(
+  [MNDW_FIELD_TAG, MndwField],
+  [LABEL_PROPERTY_TAG, LabelPropertyControl],
+  [SLOT_TAG, SlotControl],
+  [PLAIN_TAG, PlainControl],
+);
 
 async function mount(html: string): Promise<MndwField> {
-  document.body.innerHTML = html;
-
-  const element = document.body.querySelector<MndwField>(MNDW_FIELD_TAG);
-
-  if (!element) {
-    throw new Error('missing field');
-  }
+  const element = await mountComponent(html, MNDW_FIELD_TAG);
 
   await settle(element);
 

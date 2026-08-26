@@ -1,21 +1,14 @@
-import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import {defineComponents, mount as mountComponent, settle} from '../testing/index.js';
 import {MNDW_TAB_PANEL_TAG, MndwTabPanel} from './tab-panel.js';
 import {MNDW_TAB_TAG, MndwTab} from './tab.js';
 import {MNDW_TABS_TAG, MndwTabs} from './tabs.js';
 
-beforeAll(() => {
-  for (
-    const [tag, constructor] of [
-      [MNDW_TABS_TAG, MndwTabs],
-      [MNDW_TAB_TAG, MndwTab],
-      [MNDW_TAB_PANEL_TAG, MndwTabPanel],
-    ] as [string, CustomElementConstructor][]
-  ) {
-    if (!customElements.get(tag)) {
-      customElements.define(tag, constructor);
-    }
-  }
-});
+defineComponents(
+  [MNDW_TABS_TAG, MndwTabs],
+  [MNDW_TAB_TAG, MndwTab],
+  [MNDW_TAB_PANEL_TAG, MndwTabPanel],
+);
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -32,29 +25,11 @@ const THREE_TABS = `
   </mndw-tabs>
 `;
 
-/**
- * Two turns, because a reflected child property reaches the group the long way round: Lit reflects
- * the attribute, the observer reports it, and only then does the group update.
- */
-async function settle(element: MndwTabs): Promise<void> {
-  for (let turn = 0; turn < 2; turn += 1) {
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
-    });
-    await element.updateComplete;
-  }
-}
-
 async function mount(html: string): Promise<MndwTabs> {
-  document.body.innerHTML = html;
+  const element = await mountComponent(html, MNDW_TABS_TAG);
 
-  const element = document.body.querySelector<MndwTabs>(MNDW_TABS_TAG);
-
-  if (!element) {
-    throw new Error('missing tabs');
-  }
-
-  await settle(element);
+  // Two turns: a reflected child property reaches the group through Lit, the observer, and a second group update.
+  await settle(element, 2);
 
   return element;
 }
@@ -83,7 +58,7 @@ async function press(element: MndwTabs, key: string, from: Element): Promise<Key
   const event = new KeyboardEvent('keydown', {key, bubbles: true, composed: true, cancelable: true});
 
   from.dispatchEvent(event);
-  await settle(element);
+  await settle(element, 2);
 
   return event;
 }
@@ -177,7 +152,7 @@ describe('<mndw-tabs> relationships', () => {
     const tab = tabOf(element, 'network');
 
     tab.id = 'renamed';
-    await settle(element);
+    await settle(element, 2);
 
     expect(tab.hasAttribute('aria-controls')).toBe(false);
     expect(panelFor(element, 'network').hidden).toBe(true);
@@ -202,7 +177,7 @@ describe('<mndw-tabs> relationships', () => {
     expect(second.hasAttribute('aria-labelledby')).toBe(false);
 
     second.for = 'network';
-    await settle(element);
+    await settle(element, 2);
 
     expect(second.getAttribute('aria-labelledby')).toBe('network');
     expect(tabOf(element, 'network').getAttribute('aria-controls')).toBe('second');
@@ -227,7 +202,7 @@ describe('<mndw-tabs> relationships', () => {
     expect(second.hasAttribute('aria-labelledby')).toBe(false);
 
     element.insertBefore(second, first);
-    await settle(element);
+    await settle(element, 2);
 
     expect(tabOf(element, 'general').getAttribute('aria-controls')).toBe('second');
     expect(second.getAttribute('aria-labelledby')).toBe('general');
@@ -241,7 +216,7 @@ describe('<mndw-tabs> relationships', () => {
     const network = tabOf(element, 'network');
 
     element.insertBefore(network, general);
-    await settle(element);
+    await settle(element, 2);
 
     // `general` is still a valid selection, so reordering moves the order, not the selection.
     expect(element.value).toBe('general');
@@ -259,7 +234,7 @@ describe('<mndw-tabs> relationships', () => {
 
     tab.remove();
     panel.remove();
-    await settle(element);
+    await settle(element, 2);
 
     for (const attribute of ['role', 'aria-selected', 'aria-controls', 'aria-disabled', 'tabindex', 'slot']) {
       expect(tab.hasAttribute(attribute)).toBe(false);
@@ -277,7 +252,7 @@ describe('<mndw-tabs> relationships', () => {
     const tab = tabOf(element, 'general');
 
     element.remove();
-    await settle(element);
+    await settle(element, 2);
 
     expect(tab.hasAttribute('role')).toBe(false);
     expect(tab.hasAttribute('tabindex')).toBe(false);
@@ -300,7 +275,7 @@ describe('<mndw-tabs> relationships', () => {
     expect(warn.mock.calls[0][0]).toContain('ghost');
 
     element.value = 'general';
-    await settle(element);
+    await settle(element, 2);
 
     expect(warn).toHaveBeenCalledTimes(1);
   });
@@ -331,7 +306,7 @@ describe('<mndw-tabs> activation', () => {
 
     element.addEventListener('mndwchange', changes);
     tabOf(element, 'network').click();
-    await settle(element);
+    await settle(element, 2);
 
     expect(element.value).toBe('network');
     expect(panelFor(element, 'network').hidden).toBe(false);
@@ -346,7 +321,7 @@ describe('<mndw-tabs> activation', () => {
 
     element.addEventListener('mndwchange', changes);
     tabOf(element, 'advanced').click();
-    await settle(element);
+    await settle(element, 2);
 
     expect(element.value).toBe('general');
     expect(changes).not.toHaveBeenCalled();
@@ -358,7 +333,7 @@ describe('<mndw-tabs> activation', () => {
 
     element.addEventListener('mndwchange', changes);
     tabOf(element, 'general').click();
-    await settle(element);
+    await settle(element, 2);
 
     expect(changes).not.toHaveBeenCalled();
   });
@@ -369,7 +344,7 @@ describe('<mndw-tabs> activation', () => {
 
     element.addEventListener('mndwchange', changes);
     element.value = 'network';
-    await settle(element);
+    await settle(element, 2);
 
     expect(panelFor(element, 'network').hidden).toBe(false);
     expect(changes).not.toHaveBeenCalled();

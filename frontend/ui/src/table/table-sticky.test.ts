@@ -1,6 +1,7 @@
-import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from '../checkbox/checkbox.js';
 import {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './column-menu.js';
+import {defineComponents} from '../testing/index.js';
 import {column} from './table-builder.js';
 import {MNDW_TABLE_TAG, MndwTable} from './table.js';
 
@@ -9,18 +10,11 @@ interface Row {
   name: string;
 }
 
-beforeAll(() => {
-  for (
-    const [tag, ctor] of [[MNDW_TABLE_TAG, MndwTable], [MNDW_CHECKBOX_TAG, MndwCheckbox], [
-      MNDW_COLUMN_MENU_TAG,
-      MndwColumnMenu,
-    ]] as const
-  ) {
-    if (!customElements.get(tag)) {
-      customElements.define(tag, ctor as CustomElementConstructor);
-    }
-  }
-});
+defineComponents(
+  [MNDW_TABLE_TAG, MndwTable],
+  [MNDW_CHECKBOX_TAG, MndwCheckbox],
+  [MNDW_COLUMN_MENU_TAG, MndwColumnMenu],
+);
 
 afterEach(() => {
   document.body.innerHTML = '';

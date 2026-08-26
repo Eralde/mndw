@@ -1,17 +1,13 @@
-import {beforeAll, describe, expect, it, vi} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 import {MNDW_SCROLL_AREA_TAG, MndwScrollArea} from '../scroll-area/scroll-area.js';
+import {defineComponents} from '../testing/index.js';
 import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select-panel.js';
 import type {OptionModel} from './option-model.js';
 
-beforeAll(() => {
-  if (!customElements.get(MNDW_SCROLL_AREA_TAG)) {
-    customElements.define(MNDW_SCROLL_AREA_TAG, MndwScrollArea);
-  }
-
-  if (!customElements.get(MNDW_SELECT_PANEL_TAG)) {
-    customElements.define(MNDW_SELECT_PANEL_TAG, MndwSelectPanel);
-  }
-});
+defineComponents(
+  [MNDW_SCROLL_AREA_TAG, MndwScrollArea],
+  [MNDW_SELECT_PANEL_TAG, MndwSelectPanel],
+);
 
 const options: OptionModel[] = [
   {value: 'isp', label: 'Wired', labelNodes: [], disabled: false},

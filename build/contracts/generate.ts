@@ -170,7 +170,7 @@ function renderGoThemeTokens(): string {
     .map((entry, index) => `\t${fieldNames[index].padEnd(fieldWidth)}string \`json:"${entry.token}"\``)
     .join('\n');
 
-  return `// GENERATED from contracts/tokens.json — do not edit by hand.
+  return `// GENERATED from tooling/palette-core/src/metadata.ts — do not edit by hand.
 package palette
 
 type ThemeTokens struct {

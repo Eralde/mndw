@@ -183,16 +183,6 @@ export function verifyAllElf(stagingDir: string, target: ProductTarget): void {
   }
 }
 
-export function stageHostOutput(repoRoot: string, stagingDir: string): void {
-  const hostDist = path.join(repoRoot, 'packages', 'host', 'dist');
-
-  if (!fs.existsSync(hostDist)) {
-    throw new Error('frontend/host/dist not found — run host build first');
-  }
-
-  fs.cpSync(hostDist, path.join(stagingDir, 'opt', 'share', 'www', 'mndw'), {recursive: true});
-}
-
 export function readVersion(repoRoot: string): string {
   const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as {version?: unknown};
 

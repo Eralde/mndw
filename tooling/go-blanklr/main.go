@@ -7,7 +7,7 @@
 // keep the result idempotent. gofmt never removes a single blank line between
 // statements, so the inserted separators survive.
 //
-// Run:  go run ./tooling/go-blanklr -w ./daemon ./packages
+// Run:  go run ./tooling/go-blanklr -w ./daemon ./packages ./plugins
 package main
 
 import (

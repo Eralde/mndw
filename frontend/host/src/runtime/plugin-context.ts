@@ -38,8 +38,8 @@ const RCI_MANAGER_METHODS = [
 
 /**
  * Constructs the backend client from the list descriptor, or returns undefined when
- * the plugin declares nothing callable (no routes) - a backendless
- * or backendless plugin gets no `context.backend`.
+ * the plugin declares nothing callable (no routes) - a backendless plugin gets no
+ * `context.backend`.
  */
 function backendClientFor(entry: PluginListEntry): BackendClient | undefined {
   const {routes} = entry.backend;

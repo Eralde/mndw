@@ -10,8 +10,9 @@ import {z} from 'zod';
  *  - client-side pre-check from the snapshot - a typo (`BackendUnknownId`) throws synchronously;
  *    a known-unapproved / disabled binding rejects fast (`BackendNotApproved` / `BackendDisabled`);
  *  - the daemon is authoritative - its structured error envelope codes
- *    `NOT_APPROVED` / `DISABLED` / `ROUTE_NOT_FOUND` map onto the same
- *    typed errors when state changed after load.
+ *    `NOT_APPROVED`, `DISABLED`, `ROUTE_NOT_FOUND`, `BACKEND_STARTING`,
+ *    `BACKEND_UNAVAILABLE`, `BACKEND_INCOMPATIBLE`, `BACKEND_MAINTENANCE`, and
+ *    `BAD_GATEWAY` map onto the same typed errors when state changed after load.
  *
  * Plugins handle one error family either way. `status()` is separate: it is a
  * live, passive, bound-plugin query and is not a readiness probe.
@@ -95,7 +96,6 @@ export interface BackendRouteDescriptor {
   protocols?: string[];
 }
 
-/** Per-plugin backend snapshot from `GET /api/mgmt/list`. */
 /**
  * Host-assembled input bundle for a plugin's backend client. The route map comes from the
  * daemon descriptor; approval and enabled state come from the management-list entry.

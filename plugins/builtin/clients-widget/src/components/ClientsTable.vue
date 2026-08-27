@@ -59,9 +59,8 @@ const emptyMessage = computed(() =>
 }
 
 /* Fill the widget height and clip wide content inside the bordered, scrollable
-   viewport, mirroring the old `.clients-table__viewport` (width/height 100%,
-   min-*: 0, overflow:auto, border, radius-lg). Filling height also gives the
-   built-in `sticky-header` a bounded viewport to scroll within.
+   viewport (width/height 100%, min-*: 0, overflow:auto, border, radius-lg).
+   Filling height also gives the built-in `sticky-header` a bounded viewport to scroll within.
    The sticky header comes from the `sticky-header` attribute (not ::part), which
    also bumps the pinned header corner to the correct z-index; a manual
    ::part(header-cell){z-index} rule would win over the internal .pinned z-index

@@ -1,4 +1,4 @@
-// GENERATED from contracts/tokens.json — do not edit by hand.
+// GENERATED from tooling/palette-core/src/metadata.ts — do not edit by hand.
 package palette
 
 type ThemeTokens struct {

@@ -8,7 +8,8 @@
 # exercise it.
 #
 # Scope is a SUBSET by design: daemon wiring, backend command validation/exec,
-# and foreground built-in services. opkg stays stubbed (test default).
+# and foreground built-in services. opkg is not exercised by this subset; tests
+# that need it inject a stub explicitly.
 # No -race (musl/CGO).
 set -eu
 

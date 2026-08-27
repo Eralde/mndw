@@ -1,5 +1,5 @@
 import {LitElement, type PropertyDeclarations, css, html} from 'lit';
-import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
+import {type MndwLabelSource, dispatchLabelChange} from '../field/field.js';
 import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
@@ -133,7 +133,7 @@ export class MndwCheckbox extends LitElement {
     this.value = 'on';
     this.name = '';
     this.labelObserver = new MutationObserver(() => {
-      this.dispatchLabelChange();
+      dispatchLabelChange(this);
     });
     this.addEventListener('click', this.handleClick);
     this.addEventListener('keydown', this.handleKeyDown);
@@ -234,12 +234,8 @@ export class MndwCheckbox extends LitElement {
   }
 
   private readonly onLabelSlotChange = (): void => {
-    this.dispatchLabelChange();
+    dispatchLabelChange(this);
   };
-
-  private dispatchLabelChange(): void {
-    this.dispatchEvent(new Event(MNDW_LABEL_CHANGE_EVENT, {bubbles: true, composed: true}));
-  }
 
   private readonly handleClick = (event: Event): void => {
     if (this.formState.effectiveDisabled) {

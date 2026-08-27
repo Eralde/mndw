@@ -3,6 +3,10 @@ import {type PropertyDeclarations, ReactiveElement} from '@lit/reactive-element'
 export const MNDW_FIELD_TAG = 'mndw-field';
 export const MNDW_LABEL_CHANGE_EVENT = 'mndwlabelchange';
 
+export function dispatchLabelChange(target: EventTarget): void {
+  target.dispatchEvent(new Event(MNDW_LABEL_CHANGE_EVENT, {bubbles: true, composed: true}));
+}
+
 /**
  * How a control supplies its own accessible name. Controls declare it as a static
  * `mndwLabelSource`; field reads that rather than inspecting content per tag.

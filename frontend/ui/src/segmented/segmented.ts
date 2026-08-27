@@ -1,5 +1,5 @@
 import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
-import {MNDW_LABEL_CHANGE_EVENT, type MndwLabelSource} from '../field/field.js';
+import {type MndwLabelSource, dispatchLabelChange} from '../field/field.js';
 import {FormAssociatedController} from '../forms/form-associated.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
@@ -135,7 +135,7 @@ export class MndwSegmented extends LitElement {
 
     // A label source that changes after mount would leave a wrapping field's suppression stale.
     if (changed.has('label') && changed.get('label') !== undefined) {
-      this.dispatchEvent(new Event(MNDW_LABEL_CHANGE_EVENT, {bubbles: true, composed: true}));
+      dispatchLabelChange(this);
     }
   }
 

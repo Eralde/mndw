@@ -1,5 +1,11 @@
 import {describe, expect, it, vi} from 'vitest';
-import {MNDW_FIELD_TAG, MNDW_LABEL_CHANGE_EVENT, MndwField, type MndwLabelSource} from './field.js';
+import {
+  MNDW_FIELD_TAG,
+  MNDW_LABEL_CHANGE_EVENT,
+  MndwField,
+  type MndwLabelSource,
+  dispatchLabelChange,
+} from './field.js';
 import {defineComponents, mount as mountComponent, settle} from '../testing/index.js';
 
 const LABEL_PROPERTY_TAG = 'field-test-label-property';
@@ -26,6 +32,26 @@ defineComponents(
   [SLOT_TAG, SlotControl],
   [PLAIN_TAG, PlainControl],
 );
+
+it('dispatches the shared label-change event with field-crossing propagation', () => {
+  const parent = document.createElement('div');
+  const target = document.createElement('div');
+  const listener = vi.fn<(event: Event) => void>();
+
+  parent.append(target);
+  parent.addEventListener(MNDW_LABEL_CHANGE_EVENT, listener);
+
+  dispatchLabelChange(target);
+
+  expect(listener).toHaveBeenCalledTimes(1);
+
+  const event = listener.mock.calls[0]?.[0];
+
+  expect(event?.type).toBe(MNDW_LABEL_CHANGE_EVENT);
+  expect(event?.target).toBe(target);
+  expect(event?.bubbles).toBe(true);
+  expect(event?.composed).toBe(true);
+});
 
 async function mount(html: string): Promise<MndwField> {
   const element = await mountComponent(html, MNDW_FIELD_TAG);

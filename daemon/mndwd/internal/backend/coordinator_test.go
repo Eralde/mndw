@@ -42,6 +42,7 @@ func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
 	}
 
 	c2 := newCoordinator()
+
 	c2.begin("p", OpUpdating, IntentRun)
 
 	if got := c2.begin("p", OpDeleting, IntentRemove); !got.conflict {
@@ -57,6 +58,7 @@ func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
 	}
 
 	c4 := newCoordinator()
+
 	c4.begin("p", OpUpdating, IntentRun)
 
 	if got := c4.begin("p", OpUpdating, IntentRun); !got.conflict {
@@ -67,6 +69,7 @@ func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
 func TestCompletionIsGenerationFenced(t *testing.T) {
 	c := newCoordinator()
 	start := c.begin("p", OpStarting, IntentRun)
+
 	c.begin("p", OpDeleting, IntentRemove)
 	c.commitRun(start.run)
 
@@ -78,6 +81,7 @@ func TestCompletionIsGenerationFenced(t *testing.T) {
 func TestTerminalizationIsOneShot(t *testing.T) {
 	c := newCoordinator()
 	inst := c.begin("p", OpInstalling, IntentRun)
+
 	c.commitRun(inst.run)
 	c.failRestore(inst.run, errApproveFailedForTest)
 	c.commitRun(inst.run)
@@ -94,6 +98,7 @@ func TestTerminalizationIsOneShot(t *testing.T) {
 func TestDeleteFailKeepsTombstone(t *testing.T) {
 	c := newCoordinator()
 	del := c.begin("p", OpDeleting, IntentRemove)
+
 	c.failRemoved(del.run, errRemovalFailedForTest)
 
 	if got := c.intentOf("p"); got != IntentRemove {
@@ -109,7 +114,9 @@ func TestReinstallABAKeepsGenerationMonotonic(t *testing.T) {
 	c := newCoordinator()
 	start := c.begin("p", OpStarting, IntentRun)
 	del := c.begin("p", OpDeleting, IntentRemove)
+
 	c.commitRemove(del.run)
+
 	reinstall := c.begin("p", OpInstalling, IntentRun)
 
 	if reinstall.conflict {
@@ -127,8 +134,11 @@ func TestReinstallABAKeepsGenerationMonotonic(t *testing.T) {
 
 func TestFailedApprovalReturnsToPending(t *testing.T) {
 	c := newCoordinator()
+
 	c.seedIntentForTest("p", IntentStop)
+
 	inst := c.begin("p", OpInstalling, IntentRun)
+
 	c.failRestore(inst.run, errApproveFailedForTest)
 
 	if got := c.intentOf("p"); got != IntentStop {

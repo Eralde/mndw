@@ -205,7 +205,7 @@ func (h *Handler) lookupForToggle(name string) (*state.Plugin, *manifest.Manifes
 		return nil, nil, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
 	}
 
-	m, err := manifest.ValidateV3(p.Manifest)
+	m, err := manifest.Validate(p.Manifest)
 	if err != nil {
 		return nil, nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
 	}
@@ -302,6 +302,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	err := h.executeLifecycle(name, backend.OpDeleting, backend.IntentRemove, backend.TerminalRemove, backend.FailRemoved,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
 			p, exists := h.store.Get(name)
+
 			if !exists {
 				return nil
 			}
@@ -323,6 +324,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 			}
 
 			dir := h.cfg.UserPluginsDir
+
 			if p.Approval == state.ApprovalPending {
 				dir = h.cfg.StagingDir
 			}
@@ -351,6 +353,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) markRemovalPending(name string) *httpx.APIError {
 	err := h.store.Mutate(func(st *state.State) error {
 		record := st.Plugins[name]
+
 		if record == nil {
 			return httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
 		}

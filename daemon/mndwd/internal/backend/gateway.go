@@ -159,10 +159,10 @@ func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *ht
 
 func (g *Gateway) matchRoute(m *manifest.Manifest, request *http.Request, kind transportKind, path string) (manifest.BackendRoute, bool) {
 	if kind == transportWebSocket {
-		return resolveV3WebSocketRoute(m, path)
+		return resolveWebSocketRoute(m, path)
 	}
 
-	return resolveV3Route(m, request.Method, path)
+	return resolveRoute(m, request.Method, path)
 }
 
 func noRouteMessage(kind transportKind) string {
@@ -427,7 +427,9 @@ func (g *Gateway) CloseAllSockets() {
 // SetTrafficBlockPredicate installs the lifecycle coordinator traffic gate.
 func (g *Gateway) SetTrafficBlockPredicate(predicate func(string) bool) {
 	g.maintenanceMu.Lock()
+
 	g.trafficBlock = predicate
+
 	g.maintenanceMu.Unlock()
 }
 
@@ -444,8 +446,10 @@ func (g *Gateway) BeginPlatformMaintenance() {
 
 func (g *Gateway) isMaintenance(pluginID string) bool {
 	g.maintenanceMu.RLock()
+
 	platformMaintenance := g.platformMaintenance
 	predicate := g.trafficBlock
+
 	g.maintenanceMu.RUnlock()
 
 	if platformMaintenance {
@@ -536,7 +540,7 @@ func (g *Gateway) writeMaintenance(writer http.ResponseWriter) {
 	g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendMaintenance, "backend is under maintenance"))
 }
 
-func resolveV3Route(m *manifest.Manifest, method, path string) (manifest.BackendRoute, bool) {
+func resolveRoute(m *manifest.Manifest, method, path string) (manifest.BackendRoute, bool) {
 	if m == nil || m.Backend == nil {
 		return manifest.BackendRoute{}, false
 	}
@@ -552,7 +556,7 @@ func resolveV3Route(m *manifest.Manifest, method, path string) (manifest.Backend
 	return manifest.BackendRoute{}, false
 }
 
-func resolveV3WebSocketRoute(m *manifest.Manifest, path string) (manifest.BackendRoute, bool) {
+func resolveWebSocketRoute(m *manifest.Manifest, path string) (manifest.BackendRoute, bool) {
 	if m == nil || m.Backend == nil {
 		return manifest.BackendRoute{}, false
 	}

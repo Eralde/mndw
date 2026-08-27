@@ -1,4 +1,4 @@
-// Package manifest is the language-neutral manifest-v3 validator. Its verdicts
+// Package manifest is the language-neutral manifest validator. Its verdicts
 // are kept in parity with frontend/sdk/src/manifest-schema.ts by the shared
 // fixture corpus.
 package manifest
@@ -102,7 +102,7 @@ var (
 
 const gridColumns = 12
 
-// Validate parses and validates one manifest-v3 document.
+// Validate parses and validates one manifest document.
 func Validate(data []byte) (*Manifest, error) {
 	var m Manifest
 
@@ -128,8 +128,8 @@ func validate(m *Manifest, data []byte) error {
 		return &ValidationError{PluginName: name, Reason: reason}
 	}
 
-	if m.ManifestVersion == nil || *m.ManifestVersion != 3 {
-		return fail("manifestVersion must be 3")
+	if m.ManifestVersion == nil || *m.ManifestVersion != 1 {
+		return fail("manifestVersion must be 1")
 	}
 
 	if m.Name == nil || !nameRe.MatchString(*m.Name) {

@@ -39,7 +39,7 @@ clean wipe.
 
 ## lighttpd
 
-The v3 lighttpd configuration is intentionally thin:
+The lighttpd configuration is intentionally thin:
 
 - serve the SPA and static plugin assets;
 - retain SPA fallback for browser routes.
@@ -114,8 +114,8 @@ production:
 - request size, execution time, and concurrency are bounded;
 - approved commands and service children run with the daemon's device privileges.
 
-The old service allowed unauthenticated upload, approval, and shell execution;
-v3 removes that default. `--dev` intentionally bypasses session checks, so it
+The service requires authentication for upload, approval, and shell execution;
+`--dev` intentionally bypasses session checks, so it
 must not be used as a production configuration.
 
 ## Device-like validation

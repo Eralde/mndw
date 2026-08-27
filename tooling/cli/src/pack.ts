@@ -311,7 +311,7 @@ export async function packExamplePlugins(options: PackExamplePluginsOptions): Pr
   return names;
 }
 
-/** Relative source paths of every declared v3 backend command (deduped). */
+/** Relative source paths of every declared backend command (deduped). */
 function backendAssetRelPaths(manifest: PluginManifestOutput): string[] {
   const backend = manifest.backend;
 

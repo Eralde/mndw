@@ -104,6 +104,7 @@ func (c *coordinator) begin(name string, op Operation, want Intent) beginOutcome
 		if (op == OpDeleting || op == OpStopping) &&
 			(record.operation == OpStarting || record.operation == OpRestarting) {
 			oldRun := record.run
+
 			c.completeSuperseded(oldRun)
 			oldRun.cancel()
 
@@ -172,6 +173,7 @@ func (c *coordinator) commitRemove(run *operationRun) {
 	}
 
 	c.nextGen++
+
 	c.terminalize(run, IntentRemove, nil)
 }
 
@@ -232,6 +234,7 @@ func (c *coordinator) terminalize(run *operationRun, intent Intent, err error) {
 	record.phaseSince = time.Now()
 	run.result = err
 	run.completed = true
+
 	run.cancel()
 	close(run.done)
 }
@@ -243,6 +246,7 @@ func (c *coordinator) completeSuperseded(run *operationRun) {
 
 	run.result = errSuperseded
 	run.completed = true
+
 	close(run.done)
 }
 

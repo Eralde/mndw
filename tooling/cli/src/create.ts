@@ -102,7 +102,7 @@ function schemaReference(outDir: string): string {
 }
 
 /**
- * Builds the v3 manifest object for a scaffold: grid-unit `size` for widgets,
+ * Builds the manifest object for a scaffold: grid-unit `size` for widgets,
  * `/<name>` route for pages, and fixed exec/service routes for the supported backend starters.
  */
 export function buildManifest(options: CreateOptions): Record<string, unknown> {
@@ -110,7 +110,7 @@ export function buildManifest(options: CreateOptions): Record<string, unknown> {
 
   const manifest: Record<string, unknown> = {
     $schema: schemaReference(normalized.outDir),
-    manifestVersion: 3,
+    manifestVersion: 1,
     name: normalized.name,
     version: '0.1.0',
     type: normalized.type,

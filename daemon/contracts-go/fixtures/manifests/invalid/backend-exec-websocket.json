@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "name": "bad-exec-websocket",
+  "version": "3.0.0",
+  "type": "widget",
+  "label": "Bad",
+  "entry": "index.js",
+  "size": {"w": 2, "h": 2},
+  "backend": {
+    "kind": "exec",
+    "routes": [{"id": "socket", "transport": "websocket", "path": "socket", "command": "backend/socket"}]
+  }
+}

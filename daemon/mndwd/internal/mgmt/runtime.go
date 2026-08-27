@@ -39,7 +39,7 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.runtime == nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "v3 backend runtime is unavailable"))
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "backend runtime is unavailable"))
 
 		return
 	}
@@ -84,12 +84,13 @@ func (h *Handler) resolveRuntimePlugin(name string) (*registry.Plugin, bool) {
 		return nil, false
 	}
 
-	m, err := manifest.ValidateV3(pluginState.Manifest)
+	m, err := manifest.Validate(pluginState.Manifest)
 	if err != nil {
 		return nil, false
 	}
 
 	dir := pluginState.ActiveVersionDir
+
 	if dir == "" {
 		dir = filepath.Join(h.cfg.UserPluginsDir, name)
 	}

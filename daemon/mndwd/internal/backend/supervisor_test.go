@@ -18,7 +18,9 @@ func TestReconcileSeedsEnabledStartupCandidate(t *testing.T) {
 
 func TestReconcileSkipsRemoveIntent(t *testing.T) {
 	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 4}))
+
 	supervisor.withLock(func() { supervisor.coord.begin("svc", OpDeleting, IntentRemove) })
+
 	plan := supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("svc")})
 
 	if len(plan.startIDs) != 0 || len(plan.stopIDs) != 0 {
@@ -46,6 +48,7 @@ func TestStaleStartupCannotPublishFailureOrReadiness(t *testing.T) {
 	start := supervisor.beginLifecycle("svc", OpStarting, IntentRun)
 	record := &serviceRecord{status: RuntimeStatus{State: StateStarting}}
 	supervisor.services["svc"] = record
+
 	supervisor.beginLifecycle("svc", OpDeleting, IntentRemove)
 	supervisor.failStart(start.run, "svc", errors.New("late failure"))
 	supervisor.markServiceReady(start.run, record)
@@ -210,6 +213,7 @@ func TestSupervisorStartFailureRecordsBackoffBeforeForgetStopsService(t *testing
 func startSupervisorForTest(supervisor *Supervisor, spec ServiceSpec) error {
 	outcome := supervisor.beginLifecycle(spec.PluginID, OpStarting, IntentRun)
 	err := supervisor.startService(outcome.run, spec)
+
 	close(outcome.run.workDone)
 	supervisor.withLock(func() {
 		if err == nil {
@@ -225,6 +229,7 @@ func startSupervisorForTest(supervisor *Supervisor, spec ServiceSpec) error {
 func stopSupervisorForTest(supervisor *Supervisor, pluginID string) error {
 	outcome := supervisor.beginLifecycle(pluginID, OpDeleting, IntentRemove)
 	err := supervisor.stopService(outcome.run)
+
 	close(outcome.run.workDone)
 	supervisor.withLock(func() {
 		if err == nil {
@@ -254,6 +259,7 @@ func TestProcessExitResultIsBroadcastToStopAndObserver(t *testing.T) {
 	wantErr := errors.New("service exited")
 	exit := newProcessExit()
 	exit.err = wantErr
+
 	close(exit.done)
 
 	if !waitForProcessExit(exit.done, time.Second) {

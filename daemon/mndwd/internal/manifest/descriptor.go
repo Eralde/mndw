@@ -30,6 +30,7 @@ func Descriptor(m *Manifest) *BackendDescriptor {
 
 	b := m.Backend
 	routes := make(map[string]RouteDescriptor)
+
 	for _, route := range b.Routes {
 		routes[route.ID] = RouteDescriptor{
 			Transport: route.Transport,

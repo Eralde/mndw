@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,34 @@ import (
 // same set of files the Zod suite iterates; the two validators must agree on every
 // file. Relative path (not go:embed) because it lives outside this Go module.
 const fixturesDir = "fixtures/manifests"
+
+func TestValidateAcceptsManifestVersionOne(t *testing.T) {
+	data := []byte(`{"manifestVersion":1,"name":"version-one","version":"1.0.0","type":"widget","label":"Version One","entry":"index.js","size":{"w":2,"h":2}}`)
+
+	parsed, err := Validate(data)
+	if err != nil {
+		t.Fatalf("Validate version one manifest: %v", err)
+	}
+
+	if parsed.ManifestVersion == nil || *parsed.ManifestVersion != 1 {
+		t.Fatalf("ManifestVersion = %v, want 1", parsed.ManifestVersion)
+	}
+}
+
+func TestValidateClassifiesUnsupportedManifestVersion(t *testing.T) {
+	data := []byte(`{"manifestVersion":999,"name":"unsupported-version","version":"1.0.0","type":"widget","label":"Unsupported Version","entry":"index.js","size":{"w":2,"h":2}}`)
+
+	_, err := Validate(data)
+	var versionErr *UnsupportedVersionError
+
+	if !errors.As(err, &versionErr) {
+		t.Fatalf("Validate error = %v, want UnsupportedVersionError", err)
+	}
+
+	if versionErr.Version != 999 {
+		t.Fatalf("Unsupported version = %d, want 999", versionErr.Version)
+	}
+}
 
 func TestValidFixturesAccepted(t *testing.T) {
 	files := readFixtures(t, "valid")
@@ -56,7 +85,7 @@ func TestInvalidFixturesRejected(t *testing.T) {
 }
 
 func TestValidateFixedHeightRoundTrips(t *testing.T) {
-	data := []byte(`{"manifestVersion":3,"name":"fixed-widget","version":"0.1.0","type":"widget","label":"Fixed","entry":"index.js","size":{"w":4,"h":3},"fixedHeight":true}`)
+	data := []byte(`{"manifestVersion":1,"name":"fixed-widget","version":"0.1.0","type":"widget","label":"Fixed","entry":"index.js","size":{"w":4,"h":3},"fixedHeight":true}`)
 
 	manifest, err := Validate(data)
 	if err != nil {
@@ -69,7 +98,7 @@ func TestValidateFixedHeightRoundTrips(t *testing.T) {
 }
 
 func TestValidatePersistentRCIPermissionRoundTrips(t *testing.T) {
-	data := []byte(`{"manifestVersion":3,"name":"persistent-session-widget","version":"0.1.0","type":"widget","label":"Persistent","entry":"index.js","size":{"w":4,"h":3},"permissions":["persistent-rci-session:read"]}`)
+	data := []byte(`{"manifestVersion":1,"name":"persistent-session-widget","version":"0.1.0","type":"widget","label":"Persistent","entry":"index.js","size":{"w":4,"h":3},"permissions":["persistent-rci-session:read"]}`)
 
 	manifest, err := Validate(data)
 	if err != nil {
@@ -82,7 +111,7 @@ func TestValidatePersistentRCIPermissionRoundTrips(t *testing.T) {
 }
 
 func TestValidateUnknownPermissionRejects(t *testing.T) {
-	data := []byte(`{"manifestVersion":3,"name":"unknown-permission-widget","version":"0.1.0","type":"widget","label":"Unknown","entry":"index.js","size":{"w":4,"h":3},"permissions":["not-a-real-permission"]}`)
+	data := []byte(`{"manifestVersion":1,"name":"unknown-permission-widget","version":"0.1.0","type":"widget","label":"Unknown","entry":"index.js","size":{"w":4,"h":3},"permissions":["not-a-real-permission"]}`)
 
 	if _, err := Validate(data); err == nil {
 		t.Fatal("Validate unknown permission succeeded, want error")
@@ -90,7 +119,7 @@ func TestValidateUnknownPermissionRejects(t *testing.T) {
 }
 
 func TestValidateRouteDescriptorHidesRuntimeDetails(t *testing.T) {
-	data := []byte(`{"manifestVersion":3,"name":"secure-backend-plugin","version":"1.0.0","type":"widget","label":"Secure","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"exec","routes":[{"id":"endpoint","transport":"http","method":"POST","path":"secure","command":"backend/script.sh"}]}}`)
+	data := []byte(`{"manifestVersion":1,"name":"secure-backend-plugin","version":"1.0.0","type":"widget","label":"Secure","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"exec","routes":[{"id":"endpoint","transport":"http","method":"POST","path":"secure","command":"backend/script.sh"}]}}`)
 
 	manifest, err := Validate(data)
 	if err != nil {
@@ -115,16 +144,16 @@ func TestValidateRouteDescriptorHidesRuntimeDetails(t *testing.T) {
 	}
 }
 
-func TestValidateV3ExecAndDescriptorHideRuntimeDetails(t *testing.T) {
-	data := []byte(`{"manifestVersion":3,"name":"exec-v3","version":"3.0.0","type":"widget","label":"Exec","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","routes":[{"id":"echo","transport":"http","method":"post","path":"echo","command":"backend/echo.sh"}]}}`)
+func TestValidateExecAndDescriptorHideRuntimeDetails(t *testing.T) {
+	data := []byte(`{"manifestVersion":1,"name":"exec","version":"3.0.0","type":"widget","label":"Exec","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","routes":[{"id":"echo","transport":"http","method":"post","path":"echo","command":"backend/echo.sh"}]}}`)
 
 	parsed, err := Validate(data)
 	if err != nil {
-		t.Fatalf("Validate v3 exec manifest: %v", err)
+		t.Fatalf("Validate exec manifest: %v", err)
 	}
 
-	if parsed.ManifestVersion == nil || *parsed.ManifestVersion != 3 {
-		t.Fatalf("ManifestVersion = %v, want 3", parsed.ManifestVersion)
+	if parsed.ManifestVersion == nil || *parsed.ManifestVersion != 1 {
+		t.Fatalf("ManifestVersion = %v, want 1", parsed.ManifestVersion)
 	}
 
 	if parsed.Backend == nil || parsed.Backend.Kind == nil || *parsed.Backend.Kind != BackendKindExec {
@@ -152,19 +181,19 @@ func TestValidateV3ExecAndDescriptorHideRuntimeDetails(t *testing.T) {
 	}
 }
 
-func TestValidateV3ServiceAndReservedRules(t *testing.T) {
-	valid := []byte(`{"manifestVersion":3,"name":"service-v3","version":"3.0.0","type":"page","label":"Service","entry":"index.js","route":"/service","backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"},{"id":"term","transport":"websocket","path":"term"}]}}`)
+func TestValidateServiceAndReservedRules(t *testing.T) {
+	valid := []byte(`{"manifestVersion":1,"name":"service","version":"3.0.0","type":"page","label":"Service","entry":"index.js","route":"/service","backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"},{"id":"term","transport":"websocket","path":"term"}]}}`)
 
 	if _, err := Validate(valid); err != nil {
-		t.Fatalf("Validate v3 service manifest: %v", err)
+		t.Fatalf("Validate service manifest: %v", err)
 	}
 
 	for _, data := range []string{
-		`{"manifestVersion":3,"name":"bad","version":"3","type":"widget","label":"Bad","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"exec","routes":[{"id":"ws","transport":"websocket","path":"ws","command":"backend/ws"}]}}`,
-		`{"manifestVersion":3,"name":"bad","version":"3","type":"widget","label":"Bad","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"ready","transport":"http","method":"GET","path":"_mndw/ready"}]}}`,
+		`{"manifestVersion":1,"name":"bad","version":"3","type":"widget","label":"Bad","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"exec","routes":[{"id":"ws","transport":"websocket","path":"ws","command":"backend/ws"}]}}`,
+		`{"manifestVersion":1,"name":"bad","version":"3","type":"widget","label":"Bad","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"ready","transport":"http","method":"GET","path":"_mndw/ready"}]}}`,
 	} {
 		if _, err := Validate([]byte(data)); err == nil {
-			t.Errorf("Validate accepted invalid v3 manifest: %s", data)
+			t.Errorf("Validate accepted invalid manifest: %s", data)
 		}
 	}
 }

@@ -21,7 +21,7 @@ function createFixture(): string {
   writeFileSync(
     join(root, 'manifest.json'),
     JSON.stringify({
-      manifestVersion: 3,
+      manifestVersion: 1,
       name: 'svelte-probe',
       version: '0.1.0',
       type: 'widget',

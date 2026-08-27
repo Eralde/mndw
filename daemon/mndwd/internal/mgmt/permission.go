@@ -115,7 +115,7 @@ func (h *Handler) reconcilePermission(plugin, reason string) {
 
 func (h *Handler) permissionTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, *httpx.APIError) {
 	if plugin, ok := h.store.Get(name); ok {
-		m, err := manifest.ValidateV3(plugin.Manifest)
+		m, err := manifest.Validate(plugin.Manifest)
 		if err != nil {
 			return nil, "", "", false, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
 		}

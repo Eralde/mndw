@@ -4,7 +4,7 @@
 package protocol
 
 // RouteDescriptor is the command-free capability projection shared by all
-// manifest-v3 backends.
+// manifest backends.
 type RouteDescriptor struct {
 	Transport string   `json:"transport"`
 	Path      string   `json:"path"`

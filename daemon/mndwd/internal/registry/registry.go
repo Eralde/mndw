@@ -72,7 +72,7 @@ func NewWithLogger(store *state.Store, userDir, builtinDir string, logger *slog.
 // open a backend route.
 func (r *Registry) Resolve(name string) (*Plugin, bool) {
 	if rec, ok := r.store.Get(name); ok {
-		m, err := manifest.ValidateV3(rec.Manifest)
+		m, err := manifest.Validate(rec.Manifest)
 		if err != nil {
 			return nil, false
 		}
@@ -91,7 +91,7 @@ func (r *Registry) Resolve(name string) (*Plugin, bool) {
 	if r.builtinDir != "" {
 		data, err := os.ReadFile(filepath.Join(r.builtinDir, name, "manifest.json"))
 		if err == nil {
-			if m, verr := manifest.ValidateV3(data); verr == nil {
+			if m, verr := manifest.Validate(data); verr == nil {
 				return &Plugin{
 					Name:     name,
 					Dir:      filepath.Join(r.builtinDir, name),
@@ -167,7 +167,7 @@ func (r *Registry) ListBuiltinsWithError() ([]*Plugin, error) {
 			continue
 		}
 
-		m, verr := manifest.ValidateV3(data)
+		m, verr := manifest.Validate(data)
 
 		if verr != nil {
 			if r.logger != nil {

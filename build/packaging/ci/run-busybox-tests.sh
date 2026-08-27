@@ -3,7 +3,7 @@
 #
 # Runs the daemon's sh-exec test suite under whatever /bin/sh the container
 # provides (Alpine => BusyBox ash), so backend commands are interpreted by the
-# same shell family as the Keenetic router. The daemon executes v3 exec
+# same shell family as the Keenetic router. The daemon executes exec
 # commands directly via their `#!/bin/sh` shebang, so backend tests genuinely
 # exercise it.
 #

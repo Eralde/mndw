@@ -1,1 +1,1 @@
-{"manifestVersion":3,"name":"i18n-parity-gap","version":"1.0.0","type":"widget","label":"I18n parity gap","entry":"index.js","size":{"w":2,"h":2},"i18n":{"defaultLocale":"en","locales":{"en":"i18n/en.json","ru":"i18n/ru.json"}}}
+{"manifestVersion":1,"name":"i18n-parity-gap","version":"1.0.0","type":"widget","label":"I18n parity gap","entry":"index.js","size":{"w":2,"h":2},"i18n":{"defaultLocale":"en","locales":{"en":"i18n/en.json","ru":"i18n/ru.json"}}}

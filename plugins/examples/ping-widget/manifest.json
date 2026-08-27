@@ -1,5 +1,5 @@
 {
-  "manifestVersion": 3,
+  "manifestVersion": 1,
   "name": "ping-widget",
   "version": "1.1.1",
   "type": "widget",

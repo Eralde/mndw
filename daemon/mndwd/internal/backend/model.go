@@ -1,4 +1,4 @@
-// Package backend contains the manifest-v3 backend runtime. It owns bounded
+// Package backend contains the manifest backend runtime. It owns bounded
 // request execution, foreground service supervision, and Unix-socket routing.
 package backend
 

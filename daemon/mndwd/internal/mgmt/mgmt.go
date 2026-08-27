@@ -48,7 +48,7 @@ type Config struct {
 	BuiltinPluginsDir string
 	// MaxUploadBytes caps the request body of an upload (design: 10 MB).
 	MaxUploadBytes int64
-	// Runtime controls manifest-v3 exec/service lifecycle.
+	// Runtime controls manifest exec/service lifecycle.
 	Runtime backend.Runtime
 	// PersistentRCIPermissionController owns grant-triggered socket reconciliation.
 	PersistentRCIPermissionController PersistentRCIPermissionController
@@ -199,7 +199,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 	entries := make([]ListEntry, 0, len(snap.Plugins))
 
 	for _, p := range snap.Plugins {
-		m, err := manifest.ValidateV3(p.Manifest)
+		m, err := manifest.Validate(p.Manifest)
 		if err != nil {
 			// Stored manifests were validated at upload; a failure here means the
 			// state file was tampered with. Skip rather than fail the whole list.

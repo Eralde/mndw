@@ -11,7 +11,7 @@ import {buildLock, findBundledSharedDependencies, parseLock, resolveSdkVersion, 
 
 function widgetManifest(): PluginManifestOutput {
   return {
-    manifestVersion: 3,
+    manifestVersion: 1,
     name: 'sample-widget',
     version: '1.2.3',
     type: 'widget',

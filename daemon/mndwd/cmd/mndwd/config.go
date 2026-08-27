@@ -100,7 +100,9 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.StringVar(&cfg.RCISessionKeyDir, "rci-session-key-dir", "", "secure directory for the persistent RCI session key")
 	fs.StringVar(&cfg.PluginRuntimeRoot, "plugin-runtime-root", "", "root directory for per-plugin runtime state")
 	fs.StringVar(&cfg.BuiltinPluginsDir, "builtin-plugins-dir", "/opt/share/www/mndw/plugins", "directory of builtin plugins")
+
 	userPluginsDirDefault := os.Getenv("MNDW_USER_PLUGINS_DIR")
+
 	fs.StringVar(&cfg.UserPluginsDir, "user-plugins-dir", userPluginsDirDefault, "directory of approved user plugins")
 	fs.StringVar(&cfg.RouterURL, "router-url", "http://127.0.0.1:80", "router base URL for session auth")
 	fs.StringVar(&cfg.ControllerURL, "controller-url", "", "controller base URL for persistent RCI requests")
@@ -200,9 +202,11 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	if cfg.Opkg != "exec" && cfg.Opkg != "stub" {
 		return cfg, false, fmt.Errorf("--opkg must be exec or stub, got %q", cfg.Opkg)
 	}
+
 	if cfg.Service == "" {
 		cfg.Service = cfg.Opkg
 	}
+
 	if cfg.Service != "exec" && cfg.Service != "stub" {
 		return cfg, false, fmt.Errorf("--service must be exec or stub, got %q", cfg.Service)
 	}

@@ -230,7 +230,7 @@ const gridColumns = z.number().int()
   .max(12);
 const gridRows = z.number().int()
   .positive();
-const versionSchema = z.literal(3).describe('Manifest format version. Must be 3.');
+const versionSchema = z.literal(1).describe('Manifest format version. Must be 1.');
 const nameSchema = pluginNameSchema.describe('Unique plugin id used as the on-disk folder and URL segment.');
 const versionField = z.string().min(1)
   .describe('Semver-ish version string.');

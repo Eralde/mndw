@@ -47,8 +47,8 @@ func TestLinuxRealBackendLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	serviceManifest := []byte(`{"manifestVersion":3,"name":"service","version":"1.0.0","type":"page","label":"Service","entry":"index.js","route":"/service","backend":{"kind":"service","protocolVersion":1,"command":"backend/service-helper","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
-	execManifest := []byte(`{"manifestVersion":3,"name":"exec","version":"1.0.0","type":"page","label":"Exec","entry":"index.js","route":"/exec","backend":{"kind":"exec","routes":[{"id":"echo","transport":"http","method":"POST","path":"echo","command":"backend/echo.cgi"}]}}`)
+	serviceManifest := []byte(`{"manifestVersion":1,"name":"service","version":"1.0.0","type":"page","label":"Service","entry":"index.js","route":"/service","backend":{"kind":"service","protocolVersion":1,"command":"backend/service-helper","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
+	execManifest := []byte(`{"manifestVersion":1,"name":"exec","version":"1.0.0","type":"page","label":"Exec","entry":"index.js","route":"/exec","backend":{"kind":"exec","routes":[{"id":"echo","transport":"http","method":"POST","path":"echo","command":"backend/echo.cgi"}]}}`)
 	store, err := state.Open(filepath.Join(root, "state.json"))
 	if err != nil {
 		t.Fatal(err)

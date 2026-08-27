@@ -1,1 +1,1 @@
-{"manifestVersion":3,"name":"i18n-default-only","version":"1.0.0","type":"widget","label":"I18n default only","entry":"index.js","size":{"w":2,"h":2},"i18n":{"defaultLocale":"en","locales":{"en":"i18n/en.json"}}}
+{"manifestVersion":1,"name":"i18n-default-only","version":"1.0.0","type":"widget","label":"I18n default only","entry":"index.js","size":{"w":2,"h":2},"i18n":{"defaultLocale":"en","locales":{"en":"i18n/en.json"}}}

@@ -43,6 +43,7 @@ func TestLifecycleRunsForDifferentPluginsDoNotSerialize(t *testing.T) {
 func TestReconcileStartupFailureTerminalizes(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	plugin := testServicePlugin(t, "missing", nil, "backend/does-not-exist", true)
+
 	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
 	waitForLifecycleAttempt(t, runtime, plugin.Name)
 
@@ -61,8 +62,10 @@ func TestReconcileStartupFailureTerminalizes(t *testing.T) {
 
 func TestDeleteWinsOverSlowStartupIntegration(t *testing.T) {
 	runtime, plugin := slowStartupRuntime(t, "slow")
+
 	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
 	waitForOperation(t, runtime, plugin.Name, OpStarting)
+
 	done := make(chan error, 1)
 
 	go func() {
@@ -86,9 +89,12 @@ func TestDeleteWinsOverSlowStartupIntegration(t *testing.T) {
 
 func TestRepeatedReconcileDoesNotDuplicateStartingRun(t *testing.T) {
 	runtime, plugin := slowStartupRuntime(t, "repeat")
+
 	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
 	waitForOperation(t, runtime, plugin.Name, OpStarting)
+
 	firstGeneration := runtime.generationOf(plugin.Name)
+
 	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
 
 	if got := runtime.generationOf(plugin.Name); got != firstGeneration {
@@ -111,6 +117,7 @@ func TestReconcileChangedSpecRestartsExistingService(t *testing.T) {
 		ProtocolVersion: 1,
 		Enabled:         true,
 	}
+
 	runtime.supervisor.withLock(func() {
 		runtime.supervisor.coord.records[plugin.Name] = &transition{intent: IntentRun, operation: OpNone}
 		runtime.supervisor.desired[plugin.Name] = oldSpec
@@ -130,6 +137,7 @@ func TestReconcileChangedSpecRestartsExistingService(t *testing.T) {
 
 func slowStartupRuntime(t *testing.T, pluginID string) (*RuntimeImpl, *registry.Plugin) {
 	t.Helper()
+
 	root := t.TempDir()
 	pluginDir := filepath.Join(root, "plugin")
 	commandPath := filepath.Join(pluginDir, "backend", "stall.sh")
@@ -158,6 +166,7 @@ func slowStartupRuntime(t *testing.T, pluginID string) (*RuntimeImpl, *registry.
 
 func waitForLifecycleAttempt(t *testing.T, runtime *RuntimeImpl, pluginID string) {
 	t.Helper()
+
 	deadline := time.After(2 * time.Second)
 	ticker := time.NewTicker(time.Millisecond)
 

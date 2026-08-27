@@ -15,11 +15,11 @@ import (
 )
 
 // demoManifest is the known-valid service manifest from
-// contracts-go/fixtures/manifests/valid/backend-service-v3.json plus public and
+// contracts-go/fixtures/manifests/valid/backend-service.json plus public and
 // mutation routes. Routes used by tests: "health" (http, public), "status"
 // (http, non-public GET), "mutate" (http, non-public POST), and "terminal"
 // (websocket, non-public).
-const demoManifest = `{"manifestVersion":3,"name":"demo","version":"3.0.0","type":"page","label":"Demo","entry":"index.js","route":"/demo","backend":{"kind":"service","protocolVersion":1,"command":"backend/server","args":["--foreground"],"packages":["ttyd"],"routes":[{"id":"health","transport":"http","method":"GET","path":"health","access":"public"},{"id":"status","transport":"http","method":"GET","path":"status"},{"id":"mutate","transport":"http","method":"POST","path":"mutate"},{"id":"terminal","transport":"websocket","path":"terminal","protocols":["tty"]}]}}`
+const demoManifest = `{"manifestVersion":1,"name":"demo","version":"3.0.0","type":"page","label":"Demo","entry":"index.js","route":"/demo","backend":{"kind":"service","protocolVersion":1,"command":"backend/server","args":["--foreground"],"packages":["ttyd"],"routes":[{"id":"health","transport":"http","method":"GET","path":"health","access":"public"},{"id":"status","transport":"http","method":"GET","path":"status"},{"id":"mutate","transport":"http","method":"POST","path":"mutate"},{"id":"terminal","transport":"websocket","path":"terminal","protocols":["tty"]}]}}`
 
 type fakeAuth struct {
 	err   *httpx.APIError

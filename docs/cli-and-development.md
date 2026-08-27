@@ -1,6 +1,6 @@
 # CLI and development
 
-The `mndw` CLI is the plugin author loop. It validates the same v3 manifest
+The `mndw` CLI is the plugin author loop. It validates the same manifest
 contract used by the SDK and prepares the files consumed by the host and
 daemon.
 

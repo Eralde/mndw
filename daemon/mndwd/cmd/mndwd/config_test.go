@@ -74,7 +74,7 @@ func TestParseDefaultsPluginRuntimeRootUsesDisposableRoot(t *testing.T) {
 	}
 }
 
-func TestParseDefaultsV3BackendLimitsAndTimeouts(t *testing.T) {
+func TestParseDefaultsBackendLimitsAndTimeouts(t *testing.T) {
 	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw"})
 	if err != nil {
 		t.Fatal(err)
@@ -102,6 +102,7 @@ func TestParseServiceDefaultsToOpkg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if cfg.Service != "stub" {
 		t.Fatalf("service mode = %q, want stub", cfg.Service)
 	}
@@ -112,15 +113,17 @@ func TestParseServiceOverrideAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if cfg.Service != "exec" {
 		t.Fatalf("service mode = %q, want exec", cfg.Service)
 	}
+
 	if _, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--service", "invalid"}); err == nil {
 		t.Fatal("invalid service mode succeeded")
 	}
 }
 
-func TestParseRejectsInvalidV3BackendConfig(t *testing.T) {
+func TestParseRejectsInvalidBackendConfig(t *testing.T) {
 	for _, args := range [][]string{
 		{"--max-concurrent-exec-total", "0"},
 		{"--max-concurrent-exec-per-plugin", "0"},
@@ -205,6 +208,7 @@ func TestParseDefaultsPersistentSessionConfig(t *testing.T) {
 	if cfg.RCIEnumerationTTL != 30*time.Second {
 		t.Fatalf("RCI enumeration TTL = %s, want 30s", cfg.RCIEnumerationTTL)
 	}
+
 	if cfg.RCIHeartbeatInterval != 60*time.Second {
 		t.Fatalf("RCI heartbeat interval = %s, want 60s", cfg.RCIHeartbeatInterval)
 	}

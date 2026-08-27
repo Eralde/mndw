@@ -44,7 +44,7 @@ Dashboard behavior includes:
 - restoration of instance counters and tile geometry.
 
 The old dockview `/workspace` dashboard and pixel-to-grid conversion are not
-part of v3.
+part of the current dashboard.
 
 ## Plugin runtime
 

@@ -250,7 +250,7 @@ func statusTestStorePlugin(t *testing.T, store *state.Store, plugin *registry.Pl
 func statusTestStoreBackendless(t *testing.T, store *state.Store, name string) {
 	t.Helper()
 
-	data := []byte(fmt.Sprintf(`{"manifestVersion":3,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s"}`, name, name, name))
+	data := []byte(fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s"}`, name, name, name))
 
 	if err := store.Mutate(func(st *state.State) error {
 		st.Plugins[name] = &state.Plugin{Name: name, Source: state.SourceUpload, Approval: state.ApprovalApproved, Enabled: true, Manifest: data}
@@ -283,8 +283,8 @@ func statusTestPlugin(t *testing.T, name string, kind manifest.BackendKind, prot
 		backend = fmt.Sprintf(`"kind":"%s","protocolVersion":%d,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]`, kind, protocol)
 	}
 
-	data := []byte(fmt.Sprintf(`{"manifestVersion":3,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s","permissions":%s,"backend":{%s}}`, name, name, name, permissionJSON, backend))
-	parsed, err := manifest.ValidateV3(data)
+	data := []byte(fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s","permissions":%s,"backend":{%s}}`, name, name, name, permissionJSON, backend))
+	parsed, err := manifest.Validate(data)
 	if err != nil {
 		t.Fatalf("validate status plugin: %v", err)
 	}

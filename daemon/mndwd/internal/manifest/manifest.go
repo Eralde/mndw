@@ -1,4 +1,4 @@
-// Package manifest is the daemon-facing alias for the generated v3 contract.
+// Package manifest is the daemon-facing alias for the generated manifest contract.
 package manifest
 
 import (
@@ -36,17 +36,13 @@ type UnsupportedVersionError struct {
 }
 
 func (e *UnsupportedVersionError) Error() string {
-	return fmt.Sprintf("unsupported manifest version %d; manifestVersion 3 is required", e.Version)
+	return fmt.Sprintf("unsupported manifest version %d; manifestVersion %d is required", e.Version, supportedManifestVersion)
 }
 
-// Validate is the v3 contract validator used by all production paths.
+const supportedManifestVersion = 1
+
+// Validate checks supported manifest version before applying contract validation.
 func Validate(data []byte) (*Manifest, error) {
-	return contractmanifest.Validate(data)
-}
-
-// ValidateV3 distinguishes retired manifests so upload/update can return a
-// stable unsupported-version error instead of treating them as malformed.
-func ValidateV3(data []byte) (*Manifest, error) {
 	var envelope struct {
 		ManifestVersion *int `json:"manifestVersion"`
 	}
@@ -55,7 +51,7 @@ func ValidateV3(data []byte) (*Manifest, error) {
 		return nil, err
 	}
 
-	if envelope.ManifestVersion == nil || *envelope.ManifestVersion != 3 {
+	if envelope.ManifestVersion == nil || *envelope.ManifestVersion != supportedManifestVersion {
 		version := 0
 
 		if envelope.ManifestVersion != nil {
@@ -65,5 +61,5 @@ func ValidateV3(data []byte) (*Manifest, error) {
 		return nil, &UnsupportedVersionError{Version: version}
 	}
 
-	return Validate(data)
+	return contractmanifest.Validate(data)
 }

@@ -51,7 +51,7 @@ func TestControllerPermissionAvailableUsesControllerSupport(t *testing.T) {
 func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 	root := t.TempDir()
 
-	if _, err := manifest.ValidateV3(servicePermissionManifest("good")); err != nil {
+	if _, err := manifest.Validate(servicePermissionManifest("good")); err != nil {
 		t.Fatalf("service manifest: %v", err)
 	}
 
@@ -380,7 +380,7 @@ func (e *activationEnumerator) List(context.Context) ([]enumeration.Member, erro
 func (e *activationEnumerator) Invalidate() {}
 
 func servicePermissionManifest(name string) []byte {
-	return []byte(`{"manifestVersion":3,"name":"` + name + `","version":"1.0.0","type":"page","label":"` + name + `","entry":"index.js","route":"/` + name + `","permissions":["persistent-rci-session:write"],"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
+	return []byte(`{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"page","label":"` + name + `","entry":"index.js","route":"/` + name + `","permissions":["persistent-rci-session:write"],"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
 }
 
 type assemblySessionStore struct {
@@ -392,8 +392,10 @@ func (s *assemblySessionStore) State() model.StoreState { return model.StateOK }
 func (s *assemblySessionStore) Snapshot() (model.Document, error) {
 	if s.document.Controller != nil {
 		controller := *s.document.Controller
+
 		return model.Document{Controller: &controller}, nil
 	}
+
 	return model.Document{}, nil
 }
 

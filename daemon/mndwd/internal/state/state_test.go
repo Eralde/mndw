@@ -20,6 +20,14 @@ func newStore(t *testing.T) (*Store, string) {
 	return store, path
 }
 
+func TestNewStateUsesSchemaVersionOne(t *testing.T) {
+	store, _ := newStore(t)
+
+	if got := store.Snapshot().Version; got != 1 {
+		t.Fatalf("state version = %d, want 1", got)
+	}
+}
+
 func TestOpenCreatesEmptyStateFile(t *testing.T) {
 	store, path := newStore(t)
 
@@ -196,7 +204,7 @@ func TestCorruptStateRecovered(t *testing.T) {
 func TestUnsupportedStateIsBackedUpWithoutMigration(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
-	legacy := `{"version":1,"plugins":{"old":{"name":"old","source":"user","manifest":{}}}}`
+	legacy := `{"version":2,"plugins":{"old":{"name":"old","source":"user","manifest":{}}}}`
 
 	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
 		t.Fatalf("seed legacy state: %v", err)
@@ -221,7 +229,7 @@ func TestUnsupportedStateIsBackedUpWithoutMigration(t *testing.T) {
 	}
 }
 
-func TestV3StateRetainsVersionProvenance(t *testing.T) {
+func TestStateRetainsVersionProvenance(t *testing.T) {
 	store, path := newStore(t)
 	err := store.Mutate(func(st *State) error {
 		st.Plugins["demo"] = &Plugin{
@@ -428,7 +436,7 @@ func TestMutateRejectsUnknownSource(t *testing.T) {
 
 func TestLoadBacksUpStateWithUnknownSource(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	bad := `{"version":3,"plugins":{"svc":{"name":"svc","source":"marketplace","approval":"approved","enabled":true,"manifest":{"name":"svc"}}},"audit":[]}`
+	bad := `{"version":1,"plugins":{"svc":{"name":"svc","source":"marketplace","approval":"approved","enabled":true,"manifest":{"name":"svc"}}},"audit":[]}`
 
 	if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -450,7 +458,7 @@ func TestLoadBacksUpStateWithUnknownSource(t *testing.T) {
 
 func TestLoadBacksUpStateWithUnknownApproval(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	bad := `{"version":3,"plugins":{"svc":{"name":"svc","source":"upload","approval":"granted","enabled":false,"manifest":{"name":"svc"}}},"audit":[]}`
+	bad := `{"version":1,"plugins":{"svc":{"name":"svc","source":"upload","approval":"granted","enabled":false,"manifest":{"name":"svc"}}},"audit":[]}`
 
 	if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -505,7 +513,7 @@ func TestMutateAcceptsValidCombinations(t *testing.T) {
 
 func TestLoadBacksUpStateWithInvalidCombination(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	bad := `{"version":3,"plugins":{"svc":{"name":"svc","source":"upload","approval":"pending","enabled":true,"manifest":{"name":"svc"}}},"audit":[]}`
+	bad := `{"version":1,"plugins":{"svc":{"name":"svc","source":"upload","approval":"pending","enabled":true,"manifest":{"name":"svc"}}},"audit":[]}`
 
 	if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
 		t.Fatalf("seed: %v", err)

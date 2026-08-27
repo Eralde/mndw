@@ -149,7 +149,7 @@ func TestUpdateRejectsInvalidCatalogArchiveBeforeFilesystemMutation(t *testing.T
 
 	initial.Body.Close()
 
-	updateManifest := `{"manifestVersion":3,"name":"hello","version":"2.0.0","type":"widget","label":"Hello","entry":"index.js","size":{"w":4,"h":3},"i18n":{"defaultLocale":"en","locales":{"en":"i18n/en.json"}}}`
+	updateManifest := `{"manifestVersion":1,"name":"hello","version":"2.0.0","type":"widget","label":"Hello","entry":"index.js","size":{"w":4,"h":3},"i18n":{"defaultLocale":"en","locales":{"en":"i18n/en.json"}}}`
 	archive := makeZip(t, map[string]string{
 		"manifest.json": updateManifest,
 		"index.js":      "new",

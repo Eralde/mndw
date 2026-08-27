@@ -23,7 +23,7 @@ Declare one foreground command and one or more HTTP/WebSocket routes:
 
 ```json
 {
-  "manifestVersion": 3,
+  "manifestVersion": 1,
   "name": "service-example",
   "version": "1.0.0",
   "type": "page",
@@ -68,7 +68,7 @@ Routes use session access by default. A public HTTP route must be `GET` or
 `HEAD`; public access never bypasses approval or enabled state. Service routes may use `http` or
 `websocket`. The manifest model and validation rules are in
 [`manifest.ts`](../frontend/sdk/src/manifest.ts), and the complete service fixture is [
-`backend-service-v3.json`](../frontend/sdk/fixtures/manifests/valid/backend-service-v3.json).
+`backend-service.json`](../frontend/sdk/fixtures/manifests/valid/backend-service.json).
 
 ## Request flow
 

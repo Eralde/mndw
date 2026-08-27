@@ -72,6 +72,7 @@ func (c *lifecycleTestControl) StartPlugin(plugin *registry.Plugin) error {
 	}
 
 	c.runtime.events = append(c.runtime.events, fmt.Sprintf("start:stored=%s/%t:requested=%s/%t", storedApproval, storedEnabled, plugin.Approval, plugin.Enabled))
+
 	if plugin.Manifest != nil {
 		c.runtime.startVersions = append(c.runtime.startVersions, deref(plugin.Manifest.Version))
 	}
@@ -240,6 +241,7 @@ func newLifecycleHarness(t *testing.T, runtime backend.Runtime, controller Persi
 	mux := http.NewServeMux()
 
 	handler := New(cfg, store, opkg.New("stub", logger), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger)
+
 	handler.Register(mux)
 
 	srv := httptest.NewServer(mux)
@@ -250,11 +252,11 @@ func newLifecycleHarness(t *testing.T, runtime backend.Runtime, controller Persi
 }
 
 func permissionManifest(name string) string {
-	return `{"manifestVersion":3,"name":"` + name + `","version":"1.0.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3},"permissions":["persistent-rci-session:write"]}`
+	return `{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3},"permissions":["persistent-rci-session:write"]}`
 }
 
 func noPermissionManifest(name string) string {
-	return `{"manifestVersion":3,"name":"` + name + `","version":"1.0.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}` + `}`
+	return `{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}` + `}`
 }
 
 func installPermissionPlugin(t *testing.T, srv *httptest.Server, name string) {
@@ -342,7 +344,7 @@ func writeBuiltinFixture(t *testing.T, cfg Config, name string, fixedHeight bool
 		fixedHeightField = `,"fixedHeight":true`
 	}
 
-	manifest := `{"manifestVersion":3,"name":"` + name + `","version":"0.1.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}` + fixedHeightField + `}`
+	manifest := `{"manifestVersion":1,"name":"` + name + `","version":"0.1.0","type":"widget","label":"` + name + `","entry":"index.js","size":{"w":4,"h":3}` + fixedHeightField + `}`
 
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
@@ -429,13 +431,13 @@ func findEntry(entries []ListEntry, name string) (ListEntry, bool) {
 }
 
 const noBackendManifest = `{
-  "manifestVersion": 3, "name": "hello", "version": "1.0.0",
+  "manifestVersion": 1, "name": "hello", "version": "1.0.0",
   "type": "widget", "label": "Hello", "entry": "index.js",
   "size": {"w": 4, "h": 3}
 }`
 
 const backendManifest = `{
-  "manifestVersion": 3, "name": "svc", "version": "1.0.0",
+  "manifestVersion": 1, "name": "svc", "version": "1.0.0",
   "type": "widget", "label": "Service", "entry": "index.js",
   "size": {"w": 6, "h": 4},
   "backend": {
@@ -446,7 +448,7 @@ const backendManifest = `{
 }`
 
 const serviceBackendManifest = `{
-  "manifestVersion": 3, "name": "svc", "version": "1.0.0",
+  "manifestVersion": 1, "name": "svc", "version": "1.0.0",
   "type": "widget", "label": "Service", "entry": "index.js",
   "size": {"w": 6, "h": 4},
   "backend": {
@@ -591,9 +593,11 @@ func TestDenyDoesNotReconcilePermission(t *testing.T) {
 		"index.js":       "x",
 		"backend/run.sh": "#!/bin/sh\n",
 	}))
+
 	resp.Body.Close()
 
 	deny := postName(t, srv, "/api/mgmt/deny", "svc")
+
 	defer deny.Body.Close()
 
 	if deny.StatusCode != http.StatusOK {
@@ -647,6 +651,7 @@ func TestDeleteStalePluginRecordAfterFilesDisappear(t *testing.T) {
 	}
 
 	del := postName(t, srv, "/api/mgmt/delete", "hello")
+
 	defer del.Body.Close()
 
 	if del.StatusCode != http.StatusOK {
@@ -677,7 +682,7 @@ func TestDuplicateUploadConflicts(t *testing.T) {
 
 func TestUploadInvalidManifest(t *testing.T) {
 	srv, _ := newTestServer(t)
-	bad := `{"manifestVersion": 3, "name": "BadName!!", "version": "1", "type": "widget", "label": "x", "entry": "index.js", "size": {"w":4,"h":3}}`
+	bad := `{"manifestVersion": 1, "name": "BadName!!", "version": "1", "type": "widget", "label": "x", "entry": "index.js", "size": {"w":4,"h":3}}`
 
 	resp := upload(t, srv, makeZip(t, map[string]string{"manifest.json": bad, "index.js": "x"}))
 
@@ -787,7 +792,7 @@ func TestBuiltinAppearsInList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	builtin := `{"manifestVersion":3,"name":"core-demo","version":"2.0.0","type":"page","label":"Demo","entry":"index.js","route":"/demo"}`
+	builtin := `{"manifestVersion":1,"name":"core-demo","version":"2.0.0","type":"page","label":"Demo","entry":"index.js","route":"/demo"}`
 
 	if err := os.WriteFile(filepath.Join(bdir, "manifest.json"), []byte(builtin), 0o644); err != nil {
 		t.Fatal(err)
@@ -821,7 +826,7 @@ func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
 			Name:     "core-demo",
 			Source:   state.SourceUpload,
 			Approval: state.ApprovalPending,
-			Manifest: json.RawMessage(`{"manifestVersion":3,"name":"core-demo","version":"1.0.0","type":"widget","label":"User","entry":"index.js","size":{"w":4,"h":3}}`),
+			Manifest: json.RawMessage(`{"manifestVersion":1,"name":"core-demo","version":"1.0.0","type":"widget","label":"User","entry":"index.js","size":{"w":4,"h":3}}`),
 		}
 
 		return nil
@@ -874,7 +879,7 @@ func TestSymlinkedBuiltinAppearsInList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	builtin := `{"manifestVersion":3,"name":"clients-widget","version":"1.0.0","type":"widget","label":"Clients","entry":"index.js","size":{"w":4,"h":3}}`
+	builtin := `{"manifestVersion":1,"name":"clients-widget","version":"1.0.0","type":"widget","label":"Clients","entry":"index.js","size":{"w":4,"h":3}}`
 
 	if err := os.WriteFile(filepath.Join(sourceDir, "manifest.json"), []byte(builtin), 0o644); err != nil {
 		t.Fatal(err)
@@ -893,7 +898,7 @@ func TestMutationResponsesCarryDepsStatus(t *testing.T) {
 	srv, _ := newTestServer(t)
 
 	zipBytes := makeZip(t, map[string]string{
-		"manifest.json": `{"manifestVersion":3,"name":"up-widget","version":"0.1.0","type":"widget","label":"up-widget","entry":"index.js","size":{"w":4,"h":3}}`,
+		"manifest.json": `{"manifestVersion":1,"name":"up-widget","version":"0.1.0","type":"widget","label":"up-widget","entry":"index.js","size":{"w":4,"h":3}}`,
 		"index.js":      "export function createInstance() {}",
 	})
 	resp := upload(t, srv, zipBytes)
@@ -972,6 +977,7 @@ func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
 	runtime.store = store
 	controller.onChanged = func() {
 		record, ok := store.Get("svc")
+
 		if !ok {
 			runtime.events = append(runtime.events, "permission:missing")
 
@@ -986,13 +992,16 @@ func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
 		"index.js":       "x",
 		"backend/run.sh": "#!/bin/sh\n",
 	}))
+
 	resp.Body.Close()
 
 	approve := postName(t, srv, "/api/mgmt/approve", "svc")
+
 	approve.Body.Close()
 
 	runtime.events = nil
 	disable := postName(t, srv, "/api/mgmt/disable", "svc")
+
 	disable.Body.Close()
 
 	if disable.StatusCode != http.StatusOK {
@@ -1005,6 +1014,7 @@ func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
 
 	runtime.events = nil
 	enable := postName(t, srv, "/api/mgmt/enable", "svc")
+
 	enable.Body.Close()
 
 	if enable.StatusCode != http.StatusOK {

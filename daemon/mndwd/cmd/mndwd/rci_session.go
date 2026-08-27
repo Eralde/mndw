@@ -92,6 +92,7 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 
 	if storeErr != nil {
 		logger.Error("persistent RCI store unavailable", "reason", "store-open-failed")
+
 		registration.err = fmt.Errorf("open persistent RCI store: %w", storeErr)
 
 		return registration
@@ -112,17 +113,20 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 			if sessionService == nil {
 				return enumeration.ControllerSnapshot{}
 			}
+
 			return sessionService.CaptureController()
 		},
 		CurrentEpoch: func() uint64 {
 			if sessionService == nil {
 				return 0
 			}
+
 			return sessionService.ControllerEpoch()
 		},
 	}
 	enumerator := enumeration.NewCache(controllerSource, cfg.RCIEnumerationTTL, time.Now)
 	sessionService = rcisession.NewService(persistentStore, enumerator)
+
 	sessionService.SetControllerClient(deviceClient)
 
 	sessionService.SetLogger(logger)
@@ -134,8 +138,11 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 	controllerTester := rcisession.ControllerHTTPTester{Client: deviceClient, Timeout: cfg.RCIProxyOperationTimeout, BaseURL: cfg.ControllerURL}
 	lifetime, cancel := context.WithCancel(context.Background())
 	manager := sessionmanager.New(sessionmanager.Options{Context: lifetime})
+
 	sessionService.SetSessionManager(manager)
+
 	rciMux := http.NewServeMux()
+
 	rcisession.NewHandler(sessionService, controllerTester).Register(rciMux)
 	accessMux.Handle("/api/mndw/rci-session/", rcisession.BodyLimit(4096)(rciMux))
 	sessionService.Proxy(deviceClient, cfg.RCIProxyMaxResponseBytes, cfg.RCIProxyOperationTimeout)
@@ -198,18 +205,23 @@ func heartbeatInterval(value time.Duration) time.Duration {
 	if value <= 0 {
 		return defaultRCIHeartbeatInterval
 	}
+
 	return value
 }
 
 func (a *rciSessionAssembly) start() {
 	go a.loop()
+
 	a.Poke()
 }
 
 func (a *rciSessionAssembly) loop() {
 	defer close(a.tickDone)
+
 	ticker := time.NewTicker(a.heartbeatEvery)
+
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-a.lifetime.Done():
@@ -226,52 +238,69 @@ func (a *rciSessionAssembly) Poke() {
 	if a == nil || a.enumerator == nil {
 		return
 	}
+
 	a.mu.Lock()
+
 	if a.activeCancel != nil {
 		a.activeCancel()
 	}
+
 	select {
 	case a.poke <- struct{}{}:
 	default:
 	}
+
 	a.mu.Unlock()
 	a.enumerator.Invalidate()
 }
 
 func (a *rciSessionAssembly) tick() {
 	tickContext, cancel := context.WithCancel(a.lifetime)
+
 	a.mu.Lock()
+
 	a.activeCancel = cancel
+
 	a.mu.Unlock()
 	a.reconcileSessions(tickContext)
 	cancel()
 	a.mu.Lock()
+
 	a.activeCancel = nil
+
 	a.mu.Unlock()
 }
 
 func (a *rciSessionAssembly) reconcileSessions(ctx context.Context) {
 	controller := a.service.CaptureController()
+
 	if controller.Token != "" {
 		listContext, cancel := context.WithTimeout(ctx, rciListDeadline)
 		members, err := a.enumerator.List(listContext)
+
 		cancel()
+
 		if err == nil && ctx.Err() == nil && a.service.ControllerEpoch() == controller.Epoch {
 			a.manager.ApplyEnumeration(members)
 			a.startEstablishments(ctx, members)
 		} else if err != nil {
 			var controllerError enumeration.ControllerHTTPError
+
 			if errors.As(err, &controllerError) {
 				a.service.InvalidateController(controllerError.Epoch)
 			}
 		}
 	}
+
 	if ctx.Err() != nil {
 		return
 	}
+
 	targets := a.manager.LiveHeartbeatTargets()
+
 	heartbeat.RunBounded(ctx, targets, rciHeartbeatWorkers, a.heartbeat, func(target heartbeat.Target, result heartbeat.Result) {
 		a.manager.CommitHeartbeat(target.Identity, target.Generation, result)
+
 		if result.Unauthorized {
 			a.Poke()
 		}
@@ -280,18 +309,25 @@ func (a *rciSessionAssembly) reconcileSessions(ctx context.Context) {
 
 func (a *rciSessionAssembly) startEstablishments(parent context.Context, members []enumeration.Member) {
 	tickEpoch := a.manager.Epoch()
+
 	for _, member := range members {
 		if parent.Err() != nil {
 			return
 		}
+
 		establishContext, epoch, ok := a.manager.BeginEstablishment(member.Identity, tickEpoch)
+
 		if !ok {
 			continue
 		}
+
 		generation := a.manager.Snapshot().Member(member.Identity).Generation
+
 		a.establishmentWG.Add(1)
+
 		go func(member enumeration.Member, establishContext context.Context, epoch, generation uint64) {
 			defer a.establishmentWG.Done()
+
 			select {
 			case a.establishSem <- struct{}{}:
 			case <-establishContext.Done():
@@ -299,22 +335,32 @@ func (a *rciSessionAssembly) startEstablishments(parent context.Context, members
 			case <-a.lifetime.Done():
 				return
 			}
+
 			defer func() { <-a.establishSem }()
+
 			boundedContext, cancel := context.WithTimeout(establishContext, rciEstablishTimeout)
 			result, err := a.establisher.Establish(boundedContext, member)
+
 			cancel()
+
 			if err == nil {
 				a.manager.CommitEstablishment(member.Identity, epoch, generation, sessionmanager.Candidate{BaseURL: result.BaseURL, Jar: result.Jar, Client: result.Client})
+
 				return
 			}
+
 			var establishError establisher.EstablishError
+
 			if errors.As(err, &establishError) && establishError.Kind == "stale" {
 				return
 			}
+
 			if errors.As(err, &establishError) && establishError.Kind == "unauthorized" {
 				a.service.InvalidateController(establishError.Epoch)
+
 				return
 			}
+
 			a.manager.FailEstablishment(member.Identity, epoch, establishmentCategory(err), false)
 		}(member, establishContext, epoch, generation)
 	}
@@ -322,6 +368,7 @@ func (a *rciSessionAssembly) startEstablishments(parent context.Context, members
 
 func establishmentCategory(err error) status.Category {
 	var establishError establisher.EstablishError
+
 	if errors.As(err, &establishError) {
 		switch establishError.Kind {
 		case "validation":
@@ -334,6 +381,7 @@ func establishmentCategory(err error) status.Category {
 			return status.ControllerUnavailable
 		}
 	}
+
 	return status.Transient
 }
 
@@ -446,17 +494,22 @@ func (a *rciSessionAssembly) close() {
 	if a.cancel != nil {
 		a.cancel()
 	}
+
 	if a.manager != nil {
 		a.manager.DiscardAll()
 	}
+
 	if a.tickDone != nil {
 		<-a.tickDone
 	}
+
 	a.establishmentWG.Wait()
 	a.mu.Lock()
+
 	if a.reconciler != nil {
 		a.reconciler.Close()
 	}
+
 	a.mu.Unlock()
 }
 

@@ -54,6 +54,7 @@ func TestSupersededWorkQuiescesBeforeCleanup(t *testing.T) {
 	}()
 
 	<-entered
+
 	cleanupRan := make(chan struct{})
 	done := make(chan error, 1)
 
@@ -113,7 +114,9 @@ func TestWorkPanicTerminalizesRun(t *testing.T) {
 func TestAcceptedExclusiveLifecycleClosesSocketsOnceAndGatesTraffic(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	closed := make(chan string, 1)
+
 	runtime.SetLifecycleHooks(func(pluginID string) { closed <- pluginID })
+
 	block := make(chan struct{})
 	done := make(chan error, 1)
 
@@ -168,6 +171,7 @@ func TestBlocksTrafficDoesNotGatePluginsWithoutLifecycleRecord(t *testing.T) {
 
 func waitForOperation(t *testing.T, runtime *RuntimeImpl, pluginID string, operation Operation) {
 	t.Helper()
+
 	deadline := time.After(time.Second)
 	ticker := time.NewTicker(time.Millisecond)
 

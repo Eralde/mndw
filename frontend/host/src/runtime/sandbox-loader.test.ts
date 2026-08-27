@@ -5,7 +5,7 @@ import {createPluginCatalogService} from '../services/plugin-catalog.service.js'
 import {createHostServices} from '../host-services.js';
 
 const widgetManifest = {
-  manifestVersion: 3,
+  manifestVersion: 1,
   name: 'sandbox-widget',
   version: '0.0.0',
   type: 'widget',
@@ -15,7 +15,7 @@ const widgetManifest = {
 };
 
 const pageManifest = {
-  manifestVersion: 3,
+  manifestVersion: 1,
   name: 'sandbox-page',
   version: '0.0.0',
   type: 'page',

@@ -95,8 +95,8 @@ func testServicePlugin(t *testing.T, name string, permissions []string, command 
 		t.Fatal(err)
 	}
 
-	manifestJSON := fmt.Sprintf(`{"manifestVersion":3,"name":%q,"version":"1.0.0","type":"page","label":%q,"entry":"index.js","route":"/%s","permissions":%s,"backend":{"kind":"service","protocolVersion":1,"command":%q,"routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`, name, name, name, permissionJSON, command)
-	parsed, err := manifest.ValidateV3([]byte(manifestJSON))
+	manifestJSON := fmt.Sprintf(`{"manifestVersion":1,"name":%q,"version":"1.0.0","type":"page","label":%q,"entry":"index.js","route":"/%s","permissions":%s,"backend":{"kind":"service","protocolVersion":1,"command":%q,"routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`, name, name, name, permissionJSON, command)
+	parsed, err := manifest.Validate([]byte(manifestJSON))
 	if err != nil {
 		t.Fatalf("validate test service manifest: %v", err)
 	}

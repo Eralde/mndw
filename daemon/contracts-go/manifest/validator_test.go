@@ -49,7 +49,7 @@ func TestFixtureCorpusParity(t *testing.T) {
 }
 
 func TestPersistentRCIPermissions(t *testing.T) {
-	base := `{"manifestVersion":3,"name":"permissioned","version":"1.0.0","type":"widget","label":"Permissioned","entry":"index.js","size":{"w":2,"h":2},"permissions":%s}`
+	base := `{"manifestVersion":1,"name":"permissioned","version":"1.0.0","type":"widget","label":"Permissioned","entry":"index.js","size":{"w":2,"h":2},"permissions":%s}`
 
 	for _, test := range []struct {
 		name        string
@@ -74,7 +74,7 @@ func TestPersistentRCIPermissions(t *testing.T) {
 
 func TestI18nManifestValidation(t *testing.T) {
 	base := func(i18n string) []byte {
-		return []byte(fmt.Sprintf(`{"manifestVersion":3,"name":"i18n-plugin","version":"1.0.0","type":"widget","label":"I18n plugin","entry":"index.js","size":{"w":2,"h":2},"i18n":%s}`, i18n))
+		return []byte(fmt.Sprintf(`{"manifestVersion":1,"name":"i18n-plugin","version":"1.0.0","type":"widget","label":"I18n plugin","entry":"index.js","size":{"w":2,"h":2},"i18n":%s}`, i18n))
 	}
 
 	tests := []struct {

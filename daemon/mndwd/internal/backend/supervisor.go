@@ -259,6 +259,7 @@ func (s *Supervisor) Reconcile(_ context.Context, specs []ServiceSpec) reconcile
 
 		if transitionRecord.intent == IntentRemove {
 			delete(s.desired, spec.PluginID)
+
 			plan.removeIDs = append(plan.removeIDs, spec.PluginID)
 
 			continue
@@ -287,6 +288,7 @@ func (s *Supervisor) Reconcile(_ context.Context, specs []ServiceSpec) reconcile
 		}
 
 		delete(s.desired, pluginID)
+
 		transitionRecord := s.coord.records[pluginID]
 
 		if transitionRecord != nil && transitionRecord.operation != OpNone {
@@ -505,8 +507,10 @@ func (s *Supervisor) startService(run *operationRun, spec ServiceSpec) error {
 	}
 
 	done := newProcessExit()
+
 	go func() {
 		done.err = command.Wait()
+
 		close(done.done)
 	}()
 

@@ -46,7 +46,7 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m, err := manifest.ValidateV3(manifestBytes)
+	m, err := manifest.Validate(manifestBytes)
 	if err != nil {
 		if _, unsupported := err.(*manifest.UnsupportedVersionError); unsupported {
 			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeUnsupportedManifestVersion, "manifest version is not supported"))
@@ -120,7 +120,7 @@ func safeVersion(version string) string {
 	return string(result)
 }
 
-func validateV3Commands(dir string, m *manifest.Manifest) *httpx.APIError {
+func validateCommands(dir string, m *manifest.Manifest) *httpx.APIError {
 	if m == nil || m.Backend == nil || m.Backend.Kind == nil {
 		return nil
 	}
@@ -164,6 +164,7 @@ func (h *Handler) executeUpdate(
 
 	fail := func(cause error) error {
 		rollbackErr := h.rollbackUpdate(ctrl, name, previous, activeDir, backupDir, updateDir, oldMoved, newMoved, stateChanged)
+
 		if rollbackErr == nil {
 			return cause
 		}
@@ -207,7 +208,7 @@ func (h *Handler) executeUpdate(
 		return fail(apiErr)
 	}
 
-	if apiErr := validateV3Commands(updateDir, m); apiErr != nil {
+	if apiErr := validateCommands(updateDir, m); apiErr != nil {
 		return fail(apiErr)
 	}
 
@@ -222,15 +223,18 @@ func (h *Handler) executeUpdate(
 	if err := moveDir(activeDir, backupDir); err != nil {
 		return fail(httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to retain previous plugin version"))
 	}
+
 	oldMoved = true
 
 	if err := moveDir(updateDir, activeDir); err != nil {
 		return fail(httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to activate update"))
 	}
+
 	newMoved = true
 
 	if err := h.store.Mutate(func(st *state.State) error {
 		record := st.Plugins[name]
+
 		if record == nil {
 			return fmt.Errorf("plugin state disappeared")
 		}
@@ -244,18 +248,21 @@ func (h *Handler) executeUpdate(
 		record.ActiveVersionDir = activeDir
 		record.InstalledAt = time.Now().UTC()
 		record.RemovalPending = false
+
 		st.AppendAudit("update", name, "plugin version activated")
 
 		return nil
 	}); err != nil {
 		return fail(httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record update"))
 	}
+
 	stateChanged = true
 
 	desired := &registry.Plugin{
 		Name: name, Dir: activeDir, Manifest: m, Source: previous.Source,
 		Approval: state.ApprovalApproved, Enabled: true,
 	}
+
 	if err := ctrl.StartPlugin(desired); err != nil {
 		return fail(err)
 	}
@@ -289,6 +296,7 @@ func (h *Handler) rollbackUpdate(
 	if stateChanged {
 		if err := h.store.Mutate(func(st *state.State) error {
 			st.Plugins[name] = previous
+
 			st.AppendAudit("rollback", name, "update readiness failed")
 
 			return nil
@@ -297,7 +305,7 @@ func (h *Handler) rollbackUpdate(
 		}
 	}
 
-	previousManifest, err := manifest.ValidateV3(previous.Manifest)
+	previousManifest, err := manifest.Validate(previous.Manifest)
 	if err != nil {
 		return err
 	}
@@ -314,6 +322,7 @@ func (h *Handler) persistStoppedAfterRollbackFailure(name string, previous *stat
 		restored.Manifest = append(json.RawMessage(nil), previous.Manifest...)
 		restored.Enabled = false
 		st.Plugins[name] = &restored
+
 		st.AppendAudit("rollback-failed", name, "plugin disabled after update rollback failure")
 
 		return nil

@@ -14,10 +14,10 @@ import (
 	"time"
 )
 
-// schemaVersion is the first released v3 state format. Older pre-alpha state is
+// schemaVersion is the first released state format. Older pre-alpha state is
 // deliberately not field-migrated: it is preserved as a backup and plugins are
 // reinstalled with an explicit provenance.
-const schemaVersion = 3
+const schemaVersion = 1
 
 // Approval is a plugin backend's approval status. Plugins without a backend are installed
 // directly as approved because they expose no executable server-side code.
@@ -126,7 +126,7 @@ func load(path string) (*State, error) {
 		return emptyState(), nil
 	}
 
-	if !validV3State(&st) {
+	if !validState(&st) {
 		// A structurally valid but unsupported state is just as unsafe to
 		// reinterpret as corrupt JSON. Preserve it before starting empty.
 		_ = os.Rename(path, path+".bak")
@@ -141,7 +141,7 @@ func load(path string) (*State, error) {
 	return &st, nil
 }
 
-func validV3State(st *State) bool {
+func validState(st *State) bool {
 	if st.Version != schemaVersion {
 		return false
 	}

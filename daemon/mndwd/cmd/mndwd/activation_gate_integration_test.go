@@ -360,7 +360,7 @@ func unixSocketAvailable(t *testing.T) bool {
 }
 
 func servicePermissionManifestWithCommand(name, command string) []byte {
-	return []byte(`{"manifestVersion":3,"name":"` + name + `","version":"1.0.0","type":"page","label":"` + name + `","entry":"index.js","route":"/` + name + `","permissions":["persistent-rci-session:write"],"backend":{"kind":"service","protocolVersion":1,"command":"` + command + `","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
+	return []byte(`{"manifestVersion":1,"name":"` + name + `","version":"1.0.0","type":"page","label":"` + name + `","entry":"index.js","route":"/` + name + `","permissions":["persistent-rci-session:write"],"backend":{"kind":"service","protocolVersion":1,"command":"` + command + `","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
 }
 
 func buildActivationServiceHelper(t *testing.T, output string) {

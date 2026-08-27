@@ -117,6 +117,7 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 
 	control := &lifecycleControl{runtime: r, run: outcome.run}
 	err := r.runLifecycleWork(outcome.run, control, work)
+
 	r.supervisor.withLock(func() {
 		if errors.Is(err, ErrForceStopTerminal) {
 			r.supervisor.coord.forceStop(outcome.run, err)

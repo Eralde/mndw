@@ -39,10 +39,10 @@ describe('buildManifest', () => {
     rmSync(outDir, {recursive: true, force: true});
   });
 
-  it('builds a v3 widget manifest with a grid-unit size', () => {
+  it('builds a  widget manifest with a grid-unit size', () => {
     const manifest = buildManifest(options({type: 'widget'}));
 
-    expect(manifest.manifestVersion).toBe(3);
+    expect(manifest.manifestVersion).toBe(1);
     expect(manifest.type).toBe('widget');
     expect(manifest.entry).toBe('index.js');
 
@@ -77,7 +77,7 @@ describe('buildManifest', () => {
     expect(manifest.label).toBe('System Health');
   });
 
-  it('adds a v3 exec route for --backend sh', () => {
+  it('adds a exec route for --backend sh', () => {
     const manifest = buildManifest(options({type: 'widget', backend: 'sh'}));
     const backend = manifest.backend as {
       kind: string;
@@ -155,7 +155,7 @@ describe('planCreate', () => {
     };
 
     expect(manifest.name).toBe('my-widget');
-    expect(manifest.manifestVersion).toBe(3);
+    expect(manifest.manifestVersion).toBe(1);
     expect(pkg.devDependencies['@mndw/sdk']).toBeDefined();
   });
 

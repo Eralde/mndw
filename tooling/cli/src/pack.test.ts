@@ -49,7 +49,7 @@ function scaffold(dir: string, options: ScaffoldOptions): void {
 
 function widgetManifest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    manifestVersion: 3,
+    manifestVersion: 1,
     name: 'sample-widget',
     version: '0.1.0',
     type: 'widget',
@@ -149,14 +149,14 @@ describe('packPlugin', () => {
     expect(existsSync(join(dir, 'dist', 'backend', 'status.sh'))).toBe(true);
   });
 
-  it('stages each v3 backend command once with executable mode', async () => {
+  it('stages each backend command once with executable mode', async () => {
     scaffold(dir, {
       manifest: {
-        manifestVersion: 3,
-        name: 'exec-v3-widget',
+        manifestVersion: 1,
+        name: 'exec-widget',
         version: '0.1.0',
         type: 'widget',
-        label: 'Exec V3',
+        label: 'Exec Backend',
         entry: 'index.js',
         size: {w: 3, h: 2},
         backend: {
@@ -720,7 +720,7 @@ describe('packExamplePlugins build pre-pass', () => {
     writeFileSync(
       join(plugin, 'manifest.json'),
       JSON.stringify({
-        manifestVersion: 3,
+        manifestVersion: 1,
         name: 'built-widget',
         version: '0.1.0',
         type: 'widget',

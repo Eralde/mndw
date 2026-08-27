@@ -1,7 +1,7 @@
 # `mndwd` daemon
 
 `mndwd` is device control plane and backend execution service. It exposes one
-manifest-v3 gateway for request-scoped `exec` commands and supervised
+manifest gateway for request-scoped `exec` commands and supervised
 foreground `service` processes.
 
 ## Runtime topology
@@ -30,7 +30,7 @@ Request routing, listener ports, and upstream targets are owned by
 ```text
 POST /api/mgmt/upload
   → size and zip checks
-  → v3 manifest validation and static command checks
+  → manifest validation and static command checks
   → staging/<name>/ (non-executable)
   → pending capability summary
 

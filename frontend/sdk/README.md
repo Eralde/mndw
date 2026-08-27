@@ -19,7 +19,7 @@ Scaffolds: `manifest.json`, `src/index.ts`, `src/App.svelte`, `src/index.css`.
 
 | Field             | Type                   | Required | Description                |
 |-------------------|------------------------|----------|----------------------------|
-| `manifestVersion` | `3`                    | yes      | Always 3                   |
+| `manifestVersion` | `1`                    | yes      | Always 1                   |
 | `name`            | string                 | yes      | `^[a-z0-9][a-z0-9-]*$`     |
 | `version`         | string                 | yes      | Semver                     |
 | `type`            | `"widget"` or `"page"` | yes      |                            |

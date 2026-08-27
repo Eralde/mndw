@@ -1,6 +1,6 @@
 # Plugin author guide
 
-This guide covers the smallest useful v3 plugin and the checks it should pass.
+This guide covers the smallest useful plugin and the checks it should pass.
 Use the CLI for scaffolding and packaging so generated files match the host and
 daemon contracts.
 
@@ -82,7 +82,7 @@ An exec backend declares commands directly on HTTP routes:
 
 ```json
 {
-  "manifestVersion": 3,
+  "manifestVersion": 1,
   "backend": {
     "kind": "exec",
     "routes": [{

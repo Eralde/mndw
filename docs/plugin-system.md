@@ -32,14 +32,14 @@ the current grid-unit width and height.
 
 ## Manifest contract
 
-Every manifest has `manifestVersion: 3`, a path-safe name, semantic version,
+Every manifest has `manifestVersion: 1`, a path-safe name, semantic version,
 `widget` or `page` type, label, and safe relative entry path.
 
 Widgets declare grid-unit dimensions:
 
 ```json
 {
-  "manifestVersion": 3,
+  "manifestVersion": 1,
   "name": "traffic-widget",
   "version": "1.0.0",
   "type": "widget",

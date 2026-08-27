@@ -64,11 +64,14 @@ func (h *Handler) handleOpkgList(w http.ResponseWriter, _ *http.Request) {
 func (h *Handler) handleOpkgInfo(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
 	ctx, cancel := h.opkgContext()
+
 	defer cancel()
+
 	info, err := h.opkg.Info(ctx, name)
 	if err != nil {
 		var invalid *opkg.InvalidPackageError
 		var notFound *opkg.PackageNotFoundError
+
 		switch {
 		case errors.As(err, &invalid):
 			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeInvalidPackageName, invalid.Error()))
@@ -77,8 +80,10 @@ func (h *Handler) handleOpkgInfo(w http.ResponseWriter, r *http.Request) {
 		default:
 			h.writeOpkgError(w, "failed to read package info", err)
 		}
+
 		return
 	}
+
 	httpx.WriteJSON(w, h.logger, http.StatusOK, info)
 }
 
@@ -175,9 +180,11 @@ func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action stri
 func (h *Handler) writeOpkgError(w http.ResponseWriter, message string, err error) {
 	status := http.StatusBadGateway
 	code := httpx.CodeOpkgFailed
+
 	if errors.Is(err, opkg.ErrOpkgUnavailable) {
 		status = http.StatusServiceUnavailable
 		code = httpx.CodeOpkgUnavailable
 	}
+
 	httpx.WriteError(w, h.logger, httpx.NewError(status, code, message).WithDetail(err.Error()))
 }

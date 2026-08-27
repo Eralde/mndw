@@ -23,7 +23,7 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 		return nil, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "plugin "+name+" is not pending approval")
 	}
 
-	m, err := manifest.ValidateV3(p.Manifest)
+	m, err := manifest.Validate(p.Manifest)
 	if err != nil {
 		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
 	}
@@ -58,7 +58,9 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 
 			if err := ctx.Err(); err != nil || !ctrl.IsCurrent() {
 				_ = ctrl.StopService()
+
 				h.rollbackInstall(name, installPath, stagingPath)
+
 				if err != nil {
 					return err
 				}
@@ -68,6 +70,7 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 
 			if err := h.store.Mutate(func(st *state.State) error {
 				rec, exists := st.Plugins[name]
+
 				if !exists {
 					return httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "plugin vanished during approval")
 				}
@@ -77,11 +80,13 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 				rec.RemovalPending = false
 				rec.ActiveVersion = deref(m.Version)
 				rec.ActiveVersionDir = installPath
+
 				st.AppendAudit("approve", name, "backend approved and activated")
 
 				return nil
 			}); err != nil {
 				_ = ctrl.StopService()
+
 				h.rollbackInstall(name, installPath, stagingPath)
 
 				return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record approval")

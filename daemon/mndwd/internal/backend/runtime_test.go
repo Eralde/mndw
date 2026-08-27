@@ -21,7 +21,7 @@ func TestRuntimeLimitsExposeConfiguredCapacityWithoutProcessDetails(t *testing.T
 	}
 }
 
-func TestRuntimeIgnoresPluginsWithoutV3ServiceBackend(t *testing.T) {
+func TestRuntimeIgnoresPluginsWithoutServiceBackend(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 
 	runtime.Reconcile(context.Background(), []*registry.Plugin{{Name: "no-backend", Manifest: nil}})

@@ -140,12 +140,12 @@ func TestChildEnvironmentIsFreshAndAllowlisted(t *testing.T) {
 
 func TestPersistentRCISocketPathIsDeclarationGated(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "runtime")
-	declared, err := manifest.ValidateV3([]byte(`{"manifestVersion":3,"name":"declared","version":"1.0.0","type":"widget","label":"Declared","entry":"index.js","size":{"w":2,"h":2},"permissions":["persistent-rci-session:read"],"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`))
+	declared, err := manifest.Validate([]byte(`{"manifestVersion":1,"name":"declared","version":"1.0.0","type":"widget","label":"Declared","entry":"index.js","size":{"w":2,"h":2},"permissions":["persistent-rci-session:read"],"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`))
 	if err != nil {
 		t.Fatalf("validate declared manifest: %v", err)
 	}
 
-	undeclared, err := manifest.ValidateV3([]byte(`{"manifestVersion":3,"name":"undeclared","version":"1.0.0","type":"widget","label":"Undeclared","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`))
+	undeclared, err := manifest.Validate([]byte(`{"manifestVersion":1,"name":"undeclared","version":"1.0.0","type":"widget","label":"Undeclared","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"}]}}`))
 	if err != nil {
 		t.Fatalf("validate undeclared manifest: %v", err)
 	}

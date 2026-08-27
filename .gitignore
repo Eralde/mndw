@@ -12,3 +12,4 @@ dist/
 /rci-session-secrets/
 /tmp/
 /out/
+.dev-data/

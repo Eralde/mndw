@@ -9,8 +9,8 @@
       "properties": {
         "manifestVersion": {
           "type": "number",
-          "const": 3,
-          "description": "Manifest format version. Must be 3."
+          "const": 1,
+          "description": "Manifest format version. Must be 1."
         },
         "name": {
           "type": "string",
@@ -329,8 +329,8 @@
       "properties": {
         "manifestVersion": {
           "type": "number",
-          "const": 3,
-          "description": "Manifest format version. Must be 3."
+          "const": 1,
+          "description": "Manifest format version. Must be 1."
         },
         "name": {
           "type": "string",

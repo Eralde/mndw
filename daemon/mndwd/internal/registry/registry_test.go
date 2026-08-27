@@ -30,7 +30,7 @@ func newRegistry(t *testing.T) (*Registry, *state.Store, string, string) {
 
 func TestResolveUserPlugin(t *testing.T) {
 	reg, store, userDir, _ := newRegistry(t)
-	m := `{"manifestVersion":3,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","routes":[{"id":"status","transport":"http","method":"GET","path":"status","access":"public","command":"backend/status.sh"}]}}`
+	m := `{"manifestVersion":1,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","routes":[{"id":"status","transport":"http","method":"GET","path":"status","access":"public","command":"backend/status.sh"}]}}`
 
 	if err := store.Mutate(func(st *state.State) error {
 		st.Plugins["svc"] = &state.Plugin{Name: "svc", Source: state.SourceUpload, Approval: state.ApprovalApproved, Enabled: true, Manifest: json.RawMessage(m)}
@@ -57,7 +57,7 @@ func TestResolveUserPlugin(t *testing.T) {
 
 func TestResolveRemovalPendingPluginForcesDisabled(t *testing.T) {
 	reg, store, _, _ := newRegistry(t)
-	manifestJSON := `{"manifestVersion":3,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`
+	manifestJSON := `{"manifestVersion":1,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`
 
 	if err := store.Mutate(func(st *state.State) error {
 		st.Plugins["svc"] = &state.Plugin{
@@ -75,6 +75,7 @@ func TestResolveRemovalPendingPluginForcesDisabled(t *testing.T) {
 	}
 
 	plugin, ok := reg.Resolve("svc")
+
 	if !ok {
 		t.Fatal("expected to resolve removal-pending plugin")
 	}
@@ -86,7 +87,7 @@ func TestResolveRemovalPendingPluginForcesDisabled(t *testing.T) {
 
 func TestResolveUserPluginLegacyAbsoluteDirFallsBack(t *testing.T) {
 	reg, store, userDir, _ := newRegistry(t)
-	m := `{"manifestVersion":3,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`
+	m := `{"manifestVersion":1,"name":"svc","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`
 
 	if err := store.Mutate(func(st *state.State) error {
 		st.Plugins["svc"] = &state.Plugin{
@@ -104,6 +105,7 @@ func TestResolveUserPluginLegacyAbsoluteDirFallsBack(t *testing.T) {
 	}
 
 	plugin, ok := reg.Resolve("svc")
+
 	if !ok {
 		t.Fatal("expected to resolve svc")
 	}
@@ -121,7 +123,7 @@ func TestResolveBuiltin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := `{"manifestVersion":3,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core"}`
+	m := `{"manifestVersion":1,"name":"core","version":"2.0.0","type":"page","label":"C","entry":"index.js","route":"/core"}`
 
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(m), 0o644); err != nil {
 		t.Fatal(err)
@@ -160,7 +162,7 @@ func TestListBuiltins(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		m := fmt.Sprintf(`{"manifestVersion":3,"name":"%s","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`, name)
+		m := fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`, name)
 
 		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(m), 0o644); err != nil {
 			t.Fatal(err)
@@ -201,7 +203,7 @@ func TestListBuiltinsIncludesDirectorySymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	manifest := `{"manifestVersion":3,"name":"clients-widget","version":"1.0.0","type":"widget","label":"Clients","entry":"index.js","size":{"w":4,"h":3}}`
+	manifest := `{"manifestVersion":1,"name":"clients-widget","version":"1.0.0","type":"widget","label":"Clients","entry":"index.js","size":{"w":4,"h":3}}`
 
 	if err := os.WriteFile(filepath.Join(sourceDir, "manifest.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
@@ -233,7 +235,7 @@ func TestListBuiltinsSkipsInvalidManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := os.WriteFile(filepath.Join(goodDir, "manifest.json"), []byte(`{"manifestVersion":3,"name":"good","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(goodDir, "manifest.json"), []byte(`{"manifestVersion":1,"name":"good","version":"1.0.0","type":"widget","label":"W","entry":"index.js","size":{"w":4,"h":3}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -438,7 +440,7 @@ func registryStatePlugin(name string, approval state.Approval, enabled bool, man
 }
 
 func registryPageManifest(name string) string {
-	return fmt.Sprintf(`{"manifestVersion":3,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s"}`, name, name, name)
+	return fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s"}`, name, name, name)
 }
 
 func registryBackendManifest(name string, daemon bool) string {
@@ -448,5 +450,5 @@ func registryBackendManifest(name string, daemon bool) string {
 		access = "public"
 	}
 
-	return fmt.Sprintf(`{"manifestVersion":3,"name":"%s","version":"1.0.0","type":"widget","label":"%s","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","routes":[{"id":"run","transport":"http","method":"GET","path":"run","access":"%s","command":"backend/run.sh"}]}}`, name, name, access)
+	return fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"widget","label":"%s","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"exec","routes":[{"id":"run","transport":"http","method":"GET","path":"run","access":"%s","command":"backend/run.sh"}]}}`, name, name, access)
 }

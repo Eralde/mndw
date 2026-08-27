@@ -250,11 +250,11 @@ func (r *RuntimeImpl) serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
 	return spec, true
 }
 
-// ExecRunner exposes request execution to the v3 gateway without exposing its
+// ExecRunner exposes request execution to the gateway without exposing its
 // admission internals.
 func (r *RuntimeImpl) ExecRunner() *ExecRunner { return r.exec }
 
-// Supervisor exposes readiness/socket state to the v3 gateway.
+// Supervisor exposes readiness/socket state to the gateway.
 func (r *RuntimeImpl) Supervisor() *Supervisor { return r.supervisor }
 
 // LiveDiagnostics exposes only the bounded service callback used by support

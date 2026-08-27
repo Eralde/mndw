@@ -73,9 +73,11 @@ func run(cfg Config) error {
 	// The lifetime context is created before management wiring so service actions can
 	// survive request cancellation but still stop when the daemon shuts down.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+
 	defer stop()
 
 	c := assemble(cfg, store, paletteStore, verifier, logger, ctx)
+
 	if c.startupErr != nil {
 		return c.startupErr
 	}
@@ -109,7 +111,7 @@ func run(cfg Config) error {
 	closePersistent()
 
 	if shutdownErr := c.runtime.Shutdown(context.Background()); shutdownErr != nil {
-		logger.Error("v3 backend shutdown failed", "error", shutdownErr)
+		logger.Error("backend shutdown failed", "error", shutdownErr)
 
 		if err == nil {
 			err = shutdownErr
@@ -215,7 +217,7 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 
 // registerAccess mounts the consent/diagnostics surface plus the persistent RCI
 // session, returning the session's cleanup func.
-func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, v3Runtime *backend.RuntimeImpl, activationGates *backend.ActivationGateRegistry, verifier *authz.Verifier, logger *slog.Logger) persistentSessionRegistration {
+func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, runtime *backend.RuntimeImpl, activationGates *backend.ActivationGateRegistry, verifier *authz.Verifier, logger *slog.Logger) persistentSessionRegistration {
 	accessMux := http.NewServeMux()
 	diagnosticsLogFile := cfg.DiagnosticsLogFile
 
@@ -225,7 +227,7 @@ func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *reg
 
 	diagnostics.New(diagnostics.Config{
 		LogFile: diagnosticsLogFile,
-		Plugins: diagnosticsPlugins(reg, v3Runtime),
+		Plugins: diagnosticsPlugins(reg, runtime),
 	}).Register(accessMux)
 
 	registration := assembleRCISession(cfg, store, reg, runtimeRoot, accessMux, activationGates, logger)
@@ -245,17 +247,17 @@ func registerPalette(mux *http.ServeMux, mgmtMux *http.ServeMux, paletteStore *p
 	paletteHandler.RegisterProtected(mgmtMux)
 }
 
-// registerPlugins mounts the single manifest-v3 backend gateway.
+// registerPlugins mounts the single manifest backend gateway.
 func registerPlugins(mux *http.ServeMux, cfg Config, reg *registry.Registry, activationGates *backend.ActivationGateRegistry, verifier *authz.Verifier, runtime *backend.RuntimeImpl, logger *slog.Logger) *backend.Gateway {
-	v3Gateway := backend.NewGateway(backend.GatewayConfig{
+	gateway := backend.NewGateway(backend.GatewayConfig{
 		MaxRequestBytes:    cfg.MaxRequestBytes,
 		ServiceHTTPTimeout: cfg.ServiceHTTPTimeout,
 		ActivationGates:    activationGates,
 	}, reg, verifier, runtime.ExecRunner(), runtime.Supervisor(), logger)
 
-	v3Gateway.Register(mux)
+	gateway.Register(mux)
 
-	return v3Gateway
+	return gateway
 }
 
 func diagnosticsPlugins(reg *registry.Registry, runtime *backend.RuntimeImpl) []diagnostics.Plugin {

@@ -45,7 +45,7 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m, err := manifest.ValidateV3(manifestBytes)
+	m, err := manifest.Validate(manifestBytes)
 	if err != nil {
 		if _, unsupported := err.(*manifest.UnsupportedVersionError); unsupported {
 			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeUnsupportedManifestVersion, "manifest version is not supported"))
@@ -106,14 +106,17 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 			}
 
 			_ = h.removeAll(stagingPath)
+
 			if err := extractZip(zr, stagingPath); err != nil {
 				return httpx.NewError(http.StatusBadRequest, httpx.CodeInvalidZip, "failed to extract archive: "+err.Error())
 			}
 
 			backupPath := filepath.Join(h.cfg.StagingDir, name+"-reinstall-backup")
 			backedUp := false
+
 			if hadPrevious && previous.RemovalPending {
 				oldPath := previous.ActiveVersionDir
+
 				if oldPath == "" {
 					oldPath = activePath
 				}
@@ -128,6 +131,7 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 			}
 
 			installed := false
+
 			if approval == state.ApprovalApproved {
 				if err := moveDir(stagingPath, activePath); err != nil {
 					h.restoreUploadFiles(activePath, backupPath, backedUp)
@@ -140,6 +144,7 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 			record := newRecord(m, manifestBytes, approval, enabled)
 			record.RemovalPending = false
+
 			if installed {
 				record.ActiveVersion = deref(m.Version)
 				record.ActiveVersionDir = activePath
@@ -147,6 +152,7 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 			if err := h.store.Mutate(func(st *state.State) error {
 				st.Plugins[name] = record
+
 				st.AppendAudit(auditAction, name, auditDetail)
 
 				return nil
@@ -161,8 +167,10 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 					Name: name, Dir: activePath, Manifest: m, Source: state.SourceUpload,
 					Approval: state.ApprovalApproved, Enabled: true,
 				}
+
 				if err := ctrl.StartPlugin(desired); err != nil {
 					_ = h.restoreUploadRecord(name, previous, hadPrevious)
+
 					h.restoreUploadFiles(activePath, backupPath, backedUp)
 
 					return err
@@ -222,6 +230,7 @@ func (h *Handler) ensureNameFree(name string) *httpx.APIError {
 
 func (h *Handler) restoreUploadFiles(activePath, backupPath string, backedUp bool) {
 	_ = h.removeAll(activePath)
+
 	if backedUp {
 		_ = moveDir(backupPath, activePath)
 	}

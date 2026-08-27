@@ -20,7 +20,7 @@ describe('manifest fixture corpus', () => {
   const validFixtures = loadFixtures('valid');
   const invalidFixtures = loadFixtures('invalid');
 
-  it('has a non-trivial v3 corpus', () => {
+  it('has a non-trivial manifest corpus', () => {
     expect(validFixtures.length).toBeGreaterThanOrEqual(8);
     expect(invalidFixtures.length).toBeGreaterThanOrEqual(20);
   });
@@ -36,14 +36,19 @@ describe('manifest fixture corpus', () => {
 
 describe('validateManifest behavior', () => {
   const base = {
-    manifestVersion: 3 as const,
-    name: 'v3-plugin',
+    manifestVersion: 1 as const,
+    name: 'test-plugin',
     version: '3.0.0',
     type: 'widget' as const,
-    label: 'V3 Plugin',
+    label: 'Backend Plugin',
     entry: 'index.js',
     size: {w: 4, h: 3},
   };
+
+  it('accepts manifest version 1 and rejects another version', () => {
+    expect(() => validateManifest({...base, manifestVersion: 1})).not.toThrow();
+    expect(() => validateManifest({...base, manifestVersion: 999})).toThrow(ManifestValidationError);
+  });
 
   it('accepts persistent RCI read and write permissions and strips editor schema metadata', () => {
     const result = validateManifest({
@@ -76,7 +81,7 @@ describe('validateManifest behavior', () => {
       },
     });
 
-    expect(result.manifestVersion).toBe(3);
+    expect(result.manifestVersion).toBe(1);
     expect(result.backend?.kind).toBe('exec');
     expect(result.backend?.routes[0]).toMatchObject({method: 'POST', access: 'session'});
   });
@@ -215,7 +220,7 @@ describe('validateManifest behavior', () => {
 
   it('uses the existing type discriminator to select widget and page branches', () => {
     const page = validateManifest({
-      manifestVersion: 3,
+      manifestVersion: 1,
       name: 'page-plugin',
       version: '3.0.0',
       type: 'page',

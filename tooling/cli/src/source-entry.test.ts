@@ -17,7 +17,7 @@ const temporaryDirectories: string[] = [];
 function makeTempPlugin(options: SourceEntryFixture = {}): string {
   const dir = mkdtempSync(join(tmpdir(), 'mndw-source-entry-'));
   const manifest = {
-    manifestVersion: 3,
+    manifestVersion: 1,
     name: 'source-entry-plugin',
     version: '0.1.0',
     type: 'page',

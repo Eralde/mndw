@@ -2,7 +2,7 @@ import {describe, expect, it} from 'vitest';
 import {ManifestValidationError, validateManifest} from './manifest-validator.js';
 
 const baseManifest = {
-  manifestVersion: 3 as const,
+  manifestVersion: 1 as const,
   name: 'i18n-plugin',
   version: '1.0.0',
   type: 'widget' as const,

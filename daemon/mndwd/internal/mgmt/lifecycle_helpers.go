@@ -43,6 +43,7 @@ func lifecycleError(err error, status int, code, message string) *httpx.APIError
 	}
 
 	var apiErr *httpx.APIError
+
 	if errors.As(err, &apiErr) {
 		return apiErr
 	}
@@ -79,6 +80,7 @@ func (h *Handler) removePluginFiles(name, path string) error {
 		}
 
 		err := <-done
+
 		if h.logger != nil {
 			h.logger.Info("files removed", "plugin", name, "elapsed", time.Since(started))
 		}

@@ -1,0 +1,9 @@
+[
+  {
+    "cid": "legacy-node",
+    "mac": "AA-BB-CC-DD-EE-07",
+    "known-host": "Legacy",
+    "ip": "192.0.2.7",
+    "fqdn": "legacy.keenetic.io"
+  }
+]

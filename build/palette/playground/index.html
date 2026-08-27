@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>mndw palette playground</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 1.5rem;
+      }
+
+      h1 {
+        font-size: 1.125rem;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        margin-bottom: 1.25rem;
+        flex-wrap: wrap;
+      }
+
+      .swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .swatch {
+        width: 6rem;
+        height: 4.5rem;
+        border-radius: 0.375rem;
+        border: 1px solid #8884;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        padding: 0.375rem;
+        font-size: 0.6875rem;
+      }
+
+      table {
+        border-collapse: collapse;
+        font-size: 0.8125rem;
+      }
+
+      td, th {
+        border: 1px solid #8884;
+        padding: 0.375rem 0.625rem;
+        text-align: left;
+      }
+
+      .pass {
+        color: #2e7d32;
+        font-weight: 600;
+      }
+
+      .fail {
+        color: #c62828;
+        font-weight: 700;
+      }
+
+      /* Both themes at once: each pane carries its own palette as inline custom properties, which
+         inherit into every component's shadow DOM without touching :root. */
+      .previews {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(22.5rem, 1fr));
+        gap: 1rem;
+        margin-top: 0.75rem;
+      }
+
+      .preview {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        min-height: 7.5rem;
+      }
+
+      .preview__theme {
+        margin: 0 0 0.75rem;
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0.7;
+      }
+
+      .gallery {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .gallery__group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      .gallery__heading {
+        margin: 0;
+        font-size: 0.6875rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        opacity: 0.6;
+      }
+    </style>
+</head>
+<body>
+<h1>mndw palette playground</h1>
+<div class="toolbar">
+    <label>Theme
+        <select id="theme">
+            <option value="light">light</option>
+            <option value="dark">dark</option>
+        </select>
+    </label>
+    <label>primary <input type="color" id="in-primary"/></label>
+    <label>danger <input type="color" id="in-danger"/></label>
+    <label>bg <input type="color" id="in-bg"/></label>
+    <label>text <input type="color" id="in-text"/></label>
+    <button id="reset" type="button">reset</button>
+    <span id="verdict"></span>
+</div>
+<div id="swatches" class="swatches"></div>
+<h2>WCAG contrast grid</h2>
+<table id="grid"></table>
+<h2>Component preview</h2>
+<div class="previews">
+    <section id="preview-light" class="preview">
+        <p class="preview__theme">light</p>
+    </section>
+    <section id="preview-dark" class="preview">
+        <p class="preview__theme">dark</p>
+    </section>
+</div>
+<script type="module" src="./main.ts"></script>
+</body>
+</html>

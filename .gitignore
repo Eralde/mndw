@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env.local
+.dev-deploy.txt
+.pnpm-store
+*.tgz
+*.zip
+*.ipk
+.ngc-cache/
+.eslintcache
+.cache/
+/rci-session-secrets/
+/tmp/
+/out/
+.dev-data/

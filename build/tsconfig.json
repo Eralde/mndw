@@ -1,0 +1,26 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "paths": {
+      "vitest": ["../frontend/host/node_modules/vitest"]
+    }
+  },
+  "include": [
+    "dev/**/*.ts",
+    "packaging/**/*.ts",
+    "contracts/**/*.ts",
+    "artifacts/**/*.ts",
+    "index.ts",
+    "index.test.ts",
+    "builtin-plugins.ts",
+    "builtin-plugins.test.ts",
+    "example-plugins.ts",
+    "example-plugins.test.ts",
+    "scripts/audit-px.test.ts",
+    "plugin-backends.ts",
+    "targets.ts",
+    "targets.test.ts"
+  ]
+}

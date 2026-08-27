@@ -1,0 +1,130 @@
+<div class="mws-page">
+  <header class="page-header">
+    <div class="title-row">
+      <h2>{{ t('title') }}</h2>
+      <span data-testid="l10n-probe" hidden>{{ t('l10n.probe') }}</span>
+      <button
+        type="button"
+        class="extra-features-badge"
+        [class.extra-features-badge--neutral]="extraFeaturesTone() === 'neutral'"
+        [class.extra-features-badge--info]="extraFeaturesTone() === 'info'"
+        [class.extra-features-badge--success]="extraFeaturesTone() === 'success'"
+        [class.extra-features-badge--warning]="extraFeaturesTone() === 'warning'"
+        [attr.aria-expanded]="popoverOpen()"
+        [attr.aria-label]="extraFeaturesBadgeText()"
+        (click)="openExtraFeatures($event)"
+      ><span class="extra-features-icon" aria-hidden="true">{{ extraFeaturesIcon() }}</span>{{ extraFeaturesBadgeText() }}</button>
+    </div>
+    @if (mockOptions.mode === 'large') {
+      <span class="mock-badge">{{ t('summary.mock-data', {extenders: mockOptions.extenders, clients: mockOptions.clients}) }}</span>
+    }
+    @if (summary().total > 0) {
+      <div class="summary" aria-label="{{ t('summary.label') }}">
+        <span class="summary-chip">{{ t('summary.nodes', {count: summary().total}) }}</span>
+        @if (summary().offline > 0) {
+          <button
+            type="button"
+            class="summary-chip summary-filter-chip"
+            data-filter="offline"
+            [attr.aria-pressed]="isQuickFilterActive('offline')"
+            (click)="toggleQuickFilter('offline')"
+          >{{ t('summary.offline', {count: summary().offline}) }}</button>
+        }
+        @if (summary().clients > 0) {
+          <span class="summary-chip">{{ t('summary.clients', {count: summary().clients}) }}</span>
+        }
+        @if (summary().updates > 0) {
+          <button
+            type="button"
+            class="summary-chip summary-filter-chip"
+            data-filter="updates"
+            [attr.aria-pressed]="isQuickFilterActive('updates')"
+            (click)="toggleQuickFilter('updates')"
+          >{{ t('summary.updates', {count: summary().updates}) }}</button>
+        }
+        @if (mapUpdatedText(); as updatedText) {
+        <span class="summary-chip">{{ updatedText }}</span>
+      }
+    </div>
+    }
+    @if (showExtraFeaturesSetup()) {
+      <div class="extra-features-status-slot extra-features-setup" role="status">
+        <div>
+          <strong>{{ t('extra-features.setup.title') }}</strong>
+          <span>{{ extraFeaturesSetupBody() }}</span>
+          <a href="/settings/general">{{ t('extra-features.setup.action') }}</a>
+        </div>
+        <button
+          type="button"
+          class="extra-features-dismiss"
+          data-action="dismiss-extra-features"
+          [attr.aria-label]="t('extra-features.setup.dismiss')"
+          (click)="dismissExtraFeaturesBanner()"
+        >×</button>
+      </div>
+    } @else if (data.extraFeaturesPresentation() === 'taking-longer') {
+      <div class="extra-features-status-slot extra-features-taking-longer" role="status">
+        <span>{{ t('extra-features.taking-longer') }}</span>
+        <mndw-button variant="secondary" (click)="retry()">{{ t('action.retry') }}</mndw-button>
+      </div>
+    } @else if (data.extraFeaturesAvailability() === 'limited' && data.extraFeaturesPresentation() === 'limited') {
+      <div class="extra-features-status-slot extra-features-limited" role="status">
+        {{ t('extra-features.limited') }}
+      </div>
+    }
+    @if (data.pollError()) {
+      <span class="banner" role="alert">{{ t('state.update-failed') }}</span>
+    }
+  </header>
+
+  @switch (data.phase()) {
+    @case ('loading') {
+      <p class="state">{{ t('state.loading') }}</p>
+    }
+    @case ('error') {
+      <div class="state">
+        <p>{{ t('state.load-failed') }}</p>
+        <mndw-button variant="danger" (click)="retry()">{{ t('action.retry') }}</mndw-button>
+      </div>
+    }
+    @case ('unsupported') {
+      <p class="state">{{ t('state.unsupported') }}</p>
+    }
+    @case ('ready') {
+      <mndw-tabs class="map-tabs" [value]="selectedTab()" (mndwchange)="onTabChanged($event)">
+        <mndw-tab id="map">{{ t('tab.map') }}</mndw-tab>
+        <mndw-tab id="nodes">{{ t('tab.nodes') }}</mndw-tab>
+        <mndw-tab id="clients">{{ t('tab.clients') }}</mndw-tab>
+
+        <mndw-tab-panel for="map">
+          <mws-map-graph
+            #graph
+            class="graph"
+            [roots]="data.roots()"
+            [nodePositions]="positions.positions()"
+            [positionsLoadOutcome]="positions.loadOutcome()"
+            [editMode]="editMode()"
+            [selectedNodeId]="selectedNodeId()"
+            (nodeSelected)="onNodeSelected($event)"
+            (nodePositionChanged)="onNodePositionChanged($event)"
+            (editModeToggled)="toggleEditMode()"
+            (autoLayoutRequested)="autoLayout()"
+            (doneEditingRequested)="doneEditing()"
+          />
+        </mndw-tab-panel>
+
+        <mndw-tab-panel for="nodes">
+          <mws-nodes-table
+            [roots]="data.roots()"
+            [quickFilter]="quickFilter()"
+            (nodeActivated)="onNodeSelected($event)"
+          />
+        </mndw-tab-panel>
+
+        <mndw-tab-panel for="clients">
+          <mws-clients-table [roots]="data.roots()" />
+        </mndw-tab-panel>
+      </mndw-tabs>
+    }
+  }
+</div>

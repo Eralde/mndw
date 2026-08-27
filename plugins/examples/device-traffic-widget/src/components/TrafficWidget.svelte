@@ -1,0 +1,460 @@
+<script lang="ts">
+import {onMount} from 'svelte';
+import type {Readable} from 'svelte/store';
+import type {RciManager} from '@rci-tools/core';
+import {formatSpeed} from '@mndw/ui';
+import type {PluginI18n, PluginStorage, Translator} from '@mndw/sdk';
+import {createRefreshLoop} from '@mndw/sdk/refresh';
+import {createTranslator} from '@mndw/sdk/svelte';
+import {type ClockDate, RciService} from '../services/rci.js';
+import type {HostBar, HostClient} from '../types.js';
+import {toDeviceTrafficChartData} from '../utils/chart-data.js';
+import type {OpenSettingsArgs} from '../open-settings-dialog.js';
+
+interface Props {
+  rci: RciManager;
+  storage: PluginStorage;
+  openSettings: (args: OpenSettingsArgs) => void;
+  setTileTitle?: (title: string) => void;
+  i18n: PluginI18n;
+}
+
+let {rci, storage, openSettings, setTileTitle, i18n}: Props = $props();
+// svelte-ignore state_referenced_locally
+const translator: Readable<Translator> = createTranslator(i18n);
+
+function t(key: string, values?: Record<string, unknown>): string {
+  return $translator.t(key, values);
+}
+
+const POLL_INTERVAL = 5000;
+const DEVICE_TIME_INTERVAL = 30000;
+const STORAGE_MAC = 'selected-mac';
+const STORAGE_DETAIL = 'detail';
+
+// Intentional: `rci` is a stable host-provided manager, captured once.
+// svelte-ignore state_referenced_locally
+const rciService = new RciService(rci);
+
+let hosts = $state<HostClient[]>([]);
+let selectedMac = $state('');
+let rawChartData = $state<HostBar[]>([]);
+let detail = $state(0);
+let deviceTime = $state<Date | null>(null);
+let error = $state('');
+let isLoading = $state(true);
+
+const chartLoop = createRefreshLoop({
+  load: loadChartData,
+  intervalMs: POLL_INTERVAL,
+  onSuccess: () => {},
+  onError: () => {},
+});
+const timeLoop = createRefreshLoop({
+  load: loadDeviceTime,
+  intervalMs: DEVICE_TIME_INTERVAL,
+  onSuccess: () => {},
+  onError: () => {},
+});
+
+let chartData = $derived(toDeviceTrafficChartData(rawChartData, deviceTime));
+
+$effect(() => {
+  const name = hosts.find((h) => h.mac === selectedMac)?.name || selectedMac;
+
+  if (setTileTitle) {
+    setTileTitle(name);
+  }
+});
+
+const detailLabels = [
+  {value: 0, label: '3m'},
+  {value: 1, label: '1h'},
+  {value: 2, label: '3h'},
+  {value: 3, label: '1d'},
+];
+
+async function loadHosts() {
+  try {
+    hosts = await rciService.getHosts();
+  } catch (ex) {
+    console.error('[device-traffic-widget]', ex);
+  }
+}
+
+async function loadDeviceTime() {
+  try {
+    const d: ClockDate = await rciService.getDeviceTime();
+    deviceTime = new Date(
+      d.year,
+      d.month - 1,
+      d.day,
+      d.hour,
+      d.min,
+      d.sec,
+      d.msec,
+    );
+  } catch (ex) {
+    console.error('[device-traffic-widget]', ex);
+  }
+}
+
+async function loadChartData() {
+  if (!selectedMac) {
+    return;
+  }
+
+  try {
+    const rciChartData = await rciService.getChartData([selectedMac], detail);
+
+    rawChartData = rciChartData.bar || [];
+    error = '';
+  } catch (ex) {
+    error = t('error.load-data');
+
+    console.error('[device-traffic-widget]', ex);
+  }
+}
+
+function stopPolling() {
+  chartLoop.stop();
+  timeLoop.stop();
+}
+
+function startPolling() {
+  stopPolling();
+
+  if (!selectedMac) {
+    return;
+  }
+
+  chartLoop.start();
+  timeLoop.start();
+}
+
+function handleOpenSettings() {
+  openSettings({
+    hosts,
+    selectedMac,
+    translator,
+    onSelect: handleSelectDevice,
+  });
+}
+
+async function handleSelectDevice(mac: string) {
+  selectedMac = mac;
+
+  if (mac) {
+    await storage.set(STORAGE_MAC, mac);
+    startPolling();
+  } else {
+    await storage.delete(STORAGE_MAC);
+    stopPolling();
+
+    rawChartData = [];
+  }
+}
+
+async function handleDetailChange(newDetail: number) {
+  detail = newDetail;
+
+  await storage.set(STORAGE_DETAIL, String(newDetail));
+
+  if (selectedMac) {
+    startPolling();
+  }
+}
+
+onMount(() => {
+  (async () => {
+    const savedMac = await storage.get(STORAGE_MAC);
+    const savedDetail = await storage.get(STORAGE_DETAIL);
+
+    if (savedDetail) {
+      detail = parseInt(savedDetail, 10) || 0;
+    }
+
+    await loadHosts();
+    await loadDeviceTime();
+
+    if (savedMac && hosts.some(h => h.mac === savedMac)) {
+      selectedMac = savedMac;
+      startPolling();
+    }
+
+    isLoading = false;
+  })();
+
+  return () => {
+    stopPolling();
+  };
+});
+</script>
+
+<div class="traffic-widget">
+  <span
+    class="sr-only"
+    data-testid="l10n-probe"
+    hidden
+  >{t('l10n.probe')}</span>
+  {#if error}
+    <div
+      class="mndw-alert mndw-alert--danger notice"
+      role="alert"
+    >
+      {error}
+      <mndw-button
+        variant="danger"
+        class="retry-btn"
+        onclick={() => {
+          error = '';
+          if (selectedMac) {
+            startPolling();
+          }
+        }}
+      >
+        {t('action.retry')}
+      </mndw-button>
+    </div>
+  {/if}
+
+  {#if isLoading}
+    <div class="msg">{t('status.loading')}</div>
+  {:else if !selectedMac}
+    <div class="empty-state">
+      <h3 class="empty-state__heading">{t('title')}</h3>
+      <p class="empty-state__subtitle">{t('status.select-device')}</p>
+      <mndw-select
+        label={t('field.device')}
+        placeholder={t('field.select-device')}
+        value={selectedMac}
+        onmndwchange={(e: CustomEvent<{value: string}>) =>
+        handleSelectDevice(e.detail.value)}
+      >
+        {#each hosts as host (host.mac)}
+          <mndw-option value={host.mac}>
+            {host.name}{#if !host.active} (offline){/if}
+          </mndw-option>
+        {/each}
+      </mndw-select>
+      {#if hosts.length === 0}
+        <p class="mndw-alert mndw-alert--danger">{t('status.no-devices')}</p>
+      {/if}
+    </div>
+  {:else}
+    <div class="chart-view">
+      <div class="widget-header">
+        {#if !setTileTitle}
+          <span class="device-label">
+            {
+              hosts.find(h => h.mac === selectedMac)?.name
+              || selectedMac
+            }
+          </span>
+        {/if}
+        <div class="header-actions">
+          <mndw-segmented
+            class="btn-group"
+            label={t('field.detail')}
+            value={String(detail)}
+            onmndwchange={(event: CustomEvent<{value: string}>) =>
+            handleDetailChange(Number(event.detail.value))}
+          >
+            {#each detailLabels as d (d.value)}
+              <mndw-segment value={String(d.value)}>
+                {d.label}
+              </mndw-segment>
+            {/each}
+          </mndw-segmented>
+          <mndw-button
+            class="gear-btn"
+            variant="ghost"
+            title={t('action.settings')}
+            aria-label={t('action.settings')}
+            onclick={handleOpenSettings}
+          >
+            &#9881;
+          </mndw-button>
+        </div>
+      </div>
+      {#if !deviceTime}
+        <div class="msg">{t('status.loading-data')}</div>
+      {:else}
+        <div class="chart-wrap">
+          <mndw-bar-chart
+            points={chartData.points}
+            empty-label={t('status.no-data')}
+            aria-label={t('aria.history')}
+          ></mndw-bar-chart>
+          <div
+            class="traffic-summary"
+            aria-label={t('aria.average')}
+          >
+            ↓ {formatSpeed(chartData.averageRx)} ↑ {
+              formatSpeed(chartData.averageTx)
+            }
+          </div>
+        </div>
+      {/if}
+    </div>
+  {/if}
+</div>
+
+<style>
+.traffic-widget {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  color: var(--mndw-text);
+  font-size: 0.875rem;
+  font-family: var(--mndw-font-sans);
+}
+
+/* Layout only. `.mndw-alert--danger` owns the box and the severity colours. */
+.notice {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  align-self: stretch;
+  margin: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+.retry-btn {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.retry-btn::part(button) {
+  min-height: auto;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: 20rem;
+  margin: auto;
+  padding: 1rem;
+  text-align: center;
+}
+
+.empty-state__heading {
+  margin: 0;
+  color: var(--mndw-text);
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.empty-state__subtitle {
+  margin: 0 0 0.25rem;
+  color: var(--mndw-text-subtle);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.chart-view {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
+  padding: 0.5rem;
+}
+
+.widget-header {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 0.25rem 0.375rem;
+}
+
+.device-label {
+  flex-shrink: 1;
+  overflow: hidden;
+  min-width: 0;
+  color: var(--mndw-text);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.btn-group::part(group) {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.btn-group mndw-segment::part(segment) {
+  padding: 0.1875rem 0.5rem;
+  border: 1px solid var(--mndw-border);
+  border-radius: 0;
+  background: var(--mndw-surface);
+  font-size: 0.6875rem;
+}
+
+.btn-group mndw-segment:first-child::part(segment) {
+  border-radius: 0.1875rem 0 0 0.1875rem;
+}
+
+.btn-group mndw-segment:last-child::part(segment) {
+  border-radius: 0 0.1875rem 0.1875rem 0;
+}
+
+.btn-group mndw-segment:not(:last-child)::part(segment) {
+  border-right: 0;
+}
+
+.gear-btn {
+  flex-shrink: 0;
+  font-size: 1.125rem;
+}
+
+.msg {
+  padding: 1rem;
+  color: var(--mndw-text-subtle);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.chart-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+}
+
+.chart-wrap mndw-bar-chart {
+  flex: 1;
+  min-height: 0;
+}
+
+.traffic-summary {
+  flex: 0 0 auto;
+  padding: 0.25rem 0 0;
+  color: var(--mndw-text-subtle);
+  font-size: 0.6875rem;
+  text-align: left;
+}
+</style>

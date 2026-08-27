@@ -1,0 +1,41 @@
+<div class="nodes-toolbar mndw-table-controls">
+  <span data-testid="l10n-child-probe" hidden>{{ t('l10n.probe') }}</span>
+  <mndw-input
+    type="search"
+    [attr.aria-label]="t('nodes.search')"
+    [attr.placeholder]="t('nodes.search')"
+    [value]="search()"
+    (mndwinput)="onSearch($event)"
+  ></mndw-input>
+</div>
+
+@if (allRows().length === 0) {
+  <p class="status" role="status">{{ t('nodes.no-connected') }}</p>
+} @else if (rows().length === 0) {
+  <p class="status" role="status">{{ t('nodes.no-match') }}</p>
+} @else {
+  <mndw-table
+    [columns]="columns"
+    [rows]="rows()"
+    rowKey="id"
+    [sort]="sort()"
+    [hiddenColumns]="hiddenColumns()"
+    [caption]="t('nodes.caption')"
+    (mndwsortchange)="onSortChange($event)"
+    (mndwcolumnvisibilitychange)="onVisibilityChange($event)"
+  >
+    <ng-template mndwCell="name" [mndwCellRows]="rows" let-row>
+      <button
+        class="node-name"
+        type="button"
+        [attr.aria-label]="t('nodes.open', {name: row.node.name})"
+        (click)="activateNode(row.id)"
+      >
+        <span>{{ row.node.name }}</span>
+        @if (row.node.isController) {
+          <span class="role-badge">{{ t('nodes.controller') }}</span>
+        }
+      </button>
+    </ng-template>
+  </mndw-table>
+}

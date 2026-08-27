@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "backendDescriptor": {
+    "required": [
+      "routes",
+      "approval",
+      "enabled"
+    ],
+    "route": {
+      "transport": "http|websocket",
+      "method": "GET|HEAD|POST|PUT|PATCH|DELETE?",
+      "path": "string",
+      "protocols": "string[]?"
+    },
+    "approval": [
+      "approved",
+      "pending",
+      "denied"
+    ]
+  },
+  "errorEnvelope": {
+    "required": [
+      "error"
+    ],
+    "error": {
+      "code": "string",
+      "message": "string",
+      "detail": "unknown|null"
+    }
+  }
+}

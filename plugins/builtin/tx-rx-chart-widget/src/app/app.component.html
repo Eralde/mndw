@@ -1,0 +1,80 @@
+<div class="tx-rx-widget">
+    <span data-testid="l10n-probe" hidden>{{ t('l10n.probe') }}</span>
+    @if (error()) {
+        <div
+            class="mndw-alert mndw-alert--danger notice"
+            role="alert"
+        >
+            <span>{{ error() }}</span>
+            <mndw-button
+                variant="danger"
+                class="notice__retry"
+                (click)="retryLoad()"
+            >
+                {{ t('action.retry') }}
+            </mndw-button>
+        </div>
+    }
+    @if (loadingInterfaces()) {
+        <div class="loading">{{ t('status.loading-interfaces') }}</div>
+    } @else if (!selectedInterface()) {
+        <div class="empty-state">
+            <h3 class="empty-state__heading">{{ t('title') }}</h3>
+            <p class="empty-state__subtitle">{{ t('status.select-interface') }}</p>
+            <mndw-select
+                [label]="t('field.interface')"
+                [attr.placeholder]="t('field.select-interface')"
+                [value]="selectedInterface()"
+                (mndwchange)="onInterfaceChange($any($event).detail.value)"
+            >
+              @for (iface of interfaceList(); track iface.id) {
+                <mndw-option [value]="iface.id">{{ iface.description || iface.id }}</mndw-option>
+              }
+            </mndw-select>
+            @if (interfaceList().length === 0 && !loadingInterfaces()) {
+                <p class="mndw-alert mndw-alert--danger">{{ t('status.no-interfaces') }}</p>
+            }
+        </div>
+    } @else {
+        <div class="chart-view">
+            <div class="chart-header">
+                <div class="chart-header__left">
+                    @if (!setTileTitle()) {
+                        <span class="chart-header__label">{{ activeInterfaceName() }}</span>
+                    }
+                    <div class="chart-header__legend">
+                        <span class="chart-header__legend-item">
+                            <span class="chart-header__legend-swatch chart-header__legend-swatch--tx"></span>
+                            TX
+                        </span>
+                        <span class="chart-header__legend-item">
+                            <span class="chart-header__legend-swatch chart-header__legend-swatch--rx"></span>
+                            RX
+                        </span>
+                    </div>
+                </div>
+                <div class="chart-header__actions">
+                    <mndw-button
+                        class="gear-btn"
+                        variant="ghost"
+                        (click)="openSettingsDialog()"
+                        [title]="t('action.settings')"
+                        [attr.aria-label]="t('action.settings')"
+                    >
+                        &#9881;
+                    </mndw-button>
+                </div>
+            </div>
+            @if (awaitingFirstTick()) {
+                <div class="loading">{{ t('status.loading-data') }}</div>
+            } @else {
+                <mndw-line-chart
+                    [series]="chartData().series"
+                    [domain]="chartData().domain"
+                    [empty-label]="t('status.no-data')"
+                    [attr.aria-label]="t('a11y.chart-label', { interface: activeInterfaceName() })"
+                ></mndw-line-chart>
+            }
+        </div>
+    }
+</div>

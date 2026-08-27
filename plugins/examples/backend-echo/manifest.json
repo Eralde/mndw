@@ -1,0 +1,17 @@
+{
+  "manifestVersion": 1,
+  "name": "backend-echo",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "Backend Echo",
+  "entry": "index.js",
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
+  "size": {"w": 4, "h": 3, "minW": 3, "minH": 2},
+  "backend": {
+    "kind": "exec",
+    "routes": [
+      {"id": "echoGet", "transport": "http", "method": "GET", "path": "echo", "command": "backend/echo.cgi"},
+      {"id": "echoPost", "transport": "http", "method": "POST", "path": "echo", "command": "backend/echo.cgi"}
+    ]
+  }
+}

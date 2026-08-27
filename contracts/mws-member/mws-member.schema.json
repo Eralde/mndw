@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mndw/mws-member.schema.json",
+  "title": "mndw mesh member",
+  "description": "Focused mesh member shape generated from the Zod schema — do not edit by hand.",
+  "type": "object",
+  "properties": {
+    "cid": {
+      "type": "string"
+    },
+    "mac": {
+      "type": "string"
+    },
+    "ip": {
+      "type": "string"
+    },
+    "fqdn": {
+      "type": "string"
+    },
+    "fqdn-certificate-valid": {
+      "type": "boolean"
+    },
+    "capabilities": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
+    }
+  },
+  "additionalProperties": {}
+}

@@ -1,0 +1,22 @@
+{
+  "name": "__MNDW_NAME__",
+  "type": "module",
+  "scripts": {
+    "build-backend": "mndw build-backend",
+    "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run"
+  },
+  "mndw": {
+    "backendBuildScript": "build-backend",
+    "backend": {
+      "binaryName": "__MNDW_NAME__d",
+      "entryPackage": "./cmd/__MNDW_NAME__d"
+    }
+  },
+  "devDependencies": {
+    "@mndw/cli": "workspace:*",
+    "@mndw/sdk": "workspace:*",
+    "tsx": "^4.23.0",
+    "vitest": "^3.2.7",
+    "happy-dom": "^20.11.1"
+  }
+}

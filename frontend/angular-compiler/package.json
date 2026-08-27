@@ -1,0 +1,32 @@
+{
+  "name": "@mndw/angular-compiler",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@angular/common": "^21.2.18",
+    "@angular/compiler": "^21.2.18",
+    "@angular/compiler-cli": "^21.2.18",
+    "@angular/core": "^21.2.18",
+    "@angular/platform-browser": "^21.2.18",
+    "@mndw/sdk": "workspace:*",
+    "rxjs": "^7.8.0",
+    "sass": "^1.77.0",
+    "typescript": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.15",
+    "vitest": "^3.2.7"
+  }
+}

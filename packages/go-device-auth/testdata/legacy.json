@@ -1,0 +1,11 @@
+{
+  "generation": "x-ndw2-interactive",
+  "credentials": {
+    "username": "mndw-vector-user",
+    "password": "mndw-vector-password",
+    "realm": "mndw-vector-realm",
+    "challenge": "mndw-vector-challenge"
+  },
+  "proof": "3b706c1c414d9f194a67d08b34c45ac08c60cd11cf3f4ee053de5b3776d2d1d6"
+}
+

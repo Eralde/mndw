@@ -1,0 +1,260 @@
+import {
+  OPKG_INFO_URL,
+  OPKG_INSTALL_URL,
+  OPKG_LIST_URL,
+  OPKG_REMOVE_URL,
+  OPKG_UPDATE_URL,
+  OPKG_UPGRADE_URL,
+} from '../constants.js';
+
+export interface PackageEntry {
+  name: string;
+  version: string;
+  description: string;
+  status: 'installed' | 'update_available' | 'available';
+  newVersion?: string;
+}
+
+export interface PackageList {
+  packages: PackageEntry[];
+  metadataUpdatedAt: string | null;
+}
+
+export interface PackageInfo {
+  name: string;
+  version: string;
+  description: string;
+  size?: string;
+  installedSize?: string;
+  dependencies: string[];
+  status: 'installed' | 'update_available' | 'available';
+  installedTime?: string;
+}
+
+export class OpkgError extends Error {
+  public readonly code: string;
+
+  constructor(message: string, code: string) {
+    super(message);
+    this.name = 'OpkgError';
+    this.code = code;
+  }
+}
+
+export interface OpkgClient {
+  list(): Promise<PackageList>;
+  info(name: string): Promise<PackageInfo>;
+  install(packages: string[]): Promise<{message: string; packages: string[]}>;
+  remove(packages: string[]): Promise<{message: string; packages: string[]}>;
+  upgrade(packages: string[]): Promise<{message: string; packages: string[]}>;
+  update(): Promise<{message: string}>;
+}
+
+interface ErrorEnvelope {
+  error?: {
+    code?: unknown;
+    message?: unknown;
+  };
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object';
+
+function malformedResponse(): OpkgError {
+  return new OpkgError('Malformed response', 'UNKNOWN');
+}
+
+async function parseJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    throw malformedResponse();
+  }
+}
+
+async function errorFromResponse(response: Response): Promise<OpkgError> {
+  let body: unknown;
+
+  try {
+    body = await response.json();
+  } catch {
+    return new OpkgError(response.statusText, 'UNKNOWN');
+  }
+
+  const envelope = isRecord(body) ? body as ErrorEnvelope : undefined;
+  const error = envelope?.error;
+  const message = typeof error?.message === 'string' ? error.message : response.statusText;
+  const code = typeof error?.code === 'string' ? error.code : 'UNKNOWN';
+
+  return new OpkgError(message, code);
+}
+
+function validatePackageEntry(value: unknown): PackageEntry {
+  if (!isRecord(value)) {
+    throw malformedResponse();
+  }
+
+  const name = value.name;
+  const version = value.version;
+  const description = value.description;
+  const status = value.status;
+  const newVersion = value.newVersion;
+  const validStatus = status === 'installed' || status === 'update_available' || status === 'available';
+
+  if (
+    typeof name !== 'string' || name.length === 0 || typeof version !== 'string' || typeof description !== 'string'
+    || !validStatus
+  ) {
+    throw malformedResponse();
+  }
+
+  if ((status === 'available' || status === 'update_available') && version.length === 0) {
+    throw malformedResponse();
+  }
+
+  if (status === 'update_available') {
+    if (typeof newVersion !== 'string' || newVersion.length === 0) {
+      throw malformedResponse();
+    }
+  } else if (newVersion !== undefined) {
+    throw malformedResponse();
+  }
+
+  return {
+    name,
+    version,
+    description,
+    status,
+    ...(newVersion === undefined ? {} : {newVersion}),
+  };
+}
+
+function validateListResponse(body: unknown): PackageList {
+  if (!isRecord(body) || !Array.isArray(body.packages)) {
+    throw malformedResponse();
+  }
+
+  const metadataUpdatedAt = body.metadataUpdatedAt;
+
+  if (metadataUpdatedAt !== null && typeof metadataUpdatedAt !== 'string') {
+    throw malformedResponse();
+  }
+
+  if (typeof metadataUpdatedAt === 'string' && Number.isNaN(Date.parse(metadataUpdatedAt))) {
+    throw malformedResponse();
+  }
+
+  return {packages: body.packages.map((entry) => validatePackageEntry(entry)), metadataUpdatedAt};
+}
+
+function validatePackageInfo(value: unknown): PackageInfo {
+  if (!isRecord(value)) {
+    throw malformedResponse();
+  }
+
+  const status = value.status;
+
+  if (
+    typeof value.name !== 'string' || value.name.length === 0 || typeof value.version !== 'string'
+    || typeof value.description !== 'string' || !Array.isArray(value.dependencies)
+    || !value.dependencies.every((dependency): dependency is string => typeof dependency === 'string')
+    || (status !== 'installed' && status !== 'update_available' && status !== 'available')
+  ) {
+    throw malformedResponse();
+  }
+
+  const optionalStrings = ['size', 'installedSize', 'installedTime'] as const;
+
+  for (const field of optionalStrings) {
+    if (value[field] !== undefined && typeof value[field] !== 'string') {
+      throw malformedResponse();
+    }
+  }
+
+  const size = typeof value.size === 'string' ? value.size : undefined;
+  const installedSize = typeof value.installedSize === 'string' ? value.installedSize : undefined;
+  const installedTime = typeof value.installedTime === 'string' ? value.installedTime : undefined;
+
+  return {
+    name: value.name,
+    version: value.version,
+    description: value.description,
+    dependencies: value.dependencies,
+    status,
+    ...(size === undefined ? {} : {size}),
+    ...(installedSize === undefined ? {} : {installedSize}),
+    ...(installedTime === undefined ? {} : {installedTime}),
+  };
+}
+
+function validateActionResponse(body: unknown): {message: string; packages: string[]} {
+  if (!isRecord(body) || body.ok !== true || typeof body.message !== 'string' || !Array.isArray(body.packages)) {
+    throw malformedResponse();
+  }
+
+  if (!body.packages.every((value): value is string => typeof value === 'string')) {
+    throw malformedResponse();
+  }
+
+  return {message: body.message, packages: body.packages};
+}
+
+function validateUpdateResponse(body: unknown): {message: string} {
+  if (!isRecord(body) || body.ok !== true || typeof body.message !== 'string') {
+    throw malformedResponse();
+  }
+
+  return {message: body.message};
+}
+
+export function createOpkgClient(fetchImpl: typeof globalThis.fetch = globalThis.fetch): OpkgClient {
+  async function request(url: string, init: RequestInit): Promise<unknown> {
+    const response = await fetchImpl(url, init);
+
+    if (!response.ok) {
+      throw await errorFromResponse(response);
+    }
+
+    return parseJson(response);
+  }
+
+  async function postPackages(url: string, packages: string[]): Promise<{message: string; packages: string[]}> {
+    const body = await request(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({packages}),
+    });
+
+    return validateActionResponse(body);
+  }
+
+  return {
+    async list(): Promise<PackageList> {
+      const body = await request(OPKG_LIST_URL, {method: 'GET'});
+
+      return validateListResponse(body);
+    },
+
+    async info(name: string): Promise<PackageInfo> {
+      const params = new URLSearchParams({name});
+      const body = await request(`${OPKG_INFO_URL}?${params.toString()}`, {method: 'GET'});
+
+      return validatePackageInfo(body);
+    },
+
+    install: (packages) => postPackages(OPKG_INSTALL_URL, packages),
+    remove: (packages) => postPackages(OPKG_REMOVE_URL, packages),
+    upgrade: (packages) => postPackages(OPKG_UPGRADE_URL, packages),
+
+    async update(): Promise<{message: string}> {
+      const body = await request(OPKG_UPDATE_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: '{}',
+      });
+
+      return validateUpdateResponse(body);
+    },
+  };
+}
+
+export const opkgClient: OpkgClient = createOpkgClient();

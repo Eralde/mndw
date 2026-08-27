@@ -1,0 +1,120 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "build/**/*.test.ts"
+      ],
+      "project": "build/**/*.ts"
+    },
+    "frontend/host": {
+      "entry": [
+        "index.html",
+        "scripts/**/*.ts",
+        "src/**/*.test.ts"
+      ],
+      "ignoreDependencies": [
+        "d3",
+        "hash-wasm"
+      ]
+    },
+    "frontend/sdk": {
+      "entry": [
+        "src/testing/**/*.ts",
+        "src/**/*.test.ts"
+      ]
+    },
+    "frontend/ui": {
+      "entry": [
+        "src/**/*.test.ts",
+        "e2e/**/*.ts"
+      ],
+      "ignoreDependencies": [
+        "vite"
+      ]
+    },
+    "frontend/ui-svelte": {
+      "entry": [
+        "src/**/*.test.ts"
+      ]
+    },
+    "frontend/ui-vue": {
+      "entry": [
+        "src/**/*.test.ts"
+      ]
+    },
+    "frontend/ui-angular": {
+      "entry": [
+        "src/**/*.test.ts",
+        "test-fixtures/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "test-fixtures/**/*.ts"
+      ]
+    },
+    "frontend/angular-compiler": {
+      "entry": [
+        "src/**/*.test.ts"
+      ],
+      "project": "src/**/*.ts",
+      "ignoreDependencies": [
+        "@angular/common",
+        "@angular/core",
+        "@angular/platform-browser",
+        "@mndw/sdk",
+        "rxjs"
+      ]
+    },
+    "tooling/cli": {
+      "entry": [
+        "src/**/*.test.ts"
+      ],
+      "ignore": [
+        "templates/**",
+        "fixtures/**"
+      ]
+    },
+    "tooling/*": {
+      "entry": [
+        "src/**/*.test.ts"
+      ]
+    },
+    "packages/*": {},
+    "plugins/builtin/*": {
+      "entry": [
+        "src/index.ts",
+        "src/**/index.ts",
+        "src/**/*.test.ts"
+      ]
+    },
+    "plugins/examples/*": {
+      "entry": [
+        "src/index.ts",
+        "src/**/index.ts",
+        "src/**/*.test.ts"
+      ]
+    }
+  },
+  "ignoreBinaries": [
+    "go"
+  ],
+  "ignoreFiles": [
+    "build/svelte-compiler-options.d.ts"
+  ],
+  "ignoreDependencies": [
+    "stylelint-config-standard"
+  ],
+  "ignoreIssues": {
+    "frontend/ui/src/position/position.ts": [
+      "duplicates"
+    ],
+    "frontend/ui/src/table/table.ts": [
+      "types"
+    ],
+    "frontend/ui/src/tokens-required.ts": [
+      "types"
+    ]
+  },
+  "ignoreExportsUsedInFile": true
+}

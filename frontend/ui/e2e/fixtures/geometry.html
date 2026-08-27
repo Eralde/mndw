@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Table geometry fixture</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        padding: 24px;
+        background: white;
+      }
+
+      #geometry-table-card {
+        width: 480px;
+        max-width: 100%;
+        overflow: hidden;
+        border: 1px solid #999;
+      }
+
+      #geometry-controls {
+        display: flex;
+        gap: 8px;
+        padding: 8px;
+      }
+
+      #geometry-table {
+        width: 100%;
+      }
+
+      #geometry-table::part(viewport) {
+        height: 240px;
+        max-height: 240px;
+        overflow: auto;
+        scrollbar-gutter: stable;
+      }
+
+      #geometry-table::part(table) {
+        min-width: 760px;
+      }
+
+      #geometry-table::part(header-cell) {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: white;
+      }
+
+      #geometry-table::part(cell) {
+        padding: 8px;
+      }
+
+      #geometry-scroll-area {
+        display: flex;
+        width: 320px;
+        max-width: 100%;
+        height: 120px;
+        border: 1px solid #999;
+      }
+
+      #geometry-scroll-content {
+        display: grid;
+        gap: 8px;
+        padding: 8px;
+      }
+
+      #geometry-field {
+        width: 320px;
+        max-width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <section id="geometry-table-card" aria-label="Table geometry">
+      <div id="geometry-controls" class="mndw-table-controls">
+        <mndw-button variant="secondary">Refresh</mndw-button>
+      </div>
+      <mndw-table id="geometry-table" column-menu="false"></mndw-table>
+    </section>
+    <mndw-scroll-area id="geometry-scroll-area" aria-label="Scrollable geometry content">
+      <div id="geometry-scroll-content">
+        <span>First row</span>
+        <span>Second row</span>
+        <span>Third row</span>
+        <span>Fourth row</span>
+        <span>Fifth row</span>
+        <span>Sixth row</span>
+        <span>Seventh row</span>
+        <span>Eighth row</span>
+      </div>
+    </mndw-scroll-area>
+    <mndw-field id="geometry-field" label="Dark theme">
+      <mndw-switch id="geometry-switch"></mndw-switch>
+    </mndw-field>
+    <script type="module" src="./geometry.ts"></script>
+  </body>
+</html>

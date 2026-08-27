@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 1,
+  "name": "i18n-locale-noncanonical",
+  "version": "3.0.0",
+  "type": "page",
+  "label": "Localized Page",
+  "entry": "index.js",
+  "route": "/localized",
+  "i18n": {
+    "defaultLocale": "en-us",
+    "locales": {
+      "en-us": "i18n/en-us.json"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "store": {"state": "ok"},
+  "controller": {"support": "supported"},
+  "extenders": [{"identity": "node-1", "name": "Node 1", "eligible": false, "reason": "missing-fqdn"}],
+  "stale": false
+}

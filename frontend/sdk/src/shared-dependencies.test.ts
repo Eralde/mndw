@@ -1,0 +1,138 @@
+import {readFileSync} from 'node:fs';
+import {describe, expect, it} from 'vitest';
+import {createSharedDependencySnapshot} from '../../../build/contracts/generate-shared-deps.js';
+import {
+  SHARED_DEPENDENCIES,
+  pluginDependencies,
+  sharedDependencyVersions,
+  sharedImportMap,
+  sharedSpecifiers,
+  versionedBundleUrl,
+} from '../shared-dependencies.js';
+
+const dependencyFor = (bundle: string) => {
+  const dependency = SHARED_DEPENDENCIES.find((entry) => entry.bundle === bundle);
+
+  if (!dependency) {
+    throw new Error(`Missing shared dependency: ${bundle}`);
+  }
+
+  return dependency;
+};
+
+describe('shared dependencies table', () => {
+  it('matches generated protocol snapshot', () => {
+    const snapshot = JSON.parse(
+      readFileSync(new URL('../../../contracts/protocol/shared-deps.json', import.meta.url), 'utf8'),
+    );
+
+    expect(snapshot).toEqual(createSharedDependencySnapshot());
+  });
+
+  it('gives every entry either an entryPoint or a stdin', () => {
+    for (const entry of SHARED_DEPENDENCIES) {
+      expect(Boolean(entry.entryPoint) !== Boolean(entry.stdin)).toBe(true);
+    }
+  });
+
+  it('serves each bundle at a versioned /shared URL', () => {
+    const rxjs = dependencyFor('rxjs');
+
+    expect(versionedBundleUrl(rxjs)).toBe(sharedImportMap().rxjs);
+  });
+
+  it('maps every specifier to its versioned bundle in the import map', () => {
+    const map = sharedImportMap();
+
+    expect(map.rxjs).toBe(versionedBundleUrl(dependencyFor('rxjs')));
+    expect(map['@angular/core']).toBe(map['@angular/core/rxjs-interop']);
+  });
+
+  it('stamps a specifier→version map for the lock file', () => {
+    expect(sharedDependencyVersions()['@rci-tools/core']).toBe(dependencyFor('rci-tools-core').version);
+  });
+
+  // Angular DI invariants, encoded as data. Splitting or inlining these re-creates the
+  // duplicate class-identity / "No provider found" failures.
+  describe('Angular invariants', () => {
+    const angular = SHARED_DEPENDENCIES.filter((d) => d.framework === 'angular');
+
+    it('co-bundles @angular/core with @angular/core/rxjs-interop in one file', () => {
+      const core = angular.find((d) => d.bundle === 'angular-core');
+
+      expect(core?.specifiers).toEqual(['@angular/core', '@angular/core/rxjs-interop']);
+      expect(core?.stdin).toBeTruthy();
+    });
+
+    // common + platform-browser consume @angular/core and MUST keep it external — inlining core
+    // internals into them yields duplicate DI class identities. (compiler doesn't import core.)
+    it('keeps @angular/core external in the core-consuming bundles', () => {
+      const consumers = angular.filter((d) => d.bundle === 'angular-common' || d.bundle === 'angular-platform-browser');
+
+      expect(consumers).toHaveLength(2);
+
+      for (const entry of consumers) {
+        expect(entry.external).toContain('@angular/core');
+      }
+    });
+  });
+
+  describe('full d3 bundle', () => {
+    const d3Entry = dependencyFor('d3');
+
+    it('ships one complete base-framework d3 entry at the pinned version', () => {
+      expect(d3Entry).toEqual({
+        specifiers: ['d3'],
+        bundle: 'd3',
+        version: '7.9.0',
+        entryPoint: 'd3',
+        framework: 'base',
+      });
+    });
+
+    it('maps d3 to one versioned host URL', () => {
+      expect(sharedImportMap().d3).toBe(versionedBundleUrl(d3Entry));
+      expect(sharedDependencyVersions().d3).toBe(d3Entry.version);
+    });
+
+    it('gives every plugin framework the full d3 external', () => {
+      for (const framework of ['vanilla', 'svelte', 'vue', 'angular'] as const) {
+        expect(pluginDependencies(framework)).toContain('d3');
+      }
+    });
+
+    it('does not publish individual d3 submodule entries or d3 extensions', () => {
+      expect(sharedSpecifiers()).not.toContain('d3-selection');
+      expect(sharedSpecifiers()).not.toContain('d3-zoom');
+      expect(sharedSpecifiers()).not.toContain('d3-dag');
+      expect(SHARED_DEPENDENCIES.some((entry) => entry.bundle.startsWith('d3-'))).toBe(false);
+    });
+  });
+
+  it('scopes framework externals: angular widgets get vue-free base + angular deps', () => {
+    const angularDeps = pluginDependencies('angular');
+
+    expect(angularDeps).toContain('rxjs');
+    expect(angularDeps).toContain('@angular/core');
+    expect(angularDeps).not.toContain('vue');
+  });
+
+  it('gives vanilla plugins the base shared deps only (no framework deps)', () => {
+    const vanillaDeps = pluginDependencies('vanilla');
+
+    expect(vanillaDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm', 'd3', '@mndw/ui']);
+    expect(vanillaDeps).not.toContain('vue');
+    expect(vanillaDeps).not.toContain('@angular/core');
+  });
+
+  it('gives svelte plugins the same base deps as vanilla (svelte itself is bundled)', () => {
+    expect(pluginDependencies('svelte')).toEqual(pluginDependencies('vanilla'));
+  });
+
+  it('gives vue plugins the base deps plus vue', () => {
+    const vueDeps = pluginDependencies('vue');
+
+    expect(vueDeps).toEqual(['@rci-tools/core', 'rxjs', 'rxjs/operators', 'hash-wasm', 'd3', '@mndw/ui', 'vue']);
+    expect(vueDeps).not.toContain('@angular/core');
+  });
+});

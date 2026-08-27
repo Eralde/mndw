@@ -1,0 +1,11 @@
+packages:
+  - "packages/*"
+  - "frontend/*"
+  - "tooling/*"
+  - "plugins/builtin/*"
+  - "plugins/examples/*"
+  - "build/*"
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - dprint
+  - esbuild

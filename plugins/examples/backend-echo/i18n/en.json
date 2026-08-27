@@ -1,0 +1,13 @@
+{
+  "l10n": {
+    "probe": "Echo English probe"
+  },
+  "title": "Backend Echo",
+  "status": "Status code",
+  "get": "GET /echo",
+  "post": "POST /echo",
+  "idle": "Press GET or POST to call the backend.",
+  "pending": "Backend is pending approval — approve it in Settings, then retry.",
+  "disabled": "Backend is disabled — enable it in Settings, then retry.",
+  "unavailable": "This plugin has no backend available."
+}

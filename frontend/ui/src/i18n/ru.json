@@ -1,0 +1,43 @@
+{
+  "select": {
+    "placeholder": "Выберите…",
+    "validation": {
+      "required": "Выберите вариант."
+    },
+    "overlay": {
+      "title": "Выберите вариант"
+    }
+  },
+  "overlay": {
+    "close": "Закрыть"
+  },
+  "chart": {
+    "empty": "Нет данных",
+    "values": "Значения"
+  },
+  "input": {
+    "password": {
+      "show": "Показать пароль",
+      "hide": "Скрыть пароль"
+    }
+  },
+  "checkbox": {
+    "validation": {
+      "required": "Выберите этот вариант."
+    }
+  },
+  "segmented": {
+    "validation": {
+      "required": "Выберите вариант."
+    }
+  },
+  "table": {
+    "selectRow": "Выбрать {rowName}",
+    "selectAll": "Выбрать все",
+    "sortBy": "Сортировать по {column}",
+    "columnMenu": "Меню столбцов",
+    "rowFallback": "Строка {index}",
+    "reordered": "{rowName} перемещена на позицию {pos} из {total}",
+    "invalidData": "Данные таблицы недействительны"
+  }
+}

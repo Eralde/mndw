@@ -1,0 +1,168 @@
+@if (currentNode(); as n) {
+  @let labels = statusLabels(n);
+  <div class="drawer">
+    <span data-testid="l10n-overlay-probe" hidden>{{ t('l10n.probe') }}</span>
+    <section class="identity">
+      @if (editing) {
+        <div class="rename-editor">
+          <mndw-input
+            type="text"
+            [attr.aria-label]="t('drawer.node-name')"
+            [value]="draft"
+            [disabled]="pending"
+            [maxlength]="64"
+            (mndwinput)="onNameInput($event)"
+            (keydown)="onNameKeydown($event)"
+          ></mndw-input>
+          <div class="rename-actions">
+            <mndw-button
+              variant="primary"
+              data-action="save-name"
+              [disabled]="pending"
+              (click)="saveRename()"
+            >{{ pending ? t('drawer.saving') : t('drawer.save') }}</mndw-button>
+            <mndw-button
+              variant="secondary"
+              data-action="cancel-name"
+              [disabled]="pending"
+              (click)="cancelRename()"
+            >{{ t('drawer.cancel') }}</mndw-button>
+          </div>
+          @if (renameErrorMessage(); as errorMessage) {
+            <p class="rename-error" role="alert">{{ errorMessage }}</p>
+          }
+        </div>
+      } @else {
+        <div class="identity-heading">
+          <h3>{{ n.name }}</h3>
+          <mndw-button
+            variant="ghost"
+            data-action="edit-name"
+            [attr.aria-label]="t('drawer.edit-name')"
+            (click)="beginRename()"
+          >{{ t('drawer.edit') }}</mndw-button>
+        </div>
+      }
+      <div class="health">
+        <h4>{{ t('drawer.health') }}</h4>
+        <dl>
+          <dt>{{ t('drawer.status') }}</dt><dd>{{ labels.online }}</dd>
+          <dt>{{ t('drawer.telemetry') }}</dt><dd>{{ labels.telemetry }}</dd>
+          <dt>{{ t('drawer.remote-control') }}</dt><dd>{{ labels.remoteControl }}</dd>
+          @if (telemetryLastTelemetry(n); as lastTelemetry) {
+            <dt>{{ t('drawer.last-telemetry') }}</dt><dd>{{ lastTelemetry }}</dd>
+          }
+          <dt>{{ t('drawer.client-count') }}</dt><dd>{{ labels.clients }}</dd>
+        </dl>
+      </div>
+      <dl class="identity-details">
+        <dt>{{ t('drawer.model') }}</dt><dd>{{ dash(n.model) }}</dd>
+        <dt>{{ t('drawer.mac') }}</dt><dd>{{ n.mac }}</dd>
+        <dt>{{ t('drawer.ip') }}</dt><dd>{{ dash(n.ip) }}</dd>
+        <dt>{{ t('drawer.firmware') }}</dt>
+        <dd>
+          {{ dash(n.fw) }}
+          @if (n.fw && n.fwAvailable && n.fw !== n.fwAvailable) {
+            <span class="update-hint">{{ t('drawer.update-available', {version: n.fwAvailable}) }}</span>
+          }
+        </dd>
+        <dt>{{ t('drawer.uptime') }}</dt><dd>{{ uptime(n.system?.uptime) }}</dd>
+        <dt>{{ t('drawer.cpu-load') }}</dt><dd>{{ cpuLoad(n.system?.cpuload) }}</dd>
+        <dt>{{ t('drawer.memory') }}</dt><dd>{{ memory(n) }}</dd>
+      </dl>
+    </section>
+
+    <section class="backhaul">
+      <h4>{{ t('drawer.backhaul') }}</h4>
+      @if (n.isController) {
+        <p>{{ t('drawer.controller-backhaul') }}</p>
+      } @else if (!n.backhaul) {
+        <p>{{ t('drawer.offline-backhaul') }}</p>
+      } @else if (isWirelessBackhaul(n)) {
+        <dl>
+          <dt>{{ t('drawer.type') }}</dt><dd>{{ t('drawer.wireless') }}</dd>
+          <dt>{{ t('drawer.uplink') }}</dt><dd>{{ dash(n.backhaul.uplink) }}</dd>
+          <dt>{{ t('drawer.ap') }}</dt><dd>{{ dash(n.backhaul.ap) }}</dd>
+          <dt>{{ t('drawer.mode') }}</dt><dd>{{ dash(n.backhaul.mode) }}</dd>
+          <dt>{{ t('drawer.rssi') }}</dt><dd>{{ rssi(n.backhaul.rssi) }}</dd>
+          <dt>{{ t('drawer.tx-rate') }}</dt><dd>{{ rate(n.backhaul.txrate) }}</dd>
+          <dt>{{ t('drawer.security') }}</dt><dd>{{ dash(n.backhaul.security) }}</dd>
+          <dt>{{ t('drawer.stp-cost') }}</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
+        </dl>
+      } @else {
+        <dl>
+          <dt>{{ t('drawer.type') }}</dt><dd>{{ t('drawer.wired') }}</dd>
+          <dt>{{ t('drawer.speed') }}</dt><dd>{{ speed(n.backhaul.speed) }}</dd>
+          <dt>{{ t('drawer.duplex') }}</dt><dd>{{ dash(n.backhaul.duplex) }}</dd>
+          <dt>{{ t('drawer.port') }}</dt><dd>{{ dash(n.backhaul.portLabel) }}</dd>
+          <dt>{{ t('drawer.stp-cost') }}</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
+        </dl>
+      }
+    </section>
+
+    @if (!n.isController) {
+      <section class="wifi-power">
+        <h4>{{ t('drawer.wifi-power') }}</h4>
+        <mndw-field label="2.4 GHz" [hint]="powerDisabledHint(n, 'WifiMaster0')">
+          <mndw-slider
+            data-radio="WifiMaster0"
+            min="0"
+            max="100"
+            step="1"
+            [value]="powerValue(n, 'WifiMaster0')"
+            [attr.value-text]="powerValueText(n, 'WifiMaster0')"
+            [disabled]="powerDisabled(n, 'WifiMaster0')"
+            (mndwchange)="onPowerChange(n, 'WifiMaster0', $any($event))"
+          ></mndw-slider>
+        </mndw-field>
+        @if (n.dualBand) {
+          <mndw-field label="5 GHz" [hint]="powerDisabledHint(n, 'WifiMaster1')">
+            <mndw-slider
+              data-radio="WifiMaster1"
+              min="0"
+              max="100"
+              step="1"
+              [value]="powerValue(n, 'WifiMaster1')"
+              [attr.value-text]="powerValueText(n, 'WifiMaster1')"
+              [disabled]="powerDisabled(n, 'WifiMaster1')"
+              (mndwchange)="onPowerChange(n, 'WifiMaster1', $any($event))"
+            ></mndw-slider>
+          </mndw-field>
+        }
+        @if (powerErrorMessage(); as errorMessage) {
+          <p class="power-error" role="alert">{{ errorMessage }}</p>
+        }
+      </section>
+    }
+
+    <section class="clients">
+      <h4>{{ t('drawer.clients', {count: n.clients.length}) }}</h4>
+      @if (n.clients.length === 0) {
+        <p>{{ t('drawer.no-active-clients') }}</p>
+      } @else {
+        <table>
+          <thead>
+            <tr><th>{{ t('drawer.client-name') }}</th><th>{{ t('drawer.client-ip') }}</th><th>{{ t('drawer.client-mac') }}</th><th>{{ t('drawer.client-link') }}</th><th>{{ t('drawer.client-uptime') }}</th></tr>
+          </thead>
+          <tbody>
+            @for (client of n.clients; track client.mac) {
+              <tr>
+                <td>{{ client.name }}</td>
+                <td>{{ dash(client.ip) }}</td>
+                <td>{{ client.mac }}</td>
+                <td>
+                  <span class="link-badge" [class.wired]="client.wired">
+                    {{ client.wired ? t('clients.wired') : t('clients.wireless') }}
+                  </span>
+                </td>
+                <td>{{ uptime(client.uptime) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </section>
+  </div>
+} @else {
+  <p class="gone">{{ t('drawer.gone') }}</p>
+}

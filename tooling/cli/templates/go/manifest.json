@@ -1,0 +1,25 @@
+{
+  "$schema": "__MNDW_SCHEMA__",
+  "manifestVersion": 1,
+  "name": "__MNDW_NAME__",
+  "version": "0.1.0",
+  "type": "page",
+  "label": "__MNDW_LABEL__",
+  "entry": "index.js",
+  "route": "__MNDW_ROUTE__",
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": "i18n/en.json",
+      "ru": "i18n/ru.json"
+    }
+  },
+  "backend": {
+    "kind": "service",
+    "protocolVersion": 1,
+    "command": "backend/__MNDW_NAME__d",
+    "routes": [
+      {"id": "hello", "transport": "http", "method": "GET", "path": "hello"}
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "persistent-rci-write-widget",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Persistent RCI Write",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3},
+  "permissions": ["persistent-rci-session:write"]
+}

@@ -1,0 +1,317 @@
+import '@angular/compiler';
+import {DestroyRef, inject, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {createTranslatorSignals} from '@mndw/sdk/angular';
+import {createTestI18n} from '@mndw/sdk/testing';
+import {type ComponentFixture, TestBed} from '@angular/core/testing';
+import type {PluginStorage} from '@mndw/sdk';
+import type {RrdResponse} from '@mndw/sdk/rrd';
+import type {RciManager, RciQuery} from '@rci-tools/core';
+import {Subject, of} from 'rxjs';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import type {OpenSettingsFn} from '../open-settings-dialog';
+import {PLUGIN_STORAGE, RCI_MANAGER, TRANSLATOR} from '../tokens';
+import appStyles from './app.component.scss?raw';
+import appTemplate from './app.component.html?raw';
+import {AppComponent as AppComponentType} from './app.component';
+import enCatalog from '../../i18n/en.json';
+import ruCatalog from '../../i18n/ru.json';
+
+const interfaces = {
+  eth0: {id: 'eth0', description: 'LAN', traits: ['Ip']},
+  eth1: {id: 'eth1', description: 'WAN', traits: ['Ip']},
+};
+
+let fixtures: ComponentFixture<AppComponentType>[] = [];
+
+function fakeManager(rrdResponses?: Subject<[RrdResponse, RrdResponse]>): RciManager {
+  return {
+    queue: (query: RciQuery | RciQuery[]) => {
+      const path = Array.isArray(query) ? query[0]?.path : query.path;
+
+      if (path === 'show.interface') {
+        return of(interfaces);
+      }
+
+      if (path === 'show.clock.date') {
+        return of({weekday: 1, day: 1, month: 1, year: 2026, hour: 12, min: 0, sec: 0, msec: 0});
+      }
+
+      if (path === 'show.interface.rrd' && rrdResponses !== undefined) {
+        return rrdResponses.asObservable();
+      }
+
+      return of([{data: []}, {data: []}]);
+    },
+  } as unknown as RciManager;
+}
+
+function fakeStorage(savedInterface: string | null, savedRefresh: string | null): PluginStorage {
+  return {
+    get: vi.fn((key: string) =>
+      Promise.resolve(
+        key === 'tx-rx-rrd-chart-interface' ? savedInterface : savedRefresh,
+      )
+    ),
+    set: vi.fn(() => Promise.resolve()),
+    delete: vi.fn(() => Promise.resolve()),
+  } as unknown as PluginStorage;
+}
+
+function queryElement<T extends Element>(root: Element, selector: string): T {
+  const element = root.querySelector<T>(selector);
+
+  if (element === null) {
+    throw new Error(`Missing element: ${selector}`);
+  }
+
+  return element;
+}
+
+async function flushFirstPoll(fixture: ComponentFixture<AppComponentType>): Promise<void> {
+  await vi.waitFor(() => {
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('mndw-line-chart')).not.toBeNull();
+  });
+}
+
+async function createFixture(
+  savedInterface: string | null,
+  savedRefresh: string | null,
+  setTileTitle?: ((title: string) => void) | null,
+  i18n = createTestI18n(enCatalog),
+  manager = fakeManager(),
+): Promise<
+  {
+    fixture: ComponentFixture<AppComponentType>;
+    openSettings: ReturnType<typeof vi.fn>;
+    setTileTitle: ((title: string) => void) | undefined;
+  }
+> {
+  await resolveComponentResources((url: string) => {
+    if (url.endsWith('app.component.html')) {
+      return Promise.resolve(appTemplate);
+    }
+
+    if (url.endsWith('app.component.scss')) {
+      return Promise.resolve(appStyles);
+    }
+
+    throw new Error(`resource URL: ${url}`);
+  });
+
+  const openSettings = vi.fn<OpenSettingsFn>();
+  const setTileTitleInput = setTileTitle === null ? undefined : (setTileTitle ?? vi.fn<(title: string) => void>());
+
+  await TestBed.configureTestingModule({
+    imports: [AppComponentType],
+    providers: [
+      {provide: RCI_MANAGER, useValue: manager},
+      {provide: PLUGIN_STORAGE, useValue: fakeStorage(savedInterface, savedRefresh)},
+      {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(i18n, inject(DestroyRef))},
+    ],
+  }).compileComponents();
+
+  const fixture = TestBed.createComponent(AppComponentType);
+  const instance = fixture.componentInstance as unknown as {
+    openSettings: () => OpenSettingsFn;
+    setTileTitle: () => ((title: string) => void) | undefined;
+  };
+
+  instance.openSettings = () => openSettings;
+  instance.setTileTitle = () => setTileTitleInput;
+  fixtures.push(fixture);
+
+  return {fixture, openSettings, setTileTitle: setTileTitleInput};
+}
+
+afterEach(() => {
+  for (const fixture of fixtures) {
+    fixture.destroy();
+  }
+
+  fixtures = [];
+  TestBed.resetTestingModule();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe('AppComponent', () => {
+  it('updates the same probe after a locale switch', async () => {
+    const i18n = createTestI18n(enCatalog);
+    const {fixture} = await createFixture(null, null, undefined, i18n);
+
+    fixture.detectChanges();
+
+    const probe = fixture.nativeElement.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+
+    expect(probe?.textContent).toBe('Traffic English probe');
+    i18n.setLocale('ru', ruCatalog);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(probe?.textContent).toBe('Проба трафика');
+  });
+  it('passes normalized persisted refresh to settings opener', async () => {
+    const {fixture, openSettings} = await createFixture('eth1', '6000');
+
+    await fixture.componentInstance.ngOnInit();
+
+    (fixture.componentInstance as unknown as {openSettingsDialog: () => void}).openSettingsDialog();
+
+    expect(openSettings).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Widget settings',
+      selectedInterface: 'eth1',
+      refresh: 5000,
+    }));
+  });
+
+  it('rounds persisted refresh values to the nearest half second', async () => {
+    const {fixture, openSettings} = await createFixture('eth1', '2750');
+
+    await fixture.componentInstance.ngOnInit();
+
+    (fixture.componentInstance as unknown as {openSettingsDialog: () => void}).openSettingsDialog();
+
+    expect(openSettings).toHaveBeenCalledWith(expect.objectContaining({refresh: 3000}));
+  });
+
+  it('keeps a fresh widget on the empty interface state', async () => {
+    const {fixture} = await createFixture(null, '3000');
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    const select = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-select');
+
+    expect(select.getAttribute('placeholder')).toBe('Select interface…');
+  });
+
+  it('calls setTileTitle with the active interface name when provided', async () => {
+    const {fixture, setTileTitle} = await createFixture('eth1', '3000');
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    expect(setTileTitle).toHaveBeenCalledWith('WAN');
+  });
+
+  it('calls setTileTitle with an empty string when no interface is selected', async () => {
+    const {fixture, setTileTitle} = await createFixture(null, '3000');
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    expect(setTileTitle).toHaveBeenCalledWith('');
+  });
+
+  it('keeps the internal interface label when setTileTitle is absent', async () => {
+    const {fixture} = await createFixture('eth1', '3000', null);
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    const label = fixture.nativeElement.querySelector('.chart-header__label');
+
+    expect(label).not.toBeNull();
+    expect(label.textContent).toBe('WAN');
+  });
+
+  it('hides the internal interface label when setTileTitle is provided', async () => {
+    const {fixture} = await createFixture('eth1', '3000', () => undefined);
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    const label = fixture.nativeElement.querySelector('.chart-header__label');
+
+    expect(label).toBeNull();
+  });
+
+  it('renders the shared line chart with normalized properties', async () => {
+    const {fixture} = await createFixture('eth1', '3000');
+
+    await fixture.componentInstance.ngOnInit();
+    await flushFirstPoll(fixture);
+
+    const chart = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart') as HTMLElement & {
+      series?: Array<{label?: string; color?: string}>;
+      domain?: {start: number; end: number};
+    };
+
+    expect(chart.series?.map((series) => [series.label, series.color])).toEqual([
+      ['TX', 'accent'],
+      ['RX', 'success'],
+    ]);
+    expect(chart.domain?.end).toBe(new Date(2026, 0, 1, 12).getTime());
+    expect(chart.getAttribute('aria-label')).toBe('Interface traffic for WAN');
+  });
+
+  it('advances chart timestamps when newer RRD data arrives', async () => {
+    vi.useFakeTimers();
+
+    const rrdResponses = new Subject<[RrdResponse, RrdResponse]>();
+    const {fixture} = await createFixture(
+      'eth1',
+      '3000',
+      undefined,
+      createTestI18n(enCatalog),
+      fakeManager(rrdResponses),
+    );
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(1);
+
+    rrdResponses.next([{data: [{t: 100, v: 100}]}, {data: [{t: 100, v: 50}]}]);
+    fixture.detectChanges();
+
+    const chart = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart') as HTMLElement & {
+      domain?: {start: number; end: number};
+    };
+    const firstEnd = new Date(2026, 0, 1, 12).getTime();
+
+    expect(chart.domain?.end).toBe(firstEnd);
+
+    rrdResponses.next([{data: [{t: 103, v: 200}]}, {data: [{t: 103, v: 75}]}]);
+    fixture.detectChanges();
+
+    expect(chart.domain?.end).toBe(firstEnd + 3_000);
+  });
+
+  it('localizes the chart aria-label after a locale switch', async () => {
+    const i18n = createTestI18n(enCatalog);
+    const {fixture} = await createFixture('eth1', '3000', undefined, i18n);
+
+    await fixture.componentInstance.ngOnInit();
+    await flushFirstPoll(fixture);
+
+    const chart = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart');
+
+    expect(chart.getAttribute('aria-label')).toBe('Interface traffic for WAN');
+
+    i18n.setLocale('ru', ruCatalog);
+    fixture.detectChanges();
+
+    expect(chart.getAttribute('aria-label')).toBe('Трафик интерфейса WAN');
+  });
+
+  it('shows a loading state until the first poll returns', async () => {
+    const {fixture} = await createFixture('eth1', '3000');
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    expect(queryElement<HTMLElement>(fixture.nativeElement, '.loading').textContent).toBe('Loading traffic data…');
+    expect(fixture.nativeElement.querySelector('mndw-line-chart')).toBeNull();
+  });
+
+  it('shows the legend as soon as an interface is selected', async () => {
+    const {fixture} = await createFixture('eth1', '3000');
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.chart-header__legend')).not.toBeNull();
+  });
+});

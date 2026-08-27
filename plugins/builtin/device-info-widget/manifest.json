@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "name": "device-info-widget",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "Device Info",
+  "entry": "index.js",
+  "i18n": {
+    "defaultLocale": "en",
+    "locales": {
+      "en": "i18n/en.json",
+      "ru": "i18n/ru.json"
+    }
+  },
+  "size": {
+    "w": 4,
+    "h": 8,
+    "minW": 4,
+    "minH": 8
+  }
+}

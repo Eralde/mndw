@@ -1,0 +1,1 @@
+{"manifestVersion":1,"name":"i18n-missing-file","version":"1.0.0","type":"widget","label":"I18n missing file","entry":"index.js","size":{"w":2,"h":2},"i18n":{"defaultLocale":"en","locales":{"en":"i18n/en.json"}}}

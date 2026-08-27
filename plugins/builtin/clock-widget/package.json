@@ -1,0 +1,14 @@
+{
+  "name": "@mndw/example-clock-widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@mndw/sdk": "workspace:*",
+    "happy-dom": "20.11.1",
+    "vitest": "^3.2.7"
+  }
+}

@@ -1,0 +1,11 @@
+#!/bin/sh
+set -u
+
+if [ "${1:-}" != "configure" ] && [ -n "${1:-}" ]; then
+  exit 0
+fi
+
+MNDW_ROOT=${MNDW_ROOT:-/opt}
+MNDW_HELPER=${MNDW_HELPER:-$MNDW_ROOT/share/www/mndw/bin/mndw-lighttpd-port.sh}
+
+exec sh "$MNDW_HELPER" install

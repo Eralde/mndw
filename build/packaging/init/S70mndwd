@@ -1,0 +1,98 @@
+#!/bin/sh
+
+PID_FILE="/opt/var/run/mndwd.pid"
+DAEMON="/opt/sbin/mndwd"
+DATA_DIR="/opt/var/lib/mndw"
+KEY_DIR="/opt/var/lib/mndw-secrets"
+PLUGIN_RUNTIME_DIR="/opt/tmp/mndw/plugin-runtime"
+CONFIG_FILE="/opt/etc/mndw.conf"
+LOG_FILE="/opt/var/log/mndwd.log"
+
+if [ -f "$CONFIG_FILE" ]; then
+  . "$CONFIG_FILE"
+fi
+
+: "${MNDW_USER_PLUGINS_DIR:=$DATA_DIR/user-plugins}"
+export MNDW_USER_PLUGINS_DIR
+
+: "${MNDWD_MAX_CONCURRENT_EXEC_TOTAL:=8}"
+: "${MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN:=4}"
+: "${MNDWD_MAX_SUPERVISED_SERVICES:=8}"
+
+wait_for_exit() {
+  wait_pid="$1"
+  wait_seconds="$2"
+  while [ "$wait_seconds" -gt 0 ] && kill -0 "$wait_pid" 2>/dev/null; do
+    sleep 1
+    wait_seconds=$((wait_seconds - 1))
+  done
+  ! kill -0 "$wait_pid" 2>/dev/null
+}
+
+start() {
+  mkdir -p /opt/var/run "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
+  chmod 700 "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
+
+  # Always regenerate proxy config on boot (IP may have changed).
+  ROUTER_IP="$(ip -4 addr show br0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)"
+  ROUTER_IP="${ROUTER_IP:-192.168.1.1}"
+
+  cat > "$DATA_DIR/proxy-target.conf" <<EOF
+proxy.server = ( "" => (( "host" => "$ROUTER_IP", "port" => 80 )) )
+proxy.header = (
+  "map-host-request"  => ( "-" => "$ROUTER_IP" ),
+  "map-host-response" => ( "$ROUTER_IP" => "-" )
+)
+EOF
+
+  # PID guard AFTER proxy-target.conf is written.
+  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+    return 0
+  fi
+
+  "$DAEMON" \
+    --listen "127.0.0.1:9090" \
+    --data-dir "$DATA_DIR" \
+    --rci-session-state-dir "$DATA_DIR" \
+    --rci-session-key-dir "$KEY_DIR" \
+    --builtin-plugins-dir "/opt/share/www/mndw/plugins" \
+    --user-plugins-dir "$MNDW_USER_PLUGINS_DIR" \
+    --router-url "http://$ROUTER_IP" \
+    --plugin-runtime-root "$PLUGIN_RUNTIME_DIR" \
+    --max-concurrent-exec-total "$MNDWD_MAX_CONCURRENT_EXEC_TOTAL" \
+    --max-concurrent-exec-per-plugin "$MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN" \
+    --max-supervised-services "$MNDWD_MAX_SUPERVISED_SERVICES" \
+    --opkg exec \
+    >> "$LOG_FILE" 2>&1 &
+  echo "$!" > "$PID_FILE"
+}
+
+stop() {
+  if [ ! -f "$PID_FILE" ]; then
+    return 0
+  fi
+  pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    if ! wait_for_exit "$pid" 60; then
+      current_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+      if [ "$current_pid" = "$pid" ]; then
+        kill -KILL "$pid" 2>/dev/null || true
+        wait_for_exit "$pid" 2
+      fi
+    fi
+  fi
+  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+    return 1
+  fi
+  rm -f "$PID_FILE"
+}
+
+restart() { stop || return 1; start; }
+
+case "$1" in
+  start)   start ;;
+  stop)    stop ;;
+  restart) restart ;;
+  *)       echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

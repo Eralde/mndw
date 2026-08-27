@@ -1,0 +1,72 @@
+#!/bin/sh
+set -u
+
+if [ "${1:-}" != "remove" ]; then
+  exit 0
+fi
+
+MNDW_ROOT=${MNDW_ROOT:-/opt}
+MNDW_CONFIG_FILE=${MNDW_CONFIG_FILE:-$MNDW_ROOT/etc/mndw.conf}
+if [ -f "$MNDW_CONFIG_FILE" ]; then
+  . "$MNDW_CONFIG_FILE"
+fi
+
+: "${DATA_DIR:=$MNDW_ROOT/var/lib/mndw}"
+MNDW_USER_PLUGINS_DIR=${MNDW_USER_PLUGINS_DIR:-$DATA_DIR/user-plugins}
+MNDW_LEGACY_USER_PLUGIN_ROOT=$MNDW_ROOT/share/www/mndw/user-plugins
+APP_ROOT="$MNDW_ROOT/share/www/mndw"
+MNDWD_INIT=${MNDW_MNDWD_INIT:-$MNDW_ROOT/etc/init.d/S70mndwd}
+LIGHTTPD_INIT=${MNDW_LIGHTTPD_INIT:-$MNDW_ROOT/etc/init.d/S80lighttpd}
+
+migrate_legacy_user_plugins() {
+  [ -d "$MNDW_LEGACY_USER_PLUGIN_ROOT" ] || return 0
+
+  mkdir -p "$MNDW_USER_PLUGINS_DIR" || return 1
+  chmod 0755 "$MNDW_USER_PLUGINS_DIR" || return 1
+  chown 0:0 "$MNDW_USER_PLUGINS_DIR" || return 1
+
+  for plugin_dir in "$MNDW_LEGACY_USER_PLUGIN_ROOT"/*; do
+    [ -d "$plugin_dir" ] || continue
+    plugin_name=${plugin_dir##*/}
+    destination="$MNDW_USER_PLUGINS_DIR/$plugin_name"
+
+    if [ -e "$destination" ]; then
+      echo "[mndw] refusing to overwrite migrated user plugin: $destination" >&2
+      return 1
+    fi
+
+    mv "$plugin_dir" "$destination" || return 1
+  done
+
+  rmdir "$MNDW_LEGACY_USER_PLUGIN_ROOT" 2>/dev/null || true
+  return 0
+}
+
+if [ -x "$MNDWD_INIT" ]; then
+  sh "$MNDWD_INIT" stop || true
+fi
+
+if ! migrate_legacy_user_plugins; then
+  echo '[mndw] refusing package removal because user-plugin migration failed' >&2
+  exit 1
+fi
+
+rm -f "$MNDW_ROOT/var/run/mndwd.pid"
+rm -f "$MNDW_ROOT/etc/lighttpd/conf.d/81-mndw.conf"
+rm -f "$MNDW_ROOT/var/lib/mndw/lighttpd-runtime.conf"
+
+if [ -x "$LIGHTTPD_INIT" ]; then
+  if ! sh "$LIGHTTPD_INIT" restart >/dev/null 2>&1; then
+    echo '[mndw] warning: remaining lighttpd configuration could not restart after removal' >&2
+  fi
+fi
+
+if [ -d "$APP_ROOT" ]; then
+  rm -rf "$APP_ROOT"
+fi
+
+# /opt/var/lib/mndw/ data dir, /opt/var/lib/mndw-secrets/ key dir, and
+# /opt/var/log/mndwd.log are preserved for reinstall. Key dir is intentionally
+# outside exportable daemon state and is never removed by this script.
+
+exit 0

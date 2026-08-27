@@ -1,0 +1,44 @@
+[
+  {
+    "cid": "1a2c405a-fabb-11ee-911a-2559b061cca4",
+    "model": "Buddy 6 (KN-3411)",
+    "mac": "02:7d:4a:91:c3:21",
+    "known-host": "Mesh Extender A",
+    "ip": "192.168.1.138",
+    "capabilities": {"dual-band": true},
+    "fw": "5.1.1",
+    "fw-available": "5.1.1",
+    "system": {"cpuload": 1, "memory": "171412/262144", "uptime": "759"},
+    "backhaul": {
+      "uplink": "WifiMaster1/WifiStation0",
+      "root": "8000.02:7d:4a:91:c3:10",
+      "bridge": "8000.02:7d:4a:91:c3:10",
+      "cost": 50,
+      "ap": "WifiMaster1/Backhaul0",
+      "txrate": 1201,
+      "mode": "11ax",
+      "rssi": -35,
+      "security": "wpa3-psk"
+    }
+  },
+  {
+    "cid": "b89c0078-ad47-11f0-9396-67006fcfba96",
+    "model": "Atlas SE (KN-4310)",
+    "mac": "02:7d:4a:91:c3:32",
+    "known-host": "Mesh Extender B",
+    "ip": "192.168.1.36",
+    "capabilities": {"dual-band": false},
+    "fw": "5.1.1",
+    "fw-available": "5.1.1",
+    "system": {"cpuload": 0, "memory": "315624/524288", "uptime": "210"},
+    "backhaul": {
+      "uplink": "GigabitEthernet1",
+      "root": "8000.02:7d:4a:91:c3:10",
+      "bridge": "e000.02:7d:4a:91:c3:21",
+      "cost": 54,
+      "speed": "1000",
+      "duplex": "full",
+      "port-label": "0"
+    }
+  }
+]

@@ -1,0 +1,27 @@
+{
+  "name": "@mndw/example-ping-widget",
+  "version": "1.1.1",
+  "private": true,
+  "type": "module",
+  "mndw": {
+    "backendBuildScript": "build-backend",
+    "backend": {
+      "binaryName": "ping-util",
+      "entryPackage": "./cmd/ping-util"
+    }
+  },
+  "scripts": {
+    "build-backend": "mndw build-backend",
+    "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run"
+  },
+  "devDependencies": {
+    "@mndw/cli": "workspace:*",
+    "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@types/node": "22.19.15",
+    "happy-dom": "20.11.1",
+    "svelte": "^5.56.4",
+    "vitest": "^3.2.7"
+  }
+}

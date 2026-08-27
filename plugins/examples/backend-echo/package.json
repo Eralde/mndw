@@ -1,0 +1,16 @@
+{
+  "name": "@mndw/example-backend-echo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
+    "@types/node": "22.19.15",
+    "happy-dom": "20.11.1",
+    "vitest": "^3.2.7"
+  }
+}

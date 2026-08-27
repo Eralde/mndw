@@ -1,0 +1,22 @@
+{
+  "manifestVersion": 1,
+  "name": "ping-widget",
+  "version": "1.1.1",
+  "type": "widget",
+  "label": "Ping Utility",
+  "entry": "index.js",
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
+  "size": {"w": 6, "h": 4, "minW": 4, "minH": 3},
+  "backend": {
+    "kind": "service",
+    "protocolVersion": 1,
+    "command": "backend/ping-util",
+    "routes": [
+      {"id": "stats", "transport": "http", "method": "GET", "path": "stats"},
+      {"id": "hosts", "transport": "http", "method": "GET", "path": "hosts"},
+      {"id": "hostsUpdate", "transport": "http", "method": "POST", "path": "hosts"},
+      {"id": "controlGet", "transport": "http", "method": "GET", "path": "control"},
+      {"id": "controlSet", "transport": "http", "method": "POST", "path": "control"}
+    ]
+  }
+}

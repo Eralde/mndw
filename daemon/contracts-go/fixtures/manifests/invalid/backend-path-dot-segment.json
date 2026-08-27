@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 1,
+  "name": "service-path-dot-segment",
+  "version": "3.0.0",
+  "type": "page",
+  "label": "Service Backend",
+  "entry": "index.js",
+  "route": "/service",
+  "backend": {
+    "kind": "service",
+    "protocolVersion": 1,
+    "command": "backend/server",
+    "args": ["--foreground"],
+    "packages": ["ttyd"],
+    "routes": [
+      {"id": "status", "transport": "http", "method": "GET", "path": "a/../b"},
+      {"id": "terminal", "transport": "websocket", "path": "terminal", "protocols": ["tty"]}
+    ]
+  }
+}

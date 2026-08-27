@@ -1,0 +1,57 @@
+// @vitest-environment happy-dom
+
+import type {BackendClient, PluginContext} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
+import {describe, expect, it, vi} from 'vitest';
+
+import {createInstance} from './index.js';
+
+const contextFor = (
+  i18n: ReturnType<typeof createTestI18n>,
+  backend?: Partial<BackendClient>,
+): PluginContext => ({
+  i18n,
+  hostInfo: {deviceName: 'Test Device'},
+  backend,
+} as PluginContext);
+
+describe('generated Go locale reactivity', () => {
+  it('updates probe, control, and result without remounting', () => {
+    const en = {l10n: {probe: 'English probe', button: 'Run English', result: 'English result'}};
+    const ru = {l10n: {probe: 'Русский probe', button: 'Запустить', result: 'Русский result'}};
+    const i18n = createTestI18n(en, 'en');
+    const root = document.createElement('div');
+    const instance = createInstance(root, contextFor(i18n));
+    const probe = root.querySelector('[data-testid="l10n-probe"]');
+    const button = root.querySelector('button');
+    const result = root.querySelector('[data-testid="l10n-result"]');
+
+    expect(probe?.textContent).toBe(en.l10n.probe);
+    i18n.setLocale('ru', ru);
+
+    expect(root.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
+    expect(probe?.textContent).toBe(ru.l10n.probe);
+    expect(button?.textContent).toBe(ru.l10n.button);
+    expect(result?.textContent).toBe(ru.l10n.result);
+    instance.unmount();
+  });
+
+  it('updates the localized result label after a backend response', async () => {
+    const en = {l10n: {probe: 'English probe', button: 'Run English', result: 'English result'}};
+    const ru = {l10n: {probe: 'Русский probe', button: 'Запустить', result: 'Русский result'}};
+    const i18n = createTestI18n(en, 'en');
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({message: 'hello', plugin: 'p'})));
+    const root = document.createElement('div');
+    const instance = createInstance(root, contextFor(i18n, {fetch}));
+    const result = root.querySelector('[data-testid="l10n-result"]');
+
+    await vi.waitFor(() => {
+      expect(result?.textContent).toBe('English result: hello');
+    });
+
+    i18n.setLocale('ru', ru);
+
+    expect(result?.textContent).toBe('Русский result: hello');
+    instance.unmount();
+  });
+});

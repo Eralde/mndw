@@ -1,0 +1,700 @@
+/* === Scrollbar utility ===
+ *
+ * Add class `mndw-scrollbar` to any scrollable element to theme its scrollbar
+ * in Chrome/Safari/Edge (WebKit) and Firefox.
+ *
+ * Override colors per element via CSS custom properties:
+ *   --scrollbar-thumb        thumb color            (default var(--mndw-accent))
+ *   --scrollbar-thumb-hover  thumb color on hover   (default var(--mndw-accent-hover))
+ *   --scrollbar-track        track/background color (default var(--mndw-surface))
+ *   --scrollbar-size         unitless 1/16-rem steps (default 10 = 0.625rem)
+ */
+
+.mndw-scrollbar {
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb, var(--mndw-accent)) var(--scrollbar-track, var(--mndw-surface));
+}
+
+/* Chrome / Safari / Edge */
+.mndw-scrollbar::-webkit-scrollbar {
+  width: calc(var(--scrollbar-size, 10) * 0.0625rem);
+  height: calc(var(--scrollbar-size, 10) * 0.0625rem);
+}
+
+.mndw-scrollbar::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, var(--mndw-surface));
+}
+
+.mndw-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid var(--scrollbar-track, var(--mndw-surface));
+  border-radius: 0.375rem;
+  background: var(--scrollbar-thumb, var(--mndw-accent));
+}
+
+.mndw-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, var(--mndw-accent-hover));
+}
+
+.mndw-scrollbar::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track, var(--mndw-surface));
+}
+
+/* === Reset & Base === */
+
+:root {
+  --mndw-header-height: 3rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Document reset rules override shadow-host `:host` styles, so restore shared panel spacing here. */
+mndw-tab-panel {
+  padding: var(--mndw-space-3);
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  background: var(--mndw-bg);
+  color: var(--mndw-text);
+  font-family: var(--mndw-font-sans);
+}
+
+/* === App Shell === */
+
+.mndw-app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mndw-app-shell__body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.mndw-app-shell__content {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+
+/* === Header === */
+
+.mndw-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--mndw-border);
+  background: var(--mndw-surface);
+}
+
+.mndw-header__left {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.mndw-header__brand {
+  color: var(--mndw-accent);
+  font-weight: 700;
+}
+
+.mndw-header__device {
+  color: var(--mndw-text-subtle);
+  font-size: 0.85em;
+}
+
+.mndw-header__menu-toggle {
+  font-size: 1.2em;
+}
+
+.mndw-header__menu-toggle::part(button) {
+  padding: 0.25rem;
+  line-height: 1;
+}
+
+.mndw-header__right {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.mndw-header__theme-toggle {
+  font-size: 1.1em;
+}
+
+.mndw-header__theme-toggle::part(button) {
+  padding: 0.25rem;
+  line-height: 1;
+}
+
+.mndw-header__locale-select {
+  width: 4rem;
+}
+
+.mndw-header__logout {
+  display: inline-block;
+}
+
+.mndw-header__logout::part(button) {
+  padding: 0.25rem 0.75rem;
+}
+
+/* === Sidebar === */
+
+.mndw-sidebar {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  overflow-y: auto;
+  width: 12.5rem;
+  padding: 0.5rem 0;
+  border-right: 1px solid var(--mndw-border);
+  background: var(--mndw-surface);
+  transition: width 0.2s;
+}
+
+.mndw-sidebar.collapsed {
+  overflow: hidden;
+  width: 0;
+  padding: 0;
+}
+
+.mndw-sidebar__link {
+  display: block;
+  padding: 0.5rem 1rem;
+  color: var(--mndw-text-muted);
+  font-size: 0.9em;
+  text-decoration: none;
+}
+
+.mndw-sidebar__link:hover {
+  background: color-mix(in srgb, var(--mndw-accent) 10%, transparent);
+}
+
+.mndw-sidebar__link.active {
+  background: color-mix(in srgb, var(--mndw-accent) 16%, transparent);
+  color: var(--mndw-accent);
+  font-weight: 600;
+}
+
+.mndw-sidebar__section-label {
+  margin-top: 0.75rem;
+  padding: 0.375rem 1rem;
+  color: var(--mndw-text-subtle);
+  font-size: 0.75em;
+  text-transform: uppercase;
+}
+
+.mndw-sidebar__spacer {
+  flex: 1;
+}
+
+.mndw-sidebar-backdrop {
+  display: none;
+}
+
+/* 720px matches MOBILE_BREAKPOINT_PX in layout/breakpoint.ts. */
+@media (max-width: 720px) {
+  .mndw-header {
+    overflow: hidden;
+    height: var(--mndw-header-height);
+  }
+
+  .mndw-header__device {
+    overflow: hidden;
+    max-width: 35vw;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mndw-sidebar {
+    position: fixed;
+    inset: var(--mndw-header-height) auto 0 0;
+    z-index: 89;
+    width: min(80vw, 280px);
+    padding: 0.5rem 0;
+    transition: transform 0.2s ease;
+    transform: translateX(0);
+  }
+
+  .mndw-sidebar.mobile-collapsed {
+    overflow: hidden;
+    width: min(80vw, 280px);
+    padding: 0.5rem 0;
+    transform: translateX(-100%);
+  }
+
+  .mndw-sidebar-backdrop {
+    position: fixed;
+    inset: var(--mndw-header-height) 0 0 0;
+    z-index: 88;
+    display: block;
+    background: rgb(0 0 0 / 30%);
+  }
+}
+
+/* === Login === */
+
+.mndw-login {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  background: var(--mndw-bg);
+}
+
+.mndw-login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 18.75rem;
+  padding: 2rem;
+  border-radius: 0.5rem;
+  background: var(--mndw-surface);
+}
+
+.mndw-login__locale-select {
+  align-self: flex-end;
+  width: 4.5rem;
+}
+
+.mndw-login__form mndw-button {
+  display: block;
+}
+
+.mndw-login__submit {
+  margin-top: var(--mndw-space-2);
+}
+
+.mndw-login__form mndw-button::part(button) {
+  width: 100%;
+  padding: 0.5rem;
+}
+
+.mndw-login__title {
+  color: var(--mndw-accent);
+  text-align: center;
+}
+
+/* === Settings === */
+
+.mndw-settings {
+  max-width: 37.5rem;
+}
+
+.mndw-settings h2 {
+  margin-bottom: 1rem;
+}
+
+.mndw-settings h3 {
+  margin: 1.5rem 0 0.5rem;
+  color: var(--mndw-text-muted);
+}
+
+.mndw-settings mndw-tab-panel > :first-child > h3,
+.mndw-settings mndw-tab-panel > :first-child > :first-child > h3 {
+  margin-top: 0;
+}
+
+.mndw-settings ul {
+  padding: 0;
+  list-style: none;
+}
+
+.mndw-settings li {
+  padding: 0.375rem 0;
+  border-bottom: 1px solid var(--mndw-border);
+}
+
+/* === Loading === */
+
+.mndw-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: var(--mndw-text-subtle);
+}
+
+/* === Dashboard (GridStack) === */
+
+.mndw-dashboard-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mndw-dashboard-page .mndw-dashboard__grid-wrapper {
+  flex: 1;
+  min-height: 0;
+}
+
+.mndw-dashboard-page .mndw-grid-scroll {
+  overflow: auto;
+  height: 100%;
+}
+
+.mndw-dashboard-page .grid-stack {
+  height: 100%;
+  padding: 0.375rem;
+}
+
+.mndw-dashboard-page .grid-stack-item {
+  position: relative;
+  box-sizing: border-box;
+  padding: 0.25rem;
+}
+
+.mndw-grid-resize-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid var(--mndw-border);
+  border-radius: 0.25rem;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text);
+  font-size: 1.5rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  transform: translate(-50%, -50%);
+  font-variant-numeric: tabular-nums;
+}
+
+.mndw-dashboard-page .grid-stack-item-content {
+  border: 1px solid var(--mndw-border);
+  border-radius: 0.25rem;
+  background: var(--mndw-surface);
+}
+
+/* Host-owned tile frame: title, plugin body, and remove control. */
+.mndw-grid-tile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.mndw-grid-tile__title {
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 0.375rem 1.75rem 0.375rem 0.625rem;
+  border-bottom: 1px solid var(--mndw-border);
+  color: var(--mndw-text-muted);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: grab;
+  user-select: none;
+}
+
+.mndw-grid-tile__title:active {
+  cursor: grabbing;
+}
+
+.mndw-grid-tile__body {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  padding: 0.5rem;
+}
+
+.mndw-grid-tile__notice {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.mndw-grid-tile__notice--failed {
+  color: var(--mndw-danger);
+  opacity: 1;
+}
+
+.mndw-grid-tile__close {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  z-index: 2;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.1875rem;
+  background: var(--mndw-surface-raised);
+  color: var(--mndw-text-subtle);
+  font-size: 0.875rem;
+  line-height: 1;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.grid-stack-item:hover .mndw-grid-tile__close,
+.mndw-grid-tile__close:focus-visible {
+  opacity: 1;
+}
+
+.mndw-grid-tile__close:hover {
+  background: var(--mndw-danger);
+  color: var(--mndw-accent-contrast);
+}
+
+/* Mobile dashboard: one-column intrinsic-height flow (720px matches
+   MOBILE_BREAKPOINT_PX in layout/breakpoint.ts; the host renders this shell instead
+   of GridStack below it). Tiles take their content height — no row quantization. */
+.mndw-mobile-dashboard {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.625rem;
+  overflow-y: auto;
+  height: auto;
+  min-height: 0;
+  padding: 0.625rem;
+}
+
+.mndw-mobile-tile {
+  position: relative;
+  flex-shrink: 0;
+  border: 1px solid var(--mndw-border);
+  border-radius: 0.25rem;
+  background: var(--mndw-surface);
+}
+
+.mndw-mobile-tile .mndw-grid-tile {
+  height: auto;
+}
+
+.mndw-mobile-tile .mndw-grid-tile__title {
+  cursor: default;
+}
+
+.mndw-mobile-tile .mndw-grid-tile__body {
+  flex: none;
+  overflow: visible;
+  height: auto;
+  min-height: auto;
+}
+
+.mndw-mobile-tile .mndw-grid-tile__notice {
+  height: auto;
+}
+
+/* No hover on touch: the remove control is always visible on mobile tiles. */
+.mndw-mobile-tile .mndw-grid-tile__close {
+  opacity: 1;
+}
+
+.mndw-dashboard-page .mndw-dashboard__loading {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--mndw-bg);
+}
+
+.mndw-dashboard__toolbar {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--mndw-border);
+  background: var(--mndw-surface);
+}
+
+.mndw-dashboard__toolbar mndw-button {
+  display: inline-block;
+}
+
+.mndw-dashboard__toolbar mndw-button::part(button) {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.mndw-dashboard__toolbar--empty {
+  color: var(--mndw-text-subtle);
+  font-size: 0.8125rem;
+}
+
+/* === Floating Add Panel === */
+
+.mndw-floating-panel-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgb(0 0 0 / 30%);
+}
+
+.mndw-floating-panel {
+  overflow-y: auto;
+  width: min(360px, calc(100vw - 32px));
+  max-height: 80vh;
+  padding: 1rem;
+  border: 1px solid var(--mndw-border);
+  border-radius: 0.5rem;
+  background: var(--mndw-surface);
+}
+
+.mndw-floating-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.mndw-floating-panel__header h3 {
+  margin: 0;
+  color: var(--mndw-text);
+  font-size: 1rem;
+}
+
+.mndw-floating-panel__close {
+  font-size: 1.125rem;
+}
+
+.mndw-floating-panel__close::part(button) {
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+
+.mndw-floating-panel > mndw-button:not(.mndw-floating-panel__close) {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.375rem;
+}
+
+.mndw-floating-panel > mndw-button:not(.mndw-floating-panel__close)::part(button) {
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.mndw-floating-panel__empty {
+  padding: 1.25rem 0;
+  color: var(--mndw-text-subtle);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.mndw-floating-panel__deps {
+  margin-left: 0.375rem;
+  color: var(--mndw-text-subtle);
+  font-size: 0.8em;
+}
+
+.mndw-floating-panel__deps--failed {
+  color: var(--mndw-danger);
+}
+
+/* Mobile order overlay: slim reorder cards inside the shared floating panel. */
+.mndw-order-overlay__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mndw-order-card {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--mndw-border);
+  border-radius: 0.25rem;
+  background: var(--mndw-surface);
+}
+
+.mndw-order-card--dragging {
+  border-color: var(--mndw-accent);
+}
+
+.mndw-order-card__handle {
+  color: var(--mndw-text-subtle);
+  cursor: grab;
+  user-select: none;
+
+  /* Required for pointer-based drag on touch: stop the browser panning instead. */
+  touch-action: none;
+}
+
+.mndw-order-card__label {
+  flex: 1;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mndw-order-card__moves {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.mndw-order-card__moves mndw-button {
+  display: inline-block;
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.mndw-order-card__moves mndw-button::part(button) {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+}
+
+/* === Page Plugin === */
+
+.mndw-page-plugin,
+.mndw-page-plugin__mount {
+  height: 100%;
+}
+
+.mndw-page-plugin-wrap {
+  position: relative;
+  height: 100%;
+}
+
+.mndw-page-plugin__notice {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+  text-align: center;
+  opacity: 0.7;
+}

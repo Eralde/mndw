@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "plugins/builtin/**/*.ts",
+    "plugins/builtin/**/*.svelte",
+    "plugins/builtin/**/*.vue",
+    "plugins/examples/**/*.ts",
+    "plugins/examples/**/*.svelte",
+    "plugins/examples/**/*.vue"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/node_modules"
+  ]
+}

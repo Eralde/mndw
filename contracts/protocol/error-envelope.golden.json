@@ -1,0 +1,10 @@
+{
+  "kind": "error-envelope",
+  "response": {
+    "error": {
+      "code": "NOT_APPROVED",
+      "message": "plugin backend is not approved",
+      "detail": null
+    }
+  }
+}

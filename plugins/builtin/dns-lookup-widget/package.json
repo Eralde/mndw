@@ -1,0 +1,29 @@
+{
+  "name": "@mndw/example-dns-lookup-widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "mndw": {
+    "backendBuildScript": "build-backend",
+    "backendAssets": [
+      "backend/dns-util"
+    ],
+    "backend": {
+      "binaryName": "dns-util",
+      "entryPackage": "./cmd/dns-util"
+    }
+  },
+  "scripts": {
+    "build-backend": "mndw build-backend",
+    "pretest": "pnpm run build-backend",
+    "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run"
+  },
+  "devDependencies": {
+    "@mndw/cli": "workspace:*",
+    "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
+    "@types/node": "22.19.15",
+    "happy-dom": "20.11.1",
+    "vitest": "^3.2.7"
+  }
+}

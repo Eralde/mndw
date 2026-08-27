@@ -1,0 +1,49 @@
+{
+  "name": "@mndw/cli",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "mndw": "./src/index.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./go-backend": "./src/go-backend-build.ts",
+    "./go-target": "./src/go-target.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "22.19.15",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "happy-dom": "20.11.1",
+    "vite": "^6.4.3",
+    "vitest": "3.2.7"
+  },
+  "dependencies": {
+    "@angular/common": "^21.2.18",
+    "@angular/compiler": "^21.2.18",
+    "@angular/core": "^21.2.18",
+    "@angular/platform-browser": "^21.2.18",
+    "@formatjs/icu-messageformat-parser": "^3.5.16",
+    "@mndw/angular-compiler": "workspace:*",
+    "@mndw/sdk": "workspace:*",
+    "chokidar": "^5.0.0",
+    "commander": "^15.0.0",
+    "cross-spawn": "^7.0.6",
+    "esbuild": "^0.25.12",
+    "esbuild-svelte": "^0.9.5",
+    "fflate": "^0.8.2",
+    "sass": "^1.77.0",
+    "svelte": "^5.56.4",
+    "tsx": "^4.23.0",
+    "typescript": "^5.7.0",
+    "unplugin-vue": "^7.2.0",
+    "vue": "^3.5.39",
+    "zone.js": "^0.15.1"
+  }
+}

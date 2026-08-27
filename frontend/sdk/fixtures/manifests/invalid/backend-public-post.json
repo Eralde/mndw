@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "name": "bad-public-post",
+  "version": "3.0.0",
+  "type": "widget",
+  "label": "Bad",
+  "entry": "index.js",
+  "size": {"w": 2, "h": 2},
+  "backend": {
+    "kind": "exec",
+    "routes": [{"id": "write", "transport": "http", "method": "POST", "path": "write", "access": "public", "command": "backend/write"}]
+  }
+}

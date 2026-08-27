@@ -1,5 +1,4 @@
 import {Component, inject, input, signal} from '@angular/core';
-import type {Translator} from '@mndw/sdk';
 import {TRANSLATOR} from '@mndw/sdk/angular';
 
 @Component({

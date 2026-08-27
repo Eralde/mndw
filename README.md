@@ -113,9 +113,9 @@ docs/               documentation
 
 ## Documentation
 
-[Host application](docs/host-app.md)
-[Plugin system](docs/plugin-system.md)
-[Plugin author guide](docs/plugin-author-guide.md)
-[CLI and development](docs/cli-and-development.md)
-[Daemon](docs/daemon.md)
-[Deployment](docs/deployment.md)
+[Host application](docs/host-app.md) <br/>
+[Plugin system](docs/plugin-system.md) <br/>
+[Plugin author guide](docs/plugin-author-guide.md) <br/>
+[CLI and development](docs/cli-and-development.md) <br/>
+[Daemon](docs/daemon.md) <br/>
+[Deployment](docs/deployment.md) <br/>

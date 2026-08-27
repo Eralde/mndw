@@ -174,12 +174,12 @@ describe('createProgram', () => {
   });
 
   test('validates plugin manifest and prints its name and resolved path', () => {
-    const pluginDir = 'plugins/builtin/demo-page';
+    const pluginDir = 'plugins/builtin/clock-widget';
     const result = runCli(['validate', pluginDir]);
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('demo-page');
+    expect(result.stdout).toContain('clock-widget');
     expect(result.stdout).toContain(resolve(WORKSPACE_ROOT, pluginDir));
   });
 

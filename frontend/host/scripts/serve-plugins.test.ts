@@ -5,8 +5,8 @@ const dirs = {builtinDir: '/b', userDir: '/u'};
 
 describe('resolvePluginRequest', () => {
   it('maps a builtin plugin JS request (stripping the ?import query vite adds)', () => {
-    expect(resolvePluginRequest('/plugins/demo-page/index.js?import', dirs)).toEqual({
-      filePath: '/b/demo-page/index.js',
+    expect(resolvePluginRequest('/plugins/sample-page/index.js?import', dirs)).toEqual({
+      filePath: '/b/sample-page/index.js',
       contentType: 'application/javascript',
     });
   });

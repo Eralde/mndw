@@ -10,7 +10,7 @@ import {
 } from './sandbox-plugin.js';
 
 const repoRoot = '/repo';
-const pluginDir = path.resolve(repoRoot, 'plugins/builtin', 'demo-page');
+const pluginDir = path.resolve(repoRoot, 'plugins/examples', 'sample-page');
 
 function fakeFs(files: Record<string, string>): SandboxFsDeps {
   return {
@@ -49,7 +49,7 @@ describe('resolveSandboxPluginPath', () => {
   });
 
   it('resolves a relative path against the repo root', () => {
-    expect(resolveSandboxPluginPath('plugins/builtin/demo-page', repoRoot)).toBe(pluginDir);
+    expect(resolveSandboxPluginPath('plugins/examples/sample-page', repoRoot)).toBe(pluginDir);
   });
 
   it('passes an absolute path through unchanged', () => {

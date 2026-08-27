@@ -31,7 +31,7 @@ vi.mock('./widget-counter.js', () => ({
 const GRID_LAYOUT_KEY = 'mndw:dashboard:grid-layout';
 
 const PRIMARY_WIDGETS = [
-  {name: 'backend-echo', label: 'Backend Echo', size: {w: 4, h: 3, minW: 3, minH: 2}},
+  {name: 'sample-widget', label: 'Sample Widget', size: {w: 4, h: 3, minW: 3, minH: 2}},
   {name: 'clients-widget', label: 'Clients', size: {w: 6, h: 4, minW: 4, minH: 3}},
   {name: 'clock-widget', label: 'Clock', size: {w: 3, h: 2}},
   {name: 'dns-lookup-widget', label: 'DNS Lookup', size: {w: 4, h: 4, minW: 3, minH: 3}},

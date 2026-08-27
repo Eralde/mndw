@@ -64,10 +64,8 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
 
 const PACKED_GLOB = '../../../../plugins/builtin/dist';
 const EXPECTED_PLUGINS = [
-  'backend-echo',
   'clients-widget',
   'clock-widget',
-  'demo-page',
   'device-info-widget',
   'device-traffic-widget',
   'dns-lookup-widget',

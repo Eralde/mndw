@@ -464,10 +464,8 @@ Each zip includes `mndw.lock.json` with exact shared dependency versions.
 
 Built-in plugins in `plugins/builtin/`:
 
-- `demo-page`
 - `device-info-widget`
 - `tx-rx-chart-widget`
-- `backend-echo`
 - `terminal-page`
 - `clock-widget`
 - `dns-lookup-widget`
@@ -475,5 +473,7 @@ Built-in plugins in `plugins/builtin/`:
 
 Uploadable examples in `plugins/examples/`:
 
+- `backend-echo`
+- `demo-page`
 - `device-traffic-widget`
 - `ping-widget`

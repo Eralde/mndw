@@ -179,7 +179,7 @@ function harness(overrides: Partial<DevDeps> = {}): Harness {
   const waitForDaemon = vi.fn(() => Promise.resolve());
 
   const deps: DevDeps = {
-    readManifest: vi.fn(stubReadManifest('demo-page')),
+    readManifest: vi.fn(stubReadManifest('sample-page')),
     makeTempDir: vi.fn((prefix: string) => {
       const dir = `/tmp/${prefix}X`;
 
@@ -228,11 +228,11 @@ describe('runDev', () => {
   it('spawns the daemon, waits for readiness, then spawns the host with sandbox env', async () => {
     const h = harness();
 
-    await runDev('plugins/builtin/demo-page', {}, h.deps);
+    await runDev('plugins/examples/sample-page', {}, h.deps);
 
     expect(h.symlinkDir).toHaveBeenCalledWith(
-      expect.stringContaining('demo-page'),
-      expect.stringContaining('demo-page'),
+      expect.stringContaining('sample-page'),
+      expect.stringContaining('sample-page'),
     );
     expect(h.spawn).toHaveBeenNthCalledWith(
       1,
@@ -243,14 +243,14 @@ describe('runDev', () => {
         env: expect.objectContaining({MNDW_PLUGIN_RUNTIME_ROOT: '/tmp/mndw-dev-data-X/plugin-runtime'}),
       }),
     );
-    expect(h.waitForDaemon).toHaveBeenCalledWith('http://127.0.0.1:9090', 'demo-page');
+    expect(h.waitForDaemon).toHaveBeenCalledWith('http://127.0.0.1:9090', 'sample-page');
     expect(h.spawn).toHaveBeenNthCalledWith(
       2,
       'pnpm',
       ['--filter', '@mndw/host', 'dev'],
       expect.objectContaining({
         env: expect.objectContaining({
-          MNDW_SANDBOX_PLUGIN: expect.stringContaining('demo-page'),
+          MNDW_SANDBOX_PLUGIN: expect.stringContaining('sample-page'),
           MNDW_DAEMON: 'http://127.0.0.1:9090',
         }),
       }),
@@ -260,7 +260,7 @@ describe('runDev', () => {
   it('discovers the repository daemon source checkout without injected dependencies', async () => {
     const h = harness({findDaemonPackageDir: undefined});
 
-    await runDev('plugins/builtin/demo-page', {}, h.deps);
+    await runDev('plugins/examples/sample-page', {}, h.deps);
 
     expect(h.spawn).toHaveBeenNthCalledWith(
       1,
@@ -274,9 +274,9 @@ describe('runDev', () => {
     const buildGoBackend = vi.fn(() => ({success: true, skipped: false}));
     const h = harness({buildGoBackend});
 
-    await runDev('plugins/builtin/demo-page', {}, h.deps);
+    await runDev('plugins/examples/sample-page', {}, h.deps);
 
-    expect(buildGoBackend).toHaveBeenCalledWith(expect.stringContaining('demo-page'));
+    expect(buildGoBackend).toHaveBeenCalledWith(expect.stringContaining('sample-page'));
     expect(h.spawn).toHaveBeenCalled();
   });
 
@@ -317,7 +317,7 @@ describe('runDev', () => {
     const buildGoBackend = vi.fn(() => ({success: true, skipped: true}));
     const h = harness({buildGoBackend});
 
-    await runDev('plugins/builtin/demo-page', {}, h.deps);
+    await runDev('plugins/examples/sample-page', {}, h.deps);
 
     expect(buildGoBackend).toHaveBeenCalled();
     expect(h.spawn).toHaveBeenCalled();
@@ -327,7 +327,7 @@ describe('runDev', () => {
     const buildGoBackend = vi.fn(() => ({success: false, skipped: false, error: 'go build failed'}));
     const h = harness({buildGoBackend});
 
-    await expect(runDev('plugins/builtin/demo-page', {}, h.deps)).rejects.toThrow(/Go backend build failed/);
+    await expect(runDev('plugins/examples/sample-page', {}, h.deps)).rejects.toThrow(/Go backend build failed/);
     expect(h.spawn).not.toHaveBeenCalled();
     expect(h.removeDir).toHaveBeenCalled();
   });
@@ -339,7 +339,7 @@ describe('runDev', () => {
       }),
     });
 
-    await expect(runDev('plugins/builtin/demo-page', {}, h.deps)).rejects.toThrow(CliError);
+    await expect(runDev('plugins/examples/sample-page', {}, h.deps)).rejects.toThrow(CliError);
     expect(h.spawn).not.toHaveBeenCalled();
     // The temp dirs it created are cleaned up.
     expect(h.removeDir).toHaveBeenCalled();
@@ -348,7 +348,7 @@ describe('runDev', () => {
   it('terminates both children and removes only its temp dirs on a shutdown signal', async () => {
     const h = harness();
 
-    await runDev('plugins/builtin/demo-page', {}, h.deps);
+    await runDev('plugins/examples/sample-page', {}, h.deps);
 
     const signalHandler = h.getSignalHandler();
 
@@ -366,7 +366,7 @@ describe('runDev', () => {
   it('terminates both children and cleans up when either child exits', async () => {
     const h = harness();
 
-    await runDev('plugins/builtin/demo-page', {}, h.deps);
+    await runDev('plugins/examples/sample-page', {}, h.deps);
     h.removeDir.mockClear();
 
     // The daemon child exits.

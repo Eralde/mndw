@@ -45,8 +45,8 @@ describe('readManifest', () => {
     process.env.INIT_CWD = resolve(import.meta.dirname, '../../..');
 
     try {
-      expect(resolvePluginDir('plugins/builtin/demo-page')).toBe(
-        resolve(process.cwd(), 'plugins/builtin/demo-page'),
+      expect(resolvePluginDir('plugins/examples/sample-page')).toBe(
+        resolve(process.cwd(), 'plugins/examples/sample-page'),
       );
     } finally {
       if (initCwd !== undefined) {
@@ -107,10 +107,10 @@ describe('readManifest', () => {
   });
 
   test('returns validated fixture manifest and absolute manifest path', () => {
-    const pluginDir = resolve(import.meta.dirname, '../../../plugins/builtin/demo-page');
+    const pluginDir = resolve(import.meta.dirname, '../../../plugins/builtin/clock-widget');
 
     expect(readManifest(pluginDir)).toEqual({
-      manifest: expect.objectContaining({name: 'demo-page'}),
+      manifest: expect.objectContaining({name: 'clock-widget'}),
       path: resolve(pluginDir, 'manifest.json'),
     });
   });

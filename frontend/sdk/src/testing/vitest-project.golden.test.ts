@@ -3,7 +3,7 @@ import {describe, expect, it} from 'vitest';
 import {defineMndwVitestProject} from './vitest-project.js';
 
 describe('defineMndwVitestProject goldens', () => {
-  it('plain happy-dom + setupFiles (e.g. backend-echo)', () => {
+  it('plain happy-dom + setupFiles (e.g. clock-widget)', () => {
     expect(defineMndwVitestProject({environment: 'happy-dom', setupFiles: ['./vitest.setup.ts']})).toEqual({
       test: {environment: 'happy-dom', setupFiles: ['./vitest.setup.ts']},
     });

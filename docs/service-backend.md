@@ -92,7 +92,7 @@ approval or enabled state can change after that snapshot was loaded.
 Plugins with a backend client can query live daemon state without executing a
 route:
 
-``ts
+```ts
 const status = await context.backend?.status({signal});
 
 if (status?.state === 'blocked') {
@@ -100,7 +100,7 @@ if (status?.state === 'blocked') {
     // Use blocker.reason and blocker.prerequisite as machine-readable codes.
   }
 }
-``
+```
 
 `status()` always performs an authenticated, live request to
 `GET /api/plugins/<plugin-name>/_mndw/status`. It is passive, bound to the

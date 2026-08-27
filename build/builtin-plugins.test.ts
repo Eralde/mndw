@@ -147,8 +147,10 @@ describe('granular built-in builders', () => {
   it('leaves named dist output untouched when a granular step fails', async () => {
     const fixture = fixturePlugin();
     const existing = join(fixture.distRoot, 'sample');
+
     mkdirSync(existing, {recursive: true});
     writeFileSync(join(existing, 'marker'), 'last-good');
+
     const promote = vi.fn();
 
     try {

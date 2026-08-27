@@ -6,6 +6,7 @@
 // re-declare the manifest shape by hand anywhere.
 
 import {z} from 'zod';
+import {isReservedPageRoute} from './page-routes.js';
 
 const pluginNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, {
   message: 'name must be lowercase alphanumeric with hyphens (e.g. my-widget)',
@@ -261,7 +262,7 @@ const sizeSchema = z.object({
   });
 
 const pageRouteSchema = z.string().regex(/^\/[^/?#*]+$/)
-  .refine((route) => !['/', '/login', '/settings'].includes(route), {message: 'route is reserved by the host'});
+  .refine((route) => !isReservedPageRoute(route), {message: 'route is reserved by the host'});
 
 const baseFields = {
   manifestVersion: versionSchema,

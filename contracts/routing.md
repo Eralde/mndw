@@ -28,7 +28,8 @@ Production listener and upstream facts:
 
 Development proxy targets are configured by `frontend/host/vite.config.ts`: `/api` and `/ws` use
 `MNDW_DAEMON` (default `http://127.0.0.1:9090`), while `/rci` and `/auth` use
-`MNDW_HOST_DEVICE`.
+`MNDW_HOST_DEVICE`. Set `MNDW_HOST_DEVICE` to a full device URL, for example
+`http://192.168.1.1`, not a bare IP address.
 
 Ownership rules:
 

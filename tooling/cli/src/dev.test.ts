@@ -338,10 +338,12 @@ describe('watchPluginBackend', () => {
     const result = watchOptions?.onResult;
 
     expect(result).toBeDefined();
+
     const pending = result?.({ok: true, value: successfulBuild(), changed: [], generation: 1}, {
       generation: 1,
       isCurrent: () => true,
     });
+
     await Promise.resolve();
     expect(touchSentinel).not.toHaveBeenCalled();
 
@@ -618,6 +620,7 @@ describe('runDev', () => {
     const h = harness();
 
     const {dev} = await startDev(h);
+
     h.removeDir.mockClear();
 
     // The daemon child exits.
@@ -634,8 +637,11 @@ describe('runDev', () => {
       path: '/repo/manifest.json',
     })) as unknown as DevDeps['readManifest']});
     const close = deferred<void>();
+
     h.watcher.close.mockReturnValue(close.promise);
+
     const {dev} = await startDev(h);
+
     h.removeDir.mockClear();
 
     h.getSignalHandler()?.();

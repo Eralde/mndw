@@ -155,6 +155,7 @@ describe('createProgram', () => {
 
   test('passes --skip-backend-build through to packPlugin', async () => {
     const pluginDir = createPluginDirectory(VALID_MANIFEST);
+
     mkdirSync(resolve(pluginDir, 'src'));
     writeFileSync(resolve(pluginDir, 'src/index.ts'), 'export {}');
     packPluginSpy.mockResolvedValue({manifest: {name: 'source-entry-plugin'}, outDir: pluginDir, warnings: []});

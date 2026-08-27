@@ -3,7 +3,7 @@
     "probe": "Echo English probe"
   },
   "title": "Backend Echo",
-  "status": "status",
+  "status": "Status code",
   "get": "GET /echo",
   "post": "POST /echo",
   "idle": "Press GET or POST to call the backend.",

@@ -1,3 +1,4 @@
+import {isReservedPageRoute} from '@mndw/sdk';
 import {createRouter} from 'sv-router';
 import DashboardPage from '../dashboard/DashboardPage.svelte';
 import AppShell from '../layout/AppShell.svelte';
@@ -32,10 +33,7 @@ function assertPageBaseRoute(route: string, name: string): void {
 }
 
 function assertRouteIsAvailable(route: string, name: string): void {
-  if (
-    route === '/' || route === '/login' || route === '/packages' || route === '/packages/services'
-    || route === '/settings'
-  ) {
+  if (isReservedPageRoute(route)) {
     throw new Error(`Page plugin "${name}" route "${route}" conflicts with a reserved static route`);
   }
 }

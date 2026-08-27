@@ -4,6 +4,7 @@ import {
   type PaletteTokenMap,
   validateImportedPalette,
 } from '@mndw/sdk';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 
 interface Props {
   disabled: boolean;
@@ -86,7 +87,7 @@ function onDrop(event: DragEvent): void {
 >
   <input
     accept=".json,application/json"
-    aria-label="Import palette JSON"
+    aria-label={hostT('settings.palette-import-aria-label')}
     {disabled}
     type="file"
     onchange={onInput}

@@ -224,7 +224,6 @@ export const initLocale = (): string => defaultService.initLocale();
 export const getLocale = (): string => defaultService.getLocale();
 export const setLocale = (locale: string): Promise<void> => defaultService.setLocale(locale);
 export const subscribeLocale = (listener: LocaleListener): () => void => defaultService.subscribeLocale(listener);
-export const isLocaleSwitchPending = (): boolean => defaultService.isLocaleSwitchPending();
 export const subscribeLocalePending = (listener: (pending: boolean) => void): () => void =>
   defaultService.subscribeLocalePending(listener);
 export const hostT = (key: string, values?: Record<string, unknown>, locale?: string): string =>

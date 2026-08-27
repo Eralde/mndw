@@ -121,10 +121,15 @@ export function watchAndBuild<T>(opts: WatchBuildOptions<T>, deps: WatchDeps = {
     }
 
     running = true;
+
     const changed = [...pendingPaths];
+
     pendingPaths.clear();
+
     const generation = ++generationCounter;
+
     currentGeneration = generation;
+
     let invalidated = false;
     const context: BuildGenerationContext = {
       generation,
@@ -183,6 +188,7 @@ export function watchAndBuild<T>(opts: WatchBuildOptions<T>, deps: WatchDeps = {
 
     pendingPaths.add(changedPath);
     schedule();
+
     for (const listener of listeners) {
       listener(changedPath);
     }

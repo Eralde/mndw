@@ -19,6 +19,7 @@ import {appState} from '../state/app.svelte.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {pluginRegistry} from './plugin-registry.js';
 import {createTestPluginContext} from './test-plugin-context.js';
+import {decidePackedSmoke} from './packed-smoke-gate.js';
 import {mountPlugin, unmountPlugin} from './plugin-lifecycle.js';
 import type {PageListEntry, PluginListEntry, WidgetListEntry} from './plugin-types.js';
 
@@ -110,10 +111,6 @@ const packedReady = EXPECTED_PLUGINS.every((name) => {
     packedCatalogFiles[`${PACKED_GLOB}/${name}/${path}`] !== undefined
   );
 });
-
-if (!packedReady) {
-  console.warn('Skipping built-in Angular l10n smoke: packed dist missing; run pnpm build-builtin-plugins first.');
-}
 
 function packedManifest(name: string): PackedManifest {
   const manifest = packedManifests[`${PACKED_GLOB}/${name}/manifest.json`];
@@ -280,7 +277,19 @@ class SmokeMutationObserver {
   }
 }
 
-const smoke = packedReady ? describe : describe.skip;
+const smokeDecision = decidePackedSmoke(packedReady, process.env.MNDW_SKIP_PACKED_SMOKE);
+
+if (smokeDecision === 'fail') {
+  throw new Error(
+    'Packed Angular l10n smoke requires dist; run pnpm build-builtin-plugins or set MNDW_SKIP_PACKED_SMOKE=1 for a unit-only run.',
+  );
+}
+
+if (smokeDecision === 'skip') {
+  console.warn('Skipping built-in Angular l10n smoke by explicit MNDW_SKIP_PACKED_SMOKE=1.');
+}
+
+const smoke = smokeDecision === 'run' ? describe : describe.skip;
 
 afterEach(() => {
   vi.unstubAllGlobals();

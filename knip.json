@@ -12,6 +12,10 @@
         "index.html",
         "scripts/**/*.ts",
         "src/**/*.test.ts"
+      ],
+      "ignoreDependencies": [
+        "d3",
+        "hash-wasm"
       ]
     },
     "frontend/sdk": {
@@ -24,6 +28,9 @@
       "entry": [
         "src/**/*.test.ts",
         "e2e/**/*.ts"
+      ],
+      "ignoreDependencies": [
+        "vite"
       ]
     },
     "frontend/ui-svelte": {
@@ -36,8 +43,29 @@
         "src/**/*.test.ts"
       ]
     },
-    "frontend/ui-angular": {},
-    "frontend/angular-compiler": {},
+    "frontend/ui-angular": {
+      "entry": [
+        "src/**/*.test.ts",
+        "test-fixtures/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "test-fixtures/**/*.ts"
+      ]
+    },
+    "frontend/angular-compiler": {
+      "entry": [
+        "src/**/*.test.ts"
+      ],
+      "project": "src/**/*.ts",
+      "ignoreDependencies": [
+        "@angular/common",
+        "@angular/core",
+        "@angular/platform-browser",
+        "@mndw/sdk",
+        "rxjs"
+      ]
+    },
     "tooling/cli": {
       "entry": [
         "src/**/*.test.ts"
@@ -71,5 +99,22 @@
   "ignoreBinaries": [
     "go"
   ],
+  "ignoreFiles": [
+    "build/svelte-compiler-options.d.ts"
+  ],
+  "ignoreDependencies": [
+    "stylelint-config-standard"
+  ],
+  "ignoreIssues": {
+    "frontend/ui/src/position/position.ts": [
+      "duplicates"
+    ],
+    "frontend/ui/src/table/table.ts": [
+      "types"
+    ],
+    "frontend/ui/src/tokens-required.ts": [
+      "types"
+    ]
+  },
   "ignoreExportsUsedInFile": true
 }

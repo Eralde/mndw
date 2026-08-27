@@ -2,8 +2,8 @@
 import type {PluginContext} from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
 
-const {ctx}: {ctx: PluginContext} = $props();
-const translator = createTranslator(ctx.i18n);
+let {ctx}: {ctx: PluginContext} = $props();
+const translator = $derived(createTranslator(ctx.i18n));
 
 let count = $state(0);
 </script>

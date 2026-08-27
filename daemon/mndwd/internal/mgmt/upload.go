@@ -214,7 +214,7 @@ func (h *Handler) readUploadBody(w http.ResponseWriter, r *http.Request) ([]byte
 }
 
 // ensureNameFree rejects an upload whose name is already installed/pending or shadows
-// a builtin. For 2a a re-upload requires an explicit deny/delete first — predictable
+// a builtin. For a re-upload, explicit deny/delete is required first — predictable
 // and collision-safe.
 func (h *Handler) ensureNameFree(name string) *httpx.APIError {
 	if record, exists := h.store.Get(name); exists && !record.RemovalPending {

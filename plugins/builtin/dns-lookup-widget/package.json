@@ -24,7 +24,6 @@
     "@mndw/ui": "workspace:*",
     "@types/node": "22.19.15",
     "happy-dom": "20.11.1",
-    "tsx": "^4.23.0",
     "vitest": "^3.2.7"
   }
 }

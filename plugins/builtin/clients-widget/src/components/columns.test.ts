@@ -81,11 +81,11 @@ describe('buildColumns', () => {
     expect(accessorOf('ip')(client({ip: '10.0.0.1'}))).toBe('10.0.0.1');
   });
 
-  it('connection accessor builds a wireless line', () => {
-    const wireless: WirelessConnectionInfo = {accessPointId: 'ap0', bands: ['2', '5'], txrate: 300, rssi: -50, txss: 2};
+  it('connection accessor keeps wireless rows identifiable with RSSI and transmit rate', () => {
+    const wireless: WirelessConnectionInfo = {accessPointId: 'ap0', txrate: 300, rssi: -50, txss: 2};
 
     expect(accessorOf('connection')(client({connectionType: 'wireless', connection: wireless})))
-      .toEqual({kind: 'wireless', text: 'RSSI: -50; 300 Mbps; 2.4 GHz, 5 GHz'} satisfies ConnectionView);
+      .toEqual({kind: 'wireless', text: 'RSSI: -50; 300 Mbps'} satisfies ConnectionView);
   });
 
   it('connection accessor is none for unknown', () => {
@@ -104,13 +104,6 @@ describe('buildColumns', () => {
       accessorOf('connection')(client({connectionType: 'wired', connection: {speed: Number.NaN, port: 'undefined'}})),
     )
       .toEqual({kind: 'wired', speed: '—', port: '—'} satisfies ConnectionView);
-  });
-
-  it('connection accessor dashes empty wireless bands', () => {
-    const wireless: WirelessConnectionInfo = {accessPointId: 'ap0', bands: [], txrate: 300, rssi: -50, txss: 2};
-
-    expect(accessorOf('connection')(client({connectionType: 'wireless', connection: wireless})))
-      .toEqual({kind: 'wireless', text: 'RSSI: -50; 300 Mbps; —'} satisfies ConnectionView);
   });
 
   it('uptime accessor returns a dash with no title when null', () => {

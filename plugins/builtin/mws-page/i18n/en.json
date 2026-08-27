@@ -189,7 +189,7 @@
     "mac": "MAC",
     "ip": "IP",
     "firmware": "Firmware",
-    "update-available": "update available: {version}",
+    "update-available": "Update available: {version}",
     "uptime": "Uptime",
     "cpu-load": "CPU load",
     "memory": "Memory",

@@ -6,12 +6,15 @@
   "action": {
     "refresh": "Обновить",
     "add": "Добавить",
-    "delete": "Удалить"
+    "delete": "Удалить",
+    "rename-host": "Переименовать хост {ip}",
+    "delete-host": "Удалить хост {ip}"
   },
   "field": {
     "host-ip": "IP хоста",
     "label-optional": "Метка (необязательно)",
-    "poll": "Интервал"
+    "poll": "Интервал",
+    "label-for-host": "Метка для {ip}"
   },
   "table": {
     "aria-label": "Статистика ping",

@@ -22,12 +22,10 @@ export interface WiredConnectionInfo {
   port: string | null;
 }
 
-export type WifiBand = '2' | '5' | '6';
 export type HostConnectionType = 'wired' | 'wireless' | 'unknown';
 
 export interface WirelessConnectionInfo {
   accessPointId: string;
-  bands: WifiBand[];
   txrate: number;
   rssi: number;
   txss: number;
@@ -146,11 +144,9 @@ const getWirelessConnectionInfo = (host: RawDeviceHost): WirelessConnectionInfo 
   });
 
   const accessPointId = connectionInfo.ap ?? '';
-  const bands = ['2' as const]; // TODO: get real bands list
 
   return {
     accessPointId,
-    bands,
     txss: connectionInfo.txss ?? 0,
     txrate: connectionInfo.txrate ?? 0,
     rssi: connectionInfo.rssi ?? 0,

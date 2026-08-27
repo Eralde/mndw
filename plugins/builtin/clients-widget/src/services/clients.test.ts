@@ -164,11 +164,11 @@ describe('normalizeClients — wireless connection', () => {
 
     expect(record.connection).toEqual({
       accessPointId: 'ap-1',
-      bands: ['2'],
       txss: 2,
       txrate: 866,
       rssi: -42,
     });
+    expect(record.connection).not.toHaveProperty('bands');
   });
 });
 

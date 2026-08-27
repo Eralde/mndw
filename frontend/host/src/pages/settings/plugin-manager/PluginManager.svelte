@@ -4,6 +4,7 @@ import {SvelteMap} from 'svelte/reactivity';
 
 import {appState} from '../../../state/app.svelte.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 import {
   type MgmtClient,
   type RuntimeLimits,
@@ -302,9 +303,9 @@ onMount(() => {
     {#if runtimeLimits}
       <section
         class="mndw-runtime-capacity"
-        aria-label="Backend capacity"
+        aria-label={hostT('settings.backend-capacity')}
       >
-        <strong>Backend capacity</strong>
+        <strong>{hostT('settings.backend-capacity')}</strong>
         <span>Exec: {runtimeLimits.currentExec}/{
             runtimeLimits.maxConcurrentExecTotal
           }</span>

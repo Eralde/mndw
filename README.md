@@ -31,8 +31,8 @@ pnpm dev
 ```
 
 Development starts the host and connects browser traffic to a local `mndwd --dev`
-daemon and a real device. Set `MNDW_HOST_DEVICE=<DEVICE_IP>` to proxy requests
-to that device.
+daemon and a real device. Set `MNDW_HOST_DEVICE=<DEVICE_URL>` to proxy requests
+to that device, for example `MNDW_HOST_DEVICE=http://192.168.1.1`.
 
 ## Plugin authoring
 

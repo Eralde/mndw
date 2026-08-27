@@ -74,6 +74,9 @@
     "controller-token-rejected": "Токен контроллера отклонён",
     "firmware-unsupported": "Прошивка устройства не поддерживает постоянные сеансы rci/",
     "device-unreachable": "Устройство недоступно",
+    "palette-import-aria-label": "Импорт JSON-палитры",
+    "backend-capacity": "Ёмкость серверной части",
+    "upload-plugin-zip": "Загрузить ZIP плагина",
     "diagnostics-description": "Скачать состояние демона и плагинов для диагностики.",
     "download-diagnostics": "Скачать диагностику",
     "downloading": "Скачивание…",
@@ -89,7 +92,7 @@
     "username": "Имя пользователя",
     "password": "Пароль",
     "submit": "Войти",
-    "logging-in": "Выполняется вход...",
+    "logging-in": "Выполняется вход…",
     "invalid-credentials": "Неверные учётные данные",
     "connection-failed": "Ошибка соединения"
   },

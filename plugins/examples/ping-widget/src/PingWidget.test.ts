@@ -4,6 +4,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {BackendClient, PluginI18n} from '@mndw/sdk';
 import {createTestI18n} from '@mndw/sdk/testing';
 import enCatalog from '../i18n/en.json';
+import ruCatalog from '../i18n/ru.json';
 import PingWidget from './PingWidget.svelte';
 
 interface MockFetchOptions {
@@ -198,6 +199,20 @@ describe('PingWidget', () => {
 
     expect(host.textContent).toMatch(/unavailable/i);
     await unmount(app);
+  });
+
+  it('resolves localized host action labels with IP interpolation', () => {
+    const i18n = createTestI18n(enCatalog);
+
+    expect(i18n.t('field.label-for-host', {ip: '9.9.9.9'})).toBe('Label for 9.9.9.9');
+    expect(i18n.t('action.rename-host', {ip: '9.9.9.9'})).toBe('Rename host 9.9.9.9');
+    expect(i18n.t('action.delete-host', {ip: '9.9.9.9'})).toBe('Delete host 9.9.9.9');
+
+    i18n.setLocale('ru', ruCatalog);
+
+    expect(i18n.t('field.label-for-host', {ip: '9.9.9.9'})).toBe('Метка для 9.9.9.9');
+    expect(i18n.t('action.rename-host', {ip: '9.9.9.9'})).toBe('Переименовать хост 9.9.9.9');
+    expect(i18n.t('action.delete-host', {ip: '9.9.9.9'})).toBe('Удалить хост 9.9.9.9');
   });
 
   it('marks Add control as aligned with the input control row', () => {

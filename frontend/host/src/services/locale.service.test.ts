@@ -125,9 +125,18 @@ describe('locale service', () => {
   });
 
   it('translates synchronously and formats with the committed locale', async () => {
+    initLocale();
+
+    expect(hostT('settings.palette-import-aria-label')).toBe('Import palette JSON');
+    expect(hostT('settings.backend-capacity')).toBe('Backend capacity');
+    expect(hostT('settings.upload-plugin-zip')).toBe('Upload plugin ZIP');
+
     await setLocale('ru');
 
     expect(hostT('app.loading')).toBe('Загрузка…');
+    expect(hostT('settings.palette-import-aria-label')).toBe('Импорт JSON-палитры');
+    expect(hostT('settings.backend-capacity')).toBe('Ёмкость серверной части');
+    expect(hostT('settings.upload-plugin-zip')).toBe('Загрузить ZIP плагина');
     expect(hostFormatNumber(1234.5)).toContain('1');
     expect(hostFormatNumber(1234.5)).toContain('234');
     expect(hostFormatDate(new Date('2026-01-02T03:04:00Z'), {timeZone: 'UTC'})).toContain('2026');

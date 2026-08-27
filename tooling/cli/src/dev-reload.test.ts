@@ -19,6 +19,7 @@ describe('createReloadSentinel', () => {
 
   it('pre-creates a unique repo-local sentinel with counter zero and changes content on each touch', () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'mndw-reload-test-'));
+
     tempRoots.push(repoRoot);
 
     const sentinel = createReloadSentinel(repoRoot);
@@ -35,6 +36,7 @@ describe('createReloadSentinel', () => {
 
   it('creates isolated sentinel paths for concurrent sessions', () => {
     const repoRoot = mkdtempSync(join(tmpdir(), 'mndw-reload-test-'));
+
     tempRoots.push(repoRoot);
 
     const first = createReloadSentinel(repoRoot);
@@ -105,6 +107,7 @@ describe('restartService', () => {
 
   it('aborts a stalled restart request at the bounded timeout', async () => {
     vi.useFakeTimers();
+
     const fetch = vi.fn<typeof globalThis.fetch>((_url, init) =>
       new Promise<Response>((_resolve, reject) => {
         init?.signal?.addEventListener('abort', () => reject(new Error('aborted')), {once: true});

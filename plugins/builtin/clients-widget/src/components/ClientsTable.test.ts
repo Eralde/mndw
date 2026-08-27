@@ -18,7 +18,7 @@ const translator = createTestI18n({
   'empty.found': 'No clients found',
   'empty.connected': 'No clients connected',
   'loading': 'Loading clients…',
-  'error': 'show device-list failed',
+  'error': 'Failed to show device list',
   'link.online': 'Online',
   'link.offline': 'Offline',
   'link.unavailable': 'Unavailable',

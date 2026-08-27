@@ -44,6 +44,7 @@ export type {
 } from './manifest.js';
 export {pluginManifestSchema} from './manifest-schema.js';
 export type {PluginManifestInput, PluginManifestOutput} from './manifest-schema.js';
+export {isReservedPageRoute, RESERVED_PAGE_ROUTES} from './page-routes.js';
 export {classifyMwsMemberEligibility, mwsMemberSchema, normalizeMwsMemberFqdn} from './mws-member-schema.js';
 export type {MwsMember, MwsMemberEligibility, MwsMemberEligibilityReason} from './mws-member-schema.js';
 export {ManifestValidationError, validateManifest} from './manifest-validator.js';

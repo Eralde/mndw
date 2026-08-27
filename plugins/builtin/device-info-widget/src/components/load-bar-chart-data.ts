@@ -1,6 +1,5 @@
-import {MAX_LOAD_HISTORY_POINTS as LOAD_HISTORY_LIMIT, normalizeHistory} from '../services/load-history.js';
+import {normalizeHistory} from '../services/load-history.js';
 
-export const MAX_LOAD_HISTORY_POINTS = LOAD_HISTORY_LIMIT;
 export const prepareChartHistory = normalizeHistory;
 
 export interface ChartBar {

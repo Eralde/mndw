@@ -43,6 +43,7 @@ describe('backend development watch integration', () => {
     }
 
     vi.stubEnv('CHOKIDAR_USEPOLLING', '1');
+
     const fixture = backendFixture();
     const sentinel = createReloadSentinel(fixture.root);
     const restartServiceSpy = vi.fn(restartService);
@@ -80,6 +81,7 @@ describe('backend development watch integration', () => {
 
     try {
       await new Promise((resolveReady) => setTimeout(resolveReady, 500));
+
       const temporarySource = join(fixture.pluginDir, 'backend', '.editor.tmp');
 
       writeFileSync(temporarySource, 'package main\n\nfunc main() { println("v2") }\n');

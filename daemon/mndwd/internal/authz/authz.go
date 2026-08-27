@@ -120,8 +120,20 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 
 			return
 		}
+		if requiresCSRF(r.Method) && !httpx.RequireCSRF(w, v.logger, r) {
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func requiresCSRF(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
 }
 
 // replay asks the router whether the cookie names a live session. Any transport

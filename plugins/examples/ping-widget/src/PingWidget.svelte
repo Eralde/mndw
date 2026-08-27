@@ -431,7 +431,7 @@ onMount(() => {
                       type="text"
                       role="textbox"
                       tabindex="0"
-                      aria-label={`Label for ${ip}`}
+                      aria-label={t('field.label-for-host', {ip})}
                       value={state.draft}
                       disabled={state.status === 'saving'}
                       onmndwinput={(event: CustomEvent<{value: string}>) =>
@@ -457,7 +457,7 @@ onMount(() => {
                   <mndw-button
                     variant="ghost"
                     class="host-display"
-                    aria-label={`Rename host ${ip}`}
+                    aria-label={t('action.rename-host', {ip})}
                     onclick={() => beginRename(ip, row.name ?? '')}
                   >
                     {#if label}
@@ -486,7 +486,7 @@ onMount(() => {
                 <mndw-button
                   variant="danger"
                   class="compact"
-                  aria-label={`Delete host ${ip}`}
+                  aria-label={t('action.delete-host', {ip})}
                   disabled={state.status === 'saving'}
                   onclick={() => void removeHost(ip)}
                 >{t('action.delete')}</mndw-button>

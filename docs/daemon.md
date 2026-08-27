@@ -112,13 +112,16 @@ and report `BACKEND_INCOMPATIBLE`.
 
 ## Authentication and authorization
 
-Management routes require a valid router session. Private plugin routes also
-require it; public route access is per-route and only GET/HEAD HTTP routes may
-be public. Public access never bypasses approval or enabled checks. `--dev`
-bypasses session validation and logs that fact.
+Management routes require a valid router session, and unsafe management
+mutations also require the fixed `X-Mndw-Csrf: 1` header. Private plugin routes
+also require session access; public route access is per-route and only GET/HEAD
+HTTP routes may be public. Public access never bypasses approval or enabled
+checks. `--dev` bypasses session validation but does not bypass CSRF on unsafe
+management mutations.
 
 WebSocket Origin is checked at the gateway. No CORS headers are emitted, and
-the fixed `X-Mndw-Csrf: 1` header is required for unsafe private HTTP calls.
+the fixed `X-Mndw-Csrf: 1` header is required for unsafe private HTTP and
+management calls.
 Maintenance closes sockets with WebSocket close code `1012` and reason
 `mndw updating`; clients show explicit reconnect UX and do not silently resume.
 

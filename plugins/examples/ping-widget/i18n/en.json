@@ -6,12 +6,15 @@
   "action": {
     "refresh": "Refresh now",
     "add": "Add",
-    "delete": "Delete"
+    "delete": "Delete",
+    "rename-host": "Rename host {ip}",
+    "delete-host": "Delete host {ip}"
   },
   "field": {
     "host-ip": "Host IP",
     "label-optional": "Label (optional)",
-    "poll": "Poll"
+    "poll": "Poll",
+    "label-for-host": "Label for {ip}"
   },
   "table": {
     "aria-label": "Ping statistics",

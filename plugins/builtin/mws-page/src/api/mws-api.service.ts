@@ -3,7 +3,6 @@ import {type Observable, map, throwError} from 'rxjs';
 import {type MwsRenameApi, RCI_MANAGER} from '../tokens';
 import type {BridgeInterfaceRecord, DeviceHostRecord, MwsMemberRecord, ShowVersionRecord} from './rci.types';
 import {
-  MwsApiParseError,
   normalizeBridge,
   normalizeControllerDescription,
   normalizeDeviceHosts,
@@ -122,5 +121,3 @@ export class MwsApiService implements MwsRenameApi {
     );
   }
 }
-
-export {MwsApiParseError};

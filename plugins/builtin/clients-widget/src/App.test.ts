@@ -275,7 +275,7 @@ describe('errors', () => {
     mountWidget();
     await flush();
 
-    expect(text()).toContain('show device-list failed');
+    expect(text()).toContain('Failed to show device list');
     expect(text()).not.toMatch(/Clients \(/);
   });
 
@@ -290,7 +290,7 @@ describe('errors', () => {
 
     expect(rowNames()).toEqual(['Client A']);
     expect(text()).toContain('Clients (1)');
-    expect(text()).not.toContain('show device-list failed');
+    expect(text()).not.toContain('Failed to show device list');
     expect(warn).toHaveBeenCalled();
   });
 
@@ -298,13 +298,13 @@ describe('errors', () => {
     queue = vi.fn(() => throwError(() => new Error('offline')));
     mountWidget();
     await flush();
-    expect(text()).toContain('show device-list failed');
+    expect(text()).toContain('Failed to show device list');
 
     queue.mockImplementation(() => of(fixture));
     vi.advanceTimersByTime(3000);
     await flush();
 
-    expect(text()).not.toContain('show device-list failed');
+    expect(text()).not.toContain('Failed to show device list');
     expect(rowNames()).toEqual(['Client A']);
   });
 });
@@ -447,7 +447,7 @@ describe('storage', () => {
     await flush();
 
     expect(offlineToggle().checked).toBe(true);
-    expect(text()).not.toContain('show device-list failed');
+    expect(text()).not.toContain('Failed to show device list');
   });
 });
 

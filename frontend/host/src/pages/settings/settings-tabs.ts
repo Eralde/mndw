@@ -13,5 +13,3 @@ export const SETTINGS_TAB_DEFS = [
   {id: 'diagnostics', route: '/settings/diagnostics', labelKey: 'settings.diagnostics-tab', icon: 'diagnostics'},
   {id: 'plugins', route: '/settings/plugins', labelKey: 'settings.plugins-tab', icon: 'plugins'},
 ] as const satisfies readonly SettingsTabDef[];
-
-export const SETTINGS_TABS: readonly SettingsTab[] = SETTINGS_TAB_DEFS.map((tab) => tab.id);

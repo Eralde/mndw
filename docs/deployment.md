@@ -115,8 +115,9 @@ production:
 - approved commands and service children run with the daemon's device privileges.
 
 The service requires authentication for upload, approval, and shell execution;
-`--dev` intentionally bypasses session checks, so it
-must not be used as a production configuration.
+unsafe management mutations also require `X-Mndw-Csrf: 1`. `--dev`
+intentionally bypasses session checks but does not bypass that CSRF requirement,
+so it must not be used as a production configuration.
 
 ## Device-like validation
 

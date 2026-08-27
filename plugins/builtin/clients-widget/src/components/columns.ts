@@ -1,20 +1,12 @@
 import {type Column, column} from '@mndw/ui';
 import {vueCell} from '@mndw/ui-vue';
 import type {Translator} from '@mndw/sdk';
-import type {ClientRecord, WifiBand} from '../services/clients.js';
+import type {ClientRecord} from '../services/clients.js';
 import {formatCompactDuration, formatElapsed, formatFullDuration} from '../services/format-duration.js';
 import ClientNameCell from './ClientNameCell.vue';
 import ConnectionCell from './ConnectionCell.vue';
 import TitledTextCell from './TitledTextCell.vue';
 import {type ClientNameView, type ConnectionView, DASH, type LinkStatusView, type TitledText} from './cell-views.js';
-
-function bandText(band: WifiBand): string {
-  return `${band === '2' ? '2.4' : band} GHz`;
-}
-
-function bandsText(bands: WifiBand[]): string {
-  return bands.length === 0 ? DASH : bands.map((band) => bandText(band)).join(', ');
-}
 
 function wiredSpeedText(speed: number | null | undefined): string {
   return speed === undefined || !Number.isFinite(speed) ? DASH : `${speed} Mbps`;
@@ -52,7 +44,7 @@ function connectionView(translator: Translator, row: ClientRecord): ConnectionVi
   if ('accessPointId' in connection) {
     return {
       kind: 'wireless',
-      text: `${translator.t('rssi')}: ${connection.rssi}; ${connection.txrate} Mbps; ${bandsText(connection.bands)}`,
+      text: `${translator.t('rssi')}: ${connection.rssi}; ${connection.txrate} Mbps`,
     };
   }
 

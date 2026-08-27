@@ -15,7 +15,7 @@ mndw dev .
 For a page, use `--type page` and choose a route that is not reserved. For a
 vanilla plugin, use `--framework vanilla`. Vue and Angular use the same
 manifest and lifecycle contracts but add framework-specific shared bundles.
-Reserved page routes are `/`, `/login`, `/settings`, and `/packages`.
+Reserved page routes are `/`, `/login`, `/packages`, `/packages/services`, and `/settings`.
 
 The generated project has this shape:
 

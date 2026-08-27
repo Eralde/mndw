@@ -67,8 +67,8 @@ relative and do not include the public plugin prefix. Route IDs are what fronten
 Routes use session access by default. A public HTTP route must be `GET` or
 `HEAD`; public access never bypasses approval or enabled state. Service routes may use `http` or
 `websocket`. The manifest model and validation rules are in
-[`manifest.ts`](../frontend/sdk/src/manifest.ts), and the complete service fixture is [
-`backend-service.json`](../frontend/sdk/fixtures/manifests/valid/backend-service.json).
+[`manifest.ts`](../frontend/sdk/src/manifest.ts), and the complete service fixture is
+[`backend-service.json`](../contracts/manifest/fixtures/valid/backend-service.json).
 
 ## Request flow
 
@@ -191,7 +191,8 @@ For a manifest route such as `path: "status"`:
 - child URL: `/status`, with the browser query string preserved.
 
 Before proxying, the gateway resolves the route, checks approval and enabled state, authenticates
-private routes, and requires CSRF for unsafe private HTTP methods. It then forwards the method,
+private routes, and requires CSRF for unsafe private HTTP methods. Management mutations use the
+same fixed `X-Mndw-Csrf: 1` header in the session-gated management middleware. It then forwards the method,
 query, bounded body, and selected request headers. It adds these daemon-owned headers:
 
 ```text
@@ -221,10 +222,10 @@ For a WebSocket route such as `path: "terminal"`:
   declared subprotocols before connecting to the child;
 - the same route path is proxied over the private Unix socket.
 
-If maintenance or an update closes an existing browser socket, the gateway uses close code `1012`and
+If maintenance or an update closes an existing browser socket, the gateway uses close code `1012` and
 reason `mndw updating`. Show an explicit reconnect action; do not silently recreate a session.
-Origin and route proxy behavior are implemented in [
-`origin.go`](../daemon/mndwd/internal/backend/origin.go)
+Origin and route proxy behavior are implemented in
+[`origin.go`](../daemon/mndwd/internal/backend/origin.go)
 and [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go).
 
 ### Optional diagnostics endpoint
@@ -269,7 +270,7 @@ exact symbol/expression so a source review can verify each value quickly.
 | Aggregate diagnostics per plugin    |                256 KiB | `defaultMaxPluginBytes = 256 * 1024`                                              | [`diagnostics.go`](../daemon/mndwd/internal/diagnostics/diagnostics.go)                                                                        |
 | Aggregate diagnostics total         |                  1 MiB | `defaultMaxTotalPluginBytes = 1024 * 1024`                                        | [`diagnostics.go`](../daemon/mndwd/internal/diagnostics/diagnostics.go)                                                                        |
 | WebSocket read buffer               |                 32 MiB | `SetReadLimit(32 << 20)`                                                          | [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go)                                                                                    |
-| Graceful service stop               |                   10 s | `SupervisorConfig.StopTimeout`; `NewSupervisor` fallback `10 * time.Second`       | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go), [`runtime.go`](../daemon/mndwd/internal/backend/runtime.go)                 |
+| Graceful service stop               | 15 s daemon default; 10 s standalone fallback | `service-stop-timeout` default; `NewSupervisor` fallback `10 * time.Second` | [`config.go`](../daemon/mndwd/cmd/mndwd/config.go), [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go) |
 | Final service reap                  |                    2 s | `SupervisorConfig.FinalReapTimeout`; `NewSupervisor` fallback `2 * time.Second`   | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go), [`runtime.go`](../daemon/mndwd/internal/backend/runtime.go)                 |
 | Restart delay                       |      1 s, then doubles | `time.Second << (consecutiveFailures - 1)`                                        | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go)                                                                              |
 | Failure threshold                   | 5 consecutive failures | `ConsecutiveFailures >= 5`                                                        | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go)                                                                              |
@@ -278,9 +279,8 @@ exact symbol/expression so a source review can verify each value quickly.
 
 The lifecycle state names come from
 [`model.go`](../daemon/mndwd/internal/backend/model.go); transitions and supervision are implemented
-in
-[`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go) and exposed through [
-`runtime.go`](../daemon/mndwd/internal/backend/runtime.go).
+in [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go) and exposed through
+[`runtime.go`](../daemon/mndwd/internal/backend/runtime.go).
 
 | State              | Meaning                                                                                                          |
 |--------------------|------------------------------------------------------------------------------------------------------------------|

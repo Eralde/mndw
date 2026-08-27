@@ -88,7 +88,7 @@ positional band slots and has no time-domain property. String attributes use exp
 names: `empty-label="No data"` and `value-label="Throughput"`.
 
 Both charts use network-speed formatting and expose `container`, `plot`, `grid`, `axis`, `tooltip`,
-and `empty` parts. Line colors map to `accent`, `success`, `warning`, or `muted`. Bars always use
+and `empty` parts. Line colours map to `accent`, `success`, `warning`, or `muted`. Bars always use
 `--mndw-accent` in version 1. Tooltips are local to the plot; data redraw clears stale tooltip
 state and does not replay it until the pointer moves again.
 

@@ -1,7 +1,9 @@
 import {accessSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {validateManifest} from '@mndw/sdk';
+import {compile} from 'svelte/compiler';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 
 import {CliError} from './errors.js';
@@ -170,6 +172,17 @@ describe('planCreate', () => {
     expect(fileContents(plan, 'src/index.ts')).toContain('App.svelte');
   });
 
+  it('generates a Svelte template without state_referenced_locally warnings', () => {
+    const plan = planCreate(options({name: 'sv', framework: 'svelte', type: 'widget'}));
+    const result = compile(fileContents(plan, 'src/App.svelte'), {
+      filename: 'src/App.svelte',
+      generate: 'client',
+      dev: true,
+    });
+
+    expect(result.warnings.map((warning) => warning.code)).not.toContain('state_referenced_locally');
+  });
+
   it('renders a vue plugin with an App.vue component and env shim', () => {
     const plan = planCreate(options({name: 'vw', framework: 'vue', type: 'widget'}));
 
@@ -190,6 +203,28 @@ describe('planCreate', () => {
     expect(fileContents(plan, 'src/index.ts')).not.toContain('createApplication');
     expect(fileContents(plan, 'src/app.component.ts')).toContain('from \'@mndw/sdk/angular\'');
     expect(JSON.parse(fileContents(plan, 'tsconfig.json'))).toHaveProperty('angularCompilerOptions');
+  });
+
+  it('runs generated Svelte and Angular locale tests without compiler warnings', () => {
+    const root = mkdtempSync(join(REPO_ROOT, 'tooling', 'cli', '.generated-warning-'));
+    const vitest = join(REPO_ROOT, 'tooling', 'cli', 'node_modules', '.bin', 'vitest');
+
+    try {
+      for (const framework of ['svelte', 'angular'] as const) {
+        const generatedDir = join(root, framework);
+
+        createPlugin({name: `warning-${framework}`, outDir: generatedDir, framework, type: 'widget'});
+
+        const result = spawnSync(vitest, ['run', 'src/l10n.test.ts'], {cwd: generatedDir, encoding: 'utf8'});
+        const output = `${result.stdout}\n${result.stderr}`;
+
+        expect(result.status, output).toBe(0);
+        expect(output).not.toContain('state_referenced_locally');
+        expect(output).not.toContain('NG0303');
+      }
+    } finally {
+      rmSync(root, {recursive: true, force: true});
+    }
   });
 
   it('places the SDK and all Angular runtime deps under devDependencies', () => {

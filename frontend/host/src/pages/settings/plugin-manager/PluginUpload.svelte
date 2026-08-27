@@ -5,6 +5,7 @@ import {
   type UploadResult,
   messageForError,
 } from '../../../services/mgmt-client.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {openApprovalModal} from './approval-modal.js';
 import {validateExampleUploadTarget} from './upload-target.js';
@@ -197,7 +198,7 @@ function onDrop(event: DragEvent): void {
   >
     <input
       accept=".zip"
-      aria-label="Upload plugin ZIP"
+      aria-label={hostT('settings.upload-plugin-zip')}
       disabled={status === 'uploading' || status === 'busy'}
       type="file"
       onchange={onInput}

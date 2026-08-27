@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -39,6 +40,35 @@ func req(cookie string) *http.Request {
 	}
 
 	return r
+}
+
+func middlewareReq(method string, csrf bool) *http.Request {
+	r := httptest.NewRequest(method, "/api/mgmt/list", nil)
+	r.Header.Set("Cookie", "session=valid")
+	if csrf {
+		r.Header.Set("X-Mndw-Csrf", "1")
+	}
+
+	return r
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return fn(r)
+}
+
+func middlewareVerifier(dev bool) *Verifier {
+	return New("http://router.test", dev, discardLogger(), Options{
+		Client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Header:     make(http.Header),
+				Request:    r,
+			}, nil
+		})},
+	})
 }
 
 func discardLogger() *slog.Logger {
@@ -94,6 +124,88 @@ func TestDevModeBypassesRouter(t *testing.T) {
 	}
 	if got := atomic.LoadInt64(calls); got != 0 {
 		t.Errorf("dev mode should never contact the router, hit %d times", got)
+	}
+}
+
+func TestMiddlewareRequiresCSRFForUnsafeMethods(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		t.Run(method, func(t *testing.T) {
+			v := middlewareVerifier(false)
+			called := false
+			handler := v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				called = true
+				w.WriteHeader(http.StatusNoContent)
+			}))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, middlewareReq(method, false))
+
+			if recorder.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusForbidden)
+			}
+			if !strings.Contains(recorder.Body.String(), "CSRF_REQUIRED") {
+				t.Fatalf("body = %q, want CSRF_REQUIRED", recorder.Body.String())
+			}
+			if called {
+				t.Fatal("middleware called handler without CSRF")
+			}
+		})
+	}
+}
+
+func TestMiddlewareAllowsSafeMethodsWithoutCSRF(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		t.Run(method, func(t *testing.T) {
+			v := middlewareVerifier(false)
+			called := false
+			handler := v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				called = true
+				w.WriteHeader(http.StatusNoContent)
+			}))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, middlewareReq(method, false))
+
+			if recorder.Code != http.StatusNoContent {
+				t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+			}
+			if !called {
+				t.Fatal("middleware did not call handler for safe method")
+			}
+		})
+	}
+}
+
+func TestMiddlewareAllowsUnsafeMethodsWithCSRF(t *testing.T) {
+	v := middlewareVerifier(false)
+	called := false
+	handler := v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, middlewareReq(http.MethodPost, true))
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	}
+	if !called {
+		t.Fatal("middleware did not call handler with CSRF")
+	}
+}
+
+func TestDevModeMiddlewareStillRequiresCSRF(t *testing.T) {
+	v := middlewareVerifier(true)
+	handler := v.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, middlewareReq(http.MethodPost, false))
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusForbidden)
 	}
 }
 

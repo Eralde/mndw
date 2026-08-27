@@ -34,5 +34,3 @@ export function packageDetailRenderer(
     }),
   );
 }
-
-export type {PackageDetailState} from './PackageDetailCell.svelte';

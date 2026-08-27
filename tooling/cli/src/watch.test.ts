@@ -43,6 +43,7 @@ describe('watchAndBuild', () => {
 
   it('coalesces changes during the trailing debounce and passes a path union', async () => {
     vi.useFakeTimers();
+
     const source = fakeWatcher();
     const build = vi.fn((changed: readonly string[]) => Promise.resolve(changed.length));
     const outcomes: unknown[] = [];
@@ -72,6 +73,7 @@ describe('watchAndBuild', () => {
 
   it('serializes a queued build until current build and onResult settle', async () => {
     vi.useFakeTimers();
+
     const source = fakeWatcher();
     const firstBuild = deferred<number>();
     const resultGate = deferred<void>();
@@ -107,6 +109,7 @@ describe('watchAndBuild', () => {
 
   it('delivers build rejection as a failed outcome and keeps watching', async () => {
     vi.useFakeTimers();
+
     const source = fakeWatcher();
     const build = vi.fn()
       .mockRejectedValueOnce(new Error('broken edit'))
@@ -135,6 +138,7 @@ describe('watchAndBuild', () => {
 
   it('closes source watcher and cancels a pending debounce timer', async () => {
     vi.useFakeTimers();
+
     const source = fakeWatcher();
     const build = vi.fn(() => Promise.resolve());
     const handle = watchAndBuild({paths: ['/src'], build, onResult: () => undefined}, {
@@ -185,15 +189,18 @@ describe('watchAndBuild', () => {
 
   it('releases the build lock after the onResult safety timeout', async () => {
     vi.useFakeTimers();
+
     const source = fakeWatcher();
     const resultGate = deferred<void>();
-    const build = vi.fn().mockResolvedValueOnce(1).mockResolvedValueOnce(2);
+    const build = vi.fn().mockResolvedValueOnce(1)
+.mockResolvedValueOnce(2);
     const contexts: {generation: number; isCurrent(): boolean}[] = [];
     const handle = watchAndBuild({
       paths: ['/src'],
       build,
       onResult: async (_result, context) => {
         contexts.push(context);
+
         if (context.generation === 1) {
           await resultGate.promise;
         }
@@ -217,6 +224,7 @@ describe('watchAndBuild', () => {
 
   it('does not touch the sentinel after an onResult safety timeout', async () => {
     vi.useFakeTimers();
+
     const source = fakeWatcher();
     const resultGate = deferred<void>();
     const touchSentinel = vi.fn();

@@ -262,7 +262,7 @@ describe('SettingsPage', () => {
 
     const component = mount(SettingsPage, {target});
 
-    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent rci session"]')).not.toBeNull());
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull());
 
     const headings = [...target.querySelectorAll('h3')].map((heading) => heading.textContent?.trim());
 
@@ -282,8 +282,8 @@ describe('SettingsPage', () => {
 
     const component = mount(SettingsPage, {target});
 
-    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent rci session"]')).toBeNull());
-    expect(target.querySelector('section[aria-label="Persistent rci session"]')).toBeNull();
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).toBeNull());
+    expect(target.querySelector('section[aria-label="Persistent RCI session"]')).toBeNull();
     expect(target.querySelector('section[aria-label="Extender access"]')).toBeNull();
 
     void unmount(component);
@@ -296,7 +296,7 @@ describe('SettingsPage', () => {
 
     const component = mount(SettingsPage, {target});
 
-    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent rci session"]')).not.toBeNull());
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull());
     target.querySelector<HTMLElement>('#mndw-persistent-rci-enabled')?.dispatchEvent(
       new CustomEvent('mndwchange', {bubbles: true, composed: true, detail: {checked: true}}),
     );

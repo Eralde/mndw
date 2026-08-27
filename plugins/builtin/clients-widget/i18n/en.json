@@ -19,7 +19,7 @@
     "connected": "No clients connected"
   },
   "loading": "Loading clients…",
-  "error": "show device-list failed",
+  "error": "Failed to show device list",
   "port": "Port",
   "rssi": "RSSI",
   "link": {

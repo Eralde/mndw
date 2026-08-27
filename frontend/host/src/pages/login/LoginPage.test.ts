@@ -209,7 +209,7 @@ describe('LoginPage', () => {
 
     expect(inputs().every((control) => control.disabled)).toBe(true);
     expect(target.querySelector('mndw-button')?.disabled).toBe(true);
-    expect(target.querySelector('mndw-button')?.textContent?.trim()).toBe('Logging in...');
+    expect(target.querySelector('mndw-button')?.textContent?.trim()).toBe('Logging in…');
 
     pending.next(false);
     flushSync();

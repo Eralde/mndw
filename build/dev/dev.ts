@@ -205,6 +205,7 @@ function buildWatchPaths(
   for (const name of pluginNames) {
     const pluginDir = resolve(sourceRoot, name);
     const backendDir = resolve(pluginDir, 'backend');
+
     paths.push(
       resolve(pluginDir, 'src'),
       resolve(pluginDir, 'src/**/*'),
@@ -221,6 +222,7 @@ function buildWatchPaths(
           }
 
           const child = resolve(directory, entry.name);
+
           paths.push(child);
           addSourceDirectories(child);
         } else if (entry.name.endsWith('.go')) {
@@ -268,6 +270,7 @@ function buildWatchPaths(
 
     if (backend?.kind === 'service') {
       const commandPath = resolve(pluginDir, backend.command);
+
       paths.push(commandPath);
 
       if (hasBackendBuildHook) {
@@ -276,6 +279,7 @@ function buildWatchPaths(
     } else if (backend?.kind === 'exec') {
       for (const route of backend.routes) {
         const commandPath = resolve(pluginDir, route.command);
+
         paths.push(commandPath);
 
         if (hasBackendBuildHook) {
@@ -455,6 +459,7 @@ export async function runDev(deps: DevDeps = {}): Promise<void> {
   await packBuiltinPlugins();
   ensureDir(dataDir);
   ensureDir(userDir);
+
   const reloadSentinel = makeReloadSentinel(repoRoot);
   const pluginNames = existsSync(builtinSourceRoot) ? discoverBuiltinPlugins(builtinSourceRoot) : [];
 

@@ -13,7 +13,11 @@ One SPA. Plugins are dashboard widgets or full-page routes loaded dynamically. T
 pnpm exec mndw create my-widget --framework svelte --type widget
 ```
 
-Scaffolds: `manifest.json`, `src/index.ts`, `src/App.svelte`, `src/index.css`.
+This uses the private workspace CLI from a repository checkout. npm installation is deferred; this
+guide does not promise a published `@mndw/sdk` or `@mndw/cli` package.
+
+Scaffolds include `manifest.json`, `src/index.ts`, a framework entry component when applicable,
+and `src/index.css`.
 
 ## 3. Manifest Reference
 
@@ -28,7 +32,8 @@ Scaffolds: `manifest.json`, `src/index.ts`, `src/App.svelte`, `src/index.css`.
 | `icon`            | string?                | no       |                            |
 
 Widgets: `size: { w, h, minW?, minH? }` in grid units (12-column grid). Pages: `route` (single
-segment, reserved: `/`, `/login`, `/settings`).
+segment, reserved: `/`, `/login`, `/packages`, `/packages/services`, `/settings`). SDK validation and
+host routing reject these static paths.
 
 Backend (optional): `kind: "exec"` with HTTP route commands, or `kind: "service"`
 with one foreground command, protocol version, and HTTP/WebSocket routes.
@@ -60,6 +65,7 @@ export function createInstance(
 
 ```ts
 import {mount, unmount} from 'svelte'
+import type {PluginContext, PluginInstance} from '@mndw/sdk'
 import App from './App.svelte'
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
@@ -77,6 +83,7 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
 
 ```ts
 import {createApp} from 'vue'
+import type {PluginContext, PluginInstance} from '@mndw/sdk'
 import App from './App.vue'
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
@@ -365,6 +372,7 @@ interface OverlayService {
 interface BackendClient {
   fetch(id: string, options?: BackendFetchOptions): Promise<Response>;
   socket(id: string, options?: BackendSocketOptions): WebSocket;
+  status(options?: BackendStatusOptions): Promise<BackendStatus>;
 }
 ```
 
@@ -428,10 +436,12 @@ Host-provided, must NOT be bundled:
 | Package                                                                                         | Applies to           |
 |-------------------------------------------------------------------------------------------------|----------------------|
 | `@rci-tools/core`, `rxjs`, `rxjs/operators`, `hash-wasm`, `d3`                                  | all plugins          |
+| `@mndw/ui`                                                                                      | all plugins          |
 | `vue`                                                                                           | Vue plugins only     |
 | `zone.js`, `@angular/core`, `@angular/common`, `@angular/platform-browser`, `@angular/compiler` | Angular plugins only |
 
-CLI enforces at pack time.
+CLI enforces at pack time. Plugins import `@mndw/ui` directly for shared custom elements; the host
+registers those elements and provides the versioned bundle.
 
 ### D3 and extensions
 
@@ -452,10 +462,15 @@ mndw pack my-widget   # bundle → my-widget/dist/
 mndw zip my-widget    # pack + create my-widget/my-widget.zip
 ```
 
-Upload via dashboard Settings or:
+Upload through dashboard Settings (recommended). For an authenticated manual request, use the
+persisted dashboard port from `/opt/var/lib/mndw/lighttpd-port`, an active session cookie, and the
+CSRF header:
 
 ```bash
-curl --data-binary @my-widget.zip http://<device>:99/api/mgmt/upload
+curl --cookie '<authenticated-session-cookie>' \
+  -H 'X-Mndw-Csrf: 1' \
+  --data-binary @my-widget.zip \
+  http://<device>:<dashboard-port>/api/mgmt/upload
 ```
 
 Each zip includes `mndw.lock.json` with exact shared dependency versions.
@@ -470,6 +485,8 @@ Built-in plugins in `plugins/builtin/`:
 - `clock-widget`
 - `dns-lookup-widget`
 - `mws-page`
+- `clients-widget`
+- `system-log-page`
 
 Uploadable examples in `plugins/examples/`:
 

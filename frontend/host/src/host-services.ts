@@ -47,8 +47,6 @@ export interface HostServices {
   overlay: OverlayService;
 }
 
-export type PluginMountServices = Pick<HostServices, 'registry' | 'locale' | 'palette'>;
-
 export function createHostServices(env: HostEnv = {}): HostServices {
   const mgmtClient = createMgmtClient(env.fetch ?? globalThis.fetch);
   const catalog = createPluginCatalogService({now: env.now});

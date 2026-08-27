@@ -7,13 +7,16 @@ daemon.
 ## Commands
 
 ```text
-npx mndw create <name>       scaffold a plugin
-npx mndw dev <plugin>        run source plugin with local host and daemon
-npx mndw validate <path>     validate manifest and entry checks
-npx mndw pack <path>         build an isolated loadable plugin directory
-npx mndw zip <path>          pack and create an uploadable archive
-npx mndw build-backend       build configured Go backend for current plugin
+pnpm --filter @mndw/cli exec mndw create <name>       scaffold a plugin
+pnpm --filter @mndw/cli exec mndw dev <plugin>        run source plugin with local host and daemon
+pnpm --filter @mndw/cli exec mndw validate <path>     validate manifest and entry checks
+pnpm --filter @mndw/cli exec mndw pack <path>         build an isolated loadable plugin directory
+pnpm --filter @mndw/cli exec mndw zip <path>          pack and create an uploadable archive
+pnpm --filter @mndw/cli exec mndw build-backend       build configured Go backend for current plugin
 ```
+
+These commands target the private workspace checkout. Run them from the repository root; paths
+passed to the CLI are resolved from `tooling/cli`.
 
 Common `create` choices are widget or page, vanilla/Svelte/Vue/Angular, and an
 optional shell backend. The generated project uses `@mndw/sdk` and the
@@ -121,11 +124,11 @@ Backend archives contain target-specific binaries and follow upload → approval
 Use this sequence for a new plugin:
 
 ```bash
-mndw create hello --type widget --framework svelte --backend sh
-mndw dev hello
-mndw validate hello
-mndw pack hello
-mndw zip hello
+pnpm --filter @mndw/cli exec mndw create hello --type widget --framework svelte --backend sh
+pnpm --filter @mndw/cli exec mndw dev hello
+pnpm --filter @mndw/cli exec mndw validate hello
+pnpm --filter @mndw/cli exec mndw pack hello
+pnpm --filter @mndw/cli exec mndw zip hello
 ```
 
 The resulting zip can be uploaded through the host's management UI or the

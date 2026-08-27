@@ -15,6 +15,7 @@ import {flushSync, mount, unmount} from 'svelte';
 import {nextTick} from 'vue';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {createTestPluginContext} from './test-plugin-context.js';
+import {decidePackedSmoke} from './packed-smoke-gate.js';
 import {mountWidgetTile} from '../dashboard/widget-mount.js';
 import {appState} from '../state/app.svelte.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
@@ -67,9 +68,7 @@ const EXPECTED_PLUGINS = [
   'clients-widget',
   'clock-widget',
   'device-info-widget',
-  'device-traffic-widget',
   'dns-lookup-widget',
-  'ping-widget',
   'system-log-page',
   'terminal-page',
 ] as const;
@@ -121,10 +120,6 @@ const packedReady = EXPECTED_PLUGINS.every((name) => {
     packedCatalogFiles[`${PACKED_GLOB}/${name}/${path}`] !== undefined
   );
 });
-
-if (!packedReady) {
-  console.warn('Skipping built-in l10n smoke: packed dist missing; run pnpm build-builtin-plugins first.');
-}
 
 function packedManifest(name: string): PackedManifest {
   const manifest = packedManifests[`${PACKED_GLOB}/${name}/manifest.json`];
@@ -254,7 +249,19 @@ async function flushPlugin(name: string): Promise<void> {
   flushSync();
 }
 
-const smoke = packedReady ? describe : describe.skip;
+const smokeDecision = decidePackedSmoke(packedReady, process.env.MNDW_SKIP_PACKED_SMOKE);
+
+if (smokeDecision === 'fail') {
+  throw new Error(
+    'Packed built-in l10n smoke requires dist; run pnpm build-builtin-plugins or set MNDW_SKIP_PACKED_SMOKE=1 for a unit-only run.',
+  );
+}
+
+if (smokeDecision === 'skip') {
+  console.warn('Skipping built-in l10n smoke by explicit MNDW_SKIP_PACKED_SMOKE=1.');
+}
+
+const smoke = smokeDecision === 'run' ? describe : describe.skip;
 
 class SmokeWorker {
   public onmessage: ((event: MessageEvent) => void) | null = null;

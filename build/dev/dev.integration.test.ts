@@ -50,6 +50,7 @@ function atomicWrite(filePath: string, contents: string): void {
 describe('builtin development watch integration', () => {
   it('rebuilds frontend and backend artifacts through real chokidar and pack commands', async () => {
     vi.stubEnv('CHOKIDAR_USEPOLLING', '1');
+
     const testFixture = fixture();
     const touchSentinel = vi.fn();
     const backendBuilder = vi.fn(() => Promise.resolve());

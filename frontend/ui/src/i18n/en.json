@@ -1,0 +1,43 @@
+{
+  "select": {
+    "placeholder": "Select…",
+    "validation": {
+      "required": "Please select an option."
+    },
+    "overlay": {
+      "title": "Select option"
+    }
+  },
+  "overlay": {
+    "close": "Close"
+  },
+  "chart": {
+    "empty": "No data available",
+    "values": "Values"
+  },
+  "input": {
+    "password": {
+      "show": "Show password",
+      "hide": "Hide password"
+    }
+  },
+  "checkbox": {
+    "validation": {
+      "required": "Please select this option."
+    }
+  },
+  "segmented": {
+    "validation": {
+      "required": "Please select an option."
+    }
+  },
+  "table": {
+    "selectRow": "Select {rowName}",
+    "selectAll": "Select all",
+    "sortBy": "Sort by {column}",
+    "columnMenu": "Column menu",
+    "rowFallback": "Row {index}",
+    "reordered": "{rowName} moved to position {pos} of {total}",
+    "invalidData": "Table data is invalid"
+  }
+}

@@ -1,0 +1,1 @@
+{"manifestVersion":3,"name":"i18n-malformed-json","version":"1.0.0","type":"widget","label":"I18n malformed JSON","entry":"index.js","size":{"w":2,"h":2},"i18n":{"defaultLocale":"en","locales":{"en":"i18n/en.json"}}}

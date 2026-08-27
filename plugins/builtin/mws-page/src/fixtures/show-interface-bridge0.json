@@ -1,0 +1,46 @@
+{
+  "id": "Bridge0",
+  "index": 0,
+  "interface-name": "LAN",
+  "type": "Bridge",
+  "description": "Private LAN",
+  "link": "up",
+  "connected": "yes",
+  "state": "up",
+  "mtu": 1500,
+  "tx-queue-length": 0,
+  "admin-only": false,
+  "address": "192.168.1.1",
+  "mask": "255.255.255.0",
+  "uptime": 3201,
+  "global": false,
+  "security-level": "private",
+  "ipv6": {
+    "addresses": [
+      {
+        "address": "fd00::1",
+        "prefix-length": 64,
+        "proto": "SLAAC",
+        "valid-lifetime": "infinite"
+      },
+      {
+        "address": "fe80::1",
+        "prefix-length": 64,
+        "proto": "KERNEL",
+        "valid-lifetime": "infinite"
+      }
+    ]
+  },
+  "mac": "02:7d:4a:91:c3:10",
+  "auth-type": "none",
+  "bridge": {
+    "interface": [
+      {"link": true, "interface": "GigabitEthernet0/Vlan1"},
+      {"link": true, "interface": "WifiMaster0/AccessPoint0"},
+      {"link": true, "interface": "WifiMaster1/AccessPoint0"}
+    ]
+  },
+  "summary": {
+    "layer": {"conf": "running", "link": "running", "ipv4": "running", "ipv6": "running", "ctrl": "running"}
+  }
+}

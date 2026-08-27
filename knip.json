@@ -1,0 +1,75 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "build/**/*.test.ts"
+      ],
+      "project": "build/**/*.ts"
+    },
+    "frontend/host": {
+      "entry": [
+        "index.html",
+        "scripts/**/*.ts",
+        "src/**/*.test.ts"
+      ]
+    },
+    "frontend/sdk": {
+      "entry": [
+        "src/testing/**/*.ts",
+        "src/**/*.test.ts"
+      ]
+    },
+    "frontend/ui": {
+      "entry": [
+        "src/**/*.test.ts",
+        "e2e/**/*.ts"
+      ]
+    },
+    "frontend/ui-svelte": {
+      "entry": [
+        "src/**/*.test.ts"
+      ]
+    },
+    "frontend/ui-vue": {
+      "entry": [
+        "src/**/*.test.ts"
+      ]
+    },
+    "frontend/ui-angular": {},
+    "frontend/angular-compiler": {},
+    "tooling/cli": {
+      "entry": [
+        "src/**/*.test.ts"
+      ],
+      "ignore": [
+        "templates/**",
+        "fixtures/**"
+      ]
+    },
+    "tooling/*": {
+      "entry": [
+        "src/**/*.test.ts"
+      ]
+    },
+    "packages/*": {},
+    "plugins/builtin/*": {
+      "entry": [
+        "src/index.ts",
+        "src/**/index.ts",
+        "src/**/*.test.ts"
+      ]
+    },
+    "plugins/examples/*": {
+      "entry": [
+        "src/index.ts",
+        "src/**/index.ts",
+        "src/**/*.test.ts"
+      ]
+    }
+  },
+  "ignoreBinaries": [
+    "go"
+  ],
+  "ignoreExportsUsedInFile": true
+}

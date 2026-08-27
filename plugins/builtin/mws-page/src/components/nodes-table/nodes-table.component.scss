@@ -1,0 +1,66 @@
+:host {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--mndw-text);
+  font-family: var(--mndw-font-sans);
+}
+
+.nodes-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--mndw-space-2);
+  align-items: center;
+  margin-bottom: var(--mndw-space-2);
+
+  mndw-input {
+    flex: 1 1 auto;
+  }
+}
+
+.node-name {
+  display: inline-flex;
+  gap: var(--mndw-space-2);
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.node-name:focus-visible {
+  outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
+  outline-offset: 0.125rem;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid var(--mndw-border);
+  border-radius: 62.4375rem;
+  color: var(--mndw-text-subtle);
+  font-size: 0.6875rem;
+}
+
+.status {
+  margin: auto;
+  color: var(--mndw-text-subtle);
+  text-align: center;
+}
+
+mndw-table {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+mndw-table::part(table) {
+  min-width: 56.25rem;
+}

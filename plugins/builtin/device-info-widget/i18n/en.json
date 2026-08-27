@@ -1,0 +1,23 @@
+{
+  "l10n": {
+    "probe": "Device info English probe"
+  },
+  "title": "Device Info",
+  "loading": "Loading…",
+  "error": "Failed to load device info",
+  "device": "Device",
+  "firmware": "Firmware",
+  "uptime": "Uptime",
+  "unknown": "Unknown",
+  "serial": "Serial",
+  "service-tag": "Service Tag",
+  "mac": "MAC",
+  "hwid": "HW ID",
+  "cid": "CID",
+  "cpu": "CPU",
+  "ram": "RAM",
+  "copy": "Copy",
+  "copied": "Copied!",
+  "history": "history",
+  "no-data": "No data"
+}

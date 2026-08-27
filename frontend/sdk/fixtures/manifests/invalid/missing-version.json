@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 3,
+  "name": "test-widget",
+  "type": "widget",
+  "label": "Test Widget",
+  "entry": "index.js",
+  "size": {
+    "w": 4,
+    "h": 3
+  }
+}

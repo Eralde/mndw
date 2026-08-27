@@ -1,0 +1,31 @@
+{
+  "l10n": {
+    "probe": "Traffic English probe"
+  },
+  "title": "Device Traffic Monitor",
+  "action": {
+    "retry": "Retry",
+    "settings": "Widget settings",
+    "cancel": "Cancel",
+    "apply": "Apply"
+  },
+  "error": {
+    "load-data": "Failed to load data"
+  },
+  "status": {
+    "loading": "Loading…",
+    "select-device": "Select a device to monitor traffic",
+    "no-devices": "No devices found",
+    "loading-data": "Loading data…",
+    "no-data": "No data"
+  },
+  "field": {
+    "device": "Device",
+    "select-device": "Select device…",
+    "detail": "Detail"
+  },
+  "aria": {
+    "history": "Device traffic history",
+    "average": "Average traffic"
+  }
+}

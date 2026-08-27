@@ -1,0 +1,12 @@
+{
+  "log": {
+    "not-a-number": {
+      "timestamp": "Aug  1 12:00:00",
+      "ident": "system",
+      "message": {
+        "level": "Info",
+        "label": "Info"
+      }
+    }
+  }
+}

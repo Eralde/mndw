@@ -1,0 +1,9 @@
+{
+  "eligible.json": {"eligible": true},
+  "cert-invalid.json": {"eligible": false, "reason": "certificate-invalid"},
+  "capability-absent.json": {"eligible": false, "reason": "no-auth-token"},
+  "incomplete.json": {"eligible": false, "reason": "certificate-invalid"},
+  "missing-fqdn.json": {"eligible": false, "reason": "missing-fqdn"},
+  "mixed-capabilities.json": {"eligible": true},
+  "legacy.json": {"eligible": false, "reason": "certificate-invalid"}
+}

@@ -1,0 +1,32 @@
+<div class="search-row mndw-table-controls">
+  <span data-testid="l10n-child-probe" hidden>{{ t('l10n.probe') }}</span>
+  <mndw-input
+    type="search"
+    [attr.aria-label]="t('clients.search')"
+    [attr.placeholder]="t('clients.search')"
+    [value]="search()"
+    (mndwinput)="onSearch($event)"
+  ></mndw-input>
+</div>
+
+@if (allRows().length === 0) {
+  <p class="status" role="status">{{ t('clients.no-connected') }}</p>
+} @else if (rows().length === 0) {
+  <p class="status" role="status">{{ t('clients.no-match') }}</p>
+} @else {
+  <mndw-table
+    [columns]="columns"
+    [rows]="rows()"
+    [rowKey]="rowKey"
+    [sort]="sort()"
+    [columnMenu]="false"
+    [caption]="t('clients.caption')"
+    (mndwsortchange)="onSortChange($event)"
+  >
+    <ng-template mndwCell="link" [mndwCellRows]="rows" let-row>
+      <span class="link-badge" [class.wired]="row.client.wired">
+        {{ row.client.wired ? t('clients.wired') : t('clients.wireless') }}
+      </span>
+    </ng-template>
+  </mndw-table>
+}

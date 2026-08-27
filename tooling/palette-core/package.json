@@ -1,0 +1,35 @@
+{
+  "name": "@mndw/palette-core",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Shared TypeScript palette math and contract metadata.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./contrast": {
+      "types": "./src/contrast.ts",
+      "default": "./src/contrast.ts"
+    },
+    "./metadata": {
+      "types": "./src/metadata.ts",
+      "default": "./src/metadata.ts"
+    },
+    "./build-palette": {
+      "types": "./src/build-palette.ts",
+      "default": "./src/build-palette.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "culori": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/culori": "^4.0.1",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
+  }
+}

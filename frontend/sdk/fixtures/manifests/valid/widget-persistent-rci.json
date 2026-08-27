@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 3,
+  "name": "persistent-session-widget",
+  "version": "2.0.0",
+  "type": "widget",
+  "label": "Persistent Session Widget",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3},
+  "permissions": ["persistent-rci-session:read"]
+}

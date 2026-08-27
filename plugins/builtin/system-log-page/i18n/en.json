@@ -1,0 +1,37 @@
+{
+  "l10n": {
+    "probe": "System log English probe"
+  },
+  "title": "System Log",
+  "action": {
+    "download": "Download",
+    "clear": "Clear log"
+  },
+  "status": {
+    "loading": "Loading system log…",
+    "empty": "No log records match current filters."
+  },
+  "aria": {
+    "entries": "System log entries"
+  },
+  "filter": {
+    "aria-label": "Log filters",
+    "hide": "Hide filters",
+    "show": "Show filters",
+    "label": "Filters",
+    "showing": "Showing {filtered} of {total} items",
+    "showing-compact": "Showing {filtered}/{total}",
+    "reset": "Reset",
+    "search": "Search logs",
+    "placeholder": "Filter by substring",
+    "levels": "Log levels"
+  },
+  "level": {
+    "info": "Info",
+    "warning": "Warning",
+    "error": "Error",
+    "critical": "Critical",
+    "debug": "Debug",
+    "notice": "Notice"
+  }
+}

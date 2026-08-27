@@ -1,0 +1,7 @@
+{
+  "name": "@mndw/go-rcisock",
+  "private": true,
+  "scripts": {
+    "test": "go test ./..."
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./.ngc-cache",
+    "rootDir": ".."
+  },
+  "angularCompilerOptions": {
+    "strictTemplates": true,
+    "enableI18nLegacyMessageIdFormat": false
+  },
+  "include": ["../src/**/*.ts", "./strict-templates.ts"]
+}

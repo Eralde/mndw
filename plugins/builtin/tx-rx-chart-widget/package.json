@@ -1,0 +1,21 @@
+{
+  "name": "@mndw/example-tx-rx-chart-widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "vitest run"},
+  "devDependencies": {
+    "@angular/common": "^21.2.18",
+    "@angular/compiler": "^21.2.18",
+    "@angular/core": "^21.2.18",
+    "@angular/platform-browser": "^21.2.18",
+    "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
+    "@rci-tools/core": "0.4.3",
+    "happy-dom": "20.11.1",
+    "rxjs": "^7.8.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7",
+    "zone.js": "^0.15.1"
+  }
+}

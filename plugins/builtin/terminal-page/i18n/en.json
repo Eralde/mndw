@@ -1,0 +1,26 @@
+{
+  "l10n": {
+    "probe": "Terminal English probe"
+  },
+  "title": "Terminal",
+  "action": {
+    "router-cli": "Router CLI",
+    "entware-shell": "Entware Shell",
+    "retry": "Retry",
+    "reconnect": "Reconnect",
+    "disconnect": "Disconnect"
+  },
+  "status": {
+    "starting": "Starting terminal…",
+    "connection-lost": "Connection lost",
+    "update-ended": "Session ended during update",
+    "connected": "Connected"
+  },
+  "error": {
+    "backend-missing": "Backend bindings are missing for terminal-page",
+    "start-failed": "Failed to start terminal service",
+    "ttyd-start-failed": "The terminal service could not be started.",
+    "ttyd-unavailable": "The terminal service is unavailable on this device.",
+    "unknown": "Unknown error"
+  }
+}

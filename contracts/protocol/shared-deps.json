@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "bundleStemPattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+  "versionPattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$",
+  "bundles": [
+    {
+      "bundle": "rci-tools-core",
+      "version": "0.4.3",
+      "specifiers": [
+        "@rci-tools/core"
+      ],
+      "framework": "base",
+      "url": "/shared/rci-tools-core@0.4.3.js"
+    },
+    {
+      "bundle": "rxjs",
+      "version": "7.8.2",
+      "specifiers": [
+        "rxjs"
+      ],
+      "framework": "base",
+      "url": "/shared/rxjs@7.8.2.js"
+    },
+    {
+      "bundle": "rxjs-operators",
+      "version": "7.8.2",
+      "specifiers": [
+        "rxjs/operators"
+      ],
+      "framework": "base",
+      "url": "/shared/rxjs-operators@7.8.2.js"
+    },
+    {
+      "bundle": "hash-wasm",
+      "version": "4.12.0",
+      "specifiers": [
+        "hash-wasm"
+      ],
+      "framework": "base",
+      "url": "/shared/hash-wasm@4.12.0.js"
+    },
+    {
+      "bundle": "d3",
+      "version": "7.9.0",
+      "specifiers": [
+        "d3"
+      ],
+      "framework": "base",
+      "url": "/shared/d3@7.9.0.js"
+    },
+    {
+      "bundle": "mndw-ui",
+      "version": "0.1.0",
+      "specifiers": [
+        "@mndw/ui"
+      ],
+      "framework": "base",
+      "url": "/shared/mndw-ui@0.1.0.js"
+    },
+    {
+      "bundle": "vue",
+      "version": "3.5.39",
+      "specifiers": [
+        "vue"
+      ],
+      "framework": "vue",
+      "url": "/shared/vue@3.5.39.js"
+    },
+    {
+      "bundle": "zone",
+      "version": "0.15.1",
+      "specifiers": [
+        "zone.js"
+      ],
+      "framework": "angular",
+      "url": "/shared/zone@0.15.1.js"
+    },
+    {
+      "bundle": "angular-core",
+      "version": "21.2.18",
+      "specifiers": [
+        "@angular/core",
+        "@angular/core/rxjs-interop"
+      ],
+      "framework": "angular",
+      "url": "/shared/angular-core@21.2.18.js"
+    },
+    {
+      "bundle": "angular-common",
+      "version": "21.2.18",
+      "specifiers": [
+        "@angular/common"
+      ],
+      "framework": "angular",
+      "url": "/shared/angular-common@21.2.18.js"
+    },
+    {
+      "bundle": "angular-platform-browser",
+      "version": "21.2.18",
+      "specifiers": [
+        "@angular/platform-browser"
+      ],
+      "framework": "angular",
+      "url": "/shared/angular-platform-browser@21.2.18.js"
+    },
+    {
+      "bundle": "angular-compiler",
+      "version": "21.2.18",
+      "specifiers": [
+        "@angular/compiler"
+      ],
+      "framework": "angular",
+      "url": "/shared/angular-compiler@21.2.18.js"
+    }
+  ],
+  "importMap": {
+    "@rci-tools/core": "/shared/rci-tools-core@0.4.3.js",
+    "rxjs": "/shared/rxjs@7.8.2.js",
+    "rxjs/operators": "/shared/rxjs-operators@7.8.2.js",
+    "hash-wasm": "/shared/hash-wasm@4.12.0.js",
+    "d3": "/shared/d3@7.9.0.js",
+    "@mndw/ui": "/shared/mndw-ui@0.1.0.js",
+    "vue": "/shared/vue@3.5.39.js",
+    "zone.js": "/shared/zone@0.15.1.js",
+    "@angular/core": "/shared/angular-core@21.2.18.js",
+    "@angular/core/rxjs-interop": "/shared/angular-core@21.2.18.js",
+    "@angular/common": "/shared/angular-common@21.2.18.js",
+    "@angular/platform-browser": "/shared/angular-platform-browser@21.2.18.js",
+    "@angular/compiler": "/shared/angular-compiler@21.2.18.js"
+  }
+}

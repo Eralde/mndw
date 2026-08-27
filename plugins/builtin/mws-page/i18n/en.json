@@ -1,0 +1,230 @@
+{
+  "l10n": {
+    "probe": "MWS English probe"
+  },
+  "title": "MWS Map",
+  "summary": {
+    "mock-data": "Mock data: {extenders} extenders · {clients} clients",
+    "label": "Map summary",
+    "nodes": "{count, plural, one {# node} other {# nodes}}",
+    "offline": "{count, plural, one {# offline} other {# offline}}",
+    "clients": "{count, plural, one {# client} other {# clients}}",
+    "updates": "{count, plural, one {# update available} other {# updates available}}",
+    "updated": "updated {seconds}s ago",
+    "map-updated": "Map updated {seconds}s ago"
+  },
+  "state": {
+    "update-failed": "Update failed — showing the last known map.",
+    "loading": "Loading MWS topology…",
+    "load-failed": "Failed to load MWS data.",
+    "unsupported": "This device is not an MWS controller."
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "no-telemetry": "No telemetry",
+    "telemetry-not-available": "Telemetry: not available",
+    "telemetry-starting": "Telemetry: starting",
+    "telemetry-live": "Telemetry: live",
+    "telemetry-stale": "Telemetry: stale",
+    "telemetry-offline": "Telemetry: offline",
+    "remote-control-not-available": "Remote control: not available",
+    "remote-control-disconnected": "Remote control: disconnected",
+    "remote-control-connected": "Remote control: connected",
+    "clients": "{count, plural, one {# client} other {# clients}}",
+    "power-disabled-extra-features": "Remote controls require extra features.",
+    "power-disabled-session": "Remote control is disconnected.",
+    "power-disabled-unavailable": "TX power is unavailable.",
+    "power-disabled-pending": "TX power update is pending."
+  },
+  "extra-features": {
+    "badge": {
+      "checking": "Checking extra features…",
+      "active": "Extra features active",
+      "starting": "Extra features starting…",
+      "taking-longer": "Extra features are taking longer than expected",
+      "unavailable": "Extra features unavailable",
+      "limited": "Extra features temporarily unavailable",
+      "blocked": "Extra features need access",
+      "incompatible": "Extra features need an update"
+    },
+    "setup": {
+      "title": "Enable live extender insights",
+      "body": "See telemetry and control extender radios after configuring a controller session.",
+      "extender-session-body": "Configure authenticated extender sessions to see telemetry and control extender radios.",
+      "action": "View requirements.",
+      "dismiss": "Dismiss extra-features explanation"
+    },
+    "limited": "Extra features are temporarily unavailable. Retrying…",
+    "taking-longer": "Extra features are taking longer than expected. Retry to check again.",
+    "popover": {
+      "accessible-title": "Extra features",
+      "checking": {
+        "title": "Checking extra features",
+        "body": "Availability is being checked."
+      },
+      "active": {
+        "title": "Extra features active",
+        "body": "Live extender telemetry and controls are active."
+      },
+      "starting": {
+        "title": "Extra features starting",
+        "body": "Features are starting and will retry automatically."
+      },
+      "unavailable": {
+        "title": "Extra features unavailable",
+        "body": "Configure a controller session to enable live telemetry and extender controls. If already configured, try again later.",
+        "extender-session": {
+          "body": "Configure authenticated extender sessions to enable live telemetry and extender controls."
+        }
+      },
+      "limited": {
+        "title": "Extra features temporarily unavailable",
+        "body": "Features are temporarily unreachable and will retry automatically."
+      },
+      "blocked": {
+        "title": "Extra features need access",
+        "body": "Plugin access for extra features is not enabled.",
+        "permission": {
+          "body": "Grant the required plugin permission in Settings."
+        },
+        "controller-token": {
+          "body": "Configure a controller token in Settings."
+        },
+        "combined": {
+          "body": "Grant the required plugin permission and configure a controller token in Settings."
+        },
+        "generic": {
+          "body": "Complete extra-feature setup in Settings."
+        }
+      },
+      "incompatible": {
+        "title": "Extra features need an update",
+        "body": "Installed components need a system update."
+      },
+      "view-settings": "Open Settings."
+    }
+  },
+  "action": {
+    "retry": "Retry",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "zoom-in": "Zoom in",
+    "zoom-out": "Zoom out",
+    "fit": "Fit to content",
+    "auto-layout": "Auto layout",
+    "done": "Done",
+    "rearrange": "Rearrange"
+  },
+  "auto-layout": {
+    "title": "Reset map layout?",
+    "description": "This removes saved node positions for this session."
+  },
+  "tab": {
+    "map": "Map",
+    "nodes": "Nodes",
+    "clients": "Clients"
+  },
+  "graph": {
+    "controls": "Map view controls",
+    "view-controls": "View controls",
+    "layout-controls": "Layout controls",
+    "topology": "MWS topology",
+    "controller": "controller",
+    "extender": "extender",
+    "offline": "offline",
+    "wireless": "Wireless",
+    "wired": "Wired",
+    "clients": "clients",
+    "duplex": "duplex"
+  },
+  "clients": {
+    "search": "Search clients",
+    "no-connected": "No clients connected.",
+    "no-match": "No clients match your search.",
+    "caption": "All mesh clients",
+    "name": "Name",
+    "node": "Connected node",
+    "link": "Link",
+    "ip": "IP",
+    "mac": "MAC",
+    "uptime": "Uptime",
+    "wired": "wired",
+    "wireless": "wireless"
+  },
+  "nodes": {
+    "search": "Filter nodes",
+    "settings": "Table settings",
+    "no-connected": "No nodes connected.",
+    "no-match": "No nodes match your filter.",
+    "caption": "All mesh nodes",
+    "name": "Node name",
+    "clients": "Clients",
+    "status": "Status",
+    "uptime": "Uptime",
+    "ip": "IP address",
+    "via": "Via",
+    "connection": "Connection",
+    "firmware": "KeeneticOS",
+    "controller": "Controller",
+    "online": "Online",
+    "offline": "Offline",
+    "open": "Open {name}"
+  },
+  "drawer": {
+    "node-name": "Node name",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "edit-name": "Edit node name",
+    "health": "Health",
+    "status": "Status",
+    "telemetry": "Telemetry",
+    "remote-control": "Remote control",
+    "last-telemetry": "Last telemetry",
+    "telemetry-last-telemetry": "Telemetry update {seconds}s ago",
+    "client-count": "Clients",
+    "model": "Model",
+    "mac": "MAC",
+    "ip": "IP",
+    "firmware": "Firmware",
+    "update-available": "update available: {version}",
+    "uptime": "Uptime",
+    "cpu-load": "CPU load",
+    "memory": "Memory",
+    "backhaul": "Backhaul",
+    "controller-backhaul": "Controller — root of the MWS. No backhaul metrics.",
+    "offline-backhaul": "Offline — no backhaul reported.",
+    "type": "Type",
+    "wireless": "Wireless",
+    "wired": "Wired",
+    "uplink": "Uplink",
+    "ap": "AP",
+    "mode": "Mode",
+    "rssi": "RSSI",
+    "tx-rate": "TX rate",
+    "security": "Security",
+    "stp-cost": "STP cost",
+    "speed": "Speed",
+    "duplex": "Duplex",
+    "port": "Port",
+    "wifi-power": "Wi-Fi TX power",
+    "unavailable": "Unavailable",
+    "clients": "Clients ({count})",
+    "no-active-clients": "No active clients.",
+    "client-name": "Name",
+    "client-ip": "IP",
+    "client-mac": "MAC",
+    "client-link": "Link",
+    "client-uptime": "Uptime",
+    "gone": "This node is offline / no longer reported by the controller."
+  },
+  "error": {
+    "invalid-name": "Invalid name.",
+    "name-empty": "Name cannot be empty.",
+    "name-too-long": "Name must be 64 characters or fewer.",
+    "rename-failed": "Rename failed.",
+    "tx-power-failed": "TX power update failed."
+  }
+}

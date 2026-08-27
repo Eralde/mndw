@@ -1,0 +1,46 @@
+{
+  "l10n": {
+    "probe": "Проба ping на русском"
+  },
+  "title": "Проверка доступности",
+  "action": {
+    "refresh": "Обновить",
+    "add": "Добавить",
+    "delete": "Удалить"
+  },
+  "field": {
+    "host-ip": "IP хоста",
+    "label-optional": "Метка (необязательно)",
+    "poll": "Интервал"
+  },
+  "table": {
+    "aria-label": "Статистика ping",
+    "host": "Хост",
+    "last": "Последнее",
+    "average": "Среднее",
+    "median": "Медиана",
+    "min": "Мин.",
+    "max": "Макс.",
+    "loss": "Потери",
+    "samples": "Отсчёты",
+    "updated": "Обновлено",
+    "actions": "Действия"
+  },
+  "status": {
+    "monitoring": "Мониторинг…",
+    "data-refreshed": "Данные обновлены",
+    "host-added": "Хост добавлен",
+    "host-removed": "Хост удалён",
+    "no-stats": "Статистики пока нет.",
+    "saving": "Сохранение…"
+  },
+  "error": {
+    "stats-polling-failed": "Не удалось получить статистику",
+    "refresh-failed": "Не удалось обновить",
+    "host-ip-required": "Требуется IP хоста",
+    "add-host-failed": "Не удалось добавить хост",
+    "update-host-failed": "Не удалось обновить хост",
+    "remove-host-failed": "Не удалось удалить хост",
+    "backend-unavailable": "Серверная часть плагина недоступна"
+  }
+}

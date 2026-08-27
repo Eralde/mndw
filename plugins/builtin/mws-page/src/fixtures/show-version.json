@@ -1,0 +1,25 @@
+{
+  "release": "5.02.A.1.0-2",
+  "sandbox": "nightly",
+  "title": "5.2 Alpha 1",
+  "arch": "aarch64",
+  "ndm": {"exact": "7-d5e916de35", "cdate": "22 Jul 2026"},
+  "bsp": {"exact": "6-c52428a6f5", "cdate": "22 Jul 2026"},
+  "ndw": {
+    "features": "dual_image,usb_3_conf,single_usb_port,led_control,wifi_button,wifi5ghz,vht2ghz,mimo2ghz,mimo5ghz,atf2ghz,atf5ghz,wifi6,wifi_ft,wpa3,hwnat,hwnat_mib,link_agg",
+    "components": "acl,base,chilli,cloudcontrol,cloudcontrol-override,corewireless,ddns,dhcpd,dlna,dns-filter,dns-https,dns-tls,dot1x,easyconfig,eoip,exfat,exfat-utils,ext,ext-utils,fat,fat-utils,ftp,gre,hfsplus,hfsplus-utils,igmp,ike-client,ip6,iperf3,ipip,ipsec,isp-lock,isp-snmp,isp-tools-get,keyword-filter,l2tp,lang-da,lang-de,lang-en,lang-es,lang-fi,lang-fr,lang-it,lang-pl,lang-pt,lang-ru,lang-sv,lang-tr,lang-uk,mdns,miniupnpd,monitor,mws,nathelper-esp,nathelper-ftp,nathelper-h323,nathelper-pptp,nathelper-rtsp,nathelper-sip,ndmp,ndns,ndss-override,netflow,nextdns,ntce,ntfs,ntfs-utils,nvox,ocserver,openconnect,openvpn,opkg,opkg-kmod-audio,opkg-kmod-dvb-tuner,opkg-kmod-fs,opkg-kmod-netfilter,opkg-kmod-netfilter-addons,opkg-kmod-tc,opkg-kmod-usbip,opkg-kmod-video,pingcheck,ppe,pppoe,pptp,proxy,safedns,sftp,snmp,ssh,sstp,sstp-server,storage,tacacs,trafficcontrol,transmission,tsmb,udpxy,usb,usblte,usbmodem,usbnet,usbnet-extra,usbqmi,usbserial-extra,virtual-ip-server,vpnserver,vpnserver-l2tp,vrrp,web-shell,webdav,wireguard,wireguard-server,wpa-eap,zerotier"
+  },
+  "ndw3": {"version": "5.2.15-11-f1213a989"},
+  "ndw4": {"version": "5.2.A.1.0-8-g7d599fc3c"},
+  "manufacturer": "Keenetic Ltd.",
+  "vendor": "Keenetic",
+  "series": "KN",
+  "model": "Hopper (KN-3811)",
+  "hw_version": "11388000",
+  "hw_type": "router",
+  "hw_id": "KN-3811",
+  "device": "Hopper",
+  "consent": "EU",
+  "region": "EU",
+  "description": "Keenetic Hopper (KN-3811)"
+}

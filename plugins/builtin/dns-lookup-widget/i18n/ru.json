@@ -1,0 +1,25 @@
+{
+  "l10n": {
+    "probe": "Проба DNS"
+  },
+  "title": "Поиск DNS",
+  "hostname-label": "Имя хоста",
+  "hostname-hint": "Например, google.com",
+  "hostname": "Имя хоста (например, google.com)",
+  "lookup": "Найти",
+  "enter": "Введите имя хоста.",
+  "idle": "Введите имя хоста и нажмите «Найти».",
+  "unavailable": "Серверная часть плагина недоступна.",
+  "loading": "Поиск {hostname}…",
+  "not-found": "Имя хоста «{hostname}» не найдено.",
+  "error": {
+    "lookup-failed": "Не удалось выполнить поиск. Проверьте имя хоста и повторите попытку."
+  },
+  "result": {
+    "label": "Результат поиска DNS",
+    "lookup-time": "Время поиска",
+    "lookup-time-unit": "мс",
+    "addresses": "Адреса",
+    "cname": "CNAME"
+  }
+}

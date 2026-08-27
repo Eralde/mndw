@@ -1,0 +1,113 @@
+{
+  "name": "@mndw/sdk",
+  "version": "2.0.0",
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./tokens.css": "./src/tokens.css",
+    "./tokens": {
+      "types": "./src/tokens.ts",
+      "default": "./src/tokens.ts"
+    },
+    "./palette": {
+      "types": "./src/palette.ts",
+      "default": "./src/palette.ts"
+    },
+    "./ticker": {
+      "types": "./src/ticker.ts",
+      "default": "./src/ticker.ts"
+    },
+    "./catalog": {
+      "types": "./src/catalog.ts",
+      "default": "./src/catalog.ts"
+    },
+    "./i18n-format": {
+      "types": "./src/i18n-format.ts",
+      "default": "./src/i18n-format.ts"
+    },
+    "./testing": {
+      "types": "./src/testing/index.ts",
+      "default": "./src/testing/index.ts"
+    },
+    "./testing/vitest-project": {
+      "types": "./src/testing/vitest-project.ts",
+      "default": "./src/testing/vitest-project.ts"
+    },
+    "./svelte": {
+      "types": "./src/svelte/index.ts",
+      "default": "./src/svelte/index.ts"
+    },
+    "./vue": {
+      "types": "./src/vue/index.ts",
+      "default": "./src/vue/index.ts"
+    },
+    "./angular": {
+      "types": "./src/angular/index.ts",
+      "default": "./src/angular/index.ts"
+    },
+    "./bind-locale": {
+      "types": "./src/bind-locale.ts",
+      "default": "./src/bind-locale.ts"
+    },
+    "./refresh": {
+      "types": "./src/refresh.ts",
+      "default": "./src/refresh.ts"
+    },
+    "./rrd": {
+      "types": "./src/rrd.ts",
+      "default": "./src/rrd.ts"
+    },
+    "./manifest-schema": {
+      "types": "./src/manifest-schema.ts",
+      "default": "./src/manifest-schema.ts"
+    },
+    "./shared-dependencies": {
+      "types": "./shared-dependencies.ts",
+      "default": "./shared-dependencies.ts"
+    },
+    "./manifest.schema.json": "./manifest.schema.json"
+  },
+  "files": ["src", "shared-dependencies.ts", "manifest.schema.json"],
+  "scripts": {
+    "test": "vitest run",
+    "generate-manifest-schema": "node --import tsx scripts/generate-manifest-schema.ts"
+  },
+  "dependencies": {
+    "@mndw/palette-core": "workspace:*",
+    "intl-messageformat": "^11.2.13",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@rci-tools/core": ">=0.2.0",
+    "rxjs": ">=7.0.0",
+    "@angular/core": ">=21.0.0",
+    "@angular/platform-browser": ">=21.0.0",
+    "svelte": ">=5.0.0",
+    "vue": ">=3.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@angular/core": {"optional": true},
+    "@angular/platform-browser": {"optional": true},
+    "svelte": {"optional": true},
+    "vue": {"optional": true}
+  },
+  "devDependencies": {
+    "@angular/common": "^21.2.18",
+    "@angular/compiler": "^21.2.18",
+    "@angular/core": "^21.2.18",
+    "@angular/platform-browser": "^21.2.18",
+    "@rci-tools/core": "^0.2.0",
+    "happy-dom": "20.11.1",
+    "rxjs": "^7.8.0",
+    "svelte": "^5.56.4",
+    "tsx": "^4.23.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7",
+    "vue": "^3.5.39",
+    "zone.js": "^0.15.1"
+  }
+}

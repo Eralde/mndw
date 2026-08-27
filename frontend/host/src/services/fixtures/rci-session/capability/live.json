@@ -1,0 +1,6 @@
+{
+  "store": {"state": "ok"},
+  "controller": {"support": "supported"},
+  "extenders": [{"identity": "node-1", "name": "Node 1", "eligible": true, "state": "live", "lastHeartbeatAt": "2026-08-17T12:00:00Z"}],
+  "stale": false
+}

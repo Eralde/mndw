@@ -1,0 +1,25 @@
+{
+  "l10n": {
+    "probe": "DNS English probe"
+  },
+  "title": "DNS Lookup",
+  "hostname-label": "Hostname",
+  "hostname-hint": "Example: google.com",
+  "hostname": "Hostname (e.g. google.com)",
+  "lookup": "Lookup",
+  "enter": "Please enter a hostname.",
+  "idle": "Enter a hostname and press Lookup.",
+  "unavailable": "This plugin has no backend available.",
+  "loading": "Looking up {hostname}…",
+  "not-found": "Hostname \"{hostname}\" not found.",
+  "error": {
+    "lookup-failed": "Lookup failed. Check the hostname and try again."
+  },
+  "result": {
+    "label": "DNS lookup result",
+    "lookup-time": "Lookup time",
+    "lookup-time-unit": "ms",
+    "addresses": "Addresses",
+    "cname": "CNAME"
+  }
+}

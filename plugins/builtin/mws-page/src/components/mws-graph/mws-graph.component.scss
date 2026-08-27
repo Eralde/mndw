@@ -1,0 +1,207 @@
+:host {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 20rem;
+}
+
+.graph-controls {
+  position: absolute;
+  right: var(--mndw-space-3);
+  bottom: var(--mndw-space-3);
+  z-index: 1;
+  display: flex;
+  flex-flow: column wrap;
+  gap: var(--mndw-space-1);
+  justify-content: flex-end;
+  align-items: flex-end;
+
+  .graph-view-controls,
+  .graph-edit-controls {
+    display: flex;
+    gap: var(--mndw-space-1);
+  }
+
+  mndw-button {
+    width: var(--mndw-control-h);
+    height: var(--mndw-control-h);
+
+    &::part(button) {
+      min-width: 100%;
+      min-height: 100%;
+      padding: 0;
+      font-size: 1.125rem;
+      line-height: 1;
+    }
+  }
+
+  .graph-action {
+    width: auto;
+    min-width: var(--mndw-control-h);
+
+    &::part(button) {
+      padding: 0 var(--mndw-space-2);
+      font-size: 0.75rem;
+    }
+  }
+}
+
+:host.editing {
+  .mws-graph {
+    outline: 1px dashed var(--mndw-accent);
+  }
+
+  .node {
+    cursor: grab;
+  }
+}
+
+.mws-graph {
+  display: block;
+  width: 100%;
+  height: 100%;
+  font-family: var(--mndw-font-sans);
+
+  &:focus {
+    outline: none;
+  }
+
+  &:focus-visible {
+    outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
+    outline-offset: -0.125rem;
+  }
+
+  .edge {
+    fill: none;
+    stroke: var(--mndw-border);
+    stroke-width: 2;
+
+    &.wireless {
+      stroke-dasharray: 5 5;
+    }
+
+    &.good {
+      stroke: var(--mndw-success);
+      stroke-width: 2;
+    }
+
+    &.fair {
+      stroke: var(--mndw-warning);
+      stroke-width: 3;
+    }
+
+    &.weak {
+      stroke: var(--mndw-danger);
+      stroke-width: 4;
+    }
+  }
+
+  .node {
+    cursor: pointer;
+
+    rect.node-body {
+      fill: var(--mndw-surface-raised);
+      stroke: var(--mndw-border);
+      stroke-width: 2;
+    }
+
+    rect.selection-ring {
+      fill: none;
+      stroke: var(--mndw-accent);
+      stroke-width: 2;
+    }
+
+    text {
+      font-size: 0.75rem;
+      fill: var(--mndw-text);
+
+      &.model {
+        font-size: 0.625rem;
+        fill: var(--mndw-text-subtle);
+      }
+    }
+
+    .client-badge {
+      circle {
+        fill: var(--mndw-accent);
+      }
+
+      text {
+        font-size: 0.625rem;
+        fill: var(--mndw-surface-raised);
+      }
+    }
+
+    .update-dot {
+      fill: var(--mndw-success);
+    }
+
+    .mwsd-status-dot {
+      &.mwsd-starting {
+        fill: var(--mndw-info);
+      }
+
+      &.mwsd-live {
+        fill: var(--mndw-success);
+      }
+
+      &.mwsd-stale {
+        fill: var(--mndw-warning);
+      }
+
+      &.mwsd-offline {
+        fill: var(--mndw-danger);
+      }
+
+      &.mwsd-unavailable {
+        fill: var(--mndw-text-muted);
+      }
+    }
+
+    .persistent-session-dot {
+      &.persistent-live {
+        fill: var(--mndw-success);
+      }
+
+      &.persistent-failing {
+        fill: var(--mndw-warning);
+      }
+    }
+
+    &.controller rect.node-body {
+      stroke: var(--mndw-accent);
+      stroke-width: 3;
+    }
+
+    &.offline {
+      opacity: 0.6;
+
+      rect.node-body {
+        stroke: var(--mndw-danger);
+      }
+    }
+
+    &.on-path rect.node-body {
+      filter: drop-shadow(0 0 4px var(--mndw-accent));
+      stroke: var(--mndw-accent);
+      stroke-width: 3;
+    }
+
+    &.selected rect.node-body {
+      filter: drop-shadow(0 0 6px var(--mndw-accent));
+    }
+
+    &:focus-visible rect {
+      outline: 2px solid var(--mndw-accent);
+      outline-offset: 0.125rem;
+    }
+  }
+
+  .edge {
+    &.on-path {
+      filter: drop-shadow(0 0 4px var(--mndw-accent));
+      stroke: var(--mndw-accent);
+    }
+  }
+}

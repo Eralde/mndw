@@ -1,0 +1,22 @@
+{
+  "log": {
+    "2": {
+      "timestamp": "Aug  1 12:00:01",
+      "ident": "router",
+      "message": {
+        "level": "Warning",
+        "label": "Warning",
+        "text": "degraded"
+      }
+    },
+    "1": {
+      "timestamp": "Aug  1 12:00:00",
+      "ident": "system",
+      "message": {
+        "level": "Info",
+        "label": "Info",
+        "text": "booted"
+      }
+    }
+  }
+}

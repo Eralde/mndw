@@ -1,6 +1,6 @@
 # mndw
 
-mndw is a modular, plugin-based web dashboard for Keenetic network devices.
+mndw is a modular, plugin-based web dashboard for Keenetic/Netcraze network devices.
 The browser host provides the dashboard and plugin UI; `mndwd` provides
 device-side plugin management and backend execution.
 
@@ -25,13 +25,14 @@ Request routing, listener ports, and upstream targets are owned by
 Prerequisites: Node 22+, pnpm 10+, Go 1.26+.
 
 ```bash
-git clone <repo-url>
+git clone git@github.com:Eralde/mndw.git
 pnpm install
 pnpm dev
 ```
 
 Development starts the host and connects browser traffic to a local `mndwd --dev`
-daemon and a real device. Set `MNDW_HOST_DEVICE` to select that device.
+daemon and a real device. Set `MNDW_HOST_DEVICE=<DEVICE_IP>` to proxy requests
+to that device.
 
 ## Plugin authoring
 
@@ -43,10 +44,23 @@ pnpm exec mndw pack my-widget
 pnpm exec mndw zip my-widget
 ```
 
-The normal loop is `create → dev → validate → pack → zip → upload`. Plugins use
-`@mndw/sdk`, implement `createInstance`, and declare a v3 `manifest.json`.
-Widgets use grid-unit dimensions; pages declare one route. Plugins can be
-vanilla TypeScript, Svelte, Vue, or Angular.
+The normal loop is `create -> dev -> validate -> pack -> zip -> upload`.
+Plugins use `@mndw/sdk`, implement `createInstance`, and declare a `manifest.json`.
+Widgets use grid-unit dimensions; pages declare one route. Plugin frontend
+can be vanilla TypeScript, Svelte, Vue, or Angular. Plugins can use the host-provided
+`context.rciManager` to access the existing device `rci/` API.
+
+### Backends
+
+Plugins may declare an optional backend in `manifest.json`. `exec` backends run
+one command per declared HTTP route; `service` backends run a resident process
+that exposes HTTP/WebSocket routes. Frontends call declared routes through
+`context.backend.fetch(id)` or `context.backend.socket(id)`. Backend processes
+require approval and run with daemon/device privileges.
+
+See the [plugin author guide](docs/plugin-author-guide.md) for exec backends
+and the [service backend guide](docs/service-backend.md) for service manifests,
+socket readiness, lifecycle, and security details.
 
 See the [SDK plugin-author guide](frontend/sdk/README.md).
 
@@ -65,22 +79,34 @@ Output: `out/mndw_<version>_<opkg-arch>.ipk` (for example,
 
 ```text
 frontend/
-  sdk/              plugin contracts and backend client
-  host/             Svelte host application
-  ui/               reusable custom elements
+  angular-compiler/ shared Angular build-time compiler
+  sdk/              plugin contracts, manifest schema, backend client, and design tokens
+  host/             Svelte 5 host application
+  ui/               reusable Lit custom elements and components
+  ui-angular/       Angular UI adapter
+  ui-svelte/        Svelte UI adapter
+  ui-vue/           Vue UI adapter
 tooling/
-  cli/              plugin scaffolding and packaging
+  cli/              `mndw` CLI and plugin packaging
+  eslint/           shared ESLint rules
+  go-blanklr/       Go blank-line formatter
   palette-core/     dependency-free palette leaf
 daemon/
   mndwd/            Go device control plane
   contracts-go/     generated Go contract bindings
 packages/
   go-device-auth/   shared device-auth handshake
+  go-httpsocket/    shared Unix-socket HTTP lifecycle
+  go-mws-members/   shared mesh-member parsing
+  go-rci/           shared RCI client and transport
   go-rcisock/       shared persistent RCI transport
-plugins/builtin/    shipped built-in plugins and backend implementations
-plugins/examples/   uploadable example plugins
-build/packaging/             lighttpd, init, IPK, install scripts
-build/              palette, development, and IPK build tools
+plugins/
+  builtin/          shipped built-in plugins
+  examples/         uploadable example plugins
+build/
+  palette/          palette engine and token generator
+  packaging/        lighttpd, init, IPK, and install scripts
+  ...               repository build orchestration and helpers
 docs/               documentation
 ```
 

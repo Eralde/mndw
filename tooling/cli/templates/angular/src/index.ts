@@ -1,3 +1,4 @@
+import {reflectComponentType} from '@angular/core';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {createAngularPluginInstance, provideTranslator} from '@mndw/sdk/angular';
 import 'zone.js';
@@ -10,7 +11,11 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
     rootComponent: AppComponent,
     providers: [provideTranslator(ctx.i18n)],
     configure: ({component}) => {
-      component.setInput('deviceName', ctx.hostInfo.deviceName);
+      if (
+        reflectComponentType(component.componentType)?.inputs.some(({templateName}) => templateName === 'deviceName')
+      ) {
+        component.setInput('deviceName', ctx.hostInfo.deviceName);
+      }
     },
   });
 }

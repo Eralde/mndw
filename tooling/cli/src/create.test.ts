@@ -205,6 +205,16 @@ describe('planCreate', () => {
     expect(JSON.parse(fileContents(plan, 'tsconfig.json'))).toHaveProperty('angularCompilerOptions');
   });
 
+  it('renders the Angular device name as an input signal', () => {
+    const plan = planCreate(options({name: 'ng', framework: 'angular', type: 'widget'}));
+    const app = fileContents(plan, 'src/app.component.ts');
+
+    expect(app).toContain('import {Component, inject, input, signal} from \'@angular/core\';');
+    expect(app).toContain('public readonly deviceName = input(\'\');');
+    expect(app).toContain('<p>Device: {{ deviceName() }}</p>');
+    expect(app).not.toMatch(/\bInput\b/);
+  });
+
   it('runs generated Svelte and Angular locale tests without compiler warnings', () => {
     const root = mkdtempSync(join(REPO_ROOT, 'tooling', 'cli', '.generated-warning-'));
     const vitest = join(REPO_ROOT, 'tooling', 'cli', 'node_modules', '.bin', 'vitest');

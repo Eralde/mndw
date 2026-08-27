@@ -19,6 +19,24 @@ export interface BuiltPluginBinary {
   readonly destination: string;
 }
 
+function toDescriptorPath(value: string): string {
+  return value.replaceAll('\\', '/');
+}
+
+function normalizeSharedArtifacts(shared: SharedArtifacts): SharedArtifacts {
+  return {
+    frontend: {
+      root: toDescriptorPath(shared.frontend.root),
+      sharedBundles: shared.frontend.sharedBundles.map(toDescriptorPath),
+    },
+    plugins: shared.plugins.map((plugin) => ({
+      ...plugin,
+      bundle: toDescriptorPath(plugin.bundle),
+      staticBackends: plugin.staticBackends.map(toDescriptorPath),
+    })),
+  };
+}
+
 export interface ProductBuildHooks {
   readonly buildDaemon: (options: {
     readonly target: ProductTarget;
@@ -186,14 +204,16 @@ export function buildProductTarget(options: ProductBuildOptions): ArtifactDescri
     outputRoot: targetRoot,
   }).map((binary) => ({
     plugin: binary.plugin,
-    source: relative(repoRoot, resolve(binary.source)),
-    destination: binary.destination,
+    source: toDescriptorPath(relative(repoRoot, resolve(binary.source))),
+    destination: toDescriptorPath(binary.destination),
   }));
+
+  const shared = normalizeSharedArtifacts(options.shared);
 
   const descriptor: ArtifactDescriptor = {
     schemaVersion: 1,
-    shared: options.shared,
-    targets: {[options.target]: {daemon: relative(repoRoot, daemonPath), pluginBinaries}},
+    shared,
+    targets: {[options.target]: {daemon: toDescriptorPath(relative(repoRoot, daemonPath)), pluginBinaries}},
   };
 
   let outputDescriptor = descriptor;

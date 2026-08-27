@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import {pipeline} from 'node:stream/promises';
+import {pathToFileURL} from 'node:url';
 import {pack as tarPack} from 'tar-stream';
 import crossSpawn from 'cross-spawn';
 import {GO_TARGETS} from '@mndw/cli/go-target';
@@ -609,7 +610,11 @@ export async function main(args: string[]): Promise<void> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}` || import.meta.url === process.argv[1]) {
+export function isMainModule(moduleUrl: string, scriptPath: string | undefined): boolean {
+  return scriptPath !== undefined && moduleUrl === pathToFileURL(path.resolve(scriptPath)).href;
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
   main(process.argv.slice(2)).catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;

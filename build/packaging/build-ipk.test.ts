@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {pathToFileURL} from 'node:url';
 import zlib from 'node:zlib';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {SHARED_DEPENDENCIES} from '@mndw/sdk/shared-dependencies';
@@ -11,6 +12,7 @@ import {
   buildIpk,
   collectStagePaths,
   generateFeed,
+  isMainModule,
   opkgArchForTarget,
   parseArgs,
   readVersion,
@@ -580,5 +582,14 @@ describe('parseArgs', () => {
 
   it('rejects missing value for --arch', () => {
     expect(() => parseArgs(['--arch'])).toThrow('Missing value for --arch');
+  });
+});
+
+describe('isMainModule', () => {
+  it('recognizes a platform-native script path as the module URL', () => {
+    const scriptPath = path.resolve('build/packaging/build-ipk.ts');
+
+    expect(isMainModule(pathToFileURL(scriptPath).href, scriptPath)).toBe(true);
+    expect(isMainModule(pathToFileURL(path.resolve('build/index.ts')).href, scriptPath)).toBe(false);
   });
 });

@@ -1,16 +1,15 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {execSync} from 'node:child_process';
 import zlib from 'node:zlib';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import {SHARED_DEPENDENCIES} from '@mndw/sdk/shared-dependencies';
 import {
   ARCH_MAP,
   buildControlTar,
+  buildDataTar,
   buildIpk,
   collectStagePaths,
-  detectTar,
   generateFeed,
   opkgArchForTarget,
   parseArgs,
@@ -21,10 +20,11 @@ import {
   verifyStage,
 } from './build-ipk.js';
 
-const isExecutable = (mode: number): boolean =>
-  mode.toString(8).slice(-3)
+const isExecutable = (mode: number): boolean => {
+  return mode.toString(8).slice(-3)
     .split('')
     .some((digit) => '1357'.includes(digit));
+};
 
 const readTarEntries = (archivePath: string): {name: string; typeFlag: string}[] => {
   const archive = zlib.gunzipSync(fs.readFileSync(archivePath));
@@ -47,6 +47,44 @@ const readTarEntries = (archivePath: string): {name: string; typeFlag: string}[]
   }
 
   return entries;
+};
+
+interface TarHeaderDetail {
+  name: string;
+  typeFlag: string;
+  mode: string;
+  uid: number;
+  uname: string;
+}
+
+const octalField = (buf: Buffer): string => {
+  return buf.toString('ascii')
+    .replace(/\0.*$/, '')
+    .trim();
+};
+
+const readTarHeaders = (archivePath: string): TarHeaderDetail[] => {
+  const archive = zlib.gunzipSync(fs.readFileSync(archivePath));
+  const headers: TarHeaderDetail[] = [];
+
+  for (let offset = 0; offset + 512 <= archive.length;) {
+    const header = archive.subarray(offset, offset + 512);
+
+    if (header.every((byte) => byte === 0)) { break; }
+
+    const name = header.subarray(0, 100).toString('utf8')
+      .replace(/\0.*$/, '');
+    const size = parseInt(octalField(header.subarray(124, 136)) || '0', 8);
+    const mode = octalField(header.subarray(100, 108)).slice(-3);
+    const uid = parseInt(octalField(header.subarray(108, 116)) || '0', 8);
+    const uname = header.subarray(265, 297).toString('utf8')
+      .replace(/\0.*$/, '');
+
+    headers.push({name, typeFlag: String.fromCharCode(header[156] || 0), mode, uid, uname});
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+
+  return headers;
 };
 
 const expectUstarArchive = (archivePath: string): void => {
@@ -80,25 +118,6 @@ describe('IPK target package surfaces', () => {
     expect(opkgArchForTarget('aarch64')).toBe('aarch64-3.10');
     expect(opkgArchForTarget('mips')).toBe('mips-3.4');
     expect(opkgArchForTarget('mipsel')).toBe('mipsel-3.4');
-  });
-});
-
-describe('detectTar', () => {
-  it('returns GNU opts for GNU tar', () => {
-    expect(detectTar('GNU tar')).toEqual(['--owner=0', '--group=0', '--numeric-owner']);
-  });
-
-  it('returns BSD opts for non-GNU tar', () => {
-    expect(detectTar('bsdtar 3.7.1')).toEqual(['--uid=0', '--gid=0', '--uname=root', '--gname=root']);
-  });
-
-  it('handles macOS tar', () => {
-    expect(detectTar('bsdtar 3.7.1 - libarchive 3.7.1')).toEqual([
-      '--uid=0',
-      '--gid=0',
-      '--uname=root',
-      '--gname=root',
-    ]);
   });
 });
 
@@ -292,6 +311,93 @@ describe('verifyElf', () => {
   });
 });
 
+describe('buildDataTar', () => {
+  let stagingDir: string;
+  let outDir: string;
+
+  beforeEach(() => {
+    stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-data-stage-'));
+    outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-data-out-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(stagingDir, {recursive: true, force: true});
+    fs.rmSync(outDir, {recursive: true, force: true});
+  });
+
+  const stage = (rel: string, mode: number, content = ''): void => {
+    const full = path.join(stagingDir, rel);
+
+    fs.mkdirSync(path.dirname(full), {recursive: true});
+    fs.writeFileSync(full, content);
+    fs.chmodSync(full, mode);
+  };
+
+  it('assigns file modes and root ownership from policy, not from on-disk perms', async () => {
+    // Deliberately stage everything non-executable / mode 0644 on disk; the archive
+    // modes must come from policy so they are correct even on hosts where chmod is a no-op.
+    stage('opt/etc/init.d/S70mndwd', 0o644, '#!/bin/sh\n');
+    stage('opt/share/www/mndw/bin/mndw-load-modules.sh', 0o644, '#!/bin/sh\n');
+    stage('opt/sbin/mndwd', 0o644, '\x7fELF');
+    stage('opt/share/www/mndw/plugins/p/backend/p', 0o644, '\x7fELF');
+    stage('opt/etc/mndw.conf', 0o644, 'key=value\n');
+    stage('opt/share/www/mndw/index.html', 0o644, '<html>');
+
+    const tarPath = await buildDataTar(stagingDir, outDir);
+    const byName = new Map(readTarHeaders(tarPath).map((h) => [h.name, h]));
+    const modeOf = (rel: string): string | undefined => byName.get(`./${rel}`)?.mode;
+
+    expect(modeOf('opt/etc/init.d/S70mndwd')).toBe('755');
+    expect(modeOf('opt/share/www/mndw/bin/mndw-load-modules.sh')).toBe('755');
+    expect(modeOf('opt/sbin/mndwd')).toBe('755');
+    expect(modeOf('opt/share/www/mndw/plugins/p/backend/p')).toBe('755');
+    expect(modeOf('opt/etc/mndw.conf')).toBe('600');
+    expect(modeOf('opt/share/www/mndw/index.html')).toBe('644');
+
+    for (const header of byName.values()) {
+      expect(header.uid).toBe(0);
+      expect(header.uname).toBe('root');
+    }
+  });
+
+  it('emits directory entries for every parent, ordered before their contents', async () => {
+    stage('opt/share/www/mndw/index.html', 0o644, '<html>');
+    stage('opt/etc/mndw.conf', 0o644, 'k=v\n');
+
+    const headers = await buildDataTar(stagingDir, outDir).then(readTarHeaders);
+    const dirs = headers.filter((h) => h.typeFlag === '5').map((h) => h.name);
+
+    // BusyBox tar (opkg's extractor) does not create parent dirs implicitly.
+    for (const dir of ['./opt/', './opt/share/', './opt/share/www/', './opt/share/www/mndw/', './opt/etc/']) {
+      expect(dirs).toContain(dir);
+    }
+
+    const indexOf = (name: string): number => headers.findIndex((h) => h.name === name);
+
+    expect(indexOf('./opt/share/www/mndw/')).toBeLessThan(indexOf('./opt/share/www/mndw/index.html'));
+    expect(indexOf('./opt/etc/')).toBeLessThan(indexOf('./opt/etc/mndw.conf'));
+
+    for (const dir of dirs) {
+      const header = headers.find((h) => h.name === dir);
+
+      expect(header?.mode).toBe('755');
+      expect(header?.uname).toBe('root');
+    }
+  });
+
+  it('excludes macOS metadata files from the archive', async () => {
+    stage('opt/share/www/mndw/index.html', 0o644, '<html>');
+    stage('opt/share/www/mndw/._index.html', 0o644, 'junk');
+    stage('opt/share/www/mndw/.DS_Store', 0o644, 'junk');
+
+    const names = await buildDataTar(stagingDir, outDir).then(readTarHeaders)
+      .then((hs) => hs.map((h) => h.name));
+
+    expect(names).toContain('./opt/share/www/mndw/index.html');
+    expect(names.some((n) => n.includes('._') || n.includes('.DS_Store'))).toBe(false);
+  });
+});
+
 describe('buildControlTar', () => {
   const writeControlFixture = (dir: string, includePostinst = true): void => {
     fs.writeFileSync(
@@ -307,43 +413,53 @@ describe('buildControlTar', () => {
     fs.writeFileSync(path.join(dir, 'postrm'), '#!/bin/sh\nexit 0\n');
   };
 
-  it('throws when a required control file is missing', () => {
+  it('throws when a required control file is missing', async () => {
     const tmpIpk = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-ctrl-test-'));
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-ctrl-out-'));
 
     try {
       writeControlFixture(tmpIpk, false);
-      expect(() => buildControlTar(tmpIpk, outDir, '1.0.0', 'all')).toThrow('Missing required ipk control file');
+      await expect(buildControlTar(tmpIpk, outDir, '1.0.0', 'all')).rejects.toThrow(
+        'Missing required ipk control file',
+      );
     } finally {
       fs.rmSync(tmpIpk, {recursive: true, force: true});
       fs.rmSync(outDir, {recursive: true, force: true});
     }
   });
 
-  it('produces control.tar.gz with all members and executable scripts', () => {
+  it('produces control.tar.gz with all members, executable scripts, and root ownership', async () => {
     const tmpIpk = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-ctrl-ok-'));
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-ctrl-out2-'));
 
     try {
       writeControlFixture(tmpIpk);
 
-      const tarPath = buildControlTar(tmpIpk, outDir, '1.0.0', 'all');
+      // Scripts are written non-executable on disk; the archive header modes must still be 0755.
+      for (const script of ['preinst', 'postinst', 'prerm', 'postrm']) {
+        fs.chmodSync(path.join(tmpIpk, script), 0o644);
+      }
+
+      const tarPath = await buildControlTar(tmpIpk, outDir, '1.0.0', 'all');
 
       expect(fs.existsSync(tarPath)).toBe(true);
 
-      const listing = execSync(`tar -tzf "${tarPath}"`, {encoding: 'utf8'}).trim()
-        .split('\n');
+      const byName = new Map(readTarHeaders(tarPath).map((h) => [h.name, h]));
 
       for (const member of ['control', 'conffiles', 'preinst', 'postinst', 'prerm', 'postrm']) {
-        expect(listing).toContain(`./${member}`);
+        expect(byName.has(`./${member}`)).toBe(true);
       }
 
-      execSync(`tar -xzf "${tarPath}" -C "${outDir}"`, {encoding: 'utf8'});
-
       for (const script of ['preinst', 'postinst', 'prerm', 'postrm']) {
-        const mode = fs.statSync(path.join(outDir, script)).mode;
+        expect(byName.get(`./${script}`)?.mode).toBe('755');
+      }
 
-        expect(isExecutable(mode)).toBe(true);
+      expect(byName.get('./control')?.mode).toBe('644');
+      expect(byName.get('./conffiles')?.mode).toBe('644');
+
+      for (const header of byName.values()) {
+        expect(header.uid).toBe(0);
+        expect(header.uname).toBe('root');
       }
 
       expectUstarArchive(tarPath);
@@ -355,7 +471,7 @@ describe('buildControlTar', () => {
 });
 
 describe('buildIpk', () => {
-  it('produces an outer USTAR archive without macOS metadata', () => {
+  it('produces an outer USTAR archive with the three ar members', async () => {
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-out-'));
 
     try {
@@ -365,9 +481,13 @@ describe('buildIpk', () => {
       fs.writeFileSync(dataTarPath, zlib.gzipSync('data'));
       fs.writeFileSync(controlTarPath, zlib.gzipSync('control'));
 
-      const ipkPath = buildIpk(dataTarPath, controlTarPath, outDir, '1.0.0', 'all');
+      const ipkPath = await buildIpk(dataTarPath, controlTarPath, outDir, '1.0.0', 'all');
 
       expectUstarArchive(ipkPath);
+
+      const names = readTarHeaders(ipkPath).map((h) => h.name);
+
+      expect(names).toEqual(['./debian-binary', './data.tar.gz', './control.tar.gz']);
     } finally {
       fs.rmSync(outDir, {recursive: true, force: true});
     }

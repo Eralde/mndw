@@ -2,8 +2,9 @@ import fs, {readFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {execSync} from 'node:child_process';
 import zlib from 'node:zlib';
+import {pipeline} from 'node:stream/promises';
+import {pack as tarPack} from 'tar-stream';
 import crossSpawn from 'cross-spawn';
 import {GO_TARGETS} from '@mndw/cli/go-target';
 import {PRODUCT_TARGETS, PRODUCT_TARGET_CONFIG, type ProductTarget, isProductTarget} from '../targets.js';
@@ -28,12 +29,88 @@ function generatedSharedBundlePaths(repoRoot = path.resolve(import.meta.dirname,
   return snapshot.bundles.map((bundle) => bundle.url.replace(/^\//, ''));
 }
 
-export function detectTar(versionOutput: string): string[] {
-  if (versionOutput.includes('GNU tar')) {
-    return ['--owner=0', '--group=0', '--numeric-owner'];
+/** Fixed timestamp for reproducible archives (no dependency on build time or host clock). */
+const TAR_MTIME = new Date(0);
+
+/** macOS/AppleDouble metadata files that must never enter the package. */
+export function isMetadataFile(baseName: string): boolean {
+  return baseName === '.DS_Store' || baseName.startsWith('._');
+}
+
+/**
+ * Resolve the POSIX file mode for a staged path from an explicit policy rather than the
+ * on-disk permission bits. Host filesystems (notably Windows) do not carry Unix modes, so the
+ * archive must set them authoritatively for the target device.
+ */
+export function dataFileMode(relPosixPath: string): number {
+  const segments = relPosixPath.split('/');
+  const baseName = segments[segments.length - 1] ?? '';
+  const isExecutable = relPosixPath === 'opt/sbin/mndwd'
+    || segments.includes('init.d')
+    || (segments.includes('bin') && baseName.endsWith('.sh'))
+    || segments.includes('backend');
+
+  if (relPosixPath === 'opt/etc/mndw.conf') { return 0o600; }
+
+  if (isExecutable) { return 0o755; }
+
+  return 0o644;
+}
+
+export interface TarFileEntry {
+  readonly name: string;
+  readonly mode: number;
+  /** File contents; omit (or undefined) for a directory entry. */
+  readonly content?: Buffer;
+}
+
+/** Write a gzipped ustar archive with fully controlled, root-owned headers (no external tar). */
+export async function writeTarGz(entries: readonly TarFileEntry[], outPath: string): Promise<void> {
+  const pack = tarPack();
+  const done = pipeline(pack, zlib.createGzip(), fs.createWriteStream(outPath));
+
+  for (const entry of entries) {
+    const isDirectory = entry.content === undefined;
+
+    pack.entry({
+      name: entry.name,
+      mode: entry.mode,
+      size: isDirectory ? 0 : entry.content.length,
+      type: isDirectory ? 'directory' : 'file',
+      uid: 0,
+      gid: 0,
+      uname: 'root',
+      gname: 'root',
+      mtime: TAR_MTIME,
+    }, entry.content ?? Buffer.alloc(0));
   }
 
-  return ['--uid=0', '--gid=0', '--uname=root', '--gname=root'];
+  pack.finalize();
+
+  await done;
+}
+
+interface StagedEntries {
+  readonly dirs: string[];
+  readonly files: string[];
+}
+
+/** Recursively collect directories and regular files under `root` as POSIX-relative paths. */
+function collectEntries(root: string, rel = '', into: StagedEntries = {dirs: [], files: []}): StagedEntries {
+  for (const dirent of fs.readdirSync(path.join(root, rel), {withFileTypes: true})) {
+    if (isMetadataFile(dirent.name)) { continue; }
+
+    const childRel = rel === '' ? dirent.name : `${rel}/${dirent.name}`;
+
+    if (dirent.isDirectory()) {
+      into.dirs.push(childRel);
+      collectEntries(root, childRel, into);
+    } else if (dirent.isFile()) {
+      into.files.push(childRel);
+    }
+  }
+
+  return into;
 }
 
 export function substituteControl(template: string, version: string, arch: string): string {
@@ -235,94 +312,71 @@ export function stageDeployFiles(repoRoot: string, stagingDir: string): void {
   );
 }
 
-export function getTarVersion(): string {
-  return execSync('tar --version', {encoding: 'utf8'}).split('\n')[0] || '';
-}
-
-export function getTarOwnerOpts(): string[] {
-  return detectTar(getTarVersion());
-}
-
-export function buildDataTar(stagingDir: string, outDir: string): string {
-  execSync(`find "${stagingDir}" -name "._*" -delete 2>/dev/null || true`);
-  execSync(`find "${stagingDir}" -name ".DS_Store" -delete 2>/dev/null || true`);
-
-  const tarOpts = getTarOwnerOpts();
+export async function buildDataTar(stagingDir: string, outDir: string): Promise<string> {
   const outPath = path.join(outDir, 'data.tar.gz');
+  const {dirs, files} = collectEntries(stagingDir);
 
-  execSync(
-    `COPYFILE_DISABLE=1 tar ${tarOpts.join(' ')} --format=ustar -C "${stagingDir}" -czf "${outPath}" ./opt`,
-    {stdio: 'inherit'},
-  );
+  // Directory entries must precede their contents; opkg's BusyBox tar does not create
+  // parent directories implicitly. Lexicographic order guarantees each parent precedes its children.
+  const dirEntries: TarFileEntry[] = [...dirs].sort()
+    .map((relPosixPath) => ({name: `./${relPosixPath}/`, mode: 0o755}));
+  const fileEntries: TarFileEntry[] = files.map((relPosixPath) => ({
+    name: `./${relPosixPath}`,
+    mode: dataFileMode(relPosixPath),
+    content: fs.readFileSync(path.join(stagingDir, relPosixPath)),
+  }));
+
+  await writeTarGz([...dirEntries, ...fileEntries], outPath);
 
   return outPath;
 }
 
-export function buildControlTar(ipkDir: string, outDir: string, version: string, arch: string): string {
+export async function buildControlTar(
+  ipkDir: string,
+  outDir: string,
+  version: string,
+  arch: string,
+): Promise<string> {
   const template = fs.readFileSync(path.join(ipkDir, 'control'), 'utf8');
-  const content = substituteControl(template, version, arch);
-  const ctrlRoot = path.join(outDir, '.control-staging');
-  const ctrlDir = path.join(ctrlRoot, 'control');
+  const entries: TarFileEntry[] = [
+    {name: './control', mode: 0o644, content: Buffer.from(substituteControl(template, version, arch))},
+  ];
 
-  fs.mkdirSync(ctrlDir, {recursive: true});
+  for (const s of ['conffiles', 'preinst', 'postinst', 'prerm', 'postrm']) {
+    const src = path.join(ipkDir, s);
 
-  try {
-    fs.writeFileSync(path.join(ctrlDir, 'control'), content);
-
-    for (const s of ['conffiles', 'preinst', 'postinst', 'prerm', 'postrm']) {
-      const src = path.join(ipkDir, s);
-
-      if (!fs.existsSync(src)) {
-        throw new Error(`Missing required ipk control file: build/packaging/ipk/${s}`);
-      }
-
-      fs.copyFileSync(src, path.join(ctrlDir, s));
-
-      if (s !== 'conffiles') { fs.chmodSync(path.join(ctrlDir, s), 0o755); }
+    if (!fs.existsSync(src)) {
+      throw new Error(`Missing required ipk control file: build/packaging/ipk/${s}`);
     }
 
-    const tarOpts = getTarOwnerOpts();
-    const outPath = path.join(outDir, 'control.tar.gz');
-    const files = fs.readdirSync(ctrlDir).map((f) => `./${f}`)
-      .join(' ');
-
-    execSync(
-      `COPYFILE_DISABLE=1 tar ${tarOpts.join(' ')} --format=ustar -C "${ctrlDir}" -czf "${outPath}" ${files}`,
-      {stdio: 'inherit'},
-    );
-
-    return outPath;
-  } finally {
-    fs.rmSync(ctrlRoot, {recursive: true, force: true});
+    entries.push({name: `./${s}`, mode: s === 'conffiles' ? 0o644 : 0o755, content: fs.readFileSync(src)});
   }
+
+  const outPath = path.join(outDir, 'control.tar.gz');
+
+  await writeTarGz(entries, outPath);
+
+  return outPath;
 }
 
-export function buildIpk(
+export async function buildIpk(
   dataTarPath: string,
   controlTarPath: string,
   outDir: string,
   version: string,
   arch: string,
-): string {
+): Promise<string> {
   const ipkName = `mndw_${version}_${arch}.ipk`;
   const ipkPath = path.join(outDir, ipkName);
-  const buildDir = path.join(outDir, '.ipk-build');
+  const entries: TarFileEntry[] = [
+    {name: './debian-binary', mode: 0o644, content: Buffer.from('2.0\n')},
+    {name: './data.tar.gz', mode: 0o644, content: fs.readFileSync(dataTarPath)},
+    {name: './control.tar.gz', mode: 0o644, content: fs.readFileSync(controlTarPath)},
+  ];
 
-  fs.mkdirSync(buildDir, {recursive: true});
+  await writeTarGz(entries, ipkPath);
 
-  try {
-    fs.writeFileSync(path.join(buildDir, 'debian-binary'), '2.0\n');
-    fs.copyFileSync(dataTarPath, path.join(buildDir, 'data.tar.gz'));
-    fs.copyFileSync(controlTarPath, path.join(buildDir, 'control.tar.gz'));
-    execSync(
-      `COPYFILE_DISABLE=1 tar --format=ustar -czf "${ipkPath}" -C "${buildDir}" ./debian-binary ./data.tar.gz ./control.tar.gz`,
-      {stdio: 'inherit'},
-    );
-
-    return ipkPath;
-  } finally {
-    fs.rmSync(buildDir, {recursive: true, force: true});
-  }
+  return ipkPath;
 }
 
 export interface IpkInfo {
@@ -484,7 +538,7 @@ function stageTargetArtifacts(
   }
 }
 
-export function buildOneArch(arch: string, repoRoot: string, version: string): string {
+export async function buildOneArch(arch: string, repoRoot: string, version: string): Promise<string> {
   if (!isProductTarget(arch)) { throw new Error(`Unknown architecture: ${arch}`); }
 
   const targetConfig = PRODUCT_TARGET_CONFIG[arch];
@@ -512,15 +566,15 @@ export function buildOneArch(arch: string, repoRoot: string, version: string): s
     verifyStage(stagingDir, descriptor.shared.frontend.sharedBundles);
     verifyAllElf(stagingDir, arch);
 
-    const dataTarPath = buildDataTar(stagingDir, buildDir);
-    const controlTarPath = buildControlTar(
+    const dataTarPath = await buildDataTar(stagingDir, buildDir);
+    const controlTarPath = await buildControlTar(
       path.join(repoRoot, 'build', 'packaging', 'ipk'),
       buildDir,
       version,
       targetConfig.opkgArch,
     );
 
-    return buildIpk(dataTarPath, controlTarPath, outDir, version, targetConfig.opkgArch);
+    return await buildIpk(dataTarPath, controlTarPath, outDir, version, targetConfig.opkgArch);
   } finally {
     fs.rmSync(stagingDir, {recursive: true, force: true});
     fs.rmSync(buildDir, {recursive: true, force: true});
@@ -528,7 +582,7 @@ export function buildOneArch(arch: string, repoRoot: string, version: string): s
   }
 }
 
-export function main(args: string[]): void {
+export async function main(args: string[]): Promise<void> {
   const {arch, all, repo} = parseArgs(args);
   const repoRoot = path.resolve(import.meta.dirname, '..', '..');
   const version = readVersion(repoRoot);
@@ -541,7 +595,7 @@ export function main(args: string[]): void {
   for (const a of arches) {
     console.log(`Building for ${a}...`);
 
-    const ipkPath = buildOneArch(a, repoRoot, version);
+    const ipkPath = await buildOneArch(a, repoRoot, version);
 
     ipkPaths.push(ipkPath);
     console.log(`  -> ${ipkPath}`);
@@ -556,5 +610,8 @@ export function main(args: string[]): void {
 }
 
 if (import.meta.url === `file://${process.argv[1]}` || import.meta.url === process.argv[1]) {
-  main(process.argv.slice(2));
+  main(process.argv.slice(2)).catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }

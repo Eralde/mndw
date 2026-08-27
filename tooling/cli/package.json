@@ -33,6 +33,7 @@
     "@mndw/angular-compiler": "workspace:*",
     "@mndw/sdk": "workspace:*",
     "commander": "^15.0.0",
+    "chokidar": "^5.0.0",
     "esbuild": "^0.25.12",
     "esbuild-svelte": "^0.9.5",
     "fflate": "^0.8.2",

@@ -27,17 +27,18 @@ type ServiceSpec struct {
 }
 
 type SupervisorConfig struct {
-	RuntimeRoot        string
-	PluginDataRoot     string
-	Limits             Limits
-	SupportedProtocols []int
-	ReadinessTimeout   time.Duration
-	DiagnosticsTimeout time.Duration
-	StopTimeout        time.Duration
-	FinalReapTimeout   time.Duration
-	Logger             *slog.Logger
-	Now                func() time.Time
-	LifetimeCtx        context.Context
+	RuntimeRoot               string
+	PluginDataRoot            string
+	AllowSymlinkedBuiltinRoot bool
+	Limits                    Limits
+	SupportedProtocols        []int
+	ReadinessTimeout          time.Duration
+	DiagnosticsTimeout        time.Duration
+	StopTimeout               time.Duration
+	FinalReapTimeout          time.Duration
+	Logger                    *slog.Logger
+	Now                       func() time.Time
+	LifetimeCtx               context.Context
 }
 
 type Supervisor struct {
@@ -550,6 +551,10 @@ func (s *Supervisor) prepareStart(paths RuntimePaths, spec ServiceSpec) (Validat
 
 	if err := removeRuntimeEvidence(paths); err != nil {
 		return ValidatedCommand{}, err
+	}
+
+	if spec.Builtin && s.cfg.AllowSymlinkedBuiltinRoot {
+		return validateBuiltinCommand(spec.Dir, spec.Command)
 	}
 
 	return ValidateCommand(spec.Dir, spec.Command)

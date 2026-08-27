@@ -3,7 +3,15 @@ import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync}
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
 
-import {afterEach, describe, expect, test} from 'vitest';
+import {afterEach, describe, expect, test, vi} from 'vitest';
+
+const packPluginSpy = vi.hoisted(() => vi.fn());
+
+vi.mock('./pack.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./pack.js')>();
+
+  return {...actual, packPlugin: packPluginSpy};
+});
 
 import {createProgram} from './index.js';
 
@@ -69,6 +77,8 @@ afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, {force: true, recursive: true});
   }
+
+  packPluginSpy.mockReset();
 });
 
 function expectExpectedError(result: CliResult, message: string, path: string): void {
@@ -141,6 +151,19 @@ describe('createProgram', () => {
       'zip',
       'build-backend',
     ]);
+  });
+
+  test('passes --skip-backend-build through to packPlugin', async () => {
+    const pluginDir = createPluginDirectory(VALID_MANIFEST);
+    mkdirSync(resolve(pluginDir, 'src'));
+    writeFileSync(resolve(pluginDir, 'src/index.ts'), 'export {}');
+    packPluginSpy.mockResolvedValue({manifest: {name: 'source-entry-plugin'}, outDir: pluginDir, warnings: []});
+
+    const execution = execute(['pack', pluginDir, '--skip-backend-build']);
+
+    await execution.run;
+
+    expect(packPluginSpy).toHaveBeenCalledWith(pluginDir, expect.objectContaining({skipBackendBuild: true}));
   });
 
   test('registers the build-backend command', () => {

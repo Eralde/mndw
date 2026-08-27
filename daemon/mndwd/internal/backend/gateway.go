@@ -18,12 +18,14 @@ import (
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
+	"mndwd/internal/state"
 )
 
 type GatewayConfig struct {
-	MaxRequestBytes    int64
-	ServiceHTTPTimeout time.Duration
-	ActivationGates    *ActivationGateRegistry
+	MaxRequestBytes           int64
+	ServiceHTTPTimeout        time.Duration
+	AllowSymlinkedBuiltinRoot bool
+	ActivationGates           *ActivationGateRegistry
 }
 
 type Authenticator interface {
@@ -237,7 +239,7 @@ func (g *Gateway) serveExec(writer http.ResponseWriter, request *http.Request, p
 		return
 	}
 
-	validated, err := ValidateCommand(plugin.Dir, route.Command)
+	validated, err := g.validateCommand(plugin, route.Command)
 	if err != nil {
 		g.writeError(writer, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "backend command is invalid"))
 
@@ -259,6 +261,14 @@ func (g *Gateway) serveExec(writer http.ResponseWriter, request *http.Request, p
 	if apiErr != nil {
 		g.writeError(writer, apiErr)
 	}
+}
+
+func (g *Gateway) validateCommand(plugin *registry.Plugin, relative string) (ValidatedCommand, error) {
+	if plugin.Source == state.SourceBuiltin && g.cfg.AllowSymlinkedBuiltinRoot {
+		return validateBuiltinCommand(plugin.Dir, relative)
+	}
+
+	return ValidateCommand(plugin.Dir, relative)
 }
 
 func runtimeDir(runner *ExecRunner, pluginID string) string {

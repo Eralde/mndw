@@ -163,11 +163,12 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 			Dev:          cfg.Dev,
 		},
 		Supervisor: backend.SupervisorConfig{
-			ReadinessTimeout: cfg.ServiceHTTPTimeout,
-			StopTimeout:      cfg.ServiceStopTimeout,
-			FinalReapTimeout: cfg.FinalReapTimeout,
-			Logger:           logger,
-			LifetimeCtx:      lifetime,
+			ReadinessTimeout:          cfg.ServiceHTTPTimeout,
+			StopTimeout:               cfg.ServiceStopTimeout,
+			FinalReapTimeout:          cfg.FinalReapTimeout,
+			AllowSymlinkedBuiltinRoot: cfg.Dev,
+			Logger:                    logger,
+			LifetimeCtx:               lifetime,
 		},
 	})
 
@@ -250,9 +251,10 @@ func registerPalette(mux *http.ServeMux, mgmtMux *http.ServeMux, paletteStore *p
 // registerPlugins mounts the single manifest backend gateway.
 func registerPlugins(mux *http.ServeMux, cfg Config, reg *registry.Registry, activationGates *backend.ActivationGateRegistry, verifier *authz.Verifier, runtime *backend.RuntimeImpl, logger *slog.Logger) *backend.Gateway {
 	gateway := backend.NewGateway(backend.GatewayConfig{
-		MaxRequestBytes:    cfg.MaxRequestBytes,
-		ServiceHTTPTimeout: cfg.ServiceHTTPTimeout,
-		ActivationGates:    activationGates,
+		MaxRequestBytes:           cfg.MaxRequestBytes,
+		ServiceHTTPTimeout:        cfg.ServiceHTTPTimeout,
+		AllowSymlinkedBuiltinRoot: cfg.Dev,
+		ActivationGates:           activationGates,
 	}, reg, verifier, runtime.ExecRunner(), runtime.Supervisor(), logger)
 
 	gateway.Register(mux)

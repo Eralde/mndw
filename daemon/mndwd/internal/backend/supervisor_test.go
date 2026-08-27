@@ -3,6 +3,8 @@ package backend
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -116,6 +118,55 @@ func TestSupervisorStartsWithStoppedStatusAndReportsCapacity(t *testing.T) {
 
 	if _, ok := supervisor.admission.TryReserveService("second"); ok {
 		t.Fatal("second service reservation accepted")
+	}
+}
+
+func TestSupervisorDevValidationAllowsSymlinkedBuiltinRoot(t *testing.T) {
+	sourceDir := t.TempDir()
+	pluginRoot := t.TempDir()
+	commandDir := filepath.Join(sourceDir, "backend")
+	command := filepath.Join(commandDir, "server")
+
+	if err := os.Mkdir(commandDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	symlinkedPlugin := filepath.Join(pluginRoot, "sample")
+
+	if err := os.Symlink(sourceDir, symlinkedPlugin); err != nil {
+		t.Fatal(err)
+	}
+
+	strictRoot := t.TempDir()
+	strictPaths, err := NewRuntimePaths(strictRoot, "sample")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	strict := NewSupervisor(SupervisorConfig{RuntimeRoot: strictRoot})
+	_, err = strict.prepareStart(strictPaths, ServiceSpec{Dir: symlinkedPlugin, Command: "backend/server"})
+	if err == nil {
+		t.Fatal("strict service validation accepted a symlinked plugin root")
+	}
+
+	devRoot := t.TempDir()
+	devPaths, err := NewRuntimePaths(devRoot, "sample")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dev := NewSupervisor(SupervisorConfig{RuntimeRoot: devRoot, AllowSymlinkedBuiltinRoot: true})
+
+	if _, err := dev.prepareStart(devPaths, ServiceSpec{
+		Dir:     symlinkedPlugin,
+		Command: "backend/server",
+		Builtin: true,
+	}); err != nil {
+		t.Fatalf("dev service validation rejected a symlinked builtin root: %v", err)
 	}
 }
 

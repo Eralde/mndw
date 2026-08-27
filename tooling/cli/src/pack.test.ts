@@ -506,6 +506,37 @@ describe('packPlugin', () => {
     }
   });
 
+  it('skips the host backend hook but still copies the current backend asset when requested', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({
+        name: 'skip-host-built-widget',
+        backend: {
+          kind: 'service',
+          protocolVersion: 1,
+          command: 'backend/service',
+          routes: [{id: 'status', transport: 'http', method: 'GET', path: 'status'}],
+        },
+      }),
+      index: 'export const createInstance = () => ({unmount() {}});\n',
+      files: {
+        'package.json': JSON.stringify({mndw: {backendBuildScript: 'build-backend'}}),
+        'backend/service': '#!/bin/sh\necho service\n',
+      },
+    });
+
+    const outDir = mkdtempSync(join(tmpdir(), 'mndw-pack-skip-host-out-'));
+    const runHook = vi.fn(() => ({status: 0}));
+
+    try {
+      const result = await packPlugin(dir, {outDir, skipBackendBuild: true, runBackendBuild: runHook});
+
+      expect(runHook).not.toHaveBeenCalled();
+      expect(existsSync(join(result.outDir, 'backend', 'service'))).toBe(true);
+    } finally {
+      rmSync(outDir, {recursive: true, force: true});
+    }
+  });
+
   it('skips the host backend hook when a cross target override is supplied', async () => {
     scaffold(dir, {
       manifest: widgetManifest({

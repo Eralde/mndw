@@ -116,11 +116,16 @@ export function createProgram(): Command {
     .command('pack <plugin-dir>')
     .option('--out-dir <dir>', 'output directory (default: <plugin-dir>/dist)')
     .option('--dev', 'pack the development entry instead of the configured production entry')
-    .action(async (pluginDir: string, options: {outDir?: string; dev?: boolean}) => {
+    .option('--skip-backend-build', 'skip package backend build hook for an already-built dev artifact')
+    .action(async (pluginDir: string, options: {outDir?: string; dev?: boolean; skipBackendBuild?: boolean}) => {
       let result;
 
       try {
-        result = await packPlugin(pluginDir, {outDir: options.outDir, development: options.dev});
+        result = await packPlugin(pluginDir, {
+          outDir: options.outDir,
+          development: options.dev,
+          skipBackendBuild: options.skipBackendBuild,
+        });
       } catch (error) {
         rethrowManifestError(pluginDir, error);
       }

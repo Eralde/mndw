@@ -5,9 +5,11 @@ import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {CliError} from './errors.js';
+import {type ReloadSentinel, createReloadSentinel, restartService as defaultRestartService} from './dev-reload.js';
 import {type GoBuildSpawn, buildGoBackend} from './go-backend-build.js';
 import {type LoadedManifest, readManifest} from './manifest.js';
 import {resolvePluginDir} from './paths.js';
+import {type BuildOutcome, type WatchBuildOptions, type WatchHandle, watchAndBuild} from './watch.js';
 
 export interface DevOptions {
   /** Path to a prebuilt `mndwd` binary; required outside a source checkout. */
@@ -36,6 +38,11 @@ export interface DevDeps {
   findDaemonPackageDir?: () => string | null;
   fileExists?: (path: string) => boolean;
   buildGoBackend?: (pluginSourceDir: string) => GoBuildResult;
+  repoRoot?: string;
+  createReloadSentinel?: (repoRoot: string) => ReloadSentinel;
+  watchBackend?: (options: WatchBuildOptions<GoBuildResult>) => WatchHandle;
+  restartService?: typeof defaultRestartService;
+  fetch?: typeof fetch;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -65,6 +72,7 @@ interface HostEnvParams {
   readonly builtinDir: string;
   readonly userDir: string;
   readonly hostDevice?: string;
+  readonly reloadSentinel?: string;
 }
 
 /** The daemon argv for a `mndw dev` session: dev auth bypass, opkg stub, over the temp roots. */
@@ -128,6 +136,10 @@ export function buildHostEnv(params: HostEnvParams, baseEnv: NodeJS.ProcessEnv):
     env.MNDW_HOST_DEVICE = params.hostDevice;
   }
 
+  if (params.reloadSentinel !== undefined) {
+    env.MNDW_DEV_RELOAD_SENTINEL = params.reloadSentinel;
+  }
+
   return env;
 }
 
@@ -176,6 +188,142 @@ function defaultFindDaemonPackageDir(): string | null {
  */
 const defaultGoBuildSpawn: GoBuildSpawn = (command, args, options) =>
   spawnSync(command, args, {cwd: options.cwd, env: options.env, stdio: 'inherit'});
+
+export interface BackendWatchOptions {
+  readonly manifest: LoadedManifest['manifest'];
+  readonly pluginSourceDir: string;
+  readonly pluginName: string;
+  readonly daemonUrl: string;
+}
+
+export interface BackendWatchDeps {
+  readonly buildBackend?: (pluginSourceDir: string) => GoBuildResult;
+  readonly watchBackend?: (options: WatchBuildOptions<GoBuildResult>) => WatchHandle;
+  readonly restartService?: typeof defaultRestartService;
+  readonly touchSentinel?: () => void;
+  readonly fetch?: typeof fetch;
+}
+
+function backendWatchPaths(options: BackendWatchOptions): {paths: string[]; ignores: string[]} {
+  const backend = options.manifest.backend;
+
+  if (backend === undefined) {
+    return {paths: [], ignores: []};
+  }
+
+  const backendDir = join(options.pluginSourceDir, 'backend');
+  const paths = [join(backendDir, '**/*.go')];
+  const ignores = [
+    '**/.dev-data/**',
+    join(backendDir, 'go.sum'),
+    join(backendDir, '.cache', '**'),
+    join(backendDir, '.gocache', '**'),
+  ];
+
+  try {
+    const sourceDirectories = (directory: string): string[] => {
+      const directories: string[] = [];
+
+      for (const entry of readdirSync(directory, {withFileTypes: true})) {
+        if (!entry.isDirectory() || ['.cache', '.gocache', 'dist', 'node_modules'].includes(entry.name)) {
+          continue;
+        }
+
+        const child = join(directory, entry.name);
+
+        directories.push(child, ...sourceDirectories(child));
+      }
+
+      return directories;
+    };
+    const commandDir = join(backendDir, 'cmd');
+
+    paths.push(...sourceDirectories(backendDir));
+
+    for (const entry of readdirSync(commandDir, {withFileTypes: true})) {
+      if (entry.isDirectory()) {
+        ignores.push(join(backendDir, entry.name));
+      }
+    }
+  } catch {
+    // Shell-only plugins may not have a Go command directory.
+  }
+
+  if (backend.kind === 'service') {
+    paths.push(resolve(options.pluginSourceDir, backend.command));
+  } else {
+    for (const route of backend.routes) {
+      paths.push(resolve(options.pluginSourceDir, route.command));
+    }
+  }
+
+  return {paths: [...new Set(paths)], ignores: [...new Set(ignores)]};
+}
+
+function closedWatchHandle(): WatchHandle {
+  return {onChange: () => undefined, close: () => Promise.resolve()};
+}
+
+/** Watches one plugin's declared backend sources and signals only after its artifact is live. */
+export function watchPluginBackend(options: BackendWatchOptions, deps: BackendWatchDeps = {}): WatchHandle {
+  if (options.manifest.backend === undefined) {
+    return closedWatchHandle();
+  }
+
+  const buildBackend = deps.buildBackend ?? defaultBuildGoBackend;
+  const watchBackend = deps.watchBackend ?? watchAndBuild;
+  const restart = deps.restartService ?? defaultRestartService;
+  const touchSentinel = deps.touchSentinel ?? (() => undefined);
+  const fetchImpl = deps.fetch ?? fetch;
+  const {paths, ignores} = backendWatchPaths(options);
+  const backend: WatchBuildOptions<GoBuildResult> = {
+    paths,
+    ignore: ignores,
+    build: () =>
+      Promise.resolve(buildBackend(options.pluginSourceDir)).then((result) => {
+        if (!result.success) {
+          throw new CliError(`mndw dev: Go backend rebuild failed: ${result.error ?? 'unknown error'}`);
+        }
+
+        return result;
+      }),
+    onResult: async (result: BuildOutcome<GoBuildResult>, context) => {
+      if (!result.ok) {
+        console.error(`[mndw dev] Backend rebuild failed: ${result.error.message}`);
+
+        return;
+      }
+
+      if (!context.isCurrent()) {
+        return;
+      }
+
+      if (options.manifest.backend?.kind === 'service') {
+        const restarted = await restart({
+          daemonUrl: options.daemonUrl,
+          pluginName: options.pluginName,
+          timeoutMs: 5_000,
+        }, {fetch: fetchImpl});
+
+        if (!context.isCurrent()) {
+          return;
+        }
+
+        if (!restarted) {
+          console.error(`[mndw dev] Service restart failed for ${options.pluginName}; keeping last reload suppressed`);
+
+          return;
+        }
+      }
+
+      if (context.isCurrent()) {
+        touchSentinel();
+      }
+    },
+  };
+
+  return watchBackend(backend);
+}
 
 export function defaultBuildGoBackend(
   pluginSourceDir: string,
@@ -236,6 +384,7 @@ function defaultOnShutdownSignal(handler: () => void): void {
  * signal or either child exiting, and never copies source (symlink failure is fatal).
  */
 export async function runDev(pluginDir: string, options: DevOptions = {}, deps: DevDeps = {}): Promise<void> {
+  const repoRoot = deps.repoRoot ?? resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const loadManifest = deps.readManifest ?? readManifest;
   const makeTempDir = deps.makeTempDir ?? ((prefix) => mkdtempSync(join(tmpdir(), prefix)));
   const symlinkDir = deps.symlinkDir ?? ((target, linkPath) => symlinkSync(target, linkPath, 'dir'));
@@ -246,6 +395,7 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
   const findDaemonPackageDir = deps.findDaemonPackageDir ?? defaultFindDaemonPackageDir;
   const fileExists = deps.fileExists ?? existsSync;
   const buildBackend = deps.buildGoBackend ?? defaultBuildGoBackend;
+  const makeReloadSentinel = deps.createReloadSentinel ?? createReloadSentinel;
   const baseEnv = deps.env ?? process.env;
 
   // Validate before launching anything so a bad plugin fails fast with no side effects.
@@ -264,7 +414,8 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
     return dir;
   };
   const builtinDir = track(makeTempDir('mndw-dev-builtin-'));
-  const dataDir = track(makeTempDir('mndw-dev-data-'));
+  // Keep daemon-owned Unix socket paths below macOS's pathname limit when tmpdir() is nested.
+  const dataDir = track(makeTempDir('d-'));
   const userDir = track(makeTempDir('mndw-dev-user-'));
 
   const cleanupDirs = (): void => {
@@ -312,10 +463,18 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
     },
   );
 
+  const reloadSentinel = makeReloadSentinel(repoRoot);
+
   const children: DevChild[] = [];
+  let watcher: WatchHandle | undefined;
+  let resolveFinished: () => void = () => undefined;
+  const finished = new Promise<void>((resolveFinishedPromise) => {
+    resolveFinished = resolveFinishedPromise;
+  });
   let shuttingDown = false;
+  let shutdownPromise: Promise<void> | undefined;
   const shutdown = (): void => {
-    if (shuttingDown) {
+    if (shutdownPromise !== undefined) {
       return;
     }
 
@@ -329,7 +488,17 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
       }
     }
 
-    cleanupDirs();
+    shutdownPromise = (async () => {
+      try {
+        await watcher?.close();
+      } catch (error) {
+        console.error('[mndw dev] Failed to close backend watcher:', error);
+      }
+
+      reloadSentinel.cleanup();
+      cleanupDirs();
+      resolveFinished();
+    })();
   };
 
   onShutdownSignal(shutdown);
@@ -346,16 +515,41 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
     await waitForDaemon(daemonUrl, pluginName);
   } catch (err) {
     shutdown();
+    await finished;
 
     throw err;
   }
 
   const hostEnv = buildHostEnv(
-    {pluginSourceDir, daemonUrl, builtinDir, userDir, hostDevice: options.hostDevice},
+    {
+      pluginSourceDir,
+      daemonUrl,
+      builtinDir,
+      userDir,
+      hostDevice: options.hostDevice,
+      reloadSentinel: reloadSentinel.path,
+    },
     baseEnv,
   );
   const host = spawn('pnpm', ['--filter', '@mndw/host', 'dev'], {env: hostEnv});
 
   children.push(host);
   host.on('exit', shutdown);
+
+  if (!shuttingDown && manifest.backend !== undefined) {
+    watcher = watchPluginBackend({
+      manifest,
+      pluginSourceDir,
+      pluginName,
+      daemonUrl,
+    }, {
+      buildBackend,
+      touchSentinel: () => reloadSentinel.touch(),
+      fetch: deps.fetch,
+      restartService: deps.restartService,
+      watchBackend: deps.watchBackend,
+    });
+  }
+
+  await finished;
 }

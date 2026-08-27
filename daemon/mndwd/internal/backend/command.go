@@ -15,6 +15,16 @@ type ValidatedCommand struct {
 }
 
 func ValidateCommand(pluginDir, relative string) (ValidatedCommand, error) {
+	return validateCommand(pluginDir, relative, false)
+}
+
+// validateBuiltinCommand permits the trusted dev-only builtin root symlink used by `mndw dev`.
+// It keeps command-path symlink rejection unchanged.
+func validateBuiltinCommand(pluginDir, relative string) (ValidatedCommand, error) {
+	return validateCommand(pluginDir, relative, true)
+}
+
+func validateCommand(pluginDir, relative string, allowRootSymlink bool) (ValidatedCommand, error) {
 	if relative == "" || filepath.IsAbs(relative) || strings.ContainsAny(relative, `\\`) || strings.Contains(relative, "..") {
 		return ValidatedCommand{}, fmt.Errorf("command path is not safe: %q", relative)
 	}
@@ -31,7 +41,18 @@ func ValidateCommand(pluginDir, relative string) (ValidatedCommand, error) {
 		return ValidatedCommand{}, fmt.Errorf("inspect plugin directory: %w", err)
 	}
 
-	if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+	if rootInfo.Mode()&os.ModeSymlink != 0 {
+		if !allowRootSymlink {
+			return ValidatedCommand{}, fmt.Errorf("plugin directory is not a real directory: %q", pluginDir)
+		}
+
+		rootInfo, err = os.Stat(root)
+		if err != nil {
+			return ValidatedCommand{}, fmt.Errorf("inspect plugin directory: %w", err)
+		}
+	}
+
+	if !rootInfo.IsDir() {
 		return ValidatedCommand{}, fmt.Errorf("plugin directory is not a real directory: %q", pluginDir)
 	}
 

@@ -6,8 +6,9 @@ import {svelte} from '@sveltejs/vite-plugin-svelte';
 import vue from '@vitejs/plugin-vue';
 import {sharedImportMap, sharedSpecifiers} from '@mndw/sdk/shared-dependencies';
 import {angularSandboxPlugin, isAngularPlugin} from './scripts/angular-sandbox-plugin.js';
+import {reloadOnSentinel} from './scripts/reload-on-sentinel.js';
 import {resolveSandboxPluginPath, sandboxPlugin} from './scripts/sandbox-plugin.js';
-import {resolvePluginRequest} from './scripts/serve-plugins.js';
+import {createPluginServeMiddleware} from './scripts/serve-plugins.js';
 
 // Two proxy targets in dev, mirroring the production lighttpd split:
 //  - the router device serves the RCI API + auth (`/rci`, `/auth`);
@@ -24,6 +25,7 @@ export default defineConfig(({mode}) => {
     || path.resolve(repoRoot, 'plugins/builtin', 'dist');
   const userPluginsDir = process.env.MNDW_USER_PLUGINS_DIR
     || path.resolve(repoRoot, '.dev-data', 'user-plugins');
+  const reloadSentinelPath = process.env.MNDW_DEV_RELOAD_SENTINEL || env.MNDW_DEV_RELOAD_SENTINEL;
 
   // Single-plugin source-HMR mode (`mndw dev`): resolved only from an explicit env var, so
   // normal startup keeps loading plugins from the daemon list. null → sandbox off.
@@ -66,6 +68,7 @@ export default defineConfig(({mode}) => {
       ...(angularSandbox === null ? [] : [angularSandbox]),
       svelte(),
       vue(),
+      ...(reloadSentinelPath === undefined ? [] : [reloadOnSentinel(reloadSentinelPath)]),
       {
         // Serve the versioned shared-dependency bundles from dist/shared in dev.
         name: 'mndw-serve-shared',
@@ -93,27 +96,7 @@ export default defineConfig(({mode}) => {
         name: 'mndw-serve-plugins',
         configureServer(server) {
           const dirs = {builtinDir: builtinPluginsDir, userDir: userPluginsDir};
-
-          server.middlewares.use((req, res, next) => {
-            const resolved = req.url ? resolvePluginRequest(req.url, dirs) : null;
-
-            if (!resolved) {
-              next();
-
-              return;
-            }
-
-            fs.readFile(resolved.filePath, (err, content) => {
-              if (err) {
-                next();
-
-                return;
-              }
-
-              res.setHeader('Content-Type', resolved.contentType);
-              res.end(content);
-            });
-          });
+          server.middlewares.use(createPluginServeMiddleware(dirs));
         },
       },
       {

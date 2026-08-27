@@ -45,6 +45,8 @@ export interface PackOptions {
   readonly outDir?: string;
   /** Use `src/index.ts` instead of the configured production entry. */
   readonly development?: boolean;
+  /** Skip the package backend build hook when a dev orchestrator already ran it. */
+  readonly skipBackendBuild?: boolean;
   /** Replace manifest-declared backend files with binaries built for one product target. */
   readonly backendOverride?: BackendOverride;
   /** Runs a package-declared host backend build script. */
@@ -180,7 +182,11 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
     const pkg = readPluginPackage(resolvedDir);
     const buildScript = pkg?.mndw?.backendBuildScript;
 
-    if (typeof buildScript === 'string' && options.backendOverride === undefined) {
+    if (
+      typeof buildScript === 'string'
+      && options.backendOverride === undefined
+      && options.skipBackendBuild !== true
+    ) {
       const runner = options.runBackendBuild
         ?? ((script, runnerOptions) =>
           spawnSync('pnpm', ['run', script], {

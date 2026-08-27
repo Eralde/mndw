@@ -27,6 +27,22 @@ describe('host Vite config', () => {
     expect(config.server?.fs?.allow).toContain(repoRoot);
   });
 
+  it('does not register sentinel reload without a sentinel environment variable', () => {
+    const config = viteConfig({command: 'serve', mode: 'development', isPreview: false});
+    const pluginNames = config.plugins?.map((plugin) => plugin && 'name' in plugin ? plugin.name : undefined);
+
+    expect(pluginNames).not.toContain('mndw-reload-on-sentinel');
+  });
+
+  it('registers sentinel reload when the dev supervisor provides its path', () => {
+    vi.stubEnv('MNDW_DEV_RELOAD_SENTINEL', path.join(repoRoot, '.dev-data', 'sentinel'));
+
+    const config = viteConfig({command: 'serve', mode: 'development', isPreview: false});
+    const pluginNames = config.plugins?.map((plugin) => plugin && 'name' in plugin ? plugin.name : undefined);
+
+    expect(pluginNames).toContain('mndw-reload-on-sentinel');
+  });
+
   it('registers Angular source compilation only for Angular sandbox plugins', () => {
     vi.stubEnv('MNDW_SANDBOX_PLUGIN', path.join(repoRoot, 'plugins/builtin', 'tx-rx-chart-widget'));
 

@@ -3,9 +3,13 @@ package backend
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"mndwd/internal/httpx"
+	"mndwd/internal/registry"
+	"mndwd/internal/state"
 )
 
 func TestCanonicalRoutePathRejectsReservedAndNonCanonicalPaths(t *testing.T) {
@@ -76,5 +80,39 @@ func TestGatewayMaintenanceGateUsesTrafficPredicateAndPlatformScope(t *testing.T
 
 	if !gateway.isMaintenance("demo") || !gateway.isMaintenance("other") {
 		t.Fatal("platform maintenance scope is incorrect")
+	}
+}
+
+func TestGatewayDevValidationAllowsSymlinkedBuiltinRoot(t *testing.T) {
+	sourceDir := t.TempDir()
+	pluginRoot := t.TempDir()
+	commandDir := filepath.Join(sourceDir, "backend")
+	command := filepath.Join(commandDir, "command.sh")
+
+	if err := os.Mkdir(commandDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	symlinkedPlugin := filepath.Join(pluginRoot, "sample")
+
+	if err := os.Symlink(sourceDir, symlinkedPlugin); err != nil {
+		t.Fatal(err)
+	}
+
+	plugin := &registry.Plugin{Dir: symlinkedPlugin, Source: state.SourceBuiltin}
+	dev := NewGateway(GatewayConfig{AllowSymlinkedBuiltinRoot: true}, nil, nil, nil, nil, nil)
+
+	if _, err := dev.validateCommand(plugin, "backend/command.sh"); err != nil {
+		t.Fatalf("dev exec validation rejected a symlinked builtin root: %v", err)
+	}
+
+	user := &registry.Plugin{Dir: symlinkedPlugin, Source: state.SourceUpload}
+
+	if _, err := dev.validateCommand(user, "backend/command.sh"); err == nil {
+		t.Fatal("dev exec validation accepted a symlinked user plugin root")
 	}
 }

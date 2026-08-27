@@ -185,6 +185,35 @@ func TestValidateCommandRejectsSymlinkAndMalformedShebangWithoutSpawning(t *test
 	}
 }
 
+func TestValidateBuiltinCommandAllowsSymlinkedBuiltinRoot(t *testing.T) {
+	sourceDir := t.TempDir()
+	pluginRoot := t.TempDir()
+	commandDir := filepath.Join(sourceDir, "backend")
+	command := filepath.Join(commandDir, "command.sh")
+
+	if err := os.Mkdir(commandDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	symlinkedPlugin := filepath.Join(pluginRoot, "sample")
+
+	if err := os.Symlink(sourceDir, symlinkedPlugin); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ValidateCommand(symlinkedPlugin, "backend/command.sh"); err == nil {
+		t.Fatal("regular command validation accepted a symlinked plugin root")
+	}
+
+	if _, err := validateBuiltinCommand(symlinkedPlugin, "backend/command.sh"); err != nil {
+		t.Fatalf("builtin command validation rejected a symlinked plugin root: %v", err)
+	}
+}
+
 func TestValidateCommandAcceptsExecutableWithoutEarlyNewline(t *testing.T) {
 	pluginDir := t.TempDir()
 

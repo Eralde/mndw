@@ -1,7 +1,6 @@
-import {Component, InjectionToken, inject, input, signal} from '@angular/core';
+import {Component, inject, input, signal} from '@angular/core';
 import type {Translator} from '@mndw/sdk';
-
-export const TRANSLATOR = new InjectionToken<Translator>('TRANSLATOR');
+import {TRANSLATOR} from '@mndw/sdk/angular';
 
 @Component({
   selector: 'app-root',

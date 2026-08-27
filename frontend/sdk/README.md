@@ -94,39 +94,66 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
 
 ### Angular
 
+`@mndw/sdk/angular` provides optional helpers for common Angular plugin lifecycle work. Authors can
+still use Angular APIs directly when they need different application or component management; these
+helpers reduce repeated mounting and teardown boilerplate.
+
 ```ts
-import {EnvironmentInjector, createComponent} from '@angular/core'
-import {createApplication} from '@angular/platform-browser'
+import type {PluginContext, PluginInstance} from '@mndw/sdk';
+import {createAngularPluginInstance, provideTranslator} from '@mndw/sdk/angular';
 import 'zone.js'
 import '@angular/compiler'
 import {AppComponent} from './app.component'
 
 export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInstance {
-  let appRef: Awaited<ReturnType<typeof createApplication>> | null = null;
-  let componentRef: ReturnType<typeof createComponent> | null = null;
-
-  void createApplication().then((ref) => {
-    appRef = ref;
-
-    const injector = ref.injector.get(EnvironmentInjector);
-
-    el.innerHTML = '';
-    componentRef = createComponent(AppComponent, {hostElement: el, environmentInjector: injector});
-    componentRef.setInput('deviceName', ctx.hostInfo.deviceName);
-
-    ref.attachView(componentRef.hostView);
-  })
-
-  return {
-    unmount() {
-      componentRef?.destroy();
-      appRef?.destroy();
-
-      el.innerHTML = '';
+  return createAngularPluginInstance(el, {
+    rootComponent: AppComponent,
+    providers: [provideTranslator(ctx.i18n)],
+    configure: ({component}) => {
+      component.setInput('deviceName', ctx.hostInfo.deviceName);
     },
-  };
+  });
 }
 ```
+
+The helper owns application creation, root view attachment, cancellation when unmounted before
+bootstrap completes, mount-failure cleanup, and component/application teardown. Include
+`provideTranslator(ctx.i18n)` when the component tree injects the SDK `TRANSLATOR` token.
+
+For a component opened through the host-managed overlay service, use the optional
+`mountComponentInOverlay` helper. Pass `appRef` from the root helper's `configure` callback and let
+the overlay layer own cleanup; return subscription cleanup from `setup` when needed:
+
+```ts
+import {mountComponentInOverlay} from '@mndw/sdk/angular';
+
+configure: ({appRef, component}) => {
+  component.setInput('openSettings', () => {
+    ctx.overlay.open({
+      kind: 'modal',
+      title: 'Settings',
+      mount(target, layer) {
+        mountComponentInOverlay({
+          appRef,
+          target,
+          layer,
+          component: SettingsComponent,
+          setup: (ref) => {
+            ref.setInput('value', 'current');
+
+            return () => {
+              // Unsubscribe from plugin-owned subscriptions here.
+            };
+          },
+        });
+      },
+    });
+  });
+}
+```
+
+`mountComponentInOverlay` attaches the child view and registers detach/destroy cleanup with the
+layer. Direct Angular mounting remains supported when this lifecycle does not fit the plugin.
 
 ## 5. Worker-backed ticker
 

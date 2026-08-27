@@ -185,7 +185,10 @@ describe('planCreate', () => {
     expect(fileContents(plan, 'src/app.component.ts')).toContain('Ng');
     expect(fileContents(plan, 'src/app.component.ts')).toContain('padding:var(--mndw-space-4)');
     expect(fileContents(plan, 'src/app.component.ts')).not.toContain('padding:16px');
-    expect(fileContents(plan, 'src/index.ts')).toContain('createApplication');
+    expect(fileContents(plan, 'src/index.ts')).toContain('createAngularPluginInstance');
+    expect(fileContents(plan, 'src/index.ts')).toContain('provideTranslator');
+    expect(fileContents(plan, 'src/index.ts')).not.toContain('createApplication');
+    expect(fileContents(plan, 'src/app.component.ts')).toContain('from \'@mndw/sdk/angular\'');
     expect(JSON.parse(fileContents(plan, 'tsconfig.json'))).toHaveProperty('angularCompilerOptions');
   });
 

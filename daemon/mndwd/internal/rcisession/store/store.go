@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 
 	"mndwd/internal/rcisession/model"
 )
@@ -247,12 +246,12 @@ func readSecureFile(path string, expectedSize int) ([]byte, error) {
 		return nil, err
 	}
 
-	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("persistent RCI secret file has unsafe type or mode")
 	}
 
-	if stat, ok := info.Sys().(*syscall.Stat_t); ok && uint32(os.Getuid()) != stat.Uid {
-		return nil, fmt.Errorf("persistent RCI secret file has unsafe owner")
+	if err := validateSecureFileMetadata(info); err != nil {
+		return nil, err
 	}
 
 	data, err := os.ReadFile(path)

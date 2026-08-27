@@ -2,8 +2,9 @@ import fs, {readFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import {execSync, spawnSync} from 'node:child_process';
+import {execSync} from 'node:child_process';
 import zlib from 'node:zlib';
+import crossSpawn from 'cross-spawn';
 import {GO_TARGETS} from '@mndw/cli/go-target';
 import {PRODUCT_TARGETS, PRODUCT_TARGET_CONFIG, type ProductTarget, isProductTarget} from '../targets.js';
 import {buildProductTargetWithDefaults} from '../index.js';
@@ -409,7 +410,7 @@ export function parseArgs(args: string[]): {arch: string | null; all: boolean; r
 }
 
 function requireCommand(command: string, args: string[]): void {
-  const result = spawnSync(command, args, {stdio: 'ignore'});
+  const result = crossSpawn.sync(command, args, {stdio: 'ignore'});
 
   if (result.error || result.status !== 0) { throw new Error(`Required command not found or failed: ${command}`); }
 }
@@ -420,16 +421,16 @@ export function ensureBuildPrereqs(repoRoot: string): void {
   const nodeModulesDir = path.join(repoRoot, 'node_modules');
 
   if (!fs.existsSync(nodeModulesDir)) {
-    const install = spawnSync('pnpm', ['install', '--frozen-lockfile'], {cwd: repoRoot, stdio: 'inherit'});
+    const install = crossSpawn.sync('pnpm', ['install', '--frozen-lockfile'], {cwd: repoRoot, stdio: 'inherit'});
 
     if (install.error || install.status !== 0) { throw new Error('pnpm install --frozen-lockfile failed'); }
   }
 
-  const hostBuild = spawnSync('pnpm', ['--filter', '@mndw/host', 'build'], {cwd: repoRoot, stdio: 'inherit'});
+  const hostBuild = crossSpawn.sync('pnpm', ['--filter', '@mndw/host', 'build'], {cwd: repoRoot, stdio: 'inherit'});
 
   if (hostBuild.error || hostBuild.status !== 0) { throw new Error('host build failed'); }
 
-  const pluginBuild = spawnSync('pnpm', ['build-builtin-plugins'], {cwd: repoRoot, stdio: 'inherit'});
+  const pluginBuild = crossSpawn.sync('pnpm', ['build-builtin-plugins'], {cwd: repoRoot, stdio: 'inherit'});
 
   if (pluginBuild.error || pluginBuild.status !== 0) { throw new Error('build-builtin-plugins failed'); }
 }

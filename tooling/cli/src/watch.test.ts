@@ -1,5 +1,4 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-
 import {type WatchCreateOptions, type WatchHandle, watchAndBuild} from './watch.js';
 
 interface Deferred<T> {
@@ -193,7 +192,7 @@ describe('watchAndBuild', () => {
     const source = fakeWatcher();
     const resultGate = deferred<void>();
     const build = vi.fn().mockResolvedValueOnce(1)
-.mockResolvedValueOnce(2);
+      .mockResolvedValueOnce(2);
     const contexts: {generation: number; isCurrent(): boolean}[] = [];
     const handle = watchAndBuild({
       paths: ['/src'],

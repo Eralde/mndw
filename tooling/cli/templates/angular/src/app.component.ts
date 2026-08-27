@@ -1,4 +1,4 @@
-import {Component, inject, Input, signal} from '@angular/core';
+import {Component, Input, inject, signal} from '@angular/core';
 import {TRANSLATOR} from '@mndw/sdk/angular';
 
 @Component({
@@ -15,6 +15,7 @@ import {TRANSLATOR} from '@mndw/sdk/angular';
 })
 export class AppComponent {
   protected readonly translator = inject(TRANSLATOR);
-  @Input() public deviceName = '';
+  @Input()
+  public deviceName = '';
   protected readonly count = signal(0);
 }

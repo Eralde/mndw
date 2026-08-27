@@ -1,4 +1,3 @@
-import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {
   chmodSync,
@@ -13,14 +12,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import {basename, dirname, extname, isAbsolute, join, relative, resolve, sep} from 'node:path';
-
-import {type PluginManifestOutput} from '@mndw/sdk';
-import {pluginDependencies} from '@mndw/sdk/shared-dependencies';
+import crossSpawn from 'cross-spawn';
 import {build} from 'esbuild';
 import esbuildSvelte from 'esbuild-svelte';
 import vuePlugin from 'unplugin-vue/esbuild';
-
+import {type PluginManifestOutput} from '@mndw/sdk';
+import {pluginDependencies} from '@mndw/sdk/shared-dependencies';
 import {isMndwButtonA11yWarning} from '../../../build/svelte-compiler-options.js';
+import type {ProductTarget} from '../../../build/targets.js';
 import {type AngularCompileResult, compileAngular} from './angular-compiler.js';
 import {CliError} from './errors.js';
 import {type PluginFramework, detectFramework} from './framework.js';
@@ -31,7 +30,6 @@ import {resolvePluginDir} from './paths.js';
 import {readPluginPackage} from './plugin-package.js';
 import {promoteDirectory} from './promote-directory.js';
 import {resolveDevelopmentSourceEntry, resolveProductionSourceEntry} from './source-entry.js';
-import type {ProductTarget} from '../../../build/targets.js';
 
 /**
  * The CLI's own `node_modules`, used as an esbuild resolution fallback so a plugin's bundled runtime
@@ -189,7 +187,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
     ) {
       const runner = options.runBackendBuild
         ?? ((script, runnerOptions) =>
-          spawnSync('pnpm', ['run', script], {
+          crossSpawn.sync('pnpm', ['run', script], {
             cwd: runnerOptions.cwd,
             stdio: 'inherit',
           }));

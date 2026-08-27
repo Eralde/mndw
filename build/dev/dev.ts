@@ -1,8 +1,7 @@
-import {execFile as nodeExecFile, spawn as nodeSpawn} from 'node:child_process';
 import {existsSync, mkdirSync, readFileSync, readdirSync} from 'node:fs';
 import {relative, resolve, sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {promisify} from 'node:util';
+import crossSpawn from 'cross-spawn';
 
 import {
   buildBackend as buildBuiltinBackend,
@@ -24,7 +23,6 @@ import {
 } from '../../tooling/cli/src/watch.js';
 import {type LoadedManifest, readManifest} from '../../tooling/cli/src/manifest.js';
 
-const execFile = promisify(nodeExecFile);
 const DAEMON_URL = 'http://127.0.0.1:9090';
 
 export interface DevChild {
@@ -155,7 +153,18 @@ export async function waitForDaemon(
 }
 
 async function defaultPackBuiltinPlugins(repoRoot: string): Promise<void> {
-  await execFile('pnpm', ['build-builtin-plugins', '--dev'], {cwd: repoRoot});
+  await new Promise<void>((resolvePack, rejectPack) => {
+    const child = crossSpawn('pnpm', ['build-builtin-plugins', '--dev'], {cwd: repoRoot, stdio: 'inherit'});
+
+    child.on('error', rejectPack);
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolvePack();
+      } else {
+        rejectPack(new Error(`pnpm build-builtin-plugins --dev exited with code ${code ?? 'unknown'}`));
+      }
+    });
+  });
 }
 
 function defaultSpawn(
@@ -163,7 +172,7 @@ function defaultSpawn(
   args: string[],
   options: {cwd: string; detached?: boolean; env: NodeJS.ProcessEnv},
 ): DevChild {
-  return nodeSpawn(command, args, {cwd: options.cwd, detached: options.detached, env: options.env, stdio: 'inherit'});
+  return crossSpawn(command, args, {cwd: options.cwd, detached: options.detached, env: options.env, stdio: 'inherit'});
 }
 
 function defaultOnShutdownSignal(handler: () => void): void {

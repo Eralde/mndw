@@ -1,9 +1,8 @@
-import {spawn} from 'node:child_process';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync} from 'node:fs';
 import {availableParallelism, tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-
+import spawn from 'cross-spawn';
 import {promoteDirectory} from '../tooling/cli/src/promote-directory.js';
 
 const repoRoot = resolve(import.meta.dirname, '..');
@@ -38,8 +37,8 @@ function run(step: CommandStep): Promise<string> {
     const child = spawn(step.command, [...step.args], {cwd: step.cwd, stdio: ['ignore', 'pipe', 'pipe']});
     const chunks: Buffer[] = [];
 
-    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => chunks.push(chunk));
+    child.stdout?.on('data', (chunk: Buffer) => chunks.push(chunk));
+    child.stderr?.on('data', (chunk: Buffer) => chunks.push(chunk));
 
     child.on('error', (error) => rejectPromise(error));
     child.on('close', (code) => {

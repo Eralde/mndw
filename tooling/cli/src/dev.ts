@@ -1,9 +1,8 @@
-import {spawn as nodeSpawn, spawnSync} from 'node:child_process';
 import {existsSync, mkdtempSync, readdirSync, rmSync, symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-
+import crossSpawn from 'cross-spawn';
 import {CliError} from './errors.js';
 import {type ReloadSentinel, createReloadSentinel, restartService as defaultRestartService} from './dev-reload.js';
 import {type GoBuildSpawn, buildGoBackend} from './go-backend-build.js';
@@ -186,8 +185,9 @@ function defaultFindDaemonPackageDir(): string | null {
  * Builds every command under a plugin's Go backend before daemon launch. Skips plugins without
  * a `backend/go.mod` or `backend/cmd` directory. Returns a result indicating success, skip, or failure.
  */
-const defaultGoBuildSpawn: GoBuildSpawn = (command, args, options) =>
-  spawnSync(command, args, {cwd: options.cwd, env: options.env, stdio: 'inherit'});
+const defaultGoBuildSpawn: GoBuildSpawn = (command, args, options) => {
+  return crossSpawn.sync(command, args, {cwd: options.cwd, env: options.env, stdio: 'inherit'});
+};
 
 export interface BackendWatchOptions {
   readonly manifest: LoadedManifest['manifest'];
@@ -368,7 +368,7 @@ function defaultSpawn(
   args: string[],
   options: {cwd?: string; env?: NodeJS.ProcessEnv},
 ): DevChild {
-  return nodeSpawn(command, args, {stdio: 'inherit', cwd: options.cwd, env: options.env});
+  return crossSpawn(command, args, {stdio: 'inherit', cwd: options.cwd, env: options.env});
 }
 
 function defaultOnShutdownSignal(handler: () => void): void {

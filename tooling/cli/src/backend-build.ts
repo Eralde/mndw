@@ -1,4 +1,5 @@
-import {type SpawnSyncOptions, spawnSync} from 'node:child_process';
+import {type SpawnSyncOptions} from 'node:child_process';
+import crossSpawn from 'cross-spawn';
 import {existsSync, readFileSync, statSync} from 'node:fs';
 import {isAbsolute, relative, resolve} from 'node:path';
 
@@ -149,7 +150,7 @@ export function buildBackend(options: BackendBuildOptions): BackendBuildResult |
   }
 
   const outDir = resolve(options.outDir);
-  const spawn = options.spawn ?? ((command, args, spawnOptions) => spawnSync(command, args, spawnOptions));
+  const spawn = options.spawn ?? ((command, args, spawnOptions) => crossSpawn.sync(command, args, spawnOptions));
   const result = spawn('pnpm', [
     'run',
     script,

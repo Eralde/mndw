@@ -1,4 +1,1 @@
-export {
-  availablePopoverHeight,
-  selectPresentation,
-} from '../position/position.js';
+export {availablePopoverHeight, selectPresentation} from '../position/position.js';

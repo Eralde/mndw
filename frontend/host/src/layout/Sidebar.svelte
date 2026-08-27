@@ -8,6 +8,7 @@ import {appRouter} from '../router/create-app-router.js';
 
 const registry = getHostServices().registry;
 const mobileQuery = mobileMediaQuery();
+
 let isMobile = $state(mobileQuery.matches);
 
 const handleBreakpointChange = (event: MediaQueryListEvent): void => {

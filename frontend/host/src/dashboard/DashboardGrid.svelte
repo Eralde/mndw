@@ -21,8 +21,8 @@ interface Props {
   onWidgetResized: (widgetId: string, size: {w: number; h: number}) => void;
 }
 
-let {onGridReady, onGridDestroyed, onWidgetRemoved, onLayoutChanged,
-  onWidgetResized}: Props = $props();
+// @dprint-ignore
+let {onGridReady, onGridDestroyed, onWidgetRemoved, onLayoutChanged, onWidgetResized}: Props = $props();
 
 let container: HTMLElement;
 
@@ -63,6 +63,7 @@ function updateResizeIndicator(el: GridItemHTMLElement): void {
   if (indicator === null) {
     indicator = document.createElement('div');
     indicator.className = RESIZE_INDICATOR_CLASS;
+
     indicator.setAttribute('aria-hidden', 'true');
     el.appendChild(indicator);
   }
@@ -101,6 +102,7 @@ onMount(() => {
       widget.w ??= node.w;
       widget.h ??= node.h;
     });
+
     const layout = Array.isArray(saved)
       ? (saved as GridStackWidget[])
         .map(projectPersistedTile)

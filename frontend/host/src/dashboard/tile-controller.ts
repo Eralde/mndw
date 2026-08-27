@@ -262,7 +262,7 @@ function refreshTileFrame(frame: HTMLElement, label: string): void {
  */
 export async function remountWidgetTiles(
   pluginContextServices: Pick<HostServices, 'locale' | 'palette'>,
-  _registry: Pick<PluginRegistry, 'get'>,
+  _registry: Pick<PluginRegistry, 'get'>, // kept to keep signature aligned with `defaultRemountWidgets`
   pluginName: string,
   next: LoadedPlugin,
   prior: LoadedPlugin,

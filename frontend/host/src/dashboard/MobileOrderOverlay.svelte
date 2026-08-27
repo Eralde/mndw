@@ -127,7 +127,9 @@ function handlePointerUp(): void {
               onpointermove={handlePointerMove}
               onpointerup={handlePointerUp}
               aria-hidden="true"
-            >☰</span>
+            >
+              ☰
+            </span>
             <span class="mndw-order-card__label">{card.label}</span>
             <span class="mndw-order-card__moves">
               <mndw-button

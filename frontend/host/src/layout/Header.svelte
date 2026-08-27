@@ -14,8 +14,11 @@ function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
 async function handleLogout(): Promise<void> {
   try {
     await new Promise<void>((resolve) => {
-      services.rci.logout().subscribe({next: () => resolve(), error: () =>
-        resolve()});
+      services.rci.logout()
+        .subscribe({
+          next: () => resolve(),
+          error: () => resolve(),
+        });
     });
   } finally {
     resetToLogin();
@@ -38,7 +41,7 @@ async function handleLogout(): Promise<void> {
     </mndw-button>
     <span class="mndw-header__brand">mndw</span>
     {#if appState.hostInfo}
-      <span class="mndw-header__device">{appState.hostInfo.deviceName}</span>
+      <span class="mndw-header__device">{appState.hostInfo?.deviceName}</span>
     {/if}
   </div>
   <div class="mndw-header__right">

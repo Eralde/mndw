@@ -1,3 +1,4 @@
+/* eslint-disable id-blacklist */
 import {type WidgetSize, getWidgetSize} from './widget-size.js';
 
 const GRID_LAYOUT_KEY = 'mndw:dashboard:grid-layout';

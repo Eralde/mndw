@@ -18,11 +18,13 @@ const registry = services.registry;
 // then name, matching the sidebar/router page ordering.
 let availableWidgets = $derived.by(() => {
   return [...registry.getWidgets()].sort(
-    (a, b) =>
-      a.entry.label.localeCompare(b.entry.label)
-      || a.entry.name.localeCompare(b.entry.name),
+    (a, b) => {
+      return a.entry.label.localeCompare(b.entry.label)
+        || a.entry.name.localeCompare(b.entry.name);
+    },
   );
 });
+
 let buttonRefs: HTMLElement[] = [];
 
 $effect(() => {
@@ -81,13 +83,14 @@ function handleKeydown(event: KeyboardEvent): void {
           >
             {widget.entry.label}
             {#if deps === 'installing'}
-              <span class="mndw-floating-panel__deps">{
-                hostT('dashboard.preparing')
-              }</span>
+              <span class="mndw-floating-panel__deps">
+                {hostT('dashboard.preparing')}</span>
             {:else if deps === 'failed'}
               <span
                 class="mndw-floating-panel__deps mndw-floating-panel__deps--failed"
-              >{hostT('dashboard.unavailable')}</span>
+              >
+                {hostT('dashboard.unavailable')}
+              </span>
             {/if}
           </mndw-button>
         {/each}

@@ -117,8 +117,10 @@ function scheduleSave(): void {
 
 function handleWidgetRemoved(tileId: string): void {
   removeTileController(tileId);
+
   tiles = tiles.filter((tile) => tile.id !== tileId);
   mobileOrder = mobileOrder.filter((id) => id !== tileId);
+
   persistNow();
 }
 
@@ -184,6 +186,7 @@ function handleLayoutChanged(layout: PersistedGridTile[]): void {
   }
 
   tiles = layout;
+
   scheduleSave();
 }
 
@@ -217,6 +220,7 @@ function addMobileWidget(pluginName: string): void {
   // current layout so the tile appears at the end on the next desktop visit.
   tiles = [...tiles, {id: controller.id, ...placeTileBelowLayout(tiles, size)}];
   mobileOrder = [...mobileOrder, controller.id];
+
   persistNow();
 }
 
@@ -277,6 +281,7 @@ const overlayCards = $derived.by(() => {
 
     const fallback = registry.get(parsed.pluginName)?.entry.label
       ?? parsed.pluginName;
+
     const currentTitle = getTileController(id)?.getTileTitle() ?? '';
 
     return [{
@@ -289,6 +294,7 @@ const overlayCards = $derived.by(() => {
 function handleOrderCommit(order: string[]): void {
   mobileOrder = order;
   orderOverlayOpen = false;
+
   persistNow();
 }
 
@@ -296,6 +302,7 @@ $effect(() => {
   // Read the reactive map so status transitions re-run this effect even when no tile
   // is pending yet; hydration itself is idempotent and cheap.
   void [...depsStatusMap.entries()];
+
   hydratePendingTiles(pluginContextServices, registry);
 });
 
@@ -326,7 +333,10 @@ onDestroy(() => {
       <mndw-button
         variant="secondary"
         onclick={() => (addPanelOpen = true)}
-      >{hostT('dashboard.add-widget')}</mndw-button>
+      >
+        {hostT('dashboard.add-widget')}
+      </mndw-button>
+
       {#if isMobile && mobileOrder.length > 1}
         <mndw-button
           variant="secondary"
@@ -336,9 +346,9 @@ onDestroy(() => {
         </mndw-button>
       {/if}
     {:else}
-      <span class="mndw-dashboard__toolbar--empty">{
-        hostT('dashboard.no-widgets')
-      }</span>
+      <span class="mndw-dashboard__toolbar--empty">
+        {hostT('dashboard.no-widgets')}
+      </span>
     {/if}
   </div>
 

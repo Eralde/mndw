@@ -13,10 +13,6 @@ import {
 
 let {runtime = defaultOverlayRuntime}: {runtime?: OverlayRuntime} = $props();
 
-// NOTE: The host-owned BackendApprovalModal.svelte still uses a standalone fixed
-// overlay at z-index: 2000 and is intentionally NOT migrated in this rollout. The
-// overlay host deliberately stacks BELOW it (z-index base 1000, +1 per layer) so
-// approval prompts always win. Migrating that modal is a follow-up.
 const Z_BASE = 1000;
 
 const layers = $derived(runtime.store.layers);

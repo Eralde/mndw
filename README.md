@@ -46,9 +46,12 @@ pnpm exec mndw zip my-widget
 
 The normal loop is `create -> dev -> validate -> pack -> zip -> upload`.
 Plugins use `@mndw/sdk`, implement `createInstance`, and declare a `manifest.json`.
-Widgets use grid-unit dimensions; pages declare one route. Plugin frontend
-can be vanilla TypeScript, Svelte, Vue, or Angular. Plugins can use the host-provided
-`context.rciManager` to access the existing device `rci/` API.
+Widgets use grid-unit dimensions; pages declare one root route. Plugin frontend
+can be vanilla TypeScript, Svelte, Vue, or Angular. For more details see the
+[SDK plugin-author guide](frontend/sdk/README.md).
+
+Plugins can use the host-provided `context.rciManager` to access the existing
+device `rci/` API.
 
 ### Backends
 
@@ -61,8 +64,6 @@ require approval and run with daemon/device privileges.
 See the [plugin author guide](docs/plugin-author-guide.md) for exec backends
 and the [service backend guide](docs/service-backend.md) for service manifests,
 socket readiness, lifecycle, and security details.
-
-See the [SDK plugin-author guide](frontend/sdk/README.md).
 
 ## IPK build
 

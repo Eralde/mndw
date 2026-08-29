@@ -5,6 +5,7 @@ MNDW_ROOT=${MNDW_ROOT:-/opt}
 MNDW_CONFIG_FILE=${MNDW_CONFIG_FILE:-$MNDW_ROOT/etc/mndw.conf}
 MNDW_PROC_ROOT=${MNDW_PROC_ROOT:-/proc}
 MNDW_STATE_FILE=${MNDW_STATE_FILE:-$MNDW_ROOT/var/lib/mndw/lighttpd-port}
+MNDW_LIGHTTPD_POLICY_FILE=${MNDW_LIGHTTPD_POLICY_FILE:-$MNDW_ROOT/var/lib/mndw/lighttpd-port-policy}
 MNDW_TMP_ROOT=${MNDW_TMP_ROOT:-$MNDW_ROOT/tmp/mndw}
 MNDW_NETSTAT=${MNDW_NETSTAT:-}
 MNDW_LIGHTTPD_BIN=${MNDW_LIGHTTPD_BIN:-$MNDW_ROOT/sbin/lighttpd}
@@ -40,6 +41,16 @@ port_is_valid() {
   esac
 
   [ "$port_value" -ge 99 ] 2>/dev/null && [ "$port_value" -le 199 ] 2>/dev/null
+}
+
+router_port_is_valid() {
+  port_value=$1
+
+  case "$port_value" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+
+  [ "$port_value" -ge 1 ] 2>/dev/null && [ "$port_value" -le 65535 ] 2>/dev/null
 }
 
 proc_snapshot_file() {
@@ -148,7 +159,51 @@ initialize_runtime_paths() {
   : "${MNDW_LIGHTTPD_CONFD:=$MNDW_ROOT/etc/lighttpd/conf.d}"
   : "${MNDW_USER_PLUGINS_DIR:=$DATA_DIR/user-plugins}"
   : "${MNDW_PROXY_TARGET:=$DATA_DIR/proxy-target.conf}"
+  : "${MNDW_LIGHTTPD_POLICY_FILE:=$MNDW_ROOT/var/lib/mndw/lighttpd-port-policy}"
   export MNDW_RUNTIME_CONF MNDW_LIGHTTPD_CONFD MNDW_USER_PLUGINS_DIR MNDW_PROXY_TARGET
+  export MNDW_LIGHTTPD_POLICY_FILE
+}
+
+read_lighttpd_policy() {
+  if [ ! -r "$MNDW_LIGHTTPD_POLICY_FILE" ]; then
+    echo '[mndw] no ownership policy found; preserving existing main port — if this is a fresh install use install.sh' >&2
+    printf '%s\n' preserve
+    return 0
+  fi
+
+  policy_value=$(sed -n '1p' "$MNDW_LIGHTTPD_POLICY_FILE" | tr -d '\r')
+  case "$policy_value" in
+    preserve|mndw)
+      printf '%s\n' "$policy_value"
+      ;;
+    *)
+      echo "mndw: invalid lighttpd ownership policy in $MNDW_LIGHTTPD_POLICY_FILE; preserving existing main port" >&2
+      printf '%s\n' preserve
+      ;;
+  esac
+}
+
+read_router_proxy_port() {
+  [ -r "$MNDW_PROXY_TARGET" ] || return 1
+
+  router_port=$(awk '
+    /proxy\.server[[:space:]]*=/ {
+      line = $0
+      matches = gsub(/"port"[[:space:]]*=>[[:space:]]*[0-9]+/, "&", line)
+      if (matches == 1 && match($0, /"port"[[:space:]]*=>[[:space:]]*[0-9]+/)) {
+        value = substr($0, RSTART, RLENGTH)
+        sub(/^.*=>[[:space:]]*/, "", value)
+        print value
+        found++
+      } else if (matches > 1) {
+        found += matches
+      }
+    }
+    END { if (found != 1) exit 1 }
+  ' "$MNDW_PROXY_TARGET") || return 1
+
+  router_port_is_valid "$router_port" || return 1
+  printf '%s\n' "$router_port"
 }
 
 cleanup_evidence_artifacts() {
@@ -380,6 +435,7 @@ probe_once() {
   probe_candidate=$1
   probe_previous_snapshot=$2
   probe_errorlog_offset=$3
+  probe_listener_mode=$4
   probe_current_snapshot="$MNDW_TMP_ROOT/probe-listeners.$$.current"
   probe_elapsed=0
   probe_pid=
@@ -415,7 +471,8 @@ probe_once() {
     fi
 
     if grep -F -q -x "tcp4|$probe_candidate" "$probe_current_snapshot" || grep -F -q -x "tcp6|$probe_candidate" "$probe_current_snapshot"; then
-      if listener_added "$probe_current_snapshot" "$probe_previous_snapshot" "$probe_candidate"; then
+      if [ "$probe_listener_mode" = 'override' ] ||
+        listener_added "$probe_current_snapshot" "$probe_previous_snapshot" "$probe_candidate"; then
         if cleanup_probe "$probe_pid"; then
           append_errorlog_delta "$probe_errorlog_offset"
           PROBE_RESULT=ready
@@ -510,6 +567,22 @@ run_install() {
     return 1
   }
 
+  lighttpd_policy=$(read_lighttpd_policy)
+  router_port=$(read_router_proxy_port) || {
+    echo "mndw: cannot determine router port from router target $MNDW_PROXY_TARGET" >&2
+    cleanup_install_artifacts
+    return 1
+  }
+
+  probe_mode=socket
+  handoff_mode=socket
+  proactive_override=0
+  if [ "$lighttpd_policy" = 'mndw' ] && [ "$router_port" != '80' ]; then
+    probe_mode=override
+    handoff_mode=override
+    proactive_override=1
+  fi
+
   if ! "$MNDW_LIGHTTPD_INIT" stop >> "$MNDW_INIT_LOG" 2>&1; then
     if lighttpd_is_running; then
       echo "mndw: lighttpd failed to stop; see $MNDW_INIT_LOG" >&2
@@ -525,11 +598,11 @@ run_install() {
     cleanup_install_artifacts
     return 1
   }
-  mode=socket
+  mode=$handoff_mode
 
   while [ "$candidate" -le 199 ]; do
     export MNDW_SELECTED_PORT=$candidate
-    sh "$render_helper" --mode socket --port "$candidate" --output "$MNDW_RUNTIME_CONF" || {
+    sh "$render_helper" --mode "$probe_mode" --port "$candidate" --output "$MNDW_RUNTIME_CONF" || {
       cleanup_install_artifacts
       return 1
     }
@@ -544,11 +617,16 @@ run_install() {
       errorlog_offset=$(wc -c < "$MNDW_LIGHTTPD_ERRORLOG" 2>/dev/null | tr -d ' ')
     fi
 
-    probe_once "$candidate" "$previous_snapshot" "$errorlog_offset"
+    probe_once "$candidate" "$previous_snapshot" "$errorlog_offset" "$probe_mode"
     rm -f "$previous_snapshot"
 
     case "$PROBE_RESULT" in
       override)
+        if [ "$lighttpd_policy" = 'preserve' ]; then
+          echo 'mndw: lighttpd did not establish the selected dashboard listener; preserved main listener was not usable' >&2
+          cleanup_install_artifacts
+          return 1
+        fi
         mode=override
         sh "$render_helper" --mode override --port "$candidate" --output "$MNDW_RUNTIME_CONF" || {
           cleanup_install_artifacts
@@ -557,7 +635,13 @@ run_install() {
         :
         ;;
       ready)
-        mode=socket
+        mode=$handoff_mode
+        if [ "$mode" != "$probe_mode" ]; then
+          sh "$render_helper" --mode "$mode" --port "$candidate" --output "$MNDW_RUNTIME_CONF" || {
+            cleanup_install_artifacts
+            return 1
+          }
+        fi
         :
         ;;
       retry)
@@ -615,7 +699,9 @@ run_install() {
   cleanup_install_artifacts
   rm -f "$MNDW_PROBE_LOG" "$MNDW_INIT_LOG"
 
-  if [ "$mode" = 'override' ]; then
+  if [ "$proactive_override" -eq 1 ]; then
+    echo "[mndw] using override mode because router HTTP port is $router_port; lighttpd will not bind port 80"
+  elif [ "$mode" = 'override' ]; then
     echo '[mndw] warning: bypassed effective port-80 lighttpd listener because it was occupied'
   fi
   echo "[mndw] installed. open http://<router-ip>:$candidate (dashboard port $candidate)"
@@ -623,7 +709,7 @@ run_install() {
 }
 
 usage() {
-  echo 'usage: mndw-lighttpd-port.sh {is-listening PORT|read-state|select-port|write-state PORT|snapshot-listeners OUTPUT_FILE|install}' >&2
+  echo 'usage: mndw-lighttpd-port.sh {is-listening PORT|read-state|read-policy|read-router-port|select-port|write-state PORT|snapshot-listeners OUTPUT_FILE|install}' >&2
 }
 
 case "${1:-}" in
@@ -632,6 +718,16 @@ case "${1:-}" in
     ;;
   read-state)
     [ "$#" -eq 1 ] && read_state
+    ;;
+  read-policy)
+    [ "$#" -eq 1 ] && initialize_runtime_paths && read_lighttpd_policy
+    ;;
+  read-router-port)
+    [ "$#" -eq 1 ] || {
+      usage
+      exit 2
+    }
+    initialize_runtime_paths && read_router_proxy_port
     ;;
   select-port)
     [ "$#" -eq 1 ] || {

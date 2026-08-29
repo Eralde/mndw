@@ -157,12 +157,14 @@ interface InstallFixture extends Fixture {
   readonly lighttpdInit: string;
   readonly mndwdInit: string;
   readonly errorLog: string;
+  readonly policyFile: string;
+  readonly probeMode: string;
   readonly runtime: string;
   readonly proxyTarget: string;
   readonly probeLog: string;
 }
 
-const makeInstallFixture = (_probeMode: string): InstallFixture => {
+const makeInstallFixture = (probeMode: string): InstallFixture => {
   const base = makeFixture();
   const installFixture: InstallFixture = {
     ...base,
@@ -172,6 +174,8 @@ const makeInstallFixture = (_probeMode: string): InstallFixture => {
     lighttpdInit: path.join(base.root, 'etc', 'init.d', 'S80lighttpd'),
     mndwdInit: path.join(base.root, 'etc', 'init.d', 'S70mndwd'),
     errorLog: path.join(base.root, 'var', 'log', 'lighttpd', 'error.log'),
+    policyFile: path.join(base.root, 'var', 'lib', 'mndw', 'lighttpd-port-policy'),
+    probeMode,
     runtime: path.join(base.root, 'var', 'lib', 'mndw', 'lighttpd-runtime.conf'),
     proxyTarget: path.join(base.root, 'var', 'lib', 'mndw', 'proxy-target.conf'),
     probeLog: path.join(base.root, 'tmp', 'mndw', 'lighttpd-probe.log'),
@@ -184,6 +188,7 @@ const makeInstallFixture = (_probeMode: string): InstallFixture => {
   fs.writeFileSync(installFixture.order, '');
   fs.writeFileSync(installFixture.listeners, '');
   fs.writeFileSync(installFixture.errorLog, 'old startup line\n');
+  fs.writeFileSync(installFixture.policyFile, 'mndw\n');
 
   writeExecutable(
     path.join(base.bin, 'netstat'),
@@ -272,6 +277,11 @@ case "$FAKE_PROBE_MODE" in
     trap 'rm -f "$FAKE_LISTENER_FILE"; exit 0' TERM INT
     while :; do sleep 1; done
     ;;
+  override-ready)
+    printf '%s\\n' "$MNDW_SELECTED_PORT" > "$FAKE_LISTENER_FILE"
+    trap 'rm -f "$FAKE_LISTENER_FILE"; exit 0' TERM INT
+    while :; do sleep 1; done
+    ;;
   delayed-ready)
     printf '%s\\n' "$MNDW_SELECTED_PORT" > "$FAKE_LISTENER_FILE"
     (
@@ -297,8 +307,23 @@ exit 1
 echo "mndwd:$1" >> "$FAKE_ORDER"
 if [ "$1" = "start" ] || [ "$1" = "restart" ]; then
   proxy_target=\${MNDW_PROXY_TARGET:-\${DATA_DIR:-\$MNDW_ROOT/var/lib/mndw}/proxy-target.conf}
+  router_port=\${FAKE_ROUTER_PORT:-80}
   mkdir -p "$(dirname "$proxy_target")"
-  echo 'proxy.server = ( "" => (( "host" => "192.0.2.1", "port" => 80 )) )' > "$proxy_target"
+  case "\${FAKE_PROXY_TARGET_MODE:-valid}" in
+    missing)
+      echo 'proxy.server = ( "" => (( "host" => "192.0.2.1" )) )' > "$proxy_target"
+      ;;
+    duplicate)
+      echo 'proxy.server = ( "" => (( "host" => "192.0.2.1", "port" => 80, "port" => 81 )) )' > "$proxy_target"
+      ;;
+    valid)
+      printf '%s\n' 'proxy.server = ( "" => (( "host" => "192.0.2.1", "port" => '"$router_port"' )) )' > "$proxy_target"
+      ;;
+    *)
+      echo "unexpected FAKE_PROXY_TARGET_MODE: \${FAKE_PROXY_TARGET_MODE:-}" >&2
+      exit 1
+      ;;
+  esac
 fi
 `,
   );
@@ -359,6 +384,7 @@ const runInstall = (fixture: InstallFixture, extraEnv: Record<string, string> = 
       MNDW_LIGHTTPD_CONF: path.join(fixture.root, 'etc', 'lighttpd.conf'),
       MNDW_LIGHTTPD_CONFD: path.join(fixture.root, 'etc', 'lighttpd', 'conf.d'),
       MNDW_LIGHTTPD_ERRORLOG: fixture.errorLog,
+      MNDW_LIGHTTPD_POLICY_FILE: fixture.policyFile,
       MNDW_RENDER_HELPER: renderer,
       MNDW_RUNTIME_CONF: fixture.runtime,
       MNDW_CONFIG_FILE: path.join(fixture.root, 'etc', 'mndw.conf'),
@@ -370,9 +396,11 @@ const runInstall = (fixture: InstallFixture, extraEnv: Record<string, string> = 
       MNDW_PROBE_TERM_TIMEOUT: '2',
       MNDW_PROBE_KILL_TIMEOUT: '2',
       MNDW_PROBE_MODE: 'ready',
-      FAKE_PROBE_MODE: 'ready',
+      FAKE_PROBE_MODE: fixture.probeMode,
       FAKE_PRINT_CONFIG_MODE: 'empty',
       FAKE_DAEMON_MODE: 'success',
+      FAKE_PROXY_TARGET_MODE: 'valid',
+      FAKE_ROUTER_PORT: '80',
       FAKE_LISTENER_FILE: fixture.listeners,
       FAKE_ORDER: fixture.order,
       FAKE_ATTEMPT_FILE: path.join(fixture.root, 'attempt'),
@@ -453,6 +481,13 @@ done
     expect(fs.readFileSync(path.join(fixture.root, 'var', 'lib', 'mndw', 'proxy-target.conf'), 'utf8'))
       .toContain('"port" => 8081');
     expect(fs.readFileSync(fakeDaemonArgs, 'utf8')).toContain('--router-url http://198.51.100.11:8081');
+
+    const parserResult = runScript(portHelper, ['read-router-port'], fixture, {
+      MNDW_PROXY_TARGET: path.join(fixture.root, 'var', 'lib', 'mndw', 'proxy-target.conf'),
+    });
+
+    expect(parserResult.status, `${parserResult.stdout}\n${parserResult.stderr}`).toBe(0);
+    expect(String(parserResult.stdout ?? '').trim()).toBe('8081');
   });
 });
 
@@ -786,6 +821,76 @@ describe('mndw-render-lighttpd.sh', () => {
 });
 
 describe('mndw-lighttpd-port.sh install', () => {
+  it('preserves a pre-existing lighttpd main port when router HTTP uses 8081', () => {
+    const fixture = makeInstallFixture('ready');
+
+    fs.writeFileSync(fixture.policyFile, 'preserve\n');
+    fs.writeFileSync(fixture.listeners, '80\n');
+
+    const result = runInstall(fixture, {
+      FAKE_ROUTER_PORT: '8081',
+      FAKE_BASE_PORT: '80',
+      FAKE_STOP_CLEARS_LISTENERS: '1',
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.readFileSync(fixture.runtime, 'utf8')).not.toContain('server.port =');
+    expect(fs.readFileSync(fixture.listeners, 'utf8').split('\n')).toEqual(expect.arrayContaining(['80', '99']));
+  });
+
+  it('prevents port 80 for a fresh mndw-owned lighttpd when router HTTP uses 8081', () => {
+    const fixture = makeInstallFixture('override-ready');
+
+    const result = runInstall(fixture, {
+      FAKE_ROUTER_PORT: '8081',
+      FAKE_BASE_PORT: '80',
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.readFileSync(fixture.runtime, 'utf8')).toContain('server.port = 99');
+    expect(fs.readFileSync(fixture.listeners, 'utf8').trim()).toBe('99');
+    expect(fs.readFileSync(fixture.policyFile, 'utf8').trim()).toBe('mndw');
+  });
+
+  it('fails preserved lighttpd cleanly when its base listener cannot bind', () => {
+    const fixture = makeInstallFixture('port80');
+
+    fs.writeFileSync(fixture.policyFile, 'preserve\n');
+
+    const result = runInstall(fixture, {
+      FAKE_ROUTER_PORT: '8081',
+      FAKE_BASE_PORT: '80',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('lighttpd did not establish the selected dashboard listener');
+    expect(fs.readFileSync(fixture.runtime, 'utf8')).not.toContain('server.port =');
+    expect(fs.readFileSync(fixture.listeners, 'utf8').trim()).toBe('');
+  });
+
+  it.each(['missing', 'duplicate'])('rejects %s router proxy targets before stopping lighttpd', (proxyMode) => {
+    const fixture = makeInstallFixture('ready');
+    const result = runInstall(fixture, {FAKE_PROXY_TARGET_MODE: proxyMode});
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('router target');
+    expect(fs.readFileSync(fixture.order, 'utf8')).not.toContain('lighttpd-init:stop');
+  });
+
+  it('defaults to preserve mode with a loud warning when ownership policy is absent', () => {
+    const fixture = makeInstallFixture('ready');
+
+    fs.rmSync(fixture.policyFile);
+
+    const result = runInstall(fixture);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stderr).toContain(
+      '[mndw] no ownership policy found; preserving existing main port — if this is a fresh install use install.sh',
+    );
+    expect(fs.readFileSync(fixture.runtime, 'utf8')).not.toContain('server.port =');
+  });
+
   it('reserves a foreign listener observed before stopping shared lighttpd', () => {
     const fixture = makeInstallFixture('ready');
 
@@ -975,6 +1080,9 @@ describe('mndw-lighttpd-port.sh install', () => {
 
   it('renders override mode when port-80 bind failure is on probe stderr', () => {
     const fixture = makeInstallFixture('port80');
+
+    fs.writeFileSync(fixture.policyFile, 'mndw\n');
+
     const result = runInstall(fixture, {FAKE_PROBE_MODE: 'port80'});
     const diagnostics = fs.existsSync(fixture.probeLog) ? fs.readFileSync(fixture.probeLog, 'utf8') : '';
 
@@ -1006,6 +1114,9 @@ describe('mndw-lighttpd-port.sh install', () => {
 
   it('renders override mode when IPv6 port-80 bind failure is on probe stderr', () => {
     const fixture = makeInstallFixture('port80-ipv6');
+
+    fs.writeFileSync(fixture.policyFile, 'mndw\n');
+
     const result = runInstall(fixture, {FAKE_PROBE_MODE: 'port80-ipv6'});
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
@@ -1015,6 +1126,9 @@ describe('mndw-lighttpd-port.sh install', () => {
 
   it('renders override mode when port-80 bind failure is only in the errorlog delta', () => {
     const fixture = makeInstallFixture('errorlog');
+
+    fs.writeFileSync(fixture.policyFile, 'mndw\n');
+
     const result = runInstall(fixture, {FAKE_PROBE_MODE: 'errorlog'});
     const diagnostics = fs.existsSync(fixture.probeLog) ? fs.readFileSync(fixture.probeLog, 'utf8') : '';
 
@@ -1033,6 +1147,7 @@ describe('mndw-lighttpd-port.sh install', () => {
     expect(runtime).toContain('$SERVER["socket"] == ":99"');
     expect(runtime).not.toContain('server.port =');
     expect(fs.readFileSync(path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port'), 'utf8').trim()).toBe('99');
+    expect(fs.readFileSync(fixture.policyFile, 'utf8').trim()).toBe('mndw');
     expect(fs.readFileSync(fixture.listeners, 'utf8').split('\n')).toContain('8080');
   });
 

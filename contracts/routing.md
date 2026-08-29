@@ -30,6 +30,9 @@ Production listener and upstream facts:
   foreign claim; browser-blocked ports in that range include `101`, `102`, `103`, `104`, `109`, `110`, `111`, `113`,
   `115`, `117`, `119`, `123`, `135`, `137`, `139`, `143`, `161`, and `179`;
 - selected port is persisted in `/opt/var/lib/mndw/lighttpd-port`;
+- supported installer records lighttpd main-port ownership as `preserve` or `mndw` in
+  `/opt/var/lib/mndw/lighttpd-port-policy`; direct first-time `opkg install` without that marker defaults to
+  `preserve`;
 - `mndwd` listens on `127.0.0.1:9090` by default;
 - `S70mndwd` discovers the router's HTTP `/auth` listener from local TCP listeners and its
   `WWW-Authenticate: x-ndw2-interactive` / `x-ndw4-interactive` challenge; it writes the matching
@@ -38,6 +41,20 @@ Production listener and upstream facts:
   listeners. Discovery fails closed when no matching listener or more than one matching listener is found.
 - Standalone mndwd's router session-validation upstream still defaults to `http://127.0.0.1:80`; the package
   init script supplies the discovered device URL.
+
+The lighttpd installer reads the router port from the single generated
+`/opt/var/lib/mndw/proxy-target.conf` source after `S70mndwd` restarts. It does
+not maintain a second router-port state file. A preserved lighttpd installation
+keeps its pre-existing main listener, including port `80`, and adds only a
+socket-scoped dashboard listener. An mndw-owned installation uses
+override mode when the router HTTP port is not `80`, so it does not inherit
+lighttpd's default port `80`; mndw-owned installations retain the existing
+port-80 collision fallback when the router also uses port `80`.
+
+Lighttpd startup is treated as all-or-nothing for configured listeners. A
+preserved installation therefore fails if its existing main listener cannot
+bind; it never switches to a global mndw override. The ownership decision is
+made during install/configuration, not re-probed at boot.
 
 Foreign configuration claims survive shared-service stop. web4static-style `server.port := 99` and
 `$SERVER["socket"] == ":99"` therefore reserve port 99. Missing `conf.d` is valid empty evidence. A present but

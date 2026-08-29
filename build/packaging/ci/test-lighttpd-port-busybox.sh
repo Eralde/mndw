@@ -171,4 +171,175 @@ export MNDW_NETSTAT MNDW_CURL
 selected=$(sh "$router_port_helper" detect 198.51.100.11)
 assert_eq '8081' "$selected"
 
+install_root="$fixture_root/install"
+install_bin="$install_root/bin"
+install_proc="$install_root/proc"
+install_conf_dir="$install_root/etc/lighttpd/conf.d"
+install_data_dir="$install_root/var/lib/mndw"
+install_runtime="$install_data_dir/lighttpd-runtime.conf"
+install_proxy_target="$install_data_dir/proxy-target.conf"
+install_policy="$install_data_dir/lighttpd-port-policy"
+install_listeners="$install_root/listeners"
+install_order="$install_root/order"
+install_errorlog="$install_root/var/log/lighttpd/error.log"
+install_probe_log="$install_root/tmp/mndw/lighttpd-probe.log"
+install_init_log="$install_root/tmp/mndw/lighttpd-init.log"
+install_lighttpd="$install_root/fake-lighttpd"
+install_lighttpd_init="$install_root/etc/init.d/S80lighttpd"
+install_mndwd_init="$install_root/etc/init.d/S70mndwd"
+
+mkdir -p "$install_bin" "$install_proc/net" "$install_conf_dir" "$install_data_dir" "$install_root/etc/init.d" \
+  "$(dirname "$install_errorlog")" "$(dirname "$install_runtime")"
+printf '  sl  local_address rem_address   st\n' > "$install_proc/net/tcp"
+printf '  sl  local_address rem_address   st\n' > "$install_proc/net/tcp6"
+printf 'server.errorlog = "%s"\n' "$install_errorlog" > "$install_root/etc/lighttpd.conf"
+: > "$install_listeners"
+: > "$install_order"
+: > "$install_errorlog"
+
+cat > "$install_bin/netstat" <<'EOF'
+#!/bin/sh
+if [ -f "$FAKE_LISTENER_FILE" ]; then
+  while IFS= read -r port; do
+    [ -n "$port" ] && printf 'tcp 0 0 0.0.0.0:%s 0.0.0.0:* LISTEN\n' "$port"
+  done < "$FAKE_LISTENER_FILE"
+fi
+EOF
+cat > "$install_bin/pidof" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+cat > "$install_lighttpd" <<'EOF'
+#!/bin/sh
+echo "lighttpd:$*" >> "$FAKE_ORDER"
+if [ "$1" = "-t" ]; then
+  exit 0
+fi
+if [ "$1" != "-D" ]; then
+  exit 1
+fi
+
+case "$FAKE_PROBE_MODE" in
+  ready)
+    printf '%s\n' "$MNDW_SELECTED_PORT" "$FAKE_BASE_PORT" > "$FAKE_LISTENER_FILE"
+    trap 'rm -f "$FAKE_LISTENER_FILE"; exit 0' TERM INT
+    while :; do sleep 1; done
+    ;;
+  override-ready)
+    printf '%s\n' "$MNDW_SELECTED_PORT" > "$FAKE_LISTENER_FILE"
+    trap 'rm -f "$FAKE_LISTENER_FILE"; exit 0' TERM INT
+    while :; do sleep 1; done
+    ;;
+  port80)
+    echo 'bind() 0.0.0.0:80: Address already in use' >&2
+    exit 1
+    ;;
+esac
+
+exit 1
+EOF
+cat > "$install_mndwd_init" <<'EOF'
+#!/bin/sh
+echo "mndwd:$1" >> "$FAKE_ORDER"
+if [ "$1" = "restart" ]; then
+  mkdir -p "$(dirname "$MNDW_PROXY_TARGET")"
+  printf 'proxy.server = ( "" => (( "host" => "192.0.2.1", "port" => %s )) )\n' "$FAKE_ROUTER_PORT" > "$MNDW_PROXY_TARGET"
+fi
+EOF
+cat > "$install_lighttpd_init" <<'EOF'
+#!/bin/sh
+echo "lighttpd-init:$1" >> "$FAKE_ORDER"
+case "$1" in
+  stop)
+    : > "$FAKE_LISTENER_FILE"
+    exit 0
+    ;;
+  restart)
+    if grep -q '^server.port = ' "$FAKE_RUNTIME_FILE"; then
+      printf '%s\n' "$MNDW_SELECTED_PORT" > "$FAKE_LISTENER_FILE"
+    else
+      printf '%s\n' "$MNDW_SELECTED_PORT" "$FAKE_BASE_PORT" > "$FAKE_LISTENER_FILE"
+    fi
+    exit 0
+    ;;
+esac
+exit 1
+EOF
+chmod 755 "$install_bin/netstat" "$install_bin/pidof" "$install_lighttpd" "$install_mndwd_init" "$install_lighttpd_init"
+
+export MNDW_ROOT="$install_root"
+export MNDW_PROC_ROOT="$install_proc"
+export MNDW_NETSTAT="$install_bin/netstat"
+export MNDW_LIGHTTPD_BIN="$install_lighttpd"
+export MNDW_LIGHTTPD_INIT="$install_lighttpd_init"
+export MNDW_MNDWD_INIT="$install_mndwd_init"
+export MNDW_LIGHTTPD_CONF="$install_root/etc/lighttpd.conf"
+export MNDW_LIGHTTPD_CONFD="$install_conf_dir"
+export MNDW_LIGHTTPD_ERRORLOG="$install_errorlog"
+export MNDW_LIGHTTPD_POLICY_FILE="$install_policy"
+export MNDW_RUNTIME_CONF="$install_runtime"
+export MNDW_PROXY_TARGET="$install_proxy_target"
+export MNDW_CONFIG_FILE="$install_root/etc/mndw.conf"
+export MNDW_PROBE_LOG="$install_probe_log"
+export MNDW_INIT_LOG="$install_init_log"
+export MNDW_PROBE_READY_TIMEOUT=1
+export MNDW_HANDOFF_READY_TIMEOUT=1
+export MNDW_PROBE_TERM_TIMEOUT=1
+export MNDW_PROBE_KILL_TIMEOUT=1
+export MNDW_LIGHTTPD_ERRORLOG_LINES=10
+export MNDW_USER_PLUGINS_DIR=''
+export FAKE_LISTENER_FILE="$install_listeners"
+export FAKE_ORDER="$install_order"
+export FAKE_RUNTIME_FILE="$install_runtime"
+export FAKE_BASE_PORT=80
+unset DATA_DIR
+
+printf '%s\n' mndw > "$install_policy"
+assert_eq 'mndw' "$(sh "$port_helper" read-policy)"
+printf '%s\n' unexpected > "$install_policy"
+policy_output=$(sh "$port_helper" read-policy 2> "$fixture_root/policy.stderr")
+assert_eq 'preserve' "$policy_output"
+assert_file_contains 'invalid lighttpd ownership policy' "$fixture_root/policy.stderr"
+
+reset_install_fixture() {
+  policy=$1
+  probe_mode=$2
+  router_port=$3
+
+  printf '%s\n' "$policy" > "$install_policy"
+  : > "$install_listeners"
+  : > "$install_order"
+  : > "$install_errorlog"
+  rm -f "$install_runtime" "$install_data_dir/lighttpd-port" "$install_probe_log" "$install_init_log"
+  export FAKE_PROBE_MODE="$probe_mode"
+  export FAKE_ROUTER_PORT="$router_port"
+}
+
+reset_install_fixture preserve ready 8081
+printf '%s\n' 80 > "$install_listeners"
+if ! sh "$port_helper" install > "$fixture_root/preserve.stdout" 2> "$fixture_root/preserve.stderr"; then
+  fail "preserve install failed: $(cat "$fixture_root/preserve.stderr")"
+fi
+if grep -F -q 'server.port =' "$install_runtime"; then
+  fail 'preserve mode rendered a global server.port'
+fi
+grep -q '^80$' "$install_listeners" || fail 'preserve mode lost main port 80'
+grep -q '^99$' "$install_listeners" || fail 'preserve mode did not publish port 99'
+
+reset_install_fixture mndw override-ready 8081
+if ! sh "$port_helper" install > "$fixture_root/override.stdout" 2> "$fixture_root/override.stderr"; then
+  fail "override install failed: $(cat "$fixture_root/override.stderr")"
+fi
+assert_file_contains 'server.port = 99' "$install_runtime"
+assert_eq '99' "$(sed '/^$/d' "$install_listeners")"
+
+reset_install_fixture preserve port80 8081
+if sh "$port_helper" install > "$fixture_root/failure.stdout" 2> "$fixture_root/failure.stderr"; then
+  fail 'preserve bind failure unexpectedly passed'
+fi
+if grep -F -q 'server.port =' "$install_runtime"; then
+  fail 'preserve bind failure rendered a global server.port'
+fi
+assert_eq '' "$(sed '/^$/d' "$install_listeners")"
+
 echo 'lighttpd port BusyBox tests passed'

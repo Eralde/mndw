@@ -14,7 +14,7 @@ The installed layout is centered under `/opt`:
 /opt/sbin/mndwd                      daemon binary
 /opt/etc/lighttpd/                   package-owned loader plus base lighttpd config
 /opt/etc/init.d/                     daemon init script
-/opt/var/lib/mndw/                   selected port, generated runtime config, staging
+/opt/var/lib/mndw/                   selected port, ownership policy, generated runtime config, staging
 /opt/var/lib/mndw/user-plugins/      durable uploaded user-plugin files
 /opt/var/lib/mndw/state.json         durable plugin metadata and manifests
 /opt/var/lib/mndw/legacy/             preserved legacy 80-mndw.conf files
@@ -83,9 +83,17 @@ kernel-suffixed target, including `mips-3.4` for big-endian MIPS.
 
 ## Install and upgrade
 
-Installation starts `mndwd`, probes the complete lighttpd configuration, renders
-runtime rules, validates the configuration, and restarts lighttpd. A deployment
-should verify:
+The supported `install.sh` records whether lighttpd was already installed in
+`/opt/var/lib/mndw/lighttpd-port-policy` before dependency resolution. It writes
+`preserve` when lighttpd predates mndw and `mndw` for a fresh mndw-owned
+lighttpd. Existing policy survives upgrades and remove/reinstall while
+lighttpd remains installed. Direct first-time `opkg install mndw` has no
+reliable dependency-order signal, so it defaults to preserving lighttpd's main
+port and logs a warning; use `install.sh` for fresh installs.
+
+Installation starts `mndwd`, reads the generated router target, probes the
+complete lighttpd configuration, renders runtime rules, validates the
+configuration, and restarts lighttpd. A deployment should verify:
 
 1. the browser can reach the host;
 2. authentication reaches the router;
@@ -98,15 +106,33 @@ Before starting mndwd, package init discovers the router HTTP port by probing
 `/opt/etc/mndw.conf` when more than one listener matches. The generated
 `/opt/var/lib/mndw/proxy-target.conf` and mndwd `--router-url` use that port.
 
-If the base listener is unavailable, mndw prints a warning and renders an
-override that scopes its rules to the selected listener. This decision is made
-during install; rerun package configuration if listener ownership changes later.
-After an upgrade, verify the generated runtime config, legacy backup, durable
-user-plugin files, and `/opt/etc/mndw.conf`. A real-device smoke test is
+When policy is `preserve`, mndw keeps lighttpd's pre-existing main listener,
+including port `80`, and adds only a socket-scoped dashboard listener; it never
+renders a global `server.port` override. When policy is `mndw` and the
+router HTTP port is not `80`, mndw probes and hands off in override mode, so
+lighttpd does not bind port `80`. When both use port `80`, mndw retains its
+existing collision fallback. A preserved lighttpd whose configured listener
+cannot bind is a clean install failure because lighttpd does not keep another
+configured listener alive after a bind failure. These decisions are made during
+install; rerun package configuration if listener ownership changes later.
+After an upgrade or remove/reinstall, verify the policy, generated runtime
+config, legacy backup, durable user-plugin files, and `/opt/etc/mndw.conf`. A real-device smoke test is
 mandatory even when local and CI tests pass. Release of this migration also
 requires target Entware verification of opkg lifecycle ordering and that
 `/opt/share/www` and `/opt/var/lib` share a filesystem; host shell tests do not
 prove either condition.
+
+For listener diagnostics, inspect the policy, generated router target, rendered
+runtime fragment, effective lighttpd configuration, and live listeners:
+
+```sh
+cat /opt/var/lib/mndw/lighttpd-port-policy
+cat /opt/var/lib/mndw/proxy-target.conf
+cat /opt/var/lib/mndw/lighttpd-runtime.conf
+sh /opt/share/www/mndw/bin/mndw-lighttpd-port.sh read-router-port
+/opt/sbin/lighttpd -t -f /opt/etc/lighttpd/lighttpd.conf
+netstat -lnt 2>/dev/null
+```
 
 ## Security boundary
 

@@ -197,12 +197,14 @@ describe('preinst legacy migration', () => {
     const durableFile = path.join(durableRoot, 'existing', 'index.js');
     const stagingFile = path.join(root, 'var', 'lib', 'mndw', 'staging', 'pending.zip');
     const stateFile = path.join(root, 'var', 'lib', 'mndw', 'state.json');
+    const policyFile = path.join(root, 'var', 'lib', 'mndw', 'lighttpd-port-policy');
 
     fs.mkdirSync(path.dirname(durableFile), {recursive: true});
     fs.mkdirSync(path.dirname(stagingFile), {recursive: true});
     fs.writeFileSync(durableFile, 'durable');
     fs.writeFileSync(stagingFile, 'staged');
     fs.writeFileSync(stateFile, '{"state":"keep"}');
+    fs.writeFileSync(policyFile, 'mndw\n');
     fs.chmodSync(durableRoot, 0o700);
 
     const result = runScript(scriptName, [scriptName === 'preinst' ? 'upgrade' : 'remove'], root);
@@ -211,6 +213,7 @@ describe('preinst legacy migration', () => {
     expect(fs.readFileSync(durableFile, 'utf8')).toBe('durable');
     expect(fs.readFileSync(stagingFile, 'utf8')).toBe('staged');
     expect(fs.readFileSync(stateFile, 'utf8')).toBe('{"state":"keep"}');
+    expect(fs.readFileSync(policyFile, 'utf8')).toBe('mndw\n');
     expect(fs.statSync(durableRoot).mode % 0o1000).toBe(0o700);
     expect(fs.existsSync(path.join(root, 'share', 'www', 'mndw', 'user-plugins'))).toBe(false);
     expect(fs.existsSync(path.join(root, 'chown-called'))).toBe(false);

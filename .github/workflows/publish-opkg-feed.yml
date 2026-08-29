@@ -33,13 +33,13 @@ jobs:
 
       - name: Publish to public feed repo
         env:
-          FEED_REPO: https://github.com/Eralde/mndw-opkg-feed
+          FEED_REPO: Eralde/mndw-opkg-feed
           GH_TOKEN: ${{ secrets.FEED_REPO_TOKEN }}
         run: |
           set -eux
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${FEED_REPO}.git" feed
           rm -rf feed/*
-          cp -R opkg/out/repo/. feed/
+          cp -R out/repo/. feed/
           cd feed
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

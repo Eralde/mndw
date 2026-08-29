@@ -1,5 +1,6 @@
 <script lang="ts">
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 import CapabilityReview from './CapabilityReview.svelte';
 
 interface Props {
@@ -12,8 +13,8 @@ let {entry, close}: Props = $props();
 
 <div class="mndw-approval">
   <p class="mndw-approval__declaration">
-    <strong>{entry.label}</strong> ({entry.name}) declares a backend. Review its
-    capabilities before approving.
+    <strong>{entry.label}</strong>
+    ({entry.name}) {hostT('settings.backend-approval-declaration')}
   </p>
 
   <CapabilityReview descriptor={entry.backend} />
@@ -24,14 +25,14 @@ let {entry, close}: Props = $props();
       variant="danger"
       onclick={() => close('deny')}
     >
-      Deny
+      {hostT('settings.backend-approval-deny')}
     </mndw-button>
     <mndw-button
       class="mndw-approval__approve"
       variant="primary"
       onclick={() => close('approve')}
     >
-      Approve
+      {hostT('settings.backend-approval-approve')}
     </mndw-button>
   </div>
 </div>

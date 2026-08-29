@@ -9,6 +9,7 @@ let diagnosticsError = $state('');
 async function downloadHostDiagnostics(): Promise<void> {
   diagnosticsLoading = true;
   diagnosticsError = '';
+
   try {
     await downloadDiagnostics();
   } catch {
@@ -30,11 +31,13 @@ async function downloadHostDiagnostics(): Promise<void> {
     variant="secondary"
     disabled={diagnosticsLoading}
     onclick={() => void downloadHostDiagnostics()}
-  >{
-    diagnosticsLoading
-    ? hostT('settings.downloading')
-    : hostT('settings.download-diagnostics')
-  }</mndw-button>
+  >
+    {
+      diagnosticsLoading
+      ? hostT('settings.downloading')
+      : hostT('settings.download-diagnostics')
+    }
+  </mndw-button>
   {#if diagnosticsError}
     <p role="alert">{diagnosticsError}</p>
   {/if}

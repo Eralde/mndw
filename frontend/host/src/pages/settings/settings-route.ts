@@ -1,15 +1,15 @@
-import {SETTINGS_TAB_DEFS, type SettingsPath, type SettingsTab} from './settings-tabs.js';
+import {SETTINGS_TAB_DEFS, type SettingsPath, type SettingsTabId} from './settings-tabs.js';
 
 export {SETTINGS_TAB_DEFS} from './settings-tabs.js';
-export type {SettingsPath, SettingsTab} from './settings-tabs.js';
+export type {SettingsPath, SettingsTabId} from './settings-tabs.js';
 
-export const SETTINGS_DEFAULT_TAB: SettingsTab = 'general';
+export const SETTINGS_DEFAULT_TAB: SettingsTabId = 'general';
 
-export function settingsPath(tab: SettingsTab): SettingsPath {
+export function settingsPath(tab: SettingsTabId): SettingsPath {
   return SETTINGS_TAB_DEFS.find((candidate) => candidate.id === tab)?.route ?? `/settings/${tab}`;
 }
 
-export function settingsTabFromPath(pathname: string): SettingsTab | null {
+export function settingsTabFromPath(pathname: string): SettingsTabId | null {
   const normalizedPathname = pathname.length > 1 && pathname.endsWith('/')
     ? pathname.slice(0, -1)
     : pathname;

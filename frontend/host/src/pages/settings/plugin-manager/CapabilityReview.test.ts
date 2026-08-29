@@ -2,6 +2,7 @@ import {afterEach, describe, expect, it} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginBackendDescriptor} from '../../../runtime/plugin-types.js';
+import {setLocale} from '../../../services/locale.service.js';
 import CapabilityReview from './CapabilityReview.svelte';
 
 function mountReview(descriptor: PluginBackendDescriptor): {component: ReturnType<typeof mount>; target: HTMLElement} {
@@ -37,6 +38,24 @@ describe('CapabilityReview', () => {
     expect(target.textContent).toContain('logs: logs');
 
     void unmount(component);
+  });
+
+  it('updates capability labels after a locale commit', async () => {
+    const {component, target} = mountReview({
+      routes: {status: {transport: 'http', method: 'GET', path: 'status'}},
+    });
+
+    try {
+      expect(target.textContent).toContain('Routes');
+
+      await setLocale('ru');
+      flushSync();
+
+      expect(target.textContent).toContain('Маршруты');
+    } finally {
+      await unmount(component);
+      await setLocale('en');
+    }
   });
 
   it('renders no route section for an empty descriptor', () => {

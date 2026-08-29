@@ -1,5 +1,6 @@
 <script lang="ts">
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 import CapabilityReview from './CapabilityReview.svelte';
 import type {PluginRowState} from './reconcile.js';
 
@@ -30,7 +31,9 @@ let {
   class="mndw-pending"
   aria-labelledby="mndw-pending-title"
 >
-  <h3 id="mndw-pending-title">Pending approvals</h3>
+  <h3 id="mndw-pending-title">
+    {hostT('settings.plugin-manager.pending-title')}
+  </h3>
 
   <ul class="mndw-pending__list">
     {#each items as item (item.name)}
@@ -56,7 +59,7 @@ let {
                 variant="ghost"
                 onclick={onRefresh}
               >
-                Refresh
+                {hostT('settings.plugin-manager.refresh')}
               </mndw-button>
             {/if}
           </div>
@@ -64,14 +67,20 @@ let {
 
         {#if confirmingName === item.name}
           <div class="mndw-pending__confirmation">
-            <p>Deny {item.label}? This cannot be undone.</p>
+            <p>
+              {
+                hostT('settings.plugin-manager.deny-confirmation', {
+                  label: item.label,
+                })
+              }
+            </p>
             <div class="mndw-pending__actions">
               <mndw-button
                 class="mndw-pending__cancel"
                 variant="ghost"
                 onclick={onCancelConfirm}
               >
-                Cancel
+                {hostT('settings.plugin-manager.cancel')}
               </mndw-button>
               <mndw-button
                 class="mndw-pending__confirm"
@@ -79,7 +88,7 @@ let {
                 disabled={busy}
                 onclick={() => onDeny(item.name)}
               >
-                Deny plugin
+                {hostT('settings.plugin-manager.deny-plugin')}
               </mndw-button>
             </div>
           </div>
@@ -91,7 +100,7 @@ let {
               disabled={busy}
               onclick={() => onRequestConfirm(item.name)}
             >
-              Deny
+              {hostT('settings.plugin-manager.deny')}
             </mndw-button>
             <mndw-button
               class="mndw-pending__approve"
@@ -99,7 +108,7 @@ let {
               disabled={busy}
               onclick={() => onApprove(item.name)}
             >
-              Approve
+              {hostT('settings.plugin-manager.approve')}
             </mndw-button>
           </div>
         {/if}

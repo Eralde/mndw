@@ -149,14 +149,13 @@ async function mutate(
     if (outcome === 'rejected-maintenance') {
       rowStates.set(name, {
         state: 'notice-rejected',
-        message:
-          'Plugin is busy with another maintenance operation. Try again shortly.',
+        message: hostT('settings.plugin-manager.maintenance-busy'),
         operation,
       });
     } else if (outcome === 'ambiguous') {
       rowStates.set(name, {
         state: 'reconciling',
-        message: 'Confirming plugin state…',
+        message: hostT('settings.plugin-manager.confirming-state'),
         operation,
       });
 
@@ -178,15 +177,13 @@ async function mutate(
         } else if (result === 'notice-finishing') {
           rowStates.set(name, {
             state: 'notice-finishing',
-            message:
-              'Plugin operation is still finishing. Refresh to check again.',
+            message: hostT('settings.plugin-manager.operation-finishing'),
             operation,
           });
         } else {
           rowStates.set(name, {
             state: 'outcome-unknown',
-            message:
-              'Could not confirm restart outcome. Refresh to check plugin status.',
+            message: hostT('settings.plugin-manager.outcome-unknown'),
             operation,
           });
         }
@@ -225,25 +222,25 @@ onMount(() => {
 </script>
 
 <section class="mndw-plugin-manager">
-  <h3>Plugin manager</h3>
+  <h3>{hostT('settings.plugin-manager.title')}</h3>
 
   {#if reloadPrompt}
     <div
       class="mndw-reload"
       role="status"
     >
-      <span>Reload to apply plugin changes.</span>
+      <span>{hostT('settings.plugin-manager.reload-notice')}</span>
       <mndw-button
         variant="primary"
         onclick={() => window.location.reload()}
       >
-        Reload now
+        {hostT('settings.plugin-manager.reload-now')}
       </mndw-button>
       <mndw-button
         variant="ghost"
         onclick={() => (reloadPrompt = false)}
       >
-        Later
+        {hostT('settings.plugin-manager.later')}
       </mndw-button>
     </div>
   {/if}
@@ -269,7 +266,7 @@ onMount(() => {
       class="mndw-plugin-manager__loading"
       role="status"
     >
-      Loading plugins...
+      {hostT('settings.plugin-manager.loading')}
     </p>
   {:else if loadError}
     <div
@@ -281,7 +278,7 @@ onMount(() => {
         variant="secondary"
         onclick={() => void load()}
       >
-        Retry
+        {hostT('settings.plugin-manager.retry')}
       </mndw-button>
     </div>
   {:else}
@@ -295,7 +292,7 @@ onMount(() => {
           variant="ghost"
           onclick={() => (refreshError = '')}
         >
-          Dismiss
+          {hostT('settings.plugin-manager.dismiss')}
         </mndw-button>
       </div>
     {/if}
@@ -306,22 +303,30 @@ onMount(() => {
         aria-label={hostT('settings.backend-capacity')}
       >
         <strong>{hostT('settings.backend-capacity')}</strong>
-        <span>Exec: {runtimeLimits.currentExec}/{
-            runtimeLimits.maxConcurrentExecTotal
-          }</span>
-        <span>Services: {runtimeLimits.reservedServices}/{
-            runtimeLimits.maxSupervisedServices
-          }</span>
-        <span>Per-plugin exec limit: {
-            runtimeLimits.maxConcurrentExecPerPlugin
-          }</span>
-        <span>Service protocols: {
-            runtimeLimits.supportedServiceProtocols.join(', ')
-          }</span>
+        <span>
+          {hostT('settings.plugin-manager.exec')}:
+          {runtimeLimits.currentExec}/{runtimeLimits.maxConcurrentExecTotal}
+        </span>
+        <span>
+          {hostT('settings.plugin-manager.services')}:
+          {runtimeLimits.reservedServices}/{runtimeLimits.maxSupervisedServices}
+        </span>
+        <span>
+          {hostT('settings.plugin-manager.per-plugin-exec-limit')}:
+          {runtimeLimits.maxConcurrentExecPerPlugin}
+        </span>
+        <span>
+          {hostT('settings.plugin-manager.service-protocols')}:
+          {runtimeLimits.supportedServiceProtocols.join(', ')}
+        </span>
       </section>
     {:else if runtimeError}
       <p class="mndw-plugin-manager__runtime-error">
-        Runtime status unavailable: {runtimeError}
+        {
+          hostT('settings.plugin-manager.runtime-status-unavailable', {
+            error: runtimeError,
+          })
+        }
       </p>
     {/if}
 

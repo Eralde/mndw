@@ -21,6 +21,7 @@ interface PermissionState {
 
 let permissionVisible = $state(false);
 let permissionAvailable = $state(false);
+
 const activeTab = $derived.by(() => {
   const pathname = appRouter?.route.pathname ?? globalThis.location.pathname;
 
@@ -36,9 +37,10 @@ onMount(() => {
 });
 
 function handleTabChange(event: CustomEvent<MndwTabsChangeDetail>): void {
-  const tab = SETTINGS_TAB_DEFS.find((candidate) =>
-    candidate.id === event.detail.value
-  );
+  const tab = SETTINGS_TAB_DEFS.find((candidate) => {
+    return candidate.id === event.detail.value;
+  });
+
   const router = appRouter;
 
   if (tab === undefined || router === undefined) {
@@ -68,7 +70,9 @@ function handlePermissionStateChange(state: PermissionState): void {
       <mndw-tab
         id={tab.id}
         data-icon={tab.icon}
-      >{hostT(tab.labelKey)}</mndw-tab>
+      >
+        {hostT(tab.labelKey)}
+      </mndw-tab>
     {/each}
     <mndw-tab-panel for="general">
       <GeneralSettings onPermissionStateChange={handlePermissionStateChange} />

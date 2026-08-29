@@ -8,9 +8,20 @@ import {
 import {hostT} from '../../../services/host-i18n.svelte.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {openApprovalModal} from './approval-modal.js';
-import {validateExampleUploadTarget} from './upload-target.js';
+import {
+  type UploadTargetMismatch,
+  validateExampleUploadTarget,
+} from './upload-target.js';
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+type UploadStatus = 'idle' | 'uploading' | 'busy' | 'success' | 'error';
+type ApprovalDecision = 'approve' | 'deny' | undefined;
+
+interface ApprovalOutcome {
+  decision: ApprovalDecision;
+  aborted: boolean;
+}
 
 interface Props {
   uploadFile: (file: File) => Promise<UploadResult>;
@@ -34,9 +45,8 @@ let {
   architecture,
   openApproval = openApprovalModal,
 }: Props = $props();
-let status = $state<'idle' | 'uploading' | 'busy' | 'success' | 'error'>(
-  'idle',
-);
+
+let status = $state<UploadStatus>('idle');
 let error = $state('');
 let success = $state('');
 let approvalController: AbortController | undefined;
@@ -49,21 +59,84 @@ onDestroy(() => {
 
 function validate(file: File): string | undefined {
   if (!file.name.toLowerCase().endsWith('.zip')) {
-    return 'Choose a ZIP file.';
+    return hostT('settings.plugin-manager.choose-zip');
   }
 
   if (file.size === 0) {
-    return 'The ZIP file is empty.';
+    return hostT('settings.plugin-manager.empty-zip');
   }
 
   if (file.size > MAX_UPLOAD_BYTES) {
-    return 'The ZIP file exceeds the 10 MB upload limit.';
+    return hostT('settings.plugin-manager.zip-too-large');
+  }
+}
+
+function uploadTargetMessage(mismatch: UploadTargetMismatch): string {
+  return hostT(
+    'settings.plugin-manager.upload-target-mismatch',
+    {
+      filename: mismatch.filename,
+      archiveTarget: mismatch.archiveTarget,
+      deviceTarget: mismatch.deviceTarget,
+    },
+  );
+}
+
+function validationErrorFor(file: File): string | undefined {
+  const fileError = validate(file);
+
+  if (fileError) {
+    return fileError;
+  }
+
+  const targetMismatch = validateExampleUploadTarget(file.name, architecture);
+
+  if (targetMismatch !== undefined) {
+    return uploadTargetMessage(targetMismatch);
+  }
+}
+
+function showError(message: string): void {
+  error = message;
+  status = 'error';
+}
+
+function markInstalled(entry: PluginListEntry): void {
+  success = hostT(
+    'settings.plugin-manager.installed-success',
+    {
+      label: entry.label,
+    },
+  );
+
+  status = 'success';
+  onInstalled();
+}
+
+async function requestApproval(
+  entry: PluginListEntry,
+): Promise<ApprovalOutcome> {
+  const controller = new AbortController();
+
+  approvalController = controller;
+
+  try {
+    const decision = await openApproval(entry, controller.signal);
+
+    return {
+      decision,
+      aborted: controller.signal.aborted,
+    };
+  } finally {
+    if (approvalController === controller) {
+      approvalController = undefined;
+    }
   }
 }
 
 async function resolvePending(
   entry: PluginListEntry,
-  decision: 'approve' | 'deny' | undefined,
+  decision: ApprovalDecision,
 ): Promise<void> {
   if (destroyed) {
     return;
@@ -71,27 +144,40 @@ async function resolvePending(
 
   if (decision === 'approve') {
     const approved = await onApprove(entry.name);
+
     if (destroyed) {
       return;
     }
+
     if (!approved) {
       status = 'idle';
 
       return;
     }
-    success = `Approved "${entry.label}".`;
+
+    success = hostT(
+      'settings.plugin-manager.approved-success',
+      {
+        label: entry.label,
+      },
+    );
+
     status = 'success';
   } else if (decision === 'deny') {
     await onDeny(entry.name);
+
     if (destroyed) {
       return;
     }
+
     status = 'idle';
   } else {
     if (destroyed) {
       return;
     }
+
     onDismiss();
+
     status = 'idle';
   }
 }
@@ -101,25 +187,17 @@ async function upload(file: File): Promise<void> {
     return;
   }
 
-  const validationError = validate(file);
+  const validationError = validationErrorFor(file);
+
   if (validationError) {
-    error = validationError;
-    status = 'error';
-
-    return;
-  }
-
-  const targetError = validateExampleUploadTarget(file.name, architecture);
-
-  if (targetError !== undefined) {
-    error = targetError;
-    status = 'error';
+    showError(validationError);
 
     return;
   }
 
   error = '';
   status = 'uploading';
+
   let result: UploadResult;
 
   try {
@@ -128,8 +206,8 @@ async function upload(file: File): Promise<void> {
     if (destroyed) {
       return;
     }
-    error = messageForError(caught);
-    status = 'error';
+
+    showError(messageForError(caught));
 
     return;
   }
@@ -139,39 +217,32 @@ async function upload(file: File): Promise<void> {
   }
 
   if (result.status === 'installed') {
-    success = `Installed "${result.entry.label}".`;
-    status = 'success';
-    onInstalled();
+    markInstalled(result.entry);
 
     return;
   }
 
   status = 'busy';
-  const controller = new AbortController();
-  approvalController = controller;
-  let decision: 'approve' | 'deny' | undefined;
+
+  let approval: ApprovalOutcome;
 
   try {
-    decision = await openApproval(result.entry, controller.signal);
+    approval = await requestApproval(result.entry);
   } catch (caught) {
     if (destroyed) {
       return;
     }
-    error = messageForError(caught);
-    status = 'error';
 
-    return;
-  } finally {
-    if (approvalController === controller) {
-      approvalController = undefined;
-    }
-  }
+    showError(messageForError(caught));
 
-  if (destroyed || controller.signal.aborted) {
     return;
   }
 
-  await resolvePending(result.entry, decision);
+  if (destroyed || approval.aborted) {
+    return;
+  }
+
+  await resolvePending(result.entry, approval.decision);
 }
 
 function onInput(event: Event): void {
@@ -203,7 +274,7 @@ function onDrop(event: DragEvent): void {
       type="file"
       onchange={onInput}
     />
-    <span>Drop a plugin ZIP here or choose a file.</span>
+    <span>{hostT('settings.plugin-manager.upload-drop')}</span>
   </label>
 
   {#if status === 'uploading'}
@@ -211,14 +282,14 @@ function onDrop(event: DragEvent): void {
       class="mndw-upload__status"
       role="status"
     >
-      Uploading plugin...
+      {hostT('settings.plugin-manager.uploading')}
     </p>
   {:else if status === 'busy'}
     <p
       class="mndw-upload__status"
       role="status"
     >
-      Waiting for approval...
+      {hostT('settings.plugin-manager.waiting-approval')}
     </p>
   {:else if status === 'success'}
     <p

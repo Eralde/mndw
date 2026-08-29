@@ -6,6 +6,7 @@ import {flushSync, mount, unmount} from 'svelte';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 import {replaceDepsStatuses} from '../../../state/deps-status.svelte.js';
+import {setLocale} from '../../../services/locale.service.js';
 import InstalledPluginList from './InstalledPluginList.svelte';
 import type {PluginRowState} from './reconcile.js';
 
@@ -87,6 +88,28 @@ describe('InstalledPluginList', () => {
     expect(target.querySelector('.mndw-installed__empty')?.textContent).toBe('No plugins installed.');
 
     void unmount(component);
+  });
+
+  it('updates installed-plugin labels after a locale commit', async () => {
+    const {component, target} = mountInstalledPluginList();
+
+    try {
+      expect(target.textContent).toContain('Installed plugins');
+      expect(target.textContent).toContain('Version: 1.0.0');
+      expect(target.textContent).toContain('Disable');
+      expect(target.textContent).toContain('Delete');
+
+      await setLocale('ru');
+      flushSync();
+
+      expect(target.textContent).toContain('Установленные плагины');
+      expect(target.textContent).toContain('Версия: 1.0.0');
+      expect(target.textContent).toContain('Отключить');
+      expect(target.textContent).toContain('Удалить');
+    } finally {
+      await unmount(component);
+      await setLocale('en');
+    }
   });
 
   it('disables an enabled user plugin', () => {

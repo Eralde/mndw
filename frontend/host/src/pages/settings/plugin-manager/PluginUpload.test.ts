@@ -3,6 +3,7 @@ import {type ComponentProps, flushSync, mount, unmount} from 'svelte';
 
 import type {UploadResult} from '../../../services/mgmt-client.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
+import {setLocale} from '../../../services/locale.service.js';
 import PluginUpload from './PluginUpload.svelte';
 
 const entry: PluginListEntry = {
@@ -86,6 +87,24 @@ describe('PluginUpload', () => {
     expect(target.querySelector('.mndw-alert--danger')?.getAttribute('role')).toBe('alert');
 
     void unmount(component);
+  });
+
+  it('updates upload labels and validation errors after a locale commit', async () => {
+    const {component, target} = mountUpload();
+
+    try {
+      await setLocale('ru');
+      flushSync();
+
+      expect(target.textContent).toContain('Перетащите ZIP плагина сюда или выберите файл.');
+
+      await drop(target, new File(['plugin'], 'plugin.tar.gz', {type: 'application/gzip'}));
+
+      expect(target.querySelector('.mndw-alert--danger')?.textContent).toContain('Выберите ZIP-файл.');
+    } finally {
+      await unmount(component);
+      await setLocale('en');
+    }
   });
 
   it('rejects a known ping archive when its target mismatches device architecture', async () => {

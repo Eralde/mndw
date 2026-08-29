@@ -1,4 +1,5 @@
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 import {openHostModal} from '../../../services/overlay/host-overlay.js';
 import BackendApprovalModal from './BackendApprovalModal.svelte';
 
@@ -13,10 +14,13 @@ export async function openApprovalModal(
   const session = openHostModal<'approve' | 'deny', {
     entry: PluginListEntry;
     close: (result: 'approve' | 'deny') => void;
-  }>(BackendApprovalModal, {
-    title: `Approve backend for ${entry.label}`,
-    props: {entry},
-  });
+  }>(
+    BackendApprovalModal,
+    {
+      title: hostT('settings.backend-approval-title', {label: entry.label}),
+      props: {entry},
+    },
+  );
   const abort = (): void => session.close(undefined);
 
   signal?.addEventListener('abort', abort, {once: true});

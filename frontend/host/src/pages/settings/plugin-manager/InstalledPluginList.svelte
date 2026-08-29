@@ -6,6 +6,7 @@ import type {
 } from '../../../runtime/plugin-types.js';
 import {getPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 import {getDepsStatus} from '../../../state/deps-status.svelte.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 import type {PluginRowState} from './reconcile.js';
 
 interface Props {
@@ -28,8 +29,12 @@ interface Props {
   onRefresh: () => void;
 }
 
-function countLabel(count: number, singular: string): string {
-  return `${count} ${singular}${count === 1 ? '' : 's'}`;
+function countLabel(
+  count: number,
+  singularKey: string,
+  pluralKey: string,
+): string {
+  return hostT(count === 1 ? singularKey : pluralKey, {count});
 }
 
 function backendSummary(backend: PluginBackendDescriptor): string[] {
@@ -41,11 +46,19 @@ function backendSummary(backend: PluginBackendDescriptor): string[] {
     routeEntries.filter((route) => route.transport === 'websocket').length;
 
   if (endpointCount > 0) {
-    parts.push(countLabel(endpointCount, 'endpoint'));
+    parts.push(countLabel(
+      endpointCount,
+      'settings.plugin-manager.endpoint-one',
+      'settings.plugin-manager.endpoint-many',
+    ));
   }
 
   if (websocketCount > 0) {
-    parts.push(countLabel(websocketCount, 'websocket'));
+    parts.push(countLabel(
+      websocketCount,
+      'settings.plugin-manager.websocket-one',
+      'settings.plugin-manager.websocket-many',
+    ));
   }
 
   return parts;
@@ -69,8 +82,27 @@ function permissionGranted(
 
 function permissionLabel(permission: PluginPermission): string {
   return permission.endsWith(':write')
-    ? 'Persistent RCI write'
-    : 'Persistent RCI read';
+    ? hostT('settings.plugin-manager.persistent-rci-write')
+    : hostT('settings.plugin-manager.persistent-rci-read');
+}
+
+type RuntimeState = NonNullable<PluginListEntry['runtime']>['state'];
+
+function runtimeStateLabel(state: RuntimeState): string {
+  switch (state) {
+    case 'stopped':
+      return hostT('settings.plugin-manager.runtime-state-stopped');
+    case 'capacity_blocked':
+      return hostT('settings.plugin-manager.runtime-state-capacity-blocked');
+    case 'starting':
+      return hostT('settings.plugin-manager.runtime-state-starting');
+    case 'ready':
+      return hostT('settings.plugin-manager.runtime-state-ready');
+    case 'backoff':
+      return hostT('settings.plugin-manager.runtime-state-backoff');
+    case 'failed':
+      return hostT('settings.plugin-manager.runtime-state-failed');
+  }
 }
 
 let {
@@ -94,10 +126,14 @@ let {
   class="mndw-installed"
   aria-labelledby="mndw-installed-title"
 >
-  <h3 id="mndw-installed-title">Installed plugins</h3>
+  <h3 id="mndw-installed-title">
+    {hostT('settings.plugin-manager.installed-title')}
+  </h3>
 
   {#if items.length === 0}
-    <p class="mndw-installed__empty">No plugins installed.</p>
+    <p class="mndw-installed__empty">
+      {hostT('settings.plugin-manager.no-installed')}
+    </p>
   {:else}
     <ul class="mndw-installed__list">
       {#each items as item (item.name)}
@@ -113,30 +149,53 @@ let {
           </div>
 
           <div class="mndw-installed__metadata">
-            <span>Version: {item.version}</span>
-            <span>Type: {item.type}</span>
-            <span>Source: {item.source}</span>
+            <span>
+              {hostT('settings.plugin-manager.version')}: {item.version}</span>
+            <span>
+              {hostT('settings.plugin-manager.type')}: {item.type}</span>
+            <span>
+              {hostT('settings.plugin-manager.source')}: {item.source}</span>
             {#if item.source === 'builtin'}
-              <span class="mndw-installed__builtin">Built-in</span>
+              <span class="mndw-installed__builtin">
+                {hostT('settings.plugin-manager.builtin')}
+              </span>
             {/if}
             {#if deps === 'installing'}
-              <span class="mndw-installed__deps-badge"
-              >Installing dependencies…</span>
+              <span class="mndw-installed__deps-badge">
+                {
+                  hostT(
+                    'settings.plugin-manager.installing-dependencies',
+                  )
+                }
+              </span>
             {:else if deps === 'failed'}
               <span
                 class="mndw-installed__deps-badge mndw-installed__deps-badge--failed"
-              >Dependency install failed</span>
+              >
+                {
+                  hostT(
+                    'settings.plugin-manager.dependency-install-failed',
+                  )
+                }
+              </span>
             {/if}
             {#if versionWarnings.length > 0}
-              <span class="mndw-installed__version-badge"
-              >Version mismatch</span>
+              <span class="mndw-installed__version-badge">
+                {hostT('settings.plugin-manager.version-mismatch')}
+              </span>
             {/if}
           </div>
 
           {#if versionWarnings.length > 0}
             <p class="mndw-installed__version-warning">
-              Built against {versionWarnings.join(', ')}. Plugin still loads,
-              but may misbehave with this host.
+              {
+                hostT(
+                  'settings.plugin-manager.version-warning',
+                  {
+                    versions: versionWarnings.join(', '),
+                  },
+                )
+              }
             </p>
           {/if}
 
@@ -162,25 +221,26 @@ let {
                       permission,
                       event.detail.checked,
                     )}
-                  ></mndw-switch>
+                  >
+                  </mndw-switch>
                 </mndw-field>
               {/if}
             {/each}
           {/if}
 
-          {#if row !== undefined && row.message !== ''}
+          {#if row !== undefined && row?.message !== ''}
             <div
               class="mndw-alert mndw-alert--danger"
               role="alert"
             >
-              {row.message}
-              {#if row.state === 'notice-finishing'}
+              {row?.message}
+              {#if row?.state === 'notice-finishing'}
                 <mndw-button
                   class="mndw-installed__refresh"
                   variant="ghost"
                   onclick={onRefresh}
                 >
-                  Refresh
+                  {hostT('settings.plugin-manager.refresh')}
                 </mndw-button>
               {/if}
             </div>
@@ -195,7 +255,11 @@ let {
                 onclick={() =>
                 item.enabled ? onDisable(item.name) : onEnable(item.name)}
               >
-                {item.enabled ? 'Disable' : 'Enable'}
+                {
+                  item.enabled
+                  ? hostT('settings.plugin-manager.disable')
+                  : hostT('settings.plugin-manager.enable')
+                }
               </mndw-button>
               {#if item.runtime && item.runtime.state !== 'stopped'}
                 <mndw-button
@@ -204,19 +268,26 @@ let {
                   disabled={busy}
                   onclick={() => onRestart(item.name)}
                 >
-                  Restart backend
+                  {hostT('settings.plugin-manager.restart-backend')}
                 </mndw-button>
               {/if}
               {#if confirmingName === item.name}
                 <div class="mndw-installed__confirmation">
-                  <p>Delete {item.label}? This cannot be undone.</p>
+                  <p>
+                    {
+                      hostT(
+                        'settings.plugin-manager.delete-confirmation',
+                        {label: item.label},
+                      )
+                    }
+                  </p>
                   <mndw-button
                     class="mndw-installed__cancel"
                     variant="ghost"
                     disabled={busy}
                     onclick={onCancelConfirm}
                   >
-                    Cancel
+                    {hostT('settings.plugin-manager.cancel')}
                   </mndw-button>
                   <mndw-button
                     class="mndw-installed__confirm"
@@ -224,7 +295,7 @@ let {
                     disabled={busy}
                     onclick={() => onDelete(item.name)}
                   >
-                    Delete plugin
+                    {hostT('settings.plugin-manager.delete-plugin')}
                   </mndw-button>
                 </div>
               {:else}
@@ -234,7 +305,7 @@ let {
                   disabled={busy}
                   onclick={() => onRequestConfirm(item.name)}
                 >
-                  Delete
+                  {hostT('settings.plugin-manager.delete')}
                 </mndw-button>
               {/if}
             </div>
@@ -242,13 +313,18 @@ let {
 
           {#if item.runtime}
             <p class="mndw-installed__runtime">
-              Backend: {item.runtime.state}
+              {hostT('settings.plugin-manager.backend')}: {
+                runtimeStateLabel(item.runtime.state)
+              }
               {#if item.runtime.requiredProtocol !== undefined}
-                <span> · Protocol {item.runtime.requiredProtocol}</span>
+                <span>
+                  · {hostT('settings.plugin-manager.protocol')} {
+                    item.runtime.requiredProtocol
+                  }</span>
               {/if}
               {#if item.runtime.compatible === false}
                 <span class="mndw-installed__runtime-warning">
-                  · incompatible</span>
+                  · {hostT('settings.plugin-manager.incompatible')}</span>
               {/if}
               {#if item.runtime.lastError}
                 — {boundedError(item.runtime.lastError)}{/if}
@@ -256,9 +332,11 @@ let {
             {#if item.runtime.compatible === false
           && item.runtime.supportedProtocols}
               <p class="mndw-installed__runtime-warning">
-                Supported service protocols: {
-                  item.runtime.supportedProtocols.join(', ')
-                }
+                {
+                  hostT(
+                    'settings.plugin-manager.supported-service-protocols',
+                  )
+                }: {item.runtime.supportedProtocols.join(', ')}
               </p>
             {/if}
           {/if}

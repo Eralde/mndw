@@ -3,6 +3,7 @@ import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
+import {setLocale} from '../../../services/locale.service.js';
 import PendingApprovals from './PendingApprovals.svelte';
 import type {PluginRowState} from './reconcile.js';
 
@@ -79,6 +80,26 @@ describe('PendingApprovals', () => {
     expect(onApprove).toHaveBeenCalledWith('network-tools');
 
     void unmount(component);
+  });
+
+  it('updates pending-approval labels after a locale commit', async () => {
+    const {component, target} = mountPendingApprovals();
+
+    try {
+      expect(target.textContent).toContain('Pending approvals');
+      expect(target.textContent).toContain('Deny');
+      expect(target.textContent).toContain('Approve');
+
+      await setLocale('ru');
+      flushSync();
+
+      expect(target.textContent).toContain('Ожидающие подтверждения');
+      expect(target.textContent).toContain('Отклонить');
+      expect(target.textContent).toContain('Подтвердить');
+    } finally {
+      await unmount(component);
+      await setLocale('en');
+    }
   });
 
   it('requests denial confirmation without local confirmation state', () => {

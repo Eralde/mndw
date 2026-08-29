@@ -15,7 +15,11 @@ describe('upload target guidance', () => {
   });
 
   it('rejects a known ping archive for a different target', () => {
-    expect(validateExampleUploadTarget('ping-widget-mipsel.zip', 'mips')).toContain('mipsel');
+    expect(validateExampleUploadTarget('ping-widget-mipsel.zip', 'mips')).toEqual({
+      filename: 'ping-widget-mipsel.zip',
+      archiveTarget: 'mipsel',
+      deviceTarget: 'mips',
+    });
     expect(validateExampleUploadTarget('ping-widget-aarch64.zip', 'aarch64')).toBeUndefined();
     expect(validateExampleUploadTarget('device-traffic-widget.zip', 'mips')).toBeUndefined();
     expect(validateExampleUploadTarget('ping-widget.zip', 'mips')).toBeUndefined();

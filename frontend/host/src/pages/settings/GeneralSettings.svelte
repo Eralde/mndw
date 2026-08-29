@@ -1,11 +1,11 @@
 <script lang="ts">
-import PaletteManager from './palette-manager/PaletteManager.svelte';
+import {onDestroy, onMount} from 'svelte';
 import type {MndwSelectChangeDetail} from '@mndw/ui';
+import PaletteManager from './palette-manager/PaletteManager.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
 import {getHostServices} from '../../host-services-context.js';
-import {onDestroy, onMount} from 'svelte';
 import {
   type ControllerTestResult,
   type PersistentRciCapability,
@@ -25,14 +25,20 @@ let {onPermissionStateChange}: Props = $props();
 const services = getHostServices();
 const locale = services.locale;
 const persistentRci = services.persistentRci;
+
 let persistentCapability = $state<PersistentRciCapability | null>(null);
 let persistentProbeAvailable = $state(false);
-let controllerTokenPlaceholder = $derived.by(() => {
-  return persistentCapability?.controller.support === 'supported'
-      || persistentCapability?.controller.support === 'invalid'
-    ? '<TOKEN SET>'
-    : '';
+
+let controllerSessionConfigured = $derived.by(() => {
+  const support = persistentCapability?.controller.support;
+
+  return support === 'supported' || support === 'invalid';
 });
+
+let controllerTokenPlaceholder = $derived.by(() => {
+  return controllerSessionConfigured ? '<TOKEN SET>' : '';
+});
+
 let persistentEnabled = $state(false);
 let persistentLoading = $state(true);
 let persistentActionLoading = $state(false);
@@ -54,7 +60,9 @@ onMount(() => {
 
 onDestroy(() => {
   controllerToken = '';
+
   capabilityPollController?.abort();
+
   capabilityPollController = null;
 });
 
@@ -62,6 +70,7 @@ async function refreshPersistentCapability(): Promise<void> {
   persistentLoading = true;
   persistentError = '';
   persistentProbeAvailable = false;
+
   try {
     if (!await persistentRci.probeControllerTokenAuth()) {
       persistentCapability = null;
@@ -71,8 +80,8 @@ async function refreshPersistentCapability(): Promise<void> {
 
     persistentProbeAvailable = true;
     persistentCapability = await persistentRci.getCapability();
-    persistentEnabled = persistentCapability.controller.support === 'supported'
-      || persistentCapability.controller.support === 'invalid';
+    persistentEnabled = controllerSessionConfigured;
+
     startCapabilityPolling();
   } catch {
     persistentError = hostT('settings.persistent-state-unavailable');
@@ -87,6 +96,7 @@ function setPersistentEnabled(
   persistentEnabled = event.detail.checked ?? event.detail.value ?? false;
   controllerResult = null;
   persistentError = '';
+
   if (!persistentEnabled) {
     controllerToken = '';
     capabilityPollController?.abort();
@@ -110,6 +120,7 @@ function persistentErrorMessage(error: unknown): string {
       return hostT('settings.device-unreachable');
     }
   }
+
   return hostT('settings.persistent-request-failed');
 }
 
@@ -117,10 +128,9 @@ async function testController(): Promise<void> {
   persistentActionLoading = true;
   persistentError = '';
   controllerResult = null;
+
   try {
-    controllerResult = await persistentRci.testController(
-      controllerToken,
-    );
+    controllerResult = await persistentRci.testController(controllerToken);
   } catch (error) {
     persistentError = persistentErrorMessage(error);
   } finally {
@@ -132,11 +142,12 @@ async function saveController(): Promise<void> {
   persistentActionLoading = true;
   persistentError = '';
   controllerResult = null;
+
   try {
-    controllerResult = await persistentRci.saveController(
-      controllerToken,
-    );
+    // @dprint-ignore
+    controllerResult = await persistentRci.saveController(controllerToken);
     controllerToken = '';
+
     await refreshPersistentCapability();
   } catch (error) {
     persistentError = persistentErrorMessage(error);
@@ -149,11 +160,14 @@ async function saveController(): Promise<void> {
 async function clearController(): Promise<void> {
   persistentActionLoading = true;
   persistentError = '';
+
   try {
     await persistentRci.clearController();
+
     persistentEnabled = false;
     controllerToken = '';
     controllerResult = null;
+
     await refreshPersistentCapability();
   } catch (error) {
     persistentError = persistentErrorMessage(error);
@@ -172,33 +186,34 @@ function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
 
 function startCapabilityPolling(): void {
   capabilityPollController?.abort();
+
   if (!persistentCapability || !capabilityNeedsPolling(persistentCapability)) {
     capabilityPollController = null;
     return;
   }
+
   const controller = new AbortController();
   capabilityPollController = controller;
+
   void pollCapability(controller.signal);
 }
 
 function capabilityNeedsPolling(capability: PersistentRciCapability): boolean {
   return capability.controller.support === 'invalid'
-    || capability.extenders.some((extender) =>
-      extender.state === 'establishing' || extender.state === 'dead'
-    );
+    || capability.extenders.some((extender) => {
+      return extender.state === 'establishing' || extender.state === 'dead';
+    });
 }
 
 async function pollCapability(signal: AbortSignal): Promise<void> {
   let deadSince: number | null = null;
+
   while (
     !signal.aborted && persistentCapability
     && capabilityNeedsPolling(persistentCapability)
   ) {
-    if (
-      persistentCapability.extenders.some((extender) =>
-        extender.state === 'establishing'
-      )
-    ) {
+    // @dprint-ignore
+    if (persistentCapability.extenders.some((extender) => extender.state === 'establishing')) {
       deadSince = null;
     } else if (deadSince === null) {
       deadSince = Date.now();
@@ -207,14 +222,21 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
     }
     await new Promise<void>((resolve) => {
       const timeout = window.setTimeout(resolve, 2_000);
-      signal.addEventListener('abort', () => {
-        window.clearTimeout(timeout);
-        resolve();
-      }, {once: true});
+
+      signal.addEventListener(
+        'abort',
+        () => {
+          window.clearTimeout(timeout);
+          resolve();
+        },
+        {once: true},
+      );
     });
+
     if (signal.aborted) {
       return;
     }
+
     try {
       persistentCapability = await persistentRci.getCapability();
     } catch {
@@ -230,13 +252,13 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
 >
   <section>
     <h3>{hostT('settings.appearance')}</h3>
-    <!-- A switch, not a checkbox: the theme applies at once rather than travelling with a form. -->
     <mndw-field label={hostT('settings.dark-theme')}>
       <mndw-switch
         id="mndw-theme-switch"
         checked={appState.theme === 'dark'}
         onmndwchange={toggleTheme}
-      ></mndw-switch>
+      >
+      </mndw-switch>
     </mndw-field>
   </section>
 
@@ -250,12 +272,12 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
         disabled={appState.localeSwitchPending}
         onmndwchange={handleLocaleChange}
       >
-        <mndw-option value="en">{
-          hostT('settings.language.english')
-        }</mndw-option>
-        <mndw-option value="ru">{
-          hostT('settings.language.russian')
-        }</mndw-option>
+        <mndw-option value="en">
+          {hostT('settings.language.english')}
+        </mndw-option>
+        <mndw-option value="ru">
+          {hostT('settings.language.russian')}
+        </mndw-option>
         {#if locale.getAvailableLocales().includes('en-XA')}
           <mndw-option value="en-XA">Pseudo (en-XA)</mndw-option>
         {/if}
@@ -267,17 +289,16 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
     {#if appState.hostInfo}
       <ul>
         <li>
-          <strong>{hostT('settings.name')}</strong> {
-            appState.hostInfo.deviceName
-          }
+          <strong>{hostT('settings.name')}</strong>
+          {appState.hostInfo?.deviceName}
         </li>
         <li>
-          <strong>{hostT('settings.vendor')}</strong> {appState.hostInfo.vendor}
+          <strong>{hostT('settings.vendor')}</strong>
+          {appState.hostInfo?.vendor}
         </li>
         <li>
-          <strong>{hostT('settings.firmware')}</strong> {
-            appState.hostInfo.firmwareVersion
-          }
+          <strong>{hostT('settings.firmware')}</strong>
+          {appState.hostInfo?.firmwareVersion}
         </li>
       </ul>
     {:else}
@@ -288,18 +309,20 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
   {#if persistentProbeAvailable}
     <section aria-label={hostT('settings.persistent-rci-title')}>
       <h3>{hostT('settings.persistent-rci-title')}</h3>
-      <p>{hostT('settings.persistent-rci-description')}</p>
       <mndw-field label={hostT('settings.configure-persistent')}>
         <mndw-switch
           id="mndw-persistent-rci-enabled"
           checked={persistentEnabled}
           disabled={persistentLoading || persistentActionLoading}
           onmndwchange={setPersistentEnabled}
-        ></mndw-switch>
+        >
+        </mndw-switch>
       </mndw-field>
+
       {#if persistentError}
         <p role="alert">{persistentError}</p>
       {/if}
+
       {#if persistentCapability?.store.state === 'disabled'}
         <p role="alert">{hostT('settings.persistent-storage-disabled')}</p>
       {:else if persistentCapability?.store.state === 'decrypt-failed'}
@@ -307,6 +330,7 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
           {hostT('settings.persistent-storage-decrypt-failed')}
         </p>
       {/if}
+
       {#if persistentEnabled}
         <mndw-field label={hostT('settings.controller-token')}>
           <mndw-input
@@ -316,30 +340,39 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
             value={controllerToken}
             disabled={persistentActionLoading}
             onmndwinput={setControllerToken}
-          ></mndw-input>
+          >
+          </mndw-input>
         </mndw-field>
+
         <div class="persistent-rci-actions">
           <mndw-button
             variant="secondary"
             disabled={persistentActionLoading || controllerToken === ''}
             onclick={() => void testController()}
-          >{hostT('settings.test')}</mndw-button>
+          >
+            {hostT('settings.test')}
+          </mndw-button>
+
           <mndw-button
             variant="primary"
             disabled={persistentActionLoading || controllerToken === ''}
             onclick={() => void saveController()}
-          >{hostT('settings.save')}</mndw-button>
-          {#if persistentCapability?.controller.support === 'supported'
-          || persistentCapability?.controller.support === 'invalid'}
+          >
+            {hostT('settings.save')}
+          </mndw-button>
+
+          {#if controllerSessionConfigured}
             <mndw-button
               variant="danger"
               disabled={persistentActionLoading}
               onclick={() => void clearController()}
-            >{hostT('settings.clear-controller-session')}</mndw-button>
+            >
+              {hostT('settings.clear-controller-session')}
+            </mndw-button>
           {/if}
         </div>
         {#if controllerResult}
-          {#if controllerResult.result === 'unsupported-firmware'}
+          {#if controllerResult?.result === 'unsupported-firmware'}
             <p
               class="unsupported-banner"
               role="alert"
@@ -350,7 +383,7 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
             <p>
               {
                 hostT('settings.controller-result', {
-                  result: controllerResult.result,
+                  result: controllerResult?.result,
                 })
               }
             </p>
@@ -359,14 +392,14 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
         {#if persistentCapability?.controller.support === 'supported'}
           <div class="persistent-rci-extenders">
             <h4>{hostT('settings.persistent-extenders-title')}</h4>
-            {#if persistentCapability.stale}
+            {#if persistentCapability?.stale}
               <p role="status">
                 {hostT('settings.persistent-enumeration-stale')}
               </p>
             {/if}
-            {#if persistentCapability.extenders.length > 0}
+            {#if persistentCapability?.extenders.length > 0}
               <ul>
-                {#each persistentCapability.extenders as
+                {#each persistentCapability?.extenders as
                   extender
                   (extender.identity)
                 }

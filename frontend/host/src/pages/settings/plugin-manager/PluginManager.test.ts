@@ -4,6 +4,7 @@ import {flushSync, mount, unmount} from 'svelte';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {type MgmtClient, MgmtError, type UploadResult} from '../../../services/mgmt-client.js';
+import {setLocale} from '../../../services/locale.service.js';
 import PluginManager from './PluginManager.svelte';
 
 const emptyBackend = {routes: {}};
@@ -106,6 +107,22 @@ describe('PluginManager', () => {
     expect(target.querySelector('.mndw-plugin-manager h2')).toBeNull();
 
     void unmount(component);
+  });
+
+  it('updates manager labels after a locale commit', async () => {
+    const {component, target} = await mountManager(clientWith([plugin()]));
+
+    try {
+      expect(target.querySelector('.mndw-plugin-manager h3')?.textContent).toBe('Plugin manager');
+
+      await setLocale('ru');
+      flushSync();
+
+      expect(target.querySelector('.mndw-plugin-manager h3')?.textContent).toBe('Менеджер плагинов');
+    } finally {
+      await unmount(component);
+      await setLocale('en');
+    }
   });
 
   it('loads plugins and partitions pending approvals from installed plugins', async () => {

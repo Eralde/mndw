@@ -1,5 +1,11 @@
 export type ExampleTarget = 'aarch64' | 'mips' | 'mipsel';
 
+export interface UploadTargetMismatch {
+  filename: string;
+  archiveTarget: ExampleTarget;
+  deviceTarget: ExampleTarget;
+}
+
 const PING_ARCHIVE_TARGETS: Readonly<Record<string, ExampleTarget>> = {
   'ping-widget-aarch64.zip': 'aarch64',
   'ping-widget-mips.zip': 'mips',
@@ -22,7 +28,7 @@ export function targetForDeviceArchitecture(raw: string | undefined): ExampleTar
 export function validateExampleUploadTarget(
   filename: string,
   rawArchitecture: string | undefined,
-): string | undefined {
+): UploadTargetMismatch | undefined {
   const deviceTarget = targetForDeviceArchitecture(rawArchitecture);
   const archiveTarget = PING_ARCHIVE_TARGETS[filename];
 
@@ -30,5 +36,5 @@ export function validateExampleUploadTarget(
     return undefined;
   }
 
-  return `${filename} targets ${archiveTarget}, but this device reports ${deviceTarget}. Choose the matching archive.`;
+  return {filename, archiveTarget, deviceTarget};
 }

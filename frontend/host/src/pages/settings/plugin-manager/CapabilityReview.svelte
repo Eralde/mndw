@@ -1,5 +1,6 @@
 <script lang="ts">
 import type {PluginBackendDescriptor} from '../../../runtime/plugin-types.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 
 interface Props {
   descriptor: PluginBackendDescriptor;
@@ -13,7 +14,7 @@ let routes = $derived(Object.entries(descriptor.routes ?? {}));
 <div class="mndw-cap">
   {#if routes.length > 0}
     <section class="mndw-cap__section">
-      <h4>Routes</h4>
+      <h4>{hostT('settings.plugin-manager.routes')}</h4>
       <ul>
         {#each routes as [id, route] (id)}
           <li>

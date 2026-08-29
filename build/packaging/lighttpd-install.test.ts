@@ -17,6 +17,8 @@ const portHelper = path.join(
   'bin',
   'mndw-lighttpd-port.sh',
 );
+const routerPortHelper = path.join(path.dirname(portHelper), 'mndw-router-port.sh');
+const mndwdInitScript = path.join(repoRoot, 'build', 'packaging', 'init', 'S70mndwd');
 const evidenceHelper = path.join(
   repoRoot,
   'build',
@@ -143,6 +145,7 @@ const writeProcListeners = (fixture: Fixture, ports: number[], ipv6Ports: number
 };
 
 const writeExecutable = (file: string, content: string): void => {
+  fs.mkdirSync(path.dirname(file), {recursive: true});
   fs.writeFileSync(file, content);
   fs.chmodSync(file, 0o755);
 };
@@ -391,6 +394,68 @@ const expectNoEvidenceArtifacts = (fixture: InstallFixture): void => {
   expect(artifacts).toEqual([]);
 };
 
+describe('S70mndwd router target', () => {
+  it('uses detected router port for lighttpd proxy and daemon auth validation', () => {
+    const fixture = makeFixture();
+    const routerHelper = path.join(fixture.root, 'share', 'www', 'mndw', 'bin', 'mndw-router-port.sh');
+    const daemon = path.join(fixture.root, 'sbin', 'mndwd');
+    const fakeHelperArgs = path.join(fixture.root, 'router-helper-args');
+    const fakeDaemonArgs = path.join(fixture.root, 'mndwd-args');
+
+    writeExecutable(
+      routerHelper,
+      `#!/bin/sh
+printf '%s\\n' "$*" > "$FAKE_ROUTER_HELPER_ARGS"
+printf '%s\\n' 8081
+`,
+    );
+    writeExecutable(
+      daemon,
+      `#!/bin/sh
+printf '%s\\n' "$*" > "$FAKE_MNDWD_ARGS"
+`,
+    );
+    writeExecutable(
+      path.join(fixture.bin, 'ip'),
+      `#!/bin/sh
+printf '%s\\n' 'inet 198.51.100.11/24 br0'
+`,
+    );
+
+    const result = spawnSync(
+      '/bin/sh',
+      [
+        '-c',
+        `"$1" start
+i=0
+while [ ! -f "$FAKE_MNDWD_ARGS" ] && [ "$i" -lt 20 ]; do
+  sleep 0.05
+  i=$((i + 1))
+done
+`,
+        'sh',
+        mndwdInitScript,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `${fixture.bin}:${process.env.PATH ?? ''}`,
+          MNDW_ROOT: fixture.root,
+          FAKE_ROUTER_HELPER_ARGS: fakeHelperArgs,
+          FAKE_MNDWD_ARGS: fakeDaemonArgs,
+        },
+      },
+    );
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.readFileSync(fakeHelperArgs, 'utf8').trim()).toBe('detect 198.51.100.11');
+    expect(fs.readFileSync(path.join(fixture.root, 'var', 'lib', 'mndw', 'proxy-target.conf'), 'utf8'))
+      .toContain('"port" => 8081');
+    expect(fs.readFileSync(fakeDaemonArgs, 'utf8')).toContain('--router-url http://198.51.100.11:8081');
+  });
+});
+
 describe('mndw-lighttpd-port.sh', () => {
   it('selects preferred port 99 when no candidate is listening', () => {
     const fixture = makeFixture();
@@ -521,6 +586,88 @@ printf '%s\\n' valid
 
     expect(runScript(portHelper, ['read-state'], fixture).status).not.toBe(0);
     expect(runScript(portHelper, ['write-state', '8080'], fixture).status).not.toBe(0);
+  });
+});
+
+describe('mndw-router-port.sh', () => {
+  it('selects the listener whose /auth response advertises known authentication', () => {
+    const fixture = makeFixture();
+    const netstat = path.join(fixture.bin, 'netstat');
+    const curl = path.join(fixture.bin, 'curl');
+
+    writeExecutable(
+      netstat,
+      `#!/bin/sh
+cat <<'EOF'
+tcp 0 0 127.0.0.1:9090 0.0.0.0:* LISTEN
+tcp 0 0 0.0.0.0:99 0.0.0.0:* LISTEN
+tcp 0 0 198.51.100.11:8081 0.0.0.0:* LISTEN
+tcp 0 0 198.51.100.11:443 0.0.0.0:* LISTEN
+tcp 0 0 198.51.100.11:65080 0.0.0.0:* LISTEN
+tcp6 0 0 :::8087 :::* LISTEN
+EOF
+`,
+    );
+    fs.mkdirSync(path.join(fixture.root, 'var', 'lib', 'mndw'), {recursive: true});
+    fs.writeFileSync(path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port'), '99\n');
+    writeExecutable(
+      curl,
+      `#!/bin/sh
+case "$*" in
+  *198.51.100.11:99/auth*|*198.51.100.11:8081/auth*)
+    printf '%s\\n' 'HTTP/1.1 401 Unauthorized' 'WWW-Authenticate: x-ndw4-interactive endpoint="/auth"'
+    ;;
+  *)
+    printf '%s\\n' 'HTTP/1.1 404 Not Found'
+    ;;
+esac
+`,
+    );
+
+    const result = runScript(routerPortHelper, ['detect', '198.51.100.11'], fixture, {
+      MNDW_ROUTER_PROBE_TIMEOUT: '1',
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(String(result.stdout ?? '').trim()).toBe('8081');
+  });
+
+  it('rejects ambiguous router auth listeners and explains the override', () => {
+    const fixture = makeFixture();
+    const netstat = path.join(fixture.bin, 'netstat');
+    const curl = path.join(fixture.bin, 'curl');
+
+    writeExecutable(
+      netstat,
+      `#!/bin/sh
+cat <<'EOF'
+tcp 0 0 198.51.100.11:8081 0.0.0.0:* LISTEN
+tcp 0 0 198.51.100.11:65080 0.0.0.0:* LISTEN
+EOF
+`,
+    );
+    writeExecutable(
+      curl,
+      `#!/bin/sh
+printf '%s\\n' 'HTTP/1.1 401 Unauthorized' 'WWW-Authenticate: x-ndw2-interactive realm="router"'
+`,
+    );
+
+    const result = runScript(routerPortHelper, ['detect', '198.51.100.11'], fixture);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('multiple router /auth listeners found');
+    expect(result.stderr).toContain('MNDW_ROUTER_PORT');
+  });
+
+  it('uses an explicit router port without requiring listener discovery', () => {
+    const fixture = makeFixture();
+    const result = runScript(routerPortHelper, ['detect', '198.51.100.11'], fixture, {
+      MNDW_ROUTER_PORT: '65080',
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(String(result.stdout ?? '').trim()).toBe('65080');
   });
 });
 

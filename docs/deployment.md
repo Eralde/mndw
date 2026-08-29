@@ -92,6 +92,12 @@ should verify:
 3. built-in plugins appear in the list;
 4. upload, approval, and backend dispatch work.
 
+Before starting mndwd, package init discovers the router HTTP port by probing
+`/auth` on local listeners and checking for `x-ndw2-interactive` or
+`x-ndw4-interactive` authentication. Set `MNDW_ROUTER_PORT=<port>` in
+`/opt/etc/mndw.conf` when more than one listener matches. The generated
+`/opt/var/lib/mndw/proxy-target.conf` and mndwd `--router-url` use that port.
+
 If the base listener is unavailable, mndw prints a warning and renders an
 override that scopes its rules to the selected listener. This decision is made
 during install; rerun package configuration if listener ownership changes later.

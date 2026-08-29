@@ -5,6 +5,7 @@ script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 evidence_helper="$repo_root/build/packaging/files/opt/share/www/mndw/bin/mndw-lighttpd-port-evidence.sh"
 port_helper="$repo_root/build/packaging/files/opt/share/www/mndw/bin/mndw-lighttpd-port.sh"
+router_port_helper="$repo_root/build/packaging/files/opt/share/www/mndw/bin/mndw-router-port.sh"
 fixture_root=$(mktemp -d "${TMPDIR:-/tmp}/mndw-port-busybox.XXXXXX")
 
 cleanup() {
@@ -149,5 +150,25 @@ export MNDW_LIGHTTPD_CONFD MNDW_RUNTIME_CONF MNDW_CONFIG_FILE MNDW_PROC_ROOT MND
 export MNDW_LIGHTTPD_BIN MNDW_LIGHTTPD_CONF MNDW_PROBE_LOG
 selected=$(sh "$port_helper" select-port)
 assert_eq '105' "$selected"
+
+printf '%s\n' '#!/bin/sh' \
+  'cat <<EOF' \
+  'tcp 0 0 127.0.0.1:9090 0.0.0.0:* LISTEN' \
+  'tcp 0 0 0.0.0.0:99 0.0.0.0:* LISTEN' \
+  'tcp 0 0 198.51.100.11:8081 0.0.0.0:* LISTEN' \
+  'tcp 0 0 198.51.100.11:443 0.0.0.0:* LISTEN' \
+  'EOF' > "$bin_dir/router-netstat"
+printf '%s\n' '#!/bin/sh' \
+  'case "$*" in' \
+  '  *198.51.100.11:8081/auth*)' \
+  '    printf "%s\\n" "HTTP/1.1 401 Unauthorized" "WWW-Authenticate: x-ndw4-interactive endpoint=\\"/auth\\""' \
+  '    ;;' \
+  'esac' > "$bin_dir/router-curl"
+chmod 755 "$bin_dir/router-netstat" "$bin_dir/router-curl"
+MNDW_NETSTAT="$bin_dir/router-netstat"
+MNDW_CURL="$bin_dir/router-curl"
+export MNDW_NETSTAT MNDW_CURL
+selected=$(sh "$router_port_helper" detect 198.51.100.11)
+assert_eq '8081' "$selected"
 
 echo 'lighttpd port BusyBox tests passed'

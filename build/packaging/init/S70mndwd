@@ -1,12 +1,14 @@
 #!/bin/sh
 
-PID_FILE="/opt/var/run/mndwd.pid"
-DAEMON="/opt/sbin/mndwd"
-DATA_DIR="/opt/var/lib/mndw"
-KEY_DIR="/opt/var/lib/mndw-secrets"
-PLUGIN_RUNTIME_DIR="/opt/tmp/mndw/plugin-runtime"
-CONFIG_FILE="/opt/etc/mndw.conf"
-LOG_FILE="/opt/var/log/mndwd.log"
+MNDW_ROOT=${MNDW_ROOT:-/opt}
+PID_FILE="$MNDW_ROOT/var/run/mndwd.pid"
+DAEMON="$MNDW_ROOT/sbin/mndwd"
+DATA_DIR="$MNDW_ROOT/var/lib/mndw"
+KEY_DIR="$MNDW_ROOT/var/lib/mndw-secrets"
+PLUGIN_RUNTIME_DIR="$MNDW_ROOT/tmp/mndw/plugin-runtime"
+CONFIG_FILE=${MNDW_CONFIG_FILE:-$MNDW_ROOT/etc/mndw.conf}
+LOG_FILE="$MNDW_ROOT/var/log/mndwd.log"
+ROUTER_PORT_HELPER=${MNDW_ROUTER_PORT_HELPER:-$MNDW_ROOT/share/www/mndw/bin/mndw-router-port.sh}
 
 if [ -f "$CONFIG_FILE" ]; then
   . "$CONFIG_FILE"
@@ -18,6 +20,8 @@ export MNDW_USER_PLUGINS_DIR
 : "${MNDWD_MAX_CONCURRENT_EXEC_TOTAL:=8}"
 : "${MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN:=4}"
 : "${MNDWD_MAX_SUPERVISED_SERVICES:=8}"
+: "${MNDW_ROUTER_PORT:=}"
+export MNDW_ROUTER_PORT
 
 wait_for_exit() {
   wait_pid="$1"
@@ -30,20 +34,35 @@ wait_for_exit() {
 }
 
 start() {
-  mkdir -p /opt/var/run "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
+  mkdir -p "$MNDW_ROOT/var/run" "$MNDW_ROOT/var/log" "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
   chmod 700 "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
 
   # Always regenerate proxy config on boot (IP may have changed).
   ROUTER_IP="$(ip -4 addr show br0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)"
   ROUTER_IP="${ROUTER_IP:-192.168.1.1}"
 
+  [ -x "$ROUTER_PORT_HELPER" ] || {
+    echo "mndw: missing router port helper: $ROUTER_PORT_HELPER" >&2
+    return 1
+  }
+  ROUTER_PORT="$($ROUTER_PORT_HELPER detect "$ROUTER_IP")" || {
+    echo "mndw: unable to determine router /auth port for $ROUTER_IP" >&2
+    return 1
+  }
+
   cat > "$DATA_DIR/proxy-target.conf" <<EOF
-proxy.server = ( "" => (( "host" => "$ROUTER_IP", "port" => 80 )) )
+proxy.server = ( "" => (( "host" => "$ROUTER_IP", "port" => $ROUTER_PORT )) )
 proxy.header = (
   "map-host-request"  => ( "-" => "$ROUTER_IP" ),
   "map-host-response" => ( "$ROUTER_IP" => "-" )
 )
 EOF
+
+  if [ "$ROUTER_PORT" = "80" ]; then
+    ROUTER_URL="http://$ROUTER_IP"
+  else
+    ROUTER_URL="http://$ROUTER_IP:$ROUTER_PORT"
+  fi
 
   # PID guard AFTER proxy-target.conf is written.
   if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
@@ -55,9 +74,9 @@ EOF
     --data-dir "$DATA_DIR" \
     --rci-session-state-dir "$DATA_DIR" \
     --rci-session-key-dir "$KEY_DIR" \
-    --builtin-plugins-dir "/opt/share/www/mndw/plugins" \
+    --builtin-plugins-dir "$MNDW_ROOT/share/www/mndw/plugins" \
     --user-plugins-dir "$MNDW_USER_PLUGINS_DIR" \
-    --router-url "http://$ROUTER_IP" \
+    --router-url "$ROUTER_URL" \
     --plugin-runtime-root "$PLUGIN_RUNTIME_DIR" \
     --max-concurrent-exec-total "$MNDWD_MAX_CONCURRENT_EXEC_TOTAL" \
     --max-concurrent-exec-per-plugin "$MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN" \

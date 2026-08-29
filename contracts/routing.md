@@ -31,7 +31,13 @@ Production listener and upstream facts:
   `115`, `117`, `119`, `123`, `135`, `137`, `139`, `143`, `161`, and `179`;
 - selected port is persisted in `/opt/var/lib/mndw/lighttpd-port`;
 - `mndwd` listens on `127.0.0.1:9090` by default;
-- mndwd's router session-validation upstream defaults to `http://127.0.0.1:80`.
+- `S70mndwd` discovers the router's HTTP `/auth` listener from local TCP listeners and its
+  `WWW-Authenticate: x-ndw2-interactive` / `x-ndw4-interactive` challenge; it writes the matching
+  router IP and port into `proxy-target.conf` and passes the same URL to mndwd for session validation.
+- `MNDW_ROUTER_PORT` in `/opt/etc/mndw.conf` overrides discovery when a device exposes multiple matching
+  listeners. Discovery fails closed when no matching listener or more than one matching listener is found.
+- Standalone mndwd's router session-validation upstream still defaults to `http://127.0.0.1:80`; the package
+  init script supplies the discovered device URL.
 
 Foreign configuration claims survive shared-service stop. web4static-style `server.port := 99` and
 `$SERVER["socket"] == ":99"` therefore reserve port 99. Missing `conf.d` is valid empty evidence. A present but

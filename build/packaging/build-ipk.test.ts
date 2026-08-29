@@ -154,6 +154,7 @@ describe('collectStagePaths', () => {
     expect(paths.initScript).toBe(path.join('opt', 'etc', 'init.d', 'S70mndwd'));
     expect(paths.moduleGuard).toBe(path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'));
     expect(paths.portHelper).toBe(path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'));
+    expect(paths.routerPortHelper).toBe(path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-router-port.sh'));
     expect(paths.evidenceHelper).toBe(
       path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port-evidence.sh'),
     );
@@ -197,6 +198,7 @@ describe('verifyStage', () => {
     stageFile('opt/etc/init.d/S70mndwd');
     stageFile('opt/share/www/mndw/bin/mndw-load-modules.sh');
     stageFile('opt/share/www/mndw/bin/mndw-lighttpd-port.sh');
+    stageFile('opt/share/www/mndw/bin/mndw-router-port.sh');
     stageFile('opt/share/www/mndw/bin/mndw-lighttpd-port-evidence.sh');
     stageFile('opt/share/www/mndw/bin/mndw-render-lighttpd.sh');
     stageFile('opt/etc/mndw.conf');
@@ -526,6 +528,15 @@ describe('stageDeployFiles', () => {
 
       const guardPath = path.join(stagingDir, 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh');
       const portHelperPath = path.join(stagingDir, 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh');
+      const routerPortHelperPath = path.join(
+        stagingDir,
+        'opt',
+        'share',
+        'www',
+        'mndw',
+        'bin',
+        'mndw-router-port.sh',
+      );
       const evidenceHelperPath = path.join(
         stagingDir,
         'opt',
@@ -540,6 +551,8 @@ describe('stageDeployFiles', () => {
       expect(fs.existsSync(guardPath)).toBe(true);
       expect(isExecutable(fs.statSync(guardPath).mode)).toBe(true);
       expect(fs.statSync(portHelperPath).mode.toString(8).slice(-3)).toBe('755');
+      expect(fs.statSync(routerPortHelperPath).mode.toString(8).slice(-3)).toBe('755');
+      expect(fs.readFileSync(routerPortHelperPath, 'utf8')).toContain('WWW-Authenticate');
       expect(fs.existsSync(evidenceHelperPath)).toBe(true);
       expect(fs.statSync(evidenceHelperPath).mode.toString(8).slice(-3)).toBe('755');
       expect(fs.readFileSync(evidenceHelperPath, 'utf8')).toContain('extract_configured_ports');
@@ -563,7 +576,7 @@ describe('stageDeployFiles', () => {
     const init = fs.readFileSync(path.join(repoRoot, 'build', 'packaging', 'init', 'S70mndwd'), 'utf8');
     const postrm = fs.readFileSync(path.join(repoRoot, 'build', 'packaging', 'ipk', 'postrm'), 'utf8');
 
-    expect(init).toContain('KEY_DIR="/opt/var/lib/mndw-secrets"');
+    expect(init).toContain('KEY_DIR="$MNDW_ROOT/var/lib/mndw-secrets"');
     expect(init).toContain('chmod 700 "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"');
     expect(init).toContain('--rci-session-state-dir "$DATA_DIR"');
     expect(init).toContain('--rci-session-key-dir "$KEY_DIR"');

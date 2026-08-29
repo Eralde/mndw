@@ -257,6 +257,128 @@ func TestProtectedPackageRejectedBeforeRunner(t *testing.T) {
 	}
 }
 
+func TestDetectDependents(t *testing.T) {
+	tests := []struct {
+		name       string
+		out        string
+		wantPkg    string
+		wantDepend []string
+		wantNil    bool
+	}{
+		{
+			name:    "no warning",
+			out:     "Removing package curl from root...\n",
+			wantNil: true,
+		},
+		{
+			name:       "plain warning",
+			out:        "Package curl is depended upon by packages:\n\twget-ssl\n\tThese might cease to work if package curl is removed.\n",
+			wantPkg:    "curl",
+			wantDepend: []string{"wget-ssl"},
+		},
+		{
+			// The device's opkg prefixes EVERY line — dependent names and the advisory
+			// lines included — with the " * <function>: " collected-error decoration.
+			name: "collected-errors label on every line",
+			out: "Collected errors:\n" +
+				" * print_dependents_warning: Package curl is depended upon by packages:\n" +
+				" * print_dependents_warning: \twget-ssl\n" +
+				" * print_dependents_warning: \taria2\n" +
+				" * print_dependents_warning: These might cease to work if package curl is removed.\n" +
+				" * print_dependents_warning: Force removal of this package via --force-depends\n" +
+				" * print_dependents_warning: Force removal of this and dependent packages via --force-removal-of-dependent-packages\n",
+			wantPkg:    "curl",
+			wantDepend: []string{"wget-ssl", "aria2"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectDependents(tt.out)
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("detectDependents = %v, want nil", got)
+				}
+
+				return
+			}
+			if got == nil {
+				t.Fatal("detectDependents = nil, want conflict")
+			}
+			if got.Package != tt.wantPkg {
+				t.Errorf("package = %q, want %q", got.Package, tt.wantPkg)
+			}
+			if !slices.Equal(got.DependedBy, tt.wantDepend) {
+				t.Errorf("dependedBy = %v, want %v", got.DependedBy, tt.wantDepend)
+			}
+		})
+	}
+}
+
+// TestExecRemoveDetectsDependencyConflictOnZeroExit pins the fix: opkg refuses a
+// removal with a reverse-dependency warning while exiting 0, and Remove must surface
+// that as a DependencyConflictError instead of reporting success.
+func TestExecRemoveDetectsDependencyConflictOnZeroExit(t *testing.T) {
+	runner := func(_ context.Context, args ...string) (string, int, error) {
+		if strings.Join(args, " ") != "opkg remove curl" {
+			return "", 0, errors.New("unexpected command: " + strings.Join(args, " "))
+		}
+
+		return "Package curl is depended upon by packages:\n\twget-ssl\n\tThese might cease to work if package curl is removed.\n", 0, nil
+	}
+	m := newExecManagerWithRunner(runner)
+	err := m.Remove(context.Background(), []string{"curl"})
+	var conflict *DependencyConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("Remove error = %v, want *DependencyConflictError", err)
+	}
+	if conflict.Package != "curl" || !slices.Equal(conflict.DependedBy, []string{"wget-ssl"}) {
+		t.Fatalf("conflict = %+v", conflict)
+	}
+}
+
+// TestExecRemoveDetectsDependencyConflictOnNonZeroExit covers the device's opkg,
+// which exits non-zero and prints the reverse-dependency warning (via its "Collected
+// errors" section) to stderr. Remove must surface the typed conflict rather than the
+// generic "opkg remove exited N" error.
+func TestExecRemoveDetectsDependencyConflictOnNonZeroExit(t *testing.T) {
+	out := "Collected errors:\n" +
+		" * print_dependents_warning: Package curl is depended upon by packages:\n" +
+		" * print_dependents_warning: \twget-ssl\n" +
+		" * print_dependents_warning: \taria2\n" +
+		" * print_dependents_warning: These might cease to work if package curl is removed.\n" +
+		" * print_dependents_warning: Force removal of this package via --force-depends\n"
+	runner := func(_ context.Context, args ...string) (string, int, error) {
+		if strings.Join(args, " ") != "opkg remove curl" {
+			return "", 0, errors.New("unexpected command: " + strings.Join(args, " "))
+		}
+
+		return out, 255, nil
+	}
+	m := newExecManagerWithRunner(runner)
+	err := m.Remove(context.Background(), []string{"curl"})
+	var conflict *DependencyConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("Remove error = %v, want *DependencyConflictError", err)
+	}
+	if conflict.Package != "curl" || !slices.Equal(conflict.DependedBy, []string{"wget-ssl", "aria2"}) {
+		t.Fatalf("conflict = %+v", conflict)
+	}
+}
+
+func TestExecRemoveSucceedsWithoutDependents(t *testing.T) {
+	runner := func(_ context.Context, args ...string) (string, int, error) {
+		if strings.Join(args, " ") != "opkg remove curl" {
+			return "", 0, errors.New("unexpected command: " + strings.Join(args, " "))
+		}
+
+		return "Removing package curl from root...\n", 0, nil
+	}
+	if err := newExecManagerWithRunner(runner).Remove(context.Background(), []string{"curl"}); err != nil {
+		t.Fatalf("Remove = %v, want nil", err)
+	}
+}
+
 func TestMetadataUpdatedAtUsesNewestEntryMtime(t *testing.T) {
 	dir := t.TempDir()
 	oldPath := filepath.Join(dir, "old")

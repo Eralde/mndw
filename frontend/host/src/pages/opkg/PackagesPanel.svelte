@@ -11,8 +11,13 @@ import {svelteCell} from '@mndw/ui-svelte';
 import {onMount} from 'svelte';
 import {untrack} from 'svelte';
 import {SvelteMap, SvelteSet} from 'svelte/reactivity';
-import {OpkgError, opkgClient} from '../../services/opkg-client.js';
+import {
+  OpkgError,
+  dependencyConflictDetail,
+  opkgClient,
+} from '../../services/opkg-client.js';
 import type {PackageEntry} from '../../services/opkg-client.js';
+import {toast} from '../../services/toast/toast.svelte.js';
 import {openHostModal} from '../../services/overlay/host-overlay.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
@@ -39,14 +44,14 @@ let freshnessComputedAt = $state<Date | null>(null);
 let checked = new SvelteSet<string>();
 let filter = $state('');
 let filterMode = $state<'all' | 'installed' | 'updates'>('installed');
-let statusMsg = $state('');
-let statusVariant = $state<'success' | 'error' | 'info'>('info');
 let loading = $state(false);
 let loadError = $state(false);
 let tableElement = $state<MndwTable<unknown> | null>(null);
 let filterSequence = 0;
-const detailCache: PackageDetailCache = new SvelteMap<string,
-  PackageDetailState>();
+
+// @dprint-ignore
+const detailCache: PackageDetailCache = new SvelteMap<string, PackageDetailState>();
+
 let detailGeneration = 0;
 
 const filtered = $derived.by(() =>
@@ -94,20 +99,12 @@ const freshnessStale = $derived.by(() => {
   return freshnessComputedAt.getTime() - Date.parse(metadataUpdatedAt)
     > 60 * 60 * 1000;
 });
-const statusSeverity = $derived(
-  statusVariant === 'error' ? 'danger' : statusVariant,
-);
 const emptyLabel = $derived(
   packages.length === 0 ? hostT('packages.empty') : hostT('packages.no-match'),
 );
 
 function isProtected(name: string): boolean {
   return name === 'mndw' || name === 'lighttpd';
-}
-
-function setStatus(msg: string, variant: 'success' | 'error' | 'info'): void {
-  statusMsg = msg;
-  statusVariant = variant;
 }
 
 function invalidateDetailCache(): void {
@@ -166,17 +163,16 @@ async function fetchPackages(suppressStatus = false): Promise<void> {
     loadError = false;
     checked.clear();
     if (!suppressStatus) {
-      setStatus(hostT('packages.loaded', {count: packages.length}), 'info');
+      toast.info(hostT('packages.loaded', {count: packages.length}));
     }
   } catch (error) {
     packages = [];
     checked.clear();
     loadError = true;
-    setStatus(
+    toast.error(
       error instanceof OpkgError
         ? error.message
         : hostT('packages.load-failed'),
-      'error',
     );
   } finally {
     loading = false;
@@ -221,7 +217,6 @@ async function executeAction(
     : action === 'remove'
     ? 'packages.removing'
     : 'packages.updating';
-  setStatus(hostT(actionKey), 'info');
   try {
     const result = action === 'install'
       ? await opkgClient.install(names)
@@ -229,30 +224,52 @@ async function executeAction(
       ? await opkgClient.remove(names)
       : await opkgClient.upgrade(names);
     await fetchPackages(true);
-    setStatus(result.message, 'success');
+    toast.success(result.message);
   } catch (error) {
-    setStatus(
-      error instanceof OpkgError
-        ? error.message
-        : hostT('packages.action-failed', {action: hostT(actionKey)}),
-      'error',
-    );
+    toast.error(actionErrorMessage(error, actionKey));
   } finally {
     loading = false;
   }
 }
 
+function actionErrorMessage(error: unknown, actionKey: string): string {
+  if (!(error instanceof OpkgError)) {
+    return hostT('packages.action-failed', {action: hostT(actionKey)});
+  }
+
+  const conflict = dependencyConflictDetail(error);
+
+  if (conflict === undefined) {
+    return error.message;
+  }
+
+  if (conflict.dependents.length > 0) {
+    return hostT(
+      'packages.dependency-conflict',
+      {
+        package: conflict.package,
+        dependents: conflict.dependents.join(', '),
+      },
+    );
+  }
+
+  return hostT(
+    'packages.dependency-conflict-generic',
+    {
+      package: conflict.package,
+    },
+  );
+}
+
 async function handleRefresh(): Promise<void> {
   loading = true;
-  setStatus(hostT('packages.refresh'), 'info');
   try {
     const result = await opkgClient.update();
     await fetchPackages(true);
-    setStatus(result.message, 'success');
+    toast.success(result.message);
   } catch (error) {
-    setStatus(
+    toast.error(
       error instanceof OpkgError ? error.message : hostT('app.error'),
-      'error',
     );
   } finally {
     loading = false;
@@ -476,13 +493,6 @@ onMount(() => {
       ></mndw-table>
     {/if}
   </div>
-  {#if statusMsg}<div
-      class="status-bar mndw-alert mndw-alert--{statusSeverity}"
-      role="status"
-      aria-live="polite"
-    >
-      {statusMsg}
-    </div>{/if}
 </section>
 
 <style>
@@ -502,5 +512,4 @@ mndw-table { display: block; min-width: 0; font-size: .8125rem; }
 mndw-table::part(viewport) { max-height: calc(100vh - 250px); overflow: auto; }
 mndw-table::part(header-cell) { position: sticky; top: 0; z-index: 1; background: var(--mndw-surface); }
 .msg-cell { text-align: center; padding: 2rem 0.625rem; color: var(--mndw-text-subtle); font-style: italic; }
-.status-bar { margin-top: 0.5rem; font-size: .8125rem; }
 </style>

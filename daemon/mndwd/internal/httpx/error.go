@@ -55,6 +55,7 @@ const (
 	CodeOpkgUnavailable              = "OPKG_UNAVAILABLE"
 	CodeInvalidPackageName           = "INVALID_PACKAGE_NAME"
 	CodeProtectedPackage             = "PROTECTED_PACKAGE"
+	CodeDependencyConflict           = "DEPENDENCY_CONFLICT"
 	CodeInvalidServiceName           = "INVALID_SERVICE_NAME"
 	CodeProtectedService             = "PROTECTED_SERVICE"
 	CodeServiceUnavailable           = "SERVICE_UNAVAILABLE"

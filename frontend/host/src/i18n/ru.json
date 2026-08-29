@@ -167,6 +167,10 @@
     "invalid-credentials": "Неверные учётные данные",
     "connection-failed": "Ошибка соединения"
   },
+  "toast": {
+    "region": "Уведомления",
+    "dismiss": "Закрыть"
+  },
   "packages": {
     "tab": "Пакеты",
     "title": "Менеджер пакетов",
@@ -209,7 +213,9 @@
     "dependencies": "Зависимости",
     "confirm-remove-title": "Подтвердите удаление пакета",
     "confirm-remove": "Удалить {names}?",
-    "protected": "Защищённый пакет"
+    "protected": "Защищённый пакет",
+    "dependency-conflict": "Невозможно удалить {package}: от него зависит {dependents}.",
+    "dependency-conflict-generic": "Невозможно удалить {package}: от него зависят другие установленные пакеты."
   },
   "services": {
     "tab": "Сервисы",

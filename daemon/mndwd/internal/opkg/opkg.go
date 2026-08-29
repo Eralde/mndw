@@ -38,6 +38,25 @@ type ProtectedPackageError struct{ Name string }
 
 func (e *ProtectedPackageError) Error() string { return "protected package: " + e.Name }
 
+// DependencyConflictError is returned when a removal is refused because other
+// installed packages depend on the target. opkg prints a "depended upon by
+// packages" warning and — on the device's opkg build — exits 0 without removing
+// anything, so this must be detected from the command output, not the exit code.
+type DependencyConflictError struct {
+	// Package is the package whose removal was refused.
+	Package string
+	// DependedBy lists the installed packages that depend on Package.
+	DependedBy []string
+}
+
+func (e *DependencyConflictError) Error() string {
+	if len(e.DependedBy) > 0 {
+		return fmt.Sprintf("cannot remove %s: required by %s", e.Package, strings.Join(e.DependedBy, ", "))
+	}
+
+	return "cannot remove " + e.Package + ": required by other installed packages"
+}
+
 type PackageInfo struct {
 	Name          string   `json:"name"`
 	Version       string   `json:"version"`
@@ -214,13 +233,22 @@ func (m *execManager) release() {
 }
 
 func (m *execManager) mutate(ctx context.Context, action string, packages []string, args ...string) error {
+	_, err := m.mutateOutput(ctx, action, packages, args...)
+
+	return err
+}
+
+// mutateOutput runs a mutating opkg command and returns its combined output. Callers
+// that need to inspect the output beyond the exit code (e.g. remove, to detect the
+// reverse-dependency warning opkg emits with a zero exit) use it directly.
+func (m *execManager) mutateOutput(ctx context.Context, action string, packages []string, args ...string) (string, error) {
 	m.defaults()
 	if err := validate(packages); err != nil {
-		return err
+		return "", err
 	}
 
 	if err := m.acquire(ctx); err != nil {
-		return fmt.Errorf("opkg %s: %w", action, err)
+		return "", fmt.Errorf("opkg %s: %w", action, err)
 	}
 
 	defer m.release()
@@ -231,16 +259,22 @@ func (m *execManager) mutate(ctx context.Context, action string, packages []stri
 	if err != nil {
 		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", output.Tail(out))
 
-		return fmt.Errorf("opkg %s: %w", action, err)
+		return out, fmt.Errorf("opkg %s: %w", action, err)
 	}
 
 	if exitCode != 0 {
 		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", output.Tail(out), "exitCode", exitCode)
 
-		return fmt.Errorf("opkg %s exited %d", action, exitCode)
+		// Include opkg's own output (its failure reason lives there) so the surfaced
+		// error is actionable instead of an opaque exit code.
+		if reason := strings.TrimSpace(output.Tail(out)); reason != "" {
+			return out, fmt.Errorf("opkg %s exited %d: %s", action, exitCode, reason)
+		}
+
+		return out, fmt.Errorf("opkg %s exited %d", action, exitCode)
 	}
 
-	return nil
+	return out, nil
 }
 
 func (m *execManager) Install(ctx context.Context, packages []string) error {
@@ -251,7 +285,74 @@ func (m *execManager) Remove(ctx context.Context, packages []string) error {
 	if err := rejectProtected(packages); err != nil {
 		return err
 	}
-	return m.mutate(ctx, "remove", packages, "remove")
+	out, err := m.mutateOutput(ctx, "remove", packages, "remove")
+	// opkg refuses to remove a package other installed packages depend on, printing a
+	// "depended upon by packages" warning. Depending on the device's opkg build this
+	// comes with a zero exit (removing nothing) or a non-zero exit; either way the
+	// generic exit-code error is unhelpful, so detect the warning in the output first
+	// and surface a typed, actionable error regardless of the exit code.
+	if conflict := detectDependents(out); conflict != nil {
+		m.logger.Error("opkg remove refused: reverse dependencies",
+			"packages", packages, "output", output.Tail(out))
+
+		return conflict
+	}
+
+	return err
+}
+
+// dependentsRe matches the header line opkg prints when a removal is refused because
+// other installed packages depend on the target, e.g.:
+//
+//	Package curl is depended upon by packages:
+var dependentsRe = regexp.MustCompile(`Package\s+(\S+)\s+is depended upon by packages`)
+
+// errorLabelRe matches the C function-name label opkg prepends to each collected-error
+// line, e.g. "print_dependents_warning: ". It is stripped so the actual message
+// content is parsed rather than the label.
+var errorLabelRe = regexp.MustCompile(`^[a-z][a-z0-9_]*:\s*`)
+
+// cleanOpkgLine strips opkg's collected-error decoration from a single line: the
+// leading " * " bullet and the "<function>: " label (which the device's opkg prepends
+// to every line of the warning, dependent names included), leaving the bare content.
+func cleanOpkgLine(raw string) string {
+	line := strings.TrimSpace(raw)
+	line = strings.TrimSpace(strings.TrimPrefix(line, "*"))
+	line = errorLabelRe.ReplaceAllString(line, "")
+
+	return strings.TrimSpace(line)
+}
+
+// detectDependents scans opkg remove output for the reverse-dependency warning and
+// returns a DependencyConflictError when present. The dependent names follow the
+// header on their own lines (each carrying opkg's " * <function>: " decoration) until
+// the "These might cease to work" / "Force removal" advisory lines.
+func detectDependents(out string) *DependencyConflictError {
+	lines := strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n")
+	for i, raw := range lines {
+		match := dependentsRe.FindStringSubmatch(cleanOpkgLine(raw))
+		if match == nil {
+			continue
+		}
+
+		conflict := &DependencyConflictError{Package: match[1]}
+		for _, follow := range lines[i+1:] {
+			text := cleanOpkgLine(follow)
+			if text == "" {
+				continue
+			}
+			if strings.HasPrefix(text, "These might cease to work") ||
+				strings.HasPrefix(text, "Force removal") ||
+				dependentsRe.MatchString(text) {
+				break
+			}
+			conflict.DependedBy = append(conflict.DependedBy, strings.Fields(text)[0])
+		}
+
+		return conflict
+	}
+
+	return nil
 }
 
 func (m *execManager) Upgrade(ctx context.Context, packages []string) error {

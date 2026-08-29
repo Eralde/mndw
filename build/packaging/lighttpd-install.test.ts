@@ -569,7 +569,12 @@ describe('mndw-lighttpd-port-evidence.sh', () => {
       const result = runEvidenceFunction('extract_configured_ports', extractionCase.input, fixture);
 
       expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-      expect(String(result.stdout ?? '').trim().split('\n').filter(Boolean)).toEqual(extractionCase.expected);
+
+      const resultLines = String(result.stdout ?? '').trim()
+        .split('\n')
+        .filter(Boolean);
+
+      expect(resultLines).toEqual(extractionCase.expected);
     });
   }
 });
@@ -636,6 +641,7 @@ describe('mndw-render-lighttpd.sh', () => {
 describe('mndw-lighttpd-port.sh install', () => {
   it('reserves a foreign listener observed before stopping shared lighttpd', () => {
     const fixture = makeInstallFixture('ready');
+
     fs.writeFileSync(fixture.listeners, '99\n8080\n');
 
     const result = runInstall(fixture, {FAKE_STOP_CLEARS_LISTENERS: '1'});
@@ -648,6 +654,7 @@ describe('mndw-lighttpd-port.sh install', () => {
   it('reuses a live persisted port owned only by mndw config', () => {
     const fixture = makeInstallFixture('ready');
     const statePath = path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port');
+
     fs.writeFileSync(statePath, '99\n');
     fs.writeFileSync(fixture.runtime, '$SERVER["socket"] == ":99" {\n}\n');
     fs.writeFileSync(fixture.listeners, '99\n8080\n');
@@ -662,6 +669,7 @@ describe('mndw-lighttpd-port.sh install', () => {
     const fixture = makeInstallFixture('ready');
     const statePath = path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port');
     const confd = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d');
+
     fs.writeFileSync(statePath, '99\n');
     fs.writeFileSync(fixture.runtime, '$SERVER["socket"] == ":99" {\n}\n');
     fs.mkdirSync(confd, {recursive: true});
@@ -685,6 +693,7 @@ describe('mndw-lighttpd-port.sh install', () => {
   it('uses top-level conf.d claims without relying on printed config', () => {
     const fixture = makeInstallFixture('ready');
     const confd = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d');
+
     fs.mkdirSync(confd, {recursive: true});
     fs.writeFileSync(path.join(confd, '80-w4s.conf'), 'server.port := 99\n$SERVER["socket"] == ":99" {\n}\n');
 
@@ -697,6 +706,7 @@ describe('mndw-lighttpd-port.sh install', () => {
   it('uses conf.d evidence when fresh-install print-config fails on missing runtime include', () => {
     const fixture = makeInstallFixture('ready');
     const confd = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d');
+
     fs.mkdirSync(confd, {recursive: true});
     fs.writeFileSync(path.join(confd, '80-w4s.conf'), 'server.port := 99\n$SERVER["socket"] == ":99" {\n}\n');
 
@@ -717,6 +727,7 @@ describe('mndw-lighttpd-port.sh install', () => {
   it('aborts before stopping lighttpd when conf.d path is not inspectable as a directory', () => {
     const fixture = makeInstallFixture('ready');
     const confd = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d');
+
     fs.mkdirSync(path.dirname(confd), {recursive: true});
     fs.writeFileSync(confd, 'not a directory\n');
 
@@ -731,6 +742,7 @@ describe('mndw-lighttpd-port.sh install', () => {
   it('aborts before stopping lighttpd when a top-level .conf entry is not a readable regular file', () => {
     const fixture = makeInstallFixture('ready');
     const badConfig = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d', 'bad.conf');
+
     fs.mkdirSync(badConfig, {recursive: true});
 
     const result = runInstall(fixture);
@@ -743,6 +755,7 @@ describe('mndw-lighttpd-port.sh install', () => {
 
   it('aborts before stopping lighttpd when mndw runtime config is not a regular file', () => {
     const fixture = makeInstallFixture('ready');
+
     fs.mkdirSync(fixture.runtime, {recursive: true});
 
     const result = runInstall(fixture);
@@ -763,6 +776,7 @@ describe('mndw-lighttpd-port.sh install', () => {
   it('selects around web4static before stopping a healthy shared lighttpd', () => {
     const fixture = makeInstallFixture('ready');
     const confd = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d');
+
     fs.mkdirSync(confd, {recursive: true});
     fs.writeFileSync(
       path.join(confd, '80-w4s.conf'),
@@ -794,6 +808,7 @@ describe('mndw-lighttpd-port.sh install', () => {
     const confd = path.join(dataDir, 'conf.d');
     const configFile = path.join(fixture.root, 'etc', 'mndw.conf');
     const statePath = path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port');
+
     fs.mkdirSync(confd, {recursive: true});
     fs.mkdirSync(path.dirname(configFile), {recursive: true});
     fs.mkdirSync(path.dirname(statePath), {recursive: true});

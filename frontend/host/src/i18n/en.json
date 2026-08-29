@@ -167,6 +167,10 @@
     "invalid-credentials": "Invalid credentials",
     "connection-failed": "Connection failed"
   },
+  "toast": {
+    "region": "Notifications",
+    "dismiss": "Dismiss"
+  },
   "packages": {
     "tab": "Packages",
     "title": "Package Manager",
@@ -209,7 +213,9 @@
     "dependencies": "Dependencies",
     "confirm-remove-title": "Confirm package removal",
     "confirm-remove": "Remove {names}?",
-    "protected": "Protected package"
+    "protected": "Protected package",
+    "dependency-conflict": "Can't remove {package}: it is required by {dependents}.",
+    "dependency-conflict-generic": "Can't remove {package}: it is required by other installed packages."
   },
   "services": {
     "tab": "Services",

@@ -153,6 +153,7 @@ func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action stri
 	if err := run(ctx, req.Packages); err != nil {
 		var invalid *opkg.InvalidPackageError
 		var protected *opkg.ProtectedPackageError
+		var conflict *opkg.DependencyConflictError
 
 		switch {
 		case errors.As(err, &invalid):
@@ -161,6 +162,11 @@ func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action stri
 			return
 		case errors.As(err, &protected):
 			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusForbidden, httpx.CodeProtectedPackage, protected.Error()))
+
+			return
+		case errors.As(err, &conflict):
+			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeDependencyConflict, conflict.Error()).
+				WithDetail(map[string]any{"package": conflict.Package, "dependents": conflict.DependedBy}))
 
 			return
 		}

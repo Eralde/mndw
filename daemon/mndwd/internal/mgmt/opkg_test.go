@@ -122,6 +122,32 @@ func TestOpkgInstallEmpty(t *testing.T) {
 	}
 }
 
+type dependencyConflictManager struct {
+	opkg.Manager
+}
+
+func (m dependencyConflictManager) Remove(context.Context, []string) error {
+	return &opkg.DependencyConflictError{Package: "curl", DependedBy: []string{"wget-ssl"}}
+}
+
+func TestOpkgRemoveDependencyConflict(t *testing.T) {
+	base := opkg.New("stub", discardLogger())
+	srv, _ := newTestServerWithOpkg(t, dependencyConflictManager{Manager: base})
+	body, _ := json.Marshal(map[string][]string{"packages": {"curl"}})
+	resp, err := http.Post(srv.URL+"/api/mgmt/opkg/remove", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.StatusCode)
+	}
+
+	assertCode(t, resp, "DEPENDENCY_CONFLICT")
+}
+
 func TestOpkgActionMessages(t *testing.T) {
 	srv, _ := newTestServer(t)
 	tests := []struct {

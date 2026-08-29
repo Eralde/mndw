@@ -1,5 +1,5 @@
 import {type Mock, beforeEach, describe, expect, it, vi} from 'vitest';
-import {OpkgError, createOpkgClient} from './opkg-client.js';
+import {OpkgError, createOpkgClient, dependencyConflictDetail} from './opkg-client.js';
 
 const packageEntry = {
   name: 'jq',
@@ -87,6 +87,52 @@ describe('opkg-client', () => {
     await expect(createOpkgClient(fetchImpl).list()).rejects.toEqual(
       expect.objectContaining({code: 'UNKNOWN', message: 'Bad Request'}),
     );
+  });
+});
+
+describe('dependencyConflictDetail', () => {
+  it('carries structured detail through the daemon error envelope', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(409, {
+      error: {
+        code: 'DEPENDENCY_CONFLICT',
+        message: 'cannot remove curl: required by wget-ssl',
+        detail: {package: 'curl', dependents: ['wget-ssl', 'aria2']},
+      },
+    }));
+
+    let captured: unknown;
+
+    try {
+      await createOpkgClient(fetchImpl).remove(['curl']);
+    } catch (error) {
+      captured = error;
+    }
+
+    expect(captured).toBeInstanceOf(OpkgError);
+    expect(dependencyConflictDetail(captured as OpkgError)).toEqual({
+      package: 'curl',
+      dependents: ['wget-ssl', 'aria2'],
+    });
+  });
+
+  it('ignores errors that are not dependency conflicts', () => {
+    expect(dependencyConflictDetail(new OpkgError('x', 'OPKG_FAILED', {package: 'curl'}))).toBeUndefined();
+  });
+
+  it('ignores conflicts without a package name', () => {
+    expect(dependencyConflictDetail(new OpkgError('x', 'DEPENDENCY_CONFLICT', {dependents: ['a']}))).toBeUndefined();
+  });
+
+  it('defaults dependents to an empty list when absent or malformed', () => {
+    expect(dependencyConflictDetail(new OpkgError('x', 'DEPENDENCY_CONFLICT', {package: 'curl'}))).toEqual({
+      package: 'curl',
+      dependents: [],
+    });
+    expect(dependencyConflictDetail(new OpkgError('x', 'DEPENDENCY_CONFLICT', {package: 'curl', dependents: [1]})))
+      .toEqual({
+        package: 'curl',
+        dependents: [],
+      });
   });
 });
 

@@ -3,6 +3,7 @@ import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {type PackageEntry, type PackageList} from '../services/opkg-client.js';
 import {setLocale} from '../services/locale.service.js';
+import {toast} from '../services/toast/toast.svelte.js';
 
 const mockList = vi.fn<(...args: unknown[]) => Promise<PackageList>>();
 const mockUpdate = vi.fn<(...args: unknown[]) => Promise<{message: string}>>();
@@ -57,6 +58,7 @@ describe('PackageManager', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    toast.clear();
     host.remove();
   });
 
@@ -114,7 +116,7 @@ describe('PackageManager', () => {
     await unmount(app);
   });
 
-  it('preserves action feedback after reloading the list', async () => {
+  it('surfaces action feedback as a toast after reloading the list', async () => {
     mockList.mockResolvedValue({packages: [], metadataUpdatedAt: null});
     mockUpdate.mockResolvedValue({message: 'Package metadata refreshed'});
 
@@ -132,7 +134,12 @@ describe('PackageManager', () => {
 
     refreshButton?.click();
     flushSync();
-    await vi.waitFor(() => expect(host.textContent).toContain('Package metadata refreshed'));
+
+    // Feedback is delivered via the host toast store (rendered by ToastHost, which is
+    // mounted globally in App), not inline in the panel.
+    await vi.waitFor(() =>
+      expect(toast.toasts.some((entry) => entry.message === 'Package metadata refreshed')).toBe(true)
+    );
     await unmount(app);
   });
 

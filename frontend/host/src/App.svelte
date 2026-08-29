@@ -1,6 +1,7 @@
 <script lang="ts">
 import {Router} from 'sv-router';
 import OverlayHost from './components/overlay/OverlayHost.svelte';
+import ToastHost from './components/toast/ToastHost.svelte';
 import LoginPage from './pages/login/LoginPage.svelte';
 import {appState} from './state/app.svelte.js';
 import {hostT} from './services/host-i18n.svelte.js';
@@ -15,6 +16,7 @@ setHostServices(services);
 
 <!-- Global top-layer host stays mounted across login, loading, and navigation. -->
 <OverlayHost />
+<ToastHost />
 
 {#if !appState.authenticated}
   <LoginPage />

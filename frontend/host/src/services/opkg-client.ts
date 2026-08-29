@@ -33,12 +33,22 @@ export interface PackageInfo {
 
 export class OpkgError extends Error {
   public readonly code: string;
+  public readonly detail: unknown;
 
-  constructor(message: string, code: string) {
+  constructor(message: string, code: string, detail?: unknown) {
     super(message);
     this.name = 'OpkgError';
     this.code = code;
+    this.detail = detail;
   }
+}
+
+// DependencyConflictDetail is the structured payload the daemon attaches to a
+// DEPENDENCY_CONFLICT error: the package whose removal was refused and the installed
+// packages that depend on it. Lets the UI build a localized message.
+export interface DependencyConflictDetail {
+  package: string;
+  dependents: string[];
 }
 
 export interface OpkgClient {
@@ -54,10 +64,29 @@ interface ErrorEnvelope {
   error?: {
     code?: unknown;
     message?: unknown;
+    detail?: unknown;
   };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object';
+
+export function dependencyConflictDetail(error: OpkgError): DependencyConflictDetail | undefined {
+  if (error.code !== 'DEPENDENCY_CONFLICT' || !isRecord(error.detail)) {
+    return undefined;
+  }
+
+  const pkg = error.detail.package;
+  const dependents = error.detail.dependents;
+
+  if (typeof pkg !== 'string' || pkg.length === 0) {
+    return undefined;
+  }
+
+  const validDependents = Array.isArray(dependents)
+    && dependents.every((value): value is string => typeof value === 'string');
+
+  return {package: pkg, dependents: validDependents ? dependents : []};
+}
 
 function malformedResponse(): OpkgError {
   return new OpkgError('Malformed response', 'UNKNOWN');
@@ -85,7 +114,7 @@ async function errorFromResponse(response: Response): Promise<OpkgError> {
   const message = typeof error?.message === 'string' ? error.message : response.statusText;
   const code = typeof error?.code === 'string' ? error.code : 'UNKNOWN';
 
-  return new OpkgError(message, code);
+  return new OpkgError(message, code, error?.detail);
 }
 
 function validatePackageEntry(value: unknown): PackageEntry {

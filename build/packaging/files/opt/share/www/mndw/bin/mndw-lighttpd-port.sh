@@ -11,6 +11,7 @@ MNDW_LIGHTTPD_BIN=${MNDW_LIGHTTPD_BIN:-$MNDW_ROOT/sbin/lighttpd}
 MNDW_LIGHTTPD_INIT=${MNDW_LIGHTTPD_INIT:-$MNDW_ROOT/etc/init.d/S80lighttpd}
 MNDW_MNDWD_INIT=${MNDW_MNDWD_INIT:-$MNDW_ROOT/etc/init.d/S70mndwd}
 MNDW_LIGHTTPD_CONF=${MNDW_LIGHTTPD_CONF:-$MNDW_ROOT/etc/lighttpd/lighttpd.conf}
+MNDW_LIGHTTPD_CONFD=${MNDW_LIGHTTPD_CONFD:-$MNDW_ROOT/etc/lighttpd/conf.d}
 MNDW_LIGHTTPD_ERRORLOG=${MNDW_LIGHTTPD_ERRORLOG:-$MNDW_ROOT/var/log/lighttpd/error.log}
 MNDW_LIGHTTPD_ERRORLOG_LINES=${MNDW_LIGHTTPD_ERRORLOG_LINES:-200}
 MNDW_PROBE_LOG=${MNDW_PROBE_LOG:-$MNDW_TMP_ROOT/lighttpd-probe.log}
@@ -23,6 +24,13 @@ MNDW_PROBE_KILL_TIMEOUT=${MNDW_PROBE_KILL_TIMEOUT:-2}
 MNDW_SLEEP=${MNDW_SLEEP:-sleep}
 MNDW_KILL=${MNDW_KILL:-kill}
 MNDW_PIDOF=${MNDW_PIDOF:-pidof}
+
+script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+evidence_helper=${MNDW_EVIDENCE_HELPER:-$script_dir/mndw-lighttpd-port-evidence.sh}
+. "$evidence_helper" || {
+  echo "mndw: cannot load lighttpd port evidence helper: $evidence_helper" >&2
+  exit 1
+}
 
 port_is_valid() {
   port_value=$1
@@ -97,8 +105,14 @@ snapshot_listeners() {
   temporary_file="$output_file.$$"
 
   mkdir -p "$output_dir" || return 1
-  snapshot_listeners_stdout | sort -u > "$temporary_file" || return 1
-  mv "$temporary_file" "$output_file"
+  snapshot_listeners_stdout | sort -u > "$temporary_file" || {
+    rm -f "$temporary_file"
+    return 1
+  }
+  mv "$temporary_file" "$output_file" || {
+    rm -f "$temporary_file"
+    return 1
+  }
 }
 
 is_listening() {
@@ -124,6 +138,34 @@ wait_for_listener() {
   done
 }
 
+initialize_runtime_paths() {
+  if [ -f "$MNDW_CONFIG_FILE" ]; then
+    . "$MNDW_CONFIG_FILE" || return 1
+  fi
+
+  : "${DATA_DIR:=$MNDW_ROOT/var/lib/mndw}"
+  : "${MNDW_RUNTIME_CONF:=$MNDW_ROOT/var/lib/mndw/lighttpd-runtime.conf}"
+  : "${MNDW_LIGHTTPD_CONFD:=$MNDW_ROOT/etc/lighttpd/conf.d}"
+  : "${MNDW_USER_PLUGINS_DIR:=$DATA_DIR/user-plugins}"
+  : "${MNDW_PROXY_TARGET:=$DATA_DIR/proxy-target.conf}"
+  export MNDW_RUNTIME_CONF MNDW_LIGHTTPD_CONFD MNDW_USER_PLUGINS_DIR MNDW_PROXY_TARGET
+}
+
+cleanup_evidence_artifacts() {
+  for artifact in \
+    "${live_ports:-}" \
+    "${foreign_ports:-}" "${foreign_ports:+$foreign_ports.sorted}" \
+    "${owned_ports:-}" "${owned_ports:+$owned_ports.sorted}" \
+    "${printed_config:-}"; do
+    [ -n "$artifact" ] && rm -f "$artifact"
+  done
+}
+
+cleanup_install_artifacts() {
+  cleanup_evidence_artifacts
+  rm -f "$MNDW_PROBE_PID_FILE"
+}
+
 read_state() {
   [ -r "$MNDW_STATE_FILE" ] || return 1
 
@@ -132,18 +174,38 @@ read_state() {
   printf '%s\n' "$state_value"
 }
 
+persisted_port_is_owned() {
+  owned_port=$1
+  live_file=$2
+  foreign_file=$3
+  owned_file=$4
+
+  port_is_listed "$owned_port" "$live_file" &&
+    port_is_listed "$owned_port" "$owned_file" &&
+    ! port_is_listed "$owned_port" "$foreign_file"
+}
+
 select_port() {
+  live_file=$1
+  foreign_file=$2
+  owned_file=$3
   persisted_port=$(read_state 2>/dev/null || true)
 
-  if [ -n "$persisted_port" ] && ! is_listening "$persisted_port"; then
-    printf '%s\n' "$persisted_port"
-    return 0
+  if [ -n "$persisted_port" ] && ! browser_blocks_port "$persisted_port" &&
+    ! port_is_listed "$persisted_port" "$foreign_file"; then
+    if persisted_port_is_owned "$persisted_port" "$live_file" "$foreign_file" "$owned_file" ||
+      { ! port_is_listed "$persisted_port" "$live_file" && ! is_listening "$persisted_port"; }; then
+      printf '%s\n' "$persisted_port"
+      return 0
+    fi
   fi
 
   candidate=99
 
   while [ "$candidate" -le 199 ]; do
-    if ! is_listening "$candidate"; then
+    if ! browser_blocks_port "$candidate" && ! port_is_listed "$candidate" "$foreign_file" &&
+      ! port_is_listed "$candidate" "$live_file" &&
+      ! is_listening "$candidate"; then
       printf '%s\n' "$candidate"
       return 0
     fi
@@ -153,6 +215,55 @@ select_port() {
 
   echo 'mndw: no free port in 99..199' >&2
   return 1
+}
+
+select_port_command() {
+  initialize_runtime_paths || return 1
+  mkdir -p "$MNDW_TMP_ROOT" || return 1
+
+  live_ports="$MNDW_TMP_ROOT/lighttpd-live-ports.$$"
+  foreign_ports="$MNDW_TMP_ROOT/lighttpd-foreign-ports.$$"
+  owned_ports="$MNDW_TMP_ROOT/lighttpd-owned-ports.$$"
+  : > "$foreign_ports" || {
+    cleanup_evidence_artifacts
+    return 1
+  }
+  : > "$owned_ports" || {
+    cleanup_evidence_artifacts
+    return 1
+  }
+
+  if ! snapshot_listeners "$live_ports"; then
+    : > "$live_ports" || {
+      cleanup_evidence_artifacts
+      return 1
+    }
+    echo '[mndw] warning: unable to snapshot listeners' >> "$MNDW_PROBE_LOG" || true
+  fi
+
+  scan_configured_ports "$foreign_ports" "$owned_ports" || {
+    cleanup_evidence_artifacts
+    return 1
+  }
+  persisted_port=$(read_state 2>/dev/null || true)
+  append_printed_ports_when_unowned "$persisted_port" "$foreign_ports" || {
+    cleanup_evidence_artifacts
+    return 1
+  }
+  normalize_evidence_file "$foreign_ports" || {
+    cleanup_evidence_artifacts
+    return 1
+  }
+  normalize_evidence_file "$owned_ports" || {
+    cleanup_evidence_artifacts
+    return 1
+  }
+
+  selected_port=$(select_port "$live_ports" "$foreign_ports" "$owned_ports")
+  result=$?
+  cleanup_evidence_artifacts
+  [ "$result" -eq 0 ] || return "$result"
+  printf '%s\n' "$selected_port"
 }
 
 write_state() {
@@ -334,16 +445,7 @@ probe_once() {
 run_install() {
   install_script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
   render_helper=${MNDW_RENDER_HELPER:-$install_script_dir/mndw-render-lighttpd.sh}
-
-  if [ -f "$MNDW_CONFIG_FILE" ]; then
-    . "$MNDW_CONFIG_FILE"
-  fi
-
-  : "${DATA_DIR:=$MNDW_ROOT/var/lib/mndw}"
-  MNDW_USER_PLUGINS_DIR=${MNDW_USER_PLUGINS_DIR:-$DATA_DIR/user-plugins}
-  MNDW_RUNTIME_CONF=${MNDW_RUNTIME_CONF:-$MNDW_ROOT/var/lib/mndw/lighttpd-runtime.conf}
-  MNDW_PROXY_TARGET=${MNDW_PROXY_TARGET:-$DATA_DIR/proxy-target.conf}
-  export MNDW_PROXY_TARGET MNDW_USER_PLUGINS_DIR
+  initialize_runtime_paths || return 1
 
   mkdir -p "$MNDW_ROOT/tmp/mndw/plugin-runtime" "$DATA_DIR" "$MNDW_ROOT/var/lib/mndw" "$MNDW_ROOT/var/lib/mndw-secrets" "$MNDW_TMP_ROOT" || return 1
   chmod 700 "$MNDW_ROOT/tmp/mndw/plugin-runtime" "$DATA_DIR" "$MNDW_ROOT/var/lib/mndw" "$MNDW_ROOT/var/lib/mndw-secrets" 2>/dev/null || true
@@ -359,36 +461,84 @@ run_install() {
     return 1
   }
 
+  live_ports="$MNDW_TMP_ROOT/lighttpd-live-ports.$$"
+  foreign_ports="$MNDW_TMP_ROOT/lighttpd-foreign-ports.$$"
+  owned_ports="$MNDW_TMP_ROOT/lighttpd-owned-ports.$$"
+  : > "$foreign_ports" || {
+    cleanup_install_artifacts
+    return 1
+  }
+  : > "$owned_ports" || {
+    cleanup_install_artifacts
+    return 1
+  }
+  if ! snapshot_listeners "$live_ports"; then
+    : > "$live_ports" || {
+      cleanup_install_artifacts
+      return 1
+    }
+    echo '[mndw] warning: unable to snapshot listeners before stopping lighttpd' >> "$MNDW_PROBE_LOG"
+  fi
+  scan_configured_ports "$foreign_ports" "$owned_ports" || {
+    cleanup_install_artifacts
+    return 1
+  }
+  persisted_port=$(read_state 2>/dev/null || true)
+  append_printed_ports_when_unowned "$persisted_port" "$foreign_ports" || {
+    cleanup_install_artifacts
+    return 1
+  }
+  normalize_evidence_file "$foreign_ports" || {
+    echo 'mndw: failed to normalize foreign lighttpd port evidence' >&2
+    cleanup_install_artifacts
+    return 1
+  }
+  normalize_evidence_file "$owned_ports" || {
+    echo 'mndw: failed to normalize owned lighttpd port evidence' >&2
+    cleanup_install_artifacts
+    return 1
+  }
+
   "$MNDW_MNDWD_INIT" restart >> "$MNDW_INIT_LOG" 2>&1 || {
     echo "mndw: mndwd failed to restart; see $MNDW_INIT_LOG" >&2
+    cleanup_install_artifacts
     return 1
   }
   [ -s "$MNDW_PROXY_TARGET" ] || {
     echo "mndw: mndwd did not create $MNDW_PROXY_TARGET" >&2
+    cleanup_install_artifacts
     return 1
   }
 
   if ! "$MNDW_LIGHTTPD_INIT" stop >> "$MNDW_INIT_LOG" 2>&1; then
     if lighttpd_is_running; then
       echo "mndw: lighttpd failed to stop; see $MNDW_INIT_LOG" >&2
+      cleanup_install_artifacts
       return 1
     fi
 
     echo '[mndw] lighttpd already stopped; continuing' >> "$MNDW_INIT_LOG"
   fi
 
-  candidate=$(select_port) || {
+  candidate=$(select_port "$live_ports" "$foreign_ports" "$owned_ports") || {
     echo 'mndw: exhausted mndw port range 99..199' >&2
+    cleanup_install_artifacts
     return 1
   }
   mode=socket
 
   while [ "$candidate" -le 199 ]; do
     export MNDW_SELECTED_PORT=$candidate
-    sh "$render_helper" --mode socket --port "$candidate" --output "$MNDW_RUNTIME_CONF" || return 1
+    sh "$render_helper" --mode socket --port "$candidate" --output "$MNDW_RUNTIME_CONF" || {
+      cleanup_install_artifacts
+      return 1
+    }
 
     previous_snapshot="$MNDW_TMP_ROOT/probe-listeners.$$.previous"
-    snapshot_listeners "$previous_snapshot" || return 1
+    snapshot_listeners "$previous_snapshot" || {
+      cleanup_install_artifacts
+      return 1
+    }
     errorlog_offset=0
     if [ -r "$MNDW_LIGHTTPD_ERRORLOG" ]; then
       errorlog_offset=$(wc -c < "$MNDW_LIGHTTPD_ERRORLOG" 2>/dev/null | tr -d ' ')
@@ -400,7 +550,10 @@ run_install() {
     case "$PROBE_RESULT" in
       override)
         mode=override
-        sh "$render_helper" --mode override --port "$candidate" --output "$MNDW_RUNTIME_CONF" || return 1
+        sh "$render_helper" --mode override --port "$candidate" --output "$MNDW_RUNTIME_CONF" || {
+          cleanup_install_artifacts
+          return 1
+        }
         :
         ;;
       ready)
@@ -413,12 +566,14 @@ run_install() {
         ;;
       *)
         echo "mndw: lighttpd probe failed; see $MNDW_PROBE_LOG" >&2
+        cleanup_install_artifacts
         return 1
         ;;
     esac
 
     "$MNDW_LIGHTTPD_BIN" -t -f "$MNDW_LIGHTTPD_CONF" >> "$MNDW_PROBE_LOG" 2>&1 || {
       echo "mndw: lighttpd configuration check failed; see $MNDW_PROBE_LOG" >&2
+      cleanup_install_artifacts
       return 1
     }
 
@@ -434,11 +589,13 @@ run_install() {
       fi
 
       echo "mndw: lighttpd failed to start; see $MNDW_INIT_LOG and $MNDW_PROBE_LOG" >&2
+      cleanup_install_artifacts
       return 1
     fi
 
     if ! wait_for_listener "$candidate"; then
       echo "mndw: lighttpd started without selected port $candidate listening; see $MNDW_INIT_LOG" >&2
+      cleanup_install_artifacts
       return 1
     fi
 
@@ -447,11 +604,16 @@ run_install() {
 
   if [ "$candidate" -gt 199 ]; then
     echo 'mndw: exhausted mndw port range 99..199' >&2
+    cleanup_install_artifacts
     return 1
   fi
 
-  write_state "$candidate" || return 1
-  rm -f "$MNDW_PROBE_LOG" "$MNDW_INIT_LOG" "$MNDW_PROBE_PID_FILE"
+  write_state "$candidate" || {
+    cleanup_install_artifacts
+    return 1
+  }
+  cleanup_install_artifacts
+  rm -f "$MNDW_PROBE_LOG" "$MNDW_INIT_LOG"
 
   if [ "$mode" = 'override' ]; then
     echo '[mndw] warning: bypassed effective port-80 lighttpd listener because it was occupied'
@@ -472,7 +634,11 @@ case "${1:-}" in
     [ "$#" -eq 1 ] && read_state
     ;;
   select-port)
-    [ "$#" -eq 1 ] && select_port
+    [ "$#" -eq 1 ] || {
+      usage
+      exit 2
+    }
+    select_port_command
     ;;
   write-state)
     [ "$#" -eq 2 ] && write_state "$2"

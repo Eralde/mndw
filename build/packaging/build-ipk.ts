@@ -126,6 +126,7 @@ export function collectStagePaths(): {
   initScript: string;
   moduleGuard: string;
   portHelper: string;
+  evidenceHelper: string;
   renderer: string;
   daemonConfig: string;
 } {
@@ -137,6 +138,7 @@ export function collectStagePaths(): {
     initScript: path.join('opt', 'etc', 'init.d', 'S70mndwd'),
     moduleGuard: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'),
     portHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'),
+    evidenceHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port-evidence.sh'),
     renderer: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-render-lighttpd.sh'),
     daemonConfig: path.join('opt', 'etc', 'mndw.conf'),
   };
@@ -156,6 +158,7 @@ export function verifyStage(
     [p.initScript, 'init script'],
     [p.moduleGuard, 'module guard script'],
     [p.portHelper, 'lighttpd port helper'],
+    [p.evidenceHelper, 'lighttpd port evidence helper'],
     [p.renderer, 'lighttpd renderer'],
     [p.daemonConfig, 'daemon config'],
   ];
@@ -304,6 +307,11 @@ export function stageDeployFiles(repoRoot: string, stagingDir: string): void {
   copyTo(
     path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'),
     path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'),
+    0o755,
+  );
+  copyTo(
+    path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port-evidence.sh'),
+    path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port-evidence.sh'),
     0o755,
   );
   copyTo(

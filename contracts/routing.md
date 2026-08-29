@@ -21,10 +21,25 @@ inside their owning runtime.
 
 Production listener and upstream facts:
 
-- lighttpd selects or reuses the first free mndw dashboard port in `99..199` and persists it in
-  `/opt/var/lib/mndw/lighttpd-port`;
+- lighttpd snapshots live TCP listeners before stopping shared lighttpd, scans standard top-level
+  `/opt/etc/lighttpd/conf.d/*.conf` claims plus mndw's runtime ownership, and normalizes that evidence;
+- when no persisted mndw port exists, unannotated `lighttpd -p` output supplements source evidence; its failure is
+  nonfatal after successful source scanning;
+- after evidence collection, lighttpd stops shared lighttpd and selects the first browser-usable port in `99..199`
+  absent from foreign/configured/live evidence, except a persisted port proven live and claimed by mndw with no
+  foreign claim; browser-blocked ports in that range include `101`, `102`, `103`, `104`, `109`, `110`, `111`, `113`,
+  `115`, `117`, `119`, `123`, `135`, `137`, `139`, `143`, `161`, and `179`;
+- selected port is persisted in `/opt/var/lib/mndw/lighttpd-port`;
 - `mndwd` listens on `127.0.0.1:9090` by default;
 - mndwd's router session-validation upstream defaults to `http://127.0.0.1:80`.
+
+Foreign configuration claims survive shared-service stop. web4static-style `server.port := 99` and
+`$SERVER["socket"] == ":99"` therefore reserve port 99. Missing `conf.d` is valid empty evidence. A present but
+unreadable config directory, unreadable top-level config, or unreadable mndw runtime config aborts before lighttpd is
+stopped. The source scanner intentionally covers literal claims in top-level `conf.d/*.conf` only; it does not recurse
+or evaluate variables, expressions, or nested includes. Overlapping same-process socket blocks may fail config parsing
+through duplicate conditional assignments rather than emit `Address already in use`; foreground probe and daemon
+handoff remain final race checks.
 
 Development proxy targets are configured by `frontend/host/vite.config.ts`: `/api` and `/ws` use
 `MNDW_DAEMON` (default `http://127.0.0.1:9090`), while `/rci` and `/auth` use

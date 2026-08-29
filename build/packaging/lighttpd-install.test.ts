@@ -17,6 +17,18 @@ const portHelper = path.join(
   'bin',
   'mndw-lighttpd-port.sh',
 );
+const evidenceHelper = path.join(
+  repoRoot,
+  'build',
+  'packaging',
+  'files',
+  'opt',
+  'share',
+  'www',
+  'mndw',
+  'bin',
+  'mndw-lighttpd-port-evidence.sh',
+);
 const renderer = path.join(
   repoRoot,
   'build',
@@ -75,6 +87,24 @@ const runScript = (
 ): ReturnType<typeof spawnSync> =>
   spawnSync('/bin/sh', [script, ...args], {
     encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${fixture.bin}:${process.env.PATH ?? ''}`,
+      MNDW_ROOT: fixture.root,
+      MNDW_PROC_ROOT: fixture.proc,
+      ...extraEnv,
+    },
+  });
+
+const runEvidenceFunction = (
+  functionName: string,
+  input: string,
+  fixture: Fixture,
+  extraEnv: Record<string, string> = {},
+): ReturnType<typeof spawnSync> =>
+  spawnSync('/bin/sh', ['-c', `. "$1"\n${functionName}`, 'sh', evidenceHelper], {
+    encoding: 'utf8',
+    input,
     env: {
       ...process.env,
       PATH: `${fixture.bin}:${process.env.PATH ?? ''}`,
@@ -167,6 +197,38 @@ fi
     installFixture.lighttpd,
     `#!/bin/sh
 echo "lighttpd:$*" >> "$FAKE_ORDER"
+if [ "$1" = "-p" ]; then
+  case "\${FAKE_PRINT_CONFIG_MODE:-empty}" in
+    web4static)
+      cat <<'EOF'
+server.port = 99
+$SERVER["socket"] == ":99" {
+  server.document-root = "/opt/share/www/w4s"
+}
+include "/opt/var/lib/mndw/lighttpd-runtime.conf"
+EOF
+      exit 0
+      ;;
+    unsupported)
+      exit 2
+      ;;
+    empty)
+      exit 0
+      ;;
+    duplicate-status-255)
+      echo 'Duplicate config variable in conditional: index-file.names' >&2
+      exit 255
+      ;;
+    missing-runtime-status-255)
+      echo 'source: /opt/var/lib/mndw/lighttpd-runtime.conf parser failed: file not found' >&2
+      exit 255
+      ;;
+    *)
+      echo "unexpected FAKE_PRINT_CONFIG_MODE: \${FAKE_PRINT_CONFIG_MODE:-}" >&2
+      exit 2
+      ;;
+  esac
+fi
 if [ "$1" = "-t" ]; then
   if grep -q '^server.port = ' "$FAKE_RUNTIME_FILE" && grep -q '^server.document-root = ' "$FAKE_RUNTIME_FILE"; then
     echo 'Duplicate config variable in conditional 0 global: server.document-root' >&2
@@ -248,6 +310,9 @@ case "$1" in
       echo "Checking lighttpd... dead." >&2
       exit 1
     fi
+    if [ "\${FAKE_STOP_CLEARS_LISTENERS:-0}" = "1" ]; then
+      : > "$FAKE_LISTENER_FILE"
+    fi
     exit 0
     ;;
   start|restart)
@@ -289,6 +354,7 @@ const runInstall = (fixture: InstallFixture, extraEnv: Record<string, string> = 
       MNDW_LIGHTTPD_INIT: fixture.lighttpdInit,
       MNDW_MNDWD_INIT: fixture.mndwdInit,
       MNDW_LIGHTTPD_CONF: path.join(fixture.root, 'etc', 'lighttpd.conf'),
+      MNDW_LIGHTTPD_CONFD: path.join(fixture.root, 'etc', 'lighttpd', 'conf.d'),
       MNDW_LIGHTTPD_ERRORLOG: fixture.errorLog,
       MNDW_RENDER_HELPER: renderer,
       MNDW_RUNTIME_CONF: fixture.runtime,
@@ -302,6 +368,7 @@ const runInstall = (fixture: InstallFixture, extraEnv: Record<string, string> = 
       MNDW_PROBE_KILL_TIMEOUT: '2',
       MNDW_PROBE_MODE: 'ready',
       FAKE_PROBE_MODE: 'ready',
+      FAKE_PRINT_CONFIG_MODE: 'empty',
       FAKE_DAEMON_MODE: 'success',
       FAKE_LISTENER_FILE: fixture.listeners,
       FAKE_ORDER: fixture.order,
@@ -313,6 +380,17 @@ const runInstall = (fixture: InstallFixture, extraEnv: Record<string, string> = 
     },
   );
 
+const expectNoEvidenceArtifacts = (fixture: InstallFixture): void => {
+  const tempRoot = path.dirname(fixture.probeLog);
+  const artifacts = fs.existsSync(tempRoot)
+    ? fs.readdirSync(tempRoot).filter((entry) =>
+      /^(lighttpd-(live|foreign|owned)-ports|lighttpd-printed-config)\./.test(entry)
+    )
+    : [];
+
+  expect(artifacts).toEqual([]);
+};
+
 describe('mndw-lighttpd-port.sh', () => {
   it('selects preferred port 99 when no candidate is listening', () => {
     const fixture = makeFixture();
@@ -322,7 +400,7 @@ describe('mndw-lighttpd-port.sh', () => {
     expect(String(result.stdout ?? '').trim()).toBe('99');
   });
 
-  it('skips occupied candidates and returns the first free port', () => {
+  it('skips occupied and browser-blocked candidates', () => {
     const fixture = makeFixture();
 
     writeProcListeners(fixture, [99, 100]);
@@ -330,7 +408,40 @@ describe('mndw-lighttpd-port.sh', () => {
     const result = runScript(portHelper, ['select-port'], fixture);
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(String(result.stdout ?? '').trim()).toBe('101');
+    expect(String(result.stdout ?? '').trim()).toBe('105');
+  });
+
+  it('does not reuse a browser-blocked persisted port', () => {
+    const fixture = makeFixture();
+    const statePath = path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port');
+
+    fs.mkdirSync(path.dirname(statePath), {recursive: true});
+    fs.writeFileSync(statePath, '101\n');
+
+    const result = runScript(portHelper, ['select-port'], fixture);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(String(result.stdout ?? '').trim()).toBe('99');
+  });
+
+  it('recognizes browser-blocked ports in the candidate range', () => {
+    const fixture = makeFixture();
+    const result = runEvidenceFunction(
+      `
+for port in 101 102 103 104 109 110 111 113 115 117 119 123 135 137 139 143 161 179; do
+  browser_blocks_port "$port" || exit 1
+done
+for port in 99 100 105 199; do
+  browser_blocks_port "$port" && exit 1
+done
+printf '%s\\n' valid
+`,
+      '',
+      fixture,
+    );
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(String(result.stdout ?? '').trim()).toBe('valid');
   });
 
   it('reuses a persisted free port', () => {
@@ -338,12 +449,12 @@ describe('mndw-lighttpd-port.sh', () => {
     const statePath = path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port');
 
     fs.mkdirSync(path.dirname(statePath), {recursive: true});
-    fs.writeFileSync(statePath, '123\n');
+    fs.writeFileSync(statePath, '124\n');
 
     const result = runScript(portHelper, ['select-port'], fixture);
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
-    expect(String(result.stdout ?? '').trim()).toBe('123');
+    expect(String(result.stdout ?? '').trim()).toBe('124');
   });
 
   it('reselects when persisted port is occupied', () => {
@@ -351,8 +462,8 @@ describe('mndw-lighttpd-port.sh', () => {
     const statePath = path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port');
 
     fs.mkdirSync(path.dirname(statePath), {recursive: true});
-    fs.writeFileSync(statePath, '123\n');
-    writeProcListeners(fixture, [123]);
+    fs.writeFileSync(statePath, '124\n');
+    writeProcListeners(fixture, [124]);
 
     const result = runScript(portHelper, ['select-port'], fixture);
 
@@ -411,6 +522,56 @@ describe('mndw-lighttpd-port.sh', () => {
     expect(runScript(portHelper, ['read-state'], fixture).status).not.toBe(0);
     expect(runScript(portHelper, ['write-state', '8080'], fixture).status).not.toBe(0);
   });
+});
+
+describe('mndw-lighttpd-port-evidence.sh', () => {
+  const extractionCases = [
+    {
+      name: 'bare assignment',
+      input: 'server.port = 99\n',
+      expected: ['99'],
+    },
+    {
+      name: 'compact assignment with inline comment',
+      input: 'server.port:=100 # dashboard\n',
+      expected: ['100'],
+    },
+    {
+      name: 'IPv4 socket endpoint',
+      input: '$SERVER["socket"] == "127.0.0.1:101" {\n',
+      expected: ['101'],
+    },
+    {
+      name: 'hostname socket endpoint',
+      input: '$SERVER["socket"] == "router.local:102" {\n',
+      expected: ['102'],
+    },
+    {
+      name: 'wildcard socket endpoint',
+      input: '$SERVER["socket"] == "*:103" {\n',
+      expected: ['103'],
+    },
+    {
+      name: 'bracketed IPv6 socket endpoint',
+      input: '$SERVER["socket"] == "[::]:104" {\n',
+      expected: ['104'],
+    },
+    {
+      name: 'out-of-range values',
+      input: 'server.port = 98\nserver.port = 200\n$SERVER["socket"] == ":105" {\n',
+      expected: ['105'],
+    },
+  ];
+
+  for (const extractionCase of extractionCases) {
+    it(`extracts ${extractionCase.name}`, () => {
+      const fixture = makeFixture();
+      const result = runEvidenceFunction('extract_configured_ports', extractionCase.input, fixture);
+
+      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+      expect(String(result.stdout ?? '').trim().split('\n').filter(Boolean)).toEqual(extractionCase.expected);
+    });
+  }
 });
 
 describe('mndw-render-lighttpd.sh', () => {
@@ -473,6 +634,183 @@ describe('mndw-render-lighttpd.sh', () => {
 });
 
 describe('mndw-lighttpd-port.sh install', () => {
+  it('reserves a foreign listener observed before stopping shared lighttpd', () => {
+    const fixture = makeInstallFixture('ready');
+    fs.writeFileSync(fixture.listeners, '99\n8080\n');
+
+    const result = runInstall(fixture, {FAKE_STOP_CLEARS_LISTENERS: '1'});
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('port 100');
+    expect(fs.readFileSync(fixture.runtime, 'utf8')).toContain(':100');
+  });
+
+  it('reuses a live persisted port owned only by mndw config', () => {
+    const fixture = makeInstallFixture('ready');
+    const statePath = path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port');
+    fs.writeFileSync(statePath, '99\n');
+    fs.writeFileSync(fixture.runtime, '$SERVER["socket"] == ":99" {\n}\n');
+    fs.writeFileSync(fixture.listeners, '99\n8080\n');
+
+    const result = runInstall(fixture, {FAKE_STOP_CLEARS_LISTENERS: '1'});
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('port 99');
+  });
+
+  it('does not reuse persisted port when foreign config also claims it', () => {
+    const fixture = makeInstallFixture('ready');
+    const statePath = path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port');
+    const confd = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d');
+    fs.writeFileSync(statePath, '99\n');
+    fs.writeFileSync(fixture.runtime, '$SERVER["socket"] == ":99" {\n}\n');
+    fs.mkdirSync(confd, {recursive: true});
+    fs.writeFileSync(path.join(confd, '80-w4s.conf'), 'server.port := 99\n$SERVER["socket"] == ":99" {\n}\n');
+    fs.writeFileSync(fixture.listeners, '99\n8080\n');
+
+    const result = runInstall(fixture, {FAKE_STOP_CLEARS_LISTENERS: '1'});
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('port 100');
+  });
+
+  it('uses printed config as supplemental evidence when no persisted state exists', () => {
+    const fixture = makeInstallFixture('ready');
+    const result = runInstall(fixture, {FAKE_PRINT_CONFIG_MODE: 'web4static'});
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('port 100');
+  });
+
+  it('uses top-level conf.d claims without relying on printed config', () => {
+    const fixture = makeInstallFixture('ready');
+    const confd = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d');
+    fs.mkdirSync(confd, {recursive: true});
+    fs.writeFileSync(path.join(confd, '80-w4s.conf'), 'server.port := 99\n$SERVER["socket"] == ":99" {\n}\n');
+
+    const result = runInstall(fixture, {FAKE_PRINT_CONFIG_MODE: 'empty'});
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('port 100');
+  });
+
+  it('uses conf.d evidence when fresh-install print-config fails on missing runtime include', () => {
+    const fixture = makeInstallFixture('ready');
+    const confd = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d');
+    fs.mkdirSync(confd, {recursive: true});
+    fs.writeFileSync(path.join(confd, '80-w4s.conf'), 'server.port := 99\n$SERVER["socket"] == ":99" {\n}\n');
+
+    const result = runInstall(fixture, {FAKE_PRINT_CONFIG_MODE: 'missing-runtime-status-255'});
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('port 100');
+  });
+
+  it('accepts missing-runtime print failure when fresh install has no foreign claims', () => {
+    const fixture = makeInstallFixture('ready');
+    const result = runInstall(fixture, {FAKE_PRINT_CONFIG_MODE: 'missing-runtime-status-255'});
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('port 99');
+  });
+
+  it('aborts before stopping lighttpd when conf.d path is not inspectable as a directory', () => {
+    const fixture = makeInstallFixture('ready');
+    const confd = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d');
+    fs.mkdirSync(path.dirname(confd), {recursive: true});
+    fs.writeFileSync(confd, 'not a directory\n');
+
+    const result = runInstall(fixture);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(`cannot inspect lighttpd config directory: ${confd}`);
+    expect(fs.readFileSync(fixture.order, 'utf8')).not.toContain('lighttpd-init:stop');
+    expectNoEvidenceArtifacts(fixture);
+  });
+
+  it('aborts before stopping lighttpd when a top-level .conf entry is not a readable regular file', () => {
+    const fixture = makeInstallFixture('ready');
+    const badConfig = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d', 'bad.conf');
+    fs.mkdirSync(badConfig, {recursive: true});
+
+    const result = runInstall(fixture);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(`cannot read lighttpd config: ${badConfig}`);
+    expect(fs.readFileSync(fixture.order, 'utf8')).not.toContain('lighttpd-init:stop');
+    expectNoEvidenceArtifacts(fixture);
+  });
+
+  it('aborts before stopping lighttpd when mndw runtime config is not a regular file', () => {
+    const fixture = makeInstallFixture('ready');
+    fs.mkdirSync(fixture.runtime, {recursive: true});
+
+    const result = runInstall(fixture);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(`cannot read lighttpd config: ${fixture.runtime}`);
+    expect(fs.readFileSync(fixture.order, 'utf8')).not.toContain('lighttpd-init:stop');
+    expectNoEvidenceArtifacts(fixture);
+  });
+
+  it('accepts an absent conf.d as empty foreign evidence', () => {
+    const fixture = makeInstallFixture('ready');
+    const result = runInstall(fixture, {FAKE_PRINT_CONFIG_MODE: 'unsupported'});
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+  });
+
+  it('selects around web4static before stopping a healthy shared lighttpd', () => {
+    const fixture = makeInstallFixture('ready');
+    const confd = path.join(fixture.root, 'etc', 'lighttpd', 'conf.d');
+    fs.mkdirSync(confd, {recursive: true});
+    fs.writeFileSync(
+      path.join(confd, '80-w4s.conf'),
+      'server.port := 99\n$SERVER["socket"] == ":99" {\n  index-file.names = ( "index.php" )\n}\n',
+    );
+    fs.writeFileSync(fixture.listeners, '99\n8080\n');
+
+    const result = runInstall(fixture, {
+      FAKE_PRINT_CONFIG_MODE: 'duplicate-status-255',
+      FAKE_STOP_CLEARS_LISTENERS: '1',
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout).toContain('port 100');
+    expect(fs.readFileSync(fixture.runtime, 'utf8')).toContain(':100');
+  });
+
+  it('rejects extra direct select-port arguments', () => {
+    const fixture = makeFixture();
+    const result = runScript(portHelper, ['select-port', 'extra'], fixture);
+
+    expect(result.status).toBe(2);
+  });
+
+  it('honors config overrides in direct select-port mode', () => {
+    const fixture = makeFixture();
+    const dataDir = path.join(fixture.root, 'custom-data');
+    const runtime = path.join(dataDir, 'runtime.conf');
+    const confd = path.join(dataDir, 'conf.d');
+    const configFile = path.join(fixture.root, 'etc', 'mndw.conf');
+    const statePath = path.join(fixture.root, 'var', 'lib', 'mndw', 'lighttpd-port');
+    fs.mkdirSync(confd, {recursive: true});
+    fs.mkdirSync(path.dirname(configFile), {recursive: true});
+    fs.mkdirSync(path.dirname(statePath), {recursive: true});
+    fs.writeFileSync(
+      configFile,
+      `DATA_DIR="${dataDir}"\nMNDW_RUNTIME_CONF="${runtime}"\nMNDW_LIGHTTPD_CONFD="${confd}"\n`,
+    );
+    fs.writeFileSync(runtime, '$SERVER["socket"] == ":99" {\n}\n');
+    fs.writeFileSync(path.join(confd, '80-w4s.conf'), 'server.port := 99\n');
+    fs.writeFileSync(statePath, '99\n');
+
+    const result = runScript(portHelper, ['select-port'], fixture, {MNDW_CONFIG_FILE: configFile});
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(String(result.stdout ?? '').trim()).toBe('100');
+  });
+
   it('renders override mode when port-80 bind failure is on probe stderr', () => {
     const fixture = makeInstallFixture('port80');
     const result = runInstall(fixture, {FAKE_PROBE_MODE: 'port80'});
@@ -501,6 +839,7 @@ describe('mndw-lighttpd-port.sh install', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('lighttpd failed to stop');
+    expectNoEvidenceArtifacts(fixture);
   });
 
   it('renders override mode when IPv6 port-80 bind failure is on probe stderr', () => {
@@ -617,6 +956,7 @@ describe('mndw-lighttpd-port.sh install', () => {
     expect(result.stderr).toContain('exhausted mndw port range 99..199');
     expect(result.stdout).not.toContain('installed');
     expect(fs.existsSync(fixture.probeLog)).toBe(true);
+    expectNoEvidenceArtifacts(fixture);
   }, 30000);
 
   it('bounds cleanup when a probe ignores SIGTERM', () => {
@@ -631,5 +971,6 @@ describe('mndw-lighttpd-port.sh install', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('lighttpd probe failed');
     expect(fs.existsSync(fixture.probeLog)).toBe(true);
+    expectNoEvidenceArtifacts(fixture);
   }, 10000);
 });

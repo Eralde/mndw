@@ -154,6 +154,9 @@ describe('collectStagePaths', () => {
     expect(paths.initScript).toBe(path.join('opt', 'etc', 'init.d', 'S70mndwd'));
     expect(paths.moduleGuard).toBe(path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'));
     expect(paths.portHelper).toBe(path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'));
+    expect(paths.evidenceHelper).toBe(
+      path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port-evidence.sh'),
+    );
     expect(paths.renderer).toBe(path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-render-lighttpd.sh'));
     expect(paths.daemonConfig).toBe(path.join('opt', 'etc', 'mndw.conf'));
   });
@@ -194,6 +197,7 @@ describe('verifyStage', () => {
     stageFile('opt/etc/init.d/S70mndwd');
     stageFile('opt/share/www/mndw/bin/mndw-load-modules.sh');
     stageFile('opt/share/www/mndw/bin/mndw-lighttpd-port.sh');
+    stageFile('opt/share/www/mndw/bin/mndw-lighttpd-port-evidence.sh');
     stageFile('opt/share/www/mndw/bin/mndw-render-lighttpd.sh');
     stageFile('opt/etc/mndw.conf');
   };
@@ -206,6 +210,14 @@ describe('verifyStage', () => {
 
   it('throws when daemon binary is missing', () => {
     expect(() => verifyStage(tmpDir)).toThrow('Missing');
+  });
+
+  it('throws when lighttpd port evidence helper is missing', () => {
+    stageRequired();
+    fs.rmSync(path.join(tmpDir, 'opt/share/www/mndw/bin/mndw-lighttpd-port-evidence.sh'));
+    stageFile('opt/share/www/mndw/plugins/some-plugin/manifest.json');
+
+    expect(() => verifyStage(tmpDir)).toThrow('lighttpd port evidence helper');
   });
 
   it('throws when index.html is missing', () => {
@@ -514,11 +526,23 @@ describe('stageDeployFiles', () => {
 
       const guardPath = path.join(stagingDir, 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh');
       const portHelperPath = path.join(stagingDir, 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh');
+      const evidenceHelperPath = path.join(
+        stagingDir,
+        'opt',
+        'share',
+        'www',
+        'mndw',
+        'bin',
+        'mndw-lighttpd-port-evidence.sh',
+      );
       const rendererPath = path.join(stagingDir, 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-render-lighttpd.sh');
 
       expect(fs.existsSync(guardPath)).toBe(true);
       expect(isExecutable(fs.statSync(guardPath).mode)).toBe(true);
       expect(fs.statSync(portHelperPath).mode.toString(8).slice(-3)).toBe('755');
+      expect(fs.existsSync(evidenceHelperPath)).toBe(true);
+      expect(fs.statSync(evidenceHelperPath).mode.toString(8).slice(-3)).toBe('755');
+      expect(fs.readFileSync(evidenceHelperPath, 'utf8')).toContain('extract_configured_ports');
       expect(fs.statSync(rendererPath).mode.toString(8).slice(-3)).toBe('755');
 
       const confPath = path.join(stagingDir, 'opt', 'etc', 'lighttpd', 'conf.d', '81-mndw.conf');

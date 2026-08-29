@@ -19,16 +19,18 @@ set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 
+sh "$repo_root/build/packaging/ci/test-lighttpd-port-busybox.sh"
+
 cd "$repo_root/daemon/mndwd"
 
 export GOCACHE="$repo_root/.cache/go-build"
 go test ./cmd/mndwd/... ./internal/backend/... ./internal/httpx/...
 
 cd "$repo_root/plugins/examples/ping-widget/backend"
-go test ./...
+GOWORK=off go test ./...
 
 cd "$repo_root/plugins/builtin/mws-page/backend"
-go test ./... -run '^$'
+GOWORK=off go test ./... -run '^$'
 
 cd "$repo_root/plugins/builtin/terminal-page/backend"
 GOWORK=off go test ./...

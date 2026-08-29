@@ -11,8 +11,9 @@ import {z} from 'zod';
  *    a known-unapproved / disabled binding rejects fast (`BackendNotApproved` / `BackendDisabled`);
  *  - the daemon is authoritative - its structured error envelope codes
  *    `NOT_APPROVED`, `DISABLED`, `ROUTE_NOT_FOUND`, `BACKEND_STARTING`,
- *    `BACKEND_UNAVAILABLE`, `BACKEND_INCOMPATIBLE`, `BACKEND_MAINTENANCE`, and
- *    `BAD_GATEWAY` map onto the same typed errors when state changed after load.
+ *    `BACKEND_UNAVAILABLE`, `BACKEND_INCOMPATIBLE`, `BACKEND_MAINTENANCE`,
+ *    `BACKEND_BLOCKED`, and `BAD_GATEWAY` map onto the same typed errors when
+ *    state changed after load.
  *
  * Plugins handle one error family either way. `status()` is separate: it is a
  * live, passive, bound-plugin query and is not a readiness probe.
@@ -213,6 +214,19 @@ export class BackendMaintenance extends Error {
   }
 }
 
+export class BackendBlocked extends Error {
+  public readonly daemonCode = 'BACKEND_BLOCKED';
+
+  constructor(
+    public readonly id: string,
+    public readonly blockers: BackendBlocker[],
+    public readonly retryAfterSeconds: number | null,
+  ) {
+    super(`Backend "${id}" is blocked on an unmet activation prerequisite`);
+    this.name = 'BackendBlocked';
+  }
+}
+
 export class BackendBadGateway extends Error {
   public readonly daemonCode = 'BAD_GATEWAY';
 
@@ -255,10 +269,25 @@ const parseRetryAfterSeconds = (response: Response): number | null => {
   return Number.isSafeInteger(value) ? value : null;
 };
 
+// The daemon's structured error envelope; `detail` is code-specific (e.g. the
+// activation blockers carried by `BACKEND_BLOCKED`).
+interface DaemonError {
+  code?: string;
+  detail?: unknown;
+}
+
+// Parse the activation blockers a `BACKEND_BLOCKED` envelope carries in `detail`.
+// A malformed or absent detail degrades to an empty list rather than throwing.
+const parseBlockers = (detail: unknown): BackendBlocker[] => {
+  const parsed = z.array(backendBlockerSchema).safeParse(detail);
+
+  return parsed.success ? parsed.data : [];
+};
+
 // Single source of truth for the daemon's structured error codes: each maps to the typed error it
 // throws. Membership (`code in ERROR_BY_CODE`) replaces a separate code Set — adding a code here is
 // enough to both recognize and handle it.
-const ERROR_BY_CODE: Record<string, (id: string, res: Response) => Error> = {
+const ERROR_BY_CODE: Record<string, (id: string, res: Response, error: DaemonError) => Error> = {
   DISABLED: (id) => new BackendDisabled(id),
   NOT_APPROVED: (id) => new BackendNotApproved(id),
   ROUTE_NOT_FOUND: (id) => new BackendUnknownId(id),
@@ -266,6 +295,7 @@ const ERROR_BY_CODE: Record<string, (id: string, res: Response) => Error> = {
   BACKEND_UNAVAILABLE: (id) => new BackendUnavailable(id),
   BACKEND_INCOMPATIBLE: (id) => new BackendIncompatible(id),
   BACKEND_MAINTENANCE: (id, res) => new BackendMaintenance(id, parseRetryAfterSeconds(res)),
+  BACKEND_BLOCKED: (id, res, error) => new BackendBlocked(id, parseBlockers(error.detail), parseRetryAfterSeconds(res)),
   BAD_GATEWAY: (id) => new BackendBadGateway(id),
 };
 
@@ -329,23 +359,23 @@ const mapResponse = async (id: string, res: Response): Promise<Response> => {
     return res;
   }
 
-  let code: string | undefined;
+  let error: DaemonError | undefined;
 
   try {
-    const payload = await res.clone().json() as {error?: {code?: string}};
+    const payload = await res.clone().json() as {error?: DaemonError};
 
-    code = payload.error?.code;
+    error = payload.error;
   } catch {
     return res;
   }
 
-  const make = code ? ERROR_BY_CODE[code] : undefined;
+  const make = error?.code ? ERROR_BY_CODE[error.code] : undefined;
 
-  if (!make) {
+  if (!make || !error) {
     return res;
   }
 
-  throw make(id, res);
+  throw make(id, res, error);
 };
 
 const doFetch = async (

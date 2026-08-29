@@ -116,7 +116,9 @@ func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *ht
 		return routeDecision{}, false
 	}
 
-	if g.isMaintenance(request.PathValue("name")) {
+	// Platform maintenance (daemon shutdown / package replacement) gates every
+	// backend, including plugins that never resolve, so it is checked first.
+	if g.isPlatformMaintenance() {
 		g.writeMaintenance(writer)
 
 		return routeDecision{}, false
@@ -130,6 +132,23 @@ func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *ht
 		}
 
 		g.writeError(writer, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, "no such backend route"))
+
+		return routeDecision{}, false
+	}
+
+	// An unmet activation prerequisite (e.g. an unconfigured persistent-RCI
+	// controller token or an ungranted permission) is a steady state, not the
+	// transient stop the traffic gate represents. Surfacing it before the
+	// per-plugin traffic gate lets callers tell "won't start until a prerequisite
+	// is met" apart from "briefly under maintenance while restarting".
+	if blockers := g.activationBlockers(plugin); len(blockers) > 0 {
+		g.writeBlocked(writer, blockers)
+
+		return routeDecision{}, false
+	}
+
+	if g.pluginTrafficBlocked(request.PathValue("name")) {
+		g.writeMaintenance(writer)
 
 		return routeDecision{}, false
 	}
@@ -455,22 +474,49 @@ func (g *Gateway) BeginPlatformMaintenance() {
 }
 
 func (g *Gateway) isMaintenance(pluginID string) bool {
+	return g.isPlatformMaintenance() || g.pluginTrafficBlocked(pluginID)
+}
+
+// isPlatformMaintenance reports the coarse gate applied to every backend during
+// daemon shutdown or package replacement.
+func (g *Gateway) isPlatformMaintenance() bool {
 	g.maintenanceMu.RLock()
 
-	platformMaintenance := g.platformMaintenance
+	defer g.maintenanceMu.RUnlock()
+
+	return g.platformMaintenance
+}
+
+// pluginTrafficBlocked reports the per-plugin lifecycle traffic gate, which is
+// held only while a plugin is stopping, restarting, or otherwise mid-operation.
+func (g *Gateway) pluginTrafficBlocked(pluginID string) bool {
+	g.maintenanceMu.RLock()
+
 	predicate := g.trafficBlock
 
 	g.maintenanceMu.RUnlock()
-
-	if platformMaintenance {
-		return true
-	}
 
 	if predicate == nil {
 		return false
 	}
 
 	return predicate(pluginID)
+}
+
+// activationBlockers returns the unmet activation prerequisites for a plugin's
+// declared permissions, in manifest order, or nil when all are satisfied.
+func (g *Gateway) activationBlockers(plugin *registry.Plugin) []ActivationBlocker {
+	if g.activationGates == nil || plugin == nil || plugin.Manifest == nil || plugin.Manifest.Backend == nil {
+		return nil
+	}
+
+	// Activation gates are enforced only for service backends (see serviceSpec);
+	// exec backends are never gated, so never report them as blocked.
+	if plugin.Manifest.Backend.Kind == nil || *plugin.Manifest.Backend.Kind != manifest.BackendKindService {
+		return nil
+	}
+
+	return g.activationGates.Evaluate(plugin.Name, plugin.Manifest.Permissions)
 }
 
 func (g *Gateway) trackWebSocket(connection *websocket.Conn, pluginID string) {
@@ -548,6 +594,21 @@ func (g *Gateway) writeError(writer http.ResponseWriter, apiErr *httpx.APIError)
 func (g *Gateway) writeMaintenance(writer http.ResponseWriter) {
 	writer.Header().Set("Retry-After", "2")
 	g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendMaintenance, "backend is under maintenance"))
+}
+
+func (g *Gateway) writeBlocked(writer http.ResponseWriter, blockers []ActivationBlocker) {
+	detail := make([]backendStatusBlocker, 0, len(blockers))
+
+	for _, blocker := range blockers {
+		detail = append(detail, backendStatusBlocker{
+			Permission:   blocker.Permission,
+			Reason:       blocker.Reason,
+			Prerequisite: blocker.Prerequisite,
+		})
+	}
+
+	g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendBlocked,
+		"backend is blocked on an unmet activation prerequisite").WithDetail(detail))
 }
 
 func resolveRoute(m *manifest.Manifest, method, path string) (manifest.BackendRoute, bool) {

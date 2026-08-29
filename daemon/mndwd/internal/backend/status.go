@@ -59,6 +59,26 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 		return response
 	}
 
+	// An unmet activation prerequisite is a steady state, distinct from the
+	// transient traffic gate. Report it ahead of maintenance so the frontend can
+	// render the missing prerequisite rather than a generic "under maintenance".
+	if g.activationGates != nil && *plugin.Manifest.Backend.Kind == manifest.BackendKindService {
+		if blockers := g.activationGates.Evaluate(plugin.Name, plugin.Manifest.Permissions); len(blockers) > 0 {
+			response.State = "blocked"
+			response.Blockers = make([]backendStatusBlocker, 0, len(blockers))
+
+			for _, blocker := range blockers {
+				response.Blockers = append(response.Blockers, backendStatusBlocker{
+					Permission:   blocker.Permission,
+					Reason:       blocker.Reason,
+					Prerequisite: blocker.Prerequisite,
+				})
+			}
+
+			return response
+		}
+	}
+
 	if g.isMaintenance(plugin.Name) {
 		response.State = "maintenance"
 		response.RetryAfterSeconds = intPointer(2)
@@ -92,25 +112,6 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 		response.SupportedProtocols = &supportedProtocols
 
 		return response
-	}
-
-	if g.activationGates != nil {
-		blockers := g.activationGates.Evaluate(plugin.Name, plugin.Manifest.Permissions)
-
-		if len(blockers) > 0 {
-			response.State = "blocked"
-			response.Blockers = make([]backendStatusBlocker, 0, len(blockers))
-
-			for _, blocker := range blockers {
-				response.Blockers = append(response.Blockers, backendStatusBlocker{
-					Permission:   blocker.Permission,
-					Reason:       blocker.Reason,
-					Prerequisite: blocker.Prerequisite,
-				})
-			}
-
-			return response
-		}
 	}
 
 	status := g.supervisor.Status(plugin.Name)

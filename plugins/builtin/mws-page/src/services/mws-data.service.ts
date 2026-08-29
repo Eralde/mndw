@@ -1,5 +1,5 @@
 import {DestroyRef, Injectable, computed, inject, signal} from '@angular/core';
-import {type BackendBlocker, type BackendClient, type BackendStatus, type LoadState} from '@mndw/sdk';
+import {BackendBlocked, type BackendBlocker, type BackendClient, type BackendStatus, type LoadState} from '@mndw/sdk';
 import {
   type Observable,
   ReplaySubject,
@@ -428,8 +428,18 @@ export class MwsDataService {
       return {kind: 'availability', availability: 'unavailable'};
     }
 
+    if (code === 'BACKEND_BLOCKED') {
+      const blockers = error instanceof BackendBlocked ? error.blockers : [];
+
+      return {
+        kind: 'availability',
+        availability: 'blocked',
+        setupReasons: blockers.length > 0 ? this.classifySetupReasons(blockers) : ['generic'],
+      };
+    }
+
     if (code === 'DISABLED' || code === 'NOT_APPROVED') {
-      return {kind: 'availability', availability: 'blocked'};
+      return {kind: 'availability', availability: 'blocked', setupReasons: ['generic']};
     }
 
     if (code === 'BACKEND_INCOMPATIBLE') {

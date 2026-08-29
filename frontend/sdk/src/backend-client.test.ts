@@ -1,6 +1,7 @@
 import {describe, expect, it, vi} from 'vitest';
 import {
   BackendBadGateway,
+  BackendBlocked,
   type BackendDescriptor,
   BackendDisabled,
   BackendIncompatible,
@@ -171,6 +172,39 @@ describe('createBackendClient.fetch', () => {
       id: 'stats',
       daemonCode: 'BACKEND_STARTING',
       retryAfterSeconds: null,
+    });
+  });
+
+  it('maps BACKEND_BLOCKED and parses its activation blockers from detail', async () => {
+    const detail = [
+      {permission: 'persistent-rci-session:write', reason: 'not-granted'},
+      {permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
+        prerequisite: 'controller-token'},
+    ];
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({error: {code: 'BACKEND_BLOCKED', message: 'x', detail}}), {
+        status: 503,
+        headers: {'Retry-After': '2'},
+      }),
+    );
+
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toBeInstanceOf(BackendBlocked);
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
+      id: 'stats',
+      daemonCode: 'BACKEND_BLOCKED',
+      retryAfterSeconds: 2,
+      blockers: detail,
+    });
+  });
+
+  it('maps BACKEND_BLOCKED with a malformed detail to an empty blocker list', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({error: {code: 'BACKEND_BLOCKED', message: 'x', detail: 'nope'}}), {status: 503}),
+    );
+
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
+      daemonCode: 'BACKEND_BLOCKED',
+      blockers: [],
     });
   });
 

@@ -50,6 +50,7 @@ export type {MwsMember, MwsMemberEligibility, MwsMemberEligibilityReason} from '
 export {ManifestValidationError, validateManifest} from './manifest-validator.js';
 export {
   BackendBadGateway,
+  BackendBlocked,
   BackendDisabled,
   BackendIncompatible,
   BackendMaintenance,

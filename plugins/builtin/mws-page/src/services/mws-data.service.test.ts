@@ -1,6 +1,7 @@
 import {TestBed} from '@angular/core/testing';
 import {
   BackendBadGateway,
+  BackendBlocked,
   BackendDisabled,
   BackendIncompatible,
   BackendMaintenance,
@@ -121,6 +122,10 @@ describe('MwsDataService', () => {
       ['unavailable', new BackendUnavailable('nodes')],
       ['blocked', new BackendDisabled('nodes')],
       ['blocked', new BackendNotApproved('nodes')],
+      [
+        'blocked',
+        new BackendBlocked('nodes', [{permission: 'persistent-rci-session:write', reason: 'not-granted'}], 2),
+      ],
       ['incompatible', new BackendIncompatible('nodes')],
     ] as const,
   )('maps lifecycle error to immediate %s availability', async (expected, error) => {
@@ -161,6 +166,28 @@ describe('MwsDataService', () => {
     // 'limited' presentation is debounced (>=2 consecutive limited polls); a single poll leaves
     // presentation at its initial 'checking'. See the dedicated debounce test above.
     expect(service.extraFeaturesPresentation()).toBe(expected === 'limited' ? 'checking' : expected);
+  });
+
+  it('derives setup reasons from a data-route BACKEND_BLOCKED error', async () => {
+    const error = new BackendBlocked(
+      'nodes',
+      [
+        {permission: 'persistent-rci-session:write', reason: 'not-granted'},
+        {permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
+          prerequisite: 'controller-token'},
+      ],
+      2,
+    );
+    const service = makeLiveServiceWithBackend(
+      goodApi(),
+      fakeBackend(vi.fn().mockRejectedValueOnce(error)),
+    );
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(service.extraFeaturesAvailability()).toBe('blocked');
+    expect(service.extraFeaturesSetupReasons()).toEqual(['permission', 'controller-token']);
   });
 
   it('resets availability and presentation before every reconnect cycle', async () => {

@@ -44,6 +44,7 @@ const (
 	CodeBackendUnavailable      = "BACKEND_UNAVAILABLE"
 	CodeBackendStarting         = "BACKEND_STARTING"
 	CodeBackendMaintenance      = "BACKEND_MAINTENANCE"
+	CodeBackendBlocked          = "BACKEND_BLOCKED"
 	CodeBackendIncompatible     = "BACKEND_INCOMPATIBLE"
 	CodeCsrfRequired            = "CSRF_REQUIRED"
 	CodeUnauthorized            = "UNAUTHORIZED"

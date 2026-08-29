@@ -2,7 +2,7 @@
   "l10n": {
     "probe": "Проба MWS"
   },
-  "title": "Карта MWS",
+  "title": "MWS",
   "summary": {
     "mock-data": "Тестовые данные: экстендеров — {extenders}, клиентов — {clients}",
     "label": "Сводка карты",

@@ -2,7 +2,7 @@
   "l10n": {
     "probe": "MWS English probe"
   },
-  "title": "MWS Map",
+  "title": "MWS",
   "summary": {
     "mock-data": "Mock data: {extenders} extenders · {clients} clients",
     "label": "Map summary",

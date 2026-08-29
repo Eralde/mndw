@@ -50,6 +50,7 @@ describe('opkg-client', () => {
     expect(url).toBe(`/api/mgmt/opkg/${path}`);
     expect(init?.method).toBe('POST');
     expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
+    expect(new Headers(init?.headers).get('X-Mndw-Csrf')).toBe('1');
     expect(JSON.parse(init?.body as string)).toEqual({packages});
     expect(result).toEqual({message: 'done', packages});
   });
@@ -63,6 +64,7 @@ describe('opkg-client', () => {
 
     expect(url).toBe('/api/mgmt/opkg/update');
     expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('X-Mndw-Csrf')).toBe('1');
     expect(JSON.parse(init?.body as string)).toEqual({});
     expect(result).toEqual({message: 'Package metadata refreshed'});
   });

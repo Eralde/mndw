@@ -460,6 +460,10 @@ func derivePackageStatus(name string, installedMap, availableMap map[string]Pack
 	return "installed"
 }
 
+func isArchitectureWarning(line string) bool {
+	return strings.HasPrefix(line, "Package ") && strings.HasSuffix(line, " has no valid architecture, ignoring.")
+}
+
 func parseInfoBlocks(out string) ([]packageInfoBlock, error) {
 	blocks := make([]packageInfoBlock, 0)
 	for _, rawBlock := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n\n") {
@@ -590,6 +594,12 @@ func parseNames(out string) []string {
 	names := make([]string, 0)
 
 	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+
+		if line == "" || isArchitectureWarning(line) {
+			continue
+		}
+
 		fields := strings.Fields(line)
 
 		if len(fields) == 0 {
@@ -606,11 +616,13 @@ func parseEntries(out string) ([]PackageEntry, error) {
 	entries := make([]PackageEntry, 0)
 
 	for i, rawLine := range strings.Split(out, "\n") {
-		if strings.TrimSpace(rawLine) == "" {
+		line := strings.TrimSuffix(rawLine, "\r")
+		trimmedLine := strings.TrimSpace(line)
+
+		if trimmedLine == "" || isArchitectureWarning(trimmedLine) {
 			continue
 		}
 
-		line := strings.TrimSuffix(rawLine, "\r")
 		parts := strings.SplitN(line, " - ", 3)
 
 		if len(parts) < 2 {

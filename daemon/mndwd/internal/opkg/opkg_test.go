@@ -89,6 +89,16 @@ func TestParseNames(t *testing.T) {
 	}
 }
 
+func TestParseNamesIgnoresArchitectureWarnings(t *testing.T) {
+	out := "Package mndw version 0.0.1 has no valid architecture, ignoring.\n" +
+		"curl - 8.0.1-1 - a tool\n"
+
+	got := parseNames(out)
+	if !slices.Equal(got, []string{"curl"}) {
+		t.Errorf("parseNames = %v, want [curl]", got)
+	}
+}
+
 func TestParseEntries(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -312,6 +322,37 @@ func TestExecListMergeAndOrphan(t *testing.T) {
 	}
 	if entries[2].Name != "socat" || entries[2].Status != "available" {
 		t.Errorf("socat entry = %+v", entries[2])
+	}
+}
+
+func TestExecListIgnoresArchitectureWarnings(t *testing.T) {
+	runner := func(_ context.Context, args ...string) (string, int, error) {
+		switch strings.Join(args, " ") {
+		case "opkg list-installed":
+			return "curl - 7.55.1-1 - Installed desc\n", 0, nil
+		case "opkg list":
+			return "Package mndw version 0.0.1 has no valid architecture, ignoring.\n" +
+				"curl - 8.0.1-1 - Feed desc\n" +
+				"socat - 1.7.4.4-1 - Relay\n", 0, nil
+		default:
+			return "", 0, errors.New("unexpected command: " + strings.Join(args, " "))
+		}
+	}
+
+	result, err := newExecManagerWithRunner(runner).List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	entries := result.Packages
+	if len(entries) != 2 {
+		t.Fatalf("len(entries) = %d, want 2", len(entries))
+	}
+	if entries[0].Name != "curl" || entries[0].Status != "update_available" {
+		t.Errorf("curl entry = %+v", entries[0])
+	}
+	if entries[1].Name != "socat" || entries[1].Status != "available" {
+		t.Errorf("socat entry = %+v", entries[1])
 	}
 }
 

@@ -1,0 +1,48 @@
+name: Publish OPKG feed
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish-feed:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build IPKs and feed
+        run: pnpm build-ipk --all --repo
+
+      - name: Publish to public feed repo
+        env:
+          FEED_REPO: https://github.com/Eralde/mndw-opkg-feed
+          GH_TOKEN: ${{ secrets.FEED_REPO_TOKEN }}
+        run: |
+          set -eux
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${FEED_REPO}.git" feed
+          rm -rf feed/*
+          cp -R opkg/out/repo/. feed/
+          cd feed
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Publish OPKG feed from ${GITHUB_SHA}" || echo "No changes"
+          git push origin HEAD

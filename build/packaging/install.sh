@@ -7,11 +7,11 @@ FEED_URL=""
 
 print_usage() {
   cat <<'EOF'
-Usage:
+local feed installer only:
   sh install.sh --feed-url <url> [options]
 
 Required:
-  --feed-url <url>         URL to OPKG feed directory containing Packages.gz
+  --feed-url <url>         Local OPKG feed directory containing Packages.gz
 
 Options:
   --repo-name <name>       OPKG repo name (default: mndw)
@@ -19,8 +19,8 @@ Options:
   -h, --help               Show this help
 
 Examples:
-  sh install.sh --feed-url http://192.168.1.10:8080
-  sh install.sh --feed-url https://example.com/mndw/repo --package mndw
+  sh install.sh --feed-url http://192.168.1.10:8080/mndw/aarch64-3.10
+  sh install.sh --feed-url http://192.168.1.10:8080/mndw/mips-3.4 --package mndw
 EOF
 }
 

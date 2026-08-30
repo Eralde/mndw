@@ -8,7 +8,17 @@ fi
 MNDW_ROOT=${MNDW_ROOT:-/opt}
 DATA_DIR="$MNDW_ROOT/var/lib/mndw"
 MNDWD_INIT=${MNDW_MNDWD_INIT:-$MNDW_ROOT/etc/init.d/S70mndwd}
+MNDW_FEED_CONF=${MNDW_FEED_CONF:-$MNDW_ROOT/etc/opkg/mndw-feed.conf}
+MNDW_CACHE_DIR=${MNDW_CACHE_DIR:-$MNDW_ROOT/var/mndw/opkg-cache}
 POLICY_FILE="$DATA_DIR/lighttpd-port-policy"
+
+if [ ! -e "$MNDW_FEED_CONF" ]; then
+  mkdir -p "$(dirname "$MNDW_FEED_CONF")" "$MNDW_CACHE_DIR"
+  {
+    echo "src/gz mndw https://eralde.github.io/mndw-opkg-feed/__ARCH__"
+    echo "option cache /opt/var/mndw/opkg-cache"
+  } > "$MNDW_FEED_CONF"
+fi
 
 # One-time upgrade handoff from a lighttpd-fronted version. These are runtime
 # artifacts, not package files, so remove them before the new daemon starts.

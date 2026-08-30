@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {afterEach, describe, expect, it} from 'vitest';
+import {substituteControl} from './build-ipk.js';
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 const packagingRoot = path.join(repoRoot, 'build', 'packaging', 'ipk');
@@ -24,34 +25,56 @@ const writeExecutable = (file: string, content: string): void => {
   fs.chmodSync(file, 0o755);
 };
 
-const runScript = (scriptName: string, args: string[], root: string): ReturnType<typeof spawnSync> =>
-  (() => {
-    const testBin = path.join(root, 'test-bin');
-    const chownStub = path.join(testBin, 'chown');
-    const chownMarker = path.join(root, 'chown-called');
+const testEnvironment = (root: string, extraEnv: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => {
+  const testBin = path.join(root, 'test-bin');
+  const chownStub = path.join(testBin, 'chown');
+  const chownMarker = path.join(root, 'chown-called');
 
-    fs.mkdirSync(testBin, {recursive: true});
-    fs.writeFileSync(chownStub, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$MNDW_CHOWN_MARKER"\n');
-    fs.chmodSync(chownStub, 0o755);
+  fs.mkdirSync(testBin, {recursive: true});
+  fs.writeFileSync(chownStub, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$MNDW_CHOWN_MARKER"\n');
+  fs.chmodSync(chownStub, 0o755);
 
-    return spawnSync(
-      '/bin/sh',
-      [path.join(packagingRoot, scriptName), ...args],
-      {
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          PATH: `${testBin}:${process.env.PATH ?? ''}`,
-          MNDW_ROOT: root,
-          MNDW_CONFIG_FILE: path.join(root, 'etc', 'mndw.conf'),
-          MNDW_USER_PLUGINS_DIR: '',
-          MNDW_CHOWN_MARKER: chownMarker,
-          MNDW_MNDWD_INIT: path.join(root, 'etc', 'init.d', 'S70mndwd'),
-          MNDW_LIGHTTPD_INIT: path.join(root, 'etc', 'init.d', 'S80lighttpd'),
-        },
-      },
-    );
-  })();
+  return {
+    ...process.env,
+    PATH: `${testBin}:${process.env.PATH ?? ''}`,
+    MNDW_ROOT: root,
+    MNDW_CONFIG_FILE: path.join(root, 'etc', 'mndw.conf'),
+    MNDW_USER_PLUGINS_DIR: '',
+    MNDW_CHOWN_MARKER: chownMarker,
+    MNDW_MNDWD_INIT: path.join(root, 'etc', 'init.d', 'S70mndwd'),
+    MNDW_LIGHTTPD_INIT: path.join(root, 'etc', 'init.d', 'S80lighttpd'),
+    ...extraEnv,
+  };
+};
+
+const runScript = (
+  scriptName: string,
+  args: string[],
+  root: string,
+  extraEnv: NodeJS.ProcessEnv = {},
+): ReturnType<typeof spawnSync> =>
+  spawnSync(
+    '/bin/sh',
+    [path.join(packagingRoot, scriptName), ...args],
+    {encoding: 'utf8', env: testEnvironment(root, extraEnv)},
+  );
+
+const runSubstitutedScript = (
+  scriptName: string,
+  args: string[],
+  root: string,
+  version: string,
+  arch: string,
+  extraEnv: NodeJS.ProcessEnv = {},
+): ReturnType<typeof spawnSync> => {
+  const scriptPath = path.join(root, `substituted-${scriptName}`);
+  const template = fs.readFileSync(path.join(packagingRoot, scriptName), 'utf8');
+
+  fs.writeFileSync(scriptPath, substituteControl(template, version, arch));
+  fs.chmodSync(scriptPath, 0o755);
+
+  return spawnSync('/bin/sh', [scriptPath, ...args], {encoding: 'utf8', env: testEnvironment(root, extraEnv)});
+};
 
 afterEach(() => {
   for (const root of fixtures.splice(0)) {
@@ -262,6 +285,51 @@ describe('postinst front-door handoff', () => {
 
     return marker;
   };
+
+  it('creates the per-arch feed config once without invoking opkg', () => {
+    const root = makeRoot();
+    const restartMarker = writeRestartStub(root);
+    const feedConfig = path.join(root, 'etc', 'opkg', 'mndw-feed.conf');
+    const cacheDir = path.join(root, 'var', 'mndw', 'opkg-cache');
+    const opkgMarker = path.join(root, 'opkg-called');
+    const opkg = path.join(root, 'test-bin', 'opkg');
+
+    writeExecutable(opkg, `#!/bin/sh\necho called >> "${opkgMarker}"\nexit 99\n`);
+
+    const first = runSubstitutedScript(
+      'postinst',
+      ['configure'],
+      root,
+      '0.0.4',
+      'mipsel-3.4',
+      {MNDW_FEED_CONF: feedConfig, MNDW_CACHE_DIR: cacheDir},
+    );
+
+    expect(first.status, `${first.stdout}\n${first.stderr}`).toBe(0);
+    expect(fs.readFileSync(feedConfig, 'utf8')).toBe(
+      'src/gz mndw https://eralde.github.io/mndw-opkg-feed/mipsel-3.4\n'
+        + 'option cache /opt/var/mndw/opkg-cache\n',
+    );
+    expect(fs.existsSync(cacheDir)).toBe(true);
+    expect(fs.readFileSync(restartMarker, 'utf8')).toBe('restart\n');
+    expect(fs.existsSync(opkgMarker)).toBe(false);
+
+    fs.writeFileSync(feedConfig, 'user edit\n');
+
+    const second = runSubstitutedScript(
+      'postinst',
+      ['configure'],
+      root,
+      '0.0.4',
+      'mipsel-3.4',
+      {MNDW_FEED_CONF: feedConfig, MNDW_CACHE_DIR: cacheDir},
+    );
+
+    expect(second.status, `${second.stdout}\n${second.stderr}`).toBe(0);
+    expect(fs.readFileSync(feedConfig, 'utf8')).toBe('user edit\n');
+    expect(fs.readFileSync(restartMarker, 'utf8')).toBe('restart\nrestart\n');
+    expect(fs.existsSync(opkgMarker)).toBe(false);
+  });
 
   it('starts mndwd on a fresh install without invoking lighttpd', () => {
     const root = makeRoot();

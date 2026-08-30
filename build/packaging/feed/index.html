@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>mndw OPKG feed</title>
+  </head>
+  <body>
+    <h1>mndw OPKG feed</h1>
+    <p>Install the hosted feed bootstrap:</p>
+    <pre><code>curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh</code></pre>
+    <p>Manual feed paths:</p>
+    <ul>
+      <li><code>/aarch64-3.10</code></li>
+      <li><code>/mips-3.4</code></li>
+      <li><code>/mipsel-3.4</code></li>
+    </ul>
+    <p>
+      The feed publishes signed indexes and a public key for future opt-in.
+      Device-wide <code>check_signature</code> remains disabled so existing
+      configured feeds are not disrupted.
+    </p>
+  </body>
+</html>

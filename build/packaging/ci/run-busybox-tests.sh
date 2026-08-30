@@ -20,7 +20,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 
 sh "$repo_root/build/packaging/ci/test-install-policy.sh"
-sh "$repo_root/build/packaging/ci/test-lighttpd-port-busybox.sh"
+sh "$repo_root/build/packaging/ci/test-init-scripts-busybox.sh"
 
 cd "$repo_root/daemon/mndwd"
 

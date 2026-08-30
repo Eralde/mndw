@@ -12,24 +12,16 @@ import (
 )
 
 // DefaultPort is the fresh-install front-door port.
-const DefaultPort = 99
+const DefaultPort = 1189
 
-var blockedPorts = map[int]bool{
-	80: true, 101: true, 102: true, 103: true, 104: true, 109: true, 110: true,
-	111: true, 113: true, 115: true, 117: true, 119: true, 123: true, 135: true,
-	137: true, 139: true, 143: true, 161: true, 179: true,
-}
-
-// DefaultFallbackPorts is 99..199 ascending, skipping 80 and browser-blocked ports.
+// DefaultFallbackPorts is 1189..1289 ascending.
 var DefaultFallbackPorts = buildFallback()
 
 func buildFallback() []int {
 	ports := make([]int, 0, 101)
 
-	for port := 99; port <= 199; port++ {
-		if !blockedPorts[port] {
-			ports = append(ports, port)
-		}
+	for port := 1189; port <= 1289; port++ {
+		ports = append(ports, port)
 	}
 
 	return ports
@@ -73,7 +65,7 @@ func Select(cfg Config) (net.Listener, int, error) {
 	}
 
 	return nil, 0, fmt.Errorf(
-		"no front-door port available: tried preferred %d and range 99..199 (excluding 80 and browser-blocked ports)",
+		"no front-door port available: tried preferred %d and range 1189..1289",
 		preferred,
 	)
 }

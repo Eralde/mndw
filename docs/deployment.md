@@ -48,8 +48,8 @@ mndwd serves all browser-facing traffic from one listener:
 "Serve all" mode is enabled with `--frontend-dir`; `--frontend-listen` controls
 the bind address and defaults to IPv4 `0.0.0.0`. At startup, mndwd selects the
 persisted `frontend-port`, then the old `lighttpd-port` migration seed, then
-the default `99..199` fallback range. The selected port is written atomically
-to `frontend-port`.
+`1189`, followed by remaining ports in the `1190..1289` fallback range. The
+selected port is written atomically to `frontend-port`.
 Request routing, listener ports, and upstream targets are owned by
 [`contracts/routing.md`](../contracts/routing.md).
 

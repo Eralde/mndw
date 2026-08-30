@@ -72,6 +72,12 @@ func TestSelectPersistsChosenPort(t *testing.T) {
 	}
 }
 
+func TestDefaultPortIs1189(t *testing.T) {
+	if DefaultPort != 1189 {
+		t.Fatalf("default port = %d, want 1189", DefaultPort)
+	}
+}
+
 func TestSelectPrefersPersistedPort(t *testing.T) {
 	dir := t.TempDir()
 	pref := freePort(t, "127.0.0.1")
@@ -158,16 +164,11 @@ func TestSelectExhaustionErrors(t *testing.T) {
 	}
 }
 
-func TestDefaultFallbackPortsExcludeBlocked(t *testing.T) {
-	blocked := map[int]bool{80: true, 101: true, 102: true, 103: true, 104: true, 109: true, 110: true, 111: true, 113: true, 115: true, 117: true, 119: true, 123: true, 135: true, 137: true, 139: true, 143: true, 161: true, 179: true}
-	previous := 98
+func TestDefaultFallbackPortsAreAscending(t *testing.T) {
+	previous := 1188
 
 	for _, port := range DefaultFallbackPorts {
-		if blocked[port] {
-			t.Fatalf("fallback list contains blocked port %d", port)
-		}
-
-		if port < 99 || port > 199 {
+		if port < 1189 || port > 1289 {
 			t.Fatalf("fallback port %d out of range", port)
 		}
 

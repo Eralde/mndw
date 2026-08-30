@@ -163,6 +163,10 @@ describe('hosted feed bootstrap assets', () => {
     expect(workflow).toContain('OPKG_USIGN_SECRET_KEY_B64');
     expect(workflow).toContain('OPKG_USIGN_PUBLIC_KEY_B64');
     expect(workflow).toContain('MNDW_FEED_KEY_ID');
+    expect(workflow).toContain('https://github.com/openwrt/usign.git');
+    expect(workflow).toContain('cmake -S');
+    expect(workflow).toContain('-DUSE_LIBUBOX=OFF');
+    expect(workflow).not.toContain('apt-get install -y usign');
     expect(workflow).toContain('usign -S -m');
     expect(workflow).toContain('usign -V -m');
     expect(workflow).toContain('Packages.sig');

@@ -41,8 +41,17 @@ jobs:
         with:
           go-version: "1.26"
 
-      - name: Install usign
-        run: sudo apt-get update && sudo apt-get install -y usign
+      - name: Build usign
+        run: |
+          set -eu
+          usign_source="$RUNNER_TEMP/usign"
+          usign_bin="$RUNNER_TEMP/bin"
+          git clone --depth 1 https://github.com/openwrt/usign.git "$usign_source"
+          cmake -S "$usign_source" -B "$usign_source/build" -DUSE_LIBUBOX=OFF
+          cmake --build "$usign_source/build"
+          mkdir -p "$usign_bin"
+          install -m 0755 "$usign_source/build/usign" "$usign_bin/usign"
+          echo "$usign_bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

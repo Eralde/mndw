@@ -463,7 +463,7 @@ mndw zip my-widget    # pack + create my-widget/my-widget.zip
 ```
 
 Upload through dashboard Settings (recommended). For an authenticated manual request, use the
-persisted dashboard port from `/opt/var/lib/mndw/lighttpd-port`, an active session cookie, and the
+persisted dashboard port from `/opt/var/lib/mndw/frontend-port`, an active session cookie, and the
 CSRF header:
 
 ```bash

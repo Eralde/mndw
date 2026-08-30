@@ -1,8 +1,8 @@
 # Deployment
 
-mndw is packaged for router devices as a per-architecture IPK. The package
-contains the static host, built-in plugins, the `mndwd` binary, lighttpd
-configuration, and an init script.
+mndw is packaged for network devices as a per-architecture IPK. The package
+contains the static host, built-in plugins, the `mndwd` binary, the device-port
+discovery helper, and an init script.
 
 ## Device layout
 
@@ -12,41 +12,44 @@ The installed layout is centered under `/opt`:
 /opt/share/www/mndw/                 package-owned host SPA
 /opt/share/www/mndw/plugins/         package-owned built-in plugins
 /opt/sbin/mndwd                      daemon binary
-/opt/etc/lighttpd/                   package-owned loader plus base lighttpd config
 /opt/etc/init.d/                     daemon init script
-/opt/var/lib/mndw/                   selected port, ownership policy, generated runtime config, staging
+/opt/var/lib/mndw/                   selected port, session state, staging
+/opt/var/lib/mndw/frontend-port      mndwd's selected browser-facing port
 /opt/var/lib/mndw/user-plugins/      durable uploaded user-plugin files
 /opt/var/lib/mndw/state.json         durable plugin metadata and manifests
-/opt/var/lib/mndw/legacy/             preserved legacy 80-mndw.conf files
-/opt/tmp/mndw/                       install-time lighttpd probe diagnostics on failure
+/opt/var/lib/mndw/legacy/            preserved legacy 80-mndw.conf files
+/opt/tmp/mndw/plugin-runtime/        runtime sockets and leases
 ```
 
-User plugins live separately from built-ins. The local lighttpd override is a
-package-owned loader and survives only as long as mndw is installed. Generated
-runtime rules and selected-port state live outside `conf.d`; the state directory
-is not replaced by an upgrade. A legacy `80-mndw.conf` is moved to
+User plugins live separately from built-ins and are served by mndwd through its
+`/user-plugins/` alias. The state directory is not replaced by an upgrade. A
+legacy `80-mndw.conf` is moved to
 `/opt/var/lib/mndw/legacy/` before unpacking the new package.
 
 Approved user-plugin files are runtime data, not package-tracked files. During
 an upgrade, `preinst` moves them from the legacy
-`/opt/share/www/mndw/user-plugins/` directory because the new lighttpd alias
-serves `/opt/var/lib/mndw/user-plugins/`. During removal, `postrm` performs the
+`/opt/share/www/mndw/user-plugins/` directory because the mndwd alias serves
+`/opt/var/lib/mndw/user-plugins/`. During removal, `postrm` performs the
 same migration before deleting the old app root. `/opt/var/lib/mndw`, its
 `state.json`, staging area, and user-plugin files survive remove and reinstall;
 `purge` does not change this package-level data-preservation contract. Delete
 plugins through management or deliberately remove their durable files for a
 clean wipe.
 
-## lighttpd
+## HTTP server
 
-The lighttpd configuration is intentionally thin:
+mndwd serves all browser-facing traffic from one listener:
 
-- serve the SPA and static plugin assets;
-- retain SPA fallback for browser routes.
+- static SPA and plugin assets, with fallback to `index.html`;
+- `/user-plugins/` alias for durable user-plugin files;
+- transparent `/rci`, `/ci`, and `/auth` device proxy;
+- session-gated `/api` and WebSocket plugin routes.
 
-Backend commands and service processes run behind `mndwd`; lighttpd only
-provides the browser-facing static and proxy boundary. Backend operation does
-not require lighttpd CGI, jq, or unzip.
+"Serve all" mode is enabled with `--frontend-dir`; `--frontend-listen` controls
+the bind address and defaults to IPv4 `0.0.0.0`. At startup, mndwd selects the
+persisted `frontend-port`, then the old `lighttpd-port` migration seed, then
+the default `99..199` fallback range. The selected port is written atomically
+to `frontend-port`.
 Request routing, listener ports, and upstream targets are owned by
 [`contracts/routing.md`](../contracts/routing.md).
 
@@ -67,8 +70,6 @@ surfaces use `aarch64-3.10`, `mips-3.4`, and `mipsel-3.4` respectively.
 `--all` builds the supported set. The package feed contains one entry per
 architecture.
 
-The package depends on lighttpd and its proxy/rewrite modules.
-
 Uploadable example archives are produced separately with
 `pnpm build-example-plugins`: one archive for every direct example directory
 with a manifest. Backend examples produce one target-labelled archive per
@@ -83,54 +84,41 @@ kernel-suffixed target, including `mips-3.4` for big-endian MIPS.
 
 ## Install and upgrade
 
-The supported `install.sh` records whether lighttpd was already installed in
-`/opt/var/lib/mndw/lighttpd-port-policy` before dependency resolution. It writes
-`preserve` when lighttpd predates mndw and `mndw` for a fresh mndw-owned
-lighttpd. Existing policy survives upgrades and remove/reinstall while
-lighttpd remains installed. Direct first-time `opkg install mndw` has no
-reliable dependency-order signal, so it defaults to preserving lighttpd's main
-port and logs a warning; use `install.sh` for fresh installs.
+`install.sh` configures the feed, runs `opkg update`, and installs mndw. It no
+longer writes a lighttpd ownership policy. On upgrade from an older lighttpd
+HTTP server, `postinst` removes stale mndw-owned runtime artifacts, reports the
+one-time removal notice when the old policy says mndw owned lighttpd, then
+restarts `S70mndwd`. A failed restart retains the old `lighttpd-port` seed for
+retry; a successful restart consumes it.
 
-Installation starts `mndwd`, reads the generated router target, probes the
-complete lighttpd configuration, renders runtime rules, validates the
-configuration, and restarts lighttpd. A deployment should verify:
+Installation starts mndwd and reports the selected dashboard URL after
+`frontend-port` readiness. A deployment should verify:
 
 1. the browser can reach the host;
-2. authentication reaches the router;
+2. authentication reaches the network device;
 3. built-in plugins appear in the list;
 4. upload, approval, and backend dispatch work.
 
-Before starting mndwd, package init discovers the router HTTP port by probing
+Before starting mndwd, package init discovers the network-device HTTP port by probing
 `/auth` on local listeners and checking for `x-ndw2-interactive` or
-`x-ndw4-interactive` authentication. Set `MNDW_ROUTER_PORT=<port>` in
-`/opt/etc/mndw.conf` when more than one listener matches. The generated
-`/opt/var/lib/mndw/proxy-target.conf` and mndwd `--router-url` use that port.
+`x-ndw4-interactive` authentication. Set `MNDW_DEVICE_PORT=<port>` in
+`/opt/etc/mndw.conf` when more than one listener matches. The discovered URL is
+passed to mndwd as `--device-url`; no compatibility alias is supported.
 
-When policy is `preserve`, mndw keeps lighttpd's pre-existing main listener,
-including port `80`, and adds only a socket-scoped dashboard listener; it never
-renders a global `server.port` override. When policy is `mndw` and the
-router HTTP port is not `80`, mndw probes and hands off in override mode, so
-lighttpd does not bind port `80`. When both use port `80`, mndw retains its
-existing collision fallback. A preserved lighttpd whose configured listener
-cannot bind is a clean install failure because lighttpd does not keep another
-configured listener alive after a bind failure. These decisions are made during
-install; rerun package configuration if listener ownership changes later.
-After an upgrade or remove/reinstall, verify the policy, generated runtime
-config, legacy backup, durable user-plugin files, and `/opt/etc/mndw.conf`. A real-device smoke test is
+After an upgrade or remove/reinstall, verify the frontend port, legacy backup,
+durable user-plugin files, and `/opt/etc/mndw.conf`. A real-device smoke test is
 mandatory even when local and CI tests pass. Release of this migration also
 requires target Entware verification of opkg lifecycle ordering and that
 `/opt/share/www` and `/opt/var/lib` share a filesystem; host shell tests do not
 prove either condition.
 
-For listener diagnostics, inspect the policy, generated router target, rendered
-runtime fragment, effective lighttpd configuration, and live listeners:
+For listener diagnostics, inspect the selected port, mndwd log, device
+discovery, and live listeners:
 
 ```sh
-cat /opt/var/lib/mndw/lighttpd-port-policy
-cat /opt/var/lib/mndw/proxy-target.conf
-cat /opt/var/lib/mndw/lighttpd-runtime.conf
-sh /opt/share/www/mndw/bin/mndw-lighttpd-port.sh read-router-port
-/opt/sbin/lighttpd -t -f /opt/etc/lighttpd/lighttpd.conf
+cat /opt/var/lib/mndw/frontend-port
+grep -a -- '--frontend-dir' /opt/var/log/mndwd.log
+sh /opt/share/www/mndw/bin/mndw-device-port.sh detect 192.168.1.1
 netstat -lnt 2>/dev/null
 ```
 

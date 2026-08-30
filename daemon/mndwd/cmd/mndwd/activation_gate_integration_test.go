@@ -160,7 +160,7 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 		PluginRuntimeRoot:          filepath.Join(root, "runtime"),
 		BuiltinPluginsDir:          filepath.Join(root, "builtins"),
 		UserPluginsDir:             filepath.Join(root, "plugins"),
-		RouterURL:                  "http://127.0.0.1:80",
+		DeviceURL:                  "http://127.0.0.1:80",
 		ControllerURL:              rcisession.DefaultControllerURL,
 		Dev:                        true,
 		Opkg:                       "stub",

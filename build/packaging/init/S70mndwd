@@ -8,7 +8,7 @@ KEY_DIR="$MNDW_ROOT/var/lib/mndw-secrets"
 PLUGIN_RUNTIME_DIR="$MNDW_ROOT/tmp/mndw/plugin-runtime"
 CONFIG_FILE=${MNDW_CONFIG_FILE:-$MNDW_ROOT/etc/mndw.conf}
 LOG_FILE="$MNDW_ROOT/var/log/mndwd.log"
-ROUTER_PORT_HELPER=${MNDW_ROUTER_PORT_HELPER:-$MNDW_ROOT/share/www/mndw/bin/mndw-router-port.sh}
+DEVICE_PORT_HELPER=${MNDW_DEVICE_PORT_HELPER:-$MNDW_ROOT/share/www/mndw/bin/mndw-device-port.sh}
 
 if [ -f "$CONFIG_FILE" ]; then
   . "$CONFIG_FILE"
@@ -20,8 +20,9 @@ export MNDW_USER_PLUGINS_DIR
 : "${MNDWD_MAX_CONCURRENT_EXEC_TOTAL:=8}"
 : "${MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN:=4}"
 : "${MNDWD_MAX_SUPERVISED_SERVICES:=8}"
-: "${MNDW_ROUTER_PORT:=}"
-export MNDW_ROUTER_PORT
+: "${MNDW_FRONTEND_LISTEN:=}"
+: "${MNDW_DEVICE_PORT:=}"
+export MNDW_DEVICE_PORT
 
 wait_for_exit() {
   wait_pid="$1"
@@ -37,46 +38,48 @@ start() {
   mkdir -p "$MNDW_ROOT/var/run" "$MNDW_ROOT/var/log" "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
   chmod 700 "$DATA_DIR" "$KEY_DIR" "$PLUGIN_RUNTIME_DIR"
 
-  # Always regenerate proxy config on boot (IP may have changed).
-  ROUTER_IP="$(ip -4 addr show br0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)"
-  ROUTER_IP="${ROUTER_IP:-192.168.1.1}"
+  # Resolve device IP on every boot because it may have changed.
+  DEVICE_IP="$(ip -4 addr show br0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1)"
+  DEVICE_IP="${DEVICE_IP:-192.168.1.1}"
 
-  [ -x "$ROUTER_PORT_HELPER" ] || {
-    echo "mndw: missing router port helper: $ROUTER_PORT_HELPER" >&2
+  [ -x "$DEVICE_PORT_HELPER" ] || {
+    echo "mndw: missing device port helper: $DEVICE_PORT_HELPER" >&2
     return 1
   }
-  ROUTER_PORT="$($ROUTER_PORT_HELPER detect "$ROUTER_IP")" || {
-    echo "mndw: unable to determine router /auth port for $ROUTER_IP" >&2
+  DEVICE_PORT="$($DEVICE_PORT_HELPER detect "$DEVICE_IP")" || {
+    echo "mndw: unable to determine device /auth port for $DEVICE_IP" >&2
     return 1
   }
 
-  cat > "$DATA_DIR/proxy-target.conf" <<EOF
-proxy.server = ( "" => (( "host" => "$ROUTER_IP", "port" => $ROUTER_PORT )) )
-proxy.header = (
-  "map-host-request"  => ( "-" => "$ROUTER_IP" ),
-  "map-host-response" => ( "$ROUTER_IP" => "-" )
-)
-EOF
-
-  if [ "$ROUTER_PORT" = "80" ]; then
-    ROUTER_URL="http://$ROUTER_IP"
+  if [ "$DEVICE_PORT" = "80" ]; then
+    DEVICE_URL="http://$DEVICE_IP"
   else
-    ROUTER_URL="http://$ROUTER_IP:$ROUTER_PORT"
+    DEVICE_URL="http://$DEVICE_IP:$DEVICE_PORT"
   fi
 
-  # PID guard AFTER proxy-target.conf is written.
+  # Do not start a second daemon when one is already alive.
   if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
     return 0
   fi
 
+  FRONTEND_LISTEN_ARG=""
+  if [ -n "$MNDW_FRONTEND_LISTEN" ]; then
+    FRONTEND_LISTEN_ARG="--frontend-listen $MNDW_FRONTEND_LISTEN"
+  fi
+
+  PORT_FILE="$DATA_DIR/frontend-port"
+  OLD_PORT_INODE="$(ls -id "$PORT_FILE" 2>/dev/null | awk '{print $1}')"
+
+  # shellcheck disable=SC2086  # intentional word-split of FRONTEND_LISTEN_ARG
   "$DAEMON" \
-    --listen "127.0.0.1:9090" \
+    --frontend-dir "$MNDW_ROOT/share/www/mndw" \
+    $FRONTEND_LISTEN_ARG \
     --data-dir "$DATA_DIR" \
     --rci-session-state-dir "$DATA_DIR" \
     --rci-session-key-dir "$KEY_DIR" \
     --builtin-plugins-dir "$MNDW_ROOT/share/www/mndw/plugins" \
     --user-plugins-dir "$MNDW_USER_PLUGINS_DIR" \
-    --router-url "$ROUTER_URL" \
+    --device-url "$DEVICE_URL" \
     --plugin-runtime-root "$PLUGIN_RUNTIME_DIR" \
     --max-concurrent-exec-total "$MNDWD_MAX_CONCURRENT_EXEC_TOTAL" \
     --max-concurrent-exec-per-plugin "$MNDWD_MAX_CONCURRENT_EXEC_PER_PLUGIN" \
@@ -84,6 +87,30 @@ EOF
     --opkg exec \
     >> "$LOG_FILE" 2>&1 &
   echo "$!" > "$PID_FILE"
+
+  MNDWD_PID="$(cat "$PID_FILE")"
+  i=0
+  NEW_PORT=""
+  while [ "$i" -lt 20 ]; do
+    kill -0 "$MNDWD_PID" 2>/dev/null || break
+    CUR_PORT_INODE="$(ls -id "$PORT_FILE" 2>/dev/null | awk '{print $1}')"
+    if [ -n "$CUR_PORT_INODE" ] && [ "$CUR_PORT_INODE" != "$OLD_PORT_INODE" ] && [ -s "$PORT_FILE" ]; then
+      NEW_PORT="$(cat "$PORT_FILE" 2>/dev/null || true)"
+      break
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+
+  if [ -n "$NEW_PORT" ]; then
+    echo "mndw dashboard: http://$DEVICE_IP:$NEW_PORT/" >&2
+  else
+    echo "mndw: dashboard port not reported (daemon may have failed to bind); check $LOG_FILE" >&2
+    if ! kill -0 "$MNDWD_PID" 2>/dev/null; then
+      rm -f "$PID_FILE"
+    fi
+    return 1
+  fi
 }
 
 stop() {

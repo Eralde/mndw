@@ -22,8 +22,7 @@ load_paths() {
   : "${DATA_DIR:=$MNDW_ROOT/var/lib/mndw}"
   MNDW_USER_PLUGINS_DIR=${MNDW_USER_PLUGINS_DIR:-$DATA_DIR/user-plugins}
   MNDW_LEGACY_USER_PLUGINS_DIR=$MNDW_ROOT/share/www/mndw/user-plugins
-  MNDW_RUNTIME_CONF=${MNDW_RUNTIME_CONF:-$MNDW_ROOT/var/lib/mndw/lighttpd-runtime.conf}
-  MNDW_PORT_FILE=${MNDW_PORT_FILE:-$MNDW_ROOT/var/lib/mndw/lighttpd-port}
+  MNDW_PORT_FILE=${MNDW_PORT_FILE:-$DATA_DIR/frontend-port}
   MNDW_APP_ROOT=$MNDW_ROOT/share/www/mndw
   MNDW_MNDWD_INIT=${MNDW_MNDWD_INIT:-$MNDW_ROOT/etc/init.d/S70mndwd}
 }
@@ -130,20 +129,6 @@ check_daemon_path() {
   esac
 }
 
-check_alias() {
-  expected_path=$1
-  expected_alias="alias.url += ( \"/user-plugins/\" => \"$expected_path/\" )"
-
-  if grep -F "$expected_alias" "$MNDW_RUNTIME_CONF" >/dev/null 2>&1; then
-    pass "lighttpd aliases /user-plugins/ to $expected_path"
-  else
-    fail "lighttpd alias does not point to $expected_path"
-    if [ -f "$MNDW_RUNTIME_CONF" ]; then
-      grep -F 'alias.url' "$MNDW_RUNTIME_CONF" || true
-    fi
-  fi
-}
-
 check_http_plugin() {
   plugin_name=$1
   expected_body=$2
@@ -238,7 +223,7 @@ mndw_preflight() {
     fi
   done
 
-  for service in mndwd lighttpd; do
+  for service in mndwd; do
     service_pid=$(pidof "$service" 2>/dev/null | awk '{print $1}')
     if [ -n "$service_pid" ]; then
       printf '== %s pid=%s ==\n' "$service" "$service_pid"
@@ -293,7 +278,6 @@ mndw_upgrade() {
     fail 'legacy plugin directory still exists after upgrade'
   fi
 
-  check_alias "$MNDW_USER_PLUGINS_DIR"
   check_daemon_path "$MNDW_USER_PLUGINS_DIR"
   check_http_plugin "$plugin_name" "$plugin_body"
   finish
@@ -355,7 +339,6 @@ mndw_remove_reinstall() {
     fail 'durable plugin disappeared during reinstall'
   fi
 
-  check_alias "$MNDW_USER_PLUGINS_DIR"
   check_daemon_path "$MNDW_USER_PLUGINS_DIR"
   check_http_plugin "$plugin_name" "$plugin_body"
   finish
@@ -422,7 +405,6 @@ mndw_collision() {
     fail 'legacy copy was not retained after recovery'
   fi
 
-  check_alias "$MNDW_USER_PLUGINS_DIR"
   check_daemon_path "$MNDW_USER_PLUGINS_DIR"
   check_http_plugin "$plugin_name" 'legacy'
 
@@ -487,7 +469,6 @@ mndw_override() {
   fi
 
   MNDW_USER_PLUGINS_DIR=$override_root
-  check_alias "$override_root"
   check_daemon_path "$override_root"
 
   if [ "$config_existed" -eq 1 ]; then

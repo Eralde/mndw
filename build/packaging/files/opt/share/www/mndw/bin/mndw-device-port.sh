@@ -5,9 +5,10 @@ MNDW_ROOT=${MNDW_ROOT:-/opt}
 MNDW_NETSTAT=${MNDW_NETSTAT:-}
 MNDW_CURL=${MNDW_CURL:-}
 MNDW_WGET=${MNDW_WGET:-}
-MNDW_ROUTER_PORT=${MNDW_ROUTER_PORT:-}
-MNDW_DASHBOARD_PORT_FILE=${MNDW_DASHBOARD_PORT_FILE:-$MNDW_ROOT/var/lib/mndw/lighttpd-port}
-MNDW_ROUTER_PROBE_TIMEOUT=${MNDW_ROUTER_PROBE_TIMEOUT:-3}
+MNDW_DEVICE_PORT=${MNDW_DEVICE_PORT:-}
+MNDW_DASHBOARD_PORT_FILE=${MNDW_DASHBOARD_PORT_FILE:-$MNDW_ROOT/var/lib/mndw/frontend-port}
+MNDW_DASHBOARD_PORT_FILE_LEGACY=${MNDW_DASHBOARD_PORT_FILE_LEGACY:-$MNDW_ROOT/var/lib/mndw/lighttpd-port}
+MNDW_DEVICE_PROBE_TIMEOUT=${MNDW_DEVICE_PROBE_TIMEOUT:-3}
 
 port_is_valid() {
   port_value=$1
@@ -19,15 +20,16 @@ port_is_valid() {
   [ "$port_value" -ge 1 ] 2>/dev/null && [ "$port_value" -le 65535 ] 2>/dev/null
 }
 
-router_ip_is_valid() {
+device_ip_is_valid() {
   [ -n "$1" ]
 }
 
-dashboard_port() {
-  [ -r "$MNDW_DASHBOARD_PORT_FILE" ] || return 0
-
-  port_value=$(sed -n '1p' "$MNDW_DASHBOARD_PORT_FILE" | tr -d '\r')
-  port_is_valid "$port_value" && printf '%s\n' "$port_value"
+dashboard_ports() {
+  for port_file in "$MNDW_DASHBOARD_PORT_FILE" "$MNDW_DASHBOARD_PORT_FILE_LEGACY"; do
+    [ -r "$port_file" ] || continue
+    port_value=$(sed -n '1p' "$port_file" | tr -d '\r')
+    port_is_valid "$port_value" && printf '%s\n' "$port_value"
+  done
 }
 
 netstat_command() {
@@ -39,14 +41,14 @@ netstat_command() {
   command -v netstat 2>/dev/null
 }
 
-list_router_listener_ports() {
-  router_ip=$1
+list_device_listener_ports() {
+  device_ip=$1
   netstat_command_path=$(netstat_command) || return 1
   netstat_output=$($netstat_command_path -lnt 2>/dev/null) || return 1
-  dashboard_port_value=$(dashboard_port)
+  dashboard_port_values=$(dashboard_ports)
 
   listener_ports=$(
-    printf '%s\n' "$netstat_output" | awk -v router_ip="$router_ip" '
+    printf '%s\n' "$netstat_output" | awk -v device_ip="$device_ip" '
     {
       listening = 0
       for (field_index = 1; field_index <= NF; field_index++) {
@@ -68,18 +70,18 @@ list_router_listener_ports() {
       host = endpoint
       sub(/:[0-9]+$/, "", host)
 
-      if (host == router_ip || host == "0.0.0.0" || host == "*" || host == "::" || host == "[::]") {
+      if (host == device_ip || host == "0.0.0.0" || host == "*" || host == "::" || host == "[::]") {
         print port
       }
     }
     ' | sort -n -u
   )
 
-  if [ -n "$dashboard_port_value" ]; then
-    printf '%s\n' "$listener_ports" | grep -F -x -v "$dashboard_port_value" || true
-  else
-    printf '%s\n' "$listener_ports"
-  fi
+  remaining_ports="$listener_ports"
+  for dashboard_port_value in $dashboard_port_values; do
+    remaining_ports=$(printf '%s\n' "$remaining_ports" | grep -F -x -v "$dashboard_port_value" || true)
+  done
+  printf '%s\n' "$remaining_ports"
 }
 
 select_http_client() {
@@ -114,10 +116,10 @@ auth_challenge_present() {
   printf '%s\n' "$1" | grep -Eiq '^[[:space:]]*WWW-Authenticate:[[:space:]]*[^[:space:]]*x-ndw[24]-interactive'
 }
 
-probe_router_auth() {
-  router_ip=$1
+probe_device_auth() {
+  device_ip=$1
   port_value=$2
-  auth_url="http://$router_ip:$port_value/auth"
+  auth_url="http://$device_ip:$port_value/auth"
   response=
 
   case "$HTTP_CLIENT" in
@@ -126,8 +128,8 @@ probe_router_auth() {
         "$HTTP_COMMAND" \
           --silent \
           --show-error \
-          --connect-timeout "$MNDW_ROUTER_PROBE_TIMEOUT" \
-          --max-time "$MNDW_ROUTER_PROBE_TIMEOUT" \
+          --connect-timeout "$MNDW_DEVICE_PROBE_TIMEOUT" \
+          --max-time "$MNDW_DEVICE_PROBE_TIMEOUT" \
           --dump-header - \
           --output /dev/null \
           "$auth_url" 2>/dev/null
@@ -138,7 +140,7 @@ probe_router_auth() {
         "$HTTP_COMMAND" \
           -S \
           -O /dev/null \
-          -T "$MNDW_ROUTER_PROBE_TIMEOUT" \
+          -T "$MNDW_DEVICE_PROBE_TIMEOUT" \
           "$auth_url" 2>&1
       ) || true
       ;;
@@ -150,42 +152,42 @@ probe_router_auth() {
   auth_challenge_present "$response"
 }
 
-detect_router_port() {
-  router_ip=$1
+detect_device_port() {
+  device_ip=$1
 
-  router_ip_is_valid "$router_ip" || {
-    echo 'mndw: router IP is required' >&2
+  device_ip_is_valid "$device_ip" || {
+    echo 'mndw: device IP is required' >&2
     return 1
   }
 
-  if [ -n "$MNDW_ROUTER_PORT" ]; then
-    port_is_valid "$MNDW_ROUTER_PORT" || {
-      echo "mndw: invalid MNDW_ROUTER_PORT: $MNDW_ROUTER_PORT" >&2
+  if [ -n "$MNDW_DEVICE_PORT" ]; then
+    port_is_valid "$MNDW_DEVICE_PORT" || {
+      echo "mndw: invalid MNDW_DEVICE_PORT: $MNDW_DEVICE_PORT" >&2
       return 1
     }
-    printf '%s\n' "$MNDW_ROUTER_PORT"
+    printf '%s\n' "$MNDW_DEVICE_PORT"
     return 0
   fi
 
   select_http_client || {
-    echo 'mndw: router port detection requires curl or wget' >&2
+    echo 'mndw: device port detection requires curl or wget' >&2
     return 1
   }
 
-  candidate_ports=$(list_router_listener_ports "$router_ip") || {
-    echo 'mndw: unable to enumerate router TCP listeners' >&2
+  candidate_ports=$(list_device_listener_ports "$device_ip") || {
+    echo 'mndw: unable to enumerate device TCP listeners' >&2
     return 1
   }
 
   [ -n "$candidate_ports" ] || {
-    echo "mndw: no TCP listeners found on router IP $router_ip" >&2
+    echo "mndw: no TCP listeners found on device IP $device_ip" >&2
     return 1
   }
 
   matched_ports=
   for candidate in $candidate_ports; do
-    echo "[mndw] probing router /auth on $router_ip:$candidate" >&2
-    if probe_router_auth "$router_ip" "$candidate"; then
+    echo "[mndw] probing device /auth on $device_ip:$candidate" >&2
+    if probe_device_auth "$device_ip" "$candidate"; then
       matched_ports="$matched_ports $candidate"
     fi
   done
@@ -203,16 +205,16 @@ detect_router_port() {
   fi
 
   if [ "$matched_count" -gt 1 ]; then
-    echo "mndw: multiple router /auth listeners found on $router_ip:$matched_ports; set MNDW_ROUTER_PORT" >&2
+    echo "mndw: multiple device /auth listeners found on $device_ip:$matched_ports; set MNDW_DEVICE_PORT" >&2
     return 1
   fi
 
-  echo "mndw: no router /auth listener found on $router_ip; candidates: $candidate_ports; set MNDW_ROUTER_PORT" >&2
+  echo "mndw: no device /auth listener found on $device_ip; candidates: $candidate_ports; set MNDW_DEVICE_PORT" >&2
   return 1
 }
 
 usage() {
-  echo 'usage: mndw-router-port.sh detect ROUTER_IP' >&2
+  echo 'usage: mndw-device-port.sh detect DEVICE_IP' >&2
 }
 
 case "${1:-}" in
@@ -221,7 +223,7 @@ case "${1:-}" in
       usage
       exit 2
     }
-    detect_router_port "$2"
+    detect_device_port "$2"
     ;;
   *)
     usage

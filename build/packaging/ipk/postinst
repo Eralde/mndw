@@ -6,6 +6,28 @@ if [ "${1:-}" != "configure" ] && [ -n "${1:-}" ]; then
 fi
 
 MNDW_ROOT=${MNDW_ROOT:-/opt}
-MNDW_HELPER=${MNDW_HELPER:-$MNDW_ROOT/share/www/mndw/bin/mndw-lighttpd-port.sh}
+DATA_DIR="$MNDW_ROOT/var/lib/mndw"
+MNDWD_INIT=${MNDW_MNDWD_INIT:-$MNDW_ROOT/etc/init.d/S70mndwd}
+POLICY_FILE="$DATA_DIR/lighttpd-port-policy"
 
-exec sh "$MNDW_HELPER" install
+# One-time upgrade handoff from a lighttpd-fronted version. These are runtime
+# artifacts, not package files, so remove them before the new daemon starts.
+if [ -f "$DATA_DIR/lighttpd-runtime.conf" ] || [ -f "$DATA_DIR/proxy-target.conf" ] || [ -f "$DATA_DIR/lighttpd-port" ] || [ -f "$POLICY_FILE" ]; then
+  if [ -f "$POLICY_FILE" ] && [ "$(cat "$POLICY_FILE" 2>/dev/null)" = "mndw" ]; then
+    echo "[mndw] mndw no longer needs lighttpd. If nothing else uses it: opkg remove lighttpd" >&2
+  fi
+
+  rm -f "$DATA_DIR/lighttpd-runtime.conf" "$DATA_DIR/proxy-target.conf" "$MNDW_ROOT/etc/lighttpd/conf.d/81-mndw.conf" "$POLICY_FILE"
+  HANDOFF=1
+fi
+
+"$MNDWD_INIT" restart
+STATUS=$?
+
+# Keep the old port as a migration seed until the new daemon has reported a
+# successful front-door bind. A failed restart remains retryable.
+if [ "${HANDOFF:-0}" = "1" ] && [ "$STATUS" -eq 0 ]; then
+  rm -f "$DATA_DIR/lighttpd-port"
+fi
+
+exit "$STATUS"

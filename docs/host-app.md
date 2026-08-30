@@ -17,7 +17,7 @@ upstream targets.
 The startup sequence is:
 
 1. initialize theme and session services;
-2. check router authentication;
+2. check network-device authentication;
 3. fetch host information, with a safe fallback on failure;
 4. fetch `GET /api/mgmt/list` and load enabled plugin modules;
 5. create routes and render the app shell.

@@ -124,6 +124,7 @@ export function collectStagePaths(): {
   assets: string;
   initScript: string;
   devicePortHelper: string;
+  selfUpdateHelper: string;
   daemonConfig: string;
 } {
   return {
@@ -132,6 +133,7 @@ export function collectStagePaths(): {
     assets: path.join('opt', 'share', 'www', 'mndw', 'assets'),
     initScript: path.join('opt', 'etc', 'init.d', 'S70mndwd'),
     devicePortHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
+    selfUpdateHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
     daemonConfig: path.join('opt', 'etc', 'mndw.conf'),
   };
 }
@@ -148,6 +150,7 @@ export function verifyStage(
     [p.assets, 'assets directory'],
     [p.initScript, 'init script'],
     [p.devicePortHelper, 'device port helper'],
+    [p.selfUpdateHelper, 'self-update helper'],
     [p.daemonConfig, 'daemon config'],
   ];
 
@@ -289,6 +292,11 @@ export function stageDeployFiles(repoRoot: string, stagingDir: string): void {
   copyTo(
     path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
     path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
+    0o755,
+  );
+  copyTo(
+    path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
+    path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
     0o755,
   );
 }

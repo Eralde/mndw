@@ -2,6 +2,7 @@ package mgmt
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
+	"mndwd/internal/opkg"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
@@ -51,6 +53,10 @@ func (h *Handler) installDeps(parent context.Context, m *manifest.Manifest) *htt
 
 	if err := h.opkg.Install(ctx, packages); err != nil {
 		h.logger.Error("opkg dependency install failed", "plugin", deref(m.Name), "packages", packages, "error", err)
+
+		if errors.Is(err, opkg.ErrBusy) {
+			return httpx.NewError(http.StatusConflict, httpx.CodeOpkgBusy, "package manager is busy")
+		}
 
 		return httpx.NewError(http.StatusBadGateway, httpx.CodeOpkgFailed, "failed to install plugin dependencies")
 	}

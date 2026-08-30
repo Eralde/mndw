@@ -19,6 +19,8 @@ const maxUploadBytes = 10 << 20
 
 const defaultDiagnosticsLogFile = "/opt/var/log/mndwd.log"
 const defaultPluginRuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
+const defaultSelfUpdateStateDir = "/opt/var/mndw"
+const defaultSelfUpdateHelper = "/opt/share/www/mndw/bin/mndw-self-update.sh"
 
 const (
 	defaultRCIHeartbeatInterval = 60 * time.Second
@@ -43,6 +45,8 @@ type Config struct {
 	// DiagnosticsLogFile is a read-only path that diagnostics tails. mndwd's
 	// logger continues writing stdout; build/packaging/init/S70mndwd redirects it here.
 	DiagnosticsLogFile string
+	SelfUpdateStateDir string
+	SelfUpdateHelper   string
 	Dev                bool
 	Opkg               string
 	Service            string
@@ -144,6 +148,14 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 
 	if showVersion {
 		return cfg, true, nil
+	}
+
+	if cfg.SelfUpdateStateDir == "" {
+		cfg.SelfUpdateStateDir = defaultSelfUpdateStateDir
+	}
+
+	if cfg.SelfUpdateHelper == "" {
+		cfg.SelfUpdateHelper = defaultSelfUpdateHelper
 	}
 
 	if cfg.UserPluginsDir == "" {

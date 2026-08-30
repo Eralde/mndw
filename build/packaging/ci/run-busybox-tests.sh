@@ -21,6 +21,7 @@ repo_root=$(CDPATH= cd -- "$script_dir/../../.." && pwd)
 
 sh "$repo_root/build/packaging/ci/test-install-policy.sh"
 sh "$repo_root/build/packaging/ci/test-init-scripts-busybox.sh"
+sh "$repo_root/build/packaging/ci/test-self-update-busybox.sh"
 
 cd "$repo_root/daemon/mndwd"
 

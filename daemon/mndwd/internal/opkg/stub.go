@@ -3,6 +3,7 @@ package opkg
 import (
 	"context"
 	"log/slog"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -44,21 +45,82 @@ func newStub(logger *slog.Logger) *stubManager {
 	}
 }
 
+func (m *stubManager) CheckSelfUpdate(ctx context.Context) (SelfUpdateCandidate, error) {
+	if err := ctx.Err(); err != nil {
+		return SelfUpdateCandidate{}, err
+	}
+
+	return SelfUpdateCandidate{CurrentVersion: "dev"}, nil
+}
+
+func (m *stubManager) PrepareSelfUpdate(ctx context.Context) (SelfUpdateCandidate, LeaseHandle, error) {
+	if err := ctx.Err(); err != nil {
+		return SelfUpdateCandidate{}, nil, err
+	}
+
+	return SelfUpdateCandidate{}, nil, ErrNoUpdate
+}
+
+func (m *stubManager) LockForSelfUpdate(ctx context.Context) (LeaseHandle, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	file, err := os.CreateTemp("", "mndw-stub-self-update-")
+	if err != nil {
+		return nil, err
+	}
+
+	return &stubLease{file: file, path: file.Name()}, nil
+}
+
+func (m *stubManager) SelfUpdateLocked() (bool, error) { return false, nil }
+
+type stubLease struct {
+	file   *os.File
+	path   string
+	closed bool
+}
+
+func (l *stubLease) File() *os.File { return l.file }
+
+func (l *stubLease) CommitHandoff() error {
+	if l.closed {
+		return nil
+	}
+
+	l.closed = true
+	err := l.file.Close()
+	_ = os.Remove(l.path)
+
+	return err
+}
+
+func (l *stubLease) Abort() error {
+	return l.CommitHandoff()
+}
+
 func (m *stubManager) Install(ctx context.Context, packages []string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	if err := validate(packages); err != nil {
 		return err
 	}
+
 	m.mu.Lock()
+
 	for _, p := range packages {
 		version := ""
+
 		if catalog, ok := stubCatalog[p]; ok {
 			version = catalog.version
 		}
+
 		m.installed[p] = version
 	}
+
 	m.mu.Unlock()
 	m.logger.Info("opkg install (stub)", "packages", packages)
 
@@ -69,16 +131,21 @@ func (m *stubManager) Remove(ctx context.Context, packages []string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	if err := rejectProtected(packages); err != nil {
 		return err
 	}
+
 	if err := validate(packages); err != nil {
 		return err
 	}
+
 	m.mu.Lock()
+
 	for _, p := range packages {
 		delete(m.installed, p)
 	}
+
 	m.mu.Unlock()
 	m.logger.Info("opkg remove (stub)", "packages", packages)
 
@@ -89,12 +156,15 @@ func (m *stubManager) Upgrade(ctx context.Context, packages []string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	if err := validate(packages); err != nil {
 		return err
 	}
+
 	if err := rejectProtected(packages); err != nil {
 		return err
 	}
+
 	m.logger.Info("opkg upgrade (stub)", "packages", packages)
 
 	return m.Install(ctx, packages)
@@ -104,6 +174,7 @@ func (m *stubManager) Update(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	m.logger.Info("opkg update (stub)")
 
 	return nil
@@ -113,13 +184,17 @@ func (m *stubManager) ListInstalled(ctx context.Context) ([]string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
 	m.mu.Lock()
+
 	defer m.mu.Unlock()
 
 	out := make([]string, 0, len(m.installed))
+
 	for p := range m.installed {
 		out = append(out, p)
 	}
+
 	sort.Strings(out)
 
 	return out, nil
@@ -129,21 +204,27 @@ func (m *stubManager) ListAvailable(ctx context.Context) ([]string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
 	m.mu.Lock()
+
 	defer m.mu.Unlock()
 
 	seen := map[string]struct{}{}
+
 	for p := range stubCatalog {
 		seen[p] = struct{}{}
 	}
+
 	for p := range m.installed {
 		seen[p] = struct{}{}
 	}
 
 	out := make([]string, 0, len(seen))
+
 	for p := range seen {
 		out = append(out, p)
 	}
+
 	sort.Strings(out)
 
 	return out, nil
@@ -153,10 +234,13 @@ func (m *stubManager) List(ctx context.Context) (PackageList, error) {
 	if err := ctx.Err(); err != nil {
 		return PackageList{}, err
 	}
+
 	m.mu.Lock()
+
 	defer m.mu.Unlock()
 
 	entries := make([]PackageEntry, 0, len(stubCatalog)+len(m.installed))
+
 	for name, catalog := range stubCatalog {
 		installedVersion, installed := m.installed[name]
 		entry := PackageEntry{
@@ -165,20 +249,25 @@ func (m *stubManager) List(ctx context.Context) (PackageList, error) {
 			Description: catalog.description,
 			Status:      "available",
 		}
+
 		if installed {
 			entry.Version = installedVersion
 			entry.Status = "installed"
+
 			if installedVersion != catalog.version {
 				entry.Status = "update_available"
 				entry.NewVersion = catalog.version
 			}
 		}
+
 		entries = append(entries, entry)
 	}
+
 	for name, version := range m.installed {
 		if _, ok := stubCatalog[name]; ok {
 			continue
 		}
+
 		entries = append(entries, PackageEntry{Name: name, Version: version, Status: "installed"})
 	}
 
@@ -191,26 +280,35 @@ func (m *stubManager) Info(ctx context.Context, name string) (PackageInfo, error
 	if err := ctx.Err(); err != nil {
 		return PackageInfo{}, err
 	}
+
 	if !pkgNameRe.MatchString(name) {
 		return PackageInfo{}, &InvalidPackageError{Name: name}
 	}
+
 	m.mu.Lock()
+
 	defer m.mu.Unlock()
+
 	catalog, available := stubCatalog[name]
 	installedVersion, installed := m.installed[name]
+
 	if !available && !installed {
 		return PackageInfo{}, &PackageNotFoundError{Name: name}
 	}
+
 	version := catalog.version
 	description := catalog.description
 	status := "available"
+
 	if installed {
 		version = installedVersion
 		status = "installed"
+
 		if available && installedVersion != catalog.version {
 			status = "update_available"
 		}
 	}
+
 	return PackageInfo{
 		Name:         name,
 		Version:      version,

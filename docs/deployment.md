@@ -9,16 +9,18 @@ discovery helper, and an init script.
 The installed layout is centered under `/opt`:
 
 ```text
-/opt/share/www/mndw/                 package-owned host SPA
-/opt/share/www/mndw/plugins/         package-owned built-in plugins
-/opt/sbin/mndwd                      daemon binary
-/opt/etc/init.d/                     daemon init script
-/opt/var/lib/mndw/                   selected port, session state, staging
-/opt/var/lib/mndw/frontend-port      mndwd's selected browser-facing port
-/opt/var/lib/mndw/user-plugins/      durable uploaded user-plugin files
-/opt/var/lib/mndw/state.json         durable plugin metadata and manifests
-/opt/var/lib/mndw/legacy/            preserved legacy 80-mndw.conf files
-/opt/tmp/mndw/plugin-runtime/        runtime sockets and leases
+/opt/share/www/mndw/                         package-owned host SPA
+/opt/share/www/mndw/plugins/                 package-owned built-in plugins
+/opt/share/www/mndw/bin/mndw-self-update.sh  self-update helper
+/opt/sbin/mndwd                              daemon binary
+/opt/etc/init.d/                             daemon init script
+/opt/var/lib/mndw/                           selected port, session state, staging
+/opt/var/lib/mndw/frontend-port              mndwd's selected browser-facing port
+/opt/var/lib/mndw/user-plugins/              durable uploaded user-plugin files
+/opt/var/lib/mndw/state.json                 durable plugin metadata and manifests
+/opt/var/lib/mndw/legacy/                    preserved legacy 80-mndw.conf files
+/opt/tmp/mndw/plugin-runtime/                runtime sockets and leases
+/opt/var/mndw/                               self-update lock, intent, pending, rollback
 ```
 
 User plugins live separately from built-ins and are served by mndwd through its
@@ -52,6 +54,30 @@ persisted `frontend-port`, then the old `lighttpd-port` migration seed, then
 selected port is written atomically to `frontend-port`.
 Request routing, listener ports, and upstream targets are owned by
 [`contracts/routing.md`](../contracts/routing.md).
+
+## Hosted OPKG feed and self-update
+
+Hosted feed artifacts are published under architecture-specific paths:
+
+```text
+https://eralde.github.io/mndw-opkg-feed/aarch64-3.10/
+https://eralde.github.io/mndw-opkg-feed/mips-3.4/
+https://eralde.github.io/mndw-opkg-feed/mipsel-3.4/
+```
+
+Use hosted `add_repo.sh` bootstrap. It selects device's exact supported
+architecture, installs published public key, creates `mndw-feed.conf` only
+when absent, and runs `opkg update` plus `opkg install mndw`. Bootstrap does
+not enable `check_signature`, so existing unrelated feeds keep current
+behavior. Legacy `build/packaging/install.sh` is local-feed-only and must not
+be copied to hosted feed.
+
+Settings -> System update uses server-derived targets. Apply downloads one exact
+target IPK into `/opt/var/mndw/pending/`, starts packaged helper with held lock,
+and installs that exact path after daemon restart. Revert uses validated
+`/opt/var/mndw/rollback/version` pointer and normalized IPK. Check and
+apply/revert require normal management session; POST requests require
+`X-Mndw-Csrf: 1`.
 
 ## IPK pipeline
 

@@ -122,6 +122,30 @@ func TestOpkgInstallEmpty(t *testing.T) {
 	}
 }
 
+type busyOpkgManager struct {
+	opkg.Manager
+}
+
+func (m busyOpkgManager) Install(context.Context, []string) error { return opkg.ErrBusy }
+
+func TestOpkgInstallBusy(t *testing.T) {
+	base := opkg.New("stub", discardLogger())
+	srv, _ := newTestServerWithOpkg(t, busyOpkgManager{Manager: base})
+	body, _ := json.Marshal(map[string][]string{"packages": {"curl"}})
+	resp, err := http.Post(srv.URL+"/api/mgmt/opkg/install", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.StatusCode)
+	}
+
+	assertCode(t, resp, "OPKG_BUSY")
+}
+
 type dependencyConflictManager struct {
 	opkg.Manager
 }

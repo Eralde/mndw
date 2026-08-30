@@ -60,8 +60,11 @@ const readTarFile = (archivePath: string, wantedName: string): Buffer => {
 
     if (header.every((byte) => byte === 0)) { break; }
 
-    const name = header.subarray(0, 100).toString('utf8').replace(/\0.*$/, '');
-    const sizeText = header.subarray(124, 136).toString('ascii').replace(/\0.*$/, '').trim();
+    const name = header.subarray(0, 100).toString('utf8')
+.replace(/\0.*$/, '');
+    const sizeText = header.subarray(124, 136).toString('ascii')
+.replace(/\0.*$/, '')
+.trim();
     const size = parseInt(sizeText || '0', 8);
     const contentOffset = offset + 512;
 
@@ -174,6 +177,9 @@ describe('collectStagePaths', () => {
     expect(paths.initScript).toBe(path.join('opt', 'etc', 'init.d', 'S70mndwd'));
     expect(paths.devicePortHelper).toBe(path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'));
     expect(paths.daemonConfig).toBe(path.join('opt', 'etc', 'mndw.conf'));
+    expect(paths.selfUpdateHelper).toBe(
+      path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
+    );
   });
 });
 
@@ -277,6 +283,7 @@ describe('verifyStage', () => {
 
     stageFile('opt/etc/init.d/S70mndwd');
     stageFile('opt/share/www/mndw/bin/mndw-device-port.sh');
+    stageFile('opt/share/www/mndw/bin/mndw-self-update.sh');
     stageFile('opt/etc/mndw.conf');
   };
 
@@ -629,6 +636,18 @@ describe('stageDeployFiles', () => {
 
       expect(fs.statSync(devicePortHelperPath).mode.toString(8).slice(-3)).toBe('755');
       expect(fs.readFileSync(devicePortHelperPath, 'utf8')).toContain('WWW-Authenticate');
+
+      const selfUpdateHelperPath = path.join(
+        stagingDir,
+        'opt',
+        'share',
+        'www',
+        'mndw',
+        'bin',
+        'mndw-self-update.sh',
+      );
+
+      expect(fs.statSync(selfUpdateHelperPath).mode.toString(8).slice(-3)).toBe('755');
 
       const stagedFiles = fs.readdirSync(path.join(stagingDir, 'opt', 'share', 'www', 'mndw', 'bin'));
 

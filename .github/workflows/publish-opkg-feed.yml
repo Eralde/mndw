@@ -45,6 +45,7 @@ jobs:
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${FEED_REPO}.git" feed
           rm -rf feed/*
           cp -R out/repo/. feed/
+          cp build/packaging/install.sh feed/install.sh
           cd feed
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

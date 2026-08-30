@@ -19,6 +19,23 @@ func TestParseDefaultsUserPluginsDirUsesDurableDataRoot(t *testing.T) {
 	}
 }
 
+func TestParseAcceptsCanonicalDeviceURLFlag(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--device-url", "http://192.0.2.1:8081"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.DeviceURL != "http://192.0.2.1:8081" {
+		t.Fatalf("device URL = %q, want canonical device URL", cfg.DeviceURL)
+	}
+}
+
+func TestParseRejectsRouterURLFlag(t *testing.T) {
+	if _, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--router-url", "http://192.0.2.1:8081"}); err == nil {
+		t.Fatal("legacy router URL flag was accepted")
+	}
+}
+
 func TestParseDefaultsUserPluginsDirUsesCustomDataRoot(t *testing.T) {
 	t.Setenv("MNDW_USER_PLUGINS_DIR", "")
 
@@ -259,6 +276,32 @@ func TestParseDevAcceptsExplicitHTTPControllerURL(t *testing.T) {
 
 	if cfg.ControllerURL != "http://192.168.1.1:80" {
 		t.Fatalf("controller URL = %q", cfg.ControllerURL)
+	}
+}
+
+func TestFrontDoorModeDetection(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--frontend-dir", "/opt/share/www/mndw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !cfg.FrontDoorMode() {
+		t.Fatal("expected front-door mode on when --frontend-dir set")
+	}
+
+	if cfg.FrontendListen != "0.0.0.0" {
+		t.Fatalf("default FrontendListen = %q, want 0.0.0.0", cfg.FrontendListen)
+	}
+}
+
+func TestFrontDoorOffByDefault(t *testing.T) {
+	cfg, _, err := parseFlags(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.FrontDoorMode() {
+		t.Fatal("front-door mode must be off when --frontend-dir unset")
 	}
 }
 

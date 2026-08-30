@@ -1,6 +1,6 @@
 // Package authz is the daemon's session gate. It has no session store
-// of its own: it replays a request's cookies against the router's /auth endpoint and
-// trusts the router's verdict, caching it per cookie for a short TTL so a burst of
+// of its own: it replays a request's cookies against the device's /auth endpoint and
+// trusts the device's verdict, caching it per cookie for a short TTL so a burst of
 // plugin calls costs one upstream check. --dev accepts everything (the bypass is
 // logged loudly at startup). Backend route access is decided by the unified
 // backend gateway because it depends on the matched manifest capability.
@@ -25,12 +25,12 @@ const defaultTTL = 30 * time.Second
 
 // negativeTTL caps how long a rejection is cached: short enough that a user who has
 // just logged in is not locked out for the full positive TTL, long enough to blunt a
-// flood of invalid cookies hammering the router.
+// flood of invalid cookies hammering the device.
 const negativeTTL = 5 * time.Second
 
-// Verifier validates that a request carries a live router session.
+// Verifier validates that a request carries a live device session.
 type Verifier struct {
-	routerURL string
+	deviceURL string
 	client    *http.Client
 	ttl       time.Duration
 	dev       bool
@@ -50,16 +50,16 @@ type entry struct {
 type Options struct {
 	// TTL overrides the positive-verdict cache lifetime (default 30s).
 	TTL time.Duration
-	// Client overrides the HTTP client used to reach the router (default 5s timeout).
+	// Client overrides the HTTP client used to reach the device (default 5s timeout).
 	Client *http.Client
 	// Now overrides the clock (tests inject a controllable one).
 	Now func() time.Time
 }
 
-// New constructs a Verifier. In dev mode the router is never contacted.
-func New(routerURL string, dev bool, logger *slog.Logger, opts Options) *Verifier {
+// New constructs a Verifier. In dev mode the device is never contacted.
+func New(deviceURL string, dev bool, logger *slog.Logger, opts Options) *Verifier {
 	v := &Verifier{
-		routerURL: strings.TrimRight(routerURL, "/"),
+		deviceURL: strings.TrimRight(deviceURL, "/"),
 		client:    opts.Client,
 		ttl:       opts.TTL,
 		dev:       dev,
@@ -67,12 +67,15 @@ func New(routerURL string, dev bool, logger *slog.Logger, opts Options) *Verifie
 		now:       opts.Now,
 		cache:     map[string]entry{},
 	}
+
 	if v.client == nil {
 		v.client = &http.Client{Timeout: 5 * time.Second}
 	}
+
 	if v.ttl == 0 {
 		v.ttl = defaultTTL
 	}
+
 	if v.now == nil {
 		v.now = time.Now
 	}
@@ -88,11 +91,13 @@ func (v *Verifier) Authenticate(r *http.Request) *httpx.APIError {
 	}
 
 	cookie := r.Header.Get("Cookie")
+
 	if cookie == "" {
 		return unauthorized()
 	}
 
 	key := hashKey(cookie)
+
 	if verdict, cached := v.lookup(key); cached {
 		if verdict {
 			return nil
@@ -102,7 +107,9 @@ func (v *Verifier) Authenticate(r *http.Request) *httpx.APIError {
 	}
 
 	ok := v.replay(r.Context(), cookie)
+
 	v.store(key, ok)
+
 	if ok {
 		return nil
 	}
@@ -120,9 +127,11 @@ func (v *Verifier) Middleware(next http.Handler) http.Handler {
 
 			return
 		}
+
 		if requiresCSRF(r.Method) && !httpx.RequireCSRF(w, v.logger, r) {
 			return
 		}
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -136,24 +145,27 @@ func requiresCSRF(method string) bool {
 	}
 }
 
-// replay asks the router whether the cookie names a live session. Any transport
+// replay asks the device whether the cookie names a live session. Any transport
 // failure is treated as "not authenticated" — the daemon fails closed.
 func (v *Verifier) replay(ctx context.Context, cookie string) bool {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.routerURL+"/auth", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.deviceURL+"/auth", nil)
 	if err != nil {
 		v.logger.Error("authz: build auth request failed", "error", err)
 
 		return false
 	}
+
 	req.Header.Set("Cookie", cookie)
 
 	resp, err := v.client.Do(req)
 	if err != nil {
-		v.logger.Warn("authz: router auth request failed", "error", err)
+		v.logger.Warn("authz: device auth request failed", "error", err)
 
 		return false
 	}
+
 	defer resp.Body.Close()
+
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
@@ -161,12 +173,15 @@ func (v *Verifier) replay(ctx context.Context, cookie string) bool {
 
 func (v *Verifier) lookup(key string) (verdict, cached bool) {
 	v.mu.Lock()
+
 	defer v.mu.Unlock()
 
 	e, ok := v.cache[key]
+
 	if !ok {
 		return false, false
 	}
+
 	if v.now().After(e.expires) {
 		delete(v.cache, key)
 
@@ -178,12 +193,15 @@ func (v *Verifier) lookup(key string) (verdict, cached bool) {
 
 func (v *Verifier) store(key string, ok bool) {
 	ttl := v.ttl
+
 	if !ok {
 		ttl = negativeTTL
 	}
 
 	v.mu.Lock()
+
 	defer v.mu.Unlock()
+
 	v.cache[key] = entry{ok: ok, expires: v.now().Add(ttl)}
 }
 

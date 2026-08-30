@@ -197,12 +197,14 @@ describe('preinst legacy migration', () => {
     const durableFile = path.join(durableRoot, 'existing', 'index.js');
     const stagingFile = path.join(root, 'var', 'lib', 'mndw', 'staging', 'pending.zip');
     const stateFile = path.join(root, 'var', 'lib', 'mndw', 'state.json');
+    const policyFile = path.join(root, 'var', 'lib', 'mndw', 'lighttpd-port-policy');
 
     fs.mkdirSync(path.dirname(durableFile), {recursive: true});
     fs.mkdirSync(path.dirname(stagingFile), {recursive: true});
     fs.writeFileSync(durableFile, 'durable');
     fs.writeFileSync(stagingFile, 'staged');
     fs.writeFileSync(stateFile, '{"state":"keep"}');
+    fs.writeFileSync(policyFile, 'mndw\n');
     fs.chmodSync(durableRoot, 0o700);
 
     const result = runScript(scriptName, [scriptName === 'preinst' ? 'upgrade' : 'remove'], root);
@@ -211,6 +213,7 @@ describe('preinst legacy migration', () => {
     expect(fs.readFileSync(durableFile, 'utf8')).toBe('durable');
     expect(fs.readFileSync(stagingFile, 'utf8')).toBe('staged');
     expect(fs.readFileSync(stateFile, 'utf8')).toBe('{"state":"keep"}');
+    expect(fs.readFileSync(policyFile, 'utf8')).toBe('mndw\n');
     expect(fs.statSync(durableRoot).mode % 0o1000).toBe(0o700);
     expect(fs.existsSync(path.join(root, 'share', 'www', 'mndw', 'user-plugins'))).toBe(false);
     expect(fs.existsSync(path.join(root, 'chown-called'))).toBe(false);
@@ -248,26 +251,125 @@ describe('upgrade phase guards', () => {
   });
 });
 
-describe('postinst wrapper', () => {
-  it('delegates configure to helper through sh', () => {
+describe('postinst front-door handoff', () => {
+  const writeRestartStub = (root: string, status = 0): string => {
+    const marker = path.join(root, 'mndwd-restart');
+
+    writeExecutable(
+      path.join(root, 'etc', 'init.d', 'S70mndwd'),
+      `#!/bin/sh\nprintf '%s\\n' "$1" >> "${marker}"\nexit ${status}\n`,
+    );
+
+    return marker;
+  };
+
+  it('starts mndwd on a fresh install without invoking lighttpd', () => {
     const root = makeRoot();
-    const marker = path.join(root, 'helper-call');
-    const helper = path.join(root, 'helper.sh');
+    const marker = writeRestartStub(root);
+    const lighttpdMarker = path.join(root, 'lighttpd-restart');
 
-    writeExecutable(helper, `#!/bin/sh\nprintf '%s\\n' "$@" > "${marker}"\n`);
+    writeExecutable(path.join(root, 'etc', 'init.d', 'S80lighttpd'), `#!/bin/sh\necho called > "${lighttpdMarker}"\n`);
 
-    const result = spawnSync('/bin/sh', [path.join(packagingRoot, 'postinst'), 'configure'], {
-      encoding: 'utf8',
-      env: {...process.env, MNDW_ROOT: root, MNDW_HELPER: helper},
-    });
+    const result = runScript('postinst', ['configure'], root);
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(fs.readFileSync(marker, 'utf8')).toBe('restart\n');
+    expect(fs.existsSync(lighttpdMarker)).toBe(false);
+    expect(result.stderr).not.toContain('opkg remove lighttpd');
+  });
+
+  it('propagates a failed mndwd restart', () => {
+    const root = makeRoot();
+
+    writeRestartStub(root, 7);
+
+    const result = runScript('postinst', ['configure'], root);
+
+    expect(result.status).toBe(7);
+  });
+
+  it('removes mndw lighttpd handoff markers once after a successful restart', () => {
+    const root = makeRoot();
+    const marker = writeRestartStub(root);
+    const dataDir = path.join(root, 'var', 'lib', 'mndw');
+
+    fs.mkdirSync(dataDir, {recursive: true});
+    fs.writeFileSync(path.join(dataDir, 'lighttpd-port-policy'), 'mndw\n');
+    fs.writeFileSync(path.join(dataDir, 'lighttpd-port'), '100\n');
+    fs.writeFileSync(path.join(dataDir, 'lighttpd-runtime.conf'), 'runtime\n');
+    fs.writeFileSync(path.join(dataDir, 'proxy-target.conf'), 'proxy\n');
+
+    const first = runScript('postinst', ['configure'], root);
+    const second = runScript('postinst', ['configure'], root);
+
+    expect(first.status, `${first.stdout}\n${first.stderr}`).toBe(0);
+    expect(second.status, `${second.stdout}\n${second.stderr}`).toBe(0);
+    expect(first.stderr).toContain('opkg remove lighttpd');
+    expect(second.stderr).not.toContain('opkg remove lighttpd');
+    expect(fs.readFileSync(marker, 'utf8')).toBe('restart\nrestart\n');
+    expect(fs.existsSync(path.join(dataDir, 'lighttpd-port-policy'))).toBe(false);
+    expect(fs.existsSync(path.join(dataDir, 'lighttpd-port'))).toBe(false);
+    expect(fs.existsSync(path.join(dataDir, 'lighttpd-runtime.conf'))).toBe(false);
+    expect(fs.existsSync(path.join(dataDir, 'proxy-target.conf'))).toBe(false);
+  });
+
+  it('suppresses removal notice for preserve policy while consuming seed on success', () => {
+    const root = makeRoot();
+
+    writeRestartStub(root);
+
+    const dataDir = path.join(root, 'var', 'lib', 'mndw');
+
+    fs.mkdirSync(dataDir, {recursive: true});
+    fs.writeFileSync(path.join(dataDir, 'lighttpd-port-policy'), 'preserve\n');
+    fs.writeFileSync(path.join(dataDir, 'lighttpd-port'), '100\n');
+
+    const result = runScript('postinst', ['configure'], root);
 
     expect(result.status).toBe(0);
-    expect(fs.readFileSync(marker, 'utf8')).toBe('install\n');
+    expect(result.stderr).not.toContain('opkg remove lighttpd');
+    expect(fs.existsSync(path.join(dataDir, 'lighttpd-port-policy'))).toBe(false);
+    expect(fs.existsSync(path.join(dataDir, 'lighttpd-port'))).toBe(false);
+  });
+
+  it('retains migration seed when mndwd restart fails', () => {
+    const root = makeRoot();
+
+    writeRestartStub(root, 7);
+
+    const dataDir = path.join(root, 'var', 'lib', 'mndw');
+
+    fs.mkdirSync(dataDir, {recursive: true});
+    fs.writeFileSync(path.join(dataDir, 'lighttpd-port'), '100\n');
+
+    const result = runScript('postinst', ['configure'], root);
+
+    expect(result.status).toBe(7);
+    expect(fs.existsSync(path.join(dataDir, 'lighttpd-port'))).toBe(true);
+  });
+
+  it('tears down runtime and proxy markers without a policy notice', () => {
+    const root = makeRoot();
+
+    writeRestartStub(root);
+
+    const dataDir = path.join(root, 'var', 'lib', 'mndw');
+
+    fs.mkdirSync(dataDir, {recursive: true});
+    fs.writeFileSync(path.join(dataDir, 'lighttpd-runtime.conf'), 'runtime\n');
+    fs.writeFileSync(path.join(dataDir, 'proxy-target.conf'), 'proxy\n');
+
+    const result = runScript('postinst', ['configure'], root);
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('opkg remove lighttpd');
+    expect(fs.existsSync(path.join(dataDir, 'lighttpd-runtime.conf'))).toBe(false);
+    expect(fs.existsSync(path.join(dataDir, 'proxy-target.conf'))).toBe(false);
   });
 });
 
 describe('final removal', () => {
-  it('removes package-owned runtime files and restarts remaining lighttpd', () => {
+  it('stops mndwd and removes app files without managing lighttpd', () => {
     const root = makeRoot();
     const daemonMarker = path.join(root, 'daemon-marker');
     const lighttpdMarker = path.join(root, 'lighttpd-marker');
@@ -294,9 +396,9 @@ describe('final removal', () => {
 
     expect(result.status).toBe(0);
     expect(fs.readFileSync(daemonMarker, 'utf8')).toBe('stop\n');
-    expect(fs.readFileSync(lighttpdMarker, 'utf8')).toBe('restart\n');
-    expect(fs.existsSync(loader)).toBe(false);
-    expect(fs.existsSync(runtime)).toBe(false);
+    expect(fs.existsSync(lighttpdMarker)).toBe(false);
+    expect(fs.existsSync(loader)).toBe(true);
+    expect(fs.existsSync(runtime)).toBe(true);
     expect(fs.existsSync(path.join(root, 'var', 'run', 'mndwd.pid'))).toBe(false);
     expect(fs.existsSync(path.join(root, 'share', 'www', 'mndw'))).toBe(false);
   });
@@ -324,7 +426,7 @@ describe('final removal', () => {
       .toBe('plugin');
     expect(fs.existsSync(path.join(root, 'share', 'www', 'mndw'))).toBe(false);
     expect(fs.readFileSync(daemonMarker, 'utf8')).toBe('stop\n');
-    expect(fs.readFileSync(lighttpdMarker, 'utf8')).toBe('restart\n');
+    expect(fs.existsSync(lighttpdMarker)).toBe(false);
   });
 
   it('aborts removal without changing either copy on a legacy/durable collision', () => {

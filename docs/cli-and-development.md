@@ -109,7 +109,7 @@ a local daemon, waits for readiness, and starts the host under one supervisor.
 This keeps development-only behavior such as MWS mock data available. The
 ordinary `pnpm build-builtin-plugins` command continues to pack configured
 production entries. The existing `MNDW_HOST_DEVICE` value continues to select
-the real router for RCI/auth calls.
+the real network device for RCI/auth calls.
 
 Uploadable repository examples live under `plugins/examples`. Build their
 archives with `pnpm build-example-plugins`; this produces

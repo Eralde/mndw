@@ -1,6 +1,6 @@
 // Package opkg wraps the device package manager. It has two
 // implementations behind one interface: exec (runs the real `opkg` binary on the
-// router) and stub (in-memory, for --dev and tests — no opkg on a dev laptop). It is
+// device) and stub (in-memory, for --dev and tests — no opkg on a dev laptop). It is
 // used both by the approval flow (installing a plugin's declared dependencies) and by
 // the /api/mgmt/opkg/* handlers that back the package-manager UI.
 package opkg

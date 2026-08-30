@@ -8,10 +8,10 @@ foreground `service` processes.
 
 ```text
 browser
-  └─ lighttpd
+  └─ mndwd
       ├─ static host SPA and plugin assets
-      ├─ router services
-      └─ mndwd gateway
+      ├─ rci/ and auth/ proxy
+      └─ API and WebSocket gateway
 
 mndwd
   ├─ session-gated management
@@ -86,9 +86,9 @@ tuples, or incompatible protocol fields. They never contain errors, stderr,
 restart counters, process data, socket paths, credentials, or tokens.
 
 SDK plugin-name binding is ergonomic scoping, not an authorization identity.
-Any authenticated router session may query a known plugin name; there is no
+Any authenticated device session may query a known plugin name; there is no
 enumeration endpoint. This disclosure matches the existing authenticated
-router-session trust tier.
+device-session trust tier.
 
 ## Service backends
 
@@ -112,7 +112,7 @@ and report `BACKEND_INCOMPATIBLE`.
 
 ## Authentication and authorization
 
-Management routes require a valid router session, and unsafe management
+Management routes require a valid device session, and unsafe management
 mutations also require the fixed `X-Mndw-Csrf: 1` header. Private plugin routes
 also require session access; public route access is per-route and only GET/HEAD
 HTTP routes may be public. Public access never bypasses approval or enabled

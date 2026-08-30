@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,8 +18,11 @@ import (
 
 	"mndwd/internal/authz"
 	"mndwd/internal/backend"
+	"mndwd/internal/deviceproxy"
 	"mndwd/internal/diagnostics"
+	"mndwd/internal/frontend"
 	"mndwd/internal/httpx"
+	"mndwd/internal/listen"
 	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/opkg"
@@ -69,7 +73,7 @@ func run(cfg Config) error {
 		return fmt.Errorf("open palette store: %w", err)
 	}
 
-	verifier := authz.New(cfg.RouterURL, cfg.Dev, logger, authz.Options{})
+	verifier := authz.New(cfg.DeviceURL, cfg.Dev, logger, authz.Options{})
 	// The lifetime context is created before management wiring so service actions can
 	// survive request cancellation but still stop when the daemon shuts down.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -79,7 +83,37 @@ func run(cfg Config) error {
 	c := assemble(cfg, store, paletteStore, verifier, logger, ctx)
 
 	if c.startupErr != nil {
+		c.closePersistentSession()
+
+		_ = c.runtime.Shutdown(context.Background())
+
 		return c.startupErr
+	}
+
+	var listener net.Listener
+
+	if cfg.FrontDoorMode() {
+		selected, port, selectErr := listen.Select(listen.Config{
+			BindAddr:      cfg.FrontendListen,
+			PersistPath:   filepath.Join(cfg.DataDir, "frontend-port"),
+			SeedPath:      filepath.Join(cfg.DataDir, "lighttpd-port"),
+			DefaultPort:   listen.DefaultPort,
+			FallbackPorts: listen.DefaultFallbackPorts,
+			RetryAttempts: 5,
+			RetryDelay:    300 * time.Millisecond,
+		})
+
+		if selectErr != nil {
+			c.closePersistentSession()
+
+			_ = c.runtime.Shutdown(context.Background())
+
+			return selectErr
+		}
+
+		listener = selected
+
+		logger.Info("mndwd front door", "url", fmt.Sprintf("http://<device-ip>:%d/", port), "port", port)
 	}
 
 	if c.activationAssembly != nil {
@@ -97,16 +131,21 @@ func run(cfg Config) error {
 	c.runtime.Reconcile(ctx, c.reg.AllBackendPlugins())
 
 	srv := &http.Server{
-		Addr:              cfg.Listen,
 		Handler:           c.handler,
 		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	if listener != nil {
+		srv.Addr = listener.Addr().String()
+	} else {
+		srv.Addr = cfg.Listen
 	}
 
 	var closePersistentOnce sync.Once
 	closePersistent := func() {
 		closePersistentOnce.Do(c.closePersistentSession)
 	}
-	err = serveWithDrain(ctx, srv, logger, closePersistent, cfg.HTTPDrainTimeout)
+	err = serveWithDrain(ctx, srv, listener, logger, closePersistent, cfg.HTTPDrainTimeout)
 
 	closePersistent()
 
@@ -179,20 +218,67 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 	registerPalette(mux, mgmtMux, paletteStore, logger)
 
 	gateway := registerPlugins(mux, cfg, reg, activationGates, verifier, runtime, logger)
+	frontDoorErr := registerFrontDoor(mux, cfg, logger)
 
 	gateway.SetTrafficBlockPredicate(runtime.BlocksTraffic)
 	runtime.SetLifecycleHooks(gateway.ClosePluginSockets)
 	runtime.SetPlatformMaintenanceHook(gateway.BeginPlatformMaintenance)
 
+	var routed http.Handler = mux
+
+	if cfg.FrontDoorMode() {
+		routed = frontend.TraversalGuard(mux)
+	}
+
+	startupErr := accessRegistration.err
+
+	if startupErr == nil {
+		startupErr = frontDoorErr
+	}
+
 	return components{
-		handler:                httpx.NoCORSHandler(httpx.LogMiddleware(logger, mux)),
+		handler:                httpx.NoCORSHandler(httpx.LogMiddleware(logger, routed)),
 		reg:                    reg,
 		runtime:                runtime,
 		gateway:                gateway,
 		activationAssembly:     accessRegistration.activationAssembly,
 		closePersistentSession: accessRegistration.close,
-		startupErr:             accessRegistration.err,
+		startupErr:             startupErr,
 	}
+}
+
+func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger) error {
+	if !cfg.FrontDoorMode() {
+		return nil
+	}
+
+	proxy, err := deviceproxy.New(cfg.DeviceURL, logger)
+	if err != nil {
+		return fmt.Errorf("device proxy: %w", err)
+	}
+
+	for _, prefix := range []string{"/rci", "/ci", "/auth"} {
+		mux.Handle(prefix, proxy)
+		mux.Handle(prefix+"/", proxy)
+	}
+
+	apiReserved := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.NotFound(writer, request)
+	})
+
+	for _, prefix := range []string{"/api", "/ws"} {
+		mux.Handle(prefix, apiReserved)
+		mux.Handle(prefix+"/", apiReserved)
+	}
+
+	handler, err := frontend.New(cfg.FrontendDir, cfg.UserPluginsDir)
+	if err != nil {
+		return fmt.Errorf("frontend handler: %w", err)
+	}
+
+	handler.Register(mux)
+
+	return nil
 }
 
 // registerMgmt mounts the session-gated management surface and returns its mux so
@@ -302,10 +388,10 @@ func diagnosticsPlugins(reg *registry.Registry, runtime *backend.RuntimeImpl) []
 // serve runs the HTTP server until ctx is canceled or the listener fails, then
 // shuts down gracefully.
 func serve(ctx context.Context, srv *http.Server, logger *slog.Logger, onShutdown func()) error {
-	return serveWithDrain(ctx, srv, logger, onShutdown, 10*time.Second)
+	return serveWithDrain(ctx, srv, nil, logger, onShutdown, 10*time.Second)
 }
 
-func serveWithDrain(ctx context.Context, srv *http.Server, logger *slog.Logger, onShutdown func(), drainTimeout time.Duration) error {
+func serveWithDrain(ctx context.Context, srv *http.Server, listener net.Listener, logger *slog.Logger, onShutdown func(), drainTimeout time.Duration) error {
 	if drainTimeout <= 0 {
 		drainTimeout = 35 * time.Second
 	}
@@ -315,8 +401,16 @@ func serveWithDrain(ctx context.Context, srv *http.Server, logger *slog.Logger, 
 	go func() {
 		logger.Info("mndwd listening", "addr", srv.Addr, "version", version)
 
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
+		var serveErr error
+
+		if listener != nil {
+			serveErr = srv.Serve(listener)
+		} else {
+			serveErr = srv.ListenAndServe()
+		}
+
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			errCh <- serveErr
 
 			return
 		}

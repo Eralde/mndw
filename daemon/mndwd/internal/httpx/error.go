@@ -1,6 +1,6 @@
 // Package httpx holds the daemon's HTTP plumbing: the structured error envelope
 // and request-logging middleware. Everything mndwd serves goes through these
-// helpers so responses stay uniform and greppable in the router log.
+// helpers so responses stay uniform and greppable in the device log.
 package httpx
 
 import (

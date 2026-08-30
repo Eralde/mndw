@@ -61,7 +61,7 @@ if ! command -v opkg >/dev/null 2>&1; then
   exit 1
 fi
 
-CONF_DIR="/opt/etc/opkg"
+CONF_DIR=${MNDW_OPKG_CONF_DIR:-/opt/etc/opkg}
 CONF_FILE="$CONF_DIR/${REPO_NAME}.conf"
 
 mkdir -p "$CONF_DIR"

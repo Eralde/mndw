@@ -8,10 +8,10 @@ device-side plugin management and backend execution.
 
 ```text
 browser
-  └─ lighttpd
+  └─ mndwd
       ├─ static dashboard and plugin assets
-      ├─ router services
-      └─ mndwd gateway
+      ├─ rci/ and auth/ proxy
+      └─ API and WebSocket gateway
 ```
 
 The Svelte 5 host owns login state, routing, dashboard tiles, plugin rendering,
@@ -106,7 +106,7 @@ plugins/
   examples/         uploadable example plugins
 build/
   palette/          palette engine and token generator
-  packaging/        lighttpd, init, IPK, and install scripts
+  packaging/        web server init, IPK, and install scripts
   ...               repository build orchestration and helpers
 docs/               documentation
 ```

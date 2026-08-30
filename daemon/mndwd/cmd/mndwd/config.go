@@ -30,13 +30,15 @@ const (
 // manager, authentication, exec/service runtime, and storage settings.
 type Config struct {
 	Listen             string
+	FrontendDir        string
+	FrontendListen     string
 	DataDir            string
 	RCISessionStateDir string
 	RCISessionKeyDir   string
 	PluginRuntimeRoot  string
 	BuiltinPluginsDir  string
 	UserPluginsDir     string
-	RouterURL          string
+	DeviceURL          string
 	ControllerURL      string
 	// DiagnosticsLogFile is a read-only path that diagnostics tails. mndwd's
 	// logger continues writing stdout; build/packaging/init/S70mndwd redirects it here.
@@ -95,6 +97,8 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs := flag.NewFlagSet("mndwd", flag.ContinueOnError)
 
 	fs.StringVar(&cfg.Listen, "listen", "127.0.0.1:9090", "address to listen on")
+	fs.StringVar(&cfg.FrontendDir, "frontend-dir", "", "SPA document root; when set, front-door mode is on")
+	fs.StringVar(&cfg.FrontendListen, "frontend-listen", "0.0.0.0", "front-door bind address (all interfaces for LAN parity)")
 	fs.StringVar(&cfg.DataDir, "data-dir", "/opt/var/lib/mndw", "directory for state.json and staging")
 	fs.StringVar(&cfg.RCISessionStateDir, "rci-session-state-dir", "", "directory for encrypted persistent RCI session ciphertext")
 	fs.StringVar(&cfg.RCISessionKeyDir, "rci-session-key-dir", "", "secure directory for the persistent RCI session key")
@@ -104,7 +108,10 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	userPluginsDirDefault := os.Getenv("MNDW_USER_PLUGINS_DIR")
 
 	fs.StringVar(&cfg.UserPluginsDir, "user-plugins-dir", userPluginsDirDefault, "directory of approved user plugins")
-	fs.StringVar(&cfg.RouterURL, "router-url", "http://127.0.0.1:80", "router base URL for session auth")
+
+	const defaultDeviceURL = "http://127.0.0.1:80"
+
+	fs.StringVar(&cfg.DeviceURL, "device-url", defaultDeviceURL, "network device base URL for session auth and device proxying")
 	fs.StringVar(&cfg.ControllerURL, "controller-url", "", "controller base URL for persistent RCI requests")
 	fs.StringVar(&cfg.DiagnosticsLogFile, "diagnostics-log-file", defaultDiagnosticsLogFile, "read-only log path for diagnostics")
 	fs.BoolVar(&cfg.Dev, "dev", false, "dev mode: bypass session auth; logged loudly")
@@ -251,6 +258,9 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 
 	return cfg, false, nil
 }
+
+// FrontDoorMode reports whether the daemon serves the browser-facing front door.
+func (c Config) FrontDoorMode() bool { return strings.TrimSpace(c.FrontendDir) != "" }
 
 func flagWasSet(flags *flag.FlagSet, name string) bool {
 	set := false

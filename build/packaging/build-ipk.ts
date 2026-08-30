@@ -122,24 +122,16 @@ export function collectStagePaths(): {
   mndwd: string;
   indexHtml: string;
   assets: string;
-  lighttpdConf: string;
   initScript: string;
-  moduleGuard: string;
-  portHelper: string;
-  evidenceHelper: string;
-  renderer: string;
+  devicePortHelper: string;
   daemonConfig: string;
 } {
   return {
     mndwd: path.join('opt', 'sbin', 'mndwd'),
     indexHtml: path.join('opt', 'share', 'www', 'mndw', 'index.html'),
     assets: path.join('opt', 'share', 'www', 'mndw', 'assets'),
-    lighttpdConf: path.join('opt', 'etc', 'lighttpd', 'conf.d', '81-mndw.conf'),
     initScript: path.join('opt', 'etc', 'init.d', 'S70mndwd'),
-    moduleGuard: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'),
-    portHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'),
-    evidenceHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port-evidence.sh'),
-    renderer: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-render-lighttpd.sh'),
+    devicePortHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
     daemonConfig: path.join('opt', 'etc', 'mndw.conf'),
   };
 }
@@ -154,12 +146,8 @@ export function verifyStage(
     [p.mndwd, 'daemon binary'],
     [p.indexHtml, 'index.html'],
     [p.assets, 'assets directory'],
-    [p.lighttpdConf, 'lighttpd config'],
     [p.initScript, 'init script'],
-    [p.moduleGuard, 'module guard script'],
-    [p.portHelper, 'lighttpd port helper'],
-    [p.evidenceHelper, 'lighttpd port evidence helper'],
-    [p.renderer, 'lighttpd renderer'],
+    [p.devicePortHelper, 'device port helper'],
     [p.daemonConfig, 'daemon config'],
   ];
 
@@ -296,27 +284,11 @@ export function stageDeployFiles(repoRoot: string, stagingDir: string): void {
     if (chmod !== undefined) { fs.chmodSync(dst, chmod); }
   };
 
-  copyTo(path.join('lighttpd', '81-mndw.conf'), path.join('opt', 'etc', 'lighttpd', 'conf.d', '81-mndw.conf'));
   copyTo(path.join('init', 'S70mndwd'), path.join('opt', 'etc', 'init.d', 'S70mndwd'), 0o755);
   copyTo(path.join('files', 'opt', 'etc', 'mndw.conf'), path.join('opt', 'etc', 'mndw.conf'), 0o600);
   copyTo(
-    path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'),
-    path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-load-modules.sh'),
-    0o755,
-  );
-  copyTo(
-    path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'),
-    path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port.sh'),
-    0o755,
-  );
-  copyTo(
-    path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port-evidence.sh'),
-    path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-lighttpd-port-evidence.sh'),
-    0o755,
-  );
-  copyTo(
-    path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-render-lighttpd.sh'),
-    path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-render-lighttpd.sh'),
+    path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
+    path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
     0o755,
   );
 }
@@ -400,13 +372,12 @@ export function generateFeed(version: string, ipks: IpkInfo[]): string {
     [
       'Package: mndw',
       `Version: ${version}`,
-      'Depends: lighttpd, lighttpd-mod-proxy, lighttpd-mod-rewrite, lighttpd-mod-alias',
       'Section: web',
       `Architecture: ${ipk.arch}`,
       `Filename: ${ipk.filename}`,
       `Size: ${ipk.size}`,
       `SHA256sum: ${ipk.sha256}`,
-      'Description: Modular plugin-based dashboard served by lighttpd.',
+      'Description: Modular plugin-based dashboard served by mndwd.',
     ].join('\n')
   ).join('\n\n') + '\n';
 }

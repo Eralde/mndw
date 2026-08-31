@@ -1,11 +1,15 @@
 import {describe, expect, it} from 'vitest';
-import type {MndwChartSeries} from './chart-types.js';
+import type {MndwChartColor, MndwChartSeries} from './chart-types.js';
 import {
   buildBarAriaLabel,
   buildLineAriaLabel,
   filterFinitePoints,
+  formatChartRange,
   formatSpeed,
   getSpeedUpperLimit,
+  normalizeChartSamples,
+  resolveChartColor,
+  resolveChartMax,
   resolveDomain,
 } from './chart-utils.js';
 
@@ -87,5 +91,37 @@ describe('accessibility fallback labels', () => {
 
   it('uses the empty label when bar data is invalid', () => {
     expect(buildBarAriaLabel([], 'Values', 'No data')).toBe('No data');
+  });
+});
+
+describe('shared compact-chart utilities', () => {
+  it('normalizes samples without losing time/value pairing', () => {
+    expect(normalizeChartSamples([
+      {time: 1000, value: 10},
+      {time: 2000, value: Number.NaN},
+      {time: Number.NaN, value: 30},
+      {value: 40},
+    ])).toEqual([
+      {time: 1000, value: 10},
+      {value: 40},
+    ]);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])('defaults invalid max %s to 100', (max) => {
+    expect(resolveChartMax(max)).toBe(100);
+  });
+
+  it.each(
+    [
+      ['success', 'success'],
+      ['not-a-chart-color', 'accent'],
+    ] as const,
+  )('resolves %s color to %s', (color, expected) => {
+    expect(resolveChartColor(color as MndwChartColor)).toBe(expected);
+  });
+
+  it('formats a range with the supplied value formatter and label', () => {
+    expect(formatChartRange([{value: 10}, {value: 30}], 'CPU', (value) => `${value}%`))
+      .toBe('CPU: latest 30%; range 10% to 30%');
   });
 });

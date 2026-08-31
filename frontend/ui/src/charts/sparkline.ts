@@ -1,9 +1,22 @@
 import {LitElement, type PropertyDeclarations, type SVGTemplateResult, type TemplateResult, css, html, svg} from 'lit';
-import type {MndwChartColor} from './chart-types.js';
-import {formatClockTime} from './chart-utils.js';
+import type {MndwChartColor, MndwChartSample, MndwChartTimeFormatter, MndwChartValueFormatter} from './chart-types.js';
+import {
+  defaultPercentFormatter,
+  formatChartRange,
+  formatClockTime,
+  normalizeChartSamples,
+  resolveChartColor,
+  resolveChartMax,
+} from './chart-utils.js';
 import {barIndexAt, computeSparklineBars} from './sparkline-geometry.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
+import {
+  type GeneratedAttributeState,
+  type LocalizedPropertyState,
+  createGeneratedAttribute,
+  createLocalizedProperty,
+} from '../localized-property.js';
 
 export const MNDW_SPARKLINE_TAG = 'mndw-sparkline';
 
@@ -19,11 +32,6 @@ interface TooltipState {
   time: string | null;
 }
 
-interface AlignedSeries {
-  values: number[];
-  times: (number | null)[];
-}
-
 const colorVariable = (color: MndwChartColor): string => {
   return `var(--mndw-${color})`;
 };
@@ -31,10 +39,9 @@ const colorVariable = (color: MndwChartColor): string => {
 /**
  * Compact bar sparkline for a 0..`max` percentage series (CPU load, RAM load,
  * etc.). Renders pixel bars growing from a dashed baseline toward a dashed
- * ceiling, and surfaces the hovered sample as a small tooltip. An optional
- * `times` series (epoch-ms, parallel to `values`) adds a start/end time axis and
- * the sample time in the tooltip. The label and current value are composed by
- * the consumer.
+ * ceiling, and surfaces the hovered sample as a small tooltip. Timed `points`
+ * add a start/end time axis and the sample time in the tooltip. The label and
+ * current value are composed by the consumer.
  *
  * The host fills its container's height (bars stretch to fill), with a 1.75rem
  * floor so it never collapses when the container has no explicit height.
@@ -43,11 +50,13 @@ export class MndwSparkline extends LitElement {
   public static override readonly shadowRootOptions: ShadowRootInit = {mode: 'open'};
 
   public static properties: PropertyDeclarations = {
-    values: {attribute: false},
-    times: {attribute: false},
+    points: {attribute: false},
     max: {type: Number},
     color: {type: String},
     emptyLabel: {type: String, attribute: 'empty-label'},
+    valueLabel: {type: String, attribute: 'value-label'},
+    valueFormatter: {attribute: false},
+    timeFormatter: {attribute: false},
   };
 
   public static styles = css`
@@ -128,29 +137,39 @@ export class MndwSparkline extends LitElement {
     }
   `;
 
-  declare public values: readonly number[];
-  declare public times: readonly number[];
+  declare public points: readonly MndwChartSample[];
   declare public max: number;
   declare public color: MndwChartColor;
   declare public emptyLabel: string | undefined;
+  declare public valueLabel: string | undefined;
+  declare public valueFormatter: MndwChartValueFormatter;
+  declare public timeFormatter: MndwChartTimeFormatter;
 
   private hoverIndex: number | null = null;
   private chartWidth = 0;
   private resizeObserver: ResizeObserver | null = null;
+  private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
+  private readonly valueLabelState: LocalizedPropertyState<string | undefined>;
+  private readonly ariaLabelState: GeneratedAttributeState;
   private readonly localeController = new LocaleController(this, {
     applyLocale: (): void => {
-      this.requestUpdate();
+      this.applyLocale();
     },
   });
 
   constructor() {
     super();
 
-    this.values = [];
-    this.times = [];
+    this.points = [];
     this.max = 100;
     this.color = 'accent';
     this.emptyLabel = undefined;
+    this.valueLabel = undefined;
+    this.valueFormatter = defaultPercentFormatter;
+    this.timeFormatter = formatClockTime;
+    this.emptyLabelState = createLocalizedProperty<string | undefined>(this, 'emptyLabel', 'empty-label');
+    this.valueLabelState = createLocalizedProperty<string | undefined>(this, 'valueLabel', 'value-label');
+    this.ariaLabelState = createGeneratedAttribute(this, 'aria-label');
   }
 
   public override connectedCallback(): void {
@@ -166,13 +185,13 @@ export class MndwSparkline extends LitElement {
   }
 
   protected override updated(): void {
-    this.setAttribute('aria-label', this.computeAriaLabel());
+    this.ariaLabelState.setGenerated(this.computeAriaLabel());
   }
 
   protected override render(): TemplateResult {
-    const {values, times} = this.series();
+    const samples = this.samples();
 
-    if (values.length === 0) {
+    if (samples.length === 0) {
       return html`
         <div class="container" part="container">
           <div class="empty" part="empty">${this.emptyLabel ?? getMndwUiText('chart.empty')}</div>
@@ -181,12 +200,19 @@ export class MndwSparkline extends LitElement {
     }
 
     const width = this.plotWidth();
-    const bars = computeSparklineBars(values, this.max, width, CHART_HEIGHT, BAR_GAP);
-    const tooltip = this.tooltipState(bars, times, width);
+    const bars = computeSparklineBars(
+      samples.map((sample) => sample.value),
+      resolveChartMax(this.max),
+      width,
+      CHART_HEIGHT,
+      BAR_GAP,
+    );
+    const tooltip = this.tooltipState(bars, samples, width);
+    const color = resolveChartColor(this.color);
 
     return html`
       <div class="container" part="container">
-        <div class="plot" style=${`--spark-fill: ${colorVariable(this.color)}`}>
+        <div class="plot" style=${`--spark-fill: ${colorVariable(color)}`}>
           <svg
             part="plot"
             viewBox="0 0 ${width} ${CHART_HEIGHT}"
@@ -203,11 +229,11 @@ export class MndwSparkline extends LitElement {
       tooltip === null ? '' : html`
             <div class="tooltip" part="tooltip" style="left: ${tooltip.left}px">${
         tooltip.time === null ? '' : html`${tooltip.time} · `
-      }${Math.round(tooltip.value)}%</div>
+      }${this.valueFormatter(tooltip.value)}</div>
           `
     }
         </div>
-        ${this.renderAxis(times)}
+        ${this.renderAxis(samples)}
       </div>
     `;
   }
@@ -227,9 +253,13 @@ export class MndwSparkline extends LitElement {
     `;
   }
 
-  private renderAxis(times: (number | null)[]): TemplateResult | '' {
-    const start = times[0];
-    const end = times[times.length - 1];
+  private renderAxis(samples: readonly MndwChartSample[]): TemplateResult | '' {
+    if (!samples.every((sample) => sample.time !== undefined)) {
+      return '';
+    }
+
+    const start = samples[0]?.time;
+    const end = samples[samples.length - 1]?.time;
 
     if (start === null || start === undefined || end === null || end === undefined) {
       return '';
@@ -237,15 +267,15 @@ export class MndwSparkline extends LitElement {
 
     return html`
       <div class="axis" part="axis" aria-hidden="true">
-        <span>${formatClockTime(start)}</span>
-        <span>${formatClockTime(end)}</span>
+        <span>${this.timeFormatter(start)}</span>
+        <span>${this.timeFormatter(end)}</span>
       </div>
     `;
   }
 
   private tooltipState(
     bars: readonly {left: number; width: number}[],
-    times: readonly (number | null)[],
+    samples: readonly MndwChartSample[],
     width: number,
   ): TooltipState | null {
     if (this.hoverIndex === null || this.hoverIndex < 0 || this.hoverIndex >= bars.length) {
@@ -253,27 +283,31 @@ export class MndwSparkline extends LitElement {
     }
 
     const bar = bars[this.hoverIndex];
-    const time = times[this.hoverIndex];
+    const sample = samples[this.hoverIndex];
+
+    if (sample === undefined) {
+      return null;
+    }
 
     return {
       // The plot stretches its viewBox to the host width, so a viewBox-space center
       // maps to a CSS pixel by the same width scale.
       left: ((bar.left + bar.width / 2) / width) * (this.chartWidth || width),
-      value: this.series().values[this.hoverIndex],
-      time: time === null || time === undefined ? null : formatClockTime(time),
+      value: sample.value,
+      time: sample.time === undefined ? null : this.timeFormatter(sample.time),
     };
   }
 
   private readonly onPointerMove = (event: PointerEvent): void => {
-    const {values} = this.series();
+    const samples = this.samples();
 
-    if (values.length === 0) {
+    if (samples.length === 0) {
       return;
     }
 
     const svgElement = event.currentTarget as SVGSVGElement;
     const rect = svgElement.getBoundingClientRect();
-    const index = barIndexAt(event.clientX - rect.left, rect.width, values.length);
+    const index = barIndexAt(event.clientX - rect.left, rect.width, samples.length);
 
     if (index !== this.hoverIndex) {
       this.hoverIndex = index;
@@ -308,39 +342,21 @@ export class MndwSparkline extends LitElement {
     return this.chartWidth > 0 ? this.chartWidth : FALLBACK_WIDTH;
   }
 
-  /** Finite samples paired with their timestamps (null where times are absent or misaligned). */
-  private series(): AlignedSeries {
-    const aligned = this.times.length === this.values.length;
-    const values: number[] = [];
-    const times: (number | null)[] = [];
-
-    this.values.forEach((value, index) => {
-      if (!Number.isFinite(value)) {
-        return;
-      }
-
-      values.push(value);
-
-      const time = aligned ? this.times[index] : Number.NaN;
-
-      times.push(Number.isFinite(time) ? time : null);
-    });
-
-    return {values, times};
+  private samples(): MndwChartSample[] {
+    return normalizeChartSamples(this.points);
   }
 
   private computeAriaLabel(): string {
-    const {values} = this.series();
+    return formatChartRange(
+      this.samples(),
+      this.valueLabel ?? getMndwUiText('chart.values'),
+      this.valueFormatter,
+    ) ?? (this.emptyLabel ?? getMndwUiText('chart.empty'));
+  }
 
-    if (values.length === 0) {
-      return this.emptyLabel ?? getMndwUiText('chart.empty');
-    }
-
-    const latest = values[values.length - 1];
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-
-    return `Sparkline. latest ${Math.round(latest)}%; range ${Math.round(min)}% to ${Math.round(max)}%`;
+  private applyLocale(): void {
+    this.emptyLabelState.setGenerated(getMndwUiText('chart.empty'));
+    this.valueLabelState.setGenerated(getMndwUiText('chart.values'));
   }
 }
 

@@ -32,7 +32,20 @@ export {MNDW_BAR_CHART_TAG, MndwBarChart} from './charts/bar-chart.js';
 export {MNDW_LINE_CHART_TAG, MndwLineChart} from './charts/line-chart.js';
 export {MNDW_SPARKLINE_TAG, MndwSparkline} from './charts/sparkline.js';
 export {MNDW_HEAT_STRIP_TAG, MndwHeatStrip} from './charts/heat-strip.js';
-export type {MndwChartColor, MndwChartDomain, MndwChartPoint, MndwChartSeries} from './charts/chart-types.js';
+export type {
+  MndwBarChartProps,
+  MndwChartColor,
+  MndwChartDomain,
+  MndwChartPoint,
+  MndwChartPresentationProps,
+  MndwChartSample,
+  MndwChartSeries,
+  MndwChartTimeFormatter,
+  MndwChartValueFormatter,
+  MndwHeatStripProps,
+  MndwLineChartProps,
+  MndwSparklineProps,
+} from './charts/chart-types.js';
 export {formatSpeed} from './charts/chart-utils.js';
 export {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox/checkbox.js';
 export type {MndwCheckboxChangeDetail} from './checkbox/checkbox.js';

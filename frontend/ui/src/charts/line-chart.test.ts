@@ -42,6 +42,16 @@ const downloadSeries = {
   ],
 };
 
+const temperatureSeries = {
+  id: 'temperature',
+  label: 'Temperature',
+  color: 'warning' as const,
+  data: [
+    {time: 1000, value: 10},
+    {time: 2000, value: 20},
+  ],
+};
+
 // eslint-disable-next-line max-lines-per-function -- element behavior cases stay together.
 describe('<mndw-line-chart>', () => {
   it('does not set host attributes during custom-element construction', async () => {
@@ -91,6 +101,48 @@ describe('<mndw-line-chart>', () => {
 
     expect(element.getAttribute('aria-label')).toContain('Upload: latest 200 b/s');
     expect(element.getAttribute('aria-label')).not.toMatch(/TX|RX|Traffic/);
+  });
+
+  it('uses caller formatters in axes, tooltip, and generated accessibility text', async () => {
+    const element = await mount();
+
+    element.valueLabel = 'Temperature';
+    element.valueFormatter = (value) => `${value.toFixed(1)} °C`;
+    element.timeFormatter = (time) => `T${time}`;
+    element.series = [temperatureSeries];
+    await element.updateComplete;
+
+    expect(element.getAttribute('aria-label')).toContain('Temperature');
+    expect(element.getAttribute('aria-label')).toContain('20.0 °C');
+    expect([...element.shadowRoot?.querySelectorAll('[part="axis"] text') ?? []]
+      .map((node) => node.textContent)).toContain('1000.0 °C');
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (!overlay) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 340, clientY: 100}));
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent).toContain('T2000');
+    expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent).toContain('20.0 °C');
+  });
+
+  it('preserves an authored aria-label after data and locale changes', async () => {
+    const element = document.createElement(MNDW_LINE_CHART_TAG);
+
+    element.setAttribute('aria-label', 'CPU history');
+    document.body.append(element);
+    await element.updateComplete;
+
+    element.series = [uploadSeries];
+    await element.updateComplete;
+    setMndwUiLocale('ru');
+    await element.updateComplete;
+
+    expect(element.getAttribute('aria-label')).toBe('CPU history');
   });
 
   it('renders line and optional area paths with token roles', async () => {

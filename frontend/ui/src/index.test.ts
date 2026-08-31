@@ -27,14 +27,24 @@ import {
   MNDW_TEXTAREA_TAG,
   MNDW_TOOLTIP_TAG,
   MndwBarChart,
+  type MndwBarChartProps,
   type MndwButton,
+  type MndwChartPoint,
+  type MndwChartSample,
+  type MndwChartSeries,
+  type MndwChartValueFormatter,
   type MndwCheckbox,
   type MndwColumnMenu,
+  MndwHeatStrip,
+  type MndwHeatStripProps,
   MndwLineChart,
+  type MndwLineChartProps,
   type MndwOption,
   type MndwScrollArea,
   type MndwSelect,
   type MndwSelectPanel,
+  MndwSparkline,
+  type MndwSparklineProps,
   type MndwTable,
   POPOVER_FLIP_ORDER,
   computePopoverCoords,
@@ -96,6 +106,8 @@ describe('defineMndwUi', () => {
     expectTypeOf(document.querySelector('mndw-scroll-area')).toEqualTypeOf<MndwScrollArea | null>();
     expectTypeOf(document.querySelector('mndw-line-chart')).toEqualTypeOf<MndwLineChart | null>();
     expectTypeOf(document.querySelector('mndw-bar-chart')).toEqualTypeOf<MndwBarChart | null>();
+    expectTypeOf(document.querySelector('mndw-sparkline')).toEqualTypeOf<MndwSparkline | null>();
+    expectTypeOf(document.querySelector('mndw-heat-strip')).toEqualTypeOf<MndwHeatStrip | null>();
     expectTypeOf(document.querySelector('mndw-table')).toEqualTypeOf<MndwTable | null>();
     expectTypeOf(document.querySelector('mndw-column-menu')).toEqualTypeOf<MndwColumnMenu | null>();
   });
@@ -103,9 +115,22 @@ describe('defineMndwUi', () => {
   it('exports chart contracts and formatting', () => {
     expect(MndwLineChart).toBeDefined();
     expect(MndwBarChart).toBeDefined();
+    expect(MndwSparkline).toBeDefined();
+    expect(MndwHeatStrip).toBeDefined();
     expect(LocaleController).toBeDefined();
     expectTypeOf<LocaleControllerOptions>().toEqualTypeOf<{applyLocale?: () => void}>();
     expect(formatSpeed(1500)).toBe('1.5 Kb/s');
+    expectTypeOf<MndwChartSample>().toMatchTypeOf<{value: number; time?: number}>();
+    expectTypeOf<MndwBarChartProps['valueFormatter']>()
+      .toEqualTypeOf<MndwChartValueFormatter | undefined>();
+    expectTypeOf<MndwSparklineProps['points']>().toEqualTypeOf<readonly MndwChartSample[] | undefined>();
+    expectTypeOf<MndwBarChartProps['points']>().toEqualTypeOf<readonly MndwChartPoint[] | undefined>();
+    expectTypeOf<MndwLineChartProps['series']>().toEqualTypeOf<readonly MndwChartSeries[] | undefined>();
+    expectTypeOf<MndwHeatStripProps['max']>().toEqualTypeOf<number | undefined>();
+    expectTypeOf<MndwSparklineProps>().not.toHaveProperty('values');
+    expectTypeOf<MndwSparklineProps>().not.toHaveProperty('times');
+    expectTypeOf<MndwHeatStripProps>().not.toHaveProperty('values');
+    expectTypeOf<MndwHeatStripProps>().not.toHaveProperty('times');
   });
 
   it('is idempotent — the registry is page-global and cannot be redefined', () => {

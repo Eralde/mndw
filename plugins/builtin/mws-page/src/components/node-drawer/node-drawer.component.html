@@ -78,15 +78,17 @@
             </div>
             @if (metric.kind === 'heat') {
               <mndw-heat-strip
-                [values]="metric.history"
-                [times]="metric.times"
+                [points]="metric.points"
+                [attr.value-label]="metric.label"
+                [attr.aria-label]="metric.label"
                 [attr.empty-label]="t('drawer.util-no-data')"
               >
               </mndw-heat-strip>
             } @else {
               <mndw-sparkline
-                [values]="metric.history"
-                [times]="metric.times"
+                [points]="metric.points"
+                [attr.value-label]="metric.label"
+                [attr.aria-label]="metric.label"
                 [attr.empty-label]="t('drawer.util-no-data')"
               >
               </mndw-sparkline>

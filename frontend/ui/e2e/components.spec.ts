@@ -108,6 +108,8 @@ test('registers existing components and loads tokens and class styles', async ({
 test('renders reusable charts, accessibility state, and responsive geometry', async ({page}) => {
   const line = page.locator('#line-chart-fixture-element');
   const bar = page.locator('#bar-chart-fixture-element');
+  const sparkline = page.locator('#sparkline-chart-fixture-element');
+  const heatStrip = page.locator('#heat-strip-chart-fixture-element');
 
   await expect(line).toHaveAttribute('role', 'img');
   await expect(line).toHaveAttribute('aria-label', /Upload: latest/);
@@ -118,6 +120,21 @@ test('renders reusable charts, accessibility state, and responsive geometry', as
   await expect(line.locator('[part="grid"]')).toBeAttached();
   await expect(line.locator('[part="axis"]')).toHaveCount(2);
   await expect(bar.locator('[part="tooltip"]')).toBeAttached();
+
+  for (
+    const [chart, ariaLabel] of [[sparkline, 'CPU load history'], [heatStrip, 'Radio utilization history']] as const
+  ) {
+    await expect(chart).toHaveAttribute('role', 'img');
+    await expect(chart).toHaveAttribute('aria-label', ariaLabel);
+    await expect(chart.locator('svg[part="plot"]')).toBeVisible();
+    await expect(chart.locator('[part="container"]')).toBeAttached();
+    await expect(chart.locator('svg[part="plot"]')).toBeAttached();
+    await expect(chart.locator('[part="axis"]')).toBeAttached();
+
+    await expect.poll(async () => (await chart.locator('svg[part="plot"]').boundingBox())?.width ?? 0).toBeGreaterThan(
+      0,
+    );
+  }
 
   await page.locator('#line-chart-fixture').evaluate((element) => {
     element.style.width = '399px';

@@ -206,6 +206,20 @@ describe('NodeDrawerComponent', () => {
     expect(panel?.querySelectorAll('mndw-heat-strip')).toHaveLength(2);
     expect(panel?.textContent).toContain('Wi-Fi 5 GHz');
     expect(panel?.textContent).toContain('31%');
+
+    const sparkline = panel?.querySelector<HTMLElement & {points: readonly {time?: number; value: number}[]}>(
+      'mndw-sparkline',
+    );
+    const heatStrip = panel?.querySelector<HTMLElement & {points: readonly {time?: number; value: number}[]}>(
+      'mndw-heat-strip',
+    );
+
+    expect(sparkline?.points).toEqual([{time: 1, value: 10}, {time: 2, value: 20}]);
+    expect(heatStrip?.points).toEqual([{time: 1, value: 28}, {time: 2, value: 31}]);
+    expect(sparkline?.getAttribute('value-label')).toBe('CPU');
+    expect(sparkline?.getAttribute('aria-label')).toBe('CPU');
+    expect(heatStrip?.getAttribute('value-label')).toBe('Wi-Fi 2.4 GHz');
+    expect(heatStrip?.getAttribute('aria-label')).toBe('Wi-Fi 2.4 GHz');
   });
 
   it('shows the utilization panel for the controller from its direct-RCI telemetry', () => {

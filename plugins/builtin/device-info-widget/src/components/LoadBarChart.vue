@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import {computed} from 'vue';
 import type {Translator} from '@mndw/sdk';
+import type {MndwChartSample} from '@mndw/ui';
 
 const props = defineProps<{
   label: string;
@@ -9,6 +11,9 @@ const props = defineProps<{
 }>();
 
 const t = (key: string): string => props.translator.t(key);
+const points = computed<MndwChartSample[]>(() => {
+  return props.history.map((value) => ({value}));
+});
 </script>
 
 <template>
@@ -19,7 +24,9 @@ const t = (key: string): string => props.translator.t(key);
     </div>
     <mndw-sparkline
       class="load-bar-chart__chart"
-      :values.prop="history"
+      :points.prop="points"
+      :value-label="label"
+      :aria-label="label"
       :empty-label="t('no-data')"
     >
     </mndw-sparkline>

@@ -1,8 +1,22 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
 import * as d3 from 'd3';
 import type {NumberValue} from 'd3';
-import {buildLineAriaLabel, filterFinitePoints, formatSpeed, getSpeedUpperLimit, resolveDomain} from './chart-utils.js';
-import type {MndwChartColor, MndwChartDomain, MndwChartPoint, MndwChartSeries} from './chart-types.js';
+import {
+  buildLineAriaLabel,
+  filterFinitePoints,
+  formatClockTime,
+  formatSpeed,
+  getSpeedUpperLimit,
+  resolveDomain,
+} from './chart-utils.js';
+import type {
+  MndwChartColor,
+  MndwChartDomain,
+  MndwChartPoint,
+  MndwChartSeries,
+  MndwChartTimeFormatter,
+  MndwChartValueFormatter,
+} from './chart-types.js';
 import {ChartFrameController} from './chart-frame-controller.js';
 import {chartFrameStyles, renderChartFrame} from './chart-frame.js';
 import {getMndwUiText} from '../i18n.js';
@@ -50,6 +64,9 @@ export class MndwLineChart extends LitElement {
     series: {attribute: false},
     domain: {attribute: false},
     emptyLabel: {type: String, attribute: 'empty-label'},
+    valueLabel: {type: String, attribute: 'value-label'},
+    valueFormatter: {attribute: false},
+    timeFormatter: {attribute: false},
   };
 
   public static styles = [
@@ -64,10 +81,14 @@ export class MndwLineChart extends LitElement {
   declare public series: readonly MndwChartSeries[];
   declare public domain: MndwChartDomain | undefined;
   declare public emptyLabel: string | undefined;
+  declare public valueLabel: string | undefined;
+  declare public valueFormatter: MndwChartValueFormatter;
+  declare public timeFormatter: MndwChartTimeFormatter;
 
   private tooltipState: TooltipState | null = null;
   private lastPointerPosition: [number, number] | null = null;
   private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
+  private readonly valueLabelState: LocalizedPropertyState<string | undefined>;
   private readonly ariaLabelState: GeneratedAttributeState;
   private readonly localeController = new LocaleController(this, {
     applyLocale: (): void => {
@@ -83,7 +104,10 @@ export class MndwLineChart extends LitElement {
 
     this.series = [];
     this.domain = undefined;
+    this.valueFormatter = formatSpeed;
+    this.timeFormatter = formatClockTime;
     this.emptyLabelState = createLocalizedProperty<string | undefined>(this, 'emptyLabel', 'empty-label');
+    this.valueLabelState = createLocalizedProperty<string | undefined>(this, 'valueLabel', 'value-label');
     this.ariaLabelState = createGeneratedAttribute(this, 'aria-label');
   }
 
@@ -102,7 +126,14 @@ export class MndwLineChart extends LitElement {
   }
 
   protected override willUpdate(changedProperties: Map<PropertyKey, unknown>): void {
-    if (changedProperties.has('series') || changedProperties.has('domain') || changedProperties.has('emptyLabel')) {
+    if (
+      changedProperties.has('series')
+      || changedProperties.has('domain')
+      || changedProperties.has('emptyLabel')
+      || changedProperties.has('valueLabel')
+      || changedProperties.has('valueFormatter')
+      || changedProperties.has('timeFormatter')
+    ) {
       const hasValidSeries = this.series.some((item) => filterFinitePoints(item.data).length > 0);
 
       if (this.lastPointerPosition === null || !hasValidSeries) {
@@ -120,6 +151,9 @@ export class MndwLineChart extends LitElement {
       changedProperties.has('series')
       || changedProperties.has('domain')
       || changedProperties.has('emptyLabel')
+      || changedProperties.has('valueLabel')
+      || changedProperties.has('valueFormatter')
+      || changedProperties.has('timeFormatter')
       || this.frame.plotElement === null
     ) {
       this.updateAccessibilityLabel();
@@ -136,11 +170,14 @@ export class MndwLineChart extends LitElement {
     this.ariaLabelState.setGenerated(buildLineAriaLabel(
       this.series,
       this.emptyLabel ?? getMndwUiText('chart.empty'),
+      this.valueFormatter,
+      this.valueLabelState.dirty ? this.valueLabel : undefined,
     ));
   }
 
   private applyLocale(): void {
     this.emptyLabelState.setGenerated(getMndwUiText('chart.empty'));
+    this.valueLabelState.setGenerated(getMndwUiText('chart.values'));
   }
 
   // eslint-disable-next-line max-lines-per-function -- D3 rendering keeps chart geometry local.
@@ -240,7 +277,7 @@ export class MndwLineChart extends LitElement {
       .call(
         d3.axisLeft(yScale)
           .ticks(isSmall ? 2 : 4)
-          .tickFormat((value: NumberValue) => value.valueOf() === 0 ? '' : formatSpeed(value.valueOf())),
+          .tickFormat((value: NumberValue) => value.valueOf() === 0 ? '' : this.valueFormatter(value.valueOf())),
       );
 
     yAxis.selectAll('text').attr('font-size', axisFontSize);
@@ -251,7 +288,11 @@ export class MndwLineChart extends LitElement {
       .call(
         d3.axisBottom(xScale)
           .tickValues(xScale.domain())
-          .tickFormat(d3.timeFormat('%H:%M:%S') as (value: Date | NumberValue) => string),
+          .tickFormat((value: Date | NumberValue) => {
+            const epochMs = value instanceof Date ? value.getTime() : value.valueOf();
+
+            return this.timeFormatter(epochMs);
+          }),
       );
 
     xAxis.selectAll('text').attr('font-size', axisFontSize);
@@ -300,7 +341,7 @@ export class MndwLineChart extends LitElement {
 
         return {
           label: item.label ?? item.id,
-          value: formatSpeed(closest.value),
+          value: this.valueFormatter(closest.value),
         };
       });
 
@@ -327,7 +368,7 @@ export class MndwLineChart extends LitElement {
       this.tooltipState = {
         left,
         top,
-        time: d3.timeFormat('%H:%M:%S')(hoverTime),
+        time: this.timeFormatter(hoverTime.getTime()),
         values,
       };
       this.requestUpdate();

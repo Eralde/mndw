@@ -1,4 +1,5 @@
 import {CUSTOM_ELEMENTS_SCHEMA, Component, type OnDestroy, inject, input, output} from '@angular/core';
+import type {MndwChartSample} from '@mndw/ui';
 import type {MwsNode, MwsRadioPower, MwsUtilSeries} from '../../domain/mws/mws.types';
 import {formatCpuLoad, formatMemory, formatRate, formatRssi, formatSpeed, formatUptime} from '../../format';
 import {MwsDataService} from '../../services/mws-data.service';
@@ -18,8 +19,7 @@ export interface UtilizationMetric {
   readonly label: string;
   readonly percent: number | null;
   readonly valueText: string;
-  readonly history: readonly number[];
-  readonly times: readonly number[];
+  readonly points: readonly MndwChartSample[];
   readonly kind: UtilizationChartKind;
 }
 
@@ -234,8 +234,11 @@ export class NodeDrawerComponent implements OnDestroy {
       kind,
       percent,
       valueText: percent === null ? '—' : `${Math.round(percent)}%`,
-      history: series?.values ?? [],
-      times: series?.times ?? [],
+      points: (series?.values ?? []).map((value, index) => {
+        const time = series?.times[index];
+
+        return time !== undefined && Number.isFinite(time) ? {time, value} : {value};
+      }),
     };
   }
 

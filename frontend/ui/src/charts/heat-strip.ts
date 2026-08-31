@@ -1,7 +1,20 @@
 import {LitElement, type PropertyDeclarations, type SVGTemplateResult, type TemplateResult, css, html, svg} from 'lit';
-import {formatClockTime} from './chart-utils.js';
+import type {MndwChartSample, MndwChartTimeFormatter, MndwChartValueFormatter} from './chart-types.js';
+import {
+  defaultPercentFormatter,
+  formatChartRange,
+  formatClockTime,
+  normalizeChartSamples,
+  resolveChartMax,
+} from './chart-utils.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
+import {
+  type GeneratedAttributeState,
+  type LocalizedPropertyState,
+  createGeneratedAttribute,
+  createLocalizedProperty,
+} from '../localized-property.js';
 
 export const MNDW_HEAT_STRIP_TAG = 'mndw-heat-strip';
 
@@ -82,10 +95,12 @@ export class MndwHeatStrip extends LitElement {
   public static override readonly shadowRootOptions: ShadowRootInit = {mode: 'open'};
 
   public static properties: PropertyDeclarations = {
-    values: {attribute: false},
-    times: {attribute: false},
+    points: {attribute: false},
     max: {type: Number},
     emptyLabel: {type: String, attribute: 'empty-label'},
+    valueLabel: {type: String, attribute: 'value-label'},
+    valueFormatter: {attribute: false},
+    timeFormatter: {attribute: false},
   };
 
   public static styles = css`
@@ -150,25 +165,35 @@ export class MndwHeatStrip extends LitElement {
     }
   `;
 
-  declare public values: readonly number[];
-  declare public times: readonly number[];
+  declare public points: readonly MndwChartSample[];
   declare public max: number;
   declare public emptyLabel: string | undefined;
+  declare public valueLabel: string | undefined;
+  declare public valueFormatter: MndwChartValueFormatter;
+  declare public timeFormatter: MndwChartTimeFormatter;
 
   private hoverIndex: number | null = null;
+  private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
+  private readonly valueLabelState: LocalizedPropertyState<string | undefined>;
+  private readonly ariaLabelState: GeneratedAttributeState;
   private readonly localeController = new LocaleController(this, {
     applyLocale: (): void => {
-      this.requestUpdate();
+      this.applyLocale();
     },
   });
 
   constructor() {
     super();
 
-    this.values = [];
-    this.times = [];
+    this.points = [];
     this.max = 100;
     this.emptyLabel = undefined;
+    this.valueLabel = undefined;
+    this.valueFormatter = defaultPercentFormatter;
+    this.timeFormatter = formatClockTime;
+    this.emptyLabelState = createLocalizedProperty<string | undefined>(this, 'emptyLabel', 'empty-label');
+    this.valueLabelState = createLocalizedProperty<string | undefined>(this, 'valueLabel', 'value-label');
+    this.ariaLabelState = createGeneratedAttribute(this, 'aria-label');
   }
 
   public override connectedCallback(): void {
@@ -177,13 +202,13 @@ export class MndwHeatStrip extends LitElement {
   }
 
   protected override updated(): void {
-    this.setAttribute('aria-label', this.computeAriaLabel());
+    this.ariaLabelState.setGenerated(this.computeAriaLabel());
   }
 
   protected override render(): TemplateResult {
-    const values = this.finiteValues();
+    const samples = this.samples();
 
-    if (values.length === 0) {
+    if (samples.length === 0) {
       return html`
         <div class="container" part="container">
           <div class="empty" part="empty">${this.emptyLabel ?? getMndwUiText('chart.empty')}</div>
@@ -191,50 +216,50 @@ export class MndwHeatStrip extends LitElement {
       `;
     }
 
-    const tooltip = this.tooltipState(values);
+    const tooltip = this.tooltipState(samples);
 
     return html`
       <div class="container" part="container">
-        <div class="plot">
+        <div class="plot" part="plot">
           <svg
             part="plot"
-            viewBox="0 0 ${values.length} 1"
+            viewBox="0 0 ${samples.length} 1"
             preserveAspectRatio="none"
             aria-hidden="true"
             @pointermove=${this.onPointerMove}
             @pointerleave=${this.onPointerLeave}
           >
-            ${values.map((value, index) => this.renderSlice(value, index))}
+            ${samples.map((sample, index) => this.renderSlice(sample.value, index))}
           </svg>
           ${
       tooltip === null ? '' : html`
             <div class="tooltip" part="tooltip" style="left: ${tooltip.left}%">${
         tooltip.time === null ? '' : html`${tooltip.time} · `
-      }${Math.round(tooltip.value)}%</div>
+      }${this.valueFormatter(tooltip.value)}</div>
           `
     }
         </div>
-        ${this.renderAxis(values.length)}
+        ${this.renderAxis(samples)}
       </div>
     `;
   }
 
-  private renderAxis(sampleCount: number): TemplateResult | '' {
-    if (this.times.length !== sampleCount || sampleCount === 0) {
+  private renderAxis(samples: readonly MndwChartSample[]): TemplateResult | '' {
+    if (samples.length === 0 || !samples.every((sample) => sample.time !== undefined)) {
       return '';
     }
 
-    const start = this.times[0];
-    const end = this.times[this.times.length - 1];
+    const start = samples[0]?.time;
+    const end = samples[samples.length - 1]?.time;
 
-    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    if (start === undefined || end === undefined || !Number.isFinite(start) || !Number.isFinite(end)) {
       return '';
     }
 
     return html`
       <div class="axis" part="axis" aria-hidden="true">
-        <span>${formatClockTime(start)}</span>
-        <span>${formatClockTime(end)}</span>
+        <span>${this.timeFormatter(start)}</span>
+        <span>${this.timeFormatter(end)}</span>
       </div>
     `;
   }
@@ -242,8 +267,9 @@ export class MndwHeatStrip extends LitElement {
   // Slices use lit's `svg` tag so the `<rect>` stays in the SVG namespace and
   // actually renders inside the plot.
   private renderSlice(value: number, index: number): SVGTemplateResult {
-    const clamped = clampPercent(value, this.max);
-    const percent = bucketPercent((clamped / this.max) * 100);
+    const max = resolveChartMax(this.max);
+    const clamped = clampPercent(value, max);
+    const percent = bucketPercent((clamped / max) * 100);
 
     return svg`
       <rect
@@ -258,27 +284,28 @@ export class MndwHeatStrip extends LitElement {
     `;
   }
 
-  private tooltipState(values: readonly number[]): TooltipState | null {
-    if (this.hoverIndex === null || this.hoverIndex < 0 || this.hoverIndex >= values.length) {
+  private tooltipState(samples: readonly MndwChartSample[]): TooltipState | null {
+    if (this.hoverIndex === null || this.hoverIndex < 0 || this.hoverIndex >= samples.length) {
       return null;
     }
 
-    const aligned = this.times.length === values.length;
-    const time = aligned && Number.isFinite(this.times[this.hoverIndex])
-      ? formatClockTime(this.times[this.hoverIndex])
-      : null;
+    const sample = samples[this.hoverIndex];
+
+    if (sample === undefined) {
+      return null;
+    }
 
     return {
-      left: ((this.hoverIndex + 0.5) / values.length) * 100,
-      value: values[this.hoverIndex],
-      time,
+      left: ((this.hoverIndex + 0.5) / samples.length) * 100,
+      value: sample.value,
+      time: sample.time === undefined ? null : this.timeFormatter(sample.time),
     };
   }
 
   private readonly onPointerMove = (event: PointerEvent): void => {
-    const values = this.finiteValues();
+    const samples = this.samples();
 
-    if (values.length === 0) {
+    if (samples.length === 0) {
       return;
     }
 
@@ -290,7 +317,7 @@ export class MndwHeatStrip extends LitElement {
     }
 
     const fraction = (event.clientX - rect.left) / rect.width;
-    const index = Math.min(values.length - 1, Math.max(0, Math.floor(fraction * values.length)));
+    const index = Math.min(samples.length - 1, Math.max(0, Math.floor(fraction * samples.length)));
 
     if (index !== this.hoverIndex) {
       this.hoverIndex = index;
@@ -305,22 +332,21 @@ export class MndwHeatStrip extends LitElement {
     }
   };
 
-  private finiteValues(): number[] {
-    return this.values.filter((value) => Number.isFinite(value));
+  private samples(): MndwChartSample[] {
+    return normalizeChartSamples(this.points);
   }
 
   private computeAriaLabel(): string {
-    const values = this.finiteValues();
+    return formatChartRange(
+      this.samples(),
+      this.valueLabel ?? getMndwUiText('chart.values'),
+      this.valueFormatter,
+    ) ?? (this.emptyLabel ?? getMndwUiText('chart.empty'));
+  }
 
-    if (values.length === 0) {
-      return this.emptyLabel ?? getMndwUiText('chart.empty');
-    }
-
-    const latest = values[values.length - 1];
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-
-    return `Utilization heatmap. latest ${Math.round(latest)}%; range ${Math.round(min)}% to ${Math.round(max)}%`;
+  private applyLocale(): void {
+    this.emptyLabelState.setGenerated(getMndwUiText('chart.empty'));
+    this.valueLabelState.setGenerated(getMndwUiText('chart.values'));
   }
 }
 

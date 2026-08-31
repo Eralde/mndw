@@ -62,7 +62,14 @@ function renderStaticTokens(): string {
   --mndw-switch-h: ${SCALE.switch.height};
   --mndw-slider-track-h: ${SCALE.slider.trackHeight};
   --mndw-slider-thumb-size: ${SCALE.slider.thumbSize};
-  --mndw-table-sticky-top: ${SCALE.table.stickyTop};`;
+  --mndw-table-sticky-top: ${SCALE.table.stickyTop};
+
+  /* utilization heatmap scale (low -> critical) */
+  --mndw-util-low: ${SCALE.utilization.low};
+  --mndw-util-moderate: ${SCALE.utilization.moderate};
+  --mndw-util-elevated: ${SCALE.utilization.elevated};
+  --mndw-util-high: ${SCALE.utilization.high};
+  --mndw-util-critical: ${SCALE.utilization.critical};`;
 }
 
 export function paletteMap(): PaletteTokenMap {

@@ -219,7 +219,7 @@ describe('reloadSandboxPlugin', () => {
     const registry = new PluginRegistry();
     const prior = seed(registry);
 
-    // Same plugin name, but the type flips widget → page (a topology change).
+    // Same plugin name, but the type flips widget -> page (a topology change).
     const topologyChange = {...pageManifest, name: 'sandbox-widget', route: '/sandbox-widget'};
 
     const result = await reloadSandboxPlugin(deps({

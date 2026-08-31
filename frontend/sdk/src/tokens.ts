@@ -107,6 +107,13 @@ export const MNDW_SCALE = {
   "table": {
     "stickyTop": "0"
   },
+  "utilization": {
+    "low": "#3fa89f",
+    "moderate": "#7cc24b",
+    "elevated": "#e6c229",
+    "high": "#e8873a",
+    "critical": "#d5432f"
+  },
   "aliases": {
     "scrollbarTrack": "var(--mndw-surface)",
     "scrollbarThumb": "var(--mndw-accent)",

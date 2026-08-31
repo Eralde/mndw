@@ -48,7 +48,7 @@ describe('shared dependencies table', () => {
     expect(map['@angular/core']).toBe(map['@angular/core/rxjs-interop']);
   });
 
-  it('stamps a specifier→version map for the lock file', () => {
+  it('stamps a specifier->version map for the lock file', () => {
     expect(sharedDependencyVersions()['@rci-tools/core']).toBe(dependencyFor('rci-tools-core').version);
   });
 

@@ -1,6 +1,8 @@
 import type {OverlayService} from '@mndw/sdk';
 import {MNDW_BAR_CHART_TAG, MndwBarChart} from './charts/bar-chart.js';
+import {MNDW_HEAT_STRIP_TAG, MndwHeatStrip} from './charts/heat-strip.js';
 import {MNDW_LINE_CHART_TAG, MndwLineChart} from './charts/line-chart.js';
+import {MNDW_SPARKLINE_TAG, MndwSparkline} from './charts/sparkline.js';
 import {MNDW_BUTTON_TAG, MndwButton} from './button/button.js';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox/checkbox.js';
 import {MNDW_FIELD_TAG, MndwField} from './field/field.js';
@@ -28,6 +30,8 @@ export {MNDW_BUTTON_TAG, MndwButton} from './button/button.js';
 export type {MndwButtonVariant} from './button/button.js';
 export {MNDW_BAR_CHART_TAG, MndwBarChart} from './charts/bar-chart.js';
 export {MNDW_LINE_CHART_TAG, MndwLineChart} from './charts/line-chart.js';
+export {MNDW_SPARKLINE_TAG, MndwSparkline} from './charts/sparkline.js';
+export {MNDW_HEAT_STRIP_TAG, MndwHeatStrip} from './charts/heat-strip.js';
 export type {MndwChartColor, MndwChartDomain, MndwChartPoint, MndwChartSeries} from './charts/chart-types.js';
 export {formatSpeed} from './charts/chart-utils.js';
 export {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox/checkbox.js';
@@ -143,7 +147,9 @@ const REGISTRY: [string, CustomElementConstructor][] = [
   [MNDW_SELECT_TAG, MndwSelect],
   [MNDW_SEGMENT_TAG, MndwSegment],
   [MNDW_SEGMENTED_TAG, MndwSegmented],
+  [MNDW_HEAT_STRIP_TAG, MndwHeatStrip],
   [MNDW_SLIDER_TAG, MndwSlider],
+  [MNDW_SPARKLINE_TAG, MndwSparkline],
   [MNDW_SWITCH_TAG, MndwSwitch],
   [MNDW_TAB_PANEL_TAG, MndwTabPanel],
   [MNDW_TAB_TAG, MndwTab],

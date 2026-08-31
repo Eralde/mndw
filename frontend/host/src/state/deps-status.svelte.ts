@@ -3,7 +3,7 @@ import {MGMT_LIST_URL} from '../constants.js';
 import {decodeMgmtList} from '../runtime/mgmt-list-schema.js';
 import type {DepsStatus} from '../runtime/plugin-types.js';
 
-/** Reactive plugin-name → depsStatus map. Absence means ready. */
+/** Reactive plugin-name -> depsStatus map. Absence means ready. */
 export const depsStatusMap = new SvelteMap<string, DepsStatus>();
 
 export function getDepsStatus(name: string): DepsStatus {

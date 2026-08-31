@@ -12,6 +12,11 @@ export interface TokenScale {
   switch: {width: string; height: string};
   slider: {trackHeight: string; thumbSize: string};
   table: {stickyTop: string};
+  /**
+   * Fixed utilization heatmap scale (theme-agnostic), low -> critical.
+   * Low values use "colder" colors, high values use "hotter" colors.
+   */
+  utilization: {low: string; moderate: string; elevated: string; high: string; critical: string};
   aliases: {
     scrollbarTrack: string;
     scrollbarThumb: string;
@@ -38,6 +43,13 @@ export const SCALE: TokenScale = {
   switch: {width: '2.25rem', height: '1.25rem'},
   slider: {trackHeight: '0.25rem', thumbSize: '1rem'},
   table: {stickyTop: '0'},
+  utilization: {
+    low: '#3fa89f',
+    moderate: '#7cc24b',
+    elevated: '#e6c229',
+    high: '#e8873a',
+    critical: '#d5432f',
+  },
   aliases: {
     scrollbarTrack: 'var(--mndw-surface)',
     scrollbarThumb: 'var(--mndw-accent)',

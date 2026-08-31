@@ -32,6 +32,14 @@ export const getSpeedUpperLimit = (speed: number): number => {
   return Math.max(limit, MIN_Y_AXIS_UPPER_LIMIT);
 };
 
+/** Formats an epoch-ms timestamp as a local `HH:MM:SS` clock label for compact chart axes. */
+export const formatClockTime = (epochMs: number): string => {
+  const date = new Date(epochMs);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 export const filterFinitePoints = (points: readonly MndwChartPoint[]): MndwChartPoint[] => {
   return points.filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value));
 };

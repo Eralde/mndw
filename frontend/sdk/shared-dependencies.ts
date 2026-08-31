@@ -144,7 +144,7 @@ export const SHARED_DEPENDENCIES: SharedDependency[] = [
 export const versionedBundleUrl = (entry: SharedDependency): string => `/shared/${entry.bundle}@${entry.version}.js`;
 
 /**
- * `specifier → /shared/<bundle>@<version>.js` for every specifier. Used by the import map in dev and
+ * `specifier -> /shared/<bundle>@<version>.js` for every specifier. Used by the import map in dev and
  * prod.
  */
 export const sharedImportMap = (): Record<string, string> => {
@@ -167,7 +167,7 @@ export const pluginDependencies = (framework: 'vanilla' | 'svelte' | 'vue' | 'an
     .flatMap((entry) => entry.specifiers);
 };
 
-/** `specifier → version` map, stamped into a plugin's `mndw.lock.json` at pack time. */
+/** `specifier -> version` map, stamped into a plugin's `mndw.lock.json` at pack time. */
 export const sharedDependencyVersions = (): Record<string, string> => {
   return Object.fromEntries(
     SHARED_DEPENDENCIES.flatMap((entry) => entry.specifiers.map((specifier) => [specifier, entry.version])),

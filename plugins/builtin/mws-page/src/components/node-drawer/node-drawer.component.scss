@@ -20,16 +20,18 @@
     gap: 0.5rem;
     align-items: center;
 
-    h3 {
-      flex: 1;
+    mndw-button {
+      margin-inline-start: auto;
     }
   }
 
-  .health {
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--mndw-border);
-    border-radius: var(--mndw-radius-md);
-    background: var(--mndw-surface-raised);
+  .role-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--mndw-accent);
+    border-radius: 62.4375rem;
+    color: var(--mndw-accent);
+    font-size: 0.6875rem;
   }
 
   .rename-editor {

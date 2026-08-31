@@ -120,6 +120,12 @@
         font-size: 0.625rem;
         fill: var(--mndw-text-subtle);
       }
+
+      &.controller-badge {
+        font-size: 0.625rem;
+        font-weight: 600;
+        fill: var(--mndw-accent);
+      }
     }
 
     .client-badge {

@@ -152,52 +152,35 @@ describe('NodeDrawerComponent', () => {
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('no longer reported');
   });
 
-  it('renders health before identity details with semantic status and telemetry age', () => {
+  it('does not render a health block', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
-    const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
 
-    if (node === null) {
-      throw new Error('expected extender fixture node');
-    }
-
-    node.isOnline = false;
-    node.mwsdStatus = {state: 'live', lastTelemetryAt: 5_000};
-    node.persistentSession = true;
-    node.clients = [{
-      mac: 'client-1',
-      name: 'Client 1',
-      ip: null,
-      uptime: null,
-      lastSeen: null,
-      wired: false,
-    }];
-    fixture.componentRef.setInput('node', node);
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
     fixture.detectChanges();
 
-    const identity = fixture.nativeElement.querySelector('.identity') as HTMLElement;
-    const health = identity.querySelector('.health');
-    const identityDetails = identity.querySelector('.identity-details');
+    expect(fixture.nativeElement.querySelector('.health')).toBeNull();
+  });
 
-    if (health === null || identityDetails === null) {
-      throw new Error('drawer health or identity details missing');
-    }
+  it('badges the controller and hides its backhaul section', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
 
-    expect(health).not.toBeNull();
-    expect(identityDetails).not.toBeNull();
-    expect([...identity.children].indexOf(health)).toBeLessThan([...identity.children].indexOf(identityDetails));
-    expect(health.textContent).toContain('Offline');
-    expect(health.textContent).toContain('Telemetry: live');
-    expect(health.textContent).toContain('Remote control: connected');
-    expect(health.textContent).toContain('Telemetry update 5s ago');
-    expect(health.textContent).toContain('1 client');
-
-    const updatedNode = {...node, mwsdStatus: {state: 'starting' as const, lastTelemetryAt: null}};
-
-    fixture.componentRef.setInput('node', updatedNode);
+    fixture.componentRef.setInput('node', findNodeById(roots(), CONTROLLER.mac));
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('.health')?.textContent)
-      .not.toContain('Telemetry update');
+    const badge = fixture.nativeElement.querySelector('.role-badge') as HTMLElement | null;
+
+    expect(badge?.textContent).toContain('Controller');
+    expect(fixture.nativeElement.querySelector('.backhaul')).toBeNull();
+  });
+
+  it('renders a backhaul section for an extender', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.backhaul')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.role-badge')).toBeNull();
   });
 
   it('explains each disabled TX-power reason through the field hint', () => {

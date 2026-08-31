@@ -23,16 +23,47 @@ export class MwsClientsTableComponent implements OnDestroy {
   protected readonly sortDir = signal<SortDir>('asc');
 
   protected readonly columns = [
-    column<ClientRow>()({id: 'name', label: this.t('clients.name'), accessor: (row) => row.client.name,
-      sortable: true}),
-    column<ClientRow>()({id: 'node', label: this.t('clients.node'), accessor: (row) => row.node.name, sortable: true}),
-    column<ClientRow>()({id: 'link', label: this.t('clients.link'), accessor: (row) => row.client.wired, sortable: true,
-      comparator: (a, b) => Number(b) - Number(a)}),
-    column<ClientRow>()({id: 'ip', label: this.t('clients.ip'), accessor: (row) => row.client.ip, sortable: true,
-      comparator: (a, b) => compareIpStrings(a ?? '', b ?? '')}),
-    column<ClientRow>()({id: 'mac', label: this.t('clients.mac'), accessor: (row) => row.client.mac, sortable: true}),
-    column<ClientRow>()({id: 'uptime', label: this.t('clients.uptime'), accessor: (row) => row.client.uptime,
-      kind: 'number', sortable: true}),
+    column<ClientRow>()({
+      id: 'name',
+      label: this.t('clients.name'),
+      accessor: (row) => row.client.name,
+      sortable: true,
+      width: '300px',
+      sticky: 'start',
+    }),
+    column<ClientRow>()({
+      id: 'node',
+      label: this.t('clients.node'),
+      accessor: (row) => row.node.name,
+      sortable: true,
+    }),
+    column<ClientRow>()({
+      id: 'link',
+      label: this.t('clients.link'),
+      accessor: (row) => row.client.wired,
+      sortable: true,
+      comparator: (a, b) => Number(b) - Number(a),
+    }),
+    column<ClientRow>()({
+      id: 'ip',
+      label: this.t('clients.ip'),
+      accessor: (row) => row.client.ip,
+      sortable: true,
+      comparator: (a, b) => compareIpStrings(a ?? '', b ?? ''),
+    }),
+    column<ClientRow>()({
+      id: 'mac',
+      label: this.t('clients.mac'),
+      accessor: (row) => row.client.mac,
+      sortable: true,
+    }),
+    column<ClientRow>()({
+      id: 'uptime',
+      label: this.t('clients.uptime'),
+      accessor: (row) => row.client.uptime,
+      kind: 'number',
+      sortable: true,
+    }),
   ] as Column<unknown>[];
 
   protected readonly rowKey = (row: ClientRow): string => `${row.node.id}:${row.client.mac}`;

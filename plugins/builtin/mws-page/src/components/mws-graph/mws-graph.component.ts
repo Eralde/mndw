@@ -387,6 +387,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
         nodeGroup.append('title').attr('class', 'node-name-title');
         nodeGroup.append('rect').attr('class', 'selection-ring');
         nodeGroup.append('rect').attr('class', 'node-body');
+        nodeGroup.append('text').attr('class', 'controller-badge');
         nodeGroup.append('text').attr('class', 'name');
         nodeGroup.append('text').attr('class', 'model');
         nodeGroup.append('text').attr('class', 'client-count');
@@ -457,6 +458,11 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
     nodeGroups.select('title.node-name-title')
       .text((positioned) => positioned.node.name);
+
+    nodeGroups.select('text.controller-badge')
+      .attr('text-anchor', 'middle')
+      .attr('y', -(nodeHeight / 2) - 6)
+      .text((positioned) => positioned.node.isController ? `(${this.t('graph.controller')})` : '');
 
     nodeGroups.select('text.name')
       .attr('text-anchor', 'middle')

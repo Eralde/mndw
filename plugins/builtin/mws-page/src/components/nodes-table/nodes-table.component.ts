@@ -52,21 +52,58 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
   protected readonly sortDir = signal<NodeSortDir>('asc');
 
   protected readonly columns = [
-    column<NodeRow>()({id: 'name', label: this.t('nodes.name'), accessor: (row) => row.node.name, sortable: true,
-      hideable: false}),
-    column<NodeRow>()({id: 'clients', label: this.t('nodes.clients'), accessor: (row) => row.node.clients.length,
-      kind: 'number', sortable: true}),
-    column<NodeRow>()({id: 'status', label: this.t('nodes.status'), accessor: (row) => this.status(row.node)}),
-    column<NodeRow>()({id: 'uptime', label: this.t('nodes.uptime'), accessor: (row) => row.node.system?.uptime ?? null,
-      kind: 'number', sortable: true}),
-    column<NodeRow>()({id: 'ip', label: this.t('nodes.ip'), accessor: (row) => row.node.ip, sortable: true,
-      comparator: (a, b) => compareIpStrings(a ?? '', b ?? '')}),
-    column<NodeRow>()({id: 'via', label: this.t('nodes.via'), accessor: (row) => row.node.parent?.node.name ?? null,
-      sortable: true}),
-    column<NodeRow>()({id: 'connection', label: this.t('nodes.connection'), accessor: (row) =>
-      this.connection(row.node)}),
-    column<NodeRow>()({id: 'firmware', label: this.t('nodes.firmware'), accessor: (row) => row.node.fw ?? null,
-      sortable: true}),
+    column<NodeRow>()({
+      id: 'name',
+      label: this.t('nodes.name'),
+      accessor: (row) => row.node.name,
+      sortable: true,
+      hideable: false,
+      width: '300px',
+      sticky: 'start',
+    }),
+    column<NodeRow>()({
+      id: 'clients',
+      label: this.t('nodes.clients'),
+      accessor: (row) => row.node.clients.length,
+      kind: 'number',
+      sortable: true,
+    }),
+    column<NodeRow>()({
+      id: 'status',
+      label: this.t('nodes.status'),
+      accessor: (row) => this.status(row.node),
+    }),
+    column<NodeRow>()({
+      id: 'uptime',
+      label: this.t('nodes.uptime'),
+      accessor: (row) => row.node.system?.uptime ?? null,
+      kind: 'number',
+      sortable: true,
+    }),
+    column<NodeRow>()({
+      id: 'ip',
+      label: this.t('nodes.ip'),
+      accessor: (row) => row.node.ip,
+      sortable: true,
+      comparator: (a, b) => compareIpStrings(a ?? '', b ?? ''),
+    }),
+    column<NodeRow>()({
+      id: 'via',
+      label: this.t('nodes.via'),
+      accessor: (row) => row.node.parent?.node.name ?? null,
+      sortable: true,
+    }),
+    column<NodeRow>()({
+      id: 'connection',
+      label: this.t('nodes.connection'),
+      accessor: (row) => this.connection(row.node),
+    }),
+    column<NodeRow>()({
+      id: 'firmware',
+      label: this.t('nodes.firmware'),
+      accessor: (row) => row.node.fw ?? null,
+      sortable: true,
+    }),
   ] as Column<unknown>[];
 
   protected readonly allRows = computed(() => buildNodeRows(this.roots()));

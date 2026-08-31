@@ -17,6 +17,10 @@ func TestParseDefaultsUserPluginsDirUsesDurableDataRoot(t *testing.T) {
 	if got, want := cfg.UserPluginsDir, "/opt/var/lib/mndw/user-plugins"; got != want {
 		t.Fatalf("user plugins dir = %q, want %q", got, want)
 	}
+
+	if cfg.SelfUpdateStateDir != "/opt/var/mndw" || cfg.SelfUpdateHelper != "/opt/share/www/mndw/bin/mndw-self-update.sh" {
+		t.Fatalf("self-update defaults = %q %q", cfg.SelfUpdateStateDir, cfg.SelfUpdateHelper)
+	}
 }
 
 func TestParseAcceptsCanonicalDeviceURLFlag(t *testing.T) {

@@ -23,10 +23,9 @@ Production listener and upstream facts:
 
 - `mndwd` owns one browser-facing LAN listener for static files, device proxy,
   API, and WebSocket routes. Front-door mode is enabled by `--frontend-dir`.
-- The default front-door port is `99`. `mndwd` attempts the persisted port first,
-  then the migration seed, then `99..199` ascending, skipping `80` and
-  `101`, `102`, `103`, `104`, `109`, `110`, `111`, `113`, `115`, `117`, `119`,
-  `123`, `135`, `137`, `139`, `143`, `161`, and `179`.
+- The default front-door port is `1189`. `mndwd` attempts the persisted port first,
+  then the migration seed, then `1189`, followed by the remaining ports in
+  `1190..1289` ascending.
 - The selected port is atomically persisted in
   `/opt/var/lib/mndw/frontend-port`. During one upgrade handoff,
   `/opt/var/lib/mndw/lighttpd-port` is a migration seed and is removed after a

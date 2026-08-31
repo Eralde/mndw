@@ -187,7 +187,11 @@ func (h *Handler) writeOpkgError(w http.ResponseWriter, message string, err erro
 	status := http.StatusBadGateway
 	code := httpx.CodeOpkgFailed
 
-	if errors.Is(err, opkg.ErrOpkgUnavailable) {
+	switch {
+	case errors.Is(err, opkg.ErrBusy):
+		status = http.StatusConflict
+		code = httpx.CodeOpkgBusy
+	case errors.Is(err, opkg.ErrOpkgUnavailable):
 		status = http.StatusServiceUnavailable
 		code = httpx.CodeOpkgUnavailable
 	}

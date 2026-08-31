@@ -10,6 +10,7 @@ const {
   probeControllerTokenAuth,
   routerPathname,
   saveController,
+  selfUpdateStatus,
 } = vi.hoisted(() => ({
   downloadDiagnostics: vi.fn(),
   getCapability: vi.fn().mockResolvedValue({
@@ -22,6 +23,7 @@ const {
   probeControllerTokenAuth: vi.fn().mockResolvedValue(true),
   routerPathname: {pathname: '/settings/general'},
   saveController: vi.fn(),
+  selfUpdateStatus: vi.fn().mockResolvedValue({state: 'idle', version: 'dev'}),
 }));
 
 vi.mock('../../router/create-app-router.js', () => ({
@@ -76,6 +78,14 @@ vi.mock('../../services/persistent-rci-session.service.js', () => ({
   },
 }));
 vi.mock('../../services/diagnostics.service.js', () => ({downloadDiagnostics}));
+vi.mock('../../services/self-update-client.js', () => ({
+  selfUpdateClient: {
+    status: selfUpdateStatus,
+    check: vi.fn(),
+    apply: vi.fn(),
+    revert: vi.fn(),
+  },
+}));
 
 import SettingsPage from './SettingsPage.svelte';
 import generalSettingsSource from './GeneralSettings.svelte?raw';
@@ -103,6 +113,7 @@ describe('SettingsPage', () => {
     probeControllerTokenAuth.mockReset().mockResolvedValue(true);
     saveController.mockReset();
     downloadDiagnostics.mockReset();
+    selfUpdateStatus.mockReset().mockResolvedValue({state: 'idle', version: 'dev'});
     navigate.mockReset().mockResolvedValue(undefined);
     routerPathname.pathname = '/settings/general';
   });
@@ -125,11 +136,13 @@ describe('SettingsPage', () => {
       'general',
       'diagnostics',
       'plugins',
+      'self-update',
     ]);
     expect([...target.querySelectorAll('mndw-tab-panel')].map((panel) => panel.getAttribute('for'))).toEqual([
       'general',
       'diagnostics',
       'plugins',
+      'self-update',
     ]);
     expect(target.querySelector('mndw-tab#diagnostics')?.getAttribute('aria-selected')).toBe('false');
     expect(target.querySelector('mndw-tab#plugins')?.getAttribute('aria-selected')).toBe('false');

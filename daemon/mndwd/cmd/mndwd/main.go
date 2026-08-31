@@ -28,6 +28,7 @@ import (
 	"mndwd/internal/opkg"
 	"mndwd/internal/palette"
 	"mndwd/internal/registry"
+	"mndwd/internal/selfupdate"
 	"mndwd/internal/service"
 	"mndwd/internal/state"
 )
@@ -175,7 +176,29 @@ type components struct {
 // test can drive the exact same wiring over httptest.
 func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) components {
 	reg := registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, logger)
-	opkgMgr := opkg.New(cfg.Opkg, logger)
+	stateDir := cfg.SelfUpdateStateDir
+
+	if stateDir == "" {
+		stateDir = defaultSelfUpdateStateDir
+	}
+
+	helperPath := cfg.SelfUpdateHelper
+
+	if helperPath == "" {
+		helperPath = defaultSelfUpdateHelper
+	}
+
+	opkgMgr := opkg.NewWithPaths(cfg.Opkg, logger, opkg.Paths{
+		StateDir:   stateDir,
+		PendingDir: filepath.Join(stateDir, "pending"),
+		LockPath:   filepath.Join(stateDir, "self-update.lock"),
+	})
+	selfUpdateService := selfupdate.New(selfupdate.Config{
+		StateDir:       stateDir,
+		PackagedHelper: helperPath,
+		RunningVersion: version,
+		Logger:         logger,
+	}, opkgMgr)
 	serviceMgr := service.New(cfg.Service, logger)
 	activationGates := backend.NewActivationGateRegistry()
 	runtimeRoot := cfg.PluginRuntimeRoot
@@ -213,7 +236,7 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 
 	mux := http.NewServeMux()
 	accessRegistration := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, activationGates, verifier, logger)
-	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, serviceMgr, reg, runtime, accessRegistration.permissionController, verifier, logger, lifetime)
+	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, selfUpdateService, serviceMgr, reg, runtime, accessRegistration.permissionController, verifier, logger, lifetime)
 
 	registerPalette(mux, mgmtMux, paletteStore, logger)
 
@@ -283,7 +306,7 @@ func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger) erro
 
 // registerMgmt mounts the session-gated management surface and returns its mux so
 // other session-gated routes (e.g. protected palette) can share the gate.
-func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, serviceMgr service.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, permissionController mgmt.PersistentRCIPermissionController, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) *http.ServeMux {
+func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, selfUpdateService selfupdate.Service, serviceMgr service.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, permissionController mgmt.PersistentRCIPermissionController, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) *http.ServeMux {
 	mgmtHandler := mgmt.New(mgmt.Config{
 		StagingDir:                        cfg.StagingDir(),
 		UserPluginsDir:                    cfg.UserPluginsDir,
@@ -292,6 +315,7 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 		Runtime:                           runtime,
 		PersistentRCIPermissionController: permissionController,
 		ServiceActionRoot:                 lifetime,
+		SelfUpdate:                        selfUpdateService,
 	}, store, opkgMgr, serviceMgr, reg, logger)
 
 	mgmtMux := http.NewServeMux()

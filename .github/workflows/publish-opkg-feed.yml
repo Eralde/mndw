@@ -2,9 +2,20 @@ name: Publish OPKG feed
 
 on:
   workflow_dispatch:
+    inputs:
+      feed_key_id:
+        description: Fixed usign public-key fingerprint for this feed
+        required: false
+        type: string
   push:
     tags:
       - "v*"
+
+permissions:
+  contents: read
+
+env:
+  MNDW_FEED_KEY_ID: ${{ inputs.feed_key_id || vars.MNDW_FEED_KEY_ID }}
 
 jobs:
   publish-feed:
@@ -30,22 +41,91 @@ jobs:
         with:
           go-version: "1.26"
 
+      - name: Build usign
+        run: |
+          set -eu
+          usign_source="$RUNNER_TEMP/usign"
+          usign_bin="$RUNNER_TEMP/bin"
+          git clone --depth 1 https://github.com/openwrt/usign.git "$usign_source"
+          cmake -S "$usign_source" -B "$usign_source/build" -DUSE_LIBUBOX=OFF
+          cmake --build "$usign_source/build"
+          mkdir -p "$usign_bin"
+          install -m 0755 "$usign_source/build/usign" "$usign_bin/usign"
+          echo "$usign_bin" >> "$GITHUB_PATH"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build IPKs and feed
         run: pnpm build-ipk --all --repo
 
+      - name: Sign and validate feed artifacts
+        env:
+          OPKG_USIGN_SECRET_KEY_B64: ${{ secrets.OPKG_USIGN_SECRET_KEY_B64 }}
+          OPKG_USIGN_PUBLIC_KEY_B64: ${{ secrets.OPKG_USIGN_PUBLIC_KEY_B64 }}
+        run: |
+          set -eu
+
+          assert() {
+            test "$@"
+          }
+
+          # Each Packages index receives a Packages.sig artifact.
+
+          case "$MNDW_FEED_KEY_ID" in
+            ''|*[!A-Za-z0-9._+-]*) exit 1 ;;
+          esac
+          test -n "${OPKG_USIGN_SECRET_KEY_B64:-}"
+          test -n "${OPKG_USIGN_PUBLIC_KEY_B64:-}"
+
+          private_key="$RUNNER_TEMP/mndw-feed.sec"
+          public_key="$RUNNER_TEMP/mndw-feed.pub"
+          trap 'rm -f "$private_key" "$public_key"' EXIT
+          printf '%s' "$OPKG_USIGN_SECRET_KEY_B64" | base64 -d > "$private_key"
+          printf '%s' "$OPKG_USIGN_PUBLIC_KEY_B64" | base64 -d > "$public_key"
+
+          key_id=$(usign -F -p "$public_key")
+          test "$key_id" = "$MNDW_FEED_KEY_ID"
+
+          for arch in aarch64-3.10 mips-3.4 mipsel-3.4; do
+            packages="out/repo/$arch/Packages"
+            test -f "$packages"
+            usign -S -m "$packages" -s "$private_key" -x "$packages.sig"
+            usign -V -m "$packages" -p "$public_key" -x "$packages.sig"
+            test -f "$packages.sig"
+          done
+
+          arch_dir_count=$(find out/repo -mindepth 1 -maxdepth 1 -type d | wc -l)
+          test "$arch_dir_count" -eq 3
+          key_file="out/repo/$MNDW_FEED_KEY_ID.pub"
+          cp "$public_key" "$key_file"
+          test "$(find out/repo -mindepth 1 -maxdepth 1 -type f -name '*.pub' | wc -l)" -eq 1
+
+          sed "s/__FEED_KEY_ID__/$MNDW_FEED_KEY_ID/g" \
+            build/packaging/feed/add_repo.sh > out/repo/add_repo.sh
+          chmod 0755 out/repo/add_repo.sh
+          cp build/packaging/feed/index.html out/repo/index.html
+
+          test -f out/repo/add_repo.sh
+          test -f out/repo/index.html
+          test ! -e out/repo/install.sh
+          if grep -R -F '__FEED_KEY_ID__' out/repo/add_repo.sh; then
+            exit 1
+          fi
+          rm -f "$private_key" "$public_key"
+          test ! -e "$private_key"
+          test ! -e "$public_key"
+
       - name: Publish to public feed repo
         env:
           FEED_REPO: Eralde/mndw-opkg-feed
           GH_TOKEN: ${{ secrets.FEED_REPO_TOKEN }}
         run: |
-          set -eux
+          set -eu
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${FEED_REPO}.git" feed
           rm -rf feed/*
           cp -R out/repo/. feed/
-          cp build/packaging/install.sh feed/install.sh
+          test ! -e feed/install.sh
           cd feed
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

@@ -4,6 +4,7 @@ go 1.26
 
 require (
 	github.com/coder/websocket v1.8.15
+	golang.org/x/sys v0.34.0
 	mndw.local/contracts v0.0.0
 	mndw.local/mws-members v0.0.0
 	mndw.local/rci v0.0.0

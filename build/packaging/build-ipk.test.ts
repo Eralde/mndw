@@ -20,6 +20,7 @@ import {
   substituteControl,
   verifyElfBytes,
   verifyStage,
+  writeFeed,
 } from './build-ipk.js';
 
 const isExecutable = (mode: number): boolean => {
@@ -49,6 +50,30 @@ const readTarEntries = (archivePath: string): {name: string; typeFlag: string}[]
   }
 
   return entries;
+};
+
+const readTarFile = (archivePath: string, wantedName: string): Buffer => {
+  const archive = zlib.gunzipSync(fs.readFileSync(archivePath));
+
+  for (let offset = 0; offset + 512 <= archive.length;) {
+    const header = archive.subarray(offset, offset + 512);
+
+    if (header.every((byte) => byte === 0)) { break; }
+
+    const name = header.subarray(0, 100).toString('utf8')
+.replace(/\0.*$/, '');
+    const sizeText = header.subarray(124, 136).toString('ascii')
+.replace(/\0.*$/, '')
+.trim();
+    const size = parseInt(sizeText || '0', 8);
+    const contentOffset = offset + 512;
+
+    if (name === wantedName) { return archive.subarray(contentOffset, contentOffset + size); }
+
+    offset = contentOffset + Math.ceil(size / 512) * 512;
+  }
+
+  throw new Error(`missing tar member: ${wantedName}`);
 };
 
 interface TarHeaderDetail {
@@ -152,6 +177,76 @@ describe('collectStagePaths', () => {
     expect(paths.initScript).toBe(path.join('opt', 'etc', 'init.d', 'S70mndwd'));
     expect(paths.devicePortHelper).toBe(path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'));
     expect(paths.daemonConfig).toBe(path.join('opt', 'etc', 'mndw.conf'));
+    expect(paths.selfUpdateHelper).toBe(
+      path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
+    );
+  });
+});
+
+describe('writeFeed', () => {
+  it('writes isolated per-arch feed directories', () => {
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-feed-'));
+    const ipkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipks-'));
+    const ipks = ['aarch64-3.10', 'mips-3.4', 'mipsel-3.4'].map((arch) => {
+      const file = path.join(ipkDir, `mndw_0.0.4_${arch}.ipk`);
+
+      fs.writeFileSync(file, arch);
+
+      return file;
+    });
+
+    writeFeed(ipks, '0.0.4', repoDir);
+
+    for (const arch of ['aarch64-3.10', 'mips-3.4', 'mipsel-3.4']) {
+      const packages = fs.readFileSync(path.join(repoDir, arch, 'Packages'), 'utf8');
+
+      expect(packages.match(/^Package: mndw$/gm)).toHaveLength(1);
+      expect(packages).toContain(`Architecture: ${arch}`);
+      expect(packages).toContain(`Filename: mndw_0.0.4_${arch}.ipk`);
+      expect(fs.existsSync(path.join(repoDir, arch, 'Packages.gz'))).toBe(true);
+      expect(fs.existsSync(path.join(repoDir, arch, `mndw_0.0.4_${arch}.ipk`))).toBe(true);
+    }
+
+    expect(fs.existsSync(path.join(repoDir, 'Packages'))).toBe(false);
+    expect(fs.existsSync(path.join(repoDir, 'Packages.gz'))).toBe(false);
+  });
+
+  it('removes stale managed feed output only after validating all inputs', () => {
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-feed-stale-'));
+    const ipkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipks-stale-'));
+    const valid = path.join(ipkDir, 'mndw_0.0.4_mips-3.4.ipk');
+    const invalid = path.join(ipkDir, 'mndw_0.0.4_unknown.ipk');
+
+    fs.writeFileSync(path.join(repoDir, 'Packages'), 'old root index');
+    fs.mkdirSync(path.join(repoDir, 'mipsel-3.4'), {recursive: true});
+    fs.writeFileSync(path.join(repoDir, 'mipsel-3.4', 'stale.ipk'), 'stale');
+    fs.writeFileSync(valid, 'valid');
+    fs.writeFileSync(invalid, 'invalid');
+
+    expect(() => writeFeed([valid, invalid], '0.0.4', repoDir)).toThrow('Unexpected ipk filename');
+    expect(fs.readFileSync(path.join(repoDir, 'Packages'), 'utf8')).toBe('old root index');
+    expect(fs.existsSync(path.join(repoDir, 'mipsel-3.4', 'stale.ipk'))).toBe(true);
+
+    writeFeed([valid], '0.0.4', repoDir);
+
+    expect(fs.existsSync(path.join(repoDir, 'Packages'))).toBe(false);
+    expect(fs.existsSync(path.join(repoDir, 'mipsel-3.4'))).toBe(false);
+    expect(fs.existsSync(path.join(repoDir, 'mips-3.4', 'mndw_0.0.4_mips-3.4.ipk'))).toBe(true);
+  });
+
+  it('rejects duplicate architectures before mutating output', () => {
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-feed-duplicates-'));
+    const ipkDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipks-duplicates-'));
+    const secondDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipks-duplicates-2-'));
+    const first = path.join(ipkDir, 'mndw_0.0.4_mips-3.4.ipk');
+    const second = path.join(secondDir, 'mndw_0.0.4_mips-3.4.ipk');
+
+    fs.writeFileSync(path.join(repoDir, 'Packages'), 'preserved');
+    fs.writeFileSync(first, 'first');
+    fs.writeFileSync(second, 'second');
+
+    expect(() => writeFeed([first, second], '0.0.4', repoDir)).toThrow('Duplicate architecture');
+    expect(fs.readFileSync(path.join(repoDir, 'Packages'), 'utf8')).toBe('preserved');
   });
 });
 
@@ -188,6 +283,7 @@ describe('verifyStage', () => {
 
     stageFile('opt/etc/init.d/S70mndwd');
     stageFile('opt/share/www/mndw/bin/mndw-device-port.sh');
+    stageFile('opt/share/www/mndw/bin/mndw-self-update.sh');
     stageFile('opt/etc/mndw.conf');
   };
 
@@ -464,6 +560,28 @@ describe('buildControlTar', () => {
       fs.rmSync(outDir, {recursive: true, force: true});
     }
   });
+
+  it('substitutes arch in archived postinst', async () => {
+    const tmpIpk = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-postinst-'));
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-postinst-out-'));
+
+    try {
+      writeControlFixture(tmpIpk);
+      fs.writeFileSync(
+        path.join(tmpIpk, 'postinst'),
+        '#!/bin/sh\necho https://eralde.github.io/mndw-opkg-feed/__ARCH__\n',
+      );
+
+      const archive = await buildControlTar(tmpIpk, outDir, '0.0.4', 'mipsel-3.4');
+      const postinst = readTarFile(archive, './postinst').toString('utf8');
+
+      expect(postinst).toContain('mndw-opkg-feed/mipsel-3.4');
+      expect(postinst).not.toContain('__ARCH__');
+    } finally {
+      fs.rmSync(tmpIpk, {recursive: true, force: true});
+      fs.rmSync(outDir, {recursive: true, force: true});
+    }
+  });
 });
 
 describe('buildIpk', () => {
@@ -518,6 +636,18 @@ describe('stageDeployFiles', () => {
 
       expect(fs.statSync(devicePortHelperPath).mode.toString(8).slice(-3)).toBe('755');
       expect(fs.readFileSync(devicePortHelperPath, 'utf8')).toContain('WWW-Authenticate');
+
+      const selfUpdateHelperPath = path.join(
+        stagingDir,
+        'opt',
+        'share',
+        'www',
+        'mndw',
+        'bin',
+        'mndw-self-update.sh',
+      );
+
+      expect(fs.statSync(selfUpdateHelperPath).mode.toString(8).slice(-3)).toBe('755');
 
       const stagedFiles = fs.readdirSync(path.join(stagingDir, 'opt', 'share', 'www', 'mndw', 'bin'));
 

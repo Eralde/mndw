@@ -21,6 +21,7 @@ import (
 	"mndwd/internal/manifest"
 	"mndwd/internal/opkg"
 	"mndwd/internal/registry"
+	"mndwd/internal/selfupdate"
 	"mndwd/internal/service"
 	"mndwd/internal/state"
 )
@@ -54,6 +55,7 @@ type Config struct {
 	PersistentRCIPermissionController PersistentRCIPermissionController
 	ServiceActionRoot                 context.Context
 	ServiceActionTimeout              time.Duration
+	SelfUpdate                        selfupdate.Service
 }
 
 // Handler serves the management API over a shared state store.
@@ -66,6 +68,7 @@ type Handler struct {
 	logger               *slog.Logger
 	runtime              backend.Runtime
 	permissionController PersistentRCIPermissionController
+	selfUpdate           selfupdate.Service
 	removeAll            func(string) error
 	newTimer             func(time.Duration) <-chan time.Time
 	removalWatchdog      time.Duration
@@ -91,6 +94,7 @@ func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr service.
 		logger:               logger,
 		runtime:              cfg.Runtime,
 		permissionController: cfg.PersistentRCIPermissionController,
+		selfUpdate:           cfg.SelfUpdate,
 		removeAll:            os.RemoveAll,
 		newTimer:             time.After,
 		removalWatchdog:      30 * time.Second,
@@ -121,6 +125,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/mgmt/opkg/remove", h.handleOpkgRemove)
 	mux.HandleFunc("POST /api/mgmt/opkg/update", h.handleOpkgUpdate)
 	mux.HandleFunc("POST /api/mgmt/opkg/upgrade", h.handleOpkgUpgrade)
+	mux.HandleFunc("GET /api/mgmt/self-update/status", h.handleSelfUpdateStatus)
+	mux.HandleFunc("POST /api/mgmt/self-update/check", h.handleSelfUpdateCheck)
+	mux.HandleFunc("POST /api/mgmt/self-update/apply", h.handleSelfUpdateApply)
+	mux.HandleFunc("POST /api/mgmt/self-update/revert", h.handleSelfUpdateRevert)
 	mux.HandleFunc("GET /api/mgmt/service/list", h.handleServiceList)
 	mux.HandleFunc("GET /api/mgmt/service/status", h.handleServiceStatus)
 	mux.HandleFunc("POST /api/mgmt/service/start", h.handleServiceStart)

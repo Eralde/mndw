@@ -6,6 +6,7 @@ describe('settings routes', () => {
     ['/settings/general', 'general'],
     ['/settings/diagnostics', 'diagnostics'],
     ['/settings/plugins', 'plugins'],
+    ['/settings/self-update', 'self-update'],
     ['/settings/general/', 'general'],
   ])('maps %s to %s', (pathname, expected) => {
     expect(settingsTabFromPath(pathname)).toBe(expected);
@@ -18,7 +19,7 @@ describe('settings routes', () => {
     },
   );
 
-  it.each(['general', 'diagnostics', 'plugins'] as const)('builds path for %s', (tab) => {
+  it.each(['general', 'diagnostics', 'plugins', 'self-update'] as const)('builds path for %s', (tab) => {
     expect(settingsPath(tab)).toBe(`/settings/${tab}`);
   });
 });

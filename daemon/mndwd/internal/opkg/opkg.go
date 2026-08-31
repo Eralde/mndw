@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -112,15 +113,27 @@ type Manager interface {
 }
 
 // New returns an exec-backed Manager, or a stub when mode is "stub".
-func New(mode string, logger *slog.Logger) Manager {
+func New(mode string, logger *slog.Logger) SelfUpdateManager {
+	return NewWithPaths(mode, logger, Paths{})
+}
+
+func NewWithPaths(mode string, logger *slog.Logger, paths Paths) SelfUpdateManager {
 	if logger == nil {
 		logger = slog.Default()
 	}
+
 	if mode == "stub" {
 		return newStub(logger)
 	}
 
-	return &execManager{logger: logger, listsDir: "/opt/var/opkg-lists/", gate: make(chan struct{}, 1)}
+	return &execManager{
+		logger:     logger,
+		listsDir:   "/opt/var/opkg-lists/",
+		stateDir:   paths.StateDir,
+		pendingDir: paths.PendingDir,
+		lockPath:   paths.LockPath,
+		gate:       make(chan struct{}, 1),
+	}
 }
 
 // validate rejects an empty list or any malformed package name before exec.
@@ -143,9 +156,13 @@ func validate(packages []string) error {
 // ------------------------------------
 
 type execManager struct {
-	logger   *slog.Logger
-	runner   func(ctx context.Context, args ...string) (string, int, error)
-	listsDir string
+	logger         *slog.Logger
+	runner         func(ctx context.Context, args ...string) (string, int, error)
+	downloadRunner func(ctx context.Context, dir string, args ...string) (string, int, error)
+	listsDir       string
+	stateDir       string
+	pendingDir     string
+	lockPath       string
 	// gate is a 1-slot semaphore serializing mutating operations. A plain mutex
 	// would defeat cancellation: Lock() cannot be interrupted, so a shutdown
 	// arriving while another install holds the lock would stall the caller for
@@ -156,13 +173,29 @@ type execManager struct {
 
 func (m *execManager) defaults() {
 	m.defaultsMu.Lock()
+
 	defer m.defaultsMu.Unlock()
+
 	if m.logger == nil {
 		m.logger = slog.Default()
 	}
+
 	if m.listsDir == "" {
 		m.listsDir = "/opt/var/opkg-lists/"
 	}
+
+	if m.stateDir == "" {
+		m.stateDir = "/opt/var/mndw"
+	}
+
+	if m.pendingDir == "" {
+		m.pendingDir = filepath.Join(m.stateDir, "pending")
+	}
+
+	if m.lockPath == "" {
+		m.lockPath = filepath.Join(m.stateDir, "self-update.lock")
+	}
+
 	if m.gate == nil {
 		m.gate = make(chan struct{}, 1)
 	}
@@ -187,6 +220,7 @@ func execRun(ctx context.Context, args ...string) (string, int, error) {
 	if err == nil {
 		return stdout.String(), 0, nil
 	}
+
 	if errors.Is(err, exec.ErrNotFound) || os.IsNotExist(err) {
 		return "", 0, fmt.Errorf("%w: %v", ErrOpkgUnavailable, err)
 	}
@@ -205,6 +239,7 @@ func execRun(ctx context.Context, args ...string) (string, int, error) {
 
 func (m *execManager) run(ctx context.Context, args ...string) (string, int, error) {
 	m.defaults()
+
 	if m.runner != nil {
 		return m.runner(ctx, args...)
 	}
@@ -243,15 +278,17 @@ func (m *execManager) mutate(ctx context.Context, action string, packages []stri
 // reverse-dependency warning opkg emits with a zero exit) use it directly.
 func (m *execManager) mutateOutput(ctx context.Context, action string, packages []string, args ...string) (string, error) {
 	m.defaults()
+
 	if err := validate(packages); err != nil {
 		return "", err
 	}
 
-	if err := m.acquire(ctx); err != nil {
+	lease, err := m.acquireMutation(ctx, true)
+	if err != nil {
 		return "", fmt.Errorf("opkg %s: %w", action, err)
 	}
 
-	defer m.release()
+	defer lease.Abort()
 
 	commandArgs := append([]string{"opkg"}, args...)
 	commandArgs = append(commandArgs, packages...)
@@ -285,7 +322,9 @@ func (m *execManager) Remove(ctx context.Context, packages []string) error {
 	if err := rejectProtected(packages); err != nil {
 		return err
 	}
+
 	out, err := m.mutateOutput(ctx, "remove", packages, "remove")
+
 	// opkg refuses to remove a package other installed packages depend on, printing a
 	// "depended upon by packages" warning. Depending on the device's opkg build this
 	// comes with a zero exit (removing nothing) or a non-zero exit; either way the
@@ -329,23 +368,29 @@ func cleanOpkgLine(raw string) string {
 // the "These might cease to work" / "Force removal" advisory lines.
 func detectDependents(out string) *DependencyConflictError {
 	lines := strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n")
+
 	for i, raw := range lines {
 		match := dependentsRe.FindStringSubmatch(cleanOpkgLine(raw))
+
 		if match == nil {
 			continue
 		}
 
 		conflict := &DependencyConflictError{Package: match[1]}
+
 		for _, follow := range lines[i+1:] {
 			text := cleanOpkgLine(follow)
+
 			if text == "" {
 				continue
 			}
+
 			if strings.HasPrefix(text, "These might cease to work") ||
 				strings.HasPrefix(text, "Force removal") ||
 				dependentsRe.MatchString(text) {
 				break
 			}
+
 			conflict.DependedBy = append(conflict.DependedBy, strings.Fields(text)[0])
 		}
 
@@ -359,16 +404,19 @@ func (m *execManager) Upgrade(ctx context.Context, packages []string) error {
 	if err := rejectProtected(packages); err != nil {
 		return err
 	}
+
 	return m.mutate(ctx, "upgrade", packages, "upgrade")
 }
 
 func (m *execManager) Update(ctx context.Context) error {
 	m.defaults()
-	if err := m.acquire(ctx); err != nil {
+
+	lease, err := m.acquireMutation(ctx, true)
+	if err != nil {
 		return fmt.Errorf("opkg update: %w", err)
 	}
 
-	defer m.release()
+	defer lease.Abort()
 
 	out, exitCode, err := m.run(ctx, "opkg", "update")
 	if err != nil {
@@ -392,6 +440,7 @@ func rejectProtected(packages []string) error {
 			return &ProtectedPackageError{Name: name}
 		}
 	}
+
 	return nil
 }
 
@@ -434,6 +483,7 @@ func (m *execManager) List(ctx context.Context) (PackageList, error) {
 	if err != nil {
 		return PackageList{}, err
 	}
+
 	return PackageList{Packages: combined, MetadataUpdatedAt: metadataUpdatedAt}, nil
 }
 
@@ -502,16 +552,20 @@ func (e *PackageNotFoundError) Error() string { return "package not found: " + e
 
 func (m *execManager) Info(ctx context.Context, name string) (PackageInfo, error) {
 	m.defaults()
+
 	if !pkgNameRe.MatchString(name) {
 		return PackageInfo{}, &InvalidPackageError{Name: name}
 	}
+
 	out, exitCode, err := m.run(ctx, "opkg", "info", name)
 	if err != nil {
 		return PackageInfo{}, fmt.Errorf("opkg info: %w", err)
 	}
+
 	if exitCode != 0 {
 		return PackageInfo{}, &PackageNotFoundError{Name: name}
 	}
+
 	blocks, err := parseInfoBlocks(out)
 	if err != nil {
 		return PackageInfo{}, err
@@ -520,9 +574,11 @@ func (m *execManager) Info(ctx context.Context, name string) (PackageInfo, error
 	installedMap, _ := m.listMap(ctx, "list-installed")
 	availableMap, _ := m.listMap(ctx, "list")
 	installedVersion := ""
+
 	if installed, ok := installedMap[name]; ok {
 		installedVersion = installed.Version
 	}
+
 	selected, err := selectInfoBlock(blocks, name, installedVersion)
 	if err != nil {
 		return PackageInfo{}, err
@@ -537,8 +593,10 @@ func (m *execManager) Info(ctx context.Context, name string) (PackageInfo, error
 		Status:       derivePackageStatus(name, installedMap, availableMap),
 	}
 	statusOut, statusExit, statusErr := m.run(ctx, "opkg", "status", name)
+
 	if statusErr == nil && statusExit == 0 {
 		statusBlocks, parseErr := parseInfoBlocks(statusOut)
+
 		if parseErr == nil {
 			if statusBlock, findErr := selectInfoBlock(statusBlocks, name, installedVersion); findErr == nil {
 				info.InstalledSize = statusBlock.InstalledSize
@@ -546,18 +604,22 @@ func (m *execManager) Info(ctx context.Context, name string) (PackageInfo, error
 			}
 		}
 	}
+
 	return info, nil
 }
 
 func derivePackageStatus(name string, installedMap, availableMap map[string]PackageEntry) string {
 	installed, installedOK := installedMap[name]
 	available, availableOK := availableMap[name]
+
 	if !installedOK {
 		return "available"
 	}
+
 	if availableOK && installed.Version != available.Version {
 		return "update_available"
 	}
+
 	return "installed"
 }
 
@@ -567,20 +629,27 @@ func isArchitectureWarning(line string) bool {
 
 func parseInfoBlocks(out string) ([]packageInfoBlock, error) {
 	blocks := make([]packageInfoBlock, 0)
+
 	for _, rawBlock := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n\n") {
 		blockText := strings.TrimSpace(rawBlock)
+
 		if blockText == "" {
 			continue
 		}
+
 		block := packageInfoBlock{Dependencies: []string{}}
 		lastField := ""
+
 		for _, line := range strings.Split(blockText, "\n") {
 			rawLine := strings.TrimRight(line, "\r")
 			line = strings.TrimSpace(rawLine)
+
 			if line == "" {
 				continue
 			}
+
 			key, value, ok := strings.Cut(line, ":")
+
 			if !ok {
 				// A line without a colon is a continuation of the previous
 				// field: either a wrapped Description line, or an entry in a
@@ -589,13 +658,16 @@ func parseInfoBlocks(out string) ([]packageInfoBlock, error) {
 					if block.Description != "" {
 						block.Description += "\n"
 					}
+
 					block.Description += line
 				}
 
 				continue
 			}
+
 			lastField = strings.TrimSpace(key)
 			value = strings.TrimSpace(value)
+
 			switch lastField {
 			case "Package":
 				block.Name = value
@@ -617,11 +689,14 @@ func parseInfoBlocks(out string) ([]packageInfoBlock, error) {
 				block.InstalledTime = value
 			}
 		}
+
 		if block.Name == "" || block.Version == "" {
 			return nil, fmt.Errorf("malformed opkg info block: missing package or version")
 		}
+
 		blocks = append(blocks, block)
 	}
+
 	return blocks, nil
 }
 
@@ -631,37 +706,48 @@ func selectInfoBlock(blocks []packageInfoBlock, name, installedVersion string) (
 			return block, nil
 		}
 	}
+
 	for _, block := range blocks {
 		if block.Name == name {
 			return block, nil
 		}
 	}
+
 	return packageInfoBlock{}, &PackageNotFoundError{Name: name}
 }
 
 func (m *execManager) metadataUpdatedAt() (*time.Time, error) {
 	m.defaults()
+
 	entries, err := os.ReadDir(m.listsDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("read opkg lists directory: %w", err)
 	}
+
 	var newest time.Time
+
 	for _, entry := range entries {
 		info, infoErr := entry.Info()
+
 		if infoErr != nil || !info.Mode().IsRegular() {
 			continue
 		}
+
 		modified := info.ModTime().UTC()
+
 		if newest.IsZero() || modified.After(newest) {
 			newest = modified
 		}
 	}
+
 	if newest.IsZero() {
 		return nil, nil
 	}
+
 	return &newest, nil
 }
 

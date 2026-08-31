@@ -15,12 +15,15 @@ func TestExecRunNonZeroExitIncludesStderr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execRun: %v", err)
 	}
+
 	if exitCode != 7 {
 		t.Errorf("exitCode = %d, want 7", exitCode)
 	}
+
 	if !strings.Contains(out, "from-stdout") {
 		t.Errorf("output missing stdout content: %q", out)
 	}
+
 	if !strings.Contains(out, "from-stderr") {
 		t.Errorf("output missing stderr content: %q", out)
 	}
@@ -33,9 +36,11 @@ func TestExecRunZeroExitExcludesStderr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execRun: %v", err)
 	}
+
 	if exitCode != 0 {
 		t.Errorf("exitCode = %d, want 0", exitCode)
 	}
+
 	if out != "from-stdout\n" {
 		t.Errorf("output = %q, want %q", out, "from-stdout\n")
 	}
@@ -45,6 +50,7 @@ func TestExecRunZeroExitExcludesStderr(t *testing.T) {
 // cancellation contract: CommandContext must kill the child once ctx is done.
 func TestExecRunReturnsPromptlyOnCancel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+
 	defer cancel()
 
 	start := time.Now()
@@ -52,6 +58,7 @@ func TestExecRunReturnsPromptlyOnCancel(t *testing.T) {
 	if err == nil {
 		t.Fatal("execRun with expiring ctx returned nil error")
 	}
+
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
 		t.Fatalf("execRun returned after %v; the child was not killed on cancel", elapsed)
 	}

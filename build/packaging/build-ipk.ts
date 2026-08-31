@@ -124,6 +124,7 @@ export function collectStagePaths(): {
   assets: string;
   initScript: string;
   devicePortHelper: string;
+  selfUpdateHelper: string;
   daemonConfig: string;
 } {
   return {
@@ -132,6 +133,7 @@ export function collectStagePaths(): {
     assets: path.join('opt', 'share', 'www', 'mndw', 'assets'),
     initScript: path.join('opt', 'etc', 'init.d', 'S70mndwd'),
     devicePortHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
+    selfUpdateHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
     daemonConfig: path.join('opt', 'etc', 'mndw.conf'),
   };
 }
@@ -148,6 +150,7 @@ export function verifyStage(
     [p.assets, 'assets directory'],
     [p.initScript, 'init script'],
     [p.devicePortHelper, 'device port helper'],
+    [p.selfUpdateHelper, 'self-update helper'],
     [p.daemonConfig, 'daemon config'],
   ];
 
@@ -291,6 +294,11 @@ export function stageDeployFiles(repoRoot: string, stagingDir: string): void {
     path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
     0o755,
   );
+  copyTo(
+    path.join('files', 'opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
+    path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
+    0o755,
+  );
 }
 
 export async function buildDataTar(stagingDir: string, outDir: string): Promise<string> {
@@ -330,7 +338,14 @@ export async function buildControlTar(
       throw new Error(`Missing required ipk control file: build/packaging/ipk/${s}`);
     }
 
-    entries.push({name: `./${s}`, mode: s === 'conffiles' ? 0o644 : 0o755, content: fs.readFileSync(src)});
+    const raw = fs.readFileSync(src, 'utf8');
+    const content = s === 'postinst' ? substituteControl(raw, version, arch) : raw;
+
+    entries.push({
+      name: `./${s}`,
+      mode: s === 'conffiles' ? 0o644 : 0o755,
+      content: Buffer.from(content),
+    });
   }
 
   const outPath = path.join(outDir, 'control.tar.gz');
@@ -367,6 +382,8 @@ export interface IpkInfo {
   sha256: string;
 }
 
+type FeedIpkInfo = IpkInfo & {readonly sourcePath: string};
+
 export function generateFeed(version: string, ipks: IpkInfo[]): string {
   return ipks.map((ipk) =>
     [
@@ -383,31 +400,69 @@ export function generateFeed(version: string, ipks: IpkInfo[]): string {
 }
 
 export function writeFeed(ipkPaths: string[], version: string, repoDir: string): void {
-  fs.mkdirSync(repoDir, {recursive: true});
-
-  const ipks: IpkInfo[] = [];
+  const ipks: FeedIpkInfo[] = [];
   const supportedOpkgArches = new Set(PRODUCT_TARGETS.map((target) => opkgArchForTarget(target)));
+  const seenArches = new Set<string>();
 
   for (const ipkPath of ipkPaths) {
     const filename = path.basename(ipkPath);
-    const archMatch = filename.match(/^mndw_[^_]+_(.+)\.ipk$/);
+    const archMatch = filename.match(/^mndw_([^_]+)_(.+)\.ipk$/);
 
-    if (!archMatch || !supportedOpkgArches.has(archMatch[1])) {
+    if (archMatch === null) {
       throw new Error(`Unexpected ipk filename: ${filename}`);
     }
 
-    const stat = fs.statSync(ipkPath);
+    const packageVersion = archMatch[1];
+    const arch = archMatch[2];
+
+    if (packageVersion !== version || !supportedOpkgArches.has(arch)) {
+      throw new Error(`Unexpected ipk filename: ${filename}`);
+    }
+
+    const stat = fs.lstatSync(ipkPath);
+
+    if (!stat.isFile()) {
+      throw new Error(`IPK is not a regular file: ${ipkPath}`);
+    }
+
+    if (seenArches.has(arch)) {
+      throw new Error(`Duplicate architecture: ${arch}`);
+    }
+
+    seenArches.add(arch);
+
     const sha256 = crypto.createHash('sha256').update(fs.readFileSync(ipkPath))
       .digest('hex');
 
-    ipks.push({arch: archMatch[1], filename, size: stat.size, sha256});
-    fs.copyFileSync(ipkPath, path.join(repoDir, filename));
+    ipks.push({arch, filename, size: stat.size, sha256, sourcePath: ipkPath});
   }
 
-  const packages = generateFeed(version, ipks);
+  const byArch = new Map<string, FeedIpkInfo[]>();
 
-  fs.writeFileSync(path.join(repoDir, 'Packages'), packages);
-  fs.writeFileSync(path.join(repoDir, 'Packages.gz'), zlib.gzipSync(packages));
+  for (const ipk of ipks) {
+    const entries = byArch.get(ipk.arch) ?? [];
+
+    entries.push(ipk);
+    byArch.set(ipk.arch, entries);
+  }
+
+  fs.rmSync(repoDir, {recursive: true, force: true});
+  fs.mkdirSync(repoDir, {recursive: true});
+
+  for (const arch of [...byArch.keys()].sort()) {
+    const archDir = path.join(repoDir, arch);
+    const entries = byArch.get(arch) ?? [];
+    const packages = generateFeed(version, entries);
+
+    fs.mkdirSync(archDir, {recursive: true});
+
+    for (const entry of entries) {
+      fs.copyFileSync(entry.sourcePath, path.join(archDir, entry.filename));
+    }
+
+    fs.writeFileSync(path.join(archDir, 'Packages'), packages);
+    fs.writeFileSync(path.join(archDir, 'Packages.gz'), zlib.gzipSync(packages));
+  }
 }
 
 export function parseArgs(args: string[]): {arch: string | null; all: boolean; repo: boolean} {

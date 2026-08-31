@@ -4,7 +4,7 @@ import {onMount} from 'svelte';
 import DiagnosticsSettings from './DiagnosticsSettings.svelte';
 import GeneralSettings from './GeneralSettings.svelte';
 import PluginSettings from './PluginSettings.svelte';
-import SelfUpdateSettings from './SelfUpdateSettings.svelte';
+import SelfUpdateSettings from './self-update/SelfUpdateSettings.svelte';
 import {appRouter} from '../../router/create-app-router.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';

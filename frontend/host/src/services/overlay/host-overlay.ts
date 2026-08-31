@@ -10,12 +10,18 @@ export interface HostModalProps<Result> {
 
 export function openHostModal<Result, Props extends HostModalProps<Result>>(
   component: Component<Props>,
-  options: {title: string; props: Omit<Props, 'close'>},
+  options: {
+    title: string;
+    props: Omit<Props, 'close'>;
+    showCloseButton?: boolean;
+    closeOnEscape?: boolean;
+  },
 ): OverlaySession<Result> {
   return hostService.open<Result>({
     kind: 'modal',
     title: options.title,
-    showCloseButton: true,
+    showCloseButton: options.showCloseButton ?? true,
+    closeOnEscape: options.closeOnEscape ?? true,
     mount(element, session) {
       let instance: ReturnType<typeof mount> | undefined;
       let finishMount: () => void = () => {};

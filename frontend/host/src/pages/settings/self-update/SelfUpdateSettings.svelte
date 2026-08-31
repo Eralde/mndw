@@ -1,13 +1,23 @@
 <script lang="ts">
 import {onDestroy, onMount} from 'svelte';
+import type {OverlaySession} from '@mndw/sdk';
 import {
   type SelfUpdateClient,
   SelfUpdateError,
   type SelfUpdateStatus,
   selfUpdateClient,
-} from '../../services/self-update-client.js';
-import {hostT} from '../../services/host-i18n.svelte.js';
-import {appState} from '../../state/app.svelte.js';
+} from '../../../services/self-update-client.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
+import ConfirmActionModal from '../../opkg/ConfirmActionModal.svelte';
+import {openHostModal} from '../../../services/overlay/host-overlay.js';
+import {appState} from '../../../state/app.svelte.js';
+import SelfUpdateProgressModal from './SelfUpdateProgressModal.svelte';
+import type {
+  Outcome,
+  SelfUpdateAction,
+  SelfUpdateOperation,
+  SelfUpdateProgress,
+} from './self-update.types.js';
 
 interface Props {
   client?: SelfUpdateClient;
@@ -15,23 +25,13 @@ interface Props {
   pollAttempts?: number;
 }
 
-type Outcome =
-  | 'idle'
-  | 'checking'
-  | 'preparing'
-  | 'busy'
-  | 'error'
-  | 'success'
-  | 'failure'
-  | 'unconfirmed';
-
 let {
   client: providedClient,
   pollIntervalMs = 2_000,
   pollAttempts = 90,
 }: Props = $props();
 
-let client = $derived(providedClient || selfUpdateClient);
+let client = $derived(providedClient ?? selfUpdateClient);
 
 let status = $state<SelfUpdateStatus | null>(null);
 let checked = $state<Awaited<ReturnType<SelfUpdateClient['check']>> | null>(
@@ -48,6 +48,8 @@ let pollGeneration = 0;
 let remainingPolls = 0;
 let destroyed = false;
 let awaitingCompletion = false;
+let progress = $state<SelfUpdateProgress | null>(null);
+let progressSession: OverlaySession<'close'> | null = null;
 
 onMount(() => {
   void loadInitialStatus();
@@ -57,6 +59,7 @@ onDestroy(() => {
   destroyed = true;
 
   stopPolling();
+  closeProgressModal();
 });
 
 function stopPolling(): void {
@@ -76,10 +79,23 @@ function setStatus(next: SelfUpdateStatus): void {
     failureCode = next.failureCode ?? 'unknown';
     outcome = 'failure';
     awaitingCompletion = false;
+
+    closeProgressModal();
   } else if (next.state === 'idle' && awaitingCompletion) {
     outcome = 'success';
+
+    closeProgressModal();
   } else if (next.state === 'in-progress') {
     outcome = 'idle';
+
+    if (progress !== null) {
+      progress.phase = 'running';
+      progress.targetVersion = next.targetVersion ?? progress.targetVersion;
+
+      if (next.operation !== undefined) {
+        progress.operation = next.operation;
+      }
+    }
   }
 }
 
@@ -112,7 +128,7 @@ function startPolling(): void {
   remainingPolls = Math.max(0, pollAttempts);
 
   if (remainingPolls === 0) {
-    outcome = 'unconfirmed';
+    markUnconfirmed();
 
     return;
   }
@@ -136,6 +152,16 @@ function schedulePoll(generation: number): void {
   );
 }
 
+function markUnconfirmed(): void {
+  stopPolling();
+
+  outcome = 'unconfirmed';
+
+  if (progress !== null) {
+    progress.phase = 'unconfirmed';
+  }
+}
+
 async function pollStatus(generation: number): Promise<void> {
   if (destroyed || generation !== pollGeneration) {
     return;
@@ -153,13 +179,17 @@ async function pollStatus(generation: number): Promise<void> {
     setStatus(next);
 
     if (next.state === 'in-progress') {
-      schedulePoll(generation);
+      if (remainingPolls <= 0) {
+        markUnconfirmed();
+      } else {
+        schedulePoll(generation);
+      }
     } else {
       stopPolling();
     }
   } catch {
     if (remainingPolls <= 0) {
-      outcome = 'unconfirmed';
+      markUnconfirmed();
 
       return;
     }
@@ -170,6 +200,85 @@ async function pollStatus(generation: number): Promise<void> {
 
 function errorCode(error: unknown): string {
   return error instanceof SelfUpdateError ? error.code : 'UNKNOWN';
+}
+
+interface ConfirmationProps {
+  message: string;
+  confirmLabel: string;
+  close: (confirmed: boolean) => void;
+}
+
+async function requestConfirmation(
+  operation: 'update' | 'revert',
+  targetVersion: string,
+): Promise<boolean> {
+  const isUpdate = operation === 'update';
+  const session = openHostModal<boolean, ConfirmationProps>(
+    ConfirmActionModal,
+    {
+      title: hostT(
+        isUpdate
+          ? 'settings.self-update-confirm-update-title'
+          : 'settings.self-update-confirm-revert-title',
+      ),
+      props: {
+        message: hostT(
+          isUpdate
+            ? 'settings.self-update-confirm-update'
+            : 'settings.self-update-confirm-revert',
+          {version: targetVersion},
+        ),
+        confirmLabel: hostT(
+          isUpdate
+            ? 'settings.self-update-apply'
+            : 'settings.self-update-revert',
+        ),
+      },
+    },
+  );
+  const event = await session.closed;
+
+  return event.result === true;
+}
+
+function openProgressModal(operation: 'update' | 'revert'): void {
+  const nextProgress: SelfUpdateProgress = {
+    operation,
+    phase: 'preparing',
+    targetVersion: '',
+  };
+  progress = nextProgress;
+  const modalProgress = progress;
+
+  if (modalProgress === null) {
+    return;
+  }
+
+  const session = openHostModal<'close', {
+    progress: SelfUpdateProgress;
+    close: (result: 'close') => void;
+  }>(
+    SelfUpdateProgressModal,
+    {
+      title: hostT('settings.self-update-progress-title'),
+      showCloseButton: false,
+      closeOnEscape: false,
+      props: {progress: modalProgress},
+    },
+  );
+
+  progressSession = session;
+
+  void session.closed.then(() => {
+    if (progressSession === session) {
+      progressSession = null;
+      progress = null;
+    }
+  });
+}
+
+function closeProgressModal(): void {
+  progressSession?.close(undefined, 'api');
 }
 
 async function recoverBusy(): Promise<void> {
@@ -219,17 +328,36 @@ async function handleCheck(): Promise<void> {
 }
 
 async function handleApply(): Promise<void> {
+  const currentCheck = checked;
+
+  if (
+    currentCheck === null
+    || !currentCheck.updateAvailable
+    || currentCheck.targetVersion === undefined
+  ) {
+    return;
+  }
+
+  if (!await requestConfirmation('update', currentCheck.targetVersion)) {
+    return;
+  }
+
   await beginAction('update', () => client.apply());
 }
 
 async function handleRevert(): Promise<void> {
+  if (rollbackVersion === '') {
+    return;
+  }
+
+  if (!await requestConfirmation('revert', rollbackVersion)) {
+    return;
+  }
+
   await beginAction('revert', () => client.revert());
 }
 
-async function beginAction(
-  operation: 'update' | 'revert',
-  action: () => ReturnType<SelfUpdateClient['apply']>,
-): Promise<void> {
+function resetActionState(operation: SelfUpdateOperation): void {
   stopPolling();
   checked = null;
   acceptedTarget = '';
@@ -238,26 +366,56 @@ async function beginAction(
   loading = true;
   outcome = 'preparing';
   awaitingCompletion = false;
-  try {
-    const accepted = await action();
-    acceptedTarget = accepted.targetVersion;
-    acceptedOperation = accepted.operation;
-    outcome = 'idle';
-    awaitingCompletion = true;
-    startPolling();
-  } catch (error) {
-    checked = null;
-    if (errorCode(error) === 'OPKG_BUSY') {
+}
+
+async function acceptAction(action: SelfUpdateAction): Promise<void> {
+  const accepted = await action();
+
+  acceptedTarget = accepted.targetVersion;
+  acceptedOperation = accepted.operation;
+
+  if (progress !== null) {
+    progress.phase = 'running';
+    progress.targetVersion = accepted.targetVersion;
+  }
+
+  outcome = 'idle';
+  awaitingCompletion = true;
+
+  startPolling();
+}
+
+async function handleActionError(error: unknown): Promise<void> {
+  closeProgressModal();
+
+  switch (errorCode(error)) {
+    case 'OPKG_BUSY':
       await recoverBusy();
-    } else if (errorCode(error) === 'SELF_UPDATE_NOT_AVAILABLE') {
-      outcome = 'error';
+      return;
+    case 'SELF_UPDATE_NOT_AVAILABLE':
       failureCode = 'no-update';
-    } else if (errorCode(error) === 'SELF_UPDATE_ROLLBACK_UNAVAILABLE') {
-      outcome = 'error';
+      break;
+    case 'SELF_UPDATE_ROLLBACK_UNAVAILABLE':
       failureCode = 'rollback-unavailable';
-    } else {
-      outcome = 'error';
-    }
+      break;
+    default:
+      failureCode = '';
+  }
+
+  outcome = 'error';
+}
+
+async function beginAction(
+  operation: SelfUpdateOperation,
+  action: SelfUpdateAction,
+): Promise<void> {
+  resetActionState(operation);
+  openProgressModal(operation);
+
+  try {
+    await acceptAction(action);
+  } catch (error) {
+    await handleActionError(error);
   } finally {
     loading = false;
   }

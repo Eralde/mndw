@@ -21,11 +21,21 @@ type System struct {
 	Memory   string          `json:"memory"`
 }
 
+// WifiUtilSeries carries the channel-utilization load history for one radio
+// interface. Load values are percentages (0..100) ordered oldest-to-newest; T
+// holds each sample's relative timestamp (device seconds) in the same order.
+type WifiUtilSeries struct {
+	Interface string    `json:"interface"`
+	T         []float64 `json:"t"`
+	Load      []float64 `json:"load"`
+}
+
 type PersistentTelemetry struct {
-	SampledAt time.Time   `json:"sampledAt"`
-	System    System      `json:"system"`
-	CPURRD    RrdResponse `json:"cpuRrd"`
-	MemoryRRD RrdResponse `json:"memoryRrd"`
+	SampledAt time.Time        `json:"sampledAt"`
+	System    System           `json:"system"`
+	CPURRD    RrdResponse      `json:"cpuRrd"`
+	MemoryRRD RrdResponse      `json:"memoryRrd"`
+	WifiUtil  []WifiUtilSeries `json:"wifiUtil,omitempty"`
 }
 
 type NodesResponse struct {

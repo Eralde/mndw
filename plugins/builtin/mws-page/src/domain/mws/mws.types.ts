@@ -38,6 +38,27 @@ export interface MwsRadioPower {
   readonly available: boolean;
 }
 
+/**
+ * One utilization history: percentage samples (0..100) ordered oldest-to-newest,
+ * with `times` holding each sample's wall-clock epoch-ms in the same order (empty
+ * when the session reported no samples or no timestamp anchor was available).
+ */
+export interface MwsUtilSeries {
+  readonly times: readonly number[];
+  readonly values: readonly number[];
+}
+
+/**
+ * Live utilization history sourced from the extender's persistent rci/ session.
+ */
+export interface MwsLiveTelemetry {
+  readonly sampledAt: number | null;
+  readonly cpu: MwsUtilSeries;
+  readonly memory: MwsUtilSeries;
+  readonly wifi24: MwsUtilSeries;
+  readonly wifi5: MwsUtilSeries;
+}
+
 export interface MwsNode {
   /** Normalized MAC — also the graph identity. */
   id: string;
@@ -62,6 +83,7 @@ export interface MwsNode {
   };
   mwsdStatus?: MwsdNodeStatus;
   persistentSession?: boolean;
+  liveTelemetry?: MwsLiveTelemetry;
 }
 
 export interface MwsdNodeStatus {

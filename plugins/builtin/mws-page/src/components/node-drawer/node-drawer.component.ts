@@ -1,5 +1,5 @@
 import {CUSTOM_ELEMENTS_SCHEMA, Component, type OnDestroy, inject, input, output} from '@angular/core';
-import type {MwsNode, MwsRadioPower} from '../../domain/mws/mws.types';
+import type {MwsNode, MwsRadioPower, MwsUtilSeries} from '../../domain/mws/mws.types';
 import {formatCpuLoad, formatMemory, formatRate, formatRssi, formatSpeed, formatUptime} from '../../format';
 import {MwsDataService} from '../../services/mws-data.service';
 import {type MwsWriteResult, MwsWriteService} from '../../services/mws-write.service';
@@ -8,6 +8,20 @@ import {type NodeNameValidationErrorCode, validateNodeName} from '../../api/node
 import {type NodeStatusLabels, getNodeStatusLabels, getPowerDisabledHint} from '../../status-labels';
 
 export type MwsWifiInterface = 'WifiMaster0' | 'WifiMaster1';
+
+/** How a metric's history is drawn: magnitude bars (CPU/RAM) or a color heatmap (Wi-Fi). */
+export type UtilizationChartKind = 'bars' | 'heat';
+
+/** One labeled row in the drawer's live-telemetry panel. */
+export interface UtilizationMetric {
+  readonly key: string;
+  readonly label: string;
+  readonly percent: number | null;
+  readonly valueText: string;
+  readonly history: readonly number[];
+  readonly times: readonly number[];
+  readonly kind: UtilizationChartKind;
+}
 
 interface PowerControlState {
   lastObserved: MwsRadioPower;
@@ -170,6 +184,86 @@ export class NodeDrawerComponent implements OnDestroy {
 
   protected memory(node: MwsNode): string {
     return formatMemory(node.system?.memoryUsed, node.system?.memoryTotal);
+  }
+
+  protected showUtilization(node: MwsNode): boolean {
+    // Extenders show live telemetry once their persistent session is up; the
+    // controller has no session but carries telemetry from direct RCI calls.
+    return node.liveTelemetry !== undefined || (!node.isController && node.persistentSession === true);
+  }
+
+  protected utilizationMetrics(node: MwsNode): UtilizationMetric[] {
+    const telemetry = node.liveTelemetry;
+    const metrics: UtilizationMetric[] = [
+      this.metric('cpu', this.t('drawer.util-cpu'), 'bars', this.clampPercent(node.system?.cpuload), telemetry?.cpu),
+      this.metric('ram', this.t('drawer.util-ram'), 'bars', this.memoryPercent(node), telemetry?.memory),
+      this.metric(
+        'wifi24',
+        this.t('drawer.util-wifi-24'),
+        'heat',
+        this.lastValue(telemetry?.wifi24.values),
+        telemetry?.wifi24,
+      ),
+    ];
+
+    if (node.dualBand || (telemetry?.wifi5.values.length ?? 0) > 0) {
+      metrics.push(
+        this.metric(
+          'wifi5',
+          this.t('drawer.util-wifi-5'),
+          'heat',
+          this.lastValue(telemetry?.wifi5.values),
+          telemetry?.wifi5,
+        ),
+      );
+    }
+
+    return metrics;
+  }
+
+  private metric(
+    key: string,
+    label: string,
+    kind: UtilizationChartKind,
+    percent: number | null,
+    series: MwsUtilSeries | undefined,
+  ): UtilizationMetric {
+    return {
+      key,
+      label,
+      kind,
+      percent,
+      valueText: percent === null ? '—' : `${Math.round(percent)}%`,
+      history: series?.values ?? [],
+      times: series?.times ?? [],
+    };
+  }
+
+  private memoryPercent(node: MwsNode): number | null {
+    const used = node.system?.memoryUsed;
+    const total = node.system?.memoryTotal;
+
+    if (typeof used !== 'number' || typeof total !== 'number' || total <= 0) {
+      return null;
+    }
+
+    return this.clampPercent((used / total) * 100);
+  }
+
+  private lastValue(history: readonly number[] | undefined): number | null {
+    if (history === undefined || history.length === 0) {
+      return null;
+    }
+
+    return this.clampPercent(history[history.length - 1]);
+  }
+
+  private clampPercent(value: number | null | undefined): number | null {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return null;
+    }
+
+    return Math.min(Math.max(value, 0), 100);
   }
 
   protected statusLabels(node: MwsNode): NodeStatusLabels {

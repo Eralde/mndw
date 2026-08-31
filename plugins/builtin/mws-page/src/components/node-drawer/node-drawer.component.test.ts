@@ -173,6 +173,71 @@ describe('NodeDrawerComponent', () => {
     expect(fixture.nativeElement.querySelector('.backhaul')).toBeNull();
   });
 
+  it('shows a live-utilization panel with per-metric sparklines only for an active session', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
+
+    if (node === null) {
+      throw new Error('expected dual-band extender fixture node');
+    }
+
+    fixture.componentRef.setInput('node', node);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.utilization')).toBeNull();
+
+    fixture.componentRef.setInput('node', {
+      ...node,
+      persistentSession: true,
+      liveTelemetry: {
+        sampledAt: 1_000,
+        cpu: {times: [1, 2], values: [10, 20]},
+        memory: {times: [1, 2], values: [40, 45]},
+        wifi24: {times: [1, 2], values: [28, 31]},
+        wifi5: {times: [1, 2], values: [12, 15]},
+      },
+    });
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('.utilization') as HTMLElement | null;
+
+    expect(panel).not.toBeNull();
+    // CPU and RAM render as bar sparklines; both Wi-Fi bands as heatmap strips.
+    expect(panel?.querySelectorAll('mndw-sparkline')).toHaveLength(2);
+    expect(panel?.querySelectorAll('mndw-heat-strip')).toHaveLength(2);
+    expect(panel?.textContent).toContain('Wi-Fi 5 GHz');
+    expect(panel?.textContent).toContain('31%');
+  });
+
+  it('shows the utilization panel for the controller from its direct-RCI telemetry', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const controller = findNodeById(roots(), CONTROLLER.mac);
+
+    if (controller === null) {
+      throw new Error('expected controller fixture node');
+    }
+
+    fixture.componentRef.setInput('node', {
+      ...controller,
+      system: {cpuload: 12, memoryUsed: 500, memoryTotal: 1000, uptime: 3201},
+      liveTelemetry: {
+        sampledAt: 1_000,
+        cpu: {times: [1, 2], values: [10, 14]},
+        memory: {times: [1, 2], values: [40, 50]},
+        wifi24: {times: [1, 2], values: [28, 31]},
+        wifi5: {times: [1, 2], values: [12, 15]},
+      },
+    });
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('.utilization') as HTMLElement | null;
+
+    expect(panel).not.toBeNull();
+    expect(panel?.querySelectorAll('mndw-sparkline')).toHaveLength(2);
+    // Controller is dualBand:false but the 5 GHz strip still shows because it has data.
+    expect(panel?.querySelectorAll('mndw-heat-strip')).toHaveLength(2);
+    expect(panel?.textContent).toContain('12%');
+  });
+
   it('renders a backhaul section for an extender', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
 

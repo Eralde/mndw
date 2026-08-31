@@ -156,9 +156,52 @@ func (s *Service) pollPersistentTelemetry(ctx context.Context, target persistent
 		return err
 	}
 
+	sample.WifiUtil = s.pollWifiUtilization(ctx, client)
+
 	s.telemetry.StorePersistent(target.Identity, sample)
 
 	return nil
+}
+
+// wifiUtilInterfaces maps each polled radio to its band label. The frontend keys
+// the drawer's per-band Wi-Fi utilization on the interface name.
+var wifiUtilInterfaces = []string{"WifiMaster0", "WifiMaster1"}
+
+// pollWifiUtilization fetches channel-utilization for each radio in a single
+// batched request. It is best-effort: a device without a given radio (or an
+// unsupported firmware) simply contributes no series, never failing the poll.
+func (s *Service) pollWifiUtilization(ctx context.Context, client *rci.Client) []telemetry.WifiUtilSeries {
+	queries := make([]rci.Query, len(wifiUtilInterfaces))
+
+	for index, name := range wifiUtilInterfaces {
+		queries[index] = rci.Query{
+			Path: "show.interface.channel-utilization.chart",
+			Data: map[string]any{"name": name, "detail": 0},
+		}
+	}
+
+	responses, err := client.ExecuteMany(ctx, queries...)
+	if err != nil {
+		return nil
+	}
+
+	series := make([]telemetry.WifiUtilSeries, 0, len(queries))
+
+	for index, response := range responses {
+		times, load, parseErr := telemetry.ParseWifiUtilization(response)
+
+		if parseErr != nil || len(load) == 0 {
+			continue
+		}
+
+		series = append(series, telemetry.WifiUtilSeries{Interface: wifiUtilInterfaces[index], T: times, Load: load})
+	}
+
+	if len(series) == 0 {
+		return nil
+	}
+
+	return series
 }
 
 func (s *Service) recordPersistentTelemetryPhase(identity, phase string, status int, err error) {

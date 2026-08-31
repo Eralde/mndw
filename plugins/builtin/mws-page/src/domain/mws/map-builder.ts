@@ -1,3 +1,4 @@
+import type {ControllerTelemetry} from '../../api/controller-telemetry';
 import type {DeviceHostRecord, MwsMemberRecord} from '../../api/rci.types';
 import type {ControllerInfo, MwsClient, MwsNode} from './mws.types';
 
@@ -5,6 +6,7 @@ export function buildMap(
   members: MwsMemberRecord[],
   hosts: DeviceHostRecord[],
   controller: ControllerInfo,
+  controllerTelemetry: ControllerTelemetry | null = null,
 ): MwsNode[] {
   const controllerNode: MwsNode = {
     id: controller.mac,
@@ -17,12 +19,18 @@ export function buildMap(
     isOnline: controller.isOnline,
     fw: controller.firmware,
     fwAvailable: null,
-    system: {cpuload: null, memoryUsed: null, memoryTotal: null, uptime: controller.interfaceUptime},
+    system: {
+      cpuload: controllerTelemetry?.cpuload ?? null,
+      memoryUsed: controllerTelemetry?.memoryUsed ?? null,
+      memoryTotal: controllerTelemetry?.memoryTotal ?? null,
+      uptime: controller.interfaceUptime,
+    },
     backhaul: null,
     parent: null,
     children: [],
     clients: [],
     dualBand: false,
+    liveTelemetry: controllerTelemetry?.telemetry,
   };
 
   const uniqueMembers: MwsMemberRecord[] = [];

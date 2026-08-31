@@ -65,3 +65,37 @@ func TestParsePersistentTelemetryRejectsMalformedRrdResponse(t *testing.T) {
 		t.Fatal("parse error = nil, want malformed CPU RRD response error")
 	}
 }
+
+func TestParseWifiUtilizationExtractsPerSampleTimeAndLoad(t *testing.T) {
+	times, loads, err := ParseWifiUtilization([]byte(`{"ch":3,"bw":"20","data":[{"t":4562,"v":{"load":28,"flags":"v"}},{"t":4565,"v":{"load":31,"flags":"v"}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(times) != 2 || times[0] != 4562 || times[1] != 4565 {
+		t.Fatalf("times = %#v, want 4562,4565", times)
+	}
+
+	if len(loads) != 2 || loads[0] != 28 || loads[1] != 31 {
+		t.Fatalf("loads = %#v, want 28,31", loads)
+	}
+}
+
+func TestParseWifiUtilizationTreatsEmptyPayloadAsNoData(t *testing.T) {
+	for _, payload := range [][]byte{nil, []byte(`{"data":[]}`)} {
+		times, loads, err := ParseWifiUtilization(payload)
+		if err != nil {
+			t.Fatalf("payload %q: %v", payload, err)
+		}
+
+		if times != nil || loads != nil {
+			t.Fatalf("payload %q times/loads = %#v/%#v, want nil", payload, times, loads)
+		}
+	}
+}
+
+func TestParseWifiUtilizationRejectsMalformedPayload(t *testing.T) {
+	if _, _, err := ParseWifiUtilization([]byte(`{"data":"malformed"}`)); err == nil {
+		t.Fatal("error = nil, want decode failure")
+	}
+}

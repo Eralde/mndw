@@ -21,6 +21,7 @@ import {
   timer,
 } from 'rxjs';
 import {MwsApiService} from '../api/mws-api.service';
+import type {ControllerTelemetry} from '../api/controller-telemetry';
 import {
   type PersistentSessionSnapshot,
   mergePersistentSessions,
@@ -64,6 +65,7 @@ type PollResult =
     hosts: DeviceHostRecord[];
     bridge: BridgeInterfaceRecord;
     controllerName: string | null;
+    controllerTelemetry: ControllerTelemetry | null;
   }
   | {kind: 'unsupported'; reason: string}
   | {kind: 'error'; error: MwsRequestError};
@@ -113,7 +115,8 @@ export class MwsDataService {
     }
 
     if (
-      state.status === 'success' || state.status === 'refreshing'
+      state.status === 'success'
+      || state.status === 'refreshing'
       || (state.status === 'error' && state.data !== undefined)
     ) {
       return 'ready';
@@ -121,20 +124,27 @@ export class MwsDataService {
 
     return 'loading';
   });
+
   public readonly roots = computed<MwsNode[]>(() => {
     const state = this.loadState();
 
-    return state.status === 'success' || state.status === 'refreshing'
-      ? state.data
-      : state.status === 'error'
-      ? state.data ?? []
-      : [];
+    if (state.status === 'success' || state.status === 'refreshing') {
+      return state.data;
+    }
+
+    if (state.status === 'error') {
+      return state.data ?? [];
+    }
+
+    return [];
   });
+
   public readonly pollError = computed<boolean>(() => {
     const state = this.loadState();
 
     return state.status === 'error' && state.data !== undefined;
   });
+
   public readonly lastUpdatedAt = signal<number | null>(null);
   public readonly freshnessNow = signal(Date.now());
 
@@ -169,12 +179,15 @@ export class MwsDataService {
     this.stop();
     this.loadState.set({status: 'loading'});
     this.extraFeaturesSetupReasons.set([]);
+
     this.startingSince = null;
+
     this.setExtraFeaturesAvailability(this.backend === null ? 'unavailable' : 'checking');
 
     this.versionSub = this.api.showVersion().subscribe({
       next: (version) => {
         this.version = version;
+
         this.startPolling();
         this.startMwsdPolling();
       },
@@ -220,6 +233,7 @@ export class MwsDataService {
     this.mwsdStatusSub = null;
     this.refreshTimerSub?.unsubscribe();
     this.refreshTimerSub = null;
+
     this.lastPersistentSessions = newPersistentSessionSnapshot(false, new Map());
   }
 
@@ -252,39 +266,46 @@ export class MwsDataService {
             this.markRequestStarted();
             this.pollInFlight = true;
 
-            return forkJoin({
+            const obs$ = {
               memberResult: this.api.showMwsMember(),
               hosts: this.api.showDeviceList(),
               bridge: this.api.showBridge0(),
               controllerName: this.api.showControllerDescription(),
-            }).pipe(
-              map(({memberResult, hosts, bridge, controllerName}): PollResult =>
-                memberResult.kind === 'unsupported'
-                  ? {kind: 'unsupported', reason: 'MWS is unsupported by this device'}
-                  : {kind: 'ok', members: memberResult.members, hosts, bridge, controllerName}
-              ),
-              catchError((error: unknown) =>
-                of<PollResult>({
-                  kind: 'error',
-                  error: this.toRequestError(error),
-                })
-              ),
-              finalize(() => {
-                this.pollInFlight = false;
+              controllerTelemetry: this.api.showControllerTelemetry(),
+            };
 
-                if (this.refreshPending) {
-                  this.refreshPending = false;
-                  this.refreshTimerSub?.unsubscribe();
-                  this.refreshTimerSub = timer(0).subscribe(() => {
-                    this.refreshTimerSub = null;
+            return forkJoin(obs$)
+              .pipe(
+                map(({memberResult, hosts, bridge, controllerName, controllerTelemetry}): PollResult =>
+                  memberResult.kind === 'unsupported'
+                    ? {kind: 'unsupported', reason: 'MWS is unsupported by this device'}
+                    : {kind: 'ok', members: memberResult.members, hosts, bridge, controllerName, controllerTelemetry}
+                ),
+                catchError((error: unknown) =>
+                  of<PollResult>({
+                    kind: 'error',
+                    error: this.toRequestError(error),
+                  })
+                ),
+                finalize(() => {
+                  this.pollInFlight = false;
 
-                    if (this.pollingStarted) {
-                      this.refreshTrigger.next();
-                    }
-                  });
-                }
-              }),
-            );
+                  if (this.refreshPending) {
+                    this.refreshPending = false;
+
+                    this.refreshTimerSub?.unsubscribe();
+
+                    this.refreshTimerSub = timer(0)
+                      .subscribe(() => {
+                        this.refreshTimerSub = null;
+
+                        if (this.pollingStarted) {
+                          this.refreshTrigger.next();
+                        }
+                      });
+                  }
+                }),
+              );
           })
         ),
       )
@@ -308,30 +329,32 @@ export class MwsDataService {
 
   private fetchMwsdStatus(backend: BackendClient): Observable<MwsdPollOutcome> {
     const controller = new AbortController();
+    const nodesObs$ = from(backend.fetch('nodes', {signal: controller.signal}));
 
-    return defer(() => from(backend.fetch('nodes', {signal: controller.signal}))).pipe(
-      timeout({each: MWSD_STATUS_REQUEST_TIMEOUT_MS}),
-      switchMap((response) =>
-        response.ok
-          ? defer(() => from(response.json())).pipe(
-            map((value): MwsdPollOutcome => {
-              const snapshot = parsePersistentSessionsResponse(value, this.lastPersistentSessions);
+    return defer(() => nodesObs$)
+      .pipe(
+        timeout({each: MWSD_STATUS_REQUEST_TIMEOUT_MS}),
+        switchMap((response) =>
+          response.ok
+            ? defer(() => from(response.json())).pipe(
+              map((value): MwsdPollOutcome => {
+                const snapshot = parsePersistentSessionsResponse(value, this.lastPersistentSessions);
 
-              return snapshot === null
-                ? {kind: 'availability', availability: 'limited'}
-                : {kind: 'snapshot', snapshot};
-            }),
-            switchMap((outcome) =>
-              outcome.kind === 'snapshot'
-                ? this.classifyPersistentSnapshot(backend, controller.signal, outcome.snapshot)
-                : of(outcome)
-            ),
-          )
-          : this.queryBackendStatus(backend, controller.signal)
-      ),
-      catchError((error: unknown) => this.queryBackendStatus(backend, controller.signal, error)),
-      finalize(() => controller.abort()),
-    );
+                return snapshot === null
+                  ? {kind: 'availability', availability: 'limited'}
+                  : {kind: 'snapshot', snapshot};
+              }),
+              switchMap((outcome) =>
+                outcome.kind === 'snapshot'
+                  ? this.classifyPersistentSnapshot(backend, controller.signal, outcome.snapshot)
+                  : of(outcome)
+              ),
+            )
+            : this.queryBackendStatus(backend, controller.signal)
+        ),
+        catchError((error: unknown) => this.queryBackendStatus(backend, controller.signal, error)),
+        finalize(() => controller.abort()),
+      );
   }
 
   private classifyPersistentSnapshot(
@@ -349,15 +372,16 @@ export class MwsDataService {
       return of({kind: 'snapshot', snapshot});
     }
 
-    return defer(() => from(backend.status?.({signal: abortSignal}))).pipe(
-      map((status): MwsdPollOutcome =>
-        status.state === 'ready'
-          ? {kind: 'availability', availability: 'unavailable',
-            setupReasons: ['extender-session'] as ExtraFeaturesSetupReason[]}
-          : this.classifyBackendStatus(status)
-      ),
-      catchError(() => of<MwsdPollOutcome>({kind: 'availability', availability: 'limited'})),
-    );
+    return defer(() => from(backend.status?.({signal: abortSignal})))
+      .pipe(
+        map((status): MwsdPollOutcome =>
+          status.state === 'ready'
+            ? {kind: 'availability', availability: 'unavailable',
+              setupReasons: ['extender-session'] as ExtraFeaturesSetupReason[]}
+            : this.classifyBackendStatus(status)
+        ),
+        catchError(() => of<MwsdPollOutcome>({kind: 'availability', availability: 'limited'})),
+      );
   }
 
   private queryBackendStatus(
@@ -367,14 +391,17 @@ export class MwsDataService {
   ): Observable<MwsdPollOutcome> {
     if (typeof backend.status !== 'function') {
       return of(
-        nodesError === undefined ? {kind: 'availability', availability: 'limited'} : this.classifyMwsdError(nodesError),
+        nodesError === undefined
+          ? {kind: 'availability', availability: 'limited'}
+          : this.classifyMwsdError(nodesError),
       );
     }
 
-    return defer(() => from(backend.status({signal: abortSignal}))).pipe(
-      map((status) => this.classifyBackendStatus(status)),
-      catchError(() => of<MwsdPollOutcome>({kind: 'availability', availability: 'limited'})),
-    );
+    return defer(() => from(backend.status({signal: abortSignal})))
+      .pipe(
+        map((status) => this.classifyBackendStatus(status)),
+        catchError(() => of<MwsdPollOutcome>({kind: 'availability', availability: 'limited'})),
+      );
   }
 
   private classifyBackendStatus(status: BackendStatus): MwsdPollOutcome {
@@ -452,6 +479,7 @@ export class MwsDataService {
   private applyMwsdOutcome(outcome: MwsdPollOutcome): void {
     if (outcome.kind === 'snapshot') {
       this.lastPersistentSessions = outcome.snapshot;
+
       this.extraFeaturesSetupReasons.set([]);
       this.setExtraFeaturesAvailability(outcome.snapshot.available ? 'active' : 'unavailable');
     } else {
@@ -471,6 +499,7 @@ export class MwsDataService {
 
       this.startingSince ??= now;
       this.consecutiveLimitedPolls = 0;
+
       this.extraFeaturesPresentation.set(
         now - this.startingSince >= EXTRA_FEATURES_STARTING_TIMEOUT_MS
           ? 'taking-longer'
@@ -507,7 +536,11 @@ export class MwsDataService {
     bridge: BridgeInterfaceRecord,
   ): void {
     this.version = version;
-    this.applyPoll({kind: 'ok', members, hosts, bridge, controllerName: this.hostInfo.deviceName}, false);
+
+    this.applyPoll(
+      {kind: 'ok', members, hosts, bridge, controllerName: this.hostInfo.deviceName, controllerTelemetry: null},
+      false,
+    );
   }
 
   private applyPoll(result: PollResult, applyMwsdStatus = this.backend !== null): void {
@@ -544,7 +577,7 @@ export class MwsDataService {
       interfaceUptime: result.bridge.uptime,
       isOnline: result.bridge.isOnline,
     };
-    let roots = buildMap(result.members, result.hosts, controller);
+    let roots = buildMap(result.members, result.hosts, controller, result.controllerTelemetry);
 
     if (applyMwsdStatus && this.backend !== null) {
       this.lastPersistentSessions = retainPersistentSessionsForNodes(roots, this.lastPersistentSessions);

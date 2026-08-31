@@ -1,5 +1,5 @@
 import {normalizeMac} from './normalize';
-import type {MwsNode, MwsRadioPower} from '../domain/mws/mws.types';
+import type {MwsLiveTelemetry, MwsNode, MwsRadioPower, MwsUtilSeries} from '../domain/mws/mws.types';
 
 export const MWSD_STATUS_STALE_AFTER_MS = 90_000;
 
@@ -17,6 +17,7 @@ export interface PersistentSessionState {
   readonly lastTelemetryAt: number | null;
   readonly power2g: PersistentRadioPower;
   readonly power5g: PersistentRadioPower;
+  readonly telemetry: MwsLiveTelemetry | null;
 }
 
 export interface PersistentSessionSnapshot {
@@ -81,13 +82,15 @@ export function parsePersistentSessionsResponse(
 
     try {
       const mac = normalizeMac(entry.mac);
-      const sampledAt = parseTimestamp(asRecord(entry.telemetry)?.sampledAt);
+      const telemetryRecord = asRecord(entry.telemetry);
+      const sampledAt = parseTimestamp(telemetryRecord?.sampledAt);
 
       sessions.set(mac, {
         live: entry.live,
         lastTelemetryAt: sampledAt ?? previous.sessions.get(mac)?.lastTelemetryAt ?? null,
         power2g: parsePersistentRadioPower(entry.power2g),
         power5g: parsePersistentRadioPower(entry.power5g),
+        telemetry: parseLiveTelemetry(telemetryRecord, sampledAt) ?? previous.sessions.get(mac)?.telemetry ?? null,
       });
     } catch {
       continue;
@@ -143,17 +146,21 @@ function mergePersistentNode(
     ? undefined
     : {state: deriveSessionState(session.live, session.lastTelemetryAt, now), lastTelemetryAt: session.lastTelemetryAt};
   const wifiPower = session === undefined ? undefined : {power2g: session.power2g, power5g: session.power5g};
+  // The controller has no persistent session; its live telemetry is set at build
+  // time from direct RCI calls, so preserve it here instead of clearing it.
+  const liveTelemetry = node.isController ? node.liveTelemetry : session?.telemetry ?? undefined;
   const children = node.children.map((link) => ({link, result: mergePersistentNode(link.node, snapshot, now)}));
   const changed = node.persistentSession !== persistentSession
     || !sameStatus(node.mwsdStatus, mwsdStatus)
     || !sameWifiPower(node.wifiPower, wifiPower)
+    || !sameLiveTelemetry(node.liveTelemetry, liveTelemetry)
     || children.some(({result}) => result.changed);
 
   if (!changed) {
     return {node, changed: false};
   }
 
-  const next: MwsNode = {...node, persistentSession, mwsdStatus, wifiPower, parent: null, children: []};
+  const next: MwsNode = {...node, persistentSession, mwsdStatus, wifiPower, liveTelemetry, parent: null, children: []};
 
   for (const {link, result} of children) {
     next.children.push({type: link.type, node: reparent(result.node, next, link.type)});
@@ -229,8 +236,133 @@ function unavailableRadioPower(): PersistentRadioPower {
   return {value: null, available: false};
 }
 
+const EMPTY_UTIL_SERIES: MwsUtilSeries = {times: [], values: []};
+
+/**
+ * Builds live telemetry from the persistent-session payload shape
+ * `{system:{memtotal}, cpuRrd, memoryRrd, wifiUtil:[{interface,t,load}]}`. Shared
+ * with the controller path, which assembles the same shape from direct RCI calls.
+ */
+export function parseLiveTelemetry(
+  telemetry: Record<string, unknown> | null,
+  sampledAt: number | null,
+): MwsLiveTelemetry | null {
+  if (telemetry === null) {
+    return null;
+  }
+
+  const system = asRecord(telemetry.system);
+  const memTotal = toFiniteNumber(system?.memtotal);
+  const memoryUsed = parseRrdSeries(telemetry.memoryRrd, sampledAt);
+  const memory: MwsUtilSeries = memTotal !== null && memTotal > 0
+    ? {times: memoryUsed.times, values: memoryUsed.values.map((used) => (used / memTotal) * 100)}
+    : EMPTY_UTIL_SERIES;
+  const wifi = parseWifiUtil(telemetry.wifiUtil, sampledAt);
+
+  return {
+    sampledAt,
+    cpu: parseRrdSeries(telemetry.cpuRrd, sampledAt),
+    memory,
+    wifi24: wifi.WifiMaster0 ?? EMPTY_UTIL_SERIES,
+    wifi5: wifi.WifiMaster1 ?? EMPTY_UTIL_SERIES,
+  };
+}
+
+/** Maps relative device-seconds to wall-clock epoch-ms, anchoring the newest sample at `sampledAt`. */
+function toEpochTimes(relativeSeconds: readonly number[], sampledAt: number | null): number[] {
+  if (sampledAt === null || relativeSeconds.length === 0) {
+    return [];
+  }
+
+  const last = relativeSeconds[relativeSeconds.length - 1];
+
+  return relativeSeconds.map((seconds) => sampledAt + (seconds - last) * 1000);
+}
+
+function parseRrdSeries(value: unknown, sampledAt: number | null): MwsUtilSeries {
+  const data = asRecord(value)?.data;
+
+  if (!Array.isArray(data)) {
+    return EMPTY_UTIL_SERIES;
+  }
+
+  const relativeTimes: number[] = [];
+  const values: number[] = [];
+
+  for (const tick of data) {
+    const record = asRecord(tick);
+    const parsedValue = toFiniteNumber(record?.v);
+    const parsedTime = toFiniteNumber(record?.t);
+
+    if (parsedValue !== null && parsedTime !== null) {
+      relativeTimes.push(parsedTime);
+      values.push(parsedValue);
+    }
+  }
+
+  return {times: toEpochTimes(relativeTimes, sampledAt), values};
+}
+
+function parseWifiUtil(
+  value: unknown,
+  sampledAt: number | null,
+): {WifiMaster0?: MwsUtilSeries; WifiMaster1?: MwsUtilSeries} {
+  if (!Array.isArray(value)) {
+    return {};
+  }
+
+  const result: {WifiMaster0?: MwsUtilSeries; WifiMaster1?: MwsUtilSeries} = {};
+
+  for (const item of value) {
+    const record = asRecord(item);
+    const iface = record?.interface;
+
+    if ((iface === 'WifiMaster0' || iface === 'WifiMaster1') && Array.isArray(record?.load)) {
+      const values = record.load.filter((entry): entry is number =>
+        typeof entry === 'number' && Number.isFinite(entry)
+      );
+      const relativeTimes = Array.isArray(record.t)
+        ? record.t.filter((entry): entry is number => typeof entry === 'number' && Number.isFinite(entry))
+        : [];
+
+      result[iface] = {
+        times: relativeTimes.length === values.length ? toEpochTimes(relativeTimes, sampledAt) : [],
+        values,
+      };
+    }
+  }
+
+  return result;
+}
+
+// RRD ticks arrive with `t`/`v` as either numbers or numeric strings, so parse
+// both forms.
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
 function sameStatus(left: MwsNode['mwsdStatus'], right: MwsNode['mwsdStatus']): boolean {
   return left?.state === right?.state && left?.lastTelemetryAt === right?.lastTelemetryAt;
+}
+
+function sameLiveTelemetry(left: MwsNode['liveTelemetry'], right: MwsNode['liveTelemetry']): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+
+  // Each poll rebuilds the series arrays, so a stable sampledAt is the cheap,
+  // reliable signal that the underlying samples have not changed.
+  return left.sampledAt === right.sampledAt;
 }
 
 function sameWifiPower(left: MwsNode['wifiPower'], right: MwsNode['wifiPower']): boolean {

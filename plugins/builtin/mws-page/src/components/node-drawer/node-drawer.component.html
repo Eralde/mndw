@@ -12,20 +12,25 @@
             [maxlength]="64"
             (mndwinput)="onNameInput($event)"
             (keydown)="onNameKeydown($event)"
-          ></mndw-input>
+          >
+          </mndw-input>
           <div class="rename-actions">
             <mndw-button
               variant="primary"
               data-action="save-name"
               [disabled]="pending"
               (click)="saveRename()"
-            >{{ pending ? t('drawer.saving') : t('drawer.save') }}</mndw-button>
+            >
+                {{ pending ? t('drawer.saving') : t('drawer.save') }}
+            </mndw-button>
             <mndw-button
               variant="secondary"
               data-action="cancel-name"
               [disabled]="pending"
               (click)="cancelRename()"
-            >{{ t('drawer.cancel') }}</mndw-button>
+            >
+                {{ t('drawer.cancel') }}
+            </mndw-button>
           </div>
           @if (renameErrorMessage(); as errorMessage) {
             <p class="rename-error" role="alert">{{ errorMessage }}</p>
@@ -61,6 +66,40 @@
         <dt>{{ t('drawer.memory') }}</dt><dd>{{ memory(n) }}</dd>
       </dl>
     </section>
+
+    @if (showUtilization(n)) {
+      <section class="utilization">
+        <h4>{{ t('drawer.utilization') }}</h4>
+        @for (metric of utilizationMetrics(n); track metric.key) {
+          <div class="util-metric">
+            <div class="util-head">
+              <span class="util-label">{{ metric.label }}</span>
+              <span class="util-value">{{ metric.valueText }}</span>
+            </div>
+            @if (metric.kind === 'heat') {
+              <mndw-heat-strip
+                [values]="metric.history"
+                [times]="metric.times"
+                [attr.empty-label]="t('drawer.util-no-data')"
+              >
+              </mndw-heat-strip>
+            } @else {
+              <mndw-sparkline
+                [values]="metric.history"
+                [times]="metric.times"
+                [attr.empty-label]="t('drawer.util-no-data')"
+              >
+              </mndw-sparkline>
+            }
+          </div>
+        }
+        <div class="util-legend" aria-hidden="true">
+          <span>{{ t('drawer.util-legend-low') }}</span>
+          <span class="util-legend-scale"></span>
+          <span>{{ t('drawer.util-legend-high') }}</span>
+        </div>
+      </section>
+    }
 
     @if (!n.isController) {
     <section class="backhaul">

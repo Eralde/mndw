@@ -20,16 +20,18 @@
     gap: 0.5rem;
     align-items: center;
 
-    h3 {
-      flex: 1;
+    mndw-button {
+      margin-inline-start: auto;
     }
   }
 
-  .health {
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--mndw-border);
-    border-radius: var(--mndw-radius-md);
-    background: var(--mndw-surface-raised);
+  .role-badge {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--mndw-accent);
+    border-radius: 62.4375rem;
+    color: var(--mndw-accent);
+    font-size: 0.6875rem;
   }
 
   .rename-editor {
@@ -66,6 +68,57 @@
   .update-hint {
     margin-left: 0.5rem;
     color: var(--mndw-success);
+  }
+
+  .utilization {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+
+    .util-metric {
+      display: flex;
+      flex-direction: column;
+      gap: 0.125rem;
+      min-width: 0;
+    }
+
+    .util-head {
+      display: flex;
+      gap: 0.5rem;
+      align-items: baseline;
+    }
+
+    .util-label {
+      color: var(--mndw-text-subtle);
+      font-weight: 600;
+    }
+
+    .util-value {
+      color: var(--mndw-text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .util-legend {
+      display: flex;
+      gap: 0.375rem;
+      align-items: center;
+      color: var(--mndw-text-subtle);
+      font-size: 0.6875rem;
+    }
+
+    .util-legend-scale {
+      flex: 1;
+      height: 0.5rem;
+      border-radius: var(--mndw-radius-sm);
+      background: linear-gradient(
+        to right,
+        var(--mndw-util-low),
+        var(--mndw-util-moderate),
+        var(--mndw-util-elevated),
+        var(--mndw-util-high),
+        var(--mndw-util-critical)
+      );
+    }
   }
 
   .wifi-power {

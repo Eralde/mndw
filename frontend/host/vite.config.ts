@@ -28,7 +28,7 @@ export default defineConfig(({mode}) => {
   const reloadSentinelPath = process.env.MNDW_DEV_RELOAD_SENTINEL || env.MNDW_DEV_RELOAD_SENTINEL;
 
   // Single-plugin source-HMR mode (`mndw dev`): resolved only from an explicit env var, so
-  // normal startup keeps loading plugins from the daemon list. null → sandbox off.
+  // normal startup keeps loading plugins from the daemon list. null -> sandbox off.
   const sandboxPluginPath = resolveSandboxPluginPath(
     process.env.MNDW_SANDBOX_PLUGIN || env.MNDW_SANDBOX_PLUGIN,
     repoRoot,
@@ -90,8 +90,8 @@ export default defineConfig(({mode}) => {
       },
       {
         // Serve plugin bundles in dev so the loader's import() resolves real assets:
-        //   /plugins/<name>/*      → built builtin plugins (plugins/builtin/dist)
-        //   /user-plugins/<name>/* → approved user plugins
+        //   /plugins/<name>/*      -> built builtin plugins (plugins/builtin/dist)
+        //   /user-plugins/<name>/* -> approved user plugins
         // Mirrors mndw-serve-shared; prod serving is lighttpd's job.
         name: 'mndw-serve-plugins',
         configureServer(server) {

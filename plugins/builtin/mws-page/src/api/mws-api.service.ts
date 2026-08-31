@@ -1,6 +1,7 @@
 import {Injectable, inject} from '@angular/core';
-import {type Observable, map, throwError} from 'rxjs';
+import {type Observable, catchError, map, of, throwError} from 'rxjs';
 import {type MwsRenameApi, RCI_MANAGER} from '../tokens';
+import {type ControllerTelemetry, parseControllerTelemetry} from './controller-telemetry';
 import type {BridgeInterfaceRecord, DeviceHostRecord, MwsMemberRecord, ShowVersionRecord} from './rci.types';
 import {
   normalizeBridge,
@@ -77,9 +78,10 @@ export class MwsApiService implements MwsRenameApi {
   }
 
   public showBridge0(): Observable<BridgeInterfaceRecord> {
-    return this.rci.queue({path: 'show.interface', data: {name: 'Bridge0'}}).pipe(
-      map((response) => normalizeBridge(response)),
-    );
+    return this.rci.queue({path: 'show.interface', data: {name: 'Bridge0'}})
+      .pipe(
+        map((response) => normalizeBridge(response)),
+      );
   }
 
   public showVersion(): Observable<ShowVersionRecord> {
@@ -91,6 +93,35 @@ export class MwsApiService implements MwsRenameApi {
     return this.rci.queue({path: 'show.version'}).pipe(
       map((response) => normalizeControllerDescription(response)),
     );
+  }
+
+  /**
+   * The controller's own live utilization, fetched directly through the
+   * RciManager. All queries go out as one batch (RciManager's array `queue`
+   * overload), and each result comes back index-aligned — `undefined` for a query
+   * with no data, so a firmware without a given radio (or the channel-utilization
+   * endpoint) simply contributes no series. Only a whole-batch transport failure
+   * falls back to null.
+   */
+  public showControllerTelemetry(): Observable<ControllerTelemetry | null> {
+    const queries = [
+      {path: 'show.system'},
+      {path: 'show.system.rrd.cpu', data: {detail: 0, attribute: 'avg'}},
+      {path: 'show.system.rrd.memory', data: {detail: 0, attribute: 'used'}},
+      {path: 'show.interface.channel-utilization.chart', data: {name: 'WifiMaster0', detail: 0}},
+      {path: 'show.interface.channel-utilization.chart', data: {name: 'WifiMaster1', detail: 0}},
+    ];
+
+    return this.rci.queue(queries)
+      .pipe(
+        map((responses) =>
+          parseControllerTelemetry(responses[0], responses[1], responses[2], [
+            {interface: 'WifiMaster0', chart: responses[3]},
+            {interface: 'WifiMaster1', chart: responses[4]},
+          ], Date.now())
+        ),
+        catchError(() => of<ControllerTelemetry | null>(null)),
+      );
   }
 
   public renameNode(mac: string, isController: boolean, name: string): Observable<void> {
@@ -110,14 +141,15 @@ export class MwsApiService implements MwsRenameApi {
       return throwError(() => error);
     }
 
-    return this.rci.queue(query).pipe(
-      map((response: unknown): void => {
-        const error = renameResponseError(response);
+    return this.rci.queue(query)
+      .pipe(
+        map((response: unknown): void => {
+          const error = renameResponseError(response);
 
-        if (error !== null) {
-          throw error;
-        }
-      }),
-    );
+          if (error !== null) {
+            throw error;
+          }
+        }),
+      );
   }
 }

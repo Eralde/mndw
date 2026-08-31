@@ -39,13 +39,19 @@ type persistentRequester struct {
 }
 
 type batchPersistentRequester struct {
-	requests []persistent.Request
-	response persistent.Response
-	err      error
+	requests  []persistent.Request
+	response  persistent.Response
+	responses []persistent.Response
+	err       error
 }
 
 func (r *batchPersistentRequester) Do(_ context.Context, request persistent.Request) (persistent.Response, error) {
+	index := len(r.requests)
 	r.requests = append(r.requests, request)
+
+	if index < len(r.responses) {
+		return r.responses[index], r.err
+	}
 
 	return r.response, r.err
 }
@@ -307,8 +313,8 @@ func TestPersistentTelemetryPollUsesDeviceInfoQueries(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(requester.requests) != 1 {
-		t.Fatalf("requests = %#v, want one batched request", requester.requests)
+	if len(requester.requests) != 2 {
+		t.Fatalf("requests = %#v, want a system batch and a Wi-Fi batch", requester.requests)
 	}
 
 	wantQueries := map[string]map[string]any{
@@ -334,6 +340,55 @@ func TestPersistentTelemetryPollUsesDeviceInfoQueries(t *testing.T) {
 
 	if sample, ok := service.telemetry.Persistent("cid-1", time.Now()); !ok || sample.System.CPULoad != 27 || len(sample.CPURRD.Data) != 1 || len(sample.MemoryRRD.Data) != 1 {
 		t.Fatalf("stored sample = %#v, ok = %v", sample, ok)
+	}
+}
+
+func TestPersistentTelemetryPollCollectsWifiUtilization(t *testing.T) {
+	service := New(config.Config{})
+	requester := &batchPersistentRequester{responses: []persistent.Response{
+		{Status: http.StatusOK, Body: []byte(`[
+			{"show":{"system":{"uptime":42,"cpuload":27,"memtotal":1000,"memory":"610/1024"}}},
+			{"show":{"system":{"rrd":{"cpu":{"data":[{"t":1,"v":27}]}}}}},
+			{"show":{"system":{"rrd":{"memory":{"data":[{"t":1,"v":610}]}}}}}
+		]`)},
+		{Status: http.StatusOK, Body: []byte(`[
+			{"show":{"interface":{"channel-utilization":{"chart":{"data":[{"t":4562,"v":{"load":28}},{"t":4565,"v":{"load":31}}]}}}}},
+			{"show":{"interface":{"channel-utilization":{"chart":{"data":[]}}}}}
+		]`)},
+	}}
+
+	if err := service.pollPersistentTelemetry(context.Background(), persistent.Target{Identity: "cid-1"}, requester); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(requester.requests) != 2 {
+		t.Fatalf("requests = %#v, want a system batch and a Wi-Fi batch", requester.requests)
+	}
+
+	wantWifiQueries := []map[string]any{
+		{"show": map[string]any{"interface": map[string]any{"channel-utilization": map[string]any{"chart": map[string]any{"name": "WifiMaster0", "detail": float64(0)}}}}},
+		{"show": map[string]any{"interface": map[string]any{"channel-utilization": map[string]any{"chart": map[string]any{"name": "WifiMaster1", "detail": float64(0)}}}}},
+	}
+
+	var wifiEnvelope []map[string]any
+
+	if err := json.Unmarshal(requester.requests[1].Body, &wifiEnvelope); err != nil {
+		t.Fatalf("wifi request body: %v", err)
+	}
+
+	if !reflect.DeepEqual(wifiEnvelope, wantWifiQueries) {
+		t.Fatalf("wifi batched query = %#v, want per-band channel-utilization queries", wifiEnvelope)
+	}
+
+	sample, ok := service.telemetry.Persistent("cid-1", time.Now())
+
+	if !ok || len(sample.WifiUtil) != 1 {
+		t.Fatalf("stored Wi-Fi utilization = %#v, ok = %v", sample.WifiUtil, ok)
+	}
+
+	if sample.WifiUtil[0].Interface != "WifiMaster0" || !reflect.DeepEqual(sample.WifiUtil[0].T, []float64{4562, 4565}) ||
+		!reflect.DeepEqual(sample.WifiUtil[0].Load, []float64{28, 31}) {
+		t.Fatalf("Wi-Fi series = %#v, want WifiMaster0 t 4562,4565 loads 28,31 with the empty band dropped", sample.WifiUtil[0])
 	}
 }
 

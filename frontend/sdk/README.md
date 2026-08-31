@@ -458,7 +458,7 @@ Third-party extensions are not automatically host-provided. Declare an extension
 ## 10. Packing & Uploading
 
 ```bash
-mndw pack my-widget   # bundle → my-widget/dist/
+mndw pack my-widget   # bundle -> my-widget/dist/
 mndw zip my-widget    # pack + create my-widget/my-widget.zip
 ```
 

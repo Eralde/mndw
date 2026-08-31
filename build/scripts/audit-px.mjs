@@ -49,10 +49,11 @@ const collectFiles = (root) => {
 
 const isExcluded = (file) => {
   const normalized = repoPath(file);
-  return normalized.split('/').includes('.nocommit') ||
-    normalized.split('/').includes('dist') ||
-    TEST_FILE.test(normalized) ||
-    normalized.includes('/e2e/fixtures/');
+
+  return normalized.split('/').includes('.nocommit')
+    || normalized.split('/').includes('dist')
+    || TEST_FILE.test(normalized)
+    || normalized.includes('/e2e/fixtures/');
 };
 
 export const stripComments = (source) => {
@@ -137,6 +138,7 @@ const lineNumberAt = (source, index) => source.slice(0, index).split('\n').lengt
 const lineAt = (source, index) => {
   const start = source.lastIndexOf('\n', index - 1) + 1;
   const end = source.indexOf('\n', index);
+
   return source.slice(start, end === -1 ? source.length : end).trim();
 };
 
@@ -147,11 +149,14 @@ const declarationAt = (source, index) => {
     source.lastIndexOf('}', index - 1),
     source.lastIndexOf('\n', index - 1),
   ) + 1;
+
   const endCandidates = [source.indexOf(';', index), source.indexOf('}', index), source.indexOf('\n', index)]
     .filter((value) => value >= 0);
+
   const end = endCandidates.length === 0 ? source.length : Math.min(...endCandidates);
   const declaration = source.slice(start, end);
   const property = /(?:^|[\s{])([-_a-zA-Z][-_a-zA-Z0-9]*)\s*:/u.exec(declaration)?.[1]?.toLowerCase() ?? '';
+
   return {declaration, property};
 };
 
@@ -214,23 +219,28 @@ const isRuntimeGeometry = (file, declaration, line, occurrence) => {
   if (hasSuffix(file, 'frontend/ui/src/table/table.ts')) {
     return /style="height:|style\.height/u.test(line);
   }
+
   if (hasSuffix(file, 'frontend/ui/src/tooltip/tooltip.ts')) {
     return /bubble\.style\.(?:top|left)/u.test(line);
   }
-  if (hasSuffix(file, 'frontend/ui/src/charts/bar-chart.ts') ||
-      hasSuffix(file, 'frontend/ui/src/charts/line-chart.ts') ||
-      hasSuffix(file, 'frontend/ui/src/charts/chart-frame.ts')) {
+
+  if (
+    hasSuffix(file, 'frontend/ui/src/charts/bar-chart.ts')
+    || hasSuffix(file, 'frontend/ui/src/charts/line-chart.ts')
+    || hasSuffix(file, 'frontend/ui/src/charts/sparkline.ts')
+    || hasSuffix(file, 'frontend/ui/src/charts/chart-frame.ts')
+  ) {
     return occurrence.includes('.left') || occurrence.includes('.top');
   }
+
   if (hasSuffix(file, 'frontend/host/src/components/overlay/OverlayHost.svelte')) {
     return /(?:top|left).*\$\{|\$\{.*(?:top|left)/u.test(declaration);
   }
+
   if (hasSuffix(file, 'frontend/host/src/layout/breakpoint.ts')) {
     return line.includes('MOBILE_BREAKPOINT_PX') || line.includes("'px'") || line.includes('"px"');
   }
-  if (hasSuffix(file, 'plugins/builtin/device-info-widget/src/components/LoadBarChart.vue')) {
-    return line.includes('tooltip.left');
-  }
+
   return false;
 };
 

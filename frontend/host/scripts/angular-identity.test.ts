@@ -88,7 +88,7 @@ function requiredMetafile(result: BuildResult, label: string): Metafile {
   return result.metafile;
 }
 
-/** Package name of a shared specifier (`rxjs/operators` → `rxjs`, `@a/b/c` → `@a/b`). */
+/** Package name of a shared specifier (`rxjs/operators` -> `rxjs`, `@a/b/c` -> `@a/b`). */
 function packageNameOf(specifier: string): string {
   const s = specifier.split('/');
 
@@ -131,7 +131,7 @@ beforeAll(async () => {
     outfile: join(tmp, coreFile),
   });
 
-  // Two independent consumers that externalize @angular/core → the identical relative core file.
+  // Two independent consumers that externalize @angular/core -> the identical relative core file.
   const consumerSrc = 'export {InjectionToken} from \'@angular/core\';';
   const consumerA = await build({
     bundle: true,

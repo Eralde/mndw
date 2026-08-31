@@ -18,28 +18,30 @@ Without an overlay, `<mndw-select>` uses a minimal fixed-position fallback for s
 
 ## Elements
 
-| Element | Notes |
-|---|---|
-| `<mndw-select>` | Slotted `<mndw-option>` children. Emits `mndwchange`. |
-| `<mndw-option>` | Declarative option data and rich label content; announces mutations. |
-| `<mndw-checkbox>` | Emits `mndwchange`; form-associated with `name`, `value`, `required`, and `invalid`. |
-| `<mndw-button>` | `variant="primary"`, `"secondary"`, `"ghost"`, or `"danger"`; `type="button"`, `"submit"`, or `"reset"`. |
-| `<mndw-scroll-area>` | Native viewport with an always-visible bespoke scrollbar when content overflows. |
-| `<mndw-field>` | Light-DOM label/hint/error wrapper for a single control. Renders no shadow root. |
-| `<mndw-input>` | Native inner `<input>` with delegated focus. Emits `mndwinput` and `mndwchange`. |
-| `<mndw-textarea>` | Native inner `<textarea>`; `rows` sizing with opt-in `autosize`. Same events. |
-| `<mndw-switch>` | `role="switch"` on the host; immediate-effect toggle. Emits `mndwchange`. |
-| `<mndw-segmented>` | `role="radiogroup"` with slotted `<mndw-segment>` children. Emits `mndwchange`. |
-| `<mndw-segment>` | One choice in a segmented group; `value` and `disabled` only. |
-| `<mndw-slider>` | `role="slider"` on the host; numeric range with pointer drag. Emits `mndwinput` and `mndwchange`. |
-| `<mndw-tabs>` | Container owning an internal `tablist`, the active `value`, and its children's ARIA. Emits `mndwchange`. |
-| `<mndw-tab>` | One tab; `id` (required) and `disabled` only. |
-| `<mndw-tab-panel>` | Content for one tab; `for` points at that tab's `id`. |
-| `<mndw-tooltip>` | Describes its first slotted element on hover and focus. Not form-associated. |
-| `<mndw-line-chart>` | Timestamped multi-series line/area chart; data is assigned through properties. |
-| `<mndw-bar-chart>` | Timestamped positional bar chart; data is assigned through properties. |
-| `<mndw-table>` | Framework-neutral data table; `columns`/`rows` as properties, controlled sort/selection/visibility, custom light-DOM cell renderers. |
-| `<mndw-column-menu>` | Portaled ARIA `menu` column-visibility panel owned by `<mndw-table>`; not opened directly. |
+| Element              | Notes                                                                                                                                |
+|----------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `<mndw-select>`      | Slotted `<mndw-option>` children. Emits `mndwchange`.                                                                                |
+| `<mndw-option>`      | Declarative option data and rich label content; announces mutations.                                                                 |
+| `<mndw-checkbox>`    | Emits `mndwchange`; form-associated with `name`, `value`, `required`, and `invalid`.                                                 |
+| `<mndw-button>`      | `variant="primary"`, `"secondary"`, `"ghost"`, or `"danger"`; `type="button"`, `"submit"`, or `"reset"`.                             |
+| `<mndw-scroll-area>` | Native viewport with an always-visible bespoke scrollbar when content overflows.                                                     |
+| `<mndw-field>`       | Light-DOM label/hint/error wrapper for a single control. Renders no shadow root.                                                     |
+| `<mndw-input>`       | Native inner `<input>` with delegated focus. Emits `mndwinput` and `mndwchange`.                                                     |
+| `<mndw-textarea>`    | Native inner `<textarea>`; `rows` sizing with opt-in `autosize`. Same events.                                                        |
+| `<mndw-switch>`      | `role="switch"` on the host; immediate-effect toggle. Emits `mndwchange`.                                                            |
+| `<mndw-segmented>`   | `role="radiogroup"` with slotted `<mndw-segment>` children. Emits `mndwchange`.                                                      |
+| `<mndw-segment>`     | One choice in a segmented group; `value` and `disabled` only.                                                                        |
+| `<mndw-slider>`      | `role="slider"` on the host; numeric range with pointer drag. Emits `mndwinput` and `mndwchange`.                                    |
+| `<mndw-tabs>`        | Container owning an internal `tablist`, the active `value`, and its children's ARIA. Emits `mndwchange`.                             |
+| `<mndw-tab>`         | One tab; `id` (required) and `disabled` only.                                                                                        |
+| `<mndw-tab-panel>`   | Content for one tab; `for` points at that tab's `id`.                                                                                |
+| `<mndw-tooltip>`     | Describes its first slotted element on hover and focus. Not form-associated.                                                         |
+| `<mndw-line-chart>`  | Timestamped multi-series line/area chart; data is assigned through properties.                                                       |
+| `<mndw-bar-chart>`   | Timestamped positional bar chart; data is assigned through properties.                                                               |
+| `<mndw-sparkline>`   | Compact percentage bar chart; data is assigned through `points`.                                                                     |
+| `<mndw-heat-strip>`  | Compact utilization heat strip; data is assigned through `points`.                                                                   |
+| `<mndw-table>`       | Framework-neutral data table; `columns`/`rows` as properties, controlled sort/selection/visibility, custom light-DOM cell renderers. |
+| `<mndw-column-menu>` | Portaled ARIA `menu` column-visibility panel owned by `<mndw-table>`; not opened directly.                                           |
 
 `<mndw-select>` uses an anchored popover above `600px`, with its maximum height derived from
 available viewport space. Long desktop lists scroll inside the panel's nested native scroll area;
@@ -57,11 +59,11 @@ Events are lowercase and hyphen-free (`mndwchange`) for vanilla, Svelte, Vue, an
 
 ### Charts
 
-Charts accept normalized epoch-millisecond data. Assign arrays and objects as DOM properties;
-they are not serialized into attributes:
+Charts accept normalized epoch-millisecond data. Assign arrays and objects as DOM properties; they
+are not serialized into attributes:
 
 ```ts
-import type {MndwChartSeries} from '@mndw/ui';
+import type {MndwChartSeries, MndwLineChartProps} from '@mndw/ui';
 
 const series: MndwChartSeries[] = [
   {
@@ -76,26 +78,47 @@ const series: MndwChartSeries[] = [
   },
 ];
 
-const line = document.querySelector('mndw-line-chart') as HTMLElement & {
-  series: readonly MndwChartSeries[];
+const lineOptions: MndwLineChartProps = {
+  series,
+  domain: {start: 1_700_000_000_000, end: 1_700_000_060_000},
 };
-line.series = series;
+const line = document.querySelector('mndw-line-chart');
+
+if (line !== null) {
+  Object.assign(line, lineOptions);
+}
 ```
 
-`<mndw-line-chart>` exposes `series`, optional `domain`, and `emptyLabel`. The line domain is
-property-only. `<mndw-bar-chart>` exposes `points`, `emptyLabel`, and `valueLabel`; it uses
-positional band slots and has no time-domain property. String attributes use explicit hyphenated
-names: `empty-label="No data"` and `value-label="Throughput"`.
+`MndwChartPoint` requires an epoch-millisecond `time`; `MndwChartSample` makes `time` optional for
+compact charts. `<mndw-line-chart>` exposes `series`, optional `domain`, `valueLabel`, and the
+presentation callbacks. `<mndw-bar-chart>` exposes `points`, `valueLabel`, `color`, and the same
+callbacks; it uses positional band slots and has no time-domain property. `<mndw-sparkline>` and
+`<mndw-heat-strip>` expose `points`, `max`, `valueLabel`, and the presentation callbacks.
+`points`, `series`, `domain`, and callbacks are property-only. String attributes use explicit
+hyphenated names: `empty-label="No data"` and `value-label="Throughput"`.
 
-Both charts use network-speed formatting and expose `container`, `plot`, `grid`, `axis`, `tooltip`,
-and `empty` parts. Line colours map to `accent`, `success`, `warning`, or `muted`. Bars always use
-`--mndw-accent` in version 1. Tooltips are local to the plot; data redraw clears stale tooltip
+`*Props` interfaces are optional input bags for object assignment; initialized custom-element
+instances still expose concrete defaults such as `points = []`, `color = "accent"`, and `max = 100`.
+Replace array properties with a new array reference after data changes.
+
+All charts accept `valueFormatter(value)` and `timeFormatter(epochMs)` callbacks. Defaults are
+network-speed formatting for line/bar values, rounded percentages for compact values, and local
+`HH:MM:SS` clock labels. Compact axes render only when every normalized sample has a finite time;
+mixed timed and untimed samples render without an axis. Invalid compact `max` values resolve to
+`100` for drawing while tooltips and accessibility retain actual sample values. Sparkline colors and
+bar colors use `accent`, `success`, `warning`, or `muted`; invalid runtime colors fall back to
+`accent`. Heat-strip colors always use its utilization scale.
+
+Line and bar charts expose `container`, `plot`, `grid`, `axis`, `tooltip`, and `empty` parts.
+Sparkline and heat-strip expose `container`, `plot`, `axis`, `tooltip`, and `empty`; compact `axis`
+appears only for fully timed data. Tooltips are local to the plot; data redraw clears stale tooltip
 state and does not replay it until the pointer moves again.
 
-Both hosts have `role="img"`. An authored `aria-label` wins. Otherwise line labels use each
-series' `label` or `id`, while bar labels use `value-label` or neutral `Values`; empty charts use
-`empty-label`. These fallbacks never assume plugin-specific vocabulary. `formatSpeed` is exported
-for consumers that need matching text outside a chart, such as a plugin-owned summary.
+All chart hosts have `role="img"`. An authored `aria-label` wins. Otherwise line labels use each
+series' `label` or `id`, while bar and compact labels use `value-label` or localized neutral
+`Values`; empty charts use resolved `empty-label`. These fallbacks never assume plugin-specific
+vocabulary. `formatSpeed` is exported for consumers that need matching text outside a chart, such as
+a plugin-owned summary.
 
 `<mndw-checkbox>` and `<mndw-select>` participate in form submission through `ElementInternals`.
 Unchecked checkboxes and empty or unmatched selects are omitted from `FormData`. Both controls
@@ -107,26 +130,36 @@ focus targets live on the host, so external `<label for>` elements work as expec
 The shared framework-neutral data table. Plugins declare `columns` (via the curried `column<Row>()`
 builder) and assign `rows` as a new array reference on each update; the table owns sorting, checkbox
 selection with select-all, row drag/keyboard reorder, and uniform column show/hide. Complex values
-(`columns`, `rows`, `rowKey`, `selected`, `sort`, `hiddenColumns`, `rowLabel`, `labels`) are property-only;
-the string/enum fields use explicit kebab-case attributes: `row-key` (string form only), `sort-mode`,
+(`columns`, `rows`, `rowKey`, `selected`, `sort`, `hiddenColumns`, `rowLabel`, `labels`) are
+property-only; the string/enum fields use explicit kebab-case attributes: `row-key` (string form
+only), `sort-mode`,
 `empty-label`, `caption`, `column-menu-panel-class`, `layout`, `min-width`, and `sticky-header`.
 
 ```ts
 import {column} from '@mndw/ui';
 
-interface NodeRow { id: string; node: { name: string; ip: string; clients: number }; }
+interface NodeRow {
+  id: string;
+  node: {name: string; ip: string; clients: number};
+}
 
 const columns = [
-  column<NodeRow>()({ id: 'name', label: 'Name', accessor: (row) => row.node.name, sortable: true }),
-  column<NodeRow>()({ id: 'ip', label: 'IP', accessor: (row) => row.node.ip }),
-  column<NodeRow>()({ id: 'clients', label: 'Clients', accessor: (row) => row.node.clients, kind: 'number', sortable: true }),
+  column<NodeRow>()({id: 'name', label: 'Name', accessor: (row) => row.node.name, sortable: true}),
+  column<NodeRow>()({id: 'ip', label: 'IP', accessor: (row) => row.node.ip}),
+  column<NodeRow>()({
+    id: 'clients',
+    label: 'Clients',
+    accessor: (row) => row.node.clients,
+    kind: 'number',
+    sortable: true
+  }),
 ];
 
 const table = document.querySelector('mndw-table');
 table.rowKey = 'id';
 table.columns = columns;
 table.rows = nodeRows;
-table.sort = { columnId: 'name', direction: 'asc' };
+table.sort = {columnId: 'name', direction: 'asc'};
 ```
 
 Sort and selection are controlled: the table renders from `sort` and `selected` and emits
@@ -137,8 +170,9 @@ column menu (the portaled `<mndw-column-menu>`) drives `internalHidden` and stil
 `mndwcolumnvisibilitychange` informationally. `columnMenu={false}` suppresses the menu.
 
 `rowKey` is required and resolves to a non-empty string per row (a field name or
-`(row) => string`). Empty or duplicate keys and duplicate column ids drop the offending rows/columns,
-render a visible `error` part with `role="alert"`, and emit `mndwerror` once per violation-set change.
+`(row) => string`). Empty or duplicate keys and duplicate column ids drop the offending
+rows/columns, render a visible `error` part with `role="alert"`, and emit `mndwerror` once per
+violation-set change.
 
 Expandable tables render a controlled inline detail row with `expandable`, `expandOn`, and
 `expandedRenderer`. Set `toggleCell` to `leading` or `trailing` for utility-column placement, or set
@@ -146,11 +180,12 @@ Expandable tables render a controlled inline detail row with `expandable`, `expa
 values apply to their header and body cells; selection and expand utility columns stay narrow.
 
 Set `Column.sticky: 'start'` to pin a contiguous leading run of visible data columns to the logical
-inline-start edge. Every pinned column must declare `width`; a non-leading or widthless sticky column
-stays unpinned, sets `data-mndw-sticky-inactive="not-leading"` or `"missing-width"`, and emits one
-development warning. Leading selection, drag, and expand utility cells pin ahead of that run. Offsets
-use logical `inset-inline-start` and `border-inline-end`, so pinning is RTL-correct; pinned cells
-assume a `--mndw-surface` background. With `reorderable`, the pinned drag column is clamped to
+inline-start edge. Every pinned column must declare `width`; a non-leading or widthless sticky
+column stays unpinned, sets `data-mndw-sticky-inactive="not-leading"` or `"missing-width"`, and
+emits one development warning. Leading selection, drag, and expand utility cells pin ahead of that
+run. Offsets use logical `inset-inline-start` and `border-inline-end`, so pinning is RTL-correct;
+pinned cells assume a `--mndw-surface` background. With `reorderable`, the pinned drag column is
+clamped to
 `2.5rem`, a known cosmetic limitation.
 
 Set `Column.nowrap: true` to apply `white-space: nowrap` to that column's header and body cells.
@@ -183,17 +218,18 @@ fallback reason is `resize-observer-unavailable`. Neither fallback changes logic
 
 #### Framework adapters
 
-Built-in `kind`s are `text`, `number`, `badge`, and a non-interactive `boolean` glyph. Rich cells use
-a `CellRenderer` (`mount`/`update`/`destroy`), supplied through `column.renderer`, and render in a
-parked light-DOM node so the plugin cell's scoped styles apply. Framework adapters
+Built-in `kind`s are `text`, `number`, `badge`, and a non-interactive `boolean` glyph. Rich cells
+use a `CellRenderer` (`mount`/`update`/`destroy`), supplied through `column.renderer`, and render in
+a parked light-DOM node so the plugin cell's scoped styles apply. Framework adapters
 (`@mndw/ui-svelte`, `@mndw/ui-vue`, `@mndw/ui-angular`) turn native cells into renderers. Parts:
-`viewport`, `table`, `caption`, `header`, `header-cell`, `sort-indicator`, `row`, `cell`, `select-cell`,
-`select-all`, `drag-handle`, `column-menu-trigger`, `empty`, `error`. The menu panel is portaled, so it
-is styled through `column-menu-panel-class`, not `mndw-table::part(...)`.
+`viewport`, `table`, `caption`, `header`, `header-cell`, `sort-indicator`, `row`, `cell`,
+`select-cell`,
+`select-all`, `drag-handle`, `column-menu-trigger`, `empty`, `error`. The menu panel is portaled, so
+it is styled through `column-menu-panel-class`, not `mndw-table::part(...)`.
 
 The internal viewport also has class `mndw-table-viewport`. Consumers must keep table controls in a
-light-DOM sibling region named `mndw-table-controls`; the viewport is the sole horizontal scroll owner.
-The class and `part="viewport"` are both stable hooks for host, Vue, and Angular consumers.
+light-DOM sibling region named `mndw-table-controls`; the viewport is the sole horizontal scroll
+owner. The class and `part="viewport"` are both stable hooks for host, Vue, and Angular consumers.
 
 Adapters render into the parked node on mount/update and unmount on destroy; host startup registers
 `@mndw/ui` before plugin mount, so they never wait on `customElements.whenDefined()`.
@@ -216,6 +252,7 @@ column<NodeRow>()({id: 'name', label: 'Name', accessor: (r) => r.node.name, sort
 // Vue — defineComponent or functional component
 import {vueCell} from '@mndw/ui-vue';
 import ClientNameCell from './ClientNameCell.vue';
+
 const nameCell = vueCell<ClientRecord, string>()(ClientNameCell)();
 ```
 
@@ -225,8 +262,9 @@ Field takes the control as a light-DOM child and wires labelling itself. It rend
 so it exposes classes rather than `::part()`:
 
 ```html
+
 <mndw-field label="Host name" hint="Shown in the device list." error="" required>
-  <input name="hostname" />
+    <input name="hostname"/>
 </mndw-field>
 ```
 
@@ -238,7 +276,7 @@ control, hint, error order. The control is the first child that is an `Element`,
 placeholder nodes, and whitespace are skipped, and replacing the control rewires automatically.
 
 Field owns only what it writes. It generates an `id` on the control when it has none, points its
-`<label for>` at that id, appends its hint/error ids to `aria-describedby`, sets `aria-invalid` while
+`<label for>` at that id, appends its hint/error ids to `aria-describedby`, sets `aria-invalid`while
 `error` is non-empty, and mirrors `required`. Consumer-supplied ids, describedby tokens, and prior
 attribute values are preserved and restored; a control that is not labelable is named through
 `aria-labelledby` pointing at field's own label instead.
@@ -257,15 +295,16 @@ owns editing, caret, selection, IME, and masking. The shadow root uses `delegate
 `<label for>` click or `.focus()` lands on the native element.
 
 ```html
+
 <mndw-field label="Listen port" hint="1–65535">
-  <mndw-input type="number" name="port" min="1" max="65535" step="1">
-    <span slot="suffix">s</span>
-  </mndw-input>
+    <mndw-input type="number" name="port" min="1" max="65535" step="1">
+        <span slot="suffix">s</span>
+    </mndw-input>
 </mndw-field>
 ```
 
-Properties are `value`, `type` (`text | password | search | number | url`, default `text`;
-anything else falls back to `text`), `placeholder`, `readonly`, `min`, `max`, `step`, `maxlength`,
+Properties are `value`, `type` (`text | password | search | number | url`, default `text`; anything
+else falls back to `text`), `placeholder`, `readonly`, `min`, `max`, `step`, `maxlength`,
 `autocomplete`, plus the shared `name`, `disabled`, `required`, and `invalid`. `value` is state, so
 it does **not** reflect — the `value` attribute stays the authored default that form reset restores.
 Parts are `field`, `input`, `prefix`, and `suffix`; `prefix` and `suffix` are slots for adornments.
@@ -283,10 +322,10 @@ its `aria-description`; and `aria-invalid` — from the host attribute, else the
 else computed constraint validity — is mirrored too. The host keeps its own attributes; only the
 resolved copies move inward. Resolution reads `textContent` minus `aria-hidden` subtrees, so
 decorative content such as `<mndw-field>`'s required marker is never announced, while text hidden
-only by CSS still contributes — the same rules the platform applies to a native input.
-Re-resolution runs when those host attributes change and when
-referenced text is edited. A `<label for>` inserted, removed, or re-pointed elsewhere in the tree is
-the one case nothing observes: call `refreshAccessibleName()` for it, as `<mndw-field>` does.
+only by CSS still contributes — the same rules the platform applies to a native input. Re-resolution
+runs when those host attributes change and when referenced text is edited. A `<label for>` inserted,
+removed, or re-pointed elsewhere in the tree is the one case nothing observes: call
+`refreshAccessibleName()` for it, as `<mndw-field>` does.
 
 Validation delegates to the platform. `type`, `required`, `min`, `max`, `step`, and `maxlength` live
 on the native element, and the host mirrors its `validity` and `validationMessage` through
@@ -299,8 +338,9 @@ forwarding rules, form participation, and commit condition described above; what
 inner element and three things that follow from it.
 
 ```html
+
 <mndw-field label="Release notes" hint="Markdown is supported.">
-  <mndw-textarea name="notes" rows="5" maxlength="2000"></mndw-textarea>
+    <mndw-textarea name="notes" rows="5" maxlength="2000"></mndw-textarea>
 </mndw-field>
 ```
 
@@ -309,7 +349,8 @@ Properties are `value`, `rows` (default `3`), `autosize` (default `false`), `rea
 `textarea`.
 
 **Enter does not commit.** It inserts a newline, as in a native `<textarea>`, so `mndwchange` fires
-on blur only — still just when the value differs from what it was at focus. `mndwinput` is unchanged.
+on blur only — still just when the value differs from what it was at focus. `mndwinput` is
+unchanged.
 
 **`autosize` is opt-in** because it costs a `ResizeObserver`: the height has to be recomputed when
 the width changes and the text reflows, not only when the value changes. While it is on, the control
@@ -323,8 +364,9 @@ switch applies its change at once, a checkbox travels with a form submission. Th
 setting is a switch; package selection is a checkbox.
 
 ```html
+
 <mndw-field label="Dark theme">
-  <mndw-switch name="theme" value="dark"></mndw-switch>
+    <mndw-switch name="theme" value="dark"></mndw-switch>
 </mndw-field>
 ```
 
@@ -351,10 +393,11 @@ A radio group in segmented-control clothing, following the `<mndw-select>` / `<m
 the group owns the value, the events, and the form state; the children are declarative.
 
 ```html
+
 <mndw-segmented label="Range" name="range" value="day">
-  <mndw-segment value="day">Day</mndw-segment>
-  <mndw-segment value="week">Week</mndw-segment>
-  <mndw-segment value="month" disabled>Month</mndw-segment>
+    <mndw-segment value="day">Day</mndw-segment>
+    <mndw-segment value="week">Week</mndw-segment>
+    <mndw-segment value="month" disabled>Month</mndw-segment>
 </mndw-segmented>
 ```
 
@@ -386,8 +429,10 @@ keyboard matrix, and the pointer drag, while the track, fill, thumb, and output 
 root are presentational.
 
 ```html
+
 <mndw-field label="Transmit power">
-  <mndw-slider name="power" min="0" max="20" step="5" value="10" value-text="10 dBm"></mndw-slider>
+    <mndw-slider name="power" min="0" max="20" step="5" value="10"
+                 value-text="10 dBm"></mndw-slider>
 </mndw-field>
 ```
 
@@ -422,12 +467,13 @@ Three elements, one relationship. The group owns the active `value`, the keyboar
 ARIA attribute on its children; the children are declarative.
 
 ```html
+
 <mndw-tabs value="network">
-  <mndw-tab id="general">General</mndw-tab>
-  <mndw-tab id="network">Network</mndw-tab>
-  <mndw-tab id="advanced" disabled>Advanced</mndw-tab>
-  <mndw-tab-panel for="general">General settings</mndw-tab-panel>
-  <mndw-tab-panel for="network">Network settings</mndw-tab-panel>
+    <mndw-tab id="general">General</mndw-tab>
+    <mndw-tab id="network">Network</mndw-tab>
+    <mndw-tab id="advanced" disabled>Advanced</mndw-tab>
+    <mndw-tab-panel for="general">General settings</mndw-tab-panel>
+    <mndw-tab-panel for="network">Network settings</mndw-tab-panel>
 </mndw-tabs>
 ```
 
@@ -445,15 +491,15 @@ breaking; a `for` on a `<mndw-tab>` gets a `console.warn` naming the right eleme
 
 The group writes `role`, `aria-selected`, `aria-controls`, `aria-disabled`, the roving `tabindex`,
 and `slot="tab"` onto its tabs, and `role`, `aria-labelledby`, and `hidden` onto its panels — and
-removes exactly those again when a child leaves or the group disconnects. It rewires when a tab `id`,
+removes exactly those again when a child leaves or the group disconnects. It rewires when a tab`id`,
 a panel `for`, or the child order changes. Activation is **automatic**: arrow keys move focus and
-selection together with wraparound, Home and End jump to the first and last enabled tab, and disabled
-tabs are skipped. An inactive panel is `hidden` rather than unmounted, so its content leaves the
-accessibility tree and the tab order while keeping its state.
+selection together with wraparound, Home and End jump to the first and last enabled tab, and
+disabled tabs are skipped. An inactive panel is `hidden` rather than unmounted, so its content
+leaves the accessibility tree and the tab order while keeping its state.
 
-Malformed markup degrades rather than throws, each case reported once: a panel whose `for` matches no
-tab stays hidden, a tab with no `id` renders inert (it can be neither referenced nor selected), and
-when two panels claim one tab the first in document order wins.
+Malformed markup degrades rather than throws, each case reported once: a panel whose `for` matches
+no tab stays hidden, a tab with no `id` renders inert (it can be neither referenced nor selected),
+and when two panels claim one tab the first in document order wins.
 
 ### `<mndw-tooltip>`
 
@@ -461,15 +507,16 @@ Wraps a trigger and describes it. Properties are `text`, `placement` (`top | bot
 default `top`), and `delay` (ms before showing, default `500`; hiding is immediate). Part `tooltip`.
 
 ```html
+
 <mndw-tooltip text="Restarts the device immediately" placement="bottom">
-  <mndw-button variant="danger">Restart</mndw-button>
+    <mndw-button variant="danger">Restart</mndw-button>
 </mndw-tooltip>
 ```
 
 The first assigned element in the default slot is the trigger; anything after it is ignored and
-warned about once. Shows on hover and focus after `delay`, hides on pointer leave, blur, and Escape —
-Escape is not consumed, so a dialog behind the tooltip still sees it. An empty `text` renders nothing,
-carries no role, and describes nothing rather than showing an empty bubble.
+warned about once. Shows on hover and focus after `delay`, hides on pointer leave, blur, and
+Escape — Escape is not consumed, so a dialog behind the tooltip still sees it. An empty `text`
+renders nothing, carries no role, and describes nothing rather than showing an empty bubble.
 
 **The host carries `role="tooltip"` and the id, not the bubble.** An `aria-describedby` token cannot
 cross into a shadow root, so the described element has to be the host — which means the trigger sits
@@ -486,8 +533,8 @@ the requested side, flips when that side is clipped, clamps the cross axis into 
 publishes the side it settled on as `data-placement` for styling.
 
 `<mndw-button>` uses `ElementInternals` only to reach its containing form: `type="submit"` calls
-`requestSubmit()` and `type="reset"` calls `reset()`. It contributes no name/value pair and is not
-a native submitter; use a native `<button>` when submitter data is required.
+`requestSubmit()` and `type="reset"` calls `reset()`. It contributes no name/value pair and is not a
+native submitter; use a native `<button>` when submitter data is required.
 
 `variant` is `primary`, `secondary`, `ghost`, or `danger`, and the default stays `secondary`.
 `danger` is for destructive actions — deleting a plugin, forgetting a device — and renders as a
@@ -497,17 +544,26 @@ contrast pair for it, so a solid fill would be a colour combination the generato
 
 ## Styling
 
-Components consume inherited `--mndw-*` tokens. Use `::part()` for component styling. Select
-panels are portaled, so `panel-class` must be global and is applied to the overlay layer wrapper:
+Components consume inherited `--mndw-*` tokens. Use `::part()` for component styling. Select panels
+are portaled, so `panel-class` must be global and is applied to the overlay layer wrapper:
 
 ```html
+
 <mndw-select panel-class="tx-rx-iface-panel"></mndw-select>
 ```
 
 ```css
-.tx-rx-iface-panel mndw-select-panel::part(option) { padding: 0.625rem; }
-.tx-rx-iface-panel mndw-select-panel::part(listbox) { padding-inline-end: 1.25rem; }
-.tx-rx-iface-panel mndw-select-panel::part(thumb) { background: var(--mndw-accent); }
+.tx-rx-iface-panel mndw-select-panel::part(option) {
+  padding: 0.625rem;
+}
+
+.tx-rx-iface-panel mndw-select-panel::part(listbox) {
+  padding-inline-end: 1.25rem;
+}
+
+.tx-rx-iface-panel mndw-select-panel::part(thumb) {
+  background: var(--mndw-accent);
+}
 ```
 
 ### Global class layer
@@ -516,9 +572,10 @@ Host pages import `@mndw/sdk/tokens.css` and `@mndw/ui/styles.css` once. The cla
 light-DOM content without registering elements:
 
 ```html
+
 <div class="mndw-alert mndw-alert--danger" role="alert">
-  <div class="mndw-alert__title">Connection failed</div>
-  <div class="mndw-alert__body">Retry request.</div>
+    <div class="mndw-alert__title">Connection failed</div>
+    <div class="mndw-alert__body">Retry request.</div>
 </div>
 <span class="mndw-badge mndw-badge--success">Connected</span>
 <span class="mndw-status-dot mndw-status-dot--success" aria-hidden="true"></span>
@@ -527,22 +584,21 @@ light-DOM content without registering elements:
 ```
 
 Alerts, badges, and status dots support `--danger`, `--success`, `--warning`, and `--info`
-modifiers. `.mndw-empty`, `.mndw-card`, and `.mndw-toolbar` are semantic containers; consumers
-own headings, roles, names, and live-region semantics. `.mndw-spinner` and `.mndw-progress` add
-no roles. Use native `[hidden]` for visibility and attributes such as `[aria-busy]` for runtime
-state.
+modifiers. `.mndw-empty`, `.mndw-card`, and `.mndw-toolbar` are semantic containers; consumers own
+headings, roles, names, and live-region semantics. `.mndw-spinner` and `.mndw-progress` add no
+roles. Use native `[hidden]` for visibility and attributes such as `[aria-busy]` for runtime state.
 
 Fields use `.mndw-field` with `.mndw-field__label`, `.mndw-field__hint`, and
-`.mndw-field__error`. Consumer owns control IDs and `aria-describedby`/`aria-invalid` wiring;
-error content carries `role="alert"` when it interrupts the user. `<mndw-field>` applies the same
-classes to itself and its owned nodes, and does that wiring for you.
+`.mndw-field__error`. Consumer owns control IDs and `aria-describedby`/`aria-invalid` wiring; error
+content carries `role="alert"` when it interrupts the user. `<mndw-field>` applies the same classes
+to itself and its owned nodes, and does that wiring for you.
 
-Tables use `.mndw-table` with normal `caption`, `thead`, `tbody`, `tr`, `th`, and `td` markup.
-Add `.mndw-table--sticky-head` to opt into a sticky header. Sort state is expressed with native
+Tables use `.mndw-table` with normal `caption`, `thead`, `tbody`, `tr`, `th`, and `td` markup. Add
+`.mndw-table--sticky-head` to opt into a sticky header. Sort state is expressed with native
 `aria-sort`; no runtime state classes are required.
 
-The overlay wrapper owns width and height bounds; the panel owns its visual chrome, and the
-nested `<mndw-scroll-area>` owns option scrolling. Its `viewport`, `scrollbar`, `track`, and
+The overlay wrapper owns width and height bounds; the panel owns its visual chrome, and the nested
+`<mndw-scroll-area>` owns option scrolling. Its `viewport`, `scrollbar`, `track`, and
 `thumb` parts are forwarded by the select panel. Use `refresh()` for content changes observers
 cannot see, or `viewportElement` for direct native `scrollTop`/`scrollTo` access.
 
@@ -554,5 +610,5 @@ interaction surface.
 
 When `ElementInternals.ariaControlsElements` is unavailable, the select omits `aria-controls`
 because its panel is portaled into another node tree. Rich option child nodes are cloned into the
-panel without HTML string interpolation.
-Sheet chrome belongs to the host overlay and is not exposed through `::part()`.
+panel without HTML string interpolation. Sheet chrome belongs to the host overlay and is not exposed
+through `::part()`.

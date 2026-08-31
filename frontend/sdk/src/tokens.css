@@ -54,6 +54,13 @@
   --mndw-slider-track-h: 0.25rem;
   --mndw-slider-thumb-size: 1rem;
   --mndw-table-sticky-top: 0;
+
+  /* utilization heatmap scale (low -> critical) */
+  --mndw-util-low: #3fa89f;
+  --mndw-util-moderate: #7cc24b;
+  --mndw-util-elevated: #e6c229;
+  --mndw-util-high: #e8873a;
+  --mndw-util-critical: #d5432f;
 }
 
 :root,

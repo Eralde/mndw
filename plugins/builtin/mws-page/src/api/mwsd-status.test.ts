@@ -59,6 +59,61 @@ describe('mwsd status', () => {
     expect(roots[0]?.persistentSession).toBe(true);
   });
 
+  it('surfaces CPU, memory (as percent), and per-band Wi-Fi utilization onto the node', () => {
+    const now = Date.parse('2026-08-12T10:00:00Z');
+    const snapshot = parsePersistentSessionsResponse({
+      lastRefreshAt: new Date(now).toISOString(),
+      persistentAvailable: true,
+      persistentSessions: [{
+        mac: MAC,
+        live: true,
+        telemetry: {
+          sampledAt: new Date(now - 1_000).toISOString(),
+          system: {memtotal: 1000},
+          cpuRrd: {data: [{t: 100, v: 27}, {t: 103, v: 31}]},
+          memoryRrd: {data: [{t: 100, v: 500}, {t: 103, v: 750}]},
+          wifiUtil: [
+            {interface: 'WifiMaster0', t: [200, 203], load: [28, 31]},
+            {interface: 'WifiMaster1', t: [200], load: [10]},
+          ],
+        },
+      }],
+    }, newPersistentSessionSnapshot(true, new Map()));
+
+    const telemetry = mergePersistentSessions([node(MAC)], snapshot, now)[0]?.liveTelemetry;
+    const anchor = now - 1_000;
+
+    expect(telemetry?.sampledAt).toBe(anchor);
+    expect(telemetry?.cpu).toEqual({times: [anchor - 3_000, anchor], values: [27, 31]});
+    expect(telemetry?.memory).toEqual({times: [anchor - 3_000, anchor], values: [50, 75]});
+    // Newest Wi-Fi sample is anchored at sampledAt; the earlier one is 3s before.
+    expect(telemetry?.wifi24).toEqual({times: [anchor - 3_000, anchor], values: [28, 31]});
+    expect(telemetry?.wifi5).toEqual({times: [anchor], values: [10]});
+  });
+
+  it('drops memory history when the total is unknown but keeps other series', () => {
+    const now = Date.parse('2026-08-12T10:00:00Z');
+    const snapshot = parsePersistentSessionsResponse({
+      lastRefreshAt: new Date(now).toISOString(),
+      persistentAvailable: true,
+      persistentSessions: [{
+        mac: MAC,
+        live: true,
+        telemetry: {
+          sampledAt: new Date(now).toISOString(),
+          cpuRrd: {data: [{t: 100, v: 5}]},
+          memoryRrd: {data: [{t: 100, v: 500}]},
+        },
+      }],
+    }, newPersistentSessionSnapshot(true, new Map()));
+
+    const telemetry = mergePersistentSessions([node(MAC)], snapshot, now)[0]?.liveTelemetry;
+
+    expect(telemetry?.cpu).toEqual({times: [now], values: [5]});
+    expect(telemetry?.memory).toEqual({times: [], values: []});
+    expect(telemetry?.wifi24).toEqual({times: [], values: []});
+  });
+
   it('ages cached live telemetry to stale at merge time', () => {
     const now = Date.parse('2026-08-12T10:00:00Z');
     const snapshot = parsePersistentSessionsResponse({
@@ -71,6 +126,30 @@ describe('mwsd status', () => {
     expect(mergePersistentSessions(roots, snapshot, now)[0]?.mwsdStatus?.state).toBe('live');
     expect(mergePersistentSessions(roots, snapshot, now + MWSD_STATUS_STALE_AFTER_MS)[0]?.mwsdStatus?.state)
       .toBe('stale');
+  });
+
+  it('preserves the controller\'s direct-RCI telemetry through a persistent-session merge', () => {
+    const controller = {...node('ctrl-mac', true), liveTelemetry: {
+      sampledAt: 5_000,
+      cpu: {times: [1], values: [7]},
+      memory: {times: [], values: []},
+      wifi24: {times: [1], values: [22]},
+      wifi5: {times: [], values: []},
+    }};
+    const extender = node(MAC);
+
+    controller.children = [{type: 'wireless' as const, node: extender}];
+
+    const snapshot = parsePersistentSessionsResponse({
+      lastRefreshAt: '2026-08-12T10:00:00Z',
+      persistentAvailable: true,
+      persistentSessions: [{mac: MAC, live: true, telemetry: {sampledAt: '2026-08-12T10:00:00Z'}}],
+    }, newPersistentSessionSnapshot(true, new Map()));
+
+    const merged = mergePersistentSessions([controller], snapshot, Date.parse('2026-08-12T10:00:00Z'));
+
+    expect(merged[0]?.liveTelemetry?.wifi24.values).toEqual([22]);
+    expect(merged[0]?.persistentSession).toBeUndefined();
   });
 
   it('marks non-live sessions offline', () => {

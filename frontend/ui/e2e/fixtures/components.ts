@@ -4,6 +4,7 @@ import {
   type CellRenderer,
   type Column,
   type MndwChartPoint,
+  type MndwChartSample,
   type MndwChartSeries,
   type MndwColumnVisibilityChangeDetail,
   type MndwRowReorderDetail,
@@ -42,8 +43,16 @@ const barChart = document.querySelector<HTMLElement & {
   points: readonly MndwChartPoint[];
   updateComplete: Promise<unknown>;
 }>('#bar-chart-fixture-element');
+const sparkline = document.querySelector<HTMLElement & {
+  points: readonly MndwChartSample[];
+  updateComplete: Promise<unknown>;
+}>('#sparkline-chart-fixture-element');
+const heatStrip = document.querySelector<HTMLElement & {
+  points: readonly MndwChartSample[];
+  updateComplete: Promise<unknown>;
+}>('#heat-strip-chart-fixture-element');
 
-if (!lineChart || !barChart) {
+if (!lineChart || !barChart || !sparkline || !heatStrip) {
   throw new Error('chart fixtures missing');
 }
 
@@ -74,6 +83,19 @@ barChart.points = [
   {time: 1_700_000_030_000, value: 200},
   {time: 1_700_000_060_000, value: 150},
 ];
+
+const compactPoints: MndwChartSample[] = [
+  {time: 1_700_000_000_000, value: 20},
+  {time: 1_700_000_030_000, value: 45},
+  {time: 1_700_000_060_000, value: 70},
+];
+
+sparkline.setAttribute('value-label', 'CPU load');
+sparkline.setAttribute('aria-label', 'CPU load history');
+sparkline.points = compactPoints;
+heatStrip.setAttribute('value-label', 'Radio utilization');
+heatStrip.setAttribute('aria-label', 'Radio utilization history');
+heatStrip.points = compactPoints;
 
 interface FixtureDeviceRow {
   id: string;
@@ -169,6 +191,8 @@ if (stickyTable !== null) {
 await Promise.all([
   lineChart.updateComplete,
   barChart.updateComplete,
+  sparkline.updateComplete,
+  heatStrip.updateComplete,
   table.updateComplete,
   ...(stickyTable === null ? [] : [stickyTable.updateComplete]),
 ]);

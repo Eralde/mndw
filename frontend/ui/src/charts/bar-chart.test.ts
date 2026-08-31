@@ -92,6 +92,71 @@ describe('<mndw-bar-chart>', () => {
     expect(element.getAttribute('aria-label')).not.toMatch(/TX|RX|Traffic/);
   });
 
+  it('uses the custom time and value formatters for chart surfaces', async () => {
+    const element = await mount();
+
+    element.timeFormatter = (time) => `T${time}`;
+    element.valueFormatter = (value) => `${value.toFixed(1)} °C`;
+    element.valueLabel = 'Temperature';
+    element.points = [
+      {time: 1000, value: 10},
+      {time: 2000, value: 20},
+    ];
+    await element.updateComplete;
+
+    expect(element.getAttribute('aria-label')).toContain('Temperature');
+    expect(element.getAttribute('aria-label')).toContain('20.0 °C');
+    expect([...element.shadowRoot?.querySelectorAll('[part="axis"] text') ?? []]
+      .map((node) => node.textContent)).toContain('T2000');
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (!overlay) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 300, clientY: 100}));
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent).toContain('T2000');
+    expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent).toContain('20.0 °C');
+  });
+
+  it('uses the configured semantic color', async () => {
+    const element = await mount();
+
+    element.color = 'warning';
+    element.points = [{time: 1000, value: 10}];
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('rect[data-color="warning"]')).not.toBeNull();
+  });
+
+  it('falls back to accent for an invalid runtime color', async () => {
+    const element = await mount();
+
+    element.color = 'not-a-chart-color' as never;
+    element.points = [{time: 1000, value: 10}];
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('rect[data-color="accent"]')).not.toBeNull();
+  });
+
+  it('preserves an authored aria-label after data and locale changes', async () => {
+    const element = document.createElement(MNDW_BAR_CHART_TAG);
+
+    element.setAttribute('aria-label', 'CPU history');
+    document.body.append(element);
+    await element.updateComplete;
+
+    element.points = points;
+    await element.updateComplete;
+    setMndwUiLocale('ru');
+    await element.updateComplete;
+
+    expect(element.getAttribute('aria-label')).toBe('CPU history');
+  });
+
   it('ignores malformed points and renders the configured empty label', async () => {
     const element = await mount();
 

@@ -1,8 +1,15 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
 import * as d3 from 'd3';
 import type {NumberValue} from 'd3';
-import {buildBarAriaLabel, filterFinitePoints, formatSpeed, getSpeedUpperLimit} from './chart-utils.js';
-import type {MndwChartPoint} from './chart-types.js';
+import {
+  buildBarAriaLabel,
+  filterFinitePoints,
+  formatClockTime,
+  formatSpeed,
+  getSpeedUpperLimit,
+  resolveChartColor,
+} from './chart-utils.js';
+import type {MndwChartColor, MndwChartPoint, MndwChartTimeFormatter, MndwChartValueFormatter} from './chart-types.js';
 import {ChartFrameController} from './chart-frame-controller.js';
 import {chartFrameStyles, renderChartFrame} from './chart-frame.js';
 import {getMndwUiText} from '../i18n.js';
@@ -41,6 +48,9 @@ export class MndwBarChart extends LitElement {
     points: {attribute: false},
     emptyLabel: {type: String, attribute: 'empty-label'},
     valueLabel: {type: String, attribute: 'value-label'},
+    valueFormatter: {attribute: false},
+    timeFormatter: {attribute: false},
+    color: {type: String, reflect: true},
   };
 
   public static styles = [
@@ -55,6 +65,9 @@ export class MndwBarChart extends LitElement {
   declare public points: readonly MndwChartPoint[];
   declare public emptyLabel: string | undefined;
   declare public valueLabel: string | undefined;
+  declare public valueFormatter: MndwChartValueFormatter;
+  declare public timeFormatter: MndwChartTimeFormatter;
+  declare public color: MndwChartColor;
 
   private tooltipState: TooltipState | null = null;
   private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
@@ -73,6 +86,9 @@ export class MndwBarChart extends LitElement {
     super();
 
     this.points = [];
+    this.valueFormatter = formatSpeed;
+    this.timeFormatter = formatClockTime;
+    this.color = 'accent';
     this.emptyLabelState = createLocalizedProperty<string | undefined>(this, 'emptyLabel', 'empty-label');
     this.valueLabelState = createLocalizedProperty<string | undefined>(this, 'valueLabel', 'value-label');
     this.ariaLabelState = createGeneratedAttribute(this, 'aria-label');
@@ -93,7 +109,14 @@ export class MndwBarChart extends LitElement {
   }
 
   protected override willUpdate(changedProperties: Map<PropertyKey, unknown>): void {
-    if (changedProperties.has('points') || changedProperties.has('emptyLabel') || changedProperties.has('valueLabel')) {
+    if (
+      changedProperties.has('points')
+      || changedProperties.has('emptyLabel')
+      || changedProperties.has('valueLabel')
+      || changedProperties.has('valueFormatter')
+      || changedProperties.has('timeFormatter')
+      || changedProperties.has('color')
+    ) {
       this.tooltipState = null;
     }
   }
@@ -103,6 +126,9 @@ export class MndwBarChart extends LitElement {
       changedProperties.has('points')
       || changedProperties.has('emptyLabel')
       || changedProperties.has('valueLabel')
+      || changedProperties.has('valueFormatter')
+      || changedProperties.has('timeFormatter')
+      || changedProperties.has('color')
       || this.frame.plotElement === null
     ) {
       this.updateAccessibilityLabel();
@@ -115,6 +141,7 @@ export class MndwBarChart extends LitElement {
       this.points,
       this.valueLabel ?? getMndwUiText('chart.values'),
       this.emptyLabel ?? getMndwUiText('chart.empty'),
+      this.valueFormatter,
     ));
   }
 
@@ -192,23 +219,25 @@ export class MndwBarChart extends LitElement {
       .call(
         d3.axisLeft(yScale)
           .ticks(3)
-          .tickFormat(formatSpeed as (value: NumberValue) => string),
+          .tickFormat((value: NumberValue) => this.valueFormatter(value.valueOf())),
       );
 
     yAxis.selectAll('text').attr('font-size', axisFontSize);
     yAxis.select('.domain').remove();
+
+    const resolvedColor = resolveChartColor(this.color);
 
     for (const [index, point] of validPoints.entries()) {
       const barX = xScale(String(index)) ?? 0;
 
       group.append('rect')
         .attr('data-bar', 'true')
-        .attr('data-color', 'accent')
+        .attr('data-color', resolvedColor)
         .attr('x', barX)
         .attr('y', yScale(point.value))
         .attr('width', xScale.bandwidth())
         .attr('height', yScale(0) - yScale(point.value))
-        .style('fill', 'var(--mndw-accent)');
+        .style('fill', `var(--mndw-${resolvedColor})`);
     }
 
     const tickCount = Math.min(validPoints.length, 5);
@@ -238,7 +267,11 @@ export class MndwBarChart extends LitElement {
       .attr('dy', '1.2em')
       .style('text-anchor', 'middle')
       .attr('font-size', axisFontSize - 1)
-      .text((index) => d3.timeFormat('%H:%M:%S')(new Date(validPoints[index]?.time ?? 0)));
+      .text((index) => {
+        const point = validPoints[index];
+
+        return point === undefined ? '' : this.timeFormatter(point.time);
+      });
 
     const overlay = group.append('rect')
       .attr('width', innerWidth)
@@ -284,8 +317,8 @@ export class MndwBarChart extends LitElement {
       this.tooltipState = {
         left,
         top,
-        time: d3.timeFormat('%H:%M:%S')(new Date(point.time)),
-        value: formatSpeed(point.value),
+        time: this.timeFormatter(point.time),
+        value: this.valueFormatter(point.value),
       };
       this.requestUpdate();
     };

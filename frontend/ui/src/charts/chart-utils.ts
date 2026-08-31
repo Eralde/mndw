@@ -1,4 +1,11 @@
-import type {MndwChartDomain, MndwChartPoint, MndwChartSeries} from './chart-types.js';
+import type {
+  MndwChartColor,
+  MndwChartDomain,
+  MndwChartPoint,
+  MndwChartSample,
+  MndwChartSeries,
+  MndwChartValueFormatter,
+} from './chart-types.js';
 
 export const MIN_Y_AXIS_UPPER_LIMIT = 5000;
 
@@ -32,6 +39,36 @@ export const getSpeedUpperLimit = (speed: number): number => {
   return Math.max(limit, MIN_Y_AXIS_UPPER_LIMIT);
 };
 
+/** Formats an epoch-ms timestamp as a local `HH:MM:SS` clock label for compact chart axes. */
+export const formatClockTime = (epochMs: number): string => {
+  const date = new Date(epochMs);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
+export const defaultPercentFormatter: MndwChartValueFormatter = (value) => `${Math.round(value)}%`;
+
+export const resolveChartMax = (max: number): number => Number.isFinite(max) && max > 0 ? max : 100;
+
+const CHART_COLORS: readonly MndwChartColor[] = ['accent', 'success', 'warning', 'muted'];
+
+export const resolveChartColor = (color: MndwChartColor): MndwChartColor => {
+  return CHART_COLORS.includes(color) ? color : 'accent';
+};
+
+export const normalizeChartSamples = (samples: readonly MndwChartSample[]): MndwChartSample[] => {
+  return samples.flatMap((sample) => {
+    if (!Number.isFinite(sample.value) || (sample.time !== undefined && !Number.isFinite(sample.time))) {
+      return [];
+    }
+
+    return sample.time === undefined
+      ? [{value: sample.value}]
+      : [{time: sample.time, value: sample.value}];
+  });
+};
+
 export const filterFinitePoints = (points: readonly MndwChartPoint[]): MndwChartPoint[] => {
   return points.filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value));
 };
@@ -61,32 +98,61 @@ export const resolveDomain = (
   };
 };
 
-const formatRange = (points: readonly MndwChartPoint[], label: string): string | null => {
-  const validPoints = filterFinitePoints(points);
+export const formatChartRange = (
+  samples: readonly MndwChartSample[],
+  label: string,
+  formatter: MndwChartValueFormatter,
+): string | null => {
+  const validSamples = normalizeChartSamples(samples);
 
-  if (validPoints.length === 0) {
+  if (validSamples.length === 0) {
     return null;
   }
 
-  const latest = validPoints.reduce((current, point) => point.time > current.time ? point : current);
-  const min = Math.min(...validPoints.map((point) => point.value));
-  const max = Math.max(...validPoints.map((point) => point.value));
+  const allTimed = validSamples.every((sample) => sample.time !== undefined);
+  const latest = allTimed
+    ? validSamples.reduce((current, sample) => {
+      if (current.time === undefined || sample.time === undefined) {
+        return current;
+      }
 
-  return `${label}: latest ${formatSpeed(latest.value)}; range ${formatSpeed(min)} to ${formatSpeed(max)}`;
+      return sample.time > current.time ? sample : current;
+    })
+    : validSamples[validSamples.length - 1];
+  const min = Math.min(...validSamples.map((sample) => sample.value));
+  const max = Math.max(...validSamples.map((sample) => sample.value));
+
+  if (latest === undefined) {
+    return null;
+  }
+
+  return `${label}: latest ${formatter(latest.value)}; range ${formatter(min)} to ${formatter(max)}`;
 };
 
-export const buildLineAriaLabel = (series: readonly MndwChartSeries[], emptyLabel: string): string => {
+export const buildLineAriaLabel = (
+  series: readonly MndwChartSeries[],
+  emptyLabel: string,
+  formatter: MndwChartValueFormatter = formatSpeed,
+  valueLabel?: string,
+): string => {
   const segments = series
-    .map((item) => formatRange(item.data, item.label ?? item.id))
+    .map((item) => formatChartRange(item.data, item.label ?? item.id, formatter))
     .filter((segment): segment is string => segment !== null);
 
-  return segments.length > 0 ? `Chart. ${segments.join('; ')}` : emptyLabel;
+  if (segments.length === 0) {
+    return emptyLabel;
+  }
+
+  const prefix = valueLabel === undefined ? 'Chart. ' : `Chart. ${valueLabel}: `;
+
+  return `${prefix}${segments.join('; ')}`;
 };
 
 export const buildBarAriaLabel = (
   points: readonly MndwChartPoint[],
   valueLabel: string,
   emptyLabel: string,
+  formatter: MndwChartValueFormatter = formatSpeed,
 ): string => {
-  return formatRange(points, valueLabel) ?? emptyLabel;
+  return formatChartRange(points, valueLabel, formatter) ?? emptyLabel;
 };

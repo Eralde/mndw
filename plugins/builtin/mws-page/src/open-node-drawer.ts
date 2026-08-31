@@ -18,7 +18,7 @@ export function openNodeDrawer(
   const opened = ctx.overlay.open({
     kind: 'drawer',
     title,
-    width: 400,
+    width: 960,
     closeOnOutsideClick: true,
     mount(target, layer) {
       mountComponentInOverlay({

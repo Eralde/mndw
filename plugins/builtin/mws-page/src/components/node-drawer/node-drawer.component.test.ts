@@ -152,52 +152,114 @@ describe('NodeDrawerComponent', () => {
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('no longer reported');
   });
 
-  it('renders health before identity details with semantic status and telemetry age', () => {
+  it('does not render a health block', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.health')).toBeNull();
+  });
+
+  it('badges the controller and hides its backhaul section', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), CONTROLLER.mac));
+    fixture.detectChanges();
+
+    const badge = fixture.nativeElement.querySelector('.role-badge') as HTMLElement | null;
+
+    expect(badge?.textContent).toContain('Controller');
+    expect(fixture.nativeElement.querySelector('.backhaul')).toBeNull();
+  });
+
+  it('shows a live-utilization panel with per-metric sparklines only for an active session', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
     const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
 
     if (node === null) {
-      throw new Error('expected extender fixture node');
+      throw new Error('expected dual-band extender fixture node');
     }
 
-    node.isOnline = false;
-    node.mwsdStatus = {state: 'live', lastTelemetryAt: 5_000};
-    node.persistentSession = true;
-    node.clients = [{
-      mac: 'client-1',
-      name: 'Client 1',
-      ip: null,
-      uptime: null,
-      lastSeen: null,
-      wired: false,
-    }];
     fixture.componentRef.setInput('node', node);
     fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.utilization')).toBeNull();
 
-    const identity = fixture.nativeElement.querySelector('.identity') as HTMLElement;
-    const health = identity.querySelector('.health');
-    const identityDetails = identity.querySelector('.identity-details');
-
-    if (health === null || identityDetails === null) {
-      throw new Error('drawer health or identity details missing');
-    }
-
-    expect(health).not.toBeNull();
-    expect(identityDetails).not.toBeNull();
-    expect([...identity.children].indexOf(health)).toBeLessThan([...identity.children].indexOf(identityDetails));
-    expect(health.textContent).toContain('Offline');
-    expect(health.textContent).toContain('Telemetry: live');
-    expect(health.textContent).toContain('Remote control: connected');
-    expect(health.textContent).toContain('Telemetry update 5s ago');
-    expect(health.textContent).toContain('1 client');
-
-    const updatedNode = {...node, mwsdStatus: {state: 'starting' as const, lastTelemetryAt: null}};
-
-    fixture.componentRef.setInput('node', updatedNode);
+    fixture.componentRef.setInput('node', {
+      ...node,
+      persistentSession: true,
+      liveTelemetry: {
+        sampledAt: 1_000,
+        cpu: {times: [1, 2], values: [10, 20]},
+        memory: {times: [1, 2], values: [40, 45]},
+        wifi24: {times: [1, 2], values: [28, 31]},
+        wifi5: {times: [1, 2], values: [12, 15]},
+      },
+    });
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('.health')?.textContent)
-      .not.toContain('Telemetry update');
+    const panel = fixture.nativeElement.querySelector('.utilization') as HTMLElement | null;
+
+    expect(panel).not.toBeNull();
+    // CPU and RAM render as bar sparklines; both Wi-Fi bands as heatmap strips.
+    expect(panel?.querySelectorAll('mndw-sparkline')).toHaveLength(2);
+    expect(panel?.querySelectorAll('mndw-heat-strip')).toHaveLength(2);
+    expect(panel?.textContent).toContain('Wi-Fi 5 GHz');
+    expect(panel?.textContent).toContain('31%');
+
+    const sparkline = panel?.querySelector<HTMLElement & {points: readonly {time?: number; value: number}[]}>(
+      'mndw-sparkline',
+    );
+    const heatStrip = panel?.querySelector<HTMLElement & {points: readonly {time?: number; value: number}[]}>(
+      'mndw-heat-strip',
+    );
+
+    expect(sparkline?.points).toEqual([{time: 1, value: 10}, {time: 2, value: 20}]);
+    expect(heatStrip?.points).toEqual([{time: 1, value: 28}, {time: 2, value: 31}]);
+    expect(sparkline?.getAttribute('value-label')).toBe('CPU');
+    expect(sparkline?.getAttribute('aria-label')).toBe('CPU');
+    expect(heatStrip?.getAttribute('value-label')).toBe('Wi-Fi 2.4 GHz');
+    expect(heatStrip?.getAttribute('aria-label')).toBe('Wi-Fi 2.4 GHz');
+  });
+
+  it('shows the utilization panel for the controller from its direct-RCI telemetry', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const controller = findNodeById(roots(), CONTROLLER.mac);
+
+    if (controller === null) {
+      throw new Error('expected controller fixture node');
+    }
+
+    fixture.componentRef.setInput('node', {
+      ...controller,
+      system: {cpuload: 12, memoryUsed: 500, memoryTotal: 1000, uptime: 3201},
+      liveTelemetry: {
+        sampledAt: 1_000,
+        cpu: {times: [1, 2], values: [10, 14]},
+        memory: {times: [1, 2], values: [40, 50]},
+        wifi24: {times: [1, 2], values: [28, 31]},
+        wifi5: {times: [1, 2], values: [12, 15]},
+      },
+    });
+    fixture.detectChanges();
+
+    const panel = fixture.nativeElement.querySelector('.utilization') as HTMLElement | null;
+
+    expect(panel).not.toBeNull();
+    expect(panel?.querySelectorAll('mndw-sparkline')).toHaveLength(2);
+    // Controller is dualBand:false but the 5 GHz strip still shows because it has data.
+    expect(panel?.querySelectorAll('mndw-heat-strip')).toHaveLength(2);
+    expect(panel?.textContent).toContain('12%');
+  });
+
+  it('renders a backhaul section for an extender', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.backhaul')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.role-badge')).toBeNull();
   });
 
   it('explains each disabled TX-power reason through the field hint', () => {

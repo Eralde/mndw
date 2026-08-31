@@ -45,6 +45,25 @@ func clonePersistentTelemetry(sample PersistentTelemetry) PersistentTelemetry {
 	clone.System.Uptime = append([]byte(nil), sample.System.Uptime...)
 	clone.CPURRD.Data = cloneRrdTicks(sample.CPURRD.Data)
 	clone.MemoryRRD.Data = cloneRrdTicks(sample.MemoryRRD.Data)
+	clone.WifiUtil = cloneWifiUtil(sample.WifiUtil)
+
+	return clone
+}
+
+func cloneWifiUtil(series []WifiUtilSeries) []WifiUtilSeries {
+	if series == nil {
+		return nil
+	}
+
+	clone := make([]WifiUtilSeries, len(series))
+
+	for index, item := range series {
+		clone[index] = WifiUtilSeries{
+			Interface: item.Interface,
+			T:         append([]float64(nil), item.T...),
+			Load:      append([]float64(nil), item.Load...),
+		}
+	}
 
 	return clone
 }

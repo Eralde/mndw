@@ -1,5 +1,4 @@
 @if (currentNode(); as n) {
-  @let labels = statusLabels(n);
   <div class="drawer">
     <span data-testid="l10n-overlay-probe" hidden>{{ t('l10n.probe') }}</span>
     <section class="identity">
@@ -13,20 +12,25 @@
             [maxlength]="64"
             (mndwinput)="onNameInput($event)"
             (keydown)="onNameKeydown($event)"
-          ></mndw-input>
+          >
+          </mndw-input>
           <div class="rename-actions">
             <mndw-button
               variant="primary"
               data-action="save-name"
               [disabled]="pending"
               (click)="saveRename()"
-            >{{ pending ? t('drawer.saving') : t('drawer.save') }}</mndw-button>
+            >
+                {{ pending ? t('drawer.saving') : t('drawer.save') }}
+            </mndw-button>
             <mndw-button
               variant="secondary"
               data-action="cancel-name"
               [disabled]="pending"
               (click)="cancelRename()"
-            >{{ t('drawer.cancel') }}</mndw-button>
+            >
+                {{ t('drawer.cancel') }}
+            </mndw-button>
           </div>
           @if (renameErrorMessage(); as errorMessage) {
             <p class="rename-error" role="alert">{{ errorMessage }}</p>
@@ -35,6 +39,9 @@
       } @else {
         <div class="identity-heading">
           <h3>{{ n.name }}</h3>
+          @if (n.isController) {
+            <span class="role-badge">{{ t('drawer.controller') }}</span>
+          }
           <mndw-button
             variant="ghost"
             data-action="edit-name"
@@ -43,18 +50,6 @@
           >{{ t('drawer.edit') }}</mndw-button>
         </div>
       }
-      <div class="health">
-        <h4>{{ t('drawer.health') }}</h4>
-        <dl>
-          <dt>{{ t('drawer.status') }}</dt><dd>{{ labels.online }}</dd>
-          <dt>{{ t('drawer.telemetry') }}</dt><dd>{{ labels.telemetry }}</dd>
-          <dt>{{ t('drawer.remote-control') }}</dt><dd>{{ labels.remoteControl }}</dd>
-          @if (telemetryLastTelemetry(n); as lastTelemetry) {
-            <dt>{{ t('drawer.last-telemetry') }}</dt><dd>{{ lastTelemetry }}</dd>
-          }
-          <dt>{{ t('drawer.client-count') }}</dt><dd>{{ labels.clients }}</dd>
-        </dl>
-      </div>
       <dl class="identity-details">
         <dt>{{ t('drawer.model') }}</dt><dd>{{ dash(n.model) }}</dd>
         <dt>{{ t('drawer.mac') }}</dt><dd>{{ n.mac }}</dd>
@@ -72,11 +67,46 @@
       </dl>
     </section>
 
+    @if (showUtilization(n)) {
+      <section class="utilization">
+        <h4>{{ t('drawer.utilization') }}</h4>
+        @for (metric of utilizationMetrics(n); track metric.key) {
+          <div class="util-metric">
+            <div class="util-head">
+              <span class="util-label">{{ metric.label }}</span>
+              <span class="util-value">{{ metric.valueText }}</span>
+            </div>
+            @if (metric.kind === 'heat') {
+              <mndw-heat-strip
+                [points]="metric.points"
+                [attr.value-label]="metric.label"
+                [attr.aria-label]="metric.label"
+                [attr.empty-label]="t('drawer.util-no-data')"
+              >
+              </mndw-heat-strip>
+            } @else {
+              <mndw-sparkline
+                [points]="metric.points"
+                [attr.value-label]="metric.label"
+                [attr.aria-label]="metric.label"
+                [attr.empty-label]="t('drawer.util-no-data')"
+              >
+              </mndw-sparkline>
+            }
+          </div>
+        }
+        <div class="util-legend" aria-hidden="true">
+          <span>{{ t('drawer.util-legend-low') }}</span>
+          <span class="util-legend-scale"></span>
+          <span>{{ t('drawer.util-legend-high') }}</span>
+        </div>
+      </section>
+    }
+
+    @if (!n.isController) {
     <section class="backhaul">
       <h4>{{ t('drawer.backhaul') }}</h4>
-      @if (n.isController) {
-        <p>{{ t('drawer.controller-backhaul') }}</p>
-      } @else if (!n.backhaul) {
+      @if (!n.backhaul) {
         <p>{{ t('drawer.offline-backhaul') }}</p>
       } @else if (isWirelessBackhaul(n)) {
         <dl>
@@ -99,6 +129,7 @@
         </dl>
       }
     </section>
+    }
 
     @if (!n.isController) {
       <section class="wifi-power">

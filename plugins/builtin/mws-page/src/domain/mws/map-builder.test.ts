@@ -78,6 +78,24 @@ describe('buildMap — topology', () => {
     expect(buddy.children[0].node.parent?.node).toBe(buddy);
   });
 
+  it('applies direct-RCI controller telemetry to the controller node', () => {
+    const roots = buildMap(fixtureMembers(), [], CONTROLLER, {
+      cpuload: 12,
+      memoryUsed: 500,
+      memoryTotal: 1000,
+      telemetry: {
+        sampledAt: 1_000,
+        cpu: {times: [1], values: [10]},
+        memory: {times: [1], values: [40]},
+        wifi24: {times: [1], values: [28]},
+        wifi5: {times: [], values: []},
+      },
+    });
+
+    expect(roots[0].system).toEqual({cpuload: 12, memoryUsed: 500, memoryTotal: 1000, uptime: 3201});
+    expect(roots[0].liveTelemetry?.wifi24.values).toEqual([28]);
+  });
+
   it('makes an offline member (no backhaul) a detached root with isOnline false', () => {
     const roots = buildMap([member({cid: 'c1', mac: 'aa:00:00:00:00:01'})], [], CONTROLLER);
 

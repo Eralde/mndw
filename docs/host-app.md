@@ -1,5 +1,7 @@
 # Host application
 
+**English** | [Русский](host-app.ru.md)
+
 The host is the Svelte 5 SPA that users see in the browser.
 It is responsible for presentation and plugin runtime concerns.
 It does not execute plugin backend commands or decide whether a backend is approved.

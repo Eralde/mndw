@@ -1,5 +1,7 @@
 # Plugin author guide
 
+**English** | [Русский](plugin-author-guide.ru.md)
+
 This guide covers the smallest useful plugin and the checks it should pass.
 Use the CLI for scaffolding and packaging so generated files match the host and
 daemon contracts.

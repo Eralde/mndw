@@ -1,5 +1,7 @@
 # Runtime route ownership
 
+**English** | [Русский](routing.ru.md)
+
 This document records route ownership. Paths are public protocol surface; implementation details stay
 inside their owning runtime.
 

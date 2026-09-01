@@ -1,5 +1,7 @@
 # go-blanklr
 
+**English** | [Русский](README.ru.md)
+
 Post-`gofmt` reformatter that inserts blank lines between adjacent Go statements
 of different semantic classes, mirroring the repo's ESLint
 `padding-line-between-statements` policy for TypeScript.

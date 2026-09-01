@@ -1,5 +1,7 @@
 # Deployment
 
+**English** | [Русский](deployment.ru.md)
+
 mndw is packaged for network devices as a per-architecture IPK. The package
 contains the static host, built-in plugins, the `mndwd` binary, the device-port
 discovery helper, and an init script.

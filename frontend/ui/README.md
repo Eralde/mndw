@@ -1,5 +1,7 @@
 # @mndw/ui
 
+**English** | [Русский](README.ru.md)
+
 Framework-agnostic custom elements for mndw plugins and host pages. Components read the
 `--mndw-*` design tokens published by the host; this package does not import `tokens.css`.
 

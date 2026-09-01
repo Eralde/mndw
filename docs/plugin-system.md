@@ -1,5 +1,7 @@
 # Plugin system
 
+**English** | [Русский](plugin-system.ru.md)
+
 mndw plugins are independently packaged UI modules with an explicit manifest.
 The host supplies UI services; `mndwd` supplies controlled backend execution.
 The SDK is the contract shared by the host, CLI, and plugin authors.

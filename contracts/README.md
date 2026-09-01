@@ -1,5 +1,7 @@
 # mndw contract corpus
 
+**English** | [Русский](README.ru.md)
+
 `contracts/` owns language-neutral evidence. Runtime authorities remain in
 their language-specific packages:
 

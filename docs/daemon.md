@@ -1,5 +1,7 @@
 # `mndwd` daemon
 
+**English** | [Русский](daemon.ru.md)
+
 `mndwd` is device control plane and backend execution service. It exposes one
 manifest gateway for request-scoped `exec` commands and supervised
 foreground `service` processes.

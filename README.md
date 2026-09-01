@@ -1,5 +1,7 @@
 # mndw
 
+**English** | [Русский](README.ru.md)
+
 mndw is a modular, plugin-based web dashboard for Keenetic/Netcraze network devices.
 The browser host provides the dashboard and plugin UI; `mndwd` provides
 device-side plugin management and backend execution.

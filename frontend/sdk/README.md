@@ -1,5 +1,7 @@
 # @mndw/sdk — Plugin Author Guide
 
+**English** | [Русский](README.ru.md)
+
 The mndw host loads plugins as dashboard widgets or full-page routes.
 
 ## 1. What is mndw?

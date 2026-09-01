@@ -4,7 +4,7 @@ import {createTestI18n} from '@mndw/sdk/testing';
 import type {RciManager, RciQuery} from '@rci-tools/core';
 import {createApp, nextTick} from 'vue';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {type Observable, Subject, of, throwError} from 'rxjs';
+import {Observable, Subject, forkJoin, of, throwError} from 'rxjs';
 
 import App from './App.vue';
 import enCatalog from '../i18n/en.json';
@@ -48,8 +48,6 @@ function successfulResponse(query: RciQuery): Observable<unknown> {
       return of(identification);
     case 'show.system':
       return of(system);
-    case 'show.version':
-      return of({model: 'Keenetic Giga'});
     case 'show.system.rrd.cpu':
       return of({data: [{t: '1', v: 21}]});
     case 'show.system.rrd.memory':
@@ -64,8 +62,14 @@ function createContext(
   i18n = createTestI18n(enCatalog),
 ): PluginContext {
   return {
-    hostInfo: {firmwareVersion: '1.0.0', deviceName: 'Router'},
-    rciManager: {queue} as unknown as RciManager,
+    hostInfo: {locale: 'en', theme: 'dark'},
+    deviceInfo: {model: 'Keenetic Giga', firmwareVersion: '1.0.0'},
+    rciManager: {
+      queue: (query: RciQuery | RciQuery[]) =>
+        Array.isArray(query)
+          ? forkJoin(query.map((item) => queue(item)))
+          : queue(query),
+    } as unknown as RciManager,
     i18n,
   } as unknown as PluginContext;
 }

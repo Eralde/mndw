@@ -8,7 +8,8 @@ import App from './App.svelte';
 
 const contextFor = (i18n: ReturnType<typeof createTestI18n>): PluginContext => ({
   i18n,
-  hostInfo: {deviceName: 'Test Device'},
+  hostInfo: {locale: 'en', theme: 'dark'},
+  deviceInfo: {deviceName: 'Test Device'},
 } as PluginContext);
 
 describe('generated Svelte locale reactivity', () => {

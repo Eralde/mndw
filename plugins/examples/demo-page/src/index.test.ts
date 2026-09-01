@@ -19,7 +19,8 @@ describe('createInstance', () => {
 
     const ctx = {
       instanceId: 'demo-1',
-      hostInfo: {deviceName: 'Router', vendor: 'Keenetic'},
+      hostInfo: {locale: 'en', theme: 'dark'},
+      deviceInfo: {deviceName: 'Router', vendor: 'Keenetic'},
       storage: {get: vi.fn().mockResolvedValue(null), set: storageSet},
       i18n: createTestI18n(enCatalog),
     } as unknown as PluginContext;
@@ -56,7 +57,8 @@ describe('createInstance', () => {
     });
     const ctx = {
       instanceId: 'demo-1',
-      hostInfo: {deviceName: 'Router', vendor: 'Keenetic'},
+      hostInfo: {locale: 'en', theme: 'dark'},
+      deviceInfo: {deviceName: 'Router', vendor: 'Keenetic'},
       storage: {get: vi.fn().mockResolvedValue(null), set: vi.fn()},
       i18n,
     } as unknown as PluginContext;

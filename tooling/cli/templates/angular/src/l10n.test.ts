@@ -18,7 +18,8 @@ describe('generated Angular locale reactivity', () => {
     const ru = {l10n: {probe: 'Русский probe', button: 'Запустить', result: 'Русский результат'}};
     const i18n = createTestI18n(en, 'en');
     const root = document.createElement('div');
-    const context = {i18n, hostInfo: {deviceName: 'Test Device'}} as unknown as PluginContext;
+    const context = {i18n, hostInfo: {locale: 'en', theme: 'dark'},
+      deviceInfo: {deviceName: 'Test Device'}} as unknown as PluginContext;
     const instance = createInstance(root, context);
     await stabilize();
     const probe = root.querySelector('[data-testid="l10n-probe"]');

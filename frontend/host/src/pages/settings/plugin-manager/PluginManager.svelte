@@ -246,7 +246,7 @@ onMount(() => {
   {/if}
 
   <PluginUpload
-    architecture={appState.hostInfo?.architecture}
+    architecture={appState.deviceInfo?.architecture}
     uploadFile={(file) => client.uploadPlugin(file)}
     {onInstalled}
     onApprove={(name) =>

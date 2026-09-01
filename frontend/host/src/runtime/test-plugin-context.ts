@@ -1,4 +1,5 @@
 import {
+  type DeviceInfoData,
   MNDW_TOKENS,
   type OverlayLayer,
   type OverlayService,
@@ -6,6 +7,7 @@ import {
   type WidgetPluginContext,
 } from '@mndw/sdk';
 import {createTestI18n} from '@mndw/sdk/testing';
+import {createDeviceInfoContext} from './device-info-context.js';
 
 export type TestPluginContextOverrides = Partial<Omit<WidgetPluginContext, 'kind'>> & {kind?: 'widget'};
 
@@ -55,6 +57,27 @@ function createOverlay(): OverlayService {
   };
 }
 
+function createTestDeviceInfo() {
+  const data: DeviceInfoData = {
+    deviceName: 'Test Device',
+    vendor: 'Test Vendor',
+    manufacturer: 'Test Vendor',
+    model: 'Test Model',
+    series: 'Test Series',
+    region: 'test',
+    hwId: 'test-id',
+    hwVersion: '1',
+    firmwareVersion: '0.0.0-test',
+    firmwareRelease: '0.0.0-test',
+    features: [],
+    components: [],
+    switchports: {list: [], layout: [], hasPortStats: false},
+    usb: {ports: []},
+  };
+
+  return createDeviceInfoContext(data);
+}
+
 export function createTestPluginContext(overrides: TestPluginContextOverrides = {}): WidgetPluginContext {
   const themeListeners = new Set<Parameters<WidgetPluginContext['onThemeChange']>[0]>();
   const paletteListeners = new Set<Parameters<WidgetPluginContext['onPaletteChange']>[0]>();
@@ -68,13 +91,8 @@ export function createTestPluginContext(overrides: TestPluginContextOverrides = 
     } as unknown as WidgetPluginContext['rciManager'],
     storage: createStorage(),
     sharedStorage: createStorage(),
-    hostInfo: Object.freeze({
-      deviceName: 'Test Device',
-      vendor: 'Test Vendor',
-      firmwareVersion: '0.0.0-test',
-      locale: 'en',
-      theme: 'dark',
-    }),
+    hostInfo: Object.freeze({locale: 'en', theme: 'dark'}),
+    deviceInfo: createTestDeviceInfo(),
     i18n: createTestI18n({}, 'en'),
     injector: {
       get: () => undefined,

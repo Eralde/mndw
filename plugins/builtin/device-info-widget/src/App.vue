@@ -6,12 +6,12 @@ import {Ticker} from '@mndw/sdk/ticker';
 import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 import CopyField from './components/CopyField.vue';
 import LoadBarChart from './components/LoadBarChart.vue';
-import {type DeviceInfo, fetchDeviceInfo, formatUptime} from './services/device-info.js';
+import {type LiveDeviceInfo, fetchDeviceInfo, formatUptime} from './services/device-info.js';
 import {createUptimeBaseline, getUptimeSeconds, type UptimeBaseline} from './services/uptime.js';
 
 const props = defineProps<{ctx: PluginContext}>();
 
-const loadState = ref<LoadState<DeviceInfo>>({status: 'loading'});
+const loadState = ref<LoadState<LiveDeviceInfo>>({status: 'loading'});
 const uptimeSeconds = ref<number | null>(null);
 const translator = useTranslator(props.ctx.i18n);
 const t = (key: string): string => translator.t(key);
@@ -21,18 +21,18 @@ let ticker: Ticker | null = null;
 let unsubscribeTicker: (() => void) | null = null;
 let refreshLoop: RefreshLoop | null = null;
 
-const firmware = computed(() => props.ctx.hostInfo.firmwareVersion);
-const info = computed<DeviceInfo | null>(() => {
+const firmware = computed(() => props.ctx.deviceInfo.firmwareVersion);
+const info = computed<LiveDeviceInfo | null>(() => {
   return loadState.value.status === 'success' ? loadState.value.data : null;
 });
 
 const uptime = computed(() => {
   return uptimeSeconds.value !== null
-    ? formatUptime(uptimeSeconds.value)
-    : t('unknown');
+      ? formatUptime(uptimeSeconds.value)
+      : t('unknown');
 });
 
-const handleInfoSuccess = (nextInfo: DeviceInfo): void => {
+const handleInfoSuccess = (nextInfo: LiveDeviceInfo): void => {
   const syncedAtMs = Date.now();
 
   loadState.value = {status: 'success', data: nextInfo};
@@ -63,6 +63,7 @@ onMounted(() => {
     onSuccess: handleInfoSuccess,
     onError: handleLoadError,
   });
+
   refreshLoop.start();
 });
 
@@ -93,7 +94,7 @@ onUnmounted(() => {
       <hr class="app__divider">
       <div class="app__grid">
         <span class="app__label">{{ t('device') }}:</span>
-        <span class="app__value">{{ info.model }}</span>
+        <span class="app__value">{{ props.ctx.deviceInfo.model }}</span>
         <span class="app__label">{{ t('firmware') }}:</span>
         <span class="app__value">{{ firmware }}</span>
         <span class="app__label">{{ t('uptime') }}:</span>

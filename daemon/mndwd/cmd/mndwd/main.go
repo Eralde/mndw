@@ -18,6 +18,7 @@ import (
 
 	"mndwd/internal/authz"
 	"mndwd/internal/backend"
+	"mndwd/internal/deviceinfo"
 	"mndwd/internal/deviceproxy"
 	"mndwd/internal/diagnostics"
 	"mndwd/internal/frontend"
@@ -237,6 +238,11 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 	mux := http.NewServeMux()
 	accessRegistration := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, activationGates, verifier, logger)
 	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, selfUpdateService, serviceMgr, reg, runtime, accessRegistration.permissionController, verifier, logger, lifetime)
+	deviceFetcher, deviceInfoErr := deviceinfo.NewHTTPFetcher(cfg.DeviceURL, logger, deviceinfo.FetcherOptions{})
+
+	if deviceInfoErr == nil {
+		deviceinfo.NewHandler(deviceinfo.NewStore(deviceFetcher, deviceinfo.StoreOptions{}), logger).RegisterProtected(mgmtMux)
+	}
 
 	registerPalette(mux, mgmtMux, paletteStore, logger)
 
@@ -257,6 +263,10 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 
 	if startupErr == nil {
 		startupErr = frontDoorErr
+	}
+
+	if startupErr == nil {
+		startupErr = deviceInfoErr
 	}
 
 	return components{

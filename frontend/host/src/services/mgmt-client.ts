@@ -1,9 +1,10 @@
-import type {PaletteTokenMap, PluginPermission} from '@mndw/sdk';
+import type {PaletteTokenMap, PluginPermission, Switchports} from '@mndw/sdk';
 import {
   API_TIMEOUT_MS,
   MGMT_APPROVE_URL,
   MGMT_DELETE_URL,
   MGMT_DENY_URL,
+  MGMT_DEVICE_HARDWARE_URL,
   MGMT_DISABLE_URL,
   MGMT_ENABLE_URL,
   MGMT_INSTALL_TIMEOUT_MS,
@@ -16,6 +17,7 @@ import {
   MGMT_UPLOAD_URL,
 } from '../constants.js';
 import {decodeMgmtList, decodeMgmtListEntry} from '../runtime/mgmt-list-schema.js';
+import {decodeDeviceHardware, emptySwitchports} from '../runtime/device-info-schema.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
 import {hostT} from './locale.service.js';
 
@@ -56,6 +58,7 @@ export interface MgmtClient {
   deletePlugin(name: string): Promise<void>;
   restartPlugin(name: string): Promise<void>;
   getRuntime(): Promise<RuntimeLimits>;
+  getDeviceHardware(): Promise<{switchports: Switchports; usbPortCount: number}>;
   getPalette(): Promise<PaletteTokenMap | null>;
   putPalette(palette: PaletteTokenMap): Promise<void>;
   deletePalette(): Promise<void>;
@@ -131,12 +134,15 @@ export function createMgmtClient(
   }
 
   async function postName(url: string, name: string, kind: MgmtTimeoutKind): Promise<Response> {
-    const response = await fetchImpl(url, {
-      method: 'POST',
-      headers: csrfHeaders({'Content-Type': 'application/json'}),
-      body: JSON.stringify({name}),
-      signal: timeout(kind),
-    });
+    const response = await fetchImpl(
+      url,
+      {
+        method: 'POST',
+        headers: csrfHeaders({'Content-Type': 'application/json'}),
+        body: JSON.stringify({name}),
+        signal: timeout(kind),
+      },
+    );
 
     if (!response.ok) {
       throw await toError(response);
@@ -165,11 +171,14 @@ export function createMgmtClient(
     async uploadPlugin(file: File): Promise<UploadResult> {
       // Deliberately unbounded: a 10 MB plugin over a slow link legitimately outlives
       // API_TIMEOUT_MS, and aborting a partial upload would be a regression.
-      const response = await fetchImpl(MGMT_UPLOAD_URL, {
-        method: 'POST',
-        headers: csrfHeaders({'Content-Type': 'application/zip'}),
-        body: file,
-      });
+      const response = await fetchImpl(
+        MGMT_UPLOAD_URL,
+        {
+          method: 'POST',
+          headers: csrfHeaders({'Content-Type': 'application/zip'}),
+          body: file,
+        },
+      );
 
       if (response.status === 201 || response.status === 202) {
         const entry = decodeMgmtListEntry(await response.json());
@@ -183,13 +192,17 @@ export function createMgmtClient(
     approvePlugin: (name) => mutateEntry(MGMT_APPROVE_URL, name),
     enablePlugin: (name) => mutateEntry(MGMT_ENABLE_URL, name),
     disablePlugin: (name) => mutateEntry(MGMT_DISABLE_URL, name),
+
     async setPluginPermission(name: string, permission: PluginPermission, enabled: boolean): Promise<PluginListEntry> {
-      const response = await fetchImpl(MGMT_PERMISSION_URL, {
-        method: 'POST',
-        headers: csrfHeaders({'Content-Type': 'application/json'}),
-        body: JSON.stringify({name, permission, enabled}),
-        signal: timeout('mutation'),
-      });
+      const response = await fetchImpl(
+        MGMT_PERMISSION_URL,
+        {
+          method: 'POST',
+          headers: csrfHeaders({'Content-Type': 'application/json'}),
+          body: JSON.stringify({name, permission, enabled}),
+          signal: timeout('mutation'),
+        },
+      );
 
       if (!response.ok) {
         throw await toError(response);
@@ -211,7 +224,10 @@ export function createMgmtClient(
     },
 
     async getRuntime(): Promise<RuntimeLimits> {
-      const response = await fetchImpl(MGMT_RUNTIME_URL, {method: 'GET', signal: timeout('read')});
+      const response = await fetchImpl(
+        MGMT_RUNTIME_URL,
+        {method: 'GET', signal: timeout('read')},
+      );
 
       if (!response.ok) {
         throw await toError(response);
@@ -220,12 +236,35 @@ export function createMgmtClient(
       return (await response.json()) as RuntimeLimits;
     },
 
+    async getDeviceHardware(): Promise<{switchports: Switchports; usbPortCount: number}> {
+      try {
+        const response = await fetchImpl(
+          MGMT_DEVICE_HARDWARE_URL,
+          {
+            method: 'GET',
+            signal: timeout('read'),
+          },
+        );
+
+        if (!response.ok) {
+          return {switchports: emptySwitchports(), usbPortCount: 0};
+        }
+
+        return decodeDeviceHardware(await response.json());
+      } catch {
+        return {switchports: emptySwitchports(), usbPortCount: 0};
+      }
+    },
+
     async getPalette(): Promise<PaletteTokenMap | null> {
-      const response = await fetchImpl(MGMT_PALETTE_URL, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: timeout('read'),
-      });
+      const response = await fetchImpl(
+        MGMT_PALETTE_URL,
+        {
+          method: 'GET',
+          cache: 'no-store',
+          signal: timeout('read'),
+        },
+      );
 
       if (!response.ok) {
         throw await toError(response);
@@ -246,22 +285,28 @@ export function createMgmtClient(
     },
 
     async putPalette(palette: PaletteTokenMap): Promise<void> {
-      const response = await fetchImpl(MGMT_PALETTE_URL, {
-        method: 'PUT',
-        headers: csrfHeaders({'Content-Type': 'application/json'}),
-        body: JSON.stringify(palette),
-        signal: timeout('mutation'),
-      });
+      const response = await fetchImpl(
+        MGMT_PALETTE_URL,
+        {
+          method: 'PUT',
+          headers: csrfHeaders({'Content-Type': 'application/json'}),
+          body: JSON.stringify(palette),
+          signal: timeout('mutation'),
+        },
+      );
 
       await expectNoContent(response);
     },
 
     async deletePalette(): Promise<void> {
-      const response = await fetchImpl(MGMT_PALETTE_URL, {
-        method: 'DELETE',
-        headers: csrfHeaders(),
-        signal: timeout('mutation'),
-      });
+      const response = await fetchImpl(
+        MGMT_PALETTE_URL,
+        {
+          method: 'DELETE',
+          headers: csrfHeaders(),
+          signal: timeout('mutation'),
+        },
+      );
 
       await expectNoContent(response);
     },

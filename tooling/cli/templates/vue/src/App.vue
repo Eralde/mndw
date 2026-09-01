@@ -9,7 +9,7 @@ const translator = useTranslator(ctx.i18n);
 <template>
   <div class="wrap">
     <h3 class="title" data-testid="l10n-probe" data-plugin-label="__MNDW_LABEL__">{{ translator.t('l10n.probe') }}</h3>
-    <p class="device">Device: {{ ctx.hostInfo.deviceName }}</p>
+    <p class="device">Device: {{ ctx.deviceInfo.deviceName }}</p>
     <p class="result">{{ translator.t('l10n.result') }}</p>
   </div>
 </template>

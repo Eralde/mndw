@@ -34,7 +34,6 @@ export interface ShowVersion {
   hw_type?: string;
   hw_id: string;
   device: string;
-  class?: string;
   region: string;
   description: string;
 }

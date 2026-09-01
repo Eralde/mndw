@@ -44,6 +44,10 @@ function clientWith(items: PluginListEntry[]): Mocked<MgmtClient> {
       reservedServices: 0,
       supportedServiceProtocols: [1],
     }),
+    getDeviceHardware: vi.fn().mockResolvedValue({
+      switchports: {list: [], layout: [], hasPortStats: false},
+      usbPortCount: 0,
+    }),
     getPalette: vi.fn().mockResolvedValue(null),
     putPalette: vi.fn().mockResolvedValue(undefined),
     deletePalette: vi.fn().mockResolvedValue(undefined),

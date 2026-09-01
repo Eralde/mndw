@@ -286,19 +286,19 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
         <span role="status">{hostT('settings.language.pending')}</span>
       {/if}
     </mndw-field>
-    {#if appState.hostInfo}
+    {#if appState.deviceInfo}
       <ul>
         <li>
           <strong>{hostT('settings.name')}</strong>
-          {appState.hostInfo?.deviceName}
+          {appState.deviceInfo.deviceName}
         </li>
         <li>
           <strong>{hostT('settings.vendor')}</strong>
-          {appState.hostInfo?.vendor}
+          {appState.deviceInfo.vendor}
         </li>
         <li>
           <strong>{hostT('settings.firmware')}</strong>
-          {appState.hostInfo?.firmwareVersion}
+          {appState.deviceInfo.firmwareVersion}
         </li>
       </ul>
     {:else}

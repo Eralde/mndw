@@ -16,6 +16,7 @@ import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {mountWidgetTile} from '../dashboard/widget-mount.js';
 import {appState} from '../state/app.svelte.js';
+import {FALLBACK_DEVICE_INFO} from '../constants.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {pluginRegistry} from './plugin-registry.js';
 import {createTestPluginContext} from './test-plugin-context.js';
@@ -35,10 +36,11 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
       entry: {name: string; type: 'widget' | 'page'};
       instanceId: string;
       hostInfo: HostInfo;
+      deviceInfo: PluginContext['deviceInfo'];
       setTileTitle: ((title: string) => void) | undefined;
       pageRoute: PluginContext['pageRoute'];
     }) => {
-      const {entry, instanceId, hostInfo, setTileTitle, pageRoute} = options;
+      const {entry, instanceId, hostInfo, deviceInfo, setTileTitle, pageRoute} = options;
       const template = pageContexts.get(entry.name);
 
       if (template === undefined) {
@@ -55,6 +57,7 @@ vi.mock('./plugin-context.js', async (importOriginal) => {
       const context = Object.freeze({
         ...template,
         hostInfo,
+        deviceInfo,
         instanceId,
         ...variant,
       }) as PluginContext;
@@ -298,6 +301,7 @@ afterEach(() => {
   pageContexts.clear();
   tileTitles.clear();
   appState.hostInfo = null;
+  appState.deviceInfo = null;
   document.body.innerHTML = '';
 });
 
@@ -307,12 +311,10 @@ smoke('packed Angular built-in l10n smoke', () => {
     vi.stubGlobal('MutationObserver', SmokeMutationObserver);
     defineMndwUi();
     appState.hostInfo = {
-      deviceName: 'Smoke Router',
-      vendor: 'Smoke Vendor',
-      firmwareVersion: '1.0.0',
       locale: 'en',
       theme: 'dark',
     };
+    appState.deviceInfo = FALLBACK_DEVICE_INFO;
   });
 
   it('switches tx-rx-chart-widget without remounting', async () => {

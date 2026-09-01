@@ -31,12 +31,63 @@ export class PageRouteError extends Error {
   }
 }
 
+export interface Switchport {
+  /** Stable port key, e.g. "WAN", "LAN1". */
+  readonly id: string;
+  /** Physical label printed on the case, e.g. "0".."3". */
+  readonly label: string;
+  readonly index: number;
+  /** Port medium, e.g. "ethernet". */
+  readonly type: string;
+  /** Port group, e.g. "WAN" or "LAN". */
+  readonly group: string;
+  readonly color: string;
+  readonly interfaceId: string;
+}
+
+export interface Switchports {
+  /** Ordered by `index`. */
+  readonly list: readonly Switchport[];
+  /** Physical rows of switchport labels for drawing the device body. */
+  readonly layout: readonly (readonly string[])[];
+  readonly hasPortStats: boolean;
+}
+
+export interface DeviceUsb {
+  /** USB version per physical port, ordered by physical position. Empty when the device has no USB. */
+  readonly ports: readonly ('usb2' | 'usb3')[];
+}
+
+/** Plain, serializable device data without context-bound helper methods. */
+export interface DeviceInfoData {
+  readonly deviceName: string;
+  readonly vendor: string;
+  readonly manufacturer: string;
+  readonly model: string;
+  readonly series: string;
+  readonly region: string;
+  readonly hwId: string;
+  readonly hwVersion: string;
+  readonly hwType?: string;
+  /** show.version.title. */
+  readonly firmwareVersion: string;
+  /** show.version.release. */
+  readonly firmwareRelease: string;
+  /** show.version.arch; absent when host information was unavailable. */
+  readonly architecture?: string;
+  readonly features: readonly string[];
+  readonly components: readonly string[];
+  readonly switchports: Switchports;
+  readonly usb: DeviceUsb;
+}
+
+/** Plugin-facing device data with helpers bound to one context snapshot. */
+export interface DeviceInfo extends DeviceInfoData {
+  hasFeature(name: string): boolean;
+  hasComponent(name: string): boolean;
+}
+
 export interface HostInfo {
-  deviceName: string;
-  vendor: string;
-  firmwareVersion: string;
-  /** Raw `show.version.arch`; absent when host information was unavailable. */
-  architecture?: string;
   /** Active UI locale at the time this context was created. */
   locale: string;
   /** Active UI theme at the time this context was created. */
@@ -48,6 +99,7 @@ interface PluginContextBase {
   storage: PluginStorage;
   sharedStorage: PluginStorage;
   hostInfo: HostInfo;
+  deviceInfo: DeviceInfo;
   i18n: PluginI18n;
   injector: ServiceInjector;
   instanceId: string;
@@ -61,13 +113,13 @@ interface PluginContextBase {
    * whenever the user toggles it. Returns an unsubscribe function; call it on
    * plugin teardown.
    *
-   * For colours, prefer the `--mndw-*` CSS custom properties. Where a colour must be
+   * For colors, prefer the `--mndw-*` CSS custom properties. Where a color must be
    * computed in JS, use {@link PluginContext.getTokens} — NOT the `MNDW_TOKENS`
    * constant, which is the compiled default palette and ignores any device override.
    */
   onThemeChange(callback: (theme: MndwThemeName) => void): () => void;
   /**
-   * Resolved colour tokens for both themes: the device's imported palette when one is
+   * Resolved color tokens for both themes: the device's imported palette when one is
    * applied, otherwise the compiled defaults. A method rather than a snapshot because
    * the palette can change while a plugin is mounted.
    */

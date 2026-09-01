@@ -1,7 +1,7 @@
 <script lang="ts">
 import type {HostInfo} from '@mndw/sdk';
 import {onDestroy} from 'svelte';
-import {FALLBACK_HOST_INFO} from '../constants.js';
+import {FALLBACK_DEVICE_INFO, FALLBACK_HOST_INFO} from '../constants.js';
 import {createPluginContext} from '../runtime/plugin-context.js';
 import {
   type MountedPlugin,
@@ -157,10 +157,12 @@ function mountPluginRecord(
   active = record;
 
   const hostInfo: HostInfo = appState.hostInfo ?? FALLBACK_HOST_INFO;
+  const deviceInfo = appState.deviceInfo ?? FALLBACK_DEVICE_INFO;
   const {context, dispose} = createPluginContext({
     entry: plugin.entry,
     instanceId: `${plugin.entry.name}:1`,
     hostInfo,
+    deviceInfo,
     pageRoute: controller.pageRoute,
     catalogCell: plugin.catalog,
     services: pluginContextServices,

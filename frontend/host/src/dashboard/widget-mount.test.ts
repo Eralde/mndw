@@ -9,7 +9,7 @@ vi.mock('../runtime/plugin-context.js', () => ({
   createPluginContext: vi.fn(),
 }));
 
-import type {HostInfo, PluginContext} from '@mndw/sdk';
+import type {DeviceInfoData, HostInfo, PluginContext} from '@mndw/sdk';
 import {FALLBACK_HOST_INFO} from '../constants.js';
 import {createPluginContext} from '../runtime/plugin-context.js';
 import {type MountedPlugin, mountPlugin, unmountPlugin} from '../runtime/plugin-lifecycle.js';
@@ -42,11 +42,25 @@ function loadedWidget(name: string): LoadedPlugin {
 }
 
 const explicitHostInfo: HostInfo = {
-  deviceName: 'Keenetic',
-  vendor: 'Keenetic',
-  firmwareVersion: '4.0',
   locale: 'en',
   theme: 'light',
+};
+
+const explicitDeviceInfo: DeviceInfoData = {
+  deviceName: 'Keenetic',
+  vendor: 'Keenetic',
+  manufacturer: 'Keenetic',
+  model: 'Hopper',
+  series: 'Hopper',
+  region: 'WW',
+  hwId: 'id',
+  hwVersion: '1',
+  firmwareVersion: '4.0',
+  firmwareRelease: '4.0',
+  features: [],
+  components: [],
+  switchports: {list: [], layout: [], hasPortStats: false},
+  usb: {ports: []},
 };
 
 const dispose = vi.fn();
@@ -61,6 +75,7 @@ describe('createWidgetContext', () => {
   beforeEach(() => {
     pluginRegistry.clear();
     appState.hostInfo = null;
+    appState.deviceInfo = explicitDeviceInfo;
     vi.mocked(createPluginContext).mockReset();
     vi.mocked(createPluginContext).mockReturnValue(handle);
   });
@@ -68,10 +83,11 @@ describe('createWidgetContext', () => {
   afterEach(() => {
     pluginRegistry.clear();
     appState.hostInfo = null;
+    appState.deviceInfo = null;
   });
 
   it('prefers explicit host info over app state and fallback', () => {
-    appState.hostInfo = {...explicitHostInfo, deviceName: 'from-state'};
+    appState.hostInfo = {locale: 'en', theme: 'dark'};
 
     const plugin = loadedWidget('traffic');
 
@@ -83,6 +99,7 @@ describe('createWidgetContext', () => {
       entry: plugin.entry,
       instanceId: 'traffic:1',
       hostInfo: explicitHostInfo,
+      deviceInfo: explicitDeviceInfo,
       setTileTitle: undefined,
       catalogCell: undefined,
       services: pluginContextServices,
@@ -90,7 +107,7 @@ describe('createWidgetContext', () => {
   });
 
   it('falls back to app-state host info when none is passed', () => {
-    const stateHostInfo = {...explicitHostInfo, deviceName: 'from-state'};
+    const stateHostInfo: HostInfo = {locale: 'en', theme: 'dark'};
 
     appState.hostInfo = stateHostInfo;
 
@@ -104,6 +121,7 @@ describe('createWidgetContext', () => {
       entry: plugin.entry,
       instanceId: 'traffic:1',
       hostInfo: stateHostInfo,
+      deviceInfo: explicitDeviceInfo,
       setTileTitle: undefined,
       catalogCell: undefined,
       services: pluginContextServices,
@@ -121,6 +139,7 @@ describe('createWidgetContext', () => {
       entry: plugin.entry,
       instanceId: 'traffic:1',
       hostInfo: FALLBACK_HOST_INFO,
+      deviceInfo: explicitDeviceInfo,
       setTileTitle: undefined,
       catalogCell: undefined,
       services: pluginContextServices,
@@ -139,6 +158,7 @@ describe('createWidgetContext', () => {
       entry: plugin.entry,
       instanceId: 'traffic:1',
       hostInfo: explicitHostInfo,
+      deviceInfo: explicitDeviceInfo,
       setTileTitle,
       catalogCell: undefined,
       services: pluginContextServices,

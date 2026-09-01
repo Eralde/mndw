@@ -7,7 +7,8 @@ import {createInstance} from './index.js';
 
 const contextFor = (i18n: ReturnType<typeof createTestI18n>): PluginContext => ({
   i18n,
-  hostInfo: {deviceName: 'Test Device'},
+  hostInfo: {locale: 'en', theme: 'dark'},
+  deviceInfo: {deviceName: 'Test Device'},
 } as PluginContext);
 
 describe('generated vanilla locale reactivity', () => {

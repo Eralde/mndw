@@ -40,8 +40,8 @@ async function handleLogout(): Promise<void> {
       ☰
     </mndw-button>
     <span class="mndw-header__brand">mndw</span>
-    {#if appState.hostInfo}
-      <span class="mndw-header__device">{appState.hostInfo?.deviceName}</span>
+    {#if appState.deviceInfo}
+      <span class="mndw-header__device">{appState.deviceInfo.deviceName}</span>
     {/if}
   </div>
   <div class="mndw-header__right">

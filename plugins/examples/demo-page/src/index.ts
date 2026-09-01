@@ -43,8 +43,8 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
   const render = (): void => {
     instanceLabelEl.textContent = i18n.t('instance-id');
     titleEl.textContent = i18n.t('l10n.probe');
-    deviceEl.textContent = `${i18n.t('device')}: ${ctx.hostInfo.deviceName}`;
-    vendorEl.textContent = `${i18n.t('vendor')}: ${ctx.hostInfo.vendor}`;
+    deviceEl.textContent = `${i18n.t('device')}: ${ctx.deviceInfo.deviceName}`;
+    vendorEl.textContent = `${i18n.t('vendor')}: ${ctx.deviceInfo.vendor}`;
     counterEl.textContent = i18n.t('count', {count});
     saveBtn.textContent = i18n.t('save');
   };

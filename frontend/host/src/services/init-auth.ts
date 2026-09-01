@@ -5,7 +5,7 @@ import {type PluginRegistry} from '../runtime/plugin-registry.js';
 import {createAppRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {anyInstalling, startDepsPolling} from '../state/deps-status.svelte.js';
-import {fetchHostInfo} from './host-info.service.js';
+import {fetchDeviceInfo, fetchHostInfo} from './host-info.service.js';
 import {type HostServices, defaultHostServices} from '../host-services.js';
 
 /** True only in a `mndw dev` build; `typeof` guards the undefined case (e.g. under vitest). */
@@ -21,7 +21,7 @@ export interface InitAuthDeps {
 }
 
 /**
- * Bring the app up for an authenticated session: fetch device info (best-effort), populate
+ * Bring the app up for an authenticated session: fetch host/device info (best-effort), populate
  * the plugin registry, build the router from it, then flag the shell ready. Host info stays
  * nullable on failure so logout remains distinguishable.
  *
@@ -43,6 +43,12 @@ export async function initAuthenticated(
     appState.hostInfo = await fetchHostInfo();
   } catch (err) {
     console.error('[mndw] Failed to fetch host info:', err);
+  }
+
+  try {
+    appState.deviceInfo = await fetchDeviceInfo(services.mgmtClient);
+  } catch (err) {
+    console.error('[mndw] Failed to fetch device info:', err);
   }
 
   if (isSandboxMode()) {

@@ -13,7 +13,7 @@ import {ExtraFeaturesBannerStore} from './services/extra-features-banner.store';
 import {NodePositionStore} from './services/node-position.store';
 import {NodeTableColumnsStore} from './services/node-table-columns.store';
 import {
-  HOST_INFO,
+  DEVICE_INFO,
   MWSD_BACKEND,
   MWS_MOCK_OPTIONS,
   MWS_PAGE_ROUTE,
@@ -71,7 +71,7 @@ export function createMwsMapInstance(
     providers: [
       {provide: RCI_MANAGER, useValue: ctx.rciManager},
       {provide: OVERLAY, useValue: ctx.overlay},
-      {provide: HOST_INFO, useValue: ctx.hostInfo},
+      {provide: DEVICE_INFO, useValue: ctx.deviceInfo},
       {provide: MWSD_BACKEND, useValue: ctx.backend ?? null},
       {provide: MWS_PAGE_ROUTE, useValue: ctx.kind === 'page' ? ctx.pageRoute : undefined},
       {provide: PLUGIN_STORAGE, useValue: ctx.storage},

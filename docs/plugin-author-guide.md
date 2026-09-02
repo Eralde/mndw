@@ -59,7 +59,7 @@ export const createInstance = (
   container: HTMLElement,
   context: PluginContext,
 ): PluginInstance => {
-  container.textContent = `Hello ${context.hostInfo.deviceName}`
+  container.textContent = `Hello ${context.deviceInfo.deviceName}`
 
   return {
     unmount: () => {
@@ -72,6 +72,11 @@ export const createInstance = (
 Use `onResize({w, h})` when layout changes affect rendering. `w` and `h` are
 grid units, not pixels. A widget's preferred and minimum dimensions belong in
 the manifest's `size` object.
+
+`context.deviceInfo.switchports` exposes normalized switchport inventory and
+physical layout. USB support is represented by `context.deviceInfo.usb.ports`,
+with one `usb2` or `usb3` entry per physical port. Maximum link speed is not
+static device metadata; read it per port at runtime when needed.
 
 ## Manifest rules
 
@@ -144,7 +149,8 @@ Prefer SDK and context surfaces:
 - `storage` for state belonging to one widget instance;
 - `sharedStorage` for state shared by instances of one plugin;
 - `rciManager` for device communication;
-- `hostInfo` for device identity and theme;
+- `deviceInfo` for device identity, firmware capabilities, and static port inventory/layout;
+- `hostInfo` for the active UI locale and theme;
 - `overlay` for modal, drawer, popover, or custom top-layer UI. At viewport widths
   `<=600px`, host-presented modals and drawers become full-width, content-sized
   bottom sheets; their explicit `width` and `height` options are overridden, and

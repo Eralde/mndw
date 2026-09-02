@@ -1,0 +1,9 @@
+{
+  "PORTS_MAP": {
+    "WAN": {"index": 0, "group": "LAN"},
+    "LAN1": {"index": 1, "group": "WAN"}
+  },
+  "WAN_PORTS": {"WAN": 1},
+  "PORTS_LAYOUT": [["0"], ["1"]],
+  "HAS_TWO_SWITCHES": false
+}

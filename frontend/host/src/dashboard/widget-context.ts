@@ -1,5 +1,5 @@
 import type {HostInfo} from '@mndw/sdk';
-import {FALLBACK_HOST_INFO} from '../constants.js';
+import {FALLBACK_DEVICE_INFO, FALLBACK_HOST_INFO} from '../constants.js';
 import {type PluginContextHandle, createPluginContext} from '../runtime/plugin-context.js';
 import type {PluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
@@ -20,6 +20,7 @@ export function createWidgetContext(
   setTileTitle?: (title: string) => void,
 ): PluginContextHandle {
   const effectiveHostInfo = hostInfo ?? appState.hostInfo ?? FALLBACK_HOST_INFO;
+  const effectiveDeviceInfo = appState.deviceInfo ?? FALLBACK_DEVICE_INFO;
   const plugin = registry.get(pluginName);
 
   if (!plugin) {
@@ -30,6 +31,7 @@ export function createWidgetContext(
     entry: plugin.entry,
     instanceId,
     hostInfo: effectiveHostInfo,
+    deviceInfo: effectiveDeviceInfo,
     setTileTitle,
     catalogCell: plugin.catalog,
     services: pluginContextServices,

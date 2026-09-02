@@ -235,6 +235,56 @@ describe('mgmt-client', () => {
     );
   });
 
+  it('getDeviceHardware GETs the protected endpoint and decodes hardware', async () => {
+    const hardware = {
+      list: [{
+        id: 'WAN',
+        label: '0',
+        index: 0,
+        type: 'ethernet',
+        group: 'WAN',
+        color: 'blue',
+        interfaceId: 'GigabitEthernet1/0',
+      }],
+      layout: [['0']],
+      hasPortStats: false,
+    };
+
+    fetchImpl.mockResolvedValue(jsonResponse(200, {switchports: hardware, usbPortCount: 1}));
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.getDeviceHardware()).resolves.toEqual({switchports: hardware, usbPortCount: 1});
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/mgmt/device-hardware',
+      expect.objectContaining({method: 'GET', signal: expect.any(AbortSignal)}),
+    );
+  });
+
+  it.each([
+    ['non-2xx', jsonResponse(502, {error: {code: 'BAD_GATEWAY'}})],
+    ['malformed 200', jsonResponse(200, {switchports: {}})],
+    ['timeout', new DOMException('timed out', 'TimeoutError')],
+  ])('getDeviceHardware returns fresh empty hardware on %s', async (_name, failure) => {
+    if (failure instanceof Response) {
+      fetchImpl.mockResolvedValue(failure);
+    } else {
+      fetchImpl.mockRejectedValue(failure);
+    }
+
+    const client = createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    const first = await client.getDeviceHardware();
+    const second = await client.getDeviceHardware();
+
+    expect(first).toEqual({
+      switchports: {list: [], layout: [], hasPortStats: false},
+      usbPortCount: 0,
+    });
+    expect(second.switchports.list).not.toBe(first.switchports.list);
+    expect(second.switchports.layout).not.toBe(first.switchports.layout);
+  });
+
   it('messageForError maps known codes and includes MANIFEST_INVALID detail', () => {
     expect(messageForError(new MgmtError('x', 'UPLOAD_TOO_LARGE'))).toContain('10 MB');
     expect(messageForError(new MgmtError('x', 'MANIFEST_INVALID', 'route reserved'))).toContain('route reserved');

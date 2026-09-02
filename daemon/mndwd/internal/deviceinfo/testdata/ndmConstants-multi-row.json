@@ -1,0 +1,10 @@
+{
+  "HAS_TWO_SWITCHES": true,
+  "PORTS_MAP": {
+    "LAN3": {"index": 3, "name": "3", "type": "ethernet", "group": "LAN", "maxSpeed": 1000},
+    "WAN": {"index": 0, "name": "0", "type": "ethernet", "group": "WAN", "maxSpeed": 2500},
+    "LAN1": {"index": 1, "name": "1", "type": "ethernet", "group": "LAN", "maxSpeed": 1000},
+    "LAN2": {"index": 2, "name": "2", "type": "ethernet", "group": "LAN", "maxSpeed": 1000}
+  },
+  "PORTS_LAYOUT": [["0", "1"], ["2", "3"]]
+}

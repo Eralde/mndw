@@ -55,4 +55,31 @@ describe('app state mobile default', () => {
     expect(appState.mobileSidebarOpen).toBe(false);
     expect(appState.desktopSidebarCollapsed).toBe(true);
   });
+
+  it('clears host and device snapshots on logout', async () => {
+    const {appState, resetToLogin} = await loadAppState(false);
+
+    appState.hostInfo = {locale: 'en', theme: 'dark'};
+    appState.deviceInfo = {
+      deviceName: 'Hopper',
+      vendor: 'Keenetic',
+      manufacturer: 'Keenetic',
+      model: 'Hopper',
+      series: 'Hopper',
+      region: 'WW',
+      hwId: 'id',
+      hwVersion: '1',
+      firmwareVersion: '4',
+      firmwareRelease: '4',
+      features: [],
+      components: [],
+      switchports: {list: [], layout: [], hasPortStats: false},
+      usb: {ports: []},
+    };
+
+    resetToLogin();
+
+    expect(appState.hostInfo).toBeNull();
+    expect(appState.deviceInfo).toBeNull();
+  });
 });

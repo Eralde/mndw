@@ -1,12 +1,12 @@
 import {TestBed} from '@angular/core/testing';
-import type {BackendClient, HostInfo} from '@mndw/sdk';
+import type {BackendClient, DeviceInfo} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {vi} from 'vitest';
 import {MwsApiService, type MwsMemberResult} from '../api/mws-api.service';
 import {normalizeBridge, normalizeDeviceHosts, normalizeMembers, normalizeVersion} from '../api/normalize';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
-import {HOST_INFO, MWSD_BACKEND, MWS_MOCK_OPTIONS, type MwsMockOptions} from '../tokens';
+import {DEVICE_INFO, MWSD_BACKEND, MWS_MOCK_OPTIONS, type MwsMockOptions} from '../tokens';
 import {MwsDataService} from '../services/mws-data.service';
 import {MwsMockDataService} from '../services/mws-mock-data.service';
 
@@ -19,11 +19,23 @@ export interface FakeApi {
   readonly showControllerTelemetry: ReturnType<typeof vi.fn>;
 }
 
-export const HOST: HostInfo = {
+export const HOST: DeviceInfo = {
   deviceName: 'My Router',
   vendor: 'Keenetic',
+  manufacturer: 'Keenetic',
+  model: 'Hopper',
+  series: 'Hopper',
+  region: 'WW',
+  hwId: 'id',
+  hwVersion: '1',
   firmwareVersion: '5.1.1',
-  theme: 'light',
+  firmwareRelease: '5.1.1',
+  features: [],
+  components: [],
+  switchports: {list: [], layout: [], hasPortStats: false},
+  usb: {ports: []},
+  hasFeature: () => false,
+  hasComponent: () => false,
 };
 
 export function goodApi(): FakeApi {
@@ -48,7 +60,7 @@ export function makeLiveServiceWithBackend(api: FakeApi, backend: BackendClient 
     providers: [
       MwsDataService,
       {provide: MwsApiService, useValue: api as unknown as MwsApiService},
-      {provide: HOST_INFO, useValue: HOST},
+      {provide: DEVICE_INFO, useValue: HOST},
       {provide: MWSD_BACKEND, useValue: backend},
     ],
   });
@@ -75,7 +87,7 @@ export function makeMockService(
     providers: [
       MwsMockDataService,
       {provide: MwsApiService, useValue: api as unknown as MwsApiService},
-      {provide: HOST_INFO, useValue: HOST},
+      {provide: DEVICE_INFO, useValue: HOST},
       {provide: MWSD_BACKEND, useValue: backend},
       {provide: MWS_MOCK_OPTIONS, useValue: mockOptions},
     ],

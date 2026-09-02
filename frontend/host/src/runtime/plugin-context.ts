@@ -1,6 +1,7 @@
 import {
   type BackendClient,
   type BackendDescriptor,
+  type DeviceInfoData,
   type HostInfo,
   type PageRoute,
   type PluginContext,
@@ -19,6 +20,7 @@ import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import type {HostServices} from '../host-services.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {createReadonlyInjector, createServiceFacade} from './service-facade.js';
+import {createDeviceInfoContext, createHostInfoContext} from './device-info-context.js';
 
 export type OverlayDispose = (reason?: 'plugin-unmount' | 'host-navigation') => void;
 
@@ -67,6 +69,7 @@ export interface CreatePluginContextOptions {
   entry: PluginListEntry;
   instanceId: string;
   hostInfo: HostInfo;
+  deviceInfo: DeviceInfoData;
   setTileTitle?: (title: string) => void;
   pageRoute?: PageRoute;
   catalogCell?: PluginCatalogCell;
@@ -74,7 +77,7 @@ export interface CreatePluginContextOptions {
 }
 
 export function createPluginContext(options: CreatePluginContextOptions): PluginContextHandle {
-  const {entry, instanceId, hostInfo, setTileTitle, pageRoute, catalogCell} = options;
+  const {entry, instanceId, hostInfo, deviceInfo, setTileTitle, pageRoute, catalogCell} = options;
   const getHostLocale = options.services?.locale === undefined
     ? getLocale
     : () => options.services?.locale?.getLocale() ?? getLocale();
@@ -114,9 +117,8 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
       rciManager: createServiceFacade(rciService.driver, RCI_MANAGER_METHODS) as unknown as PluginContext['rciManager'],
       storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
       sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
-      hostInfo: Object.freeze(
-        Object.assign(Object.create(null), {...hostInfo, locale: getHostLocale(), theme: getTheme()}),
-      ),
+      hostInfo: createHostInfoContext(hostInfo, getHostLocale(), getTheme()),
+      deviceInfo: createDeviceInfoContext(deviceInfo),
       i18n: createPluginI18n(catalogCell, getHostLocale, subscribeHostLocale),
       injector: createReadonlyInjector(injector),
       instanceId,

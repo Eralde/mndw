@@ -1,4 +1,4 @@
-import {FALLBACK_HOST_INFO} from '../constants.js';
+import {FALLBACK_DEVICE_INFO, FALLBACK_HOST_INFO} from '../constants.js';
 import {createPluginContext} from '../runtime/plugin-context.js';
 import type {OverlayTeardownReason} from '../runtime/plugin-lifecycle.js';
 import {type LoadedPlugin, type PluginRegistry} from '../runtime/plugin-registry.js';
@@ -284,6 +284,7 @@ export async function remountWidgetTiles(
       controller.setTileTitle('');
 
       const hostInfo = appState.hostInfo ?? FALLBACK_HOST_INFO;
+      const deviceInfo = appState.deviceInfo ?? FALLBACK_DEVICE_INFO;
 
       controller.handle = mountWidgetTile(
         controller.body,
@@ -292,6 +293,7 @@ export async function remountWidgetTiles(
           entry: plugin.entry,
           instanceId: controller.instanceId,
           hostInfo,
+          deviceInfo,
           setTileTitle: controller.setTileTitle,
           catalogCell: plugin.catalog,
           services: pluginContextServices,

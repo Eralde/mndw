@@ -1,0 +1,5 @@
+{
+  "PORTS_MAP": {
+    "LAN1": {"index": 0, "port": "0", "type": "ethernet", "group": "LAN", "maxSpeed": 1000}
+  }
+}

@@ -16,7 +16,7 @@ let count = $state(0);
   >
     {$translator.t('l10n.probe')}
   </h3>
-  <p class="device">Device: {ctx.hostInfo.deviceName}</p>
+  <p class="device">Device: {ctx.deviceInfo.deviceName}</p>
   <button
     class="count"
     type="button"

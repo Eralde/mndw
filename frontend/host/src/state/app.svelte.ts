@@ -1,4 +1,4 @@
-import type {HostInfo, MndwThemeName} from '@mndw/sdk';
+import type {DeviceInfoData, HostInfo, MndwThemeName} from '@mndw/sdk';
 import {mobileMediaQuery} from '../layout/breakpoint.js';
 import {getLocale, subscribeLocale, subscribeLocalePending} from '../services/locale.service.js';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';
@@ -10,6 +10,7 @@ interface AppState {
   /** True once the authenticated shell is built (host info fetched, router created). */
   ready: boolean;
   hostInfo: HostInfo | null;
+  deviceInfo: DeviceInfoData | null;
   /** User-facing message set by the plugin loader when the plugin list can't be loaded. */
   pluginLoadError: string | null;
   mobileSidebarOpen: boolean;
@@ -23,6 +24,7 @@ export const appState: AppState = $state({
   authenticated: false,
   ready: false,
   hostInfo: null,
+  deviceInfo: null,
   pluginLoadError: null,
   mobileSidebarOpen: false,
   desktopSidebarCollapsed: false,
@@ -45,6 +47,7 @@ export function resetToLogin(): void {
   appState.authenticated = false;
   appState.ready = false;
   appState.hostInfo = null;
+  appState.deviceInfo = null;
 }
 
 // Keep the reactive UI mirror in sync with the theme service (source of truth).

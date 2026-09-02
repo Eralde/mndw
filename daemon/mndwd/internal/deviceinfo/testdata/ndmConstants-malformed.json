@@ -1,0 +1,9 @@
+{
+  "PORTS_MAP": {
+    "MISSING_INDEX": {"name": "missing", "maxSpeed": 1000},
+    "BAD_SPEED": {"index": 0, "name": "bad", "maxSpeed": "not-a-speed"},
+    "ZETA": {"index": 1, "maxSpeed": 1000},
+    "ALPHA": {"index": 1, "maxSpeed": 1000},
+    "STRING_SPEED": {"index": "2", "maxSpeed": "2500", "name": "2"}
+  }
+}

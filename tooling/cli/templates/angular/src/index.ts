@@ -14,7 +14,7 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
       if (
         reflectComponentType(component.componentType)?.inputs.some(({templateName}) => templateName === 'deviceName')
       ) {
-        component.setInput('deviceName', ctx.hostInfo.deviceName);
+        component.setInput('deviceName', ctx.deviceInfo.deviceName);
       }
     },
   });

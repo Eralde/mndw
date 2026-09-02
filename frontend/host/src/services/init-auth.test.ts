@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
-vi.mock('./host-info.service.js', () => ({fetchHostInfo: vi.fn()}));
+vi.mock('./host-info.service.js', () => ({fetchHostInfo: vi.fn(), fetchDeviceInfo: vi.fn()}));
 vi.mock('../runtime/plugin-loader.js', () => ({loadPlugins: vi.fn()}));
 vi.mock('../runtime/sandbox-loader.js', () => ({loadSandboxPlugin: vi.fn()}));
 vi.mock('../runtime/sandbox-virtual.js', () => ({
@@ -14,23 +14,39 @@ import {loadSandboxPlugin} from '../runtime/sandbox-loader.js';
 import {sandboxVirtualImports, setupSandboxHmr} from '../runtime/sandbox-virtual.js';
 import {createAppRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
-import {fetchHostInfo} from './host-info.service.js';
+import {fetchDeviceInfo, fetchHostInfo} from './host-info.service.js';
 import {initAuthenticated} from './init-auth.js';
 import {createHostServices} from '../host-services.js';
 
 const hostInfo = {
-  deviceName: 'Keenetic',
-  vendor: 'Keenetic',
-  firmwareVersion: '4.0',
   locale: 'en',
   theme: 'dark' as const,
+};
+
+const deviceInfo = {
+  deviceName: 'Keenetic',
+  vendor: 'Keenetic',
+  manufacturer: 'Keenetic',
+  model: 'Hopper',
+  series: 'Hopper',
+  region: 'WW',
+  hwId: 'hopper',
+  hwVersion: '1',
+  firmwareVersion: '4.0',
+  firmwareRelease: '4.0',
+  features: [],
+  components: [],
+  switchports: {list: [], layout: [], hasPortStats: false},
+  usb: {ports: []},
 };
 
 describe('initAuthenticated', () => {
   beforeEach(() => {
     appState.ready = false;
     appState.hostInfo = null;
+    appState.deviceInfo = null;
     vi.mocked(fetchHostInfo).mockResolvedValue(hostInfo);
+    vi.mocked(fetchDeviceInfo).mockResolvedValue(deviceInfo);
     vi.mocked(loadPlugins).mockResolvedValue(undefined);
     vi.mocked(createAppRouter).mockReturnValue({} as ReturnType<typeof createAppRouter>);
   });
@@ -68,6 +84,7 @@ describe('initAuthenticated', () => {
     expect(loaded[0]?.catalogService).toBe(services.catalog);
     expect(loaded[0]?.getLocale?.()).toBe(services.locale.getLocale());
     expect(routedRegistry).toBe(services.registry);
+    expect(fetchDeviceInfo).toHaveBeenCalledWith(services.mgmtClient);
   });
 
   it('loads the sandbox plugin and wires HMR instead of the daemon list in sandbox mode', async () => {
@@ -123,9 +140,24 @@ describe('initAuthenticated', () => {
 
     expect(errorSpy).toHaveBeenCalled();
     expect(appState.hostInfo).toBeNull();
+    expect(appState.deviceInfo).toEqual(deviceInfo);
     expect(loadPlugins).toHaveBeenCalledTimes(1);
     expect(createAppRouter).toHaveBeenCalledTimes(1);
     expect(appState.ready).toBe(true);
+
+    errorSpy.mockRestore();
+  });
+
+  it('continues startup when fetching device info fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    vi.mocked(fetchDeviceInfo).mockRejectedValue(new Error('device info down'));
+
+    await initAuthenticated();
+
+    expect(errorSpy).toHaveBeenCalled();
+    expect(appState.deviceInfo).toBeNull();
+    expect(loadPlugins).toHaveBeenCalledTimes(1);
 
     errorSpy.mockRestore();
   });

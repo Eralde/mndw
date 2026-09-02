@@ -11,7 +11,8 @@ const contextFor = (
   backend?: Partial<BackendClient>,
 ): PluginContext => ({
   i18n,
-  hostInfo: {deviceName: 'Test Device'},
+  hostInfo: {locale: 'en', theme: 'dark'},
+  deviceInfo: {deviceName: 'Test Device'},
   backend,
 } as PluginContext);
 

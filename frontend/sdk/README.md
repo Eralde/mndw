@@ -119,7 +119,7 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
     rootComponent: AppComponent,
     providers: [provideTranslator(ctx.i18n)],
     configure: ({component}) => {
-      component.setInput('deviceName', ctx.hostInfo.deviceName);
+      component.setInput('deviceName', ctx.deviceInfo.deviceName);
     },
   });
 }
@@ -198,6 +198,7 @@ interface WidgetPluginContext {
   storage: PluginStorage;
   sharedStorage: PluginStorage;
   hostInfo: HostInfo;
+  deviceInfo: DeviceInfo;
   i18n: PluginI18n;
   injector: ServiceInjector;
   instanceId: string;
@@ -216,6 +217,7 @@ interface PagePluginContext {
   storage: PluginStorage;
   sharedStorage: PluginStorage;
   hostInfo: HostInfo;
+  deviceInfo: DeviceInfo;
   i18n: PluginI18n;
   injector: ServiceInjector;
   instanceId: string;
@@ -243,10 +245,49 @@ class PageRouteError extends Error {
 }
 
 interface HostInfo {
+  locale: string;
+  theme: MndwThemeName;
+}
+
+interface DeviceInfo {
   deviceName: string;
   vendor: string;
+  manufacturer: string;
+  model: string;
+  series: string;
+  region: string;
+  hwId: string;
+  hwVersion: string;
+  hwType?: string;
   firmwareVersion: string;
-  theme: MndwThemeName;
+  firmwareRelease: string;
+  architecture?: string;
+  features: readonly string[];
+  components: readonly string[];
+  switchports: Switchports;
+  usb: DeviceUsb;
+  hasFeature(name: string): boolean;
+  hasComponent(name: string): boolean;
+}
+
+interface Switchports {
+  list: readonly Switchport[];
+  layout: readonly (readonly string[])[];
+  hasPortStats: boolean;
+}
+
+interface Switchport {
+  id: string;
+  label: string;
+  index: number;
+  type: string;
+  group: string;
+  color: string;
+  interfaceId: string;
+}
+
+interface DeviceUsb {
+  ports: readonly ('usb2' | 'usb3')[];
 }
 
 interface PluginStorage {

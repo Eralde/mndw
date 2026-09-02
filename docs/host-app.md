@@ -20,7 +20,7 @@ The startup sequence is:
 
 1. initialize theme and session services;
 2. check network-device authentication;
-3. fetch host information, with a safe fallback on failure;
+3. fetch UI host information and device information independently, each with a safe fallback;
 4. fetch `GET /api/mgmt/list` and load enabled plugin modules;
 5. create routes and render the app shell.
 
@@ -75,12 +75,18 @@ Each plugin instance receives a context containing:
 
 - the RCI manager shared by the host;
 - per-instance `storage` and per-plugin `sharedStorage`;
-- device name, vendor, firmware, and theme in `hostInfo`;
+- UI locale and theme in `hostInfo`;
+- device identity, firmware capabilities, switchport inventory/layout, and USB version per physical port in `deviceInfo`;
 - host service lookup through `injector`;
 - a unique `instanceId`;
 - theme-change subscription;
 - the framework-neutral overlay service;
 - an optional typed backend client.
+
+`deviceInfo.switchports` contains normalized inventory and physical layout.
+`deviceInfo.usb.ports` contains one `usb2` or `usb3` value per physical USB
+port. Static device info has no maximum link speed; read current speed per port
+at runtime.
 
 The host owns overlay stacking, escape and outside dismissal, scroll locking,
 and cleanup. A plugin supplies content; it does not own the top layer or

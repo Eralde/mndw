@@ -32,7 +32,7 @@ import {
 import type {BridgeInterfaceRecord, DeviceHostRecord, MwsMemberRecord, ShowVersionRecord} from '../api/rci.types';
 import {buildMap} from '../domain/mws/map-builder';
 import type {ControllerInfo, MwsNode} from '../domain/mws/mws.types';
-import {HOST_INFO, MWSD_BACKEND} from '../tokens';
+import {DEVICE_INFO, MWSD_BACKEND} from '../tokens';
 
 export const POLL_INTERVAL_MS = 3_000;
 export const MWSD_STATUS_POLL_INTERVAL_MS = 3_000;
@@ -95,7 +95,7 @@ const backendErrorCode = (error: unknown): string | null => {
 @Injectable()
 export class MwsDataService {
   private readonly api = inject(MwsApiService);
-  private readonly hostInfo = inject(HOST_INFO);
+  private readonly deviceInfo = inject(DEVICE_INFO);
   private readonly backend = inject(MWSD_BACKEND);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -538,7 +538,7 @@ export class MwsDataService {
     this.version = version;
 
     this.applyPoll(
-      {kind: 'ok', members, hosts, bridge, controllerName: this.hostInfo.deviceName, controllerTelemetry: null},
+      {kind: 'ok', members, hosts, bridge, controllerName: this.deviceInfo.deviceName, controllerTelemetry: null},
       false,
     );
   }
@@ -569,8 +569,8 @@ export class MwsDataService {
       ip: result.bridge.address,
       name: result.controllerName !== null && result.controllerName.trim() !== ''
         ? result.controllerName
-        : this.hostInfo.deviceName.trim() !== ''
-        ? this.hostInfo.deviceName
+        : this.deviceInfo.deviceName.trim() !== ''
+        ? this.deviceInfo.deviceName
         : (this.version?.model ?? result.bridge.mac),
       model: this.version?.model ?? null,
       firmware: this.version?.firmware ?? null,

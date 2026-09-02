@@ -1,0 +1,13 @@
+{
+  "USB_PORTS_NUMBER": 1,
+  "HAS_TWO_SWITCHES": true,
+  "HAS_PORTS_STAT": true,
+  "WAN_PORTS": {"WAN": 1},
+  "PORTS_MAP": {
+    "WAN": {"index": 0, "port": "0", "color": "blue", "type": "ethernet", "name": "0", "interfaceId": "GigabitEthernet1/0", "group": "WAN", "maxSpeed": 1000},
+    "LAN1": {"index": 1, "port": "1", "color": "gray", "type": "ethernet", "name": "1", "interfaceId": "GigabitEthernet0/0", "group": "LAN", "maxSpeed": 1000},
+    "LAN2": {"index": 2, "port": "2", "color": "gray", "type": "ethernet", "name": "2", "interfaceId": "GigabitEthernet0/1", "group": "LAN", "maxSpeed": 1000},
+    "LAN3": {"index": 3, "port": "3", "color": "gray", "type": "ethernet", "name": "3", "interfaceId": "GigabitEthernet0/2", "group": "LAN", "maxSpeed": 1000}
+  },
+  "PORTS_LAYOUT": [["0", "1", "2", "3"]]
+}

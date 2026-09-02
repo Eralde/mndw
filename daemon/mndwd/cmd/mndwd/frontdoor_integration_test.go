@@ -74,6 +74,14 @@ func TestFrontDoorAssembly(t *testing.T) {
 	}
 
 	device := newFrontDoorIPv4Server(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/ndmConstants.json" {
+			writer.Header().Set("Content-Type", "application/json")
+
+			_, _ = io.WriteString(writer, `{"PORTS_MAP":{"WAN":{"index":0,"name":"0","maxSpeed":1000}}}`)
+
+			return
+		}
+
 		_, _ = io.WriteString(writer, "device:"+request.URL.Path)
 	}))
 
@@ -148,6 +156,10 @@ func TestFrontDoorAssembly(t *testing.T) {
 
 	if code, body := get("/api/mgmt/self-update/status"); code != http.StatusOK || body == "" {
 		t.Fatalf("self-update status = %d %q, want 200", code, body)
+	}
+
+	if code, body := get("/api/mgmt/device-hardware"); code != http.StatusOK || !strings.Contains(body, `"id":"WAN"`) {
+		t.Fatalf("device ports = %d %q, want normalized 200 response", code, body)
 	}
 
 	post := func(withCSRF bool) (int, string) {

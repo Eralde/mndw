@@ -31,7 +31,6 @@ export const showVersionResponseSchema = z.object({
   hw_type: z.string().optional(),
   hw_id: z.string(),
   device: z.string(),
-  class: z.string().optional(),
   region: z.string(),
   description: z.string(),
 });

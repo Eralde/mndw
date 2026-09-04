@@ -14,6 +14,7 @@ const registry = services.registry;
 const pluginContextServices = {
   locale: services.locale,
   palette: services.palette,
+  telemetry: services.telemetry,
 };
 
 /**

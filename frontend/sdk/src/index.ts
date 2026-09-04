@@ -98,6 +98,23 @@ export type {DependencyConsumer, SharedDependency} from '../shared-dependencies.
  */
 export {MNDW_SCALE, MNDW_TOKENS} from './tokens.js';
 export type {MndwThemeName} from './tokens.js';
+export {createTelemetryClient, TelemetryError} from './telemetry-client.js';
+export type {
+  ProjectedBand,
+  ProjectedBandPoint,
+  ProjectedChartColor,
+  ProjectedPoint,
+  ProjectedSegment,
+  ProjectedSeries,
+  ProjectedSnapshot,
+  ProjectedValueDomain,
+  ProjectRange,
+  TelemetryClient,
+  TelemetrySample,
+  TelemetrySeries,
+  TelemetrySnapshot,
+  TelemetryTier,
+} from './telemetry-client.js';
 export {
   contrastRatio,
   PALETTE_CONTRAST_PAIRS,

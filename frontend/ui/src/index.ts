@@ -34,13 +34,17 @@ export {MNDW_SPARKLINE_TAG, MndwSparkline} from './charts/sparkline.js';
 export {MNDW_HEAT_STRIP_TAG, MndwHeatStrip} from './charts/heat-strip.js';
 export type {
   MndwBarChartProps,
+  MndwChartBand,
+  MndwChartBandPoint,
   MndwChartColor,
   MndwChartDomain,
   MndwChartPoint,
   MndwChartPresentationProps,
   MndwChartSample,
+  MndwChartSegment,
   MndwChartSeries,
   MndwChartTimeFormatter,
+  MndwChartValueDomain,
   MndwChartValueFormatter,
   MndwHeatStripProps,
   MndwLineChartProps,

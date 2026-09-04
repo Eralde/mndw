@@ -8,8 +8,11 @@ import {
   formatSpeed,
   getSpeedUpperLimit,
   resolveDomain,
+  splitFinitePoints,
 } from './chart-utils.js';
 import type {
+  MndwChartBand,
+  MndwChartBandPoint,
   MndwChartColor,
   MndwChartDomain,
   MndwChartPoint,
@@ -62,7 +65,9 @@ export class MndwLineChart extends LitElement {
 
   public static properties: PropertyDeclarations = {
     series: {attribute: false},
+    bands: {attribute: false},
     domain: {attribute: false},
+    valueDomain: {attribute: false},
     emptyLabel: {type: String, attribute: 'empty-label'},
     valueLabel: {type: String, attribute: 'value-label'},
     valueFormatter: {attribute: false},
@@ -79,7 +84,9 @@ export class MndwLineChart extends LitElement {
   ];
 
   declare public series: readonly MndwChartSeries[];
+  declare public bands: readonly MndwChartBand[];
   declare public domain: MndwChartDomain | undefined;
+  declare public valueDomain: {min: number; max: number} | undefined;
   declare public emptyLabel: string | undefined;
   declare public valueLabel: string | undefined;
   declare public valueFormatter: MndwChartValueFormatter;
@@ -103,6 +110,7 @@ export class MndwLineChart extends LitElement {
     super();
 
     this.series = [];
+    this.bands = [];
     this.domain = undefined;
     this.valueFormatter = formatSpeed;
     this.timeFormatter = formatClockTime;
@@ -112,7 +120,8 @@ export class MndwLineChart extends LitElement {
   }
 
   protected override render(): TemplateResult {
-    const validSeries = this.series.some((item) => filterFinitePoints(item.data).length > 0);
+    const validSeries = this.series.some((item) => filterFinitePoints(item.data).length > 0)
+      || this.bands.some((item) => item.data.length > 0);
 
     return renderChartFrame({
       hasContent: validSeries,
@@ -128,13 +137,16 @@ export class MndwLineChart extends LitElement {
   protected override willUpdate(changedProperties: Map<PropertyKey, unknown>): void {
     if (
       changedProperties.has('series')
+      || changedProperties.has('bands')
       || changedProperties.has('domain')
+      || changedProperties.has('valueDomain')
       || changedProperties.has('emptyLabel')
       || changedProperties.has('valueLabel')
       || changedProperties.has('valueFormatter')
       || changedProperties.has('timeFormatter')
     ) {
-      const hasValidSeries = this.series.some((item) => filterFinitePoints(item.data).length > 0);
+      const hasValidSeries = this.series.some((item) => filterFinitePoints(item.data).length > 0)
+        || this.bands.some((item) => item.data.length > 0);
 
       if (this.lastPointerPosition === null || !hasValidSeries) {
         this.tooltipState = null;
@@ -149,7 +161,9 @@ export class MndwLineChart extends LitElement {
   protected override updated(changedProperties: Map<PropertyKey, unknown>): void {
     if (
       changedProperties.has('series')
+      || changedProperties.has('bands')
       || changedProperties.has('domain')
+      || changedProperties.has('valueDomain')
       || changedProperties.has('emptyLabel')
       || changedProperties.has('valueLabel')
       || changedProperties.has('valueFormatter')
@@ -192,11 +206,10 @@ export class MndwLineChart extends LitElement {
     this.frame.disconnectPlot();
 
     const svgElement = container.querySelector<SVGSVGElement>('svg');
-    const validSeries = this.series
-      .map((item) => ({...item, data: filterFinitePoints(item.data)}))
-      .filter((item) => item.data.length > 0);
+    const validSeries = this.series.filter((item) => filterFinitePoints(item.data).length > 0);
+    const validBands = this.bands.filter((item) => item.data.length > 0);
 
-    if (svgElement === null || validSeries.length === 0) {
+    if (svgElement === null || (validSeries.length === 0 && validBands.length === 0)) {
       return;
     }
 
@@ -207,7 +220,9 @@ export class MndwLineChart extends LitElement {
     const padding = isSmall
       ? {top: 6, right: 40, bottom: 22, left: 58}
       : {top: 10, right: 60, bottom: 30, left: 72};
-    const allPoints = validSeries.flatMap((item) => item.data);
+    const allPoints = validSeries.length > 0
+      ? validSeries.flatMap((item) => filterFinitePoints(item.data))
+      : validBands.flatMap((item) => item.data.map((point) => ({time: point.time, value: point.max})));
     const resolvedDomain = resolveDomain(allPoints, this.domain);
 
     if (resolvedDomain === null) {
@@ -215,12 +230,13 @@ export class MndwLineChart extends LitElement {
     }
 
     const maxValue = Math.max(...allPoints.map((point) => point.value), 1);
-    const upperLimit = getSpeedUpperLimit(maxValue);
+    const lowerLimit = this.valueDomain?.min ?? 0;
+    const upperLimit = this.valueDomain?.max ?? getSpeedUpperLimit(maxValue);
     const xScale = d3.scaleTime()
       .domain([new Date(resolvedDomain.start), new Date(resolvedDomain.end)])
       .range([padding.left, Math.max(width - padding.right, padding.left + 1)]);
     const yScale = d3.scaleLinear()
-      .domain([0, upperLimit])
+      .domain([lowerLimit, upperLimit])
       .range([Math.max(height - padding.bottom, padding.top + 1), padding.top]);
     const axisFontSize = isSmall
       ? Math.max(8, Math.min(11, Math.floor(width / 50)))
@@ -237,26 +253,43 @@ export class MndwLineChart extends LitElement {
       .curve(d3.curveMonotoneX);
     const areaGenerator = d3.area<MndwChartPoint>()
       .x((point) => xScale(point.time))
-      .y0(yScale(0))
+      .y0(yScale(lowerLimit))
       .y1((point) => yScale(point.value))
       .curve(d3.curveMonotoneX);
 
     for (const item of validSeries) {
       const color = colorVariable(item.color);
+      const segments = item.segments?.map((segment) => filterFinitePoints(segment.data))
+        ?? splitFinitePoints(item.data);
 
-      if (item.fill) {
+      for (const segment of segments.filter((candidate) => candidate.length > 0)) {
+        if (item.fill) {
+          svg.append('path')
+            .attr('data-color', item.color)
+            .style('fill', `color-mix(in srgb, ${color} 15%, transparent)`)
+            .attr('d', areaGenerator(segment));
+        }
+
         svg.append('path')
           .attr('data-color', item.color)
-          .style('fill', `color-mix(in srgb, ${color} 15%, transparent)`)
-          .attr('d', areaGenerator(item.data));
+          .style('fill', 'none')
+          .style('stroke', color)
+          .attr('stroke-width', 2)
+          .attr('d', lineGenerator(segment));
       }
+    }
+
+    for (const band of validBands) {
+      const bandArea = d3.area<MndwChartBandPoint>()
+        .x((point) => xScale(point.time))
+        .y0((point) => yScale(point.min))
+        .y1((point) => yScale(point.max))
+        .curve(d3.curveMonotoneX);
 
       svg.append('path')
-        .attr('data-color', item.color)
-        .style('fill', 'none')
-        .style('stroke', color)
-        .attr('stroke-width', 2)
-        .attr('d', lineGenerator(item.data));
+        .attr('data-band', band.id)
+        .style('fill', `color-mix(in srgb, ${colorVariable(band.color)} 15%, transparent)`)
+        .attr('d', bandArea(band.data));
     }
 
     const yGrid = svg.append('g')

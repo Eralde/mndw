@@ -15,7 +15,9 @@ export interface MndwChartPresentationProps {
 
 export interface MndwLineChartProps extends MndwChartPresentationProps {
   series?: readonly MndwChartSeries[];
+  bands?: readonly MndwChartBand[];
   domain?: MndwChartDomain;
+  valueDomain?: MndwChartValueDomain;
 }
 
 export interface MndwBarChartProps extends MndwChartPresentationProps {
@@ -25,6 +27,7 @@ export interface MndwBarChartProps extends MndwChartPresentationProps {
 
 export interface MndwSparklineProps extends MndwChartPresentationProps {
   points?: readonly MndwChartSample[];
+  timeDomain?: MndwChartDomain;
   max?: number;
   color?: MndwChartColor;
 }
@@ -47,9 +50,31 @@ export interface MndwChartSeries {
   data: readonly MndwChartPoint[];
   color: MndwChartColor;
   fill?: boolean;
+  segments?: readonly MndwChartSegment[];
+}
+
+export interface MndwChartSegment {
+  readonly data: readonly MndwChartPoint[];
+}
+
+export interface MndwChartBandPoint {
+  readonly time: number;
+  readonly min: number;
+  readonly max: number;
+}
+
+export interface MndwChartBand {
+  readonly id: string;
+  readonly data: readonly MndwChartBandPoint[];
+  readonly color: MndwChartColor;
 }
 
 export interface MndwChartDomain {
   start: number;
   end: number;
+}
+
+export interface MndwChartValueDomain {
+  readonly min: number;
+  readonly max: number;
 }

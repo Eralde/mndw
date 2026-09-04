@@ -29,6 +29,7 @@ import {
   MndwBarChart,
   type MndwBarChartProps,
   type MndwButton,
+  type MndwChartDomain,
   type MndwChartPoint,
   type MndwChartSample,
   type MndwChartSeries,
@@ -124,6 +125,7 @@ describe('defineMndwUi', () => {
     expectTypeOf<MndwBarChartProps['valueFormatter']>()
       .toEqualTypeOf<MndwChartValueFormatter | undefined>();
     expectTypeOf<MndwSparklineProps['points']>().toEqualTypeOf<readonly MndwChartSample[] | undefined>();
+    expectTypeOf<MndwSparklineProps['timeDomain']>().toEqualTypeOf<MndwChartDomain | undefined>();
     expectTypeOf<MndwBarChartProps['points']>().toEqualTypeOf<readonly MndwChartPoint[] | undefined>();
     expectTypeOf<MndwLineChartProps['series']>().toEqualTypeOf<readonly MndwChartSeries[] | undefined>();
     expectTypeOf<MndwHeatStripProps['max']>().toEqualTypeOf<number | undefined>();

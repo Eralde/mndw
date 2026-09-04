@@ -521,6 +521,7 @@ Each zip includes `mndw.lock.json` with exact shared dependency versions.
 Built-in plugins in `plugins/builtin/`:
 
 - `device-info-widget`
+- `cpu-temp-widget`
 - `tx-rx-chart-widget`
 - `terminal-page`
 - `clock-widget`

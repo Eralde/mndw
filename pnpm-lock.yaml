@@ -440,6 +440,8 @@ importers:
 
   packages/go-rcisock: {}
 
+  packages/go-rrd: {}
+
   plugins/builtin/clients-widget:
     devDependencies:
       '@mndw/sdk':
@@ -487,6 +489,27 @@ importers:
       vitest:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)(yaml@2.9.0)
+
+  plugins/builtin/cpu-temp-widget:
+    devDependencies:
+      '@mndw/sdk':
+        specifier: workspace:*
+        version: link:../../../frontend/sdk
+      '@mndw/ui':
+        specifier: workspace:*
+        version: link:../../../frontend/ui
+      '@vitejs/plugin-vue':
+        specifier: ^6.0.0
+        version: 6.0.8(vite@8.1.5(@types/node@22.19.15)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(tsx@4.23.1)(yaml@2.9.0))(vue@3.5.40(typescript@5.9.3))
+      happy-dom:
+        specifier: 20.11.1
+        version: 20.11.1
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.19.15)(happy-dom@20.11.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.102.0)(tsx@4.23.1)(yaml@2.9.0)
+      vue:
+        specifier: ^3.5.39
+        version: 3.5.40(typescript@5.9.3)
 
   plugins/builtin/device-info-widget:
     devDependencies:

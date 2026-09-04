@@ -1,0 +1,7 @@
+{
+  "name": "@mndw/go-rrd",
+  "private": true,
+  "scripts": {
+    "test": "go test ./..."
+  }
+}

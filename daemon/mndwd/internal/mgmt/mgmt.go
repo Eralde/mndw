@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"mndwd/internal/backend"
@@ -56,6 +57,7 @@ type Config struct {
 	ServiceActionRoot                 context.Context
 	ServiceActionTimeout              time.Duration
 	SelfUpdate                        selfupdate.Service
+	TelemetryController               TelemetryController
 }
 
 // Handler serves the management API over a shared state store.
@@ -69,9 +71,11 @@ type Handler struct {
 	runtime              backend.Runtime
 	permissionController PersistentRCIPermissionController
 	selfUpdate           selfupdate.Service
+	telemetry            TelemetryController
 	removeAll            func(string) error
 	newTimer             func(time.Duration) <-chan time.Time
 	removalWatchdog      time.Duration
+	telemetryMu          sync.Mutex
 }
 
 // New constructs a management Handler.
@@ -95,6 +99,7 @@ func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr service.
 		runtime:              cfg.Runtime,
 		permissionController: cfg.PersistentRCIPermissionController,
 		selfUpdate:           cfg.SelfUpdate,
+		telemetry:            cfg.TelemetryController,
 		removeAll:            os.RemoveAll,
 		newTimer:             time.After,
 		removalWatchdog:      30 * time.Second,
@@ -115,6 +120,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/mgmt/restart", h.handleRestart)
 	mux.HandleFunc("POST /api/mgmt/update", h.handleUpdate)
 	mux.HandleFunc("GET /api/mgmt/runtime", h.handleRuntime)
+	mux.HandleFunc("GET /api/mgmt/telemetry", h.handleTelemetryGet)
+	mux.HandleFunc("PUT /api/mgmt/telemetry", h.handleTelemetryPut)
 	mux.HandleFunc("POST /api/mgmt/permission", h.handlePermission)
 
 	mux.HandleFunc("GET /api/mgmt/opkg/list-installed", h.handleOpkgListInstalled)

@@ -70,7 +70,12 @@ type State struct {
 	Version          int                        `json:"version"`
 	Plugins          map[string]*Plugin         `json:"plugins"`
 	PermissionGrants map[string]map[string]bool `json:"permissionGrants,omitempty"`
+	Settings         Settings                   `json:"settings,omitempty"`
 	Audit            []AuditEntry               `json:"audit"`
+}
+
+type Settings struct {
+	BackgroundTelemetry bool `json:"backgroundTelemetry"`
 }
 
 // Store is the concurrency-safe, atomically-persisted owner of a State.

@@ -70,12 +70,13 @@ const PACKED_GLOB = '../../../../plugins/builtin/dist';
 const EXPECTED_PLUGINS = [
   'clients-widget',
   'clock-widget',
+  'cpu-temp-widget',
   'device-info-widget',
   'dns-lookup-widget',
   'system-log-page',
   'terminal-page',
 ] as const;
-const VUE_PLUGINS = new Set(['clients-widget', 'device-info-widget']);
+const VUE_PLUGINS = new Set(['clients-widget', 'cpu-temp-widget', 'device-info-widget']);
 
 interface PackedManifest {
   name: string;

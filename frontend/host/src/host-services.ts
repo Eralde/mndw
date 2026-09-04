@@ -27,6 +27,7 @@ import {
 } from './services/persistent-rci-session.service.js';
 import {type RciService, rciService} from './services/rci.service.js';
 import {uiOverlayService} from './services/overlay/ui-overlay.js';
+import {type TelemetryService, createTelemetryService, telemetryService} from './services/telemetry.service.js';
 
 export interface HostEnv {
   fetch?: typeof globalThis.fetch;
@@ -44,6 +45,7 @@ export interface HostServices {
   registry: PluginRegistry;
   persistentRci: PersistentRciSessionService;
   rci: RciService;
+  telemetry: TelemetryService;
   overlay: OverlayService;
 }
 
@@ -67,6 +69,7 @@ export function createHostServices(env: HostEnv = {}): HostServices {
     registry,
     persistentRci: createPersistentRciSessionService(),
     rci: rciService,
+    telemetry: createTelemetryService(env.fetch ?? globalThis.fetch),
     overlay: uiOverlayService,
   });
 }
@@ -79,6 +82,7 @@ const DEFAULT_HOST_SERVICES: HostServices = Object.freeze({
   registry: defaultRegistry,
   persistentRci: defaultPersistentRci,
   rci: rciService,
+  telemetry: telemetryService,
   overlay: uiOverlayService,
 });
 

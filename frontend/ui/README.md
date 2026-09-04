@@ -92,8 +92,9 @@ if (line !== null) {
 `MndwChartPoint` requires an epoch-millisecond `time`; `MndwChartSample` makes `time` optional for
 compact charts. `<mndw-line-chart>` exposes `series`, optional `domain`, `valueLabel`, and the
 presentation callbacks. `<mndw-bar-chart>` exposes `points`, `valueLabel`, `color`, and the same
-callbacks; it uses positional band slots and has no time-domain property. `<mndw-sparkline>` and
-`<mndw-heat-strip>` expose `points`, `max`, `valueLabel`, and the presentation callbacks.
+callbacks; it uses positional band slots and has no time-domain property. `<mndw-sparkline>` exposes
+`points`, optional `timeDomain`, `max`, `valueLabel`, and the presentation callbacks;
+`<mndw-heat-strip>` exposes `points`, `max`, `valueLabel`, and the presentation callbacks.
 `points`, `series`, `domain`, and callbacks are property-only. String attributes use explicit
 hyphenated names: `empty-label="No data"` and `value-label="Throughput"`.
 
@@ -108,6 +109,9 @@ mixed timed and untimed samples render without an axis. Invalid compact `max` va
 `100` for drawing while tooltips and accessibility retain actual sample values. Sparkline colors and
 bar colors use `accent`, `success`, `warning`, or `muted`; invalid runtime colors fall back to
 `accent`. Heat-strip colors always use its utilization scale.
+
+For sparklines, `timeDomain` controls the start/end axis independently of finite samples. When it is
+provided, timed non-finite sample values reserve empty slots instead of being removed from layout.
 
 Line and bar charts expose `container`, `plot`, `grid`, `axis`, `tooltip`, and `empty` parts.
 Sparkline and heat-strip expose `container`, `plot`, `axis`, `tooltip`, and `empty`; compact `axis`

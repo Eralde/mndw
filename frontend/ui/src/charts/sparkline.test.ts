@@ -74,6 +74,31 @@ describe('<mndw-sparkline>', () => {
     expect(labels).toEqual(['09:00:00', '09:00:06']);
   });
 
+  it('uses an explicit time domain and leaves invalid timed samples empty', async () => {
+    const element = document.createElement(MNDW_SPARKLINE_TAG);
+    const base = Date.parse('2026-08-12T09:00:00');
+    const chart = element as MndwSparkline & {
+      timeDomain?: {start: number; end: number};
+    };
+
+    chart.timeDomain = {start: base, end: base + 9_000};
+    chart.points = [
+      {time: base, value: Number.NaN},
+      {time: base + 3_000, value: 10},
+      {time: base + 6_000, value: 30},
+    ];
+    document.body.append(element);
+    await element.updateComplete;
+
+    const bars = element.shadowRoot?.querySelectorAll('rect.bar');
+    const labels = [...(element.shadowRoot?.querySelectorAll('.axis span') ?? [])]
+      .map((span) => span.textContent);
+
+    expect(bars).toHaveLength(2);
+    expect(bars?.[0]?.getAttribute('x')).toBe('80');
+    expect(labels).toEqual(['09:00:00', '09:00:09']);
+  });
+
   it('keeps timestamps paired when an invalid middle sample is removed', async () => {
     const element = document.createElement(MNDW_SPARKLINE_TAG);
     const base = Date.parse('2026-08-12T09:00:00');

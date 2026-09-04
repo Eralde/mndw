@@ -7,7 +7,8 @@ import {
 } from '../services/plugin-catalog.service.js';
 import {type LoadedPlugin, pluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
-import {type HostServices, defaultHostServices} from '../host-services.js';
+import {defaultHostServices} from '../host-services.js';
+import type {PluginContextServices} from './plugin-context.js';
 
 /** Window event the sandbox HMR transaction dispatches so the active page host remounts. */
 export const SANDBOX_RELOAD_EVENT = 'mndw:sandbox-reloaded';
@@ -49,13 +50,13 @@ export interface SandboxLoaderDeps extends Partial<SandboxImports> {
   registry?: SandboxRegistry;
   catalogService?: PluginCatalogService;
   getLocale?: () => string;
-  pluginContextServices?: Pick<HostServices, 'locale' | 'palette'>;
+  pluginContextServices?: Partial<PluginContextServices>;
   remountWidgets?: (
     name: string,
     next: LoadedPlugin,
     prior: LoadedPlugin,
     registry: SandboxRegistry,
-    pluginContextServices: Pick<HostServices, 'locale' | 'palette'>,
+    pluginContextServices: Partial<PluginContextServices>,
   ) => Promise<boolean>;
   reloadPage?: (name: string, next: LoadedPlugin, prior: LoadedPlugin) => Promise<boolean>;
 }
@@ -189,7 +190,7 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise
   const pluginContextServices = deps.pluginContextServices ?? (() => {
     const services = defaultHostServices();
 
-    return {locale: services.locale, palette: services.palette};
+    return {locale: services.locale, palette: services.palette, telemetry: services.telemetry};
   })();
 
   let candidate: LoadedPlugin;
@@ -247,7 +248,7 @@ async function defaultRemountWidgets(
   next: LoadedPlugin,
   prior: LoadedPlugin,
   registry: SandboxRegistry,
-  pluginContextServices: Pick<HostServices, 'locale' | 'palette'>,
+  pluginContextServices: Partial<PluginContextServices>,
 ): Promise<boolean> {
   const {remountWidgetTiles} = await import('../dashboard/tile-controller.js');
 

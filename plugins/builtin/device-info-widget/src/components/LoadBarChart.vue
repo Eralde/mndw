@@ -1,19 +1,30 @@
 <script setup lang="ts">
 import {computed} from 'vue';
 import type {Translator} from '@mndw/sdk';
-import type {MndwChartSample} from '@mndw/ui';
+import type {MndwChartDomain, MndwChartSample} from '@mndw/ui';
 
 const props = defineProps<{
   label: string;
   value: number;
-  history: number[];
+  history: readonly MndwChartSample[];
+  timeDomain?: MndwChartDomain;
   translator: Translator;
 }>();
 
 const t = (key: string): string => props.translator.t(key);
+
 const points = computed<MndwChartSample[]>(() => {
-  return props.history.map((value) => ({value}));
+  return [...props.history];
 });
+
+const timeFormatter = (time: number): string => {
+  const span = props.timeDomain === undefined ? 0 : props.timeDomain.end - props.timeDomain.start;
+  const options: Intl.DateTimeFormatOptions = span >= 24 * 60 * 60 * 1000
+    ? {month: 'short', day: 'numeric'}
+    : {hour: '2-digit', minute: '2-digit', second: '2-digit'};
+
+  return props.translator.formatDate(new Date(time), options);
+};
 </script>
 
 <template>
@@ -25,6 +36,8 @@ const points = computed<MndwChartSample[]>(() => {
     <mndw-sparkline
       class="load-bar-chart__chart"
       :points.prop="points"
+      :timeDomain.prop="timeDomain"
+      :timeFormatter.prop="timeFormatter"
       :value-label="label"
       :aria-label="label"
       :empty-label="t('no-data')"

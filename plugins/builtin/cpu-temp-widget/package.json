@@ -1,0 +1,17 @@
+{
+  "name": "@mndw/example-cpu-temp-widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "happy-dom": "20.11.1",
+    "vitest": "^3.2.7",
+    "vue": "^3.5.39"
+  }
+}

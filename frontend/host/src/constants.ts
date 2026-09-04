@@ -57,6 +57,7 @@ export const MGMT_RESTART_URL = '/api/mgmt/restart';
 export const MGMT_RUNTIME_URL = '/api/mgmt/runtime';
 export const MGMT_PALETTE_URL = '/api/mgmt/palette';
 export const MGMT_DEVICE_HARDWARE_URL = '/api/mgmt/device-hardware';
+export const MGMT_TELEMETRY_URL = '/api/mgmt/telemetry';
 
 export const OPKG_LIST_URL = '/api/mgmt/opkg/list';
 export const OPKG_INSTALL_URL = '/api/mgmt/opkg/install';

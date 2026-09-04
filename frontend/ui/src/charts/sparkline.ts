@@ -1,5 +1,11 @@
 import {LitElement, type PropertyDeclarations, type SVGTemplateResult, type TemplateResult, css, html, svg} from 'lit';
-import type {MndwChartColor, MndwChartSample, MndwChartTimeFormatter, MndwChartValueFormatter} from './chart-types.js';
+import type {
+  MndwChartColor,
+  MndwChartDomain,
+  MndwChartSample,
+  MndwChartTimeFormatter,
+  MndwChartValueFormatter,
+} from './chart-types.js';
 import {
   defaultPercentFormatter,
   formatChartRange,
@@ -40,8 +46,9 @@ const colorVariable = (color: MndwChartColor): string => {
  * Compact bar sparkline for a 0..`max` percentage series (CPU load, RAM load,
  * etc.). Renders pixel bars growing from a dashed baseline toward a dashed
  * ceiling, and surfaces the hovered sample as a small tooltip. Timed `points`
- * add a start/end time axis and the sample time in the tooltip. The label and
- * current value are composed by the consumer.
+ * add a start/end time axis and the sample time in the tooltip. An explicit
+ * `timeDomain` keeps timed invalid samples as empty slots within that range.
+ * The label and current value are composed by the consumer.
  *
  * The host fills its container's height (bars stretch to fill), with a 1.75rem
  * floor so it never collapses when the container has no explicit height.
@@ -51,6 +58,7 @@ export class MndwSparkline extends LitElement {
 
   public static properties: PropertyDeclarations = {
     points: {attribute: false},
+    timeDomain: {attribute: false},
     max: {type: Number},
     color: {type: String},
     emptyLabel: {type: String, attribute: 'empty-label'},
@@ -138,6 +146,7 @@ export class MndwSparkline extends LitElement {
   `;
 
   declare public points: readonly MndwChartSample[];
+  declare public timeDomain: MndwChartDomain | undefined;
   declare public max: number;
   declare public color: MndwChartColor;
   declare public emptyLabel: string | undefined;
@@ -161,6 +170,7 @@ export class MndwSparkline extends LitElement {
     super();
 
     this.points = [];
+    this.timeDomain = undefined;
     this.max = 100;
     this.color = 'accent';
     this.emptyLabel = undefined;
@@ -199,15 +209,16 @@ export class MndwSparkline extends LitElement {
       `;
     }
 
+    const layoutSamples = this.layoutSamples();
     const width = this.plotWidth();
     const bars = computeSparklineBars(
-      samples.map((sample) => sample.value),
+      layoutSamples.map((sample) => sample.value),
       resolveChartMax(this.max),
       width,
       CHART_HEIGHT,
       BAR_GAP,
     );
-    const tooltip = this.tooltipState(bars, samples, width);
+    const tooltip = this.tooltipState(bars, layoutSamples, width);
     const color = resolveChartColor(this.color);
 
     return html`
@@ -233,12 +244,19 @@ export class MndwSparkline extends LitElement {
           `
     }
         </div>
-        ${this.renderAxis(samples)}
+        ${this.renderAxis(layoutSamples)}
       </div>
     `;
   }
 
-  private renderBar(bar: {left: number; top: number; width: number; height: number}, index: number): SVGTemplateResult {
+  private renderBar(
+    bar: {left: number; top: number; width: number; height: number; value: number},
+    index: number,
+  ): SVGTemplateResult | '' {
+    if (!Number.isFinite(bar.value)) {
+      return '';
+    }
+
     // `svg` (not `html`): a nested html fragment parses its <rect> in the HTML
     // namespace, where it never renders inside the SVG.
     return svg`
@@ -258,10 +276,14 @@ export class MndwSparkline extends LitElement {
       return '';
     }
 
-    const start = samples[0]?.time;
-    const end = samples[samples.length - 1]?.time;
+    const start = this.timeDomain?.start ?? samples[0]?.time;
+    const end = this.timeDomain?.end ?? samples[samples.length - 1]?.time;
 
-    if (start === null || start === undefined || end === null || end === undefined) {
+    if (
+      start === null || start === undefined || !Number.isFinite(start)
+      || end === null || end === undefined || !Number.isFinite(end)
+      || start > end
+    ) {
       return '';
     }
 
@@ -289,6 +311,10 @@ export class MndwSparkline extends LitElement {
       return null;
     }
 
+    if (!Number.isFinite(sample.value)) {
+      return null;
+    }
+
     return {
       // The plot stretches its viewBox to the host width, so a viewBox-space center
       // maps to a CSS pixel by the same width scale.
@@ -299,7 +325,7 @@ export class MndwSparkline extends LitElement {
   }
 
   private readonly onPointerMove = (event: PointerEvent): void => {
-    const samples = this.samples();
+    const samples = this.layoutSamples();
 
     if (samples.length === 0) {
       return;
@@ -344,6 +370,20 @@ export class MndwSparkline extends LitElement {
 
   private samples(): MndwChartSample[] {
     return normalizeChartSamples(this.points);
+  }
+
+  private layoutSamples(): MndwChartSample[] {
+    if (this.timeDomain === undefined) {
+      return this.samples();
+    }
+
+    return this.points.flatMap((sample) => {
+      if (sample.time === undefined || !Number.isFinite(sample.time)) {
+        return [];
+      }
+
+      return [{time: sample.time, value: sample.value}];
+    });
   }
 
   private computeAriaLabel(): string {

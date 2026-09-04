@@ -14,6 +14,7 @@ import {
   MGMT_PERMISSION_URL,
   MGMT_RESTART_URL,
   MGMT_RUNTIME_URL,
+  MGMT_TELEMETRY_URL,
   MGMT_UPLOAD_URL,
 } from '../constants.js';
 import {decodeMgmtList, decodeMgmtListEntry} from '../runtime/mgmt-list-schema.js';
@@ -62,6 +63,8 @@ export interface MgmtClient {
   getPalette(): Promise<PaletteTokenMap | null>;
   putPalette(palette: PaletteTokenMap): Promise<void>;
   deletePalette(): Promise<void>;
+  getTelemetry(): Promise<{enabled: boolean}>;
+  setTelemetry(enabled: boolean): Promise<void>;
 }
 
 export type MgmtTimeoutKind = 'read' | 'mutation' | 'install';
@@ -307,6 +310,33 @@ export function createMgmtClient(
           signal: timeout('mutation'),
         },
       );
+
+      await expectNoContent(response);
+    },
+
+    async getTelemetry(): Promise<{enabled: boolean}> {
+      const response = await fetchImpl(MGMT_TELEMETRY_URL, {method: 'GET', signal: timeout('read')});
+
+      if (!response.ok) {
+        throw await toError(response);
+      }
+
+      const body: unknown = await response.json();
+
+      if (body === null || typeof body !== 'object' || typeof (body as {enabled?: unknown}).enabled !== 'boolean') {
+        throw new MgmtError('The device returned an unexpected telemetry response.', 'UNKNOWN');
+      }
+
+      return {enabled: (body as {enabled: boolean}).enabled};
+    },
+
+    async setTelemetry(enabled: boolean): Promise<void> {
+      const response = await fetchImpl(MGMT_TELEMETRY_URL, {
+        method: 'PUT',
+        headers: csrfHeaders({'Content-Type': 'application/json'}),
+        body: JSON.stringify({enabled}),
+        signal: timeout('mutation'),
+      });
 
       await expectNoContent(response);
     },

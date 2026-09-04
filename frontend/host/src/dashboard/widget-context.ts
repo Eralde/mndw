@@ -1,9 +1,8 @@
 import type {HostInfo} from '@mndw/sdk';
 import {FALLBACK_DEVICE_INFO, FALLBACK_HOST_INFO} from '../constants.js';
-import {type PluginContextHandle, createPluginContext} from '../runtime/plugin-context.js';
+import {type PluginContextHandle, type PluginContextServices, createPluginContext} from '../runtime/plugin-context.js';
 import type {PluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
-import type {HostServices} from '../host-services.js';
 
 /**
  * Builds a plugin context for a dashboard widget instance. Resolves host info from the
@@ -12,7 +11,7 @@ import type {HostServices} from '../host-services.js';
  * list `entry` (the daemon is authoritative for the backend descriptor).
  */
 export function createWidgetContext(
-  pluginContextServices: Pick<HostServices, 'locale' | 'palette'>,
+  pluginContextServices: Partial<PluginContextServices>,
   registry: Pick<PluginRegistry, 'get'>,
   pluginName: string,
   instanceId: string,

@@ -17,7 +17,7 @@ import {rciService} from '../services/rci.service.js';
 import {ScopedPluginStorage} from '../services/storage.service.js';
 import {getTokens, subscribePalette} from '../services/palette.service.js';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';
-import type {HostServices} from '../host-services.js';
+import {type HostServices, defaultHostServices} from '../host-services.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {createReadonlyInjector, createServiceFacade} from './service-facade.js';
 import {createDeviceInfoContext, createHostInfoContext} from './device-info-context.js';
@@ -28,6 +28,8 @@ export interface PluginContextHandle {
   context: PluginContext;
   dispose: OverlayDispose;
 }
+
+export type PluginContextServices = Pick<HostServices, 'locale' | 'palette' | 'telemetry'>;
 
 // Plugin-facing method allowlists - the full current public surface of each shared
 // service (capability parity). This is the seam for future per-plugin scoping.
@@ -73,7 +75,7 @@ export interface CreatePluginContextOptions {
   setTileTitle?: (title: string) => void;
   pageRoute?: PageRoute;
   catalogCell?: PluginCatalogCell;
-  services?: Pick<HostServices, 'locale' | 'palette'>;
+  services?: Partial<PluginContextServices>;
 }
 
 export function createPluginContext(options: CreatePluginContextOptions): PluginContextHandle {
@@ -91,6 +93,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     ? subscribePalette
     : (callback: (tokens: ReturnType<typeof getTokens>) => void): () => void =>
       options.services?.palette?.subscribePalette(callback) ?? (() => {});
+  const telemetry = options.services?.telemetry ?? defaultHostServices().telemetry;
 
   if (entry.type === 'page' && pageRoute === undefined) {
     throw new Error(`Page plugin "${entry.name}" requires a page route`);
@@ -114,6 +117,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     {
       // SDK exposes concrete classes with private fields; runtime facades intentionally contain only
       // public methods, so cast narrowed facades at this plugin-context boundary.
+      telemetry,
       rciManager: createServiceFacade(rciService.driver, RCI_MANAGER_METHODS) as unknown as PluginContext['rciManager'],
       storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
       sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),

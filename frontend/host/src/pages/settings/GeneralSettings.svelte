@@ -46,6 +46,9 @@ let persistentError = $state('');
 let controllerToken = $state('');
 let controllerResult = $state<ControllerTestResult | null>(null);
 let capabilityPollController: AbortController | null = null;
+let telemetryEnabled = $state(false);
+let telemetryLoading = $state(true);
+let telemetryError = $state('');
 
 $effect(() => {
   onPermissionStateChange({
@@ -56,6 +59,7 @@ $effect(() => {
 
 onMount(() => {
   void refreshPersistentCapability();
+  void refreshTelemetry();
 });
 
 onDestroy(() => {
@@ -88,6 +92,34 @@ async function refreshPersistentCapability(): Promise<void> {
   } finally {
     persistentLoading = false;
   }
+}
+
+async function refreshTelemetry(): Promise<void> {
+  telemetryLoading = true;
+  telemetryError = '';
+  try {
+    telemetryEnabled = (await services.mgmtClient.getTelemetry()).enabled;
+  } catch {
+    telemetryError = hostT('settings.telemetry-error');
+  } finally {
+    telemetryLoading = false;
+  }
+}
+
+function setTelemetryEnabled(
+  event: CustomEvent<{checked?: boolean; value?: boolean}>,
+): void {
+  const next = event.detail.checked ?? event.detail.value ?? false;
+  const previous = telemetryEnabled;
+  telemetryEnabled = next;
+  telemetryError = '';
+  telemetryLoading = true;
+  void services.mgmtClient.setTelemetry(next).catch(() => {
+    telemetryEnabled = previous;
+    telemetryError = hostT('settings.telemetry-error');
+  }).finally(() => {
+    telemetryLoading = false;
+  });
 }
 
 function setPersistentEnabled(
@@ -266,6 +298,19 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
 
   <section>
     <h3>{hostT('settings.device')}</h3>
+    <mndw-field label={hostT('settings.telemetry-label')}>
+      <mndw-switch
+        id="mndw-telemetry-enabled"
+        checked={telemetryEnabled}
+        disabled={telemetryLoading}
+        onmndwchange={setTelemetryEnabled}
+      >
+      </mndw-switch>
+      <span>{hostT('settings.telemetry-description')}</span>
+    </mndw-field>
+    {#if telemetryError}
+      <p role="alert">{telemetryError}</p>
+    {/if}
     <mndw-field label={hostT('settings.language.label')}>
       <mndw-select
         value={appState.locale}

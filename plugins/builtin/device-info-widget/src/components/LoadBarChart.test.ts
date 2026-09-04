@@ -16,13 +16,14 @@ afterEach(() => {
 });
 
 describe('LoadBarChart', () => {
-  it('binds untimed history as points with metric presentation labels', async () => {
+  it('binds timed and untimed history samples with metric presentation labels', async () => {
     host = document.createElement('div');
     document.body.append(host);
     app = createApp(LoadBarChart, {
       label: 'CPU',
       value: 20,
-      history: [10, 20],
+      history: [{value: 10}, {time: 2_000, value: 20}],
+      timeDomain: {start: 1_000, end: 3_000},
       translator: createTestI18n({'no-data': 'No data'}),
     });
     app.mount(host);
@@ -36,11 +37,45 @@ describe('LoadBarChart', () => {
 
     await chart.updateComplete;
 
-    expect(chart.points).toEqual<MndwChartSample[]>([
-      {value: 10},
-      {value: 20},
-    ]);
+    expect(chart.points).toEqual<MndwChartSample[]>([{value: 10}, {time: 2_000, value: 20}]);
+    expect(chart.timeDomain).toEqual({start: 1_000, end: 3_000});
     expect(chart.getAttribute('value-label')).toBe('CPU');
     expect(chart.getAttribute('aria-label')).toBe('CPU');
+  });
+
+  it('uses date labels for a multi-day time domain', async () => {
+    host = document.createElement('div');
+    document.body.append(host);
+
+    const translator = createTestI18n({'no-data': 'No data'});
+    const start = Date.parse('2026-08-28T13:00:00');
+    const end = Date.parse('2026-09-04T12:54:00');
+
+    app = createApp(LoadBarChart, {
+      label: 'CPU',
+      value: 20,
+      history: [{time: start, value: 10}, {time: end, value: 20}],
+      timeDomain: {start, end},
+      translator,
+    });
+    app.mount(host);
+    await nextTick();
+
+    const chart = host.querySelector<MndwSparkline>('mndw-sparkline');
+
+    if (chart === null) {
+      throw new Error('sparkline was not rendered');
+    }
+
+    await chart.updateComplete;
+
+    const labels = [...(chart.shadowRoot?.querySelectorAll('.axis span') ?? [])]
+      .map((span) => span.textContent);
+    const options = {month: 'short' as const, day: 'numeric' as const};
+
+    expect(labels).toEqual([
+      translator.formatDate(new Date(start), options),
+      translator.formatDate(new Date(end), options),
+    ]);
   });
 });

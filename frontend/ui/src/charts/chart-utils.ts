@@ -73,6 +73,30 @@ export const filterFinitePoints = (points: readonly MndwChartPoint[]): MndwChart
   return points.filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value));
 };
 
+export const splitFinitePoints = (points: readonly MndwChartPoint[]): MndwChartPoint[][] => {
+  const result: MndwChartPoint[][] = [];
+  let segment: MndwChartPoint[] = [];
+
+  for (const point of points) {
+    if (!Number.isFinite(point.time) || !Number.isFinite(point.value)) {
+      if (segment.length > 0) {
+        result.push(segment);
+        segment = [];
+      }
+
+      continue;
+    }
+
+    segment.push(point);
+  }
+
+  if (segment.length > 0) {
+    result.push(segment);
+  }
+
+  return result;
+};
+
 export const resolveDomain = (
   points: readonly MndwChartPoint[],
   explicit: MndwChartDomain | undefined,

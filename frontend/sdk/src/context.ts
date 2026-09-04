@@ -7,6 +7,7 @@ import type {PaletteTokenMap} from './palette.js';
 import type {MndwThemeName} from './tokens.js';
 import type {Observable} from 'rxjs';
 import type {PluginI18n} from './i18n.js';
+import type {TelemetryClient} from './telemetry-client.js';
 
 export interface PageRoute {
   readonly childPath$: Observable<string>;
@@ -95,6 +96,7 @@ export interface HostInfo {
 }
 
 interface PluginContextBase {
+  telemetry: TelemetryClient;
   rciManager: RciManager;
   storage: PluginStorage;
   sharedStorage: PluginStorage;

@@ -163,6 +163,26 @@ describe('<mndw-line-chart>', () => {
     expect(paths[2]?.getAttribute('data-color')).toBe('success');
   });
 
+  it('renders bands and leaves invalid points as line gaps', async () => {
+    const element = await mount();
+
+    element.series = [{
+      ...uploadSeries,
+      fill: false,
+      data: [{time: 1000, value: 10}, {time: 2000, value: Number.NaN}, {time: 3000, value: 20}],
+    }];
+    element.bands = [{
+      id: 'cpu-range',
+      color: 'accent',
+      data: [{time: 1000, min: 5, max: 15}, {time: 3000, min: 15, max: 25}],
+    }];
+    element.valueDomain = {min: 0, max: 100};
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('path[data-band="cpu-range"]')).not.toBeNull();
+    expect(element.shadowRoot?.querySelectorAll('path[data-color="accent"]')).toHaveLength(2);
+  });
+
   it('aligns horizontal grid lines with the plot area', async () => {
     const element = await mount();
 

@@ -21,6 +21,8 @@ const defaultDiagnosticsLogFile = "/opt/var/log/mndwd.log"
 const defaultPluginRuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
 const defaultSelfUpdateStateDir = "/opt/var/mndw"
 const defaultSelfUpdateHelper = "/opt/share/www/mndw/bin/mndw-self-update.sh"
+const defaultRRDToolBinary = "/opt/bin/rrdtool"
+const defaultRRDDir = "/opt/var/lib/mndw/rrd"
 
 const (
 	defaultRCIHeartbeatInterval = 60 * time.Second
@@ -51,6 +53,8 @@ type Config struct {
 	Opkg               string
 	Service            string
 	LogLevel           string
+	RRDToolBinary      string
+	RRDDir             string
 
 	// Exec/service runtime limits and timeouts.
 	ExecTimeout                time.Duration
@@ -122,6 +126,8 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.StringVar(&cfg.Opkg, "opkg", "exec", "opkg mode: exec|stub")
 	fs.StringVar(&cfg.Service, "service", "", "service mode: exec|stub; defaults to --opkg")
 	fs.StringVar(&cfg.LogLevel, "log-level", "info", "log level: debug|info|warn|error")
+	fs.StringVar(&cfg.RRDToolBinary, "rrdtool-binary", defaultRRDToolBinary, "RRDtool executable path")
+	fs.StringVar(&cfg.RRDDir, "rrd-dir", defaultRRDDir, "private durable telemetry directory")
 	fs.DurationVar(&cfg.ExecTimeout, "exec-timeout", 30*time.Second, "per-request exec timeout")
 	fs.DurationVar(&cfg.ExecKillGrace, "exec-kill-grace", 2*time.Second, "grace period after terminating an exec process group")
 	fs.DurationVar(&cfg.ServiceHTTPTimeout, "service-http-timeout", 30*time.Second, "service backend HTTP timeout")

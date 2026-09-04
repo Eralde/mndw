@@ -51,6 +51,8 @@ function clientWith(items: PluginListEntry[]): Mocked<MgmtClient> {
     getPalette: vi.fn().mockResolvedValue(null),
     putPalette: vi.fn().mockResolvedValue(undefined),
     deletePalette: vi.fn().mockResolvedValue(undefined),
+    getTelemetry: vi.fn().mockResolvedValue({enabled: false}),
+    setTelemetry: vi.fn().mockResolvedValue(undefined),
   } as Mocked<MgmtClient>;
 }
 

@@ -1,0 +1,14 @@
+{
+  "title": "CPU Temperature",
+  "l10n.probe": "l10n-ok",
+  "loading": "Loading…",
+  "error": "Temperature data is unavailable.",
+  "unsupported": "Temperature monitoring is not supported on this device.",
+  "disabled": "Telemetry gathering is disabled.",
+  "empty": "Gathering data…",
+  "range-1h": "1H",
+  "range-3h": "3H",
+  "range-1d": "1D",
+  "range-7d": "7D",
+  "range-30d": "30D"
+}

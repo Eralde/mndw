@@ -1,5 +1,5 @@
 import type {RciManager, RciQuery} from '@rci-tools/core';
-import {firstValueFrom} from 'rxjs';
+import {catchError, firstValueFrom, forkJoin, of} from 'rxjs';
 import {type RrdResponse, type RrdTick, filterValidRrdTicks, sortRrdTicks} from '@mndw/sdk/rrd';
 
 import {normalizeHistory, normalizePercent} from './load-history.js';
@@ -10,12 +10,23 @@ export interface LiveDeviceInfo {
   ramLoadPercent: number;
   cpuHistory: number[];
   ramHistory: number[];
+  cpuHistoryByRange: Record<DeviceInfoRange, number[]>;
+  ramHistoryByRange: Record<DeviceInfoRange, number[]>;
   serial: string;
   serviceTag: string;
   mac: string;
   hwid: string;
   cid: string;
 }
+
+export type DeviceInfoRange = '3m' | '1h' | '3h' | '1d';
+
+const DEVICE_INFO_RANGES: readonly {key: DeviceInfoRange; detail: number}[] = [
+  {key: '3m', detail: 0},
+  {key: '1h', detail: 1},
+  {key: '3h', detail: 2},
+  {key: '1d', detail: 3},
+];
 
 interface Identification {
   servicetag?: string;
@@ -51,41 +62,51 @@ function toUptimeSeconds(value: number | string | undefined): number | null {
 
 /** Reads required identity/system data and isolates optional load-history failures. */
 export async function fetchDeviceInfo(rci: RciManager): Promise<LiveDeviceInfo> {
-  const queries: RciQuery[] = [
-    {path: 'show.identification'},
-    {path: 'show.system'},
-    {
-      path: 'show.system.rrd.cpu',
-      data: {detail: 0, attribute: 'avg'},
-    },
-    {
-      path: 'show.system.rrd.memory',
-      data: {detail: 0, attribute: 'used'},
-    },
-  ];
-
-  const obs$ = rci.queue(queries);
-
-  const [identification, system, cpuResponse, memoryResponse] = await firstValueFrom(obs$) as [
-    Identification | undefined,
-    System | undefined,
-    RrdResponse | undefined,
-    RrdResponse | undefined,
-  ];
+  const historyQueries = DEVICE_INFO_RANGES.flatMap(({detail}) =>
+    [
+      {path: 'show.system.rrd.cpu', data: {detail, attribute: 'avg'}},
+      {path: 'show.system.rrd.memory', data: {detail, attribute: 'used'}},
+    ] satisfies RciQuery[]
+  );
+  const optional = (query: RciQuery) => rci.queue(query).pipe(catchError(() => of(undefined)));
+  const responses = await firstValueFrom(forkJoin([
+    rci.queue({path: 'show.identification'}),
+    rci.queue({path: 'show.system'}),
+    ...historyQueries.map(optional),
+  ]));
+  const identification = responses[0] as Identification | undefined;
+  const system = responses[1] as System | undefined;
 
   if (identification === undefined || system === undefined) {
     throw new Error('Required device information is unavailable.');
   }
 
+  const histories = DEVICE_INFO_RANGES.map(({key}, index) => {
+    const cpuResponse = responses[2 + index * 2] as RrdResponse | undefined;
+    const ramResponse = responses[3 + index * 2] as RrdResponse | undefined;
+
+    return {
+      key,
+      cpu: getRrdHistory(cpuResponse ?? {data: []}, (tick) => tick.v),
+      ram: getRrdHistory(ramResponse ?? {data: []}, (tick) => (tick.v / (system.memtotal ?? Number.NaN)) * 100),
+    };
+  });
+
   const memoryTotal = system.memtotal ?? Number.NaN;
   const memoryUsed = Number(system.memory?.split('/')[0] ?? Number.NaN);
+  const cpuHistoryByRange = Object.fromEntries(histories.map((item) => [item.key, item.cpu])) as Record<DeviceInfoRange,
+    number[]>;
+  const ramHistoryByRange = Object.fromEntries(histories.map((item) => [item.key, item.ram])) as Record<DeviceInfoRange,
+    number[]>;
 
   return {
     uptimeSeconds: toUptimeSeconds(system.uptime),
     cpuLoadPercent: normalizePercent(system.cpuload ?? Number.NaN) ?? 0,
     ramLoadPercent: normalizePercent((memoryUsed / memoryTotal) * 100) ?? 0,
-    cpuHistory: getRrdHistory(cpuResponse ?? {data: []}, (tick) => tick.v),
-    ramHistory: getRrdHistory(memoryResponse ?? {data: []}, (tick) => (tick.v / memoryTotal) * 100),
+    cpuHistory: cpuHistoryByRange['3m'] ?? [],
+    ramHistory: ramHistoryByRange['3m'] ?? [],
+    cpuHistoryByRange,
+    ramHistoryByRange,
     serial: identification.serial ?? '',
     serviceTag: identification.servicetag ?? '',
     mac: identification.mac ?? '',

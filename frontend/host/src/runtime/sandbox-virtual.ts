@@ -72,6 +72,11 @@ export function setupSandboxHmr(
             registry: services.registry,
             catalogService: services.catalog,
             getLocale: () => services.locale.getLocale(),
+            pluginContextServices: {
+              locale: services.locale,
+              palette: services.palette,
+              telemetry: services.telemetry,
+            },
           })
         )
         .then(() => undefined)

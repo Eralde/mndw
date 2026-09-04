@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	rci "mndw.local/rci"
 	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
@@ -25,6 +27,7 @@ import (
 	rcisessionstore "mndwd/internal/rcisession/store"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
+	"mndwd/internal/telemetry"
 )
 
 // rciSessionAssembly owns the persistent-RCI socket bindings and their
@@ -68,14 +71,20 @@ type persistentSessionRegistration struct {
 	err                  error
 	permissionController mgmt.PersistentRCIPermissionController
 	activationAssembly   *rciSessionAssembly
+	capability           *telemetry.Capability
 }
 
 // assembleRCISession wires the persistent RCI session subsystem: it opens the
 // encrypted store, builds the device HTTP client, enumerator, service, and
 // socket reconciler, registers the RCI routes on accessMux, and returns cleanup
 // plus a startup error when the persistent store cannot be opened.
-func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, accessMux *http.ServeMux, activationGates *backend.ActivationGateRegistry, logger *slog.Logger) persistentSessionRegistration {
+func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, accessMux *http.ServeMux, activationGates *backend.ActivationGateRegistry, logger *slog.Logger, lifetimes ...context.Context) persistentSessionRegistration {
 	registration := persistentSessionRegistration{close: func() {}}
+	lifetime := context.Background()
+
+	if len(lifetimes) > 0 && lifetimes[0] != nil {
+		lifetime = lifetimes[0]
+	}
 
 	if cfg.RCISessionStateDir == "" {
 		cfg.RCISessionStateDir = cfg.DataDir
@@ -189,9 +198,40 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 	registration.close = assembly.close
 	registration.permissionController = assembly
 	registration.activationAssembly = assembly
+	controllerTransport := telemetry.NewControllerTransport(sessionService.Do)
+	rciClient, rciErr := rci.New(controllerTransport)
+
+	if rciErr != nil {
+		registration.err = fmt.Errorf("create telemetry RCI client: %w", rciErr)
+
+		return registration
+	}
+
+	capability, capabilityErr := telemetry.NewCapability(telemetry.CapabilityConfig{
+		RRDToolBinary:      cfg.RRDToolBinary,
+		RRDDir:             cfg.RRDDir,
+		LoadSampler:        telemetry.NewLoadSampler(rciClient),
+		TemperatureSampler: telemetry.NewThermalSampler(osThermalReader{}, "/sys/class/thermal"),
+		DesiredEnabled:     func() bool { return store.Snapshot().Settings.BackgroundTelemetry },
+		Lifetime:           lifetime,
+		Logger:             logger,
+	})
+
+	if capabilityErr != nil {
+		registration.err = fmt.Errorf("create telemetry capability: %w", capabilityErr)
+
+		return registration
+	}
+
+	registration.capability = capability
 
 	return registration
 }
+
+type osThermalReader struct{}
+
+func (osThermalReader) ReadDir(path string) ([]os.DirEntry, error) { return os.ReadDir(path) }
+func (osThermalReader) ReadFile(path string) ([]byte, error)       { return os.ReadFile(path) }
 
 const (
 	rciListDeadline     = 20 * time.Second

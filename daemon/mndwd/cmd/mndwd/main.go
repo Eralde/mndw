@@ -32,11 +32,14 @@ import (
 	"mndwd/internal/selfupdate"
 	"mndwd/internal/service"
 	"mndwd/internal/state"
+	"mndwd/internal/telemetry"
 )
 
 // version is stamped at build time via -ldflags "-X main.version=<v>" and
 // single-sourced from the root package.json.
 var version = "dev"
+
+const telemetryShutdownTimeout = 30 * time.Second
 
 func main() {
 	cfg, showVersion, err := parseFlags(os.Args[1:])
@@ -85,6 +88,7 @@ func run(cfg Config) error {
 	c := assemble(cfg, store, paletteStore, verifier, logger, ctx)
 
 	if c.startupErr != nil {
+		c.closeTelemetry()
 		c.closePersistentSession()
 
 		_ = c.runtime.Shutdown(context.Background())
@@ -106,6 +110,7 @@ func run(cfg Config) error {
 		})
 
 		if selectErr != nil {
+			c.closeTelemetry()
 			c.closePersistentSession()
 
 			_ = c.runtime.Shutdown(context.Background())
@@ -132,6 +137,14 @@ func run(cfg Config) error {
 	// executes plugin commands before the listener is available.
 	c.runtime.Reconcile(ctx, c.reg.AllBackendPlugins())
 
+	if c.telemetry != nil {
+		go func() {
+			if err := c.telemetry.StartWithRetry(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				logger.Error("telemetry startup stopped", "error", err)
+			}
+		}()
+	}
+
 	srv := &http.Server{
 		Handler:           c.handler,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -147,8 +160,9 @@ func run(cfg Config) error {
 	closePersistent := func() {
 		closePersistentOnce.Do(c.closePersistentSession)
 	}
-	err = serveWithDrain(ctx, srv, listener, logger, closePersistent, cfg.HTTPDrainTimeout)
+	err = serveWithDrain(ctx, srv, listener, logger, nil, cfg.HTTPDrainTimeout)
 
+	c.closeTelemetry()
 	closePersistent()
 
 	if shutdownErr := c.runtime.Shutdown(context.Background()); shutdownErr != nil {
@@ -170,6 +184,8 @@ type components struct {
 	gateway                *backend.Gateway
 	activationAssembly     *rciSessionAssembly
 	closePersistentSession func()
+	closeTelemetry         func()
+	telemetry              *telemetry.Capability
 	startupErr             error
 }
 
@@ -236,8 +252,8 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 	})
 
 	mux := http.NewServeMux()
-	accessRegistration := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, activationGates, verifier, logger)
-	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, selfUpdateService, serviceMgr, reg, runtime, accessRegistration.permissionController, verifier, logger, lifetime)
+	accessRegistration := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, activationGates, verifier, logger, lifetime)
+	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, selfUpdateService, serviceMgr, reg, runtime, accessRegistration.permissionController, accessRegistration.capability, verifier, logger, lifetime)
 	deviceFetcher, deviceInfoErr := deviceinfo.NewHTTPFetcher(cfg.DeviceURL, logger, deviceinfo.FetcherOptions{})
 
 	if deviceInfoErr == nil {
@@ -276,7 +292,19 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 		gateway:                gateway,
 		activationAssembly:     accessRegistration.activationAssembly,
 		closePersistentSession: accessRegistration.close,
-		startupErr:             startupErr,
+		closeTelemetry: func() {
+			if accessRegistration.capability != nil {
+				closeCtx, cancel := context.WithTimeout(context.Background(), telemetryShutdownTimeout)
+
+				defer cancel()
+
+				if closeErr := accessRegistration.capability.Close(closeCtx); closeErr != nil {
+					logger.Error("telemetry shutdown failed", "error", closeErr)
+				}
+			}
+		},
+		telemetry:  accessRegistration.capability,
+		startupErr: startupErr,
 	}
 }
 
@@ -316,7 +344,7 @@ func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger) erro
 
 // registerMgmt mounts the session-gated management surface and returns its mux so
 // other session-gated routes (e.g. protected palette) can share the gate.
-func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, selfUpdateService selfupdate.Service, serviceMgr service.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, permissionController mgmt.PersistentRCIPermissionController, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) *http.ServeMux {
+func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, selfUpdateService selfupdate.Service, serviceMgr service.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, permissionController mgmt.PersistentRCIPermissionController, telemetryController mgmt.TelemetryController, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) *http.ServeMux {
 	mgmtHandler := mgmt.New(mgmt.Config{
 		StagingDir:                        cfg.StagingDir(),
 		UserPluginsDir:                    cfg.UserPluginsDir,
@@ -326,6 +354,7 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 		PersistentRCIPermissionController: permissionController,
 		ServiceActionRoot:                 lifetime,
 		SelfUpdate:                        selfUpdateService,
+		TelemetryController:               telemetryController,
 	}, store, opkgMgr, serviceMgr, reg, logger)
 
 	mgmtMux := http.NewServeMux()
@@ -338,7 +367,7 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 
 // registerAccess mounts the consent/diagnostics surface plus the persistent RCI
 // session, returning the session's cleanup func.
-func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, runtime *backend.RuntimeImpl, activationGates *backend.ActivationGateRegistry, verifier *authz.Verifier, logger *slog.Logger) persistentSessionRegistration {
+func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, runtime *backend.RuntimeImpl, activationGates *backend.ActivationGateRegistry, verifier *authz.Verifier, logger *slog.Logger, lifetimes ...context.Context) persistentSessionRegistration {
 	accessMux := http.NewServeMux()
 	diagnosticsLogFile := cfg.DiagnosticsLogFile
 
@@ -351,7 +380,17 @@ func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *reg
 		Plugins: diagnosticsPlugins(reg, runtime),
 	}).Register(accessMux)
 
-	registration := assembleRCISession(cfg, store, reg, runtimeRoot, accessMux, activationGates, logger)
+	registration := assembleRCISession(cfg, store, reg, runtimeRoot, accessMux, activationGates, logger, lifetimes...)
+
+	if registration.capability != nil {
+		cache := telemetry.NewSnapshotCache(
+			registration.capability.LoadReader(),
+			registration.capability.TemperatureReader(),
+			time.Now,
+		)
+
+		telemetry.NewHandler(cache, registration.capability.IsEnabled, logger).Register(accessMux)
+	}
 
 	// Keep the route mounted in dev so the host exercises the same consent contract;
 	// the verifier still bypasses only session validation when cfg.Dev is true.

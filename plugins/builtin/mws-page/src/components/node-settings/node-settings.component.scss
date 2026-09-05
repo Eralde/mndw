@@ -1,0 +1,31 @@
+.node-settings {
+  display: grid;
+  gap: 1rem;
+}
+
+fieldset {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0;
+  border: 0;
+}
+
+mndw-field.port-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr);
+  gap: 0.35rem 0.75rem;
+  align-items: center;
+}
+
+mndw-field.port-row > .error,
+mndw-field.port-row > [data-action='retry-field'] {
+  grid-column: 1 / -1;
+}
+
+.error {
+  color: var(--mndw-color-danger, #b42318);
+}
+
+.success {
+  color: var(--mndw-color-success, #067647);
+}

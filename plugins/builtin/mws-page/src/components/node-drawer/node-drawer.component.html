@@ -38,7 +38,7 @@
         </div>
       } @else {
         <div class="identity-heading">
-          <h3>{{ n.name }}</h3>
+          <h3>{{ displayName(n) }}</h3>
           @if (n.isController) {
             <span class="role-badge">{{ t('drawer.controller') }}</span>
           }
@@ -48,6 +48,17 @@
             [attr.aria-label]="t('drawer.edit-name')"
             (click)="beginRename()"
           >{{ t('drawer.edit') }}</mndw-button>
+          @if (canOpenWebPanel(n)) {
+            <mndw-button
+              variant="ghost"
+              data-action="open-web-panel"
+              [disabled]="webPanelPending"
+              (click)="openWebPanel(n)"
+            >{{ webPanelPending ? t('drawer.loading-url') : t('drawer.open-web-panel') }}</mndw-button>
+          }
+          @if (webPanelError) {
+            <p class="rename-error" role="alert">{{ webPanelError }}</p>
+          }
         </div>
       }
       <dl class="identity-details">
@@ -67,6 +78,14 @@
       </dl>
     </section>
 
+    <mndw-tabs [value]="selectedTab" (mndwchange)="onTabChanged($event)">
+      <mndw-tab id="status">{{ t('drawer.status') }}</mndw-tab>
+      @if (!n.isController) {
+        <mndw-tab id="settings">{{ t('tab.settings') }}</mndw-tab>
+      }
+      <mndw-tab id="clients">{{ t('drawer.clients', {count: n.clients.length}) }}</mndw-tab>
+
+      <mndw-tab-panel for="status">
     @if (showUtilization(n)) {
       <section class="utilization">
         <h4>{{ t('drawer.utilization') }}</h4>
@@ -131,43 +150,53 @@
     </section>
     }
 
-    @if (!n.isController) {
-      <section class="wifi-power">
-        <h4>{{ t('drawer.wifi-power') }}</h4>
-        <mndw-field label="2.4 GHz" [hint]="powerDisabledHint(n, 'WifiMaster0')">
-          <mndw-slider
-            data-radio="WifiMaster0"
-            min="0"
-            max="100"
-            step="1"
-            [value]="powerValue(n, 'WifiMaster0')"
-            [attr.value-text]="powerValueText(n, 'WifiMaster0')"
-            [disabled]="powerDisabled(n, 'WifiMaster0')"
-            (mndwchange)="onPowerChange(n, 'WifiMaster0', $any($event))"
-          ></mndw-slider>
-        </mndw-field>
-        @if (n.dualBand) {
-          <mndw-field label="5 GHz" [hint]="powerDisabledHint(n, 'WifiMaster1')">
-            <mndw-slider
-              data-radio="WifiMaster1"
-              min="0"
-              max="100"
-              step="1"
-              [value]="powerValue(n, 'WifiMaster1')"
-              [attr.value-text]="powerValueText(n, 'WifiMaster1')"
-              [disabled]="powerDisabled(n, 'WifiMaster1')"
-              (mndwchange)="onPowerChange(n, 'WifiMaster1', $any($event))"
-            ></mndw-slider>
-          </mndw-field>
-        }
-        @if (powerErrorMessage(); as errorMessage) {
-          <p class="power-error" role="alert">{{ errorMessage }}</p>
-        }
-      </section>
-    }
+      </mndw-tab-panel>
 
-    <section class="clients">
-      <h4>{{ t('drawer.clients', {count: n.clients.length}) }}</h4>
+      @if (!n.isController) {
+        <mndw-tab-panel for="settings">
+          <mws-node-settings
+            [node]="n"
+            (retryRequested)="retrySettings()"
+            (reconcileRequested)="reconcileSettings()"
+          />
+          <section class="wifi-power">
+            <h4>{{ t('drawer.wifi-power') }}</h4>
+            <mndw-field label="2.4 GHz" [hint]="powerDisabledHint(n, 'WifiMaster0')">
+              <mndw-slider
+                data-radio="WifiMaster0"
+                min="0"
+                max="100"
+                step="1"
+                [value]="powerValue(n, 'WifiMaster0')"
+                [attr.value-text]="powerValueText(n, 'WifiMaster0')"
+                [disabled]="powerDisabled(n, 'WifiMaster0')"
+                (mndwchange)="onPowerChange(n, 'WifiMaster0', $any($event))"
+              ></mndw-slider>
+            </mndw-field>
+            @if (n.dualBand) {
+              <mndw-field label="5 GHz" [hint]="powerDisabledHint(n, 'WifiMaster1')">
+                <mndw-slider
+                  data-radio="WifiMaster1"
+                  min="0"
+                  max="100"
+                  step="1"
+                  [value]="powerValue(n, 'WifiMaster1')"
+                  [attr.value-text]="powerValueText(n, 'WifiMaster1')"
+                  [disabled]="powerDisabled(n, 'WifiMaster1')"
+                  (mndwchange)="onPowerChange(n, 'WifiMaster1', $any($event))"
+                ></mndw-slider>
+              </mndw-field>
+            }
+            @if (powerErrorMessage(); as errorMessage) {
+              <p class="power-error" role="alert">{{ errorMessage }}</p>
+            }
+          </section>
+        </mndw-tab-panel>
+      }
+
+      <mndw-tab-panel for="clients">
+        <section class="clients">
+          <h4>{{ t('drawer.clients', {count: n.clients.length}) }}</h4>
       @if (n.clients.length === 0) {
         <p>{{ t('drawer.no-active-clients') }}</p>
       } @else {
@@ -192,7 +221,28 @@
           </tbody>
         </table>
       }
-    </section>
+        </section>
+      </mndw-tab-panel>
+    </mndw-tabs>
+
+    @if (!n.isController && !editing && settingsStore.loadState() === 'ready' && settingsStore.hasChanges()) {
+      <footer class="drawer-footer" data-settings-actions>
+        <mndw-button
+          variant="secondary"
+          type="button"
+          data-action="cancel"
+          [disabled]="settingsStore.reconciliation() !== 'idle' || settingsSaving()"
+          (click)="cancelSettings()"
+        >{{ t('edit-dialog.cancel') }}</mndw-button>
+        <mndw-button
+          variant="primary"
+          type="button"
+          data-action="save"
+          [disabled]="settingsSaveDisabled()"
+          (click)="saveSettings()"
+        >{{ settingsSaving() ? t('edit-dialog.saving') : t('edit-dialog.save') }}</mndw-button>
+      </footer>
+    }
   </div>
 } @else {
   <p class="gone">{{ t('drawer.gone') }}</p>

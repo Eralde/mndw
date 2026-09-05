@@ -47,6 +47,13 @@ describe('normalizeMembers', () => {
     expect(buddy.backhaul?.parentMac).toBe('02:7d:4a:91:c3:10');
     expect(buddy.backhaul?.ap).toBe('WifiMaster1/Backhaul0');
     expect(buddy.backhaul?.rssi).toBe(-35);
+    expect(buddy.hwId).toBe('KN-3411');
+    expect(buddy.fwUpdateAvailable).toBe(true);
+    expect(buddy.fwUpdateSandboxes).toHaveLength(4);
+    expect(buddy.ports).toEqual([
+      {index: 0, label: '0', appearance: null, link: 'up', speed: '1000', duplex: 'full'},
+    ]);
+    expect(buddy.wirelessBands).toEqual(['2.4', '5']);
 
     const atlas = members[1];
 
@@ -60,6 +67,54 @@ describe('normalizeMembers', () => {
 
   it('normalizes an empty object as no members', () => {
     expect(normalizeMembers({})).toEqual([]);
+  });
+
+  it('normalizes member inventory fields', () => {
+    const [member] = normalizeMembers([{
+      'cid': 'c1',
+      'mac': '02:7d:4a:91:c3:21',
+      'hw-id': 'KN-3411',
+      'mode': 'extender',
+      'region': 'EU',
+      'port': [{label: 'Port 0', appearance: 'sfp', link: 'up', speed: '1000', duplex: true}],
+      'fw-update-available': true,
+      'fw-update-sandboxes': [{version: '5.2.0', name: 'stable'}],
+      'wireless': {band: ['2.4', '5']},
+    }]);
+
+    expect(member.ports).toEqual([
+      {index: 0, label: 'Port 0', appearance: 'sfp', link: 'up', speed: '1000', duplex: 'full'},
+    ]);
+    expect(member.hwId).toBe('KN-3411');
+    expect(member.mode).toBe('extender');
+    expect(member.region).toBe('EU');
+    expect(member.fwUpdateAvailable).toBe(true);
+    expect(member.fwUpdateSandboxes).toEqual([{version: '5.2.0', name: 'stable'}]);
+    expect(member.wirelessBands).toEqual(['2.4', '5']);
+  });
+
+  it('normalizes device-shaped hw_id and wireless band objects', () => {
+    const [member] = normalizeMembers([{
+      cid: 'cid-1',
+      mac: '02:7d:4a:91:c3:21',
+      hw_id: 'KN-3411',
+      wireless: {band: [{index: '0'}, {index: '1'}]},
+    }]);
+
+    expect(member.hwId).toBe('KN-3411');
+    expect(member.wirelessBands).toEqual(['0', '1']);
+  });
+
+  it('defaults optional member inventory fields', () => {
+    const [member] = normalizeMembers([{cid: 'c1', mac: '02:7d:4a:91:c3:21'}]);
+
+    expect(member.ports).toEqual([]);
+    expect(member.hwId).toBeNull();
+    expect(member.mode).toBeNull();
+    expect(member.region).toBeNull();
+    expect(member.fwUpdateAvailable).toBe(false);
+    expect(member.fwUpdateSandboxes).toEqual([]);
+    expect(member.wirelessBands).toEqual([]);
   });
 
   it('only treats an exact true dual-band capability as enabled', () => {

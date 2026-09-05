@@ -14,6 +14,8 @@ import type {Subscription} from 'rxjs';
 import {MwsGraphComponent} from '../components/mws-graph/mws-graph.component';
 import {MwsClientsTableComponent} from '../components/clients-table/clients-table.component';
 import {MwsNodesTableComponent} from '../components/nodes-table/nodes-table.component';
+import {SettingsTabComponent} from '../components/settings-tab/settings-tab.component';
+import {TransitionLogTabComponent} from '../components/transition-log-tab/transition-log-tab.component';
 import {findNodeById, hasUpdate} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {NodePositionStore} from '../services/node-position.store';
@@ -54,7 +56,13 @@ function walkForest(roots: MwsNode[], visit: (node: MwsNode) => void): void {
   standalone: true,
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
-  imports: [MwsGraphComponent, MwsNodesTableComponent, MwsClientsTableComponent],
+  imports: [
+    MwsGraphComponent,
+    MwsNodesTableComponent,
+    MwsClientsTableComponent,
+    SettingsTabComponent,
+    TransitionLogTabComponent,
+  ],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class AppComponent implements OnDestroy, OnInit {
@@ -72,7 +80,7 @@ export class AppComponent implements OnDestroy, OnInit {
   private readonly overlay = inject(OVERLAY);
   private readonly bannerStore = inject(ExtraFeaturesBannerStore);
   protected readonly positions = inject(NodePositionStore);
-  protected readonly selectedTab = signal<'map' | 'nodes' | 'clients'>('map');
+  protected readonly selectedTab = signal<'map' | 'nodes' | 'clients' | 'settings' | 'transition-log'>('map');
   protected readonly quickFilter = signal<NodeQuickFilter>('none');
   protected readonly editMode = signal(false);
   protected readonly selectedNodeId = signal<string | null>(null);
@@ -128,7 +136,17 @@ export class AppComponent implements OnDestroy, OnInit {
 
     if (pageRoute !== null && pageRoute !== undefined) {
       this.pageRouteSubscription = pageRoute.childPath$.subscribe((childPath) => {
-        this.selectedTab.set(childPath === '/clients' ? 'clients' : childPath === '/nodes' ? 'nodes' : 'map');
+        this.selectedTab.set(
+          childPath === '/clients'
+            ? 'clients'
+            : childPath === '/nodes'
+            ? 'nodes'
+            : childPath === '/settings'
+            ? 'settings'
+            : childPath === '/transition-log'
+            ? 'transition-log'
+            : 'map',
+        );
 
         if (childPath === '') {
           void pageRoute.navigate('/topology', {replace: true}).catch(() => undefined);
@@ -243,7 +261,9 @@ export class AppComponent implements OnDestroy, OnInit {
   }
 
   protected onNodePositionChanged(position: {id: string; x: number; y: number}): void {
-    this.positions.set(position.id, {x: position.x, y: position.y});
+    const {id, x: xCoordinate, y: yCoordinate} = position;
+
+    this.positions.set(id, {x: xCoordinate, y: yCoordinate});
   }
 
   protected toggleEditMode(): void {
@@ -271,7 +291,10 @@ export class AppComponent implements OnDestroy, OnInit {
 
   protected onTabChanged(event: Event): void {
     const rawValue = (event as CustomEvent<{value?: string}>).detail?.value;
-    const value = rawValue === 'clients' || rawValue === 'nodes' ? rawValue : 'map';
+    const value =
+      rawValue === 'clients' || rawValue === 'nodes' || rawValue === 'settings' || rawValue === 'transition-log'
+        ? rawValue
+        : 'map';
 
     this.navigateToTab(value);
   }
@@ -285,14 +308,22 @@ export class AppComponent implements OnDestroy, OnInit {
     return this.quickFilter() === filter;
   }
 
-  private navigateToTab(value: 'map' | 'nodes' | 'clients'): void {
+  private navigateToTab(value: 'map' | 'nodes' | 'clients' | 'settings' | 'transition-log'): void {
     this.selectedTab.set(value);
 
     if (this.pageRoute === null || this.pageRoute === undefined) {
       return;
     }
 
-    const childPath = value === 'clients' ? '/clients' : value === 'nodes' ? '/nodes' : '/topology';
+    const childPath = value === 'clients'
+      ? '/clients'
+      : value === 'nodes'
+      ? '/nodes'
+      : value === 'settings'
+      ? '/settings'
+      : value === 'transition-log'
+      ? '/transition-log'
+      : '/topology';
 
     void this.pageRoute.navigate(childPath).catch(() => undefined);
   }

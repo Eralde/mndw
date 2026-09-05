@@ -1,3 +1,5 @@
+import type {FwUpdateSandbox, MwsMemberPort} from '../../api/rci.types';
+
 export interface MwsClient {
   mac: string;
   name: string;
@@ -77,6 +79,11 @@ export interface MwsNode {
   children: MwsLink[];
   clients: MwsClient[];
   dualBand: boolean;
+  hwId: string | null;
+  ports: MwsMemberPort[];
+  fwUpdateAvailable: boolean;
+  fwUpdateSandboxes: FwUpdateSandbox[];
+  wirelessBands: string[];
   wifiPower?: {
     readonly power2g: MwsRadioPower;
     readonly power5g: MwsRadioPower;

@@ -1,10 +1,24 @@
-import {CUSTOM_ELEMENTS_SCHEMA, Component, type OnDestroy, inject, input, output} from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  Component,
+  type OnDestroy,
+  effect,
+  inject,
+  input,
+  output,
+  viewChild,
+} from '@angular/core';
 import type {MndwChartSample} from '@mndw/ui';
+import {type RciManager, RciResponseHelper} from '@rci-tools/core';
+import {firstValueFrom, fromEvent, takeUntil} from 'rxjs';
+import {normalizeBridgeSegments, parseNodeEditState} from '../../api/node-edit-state';
 import type {MwsNode, MwsRadioPower, MwsUtilSeries} from '../../domain/mws/mws.types';
 import {formatCpuLoad, formatMemory, formatRate, formatRssi, formatSpeed, formatUptime} from '../../format';
 import {MwsDataService} from '../../services/mws-data.service';
+import {NodeSettingsComponent} from '../node-settings/node-settings.component';
+import {NodeSettingsStore} from '../../services/node-settings.store';
 import {type MwsWriteResult, MwsWriteService} from '../../services/mws-write.service';
-import {MWS_RENAME_API, type MwsRenameApi, TRANSLATOR} from '../../tokens';
+import {MWS_RENAME_API, type MwsRenameApi, RCI_MANAGER, TRANSLATOR} from '../../tokens';
 import {type NodeNameValidationErrorCode, validateNodeName} from '../../api/node-name';
 import {type NodeStatusLabels, getNodeStatusLabels, getPowerDisabledHint} from '../../status-labels';
 
@@ -32,6 +46,42 @@ interface PowerControlState {
 
 const UNAVAILABLE_POWER: MwsRadioPower = {value: null, available: false};
 
+function responseRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function responseErrorMessage(value: unknown): string | null {
+  const source = responseRecord(value);
+
+  if (source === null) {
+    return null;
+  }
+
+  for (const error of Object.values(RciResponseHelper.getErrors(source))) {
+    if (error.message.trim() !== '') {
+      return error.message;
+    }
+  }
+
+  return null;
+}
+
+function hasResponseShape(value: unknown, keys: readonly string[]): boolean {
+  if (Array.isArray(value)) {
+    return true;
+  }
+
+  const source = responseRecord(value);
+
+  if (source === null || keys.some((key) => key in source)) {
+    return source !== null;
+  }
+
+  return Object.values(source).every((entry) => responseRecord(entry) !== null);
+}
+
 type ErrorTranslationKey =
   | 'error.invalid-name'
   | 'error.name-empty'
@@ -48,6 +98,8 @@ const NODE_NAME_ERROR_KEYS: Record<NodeNameValidationErrorCode, Exclude<ErrorTra
   standalone: true,
   templateUrl: './node-drawer.component.html',
   styleUrls: ['./node-drawer.component.scss'],
+  imports: [NodeSettingsComponent],
+  providers: [NodeSettingsStore],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class NodeDrawerComponent implements OnDestroy {
@@ -55,8 +107,14 @@ export class NodeDrawerComponent implements OnDestroy {
   private readonly renameApi = inject<MwsRenameApi>(MWS_RENAME_API);
   private readonly data = inject(MwsDataService);
   private readonly write = inject(MwsWriteService);
+  private readonly rci = inject<RciManager>(RCI_MANAGER);
+  protected readonly settingsStore = inject(NodeSettingsStore);
+  private readonly nodeSettings = viewChild(NodeSettingsComponent);
 
   private observedMac: string | null = null;
+  private settingsMac: string | null = null;
+  private settingsGeneration = 0;
+  private settingsAbortController: AbortController | null = null;
   private readonly powerState: Record<MwsWifiInterface, PowerControlState> = {
     WifiMaster0: this.newPowerControl(),
     WifiMaster1: this.newPowerControl(),
@@ -67,13 +125,23 @@ export class NodeDrawerComponent implements OnDestroy {
   public readonly renamed = output<string>();
   private observedNode: MwsNode | null | undefined;
 
+  protected selectedTab = 'status';
   protected editing = false;
   protected draft = '';
   protected pending = false;
   protected error = '';
   protected powerError = '';
+  protected webPanelPending = false;
+  protected webPanelError = '';
   private renameErrorKey: ErrorTranslationKey | null = null;
   private powerErrorKey: 'error.tx-power-failed' | null = null;
+  private renameStartName: string | null = null;
+
+  public constructor() {
+    effect(() => {
+      this.observeSettings(this.node());
+    });
+  }
 
   protected currentNode(): MwsNode | null {
     const node = this.node();
@@ -93,6 +161,140 @@ export class NodeDrawerComponent implements OnDestroy {
     return node;
   }
 
+  protected onTabChanged(event: CustomEvent<{value?: string}>): void {
+    const value = event.detail?.value;
+
+    if (value === 'status' || value === 'settings' || value === 'clients') {
+      this.selectedTab = value;
+    }
+  }
+
+  protected displayName(node: MwsNode): string {
+    return node.isController ? node.name : this.settingsStore.draft()?.name ?? node.name;
+  }
+
+  private observeSettings(node: MwsNode | null): void {
+    if (node === null || node.isController) {
+      if (this.settingsMac !== node?.mac) {
+        this.cancelSettingsLoad();
+        this.settingsMac = node?.mac ?? null;
+        this.selectedTab = 'status';
+      }
+
+      return;
+    }
+
+    if (this.settingsMac !== node.mac) {
+      this.startSettingsLoad(node);
+    }
+  }
+
+  private startSettingsLoad(node: MwsNode): void {
+    this.cancelSettingsLoad();
+    this.settingsMac = node.mac;
+    this.selectedTab = 'status';
+    this.settingsStore.beginLoad();
+
+    const controller = new AbortController();
+    const generation = this.settingsGeneration;
+
+    this.settingsAbortController = controller;
+    void this.loadSettings(node, generation, controller.signal, false);
+  }
+
+  private async loadSettings(
+    node: MwsNode,
+    generation: number,
+    signal: AbortSignal,
+    reconciliation: boolean,
+  ): Promise<void> {
+    try {
+      const responses = await firstValueFrom(
+        this.rci.queue([
+          {path: 'show.sc.ip.dhcp.host'},
+          {path: 'show.sc.mws.member'},
+          {path: 'show.sc.interface'},
+          {path: 'show.interface'},
+        ]).pipe(takeUntil(fromEvent(signal, 'abort'))),
+        {defaultValue: undefined},
+      );
+
+      if (!this.isCurrentSettings(node, generation, signal)) {
+        return;
+      }
+
+      if (!Array.isArray(responses) || responses.length < 4) {
+        throw new Error(this.t('edit-dialog.segments-error'));
+      }
+
+      const dhcp = responses[0];
+      const member = responses[1];
+      const interfaceConfig = responses[2];
+      const showInterfaces = responses[3];
+
+      if (
+        dhcp === undefined
+        || member === undefined
+        || interfaceConfig === undefined
+        || showInterfaces === undefined
+        || RciResponseHelper.hasErrors(dhcp)
+        || RciResponseHelper.hasErrors(member)
+        || RciResponseHelper.hasErrors(interfaceConfig)
+        || RciResponseHelper.hasErrors(showInterfaces)
+      ) {
+        throw new Error(
+          responseErrorMessage(dhcp) ?? responseErrorMessage(member) ?? responseErrorMessage(interfaceConfig)
+            ?? responseErrorMessage(showInterfaces)
+            ?? this.t('edit-dialog.segments-error'),
+        );
+      }
+
+      if (
+        !hasResponseShape(dhcp, ['host'])
+        || !hasResponseShape(member, ['member'])
+        || !hasResponseShape(interfaceConfig, ['interface'])
+        || !hasResponseShape(showInterfaces, ['interface', 'id', 'type'])
+      ) {
+        throw new Error(this.t('edit-dialog.segments-error'));
+      }
+
+      const state = parseNodeEditState(dhcp, member, node.mac);
+      const segments = normalizeBridgeSegments(interfaceConfig, showInterfaces);
+
+      if (reconciliation) {
+        this.settingsStore.reconcile(node.name, state, segments);
+      } else {
+        this.settingsStore.initialize(node.name, state, segments);
+
+        if (this.editing) {
+          this.settingsStore.setName(this.draft);
+        }
+      }
+
+      this.settingsAbortController = null;
+    } catch (error: unknown) {
+      if (!this.isCurrentSettings(node, generation, signal)) {
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : this.t('edit-dialog.segments-error');
+
+      if (reconciliation) {
+        this.settingsStore.endReconciliation(message);
+      } else {
+        this.settingsStore.failLoad(message);
+      }
+    }
+  }
+
+  private isCurrentSettings(node: MwsNode, generation: number, signal: AbortSignal): boolean {
+    return generation === this.settingsGeneration
+      && !signal.aborted
+      && this.settingsMac === node.mac
+      && this.node()?.mac === node.mac
+      && this.node()?.isController === false;
+  }
+
   protected beginRename(): void {
     const node = this.node();
 
@@ -100,7 +302,13 @@ export class NodeDrawerComponent implements OnDestroy {
       return;
     }
 
-    this.draft = node.name;
+    this.draft = node.isController ? node.name : this.settingsStore.draft()?.name ?? node.name;
+    this.renameStartName = this.draft;
+
+    if (!node.isController && this.settingsStore.draft() !== null) {
+      this.settingsStore.setName(this.draft);
+    }
+
     this.clearRenameError();
     this.editing = true;
   }
@@ -110,12 +318,22 @@ export class NodeDrawerComponent implements OnDestroy {
       return;
     }
 
+    if (!this.node()?.isController && this.renameStartName !== null) {
+      this.settingsStore.setName(this.renameStartName);
+    }
+
     this.editing = false;
+    this.renameStartName = null;
     this.clearRenameError();
   }
 
   protected onNameInput(event: CustomEvent<{value: string}>): void {
     this.draft = event.detail.value;
+
+    if (!this.node()?.isController) {
+      this.settingsStore.setName(this.draft);
+    }
+
     this.clearRenameError();
   }
 
@@ -152,30 +370,134 @@ export class NodeDrawerComponent implements OnDestroy {
     this.pending = true;
     this.clearRenameError();
 
-    this.renameApi.renameNode(node.mac, node.isController, name).subscribe({
-      next: () => {
-        this.pending = false;
-        this.editing = false;
-        this.renamed.emit(name);
-        this.setTitle()(name);
-        this.data.refreshNow();
-      },
-      error: (error: unknown) => {
-        this.pending = false;
+    if (node.isController) {
+      this.renameApi.renameNode(node.mac, true, name).subscribe({
+        next: () => this.completeRename(name),
+        error: (error: unknown) => this.failRename(error),
+      });
 
-        if (error instanceof Error) {
-          this.error = error.message;
-          this.renameErrorKey = null;
-        } else {
-          this.error = '';
-          this.renameErrorKey = 'error.rename-failed';
+      return;
+    }
+
+    void this.write.setName(node.mac, name)
+      .then((result) => {
+        if (!result.ok) {
+          throw new Error(this.writeError(result) ?? this.t('error.rename-failed'));
         }
-      },
-    });
+
+        this.completeRename(name);
+      })
+      .catch((error: unknown) => this.failRename(error));
+  }
+
+  protected retrySettings(): void {
+    const node = this.node();
+
+    if (node !== null && !node.isController) {
+      this.startSettingsLoad(node);
+    }
+  }
+
+  protected settingsSaveDisabled(): boolean {
+    return this.nodeSettings()?.saveDisabled() ?? true;
+  }
+
+  protected settingsSaving(): boolean {
+    return this.nodeSettings()?.isSaving() ?? false;
+  }
+
+  protected saveSettings(): void {
+    this.nodeSettings()?.saveChanges();
+  }
+
+  protected cancelSettings(): void {
+    this.nodeSettings()?.cancelChanges();
+  }
+
+  protected reconcileSettings(): void {
+    const node = this.node();
+
+    if (node === null || node.isController) {
+      return;
+    }
+
+    this.cancelSettingsLoad();
+
+    const controller = new AbortController();
+    const generation = this.settingsGeneration;
+
+    this.settingsAbortController = controller;
+    void this.loadSettings(node, generation, controller.signal, true);
+  }
+
+  private completeRename(name: string): void {
+    this.pending = false;
+    this.editing = false;
+    this.renameStartName = null;
+
+    if (!this.node()?.isController && this.settingsStore.baseline() !== null) {
+      this.settingsStore.setName(name);
+      this.settingsStore.commit('name');
+    }
+
+    this.renamed.emit(name);
+    this.setTitle()(name);
+    this.data.refreshNow();
+  }
+
+  private failRename(error: unknown): void {
+    this.pending = false;
+
+    if (error instanceof Error) {
+      this.error = error.message;
+      this.renameErrorKey = null;
+    } else {
+      this.error = '';
+      this.renameErrorKey = 'error.rename-failed';
+    }
   }
 
   protected renameErrorMessage(): string {
     return this.renameErrorKey === null ? this.error : this.t(this.renameErrorKey);
+  }
+
+  protected canOpenWebPanel(node: MwsNode): boolean {
+    return !node.isController && node.isOnline && node.cid !== null;
+  }
+
+  protected openWebPanel(node: MwsNode): void {
+    if (!this.canOpenWebPanel(node) || this.webPanelPending || node.cid === null) {
+      return;
+    }
+
+    const popup = window.open('about:blank', '_blank');
+
+    if (popup === null) {
+      this.webPanelError = this.t('drawer.popup-blocked');
+
+      return;
+    }
+
+    popup.opener = null;
+    this.webPanelPending = true;
+    this.webPanelError = '';
+
+    void this.renameApi.getAuthUrl(node.cid)
+      .then((url) => {
+        if (!popup.closed) {
+          popup.location.href = url;
+        }
+      })
+      .catch((error: unknown) => {
+        if (!popup.closed) {
+          popup.close();
+        }
+
+        this.webPanelError = error instanceof Error ? error.message : this.t('drawer.open-web-panel-failed');
+      })
+      .finally(() => {
+        this.webPanelPending = false;
+      });
   }
 
   protected dash(value: string | number | null | undefined): string {
@@ -472,5 +794,12 @@ export class NodeDrawerComponent implements OnDestroy {
   }
 
   public ngOnDestroy(): void {
+    this.cancelSettingsLoad();
+  }
+
+  private cancelSettingsLoad(): void {
+    this.settingsGeneration += 1;
+    this.settingsAbortController?.abort();
+    this.settingsAbortController = null;
   }
 }

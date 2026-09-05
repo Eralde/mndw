@@ -124,4 +124,60 @@ describe('MwsApiService', () => {
       'Name is reserved',
     );
   });
+
+  it('reads system settings and preserves schedule IDs and actions', async () => {
+    const {service, queue} = serviceWith(() =>
+      of([
+        {},
+        false,
+        {disable: false, schedule: 'schedule2'},
+        {
+          schedule0: {
+            description: 'Auto-update schedule',
+            action: [
+              {action: 'start', min: '0', hour: '1', dow: '*'},
+              {action: 'stop', min: '0', hour: '6', dow: '*'},
+            ],
+          },
+        },
+      ])
+    );
+
+    await expect(firstValueFrom(service.showSystemSettings())).resolves.toEqual({
+      backhaulEnabled: true,
+      autoApShutdownEnabled: false,
+      autoUpdateEnabled: true,
+      autoUpdateSchedule: 'schedule2',
+      schedules: {
+        schedule0: {
+          description: 'Auto-update schedule',
+          action: [
+            {action: 'start', min: '0', hour: '1', dow: '*'},
+            {action: 'stop', min: '0', hour: '6', dow: '*'},
+          ],
+        },
+      },
+    });
+    expect(queue).toHaveBeenCalledWith([
+      {path: 'show.sc.mws.backhaul'},
+      {path: 'show.sc.mws.auto-ap-shutdown'},
+      {path: 'show.sc.components.auto-update'},
+      {path: 'show.sc.schedule'},
+    ]);
+  });
+
+  it('queries auth-url with member and returns its URL', async () => {
+    const {service, queue} = serviceWith(() => of({url: 'https://example.test/auth?token=one-time'}));
+
+    await expect(service.getAuthUrl('cid-1')).resolves.toBe('https://example.test/auth?token=one-time');
+    expect(queue).toHaveBeenCalledWith({path: 'mws.member.auth-url', data: {member: 'cid-1'}});
+  });
+
+  it('rejects an empty auth-url member and missing URL', async () => {
+    const {service, queue} = serviceWith(() => of({}));
+
+    await expect(service.getAuthUrl('  ')).rejects.toThrow('member is required');
+    await expect(service.getAuthUrl('cid-1')).rejects.toThrow('device returned no auth URL');
+    expect(queue).toHaveBeenCalledTimes(1);
+  });
 });

@@ -10,7 +10,7 @@ import type {ControllerInfo, MwsNode} from '../../domain/mws/mws.types';
 import {loadFixture} from '../../fixtures/load';
 import {type ExtraFeaturesAvailability, MwsDataService} from '../../services/mws-data.service';
 import {MwsWriteService} from '../../services/mws-write.service';
-import {MWS_RENAME_API, TRANSLATOR} from '../../tokens';
+import {MWS_RENAME_API, RCI_MANAGER, TRANSLATOR} from '../../tokens';
 import drawerStyles from './node-drawer.component.scss?raw';
 import drawerTemplate from './node-drawer.component.html?raw';
 import {NodeDrawerComponent} from './node-drawer.component';
@@ -61,16 +61,29 @@ function slider(
 
 describe('NodeDrawerComponent', () => {
   let renameNode: ReturnType<typeof vi.fn>;
+  let getAuthUrl: ReturnType<typeof vi.fn>;
   let refreshNow: ReturnType<typeof vi.fn>;
   let setPower: ReturnType<typeof vi.fn>;
+  let setName: ReturnType<typeof vi.fn>;
+  let settingsQueue: ReturnType<typeof vi.fn>;
   let availability: ReturnType<typeof signal<ExtraFeaturesAvailability>>;
   let testI18n: TestI18n;
 
   beforeEach(async () => {
     TestBed.resetTestingModule();
     renameNode = vi.fn(() => of(undefined));
+    getAuthUrl = vi.fn(() => Promise.resolve('https://example.test/auth'));
     refreshNow = vi.fn();
     setPower = vi.fn(() => Promise.resolve({ok: true, steps: []}));
+    setName = vi.fn(() => Promise.resolve({ok: true, steps: []}));
+    settingsQueue = vi.fn(() =>
+      of([
+        {},
+        {},
+        {Bridge0: {iseg: {}}},
+        {Bridge0: {id: 'Bridge0', type: 'Bridge', description: 'Home network'}},
+      ])
+    );
     availability = signal<ExtraFeaturesAvailability>('active');
     testI18n = createTestI18n(enCatalog);
     await resolveComponentResources((url: string) => {
@@ -87,10 +100,16 @@ describe('NodeDrawerComponent', () => {
     await TestBed.configureTestingModule({
       imports: [NodeDrawerComponent],
       providers: [
-        {provide: MWS_RENAME_API, useValue: {renameNode}},
+        {provide: MWS_RENAME_API, useValue: {renameNode, getAuthUrl}},
         {provide: MwsDataService, useValue: {refreshNow, freshnessNow: () =>
           10_000, extraFeaturesAvailability: availability}},
-        {provide: MwsWriteService, useValue: {setPower}},
+        {provide: MwsWriteService, useValue: {setPower, setName}},
+        {
+          provide: RCI_MANAGER,
+          useValue: {
+            queue: settingsQueue,
+          },
+        },
         {provide: TRANSLATOR, useValue: testI18n},
       ],
     }).compileComponents();
@@ -113,6 +132,286 @@ describe('NodeDrawerComponent', () => {
     expect(text).toContain('−35 dBm');
     expect(text).toContain('1.2 Gbit/s');
     expect(text).toContain('11ax');
+  });
+
+  it('shows a device-panel action only for online extenders', async () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const extender = findNodeById(roots(), '02:7d:4a:91:c3:21');
+
+    fixture.componentRef.setInput('node', extender);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-action="open-web-panel"]')).not.toBeNull();
+
+    const popup = {
+      closed: false,
+      opener: window,
+      location: {href: 'about:blank'},
+      close: vi.fn(),
+    } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup);
+
+    fixture.nativeElement.querySelector<HTMLElement>('[data-action="open-web-panel"]')?.click();
+    await Promise.resolve();
+    expect(getAuthUrl).toHaveBeenCalledWith('1a2c405a-fabb-11ee-911a-2559b061cca4');
+    expect(open).toHaveBeenCalledWith('about:blank', '_blank');
+    expect((popup as unknown as {location: {href: string}}).location.href).toBe('https://example.test/auth');
+    open.mockRestore();
+  });
+
+  it('skips auth-url when the popup is blocked', async () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+
+    const open = vi.spyOn(window, 'open').mockReturnValue(null);
+
+    fixture.nativeElement.querySelector<HTMLElement>('[data-action="open-web-panel"]')?.click();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(getAuthUrl).not.toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Allow pop-ups');
+    open.mockRestore();
+  });
+
+  it('does not reopen a popup closed while auth-url is loading', async () => {
+    let resolveUrl: ((url: string) => void) | undefined;
+
+    getAuthUrl.mockReturnValue(
+      new Promise((resolve) => {
+        resolveUrl = resolve;
+      }),
+    );
+
+    const popup = {
+      closed: false,
+      opener: window,
+      location: {href: 'about:blank'},
+      close: vi.fn(),
+    } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(popup);
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelector<HTMLElement>('[data-action="open-web-panel"]')?.click();
+    (popup as unknown as {closed: boolean}).closed = true;
+    resolveUrl?.('https://example.test/auth');
+    await Promise.resolve();
+
+    expect(open).toHaveBeenCalledOnce();
+    open.mockRestore();
+  });
+
+  it('renders Status, Settings, and Clients inline for extender nodes', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('mndw-tabs')).not.toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('mndw-tab')).toHaveLength(3);
+    expect(fixture.nativeElement.querySelector('mndw-tab#status')?.textContent).toContain('Status');
+    expect(fixture.nativeElement.querySelector('mndw-tab#settings')?.textContent).toContain('Settings');
+    expect(fixture.nativeElement.querySelector('mndw-tab#clients')?.textContent).toContain('Clients');
+    expect(fixture.nativeElement.querySelector('mndw-tab-panel[for="settings"] mws-node-settings')).not.toBeNull();
+  });
+
+  it('loads settings with one exact batch before any tab switch', async () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(settingsQueue).toHaveBeenCalledOnce();
+    expect(settingsQueue).toHaveBeenCalledWith([
+      {path: 'show.sc.ip.dhcp.host'},
+      {path: 'show.sc.mws.member'},
+      {path: 'show.sc.interface'},
+      {path: 'show.interface'},
+    ]);
+  });
+
+  it('shows settings actions in the drawer footer only after a form change', async () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-action="save"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-action="cancel"]')).toBeNull();
+
+    const name = fixture.nativeElement.querySelector<HTMLElement>('mws-node-settings [data-field="name"]');
+
+    name?.dispatchEvent(
+      new CustomEvent('mndwinput', {
+        bubbles: true,
+        composed: true,
+        detail: {value: 'Changed extender'},
+      }),
+    );
+    fixture.detectChanges();
+
+    const footer = fixture.nativeElement.querySelector<HTMLElement>('.drawer-footer');
+
+    expect(footer).not.toBeNull();
+    expect(footer?.parentElement?.classList.contains('drawer')).toBe(true);
+    expect(footer?.querySelectorAll('mndw-button')).toHaveLength(2);
+    expect(footer?.querySelector('[data-action="save"]')).not.toBeNull();
+    expect(footer?.querySelector('[data-action="cancel"]')).not.toBeNull();
+    expect(footer?.querySelector('[data-action="save"]')?.getAttribute('variant')).toBe('primary');
+    expect(footer?.querySelector('[data-action="cancel"]')?.getAttribute('variant')).toBe('secondary');
+    expect(fixture.nativeElement.querySelector('mws-node-settings [data-action="save"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('mws-node-settings [data-action="cancel"]')).toBeNull();
+
+    footer?.querySelector<HTMLElement>('[data-action="cancel"]')?.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.settingsStore.hasChanges()).toBe(false);
+    expect(fixture.nativeElement.querySelector('.drawer-footer')).toBeNull();
+  });
+
+  it('saves form changes through the drawer footer', async () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    const name = fixture.nativeElement.querySelector<HTMLElement>('mws-node-settings [data-field="name"]');
+
+    name?.dispatchEvent(
+      new CustomEvent('mndwinput', {
+        bubbles: true,
+        composed: true,
+        detail: {value: 'Saved extender'},
+      }),
+    );
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector<HTMLElement>('.drawer-footer [data-action="save"]')?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(setName).toHaveBeenCalledWith('02:7d:4a:91:c3:21', 'Saved extender');
+    expect(fixture.componentInstance.settingsStore.hasChanges()).toBe(false);
+    expect(fixture.nativeElement.querySelector('.drawer-footer')).toBeNull();
+  });
+
+  it('does not show settings actions for TX-power changes', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
+
+    fixture.componentRef.setInput(
+      'node',
+      node === null ? null : withPower(node, true, {value: 75, available: true}),
+    );
+    fixture.detectChanges();
+    slider(fixture, 'WifiMaster0').dispatchEvent(
+      new CustomEvent('mndwchange', {
+        detail: {value: 65},
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.drawer-footer')).toBeNull();
+  });
+
+  it('keeps controller drawers free of member settings reads', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), CONTROLLER.mac));
+    fixture.detectChanges();
+
+    expect(settingsQueue).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelectorAll('mndw-tab')).toHaveLength(2);
+    expect(fixture.nativeElement.querySelector('mws-node-settings')).toBeNull();
+  });
+
+  it('shows retry state after a malformed or status-error settings batch', async () => {
+    settingsQueue.mockReturnValueOnce(of([
+      {},
+      {error: 'member-read-failed', message: 'Member read failed'},
+      {},
+      {},
+    ]));
+
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('[data-action="retry-settings"]')).not.toBeNull();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Member read failed');
+  });
+
+  it('ignores a late settings response after switching to another node', async () => {
+    const lateResponse = new Subject<unknown>();
+    const firstNode = findNodeById(roots(), '02:7d:4a:91:c3:21');
+    const secondNode = findNodeById(roots(), '02:7d:4a:91:c3:32');
+
+    settingsQueue
+      .mockReturnValueOnce(lateResponse.asObservable())
+      .mockReturnValueOnce(of([
+        {},
+        {},
+        {Guest: {iseg: {}}},
+        {Guest: {id: 'Guest', type: 'Bridge'}},
+      ]));
+
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', firstNode);
+    fixture.detectChanges();
+    fixture.componentRef.setInput('node', secondNode);
+    fixture.detectChanges();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    lateResponse.next([{}, {}, {Stale: {iseg: {}}}, {Stale: {id: 'Stale', type: 'Bridge'}}]);
+    lateResponse.complete();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.settingsStore.draft()?.name).toBe(secondNode?.name);
+    expect(fixture.componentInstance.settingsStore.segments()).toEqual([{id: 'Guest', label: 'Guest'}]);
+  });
+
+  it('hides the device-panel action for offline nodes and the controller', () => {
+    const offline = buildMap(normalizeMembers([{cid: 'offline', mac: 'aa:00:00:00:00:01'}]), [], CONTROLLER);
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(offline, 'aa:00:00:00:00:01'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-action="open-web-panel"]')).toBeNull();
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), CONTROLLER.mac));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-action="open-web-panel"]')).toBeNull();
+  });
+
+  it('places Wi-Fi TX-power controls in the Settings panel', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('mndw-tab-panel[for="status"] .wifi-power')).toBeNull();
+    expect(fixture.nativeElement.querySelector('mndw-tab-panel[for="settings"] .wifi-power')).not.toBeNull();
   });
 
   it('renders wired backhaul details for the wired extender', () => {
@@ -360,7 +659,7 @@ describe('NodeDrawerComponent', () => {
     fixture.nativeElement.querySelector<HTMLElement>('[data-action="save-name"]')?.click();
     fixture.detectChanges();
 
-    expect(renameNode).toHaveBeenCalledWith('02:7d:4a:91:c3:21', false, 'Renamed Extender');
+    expect(setName).toHaveBeenCalledWith('02:7d:4a:91:c3:21', 'Renamed Extender');
   });
 
   it('shows local validation errors without calling the API', () => {

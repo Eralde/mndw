@@ -4,9 +4,10 @@ import {TestBed} from '@angular/core/testing';
 import type {OverlayCloseEvent, OverlayLayer, OverlayService, PageRoute} from '@mndw/sdk';
 import {createTranslatorSignals} from '@mndw/sdk/angular';
 import {createTestI18n} from '@mndw/sdk/testing';
-import {BehaviorSubject} from 'rxjs';
+import {BehaviorSubject, of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {normalizeMembers} from '../api/normalize';
+import {MwsApiService} from '../api/mws-api.service';
 import {buildMap} from '../domain/mws/map-builder';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
@@ -20,6 +21,7 @@ import {
 } from '../services/mws-data.service';
 import {FakePluginStorage} from '../test-support/plugin-storage.fake';
 import {NodeTableColumnsStore} from '../services/node-table-columns.store';
+import {MwsWriteService} from '../services/mws-write.service';
 import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, PLUGIN_STORAGE, SHARED_PLUGIN_STORAGE, TRANSLATOR} from '../tokens';
 import {NodePositionStore} from '../services/node-position.store';
 import graphStyles from '../components/mws-graph/mws-graph.component.scss?raw';
@@ -27,6 +29,10 @@ import clientsTableStyles from '../components/clients-table/clients-table.compon
 import clientsTableTemplate from '../components/clients-table/clients-table.component.html?raw';
 import nodesTableStyles from '../components/nodes-table/nodes-table.component.scss?raw';
 import nodesTableTemplate from '../components/nodes-table/nodes-table.component.html?raw';
+import settingsTabStyles from '../components/settings-tab/settings-tab.component.scss?raw';
+import settingsTabTemplate from '../components/settings-tab/settings-tab.component.html?raw';
+import transitionLogTabStyles from '../components/transition-log-tab/transition-log-tab.component.scss?raw';
+import transitionLogTabTemplate from '../components/transition-log-tab/transition-log-tab.component.html?raw';
 import appStyles from './app.component.scss?raw';
 import appTemplate from './app.component.html?raw';
 import {AppComponent} from './app.component';
@@ -143,6 +149,22 @@ describe('AppComponent', () => {
         return Promise.resolve(nodesTableStyles);
       }
 
+      if (url.endsWith('settings-tab.component.html')) {
+        return Promise.resolve(settingsTabTemplate);
+      }
+
+      if (url.endsWith('settings-tab.component.scss')) {
+        return Promise.resolve(settingsTabStyles);
+      }
+
+      if (url.endsWith('transition-log-tab.component.html')) {
+        return Promise.resolve(transitionLogTabTemplate);
+      }
+
+      if (url.endsWith('transition-log-tab.component.scss')) {
+        return Promise.resolve(transitionLogTabStyles);
+      }
+
       throw new Error(`resource URL: ${url}`);
     });
     await TestBed.configureTestingModule({
@@ -156,6 +178,28 @@ describe('AppComponent', () => {
         {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(testI18n, inject(DestroyRef))},
         NodePositionStore,
         NodeTableColumnsStore,
+        {
+          provide: MwsApiService,
+          useValue: {
+            showSystemSettings: () =>
+              of({
+                backhaulEnabled: true,
+                autoApShutdownEnabled: true,
+                autoUpdateEnabled: true,
+                autoUpdateSchedule: null,
+                schedules: {},
+              }),
+          },
+        },
+        {
+          provide: MwsWriteService,
+          useValue: {
+            setBackhaul: () => Promise.resolve({ok: true, steps: []}),
+            setAutoApShutdown: () => Promise.resolve({ok: true, steps: []}),
+            setAutoUpdate: () => Promise.resolve({ok: true, steps: []}),
+            setAutoUpdateSchedule: () => Promise.resolve({ok: true, steps: []}),
+          },
+        },
       ],
     }).compileComponents();
   });
@@ -222,13 +266,17 @@ describe('AppComponent', () => {
     const element = fixture.nativeElement as HTMLElement;
 
     expect(element.querySelector('mndw-tabs.map-tabs')).not.toBeNull();
-    expect(element.querySelectorAll('mndw-tab')).toHaveLength(3);
+    expect(element.querySelectorAll('mndw-tab')).toHaveLength(5);
     expect(element.querySelector('mndw-tab#map')?.textContent).toContain('Map');
     expect(element.querySelector('mndw-tab#nodes')?.textContent).toContain('Nodes');
     expect(element.querySelector('mndw-tab#clients')?.textContent).toContain('Clients');
+    expect(element.querySelector('mndw-tab#settings')?.textContent).toContain('Settings');
+    expect(element.querySelector('mndw-tab#transition-log')?.textContent).toContain('Transition log');
     expect(element.querySelector('mndw-tab-panel[for="map"] mws-map-graph')).not.toBeNull();
     expect(element.querySelector('mndw-tab-panel[for="nodes"] mws-nodes-table')).not.toBeNull();
     expect(element.querySelector('mndw-tab-panel[for="clients"] mws-clients-table')).not.toBeNull();
+    expect(element.querySelector('mndw-tab-panel[for="settings"] mws-settings-tab')).not.toBeNull();
+    expect(element.querySelector('mndw-tab-panel[for="transition-log"] mws-transition-log-tab')).not.toBeNull();
   });
 
   it('renders discrete summary chips and keeps map freshness separate from telemetry', () => {

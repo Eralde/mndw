@@ -106,6 +106,13 @@ function createMember(index: number): MwsMemberRecord {
         portLabel: isWireless ? null : String(index % 4),
       },
     dualBand: isWireless,
+    hwId: MODELS[index % MODELS.length],
+    mode: 'extender',
+    region: 'EU',
+    ports: [],
+    fwUpdateAvailable: !offline && index % 4 === 0,
+    fwUpdateSandboxes: [],
+    wirelessBands: isWireless ? ['2.4', '5'] : ['2.4'],
   };
 }
 

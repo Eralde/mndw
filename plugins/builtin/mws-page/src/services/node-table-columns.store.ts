@@ -11,6 +11,7 @@ export const OPTIONAL_NODE_COLUMN_IDS = [
   'via',
   'connection',
   'firmware',
+  'alert',
 ] as const;
 
 export type OptionalNodeColumnId = typeof OPTIONAL_NODE_COLUMN_IDS[number];

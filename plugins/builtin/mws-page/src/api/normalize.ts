@@ -1,13 +1,16 @@
 import type {
   BridgeInterfaceRecord,
   DeviceHostRecord,
+  FwUpdateSandbox,
   MwsMemberBackhaul,
+  MwsMemberPort,
   MwsMemberRecord,
   MwsMemberSystem,
   RawBridgeInterface,
   RawDeviceHost,
   RawMwsMember,
   RawMwsMemberBackhaul,
+  RawMwsMemberPort,
   RawShowVersion,
   ShowVersionRecord,
 } from './rci.types';
@@ -87,6 +90,39 @@ function normalizeBackhaul(raw: RawMwsMemberBackhaul | undefined): MwsMemberBack
   };
 }
 
+function normalizePorts(raw: RawMwsMemberPort[] | undefined): MwsMemberPort[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.map((port, index) => {
+    const duplex = typeof port.duplex === 'boolean'
+      ? (port.duplex ? 'full' : 'half')
+      : toNonEmptyString(port.duplex);
+
+    return {
+      index,
+      label: toNonEmptyString(port.label) ?? `Port ${index}`,
+      appearance: toNonEmptyString(port.appearance),
+      link: toNonEmptyString(port.link),
+      speed: toNonEmptyString(port.speed),
+      duplex,
+    };
+  });
+}
+
+function normalizeSandboxes(raw: RawMwsMember['fw-update-sandboxes']): FwUpdateSandbox[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .filter((entry): entry is {version: string; name: string} =>
+      typeof entry?.version === 'string' && typeof entry?.name === 'string'
+    )
+    .map((entry) => ({version: entry.version, name: entry.name}));
+}
+
 export function normalizeMembers(raw: unknown): MwsMemberRecord[] {
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw) && Object.keys(raw).length === 0) {
     return [];
@@ -115,6 +151,17 @@ export function normalizeMembers(raw: unknown): MwsMemberRecord[] {
       system: normalizeSystem(entry.system),
       backhaul: normalizeBackhaul(entry.backhaul),
       dualBand: entry.capabilities?.['dual-band'] === true,
+      hwId: toNonEmptyString(entry['hw-id'] ?? entry.hw_id),
+      mode: toNonEmptyString(entry.mode),
+      region: toNonEmptyString(entry.region),
+      ports: normalizePorts(entry.port),
+      fwUpdateAvailable: entry['fw-update-available'] === true,
+      fwUpdateSandboxes: normalizeSandboxes(entry['fw-update-sandboxes']),
+      wirelessBands: Array.isArray(entry.wireless?.band)
+        ? entry.wireless.band
+          .map((band) => typeof band === 'string' ? band : toNonEmptyString(band.index))
+          .filter((band): band is string => band !== null)
+        : [],
     };
   });
 }

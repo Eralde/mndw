@@ -18,6 +18,7 @@ export const MWSD_BACKEND = new InjectionToken<BackendClient | null>('MWSD_BACKE
 
 export interface MwsRenameApi {
   renameNode(mac: string, isController: boolean, name: string): Observable<void>;
+  getAuthUrl(member: string): Promise<string>;
 }
 
 export const MWS_RENAME_API = new InjectionToken<MwsRenameApi>('MWS_RENAME_API');

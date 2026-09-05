@@ -1,0 +1,119 @@
+<section class="node-settings" [attr.aria-label]="t('edit-dialog.title')">
+  <span data-testid="l10n-edit-dialog-probe" hidden>{{ t('edit-dialog.title') }}</span>
+  @if (store.loadState() === 'loading') {
+    <p class="state" role="status">{{ t('edit-dialog.loading') }}</p>
+  } @else if (store.loadState() === 'error') {
+    <p class="error" role="alert">{{ store.loadError() ?? t('edit-dialog.segments-error') }}</p>
+    <button type="button" data-action="retry-settings" (click)="retry()">{{ t('edit-dialog.retry') }}</button>
+  } @else if (draft(); as d) {
+    <mndw-field [label]="t('edit-dialog.name')">
+      <mndw-input
+        data-field="name"
+        type="text"
+        [value]="d.name"
+        [placeholder]="t('edit-dialog.name-placeholder')"
+        [disabled]="saving || store.reconciliation() !== 'idle'"
+        (mndwinput)="onNameInput($event)"
+      ></mndw-input>
+      @if (fieldError('name'); as error) {
+        <span class="error" data-field-error="name" role="alert">{{ error }}</span>
+        <button type="button" data-action="retry-field" data-field="name" [disabled]="saving" (click)="retryField('name')">
+          {{ t('edit-dialog.retry') }}
+        </button>
+      }
+      @if (fieldSucceeded('name')) {
+        <span class="success" role="status">{{ t('edit-dialog.save-success') }}</span>
+      }
+    </mndw-field>
+
+    <mndw-checkbox
+      data-field="static-ip-toggle"
+      [checked]="d.staticIpEnabled"
+      [disabled]="saving || store.reconciliation() !== 'idle'"
+      (mndwchange)="onStaticIpToggle($event)"
+    >
+      {{ t('edit-dialog.static-ip') }}
+    </mndw-checkbox>
+    @if (d.staticIpEnabled) {
+      <mndw-field [label]="t('edit-dialog.ip-address')">
+        <mndw-input
+          data-field="static-ip"
+          [value]="d.staticIp ?? ''"
+          [disabled]="saving || store.reconciliation() !== 'idle'"
+          (mndwinput)="onStaticIpInput($event)"
+        ></mndw-input>
+        <span>{{ t('edit-dialog.mac-address') }}: {{ node()?.mac }}</span>
+        @if (fieldError('static-ip'); as error) {
+          <span class="error" data-field-error="static-ip" role="alert">{{ error }}</span>
+          <button type="button" data-action="retry-field" data-field="static-ip" [disabled]="saving" (click)="retryField('static-ip')">
+            {{ t('edit-dialog.retry') }}
+          </button>
+        }
+      </mndw-field>
+    }
+
+    <mndw-field [label]="t('edit-dialog.update-channel')">
+      <mndw-select
+        data-field="update-channel"
+        [value]="d.updateChannel ?? ''"
+        [disabled]="saving || store.reconciliation() !== 'idle'"
+        (mndwchange)="onChannelChange($event)"
+      >
+        <mndw-option value="">{{ t('edit-dialog.channel-default') }}</mndw-option>
+        @for (channel of channelOptions(); track channel) {
+          <mndw-option [value]="channel">{{ channel }}</mndw-option>
+        }
+      </mndw-select>
+      @if (fieldError('update-channel'); as error) {
+        <span class="error" data-field-error="update-channel" role="alert">{{ error }}</span>
+        <button type="button" data-action="retry-field" data-field="update-channel" [disabled]="saving" (click)="retryField('update-channel')">
+          {{ t('edit-dialog.retry') }}
+        </button>
+      }
+    </mndw-field>
+
+    @if (node()?.ports?.length) {
+      <fieldset>
+        <legend>{{ t('edit-dialog.port-assignments') }}</legend>
+        @for (port of node()?.ports ?? []; track port.index) {
+          <mndw-field class="port-row" [label]="port.label" data-port-row>
+            <mndw-select
+              [attr.data-port]="port.index"
+              [value]="portRole(port.index)"
+              [disabled]="saving || store.segmentsState() !== 'ready' || store.reconciliation() !== 'idle'"
+              (mndwchange)="onPortChange(port.index, $event)"
+            >
+              <mndw-option value="disabled">{{ t('edit-dialog.port-role-disabled') }}</mndw-option>
+              @for (segment of segmentOptions(); track segment.id) {
+                <mndw-option
+                  [value]="portOptionValue(segment.id)"
+                >{{ segment.label }}</mndw-option>
+              }
+            </mndw-select>
+            @if (fieldError('port-' + port.index); as error) {
+              <span class="error" [attr.data-field-error]="'port-' + port.index" role="alert">{{ error }}</span>
+              <button type="button" data-action="retry-field" [attr.data-field]="'port-' + port.index" [disabled]="saving" (click)="retryField('port-' + port.index)">
+                {{ t('edit-dialog.retry') }}
+              </button>
+            }
+          </mndw-field>
+        }
+      </fieldset>
+    }
+
+    @if (store.reconciliation() === 'loading') {
+      <p class="state" role="status">{{ t('edit-dialog.reconciling') }}</p>
+    } @else if (store.reconciliation() === 'error') {
+      <p class="error" role="alert">{{ store.reconciliationError() ?? t('edit-dialog.segments-error') }}</p>
+      <button type="button" data-action="retry-reconciliation" (click)="retryReconciliation()">
+        {{ t('edit-dialog.retry') }}
+      </button>
+    }
+    @if (saveSuccess) {
+      <p data-save-success role="status">{{ t('edit-dialog.save-success') }}</p>
+    }
+    @if (!saveSuccess && hasFieldErrors()) {
+      <p role="alert">{{ t('edit-dialog.save-partial') }}</p>
+    }
+  }
+</section>

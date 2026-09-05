@@ -95,6 +95,8 @@
         <mndw-tab id="map">{{ t('tab.map') }}</mndw-tab>
         <mndw-tab id="nodes">{{ t('tab.nodes') }}</mndw-tab>
         <mndw-tab id="clients">{{ t('tab.clients') }}</mndw-tab>
+        <mndw-tab id="settings">{{ t('tab.settings') }}</mndw-tab>
+        <mndw-tab id="transition-log">{{ t('tab.transition-log') }}</mndw-tab>
 
         <mndw-tab-panel for="map">
           <mws-map-graph
@@ -123,6 +125,14 @@
 
         <mndw-tab-panel for="clients">
           <mws-clients-table [roots]="data.roots()" />
+        </mndw-tab-panel>
+
+        <mndw-tab-panel for="settings">
+          <mws-settings-tab [active]="selectedTab() === 'settings'" />
+        </mndw-tab-panel>
+
+        <mndw-tab-panel for="transition-log">
+          <mws-transition-log-tab [active]="selectedTab() === 'transition-log'" />
         </mndw-tab-panel>
       </mndw-tabs>
     }

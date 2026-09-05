@@ -30,6 +30,11 @@ export function buildMap(
     children: [],
     clients: [],
     dualBand: false,
+    hwId: null,
+    ports: [],
+    fwUpdateAvailable: false,
+    fwUpdateSandboxes: [],
+    wirelessBands: [],
     liveTelemetry: controllerTelemetry?.telemetry,
   };
 
@@ -138,6 +143,11 @@ function toMemberNode(record: MwsMemberRecord): MwsNode {
     children: [],
     clients: [],
     dualBand: record.dualBand,
+    hwId: record.hwId,
+    ports: record.ports,
+    fwUpdateAvailable: record.fwUpdateAvailable,
+    fwUpdateSandboxes: record.fwUpdateSandboxes,
+    wirelessBands: record.wirelessBands,
   };
 }
 

@@ -1,5 +1,5 @@
 import {Injectable, inject} from '@angular/core';
-import {type Observable, catchError, map, of, throwError} from 'rxjs';
+import {type Observable, catchError, firstValueFrom, map, of, throwError} from 'rxjs';
 import {type MwsRenameApi, RCI_MANAGER} from '../tokens';
 import {type ControllerTelemetry, parseControllerTelemetry} from './controller-telemetry';
 import type {BridgeInterfaceRecord, DeviceHostRecord, MwsMemberRecord, ShowVersionRecord} from './rci.types';
@@ -12,8 +12,29 @@ import {
   normalizeVersion,
 } from './normalize';
 import {validateNodeName} from './node-name';
+import {type TransitionLogStream, createTransitionLogStream} from './transition-log-api';
 
 export type MwsMemberResult = {kind: 'ok'; members: MwsMemberRecord[]} | {kind: 'unsupported'};
+
+export interface ScheduleAction {
+  action: 'start' | 'stop';
+  min: string;
+  hour: string;
+  dow: string;
+}
+
+export interface ScheduleDefinition {
+  description: string;
+  action: ScheduleAction[];
+}
+
+export interface SystemSettings {
+  backhaulEnabled: boolean;
+  autoApShutdownEnabled: boolean;
+  autoUpdateEnabled: boolean;
+  autoUpdateSchedule: string | null;
+  schedules: Record<string, ScheduleDefinition>;
+}
 
 /** Pinned provisional signature; replace when a live non-controller capture is available. */
 const UNSUPPORTED_MWS_SIGNATURES = [{code: '7405600', ident: 'Mws::MemberList'}];
@@ -57,9 +78,81 @@ function renameResponseError(response: unknown): Error | null {
   return new Error(message ?? 'Device rejected node name.');
 }
 
+function responseError(response: unknown, fallback: string): Error | null {
+  const error = renameResponseError(response);
+
+  return error === null ? null : new Error(error.message || fallback);
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function normalizeSchedule(value: unknown): ScheduleDefinition | null {
+  const source = record(value);
+  const description = typeof source.description === 'string' ? source.description : '';
+  const actions = Array.isArray(source.action) ? source.action : [];
+  const action = actions
+    .map((entry): ScheduleAction | null => {
+      const candidate = record(entry);
+
+      if (
+        (candidate.action !== 'start' && candidate.action !== 'stop')
+        || typeof candidate.min !== 'string'
+        || typeof candidate.hour !== 'string'
+        || typeof candidate.dow !== 'string'
+      ) {
+        return null;
+      }
+
+      return {
+        action: candidate.action,
+        min: candidate.min,
+        hour: candidate.hour,
+        dow: candidate.dow,
+      };
+    })
+    .filter((entry): entry is ScheduleAction => entry !== null);
+
+  return description === '' ? null : {description, action};
+}
+
+function parseSystemSettings(responses: unknown): SystemSettings {
+  const values = Array.isArray(responses) ? responses : [];
+  const backhaul = record(values[0]);
+  const autoApRaw = values[1];
+  const autoAp = typeof autoApRaw === 'boolean' ? autoApRaw : !record(autoApRaw).no;
+  const autoUpdate = record(values[2]);
+  const scheduleValue = autoUpdate.schedule;
+  const schedulesSource = record(values[3]);
+  const schedules: Record<string, ScheduleDefinition> = {};
+
+  for (const [id, value] of Object.entries(schedulesSource)) {
+    const schedule = normalizeSchedule(value);
+
+    if (schedule !== null) {
+      schedules[id] = schedule;
+    }
+  }
+
+  return {
+    backhaulEnabled: backhaul.shutdown !== true,
+    autoApShutdownEnabled: autoAp,
+    autoUpdateEnabled: autoUpdate.disable !== true,
+    autoUpdateSchedule: typeof scheduleValue === 'string' && scheduleValue.trim() !== '' ? scheduleValue : null,
+    schedules,
+  };
+}
+
 @Injectable()
 export class MwsApiService implements MwsRenameApi {
   private readonly rci = inject(RCI_MANAGER);
+
+  public startTransitionLogStream(names: Readonly<Record<string, string>> = {}): TransitionLogStream {
+    return createTransitionLogStream(this.rci, names);
+  }
 
   public showMwsMember(): Observable<MwsMemberResult> {
     return this.rci.queue({path: 'show.mws.member'}).pipe(
@@ -92,6 +185,43 @@ export class MwsApiService implements MwsRenameApi {
   public showControllerDescription(): Observable<string | null> {
     return this.rci.queue({path: 'show.version'}).pipe(
       map((response) => normalizeControllerDescription(response)),
+    );
+  }
+
+  public showSystemSettings(): Observable<SystemSettings> {
+    return this.rci.queue([
+      {path: 'show.sc.mws.backhaul'},
+      {path: 'show.sc.mws.auto-ap-shutdown'},
+      {path: 'show.sc.components.auto-update'},
+      {path: 'show.sc.schedule'},
+    ]).pipe(map((responses) => parseSystemSettings(responses)));
+  }
+
+  public getAuthUrl(member: string): Promise<string> {
+    const normalized = member.trim();
+
+    if (normalized === '') {
+      return Promise.reject(new Error('member is required'));
+    }
+
+    return firstValueFrom(
+      this.rci.queue({path: 'mws.member.auth-url', data: {member: normalized}}).pipe(
+        map((response: unknown) => {
+          const error = responseError(response, 'auth-url request failed');
+
+          if (error !== null) {
+            throw error;
+          }
+
+          const url = record(response).url;
+
+          if (typeof url !== 'string' || url.trim() === '') {
+            throw new Error('device returned no auth URL');
+          }
+
+          return url;
+        }),
+      ),
     );
   }
 

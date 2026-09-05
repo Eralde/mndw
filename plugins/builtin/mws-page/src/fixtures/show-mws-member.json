@@ -9,6 +9,18 @@
     "fw": "5.1.1",
     "fw-available": "5.1.1",
     "system": {"cpuload": 1, "memory": "171412/262144", "uptime": "759"},
+    "hw-id": "KN-3411",
+    "mode": "extender",
+    "region": "EU",
+    "fw-update-available": true,
+    "fw-update-sandboxes": [
+      {"version": "4.3.1", "name": "lts-4.3"},
+      {"version": "5.2.0", "name": "stable"},
+      {"version": "5.3.0-beta1", "name": "preview"},
+      {"version": "5.3.0-dev42", "name": "draft"}
+    ],
+    "port": [{"label": "0", "link": "up", "speed": "1000", "duplex": true}],
+    "wireless": {"band": ["2.4", "5"]},
     "backhaul": {
       "uplink": "WifiMaster1/WifiStation0",
       "root": "8000.02:7d:4a:91:c3:10",

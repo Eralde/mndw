@@ -101,8 +101,23 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
     column<NodeRow>()({
       id: 'firmware',
       label: this.t('nodes.firmware'),
-      accessor: (row) => row.node.fw ?? null,
+      accessor: (row) => {
+        const fw = row.node.fw;
+
+        if (fw === null) {
+          return null;
+        }
+
+        return row.node.fwUpdateAvailable && row.node.fwAvailable !== null && row.node.fwAvailable !== fw
+          ? this.t('nodes.firmware-available', {current: fw, available: row.node.fwAvailable})
+          : fw;
+      },
       sortable: true,
+    }),
+    column<NodeRow>()({
+      id: 'alert',
+      label: this.t('nodes.alert'),
+      accessor: (row) => row.node.fwUpdateAvailable ? this.t('nodes.update-available') : null,
     }),
   ] as Column<unknown>[];
 

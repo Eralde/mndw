@@ -29,6 +29,11 @@ function member(overrides: Partial<MwsMemberRecord> & {cid: string; mac: string}
     system: null,
     backhaul: null,
     dualBand: false,
+    hwId: null,
+    ports: [],
+    fwUpdateAvailable: false,
+    fwUpdateSandboxes: [],
+    wirelessBands: [],
     ...overrides,
   };
 }
@@ -71,6 +76,12 @@ describe('buildMap — topology', () => {
     expect(buddy.id).toBe('02:7d:4a:91:c3:21');
     expect(buddy.isOnline).toBe(true);
     expect(buddy.dualBand).toBe(true);
+    expect(buddy.ports).toEqual([
+      {index: 0, label: '0', appearance: null, link: 'up', speed: '1000', duplex: 'full'},
+    ]);
+    expect(buddy.fwUpdateAvailable).toBe(true);
+    expect(buddy.fwUpdateSandboxes).toHaveLength(4);
+    expect(buddy.wirelessBands).toEqual(['2.4', '5']);
     expect(buddy.children).toHaveLength(1);
     expect(buddy.children[0].type).toBe('wired');
     expect(buddy.children[0].node.dualBand).toBe(false);
@@ -151,6 +162,8 @@ describe('buildMap — topology', () => {
 
     expect(roots).toHaveLength(1);
     expect(roots[0].isController).toBe(true);
+    expect(roots[0].ports).toEqual([]);
+    expect(roots[0].fwUpdateAvailable).toBe(false);
   });
 });
 

@@ -14,6 +14,16 @@ export interface RawMwsMemberBackhaul {
   'port-label'?: string;
 }
 
+export interface RawMwsMemberPort {
+  port?: string | number;
+  label?: string;
+  appearance?: string;
+  link?: string;
+  speed?: string;
+  duplex?: boolean | string;
+  disable?: boolean;
+}
+
 export interface RawMwsMember {
   cid?: string;
   mac?: string;
@@ -25,6 +35,14 @@ export interface RawMwsMember {
   'fw-available'?: string;
   system?: {cpuload?: number; memory?: string; uptime?: string};
   backhaul?: RawMwsMemberBackhaul;
+  'hw-id'?: string;
+  hw_id?: string;
+  mode?: string;
+  region?: string;
+  port?: RawMwsMemberPort[];
+  'fw-update-available'?: boolean;
+  'fw-update-sandboxes'?: Array<{version?: string; name?: string}>;
+  wireless?: {band?: Array<string | {index?: string}>};
 }
 
 export interface RawDeviceHost {
@@ -82,6 +100,20 @@ export interface MwsMemberBackhaul {
   portLabel: string | null;
 }
 
+export interface MwsMemberPort {
+  index: number;
+  label: string;
+  appearance: string | null;
+  link: string | null;
+  speed: string | null;
+  duplex: string | null;
+}
+
+export interface FwUpdateSandbox {
+  version: string;
+  name: string;
+}
+
 export interface MwsMemberRecord {
   cid: string;
   mac: string;
@@ -93,6 +125,13 @@ export interface MwsMemberRecord {
   system: MwsMemberSystem | null;
   backhaul: MwsMemberBackhaul | null;
   dualBand: boolean;
+  hwId: string | null;
+  mode: string | null;
+  region: string | null;
+  ports: MwsMemberPort[];
+  fwUpdateAvailable: boolean;
+  fwUpdateSandboxes: FwUpdateSandbox[];
+  wirelessBands: string[];
 }
 
 export interface DeviceHostRecord {

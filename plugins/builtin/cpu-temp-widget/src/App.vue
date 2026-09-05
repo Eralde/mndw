@@ -136,7 +136,8 @@ onUnmounted(() => {
 .app {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   box-sizing: border-box;
   padding: 1rem;
   color: var(--mndw-text);
@@ -179,7 +180,9 @@ onUnmounted(() => {
 }
 
 .chart-wrapper {
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
 }
 
 mndw-line-chart {

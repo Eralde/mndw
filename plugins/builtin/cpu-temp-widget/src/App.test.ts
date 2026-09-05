@@ -31,6 +31,7 @@ afterEach(() => {
 
 function mountApp(overrides: Record<string, unknown> = {}): void {
   host = document.createElement('div');
+  host.style.height = '190px';
 
   document.body.append(host);
 
@@ -86,6 +87,23 @@ describe('App', () => {
     }
 
     expect(chart.domain).toEqual({start: 1000, end: 2000});
+  });
+
+  it('keeps chart layout bounded inside a dashboard tile', async () => {
+    mountApp();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const appElement = host.querySelector<HTMLElement>('.app');
+    const chartWrapper = host.querySelector<HTMLElement>('.chart-wrapper');
+
+    if (appElement === null || chartWrapper === null) {
+      throw new Error('chart layout was not rendered');
+    }
+
+    expect(getComputedStyle(appElement).height).toBe('100%');
+    expect(getComputedStyle(appElement).minHeight).toBe('0');
+    expect(getComputedStyle(chartWrapper).flexGrow).toBe('1');
+    expect(getComputedStyle(chartWrapper).minHeight).toBe('0');
   });
 
   it('switching range calls fetchProjected with the new range', async () => {

@@ -3,6 +3,7 @@ import {defineMndwVitestProject} from '@mndw/sdk/testing/vitest-project';
 
 export default defineMndwVitestProject({
   environment: 'node',
+  css: true,
   setupFiles: ['./vitest.setup.ts'],
   plugins: [vue({template: {compilerOptions: {isCustomElement: (tag) => tag.startsWith('mndw-')}}})],
 });

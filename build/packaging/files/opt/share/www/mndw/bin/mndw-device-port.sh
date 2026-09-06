@@ -184,30 +184,13 @@ detect_device_port() {
     return 1
   }
 
-  matched_ports=
   for candidate in $candidate_ports; do
     echo "[mndw] probing device /auth on $device_ip:$candidate" >&2
     if probe_device_auth "$device_ip" "$candidate"; then
-      matched_ports="$matched_ports $candidate"
+      printf '%s\n' "$candidate"
+      return 0
     fi
   done
-
-  matched_count=0
-  selected_port=
-  for candidate in $matched_ports; do
-    matched_count=$((matched_count + 1))
-    selected_port=$candidate
-  done
-
-  if [ "$matched_count" -eq 1 ]; then
-    printf '%s\n' "$selected_port"
-    return 0
-  fi
-
-  if [ "$matched_count" -gt 1 ]; then
-    echo "mndw: multiple device /auth listeners found on $device_ip:$matched_ports; set MNDW_DEVICE_PORT" >&2
-    return 1
-  fi
 
   echo "mndw: no device /auth listener found on $device_ip; candidates: $candidate_ports; set MNDW_DEVICE_PORT" >&2
   return 1

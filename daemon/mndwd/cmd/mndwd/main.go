@@ -16,11 +16,13 @@ import (
 	"syscall"
 	"time"
 
+	contractEvents "mndw.local/contracts/events"
 	"mndwd/internal/authz"
 	"mndwd/internal/backend"
 	"mndwd/internal/deviceinfo"
 	"mndwd/internal/deviceproxy"
 	"mndwd/internal/diagnostics"
+	"mndwd/internal/events"
 	"mndwd/internal/frontend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/listen"
@@ -137,6 +139,18 @@ func run(cfg Config) error {
 	// executes plugin commands before the listener is available.
 	c.runtime.Reconcile(ctx, c.reg.AllBackendPlugins())
 
+	if c.startEvents != nil {
+		if err := c.startEvents(ctx); err != nil {
+			c.closeEvents()
+			c.closeTelemetry()
+			c.closePersistentSession()
+
+			_ = c.runtime.Shutdown(context.Background())
+
+			return err
+		}
+	}
+
 	if c.telemetry != nil {
 		go func() {
 			if err := c.telemetry.StartWithRetry(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -160,8 +174,11 @@ func run(cfg Config) error {
 	closePersistent := func() {
 		closePersistentOnce.Do(c.closePersistentSession)
 	}
-	err = serveWithDrain(ctx, srv, listener, logger, nil, cfg.HTTPDrainTimeout)
+	err = serveWithDrain(ctx, srv, listener, logger, func() {
+		c.stopEvents("shutdown")
+	}, cfg.HTTPDrainTimeout)
 
+	c.closeEvents()
 	c.closeTelemetry()
 	closePersistent()
 
@@ -186,12 +203,19 @@ type components struct {
 	closePersistentSession func()
 	closeTelemetry         func()
 	telemetry              *telemetry.Capability
+	startEvents            func(context.Context) error
+	stopEvents             func(string)
+	closeEvents            func()
 	startupErr             error
 }
 
 // assemble builds the fully-wired daemon. Kept separate from run so the integration
 // test can drive the exact same wiring over httptest.
 func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) components {
+	eventBus := events.NewBus()
+	normalizer := events.NewNormalizer(time.Now, nil)
+	internalPublisher := events.NewInternalPublisher(eventBus, normalizer)
+	ingestPublisher := events.NewDeduplicatingPublisher(eventBus, events.NewDeduplicator(time.Now))
 	reg := registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, logger)
 	stateDir := cfg.SelfUpdateStateDir
 
@@ -251,9 +275,26 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 		},
 	})
 
+	runtime.SetLifecycleObserver(func(event backend.LifecycleEvent) {
+		if event.State == "started" {
+			_ = internalPublisher.Publish(contractEvents.TopicPluginStarted, map[string]any{"name": event.Plugin})
+
+			return
+		}
+
+		_ = internalPublisher.Publish(contractEvents.TopicPluginStopped, map[string]any{
+			"name":   event.Plugin,
+			"reason": event.Reason,
+		})
+	})
+
 	mux := http.NewServeMux()
+
+	mux.Handle("POST /_internal/hook", events.NewHookHandler(ingestPublisher, normalizer))
+	mux.Handle("GET /ws/events", verifier.Middleware(events.NewWebSocketHandler(eventBus, backend.ValidWebSocketOrigin)))
+
 	accessRegistration := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, activationGates, verifier, logger, lifetime)
-	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, selfUpdateService, serviceMgr, reg, runtime, accessRegistration.permissionController, accessRegistration.capability, verifier, logger, lifetime)
+	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, selfUpdateService, serviceMgr, reg, runtime, accessRegistration.permissionController, accessRegistration.capability, verifier, logger, lifetime, internalPublisher)
 	deviceFetcher, deviceInfoErr := deviceinfo.NewHTTPFetcher(cfg.DeviceURL, logger, deviceinfo.FetcherOptions{})
 
 	if deviceInfoErr == nil {
@@ -285,6 +326,102 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 		startupErr = deviceInfoErr
 	}
 
+	var eventCancel context.CancelFunc
+	var eventDone bool
+	daemonStartedAt := time.Now()
+	startEvents := func(ctx context.Context) error {
+		if eventDone {
+			return nil
+		}
+
+		eventCtx, cancel := context.WithCancel(ctx)
+		eventCancel = cancel
+
+		if _, err := selfUpdateService.Status(); err != nil {
+			logger.Warn("self-update startup status unavailable", "error", err)
+		}
+
+		selfUpdateStateDir := cfg.SelfUpdateStateDir
+
+		if selfUpdateStateDir == "" {
+			selfUpdateStateDir = defaultSelfUpdateStateDir
+		}
+
+		completion, completionErr := selfupdate.NewStateStore(selfUpdateStateDir).ConsumeCompletion()
+
+		if completionErr == nil {
+			_ = internalPublisher.Publish(contractEvents.TopicDaemonUpdated, map[string]any{"version": completion.TargetVersion})
+		} else if !errors.Is(completionErr, selfupdate.ErrNoIntent) {
+			logger.Warn("self-update completion record unavailable", "error", completionErr)
+		}
+
+		if accessRegistration.annotationStore != nil {
+			if err := accessRegistration.annotationStore.Start(eventCtx, eventBus); err != nil {
+				cancel()
+
+				return fmt.Errorf("start event annotations: %w", err)
+			}
+		}
+
+		if accessRegistration.eventRCIClient != nil {
+			deviceTZ := events.QueryDeviceTimezone(eventCtx, accessRegistration.eventRCIClient)
+			parser := events.NewLogParser(normalizer, deviceTZ, nil, logger)
+			pollTicker := time.NewTicker(events.LogPollInterval)
+			poller := events.NewLogPoller(events.LogPollerConfig{
+				Source:     events.NewRCILogSource(accessRegistration.eventRCIClient),
+				Parser:     parser,
+				Publisher:  ingestPublisher,
+				Ticker:     pollTicker.C,
+				StopTicker: pollTicker.Stop,
+				Logger:     logger,
+			})
+
+			go poller.Run(eventCtx)
+		}
+
+		storage := events.NewStorageMonitor("/opt", nil, internalPublisher, logger)
+
+		go storage.Run(eventCtx)
+
+		publishActivePluginEvents(reg, store, internalPublisher, logger)
+
+		_ = internalPublisher.Publish(contractEvents.TopicDaemonStarted, map[string]any{
+			"version":   version,
+			"uptime_ms": time.Since(daemonStartedAt).Milliseconds(),
+		})
+		eventDone = true
+
+		return nil
+	}
+	stopEvents := func(reason string) {
+		if !eventDone {
+			return
+		}
+
+		_ = internalPublisher.Publish(contractEvents.TopicDaemonStopping, map[string]any{"reason": reason})
+
+		if eventCancel != nil {
+			eventCancel()
+		}
+	}
+	closeEvents := func() {
+		if eventCancel != nil {
+			eventCancel()
+
+			eventCancel = nil
+		}
+
+		if accessRegistration.annotationStore != nil {
+			closeCtx, cancel := context.WithTimeout(context.Background(), telemetryShutdownTimeout)
+
+			if err := accessRegistration.annotationStore.Close(closeCtx); err != nil {
+				logger.Warn("telemetry annotations shutdown failed", "error", err)
+			}
+
+			cancel()
+		}
+	}
+
 	return components{
 		handler:                httpx.NoCORSHandler(httpx.LogMiddleware(logger, routed)),
 		reg:                    reg,
@@ -303,9 +440,66 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 				}
 			}
 		},
-		telemetry:  accessRegistration.capability,
-		startupErr: startupErr,
+		telemetry:   accessRegistration.capability,
+		startEvents: startEvents,
+		stopEvents:  stopEvents,
+		closeEvents: closeEvents,
+		startupErr:  startupErr,
 	}
+}
+
+func publishActivePluginEvents(reg *registry.Registry, store *state.Store, publisher *events.InternalPublisher, logger *slog.Logger) {
+	if reg == nil || store == nil || publisher == nil {
+		return
+	}
+
+	snapshot := store.Snapshot()
+	names := make([]string, 0, len(snapshot.Plugins))
+
+	for name, plugin := range snapshot.Plugins {
+		if plugin != nil && plugin.Approval == state.ApprovalApproved && plugin.Enabled && !plugin.RemovalPending {
+			names = append(names, name)
+		}
+	}
+
+	sort.Strings(names)
+
+	for _, name := range names {
+		plugin, ok := reg.Resolve(name)
+
+		if !ok || plugin.Manifest == nil {
+			continue
+		}
+
+		if err := publisher.Publish(contractEvents.TopicPluginInstalled, map[string]any{"name": name, "version": derefVersion(plugin.Manifest.Version)}); err != nil {
+			logger.Warn("plugin.installed publish failed", "plugin", name, "error", err)
+		}
+	}
+
+	builtins, err := reg.ListBuiltinsWithError()
+	if err != nil {
+		logger.Warn("builtin plugin discovery failed", "error", err)
+
+		return
+	}
+
+	for _, plugin := range builtins {
+		if _, reserved := snapshot.Plugins[plugin.Name]; reserved || plugin.Manifest == nil {
+			continue
+		}
+
+		if err := publisher.Publish(contractEvents.TopicPluginInstalled, map[string]any{"name": plugin.Name, "version": derefVersion(plugin.Manifest.Version)}); err != nil {
+			logger.Warn("plugin.installed publish failed", "plugin", plugin.Name, "error", err)
+		}
+	}
+}
+
+func derefVersion(value *string) string {
+	if value == nil {
+		return "unknown"
+	}
+
+	return *value
 }
 
 func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger) error {
@@ -344,7 +538,7 @@ func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger) erro
 
 // registerMgmt mounts the session-gated management surface and returns its mux so
 // other session-gated routes (e.g. protected palette) can share the gate.
-func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, selfUpdateService selfupdate.Service, serviceMgr service.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, permissionController mgmt.PersistentRCIPermissionController, telemetryController mgmt.TelemetryController, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) *http.ServeMux {
+func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, selfUpdateService selfupdate.Service, serviceMgr service.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, permissionController mgmt.PersistentRCIPermissionController, telemetryController mgmt.TelemetryController, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context, eventPublisher *events.InternalPublisher) *http.ServeMux {
 	mgmtHandler := mgmt.New(mgmt.Config{
 		StagingDir:                        cfg.StagingDir(),
 		UserPluginsDir:                    cfg.UserPluginsDir,
@@ -355,6 +549,9 @@ func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr op
 		ServiceActionRoot:                 lifetime,
 		SelfUpdate:                        selfUpdateService,
 		TelemetryController:               telemetryController,
+		PublishEvent: func(topic string, payload map[string]any) error {
+			return eventPublisher.PublishNamed(topic, payload)
+		},
 	}, store, opkgMgr, serviceMgr, reg, logger)
 
 	mgmtMux := http.NewServeMux()
@@ -389,7 +586,28 @@ func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *reg
 			time.Now,
 		)
 
-		telemetry.NewHandler(cache, registration.capability.IsEnabled, logger).Register(accessMux)
+		telemetryHandler := telemetry.NewHandler(cache, registration.capability.IsEnabled, logger)
+		annotationDir := cfg.RRDDir
+
+		if annotationDir == "" {
+			annotationDir = defaultRRDDir
+		}
+
+		annotationStore, annotationErr := telemetry.NewAnnotationStore(telemetry.AnnotationStoreConfig{
+			RRDDir:  annotationDir,
+			Catalog: telemetry.DefaultAnnotationCatalog{},
+			Logger:  logger,
+		})
+
+		if annotationErr != nil {
+			logger.Warn("telemetry annotation store unavailable", "error", annotationErr)
+		} else {
+			registration.annotationStore = annotationStore
+
+			telemetryHandler.SetAnnotationStore(annotationStore)
+		}
+
+		telemetryHandler.Register(accessMux)
 	}
 
 	// Keep the route mounted in dev so the host exercises the same consent contract;

@@ -190,7 +190,12 @@ export async function reloadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise
   const pluginContextServices = deps.pluginContextServices ?? (() => {
     const services = defaultHostServices();
 
-    return {locale: services.locale, palette: services.palette, telemetry: services.telemetry};
+    return {
+      locale: services.locale,
+      palette: services.palette,
+      telemetry: services.telemetry,
+      eventStream: services.eventStream,
+    };
   })();
 
   let candidate: LoadedPlugin;

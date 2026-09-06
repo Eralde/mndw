@@ -1,0 +1,1 @@
+{"id":"01J5KZ00000000000000000007","ts":1725552000123,"topic":"firewall.rebuilt","source":"hook","payload":{"table_type":"filter","table":"inet"}}

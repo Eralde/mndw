@@ -35,6 +35,7 @@ const pluginContextServices = {
   locale: services.locale,
   palette: services.palette,
   telemetry: services.telemetry,
+  eventStream: services.eventStream,
 };
 
 function resolveWidgetSize(pluginName: string): WidgetSize | undefined {

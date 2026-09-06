@@ -14,11 +14,13 @@ func projectSeries(series SeriesSnapshot, rangeMs int64) ProjectedSeries {
 	fineOnly := rangeMs < oneDayMs
 
 	var now int64
+
 	for _, sample := range fine.Samples {
 		if sample.Timestamp > now {
 			now = sample.Timestamp
 		}
 	}
+
 	if !fineOnly {
 		for _, sample := range coarse.Samples {
 			if sample.Timestamp > now {
@@ -30,6 +32,7 @@ func projectSeries(series SeriesSnapshot, rangeMs int64) ProjectedSeries {
 	rangeStart := now - rangeMs
 
 	fineSamples := make([]Sample, 0, len(fine.Samples))
+
 	for _, sample := range fine.Samples {
 		if sample.Timestamp >= rangeStart {
 			fineSamples = append(fineSamples, sample)
@@ -45,6 +48,7 @@ func projectSeries(series SeriesSnapshot, rangeMs int64) ProjectedSeries {
 	}
 
 	oldestFine := int64(math.MaxInt64)
+
 	for _, sample := range fineSamples {
 		if sample.Timestamp < oldestFine {
 			oldestFine = sample.Timestamp
@@ -52,12 +56,15 @@ func projectSeries(series SeriesSnapshot, rangeMs int64) ProjectedSeries {
 	}
 
 	merged := make([]Sample, 0, len(fineSamples)+len(coarse.Samples))
+
 	for _, sample := range coarse.Samples {
 		if sample.Timestamp >= rangeStart && sample.Timestamp < oldestFine {
 			merged = append(merged, sample)
 		}
 	}
+
 	merged = append(merged, fineSamples...)
+
 	sort.SliceStable(merged, func(i, j int) bool {
 		return merged[i].Timestamp < merged[j].Timestamp
 	})
@@ -67,11 +74,14 @@ func projectSeries(series SeriesSnapshot, rangeMs int64) ProjectedSeries {
 
 func buildProjected(series SeriesSnapshot, samples []Sample) ProjectedSeries {
 	points := make([]ProjectedPoint, len(samples))
+
 	for index, sample := range samples {
 		var value *float64
+
 		if sample.OK && sample.Mean != nil {
 			value = sample.Mean
 		}
+
 		points[index] = ProjectedPoint{Time: sample.Timestamp, Value: value}
 	}
 
@@ -86,10 +96,12 @@ func buildProjected(series SeriesSnapshot, samples []Sample) ProjectedSeries {
 				segments = append(segments, ProjectedSegment{Data: current})
 				current = nil
 			}
+
 			if len(band) > 0 {
 				bandSegments = append(bandSegments, band)
 				band = nil
 			}
+
 			continue
 		}
 
@@ -110,16 +122,19 @@ func buildProjected(series SeriesSnapshot, samples []Sample) ProjectedSeries {
 	if len(current) > 0 {
 		segments = append(segments, ProjectedSegment{Data: current})
 	}
+
 	if len(band) > 0 {
 		bandSegments = append(bandSegments, band)
 	}
 
 	bands := make([]ProjectedBand, len(bandSegments))
+
 	for index, data := range bandSegments {
 		bands[index] = ProjectedBand{ID: fmt.Sprintf("range-%d", index), Data: data, Color: "accent"}
 	}
 
 	var valueDomain *ProjectedValueDomain
+
 	if series.Unit == "percent" {
 		valueDomain = &ProjectedValueDomain{Min: 0, Max: 100}
 	} else if series.Unit == "celsius" {
@@ -145,9 +160,11 @@ func temperatureValueDomain(bandSegments [][]ProjectedBandPoint) *ProjectedValue
 	for _, segment := range bandSegments {
 		for _, point := range segment {
 			found = true
+
 			if point.Min < minVal {
 				minVal = point.Min
 			}
+
 			if point.Max > maxVal {
 				maxVal = point.Max
 			}

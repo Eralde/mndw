@@ -43,6 +43,7 @@ const registry = services.registry;
 const pluginContextServices = {
   locale: services.locale,
   palette: services.palette,
+  eventStream: services.eventStream,
 };
 
 // Capture the host node via an action (not bind:this) so host-managed child containers

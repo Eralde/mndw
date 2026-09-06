@@ -26,8 +26,18 @@ const (
 	PersistentRCISessionWritePermission = "persistent-rci-session:write"
 )
 
+var eventPermissionRe = regexp.MustCompile(`^events:(\*|[a-z][a-z0-9]*(?:,[a-z][a-z0-9]*)*)$`)
+
 func IsPersistentRCIPermission(permission string) bool {
 	return permission == PersistentRCISessionReadPermission || permission == PersistentRCISessionWritePermission
+}
+
+func IsEventPermission(permission string) bool {
+	return eventPermissionRe.MatchString(permission)
+}
+
+func IsPermission(permission string) bool {
+	return IsPersistentRCIPermission(permission) || IsEventPermission(permission)
 }
 
 type Size struct {
@@ -155,7 +165,7 @@ func validate(m *Manifest, data []byte) error {
 	permissions := make(map[string]struct{}, len(m.Permissions))
 
 	for _, permission := range m.Permissions {
-		if !IsPersistentRCIPermission(permission) {
+		if !IsPermission(permission) {
 			return fail(fmt.Sprintf("unknown permission %q", permission))
 		}
 

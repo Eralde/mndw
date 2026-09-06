@@ -48,6 +48,7 @@ export function dataFileMode(relPosixPath: string): number {
   const baseName = segments[segments.length - 1] ?? '';
   const isExecutable = relPosixPath === 'opt/sbin/mndwd'
     || segments.includes('init.d')
+    || relPosixPath.startsWith('opt/etc/ndm/')
     || (segments.includes('bin') && baseName.endsWith('.sh'))
     || segments.includes('backend');
 
@@ -126,6 +127,7 @@ export function collectStagePaths(): {
   devicePortHelper: string;
   selfUpdateHelper: string;
   daemonConfig: string;
+  hooks: string[];
 } {
   return {
     mndwd: path.join('opt', 'sbin', 'mndwd'),
@@ -135,6 +137,16 @@ export function collectStagePaths(): {
     devicePortHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-device-port.sh'),
     selfUpdateHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
     daemonConfig: path.join('opt', 'etc', 'mndw.conf'),
+    hooks: [
+      'wan.d',
+      'fs.d',
+      'usb.d',
+      'netfilter.d',
+      'time.d',
+      'schedule.d',
+      'button.d',
+      'ifipchanged.d',
+    ].map((hook) => path.join('opt', 'etc', 'ndm', hook, '10-mndw')),
   };
 }
 
@@ -170,6 +182,14 @@ export function verifyStage(
 
     if (!fs.existsSync(bundlePath) || fs.statSync(bundlePath).isDirectory()) {
       missing.push(`shared bundle (${bundle})`);
+    }
+  }
+
+  for (const hook of p.hooks) {
+    const hookPath = path.join(stagingDir, hook);
+
+    if (!fs.existsSync(hookPath) || fs.statSync(hookPath).isDirectory()) {
+      missing.push(`NDMS hook (${hook})`);
     }
   }
 
@@ -299,6 +319,12 @@ export function stageDeployFiles(repoRoot: string, stagingDir: string): void {
     path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
     0o755,
   );
+
+  const hooksSource = path.join(deployDir, 'hooks', 'ndm');
+  const hooksDestination = path.join(stagingDir, 'opt', 'etc', 'ndm');
+
+  fs.mkdirSync(hooksDestination, {recursive: true});
+  fs.cpSync(hooksSource, hooksDestination, {recursive: true});
 }
 
 export async function buildDataTar(stagingDir: string, outDir: string): Promise<string> {

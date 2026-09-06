@@ -72,6 +72,23 @@ type persistentSessionRegistration struct {
 	permissionController mgmt.PersistentRCIPermissionController
 	activationAssembly   *rciSessionAssembly
 	capability           *telemetry.Capability
+	rciClient            *rci.Client
+	eventRCIClient       *rci.Client
+	annotationStore      *telemetry.AnnotationStore
+}
+
+func newTelemetryAndEventClients(do telemetry.DoFunc) (telemetryClient *rci.Client, eventClient *rci.Client, err error) {
+	telemetryClient, err = rci.New(telemetry.NewControllerTransport(do))
+	if err != nil {
+		return nil, nil, fmt.Errorf("create telemetry RCI client: %w", err)
+	}
+
+	eventClient, err = rci.New(telemetry.NewControllerTransport(do))
+	if err != nil {
+		return nil, nil, fmt.Errorf("create event log RCI client: %w", err)
+	}
+
+	return telemetryClient, eventClient, nil
 }
 
 // assembleRCISession wires the persistent RCI session subsystem: it opens the
@@ -198,19 +215,21 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 	registration.close = assembly.close
 	registration.permissionController = assembly
 	registration.activationAssembly = assembly
-	controllerTransport := telemetry.NewControllerTransport(sessionService.Do)
-	rciClient, rciErr := rci.New(controllerTransport)
+	telemetryClient, eventClient, rciErr := newTelemetryAndEventClients(sessionService.Do)
 
 	if rciErr != nil {
-		registration.err = fmt.Errorf("create telemetry RCI client: %w", rciErr)
+		registration.err = rciErr
 
 		return registration
 	}
 
+	registration.rciClient = telemetryClient
+	registration.eventRCIClient = eventClient
+
 	capability, capabilityErr := telemetry.NewCapability(telemetry.CapabilityConfig{
 		RRDToolBinary:      cfg.RRDToolBinary,
 		RRDDir:             cfg.RRDDir,
-		LoadSampler:        telemetry.NewLoadSampler(rciClient),
+		LoadSampler:        telemetry.NewLoadSampler(telemetryClient),
 		TemperatureSampler: telemetry.NewThermalSampler(osThermalReader{}, "/sys/class/thermal"),
 		DesiredEnabled:     func() bool { return store.Snapshot().Settings.BackgroundTelemetry },
 		Lifetime:           lifetime,
@@ -218,7 +237,7 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 	})
 
 	if capabilityErr != nil {
-		registration.err = fmt.Errorf("create telemetry capability: %w", capabilityErr)
+		logger.Warn("telemetry unavailable", "error", capabilityErr)
 
 		return registration
 	}

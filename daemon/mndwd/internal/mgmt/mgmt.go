@@ -58,6 +58,7 @@ type Config struct {
 	ServiceActionTimeout              time.Duration
 	SelfUpdate                        selfupdate.Service
 	TelemetryController               TelemetryController
+	PublishEvent                      func(topic string, payload map[string]any) error
 }
 
 // Handler serves the management API over a shared state store.
@@ -72,6 +73,7 @@ type Handler struct {
 	permissionController PersistentRCIPermissionController
 	selfUpdate           selfupdate.Service
 	telemetry            TelemetryController
+	publishEvent         func(topic string, payload map[string]any) error
 	removeAll            func(string) error
 	newTimer             func(time.Duration) <-chan time.Time
 	removalWatchdog      time.Duration
@@ -100,9 +102,18 @@ func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr service.
 		permissionController: cfg.PersistentRCIPermissionController,
 		selfUpdate:           cfg.SelfUpdate,
 		telemetry:            cfg.TelemetryController,
+		publishEvent:         cfg.PublishEvent,
 		removeAll:            os.RemoveAll,
 		newTimer:             time.After,
 		removalWatchdog:      30 * time.Second,
+	}
+}
+
+func (h *Handler) publish(topic string, payload map[string]any) {
+	if h.publishEvent != nil {
+		if err := h.publishEvent(topic, payload); err != nil && h.logger != nil {
+			h.logger.Warn("internal event publish failed", "topic", topic, "error", err)
+		}
 	}
 }
 
@@ -266,15 +277,15 @@ func (h *Handler) entryFrom(m *manifest.Manifest, source state.Source, approval 
 	e.DepsStatus = "ready"
 
 	for _, permission := range m.Permissions {
-		if !manifest.IsPersistentRCIPermission(permission) {
-			continue
-		}
-
 		if e.Permissions == nil {
-			e.Permissions = make([]string, 0, 1)
+			e.Permissions = make([]string, 0, len(m.Permissions))
 		}
 
 		e.Permissions = append(e.Permissions, permission)
+
+		if !manifest.IsPersistentRCIPermission(permission) {
+			continue
+		}
 
 		if h.store.HasGrant(e.Name, permission) {
 			if e.PermissionGrants == nil {

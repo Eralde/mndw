@@ -1,0 +1,1 @@
+{"id":"01J5KZ00000000000000000004","ts":1725552000123,"topic":"net.dns_changed","source":"log","payload":{"resolvers":["192.0.2.53"]}}

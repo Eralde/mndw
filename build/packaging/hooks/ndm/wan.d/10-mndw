@@ -1,0 +1,24 @@
+#!/bin/sh
+MNDW_ROOT=${MNDW_ROOT:-/opt}
+MNDW_PORT_FILE=${MNDW_PORT_FILE:-$MNDW_ROOT/var/lib/mndw/frontend-port}
+MNDW_WAN_INTERFACE_FILE=${MNDW_WAN_INTERFACE_FILE:-$MNDW_ROOT/var/lib/mndw/wan-interface}
+escape() { printf '%s' "$1" | sed 's/[\\\"]/[\\&]/g'; }
+post() {
+	[ -r "$MNDW_PORT_FILE" ] || exit 0
+	port=$(cat "$MNDW_PORT_FILE" 2>/dev/null) || exit 0
+	[ -n "$port" ] || exit 0
+	curl -s --max-time 1 -X POST -H 'Content-Type: application/json' -d "$1" "http://127.0.0.1:$port/_internal/hook" >/dev/null 2>&1 || true
+}
+action=${1:-}
+interface=$(escape "${interface:-}")
+if [ "$action" = stop ]; then
+	if [ -z "$interface" ] && [ -r "$MNDW_WAN_INTERFACE_FILE" ]; then
+		interface=$(cat "$MNDW_WAN_INTERFACE_FILE" 2>/dev/null || true)
+	fi
+	[ -n "$interface" ] || exit 0
+	post "{\"hook\":\"wan.d\",\"action\":\"stop\",\"payload\":{\"interface\":\"$interface\"}}"
+	rm -f "$MNDW_WAN_INTERFACE_FILE"
+else
+	[ -n "$interface" ] && printf '%s\n' "$interface" >"$MNDW_WAN_INTERFACE_FILE" 2>/dev/null || true
+	post "{\"hook\":\"wan.d\",\"action\":\"start\",\"payload\":{\"interface\":\"$interface\",\"address\":\"$(escape "${address:-}")\",\"mask\":\"$(escape "${mask:-}")\",\"gateway\":\"$(escape "${gateway:-}")\"}}"
+fi

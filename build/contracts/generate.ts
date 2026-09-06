@@ -4,6 +4,7 @@ import {dirname, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {createManifestSchemaDocument} from '../../frontend/sdk/scripts/manifest-schema-document.js';
+import {createEventSchemaDocument} from '../../frontend/sdk/src/event-schema.js';
 import {createMwsMemberSchemaDocument} from '../../frontend/sdk/src/mws-member-schema.js';
 import {PALETTE_CONTRAST_PAIRS, PALETTE_CSS_VARIABLES, buildPalette} from '../../tooling/palette-core/src/index.js';
 import {renderCss, renderTs} from '../../build/palette/scripts/gen-tokens.js';
@@ -54,6 +55,14 @@ const fixtureMappings: readonly FixtureMapping[] = [
       'daemon/mndwd/internal/rcisession/testdata/capability',
     ],
   },
+  {
+    source: 'contracts/events/fixtures',
+    destinations: [
+      'frontend/sdk/fixtures/events',
+      'daemon/contracts-go/fixtures/events',
+      'daemon/mndwd/internal/events/fixtures',
+    ],
+  },
 ];
 
 const manifestSchemaPaths = [
@@ -67,6 +76,8 @@ const hostRciSessionStatusCategoriesPath = 'frontend/host/src/services/rci-sessi
 
 const tokenContractPath = 'contracts/tokens.json';
 const generatedGoThemeTokensPath = 'daemon/mndwd/internal/palette/theme_tokens_generated.go';
+const eventSchemaPath = 'contracts/events/events.schema.json';
+const generatedGoEventsPath = 'daemon/contracts-go/events/events.go';
 
 function listFiles(root: string): string[] {
   const files: string[] = [];
@@ -119,6 +130,184 @@ export function generateManifestSchema(options: GenerateContractsOptions): void 
     mkdirSync(dirname(outputPath), {recursive: true});
     writeFileSync(outputPath, contents);
   }
+}
+
+type JsonSchema = Record<string, unknown>;
+
+const asJsonSchema = (value: unknown, label: string): JsonSchema => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+
+  return value as JsonSchema;
+};
+
+const asString = (value: unknown, label: string): string => {
+  if (typeof value !== 'string') {
+    throw new Error(`${label} must be a string`);
+  }
+
+  return value;
+};
+
+const asStringArray = (value: unknown, label: string): string[] => {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    throw new Error(`${label} must be a string array`);
+  }
+
+  return value;
+};
+
+const asSchemaArray = (value: unknown, label: string): JsonSchema[] => {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array`);
+  }
+
+  return value.map((item, index) => asJsonSchema(item, `${label}[${index}]`));
+};
+
+const schemaLiterals = (schema: JsonSchema, label: string): string[] => {
+  if (typeof schema.const === 'string') {
+    return [schema.const];
+  }
+
+  if (Array.isArray(schema.enum) && schema.enum.every((value) => typeof value === 'string')) {
+    return schema.enum;
+  }
+
+  if (Array.isArray(schema.anyOf)) {
+    return schema.anyOf.flatMap((value, index) =>
+      schemaLiterals(
+        asJsonSchema(value, `${label}.anyOf[${index}]`),
+        `${label}.anyOf[${index}]`,
+      )
+    );
+  }
+
+  throw new Error(`${label} must contain string literals`);
+};
+
+const initialisms: Readonly<Record<string, string>> = {
+  id: 'ID',
+  ip: 'IP',
+  mac: 'MAC',
+  ssid: 'SSID',
+  usb: 'USB',
+};
+
+const goFieldName = (name: string): string => {
+  return name.split('_').map((part) => {
+    return initialisms[part] ?? `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`;
+  })
+.join('');
+};
+
+const goType = (schema: JsonSchema): string => {
+  const schemaType = schema.type;
+
+  if (schemaType === 'string') {
+    return 'string';
+  }
+
+  if (schemaType === 'integer' || schemaType === 'number') {
+    return 'int64';
+  }
+
+  if (schemaType === 'boolean') {
+    return 'bool';
+  }
+
+  if (schemaType === 'array') {
+    return `[]${goType(asJsonSchema(schema.items, 'array items'))}`;
+  }
+
+  return 'json.RawMessage';
+};
+
+const topicTypeName = (topic: string): string => {
+  return topic.split('.').map(goFieldName)
+.join('');
+};
+
+function renderGoEvents(document: JsonSchema): string {
+  const branches = asSchemaArray(document.anyOf, 'event schema anyOf');
+  const rows = branches.map((branch, index) => {
+    const properties = asJsonSchema(branch.properties, `event branch ${index} properties`);
+    const topicSchema = asJsonSchema(properties.topic, `event branch ${index} topic`);
+    const sourceSchema = asJsonSchema(properties.source, `event branch ${index} source`);
+    const payloadSchema = asJsonSchema(properties.payload, `event branch ${index} payload`);
+    const payloadProperties = asJsonSchema(payloadSchema.properties, `event branch ${index} payload properties`);
+    const topic = asString(topicSchema.const, `event branch ${index} topic`);
+
+    return {
+      topic,
+      sources: schemaLiterals(sourceSchema, `event branch ${index} source`),
+      payloadName: `${topicTypeName(topic)}Payload`,
+      payloadProperties,
+      required: new Set(asStringArray(payloadSchema.required ?? [], `event branch ${index} payload required`)),
+    };
+  });
+
+  const payloadStructs = rows.map((row) => {
+    const fields = Object.entries(row.payloadProperties).map(([name, rawSchema]) => {
+      const schema = asJsonSchema(rawSchema, `payload field ${row.topic}.${name}`);
+      const optional = !row.required.has(name);
+      const type = optional ? `*${goType(schema)}` : goType(schema);
+      const jsonTag = optional ? `${name},omitempty` : name;
+
+      return `\t${goFieldName(name).padEnd(20)} ${type.padEnd(18)} \`json:"${jsonTag}"\``;
+    });
+
+    return `type ${row.payloadName} struct {\n${fields.join('\n')}\n}`;
+  }).join('\n\n');
+
+  const sourceConstants = ['hook', 'log', 'internal']
+    .map((source) => `\tSource${goFieldName(source)} Source = "${source}"`)
+    .join('\n');
+  const topicConstants = rows
+    .map((row) => `\tTopic${row.payloadName.slice(0, -'Payload'.length)} Topic = "${row.topic}"`)
+    .join('\n');
+
+  return `// GENERATED from frontend/sdk/src/event-schema.ts — do not edit by hand.
+package events
+
+import "encoding/json"
+
+type Source string
+
+const (
+${sourceConstants}
+)
+
+type Topic string
+
+const (
+${topicConstants}
+)
+
+type Event struct {
+\tID      string          \`json:"id"\`
+\tTs      int64           \`json:"ts"\`
+\tTopic   Topic           \`json:"topic"\`
+\tSource  Source          \`json:"source"\`
+\tPayload json.RawMessage \`json:"payload"\`
+}
+
+${payloadStructs}
+`;
+}
+
+function generateEventContracts(options: GenerateContractsOptions): void {
+  const outputRoot = resolve(options.outputRoot ?? options.repoRoot);
+  const document = createEventSchemaDocument();
+  const schemaPath = join(outputRoot, eventSchemaPath);
+  const goPath = join(outputRoot, generatedGoEventsPath);
+
+  mkdirSync(dirname(schemaPath), {recursive: true});
+  mkdirSync(dirname(goPath), {recursive: true});
+  writeFileSync(schemaPath, `${JSON.stringify(document, null, 2)}\n`);
+  writeFileSync(goPath, renderGoEvents(document));
+  execFileSync('gofmt', ['-w', goPath], {stdio: 'pipe'});
 }
 
 function generateMwsMemberSchema(options: GenerateContractsOptions): void {
@@ -222,6 +411,7 @@ export function generateContracts(options: GenerateContractsOptions): void {
   const outputRoot = resolve(options.outputRoot ?? repoRoot);
 
   generateManifestSchema({repoRoot, outputRoot});
+  generateEventContracts({repoRoot, outputRoot});
   generateMwsMemberSchema({repoRoot, outputRoot});
   generateRciSessionStatusCategories({repoRoot, outputRoot});
   generateTokenBindings({repoRoot, outputRoot});

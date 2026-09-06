@@ -21,6 +21,9 @@ const generatedDirectories = [
   'packages/go-mws-members/fixtures',
   'frontend/host/src/services/fixtures/rci-session/capability',
   'daemon/mndwd/internal/rcisession/testdata/capability',
+  'frontend/sdk/fixtures/events',
+  'daemon/contracts-go/fixtures/events',
+  'daemon/mndwd/internal/events/fixtures',
 ] as const;
 
 const listFiles = (root: string, current = ''): string[] => {
@@ -52,6 +55,8 @@ const generatedPaths = [
   'frontend/sdk/src/tokens.ts',
   'frontend/sdk/src/tokens.css',
   'daemon/mndwd/internal/palette/theme_tokens_generated.go',
+  'contracts/events/events.schema.json',
+  'daemon/contracts-go/events/events.go',
   ...generatedDirectories.flatMap((directory) =>
     listFiles(join(repoRoot, directory)).map((file) => join(directory, file))
   ),

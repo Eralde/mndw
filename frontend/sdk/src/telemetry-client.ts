@@ -23,6 +23,17 @@ export interface TelemetrySnapshot {
   readonly gathering: {readonly enabled: boolean};
 }
 
+export interface TelemetryAnnotation {
+  readonly id: string;
+  readonly ts: number;
+  readonly topic: string;
+  readonly label: string;
+}
+
+export interface TelemetryAnnotations {
+  readonly collections: Readonly<Record<string, readonly TelemetryAnnotation[]>>;
+}
+
 export type ProjectRange = '1h' | '3h' | '1d' | '7d' | '30d';
 
 export interface ProjectedPoint {
@@ -71,6 +82,7 @@ export interface ProjectedSnapshot {
 export interface TelemetryClient {
   fetchAll(options?: {readonly signal?: AbortSignal}): Promise<TelemetrySnapshot>;
   fetchProjected(range: ProjectRange, options?: {readonly signal?: AbortSignal}): Promise<ProjectedSnapshot>;
+  fetchAnnotations(options?: {readonly signal?: AbortSignal}): Promise<TelemetryAnnotations>;
 }
 
 export class TelemetryError extends Error {
@@ -200,6 +212,59 @@ const decodeSnapshot = (value: unknown): TelemetrySnapshot => {
   }
 
   return {keys, gathering: {enabled: (gathering as Record<string, unknown>).enabled as boolean}};
+};
+
+const decodeAnnotations = (value: unknown): TelemetryAnnotations => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('telemetry annotations response must be an object');
+  }
+
+  const body = value as Record<string, unknown>;
+
+  if (Object.keys(body).some((key) => key !== 'collections')) {
+    throw new Error('telemetry annotations response has unknown fields');
+  }
+
+  if (body.collections === null || typeof body.collections !== 'object' || Array.isArray(body.collections)) {
+    throw new Error('telemetry annotations collections are invalid');
+  }
+
+  const collections: Record<string, readonly TelemetryAnnotation[]> = {};
+
+  for (const [collection, rawAnnotations] of Object.entries(body.collections as Record<string, unknown>)) {
+    if (!Array.isArray(rawAnnotations)) {
+      throw new Error(`telemetry annotations collection ${collection} is invalid`);
+    }
+
+    collections[collection] = rawAnnotations.map((rawAnnotation) => {
+      if (rawAnnotation === null || typeof rawAnnotation !== 'object' || Array.isArray(rawAnnotation)) {
+        throw new Error(`telemetry annotation ${collection} is invalid`);
+      }
+
+      const annotation = rawAnnotation as Record<string, unknown>;
+
+      if (
+        Object.keys(annotation).some((key) => !['id', 'ts', 'topic', 'label'].includes(key))
+        || typeof annotation.id !== 'string'
+        || !isPositiveInteger(annotation.ts)
+        || typeof annotation.topic !== 'string'
+        || annotation.topic.length === 0
+        || typeof annotation.label !== 'string'
+        || annotation.label.length === 0
+      ) {
+        throw new Error(`telemetry annotation ${collection} is invalid`);
+      }
+
+      return {
+        id: annotation.id,
+        ts: annotation.ts,
+        topic: annotation.topic,
+        label: annotation.label,
+      };
+    });
+  }
+
+  return {collections};
 };
 
 const VALID_PROJECTED_COLORS = new Set<ProjectedChartColor>(['accent', 'success', 'warning', 'muted']);
@@ -402,6 +467,26 @@ export function createTelemetryClient(
         throw new TelemetryError(
           response.status,
           error instanceof Error ? error.message : 'Invalid projected telemetry response.',
+        );
+      }
+    },
+    async fetchAnnotations(options = {}): Promise<TelemetryAnnotations> {
+      const response = await fetchImpl('/api/mndw/telemetry/annotations', {
+        method: 'GET',
+        cache: 'no-store',
+        signal: options.signal,
+      });
+
+      if (!response.ok) {
+        throw new TelemetryError(response.status, 'Telemetry annotations are unavailable.');
+      }
+
+      try {
+        return decodeAnnotations(await response.json());
+      } catch (error) {
+        throw new TelemetryError(
+          response.status,
+          error instanceof Error ? error.message : 'Invalid telemetry annotations response.',
         );
       }
     },

@@ -1,0 +1,1323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mndw/unified-event.schema.json",
+  "title": "mndw unified event",
+  "description": "Generated from frontend/sdk/src/event-schema.ts — do not edit by hand.",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "wan.connected"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "hook"
+            },
+            {
+              "type": "string",
+              "const": "log"
+            }
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "interface": {
+              "type": "string",
+              "minLength": 1
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1
+            },
+            "mask": {
+              "type": "string",
+              "minLength": 1
+            },
+            "gateway": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "interface",
+            "address",
+            "mask",
+            "gateway"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "wan.disconnected"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "hook"
+            },
+            {
+              "type": "string",
+              "const": "log"
+            }
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "interface": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "interface"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "net.ip_changed"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "hook"
+            },
+            {
+              "type": "string",
+              "const": "log"
+            }
+          ]
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "address": {
+              "type": "string",
+              "minLength": 1
+            },
+            "mask": {
+              "type": "string",
+              "minLength": 1
+            },
+            "link": {
+              "type": "string",
+              "minLength": 1
+            },
+            "connected": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "address",
+            "mask",
+            "link",
+            "connected"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "net.dhcp_lease"
+        },
+        "source": {
+          "type": "string",
+          "const": "log"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "mac": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ip": {
+              "type": "string",
+              "minLength": 1
+            },
+            "hostname": {
+              "type": "string",
+              "minLength": 1
+            },
+            "action": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "mac",
+            "ip",
+            "hostname",
+            "action"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "net.dns_changed"
+        },
+        "source": {
+          "type": "string",
+          "const": "log"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "resolvers": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "resolvers"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "wifi.client_join"
+        },
+        "source": {
+          "type": "string",
+          "const": "log"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "mac": {
+              "type": "string",
+              "minLength": 1
+            },
+            "band": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ssid": {
+              "type": "string",
+              "minLength": 1
+            },
+            "iface": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "mac",
+            "band",
+            "ssid",
+            "iface"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "wifi.client_leave"
+        },
+        "source": {
+          "type": "string",
+          "const": "log"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "mac": {
+              "type": "string",
+              "minLength": 1
+            },
+            "band": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ssid": {
+              "type": "string",
+              "minLength": 1
+            },
+            "iface": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "mac",
+            "band",
+            "ssid",
+            "iface"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "firewall.rebuilt"
+        },
+        "source": {
+          "type": "string",
+          "const": "hook"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "table_type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "table": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "table_type",
+            "table"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "usb.attached"
+        },
+        "source": {
+          "type": "string",
+          "const": "hook"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "device": {
+              "type": "string",
+              "minLength": 1
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "vendor": {
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "device",
+            "model",
+            "vendor",
+            "port"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "usb.detached"
+        },
+        "source": {
+          "type": "string",
+          "const": "hook"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "device": {
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "device",
+            "port"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "fs.mounted"
+        },
+        "source": {
+          "type": "string",
+          "const": "hook"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "fs_type": {
+              "type": "string",
+              "minLength": 1
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1
+            },
+            "directory": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "fs_type",
+            "label",
+            "directory"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "fs.unmounted"
+        },
+        "source": {
+          "type": "string",
+          "const": "hook"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "minLength": 1
+            },
+            "directory": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "label",
+            "directory"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "clock.synced"
+        },
+        "source": {
+          "type": "string",
+          "const": "hook"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "offset_ms": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "schedule.fired"
+        },
+        "source": {
+          "type": "string",
+          "const": "hook"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "action": {
+              "type": "string",
+              "minLength": 1
+            },
+            "elapsed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "name",
+            "action",
+            "elapsed"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "button.pressed"
+        },
+        "source": {
+          "type": "string",
+          "const": "hook"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "button": {
+              "type": "string",
+              "minLength": 1
+            },
+            "gesture": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "button",
+            "gesture"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "auth.login"
+        },
+        "source": {
+          "type": "string",
+          "const": "log"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "user": {
+              "type": "string",
+              "minLength": 1
+            },
+            "ip": {
+              "type": "string",
+              "minLength": 1
+            },
+            "success": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "user",
+            "ip",
+            "success"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "firmware.available"
+        },
+        "source": {
+          "type": "string",
+          "const": "log"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "plugin.installed"
+        },
+        "source": {
+          "type": "string",
+          "const": "internal"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "plugin.removed"
+        },
+        "source": {
+          "type": "string",
+          "const": "internal"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "plugin.approved"
+        },
+        "source": {
+          "type": "string",
+          "const": "internal"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "plugin.started"
+        },
+        "source": {
+          "type": "string",
+          "const": "internal"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "plugin.stopped"
+        },
+        "source": {
+          "type": "string",
+          "const": "internal"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "name",
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "daemon.started"
+        },
+        "source": {
+          "type": "string",
+          "const": "internal"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uptime_ms": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "version",
+            "uptime_ms"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "daemon.stopping"
+        },
+        "source": {
+          "type": "string",
+          "const": "internal"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "reason"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "daemon.updated"
+        },
+        "source": {
+          "type": "string",
+          "const": "internal"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "storage.low"
+        },
+        "source": {
+          "type": "string",
+          "const": "internal"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "const": "/opt"
+            },
+            "available_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "threshold_bytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "path",
+            "available_bytes",
+            "threshold_bytes"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

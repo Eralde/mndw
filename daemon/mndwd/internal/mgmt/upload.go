@@ -163,6 +163,10 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if installed {
+				h.publish("plugin.installed", map[string]any{"name": name, "version": deref(m.Version)})
+			}
+
+			if installed {
 				desired := &registry.Plugin{
 					Name: name, Dir: activePath, Manifest: m, Source: state.SourceUpload,
 					Approval: state.ApprovalApproved, Enabled: true,
@@ -274,6 +278,8 @@ func (h *Handler) installDirect(w http.ResponseWriter, m *manifest.Manifest, man
 
 		return
 	}
+
+	h.publish("plugin.installed", map[string]any{"name": name, "version": deref(m.Version)})
 
 	h.logger.Info("plugin installed", "plugin", name, "backend", false)
 	httpx.WriteJSON(w, h.logger, http.StatusCreated, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))

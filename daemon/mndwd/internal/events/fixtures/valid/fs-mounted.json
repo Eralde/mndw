@@ -1,0 +1,1 @@
+{"id":"01J5KZ0000000000000000000A","ts":1725552000123,"topic":"fs.mounted","source":"hook","payload":{"fs_type":"ext4","label":"DATA","directory":"/opt"}}

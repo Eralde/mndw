@@ -1,0 +1,1 @@
+{"id":"01J5KZ00000000000000000006","ts":1725552000123,"topic":"wifi.client_leave","source":"log","payload":{"mac":"00:11:22:33:44:55","band":"5ghz","ssid":"mndw","iface":"WifiMaster0"}}

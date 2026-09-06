@@ -99,6 +99,8 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.publish("plugin.installed", map[string]any{"name": name, "version": deref(m.Version)})
+
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, previous.Source, state.ApprovalApproved, true))
 }
 

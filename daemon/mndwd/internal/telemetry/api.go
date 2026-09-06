@@ -12,6 +12,7 @@ type Handler struct {
 	cache            *SnapshotCache
 	gatheringEnabled func() bool
 	logger           *slog.Logger
+	annotations      *AnnotationStore
 }
 
 func NewHandler(cache *SnapshotCache, gatheringEnabled func() bool, logger *slog.Logger) *Handler {
@@ -24,10 +25,30 @@ func NewHandler(cache *SnapshotCache, gatheringEnabled func() bool, logger *slog
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mndw/telemetry", h.handleGet)
+
+	if h.annotations != nil {
+		mux.HandleFunc("GET /api/mndw/telemetry/annotations", h.handleAnnotations)
+	}
+}
+
+func (h *Handler) SetAnnotationStore(store *AnnotationStore) {
+	h.annotations = store
+}
+
+func (h *Handler) handleAnnotations(w http.ResponseWriter, _ *http.Request) {
+	if h.annotations == nil {
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "telemetry annotations are unavailable"))
+
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"collections": h.annotations.Collections()})
 }
 
 func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	query, parseErr := url.ParseQuery(r.URL.RawQuery)
+
 	if parseErr != nil {
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "malformed query string"))
 
@@ -47,6 +68,7 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 
 		var ok bool
 		rangeMs, ok = parseProjectRange(projectValues[0])
+
 		if !ok {
 			httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "project must be one of: 1h, 3h, 1d, 7d, 30d"))
 

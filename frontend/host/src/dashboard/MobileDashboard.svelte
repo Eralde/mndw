@@ -15,6 +15,7 @@ const pluginContextServices = {
   locale: services.locale,
   palette: services.palette,
   telemetry: services.telemetry,
+  eventStream: services.eventStream,
 };
 
 /**

@@ -1,0 +1,11 @@
+{
+  "l10n": {"probe": "Event Logger"},
+  "pause": "Pause",
+  "resume": "Resume",
+  "clear": "Clear",
+  "filter": "Filter events",
+  "empty": "No matching events",
+  "unavailable": "Event stream unavailable",
+  "resumed": "Capture resumed",
+  "resync": "Stream resynchronized; history may contain gaps"
+}

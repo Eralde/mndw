@@ -4,7 +4,17 @@ import {z} from 'zod';
 const sourceSchema = z.enum(['builtin', 'registry', 'upload']);
 const approvalSchema = z.enum(['pending', 'approved']);
 const depsStatusSchema = z.enum(['ready', 'installing', 'failed']);
-const permissionSchema = z.enum(['persistent-rci-session:read', 'persistent-rci-session:write']);
+const permissionSchema = z.union([
+  z.enum(['persistent-rci-session:read', 'persistent-rci-session:write']),
+  z.string().regex(/^events:(\*|[a-z][a-z0-9]*(?:,[a-z][a-z0-9]*)*)$/),
+]);
+const grantPermissionSchema = z.record(z.string(), z.boolean()).superRefine((grants, ctx) => {
+  for (const permission of Object.keys(grants)) {
+    if (permission !== 'persistent-rci-session:read' && permission !== 'persistent-rci-session:write') {
+      ctx.addIssue({code: 'custom', path: [permission], message: 'only persistent RCI permissions may be granted'});
+    }
+  }
+});
 
 const routeDescriptorSchema: z.ZodType<BackendRouteDescriptor> = z.object({
   transport: z.enum(['http', 'websocket']),
@@ -54,7 +64,7 @@ const baseFields = {
   approval: approvalSchema,
   enabled: z.boolean(),
   permissions: z.array(permissionSchema).optional(),
-  permissionGrants: z.partialRecord(permissionSchema, z.boolean()).optional(),
+  permissionGrants: grantPermissionSchema.optional(),
   depsStatus: depsStatusSchema,
   backend: backendDescriptorSchema,
   i18n: i18nSchema.optional(),

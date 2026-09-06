@@ -73,6 +73,7 @@ const EXPECTED_PLUGINS = [
   'cpu-temp-widget',
   'device-info-widget',
   'dns-lookup-widget',
+  'event-logger-widget',
   'system-log-page',
   'terminal-page',
 ] as const;

@@ -117,6 +117,7 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 
 	control := &lifecycleControl{runtime: r, run: outcome.run}
 	err := r.runLifecycleWork(outcome.run, control, work)
+	var lifecycleEvent *LifecycleEvent
 
 	r.supervisor.withLock(func() {
 		if errors.Is(err, ErrForceStopTerminal) {
@@ -135,6 +136,16 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 				r.supervisor.coord.commitRemove(outcome.run)
 			}
 
+			state := "started"
+			reason := "reconciled"
+
+			if success != TerminalRun {
+				state = "stopped"
+				reason = lifecycleStopReason(op, success)
+			}
+
+			lifecycleEvent = &LifecycleEvent{Plugin: name, State: state, Reason: reason}
+
 			return
 		}
 
@@ -148,7 +159,28 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 		}
 	})
 
+	if lifecycleEvent != nil && r.lifecycleObserver != nil {
+		r.lifecycleObserver(*lifecycleEvent)
+	}
+
 	return waitRun(outcome.run)
+}
+
+func lifecycleStopReason(op Operation, success TerminalKind) string {
+	if success == TerminalRemove || op == OpDeleting {
+		return "removed"
+	}
+
+	switch op {
+	case OpStopping:
+		return "disabled"
+	case OpRestarting:
+		return "restarted"
+	case OpUpdating:
+		return "updated"
+	default:
+		return "reconciled"
+	}
 }
 
 func (r *RuntimeImpl) runLifecycleWork(

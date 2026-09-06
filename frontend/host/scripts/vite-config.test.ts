@@ -73,6 +73,14 @@ describe('host Vite config', () => {
     expect(wsProxy && typeof wsProxy !== 'function' && typeof wsProxy !== 'string' && wsProxy.changeOrigin).toBe(false);
   });
 
+  it('routes the event WebSocket through the existing /ws proxy', () => {
+    const config = viteConfig({command: 'serve', mode: 'development', isPreview: false});
+    const wsProxy = config.server?.proxy?.['/ws'];
+
+    expect('/ws/events'.startsWith('/ws')).toBe(true);
+    expect(wsProxy && typeof wsProxy !== 'function' && typeof wsProxy !== 'string' && wsProxy.ws).toBe(true);
+  });
+
   it('exposes pseudo locale only in development builds', () => {
     const development = viteConfig({command: 'serve', mode: 'development', isPreview: false});
     const production = viteConfig({command: 'build', mode: 'production', isPreview: false});

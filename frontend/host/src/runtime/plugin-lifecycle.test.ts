@@ -74,7 +74,7 @@ function mockContext(instanceId = 'test:1'): PluginContext {
     injector: {} as never,
     instanceId,
     backend: undefined,
-    telemetry: {fetchAll: vi.fn(), fetchProjected: vi.fn()},
+    telemetry: {fetchAll: vi.fn(), fetchProjected: vi.fn(), fetchAnnotations: vi.fn()},
     onThemeChange: () => () => {},
     getTokens: () => MNDW_TOKENS,
     onPaletteChange: () => () => {},

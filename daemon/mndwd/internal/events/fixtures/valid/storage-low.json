@@ -1,0 +1,1 @@
+{"id":"01J5KZ0000000000000000000S","ts":1725552000123,"topic":"storage.low","source":"internal","payload":{"path":"/opt","available_bytes":1,"threshold_bytes":5242880}}

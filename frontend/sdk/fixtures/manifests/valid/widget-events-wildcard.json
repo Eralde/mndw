@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "events-all-widget",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "All Events",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3},
+  "permissions": ["events:*"]
+}

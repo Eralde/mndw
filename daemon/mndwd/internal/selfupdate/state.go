@@ -44,6 +44,12 @@ type Status struct {
 	RollbackVersion string    `json:"rollbackVersion,omitempty"`
 }
 
+type Completion struct {
+	Operation       Operation `json:"operation"`
+	PreviousVersion string    `json:"previousVersion"`
+	TargetVersion   string    `json:"targetVersion"`
+}
+
 var (
 	ErrNoIntent = errors.New("self-update intent not found")
 	versionRe   = regexp.MustCompile(`^[A-Za-z0-9.+~:-]+$`)
@@ -57,6 +63,7 @@ func NewStateStore(root string) *StateStore { return &StateStore{root: root} }
 
 func (s *StateStore) intentPath() string          { return filepath.Join(s.root, "self-update.json") }
 func (s *StateStore) failurePath() string         { return filepath.Join(s.root, "self-update.failure") }
+func (s *StateStore) completionPath() string      { return filepath.Join(s.root, "self-update.completed") }
 func (s *StateStore) rollbackDir() string         { return filepath.Join(s.root, "rollback") }
 func (s *StateStore) rollbackVersionPath() string { return filepath.Join(s.rollbackDir(), "version") }
 
@@ -257,6 +264,11 @@ func (s *StateStore) Status(runningVersion string, lockHeld bool) Status {
 	status.TargetVersion = intent.TargetVersion
 
 	if runningVersion == intent.TargetVersion {
+		_ = s.writeCompletion(Completion{
+			Operation:       intent.Operation,
+			PreviousVersion: intent.CurrentVersion,
+			TargetVersion:   intent.TargetVersion,
+		})
 		_ = s.ClearIntent()
 		_ = s.ClearFailure()
 		status.State = StateIdle
@@ -287,4 +299,39 @@ func (s *StateStore) Status(runningVersion string, lockHeld bool) Status {
 	}
 
 	return status
+}
+
+func (s *StateStore) writeCompletion(completion Completion) error {
+	if completion.Operation != OperationUpdate && completion.Operation != OperationRevert {
+		return errors.New("invalid self-update completion operation")
+	}
+	if !validVersion(completion.PreviousVersion) || !validVersion(completion.TargetVersion) {
+		return errors.New("invalid self-update completion version")
+	}
+	data, err := json.Marshal(completion)
+	if err != nil {
+		return err
+	}
+
+	return atomicWrite(s.completionPath(), data, 0o644)
+}
+
+func (s *StateStore) ConsumeCompletion() (Completion, error) {
+	data, err := os.ReadFile(s.completionPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return Completion{}, ErrNoIntent
+	}
+	if err != nil {
+		return Completion{}, err
+	}
+
+	var completion Completion
+	if err := json.Unmarshal(data, &completion); err != nil {
+		return Completion{}, err
+	}
+	if err := os.Remove(s.completionPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return Completion{}, err
+	}
+
+	return completion, nil
 }

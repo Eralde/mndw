@@ -12,16 +12,40 @@ import (
 	"testing"
 	"time"
 
+	rci "mndw.local/rci"
 	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/rcisession"
 	"mndwd/internal/rcisession/enumeration"
 	"mndwd/internal/rcisession/model"
+	"mndwd/internal/rcisession/proxy"
 	"mndwd/internal/rcisession/socket"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
+	"mndwd/internal/telemetry"
 )
+
+func TestNewTelemetryAndEventClientsUseDistinctClients(t *testing.T) {
+	do := func(_ context.Context, _ proxy.Request) (proxy.Response, error) {
+		return proxy.Response{Status: 200, Body: []byte(`[{}]`)}, nil
+	}
+
+	telemetryClient, eventClient, err := newTelemetryAndEventClients(telemetry.DoFunc(do))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if telemetryClient == nil || eventClient == nil {
+		t.Fatal("expected both clients")
+	}
+
+	if telemetryClient == eventClient {
+		t.Fatal("telemetry and event clients must be distinct")
+	}
+
+	var _ *rci.Client = telemetryClient
+}
 
 func TestControllerPermissionAvailableUsesControllerSupport(t *testing.T) {
 	tests := []struct {

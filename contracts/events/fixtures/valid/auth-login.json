@@ -1,0 +1,1 @@
+{"id":"01J5KZ0000000000000000000F","ts":1725552000123,"topic":"auth.login","source":"log","payload":{"user":"admin","ip":"192.0.2.2","success":true}}

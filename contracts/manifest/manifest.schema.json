@@ -39,10 +39,18 @@
         "permissions": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "persistent-rci-session:read",
-              "persistent-rci-session:write"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "persistent-rci-session:read",
+                  "persistent-rci-session:write"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^events:(\\*|[a-z][a-z0-9]*(?:,[a-z][a-z0-9]*)*)$"
+              }
             ]
           }
         },
@@ -359,10 +367,18 @@
         "permissions": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "persistent-rci-session:read",
-              "persistent-rci-session:write"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "persistent-rci-session:read",
+                  "persistent-rci-session:write"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^events:(\\*|[a-z][a-z0-9]*(?:,[a-z][a-z0-9]*)*)$"
+              }
             ]
           }
         },

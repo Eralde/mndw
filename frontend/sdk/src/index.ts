@@ -1,4 +1,7 @@
 export type {MndwPlugin, PluginInstance, PluginResizeSize} from './plugin.js';
+export {eventPermissionSchema, eventSchema, eventSourceSchema, MaxEventPayloadBytes} from './event-schema.js';
+export {createEventSchemaDocument} from './event-schema.js';
+export type {EventSource, EventTopic, MndwEvent, PluginEventFacade, Unsubscribe} from './event-schema.js';
 export {PageRouteError} from './context.js';
 export type {
   DeviceInfo,
@@ -109,6 +112,8 @@ export type {
   ProjectedSnapshot,
   ProjectedValueDomain,
   ProjectRange,
+  TelemetryAnnotation,
+  TelemetryAnnotations,
   TelemetryClient,
   TelemetrySample,
   TelemetrySeries,

@@ -42,6 +42,16 @@ func TestStatusUsesVersionThenFailureThenLock(t *testing.T) {
 	if _, err := os.Stat(store.intentPath()); !os.IsNotExist(err) {
 		t.Fatalf("intent remains after completion: %v", err)
 	}
+	completion, err := store.ConsumeCompletion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completion.Operation != OperationUpdate || completion.PreviousVersion != "0.0.3" || completion.TargetVersion != "0.0.4" {
+		t.Fatalf("completion = %+v", completion)
+	}
+	if _, err := store.ConsumeCompletion(); err != ErrNoIntent {
+		t.Fatalf("second completion read = %v", err)
+	}
 }
 
 func TestStatusDetectsHelperExitAndUnexpectedVersion(t *testing.T) {

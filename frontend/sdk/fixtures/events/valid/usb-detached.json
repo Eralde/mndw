@@ -1,0 +1,1 @@
+{"id":"01J5KZ00000000000000000009","ts":1725552000123,"topic":"usb.detached","source":"hook","payload":{"device":"/dev/sda1","port":"usb1"}}

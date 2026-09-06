@@ -1,0 +1,1 @@
+{"id":"01J5KZ00000000000000000003","ts":1725552000123,"topic":"net.dhcp_lease","source":"log","payload":{"mac":"00:11:22:33:44:55","ip":"192.0.2.10","hostname":"router","action":"bound"}}

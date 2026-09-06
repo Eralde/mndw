@@ -44,6 +44,14 @@ type RuntimeConfig struct {
 	Supervisor                SupervisorConfig
 }
 
+type LifecycleEvent struct {
+	Plugin string
+	State  string
+	Reason string
+}
+
+type LifecycleObserver func(LifecycleEvent)
+
 // RuntimeImpl owns one admission ledger for both request-scoped commands and
 // long-running services. This prevents separate subsystems from exceeding a
 // shared platform limit during startup or shutdown races.
@@ -56,6 +64,7 @@ type RuntimeImpl struct {
 	activationGates    *ActivationGateRegistry
 	closePluginSockets func(string)
 	platform           func()
+	lifecycleObserver  LifecycleObserver
 }
 
 func NewRuntime(config RuntimeConfig) *RuntimeImpl {
@@ -227,7 +236,15 @@ func (r *RuntimeImpl) Shutdown(ctx context.Context) error {
 		r.platform()
 	}
 
-	return r.supervisor.StopAll(ctx)
+	pluginIDs := r.supervisor.runningPluginIDs()
+	err := r.supervisor.StopAll(ctx)
+	if err == nil && r.lifecycleObserver != nil {
+		for _, pluginID := range pluginIDs {
+			r.lifecycleObserver(LifecycleEvent{Plugin: pluginID, State: "stopped", Reason: "shutdown"})
+		}
+	}
+
+	return err
 }
 
 func (r *RuntimeImpl) SetLifecycleHooks(closePluginSockets func(string)) {
@@ -236,6 +253,10 @@ func (r *RuntimeImpl) SetLifecycleHooks(closePluginSockets func(string)) {
 
 func (r *RuntimeImpl) SetPlatformMaintenanceHook(platform func()) {
 	r.platform = platform
+}
+
+func (r *RuntimeImpl) SetLifecycleObserver(observer LifecycleObserver) {
+	r.lifecycleObserver = observer
 }
 
 func (r *RuntimeImpl) serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {

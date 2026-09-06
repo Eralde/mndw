@@ -67,8 +67,10 @@ start() {
     FRONTEND_LISTEN_ARG="--frontend-listen $MNDW_FRONTEND_LISTEN"
   fi
 
-  PORT_FILE="$DATA_DIR/frontend-port"
-  OLD_PORT_INODE="$(ls -id "$PORT_FILE" 2>/dev/null | awk '{print $1}')"
+PORT_FILE="$DATA_DIR/frontend-port"
+MNDW_PORT_FILE="$PORT_FILE"
+export MNDW_PORT_FILE
+OLD_PORT_INODE="$(ls -id "$PORT_FILE" 2>/dev/null | awk '{print $1}')"
 
   # shellcheck disable=SC2086  # intentional word-split of FRONTEND_LISTEN_ARG
   "$DAEMON" \

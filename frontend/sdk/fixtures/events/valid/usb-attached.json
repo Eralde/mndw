@@ -1,0 +1,1 @@
+{"id":"01J5KZ00000000000000000008","ts":1725552000123,"topic":"usb.attached","source":"hook","payload":{"device":"/dev/sda1","model":"Disk","vendor":"ACME","port":"usb1"}}

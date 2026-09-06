@@ -1,0 +1,10 @@
+{
+  "manifestVersion": 1,
+  "name": "bad-events-uppercase",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Bad",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3},
+  "permissions": ["events:WAN"]
+}

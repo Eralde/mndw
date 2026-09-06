@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestCache() *SnapshotCache {
@@ -33,6 +34,7 @@ func TestHandleGet_NoProject_ReturnsRawTiers(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/mndw/telemetry", nil)
 	rec := httptest.NewRecorder()
+
 	handler.handleGet(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -45,17 +47,21 @@ func TestHandleGet_NoProject_ReturnsRawTiers(t *testing.T) {
 			Unit  string                     `json:"unit"`
 		} `json:"keys"`
 	}
+
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
 
 	cpu, ok := body.Keys["cpu"]
+
 	if !ok {
 		t.Fatal("expected 'cpu' key in raw response")
 	}
+
 	if _, hasFine := cpu.Tiers["fine"]; !hasFine {
 		t.Error("expected raw response to have 'tiers.fine'")
 	}
+
 	if cpu.Unit != "percent" {
 		t.Errorf("expected unit 'percent', got %q", cpu.Unit)
 	}
@@ -66,6 +72,7 @@ func TestHandleGet_Project7d_ReturnsProjectedWithMetadata(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/mndw/telemetry?project=7d", nil)
 	rec := httptest.NewRecorder()
+
 	handler.handleGet(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -73,20 +80,25 @@ func TestHandleGet_Project7d_ReturnsProjectedWithMetadata(t *testing.T) {
 	}
 
 	var projected ProjectedSnapshot
+
 	if err := json.Unmarshal(rec.Body.Bytes(), &projected); err != nil {
 		t.Fatal(err)
 	}
 
 	cpu, ok := projected.Keys["cpu"]
+
 	if !ok {
 		t.Fatal("expected 'cpu' key in projected response")
 	}
+
 	if len(cpu.Points) != 1 {
 		t.Errorf("expected 1 projected point, got %d", len(cpu.Points))
 	}
+
 	if !cpu.Supported {
 		t.Error("expected projected cpu.supported = true")
 	}
+
 	if cpu.Unit != "percent" {
 		t.Errorf("expected projected cpu.unit = 'percent', got %q", cpu.Unit)
 	}
@@ -97,6 +109,7 @@ func TestHandleGet_Project30d(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/mndw/telemetry?project=30d", nil)
 	rec := httptest.NewRecorder()
+
 	handler.handleGet(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -110,6 +123,7 @@ func TestHandleGet_ProjectRanges(t *testing.T) {
 			handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
 			req := httptest.NewRequest("GET", "/api/mndw/telemetry?project="+project, nil)
 			rec := httptest.NewRecorder()
+
 			handler.handleGet(rec, req)
 
 			if rec.Code != http.StatusOK {
@@ -117,9 +131,11 @@ func TestHandleGet_ProjectRanges(t *testing.T) {
 			}
 
 			var projected ProjectedSnapshot
+
 			if err := json.Unmarshal(rec.Body.Bytes(), &projected); err != nil {
 				t.Fatal(err)
 			}
+
 			if _, ok := projected.Keys["cpu"]; !ok {
 				t.Fatal("expected projected cpu key")
 			}
@@ -137,19 +153,57 @@ func TestHandleGet_InvalidProject_ReturnsBadRequestWithoutTouchingCache(t *testi
 	for _, query := range []string{"?project=2h", "?project=", "?project=7d&project=30d", "?project=%zz"} {
 		req := httptest.NewRequest("GET", "/api/mndw/telemetry"+query, nil)
 		rec := httptest.NewRecorder()
+
 		handler.handleGet(rec, req)
 
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("query %q: expected 400, got %d", query, rec.Code)
 		}
+
 		if query == "?project=2h" && !strings.Contains(rec.Body.String(), "project must be one of: 1h, 3h, 1d, 7d, 30d") {
 			t.Errorf("query %q did not list valid project ranges: %s", query, rec.Body.String())
 		}
 	}
 
 	spy.mu.Lock()
+
 	defer spy.mu.Unlock()
+
 	if spy.calls > 0 {
 		t.Errorf("expected cache untouched for invalid project, but readers received %d calls", spy.calls)
+	}
+}
+
+func TestHandleAnnotationsReturnsCollections(t *testing.T) {
+	store, err := NewAnnotationStore(AnnotationStoreConfig{RRDDir: t.TempDir(), Catalog: annotationTestCatalog{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store.Consume(annotationEvent("annotation", time.Now().UnixMilli()))
+
+	handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
+
+	handler.SetAnnotationStore(store)
+
+	req := httptest.NewRequest("GET", "/api/mndw/telemetry/annotations", nil)
+	rec := httptest.NewRecorder()
+
+	handler.handleAnnotations(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+
+	var body struct {
+		Collections map[string][]Annotation `json:"collections"`
+	}
+
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(body.Collections["load"]) != 1 {
+		t.Fatalf("collections = %#v", body.Collections)
 	}
 }

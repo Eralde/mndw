@@ -1,0 +1,11 @@
+{
+  "manifestVersion": 1,
+  "name": "event-logger-widget",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "Event Logger",
+  "entry": "index.js",
+  "size": {"w": 6, "h": 4, "minW": 3, "minH": 3},
+  "permissions": ["events:*"],
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}}
+}

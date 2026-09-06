@@ -71,6 +71,23 @@ describe('decodeMgmtList', () => {
     expect(entries[0]?.catalogBaseUrl).toBe('/catalogs/demo');
     expect(entries[0]?.runtime?.startedAt).toBe('2026-08-15T10:00:00Z');
   });
+
+  it('keeps event declarations separate from persistent permission grants', () => {
+    const entries = decodeMgmtList({plugins: [{
+      ...widgetEntry,
+      permissions: ['events:wan,wifi,net'],
+      permissionGrants: {},
+    }]});
+
+    expect(entries[0]?.permissions).toEqual(['events:wan,wifi,net']);
+    expect(entries[0]?.permissionGrants).toEqual({});
+    expect(() =>
+      decodeMgmtList({plugins: [{
+        ...widgetEntry,
+        permissionGrants: {'events:wan': true},
+      }]})
+    ).toThrow();
+  });
 });
 
 describe('decodeMgmtListEntry', () => {

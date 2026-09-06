@@ -285,6 +285,10 @@ describe('verifyStage', () => {
     stageFile('opt/share/www/mndw/bin/mndw-device-port.sh');
     stageFile('opt/share/www/mndw/bin/mndw-self-update.sh');
     stageFile('opt/etc/mndw.conf');
+
+    for (const hook of collectStagePaths().hooks) {
+      stageFile(hook);
+    }
   };
 
   it('passes when all required files exist', () => {

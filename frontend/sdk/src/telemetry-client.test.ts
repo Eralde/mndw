@@ -78,6 +78,37 @@ describe('createTelemetryClient', () => {
     ).rejects.toMatchObject({status: 503});
   });
 
+  it('fetches and strictly decodes annotation sidecars', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          collections: {
+            load: [{id: '01J5KZ00000000000000000000', ts: 1, topic: 'wan.connected', label: 'WAN connected'}],
+          },
+        }),
+        {status: 200},
+      ),
+    );
+
+    const annotations = await createTelemetryClient(fetchImpl).fetchAnnotations();
+
+    expect(annotations.collections.load?.[0]?.label).toBe('WAN connected');
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/mndw/telemetry/annotations',
+      expect.objectContaining({method: 'GET', cache: 'no-store'}),
+    );
+  });
+
+  it('rejects malformed annotation sidecars', async () => {
+    await expect(
+      createTelemetryClient(
+        vi.fn().mockResolvedValue(
+          new Response(JSON.stringify({collections: {load: [{id: '', ts: 0}]}}), {status: 200}),
+        ),
+      ).fetchAnnotations(),
+    ).rejects.toBeInstanceOf(TelemetryError);
+  });
+
   describe('fetchProjected', () => {
     it('sends project=1h query parameter', async () => {
       const fetchImpl = vi.fn().mockResolvedValue(

@@ -103,6 +103,7 @@ export function createTestPluginContext(overrides: TestPluginContextOverrides = 
     telemetry: {
       fetchAll: () => Promise.reject(new Error('test telemetry client not configured')),
       fetchProjected: () => Promise.reject(new Error('test telemetry client not configured')),
+      fetchAnnotations: () => Promise.reject(new Error('test telemetry client not configured')),
     },
     onThemeChange: (callback) => {
       themeListeners.add(callback);

@@ -204,6 +204,22 @@ func (s *Supervisor) StopAll(ctx context.Context) error {
 	return nil
 }
 
+func (s *Supervisor) runningPluginIDs() []string {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	pluginIDs := make([]string, 0, len(s.services))
+
+	for pluginID := range s.services {
+		pluginIDs = append(pluginIDs, pluginID)
+	}
+
+	sort.Strings(pluginIDs)
+
+	return pluginIDs
+}
+
 type reconcilePlan struct {
 	startIDs  []string
 	stopIDs   []string

@@ -61,6 +61,14 @@ describe('validateManifest behavior', () => {
     expect('$schema' in result).toBe(false);
   });
 
+  it('accepts event permissions and rejects malformed event permissions', () => {
+    const result = validateManifest({...base, permissions: ['events:wan,wifi,net', 'events:*']});
+
+    expect(result.permissions).toEqual(['events:wan,wifi,net', 'events:*']);
+    expect(() => validateManifest({...base, permissions: ['events:WAN']})).toThrow(ManifestValidationError);
+    expect(() => validateManifest({...base, permissions: ['events:']})).toThrow(ManifestValidationError);
+  });
+
   it.each([
     ['persistent-rci-session:read', 'duplicate read'],
     ['persistent-rci-session:write', 'duplicate write'],

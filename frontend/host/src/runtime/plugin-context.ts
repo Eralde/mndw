@@ -29,7 +29,17 @@ export interface PluginContextHandle {
   dispose: OverlayDispose;
 }
 
-export type PluginContextServices = Pick<HostServices, 'locale' | 'palette' | 'telemetry'>;
+export type PluginContextServices = Pick<HostServices, 'locale' | 'palette' | 'telemetry' | 'eventStream'>;
+
+let eventFacadeSequence = 0;
+
+const createEventFacadeId = (): string => {
+  const cryptoApi = globalThis.crypto;
+
+  return cryptoApi?.randomUUID !== undefined
+    ? cryptoApi.randomUUID()
+    : `event-context-${++eventFacadeSequence}`;
+};
 
 // Plugin-facing method allowlists - the full current public surface of each shared
 // service (capability parity). This is the seam for future per-plugin scoping.
@@ -94,12 +104,27 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     : (callback: (tokens: ReturnType<typeof getTokens>) => void): () => void =>
       options.services?.palette?.subscribePalette(callback) ?? (() => {});
   const telemetry = options.services?.telemetry ?? defaultHostServices().telemetry;
+  const eventStream = options.services?.eventStream ?? defaultHostServices().eventStream;
 
   if (entry.type === 'page' && pageRoute === undefined) {
     throw new Error(`Page plugin "${entry.name}" requires a page route`);
   }
 
-  const {service, dispose} = createPluginOverlayService(entry.name, instanceId);
+  const {service, dispose: disposeOverlay} = createPluginOverlayService(entry.name, instanceId);
+  const eventFacadeId = createEventFacadeId();
+  const events = eventStream.createFacade(eventFacadeId, entry.name, entry.permissions ?? []);
+  let disposed = false;
+  const dispose: OverlayDispose = events === undefined
+    ? disposeOverlay
+    : (reason) => {
+      if (disposed) {
+        return;
+      }
+
+      disposed = true;
+      eventStream.disposeFacade(eventFacadeId);
+      disposeOverlay(reason);
+    };
 
   const variant = entry.type === 'page'
     ? (() => {
@@ -118,6 +143,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
       // SDK exposes concrete classes with private fields; runtime facades intentionally contain only
       // public methods, so cast narrowed facades at this plugin-context boundary.
       telemetry,
+      events,
       rciManager: createServiceFacade(rciService.driver, RCI_MANAGER_METHODS) as unknown as PluginContext['rciManager'],
       storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
       sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),

@@ -1,0 +1,15 @@
+{
+  "name": "@mndw/example-event-logger-widget",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"test": "vitest run"},
+  "devDependencies": {
+    "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "happy-dom": "20.11.1",
+    "svelte": "^5.56.4",
+    "vitest": "^3.2.7"
+  }
+}

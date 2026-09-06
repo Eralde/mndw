@@ -3,9 +3,7 @@ package events
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
@@ -50,7 +48,7 @@ func TestQueryDeviceTimezoneExtractsConfiguredLocation(t *testing.T) {
 		t.Fatalf("location = %v", loc)
 	}
 
-	if string(transport.requestBody) != `[{"show":{"system":{}}}]` {
+	if string(transport.requestBody) != `[{"show":{"clock":{"date":{}}}}]` {
 		t.Fatalf("request body = %s", transport.requestBody)
 	}
 }
@@ -83,7 +81,7 @@ func TestQueryDeviceTimezoneHandlesEmptyObject(t *testing.T) {
 }
 
 func TestQueryDeviceTimezoneHandlesMalformedResponse(t *testing.T) {
-	client, err := rci.New(&recordedTimezoneTransport{wireResponse: []byte(`[{"show":{"system":`)})
+	client, err := rci.New(&recordedTimezoneTransport{wireResponse: []byte(`[{"show":{"clock":`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,44 +112,15 @@ func (t *recordedTimezoneTransport) Send(_ context.Context, body []byte) (rci.Re
 func capturedTimezoneClient(t *testing.T) (*rci.Client, string, *recordedTimezoneTransport) {
 	t.Helper()
 
-	wireResponse, err := os.ReadFile("testdata/device-capture/show-system.json")
-	if errors.Is(err, os.ErrNotExist) {
-		// unverified: response path pending target capture
-		wireResponse = []byte(`[{"show":{"system":{"timezone":"Europe/Moscow"}}}]`)
-		transport := &recordedTimezoneTransport{wireResponse: wireResponse}
-		client, clientErr := rci.New(transport)
-
-		if clientErr != nil {
-			t.Fatal(clientErr)
-		}
-
-		return client, "Europe/Moscow", transport
-	}
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	metadata, err := os.ReadFile("testdata/device-capture/timezone.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var recorded struct {
-		Zone string `json:"zone"`
-	}
-
-	if err := json.Unmarshal(metadata, &recorded); err != nil {
-		t.Fatal(err)
-	}
-
+	wireResponse := []byte(`[{"show":{"clock":{"date":{"tz":[{"locality":"Europe/Moscow"}]}}}}]`)
 	transport := &recordedTimezoneTransport{wireResponse: wireResponse}
-	client, err := rci.New(transport)
-	if err != nil {
-		t.Fatal(err)
+	client, clientErr := rci.New(transport)
+
+	if clientErr != nil {
+		t.Fatal(clientErr)
 	}
 
-	return client, recorded.Zone, transport
+	return client, "Europe/Moscow", transport
 }
 
 func newFailingRawQueryClient(err error) RawQueryClient {
@@ -173,7 +142,7 @@ func newRawQueryClientFromResult(t *testing.T, result []byte) RawQueryClient {
 		t.Fatal(err)
 	}
 
-	wireResponse, err := json.Marshal([]any{map[string]any{"show": map[string]any{"system": value}}})
+	wireResponse, err := json.Marshal([]any{map[string]any{"show": map[string]any{"clock": map[string]any{"date": value}}}})
 	if err != nil {
 		t.Fatal(err)
 	}

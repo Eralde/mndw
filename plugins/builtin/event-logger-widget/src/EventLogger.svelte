@@ -45,6 +45,27 @@ function toggle(): void {
   }
 }
 
+function download(): void {
+  const entries = visible
+    .slice()
+    .reverse()
+    .map((row) => row.event ?? {marker: row.marker, ts: row.ts});
+
+  const logContent = JSON.stringify(entries, null, 2) + '\n';
+
+  const blob = new Blob([logContent], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+
+  const timestampStr = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+
+  anchor.href = url;
+  anchor.download = `mndw-events-${timestampStr}.json`;
+
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 onMount(() => {
   const unsubscribe = events?.subscribe(
     '*',
@@ -94,6 +115,9 @@ onMount(() => {
           rows = [];
         }}
       >{$translator.t('clear')}</mndw-button>
+      <mndw-button onclick={download}>
+        {$translator.t('download')}
+      </mndw-button>
     </header>
     <div
       class="entries"

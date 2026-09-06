@@ -57,7 +57,7 @@ func (s *fakeLogSource) ShowLog(ctx context.Context) (map[string]RawLogRecord, e
 	return result, nil
 }
 
-func TestLogParserProcessesFirstWindowAndEmitsOnlyNewRecords(t *testing.T) {
+func TestLogParserSeedsFirstPollWithoutEmittingEvents(t *testing.T) {
 	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, nil)
 	observed := time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
 	initial := map[string]RawLogRecord{
@@ -67,11 +67,11 @@ func TestLogParserProcessesFirstWindowAndEmitsOnlyNewRecords(t *testing.T) {
 
 	events, err := parser.Parse(initial, observed)
 	if err != nil {
-		t.Fatalf("initial parse = %#v, %v", events, err)
+		t.Fatalf("seed parse error: %v", err)
 	}
 
-	if len(events) != 2 {
-		t.Fatalf("initial parse = %#v, want 2 events", events)
+	if len(events) != 0 {
+		t.Fatalf("seed parse = %#v, want 0 events", events)
 	}
 
 	updated := map[string]RawLogRecord{
@@ -91,8 +91,17 @@ func TestLogParserProcessesFirstWindowAndEmitsOnlyNewRecords(t *testing.T) {
 
 func TestLogParserResetsOnNumericIDRegression(t *testing.T) {
 	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, nil)
-	first := map[string]RawLogRecord{
+	seed := map[string]RawLogRecord{
 		"20": {Timestamp: "Sep  5 10:00:00", Ident: "ndm", Message: RawLogMessage{Message: `Core::Security::Authority: authentication failed for user "admin" from 192.0.2.10`}},
+	}
+
+	if _, err := parser.Parse(seed, time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+
+	first := map[string]RawLogRecord{
+		"20": seed["20"],
+		"21": {Timestamp: "Sep  5 10:00:01", Ident: "ndm", Message: RawLogMessage{Message: "Firmware::Manager: new firmware version 4.3.1 is available"}},
 	}
 
 	if _, err := parser.Parse(first, time.Date(2026, time.September, 5, 10, 0, 1, 0, time.UTC)); err != nil {
@@ -117,20 +126,30 @@ func TestLogParserResetsOnOverlappingSentinel(t *testing.T) {
 	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, nil)
 	observed := time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
 
-	first := map[string]RawLogRecord{
+	seed := map[string]RawLogRecord{
 		"10": {Timestamp: "Sep  5 10:00:00", Ident: "ndm", Message: RawLogMessage{Message: `Core::Security::Authority: authentication failed for user "admin" from 192.0.2.10`}},
 		"11": {Timestamp: "Sep  5 10:00:01", Ident: "ndm", Message: RawLogMessage{Message: "Firmware::Manager: new firmware version 4.3.1 is available"}},
 	}
 
-	if events, err := parser.Parse(first, observed); err != nil || len(events) != 2 {
+	if _, err := parser.Parse(seed, observed); err != nil {
+		t.Fatalf("seed parse: %v", err)
+	}
+
+	first := map[string]RawLogRecord{
+		"10": seed["10"],
+		"11": seed["11"],
+		"12": {Timestamp: "Sep  5 10:00:02", Ident: "ndm", Message: RawLogMessage{Message: `Dhcp::Pool: added host 192.0.2.42 (AA:BB:CC:DD:EE:FF) "phone" to pool "Home"`}},
+	}
+
+	if events, err := parser.Parse(first, observed.Add(2*time.Second)); err != nil || len(events) != 1 {
 		t.Fatalf("first parse = %#v, %v", events, err)
 	}
 
 	rotated := map[string]RawLogRecord{
-		"9":  {Timestamp: "Sep  5 10:00:02", Ident: "ndm", Message: RawLogMessage{Message: "Dns::Manager: static resolver list changed: 192.0.2.53"}},
-		"10": {Timestamp: "Sep  5 10:00:03", Ident: "ndm", Message: RawLogMessage{Message: `Core::Security::Authority: started a user session [admin#20(none) from http://{http/rci}@192.0.2.10:Home/ agent Chrome`}},
-		"11": {Timestamp: "Sep  5 10:00:04", Ident: "ndm", Message: RawLogMessage{Message: "Firmware::Manager: new firmware version 4.3.1 is available"}},
-		"12": {Timestamp: "Sep  5 10:00:05", Ident: "ndm", Message: RawLogMessage{Message: `Dhcp::Pool: added host 192.0.2.42 (AA:BB:CC:DD:EE:FF) "phone" to pool "Home"`}},
+		"9":  {Timestamp: "Sep  5 10:00:03", Ident: "ndm", Message: RawLogMessage{Message: "Dns::Manager: static resolver list changed: 192.0.2.53"}},
+		"10": {Timestamp: "Sep  5 10:00:04", Ident: "ndm", Message: RawLogMessage{Message: `Core::Security::Authority: started a user session [admin#20(none) from http://{http/rci}@192.0.2.10:Home/ agent Chrome`}},
+		"11": {Timestamp: "Sep  5 10:00:05", Ident: "ndm", Message: RawLogMessage{Message: "Firmware::Manager: new firmware version 4.3.1 is available"}},
+		"12": {Timestamp: "Sep  5 10:00:06", Ident: "ndm", Message: RawLogMessage{Message: `Dhcp::Pool: added host 192.0.2.42 (AA:BB:CC:DD:EE:FF) "phone" to pool "Home"`}},
 	}
 	events, err := parser.Parse(rotated, observed.Add(10*time.Second))
 	if err != nil {
@@ -146,12 +165,12 @@ func TestLogParserSkipsEmptyResponseAndRetainsCursor(t *testing.T) {
 	parser := NewLogParser(fixedNormalizer(), time.UTC, nil, nil)
 	observed := time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
 
-	first := map[string]RawLogRecord{
+	seed := map[string]RawLogRecord{
 		"10": {Timestamp: "Sep  5 10:00:00", Ident: "ndm", Message: RawLogMessage{Message: `Core::Security::Authority: authentication failed for user "admin" from 192.0.2.10`}},
 	}
 
-	if events, err := parser.Parse(first, observed); err != nil || len(events) != 1 {
-		t.Fatalf("first parse = %#v, %v", events, err)
+	if _, err := parser.Parse(seed, observed); err != nil {
+		t.Fatalf("seed parse: %v", err)
 	}
 
 	if events, err := parser.Parse(map[string]RawLogRecord{}, observed.Add(10*time.Second)); err != nil || len(events) != 0 {
@@ -180,9 +199,17 @@ func TestLogParserUsesObjectKeyAsCursorID(t *testing.T) {
 		},
 	}, nil)
 	observed := time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
+
+	// Seed with a different record so cursor is established.
+	seed := RawLogRecord{ID: 5, Ident: "ndm", Message: RawLogMessage{Message: "unmatched"}}
+
+	if _, err := parser.Parse(map[string]RawLogRecord{"5": seed}, observed); err != nil {
+		t.Fatal(err)
+	}
+
 	record := RawLogRecord{ID: 999, Ident: "ndm", Message: RawLogMessage{Message: `Core::Security::Authority: authentication failed for user "admin" from 192.0.2.10`}}
 
-	if _, err := parser.Parse(map[string]RawLogRecord{"10": record}, observed); err != nil {
+	if _, err := parser.Parse(map[string]RawLogRecord{"5": seed, "10": record}, observed.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -298,20 +325,21 @@ func TestLogPollerEndToEndDecodesAndPublishes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first := <-busEvents
-
-	if first.Topic != contractEvents.TopicAuthLogin || first.Source != contractEvents.SourceLog {
-		t.Fatalf("startup event = %#v", first)
+	// First poll seeds the cursor without emitting events.
+	select {
+	case event := <-busEvents:
+		t.Fatalf("seed poll emitted event: %#v", event)
+	default:
 	}
 
 	if err := poller.Poll(context.Background(), now.Add(10*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 
-	second := <-busEvents
+	event := <-busEvents
 
-	if second.Topic != contractEvents.TopicNetDhcpLease || second.Source != contractEvents.SourceLog {
-		t.Fatalf("incremental event = %#v", second)
+	if event.Topic != contractEvents.TopicNetDhcpLease || event.Source != contractEvents.SourceLog {
+		t.Fatalf("incremental event = %#v", event)
 	}
 
 	for index, request := range transport.requests {
@@ -339,11 +367,21 @@ func TestLogPollerRunStopsOnCancellation(t *testing.T) {
 }
 
 func TestLogPollerRunContinuesAfterPollError(t *testing.T) {
-	ticks := make(chan time.Time, 2)
+	ticks := make(chan time.Time, 3)
+	seedRecord := RawLogRecord{Timestamp: "Sep  5 10:00:00", Ident: "ndm", ID: 100, Message: RawLogMessage{Level: "Info", Label: "I", Message: "Firmware::Manager: new firmware version 4.3.1 is available"}}
+	// Run calls Poll once immediately (seed/error), then once per tick.
 	transport := &fakeRciTransport{
-		errs:      []error{errors.New("temporary RCI failure"), nil},
-		responses: []json.RawMessage{nil, wireLogResponse(t, map[string]RawLogRecord{"100": {Timestamp: "Sep  5 10:00:00", Ident: "ndm", ID: 100, Message: RawLogMessage{Level: "Info", Label: "I", Message: "Firmware::Manager: new firmware version 4.3.1 is available"}}})},
-		calls:     make(chan int, 2),
+		errs: []error{errors.New("temporary RCI failure"), nil, nil, nil},
+		responses: []json.RawMessage{
+			nil,
+			wireLogResponse(t, map[string]RawLogRecord{"100": seedRecord}),
+			wireLogResponse(t, map[string]RawLogRecord{"100": seedRecord}),
+			wireLogResponse(t, map[string]RawLogRecord{
+				"100": seedRecord,
+				"101": {Timestamp: "Sep  5 10:00:10", Ident: "ndm", ID: 101, Message: RawLogMessage{Level: "Info", Label: "I", Message: `Dhcp::Pool: added host 192.0.2.42 (AA:BB:CC:DD:EE:FF) "phone" to pool "Home"`}},
+			}),
+		},
+		calls: make(chan int, 4),
 	}
 	client, err := rci.New(transport)
 	if err != nil {
@@ -370,15 +408,19 @@ func TestLogPollerRunContinuesAfterPollError(t *testing.T) {
 
 	go func() { poller.Run(ctx); close(done) }()
 
-	ticks <- time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
+	// Wait for the initial poll (error) from Run.
+	<-transport.calls
 
+	ticks <- time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
 	<-transport.calls
 
 	ticks <- time.Date(2026, time.September, 5, 10, 0, 10, 0, time.UTC)
-
 	<-transport.calls
 
-	if event := <-busEvents; event.Topic != contractEvents.TopicFirmwareAvailable {
+	ticks <- time.Date(2026, time.September, 5, 10, 0, 20, 0, time.UTC)
+	<-transport.calls
+
+	if event := <-busEvents; event.Topic != contractEvents.TopicNetDhcpLease {
 		t.Fatalf("recovery event = %#v", event)
 	}
 

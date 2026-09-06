@@ -113,6 +113,10 @@ func (p *LogPoller) Run(ctx context.Context) {
 		defer stopTicker()
 	}
 
+	if err := p.Poll(ctx, time.Now()); err != nil && ctx.Err() == nil {
+		p.logger.Warn("event log initial poll failed", "error", err)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -207,7 +211,16 @@ func (p *LogParser) Parse(records map[string]RawLogRecord, observedAt time.Time)
 		}
 	}
 
-	processEntireWindow := !p.seeded || reset
+	seedOnly := !p.seeded
+	processEntireWindow := reset
+
+	if seedOnly {
+		p.seeded = true
+		p.cursor = logCursor{highID: maxID, sentinelID: sentinelID, sentinelSum: sentinelSum}
+
+		return nil, nil
+	}
+
 	previousHighID := p.cursor.highID
 	events := make([]Event, 0)
 

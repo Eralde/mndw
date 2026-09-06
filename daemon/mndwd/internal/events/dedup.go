@@ -2,6 +2,7 @@ package events
 
 import (
 	"encoding/json"
+	"hash/fnv"
 	"strings"
 	"time"
 )
@@ -9,10 +10,11 @@ import (
 const DedupWindow = 5 * time.Second
 
 type dedupEntry struct {
-	category string
-	key      string
-	source   string
-	ts       time.Time
+	category    string
+	key         string
+	source      string
+	payloadHash uint64
+	ts          time.Time
 }
 
 type Deduplicator struct {
@@ -66,17 +68,28 @@ func (d *Deduplicator) Accept(event Event) bool {
 
 	category, key := dedupIdentity(event)
 
-	if event.Source == "log" {
-		for _, entry := range d.recent {
-			if entry.source == "hook" && entry.category == category && entry.key == key {
+	for _, entry := range d.recent {
+		if entry.category == category && entry.key == key {
+			if event.Source == "log" && entry.source == "hook" {
+				return false
+			}
+
+			if event.Source == "hook" && entry.source == "hook" && entry.payloadHash == hashPayload(event) {
 				return false
 			}
 		}
 	}
 
-	d.recent = append(d.recent, dedupEntry{category: category, key: key, source: string(event.Source), ts: now})
+	d.recent = append(d.recent, dedupEntry{category: category, key: key, source: string(event.Source), payloadHash: hashPayload(event), ts: now})
 
 	return true
+}
+
+func hashPayload(event Event) uint64 {
+	h := fnv.New64a()
+	_, _ = h.Write(event.Payload)
+
+	return h.Sum64()
 }
 
 func dedupIdentity(event Event) (string, string) {

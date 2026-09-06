@@ -1,0 +1,10 @@
+#!/bin/sh
+MNDW_ROOT=${MNDW_ROOT:-/opt}
+MNDW_PORT_FILE=${MNDW_PORT_FILE:-$MNDW_ROOT/var/lib/mndw/frontend-port}
+escape() { printf '%s' "$1" | sed 's/[\\"]/\\&/g'; }
+post() {
+	[ -r "$MNDW_PORT_FILE" ] || exit 0
+	port=$(cat "$MNDW_PORT_FILE" 2>/dev/null) || exit 0
+	[ -n "$port" ] || exit 0
+	curl -s --max-time 1 -X POST -H 'Content-Type: application/json' -d "$1" "http://127.0.0.1:$port/_internal/hook" >/dev/null 2>&1 || true
+}

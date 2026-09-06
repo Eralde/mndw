@@ -3,6 +3,7 @@
   "pause": "Pause",
   "resume": "Resume",
   "clear": "Clear",
+  "download": "Download log",
   "filter": "Filter events",
   "empty": "No matching events",
   "unavailable": "Event stream unavailable",

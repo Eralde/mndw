@@ -69,17 +69,23 @@ func QueryDeviceTimezone(ctx context.Context, client RawQueryClient) *time.Locat
 		return time.UTC
 	}
 
-	values, _, err := client.ExecuteRaw(ctx, rci.Q("show.system"))
+	values, _, err := client.ExecuteRaw(ctx, rci.Q("show.clock.date"))
 	if err != nil || len(values) == 0 {
 		return time.UTC
 	}
 
 	var response struct {
-		Timezone string `json:"timezone"` // unverified: response path pending target capture
-		Show     struct {
-			System struct {
-				Timezone string `json:"timezone"`
-			} `json:"system"`
+		TZ []struct {
+			Locality string `json:"locality"`
+		} `json:"tz"`
+		Show struct {
+			Clock struct {
+				Date struct {
+					TZ []struct {
+						Locality string `json:"locality"`
+					} `json:"tz"`
+				} `json:"date"`
+			} `json:"clock"`
 		} `json:"show"`
 	}
 
@@ -87,10 +93,14 @@ func QueryDeviceTimezone(ctx context.Context, client RawQueryClient) *time.Locat
 		return time.UTC
 	}
 
-	zone := response.Timezone
+	zone := ""
 
-	if zone == "" {
-		zone = response.Show.System.Timezone
+	if len(response.TZ) > 0 {
+		zone = response.TZ[0].Locality
+	}
+
+	if zone == "" && len(response.Show.Clock.Date.TZ) > 0 {
+		zone = response.Show.Clock.Date.TZ[0].Locality
 	}
 
 	if zone == "" {

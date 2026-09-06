@@ -129,6 +129,17 @@ export function collectStagePaths(): {
   daemonConfig: string;
   hooks: string[];
 } {
+  const hookScripts = [
+    'wan.d',
+    'fs.d',
+    'usb.d',
+    'netfilter.d',
+    'time.d',
+    'schedule.d',
+    'button.d',
+    'ifipchanged.d',
+  ];
+
   return {
     mndwd: path.join('opt', 'sbin', 'mndwd'),
     indexHtml: path.join('opt', 'share', 'www', 'mndw', 'index.html'),
@@ -138,15 +149,9 @@ export function collectStagePaths(): {
     selfUpdateHelper: path.join('opt', 'share', 'www', 'mndw', 'bin', 'mndw-self-update.sh'),
     daemonConfig: path.join('opt', 'etc', 'mndw.conf'),
     hooks: [
-      'wan.d',
-      'fs.d',
-      'usb.d',
-      'netfilter.d',
-      'time.d',
-      'schedule.d',
-      'button.d',
-      'ifipchanged.d',
-    ].map((hook) => path.join('opt', 'etc', 'ndm', hook, '10-mndw')),
+      path.join('opt', 'etc', 'ndm', 'mndw-hook-common.sh'),
+      ...hookScripts.map((hook) => path.join('opt', 'etc', 'ndm', hook, '10-mndw')),
+    ],
   };
 }
 

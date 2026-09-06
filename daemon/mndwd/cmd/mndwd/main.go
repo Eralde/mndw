@@ -15,6 +15,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	_ "time/tzdata"
 
 	contractEvents "mndw.local/contracts/events"
 	"mndwd/internal/authz"
@@ -363,7 +364,9 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 			}
 		}
 
-		if accessRegistration.eventRCIClient != nil {
+		if accessRegistration.eventRCIClient == nil {
+			logger.Warn("event log poller disabled: no RCI client available")
+		} else {
 			deviceTZ := events.QueryDeviceTimezone(eventCtx, accessRegistration.eventRCIClient)
 			parser := events.NewLogParser(normalizer, deviceTZ, nil, logger)
 			pollTicker := time.NewTicker(events.LogPollInterval)

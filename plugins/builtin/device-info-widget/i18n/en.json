@@ -28,5 +28,8 @@
   "range-3h": "3h",
   "range-1d": "1d",
   "range-7d": "7d",
-  "range-30d": "30d"
+  "range-30d": "30d",
+  "session-required": "Extended history requires a configured persistent session.",
+  "history-catching-up": "Catching up…",
+  "history-historical": "Historical"
 }

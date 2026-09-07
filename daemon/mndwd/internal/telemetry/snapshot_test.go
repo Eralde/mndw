@@ -66,6 +66,20 @@ func TestSnapshotCacheRefreshesBothFilesOncePerWindow(t *testing.T) {
 	temperature := &snapshotReader{}
 	now := time.Unix(1_800_000_000, 0)
 	cache := NewSnapshotCache(load, temperature, func() time.Time { return now })
+	cache.SetSupportedSeries(map[uint16]bool{1: true, 2: true})
+
+	// Reads never invoke RRDtool; the pipeline refresher owns that work.
+	if _, err := cache.Get(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	if load.Calls() != 0 || temperature.Calls() != 0 {
+		t.Fatalf("read invoked RRDtool: (%d, %d)", load.Calls(), temperature.Calls())
+	}
+
+	if _, err := cache.Refresh(context.Background(), PipelineStatus{Clock: ClockView{State: ClockAnchored}}); err != nil {
+		t.Fatal(err)
+	}
+
 	first, err := cache.Get(context.Background(), true)
 	if err != nil {
 		t.Fatal(err)
@@ -105,11 +119,75 @@ func TestSnapshotCacheRefreshesBothFilesOncePerWindow(t *testing.T) {
 	}
 }
 
-func TestSnapshotCacheMarksTemperatureUnsupportedWithoutKnownSamples(t *testing.T) {
+func TestSnapshotGetDoesNotFetch(t *testing.T) {
+	load := &snapshotReader{}
+	temperature := &snapshotReader{}
+	cache := NewSnapshotCache(load, temperature, time.Now)
+
+	for i := 0; i < 20; i++ {
+		if _, err := cache.Get(context.Background(), true); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if load.Calls() != 0 || temperature.Calls() != 0 {
+		t.Fatal("HTTP read invoked RRDtool")
+	}
+}
+
+func TestSnapshotClonePreservesClockMetadata(t *testing.T) {
+	cache := NewSnapshotCache(nil, nil, nil)
+	end := int64(1800000000000)
+	cache.Publish(&Snapshot{
+		Keys:  map[string]SeriesSnapshot{},
+		Clock: &ClockMetadata{State: string(ClockSuspect), HistoryEndMs: &end, ReplayPending: true},
+	})
+	got, err := cache.Get(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Clock == nil || got.Clock.State != string(ClockSuspect) || got.Clock.HistoryEndMs == nil || !got.Clock.ReplayPending {
+		t.Fatalf("clock metadata lost during clone: %+v", got.Clock)
+	}
+}
+
+func TestSnapshotRefreshErrorKeepsLastSnapshot(t *testing.T) {
+	load := &snapshotReader{}
+	temperature := &snapshotReader{}
+	now := time.Unix(1_800_000_000, 0)
+	cache := NewSnapshotCache(load, temperature, func() time.Time { return now })
+
+	if _, err := cache.Refresh(context.Background(), PipelineStatus{}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := cache.Get(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	load.err = context.DeadlineExceeded
+	if _, err := cache.Refresh(context.Background(), PipelineStatus{}); err == nil {
+		t.Fatal("refresh error accepted")
+	}
+
+	after, err := cache.Get(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Keys["cpu"].Tiers["fine"].Samples) != len(before.Keys["cpu"].Tiers["fine"].Samples) {
+		t.Fatal("failed refresh replaced the last good snapshot")
+	}
+}
+
+func TestSnapshotCacheMarksTemperatureUnsupportedWithoutSampler(t *testing.T) {
 	load := &snapshotReader{}
 	temperature := &snapshotReader{unknown: true}
 	now := time.Unix(1_800_000_000, 0)
 	cache := NewSnapshotCache(load, temperature, func() time.Time { return now })
+
+	if _, err := cache.Refresh(context.Background(), PipelineStatus{}); err != nil {
+		t.Fatal(err)
+	}
 
 	snapshot, err := cache.Get(context.Background(), true)
 	if err != nil {
@@ -132,7 +210,57 @@ func TestSnapshotCacheMarksTemperatureUnsupportedWithoutKnownSamples(t *testing.
 	}
 
 	if encoded.Keys["temp"].Supported {
-		t.Fatalf("temperature should be unsupported: %s", body)
+		t.Fatalf("temperature should be unsupported without registered sampler: %s", body)
+	}
+}
+
+func TestSnapshotCacheMarksTemperatureSupportedWithSampler(t *testing.T) {
+	load := &snapshotReader{}
+	temperature := &snapshotReader{unknown: true}
+	now := time.Unix(1_800_000_000, 0)
+	cache := NewSnapshotCache(load, temperature, func() time.Time { return now })
+	cache.SetSupportedSeries(map[uint16]bool{1: true, 2: true})
+
+	if _, err := cache.Refresh(context.Background(), PipelineStatus{}); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := cache.Get(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var encoded struct {
+		Keys map[string]struct {
+			Supported bool `json:"supported"`
+		} `json:"keys"`
+	}
+
+	if err := json.Unmarshal(body, &encoded); err != nil {
+		t.Fatal(err)
+	}
+
+	if !encoded.Keys["temp"].Supported {
+		t.Fatalf("temperature should be supported with registered sampler even without data: %s", body)
+	}
+}
+
+func TestSnapshotCacheEmptyGetUsesSupportedSeries(t *testing.T) {
+	cache := NewSnapshotCache(nil, nil, nil)
+	cache.SetSupportedSeries(map[uint16]bool{1: true, 2: true})
+
+	snapshot, err := cache.Get(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !snapshot.Keys["temp"].Supported {
+		t.Fatal("empty snapshot should mark temp supported when sampler is registered")
 	}
 }
 
@@ -142,15 +270,19 @@ func TestSnapshotCacheThrottlesFailedRefreshes(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	cache := NewSnapshotCache(load, temperature, func() time.Time { return now })
 
-	if _, err := cache.Get(context.Background(), true); err == nil {
+	if _, err := cache.Refresh(context.Background(), PipelineStatus{}); err == nil {
 		t.Fatal("expected refresh error")
 	}
 
-	if _, err := cache.Get(context.Background(), true); err == nil {
-		t.Fatal("expected refresh error")
+	snapshot, err := cache.Get(context.Background(), true)
+	if err != nil {
+		t.Fatalf("read after failed refresh: %v", err)
+	}
+	if snapshot.Clock != nil && snapshot.Clock.HistoryCurrent {
+		t.Fatal("empty history reported as current")
 	}
 
 	if load.Calls() != 6 {
-		t.Fatalf("failed refresh retried within age window: %d calls", load.Calls())
+		t.Fatalf("failed refresh retried unexpectedly: %d calls", load.Calls())
 	}
 }

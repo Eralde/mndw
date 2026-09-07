@@ -1,6 +1,8 @@
 package rrd
 
 import (
+	"errors"
+	"path/filepath"
 	"context"
 	"math"
 	"os"
@@ -244,4 +246,114 @@ rra[5].cf = MAX
 rra[5].xff = 0.5
 rra[5].pdp_per_row = 20
 rra[5].rows = 720`
+}
+
+type recordingFileOps struct {
+	calls   []string
+	created []string
+	linked  []string
+	fail    string
+}
+
+func (o *recordingFileOps) record(name string) error {
+	o.calls = append(o.calls, name)
+	if o.fail == name {
+		return errors.New("injected failure")
+	}
+	return nil
+}
+
+func (o *recordingFileOps) MkdirAll(string, os.FileMode) error { return o.record("mkdir") }
+
+func (o *recordingFileOps) Stat(string) (os.FileInfo, error) {
+	if err := o.record("stat"); err != nil {
+		return nil, err
+	}
+	return nil, os.ErrNotExist
+}
+
+func (o *recordingFileOps) CreateTemp(dir, pattern string) (string, error) {
+	if err := o.record("createTemp"); err != nil {
+		return "", err
+	}
+	name := filepath.Join(dir, pattern+"1")
+	o.created = append(o.created, name)
+	return name, nil
+}
+
+func (o *recordingFileOps) Link(_, newPath string) error {
+	if err := o.record("link"); err != nil {
+		return err
+	}
+	o.linked = append(o.linked, newPath)
+	return nil
+}
+
+func (o *recordingFileOps) Rename(_, _ string) error { return o.record("rename") }
+func (o *recordingFileOps) Remove(_ string) error    { return o.record("remove") }
+
+func TestEnsureUsesInjectedFileOps(t *testing.T) {
+	ops := &recordingFileOps{}
+	executor := &recordingExecutor{results: []ExecResult{{}, {Stdout: []byte(infoOutputForTest())}}}
+	file, err := NewFile(executor, filepath.Join(t.TempDir(), "load.rrd"), testSpec(), WithFileOps(ops))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := file.Ensure(context.Background(), time.Unix(1800000180, 0).UTC()); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, expected := range []string{"stat", "mkdir", "createTemp", "link"} {
+		found := false
+		for _, call := range ops.calls {
+			if call == expected {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("Ensure did not use ops.%s: %v", expected, ops.calls)
+		}
+	}
+	if len(executor.commands) < 2 || executor.commands[0][0] != "create" {
+		t.Fatalf("commands=%v", executor.commands)
+	}
+	// Ensure aligns the requested time down to the preceding step.
+	if got := executor.commands[0][3]; got != "1800000000" {
+		t.Fatalf("create start=%q", got)
+	}
+}
+
+func TestEnsureFailsWithoutTouchingFilesWhenOpsFail(t *testing.T) {
+	ops := &recordingFileOps{fail: "createTemp"}
+	file, err := NewFile(&recordingExecutor{}, filepath.Join(t.TempDir(), "load.rrd"), testSpec(), WithFileOps(ops))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := file.Ensure(context.Background(), time.Unix(1800000000, 0).UTC()); err == nil {
+		t.Fatal("ops failure accepted")
+	}
+	for _, call := range ops.calls {
+		if call == "link" {
+			t.Fatal("installed a file after a scratch failure")
+		}
+	}
+}
+
+func TestDefaultFileOpsIsOSBacked(t *testing.T) {
+	executor := &recordingExecutor{results: []ExecResult{{}, {Stdout: []byte(infoOutputForTest())}}}
+	file, err := NewFile(executor, filepath.Join(t.TempDir(), "load.rrd"), testSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := file.ops.(OSFileOps); !ok {
+		t.Fatalf("default ops=%T", file.ops)
+	}
+	if err := file.Ensure(context.Background(), time.Unix(1800000180, 0).UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file.path); err != nil {
+		t.Fatalf("default ops did not create the file: %v", err)
+	}
 }

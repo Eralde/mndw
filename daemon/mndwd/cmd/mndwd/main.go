@@ -31,6 +31,7 @@ import (
 	"mndwd/internal/mgmt"
 	"mndwd/internal/opkg"
 	"mndwd/internal/palette"
+	"mndwd/internal/rcisession/model"
 	"mndwd/internal/registry"
 	"mndwd/internal/selfupdate"
 	"mndwd/internal/service"
@@ -589,6 +590,18 @@ func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *reg
 			time.Now,
 		)
 
+		// The pipeline-owned refresher is the only caller of Refresh; HTTP reads
+		// serve the last published immutable snapshot.
+		registration.capability.SetSnapshotCache(cache)
+
+		if registration.activationAssembly != nil && registration.activationAssembly.service != nil {
+			svc := registration.activationAssembly.service
+			cache.SetSessionConfigured(func() bool {
+				_, doc := svc.Capability()
+				return doc.Controller != nil && (doc.Controller.Support == model.SupportSupported || doc.Controller.Support == model.SupportInvalid)
+			})
+		}
+
 		telemetryHandler := telemetry.NewHandler(cache, registration.capability.IsEnabled, logger)
 		annotationDir := cfg.RRDDir
 
@@ -611,6 +624,9 @@ func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *reg
 		}
 
 		telemetryHandler.Register(accessMux)
+
+		// Diagnostic session routes are authenticated and never mutate storage.
+		telemetry.RegisterSessionRoutes(accessMux, registration.capability.SessionReader(), logger)
 	}
 
 	// Keep the route mounted in dev so the host exercises the same consent contract;

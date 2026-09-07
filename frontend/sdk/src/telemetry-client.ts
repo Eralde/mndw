@@ -1,3 +1,12 @@
+import {
+  type TelemetrySessionList,
+  type TelemetrySessionPage,
+  decodeSessionList,
+  decodeSessionPage,
+  validateSessionId,
+  validateSessionOptions,
+} from './telemetry-sessions.js';
+
 export interface TelemetrySample {
   readonly ts: number;
   readonly min: number | null;
@@ -18,9 +27,20 @@ export interface TelemetrySeries {
   readonly tiers: Readonly<Record<'fine' | 'coarse', TelemetryTier>>;
 }
 
+export type TelemetryClockState = 'unanchored' | 'anchored' | 'suspect';
+
+export interface TelemetryClock {
+  readonly state: TelemetryClockState;
+  readonly historyEndMs: number | null;
+  readonly historyCurrent: boolean;
+  readonly replayPending: boolean;
+}
+
 export interface TelemetrySnapshot {
   readonly keys: Readonly<Record<string, TelemetrySeries>>;
   readonly gathering: {readonly enabled: boolean};
+  readonly clock?: TelemetryClock;
+  readonly sessionConfigured: boolean;
 }
 
 export interface TelemetryAnnotation {
@@ -77,12 +97,22 @@ export interface ProjectedSeries {
 export interface ProjectedSnapshot {
   readonly keys: Readonly<Record<string, ProjectedSeries>>;
   readonly gathering: {readonly enabled: boolean};
+  readonly clock?: TelemetryClock;
+  readonly sessionConfigured: boolean;
+}
+
+export interface TelemetrySessionFetchOptions {
+  readonly after?: string;
+  readonly limit?: number;
+  readonly signal?: AbortSignal;
 }
 
 export interface TelemetryClient {
   fetchAll(options?: {readonly signal?: AbortSignal}): Promise<TelemetrySnapshot>;
   fetchProjected(range: ProjectRange, options?: {readonly signal?: AbortSignal}): Promise<ProjectedSnapshot>;
   fetchAnnotations(options?: {readonly signal?: AbortSignal}): Promise<TelemetryAnnotations>;
+  fetchSessions(options?: {readonly signal?: AbortSignal}): Promise<TelemetrySessionList>;
+  fetchSession(id: string, options?: TelemetrySessionFetchOptions): Promise<TelemetrySessionPage>;
 }
 
 export class TelemetryError extends Error {
@@ -184,7 +214,40 @@ const decodeSeries = (key: string, rawSeries: unknown): TelemetrySeries => {
   };
 };
 
-const decodeSnapshot = (value: unknown): TelemetrySnapshot => {
+const clockStates: readonly TelemetryClockState[] = ['unanchored', 'anchored', 'suspect'];
+
+const decodeClock = (raw: unknown): TelemetryClock | undefined => {
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('telemetry clock is invalid');
+  }
+
+  const body = raw as Record<string, unknown>;
+  const {state, historyEndMs, historyCurrent, replayPending} = body;
+
+  if (typeof state !== 'string' || !clockStates.includes(state as TelemetryClockState)) {
+    throw new Error('telemetry clock state is invalid');
+  }
+
+  if (historyEndMs !== null && (!isFiniteNumber(historyEndMs) || !Number.isInteger(historyEndMs) || historyEndMs < 0)) {
+    throw new Error('telemetry clock historyEndMs must be a non-negative integer or null');
+  }
+
+  if (typeof historyCurrent !== 'boolean' || typeof replayPending !== 'boolean') {
+    throw new Error('telemetry clock flags must be booleans');
+  }
+
+  if (historyEndMs === null && historyCurrent) {
+    throw new Error('telemetry clock cannot be current without history');
+  }
+
+  return {state: state as TelemetryClockState, historyEndMs, historyCurrent, replayPending};
+};
+
+export const decodeRawSnapshot = (value: unknown): TelemetrySnapshot => {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('telemetry response must be an object');
   }
@@ -211,7 +274,12 @@ const decodeSnapshot = (value: unknown): TelemetrySnapshot => {
     keys[key] = decodeSeries(key, rawSeries);
   }
 
-  return {keys, gathering: {enabled: (gathering as Record<string, unknown>).enabled as boolean}};
+  return {
+    keys,
+    gathering: {enabled: (gathering as Record<string, unknown>).enabled as boolean},
+    clock: decodeClock(body.clock),
+    sessionConfigured: typeof body.sessionConfigured === 'boolean' ? body.sessionConfigured : false,
+  };
 };
 
 const decodeAnnotations = (value: unknown): TelemetryAnnotations => {
@@ -420,7 +488,12 @@ const decodeProjectedSnapshot = (value: unknown): ProjectedSnapshot => {
     keys[key] = decodeProjectedSeries(key, rawSeries);
   }
 
-  return {keys, gathering: {enabled: (gathering as Record<string, unknown>).enabled as boolean}};
+  return {
+    keys,
+    gathering: {enabled: (gathering as Record<string, unknown>).enabled as boolean},
+    clock: decodeClock(body.clock),
+    sessionConfigured: typeof body.sessionConfigured === 'boolean' ? body.sessionConfigured : false,
+  };
 };
 
 export function createTelemetryClient(
@@ -439,7 +512,7 @@ export function createTelemetryClient(
       }
 
       try {
-        return decodeSnapshot(await response.json());
+        return decodeRawSnapshot(await response.json());
       } catch (error) {
         throw new TelemetryError(
           response.status,
@@ -490,5 +563,83 @@ export function createTelemetryClient(
         );
       }
     },
+    async fetchSessions(options = {}): Promise<TelemetrySessionList> {
+      const response = await fetchImpl('/api/mndw/telemetry/sessions', {
+        method: 'GET',
+        cache: 'no-store',
+        signal: options.signal,
+      });
+
+      if (!response.ok) {
+        throw new TelemetryError(response.status, 'Telemetry sessions are unavailable.');
+      }
+
+      try {
+        return decodeSessionList(await response.json());
+      } catch (error) {
+        throw new TelemetryError(
+          response.status,
+          error instanceof Error ? error.message : 'Invalid telemetry sessions response.',
+        );
+      }
+    },
+    async fetchSession(id: string, options: TelemetrySessionFetchOptions = {}): Promise<TelemetrySessionPage> {
+      try {
+        validateSessionId(id);
+        validateSessionOptions(options);
+      } catch (error) {
+        throw new TelemetryError(400, error instanceof Error ? error.message : 'Invalid session request.');
+      }
+
+      const query = new URLSearchParams();
+
+      if (options.after !== undefined) {
+        query.set('after', options.after);
+      }
+
+      if (options.limit !== undefined) {
+        query.set('limit', String(options.limit));
+      }
+
+      const path = `/api/mndw/telemetry/sessions/${encodeURIComponent(id)}`;
+      const url = query.size > 0 ? `${path}?${query}` : path;
+
+      const response = await fetchImpl(url, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: options.signal,
+      });
+
+      if (!response.ok) {
+        throw new TelemetryError(response.status, `Telemetry session ${id} is unavailable.`);
+      }
+
+      try {
+        return decodeSessionPage(await response.json());
+      } catch (error) {
+        throw new TelemetryError(
+          response.status,
+          error instanceof Error ? error.message : 'Invalid telemetry session response.',
+        );
+      }
+    },
   };
+}
+
+export type HistoryStatus = 'current' | 'catching-up' | 'historical' | 'empty' | 'legacy';
+
+export function historyStatus(clock: TelemetryClock | undefined): HistoryStatus {
+  if (clock === undefined) {
+    return 'legacy';
+  }
+
+  if (clock.historyEndMs === null) {
+    return 'empty';
+  }
+
+  if (clock.historyCurrent) {
+    return 'current';
+  }
+
+  return clock.replayPending ? 'catching-up' : 'historical';
 }

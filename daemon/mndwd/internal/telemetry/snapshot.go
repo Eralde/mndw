@@ -37,6 +37,8 @@ type Snapshot struct {
 	Gathering struct {
 		Enabled bool `json:"enabled"`
 	} `json:"gathering"`
+	Clock              *ClockMetadata `json:"clock,omitempty"`
+	SessionConfigured  bool           `json:"sessionConfigured"`
 }
 
 type ProjectedPoint struct {
@@ -80,19 +82,23 @@ type ProjectedSnapshot struct {
 	Gathering struct {
 		Enabled bool `json:"enabled"`
 	} `json:"gathering"`
+	Clock              *ClockMetadata `json:"clock,omitempty"`
+	SessionConfigured  bool           `json:"sessionConfigured"`
 }
 
 type SnapshotCache struct {
-	load        SnapshotReader
-	temperature SnapshotReader
-	now         func() time.Time
+	load               SnapshotReader
+	temperature        SnapshotReader
+	now                func() time.Time
+	sessionConfigured  func() bool
 
-	mu         sync.Mutex
-	snapshot   *Snapshot
-	refreshed  time.Time
-	refreshErr error
-	refreshing bool
-	wait       chan struct{}
+	mu              sync.Mutex
+	snapshot        *Snapshot
+	refreshed       time.Time
+	refreshErr      error
+	refreshing      bool
+	wait            chan struct{}
+	supportedSeries map[uint16]bool
 }
 
 func NewSnapshotCache(load SnapshotReader, temperature SnapshotReader, now func() time.Time) *SnapshotCache {
@@ -103,86 +109,125 @@ func NewSnapshotCache(load SnapshotReader, temperature SnapshotReader, now func(
 	return &SnapshotCache{load: load, temperature: temperature, now: now}
 }
 
-func (c *SnapshotCache) Get(ctx context.Context, enabled bool) (*Snapshot, error) {
-	for {
+// Get returns the last published immutable snapshot. It never invokes RRDtool
+// and never touches disk: a pipeline-owned refresher owns that work.
+func (c *SnapshotCache) Get(_ context.Context, enabled bool) (*Snapshot, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	configured := c.sessionConfigured != nil && c.sessionConfigured()
+
+	if !enabled {
+		snapshot := emptySnapshot(false)
+		if c.snapshot != nil {
+			snapshot = cloneSnapshot(c.snapshot)
+			snapshot.Gathering.Enabled = false
+		}
+		snapshot.SessionConfigured = configured
+		return snapshot, nil
+	}
+
+	if c.snapshot != nil {
+		snapshot := cloneSnapshot(c.snapshot)
+		snapshot.SessionConfigured = configured
+		return snapshot, nil
+	}
+	// No dated history yet: report an empty snapshot with false freshness
+	// rather than querying an epoch window.
+	snapshot := emptySnapshot(true)
+	applySupportedSeries(snapshot, c.supportedSeries)
+	snapshot.SessionConfigured = configured
+	return snapshot, nil
+}
+
+// Publish atomically replaces the cached snapshot with a refreshed one.
+func (c *SnapshotCache) Publish(snapshot *Snapshot) {
+	if snapshot == nil {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.snapshot = cloneSnapshot(snapshot)
+	c.refreshed = c.now()
+	c.refreshErr = nil
+}
+
+// SetSupportedSeries records which sampler series are registered, so the
+// snapshot can distinguish "no data yet" from "device lacks this sensor".
+func (c *SnapshotCache) SetSupportedSeries(supported map[uint16]bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.supportedSeries = supported
+}
+
+// SetSessionConfigured registers the callback that reports whether the
+// persistent RCI session is configured. The telemetry API includes this
+// flag so consumers know whether durable history can be collected.
+func (c *SnapshotCache) SetSessionConfigured(fn func() bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.sessionConfigured = fn
+}
+
+// Refresh rebuilds the snapshot from derived files and publishes it. It is the
+// only path that invokes RRDtool, and only the pipeline refresher calls it.
+func (c *SnapshotCache) Refresh(ctx context.Context, status PipelineStatus) (*Snapshot, error) {
+	snapshot, err := c.refresh(ctx)
+	if err != nil {
 		c.mu.Lock()
-
-		if !enabled {
-			snapshot := emptySnapshot(false)
-
-			if c.snapshot != nil {
-				snapshot = cloneSnapshot(c.snapshot)
-				snapshot.Gathering.Enabled = false
-			}
-
-			c.mu.Unlock()
-
-			return snapshot, nil
-		}
-
-		if !c.refreshed.IsZero() && c.now().Sub(c.refreshed) < snapshotRefreshAge {
-			if c.snapshot != nil {
-				snapshot := cloneSnapshot(c.snapshot)
-
-				c.mu.Unlock()
-
-				return snapshot, nil
-			}
-
-			err := c.refreshErr
-
-			c.mu.Unlock()
-
-			return nil, err
-		}
-
-		if c.refreshing {
-			wait := c.wait
-
-			c.mu.Unlock()
-
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-wait:
-				continue
-			}
-		}
-
-		c.refreshing = true
-		c.wait = make(chan struct{})
-		wait := c.wait
-		previous := c.snapshot
-
-		c.mu.Unlock()
-
-		snapshot, err := c.refresh(ctx)
-		attemptedAt := c.now()
-
-		c.mu.Lock()
-
-		c.refreshing = false
-
-		close(wait)
-
-		c.refreshed = attemptedAt
 		c.refreshErr = err
-
-		if err == nil {
-			c.snapshot = snapshot
-		} else if previous != nil {
-			snapshot = cloneSnapshot(previous)
-			err = nil
-		}
-
 		c.mu.Unlock()
-
-		if snapshot != nil {
-			return snapshot, err
-		}
-
 		return nil, err
 	}
+
+	c.mu.Lock()
+	supported := c.supportedSeries
+	c.mu.Unlock()
+	applySupportedSeries(snapshot, supported)
+
+	c.mu.Lock()
+	configured := c.sessionConfigured != nil && c.sessionConfigured()
+	c.mu.Unlock()
+	snapshot.SessionConfigured = configured
+
+	metadata := metadataFromStatus(snapshot, status)
+	snapshot.Clock = metadata
+	c.Publish(snapshot)
+	return snapshot, nil
+}
+
+// metadataFromStatus derives clock metadata from the published snapshot and
+// pipeline state. A failed or stale series makes freshness false.
+func metadataFromStatus(snapshot *Snapshot, status PipelineStatus) *ClockMetadata {
+	var end *int64
+	if snapshot != nil {
+		for _, series := range snapshot.Keys {
+			for _, tier := range series.Tiers {
+				if len(tier.Samples) == 0 {
+					continue
+				}
+				last := tier.Samples[len(tier.Samples)-1]
+				if last.Timestamp <= 0 {
+					continue
+				}
+				if end == nil || last.Timestamp > *end {
+					value := last.Timestamp
+					end = &value
+				}
+			}
+		}
+	}
+
+	state := status.Clock.State
+	if state == "" {
+		state = ClockUnanchored
+	}
+	current := end != nil && status.Clock.State == ClockAnchored && status.PendingSamples == 0
+	return clockMetadata(state, end, current, status.PendingSamples > 0)
 }
 
 func (c *SnapshotCache) refresh(ctx context.Context) (*Snapshot, error) {
@@ -225,9 +270,7 @@ func (c *SnapshotCache) refresh(ctx context.Context) (*Snapshot, error) {
 	snapshot := emptySnapshot(true)
 	snapshot.Keys["cpu"] = seriesFromResults("CPU", "percent", true, loadResults, 0, 1)
 	snapshot.Keys["ram"] = seriesFromResults("RAM", "percent", true, loadResults, 1, 1)
-	temperature := seriesFromResults("cpu-thermal", "celsius", false, tempResults, 0, 1000)
-	temperature.Supported = hasValidSample(temperature)
-	snapshot.Keys["temp"] = temperature
+	snapshot.Keys["temp"] = seriesFromResults("cpu-thermal", "celsius", false, tempResults, 0, 1000)
 
 	return snapshot, nil
 }
@@ -295,16 +338,19 @@ func seriesFromResults(label, unit string, supported bool, results []rrd.FetchRe
 	return series
 }
 
-func hasValidSample(series SeriesSnapshot) bool {
-	for _, tier := range series.Tiers {
-		for _, sample := range tier.Samples {
-			if sample.OK {
-				return true
-			}
+// seriesKeyMap maps journal series IDs to snapshot keys. Series 2 is temperature.
+var seriesKeyMap = map[uint16]string{2: "temp"}
+
+func applySupportedSeries(snapshot *Snapshot, supported map[uint16]bool) {
+	if snapshot == nil || supported == nil {
+		return
+	}
+	for series, key := range seriesKeyMap {
+		if s, ok := snapshot.Keys[key]; ok && supported[series] {
+			s.Supported = true
+			snapshot.Keys[key] = s
 		}
 	}
-
-	return false
 }
 
 func valuesByTime(result rrd.FetchResult, dsIndex int, scale float64) map[int64]*float64 {
@@ -355,6 +401,15 @@ func cloneSnapshot(input *Snapshot) *Snapshot {
 	}
 
 	output := emptySnapshot(input.Gathering.Enabled)
+	output.SessionConfigured = input.SessionConfigured
+	if input.Clock != nil {
+		clock := *input.Clock
+		if input.Clock.HistoryEndMs != nil {
+			value := *input.Clock.HistoryEndMs
+			clock.HistoryEndMs = &value
+		}
+		output.Clock = &clock
+	}
 
 	for key, series := range input.Keys {
 		copied := SeriesSnapshot{Label: series.Label, Supported: series.Supported, Unit: series.Unit, Tiers: map[string]TierSnapshot{}}

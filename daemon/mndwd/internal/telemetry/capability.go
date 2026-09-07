@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"mndw.local/rrd"
+
+	"mndwd/internal/telemetry/journal"
 )
 
 const (
@@ -24,8 +26,14 @@ type CapabilityConfig struct {
 	RRDToolBinary      string
 	RRDDir             string
 	Executor           rrd.Executor
-	LoadSampler        rrd.Sampler
-	TemperatureSampler rrd.Sampler
+	LoadSampler        Sampler
+	TemperatureSampler Sampler
+	Clock              BootClock
+	Evidence           EvidenceSource
+	Policy             Policy
+	FileSystem         journal.FileSystem
+	Locker             journal.Locker
+	SnapshotCache      *SnapshotCache
 	Now                func() time.Time
 	Wait               func(context.Context, time.Duration) error
 	DesiredEnabled     func() bool
@@ -39,12 +47,17 @@ type Capability struct {
 	load   *rrd.File
 	temp   *rrd.File
 
-	mu          sync.Mutex
-	enabled     bool
-	collector   *rrd.Collector
-	retryCancel context.CancelFunc
-	retryDone   chan struct{}
-	starting    bool
+	mu           sync.Mutex
+	enabled      bool
+	provider     journal.StorageProvider
+	pipeline     *Pipeline
+	derived      *DerivedStore
+	refresher    *snapshotRefresher
+	pipelineDone chan struct{}
+	status       PipelineStatus
+	retryCancel  context.CancelFunc
+	retryDone    chan struct{}
+	starting     bool
 }
 
 func NewCapability(config CapabilityConfig) (*Capability, error) {
@@ -76,6 +89,22 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 		config.Lifetime = context.Background()
 	}
 
+	if config.Clock == nil {
+		config.Clock = NewBootClock()
+	}
+
+	if config.Policy.AcquireEvery == 0 {
+		config.Policy = DefaultPolicy()
+	}
+
+	if config.FileSystem == nil {
+		config.FileSystem = journal.OSFileSystem{}
+	}
+
+	if config.Locker == nil {
+		config.Locker = journal.OSLocker{}
+	}
+
 	enabled := false
 
 	if config.DesiredEnabled != nil {
@@ -92,13 +121,25 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 		return nil, err
 	}
 
-	return &Capability{config: config, load: load, temp: temp, enabled: enabled}, nil
+	paths, err := journal.PathsFromRRDDir(config.RRDDir)
+	if err != nil {
+		return nil, err
+	}
+
+	provider, err := journal.NewStorageProvider(paths, config.FileSystem, config.Locker, config.Policy.Journal)
+	if err != nil {
+		return nil, err
+	}
+
+	capability := &Capability{config: config, load: load, temp: temp, enabled: enabled, provider: provider}
+	capability.status = PipelineStatus{Storage: provider.CurrentStatus()}
+	return capability, nil
 }
 
 func (c *Capability) Start(ctx context.Context) error {
 	c.mu.Lock()
 
-	if !c.enabled || c.collector != nil || c.starting {
+	if !c.enabled || c.pipeline != nil || c.starting {
 		c.mu.Unlock()
 
 		return nil
@@ -116,59 +157,69 @@ func (c *Capability) Start(ctx context.Context) error {
 		c.mu.Unlock()
 	}()
 
-	if err := c.load.Ensure(ctx, c.config.Now().UTC()); err != nil {
-		return err
+	// Storage is opened before any derived RRD work so acquired records are
+	// durable first; a failed open keeps diagnostics and the bounded RAM queue.
+	opened, err := c.provider.Reopen(ctx)
+	if err != nil {
+		c.setStatusError(err)
+
+		if opened.Status.Mode == journal.StatusUnavailable {
+			return err
+		}
+	}
+	c.mu.Lock()
+	c.status.Storage = opened.Status
+	c.mu.Unlock()
+
+	// Derived files are validated, never created here: an untrusted boot must
+	// not create an RRD, and creation is owned by derived recovery once this
+	// boot has trustworthy time.
+	if err := c.validateDerivedFiles(ctx); err != nil {
+		c.config.Logger.Warn("telemetry derived files unavailable", "error", err)
 	}
 
-	if err := c.temp.Ensure(ctx, c.config.Now().UTC()); err != nil {
-		return err
-	}
-
-	if _, err := c.load.LastUpdate(ctx); err != nil && !errors.Is(err, rrd.ErrFileMissing) {
-		return err
-	}
-
-	if _, err := c.temp.LastUpdate(ctx); err != nil && !errors.Is(err, rrd.ErrFileMissing) {
-		return err
-	}
-
-	collector := rrd.NewCollector(c.config.Executor,
-		rrd.WithCollectorClock(c.config.Now),
-		rrd.WithWaiter(c.config.Wait),
-		rrd.WithCollectorObserver(func(file string, err error) {
-			c.config.Logger.Warn("telemetry collection degraded", "file", file, "error", err)
-		}),
-	)
-
+	samplers := map[uint16]Sampler{}
 	if c.config.LoadSampler != nil {
-		if err := collector.Add(&rrd.Series{
-			File: filepath.Join(c.config.RRDDir, loadFileName),
-			Step: 3 * time.Minute,
-			DS:   loadSpec().DS,
-			Tiers: []rrd.Tier{
-				{Every: 3 * time.Minute, Keep: 24 * time.Hour},
-				{Every: time.Hour, Keep: 30 * 24 * time.Hour},
-			},
-			Sample: c.config.LoadSampler,
-		}); err != nil {
-			return err
-		}
+		samplers[1] = c.config.LoadSampler
+	}
+	if c.config.TemperatureSampler != nil {
+		samplers[2] = c.config.TemperatureSampler
+	}
+	if len(samplers) == 0 {
+		return errors.New("telemetry: no sampler configured")
 	}
 
-	if c.config.TemperatureSampler != nil {
-		if err := collector.Add(&rrd.Series{
-			File: filepath.Join(c.config.RRDDir, tempFileName),
-			Step: 3 * time.Minute,
-			DS:   tempSpec().DS,
-			Tiers: []rrd.Tier{
-				{Every: 3 * time.Minute, Keep: 24 * time.Hour},
-				{Every: time.Hour, Keep: 30 * 24 * time.Hour},
-			},
-			Sample: c.config.TemperatureSampler,
-		}); err != nil {
-			return err
-		}
+	if c.config.SnapshotCache != nil {
+		c.config.SnapshotCache.SetSupportedSeries(supportedFromSamplers(samplers))
 	}
+
+	derivedPaths, err := journal.PathsFromRRDDir(c.config.RRDDir)
+	if err != nil {
+		return err
+	}
+
+	derived, err := NewDerivedStore(derivedPaths, RRDtoolFactory{Executor: c.config.Executor}, c.provider, c.config.FileSystem)
+	if err != nil {
+		return err
+	}
+
+	options := []PipelineOption{WithPublicationWorker(derived)}
+	if c.config.SnapshotCache != nil {
+		refresher := &snapshotRefresher{cache: c.config.SnapshotCache}
+		options = append(options, WithSnapshotRefresher(refresher))
+		c.mu.Lock()
+		c.refresher = refresher
+		c.mu.Unlock()
+	}
+
+	pipeline, err := NewPipeline(c.config.Policy, c.config.Clock, c.config.Evidence, c.provider, samplers, options...)
+	if err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	c.derived = derived
+	c.mu.Unlock()
 
 	c.mu.Lock()
 
@@ -178,17 +229,89 @@ func (c *Capability) Start(ctx context.Context) error {
 		return nil
 	}
 
-	c.collector = collector
+	c.pipeline = pipeline
+	c.pipelineDone = make(chan struct{})
+
+	done := c.pipelineDone
 
 	c.mu.Unlock()
 
 	go func() {
-		if err := collector.Run(c.config.Lifetime); err != nil {
-			c.config.Logger.Warn("telemetry collector stopped", "error", err)
+		defer close(done)
+
+		if err := pipeline.Run(c.config.Lifetime); err != nil {
+			c.config.Logger.Warn("telemetry pipeline stopped", "error", err)
 		}
 	}()
 
 	return nil
+}
+
+// validateDerivedFiles checks existing RRD files without creating any. An
+// absent file is left to derived recovery, which creates it only from retained
+// mapped records with trustworthy time.
+func (c *Capability) validateDerivedFiles(ctx context.Context) error {
+	for _, file := range []*rrd.File{c.load, c.temp} {
+		if _, err := file.LastUpdate(ctx); err == nil {
+			continue
+		} else if !errors.Is(err, rrd.ErrFileMissing) {
+			return err
+		}
+	}
+	return nil
+}
+
+// SessionReader exposes bounded diagnostic session access. It serves read-only
+// validated records and never repairs or writes storage.
+func (c *Capability) SessionReader() SessionReader {
+	c.mu.Lock()
+	provider := c.provider
+	policy := c.config.Policy
+	c.mu.Unlock()
+
+	if provider == nil {
+		return nil
+	}
+	return NewSessionReader(provider, c.Status, policy.Journal)
+}
+
+// SetSnapshotCache attaches the cache refreshed by the pipeline. It is called
+// after construction because assembly builds the cache from this capability.
+func (c *Capability) SetSnapshotCache(cache *SnapshotCache) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.config.SnapshotCache = cache
+}
+
+// Status reports the last observed pipeline and storage state.
+func (c *Capability) Status() PipelineStatus {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	status := c.status
+	if c.pipeline != nil {
+		status = c.pipeline.Status()
+	}
+	if c.derived != nil {
+		frontiers := c.derived.Progress()
+		if len(frontiers) > 0 {
+			status.Frontiers = frontiers
+		}
+	}
+	return status
+}
+
+// StorageStatus reports the provider's recovery status for diagnostics.
+func (c *Capability) StorageStatus() journal.RecoveryStatus {
+	return c.provider.CurrentStatus()
+}
+
+func (c *Capability) setStatusError(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.status.Error = err.Error()
 }
 
 func (c *Capability) StartWithRetry(ctx context.Context) error {
@@ -282,7 +405,7 @@ func (c *Capability) SetEnabled(ctx context.Context, enabled bool) error {
 			return err
 		}
 
-		return c.stopCollector(ctx)
+		return c.stopPipeline(ctx)
 	}
 
 	if err := c.Start(ctx); err != nil {
@@ -310,7 +433,22 @@ func (c *Capability) Close(ctx context.Context) error {
 		return err
 	}
 
-	return c.stopCollector(ctx)
+	if err := c.stopPipeline(ctx); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	refresher := c.refresher
+	c.refresher = nil
+	c.mu.Unlock()
+
+	if refresher != nil {
+		if err := refresher.Close(ctx); err != nil {
+			return err
+		}
+	}
+
+	return c.provider.Close(ctx)
 }
 
 func (c *Capability) cancelRetry(ctx context.Context, retryCancel context.CancelFunc) error {
@@ -337,19 +475,34 @@ func (c *Capability) cancelRetry(ctx context.Context, retryCancel context.Cancel
 	}
 }
 
-func (c *Capability) stopCollector(ctx context.Context) error {
+func (c *Capability) stopPipeline(ctx context.Context) error {
 	c.mu.Lock()
 
-	collector := c.collector
-	c.collector = nil
+	pipeline := c.pipeline
+	done := c.pipelineDone
+	c.pipeline = nil
+	c.pipelineDone = nil
 
 	c.mu.Unlock()
 
-	if collector == nil {
+	if pipeline == nil {
 		return nil
 	}
 
-	return collector.Stop(ctx)
+	if err := pipeline.Stop(ctx); err != nil {
+		return err
+	}
+
+	if done == nil {
+		return nil
+	}
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (c *Capability) LoadReader() SnapshotReader {

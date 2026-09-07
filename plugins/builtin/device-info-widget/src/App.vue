@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref} from 'vue';
+import {historyStatus} from '@mndw/sdk';
 import type {LoadState, PluginContext, ProjectedSeries, ProjectedSnapshot} from '@mndw/sdk';
 import {useTranslator} from '@mndw/sdk/vue';
 import {Ticker} from '@mndw/sdk/ticker';
@@ -65,6 +66,9 @@ const info = computed<LiveDeviceInfo | null>(() => {
 });
 
 const isDurableRange = computed(() => selectedRange.value === '7d' || selectedRange.value === '30d');
+const sessionRequired = computed(() => {
+  return isDurableRange.value && projectedSnapshot.value != null && !projectedSnapshot.value.sessionConfigured;
+});
 const durableRange = computed<DurableRange>(() => selectedRange.value === '30d' ? '30d' : '7d');
 const activeProjection = computed<ProjectedSnapshot | null>(() => {
   return isDurableRange.value && projectedLoadedRange.value === durableRange.value
@@ -138,6 +142,16 @@ const handleProjectedTelemetrySuccess = (snapshot: ProjectedSnapshot): void => {
   projectedSnapshot.value = snapshot;
   projectedLoadedRange.value = range;
 };
+
+const historyStatusLabel = computed((): string | null => {
+  const status = historyStatus(projectedSnapshot.value?.clock);
+
+  if (status === 'legacy' || status === 'current' || status === 'empty') {
+    return null;
+  }
+
+  return t(status === 'catching-up' ? 'history-catching-up' : 'history-historical');
+});
 
 const handleProjectedTelemetryError = (loadError: unknown, _isInitial: boolean): void => {
   console.error('[device-info-widget] projected telemetry refresh failed', loadError);
@@ -255,6 +269,10 @@ onUnmounted(() => {
           {{ t(range.label) }}
         </button>
       </div>
+      <span v-if="sessionRequired" class="app__history-status">{{ t('session-required') }}</span>
+      <span v-else-if="historyStatusLabel !== null" class="app__history-status" data-testid="history-status">
+        {{ historyStatusLabel }}
+      </span>
       <div class="app__loads">
         <LoadBarChart v-if="sectionVisibility.cpu" :label="t('cpu')" :value="info.cpuLoadPercent"
                       :history="cpuLoadHistory"

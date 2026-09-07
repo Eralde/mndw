@@ -298,19 +298,6 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
 
   <section>
     <h3>{hostT('settings.device')}</h3>
-    <mndw-field label={hostT('settings.telemetry-label')}>
-      <mndw-switch
-        id="mndw-telemetry-enabled"
-        checked={telemetryEnabled}
-        disabled={telemetryLoading}
-        onmndwchange={setTelemetryEnabled}
-      >
-      </mndw-switch>
-      <span>{hostT('settings.telemetry-description')}</span>
-    </mndw-field>
-    {#if telemetryError}
-      <p role="alert">{telemetryError}</p>
-    {/if}
     <mndw-field label={hostT('settings.language.label')}>
       <mndw-select
         value={appState.locale}
@@ -467,6 +454,27 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
             {/if}
           </div>
         {/if}
+      {/if}
+    </section>
+  {/if}
+
+  {#if persistentEnabled && controllerSessionConfigured}
+    <section>
+      <h3>{hostT('settings.telemetry-label')}</h3>
+      <mndw-field label={hostT('settings.telemetry-toggle')}>
+        <mndw-switch
+          id="mndw-telemetry-enabled"
+          checked={telemetryEnabled}
+          disabled={telemetryLoading}
+          onmndwchange={setTelemetryEnabled}
+        >
+        </mndw-switch>
+      </mndw-field>
+      <p>{hostT('settings.telemetry-description')}</p>
+      <p>{hostT('settings.telemetry-session-note')}</p>
+      <p>{hostT('settings.telemetry-wear-note')}</p>
+      {#if telemetryError}
+        <p role="alert">{telemetryError}</p>
       {/if}
     </section>
   {/if}

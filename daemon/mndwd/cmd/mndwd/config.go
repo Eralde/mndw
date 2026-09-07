@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -46,15 +47,16 @@ type Config struct {
 	ControllerURL      string
 	// DiagnosticsLogFile is a read-only path that diagnostics tails. mndwd's
 	// logger continues writing stdout; build/packaging/init/S70mndwd redirects it here.
-	DiagnosticsLogFile string
-	SelfUpdateStateDir string
-	SelfUpdateHelper   string
-	Dev                bool
-	Opkg               string
-	Service            string
-	LogLevel           string
-	RRDToolBinary      string
-	RRDDir             string
+	DiagnosticsLogFile   string
+	SelfUpdateStateDir   string
+	SelfUpdateHelper     string
+	Dev                  bool
+	Opkg                 string
+	Service              string
+	LogLevel             string
+	RRDToolBinary        string
+	RRDDir               string
+	TelemetryMaxUnsynced time.Duration
 
 	// Exec/service runtime limits and timeouts.
 	ExecTimeout                time.Duration
@@ -128,6 +130,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.StringVar(&cfg.LogLevel, "log-level", "info", "log level: debug|info|warn|error")
 	fs.StringVar(&cfg.RRDToolBinary, "rrdtool-binary", defaultRRDToolBinary, "RRDtool executable path")
 	fs.StringVar(&cfg.RRDDir, "rrd-dir", defaultRRDDir, "private durable telemetry directory")
+	fs.DurationVar(&cfg.TelemetryMaxUnsynced, "telemetry-max-unsynced", 3*time.Minute, "maximum duration acquired telemetry may stay unsynced (3m-15m)")
 	fs.DurationVar(&cfg.ExecTimeout, "exec-timeout", 30*time.Second, "per-request exec timeout")
 	fs.DurationVar(&cfg.ExecKillGrace, "exec-kill-grace", 2*time.Second, "grace period after terminating an exec process group")
 	fs.DurationVar(&cfg.ServiceHTTPTimeout, "service-http-timeout", 30*time.Second, "service backend HTTP timeout")
@@ -150,6 +153,10 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 
 	if err = fs.Parse(args); err != nil {
 		return cfg, false, err
+	}
+
+	if cfg.TelemetryMaxUnsynced < 3*time.Minute || cfg.TelemetryMaxUnsynced > 15*time.Minute {
+		return cfg, false, errors.New("telemetry-max-unsynced must be between 3m and 15m")
 	}
 
 	if showVersion {

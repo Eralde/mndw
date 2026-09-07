@@ -199,7 +199,7 @@ const goFieldName = (name: string): string => {
   return name.split('_').map((part) => {
     return initialisms[part] ?? `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`;
   })
-.join('');
+    .join('');
 };
 
 const goType = (schema: JsonSchema): string => {
@@ -226,7 +226,7 @@ const goType = (schema: JsonSchema): string => {
 
 const topicTypeName = (topic: string): string => {
   return topic.split('.').map(goFieldName)
-.join('');
+    .join('');
 };
 
 function renderGoEvents(document: JsonSchema): string {

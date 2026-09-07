@@ -1,5 +1,8 @@
 import {describe, expect, it, vi} from 'vitest';
-import {TelemetryError, createTelemetryClient} from './telemetry-client.js';
+import type {TelemetryClock} from './telemetry-client.js';
+import {TelemetryError, createTelemetryClient, decodeRawSnapshot, historyStatus} from './telemetry-client.js';
+
+const decodeRawSnapshotForTest = decodeRawSnapshot;
 
 const validBody = {
   keys: {
@@ -171,5 +174,198 @@ describe('createTelemetryClient', () => {
         ).fetchProjected('7d'),
       ).rejects.toMatchObject({status: 503});
     });
+  });
+});
+
+const clockFixture = {
+  state: 'anchored',
+  historyEndMs: 1800000000000,
+  historyCurrent: true,
+  replayPending: false,
+};
+
+it('decodes optional clock metadata when present', () => {
+  const snapshot = decodeRawSnapshotForTest({
+    keys: {},
+    gathering: {enabled: true},
+    clock: clockFixture,
+  });
+
+  expect(snapshot.clock).toEqual(clockFixture);
+});
+
+it('accepts snapshots without clock metadata', () => {
+  const snapshot = decodeRawSnapshotForTest({keys: {}, gathering: {enabled: true}});
+
+  expect(snapshot.clock).toBeUndefined();
+});
+
+it('decodes sessionConfigured from raw snapshot', () => {
+  const withTrue = decodeRawSnapshotForTest({keys: {}, gathering: {enabled: true}, sessionConfigured: true});
+
+  expect(withTrue.sessionConfigured).toBe(true);
+
+  const withFalse = decodeRawSnapshotForTest({keys: {}, gathering: {enabled: true}, sessionConfigured: false});
+
+  expect(withFalse.sessionConfigured).toBe(false);
+
+  const withoutField = decodeRawSnapshotForTest({keys: {}, gathering: {enabled: true}});
+
+  expect(withoutField.sessionConfigured).toBe(false);
+});
+
+it('rejects invalid clock metadata', () => {
+  const invalid: readonly Record<string, unknown>[] = [
+    {...clockFixture, state: 'unknown'},
+    {...clockFixture, historyEndMs: -1},
+    {...clockFixture, historyEndMs: 1.5},
+    {...clockFixture, historyCurrent: 'yes'},
+    {...clockFixture, replayPending: 0},
+    {...clockFixture, historyEndMs: null, historyCurrent: true},
+  ];
+
+  for (const clock of invalid) {
+    expect(() => decodeRawSnapshotForTest({keys: {}, gathering: {enabled: true}, clock})).toThrow();
+  }
+});
+
+const validStorage = {
+  mode: 'ready',
+  issues: [],
+  journalBytes: 1024,
+  journalLimitBytes: 8388608,
+  pendingSampleCount: 0,
+  oldestPendingSession: null,
+  deliveryError: null,
+  coverage: [],
+  rebuildState: 'idle',
+  droppedRecords: {},
+};
+
+const validSessionsBody = {sessions: [], storage: validStorage};
+
+const validSessionPageBody = {
+  samples: [{
+    sequence: '10',
+    series: 1,
+    elapsedMs: 180000,
+    utcMs: null,
+    values: [20.5, null],
+    disposition: 'retained',
+  }],
+  nextCursor: null,
+  truncated: false,
+  truncationReasons: [],
+  storage: validStorage,
+};
+
+const jsonResponse = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), {status, headers: {'content-type': 'application/json'}});
+
+describe('telemetry session client', () => {
+  it('fetches the session list', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse(validSessionsBody)));
+    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    const list = await client.fetchSessions();
+
+    expect(list.storage.mode).toBe('ready');
+    expect(fetchImpl).toHaveBeenCalledWith('/api/mndw/telemetry/sessions', expect.objectContaining({method: 'GET'}));
+  });
+
+  it('fetches one session page with a bounded query', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse(validSessionPageBody)));
+    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    const page = await client.fetchSession('s1-01020304050607080910111213141516', {after: 'cursor', limit: 10});
+
+    expect(page.samples).toHaveLength(1);
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('limit=10');
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('after=cursor');
+  });
+
+  it('rejects an unsafe session id before fetching', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse(validSessionPageBody)));
+    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.fetchSession('../etc/passwd')).rejects.toThrow(TelemetryError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects an excessive page count before fetching', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse(validSessionPageBody)));
+    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(
+      client.fetchSession('s1-01020304050607080910111213141516', {limit: 1001}),
+    ).rejects.toThrow(TelemetryError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('propagates non-2xx status including expired cursors', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse({error: 'gone'}, 410)));
+    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(
+      client.fetchSession('s1-01020304050607080910111213141516', {after: 'stale'}),
+    ).rejects.toMatchObject({status: 410});
+  });
+
+  it('reports malformed session payloads as telemetry errors', async () => {
+    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse({sessions: 'invalid', storage: validStorage})));
+    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.fetchSessions()).rejects.toThrow(TelemetryError);
+  });
+
+  it('propagates cancellation through the signal', async () => {
+    const controller = new AbortController();
+
+    controller.abort();
+
+    const fetchImpl = vi.fn((_url: string, options?: {readonly signal?: AbortSignal}): Promise<Response> => {
+      if (options?.signal?.aborted) {
+        throw new Error('aborted');
+      }
+
+      return Promise.resolve(jsonResponse(validSessionsBody));
+    });
+    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.fetchSessions({signal: controller.signal})).rejects.toThrow();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/mndw/telemetry/sessions',
+      expect.objectContaining({signal: controller.signal}),
+    );
+  });
+});
+
+const anchoredClock: TelemetryClock = {
+  state: 'anchored',
+  historyEndMs: 1800000000000,
+  historyCurrent: true,
+  replayPending: false,
+};
+
+describe('historyStatus', () => {
+  it('distinguishes catch-up from normal scheduled buffering', () => {
+    expect(historyStatus(anchoredClock)).toBe('current');
+    expect(historyStatus({...anchoredClock, historyCurrent: false, replayPending: true})).toBe('catching-up');
+  });
+
+  it('reports historical when history is not current and nothing is pending', () => {
+    expect(historyStatus({...anchoredClock, historyCurrent: false})).toBe('historical');
+  });
+
+  it('reports empty history without a dated end', () => {
+    expect(historyStatus({...anchoredClock, historyEndMs: null})).toBe('empty');
+  });
+
+  it('never claims a legacy response is current', () => {
+    expect(historyStatus(undefined)).toBe('legacy');
+  });
+
+  it('keeps unknown clock states historical rather than current', () => {
+    expect(historyStatus({...anchoredClock, state: 'unanchored', historyCurrent: false})).toBe('historical');
   });
 });

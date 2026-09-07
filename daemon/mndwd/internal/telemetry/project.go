@@ -185,6 +185,8 @@ func temperatureValueDomain(bandSegments [][]ProjectedBandPoint) *ProjectedValue
 func projectSnapshot(snapshot *Snapshot, rangeMs int64) *ProjectedSnapshot {
 	projected := &ProjectedSnapshot{Keys: make(map[string]ProjectedSeries, len(snapshot.Keys))}
 	projected.Gathering.Enabled = snapshot.Gathering.Enabled
+	projected.SessionConfigured = snapshot.SessionConfigured
+	projected.Clock = snapshot.Clock
 
 	for key, series := range snapshot.Keys {
 		projected.Keys[key] = projectSeries(series, rangeMs)

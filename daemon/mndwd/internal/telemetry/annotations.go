@@ -61,15 +61,27 @@ type AnnotationStoreConfig struct {
 	Interval   time.Duration
 	FileSystem annotationFileSystem
 	Logger     *slog.Logger
+
+	// TrustedNow supplies trustworthy calendar time for time-based pruning.
+	// When it reports false, pruning is skipped so an untrusted clock cannot
+	// delete retained annotations.
+	TrustedNow func() (time.Time, bool)
+	// AcceptTimestamp reports whether an event's timestamp has proven
+	// provenance. Without provenance the annotation is not persisted.
+	AcceptTimestamp func(event events.Event) bool
 }
 
 type AnnotationStore struct {
-	rrdDir   string
-	catalog  AnnotationCatalog
-	now      func() time.Time
-	interval time.Duration
-	fs       annotationFileSystem
-	logger   *slog.Logger
+	rrdDir          string
+	catalog         AnnotationCatalog
+	now             func() time.Time
+	interval        time.Duration
+	fs              annotationFileSystem
+	logger          *slog.Logger
+	trustedNow      func() (time.Time, bool)
+	acceptTimestamp func(event events.Event) bool
+	dirty           map[string]uint64
+	versions        map[string]uint64
 
 	mu          sync.Mutex
 	annotations map[string][]Annotation
@@ -105,13 +117,17 @@ func NewAnnotationStore(config AnnotationStoreConfig) (*AnnotationStore, error) 
 	}
 
 	store := &AnnotationStore{
-		rrdDir:      config.RRDDir,
-		catalog:     config.Catalog,
-		now:         config.Now,
-		interval:    config.Interval,
-		fs:          config.FileSystem,
-		logger:      config.Logger,
-		annotations: make(map[string][]Annotation),
+		rrdDir:          config.RRDDir,
+		catalog:         config.Catalog,
+		now:             config.Now,
+		interval:        config.Interval,
+		fs:              config.FileSystem,
+		logger:          config.Logger,
+		trustedNow:      config.TrustedNow,
+		acceptTimestamp: config.AcceptTimestamp,
+		annotations:     make(map[string][]Annotation),
+		dirty:           make(map[string]uint64),
+		versions:        make(map[string]uint64),
 	}
 
 	for _, collection := range config.Catalog.Collections() {
@@ -120,9 +136,22 @@ func NewAnnotationStore(config AnnotationStoreConfig) (*AnnotationStore, error) 
 		store.readCollection(collection)
 	}
 
-	store.pruneLocked(store.now())
+	// A clock that cannot be trusted must not delete retained history.
+	if now, ok := store.trustedClock(); ok {
+		store.pruneLocked(now)
+	}
 
 	return store, nil
+}
+
+// trustedClock returns trustworthy calendar time when available.
+func (s *AnnotationStore) trustedClock() (time.Time, bool) {
+	if s.trustedNow == nil {
+		// No trust source configured: the existing Now seam is not evidence of
+		// trustworthy time, so pruning is skipped.
+		return time.Time{}, false
+	}
+	return s.trustedNow()
 }
 
 func (s *AnnotationStore) Start(parent context.Context, bus *events.Bus) error {
@@ -216,7 +245,16 @@ func (s *AnnotationStore) Consume(event events.Event) {
 
 	defer s.mu.Unlock()
 
-	if _, exists := s.annotations[collection]; !exists || event.Ts < s.cutoffLocked(s.now()) {
+	if _, exists := s.annotations[collection]; !exists {
+		return
+	}
+
+	if s.acceptTimestamp != nil && !s.acceptTimestamp(event) {
+		// Without proven provenance the calendar timestamp is not trustworthy.
+		return
+	}
+
+	if now, ok := s.trustedClock(); ok && event.Ts < s.cutoffLocked(now) {
 		return
 	}
 
@@ -226,6 +264,11 @@ func (s *AnnotationStore) Consume(event events.Event) {
 		Topic: string(event.Topic),
 		Label: label,
 	})
+
+	// A mutation bumps the version so a write that fails leaves the collection
+	// dirty until a later flush succeeds.
+	s.versions[collection]++
+	s.dirty[collection] = s.versions[collection]
 }
 
 func (s *AnnotationStore) Flush(ctx context.Context) error {
@@ -234,15 +277,26 @@ func (s *AnnotationStore) Flush(ctx context.Context) error {
 	}
 
 	s.mu.Lock()
-	s.pruneLocked(s.now())
+	if now, ok := s.trustedClock(); ok {
+		s.pruneLocked(now)
+	}
 
 	collections := make(map[string][]Annotation, len(s.annotations))
+	writtenVersions := make(map[string]uint64, len(s.annotations))
 
 	for name, annotations := range s.annotations {
 		collections[name] = append([]Annotation(nil), annotations...)
+		if version, ok := s.dirty[name]; ok {
+			writtenVersions[name] = version
+		}
 	}
 
 	s.mu.Unlock()
+
+	// Nothing changed since the last successful write.
+	if len(writtenVersions) == 0 {
+		return nil
+	}
 
 	if err := s.fs.MkdirAll(s.rrdDir, 0o755); err != nil {
 		return err
@@ -270,6 +324,13 @@ func (s *AnnotationStore) Flush(ctx context.Context) error {
 		if err := s.fs.Rename(temporary, path); err != nil {
 			return fmt.Errorf("replace annotations for %s: %w", collection.Name, err)
 		}
+
+		// Clear dirty state only when no append happened during the write.
+		s.mu.Lock()
+		if s.dirty[collection.Name] == writtenVersions[collection.Name] {
+			delete(s.dirty, collection.Name)
+		}
+		s.mu.Unlock()
 	}
 
 	return nil

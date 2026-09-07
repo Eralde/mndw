@@ -226,11 +226,19 @@ func assembleRCISession(cfg Config, store *state.Store, reg *registry.Registry, 
 	registration.rciClient = telemetryClient
 	registration.eventRCIClient = eventClient
 
+	policy := telemetry.DefaultPolicy()
+	if cfg.TelemetryMaxUnsynced > 0 {
+		policy.MaxUnsynced = cfg.TelemetryMaxUnsynced
+	}
+
 	capability, capabilityErr := telemetry.NewCapability(telemetry.CapabilityConfig{
 		RRDToolBinary:      cfg.RRDToolBinary,
 		RRDDir:             cfg.RRDDir,
 		LoadSampler:        telemetry.NewLoadSampler(telemetryClient),
 		TemperatureSampler: telemetry.NewThermalSampler(osThermalReader{}, "/sys/class/thermal"),
+		Clock:              telemetry.NewBootClock(),
+		Evidence:           telemetry.NewRCIEvidenceSource(telemetryClient),
+		Policy:             policy,
 		DesiredEnabled:     func() bool { return store.Snapshot().Settings.BackgroundTelemetry },
 		Lifetime:           lifetime,
 		Logger:             logger,

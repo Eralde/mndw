@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref} from 'vue';
 import type {PluginContext, ProjectedSeries, ProjectedSnapshot, ProjectRange} from '@mndw/sdk';
+import {historyStatus} from '@mndw/sdk';
 import {useTranslator} from '@mndw/sdk/vue';
 import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 
@@ -29,6 +30,9 @@ const activeSnapshot = computed(() => loadedRange.value === selectedRange.value 
 const temp = computed<ProjectedSeries | null>(() => activeSnapshot.value?.keys.temp ?? null);
 const gatheringEnabled = computed(() => activeSnapshot.value?.gathering.enabled ?? true);
 const hasData = computed(() => (temp.value?.segments.length ?? 0) > 0);
+const sessionRequired = computed(() => {
+  return (selectedRange.value === '7d' || selectedRange.value === '30d') && activeSnapshot.value != null && !activeSnapshot.value.sessionConfigured;
+});
 
 const timeDomain = computed(() => {
   const points = temp.value?.points;
@@ -83,6 +87,16 @@ const startLoop = (range: ProjectRange): void => {
   refreshLoop.start();
 };
 
+const historyStatusLabel = computed((): string | null => {
+  const status = historyStatus(snapshot.value?.clock);
+
+  if (status === 'legacy' || status === 'current' || status === 'empty') {
+    return null;
+  }
+
+  return t(status === 'catching-up' ? 'history-catching-up' : 'history-historical');
+});
+
 const setRange = (range: ProjectRange): void => {
   selectedRange.value = range;
   startLoop(range);
@@ -110,8 +124,12 @@ onUnmounted(() => {
         {{ t(range.label) }}
       </button>
     </div>
-    <div v-if="loading" class="app__message">{{ t('loading') }}</div>
+    <div v-if="sessionRequired" class="app__message">{{ t('session-required') }}</div>
+    <div v-else-if="loading" class="app__message">{{ t('loading') }}</div>
     <div v-else-if="!gatheringEnabled" class="app__message">{{ t('disabled') }}</div>
+    <div v-else-if="historyStatusLabel !== null" class="app__history-status" data-testid="history-status">
+      {{ historyStatusLabel }}
+    </div>
     <div v-else-if="error && !activeSnapshot" class="mndw-alert mndw-alert--danger" role="alert">{{ t('error') }}</div>
     <div v-else-if="temp && !temp.supported" class="app__message">{{ t('unsupported') }}</div>
     <template v-else-if="temp">

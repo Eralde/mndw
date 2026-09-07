@@ -64,16 +64,73 @@ type UpdatePoint struct {
 	Values    []Value
 }
 
+// FileOps is the injectable filesystem surface used by Ensure. It exists so a
+// caller can own scratch allocation, install, rename, and directory sync while
+// this package owns RRDtool arguments and schema validation only.
+type FileOps interface {
+	MkdirAll(string, os.FileMode) error
+	Stat(string) (os.FileInfo, error)
+	CreateTemp(string, string) (string, error)
+	Link(string, string) error
+	Rename(string, string) error
+	Remove(string) error
+}
+
+// OSFileOps is the default FileOps implementation, backed by the os package.
+type OSFileOps struct{}
+
+// MkdirAll creates directories.
+func (OSFileOps) MkdirAll(path string, perm os.FileMode) error { return os.MkdirAll(path, perm) }
+
+// Stat stats a path.
+func (OSFileOps) Stat(path string) (os.FileInfo, error) { return os.Stat(path) }
+
+// CreateTemp creates a temporary file and returns its name.
+func (OSFileOps) CreateTemp(dir, pattern string) (string, error) {
+	file, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return "", err
+	}
+	name := file.Name()
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+// Link creates a hard link.
+func (OSFileOps) Link(oldPath, newPath string) error { return os.Link(oldPath, newPath) }
+
+// Rename renames a path.
+func (OSFileOps) Rename(oldPath, newPath string) error { return os.Rename(oldPath, newPath) }
+
+// Remove removes a path.
+func (OSFileOps) Remove(path string) error { return os.Remove(path) }
+
+// FileOption customizes a File.
+type FileOption func(*File)
+
+// WithFileOps injects the filesystem operations used by Ensure. The default is
+// OSFileOps, so existing callers behave exactly as before.
+func WithFileOps(ops FileOps) FileOption {
+	return func(file *File) {
+		if ops != nil {
+			file.ops = ops
+		}
+	}
+}
+
 type File struct {
 	executor Executor
 	path     string
 	spec     CreateSpec
 	lock     *sync.Mutex
+	ops      FileOps
 }
 
 var fileLocks sync.Map
 
-func NewFile(executor Executor, activePath string, spec CreateSpec) (*File, error) {
+func NewFile(executor Executor, activePath string, spec CreateSpec, opts ...FileOption) (*File, error) {
 	if executor == nil {
 		return nil, errors.New("rrd: nil executor")
 	}
@@ -85,7 +142,12 @@ func NewFile(executor Executor, activePath string, spec CreateSpec) (*File, erro
 
 	lockValue, _ := fileLocks.LoadOrStore(path, &sync.Mutex{})
 
-	return &File{executor: executor, path: path, spec: spec, lock: lockValue.(*sync.Mutex)}, nil
+	file := &File{executor: executor, path: path, spec: spec, lock: lockValue.(*sync.Mutex), ops: OSFileOps{}}
+	for _, opt := range opts {
+		opt(file)
+	}
+
+	return file, nil
 }
 
 func (f *File) Ensure(ctx context.Context, enableTime time.Time) error {
@@ -97,7 +159,7 @@ func (f *File) Ensure(ctx context.Context, enableTime time.Time) error {
 		return err
 	}
 
-	info, err := os.Stat(f.path)
+	info, err := f.ops.Stat(f.path)
 	if err == nil {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("rrd: active path is not a regular file: %s", f.path)
@@ -110,24 +172,16 @@ func (f *File) Ensure(ctx context.Context, enableTime time.Time) error {
 		return fmt.Errorf("rrd: stat active file: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(f.path), 0o755); err != nil {
+	if err := f.ops.MkdirAll(filepath.Dir(f.path), 0o755); err != nil {
 		return fmt.Errorf("rrd: create parent directory: %w", err)
 	}
 
-	temp, err := os.CreateTemp(filepath.Dir(f.path), "."+filepath.Base(f.path)+".tmp-")
+	tempPath, err := f.ops.CreateTemp(filepath.Dir(f.path), "."+filepath.Base(f.path)+".tmp-")
 	if err != nil {
 		return fmt.Errorf("rrd: create temporary file: %w", err)
 	}
 
-	tempPath := temp.Name()
-
-	if err := temp.Close(); err != nil {
-		_ = os.Remove(tempPath)
-
-		return fmt.Errorf("rrd: close temporary file: %w", err)
-	}
-
-	defer os.Remove(tempPath)
+	defer func() { _ = f.ops.Remove(tempPath) }()
 
 	stepSeconds := int64(f.spec.Step / time.Second)
 	start := (enableTime.Unix()/stepSeconds)*stepSeconds - stepSeconds
@@ -159,7 +213,7 @@ func (f *File) Ensure(ctx context.Context, enableTime time.Time) error {
 		return fmt.Errorf("rrd: validate newly created file: %w", err)
 	}
 
-	if err := os.Link(tempPath, f.path); err != nil {
+	if err := f.ops.Link(tempPath, f.path); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return f.validateInfoLocked(ctx, f.path)
 		}

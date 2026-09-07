@@ -27,6 +27,33 @@ func NewThermalSampler(reader ThermalReader, root string) *ThermalSampler {
 	return &ThermalSampler{reader: reader, root: root}
 }
 
+// Supported probes sensor presence independently of measurement validity.
+// A present sensor with a read error remains supported but produces unknown data.
+func (s *ThermalSampler) Supported() bool {
+	if s.reader == nil {
+		return false
+	}
+
+	entries, err := s.reader.ReadDir(s.root)
+	if err != nil {
+		// Only absence proves lack of support; transient failures are unknown data.
+		return !errors.Is(err, fs.ErrNotExist)
+	}
+
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name(), "thermal_zone") {
+			continue
+		}
+
+		_, err := s.reader.ReadFile(filepath.Join(s.root, entry.Name(), "temp"))
+		if !errors.Is(err, fs.ErrNotExist) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (s *ThermalSampler) Poll(_ context.Context) ([]rrd.Value, error) {
 	if s.reader == nil {
 		return []rrd.Value{rrd.Unknown}, errors.New("thermal reader is unavailable")

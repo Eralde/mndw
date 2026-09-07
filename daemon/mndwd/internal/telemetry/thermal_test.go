@@ -79,3 +79,70 @@ func TestThermalSamplerReadsSymlinkedZone(t *testing.T) {
 		t.Fatalf("value %#v", value)
 	}
 }
+
+func TestThermalSensorSupportInSnapshot(t *testing.T) {
+	cases := []struct {
+		name   string
+		reader ThermalReader
+		root   string
+		want   bool
+	}{
+		{name: "missing root", reader: mapThermalReader{}, root: "missing"},
+		{name: "empty root", reader: mapThermalReader{}, root: "."},
+		{name: "no reader", root: "."},
+		{name: "zone without sensor", reader: mapThermalReader{
+			"thermal_zone0/type": {Data: []byte("cpu")},
+		}, root: "."},
+		{name: "CPU sensor", reader: mapThermalReader{
+			"thermal_zone0/type": {Data: []byte("cpu")},
+			"thermal_zone0/temp": {Data: []byte("62465")},
+		}, root: ".", want: true},
+		{name: "invalid reading still has sensor", reader: mapThermalReader{
+			"thermal_zone0/temp": {Data: []byte("unavailable")},
+		}, root: ".", want: true},
+		{name: "symlink sensor", reader: symlinkThermalReader{files: map[string][]byte{
+			"thermal_zone0/temp": []byte("42000"),
+		}}, root: ".", want: true},
+		{name: "temporary read error", reader: failingThermalReader{}, root: ".", want: true},
+		{name: "temporary directory error", reader: failingThermalDirectoryReader{}, root: ".", want: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cache := NewSnapshotCache(&snapshotReader{}, &snapshotReader{unknown: true}, nil)
+
+			cache.SetSupportedSeries(supportedFromSamplers(map[uint16]Sampler{
+				2: NewThermalSampler(tc.reader, tc.root),
+			}))
+
+			for _, refresh := range []bool{false, true} {
+				if refresh {
+					if _, err := cache.Refresh(context.Background(), PipelineStatus{}); err != nil {
+						t.Fatal(err)
+					}
+				}
+
+				snapshot, err := cache.Get(context.Background(), true)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if got := snapshot.Keys["temp"].Supported; got != tc.want {
+					t.Fatalf("refreshed=%v: supported=%v, want %v", refresh, got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+type failingThermalReader struct{ symlinkThermalReader }
+
+func (failingThermalReader) ReadFile(string) ([]byte, error) {
+	return nil, fs.ErrPermission
+}
+
+type failingThermalDirectoryReader struct{ symlinkThermalReader }
+
+func (failingThermalDirectoryReader) ReadDir(string) ([]fs.DirEntry, error) {
+	return nil, fs.ErrPermission
+}

@@ -37,8 +37,8 @@ type Snapshot struct {
 	Gathering struct {
 		Enabled bool `json:"enabled"`
 	} `json:"gathering"`
-	Clock              *ClockMetadata `json:"clock,omitempty"`
-	SessionConfigured  bool           `json:"sessionConfigured"`
+	Clock             *ClockMetadata `json:"clock,omitempty"`
+	SessionConfigured bool           `json:"sessionConfigured"`
 }
 
 type ProjectedPoint struct {
@@ -82,15 +82,15 @@ type ProjectedSnapshot struct {
 	Gathering struct {
 		Enabled bool `json:"enabled"`
 	} `json:"gathering"`
-	Clock              *ClockMetadata `json:"clock,omitempty"`
-	SessionConfigured  bool           `json:"sessionConfigured"`
+	Clock             *ClockMetadata `json:"clock,omitempty"`
+	SessionConfigured bool           `json:"sessionConfigured"`
 }
 
 type SnapshotCache struct {
-	load               SnapshotReader
-	temperature        SnapshotReader
-	now                func() time.Time
-	sessionConfigured  func() bool
+	load              SnapshotReader
+	temperature       SnapshotReader
+	now               func() time.Time
+	sessionConfigured func() bool
 
 	mu              sync.Mutex
 	snapshot        *Snapshot
@@ -154,7 +154,7 @@ func (c *SnapshotCache) Publish(snapshot *Snapshot) {
 	c.refreshErr = nil
 }
 
-// SetSupportedSeries records which sampler series are registered, so the
+// SetSupportedSeries records which sampler series are available, so the
 // snapshot can distinguish "no data yet" from "device lacks this sensor".
 func (c *SnapshotCache) SetSupportedSeries(supported map[uint16]bool) {
 	c.mu.Lock()

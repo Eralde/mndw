@@ -198,9 +198,15 @@ func defaultWaitUntil(clock BootClock, _ Policy) func(context.Context, int64) er
 
 func supportedFromSamplers(samplers map[uint16]Sampler) map[uint16]bool {
 	m := make(map[uint16]bool, len(samplers))
-	for series := range samplers {
-		m[series] = true
+
+	for series, sampler := range samplers {
+		m[series] = sampler != nil
+
+		if probe, ok := sampler.(interface{ Supported() bool }); ok {
+			m[series] = probe.Supported()
+		}
 	}
+
 	return m
 }
 

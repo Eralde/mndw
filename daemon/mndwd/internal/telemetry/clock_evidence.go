@@ -63,7 +63,7 @@ func (s *rciEvidenceSource) Read(ctx context.Context, request EvidenceRequest) (
 		return Evidence{}, err
 	}
 
-	results, _, err := s.client.ExecuteRaw(ctx, rci.Query{Path: s.selector, Raw: true})
+	results, err := s.client.ExecuteMany(ctx, rci.Query{Path: s.selector})
 	if err != nil {
 		return Evidence{}, err
 	}

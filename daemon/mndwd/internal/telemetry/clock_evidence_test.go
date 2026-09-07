@@ -14,7 +14,7 @@ func TestRCIEvidenceSourceUsesNestedNTPQueryPath(t *testing.T) {
 
 		return rci.Response{
 			Status: 200,
-			Body:   []byte(`[{"elapsed":10324,"server":"0.europe.pool.ntp.org","accurate":true,"synchronized":true,"ndsstime":false,"usertime":false}]`),
+			Body:   []byte(`[{"show":{"ntp":{"status":{"elapsed":10324,"server":"0.europe.pool.ntp.org","accurate":true,"synchronized":true,"ndsstime":false,"usertime":false}}}}]`),
 		}, nil
 	}))
 	if err != nil {

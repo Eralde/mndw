@@ -109,7 +109,42 @@ describe('buildBackend', () => {
 
     expect(() => buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel', outDir, spawn: traversalSpawn}))
       .toThrow(
-        'outside output directory',
+        'malformed backend artifact',
       );
+  });
+
+  it('rejects valid artifacts that point to a missing file or directory', () => {
+    const dir = pluginDirectory();
+    const outDir = join(dir, 'out');
+    const writeArtifact = (): void => {
+      writeFileSync(
+        join(outDir, 'backend-artifact.json'),
+        JSON.stringify({
+          plugin: 'demo',
+          target: 'mipsel',
+          binaries: [{source: 'backend/demo', destination: 'backend/demo'}],
+        }),
+      );
+    };
+
+    const missingSpawn = (): {status: number} => {
+      mkdirSync(outDir, {recursive: true});
+      writeArtifact();
+
+      return {status: 0};
+    };
+
+    expect(() => buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel', outDir, spawn: missingSpawn}))
+      .toThrow('source is outside output directory');
+
+    const directorySpawn = (): {status: number} => {
+      mkdirSync(join(outDir, 'backend', 'demo'), {recursive: true});
+      writeArtifact();
+
+      return {status: 0};
+    };
+
+    expect(() => buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel', outDir, spawn: directorySpawn}))
+      .toThrow('source is outside output directory');
   });
 });

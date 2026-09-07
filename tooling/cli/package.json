@@ -8,8 +8,10 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./backend-artifact": "./src/backend-artifact.ts",
     "./go-backend": "./src/go-backend-build.ts",
-    "./go-target": "./src/go-target.ts"
+    "./go-target": "./src/go-target.ts",
+    "./packed-plugin-artifact": "./src/packed-plugin-artifact.ts"
   },
   "scripts": {
     "check": "tsc --noEmit",

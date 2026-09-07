@@ -5,6 +5,7 @@ import {join} from 'node:path';
 import {describe, expect, it} from 'vitest';
 
 import {CliError} from './errors.js';
+import {parseBackendArtifact} from './backend-artifact.js';
 import {type GoBuildSpawn, buildGoBackend} from './go-backend-build.js';
 
 const okSpawn = (): ReturnType<GoBuildSpawn> => ({status: 0, signal: null});
@@ -82,7 +83,7 @@ describe('buildGoBackend', () => {
         throw new Error('cross build did not produce artifact metadata');
       }
 
-      expect(JSON.parse(readFileSync(artifactPath, 'utf8'))).toEqual({
+      expect(parseBackendArtifact(JSON.parse(readFileSync(artifactPath, 'utf8')))).toEqual({
         plugin: 'foo',
         target: 'aarch64',
         binaries: [{source: 'food', destination: 'backend/food'}],

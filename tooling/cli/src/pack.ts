@@ -19,14 +19,15 @@ import vuePlugin from 'unplugin-vue/esbuild';
 import {type PluginManifestOutput} from '@mndw/sdk';
 import {pluginDependencies} from '@mndw/sdk/shared-dependencies';
 import {isMndwButtonA11yWarning} from '../../../build/svelte-compiler-options.js';
-import type {ProductTarget} from '../../../build/targets.js';
 import {type AngularCompileResult, compileAngular} from './angular-compiler.js';
+import {type ProductTarget} from './go-target.js';
 import {CliError} from './errors.js';
 import {type PluginFramework, detectFramework} from './framework.js';
 import {buildLock, findBundledSharedDependencies, serializeLock} from './lock.js';
 import {readManifest} from './manifest.js';
 import {validatePluginCatalogs} from './i18n-validator.js';
 import {resolvePluginDir} from './paths.js';
+import {type PackedPluginArtifact} from './packed-plugin-artifact.js';
 import {readPluginPackage} from './plugin-package.js';
 import {promoteDirectory} from './promote-directory.js';
 import {resolveDevelopmentSourceEntry, resolveProductionSourceEntry} from './source-entry.js';
@@ -216,6 +217,13 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
             .digest('hex'),
         })),
       };
+    const artifact: PackedPluginArtifact = {
+      schemaVersion: 1,
+      plugin: manifest.name,
+      entry: manifest.entry,
+      staticBackends: backendAssetRelPaths(manifest),
+      ...(backendMetadata === undefined ? {} : {backend: backendMetadata}),
+    };
     const catalogAssets = collectCatalogAssets(manifest, resolvedDir);
     const workerReferences = collectWorkerReferences(manifest.entry, result.metafile);
     const workerAssets = await buildWorkerAssets(workerReferences, outDir, resolvedDir, framework);
@@ -239,19 +247,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
       writeStaged(
         staging,
         'mndw-artifact.json',
-        Buffer.from(`${
-          JSON.stringify(
-            {
-              schemaVersion: 1,
-              plugin: manifest.name,
-              entry: manifest.entry,
-              staticBackends: backendAssetRelPaths(manifest),
-              ...(backendMetadata === undefined ? {} : {backend: backendMetadata}),
-            },
-            null,
-            2,
-          )
-        }\n`),
+        Buffer.from(`${JSON.stringify(artifact, null, 2)}\n`),
       );
 
       for (const output of jsOutputs) {

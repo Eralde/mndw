@@ -3,19 +3,11 @@ import crossSpawn from 'cross-spawn';
 import {existsSync, readFileSync, statSync} from 'node:fs';
 import {isAbsolute, relative, resolve} from 'node:path';
 
+import {type BackendBuildResult, parseBackendArtifact} from './backend-artifact.js';
 import {CliError} from './errors.js';
-import {type ProductTarget, isProductTarget} from '../../../build/targets.js';
+import {type ProductTarget, isProductTarget} from './go-target.js';
 
-export interface BackendArtifact {
-  readonly source: string;
-  readonly destination: string;
-}
-
-export interface BackendBuildResult {
-  readonly plugin: string;
-  readonly target: ProductTarget;
-  readonly binaries: readonly BackendArtifact[];
-}
+export type {BackendArtifact, BackendBuildResult} from './backend-artifact.js';
 
 export interface BackendBuildOptions {
   readonly pluginDir: string;
@@ -41,25 +33,6 @@ interface PluginPackage {
   readonly mndw?: {readonly backendBuildScript?: unknown};
 }
 
-interface RawBackendArtifact {
-  readonly binaries?: unknown;
-  readonly plugin?: unknown;
-  readonly target?: unknown;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isSafeRelativePath(value: unknown): value is string {
-  return typeof value === 'string'
-    && value.length > 0
-    && !isAbsolute(value)
-    && !value.startsWith('\\')
-    && !value.includes('\\')
-    && !value.split('/').includes('..');
-}
-
 function readBackendArtifact(outDir: string, plugin: string, target: ProductTarget): BackendBuildResult {
   const artifactPath = resolve(outDir, 'backend-artifact.json');
 
@@ -75,11 +48,17 @@ function readBackendArtifact(outDir: string, plugin: string, target: ProductTarg
     throw new CliError(`malformed backend artifact for ${plugin}: ${(error as Error).message}`);
   }
 
-  if (typeof value !== 'object' || value === null) {
-    throw new CliError(`malformed backend artifact for ${plugin}`);
-  }
+  let artifact: BackendBuildResult;
 
-  const artifact = value as RawBackendArtifact;
+  try {
+    artifact = parseBackendArtifact(value);
+  } catch (error) {
+    throw new CliError(
+      `malformed backend artifact for ${plugin} at ${artifactPath}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 
   if (artifact.plugin !== plugin) {
     throw new CliError(`backend artifact plugin mismatch: expected ${plugin}, got ${String(artifact.plugin)}`);
@@ -89,20 +68,8 @@ function readBackendArtifact(outDir: string, plugin: string, target: ProductTarg
     throw new CliError(`backend artifact target mismatch: expected ${target}, got ${String(artifact.target)}`);
   }
 
-  if (!Array.isArray(artifact.binaries)) {
-    throw new CliError(`backend artifact binaries must be an array for ${plugin}`);
-  }
-
-  const destinations = new Set<string>();
-  const binaries: BackendArtifact[] = [];
-
   for (const [index, binary] of artifact.binaries.entries()) {
-    if (!isRecord(binary) || !isSafeRelativePath(binary.source) || !isSafeRelativePath(binary.destination)) {
-      throw new CliError(`backend artifact binary ${index} has a path outside output directory`);
-    }
-
     const source = binary.source;
-    const destination = binary.destination;
 
     const sourcePath = resolve(outDir, source);
     const sourceRelative = relative(resolve(outDir), sourcePath);
@@ -113,16 +80,9 @@ function readBackendArtifact(outDir: string, plugin: string, target: ProductTarg
     ) {
       throw new CliError(`backend artifact binary ${index} source is outside output directory: ${source}`);
     }
-
-    if (destinations.has(destination)) {
-      throw new CliError(`duplicate backend artifact destination: ${destination}`);
-    }
-
-    destinations.add(destination);
-    binaries.push({source, destination});
   }
 
-  return {plugin, target, binaries};
+  return artifact;
 }
 
 export function buildBackend(options: BackendBuildOptions): BackendBuildResult | null {

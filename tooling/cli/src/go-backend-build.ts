@@ -2,6 +2,7 @@ import {spawnSync} from 'node:child_process';
 import {mkdirSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 
+import {type BackendBuildResult} from './backend-artifact.js';
 import {CliError} from './errors.js';
 import {type ProductTarget, goTargetEnvironment} from './go-target.js';
 
@@ -72,21 +73,20 @@ export function buildGoBackend(options: BuildGoBackendOptions): BuildGoBackendRe
     return {binaryPath};
   }
 
+  if (target === undefined || outDir === undefined) {
+    throw new CliError(`${plugin}: cross build requires both --target and --out-dir`);
+  }
+
   const artifactPath = join(destinationDir, 'backend-artifact.json');
+  const artifact: BackendBuildResult = {
+    plugin,
+    target,
+    binaries: [{source: binaryName, destination: `backend/${binaryName}`}],
+  };
 
   writeFileSync(
     artifactPath,
-    `${
-      JSON.stringify(
-        {
-          plugin,
-          target,
-          binaries: [{source: binaryName, destination: `backend/${binaryName}`}],
-        },
-        null,
-        2,
-      )
-    }\n`,
+    `${JSON.stringify(artifact, null, 2)}\n`,
   );
 
   return {binaryPath, artifactPath};

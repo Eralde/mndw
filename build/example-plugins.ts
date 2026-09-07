@@ -1,8 +1,9 @@
 import {createHash} from 'node:crypto';
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+import {type PackedPluginArtifact, parsePackedPluginArtifact} from '@mndw/cli/packed-plugin-artifact';
 import {buildBackend} from '../tooling/cli/src/backend-build.js';
 import {packPlugin} from '../tooling/cli/src/pack.js';
 import {readPluginPackage} from '../tooling/cli/src/plugin-package.js';
@@ -87,14 +88,32 @@ function writeArchive(outputRoot: string, name: string, packedRoot: string): voi
   writeFileSync(join(outputRoot, name), zipDirectory(packedRoot));
 }
 
-function verifyPackedBackend(
+export function verifyPackedBackend(
   packedRoot: string,
   target: ProductTarget,
   binaries: readonly {readonly destination: string}[],
 ): void {
-  const artifact = JSON.parse(readFileSync(join(packedRoot, 'mndw-artifact.json'), 'utf8')) as {
-    backend?: {target?: unknown; files?: readonly {path?: unknown; sha256?: unknown}[]};
-  };
+  const artifactPath = join(packedRoot, 'mndw-artifact.json');
+  let value: unknown;
+
+  try {
+    value = JSON.parse(readFileSync(artifactPath, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `invalid packed plugin artifact: ${artifactPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  let artifact: PackedPluginArtifact;
+
+  try {
+    artifact = parsePackedPluginArtifact(value);
+  } catch (error) {
+    throw new Error(
+      `invalid packed plugin artifact: ${artifactPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   const metadata = artifact.backend;
 
   if (metadata?.target !== target || metadata.files?.length !== binaries.length) {
@@ -103,7 +122,21 @@ function verifyPackedBackend(
 
   for (const binary of binaries) {
     const backendPath = join(packedRoot, binary.destination);
-    const contents = readFileSync(backendPath);
+    let contents: Buffer;
+
+    try {
+      if (!statSync(backendPath).isFile()) {
+        throw new Error(`packed backend is not a regular file: ${backendPath}`);
+      }
+
+      contents = readFileSync(backendPath);
+    } catch (error) {
+      throw new Error(
+        `packed backend file unavailable for ${target}: ${backendPath}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
 
     if (contents.subarray(0, 4).toString('ascii') === '\x7fELF') {
       verifyElfBytes(contents, target);

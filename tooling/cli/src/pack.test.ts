@@ -24,6 +24,7 @@ vi.mock('node:fs', async (importOriginal) => {
 
 import {CliError} from './errors.js';
 import {packExamplePlugins, packPlugin} from './pack.js';
+import {parsePackedPluginArtifact} from './packed-plugin-artifact.js';
 
 interface ScaffoldOptions {
   readonly manifest: Record<string, unknown>;
@@ -111,12 +112,13 @@ describe('packPlugin', () => {
 
     expect(readFileSync(join(dir, 'dist', 'i18n', 'en.json'), 'utf8')).toContain('Title');
     expect(readFileSync(join(dir, 'dist', 'i18n', 'ru.json'), 'utf8')).toContain('Заголовок');
-    expect(JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8'))).toEqual({
-      schemaVersion: 1,
-      plugin: 'localized-widget',
-      entry: 'index.js',
-      staticBackends: [],
-    });
+    expect(parsePackedPluginArtifact(JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8'))))
+      .toEqual({
+        schemaVersion: 1,
+        plugin: 'localized-widget',
+        entry: 'index.js',
+        staticBackends: [],
+      });
   });
 
   it('emits target-independent artifact metadata and omits compiled backend assets', async () => {
@@ -134,10 +136,9 @@ describe('packPlugin', () => {
 
     await packPlugin(dir);
 
-    const artifact = JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8')) as {
-      plugin: string;
-      staticBackends: string[];
-    };
+    const artifact = parsePackedPluginArtifact(
+      JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8')),
+    );
 
     expect(artifact).toEqual({
       schemaVersion: 1,
@@ -173,9 +174,9 @@ describe('packPlugin', () => {
 
     await packPlugin(dir);
 
-    const artifact = JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8')) as {
-      staticBackends: string[];
-    };
+    const artifact = parsePackedPluginArtifact(
+      JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8')),
+    );
     const mode = statSync(join(dir, 'dist', 'backend', 'echo.sh')).mode.toString(8).slice(-3);
 
     expect(artifact.staticBackends).toEqual(['backend/echo.sh']);
@@ -210,9 +211,13 @@ describe('packPlugin', () => {
       },
     });
 
-    const artifact = JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8')) as {
-      backend: {target: string; files: {path: string; sha256: string}[]};
-    };
+    const artifact = parsePackedPluginArtifact(
+      JSON.parse(readFileSync(join(dir, 'dist', 'mndw-artifact.json'), 'utf8')),
+    );
+
+    if (artifact.backend === undefined) {
+      throw new Error('packed artifact has no backend metadata');
+    }
 
     expect(readFileSync(join(dir, 'dist', 'backend', 'ping-util'))).toEqual(backendBytes);
     expect(artifact.backend.target).toBe('mipsel');
@@ -577,10 +582,11 @@ describe('packPlugin', () => {
       expect(runHook).not.toHaveBeenCalled();
       expect(readFileSync(join(outDir, 'backend', 'lookup.sh'), 'utf8')).toContain('#!/bin/sh');
       expect(readFileSync(join(outDir, 'backend', 'dns-util'), 'utf8')).toBe('target binary');
-      expect(JSON.parse(readFileSync(join(outDir, 'mndw-artifact.json'), 'utf8'))).toMatchObject({
-        staticBackends: ['backend/lookup.sh'],
-        backend: {files: [{path: 'backend/dns-util'}]},
-      });
+      expect(parsePackedPluginArtifact(JSON.parse(readFileSync(join(outDir, 'mndw-artifact.json'), 'utf8'))))
+        .toMatchObject({
+          staticBackends: ['backend/lookup.sh'],
+          backend: {files: [{path: 'backend/dns-util'}]},
+        });
     } finally {
       rmSync(sourceRoot, {recursive: true, force: true});
       rmSync(outDir, {recursive: true, force: true});

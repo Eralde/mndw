@@ -496,92 +496,95 @@ const decodeProjectedSnapshot = (value: unknown): ProjectedSnapshot => {
   };
 };
 
+interface TelemetryRequestOptions {
+  readonly signal?: AbortSignal;
+  readonly unavailableMessage: string;
+  readonly invalidResponseMessage: string;
+}
+
+const isAbortError = (error: unknown): boolean => {
+  return error !== null && typeof error === 'object' && 'name' in error && error.name === 'AbortError';
+};
+
 export function createTelemetryClient(
   fetchImpl: typeof globalThis.fetch = globalThis.fetch,
 ): TelemetryClient {
+  const request = async <T>(
+    url: string,
+    decoder: (value: unknown) => T,
+    options: TelemetryRequestOptions,
+  ): Promise<T> => {
+    const response = await fetchImpl(url, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: options.signal,
+    });
+
+    if (!response.ok) {
+      throw new TelemetryError(response.status, options.unavailableMessage);
+    }
+
+    try {
+      return decoder(await response.json());
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
+      throw new TelemetryError(
+        response.status,
+        error instanceof Error ? error.message : options.invalidResponseMessage,
+      );
+    }
+  };
+
   return {
     async fetchAll(options = {}): Promise<TelemetrySnapshot> {
-      const response = await fetchImpl('/api/mndw/telemetry', {
-        method: 'GET',
-        cache: 'no-store',
-        signal: options.signal,
-      });
-
-      if (!response.ok) {
-        throw new TelemetryError(response.status, 'Telemetry history is unavailable.');
-      }
-
-      try {
-        return decodeRawSnapshot(await response.json());
-      } catch (error) {
-        throw new TelemetryError(
-          response.status,
-          error instanceof Error ? error.message : 'Invalid telemetry response.',
-        );
-      }
+      return request(
+        '/api/mndw/telemetry',
+        decodeRawSnapshot,
+        {
+          signal: options.signal,
+          unavailableMessage: 'Telemetry history is unavailable.',
+          invalidResponseMessage: 'Invalid telemetry response.',
+        },
+      );
     },
     async fetchProjected(
       range: ProjectRange,
       options: {readonly signal?: AbortSignal} = {},
     ): Promise<ProjectedSnapshot> {
-      const response = await fetchImpl(`/api/mndw/telemetry?project=${range}`, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: options.signal,
-      });
-
-      if (!response.ok) {
-        throw new TelemetryError(response.status, 'Projected telemetry is unavailable.');
-      }
-
-      try {
-        return decodeProjectedSnapshot(await response.json());
-      } catch (error) {
-        throw new TelemetryError(
-          response.status,
-          error instanceof Error ? error.message : 'Invalid projected telemetry response.',
-        );
-      }
+      return request(
+        `/api/mndw/telemetry?project=${range}`,
+        decodeProjectedSnapshot,
+        {
+          signal: options.signal,
+          unavailableMessage: 'Projected telemetry is unavailable.',
+          invalidResponseMessage: 'Invalid projected telemetry response.',
+        },
+      );
     },
     async fetchAnnotations(options = {}): Promise<TelemetryAnnotations> {
-      const response = await fetchImpl('/api/mndw/telemetry/annotations', {
-        method: 'GET',
-        cache: 'no-store',
-        signal: options.signal,
-      });
-
-      if (!response.ok) {
-        throw new TelemetryError(response.status, 'Telemetry annotations are unavailable.');
-      }
-
-      try {
-        return decodeAnnotations(await response.json());
-      } catch (error) {
-        throw new TelemetryError(
-          response.status,
-          error instanceof Error ? error.message : 'Invalid telemetry annotations response.',
-        );
-      }
+      return request(
+        '/api/mndw/telemetry/annotations',
+        decodeAnnotations,
+        {
+          signal: options.signal,
+          unavailableMessage: 'Telemetry annotations are unavailable.',
+          invalidResponseMessage: 'Invalid telemetry annotations response.',
+        },
+      );
     },
     async fetchSessions(options = {}): Promise<TelemetrySessionList> {
-      const response = await fetchImpl('/api/mndw/telemetry/sessions', {
-        method: 'GET',
-        cache: 'no-store',
-        signal: options.signal,
-      });
-
-      if (!response.ok) {
-        throw new TelemetryError(response.status, 'Telemetry sessions are unavailable.');
-      }
-
-      try {
-        return decodeSessionList(await response.json());
-      } catch (error) {
-        throw new TelemetryError(
-          response.status,
-          error instanceof Error ? error.message : 'Invalid telemetry sessions response.',
-        );
-      }
+      return request(
+        '/api/mndw/telemetry/sessions',
+        decodeSessionList,
+        {
+          signal: options.signal,
+          unavailableMessage: 'Telemetry sessions are unavailable.',
+          invalidResponseMessage: 'Invalid telemetry sessions response.',
+        },
+      );
     },
     async fetchSession(id: string, options: TelemetrySessionFetchOptions = {}): Promise<TelemetrySessionPage> {
       try {
@@ -604,24 +607,15 @@ export function createTelemetryClient(
       const path = `/api/mndw/telemetry/sessions/${encodeURIComponent(id)}`;
       const url = query.size > 0 ? `${path}?${query}` : path;
 
-      const response = await fetchImpl(url, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: options.signal,
-      });
-
-      if (!response.ok) {
-        throw new TelemetryError(response.status, `Telemetry session ${id} is unavailable.`);
-      }
-
-      try {
-        return decodeSessionPage(await response.json());
-      } catch (error) {
-        throw new TelemetryError(
-          response.status,
-          error instanceof Error ? error.message : 'Invalid telemetry session response.',
-        );
-      }
+      return request(
+        url,
+        decodeSessionPage,
+        {
+          signal: options.signal,
+          unavailableMessage: `Telemetry session ${id} is unavailable.`,
+          invalidResponseMessage: 'Invalid telemetry session response.',
+        },
+      );
     },
   };
 }

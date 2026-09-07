@@ -1,6 +1,11 @@
 import {describe, expect, it, vi} from 'vitest';
-import type {TelemetryClock} from './telemetry-client.js';
-import {TelemetryError, createTelemetryClient, decodeRawSnapshot, historyStatus} from './telemetry-client.js';
+import {
+  type TelemetryClock,
+  TelemetryError,
+  createTelemetryClient,
+  decodeRawSnapshot,
+  historyStatus,
+} from './telemetry-client.js';
 
 const decodeRawSnapshotForTest = decodeRawSnapshot;
 
@@ -337,6 +342,22 @@ describe('telemetry session client', () => {
       '/api/mndw/telemetry/sessions',
       expect.objectContaining({signal: controller.signal}),
     );
+  });
+
+  it('does not wrap aborts that happen while decoding the response body', async () => {
+    const abortError = new Error('aborted');
+
+    abortError.name = 'AbortError';
+
+    const response = {
+      ok: true,
+      status: 200,
+      json: vi.fn().mockRejectedValue(abortError),
+    } as unknown as Response;
+    const fetchImpl = vi.fn().mockResolvedValue(response);
+    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
+
+    await expect(client.fetchAll()).rejects.toBe(abortError);
   });
 });
 

@@ -20,7 +20,7 @@ var ErrEvidenceUnverified = errors.New("telemetry: clock evidence endpoint is no
 // ntpStatusSelector is the candidate RCI path recorded by the plan. Shipping it
 // as the production selector requires captured target evidence; until then the
 // adapter refuses to query.
-const ntpStatusSelector = "show/ntp/status"
+const ntpStatusSelector = "show.ntp.status"
 
 // rciEvidenceSource is the production evidence adapter over the shared RCI
 // session.

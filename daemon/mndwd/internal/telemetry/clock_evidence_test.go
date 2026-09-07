@@ -1,8 +1,38 @@
 package telemetry
 
 import (
+	"context"
 	"testing"
+
+	"mndw.local/rci"
 )
+
+func TestRCIEvidenceSourceUsesNestedNTPQueryPath(t *testing.T) {
+	var requestBody []byte
+	client, err := rci.New(rci.TransportFunc(func(_ context.Context, body []byte) (rci.Response, error) {
+		requestBody = append([]byte(nil), body...)
+
+		return rci.Response{
+			Status: 200,
+			Body:   []byte(`[{"elapsed":10324,"server":"0.europe.pool.ntp.org","accurate":true,"synchronized":true,"ndsstime":false,"usertime":false}]`),
+		}, nil
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	evidence, err := NewRCIEvidenceSource(client).Read(context.Background(), EvidenceRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !evidence.Synchronized {
+		t.Fatal("evidence was not synchronized")
+	}
+	if string(requestBody) != `[{"show":{"ntp":{"status":{}}}}]` {
+		t.Fatalf("request body = %s", requestBody)
+	}
+}
 
 func TestDecodeNTPStatus_Synchronized(t *testing.T) {
 	body := []byte(`{"elapsed":8028,"server":"0.europe.pool.ntp.org","accurate":true,"synchronized":true,"ndsstime":false,"usertime":false}`)

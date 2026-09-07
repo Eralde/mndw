@@ -45,6 +45,7 @@ func NewRCIEvidenceSourceWithSelector(client *rci.Client, selector string, verif
 	if selector == "" {
 		selector = ntpStatusSelector
 	}
+
 	return &rciEvidenceSource{client: client, selector: selector, verified: verified, decode: decodeNTPStatus}
 }
 
@@ -53,9 +54,11 @@ func (s *rciEvidenceSource) Read(ctx context.Context, request EvidenceRequest) (
 	if !s.verified {
 		return Evidence{}, ErrEvidenceUnverified
 	}
+
 	if s.client == nil {
 		return Evidence{}, errors.New("telemetry: RCI client is unavailable")
 	}
+
 	if err := ctx.Err(); err != nil {
 		return Evidence{}, err
 	}
@@ -64,20 +67,25 @@ func (s *rciEvidenceSource) Read(ctx context.Context, request EvidenceRequest) (
 	if err != nil {
 		return Evidence{}, err
 	}
+
 	if len(results) == 0 || results[0] == nil {
 		return Evidence{}, errors.New("telemetry: RCI evidence query returned no results")
 	}
+
 	evidence, err := s.decode(results[0])
 	if err != nil {
 		return Evidence{}, err
 	}
+
 	if evidence.ID == "" {
 		return Evidence{}, errors.New("telemetry: evidence response carries no identity")
 	}
+
 	if evidence.ID == request.ConsumedEvidenceID && request.SuspectElapsedMs != nil {
 		// Already-consumed evidence cannot confirm a fresh synchronization.
 		evidence.AfterSuspect = false
 	}
+
 	return evidence, nil
 }
 
@@ -91,12 +99,15 @@ type ntpStatus struct {
 // decodeNTPStatus decodes only the fields captured during target validation.
 func decodeNTPStatus(body []byte) (Evidence, error) {
 	var status ntpStatus
+
 	if err := json.Unmarshal(body, &status); err != nil {
 		return Evidence{}, err
 	}
+
 	if len(status.Server) > journal.MaxEvidenceSourceBytes {
 		return Evidence{}, fmt.Errorf("telemetry: evidence source string is too long: %d", len(status.Server))
 	}
+
 	return Evidence{
 		Synchronized: status.Synchronized,
 		ID:           fmt.Sprintf("%s@%d", status.Server, status.Elapsed),
@@ -112,6 +123,7 @@ func ReadEvidence(ctx context.Context, clock BootClock, source EvidenceSource, r
 	if err != nil {
 		return Reading{}, Reading{}, Evidence{}, err
 	}
+
 	if source == nil {
 		return before, before, Evidence{}, errors.New("telemetry: evidence source is required")
 	}
@@ -120,14 +132,17 @@ func ReadEvidence(ctx context.Context, clock BootClock, source EvidenceSource, r
 	if err != nil {
 		return before, before, Evidence{}, err
 	}
+
 	after, err := clock.Read()
 	if err != nil {
 		return before, after, Evidence{}, err
 	}
+
 	if after.Boot != before.Boot || after.ElapsedMs < before.ElapsedMs {
 		// Discard the observation: it cannot bracket a single boot instant.
 		return before, after, Evidence{}, errors.New("telemetry: observation bracket is inconsistent")
 	}
+
 	return before, after, evidence, nil
 }
 
@@ -142,9 +157,11 @@ type staticEvidenceSource struct {
 func (s *staticEvidenceSource) Read(_ context.Context, request EvidenceRequest) (Evidence, error) {
 	s.calls++
 	s.requests = append(s.requests, request)
+
 	if s.err != nil {
 		return Evidence{}, s.err
 	}
+
 	return s.evidence, nil
 }
 
@@ -159,11 +176,14 @@ func (c *scriptedClock) Read() (Reading, error) {
 	if c.err != nil {
 		return Reading{}, c.err
 	}
+
 	if c.index >= len(c.readings) {
 		return c.readings[len(c.readings)-1], nil
 	}
+
 	reading := c.readings[c.index]
 	c.index++
+
 	return reading, nil
 }
 
@@ -172,5 +192,6 @@ func boundedString(value string, limit int) string {
 	if len(value) <= limit {
 		return value
 	}
+
 	return strings.TrimSpace(value[:limit])
 }

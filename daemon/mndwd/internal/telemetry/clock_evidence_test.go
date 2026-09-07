@@ -29,6 +29,7 @@ func TestRCIEvidenceSourceUsesNestedNTPQueryPath(t *testing.T) {
 	if !evidence.Synchronized {
 		t.Fatal("evidence was not synchronized")
 	}
+
 	if string(requestBody) != `[{"show":{"ntp":{"status":{}}}}]` {
 		t.Fatalf("request body = %s", requestBody)
 	}
@@ -40,9 +41,11 @@ func TestDecodeNTPStatus_Synchronized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if !ev.Synchronized {
 		t.Error("expected Synchronized=true")
 	}
+
 	if ev.ID != "0.europe.pool.ntp.org@8028" {
 		t.Errorf("unexpected ID: %s", ev.ID)
 	}
@@ -54,9 +57,11 @@ func TestDecodeNTPStatus_Unsynchronized(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if ev.Synchronized {
 		t.Error("expected Synchronized=false")
 	}
+
 	if ev.ID != "@7" {
 		t.Errorf("unexpected ID: %s", ev.ID)
 	}

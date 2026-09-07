@@ -2,7 +2,7 @@ import type {RciManager, RciQuery} from '@rci-tools/core';
 import {type Observable, forkJoin, of, throwError} from 'rxjs';
 import {describe, expect, it} from 'vitest';
 
-import {fetchDeviceInfo, formatUptime} from './device-info.js';
+import {fetchDeviceHistory, fetchDeviceInfo, formatUptime} from './device-info.js';
 
 function batchRci(queue: (query: RciQuery) => Observable<unknown>): RciManager {
   return {
@@ -21,22 +21,25 @@ function fakeRci(handler: (q: RciQuery) => unknown): RciManager {
 describe('fetchDeviceInfo', () => {
   it('maps identification, system, and load data into the live device state model', async () => {
     const queries: RciQuery[] = [];
-    const info = await fetchDeviceInfo(batchRci((query) => {
-      queries.push(query);
+    const info = await fetchDeviceInfo(
+      batchRci((query) => {
+        queries.push(query);
 
-      switch (query.path) {
-        case 'show.identification':
-          return of({servicetag: 'ST', serial: 'SN', mac: 'AA:BB', hwid: 'HW', cid: 'CID'});
-        case 'show.system':
-          return of({uptime: 90061, cpuload: 27, memtotal: 1000, memory: '610/1024'});
-        case 'show.system.rrd.cpu':
-          return of({data: [{t: '30', v: 21}, {t: 10, v: 18}]});
-        case 'show.system.rrd.memory':
-          return of({data: [{t: '30', v: 620}, {t: 10, v: 500}]});
-        default:
-          return throwError(() => new Error(`unexpected query: ${query.path}`));
-      }
-    }));
+        switch (query.path) {
+          case 'show.identification':
+            return of({servicetag: 'ST', serial: 'SN', mac: 'AA:BB', hwid: 'HW', cid: 'CID'});
+          case 'show.system':
+            return of({uptime: 90061, cpuload: 27, memtotal: 1000, memory: '610/1024'});
+          case 'show.system.rrd.cpu':
+            return of({data: [{t: '30', v: 21}, {t: 10, v: 18}]});
+          case 'show.system.rrd.memory':
+            return of({data: [{t: '30', v: 620}, {t: 10, v: 500}]});
+          default:
+            return throwError(() => new Error(`unexpected query: ${query.path}`));
+        }
+      }),
+      2,
+    );
 
     expect(info).toEqual({
       uptimeSeconds: 90061,
@@ -44,8 +47,7 @@ describe('fetchDeviceInfo', () => {
       ramLoadPercent: 61,
       cpuHistory: [18, 21],
       ramHistory: [50, 62],
-      cpuHistoryByRange: {'3m': [18, 21], '1h': [18, 21], '3h': [18, 21], '1d': [18, 21]},
-      ramHistoryByRange: {'3m': [50, 62], '1h': [50, 62], '3h': [50, 62], '1d': [50, 62]},
+      memoryTotal: 1000,
       serial: 'SN',
       serviceTag: 'ST',
       mac: 'AA:BB',
@@ -53,12 +55,33 @@ describe('fetchDeviceInfo', () => {
       cid: 'CID',
     });
 
-    expect(queries).toEqual(expect.arrayContaining([
+    expect(queries).toEqual([
       {path: 'show.identification'},
       {path: 'show.system'},
-      {path: 'show.system.rrd.cpu', data: {detail: 0, attribute: 'avg'}},
-      {path: 'show.system.rrd.memory', data: {detail: 0, attribute: 'used'}},
-    ]));
+      {path: 'show.system.rrd.cpu', data: {detail: 2, attribute: 'avg'}},
+      {path: 'show.system.rrd.memory', data: {detail: 2, attribute: 'used'}},
+    ]);
+  });
+
+  it('fetches only selected history detail without re-reading device identity', async () => {
+    const queries: RciQuery[] = [];
+    const history = await fetchDeviceHistory(
+      batchRci((query) => {
+        queries.push(query);
+
+        return query.path === 'show.system.rrd.cpu'
+          ? of({data: [{t: 1, v: 27}]})
+          : of({data: [{t: 1, v: 500}]});
+      }),
+      1,
+      1000,
+    );
+
+    expect(history).toEqual({cpuHistory: [27], ramHistory: [50]});
+    expect(queries).toEqual([
+      {path: 'show.system.rrd.cpu', data: {detail: 1, attribute: 'avg'}},
+      {path: 'show.system.rrd.memory', data: {detail: 1, attribute: 'used'}},
+    ]);
   });
 
   it('coerces uptime given as a string (firmware 5.2 returns "984")', async () => {
@@ -76,8 +99,7 @@ describe('fetchDeviceInfo', () => {
       ramLoadPercent: 0,
       cpuHistory: [],
       ramHistory: [],
-      cpuHistoryByRange: {'3m': [], '1h': [], '3h': [], '1d': []},
-      ramHistoryByRange: {'3m': [], '1h': [], '3h': [], '1d': []},
+      memoryTotal: null,
       serial: '',
       serviceTag: '',
       mac: '',

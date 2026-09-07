@@ -192,6 +192,106 @@ describe('App', () => {
     app.unmount();
   });
 
+  it('loads only selected live history and shows chart loading while changing range', async () => {
+    const queries: RciQuery[] = [];
+    const oneHourCpu = new Subject<unknown>();
+    const oneHourMemory = new Subject<unknown>();
+    const queue = vi.fn((query: RciQuery): Observable<unknown> => {
+      queries.push(query);
+
+      const detail = (query.data as {detail?: number} | undefined)?.detail;
+
+      if (detail === 1 && query.path === 'show.system.rrd.cpu') {
+        return oneHourCpu.asObservable();
+      }
+
+      if (detail === 1 && query.path === 'show.system.rrd.memory') {
+        return oneHourMemory.asObservable();
+      }
+
+      return successfulResponse(query);
+    });
+    const app = mountWidget(queue);
+
+    await flushPromises();
+
+    expect(queries.filter((query) => query.path.startsWith('show.system.rrd.'))).toEqual([
+      {path: 'show.system.rrd.cpu', data: {detail: 0, attribute: 'avg'}},
+      {path: 'show.system.rrd.memory', data: {detail: 0, attribute: 'used'}},
+    ]);
+
+    const range1h = [...document.querySelectorAll<HTMLButtonElement>('.range-controls button')]
+      .find((button) => button.textContent?.includes('1h'));
+
+    range1h?.dispatchEvent(new Event('click'));
+    await flushPromises();
+
+    expect(document.querySelectorAll('[data-testid="history-loading"]')).toHaveLength(2);
+    expect(queries.slice(-2)).toEqual([
+      {path: 'show.system.rrd.cpu', data: {detail: 1, attribute: 'avg'}},
+      {path: 'show.system.rrd.memory', data: {detail: 1, attribute: 'used'}},
+    ]);
+
+    oneHourCpu.next({data: [{t: 2, v: 24}]});
+    oneHourCpu.complete();
+    oneHourMemory.next({data: [{t: 2, v: 450}]});
+    oneHourMemory.complete();
+    await flushPromises();
+
+    expect(document.querySelectorAll('[data-testid="history-loading"]')).toHaveLength(0);
+    expect(document.querySelectorAll('mndw-sparkline')).toHaveLength(2);
+
+    app.unmount();
+  });
+
+  it('ignores a late response for a previously selected live range', async () => {
+    const pending = {
+      oneHour: {cpu: new Subject<unknown>(), memory: new Subject<unknown>()},
+      threeHours: {cpu: new Subject<unknown>(), memory: new Subject<unknown>()},
+    };
+    const queue = vi.fn((query: RciQuery): Observable<unknown> => {
+      const detail = (query.data as {detail?: number} | undefined)?.detail;
+      const pendingRange = detail === 1 ? pending.oneHour : detail === 2 ? pending.threeHours : null;
+
+      if (pendingRange !== null && query.path === 'show.system.rrd.cpu') {
+        return pendingRange.cpu.asObservable();
+      }
+
+      if (pendingRange !== null && query.path === 'show.system.rrd.memory') {
+        return pendingRange.memory.asObservable();
+      }
+
+      return successfulResponse(query);
+    });
+    const app = mountWidget(queue);
+
+    await flushPromises();
+
+    const buttons = [...document.querySelectorAll('.range-controls button')];
+
+    buttons.find((button) => button.textContent?.includes('1h'))?.dispatchEvent(new Event('click'));
+    await flushPromises();
+    buttons.find((button) => button.textContent?.includes('3h'))?.dispatchEvent(new Event('click'));
+    await flushPromises();
+
+    pending.oneHour.cpu.next({data: [{t: 2, v: 24}]});
+    pending.oneHour.cpu.complete();
+    pending.oneHour.memory.next({data: [{t: 2, v: 450}]});
+    pending.oneHour.memory.complete();
+    await flushPromises();
+
+    expect(document.querySelectorAll('[data-testid="history-loading"]')).toHaveLength(2);
+
+    pending.threeHours.cpu.next({data: [{t: 3, v: 26}]});
+    pending.threeHours.cpu.complete();
+    pending.threeHours.memory.next({data: [{t: 3, v: 475}]});
+    pending.threeHours.memory.complete();
+    await flushPromises();
+
+    expect(document.querySelectorAll('[data-testid="history-loading"]')).toHaveLength(0);
+    app.unmount();
+  });
+
   it('recovers from an initial failure on the next 30-second refresh', async () => {
     let systemAttempts = 0;
     const queue = (query: RciQuery): Observable<unknown> => {
@@ -253,6 +353,43 @@ describe('App', () => {
     expect(document.querySelectorAll('.load-bar-chart')).toHaveLength(2);
     app.unmount();
     host.remove();
+  });
+
+  it('keeps live refreshes on the last live detail while a durable range is selected', async () => {
+    const queries: RciQuery[] = [];
+    const queue = vi.fn((query: RciQuery): Observable<unknown> => {
+      queries.push(query);
+
+      return successfulResponse(query);
+    });
+    const app = mountWidget(queue);
+
+    await flushPromises();
+
+    const range1h = [...document.querySelectorAll<HTMLButtonElement>('.range-controls button')]
+      .find((button) => button.textContent?.includes('1h'));
+
+    expect(range1h).not.toBeUndefined();
+    range1h?.click();
+    await flushPromises();
+
+    const range7d = [...document.querySelectorAll<HTMLButtonElement>('.range-controls button')]
+      .find((button) => button.textContent?.includes('7d'));
+
+    expect(range7d).not.toBeUndefined();
+    range7d?.click();
+    await flushPromises();
+    expect(range7d?.classList.contains('selected')).toBe(true);
+
+    vi.advanceTimersByTime(30_000);
+    await flushPromises();
+
+    expect(queries.slice(-2)).toEqual([
+      {path: 'show.system.rrd.cpu', data: {detail: 1, attribute: 'avg'}},
+      {path: 'show.system.rrd.memory', data: {detail: 1, attribute: 'used'}},
+    ]);
+
+    app.unmount();
   });
 
   it('does not render a temperature section', async () => {

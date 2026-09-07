@@ -78,4 +78,22 @@ describe('LoadBarChart', () => {
       translator.formatDate(new Date(end), options),
     ]);
   });
+
+  it('shows history loading state without hiding current value', async () => {
+    host = document.createElement('div');
+    document.body.append(host);
+    app = createApp(LoadBarChart, {
+      label: 'CPU',
+      value: 20,
+      history: [{value: 10}],
+      loading: true,
+      translator: createTestI18n({'loading': 'Loading…', 'no-data': 'No data'}),
+    });
+    app.mount(host);
+    await nextTick();
+
+    expect(host.querySelector('.load-bar-chart__value')?.textContent).toBe('20%');
+    expect(host.querySelector('[data-testid="history-loading"]')?.textContent).toBe('Loading…');
+    expect(host.querySelector('mndw-sparkline')).toBeNull();
+  });
 });

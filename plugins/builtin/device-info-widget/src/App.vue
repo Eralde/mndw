@@ -7,7 +7,14 @@ import {Ticker} from '@mndw/sdk/ticker';
 import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 import CopyField from './components/CopyField.vue';
 import LoadBarChart from './components/LoadBarChart.vue';
-import {type DeviceInfoRange, type LiveDeviceInfo, fetchDeviceInfo, formatUptime} from './services/device-info.js';
+import {
+  type DeviceInfoRange,
+  type LiveDeviceInfo,
+  deviceInfoDetail,
+  fetchDeviceHistory,
+  fetchDeviceInfo,
+  formatUptime,
+} from './services/device-info.js';
 import {createUptimeBaseline, getUptimeSeconds, type UptimeBaseline} from './services/uptime.js';
 import {
   sparklineSamplesFromProjection,
@@ -22,6 +29,7 @@ const translator = useTranslator(props.ctx.i18n);
 const t = (key: string): string => translator.t(key);
 
 const loadState = ref<LoadState<LiveDeviceInfo>>({status: 'loading'});
+const liveHistoryLoading = ref(false);
 const uptimeSeconds = ref<number | null>(null);
 const projectedSnapshot = ref<ProjectedSnapshot | null>(null);
 const projectedLoadedRange = ref<DurableRange | null>(null);
@@ -38,6 +46,7 @@ const DISPLAY_RANGES: readonly {key: DisplayRange; label: string}[] = [
 ];
 
 const selectedRange = ref<DisplayRange>('3m');
+const selectedLiveRange = ref<DeviceInfoRange>('3m');
 const sectionVisibility = ref<Record<string, boolean>>({
   cpu: true,
   ram: true,
@@ -58,7 +67,13 @@ let refreshLoop: RefreshLoop | null = null;
 let projectedRefreshLoop: RefreshLoop | null = null;
 let projectedAbortController: AbortController | null = null;
 let pendingProjectedRange: DurableRange | null = null;
+let liveHistoryGeneration = 0;
 let mounted = false;
+
+interface LiveInfoRefresh {
+  range: DeviceInfoRange;
+  info: LiveDeviceInfo;
+}
 
 const firmware = computed(() => props.ctx.deviceInfo.firmwareVersion);
 const info = computed<LiveDeviceInfo | null>(() => {
@@ -95,19 +110,17 @@ const ramLoadHistory = computed(() => {
 });
 const cpuHistory = computed(() => {
   const currentInfo = info.value;
-  const range = selectedRange.value;
 
-  return currentInfo === null || range === '7d' || range === '30d'
+  return currentInfo === null || isDurableRange.value || liveHistoryLoading.value
       ? []
-      : currentInfo.cpuHistoryByRange[range] ?? [];
+      : currentInfo.cpuHistory;
 });
 const ramHistory = computed(() => {
   const currentInfo = info.value;
-  const range = selectedRange.value;
 
-  return currentInfo === null || range === '7d' || range === '30d'
+  return currentInfo === null || isDurableRange.value || liveHistoryLoading.value
       ? []
-      : currentInfo.ramHistoryByRange[range] ?? [];
+      : currentInfo.ramHistory;
 });
 
 const uptime = computed(() => {
@@ -116,7 +129,11 @@ const uptime = computed(() => {
       : t('unknown');
 });
 
-const handleInfoSuccess = (nextInfo: LiveDeviceInfo): void => {
+const handleInfoSuccess = ({range, info: nextInfo}: LiveInfoRefresh): void => {
+  if (selectedLiveRange.value !== range) {
+    return;
+  }
+
   const syncedAtMs = Date.now();
 
   loadState.value = {status: 'success', data: nextInfo};
@@ -157,6 +174,40 @@ const handleProjectedTelemetryError = (loadError: unknown, _isInitial: boolean):
   console.error('[device-info-widget] projected telemetry refresh failed', loadError);
 };
 
+const loadLiveHistory = (range: DeviceInfoRange): void => {
+  const currentInfo = info.value;
+
+  if (currentInfo === null) {
+    return;
+  }
+
+  liveHistoryGeneration += 1;
+  const requestGeneration = liveHistoryGeneration;
+  liveHistoryLoading.value = true;
+
+  void fetchDeviceHistory(props.ctx.rciManager, deviceInfoDetail(range), currentInfo.memoryTotal).then(
+    (nextHistory) => {
+      if (
+        !mounted
+        || requestGeneration !== liveHistoryGeneration
+        || selectedRange.value !== range
+        || loadState.value.status !== 'success'
+      ) {
+        return;
+      }
+
+      loadState.value = {status: 'success', data: {...loadState.value.data, ...nextHistory}};
+      liveHistoryLoading.value = false;
+    },
+    (loadError: unknown) => {
+      if (mounted && requestGeneration === liveHistoryGeneration && selectedRange.value === range) {
+        console.error('[device-info-widget] live history refresh failed', loadError);
+        liveHistoryLoading.value = false;
+      }
+    },
+  );
+};
+
 const stopProjectedLoop = (): void => {
   projectedRefreshLoop?.stop();
   projectedRefreshLoop = null;
@@ -182,9 +233,13 @@ const startProjectedLoop = (range: DurableRange): void => {
 const setRange = (range: DisplayRange): void => {
   selectedRange.value = range;
   if (range === '7d' || range === '30d') {
+    liveHistoryGeneration += 1;
+    liveHistoryLoading.value = false;
     startProjectedLoop(range);
   } else {
+    selectedLiveRange.value = range;
     stopProjectedLoop();
+    loadLiveHistory(range);
   }
 };
 
@@ -227,7 +282,11 @@ onMounted(() => {
   ticker.start(1000);
 
   refreshLoop = createRefreshLoop({
-    load: () => fetchDeviceInfo(props.ctx.rciManager),
+    load: async (): Promise<LiveInfoRefresh> => {
+      const range = selectedLiveRange.value;
+
+      return {range, info: await fetchDeviceInfo(props.ctx.rciManager, deviceInfoDetail(range))};
+    },
     intervalMs: 30_000,
     onSuccess: handleInfoSuccess,
     onError: handleLoadError,
@@ -240,6 +299,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   mounted = false;
+  liveHistoryGeneration += 1;
   refreshLoop?.stop();
   refreshLoop = null;
   stopProjectedLoop();
@@ -277,10 +337,12 @@ onUnmounted(() => {
         <LoadBarChart v-if="sectionVisibility.cpu" :label="t('cpu')" :value="info.cpuLoadPercent"
                       :history="cpuLoadHistory"
                       :timeDomain="cpuLoadTimeDomain"
+                      :loading="liveHistoryLoading"
                       :translator="translator"/>
         <LoadBarChart v-if="sectionVisibility.ram" :label="t('ram')" :value="info.ramLoadPercent"
                       :history="ramLoadHistory"
                       :timeDomain="ramLoadTimeDomain"
+                      :loading="liveHistoryLoading"
                       :translator="translator"/>
       </div>
       <section v-if="sectionVisibility.identity" class="app__identity">

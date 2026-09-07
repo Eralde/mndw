@@ -8,6 +8,7 @@ const props = defineProps<{
   value: number;
   history: readonly MndwChartSample[];
   timeDomain?: MndwChartDomain;
+  loading?: boolean;
   translator: Translator;
 }>();
 
@@ -33,16 +34,21 @@ const timeFormatter = (time: number): string => {
       <span class="load-bar-chart__label">{{ label }}</span>
       <span class="load-bar-chart__value">{{ value }}%</span>
     </div>
-    <mndw-sparkline
-      class="load-bar-chart__chart"
-      :points.prop="points"
-      :timeDomain.prop="timeDomain"
-      :timeFormatter.prop="timeFormatter"
-      :value-label="label"
-      :aria-label="label"
-      :empty-label="t('no-data')"
-    >
-    </mndw-sparkline>
+    <div class="load-bar-chart__chart" :aria-busy="loading === true">
+      <span v-if="loading === true" class="load-bar-chart__loading" data-testid="history-loading" role="status">
+        {{ t('loading') }}
+      </span>
+      <mndw-sparkline
+        v-else
+        :points.prop="points"
+        :timeDomain.prop="timeDomain"
+        :timeFormatter.prop="timeFormatter"
+        :value-label="label"
+        :aria-label="label"
+        :empty-label="t('no-data')"
+      >
+      </mndw-sparkline>
+    </div>
   </div>
 </template>
 
@@ -74,6 +80,12 @@ const timeFormatter = (time: number): string => {
 .load-bar-chart__chart {
   display: block;
   width: 100%;
+  min-height: 1.5rem;
+}
+
+.load-bar-chart__loading {
+  display: block;
+  color: var(--mndw-text-subtle);
 }
 
 @container device-info-loads (max-width: 200px) {

@@ -4,7 +4,8 @@ import {basename, dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import crossSpawn from 'cross-spawn';
 import {CliError} from './errors.js';
-import {type ReloadSentinel, createReloadSentinel, restartService as defaultRestartService} from './dev-reload.js';
+import {restartService as defaultRestartService} from './dev-reload.js';
+import {type DevSessionDeps, runDevSession} from './dev-session.js';
 import {type GoBuildSpawn, buildGoBackend} from './go-backend-build.js';
 import {type LoadedManifest, readManifest} from './manifest.js';
 import {resolvePluginDir} from './paths.js';
@@ -19,30 +20,20 @@ export interface DevOptions {
   readonly hostDevice?: string;
 }
 
-/** Minimal child-process surface the supervisor needs, so tests can substitute fakes. */
-export interface DevChild {
-  on(event: 'exit', listener: () => void): void;
-  kill(signal?: NodeJS.Signals): void;
-}
-
 /** Injectable boundaries so the supervisor is unit-testable without real processes or fs. */
 export interface DevDeps {
   readManifest?: (pluginDir: string) => LoadedManifest;
   makeTempDir?: (prefix: string) => string;
   symlinkDir?: (target: string, linkPath: string) => void;
   removeDir?: (dir: string) => void;
-  spawn?: (command: string, args: string[], options: {cwd?: string; env?: NodeJS.ProcessEnv}) => DevChild;
-  waitForDaemon?: (baseUrl: string, pluginName: string) => Promise<void>;
-  onShutdownSignal?: (handler: () => void) => void;
   findDaemonPackageDir?: () => string | null;
   fileExists?: (path: string) => boolean;
   buildGoBackend?: (pluginSourceDir: string) => GoBuildResult;
   repoRoot?: string;
-  createReloadSentinel?: (repoRoot: string) => ReloadSentinel;
   watchBackend?: (options: WatchBuildOptions<GoBuildResult>) => WatchHandle;
   restartService?: typeof defaultRestartService;
-  fetch?: typeof fetch;
   env?: NodeJS.ProcessEnv;
+  session?: DevSessionDeps;
 }
 
 /** Outcome of a Go backend build attempt. */
@@ -52,49 +43,10 @@ export interface GoBuildResult {
   readonly error?: string;
 }
 
-interface DaemonDirs {
-  readonly listen: string;
-  readonly builtinDir: string;
-  readonly dataDir: string;
-  readonly userDir: string;
-}
-
 export interface DaemonLaunch {
   readonly command: string;
   readonly args: string[];
   readonly cwd?: string;
-}
-
-interface HostEnvParams {
-  readonly pluginSourceDir: string;
-  readonly daemonUrl: string;
-  readonly builtinDir: string;
-  readonly userDir: string;
-  readonly hostDevice?: string;
-  readonly reloadSentinel?: string;
-}
-
-/** The daemon argv for a `mndw dev` session: dev auth bypass, opkg stub, over the temp roots. */
-export function buildDaemonArgs(dirs: DaemonDirs, controllerURL?: string): string[] {
-  const args = [
-    '--listen',
-    dirs.listen,
-    '--dev',
-    '--opkg',
-    'stub',
-    '--builtin-plugins-dir',
-    dirs.builtinDir,
-    '--data-dir',
-    dirs.dataDir,
-    '--user-plugins-dir',
-    dirs.userDir,
-  ];
-
-  if (controllerURL !== undefined) {
-    args.push('--controller-url', controllerURL);
-  }
-
-  return args;
 }
 
 /**
@@ -119,58 +71,6 @@ export function resolveDaemonLaunch(
   }
 
   throw new CliError('mndw dev needs a source checkout (daemon/mndwd) or --daemon <mndwd-binary>');
-}
-
-/** Environment for the host dev server: sandbox source path, daemon URL, and plugin roots. */
-export function buildHostEnv(params: HostEnvParams, baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {
-    ...baseEnv,
-    MNDW_SANDBOX_PLUGIN: params.pluginSourceDir,
-    MNDW_DAEMON: params.daemonUrl,
-    MNDW_BUILTIN_PLUGINS_DIR: params.builtinDir,
-    MNDW_USER_PLUGINS_DIR: params.userDir,
-  };
-
-  if (params.hostDevice !== undefined) {
-    env.MNDW_HOST_DEVICE = params.hostDevice;
-  }
-
-  if (params.reloadSentinel !== undefined) {
-    env.MNDW_DEV_RELOAD_SENTINEL = params.reloadSentinel;
-  }
-
-  return env;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-/** Polls the daemon management list until the plugin appears (readiness) or the deadline passes. */
-async function defaultWaitForDaemon(baseUrl: string, pluginName: string): Promise<void> {
-  const deadline = Date.now() + 30_000;
-
-  for (;;) {
-    try {
-      const response = await fetch(`${baseUrl}/api/mgmt/list`);
-
-      if (response.ok) {
-        const data = await response.json() as {plugins?: Array<{name?: string}>};
-
-        if (Array.isArray(data.plugins) && data.plugins.some((p) => p.name === pluginName)) {
-          return;
-        }
-      }
-    } catch {
-      // Daemon not up yet; keep polling until the deadline.
-    }
-
-    if (Date.now() > deadline) {
-      throw new CliError(`mndw dev: timed out waiting for mndwd at ${baseUrl}`);
-    }
-
-    await delay(250);
-  }
 }
 
 /** Locates `daemon/mndwd` relative to this file, or null outside a source checkout. */
@@ -363,19 +263,6 @@ export function defaultBuildGoBackend(
   return {success: true, skipped: false};
 }
 
-function defaultSpawn(
-  command: string,
-  args: string[],
-  options: {cwd?: string; env?: NodeJS.ProcessEnv},
-): DevChild {
-  return crossSpawn(command, args, {stdio: 'inherit', cwd: options.cwd, env: options.env});
-}
-
-function defaultOnShutdownSignal(handler: () => void): void {
-  process.on('SIGINT', handler);
-  process.on('SIGTERM', handler);
-}
-
 /**
  * Launches a full local development environment for one plugin: an isolated `mndwd --dev`
  * (serving the plugin's backend from a temp builtin root symlinked to its source) plus the
@@ -389,14 +276,11 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
   const makeTempDir = deps.makeTempDir ?? ((prefix) => mkdtempSync(join(tmpdir(), prefix)));
   const symlinkDir = deps.symlinkDir ?? ((target, linkPath) => symlinkSync(target, linkPath, 'dir'));
   const removeDir = deps.removeDir ?? ((dir) => rmSync(dir, {recursive: true, force: true}));
-  const spawn = deps.spawn ?? defaultSpawn;
-  const waitForDaemon = deps.waitForDaemon ?? defaultWaitForDaemon;
-  const onShutdownSignal = deps.onShutdownSignal ?? defaultOnShutdownSignal;
   const findDaemonPackageDir = deps.findDaemonPackageDir ?? defaultFindDaemonPackageDir;
   const fileExists = deps.fileExists ?? existsSync;
   const buildBackend = deps.buildGoBackend ?? defaultBuildGoBackend;
-  const makeReloadSentinel = deps.createReloadSentinel ?? createReloadSentinel;
   const baseEnv = deps.env ?? process.env;
+  const hostDevice = options.hostDevice ?? baseEnv.MNDW_HOST_DEVICE;
 
   // Validate before launching anything so a bad plugin fails fast with no side effects.
   const {manifest} = loadManifest(pluginDir);
@@ -413,11 +297,6 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
 
     return dir;
   };
-  const builtinDir = track(makeTempDir('mndw-dev-builtin-'));
-  // Keep daemon-owned Unix socket paths below macOS's pathname limit when tmpdir() is nested.
-  const dataDir = track(makeTempDir('d-'));
-  const userDir = track(makeTempDir('mndw-dev-user-'));
-
   const cleanupDirs = (): void => {
     for (const dir of [...tempDirs].reverse()) {
       try {
@@ -428,128 +307,76 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
     }
   };
 
-  // Expose the plugin to the daemon as a builtin via a directory symlink to its source, so its
-  // backend commands/services work while frontend is served from source.
   try {
-    symlinkDir(pluginSourceDir, join(builtinDir, pluginName));
-  } catch (err) {
-    cleanupDirs();
+    const builtinDir = track(makeTempDir('mndw-dev-builtin-'));
+    // Keep daemon-owned Unix socket paths below macOS's pathname limit when tmpdir() is nested.
+    const dataDir = track(makeTempDir('d-'));
+    const userDir = track(makeTempDir('mndw-dev-user-'));
 
-    throw new CliError(
-      `mndw dev could not symlink the plugin into a temporary builtin root: ${(err as Error).message}. `
-        + 'Symlinks are required (source is never copied).',
-    );
-  }
+    // Expose plugin to daemon as builtin via directory symlink to its source.
+    try {
+      symlinkDir(pluginSourceDir, join(builtinDir, pluginName));
+    } catch (err) {
+      throw new CliError(
+        `mndw dev could not symlink the plugin into a temporary builtin root: ${(err as Error).message}. `
+          + 'Symlinks are required (source is never copied).',
+      );
+    }
 
-  // Build Go backend (if present) before daemon launch so service commands find their binaries.
-  const buildResult = buildBackend(pluginSourceDir);
+    // Build Go backend (if present) before daemon launch so service commands find their binaries.
+    const buildResult = buildBackend(pluginSourceDir);
 
-  if (!buildResult.success) {
-    cleanupDirs();
+    if (!buildResult.success) {
+      throw new CliError(`mndw dev: Go backend build failed: ${buildResult.error ?? 'unknown error'}`);
+    }
 
-    throw new CliError(`mndw dev: Go backend build failed: ${buildResult.error ?? 'unknown error'}`);
-  }
+    if (!buildResult.skipped) {
+      console.log('[mndw dev] Built Go backend');
+    }
 
-  if (!buildResult.skipped) {
-    console.log('[mndw dev] Built Go backend');
-  }
-
-  const launch = resolveDaemonLaunch(
-    buildDaemonArgs({listen, builtinDir, dataDir, userDir}, options.hostDevice),
-    options,
-    {
+    const launch = resolveDaemonLaunch([], options, {
       daemonPackageDir: findDaemonPackageDir(),
       binaryExists: fileExists,
-    },
-  );
+    });
 
-  const reloadSentinel = makeReloadSentinel(repoRoot);
-
-  const children: DevChild[] = [];
-  let watcher: WatchHandle | undefined;
-  let resolveFinished: () => void = () => undefined;
-  const finished = new Promise<void>((resolveFinishedPromise) => {
-    resolveFinished = resolveFinishedPromise;
-  });
-  let shuttingDown = false;
-  let shutdownPromise: Promise<void> | undefined;
-  const shutdown = (): void => {
-    if (shutdownPromise !== undefined) {
-      return;
-    }
-
-    shuttingDown = true;
-
-    for (const child of children) {
-      try {
-        child.kill('SIGTERM');
-      } catch {
-        // Child may already be gone.
-      }
-    }
-
-    shutdownPromise = (async () => {
-      try {
-        await watcher?.close();
-      } catch (error) {
-        console.error('[mndw dev] Failed to close backend watcher:', error);
+    const isReady = (payload: unknown): boolean => {
+      if (typeof payload !== 'object' || payload === null || !('plugins' in payload)) {
+        return false;
       }
 
-      reloadSentinel.cleanup();
-      cleanupDirs();
-      resolveFinished();
-    })();
-  };
+      return Array.isArray(payload.plugins) && payload.plugins.some((plugin: unknown) => {
+        return typeof plugin === 'object' && plugin !== null && 'name' in plugin && plugin.name === pluginName;
+      });
+    };
 
-  onShutdownSignal(shutdown);
-
-  const daemon = spawn(launch.command, launch.args, {
-    cwd: launch.cwd,
-    env: {...baseEnv, MNDW_PLUGIN_RUNTIME_ROOT: join(dataDir, 'plugin-runtime')},
-  });
-
-  children.push(daemon);
-  daemon.on('exit', shutdown);
-
-  try {
-    await waitForDaemon(daemonUrl, pluginName);
-  } catch (err) {
-    shutdown();
-    await finished;
-
-    throw err;
-  }
-
-  const hostEnv = buildHostEnv(
-    {
-      pluginSourceDir,
+    await runDevSession({
+      repoRoot,
+      daemon: launch,
+      listen,
       daemonUrl,
       builtinDir,
+      dataDir,
       userDir,
-      hostDevice: options.hostDevice,
-      reloadSentinel: reloadSentinel.path,
-    },
-    baseEnv,
-  );
-  const host = spawn('pnpm', ['--filter', '@mndw/host', 'dev'], {env: hostEnv});
-
-  children.push(host);
-  host.on('exit', shutdown);
-
-  if (!shuttingDown && manifest.backend !== undefined) {
-    watcher = watchPluginBackend({
-      manifest,
-      pluginSourceDir,
-      pluginName,
-      daemonUrl,
-    }, {
-      buildBackend,
-      touchSentinel: () => reloadSentinel.touch(),
-      fetch: deps.fetch,
-      restartService: deps.restartService,
-      watchBackend: deps.watchBackend,
-    });
+      env: baseEnv,
+      hostDevice,
+      sandboxPlugin: pluginSourceDir,
+      isReady,
+      createWatcher: ({daemonUrl: watcherDaemonUrl, touchSentinel}) => {
+        return watchPluginBackend({
+          manifest,
+          pluginSourceDir,
+          pluginName,
+          daemonUrl: watcherDaemonUrl,
+        }, {
+          buildBackend,
+          touchSentinel,
+          fetch: deps.session?.fetch,
+          restartService: deps.restartService,
+          watchBackend: deps.watchBackend,
+        });
+      },
+    }, deps.session);
+  } finally {
+    cleanupDirs();
   }
-
-  await finished;
 }

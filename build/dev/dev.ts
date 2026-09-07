@@ -9,11 +9,8 @@ import {
   buildOne as buildBuiltinOne,
   discoverBuiltinPlugins,
 } from '../builtin-plugins.js';
-import {
-  type ReloadSentinel,
-  createReloadSentinel,
-  restartService as defaultRestartService,
-} from '../../tooling/cli/src/dev-reload.js';
+import {restartService as defaultRestartService} from '../../tooling/cli/src/dev-reload.js';
+import {type DevSessionDeps, runDevSession} from '../../tooling/cli/src/dev-session.js';
 import {
   type BuildGenerationContext,
   type BuildOutcome,
@@ -25,131 +22,18 @@ import {type LoadedManifest, readManifest} from '../../tooling/cli/src/manifest.
 
 const DAEMON_URL = 'http://127.0.0.1:9090';
 
-export interface DevChild {
-  readonly pid?: number;
-
-  on(event: 'exit' | 'error', listener: (value?: number | Error | null) => void): void;
-  kill(signal?: NodeJS.Signals): void;
-}
-
 export interface DevDeps {
   readonly packBuiltinPlugins?: () => Promise<void>;
   readonly ensureDir?: (dir: string) => void;
-  readonly spawn?: (
-    command: string,
-    args: string[],
-    options: {cwd: string; detached?: boolean; env: NodeJS.ProcessEnv},
-  ) => DevChild;
-  readonly killProcessGroup?: (processGroupId: number, signal: NodeJS.Signals) => void;
-  readonly waitForDaemon?: (baseUrl: string, signal: AbortSignal) => Promise<void>;
-  readonly onShutdownSignal?: (handler: () => void) => void;
   readonly env?: NodeJS.ProcessEnv;
   readonly repoRoot?: string;
-  readonly createReloadSentinel?: (repoRoot: string) => ReloadSentinel;
   readonly watchBackend?: <T>(options: WatchBuildOptions<T>) => WatchHandle;
   readonly buildFrontend?: (name: string) => Promise<void>;
   readonly buildBackend?: (name: string) => Promise<void>;
   readonly buildOne?: (name: string) => Promise<void>;
   readonly restartService?: typeof defaultRestartService;
-  readonly fetch?: typeof fetch;
   readonly readManifest?: (pluginDir: string) => LoadedManifest;
-}
-
-export interface ReadinessDeps {
-  readonly fetch?: typeof fetch;
-  readonly timeoutMs?: number;
-}
-
-function timeoutError(baseUrl: string): Error {
-  return new Error(`mndw dev: timed out waiting for mndwd at ${baseUrl}`);
-}
-
-function abortError(signal: AbortSignal): Error {
-  return signal.reason instanceof Error ? signal.reason : new Error('mndw dev: daemon readiness aborted');
-}
-
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolveDelay, reject) => {
-    const state: {timer?: ReturnType<typeof setTimeout>} = {};
-
-    const onAbort = (): void => {
-      if (state.timer !== undefined) {
-        clearTimeout(state.timer);
-      }
-
-      signal.removeEventListener('abort', onAbort);
-      reject(abortError(signal));
-    };
-
-    const cleanup = (): void => {
-      signal.removeEventListener('abort', onAbort);
-      resolveDelay();
-    };
-
-    state.timer = setTimeout(cleanup, ms);
-
-    if (signal.aborted) {
-      onAbort();
-
-      return;
-    }
-
-    signal.addEventListener('abort', onAbort, {once: true});
-  });
-}
-
-/** Polls the management list with a deadline that also aborts an in-flight request. */
-export async function waitForDaemon(
-  baseUrl: string,
-  signal: AbortSignal,
-  deps: ReadinessDeps = {},
-): Promise<void> {
-  if (signal.aborted) {
-    throw abortError(signal);
-  }
-
-  const timeoutMs = deps.timeoutMs ?? 30_000;
-  const fetchDaemon = deps.fetch ?? fetch;
-  const deadline = Date.now() + timeoutMs;
-
-  for (;;) {
-    const remaining = deadline - Date.now();
-
-    if (remaining <= 0) {
-      throw timeoutError(baseUrl);
-    }
-
-    const request = new AbortController();
-    const timer = setTimeout(() => request.abort(), remaining);
-    const abortRequest = (): void => request.abort(signal.reason);
-
-    signal.addEventListener('abort', abortRequest, {once: true});
-
-    try {
-      const response = await fetchDaemon(`${baseUrl}/api/mgmt/list`, {signal: request.signal});
-
-      if (response.ok) {
-        await response.json();
-
-        return;
-      }
-    } catch (_error) {
-      if (signal.aborted) {
-        throw abortError(signal);
-      }
-
-      if (request.signal.aborted) {
-        throw timeoutError(baseUrl);
-      }
-
-      // Daemon is not ready yet.
-    } finally {
-      clearTimeout(timer);
-      signal.removeEventListener('abort', abortRequest);
-    }
-
-    await delay(Math.min(250, deadline - Date.now()), signal);
-  }
+  readonly session?: DevSessionDeps;
 }
 
 async function defaultPackBuiltinPlugins(repoRoot: string): Promise<void> {
@@ -165,19 +49,6 @@ async function defaultPackBuiltinPlugins(repoRoot: string): Promise<void> {
       }
     });
   });
-}
-
-function defaultSpawn(
-  command: string,
-  args: string[],
-  options: {cwd: string; detached?: boolean; env: NodeJS.ProcessEnv},
-): DevChild {
-  return crossSpawn(command, args, {cwd: options.cwd, detached: options.detached, env: options.env, stdio: 'inherit'});
-}
-
-function defaultOnShutdownSignal(handler: () => void): void {
-  process.on('SIGINT', handler);
-  process.on('SIGTERM', handler);
 }
 
 export interface BuiltinWatchOptions {
@@ -448,7 +319,7 @@ export function watchBuiltinPlugins(options: BuiltinWatchOptions, deps: BuiltinW
   return watchBackend(build);
 }
 
-/** Starts packed built-in plugins, local mndwd, then Vite; child failure shuts down its sibling. */
+/** Starts packed built-in plugins, local mndwd, then Vite through the shared dev session. */
 export async function runDev(deps: DevDeps = {}): Promise<void> {
   const repoRoot = deps.repoRoot ?? resolve(import.meta.dirname, '..', '..');
   const env = deps.env ?? process.env;
@@ -456,203 +327,67 @@ export async function runDev(deps: DevDeps = {}): Promise<void> {
   const builtinDir = resolve(repoRoot, 'plugins/builtin', 'dist');
   const dataDir = resolve(repoRoot, '.dev-data');
   const userDir = resolve(dataDir, 'user-plugins');
-  const pluginRuntimeRoot = resolve(dataDir, 'plugin-runtime');
   const packBuiltinPlugins = deps.packBuiltinPlugins ?? (() => defaultPackBuiltinPlugins(repoRoot));
   const ensureDir = deps.ensureDir ?? ((dir) => mkdirSync(dir, {recursive: true}));
-  const spawn = deps.spawn ?? defaultSpawn;
-  const killProcessGroup = deps.killProcessGroup ?? ((processGroupId, signal) => process.kill(processGroupId, signal));
-  const waitForDaemonFn = deps.waitForDaemon ?? waitForDaemon;
-  const onShutdownSignal = deps.onShutdownSignal ?? defaultOnShutdownSignal;
-  const makeReloadSentinel = deps.createReloadSentinel ?? createReloadSentinel;
 
   await packBuiltinPlugins();
   ensureDir(dataDir);
   ensureDir(userDir);
 
-  const reloadSentinel = makeReloadSentinel(repoRoot);
   const pluginNames = existsSync(builtinSourceRoot) ? discoverBuiltinPlugins(builtinSourceRoot) : [];
-
-  const children: DevChild[] = [];
-  const processState: {daemon?: DevChild} = {};
-  let watcher: WatchHandle | undefined;
-  const readinessAbort = new AbortController();
-  let resolveFinished: () => void = () => undefined;
-  const finished = new Promise<void>((resolveFinishedPromise) => {
-    resolveFinished = resolveFinishedPromise;
-  });
-  let shuttingDown = false;
-  let failure: Error | undefined;
-  let shutdownPromise: Promise<void> | undefined;
-  const shutdown = (stoppedChild?: DevChild, error?: Error): void => {
-    if (shutdownPromise !== undefined) {
-      return;
-    }
-
-    shuttingDown = true;
-    failure = error;
-    readinessAbort.abort(error);
-
-    for (const child of children) {
-      if (child === stoppedChild) {
-        continue;
-      }
-
-      try {
-        if (child === processState.daemon && child.pid !== undefined) {
-          killProcessGroup(-child.pid, 'SIGTERM');
-        } else {
-          child.kill('SIGTERM');
-        }
-      } catch {
-        // Child already exited.
-      }
-    }
-
-    shutdownPromise = (async () => {
-      try {
-        await watcher?.close();
-      } catch (watchError) {
-        console.error('[mndw dev] Failed to close builtin watcher:', watchError);
-      }
-
-      reloadSentinel.cleanup();
-      resolveFinished();
-    })();
+  const watchDeps: BuiltinWatchDeps = {
+    watchBackend: deps.watchBackend,
+    buildFrontend: deps.buildFrontend ?? ((name) =>
+      buildBuiltinFrontend(name, {
+        sourceRoot: builtinSourceRoot,
+        distRoot: builtinDir,
+        development: true,
+        repoRoot,
+      })),
+    buildBackend: deps.buildBackend ?? ((name) =>
+      buildBuiltinBackend(name, {
+        sourceRoot: builtinSourceRoot,
+        distRoot: builtinDir,
+        development: true,
+        repoRoot,
+      })),
+    buildOne: deps.buildOne ?? ((name) =>
+      buildBuiltinOne(name, {
+        sourceRoot: builtinSourceRoot,
+        distRoot: builtinDir,
+        development: true,
+        repoRoot,
+      })),
+    readManifest: deps.readManifest,
+    restartService: deps.restartService,
+    fetch: deps.session?.fetch,
   };
 
-  onShutdownSignal(shutdown);
-
-  const daemonChild = spawn(
-    'go',
-    [
-      'run',
-      './cmd/mndwd',
-      '--listen',
-      '127.0.0.1:9090',
-      '--dev',
-      '--opkg',
-      'stub',
-      '--builtin-plugins-dir',
-      builtinDir,
-      '--data-dir',
-      dataDir,
-      '--user-plugins-dir',
-      userDir,
-      ...(env.MNDW_HOST_DEVICE === undefined ? [] : ['--controller-url', env.MNDW_HOST_DEVICE]),
-    ],
-    {
+  await runDevSession({
+    repoRoot,
+    daemon: {
+      command: 'go',
+      args: ['run', './cmd/mndwd'],
       cwd: resolve(repoRoot, 'daemon', 'mndwd'),
-      detached: true,
-      env: {...env, MNDW_PLUGIN_RUNTIME_ROOT: pluginRuntimeRoot},
     },
-  );
-
-  processState.daemon = daemonChild;
-  children.push(daemonChild);
-  daemonChild.on('exit', (code) => {
-    const exitCode = typeof code === 'number' ? code : null;
-    const error = exitCode === 0 ? undefined : new Error(`mndw dev: daemon exited with code ${exitCode ?? 'unknown'}`);
-
-    shutdown(daemonChild, error);
-  });
-  daemonChild.on('error', (error) => {
-    shutdown(daemonChild, error instanceof Error ? error : new Error('mndw dev: daemon failed'));
-  });
-
-  try {
-    await waitForDaemonFn(DAEMON_URL, readinessAbort.signal);
-  } catch (error) {
-    if (shuttingDown) {
-      await finished;
-
-      if (failure !== undefined) {
-        throw failure;
-      }
-
-      return;
-    }
-
-    const readinessError = error instanceof Error ? error : new Error('mndw dev: daemon readiness failed');
-
-    shutdown(undefined, readinessError);
-    await finished;
-    throw readinessError;
-  }
-
-  if (shuttingDown) {
-    await finished;
-
-    if (failure !== undefined) {
-      throw failure;
-    }
-
-    return;
-  }
-
-  const host = spawn('pnpm', ['--filter', '@mndw/host', 'dev'], {
-    cwd: repoRoot,
-    env: {
-      ...env,
-      MNDW_DAEMON: DAEMON_URL,
-      MNDW_BUILTIN_PLUGINS_DIR: builtinDir,
-      MNDW_USER_PLUGINS_DIR: userDir,
-      MNDW_DEV_RELOAD_SENTINEL: reloadSentinel.path,
+    listen: '127.0.0.1:9090',
+    daemonUrl: DAEMON_URL,
+    builtinDir,
+    dataDir,
+    userDir,
+    env,
+    hostDevice: env.MNDW_HOST_DEVICE,
+    isReady: () => true,
+    createWatcher: ({daemonUrl, touchSentinel}) => {
+      return watchBuiltinPlugins({
+        sourceRoot: builtinSourceRoot,
+        distRoot: builtinDir,
+        pluginNames,
+        daemonUrl,
+        development: true,
+      }, {...watchDeps, touchSentinel});
     },
-  });
-
-  children.push(host);
-  host.on('exit', (code) => {
-    const exitCode = typeof code === 'number' ? code : null;
-    const error = exitCode === 0 ? undefined : new Error(`mndw dev: host exited with code ${exitCode ?? 'unknown'}`);
-
-    shutdown(host, error);
-  });
-  host.on('error', (error) => {
-    shutdown(host, error instanceof Error ? error : new Error('mndw dev: host failed'));
-  });
-
-  if (!shuttingDown) {
-    watcher = watchBuiltinPlugins({
-      sourceRoot: builtinSourceRoot,
-      distRoot: builtinDir,
-      pluginNames,
-      daemonUrl: DAEMON_URL,
-      development: true,
-    }, {
-      watchBackend: deps.watchBackend,
-      buildFrontend: deps.buildFrontend ?? ((name) =>
-        buildBuiltinFrontend(name, {
-          sourceRoot: builtinSourceRoot,
-          distRoot: builtinDir,
-          development: true,
-          repoRoot,
-        })),
-      buildBackend: deps.buildBackend ?? ((name) =>
-        buildBuiltinBackend(name, {
-          sourceRoot: builtinSourceRoot,
-          distRoot: builtinDir,
-          development: true,
-          repoRoot,
-        })),
-      buildOne: deps.buildOne ?? ((name) =>
-        buildBuiltinOne(name, {
-          sourceRoot: builtinSourceRoot,
-          distRoot: builtinDir,
-          development: true,
-          repoRoot,
-        })),
-      readManifest: deps.readManifest,
-      restartService: deps.restartService,
-      fetch: deps.fetch,
-      touchSentinel: () => reloadSentinel.touch(),
-    });
-  }
-
-  await finished;
-
-  if (failure !== undefined) {
-    throw failure;
-  }
+  }, deps.session);
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {

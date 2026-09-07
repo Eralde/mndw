@@ -15,7 +15,7 @@ const (
 	// UnknownBoundaryExplicit writes an explicit unknown update at the slot
 	// after a gap so RRD cannot carry a previous boot's gauge across it. This
 	// is the preferred encoding and the one the plan expects the target to
-	// support; it still requires Task 0 fixture confirmation.
+	// support.
 	UnknownBoundaryExplicit UnknownBoundaryMode = "explicit-unknown"
 	// UnknownBoundarySkip leaves the gap empty, accepting one ambiguous
 	// calendar bucket while raw records remain retained.
@@ -23,8 +23,8 @@ const (
 )
 
 // CurrentUnknownBoundaryMode is the daemon's chosen encoding. It is target
-// policy, not device-verified behavior: Task 0 must confirm that the installed
-// RRDtool accepts the explicit unknown update without bridging the gap.
+// policy, not device-verified behavior: the installed RRDtool must accept
+// the explicit unknown update without bridging the gap.
 const CurrentUnknownBoundaryMode = UnknownBoundaryExplicit
 
 // BoundaryKind names the discontinuity that requires an unknown boundary.

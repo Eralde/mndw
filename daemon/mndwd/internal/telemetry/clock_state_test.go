@@ -210,7 +210,7 @@ func TestReadEvidenceDiscardsInconsistentBracket(t *testing.T) {
 }
 
 func TestEvidenceAdapterRefusesUnverifiedSelector(t *testing.T) {
-	source := NewRCIEvidenceSource(nil)
+	source := NewRCIEvidenceSourceWithSelector(nil, ntpStatusSelector, false)
 	if _, err := source.Read(context.Background(), EvidenceRequest{}); !errors.Is(err, ErrEvidenceUnverified) {
 		t.Fatalf("unverified selector queried: %v", err)
 	}

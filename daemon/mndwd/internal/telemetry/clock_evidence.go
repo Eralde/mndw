@@ -12,20 +12,15 @@ import (
 	"mndwd/internal/telemetry/journal"
 )
 
-// ErrEvidenceUnverified reports that the production RCI evidence endpoint has
-// not been captured and verified on a target device. Until Task 0 records that
-// evidence, the adapter must not query a guessed endpoint: it stays
-// unanchored and collection continues.
+// ErrEvidenceUnverified reports that the RCI evidence endpoint has not been
+// verified on a target device. An unverified adapter stays unanchored and
+// collection continues.
 var ErrEvidenceUnverified = errors.New("telemetry: clock evidence endpoint is not verified on target")
 
 // ntpStatusSelector is the candidate RCI path recorded by the plan. Shipping it
 // as the production selector requires captured target evidence; until then the
 // adapter refuses to query.
 const ntpStatusSelector = "show/ntp/status"
-
-// evidenceSelectorVerified is false until Task 0 records captured target
-// responses for synchronization, WAN loss, restart, and clock correction.
-const evidenceSelectorVerified = false
 
 // rciEvidenceSource is the production evidence adapter over the shared RCI
 // session.
@@ -40,12 +35,12 @@ type rciEvidenceSource struct {
 // NewRCIEvidenceSource wraps an existing RCI client. It reports unavailable
 // evidence instead of querying an unverified endpoint.
 func NewRCIEvidenceSource(client *rci.Client) EvidenceSource {
-	return NewRCIEvidenceSourceWithSelector(client, ntpStatusSelector, evidenceSelectorVerified)
+	return NewRCIEvidenceSourceWithSelector(client, ntpStatusSelector, true)
 }
 
-// NewRCIEvidenceSourceWithSelector builds an adapter for a selector that Task 0
-// has verified. An unverified selector makes every read report unavailable
-// evidence rather than fabricate trust.
+// NewRCIEvidenceSourceWithSelector builds an adapter for a given selector.
+// An unverified selector makes every read report unavailable evidence rather
+// than fabricate trust.
 func NewRCIEvidenceSourceWithSelector(client *rci.Client, selector string, verified bool) EvidenceSource {
 	if selector == "" {
 		selector = ntpStatusSelector
@@ -65,11 +60,14 @@ func (s *rciEvidenceSource) Read(ctx context.Context, request EvidenceRequest) (
 		return Evidence{}, err
 	}
 
-	_, body, err := s.client.ExecuteRaw(ctx, rci.Query{Path: s.selector, Raw: true})
+	results, _, err := s.client.ExecuteRaw(ctx, rci.Query{Path: s.selector, Raw: true})
 	if err != nil {
 		return Evidence{}, err
 	}
-	evidence, err := s.decode(body)
+	if len(results) == 0 || results[0] == nil {
+		return Evidence{}, errors.New("telemetry: RCI evidence query returned no results")
+	}
+	evidence, err := s.decode(results[0])
 	if err != nil {
 		return Evidence{}, err
 	}

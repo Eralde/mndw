@@ -6,6 +6,8 @@ import {
   SERVICE_STATUS_URL,
   SERVICE_STOP_URL,
 } from '../constants.js';
+import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
+import {isRecord} from './json.js';
 
 export type ServiceState = 'running' | 'stopped' | 'unknown';
 
@@ -34,12 +36,6 @@ export class ServiceError extends Error {
   }
 }
 
-interface ErrorEnvelope {
-  error?: {code?: unknown; message?: unknown};
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object';
-
 const malformedResponse = (): ServiceError => new ServiceError('Malformed response', 'UNKNOWN');
 
 async function parseJson(response: Response): Promise<unknown> {
@@ -51,18 +47,9 @@ async function parseJson(response: Response): Promise<unknown> {
 }
 
 async function errorFromResponse(response: Response): Promise<ServiceError> {
-  try {
-    const body = await response.json();
-    const envelope = isRecord(body) ? body as ErrorEnvelope : undefined;
-    const error = envelope?.error;
+  const fields = decodeErrorEnvelope(await readErrorBody(response), response.statusText);
 
-    return new ServiceError(
-      typeof error?.message === 'string' ? error.message : response.statusText,
-      typeof error?.code === 'string' ? error.code : 'UNKNOWN',
-    );
-  } catch {
-    return new ServiceError(response.statusText, 'UNKNOWN');
-  }
+  return new ServiceError(fields.message, fields.code);
 }
 
 function validateService(value: unknown): ServiceEntry {

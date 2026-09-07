@@ -4,6 +4,8 @@ import {
   SELF_UPDATE_REVERT_URL,
   SELF_UPDATE_STATUS_URL,
 } from '../constants.js';
+import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
+import {isNonEmptyString, isRecord} from './json.js';
 
 export interface SelfUpdateStatus {
   state: 'idle' | 'in-progress' | 'failed';
@@ -44,20 +46,7 @@ export class SelfUpdateError extends Error {
   }
 }
 
-interface ErrorEnvelope {
-  error?: {
-    code?: unknown;
-    message?: unknown;
-  };
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-};
-
 const isOperation = (value: unknown): value is 'update' | 'revert' => value === 'update' || value === 'revert';
-
-const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 
 const malformedResponse = (): SelfUpdateError => new SelfUpdateError('Malformed response', 'UNKNOWN');
 
@@ -70,20 +59,9 @@ async function parseJson(response: Response): Promise<unknown> {
 }
 
 async function errorFromResponse(response: Response): Promise<SelfUpdateError> {
-  let body: unknown;
+  const fields = decodeErrorEnvelope(await readErrorBody(response), response.statusText);
 
-  try {
-    body = await response.json();
-  } catch {
-    return new SelfUpdateError(response.statusText, 'UNKNOWN');
-  }
-
-  const envelope = isRecord(body) ? body as ErrorEnvelope : undefined;
-  const error = envelope?.error;
-  const message = typeof error?.message === 'string' ? error.message : response.statusText;
-  const code = typeof error?.code === 'string' ? error.code : 'UNKNOWN';
-
-  return new SelfUpdateError(message, code);
+  return new SelfUpdateError(fields.message, fields.code);
 }
 
 function validateStatus(body: unknown): SelfUpdateStatus {

@@ -6,6 +6,8 @@ import {
   OPKG_UPDATE_URL,
   OPKG_UPGRADE_URL,
 } from '../constants.js';
+import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
+import {isRecord} from './json.js';
 
 export interface PackageEntry {
   name: string;
@@ -60,16 +62,6 @@ export interface OpkgClient {
   update(): Promise<{message: string}>;
 }
 
-interface ErrorEnvelope {
-  error?: {
-    code?: unknown;
-    message?: unknown;
-    detail?: unknown;
-  };
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object';
-
 export function dependencyConflictDetail(error: OpkgError): DependencyConflictDetail | undefined {
   if (error.code !== 'DEPENDENCY_CONFLICT' || !isRecord(error.detail)) {
     return undefined;
@@ -101,20 +93,9 @@ async function parseJson(response: Response): Promise<unknown> {
 }
 
 async function errorFromResponse(response: Response): Promise<OpkgError> {
-  let body: unknown;
+  const fields = decodeErrorEnvelope(await readErrorBody(response), response.statusText);
 
-  try {
-    body = await response.json();
-  } catch {
-    return new OpkgError(response.statusText, 'UNKNOWN');
-  }
-
-  const envelope = isRecord(body) ? body as ErrorEnvelope : undefined;
-  const error = envelope?.error;
-  const message = typeof error?.message === 'string' ? error.message : response.statusText;
-  const code = typeof error?.code === 'string' ? error.code : 'UNKNOWN';
-
-  return new OpkgError(message, code, error?.detail);
+  return new OpkgError(fields.message, fields.code, fields.detail);
 }
 
 function validatePackageEntry(value: unknown): PackageEntry {

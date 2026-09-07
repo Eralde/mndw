@@ -139,6 +139,7 @@ describe('dependencyConflictDetail', () => {
 describe('opkg-client validation', () => {
   it.each([
     null,
+    [],
     '<html>',
     {packages: 'wrong'},
     {packages: [{...packageEntry, name: ''}]},

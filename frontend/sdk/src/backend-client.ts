@@ -362,6 +362,8 @@ const mapResponse = async (id: string, res: Response): Promise<Response> => {
   let error: DaemonError | undefined;
 
   try {
+    // Read daemon error envelopes defensively. Preserve non-matching responses so plugins
+    // still receive their backend's own error output.
     const payload = await res.clone().json() as {error?: DaemonError};
 
     error = payload.error;

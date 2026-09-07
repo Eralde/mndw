@@ -109,8 +109,8 @@ describe('service-client actions', () => {
     });
   });
 
-  it('rejects malformed responses', async () => {
-    fetchImpl.mockResolvedValue(jsonResponse(200, {services: [{...entry, state: 'bad'}]}));
+  it.each([[], {services: [{...entry, state: 'bad'}]}])('rejects malformed responses %j', async (body) => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, body));
 
     await expect(createServiceClient(fetchImpl).list()).rejects.toMatchObject({code: 'UNKNOWN'});
   });

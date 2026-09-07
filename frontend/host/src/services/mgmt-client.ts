@@ -21,6 +21,8 @@ import {decodeMgmtList, decodeMgmtListEntry} from '../runtime/mgmt-list-schema.j
 import {decodeDeviceHardware, emptySwitchports} from '../runtime/device-info-schema.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
 import {hostT} from './locale.service.js';
+import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
+import {isNonEmptyString} from './json.js';
 
 export interface UploadResult {
   status: 'installed' | 'pending';
@@ -38,9 +40,9 @@ export interface RuntimeLimits {
 
 export class MgmtError extends Error {
   public readonly code: string;
-  public readonly detail?: string;
+  public readonly detail: unknown;
 
-  constructor(message: string, code: string, detail?: string) {
+  constructor(message: string, code: string, detail?: unknown) {
     super(message);
     this.name = 'MgmtError';
     this.code = code;
@@ -81,15 +83,10 @@ function timeoutMs(kind: MgmtTimeoutKind): number {
   }
 }
 
-interface Envelope {
-  error?: {code?: string; message?: string; detail?: string};
-}
-
 async function toError(response: Response): Promise<MgmtError> {
-  const body = (await response.json().catch(() => null)) as Envelope | null;
-  const error = body?.error;
+  const fields = decodeErrorEnvelope(await readErrorBody(response), response.statusText);
 
-  return new MgmtError(error?.message ?? response.statusText, error?.code ?? 'UNKNOWN', error?.detail);
+  return new MgmtError(fields.message, fields.code, fields.detail);
 }
 
 const csrfHeaders = (headers: HeadersInit = {}): Headers => {
@@ -370,7 +367,9 @@ export function messageForError(error: unknown): string {
 
   if (error instanceof MgmtError) {
     if (error.code === 'MANIFEST_INVALID') {
-      return error.detail ? `${hostT('errors.invalid-manifest')}: ${error.detail}` : hostT('errors.invalid-manifest');
+      return isNonEmptyString(error.detail)
+        ? `${hostT('errors.invalid-manifest')}: ${error.detail}`
+        : hostT('errors.invalid-manifest');
     }
 
     const message = MESSAGE_KEYS[error.code] === undefined

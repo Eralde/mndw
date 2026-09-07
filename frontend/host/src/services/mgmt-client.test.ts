@@ -292,6 +292,48 @@ describe('mgmt-client', () => {
     expect(messageForError(new MgmtError('x', 'RCI_SOCKET_START_FAILED'))).toContain('session socket');
     expect(messageForError(new Error('boom'))).toBe('boom');
   });
+
+  it('coerces non-string envelope fields instead of trusting the JSON cast', async () => {
+    fetchImpl.mockResolvedValue(
+      new Response(JSON.stringify({error: {code: 42, message: 42, detail: 42}}), {
+        status: 500,
+        statusText: 'Internal Server Error',
+        headers: {'content-type': 'application/json'},
+      }),
+    );
+
+    const error = await createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch)
+      .listPlugins()
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(MgmtError);
+    expect((error as MgmtError).code).toBe('UNKNOWN');
+    expect((error as MgmtError).message).toBe('Internal Server Error');
+  });
+
+  it('classifies maintenance rejection using the decoded string code', async () => {
+    fetchImpl.mockResolvedValue(
+      new Response(JSON.stringify({error: {code: 'BACKEND_MAINTENANCE', message: 'updating'}}), {
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: {'content-type': 'application/json'},
+      }),
+    );
+
+    const error = await createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch)
+      .listPlugins()
+      .catch((cause: unknown) => cause);
+
+    expect(classifyMutationFailure(error)).toBe('rejected-maintenance');
+  });
+
+  it('does not classify a non-string maintenance code as maintenance rejection', () => {
+    expect(classifyMutationFailure(new MgmtError('x', 'UNKNOWN', 42))).toBe('error');
+  });
+
+  it('omits a non-string MANIFEST_INVALID detail instead of interpolating it', () => {
+    expect(messageForError(new MgmtError('x', 'MANIFEST_INVALID', {a: 1}))).not.toContain('[object Object]');
+  });
 });
 
 describe('mgmt-client palette', () => {

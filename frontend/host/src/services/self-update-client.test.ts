@@ -78,6 +78,7 @@ describe('self-update-client', () => {
 
   it.each([
     null,
+    [],
     {state: 'unknown', version: '0.0.4'},
     {state: 'idle'},
     {state: 'idle', version: '0.0.4', operation: 'bad'},

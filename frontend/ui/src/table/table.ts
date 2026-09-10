@@ -676,7 +676,7 @@ export class MndwTable<Row = unknown> extends LitElement {
                 class="sort-button"
                 type="button"
                 aria-label=${labels.columnMenu}
-              >⚙</button>
+              ><mndw-icon name="settings"></mndw-icon></button>
             </th>`
         : nothing
     }
@@ -705,7 +705,11 @@ export class MndwTable<Row = unknown> extends LitElement {
 
     const direction = this.effectiveSortState?.columnId === column.id ? this.effectiveSortState?.direction : undefined;
     const ariaSort = direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : nothing;
-    const indicator = direction === 'asc' ? '▲' : direction === 'desc' ? '▼' : '';
+    const indicator = direction === 'asc'
+      ? html`<mndw-icon name="arrow-up"></mndw-icon>`
+      : direction === 'desc'
+      ? html`<mndw-icon name="arrow-down"></mndw-icon>`
+      : nothing;
 
     return html`
       <th part="header-cell" scope="col" class=${align} style=${style} aria-sort=${ariaSort}>
@@ -809,7 +813,7 @@ export class MndwTable<Row = unknown> extends LitElement {
         data-expand-key=${key}
         aria-expanded=${isExpanded ? 'true' : 'false'}
         aria-label=${isExpanded ? labels.collapseRow(name) : labels.expandRow(name)}
-      >${isExpanded ? '▾' : '▸'}</button>
+      ><mndw-icon name=${isExpanded ? 'chevron-down' : 'chevron-right'}></mndw-icon></button>
     </td>`;
   }
 
@@ -848,7 +852,9 @@ export class MndwTable<Row = unknown> extends LitElement {
     }
 
     if (column.kind === 'boolean') {
-      return value ? '✓' : '—';
+      return value
+        ? html`<mndw-icon name="check"></mndw-icon>`
+        : html`<mndw-icon name="minus"></mndw-icon>`;
     }
 
     return value === null || value === undefined ? '' : String(value as string | number);

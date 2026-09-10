@@ -273,7 +273,7 @@ onMount(() => {
             aria-label={t('action.settings')}
             onclick={handleOpenSettings}
           >
-            &#9881;
+            <mndw-icon name="settings"></mndw-icon>
           </mndw-button>
         </div>
       </div>

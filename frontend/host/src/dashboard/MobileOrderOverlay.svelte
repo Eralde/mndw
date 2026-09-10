@@ -111,7 +111,7 @@ function handlePointerUp(): void {
           onclick={commit}
           aria-label={hostT('common.close')}
         >
-          ×
+          <mndw-icon name="x"></mndw-icon>
         </mndw-button>
       </div>
       <ul class="mndw-order-overlay__list">
@@ -128,7 +128,7 @@ function handlePointerUp(): void {
               onpointerup={handlePointerUp}
               aria-hidden="true"
             >
-              ☰
+              <mndw-icon name="menu"></mndw-icon>
             </span>
             <span class="mndw-order-card__label">{card.label}</span>
             <span class="mndw-order-card__moves">
@@ -138,7 +138,7 @@ function handlePointerUp(): void {
                 disabled={index === 0}
                 aria-label={hostT('dashboard.move-up', {label: card.label})}
               >
-                ▲
+                <mndw-icon name="arrow-up"></mndw-icon>
               </mndw-button>
               <mndw-button
                 variant="ghost"
@@ -146,7 +146,7 @@ function handlePointerUp(): void {
                 disabled={index === draft.length - 1}
                 aria-label={hostT('dashboard.move-down', {label: card.label})}
               >
-                ▼
+                <mndw-icon name="arrow-down"></mndw-icon>
               </mndw-button>
             </span>
           </li>

@@ -170,7 +170,7 @@ export class MndwCheckbox extends LitElement {
         part="box"
         aria-hidden="true"
       >
-        <span part="mark">✓</span>
+        <span part="mark"><mndw-icon name="check"></mndw-icon></span>
       </div>
       <slot part="label"></slot>
     `;

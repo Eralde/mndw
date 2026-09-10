@@ -81,7 +81,10 @@ describe('<mndw-button>', () => {
     // font-size on the element wins. Both plugins' gear buttons rely on this — a declaration
     // on the inner element would beat any external rule and there would be no way to make an
     // icon button larger without reaching through ::part().
-    const element = await mount('<mndw-button variant="ghost">&#9881;</mndw-button>', MNDW_BUTTON_TAG);
+    const element = await mount(
+      '<mndw-button variant="ghost"><mndw-icon name="settings"></mndw-icon></mndw-button>',
+      MNDW_BUTTON_TAG,
+    );
 
     element.style.fontSize = '18px';
 

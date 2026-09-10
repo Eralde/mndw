@@ -153,6 +153,7 @@ describe('tile controller', () => {
 
     expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('eth0');
     expect(controller?.frame.querySelector('.mndw-grid-tile__close')?.getAttribute('aria-label')).toBe('Remove clock');
+    expect(controller?.frame.querySelector('.mndw-grid-tile__close mndw-icon')?.getAttribute('name')).toBe('x');
 
     controller?.setTileTitle('');
 

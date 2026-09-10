@@ -66,7 +66,7 @@ function handleKeydown(event: KeyboardEvent): void {
           onclick={onClose}
           aria-label={hostT('common.close')}
         >
-          ×
+          <mndw-icon name="x"></mndw-icon>
         </mndw-button>
       </div>
       {#if availableWidgets.length === 0}

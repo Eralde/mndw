@@ -161,7 +161,11 @@ function createFallbackSheet(options: UiLayerOptions): UiLayer {
 
   closeButton.type = 'button';
   closeButton.setAttribute('aria-label', getMndwUiText('overlay.close'));
-  closeButton.textContent = '×';
+
+  const closeIcon = document.createElement('mndw-icon');
+
+  closeIcon.setAttribute('name', 'x');
+  closeButton.append(closeIcon);
 
   const body = document.createElement('div');
 

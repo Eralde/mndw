@@ -15,25 +15,33 @@
       "default": "./src/testing/index.ts"
     },
     "./testing/setup": "./src/testing/setup.ts",
-    "./styles.css": "./src/styles/kit.css"
+    "./styles.css": "./src/styles/kit.css",
+    "./icons.svg": "./src/icon/generated/sprite.svg"
   },
-  "files": ["src", "README.md"],
+  "files": [
+    "icons",
+    "src",
+    "README.md"
+  ],
   "scripts": {
     "test": "vitest run",
     "check": "tsc -p tsconfig.json --noEmit",
     "test:e2e": "playwright test",
-    "test:e2e:geometry": "playwright test --config playwright.geometry.config.ts"
+    "test:e2e:geometry": "playwright test --config playwright.geometry.config.ts",
+    "generate-icons": "tsx scripts/generate-icons.ts",
+    "check:icons": "tsx scripts/generate-icons.ts --check"
   },
   "dependencies": {
     "@lit/reactive-element": "^2.1.0",
     "lit": "^3.2.0"
   },
   "devDependencies": {
-    "@types/d3": "^7.4.3",
     "@mndw/sdk": "workspace:*",
     "@playwright/test": "^1.52.0",
+    "@types/d3": "^7.4.3",
     "d3": "^7.9.0",
     "happy-dom": "^20.0.0",
+    "tsx": "^4.23.0",
     "typescript": "^5.7.0",
     "vite": "^6.4.3",
     "vitest": "^3.2.7"

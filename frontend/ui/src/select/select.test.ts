@@ -1,5 +1,6 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_OPTION_TAG, MndwOption} from './option.js';
+import {MNDW_ICON_TAG, MndwIcon} from '../icon/icon.js';
 import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select-panel.js';
 import {MNDW_SELECT_TAG, MndwSelect} from './select.js';
 import {setMndwUiLocale} from '../i18n.js';
@@ -10,6 +11,7 @@ defineComponents(
   [MNDW_OPTION_TAG, MndwOption],
   [MNDW_SELECT_PANEL_TAG, MndwSelectPanel],
   [MNDW_SELECT_TAG, MndwSelect],
+  [MNDW_ICON_TAG, MndwIcon],
 );
 
 afterEach(() => {
@@ -838,5 +840,14 @@ describe('<mndw-select> teardown', () => {
     const opened = await openPanel(element);
 
     expect(opened.options).toHaveLength(3);
+  });
+});
+
+describe('<mndw-select> indicator icon', () => {
+  it('renders a decorative chevron-down icon', async () => {
+    const element = await mountComponent(MARKUP, MNDW_SELECT_TAG);
+    const indicator = element.shadowRoot?.querySelector('[part="indicator"] mndw-icon');
+
+    expect(indicator?.getAttribute('name')).toBe('chevron-down');
   });
 });

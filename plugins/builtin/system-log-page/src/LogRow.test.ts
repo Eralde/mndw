@@ -37,6 +37,36 @@ describe('LogRow', () => {
     }
   });
 
+  it.each(
+    [
+      ['Info', 'info'],
+      ['Notice', 'info'],
+      ['Warning', 'circle-alert'],
+      ['Error', 'circle-x'],
+    ] as const,
+  )('renders the %s level as the %s shared icon', (level, name) => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+
+    const record: NormalizedLogRecord = {
+      id: 1,
+      timestamp: 'Aug  1 12:00:00',
+      ident: 'system',
+      level,
+      label: level,
+      text: `message for ${level}`,
+    };
+    const app = mount(LogRow, {target: host, props: {record, query: ''}});
+
+    flushSync();
+
+    const marker = host.querySelector<HTMLElement & {name?: string}>('[data-level-marker]');
+
+    expect(marker?.name).toBe(name);
+
+    void unmount(app);
+  });
+
   afterEach(() => {
     host?.remove();
   });

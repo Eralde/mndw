@@ -125,6 +125,19 @@ describe('MobileOrderOverlay', () => {
     void unmount(host);
   });
 
+  it('renders shared arrow icons on the move buttons', async () => {
+    const {component, target} = mountOverlay();
+    const ups = target.querySelectorAll<MndwButtonHost>('.mndw-order-card__moves mndw-button:first-child');
+    const downs = target.querySelectorAll<MndwButtonHost>('.mndw-order-card__moves mndw-button:last-child');
+
+    await Promise.resolve();
+
+    expect(ups[0]?.querySelector('mndw-icon')?.getAttribute('name')).toBe('arrow-up');
+    expect(downs[0]?.querySelector('mndw-icon')?.getAttribute('name')).toBe('arrow-down');
+
+    void unmount(component);
+  });
+
   it('pointer drag on the handle reorders across card midpoints', () => {
     const {component, target} = mountOverlay();
     const handle = target.querySelectorAll<HTMLElement>('.mndw-order-card__handle')[0];

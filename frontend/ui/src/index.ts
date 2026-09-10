@@ -6,6 +6,8 @@ import {MNDW_SPARKLINE_TAG, MndwSparkline} from './charts/sparkline.js';
 import {MNDW_BUTTON_TAG, MndwButton} from './button/button.js';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox/checkbox.js';
 import {MNDW_FIELD_TAG, MndwField} from './field/field.js';
+import {MNDW_ICON_TAG, MndwIcon} from './icon/icon.js';
+import {setIconSpriteUrl} from './icon/sprite-config.js';
 import {MNDW_INPUT_TAG, MndwInput} from './input/input.js';
 import {adaptOverlayService} from './overlay-adapter.js';
 import {setOverlayProvider} from './overlay.js';
@@ -55,6 +57,9 @@ export {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox/checkbox.js';
 export type {MndwCheckboxChangeDetail} from './checkbox/checkbox.js';
 export {MNDW_FIELD_TAG, MNDW_LABEL_CHANGE_EVENT, MndwField} from './field/field.js';
 export type {MndwLabelSource} from './field/field.js';
+export {MNDW_ICON_NAMES} from './icon/generated/names.js';
+export {MNDW_ICON_TAG, MndwIcon} from './icon/icon.js';
+export type {MndwIconName} from './icon/generated/names.js';
 export {MNDW_INPUT_TAG, MNDW_INPUT_TYPES, MndwInput} from './input/input.js';
 export type {MndwInputChangeDetail, MndwInputType} from './input/input.js';
 export {MNDW_OPTION_TAG, MndwOption} from './select/option.js';
@@ -149,6 +154,7 @@ export type {
 export interface MndwUiDeps {
   overlay?: OverlayService;
   initialLocale?: string;
+  iconSpriteUrl?: string;
 }
 
 const REGISTRY: [string, CustomElementConstructor][] = [
@@ -156,6 +162,7 @@ const REGISTRY: [string, CustomElementConstructor][] = [
   [MNDW_BUTTON_TAG, MndwButton],
   [MNDW_CHECKBOX_TAG, MndwCheckbox],
   [MNDW_FIELD_TAG, MndwField],
+  [MNDW_ICON_TAG, MndwIcon],
   [MNDW_INPUT_TAG, MndwInput],
   [MNDW_LINE_CHART_TAG, MndwLineChart],
   [MNDW_OPTION_TAG, MndwOption],
@@ -184,6 +191,10 @@ export function defineMndwUi(deps?: MndwUiDeps): void {
 
   if (deps?.overlay) {
     setOverlayProvider(adaptOverlayService(deps.overlay));
+  }
+
+  if (deps?.iconSpriteUrl !== undefined) {
+    setIconSpriteUrl(deps.iconSpriteUrl);
   }
 
   for (const [tag, constructor] of REGISTRY) {

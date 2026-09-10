@@ -9,14 +9,14 @@ interface Props {
 
 let {record, query}: Props = $props();
 const messageSegments = $derived(highlightText(record.text, query));
-const levelMarker = $derived.by(() => {
+const levelIcon = $derived.by(() => {
   return record.level === 'Info'
-    ? '●'
+    ? 'info'
     : record.level === 'Warning'
-    ? '▲'
+    ? 'circle-alert'
     : record.level === 'Notice'
-    ? '·'
-    : '■';
+    ? 'info'
+    : 'circle-x';
 });
 </script>
 
@@ -27,10 +27,10 @@ const levelMarker = $derived.by(() => {
   role="listitem"
 >
   <span class="log-row__level">
-    <span
+    <mndw-icon
       data-level-marker
-      aria-hidden="true"
-    >{levelMarker}</span>
+      name={levelIcon}
+    ></mndw-icon>
     <span>{record.label}</span>
   </span>
   <span class="log-row__timestamp">{record.timestamp}</span>

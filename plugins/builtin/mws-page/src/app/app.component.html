@@ -60,7 +60,7 @@
           data-action="dismiss-extra-features"
           [attr.aria-label]="t('extra-features.setup.dismiss')"
           (click)="dismissExtraFeaturesBanner()"
-        >×</button>
+        ><mndw-icon name="x"></mndw-icon></button>
       </div>
     } @else if (data.extraFeaturesPresentation() === 'taking-longer') {
       <div class="extra-features-status-slot extra-features-taking-longer" role="status">

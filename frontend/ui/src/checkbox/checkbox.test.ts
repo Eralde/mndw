@@ -2,8 +2,9 @@ import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest'
 import {MNDW_LABEL_CHANGE_EVENT} from '../field/field.js';
 import {defineComponents, mount} from '../testing/index.js';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox.js';
+import {MNDW_ICON_TAG, MndwIcon} from '../icon/icon.js';
 
-defineComponents([MNDW_CHECKBOX_TAG, MndwCheckbox]);
+defineComponents([MNDW_CHECKBOX_TAG, MndwCheckbox], [MNDW_ICON_TAG, MndwIcon]);
 
 function box(element: MndwCheckbox): HTMLElement {
   const found = element.shadowRoot?.querySelector<HTMLElement>('[part="box"]');
@@ -86,6 +87,8 @@ describe('<mndw-checkbox>', () => {
     expect(element.shadowRoot?.querySelector('[part="box"]')).not.toBeNull();
     expect(element.shadowRoot?.querySelector('[part="mark"]')).not.toBeNull();
     expect(element.shadowRoot?.querySelector('slot[part="label"]')).not.toBeNull();
+
+    expect(element.shadowRoot?.querySelector('[part="mark"] mndw-icon')?.getAttribute('name')).toBe('check');
   });
 
   it('uses only existing mndw token names', () => {

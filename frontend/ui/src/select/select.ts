@@ -188,7 +188,7 @@ export class MndwSelect extends LitElement {
         <span class="value ${selected ? '' : 'placeholder'}" part="value">
           ${selected ? selected.label : this.placeholder ?? getMndwUiText('select.placeholder')}
         </span>
-        <span class="indicator" part="indicator" aria-hidden="true">▾</span>
+        <span class="indicator" part="indicator" aria-hidden="true"><mndw-icon name="chevron-down"></mndw-icon></span>
       </div>
       <slot hidden @slotchange=${this.onSlotChange}></slot>
     `;

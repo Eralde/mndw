@@ -46,7 +46,8 @@ function resetFilters(): void {
         onclick={() => expanded = !expanded}
       >
         <span class:log-filters__toggle--active={isFilterActive(filterState)}>
-          {translate('filter.label')} {expanded ? '▲' : '▼'}
+          {translate('filter.label')}
+          <mndw-icon name={expanded ? 'arrow-up' : 'arrow-down'}></mndw-icon>
         </span>
       </mndw-button>
       <span class="log-filters__count">

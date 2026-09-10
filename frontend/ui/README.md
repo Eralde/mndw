@@ -42,6 +42,7 @@ Without an overlay, `<mndw-select>` uses a minimal fixed-position fallback for s
 | `<mndw-heat-strip>`  | Compact utilization heat strip; data is assigned through `points`.                                                                   |
 | `<mndw-table>`       | Framework-neutral data table; `columns`/`rows` as properties, controlled sort/selection/visibility, custom light-DOM cell renderers. |
 | `<mndw-column-menu>` | Portaled ARIA `menu` column-visibility panel owned by `<mndw-table>`; not opened directly.                                           |
+| `<mndw-icon>`        | Renders one Lucide symbol from the shared sprite; `name` and `label`; host supplies `iconSpriteUrl`.                               |
 
 `<mndw-select>` uses an anchored popover above `600px`, with its maximum height derived from
 available viewport space. Long desktop lists scroll inside the panel's nested native scroll area;
@@ -545,6 +546,62 @@ native submitter; use a native `<button>` when submitter data is required.
 `--mndw-danger-bg` tint with `--mndw-danger` text and border, deepening slightly on hover. It is
 deliberately **not** a solid danger fill: the palette models `danger` as a foreground and emits no
 contrast pair for it, so a solid fill would be a colour combination the generator never validated.
+
+### `<mndw-icon>`
+
+`<mndw-icon>` renders one symbol from a single locally served SVG sprite. Names come from the
+generated catalog in `src/icon/generated/names.ts`; adding a name is a host-side change.
+
+```html
+<mndw-icon name="settings"></mndw-icon>
+<mndw-icon name="info" label="Information"></mndw-icon>
+<mndw-button aria-label="Settings">
+  <mndw-icon name="settings"></mndw-icon>
+</mndw-button>
+```
+
+`name` defaults to empty. Unknown or empty names render no `<use>` and still reserve the icon box;
+nothing is substituted and nothing is logged per render. `label` defaults to empty: labeled icons
+render `role="img"` with `aria-label`, unlabeled ones are `aria-hidden="true"`. The inner SVG is
+never focusable and exposes `part="svg"`. For icon-only buttons, keep the accessible name on the
+button and leave the icon unlabeled.
+
+Size comes from CSS: the host is `1em` square, so `width`/`height` or `font-size` on the element
+control it. Color inherits through `currentColor`.
+
+`name` and `label` reflect to attributes. Svelte and Vue assign properties on custom elements, so
+reflection keeps the value visible in the DOM for templates, DevTools, and tests.
+
+```css
+mndw-icon.size-16 {
+  width: 16px;
+  height: 16px;
+}
+```
+
+The host is the only registrar, and the sprite URL is host configuration:
+
+```ts
+import iconSpriteUrl from '@mndw/ui/icons.svg?url&no-inline';
+
+defineMndwUi({overlay: uiOverlayService, iconSpriteUrl});
+```
+
+Without `iconSpriteUrl`, icons render empty SVGs and issue no requests. Standalone or test usage must
+pass a URL explicitly. `defineMndwUi()` without arguments stays valid and preserves a previously
+configured URL.
+
+Plugins use raw string names in templates and consult the documented catalog; no SDK re-export or
+extra plugin dependency is involved. Names are public API and depend on the host build: a plugin
+must not assume a newer name exists on an older host. Adding an icon means updating
+`icons/lucide/UPSTREAM.json`, acquiring the matching SVG, and running
+`pnpm --filter @mndw/ui generate-icons`. The generator fails loudly on any missing or extra SVG,
+reporting `Missing SVGs:` and `Extra SVGs:` filename lists; `pnpm --filter @mndw/ui check:icons`
+verifies committed output matches the generator.
+
+Sources in `icons/lucide/` are unmodified Lucide artwork (ISC, with inherited Feather notices) and
+the sprite carries that license as XML metadata. `src/icon/generated/` is committed generated output
+— edit upstream sources and regenerate instead.
 
 ## Styling
 

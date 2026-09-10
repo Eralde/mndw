@@ -1,5 +1,6 @@
 import '@mndw/sdk/tokens.css';
 import {defineMndwUi} from '@mndw/ui';
+import iconSpriteUrl from '@mndw/ui/icons.svg?url&no-inline';
 import '@mndw/ui/styles.css';
 import './styles/global.css';
 import {firstValueFrom, timeout} from 'rxjs';
@@ -73,7 +74,7 @@ async function init(): Promise<void> {
 
   await initialize({
     initLocale: () => services.locale.initLocale(),
-    defineUi: (locale) => defineMndwUi({overlay: services.overlay, initialLocale: locale}),
+    defineUi: (locale) => defineMndwUi({overlay: services.overlay, initialLocale: locale, iconSpriteUrl}),
     initTheme,
     initPalette: () => services.palette.initPalette(),
     checkAuthenticated,

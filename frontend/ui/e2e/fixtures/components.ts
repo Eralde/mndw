@@ -1,5 +1,6 @@
 import '@mndw/sdk/tokens.css';
 import '../../src/styles/kit.css';
+import iconSpriteUrl from '../../src/icon/generated/sprite.svg?url&no-inline';
 import {
   type CellRenderer,
   type Column,
@@ -20,7 +21,7 @@ declare global {
   }
 }
 
-defineMndwUi();
+defineMndwUi({iconSpriteUrl});
 
 const form = document.querySelector<HTMLFormElement>('#component-form');
 

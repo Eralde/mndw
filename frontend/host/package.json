@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx scripts/bundle-shared.ts && vite",
-    "build": "vite build && tsx scripts/bundle-shared.ts",
+    "dev": "pnpm --filter @mndw/ui generate-icons && tsx scripts/bundle-shared.ts && vite",
+    "build": "pnpm --filter @mndw/ui generate-icons && vite build && tsx scripts/bundle-shared.ts",
     "preview": "vite preview",
     "bundle-shared": "tsx scripts/bundle-shared.ts",
     "check": "svelte-check --tsconfig ./tsconfig.json",

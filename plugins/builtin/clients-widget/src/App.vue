@@ -213,7 +213,9 @@ onUnmounted(() => {
       >
         {{ t('show-offline') }}
       </mndw-checkbox>
-      <mndw-button variant="ghost" :aria-label="t('settings')" @click="openSettings">⚙</mndw-button>
+      <mndw-button variant="ghost" :aria-label="t('settings')" @click="openSettings">
+        <mndw-icon name="settings"></mndw-icon>
+      </mndw-button>
     </header>
     <ClientsTable
       :clients="visibleClients"

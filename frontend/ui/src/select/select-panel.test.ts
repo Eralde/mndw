@@ -2,11 +2,13 @@ import {describe, expect, it, vi} from 'vitest';
 import {MNDW_SCROLL_AREA_TAG, MndwScrollArea} from '../scroll-area/scroll-area.js';
 import {defineComponents} from '../testing/index.js';
 import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select-panel.js';
+import {MNDW_ICON_TAG, MndwIcon} from '../icon/icon.js';
 import type {OptionModel} from './option-model.js';
 
 defineComponents(
   [MNDW_SCROLL_AREA_TAG, MndwScrollArea],
   [MNDW_SELECT_PANEL_TAG, MndwSelectPanel],
+  [MNDW_ICON_TAG, MndwIcon],
 );
 
 const options: OptionModel[] = [
@@ -122,6 +124,13 @@ describe('<mndw-select-panel>', () => {
 
     expect(rendered[0].getAttribute('aria-selected')).toBe('false');
     expect(rendered[1].getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('renders a shared check icon only on the selected option', async () => {
+    const rendered = items(await mount('wifi'));
+
+    expect(rendered[0].querySelector('mndw-icon')).toBeNull();
+    expect(rendered[1].querySelector('mndw-icon')?.getAttribute('name')).toBe('check');
   });
 
   it('starts active on the selected option', async () => {

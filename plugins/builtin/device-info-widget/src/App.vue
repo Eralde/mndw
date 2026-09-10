@@ -315,7 +315,9 @@ onUnmounted(() => {
     <header class="app__header">
       <span>{{ t('title') }}</span>
       <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
-      <mndw-button variant="ghost" :aria-label="t('settings')" @click="openSettings">⚙</mndw-button>
+      <mndw-button variant="ghost" :aria-label="t('settings')" @click="openSettings">
+        <mndw-icon name="settings"></mndw-icon>
+      </mndw-button>
     </header>
     <div v-if="loadState.status === 'loading'" class="app__loading">{{ t('loading') }}</div>
     <div v-else-if="loadState.status === 'error' || info === null" class="mndw-alert mndw-alert--danger" role="alert">

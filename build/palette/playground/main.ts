@@ -84,7 +84,7 @@ function gallery(prefix: string): string {
       <div class="gallery__group">
         <mndw-button variant="primary">Apply</mndw-button>
         <mndw-button variant="secondary">Cancel</mndw-button>
-        <mndw-button variant="ghost" aria-label="Settings">&#9881;</mndw-button>
+        <mndw-button variant="ghost" aria-label="Settings"><mndw-icon name="settings"></mndw-icon></mndw-button>
         <mndw-button variant="danger">Delete plugin</mndw-button>
         <mndw-button variant="primary" disabled>Applying…</mndw-button>
         <mndw-tooltip text="Restarts the device immediately" delay="120">

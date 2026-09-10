@@ -145,7 +145,7 @@ onMount(() => {
           aria-label={hostT('toast.dismiss')}
           onclick={() => store.dismiss(toast.id)}
         >
-          ×
+          <mndw-icon name="x"></mndw-icon>
         </button>
       </div>
     {/each}

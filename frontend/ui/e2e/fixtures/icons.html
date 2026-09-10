@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Icon fixture</title>
+    <style>
+      html,
+      body {
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: grid;
+        gap: 16px;
+        padding: 24px;
+        font-family: system-ui, sans-serif;
+        color: var(--mndw-text);
+        background: var(--mndw-bg);
+      }
+
+      .fixture-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .size-16 mndw-icon,
+      mndw-icon.size-16 {
+        width: 16px;
+        height: 16px;
+      }
+
+      .size-24 mndw-icon,
+      mndw-icon.size-24 {
+        font-size: 24px;
+      }
+
+      .size-32 mndw-icon,
+      mndw-icon.size-32 {
+        font-size: 32px;
+      }
+
+      .color-accent {
+        color: var(--mndw-accent);
+      }
+
+      .color-danger {
+        color: var(--mndw-danger);
+      }
+
+      .gallery {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 12px;
+        border-radius: 8px;
+      }
+
+      .gallery-light {
+        color: var(--mndw-text);
+        background: #ffffff;
+      }
+
+      .gallery-dark {
+        color: #ffffff;
+        background: #101214;
+      }
+
+      .gallery-cell {
+        display: inline-flex;
+        width: 24px;
+        height: 24px;
+        align-items: center;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="fixture-row">
+      <mndw-icon id="settings" name="settings"></mndw-icon>
+      <mndw-icon id="info" name="info" label="Information"></mndw-icon>
+    </div>
+
+    <div class="fixture-row">
+      <span class="size-16"><mndw-icon id="size-16" name="search"></mndw-icon></span>
+      <mndw-icon id="size-24" class="size-24" name="search"></mndw-icon>
+      <mndw-icon id="size-32" class="size-32" name="search"></mndw-icon>
+    </div>
+
+    <div class="fixture-row">
+      <span class="color-accent"><mndw-icon id="color-accent" name="check"></mndw-icon></span>
+      <span class="color-danger"><mndw-icon id="color-danger" name="trash"></mndw-icon></span>
+    </div>
+
+    <div class="fixture-row">
+      <mndw-icon id="shared-a" name="eye"></mndw-icon>
+      <mndw-icon id="shared-b" name="eye-off"></mndw-icon>
+      <mndw-input id="password-input" type="password" value="secret"></mndw-input>
+    </div>
+
+    <div class="fixture-row">
+      <mndw-icon id="unknown" name="not-an-icon"></mndw-icon>
+      <mndw-icon id="missing"></mndw-icon>
+    </div>
+
+    <div class="fixture-row">
+      <mndw-button id="icon-only" aria-label="Settings">
+        <mndw-icon name="settings"></mndw-icon>
+      </mndw-button>
+    </div>
+
+    <div id="icon-gallery"></div>
+
+    <script type="module" src="./icons.ts"></script>
+  </body>
+</html>

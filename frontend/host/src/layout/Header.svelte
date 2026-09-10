@@ -37,7 +37,7 @@ async function handleLogout(): Promise<void> {
       aria-label={hostT('nav.toggle-menu')}
       onclick={toggleSidebar}
     >
-      ☰
+      <mndw-icon name="menu"></mndw-icon>
     </mndw-button>
     <span class="mndw-header__brand">mndw</span>
     {#if appState.deviceInfo}

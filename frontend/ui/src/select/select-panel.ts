@@ -149,7 +149,7 @@ export class MndwSelectPanel extends LitElement {
                 @click=${() => this.select(index)}
               >
                 <span>${labelHtml}</span>
-                ${option.value === this.value ? html`<span aria-hidden="true">✓</span>` : null}
+                ${option.value === this.value ? html`<mndw-icon name="check" aria-hidden="true"></mndw-icon>` : null}
               </div>
             `;
         },

@@ -217,6 +217,7 @@ describe('fallback provider', () => {
     expect(document.querySelector('[aria-label="Close"]')).not.toBeNull();
     expect(layer.contentElement.style.visibility).toBe('');
     expect(layer.contentElement.style.position).toBe('');
+    expect(document.querySelector('.mndw-ui-sheet__header mndw-icon')?.getAttribute('name')).toBe('x');
   });
 
   it('localizes generated sheet chrome', () => {

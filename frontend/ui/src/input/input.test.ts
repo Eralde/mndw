@@ -1,5 +1,6 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_FIELD_TAG, MndwField} from '../field/field.js';
+import {MNDW_ICON_TAG, MndwIcon} from '../icon/icon.js';
 import {setMndwUiLocale} from '../i18n.js';
 import {defineComponents, mount, settle} from '../testing/index.js';
 import {MNDW_INPUT_TAG, MndwInput} from './input.js';
@@ -7,6 +8,7 @@ import {MNDW_INPUT_TAG, MndwInput} from './input.js';
 defineComponents(
   [MNDW_INPUT_TAG, MndwInput],
   [MNDW_FIELD_TAG, MndwField],
+  [MNDW_ICON_TAG, MndwIcon],
 );
 
 afterEach(() => {
@@ -597,6 +599,28 @@ describe('<mndw-input> password toggle', () => {
     await element.updateComplete;
 
     expect(toggle.getAttribute('aria-label')).toBe('Show password');
+  });
+
+  it('swaps the shared icon when password visibility toggles', async () => {
+    const element = await mount('<mndw-input type="password"></mndw-input>', MNDW_INPUT_TAG);
+    const toggle = element.shadowRoot?.querySelector<HTMLElement>('[part="password-toggle"]');
+    const icon = (): Element | null | undefined => toggle?.querySelector('mndw-icon');
+
+    if (!toggle) {
+      throw new Error('missing password toggle');
+    }
+
+    expect(icon()?.getAttribute('name')).toBe('eye');
+
+    toggle.click();
+    await element.updateComplete;
+
+    expect(icon()?.getAttribute('name')).toBe('eye-off');
+
+    toggle.click();
+    await element.updateComplete;
+
+    expect(icon()?.getAttribute('name')).toBe('eye');
   });
 
   it('updates password toggle labels when UI locale changes', async () => {

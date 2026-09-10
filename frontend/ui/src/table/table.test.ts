@@ -6,6 +6,7 @@ import {type UiLayer, type UiLayerOptions, type UiOverlayProvider, setOverlayPro
 import {defineComponents, resetUiTestState} from '../testing/index.js';
 import {column} from './table-builder.js';
 import {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './column-menu.js';
+import {MNDW_ICON_TAG, MndwIcon} from '../icon/icon.js';
 import {MNDW_TABLE_TAG, MndwTable} from './table.js';
 import {createFakeTableGeometryProvider} from './table-test-geometry.js';
 import {
@@ -44,6 +45,7 @@ defineComponents(
   [MNDW_TABLE_TAG, MndwTable],
   [MNDW_CHECKBOX_TAG, MndwCheckbox],
   [MNDW_COLUMN_MENU_TAG, MndwColumnMenu],
+  [MNDW_ICON_TAG, MndwIcon],
 );
 
 afterEach(() => {
@@ -825,7 +827,7 @@ describe('MndwTable rendering and properties', () => {
 });
 
 describe('MndwTable built-in cells', () => {
-  it('renders text, number, and boolean glyph cells', async () => {
+  it('renders text, number, and boolean icon cells', async () => {
     const el = makeTable();
 
     el.columns = makeColumns();
@@ -838,7 +840,7 @@ describe('MndwTable built-in cells', () => {
     expect(cells[0].textContent).toBe('cherry');
     expect(cells[1].textContent).toBe('10');
     expect(cells[1].classList.contains('cell-kind-number')).toBe(true);
-    expect(cells[2].textContent).toBe('✓');
+    expect(cells[2].querySelector('mndw-icon')?.getAttribute('name')).toBe('check');
     expect(cells[3].textContent).toBe('Node A');
   });
 
@@ -1509,5 +1511,63 @@ describe('MndwTable node reuse (repeat migration)', () => {
     const th = sortButton?.closest('th');
 
     expect(th?.getAttribute('aria-sort')).toBe('ascending');
+  });
+});
+
+describe('MndwTable icon migration', () => {
+  it('renders arrow icons for the active sort direction only', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    await el.updateComplete;
+
+    expect(shadowOf(el).querySelector('[part="sort-indicator"] mndw-icon')).toBeNull();
+
+    el.sort = {columnId: 'name', direction: 'asc'};
+    await el.updateComplete;
+    expect(shadowOf(el).querySelector('[part="sort-indicator"] mndw-icon')
+?.getAttribute('name')).toBe('arrow-up');
+
+    el.sort = {columnId: 'name', direction: 'desc'};
+    await el.updateComplete;
+    expect(shadowOf(el).querySelector('[part="sort-indicator"] mndw-icon')
+?.getAttribute('name')).toBe('arrow-down');
+  });
+
+  it('renders the settings icon on the column-menu trigger', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.columnMenu = true;
+    await el.updateComplete;
+
+    expect(shadowQuery<HTMLElement>(el, '[part="column-menu-trigger"] mndw-icon')?.getAttribute('name')).toBe(
+      'settings',
+    );
+  });
+
+  it('swaps the expand toggle icon with the row state', async () => {
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    el.expandable = true;
+    el.expandedRenderer = () => ({mount() {}, update() {}, destroy() {}});
+    await el.updateComplete;
+
+    const toggle = shadowQuery<HTMLElement>(el, '[part="expand-toggle"][data-expand-key="a"]');
+
+    expect(toggle?.querySelector('mndw-icon')?.getAttribute('name')).toBe('chevron-right');
+
+    el.expanded = ['a'];
+    await el.updateComplete;
+
+    expect(shadowQuery<HTMLElement>(el, '[part="expand-toggle"][data-expand-key="a"] mndw-icon')?.getAttribute('name'))
+      .toBe('chevron-down');
   });
 });

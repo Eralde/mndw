@@ -82,7 +82,11 @@ function buildTileFrame(
 
   removeBtn.type = 'button';
   removeBtn.className = 'mndw-grid-tile__close';
-  removeBtn.textContent = '×';
+
+  const removeIcon = document.createElement('mndw-icon');
+
+  removeIcon.setAttribute('name', 'x');
+  removeBtn.append(removeIcon);
   removeBtn.setAttribute('aria-label', hostT('dashboard.remove-widget', {label}));
   removeBtn.onclick = (event) => {
     event.stopPropagation();

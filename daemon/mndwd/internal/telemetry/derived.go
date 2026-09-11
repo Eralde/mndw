@@ -43,6 +43,7 @@ func (f RRDtoolFactory) Open(path string, spec rrd.CreateSpec, ops rrd.FileOps) 
 	if f.Executor == nil {
 		return nil, ErrDerivedUnavailable
 	}
+
 	return rrd.NewFile(f.Executor, path, spec, rrd.WithFileOps(ops))
 }
 
@@ -63,6 +64,7 @@ func (d *destination) Ensure(ctx context.Context, enable time.Time) error {
 	if err := d.open(); err != nil {
 		return err
 	}
+
 	return d.file.Ensure(ctx, enable)
 }
 
@@ -71,6 +73,7 @@ func (d *destination) Update(ctx context.Context, points []rrd.UpdatePoint) erro
 	if err := d.open(); err != nil {
 		return err
 	}
+
 	return d.file.Update(ctx, points)
 }
 
@@ -79,14 +82,18 @@ func (d *destination) open() error {
 	if d.file != nil {
 		return nil
 	}
+
 	if d.factory == nil {
 		return ErrDerivedUnavailable
 	}
+
 	file, err := d.factory.Open(d.path, d.spec, fileOpsAdapter{fs: d.fs})
 	if err != nil {
 		return err
 	}
+
 	d.file = file
+
 	return nil
 }
 
@@ -120,6 +127,7 @@ func NewDerivedStore(
 	if factory == nil || storage == nil {
 		return nil, errors.New("telemetry: derived store needs a factory and storage provider")
 	}
+
 	if fs == nil {
 		fs = journal.OSFileSystem{}
 	}
@@ -131,11 +139,14 @@ func NewDerivedStore(
 		fs:           fs,
 		destinations: map[uint16]*destination{},
 	}
+
 	for series, spec := range map[uint16]rrd.CreateSpec{1: loadSpec(), 2: tempSpec()} {
 		name := loadFileName
+
 		if series == 2 {
 			name = tempFileName
 		}
+
 		store.destinations[series] = &destination{
 			series:  series,
 			path:    filepath.Join(paths.RRDDir, name),
@@ -144,18 +155,22 @@ func NewDerivedStore(
 			fs:      fs,
 		}
 	}
+
 	return store, nil
 }
 
 // Progress reports the per-series publication frontier.
 func (d *DerivedStore) Progress() map[uint16]int64 {
 	d.mu.Lock()
+
 	defer d.mu.Unlock()
 
 	progress := make(map[uint16]int64, len(d.destinations))
+
 	for series, destination := range d.destinations {
 		progress[series] = destination.slotMs
 	}
+
 	return progress
 }
 
@@ -165,12 +180,14 @@ func (d *DerivedStore) Recover(ctx context.Context) error {
 	if err := d.cleanupRebuildScratch(ctx); err != nil {
 		return err
 	}
+
 	checkpointPath, cleanPath := checkpointPaths(d.paths)
 
 	checkpointPayloadBytes, checkpointErr := readFramedFile(d.fs, checkpointPath, kindCheckpoint)
 	cleanPayloadBytes, cleanErr := readFramedFile(d.fs, cleanPath, kindClean)
 
 	reusable := false
+
 	if checkpointErr == nil && cleanErr == nil {
 		marker, err := decodeCleanPayload(cleanPayloadBytes)
 		if err == nil && marker.State == cleanStateValid {
@@ -182,11 +199,15 @@ func (d *DerivedStore) Recover(ctx context.Context) error {
 			}
 		}
 	}
+
 	if reusable {
 		d.mu.Lock()
+
 		d.recovered = true
 		d.mutated = false
+
 		d.mu.Unlock()
+
 		return d.attachDestinations()
 	}
 
@@ -195,13 +216,17 @@ func (d *DerivedStore) Recover(ctx context.Context) error {
 	if err := d.invalidateCleanMarker(cleanPath); err != nil {
 		return err
 	}
+
 	if err := d.rebuildAll(ctx); err != nil {
 		return err
 	}
 
 	d.mu.Lock()
+
 	d.recovered = true
+
 	d.mu.Unlock()
+
 	return nil
 }
 
@@ -211,6 +236,7 @@ func (d *DerivedStore) RunCycle(ctx context.Context, cycle PublicationCycle) err
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = lease.Close() }()
 
 	if lease.Result.Writer == nil || lease.Result.Reader == nil {
@@ -218,10 +244,13 @@ func (d *DerivedStore) RunCycle(ctx context.Context, cycle PublicationCycle) err
 	}
 
 	d.mu.Lock()
+
 	if !d.recovered {
 		d.mu.Unlock()
+
 		return errors.New("telemetry: derived store is not recovered")
 	}
+
 	d.mu.Unlock()
 
 	boundary := journal.Publication{
@@ -229,17 +258,22 @@ func (d *DerivedStore) RunCycle(ctx context.Context, cycle PublicationCycle) err
 		CutoffElapsedMs: cycle.CutoffElapsedMs,
 	}
 	var prior journal.Publication
+
 	if err := readerScanPublications(lease.Result.Reader, ctx, &prior); err != nil {
 		return err
 	}
+
 	d.mu.Lock()
+
 	for series, destination := range d.destinations {
 		boundary.Frontiers = append(boundary.Frontiers, journal.Frontier{Series: series, SlotMs: destination.slotMs})
 	}
+
 	d.mu.Unlock()
 	sort.Slice(boundary.Frontiers, func(i, j int) bool { return boundary.Frontiers[i].Series < boundary.Frontiers[j].Series })
 
 	reader := lease.Result.Reader
+
 	if err := PlanPublication(ctx, func(visit func(journal.Record) error) error {
 		return reader.Scan(ctx, visit)
 	}, prior, func(plan PublicationPlan) error {
@@ -250,29 +284,40 @@ func (d *DerivedStore) RunCycle(ctx context.Context, cycle PublicationCycle) err
 
 	// Freeze the successful canonical boundary in the authoritative journal.
 	d.mu.Lock()
+
 	boundary.Frontiers = boundary.Frontiers[:0]
+
 	for series, destination := range d.destinations {
 		boundary.Frontiers = append(boundary.Frontiers, journal.Frontier{Series: series, SlotMs: destination.slotMs})
 	}
+
 	d.mu.Unlock()
 	sort.Slice(boundary.Frontiers, func(i, j int) bool { return boundary.Frontiers[i].Series < boundary.Frontiers[j].Series })
+
 	prepared, err := journal.PreparePublication(boundary)
 	if err != nil {
 		return err
 	}
+
 	appended, err := lease.Result.Writer.Append(ctx, []journal.Record{prepared})
 	if err != nil || appended.Accepted != 1 {
 		if err != nil {
 			return err
 		}
+
 		return errors.New("telemetry: publication boundary was not appended")
 	}
+
 	if _, err := lease.Result.Writer.Sync(ctx); err != nil {
 		return err
 	}
+
 	d.mu.Lock()
+
 	d.publication = appended.LastSequence
+
 	d.mu.Unlock()
+
 	return nil
 }
 
@@ -281,13 +326,16 @@ func readerScanPublications(reader *journal.Reader, ctx context.Context, latest 
 		if record.Kind != journal.KindPublication {
 			return nil
 		}
+
 		publication, err := journal.DecodePublication(record)
 		if err != nil {
 			return err
 		}
+
 		if publication.Seq >= latest.Seq {
 			*latest = publication
 		}
+
 		return nil
 	})
 }
@@ -299,57 +347,102 @@ func (d *DerivedStore) Publish(ctx context.Context, plan PublicationPlan) error 
 	}
 
 	d.mu.Lock()
+
 	if !d.recovered {
 		d.mu.Unlock()
+
 		return errors.New("telemetry: derived store is not recovered")
 	}
+
 	d.mutated = true
+
 	d.mu.Unlock()
 
 	for series, points := range plan.Points {
 		destination, ok := d.destination(series)
+
 		if !ok || len(points) == 0 {
 			continue
 		}
+
 		if err := destination.Ensure(ctx, points[0].Timestamp); err != nil {
 			return err
 		}
+
+		lastUpdate, err := destination.file.LastUpdate(ctx)
+		if err != nil {
+			return err
+		}
+
+		points = pointsAfter(points, lastUpdate)
+
+		if len(points) == 0 {
+			continue
+		}
+
 		if err := destination.Update(ctx, points); err != nil {
 			return err
 		}
+
 		d.mu.Lock()
+
 		destination.slotMs = points[len(points)-1].Timestamp.UnixMilli()
+
 		d.mu.Unlock()
 	}
+
+	return nil
+}
+
+// pointsAfter filters a canonical, chronologically ordered page to timestamps
+// that the destination has not persisted yet.
+func pointsAfter(points []rrd.UpdatePoint, lastUpdate time.Time) []rrd.UpdatePoint {
+	for index, point := range points {
+		if point.Timestamp.After(lastUpdate) {
+			return points[index:]
+		}
+	}
+
 	return nil
 }
 
 // CloseClean synchronizes derived files and publishes a valid clean marker.
 func (d *DerivedStore) CloseClean(ctx context.Context) error {
 	d.closeMu.Lock()
+
 	defer d.closeMu.Unlock()
+
 	checkpointPath, cleanPath := checkpointPaths(d.paths)
 
 	d.mu.Lock()
+
 	d.generation++
 	generation := d.generation
 	frontiers := make([]frontierEntry, 0, len(d.destinations))
+
 	for series, destination := range d.destinations {
 		frontiers = append(frontiers, frontierEntry{Series: series, SlotMs: fmt.Sprintf("%d", destination.slotMs)})
 	}
+
 	sort.Slice(frontiers, func(i, j int) bool { return frontiers[i].Series < frontiers[j].Series })
+
 	files := make([]fileEntry, 0, len(d.destinations))
+
 	for _, destination := range d.destinations {
 		if err := syncFile(d.fs, destination.path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			d.mu.Unlock()
+
 			return err
 		}
+
 		lastUpdateMs := int64(0)
+
 		if destination.file != nil {
 			if lastUpdate, err := destination.file.LastUpdate(ctx); err == nil {
 				lastUpdateMs = lastUpdate.UnixMilli()
 			}
 		}
+
 		files = append(files, fileEntry{
 			Series:            destination.series,
 			Basename:          filepath.Base(destination.path),
@@ -358,6 +451,7 @@ func (d *DerivedStore) CloseClean(ctx context.Context) error {
 			StatIdentity:      statIdentity(d.fs, destination.path),
 		})
 	}
+
 	sort.Slice(files, func(i, j int) bool { return files[i].Series < files[j].Series })
 	d.mu.Unlock()
 
@@ -372,6 +466,7 @@ func (d *DerivedStore) CloseClean(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	if err := writeFramedFile(d.fs, checkpointPath, kindCheckpoint, encoded); err != nil {
 		return err
 	}
@@ -380,6 +475,7 @@ func (d *DerivedStore) CloseClean(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	clean := cleanPayload{
 		State:            cleanStateValid,
 		CheckpointDigest: sha256Hex(encoded),
@@ -389,41 +485,49 @@ func (d *DerivedStore) CloseClean(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	return writeFramedFile(d.fs, cleanPath, kindClean, cleanEncoded)
 }
 
 func (d *DerivedStore) destination(series uint16) (*destination, bool) {
 	d.mu.Lock()
+
 	defer d.mu.Unlock()
 
 	destination, ok := d.destinations[series]
+
 	return destination, ok
 }
 
 // attachDestinations opens the existing destination handles for reuse.
 func (d *DerivedStore) attachDestinations() error {
 	d.mu.Lock()
+
 	defer d.mu.Unlock()
 
 	for _, destination := range d.destinations {
 		if destination.file != nil {
 			continue
 		}
+
 		file, err := d.factory.Open(destination.path, destination.spec, fileOpsAdapter{fs: d.fs})
 		if err != nil {
 			return err
 		}
+
 		destination.file = file
 		lastUpdate, err := file.LastUpdate(context.Background())
 		if err != nil && !errors.Is(err, rrd.ErrFileMissing) {
 			return err
 		}
+
 		if err == nil {
 			destination.slotMs = lastUpdate.UnixMilli()
 		} else {
 			destination.slotMs = 0
 		}
 	}
+
 	return nil
 }
 
@@ -431,7 +535,9 @@ func (d *DerivedStore) attachDestinations() error {
 // mutation.
 func (d *DerivedStore) invalidateCleanMarker(cleanPath string) error {
 	d.mu.Lock()
+
 	d.generation++
+
 	d.mu.Unlock()
 
 	clean := cleanPayload{State: cleanStateInvalid}
@@ -439,32 +545,39 @@ func (d *DerivedStore) invalidateCleanMarker(cleanPath string) error {
 	if err != nil {
 		return err
 	}
+
 	return writeFramedFile(d.fs, cleanPath, kindClean, encoded)
 }
 
 // frontiersMatch reports whether the stored frontiers still match live state.
 func (d *DerivedStore) frontiersMatch(checkpoint checkpointPayload) bool {
 	d.mu.Lock()
+
 	defer d.mu.Unlock()
 
 	if len(checkpoint.Frontiers) != len(d.destinations) {
 		return false
 	}
+
 	for _, frontier := range checkpoint.Frontiers {
 		destination, ok := d.destinations[frontier.Series]
+
 		if !ok {
 			return false
 		}
+
 		if fmt.Sprintf("%d", destination.slotMs) != frontier.SlotMs {
 			return false
 		}
 	}
+
 	return true
 }
 
 // schemaFingerprint identifies a destination schema deterministically.
 func schemaFingerprint(spec rrd.CreateSpec) string {
 	digest := fmt.Sprintf("step=%d;ds=%d;rra=%d", spec.Step.Milliseconds(), len(spec.DS), len(spec.RRA))
+
 	return sha256Hex([]byte(digest))
 }
 
@@ -474,6 +587,7 @@ func statIdentity(fs journal.FileSystem, path string) string {
 	if err != nil {
 		return ""
 	}
+
 	return sha256Hex([]byte(fmt.Sprintf("%s:%d", filepath.Base(path), info.Size())))
 }
 
@@ -497,10 +611,13 @@ func (a fileOpsAdapter) CreateTemp(dir, pattern string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	name := filepath.Join(dir, pattern)
+
 	if err := file.Close(); err != nil {
 		return "", err
 	}
+
 	return name, nil
 }
 
@@ -511,6 +628,7 @@ func (a fileOpsAdapter) Link(oldPath, newPath string) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+
 	return a.fs.Rename(oldPath, newPath)
 }
 

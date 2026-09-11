@@ -125,23 +125,29 @@ func NewPipeline(
 	if err := ValidatePolicy(policy); err != nil {
 		return nil, err
 	}
+
 	if clock == nil {
 		return nil, errors.New("telemetry: boot clock is required")
 	}
+
 	if storage == nil {
 		return nil, errors.New("telemetry: storage provider is required")
 	}
+
 	if len(samplers) == 0 {
 		return nil, errors.New("telemetry: at least one sampler is required")
 	}
 
 	initialDurable := uint64(0)
+
 	if lease, err := storage.Acquire(context.Background()); err == nil {
 		if lease.Result.Writer != nil {
 			initialDurable = lease.Result.Writer.DurableThrough()
 		}
+
 		_ = lease.Close()
 	}
+
 	pipeline := &Pipeline{
 		policy:         policy,
 		clock:          clock,
@@ -156,12 +162,15 @@ func NewPipeline(
 		publicationBus: make(chan PublicationCycle, 1),
 		status:         PipelineStatus{Storage: storage.CurrentStatus(), DurableThrough: initialDurable, SupportedSeries: supportedFromSamplers(samplers), Loss: map[string]uint64{}},
 	}
+
 	if pipeline.waitUntil == nil {
 		pipeline.waitUntil = defaultWaitUntil(clock, policy)
 	}
+
 	for _, opt := range opts {
 		opt(pipeline)
 	}
+
 	return pipeline, nil
 }
 
@@ -177,18 +186,25 @@ func defaultWaitUntil(clock BootClock, _ Policy) func(context.Context, int64) er
 			if err != nil {
 				return err
 			}
+
 			remaining := deadlineMs - reading.ElapsedMs
+
 			if remaining <= 0 {
 				return nil
 			}
+
 			delay := time.Duration(remaining) * time.Millisecond
+
 			if delay > maxWaitSlice {
 				delay = maxWaitSlice
 			}
+
 			timer := time.NewTimer(delay)
+
 			select {
 			case <-ctx.Done():
 				timer.Stop()
+
 				return ctx.Err()
 			case <-timer.C:
 			}
@@ -213,16 +229,20 @@ func supportedFromSamplers(samplers map[uint16]Sampler) map[uint16]bool {
 // Status returns an immutable pipeline snapshot.
 func (p *Pipeline) Status() PipelineStatus {
 	p.mu.Lock()
+
 	defer p.mu.Unlock()
+
 	status := p.status
 	status.PendingSamples = len(p.queue)
 	status.PendingBytes = p.queueBytes
 	status.Clock = p.tracker.View()
 	status.Storage = p.storage.CurrentStatus()
 	status.Loss = map[string]uint64{}
+
 	for reason, count := range p.loss {
 		status.Loss[fmt.Sprintf("%d", reason)] = count
 	}
+
 	return status
 }
 
@@ -232,8 +252,10 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	done := make(chan struct{})
 
 	p.mu.Lock()
+
 	p.runCancel = cancel
 	p.runDone = done
+
 	p.mu.Unlock()
 
 	// Stop may be called before the loop reaches a wait, so cancel on the stop
@@ -258,49 +280,65 @@ func (p *Pipeline) Run(ctx context.Context) error {
 	// Establish the acquisition origin when this boot has none so the first
 	// sample lands on a scheduled deadline rather than at process start.
 	reading, readErr := p.clock.Read()
+
 	if readErr == nil {
 		p.mu.Lock()
+
 		if p.origin == 0 {
 			p.origin = nextDeadlineAfter(reading.ElapsedMs, p.policy.AcquireEvery.Milliseconds(), reading.ElapsedMs)
 		}
+
 		p.mu.Unlock()
 	}
 
 	publicationDone := make(chan struct{})
+
 	if p.publication != nil {
 		if err := p.publication.Recover(runCtx); err != nil {
 			p.mu.Lock()
+
 			p.status.RebuildState = "unavailable"
 			p.status.Error = err.Error()
+
 			p.mu.Unlock()
 			p.logger.Warn("telemetry: derived recovery failed", "error", err)
 		}
 	}
+
 	go p.runPublication(runCtx, publicationDone)
 
 	var runErr error
+
 	for {
 		if err := runCtx.Err(); err != nil {
 			runErr = err
+
 			break
 		}
+
 		deadline, err := p.nextDeadline(runCtx)
 		if err != nil {
 			runErr = err
+
 			break
 		}
+
 		if err := p.waitUntil(runCtx, deadline); err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				break
 			}
+
 			runErr = err
+
 			break
 		}
+
 		p.runDueWork(runCtx)
 	}
 
 	close(p.publicationBus)
 	<-publicationDone
+
 	return runErr
 }
 
@@ -310,21 +348,28 @@ func (p *Pipeline) runDueWork(ctx context.Context) {
 	reading, err := p.clock.Read()
 	if err != nil {
 		p.mu.Lock()
+
 		p.status.Error = err.Error()
+
 		p.mu.Unlock()
+
 		return
 	}
 
 	if p.due(reading.ElapsedMs, p.policy.EvidenceEvery) {
 		p.pollEvidence(ctx, reading)
 	}
+
 	if p.due(reading.ElapsedMs, p.policy.AcquireEvery) {
 		p.acquire(ctx, reading)
 	}
+
 	publishDue := p.due(reading.ElapsedMs, p.policy.PublishEvery)
+
 	if err := p.flush(ctx, reading); err != nil {
 		p.logger.Warn("telemetry: journal flush failed", "error", err)
 	}
+
 	if publishDue {
 		p.maintain(ctx, reading)
 		p.schedulePublication(reading)
@@ -335,17 +380,22 @@ func (p *Pipeline) runDueWork(ctx context.Context) {
 // wall time, decide work: a missed poll stays a gap.
 func (p *Pipeline) due(elapsed int64, period time.Duration) bool {
 	p.mu.Lock()
+
 	defer p.mu.Unlock()
 
 	if p.origin == 0 || elapsed < p.origin || period <= 0 {
 		return false
 	}
+
 	slot := (elapsed - p.origin) / period.Milliseconds()
 	key := period.Milliseconds()
+
 	if previous, ok := p.lastSlot[key]; ok && previous >= slot {
 		return false
 	}
+
 	p.lastSlot[key] = slot
+
 	return true
 }
 
@@ -354,27 +404,34 @@ func (p *Pipeline) nextDeadline(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+
 	if p.origin == 0 {
 		return reading.ElapsedMs, nil
 	}
 
 	period := p.policy.EvidenceEvery
 	deadline := nextDeadlineAfter(p.origin, period.Milliseconds(), reading.ElapsedMs)
+
 	for _, candidate := range []time.Duration{p.policy.AcquireEvery, p.policy.PublishEvery} {
 		next := nextDeadlineAfter(p.origin, candidate.Milliseconds(), reading.ElapsedMs)
+
 		if next < deadline {
 			deadline = next
 		}
 	}
+
 	if p.firstUnsynced > 0 {
 		syncDeadline := SyncDeadline(p.firstUnsynced, p.policy.MaxUnsynced)
+
 		if syncDeadline < deadline {
 			deadline = syncDeadline
 		}
 	}
+
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
+
 	return deadline, nil
 }
 
@@ -385,6 +442,7 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = lease.Close() }()
 
 	boot, err := p.currentBoot()
@@ -397,6 +455,7 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 	anchors := map[uint64]journal.Anchor{}
 	var latestTransition journal.ClockTransition
 	var transitionSequence uint64
+
 	if lease.Result.Reader != nil {
 		_ = lease.Result.Reader.Scan(ctx, func(record journal.Record) error {
 			switch record.Kind {
@@ -420,16 +479,21 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 					transitionSequence = transition.Seq
 				}
 			}
+
 			return nil
 		})
 	}
 
 	p.mu.Lock()
+
 	defer p.mu.Unlock()
+
 	view := ClockView{State: ClockUnanchored, Boot: boot}
+
 	if transitionSequence > 0 {
 		view.Segment = latestTransition.ClockSegment
 		view.ConsumedEvidenceID = latestTransition.ConsumedEvidenceID
+
 		switch latestTransition.State {
 		case journal.StateAnchored:
 			view.State = ClockAnchored
@@ -437,6 +501,7 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 			view.State = ClockSuspect
 			view.SuspectElapsedMs = latestTransition.SuspectElapsedMs
 		}
+
 		if anchor, ok := anchors[view.Segment]; ok {
 			copy := anchor
 			view.Anchor = &copy
@@ -451,12 +516,15 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 			}
 		}
 	}
+
 	p.tracker = NewClockStateWithPolicy(view, p.policy)
+
 	if origin > 0 {
 		p.origin = origin
 		p.bootStartQueued = true
 		_ = sequence
 	}
+
 	return nil
 }
 
@@ -465,6 +533,7 @@ func (p *Pipeline) currentBoot() (journal.BootID, error) {
 	if err != nil {
 		return journal.BootID{}, err
 	}
+
 	return reading.Boot, nil
 }
 
@@ -476,33 +545,44 @@ func (p *Pipeline) pollEvidence(ctx context.Context, reading Reading) {
 	}
 
 	p.mu.Lock()
+
 	view := p.tracker.View()
 	request := EvidenceRequest{Boot: reading.Boot, SuspectElapsedMs: view.SuspectElapsedMs, ConsumedEvidenceID: view.ConsumedEvidenceID}
+
 	p.mu.Unlock()
 
 	before, after, evidence, err := ReadEvidence(ctx, p.clock, p.evidence, request)
 	if err != nil {
 		p.logger.Debug("telemetry: clock evidence unavailable", "error", err)
+
 		return
 	}
 
 	p.mu.Lock()
+
 	proposed, records, err := p.tracker.Observe(before, after, evidence)
 	if err != nil || len(records) == 0 {
 		p.mu.Unlock()
+
 		return
 	}
+
 	p.mu.Unlock()
 
 	p.enqueue(records, reading.ElapsedMs)
+
 	if err := p.flush(ctx, reading); err != nil {
 		p.logger.Warn("telemetry: clock evidence not durable", "error", err)
+
 		return
 	}
+
 	if err := p.syncNow(ctx); err != nil {
 		p.logger.Warn("telemetry: clock evidence not durable", "error", err)
+
 		return
 	}
+
 	p.mu.Lock()
 	p.tracker.Install(proposed)
 	p.mu.Unlock()
@@ -511,11 +591,15 @@ func (p *Pipeline) pollEvidence(ctx context.Context, reading Reading) {
 // acquire polls every sampler and queues one sample per series.
 func (p *Pipeline) acquire(ctx context.Context, reading Reading) {
 	p.mu.Lock()
+
 	view, transitions, err := p.tracker.Check(reading)
 	state := view
+
 	p.mu.Unlock()
+
 	if err == nil && len(transitions) > 0 {
 		p.enqueue(transitions, reading.ElapsedMs)
+
 		if flushErr := p.flush(ctx, reading); flushErr == nil {
 			if syncErr := p.syncNow(ctx); syncErr == nil {
 				p.mu.Lock()
@@ -530,21 +614,27 @@ func (p *Pipeline) acquire(ctx context.Context, reading Reading) {
 	}
 
 	p.mu.Lock()
+
 	needBootStart := !p.bootStartQueued
 	origin := p.origin
+
 	p.mu.Unlock()
 
 	if needBootStart {
 		if origin == 0 {
 			origin = nextDeadlineAfter(reading.ElapsedMs, p.policy.AcquireEvery.Milliseconds(), reading.ElapsedMs)
 		}
+
 		prepared, err := journal.PrepareBootStart(journal.BootStart{Boot: reading.Boot, FirstAcquireElapsedMs: origin})
 		if err == nil {
 			p.enqueue([]journal.Record{prepared}, reading.ElapsedMs)
 			p.mu.Lock()
+
 			p.origin = origin
 			p.bootStartQueued = true
+
 			p.mu.Unlock()
+
 			if err := p.flush(ctx, reading); err != nil {
 				p.logger.Warn("telemetry: boot start not durable", "error", err)
 			} else if err := p.syncNow(ctx); err != nil {
@@ -556,11 +646,13 @@ func (p *Pipeline) acquire(ctx context.Context, reading Reading) {
 	for series, sampler := range p.samplers {
 		values, err := sampler.Poll(ctx)
 		journalValues := make([]journal.Value, 0, len(values))
+
 		if err != nil {
 			// A failed poll is an unknown value, never a measurement.
 			for range values {
 				journalValues = append(journalValues, journal.Value{Known: false})
 			}
+
 			if len(values) == 0 {
 				journalValues = append(journalValues, journal.Value{Known: false})
 			}
@@ -580,8 +672,10 @@ func (p *Pipeline) acquire(ctx context.Context, reading Reading) {
 		prepared, err := journal.PrepareSample(sample)
 		if err != nil {
 			p.logger.Warn("telemetry: sample rejected", "series", series, "error", err)
+
 			continue
 		}
+
 		p.enqueue([]journal.Record{prepared}, reading.ElapsedMs)
 	}
 }
@@ -590,23 +684,29 @@ func (p *Pipeline) acquire(ctx context.Context, reading Reading) {
 // bounded RAM queue is full.
 func (p *Pipeline) enqueue(records []journal.Record, elapsedMs int64) {
 	p.mu.Lock()
+
 	defer p.mu.Unlock()
 
 	for _, record := range records {
 		size := len(record.Payload) + 16
+
 		for p.queueBytes+size > p.policy.QueueBytes && len(p.queue) > 0 {
 			dropped := p.queue[0]
 			p.queue = p.queue[1:]
 			p.queueBytes -= len(dropped.Payload) + 16
 			p.loss[journal.LossQueueOverflow]++
 		}
+
 		if p.queueBytes+size > p.policy.QueueBytes {
 			p.loss[journal.LossQueueOverflow]++
+
 			continue
 		}
+
 		p.queue = append(p.queue, record)
 		p.queueBytes += size
 	}
+
 	if p.firstUnsynced == 0 {
 		p.firstUnsynced = elapsedMs
 	}
@@ -616,11 +716,14 @@ func (p *Pipeline) enqueue(records []journal.Record, elapsedMs int64) {
 // elapsed.
 func (p *Pipeline) flush(ctx context.Context, reading Reading) error {
 	p.flushMu.Lock()
+
 	defer p.flushMu.Unlock()
 
 	p.mu.Lock()
+
 	records := append([]journal.Record(nil), p.queue...)
 	due := p.firstUnsynced > 0 && reading.ElapsedMs >= SyncDeadline(p.firstUnsynced, p.policy.MaxUnsynced)
+
 	p.mu.Unlock()
 
 	if len(records) == 0 && !due {
@@ -631,42 +734,57 @@ func (p *Pipeline) flush(ctx context.Context, reading Reading) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = lease.Close() }()
 
 	if lease.Result.Writer == nil {
 		// Read-only or unavailable storage keeps bounded RAM retention only.
 		p.mu.Lock()
+
 		p.status.Error = "storage " + string(lease.Result.Status.Mode)
+
 		p.mu.Unlock()
+
 		return nil
 	}
 
 	appended, err := lease.Result.Writer.Append(ctx, records)
+
 	if appended.Accepted > 0 {
 		p.mu.Lock()
+
 		p.queue = p.queue[appended.Accepted:]
 		p.queueBytes = 0
+
 		for _, record := range p.queue {
 			p.queueBytes += len(record.Payload) + 16
 		}
+
 		if p.firstUnsynced == 0 {
 			p.firstUnsynced = reading.ElapsedMs
 		}
+
 		p.mu.Unlock()
 	}
+
 	if err != nil {
 		p.logger.Warn("telemetry: append incomplete", "accepted", appended.Accepted, "error", err)
+
 		if appended.NeedsRepair {
 			if repairErr := lease.Result.Writer.RepairTail(ctx); repairErr != nil {
 				return repairErr
 			}
 		}
+
 		return err
 	}
 
 	p.mu.Lock()
+
 	due = p.firstUnsynced > 0 && reading.ElapsedMs >= SyncDeadline(p.firstUnsynced, p.policy.MaxUnsynced)
+
 	p.mu.Unlock()
+
 	if !due {
 		return nil
 	}
@@ -675,11 +793,15 @@ func (p *Pipeline) flush(ctx context.Context, reading Reading) error {
 	if err != nil {
 		return err
 	}
+
 	p.mu.Lock()
+
 	p.firstUnsynced = 0
 	p.status.DurableThrough = durable
 	p.lastSync = time.Now()
+
 	p.mu.Unlock()
+
 	return nil
 }
 
@@ -690,19 +812,26 @@ func (p *Pipeline) syncNow(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = lease.Close() }()
+
 	if lease.Result.Writer == nil {
 		return errors.New("telemetry: journal writer unavailable")
 	}
+
 	durable, err := lease.Result.Writer.Sync(ctx)
 	if err != nil {
 		return err
 	}
+
 	p.mu.Lock()
+
 	p.firstUnsynced = 0
 	p.status.DurableThrough = durable
 	p.lastSync = time.Now()
+
 	p.mu.Unlock()
+
 	return nil
 }
 
@@ -712,16 +841,23 @@ func (p *Pipeline) maintain(ctx context.Context, reading Reading) {
 		if err == nil {
 			_ = lease.Close()
 		}
+
 		return
 	}
+
 	defer func() { _ = lease.Close() }()
+
 	input := journal.RetentionInput{LatestElapsed: map[journal.BootID]int64{reading.Boot: reading.ElapsedMs}}
+
 	p.mu.Lock()
+
 	if p.tracker.View().State == ClockAnchored {
 		now := reading.WallMs
 		input.TrustedNowMs = &now
 	}
+
 	p.mu.Unlock()
+
 	if err := lease.Result.Writer.Maintain(ctx, input); err != nil {
 		p.logger.Warn("telemetry: retention maintenance failed", "error", err)
 	}
@@ -730,7 +866,9 @@ func (p *Pipeline) maintain(ctx context.Context, reading Reading) {
 // schedulePublication hands one cycle to the publication worker.
 func (p *Pipeline) schedulePublication(reading Reading) {
 	p.mu.Lock()
+
 	cycle := PublicationCycle{CutoffElapsedMs: reading.ElapsedMs, DurableThrough: p.status.DurableThrough, Clock: p.tracker.View()}
+
 	p.mu.Unlock()
 
 	select {
@@ -747,13 +885,20 @@ func (p *Pipeline) runPublication(ctx context.Context, done chan struct{}) {
 		if ctx.Err() != nil {
 			return
 		}
+
 		if p.publication == nil {
 			continue
 		}
+
 		if err := p.publication.RunCycle(ctx, cycle); err != nil {
+			p.mu.Lock()
+
+			p.status.Error = err.Error()
+
+			p.mu.Unlock()
 			p.logger.Warn("telemetry: publication cycle failed", "error", err)
-			continue
 		}
+
 		if p.refresher != nil {
 			if err := p.refresher.Refresh(ctx, p.Status()); err != nil {
 				p.logger.Warn("telemetry: snapshot refresh failed", "error", err)
@@ -765,15 +910,19 @@ func (p *Pipeline) runPublication(ctx context.Context, done chan struct{}) {
 // Stop joins acquisition, drains queued records, and closes derived state.
 func (p *Pipeline) Stop(ctx context.Context) error {
 	p.mu.Lock()
+
 	p.stopped = true
 	cancel := p.runCancel
 	done := p.runDone
+
 	p.mu.Unlock()
 
 	p.stopOnce.Do(func() { close(p.stopChan) })
+
 	if cancel != nil {
 		cancel()
 	}
+
 	if done != nil {
 		select {
 		case <-done:
@@ -788,13 +937,16 @@ func (p *Pipeline) Stop(ctx context.Context) error {
 			p.logger.Warn("telemetry: shutdown flush failed", "error", flushErr)
 		}
 	}
+
 	if p.refresher != nil {
 		if err := p.refresher.Close(ctx); err != nil {
 			p.logger.Warn("telemetry: refresher close failed", "error", err)
 		}
 	}
+
 	if p.publication != nil {
 		return p.publication.CloseClean(ctx)
 	}
+
 	return nil
 }

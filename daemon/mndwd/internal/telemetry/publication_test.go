@@ -190,6 +190,33 @@ func TestBuildPublicationConflictsBeyondFixedFrontier(t *testing.T) {
 	}
 }
 
+func TestBuildPublicationIncludesNewRecordsWhenCutoffExtended(t *testing.T) {
+	boot := journal.BootID{1}
+	records := []journal.Record{
+		anchorFor(t, boot, 0, 1800000000000),
+		sampleFor(t, 2, boot, 1, 0, journal.Value{Known: true, V: 20}, journal.Value{Known: true, V: 40}),
+		sampleFor(t, 3, boot, 1, 180000, journal.Value{Known: true, V: 30}, journal.Value{Known: true, V: 50}),
+	}
+	// Simulate a second publication cycle: prior boundary committed through
+	// seq 2 with its frontier, but the effective cutoff now reaches seq 3.
+	effective := journal.Publication{
+		SampleThrough: 3,
+		AnchorThrough: 3,
+		Frontiers:     []journal.Frontier{{Series: 1, SlotMs: 1800000000000}},
+	}
+	plan, err := BuildPublication(records, effective)
+	if err != nil {
+		t.Fatal(err)
+	}
+	points := plan.Points[1]
+	if len(points) != 2 {
+		t.Fatalf("expected both slots, got %d points", len(points))
+	}
+	if points[1].Timestamp.UnixMilli() != 1800000180000 {
+		t.Fatalf("new record slot=%d", points[1].Timestamp.UnixMilli())
+	}
+}
+
 func TestBuildPublicationIsDeterministic(t *testing.T) {
 	boot := journal.BootID{1}
 	records := []journal.Record{

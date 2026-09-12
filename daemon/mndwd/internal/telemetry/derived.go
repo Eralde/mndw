@@ -274,9 +274,17 @@ func (d *DerivedStore) RunCycle(ctx context.Context, cycle PublicationCycle) err
 
 	reader := lease.Result.Reader
 
+	// The prior boundary records what was already committed; its Frontiers
+	// protect fixed slots. But the sample/anchor eligibility window must
+	// extend to the current cycle's durable high-water mark so that records
+	// acquired since the last publication are included.
+	effective := prior
+	effective.SampleThrough = boundary.SampleThrough
+	effective.AnchorThrough = boundary.SampleThrough
+
 	if err := PlanPublication(ctx, func(visit func(journal.Record) error) error {
 		return reader.Scan(ctx, visit)
-	}, prior, func(plan PublicationPlan) error {
+	}, effective, func(plan PublicationPlan) error {
 		return d.Publish(ctx, plan)
 	}); err != nil {
 		return err

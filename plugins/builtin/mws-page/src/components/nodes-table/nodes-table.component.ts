@@ -106,11 +106,7 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
           : fw;
       },
       sortable: true,
-    }),
-    column<NodeRow>()({
-      id: 'alert',
-      label: this.t('nodes.alert'),
-      accessor: (row) => row.node.fwUpdateAvailable ? this.t('nodes.update-available') : null,
+      nowrap: true,
     }),
   ] as Column<unknown>[];
 

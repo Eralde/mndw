@@ -167,7 +167,7 @@
     "ip": "IP address",
     "via": "Via",
     "connection": "Connection",
-    "firmware": "KeeneticOS",
+    "firmware": "Firmware",
     "alert": "Alert",
     "update-available": "Update available",
     "firmware-available": "{current} → {available}",

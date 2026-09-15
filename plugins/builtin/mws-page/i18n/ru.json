@@ -167,7 +167,7 @@
     "ip": "IP-адрес",
     "via": "Через",
     "connection": "Подключение",
-    "firmware": "KeeneticOS",
+    "firmware": "Прошивка",
     "alert": "Предупреждение",
     "update-available": "Доступно обновление",
     "firmware-available": "{current} → {available}",

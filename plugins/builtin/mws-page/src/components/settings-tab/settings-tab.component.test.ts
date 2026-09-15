@@ -1,17 +1,16 @@
 import '@angular/compiler';
 import {TestBed} from '@angular/core/testing';
 import {createTestI18n} from '@mndw/sdk/testing';
-import {of, throwError} from 'rxjs';
+import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import type {MwsWriteResult} from '../../services/mws-write.service';
-import {MwsWriteService} from '../../services/mws-write.service';
+import {type MwsWriteResult, MwsWriteService} from '../../services/mws-write.service';
 import {MwsApiService, type SystemSettings} from '../../api/mws-api.service';
 import {TRANSLATOR} from '../../tokens';
 import enCatalog from '../../../i18n/en.json';
 import tabTemplate from './settings-tab.component.html?raw';
 import tabStyles from './settings-tab.component.scss?raw';
 import {SettingsTabComponent} from './settings-tab.component';
-import {signal, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 
 const settings: SystemSettings = {
   backhaulEnabled: true,
@@ -28,6 +27,16 @@ const settings: SystemSettings = {
 };
 
 const ok = (): MwsWriteResult => ({ok: true, steps: []});
+
+function requiredElement<T extends Element>(root: ParentNode, selector: string): T {
+  const element = root.querySelector<T>(selector);
+
+  if (element === null) {
+    throw new Error(`missing element: ${selector}`);
+  }
+
+  return element;
+}
 
 describe('SettingsTabComponent', () => {
   let api: {showSystemSettings: ReturnType<typeof vi.fn>};
@@ -78,9 +87,21 @@ describe('SettingsTabComponent', () => {
     fixture.detectChanges();
 
     expect(api.showSystemSettings).toHaveBeenCalledOnce();
-    expect((fixture.nativeElement.querySelector('[data-field="backhaul"]') as HTMLInputElement).checked).toBe(true);
-    expect(fixture.nativeElement.querySelectorAll('[data-field="auto-update-schedule"] option')).toHaveLength(3);
-    expect(fixture.nativeElement.querySelector('[data-schedule-preview]')?.textContent).toContain('start 01:00');
+
+    const backhaulSwitch = requiredElement<HTMLElement & {checked: boolean}>(
+      fixture.nativeElement,
+      'mndw-switch[data-field="backhaul"]',
+    );
+
+    expect(backhaulSwitch.checked).toBe(true);
+    expect(fixture.nativeElement.querySelectorAll('[data-field="auto-update-schedule"] mndw-option')).toHaveLength(3);
+
+    const scheduleField = requiredElement<HTMLElement & {hint: string}>(
+      fixture.nativeElement,
+      'mndw-field[data-field="schedule-field"]',
+    );
+
+    expect(scheduleField.hint).toContain('start 01:00');
   });
 
   it('writes toggles and Always on clears schedule', async () => {
@@ -90,15 +111,16 @@ describe('SettingsTabComponent', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     fixture.detectChanges();
 
-    const backhaul = fixture.nativeElement.querySelector('[data-field="backhaul"]') as HTMLInputElement;
+    const backhaul = requiredElement<HTMLElement>(fixture.nativeElement, 'mndw-switch[data-field="backhaul"]');
 
-    backhaul.checked = false;
-    backhaul.dispatchEvent(new Event('change', {bubbles: true}));
+    backhaul.dispatchEvent(new CustomEvent('mndwchange', {detail: {checked: false}, bubbles: true}));
 
-    const schedule = fixture.nativeElement.querySelector('[data-field="auto-update-schedule"]') as HTMLSelectElement;
+    const schedule = requiredElement<HTMLElement>(
+      fixture.nativeElement,
+      'mndw-select[data-field="auto-update-schedule"]',
+    );
 
-    schedule.value = '';
-    schedule.dispatchEvent(new Event('change', {bubbles: true}));
+    schedule.dispatchEvent(new CustomEvent('mndwchange', {detail: {value: ''}, bubbles: true}));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(write.setBackhaul).toHaveBeenCalledWith(false);
@@ -115,10 +137,9 @@ describe('SettingsTabComponent', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     fixture.detectChanges();
 
-    const checkbox = fixture.nativeElement.querySelector('[data-field="auto-update"]') as HTMLInputElement;
+    const autoUpdate = requiredElement<HTMLElement>(fixture.nativeElement, 'mndw-switch[data-field="auto-update"]');
 
-    checkbox.checked = false;
-    checkbox.dispatchEvent(new Event('change', {bubbles: true}));
+    autoUpdate.dispatchEvent(new CustomEvent('mndwchange', {detail: {checked: false}, bubbles: true}));
     await Promise.resolve();
     fixture.detectChanges();
 

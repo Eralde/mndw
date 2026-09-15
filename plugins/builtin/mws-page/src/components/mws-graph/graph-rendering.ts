@@ -1,5 +1,6 @@
 import type {MwsNode} from '../../domain/mws/mws.types';
 import {DEFAULT_LAYOUT_CONFIG, type PositionedEdge, type PositionedNode} from './graph-layout';
+import type {LinkQuality} from './link-quality';
 
 export interface GraphSelectionState {
   selected: MwsNode | null;
@@ -66,4 +67,35 @@ export function effectivePosition(
   }
 
   return manual.get(positioned.node.id) ?? {x: positioned.x, y: positioned.y};
+}
+
+export function edgeMidpoint(source: GraphPosition, target: GraphPosition): GraphPosition {
+  const half = DEFAULT_LAYOUT_CONFIG.nodeHeight / 2;
+  const y1 = source.y + half;
+  const y2 = target.y - half;
+  const midY = (y1 + y2) / 2;
+  const t = 0.5;
+  const mt = 1 - t;
+  const x = mt * mt * mt * source.x
+    + 3 * mt * mt * t * source.x
+    + 3 * mt * t * t * target.x
+    + t * t * t * target.x;
+  const y = mt * mt * mt * y1
+    + 3 * mt * mt * t * midY
+    + 3 * mt * t * t * midY
+    + t * t * t * y2;
+
+  return {x, y};
+}
+
+export const SIGNAL_ICON_PATHS = [
+  'M -7 6 L -7 10',
+  'M 0 2 L 0 10',
+  'M 7 -2 L 7 10',
+] as const;
+
+export const ETHERNET_ICON_PATH = 'M -7 -4 h 14 v 8 h -14 Z M -4 4 v 3 M 0 4 v 3 M 4 4 v 3 M -4 -4 v -2 M 4 -4 v -2';
+
+export function signalBars(quality: LinkQuality): number {
+  return quality === 'good' ? 3 : quality === 'fair' ? 2 : 1;
 }

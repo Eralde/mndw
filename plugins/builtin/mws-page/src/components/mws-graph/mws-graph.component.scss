@@ -6,22 +6,13 @@
   min-height: 20rem;
 }
 
-.graph-controls {
+.graph-view-controls {
   position: absolute;
   right: var(--mndw-space-3);
   bottom: var(--mndw-space-3);
   z-index: 1;
   display: flex;
-  flex-flow: column wrap;
   gap: var(--mndw-space-1);
-  justify-content: flex-end;
-  align-items: flex-end;
-
-  .graph-view-controls,
-  .graph-edit-controls {
-    display: flex;
-    gap: var(--mndw-space-1);
-  }
 
   mndw-button {
     width: var(--mndw-control-h);
@@ -36,6 +27,16 @@
     }
   }
 
+}
+
+.graph-edit-controls {
+  position: absolute;
+  top: var(--mndw-space-3);
+  right: var(--mndw-space-3);
+  z-index: 1;
+  display: flex;
+  gap: var(--mndw-space-1);
+
   .graph-action {
     width: auto;
     min-width: var(--mndw-control-h);
@@ -43,6 +44,16 @@
     &::part(button) {
       padding: 0 var(--mndw-space-2);
       font-size: 0.75rem;
+    }
+  }
+
+  .rearrange-button {
+    display: inline-flex;
+    gap: var(--mndw-space-1);
+    align-items: center;
+
+    mndw-icon {
+      font-size: 0.875rem;
     }
   }
 }
@@ -95,6 +106,43 @@
       stroke: var(--mndw-danger);
       stroke-width: 4;
     }
+  }
+
+  .edge-indicator {
+    cursor: default;
+    pointer-events: all;
+
+    .indicator-shape {
+      fill: none;
+      stroke: var(--mndw-border);
+      stroke-width: 1.5;
+      stroke-linecap: round;
+    }
+
+    &.good .indicator-shape.filled {
+      stroke: var(--mndw-success);
+    }
+
+    &.fair .indicator-shape.filled {
+      stroke: var(--mndw-warning);
+    }
+
+    &.weak .indicator-shape.filled {
+      stroke: var(--mndw-danger);
+    }
+
+    .indicator-shape.empty {
+      opacity: 0.3;
+      stroke: var(--mndw-text-subtle);
+    }
+
+    &.wired .indicator-shape {
+      stroke: var(--mndw-text-muted);
+    }
+  }
+
+  .zoom-hide-indicators .edge-indicator {
+    display: none;
   }
 
   .node {

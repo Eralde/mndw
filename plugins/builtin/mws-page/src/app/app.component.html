@@ -18,35 +18,6 @@
     @if (mockOptions.mode === 'large') {
       <span class="mock-badge">{{ t('summary.mock-data', {extenders: mockOptions.extenders, clients: mockOptions.clients}) }}</span>
     }
-    @if (summary().total > 0) {
-      <div class="summary" aria-label="{{ t('summary.label') }}">
-        <span class="summary-chip">{{ t('summary.nodes', {count: summary().total}) }}</span>
-        @if (summary().offline > 0) {
-          <button
-            type="button"
-            class="summary-chip summary-filter-chip"
-            data-filter="offline"
-            [attr.aria-pressed]="isQuickFilterActive('offline')"
-            (click)="toggleQuickFilter('offline')"
-          >{{ t('summary.offline', {count: summary().offline}) }}</button>
-        }
-        @if (summary().clients > 0) {
-          <span class="summary-chip">{{ t('summary.clients', {count: summary().clients}) }}</span>
-        }
-        @if (summary().updates > 0) {
-          <button
-            type="button"
-            class="summary-chip summary-filter-chip"
-            data-filter="updates"
-            [attr.aria-pressed]="isQuickFilterActive('updates')"
-            (click)="toggleQuickFilter('updates')"
-          >{{ t('summary.updates', {count: summary().updates}) }}</button>
-        }
-        @if (mapUpdatedText(); as updatedText) {
-        <span class="summary-chip">{{ updatedText }}</span>
-      }
-    </div>
-    }
     @if (showExtraFeaturesSetup()) {
       <div class="extra-features-status-slot extra-features-setup" role="status">
         <div>
@@ -118,7 +89,6 @@
         <mndw-tab-panel for="nodes">
           <mws-nodes-table
             [roots]="data.roots()"
-            [quickFilter]="quickFilter()"
             (nodeActivated)="onNodeSelected($event)"
           />
         </mndw-tab-panel>

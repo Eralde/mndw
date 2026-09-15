@@ -1527,13 +1527,17 @@ describe('MndwTable icon migration', () => {
 
     el.sort = {columnId: 'name', direction: 'asc'};
     await el.updateComplete;
-    expect(shadowOf(el).querySelector('[part="sort-indicator"] mndw-icon')
-?.getAttribute('name')).toBe('arrow-up');
+    expect(
+      shadowOf(el).querySelector('[part="sort-indicator"] mndw-icon')
+        ?.getAttribute('name'),
+    ).toBe('arrow-up');
 
     el.sort = {columnId: 'name', direction: 'desc'};
     await el.updateComplete;
-    expect(shadowOf(el).querySelector('[part="sort-indicator"] mndw-icon')
-?.getAttribute('name')).toBe('arrow-down');
+    expect(
+      shadowOf(el).querySelector('[part="sort-indicator"] mndw-icon')
+        ?.getAttribute('name'),
+    ).toBe('arrow-down');
   });
 
   it('renders the settings icon on the column-menu trigger', async () => {

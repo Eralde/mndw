@@ -60,7 +60,7 @@ describe('TransitionLogTabComponent', () => {
     data$.next([{timestamp: 300, client: 'Laptop', from: 'A', to: 'C', band: null, segment: null,
       eventType: 'transition', id: '1'}]);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelectorAll('[data-log-row]')).toHaveLength(1);
+    expect(fixture.componentInstance.visibleEntries()).toHaveLength(1);
     expect(fixture.nativeElement.textContent).toContain('C');
 
     fixture.componentRef.setInput('active', false);
@@ -82,12 +82,23 @@ describe('TransitionLogTabComponent', () => {
         id: '2'},
     ]);
 
-    const time = fixture.nativeElement.querySelector('[data-filter="time"]') as HTMLSelectElement;
+    const clientInput = fixture.nativeElement.querySelector('[data-filter="client"]') as HTMLElement;
 
-    time.value = 'current';
-    time.dispatchEvent(new Event('change', {bubbles: true}));
+    clientInput.dispatchEvent(new CustomEvent('mndwinput', {bubbles: true, composed: true, detail: {value: 'Laptop'}}));
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelectorAll('[data-log-row]')).toHaveLength(1);
+    expect(fixture.componentInstance.visibleEntries()).toHaveLength(1);
+
+    clientInput.dispatchEvent(new CustomEvent('mndwinput', {bubbles: true, composed: true, detail: {value: ''}}));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.visibleEntries()).toHaveLength(2);
+
+    const timeSelect = fixture.nativeElement.querySelector('[data-filter="time"]') as HTMLElement;
+
+    timeSelect.dispatchEvent(
+      new CustomEvent('mndwchange', {bubbles: true, composed: true, detail: {value: 'current'}}),
+    );
+    fixture.detectChanges();
+    expect(fixture.componentInstance.visibleEntries()).toHaveLength(1);
 
     const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);

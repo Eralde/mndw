@@ -16,6 +16,7 @@
     flex-wrap: wrap;
     gap: 1rem;
     align-items: baseline;
+    margin-bottom: 1rem;
 
     .title-row {
       display: flex;
@@ -78,38 +79,6 @@
       }
     }
 
-    .summary {
-      display: flex;
-      flex: 1 1 100%;
-      flex-wrap: wrap;
-      gap: var(--mndw-space-2);
-      margin: 0;
-      color: var(--mndw-text-subtle);
-
-      .summary-chip {
-        padding: 0.125rem 0.5rem;
-        border: 1px solid var(--mndw-border);
-        border-radius: 62.4375rem;
-        background: transparent;
-        color: inherit;
-        font: inherit;
-      }
-
-      .summary-filter-chip {
-        cursor: pointer;
-
-        &[aria-pressed='true'] {
-          border-color: var(--mndw-accent);
-          background: var(--mndw-accent);
-          color: var(--mndw-accent-contrast);
-        }
-
-        &:focus-visible {
-          outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
-          outline-offset: 0.125rem;
-        }
-      }
-    }
 
     .banner {
       padding: 0.25rem 0.75rem;

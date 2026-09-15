@@ -24,7 +24,6 @@ import {MwsDataService} from '../services/mws-data.service';
 import {openAutoLayoutConfirmation} from './auto-layout-confirmation';
 import {type ExtraFeaturesPopoverController, openExtraFeaturesPopover} from './extra-features-popover';
 import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, TRANSLATOR} from '../tokens';
-import type {NodeQuickFilter} from '../components/nodes-table/node-rows';
 
 interface MapSummary {
   total: number;
@@ -81,7 +80,6 @@ export class AppComponent implements OnDestroy, OnInit {
   private readonly bannerStore = inject(ExtraFeaturesBannerStore);
   protected readonly positions = inject(NodePositionStore);
   protected readonly selectedTab = signal<'map' | 'nodes' | 'clients' | 'settings' | 'transition-log'>('map');
-  protected readonly quickFilter = signal<NodeQuickFilter>('none');
   protected readonly editMode = signal(false);
   protected readonly selectedNodeId = signal<string | null>(null);
   protected readonly popoverOpen = signal(false);
@@ -297,15 +295,6 @@ export class AppComponent implements OnDestroy, OnInit {
         : 'map';
 
     this.navigateToTab(value);
-  }
-
-  protected toggleQuickFilter(filter: Exclude<NodeQuickFilter, 'none'>): void {
-    this.quickFilter.set(this.quickFilter() === filter ? 'none' : filter);
-    this.navigateToTab('nodes');
-  }
-
-  protected isQuickFilterActive(filter: Exclude<NodeQuickFilter, 'none'>): boolean {
-    return this.quickFilter() === filter;
   }
 
   private navigateToTab(value: 'map' | 'nodes' | 'clients' | 'settings' | 'transition-log'): void {

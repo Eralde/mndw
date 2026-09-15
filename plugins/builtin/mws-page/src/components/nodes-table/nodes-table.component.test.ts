@@ -138,6 +138,17 @@ describe('MwsNodesTableComponent', () => {
     expect(activated).toEqual(['node-a']);
   });
 
+  it('formats uptime as human-readable text', async () => {
+    const fixture = render(roots());
+    const table = tableOf(fixture);
+
+    await settle(table);
+
+    const uptimeMarker = table.querySelector('[data-testid="uptime-cell"]');
+
+    expect(uptimeMarker?.textContent?.trim()).toBe('2m');
+  });
+
   it('filters by node name and sorts only on explicit header interaction', async () => {
     const fixture = render(roots());
     const table = tableOf(fixture);
@@ -176,53 +187,6 @@ describe('MwsNodesTableComponent', () => {
     await settle(table);
 
     expect(table.shadowRoot.querySelector('th[aria-sort="ascending"]')?.textContent).toContain('Clients');
-  });
-
-  it('keeps quick filters through roots updates and restores all rows when cleared', async () => {
-    const initial = roots();
-    const initialController = initial[0];
-    const initialExtender = initialController?.children[0]?.node;
-
-    if (initialController === undefined || initialExtender === undefined) {
-      throw new Error('fixture roots missing expected nodes');
-    }
-
-    initialController.isOnline = false;
-
-    const fixture = TestBed.createComponent(MwsNodesTableComponent);
-
-    fixture.componentRef.setInput('roots', initial);
-    fixture.componentRef.setInput('quickFilter', 'offline');
-    fixture.detectChanges();
-
-    const table = tableOf(fixture);
-
-    await settle(table);
-
-    expect(shadowRows(table)).toHaveLength(1);
-    expect(table.querySelector('.node-name')?.textContent).toContain('Node A');
-
-    const updated = roots();
-    const updatedController = updated[0];
-    const updatedExtender = updatedController?.children[0]?.node;
-
-    if (updatedController === undefined || updatedExtender === undefined) {
-      throw new Error('updated fixture roots missing expected nodes');
-    }
-
-    updatedExtender.isOnline = false;
-    fixture.componentRef.setInput('roots', updated);
-    fixture.detectChanges();
-    await settle(table);
-
-    expect(shadowRows(table)).toHaveLength(1);
-    expect(table.querySelector('.node-name')?.textContent).toContain('Node B');
-
-    fixture.componentRef.setInput('quickFilter', 'none');
-    fixture.detectChanges();
-    await settle(table);
-
-    expect(shadowRows(table)).toHaveLength(2);
   });
 
   it('hides optional columns through the column menu without hiding Node name', async () => {

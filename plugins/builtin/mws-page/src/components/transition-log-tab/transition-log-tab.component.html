@@ -1,60 +1,60 @@
 <section class="transition-log-tab" aria-label="{{ t('transition-log.title') }}">
   <div class="filters">
-    <label>
-      <span>{{ t('transition-log.client') }}</span>
-      <input data-filter="client" type="search" (input)="onClientFilter($event)">
-    </label>
-    <label>
-      <span>{{ t('transition-log.source') }}</span>
-      <input data-filter="source" type="search" (input)="onSourceFilter($event)">
-    </label>
-    <label>
-      <span>{{ t('transition-log.target') }}</span>
-      <input data-filter="target" type="search" (input)="onTargetFilter($event)">
-    </label>
-    <label>
-      <span>{{ t('transition-log.time') }}</span>
-      <select data-filter="time" (change)="onTimeFilter($event)">
-        <option value="all">{{ t('transition-log.all') }}</option>
-        <option value="current">{{ t('transition-log.current') }}</option>
-      </select>
-    </label>
+    <mndw-field [label]="t('transition-log.client')">
+      <mndw-input
+        data-filter="client"
+        type="search"
+        [value]="clientFilter"
+        (mndwinput)="onClientFilter($event)"
+      ></mndw-input>
+    </mndw-field>
+    <mndw-field [label]="t('transition-log.source')">
+      <mndw-input
+        data-filter="source"
+        type="search"
+        [value]="sourceFilter"
+        (mndwinput)="onSourceFilter($event)"
+      ></mndw-input>
+    </mndw-field>
+    <mndw-field [label]="t('transition-log.target')">
+      <mndw-input
+        data-filter="target"
+        type="search"
+        [value]="targetFilter"
+        (mndwinput)="onTargetFilter($event)"
+      ></mndw-input>
+    </mndw-field>
+    <mndw-field [label]="t('transition-log.time')">
+      <mndw-select
+        data-filter="time"
+        value="all"
+        (mndwchange)="onTimeFilter($event)"
+      >
+        <mndw-option value="all">{{ t('transition-log.all') }}</mndw-option>
+        <mndw-option value="current">{{ t('transition-log.current') }}</mndw-option>
+      </mndw-select>
+    </mndw-field>
   </div>
   <fieldset class="event-filters">
     <legend>{{ t('transition-log.event-types') }}</legend>
     @for (type of eventTypes; track type) {
-      <label>
-        <input [attr.data-event-type]="type" type="checkbox" [checked]="selectedEventTypes.includes(type)" (change)="onEventTypeChange(type, $event)">
-        <span>{{ eventLabel(type) }}</span>
-      </label>
+      <mndw-checkbox
+        [attr.data-event-type]="type"
+        [checked]="selectedEventTypes.includes(type)"
+        (mndwchange)="onEventTypeChange(type, $event)"
+      >{{ eventLabel(type) }}</mndw-checkbox>
     }
   </fieldset>
   <div class="actions">
-    <button type="button" data-action="download-csv" (click)="downloadCsv()">{{ t('transition-log.download-csv') }}</button>
+    <mndw-button variant="secondary" data-action="download-csv" (click)="downloadCsv()">{{ t('transition-log.download-csv') }}</mndw-button>
   </div>
   @if (streamError) {
     <p class="error" role="alert">{{ streamError }}</p>
   }
-  <table>
-    <thead>
-      <tr>
-        <th>{{ t('transition-log.time') }}</th>
-        <th>{{ t('transition-log.client') }}</th>
-        <th>{{ t('transition-log.source') }}</th>
-        <th>{{ t('transition-log.target') }}</th>
-        <th>{{ t('transition-log.event-types') }}</th>
-      </tr>
-    </thead>
-    <tbody>
-      @for (entry of visibleEntries(); track entry.id) {
-        <tr data-log-row>
-          <td>{{ formatTimestamp(entry.timestamp) }}</td>
-          <td>{{ entry.client }}</td>
-          <td>{{ entry.from ?? '—' }}</td>
-          <td>{{ entry.to ?? '—' }}</td>
-          <td>{{ eventLabel(entry.eventType) }}</td>
-        </tr>
-      }
-    </tbody>
-  </table>
+  <mndw-table
+    [columns]="columns"
+    [rows]="visibleEntries()"
+    rowKey="id"
+    [caption]="t('transition-log.title')"
+  ></mndw-table>
 </section>

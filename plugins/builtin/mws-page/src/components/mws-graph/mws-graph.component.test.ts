@@ -241,6 +241,88 @@ describe('MwsGraphComponent', () => {
     expect(new Set(selected).size).toBe(2);
   });
 
+  it('renders one indicator per online edge', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const svg = fixture.nativeElement.querySelector('svg');
+    const indicators = svg?.querySelectorAll('g.edge-indicator');
+    const edges = svg?.querySelectorAll('path.edge');
+
+    expect(indicators?.length).toBeGreaterThan(0);
+    expect(indicators?.length).toBe(edges?.length);
+  });
+
+  it('does not render indicators for offline edges', () => {
+    const offlineRoots = fixtureRoots();
+
+    const markOffline = (node: MwsNode): void => {
+      node.isOnline = false;
+
+      for (const child of node.children) {
+        markOffline(child.node);
+      }
+    };
+
+    for (const root of offlineRoots) {
+      for (const child of root.children) {
+        markOffline(child.node);
+      }
+    }
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', offlineRoots);
+    fixture.detectChanges();
+
+    const svg = fixture.nativeElement.querySelector('svg');
+    const indicators = svg?.querySelectorAll('g.edge-indicator');
+
+    expect(indicators?.length).toBe(0);
+  });
+
+  it('renders 3 signal bars for wireless edges with good quality', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const indicator = fixture.nativeElement.querySelector('g.edge-indicator.wireless');
+
+    expect(indicator).not.toBeNull();
+
+    const filled = indicator?.querySelectorAll('path.indicator-shape.filled');
+    const empty = indicator?.querySelectorAll('path.indicator-shape.empty');
+
+    expect(filled?.length).toBe(3);
+    expect(empty?.length).toBe(0);
+  });
+
+  it('renders wired icon for the wired edge', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const indicator = fixture.nativeElement.querySelector('g.edge-indicator.wired');
+
+    expect(indicator).not.toBeNull();
+    expect(indicator?.querySelector('path.indicator-shape')).not.toBeNull();
+  });
+
+  it('includes tooltip text on indicators', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const title = fixture.nativeElement.querySelector('g.edge-indicator title');
+
+    expect(title?.textContent?.length).toBeGreaterThan(0);
+  });
+
   it('renders edit actions beside view controls and emits their requests', () => {
     const fixture = TestBed.createComponent(MwsGraphComponent);
     const component = fixture.componentInstance;
@@ -256,7 +338,7 @@ describe('MwsGraphComponent', () => {
 
     const element = fixture.nativeElement as HTMLElement;
 
-    expect(element.querySelector('.graph-controls')).not.toBeNull();
+    expect(element.querySelector('.graph-edit-controls')).not.toBeNull();
 
     element.querySelector<HTMLElement>('[aria-label="Rearrange"]')?.click();
     expect(toggled).toHaveBeenCalledOnce();

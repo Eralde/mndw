@@ -28,7 +28,17 @@ import {edgeTooltip, edgeType, linkQuality} from './link-quality';
 import {TRANSLATOR} from '../../tokens';
 import {getNodeStatusLabels} from '../../status-labels';
 import {dragPosition, isClickWithinSlop} from './graph-interaction';
-import {type GraphSelectionState, edgePath, effectivePosition, nodeClass, pathSelectionClass} from './graph-rendering';
+import {
+  ETHERNET_ICON_PATH,
+  type GraphSelectionState,
+  SIGNAL_ICON_PATHS,
+  edgeMidpoint,
+  edgePath,
+  effectivePosition,
+  nodeClass,
+  pathSelectionClass,
+  signalBars,
+} from './graph-rendering';
 
 export const FIT_PADDING = 40;
 export const CLICK_SLOP = 4;
@@ -50,28 +60,26 @@ interface DragState {
   selector: 'mws-map-graph',
   standalone: true,
   template: `
-    <div class="graph-controls" [attr.aria-label]="t('graph.controls')">
-      <span data-testid="l10n-child-probe" hidden>{{ t('l10n.probe') }}</span>
-      <div class="graph-view-controls" [attr.aria-label]="t('graph.view-controls')">
-        <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-in')" (click)="zoomIn()">+</mndw-button>
-        <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-out')" (click)="zoomOut()">−</mndw-button>
-        <mndw-button variant="secondary" [attr.aria-label]="t('action.fit')" (click)="recenter()">⌖</mndw-button>
-      </div>
-      <div class="graph-edit-controls" [attr.aria-label]="t('graph.layout-controls')">
-        @if (editMode()) {
-          <mndw-button variant="primary" class="graph-action" [attr.aria-label]="t('action.auto-layout')" (click)="requestAutoLayout()">{{ t('action.auto-layout') }}</mndw-button>
-          <mndw-button variant="primary" class="graph-action" [attr.aria-label]="t('action.done')" (click)="requestDoneEditing()">{{ t('action.done') }}</mndw-button>
-        }
-        <mndw-button
-          variant="secondary"
-          type="button"
-          class="graph-action"
-          [attr.aria-label]="t('action.rearrange')"
-          [attr.aria-pressed]="editMode()"
-          [disabled]="editMode()"
-          (click)="toggleEditMode()"
-        >{{ t('action.rearrange') }}</mndw-button>
-      </div>
+    <span data-testid="l10n-child-probe" hidden>{{ t('l10n.probe') }}</span>
+    <div class="graph-view-controls" [attr.aria-label]="t('graph.view-controls')">
+      <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-in')" (click)="zoomIn()">+</mndw-button>
+      <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-out')" (click)="zoomOut()">−</mndw-button>
+      <mndw-button variant="secondary" [attr.aria-label]="t('action.fit')" (click)="recenter()">⌖</mndw-button>
+    </div>
+    <div class="graph-edit-controls" [attr.aria-label]="t('graph.layout-controls')">
+      @if (editMode()) {
+        <mndw-button variant="primary" class="graph-action" [attr.aria-label]="t('action.auto-layout')" (click)="requestAutoLayout()">{{ t('action.auto-layout') }}</mndw-button>
+        <mndw-button variant="primary" class="graph-action" [attr.aria-label]="t('action.done')" (click)="requestDoneEditing()">{{ t('action.done') }}</mndw-button>
+      }
+      <mndw-button
+        variant="secondary"
+        type="button"
+        class="graph-action rearrange-button"
+        [attr.aria-label]="t('action.rearrange')"
+        [attr.aria-pressed]="editMode()"
+        [disabled]="editMode()"
+        (click)="toggleEditMode()"
+      ><mndw-icon name="pencil"></mndw-icon>{{ t('action.rearrange') }}</mndw-button>
     </div>
     <svg #svg class="mws-graph" role="group" [attr.aria-label]="t('graph.topology')" tabindex="0"></svg>
   `,
@@ -169,6 +177,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       })
       .on('zoom', (event) => {
         this.zoomGroup?.attr('transform', event.transform.toString());
+        this.zoomGroup?.classed('zoom-hide-indicators', event.transform.k < 0.4);
       });
 
     this.svg.call(this.zoom);
@@ -369,6 +378,58 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
           source: effectivePosition(edge.source, this.nodePositions(), this.dragPositions),
           target: effectivePosition(edge.target, this.nodePositions(), this.dragPositions),
         }))
+      .select('title')
+      .text((edge) => edgeTooltip(edge.target.node, (key) => this.t(key)));
+
+    const onlineEdges = edges.filter((edge) => edge.target.node.isOnline);
+
+    group.selectAll<SVGGElement, PositionedEdge>('g.edge-indicator')
+      .data(onlineEdges, (edge) => `indicator-${edge.source.node.id}->${edge.target.node.id}`)
+      .join(
+        (enter) => {
+          const indicator = enter.append('g');
+
+          indicator.append('title');
+
+          return indicator;
+        },
+        (update) => update,
+        (exit) => exit.remove(),
+      )
+      .attr('class', (edge) => {
+        const type = edgeType(edge.target.node);
+        const quality = linkQuality(edge.target.node);
+
+        return `edge-indicator ${type} ${quality}`;
+      })
+      .attr('transform', (edge) => {
+        const sourcePos = effectivePosition(edge.source, this.nodePositions(), this.dragPositions);
+        const targetPos = effectivePosition(edge.target, this.nodePositions(), this.dragPositions);
+        const mid = edgeMidpoint(sourcePos, targetPos);
+
+        return `translate(${mid.x},${mid.y})`;
+      })
+      .each(function(edge) {
+        const indicator = d3.select(this);
+        const type = edgeType(edge.target.node);
+        const quality = linkQuality(edge.target.node);
+
+        indicator.selectAll('path.indicator-shape').remove();
+
+        if (type === 'wired') {
+          indicator.append('path')
+            .attr('class', 'indicator-shape')
+            .attr('d', ETHERNET_ICON_PATH);
+        } else {
+          const bars = signalBars(quality);
+
+          SIGNAL_ICON_PATHS.forEach((path, index) => {
+            indicator.append('path')
+              .attr('class', `indicator-shape ${index < bars ? 'filled' : 'empty'}`)
+              .attr('d', path);
+          });
+        }
+      })
       .select('title')
       .text((edge) => edgeTooltip(edge.target.node, (key) => this.t(key)));
   }
@@ -658,6 +719,16 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
           source: effectivePosition(edge.source, this.nodePositions(), this.dragPositions),
           target: effectivePosition(edge.target, this.nodePositions(), this.dragPositions),
         }));
+
+    this.zoomGroup.selectAll<SVGGElement, PositionedEdge>('g.edge-indicator')
+      .filter((edge) => edge.source.node.id === id || edge.target.node.id === id)
+      .attr('transform', (edge) => {
+        const sourcePos = effectivePosition(edge.source, this.nodePositions(), this.dragPositions);
+        const targetPos = effectivePosition(edge.target, this.nodePositions(), this.dragPositions);
+        const mid = edgeMidpoint(sourcePos, targetPos);
+
+        return `translate(${mid.x},${mid.y})`;
+      });
   }
 
   private reconcileDragPositions(): void {

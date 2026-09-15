@@ -1,5 +1,4 @@
 import type {MwsNode} from '../../domain/mws/mws.types';
-import {hasUpdate} from '../../domain/mws/map-builder';
 
 export interface NodeRow {
   id: string;
@@ -8,7 +7,6 @@ export interface NodeRow {
 
 export type NodeSortKey = 'name' | 'clients' | 'uptime' | 'ip' | 'via' | 'firmware';
 export type NodeSortDir = 'asc' | 'desc';
-export type NodeQuickFilter = 'none' | 'offline' | 'updates';
 
 type Ipv4 = readonly [number, number, number, number];
 
@@ -30,13 +28,11 @@ export function buildNodeRows(roots: MwsNode[]): NodeRow[] {
   return rows;
 }
 
-export function filterNodeRows(rows: NodeRow[], query: string, quickFilter: NodeQuickFilter = 'none'): NodeRow[] {
+export function filterNodeRows(rows: NodeRow[], query: string): NodeRow[] {
   const normalizedQuery = query.trim().toLowerCase();
 
   return rows.filter((row) => {
-    const matchesQuery = normalizedQuery === '' || row.node.name.toLowerCase().includes(normalizedQuery);
-
-    return matchesQuery && matchesQuickFilter(row.node, quickFilter);
+    return normalizedQuery === '' || row.node.name.toLowerCase().includes(normalizedQuery);
   });
 }
 
@@ -44,10 +40,9 @@ export function reconcileNodeRows(
   previous: NodeRow[],
   next: NodeRow[],
   query: string,
-  quickFilter: NodeQuickFilter = 'none',
 ): NodeRow[] {
   const nextById = new Map(next.map((row) => [row.id, row]));
-  const visibleNext = filterNodeRows(next, query, quickFilter);
+  const visibleNext = filterNodeRows(next, query);
   const visibleIds = new Set(visibleNext.map((row) => row.id));
   const result: NodeRow[] = [];
   const retainedIds = new Set<string>();
@@ -68,18 +63,6 @@ export function reconcileNodeRows(
   }
 
   return result;
-}
-
-function matchesQuickFilter(node: MwsNode, quickFilter: NodeQuickFilter): boolean {
-  if (quickFilter === 'offline') {
-    return !node.isOnline;
-  }
-
-  if (quickFilter === 'updates') {
-    return hasUpdate(node);
-  }
-
-  return true;
 }
 
 function compareText(left: string, right: string): number {

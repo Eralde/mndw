@@ -1,4 +1,5 @@
 import {
+  CUSTOM_ELEMENTS_SCHEMA,
   ChangeDetectorRef,
   Component,
   type OnChanges,
@@ -7,6 +8,7 @@ import {
   inject,
   input,
 } from '@angular/core';
+import type {MndwSelectChangeDetail, MndwSwitchChangeDetail} from '@mndw/ui';
 import {firstValueFrom} from 'rxjs';
 import {MwsApiService, type ScheduleDefinition, type SystemSettings} from '../../api/mws-api.service';
 import {type MwsWriteResult, MwsWriteService} from '../../services/mws-write.service';
@@ -19,6 +21,7 @@ type SettingField = 'backhaul' | 'auto-ap-shutdown' | 'auto-update' | 'auto-upda
   standalone: true,
   templateUrl: './settings-tab.component.html',
   styleUrls: ['./settings-tab.component.scss'],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class SettingsTabComponent implements OnChanges, OnInit {
   private readonly api = inject(MwsApiService);
@@ -75,8 +78,8 @@ export class SettingsTabComponent implements OnChanges, OnInit {
     return id === undefined || id === null ? null : this.settings?.schedules[id] ?? null;
   }
 
-  protected async onBackhaulChange(event: Event): Promise<void> {
-    const enabled = this.checkboxValue(event);
+  protected async onBackhaulChange(event: CustomEvent<MndwSwitchChangeDetail>): Promise<void> {
+    const enabled = event.detail.checked;
     const result = await this.saveSetting('backhaul', () => this.write.setBackhaul(enabled));
 
     if (result?.ok === true && this.settings !== null) {
@@ -84,8 +87,8 @@ export class SettingsTabComponent implements OnChanges, OnInit {
     }
   }
 
-  protected async onAutoApShutdownChange(event: Event): Promise<void> {
-    const enabled = this.checkboxValue(event);
+  protected async onAutoApShutdownChange(event: CustomEvent<MndwSwitchChangeDetail>): Promise<void> {
+    const enabled = event.detail.checked;
     const result = await this.saveSetting('auto-ap-shutdown', () => this.write.setAutoApShutdown(enabled));
 
     if (result?.ok === true && this.settings !== null) {
@@ -93,8 +96,8 @@ export class SettingsTabComponent implements OnChanges, OnInit {
     }
   }
 
-  protected async onAutoUpdateChange(event: Event): Promise<void> {
-    const enabled = this.checkboxValue(event);
+  protected async onAutoUpdateChange(event: CustomEvent<MndwSwitchChangeDetail>): Promise<void> {
+    const enabled = event.detail.checked;
     const result = await this.saveSetting('auto-update', () => this.write.setAutoUpdate(enabled));
 
     if (result?.ok === true && this.settings !== null) {
@@ -102,8 +105,8 @@ export class SettingsTabComponent implements OnChanges, OnInit {
     }
   }
 
-  protected async onScheduleChange(event: Event): Promise<void> {
-    const value = (event.target as HTMLSelectElement).value;
+  protected async onScheduleChange(event: CustomEvent<MndwSelectChangeDetail>): Promise<void> {
+    const value = event.detail.value;
     const result = await this.saveSetting(
       'auto-update-schedule',
       () => this.write.setAutoUpdateSchedule(value === '' ? null : value),
@@ -170,10 +173,6 @@ export class SettingsTabComponent implements OnChanges, OnInit {
   private errorFromResult(result: MwsWriteResult): string {
     return result.steps.flatMap((step) => step.status).find((status) => status.status === 'error')?.message
       ?? this.t('settings.save-failed');
-  }
-
-  private checkboxValue(event: Event): boolean {
-    return (event.target as HTMLInputElement).checked;
   }
 
   private first<T>(source: import('rxjs').Observable<T>): Promise<T> {

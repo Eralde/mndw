@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import type {MwsNode} from '../../domain/mws/mws.types';
-import {edgePath, nodeClass, pathSelectionClass} from './graph-rendering';
+import {edgeMidpoint, edgePath, nodeClass, pathSelectionClass, signalBars} from './graph-rendering';
 
 const node = (id: string, isController = false): MwsNode => {
   return {
@@ -30,5 +30,44 @@ describe('graph rendering helpers', () => {
 
     expect(nodeClass(child, selection)).toContain('selected');
     expect(pathSelectionClass({source: {node: root}, target: {node: child}}, selection)).toBe('on-path');
+  });
+
+  describe('edgeMidpoint', () => {
+    it('returns the x-center for a straight vertical edge', () => {
+      const mid = edgeMidpoint({x: 100, y: 0}, {x: 100, y: 200});
+
+      expect(mid.x).toBeCloseTo(100);
+    });
+
+    it('returns x-center between horizontally offset endpoints', () => {
+      const mid = edgeMidpoint({x: 0, y: 0}, {x: 200, y: 200});
+
+      expect(mid.x).toBeCloseTo(100);
+    });
+
+    it('returns a y value between the two endpoints', () => {
+      const mid = edgeMidpoint({x: 100, y: 0}, {x: 100, y: 400});
+
+      expect(mid.y).toBeGreaterThan(0);
+      expect(mid.y).toBeLessThan(400);
+    });
+  });
+
+  describe('signalBars', () => {
+    it('returns 3 for good quality', () => {
+      expect(signalBars('good')).toBe(3);
+    });
+
+    it('returns 2 for fair quality', () => {
+      expect(signalBars('fair')).toBe(2);
+    });
+
+    it('returns 1 for weak quality', () => {
+      expect(signalBars('weak')).toBe(1);
+    });
+
+    it('returns 1 for unknown quality', () => {
+      expect(signalBars('unknown')).toBe(1);
+    });
   });
 });

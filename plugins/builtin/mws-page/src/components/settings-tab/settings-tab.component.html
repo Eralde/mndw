@@ -1,32 +1,62 @@
 <section class="settings-tab" aria-label="{{ t('settings.title') }}">
   <p class="state" [hidden]="!loading">{{ t('settings.loading') }}</p>
   <div [hidden]="!loadError" class="error" role="alert">{{ loadError }}</div>
-  <button type="button" data-action="retry" [hidden]="!loadError" (click)="retry()">{{ t('action.retry') }}</button>
-  <div [hidden]="loading || loadError || settings === null">
-    <h3>{{ t('settings.title') }}</h3>
-    <label class="toggle-row">
-      <input data-field="backhaul" type="checkbox" [checked]="settings?.backhaulEnabled === true" [disabled]="savingField !== null" (change)="onBackhaulChange($event)">
-      <span>{{ t('settings.backhaul') }}</span>
-    </label>
-    <label class="toggle-row">
-      <input data-field="auto-ap-shutdown" type="checkbox" [checked]="settings?.autoApShutdownEnabled === true" [disabled]="savingField !== null" (change)="onAutoApShutdownChange($event)">
-      <span>{{ t('settings.auto-ap-shutdown') }}</span>
-    </label>
-    <label class="toggle-row">
-      <input data-field="auto-update" type="checkbox" [checked]="settings?.autoUpdateEnabled === true" [disabled]="savingField !== null" (change)="onAutoUpdateChange($event)">
-      <span>{{ t('settings.auto-update') }}</span>
-    </label>
-    <label class="schedule-row">
-      <span>{{ t('settings.auto-update-schedule') }}</span>
-      <select data-field="auto-update-schedule" [value]="settings?.autoUpdateSchedule ?? ''" [disabled]="savingField !== null" (change)="onScheduleChange($event)">
-        <option value="">{{ t('settings.always-on') }}</option>
+  <mndw-button variant="secondary" data-action="retry" [hidden]="!loadError" (click)="retry()">{{ t('action.retry') }}</mndw-button>
+
+  <div [hidden]="loading || loadError || settings === null" class="settings-sections">
+    <section class="setting-section">
+      <h3>{{ t('settings.backhaul-title') }}</h3>
+      <p class="setting-description">{{ t('settings.backhaul-description') }}</p>
+      <mndw-field [label]="t('settings.backhaul')">
+        <mndw-switch
+          data-field="backhaul"
+          [checked]="settings?.backhaulEnabled === true"
+          [disabled]="savingField !== null"
+          (mndwchange)="onBackhaulChange($event)"
+        ></mndw-switch>
+      </mndw-field>
+    </section>
+
+    <section class="setting-section">
+      <h3>{{ t('settings.auto-ap-shutdown-title') }}</h3>
+      <p class="setting-description">{{ t('settings.auto-ap-shutdown-description') }}</p>
+      <mndw-field [label]="t('settings.auto-ap-shutdown')">
+        <mndw-switch
+          data-field="auto-ap-shutdown"
+          [checked]="settings?.autoApShutdownEnabled === true"
+          [disabled]="savingField !== null"
+          (mndwchange)="onAutoApShutdownChange($event)"
+        ></mndw-switch>
+      </mndw-field>
+    </section>
+
+    <section class="setting-section">
+      <h3>{{ t('settings.auto-update-title') }}</h3>
+      <p class="setting-description">{{ t('settings.auto-update-description') }}</p>
+      <mndw-field [label]="t('settings.auto-update')">
+        <mndw-switch
+          data-field="auto-update"
+          [checked]="settings?.autoUpdateEnabled === true"
+          [disabled]="savingField !== null"
+          (mndwchange)="onAutoUpdateChange($event)"
+        ></mndw-switch>
+      </mndw-field>
+      <mndw-field data-field="schedule-field" [label]="t('settings.auto-update-schedule')" [hint]="schedulePreview(selectedSchedule())">
+        <mndw-select
+          data-field="auto-update-schedule"
+          [value]="settings?.autoUpdateSchedule ?? ''"
+          [disabled]="savingField !== null || settings?.autoUpdateEnabled !== true"
+          (mndwchange)="onScheduleChange($event)"
+        >
+          <mndw-option value="">{{ t('settings.always-on') }}</mndw-option>
         @for (entry of scheduleEntries(); track entry[0]) {
-          <option [value]="entry[0]">{{ scheduleLabel(entry[0], entry[1]) }}</option>
+            <mndw-option [value]="entry[0]">{{ scheduleLabel(entry[0], entry[1]) }}</mndw-option>
         }
-      </select>
-    </label>
-    <p data-schedule-preview [hidden]="selectedSchedule() === null">{{ schedulePreview(selectedSchedule()) }}</p>
-    <p data-save-success [hidden]="!saveSuccess" role="status">{{ saveSuccess }}</p>
+        </mndw-select>
+      </mndw-field>
+    </section>
+
+    <p data-save-success [hidden]="!saveSuccess" class="save-status" role="status">{{ saveSuccess }}</p>
     <p data-save-error [hidden]="!saveError" class="error" role="alert">{{ saveError }}</p>
   </div>
 </section>

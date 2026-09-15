@@ -134,6 +134,47 @@ describe('NodeDrawerComponent', () => {
     expect(text).toContain('11ax');
   });
 
+  it('wraps identity details in detail-pair elements for 2-column layout', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
+
+    if (node === null) {
+      throw new Error('expected extender fixture node');
+    }
+
+    fixture.componentRef.setInput('node', node);
+    fixture.detectChanges();
+
+    const dl = fixture.nativeElement.querySelector('dl.identity-details');
+
+    if (dl === null) {
+      throw new Error('expected identity details list');
+    }
+
+    expect(dl.querySelectorAll('.detail-pair')).toHaveLength(7);
+  });
+
+  it('preserves backhaul detail list structure without detail-pair wrappers', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+    const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
+
+    if (node === null) {
+      throw new Error('expected extender fixture node');
+    }
+
+    fixture.componentRef.setInput('node', node);
+    fixture.detectChanges();
+
+    const backhaulDl = fixture.nativeElement.querySelector('.backhaul dl');
+
+    if (backhaulDl === null) {
+      throw new Error('expected backhaul details list');
+    }
+
+    expect(backhaulDl.querySelector('.detail-pair')).toBeNull();
+    expect(backhaulDl.querySelectorAll('dt').length).toBeGreaterThan(0);
+  });
+
   it('shows a device-panel action only for online extenders', async () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
     const extender = findNodeById(roots(), '02:7d:4a:91:c3:21');

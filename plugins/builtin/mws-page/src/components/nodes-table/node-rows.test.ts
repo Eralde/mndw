@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import type {MwsNode} from '../../domain/mws/mws.types';
-import {type NodeQuickFilter, buildNodeRows, filterNodeRows, reconcileNodeRows, sortNodeRows} from './node-rows';
+import {buildNodeRows, filterNodeRows, reconcileNodeRows, sortNodeRows} from './node-rows';
 
 function node(
   id: string,
@@ -69,35 +69,6 @@ describe('node row construction and filtering', () => {
     expect(filterNodeRows(rows, '10.0.0.2')).toEqual([]);
     expect(filterNodeRows(rows, '   ')).toEqual(rows);
   });
-
-  it.each([
-    ['none', ['online', 'offline', 'update']] as const,
-    ['offline', ['offline']] as const,
-    ['updates', ['update']] as const,
-  ])('applies %s quick filter', (quickFilter: NodeQuickFilter, expected: string[]) => {
-    const rows = buildNodeRows([
-      node('online', 'Online'),
-      node('offline', 'Offline', {online: false}),
-      node('update', 'Update', {firmware: '5.2', firmwareAvailable: '5.3'}),
-    ]);
-
-    expect(filterNodeRows(rows, '', quickFilter).map((row) => row.id)).toEqual(expected);
-  });
-
-  it('combines name search and quick filter with AND semantics', () => {
-    const rows = buildNodeRows([
-      node('offline-a', 'Alpha', {online: false}),
-      node('offline-b', 'Beta', {online: false}),
-      node('online-a', 'Alpha online'),
-    ]);
-
-    expect(filterNodeRows(rows, 'alpha', 'offline').map((row) => row.id)).toEqual(['offline-a']);
-    expect(filterNodeRows(rows, '', 'none').map((row) => row.id)).toEqual([
-      'offline-a',
-      'offline-b',
-      'online-a',
-    ]);
-  });
 });
 
 describe('node row sorting', () => {
@@ -144,7 +115,7 @@ describe('node polling projection', () => {
       node('new', 'Aaron', {clients: 4}),
     ]);
 
-    const projected = reconcileNodeRows(previous, next, '', 'none');
+    const projected = reconcileNodeRows(previous, next, '');
 
     expect(projected.map((row) => row.id)).toEqual(['first', 'second', 'new']);
     expect(projected[0]?.node.name).toBe('Zulu');
@@ -162,19 +133,6 @@ describe('node polling projection', () => {
       node('third', 'Aaron'),
     ]);
 
-    expect(reconcileNodeRows(previous, next, 'a', 'none').map((row) => row.id)).toEqual(['first', 'third']);
-  });
-
-  it('keeps quick-filter membership while polling values change', () => {
-    const previous = buildNodeRows([
-      node('first', 'First', {online: false}),
-      node('second', 'Second'),
-    ]);
-    const next = buildNodeRows([
-      node('first', 'First', {online: true}),
-      node('second', 'Second', {online: false}),
-    ]);
-
-    expect(reconcileNodeRows(previous, next, '', 'offline').map((row) => row.id)).toEqual(['second']);
+    expect(reconcileNodeRows(previous, next, 'a').map((row) => row.id)).toEqual(['first', 'third']);
   });
 });

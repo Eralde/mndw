@@ -18,11 +18,10 @@ import {
 } from '@mndw/ui';
 import {MndwCellDirective, MndwTableDirective} from '@mndw/ui-angular';
 import type {MwsNode} from '../../domain/mws/mws.types';
-import {DASH, formatRate, formatSpeed} from '../../format';
+import {DASH, formatRate, formatSpeed, formatUptime} from '../../format';
 import {NodeTableColumnsStore, OPTIONAL_NODE_COLUMN_IDS} from '../../services/node-table-columns.store';
 import {TRANSLATOR} from '../../tokens';
 import {
-  type NodeQuickFilter,
   type NodeRow,
   type NodeSortDir,
   type NodeSortKey,
@@ -44,7 +43,6 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
   private readonly columnsStore = inject(NodeTableColumnsStore);
 
   public readonly roots = input.required<MwsNode[]>();
-  public readonly quickFilter = input<NodeQuickFilter>('none');
   public readonly nodeActivated = output<string>();
 
   protected readonly search = signal('');
@@ -122,7 +120,7 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
   ] as Column<unknown>[];
 
   protected readonly allRows = computed(() => buildNodeRows(this.roots()));
-  protected readonly rows = computed(() => filterNodeRows(this.allRows(), this.search(), this.quickFilter()));
+  protected readonly rows = computed(() => filterNodeRows(this.allRows(), this.search()));
   protected readonly hiddenColumns = computed(() =>
     OPTIONAL_NODE_COLUMN_IDS.filter((id) => !this.columnsStore.visibleColumns().has(id))
   );
@@ -197,6 +195,10 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
     const present = values.filter((value) => value !== null && value !== DASH);
 
     return present.length === 0 ? DASH : present.join(' · ');
+  }
+
+  protected formatUptimeValue(seconds: number | null | undefined): string {
+    return formatUptime(seconds);
   }
 
   protected t(key: string, values?: Record<string, unknown>): string {

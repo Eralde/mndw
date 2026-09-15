@@ -1,4 +1,20 @@
-import {Component, type OnChanges, type OnDestroy, type SimpleChanges, inject, input, signal} from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  Component,
+  type OnChanges,
+  type OnDestroy,
+  type SimpleChanges,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
+import {
+  type Column,
+  type MndwCheckboxChangeDetail,
+  type MndwInputChangeDetail,
+  type MndwSelectChangeDetail,
+  column,
+} from '@mndw/ui';
 import type {Subscription} from 'rxjs';
 import {MwsApiService} from '../../api/mws-api.service';
 import {transitionLogCsv} from '../../domain/transition-log/transition-log-csv';
@@ -24,6 +40,7 @@ const EVENT_TYPE_LABELS: Record<TransitionEventType, string> = {
   standalone: true,
   templateUrl: './transition-log-tab.component.html',
   styleUrls: ['./transition-log-tab.component.scss'],
+  schemas: [CUSTOM_ELEMENTS_SCHEMA],
 })
 export class TransitionLogTabComponent implements OnChanges, OnDestroy {
   private readonly api = inject(MwsApiService);
@@ -40,6 +57,38 @@ export class TransitionLogTabComponent implements OnChanges, OnDestroy {
   protected currentSince: number | null = null;
   protected streamError = '';
   protected readonly entries = signal(new Map<string, TransitionLogEntry>());
+
+  protected readonly columns = [
+    column<TransitionLogEntry>()({
+      id: 'timestamp',
+      label: this.t('transition-log.time'),
+      accessor: (row) => this.formatTimestamp(row.timestamp),
+      sortable: true,
+    }),
+    column<TransitionLogEntry>()({
+      id: 'client',
+      label: this.t('transition-log.client'),
+      accessor: 'client',
+      sortable: true,
+    }),
+    column<TransitionLogEntry>()({
+      id: 'from',
+      label: this.t('transition-log.source'),
+      accessor: (row) => row.from ?? '—',
+      sortable: true,
+    }),
+    column<TransitionLogEntry>()({
+      id: 'to',
+      label: this.t('transition-log.target'),
+      accessor: (row) => row.to ?? '—',
+      sortable: true,
+    }),
+    column<TransitionLogEntry>()({
+      id: 'eventType',
+      label: this.t('transition-log.event-types'),
+      accessor: (row) => this.eventLabel(row.eventType),
+    }),
+  ] as Column<unknown>[];
 
   private streamSubscription: Subscription | null = null;
   private streamProcess: {abort: () => boolean} | null = null;
@@ -72,7 +121,7 @@ export class TransitionLogTabComponent implements OnChanges, OnDestroy {
     return new Date(timestamp).toLocaleString();
   }
 
-  protected visibleEntries(): TransitionLogEntry[] {
+  public visibleEntries(): TransitionLogEntry[] {
     const filters: TransitionLogFilters = {
       eventTypes: this.selectedEventTypes,
       client: this.clientFilter,
@@ -85,7 +134,7 @@ export class TransitionLogTabComponent implements OnChanges, OnDestroy {
   }
 
   protected onEventTypeChange(type: TransitionEventType, event: Event): void {
-    const checked = (event.target as HTMLInputElement).checked;
+    const checked = (event as CustomEvent<MndwCheckboxChangeDetail>).detail.checked;
 
     this.selectedEventTypes = checked
       ? [...new Set([...this.selectedEventTypes, type])]
@@ -93,19 +142,19 @@ export class TransitionLogTabComponent implements OnChanges, OnDestroy {
   }
 
   protected onClientFilter(event: Event): void {
-    this.clientFilter = (event.target as HTMLInputElement).value;
+    this.clientFilter = (event as CustomEvent<MndwInputChangeDetail>).detail.value;
   }
 
   protected onSourceFilter(event: Event): void {
-    this.sourceFilter = (event.target as HTMLInputElement).value;
+    this.sourceFilter = (event as CustomEvent<MndwInputChangeDetail>).detail.value;
   }
 
   protected onTargetFilter(event: Event): void {
-    this.targetFilter = (event.target as HTMLInputElement).value;
+    this.targetFilter = (event as CustomEvent<MndwInputChangeDetail>).detail.value;
   }
 
   protected onTimeFilter(event: Event): void {
-    this.currentSince = (event.target as HTMLSelectElement).value === 'current' ? Date.now() : null;
+    this.currentSince = (event as CustomEvent<MndwSelectChangeDetail>).detail.value === 'current' ? Date.now() : null;
   }
 
   protected downloadCsv(): void {

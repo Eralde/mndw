@@ -62,19 +62,33 @@
         </div>
       }
       <dl class="identity-details">
-        <dt>{{ t('drawer.model') }}</dt><dd>{{ dash(n.model) }}</dd>
-        <dt>{{ t('drawer.mac') }}</dt><dd>{{ n.mac }}</dd>
-        <dt>{{ t('drawer.ip') }}</dt><dd>{{ dash(n.ip) }}</dd>
-        <dt>{{ t('drawer.firmware') }}</dt>
-        <dd>
-          {{ dash(n.fw) }}
-          @if (n.fw && n.fwAvailable && n.fw !== n.fwAvailable) {
-            <span class="update-hint">{{ t('drawer.update-available', {version: n.fwAvailable}) }}</span>
-          }
-        </dd>
-        <dt>{{ t('drawer.uptime') }}</dt><dd>{{ uptime(n.system?.uptime) }}</dd>
-        <dt>{{ t('drawer.cpu-load') }}</dt><dd>{{ cpuLoad(n.system?.cpuload) }}</dd>
-        <dt>{{ t('drawer.memory') }}</dt><dd>{{ memory(n) }}</dd>
+        <div class="detail-pair">
+          <dt>{{ t('drawer.model') }}</dt><dd>{{ dash(n.model) }}</dd>
+        </div>
+        <div class="detail-pair">
+          <dt>{{ t('drawer.mac') }}</dt><dd>{{ n.mac }}</dd>
+        </div>
+        <div class="detail-pair">
+          <dt>{{ t('drawer.ip') }}</dt><dd>{{ dash(n.ip) }}</dd>
+        </div>
+        <div class="detail-pair">
+          <dt>{{ t('drawer.firmware') }}</dt>
+          <dd>
+            {{ dash(n.fw) }}
+            @if (n.fw && n.fwAvailable && n.fw !== n.fwAvailable) {
+              <span class="update-hint">{{ t('drawer.update-available', {version: n.fwAvailable}) }}</span>
+            }
+          </dd>
+        </div>
+        <div class="detail-pair">
+          <dt>{{ t('drawer.uptime') }}</dt><dd>{{ uptime(n.system?.uptime) }}</dd>
+        </div>
+        <div class="detail-pair">
+          <dt>{{ t('drawer.cpu-load') }}</dt><dd>{{ cpuLoad(n.system?.cpuload) }}</dd>
+        </div>
+        <div class="detail-pair">
+          <dt>{{ t('drawer.memory') }}</dt><dd>{{ memory(n) }}</dd>
+        </div>
       </dl>
     </section>
 
@@ -115,9 +129,13 @@
           </div>
         }
         <div class="util-legend" aria-hidden="true">
-          <span>{{ t('drawer.util-legend-low') }}</span>
-          <span class="util-legend-scale"></span>
-          <span>{{ t('drawer.util-legend-high') }}</span>
+          <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-low)"></span>≤10%</span>
+          <span class="util-legend-item"><span class="util-legend-swatch" style="background: color-mix(in srgb, var(--mndw-util-low), var(--mndw-util-moderate))"></span>20%</span>
+          <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-moderate)"></span>30%</span>
+          <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-elevated)"></span>40%</span>
+          <span class="util-legend-item"><span class="util-legend-swatch" style="background: color-mix(in srgb, var(--mndw-util-elevated), var(--mndw-util-high))"></span>50%</span>
+          <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-high)"></span>60%</span>
+          <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-critical)"></span>≥70%</span>
         </div>
       </section>
     }

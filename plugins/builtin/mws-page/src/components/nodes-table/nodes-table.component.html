@@ -32,7 +32,8 @@
         [attr.aria-label]="t('nodes.open', {name: row.node.name})"
         (click)="activateNode(row.id)"
       >
-        <span>{{ row.node.name }}</span>
+        <span class="status-dot" [class.online]="row.node.isOnline"></span>
+        <span class="name-text">{{ row.node.name }}</span>
         @if (row.node.isController) {
           <span class="role-badge">{{ t('nodes.controller') }}</span>
         }

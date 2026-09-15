@@ -42,6 +42,7 @@ function node(
       uptime: null,
       lastSeen: null,
       wired: false,
+      active: true,
     })),
   };
 }

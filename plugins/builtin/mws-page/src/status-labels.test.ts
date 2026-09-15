@@ -36,7 +36,15 @@ describe('getNodeStatusLabels', () => {
         isOnline: false,
         mwsdStatus: {state: 'stale', lastTelemetryAt: 1},
         persistentSession: false,
-        clients: [{mac: 'client-1', name: 'Client', ip: null, uptime: null, lastSeen: null, wired: false}],
+        clients: [{
+          mac: 'client-1',
+          name: 'Client',
+          ip: null,
+          uptime: null,
+          lastSeen: null,
+          wired: false,
+          active: true,
+        }],
       }),
       t,
     );

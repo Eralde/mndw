@@ -107,7 +107,7 @@ describe('MwsNodesTableComponent', () => {
     }).compileComponents();
   });
 
-  it('renders the nine columns and controller badge in the shared table', async () => {
+  it('renders the eight columns and controller badge in the shared table', async () => {
     const fixture = render(roots());
     const table = tableOf(fixture);
     const controls = fixture.nativeElement.querySelector('.mndw-table-controls');
@@ -116,8 +116,7 @@ describe('MwsNodesTableComponent', () => {
 
     const headers = [...table.shadowRoot.querySelectorAll('th[scope="col"]')];
 
-    expect(headers).toHaveLength(10);
-    expect(table.shadowRoot.querySelector('tbody')?.textContent).toContain('Online');
+    expect(headers).toHaveLength(9);
     expect(table.querySelector('.node-name')?.textContent).toContain('Node A');
     expect(table.querySelector('.node-name')?.textContent).toContain('Controller');
     expect(controls).not.toBeNull();
@@ -205,7 +204,7 @@ describe('MwsNodesTableComponent', () => {
 
     const options = menu?.shadowRoot.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]');
 
-    expect(options).toHaveLength(8);
+    expect(options).toHaveLength(7);
 
     menu?.shadowRoot.querySelector<HTMLButtonElement>('button[data-column-id="clients"]')?.click();
     fixture.detectChanges();

@@ -141,6 +141,7 @@ export interface DeviceHostRecord {
   uptime: number | null;
   lastSeen: number | null;
   wired: boolean;
+  active: boolean;
   mwsCid: string | null;
 }
 

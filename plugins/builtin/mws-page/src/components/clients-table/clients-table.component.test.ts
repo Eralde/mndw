@@ -11,7 +11,7 @@ import {TRANSLATOR} from '../../tokens';
 import enCatalog from '../../../i18n/en.json';
 
 function client(mac: string, name: string, ip: string | null, uptime: number | null, wired: boolean): MwsClient {
-  return {mac, name, ip, uptime, lastSeen: null, wired};
+  return {mac, name, ip, uptime, lastSeen: null, wired, active: true};
 }
 
 function node(id: string, name: string, clients: MwsClient[] = []): MwsNode {
@@ -104,7 +104,7 @@ describe('MwsClientsTableComponent', () => {
     expect(headers).toHaveLength(6);
     expect(headers.every((header) => header.querySelector('button[type="button"]') !== null)).toBe(true);
     expect(table.shadowRoot.querySelector('th[aria-sort="ascending"] button[data-sort-column="name"]')).not.toBeNull();
-    expect(shadowRows(table)[0]?.textContent).toContain('Alpha');
+    expect(table.querySelector('.name-text')?.textContent).toContain('Alpha');
     expect(shadowRows(table)[0]?.textContent).toContain('Node A');
     expect(controls).not.toBeNull();
     expect(controls?.contains(table)).toBe(false);
@@ -129,7 +129,7 @@ describe('MwsClientsTableComponent', () => {
     await settle(table);
 
     expect(shadowRows(table)).toHaveLength(1);
-    expect(shadowRows(table)[0]?.textContent).toContain('Gamma');
+    expect(table.querySelector('.name-text')?.textContent).toContain('Gamma');
   });
 
   it('sorts by a new header and toggles direction on the active header', async () => {
@@ -168,7 +168,7 @@ describe('MwsClientsTableComponent', () => {
     await settle(table);
 
     expect(shadowRows(table)).toHaveLength(1);
-    expect(shadowRows(table)[0]?.textContent).toContain('New Client');
+    expect(table.querySelector('.name-text')?.textContent).toContain('New Client');
   });
 
   it('shows distinct empty mesh and no-match states', () => {

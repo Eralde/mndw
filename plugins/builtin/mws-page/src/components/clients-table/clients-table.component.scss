@@ -12,6 +12,32 @@
   margin-bottom: var(--mndw-space-2);
 }
 
+.client-name {
+  display: inline-flex;
+  gap: var(--mndw-space-2);
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-dot {
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--mndw-text-subtle);
+
+  &.active {
+    background: var(--mndw-success);
+  }
+}
+
 .link-badge {
   display: inline-block;
   padding: 0.125rem 0.375rem;

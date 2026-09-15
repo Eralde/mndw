@@ -195,6 +195,7 @@ export function normalizeDeviceHosts(raw: unknown): DeviceHostRecord[] {
       uptime: toFiniteNumber(host.uptime),
       lastSeen: toFiniteNumber(host['last-seen']),
       wired,
+      active: host.active === true,
       mwsCid: toNonEmptyString(host.mws?.cid),
     };
   });

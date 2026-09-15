@@ -31,8 +31,25 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  overflow-wrap: anywhere;
   cursor: pointer;
+}
+
+.name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-dot {
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--mndw-text-subtle);
+
+  &.online {
+    background: var(--mndw-success);
+  }
 }
 
 .node-name:focus-visible {

@@ -128,6 +128,7 @@ function createHost(index: number, extenderCount: number, members: MwsMemberReco
     uptime: 60 + index * 11,
     lastSeen: index % 3,
     wired,
+    active: index % 5 !== 0,
     mwsCid: member?.cid ?? null,
   };
 }

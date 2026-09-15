@@ -7,6 +7,7 @@ export interface MwsClient {
   uptime: number | null;
   lastSeen: number | null;
   wired: boolean;
+  active: boolean;
 }
 
 export interface MwsLink {

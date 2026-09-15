@@ -9,7 +9,7 @@ function client(
   uptime: number | null,
   wired: boolean,
 ): MwsClient {
-  return {mac, name, ip, uptime, lastSeen: null, wired};
+  return {mac, name, ip, uptime, lastSeen: null, wired, active: true};
 }
 
 function node(id: string, name: string, clients: MwsClient[] = [], children: MwsNode[] = []): MwsNode {

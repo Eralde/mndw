@@ -67,11 +67,6 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
       sortable: true,
     }),
     column<NodeRow>()({
-      id: 'status',
-      label: this.t('nodes.status'),
-      accessor: (row) => this.status(row.node),
-    }),
-    column<NodeRow>()({
       id: 'uptime',
       label: this.t('nodes.uptime'),
       accessor: (row) => row.node.system?.uptime ?? null,
@@ -171,10 +166,6 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
 
   protected activateNode(id: string): void {
     this.nodeActivated.emit(id);
-  }
-
-  protected status(node: MwsNode): string {
-    return node.isOnline ? this.t('nodes.online') : this.t('nodes.offline');
   }
 
   protected connection(node: MwsNode): string {

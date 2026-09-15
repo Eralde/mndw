@@ -5,7 +5,6 @@ import {SHARED_PLUGIN_STORAGE} from '../tokens';
 export const NODE_TABLE_COLUMNS_KEY = 'mws-node-table-columns';
 export const OPTIONAL_NODE_COLUMN_IDS = [
   'clients',
-  'status',
   'uptime',
   'ip',
   'via',

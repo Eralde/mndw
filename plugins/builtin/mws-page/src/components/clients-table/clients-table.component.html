@@ -24,6 +24,12 @@
     [caption]="t('clients.caption')"
     (mndwsortchange)="onSortChange($event)"
   >
+    <ng-template mndwCell="name" [mndwCellRows]="rows" let-row>
+      <span class="client-name">
+        <span class="status-dot" [class.active]="row.client.active"></span>
+        <span class="name-text">{{ row.client.name }}</span>
+      </span>
+    </ng-template>
     <ng-template mndwCell="link" [mndwCellRows]="rows" let-row>
       <span class="link-badge" [class.wired]="row.client.wired">
         {{ row.client.wired ? t('clients.wired') : t('clients.wireless') }}

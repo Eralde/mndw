@@ -152,7 +152,15 @@ function toMemberNode(record: MwsMemberRecord): MwsNode {
 }
 
 function toClient(host: DeviceHostRecord): MwsClient {
-  return {mac: host.mac, name: host.name, ip: host.ip, uptime: host.uptime, lastSeen: host.lastSeen, wired: host.wired};
+  return {
+    mac: host.mac,
+    name: host.name,
+    ip: host.ip,
+    uptime: host.uptime,
+    lastSeen: host.lastSeen,
+    wired: host.wired,
+    active: host.active,
+  };
 }
 
 function detachCycles(nodes: MwsNode[], roots: MwsNode[]): void {

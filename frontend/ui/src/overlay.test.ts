@@ -1,4 +1,5 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
+import {deepActiveElement} from './focus.js';
 import {setMndwUiLocale} from './i18n.js';
 import {
   type UiLayer,
@@ -37,7 +38,7 @@ function anchor(): HTMLElement {
 
 function openFallback(
   target: HTMLElement = anchor(),
-  options: Pick<Parameters<UiOverlayProvider['open']>[0], 'presentation' | 'title' | 'className'> = {},
+  options: Pick<Parameters<UiOverlayProvider['open']>[0], 'presentation' | 'title' | 'className' | 'trapFocus'> = {},
 ): UiLayer {
   return track(createFallbackProvider().open({anchor: target, ...options}));
 }
@@ -66,6 +67,10 @@ describe('overlay provider slot', () => {
 });
 
 describe('fallback provider', () => {
+  async function nextFrame(): Promise<void> {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+
   it('attaches a fixed-position content element to the body', () => {
     const layer = openFallback();
 
@@ -218,6 +223,79 @@ describe('fallback provider', () => {
     expect(layer.contentElement.style.visibility).toBe('');
     expect(layer.contentElement.style.position).toBe('');
     expect(document.querySelector('.mndw-ui-sheet__header mndw-icon')?.getAttribute('name')).toBe('x');
+  });
+
+  it('traps focus inside the sheet once it has rendered', async () => {
+    const outside = document.createElement('button');
+
+    document.body.appendChild(outside);
+
+    const layer = openFallback(anchor(), {presentation: 'sheet', title: 'Interface'});
+    const option = document.createElement('button');
+
+    layer.contentElement.appendChild(option);
+    await nextFrame();
+
+    outside.focus();
+    expect(layer.contentElement.closest('.mndw-ui-sheet')?.contains(deepActiveElement())).toBe(true);
+    layer.close();
+  });
+
+  it('releases the trap on close without stealing focus back', async () => {
+    const outside = document.createElement('button');
+
+    document.body.appendChild(outside);
+
+    const layer = openFallback(anchor(), {presentation: 'sheet'});
+
+    await nextFrame();
+    layer.close();
+    outside.focus();
+    expect(deepActiveElement()).toBe(outside);
+  });
+
+  it('lets content handle Tab first (select dismissal)', async () => {
+    const layer = openFallback(anchor(), {presentation: 'sheet'});
+    const option = document.createElement('button');
+
+    layer.contentElement.appendChild(option);
+    option.addEventListener('keydown', (event) => {
+      if (event.key === 'Tab') {
+        layer.close();
+      }
+    });
+    await nextFrame();
+    option.focus();
+    option.dispatchEvent(new KeyboardEvent('keydown', {key: 'Tab', bubbles: true, composed: true, cancelable: true}));
+
+    await expect(layer.closed).resolves.toBe('api');
+  });
+
+  it('does not trap a fallback sheet when trapFocus is false', async () => {
+    const outside = document.createElement('button');
+
+    document.body.appendChild(outside);
+
+    const layer = openFallback(anchor(), {presentation: 'sheet', trapFocus: false});
+
+    await nextFrame();
+    outside.focus();
+    expect(deepActiveElement()).toBe(outside);
+    layer.close();
+  });
+
+  it('traps a fallback popover only when asked', async () => {
+    const outside = document.createElement('button');
+
+    document.body.appendChild(outside);
+
+    const layer = openFallback(anchor(), {trapFocus: true});
+
+    layer.contentElement.appendChild(document.createElement('button'));
+    await nextFrame();
+    outside.focus();
+    expect(layer.contentElement.contains(deepActiveElement())).toBe(true);
+    layer.close();
   });
 
   it('localizes generated sheet chrome', () => {

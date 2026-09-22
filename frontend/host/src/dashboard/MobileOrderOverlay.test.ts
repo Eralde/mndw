@@ -54,6 +54,20 @@ describe('MobileOrderOverlay', () => {
     void unmount(component);
   });
 
+  it('keeps focus inside the open overlay', () => {
+    const outside = document.createElement('button');
+
+    document.body.appendChild(outside);
+
+    const {component, target} = mountOverlay({open: true});
+
+    outside.focus();
+
+    expect(target.querySelector('[role="dialog"]')?.contains(document.activeElement)).toBe(true);
+    void unmount(component);
+    outside.remove();
+  });
+
   it('move-down reorders the draft without committing until close', () => {
     const {component, target, onCommit} = mountOverlay();
 

@@ -1,5 +1,6 @@
 import {getMndwUiText} from './i18n.js';
 import {computePopoverCoords} from './position/position.js';
+import {type FocusTrap, createFocusTrap} from './focus.js';
 
 export type UiCloseReason = 'escape' | 'outside' | 'api' | 'detached';
 
@@ -46,6 +47,7 @@ export function createFallbackProvider(): UiOverlayProvider {
         settle = resolve;
       });
       let isClosed = false;
+      let trap: FocusTrap | null = null;
 
       const close = (reason: UiCloseReason = 'api'): void => {
         if (isClosed) {
@@ -53,6 +55,8 @@ export function createFallbackProvider(): UiOverlayProvider {
         }
 
         isClosed = true;
+        trap?.deactivate();
+        trap = null;
         document.removeEventListener('pointerdown', onPointerDown, true);
         document.removeEventListener('keydown', onKeydown, true);
         window.removeEventListener('resize', position);
@@ -102,6 +106,17 @@ export function createFallbackProvider(): UiOverlayProvider {
       document.addEventListener('keydown', onKeydown, true);
       window.addEventListener('resize', position);
       window.addEventListener('scroll', position, true);
+
+      if (options.trapFocus === true) {
+        requestAnimationFrame(() => {
+          if (!isClosed) {
+            trap = createFocusTrap(contentElement, {
+              restoreFocus: false,
+              allowFocus: (target) => target === options.anchor || options.anchor.contains(target),
+            });
+          }
+        });
+      }
 
       return {
         contentElement,
@@ -189,6 +204,7 @@ function createFallbackSheet(options: UiLayerOptions): UiLayer {
     settle = resolve;
   });
   let isClosed = false;
+  let trap: FocusTrap | null = null;
 
   const close = (reason: UiCloseReason = 'api'): void => {
     if (isClosed) {
@@ -196,6 +212,8 @@ function createFallbackSheet(options: UiLayerOptions): UiLayer {
     }
 
     isClosed = true;
+    trap?.deactivate();
+    trap = null;
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('keydown', onKeydown, true);
     closeButton.removeEventListener('click', onCloseButtonClick);
@@ -232,6 +250,14 @@ function createFallbackSheet(options: UiLayerOptions): UiLayer {
   closeButton.addEventListener('click', onCloseButtonClick);
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('keydown', onKeydown, true);
+
+  if (options.trapFocus !== false) {
+    requestAnimationFrame(() => {
+      if (!isClosed) {
+        trap = createFocusTrap(surface, {restoreFocus: false});
+      }
+    });
+  }
 
   return {
     contentElement,

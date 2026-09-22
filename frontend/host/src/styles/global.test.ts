@@ -26,3 +26,18 @@ it('removes first-heading margin inside settings tab panels', async () => {
     /\.mndw-settings mndw-tab-panel > :first-child > h3,[\s\S]*\.mndw-settings mndw-tab-panel > :first-child > :first-child > h3[\s\S]*margin-top:\s*0;/u,
   );
 });
+
+it('gives the tile close button a visible 44px target on touch and mobile layouts', async () => {
+  const source = await readFile(globalCss, 'utf8');
+
+  expect(source).toMatch(
+    /@media \(pointer: coarse\) \{\s*\.mndw-grid-tile__close,\s*\.mndw-mobile-dashboard \.mndw-grid-tile__close \{[\s\S]*?width: 2\.75rem;[\s\S]*?height: 2\.75rem;[\s\S]*?opacity: 1;/u,
+  );
+  expect(source).toMatch(
+    /\.mndw-mobile-dashboard \.mndw-grid-tile__close \{[\s\S]*?width: 2\.75rem;[\s\S]*?height: 2\.75rem;[\s\S]*?opacity: 1;/u,
+  );
+  expect(source).toMatch(/\.mndw-mobile-dashboard \.mndw-grid-tile__title \{[\s\S]*?padding-right: 3rem;/u);
+  expect(source).toMatch(
+    /@media \(pointer: coarse\) \{[\s\S]*?\.mndw-grid-tile__title \{[\s\S]*?padding-right: 3rem;/u,
+  );
+});

@@ -50,11 +50,13 @@ import {
   POPOVER_FLIP_ORDER,
   computePopoverCoords,
   computeTooltipCoords,
+  createFocusTrap,
   defineMndwUi,
   formatSpeed,
   getMndwUiText,
   resolveSizing,
   setMndwUiLocale,
+  tabbableElements,
 } from './index.js';
 import {getOverlayProvider, setOverlayProvider} from './overlay.js';
 
@@ -133,6 +135,11 @@ describe('defineMndwUi', () => {
     expectTypeOf<MndwSparklineProps>().not.toHaveProperty('times');
     expectTypeOf<MndwHeatStripProps>().not.toHaveProperty('values');
     expectTypeOf<MndwHeatStripProps>().not.toHaveProperty('times');
+  });
+
+  it('exports the focus-trap utilities', () => {
+    expect(typeof createFocusTrap).toBe('function');
+    expect(typeof tabbableElements).toBe('function');
   });
 
   it('is idempotent — the registry is page-global and cannot be redefined', () => {

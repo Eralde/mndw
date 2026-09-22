@@ -133,10 +133,6 @@ body {
   align-items: center;
 }
 
-.mndw-header__theme-toggle {
-  font-size: 1.1em;
-}
-
 .mndw-header__theme-toggle::part(button) {
   padding: 0.25rem;
   line-height: 1;
@@ -151,6 +147,7 @@ body {
 }
 
 .mndw-header__logout::part(button) {
+  gap: 0.375rem;
   padding: 0.25rem 0.75rem;
 }
 
@@ -461,6 +458,33 @@ body {
 .mndw-grid-tile__close:hover {
   background: var(--mndw-danger);
   color: var(--mndw-accent-contrast);
+}
+
+/* Touch layouts have no hover to reveal the control, and need the 44px minimum
+   (WCAG 2.5.5) — same treatment as the mobile toast dismiss button. */
+.mndw-mobile-dashboard .mndw-grid-tile__close {
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: 1.25rem;
+  opacity: 1;
+}
+
+.mndw-mobile-dashboard .mndw-grid-tile__title {
+  padding-right: 3rem;
+}
+
+@media (pointer: coarse) {
+  .mndw-grid-tile__close,
+  .mndw-mobile-dashboard .mndw-grid-tile__close {
+    width: 2.75rem;
+    height: 2.75rem;
+    font-size: 1.25rem;
+    opacity: 1;
+  }
+
+  .mndw-grid-tile__title {
+    padding-right: 3rem;
+  }
 }
 
 /* Mobile dashboard: one-column intrinsic-height flow (720px matches

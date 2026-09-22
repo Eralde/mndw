@@ -1,4 +1,5 @@
 <script lang="ts">
+import {focusTrap} from '../components/focus-trap/focus-trap-action.js';
 import {onMount} from 'svelte';
 import {appState} from '../state/app.svelte.js';
 import {mobileMediaQuery} from './breakpoint.js';
@@ -52,6 +53,12 @@ function closeOnMobile(): void {
   }
 }
 
+function handleWindowKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && isMobile && appState.mobileSidebarOpen) {
+    appState.mobileSidebarOpen = false;
+  }
+}
+
 onMount(() => {
   mobileQuery.addEventListener('change', handleBreakpointChange);
 
@@ -61,19 +68,13 @@ onMount(() => {
 });
 </script>
 
+<svelte:window onkeydown={handleWindowKeydown} />
+
 {#if isMobile && appState.mobileSidebarOpen}
   <div
     class="mndw-sidebar-backdrop"
-    role="button"
-    tabindex="0"
-    aria-label={hostT('nav.close')}
+    role="presentation"
     onclick={closeOnMobile}
-    onkeydown={(event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        closeOnMobile();
-      }
-    }}
   >
   </div>
 {/if}
@@ -83,6 +84,8 @@ onMount(() => {
   data-locale={appState.locale}
   class:collapsed={!isMobile && appState.desktopSidebarCollapsed}
   class:mobile-collapsed={isMobile && !appState.mobileSidebarOpen}
+  inert={isMobile && !appState.mobileSidebarOpen}
+  use:focusTrap={{enabled: isMobile && appState.mobileSidebarOpen}}
 >
   <a
     href="/"

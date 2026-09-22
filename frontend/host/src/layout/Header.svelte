@@ -64,13 +64,14 @@ async function handleLogout(): Promise<void> {
       aria-label={hostT('nav.color-theme')}
       onclick={toggleTheme}
     >
-      {appState.theme === 'dark' ? '☀' : '☾'}
+      <mndw-icon name={appState.theme === 'dark' ? 'sun' : 'moon'}></mndw-icon>
     </mndw-button>
     <mndw-button
-      variant="danger"
+      variant="ghost"
       class="mndw-header__logout"
       onclick={handleLogout}
     >
+      <mndw-icon name="log-out"></mndw-icon>
       {hostT('nav.logout')}
     </mndw-button>
   </div>

@@ -429,3 +429,123 @@ describe('OverlayHost', () => {
     harness.dispose();
   });
 });
+
+describe('focus containment', () => {
+  async function openModal(trapFocus?: boolean) {
+    const harness = mountHost();
+    const outside = document.createElement('button');
+
+    outside.textContent = 'outside';
+    document.body.appendChild(outside);
+    outside.focus();
+
+    const {service} = createTestService('probe', 'probe:1');
+    const layer = service.open({
+      kind: 'modal',
+      title: 'Settings',
+      showCloseButton: true,
+      ...(trapFocus === undefined ? {} : {trapFocus}),
+      mount(target) {
+        const first = document.createElement('button');
+        const last = document.createElement('button');
+
+        first.className = 'first';
+        last.className = 'last';
+        target.append(first, last);
+      },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+
+    return {...harness, outside, layer};
+  }
+
+  it('focuses the first content control, not the shell close button, and keeps focus inside', async () => {
+    const {outside, layer, dispose} = await openModal();
+
+    try {
+      const first = layer.contentElement.querySelector('.first');
+
+      expect(document.activeElement).toBe(first);
+      outside.focus();
+      expect(document.activeElement).toBe(first);
+    } finally {
+      layer.close();
+      dispose();
+    }
+  });
+
+  it('falls back to the shell close button when content has no tabbables', async () => {
+    const harness = mountHost();
+    const {service} = createTestService('probe', 'probe:1');
+    const layer = service.open({
+      kind: 'modal',
+      title: 'Empty',
+      showCloseButton: true,
+      mount(target) {
+        target.textContent = 'read-only body';
+      },
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+
+    try {
+      expect(document.activeElement?.classList.contains('mndw-overlay-dialog__close')).toBe(true);
+    } finally {
+      layer.close();
+      harness.dispose();
+    }
+  });
+
+  it('restores focus to the opener after close (trap does not fight restoration)', async () => {
+    const {outside, layer, dispose} = await openModal();
+
+    try {
+      layer.close();
+      await layer.closed;
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      dispose();
+    }
+  });
+
+  it('does not trap when trapFocus is false', async () => {
+    const {outside, layer, dispose} = await openModal(false);
+
+    try {
+      outside.focus();
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      layer.close();
+      dispose();
+    }
+  });
+
+  it('lets a popover stacked above a modal take focus', async () => {
+    const {layer, dispose} = await openModal();
+    const anchor = layer.contentElement.querySelector<HTMLButtonElement>('.first');
+    const {service} = createTestService('probe', 'probe:1');
+    const popover = service.createLayer({kind: 'popover', anchor: {element: anchor ?? document.body}});
+    const inside = document.createElement('button');
+
+    popover.contentElement.append(inside);
+    popover.setCleanup(() => {});
+    popover.markReady();
+    await Promise.resolve();
+
+    try {
+      inside.focus();
+      expect(document.activeElement).toBe(inside);
+    } finally {
+      popover.close();
+      layer.close();
+      dispose();
+    }
+  });
+});

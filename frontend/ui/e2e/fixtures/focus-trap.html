@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Focus trap fixture</title>
+    <style>
+      body {
+        display: grid;
+        gap: 12px;
+        padding: 24px;
+        font-family: system-ui, sans-serif;
+        color: var(--mndw-text);
+        background: var(--mndw-bg);
+      }
+
+      #outer,
+      #inner {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid var(--mndw-border);
+      }
+    </style>
+  </head>
+  <body>
+    <button id="outside-before">Outside before</button>
+    <button id="open-outer">Open outer</button>
+    <div id="outer" hidden>
+      <button id="outer-first">Outer first</button>
+      <mndw-input id="outer-input" label="Name"></mndw-input>
+      <shadow-card id="card"><button id="slotted">Slotted</button></shadow-card>
+      <button id="open-inner">Open inner</button>
+      <mndw-button id="outer-last">Outer last</mndw-button>
+      <div id="inner" hidden>
+        <button id="inner-first">Inner first</button>
+        <button id="inner-last">Inner last</button>
+      </div>
+    </div>
+    <button id="outside-after">Outside after</button>
+    <script type="module" src="./focus-trap.ts"></script>
+  </body>
+</html>

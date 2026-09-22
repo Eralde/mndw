@@ -86,6 +86,14 @@ export type {MndwTooltipPlacement} from './tooltip/tooltip.js';
 export {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './table/column-menu.js';
 export {MNDW_TABLE_TAG, MndwTable} from './table/table.js';
 export {getMndwUiLocale, getMndwUiText, setMndwUiLocale, subscribeMndwUiLocale} from './i18n.js';
+export {
+  composedContains,
+  createFocusTrap,
+  deepActiveElement,
+  type FocusTrap,
+  type FocusTrapOptions,
+  tabbableElements,
+} from './focus.js';
 export {LocaleController, type LocaleControllerOptions} from './locale-controller.js';
 export {column} from './table/table-builder.js';
 export type {ColumnBuilder} from './table/table-builder.js';

@@ -28,6 +28,17 @@ describe('<mndw-button>', () => {
     expect(innerButton(element).getAttribute('part')).toBe('button');
   });
 
+  it('forwards an authored aria-label to the native button in its shadow root', async () => {
+    const element = await mount(
+      '<mndw-button aria-label="Settings"><mndw-icon name="settings"></mndw-icon></mndw-button>',
+      MNDW_BUTTON_TAG,
+    );
+
+    await element.updateComplete;
+
+    expect(innerButton(element).getAttribute('aria-label')).toBe('Settings');
+  });
+
   it('reads variant from the attribute', async () => {
     const element = await mount('<mndw-button variant="ghost">Gear</mndw-button>', MNDW_BUTTON_TAG);
 

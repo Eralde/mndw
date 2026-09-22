@@ -9,6 +9,7 @@ import type {
   OverlayService,
   OverlaySession,
 } from '@mndw/sdk';
+import {type FocusTrap, composedContains, createFocusTrap, tabbableElements} from '@mndw/ui';
 import {
   type ResolvedSizing,
   coercePlacement,
@@ -155,6 +156,7 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
   private readonly previousFocus: HTMLElement | null;
   private closedResolve!: (event: OverlayCloseEvent<Result>) => void;
   private openTimeout: ReturnType<typeof setTimeout> | undefined;
+  private focusTrap: FocusTrap | null = null;
   private repositionHandler: (() => void) | null = null;
   private anchorObserver: MutationObserver | null = null;
   private readonly runtime: OverlayRuntime;
@@ -249,6 +251,12 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
 
     this.clearOpenTimeout();
     this.state = 'open';
+
+    if (this.trapFocus) {
+      // OverlayHost mounts the shell and plugin content during its render; wait a frame
+      // so initial focus lands on real content rather than the empty layer root.
+      requestAnimationFrame(() => this.activateFocusTrap());
+    }
   }
 
   public update(
@@ -402,6 +410,8 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
     }
 
     this.state = 'closing';
+    this.focusTrap?.deactivate();
+    this.focusTrap = null;
     this.clearOpenTimeout();
     this.abortController.abort();
     this.detachAnchorObservers();
@@ -453,6 +463,24 @@ class LayerController<Result = unknown> implements OverlaySession<Result> {
     if (this.restoreFocus && this.previousFocus?.isConnected) {
       this.previousFocus.focus();
     }
+  }
+
+  private activateFocusTrap(): void {
+    if (this.state !== 'open' || this.focusTrap || !this.hostElement.isConnected) {
+      return;
+    }
+
+    this.focusTrap = createFocusTrap(this.hostElement, {
+      // Start in plugin content; the shell's close button is only the fallback (Q1).
+      initialFocus: () => tabbableElements(this.contentElement)[0] ?? null,
+      // Restoration stays with restoreFocusOnClose(), which knows popover-anchor rules.
+      restoreFocus: false,
+      // Layers stacked above this one (popovers, selects) may own focus.
+      allowFocus: (target) =>
+        this.runtime.store.layers.some(
+          (layer) => layer.id > this.id && composedContains(layer.hostElement, target),
+        ),
+    });
   }
 }
 

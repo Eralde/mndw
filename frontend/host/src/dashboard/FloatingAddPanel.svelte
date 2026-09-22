@@ -1,4 +1,5 @@
 <script lang="ts">
+import {focusTrap} from '../components/focus-trap/focus-trap-action.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {appState} from '../state/app.svelte.js';
@@ -26,14 +27,7 @@ let availableWidgets = $derived.by(() => {
 });
 
 let buttonRefs: HTMLElement[] = [];
-
-$effect(() => {
-  if (open) {
-    const timer = setTimeout(() => buttonRefs[0]?.focus(), 0);
-
-    return () => clearTimeout(timer);
-  }
-});
+let panelElement: HTMLElement | undefined = $state();
 
 function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
@@ -50,10 +44,18 @@ function handleKeydown(event: KeyboardEvent): void {
   >
     <div
       class="mndw-floating-panel"
+      bind:this={panelElement}
       onclick={(event) => event.stopPropagation()}
       onkeydown={handleKeydown}
       role="dialog"
       tabindex="-1"
+      use:focusTrap={{
+        initialFocus: () =>
+          buttonRefs[0]
+            ?? panelElement?.querySelector<HTMLElement>(
+              '.mndw-floating-panel__close',
+            ) ?? null,
+      }}
       aria-modal="true"
       aria-labelledby="add-widget-title"
       data-locale={appState.locale}

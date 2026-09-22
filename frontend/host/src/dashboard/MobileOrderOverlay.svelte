@@ -1,4 +1,5 @@
 <script lang="ts">
+import {focusTrap} from '../components/focus-trap/focus-trap-action.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {appState} from '../state/app.svelte.js';
 interface OrderCard {
@@ -99,6 +100,7 @@ function handlePointerUp(): void {
       onkeydown={handleKeydown}
       role="dialog"
       tabindex="-1"
+      use:focusTrap
       aria-modal="true"
       aria-labelledby="arrange-widgets-title"
       data-locale={appState.locale}

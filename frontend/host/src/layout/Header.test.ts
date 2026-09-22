@@ -114,6 +114,49 @@ describe('Header locale controls', () => {
       await localeService.localeService.setLocale('en');
     }
   });
+
+  it('renders the theme toggle as an icon matching the target theme', async () => {
+    const originalTheme = appState.theme;
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+    appState.theme = 'dark';
+
+    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
+    const toggle = target.querySelector('.mndw-header__theme-toggle');
+
+    try {
+      await Promise.resolve();
+      expect(toggle?.querySelector('mndw-icon')?.getAttribute('name')).toBe('sun');
+      expect(toggle?.textContent?.trim()).toBe('');
+
+      appState.theme = 'light';
+      flushSync();
+      await Promise.resolve();
+      expect(toggle?.querySelector('mndw-icon')?.getAttribute('name')).toBe('moon');
+    } finally {
+      await unmount(component);
+      appState.theme = originalTheme;
+    }
+  });
+
+  it('renders logout as a ghost button with an icon and its label', async () => {
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
+    const logoutButton = target.querySelector('.mndw-header__logout');
+
+    try {
+      await Promise.resolve();
+      expect(logoutButton?.getAttribute('variant')).toBe('ghost');
+      expect(logoutButton?.querySelector('mndw-icon')?.getAttribute('name')).toBe('log-out');
+      expect(logoutButton?.textContent?.trim()).toBe('Logout');
+    } finally {
+      await unmount(component);
+    }
+  });
 });
 
 describe('Header logout', () => {

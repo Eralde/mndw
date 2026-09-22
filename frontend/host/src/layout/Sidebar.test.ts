@@ -262,6 +262,160 @@ describe('Sidebar', () => {
       void unmount(component);
     });
 
+    it('renders the backdrop as presentation, not a button', () => {
+      mobileState.matches = true;
+      appState.mobileSidebarOpen = true;
+
+      const {component, target} = mountSidebar();
+      const backdrop = target.querySelector('.mndw-sidebar-backdrop');
+
+      expect(backdrop?.getAttribute('role')).toBe('presentation');
+      expect(backdrop?.hasAttribute('tabindex')).toBe(false);
+      void unmount(component);
+    });
+
+    it('closes the open mobile drawer on Escape', () => {
+      mobileState.matches = true;
+      appState.mobileSidebarOpen = true;
+
+      const {component} = mountSidebar();
+
+      window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+      flushSync();
+
+      expect(appState.mobileSidebarOpen).toBe(false);
+      void unmount(component);
+    });
+
+    it('keeps focus inside the open mobile drawer', () => {
+      mobileState.matches = true;
+      appState.mobileSidebarOpen = true;
+
+      const outside = document.createElement('button');
+
+      document.body.appendChild(outside);
+
+      const {component, target} = mountSidebar();
+
+      flushSync();
+      outside.focus();
+
+      expect(target.querySelector('.mndw-sidebar')?.contains(document.activeElement)).toBe(true);
+      void unmount(component);
+      outside.remove();
+    });
+
+    it('does not trap focus on desktop', () => {
+      mobileState.matches = false;
+
+      const outside = document.createElement('button');
+
+      document.body.appendChild(outside);
+
+      const {component} = mountSidebar();
+
+      outside.focus();
+
+      expect(document.activeElement).toBe(outside);
+      void unmount(component);
+      outside.remove();
+    });
+
+    it('keeps the same nav element across open and close so the slide transition plays', () => {
+      mobileState.matches = true;
+      appState.mobileSidebarOpen = false;
+
+      const {component, target} = mountSidebar();
+      const closedNav = target.querySelector('.mndw-sidebar');
+
+      appState.mobileSidebarOpen = true;
+      flushSync();
+
+      expect(target.querySelector('.mndw-sidebar')).toBe(closedNav);
+      expect(closedNav?.classList.contains('mobile-collapsed')).toBe(false);
+      void unmount(component);
+    });
+
+    it('makes the collapsed mobile nav inert and the open one interactive', () => {
+      mobileState.matches = true;
+      appState.mobileSidebarOpen = false;
+
+      const {component, target} = mountSidebar();
+      const nav = target.querySelector('.mndw-sidebar');
+
+      expect(nav?.hasAttribute('inert')).toBe(true);
+
+      appState.mobileSidebarOpen = true;
+      flushSync();
+      expect(nav?.hasAttribute('inert')).toBe(false);
+
+      void unmount(component);
+    });
+
+    it('never makes the desktop nav inert', () => {
+      mobileState.matches = false;
+      appState.desktopSidebarCollapsed = false;
+
+      const {component, target} = mountSidebar();
+
+      expect(target.querySelector('.mndw-sidebar')?.hasAttribute('inert')).toBe(false);
+      void unmount(component);
+    });
+
+    it('moves focus to the first nav link when the mobile drawer opens', async () => {
+      mobileState.matches = true;
+      appState.mobileSidebarOpen = false;
+
+      const toggle = document.createElement('button');
+
+      document.body.appendChild(toggle);
+      toggle.focus();
+
+      const {component, target} = mountSidebar();
+
+      appState.mobileSidebarOpen = true;
+      flushSync();
+      await Promise.resolve();
+
+      const nav = target.querySelector('.mndw-sidebar');
+
+      expect(nav?.hasAttribute('inert')).toBe(false);
+      expect(document.activeElement).toBe(nav?.querySelector('a.mndw-sidebar__link'));
+
+      appState.mobileSidebarOpen = false;
+      flushSync();
+      expect(document.activeElement).toBe(toggle);
+
+      void unmount(component);
+      toggle.remove();
+    });
+
+    it('returns focus to the menu toggle when a drawer link closes it', async () => {
+      mobileState.matches = true;
+      appState.mobileSidebarOpen = false;
+
+      const toggle = document.createElement('button');
+
+      document.body.appendChild(toggle);
+      toggle.focus();
+
+      const {component, target} = mountSidebar();
+
+      appState.mobileSidebarOpen = true;
+      flushSync();
+      await Promise.resolve();
+
+      const link = target.querySelector<HTMLAnchorElement>('.mndw-sidebar__link');
+
+      link?.focus();
+      link?.click();
+      flushSync();
+
+      expect(document.activeElement).toBe(toggle);
+      void unmount(component);
+      toggle.remove();
+    });
+
     it('does not leak mobile drawer closure into desktop presentation', () => {
       mobileState.matches = true;
       appState.mobileSidebarOpen = true;

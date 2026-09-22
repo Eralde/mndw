@@ -120,7 +120,13 @@ test('password toggle swaps glyphs from the shared sprite', async ({page}) => {
 });
 
 test('gallery renders every catalog icon in both themes', async ({page}) => {
-  await expect(page.locator('.gallery-cell mndw-icon')).toHaveCount(56);
+  const darkCount = await page.locator('.gallery-dark .gallery-cell mndw-icon').count();
+
+  expect(darkCount).toBeGreaterThan(0);
+  await expect(page.locator('.gallery-cell mndw-icon')).toHaveCount(darkCount * 2);
+  await expect(page.locator('.gallery-dark mndw-icon[name="log-out"]')).toHaveCount(1);
+  await expect(page.locator('.gallery-dark mndw-icon[name="moon"]')).toHaveCount(1);
+  await expect(page.locator('.gallery-dark mndw-icon[name="sun"]')).toHaveCount(1);
   await expect.poll(async () =>
     useBoxWidth(
       page.locator('.gallery-dark mndw-icon').first()

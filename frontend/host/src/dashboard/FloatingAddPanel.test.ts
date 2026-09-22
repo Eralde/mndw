@@ -142,12 +142,35 @@ describe('FloatingAddPanel', () => {
     void unmount(second.component);
   });
 
-  it('focuses the first widget button when opened', async () => {
+  it('keeps focus inside the open panel', () => {
+    const outside = document.createElement('button');
+
+    document.body.appendChild(outside);
+
+    const {component, target} = mountPanel(true);
+    const dialog = target.querySelector<HTMLElement>('[role="dialog"]');
+
+    outside.focus();
+
+    expect(dialog?.contains(document.activeElement)).toBe(true);
+    void unmount(component);
+  });
+
+  it('focuses the first widget button when opened', () => {
     const {component, target} = mountPanel();
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
     expect(document.activeElement).toBe(widgetButtons(target)[0]);
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('falls back to the close button when there are no widgets', () => {
+    vi.mocked(pluginRegistry).getWidgets.mockReturnValue([]);
+
+    const {component, target} = mountPanel();
+
+    expect(document.activeElement).toBe(target.querySelector('.mndw-floating-panel__close'));
 
     void unmount(component);
     target.remove();

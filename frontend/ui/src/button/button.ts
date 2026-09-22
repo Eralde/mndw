@@ -1,4 +1,4 @@
-import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
+import {LitElement, type PropertyDeclarations, type TemplateResult, css, html, nothing} from 'lit';
 import {FormAssociatedController} from '../forms/form-associated.js';
 import {controlBase, focusRing, hostTypography} from '../styles/base.js';
 
@@ -18,6 +18,7 @@ export class MndwButton extends LitElement {
     variant: {type: String, reflect: true},
     disabled: {type: Boolean, reflect: true},
     type: {type: String},
+    ariaLabel: {type: String, attribute: 'aria-label'},
   };
 
   public static styles = css`
@@ -93,6 +94,7 @@ export class MndwButton extends LitElement {
   declare public variant: MndwButtonVariant;
   declare public disabled: boolean;
   declare public type: 'button' | 'submit' | 'reset';
+  declare public ariaLabel: string;
 
   private readonly formState = new FormAssociatedController(this, {
     isExplicitlyDisabled: () => this.disabled,
@@ -109,6 +111,7 @@ export class MndwButton extends LitElement {
     this.variant = 'secondary';
     this.disabled = false;
     this.type = 'button';
+    this.ariaLabel = '';
     this.addEventListener('click', this.onClick);
   }
 
@@ -126,7 +129,12 @@ export class MndwButton extends LitElement {
 
   protected render(): TemplateResult {
     return html`
-      <button part="button" type="button" ?disabled=${this.formState.effectiveDisabled}>
+      <button
+        part="button"
+        type="button"
+        aria-label=${this.ariaLabel || nothing}
+        ?disabled=${this.formState.effectiveDisabled}
+      >
         <slot></slot>
       </button>
     `;

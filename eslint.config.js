@@ -411,6 +411,34 @@ module.exports = tseslint.config(
       '@typescript-eslint/no-unused-vars': OFF,
     },
   },
+  // Persistent RCI permission strings have one authority: frontend/sdk/src/permissions.ts. Everything
+  // else imports PERSISTENT_RCI_PERMISSIONS / isPersistentRciPermission from @mndw/sdk.
+  {
+    files: [
+      'frontend/**/*.{ts,svelte,vue}',
+      'plugins/**/*.{ts,svelte,vue}',
+      'tooling/**/*.{ts,svelte,vue}',
+    ],
+    ignores: [
+      'frontend/sdk/src/permissions.ts',
+      '**/*.test.ts',
+      '**/testing/**',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        ERROR,
+        {
+          selector: 'Literal[value=/^persistent-rci-session:/]',
+          message: 'Import PERSISTENT_RCI_PERMISSIONS or isPersistentRciPermission from @mndw/sdk instead.',
+        },
+        {
+          // `persistent-rci-session:${mode}` — the dynamic spelling. ('…:' + mode is covered above.)
+          selector: 'TemplateElement[value.raw=/^persistent-rci-session:/]',
+          message: 'Import PERSISTENT_RCI_PERMISSIONS or isPersistentRciPermission from @mndw/sdk instead.',
+        },
+      ],
+    },
+  },
   // Reactive l10n enforcement for migrated framework plugin surfaces. Vanilla render modules and
   // the MWS map adapter are explicit, audited exemptions in no-raw-plugin-i18n.cjs. Vue remains
   // outside typed enforcement because its SFC parser configuration has no TypeScript project.

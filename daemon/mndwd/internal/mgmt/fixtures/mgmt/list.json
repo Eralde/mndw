@@ -1,0 +1,188 @@
+{
+  "plugins": [
+    {
+      "name": "alpha-page",
+      "type": "page",
+      "version": "1.2.0",
+      "label": "Alpha",
+      "entry": "index.js",
+      "source": "upload",
+      "approval": "approved",
+      "enabled": true,
+      "route": "/alpha",
+      "i18n": {
+        "defaultLocale": "en",
+        "locales": {
+          "en": "i18n/en.json",
+          "ru": "i18n/ru.json"
+        }
+      },
+      "depsStatus": "ready",
+      "backend": {
+        "routes": {}
+      }
+    },
+    {
+      "name": "beta-service",
+      "type": "widget",
+      "version": "2.0.0",
+      "label": "Beta",
+      "entry": "index.js",
+      "source": "upload",
+      "approval": "approved",
+      "enabled": true,
+      "size": {
+        "w": 6,
+        "h": 4,
+        "minW": 3,
+        "minH": 2
+      },
+      "depsStatus": "ready",
+      "backend": {
+        "routes": {
+          "status": {
+            "transport": "http",
+            "path": "status",
+            "method": "GET"
+          },
+          "terminal": {
+            "transport": "websocket",
+            "path": "terminal",
+            "protocols": [
+              "tty"
+            ]
+          }
+        }
+      },
+      "runtime": {
+        "state": "ready",
+        "startedAt": "2026-09-01T10:00:00Z",
+        "consecutiveFailures": 0,
+        "restartCount": 1,
+        "requiredProtocol": 1,
+        "compatible": true,
+        "supportedProtocols": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "delta-rci",
+      "type": "widget",
+      "version": "1.0.0",
+      "label": "Delta",
+      "entry": "index.js",
+      "icon": "shield",
+      "source": "upload",
+      "approval": "approved",
+      "enabled": true,
+      "permissions": [
+        "persistent-rci-session:read",
+        "persistent-rci-session:write",
+        "events:wan"
+      ],
+      "permissionGrants": {
+        "persistent-rci-session:read": true
+      },
+      "size": {
+        "w": 4,
+        "h": 3
+      },
+      "depsStatus": "ready",
+      "backend": {
+        "routes": {}
+      }
+    },
+    {
+      "name": "epsilon-backoff",
+      "type": "widget",
+      "version": "0.9.0",
+      "label": "Epsilon",
+      "entry": "index.js",
+      "source": "upload",
+      "approval": "approved",
+      "enabled": true,
+      "size": {
+        "w": 4,
+        "h": 3
+      },
+      "depsStatus": "ready",
+      "backend": {
+        "routes": {
+          "status": {
+            "transport": "http",
+            "path": "status",
+            "method": "GET"
+          }
+        }
+      },
+      "runtime": {
+        "state": "backoff",
+        "startedAt": "2026-09-01T10:00:00Z",
+        "consecutiveFailures": 3,
+        "restartCount": 3,
+        "nextAttemptAt": "2026-09-01T10:05:00Z",
+        "lastExit": "exit status 1",
+        "lastError": "backend protocol 1 is not supported",
+        "recentStderr": [
+          "unsupported protocol 1",
+          "exiting"
+        ],
+        "requiredProtocol": 1,
+        "compatible": false,
+        "supportedProtocols": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "gamma-exec",
+      "type": "widget",
+      "version": "3.0.0",
+      "label": "Gamma",
+      "entry": "index.js",
+      "source": "upload",
+      "approval": "pending",
+      "enabled": false,
+      "size": {
+        "w": 4,
+        "h": 3
+      },
+      "depsStatus": "ready",
+      "backend": {
+        "routes": {
+          "run": {
+            "transport": "http",
+            "path": "run",
+            "method": "GET"
+          }
+        }
+      },
+      "runtime": {
+        "state": "stopped",
+        "consecutiveFailures": 0,
+        "restartCount": 0
+      }
+    },
+    {
+      "name": "zeta-builtin",
+      "type": "widget",
+      "version": "0.1.0",
+      "label": "zeta-builtin",
+      "entry": "index.js",
+      "source": "builtin",
+      "approval": "approved",
+      "enabled": true,
+      "size": {
+        "w": 4,
+        "h": 3
+      },
+      "fixedHeight": true,
+      "depsStatus": "ready",
+      "backend": {
+        "routes": {}
+      }
+    }
+  ]
+}
+

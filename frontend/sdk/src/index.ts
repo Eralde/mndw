@@ -1,5 +1,18 @@
 export type {MndwPlugin, PluginInstance, PluginResizeSize} from './plugin.js';
-export {eventPermissionSchema, eventSchema, eventSourceSchema, MaxEventPayloadBytes} from './event-schema.js';
+export {
+  EVENT_PERMISSION_PATTERN,
+  eventPermissionSchema,
+  eventSchema,
+  eventSourceSchema,
+  MaxEventPayloadBytes,
+} from './event-schema.js';
+export {
+  isPersistentRciPermission,
+  PERSISTENT_RCI_PERMISSIONS,
+  persistentRciPermissionSchema,
+  pluginPermissionSchema,
+} from './permissions.js';
+export type {PersistentRciPermission} from './permissions.js';
 export {createEventSchemaDocument} from './event-schema.js';
 export type {EventSource, EventTopic, MndwEvent, PluginEventFacade, Unsubscribe} from './event-schema.js';
 export {PageRouteError} from './context.js';

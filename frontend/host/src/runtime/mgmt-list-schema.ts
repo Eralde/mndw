@@ -1,16 +1,19 @@
-import type {BackendRouteDescriptor, PluginManifestI18n, WidgetSize} from '@mndw/sdk';
+import {
+  type BackendRouteDescriptor,
+  type PluginManifestI18n,
+  type WidgetSize,
+  isPersistentRciPermission,
+  pluginPermissionSchema,
+} from '@mndw/sdk';
 import {z} from 'zod';
 
 const sourceSchema = z.enum(['builtin', 'registry', 'upload']);
 const approvalSchema = z.enum(['pending', 'approved']);
 const depsStatusSchema = z.enum(['ready', 'installing', 'failed']);
-const permissionSchema = z.union([
-  z.enum(['persistent-rci-session:read', 'persistent-rci-session:write']),
-  z.string().regex(/^events:(\*|[a-z][a-z0-9]*(?:,[a-z][a-z0-9]*)*)$/),
-]);
+const runtimeStateSchema = z.enum(['stopped', 'capacity_blocked', 'starting', 'ready', 'backoff', 'failed']);
 const grantPermissionSchema = z.record(z.string(), z.boolean()).superRefine((grants, ctx) => {
   for (const permission of Object.keys(grants)) {
-    if (permission !== 'persistent-rci-session:read' && permission !== 'persistent-rci-session:write') {
+    if (!isPersistentRciPermission(permission)) {
       ctx.addIssue({code: 'custom', path: [permission], message: 'only persistent RCI permissions may be granted'});
     }
   }
@@ -41,7 +44,7 @@ const i18nSchema: z.ZodType<PluginManifestI18n> = z.object({
 });
 
 const runtimeStatusSchema = z.object({
-  state: z.enum(['stopped', 'capacity_blocked', 'starting', 'ready', 'backoff', 'failed']),
+  state: runtimeStateSchema,
   restartCount: z.number(),
   consecutiveFailures: z.number(),
   startedAt: z.string().optional(),
@@ -63,7 +66,7 @@ const baseFields = {
   source: sourceSchema,
   approval: approvalSchema,
   enabled: z.boolean(),
-  permissions: z.array(permissionSchema).optional(),
+  permissions: z.array(pluginPermissionSchema).optional(),
   permissionGrants: grantPermissionSchema.optional(),
   depsStatus: depsStatusSchema,
   backend: backendDescriptorSchema,
@@ -96,6 +99,14 @@ export type PluginBackendDescriptor = z.infer<typeof backendDescriptorSchema>;
 export type WidgetListEntry = z.infer<typeof widgetListEntrySchema>;
 export type PageListEntry = z.infer<typeof pageListEntrySchema>;
 export type PluginListEntry = z.infer<typeof pluginListEntrySchema>;
+
+/** Wire enums pinned against `contracts/mgmt/fixtures/enums.json`. */
+export const mgmtWireEnumSchemas = {
+  source: sourceSchema,
+  approval: approvalSchema,
+  depsStatus: depsStatusSchema,
+  runtimeState: runtimeStateSchema,
+} as const;
 
 /** The single runtime decoder for the `GET /api/mgmt/list` wire payload. */
 export const decodeMgmtList = (json: unknown): PluginListEntry[] => mgmtListSchema.parse(json).plugins;

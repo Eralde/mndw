@@ -1,0 +1,34 @@
+{
+  "plugins": [
+    {
+      "name": "gamma-exec",
+      "type": "widget",
+      "version": "3.0.0",
+      "label": "Gamma",
+      "entry": "index.js",
+      "source": "upload",
+      "approval": "pending",
+      "enabled": false,
+      "size": {
+        "w": 4,
+        "h": 3
+      },
+      "depsStatus": "ready",
+      "backend": {
+        "routes": {
+          "run": {
+            "transport": "http",
+            "path": "run",
+            "method": "GET"
+          }
+        }
+      },
+      "runtime": {
+        "state": "stopped",
+        "consecutiveFailures": 0,
+        "restartCount": 0
+      }
+    }
+  ]
+}
+

@@ -9,9 +9,10 @@ export const MaxEventPayloadBytes = 4 * 1024;
 
 export const eventSourceSchema = z.enum(['hook', 'log', 'internal']);
 
-export const eventPermissionSchema = z.string().regex(
-  /^events:(\*|[a-z][a-z0-9]*(?:,[a-z][a-z0-9]*)*)$/,
-);
+/** Event permission grammar. Shared with Go via `pnpm generate-contracts`; keep it flag-free and RE2-compatible. */
+export const EVENT_PERMISSION_PATTERN = /^events:(\*|[a-z][a-z0-9]*(?:,[a-z][a-z0-9]*)*)$/;
+
+export const eventPermissionSchema = z.string().regex(EVENT_PERMISSION_PATTERN);
 
 const eventBranch = <TTopic extends string, TPayload extends z.ZodTypeAny>(
   topic: TTopic,

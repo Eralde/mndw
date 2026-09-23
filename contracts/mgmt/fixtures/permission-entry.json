@@ -1,0 +1,29 @@
+{
+  "name": "delta-rci",
+  "type": "widget",
+  "version": "1.0.0",
+  "label": "Delta",
+  "entry": "index.js",
+  "icon": "shield",
+  "source": "upload",
+  "approval": "approved",
+  "enabled": true,
+  "permissions": [
+    "persistent-rci-session:read",
+    "persistent-rci-session:write",
+    "events:wan"
+  ],
+  "permissionGrants": {
+    "persistent-rci-session:read": true,
+    "persistent-rci-session:write": true
+  },
+  "size": {
+    "w": 4,
+    "h": 3
+  },
+  "depsStatus": "ready",
+  "backend": {
+    "routes": {}
+  }
+}
+

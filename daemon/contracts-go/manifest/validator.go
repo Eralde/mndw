@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 
 	"golang.org/x/text/language"
@@ -21,15 +22,10 @@ const (
 	TypePage   Type = "page"
 )
 
-const (
-	PersistentRCISessionReadPermission  = "persistent-rci-session:read"
-	PersistentRCISessionWritePermission = "persistent-rci-session:write"
-)
-
-var eventPermissionRe = regexp.MustCompile(`^events:(\*|[a-z][a-z0-9]*(?:,[a-z][a-z0-9]*)*)$`)
+var eventPermissionRe = regexp.MustCompile(eventPermissionPattern)
 
 func IsPersistentRCIPermission(permission string) bool {
-	return permission == PersistentRCISessionReadPermission || permission == PersistentRCISessionWritePermission
+	return slices.Contains(persistentRCIPermissions(), permission)
 }
 
 func IsEventPermission(permission string) bool {

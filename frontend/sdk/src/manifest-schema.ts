@@ -7,7 +7,7 @@
 
 import {z} from 'zod';
 import {isReservedPageRoute} from './page-routes.js';
-import {eventPermissionSchema} from './event-schema.js';
+import {pluginPermissionSchema} from './permissions.js';
 
 const pluginNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, {
   message: 'name must be lowercase alphanumeric with hyphens (e.g. my-widget)',
@@ -241,10 +241,7 @@ const labelField = z.string().min(1)
 const entryField = pluginEntrySchema.describe('Relative path to the bundled entry module.');
 const iconField = z.string().optional()
   .describe('Optional icon name.');
-const permissionSchema = z.union([
-  z.enum(['persistent-rci-session:read', 'persistent-rci-session:write']),
-  eventPermissionSchema,
-]);
+const permissionSchema = pluginPermissionSchema;
 const permissionsSchema = z.array(permissionSchema).superRefine((permissions, ctx) => {
   if (new Set(permissions).size !== permissions.length) {
     ctx.addIssue({code: 'custom', message: 'permissions contains duplicate permission'});

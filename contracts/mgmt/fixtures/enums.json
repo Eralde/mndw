@@ -1,0 +1,7 @@
+{
+  "_note": "source, approval and runtimeState must equal the daemon constants exactly (Go parses internal/state and internal/backend). depsStatus is the host-accepted set; the daemon currently emits only \"ready\" (internal/mgmt/mgmt.go entryFrom).",
+  "source": ["builtin", "registry", "upload"],
+  "approval": ["pending", "approved"],
+  "depsStatus": ["ready", "installing", "failed"],
+  "runtimeState": ["stopped", "capacity_blocked", "starting", "ready", "backoff", "failed"]
+}

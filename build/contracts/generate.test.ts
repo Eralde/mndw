@@ -24,6 +24,8 @@ const generatedDirectories = [
   'frontend/sdk/fixtures/events',
   'daemon/contracts-go/fixtures/events',
   'daemon/mndwd/internal/events/fixtures',
+  'daemon/mndwd/internal/mgmt/fixtures/mgmt',
+  'frontend/host/src/runtime/fixtures/mgmt',
 ] as const;
 
 const listFiles = (root: string, current = ''): string[] => {
@@ -57,6 +59,7 @@ const generatedPaths = [
   'daemon/mndwd/internal/palette/theme_tokens_generated.go',
   'contracts/events/events.schema.json',
   'daemon/contracts-go/events/events.go',
+  'daemon/contracts-go/manifest/permissions_generated.go',
   ...generatedDirectories.flatMap((directory) =>
     listFiles(join(repoRoot, directory)).map((file) => join(directory, file))
   ),

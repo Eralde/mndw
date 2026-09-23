@@ -1,4 +1,5 @@
 import {describe, expect, it} from 'vitest';
+import {PERSISTENT_RCI_PERMISSIONS} from '@mndw/sdk';
 import {decodeMgmtList, decodeMgmtListEntry} from './mgmt-list-schema.js';
 
 const widgetEntry = {
@@ -70,6 +71,27 @@ describe('decodeMgmtList', () => {
     expect(entries[0]?.permissionGrants).toEqual({'persistent-rci-session:read': true});
     expect(entries[0]?.catalogBaseUrl).toBe('/catalogs/demo');
     expect(entries[0]?.runtime?.startedAt).toBe('2026-08-15T10:00:00Z');
+  });
+
+  it('accepts every SDK persistent RCI permission grant', () => {
+    for (const permission of PERSISTENT_RCI_PERMISSIONS) {
+      const entries = decodeMgmtList({plugins: [{
+        ...widgetEntry,
+        permissionGrants: {[permission]: true},
+      }]});
+
+      expect(entries[0]?.permissionGrants).toEqual({[permission]: true});
+    }
+  });
+
+  it('rejects persistent permission grants outside the SDK permission set', () => {
+    expect(() =>
+      decodeMgmtList({plugins: [{
+        ...widgetEntry,
+        permissions: ['persistent-rci-session:admin'],
+        permissionGrants: {'persistent-rci-session:admin': true},
+      }]})
+    ).toThrow();
   });
 
   it('keeps event declarations separate from persistent permission grants', () => {

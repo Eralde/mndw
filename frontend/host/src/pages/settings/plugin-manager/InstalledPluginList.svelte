@@ -1,5 +1,5 @@
 <script lang="ts">
-import type {PluginPermission} from '@mndw/sdk';
+import {PERSISTENT_RCI_PERMISSIONS, type PluginPermission} from '@mndw/sdk';
 import type {
   PluginBackendDescriptor,
   PluginListEntry,
@@ -67,11 +67,6 @@ function backendSummary(backend: PluginBackendDescriptor): string[] {
 function boundedError(value: string): string {
   return value.length > 240 ? `${value.slice(0, 240)}…` : value;
 }
-
-const PERSISTENT_RCI_PERMISSIONS: PluginPermission[] = [
-  'persistent-rci-session:read',
-  'persistent-rci-session:write',
-];
 
 function permissionGranted(
   item: PluginListEntry,

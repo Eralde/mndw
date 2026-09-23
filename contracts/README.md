@@ -45,6 +45,13 @@ contracts/rci-session/fixtures/capability
   → frontend/host/src/services/fixtures/rci-session/capability
   → daemon/mndwd/internal/rcisession/testdata/capability
 
+frontend/sdk/src/permissions.ts + frontend/sdk/src/event-schema.ts (EVENT_PERMISSION_PATTERN)
+  → daemon/contracts-go/manifest/permissions_generated.go
+
+contracts/mgmt/fixtures
+  → daemon/mndwd/internal/mgmt/fixtures/mgmt
+  → frontend/host/src/runtime/fixtures/mgmt
+
 contracts/routing.md records runtime route ownership; it is descriptive, not a
 second router configuration.
 ```
@@ -57,3 +64,23 @@ Run `pnpm generate-contracts` from repository root after changing an authority
 or a canonical fixture. The command copies files in sorted order and rewrites
 only its generated destinations. `pnpm generate-manifest-schema` remains a
 manifest-schema compatibility wrapper.
+
+`contracts/mgmt/fixtures` is golden evidence for the management list-entry wire
+shape. The Go handler test (`internal/mgmt/wire_contract_test.go`) seeds fixed
+state and requires `GET /api/mgmt/list`, `GET /api/mgmt/pending`, and
+`POST /api/mgmt/permission` to match the golden evidence. The host test
+(`frontend/host/src/runtime/mgmt-wire-contract.test.ts`) requires each golden to
+decode losslessly; that is the cross-language gate. A Go reflection test
+requires every JSON field of `ListEntry` (nested types included) to appear in at
+least one golden, so a new optional field must be seeded before it can pass.
+`enums.json` is handwritten:
+`source`, `approval`, and `runtimeState` must equal the daemon constants (the Go
+test finds them by parsing `internal/state` and `internal/backend`) and the host
+Zod enums. `depsStatus` lists the host-accepted set; the daemon currently emits
+only `ready`.
+
+When the wire shape changes, update the Go struct and the Zod schema, then
+regenerate the goldens and review the diff:
+
+    (cd daemon/mndwd && GOCACHE="$PWD/../../.cache/go-build" go test ./internal/mgmt -run TestWireGoldenFixtures -update)
+    pnpm generate-contracts

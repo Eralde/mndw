@@ -4,7 +4,8 @@ import {dirname, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {createManifestSchemaDocument} from '../../frontend/sdk/scripts/manifest-schema-document.js';
-import {createEventSchemaDocument} from '../../frontend/sdk/src/event-schema.js';
+import {EVENT_PERMISSION_PATTERN, createEventSchemaDocument} from '../../frontend/sdk/src/event-schema.js';
+import {PERSISTENT_RCI_PERMISSIONS} from '../../frontend/sdk/src/permissions.js';
 import {createMwsMemberSchemaDocument} from '../../frontend/sdk/src/mws-member-schema.js';
 import {PALETTE_CONTRAST_PAIRS, PALETTE_CSS_VARIABLES, buildPalette} from '../../tooling/palette-core/src/index.js';
 import {renderCss, renderTs} from '../../build/palette/scripts/gen-tokens.js';
@@ -63,6 +64,10 @@ const fixtureMappings: readonly FixtureMapping[] = [
       'daemon/mndwd/internal/events/fixtures',
     ],
   },
+  {
+    source: 'contracts/mgmt/fixtures',
+    destinations: ['daemon/mndwd/internal/mgmt/fixtures/mgmt', 'frontend/host/src/runtime/fixtures/mgmt'],
+  },
 ];
 
 const manifestSchemaPaths = [
@@ -78,6 +83,7 @@ const tokenContractPath = 'contracts/tokens.json';
 const generatedGoThemeTokensPath = 'daemon/mndwd/internal/palette/theme_tokens_generated.go';
 const eventSchemaPath = 'contracts/events/events.schema.json';
 const generatedGoEventsPath = 'daemon/contracts-go/events/events.go';
+const generatedGoPermissionsPath = 'daemon/contracts-go/manifest/permissions_generated.go';
 
 function listFiles(root: string): string[] {
   const files: string[] = [];
@@ -191,6 +197,7 @@ const initialisms: Readonly<Record<string, string>> = {
   id: 'ID',
   ip: 'IP',
   mac: 'MAC',
+  rci: 'RCI',
   ssid: 'SSID',
   usb: 'USB',
 };
@@ -310,6 +317,52 @@ function generateEventContracts(options: GenerateContractsOptions): void {
   execFileSync('gofmt', ['-w', goPath], {stdio: 'pipe'});
 }
 
+const goPermissionConstName = (permission: string): string => {
+  return `${goFieldName(permission.replace(/[-:]/g, '_'))}Permission`;
+};
+
+function renderGoPermissions(): string {
+  const pattern = EVENT_PERMISSION_PATTERN.source;
+
+  if (EVENT_PERMISSION_PATTERN.flags !== '' || pattern.includes('`')) {
+    throw new Error('EVENT_PERMISSION_PATTERN must be flag-free and contain no backtick to render as a Go raw string.');
+  }
+
+  const constants = PERSISTENT_RCI_PERMISSIONS
+    .map((permission) => `\t${goPermissionConstName(permission)} = "${permission}"`)
+    .join('\n');
+  const listItems = PERSISTENT_RCI_PERMISSIONS
+    .map((permission) => `\t\t${goPermissionConstName(permission)},`)
+    .join('\n');
+
+  return `// GENERATED from frontend/sdk/src/permissions.ts — do not edit by hand.
+package manifest
+
+const (
+${constants}
+)
+
+// persistentRCIPermissions returns every grantable persistent RCI permission in
+// authority order. It returns a fresh slice so callers cannot mutate the set.
+func persistentRCIPermissions() []string {
+\treturn []string{
+${listItems}
+\t}
+}
+
+const eventPermissionPattern = \`${pattern}\`
+`;
+}
+
+function generateGoPermissions(options: GenerateContractsOptions): void {
+  const outputRoot = resolve(options.outputRoot ?? options.repoRoot);
+  const goPath = join(outputRoot, generatedGoPermissionsPath);
+
+  mkdirSync(dirname(goPath), {recursive: true});
+  writeFileSync(goPath, renderGoPermissions());
+  execFileSync('gofmt', ['-w', goPath], {stdio: 'pipe'});
+}
+
 function generateMwsMemberSchema(options: GenerateContractsOptions): void {
   const outputRoot = resolve(options.outputRoot ?? options.repoRoot);
   const outputPath = join(outputRoot, mwsMemberSchemaPath);
@@ -412,6 +465,7 @@ export function generateContracts(options: GenerateContractsOptions): void {
 
   generateManifestSchema({repoRoot, outputRoot});
   generateEventContracts({repoRoot, outputRoot});
+  generateGoPermissions({repoRoot, outputRoot});
   generateMwsMemberSchema({repoRoot, outputRoot});
   generateRciSessionStatusCategories({repoRoot, outputRoot});
   generateTokenBindings({repoRoot, outputRoot});

@@ -2,8 +2,11 @@ package main
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
+
+	"mndwd/internal/rcisession"
 )
 
 func TestParseDefaultsUserPluginsDirUsesDurableDataRoot(t *testing.T) {
@@ -381,5 +384,87 @@ func TestParseRejectsInvalidPersistentSessionConfig(t *testing.T) {
 				t.Fatal("parseFlags succeeded, want error")
 			}
 		})
+	}
+}
+
+func TestWithDefaultsFillsUnsetFields(t *testing.T) {
+	cfg := Config{DataDir: "/data/mndw", Opkg: "stub", ExecTimeout: 7 * time.Second}.withDefaults()
+
+	for _, check := range []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"UserPluginsDir", cfg.UserPluginsDir, "/data/mndw/user-plugins"},
+		{"PluginRuntimeRoot", cfg.PluginRuntimeRoot, defaultPluginRuntimeRoot},
+		{"SelfUpdateStateDir", cfg.SelfUpdateStateDir, defaultSelfUpdateStateDir},
+		{"SelfUpdateHelper", cfg.SelfUpdateHelper, defaultSelfUpdateHelper},
+		{"DiagnosticsLogFile", cfg.DiagnosticsLogFile, defaultDiagnosticsLogFile},
+		{"RRDToolBinary", cfg.RRDToolBinary, defaultRRDToolBinary},
+		{"RRDDir", cfg.RRDDir, defaultRRDDir},
+		{"RCISessionStateDir", cfg.RCISessionStateDir, "/data/mndw"},
+		{"RCISessionKeyDir", cfg.RCISessionKeyDir, defaultRCISessionKeyDir},
+		{"ControllerURL", cfg.ControllerURL, rcisession.DefaultControllerURL},
+		{"Service", cfg.Service, "stub"},
+	} {
+		if check.got != check.want {
+			t.Errorf("%s = %q, want %q", check.name, check.got, check.want)
+		}
+	}
+
+	if cfg.RCIProxyOperationTimeout != 7*time.Second {
+		t.Errorf("RCIProxyOperationTimeout = %s, want exec timeout 7s", cfg.RCIProxyOperationTimeout)
+	}
+}
+
+func TestWithDefaultsDevKeyDirSitsBesideDataDir(t *testing.T) {
+	cfg := Config{DataDir: "/tmp/mndw-dev-data", Dev: true}.withDefaults()
+
+	if got, want := cfg.RCISessionKeyDir, "/tmp/rci-session-secrets"; got != want {
+		t.Fatalf("dev RCI session key dir = %q, want %q", got, want)
+	}
+}
+
+func TestWithDefaultsKeepsExplicitValues(t *testing.T) {
+	explicit := Config{
+		DataDir:                  "/d",
+		UserPluginsDir:           "/u",
+		PluginRuntimeRoot:        "/r",
+		SelfUpdateStateDir:       "/s",
+		SelfUpdateHelper:         "/h",
+		DiagnosticsLogFile:       "/l",
+		RRDToolBinary:            "/b",
+		RRDDir:                   "/rrd",
+		RCISessionStateDir:       "/state",
+		RCISessionKeyDir:         "/keys",
+		ControllerURL:            "http://192.0.2.1",
+		RCIProxyOperationTimeout: 3 * time.Second,
+		ExecTimeout:              9 * time.Second,
+		Opkg:                     "exec",
+		Service:                  "stub",
+	}
+
+	if got := explicit.withDefaults(); !reflect.DeepEqual(got, explicit) {
+		t.Fatalf("withDefaults changed explicit values:\n got %#v\nwant %#v", got, explicit)
+	}
+}
+
+func TestWithDefaultsIsIdempotent(t *testing.T) {
+	once := Config{DataDir: "/data/mndw", Dev: true, Opkg: "exec", ExecTimeout: time.Second}.withDefaults()
+
+	if twice := once.withDefaults(); !reflect.DeepEqual(twice, once) {
+		t.Fatalf("second withDefaults changed config:\n got %#v\nwant %#v", twice, once)
+	}
+}
+
+func TestParseStillRejectsExplicitZeroDurations(t *testing.T) {
+	for _, args := range [][]string{
+		{"--rci-heartbeat-interval", "0"},
+		{"--http-drain-timeout", "0"},
+		{"--rci-proxy-operation-timeout", "-1s"},
+	} {
+		if _, _, err := parseFlags(append([]string{"--data-dir", "/var/lib/mndw"}, args...)); err == nil {
+			t.Errorf("parseFlags accepted %v", args)
+		}
 	}
 }

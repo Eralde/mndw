@@ -92,8 +92,8 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 				return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record approval")
 			}
 
-			h.publish("plugin.installed", map[string]any{"name": name, "version": deref(m.Version)})
-			h.publish("plugin.approved", map[string]any{"name": name, "version": deref(m.Version)})
+			h.publishPluginInstalled(name, deref(m.Version))
+			h.publishPluginApproved(name, deref(m.Version))
 
 			return nil
 		})

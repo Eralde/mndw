@@ -602,7 +602,7 @@ func (g *Gateway) writeBlocked(writer http.ResponseWriter, blockers []Activation
 	for _, blocker := range blockers {
 		detail = append(detail, backendStatusBlocker{
 			Permission:   blocker.Permission,
-			Reason:       blocker.Reason,
+			Reason:       string(blocker.Reason),
 			Prerequisite: blocker.Prerequisite,
 		})
 	}

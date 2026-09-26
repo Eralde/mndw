@@ -4,7 +4,7 @@ package backend
 // permission is not currently available.
 type ActivationBlocker struct {
 	Permission   string
-	Reason       string
+	Reason       BlockerReason
 	Prerequisite string
 }
 
@@ -94,6 +94,6 @@ func (r *ActivationGateRegistry) Satisfied(pluginName string, permissions []stri
 
 type activationBlockerKey struct {
 	permission   string
-	reason       string
+	reason       BlockerReason
 	prerequisite string
 }

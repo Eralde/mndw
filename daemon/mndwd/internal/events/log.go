@@ -33,7 +33,7 @@ type ParsedLogRecord struct {
 
 type ExtractedEvent struct {
 	Topic   contractEvents.Topic
-	Payload map[string]any
+	Payload any
 }
 
 type Extractor func(record ParsedLogRecord) *ExtractedEvent

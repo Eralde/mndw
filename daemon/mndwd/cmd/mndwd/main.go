@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
-	"sync"
 	"syscall"
 	"time"
 	_ "time/tzdata"
@@ -31,6 +30,7 @@ import (
 	"mndwd/internal/mgmt"
 	"mndwd/internal/opkg"
 	"mndwd/internal/palette"
+	"mndwd/internal/rcisession/coordinator"
 	"mndwd/internal/rcisession/model"
 	"mndwd/internal/registry"
 	"mndwd/internal/selfupdate"
@@ -64,7 +64,7 @@ func main() {
 	}
 }
 
-func run(cfg Config) error {
+func run(cfg Config) (err error) {
 	level, _ := parseLevel(cfg.LogLevel)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 
@@ -89,16 +89,20 @@ func run(cfg Config) error {
 
 	defer stop()
 
-	c := assemble(cfg, store, paletteStore, verifier, logger, ctx)
-
-	if c.startupErr != nil {
-		c.closeTelemetry()
-		c.closePersistentSession()
-
-		_ = c.runtime.Shutdown(context.Background())
-
-		return c.startupErr
+	c, err := assemble(cfg, store, paletteStore, verifier, logger, ctx)
+	if err != nil {
+		return err
 	}
+
+	defer func() {
+		if closeErr := c.Close(); closeErr != nil {
+			logger.Error("shutdown failed", "error", closeErr)
+
+			if err == nil {
+				err = closeErr
+			}
+		}
+	}()
 
 	var listener net.Listener
 
@@ -114,11 +118,6 @@ func run(cfg Config) error {
 		})
 
 		if selectErr != nil {
-			c.closeTelemetry()
-			c.closePersistentSession()
-
-			_ = c.runtime.Shutdown(context.Background())
-
 			return selectErr
 		}
 
@@ -127,11 +126,11 @@ func run(cfg Config) error {
 		logger.Info("mndwd front door", "url", fmt.Sprintf("http://<device-ip>:%d/", port), "port", port)
 	}
 
-	if c.activationAssembly != nil {
+	if c.coordinator != nil {
 		// Supervisor.Start only launches the child and probes its local backend
 		// readiness socket; it makes no controller-RCI call. The synchronous poke
 		// therefore cannot re-enter this mutation observer while holding its mutex.
-		c.activationAssembly.SetActivationPoke(func() {
+		c.coordinator.SetActivationPoke(func() {
 			c.runtime.Reconcile(ctx, c.reg.AllBackendPlugins())
 		})
 	}
@@ -141,16 +140,8 @@ func run(cfg Config) error {
 	// executes plugin commands before the listener is available.
 	c.runtime.Reconcile(ctx, c.reg.AllBackendPlugins())
 
-	if c.startEvents != nil {
-		if err := c.startEvents(ctx); err != nil {
-			c.closeEvents()
-			c.closeTelemetry()
-			c.closePersistentSession()
-
-			_ = c.runtime.Shutdown(context.Background())
-
-			return err
-		}
+	if err := c.events.Start(ctx); err != nil {
+		return err
 	}
 
 	if c.telemetry != nil {
@@ -172,86 +163,124 @@ func run(cfg Config) error {
 		srv.Addr = cfg.Listen
 	}
 
-	var closePersistentOnce sync.Once
-	closePersistent := func() {
-		closePersistentOnce.Do(c.closePersistentSession)
-	}
-	err = serveWithDrain(ctx, srv, listener, logger, func() {
-		c.stopEvents("shutdown")
+	return serveWithDrain(ctx, srv, listener, logger, func() {
+		c.events.Stop("shutdown")
 	}, cfg.HTTPDrainTimeout)
+}
 
-	c.closeEvents()
-	c.closeTelemetry()
-	closePersistent()
+// components is the fully-wired daemon. Close releases everything assemble
+// started, newest first.
+type components struct {
+	handler     http.Handler
+	reg         *registry.Registry
+	runtime     *backend.RuntimeImpl
+	gateway     *backend.Gateway
+	coordinator *coordinator.Coordinator
+	telemetry   *telemetry.Capability
+	events      *eventLifecycle
+	cleanup     cleanupStack
+}
 
-	if shutdownErr := c.runtime.Shutdown(context.Background()); shutdownErr != nil {
-		logger.Error("backend shutdown failed", "error", shutdownErr)
+// Close stops events, telemetry, the persistent RCI session, and the backend
+// runtime, in that order. Only the runtime's shutdown error is returned; the
+// others are logged by their closers.
+func (c *components) Close() error {
+	return c.cleanup.closeAll()
+}
 
-		if err == nil {
-			err = shutdownErr
-		}
+// closeTelemetry stops the telemetry pipeline. Failures are logged, not
+// returned, so a stuck flush never changes the daemon's exit status.
+func closeTelemetry(capability *telemetry.Capability, logger *slog.Logger) {
+	if capability == nil {
+		return
 	}
 
-	return err
+	closeCtx, cancel := context.WithTimeout(context.Background(), telemetryShutdownTimeout)
+
+	defer cancel()
+
+	if err := capability.Close(closeCtx); err != nil {
+		logger.Error("telemetry shutdown failed", "error", err)
+	}
 }
 
-// components is the fully-wired daemon and the persistent RCI session cleanup.
-type components struct {
-	handler                http.Handler
-	reg                    *registry.Registry
-	runtime                *backend.RuntimeImpl
-	gateway                *backend.Gateway
-	activationAssembly     *rciSessionAssembly
-	closePersistentSession func()
-	closeTelemetry         func()
-	telemetry              *telemetry.Capability
-	startEvents            func(context.Context) error
-	stopEvents             func(string)
-	closeEvents            func()
-	startupErr             error
+// daemonCore is the set of long-lived collaborators every route group shares.
+type daemonCore struct {
+	cfg             Config
+	store           *state.Store
+	reg             *registry.Registry
+	runtime         *backend.RuntimeImpl
+	activationGates *backend.ActivationGateRegistry
+	verifier        *authz.Verifier
+	logger          *slog.Logger
+	lifetime        context.Context
 }
 
-// assemble builds the fully-wired daemon. Kept separate from run so the integration
-// test can drive the exact same wiring over httptest.
-func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) components {
+// mgmtServices are the management-only collaborators registerMgmt needs on top
+// of daemonCore.
+type mgmtServices struct {
+	opkg                 opkg.Manager
+	selfUpdate           selfupdate.Service
+	service              service.Manager
+	permissionController mgmt.PersistentRCIPermissionController
+	telemetryController  mgmt.TelemetryController
+	events               *events.InternalPublisher
+}
+
+// telemetryControllerOrNil converts a possibly-nil capability to the mgmt
+// interface without producing a non-nil interface that holds a nil pointer.
+// mgmt reports telemetry as unavailable only when the interface itself is nil.
+func telemetryControllerOrNil(capability *telemetry.Capability) mgmt.TelemetryController {
+	if capability == nil {
+		return nil
+	}
+
+	return capability
+}
+
+// assemble builds the fully-wired daemon. When startup fails it unwinds
+// everything already built (newest first) before returning the error, so the
+// caller never owns a half-started daemon. Kept separate from run so the
+// integration tests drive the exact same wiring over httptest.
+func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) (*components, error) {
+	c, err := buildComponents(cfg, store, paletteStore, verifier, logger, lifetime)
+	if err != nil {
+		if closeErr := c.Close(); closeErr != nil {
+			logger.Error("cleanup after failed startup", "error", closeErr)
+		}
+
+		return nil, err
+	}
+
+	return c, nil
+}
+
+// buildComponents constructs every subsystem and mounts the route tree. It
+// always returns non-nil components holding every closer registered so far,
+// even with a startup error, so the caller decides whether to unwind them.
+func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) (*components, error) {
+	cfg = cfg.withDefaults()
+
 	eventBus := events.NewBus()
 	normalizer := events.NewNormalizer(time.Now, nil)
 	internalPublisher := events.NewInternalPublisher(eventBus, normalizer)
 	ingestPublisher := events.NewDeduplicatingPublisher(eventBus, events.NewDeduplicator(time.Now))
 	reg := registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, logger)
-	stateDir := cfg.SelfUpdateStateDir
-
-	if stateDir == "" {
-		stateDir = defaultSelfUpdateStateDir
-	}
-
-	helperPath := cfg.SelfUpdateHelper
-
-	if helperPath == "" {
-		helperPath = defaultSelfUpdateHelper
-	}
-
 	opkgMgr := opkg.NewWithPaths(cfg.Opkg, logger, opkg.Paths{
-		StateDir:   stateDir,
-		PendingDir: filepath.Join(stateDir, "pending"),
-		LockPath:   filepath.Join(stateDir, "self-update.lock"),
+		StateDir:   cfg.SelfUpdateStateDir,
+		PendingDir: filepath.Join(cfg.SelfUpdateStateDir, "pending"),
+		LockPath:   filepath.Join(cfg.SelfUpdateStateDir, "self-update.lock"),
 	})
 	selfUpdateService := selfupdate.New(selfupdate.Config{
-		StateDir:       stateDir,
-		PackagedHelper: helperPath,
+		StateDir:       cfg.SelfUpdateStateDir,
+		PackagedHelper: cfg.SelfUpdateHelper,
 		RunningVersion: version,
 		Logger:         logger,
 	}, opkgMgr)
 	serviceMgr := service.New(cfg.Service, logger)
 	activationGates := backend.NewActivationGateRegistry()
-	runtimeRoot := cfg.PluginRuntimeRoot
-
-	if runtimeRoot == "" {
-		runtimeRoot = defaultPluginRuntimeRoot
-	}
-
 	runtime := backend.NewRuntime(backend.RuntimeConfig{
-		RuntimeRoot:     runtimeRoot,
+		RuntimeRoot:     cfg.PluginRuntimeRoot,
 		PluginDataRoot:  filepath.Join(cfg.DataDir, "plugin-data"),
 		ActivationGates: activationGates,
 		Limits: backend.Limits{
@@ -278,25 +307,60 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 	})
 
 	runtime.SetLifecycleObserver(func(event backend.LifecycleEvent) {
-		if event.State == "started" {
-			_ = internalPublisher.Publish(contractEvents.TopicPluginStarted, map[string]any{"name": event.Plugin})
+		if event.State == backend.LifecycleStarted {
+			_ = internalPublisher.PublishPluginStarted(contractEvents.PluginStartedPayload{Name: event.Plugin})
 
 			return
 		}
 
-		_ = internalPublisher.Publish(contractEvents.TopicPluginStopped, map[string]any{
-			"name":   event.Plugin,
-			"reason": event.Reason,
+		_ = internalPublisher.PublishPluginStopped(contractEvents.PluginStoppedPayload{
+			Name:   event.Plugin,
+			Reason: string(event.Reason),
 		})
 	})
 
+	var cleanup cleanupStack
+
+	cleanup.push("backend runtime", func() error {
+		return runtime.Shutdown(context.Background())
+	})
+
 	mux := http.NewServeMux()
+	core := daemonCore{
+		cfg:             cfg,
+		store:           store,
+		reg:             reg,
+		runtime:         runtime,
+		activationGates: activationGates,
+		verifier:        verifier,
+		logger:          logger,
+		lifetime:        lifetime,
+	}
 
 	mux.Handle("POST /_internal/hook", events.NewHookHandler(ingestPublisher, normalizer))
 	mux.Handle("GET /ws/events", verifier.Middleware(events.NewWebSocketHandler(eventBus, backend.ValidWebSocketOrigin)))
 
-	accessRegistration := registerAccess(mux, cfg, store, reg, runtimeRoot, runtime, activationGates, verifier, logger, lifetime)
-	mgmtMux := registerMgmt(mux, cfg, store, opkgMgr, selfUpdateService, serviceMgr, reg, runtime, accessRegistration.permissionController, accessRegistration.capability, verifier, logger, lifetime, internalPublisher)
+	accessRegistration := registerAccess(mux, core)
+
+	cleanup.push("persistent RCI session", func() error {
+		accessRegistration.close()
+
+		return nil
+	})
+	cleanup.push("telemetry", func() error {
+		closeTelemetry(accessRegistration.capability, logger)
+
+		return nil
+	})
+
+	mgmtMux := registerMgmt(mux, core, mgmtServices{
+		opkg:                 opkgMgr,
+		selfUpdate:           selfUpdateService,
+		service:              serviceMgr,
+		permissionController: accessRegistration.permissionController,
+		telemetryController:  telemetryControllerOrNil(accessRegistration.capability),
+		events:               internalPublisher,
+	})
 	deviceFetcher, deviceInfoErr := deviceinfo.NewHTTPFetcher(cfg.DeviceURL, logger, deviceinfo.FetcherOptions{})
 
 	if deviceInfoErr == nil {
@@ -305,7 +369,7 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 
 	registerPalette(mux, mgmtMux, paletteStore, logger)
 
-	gateway := registerPlugins(mux, cfg, reg, activationGates, verifier, runtime, logger)
+	gateway := registerPlugins(mux, core)
 	frontDoorErr := registerFrontDoor(mux, cfg, logger)
 
 	gateway.SetTrafficBlockPredicate(runtime.BlocksTraffic)
@@ -318,6 +382,27 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 		routed = frontend.TraversalGuard(mux)
 	}
 
+	eventLife := &eventLifecycle{
+		bus:                eventBus,
+		normalizer:         normalizer,
+		internal:           internalPublisher,
+		ingest:             ingestPublisher,
+		selfUpdate:         selfUpdateService,
+		selfUpdateStateDir: cfg.SelfUpdateStateDir,
+		annotations:        accessRegistration.annotationStore,
+		rciClient:          accessRegistration.eventRCIClient,
+		reg:                reg,
+		store:              store,
+		logger:             logger,
+		startedAt:          time.Now(),
+	}
+
+	cleanup.push("events", func() error {
+		eventLife.Close()
+
+		return nil
+	})
+
 	startupErr := accessRegistration.err
 
 	if startupErr == nil {
@@ -328,182 +413,16 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 		startupErr = deviceInfoErr
 	}
 
-	var eventCancel context.CancelFunc
-	var eventDone bool
-	daemonStartedAt := time.Now()
-	startEvents := func(ctx context.Context) error {
-		if eventDone {
-			return nil
-		}
-
-		eventCtx, cancel := context.WithCancel(ctx)
-		eventCancel = cancel
-
-		if _, err := selfUpdateService.Status(); err != nil {
-			logger.Warn("self-update startup status unavailable", "error", err)
-		}
-
-		selfUpdateStateDir := cfg.SelfUpdateStateDir
-
-		if selfUpdateStateDir == "" {
-			selfUpdateStateDir = defaultSelfUpdateStateDir
-		}
-
-		completion, completionErr := selfupdate.NewStateStore(selfUpdateStateDir).ConsumeCompletion()
-
-		if completionErr == nil {
-			_ = internalPublisher.Publish(contractEvents.TopicDaemonUpdated, map[string]any{"version": completion.TargetVersion})
-		} else if !errors.Is(completionErr, selfupdate.ErrNoIntent) {
-			logger.Warn("self-update completion record unavailable", "error", completionErr)
-		}
-
-		if accessRegistration.annotationStore != nil {
-			if err := accessRegistration.annotationStore.Start(eventCtx, eventBus); err != nil {
-				cancel()
-
-				return fmt.Errorf("start event annotations: %w", err)
-			}
-		}
-
-		if accessRegistration.eventRCIClient == nil {
-			logger.Warn("event log poller disabled: no RCI client available")
-		} else {
-			deviceTZ := events.QueryDeviceTimezone(eventCtx, accessRegistration.eventRCIClient)
-			parser := events.NewLogParser(normalizer, deviceTZ, nil, logger)
-			pollTicker := time.NewTicker(events.LogPollInterval)
-			poller := events.NewLogPoller(events.LogPollerConfig{
-				Source:     events.NewRCILogSource(accessRegistration.eventRCIClient),
-				Parser:     parser,
-				Publisher:  ingestPublisher,
-				Ticker:     pollTicker.C,
-				StopTicker: pollTicker.Stop,
-				Logger:     logger,
-			})
-
-			go poller.Run(eventCtx)
-		}
-
-		storage := events.NewStorageMonitor("/opt", nil, internalPublisher, logger)
-
-		go storage.Run(eventCtx)
-
-		publishActivePluginEvents(reg, store, internalPublisher, logger)
-
-		_ = internalPublisher.Publish(contractEvents.TopicDaemonStarted, map[string]any{
-			"version":   version,
-			"uptime_ms": time.Since(daemonStartedAt).Milliseconds(),
-		})
-		eventDone = true
-
-		return nil
-	}
-	stopEvents := func(reason string) {
-		if !eventDone {
-			return
-		}
-
-		_ = internalPublisher.Publish(contractEvents.TopicDaemonStopping, map[string]any{"reason": reason})
-
-		if eventCancel != nil {
-			eventCancel()
-		}
-	}
-	closeEvents := func() {
-		if eventCancel != nil {
-			eventCancel()
-
-			eventCancel = nil
-		}
-
-		if accessRegistration.annotationStore != nil {
-			closeCtx, cancel := context.WithTimeout(context.Background(), telemetryShutdownTimeout)
-
-			if err := accessRegistration.annotationStore.Close(closeCtx); err != nil {
-				logger.Warn("telemetry annotations shutdown failed", "error", err)
-			}
-
-			cancel()
-		}
-	}
-
-	return components{
-		handler:                httpx.NoCORSHandler(httpx.LogMiddleware(logger, routed)),
-		reg:                    reg,
-		runtime:                runtime,
-		gateway:                gateway,
-		activationAssembly:     accessRegistration.activationAssembly,
-		closePersistentSession: accessRegistration.close,
-		closeTelemetry: func() {
-			if accessRegistration.capability != nil {
-				closeCtx, cancel := context.WithTimeout(context.Background(), telemetryShutdownTimeout)
-
-				defer cancel()
-
-				if closeErr := accessRegistration.capability.Close(closeCtx); closeErr != nil {
-					logger.Error("telemetry shutdown failed", "error", closeErr)
-				}
-			}
-		},
+	return &components{
+		handler:     httpx.NoCORSHandler(httpx.LogMiddleware(logger, routed)),
+		reg:         reg,
+		runtime:     runtime,
+		gateway:     gateway,
+		coordinator: accessRegistration.coordinator,
 		telemetry:   accessRegistration.capability,
-		startEvents: startEvents,
-		stopEvents:  stopEvents,
-		closeEvents: closeEvents,
-		startupErr:  startupErr,
-	}
-}
-
-func publishActivePluginEvents(reg *registry.Registry, store *state.Store, publisher *events.InternalPublisher, logger *slog.Logger) {
-	if reg == nil || store == nil || publisher == nil {
-		return
-	}
-
-	snapshot := store.Snapshot()
-	names := make([]string, 0, len(snapshot.Plugins))
-
-	for name, plugin := range snapshot.Plugins {
-		if plugin != nil && plugin.Approval == state.ApprovalApproved && plugin.Enabled && !plugin.RemovalPending {
-			names = append(names, name)
-		}
-	}
-
-	sort.Strings(names)
-
-	for _, name := range names {
-		plugin, ok := reg.Resolve(name)
-
-		if !ok || plugin.Manifest == nil {
-			continue
-		}
-
-		if err := publisher.Publish(contractEvents.TopicPluginInstalled, map[string]any{"name": name, "version": derefVersion(plugin.Manifest.Version)}); err != nil {
-			logger.Warn("plugin.installed publish failed", "plugin", name, "error", err)
-		}
-	}
-
-	builtins, err := reg.ListBuiltinsWithError()
-	if err != nil {
-		logger.Warn("builtin plugin discovery failed", "error", err)
-
-		return
-	}
-
-	for _, plugin := range builtins {
-		if _, reserved := snapshot.Plugins[plugin.Name]; reserved || plugin.Manifest == nil {
-			continue
-		}
-
-		if err := publisher.Publish(contractEvents.TopicPluginInstalled, map[string]any{"name": plugin.Name, "version": derefVersion(plugin.Manifest.Version)}); err != nil {
-			logger.Warn("plugin.installed publish failed", "plugin", plugin.Name, "error", err)
-		}
-	}
-}
-
-func derefVersion(value *string) string {
-	if value == nil {
-		return "unknown"
-	}
-
-	return *value
+		events:      eventLife,
+		cleanup:     cleanup,
+	}, startupErr
 }
 
 func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger) error {
@@ -542,46 +461,40 @@ func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger) erro
 
 // registerMgmt mounts the session-gated management surface and returns its mux so
 // other session-gated routes (e.g. protected palette) can share the gate.
-func registerMgmt(mux *http.ServeMux, cfg Config, store *state.Store, opkgMgr opkg.Manager, selfUpdateService selfupdate.Service, serviceMgr service.Manager, reg *registry.Registry, runtime *backend.RuntimeImpl, permissionController mgmt.PersistentRCIPermissionController, telemetryController mgmt.TelemetryController, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context, eventPublisher *events.InternalPublisher) *http.ServeMux {
+func registerMgmt(mux *http.ServeMux, core daemonCore, services mgmtServices) *http.ServeMux {
 	mgmtHandler := mgmt.New(mgmt.Config{
-		StagingDir:                        cfg.StagingDir(),
-		UserPluginsDir:                    cfg.UserPluginsDir,
-		BuiltinPluginsDir:                 cfg.BuiltinPluginsDir,
+		StagingDir:                        core.cfg.StagingDir(),
+		UserPluginsDir:                    core.cfg.UserPluginsDir,
+		BuiltinPluginsDir:                 core.cfg.BuiltinPluginsDir,
 		MaxUploadBytes:                    maxUploadBytes,
-		Runtime:                           runtime,
-		PersistentRCIPermissionController: permissionController,
-		ServiceActionRoot:                 lifetime,
-		SelfUpdate:                        selfUpdateService,
-		TelemetryController:               telemetryController,
-		PublishEvent: func(topic string, payload map[string]any) error {
-			return eventPublisher.PublishNamed(topic, payload)
-		},
-	}, store, opkgMgr, serviceMgr, reg, logger)
+		Runtime:                           core.runtime,
+		RuntimeResolver:                   core.reg,
+		PersistentRCIPermissionController: services.permissionController,
+		ServiceActionRoot:                 core.lifetime,
+		SelfUpdate:                        services.selfUpdate,
+		TelemetryController:               services.telemetryController,
+		EventPublisher:                    services.events,
+	}, core.store, services.opkg, services.service, core.reg, core.logger)
 
 	mgmtMux := http.NewServeMux()
 
 	mgmtHandler.Register(mgmtMux)
-	mux.Handle("/api/mgmt/", verifier.Middleware(mgmtMux))
+	mux.Handle("/api/mgmt/", core.verifier.Middleware(mgmtMux))
 
 	return mgmtMux
 }
 
 // registerAccess mounts the consent/diagnostics surface plus the persistent RCI
 // session, returning the session's cleanup func.
-func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *registry.Registry, runtimeRoot string, runtime *backend.RuntimeImpl, activationGates *backend.ActivationGateRegistry, verifier *authz.Verifier, logger *slog.Logger, lifetimes ...context.Context) persistentSessionRegistration {
+func registerAccess(mux *http.ServeMux, core daemonCore) persistentSessionRegistration {
 	accessMux := http.NewServeMux()
-	diagnosticsLogFile := cfg.DiagnosticsLogFile
-
-	if diagnosticsLogFile == "" {
-		diagnosticsLogFile = defaultDiagnosticsLogFile
-	}
 
 	diagnostics.New(diagnostics.Config{
-		LogFile: diagnosticsLogFile,
-		Plugins: diagnosticsPlugins(reg, runtime),
+		LogFile: core.cfg.DiagnosticsLogFile,
+		Plugins: diagnosticsPlugins(core.reg, core.runtime),
 	}).Register(accessMux)
 
-	registration := assembleRCISession(cfg, store, reg, runtimeRoot, accessMux, activationGates, logger, lifetimes...)
+	registration := assembleRCISession(core, accessMux)
 
 	if registration.capability != nil {
 		cache := telemetry.NewSnapshotCache(
@@ -594,29 +507,25 @@ func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *reg
 		// serve the last published immutable snapshot.
 		registration.capability.SetSnapshotCache(cache)
 
-		if registration.activationAssembly != nil && registration.activationAssembly.service != nil {
-			svc := registration.activationAssembly.service
+		if registration.coordinator != nil && registration.coordinator.Service() != nil {
+			svc := registration.coordinator.Service()
+
 			cache.SetSessionConfigured(func() bool {
 				_, doc := svc.Capability()
+
 				return doc.Controller != nil && (doc.Controller.Support == model.SupportSupported || doc.Controller.Support == model.SupportInvalid)
 			})
 		}
 
-		telemetryHandler := telemetry.NewHandler(cache, registration.capability.IsEnabled, logger)
-		annotationDir := cfg.RRDDir
-
-		if annotationDir == "" {
-			annotationDir = defaultRRDDir
-		}
-
+		telemetryHandler := telemetry.NewHandler(cache, registration.capability.IsEnabled, core.logger)
 		annotationStore, annotationErr := telemetry.NewAnnotationStore(telemetry.AnnotationStoreConfig{
-			RRDDir:  annotationDir,
+			RRDDir:  core.cfg.RRDDir,
 			Catalog: telemetry.DefaultAnnotationCatalog{},
-			Logger:  logger,
+			Logger:  core.logger,
 		})
 
 		if annotationErr != nil {
-			logger.Warn("telemetry annotation store unavailable", "error", annotationErr)
+			core.logger.Warn("telemetry annotation store unavailable", "error", annotationErr)
 		} else {
 			registration.annotationStore = annotationStore
 
@@ -626,12 +535,12 @@ func registerAccess(mux *http.ServeMux, cfg Config, store *state.Store, reg *reg
 		telemetryHandler.Register(accessMux)
 
 		// Diagnostic session routes are authenticated and never mutate storage.
-		telemetry.RegisterSessionRoutes(accessMux, registration.capability.SessionReader(), logger)
+		telemetry.RegisterSessionRoutes(accessMux, registration.capability.SessionReader(), core.logger)
 	}
 
 	// Keep the route mounted in dev so the host exercises the same consent contract;
-	// the verifier still bypasses only session validation when cfg.Dev is true.
-	mux.Handle("/api/mndw/", verifier.Middleware(accessMux))
+	// the verifier still bypasses only session validation when core.cfg.Dev is true.
+	mux.Handle("/api/mndw/", core.verifier.Middleware(accessMux))
 
 	return registration
 }
@@ -644,14 +553,23 @@ func registerPalette(mux *http.ServeMux, mgmtMux *http.ServeMux, paletteStore *p
 	paletteHandler.RegisterProtected(mgmtMux)
 }
 
+// authenticatorOrNil avoids creating a non-nil interface holding a nil verifier.
+func authenticatorOrNil(verifier *authz.Verifier) backend.Authenticator {
+	if verifier == nil {
+		return nil
+	}
+
+	return verifier
+}
+
 // registerPlugins mounts the single manifest backend gateway.
-func registerPlugins(mux *http.ServeMux, cfg Config, reg *registry.Registry, activationGates *backend.ActivationGateRegistry, verifier *authz.Verifier, runtime *backend.RuntimeImpl, logger *slog.Logger) *backend.Gateway {
+func registerPlugins(mux *http.ServeMux, core daemonCore) *backend.Gateway {
 	gateway := backend.NewGateway(backend.GatewayConfig{
-		MaxRequestBytes:           cfg.MaxRequestBytes,
-		ServiceHTTPTimeout:        cfg.ServiceHTTPTimeout,
-		AllowSymlinkedBuiltinRoot: cfg.Dev,
-		ActivationGates:           activationGates,
-	}, reg, verifier, runtime.ExecRunner(), runtime.Supervisor(), logger)
+		MaxRequestBytes:           core.cfg.MaxRequestBytes,
+		ServiceHTTPTimeout:        core.cfg.ServiceHTTPTimeout,
+		AllowSymlinkedBuiltinRoot: core.cfg.Dev,
+		ActivationGates:           core.activationGates,
+	}, core.reg, authenticatorOrNil(core.verifier), core.runtime.ExecRunner(), core.runtime.Supervisor(), core.logger)
 
 	gateway.Register(mux)
 
@@ -693,12 +611,6 @@ func diagnosticsPlugins(reg *registry.Registry, runtime *backend.RuntimeImpl) []
 	sort.Slice(plugins, func(left, right int) bool { return plugins[left].ID < plugins[right].ID })
 
 	return plugins
-}
-
-// serve runs the HTTP server until ctx is canceled or the listener fails, then
-// shuts down gracefully.
-func serve(ctx context.Context, srv *http.Server, logger *slog.Logger, onShutdown func()) error {
-	return serveWithDrain(ctx, srv, nil, logger, onShutdown, 10*time.Second)
 }
 
 func serveWithDrain(ctx context.Context, srv *http.Server, listener net.Listener, logger *slog.Logger, onShutdown func(), drainTimeout time.Duration) error {

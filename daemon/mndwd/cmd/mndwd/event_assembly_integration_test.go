@@ -38,28 +38,20 @@ func TestEventAssemblyPublishesHookAndInternalEvents(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	verifier := authz.New(cfg.DeviceURL, cfg.Dev, logger, authz.Options{})
-	components := assemble(cfg, store, paletteStore, verifier, logger, context.Background())
-
-	if components.startupErr != nil {
-		components.closePersistentSession()
-		t.Fatalf("assemble: %v", components.startupErr)
+	c, err := assemble(cfg, store, paletteStore, verifier, logger, context.Background())
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
 	}
 
-	defer components.closeEvents()
+	t.Cleanup(func() { _ = c.Close() })
 
-	defer components.closeTelemetry()
-
-	defer components.closePersistentSession()
-
-	defer func() { _ = components.runtime.Shutdown(context.Background()) }()
-
-	if err := components.startEvents(context.Background()); err != nil {
+	if err := c.events.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
-	defer components.stopEvents("shutdown")
+	defer c.events.Stop("shutdown")
 
-	server := newFrontDoorIPv4Server(components.handler)
+	server := newFrontDoorIPv4Server(c.handler)
 
 	defer server.Close()
 

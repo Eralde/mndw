@@ -4,6 +4,31 @@ package backend
 
 import "time"
 
+type LifecycleState string
+
+const (
+	LifecycleStarted LifecycleState = "started"
+	LifecycleStopped LifecycleState = "stopped"
+)
+
+type LifecycleReason string
+
+const (
+	LifecycleReasonReconciled LifecycleReason = "reconciled"
+	LifecycleReasonRemoved    LifecycleReason = "removed"
+	LifecycleReasonDisabled   LifecycleReason = "disabled"
+	LifecycleReasonRestarted  LifecycleReason = "restarted"
+	LifecycleReasonUpdated    LifecycleReason = "updated"
+	LifecycleReasonShutdown   LifecycleReason = "shutdown"
+)
+
+type BlockerReason string
+
+const (
+	BlockerNotGranted              BlockerReason = "not-granted"
+	BlockerPrerequisiteUnavailable BlockerReason = "prerequisite-unavailable"
+)
+
 type ServiceState string
 
 const (

@@ -132,6 +132,31 @@ func TestProjectBackendStatusExecSkipsActivationEvaluation(t *testing.T) {
 	}
 }
 
+func TestProjectBackendStatusPreservesTypedBlockerWireValues(t *testing.T) {
+	gates := NewActivationGateRegistry()
+
+	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+		return []ActivationBlocker{
+			{Permission: permission, Reason: BlockerNotGranted},
+			{Permission: permission, Reason: BlockerPrerequisiteUnavailable, Prerequisite: "controller-token"},
+		}
+	}))
+
+	gateway := &Gateway{activationGates: gates}
+	plugin := statusTestPlugin(t, "demo", manifest.BackendKindService, 1, state.ApprovalApproved, true, []string{manifest.PersistentRCISessionReadPermission})
+
+	got, err := json.Marshal(gateway.projectBackendStatus(plugin, time.Time{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := `{"kind":"service","state":"blocked","retryAfterSeconds":null,"blockers":[{"permission":"persistent-rci-session:read","reason":"not-granted"},{"permission":"persistent-rci-session:read","reason":"prerequisite-unavailable","prerequisite":"controller-token"}]}`
+
+	if string(got) != want {
+		t.Fatalf("status JSON = %s, want %s", got, want)
+	}
+}
+
 func TestRetryAfterSecondsUsesFutureCeilingAndExpiresToNull(t *testing.T) {
 	now := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
 

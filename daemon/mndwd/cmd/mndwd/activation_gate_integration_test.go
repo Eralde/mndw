@@ -21,6 +21,7 @@ import (
 	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
 	"mndwd/internal/rcisession"
+	"mndwd/internal/rcisession/coordinator"
 	"mndwd/internal/rcisession/model"
 	rcisessionstore "mndwd/internal/rcisession/store"
 	"mndwd/internal/registry"
@@ -34,7 +35,7 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 
 	fixture := newActivationIntegrationFixture(t, false)
 
-	if len(fixture.assembly.activationEvaluate("demo", manifest.PersistentRCISessionWritePermission)) != 0 {
+	if len(fixture.assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWritePermission)) == 0 {
 		t.Fatal("initial assembly satisfied gate without controller token")
 	}
 
@@ -50,15 +51,13 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 
 	fixture = newActivationIntegrationFixture(t, true)
 
-	if len(fixture.assembly.activationEvaluate("demo", manifest.PersistentRCISessionWritePermission)) != 0 {
+	if len(fixture.assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWritePermission)) != 0 {
 		t.Fatal("initial assembly did not publish granted controller-token snapshot")
 	}
 
 	fixture.runtime.Reconcile(context.Background(), fixture.registryPlugins())
 
-	if status := fixture.runtime.Status("demo"); status.State != backend.StateReady {
-		t.Fatalf("first reconcile with grant and token = %q, want ready", status.State)
-	}
+	waitForRuntimeState(t, fixture.runtime, "demo", backend.StateReady)
 
 	if status := readGatewayStatus(t, fixture); status.State != "ready" {
 		t.Fatalf("ready status = %#v, want ready", status)
@@ -74,13 +73,15 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 	tester := &activationControllerTester{}
 	mux := http.NewServeMux()
 
-	rcisession.NewHandler(fixture.assembly.service, tester, nil).Register(mux)
+	rcisession.NewHandler(fixture.assembly.Service(), tester, nil).Register(mux)
 
 	deleteController(t, mux)
 
 	if got := pokes.Load(); got != 1 {
 		t.Fatalf("controller deletion pokes = %d, want synchronous 1", got)
 	}
+
+	waitForReservedServices(t, fixture.runtime, 0)
 
 	if status := fixture.runtime.Status("demo"); status.State != backend.StateStopped {
 		t.Fatalf("after delete = %q, want stopped", status.State)
@@ -100,16 +101,14 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 		t.Fatalf("controller save pokes = %d, want synchronous 2", got)
 	}
 
-	if status := fixture.runtime.Status("demo"); status.State != backend.StateReady {
-		t.Fatalf("after save = %q, want ready", status.State)
-	}
+	waitForRuntimeState(t, fixture.runtime, "demo", backend.StateReady)
 
 	if got := tester.calls.Load(); got != 1 {
 		t.Fatalf("controller tester calls = %d, want 1", got)
 	}
 
-	fixture.assembly.service.Unauthorized("controller", fixture.assembly.service.ControllerEpoch())
-	fixture.assembly.service.Unauthorized("controller", fixture.assembly.service.ControllerEpoch())
+	fixture.assembly.Service().Unauthorized("controller", fixture.assembly.Service().ControllerEpoch())
+	fixture.assembly.Service().Unauthorized("controller", fixture.assembly.Service().ControllerEpoch())
 
 	if got := pokes.Load(); got != 2 {
 		t.Fatalf("retained-token Unauthorized pokes = %d, want 2", got)
@@ -123,9 +122,8 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 		t.Fatalf("PermissionChanged after grant disable: %v", err)
 	}
 
-	if status := fixture.runtime.Status("demo"); status.State != backend.StateStopped {
-		t.Fatalf("after grant disable = %q, want stopped", status.State)
-	}
+	waitForRuntimeState(t, fixture.runtime, "demo", backend.StateStopped)
+	waitForReservedServices(t, fixture.runtime, 0)
 
 	if err := fixture.store.SetGrant("demo", manifest.PersistentRCISessionWritePermission, true); err != nil {
 		t.Fatalf("enable grant: %v", err)
@@ -135,16 +133,14 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 		t.Fatalf("PermissionChanged after grant enable: %v", err)
 	}
 
-	if status := fixture.runtime.Status("demo"); status.State != backend.StateReady {
-		t.Fatalf("after grant enable = %q, want ready", status.State)
-	}
+	waitForRuntimeState(t, fixture.runtime, "demo", backend.StateReady)
 }
 
 type activationIntegrationFixture struct {
 	store    *state.Store
 	registry *registry.Registry
 	runtime  *backend.RuntimeImpl
-	assembly *rciSessionAssembly
+	assembly *coordinator.Coordinator
 	gateway  *backend.Gateway
 	mux      *http.ServeMux
 }
@@ -152,7 +148,7 @@ type activationIntegrationFixture struct {
 func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIntegrationFixture {
 	t.Helper()
 
-	root := t.TempDir()
+	root := shortTempDir(t)
 	cfg := Config{
 		DataDir:                    filepath.Join(root, "data"),
 		RCISessionStateDir:         filepath.Join(root, "rci"),
@@ -197,8 +193,10 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 			Enabled:  true,
 			Manifest: servicePermissionManifestWithCommand("demo", "backend/service-helper"),
 		}
-		st.PermissionGrants = map[string]map[string]bool{
-			"demo": {manifest.PersistentRCISessionWritePermission: true},
+		st.PermissionGrants = map[string]map[string]bool{}
+
+		if withToken {
+			st.PermissionGrants["demo"] = map[string]bool{manifest.PersistentRCISessionWritePermission: true}
 		}
 
 		return nil
@@ -236,20 +234,29 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 
 	accessMux := http.NewServeMux()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	registration := assembleRCISession(cfg, store, reg, cfg.PluginRuntimeRoot, accessMux, activationGates, logger)
+	core := daemonCore{
+		cfg:             cfg,
+		store:           store,
+		reg:             reg,
+		runtime:         runtime,
+		activationGates: activationGates,
+		logger:          logger,
+		lifetime:        context.Background(),
+	}
+	registration := assembleRCISession(core, accessMux)
 
-	if registration.activationAssembly == nil {
+	if registration.coordinator == nil {
 		t.Fatal("activation assembly was not wired")
 	}
 
 	gatewayMux := http.NewServeMux()
-	gateway := registerPlugins(gatewayMux, cfg, reg, activationGates, nil, runtime, logger)
+	gateway := registerPlugins(gatewayMux, core)
 
 	fixture := &activationIntegrationFixture{
 		store:    store,
 		registry: reg,
 		runtime:  runtime,
-		assembly: registration.activationAssembly,
+		assembly: registration.coordinator,
 		gateway:  gateway,
 		mux:      gatewayMux,
 	}
@@ -290,6 +297,58 @@ type backendStatusResult struct {
 
 func (f *activationIntegrationFixture) registryPlugins() []*registry.Plugin {
 	return f.registry.AllBackendPlugins()
+}
+
+func waitForRuntimeState(t *testing.T, runtime *backend.RuntimeImpl, plugin string, want backend.ServiceState) {
+	t.Helper()
+
+	deadline := time.NewTimer(5 * time.Second)
+
+	defer deadline.Stop()
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+
+	defer ticker.Stop()
+
+	for {
+		status := runtime.Status(plugin)
+
+		if status.State == want {
+			return
+		}
+
+		select {
+		case <-ticker.C:
+		case <-deadline.C:
+			t.Fatalf("runtime state = %#v, want %q", status, want)
+		}
+	}
+}
+
+func waitForReservedServices(t *testing.T, runtime *backend.RuntimeImpl, want int) {
+	t.Helper()
+
+	deadline := time.NewTimer(5 * time.Second)
+
+	defer deadline.Stop()
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+
+	defer ticker.Stop()
+
+	for {
+		got := runtime.Limits().ReservedServices
+
+		if got == want {
+			return
+		}
+
+		select {
+		case <-ticker.C:
+		case <-deadline.C:
+			t.Fatalf("reserved services = %d, want %d", got, want)
+		}
+	}
 }
 
 type activationControllerTester struct {
@@ -340,17 +399,30 @@ func deleteController(t *testing.T, mux *http.ServeMux) {
 	}
 }
 
+func shortTempDir(t *testing.T) string {
+	t.Helper()
+
+	dir, err := os.MkdirTemp("/tmp", "mndw-")
+	if err != nil {
+		t.Fatalf("short temp dir: %v", err)
+	}
+
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+
+	return dir
+}
+
 func unixSocketAvailable(t *testing.T) bool {
 	t.Helper()
 
-	listener, err := net.Listen("unix", filepath.Join(t.TempDir(), "probe.sock"))
+	listener, err := net.Listen("unix", filepath.Join(shortTempDir(t), "probe.sock"))
 	if err == nil {
 		_ = listener.Close()
 
 		return true
 	}
 
-	if strings.Contains(err.Error(), "operation not permitted") || strings.Contains(err.Error(), "invalid argument") {
+	if strings.Contains(err.Error(), "operation not permitted") {
 		t.Skipf("Unix listener unavailable in test environment: %v", err)
 	}
 

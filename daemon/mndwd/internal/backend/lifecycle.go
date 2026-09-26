@@ -136,11 +136,11 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 				r.supervisor.coord.commitRemove(outcome.run)
 			}
 
-			state := "started"
-			reason := "reconciled"
+			state := LifecycleStarted
+			reason := LifecycleReasonReconciled
 
 			if success != TerminalRun {
-				state = "stopped"
+				state = LifecycleStopped
 				reason = lifecycleStopReason(op, success)
 			}
 
@@ -166,20 +166,20 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 	return waitRun(outcome.run)
 }
 
-func lifecycleStopReason(op Operation, success TerminalKind) string {
+func lifecycleStopReason(op Operation, success TerminalKind) LifecycleReason {
 	if success == TerminalRemove || op == OpDeleting {
-		return "removed"
+		return LifecycleReasonRemoved
 	}
 
 	switch op {
 	case OpStopping:
-		return "disabled"
+		return LifecycleReasonDisabled
 	case OpRestarting:
-		return "restarted"
+		return LifecycleReasonRestarted
 	case OpUpdating:
-		return "updated"
+		return LifecycleReasonUpdated
 	default:
-		return "reconciled"
+		return LifecycleReasonReconciled
 	}
 }
 

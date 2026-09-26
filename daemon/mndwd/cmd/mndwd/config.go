@@ -13,6 +13,7 @@ import (
 
 	"mndwd/internal/pluginruntime"
 	"mndwd/internal/rcisession"
+	"mndwd/internal/rcisession/coordinator"
 )
 
 // maxUploadBytes caps an upload request body at 10 MB.
@@ -24,9 +25,10 @@ const defaultSelfUpdateStateDir = "/opt/var/mndw"
 const defaultSelfUpdateHelper = "/opt/share/www/mndw/bin/mndw-self-update.sh"
 const defaultRRDToolBinary = "/opt/bin/rrdtool"
 const defaultRRDDir = "/opt/var/lib/mndw/rrd"
+const defaultRCISessionKeyDir = "/opt/var/lib/mndw-secrets"
 
 const (
-	defaultRCIHeartbeatInterval = 60 * time.Second
+	defaultRCIHeartbeatInterval = coordinator.DefaultHeartbeatInterval
 	minRCIHeartbeatInterval     = 45 * time.Second
 	maxRCIHeartbeatInterval     = 147 * time.Second
 )
@@ -101,6 +103,66 @@ func (c Config) RCISessionKeyFile() string {
 	return filepath.Join(c.RCISessionKeyDir, "rci-session.key")
 }
 
+// withDefaults fills unset configuration fields without reading environment
+// variables. Environment and --dev policy stay in parseFlags. Explicit zero
+// values rejected by parseFlags (RCIHeartbeatInterval and HTTPDrainTimeout)
+// are deliberately left unchanged.
+func (c Config) withDefaults() Config {
+	if c.UserPluginsDir == "" {
+		c.UserPluginsDir = filepath.Join(c.DataDir, "user-plugins")
+	}
+
+	if c.PluginRuntimeRoot == "" {
+		c.PluginRuntimeRoot = defaultPluginRuntimeRoot
+	}
+
+	if c.SelfUpdateStateDir == "" {
+		c.SelfUpdateStateDir = defaultSelfUpdateStateDir
+	}
+
+	if c.SelfUpdateHelper == "" {
+		c.SelfUpdateHelper = defaultSelfUpdateHelper
+	}
+
+	if c.DiagnosticsLogFile == "" {
+		c.DiagnosticsLogFile = defaultDiagnosticsLogFile
+	}
+
+	if c.RRDToolBinary == "" {
+		c.RRDToolBinary = defaultRRDToolBinary
+	}
+
+	if c.RRDDir == "" {
+		c.RRDDir = defaultRRDDir
+	}
+
+	if c.RCISessionStateDir == "" {
+		c.RCISessionStateDir = c.DataDir
+	}
+
+	if c.RCISessionKeyDir == "" {
+		if c.Dev {
+			c.RCISessionKeyDir = filepath.Join(filepath.Dir(c.DataDir), "rci-session-secrets")
+		} else {
+			c.RCISessionKeyDir = defaultRCISessionKeyDir
+		}
+	}
+
+	if c.ControllerURL == "" {
+		c.ControllerURL = rcisession.DefaultControllerURL
+	}
+
+	if c.RCIProxyOperationTimeout == 0 {
+		c.RCIProxyOperationTimeout = c.ExecTimeout
+	}
+
+	if c.Service == "" {
+		c.Service = c.Opkg
+	}
+
+	return c
+}
+
 // parseFlags parses argv into a Config. It returns showVersion=true when --version
 // was passed so main can print and exit before doing any work.
 func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
@@ -163,36 +225,10 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 		return cfg, true, nil
 	}
 
-	if cfg.SelfUpdateStateDir == "" {
-		cfg.SelfUpdateStateDir = defaultSelfUpdateStateDir
-	}
-
-	if cfg.SelfUpdateHelper == "" {
-		cfg.SelfUpdateHelper = defaultSelfUpdateHelper
-	}
-
-	if cfg.UserPluginsDir == "" {
-		cfg.UserPluginsDir = filepath.Join(cfg.DataDir, "user-plugins")
-	}
-
-	controllerURLOverride := false
-
-	fs.Visit(func(flag *flag.Flag) {
-		if flag.Name == "controller-url" {
-			controllerURLOverride = true
-		}
-	})
+	controllerURLOverride := flagWasSet(fs, "controller-url")
 
 	if cfg.PluginRuntimeRoot == "" {
 		cfg.PluginRuntimeRoot = os.Getenv(pluginruntime.RuntimeRootEnv)
-	}
-
-	if cfg.PluginRuntimeRoot == "" {
-		cfg.PluginRuntimeRoot = defaultPluginRuntimeRoot
-	}
-
-	if cfg.RCISessionStateDir == "" {
-		cfg.RCISessionStateDir = cfg.DataDir
 	}
 
 	if !cfg.Dev && controllerURLOverride {
@@ -203,21 +239,9 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 		cfg.ControllerURL = rcisession.DefaultControllerURL
 	} else if !controllerURLOverride && strings.TrimSpace(os.Getenv("MNDW_HOST_DEVICE")) != "" {
 		cfg.ControllerURL = strings.TrimSpace(os.Getenv("MNDW_HOST_DEVICE"))
-	} else if cfg.ControllerURL == "" {
-		cfg.ControllerURL = rcisession.DefaultControllerURL
 	}
 
-	if cfg.RCISessionKeyDir == "" {
-		if cfg.Dev {
-			cfg.RCISessionKeyDir = filepath.Join(filepath.Dir(cfg.DataDir), "rci-session-secrets")
-		} else {
-			cfg.RCISessionKeyDir = "/opt/var/lib/mndw-secrets"
-		}
-	}
-
-	if cfg.RCIProxyOperationTimeout == 0 {
-		cfg.RCIProxyOperationTimeout = cfg.ExecTimeout
-	}
+	cfg = cfg.withDefaults()
 
 	if err := validatePersistentSessionConfig(cfg); err != nil {
 		return cfg, false, err
@@ -233,10 +257,6 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 
 	if cfg.Opkg != "exec" && cfg.Opkg != "stub" {
 		return cfg, false, fmt.Errorf("--opkg must be exec or stub, got %q", cfg.Opkg)
-	}
-
-	if cfg.Service == "" {
-		cfg.Service = cfg.Opkg
 	}
 
 	if cfg.Service != "exec" && cfg.Service != "stub" {

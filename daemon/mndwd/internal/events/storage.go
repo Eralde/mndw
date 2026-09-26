@@ -86,10 +86,10 @@ func (m *StorageMonitor) Check() {
 		m.low = true
 
 		if m.publisher != nil {
-			if err := m.publisher.Publish(contractEvents.TopicStorageLow, map[string]any{
-				"path":            "/opt",
-				"available_bytes": available,
-				"threshold_bytes": StorageLowThreshold,
+			if err := m.publisher.PublishStorageLow(contractEvents.StorageLowPayload{
+				Path:           "/opt",
+				AvailableBytes: int64(available),
+				ThresholdBytes: int64(StorageLowThreshold),
 			}); err != nil {
 				m.logger.Warn("storage.low publish failed", "error", err)
 			}

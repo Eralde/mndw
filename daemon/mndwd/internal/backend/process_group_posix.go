@@ -1,17 +1,12 @@
-//go:build darwin
+//go:build linux || darwin
 
 package backend
 
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"syscall"
 )
-
-func configureExecCommand(command *exec.Cmd) {
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-}
 
 func terminateExecProcess(process *os.Process) error {
 	err := syscall.Kill(-process.Pid, syscall.SIGTERM)

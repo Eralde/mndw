@@ -194,7 +194,7 @@ func TestLogParserUsesObjectKeyAsCursorID(t *testing.T) {
 
 			return &ExtractedEvent{
 				Topic:   contractEvents.TopicAuthLogin,
-				Payload: map[string]any{"user": "admin", "ip": "192.0.2.10", "success": false},
+				Payload: contractEvents.AuthLoginPayload{User: "admin", IP: "192.0.2.10", Success: false},
 			}
 		},
 	}, nil)
@@ -412,12 +412,15 @@ func TestLogPollerRunContinuesAfterPollError(t *testing.T) {
 	<-transport.calls
 
 	ticks <- time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
+
 	<-transport.calls
 
 	ticks <- time.Date(2026, time.September, 5, 10, 0, 10, 0, time.UTC)
+
 	<-transport.calls
 
 	ticks <- time.Date(2026, time.September, 5, 10, 0, 20, 0, time.UTC)
+
 	<-transport.calls
 
 	if event := <-busEvents; event.Topic != contractEvents.TopicNetDhcpLease {

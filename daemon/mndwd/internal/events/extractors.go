@@ -29,7 +29,7 @@ func extractDHCPLease(record ParsedLogRecord) *ExtractedEvent {
 	if m := dhcpAddPattern.FindStringSubmatch(record.Message); m != nil {
 		return &ExtractedEvent{
 			Topic:   contractEvents.TopicNetDhcpLease,
-			Payload: map[string]any{"ip": m[1], "mac": m[2], "hostname": m[3], "action": "add"},
+			Payload: contractEvents.NetDhcpLeasePayload{IP: m[1], MAC: m[2], Hostname: m[3], Action: "add"},
 		}
 	}
 
@@ -63,7 +63,7 @@ func extractDNSChanged(record ParsedLogRecord) *ExtractedEvent {
 
 	return &ExtractedEvent{
 		Topic:   contractEvents.TopicNetDnsChanged,
-		Payload: map[string]any{"resolvers": resolvers},
+		Payload: contractEvents.NetDnsChangedPayload{Resolvers: resolvers},
 	}
 }
 
@@ -83,14 +83,14 @@ func extractAuthLogin(record ParsedLogRecord) *ExtractedEvent {
 	if m := authSessionPattern.FindStringSubmatch(record.Message); m != nil {
 		return &ExtractedEvent{
 			Topic:   contractEvents.TopicAuthLogin,
-			Payload: map[string]any{"user": m[1], "ip": m[2], "success": true},
+			Payload: contractEvents.AuthLoginPayload{User: m[1], IP: m[2], Success: true},
 		}
 	}
 
 	if m := authFailedPattern.FindStringSubmatch(record.Message); m != nil {
 		return &ExtractedEvent{
 			Topic:   contractEvents.TopicAuthLogin,
-			Payload: map[string]any{"user": m[1], "ip": m[2], "success": false},
+			Payload: contractEvents.AuthLoginPayload{User: m[1], IP: m[2], Success: false},
 		}
 	}
 
@@ -115,7 +115,7 @@ func extractFirmwareAvailable(record ParsedLogRecord) *ExtractedEvent {
 
 	return &ExtractedEvent{
 		Topic:   contractEvents.TopicFirmwareAvailable,
-		Payload: map[string]any{"version": m[1]},
+		Payload: contractEvents.FirmwareAvailablePayload{Version: m[1]},
 	}
 }
 
@@ -136,8 +136,15 @@ func extractWiFiClient(record ParsedLogRecord) *ExtractedEvent {
 		topic = contractEvents.TopicWifiClientLeave
 	}
 
+	payload := contractEvents.WifiClientJoinPayload{MAC: m[2], Band: m[3], SSID: m[4], Iface: m[5]}
+	var typedPayload any = payload
+
+	if topic == contractEvents.TopicWifiClientLeave {
+		typedPayload = contractEvents.WifiClientLeavePayload{MAC: m[2], Band: m[3], SSID: m[4], Iface: m[5]}
+	}
+
 	return &ExtractedEvent{
 		Topic:   topic,
-		Payload: map[string]any{"mac": m[2], "band": m[3], "ssid": m[4], "iface": m[5]},
+		Payload: typedPayload,
 	}
 }

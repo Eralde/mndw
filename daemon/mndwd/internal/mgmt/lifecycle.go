@@ -351,7 +351,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.publish("plugin.removed", map[string]any{"name": name})
+	h.publishPluginRemoved(name)
 
 	h.logger.Info("plugin deleted", "plugin", name)
 	h.reconcilePermission(name, "plugin delete")

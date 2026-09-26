@@ -46,8 +46,8 @@ type RuntimeConfig struct {
 
 type LifecycleEvent struct {
 	Plugin string
-	State  string
-	Reason string
+	State  LifecycleState
+	Reason LifecycleReason
 }
 
 type LifecycleObserver func(LifecycleEvent)
@@ -240,7 +240,7 @@ func (r *RuntimeImpl) Shutdown(ctx context.Context) error {
 	err := r.supervisor.StopAll(ctx)
 	if err == nil && r.lifecycleObserver != nil {
 		for _, pluginID := range pluginIDs {
-			r.lifecycleObserver(LifecycleEvent{Plugin: pluginID, State: "stopped", Reason: "shutdown"})
+			r.lifecycleObserver(LifecycleEvent{Plugin: pluginID, State: LifecycleStopped, Reason: LifecycleReasonShutdown})
 		}
 	}
 

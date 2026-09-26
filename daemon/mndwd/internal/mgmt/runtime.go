@@ -70,12 +70,8 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) resolveRuntimePlugin(name string) (*registry.Plugin, bool) {
-	resolver, ok := h.builtins.(interface {
-		Resolve(string) (*registry.Plugin, bool)
-	})
-
-	if ok {
-		return resolver.Resolve(name)
+	if h.runtimeResolver != nil {
+		return h.runtimeResolver.Resolve(name)
 	}
 
 	pluginState, exists := h.store.Get(name)

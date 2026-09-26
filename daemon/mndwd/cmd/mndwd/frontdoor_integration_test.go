@@ -106,16 +106,12 @@ func TestFrontDoorAssembly(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	verifier := authz.New(cfg.DeviceURL, cfg.Dev, logger, authz.Options{})
 
-	c := assemble(cfg, store, paletteStore, verifier, logger, context.Background())
-
-	if c.startupErr != nil {
-		c.closePersistentSession()
-		t.Fatalf("assemble: %v", c.startupErr)
+	c, err := assemble(cfg, store, paletteStore, verifier, logger, context.Background())
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
 	}
 
-	defer c.closePersistentSession()
-
-	defer func() { _ = c.runtime.Shutdown(context.Background()) }()
+	t.Cleanup(func() { _ = c.Close() })
 
 	server := newFrontDoorIPv4Server(c.handler)
 

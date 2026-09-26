@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -139,6 +140,55 @@ func TestCheckpointFramingRoundTrip(t *testing.T) {
 
 	if checkpoint.Generation != "7" || checkpoint.PublicationThrough != "42" || len(checkpoint.Frontiers) != 1 {
 		t.Fatalf("checkpoint=%+v", checkpoint)
+	}
+}
+
+func TestCheckpointCanonicalPayloadBytesAndRejectsAlternativeEncodings(t *testing.T) {
+	payload := checkpointPayload{
+		Version:            "1",
+		Generation:         "7",
+		PublicationThrough: "42",
+		Frontiers:          []frontierEntry{{Series: 1, SlotMs: "1800000000000"}},
+		Files: []fileEntry{{
+			Series:            1,
+			Basename:          loadFileName,
+			SchemaFingerprint: "abc",
+			LastUpdateMs:      "1800000000000",
+			StatIdentity:      "def",
+		}},
+	}
+	encoded, err := canonicalCheckpointJSON(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const expected = `{"files":[{"basename":"mndw-load-v1.rrd","lastUpdateMs":"1800000000000","schemaFingerprint":"abc","series":1,"statIdentity":"def"}],"frontiers":[{"series":1,"slotMs":"1800000000000"}],"generation":"7","journalInventoryGeneration":"","publicationThrough":"42","version":"1"}`
+
+	if string(encoded) != expected {
+		t.Fatalf("canonical payload = %s, want %s", encoded, expected)
+	}
+
+	reordered, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, alternative := range map[string][]byte{
+		"reordered keys":     reordered,
+		"leading whitespace": append([]byte(" "), encoded...),
+		"missing fields":     []byte(`{"version":"1"}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := decodeCheckpointPayload(alternative); !errors.Is(err, ErrCheckpointInvalid) {
+				t.Fatalf("alternative encoding accepted: %s (%v)", alternative, err)
+			}
+		})
+	}
+
+	fractionalSeries := []byte(strings.Replace(string(encoded), `"series":1`, `"series":1.0`, 1))
+
+	if _, err := decodeCheckpointPayload(fractionalSeries); !errors.Is(err, ErrCheckpointInvalid) {
+		t.Fatalf("fractional series accepted: %v", err)
 	}
 }
 

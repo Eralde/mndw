@@ -15,7 +15,7 @@ import (
 	"mndwd/internal/state"
 )
 
-func deviceInfoAssembly(t *testing.T, cfg Config, verifier *authz.Verifier) components {
+func deviceInfoAssembly(t *testing.T, cfg Config, verifier *authz.Verifier) *components {
 	t.Helper()
 
 	if err := os.MkdirAll(cfg.UserPluginsDir, 0o700); err != nil {
@@ -32,7 +32,14 @@ func deviceInfoAssembly(t *testing.T, cfg Config, verifier *authz.Verifier) comp
 		t.Fatalf("palette.Open: %v", err)
 	}
 
-	return assemble(cfg, store, paletteStore, verifier, slog.New(slog.NewTextHandler(io.Discard, nil)), context.Background())
+	c, err := assemble(cfg, store, paletteStore, verifier, slog.New(slog.NewTextHandler(io.Discard, nil)), context.Background())
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+
+	t.Cleanup(func() { _ = c.Close() })
+
+	return c
 }
 
 func deviceInfoConfig(t *testing.T, deviceURL string, frontendDir string, dev bool) Config {
@@ -61,14 +68,6 @@ func TestDeviceInfoRouteIsAvailableWithoutFrontDoor(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	verifier := authz.New(cfg.DeviceURL, true, logger, authz.Options{})
 	c := deviceInfoAssembly(t, cfg, verifier)
-
-	if c.startupErr != nil {
-		t.Fatalf("assemble: %v", c.startupErr)
-	}
-
-	defer c.closePersistentSession()
-
-	defer func() { _ = c.runtime.Shutdown(context.Background()) }()
 
 	server := newFrontDoorIPv4Server(c.handler)
 
@@ -127,14 +126,6 @@ func TestDeviceInfoRouteUsesSessionGateAndReturnsBadGateway(t *testing.T) {
 	verifier := authz.New(cfg.DeviceURL, false, logger, authz.Options{Client: device.Client()})
 	c := deviceInfoAssembly(t, cfg, verifier)
 
-	if c.startupErr != nil {
-		t.Fatalf("assemble: %v", c.startupErr)
-	}
-
-	defer c.closePersistentSession()
-
-	defer func() { _ = c.runtime.Shutdown(context.Background()) }()
-
 	server := newFrontDoorIPv4Server(c.handler)
 
 	defer server.Close()
@@ -173,14 +164,6 @@ func TestDeviceInfoRouteUsesSessionGateAndReturnsBadGateway(t *testing.T) {
 
 	failureVerifier := authz.New(cfg.DeviceURL, false, logger, authz.Options{Client: device.Client()})
 	failureComponents := deviceInfoAssembly(t, cfg, failureVerifier)
-
-	if failureComponents.startupErr != nil {
-		t.Fatalf("assemble failure handler: %v", failureComponents.startupErr)
-	}
-
-	defer failureComponents.closePersistentSession()
-
-	defer func() { _ = failureComponents.runtime.Shutdown(context.Background()) }()
 
 	failureServer := newFrontDoorIPv4Server(failureComponents.handler)
 

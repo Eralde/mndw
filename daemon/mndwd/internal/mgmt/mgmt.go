@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	contractEvents "mndw.local/contracts/events"
 	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
@@ -40,6 +41,19 @@ type BuiltinSource interface {
 	ListBuiltinsWithError() ([]*registry.Plugin, error)
 }
 
+// RuntimeResolver resolves an installed plugin snapshot for lifecycle operations.
+type RuntimeResolver interface {
+	Resolve(string) (*registry.Plugin, bool)
+}
+
+// ManagementEventPublisher publishes the event topics produced by management
+// operations. Implementations own serialization and bus delivery.
+type ManagementEventPublisher interface {
+	PublishPluginInstalled(contractEvents.PluginInstalledPayload) error
+	PublishPluginApproved(contractEvents.PluginApprovedPayload) error
+	PublishPluginRemoved(contractEvents.PluginRemovedPayload) error
+}
+
 // Config carries the on-disk locations the handlers operate over.
 type Config struct {
 	// StagingDir holds uploaded-but-unapproved plugins.
@@ -52,13 +66,15 @@ type Config struct {
 	MaxUploadBytes int64
 	// Runtime controls manifest exec/service lifecycle.
 	Runtime backend.Runtime
+	// RuntimeResolver resolves lifecycle targets; nil retains the store-backed fallback.
+	RuntimeResolver RuntimeResolver
 	// PersistentRCIPermissionController owns grant-triggered socket reconciliation.
 	PersistentRCIPermissionController PersistentRCIPermissionController
 	ServiceActionRoot                 context.Context
 	ServiceActionTimeout              time.Duration
 	SelfUpdate                        selfupdate.Service
 	TelemetryController               TelemetryController
-	PublishEvent                      func(topic string, payload map[string]any) error
+	EventPublisher                    ManagementEventPublisher
 }
 
 // Handler serves the management API over a shared state store.
@@ -68,12 +84,13 @@ type Handler struct {
 	opkg                 opkg.Manager
 	service              service.Manager
 	builtins             BuiltinSource
+	runtimeResolver      RuntimeResolver
 	logger               *slog.Logger
 	runtime              backend.Runtime
 	permissionController PersistentRCIPermissionController
 	selfUpdate           selfupdate.Service
 	telemetry            TelemetryController
-	publishEvent         func(topic string, payload map[string]any) error
+	eventPublisher       ManagementEventPublisher
 	removeAll            func(string) error
 	newTimer             func(time.Duration) <-chan time.Time
 	removalWatchdog      time.Duration
@@ -97,23 +114,52 @@ func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr service.
 		opkg:                 opkgMgr,
 		service:              serviceMgr,
 		builtins:             builtins,
+		runtimeResolver:      cfg.RuntimeResolver,
 		logger:               logger,
 		runtime:              cfg.Runtime,
 		permissionController: cfg.PersistentRCIPermissionController,
 		selfUpdate:           cfg.SelfUpdate,
 		telemetry:            cfg.TelemetryController,
-		publishEvent:         cfg.PublishEvent,
+		eventPublisher:       cfg.EventPublisher,
 		removeAll:            os.RemoveAll,
 		newTimer:             time.After,
 		removalWatchdog:      30 * time.Second,
 	}
 }
 
-func (h *Handler) publish(topic string, payload map[string]any) {
-	if h.publishEvent != nil {
-		if err := h.publishEvent(topic, payload); err != nil && h.logger != nil {
-			h.logger.Warn("internal event publish failed", "topic", topic, "error", err)
-		}
+func (h *Handler) publishPluginInstalled(name, version string) {
+	if h.eventPublisher == nil {
+		return
+	}
+
+	if err := h.eventPublisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: version}); err != nil {
+		h.logPublishError("plugin.installed", err)
+	}
+}
+
+func (h *Handler) publishPluginApproved(name, version string) {
+	if h.eventPublisher == nil {
+		return
+	}
+
+	if err := h.eventPublisher.PublishPluginApproved(contractEvents.PluginApprovedPayload{Name: name, Version: version}); err != nil {
+		h.logPublishError("plugin.approved", err)
+	}
+}
+
+func (h *Handler) publishPluginRemoved(name string) {
+	if h.eventPublisher == nil {
+		return
+	}
+
+	if err := h.eventPublisher.PublishPluginRemoved(contractEvents.PluginRemovedPayload{Name: name}); err != nil {
+		h.logPublishError("plugin.removed", err)
+	}
+}
+
+func (h *Handler) logPublishError(topic string, err error) {
+	if h.logger != nil {
+		h.logger.Warn("internal event publish failed", "topic", topic, "error", err)
 	}
 }
 

@@ -3,9 +3,58 @@ package backend
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 )
+
+func TestLifecycleObserverPublishesTypedTransitions(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	var events []LifecycleEvent
+
+	runtime.SetLifecycleObserver(func(event LifecycleEvent) {
+		events = append(events, event)
+	})
+
+	if err := runtime.ExecuteLifecycle("p", OpStarting, IntentRun, TerminalRun, FailRestore,
+		func(context.Context, LifecycleControl) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runtime.ExecuteLifecycle("p", OpStopping, IntentStop, TerminalStop, FailKeep,
+		func(context.Context, LifecycleControl) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []LifecycleEvent{
+		{Plugin: "p", State: LifecycleStarted, Reason: LifecycleReasonReconciled},
+		{Plugin: "p", State: LifecycleStopped, Reason: LifecycleReasonDisabled},
+	}
+
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("lifecycle events = %#v, want %#v", events, want)
+	}
+}
+
+func TestRuntimeShutdownPublishesTypedReason(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	runtime.supervisor.services["p"] = &serviceRecord{}
+	var got []LifecycleEvent
+
+	runtime.SetLifecycleObserver(func(event LifecycleEvent) {
+		got = append(got, event)
+	})
+
+	if err := runtime.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []LifecycleEvent{{Plugin: "p", State: LifecycleStopped, Reason: LifecycleReasonShutdown}}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("shutdown events = %#v, want %#v", got, want)
+	}
+}
 
 func TestExecuteLifecycleConflictSurfaces(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})

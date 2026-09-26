@@ -70,7 +70,7 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 			for _, blocker := range blockers {
 				response.Blockers = append(response.Blockers, backendStatusBlocker{
 					Permission:   blocker.Permission,
-					Reason:       blocker.Reason,
+					Reason:       string(blocker.Reason),
 					Prerequisite: blocker.Prerequisite,
 				})
 			}

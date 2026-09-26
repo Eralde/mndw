@@ -8,7 +8,35 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	contractEvents "mndw.local/contracts/events"
+	"mndwd/internal/events"
+	"mndwd/internal/telemetry/annotations"
 )
+
+type apiAnnotationCatalog struct{}
+
+func (apiAnnotationCatalog) Collections() []annotations.Collection {
+	return []annotations.Collection{{Name: "load", Retention: time.Hour}, {Name: "temp", Retention: 2 * time.Hour}}
+}
+
+func (apiAnnotationCatalog) LabelFor(topic string) (string, string, bool) {
+	if topic == string(contractEvents.TopicWanConnected) {
+		return "load", "WAN connected", true
+	}
+
+	return "", "", false
+}
+
+func apiAnnotationEvent(id string, ts int64) events.Event {
+	return events.Event{
+		ID:      id,
+		Ts:      ts,
+		Topic:   contractEvents.TopicWanConnected,
+		Source:  contractEvents.SourceHook,
+		Payload: json.RawMessage(`{"interface":"ppp0","address":"192.0.2.1","mask":"255.255.255.0","gateway":"192.0.2.254"}`),
+	}
+}
 
 func newTestCache() *SnapshotCache {
 	now := int64(1_700_000_000_000)
@@ -175,12 +203,17 @@ func TestHandleGet_InvalidProject_ReturnsBadRequestWithoutTouchingCache(t *testi
 }
 
 func TestHandleAnnotationsReturnsCollections(t *testing.T) {
-	store, err := NewAnnotationStore(AnnotationStoreConfig{RRDDir: t.TempDir(), Catalog: annotationTestCatalog{}})
+	now := time.UnixMilli(1_800_000_000_000)
+	store, err := annotations.NewStore(annotations.Config{
+		RRDDir:  t.TempDir(),
+		Catalog: apiAnnotationCatalog{},
+		Now:     func() time.Time { return now },
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	store.Consume(annotationEvent("annotation", time.Now().UnixMilli()))
+	store.Consume(apiAnnotationEvent("annotation", now.UnixMilli()))
 
 	handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
 
@@ -196,7 +229,7 @@ func TestHandleAnnotationsReturnsCollections(t *testing.T) {
 	}
 
 	var body struct {
-		Collections map[string][]Annotation `json:"collections"`
+		Collections map[string][]annotations.Annotation `json:"collections"`
 	}
 
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {

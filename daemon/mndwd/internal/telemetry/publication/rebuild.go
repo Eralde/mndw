@@ -1,4 +1,4 @@
-package telemetry
+package publication
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
 )
 
@@ -18,9 +19,11 @@ const rebuildScratchPrefix = ".rrd-rebuild-"
 // rebuildAll reconstructs every destination from retained journal records.
 func (d *DerivedStore) rebuildAll(ctx context.Context) error {
 	series := make([]uint16, 0, len(d.destinations))
+
 	for seriesID := range d.destinations {
 		series = append(series, seriesID)
 	}
+
 	sortSeries(series)
 
 	for _, seriesID := range series {
@@ -28,6 +31,7 @@ func (d *DerivedStore) rebuildAll(ctx context.Context) error {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -35,6 +39,7 @@ func (d *DerivedStore) rebuildAll(ctx context.Context) error {
 // earliest retained mapped record, validate it, then atomically install it.
 func (d *DerivedStore) rebuildSeries(ctx context.Context, series uint16) error {
 	destination, ok := d.destination(series)
+
 	if !ok {
 		return nil
 	}
@@ -43,6 +48,7 @@ func (d *DerivedStore) rebuildSeries(ctx context.Context, series uint16) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = lease.Close() }()
 
 	if lease.Result.Reader == nil {
@@ -53,6 +59,7 @@ func (d *DerivedStore) rebuildSeries(ctx context.Context, series uint16) error {
 	if err != nil {
 		return err
 	}
+
 	if pin != nil {
 		defer func() { _ = pin.Close() }()
 	}
@@ -61,6 +68,7 @@ func (d *DerivedStore) rebuildSeries(ctx context.Context, series uint16) error {
 	if err != nil {
 		return err
 	}
+
 	if earliestMs == 0 {
 		// No mapped sample of this series is retained: nothing to rebuild.
 		return nil
@@ -70,12 +78,14 @@ func (d *DerivedStore) rebuildSeries(ctx context.Context, series uint16) error {
 	if err != nil {
 		return err
 	}
+
 	scratchPath := filepath.Join(scratchDir, "data.rrd")
 
 	scratch, err := d.factory.Open(scratchPath, destination.spec, fileOpsAdapter{fs: d.fs})
 	if err != nil {
 		return err
 	}
+
 	if err := scratch.Ensure(ctx, time.UnixMilli(earliestMs).UTC()); err != nil {
 		return err
 	}
@@ -87,31 +97,39 @@ func (d *DerivedStore) rebuildSeries(ctx context.Context, series uint16) error {
 				return err
 			}
 		}
+
 		return nil
 	}, prior, func(plan PublicationPlan) error {
 		points, ok := plan.Points[series]
+
 		if !ok {
 			return nil
 		}
+
 		if len(points) > 0 && points[len(points)-1].Timestamp.UnixMilli() > latestPublished {
 			latestPublished = points[len(points)-1].Timestamp.UnixMilli()
 		}
+
 		return scratch.Update(ctx, points)
 	})
 	if err != nil {
 		_ = d.fs.Remove(scratchPath)
+
 		return err
 	}
 
 	if err := syncFile(d.fs, scratchPath); err != nil {
 		return err
 	}
+
 	if err := d.fs.Rename(scratchPath, destination.path); err != nil {
 		return err
 	}
+
 	if err := d.fs.SyncDir(d.paths.RRDDir); err != nil {
 		return err
 	}
+
 	_ = d.fs.Remove(scratchDir)
 
 	// Reopen the destination handle after replacement.
@@ -121,12 +139,16 @@ func (d *DerivedStore) rebuildSeries(ctx context.Context, series uint16) error {
 	}
 
 	d.mu.Lock()
+
 	destination.file = file
 	destination.rebuilt = true
+
 	if latestPublished != 0 {
 		destination.slotMs = latestPublished
 	}
+
 	d.mutated = true
+
 	d.mu.Unlock()
 
 	return nil
@@ -149,37 +171,47 @@ func collectMappedRecords(
 
 	err := reader.Scan(ctx, func(record journal.Record) error {
 		records = append(records, record)
+
 		if record.Kind == journal.KindPublication {
 			publication, decodeErr := journal.DecodePublication(record)
+
 			if decodeErr != nil {
 				return decodeErr
 			}
+
 			if publication.Seq >= prior.Seq {
 				prior = publication
 			}
 		}
+
 		if record.Kind == journal.KindAnchor {
 			anchor, decodeErr := journal.DecodeAnchor(record)
+
 			if decodeErr == nil {
 				key := struct {
 					boot    journal.BootID
 					segment uint64
 				}{anchor.Boot, anchor.ClockSegment}
+
 				if existing, ok := anchors[key]; !ok || anchor.Seq >= existing.Seq {
 					anchors[key] = anchor
 				}
 			}
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, 0, journal.Publication{}, err
 	}
+
 	filtered := make([]journal.Record, 0, len(records))
 	firstAnchors := map[journal.BootID]journal.Anchor{}
+
 	for _, record := range records {
 		if record.Kind == journal.KindAnchor {
 			anchor, decodeErr := journal.DecodeAnchor(record)
+
 			if decodeErr == nil {
 				if existing, ok := firstAnchors[anchor.Boot]; !ok || anchor.Seq < existing.Seq {
 					firstAnchors[anchor.Boot] = anchor
@@ -187,36 +219,48 @@ func collectMappedRecords(
 			}
 		}
 	}
+
 	for _, record := range records {
 		if record.Kind != journal.KindSample {
 			if record.Kind == journal.KindAnchor {
 				filtered = append(filtered, record)
 			}
+
 			continue
 		}
+
 		sample, decodeErr := journal.DecodeSample(record)
+
 		if decodeErr != nil || sample.Series != series {
 			continue
 		}
+
 		anchor, ok := anchors[struct {
 			boot    journal.BootID
 			segment uint64
 		}{sample.Boot, sample.ClockSegment}]
+
 		if !ok && sample.ClockSegment == 0 {
 			anchor, ok = firstAnchors[sample.Boot]
 		}
+
 		if !ok {
 			continue
 		}
-		mapped, mapErr := MapUTC(anchor, sample.ElapsedMs)
+
+		mapped, mapErr := clock.MapUTC(anchor, sample.ElapsedMs)
+
 		if mapErr != nil {
 			continue
 		}
+
 		if earliest == 0 || mapped < earliest {
 			earliest = mapped
 		}
+
 		filtered = append(filtered, record)
 	}
+
 	return filtered, earliest, prior, nil
 }
 
@@ -225,6 +269,7 @@ func pinDurable(lease journal.StorageLease) (*journal.Lease, error) {
 	if lease.Result.Writer == nil {
 		return nil, nil
 	}
+
 	return lease.Result.Writer.Pin(lease.Result.Writer.DurableThrough())
 }
 
@@ -236,9 +281,12 @@ func syncFile(fs journal.FileSystem, path string) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
+
 		return err
 	}
+
 	defer func() { _ = file.Close() }()
+
 	return file.Sync()
 }
 
@@ -249,6 +297,7 @@ func (d *DerivedStore) cleanupRebuildScratch(ctx context.Context) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
+
 		return err
 	}
 
@@ -256,19 +305,24 @@ func (d *DerivedStore) cleanupRebuildScratch(ctx context.Context) error {
 		if !entry.IsDir() || len(entry.Name()) < len(rebuildScratchPrefix) {
 			continue
 		}
+
 		if entry.Name()[:len(rebuildScratchPrefix)] != rebuildScratchPrefix {
 			continue
 		}
+
 		if err := d.fs.Remove(filepath.Join(d.paths.RRDDir, entry.Name(), "data.rrd")); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
+
 		if err := d.fs.Remove(filepath.Join(d.paths.RRDDir, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
+
 	if err := d.fs.SyncDir(d.paths.RRDDir); err != nil {
 		return err
 	}
+
 	return ctx.Err()
 }
 
@@ -282,18 +336,22 @@ func sortSeries(series []uint16) {
 
 func latestSlot(records []journal.Record) int64 {
 	var latest int64
+
 	for _, record := range records {
 		if record.Kind != journal.KindSample {
 			continue
 		}
+
 		sample, err := journal.DecodeSample(record)
 		if err != nil {
 			continue
 		}
+
 		if sample.ElapsedMs > latest {
 			latest = sample.ElapsedMs
 		}
 	}
+
 	return latest
 }
 

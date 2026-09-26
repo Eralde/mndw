@@ -1,4 +1,4 @@
-package telemetry
+package sessions
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
 )
 
@@ -44,25 +45,25 @@ var (
 
 // SessionSummary is one retained boot session.
 type SessionSummary struct {
-	ID            string `json:"id"`
-	BootOrder     string `json:"bootOrder"`
-	ElapsedStartMs int64 `json:"elapsedStartMs"`
-	ElapsedEndMs  int64  `json:"elapsedEndMs"`
-	SampleCount   int    `json:"sampleCount"`
-	ConflictCount int    `json:"conflictCount"`
-	State         string `json:"state"`
-	UTCStartMs    *int64 `json:"utcStartMs"`
-	UTCEndMs      *int64 `json:"utcEndMs"`
+	ID             string `json:"id"`
+	BootOrder      string `json:"bootOrder"`
+	ElapsedStartMs int64  `json:"elapsedStartMs"`
+	ElapsedEndMs   int64  `json:"elapsedEndMs"`
+	SampleCount    int    `json:"sampleCount"`
+	ConflictCount  int    `json:"conflictCount"`
+	State          string `json:"state"`
+	UTCStartMs     *int64 `json:"utcStartMs"`
+	UTCEndMs       *int64 `json:"utcEndMs"`
 }
 
 // SessionSample is one retained sample in a session page.
 type SessionSample struct {
-	Sequence    string    `json:"sequence"`
-	Series      uint16    `json:"series"`
-	ElapsedMs   int64     `json:"elapsedMs"`
-	UTCMs       *int64    `json:"utcMs"`
+	Sequence    string     `json:"sequence"`
+	Series      uint16     `json:"series"`
+	ElapsedMs   int64      `json:"elapsedMs"`
+	UTCMs       *int64     `json:"utcMs"`
 	Values      []*float64 `json:"values"`
-	Disposition string    `json:"disposition"`
+	Disposition string     `json:"disposition"`
 }
 
 // SessionList is the diagnostic session index.
@@ -99,22 +100,31 @@ type CoverageDTO struct {
 
 // StorageStatus is a JSON-safe projection of storage and pipeline state.
 type StorageStatus struct {
-	Mode                 string              `json:"mode"`
-	Issues               []RecoveryIssueDTO  `json:"issues"`
-	JournalBytes         *int64              `json:"journalBytes"`
-	JournalLimitBytes    int64               `json:"journalLimitBytes"`
-	PendingSampleCount   *int                `json:"pendingSampleCount"`
-	OldestPendingSession *string             `json:"oldestPendingSession"`
-	DeliveryError        *string             `json:"deliveryError"`
-	Coverage             []CoverageDTO       `json:"coverage"`
-	RebuildState         string              `json:"rebuildState"`
-	DroppedRecords       map[string]string   `json:"droppedRecords"`
+	Mode                 string             `json:"mode"`
+	Issues               []RecoveryIssueDTO `json:"issues"`
+	JournalBytes         *int64             `json:"journalBytes"`
+	JournalLimitBytes    int64              `json:"journalLimitBytes"`
+	PendingSampleCount   *int               `json:"pendingSampleCount"`
+	OldestPendingSession *string            `json:"oldestPendingSession"`
+	DeliveryError        *string            `json:"deliveryError"`
+	Coverage             []CoverageDTO      `json:"coverage"`
+	RebuildState         string             `json:"rebuildState"`
+	DroppedRecords       map[string]string  `json:"droppedRecords"`
 }
 
-// SessionReader serves bounded diagnostic sample sessions.
-type SessionReader interface {
+// Reader serves bounded diagnostic sample sessions.
+type Reader interface {
 	List(context.Context) (SessionList, error)
 	Read(ctx context.Context, id string, after string, limit int) (SessionPage, error)
+}
+
+// Status contains the pipeline fields exposed in session diagnostics.
+type Status struct {
+	PendingSamples int
+	RebuildState   string
+	Error          string
+	Loss           map[string]uint64
+	Coverage       []journal.Coverage
 }
 
 // ParseSessionLimit validates the `limit` query parameter.
@@ -122,9 +132,11 @@ func ParseSessionLimit(values url.Values) (int, error) {
 	if len(values) == 0 {
 		return defaultSessionPage, nil
 	}
+
 	if len(values["limit"]) != 1 {
 		return 0, errors.New("telemetry: limit must be supplied once")
 	}
+
 	if len(values) != 1 {
 		return 0, errors.New("telemetry: unknown query parameter")
 	}
@@ -134,23 +146,29 @@ func ParseSessionLimit(values url.Values) (int, error) {
 	if err != nil || limit < 1 || limit > maxSessionPage {
 		return 0, fmt.Errorf("telemetry: limit must be between 1 and %d", maxSessionPage)
 	}
+
 	return limit, nil
 }
 
 // ParseSessionID validates a session identifier and returns its boot.
 func ParseSessionID(id string) (journal.BootID, error) {
 	var boot journal.BootID
+
 	if !strings.HasPrefix(id, sessionIDPrefix) {
 		return boot, ErrSessionNotFound
 	}
+
 	decoded, err := hex.DecodeString(strings.TrimPrefix(id, sessionIDPrefix))
 	if err != nil || len(decoded) != len(boot) {
 		return boot, ErrSessionNotFound
 	}
+
 	copy(boot[:], decoded)
+
 	if boot.IsZero() {
 		return boot, ErrSessionNotFound
 	}
+
 	return boot, nil
 }
 
@@ -161,10 +179,10 @@ func SessionID(boot journal.BootID) string {
 
 // cursor carries the traversal position of one session page.
 type cursor struct {
-	boot              journal.BootID
+	boot                journal.BootID
 	inventoryGeneration uint64
-	nextSequence      uint64
-	snapshotThrough   uint64
+	nextSequence        uint64
+	snapshotThrough     uint64
 }
 
 // encodeCursor renders the canonical base64url cursor.
@@ -177,6 +195,7 @@ func encodeCursor(value cursor) string {
 	raw = binary.LittleEndian.AppendUint64(raw, value.snapshotThrough)
 	sum := crc32.Update(0, crc32.MakeTable(crc32.Castagnoli), raw[:41])
 	raw = binary.LittleEndian.AppendUint32(raw, sum)
+
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
@@ -186,12 +205,15 @@ func decodeCursor(encoded string, boot journal.BootID) (cursor, error) {
 	if err != nil || len(raw) != cursorBytes {
 		return cursor{}, ErrCursorInvalid
 	}
+
 	if raw[0] != cursorVersion {
 		return cursor{}, ErrCursorInvalid
 	}
 
 	var value cursor
+
 	copy(value.boot[:], raw[1:17])
+
 	if value.boot != boot {
 		return cursor{}, ErrCursorInvalid
 	}
@@ -201,44 +223,80 @@ func decodeCursor(encoded string, boot journal.BootID) (cursor, error) {
 	value.snapshotThrough = binary.LittleEndian.Uint64(raw[33:])
 
 	sum := crc32.Update(0, crc32.MakeTable(crc32.Castagnoli), raw[:41])
+
 	if stored := binary.LittleEndian.Uint32(raw[41:]); stored != sum {
 		return cursor{}, ErrCursorInvalid
 	}
+
 	return value, nil
 }
 
 // sessionReader serves sessions from durable journal snapshots.
 type sessionReader struct {
 	provider journal.StorageProvider
-	status   func() PipelineStatus
+	status   func() Status
 	limits   journal.Limits
 }
 
-// NewSessionReader builds the diagnostic session reader.
-func NewSessionReader(provider journal.StorageProvider, status func() PipelineStatus, limits journal.Limits) SessionReader {
+// NewReader builds the diagnostic session reader.
+func NewReader(provider journal.StorageProvider, status func() Status, limits journal.Limits) Reader {
 	if limits.Bytes == 0 {
 		limits = journal.DefaultLimits()
 	}
+
 	return &sessionReader{provider: provider, status: status, limits: limits}
+}
+
+type journalProgress interface {
+	DurableThrough() uint64
+	Manifest() journal.Manifest
+}
+
+type readLease struct {
+	reader   *journal.Reader
+	progress journalProgress
+	status   journal.RecoveryStatus
+	close    func() error
+}
+
+func acquireReadLease(ctx context.Context, provider journal.StorageProvider) (readLease, error) {
+	lease, err := provider.Acquire(ctx)
+	if err != nil {
+		return readLease{}, err
+	}
+	var progress journalProgress
+	if writer := lease.Result.Writer; writer != nil {
+		progress = writer
+	}
+
+	return readLease{
+		reader:   lease.Result.Reader,
+		progress: progress,
+		status:   lease.Result.Status,
+		close:    lease.Close,
+	}, nil
 }
 
 // List returns retained sessions newest boot first with storage status.
 func (r *sessionReader) List(ctx context.Context) (SessionList, error) {
-	lease, err := r.provider.Acquire(ctx)
+	lease, err := acquireReadLease(ctx, r.provider)
 	if err != nil {
-		return SessionList{Storage: r.storageStatus(nil, journal.RecoveryStatus{Mode: journal.StatusUnavailable})}, err
+		return SessionList{Storage: r.storageStatus(journal.RecoveryStatus{Mode: journal.StatusUnavailable})}, err
 	}
-	defer func() { _ = lease.Close() }()
 
-	status := r.storageStatus(nil, lease.Result.Status)
-	if lease.Result.Reader == nil {
+	defer func() { _ = lease.close() }()
+
+	status := r.storageStatus(lease.status)
+
+	if lease.reader == nil {
 		return SessionList{Sessions: []SessionSummary{}, Storage: status}, nil
 	}
 
-	summaries, err := r.summaries(ctx, lease.Result.Reader, lease.Result.Writer)
+	summaries, err := r.summaries(ctx, lease.reader)
 	if err != nil {
 		return SessionList{Storage: status}, err
 	}
+
 	if len(summaries) > maxSessionSummaries {
 		summaries = summaries[:maxSessionSummaries]
 	}
@@ -252,30 +310,36 @@ func (r *sessionReader) Read(ctx context.Context, id string, after string, limit
 	if err != nil {
 		return SessionPage{}, err
 	}
+
 	if limit <= 0 {
 		limit = defaultSessionPage
 	}
+
 	if limit > maxSessionPage {
 		limit = maxSessionPage
 	}
 
-	lease, err := r.provider.Acquire(ctx)
+	lease, err := acquireReadLease(ctx, r.provider)
 	if err != nil {
 		return SessionPage{}, err
 	}
-	defer func() { _ = lease.Close() }()
 
-	status := r.storageStatus(nil, lease.Result.Status)
-	if lease.Result.Reader == nil {
+	defer func() { _ = lease.close() }()
+
+	status := r.storageStatus(lease.status)
+
+	if lease.reader == nil {
 		return SessionPage{}, ErrSessionUnavailable
 	}
 
 	var start cursor
+
 	if after != "" {
 		start, err = decodeCursor(after, boot)
 		if err != nil {
 			return SessionPage{}, err
 		}
+
 		if start.snapshotThrough != durableThrough(lease) || start.inventoryGeneration != generationOf(lease) {
 			return SessionPage{}, ErrCursorExpired
 		}
@@ -284,16 +348,16 @@ func (r *sessionReader) Read(ctx context.Context, id string, after string, limit
 	anchors := map[journal.BootID]journal.Anchor{}
 	slots := map[uint64]bool{}
 	var (
-		samples       = []SessionSample{}
-		seen          int
-		reasons       = []string{}
-		truncated     bool
-		lastSequence  uint64
-		durable       = durableThrough(lease)
-		generation    = generationOf(lease)
+		samples      = []SessionSample{}
+		seen         int
+		reasons      = []string{}
+		truncated    bool
+		lastSequence uint64
+		durable      = durableThrough(lease)
+		generation   = generationOf(lease)
 	)
 
-	err = lease.Result.Reader.Scan(ctx, func(record journal.Record) error {
+	err = lease.reader.Scan(ctx, func(record journal.Record) error {
 		switch record.Kind {
 		case journal.KindAnchor:
 			if anchor, err := journal.DecodeAnchor(record); err == nil {
@@ -306,13 +370,17 @@ func (r *sessionReader) Read(ctx context.Context, id string, after string, limit
 			if err != nil || sample.Boot != boot {
 				return nil
 			}
+
 			seen++
+
 			if start.nextSequence > 0 && record.Seq <= start.nextSequence {
 				return nil
 			}
+
 			if len(samples) >= limit {
 				truncated = true
 				reasons = append(reasons, "page-limit")
+
 				return nil
 			}
 
@@ -321,11 +389,13 @@ func (r *sessionReader) Read(ctx context.Context, id string, after string, limit
 			slots[key] = true
 
 			disposition := "pending"
+
 			if record.Seq <= durable {
 				disposition = "retained"
-			} else if lease.Result.Writer == nil {
+			} else if lease.progress == nil {
 				disposition = "unproven"
 			}
+
 			if conflict {
 				disposition = "conflict"
 			}
@@ -341,6 +411,7 @@ func (r *sessionReader) Read(ctx context.Context, id string, after string, limit
 			})
 			lastSequence = record.Seq
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -357,6 +428,7 @@ func (r *sessionReader) Read(ctx context.Context, id string, after string, limit
 		TruncationReasons: reasons,
 		Storage:           status,
 	}
+
 	if truncated && lastSequence > 0 {
 		next := encodeCursor(cursor{
 			boot:                boot,
@@ -366,6 +438,7 @@ func (r *sessionReader) Read(ctx context.Context, id string, after string, limit
 		})
 		page.NextCursor = &next
 	}
+
 	return page, nil
 }
 
@@ -373,7 +446,6 @@ func (r *sessionReader) Read(ctx context.Context, id string, after string, limit
 func (r *sessionReader) summaries(
 	ctx context.Context,
 	reader *journal.Reader,
-	writer *journal.Storage,
 ) ([]SessionSummary, error) {
 	type sessionState struct {
 		boot      journal.BootID
@@ -395,12 +467,15 @@ func (r *sessionReader) summaries(
 
 	ensure := func(boot journal.BootID) *sessionState {
 		state, ok := byBoot[boot]
+
 		if ok {
 			return state
 		}
+
 		state = &sessionState{boot: boot}
 		byBoot[boot] = state
 		order = append(order, boot)
+
 		return state
 	}
 
@@ -411,6 +486,7 @@ func (r *sessionReader) summaries(
 			if err != nil {
 				return nil
 			}
+
 			state := ensure(bootStart.Boot)
 			state.bootOrder = record.Seq
 			state.hasBoot = true
@@ -425,32 +501,41 @@ func (r *sessionReader) summaries(
 			if err != nil {
 				return nil
 			}
+
 			state := ensure(sample.Boot)
 			state.samples++
+
 			if state.start == 0 || sample.ElapsedMs < state.start {
 				state.start = sample.ElapsedMs
 			}
+
 			if sample.ElapsedMs > state.end {
 				state.end = sample.ElapsedMs
 			}
+
 			key := uint64(sample.Series)*1<<40 + uint64(alignSampleSlot(sample, anchors))
+
 			if slots[key] {
 				state.conflicts++
 			}
+
 			slots[key] = true
 
 			if utc := mappedOrNil(sample, anchors); utc != nil {
 				state.anchored++
+
 				if state.utcStart == nil || *utc < *state.utcStart {
 					value := *utc
 					state.utcStart = &value
 				}
+
 				if state.utcEnd == nil || *utc > *state.utcEnd {
 					value := *utc
 					state.utcEnd = &value
 				}
 			}
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -458,19 +543,24 @@ func (r *sessionReader) summaries(
 	}
 
 	summaries := make([]SessionSummary, 0, len(order))
+
 	for _, boot := range order {
 		state := byBoot[boot]
+
 		if !state.hasBoot {
 			// A session without a boot-start record cannot be ordered; report it
 			// by its boot identity instead of dropping it silently.
 			state.bootOrder = 0
 		}
+
 		sessionState := "unanchored"
+
 		if state.anchored > 0 && state.anchored == state.samples {
 			sessionState = "anchored"
 		} else if state.anchored > 0 {
 			sessionState = "mixed"
 		}
+
 		summaries = append(summaries, SessionSummary{
 			ID:             SessionID(boot),
 			BootOrder:      strconv.FormatUint(state.bootOrder, 10),
@@ -487,13 +577,15 @@ func (r *sessionReader) summaries(
 	sort.Slice(summaries, func(i, j int) bool {
 		left, _ := strconv.ParseUint(summaries[i].BootOrder, 10, 64)
 		right, _ := strconv.ParseUint(summaries[j].BootOrder, 10, 64)
+
 		return left > right
 	})
+
 	return summaries, nil
 }
 
 // storageStatus projects provider and pipeline state for diagnostics.
-func (r *sessionReader) storageStatus(pipeline *PipelineStatus, recovery journal.RecoveryStatus) StorageStatus {
+func (r *sessionReader) storageStatus(recovery journal.RecoveryStatus) StorageStatus {
 	status := StorageStatus{
 		Mode:              string(recovery.Mode),
 		Issues:            []RecoveryIssueDTO{},
@@ -504,97 +596,113 @@ func (r *sessionReader) storageStatus(pipeline *PipelineStatus, recovery journal
 
 	for _, issue := range recovery.Issues {
 		dto := RecoveryIssueDTO{Code: issue.Code}
+
 		if issue.FirstSequence != nil {
 			value := strconv.FormatUint(*issue.FirstSequence, 10)
 			dto.FirstSequence = &value
 		}
+
 		if issue.LastSequence != nil {
 			value := strconv.FormatUint(*issue.LastSequence, 10)
 			dto.LastSequence = &value
 		}
+
 		status.Issues = append(status.Issues, dto)
 	}
 
-	if pipeline == nil {
-		current := r.status()
-		pipeline = &current
+	pipeline := r.status()
+	pending := pipeline.PendingSamples
+	status.PendingSampleCount = &pending
+	status.RebuildState = pipeline.RebuildState
+
+	if pipeline.Error != "" {
+		message := pipeline.Error
+		status.DeliveryError = &message
 	}
-	if pipeline != nil {
-		pending := pipeline.PendingSamples
-		status.PendingSampleCount = &pending
-		status.RebuildState = pipeline.RebuildState
-		if pipeline.Error != "" {
-			message := pipeline.Error
-			status.DeliveryError = &message
-		}
-		for reason, count := range pipeline.Loss {
-			status.DroppedRecords[reason] = strconv.FormatUint(count, 10)
-		}
-		for _, coverage := range pipeline.Coverage {
-			dto := CoverageDTO{
-				Series:       coverage.Series,
-				StartMs:      coverage.StartMs,
-				EndMs:        coverage.EndMs,
-				EdgeComplete: coverage.EdgeComplete,
-				Complete:     coverage.Complete,
-				Reasons:      []string{},
-			}
-			for _, reason := range coverage.Reasons {
-				dto.Reasons = append(dto.Reasons, string(reason))
-			}
-			status.Coverage = append(status.Coverage, dto)
-		}
+
+	for reason, count := range pipeline.Loss {
+		status.DroppedRecords[reason] = strconv.FormatUint(count, 10)
 	}
+
+	for _, coverage := range pipeline.Coverage {
+		dto := CoverageDTO{
+			Series:       coverage.Series,
+			StartMs:      coverage.StartMs,
+			EndMs:        coverage.EndMs,
+			EdgeComplete: coverage.EdgeComplete,
+			Complete:     coverage.Complete,
+			Reasons:      []string{},
+		}
+
+		for _, reason := range coverage.Reasons {
+			dto.Reasons = append(dto.Reasons, string(reason))
+		}
+
+		status.Coverage = append(status.Coverage, dto)
+	}
+
 	return status
 }
 
 func alignSampleSlot(sample journal.Sample, anchors map[journal.BootID]journal.Anchor) int64 {
 	anchor, ok := anchors[sample.Boot]
+
 	if !ok {
 		return sample.ElapsedMs
 	}
-	mapped, err := MapUTC(anchor, sample.ElapsedMs)
+
+	mapped, err := clock.MapUTC(anchor, sample.ElapsedMs)
 	if err != nil {
 		return sample.ElapsedMs
 	}
-	return AlignSlot(mapped, stepForSeries(sample.Series))
+
+	return clock.AlignSlot(mapped, journal.StepForSeries(sample.Series))
 }
 
 func mappedOrNil(sample journal.Sample, anchors map[journal.BootID]journal.Anchor) *int64 {
 	anchor, ok := anchors[sample.Boot]
+
 	if !ok {
 		return nil
 	}
-	mapped, err := MapUTC(anchor, sample.ElapsedMs)
+
+	mapped, err := clock.MapUTC(anchor, sample.ElapsedMs)
 	if err != nil {
 		return nil
 	}
+
 	return &mapped
 }
 
 func nullableValues(sample journal.Sample) []*float64 {
 	values := make([]*float64, 0, len(sample.Values))
+
 	for _, value := range sample.Values {
 		if !value.Known {
 			values = append(values, nil)
+
 			continue
 		}
+
 		known := value.V
 		values = append(values, &known)
 	}
+
 	return values
 }
 
-func durableThrough(lease journal.StorageLease) uint64 {
-	if lease.Result.Writer == nil {
+func durableThrough(lease readLease) uint64 {
+	if lease.progress == nil {
 		return 0
 	}
-	return lease.Result.Writer.DurableThrough()
+
+	return lease.progress.DurableThrough()
 }
 
-func generationOf(lease journal.StorageLease) uint64 {
-	if lease.Result.Writer == nil {
+func generationOf(lease readLease) uint64 {
+	if lease.progress == nil {
 		return 0
 	}
-	return lease.Result.Writer.Manifest().Generation
+
+	return lease.progress.Manifest().Generation
 }

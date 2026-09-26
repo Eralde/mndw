@@ -1,4 +1,4 @@
-package telemetry
+package publication
 
 import (
 	"context"
@@ -512,7 +512,7 @@ func TestDerivedRunCycleRequiresRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := store.RunCycle(context.Background(), PublicationCycle{}); err == nil {
+	if err := store.RunCycle(context.Background(), Cycle{}); err == nil {
 		t.Fatal("RunCycle before Recover accepted")
 	}
 }
@@ -532,7 +532,7 @@ func TestDerivedRunCyclePersistsPublicationBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := store.RunCycle(context.Background(), PublicationCycle{CutoffElapsedMs: 180000, DurableThrough: 3}); err != nil {
+	if err := store.RunCycle(context.Background(), Cycle{CutoffElapsedMs: 180000, DurableThrough: 3}); err != nil {
 		t.Fatal(err)
 	}
 

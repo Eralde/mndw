@@ -18,6 +18,8 @@ import (
 	rcisessionsocket "mndwd/internal/rcisession/socket"
 	rcisessionstore "mndwd/internal/rcisession/store"
 	"mndwd/internal/telemetry"
+	"mndwd/internal/telemetry/annotations"
+	"mndwd/internal/telemetry/clock"
 )
 
 type persistentSessionRegistration struct {
@@ -28,7 +30,7 @@ type persistentSessionRegistration struct {
 	capability           *telemetry.Capability
 	rciClient            *rci.Client
 	eventRCIClient       *rci.Client
-	annotationStore      *telemetry.AnnotationStore
+	annotationStore      *annotations.Store
 }
 
 func newTelemetryAndEventClients(do telemetry.DoFunc) (telemetryClient *rci.Client, eventClient *rci.Client, err error) {
@@ -180,7 +182,7 @@ func assembleRCISession(core daemonCore, accessMux *http.ServeMux) persistentSes
 		RRDDir:             cfg.RRDDir,
 		LoadSampler:        telemetry.NewLoadSampler(telemetryClient),
 		TemperatureSampler: telemetry.NewThermalSampler(osThermalReader{}, "/sys/class/thermal"),
-		Clock:              telemetry.NewBootClock(),
+		Clock:              clock.NewBootClock(),
 		Evidence:           telemetry.NewRCIEvidenceSource(telemetryClient),
 		Policy:             policy,
 		DesiredEnabled:     func() bool { return store.Snapshot().Settings.BackgroundTelemetry },

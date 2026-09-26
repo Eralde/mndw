@@ -14,7 +14,7 @@ import (
 	"mndwd/internal/registry"
 	"mndwd/internal/selfupdate"
 	"mndwd/internal/state"
-	"mndwd/internal/telemetry"
+	"mndwd/internal/telemetry/annotations"
 )
 
 type selfUpdateStatusReader interface {
@@ -30,7 +30,7 @@ type eventLifecycle struct {
 	ingest             events.Publisher
 	selfUpdate         selfUpdateStatusReader
 	selfUpdateStateDir string
-	annotations        *telemetry.AnnotationStore
+	annotations        *annotations.Store
 	rciClient          *rci.Client
 	reg                *registry.Registry
 	store              *state.Store

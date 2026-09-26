@@ -4,18 +4,15 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"path/filepath"
 	"sync"
 	"time"
 
 	"mndw.local/rrd"
 
+	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
-)
-
-const (
-	loadFileName = "mndw-load-v1.rrd"
-	tempFileName = "mndw-temp-v1.rrd"
+	"mndwd/internal/telemetry/publication"
+	"mndwd/internal/telemetry/sessions"
 )
 
 type SnapshotReader interface {
@@ -28,8 +25,8 @@ type CapabilityConfig struct {
 	Executor           rrd.Executor
 	LoadSampler        Sampler
 	TemperatureSampler Sampler
-	Clock              BootClock
-	Evidence           EvidenceSource
+	Clock              clock.BootClock
+	Evidence           clock.EvidenceSource
 	Policy             Policy
 	FileSystem         journal.FileSystem
 	Locker             journal.Locker
@@ -51,7 +48,7 @@ type Capability struct {
 	enabled      bool
 	provider     journal.StorageProvider
 	pipeline     *Pipeline
-	derived      *DerivedStore
+	derived      *publication.DerivedStore
 	refresher    *snapshotRefresher
 	pipelineDone chan struct{}
 	status       PipelineStatus
@@ -90,7 +87,7 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 	}
 
 	if config.Clock == nil {
-		config.Clock = NewBootClock()
+		config.Clock = clock.NewBootClock()
 	}
 
 	if config.Policy.AcquireEvery == 0 {
@@ -111,12 +108,7 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 		enabled = config.DesiredEnabled()
 	}
 
-	load, err := rrd.NewFile(config.Executor, filepath.Join(config.RRDDir, loadFileName), loadSpec())
-	if err != nil {
-		return nil, err
-	}
-
-	temp, err := rrd.NewFile(config.Executor, filepath.Join(config.RRDDir, tempFileName), tempSpec())
+	load, temp, err := publication.NewReaders(config.Executor, config.RRDDir)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +125,7 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 
 	capability := &Capability{config: config, load: load, temp: temp, enabled: enabled, provider: provider}
 	capability.status = PipelineStatus{Storage: provider.CurrentStatus()}
+
 	return capability, nil
 }
 
@@ -167,8 +160,11 @@ func (c *Capability) Start(ctx context.Context) error {
 			return err
 		}
 	}
+
 	c.mu.Lock()
+
 	c.status.Storage = opened.Status
+
 	c.mu.Unlock()
 
 	// Derived files are validated, never created here: an untrusted boot must
@@ -179,12 +175,15 @@ func (c *Capability) Start(ctx context.Context) error {
 	}
 
 	samplers := map[uint16]Sampler{}
+
 	if c.config.LoadSampler != nil {
 		samplers[1] = c.config.LoadSampler
 	}
+
 	if c.config.TemperatureSampler != nil {
 		samplers[2] = c.config.TemperatureSampler
 	}
+
 	if len(samplers) == 0 {
 		return errors.New("telemetry: no sampler configured")
 	}
@@ -198,17 +197,21 @@ func (c *Capability) Start(ctx context.Context) error {
 		return err
 	}
 
-	derived, err := NewDerivedStore(derivedPaths, RRDtoolFactory{Executor: c.config.Executor}, c.provider, c.config.FileSystem)
+	derived, err := publication.NewDerivedStore(derivedPaths, publication.RRDtoolFactory{Executor: c.config.Executor}, c.provider, c.config.FileSystem)
 	if err != nil {
 		return err
 	}
 
 	options := []PipelineOption{WithPublicationWorker(derived)}
+
 	if c.config.SnapshotCache != nil {
 		refresher := &snapshotRefresher{cache: c.config.SnapshotCache}
 		options = append(options, WithSnapshotRefresher(refresher))
+
 		c.mu.Lock()
+
 		c.refresher = refresher
+
 		c.mu.Unlock()
 	}
 
@@ -218,7 +221,9 @@ func (c *Capability) Start(ctx context.Context) error {
 	}
 
 	c.mu.Lock()
+
 	c.derived = derived
+
 	c.mu.Unlock()
 
 	c.mu.Lock()
@@ -258,27 +263,44 @@ func (c *Capability) validateDerivedFiles(ctx context.Context) error {
 			return err
 		}
 	}
+
 	return nil
 }
 
 // SessionReader exposes bounded diagnostic session access. It serves read-only
 // validated records and never repairs or writes storage.
-func (c *Capability) SessionReader() SessionReader {
+func (c *Capability) SessionReader() sessions.Reader {
 	c.mu.Lock()
+
 	provider := c.provider
 	policy := c.config.Policy
+
 	c.mu.Unlock()
 
 	if provider == nil {
 		return nil
 	}
-	return NewSessionReader(provider, c.Status, policy.Journal)
+
+	return sessions.NewReader(provider, func() sessions.Status {
+		return sessionStatus(c.Status())
+	}, policy.Journal)
+}
+
+func sessionStatus(status PipelineStatus) sessions.Status {
+	return sessions.Status{
+		PendingSamples: status.PendingSamples,
+		RebuildState:   status.RebuildState,
+		Error:          status.Error,
+		Loss:           status.Loss,
+		Coverage:       status.Coverage,
+	}
 }
 
 // SetSnapshotCache attaches the cache refreshed by the pipeline. It is called
 // after construction because assembly builds the cache from this capability.
 func (c *Capability) SetSnapshotCache(cache *SnapshotCache) {
 	c.mu.Lock()
+
 	defer c.mu.Unlock()
 
 	c.config.SnapshotCache = cache
@@ -287,18 +309,23 @@ func (c *Capability) SetSnapshotCache(cache *SnapshotCache) {
 // Status reports the last observed pipeline and storage state.
 func (c *Capability) Status() PipelineStatus {
 	c.mu.Lock()
+
 	defer c.mu.Unlock()
 
 	status := c.status
+
 	if c.pipeline != nil {
 		status = c.pipeline.Status()
 	}
+
 	if c.derived != nil {
 		frontiers := c.derived.Progress()
+
 		if len(frontiers) > 0 {
 			status.Frontiers = frontiers
 		}
 	}
+
 	return status
 }
 
@@ -309,6 +336,7 @@ func (c *Capability) StorageStatus() journal.RecoveryStatus {
 
 func (c *Capability) setStatusError(err error) {
 	c.mu.Lock()
+
 	defer c.mu.Unlock()
 
 	c.status.Error = err.Error()
@@ -438,8 +466,10 @@ func (c *Capability) Close(ctx context.Context) error {
 	}
 
 	c.mu.Lock()
+
 	refresher := c.refresher
 	c.refresher = nil
+
 	c.mu.Unlock()
 
 	if refresher != nil {
@@ -511,43 +541,6 @@ func (c *Capability) LoadReader() SnapshotReader {
 
 func (c *Capability) TemperatureReader() SnapshotReader {
 	return c.temp
-}
-
-func loadSpec() rrd.CreateSpec {
-	return rrd.CreateSpec{
-		Step: 3 * time.Minute,
-		DS: []rrd.DSSpec{
-			{Name: "cpu", Type: "GAUGE", Heartbeat: 390 * time.Second, Min: floatPtr(0), Max: floatPtr(100)},
-			{Name: "ram", Type: "GAUGE", Heartbeat: 390 * time.Second, Min: floatPtr(0), Max: floatPtr(100)},
-		},
-		RRA: tierRRAs(),
-	}
-}
-
-func tempSpec() rrd.CreateSpec {
-	return rrd.CreateSpec{
-		Step: 3 * time.Minute,
-		DS: []rrd.DSSpec{
-			{Name: "value", Type: "GAUGE", Heartbeat: 390 * time.Second, Min: floatPtr(-100000), Max: floatPtr(250000)},
-		},
-		RRA: tierRRAs(),
-	}
-}
-
-func tierRRAs() []rrd.RRASpec {
-	result := make([]rrd.RRASpec, 0, 6)
-
-	for _, stepsRows := range []struct{ steps, rows int }{{1, 480}, {20, 720}} {
-		for _, cf := range []string{"AVERAGE", "MIN", "MAX"} {
-			result = append(result, rrd.RRASpec{CF: cf, XFF: 0.5, Steps: stepsRows.steps, Rows: stepsRows.rows})
-		}
-	}
-
-	return result
-}
-
-func floatPtr(value float64) *float64 {
-	return &value
 }
 
 func waitContext(ctx context.Context, duration time.Duration) error {

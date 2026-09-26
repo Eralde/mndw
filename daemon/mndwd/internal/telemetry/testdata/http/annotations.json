@@ -1,0 +1,14 @@
+{
+  "collections": {
+    "load": [
+      {
+        "id": "golden-annotation",
+        "ts": 1800000000000,
+        "topic": "wan.connected",
+        "label": "WAN connected"
+      }
+    ],
+    "temp": null
+  }
+}
+

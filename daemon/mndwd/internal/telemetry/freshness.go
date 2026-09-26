@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
 )
 
@@ -35,43 +36,52 @@ func ExpectedSlot(
 	if acquire <= 0 || tier <= 0 {
 		return 0, false
 	}
+
 	acquireMs := acquire.Milliseconds()
 	unsyncedMs := unsynced.Milliseconds()
+
 	if acquireMs <= 0 || unsyncedMs < 0 {
 		return 0, false
 	}
 
 	var best int64
 	found := false
+
 	for slot := firstAcquireElapsedMs; ; slot += acquireMs {
 		if slot > cutoffElapsedMs {
 			break
 		}
+
 		if slot+unsyncedMs > cutoffElapsedMs {
 			continue
 		}
+
 		best = slot
 		found = true
 
-		next, ok := CheckedAddInt64(slot, acquireMs)
+		next, ok := checkedAddInt64(slot, acquireMs)
+
 		if !ok {
 			break
 		}
+
 		_ = next
 	}
+
 	if !found {
 		return 0, false
 	}
 
-	mapped, err := MapUTC(anchor, best)
+	mapped, err := clock.MapUTC(anchor, best)
 	if err != nil {
 		return 0, false
 	}
-	return AlignSlot(mapped, tier), true
+
+	return clock.AlignSlot(mapped, tier), true
 }
 
 // clockMetadata builds response metadata from a snapshot end and pipeline state.
-func clockMetadata(state ClockState, historyEndMs *int64, current, replayPending bool) *ClockMetadata {
+func clockMetadata(state clock.State, historyEndMs *int64, current, replayPending bool) *ClockMetadata {
 	return &ClockMetadata{
 		State:          string(state),
 		HistoryEndMs:   historyEndMs,
@@ -98,28 +108,34 @@ func (r *snapshotRefresher) Refresh(ctx context.Context, status PipelineStatus) 
 	if err != nil {
 		return err
 	}
+
 	if snapshot == nil {
 		return nil
 	}
+
 	return nil
 }
 
 // Close cancels and joins an in-flight refresh.
 func (r *snapshotRefresher) Close(ctx context.Context) error {
 	r.mu.Lock()
+
 	cancel := r.cancel
 	done := r.done
 	r.started = false
 	r.cancel = nil
 	r.done = nil
+
 	r.mu.Unlock()
 
 	if cancel != nil {
 		cancel()
 	}
+
 	if done == nil {
 		return nil
 	}
+
 	select {
 	case <-done:
 		return nil

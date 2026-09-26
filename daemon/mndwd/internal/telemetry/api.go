@@ -6,13 +6,14 @@ import (
 	"net/url"
 
 	"mndwd/internal/httpx"
+	"mndwd/internal/telemetry/annotations"
 )
 
 type Handler struct {
 	cache            *SnapshotCache
 	gatheringEnabled func() bool
 	logger           *slog.Logger
-	annotations      *AnnotationStore
+	annotations      *annotations.Store
 }
 
 func NewHandler(cache *SnapshotCache, gatheringEnabled func() bool, logger *slog.Logger) *Handler {
@@ -31,7 +32,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	}
 }
 
-func (h *Handler) SetAnnotationStore(store *AnnotationStore) {
+func (h *Handler) SetAnnotationStore(store *annotations.Store) {
 	h.annotations = store
 }
 

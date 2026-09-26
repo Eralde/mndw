@@ -1,4 +1,4 @@
-package telemetry
+package clock
 
 import (
 	"context"
@@ -21,21 +21,21 @@ const (
 // outside the supported range. Callers must keep the sample time-unknown.
 var ErrUTCOverflow = errors.New("telemetry: UTC mapping out of range")
 
-// ClockState is the trust state of one boot's clock segment.
-type ClockState string
+// State is the trust state of one boot's clock segment.
+type State string
 
 const (
-	// ClockUnanchored means no trustworthy calendar time exists yet.
-	ClockUnanchored ClockState = "unanchored"
-	// ClockAnchored means retained samples of this segment can be mapped.
-	ClockAnchored ClockState = "anchored"
-	// ClockSuspect means the clock moved and publication is suppressed.
-	ClockSuspect ClockState = "suspect"
+	// Unanchored means no trustworthy calendar time exists yet.
+	Unanchored State = "unanchored"
+	// Anchored means retained samples of this segment can be mapped.
+	Anchored State = "anchored"
+	// Suspect means the clock moved and publication is suppressed.
+	Suspect State = "suspect"
 )
 
-// ClockView is the durable clock state of one boot segment.
-type ClockView struct {
-	State              ClockState
+// View is the durable clock state of one boot segment.
+type View struct {
+	State              State
 	Boot               journal.BootID
 	Segment            uint64
 	Anchor             *journal.Anchor
@@ -64,22 +64,25 @@ type EvidenceSource interface {
 	Read(context.Context, EvidenceRequest) (Evidence, error)
 }
 
-// CheckedSubInt64 subtracts with overflow detection.
-func CheckedSubInt64(a, b int64) (int64, bool) {
+// checkedSubInt64 subtracts with overflow detection.
+func checkedSubInt64(a, b int64) (int64, bool) {
 	if (b < 0 && a > maxInt64+b) || (b > 0 && a < minInt64+b) {
 		return 0, false
 	}
+
 	return a - b, true
 }
 
-// CheckedAddInt64 adds with overflow detection.
-func CheckedAddInt64(a, b int64) (int64, bool) {
+// checkedAddInt64 adds with overflow detection.
+func checkedAddInt64(a, b int64) (int64, bool) {
 	if a > 0 && b > maxInt64-a {
 		return 0, false
 	}
+
 	if a < 0 && b < minInt64-a {
 		return 0, false
 	}
+
 	return a + b, true
 }
 
@@ -91,99 +94,121 @@ const (
 // MapUTC maps a boot-relative elapsed instant to UTC milliseconds using an
 // anchor from the same boot.
 func MapUTC(anchor journal.Anchor, elapsedMs int64) (int64, error) {
-	delta, ok := CheckedSubInt64(elapsedMs, anchor.ElapsedMs)
+	delta, ok := checkedSubInt64(elapsedMs, anchor.ElapsedMs)
+
 	if !ok {
 		return 0, ErrUTCOverflow
 	}
-	utc, ok := CheckedAddInt64(anchor.UTCMs, delta)
+
+	utc, ok := checkedAddInt64(anchor.UTCMs, delta)
+
 	if !ok || utc < minUnixMillis || utc > maxUnixMillis {
 		return 0, ErrUTCOverflow
 	}
+
 	return utc, nil
 }
 
-// ClockTracker owns clock-state transitions. It proposes zero-sequence records;
+// Tracker owns clock-state transitions. It proposes zero-sequence records;
 // Install exposes a new anchor only after those records are durable.
-type ClockTracker struct {
+type Tracker struct {
 	policy Policy
-	view   ClockView
+	view   View
 }
 
-// NewClockState restores a tracker from a persisted view.
-func NewClockState(saved ClockView) *ClockTracker {
-	return NewClockStateWithPolicy(saved, DefaultPolicy())
+// Policy contains the clock transition bounds owned by this package.
+type Policy struct {
+	JumpThreshold      time.Duration
+	MaxObservationSpan time.Duration
 }
 
-// NewClockStateWithPolicy restores a tracker with explicit policy, for tests.
-func NewClockStateWithPolicy(saved ClockView, policy Policy) *ClockTracker {
+// NewTracker restores a tracker from a persisted view and explicit policy.
+func NewTracker(saved View, policy Policy) *Tracker {
 	if saved.State == "" {
-		saved.State = ClockUnanchored
+		saved.State = Unanchored
 	}
-	return &ClockTracker{policy: policy, view: saved}
+
+	return &Tracker{policy: policy, view: saved}
 }
 
 // View returns the current clock state.
-func (c *ClockTracker) View() ClockView {
+func (c *Tracker) View() View {
 	return c.view
 }
 
 // Install publishes a proposed view once its records are durable.
-func (c *ClockTracker) Install(view ClockView) {
+func (c *Tracker) Install(view View) {
 	c.view = view
 }
 
 // Check compares observed wall time with the anchor's prediction on every
 // acquisition. It suppresses publication immediately, before any transition can
 // be synced.
-func (c *ClockTracker) Check(reading Reading) (ClockView, []journal.Record, error) {
-	if c.view.Anchor == nil || c.view.State == ClockUnanchored {
+func (c *Tracker) Check(reading Reading) (View, []journal.Record, error) {
+	if c.view.Anchor == nil || c.view.State == Unanchored {
 		return c.view, nil, nil
 	}
+
 	if c.view.Boot != reading.Boot {
 		// An anchor from another boot never establishes current trust.
-		view := ClockView{State: ClockUnanchored, Boot: reading.Boot, Segment: c.view.Segment + 1}
+		view := View{State: Unanchored, Boot: reading.Boot, Segment: c.view.Segment + 1}
+
 		return view, transitionRecord(view), nil
 	}
 
 	predicted, err := MapUTC(*c.view.Anchor, reading.ElapsedMs)
 	if err != nil {
 		view := c.suspectView(reading, 0, "")
-		if c.view.State == ClockSuspect {
+
+		if c.view.State == Suspect {
 			return view, nil, nil
 		}
+
 		return view, transitionRecord(view), nil
 	}
-	delta, ok := CheckedSubInt64(reading.WallMs, predicted)
+
+	delta, ok := checkedSubInt64(reading.WallMs, predicted)
+
 	if !ok {
 		view := c.suspectView(reading, 0, "")
-		if c.view.State == ClockSuspect {
+
+		if c.view.State == Suspect {
 			return view, nil, nil
 		}
+
 		return view, transitionRecord(view), nil
 	}
+
 	if delta < 0 {
 		delta = -delta
 	}
+
 	if delta <= c.policy.JumpThreshold.Milliseconds() {
 		return c.view, nil, nil
 	}
+
 	view := c.suspectView(reading, 0, c.view.ConsumedEvidenceID)
-	if c.view.State == ClockSuspect && view.Segment == c.view.Segment {
+
+	if c.view.State == Suspect && view.Segment == c.view.Segment {
 		return view, nil, nil
 	}
+
 	return view, transitionRecord(view), nil
 }
 
-func (c *ClockTracker) suspectView(reading Reading, segment uint64, consumed string) ClockView {
+func (c *Tracker) suspectView(reading Reading, segment uint64, consumed string) View {
 	if segment == 0 {
 		segment = c.view.Segment
-		if c.view.State != ClockSuspect {
+
+		if c.view.State != Suspect {
 			segment++
 		}
 	}
+
 	elapsed := reading.ElapsedMs
-	return ClockView{
-		State:              ClockSuspect,
+
+	return View{
+		State:              Suspect,
 		Boot:               reading.Boot,
 		Segment:            segment,
 		Anchor:             c.view.Anchor,
@@ -192,14 +217,16 @@ func (c *ClockTracker) suspectView(reading Reading, segment uint64, consumed str
 	}
 }
 
-func transitionRecord(view ClockView) []journal.Record {
+func transitionRecord(view View) []journal.Record {
 	state := journal.StateUnanchored
+
 	switch view.State {
-	case ClockAnchored:
+	case Anchored:
 		state = journal.StateAnchored
-	case ClockSuspect:
+	case Suspect:
 		state = journal.StateSuspect
 	}
+
 	transition := journal.ClockTransition{
 		Boot:               view.Boot,
 		ClockSegment:       view.Segment,
@@ -211,30 +238,36 @@ func transitionRecord(view ClockView) []journal.Record {
 	if err != nil {
 		return nil
 	}
+
 	return []journal.Record{record}
 }
 
 // Observe proposes an anchor from a bracketed evidence observation. It returns
 // the proposed view and the records that must be durable before Install.
-func (c *ClockTracker) Observe(before, after Reading, evidence Evidence) (ClockView, []journal.Record, error) {
+func (c *Tracker) Observe(before, after Reading, evidence Evidence) (View, []journal.Record, error) {
 	if before.Boot != after.Boot {
 		return c.view, nil, errors.New("telemetry: clock observation spans boots")
 	}
+
 	if !before.Boot.IsZero() && evidence.Synchronized && c.view.Boot != before.Boot && !c.view.Boot.IsZero() {
 		return c.view, nil, errors.New("telemetry: clock observation belongs to another boot")
 	}
+
 	if after.ElapsedMs < before.ElapsedMs {
 		return c.view, nil, errors.New("telemetry: elapsed time decreased during observation")
 	}
 
 	elapsedSpan := after.ElapsedMs - before.ElapsedMs
 	wallSpan := after.WallMs - before.WallMs
+
 	if elapsedSpan > c.policy.MaxObservationSpan.Milliseconds() {
 		return c.view, nil, fmt.Errorf("telemetry: observation bracket %dms exceeds %s", elapsedSpan, c.policy.MaxObservationSpan)
 	}
+
 	if wallSpan < 0 {
 		wallSpan = -wallSpan
 	}
+
 	if wallSpan-elapsedSpan > c.policy.MaxObservationSpan.Milliseconds() {
 		return c.view, nil, errors.New("telemetry: wall time moved during observation")
 	}
@@ -244,7 +277,8 @@ func (c *ClockTracker) Observe(before, after Reading, evidence Evidence) (ClockV
 		// unsynchronized evidence cannot create one.
 		return c.view, nil, nil
 	}
-	if c.view.State == ClockSuspect && (!evidence.AfterSuspect || evidence.ID == "" || evidence.ID == c.view.ConsumedEvidenceID) {
+
+	if c.view.State == Suspect && (!evidence.AfterSuspect || evidence.ID == "" || evidence.ID == c.view.ConsumedEvidenceID) {
 		// A sticky synchronized flag never resolves a suspect segment; fresh,
 		// separately identified evidence is required.
 		return c.view, nil, nil
@@ -252,12 +286,14 @@ func (c *ClockTracker) Observe(before, after Reading, evidence Evidence) (ClockV
 
 	elapsedMid := before.ElapsedMs + elapsedSpan/2
 	wallMid := before.WallMs + (after.WallMs-before.WallMs)/2
+
 	if wallMid < minUnixMillis || wallMid > maxUnixMillis {
 		return c.view, nil, ErrUTCOverflow
 	}
 
 	segment := c.view.Segment
-	if c.view.State == ClockSuspect || c.view.Anchor == nil || c.view.Boot != before.Boot {
+
+	if c.view.State == Suspect || c.view.Anchor == nil || c.view.Boot != before.Boot {
 		segment++
 	}
 
@@ -274,6 +310,7 @@ func (c *ClockTracker) Observe(before, after Reading, evidence Evidence) (ClockV
 	if err != nil {
 		return c.view, nil, err
 	}
+
 	transition := journal.ClockTransition{
 		Boot:               before.Boot,
 		ClockSegment:       segment,
@@ -285,13 +322,14 @@ func (c *ClockTracker) Observe(before, after Reading, evidence Evidence) (ClockV
 		return c.view, nil, err
 	}
 
-	proposed := ClockView{
-		State:              ClockAnchored,
+	proposed := View{
+		State:              Anchored,
 		Boot:               before.Boot,
 		Segment:            segment,
 		Anchor:             &anchor,
 		ConsumedEvidenceID: evidence.ID,
 	}
+
 	return proposed, []journal.Record{anchorRecord, transitionRecord}, nil
 }
 
@@ -300,5 +338,6 @@ func AlignSlot(utcMs int64, slot time.Duration) int64 {
 	if slot <= 0 {
 		return utcMs
 	}
+
 	return utcMs - utcMs%slot.Milliseconds()
 }

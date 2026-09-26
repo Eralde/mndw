@@ -1,0 +1,39 @@
+{
+  "sessions": [
+    {
+      "id": "s1-01000000000000000000000000000000",
+      "bootOrder": "1",
+      "elapsedStartMs": 180000,
+      "elapsedEndMs": 180000,
+      "sampleCount": 1,
+      "conflictCount": 0,
+      "state": "anchored",
+      "utcStartMs": 1800000000000,
+      "utcEndMs": 1800000000000
+    }
+  ],
+  "storage": {
+    "mode": "ready",
+    "issues": [],
+    "journalBytes": null,
+    "journalLimitBytes": 8388608,
+    "pendingSampleCount": 2,
+    "oldestPendingSession": null,
+    "deliveryError": "fixture delivery unavailable",
+    "coverage": [
+      {
+        "series": 1,
+        "startMs": 1799999820000,
+        "endMs": 1800000000000,
+        "edgeComplete": true,
+        "complete": true,
+        "reasons": []
+      }
+    ],
+    "rebuildState": "rebuilding",
+    "droppedRecords": {
+      "fixture": "3"
+    }
+  }
+}
+

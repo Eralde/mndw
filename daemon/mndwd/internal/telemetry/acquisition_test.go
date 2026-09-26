@@ -9,7 +9,9 @@ import (
 
 	"mndw.local/rrd"
 
+	telemetryclock "mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
+	"mndwd/internal/telemetry/publication"
 )
 
 func TestSyncDeadlineDoesNotDependOnFuturePolls(t *testing.T) {
@@ -48,12 +50,12 @@ type fakeClock struct {
 	wall    int64
 }
 
-func (c *fakeClock) Read() (Reading, error) {
+func (c *fakeClock) Read() (telemetryclock.Reading, error) {
 	c.mu.Lock()
 
 	defer c.mu.Unlock()
 
-	return Reading{Boot: c.boot, ElapsedMs: c.elapsed, WallMs: c.wall}, nil
+	return telemetryclock.Reading{Boot: c.boot, ElapsedMs: c.elapsed, WallMs: c.wall}, nil
 }
 
 func (c *fakeClock) advance(delta int64) {
@@ -101,7 +103,7 @@ func (w *recordingPublicationWorker) Recover(context.Context) error {
 	return nil
 }
 
-func (w *recordingPublicationWorker) RunCycle(context.Context, PublicationCycle) error {
+func (w *recordingPublicationWorker) RunCycle(context.Context, publication.Cycle) error {
 	w.cycleCalls++
 
 	return w.runErr
@@ -177,7 +179,7 @@ func TestPipelinePublicationFailureRefreshesRecoveredSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipeline.publicationBus <- PublicationCycle{}
+	pipeline.publicationBus <- publication.Cycle{}
 
 	close(pipeline.publicationBus)
 	pipeline.runPublication(context.Background(), make(chan struct{}))
@@ -192,10 +194,10 @@ func TestPipelinePublicationFailureRefreshesRecoveredSnapshot(t *testing.T) {
 		t.Fatalf("pipeline error=%q, want %q", status.Error, publicationErr.Error())
 	}
 
-	diagnostic := (&sessionReader{limits: journal.DefaultLimits()}).storageStatus(&status, journal.RecoveryStatus{Mode: journal.StatusReady})
+	diagnostic := sessionStatus(status)
 
-	if diagnostic.DeliveryError == nil || *diagnostic.DeliveryError != publicationErr.Error() {
-		t.Fatalf("deliveryError=%v, want %q", diagnostic.DeliveryError, publicationErr.Error())
+	if diagnostic.Error != publicationErr.Error() {
+		t.Fatalf("session error=%q, want %q", diagnostic.Error, publicationErr.Error())
 	}
 }
 
@@ -210,9 +212,9 @@ func TestPipelineFlushSynchronizesPreviouslyAppendedRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipeline.acquire(context.Background(), Reading{Boot: clock.boot, ElapsedMs: 180000})
+	pipeline.acquire(context.Background(), telemetryclock.Reading{Boot: clock.boot, ElapsedMs: 180000})
 
-	if err := pipeline.flush(context.Background(), Reading{Boot: clock.boot, ElapsedMs: 180000}); err != nil {
+	if err := pipeline.flush(context.Background(), telemetryclock.Reading{Boot: clock.boot, ElapsedMs: 180000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -220,7 +222,7 @@ func TestPipelineFlushSynchronizesPreviouslyAppendedRecords(t *testing.T) {
 		t.Fatal("append left samples queued")
 	}
 
-	if err := pipeline.flush(context.Background(), Reading{Boot: clock.boot, ElapsedMs: 360000}); err != nil {
+	if err := pipeline.flush(context.Background(), telemetryclock.Reading{Boot: clock.boot, ElapsedMs: 360000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -353,11 +355,11 @@ func TestPipelineKeepsBoundedQueueWhenStorageUnavailable(t *testing.T) {
 	}
 
 	for i := 0; i < 50; i++ {
-		pipeline.acquire(context.Background(), Reading{Boot: clock.boot, ElapsedMs: clock.elapsed})
+		pipeline.acquire(context.Background(), telemetryclock.Reading{Boot: clock.boot, ElapsedMs: clock.elapsed})
 		clock.advance(1000)
 	}
 
-	if err := pipeline.flush(context.Background(), Reading{Boot: clock.boot, ElapsedMs: clock.elapsed}); err != nil {
+	if err := pipeline.flush(context.Background(), telemetryclock.Reading{Boot: clock.boot, ElapsedMs: clock.elapsed}); err != nil {
 		t.Fatalf("flush with unavailable storage: %v", err)
 	}
 
@@ -405,9 +407,9 @@ func TestPipelineReusesPersistedAcquisitionOrigin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	first.acquire(context.Background(), Reading{Boot: clock.boot, ElapsedMs: 180000})
+	first.acquire(context.Background(), telemetryclock.Reading{Boot: clock.boot, ElapsedMs: 180000})
 
-	if err := first.flush(context.Background(), Reading{Boot: clock.boot, ElapsedMs: 180000}); err != nil {
+	if err := first.flush(context.Background(), telemetryclock.Reading{Boot: clock.boot, ElapsedMs: 180000}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -461,7 +463,7 @@ func TestPipelineStopDrainsQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipeline.acquire(context.Background(), Reading{Boot: clock.boot, ElapsedMs: 180000})
+	pipeline.acquire(context.Background(), telemetryclock.Reading{Boot: clock.boot, ElapsedMs: 180000})
 
 	if pipeline.Status().PendingSamples == 0 {
 		t.Fatal("nothing queued")

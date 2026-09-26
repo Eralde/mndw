@@ -2,9 +2,11 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"mndw.local/rci"
+	"mndwd/internal/telemetry/clock"
 )
 
 func TestRCIEvidenceSourceUsesNestedNTPQueryPath(t *testing.T) {
@@ -21,7 +23,7 @@ func TestRCIEvidenceSourceUsesNestedNTPQueryPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	evidence, err := NewRCIEvidenceSource(client).Read(context.Background(), EvidenceRequest{})
+	evidence, err := NewRCIEvidenceSource(client).Read(context.Background(), clock.EvidenceRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,6 +34,14 @@ func TestRCIEvidenceSourceUsesNestedNTPQueryPath(t *testing.T) {
 
 	if string(requestBody) != `[{"show":{"ntp":{"status":{}}}}]` {
 		t.Fatalf("request body = %s", requestBody)
+	}
+}
+
+func TestEvidenceAdapterRefusesUnverifiedSelector(t *testing.T) {
+	source := NewRCIEvidenceSourceWithSelector(nil, ntpStatusSelector, false)
+
+	if _, err := source.Read(context.Background(), clock.EvidenceRequest{}); !errors.Is(err, ErrEvidenceUnverified) {
+		t.Fatalf("unverified selector queried: %v", err)
 	}
 }
 

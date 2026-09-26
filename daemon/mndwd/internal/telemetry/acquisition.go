@@ -10,7 +10,9 @@ import (
 
 	"mndw.local/rrd"
 
+	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
+	"mndwd/internal/telemetry/publication"
 )
 
 // Sampler polls one series. Failure yields unknown values, never a synthetic
@@ -19,18 +21,11 @@ type Sampler interface {
 	Poll(context.Context) ([]rrd.Value, error)
 }
 
-// PublicationCycle is one publication opportunity.
-type PublicationCycle struct {
-	CutoffElapsedMs int64
-	DurableThrough  uint64
-	Clock           ClockView
-}
-
 // PublicationWorker delivers derived output. The pipeline calls Recover before
 // the first RunCycle and after every successful reattachment.
 type PublicationWorker interface {
 	Recover(context.Context) error
-	RunCycle(context.Context, PublicationCycle) error
+	RunCycle(context.Context, publication.Cycle) error
 	CloseClean(context.Context) error
 }
 
@@ -44,7 +39,7 @@ type SnapshotRefresher interface {
 // PipelineStatus is an immutable snapshot of acquisition and storage state.
 type PipelineStatus struct {
 	Storage         journal.RecoveryStatus
-	Clock           ClockView
+	Clock           clock.View
 	DurableThrough  uint64
 	PendingSamples  int
 	PendingBytes    int
@@ -60,8 +55,8 @@ type PipelineStatus struct {
 // journal durability, and publication scheduling.
 type Pipeline struct {
 	policy   Policy
-	clock    BootClock
-	evidence EvidenceSource
+	clock    clock.BootClock
+	evidence clock.EvidenceSource
 	storage  journal.StorageProvider
 	samplers map[uint16]Sampler
 	logger   *slog.Logger
@@ -72,7 +67,7 @@ type Pipeline struct {
 
 	mu              sync.Mutex
 	flushMu         sync.Mutex
-	tracker         *ClockTracker
+	tracker         *clock.Tracker
 	queue           []journal.Record
 	queueBytes      int
 	loss            map[journal.LossReason]uint64
@@ -81,7 +76,7 @@ type Pipeline struct {
 	bootStartQueued bool
 	firstUnsynced   int64
 	lastSync        time.Time
-	publicationBus  chan PublicationCycle
+	publicationBus  chan publication.Cycle
 	lastSlot        map[int64]int64
 	runCancel       context.CancelFunc
 	runDone         chan struct{}
@@ -92,6 +87,13 @@ type Pipeline struct {
 
 // PipelineOption customizes a pipeline.
 type PipelineOption func(*Pipeline)
+
+func clockPolicy(policy Policy) clock.Policy {
+	return clock.Policy{
+		JumpThreshold:      policy.JumpThreshold,
+		MaxObservationSpan: policy.MaxObservationSpan,
+	}
+}
 
 // WithWaitUntil injects the elapsed-time scheduler used by tests.
 func WithWaitUntil(wait func(context.Context, int64) error) PipelineOption {
@@ -116,8 +118,8 @@ func WithSnapshotRefresher(refresher SnapshotRefresher) PipelineOption {
 // NewPipeline builds the telemetry coordinator.
 func NewPipeline(
 	policy Policy,
-	clock BootClock,
-	evidence EvidenceSource,
+	bootClock clock.BootClock,
+	evidence clock.EvidenceSource,
 	storage journal.StorageProvider,
 	samplers map[uint16]Sampler,
 	opts ...PipelineOption,
@@ -126,7 +128,7 @@ func NewPipeline(
 		return nil, err
 	}
 
-	if clock == nil {
+	if bootClock == nil {
 		return nil, errors.New("telemetry: boot clock is required")
 	}
 
@@ -150,21 +152,21 @@ func NewPipeline(
 
 	pipeline := &Pipeline{
 		policy:         policy,
-		clock:          clock,
+		clock:          bootClock,
 		evidence:       evidence,
 		storage:        storage,
 		samplers:       samplers,
 		logger:         slog.Default(),
-		tracker:        NewClockStateWithPolicy(ClockView{State: ClockUnanchored}, policy),
+		tracker:        clock.NewTracker(clock.View{State: clock.Unanchored}, clockPolicy(policy)),
 		loss:           map[journal.LossReason]uint64{},
 		lastSlot:       map[int64]int64{},
 		stopChan:       make(chan struct{}),
-		publicationBus: make(chan PublicationCycle, 1),
+		publicationBus: make(chan publication.Cycle, 1),
 		status:         PipelineStatus{Storage: storage.CurrentStatus(), DurableThrough: initialDurable, SupportedSeries: supportedFromSamplers(samplers), Loss: map[string]uint64{}},
 	}
 
 	if pipeline.waitUntil == nil {
-		pipeline.waitUntil = defaultWaitUntil(clock, policy)
+		pipeline.waitUntil = defaultWaitUntil(bootClock, policy)
 	}
 
 	for _, opt := range opts {
@@ -179,7 +181,7 @@ const maxWaitSlice = time.Second
 
 // defaultWaitUntil sleeps until the boot-relative deadline, re-reading the
 // clock so a clock step cannot extend the wait indefinitely.
-func defaultWaitUntil(clock BootClock, _ Policy) func(context.Context, int64) error {
+func defaultWaitUntil(clock clock.BootClock, _ Policy) func(context.Context, int64) error {
 	return func(ctx context.Context, deadlineMs int64) error {
 		for {
 			reading, err := clock.Read()
@@ -488,7 +490,7 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 
 	defer p.mu.Unlock()
 
-	view := ClockView{State: ClockUnanchored, Boot: boot}
+	view := clock.View{State: clock.Unanchored, Boot: boot}
 
 	if transitionSequence > 0 {
 		view.Segment = latestTransition.ClockSegment
@@ -496,9 +498,9 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 
 		switch latestTransition.State {
 		case journal.StateAnchored:
-			view.State = ClockAnchored
+			view.State = clock.Anchored
 		case journal.StateSuspect:
-			view.State = ClockSuspect
+			view.State = clock.Suspect
 			view.SuspectElapsedMs = latestTransition.SuspectElapsedMs
 		}
 
@@ -512,12 +514,12 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 				copy := anchor
 				view.Segment = segment
 				view.Anchor = &copy
-				view.State = ClockAnchored
+				view.State = clock.Anchored
 			}
 		}
 	}
 
-	p.tracker = NewClockStateWithPolicy(view, p.policy)
+	p.tracker = clock.NewTracker(view, clockPolicy(p.policy))
 
 	if origin > 0 {
 		p.origin = origin
@@ -539,7 +541,7 @@ func (p *Pipeline) currentBoot() (journal.BootID, error) {
 
 // pollEvidence performs one bracketed observation and durably installs any
 // proposed change.
-func (p *Pipeline) pollEvidence(ctx context.Context, reading Reading) {
+func (p *Pipeline) pollEvidence(ctx context.Context, reading clock.Reading) {
 	if p.evidence == nil {
 		return
 	}
@@ -547,11 +549,11 @@ func (p *Pipeline) pollEvidence(ctx context.Context, reading Reading) {
 	p.mu.Lock()
 
 	view := p.tracker.View()
-	request := EvidenceRequest{Boot: reading.Boot, SuspectElapsedMs: view.SuspectElapsedMs, ConsumedEvidenceID: view.ConsumedEvidenceID}
+	request := clock.EvidenceRequest{Boot: reading.Boot, SuspectElapsedMs: view.SuspectElapsedMs, ConsumedEvidenceID: view.ConsumedEvidenceID}
 
 	p.mu.Unlock()
 
-	before, after, evidence, err := ReadEvidence(ctx, p.clock, p.evidence, request)
+	before, after, evidence, err := clock.ReadEvidence(ctx, p.clock, p.evidence, request)
 	if err != nil {
 		p.logger.Debug("telemetry: clock evidence unavailable", "error", err)
 
@@ -589,7 +591,7 @@ func (p *Pipeline) pollEvidence(ctx context.Context, reading Reading) {
 }
 
 // acquire polls every sampler and queues one sample per series.
-func (p *Pipeline) acquire(ctx context.Context, reading Reading) {
+func (p *Pipeline) acquire(ctx context.Context, reading clock.Reading) {
 	p.mu.Lock()
 
 	view, transitions, err := p.tracker.Check(reading)
@@ -714,7 +716,7 @@ func (p *Pipeline) enqueue(records []journal.Record, elapsedMs int64) {
 
 // flush appends queued records and synchronizes when the durability deadline
 // elapsed.
-func (p *Pipeline) flush(ctx context.Context, reading Reading) error {
+func (p *Pipeline) flush(ctx context.Context, reading clock.Reading) error {
 	p.flushMu.Lock()
 
 	defer p.flushMu.Unlock()
@@ -835,7 +837,7 @@ func (p *Pipeline) syncNow(ctx context.Context) error {
 	return nil
 }
 
-func (p *Pipeline) maintain(ctx context.Context, reading Reading) {
+func (p *Pipeline) maintain(ctx context.Context, reading clock.Reading) {
 	lease, err := p.storage.Acquire(ctx)
 	if err != nil || lease.Result.Writer == nil {
 		if err == nil {
@@ -851,7 +853,7 @@ func (p *Pipeline) maintain(ctx context.Context, reading Reading) {
 
 	p.mu.Lock()
 
-	if p.tracker.View().State == ClockAnchored {
+	if p.tracker.View().State == clock.Anchored {
 		now := reading.WallMs
 		input.TrustedNowMs = &now
 	}
@@ -864,10 +866,10 @@ func (p *Pipeline) maintain(ctx context.Context, reading Reading) {
 }
 
 // schedulePublication hands one cycle to the publication worker.
-func (p *Pipeline) schedulePublication(reading Reading) {
+func (p *Pipeline) schedulePublication(reading clock.Reading) {
 	p.mu.Lock()
 
-	cycle := PublicationCycle{CutoffElapsedMs: reading.ElapsedMs, DurableThrough: p.status.DurableThrough, Clock: p.tracker.View()}
+	cycle := publication.Cycle{CutoffElapsedMs: reading.ElapsedMs, DurableThrough: p.status.DurableThrough, Clock: p.tracker.View()}
 
 	p.mu.Unlock()
 

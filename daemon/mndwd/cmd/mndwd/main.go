@@ -37,6 +37,8 @@ import (
 	"mndwd/internal/service"
 	"mndwd/internal/state"
 	"mndwd/internal/telemetry"
+	"mndwd/internal/telemetry/annotations"
+	"mndwd/internal/telemetry/sessions"
 )
 
 // version is stamped at build time via -ldflags "-X main.version=<v>" and
@@ -518,9 +520,9 @@ func registerAccess(mux *http.ServeMux, core daemonCore) persistentSessionRegist
 		}
 
 		telemetryHandler := telemetry.NewHandler(cache, registration.capability.IsEnabled, core.logger)
-		annotationStore, annotationErr := telemetry.NewAnnotationStore(telemetry.AnnotationStoreConfig{
+		annotationStore, annotationErr := annotations.NewStore(annotations.Config{
 			RRDDir:  core.cfg.RRDDir,
-			Catalog: telemetry.DefaultAnnotationCatalog{},
+			Catalog: annotations.DefaultCatalog{},
 			Logger:  core.logger,
 		})
 
@@ -535,7 +537,7 @@ func registerAccess(mux *http.ServeMux, core daemonCore) persistentSessionRegist
 		telemetryHandler.Register(accessMux)
 
 		// Diagnostic session routes are authenticated and never mutate storage.
-		telemetry.RegisterSessionRoutes(accessMux, registration.capability.SessionReader(), core.logger)
+		sessions.RegisterRoutes(accessMux, registration.capability.SessionReader(), core.logger)
 	}
 
 	// Keep the route mounted in dev so the host exercises the same consent contract;

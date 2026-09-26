@@ -1,6 +1,6 @@
 //go:build linux
 
-package telemetry
+package clock
 
 import (
 	"fmt"
@@ -24,6 +24,7 @@ func NewBootClock() BootClock {
 	if err != nil {
 		return newUnsupportedBootClock(err)
 	}
+
 	return newBootClock(boot, readElapsedMs, func() int64 { return time.Now().UnixMilli() })
 }
 
@@ -32,13 +33,16 @@ func readBootID(path string) (journal.BootID, error) {
 	if err != nil {
 		return journal.BootID{}, fmt.Errorf("telemetry: read boot id: %w", err)
 	}
+
 	return ParseBootID(strings.TrimSpace(string(raw)))
 }
 
 func readElapsedMs() (int64, error) {
 	var elapsed unix.Timespec
+
 	if err := unix.ClockGettime(unix.CLOCK_BOOTTIME, &elapsed); err != nil {
 		return 0, fmt.Errorf("telemetry: read boottime clock: %w", err)
 	}
+
 	return elapsed.Nano() / int64(time.Millisecond), nil
 }

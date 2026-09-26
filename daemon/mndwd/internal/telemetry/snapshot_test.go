@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"mndw.local/rrd"
+	"mndwd/internal/telemetry/clock"
 )
 
 type snapshotReader struct {
@@ -66,17 +67,19 @@ func TestSnapshotCacheRefreshesBothFilesOncePerWindow(t *testing.T) {
 	temperature := &snapshotReader{}
 	now := time.Unix(1_800_000_000, 0)
 	cache := NewSnapshotCache(load, temperature, func() time.Time { return now })
+
 	cache.SetSupportedSeries(map[uint16]bool{1: true, 2: true})
 
 	// Reads never invoke RRDtool; the pipeline refresher owns that work.
 	if _, err := cache.Get(context.Background(), true); err != nil {
 		t.Fatal(err)
 	}
+
 	if load.Calls() != 0 || temperature.Calls() != 0 {
 		t.Fatalf("read invoked RRDtool: (%d, %d)", load.Calls(), temperature.Calls())
 	}
 
-	if _, err := cache.Refresh(context.Background(), PipelineStatus{Clock: ClockView{State: ClockAnchored}}); err != nil {
+	if _, err := cache.Refresh(context.Background(), PipelineStatus{Clock: clock.View{State: clock.Anchored}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,15 +141,18 @@ func TestSnapshotGetDoesNotFetch(t *testing.T) {
 func TestSnapshotClonePreservesClockMetadata(t *testing.T) {
 	cache := NewSnapshotCache(nil, nil, nil)
 	end := int64(1800000000000)
+
 	cache.Publish(&Snapshot{
 		Keys:  map[string]SeriesSnapshot{},
-		Clock: &ClockMetadata{State: string(ClockSuspect), HistoryEndMs: &end, ReplayPending: true},
+		Clock: &ClockMetadata{State: string(clock.Suspect), HistoryEndMs: &end, ReplayPending: true},
 	})
+
 	got, err := cache.Get(context.Background(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Clock == nil || got.Clock.State != string(ClockSuspect) || got.Clock.HistoryEndMs == nil || !got.Clock.ReplayPending {
+
+	if got.Clock == nil || got.Clock.State != string(clock.Suspect) || got.Clock.HistoryEndMs == nil || !got.Clock.ReplayPending {
 		t.Fatalf("clock metadata lost during clone: %+v", got.Clock)
 	}
 }
@@ -160,12 +166,14 @@ func TestSnapshotRefreshErrorKeepsLastSnapshot(t *testing.T) {
 	if _, err := cache.Refresh(context.Background(), PipelineStatus{}); err != nil {
 		t.Fatal(err)
 	}
+
 	before, err := cache.Get(context.Background(), true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	load.err = context.DeadlineExceeded
+
 	if _, err := cache.Refresh(context.Background(), PipelineStatus{}); err == nil {
 		t.Fatal("refresh error accepted")
 	}
@@ -174,6 +182,7 @@ func TestSnapshotRefreshErrorKeepsLastSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(after.Keys["cpu"].Tiers["fine"].Samples) != len(before.Keys["cpu"].Tiers["fine"].Samples) {
 		t.Fatal("failed refresh replaced the last good snapshot")
 	}
@@ -219,6 +228,7 @@ func TestSnapshotCacheMarksTemperatureSupportedWithSampler(t *testing.T) {
 	temperature := &snapshotReader{unknown: true}
 	now := time.Unix(1_800_000_000, 0)
 	cache := NewSnapshotCache(load, temperature, func() time.Time { return now })
+
 	cache.SetSupportedSeries(map[uint16]bool{1: true, 2: true})
 
 	if _, err := cache.Refresh(context.Background(), PipelineStatus{}); err != nil {
@@ -252,6 +262,7 @@ func TestSnapshotCacheMarksTemperatureSupportedWithSampler(t *testing.T) {
 
 func TestSnapshotCacheEmptyGetUsesSupportedSeries(t *testing.T) {
 	cache := NewSnapshotCache(nil, nil, nil)
+
 	cache.SetSupportedSeries(map[uint16]bool{1: true, 2: true})
 
 	snapshot, err := cache.Get(context.Background(), true)
@@ -278,6 +289,7 @@ func TestSnapshotCacheThrottlesFailedRefreshes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read after failed refresh: %v", err)
 	}
+
 	if snapshot.Clock != nil && snapshot.Clock.HistoryCurrent {
 		t.Fatal("empty history reported as current")
 	}

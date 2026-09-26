@@ -1,0 +1,108 @@
+{
+  "keys": {
+    "cpu": {
+      "label": "CPU",
+      "supported": true,
+      "unit": "percent",
+      "tiers": {
+        "coarse": {
+          "stepMs": 3600000,
+          "samples": [
+            {
+              "ts": 1800000000000,
+              "min": 20,
+              "max": 20,
+              "mean": 20,
+              "ok": true
+            }
+          ]
+        },
+        "fine": {
+          "stepMs": 180000,
+          "samples": [
+            {
+              "ts": 1800000000000,
+              "min": 20,
+              "max": 20,
+              "mean": 20,
+              "ok": true
+            }
+          ]
+        }
+      }
+    },
+    "ram": {
+      "label": "RAM",
+      "supported": true,
+      "unit": "percent",
+      "tiers": {
+        "coarse": {
+          "stepMs": 3600000,
+          "samples": [
+            {
+              "ts": 1800000000000,
+              "min": 40,
+              "max": 40,
+              "mean": 40,
+              "ok": true
+            }
+          ]
+        },
+        "fine": {
+          "stepMs": 180000,
+          "samples": [
+            {
+              "ts": 1800000000000,
+              "min": 40,
+              "max": 40,
+              "mean": 40,
+              "ok": true
+            }
+          ]
+        }
+      }
+    },
+    "temp": {
+      "label": "cpu-thermal",
+      "supported": true,
+      "unit": "celsius",
+      "tiers": {
+        "coarse": {
+          "stepMs": 3600000,
+          "samples": [
+            {
+              "ts": 1800000000000,
+              "min": 42,
+              "max": 42,
+              "mean": 42,
+              "ok": true
+            }
+          ]
+        },
+        "fine": {
+          "stepMs": 180000,
+          "samples": [
+            {
+              "ts": 1800000000000,
+              "min": 42,
+              "max": 42,
+              "mean": 42,
+              "ok": true
+            }
+          ]
+        }
+      }
+    }
+  },
+  "gathering": {
+    "enabled": true
+  },
+  "clock": {
+    "state": "anchored",
+    "historyEndMs": 1800000000000,
+    "historyCurrent": true,
+    "replayPending": false
+  },
+  "sessionConfigured": true
+}
+

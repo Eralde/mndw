@@ -1,4 +1,4 @@
-package telemetry
+package publication
 
 import (
 	"context"
@@ -231,7 +231,7 @@ func (d *DerivedStore) Recover(ctx context.Context) error {
 }
 
 // RunCycle publishes one cycle of durable records.
-func (d *DerivedStore) RunCycle(ctx context.Context, cycle PublicationCycle) error {
+func (d *DerivedStore) RunCycle(ctx context.Context, cycle Cycle) error {
 	lease, err := d.storage.Acquire(ctx)
 	if err != nil {
 		return err

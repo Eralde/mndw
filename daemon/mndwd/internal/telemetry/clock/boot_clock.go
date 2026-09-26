@@ -1,4 +1,4 @@
-package telemetry
+package clock
 
 import (
 	"errors"
@@ -56,12 +56,15 @@ func (c *bootClock) Read() (Reading, error) {
 	}
 
 	c.mu.Lock()
+
 	defer c.mu.Unlock()
+
 	if elapsed < c.lastElapsed {
 		// CLOCK_BOOTTIME never decreases; clamp defensively so a bad read
 		// cannot make time appear to move backwards.
 		elapsed = c.lastElapsed
 	}
+
 	c.lastElapsed = elapsed
 
 	return Reading{Boot: c.boot, ElapsedMs: elapsed, WallMs: c.now()}, nil
@@ -72,9 +75,11 @@ func (c *bootClock) Read() (Reading, error) {
 // overlong, uppercase, or non-hexadecimal spelling.
 func ParseBootID(raw string) (journal.BootID, error) {
 	var id journal.BootID
+
 	if len(raw) != 36 {
 		return journal.BootID{}, errors.New("telemetry: boot id must be a 36-character uuid")
 	}
+
 	for _, i := range [...]int{8, 13, 18, 23} {
 		if raw[i] != '-' {
 			return journal.BootID{}, errors.New("telemetry: boot id must be hyphenated 8-4-4-4-12")
@@ -93,27 +98,36 @@ func ParseBootID(raw string) (journal.BootID, error) {
 	}
 
 	byteIndex := 0
+
 	for i := 0; i < len(raw); i++ {
 		if raw[i] == '-' {
 			continue
 		}
+
 		high, ok := digit(raw[i])
+
 		if !ok {
 			return journal.BootID{}, errors.New("telemetry: boot id must use lowercase hexadecimal digits")
 		}
+
 		i++
 		low, ok := digit(raw[i])
+
 		if !ok {
 			return journal.BootID{}, errors.New("telemetry: boot id must use lowercase hexadecimal digits")
 		}
+
 		id[byteIndex] = high<<4 | low
 		byteIndex++
 	}
+
 	if byteIndex != len(id) {
 		return journal.BootID{}, errors.New("telemetry: boot id must encode 16 bytes")
 	}
+
 	if id.IsZero() {
 		return journal.BootID{}, errors.New("telemetry: boot id must not be all zeroes")
 	}
+
 	return id, nil
 }

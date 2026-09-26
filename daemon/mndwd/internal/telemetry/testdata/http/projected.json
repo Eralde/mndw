@@ -1,0 +1,129 @@
+{
+  "keys": {
+    "cpu": {
+      "label": "CPU",
+      "supported": true,
+      "unit": "percent",
+      "points": [
+        {
+          "time": 1800000000000,
+          "value": 20
+        }
+      ],
+      "segments": [
+        {
+          "data": [
+            {
+              "time": 1800000000000,
+              "value": 20
+            }
+          ]
+        }
+      ],
+      "bands": [
+        {
+          "id": "range-0",
+          "data": [
+            {
+              "time": 1800000000000,
+              "min": 20,
+              "max": 20
+            }
+          ],
+          "color": "accent"
+        }
+      ],
+      "valueDomain": {
+        "min": 0,
+        "max": 100
+      }
+    },
+    "ram": {
+      "label": "RAM",
+      "supported": true,
+      "unit": "percent",
+      "points": [
+        {
+          "time": 1800000000000,
+          "value": 40
+        }
+      ],
+      "segments": [
+        {
+          "data": [
+            {
+              "time": 1800000000000,
+              "value": 40
+            }
+          ]
+        }
+      ],
+      "bands": [
+        {
+          "id": "range-0",
+          "data": [
+            {
+              "time": 1800000000000,
+              "min": 40,
+              "max": 40
+            }
+          ],
+          "color": "accent"
+        }
+      ],
+      "valueDomain": {
+        "min": 0,
+        "max": 100
+      }
+    },
+    "temp": {
+      "label": "cpu-thermal",
+      "supported": true,
+      "unit": "celsius",
+      "points": [
+        {
+          "time": 1800000000000,
+          "value": 42
+        }
+      ],
+      "segments": [
+        {
+          "data": [
+            {
+              "time": 1800000000000,
+              "value": 42
+            }
+          ]
+        }
+      ],
+      "bands": [
+        {
+          "id": "range-0",
+          "data": [
+            {
+              "time": 1800000000000,
+              "min": 42,
+              "max": 42
+            }
+          ],
+          "color": "accent"
+        }
+      ],
+      "valueDomain": {
+        "min": 37,
+        "max": 47
+      }
+    }
+  },
+  "gathering": {
+    "enabled": true
+  },
+  "clock": {
+    "state": "anchored",
+    "historyEndMs": 1800000000000,
+    "historyCurrent": true,
+    "replayPending": false
+  },
+  "sessionConfigured": true
+}
+

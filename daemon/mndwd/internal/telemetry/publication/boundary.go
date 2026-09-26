@@ -1,10 +1,11 @@
-package telemetry
+package publication
 
 import (
 	"time"
 
 	"mndw.local/rrd"
 
+	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
 )
 
@@ -54,9 +55,11 @@ func UnknownBoundaryPoints(boundary UnknownBoundary, mode UnknownBoundaryMode) [
 	}
 
 	values := make([]rrd.Value, 0, seriesValueCount(boundary.Series))
+
 	for i := 0; i < seriesValueCount(boundary.Series); i++ {
 		values = append(values, rrd.Unknown)
 	}
+
 	return []rrd.UpdatePoint{{Timestamp: time.UnixMilli(boundary.SlotMs).UTC(), Values: values}}
 }
 
@@ -72,14 +75,17 @@ func DetectBoundaries(samples []journal.Sample, anchorByBoot func(journal.BootID
 
 	for _, sample := range samples {
 		anchor, ok := anchorByBoot(sample.Boot)
+
 		if !ok {
 			continue
 		}
-		mapped, err := MapUTC(anchor, sample.ElapsedMs)
+
+		mapped, err := clock.MapUTC(anchor, sample.ElapsedMs)
 		if err != nil {
 			continue
 		}
-		slot := AlignSlot(mapped, stepForSeries(sample.Series))
+
+		slot := clock.AlignSlot(mapped, journal.StepForSeries(sample.Series))
 
 		if have {
 			switch {
@@ -92,7 +98,7 @@ func DetectBoundaries(samples []journal.Sample, anchorByBoot func(journal.BootID
 				boundaries = append(boundaries, UnknownBoundary{
 					Series:     sample.Series,
 					Kind:       BoundaryHeartbeat,
-					SlotMs:     previous + stepForSeries(sample.Series).Milliseconds(),
+					SlotMs:     previous + journal.StepForSeries(sample.Series).Milliseconds(),
 					LastMapped: &previous,
 				})
 			}
@@ -113,5 +119,6 @@ func seriesValueCount(series uint16) int {
 	if series == 2 {
 		return 1
 	}
+
 	return 2
 }

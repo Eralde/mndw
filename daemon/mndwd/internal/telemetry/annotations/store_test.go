@@ -1,4 +1,4 @@
-package telemetry
+package annotations
 
 import (
 	"bytes"
@@ -17,8 +17,8 @@ import (
 
 type annotationTestCatalog struct{}
 
-func (annotationTestCatalog) Collections() []AnnotationCollection {
-	return []AnnotationCollection{{Name: "load", Retention: time.Hour}, {Name: "temp", Retention: 2 * time.Hour}}
+func (annotationTestCatalog) Collections() []Collection {
+	return []Collection{{Name: "load", Retention: time.Hour}, {Name: "temp", Retention: 2 * time.Hour}}
 }
 
 func (annotationTestCatalog) LabelFor(topic string) (string, string, bool) {
@@ -33,7 +33,7 @@ func annotationEvent(id string, ts int64) events.Event {
 	return events.Event{ID: id, Ts: ts, Topic: contractEvents.TopicWanConnected, Source: contractEvents.SourceHook, Payload: json.RawMessage(`{"interface":"ppp0","address":"192.0.2.1","mask":"255.255.255.0","gateway":"192.0.2.254"}`)}
 }
 
-func TestAnnotationStoreLoadsPrunesAndFlushesAtomically(t *testing.T) {
+func TestStoreLoadsPrunesAndFlushesAtomically(t *testing.T) {
 	directory := t.TempDir()
 	now := time.Unix(10_000, 0)
 	initial := []Annotation{{ID: "old", Ts: now.Add(-3 * time.Hour).UnixMilli(), Topic: "wan.connected", Label: "old"}, {ID: "keep", Ts: now.Add(-30 * time.Minute).UnixMilli(), Topic: "wan.connected", Label: "keep"}}
@@ -46,7 +46,7 @@ func TestAnnotationStoreLoadsPrunesAndFlushesAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store, err := NewAnnotationStore(AnnotationStoreConfig{RRDDir: directory, Catalog: annotationTestCatalog{}, Now: func() time.Time { return now }})
+	store, err := NewStore(Config{RRDDir: directory, Catalog: annotationTestCatalog{}, Now: func() time.Time { return now }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,8 +77,8 @@ func TestAnnotationStoreLoadsPrunesAndFlushesAtomically(t *testing.T) {
 	}
 }
 
-func TestAnnotationStoreRunsIndependentlyOfTelemetrySampling(t *testing.T) {
-	store, err := NewAnnotationStore(AnnotationStoreConfig{RRDDir: t.TempDir(), Catalog: annotationTestCatalog{}})
+func TestStoreRunsIndependentlyOfTelemetrySampling(t *testing.T) {
+	store, err := NewStore(Config{RRDDir: t.TempDir(), Catalog: annotationTestCatalog{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,13 +115,16 @@ func (fs *annotationTestFS) ReadFile(name string) ([]byte, error) {
 
 func (fs *annotationTestFS) WriteFile(name string, data []byte, perm os.FileMode) error {
 	fs.mu.Lock()
+
 	fs.writes++
 	fail := fs.failWrites
+
 	fs.mu.Unlock()
 
 	if fail {
 		return errors.New("injected write failure")
 	}
+
 	return os.WriteFile(name, data, perm)
 }
 
@@ -133,7 +136,7 @@ func (fs *annotationTestFS) MkdirAll(path string, perm os.FileMode) error {
 
 func TestAnnotationPruningSkippedWithoutTrustedClock(t *testing.T) {
 	directory := t.TempDir()
-	store, err := NewAnnotationStore(AnnotationStoreConfig{
+	store, err := NewStore(Config{
 		RRDDir:     directory,
 		Catalog:    annotationTestCatalog{},
 		FileSystem: newAnnotationTestFS(t, directory),
@@ -148,6 +151,7 @@ func TestAnnotationPruningSkippedWithoutTrustedClock(t *testing.T) {
 	store.Consume(annotationEvent("old", 1_700_000_000_000))
 
 	annotations := store.Collections()["load"]
+
 	if len(annotations) != 1 || annotations[0].ID != "old" {
 		t.Fatalf("annotations=%+v", annotations)
 	}
@@ -155,7 +159,7 @@ func TestAnnotationPruningSkippedWithoutTrustedClock(t *testing.T) {
 
 func TestAnnotationRejectsUnprovenEventTimestamp(t *testing.T) {
 	directory := t.TempDir()
-	store, err := NewAnnotationStore(AnnotationStoreConfig{
+	store, err := NewStore(Config{
 		RRDDir:     directory,
 		Catalog:    annotationTestCatalog{},
 		FileSystem: newAnnotationTestFS(t, directory),
@@ -172,6 +176,7 @@ func TestAnnotationRejectsUnprovenEventTimestamp(t *testing.T) {
 	store.Consume(annotationEvent("proven", 1_800_000_000_000))
 
 	annotations := store.Collections()["load"]
+
 	if len(annotations) != 1 || annotations[0].ID != "proven" {
 		t.Fatalf("annotations=%+v", annotations)
 	}
@@ -182,7 +187,7 @@ func TestAnnotationFlushRetriesWhileDirty(t *testing.T) {
 	fs := newAnnotationTestFS(t, directory)
 	fs.failWrites = true
 
-	store, err := NewAnnotationStore(AnnotationStoreConfig{
+	store, err := NewStore(Config{
 		RRDDir:     directory,
 		Catalog:    annotationTestCatalog{},
 		FileSystem: fs,
@@ -193,21 +198,26 @@ func TestAnnotationFlushRetriesWhileDirty(t *testing.T) {
 	}
 
 	store.Consume(annotationEvent("evt", 1_800_000_000_000))
+
 	if err := store.Flush(context.Background()); err == nil {
 		t.Fatal("failed write accepted")
 	}
 
 	fs.mu.Lock()
+
 	fs.failWrites = false
+
 	fs.mu.Unlock()
 
 	if err := store.Flush(context.Background()); err != nil {
 		t.Fatalf("retry after failure: %v", err)
 	}
+
 	data, err := os.ReadFile(filepath.Join(directory, "load.annotations.json"))
 	if err != nil {
 		t.Fatalf("annotations not persisted: %v", err)
 	}
+
 	if !bytes.Contains(data, []byte("evt")) {
 		t.Fatalf("persisted=%s", data)
 	}

@@ -1,4 +1,4 @@
-package telemetry
+package annotations
 
 import (
 	"context"
@@ -24,13 +24,13 @@ type Annotation struct {
 	Label string `json:"label"`
 }
 
-type AnnotationCollection struct {
+type Collection struct {
 	Name      string
 	Retention time.Duration
 }
 
-type AnnotationCatalog interface {
-	Collections() []AnnotationCollection
+type Catalog interface {
+	Collections() []Collection
 	LabelFor(topic string) (collection string, label string, ok bool)
 }
 
@@ -54,9 +54,9 @@ func (osAnnotationFileSystem) MkdirAll(path string, perm os.FileMode) error {
 	return os.MkdirAll(path, perm)
 }
 
-type AnnotationStoreConfig struct {
+type Config struct {
 	RRDDir     string
-	Catalog    AnnotationCatalog
+	Catalog    Catalog
 	Now        func() time.Time
 	Interval   time.Duration
 	FileSystem annotationFileSystem
@@ -71,9 +71,9 @@ type AnnotationStoreConfig struct {
 	AcceptTimestamp func(event events.Event) bool
 }
 
-type AnnotationStore struct {
+type Store struct {
 	rrdDir          string
-	catalog         AnnotationCatalog
+	catalog         Catalog
 	now             func() time.Time
 	interval        time.Duration
 	fs              annotationFileSystem
@@ -91,7 +91,7 @@ type AnnotationStore struct {
 	closed      bool
 }
 
-func NewAnnotationStore(config AnnotationStoreConfig) (*AnnotationStore, error) {
+func NewStore(config Config) (*Store, error) {
 	if config.RRDDir == "" {
 		return nil, errors.New("telemetry annotation RRD directory is required")
 	}
@@ -116,7 +116,7 @@ func NewAnnotationStore(config AnnotationStoreConfig) (*AnnotationStore, error) 
 		config.Logger = slog.Default()
 	}
 
-	store := &AnnotationStore{
+	store := &Store{
 		rrdDir:          config.RRDDir,
 		catalog:         config.Catalog,
 		now:             config.Now,
@@ -145,16 +145,17 @@ func NewAnnotationStore(config AnnotationStoreConfig) (*AnnotationStore, error) 
 }
 
 // trustedClock returns trustworthy calendar time when available.
-func (s *AnnotationStore) trustedClock() (time.Time, bool) {
+func (s *Store) trustedClock() (time.Time, bool) {
 	if s.trustedNow == nil {
 		// No trust source configured: the existing Now seam is not evidence of
 		// trustworthy time, so pruning is skipped.
 		return time.Time{}, false
 	}
+
 	return s.trustedNow()
 }
 
-func (s *AnnotationStore) Start(parent context.Context, bus *events.Bus) error {
+func (s *Store) Start(parent context.Context, bus *events.Bus) error {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -234,7 +235,7 @@ func (s *AnnotationStore) Start(parent context.Context, bus *events.Bus) error {
 	return nil
 }
 
-func (s *AnnotationStore) Consume(event events.Event) {
+func (s *Store) Consume(event events.Event) {
 	collection, label, ok := s.catalog.LabelFor(string(event.Topic))
 
 	if !ok || label == "" {
@@ -271,12 +272,13 @@ func (s *AnnotationStore) Consume(event events.Event) {
 	s.dirty[collection] = s.versions[collection]
 }
 
-func (s *AnnotationStore) Flush(ctx context.Context) error {
+func (s *Store) Flush(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	s.mu.Lock()
+
 	if now, ok := s.trustedClock(); ok {
 		s.pruneLocked(now)
 	}
@@ -286,6 +288,7 @@ func (s *AnnotationStore) Flush(ctx context.Context) error {
 
 	for name, annotations := range s.annotations {
 		collections[name] = append([]Annotation(nil), annotations...)
+
 		if version, ok := s.dirty[name]; ok {
 			writtenVersions[name] = version
 		}
@@ -327,16 +330,18 @@ func (s *AnnotationStore) Flush(ctx context.Context) error {
 
 		// Clear dirty state only when no append happened during the write.
 		s.mu.Lock()
+
 		if s.dirty[collection.Name] == writtenVersions[collection.Name] {
 			delete(s.dirty, collection.Name)
 		}
+
 		s.mu.Unlock()
 	}
 
 	return nil
 }
 
-func (s *AnnotationStore) Close(ctx context.Context) error {
+func (s *Store) Close(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -375,7 +380,7 @@ func (s *AnnotationStore) Close(ctx context.Context) error {
 	return s.Flush(ctx)
 }
 
-func (s *AnnotationStore) Collections() map[string][]Annotation {
+func (s *Store) Collections() map[string][]Annotation {
 	s.mu.Lock()
 
 	defer s.mu.Unlock()
@@ -389,7 +394,7 @@ func (s *AnnotationStore) Collections() map[string][]Annotation {
 	return result
 }
 
-func (s *AnnotationStore) readCollection(collection AnnotationCollection) {
+func (s *Store) readCollection(collection Collection) {
 	path := filepath.Join(s.rrdDir, collection.Name+".annotations.json")
 	data, err := s.fs.ReadFile(path)
 	if err != nil {
@@ -421,7 +426,7 @@ func (s *AnnotationStore) readCollection(collection AnnotationCollection) {
 	s.annotations[collection.Name] = append([]Annotation(nil), valid...)
 }
 
-func (s *AnnotationStore) cutoffLocked(now time.Time) int64 {
+func (s *Store) cutoffLocked(now time.Time) int64 {
 	retention := time.Duration(0)
 
 	for _, collection := range s.catalog.Collections() {
@@ -433,7 +438,7 @@ func (s *AnnotationStore) cutoffLocked(now time.Time) int64 {
 	return now.Add(-retention).UnixMilli()
 }
 
-func (s *AnnotationStore) pruneLocked(now time.Time) {
+func (s *Store) pruneLocked(now time.Time) {
 	cutoff := s.cutoffLocked(now)
 
 	for collection, annotations := range s.annotations {
@@ -465,15 +470,15 @@ func allTopicsFilter() events.TopicFilter {
 	return filter
 }
 
-type DefaultAnnotationCatalog struct{}
+type DefaultCatalog struct{}
 
-func (DefaultAnnotationCatalog) Collections() []AnnotationCollection {
-	return []AnnotationCollection{
+func (DefaultCatalog) Collections() []Collection {
+	return []Collection{
 		{Name: "load", Retention: 30 * 24 * time.Hour},
 		{Name: "temp", Retention: 30 * 24 * time.Hour},
 	}
 }
 
-func (DefaultAnnotationCatalog) LabelFor(string) (string, string, bool) {
+func (DefaultCatalog) LabelFor(string) (string, string, bool) {
 	return "", "", false
 }

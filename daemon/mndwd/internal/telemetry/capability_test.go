@@ -11,6 +11,7 @@ import (
 
 	"mndw.local/rrd"
 
+	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
 )
 
@@ -113,16 +114,17 @@ type capabilityFakeSampler struct {
 
 func (s *capabilityFakeSampler) Poll(context.Context) ([]rrd.Value, error) {
 	s.calls++
+
 	return s.values, nil
 }
 
-func testCapabilityConfig(dir string, executor rrd.Executor, clock BootClock) CapabilityConfig {
+func testCapabilityConfig(dir string, executor rrd.Executor, bootClock clock.BootClock) CapabilityConfig {
 	return CapabilityConfig{
 		Executor:           executor,
 		RRDDir:             dir,
 		LoadSampler:        &capabilityFakeSampler{values: []rrd.Value{{Known: true, V: 20}, {Known: true, V: 40}}},
 		TemperatureSampler: &capabilityFakeSampler{values: []rrd.Value{{Known: true, V: 41000}}},
-		Clock:              clock,
+		Clock:              bootClock,
 		DesiredEnabled:     func() bool { return true },
 		Lifetime:           context.Background(),
 	}
@@ -135,6 +137,7 @@ func TestCapabilityEnableInitializesJournalBeforePolling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer func() { _ = capability.Close(context.Background()) }()
 
 	if err := capability.Start(context.Background()); err != nil {
@@ -145,15 +148,20 @@ func TestCapabilityEnableInitializesJournalBeforePolling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := os.Stat(filepath.Join(paths.JournalDir, "manifest.json")); err != nil {
 		t.Fatalf("journal not initialized: %v", err)
 	}
+
 	if capability.StorageStatus().Mode != journal.StatusReady {
 		t.Fatalf("storage=%+v", capability.StorageStatus())
 	}
+
 	// An unanchored boot must not create derived RRD files.
 	executor.mu.Lock()
+
 	defer executor.mu.Unlock()
+
 	for _, command := range executor.commands {
 		if command[0] == "create" {
 			t.Fatalf("unanchored boot created an RRD: %v", command)
@@ -168,14 +176,17 @@ func TestCapabilityMissingRRDtoolStillAcquires(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer func() { _ = capability.Close(context.Background()) }()
 
 	if err := capability.Start(context.Background()); err != nil {
 		t.Fatalf("missing RRDtool blocked acquisition: %v", err)
 	}
+
 	if capability.StorageStatus().Mode != journal.StatusReady {
 		t.Fatalf("storage=%+v", capability.StorageStatus())
 	}
+
 	if capability.pipeline == nil {
 		t.Fatal("pipeline not started")
 	}
@@ -198,6 +209,7 @@ func TestCapabilitySetEnabledRollsBackOnFailure(t *testing.T) {
 	if err := capability.SetEnabled(context.Background(), true); err == nil {
 		t.Fatal("enable without samplers accepted")
 	}
+
 	if capability.IsEnabled() {
 		t.Fatal("failed enable left capability enabled")
 	}
@@ -217,20 +229,25 @@ func TestCapabilityDisableJoinsPipelineAndReenableReopens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer func() { _ = capability.Close(context.Background()) }()
 
 	if err := capability.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := capability.SetEnabled(context.Background(), false); err != nil {
 		t.Fatalf("disable: %v", err)
 	}
+
 	if capability.pipeline != nil {
 		t.Fatal("disable did not join the pipeline")
 	}
+
 	if err := capability.SetEnabled(context.Background(), true); err != nil {
 		t.Fatalf("reenable: %v", err)
 	}
+
 	if capability.StorageStatus().Mode != journal.StatusReady {
 		t.Fatalf("storage after reenable=%+v", capability.StorageStatus())
 	}

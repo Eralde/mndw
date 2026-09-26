@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"mndw.local/rrd"
+
+	"mndwd/internal/telemetry/clock"
 )
 
 const snapshotRefreshAge = 15 * time.Minute
@@ -113,30 +115,39 @@ func NewSnapshotCache(load SnapshotReader, temperature SnapshotReader, now func(
 // and never touches disk: a pipeline-owned refresher owns that work.
 func (c *SnapshotCache) Get(_ context.Context, enabled bool) (*Snapshot, error) {
 	c.mu.Lock()
+
 	defer c.mu.Unlock()
 
 	configured := c.sessionConfigured != nil && c.sessionConfigured()
 
 	if !enabled {
 		snapshot := emptySnapshot(false)
+
 		if c.snapshot != nil {
 			snapshot = cloneSnapshot(c.snapshot)
 			snapshot.Gathering.Enabled = false
 		}
+
 		snapshot.SessionConfigured = configured
+
 		return snapshot, nil
 	}
 
 	if c.snapshot != nil {
 		snapshot := cloneSnapshot(c.snapshot)
 		snapshot.SessionConfigured = configured
+
 		return snapshot, nil
 	}
+
 	// No dated history yet: report an empty snapshot with false freshness
 	// rather than querying an epoch window.
 	snapshot := emptySnapshot(true)
+
 	applySupportedSeries(snapshot, c.supportedSeries)
+
 	snapshot.SessionConfigured = configured
+
 	return snapshot, nil
 }
 
@@ -147,6 +158,7 @@ func (c *SnapshotCache) Publish(snapshot *Snapshot) {
 	}
 
 	c.mu.Lock()
+
 	defer c.mu.Unlock()
 
 	c.snapshot = cloneSnapshot(snapshot)
@@ -158,6 +170,7 @@ func (c *SnapshotCache) Publish(snapshot *Snapshot) {
 // snapshot can distinguish "no data yet" from "device lacks this sensor".
 func (c *SnapshotCache) SetSupportedSeries(supported map[uint16]bool) {
 	c.mu.Lock()
+
 	defer c.mu.Unlock()
 
 	c.supportedSeries = supported
@@ -168,6 +181,7 @@ func (c *SnapshotCache) SetSupportedSeries(supported map[uint16]bool) {
 // flag so consumers know whether durable history can be collected.
 func (c *SnapshotCache) SetSessionConfigured(fn func() bool) {
 	c.mu.Lock()
+
 	defer c.mu.Unlock()
 
 	c.sessionConfigured = fn
@@ -179,24 +193,34 @@ func (c *SnapshotCache) Refresh(ctx context.Context, status PipelineStatus) (*Sn
 	snapshot, err := c.refresh(ctx)
 	if err != nil {
 		c.mu.Lock()
+
 		c.refreshErr = err
+
 		c.mu.Unlock()
+
 		return nil, err
 	}
 
 	c.mu.Lock()
+
 	supported := c.supportedSeries
+
 	c.mu.Unlock()
 	applySupportedSeries(snapshot, supported)
 
 	c.mu.Lock()
+
 	configured := c.sessionConfigured != nil && c.sessionConfigured()
+
 	c.mu.Unlock()
+
 	snapshot.SessionConfigured = configured
 
 	metadata := metadataFromStatus(snapshot, status)
 	snapshot.Clock = metadata
+
 	c.Publish(snapshot)
+
 	return snapshot, nil
 }
 
@@ -204,16 +228,20 @@ func (c *SnapshotCache) Refresh(ctx context.Context, status PipelineStatus) (*Sn
 // pipeline state. A failed or stale series makes freshness false.
 func metadataFromStatus(snapshot *Snapshot, status PipelineStatus) *ClockMetadata {
 	var end *int64
+
 	if snapshot != nil {
 		for _, series := range snapshot.Keys {
 			for _, tier := range series.Tiers {
 				if len(tier.Samples) == 0 {
 					continue
 				}
+
 				last := tier.Samples[len(tier.Samples)-1]
+
 				if last.Timestamp <= 0 {
 					continue
 				}
+
 				if end == nil || last.Timestamp > *end {
 					value := last.Timestamp
 					end = &value
@@ -223,10 +251,13 @@ func metadataFromStatus(snapshot *Snapshot, status PipelineStatus) *ClockMetadat
 	}
 
 	state := status.Clock.State
+
 	if state == "" {
-		state = ClockUnanchored
+		state = clock.Unanchored
 	}
-	current := end != nil && status.Clock.State == ClockAnchored && status.PendingSamples == 0
+
+	current := end != nil && status.Clock.State == clock.Anchored && status.PendingSamples == 0
+
 	return clockMetadata(state, end, current, status.PendingSamples > 0)
 }
 
@@ -345,6 +376,7 @@ func applySupportedSeries(snapshot *Snapshot, supported map[uint16]bool) {
 	if snapshot == nil || supported == nil {
 		return
 	}
+
 	for series, key := range seriesKeyMap {
 		if s, ok := snapshot.Keys[key]; ok && supported[series] {
 			s.Supported = true
@@ -402,12 +434,15 @@ func cloneSnapshot(input *Snapshot) *Snapshot {
 
 	output := emptySnapshot(input.Gathering.Enabled)
 	output.SessionConfigured = input.SessionConfigured
+
 	if input.Clock != nil {
 		clock := *input.Clock
+
 		if input.Clock.HistoryEndMs != nil {
 			value := *input.Clock.HistoryEndMs
 			clock.HistoryEndMs = &value
 		}
+
 		output.Clock = &clock
 	}
 

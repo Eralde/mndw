@@ -8,6 +8,7 @@ import {AppComponent} from './app/app.component';
 import {LiveMapNodeDetailsSource} from './node-details-source';
 import {openNodeDrawer} from './open-node-drawer';
 import {MwsDataService} from './services/mws-data.service';
+import {MwsdStatusService} from './services/mwsd-status.service';
 import {MwsWriteService} from './services/mws-write.service';
 import {ExtraFeaturesBannerStore} from './services/extra-features-banner.store';
 import {NodePositionStore} from './services/node-position.store';
@@ -81,6 +82,7 @@ export function createMwsMapInstance(
       provideTranslator(ctx.i18n),
       MwsApiService,
       {provide: MWS_RENAME_API, useExisting: MwsApiService},
+      MwsdStatusService,
       dataServiceProvider,
       MwsWriteService,
       ExtraFeaturesBannerStore,

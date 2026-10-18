@@ -1,26 +1,11 @@
 import {TestBed} from '@angular/core/testing';
-import {
-  BackendBadGateway,
-  BackendBlocked,
-  BackendDisabled,
-  BackendIncompatible,
-  BackendMaintenance,
-  BackendNotApproved,
-  BackendStarting,
-  type BackendStatus,
-  BackendUnavailable,
-} from '@mndw/sdk';
+import {BackendBadGateway} from '@mndw/sdk';
 import {Subject, of, throwError} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {MwsMemberResult} from '../api/mws-api.service';
 import {findNodeById} from '../domain/mws/map-builder';
 import {fakeBackend, goodApi, makeLiveService, makeLiveServiceWithBackend} from '../test-support/mws-data-test-support';
-import {
-  EXTRA_FEATURES_STARTING_TIMEOUT_MS,
-  MWSD_STATUS_POLL_INTERVAL_MS,
-  MWSD_STATUS_REQUEST_TIMEOUT_MS,
-  POLL_INTERVAL_MS,
-} from './mws-data.service';
+import {MWSD_STATUS_POLL_INTERVAL_MS, MWSD_STATUS_REQUEST_TIMEOUT_MS, POLL_INTERVAL_MS} from './mws-data.service';
 
 const activeResponse = (): Response =>
   new Response(
@@ -42,9 +27,18 @@ describe('MwsDataService', () => {
     vi.useRealTimers();
   });
 
-  it('refreshes map data and mwsd status every three seconds', () => {
+  it('refreshes map data every three seconds', async () => {
+    const api = goodApi();
+    const service = makeLiveService(api);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
     expect(POLL_INTERVAL_MS).toBe(3_000);
-    expect(MWSD_STATUS_POLL_INTERVAL_MS).toBe(3_000);
+    expect(api.showMwsMember).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
+
+    expect(api.showMwsMember).toHaveBeenCalledTimes(2);
   });
 
   it('reaches ready with the built forest after version + first poll succeed', async () => {
@@ -72,6 +66,25 @@ describe('MwsDataService', () => {
     expect(service.phase()).toBe('ready');
     expect(service.extraFeaturesAvailability()).toBe('unavailable');
     expect(service.extraFeaturesPresentation()).toBe('unavailable');
+    expect(service.roots().some((node) => node.mwsdStatus !== undefined)).toBe(false);
+  });
+
+  it('retries without starting duplicate mwsd polling loops', async () => {
+    const fetch = vi.fn(() => Promise.resolve(activeResponse()));
+    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch));
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    service.retry();
+    expect(service.extraFeaturesAvailability()).toBe('checking');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS);
+
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it('debounces limited header presentation while invalidating persistent projection immediately', async () => {
@@ -90,121 +103,13 @@ describe('MwsDataService', () => {
     await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS);
     expect(service.extraFeaturesAvailability()).toBe('limited');
     expect(service.extraFeaturesPresentation()).toBe('active');
+    expect(service.phase()).toBe('ready');
+    expect(service.pollError()).toBe(false);
     expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('unavailable');
     expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.wifiPower).toBeUndefined();
 
     await vi.advanceTimersByTimeAsync(MWSD_STATUS_POLL_INTERVAL_MS);
     expect(service.extraFeaturesPresentation()).toBe('limited');
-  });
-
-  it('shows taking-longer presentation after continuous starting and resets on retry', async () => {
-    const api = goodApi();
-    const fetch = vi.fn().mockRejectedValue(new BackendStarting('nodes', null));
-    const service = makeLiveServiceWithBackend(api, fakeBackend(fetch));
-
-    service.start();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(service.extraFeaturesAvailability()).toBe('starting');
-    expect(service.extraFeaturesPresentation()).toBe('starting');
-
-    await vi.advanceTimersByTimeAsync(EXTRA_FEATURES_STARTING_TIMEOUT_MS);
-    expect(service.extraFeaturesAvailability()).toBe('starting');
-    expect(service.extraFeaturesPresentation()).toBe('taking-longer');
-
-    service.retry();
-    expect(service.extraFeaturesPresentation()).toBe('checking');
-  });
-
-  it.each(
-    [
-      ['starting', new BackendStarting('nodes', null)],
-      ['starting', new BackendMaintenance('nodes', 4)],
-      ['unavailable', new BackendUnavailable('nodes')],
-      ['blocked', new BackendDisabled('nodes')],
-      ['blocked', new BackendNotApproved('nodes')],
-      [
-        'blocked',
-        new BackendBlocked('nodes', [{permission: 'persistent-rci-session:write', reason: 'not-granted'}], 2),
-      ],
-      ['incompatible', new BackendIncompatible('nodes')],
-    ] as const,
-  )('maps lifecycle error to immediate %s availability', async (expected, error) => {
-    const service = makeLiveServiceWithBackend(
-      goodApi(),
-      fakeBackend(vi.fn().mockRejectedValueOnce(error)),
-    );
-
-    service.start();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(service.extraFeaturesAvailability()).toBe(expected);
-    expect(service.extraFeaturesPresentation()).toBe(expected);
-  });
-
-  it.each(
-    [
-      ['blocked', 'DISABLED'],
-      ['blocked', 'NOT_APPROVED'],
-      ['starting', 'BACKEND_STARTING'],
-      ['unavailable', 'BACKEND_UNAVAILABLE'],
-      ['incompatible', 'BACKEND_INCOMPATIBLE'],
-      ['limited', 'BAD_GATEWAY'],
-    ] as const,
-  )('classifies stable backend code %s across SDK bundle boundaries', async (expected, code) => {
-    const foreignError = code === 'DISABLED' || code === 'NOT_APPROVED'
-      ? Object.assign(new Error(`foreign ${code}`), {code})
-      : Object.assign(new Error(`foreign ${code}`), {daemonCode: code});
-    const service = makeLiveServiceWithBackend(
-      goodApi(),
-      fakeBackend(vi.fn().mockRejectedValueOnce(foreignError)),
-    );
-
-    service.start();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(service.extraFeaturesAvailability()).toBe(expected);
-    // 'limited' presentation is debounced (>=2 consecutive limited polls); a single poll leaves
-    // presentation at its initial 'checking'. See the dedicated debounce test above.
-    expect(service.extraFeaturesPresentation()).toBe(expected === 'limited' ? 'checking' : expected);
-  });
-
-  it('derives setup reasons from a data-route BACKEND_BLOCKED error', async () => {
-    const error = new BackendBlocked(
-      'nodes',
-      [
-        {permission: 'persistent-rci-session:write', reason: 'not-granted'},
-        {permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
-          prerequisite: 'controller-token'},
-      ],
-      2,
-    );
-    const service = makeLiveServiceWithBackend(
-      goodApi(),
-      fakeBackend(vi.fn().mockRejectedValueOnce(error)),
-    );
-
-    service.start();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(service.extraFeaturesAvailability()).toBe('blocked');
-    expect(service.extraFeaturesSetupReasons()).toEqual(['permission', 'controller-token']);
-  });
-
-  it('resets availability and presentation before every reconnect cycle', async () => {
-    const fetch = vi.fn(() => Promise.resolve(activeResponse()));
-    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch));
-
-    service.start();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(service.extraFeaturesAvailability()).toBe('active');
-
-    service.start();
-    expect(service.extraFeaturesAvailability()).toBe('checking');
-    expect(service.extraFeaturesPresentation()).toBe('checking');
-
-    await vi.advanceTimersByTimeAsync(0);
-    expect(service.extraFeaturesAvailability()).toBe('active');
-    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('uses the refreshed typed controller description as the graph name', async () => {
@@ -224,19 +129,22 @@ describe('MwsDataService', () => {
 
   it('stays in error and never polls when show.version fails; retry recovers', async () => {
     const api = goodApi();
+    const fetch = vi.fn(() => Promise.resolve(activeResponse()));
 
     api.showVersion.mockReturnValueOnce(throwError(() => new Error('boom')));
 
-    const service = makeLiveService(api);
+    const service = makeLiveServiceWithBackend(api, fakeBackend(fetch));
 
     service.start();
     await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
     expect(service.phase()).toBe('error');
     expect(api.showMwsMember).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
 
     service.retry();
     await vi.advanceTimersByTimeAsync(0);
     expect(service.phase()).toBe('ready');
+    expect(fetch).toHaveBeenCalledOnce();
   });
 
   it('shows a full-page error when the first poll fails', async () => {
@@ -302,10 +210,11 @@ describe('MwsDataService', () => {
 
   it('treats unsupported as terminal until the service is remounted', async () => {
     const api = goodApi();
+    const fetch = vi.fn(() => Promise.resolve(activeResponse()));
 
     api.showMwsMember.mockReturnValue(of<MwsMemberResult>({kind: 'unsupported'}));
 
-    const service = makeLiveService(api);
+    const service = makeLiveServiceWithBackend(api, fakeBackend(fetch));
 
     service.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -318,6 +227,7 @@ describe('MwsDataService', () => {
 
     expect(service.phase()).toBe('unsupported');
     expect(api.showMwsMember).toHaveBeenCalledTimes(callsAfterUnsupported);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('skips polls while hidden and refreshes immediately on becoming visible', async () => {
@@ -462,103 +372,6 @@ describe('MwsDataService', () => {
     expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('live');
   });
 
-  it('asks status before showing extender-session setup when targets have no sessions', async () => {
-    const fetch = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          lastRefreshAt: new Date().toISOString(),
-          persistentAvailable: true,
-          persistentTargetCount: 2,
-          persistentSessionCount: 0,
-          persistentSessions: [],
-        }),
-        {status: 200},
-      ),
-    );
-    const status = vi.fn().mockResolvedValue({
-      kind: 'service',
-      state: 'ready',
-      retryAfterSeconds: null,
-    } as BackendStatus);
-    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch, status));
-
-    service.start();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(status).toHaveBeenCalledTimes(1);
-    expect(service.extraFeaturesAvailability()).toBe('unavailable');
-    expect(service.extraFeaturesSetupReasons()).toEqual(['extender-session']);
-  });
-
-  it.each(
-    [
-      [{state: 'disabled'}, 'blocked', ['generic']],
-      [{state: 'not-approved'}, 'blocked', ['generic']],
-      [{state: 'maintenance', retryAfterSeconds: 2}, 'starting', []],
-      [{state: 'starting', retryAfterSeconds: 3}, 'starting', []],
-      [{state: 'incompatible', requiredProtocol: 2, supportedProtocols: [1]}, 'incompatible', []],
-      [{state: 'unavailable'}, 'unavailable', []],
-      [{state: 'blocked', blockers: [{permission: 'persistent-rci-session:write', reason: 'not-granted'}]}, 'blocked', [
-        'permission',
-      ]],
-      [
-        {state: 'blocked',
-          blockers: [{permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
-            prerequisite: 'controller-token'}]},
-        'blocked',
-        ['controller-token'],
-      ],
-    ] as const,
-  )('maps live backend status %o to %s', async (backendStatus, expected, reasons) => {
-    const fetch = vi.fn().mockRejectedValue(new Error('nodes unavailable'));
-    const status = vi.fn().mockResolvedValue(
-      {kind: 'service', retryAfterSeconds: null, ...backendStatus} as BackendStatus,
-    );
-    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch, status));
-
-    service.start();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(service.extraFeaturesAvailability()).toBe(expected);
-    expect(service.extraFeaturesSetupReasons()).toEqual(reasons);
-    expect(status).toHaveBeenCalledTimes(1);
-  });
-
-  it('preserves both blocker setup reasons and maps unknown codes to generic', async () => {
-    const fetch = vi.fn().mockRejectedValue(new Error('nodes unavailable'));
-    const status = vi.fn().mockResolvedValue({
-      kind: 'service',
-      state: 'blocked',
-      retryAfterSeconds: null,
-      blockers: [
-        {permission: 'persistent-rci-session:write', reason: 'not-granted'},
-        {permission: 'persistent-rci-session:write', reason: 'prerequisite-unavailable',
-          prerequisite: 'controller-token'},
-        {permission: 'persistent-rci-session:write', reason: 'future-reason', prerequisite: 'future-code'},
-      ],
-    } as BackendStatus);
-    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch, status));
-
-    service.start();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(service.extraFeaturesSetupReasons()).toEqual(['permission', 'controller-token', 'generic']);
-  });
-
-  it('maps a failed nodes request with ready status to limited', async () => {
-    const fetch = vi.fn().mockRejectedValue(new Error('nodes unavailable'));
-    const status = vi.fn().mockResolvedValue(
-      {kind: 'service', state: 'ready', retryAfterSeconds: null} as BackendStatus,
-    );
-    const service = makeLiveServiceWithBackend(goodApi(), fakeBackend(fetch, status));
-
-    service.start();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(service.extraFeaturesAvailability()).toBe('limited');
-    expect(service.extraFeaturesSetupReasons()).toEqual([]);
-  });
-
   it('keeps RCI ready when mwsd rejects and recovers on a later status tick', async () => {
     const api = goodApi();
     const fetch = vi.fn()
@@ -662,5 +475,25 @@ describe('MwsDataService', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.persistentSession).toBe(true);
+  });
+
+  it('prunes retained persistent sessions when a node leaves the topology', async () => {
+    const api = goodApi();
+    const backend = fakeBackend(vi.fn(() => Promise.resolve(activeResponse())));
+    const service = makeLiveServiceWithBackend(api, backend);
+
+    service.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.persistentSession).toBe(true);
+
+    api.showMwsMember.mockReturnValueOnce(of<MwsMemberResult>({kind: 'ok', members: []}));
+    service.refreshNow();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(service.roots()[0]?.children).toHaveLength(0);
+
+    service.refreshNow();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.persistentSession).toBeUndefined();
   });
 });

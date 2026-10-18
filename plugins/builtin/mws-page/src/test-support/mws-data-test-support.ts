@@ -8,6 +8,7 @@ import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
 import {DEVICE_INFO, MWSD_BACKEND, MWS_MOCK_OPTIONS, type MwsMockOptions} from '../tokens';
 import {MwsDataService} from '../services/mws-data.service';
+import {MwsdStatusService} from '../services/mwsd-status.service';
 import {MwsMockDataService} from '../services/mws-mock-data.service';
 
 export interface FakeApi {
@@ -59,6 +60,7 @@ export function makeLiveServiceWithBackend(api: FakeApi, backend: BackendClient 
   TestBed.configureTestingModule({
     providers: [
       MwsDataService,
+      MwsdStatusService,
       {provide: MwsApiService, useValue: api as unknown as MwsApiService},
       {provide: DEVICE_INFO, useValue: HOST},
       {provide: MWSD_BACKEND, useValue: backend},
@@ -86,6 +88,7 @@ export function makeMockService(
   TestBed.configureTestingModule({
     providers: [
       MwsMockDataService,
+      MwsdStatusService,
       {provide: MwsApiService, useValue: api as unknown as MwsApiService},
       {provide: DEVICE_INFO, useValue: HOST},
       {provide: MWSD_BACKEND, useValue: backend},

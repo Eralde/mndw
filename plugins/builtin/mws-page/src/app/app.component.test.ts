@@ -1,10 +1,17 @@
 import '@angular/compiler';
-import {DestroyRef, inject, signal, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {
+  DestroyRef,
+  type Signal,
+  type WritableSignal,
+  inject,
+  signal,
+  ɵresolveComponentResources as resolveComponentResources,
+} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
 import type {OverlayCloseEvent, OverlayLayer, OverlayService, PageRoute} from '@mndw/sdk';
 import {createTranslatorSignals} from '@mndw/sdk/angular';
 import {createTestI18n} from '@mndw/sdk/testing';
-import {BehaviorSubject, of} from 'rxjs';
+import {BehaviorSubject, type Observable, Subject, of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {normalizeMembers} from '../api/normalize';
 import {MwsApiService} from '../api/mws-api.service';
@@ -19,10 +26,21 @@ import {
   MwsDataService,
   type MwsViewPhase,
 } from '../services/mws-data.service';
+import {MwsdStatusService} from '../services/mwsd-status.service';
 import {FakePluginStorage} from '../test-support/plugin-storage.fake';
+import {HOST} from '../test-support/mws-data-test-support';
 import {NodeTableColumnsStore} from '../services/node-table-columns.store';
 import {MwsWriteService} from '../services/mws-write.service';
-import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, PLUGIN_STORAGE, SHARED_PLUGIN_STORAGE, TRANSLATOR} from '../tokens';
+import {
+  DEVICE_INFO,
+  MWSD_BACKEND,
+  MWS_MOCK_OPTIONS,
+  MWS_PAGE_ROUTE,
+  OVERLAY,
+  PLUGIN_STORAGE,
+  SHARED_PLUGIN_STORAGE,
+  TRANSLATOR,
+} from '../tokens';
 import {NodePositionStore} from '../services/node-position.store';
 import graphStyles from '../components/mws-graph/mws-graph.component.scss?raw';
 import clientsTableStyles from '../components/clients-table/clients-table.component.scss?raw';
@@ -40,28 +58,59 @@ import enCatalog from '../../i18n/en.json';
 import ruCatalog from '../../i18n/ru.json';
 
 interface FakeData {
+  statusService: WritableStatusServiceDouble;
   phase: ReturnType<typeof signal<MwsViewPhase>>;
   roots: ReturnType<typeof signal<MwsNode[]>>;
   pollError: ReturnType<typeof signal<boolean>>;
-  extraFeaturesAvailability: ReturnType<typeof signal<ExtraFeaturesAvailability>>;
-  extraFeaturesPresentation: ReturnType<typeof signal<ExtraFeaturesPresentation>>;
-  extraFeaturesSetupReasons: ReturnType<typeof signal<ExtraFeaturesSetupReason[]>>;
+  extraFeaturesAvailability: Signal<ExtraFeaturesAvailability>;
+  extraFeaturesPresentation: Signal<ExtraFeaturesPresentation>;
+  extraFeaturesSetupReasons: Signal<ExtraFeaturesSetupReason[]>;
   lastUpdatedAt: ReturnType<typeof signal<number | null>>;
   freshnessNow: ReturnType<typeof signal<number>>;
   start: ReturnType<typeof vi.fn>;
   retry: ReturnType<typeof vi.fn>;
 }
 
+type WritableStatusServiceDouble =
+  & Pick<
+    MwsdStatusService,
+    'resetForStart' | 'start' | 'stop' | 'setExtraFeaturesAvailability' | 'retainForNodes' | 'mergeInto'
+  >
+  & {
+    extraFeaturesAvailability: WritableSignal<ExtraFeaturesAvailability>;
+    extraFeaturesPresentation: WritableSignal<ExtraFeaturesPresentation>;
+    extraFeaturesSetupReasons: WritableSignal<ExtraFeaturesSetupReason[]>;
+    projectionChanges$: Observable<void>;
+  };
+
 let testI18n = createTestI18n(enCatalog);
 
-function fakeData(phase: MwsViewPhase, roots: MwsNode[] = []): FakeData {
+function writableStatusServiceDouble(): WritableStatusServiceDouble {
   return {
-    phase: signal<MwsViewPhase>(phase),
-    roots: signal<MwsNode[]>(roots),
-    pollError: signal(false),
     extraFeaturesAvailability: signal<ExtraFeaturesAvailability>('active'),
     extraFeaturesPresentation: signal<ExtraFeaturesPresentation>('active'),
     extraFeaturesSetupReasons: signal<ExtraFeaturesSetupReason[]>([]),
+    projectionChanges$: new Subject<void>().asObservable(),
+    resetForStart: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+    setExtraFeaturesAvailability: vi.fn(),
+    retainForNodes: vi.fn(),
+    mergeInto: vi.fn((roots: MwsNode[]) => roots),
+  };
+}
+
+function fakeData(phase: MwsViewPhase, roots: MwsNode[] = []): FakeData {
+  const statusService = writableStatusServiceDouble();
+
+  return {
+    statusService,
+    phase: signal<MwsViewPhase>(phase),
+    roots: signal<MwsNode[]>(roots),
+    pollError: signal(false),
+    extraFeaturesAvailability: statusService.extraFeaturesAvailability.asReadonly(),
+    extraFeaturesPresentation: statusService.extraFeaturesPresentation.asReadonly(),
+    extraFeaturesSetupReasons: statusService.extraFeaturesSetupReasons.asReadonly(),
     lastUpdatedAt: signal<number | null>(null),
     freshnessNow: signal(Date.now()),
     start: vi.fn(),
@@ -75,6 +124,7 @@ function render(
   openNodeDrawer: ReturnType<typeof vi.fn> = vi.fn(),
 ): ReturnType<typeof TestBed.createComponent<AppComponent>> {
   TestBed.overrideProvider(MwsDataService, {useValue: data});
+  TestBed.overrideProvider(MwsdStatusService, {useValue: data.statusService});
 
   if (pageRoute !== undefined) {
     TestBed.overrideProvider(MWS_PAGE_ROUTE, {useValue: pageRoute});
@@ -171,6 +221,9 @@ describe('AppComponent', () => {
       imports: [AppComponent],
       providers: [
         {provide: MwsDataService, useValue: undefined},
+        {provide: MwsdStatusService, useValue: undefined},
+        {provide: DEVICE_INFO, useValue: HOST},
+        {provide: MWSD_BACKEND, useValue: null},
         ExtraFeaturesBannerStore,
         {provide: PLUGIN_STORAGE, useValue: new FakePluginStorage()},
         {provide: SHARED_PLUGIN_STORAGE, useValue: new FakePluginStorage()},
@@ -206,6 +259,27 @@ describe('AppComponent', () => {
 
   afterEach(() => {
     TestBed.resetTestingModule();
+  });
+
+  it('forwards status-service Signals through the real read-only data facade', () => {
+    const statusService = writableStatusServiceDouble();
+
+    TestBed.overrideProvider(MwsdStatusService, {useValue: statusService});
+    TestBed.overrideProvider(MwsDataService, {useClass: MwsDataService});
+
+    const data = TestBed.inject(MwsDataService);
+
+    expect(data.extraFeaturesAvailability).toBe(statusService.extraFeaturesAvailability);
+    expect(data.extraFeaturesPresentation).toBe(statusService.extraFeaturesPresentation);
+    expect(data.extraFeaturesSetupReasons).toBe(statusService.extraFeaturesSetupReasons);
+
+    statusService.extraFeaturesAvailability.set('active');
+    statusService.extraFeaturesPresentation.set('taking-longer');
+    statusService.extraFeaturesSetupReasons.set(['permission']);
+
+    expect(data.extraFeaturesAvailability()).toBe('active');
+    expect(data.extraFeaturesPresentation()).toBe('taking-longer');
+    expect(data.extraFeaturesSetupReasons()).toEqual(['permission']);
   });
 
   it('starts the data service and shows the loading state', () => {
@@ -435,7 +509,7 @@ describe('AppComponent', () => {
   )('renders %s badge text and semantic tone', (state, text, tone) => {
     const data = fakeData('ready', fixtureRoots());
 
-    data.extraFeaturesPresentation.set(state);
+    data.statusService.extraFeaturesPresentation.set(state);
 
     const fixture = render(data);
     const badge = fixture.nativeElement.querySelector<HTMLButtonElement>('.extra-features-badge');
@@ -448,7 +522,7 @@ describe('AppComponent', () => {
   it('offers retry when starting takes longer than expected', () => {
     const data = fakeData('ready', fixtureRoots());
 
-    data.extraFeaturesPresentation.set('taking-longer');
+    data.statusService.extraFeaturesPresentation.set('taking-longer');
 
     const fixture = render(data);
     const banner = fixture.nativeElement.querySelector<HTMLElement>('.extra-features-taking-longer');
@@ -461,7 +535,7 @@ describe('AppComponent', () => {
   it('shows and dismisses the unavailable setup banner after storage load', async () => {
     const data = fakeData('ready', fixtureRoots());
 
-    data.extraFeaturesPresentation.set('unavailable');
+    data.statusService.extraFeaturesPresentation.set('unavailable');
 
     const fixture = render(data);
 
@@ -489,7 +563,7 @@ describe('AppComponent', () => {
 
     const data = fakeData('ready', [{...controller, children: []}]);
 
-    data.extraFeaturesPresentation.set('unavailable');
+    data.statusService.extraFeaturesPresentation.set('unavailable');
 
     const fixture = render(data);
 
@@ -505,8 +579,8 @@ describe('AppComponent', () => {
   it('uses extender-session setup copy when extender authentication is missing', async () => {
     const data = fakeData('ready', fixtureRoots());
 
-    data.extraFeaturesPresentation.set('unavailable');
-    data.extraFeaturesSetupReasons.set(['extender-session']);
+    data.statusService.extraFeaturesPresentation.set('unavailable');
+    data.statusService.extraFeaturesSetupReasons.set(['extender-session']);
 
     const fixture = render(data);
 
@@ -519,13 +593,13 @@ describe('AppComponent', () => {
   it('replaces setup banner with non-dismissible limited status', async () => {
     const data = fakeData('ready', fixtureRoots());
 
-    data.extraFeaturesPresentation.set('unavailable');
+    data.statusService.extraFeaturesPresentation.set('unavailable');
 
     const fixture = render(data);
 
     await vi.waitFor(() => expect(fixture.nativeElement.querySelector('.extra-features-setup')).not.toBeNull());
-    data.extraFeaturesAvailability.set('limited');
-    data.extraFeaturesPresentation.set('limited');
+    data.statusService.extraFeaturesAvailability.set('limited');
+    data.statusService.extraFeaturesPresentation.set('limited');
     fixture.detectChanges();
 
     const status = fixture.nativeElement.querySelector<HTMLElement>('.extra-features-limited');
@@ -539,8 +613,8 @@ describe('AppComponent', () => {
   it('does not show limited retry status when current availability is blocked', () => {
     const data = fakeData('ready', fixtureRoots());
 
-    data.extraFeaturesAvailability.set('blocked');
-    data.extraFeaturesPresentation.set('limited');
+    data.statusService.extraFeaturesAvailability.set('blocked');
+    data.statusService.extraFeaturesPresentation.set('limited');
 
     const fixture = render(data);
 
@@ -594,7 +668,7 @@ describe('AppComponent', () => {
     expect(overlay.createLayer).toHaveBeenCalledWith(expect.objectContaining({anchor: {element: badge}}));
     expect(badge?.getAttribute('aria-expanded')).toBe('true');
 
-    data.extraFeaturesAvailability.set('limited');
+    data.statusService.extraFeaturesAvailability.set('limited');
     fixture.detectChanges();
     expect(contentElement.textContent).toContain('Features are temporarily unreachable');
 

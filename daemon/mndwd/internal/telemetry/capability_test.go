@@ -5,45 +5,17 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
-
-	"mndw.local/rrd"
 
 	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
 )
 
-type capabilityExecutor struct {
-	mu       sync.Mutex
-	commands [][]string
-	err      error
-}
-
-func (e *capabilityExecutor) Run(_ context.Context, args ...string) (rrd.ExecResult, error) {
-	e.mu.Lock()
-
-	e.commands = append(e.commands, append([]string(nil), args...))
-
-	e.mu.Unlock()
-
-	return rrd.ExecResult{}, e.err
-}
-
-func (e *capabilityExecutor) commandCount() int {
-	e.mu.Lock()
-
-	defer e.mu.Unlock()
-
-	return len(e.commands)
-}
-
-func TestCapabilityDisabledConstructionDoesNoRRDWork(t *testing.T) {
-	executor := &capabilityExecutor{}
+func TestCapabilityDisabledConstructionDoesNotCreateStorage(t *testing.T) {
+	dir := t.TempDir()
 	capability, err := NewCapability(CapabilityConfig{
-		Executor:       executor,
-		RRDDir:         t.TempDir(),
+		RRDDir:         dir,
 		DesiredEnabled: func() bool { return false },
 	})
 	if err != nil {
@@ -54,8 +26,13 @@ func TestCapabilityDisabledConstructionDoesNoRRDWork(t *testing.T) {
 		t.Fatal("disabled capability reports enabled")
 	}
 
-	if got := executor.commandCount(); got != 0 {
-		t.Fatalf("constructor invoked RRDtool %d times", got)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(entries) != 0 {
+		t.Fatalf("constructor created storage files: %v", entries)
 	}
 }
 
@@ -101,14 +78,48 @@ func TestCapabilityDisabledStartRestoresRetainedHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	legacyNames := []string{
+		"mndw-load-v1.rrd",
+		"mndw-temp-v1.rrd",
+		"telemetry-derived.checkpoint",
+		"telemetry-derived.clean",
+	}
+	preservedNames := []string{
+		"mndw-load-v1.rrd.backup",
+		"telemetry-derived.checkpoint.tmp",
+		"load.annotations.json",
+		"unknown.bin",
+	}
+
+	for _, name := range append(legacyNames, preservedNames...) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("legacy"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cache := NewSnapshotCache(nil, func() time.Time { return time.UnixMilli(1_800_000_000_000) })
+	fs := &checkingFileSystem{FileSystem: journal.OSFileSystem{}, check: func() {
+		snapshot, err := cache.Get(context.Background(), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if snapshot == nil || len(snapshot.Keys["temp"].Tiers["fine"].Samples) == 0 {
+			t.Fatal("legacy cleanup ran before restored history was published")
+		}
+	}}
+
 	capability, err := NewCapability(CapabilityConfig{
-		Executor:       &capabilityExecutor{},
 		RRDDir:         dir,
+		FileSystem:     fs,
+		SnapshotCache:  cache,
 		DesiredEnabled: func() bool { return false },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	capability.SetSnapshotCache(cache)
 
 	defer func() { _ = capability.Close(context.Background()) }()
 
@@ -121,10 +132,123 @@ func TestCapabilityDisabledStartRestoresRetainedHistory(t *testing.T) {
 	}
 
 	assertHistoryValue(t, capability.History(), 1_800_000_000_000, 51_000)
+
+	for _, name := range legacyNames {
+		if _, err := os.Stat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("legacy artifact %s remains: %v", name, err)
+		}
+	}
+
+	for _, name := range preservedNames {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("cleanup removed preserved file %s: %v", name, err)
+		}
+	}
+}
+
+type checkingFileSystem struct {
+	journal.FileSystem
+	check      func()
+	readDirErr error
+}
+
+func (fs *checkingFileSystem) Remove(name string) error {
+	if fs.check != nil {
+		fs.check()
+	}
+
+	return fs.FileSystem.Remove(name)
+}
+
+func (fs *checkingFileSystem) ReadDir(name string) ([]os.DirEntry, error) {
+	if fs.readDirErr != nil {
+		return nil, fs.readDirErr
+	}
+
+	return fs.FileSystem.ReadDir(name)
+}
+
+func TestCapabilityUnavailableRecoveryPreservesLegacyArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	paths, err := journal.PathsFromRRDDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(paths.JournalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(paths.JournalDir, "manifest.json"), []byte("{broken"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	asserted := writeLegacyFiles(t, dir)
+	capability, err := NewCapability(CapabilityConfig{RRDDir: dir, DesiredEnabled: func() bool { return false }})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := capability.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if capability.StorageStatus().Mode != journal.StatusUnavailable {
+		t.Fatalf("storage=%+v", capability.StorageStatus())
+	}
+
+	assertLegacyFilesRemain(t, dir, asserted)
+}
+
+func TestCapabilityRecoveryErrorPreservesLegacyArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	asserted := writeLegacyFiles(t, dir)
+	fs := &checkingFileSystem{FileSystem: journal.OSFileSystem{}, readDirErr: errors.New("read directory failed")}
+	capability, err := NewCapability(CapabilityConfig{
+		RRDDir:         dir,
+		FileSystem:     fs,
+		DesiredEnabled: func() bool { return false },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := capability.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if capability.Status().Error == "" {
+		t.Fatal("recovery error missing from diagnostics")
+	}
+
+	assertLegacyFilesRemain(t, dir, asserted)
+}
+
+func writeLegacyFiles(t *testing.T, dir string) []string {
+	t.Helper()
+
+	names := []string{"mndw-load-v1.rrd", "mndw-temp-v1.rrd", "telemetry-derived.checkpoint", "telemetry-derived.clean"}
+
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("legacy"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	return names
+}
+
+func assertLegacyFilesRemain(t *testing.T, dir string, names []string) {
+	t.Helper()
+
+	for _, name := range names {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("recovery removed %s: %v", name, err)
+		}
+	}
 }
 
 func TestCapabilityDisableCancelsAndJoinsBootRetry(t *testing.T) {
-	executor := &capabilityExecutor{err: errors.New("rrdtool unavailable")}
 	waitStarted := make(chan struct{})
 	waiter := func(ctx context.Context, _ time.Duration) error {
 		select {
@@ -137,7 +261,6 @@ func TestCapabilityDisableCancelsAndJoinsBootRetry(t *testing.T) {
 		return ctx.Err()
 	}
 	capability, err := NewCapability(CapabilityConfig{
-		Executor:       executor,
 		RRDDir:         t.TempDir(),
 		DesiredEnabled: func() bool { return true },
 		Wait:           waiter,
@@ -182,9 +305,8 @@ func (s *capabilityFakeSampler) Poll(context.Context) ([]Value, error) {
 	return s.values, nil
 }
 
-func testCapabilityConfig(dir string, executor rrd.Executor, bootClock clock.BootClock) CapabilityConfig {
+func testCapabilityConfig(dir string, bootClock clock.BootClock) CapabilityConfig {
 	return CapabilityConfig{
-		Executor:           executor,
 		RRDDir:             dir,
 		LoadSampler:        &capabilityFakeSampler{values: []Value{{Known: true, V: 20}, {Known: true, V: 40}}},
 		TemperatureSampler: &capabilityFakeSampler{values: []Value{{Known: true, V: 41000}}},
@@ -196,8 +318,7 @@ func testCapabilityConfig(dir string, executor rrd.Executor, bootClock clock.Boo
 
 func TestCapabilityEnableInitializesJournalBeforePolling(t *testing.T) {
 	dir := t.TempDir()
-	executor := &capabilityExecutor{}
-	capability, err := NewCapability(testCapabilityConfig(dir, executor, &fakeClock{boot: journal.BootID{1}, elapsed: 180000, wall: 1800000000000}))
+	capability, err := NewCapability(testCapabilityConfig(dir, &fakeClock{boot: journal.BootID{1}, elapsed: 180000, wall: 1800000000000}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,22 +342,11 @@ func TestCapabilityEnableInitializesJournalBeforePolling(t *testing.T) {
 		t.Fatalf("storage=%+v", capability.StorageStatus())
 	}
 
-	// An unanchored boot must not create derived RRD files.
-	executor.mu.Lock()
-
-	defer executor.mu.Unlock()
-
-	for _, command := range executor.commands {
-		if command[0] == "create" {
-			t.Fatalf("unanchored boot created an RRD: %v", command)
-		}
-	}
 }
 
-func TestCapabilityMissingRRDtoolStillAcquires(t *testing.T) {
+func TestCapabilityAcquiresWithoutDerivedOutput(t *testing.T) {
 	dir := t.TempDir()
-	executor := &capabilityExecutor{err: errors.New("rrdtool unavailable")}
-	capability, err := NewCapability(testCapabilityConfig(dir, executor, &fakeClock{boot: journal.BootID{1}, elapsed: 180000, wall: 1800000000000}))
+	capability, err := NewCapability(testCapabilityConfig(dir, &fakeClock{boot: journal.BootID{1}, elapsed: 180000, wall: 1800000000000}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +354,7 @@ func TestCapabilityMissingRRDtoolStillAcquires(t *testing.T) {
 	defer func() { _ = capability.Close(context.Background()) }()
 
 	if err := capability.Start(context.Background()); err != nil {
-		t.Fatalf("missing RRDtool blocked acquisition: %v", err)
+		t.Fatalf("derived output absence blocked acquisition: %v", err)
 	}
 
 	if capability.StorageStatus().Mode != journal.StatusReady {
@@ -259,7 +369,6 @@ func TestCapabilityMissingRRDtoolStillAcquires(t *testing.T) {
 func TestCapabilitySetEnabledRollsBackOnFailure(t *testing.T) {
 	dir := t.TempDir()
 	capability, err := NewCapability(CapabilityConfig{
-		Executor:       &capabilityExecutor{},
 		RRDDir:         dir,
 		Clock:          &fakeClock{boot: journal.BootID{1}, elapsed: 180000, wall: 1800000000000},
 		DesiredEnabled: func() bool { return false },
@@ -282,7 +391,6 @@ func TestCapabilitySetEnabledRollsBackOnFailure(t *testing.T) {
 func TestCapabilityDisableJoinsPipelineAndReenableReopens(t *testing.T) {
 	dir := t.TempDir()
 	capability, err := NewCapability(CapabilityConfig{
-		Executor:           &capabilityExecutor{},
 		RRDDir:             dir,
 		LoadSampler:        &capabilityFakeSampler{values: []Value{{Known: true, V: 1}, {Known: true, V: 2}}},
 		TemperatureSampler: &capabilityFakeSampler{values: []Value{{Known: true, V: 41000}}},

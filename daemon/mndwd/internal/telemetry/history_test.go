@@ -117,6 +117,96 @@ func TestHistoryRestoreWritableSyncsPinsAndAtomicallyPublishes(t *testing.T) {
 	assertHistoryValue(t, history, 1_800_000_000_000, 43_000)
 }
 
+func TestHistoryOpensLegacyPublicationRecordAndIgnoresIt(t *testing.T) {
+	dir := t.TempDir()
+	paths, err := journal.PathsFromRRDDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := journal.OpenStorage(context.Background(), paths, journal.OSFileSystem{}, journal.OSLocker{}, journal.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	boot := reducerBoot(27)
+	anchor, err := journal.PrepareAnchor(journal.Anchor{Boot: boot, ClockSegment: 0, UTCMs: 1_800_000_000_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sample, err := journal.PrepareSample(journal.Sample{
+		Boot: boot, ClockSegment: 0, Series: 2, Values: []journal.Value{{Known: true, V: 49_000}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	publication, err := journal.PreparePublication(journal.Publication{
+		SampleThrough: 2,
+		AnchorThrough: 1,
+		Frontiers:     []journal.Frontier{{Series: 2, SlotMs: 1_800_010_800_000}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := first.Writer.Append(context.Background(), []journal.Record{anchor, sample, publication}); err != nil {
+		_ = first.Writer.Close()
+
+		t.Fatal(err)
+	}
+
+	if _, err := first.Writer.Sync(context.Background()); err != nil {
+		_ = first.Writer.Close()
+
+		t.Fatal(err)
+	}
+
+	if err := first.Writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	opened, err := journal.OpenStorage(context.Background(), paths, journal.OSFileSystem{}, journal.OSLocker{}, journal.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer opened.Writer.Close()
+
+	history := newTestHistory(t)
+
+	if err := history.restore(context.Background(), opened.Status.Mode, opened.Reader, opened.Writer, journal.RetentionInput{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if history.AppliedThrough() != 3 {
+		t.Fatalf("history applied through=%d, want legacy record sequence 3", history.AppliedThrough())
+	}
+
+	assertHistoryValue(t, history, 1_800_000_000_000, 49_000)
+
+	publicationRecords := 0
+
+	if err := opened.Reader.Scan(context.Background(), func(record journal.Record) error {
+		if record.Kind == journal.KindPublication {
+			if _, err := journal.DecodePublication(record); err != nil {
+				return err
+			}
+
+			publicationRecords++
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if publicationRecords != 1 {
+		t.Fatalf("decoded publication records=%d, want 1", publicationRecords)
+	}
+}
+
 func TestHistoryRestoreReadOnlyUsesValidatedEndWithoutMutation(t *testing.T) {
 	boot := reducerBoot(22)
 	anchor := reducerAnchorRecord(t, 5, journal.Anchor{Boot: boot, ClockSegment: 0, UTCMs: 1_800_000_000_000})

@@ -48,7 +48,6 @@ export interface TelemetryStorageStatus {
   readonly oldestPendingSession: string | null;
   readonly deliveryError: string | null;
   readonly coverage: readonly TelemetryCoverage[];
-  readonly rebuildState: string;
   readonly droppedRecords: Readonly<Record<string, string>>;
 }
 
@@ -211,7 +210,6 @@ const decodeStorage = (raw: unknown): TelemetryStorageStatus => {
         ),
       };
     }),
-    rebuildState: typeof raw.rebuildState === 'string' ? raw.rebuildState : '',
     droppedRecords: dropped,
   };
 };

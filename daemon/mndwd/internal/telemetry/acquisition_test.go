@@ -1,15 +1,17 @@
 package telemetry
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	telemetryclock "mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
-	"mndwd/internal/telemetry/publication"
 )
 
 func TestSyncDeadlineDoesNotDependOnFuturePolls(t *testing.T) {
@@ -89,26 +91,6 @@ type stepWaiter struct {
 
 func (w *stepWaiter) wait(context.Context, int64) error { return nil }
 
-type recordingPublicationWorker struct {
-	recoverCalls int
-	cycleCalls   int
-	runErr       error
-}
-
-func (w *recordingPublicationWorker) Recover(context.Context) error {
-	w.recoverCalls++
-
-	return nil
-}
-
-func (w *recordingPublicationWorker) RunCycle(context.Context, publication.Cycle) error {
-	w.cycleCalls++
-
-	return w.runErr
-}
-
-func (w *recordingPublicationWorker) CloseClean(context.Context) error { return nil }
-
 type recordingSnapshotRefresher struct {
 	mu    sync.Mutex
 	calls int
@@ -156,62 +138,6 @@ func newTestProvider(t *testing.T) journal.StorageProvider {
 	return provider
 }
 
-func TestPipelineRecoversPublicationWorkerBeforeScheduling(t *testing.T) {
-	provider := newTestProvider(t)
-	clock := &fakeClock{boot: journal.BootID{1}, elapsed: 180000, wall: 1800000000000}
-	worker := &recordingPublicationWorker{}
-	pipeline, err := NewPipeline(DefaultPolicy(), clock, nil, provider,
-		map[uint16]Sampler{1: &recordingSampler{values: []Value{{Known: true, V: 1}}}},
-		WithPublicationWorker(worker),
-		WithWaitUntil(func(ctx context.Context, _ int64) error { return context.Canceled }),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := pipeline.Run(context.Background()); err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
-	}
-
-	if worker.recoverCalls != 1 {
-		t.Fatalf("Recover calls=%d", worker.recoverCalls)
-	}
-}
-
-func TestPipelinePublicationFailureRefreshesRecoveredSnapshot(t *testing.T) {
-	provider := newTestProvider(t)
-	publicationErr := errors.New("rrd: update timestamp is not strictly chronological")
-	worker := &recordingPublicationWorker{runErr: publicationErr}
-	refresher := &recordingSnapshotRefresher{}
-	pipeline, err := NewPipeline(DefaultPolicy(), &fakeClock{boot: journal.BootID{1}}, nil, provider,
-		map[uint16]Sampler{1: &recordingSampler{values: []Value{{Known: true, V: 1}}}},
-		WithPublicationWorker(worker), WithSnapshotRefresher(refresher))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	pipeline.publicationBus <- publication.Cycle{}
-
-	close(pipeline.publicationBus)
-	pipeline.runPublication(context.Background(), make(chan struct{}))
-
-	if refresher.calls != 1 {
-		t.Fatalf("refresh calls=%d, want 1", refresher.calls)
-	}
-
-	status := pipeline.Status()
-
-	if status.Error != publicationErr.Error() {
-		t.Fatalf("pipeline error=%q, want %q", status.Error, publicationErr.Error())
-	}
-
-	diagnostic := sessionStatus(status)
-
-	if diagnostic.Error != publicationErr.Error() {
-		t.Fatalf("session error=%q, want %q", diagnostic.Error, publicationErr.Error())
-	}
-}
-
 func TestPipelineFlushSynchronizesPreviouslyAppendedRecords(t *testing.T) {
 	provider := newTestProvider(t)
 	clock := &fakeClock{boot: journal.BootID{1}, elapsed: 180000, wall: 1800000000000}
@@ -249,7 +175,7 @@ func TestPipelineFlushSynchronizesPreviouslyAppendedRecords(t *testing.T) {
 	}
 }
 
-func TestPipelineRefreshRequestRunsWithoutPublicationCycle(t *testing.T) {
+func TestPipelineRefreshRequestRunsWhenRequested(t *testing.T) {
 	provider := newTestProvider(t)
 	refresher := &recordingSnapshotRefresher{}
 	pipeline, err := NewPipeline(DefaultPolicy(), &fakeClock{boot: journal.BootID{1}}, nil, provider,
@@ -266,7 +192,7 @@ func TestPipelineRefreshRequestRunsWithoutPublicationCycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 
-	go pipeline.runPublication(ctx, done)
+	go pipeline.runSnapshotRefresh(ctx, done)
 
 	deadline := time.Now().Add(time.Second)
 
@@ -275,7 +201,6 @@ func TestPipelineRefreshRequestRunsWithoutPublicationCycle(t *testing.T) {
 	}
 
 	cancel()
-	close(pipeline.publicationBus)
 	<-done
 
 	if got := refresher.callCount(); got != 1 {
@@ -385,7 +310,7 @@ func TestPipelineMaintenanceRebuildsChangedInventory(t *testing.T) {
 		Boot: boot, ElapsedMs: 20 * time.Minute.Milliseconds(),
 		WallMs: anchorUTC + 35*time.Minute.Milliseconds(),
 	}); !ok {
-		t.Fatal("successful post-maintenance rebuild suppressed the next publication")
+		t.Fatal("successful post-maintenance rebuild suppressed the next acquisition")
 	}
 
 	assertHistoryUnknown(t, history, anchorUTC)
@@ -393,6 +318,41 @@ func TestPipelineMaintenanceRebuildsChangedInventory(t *testing.T) {
 
 	if history.AppliedThrough() != writer.DurableThrough() {
 		t.Fatalf("history through=%d, durable through=%d after maintenance", history.AppliedThrough(), writer.DurableThrough())
+	}
+}
+
+func TestPipelineMaintenanceLogsRebuildAndPerf(t *testing.T) {
+	pipeline, _, _, boot, anchorUTC := newMaintenanceHistoryFixture(t)
+
+	var logs bytes.Buffer
+
+	WithLogger(slog.New(slog.NewTextHandler(&logs, nil)))(pipeline)
+	pipeline.refreshStats.observe(3 * time.Millisecond)
+
+	if ok := pipeline.maintain(context.Background(), telemetryclock.Reading{
+		Boot: boot, ElapsedMs: 20 * time.Minute.Milliseconds(),
+		WallMs: anchorUTC + 35*time.Minute.Milliseconds(),
+	}); !ok {
+		t.Fatal("maintenance failed")
+	}
+
+	output := logs.String()
+
+	for _, want := range []string{
+		`msg="telemetry: history rebuilt after maintenance"`,
+		"rebuilds=1",
+		`msg="telemetry: perf"`,
+		"refreshCount=1",
+		"refreshMaxMs=3",
+		"heapAllocBytes=",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("log output lacks %q:\n%s", want, output)
+		}
+	}
+
+	if got := pipeline.refreshStats.drain(); got.Count != 0 {
+		t.Fatalf("perf report did not reset refresh stats: %+v", got)
 	}
 }
 
@@ -462,7 +422,7 @@ func TestPipelineMaintenanceDoesNotRebuildUnchangedInventory(t *testing.T) {
 	store := history.store
 
 	if ok := pipeline.maintain(context.Background(), telemetryclock.Reading{Boot: journal.BootID{1}}); !ok {
-		t.Fatal("unchanged inventory unexpectedly suppressed publication")
+		t.Fatal("unchanged inventory unexpectedly suppressed maintenance")
 	}
 
 	if history.store != store {

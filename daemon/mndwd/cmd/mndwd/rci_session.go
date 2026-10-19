@@ -178,7 +178,6 @@ func assembleRCISession(core daemonCore, accessMux *http.ServeMux) persistentSes
 	}
 
 	capability, capabilityErr := telemetry.NewCapability(telemetry.CapabilityConfig{
-		RRDToolBinary:      cfg.RRDToolBinary,
 		RRDDir:             cfg.RRDDir,
 		LoadSampler:        telemetry.NewLoadSampler(telemetryClient),
 		TemperatureSampler: telemetry.NewThermalSampler(osThermalReader{}, "/sys/class/thermal"),

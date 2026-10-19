@@ -108,7 +108,6 @@ type StorageStatus struct {
 	OldestPendingSession *string            `json:"oldestPendingSession"`
 	DeliveryError        *string            `json:"deliveryError"`
 	Coverage             []CoverageDTO      `json:"coverage"`
-	RebuildState         string             `json:"rebuildState"`
 	DroppedRecords       map[string]string  `json:"droppedRecords"`
 }
 
@@ -121,7 +120,6 @@ type Reader interface {
 // Status contains the pipeline fields exposed in session diagnostics.
 type Status struct {
 	PendingSamples int
-	RebuildState   string
 	Error          string
 	Loss           map[string]uint64
 	Coverage       []journal.Coverage
@@ -615,7 +613,6 @@ func (r *sessionReader) storageStatus(recovery journal.RecoveryStatus) StorageSt
 	pipeline := r.status()
 	pending := pipeline.PendingSamples
 	status.PendingSampleCount = &pending
-	status.RebuildState = pipeline.RebuildState
 
 	if pipeline.Error != "" {
 		message := pipeline.Error

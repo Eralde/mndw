@@ -48,8 +48,8 @@ func TestPolicyDefaultsMatchConstraints(t *testing.T) {
 		t.Fatalf("evidenceEvery=%s", p.EvidenceEvery)
 	}
 
-	if p.PublishEvery != 15*time.Minute {
-		t.Fatalf("publishEvery=%s", p.PublishEvery)
+	if p.MaintenanceEvery != 15*time.Minute {
+		t.Fatalf("maintenanceEvery=%s", p.MaintenanceEvery)
 	}
 
 	if p.MaxUnsynced != 3*time.Minute {
@@ -79,17 +79,17 @@ func TestPolicyDefaultsMatchConstraints(t *testing.T) {
 
 func TestPolicyRejectsNonPositiveLimits(t *testing.T) {
 	cases := map[string]func(*Policy){
-		"acquireEvery":    func(p *Policy) { p.AcquireEvery = 0 },
-		"evidenceEvery":   func(p *Policy) { p.EvidenceEvery = -time.Second },
-		"publishEvery":    func(p *Policy) { p.PublishEvery = 0 },
-		"jumpThreshold":   func(p *Policy) { p.JumpThreshold = 0 },
-		"observationSpan": func(p *Policy) { p.MaxObservationSpan = -time.Millisecond },
-		"queueBytes":      func(p *Policy) { p.QueueBytes = 0 },
-		"journalBytes":    func(p *Policy) { p.Journal.Bytes = 0 },
-		"scratchBytes":    func(p *Policy) { p.Journal.ScratchBytes = -1 },
-		"segmentBytes":    func(p *Policy) { p.Journal.SegmentBytes = 0 },
-		"sessions":        func(p *Policy) { p.Journal.Sessions = 0 },
-		"retention":       func(p *Policy) { p.Journal.Retention = 0 },
+		"acquireEvery":     func(p *Policy) { p.AcquireEvery = 0 },
+		"evidenceEvery":    func(p *Policy) { p.EvidenceEvery = -time.Second },
+		"maintenanceEvery": func(p *Policy) { p.MaintenanceEvery = 0 },
+		"jumpThreshold":    func(p *Policy) { p.JumpThreshold = 0 },
+		"observationSpan":  func(p *Policy) { p.MaxObservationSpan = -time.Millisecond },
+		"queueBytes":       func(p *Policy) { p.QueueBytes = 0 },
+		"journalBytes":     func(p *Policy) { p.Journal.Bytes = 0 },
+		"scratchBytes":     func(p *Policy) { p.Journal.ScratchBytes = -1 },
+		"segmentBytes":     func(p *Policy) { p.Journal.SegmentBytes = 0 },
+		"sessions":         func(p *Policy) { p.Journal.Sessions = 0 },
+		"retention":        func(p *Policy) { p.Journal.Retention = 0 },
 	}
 
 	for name, mutate := range cases {

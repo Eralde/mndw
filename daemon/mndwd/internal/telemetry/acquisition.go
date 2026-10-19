@@ -10,21 +10,12 @@ import (
 
 	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
-	"mndwd/internal/telemetry/publication"
 )
 
 // Sampler polls one series. Failure yields unknown values, never a synthetic
 // measurement.
 type Sampler interface {
 	Poll(context.Context) ([]Value, error)
-}
-
-// PublicationWorker delivers derived output. The pipeline calls Recover before
-// the first RunCycle and after every successful reattachment.
-type PublicationWorker interface {
-	Recover(context.Context) error
-	RunCycle(context.Context, publication.Cycle) error
-	CloseClean(context.Context) error
 }
 
 // SnapshotRefresher republishes cached chart data after delivery or clock
@@ -42,15 +33,13 @@ type PipelineStatus struct {
 	PendingSamples  int
 	PendingBytes    int
 	SupportedSeries map[uint16]bool
-	Frontiers       map[uint16]int64
 	Coverage        []journal.Coverage
-	RebuildState    string
 	Loss            map[string]uint64
 	Error           string
 }
 
 // Pipeline is the single coordinator owning acquisition, clock evidence,
-// journal durability, and publication scheduling.
+// journal durability, and snapshot refresh scheduling.
 type Pipeline struct {
 	policy   Policy
 	clock    clock.BootClock
@@ -59,10 +48,9 @@ type Pipeline struct {
 	samplers map[uint16]Sampler
 	logger   *slog.Logger
 
-	waitUntil   func(context.Context, int64) error
-	publication PublicationWorker
-	refresher   SnapshotRefresher
-	history     *History
+	waitUntil func(context.Context, int64) error
+	refresher SnapshotRefresher
+	history   *History
 
 	mu              sync.Mutex
 	flushMu         sync.Mutex
@@ -75,7 +63,6 @@ type Pipeline struct {
 	bootStartQueued bool
 	firstUnsynced   int64
 	lastSync        time.Time
-	publicationBus  chan publication.Cycle
 	refreshBus      chan struct{}
 	lastSlot        map[int64]int64
 	runCancel       context.CancelFunc
@@ -83,6 +70,9 @@ type Pipeline struct {
 	stopChan        chan struct{}
 	stopOnce        sync.Once
 	stopped         bool
+
+	refreshStats durationStats
+	rebuilds     int
 }
 
 // PipelineOption customizes a pipeline.
@@ -104,12 +94,6 @@ func WithWaitUntil(wait func(context.Context, int64) error) PipelineOption {
 	}
 }
 
-// WithPublicationWorker attaches derived delivery. Without it the pipeline only
-// journals, which is not a releasable configuration.
-func WithPublicationWorker(worker PublicationWorker) PipelineOption {
-	return func(p *Pipeline) { p.publication = worker }
-}
-
 // WithSnapshotRefresher attaches background chart refresh ownership.
 func WithSnapshotRefresher(refresher SnapshotRefresher) PipelineOption {
 	return func(p *Pipeline) { p.refresher = refresher }
@@ -119,6 +103,15 @@ func WithSnapshotRefresher(refresher SnapshotRefresher) PipelineOption {
 // successful journal sync.
 func WithHistory(history *History) PipelineOption {
 	return func(p *Pipeline) { p.history = history }
+}
+
+// WithLogger routes pipeline diagnostics to the daemon logger.
+func WithLogger(logger *slog.Logger) PipelineOption {
+	return func(p *Pipeline) {
+		if logger != nil {
+			p.logger = logger
+		}
+	}
 }
 
 // NewPipeline builds the telemetry coordinator.
@@ -157,19 +150,18 @@ func NewPipeline(
 	}
 
 	pipeline := &Pipeline{
-		policy:         policy,
-		clock:          bootClock,
-		evidence:       evidence,
-		storage:        storage,
-		samplers:       samplers,
-		logger:         slog.Default(),
-		tracker:        clock.NewTracker(clock.View{State: clock.Unanchored}, clockPolicy(policy)),
-		loss:           map[journal.LossReason]uint64{},
-		lastSlot:       map[int64]int64{},
-		stopChan:       make(chan struct{}),
-		publicationBus: make(chan publication.Cycle, 1),
-		refreshBus:     make(chan struct{}, 1),
-		status:         PipelineStatus{Storage: storage.CurrentStatus(), DurableThrough: initialDurable, SupportedSeries: supportedFromSamplers(samplers), Loss: map[string]uint64{}},
+		policy:     policy,
+		clock:      bootClock,
+		evidence:   evidence,
+		storage:    storage,
+		samplers:   samplers,
+		logger:     slog.Default(),
+		tracker:    clock.NewTracker(clock.View{State: clock.Unanchored}, clockPolicy(policy)),
+		loss:       map[journal.LossReason]uint64{},
+		lastSlot:   map[int64]int64{},
+		stopChan:   make(chan struct{}),
+		refreshBus: make(chan struct{}, 1),
+		status:     PipelineStatus{Storage: storage.CurrentStatus(), DurableThrough: initialDurable, SupportedSeries: supportedFromSamplers(samplers), Loss: map[string]uint64{}},
 	}
 
 	if pipeline.waitUntil == nil {
@@ -255,7 +247,7 @@ func (p *Pipeline) Status() PipelineStatus {
 	return status
 }
 
-// Run owns the acquisition, evidence, and publication schedules until ctx ends.
+// Run owns the acquisition, evidence, and snapshot refresh schedules until ctx ends.
 func (p *Pipeline) Run(ctx context.Context) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -304,21 +296,9 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		p.mu.Unlock()
 	}
 
-	publicationDone := make(chan struct{})
+	snapshotDone := make(chan struct{})
 
-	if p.publication != nil {
-		if err := p.publication.Recover(runCtx); err != nil {
-			p.mu.Lock()
-
-			p.status.RebuildState = "unavailable"
-			p.status.Error = err.Error()
-
-			p.mu.Unlock()
-			p.logger.Warn("telemetry: derived recovery failed", "error", err)
-		}
-	}
-
-	go p.runPublication(runCtx, publicationDone)
+	go p.runSnapshotRefresh(runCtx, snapshotDone)
 
 	var runErr error
 
@@ -349,8 +329,8 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		p.runDueWork(runCtx)
 	}
 
-	close(p.publicationBus)
-	<-publicationDone
+	cancel()
+	<-snapshotDone
 
 	return runErr
 }
@@ -377,16 +357,14 @@ func (p *Pipeline) runDueWork(ctx context.Context) {
 		p.acquire(ctx, reading)
 	}
 
-	publishDue := p.due(reading.ElapsedMs, p.policy.PublishEvery)
+	maintenanceDue := p.due(reading.ElapsedMs, p.policy.MaintenanceEvery)
 
 	if err := p.flush(ctx, reading); err != nil {
 		p.logger.Warn("telemetry: journal flush failed", "error", err)
 	}
 
-	if publishDue {
-		if p.maintain(ctx, reading) {
-			p.schedulePublication(reading)
-		}
+	if maintenanceDue {
+		p.maintain(ctx, reading)
 	}
 }
 
@@ -426,7 +404,7 @@ func (p *Pipeline) nextDeadline(ctx context.Context) (int64, error) {
 	period := p.policy.EvidenceEvery
 	deadline := nextDeadlineAfter(p.origin, period.Milliseconds(), reading.ElapsedMs)
 
-	for _, candidate := range []time.Duration{p.policy.AcquireEvery, p.policy.PublishEvery} {
+	for _, candidate := range []time.Duration{p.policy.AcquireEvery, p.policy.MaintenanceEvery} {
 		next := nextDeadlineAfter(p.origin, candidate.Milliseconds(), reading.ElapsedMs)
 
 		if next < deadline {
@@ -888,8 +866,7 @@ func (p *Pipeline) applyHistory(ctx context.Context, reader HistoryReader, write
 		return err
 	}
 
-	// New durable records can add chart rows; publish them now rather than at
-	// the next publication cycle, which may be up to PublishEvery away.
+	// New durable records can add chart rows; refresh the cached snapshot now.
 	if history.AppliedThrough() > before {
 		p.requestSnapshotRefresh()
 	}
@@ -925,6 +902,8 @@ func (p *Pipeline) maintain(ctx context.Context, reading clock.Reading) bool {
 		p.logger.Warn("telemetry: retention maintenance failed", "error", err)
 	}
 
+	defer p.reportPerf()
+
 	if !maintenanceResult.InventoryChanged {
 		return true
 	}
@@ -939,38 +918,51 @@ func (p *Pipeline) maintain(ctx context.Context, reading clock.Reading) bool {
 		return true
 	}
 
+	started := time.Now()
+
 	if rebuildErr := history.restore(ctx, journal.StatusReady, lease.Result.Reader, lease.Result.Writer, input); rebuildErr != nil {
 		p.logger.Warn("telemetry: history rebuild after maintenance failed", "error", rebuildErr)
 
 		return false
 	}
 
+	elapsed := time.Since(started)
+
 	p.mu.Lock()
 
 	p.status.DurableThrough = lease.Result.Writer.DurableThrough()
+	p.rebuilds++
+	rebuilds := p.rebuilds
 
 	p.mu.Unlock()
+
+	p.logger.Info("telemetry: history rebuilt after maintenance", "durationMs", durationMs(elapsed), "rebuilds", rebuilds)
 
 	return true
 }
 
-// schedulePublication hands one cycle to the publication worker.
-func (p *Pipeline) schedulePublication(reading clock.Reading) {
+// reportPerf logs snapshot refresh timings and live heap once per
+// maintenance cycle, keeping per-refresh measurement out of the log.
+func (p *Pipeline) reportPerf() {
+	refresh := p.refreshStats.drain()
+
 	p.mu.Lock()
 
-	cycle := publication.Cycle{CutoffElapsedMs: reading.ElapsedMs, DurableThrough: p.status.DurableThrough, Clock: p.tracker.View()}
+	rebuilds := p.rebuilds
 
 	p.mu.Unlock()
 
-	select {
-	case p.publicationBus <- cycle:
-	default:
-	}
+	p.logger.Info("telemetry: perf",
+		"refreshCount", refresh.Count,
+		"refreshMeanMs", durationMs(refresh.Mean),
+		"refreshMaxMs", durationMs(refresh.Max),
+		"rebuilds", rebuilds,
+		"heapAllocBytes", heapAllocBytes(false),
+	)
 }
 
-// requestSnapshotRefresh asks the publication goroutine to republish chart
-// data without waiting for the next publication cycle. Pending requests
-// coalesce, so callers never block.
+// requestSnapshotRefresh asks the snapshot goroutine to refresh chart data.
+// Pending requests coalesce, so callers never block.
 func (p *Pipeline) requestSnapshotRefresh() {
 	if p.refresher == nil {
 		return
@@ -982,19 +974,14 @@ func (p *Pipeline) requestSnapshotRefresh() {
 	}
 }
 
-// runPublication serializes derived delivery and refreshes cached snapshots.
-// Refresh requests share this goroutine so snapshots publish in order.
-func (p *Pipeline) runPublication(ctx context.Context, done chan struct{}) {
+// runSnapshotRefresh serializes cached snapshot refreshes.
+func (p *Pipeline) runSnapshotRefresh(ctx context.Context, done chan struct{}) {
 	defer close(done)
 
 	for {
 		select {
-		case cycle, ok := <-p.publicationBus:
-			if !ok || ctx.Err() != nil {
-				return
-			}
-
-			p.runPublicationCycle(ctx, cycle)
+		case <-ctx.Done():
+			return
 		case <-p.refreshBus:
 			if ctx.Err() != nil {
 				return
@@ -1005,32 +992,22 @@ func (p *Pipeline) runPublication(ctx context.Context, done chan struct{}) {
 	}
 }
 
-func (p *Pipeline) runPublicationCycle(ctx context.Context, cycle publication.Cycle) {
-	if p.publication != nil {
-		if err := p.publication.RunCycle(ctx, cycle); err != nil {
-			p.mu.Lock()
-
-			p.status.Error = err.Error()
-
-			p.mu.Unlock()
-			p.logger.Warn("telemetry: publication cycle failed", "error", err)
-		}
-	}
-
-	p.refreshSnapshot(ctx)
-}
-
 func (p *Pipeline) refreshSnapshot(ctx context.Context) {
 	if p.refresher == nil {
 		return
 	}
 
-	if err := p.refresher.Refresh(ctx, p.Status()); err != nil {
+	started := time.Now()
+	err := p.refresher.Refresh(ctx, p.Status())
+
+	p.refreshStats.observe(time.Since(started))
+
+	if err != nil {
 		p.logger.Warn("telemetry: snapshot refresh failed", "error", err)
 	}
 }
 
-// Stop joins acquisition, drains queued records, and closes derived state.
+// Stop joins acquisition, drains queued records, and closes the snapshot refresher.
 func (p *Pipeline) Stop(ctx context.Context) error {
 	p.mu.Lock()
 
@@ -1065,10 +1042,6 @@ func (p *Pipeline) Stop(ctx context.Context) error {
 		if err := p.refresher.Close(ctx); err != nil {
 			p.logger.Warn("telemetry: refresher close failed", "error", err)
 		}
-	}
-
-	if p.publication != nil {
-		return p.publication.CloseClean(ctx)
 	}
 
 	return nil

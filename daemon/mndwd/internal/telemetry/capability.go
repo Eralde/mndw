@@ -7,18 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"mndw.local/rrd"
-
 	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
-	"mndwd/internal/telemetry/publication"
 	"mndwd/internal/telemetry/sessions"
 )
 
 type CapabilityConfig struct {
-	RRDToolBinary      string
 	RRDDir             string
-	Executor           rrd.Executor
 	LoadSampler        Sampler
 	TemperatureSampler Sampler
 	Clock              clock.BootClock
@@ -37,16 +32,12 @@ type CapabilityConfig struct {
 
 type Capability struct {
 	config CapabilityConfig
-	load   *rrd.File
-	temp   *rrd.File
 
 	mu           sync.Mutex
 	enabled      bool
 	provider     journal.StorageProvider
 	history      *History
 	pipeline     *Pipeline
-	derived      *publication.DerivedStore
-	refresher    *snapshotRefresher
 	pipelineDone chan struct{}
 	status       PipelineStatus
 	retryCancel  context.CancelFunc
@@ -55,14 +46,6 @@ type Capability struct {
 }
 
 func NewCapability(config CapabilityConfig) (*Capability, error) {
-	if config.Executor == nil {
-		if config.RRDToolBinary == "" {
-			config.RRDToolBinary = "/opt/bin/rrdtool"
-		}
-
-		config.Executor = rrd.NewExecutor(config.RRDToolBinary)
-	}
-
 	if config.RRDDir == "" {
 		config.RRDDir = "/opt/var/lib/mndw/rrd"
 	}
@@ -105,11 +88,6 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 		enabled = config.DesiredEnabled()
 	}
 
-	load, temp, err := publication.NewReaders(config.Executor, config.RRDDir)
-	if err != nil {
-		return nil, err
-	}
-
 	paths, err := journal.PathsFromRRDDir(config.RRDDir)
 	if err != nil {
 		return nil, err
@@ -125,7 +103,7 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 		return nil, err
 	}
 
-	capability := &Capability{config: config, load: load, temp: temp, enabled: enabled, provider: provider, history: history}
+	capability := &Capability{config: config, enabled: enabled, provider: provider, history: history}
 	capability.status = PipelineStatus{Storage: provider.CurrentStatus()}
 
 	return capability, nil
@@ -168,15 +146,15 @@ func (c *Capability) Start(ctx context.Context) error {
 		c.mu.Unlock()
 	}()
 
-	// Hydrate retained history even when gathering is disabled. Acquisition and
-	// publication start only after writable recovery succeeds.
+	// Hydrate retained history even when gathering is disabled. Acquisition starts
+	// only after writable recovery succeeds.
 	opened, err := c.provider.Reopen(ctx)
 	if err != nil {
 		c.setStatusError(err)
 
 		_ = c.history.restore(ctx, journal.StatusUnavailable, nil, nil, journal.RetentionInput{})
 
-		c.refreshSnapshot(ctx)
+		_ = c.refreshSnapshot(ctx)
 
 		if !enabled {
 			return nil
@@ -196,7 +174,7 @@ func (c *Capability) Start(ctx context.Context) error {
 			return err
 		}
 
-		c.refreshSnapshot(ctx)
+		_ = c.refreshSnapshot(ctx)
 
 		if !enabled {
 			return nil
@@ -205,18 +183,44 @@ func (c *Capability) Start(ctx context.Context) error {
 		return errors.New("telemetry: journal unavailable")
 	}
 
+	// Collect garbage around the restore so the delta approximates the heap
+	// the raw store adds in steady state.
+	heapBefore := heapAllocBytes(true)
+	started := time.Now()
+
 	if err := c.history.restore(ctx, opened.Status.Mode, opened.Reader, opened.Writer, journal.RetentionInput{}); err != nil {
 		c.setStatusError(err)
 
 		return err
 	}
 
+	elapsed := time.Since(started)
+	heapAfter := heapAllocBytes(true)
+
+	c.config.Logger.Info("telemetry: history restored",
+		"durationMs", durationMs(elapsed),
+		"appliedThrough", c.history.AppliedThrough(),
+		"heapBeforeBytes", heapBefore,
+		"heapAfterBytes", heapAfter,
+		"heapDeltaBytes", int64(heapAfter)-int64(heapBefore),
+	)
+
 	c.mu.Lock()
 
 	c.status.DurableThrough = c.history.AppliedThrough()
 
 	c.mu.Unlock()
-	c.refreshSnapshot(ctx)
+
+	snapshotErr := c.refreshSnapshot(ctx)
+
+	if snapshotErr != nil {
+		c.setStatusError(snapshotErr)
+	} else if opened.Status.Mode == journal.StatusReady && opened.Writer != nil {
+		if err := journal.CleanupLegacyArtifacts(c.config.FileSystem, opened.Writer.Paths()); err != nil {
+			c.setStatusError(err)
+			c.config.Logger.Warn("telemetry legacy artifact cleanup failed", "error", err)
+		}
+	}
 
 	if !enabled {
 		return nil
@@ -226,49 +230,21 @@ func (c *Capability) Start(ctx context.Context) error {
 		return errors.New("telemetry: writable journal required for acquisition")
 	}
 
-	// The history snapshot above is available to HTTP before acquisition starts.
-	// Derived files remain in use until the device release gate removes RRD.
-	if err := c.validateDerivedFiles(ctx); err != nil {
-		c.config.Logger.Warn("telemetry derived files unavailable", "error", err)
-	}
-
 	if len(samplers) == 0 {
 		return errors.New("telemetry: no sampler configured")
 	}
 
-	derivedPaths, err := journal.PathsFromRRDDir(c.config.RRDDir)
-	if err != nil {
-		return err
-	}
-
-	derived, err := publication.NewDerivedStore(derivedPaths, publication.RRDtoolFactory{Executor: c.config.Executor}, c.provider, c.config.FileSystem)
-	if err != nil {
-		return err
-	}
-
-	options := []PipelineOption{WithPublicationWorker(derived), WithHistory(c.history)}
+	options := []PipelineOption{WithHistory(c.history), WithLogger(c.config.Logger)}
 
 	if c.config.SnapshotCache != nil {
 		refresher := &snapshotRefresher{cache: c.config.SnapshotCache}
 		options = append(options, WithSnapshotRefresher(refresher))
-
-		c.mu.Lock()
-
-		c.refresher = refresher
-
-		c.mu.Unlock()
 	}
 
 	pipeline, err := NewPipeline(c.config.Policy, c.config.Clock, c.config.Evidence, c.provider, samplers, options...)
 	if err != nil {
 		return err
 	}
-
-	c.mu.Lock()
-
-	c.derived = derived
-
-	c.mu.Unlock()
 
 	c.mu.Lock()
 
@@ -296,21 +272,6 @@ func (c *Capability) Start(ctx context.Context) error {
 	return nil
 }
 
-// validateDerivedFiles checks existing RRD files without creating any. An
-// absent file is left to derived recovery, which creates it only from retained
-// mapped records with trustworthy time.
-func (c *Capability) validateDerivedFiles(ctx context.Context) error {
-	for _, file := range []*rrd.File{c.load, c.temp} {
-		if _, err := file.LastUpdate(ctx); err == nil {
-			continue
-		} else if !errors.Is(err, rrd.ErrFileMissing) {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // SessionReader exposes bounded diagnostic session access. It serves read-only
 // validated records and never repairs or writes storage.
 func (c *Capability) SessionReader() sessions.Reader {
@@ -333,7 +294,6 @@ func (c *Capability) SessionReader() sessions.Reader {
 func sessionStatus(status PipelineStatus) sessions.Status {
 	return sessions.Status{
 		PendingSamples: status.PendingSamples,
-		RebuildState:   status.RebuildState,
 		Error:          status.Error,
 		Loss:           status.Loss,
 		Coverage:       status.Coverage,
@@ -354,7 +314,7 @@ func (c *Capability) SetSnapshotCache(cache *SnapshotCache) {
 	}
 }
 
-func (c *Capability) refreshSnapshot(ctx context.Context) {
+func (c *Capability) refreshSnapshot(ctx context.Context) error {
 	c.mu.Lock()
 
 	cache := c.config.SnapshotCache
@@ -362,12 +322,20 @@ func (c *Capability) refreshSnapshot(ctx context.Context) {
 	c.mu.Unlock()
 
 	if cache == nil {
-		return
+		return nil
 	}
+
+	started := time.Now()
 
 	if _, err := cache.Refresh(ctx, c.Status()); err != nil {
 		c.config.Logger.Warn("telemetry initial snapshot refresh failed", "error", err)
+
+		return err
 	}
+
+	c.config.Logger.Info("telemetry: initial snapshot refreshed", "durationMs", durationMs(time.Since(started)))
+
+	return nil
 }
 
 // Status reports the last observed pipeline and storage state.
@@ -380,14 +348,6 @@ func (c *Capability) Status() PipelineStatus {
 
 	if c.pipeline != nil {
 		status = c.pipeline.Status()
-	}
-
-	if c.derived != nil {
-		frontiers := c.derived.Progress()
-
-		if len(frontiers) > 0 {
-			status.Frontiers = frontiers
-		}
 	}
 
 	return status
@@ -534,16 +494,7 @@ func (c *Capability) Close(ctx context.Context) error {
 
 	c.mu.Lock()
 
-	refresher := c.refresher
-	c.refresher = nil
-
 	c.mu.Unlock()
-
-	if refresher != nil {
-		if err := refresher.Close(ctx); err != nil {
-			return err
-		}
-	}
 
 	return c.provider.Close(ctx)
 }

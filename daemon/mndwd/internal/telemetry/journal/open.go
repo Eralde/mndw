@@ -315,14 +315,9 @@ func OpenStorage(ctx context.Context, paths StoragePaths, fs FileSystem, locker 
 	}
 
 	if manifest.State == stateInitializing {
-		// A previous run was interrupted during the one-time alpha cleanup.
-		// Finish it, never return to a destructive state from `ready`.
-		if err := removeLegacyArtifacts(fs, paths); err != nil {
-			_ = lock.Close()
-
-			return OpenResult{}, err
-		}
-
+		// Older alpha versions wrote this state while deleting RRD files. The
+		// new runtime preserves those files and only completes the manifest
+		// transition.
 		manifest.State = stateReady
 
 		if err := writeManifest(fs, manifestPath(paths), manifest); err != nil {

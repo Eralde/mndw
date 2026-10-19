@@ -43,6 +43,12 @@ func TestParseRejectsRouterURLFlag(t *testing.T) {
 	}
 }
 
+func TestParseRejectsRemovedRRDToolFlag(t *testing.T) {
+	if _, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--rrdtool-binary", "/opt/bin/rrdtool"}); err == nil {
+		t.Fatal("removed RRDtool flag was accepted")
+	}
+}
+
 func TestParseDefaultsUserPluginsDirUsesCustomDataRoot(t *testing.T) {
 	t.Setenv("MNDW_USER_PLUGINS_DIR", "")
 
@@ -400,7 +406,6 @@ func TestWithDefaultsFillsUnsetFields(t *testing.T) {
 		{"SelfUpdateStateDir", cfg.SelfUpdateStateDir, defaultSelfUpdateStateDir},
 		{"SelfUpdateHelper", cfg.SelfUpdateHelper, defaultSelfUpdateHelper},
 		{"DiagnosticsLogFile", cfg.DiagnosticsLogFile, defaultDiagnosticsLogFile},
-		{"RRDToolBinary", cfg.RRDToolBinary, defaultRRDToolBinary},
 		{"RRDDir", cfg.RRDDir, defaultRRDDir},
 		{"RCISessionStateDir", cfg.RCISessionStateDir, "/data/mndw"},
 		{"RCISessionKeyDir", cfg.RCISessionKeyDir, defaultRCISessionKeyDir},
@@ -433,7 +438,6 @@ func TestWithDefaultsKeepsExplicitValues(t *testing.T) {
 		SelfUpdateStateDir:       "/s",
 		SelfUpdateHelper:         "/h",
 		DiagnosticsLogFile:       "/l",
-		RRDToolBinary:            "/b",
 		RRDDir:                   "/rrd",
 		RCISessionStateDir:       "/state",
 		RCISessionKeyDir:         "/keys",

@@ -11,7 +11,6 @@ const validStorage = {
   deliveryError: null,
   coverage: [{series: 1, startMs: 1800000000000, endMs: 1800003600000, edgeComplete: true, complete: true,
     reasons: []}],
-  rebuildState: 'idle',
   droppedRecords: {},
 };
 

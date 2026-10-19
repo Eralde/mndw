@@ -32,14 +32,29 @@ func TestPathsFromRRDDirRejectsEmptyAndRoot(t *testing.T) {
 	}
 }
 
-func TestInitializationPreservesSidecars(t *testing.T) {
+func TestInitializationPreservesLegacyArtifactsUntilExplicitCleanup(t *testing.T) {
 	rrdDir := t.TempDir()
 	paths, err := PathsFromRRDDir(rrdDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for _, name := range []string{"mndw-load-v1.rrd", "mndw-temp-v1.rrd", "load.annotations.json"} {
+	legacyNames := []string{
+		"mndw-load-v1.rrd",
+		"mndw-temp-v1.rrd",
+		"telemetry-derived.checkpoint",
+		"telemetry-derived.clean",
+	}
+	preservedNames := []string{
+		"mndw-load-v1.rrd.backup",
+		"mndw-temp-v1.rrd.old",
+		"telemetry-derived.checkpoint.tmp",
+		"telemetry-derived.clean.old",
+		"load.annotations.json",
+		"unknown.bin",
+	}
+
+	for _, name := range append(legacyNames, preservedNames...) {
 		if err := os.WriteFile(filepath.Join(paths.RRDDir, name), []byte("legacy"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -60,16 +75,32 @@ func TestInitializationPreservesSidecars(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := os.Stat(filepath.Join(paths.RRDDir, "load.annotations.json")); err != nil {
+	for _, name := range append(legacyNames, preservedNames...) {
+		if _, err := os.Stat(filepath.Join(paths.RRDDir, name)); err != nil {
+			t.Fatalf("initialization touched %s: %v", name, err)
+		}
+	}
+
+	if err := CleanupLegacyArtifacts(OSFileSystem{}, paths); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := os.Stat(filepath.Join(paths.RRDDir, "mndw-load-v1.rrd")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("legacy RRD not removed: %v", err)
+	for _, name := range legacyNames {
+		if _, err := os.Stat(filepath.Join(paths.RRDDir, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("allowlisted artifact %s remains: %v", name, err)
+		}
 	}
 
-	if _, err := os.Stat(filepath.Join(paths.RRDDir, "mndw-temp-v1.rrd")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("legacy RRD not removed: %v", err)
+	for _, name := range preservedNames {
+		if _, err := os.Stat(filepath.Join(paths.RRDDir, name)); err != nil {
+			t.Fatalf("cleanup removed preserved artifact %s: %v", name, err)
+		}
+	}
+
+	if entries, err := os.ReadDir(paths.JournalDir); err != nil {
+		t.Fatal(err)
+	} else if len(entries) == 0 {
+		t.Fatal("cleanup touched journal staging")
 	}
 }
 
@@ -285,12 +316,20 @@ func TestCrashDuringInitializationDoesNotPublishReady(t *testing.T) {
 	fs.FailAfter("rename", 1)
 
 	opened, err := OpenStorage(context.Background(), paths, fs, &fakeLocker{}, DefaultLimits())
-	if err == nil {
-		t.Fatalf("initialization crash accepted: %+v", opened.Status)
+	if err != nil {
+		t.Fatalf("open after injected recovery failure: %v", err)
 	}
 
-	if !errors.Is(err, errInjected) {
-		t.Fatalf("unexpected error: %v", err)
+	if opened.Writer != nil || opened.Reader != nil || opened.Status.Mode != StatusUnavailable {
+		t.Fatalf("initialization crash exposed storage: %+v", opened)
+	}
+
+	if len(opened.Status.Issues) != 1 || opened.Status.Issues[0].Code != issueRecovered {
+		t.Fatalf("recovery failure was not reported: %+v", opened.Status)
+	}
+
+	if fs.CountOf("rename") <= 1 {
+		t.Fatalf("rename failpoint did not fire during recovery: %d", fs.CountOf("rename"))
 	}
 }
 

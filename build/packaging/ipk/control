@@ -3,6 +3,5 @@ Version: __VERSION__
 Section: web
 Priority: optional
 Architecture: __ARCH__
-Depends: rrdtool
 Maintainer: mndw contributors
 Description: Modular plugin-based dashboard served by mndwd.

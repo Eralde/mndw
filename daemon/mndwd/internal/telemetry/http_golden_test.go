@@ -142,8 +142,8 @@ func TestTelemetryHTTPGoldenResponses(t *testing.T) {
 
 	status := sessionList.Storage
 
-	if status.PendingSampleCount == nil || *status.PendingSampleCount != 2 || status.RebuildState != "rebuilding" {
-		t.Fatalf("session pending/rebuild status = %+v", status)
+	if status.PendingSampleCount == nil || *status.PendingSampleCount != 2 {
+		t.Fatalf("session pending status = %+v", status)
 	}
 
 	if status.DeliveryError == nil || *status.DeliveryError != "fixture delivery unavailable" {
@@ -355,7 +355,6 @@ func goldenPipelineStatus() PipelineStatus {
 	return PipelineStatus{
 		Clock:          clock.View{State: clock.Anchored, Boot: boot, Segment: 1, Anchor: &anchor},
 		PendingSamples: 2,
-		RebuildState:   "rebuilding",
 		Error:          "fixture delivery unavailable",
 		Loss:           map[string]uint64{"fixture": 3},
 		Coverage: []journal.Coverage{{

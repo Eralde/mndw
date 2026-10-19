@@ -23,7 +23,6 @@ const defaultDiagnosticsLogFile = "/opt/var/log/mndwd.log"
 const defaultPluginRuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
 const defaultSelfUpdateStateDir = "/opt/var/mndw"
 const defaultSelfUpdateHelper = "/opt/share/www/mndw/bin/mndw-self-update.sh"
-const defaultRRDToolBinary = "/opt/bin/rrdtool"
 const defaultRRDDir = "/opt/var/lib/mndw/rrd"
 const defaultRCISessionKeyDir = "/opt/var/lib/mndw-secrets"
 
@@ -56,7 +55,6 @@ type Config struct {
 	Opkg                 string
 	Service              string
 	LogLevel             string
-	RRDToolBinary        string
 	RRDDir               string
 	TelemetryMaxUnsynced time.Duration
 
@@ -128,10 +126,6 @@ func (c Config) withDefaults() Config {
 		c.DiagnosticsLogFile = defaultDiagnosticsLogFile
 	}
 
-	if c.RRDToolBinary == "" {
-		c.RRDToolBinary = defaultRRDToolBinary
-	}
-
 	if c.RRDDir == "" {
 		c.RRDDir = defaultRRDDir
 	}
@@ -190,7 +184,6 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.StringVar(&cfg.Opkg, "opkg", "exec", "opkg mode: exec|stub")
 	fs.StringVar(&cfg.Service, "service", "", "service mode: exec|stub; defaults to --opkg")
 	fs.StringVar(&cfg.LogLevel, "log-level", "info", "log level: debug|info|warn|error")
-	fs.StringVar(&cfg.RRDToolBinary, "rrdtool-binary", defaultRRDToolBinary, "RRDtool executable path")
 	fs.StringVar(&cfg.RRDDir, "rrd-dir", defaultRRDDir, "private durable telemetry directory")
 	fs.DurationVar(&cfg.TelemetryMaxUnsynced, "telemetry-max-unsynced", 3*time.Minute, "maximum duration acquired telemetry may stay unsynced (3m-15m)")
 	fs.DurationVar(&cfg.ExecTimeout, "exec-timeout", 30*time.Second, "per-request exec timeout")

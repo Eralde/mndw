@@ -243,7 +243,6 @@ const validStorage = {
   oldestPendingSession: null,
   deliveryError: null,
   coverage: [],
-  rebuildState: 'idle',
   droppedRecords: {},
 };
 
@@ -279,14 +278,14 @@ describe('telemetry session client', () => {
   });
 
   it('fetches one session page with a bounded query', async () => {
-    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse(validSessionPageBody)));
+    const fetchImpl = vi.fn((_input: string) => Promise.resolve(jsonResponse(validSessionPageBody)));
     const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
 
     const page = await client.fetchSession('s1-01020304050607080910111213141516', {after: 'cursor', limit: 10});
 
     expect(page.samples).toHaveLength(1);
-    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('limit=10');
-    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('after=cursor');
+    expect(fetchImpl.mock.calls[0]?.[0]).toContain('limit=10');
+    expect(fetchImpl.mock.calls[0]?.[0]).toContain('after=cursor');
   });
 
   it('rejects an unsafe session id before fetching', async () => {

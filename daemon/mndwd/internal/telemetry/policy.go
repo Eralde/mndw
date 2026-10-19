@@ -19,11 +19,11 @@ const (
 var errSegmentExceedsScratch = errors.New("telemetry: journal segment size exceeds scratch allowance")
 
 // Policy holds every injectable timing and storage bound for acquisition,
-// evidence polling, publication, and journal retention.
+// evidence polling, maintenance, and journal retention.
 type Policy struct {
 	AcquireEvery       time.Duration
 	EvidenceEvery      time.Duration
-	PublishEvery       time.Duration
+	MaintenanceEvery   time.Duration
 	MaxUnsynced        time.Duration
 	JumpThreshold      time.Duration
 	MaxObservationSpan time.Duration
@@ -32,13 +32,13 @@ type Policy struct {
 }
 
 // DefaultPolicy returns the shipped defaults: three-minute acquisition,
-// fifteen-second clock-evidence polling, fifteen-minute publication, an
+// fifteen-second clock-evidence polling, fifteen-minute maintenance, an
 // immediate three-minute durability window, and the journal defaults.
 func DefaultPolicy() Policy {
 	return Policy{
 		AcquireEvery:       3 * time.Minute,
 		EvidenceEvery:      15 * time.Second,
-		PublishEvery:       15 * time.Minute,
+		MaintenanceEvery:   15 * time.Minute,
 		MaxUnsynced:        minSyncWindow,
 		JumpThreshold:      5 * time.Second,
 		MaxObservationSpan: time.Second,
@@ -58,8 +58,8 @@ func ValidatePolicy(p Policy) error {
 		return errors.New("telemetry: clock evidence interval must be positive")
 	}
 
-	if p.PublishEvery <= 0 {
-		return errors.New("telemetry: publication interval must be positive")
+	if p.MaintenanceEvery <= 0 {
+		return errors.New("telemetry: maintenance interval must be positive")
 	}
 
 	if p.MaxUnsynced < minSyncWindow || p.MaxUnsynced > maxSyncWindow {

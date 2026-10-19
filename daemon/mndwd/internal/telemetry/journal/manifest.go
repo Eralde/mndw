@@ -13,16 +13,21 @@ const (
 	// manifestVersion is the only supported manifest version.
 	manifestVersion = 1
 
-	// stateInitializing marks a manifest whose one-time alpha cleanup has not
-	// completed. Recovery finishes the cleanup rather than returning to it.
+	// stateInitializing is accepted for manifests written by an earlier alpha
+	// release. Recovery transitions it to ready without deleting user files.
 	stateInitializing = "initializing"
 	// stateReady marks a manifest whose storage is usable.
 	stateReady = "ready"
 )
 
-// legacyRRDBasenames are the only files the one-time alpha reset may remove
-// from RRDDir. Annotation sidecars and new-format files are never touched.
-var legacyRRDBasenames = []string{"mndw-load-v1.rrd", "mndw-temp-v1.rrd"}
+// legacyArtifactBasenames are exact files left by the removed derived-output
+// pipeline. Cleanup is explicit and only runs after successful journal restore.
+var legacyArtifactBasenames = []string{
+	"mndw-load-v1.rrd",
+	"mndw-temp-v1.rrd",
+	"telemetry-derived.checkpoint",
+	"telemetry-derived.clean",
+}
 
 // SegmentEntry is one committed segment file in the manifest inventory.
 type SegmentEntry struct {
@@ -95,7 +100,7 @@ func writeManifest(fs FileSystem, path string, manifest Manifest) error {
 
 // WriteFileAtomic writes data to a sibling temporary file, synchronizes it,
 // renames it over the target, and synchronizes the parent directory. It is the
-// only replacement path for journal metadata and derived state.
+// only replacement path for journal metadata.
 func WriteFileAtomic(fs FileSystem, path string, data []byte) error {
 	dir := filepath.Dir(path)
 	temp := filepath.Join(dir, "."+filepath.Base(path)+".tmp")
@@ -144,10 +149,15 @@ func hasJournalArtifacts(fs FileSystem, paths StoragePaths) (bool, error) {
 	return len(segmentNames(entries)) > 0, nil
 }
 
-// removeLegacyArtifacts removes the allowlisted legacy alpha RRD basenames from
-// RRDDir. Missing files are not an error, and no other file is touched.
-func removeLegacyArtifacts(fs FileSystem, paths StoragePaths) error {
-	for _, name := range legacyRRDBasenames {
+// CleanupLegacyArtifacts removes only exact basenames written by the retired
+// derived-output pipeline. Callers must gate it on successful recovery and
+// publication of the raw in-memory store. Missing files are harmless.
+func CleanupLegacyArtifacts(fs FileSystem, paths StoragePaths) error {
+	if fs == nil || paths.RRDDir == "" || paths.JournalDir == "" || filepath.Dir(paths.JournalDir) != paths.RRDDir {
+		return ErrInvalidPaths
+	}
+
+	for _, name := range legacyArtifactBasenames {
 		target := filepath.Join(paths.RRDDir, name)
 
 		if _, err := fs.Stat(target); err != nil {
@@ -166,25 +176,14 @@ func removeLegacyArtifacts(fs FileSystem, paths StoragePaths) error {
 	return fs.SyncDir(paths.RRDDir)
 }
 
-// initializeStorage performs the one-time alpha reset: record the
-// `initializing` state, remove the allowlisted legacy files, then publish
-// `ready`. It must not reset retained authoritative data for any other reason.
+// initializeStorage creates a ready manifest without touching files beside the
+// journal. Legacy cleanup is gated by telemetry capability recovery.
 func initializeStorage(fs FileSystem, paths StoragePaths) (Manifest, error) {
 	if err := fs.MkdirAll(paths.JournalDir, 0o755); err != nil {
 		return Manifest{}, err
 	}
 
-	pending := Manifest{Version: manifestVersion, State: stateInitializing, Generation: 1}
-
-	if err := writeManifest(fs, manifestPath(paths), pending); err != nil {
-		return Manifest{}, err
-	}
-
-	if err := removeLegacyArtifacts(fs, paths); err != nil {
-		return Manifest{}, err
-	}
-
-	pending.State = stateReady
+	pending := Manifest{Version: manifestVersion, State: stateReady, Generation: 1}
 
 	if err := writeManifest(fs, manifestPath(paths), pending); err != nil {
 		return Manifest{}, err

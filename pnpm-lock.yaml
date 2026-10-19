@@ -443,8 +443,6 @@ importers:
 
   packages/go-rcisock: {}
 
-  packages/go-rrd: {}
-
   plugins/builtin/clients-widget:
     devDependencies:
       '@mndw/sdk':

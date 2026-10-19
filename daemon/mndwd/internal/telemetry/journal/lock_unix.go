@@ -34,18 +34,23 @@ func (l OSLocker) Acquire(_ context.Context, path string, mode LockMode) (LockHa
 	}
 
 	operation := unix.LOCK_EX | unix.LOCK_NB
+
 	if mode == LockShared {
 		operation = unix.LOCK_SH | unix.LOCK_NB
 	}
 
 	flock := l.flock
+
 	if flock == nil {
 		flock = unix.Flock
 	}
+
 	if err := flock(int(file.Fd()), operation); err != nil {
 		_ = file.Close()
+
 		return nil, err
 	}
+
 	return &fileLockHandle{file: file}, nil
 }
 
@@ -54,8 +59,10 @@ func (h *fileLockHandle) Close() error {
 	if h.file == nil {
 		return nil
 	}
+
 	file := h.file
 	h.file = nil
 	_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
+
 	return file.Close()
 }

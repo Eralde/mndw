@@ -15,10 +15,6 @@ import (
 	"mndwd/internal/telemetry/sessions"
 )
 
-type SnapshotReader interface {
-	FetchGroup(context.Context, []rrd.FetchRequest) ([]rrd.FetchResult, error)
-}
-
 type CapabilityConfig struct {
 	RRDToolBinary      string
 	RRDDir             string
@@ -47,6 +43,7 @@ type Capability struct {
 	mu           sync.Mutex
 	enabled      bool
 	provider     journal.StorageProvider
+	history      *History
 	pipeline     *Pipeline
 	derived      *publication.DerivedStore
 	refresher    *snapshotRefresher
@@ -123,7 +120,12 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 		return nil, err
 	}
 
-	capability := &Capability{config: config, load: load, temp: temp, enabled: enabled, provider: provider}
+	history, err := NewHistory(config.Policy.Journal, DefaultSeriesSpecs())
+	if err != nil {
+		return nil, err
+	}
+
+	capability := &Capability{config: config, load: load, temp: temp, enabled: enabled, provider: provider, history: history}
 	capability.status = PipelineStatus{Storage: provider.CurrentStatus()}
 
 	return capability, nil
@@ -132,47 +134,17 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 func (c *Capability) Start(ctx context.Context) error {
 	c.mu.Lock()
 
-	if !c.enabled || c.pipeline != nil || c.starting {
+	if c.pipeline != nil || c.starting {
 		c.mu.Unlock()
 
 		return nil
 	}
 
+	enabled := c.enabled
+
 	c.starting = true
 
 	c.mu.Unlock()
-
-	defer func() {
-		c.mu.Lock()
-
-		c.starting = false
-
-		c.mu.Unlock()
-	}()
-
-	// Storage is opened before any derived RRD work so acquired records are
-	// durable first; a failed open keeps diagnostics and the bounded RAM queue.
-	opened, err := c.provider.Reopen(ctx)
-	if err != nil {
-		c.setStatusError(err)
-
-		if opened.Status.Mode == journal.StatusUnavailable {
-			return err
-		}
-	}
-
-	c.mu.Lock()
-
-	c.status.Storage = opened.Status
-
-	c.mu.Unlock()
-
-	// Derived files are validated, never created here: an untrusted boot must
-	// not create an RRD, and creation is owned by derived recovery once this
-	// boot has trustworthy time.
-	if err := c.validateDerivedFiles(ctx); err != nil {
-		c.config.Logger.Warn("telemetry derived files unavailable", "error", err)
-	}
 
 	samplers := map[uint16]Sampler{}
 
@@ -184,12 +156,84 @@ func (c *Capability) Start(ctx context.Context) error {
 		samplers[2] = c.config.TemperatureSampler
 	}
 
-	if len(samplers) == 0 {
-		return errors.New("telemetry: no sampler configured")
-	}
-
 	if c.config.SnapshotCache != nil {
 		c.config.SnapshotCache.SetSupportedSeries(supportedFromSamplers(samplers))
+	}
+
+	defer func() {
+		c.mu.Lock()
+
+		c.starting = false
+
+		c.mu.Unlock()
+	}()
+
+	// Hydrate retained history even when gathering is disabled. Acquisition and
+	// publication start only after writable recovery succeeds.
+	opened, err := c.provider.Reopen(ctx)
+	if err != nil {
+		c.setStatusError(err)
+
+		_ = c.history.restore(ctx, journal.StatusUnavailable, nil, nil, journal.RetentionInput{})
+
+		c.refreshSnapshot(ctx)
+
+		if !enabled {
+			return nil
+		}
+
+		return err
+	}
+
+	c.mu.Lock()
+
+	c.status.Storage = opened.Status
+
+	c.mu.Unlock()
+
+	if opened.Status.Mode == journal.StatusUnavailable {
+		if err := c.history.restore(ctx, journal.StatusUnavailable, nil, nil, journal.RetentionInput{}); err != nil {
+			return err
+		}
+
+		c.refreshSnapshot(ctx)
+
+		if !enabled {
+			return nil
+		}
+
+		return errors.New("telemetry: journal unavailable")
+	}
+
+	if err := c.history.restore(ctx, opened.Status.Mode, opened.Reader, opened.Writer, journal.RetentionInput{}); err != nil {
+		c.setStatusError(err)
+
+		return err
+	}
+
+	c.mu.Lock()
+
+	c.status.DurableThrough = c.history.AppliedThrough()
+
+	c.mu.Unlock()
+	c.refreshSnapshot(ctx)
+
+	if !enabled {
+		return nil
+	}
+
+	if opened.Status.Mode != journal.StatusReady || opened.Writer == nil {
+		return errors.New("telemetry: writable journal required for acquisition")
+	}
+
+	// The history snapshot above is available to HTTP before acquisition starts.
+	// Derived files remain in use until the device release gate removes RRD.
+	if err := c.validateDerivedFiles(ctx); err != nil {
+		c.config.Logger.Warn("telemetry derived files unavailable", "error", err)
+	}
+
+	if len(samplers) == 0 {
+		return errors.New("telemetry: no sampler configured")
 	}
 
 	derivedPaths, err := journal.PathsFromRRDDir(c.config.RRDDir)
@@ -202,7 +246,7 @@ func (c *Capability) Start(ctx context.Context) error {
 		return err
 	}
 
-	options := []PipelineOption{WithPublicationWorker(derived)}
+	options := []PipelineOption{WithPublicationWorker(derived), WithHistory(c.history)}
 
 	if c.config.SnapshotCache != nil {
 		refresher := &snapshotRefresher{cache: c.config.SnapshotCache}
@@ -304,6 +348,26 @@ func (c *Capability) SetSnapshotCache(cache *SnapshotCache) {
 	defer c.mu.Unlock()
 
 	c.config.SnapshotCache = cache
+
+	if cache != nil {
+		cache.SetHistory(c.history)
+	}
+}
+
+func (c *Capability) refreshSnapshot(ctx context.Context) {
+	c.mu.Lock()
+
+	cache := c.config.SnapshotCache
+
+	c.mu.Unlock()
+
+	if cache == nil {
+		return
+	}
+
+	if _, err := cache.Refresh(ctx, c.Status()); err != nil {
+		c.config.Logger.Warn("telemetry initial snapshot refresh failed", "error", err)
+	}
 }
 
 // Status reports the last observed pipeline and storage state.
@@ -382,7 +446,7 @@ func (c *Capability) StartWithRetry(ctx context.Context) error {
 
 			c.mu.Unlock()
 
-			return nil
+			return c.Start(retryCtx)
 		}
 
 		if err := c.Start(retryCtx); err == nil {
@@ -402,6 +466,9 @@ func (c *Capability) StartWithRetry(ctx context.Context) error {
 		}
 	}
 }
+
+// History returns the retained raw history projection.
+func (c *Capability) History() *History { return c.history }
 
 func (c *Capability) IsEnabled() bool {
 	if c.config.DesiredEnabled != nil {
@@ -533,14 +600,6 @@ func (c *Capability) stopPipeline(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-}
-
-func (c *Capability) LoadReader() SnapshotReader {
-	return c.load
-}
-
-func (c *Capability) TemperatureReader() SnapshotReader {
-	return c.temp
 }
 
 func waitContext(ctx context.Context, duration time.Duration) error {

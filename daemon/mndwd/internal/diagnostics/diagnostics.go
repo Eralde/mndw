@@ -103,9 +103,11 @@ func New(config Config) *Handler {
 	if config.MaxLogBytes <= 0 {
 		config.MaxLogBytes = defaultMaxLogBytes
 	}
+
 	if config.MaxPluginBytes <= 0 {
 		config.MaxPluginBytes = defaultMaxPluginBytes
 	}
+
 	if config.MaxTotalPluginBytes <= 0 {
 		config.MaxTotalPluginBytes = defaultMaxTotalPluginBytes
 	}
@@ -126,6 +128,7 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := h.collect(r.Context())
+
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	httpx.WriteJSON(w, nil, http.StatusOK, response)
@@ -135,6 +138,7 @@ func (h *Handler) collect(ctx context.Context) Response {
 	logTail, logError := readTail(h.config.LogFile, h.config.MaxLogBytes)
 	plugins := make([]PluginDiagnostics, 0, len(h.config.Plugins))
 	var totalBytes int64
+
 	for _, plugin := range h.config.Plugins {
 		result := PluginDiagnostics{
 			PluginID: plugin.ID,
@@ -144,13 +148,17 @@ func (h *Handler) collect(ctx context.Context) Response {
 			},
 			Errors: []string{},
 		}
+
 		if plugin.Supervisor != nil {
 			result.Supervisor = plugin.Supervisor()
+
 			if result.Supervisor.RecentStderr == nil {
 				result.Supervisor.RecentStderr = []string{}
 			}
 		}
+
 		h.collectLive(ctx, plugin.Live, &result, &totalBytes)
+
 		plugins = append(plugins, result)
 	}
 
@@ -167,64 +175,87 @@ func (h *Handler) collect(ctx context.Context) Response {
 
 func (h *Handler) collectLive(ctx context.Context, live func(context.Context) ([]byte, error), result *PluginDiagnostics, totalBytes *int64) {
 	state := result.Supervisor.State
+
 	if state == "" {
 		state = "stopped"
 		result.Supervisor.State = state
 	}
+
 	if state != "ready" {
 		result.Live = LiveDiagnostics{Status: "unavailable", Reason: state}
+
 		return
 	}
+
 	if live == nil {
 		result.Live = LiveDiagnostics{Status: "unavailable", Reason: "live diagnostics are not configured"}
+
 		return
 	}
+
 	if *totalBytes >= h.config.MaxTotalPluginBytes {
 		result.Live = LiveDiagnostics{Status: "unavailable", Reason: "aggregate diagnostics byte limit reached"}
+
 		return
 	}
 
 	data, err := live(ctx)
 	if err != nil {
 		result.Live = LiveDiagnostics{Status: "unavailable", Reason: boundedError("live diagnostics", err)}
+
 		return
 	}
+
 	bytesRead := int64(len(data))
 	remaining := h.config.MaxTotalPluginBytes - *totalBytes
+
 	if bytesRead > h.config.MaxPluginBytes {
 		*totalBytes += h.config.MaxPluginBytes
 		result.Live = LiveDiagnostics{Status: "unavailable", Reason: "diagnostics response exceeds per-plugin byte limit"}
+
 		return
 	}
+
 	if bytesRead > remaining {
 		*totalBytes = h.config.MaxTotalPluginBytes
 		result.Live = LiveDiagnostics{Status: "unavailable", Reason: "aggregate diagnostics byte limit exceeded"}
+
 		return
 	}
+
 	*totalBytes += bytesRead
 
 	dataMap, err := decodeLive(data)
 	if err != nil {
 		result.Live = LiveDiagnostics{Status: "unavailable", Reason: boundedError("decode live diagnostics", err)}
+
 		return
 	}
+
 	result.Live = LiveDiagnostics{Status: "available", Data: sanitizeMap(dataMap)}
 }
 
 func decodeLive(data []byte) (map[string]any, error) {
 	trimmed := bytes.TrimSpace(data)
+
 	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return nil, fmt.Errorf("diagnostics response must be an object")
 	}
+
 	decoder := json.NewDecoder(bytes.NewReader(data))
+
 	decoder.UseNumber()
+
 	var object map[string]any
+
 	if err := decoder.Decode(&object); err != nil {
 		return nil, err
 	}
+
 	if err := rejectTrailingJSON(decoder); err != nil {
 		return nil, err
 	}
+
 	if object == nil {
 		return nil, fmt.Errorf("diagnostics response must be an object")
 	}
@@ -238,6 +269,7 @@ func rejectTrailingJSON(decoder *json.Decoder) error {
 	if err == io.EOF {
 		return nil
 	}
+
 	if err == nil {
 		return fmt.Errorf("trailing JSON data")
 	}
@@ -247,11 +279,14 @@ func rejectTrailingJSON(decoder *json.Decoder) error {
 
 func sanitizeMap(value map[string]any) map[string]any {
 	result := make(map[string]any, len(value))
+
 	for key, item := range value {
 		if isSensitiveKey(key) {
 			result[key] = "[REDACTED]"
+
 			continue
 		}
+
 		result[key] = sanitizeValue(item)
 	}
 
@@ -264,6 +299,7 @@ func sanitizeValue(value any) any {
 		return sanitizeMap(typed)
 	case []any:
 		result := make([]any, len(typed))
+
 		for index, item := range typed {
 			result[index] = sanitizeValue(item)
 		}
@@ -287,19 +323,24 @@ func readTail(path string, maxBytes int64) (string, string) {
 	if err != nil {
 		return "", boundedError("read log", err)
 	}
+
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
 		return "", boundedError("stat log", err)
 	}
+
 	offset := info.Size() - maxBytes
+
 	if offset < 0 {
 		offset = 0
 	}
+
 	if _, err := file.Seek(offset, io.SeekStart); err != nil {
 		return "", boundedError("seek log", err)
 	}
+
 	data, err := io.ReadAll(io.LimitReader(file, maxBytes))
 	if err != nil {
 		return "", boundedError("read log", err)
@@ -310,6 +351,7 @@ func readTail(path string, maxBytes int64) (string, string) {
 
 func boundedError(operation string, err error) string {
 	message := fmt.Sprintf("%s: %v", operation, err)
+
 	if len(message) > 1024 {
 		return message[:1024]
 	}
@@ -319,6 +361,7 @@ func boundedError(operation string, err error) string {
 
 func redact(value string) string {
 	redacted := value
+
 	for _, pattern := range sensitiveValuePatterns {
 		redacted = pattern.ReplaceAllString(redacted, `${1}[REDACTED]`)
 	}

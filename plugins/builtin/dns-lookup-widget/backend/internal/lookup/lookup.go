@@ -28,6 +28,7 @@ func Resolve(hostname string) LookupResult {
 
 	if err != nil {
 		var dnsErr *net.DNSError
+
 		if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
 			return LookupResult{
 				Success:  false,
@@ -47,6 +48,7 @@ func Resolve(hostname string) LookupResult {
 	}
 
 	cname := ""
+
 	if net.ParseIP(hostname) == nil {
 		cname, _ = lookupCNAME(hostname)
 	}

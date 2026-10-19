@@ -17,6 +17,7 @@ func New(transport Transport) (*Client, error) {
 	if isNilTransport(transport) {
 		return nil, ErrNilTransport
 	}
+
 	return &Client{transport: transport}, nil
 }
 
@@ -24,7 +25,9 @@ func isNilTransport(transport Transport) bool {
 	if transport == nil {
 		return true
 	}
+
 	value := reflect.ValueOf(transport)
+
 	switch value.Kind() {
 	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Chan,
 		reflect.Func, reflect.UnsafePointer, reflect.Interface:
@@ -39,11 +42,13 @@ func (c *Client) Execute(ctx context.Context, query Query) (json.RawMessage, err
 	if err != nil {
 		return nil, err
 	}
+
 	return values[0], nil
 }
 
 func (c *Client) ExecuteMany(ctx context.Context, queries ...Query) ([]json.RawMessage, error) {
 	values, _, err := c.executeMany(ctx, queries...)
+
 	return values, err
 }
 
@@ -57,14 +62,17 @@ func (c *Client) executeMany(ctx context.Context, queries ...Query) ([]json.RawM
 	}
 
 	wireQueries := make([][]byte, len(queries))
+
 	for index, query := range queries {
 		if err := validatePath(query.Path); err != nil {
 			return nil, nil, &QueryError{Index: index, Path: query.Path, Err: err}
 		}
+
 		wire, err := marshalQuery(query)
 		if err != nil {
 			return nil, nil, &QueryError{Index: index, Path: query.Path, Err: err}
 		}
+
 		wireQueries[index] = wire
 	}
 
@@ -73,6 +81,7 @@ func (c *Client) executeMany(ctx context.Context, queries ...Query) ([]json.RawM
 	if err != nil {
 		return nil, nil, fmt.Errorf("rci: marshal request: %w", err)
 	}
+
 	response, err := c.transport.Send(ctx, requestBody)
 	if err != nil {
 		return nil, nil, fmt.Errorf("rci: send: %w", err)
@@ -90,36 +99,46 @@ func (c *Client) executeMany(ctx context.Context, queries ...Query) ([]json.RawM
 	if err != nil {
 		return nil, response.Body, err
 	}
+
 	results := inflateResults(uniqueResults, compacted.positions, len(queries))
+
 	for index, query := range queries {
 		if query.Raw || results[index] == nil {
 			continue
 		}
+
 		result, err := Extract(results[index], query.Path)
 		if err != nil {
 			return nil, response.Body, err
 		}
+
 		results[index] = result
 	}
+
 	return results, response.Body, nil
 }
 
 func marshalWireArray(wireQueries [][]byte) ([]byte, error) {
 	entries := make([]json.RawMessage, len(wireQueries))
+
 	for index, wire := range wireQueries {
 		entries[index] = json.RawMessage(wire)
 	}
+
 	return json.Marshal(entries)
 }
 
 func decodeResponse(body []byte) ([]json.RawMessage, error) {
 	var results []json.RawMessage
+
 	if err := json.Unmarshal(body, &results); err != nil {
 		return nil, invalidResponseError(err)
 	}
+
 	if bytes.Equal(bytes.TrimSpace(body), []byte("null")) {
 		return nil, fmt.Errorf("%w: response must be a JSON array", ErrInvalidResponse)
 	}
+
 	return results, nil
 }
 
@@ -131,5 +150,6 @@ func truncateHTTPErrorBody(body []byte) []byte {
 	if len(body) > 4<<10 {
 		body = body[:4<<10]
 	}
+
 	return append([]byte(nil), body...)
 }

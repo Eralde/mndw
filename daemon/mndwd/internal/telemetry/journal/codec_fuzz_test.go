@@ -19,11 +19,13 @@ func FuzzDecodeRecord(f *testing.F) {
 		if err != nil {
 			return
 		}
+
 		// Any accepted framing must decode its declared kind without panicking
 		// and without allocating more than the frozen maximum body.
 		if len(record.Payload) > maxBodyBytes {
 			t.Fatalf("payload %d exceeds maximum body", len(record.Payload))
 		}
+
 		switch record.Kind {
 		case KindSample:
 			_, _ = DecodeSample(record)
@@ -43,5 +45,6 @@ func FuzzDecodeRecord(f *testing.F) {
 
 func loadGoldenFuzzCorpus(f *testing.F, name string) []byte {
 	f.Helper()
+
 	return loadGoldenTestData(name)
 }

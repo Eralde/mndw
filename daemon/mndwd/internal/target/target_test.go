@@ -106,6 +106,7 @@ func TestNormalizeFQDNCanonicalizesCaseAndTrailingDot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if got != "node-1.keenetic.io" {
 		t.Fatalf("NormalizeFQDN() = %q", got)
 	}

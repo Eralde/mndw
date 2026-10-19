@@ -59,6 +59,70 @@ func TestCapabilityDisabledConstructionDoesNoRRDWork(t *testing.T) {
 	}
 }
 
+func TestCapabilityDisabledStartRestoresRetainedHistory(t *testing.T) {
+	dir := t.TempDir()
+	paths, err := journal.PathsFromRRDDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opened, err := journal.OpenStorage(context.Background(), paths, journal.OSFileSystem{}, journal.OSLocker{}, journal.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	boot := journal.BootID{31}
+	anchor, err := journal.PrepareAnchor(journal.Anchor{Boot: boot, ClockSegment: 0, UTCMs: 1_800_000_000_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sample, err := journal.PrepareSample(journal.Sample{
+		Boot: boot, ClockSegment: 0, Series: 2,
+		Values: []journal.Value{{Known: true, V: 51_000}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := opened.Writer.Append(context.Background(), []journal.Record{anchor, sample}); err != nil {
+		_ = opened.Writer.Close()
+
+		t.Fatal(err)
+	}
+
+	if _, err := opened.Writer.Sync(context.Background()); err != nil {
+		_ = opened.Writer.Close()
+
+		t.Fatal(err)
+	}
+
+	if err := opened.Writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	capability, err := NewCapability(CapabilityConfig{
+		Executor:       &capabilityExecutor{},
+		RRDDir:         dir,
+		DesiredEnabled: func() bool { return false },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() { _ = capability.Close(context.Background()) }()
+
+	if err := capability.StartWithRetry(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if capability.pipeline != nil {
+		t.Fatal("disabled capability started acquisition")
+	}
+
+	assertHistoryValue(t, capability.History(), 1_800_000_000_000, 51_000)
+}
+
 func TestCapabilityDisableCancelsAndJoinsBootRetry(t *testing.T) {
 	executor := &capabilityExecutor{err: errors.New("rrdtool unavailable")}
 	waitStarted := make(chan struct{})
@@ -108,11 +172,11 @@ func TestCapabilityDisableCancelsAndJoinsBootRetry(t *testing.T) {
 }
 
 type capabilityFakeSampler struct {
-	values []rrd.Value
+	values []Value
 	calls  int
 }
 
-func (s *capabilityFakeSampler) Poll(context.Context) ([]rrd.Value, error) {
+func (s *capabilityFakeSampler) Poll(context.Context) ([]Value, error) {
 	s.calls++
 
 	return s.values, nil
@@ -122,8 +186,8 @@ func testCapabilityConfig(dir string, executor rrd.Executor, bootClock clock.Boo
 	return CapabilityConfig{
 		Executor:           executor,
 		RRDDir:             dir,
-		LoadSampler:        &capabilityFakeSampler{values: []rrd.Value{{Known: true, V: 20}, {Known: true, V: 40}}},
-		TemperatureSampler: &capabilityFakeSampler{values: []rrd.Value{{Known: true, V: 41000}}},
+		LoadSampler:        &capabilityFakeSampler{values: []Value{{Known: true, V: 20}, {Known: true, V: 40}}},
+		TemperatureSampler: &capabilityFakeSampler{values: []Value{{Known: true, V: 41000}}},
 		Clock:              bootClock,
 		DesiredEnabled:     func() bool { return true },
 		Lifetime:           context.Background(),
@@ -220,8 +284,8 @@ func TestCapabilityDisableJoinsPipelineAndReenableReopens(t *testing.T) {
 	capability, err := NewCapability(CapabilityConfig{
 		Executor:           &capabilityExecutor{},
 		RRDDir:             dir,
-		LoadSampler:        &capabilityFakeSampler{values: []rrd.Value{{Known: true, V: 1}, {Known: true, V: 2}}},
-		TemperatureSampler: &capabilityFakeSampler{values: []rrd.Value{{Known: true, V: 41000}}},
+		LoadSampler:        &capabilityFakeSampler{values: []Value{{Known: true, V: 1}, {Known: true, V: 2}}},
+		TemperatureSampler: &capabilityFakeSampler{values: []Value{{Known: true, V: 41000}}},
 		Clock:              &fakeClock{boot: journal.BootID{1}, elapsed: 180000, wall: 1800000000000},
 		DesiredEnabled:     func() bool { return true },
 		Lifetime:           context.Background(),

@@ -115,6 +115,7 @@ type envelope struct {
 func WriteError(w http.ResponseWriter, logger *slog.Logger, err *APIError) {
 	if logger != nil {
 		level := slog.LevelDebug
+
 		if err.Status >= http.StatusInternalServerError {
 			level = slog.LevelError
 		}
@@ -125,6 +126,7 @@ func WriteError(w http.ResponseWriter, logger *slog.Logger, err *APIError) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(err.Status)
+
 	_ = json.NewEncoder(w).Encode(envelope{Error: err.StructuredError})
 }
 

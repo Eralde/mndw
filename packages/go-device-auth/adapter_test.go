@@ -29,6 +29,7 @@ func (s *scriptedTransport) Do(_ context.Context, _ Target, _ http.CookieJar, me
 	s.requests = append(s.requests, scriptedRequest{Method: method, Path: path, Body: append([]byte(nil), body...)})
 	response := s.responses[0]
 	s.responses = s.responses[1:]
+
 	return response, nil
 }
 
@@ -56,14 +57,19 @@ func TestAuthenticateLegacyChallenge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v", err)
 	}
+
 	if result.Generation != legacySchema {
 		t.Fatalf("generation = %q, want %q", result.Generation, legacySchema)
 	}
+
 	var request map[string]string
+
 	if err := json.Unmarshal(transport.requests[1].Body, &request); err != nil {
 		t.Fatal(err)
 	}
+
 	want := hex.EncodeToString(proofDigest[:])
+
 	if request["password"] != want {
 		t.Fatalf("legacy proof = %q, want %q", request["password"], want)
 	}
@@ -86,6 +92,7 @@ func TestAuthenticateScramChallenge(t *testing.T) {
 		for index := range buffer {
 			buffer[index] = byte(index)
 		}
+
 		return nil
 	}})
 
@@ -112,13 +119,17 @@ func TestAuthenticateScramChallenge(t *testing.T) {
 	if err == nil {
 		t.Fatal("Authenticate() error = nil, want signature rejection")
 	}
+
 	var authErr *AuthError
+
 	if !asAuthError(err, &authErr) || authErr.Kind != ErrorRejected {
 		if authErr != nil {
 			t.Fatalf("error = %v (%v), want rejected AuthError", err, authErr.Err)
 		}
+
 		t.Fatalf("error = %v, want rejected AuthError", err)
 	}
+
 	if len(transport.requests) < 3 || !strings.Contains(string(transport.requests[2].Body), `"proof"`) {
 		t.Fatalf("phase two proof request missing: %+v", transport.requests)
 	}
@@ -145,6 +156,7 @@ func TestAuthenticateFallsBackToLegacyAfterScramFailure(t *testing.T) {
 		for index := range buffer {
 			buffer[index] = byte(index)
 		}
+
 		return nil
 	}})
 
@@ -152,15 +164,19 @@ func TestAuthenticateFallsBackToLegacyAfterScramFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Authenticate() error = %v, want legacy fallback success", err)
 	}
+
 	if result.Generation != legacySchema {
 		t.Fatalf("generation = %q, want %q", result.Generation, legacySchema)
 	}
+
 	if len(transport.requests) != 5 {
 		t.Fatalf("requests = %+v, want x-ndw4 attempt plus fresh x-ndw2 session", transport.requests)
 	}
+
 	if transport.requests[1].Method != http.MethodPost || !strings.Contains(string(transport.requests[1].Body), `"nonce"`) {
 		t.Fatalf("x-ndw4 request = %+v, want x-ndw4 request", transport.requests[1])
 	}
+
 	if transport.requests[3].Method != http.MethodPost || !strings.Contains(string(transport.requests[3].Body), `"password"`) {
 		t.Fatalf("x-ndw2 request = %+v, want x-ndw2 request", transport.requests[3])
 	}
@@ -168,22 +184,27 @@ func TestAuthenticateFallsBackToLegacyAfterScramFailure(t *testing.T) {
 
 func encodeReply(value any) string {
 	data, _ := json.Marshal(value)
+
 	return base64.StdEncoding.EncodeToString(data)
 }
 
 func asAuthError(err error, destination **AuthError) bool {
 	value, ok := err.(*AuthError)
+
 	if ok {
 		*destination = value
 	}
+
 	return ok
 }
 
 func TestScramKeyDerivationUsesArgon2idAndSha3(t *testing.T) {
 	salted := argon2.IDKey([]byte("secret"), []byte("0123456789abcdef"), 1, 8, 1, 64)
+
 	if len(salted) != 64 {
 		t.Fatalf("salted password length = %d, want 64", len(salted))
 	}
+
 	if len(hmacSHA3(salted, []byte(ndw4ClientKey))) != 64 {
 		t.Fatal("client key has unexpected length")
 	}
@@ -205,10 +226,12 @@ func TestScramRejectsCostAboveConfiguredCeiling(t *testing.T) {
 		for index := range buffer {
 			buffer[index] = byte(index)
 		}
+
 		return nil
 	}})
 	_, err := adapter.Authenticate(context.Background(), Target{BaseURL: "http://router"}, Credentials{Username: "admin", Password: "secret"}, nil)
 	var authErr *AuthError
+
 	if !asAuthError(err, &authErr) || authErr.Kind != ErrorUnsupported {
 		t.Fatalf("error = %v, want unsupported auth error", err)
 	}

@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"mndw.local/rrd"
-
 	"mndwd/internal/telemetry/clock"
 	"mndwd/internal/telemetry/journal"
 	"mndwd/internal/telemetry/publication"
@@ -18,7 +16,7 @@ import (
 // Sampler polls one series. Failure yields unknown values, never a synthetic
 // measurement.
 type Sampler interface {
-	Poll(context.Context) ([]rrd.Value, error)
+	Poll(context.Context) ([]Value, error)
 }
 
 // PublicationWorker delivers derived output. The pipeline calls Recover before
@@ -64,6 +62,7 @@ type Pipeline struct {
 	waitUntil   func(context.Context, int64) error
 	publication PublicationWorker
 	refresher   SnapshotRefresher
+	history     *History
 
 	mu              sync.Mutex
 	flushMu         sync.Mutex
@@ -77,6 +76,7 @@ type Pipeline struct {
 	firstUnsynced   int64
 	lastSync        time.Time
 	publicationBus  chan publication.Cycle
+	refreshBus      chan struct{}
 	lastSlot        map[int64]int64
 	runCancel       context.CancelFunc
 	runDone         chan struct{}
@@ -113,6 +113,12 @@ func WithPublicationWorker(worker PublicationWorker) PipelineOption {
 // WithSnapshotRefresher attaches background chart refresh ownership.
 func WithSnapshotRefresher(refresher SnapshotRefresher) PipelineOption {
 	return func(p *Pipeline) { p.refresher = refresher }
+}
+
+// WithHistory attaches the durable in-memory projection updated after each
+// successful journal sync.
+func WithHistory(history *History) PipelineOption {
+	return func(p *Pipeline) { p.history = history }
 }
 
 // NewPipeline builds the telemetry coordinator.
@@ -162,6 +168,7 @@ func NewPipeline(
 		lastSlot:       map[int64]int64{},
 		stopChan:       make(chan struct{}),
 		publicationBus: make(chan publication.Cycle, 1),
+		refreshBus:     make(chan struct{}, 1),
 		status:         PipelineStatus{Storage: storage.CurrentStatus(), DurableThrough: initialDurable, SupportedSeries: supportedFromSamplers(samplers), Loss: map[string]uint64{}},
 	}
 
@@ -279,6 +286,10 @@ func (p *Pipeline) Run(ctx context.Context) error {
 		p.logger.Warn("telemetry: boot start recovery incomplete", "error", err)
 	}
 
+	// The startup snapshot predates the pipeline and reports no clock state;
+	// republish once the recovered tracker is available.
+	p.requestSnapshotRefresh()
+
 	// Establish the acquisition origin when this boot has none so the first
 	// sample lands on a scheduled deadline rather than at process start.
 	reading, readErr := p.clock.Read()
@@ -373,8 +384,9 @@ func (p *Pipeline) runDueWork(ctx context.Context) {
 	}
 
 	if publishDue {
-		p.maintain(ctx, reading)
-		p.schedulePublication(reading)
+		if p.maintain(ctx, reading) {
+			p.schedulePublication(reading)
+		}
 	}
 }
 
@@ -454,25 +466,20 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 
 	var origin int64
 	var sequence uint64
-	anchors := map[uint64]journal.Anchor{}
+	var records []journal.Record
 	var latestTransition journal.ClockTransition
 	var transitionSequence uint64
 
 	if lease.Result.Reader != nil {
 		_ = lease.Result.Reader.Scan(ctx, func(record journal.Record) error {
+			records = append(records, record)
+
 			switch record.Kind {
 			case journal.KindBootStart:
 				start, err := journal.DecodeBootStart(record)
 				if err == nil && start.Boot == boot && start.Seq >= sequence {
 					sequence = start.Seq
 					origin = start.FirstAcquireElapsedMs
-				}
-			case journal.KindAnchor:
-				anchor, err := journal.DecodeAnchor(record)
-				if err == nil && anchor.Boot == boot {
-					if current, ok := anchors[anchor.ClockSegment]; !ok || anchor.Seq >= current.Seq {
-						anchors[anchor.ClockSegment] = anchor
-					}
 				}
 			case journal.KindClockTransition:
 				transition, err := journal.DecodeClockTransition(record)
@@ -491,6 +498,7 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 	defer p.mu.Unlock()
 
 	view := clock.View{State: clock.Unanchored, Boot: boot}
+	anchorIndex := journal.BuildAnchorIndex(records)
 
 	if transitionSequence > 0 {
 		view.Segment = latestTransition.ClockSegment
@@ -504,15 +512,31 @@ func (p *Pipeline) recoverBootStart(ctx context.Context) error {
 			view.SuspectElapsedMs = latestTransition.SuspectElapsedMs
 		}
 
-		if anchor, ok := anchors[view.Segment]; ok {
+		if anchor, ok := anchorIndex.AnchorFor(journal.Sample{Boot: boot, ClockSegment: view.Segment}); ok {
 			copy := anchor
 			view.Anchor = &copy
 		}
 	} else {
-		for segment, anchor := range anchors {
-			if segment >= view.Segment {
+		var latestSegment uint64
+		found := false
+
+		for _, record := range records {
+			if record.Kind != journal.KindAnchor {
+				continue
+			}
+
+			anchor, err := journal.DecodeAnchor(record)
+			if err == nil && anchor.Boot == boot && (!found || anchor.ClockSegment > latestSegment) {
+				latestSegment = anchor.ClockSegment
+				found = true
+			}
+		}
+
+		if found {
+			view.Segment = latestSegment
+
+			if anchor, ok := anchorIndex.AnchorFor(journal.Sample{Boot: boot, ClockSegment: latestSegment}); ok {
 				copy := anchor
-				view.Segment = segment
 				view.Anchor = &copy
 				view.State = clock.Anchored
 			}
@@ -588,6 +612,7 @@ func (p *Pipeline) pollEvidence(ctx context.Context, reading clock.Reading) {
 	p.mu.Lock()
 	p.tracker.Install(proposed)
 	p.mu.Unlock()
+	p.requestSnapshotRefresh()
 }
 
 // acquire polls every sampler and queues one sample per series.
@@ -607,6 +632,7 @@ func (p *Pipeline) acquire(ctx context.Context, reading clock.Reading) {
 				p.mu.Lock()
 				p.tracker.Install(view)
 				p.mu.Unlock()
+				p.requestSnapshotRefresh()
 			} else {
 				p.logger.Warn("telemetry: clock transition not durable", "error", syncErr)
 			}
@@ -725,10 +751,14 @@ func (p *Pipeline) flush(ctx context.Context, reading clock.Reading) error {
 
 	records := append([]journal.Record(nil), p.queue...)
 	due := p.firstUnsynced > 0 && reading.ElapsedMs >= SyncDeadline(p.firstUnsynced, p.policy.MaxUnsynced)
+	history := p.history
+	durable := p.status.DurableThrough
 
 	p.mu.Unlock()
 
-	if len(records) == 0 && !due {
+	historyPending := history != nil && history.AppliedThrough() < durable
+
+	if len(records) == 0 && !due && !historyPending {
 		return nil
 	}
 
@@ -748,6 +778,10 @@ func (p *Pipeline) flush(ctx context.Context, reading clock.Reading) error {
 		p.mu.Unlock()
 
 		return nil
+	}
+
+	if len(records) == 0 && !due {
+		return p.applyHistory(ctx, lease.Result.Reader, lease.Result.Writer)
 	}
 
 	appended, err := lease.Result.Writer.Append(ctx, records)
@@ -788,10 +822,10 @@ func (p *Pipeline) flush(ctx context.Context, reading clock.Reading) error {
 	p.mu.Unlock()
 
 	if !due {
-		return nil
+		return p.applyHistory(ctx, lease.Result.Reader, lease.Result.Writer)
 	}
 
-	durable, err := lease.Result.Writer.Sync(ctx)
+	durable, err = lease.Result.Writer.Sync(ctx)
 	if err != nil {
 		return err
 	}
@@ -804,7 +838,7 @@ func (p *Pipeline) flush(ctx context.Context, reading clock.Reading) error {
 
 	p.mu.Unlock()
 
-	return nil
+	return p.applyHistory(ctx, lease.Result.Reader, lease.Result.Writer)
 }
 
 // syncNow forces the current journal high-water mark durable. It is used for
@@ -834,17 +868,43 @@ func (p *Pipeline) syncNow(ctx context.Context) error {
 
 	p.mu.Unlock()
 
+	return p.applyHistory(ctx, lease.Result.Reader, lease.Result.Writer)
+}
+
+func (p *Pipeline) applyHistory(ctx context.Context, reader HistoryReader, writer HistoryWriter) error {
+	p.mu.Lock()
+
+	history := p.history
+
+	p.mu.Unlock()
+
+	if history == nil {
+		return nil
+	}
+
+	before := history.AppliedThrough()
+
+	if err := history.applyDurable(ctx, reader, writer, journal.RetentionInput{}); err != nil {
+		return err
+	}
+
+	// New durable records can add chart rows; publish them now rather than at
+	// the next publication cycle, which may be up to PublishEvery away.
+	if history.AppliedThrough() > before {
+		p.requestSnapshotRefresh()
+	}
+
 	return nil
 }
 
-func (p *Pipeline) maintain(ctx context.Context, reading clock.Reading) {
+func (p *Pipeline) maintain(ctx context.Context, reading clock.Reading) bool {
 	lease, err := p.storage.Acquire(ctx)
 	if err != nil || lease.Result.Writer == nil {
 		if err == nil {
 			_ = lease.Close()
 		}
 
-		return
+		return true
 	}
 
 	defer func() { _ = lease.Close() }()
@@ -860,9 +920,38 @@ func (p *Pipeline) maintain(ctx context.Context, reading clock.Reading) {
 
 	p.mu.Unlock()
 
-	if err := lease.Result.Writer.Maintain(ctx, input); err != nil {
+	maintenanceResult, err := lease.Result.Writer.Maintain(ctx, input)
+	if err != nil {
 		p.logger.Warn("telemetry: retention maintenance failed", "error", err)
 	}
+
+	if !maintenanceResult.InventoryChanged {
+		return true
+	}
+
+	p.mu.Lock()
+
+	history := p.history
+
+	p.mu.Unlock()
+
+	if history == nil {
+		return true
+	}
+
+	if rebuildErr := history.restore(ctx, journal.StatusReady, lease.Result.Reader, lease.Result.Writer, input); rebuildErr != nil {
+		p.logger.Warn("telemetry: history rebuild after maintenance failed", "error", rebuildErr)
+
+		return false
+	}
+
+	p.mu.Lock()
+
+	p.status.DurableThrough = lease.Result.Writer.DurableThrough()
+
+	p.mu.Unlock()
+
+	return true
 }
 
 // schedulePublication hands one cycle to the publication worker.
@@ -879,19 +968,45 @@ func (p *Pipeline) schedulePublication(reading clock.Reading) {
 	}
 }
 
+// requestSnapshotRefresh asks the publication goroutine to republish chart
+// data without waiting for the next publication cycle. Pending requests
+// coalesce, so callers never block.
+func (p *Pipeline) requestSnapshotRefresh() {
+	if p.refresher == nil {
+		return
+	}
+
+	select {
+	case p.refreshBus <- struct{}{}:
+	default:
+	}
+}
+
 // runPublication serializes derived delivery and refreshes cached snapshots.
+// Refresh requests share this goroutine so snapshots publish in order.
 func (p *Pipeline) runPublication(ctx context.Context, done chan struct{}) {
 	defer close(done)
 
-	for cycle := range p.publicationBus {
-		if ctx.Err() != nil {
-			return
-		}
+	for {
+		select {
+		case cycle, ok := <-p.publicationBus:
+			if !ok || ctx.Err() != nil {
+				return
+			}
 
-		if p.publication == nil {
-			continue
-		}
+			p.runPublicationCycle(ctx, cycle)
+		case <-p.refreshBus:
+			if ctx.Err() != nil {
+				return
+			}
 
+			p.refreshSnapshot(ctx)
+		}
+	}
+}
+
+func (p *Pipeline) runPublicationCycle(ctx context.Context, cycle publication.Cycle) {
+	if p.publication != nil {
 		if err := p.publication.RunCycle(ctx, cycle); err != nil {
 			p.mu.Lock()
 
@@ -900,12 +1015,18 @@ func (p *Pipeline) runPublication(ctx context.Context, done chan struct{}) {
 			p.mu.Unlock()
 			p.logger.Warn("telemetry: publication cycle failed", "error", err)
 		}
+	}
 
-		if p.refresher != nil {
-			if err := p.refresher.Refresh(ctx, p.Status()); err != nil {
-				p.logger.Warn("telemetry: snapshot refresh failed", "error", err)
-			}
-		}
+	p.refreshSnapshot(ctx)
+}
+
+func (p *Pipeline) refreshSnapshot(ctx context.Context) {
+	if p.refresher == nil {
+		return
+	}
+
+	if err := p.refresher.Refresh(ctx, p.Status()); err != nil {
+		p.logger.Warn("telemetry: snapshot refresh failed", "error", err)
 	}
 }
 

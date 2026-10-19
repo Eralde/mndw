@@ -84,6 +84,7 @@ func Open(config Config) (*Store, error) {
 
 	store.document = normalizeDocument(document)
 	store.state = model.StateOK
+
 	if legacyExtenders {
 		if err := store.persistLocked(); err != nil {
 			return nil, fmt.Errorf("migrate persistent RCI store: unable to remove legacy extender records")
@@ -282,7 +283,9 @@ func decryptDocument(key, ciphertext []byte) (model.Document, bool, error) {
 	if err != nil {
 		return model.Document{}, false, fmt.Errorf("persistent RCI ciphertext authentication failed")
 	}
+
 	var raw map[string]json.RawMessage
+
 	if err := json.Unmarshal(plaintext, &raw); err != nil {
 		return model.Document{}, false, fmt.Errorf("persistent RCI document is invalid")
 	}
@@ -294,6 +297,7 @@ func decryptDocument(key, ciphertext []byte) (model.Document, bool, error) {
 	}
 
 	_, legacyExtenders := raw["extenders"]
+
 	return document, legacyExtenders, nil
 }
 

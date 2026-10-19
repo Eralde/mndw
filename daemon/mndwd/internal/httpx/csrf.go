@@ -17,6 +17,8 @@ func RequireCSRF(w http.ResponseWriter, logger *slog.Logger, r *http.Request) bo
 	if CSRFPresent(r) {
 		return true
 	}
+
 	WriteError(w, logger, NewError(http.StatusForbidden, CodeCsrfRequired, "CSRF header required"))
+
 	return false
 }

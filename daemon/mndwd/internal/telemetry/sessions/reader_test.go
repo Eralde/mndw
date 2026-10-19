@@ -161,6 +161,7 @@ func seedSessionJournalAt(t *testing.T, rrdDir string) (journal.StorageProvider,
 func TestSessionReadSalvagesWithoutWriter(t *testing.T) {
 	rrdDir := t.TempDir()
 	provider, boot := seedSessionJournalAt(t, rrdDir)
+
 	if err := provider.Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -169,6 +170,7 @@ func TestSessionReadSalvagesWithoutWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := os.Remove(filepath.Join(paths.JournalDir, "manifest.json")); err != nil {
 		t.Fatal(err)
 	}
@@ -177,12 +179,14 @@ func TestSessionReadSalvagesWithoutWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer func() { _ = salvage.Close(context.Background()) }()
 
 	opened, err := salvage.Reopen(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if opened.Status.Mode != journal.StatusReadOnly || opened.Reader == nil || opened.Writer != nil {
 		t.Fatalf("salvage outcome=%+v", opened)
 	}
@@ -192,6 +196,7 @@ func TestSessionReadSalvagesWithoutWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(page.Samples) != 1 || page.Samples[0].Disposition != "unproven" {
 		t.Fatalf("salvaged samples=%+v", page.Samples)
 	}

@@ -15,6 +15,7 @@ func terminate(process *os.Process) error {
 	if errors.Is(err, syscall.ESRCH) {
 		return nil
 	}
+
 	return err
 }
 func kill(process *os.Process) error {
@@ -22,5 +23,6 @@ func kill(process *os.Process) error {
 	if errors.Is(err, syscall.ESRCH) {
 		return nil
 	}
+
 	return err
 }

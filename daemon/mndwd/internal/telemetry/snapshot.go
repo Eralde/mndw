@@ -2,17 +2,12 @@ package telemetry
 
 import (
 	"context"
-	"errors"
 	"math"
 	"sync"
 	"time"
 
-	"mndw.local/rrd"
-
 	"mndwd/internal/telemetry/clock"
 )
-
-const snapshotRefreshAge = 15 * time.Minute
 
 type Sample struct {
 	Timestamp int64    `json:"ts"`
@@ -89,30 +84,32 @@ type ProjectedSnapshot struct {
 }
 
 type SnapshotCache struct {
-	load              SnapshotReader
-	temperature       SnapshotReader
+	history           *History
+	specs             []SeriesSpec
 	now               func() time.Time
 	sessionConfigured func() bool
 
 	mu              sync.Mutex
 	snapshot        *Snapshot
-	refreshed       time.Time
-	refreshErr      error
-	refreshing      bool
-	wait            chan struct{}
 	supportedSeries map[uint16]bool
 }
 
-func NewSnapshotCache(load SnapshotReader, temperature SnapshotReader, now func() time.Time) *SnapshotCache {
+func NewSnapshotCache(history *History, now func() time.Time) *SnapshotCache {
 	if now == nil {
 		now = time.Now
 	}
 
-	return &SnapshotCache{load: load, temperature: temperature, now: now}
+	specs := DefaultSeriesSpecs()
+
+	if history != nil {
+		specs = history.SeriesSpecs()
+	}
+
+	return &SnapshotCache{history: history, specs: specs, now: now}
 }
 
-// Get returns the last published immutable snapshot. It never invokes RRDtool
-// and never touches disk: a pipeline-owned refresher owns that work.
+// Get returns the last published immutable snapshot. It never touches disk;
+// a pipeline-owned refresher owns snapshot refreshes.
 func (c *SnapshotCache) Get(_ context.Context, enabled bool) (*Snapshot, error) {
 	c.mu.Lock()
 
@@ -140,8 +137,8 @@ func (c *SnapshotCache) Get(_ context.Context, enabled bool) (*Snapshot, error) 
 		return snapshot, nil
 	}
 
-	// No dated history yet: report an empty snapshot with false freshness
-	// rather than querying an epoch window.
+	// No refresh has completed yet: report an empty snapshot with false
+	// freshness rather than querying an epoch window.
 	snapshot := emptySnapshot(true)
 
 	applySupportedSeries(snapshot, c.supportedSeries)
@@ -162,8 +159,6 @@ func (c *SnapshotCache) Publish(snapshot *Snapshot) {
 	defer c.mu.Unlock()
 
 	c.snapshot = cloneSnapshot(snapshot)
-	c.refreshed = c.now()
-	c.refreshErr = nil
 }
 
 // SetSupportedSeries records which sampler series are available, so the
@@ -173,7 +168,25 @@ func (c *SnapshotCache) SetSupportedSeries(supported map[uint16]bool) {
 
 	defer c.mu.Unlock()
 
-	c.supportedSeries = supported
+	c.supportedSeries = make(map[uint16]bool, len(supported))
+
+	for series, enabled := range supported {
+		c.supportedSeries[series] = enabled
+	}
+}
+
+// SetHistory attaches the canonical raw projection owned by Capability.
+func (c *SnapshotCache) SetHistory(history *History) {
+	c.mu.Lock()
+
+	defer c.mu.Unlock()
+
+	c.history = history
+	c.specs = DefaultSeriesSpecs()
+
+	if history != nil {
+		c.specs = history.SeriesSpecs()
+	}
 }
 
 // SetSessionConfigured registers the callback that reports whether the
@@ -187,17 +200,22 @@ func (c *SnapshotCache) SetSessionConfigured(fn func() bool) {
 	c.sessionConfigured = fn
 }
 
-// Refresh rebuilds the snapshot from derived files and publishes it. It is the
-// only path that invokes RRDtool, and only the pipeline refresher calls it.
+// Refresh copies raw rows and projects fine and coarse tiers before publishing
+// one immutable snapshot.
 func (c *SnapshotCache) Refresh(ctx context.Context, status PipelineStatus) (*Snapshot, error) {
-	snapshot, err := c.refresh(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+
+	history := c.history
+	specs := cloneSeriesSpecs(c.specs)
+
+	c.mu.Unlock()
+
+	snapshot, err := c.refresh(history, specs)
 	if err != nil {
-		c.mu.Lock()
-
-		c.refreshErr = err
-
-		c.mu.Unlock()
-
 		return nil, err
 	}
 
@@ -238,7 +256,7 @@ func metadataFromStatus(snapshot *Snapshot, status PipelineStatus) *ClockMetadat
 
 				last := tier.Samples[len(tier.Samples)-1]
 
-				if last.Timestamp <= 0 {
+				if !last.OK || last.Mean == nil || last.Timestamp <= 0 {
 					continue
 				}
 
@@ -261,112 +279,159 @@ func metadataFromStatus(snapshot *Snapshot, status PipelineStatus) *ClockMetadat
 	return clockMetadata(state, end, current, status.PendingSamples > 0)
 }
 
-func (c *SnapshotCache) refresh(ctx context.Context) (*Snapshot, error) {
-	if c.load == nil || c.temperature == nil {
-		return nil, errors.New("telemetry readers unavailable")
+func (c *SnapshotCache) refresh(history *History, specs []SeriesSpec) (*Snapshot, error) {
+	snapshot := emptySnapshot(true)
+
+	if history == nil {
+		return snapshot, nil
 	}
 
 	now := c.now().UTC()
-	fineEnd := now.Truncate(3 * time.Minute)
+	fineStep := 3 * time.Minute
+	fineEnd := now.Truncate(fineStep)
+	fineStart := fineEnd.Add(-24 * time.Hour)
 	coarseEnd := now.Truncate(time.Hour)
-	var group sync.WaitGroup
+	coarseStart := coarseEnd.Add(-30 * 24 * time.Hour)
+	queries := make([]Query, 0, len(specs)*2)
 
-	group.Add(2)
-
-	var loadResults, tempResults []rrd.FetchResult
-	var loadErr, tempErr error
-
-	go func() {
-		defer group.Done()
-
-		loadResults, loadErr = fetchRanges(ctx, c.load, fineEnd, coarseEnd)
-	}()
-
-	go func() {
-		defer group.Done()
-
-		tempResults, tempErr = fetchRanges(ctx, c.temperature, fineEnd, coarseEnd)
-	}()
-
-	group.Wait()
-
-	if loadErr != nil {
-		return nil, loadErr
+	for _, spec := range specs {
+		queries = append(queries,
+			Query{Series: spec.ID, Start: fineStart, End: fineEnd},
+			Query{Series: spec.ID, Start: coarseStart, End: coarseEnd},
+		)
 	}
 
-	if tempErr != nil {
-		return nil, tempErr
+	windows, err := history.ReadMany(queries)
+	if err != nil {
+		return nil, err
 	}
 
-	snapshot := emptySnapshot(true)
-	snapshot.Keys["cpu"] = seriesFromResults("CPU", "percent", true, loadResults, 0, 1)
-	snapshot.Keys["ram"] = seriesFromResults("RAM", "percent", true, loadResults, 1, 1)
-	snapshot.Keys["temp"] = seriesFromResults("cpu-thermal", "celsius", false, tempResults, 0, 1000)
+	for specIndex, spec := range specs {
+		fineRows := windows[specIndex*2]
+		coarseRows := windows[specIndex*2+1]
+
+		for valueIndex, valueKey := range spec.ValueKeys {
+			key, label, unit, scale, ok := snapshotValuePresentation(spec, valueKey)
+
+			if !ok {
+				continue
+			}
+
+			series := snapshot.Keys[key]
+			series.Tiers["fine"] = fineTierSnapshot(fineRows, valueIndex, spec.Step, scale)
+			series.Tiers["coarse"] = coarseTierSnapshot(coarseRows, valueIndex, spec.Step, scale)
+			series.Label = label
+			series.Unit = unit
+			snapshot.Keys[key] = series
+		}
+	}
 
 	return snapshot, nil
 }
 
-func fetchRanges(ctx context.Context, reader SnapshotReader, fineEnd, coarseEnd time.Time) ([]rrd.FetchResult, error) {
-	requests := make([]rrd.FetchRequest, 0, 6)
-
-	for _, rangeSpec := range []struct {
-		resolution time.Duration
-		start      time.Time
-		end        time.Time
-	}{
-		{3 * time.Minute, fineEnd.Add(-24 * time.Hour), fineEnd},
-		{time.Hour, coarseEnd.Add(-30 * 24 * time.Hour), coarseEnd},
-	} {
-		for _, cf := range []string{"AVERAGE", "MIN", "MAX"} {
-			requests = append(requests, rrd.FetchRequest{CF: cf, Resolution: rangeSpec.resolution, Start: rangeSpec.start, End: rangeSpec.end})
-		}
+func snapshotValuePresentation(spec SeriesSpec, valueKey string) (key, label, unit string, scale float64, ok bool) {
+	switch {
+	case spec.ID == 1 && valueKey == "cpu":
+		return "cpu", "CPU", "percent", 1, true
+	case spec.ID == 1 && valueKey == "ram":
+		return "ram", "RAM", "percent", 1, true
+	case spec.ID == 2 && valueKey == "temperature":
+		return "temp", "cpu-thermal", "celsius", 1000, true
+	default:
+		return "", "", "", 1, false
 	}
-
-	return reader.FetchGroup(ctx, requests)
 }
 
-func seriesFromResults(label, unit string, supported bool, results []rrd.FetchResult, dsIndex int, scale float64) SeriesSnapshot {
-	series := SeriesSnapshot{Label: label, Supported: supported, Unit: unit, Tiers: map[string]TierSnapshot{}}
+func fineTierSnapshot(rows []Row, valueIndex int, step time.Duration, scale float64) TierSnapshot {
+	tier := TierSnapshot{StepMs: step.Milliseconds(), Samples: make([]Sample, 0, len(rows))}
 
-	for _, tier := range []struct {
-		name string
-		base int
-	}{
-		{"fine", 0},
-		{"coarse", 3},
-	} {
-		if len(results) < tier.base+3 {
-			series.Tiers[tier.name] = TierSnapshot{Samples: []Sample{}}
+	for _, row := range rows {
+		tier.Samples = append(tier.Samples, rawSample(row, valueIndex, step, scale))
+	}
 
-			continue
-		}
+	return tier
+}
 
-		average, minimum, maximum := results[tier.base], results[tier.base+1], results[tier.base+2]
-		tierSnapshot := TierSnapshot{StepMs: average.Step.Milliseconds(), Samples: []Sample{}}
-		minByTime := valuesByTime(minimum, dsIndex, scale)
-		maxByTime := valuesByTime(maximum, dsIndex, scale)
+func coarseTierSnapshot(rows []Row, valueIndex int, step time.Duration, scale float64) TierSnapshot {
+	tier := TierSnapshot{StepMs: time.Hour.Milliseconds(), Samples: []Sample{}}
 
-		for _, row := range average.Rows {
-			if row.Timestamp.Unix() <= average.Start.Unix() || row.Timestamp.After(average.End) {
+	if step <= 0 || time.Hour%step != 0 {
+		return tier
+	}
+
+	perHour := int(time.Hour / step)
+	tier.Samples = make([]Sample, 0, len(rows)/perHour)
+
+	for offset := 0; offset+perHour <= len(rows); offset += perHour {
+		start := rows[offset].Slot
+		var count int
+		var sum, minimum, maximum float64
+
+		for _, row := range rows[offset : offset+perHour] {
+			if valueIndex >= len(row.Values) {
 				continue
 			}
 
-			mean := valueAt(row.Values, dsIndex, scale)
-			min, minOK := minByTime[row.Timestamp.Unix()]
-			max, maxOK := maxByTime[row.Timestamp.Unix()]
-			sample := Sample{Timestamp: row.Timestamp.UnixMilli(), Min: min, Max: max, Mean: mean, OK: mean != nil && minOK && maxOK}
+			value := row.Values[valueIndex]
 
-			if !sample.OK {
-				sample.Min, sample.Max, sample.Mean = nil, nil, nil
+			if !value.Known || math.IsNaN(value.V) || math.IsInf(value.V, 0) {
+				continue
 			}
 
-			tierSnapshot.Samples = append(tierSnapshot.Samples, sample)
+			value.V /= scale
+
+			if count == 0 || value.V < minimum {
+				minimum = value.V
+			}
+
+			if count == 0 || value.V > maximum {
+				maximum = value.V
+			}
+
+			sum += value.V
+			count++
 		}
 
-		series.Tiers[tier.name] = tierSnapshot
+		sample := Sample{Timestamp: start.Add(time.Hour).UnixMilli()}
+
+		if count >= (perHour+1)/2 {
+			mean := sum / float64(count)
+			sample.Min = floatPointer(minimum)
+			sample.Max = floatPointer(maximum)
+			sample.Mean = floatPointer(mean)
+			sample.OK = true
+		}
+
+		tier.Samples = append(tier.Samples, sample)
 	}
 
-	return series
+	return tier
+}
+
+func rawSample(row Row, valueIndex int, step time.Duration, scale float64) Sample {
+	sample := Sample{Timestamp: row.Slot.Add(step).UnixMilli()}
+
+	if valueIndex >= len(row.Values) {
+		return sample
+	}
+
+	value := row.Values[valueIndex]
+
+	if !value.Known || math.IsNaN(value.V) || math.IsInf(value.V, 0) {
+		return sample
+	}
+
+	value.V /= scale
+	sample.Min = floatPointer(value.V)
+	sample.Max = floatPointer(value.V)
+	sample.Mean = floatPointer(value.V)
+	sample.OK = true
+
+	return sample
+}
+
+func floatPointer(value float64) *float64 {
+	return &value
 }
 
 // seriesKeyMap maps journal series IDs to snapshot keys. Series 2 is temperature.
@@ -383,26 +448,6 @@ func applySupportedSeries(snapshot *Snapshot, supported map[uint16]bool) {
 			snapshot.Keys[key] = s
 		}
 	}
-}
-
-func valuesByTime(result rrd.FetchResult, dsIndex int, scale float64) map[int64]*float64 {
-	values := make(map[int64]*float64, len(result.Rows))
-
-	for _, row := range result.Rows {
-		values[row.Timestamp.Unix()] = valueAt(row.Values, dsIndex, scale)
-	}
-
-	return values
-}
-
-func valueAt(values []rrd.Value, index int, scale float64) *float64 {
-	if index < 0 || index >= len(values) || !values[index].Known || math.IsNaN(values[index].V) || math.IsInf(values[index].V, 0) {
-		return nil
-	}
-
-	value := values[index].V / scale
-
-	return &value
 }
 
 func emptySnapshot(enabled bool) *Snapshot {
@@ -450,11 +495,33 @@ func cloneSnapshot(input *Snapshot) *Snapshot {
 		copied := SeriesSnapshot{Label: series.Label, Supported: series.Supported, Unit: series.Unit, Tiers: map[string]TierSnapshot{}}
 
 		for tierName, tier := range series.Tiers {
-			copied.Tiers[tierName] = TierSnapshot{StepMs: tier.StepMs, Samples: append([]Sample(nil), tier.Samples...)}
+			samples := make([]Sample, len(tier.Samples))
+
+			for index, sample := range tier.Samples {
+				samples[index] = Sample{
+					Timestamp: sample.Timestamp,
+					Min:       cloneFloat(sample.Min),
+					Max:       cloneFloat(sample.Max),
+					Mean:      cloneFloat(sample.Mean),
+					OK:        sample.OK,
+				}
+			}
+
+			copied.Tiers[tierName] = TierSnapshot{StepMs: tier.StepMs, Samples: samples}
 		}
 
 		output.Keys[key] = copied
 	}
 
 	return output
+}
+
+func cloneFloat(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+
+	copy := *value
+
+	return &copy
 }

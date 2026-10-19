@@ -23,6 +23,7 @@ func Ensure(root, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if dir == "" {
 		return "", nil
 	}
@@ -30,12 +31,15 @@ func Ensure(root, name string) (string, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", fmt.Errorf("create plugin runtime root: %w", err)
 	}
+
 	if err := os.Chmod(root, 0o700); err != nil {
 		return "", fmt.Errorf("restrict plugin runtime root: %w", err)
 	}
+
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", fmt.Errorf("create plugin runtime directory: %w", err)
 	}
+
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return "", fmt.Errorf("restrict plugin runtime directory: %w", err)
 	}
@@ -49,6 +53,7 @@ func ForPlugin(root, name string) (string, error) {
 	if root == "" {
 		return "", nil
 	}
+
 	if name == "" || name == "." || name == ".." || filepath.Base(name) != name || strings.ContainsAny(name, `/\\`) {
 		return "", fmt.Errorf("invalid plugin name for runtime directory: %q", name)
 	}
@@ -67,11 +72,13 @@ func SetPluginEnv(env []string, name, dir string) []string {
 func setEnv(env []string, name, value string) []string {
 	prefix := name + "="
 	filtered := make([]string, 0, len(env)+1)
+
 	for _, entry := range env {
 		if !strings.HasPrefix(entry, prefix) {
 			filtered = append(filtered, entry)
 		}
 	}
+
 	if value != "" {
 		filtered = append(filtered, prefix+value)
 	}

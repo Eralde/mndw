@@ -53,9 +53,11 @@ func (m Manifest) validate() error {
 	if m.Version != manifestVersion {
 		return ErrUnsupported
 	}
+
 	if m.State != stateInitializing && m.State != stateReady {
 		return validationError("unknown manifest state %q", m.State)
 	}
+
 	return nil
 }
 
@@ -66,13 +68,17 @@ func loadManifest(fs FileSystem, path string) (Manifest, error) {
 	if err != nil {
 		return Manifest{}, err
 	}
+
 	var manifest Manifest
+
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return Manifest{}, validationError("manifest is not readable: %v", err)
 	}
+
 	if err := manifest.validate(); err != nil {
 		return Manifest{}, err
 	}
+
 	return manifest, nil
 }
 
@@ -83,6 +89,7 @@ func writeManifest(fs FileSystem, path string, manifest Manifest) error {
 	if err != nil {
 		return err
 	}
+
 	return WriteFileAtomic(fs, path, data)
 }
 
@@ -97,20 +104,27 @@ func WriteFileAtomic(fs FileSystem, path string, data []byte) error {
 	if err != nil {
 		return err
 	}
+
 	if _, err := file.Write(data); err != nil {
 		_ = file.Close()
+
 		return err
 	}
+
 	if err := file.Sync(); err != nil {
 		_ = file.Close()
+
 		return err
 	}
+
 	if err := file.Close(); err != nil {
 		return err
 	}
+
 	if err := fs.Rename(temp, path); err != nil {
 		return err
 	}
+
 	return fs.SyncDir(dir)
 }
 
@@ -123,8 +137,10 @@ func hasJournalArtifacts(fs FileSystem, paths StoragePaths) (bool, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
+
 		return false, err
 	}
+
 	return len(segmentNames(entries)) > 0, nil
 }
 
@@ -133,16 +149,20 @@ func hasJournalArtifacts(fs FileSystem, paths StoragePaths) (bool, error) {
 func removeLegacyArtifacts(fs FileSystem, paths StoragePaths) error {
 	for _, name := range legacyRRDBasenames {
 		target := filepath.Join(paths.RRDDir, name)
+
 		if _, err := fs.Stat(target); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
+
 			return err
 		}
+
 		if err := fs.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 	}
+
 	return fs.SyncDir(paths.RRDDir)
 }
 
@@ -155,16 +175,20 @@ func initializeStorage(fs FileSystem, paths StoragePaths) (Manifest, error) {
 	}
 
 	pending := Manifest{Version: manifestVersion, State: stateInitializing, Generation: 1}
+
 	if err := writeManifest(fs, manifestPath(paths), pending); err != nil {
 		return Manifest{}, err
 	}
+
 	if err := removeLegacyArtifacts(fs, paths); err != nil {
 		return Manifest{}, err
 	}
 
 	pending.State = stateReady
+
 	if err := writeManifest(fs, manifestPath(paths), pending); err != nil {
 		return Manifest{}, err
 	}
+
 	return pending, nil
 }

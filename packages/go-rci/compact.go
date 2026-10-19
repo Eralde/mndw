@@ -9,13 +9,16 @@ type compactedQueries struct {
 
 func compactQueries(queries []Query) (compactedQueries, error) {
 	wireQueries := make([][]byte, len(queries))
+
 	for index, query := range queries {
 		wire, err := marshalQuery(query)
 		if err != nil {
 			return compactedQueries{}, err
 		}
+
 		wireQueries[index] = wire
 	}
+
 	return compactWireQueries(wireQueries), nil
 }
 
@@ -29,12 +32,15 @@ func compactWireQueries(wireQueries [][]byte) compactedQueries {
 	for inputIndex, wire := range wireQueries {
 		key := string(wire)
 		uniqueIndex, ok := lookup[key]
+
 		if !ok {
 			lookup[key] = len(compacted.wire)
 			compacted.wire = append(compacted.wire, wire)
 			compacted.positions = append(compacted.positions, []int{inputIndex})
+
 			continue
 		}
+
 		compacted.positions[uniqueIndex] = append(compacted.positions[uniqueIndex], inputIndex)
 	}
 
@@ -43,16 +49,20 @@ func compactWireQueries(wireQueries [][]byte) compactedQueries {
 
 func inflateResults(uniqueResults []json.RawMessage, positions [][]int, inputLen int) []json.RawMessage {
 	results := make([]json.RawMessage, inputLen)
+
 	for uniqueIndex, inputPositions := range positions {
 		if uniqueIndex >= len(uniqueResults) || uniqueResults[uniqueIndex] == nil {
 			continue
 		}
+
 		for _, inputIndex := range inputPositions {
 			if inputIndex < 0 || inputIndex >= len(results) {
 				continue
 			}
+
 			results[inputIndex] = append(json.RawMessage(nil), uniqueResults[uniqueIndex]...)
 		}
 	}
+
 	return results
 }

@@ -55,6 +55,7 @@ func (OSFileSystem) OpenFile(name string, flag int, perm os.FileMode) (File, err
 	if err != nil {
 		return nil, err
 	}
+
 	return &osFile{file: file}, nil
 }
 
@@ -87,10 +88,13 @@ func (OSFileSystem) SyncDir(name string) error {
 	if err != nil {
 		return err
 	}
+
 	defer func() { _ = file.Close() }()
+
 	if err := file.Sync(); err != nil {
 		return err
 	}
+
 	return file.Close()
 }
 
@@ -112,13 +116,16 @@ func PathsFromRRDDir(rrdDir string) (StoragePaths, error) {
 	if strings.TrimSpace(rrdDir) == "" {
 		return StoragePaths{}, ErrInvalidPaths
 	}
+
 	cleaned, err := filepath.Abs(filepath.Clean(rrdDir))
 	if err != nil {
 		return StoragePaths{}, err
 	}
+
 	if cleaned == string(filepath.Separator) || filepath.Dir(cleaned) == cleaned {
 		return StoragePaths{}, ErrInvalidPaths
 	}
+
 	return StoragePaths{RRDDir: cleaned, JournalDir: filepath.Join(cleaned, journalDirName)}, nil
 }
 
@@ -131,15 +138,20 @@ const segmentFileExtension = ".jnl"
 // segmentNames lists the segment files in a directory, oldest identity first.
 func segmentNames(entries []os.DirEntry) []string {
 	names := make([]string, 0, len(entries))
+
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
+
 		name := entry.Name()
+
 		if strings.HasPrefix(name, segmentFilePrefix) && strings.HasSuffix(name, segmentFileExtension) {
 			names = append(names, name)
 		}
 	}
+
 	sort.Strings(names)
+
 	return names
 }

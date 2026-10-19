@@ -50,6 +50,7 @@ func TestValidateRejectsMissingToken(t *testing.T) {
 	if err == nil {
 		t.Fatal("validate with empty dark.accent = nil, want error")
 	}
+
 	if !strings.Contains(err.Error(), "dark.accent") {
 		t.Errorf("error %q does not name the offending token", err)
 	}
@@ -63,6 +64,7 @@ func TestValidateRejectsEmptyTheme(t *testing.T) {
 	if err == nil {
 		t.Fatal("validate with an empty light theme = nil, want error")
 	}
+
 	if !strings.Contains(err.Error(), "light") {
 		t.Errorf("error %q does not name the offending theme", err)
 	}
@@ -103,7 +105,9 @@ func TestValidateSharedFixtureCorpus(t *testing.T) {
 
 				var palette Palette
 				decoder := json.NewDecoder(bytes.NewReader(data))
+
 				decoder.DisallowUnknownFields()
+
 				decodeErr := decoder.Decode(&palette)
 				validateErr := decodeErr
 
@@ -114,6 +118,7 @@ func TestValidateSharedFixtureCorpus(t *testing.T) {
 				if kind == "valid" && validateErr != nil {
 					t.Fatalf("valid fixture rejected: %v", validateErr)
 				}
+
 				if kind == "invalid" && validateErr == nil {
 					t.Fatal("invalid fixture accepted")
 				}

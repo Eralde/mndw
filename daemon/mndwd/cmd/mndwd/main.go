@@ -499,11 +499,7 @@ func registerAccess(mux *http.ServeMux, core daemonCore) persistentSessionRegist
 	registration := assembleRCISession(core, accessMux)
 
 	if registration.capability != nil {
-		cache := telemetry.NewSnapshotCache(
-			registration.capability.LoadReader(),
-			registration.capability.TemperatureReader(),
-			time.Now,
-		)
+		cache := telemetry.NewSnapshotCache(registration.capability.History(), time.Now)
 
 		// The pipeline-owned refresher is the only caller of Refresh; HTTP reads
 		// serve the last published immutable snapshot.

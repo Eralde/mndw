@@ -70,6 +70,7 @@ func NewHTTPTransport(client *http.Client) *HTTPTransport {
 	if client == nil {
 		client = &http.Client{}
 	}
+
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
@@ -81,25 +82,32 @@ func (t *HTTPTransport) Do(ctx context.Context, target Target, jar http.CookieJa
 	if len(body) > maxRequestBody {
 		return Response{}, fmt.Errorf("auth request exceeds size limit")
 	}
+
 	base, err := url.Parse(target.BaseURL)
 	if err != nil || base.Scheme == "" || base.Host == "" {
 		return Response{}, &AuthError{Kind: ErrorUnsupported, Err: fmt.Errorf("invalid auth target")}
 	}
+
 	base.Path = strings.TrimRight(base.Path, "/") + "/" + strings.TrimLeft(path, "/")
 
 	requestCtx := ctx
+
 	if t.IOTimeout <= 0 {
 		t.IOTimeout = defaultIOTimeout
 	}
+
 	var cancel context.CancelFunc
 	requestCtx, cancel = context.WithTimeout(requestCtx, t.IOTimeout)
+
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(requestCtx, method, base.String(), strings.NewReader(string(body)))
 	if err != nil {
 		return Response{}, err
 	}
+
 	req.Header.Set("Accept", "application/json")
+
 	if len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -111,18 +119,23 @@ func (t *HTTPTransport) Do(ctx context.Context, target Target, jar http.CookieJa
 		if errors.Is(requestCtx.Err(), context.DeadlineExceeded) {
 			return Response{}, &AuthError{Kind: ErrorTimeout, Err: err}
 		}
+
 		return Response{}, &AuthError{Kind: ErrorTransport, Err: err}
 	}
+
 	defer resp.Body.Close()
 
 	limit := t.MaxResponseBytes
+
 	if limit <= 0 {
 		limit = defaultMaxResponse
 	}
+
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return Response{}, &AuthError{Kind: ErrorTransport, Err: err}
 	}
+
 	if int64(len(data)) > limit {
 		return Response{}, &AuthError{Kind: ErrorMalformed, Err: fmt.Errorf("auth response exceeds size limit")}
 	}
@@ -134,14 +147,18 @@ func newJar(jar http.CookieJar) (http.CookieJar, error) {
 	if jar != nil {
 		return jar, nil
 	}
+
 	return cookiejar.New(nil)
 }
 
 func decodeJSON(data []byte, destination any) error {
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
+
 	decoder.DisallowUnknownFields()
+
 	if err := decoder.Decode(destination); err != nil {
 		return &AuthError{Kind: ErrorMalformed, Err: err}
 	}
+
 	return nil
 }

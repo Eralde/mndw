@@ -32,9 +32,11 @@ func TestOpenCreatesCanonicalEmptyFile(t *testing.T) {
 	}
 
 	var doc document
+
 	if err := json.Unmarshal(data, &doc); err != nil {
 		t.Fatalf("created file is not valid JSON: %v", err)
 	}
+
 	if doc.Version != schemaVersion || doc.Palette != nil {
 		t.Errorf("created file = %+v, want version %d with null palette", doc, schemaVersion)
 	}
@@ -48,11 +50,13 @@ func TestSetGetRoundTrip(t *testing.T) {
 	}
 
 	want := valid()
+
 	if err := store.Set(want); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
 
 	got, ok := store.Get()
+
 	if !ok || got != want {
 		t.Fatalf("Get = %+v, %v; want %+v, true", got, ok, want)
 	}
@@ -63,6 +67,7 @@ func TestSetGetRoundTrip(t *testing.T) {
 	}
 
 	got, ok = reopened.Get()
+
 	if !ok || got != want {
 		t.Errorf("after reopen Get = %+v, %v; want %+v, true", got, ok, want)
 	}
@@ -80,6 +85,7 @@ func TestSetRejectsInvalidPalette(t *testing.T) {
 	if err := store.Set(bad); err == nil {
 		t.Fatal("Set with an invalid palette = nil, want error")
 	}
+
 	if _, ok := store.Get(); ok {
 		t.Error("rejected Set left an override in place")
 	}
@@ -91,9 +97,11 @@ func TestClearWritesCanonicalEmptyDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+
 	if err := store.Set(valid()); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
+
 	if err := store.Clear(); err != nil {
 		t.Fatalf("Clear: %v", err)
 	}
@@ -108,6 +116,7 @@ func TestGetReturnsACopy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+
 	if err := store.Set(valid()); err != nil {
 		t.Fatalf("Set: %v", err)
 	}
@@ -116,6 +125,7 @@ func TestGetReturnsACopy(t *testing.T) {
 	got.Dark.Accent = "#deadbe"
 
 	again, _ := store.Get()
+
 	if again.Dark.Accent == "#deadbe" {
 		t.Error("mutating the value returned by Get changed the store's state")
 	}
@@ -133,6 +143,7 @@ func TestOpenQuarantinesUnusableFiles(t *testing.T) {
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
 			path := storePath(t)
+
 			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 				t.Fatalf("seed file: %v", err)
 			}
@@ -141,9 +152,11 @@ func TestOpenQuarantinesUnusableFiles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Open on an unusable file = %v, want nil", err)
 			}
+
 			if _, ok := store.Get(); ok {
 				t.Error("recovered store reports an override")
 			}
+
 			if _, err := os.Stat(path + ".bak"); err != nil {
 				t.Errorf("original was not preserved as palette.json.bak: %v", err)
 			}
@@ -172,6 +185,7 @@ func TestOpenQuarantinesLegacy14TokenPalette(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal legacy document: %v", err)
 	}
+
 	if err := os.WriteFile(path, documentBytes, 0o644); err != nil {
 		t.Fatalf("seed legacy file: %v", err)
 	}
@@ -180,9 +194,11 @@ func TestOpenQuarantinesLegacy14TokenPalette(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open on legacy document = %v, want nil", err)
 	}
+
 	if _, ok := store.Get(); ok {
 		t.Error("legacy document became an active palette")
 	}
+
 	if _, err := os.Stat(path + ".bak"); err != nil {
 		t.Errorf("legacy document was not quarantined: %v", err)
 	}
@@ -195,14 +211,18 @@ func TestConcurrentSetsAreSerialized(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
+
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
+
 		go func() {
 			defer wg.Done()
+
 			if err := store.Set(valid()); err != nil {
 				t.Errorf("concurrent Set: %v", err)
 			}
 		}()
 	}
+
 	wg.Wait()
 }

@@ -9,9 +9,11 @@ func TestParseMembersAndNormalizeIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(members) != 1 || members[0].MAC != "aa:bb:cc:dd:ee:ff" || members[0].Identity() != "node-1" {
 		t.Fatalf("members = %#v", members)
 	}
+
 	if members[0].FQDN != "76be7d62822bff3c2f7c8bc6.keenetic.io" {
 		t.Fatalf("FQDN = %q", members[0].FQDN)
 	}
@@ -25,6 +27,7 @@ func TestParseMembersPreservesMissingFQDNAndOfflineFQDNMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(members) != 2 || members[0].FQDN != "" || members[1].FQDN != "offline.keenetic.io" || members[1].Online {
 		t.Fatalf("members = %#v", members)
 	}

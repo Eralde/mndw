@@ -18,6 +18,7 @@ func TestParseMembersRequiresIdentityAndMACAndAllowsOfflineMembers(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(members) != 1 || members[0] != (Member{Identity: "node-1", Name: "A", IP: "192.168.1.2", MAC: "aa:bb:cc:dd:ee:ff", FQDN: "node-1.keenetic.io"}) {
 		t.Fatalf("members = %#v", members)
 	}
@@ -36,6 +37,7 @@ func TestParseMembersRequiresIdentityAndMACAndAllowsOfflineMembers(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(offline) != 1 || offline[0].Identity != "node-2" || offline[0].IP != "" || offline[0].FQDN != "offline.keenetic.io" {
 		t.Fatalf("offline members = %#v", offline)
 	}
@@ -46,6 +48,7 @@ func TestParseMembersMapsEligibilityFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(members) != 1 || !members[0].FQDNCertificateValid || !members[0].AuthTokenCapable {
 		t.Fatalf("members = %#v", members)
 	}
@@ -56,15 +59,19 @@ func TestParseMembersMapsSharedIncompleteFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var value any
+
 	if err := json.Unmarshal(data, &value); err != nil {
 		t.Fatal(err)
 	}
+
 	data = append([]byte{'['}, append(data, ']')...)
 	members, err := ParseMembers(data)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(members) != 1 || members[0].IP != "" || members[0].FQDNCertificateValid || members[0].AuthTokenCapable {
 		t.Fatalf("incomplete member = %#v", members)
 	}
@@ -72,6 +79,7 @@ func TestParseMembersMapsSharedIncompleteFixture(t *testing.T) {
 
 func TestParseMembersRejectsDuplicateIdentity(t *testing.T) {
 	data := []byte(`[{"cid":"node-1","mac":"aa:bb:cc:dd:ee:01","ip":"192.168.1.2"},{"cid":"node-1","mac":"aa:bb:cc:dd:ee:02","ip":"192.168.1.3"}]`)
+
 	if _, err := ParseMembers(data); err == nil {
 		t.Fatal("ParseMembers accepted duplicate identity")
 	}
@@ -86,18 +94,21 @@ func TestCacheUsesFreshMembersAndFailsClosedWhenStale(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	first[0].IP = "192.168.1.99"
 	clock = clock.Add(29 * time.Second)
 	second, err := cache.List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if second[0].IP != "192.168.1.2" || source.calls != 1 {
 		t.Fatalf("fresh cache result = %#v, calls = %d", second, source.calls)
 	}
 
 	clock = clock.Add(1 * time.Second)
 	source.err = errors.New("controller down")
+
 	if _, err := cache.List(context.Background()); !errors.Is(err, ErrTargetUnreachable) {
 		t.Fatalf("stale cache error = %v, want ErrTargetUnreachable", err)
 	}
@@ -107,15 +118,19 @@ func TestCacheInvalidationForcesEnumeration(t *testing.T) {
 	clock := time.Unix(100, 0)
 	source := &fakeSource{members: []Member{{Identity: "node-1", Name: "A", IP: "192.168.1.2", MAC: "aa:bb:cc:dd:ee:ff"}}}
 	cache := NewCache(source, time.Minute, func() time.Time { return clock })
+
 	if _, err := cache.List(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	cache.Invalidate()
+
 	source.members[0].IP = "192.168.1.3"
 	members, err := cache.List(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if members[0].IP != "192.168.1.3" || source.calls != 2 {
 		t.Fatalf("members = %#v, calls = %d", members, source.calls)
 	}
@@ -125,18 +140,25 @@ func TestCacheRetainsLastGoodMembersAndReportsSafeStaleStatus(t *testing.T) {
 	clock := time.Unix(100, 0)
 	source := &fakeSource{members: []Member{{Identity: "node-1", MAC: "aa:bb:cc:dd:ee:ff"}}}
 	cache := NewCache(source, 0, func() time.Time { return clock })
+
 	if _, err := cache.List(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	source.err = errors.New("controller token secret and URL must not escape")
+
 	if _, err := cache.List(context.Background()); err == nil {
 		t.Fatal("List() error = nil")
 	}
+
 	status := cache.Status()
+
 	if !status.Stale || status.LastError == "" || len(status.LastGoodMembers) != 1 {
 		t.Fatalf("status = %#v", status)
 	}
+
 	status.LastGoodMembers[0].Identity = "changed"
+
 	if cache.Status().LastGoodMembers[0].Identity != "node-1" {
 		t.Fatal("Status() returned mutable members")
 	}
@@ -145,15 +167,19 @@ func TestCacheRetainsLastGoodMembersAndReportsSafeStaleStatus(t *testing.T) {
 func TestCacheSuccessClearsStaleMetadata(t *testing.T) {
 	source := &fakeSource{members: []Member{{Identity: "node-1", MAC: "aa:bb:cc:dd:ee:ff"}}}
 	cache := NewCache(source, 0, time.Now)
+
 	if _, err := cache.List(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	source.err = errors.New("down")
 	_, _ = cache.List(context.Background())
 	source.err = nil
+
 	if _, err := cache.List(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	if status := cache.Status(); status.Stale || status.LastError != "" {
 		t.Fatalf("status after success = %#v", status)
 	}
@@ -178,12 +204,15 @@ func TestHTTPSourceUsesConfiguredControllerURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(members) != 2 || members[0].Identity != "node-1" || members[0].FQDN != "node-1.keenetic.io" || members[1].Identity != "node-2" || members[1].IP != "" {
 		t.Fatalf("members = %#v", members)
 	}
+
 	if transport.request.URL.String() != "http://192.168.1.1:80/rci/" || transport.request.Method != http.MethodPost {
 		t.Fatalf("request URL = %s", transport.request.URL)
 	}
+
 	if string(transport.requestBody) != `[{"show":{"mws":{"member":{}}}}]` {
 		t.Fatalf("request body = %s", transport.requestBody)
 	}
@@ -209,15 +238,19 @@ func TestHTTPSourceEnumerateAcceptsRawMemberArray(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(members) != 2 || members[0].Identity != "node-1" || members[1].Identity != "node-2" {
 		t.Fatalf("members = %#v, want two raw-array members", members)
 	}
+
 	if transport.request.URL.String() != "http://192.168.1.1:80/rci/" || transport.request.Method != http.MethodPost {
 		t.Fatalf("request URL = %s, method = %s", transport.request.URL, transport.request.Method)
 	}
+
 	if got := transport.request.Header.Get("X-Ndma-Tkn"); got != "controller-token" {
 		t.Fatalf("X-Ndma-Tkn = %q, want controller-token", got)
 	}
+
 	if string(transport.requestBody) != `[{"show":{"mws":{"member":{}}}}]` {
 		t.Fatalf("request body = %s", transport.requestBody)
 	}
@@ -232,6 +265,7 @@ func TestHTTPSourceReturnsCapturedControllerEpochOnUnauthorized(t *testing.T) {
 	}
 	_, err := source.Enumerate(context.Background())
 	var controllerError ControllerHTTPError
+
 	if !errors.As(err, &controllerError) || controllerError.Status != http.StatusUnauthorized || controllerError.Epoch != 7 {
 		t.Fatalf("error = %v, controller error = %#v", err, controllerError)
 	}
@@ -264,9 +298,11 @@ type fakeSource struct {
 
 func (f *fakeSource) Enumerate(context.Context) ([]Member, error) {
 	f.calls++
+
 	if f.err != nil {
 		return nil, f.err
 	}
+
 	return append([]Member(nil), f.members...), nil
 }
 

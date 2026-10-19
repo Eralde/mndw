@@ -91,10 +91,13 @@ func (OSFileOps) CreateTemp(dir, pattern string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	name := file.Name()
+
 	if err := file.Close(); err != nil {
 		return "", err
 	}
+
 	return name, nil
 }
 
@@ -143,6 +146,7 @@ func NewFile(executor Executor, activePath string, spec CreateSpec, opts ...File
 	lockValue, _ := fileLocks.LoadOrStore(path, &sync.Mutex{})
 
 	file := &File{executor: executor, path: path, spec: spec, lock: lockValue.(*sync.Mutex), ops: OSFileOps{}}
+
 	for _, opt := range opts {
 		opt(file)
 	}

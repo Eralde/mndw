@@ -49,6 +49,7 @@ func TestResponseIDPresence(t *testing.T) {
 	if got := string(withZero["id"].(json.Number)); got != "0" {
 		t.Fatalf("id = %q, want 0", got)
 	}
+
 	if _, ok := withoutID["id"]; ok {
 		t.Fatalf("nil response ID was marshaled: %v", withoutID)
 	}
@@ -61,15 +62,19 @@ func TestResponsePresence(t *testing.T) {
 	hello := marshalJSON(t, ResponseFrame{Hello: &ServerHello{Proto: ProtocolVersion, OK: true}})
 
 	targets, ok := emptyTargets["targets"].([]any)
+
 	if !ok || targets == nil || len(targets) != 0 {
 		t.Fatalf("targets = %#v, want non-nil empty array", emptyTargets["targets"])
 	}
+
 	if got := string(zeroStatus["status"].(json.Number)); got != "0" {
 		t.Fatalf("status = %q, want 0", got)
 	}
+
 	if _, ok := hello["targets"]; ok {
 		t.Fatalf("hello unexpectedly included targets: %v", hello)
 	}
+
 	if _, ok := hello["status"]; ok {
 		t.Fatalf("hello unexpectedly included status: %v", hello)
 	}
@@ -82,6 +87,7 @@ func TestDirectionTypedDecodeRejectsIllegalKeys(t *testing.T) {
 		`{"error":null}`,
 		`{"hello":{"ok":true}}`,
 	}
+
 	for _, raw := range requestOnlyRejects {
 		t.Run("request rejects "+raw, func(t *testing.T) {
 			if err := strictDecode(raw, &RequestFrame{}); err == nil {
@@ -97,6 +103,7 @@ func TestDirectionTypedDecodeRejectsIllegalKeys(t *testing.T) {
 		`{"path":"/"}`,
 		`{"hello":{"pluginId":"plugin"}}`,
 	}
+
 	for _, raw := range responseOnlyRejects {
 		t.Run("response rejects "+raw, func(t *testing.T) {
 			if err := strictDecode(raw, &ResponseFrame{}); err == nil {
@@ -116,6 +123,7 @@ func TestReaderReassemblesSplitFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if frame.ID != 7 || frame.Op != "targets" {
 		t.Fatalf("frame = %+v", frame)
 	}
@@ -129,10 +137,12 @@ func TestReaderBoundsOneFrameNotCombinedRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	second, err := reader.Next()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if first.ID != 1 || second.ID != 2 {
 		t.Fatalf("frames = %+v, %+v", first, second)
 	}
@@ -140,6 +150,7 @@ func TestReaderBoundsOneFrameNotCombinedRead(t *testing.T) {
 
 func TestReaderRejectsOversizedFrame(t *testing.T) {
 	reader := NewReader[RequestFrame](strings.NewReader(`{"id":123456}`), 5)
+
 	if _, err := reader.Next(); err == nil {
 		t.Fatal("oversized unterminated frame was accepted")
 	} else if !errors.Is(err, ErrMalformedFrame) {
@@ -149,6 +160,7 @@ func TestReaderRejectsOversizedFrame(t *testing.T) {
 
 func TestReaderRejectsMalformedFrame(t *testing.T) {
 	reader := NewReader[RequestFrame](strings.NewReader(`{"status":0}`+"\n"), 64)
+
 	if _, err := reader.Next(); !errors.Is(err, ErrMalformedFrame) {
 		t.Fatalf("malformed frame error = %v, want ErrMalformedFrame", err)
 	}
@@ -157,6 +169,7 @@ func TestReaderRejectsMalformedFrame(t *testing.T) {
 func TestReaderPassesThroughTransportError(t *testing.T) {
 	transportErr := errors.New("transport failed")
 	reader := NewReader[RequestFrame](&errorReader{err: transportErr}, 64)
+
 	if _, err := reader.Next(); !errors.Is(err, transportErr) || errors.Is(err, ErrMalformedFrame) {
 		t.Fatalf("transport error = %v, want unchanged transport error", err)
 	}
@@ -171,29 +184,39 @@ func TestWriteFrameReportsShortWrite(t *testing.T) {
 
 func marshalJSON(t *testing.T, value any) map[string]any {
 	t.Helper()
+
 	data, err := json.Marshal(value)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var result map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(data))
+
 	decoder.UseNumber()
+
 	if err := decoder.Decode(&result); err != nil {
 		t.Fatal(err)
 	}
+
 	return result
 }
 
 func assertKeys(t *testing.T, value any, want []string) {
 	t.Helper()
+
 	object, ok := value.(map[string]any)
+
 	if !ok {
 		t.Fatalf("value = %#v, want object", value)
 	}
+
 	got := make([]string, 0, len(object))
+
 	for key := range object {
 		got = append(got, key)
 	}
+
 	if !reflect.DeepEqual(sortedStrings(got), sortedStrings(want)) {
 		t.Fatalf("keys = %v, want %v", got, want)
 	}
@@ -201,12 +224,15 @@ func assertKeys(t *testing.T, value any, want []string) {
 
 func strictDecode(raw string, destination any) error {
 	decoder := json.NewDecoder(strings.NewReader(raw))
+
 	decoder.DisallowUnknownFields()
+
 	return decoder.Decode(destination)
 }
 
 func sortedStrings(values []string) []string {
 	result := append([]string(nil), values...)
+
 	for index := 0; index < len(result); index++ {
 		for next := index + 1; next < len(result); next++ {
 			if result[next] < result[index] {
@@ -214,6 +240,7 @@ func sortedStrings(values []string) []string {
 			}
 		}
 	}
+
 	return result
 }
 
@@ -225,8 +252,10 @@ func (r *splitReader) Read(destination []byte) (int, error) {
 	if len(r.chunks) == 0 {
 		return 0, io.EOF
 	}
+
 	chunk := r.chunks[0]
 	r.chunks = r.chunks[1:]
+
 	return copy(destination, chunk), nil
 }
 

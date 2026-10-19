@@ -102,6 +102,7 @@ func TestSessionReadRouteStatusCodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	stale := encodeCursor(cursor{
 		boot:                boot,
 		inventoryGeneration: generationOf(lease),
@@ -126,9 +127,11 @@ func TestSessionReadRouteStatusCodes(t *testing.T) {
 func TestSessionReadRoutePassesCursorAndLimit(t *testing.T) {
 	reader := &stubSessionReader{}
 	mux := http.NewServeMux()
+
 	RegisterRoutes(mux, reader, nil)
 
 	recorder := httptest.NewRecorder()
+
 	mux.ServeHTTP(recorder, httptest.NewRequest(
 		http.MethodGet,
 		"/api/mndw/telemetry/sessions/"+SessionID(journal.BootID{1})+"?limit=17&after=opaque-cursor",
@@ -138,6 +141,7 @@ func TestSessionReadRoutePassesCursorAndLimit(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
+
 	if reader.gotAfter != "opaque-cursor" || reader.gotLimit != 17 {
 		t.Fatalf("after=%q limit=%d", reader.gotAfter, reader.gotLimit)
 	}
@@ -145,6 +149,7 @@ func TestSessionReadRoutePassesCursorAndLimit(t *testing.T) {
 
 func TestSessionReadRouteFollowsNextCursor(t *testing.T) {
 	provider, boot := seedSessionJournal(t)
+
 	defer func() { _ = provider.Close(context.Background()) }()
 
 	lease, err := provider.Acquire(context.Background())
@@ -161,47 +166,62 @@ func TestSessionReadRouteFollowsNextCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := lease.Result.Writer.Append(context.Background(), []journal.Record{extra}); err != nil {
 		_ = lease.Close()
+
 		t.Fatal(err)
 	}
+
 	if _, err := lease.Result.Writer.Sync(context.Background()); err != nil {
 		_ = lease.Close()
+
 		t.Fatal(err)
 	}
+
 	if err := lease.Close(); err != nil {
 		t.Fatal(err)
 	}
 
 	mux := http.NewServeMux()
+
 	RegisterRoutes(mux, NewReader(provider, func() Status { return Status{} }, journal.DefaultLimits()), nil)
+
 	path := "/api/mndw/telemetry/sessions/" + SessionID(boot)
 
 	first := httptest.NewRecorder()
+
 	mux.ServeHTTP(first, httptest.NewRequest(http.MethodGet, path+"?limit=1", nil))
+
 	if first.Code != http.StatusOK {
 		t.Fatalf("first page status=%d body=%s", first.Code, first.Body.String())
 	}
 
 	var firstPage SessionPage
+
 	if err := json.Unmarshal(first.Body.Bytes(), &firstPage); err != nil {
 		t.Fatal(err)
 	}
+
 	if !firstPage.Truncated || firstPage.NextCursor == nil || len(firstPage.Samples) != 1 {
 		t.Fatalf("first page=%+v", firstPage)
 	}
 
 	second := httptest.NewRecorder()
 	query := url.Values{"limit": {"1"}, "after": {*firstPage.NextCursor}}
+
 	mux.ServeHTTP(second, httptest.NewRequest(http.MethodGet, path+"?"+query.Encode(), nil))
+
 	if second.Code != http.StatusOK {
 		t.Fatalf("second page status=%d body=%s", second.Code, second.Body.String())
 	}
 
 	var secondPage SessionPage
+
 	if err := json.Unmarshal(second.Body.Bytes(), &secondPage); err != nil {
 		t.Fatal(err)
 	}
+
 	if len(secondPage.Samples) != 1 || secondPage.Samples[0].Sequence == firstPage.Samples[0].Sequence {
 		t.Fatalf("second page=%+v first page=%+v", secondPage, firstPage)
 	}
@@ -254,5 +274,6 @@ func (s *stubSessionReader) List(context.Context) (SessionList, error) {
 func (s *stubSessionReader) Read(_ context.Context, _ string, after string, limit int) (SessionPage, error) {
 	s.gotAfter = after
 	s.gotLimit = limit
+
 	return SessionPage{Samples: []SessionSample{}, TruncationReasons: []string{}}, s.err
 }

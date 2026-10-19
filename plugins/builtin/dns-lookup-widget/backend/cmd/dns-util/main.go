@@ -41,6 +41,7 @@ func main() {
 	}
 
 	result := lookup.Resolve(hostname)
+
 	printJSON(result)
 
 	if !result.Success {
@@ -50,7 +51,9 @@ func main() {
 
 func printJSON(value any) {
 	encoder := json.NewEncoder(os.Stdout)
+
 	encoder.SetEscapeHTML(false)
+
 	if err := encoder.Encode(value); err != nil {
 		_, _ = fmt.Fprintf(os.Stdout, "{\"success\":false,\"error\":\"ENCODE_FAILED\",\"message\":%q}\n", err.Error())
 	}

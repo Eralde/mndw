@@ -10,5 +10,6 @@ func Tail[T ~[]byte | ~string](v T) T {
 	if len(v) <= TailBytes {
 		return v
 	}
+
 	return v[len(v)-TailBytes:]
 }

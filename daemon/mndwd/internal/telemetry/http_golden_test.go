@@ -16,7 +16,6 @@ import (
 	"time"
 
 	contractEvents "mndw.local/contracts/events"
-	"mndw.local/rrd"
 	"mndwd/internal/events"
 	"mndwd/internal/telemetry/annotations"
 	"mndwd/internal/telemetry/clock"
@@ -27,31 +26,6 @@ import (
 var updateTelemetryGoldens = flag.Bool("update", false, "rewrite telemetry HTTP goldens from handler output")
 
 const goldenNowMs = int64(1_800_000_000_000)
-
-type scriptedSnapshotReader struct {
-	dsNames []string
-	values  []rrd.Value
-}
-
-func (r scriptedSnapshotReader) FetchGroup(_ context.Context, requests []rrd.FetchRequest) ([]rrd.FetchResult, error) {
-	results := make([]rrd.FetchResult, 0, len(requests))
-
-	for _, request := range requests {
-		values := append([]rrd.Value(nil), r.values...)
-		results = append(results, rrd.FetchResult{
-			Start:   request.Start,
-			End:     request.End,
-			Step:    request.Resolution,
-			DSNames: append([]string(nil), r.dsNames...),
-			Rows: []rrd.FetchRow{{
-				Timestamp: request.End,
-				Values:    values,
-			}},
-		})
-	}
-
-	return results, nil
-}
 
 type goldenAnnotationCatalog struct{}
 
@@ -72,11 +46,14 @@ func TestTelemetryHTTPGoldenResponses(t *testing.T) {
 	now := time.UnixMilli(goldenNowMs).UTC()
 	rrdDir := t.TempDir()
 
-	cache := NewSnapshotCache(
-		scriptedSnapshotReader{dsNames: []string{"cpu", "ram"}, values: []rrd.Value{rrd.Known(20), rrd.Known(40)}},
-		scriptedSnapshotReader{dsNames: []string{"value"}, values: []rrd.Value{rrd.Known(42_000)}},
-		func() time.Time { return now },
-	)
+	history, err := NewHistory(journal.DefaultLimits(), DefaultSeriesSpecs())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seedGoldenHistory(t, history, now)
+
+	cache := NewSnapshotCache(history, func() time.Time { return now })
 
 	cache.SetSupportedSeries(map[uint16]bool{1: true, 2: true})
 	cache.SetSessionConfigured(func() bool { return true })
@@ -153,8 +130,8 @@ func TestTelemetryHTTPGoldenResponses(t *testing.T) {
 
 	tempSamples := raw.Keys["temp"].Tiers["fine"].Samples
 
-	if len(tempSamples) != 1 || tempSamples[0].Mean == nil || *tempSamples[0].Mean != 42 {
-		t.Fatalf("temperature response = %#v, want one 42 Celsius sample", tempSamples)
+	if len(tempSamples) != 480 || tempSamples[len(tempSamples)-1].Mean == nil || *tempSamples[len(tempSamples)-1].Mean != 42 {
+		t.Fatalf("temperature response has %d fine samples; last=%+v", len(tempSamples), tempSamples[len(tempSamples)-1])
 	}
 
 	var sessionList sessions.SessionList
@@ -235,7 +212,7 @@ func assertTelemetryHTTPGolden(t *testing.T, mux *http.ServeMux, name, path, tem
 
 	wantBytes, err := os.ReadFile(fixturePath)
 	if err != nil {
-		t.Fatalf("read fixture %s: %v (run Task 1 once with -update, then review the fixture)", fixturePath, err)
+		t.Fatalf("read fixture %s: %v (run Task 9 once with -update, then review the fixture)", fixturePath, err)
 	}
 
 	var want, got any
@@ -253,6 +230,39 @@ func assertTelemetryHTTPGolden(t *testing.T, mux *http.ServeMux, name, path, tem
 	}
 
 	return append([]byte(nil), actual...)
+}
+
+func seedGoldenHistory(t *testing.T, history *History, now time.Time) {
+	t.Helper()
+
+	coarseEnd := now.UTC().Truncate(time.Hour)
+	fineEnd := now.UTC().Truncate(3 * time.Minute)
+	updates := make([]SlotUpdate, 0, 42)
+	sequence := uint64(0)
+
+	for index := 0; index < 20; index++ {
+		slot := coarseEnd.Add(-time.Hour).Add(time.Duration(index) * 3 * time.Minute)
+		sequence++
+		updates = append(updates,
+			SlotUpdate{Series: 1, Row: Row{Slot: slot, Sequence: sequence, Values: []Value{{V: 20, Known: true}, {V: 40, Known: true}}}},
+			SlotUpdate{Series: 2, Row: Row{Slot: slot, Sequence: sequence + 1, Values: []Value{{V: 42_000, Known: true}}}},
+		)
+		sequence++
+	}
+
+	latest := fineEnd.Add(-3 * time.Minute)
+
+	if latest.After(coarseEnd.Add(-3 * time.Minute)) {
+		sequence++
+		updates = append(updates,
+			SlotUpdate{Series: 1, Row: Row{Slot: latest, Sequence: sequence, Values: []Value{{V: 20, Known: true}, {V: 40, Known: true}}}},
+			SlotUpdate{Series: 2, Row: Row{Slot: latest, Sequence: sequence + 1, Values: []Value{{V: 42_000, Known: true}}}},
+		)
+	}
+
+	if err := history.store.Apply(Batch{Updates: updates}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func seedGoldenSessionJournal(t *testing.T, rrdDir string) journal.StorageProvider {

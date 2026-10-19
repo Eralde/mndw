@@ -18,6 +18,7 @@ type JSONStore struct {
 
 func NewDefaultStore() *JSONStore {
 	stateDir := resolveStateDir()
+
 	return &JSONStore{
 		stateDir:  stateDir,
 		hostsFile: filepath.Join(stateDir, filepath.Base(config.HostsFile())),
@@ -35,12 +36,15 @@ func resolveStateDir() string {
 
 func (store *JSONStore) LoadHosts() ([]model.Host, error) {
 	var hosts []model.Host
+
 	if err := store.loadJSONWithBackup(store.hostsFile, &hosts); err != nil {
 		return []model.Host{}, err
 	}
+
 	if hosts == nil {
 		return []model.Host{}, nil
 	}
+
 	return hosts, nil
 }
 
@@ -48,17 +52,21 @@ func (store *JSONStore) SaveHosts(hosts []model.Host) error {
 	if hosts == nil {
 		hosts = []model.Host{}
 	}
+
 	return store.atomicWriteJSON(store.hostsFile, hosts)
 }
 
 func (store *JSONStore) LoadStatsState() (map[string][]model.Sample, error) {
 	samplesByHost := map[string][]model.Sample{}
+
 	if err := store.loadJSONWithBackup(store.statsFile, &samplesByHost); err != nil {
 		return map[string][]model.Sample{}, err
 	}
+
 	if samplesByHost == nil {
 		return map[string][]model.Sample{}, nil
 	}
+
 	return samplesByHost, nil
 }
 
@@ -66,6 +74,7 @@ func (store *JSONStore) SaveStatsState(samplesByHost map[string][]model.Sample) 
 	if samplesByHost == nil {
 		samplesByHost = map[string][]model.Sample{}
 	}
+
 	return store.atomicWriteJSON(store.statsFile, samplesByHost)
 }
 
@@ -86,6 +95,7 @@ func (store *JSONStore) atomicWriteJSON(targetPath string, value any) error {
 
 	tempPath := tempFile.Name()
 	cleanup := true
+
 	defer func() {
 		if cleanup {
 			_ = os.Remove(tempPath)
@@ -94,11 +104,13 @@ func (store *JSONStore) atomicWriteJSON(targetPath string, value any) error {
 
 	if _, err = tempFile.Write(data); err != nil {
 		_ = tempFile.Close()
+
 		return err
 	}
 
 	if err = tempFile.Sync(); err != nil {
 		_ = tempFile.Close()
+
 		return err
 	}
 
@@ -111,6 +123,7 @@ func (store *JSONStore) atomicWriteJSON(targetPath string, value any) error {
 	}
 
 	cleanup = false
+
 	return nil
 }
 
@@ -120,6 +133,7 @@ func (store *JSONStore) loadJSONWithBackup(path string, destination any) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
+
 		return err
 	}
 
@@ -131,6 +145,7 @@ func (store *JSONStore) loadJSONWithBackup(path string, destination any) error {
 		backupPath := filepath.Clean(path + ".bak")
 		_ = os.Remove(backupPath)
 		_ = os.Rename(path, backupPath)
+
 		return nil
 	}
 

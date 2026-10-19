@@ -107,6 +107,7 @@ func parseSessionReadQuery(values url.Values) (int, string, error) {
 	}
 
 	limitValues := url.Values{}
+
 	if limit, ok := values["limit"]; ok {
 		limitValues["limit"] = limit
 	}

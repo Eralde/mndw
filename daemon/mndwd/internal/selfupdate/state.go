@@ -305,9 +305,11 @@ func (s *StateStore) writeCompletion(completion Completion) error {
 	if completion.Operation != OperationUpdate && completion.Operation != OperationRevert {
 		return errors.New("invalid self-update completion operation")
 	}
+
 	if !validVersion(completion.PreviousVersion) || !validVersion(completion.TargetVersion) {
 		return errors.New("invalid self-update completion version")
 	}
+
 	data, err := json.Marshal(completion)
 	if err != nil {
 		return err
@@ -321,14 +323,17 @@ func (s *StateStore) ConsumeCompletion() (Completion, error) {
 	if errors.Is(err, os.ErrNotExist) {
 		return Completion{}, ErrNoIntent
 	}
+
 	if err != nil {
 		return Completion{}, err
 	}
 
 	var completion Completion
+
 	if err := json.Unmarshal(data, &completion); err != nil {
 		return Completion{}, err
 	}
+
 	if err := os.Remove(s.completionPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Completion{}, err
 	}

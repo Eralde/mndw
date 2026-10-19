@@ -7,6 +7,7 @@ package journal
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"time"
 )
@@ -28,10 +29,27 @@ type BootID [16]byte
 func (id BootID) String() string {
 	const hexDigits = "0123456789abcdef"
 	out := make([]byte, 0, len(id)*2)
+
 	for _, b := range id {
 		out = append(out, hexDigits[b>>4], hexDigits[b&0x0f])
 	}
+
 	return string(out)
+}
+
+// parseBootID parses the 32 hexadecimal digits rendered by BootID.String.
+func parseBootID(value string) (BootID, error) {
+	var boot BootID
+
+	if len(value) != len(boot)*2 {
+		return BootID{}, errors.New("journal: invalid boot identifier")
+	}
+
+	if _, err := hex.Decode(boot[:], []byte(value)); err != nil {
+		return BootID{}, errors.New("journal: invalid boot identifier")
+	}
+
+	return boot, nil
 }
 
 // IsZero reports whether the identifier is the all-zero value, which never

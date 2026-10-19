@@ -9,8 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"mndw.local/rrd"
 )
 
 type ThermalReader interface {
@@ -54,21 +52,21 @@ func (s *ThermalSampler) Supported() bool {
 	return false
 }
 
-func (s *ThermalSampler) Poll(_ context.Context) ([]rrd.Value, error) {
+func (s *ThermalSampler) Poll(_ context.Context) ([]Value, error) {
 	if s.reader == nil {
-		return []rrd.Value{rrd.Unknown}, errors.New("thermal reader is unavailable")
+		return []Value{{}}, errors.New("thermal reader is unavailable")
 	}
 
 	entries, err := s.reader.ReadDir(s.root)
 	if err != nil {
-		return []rrd.Value{rrd.Unknown}, fmt.Errorf("read thermal zones: %w", err)
+		return []Value{{}}, fmt.Errorf("read thermal zones: %w", err)
 	}
 
 	sort.Slice(entries, func(left, right int) bool { return entries[left].Name() < entries[right].Name() })
 
 	type candidate struct {
 		preferred bool
-		value     rrd.Value
+		value     Value
 	}
 
 	var candidates []candidate
@@ -102,22 +100,22 @@ func (s *ThermalSampler) Poll(_ context.Context) ([]rrd.Value, error) {
 
 		typeName := strings.ToLower(strings.TrimSpace(string(rawType)))
 		preferred := strings.Contains(typeName, "cpu") || strings.Contains(typeName, "soc") || strings.Contains(typeName, "processor")
-		candidates = append(candidates, candidate{preferred: typeErr == nil && preferred, value: rrd.Known(float64(milliCelsius))})
+		candidates = append(candidates, candidate{preferred: typeErr == nil && preferred, value: Value{Known: true, V: float64(milliCelsius)}})
 	}
 
 	for _, candidate := range candidates {
 		if candidate.preferred {
-			return []rrd.Value{candidate.value}, nil
+			return []Value{candidate.value}, nil
 		}
 	}
 
 	if len(candidates) > 0 {
-		return []rrd.Value{candidates[0].value}, firstErr
+		return []Value{candidates[0].value}, firstErr
 	}
 
 	if firstErr == nil {
 		firstErr = errors.New("no readable thermal zone")
 	}
 
-	return []rrd.Value{rrd.Unknown}, firstErr
+	return []Value{{}}, firstErr
 }

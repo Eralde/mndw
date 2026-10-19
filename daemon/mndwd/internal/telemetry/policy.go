@@ -53,41 +53,54 @@ func ValidatePolicy(p Policy) error {
 	if p.AcquireEvery <= 0 {
 		return errors.New("telemetry: acquisition interval must be positive")
 	}
+
 	if p.EvidenceEvery <= 0 {
 		return errors.New("telemetry: clock evidence interval must be positive")
 	}
+
 	if p.PublishEvery <= 0 {
 		return errors.New("telemetry: publication interval must be positive")
 	}
+
 	if p.MaxUnsynced < minSyncWindow || p.MaxUnsynced > maxSyncWindow {
 		return fmt.Errorf("telemetry: maximum unsynced duration must be between %s and %s", minSyncWindow, maxSyncWindow)
 	}
+
 	if p.JumpThreshold <= 0 {
 		return errors.New("telemetry: clock jump threshold must be positive")
 	}
+
 	if p.MaxObservationSpan <= 0 {
 		return errors.New("telemetry: maximum observation span must be positive")
 	}
+
 	if p.QueueBytes <= 0 {
 		return errors.New("telemetry: acquisition queue budget must be positive")
 	}
+
 	if p.Journal.Bytes <= 0 {
 		return errors.New("telemetry: journal budget must be positive")
 	}
+
 	if p.Journal.ScratchBytes <= 0 {
 		return errors.New("telemetry: journal scratch allowance must be positive")
 	}
+
 	if p.Journal.SegmentBytes <= 0 {
 		return errors.New("telemetry: journal segment size must be positive")
 	}
+
 	if p.Journal.SegmentBytes > p.Journal.ScratchBytes {
 		return errSegmentExceedsScratch
 	}
+
 	if p.Journal.Sessions <= 0 {
 		return errors.New("telemetry: retained session limit must be positive")
 	}
+
 	if p.Journal.Retention <= 0 {
 		return errors.New("telemetry: journal retention must be positive")
 	}
+
 	return nil
 }

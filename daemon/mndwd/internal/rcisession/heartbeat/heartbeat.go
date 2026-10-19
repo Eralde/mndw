@@ -35,6 +35,7 @@ func baseURL(ctx context.Context) string {
 	if value, ok := ctx.Value(baseURLContextKey{}).(string); ok {
 		return value
 	}
+
 	return ""
 }
 
@@ -47,38 +48,52 @@ func (p Probe) Run(ctx context.Context, client *http.Client, baseURL string) Res
 	if client == nil {
 		return Result{Err: context.Canceled, Transient: true}
 	}
+
 	if p.Timeout <= 0 {
 		p.Timeout = 5 * time.Second
 	}
+
 	if p.MaxResponseBytes <= 0 {
 		p.MaxResponseBytes = 1 << 20
 	}
+
 	requestContext, cancel := context.WithTimeout(ctx, p.Timeout)
+
 	defer cancel()
+
 	request, err := http.NewRequestWithContext(requestContext, http.MethodPost, strings.TrimRight(baseURL, "/")+"/rci/", bytes.NewReader([]byte(`{"show":{"version":{}}}`)))
 	if err != nil {
 		return Result{Err: err, Transient: true}
 	}
+
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "application/json")
+
 	response, err := client.Do(request)
 	if err != nil {
 		return Result{Err: err, Transient: true}
 	}
+
 	defer response.Body.Close()
+
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
 		return Result{Status: response.StatusCode, Unauthorized: true}
 	}
+
 	body, readErr := io.ReadAll(io.LimitReader(response.Body, p.MaxResponseBytes+1))
+
 	if readErr != nil || int64(len(body)) > p.MaxResponseBytes {
 		if readErr == nil {
 			readErr = io.ErrShortBuffer
 		}
+
 		return Result{Status: response.StatusCode, Err: readErr, Transient: true}
 	}
+
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices || !json.Valid(bytes.TrimSpace(body)) {
 		return Result{Status: response.StatusCode, Transient: true}
 	}
+
 	return Result{Status: response.StatusCode}
 }
 
@@ -86,22 +101,29 @@ func RunBounded(ctx context.Context, targets []Target, workers int, probe Probe,
 	if len(targets) == 0 || commit == nil {
 		return
 	}
+
 	if workers <= 0 {
 		workers = 1
 	}
+
 	if workers > len(targets) {
 		workers = len(targets)
 	}
+
 	jobs := make(chan Target)
 	var wait sync.WaitGroup
+
 	wait.Add(workers)
+
 	for index := 0; index < workers; index++ {
 		go func() {
 			defer wait.Done()
+
 			for target := range jobs {
 				if target.Context == nil {
 					target.Context = context.Background()
 				}
+
 				select {
 				case <-ctx.Done():
 					return
@@ -109,24 +131,29 @@ func RunBounded(ctx context.Context, targets []Target, workers int, probe Probe,
 					continue
 				default:
 				}
+
 				requestContext, cancel := context.WithCancel(ctx)
 				stop := context.AfterFunc(target.Context, cancel)
 				result := probe.Run(requestContext, target.Client, baseURL(target.Context))
+
 				stop()
 				cancel()
 				commit(target, result)
 			}
 		}()
 	}
+
 	for _, target := range targets {
 		select {
 		case <-ctx.Done():
 			close(jobs)
 			wait.Wait()
+
 			return
 		case jobs <- target:
 		}
 	}
+
 	close(jobs)
 	wait.Wait()
 }

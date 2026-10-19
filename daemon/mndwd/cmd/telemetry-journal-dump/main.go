@@ -33,6 +33,7 @@ func (e *DegradedError) Error() string {
 type Options struct {
 	RRDPath    string
 	Session    string
+	Summary    bool
 	FileSystem journal.FileSystem
 	Locker     journal.Locker
 }
@@ -62,14 +63,42 @@ type recordLine struct {
 	Count          *uint64    `json:"count,omitempty"`
 }
 
+type kindSummary struct {
+	Records uint64 `json:"records"`
+	Bytes   uint64 `json:"bytes"`
+}
+
+type summaryLine struct {
+	Type                 string                 `json:"type"`
+	Records              uint64                 `json:"records"`
+	Bytes                uint64                 `json:"bytes"`
+	DuplicateRecords     uint64                 `json:"duplicateRecords"`
+	ConflictingSequences uint64                 `json:"conflictingSequences"`
+	ByKind               map[string]kindSummary `json:"byKind"`
+}
+
+type recordAnalysis struct {
+	records []journal.Record
+	summary summaryLine
+}
+
+type recordCandidate struct {
+	record     journal.Record
+	digest     string
+	conflicted bool
+}
+
 // main runs the dump and exits nonzero for degraded or unavailable recovery.
 func main() {
 	options := Options{FileSystem: journal.OSFileSystem{}, Locker: journal.OSLocker{}}
+
 	if err := run(os.Args[1:], os.Stdout, options); err != nil {
 		var degraded *DegradedError
+
 		if errors.As(err, &degraded) {
 			os.Exit(1)
 		}
+
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
@@ -78,18 +107,29 @@ func main() {
 // run dumps validated records for the requested storage.
 func run(args []string, out io.Writer, options Options) error {
 	flags := flag.NewFlagSet("telemetry-journal-dump", flag.ContinueOnError)
+
 	flags.SetOutput(io.Discard)
+
 	rrdPath := flags.String("rrd-dir", "", "parent telemetry directory containing staging/")
 	session := flags.String("session", "", "restrict output to one session id or boot id")
+	summary := flags.Bool("summary", false, "report validated record counts and encoded bytes by kind")
+
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+
 	if *rrdPath != "" {
 		options.RRDPath = *rrdPath
 	}
+
 	if *session != "" {
 		options.Session = *session
 	}
+
+	if *summary {
+		options.Summary = true
+	}
+
 	if flags.NArg() > 0 {
 		return fmt.Errorf("telemetry-journal-dump: unexpected argument %q", flags.Arg(0))
 	}
@@ -98,11 +138,15 @@ func run(args []string, out io.Writer, options Options) error {
 	if err != nil {
 		return err
 	}
+
 	fs := options.FileSystem
+
 	if fs == nil {
 		fs = journal.OSFileSystem{}
 	}
+
 	locker := options.Locker
+
 	if locker == nil {
 		locker = journal.OSLocker{}
 	}
@@ -111,10 +155,17 @@ func run(args []string, out io.Writer, options Options) error {
 	if err != nil {
 		return err
 	}
+
 	if result.Reader == nil {
 		_ = writeJSON(out, statusLine{Type: "status", Mode: string(journal.StatusUnavailable), Issues: result.Status.Issues})
+
+		if options.Summary {
+			_ = writeJSON(out, emptySummary())
+		}
+
 		return &DegradedError{Status: result.Status}
 	}
+
 	defer func() { _ = result.Reader.Close() }()
 
 	if err := writeJSON(out, statusLine{
@@ -126,51 +177,102 @@ func run(args []string, out io.Writer, options Options) error {
 		return err
 	}
 
-	seen := map[uint64]string{}
-	conflicts := map[uint64]bool{}
-	var writeErr error
+	records := make([]journal.Record, 0)
 	err = result.Reader.Scan(context.Background(), func(record journal.Record) error {
-		if writeErr != nil {
-			return writeErr
-		}
-		if !matchesSession(record, options.Session) {
-			return nil
-		}
-		digest := recordDigest(record)
-		if previous, ok := seen[record.Seq]; ok {
-			if previous != digest {
-				// Conflicting copies are omitted rather than guessed between.
-				conflicts[record.Seq] = true
-			}
-			return nil
-		}
-		seen[record.Seq] = digest
-		if conflicts[record.Seq] {
-			return nil
-		}
-		line := renderRecord(record)
-		if err := writeJSON(out, line); err != nil {
-			writeErr = err
-		}
+		records = append(records, record)
+
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	if writeErr != nil {
-		return writeErr
+
+	analysis, err := analyzeRecords(records, options.Session)
+	if err != nil {
+		return err
+	}
+
+	if options.Summary {
+		if err := writeJSON(out, analysis.summary); err != nil {
+			return err
+		}
+	} else {
+		for _, record := range analysis.records {
+			if err := writeJSON(out, renderRecord(record)); err != nil {
+				return err
+			}
+		}
 	}
 
 	if result.Status.Mode != journal.StatusReady || len(result.Status.Issues) > 0 {
 		return &DegradedError{Status: result.Status}
 	}
+
 	return nil
+}
+
+func analyzeRecords(records []journal.Record, session string) (recordAnalysis, error) {
+	analysis := recordAnalysis{summary: emptySummary()}
+	order := make([]uint64, 0, len(records))
+	candidates := make(map[uint64]*recordCandidate, len(records))
+
+	for _, record := range records {
+		if !matchesSession(record, session) {
+			continue
+		}
+
+		digest := recordDigest(record)
+
+		if candidate, ok := candidates[record.Seq]; ok {
+			analysis.summary.DuplicateRecords++
+
+			if candidate.digest != digest {
+				candidate.conflicted = true
+			}
+
+			continue
+		}
+
+		candidates[record.Seq] = &recordCandidate{record: record, digest: digest}
+		order = append(order, record.Seq)
+	}
+
+	for _, sequence := range order {
+		candidate := candidates[sequence]
+
+		if candidate.conflicted {
+			analysis.summary.ConflictingSequences++
+
+			continue
+		}
+
+		encoded, err := journal.EncodeRecord(candidate.record)
+		if err != nil {
+			return recordAnalysis{}, fmt.Errorf("telemetry-journal-dump: encode record %d size: %w", sequence, err)
+		}
+
+		name := kindName(candidate.record.Kind)
+		kind := analysis.summary.ByKind[name]
+		kind.Records++
+		kind.Bytes += uint64(len(encoded))
+		analysis.summary.ByKind[name] = kind
+		analysis.summary.Records++
+		analysis.summary.Bytes += uint64(len(encoded))
+		analysis.records = append(analysis.records, candidate.record)
+	}
+
+	return analysis, nil
+}
+
+func emptySummary() summaryLine {
+	return summaryLine{Type: "summary", ByKind: map[string]kindSummary{}}
 }
 
 // recordDigest identifies identical frame copies so duplicates and conflicts
 // can be reported without choosing between them.
 func recordDigest(record journal.Record) string {
 	sum := sha256.Sum256(append([]byte{byte(record.Kind)}, record.Payload...))
+
 	return hex.EncodeToString(sum[:])
 }
 
@@ -179,10 +281,13 @@ func matchesSession(record journal.Record, session string) bool {
 	if session == "" {
 		return true
 	}
+
 	boot := recordBoot(record)
+
 	if boot == "" {
 		return false
 	}
+
 	return session == boot || session == "s1-"+boot || strings.TrimPrefix(session, "s1-") == boot
 }
 
@@ -205,6 +310,7 @@ func recordBoot(record journal.Record) string {
 			return bootStart.Boot.String()
 		}
 	}
+
 	return ""
 }
 
@@ -215,6 +321,7 @@ func renderRecord(record journal.Record) recordLine {
 		Sequence:   fmt.Sprintf("%d", record.Seq),
 		Kind:       kindName(record.Kind),
 	}
+
 	switch record.Kind {
 	case journal.KindSample:
 		if sample, err := journal.DecodeSample(record); err == nil {
@@ -223,11 +330,14 @@ func renderRecord(record journal.Record) recordLine {
 			line.Series = sample.Series
 			elapsed := sample.ElapsedMs
 			line.ElapsedMs = &elapsed
+
 			for _, value := range sample.Values {
 				if !value.Known {
 					line.Values = append(line.Values, nil)
+
 					continue
 				}
+
 				known := value.V
 				line.Values = append(line.Values, &known)
 			}
@@ -262,6 +372,7 @@ func renderRecord(record journal.Record) recordLine {
 			line.Count = &count
 		}
 	}
+
 	return line
 }
 
@@ -289,6 +400,8 @@ func writeJSON(out io.Writer, value any) error {
 	if err != nil {
 		return err
 	}
+
 	_, err = out.Write(append(encoded, '\n'))
+
 	return err
 }

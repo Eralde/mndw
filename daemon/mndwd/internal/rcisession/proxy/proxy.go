@@ -108,6 +108,7 @@ func (p *Proxy) Do(ctx context.Context, request Request) (Response, error) {
 	}
 
 	isController := destination.Token != ""
+
 	if destination.Support == "" || (!isController && destination.Client == nil) {
 		return Response{}, ErrNoSession
 	}
@@ -144,14 +145,17 @@ func (p *Proxy) Do(ctx context.Context, request Request) (Response, error) {
 	}
 
 	outbound.Header.Set("Accept", "application/json")
+
 	if isController {
 		outbound.Header.Set("X-Ndma-Tkn", destination.Token)
 	}
 
 	client := p.client
+
 	if !isController {
 		client = destination.Client
 	}
+
 	response, err := client.Do(outbound)
 	if err != nil {
 		return Response{}, fmt.Errorf("%w: outbound request failed", ErrTargetUnreachable)

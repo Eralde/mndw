@@ -264,7 +264,9 @@ func acquireReadLease(ctx context.Context, provider journal.StorageProvider) (re
 	if err != nil {
 		return readLease{}, err
 	}
+
 	var progress journalProgress
+
 	if writer := lease.Result.Writer; writer != nil {
 		progress = writer
 	}

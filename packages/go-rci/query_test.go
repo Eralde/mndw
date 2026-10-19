@@ -30,6 +30,7 @@ func TestValidatePathRejectsEmptySegments(t *testing.T) {
 func TestQStoresPathAndOptionalData(t *testing.T) {
 	t.Run("without data", func(t *testing.T) {
 		query := Q("show.version")
+
 		if query.Path != "show.version" || query.Data != nil || query.Raw {
 			t.Fatalf("Q(show.version) = %#v, want path, nil data, false Raw", query)
 		}
@@ -38,6 +39,7 @@ func TestQStoresPathAndOptionalData(t *testing.T) {
 	t.Run("with data", func(t *testing.T) {
 		data := map[string]any{"detail": 0, "attribute": "avg"}
 		query := Q("show.system", data)
+
 		if query.Path != "show.system" || !reflect.DeepEqual(query.Data, data) || query.Raw {
 			t.Fatalf("Q(show.system, data) = %#v, want stored data and false Raw", query)
 		}

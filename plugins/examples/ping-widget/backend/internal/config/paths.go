@@ -15,6 +15,7 @@ func StateDir() string {
 	if dir := os.Getenv("MNDW_PLUGIN_DATA_DIR"); dir != "" {
 		return dir
 	}
+
 	if dir := os.Getenv("MNDW_PING_STATE_DIR"); dir != "" {
 		return dir
 	}

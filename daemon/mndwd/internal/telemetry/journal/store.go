@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 const (
@@ -19,6 +20,9 @@ const (
 // ErrNeedsRepair reports that a torn tail blocks further appends until
 // RepairTail verifies or truncates it.
 var ErrNeedsRepair = errors.New("journal: segment tail needs repair")
+
+// ErrNoBoot reports a bootless batch when no valid boot owns its records.
+var ErrNoBoot = errors.New("journal: no boot for bootless records")
 
 // openSegment is the writable segment file owned by a Storage.
 type openSegment struct {
@@ -35,14 +39,17 @@ type openSegment struct {
 // marks the tail as needing repair.
 func (s *Storage) Append(ctx context.Context, records []Record) (AppendResult, error) {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	if s.closed {
 		return AppendResult{}, errors.New("journal: storage is closed")
 	}
+
 	if len(records) == 0 {
 		return AppendResult{}, nil
 	}
+
 	if s.needsRepair {
 		return AppendResult{}, ErrNeedsRepair
 	}
@@ -52,6 +59,7 @@ func (s *Storage) Append(ctx context.Context, records []Record) (AppendResult, e
 		if record.Seq != 0 {
 			return AppendResult{}, fmt.Errorf("%w: record %d already carries sequence %d", ErrSequence, i, record.Seq)
 		}
+
 		if err := validateKindData(record); err != nil {
 			return AppendResult{}, err
 		}
@@ -61,12 +69,29 @@ func (s *Storage) Append(ctx context.Context, records []Record) (AppendResult, e
 		return AppendResult{}, err
 	}
 
+	batchBoot, err := s.batchBootLocked(records)
+	if err != nil {
+		return AppendResult{}, err
+	}
+
+	if err := s.flushPendingLossLocked(batchBoot); err != nil {
+		return AppendResult{}, err
+	}
+
 	result := AppendResult{}
+	owner := batchBoot
+
 	for _, record := range records {
+		if boot, ok := recordBootValue(record); ok {
+			owner = boot
+		}
+
 		if err := s.reserveLocked(); err != nil {
 			return result, err
 		}
+
 		sequence := s.nextSequence
+
 		if sequence == 0 || sequence > s.manifest.ReservedThrough {
 			return result, errors.New("journal: sequence allocation outside reservation")
 		}
@@ -75,23 +100,28 @@ func (s *Storage) Append(ctx context.Context, records []Record) (AppendResult, e
 		if err != nil {
 			return result, err
 		}
+
 		if record.Kind == KindBootStart {
 			// The boot-start sequence is part of the segment header. Set it
 			// before opening a new segment so the header and record agree.
 			s.bootOrder = sequence
 		}
 
-		if err := s.ensureSegmentLocked(recordBoot(record, s.activeBoot)); err != nil {
+		if err := s.ensureSegmentLocked(recordBoot(record, owner)); err != nil {
 			return result, err
 		}
+
 		segment := s.active
+
 		if segment.size+int64(len(encoded)) > s.limits.SegmentBytes {
 			if err := s.sealActiveLocked(); err != nil {
 				return result, err
 			}
-			if err := s.ensureSegmentLocked(recordBoot(record, s.activeBoot)); err != nil {
+
+			if err := s.ensureSegmentLocked(recordBoot(record, owner)); err != nil {
 				return result, err
 			}
+
 			segment = s.active
 		}
 
@@ -101,8 +131,10 @@ func (s *Storage) Append(ctx context.Context, records []Record) (AppendResult, e
 			// accepted prefix stays durable-eligible as written.
 			s.needsRepair = true
 			result.NeedsRepair = true
+
 			return result, err
 		}
+
 		segment.size += int64(written)
 		s.nextSequence = sequence + 1
 		s.lastSequence = sequence
@@ -111,6 +143,7 @@ func (s *Storage) Append(ctx context.Context, records []Record) (AppendResult, e
 		if result.Accepted == 0 {
 			result.FirstSequence = sequence
 		}
+
 		result.Accepted++
 		result.LastSequence = sequence
 	}
@@ -118,39 +151,176 @@ func (s *Storage) Append(ctx context.Context, records []Record) (AppendResult, e
 	if result.Accepted > 0 {
 		if err := s.publishInventoryLocked(); err != nil {
 			result.NeedsRepair = true
+
 			return result, err
 		}
 	}
+
 	return result, nil
+}
+
+// batchBootLocked resolves a valid owner for bootless records in one append.
+// Explicit boot-bearing records always take precedence over prior state.
+func (s *Storage) batchBootLocked(records []Record) (BootID, error) {
+	var first BootID
+	found := false
+
+	for _, record := range records {
+		boot, ok := recordBootValue(record)
+
+		if !ok {
+			continue
+		}
+
+		if boot.IsZero() {
+			return BootID{}, ErrNoBoot
+		}
+
+		if !found {
+			first = boot
+			found = true
+		}
+	}
+
+	if found {
+		return first, nil
+	}
+
+	if !s.activeBoot.IsZero() {
+		return s.activeBoot, nil
+	}
+
+	var newest SegmentEntry
+
+	for _, entry := range s.manifest.Segments {
+		boot, err := parseBootID(entry.Boot)
+		if err != nil || boot.IsZero() {
+			continue
+		}
+
+		if newest.Name == "" || entry.FirstSequence > newest.FirstSequence {
+			newest = entry
+		}
+	}
+
+	if newest.Name != "" {
+		boot, err := parseBootID(newest.Boot)
+		if err == nil && !boot.IsZero() {
+			return boot, nil
+		}
+	}
+
+	return BootID{}, ErrNoBoot
+}
+
+// recordBootValue returns the boot carried by a boot-bearing record.
+func recordBootValue(record Record) (BootID, bool) {
+	switch record.Kind {
+	case KindSample:
+		if sample, err := DecodeSample(record); err == nil {
+			return sample.Boot, true
+		}
+	case KindAnchor:
+		if anchor, err := DecodeAnchor(record); err == nil {
+			return anchor.Boot, true
+		}
+	case KindClockTransition:
+		if transition, err := DecodeClockTransition(record); err == nil {
+			return transition.Boot, true
+		}
+	case KindBootStart:
+		if bootStart, err := DecodeBootStart(record); err == nil {
+			return bootStart.Boot, true
+		}
+	}
+
+	return BootID{}, false
+}
+
+// flushPendingLossLocked writes queued retention diagnostics before caller
+// records, preserving exactly-once behavior across a repaired write failure.
+func (s *Storage) flushPendingLossLocked(boot BootID) error {
+	if len(s.pendingLoss) == 0 {
+		return nil
+	}
+
+	if err := s.ensureSegmentLocked(boot); err != nil {
+		return err
+	}
+
+	reasons := make([]int, 0, len(s.pendingLoss))
+
+	for reason := range s.pendingLoss {
+		reasons = append(reasons, int(reason))
+	}
+
+	sort.Ints(reasons)
+
+	for _, rawReason := range reasons {
+		reason := LossReason(rawReason)
+		count := s.pendingLoss[reason]
+
+		if count == 0 {
+			delete(s.pendingLoss, reason)
+
+			continue
+		}
+
+		prepared, err := PrepareLoss(Loss{Reason: reason, Count: count})
+		if err != nil {
+			return err
+		}
+
+		previousSequence := s.lastSequence
+		_, appendErr := s.appendReservedLocked(prepared)
+
+		if s.lastSequence != previousSequence {
+			delete(s.pendingLoss, reason)
+		}
+
+		if appendErr != nil {
+			return appendErr
+		}
+	}
+
+	return nil
 }
 
 // Sync publishes the durable high-water sequence. Only a successful sync makes
 // appended records durable; a failure leaves them in place for recovery.
 func (s *Storage) Sync(ctx context.Context) (uint64, error) {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	if s.closed {
 		return 0, errors.New("journal: storage is closed")
 	}
+
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
+
 	if s.active != nil && !s.active.sealed {
 		if err := s.active.file.Sync(); err != nil {
 			return s.durableThrough, err
 		}
 	}
+
 	if s.manifestDirty {
 		if err := writeManifest(s.fs, manifestPath(s.paths), s.manifest); err != nil {
 			return s.durableThrough, err
 		}
+
 		s.manifestDirty = false
 	}
+
 	if err := s.fs.SyncDir(s.paths.JournalDir); err != nil {
 		return s.durableThrough, err
 	}
+
 	s.durableThrough = s.lastSequence
+
 	return s.durableThrough, nil
 }
 
@@ -158,13 +328,16 @@ func (s *Storage) Sync(ctx context.Context) (uint64, error) {
 // frame so appends can continue.
 func (s *Storage) RepairTail(ctx context.Context) error {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	if s.closed {
 		return errors.New("journal: storage is closed")
 	}
+
 	if s.active == nil {
 		s.needsRepair = false
+
 		return nil
 	}
 
@@ -172,29 +345,37 @@ func (s *Storage) RepairTail(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	validBytes, lastSequence, _ := scanBytes(raw)
 
 	segment := s.active
+
 	if validBytes != segment.size {
 		if err := segment.file.Truncate(validBytes); err != nil {
 			return err
 		}
+
 		if _, err := segment.file.Seek(validBytes, io.SeekStart); err != nil {
 			return err
 		}
+
 		if err := segment.file.Sync(); err != nil {
 			return err
 		}
+
 		segment.size = validBytes
 	}
+
 	if lastSequence > s.lastSequence {
 		s.lastSequence = lastSequence
 	}
+
 	s.needsRepair = false
 
 	if err := s.fs.SyncDir(s.paths.JournalDir); err != nil {
 		return err
 	}
+
 	return ctx.Err()
 }
 
@@ -202,22 +383,27 @@ func (s *Storage) RepairTail(ctx context.Context) error {
 // means every validated record.
 func (s *Storage) Scan(ctx context.Context, through uint64, visit func(Record) error) error {
 	s.mu.Lock()
+
 	segments := append([]SegmentEntry(nil), s.manifest.Segments...)
 	paths := s.paths
 	fs := s.fs
+
 	s.mu.Unlock()
 
 	if visit == nil {
 		return errors.New("journal: scan requires a visitor")
 	}
+
 	for _, entry := range segments {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+
 		if err := scanSegmentFile(fs, filepath.Join(paths.JournalDir, entry.Name), through, visit); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -227,23 +413,31 @@ func (s *Storage) reserveLocked() error {
 	if s.nextSequence <= s.manifest.ReservedThrough {
 		return nil
 	}
+
 	if s.manifest.ReservedThrough >= maxUint64-reservationBlock {
 		return errors.New("journal: sequence space exhausted")
 	}
+
 	ceiling := s.manifest.ReservedThrough + reservationBlock
+
 	if ceiling < s.nextSequence {
 		if s.nextSequence > maxUint64-(reservationBlock-1) {
 			return errors.New("journal: sequence space exhausted")
 		}
+
 		ceiling = s.nextSequence + reservationBlock - 1
 	}
+
 	candidate := s.manifest
 	candidate.ReservedThrough = ceiling
+
 	if err := writeManifest(s.fs, manifestPath(s.paths), candidate); err != nil {
 		return err
 	}
+
 	s.manifest.ReservedThrough = ceiling
 	s.manifestDirty = false
+
 	return nil
 }
 
@@ -252,6 +446,7 @@ func (s *Storage) ensureSegmentLocked(boot BootID) error {
 	if s.active != nil && !s.active.sealed && s.active.boot == boot {
 		return nil
 	}
+
 	if s.active != nil && !s.active.sealed {
 		if err := s.sealActiveLocked(); err != nil {
 			return err
@@ -261,28 +456,36 @@ func (s *Storage) ensureSegmentLocked(boot BootID) error {
 	// Resume this boot's active segment when one exists.
 	for i := len(s.manifest.Segments) - 1; i >= 0; i-- {
 		entry := s.manifest.Segments[i]
+
 		if entry.Sealed || entry.Boot != boot.String() {
 			continue
 		}
+
 		file, err := s.fs.OpenFile(filepath.Join(s.paths.JournalDir, entry.Name), os.O_WRONLY, 0o644)
 		if err != nil {
 			return err
 		}
+
 		if _, err := file.Seek(0, io.SeekEnd); err != nil {
 			_ = file.Close()
+
 			return err
 		}
+
 		s.active = &openSegment{name: entry.Name, file: file, boot: boot, segmentID: entry.SegmentID, size: entry.Bytes}
 		s.activeBoot = boot
+
 		return nil
 	}
 
 	segmentID := uint64(1)
+
 	for _, entry := range s.manifest.Segments {
 		if entry.SegmentID >= segmentID {
 			segmentID = entry.SegmentID + 1
 		}
 	}
+
 	name := fmt.Sprintf("%s%06d%s", segmentFilePrefix, segmentID, segmentFileExtension)
 	path := filepath.Join(s.paths.JournalDir, name)
 
@@ -290,20 +493,27 @@ func (s *Storage) ensureSegmentLocked(boot BootID) error {
 	if err != nil {
 		return err
 	}
+
 	file, err := s.fs.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o644)
 	if err != nil {
 		return err
 	}
+
 	if _, err := file.Write(header); err != nil {
 		_ = file.Close()
+
 		return err
 	}
+
 	if err := file.Sync(); err != nil {
 		_ = file.Close()
+
 		return err
 	}
+
 	if err := s.fs.SyncDir(s.paths.JournalDir); err != nil {
 		_ = file.Close()
+
 		return err
 	}
 
@@ -317,6 +527,7 @@ func (s *Storage) ensureSegmentLocked(boot BootID) error {
 		FirstSequence: s.nextSequence,
 	})
 	s.manifestDirty = true
+
 	return s.publishInventoryLocked()
 }
 
@@ -325,22 +536,29 @@ func (s *Storage) sealActiveLocked() error {
 	if s.active == nil {
 		return nil
 	}
+
 	segment := s.active
+
 	if err := segment.file.Sync(); err != nil {
 		return err
 	}
+
 	if err := segment.file.Close(); err != nil {
 		return err
 	}
+
 	segment.sealed = true
+
 	for i := range s.manifest.Segments {
 		if s.manifest.Segments[i].Name == segment.name {
 			s.manifest.Segments[i].Sealed = true
 			s.manifest.Segments[i].Bytes = segment.size
 		}
 	}
+
 	s.active = nil
 	s.manifestDirty = true
+
 	return s.publishInventoryLocked()
 }
 
@@ -349,10 +567,13 @@ func (s *Storage) publishInventoryLocked() error {
 	if !s.manifestDirty {
 		return nil
 	}
+
 	if err := writeManifest(s.fs, manifestPath(s.paths), s.manifest); err != nil {
 		return err
 	}
+
 	s.manifestDirty = false
+
 	return nil
 }
 
@@ -377,12 +598,14 @@ func recordBoot(record Record, active BootID) BootID {
 			return bootStart.Boot
 		}
 	}
+
 	return active
 }
 
 // validateKindData rejects a prepared record whose payload does not decode.
 func validateKindData(record Record) error {
 	var err error
+
 	switch record.Kind {
 	case KindSample:
 		_, err = DecodeSample(record)
@@ -399,5 +622,6 @@ func validateKindData(record Record) error {
 	default:
 		return fmt.Errorf("%w: kind %d", ErrUnsupported, record.Kind)
 	}
+
 	return err
 }

@@ -40,7 +40,7 @@ func apiAnnotationEvent(id string, ts int64) events.Event {
 
 func newTestCache() *SnapshotCache {
 	now := int64(1_700_000_000_000)
-	cache := NewSnapshotCache(nil, nil, nil)
+	cache := NewSnapshotCache(nil, nil)
 	snapshot := emptySnapshot(true)
 	snapshot.Keys["cpu"] = SeriesSnapshot{
 		Label:     "CPU",
@@ -52,7 +52,6 @@ func newTestCache() *SnapshotCache {
 		},
 	}
 	cache.snapshot = snapshot
-	cache.refreshed = cache.now()
 
 	return cache
 }
@@ -172,10 +171,8 @@ func TestHandleGet_ProjectRanges(t *testing.T) {
 }
 
 func TestHandleGet_InvalidProject_ReturnsBadRequestWithoutTouchingCache(t *testing.T) {
-	// Use a cold cache (no seeded snapshot) with spy readers.
-	// If handleGet touches the cache, it triggers a refresh that calls the readers.
-	spy := &snapshotReader{}
-	cache := NewSnapshotCache(spy, spy, nil)
+	// Invalid project parameters return before reading or publishing the cache.
+	cache := NewSnapshotCache(nil, nil)
 	handler := NewHandler(cache, func() bool { return true }, slog.Default())
 
 	for _, query := range []string{"?project=2h", "?project=", "?project=7d&project=30d", "?project=%zz"} {
@@ -193,12 +190,8 @@ func TestHandleGet_InvalidProject_ReturnsBadRequestWithoutTouchingCache(t *testi
 		}
 	}
 
-	spy.mu.Lock()
-
-	defer spy.mu.Unlock()
-
-	if spy.calls > 0 {
-		t.Errorf("expected cache untouched for invalid project, but readers received %d calls", spy.calls)
+	if cache.snapshot != nil {
+		t.Error("invalid project query unexpectedly touched the snapshot cache")
 	}
 }
 

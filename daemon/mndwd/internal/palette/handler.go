@@ -38,6 +38,7 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 
 	stored, ok := h.store.Get()
+
 	if !ok {
 		httpx.WriteJSON(w, h.logger, http.StatusOK, getResponse{Palette: nil})
 
@@ -52,6 +53,7 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request) {
 
 	var incoming Palette
 	decoder := json.NewDecoder(r.Body)
+
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(&incoming); err != nil {
@@ -61,10 +63,12 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var trailing any
+
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		if err == nil {
 			err = errors.New("trailing JSON data")
 		}
+
 		writeDecodeError(w, h.logger, err)
 
 		return
@@ -88,6 +92,7 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request) {
 
 func writeDecodeError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var maxBytes *http.MaxBytesError
+
 	if errors.As(err, &maxBytes) {
 		httpx.WriteError(w, logger, httpx.NewError(
 			http.StatusBadRequest, httpx.CodeBadRequest, "The palette file is too large."))

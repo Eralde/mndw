@@ -14,11 +14,13 @@ var pingTimePattern = regexp.MustCompile(`time=([0-9]+(?:\.[0-9]+)?)`)
 
 func RunOnce(hostIP string, timeout time.Duration) model.Sample {
 	now := time.Now().UTC().Format(time.RFC3339)
+
 	if hostIP == "" {
 		return model.Sample{Success: false, At: now}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+
 	defer cancel()
 
 	command := exec.CommandContext(ctx, "ping", "-c", "1", "-W", "2", hostIP)
@@ -28,11 +30,13 @@ func RunOnce(hostIP string, timeout time.Duration) model.Sample {
 	}
 
 	match := pingTimePattern.FindSubmatch(output)
+
 	if len(match) < 2 {
 		return model.Sample{Success: false, At: now}
 	}
 
 	latency, parseErr := strconv.ParseFloat(string(match[1]), 64)
+
 	if parseErr != nil {
 		return model.Sample{Success: false, At: now}
 	}

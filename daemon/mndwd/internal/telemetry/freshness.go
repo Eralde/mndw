@@ -102,7 +102,7 @@ type snapshotRefresher struct {
 	started bool
 }
 
-// Refresh republishes cached chart data from derived files.
+// Refresh republishes chart data projected from raw history.
 func (r *snapshotRefresher) Refresh(ctx context.Context, status PipelineStatus) error {
 	snapshot, err := r.cache.Refresh(ctx, status)
 	if err != nil {

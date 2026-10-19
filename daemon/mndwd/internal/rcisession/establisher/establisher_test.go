@@ -25,6 +25,7 @@ func TestValidateAuthURL(t *testing.T) {
 		{name: "path", url: "https://node.keenetic.io/other?x-ndma-tkn=one", want: false},
 		{name: "missing token", url: "https://node.keenetic.io/auth", want: false},
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := ValidateAuthURL(test.url, "node.keenetic.io")
@@ -40,12 +41,14 @@ func TestEstablishAcceptsDynamicHostCookieAndDisablesRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	establisher := Establisher{
 		AuthURLer: fakeAuthURLer{url: "https://node.keenetic.io/auth?x-ndma-tkn=one"},
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			if request.URL.Path != "/auth" {
 				t.Fatalf("path = %q", request.URL.Path)
 			}
+
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Set-Cookie": {"__Host-Http-dynamic=value; Path=/; Max-Age=299; Secure"}},
@@ -56,6 +59,7 @@ func TestEstablishAcceptsDynamicHostCookieAndDisablesRedirects(t *testing.T) {
 	}
 	result, err := establisher.Establish(context.Background(), enumeration.Member{Identity: "node", FQDN: "node.keenetic.io", FQDNCertificateValid: true, AuthTokenCapable: true})
 	_ = jar
+
 	if err != nil || result.Client == nil || result.Jar == nil || result.BaseURL != "https://node.keenetic.io" {
 		t.Fatalf("Establish() = %#v, %v", result, err)
 	}

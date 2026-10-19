@@ -19,7 +19,7 @@ const (
 
 // ErrUTCOverflow reports a boot-relative to UTC mapping that overflows or falls
 // outside the supported range. Callers must keep the sample time-unknown.
-var ErrUTCOverflow = errors.New("telemetry: UTC mapping out of range")
+var ErrUTCOverflow = fmt.Errorf("telemetry: UTC mapping out of range: %w", journal.ErrUTCOutOfRange)
 
 // State is the trust state of one boot's clock segment.
 type State string
@@ -94,15 +94,8 @@ const (
 // MapUTC maps a boot-relative elapsed instant to UTC milliseconds using an
 // anchor from the same boot.
 func MapUTC(anchor journal.Anchor, elapsedMs int64) (int64, error) {
-	delta, ok := checkedSubInt64(elapsedMs, anchor.ElapsedMs)
-
-	if !ok {
-		return 0, ErrUTCOverflow
-	}
-
-	utc, ok := checkedAddInt64(anchor.UTCMs, delta)
-
-	if !ok || utc < minUnixMillis || utc > maxUnixMillis {
+	utc, err := journal.MapUTC(anchor, elapsedMs)
+	if err != nil {
 		return 0, ErrUTCOverflow
 	}
 
@@ -292,9 +285,17 @@ func (c *Tracker) Observe(before, after Reading, evidence Evidence) (View, []jou
 	}
 
 	segment := c.view.Segment
+	newBoot := !c.view.Boot.IsZero() && c.view.Boot != before.Boot
 
-	if c.view.State == Suspect || c.view.Anchor == nil || c.view.Boot != before.Boot {
+	if c.view.State == Suspect || newBoot {
 		segment++
+	}
+
+	if c.view.State == Anchored && c.view.Anchor != nil && c.view.Boot == before.Boot {
+		// A segment's first durable anchor defines its mapping permanently.
+		// Check owns drift detection and opens a suspect segment before fresh
+		// evidence can establish a replacement mapping.
+		return c.view, nil, nil
 	}
 
 	anchor := journal.Anchor{

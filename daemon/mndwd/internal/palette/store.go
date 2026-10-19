@@ -35,6 +35,7 @@ func Open(path string) (*Store, error) {
 	}
 
 	store := &Store{path: path, current: current}
+
 	if err := store.persist(current); err != nil {
 		return nil, err
 	}
@@ -58,12 +59,15 @@ func load(path string) (*Palette, error) {
 
 	var doc document
 	decoder := json.NewDecoder(bytes.NewReader(data))
+
 	decoder.DisallowUnknownFields()
+
 	if err := decoder.Decode(&doc); err != nil {
 		return quarantine(path), nil
 	}
 
 	var trailing any
+
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return quarantine(path), nil
 	}
@@ -71,9 +75,11 @@ func load(path string) (*Palette, error) {
 	if doc.Version != schemaVersion {
 		return quarantine(path), nil
 	}
+
 	if doc.Palette == nil {
 		return nil, nil
 	}
+
 	if err := validate(*doc.Palette); err != nil {
 		return quarantine(path), nil
 	}
@@ -89,6 +95,7 @@ func quarantine(path string) *Palette {
 
 func (s *Store) Get() (Palette, bool) {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	if s.current == nil {
@@ -104,6 +111,7 @@ func (s *Store) Set(p Palette) error {
 	}
 
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	if err := s.persist(&p); err != nil {
@@ -117,6 +125,7 @@ func (s *Store) Set(p Palette) error {
 
 func (s *Store) Clear() error {
 	s.mu.Lock()
+
 	defer s.mu.Unlock()
 
 	if err := s.persist(nil); err != nil {
@@ -139,8 +148,10 @@ func (s *Store) persist(p *Palette) error {
 	if err != nil {
 		return fmt.Errorf("create temp palette: %w", err)
 	}
+
 	tmpPath := tmp.Name()
 	committed := false
+
 	defer func() {
 		if !committed {
 			_ = os.Remove(tmpPath)
@@ -152,17 +163,21 @@ func (s *Store) persist(p *Palette) error {
 
 		return fmt.Errorf("write temp palette: %w", err)
 	}
+
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 
 		return fmt.Errorf("sync temp palette: %w", err)
 	}
+
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp palette: %w", err)
 	}
+
 	if err := os.Rename(tmpPath, s.path); err != nil {
 		return fmt.Errorf("rename temp palette: %w", err)
 	}
+
 	committed = true
 
 	return nil

@@ -70,6 +70,52 @@ func TestSuspectClearsOnlyWithFreshIdentifiedEvidence(t *testing.T) {
 	}
 }
 
+func TestFirstAnchorUsesInitialSegment(t *testing.T) {
+	boot := journal.BootID{1}
+	tracker := newTestTracker(View{State: Unanchored, Boot: boot, Segment: 0})
+	before := Reading{Boot: boot, ElapsedMs: 1000, WallMs: 1800000000000}
+	after := Reading{Boot: boot, ElapsedMs: 1010, WallMs: 1800000000010}
+
+	view, records, err := tracker.Observe(before, after, Evidence{Synchronized: true, ID: "first", Source: "fixture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if view.State != Anchored || view.Segment != 0 || view.Anchor == nil || view.Anchor.ClockSegment != 0 {
+		t.Fatalf("first anchor did not remain in initial segment: %+v", view)
+	}
+
+	if len(records) != 2 || records[0].Kind != journal.KindAnchor || records[1].Kind != journal.KindClockTransition {
+		t.Fatalf("records=%+v", records)
+	}
+
+	anchor, err := journal.DecodeAnchor(records[0])
+	if err != nil || anchor.ClockSegment != 0 {
+		t.Fatalf("anchor=%+v error=%v", anchor, err)
+	}
+}
+
+func TestRepeatedSameSegmentEvidenceDoesNotReplaceAnchor(t *testing.T) {
+	boot := journal.BootID{2}
+	anchor := journal.Anchor{Boot: boot, ClockSegment: 0, ElapsedMs: 0, UTCMs: 1800000000000, UncertaintyMs: 100}
+	tracker := newTestTracker(View{State: Anchored, Boot: boot, Segment: 0, Anchor: &anchor})
+	before := Reading{Boot: boot, ElapsedMs: 10000, WallMs: anchor.UTCMs + 14000}
+	after := Reading{Boot: boot, ElapsedMs: 10010, WallMs: anchor.UTCMs + 14010}
+
+	view, records, err := tracker.Observe(before, after, Evidence{Synchronized: true, ID: "repeat", Source: "fixture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(records) != 0 {
+		t.Fatalf("same-segment observation emitted %d records", len(records))
+	}
+
+	if view.Anchor == nil || *view.Anchor != anchor {
+		t.Fatalf("same-segment observation replaced canonical anchor: %+v", view.Anchor)
+	}
+}
+
 func TestObserveRejectsOverlongBracket(t *testing.T) {
 	tracker := newTestTracker(View{State: Unanchored, Boot: journal.BootID{1}})
 	before := Reading{Boot: journal.BootID{1}, ElapsedMs: 1000, WallMs: 1800000000000}
@@ -144,6 +190,59 @@ func TestCheckDetectsJumpAndToleratesDrift(t *testing.T) {
 
 	if jumped.State != Suspect || jumped.SuspectElapsedMs == nil || *jumped.SuspectElapsedMs != 3000 {
 		t.Fatalf("6s jump not detected: %+v", jumped)
+	}
+}
+
+func TestSlowDriftBelowAndAboveThreshold(t *testing.T) {
+	boot := journal.BootID{3}
+	base := int64(1800000000000)
+	anchor := journal.Anchor{Boot: boot, ClockSegment: 0, ElapsedMs: 0, UTCMs: base}
+	tracker := newTestTracker(View{State: Anchored, Boot: boot, Segment: 0, Anchor: &anchor})
+
+	fiveDays := int64((5 * 24 * time.Hour).Milliseconds())
+	below, _, err := tracker.Check(Reading{Boot: boot, ElapsedMs: fiveDays, WallMs: base + fiveDays + fiveDays/100000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if below.State != Anchored {
+		t.Fatalf("10 ppm drift below threshold entered suspect: %+v", below)
+	}
+
+	sixDays := int64((6 * 24 * time.Hour).Milliseconds())
+	above, records, err := tracker.Check(Reading{Boot: boot, ElapsedMs: sixDays, WallMs: base + sixDays + sixDays/100000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if above.State != Suspect || above.Segment != 1 || len(records) != 1 {
+		t.Fatalf("10 ppm drift above threshold did not enter suspect once: view=%+v records=%d", above, len(records))
+	}
+
+	tracker.Install(above)
+
+	sevenDays := int64((7 * 24 * time.Hour).Milliseconds())
+	repeated, records, err := tracker.Check(Reading{Boot: boot, ElapsedMs: sevenDays, WallMs: base + sevenDays + sevenDays/100000})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if repeated.State != Suspect || repeated.Segment != above.Segment || len(records) != 0 {
+		t.Fatalf("suspect transition repeated: view=%+v records=%d", repeated, len(records))
+	}
+
+	before := Reading{Boot: boot, ElapsedMs: sevenDays, WallMs: base + sevenDays + sevenDays/100000}
+	after := before
+	after.ElapsedMs += 10
+	after.WallMs += 10
+	reanchored, records, err := tracker.Observe(before, after,
+		Evidence{Synchronized: true, ID: "fresh", Source: "fixture", AfterSuspect: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if reanchored.State != Anchored || reanchored.Segment != 2 || len(records) != 2 {
+		t.Fatalf("fresh evidence did not establish next segment: view=%+v records=%d", reanchored, len(records))
 	}
 }
 

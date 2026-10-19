@@ -23,9 +23,11 @@ type HTTPError struct {
 
 func (e *HTTPError) Error() string {
 	status := e.Status
+
 	if status == "" {
 		status = strconv.Itoa(e.StatusCode)
 	}
+
 	return fmt.Sprintf("rci: HTTP status %s", status)
 }
 

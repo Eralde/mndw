@@ -26,9 +26,11 @@ func TestParseMembersConsumesSharedFixtures(t *testing.T) {
 			}
 
 			var value any
+
 			if err := json.Unmarshal(data, &value); err != nil {
 				t.Fatal(err)
 			}
+
 			if _, ok := value.([]any); !ok {
 				data = append([]byte{'['}, append(data, ']')...)
 			}
@@ -37,6 +39,7 @@ func TestParseMembersConsumesSharedFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if len(members) != 1 {
 				t.Fatalf("members = %#v, want one member", members)
 			}
@@ -54,7 +57,9 @@ func TestSharedFixtureEligibilityExpectations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var expectations map[string]expectation
+
 	if err := json.Unmarshal(data, &expectations); err != nil {
 		t.Fatal(err)
 	}
@@ -65,14 +70,18 @@ func TestSharedFixtureEligibilityExpectations(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			var value any
+
 			if err := json.Unmarshal(data, &value); err != nil {
 				t.Fatal(err)
 			}
+
 			if members, ok := value.([]any); ok {
 				if len(members) != 1 {
 					t.Fatalf("fixture contains %d members", len(members))
 				}
+
 				data, err = json.Marshal(members)
 				if err != nil {
 					t.Fatal(err)
@@ -85,13 +94,17 @@ func TestSharedFixtureEligibilityExpectations(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			member := members[0]
 			eligible := member.FQDNCertificateValid && member.AuthTokenCapable() && member.FQDN != ""
+
 			if eligible != expected.Eligible {
 				t.Fatalf("eligible = %v, want %v", eligible, expected.Eligible)
 			}
+
 			if !eligible {
 				reason := ""
+
 				if strings.TrimSpace(member.FQDN) == "" {
 					reason = "missing-fqdn"
 				} else if !member.FQDNCertificateValid {
@@ -99,6 +112,7 @@ func TestSharedFixtureEligibilityExpectations(t *testing.T) {
 				} else if !member.AuthTokenCapable() {
 					reason = "no-auth-token"
 				}
+
 				if reason != expected.Reason {
 					t.Fatalf("reason = %q, want %q", reason, expected.Reason)
 				}
@@ -112,6 +126,7 @@ func TestMixedCapabilityObjectSurvivesParsing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if string(members[0].Capabilities["security-level"]) != `{"level":"admin"}` {
 		t.Fatalf("security-level = %s", members[0].Capabilities["security-level"])
 	}
@@ -137,6 +152,7 @@ func TestAuthTokenCapableReadsOnlyBooleanCapability(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if got := member[0].AuthTokenCapable(); got != test.want {
 				t.Fatalf("AuthTokenCapable() = %v, want %v", got, test.want)
 			}
@@ -165,6 +181,7 @@ func TestParseMembersPreservesFQDNAndRuntimeState(t *testing.T) {
 	if member.FQDN != "node-1.keenetic.io" {
 		t.Fatalf("FQDN = %q", member.FQDN)
 	}
+
 	if member.FQDNCertificateValid {
 		t.Fatal("FQDNCertificateValid = true, want false")
 	}

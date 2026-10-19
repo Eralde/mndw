@@ -10,11 +10,13 @@ import (
 
 func TestWaitForTCPWaitsForLateListener(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+
 	defer cancel()
 
 	attempts := 0
 	dial := func(context.Context, string) (net.Conn, error) {
 		attempts++
+
 		if attempts < 3 {
 			return nil, errors.New("listener is not ready")
 		}
@@ -28,6 +30,7 @@ func TestWaitForTCPWaitsForLateListener(t *testing.T) {
 	if err := waitForTCPWithDial(ctx, "127.0.0.1:7681", dial); err != nil {
 		t.Fatalf("waitForTCP() error = %v", err)
 	}
+
 	if attempts != 3 {
 		t.Fatalf("dial attempts = %d, want 3", attempts)
 	}

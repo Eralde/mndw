@@ -26,6 +26,7 @@ func ValidateControllerURLShape(raw string) (*url.URL, error) {
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.Hostname() == "" {
 		return nil, fmt.Errorf("controller URL must be an absolute HTTP(S) URL, got %q", raw)
 	}
+
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
 		return nil, fmt.Errorf("controller URL must contain only scheme and host, got %q", raw)
 	}
@@ -48,26 +49,36 @@ type ControllerHTTPTester struct {
 
 func (t ControllerHTTPTester) Test(ctx context.Context, token string) (ControllerVerdict, error) {
 	client := t.Client
+
 	if client == nil {
 		client = &http.Client{}
 	}
+
 	requestContext := ctx
 	var cancel context.CancelFunc
+
 	if t.Timeout > 0 {
 		requestContext, cancel = context.WithTimeout(ctx, t.Timeout)
+
 		defer cancel()
 	}
+
 	request, err := http.NewRequestWithContext(requestContext, http.MethodGet, strings.TrimRight(controllerURL(t.BaseURL), "/")+"/rci/show/version", nil)
 	if err != nil {
 		return ControllerUnreachable, fmt.Errorf("build controller test request: %w", err)
 	}
+
 	request.Header.Set("X-Ndma-Tkn", token)
+
 	response, err := client.Do(request)
 	if err != nil {
 		return ControllerUnreachable, fmt.Errorf("controller test request failed")
 	}
+
 	defer response.Body.Close()
+
 	_, _ = io.CopyN(io.Discard, response.Body, 512<<10)
+
 	switch response.StatusCode {
 	case http.StatusUnauthorized:
 		return ControllerInvalidToken, nil
@@ -79,6 +90,7 @@ func (t ControllerHTTPTester) Test(ctx context.Context, token string) (Controlle
 		if response.StatusCode >= 500 || response.StatusCode == http.StatusRequestTimeout {
 			return ControllerUnreachable, fmt.Errorf("controller test returned status")
 		}
+
 		return ControllerInvalidToken, nil
 	}
 }
@@ -108,21 +120,26 @@ func (s *Service) TestController(ctx context.Context, tester ControllerTester, t
 	if token == "" {
 		return ControllerInvalidToken, nil
 	}
+
 	if tester == nil {
 		return ControllerUnreachable, fmt.Errorf("controller tester unavailable")
 	}
+
 	verdict, err := tester.Test(ctx, token)
 	if err == nil && verdict == ControllerValid {
 		document, snapshotErr := s.store.Snapshot()
+
 		if snapshotErr == nil && document.Controller != nil && document.Controller.Token == token && document.Controller.Support == model.SupportInvalid {
 			record := *document.Controller
 			record.Support = model.SupportSupported
+
 			if replaceErr := s.store.ReplaceController(record); replaceErr == nil {
 				s.bumpControllerEpoch(true)
 				s.notifyMutation("controller-token-recovered")
 			}
 		}
 	}
+
 	return verdict, err
 }
 
@@ -131,12 +148,16 @@ func (s *Service) SaveController(ctx context.Context, tester ControllerTester, t
 	if err != nil || verdict != ControllerValid {
 		return verdict, err
 	}
+
 	document, snapshotErr := s.store.Snapshot()
 	previousToken := ""
+
 	if snapshotErr == nil && document.Controller != nil {
 		previousToken = document.Controller.Token
 	}
+
 	checked := s.now().UTC()
+
 	if err := s.store.ReplaceController(model.TokenRecord{
 		Token:         token,
 		Support:       model.SupportSupported,
@@ -144,14 +165,19 @@ func (s *Service) SaveController(ctx context.Context, tester ControllerTester, t
 	}); err != nil {
 		return ControllerUnreachable, err
 	}
+
 	changed := previousToken != token
+
 	if changed {
 		s.bumpControllerEpoch(true)
+
 		if manager := s.SessionManager(); manager != nil {
 			manager.BumpForControllerTokenChange()
 		}
 	}
+
 	s.notifyMutation("controller-token-saved")
+
 	return verdict, nil
 }
 
@@ -159,16 +185,22 @@ func (s *Service) DeleteController() error {
 	if err := s.store.DeleteController(); err != nil {
 		return err
 	}
+
 	s.bumpControllerEpoch(true)
+
 	if manager := s.SessionManager(); manager != nil {
 		manager.DiscardAll()
 	}
+
 	s.notifyMutation("controller-token-deleted")
+
 	return nil
 }
 
 func (s *Service) bumpControllerEpoch(_ bool) {
 	s.mu.Lock()
+
 	s.controllerEpoch++
+
 	s.mu.Unlock()
 }

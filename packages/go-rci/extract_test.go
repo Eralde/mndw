@@ -26,6 +26,7 @@ func TestExtractPreservesNestedRawBytes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if !reflect.DeepEqual(got, test.want) {
 				t.Fatalf("Extract(%q) = %s, want %s", test.path, got, test.want)
 			}
@@ -35,12 +36,14 @@ func TestExtractPreservesNestedRawBytes(t *testing.T) {
 
 func TestExtractTreatsShapeMismatchesAsAbsent(t *testing.T) {
 	raw := json.RawMessage(`{"show":{"items":[{"version":1}],"null":null}}`)
+
 	for _, path := range []string{"show.items.version", "show.null.value", "show.missing.value"} {
 		t.Run(path, func(t *testing.T) {
 			got, err := Extract(raw, path)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if got != nil {
 				t.Fatalf("Extract(%q) = %s, want nil", path, got)
 			}
@@ -58,6 +61,7 @@ func TestExtractRejectsInvalidPath(t *testing.T) {
 func TestExtractPreservesSyntaxErrorCause(t *testing.T) {
 	_, err := Extract(json.RawMessage(`{"show":`), "show.version")
 	var syntaxErr *json.SyntaxError
+
 	if !errors.Is(err, ErrInvalidResponse) || !errors.As(err, &syntaxErr) {
 		t.Fatalf("Extract malformed JSON error = %v, want ErrInvalidResponse and *json.SyntaxError", err)
 	}

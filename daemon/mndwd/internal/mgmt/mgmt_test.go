@@ -48,11 +48,9 @@ type lifecycleTestRuntime struct {
 }
 
 type lifecycleTestCall struct {
-	name    string
-	op      backend.Operation
-	intent  backend.Intent
-	success backend.TerminalKind
-	onFail  backend.FailurePolicy
+	name   string
+	op     backend.Operation
+	intent backend.Intent
 }
 
 type lifecycleTestControl struct {
@@ -113,12 +111,10 @@ func (r *lifecycleTestRuntime) ExecuteLifecycle(
 	name string,
 	op backend.Operation,
 	intent backend.Intent,
-	success backend.TerminalKind,
-	onFail backend.FailurePolicy,
 	work func(context.Context, backend.LifecycleControl) error,
 ) error {
-	r.calls = append(r.calls, lifecycleTestCall{name: name, op: op, intent: intent, success: success, onFail: onFail})
-	r.events = append(r.events, fmt.Sprintf("execute:%d/%d/%d/%d", op, intent, success, onFail))
+	r.calls = append(r.calls, lifecycleTestCall{name: name, op: op, intent: intent})
+	r.events = append(r.events, fmt.Sprintf("execute:%d/%d", op, intent))
 
 	err := work(context.Background(), &lifecycleTestControl{runtime: r, name: name})
 	if errors.Is(err, backend.ErrForceStopTerminal) {
@@ -1008,7 +1004,7 @@ func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
 		t.Fatalf("disable status = %d, want 200", disable.StatusCode)
 	}
 
-	if want := []string{"execute:2/1/1/1", "stop:stored=true", "permission:stored=false"}; !reflect.DeepEqual(runtime.events, want) {
+	if want := []string{"execute:2/1", "stop:stored=true", "permission:stored=false"}; !reflect.DeepEqual(runtime.events, want) {
 		t.Fatalf("disable event order = %#v, want %#v", runtime.events, want)
 	}
 
@@ -1021,7 +1017,7 @@ func TestLifecycleCharacterizesRuntimeAndPermissionOrdering(t *testing.T) {
 		t.Fatalf("enable status = %d, want 200", enable.StatusCode)
 	}
 
-	if want := []string{"execute:1/0/0/0", "start:stored=approved/false:requested=approved/true", "permission:stored=true"}; !reflect.DeepEqual(runtime.events, want) {
+	if want := []string{"execute:1/0", "start:stored=approved/false:requested=approved/true", "permission:stored=true"}; !reflect.DeepEqual(runtime.events, want) {
 		t.Fatalf("enable event order = %#v, want %#v", runtime.events, want)
 	}
 

@@ -31,7 +31,7 @@ func TestBackendUploadUsesStoppedInstallLifecycleWithoutStarting(t *testing.T) {
 		t.Fatalf("upload status = %d, want 202", resp.StatusCode)
 	}
 
-	assertLifecycleCall(t, runtime, backend.OpInstalling, backend.IntentStop, backend.TerminalStop, backend.FailRestore)
+	assertLifecycleCall(t, runtime, backend.OpInstalling, backend.IntentStop)
 
 	for _, event := range runtime.events {
 		if strings.HasPrefix(event, "start:") {
@@ -62,7 +62,7 @@ func TestApproveStartsDesiredSnapshotBeforePersistingApproval(t *testing.T) {
 		t.Fatalf("approve status = %d, want 200", resp.StatusCode)
 	}
 
-	assertLifecycleCall(t, runtime, backend.OpInstalling, backend.IntentRun, backend.TerminalRun, backend.FailRestore)
+	assertLifecycleCall(t, runtime, backend.OpInstalling, backend.IntentRun)
 
 	if !containsString(runtime.events, "start:stored=pending/false:requested=approved/true") {
 		t.Fatalf("approval activation order = %v", runtime.events)
@@ -99,7 +99,7 @@ func TestEnableStartsDesiredSnapshotBeforePersistingEnabled(t *testing.T) {
 		t.Fatalf("enable status = %d, want 200", resp.StatusCode)
 	}
 
-	assertLifecycleCall(t, runtime, backend.OpStarting, backend.IntentRun, backend.TerminalRun, backend.FailRestore)
+	assertLifecycleCall(t, runtime, backend.OpStarting, backend.IntentRun)
 
 	if !containsString(runtime.events, "start:stored=approved/false:requested=approved/true") {
 		t.Fatalf("enable activation order = %v", runtime.events)
@@ -130,7 +130,7 @@ func TestDisablePersistsDisabledWhenStopFails(t *testing.T) {
 		t.Fatalf("disable status = %d, want 502", resp.StatusCode)
 	}
 
-	assertLifecycleCall(t, runtime, backend.OpStopping, backend.IntentStop, backend.TerminalStop, backend.FailKeep)
+	assertLifecycleCall(t, runtime, backend.OpStopping, backend.IntentStop)
 
 	record, ok := store.Get("svc")
 
@@ -170,7 +170,7 @@ func TestDeletePersistsRemovalMarkerBeforeStopAndRetainsItOnCleanupFailure(t *te
 		t.Fatalf("delete status = %d, want 500", resp.StatusCode)
 	}
 
-	assertLifecycleCall(t, runtime, backend.OpDeleting, backend.IntentRemove, backend.TerminalRemove, backend.FailRemoved)
+	assertLifecycleCall(t, runtime, backend.OpDeleting, backend.IntentRemove)
 
 	record, ok := store.Get("hello")
 
@@ -202,9 +202,9 @@ func TestRestartUsesLifecycleStopThenStart(t *testing.T) {
 		t.Fatalf("restart status = %d, want 200", resp.StatusCode)
 	}
 
-	assertLifecycleCall(t, runtime, backend.OpRestarting, backend.IntentRun, backend.TerminalRun, backend.FailRestore)
+	assertLifecycleCall(t, runtime, backend.OpRestarting, backend.IntentRun)
 
-	want := []string{"execute:3/0/0/0", "stop:stored=true", "start:stored=approved/true:requested=approved/true"}
+	want := []string{"execute:3/0", "stop:stored=true", "start:stored=approved/true:requested=approved/true"}
 
 	if len(runtime.events) != len(want) {
 		t.Fatalf("restart events = %v, want %v", runtime.events, want)
@@ -236,7 +236,7 @@ func TestUpdateLifecycleStartsNewSnapshot(t *testing.T) {
 		t.Fatalf("update status = %d, want 200", resp.StatusCode)
 	}
 
-	assertLifecycleCall(t, runtime, backend.OpUpdating, backend.IntentRun, backend.TerminalRun, backend.FailRestore)
+	assertLifecycleCall(t, runtime, backend.OpUpdating, backend.IntentRun)
 
 	if len(runtime.startVersions) != 1 || runtime.startVersions[0] != "2.0.0" {
 		t.Fatalf("update start versions = %v", runtime.startVersions)
@@ -357,8 +357,6 @@ func assertLifecycleCall(
 	runtime *lifecycleTestRuntime,
 	op backend.Operation,
 	intent backend.Intent,
-	success backend.TerminalKind,
-	onFail backend.FailurePolicy,
 ) {
 	t.Helper()
 
@@ -368,7 +366,7 @@ func assertLifecycleCall(
 
 	call := runtime.calls[0]
 
-	if call.op != op || call.intent != intent || call.success != success || call.onFail != onFail {
+	if call.op != op || call.intent != intent {
 		t.Fatalf("lifecycle call = %+v", call)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -15,6 +16,68 @@ func TestReconcileSeedsEnabledStartupCandidate(t *testing.T) {
 
 	if !containsID(plan.startIDs, "svc") {
 		t.Fatal("initial reconcile did not return enabled startup candidate")
+	}
+}
+
+func TestServiceSpecEqual(t *testing.T) {
+	base := ServiceSpec{
+		PluginID:         "svc",
+		Dir:              "/plugins/svc",
+		Command:          "run.sh",
+		Args:             []string{"--serve"},
+		ProtocolVersion:  1,
+		RCISessionSocket: "/run/rci.sock",
+		Builtin:          true,
+		Enabled:          true,
+		RemovalPending:   true,
+	}
+
+	tests := []struct {
+		name  string
+		left  ServiceSpec
+		other ServiceSpec
+		want  bool
+	}{
+		{name: "identical", left: base, other: base, want: true},
+		{name: "nil and empty args", left: ServiceSpec{PluginID: base.PluginID, Dir: base.Dir, Command: base.Command, ProtocolVersion: base.ProtocolVersion, RCISessionSocket: base.RCISessionSocket, Builtin: base.Builtin, Enabled: base.Enabled, RemovalPending: base.RemovalPending}, other: ServiceSpec{PluginID: base.PluginID, Dir: base.Dir, Command: base.Command, ProtocolVersion: base.ProtocolVersion, RCISessionSocket: base.RCISessionSocket, Builtin: base.Builtin, Enabled: base.Enabled, RemovalPending: base.RemovalPending, Args: []string{}}, want: true},
+		{name: "different args order", left: base, other: ServiceSpec{PluginID: base.PluginID, Dir: base.Dir, Command: base.Command, Args: []string{"--other", "--serve"}, ProtocolVersion: base.ProtocolVersion, RCISessionSocket: base.RCISessionSocket, Builtin: base.Builtin, Enabled: base.Enabled, RemovalPending: base.RemovalPending}, want: false},
+		{name: "different args length", left: base, other: ServiceSpec{PluginID: base.PluginID, Dir: base.Dir, Command: base.Command, Args: []string{"--serve", "--other"}, ProtocolVersion: base.ProtocolVersion, RCISessionSocket: base.RCISessionSocket, Builtin: base.Builtin, Enabled: base.Enabled, RemovalPending: base.RemovalPending}, want: false},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := testCase.left.Equal(testCase.other); got != testCase.want {
+				t.Fatalf("Equal() = %t, want %t", got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestServiceSpecEqualCoversEveryField(t *testing.T) {
+	typeOfSpec := reflect.TypeOf(ServiceSpec{})
+	zero := ServiceSpec{}
+
+	for index := 0; index < typeOfSpec.NumField(); index++ {
+		field := typeOfSpec.Field(index)
+		changed := reflect.New(typeOfSpec).Elem()
+		value := changed.Field(index)
+
+		switch value.Kind() {
+		case reflect.String:
+			value.SetString("x")
+		case reflect.Int:
+			value.SetInt(1)
+		case reflect.Bool:
+			value.SetBool(true)
+		case reflect.Slice:
+			value.Set(reflect.ValueOf([]string{"x"}))
+		default:
+			t.Fatalf("ServiceSpec.%s: unsupported kind %s; extend Equal and this test", field.Name, value.Kind())
+		}
+
+		if zero.Equal(changed.Interface().(ServiceSpec)) {
+			t.Errorf("Equal() returned true after changing ServiceSpec.%s", field.Name)
+		}
 	}
 }
 
@@ -268,7 +331,7 @@ func startSupervisorForTest(supervisor *Supervisor, spec ServiceSpec) error {
 	close(outcome.run.workDone)
 	supervisor.withLock(func() {
 		if err == nil {
-			supervisor.coord.commitRun(outcome.run)
+			supervisor.coord.commit(outcome.run)
 		} else {
 			supervisor.coord.failRestore(outcome.run, err)
 		}
@@ -284,42 +347,13 @@ func stopSupervisorForTest(supervisor *Supervisor, pluginID string) error {
 	close(outcome.run.workDone)
 	supervisor.withLock(func() {
 		if err == nil {
-			supervisor.coord.commitRemove(outcome.run)
+			supervisor.coord.commit(outcome.run)
 		} else {
-			supervisor.coord.failRemoved(outcome.run, err)
+			supervisor.coord.fail(outcome.run, err)
 		}
 	})
 
 	return err
-}
-
-func TestWaitForProcessExitHasBoundedFinalReap(t *testing.T) {
-	done := make(chan struct{})
-	started := time.Now()
-
-	if waitForProcessExit(done, 10*time.Millisecond) {
-		t.Fatal("waitForProcessExit reported an exit for an open channel")
-	}
-
-	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
-		t.Fatalf("waitForProcessExit took %s", elapsed)
-	}
-}
-
-func TestProcessExitResultIsBroadcastToStopAndObserver(t *testing.T) {
-	wantErr := errors.New("service exited")
-	exit := newProcessExit()
-	exit.err = wantErr
-
-	close(exit.done)
-
-	if !waitForProcessExit(exit.done, time.Second) {
-		t.Fatal("stop path did not observe process exit")
-	}
-
-	if err := exit.wait(); !errors.Is(err, wantErr) {
-		t.Fatalf("observer error = %v, want %v", err, wantErr)
-	}
 }
 
 func TestRecordFailureDelaysAndCutoff(t *testing.T) {

@@ -26,7 +26,7 @@ type RuntimeLimitsSnapshot struct {
 // daemon startup/shutdown paths.
 type Runtime interface {
 	Reconcile(context.Context, []*registry.Plugin)
-	ExecuteLifecycle(string, Operation, Intent, TerminalKind, FailurePolicy, func(context.Context, LifecycleControl) error) error
+	ExecuteLifecycle(string, Operation, Intent, func(context.Context, LifecycleControl) error) error
 	BlocksTraffic(string) bool
 	Status(string) RuntimeStatus
 	Limits() RuntimeLimitsSnapshot
@@ -159,7 +159,7 @@ func (r *RuntimeImpl) executeStartup(plugin *registry.Plugin) {
 	}
 
 	outcome := r.supervisor.beginDesiredStartup(spec)
-	err := r.executeLifecycleOutcome(plugin.Name, OpStarting, TerminalRun, FailRestore,
+	err := r.executeLifecycleOutcome(plugin.Name, OpStarting,
 		func(_ context.Context, control LifecycleControl) error { return control.StartPlugin(plugin) }, outcome)
 
 	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.supervisor.cfg.Logger != nil {
@@ -169,7 +169,7 @@ func (r *RuntimeImpl) executeStartup(plugin *registry.Plugin) {
 
 func (r *RuntimeImpl) executeDesiredStartup(spec ServiceSpec) {
 	outcome := r.supervisor.beginDesiredStartup(spec)
-	err := r.executeLifecycleOutcome(spec.PluginID, OpStarting, TerminalRun, FailRestore,
+	err := r.executeLifecycleOutcome(spec.PluginID, OpStarting,
 		func(_ context.Context, control LifecycleControl) error {
 			concrete, ok := control.(*lifecycleControl)
 
@@ -188,17 +188,13 @@ func (r *RuntimeImpl) executeDesiredStartup(spec ServiceSpec) {
 func (r *RuntimeImpl) executeReconcileStop(pluginID string, remove bool) {
 	op := OpStopping
 	intent := IntentStop
-	success := TerminalStop
-	failure := FailKeep
 
 	if remove {
 		op = OpDeleting
 		intent = IntentRemove
-		success = TerminalRemove
-		failure = FailRemoved
 	}
 
-	err := r.ExecuteLifecycle(pluginID, op, intent, success, failure,
+	err := r.ExecuteLifecycle(pluginID, op, intent,
 		func(_ context.Context, control LifecycleControl) error { return control.StopService() })
 
 	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.supervisor.cfg.Logger != nil {

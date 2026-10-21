@@ -63,7 +63,7 @@ func TestRuntimeGatedServiceReservesNoSlotAndLifecycleStartDoesNotSpawn(t *testi
 		t.Fatalf("gated status = %q, want stopped", got)
 	}
 
-	if err := runtime.ExecuteLifecycle(plugin.Name, OpStarting, IntentRun, TerminalRun, FailRestore,
+	if err := runtime.ExecuteLifecycle(plugin.Name, OpStarting, IntentRun,
 		func(_ context.Context, control LifecycleControl) error { return control.StartPlugin(plugin) }); err != nil {
 		t.Fatalf("gated lifecycle start = %v, want nil", err)
 	}

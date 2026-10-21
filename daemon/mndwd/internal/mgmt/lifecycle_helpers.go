@@ -26,15 +26,13 @@ func (h *Handler) executeLifecycle(
 	name string,
 	op backend.Operation,
 	intent backend.Intent,
-	success backend.TerminalKind,
-	onFail backend.FailurePolicy,
 	work func(context.Context, backend.LifecycleControl) error,
 ) error {
 	if h.runtime == nil {
 		return work(h.cfg.ServiceActionRoot, localLifecycleControl{})
 	}
 
-	return h.runtime.ExecuteLifecycle(name, op, intent, success, onFail, work)
+	return h.runtime.ExecuteLifecycle(name, op, intent, work)
 }
 
 func lifecycleError(err error, status int, code, message string) *httpx.APIError {

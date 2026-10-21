@@ -112,7 +112,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 		Name: name, Dir: filepath.Join(h.cfg.UserPluginsDir, name), Manifest: m,
 		Source: p.Source, Approval: state.ApprovalApproved, Enabled: true,
 	}
-	err := h.executeLifecycle(name, backend.OpStarting, backend.IntentRun, backend.TerminalRun, backend.FailRestore,
+	err := h.executeLifecycle(name, backend.OpStarting, backend.IntentRun,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
 			if err := ctrl.StartPlugin(desired); err != nil {
 				return err
@@ -169,7 +169,7 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.executeLifecycle(name, backend.OpStopping, backend.IntentStop, backend.TerminalStop, backend.FailKeep,
+	err := h.executeLifecycle(name, backend.OpStopping, backend.IntentStop,
 		func(_ context.Context, ctrl backend.LifecycleControl) error {
 			stopErr := ctrl.StopService()
 			persistErr := h.setEnabled(name, false, "disable", "plugin disabled by operator")
@@ -256,7 +256,7 @@ func (h *Handler) handleDeny(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.executeLifecycle(name, backend.OpDeleting, backend.IntentRemove, backend.TerminalRemove, backend.FailRemoved,
+	err := h.executeLifecycle(name, backend.OpDeleting, backend.IntentRemove,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
 			if apiErr := h.markRemovalPending(name); apiErr != nil {
 				return apiErr
@@ -305,7 +305,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.executeLifecycle(name, backend.OpDeleting, backend.IntentRemove, backend.TerminalRemove, backend.FailRemoved,
+	err := h.executeLifecycle(name, backend.OpDeleting, backend.IntentRemove,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
 			p, exists := h.store.Get(name)
 

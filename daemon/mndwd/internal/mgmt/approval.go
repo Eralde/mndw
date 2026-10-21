@@ -34,7 +34,7 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 		Name: name, Dir: installPath, Manifest: m, Source: p.Source,
 		Approval: state.ApprovalApproved, Enabled: true,
 	}
-	err = h.executeLifecycle(name, backend.OpInstalling, backend.IntentRun, backend.TerminalRun, backend.FailRestore,
+	err = h.executeLifecycle(name, backend.OpInstalling, backend.IntentRun,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
 			if apiErr := h.installDeps(ctx, m); apiErr != nil {
 				return apiErr

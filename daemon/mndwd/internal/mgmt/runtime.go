@@ -52,7 +52,7 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.executeLifecycle(name, backend.OpRestarting, backend.IntentRun, backend.TerminalRun, backend.FailRestore,
+	err := h.executeLifecycle(name, backend.OpRestarting, backend.IntentRun,
 		func(_ context.Context, ctrl backend.LifecycleControl) error {
 			if err := ctrl.StopService(); err != nil {
 				return err

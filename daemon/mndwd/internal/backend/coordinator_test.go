@@ -18,6 +18,86 @@ func TestCoordinatorAbsentRecordIsRemove(t *testing.T) {
 	}
 }
 
+func TestBeginOperationPairMatrix(t *testing.T) {
+	for running := OpStarting; running <= OpInstalling; running++ {
+		for incoming := OpStarting; incoming <= OpInstalling; incoming++ {
+			t.Run(operationName(running)+"/"+operationName(incoming), func(t *testing.T) {
+				c := newCoordinator()
+
+				c.begin("p", running, targetFor(running))
+
+				outcome := c.begin("p", incoming, targetFor(incoming))
+				wantJoined := incoming == running &&
+					(running == OpStopping || running == OpRestarting || running == OpDeleting)
+				wantSuperseded := !wantJoined &&
+					(incoming == OpStopping || incoming == OpDeleting) &&
+					(running == OpStarting || running == OpRestarting)
+				wantConflict := !wantJoined && !wantSuperseded
+
+				outcomes := 0
+
+				if outcome.joined {
+					outcomes++
+				}
+
+				if outcome.supersededWorkDone != nil {
+					outcomes++
+				}
+
+				if outcome.conflict {
+					outcomes++
+				}
+
+				if outcomes != 1 {
+					t.Fatalf("begin outcome has %d result flags: %+v", outcomes, outcome)
+				}
+
+				if outcome.joined != wantJoined {
+					t.Errorf("joined = %t, want %t", outcome.joined, wantJoined)
+				}
+
+				if (outcome.supersededWorkDone != nil) != wantSuperseded {
+					t.Errorf("superseded = %t, want %t", outcome.supersededWorkDone != nil, wantSuperseded)
+				}
+
+				if outcome.conflict != wantConflict {
+					t.Errorf("conflict = %t, want %t", outcome.conflict, wantConflict)
+				}
+			})
+		}
+	}
+}
+
+func targetFor(op Operation) Intent {
+	switch op {
+	case OpStopping:
+		return IntentStop
+	case OpDeleting:
+		return IntentRemove
+	default:
+		return IntentRun
+	}
+}
+
+func operationName(op Operation) string {
+	switch op {
+	case OpStarting:
+		return "starting"
+	case OpStopping:
+		return "stopping"
+	case OpRestarting:
+		return "restarting"
+	case OpUpdating:
+		return "updating"
+	case OpDeleting:
+		return "deleting"
+	case OpInstalling:
+		return "installing"
+	default:
+		return "unknown"
+	}
+}
+
 func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
 	c := newCoordinator()
 	start := c.begin("p", OpStarting, IntentRun)
@@ -71,7 +151,7 @@ func TestCompletionIsGenerationFenced(t *testing.T) {
 	start := c.begin("p", OpStarting, IntentRun)
 
 	c.begin("p", OpDeleting, IntentRemove)
-	c.commitRun(start.run)
+	c.commit(start.run)
 
 	if c.intentOf("p") == IntentRun {
 		t.Fatal("stale startup completion published run")
@@ -82,9 +162,9 @@ func TestTerminalizationIsOneShot(t *testing.T) {
 	c := newCoordinator()
 	inst := c.begin("p", OpInstalling, IntentRun)
 
-	c.commitRun(inst.run)
+	c.commit(inst.run)
 	c.failRestore(inst.run, errApproveFailedForTest)
-	c.commitRun(inst.run)
+	c.commit(inst.run)
 
 	if got := c.intentOf("p"); got != IntentRun {
 		t.Fatalf("intent after duplicate completion = %v, want IntentRun", got)
@@ -99,7 +179,7 @@ func TestDeleteFailKeepsTombstone(t *testing.T) {
 	c := newCoordinator()
 	del := c.begin("p", OpDeleting, IntentRemove)
 
-	c.failRemoved(del.run, errRemovalFailedForTest)
+	c.fail(del.run, errRemovalFailedForTest)
 
 	if got := c.intentOf("p"); got != IntentRemove {
 		t.Fatalf("delete failure intent = %v, want IntentRemove", got)
@@ -115,7 +195,7 @@ func TestReinstallABAKeepsGenerationMonotonic(t *testing.T) {
 	start := c.begin("p", OpStarting, IntentRun)
 	del := c.begin("p", OpDeleting, IntentRemove)
 
-	c.commitRemove(del.run)
+	c.commit(del.run)
 
 	reinstall := c.begin("p", OpInstalling, IntentRun)
 

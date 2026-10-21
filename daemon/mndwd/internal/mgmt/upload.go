@@ -78,7 +78,6 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 	activePath := filepath.Join(h.cfg.UserPluginsDir, name)
 	previous, hadPrevious := h.store.Get(name)
 	intent := backend.IntentRun
-	success := backend.TerminalRun
 	approval := state.ApprovalApproved
 	enabled := true
 	status := http.StatusCreated
@@ -87,7 +86,6 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	if manifest.HasBackend(m) {
 		intent = backend.IntentStop
-		success = backend.TerminalStop
 		approval = state.ApprovalPending
 		enabled = false
 		status = http.StatusAccepted
@@ -95,7 +93,7 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 		auditAction = "upload"
 	}
 
-	err = h.executeLifecycle(name, backend.OpInstalling, intent, success, backend.FailRestore,
+	err = h.executeLifecycle(name, backend.OpInstalling, intent,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
 			if err := ctx.Err(); err != nil || !ctrl.IsCurrent() {
 				if err != nil {

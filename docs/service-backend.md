@@ -166,7 +166,8 @@ The default device runtime root is
 creates runtime directories with mode `0700`, removes stale socket and lease evidence, and owns
 process identity and cleanup. See
 [`paths.go`](../daemon/mndwd/internal/backend/paths.go) and
-[`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go).
+[`process.go`](../daemon/mndwd/internal/backend/process.go) for cleanup and process mechanics, plus
+[`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go) for lifecycle policy.
 
 The child must:
 
@@ -380,7 +381,7 @@ reason `mndw updating` and show explicit reconnect UX.
 | Request-body, admission, and service-timeout limits                      | [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go), [`limits.go`](../daemon/mndwd/internal/backend/limits.go)                                 |
 | CORS, hop-by-hop, credential response filtering, and `no-store`          | [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go), [`proxy.go`](../daemon/mndwd/internal/backend/proxy.go)                                   |
 | Bounded stderr capture/redaction and aggregate diagnostics sanitization  | [`stderr_redaction.go`](../daemon/mndwd/internal/backend/stderr_redaction.go), [`diagnostics.go`](../daemon/mndwd/internal/diagnostics/diagnostics.go) |
-| Process groups, restart/backoff, and runtime socket/lease cleanup        | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go), [`runtime.go`](../daemon/mndwd/internal/backend/runtime.go)                         |
+| Process groups, restart/backoff, and runtime socket/lease cleanup        | [`process.go`](../daemon/mndwd/internal/backend/process.go), [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go), [`runtime.go`](../daemon/mndwd/internal/backend/runtime.go) |
 
 ### The author must implement or review
 

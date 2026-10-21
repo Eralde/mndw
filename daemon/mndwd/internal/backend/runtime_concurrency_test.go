@@ -17,7 +17,7 @@ func TestLifecycleRunsForDifferentPluginsDoNotSerialize(t *testing.T) {
 	firstDone := make(chan error, 1)
 
 	go func() {
-		firstDone <- runtime.ExecuteLifecycle("first", OpUpdating, IntentRun, TerminalRun, FailRestore,
+		firstDone <- runtime.ExecuteLifecycle("first", OpUpdating, IntentRun,
 			func(context.Context, LifecycleControl) error {
 				close(firstEntered)
 				<-releaseFirst
@@ -28,7 +28,7 @@ func TestLifecycleRunsForDifferentPluginsDoNotSerialize(t *testing.T) {
 
 	<-firstEntered
 
-	if err := runtime.ExecuteLifecycle("second", OpInstalling, IntentRun, TerminalRun, FailRestore,
+	if err := runtime.ExecuteLifecycle("second", OpInstalling, IntentRun,
 		func(context.Context, LifecycleControl) error { return nil }); err != nil {
 		t.Fatalf("independent lifecycle = %v", err)
 	}
@@ -69,7 +69,7 @@ func TestDeleteWinsOverSlowStartupIntegration(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- runtime.ExecuteLifecycle(plugin.Name, OpDeleting, IntentRemove, TerminalRemove, FailRemoved,
+		done <- runtime.ExecuteLifecycle(plugin.Name, OpDeleting, IntentRemove,
 			func(_ context.Context, control LifecycleControl) error { return control.StopService() })
 	}()
 
@@ -101,7 +101,7 @@ func TestRepeatedReconcileDoesNotDuplicateStartingRun(t *testing.T) {
 		t.Fatalf("generation after repeated reconcile = %d, want %d", got, firstGeneration)
 	}
 
-	if err := runtime.ExecuteLifecycle(plugin.Name, OpDeleting, IntentRemove, TerminalRemove, FailRemoved,
+	if err := runtime.ExecuteLifecycle(plugin.Name, OpDeleting, IntentRemove,
 		func(_ context.Context, control LifecycleControl) error { return control.StopService() }); err != nil {
 		t.Fatalf("cleanup delete = %v", err)
 	}

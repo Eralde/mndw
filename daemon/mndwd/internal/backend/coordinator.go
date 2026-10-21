@@ -64,10 +64,6 @@ type beginOutcome struct {
 	supersededWorkDone <-chan struct{}
 }
 
-func joinable(op Operation) bool {
-	return op == OpDeleting || op == OpStopping || op == OpRestarting
-}
-
 func newCoordinator(parent ...context.Context) *coordinator {
 	lifetimeCtx := context.Background()
 
@@ -97,12 +93,11 @@ func (c *coordinator) begin(name string, op Operation, want Intent) beginOutcome
 	record := c.records[name]
 
 	if record != nil && record.operation != OpNone {
-		if record.operation == op && joinable(op) {
+		if record.operation == op && traitsOf(op).joinable {
 			return beginOutcome{run: record.run, joined: true}
 		}
 
-		if (op == OpDeleting || op == OpStopping) &&
-			(record.operation == OpStarting || record.operation == OpRestarting) {
+		if traitsOf(op).supersedes && traitsOf(record.operation).supersedable {
 			oldRun := record.run
 
 			c.completeSuperseded(oldRun)
@@ -156,29 +151,29 @@ func (c *coordinator) isCurrent(run *operationRun) bool {
 	return record != nil && record.run == run && record.operation == run.op
 }
 
-// commitRun requires Supervisor.mu held when used by a Supervisor.
-func (c *coordinator) commitRun(run *operationRun) {
-	c.terminalize(run, IntentRun, nil)
-}
-
-// commitStop requires Supervisor.mu held when used by a Supervisor.
-func (c *coordinator) commitStop(run *operationRun) {
-	c.terminalize(run, IntentStop, nil)
-}
-
-// commitRemove requires Supervisor.mu held when used by a Supervisor.
-func (c *coordinator) commitRemove(run *operationRun) {
-	if !c.isCurrent(run) {
+// commit requires Supervisor.mu held when used by a Supervisor.
+func (c *coordinator) commit(run *operationRun) {
+	if run == nil {
 		return
 	}
 
-	c.nextGen++
+	if run.targetIntent == IntentRemove {
+		if !c.isCurrent(run) {
+			return
+		}
 
-	c.terminalize(run, IntentRemove, nil)
+		c.nextGen++
+	}
+
+	c.terminalize(run, run.targetIntent, nil)
 }
 
 // failRestore requires Supervisor.mu held when used by a Supervisor.
 func (c *coordinator) failRestore(run *operationRun, err error) {
+	if run == nil {
+		return
+	}
+
 	record := c.records[run.name]
 
 	if record == nil {
@@ -197,9 +192,19 @@ func (c *coordinator) failKeep(run *operationRun, err error) {
 	c.terminalize(run, run.targetIntent, err)
 }
 
-// failRemoved requires Supervisor.mu held when used by a Supervisor.
-func (c *coordinator) failRemoved(run *operationRun, err error) {
-	c.terminalize(run, IntentRemove, err)
+// fail requires Supervisor.mu held when used by a Supervisor.
+func (c *coordinator) fail(run *operationRun, err error) {
+	if run == nil {
+		return
+	}
+
+	if traitsOf(run.op).restoreOnFail {
+		c.failRestore(run, err)
+
+		return
+	}
+
+	c.failKeep(run, err)
 }
 
 // forceStop requires Supervisor.mu held when used by a Supervisor.

@@ -15,24 +15,6 @@ var (
 	errWorkPanic         = errors.New("lifecycle work panic")
 )
 
-// TerminalKind selects the successful stable intent for a lifecycle run.
-type TerminalKind int
-
-const (
-	TerminalRun TerminalKind = iota
-	TerminalStop
-	TerminalRemove
-)
-
-// FailurePolicy selects the stable intent published after work fails.
-type FailurePolicy int
-
-const (
-	FailRestore FailurePolicy = iota
-	FailKeep
-	FailRemoved
-)
-
 // LifecycleControl exposes generation-bound physical service work.
 type LifecycleControl interface {
 	StartPlugin(plugin *registry.Plugin) error
@@ -81,20 +63,20 @@ func (r *RuntimeImpl) ExecuteLifecycle(
 	name string,
 	op Operation,
 	intent Intent,
-	success TerminalKind,
-	onFail FailurePolicy,
 	work func(context.Context, LifecycleControl) error,
 ) error {
+	if _, ok := operationTraits[op]; !ok {
+		return fmt.Errorf("%w: %d", errUnknownOperation, op)
+	}
+
 	outcome := r.supervisor.beginLifecycle(name, op, intent)
 
-	return r.executeLifecycleOutcome(name, op, success, onFail, work, outcome)
+	return r.executeLifecycleOutcome(name, op, work, outcome)
 }
 
 func (r *RuntimeImpl) executeLifecycleOutcome(
 	name string,
 	op Operation,
-	success TerminalKind,
-	onFail FailurePolicy,
 	work func(context.Context, LifecycleControl) error,
 	outcome beginOutcome,
 ) error {
@@ -107,7 +89,7 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 		return waitRun(outcome.run)
 	}
 
-	if r.exclusiveOperation(op) && r.closePluginSockets != nil {
+	if traitsOf(op).exclusive && r.closePluginSockets != nil {
 		r.closePluginSockets(name)
 	}
 
@@ -127,21 +109,14 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 		}
 
 		if err == nil {
-			switch success {
-			case TerminalRun:
-				r.supervisor.coord.commitRun(outcome.run)
-			case TerminalStop:
-				r.supervisor.coord.commitStop(outcome.run)
-			case TerminalRemove:
-				r.supervisor.coord.commitRemove(outcome.run)
-			}
+			r.supervisor.coord.commit(outcome.run)
 
-			state := LifecycleStarted
-			reason := LifecycleReasonReconciled
+			state := LifecycleStopped
+			reason := lifecycleStopReason(op, outcome.run.targetIntent)
 
-			if success != TerminalRun {
-				state = LifecycleStopped
-				reason = lifecycleStopReason(op, success)
+			if outcome.run.targetIntent == IntentRun {
+				state = LifecycleStarted
+				reason = LifecycleReasonReconciled
 			}
 
 			lifecycleEvent = &LifecycleEvent{Plugin: name, State: state, Reason: reason}
@@ -149,14 +124,7 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 			return
 		}
 
-		switch onFail {
-		case FailRestore:
-			r.supervisor.coord.failRestore(outcome.run, err)
-		case FailKeep:
-			r.supervisor.coord.failKeep(outcome.run, err)
-		case FailRemoved:
-			r.supervisor.coord.failRemoved(outcome.run, err)
-		}
+		r.supervisor.coord.fail(outcome.run, err)
 	})
 
 	if lifecycleEvent != nil && r.lifecycleObserver != nil {
@@ -164,23 +132,6 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 	}
 
 	return waitRun(outcome.run)
-}
-
-func lifecycleStopReason(op Operation, success TerminalKind) LifecycleReason {
-	if success == TerminalRemove || op == OpDeleting {
-		return LifecycleReasonRemoved
-	}
-
-	switch op {
-	case OpStopping:
-		return LifecycleReasonDisabled
-	case OpRestarting:
-		return LifecycleReasonRestarted
-	case OpUpdating:
-		return LifecycleReasonUpdated
-	default:
-		return LifecycleReasonReconciled
-	}
 }
 
 func (r *RuntimeImpl) runLifecycleWork(
@@ -202,10 +153,6 @@ func (r *RuntimeImpl) runLifecycleWork(
 	}()
 
 	return work(run.ctx, control)
-}
-
-func (r *RuntimeImpl) exclusiveOperation(op Operation) bool {
-	return op == OpStopping || op == OpRestarting || op == OpUpdating || op == OpDeleting || op == OpInstalling
 }
 
 func (r *RuntimeImpl) operationOf(name string) Operation {
@@ -241,6 +188,6 @@ func (r *RuntimeImpl) BlocksTraffic(pluginID string) bool {
 			return true
 		}
 
-		return r.exclusiveOperation(record.operation)
+		return traitsOf(record.operation).exclusive
 	})
 }

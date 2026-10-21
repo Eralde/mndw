@@ -16,12 +16,12 @@ func TestLifecycleObserverPublishesTypedTransitions(t *testing.T) {
 		events = append(events, event)
 	})
 
-	if err := runtime.ExecuteLifecycle("p", OpStarting, IntentRun, TerminalRun, FailRestore,
+	if err := runtime.ExecuteLifecycle("p", OpStarting, IntentRun,
 		func(context.Context, LifecycleControl) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := runtime.ExecuteLifecycle("p", OpStopping, IntentStop, TerminalStop, FailKeep,
+	if err := runtime.ExecuteLifecycle("p", OpStopping, IntentStop,
 		func(context.Context, LifecycleControl) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestExecuteLifecycleConflictSurfaces(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- runtime.ExecuteLifecycle("p", OpUpdating, IntentRun, TerminalRun, FailRestore,
+		done <- runtime.ExecuteLifecycle("p", OpUpdating, IntentRun,
 			func(context.Context, LifecycleControl) error {
 				<-block
 
@@ -72,7 +72,7 @@ func TestExecuteLifecycleConflictSurfaces(t *testing.T) {
 
 	waitForOperation(t, runtime, "p", OpUpdating)
 
-	err := runtime.ExecuteLifecycle("p", OpDeleting, IntentRemove, TerminalRemove, FailRemoved,
+	err := runtime.ExecuteLifecycle("p", OpDeleting, IntentRemove,
 		func(context.Context, LifecycleControl) error { return nil })
 
 	if !errors.Is(err, ErrLifecycleConflict) {
@@ -92,7 +92,7 @@ func TestSupersededWorkQuiescesBeforeCleanup(t *testing.T) {
 	loserQuiesced := make(chan struct{})
 
 	go func() {
-		_ = runtime.ExecuteLifecycle("p", OpStarting, IntentRun, TerminalRun, FailRestore,
+		_ = runtime.ExecuteLifecycle("p", OpStarting, IntentRun,
 			func(ctx context.Context, _ LifecycleControl) error {
 				close(entered)
 				<-ctx.Done()
@@ -108,7 +108,7 @@ func TestSupersededWorkQuiescesBeforeCleanup(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- runtime.ExecuteLifecycle("p", OpDeleting, IntentRemove, TerminalRemove, FailRemoved,
+		done <- runtime.ExecuteLifecycle("p", OpDeleting, IntentRemove,
 			func(context.Context, LifecycleControl) error {
 				select {
 				case <-loserQuiesced:
@@ -138,7 +138,7 @@ func TestWorkPanicTerminalizesRun(t *testing.T) {
 	done := make(chan error, 1)
 
 	go func() {
-		done <- runtime.ExecuteLifecycle("p", OpUpdating, IntentRun, TerminalRun, FailRestore,
+		done <- runtime.ExecuteLifecycle("p", OpUpdating, IntentRun,
 			func(context.Context, LifecycleControl) error { panic("boom") })
 	}()
 
@@ -170,7 +170,7 @@ func TestAcceptedExclusiveLifecycleClosesSocketsOnceAndGatesTraffic(t *testing.T
 	done := make(chan error, 1)
 
 	go func() {
-		done <- runtime.ExecuteLifecycle("p", OpUpdating, IntentRun, TerminalRun, FailRestore,
+		done <- runtime.ExecuteLifecycle("p", OpUpdating, IntentRun,
 			func(context.Context, LifecycleControl) error {
 				<-block
 

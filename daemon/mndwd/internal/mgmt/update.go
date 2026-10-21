@@ -82,7 +82,7 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 
 	activeDir := filepath.Join(h.cfg.UserPluginsDir, name)
 	backupDir := filepath.Join(h.cfg.UserPluginsDir, name+".previous-"+safeVersion(previous.Version))
-	err = h.executeLifecycle(name, backend.OpUpdating, backend.IntentRun, backend.TerminalRun, backend.FailRestore,
+	err = h.executeLifecycle(name, backend.OpUpdating, backend.IntentRun,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
 			return h.executeUpdate(ctx, ctrl, name, previous, m, manifestBytes, zr, activeDir, backupDir)
 		})

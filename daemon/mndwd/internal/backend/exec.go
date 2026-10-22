@@ -46,6 +46,8 @@ type ExecRunner struct {
 }
 
 func NewExecRunner(cfg ExecRunnerConfig) *ExecRunner {
+	defaults := DefaultLimits()
+
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 30 * time.Second
 	}
@@ -63,11 +65,11 @@ func NewExecRunner(cfg ExecRunnerConfig) *ExecRunner {
 	}
 
 	if cfg.MaxConcurrentExecTotal <= 0 {
-		cfg.MaxConcurrentExecTotal = 8
+		cfg.MaxConcurrentExecTotal = defaults.MaxConcurrentExecTotal
 	}
 
 	if cfg.MaxConcurrentExecPerPlugin <= 0 {
-		cfg.MaxConcurrentExecPerPlugin = 4
+		cfg.MaxConcurrentExecPerPlugin = defaults.MaxConcurrentExecPerPlugin
 	}
 
 	return newExecRunner(cfg, NewAdmission(Limits{

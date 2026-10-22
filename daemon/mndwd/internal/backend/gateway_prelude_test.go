@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -40,9 +41,9 @@ func authFail() *fakeAuth {
 
 // newPreludeGateway builds a Gateway backed by a real registry containing the
 // "demo" plugin (approved + enabled), plus disabled and pending state variants
-// that reuse the same validated manifest bytes. supervisor/exec are nil because
-// prelude tests never dispatch to a backend.
-func newPreludeGateway(t *testing.T, auth Authenticator) *Gateway {
+// that reuse the same validated manifest bytes. It uses a runtime for route-gate
+// state; prelude tests never dispatch to a backend.
+func newPreludeGateway(t *testing.T, auth Authenticator, runtimes ...*RuntimeImpl) *Gateway {
 	t.Helper()
 
 	root := t.TempDir()
@@ -81,8 +82,13 @@ func newPreludeGateway(t *testing.T, auth Authenticator) *Gateway {
 	}
 
 	reg := registry.New(store, userDir, builtinDir)
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 
-	return NewGateway(GatewayConfig{}, reg, auth, nil, nil, nil)
+	if len(runtimes) > 0 {
+		runtime = runtimes[0]
+	}
+
+	return NewGateway(GatewayConfig{}, reg, auth, runtime, nil)
 }
 
 // gateRequest builds a request with the path values the ServeMux would set.
@@ -202,7 +208,7 @@ func TestResolveAuthorizedRouteMaintenanceGate(t *testing.T) {
 			auth := authFail()
 			gateway := newPreludeGateway(t, auth)
 
-			gateway.SetTrafficBlockPredicate(func(pluginID string) bool { return pluginID == "demo" })
+			setTrafficBlockedForTest(gateway.runtime, "demo", true)
 
 			recorder := httptest.NewRecorder()
 			_, ok := gateway.resolveAuthorizedRoute(recorder, gateRequest(http.MethodGet, "demo", "status", ""), kind)
@@ -223,6 +229,26 @@ func TestResolveAuthorizedRouteMaintenanceGate(t *testing.T) {
 				t.Fatalf("auth calls = %d, want 0", auth.calls)
 			}
 		})
+	}
+}
+
+func TestGatewayRefusesTrafficDuringRuntimePlatformMaintenance(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	gateway := newPreludeGateway(t, authPass(), runtime)
+
+	if err := runtime.BeginPlatformMaintenance(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	_, ok := gateway.resolveAuthorizedRoute(recorder, gateRequest(http.MethodGet, "demo", "status", ""), transportHTTP)
+
+	if ok {
+		t.Fatal("route resolved during runtime platform maintenance")
+	}
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", recorder.Code)
 	}
 }
 

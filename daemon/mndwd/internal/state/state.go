@@ -75,7 +75,8 @@ type State struct {
 }
 
 type Settings struct {
-	BackgroundTelemetry bool `json:"backgroundTelemetry"`
+	BackgroundTelemetry bool  `json:"backgroundTelemetry"`
+	PersistentRCI       *bool `json:"persistentRci,omitempty"`
 }
 
 // Store is the concurrency-safe, atomically-persisted owner of a State.
@@ -235,6 +236,36 @@ func (s *Store) HasGrant(plugin, permission string) bool {
 	defer s.mu.Unlock()
 
 	return s.state.PermissionGrants[plugin][permission]
+}
+
+// PersistentRCIEnabled reports the durable switch and whether it was explicitly set.
+func (s *Store) PersistentRCIEnabled() (enabled bool, set bool) {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	if s.state.Settings.PersistentRCI == nil {
+		return false, false
+	}
+
+	return *s.state.Settings.PersistentRCI, true
+}
+
+// SetPersistentRCIEnabled persists the RCI session switch and its audit event atomically.
+func (s *Store) SetPersistentRCIEnabled(enabled bool) error {
+	return s.Mutate(func(st *State) error {
+		value := enabled
+		st.Settings.PersistentRCI = &value
+		action := "persistent-rci-disable"
+
+		if enabled {
+			action = "persistent-rci-enable"
+		}
+
+		st.AppendAudit(action, "", "")
+
+		return nil
+	})
 }
 
 // SetGrant persists one explicit permission grant and its audit event atomically.

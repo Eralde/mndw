@@ -1,0 +1,6 @@
+{
+  "store": {"state": "ok"},
+  "controller": {"support": "needs-token", "auth": "token", "enabled": true},
+  "extenders": [],
+  "stale": false
+}

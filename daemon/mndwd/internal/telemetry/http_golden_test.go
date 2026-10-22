@@ -53,10 +53,9 @@ func TestTelemetryHTTPGoldenResponses(t *testing.T) {
 
 	seedGoldenHistory(t, history, now)
 
-	cache := NewSnapshotCache(history, func() time.Time { return now })
+	cache := NewSnapshotCache(history, func() time.Time { return now }, func() bool { return true })
 
 	cache.SetSupportedSeries(map[uint16]bool{1: true, 2: true})
-	cache.SetSessionConfigured(func() bool { return true })
 
 	if _, err := cache.Refresh(ctx, goldenSnapshotStatus()); err != nil {
 		t.Fatalf("refresh snapshot cache: %v", err)
@@ -88,9 +87,7 @@ func TestTelemetryHTTPGoldenResponses(t *testing.T) {
 	}()
 
 	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
-	handler := NewHandler(cache, func() bool { return true }, logger)
-
-	handler.SetAnnotationStore(annotationStore)
+	handler := NewHandler(cache, func() bool { return true }, annotationStore, logger)
 
 	mux := http.NewServeMux()
 

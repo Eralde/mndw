@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -39,7 +41,7 @@ func TestControllerPermissionAvailableUsesControllerSupport(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			service := rcisession.NewService(&assemblySessionStore{document: model.Document{Controller: test.controller}}, nil)
+			service := newCoordinatorService(t, rcisession.ServiceConfig{Store: &assemblySessionStore{document: model.Document{Controller: test.controller}}})
 			assembly := &Coordinator{service: service}
 
 			if got := assembly.ControllerPermissionAvailable(); got != test.want {
@@ -47,6 +49,167 @@ func TestControllerPermissionAvailableUsesControllerSupport(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestControllerPermissionAvailableTokenless(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		service := newCoordinatorService(t, rcisession.ServiceConfig{
+			Store:          &assemblySessionStore{},
+			AuthModeSource: &coordinatorAuthModeSource{mode: rcisession.AuthModeNone},
+			EnabledStore:   &coordinatorEnabledStore{enabled: enabled, set: true},
+		})
+		assembly := &Coordinator{service: service}
+
+		if got := assembly.ControllerPermissionAvailable(); got != enabled {
+			t.Fatalf("ControllerPermissionAvailable() with enabled=%t = %t", enabled, got)
+		}
+	}
+}
+
+func TestReconcileSocketsOpensForTokenlessEnabled(t *testing.T) {
+	assembly, _ := newSocketAssemblyWithServiceConfig(t, rcisession.ServiceConfig{
+		AuthModeSource: &coordinatorAuthModeSource{mode: rcisession.AuthModeNone},
+		EnabledStore:   &coordinatorEnabledStore{enabled: true, set: true},
+	})
+
+	assembly.ReconcileSockets()
+
+	paths, err := backend.NewRuntimePaths(assembly.runtimeRoot, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(paths.RCISessionSocket); err != nil {
+		t.Fatalf("tokenless socket was not opened: %v", err)
+	}
+
+	if blockers := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionReadPermission); len(blockers) != 0 {
+		t.Fatalf("tokenless activation blockers = %#v", blockers)
+	}
+}
+
+func TestReconcileSocketsClosesWhenTokenlessDisabled(t *testing.T) {
+	manager := sessionmanager.New()
+
+	manager.ApplyEnumeration([]enumeration.Member{{Identity: "node", IP: "192.0.2.1", FQDN: "node.keenetic.io", FQDNCertificateValid: true, AuthTokenCapable: true}})
+
+	ctx, epoch, ok := manager.BeginEstablishment("node", manager.Epoch())
+
+	if !ok {
+		t.Fatal("BeginEstablishment() did not start")
+	}
+
+	_ = ctx
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	generation := manager.Snapshot().Member("node").Generation
+
+	if !manager.CommitEstablishment("node", epoch, generation, sessionmanager.Candidate{BaseURL: "https://node.keenetic.io", Jar: jar, Client: &http.Client{}}) {
+		t.Fatal("CommitEstablishment() did not commit")
+	}
+
+	assembly, _ := newSocketAssemblyWithServiceConfig(t, rcisession.ServiceConfig{
+		Manager:        manager,
+		AuthModeSource: &coordinatorAuthModeSource{mode: rcisession.AuthModeNone},
+		EnabledStore:   &coordinatorEnabledStore{enabled: true, set: true},
+	})
+
+	assembly.ReconcileSockets()
+
+	paths, err := backend.NewRuntimePaths(assembly.runtimeRoot, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(paths.RCISessionSocket); err != nil {
+		t.Fatalf("tokenless socket was not opened: %v", err)
+	}
+
+	_, err = assembly.service.SetTokenlessEnabled(context.Background(), nil, false)
+	if err != nil {
+		t.Fatalf("SetTokenlessEnabled(false): %v", err)
+	}
+
+	if _, err := os.Stat(paths.RCISessionSocket); !os.IsNotExist(err) {
+		t.Fatalf("socket after disabling tokenless session = %v, want absent", err)
+	}
+
+	if targets := manager.LiveHeartbeatTargets(); len(targets) != 0 {
+		t.Fatalf("heartbeat targets after disabling = %#v, want none", targets)
+	}
+}
+
+func TestTickDetectsUnknownAuthModeOutsideLock(t *testing.T) {
+	source := &coordinatorAuthModeSource{mode: rcisession.AuthModeUnknown}
+	manager := sessionmanager.New()
+	serviceConfig := rcisession.ServiceConfig{
+		Manager:        manager,
+		Enumerator:     enumeration.NewCache(coordinatorEnumerationSource{}, time.Minute, time.Now),
+		EnabledStore:   &coordinatorEnabledStore{enabled: true, set: true},
+		AuthModeSource: source,
+	}
+	assembly, _ := newSocketAssemblyWithServiceConfig(t, serviceConfig)
+	assembly.lifetime = context.Background()
+	source.detect = func(context.Context) rcisession.AuthMode {
+		if !assembly.mu.TryLock() {
+			t.Fatal("auth mode detection ran while coordinator mutex was held")
+		}
+
+		assembly.mu.Unlock()
+
+		source.mode = rcisession.AuthModeNone
+
+		return source.mode
+	}
+
+	assembly.tick()
+
+	paths, err := backend.NewRuntimePaths(assembly.runtimeRoot, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(paths.RCISessionSocket); err != nil {
+		t.Fatalf("socket after unknown mode detection = %v", err)
+	}
+}
+
+type coordinatorAuthModeSource struct {
+	mode   rcisession.AuthMode
+	detect func(context.Context) rcisession.AuthMode
+}
+
+type coordinatorEnumerationSource struct{}
+
+func (coordinatorEnumerationSource) Enumerate(context.Context) ([]enumeration.Member, error) {
+	return nil, nil
+}
+
+func (s *coordinatorAuthModeSource) Mode() rcisession.AuthMode { return s.mode }
+
+func (s *coordinatorAuthModeSource) Detect(ctx context.Context) rcisession.AuthMode {
+	if s.detect != nil {
+		return s.detect(ctx)
+	}
+
+	return s.mode
+}
+
+type coordinatorEnabledStore struct {
+	enabled bool
+	set     bool
+}
+
+func (s *coordinatorEnabledStore) PersistentRCIEnabled() (bool, bool) { return s.enabled, s.set }
+
+func (s *coordinatorEnabledStore) SetPersistentRCIEnabled(enabled bool) error {
+	s.enabled = enabled
+	s.set = true
+
+	return nil
 }
 
 func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
@@ -93,7 +256,7 @@ func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 	sessionStore := &assemblySessionStore{document: model.Document{
 		Controller: &model.TokenRecord{Token: "controller-token", Support: model.SupportSupported},
 	}}
-	service := rcisession.NewService(sessionStore, nil)
+	service := newCoordinatorService(t, rcisession.ServiceConfig{Store: sessionStore})
 	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond}, service)
 	pluginRegistry := registry.New(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"))
 
@@ -213,7 +376,8 @@ func TestActivationSnapshotUsesGrantUnionAndTokenPresence(t *testing.T) {
 
 			assembly.mu.Lock()
 
-			changed := assembly.publishActivationSnapshotLocked(controllerTokenPresent(model.Document{Controller: test.controller}))
+			service := newCoordinatorService(t, rcisession.ServiceConfig{Store: &assemblySessionStore{document: model.Document{Controller: test.controller}}})
+			changed := assembly.publishActivationSnapshotLocked(service.SessionPresent())
 
 			assembly.mu.Unlock()
 
@@ -257,7 +421,10 @@ func TestActivationEvaluateAppliesReadWriteGrantSemantics(t *testing.T) {
 			})
 
 			assembly.mu.Lock()
-			assembly.publishActivationSnapshotLocked(controllerTokenPresent(model.Document{Controller: test.controller}))
+
+			service := newCoordinatorService(t, rcisession.ServiceConfig{Store: &assemblySessionStore{document: model.Document{Controller: test.controller}}})
+
+			assembly.publishActivationSnapshotLocked(service.SessionPresent())
 			assembly.mu.Unlock()
 
 			got := assembly.ActivationBlockers("demo", test.permission)
@@ -274,14 +441,14 @@ func TestActivationPokeRunsOnlyAfterSnapshotDeltaAndOutsideAssemblyMutex(t *test
 	var calls atomic.Int32
 	called := make(chan struct{})
 
-	assembly.SetActivationPoke(func() {
+	assembly.activationPoke = func() {
 		assembly.mu.Lock()
 		assembly.mu.Unlock()
 
 		if calls.Add(1) == 1 {
 			close(called)
 		}
-	})
+	}
 
 	sessionStore.document.Controller = &model.TokenRecord{Token: "present", Support: model.SupportInvalid}
 
@@ -306,6 +473,115 @@ func TestActivationPokeRunsOnlyAfterSnapshotDeltaAndOutsideAssemblyMutex(t *test
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("retained-token Unauthorized events invoked poke %d times, want 1", got)
 	}
+}
+
+func TestNewSubscribesToServiceMutations(t *testing.T) {
+	var pokes atomic.Int32
+	assembly, service := newStartedCoordinator(t, func() { pokes.Add(1) })
+
+	if err := service.DeleteController(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := pokes.Load(); got != 1 {
+		t.Fatalf("controller deletion pokes = %d, want 1 before return", got)
+	}
+
+	blockers := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWritePermission)
+
+	if len(blockers) != 1 || blockers[0].Prerequisite != "controller-token" {
+		t.Fatalf("activation blockers after deletion = %#v, want controller-token blocker", blockers)
+	}
+}
+
+func TestStartPublishesInitialSnapshotWithoutPoke(t *testing.T) {
+	var pokes atomic.Int32
+	assembly, _ := newStartedCoordinator(t, func() { pokes.Add(1) })
+
+	if blockers := assembly.ActivationBlockers("demo", manifest.PersistentRCISessionWritePermission); len(blockers) != 0 {
+		t.Fatalf("initial activation blockers = %#v, want none", blockers)
+	}
+
+	if got := pokes.Load(); got != 0 {
+		t.Fatalf("initial snapshot pokes = %d, want 0", got)
+	}
+}
+
+func TestCloseCancelsOwnContextNotParent(t *testing.T) {
+	parent := context.Background()
+	assembly := New(Config{Parent: parent})
+
+	assembly.Start()
+	assembly.Close()
+
+	if err := parent.Err(); err != nil {
+		t.Fatalf("parent context after Close = %v, want nil", err)
+	}
+}
+
+func TestParentCancelStopsLoop(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	assembly := New(Config{Parent: parent})
+
+	assembly.Start()
+	cancel()
+
+	done := make(chan struct{})
+
+	go func() {
+		assembly.Close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Close after parent cancellation blocked")
+	}
+}
+
+func newStartedCoordinator(t *testing.T, poke func()) (*Coordinator, *rcisession.Service) {
+	t.Helper()
+
+	root := shortTempDir(t)
+
+	skipUnixSocketUnavailable(t, root)
+
+	store, err := state.Open(filepath.Join(root, "state", "state.json"))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+
+	if err := store.Mutate(func(st *state.State) error {
+		st.Plugins["demo"] = &state.Plugin{
+			Name: "demo", Source: state.SourceUpload, Approval: state.ApprovalApproved, Enabled: true,
+			Manifest: servicePermissionManifest("demo"),
+		}
+		st.PermissionGrants = map[string]map[string]bool{
+			"demo": {manifest.PersistentRCISessionWritePermission: true},
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	sessionStore := &assemblySessionStore{document: model.Document{Controller: &model.TokenRecord{Token: "controller-token", Support: model.SupportSupported}}}
+	service := newCoordinatorService(t, rcisession.ServiceConfig{Store: sessionStore, Enumerator: &activationEnumerator{}})
+	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond}, service)
+	assembly := New(Config{
+		Registry:       registry.New(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins")),
+		Store:          store,
+		RuntimeRoot:    filepath.Join(root, "runtime"),
+		Service:        service,
+		Reconciler:     reconciler,
+		ActivationPoke: poke,
+	})
+
+	assembly.Start()
+	t.Cleanup(assembly.Close)
+
+	return assembly, service
 }
 
 func newActivationSnapshotAssembly(t *testing.T, grants map[string]bool) *Coordinator {
@@ -333,12 +609,27 @@ func newActivationSnapshotAssembly(t *testing.T, grants map[string]bool) *Coordi
 	}
 
 	pluginRegistry := registry.New(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"))
-	service := rcisession.NewService(&assemblySessionStore{}, &activationEnumerator{})
+	service := newCoordinatorService(t, rcisession.ServiceConfig{Store: &assemblySessionStore{}, Enumerator: &activationEnumerator{}})
 
 	return &Coordinator{registry: pluginRegistry, store: store, service: service}
 }
 
+func newCoordinatorService(t *testing.T, cfg rcisession.ServiceConfig) *rcisession.Service {
+	t.Helper()
+
+	service, err := rcisession.NewService(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return service
+}
+
 func newSocketAssembly(t *testing.T) (*Coordinator, *assemblySessionStore) {
+	return newSocketAssemblyWithServiceConfig(t, rcisession.ServiceConfig{})
+}
+
+func newSocketAssemblyWithServiceConfig(t *testing.T, serviceConfig rcisession.ServiceConfig) (*Coordinator, *assemblySessionStore) {
 	t.Helper()
 
 	root := shortTempDir(t)
@@ -368,17 +659,25 @@ func newSocketAssembly(t *testing.T) (*Coordinator, *assemblySessionStore) {
 	}
 
 	sessionStore := &assemblySessionStore{}
-	service := rcisession.NewService(sessionStore, &activationEnumerator{})
+	serviceConfig.Store = sessionStore
+
+	if serviceConfig.Enumerator == nil {
+		serviceConfig.Enumerator = &activationEnumerator{}
+	}
+
+	service := newCoordinatorService(t, serviceConfig)
 	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond}, service)
 	assembly := &Coordinator{
 		registry:    registry.New(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins")),
 		store:       store,
 		runtimeRoot: filepath.Join(root, "runtime"),
 		service:     service,
+		manager:     service.SessionManager(),
+		enumerator:  service.Enumerator(),
 		reconciler:  reconciler,
 	}
 
-	service.SetMutationObserver(assembly.ReconcileSockets)
+	service.SubscribeMutations(assembly.ReconcileSockets)
 	assembly.ReconcileSockets()
 	t.Cleanup(assembly.Close)
 
@@ -426,11 +725,8 @@ func (s *assemblySessionStore) DeleteController() error {
 }
 
 func TestCloseWithoutStartReturns(t *testing.T) {
-	lifetime, cancel := context.WithCancel(context.Background())
-	coordinator, err := New(Config{Lifetime: lifetime, Cancel: cancel})
-	if err != nil {
-		t.Fatal(err)
-	}
+	parent := context.Background()
+	coordinator := New(Config{Parent: parent})
 
 	done := make(chan struct{})
 
@@ -447,10 +743,7 @@ func TestCloseWithoutStartReturns(t *testing.T) {
 }
 
 func TestNewDefaultsHeartbeatInterval(t *testing.T) {
-	coordinator, err := New(Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	coordinator := New(Config{})
 
 	if got := coordinator.heartbeatEvery; got != DefaultHeartbeatInterval {
 		t.Fatalf("heartbeatEvery = %s, want %s", got, DefaultHeartbeatInterval)
@@ -459,32 +752,16 @@ func TestNewDefaultsHeartbeatInterval(t *testing.T) {
 	coordinator.Close()
 }
 
-func TestNewRejectsHalfLifetimePair(t *testing.T) {
-	lifetime, cancel := context.WithCancel(context.Background())
-
-	defer cancel()
-
-	if _, err := New(Config{Lifetime: lifetime}); err == nil {
-		t.Error("New accepted Lifetime without Cancel")
-	}
-
-	if _, err := New(Config{Cancel: cancel}); err == nil {
-		t.Error("New accepted Cancel without Lifetime")
-	}
-}
-
 // TestStartThenCloseWithOmittedLifetimeReturns runs the real loop (Enumerator
 // set, so Start's Poke triggers a tick) with no caller-supplied lifetime, and
 // requires Close to cancel the context New created for itself.
 func TestStartThenCloseWithOmittedLifetimeReturns(t *testing.T) {
-	coordinator, err := New(Config{
-		Service:    rcisession.NewService(&assemblySessionStore{}, &activationEnumerator{}),
-		Enumerator: enumeration.NewCache(enumeration.HTTPSource{}, time.Minute, time.Now),
-		Manager:    sessionmanager.New(),
+	coordinator := New(Config{
+		Service: newCoordinatorService(t, rcisession.ServiceConfig{
+			Store:      &assemblySessionStore{},
+			Enumerator: enumeration.NewCache(enumeration.HTTPSource{}, time.Minute, time.Now),
+		}),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	coordinator.Start()
 

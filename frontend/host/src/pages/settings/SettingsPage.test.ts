@@ -7,22 +7,22 @@ const {
   downloadDiagnostics,
   getCapability,
   navigate,
-  probeControllerTokenAuth,
   routerPathname,
   saveController,
+  setEnabled,
   selfUpdateStatus,
 } = vi.hoisted(() => ({
   downloadDiagnostics: vi.fn(),
   getCapability: vi.fn().mockResolvedValue({
     store: {state: 'empty'},
-    controller: {support: 'unknown'},
+    controller: {support: 'unknown', auth: 'unknown', enabled: false},
     extenders: [],
     stale: false,
   }),
   navigate: vi.fn().mockResolvedValue(undefined),
-  probeControllerTokenAuth: vi.fn().mockResolvedValue(true),
   routerPathname: {pathname: '/settings/general'},
   saveController: vi.fn(),
+  setEnabled: vi.fn().mockResolvedValue(undefined),
   selfUpdateStatus: vi.fn().mockResolvedValue({state: 'idle', version: 'dev'}),
 }));
 
@@ -68,15 +68,20 @@ vi.mock('../../services/palette.service.js', () => ({
     getExportable: vi.fn(() => MNDW_TOKENS),
   },
 }));
-vi.mock('../../services/persistent-rci-session.service.js', () => ({
-  persistentRciSessionService: {
-    getCapability,
-    probeControllerTokenAuth,
-    testController: vi.fn(),
-    saveController,
-    clearController: vi.fn(),
-  },
-}));
+vi.mock('../../services/persistent-rci-session.service.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../services/persistent-rci-session.service.js')>();
+
+  return {
+    ...original,
+    persistentRciSessionService: {
+      getCapability,
+      testController: vi.fn(),
+      saveController,
+      clearController: vi.fn(),
+      setEnabled,
+    },
+  };
+});
 vi.mock('../../services/diagnostics.service.js', () => ({downloadDiagnostics}));
 vi.mock('../../services/self-update-client.js', () => ({
   selfUpdateClient: {
@@ -92,6 +97,7 @@ import generalSettingsSource from './GeneralSettings.svelte?raw';
 import {toggleTheme} from '../../services/theme.service.js';
 import {defaultHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
+import {PersistentRciSessionError} from '../../services/persistent-rci-session.service.js';
 
 const mount = (component: typeof SettingsPage, options: {target: HTMLElement}) =>
   mountComponent(component, {...options, context: createHostServicesContext(defaultHostServices())});
@@ -106,12 +112,12 @@ describe('SettingsPage', () => {
     vi.mocked(toggleTheme).mockClear();
     getCapability.mockReset().mockResolvedValue({
       store: {state: 'empty'},
-      controller: {support: 'unknown'},
+      controller: {support: 'unknown', auth: 'unknown', enabled: false},
       extenders: [],
       stale: false,
     });
-    probeControllerTokenAuth.mockReset().mockResolvedValue(true);
     saveController.mockReset();
+    setEnabled.mockReset().mockResolvedValue(undefined);
     downloadDiagnostics.mockReset();
     selfUpdateStatus.mockReset().mockResolvedValue({state: 'idle', version: 'dev'});
     navigate.mockReset().mockResolvedValue(undefined);
@@ -286,8 +292,13 @@ describe('SettingsPage', () => {
     void unmount(component);
   });
 
-  it('hides persistent-session settings when controller token probe is not found', async () => {
-    probeControllerTokenAuth.mockResolvedValueOnce(false);
+  it('renders single switch without token field in tokenless mode', async () => {
+    getCapability.mockResolvedValueOnce({
+      store: {state: 'empty'},
+      controller: {support: 'supported', auth: 'none', enabled: true},
+      extenders: [],
+      stale: false,
+    });
 
     const target = document.createElement('div');
 
@@ -295,14 +306,229 @@ describe('SettingsPage', () => {
 
     const component = mount(SettingsPage, {target});
 
-    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).toBeNull());
-    expect(target.querySelector('section[aria-label="Persistent RCI session"]')).toBeNull();
-    expect(target.querySelector('section[aria-label="Extender access"]')).toBeNull();
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull());
+
+    const control = target.querySelector<HTMLElement & {checked: boolean}>('#mndw-persistent-rci-enabled');
+
+    expect(control?.checked).toBe(true);
+    expect(target.querySelector('mndw-input[type="password"]')).toBeNull();
+    expect(target.textContent).toContain('Persistent session with controller and extenders');
+
+    void unmount(component);
+  });
+
+  it('enables tokenless session via setEnabled and refreshes capability', async () => {
+    const disabledCapability = {
+      store: {state: 'empty'},
+      controller: {support: 'supported', auth: 'none', enabled: false},
+      extenders: [],
+      stale: false,
+    };
+
+    getCapability.mockResolvedValueOnce(disabledCapability).mockResolvedValueOnce({
+      ...disabledCapability,
+      controller: {...disabledCapability.controller, enabled: true},
+    });
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    const control = await vi.waitFor(() => {
+      const value = target.querySelector<HTMLElement>('#mndw-persistent-rci-enabled');
+
+      if (value === null) {
+        throw new Error('tokenless switch not rendered');
+      }
+
+      return value;
+    });
+
+    control.dispatchEvent(
+      new CustomEvent('mndwchange', {
+        bubbles: true,
+        composed: true,
+        detail: {checked: true},
+      }),
+    );
+
+    await vi.waitFor(() => expect(setEnabled).toHaveBeenCalledWith(true));
+    await vi.waitFor(() => expect(getCapability).toHaveBeenCalledTimes(2));
+
+    void unmount(component);
+  });
+
+  it('reverts tokenless switch when enabling fails', async () => {
+    const disabledCapability = {
+      store: {state: 'empty'},
+      controller: {support: 'supported', auth: 'none', enabled: false},
+      extenders: [],
+      stale: false,
+    };
+
+    getCapability.mockResolvedValueOnce(disabledCapability).mockResolvedValueOnce(disabledCapability);
+    setEnabled.mockRejectedValueOnce(new PersistentRciSessionError('RCI_DEVICE_UNREACHABLE', 502));
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    const control = await vi.waitFor(() => {
+      const value = target.querySelector<HTMLElement>('#mndw-persistent-rci-enabled');
+
+      if (value === null) {
+        throw new Error('tokenless switch not rendered');
+      }
+
+      return value;
+    });
+
+    control.dispatchEvent(
+      new CustomEvent('mndwchange', {
+        bubbles: true,
+        composed: true,
+        detail: {checked: true},
+      }),
+    );
+
+    await vi.waitFor(() => expect(target.textContent).toContain('Device unreachable'));
+    await vi.waitFor(() => {
+      const current = target.querySelector<HTMLElement & {checked: boolean}>('#mndw-persistent-rci-enabled');
+
+      expect(current?.checked).toBe(false);
+    });
+
+    void unmount(component);
+  });
+
+  it('shows the operation error when capability refresh also fails', async () => {
+    const disabledCapability = {
+      store: {state: 'empty'},
+      controller: {support: 'supported', auth: 'none', enabled: false},
+      extenders: [],
+      stale: false,
+    };
+
+    getCapability.mockResolvedValueOnce(disabledCapability).mockRejectedValueOnce(new Error('refresh failed'));
+    setEnabled.mockRejectedValueOnce(new PersistentRciSessionError('RCI_DEVICE_UNREACHABLE', 502));
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    const control = await vi.waitFor(() => {
+      const value = target.querySelector<HTMLElement>('#mndw-persistent-rci-enabled');
+
+      if (value === null) {
+        throw new Error('tokenless switch not rendered');
+      }
+
+      return value;
+    });
+
+    control.dispatchEvent(
+      new CustomEvent('mndwchange', {
+        bubbles: true,
+        composed: true,
+        detail: {checked: true},
+      }),
+    );
+
+    await vi.waitFor(() => {
+      expect(target.textContent).toContain('Persistent RCI session state unavailable');
+      expect(target.textContent).toContain('Device unreachable');
+    });
+
+    void unmount(component);
+  });
+
+  it('shows needs-token banner and token field in token mode', async () => {
+    getCapability.mockResolvedValueOnce({
+      store: {state: 'empty'},
+      controller: {support: 'needs-token', auth: 'token', enabled: true},
+      extenders: [],
+      stale: false,
+    });
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() =>
+      expect(target.textContent).toContain('Firmware was updated and now requires a controller token.')
+    );
+    expect(target.querySelector('mndw-input[type="password"]')).not.toBeNull();
+
+    void unmount(component);
+  });
+
+  it('shows state unavailable when auth mode is unknown', async () => {
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull());
+    expect(target.querySelector('section[aria-label="Persistent RCI session"]')?.textContent)
+      .toContain('Persistent RCI session state unavailable');
+    expect(target.querySelector('#mndw-persistent-rci-enabled')).toBeNull();
+
+    void unmount(component);
+  });
+
+  it('shows state unavailable when capability request fails', async () => {
+    getCapability.mockRejectedValueOnce(new Error('ignored detail'));
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull());
+    expect(target.querySelector('section[aria-label="Persistent RCI session"]')?.textContent)
+      .toContain('Persistent RCI session state unavailable');
+    expect(target.querySelector('#mndw-persistent-rci-enabled')).toBeNull();
+
+    void unmount(component);
+  });
+
+  it('shows telemetry section when tokenless session is enabled', async () => {
+    getCapability.mockResolvedValueOnce({
+      store: {state: 'empty'},
+      controller: {support: 'supported', auth: 'none', enabled: true},
+      extenders: [],
+      stale: false,
+    });
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(SettingsPage, {target});
+
+    await vi.waitFor(() => expect(target.textContent).toContain('Background telemetry'));
 
     void unmount(component);
   });
 
   it('shows a placeholder instead of the saved controller token', async () => {
+    getCapability.mockResolvedValueOnce({
+      store: {state: 'empty'},
+      controller: {support: 'unknown', auth: 'token', enabled: false},
+      extenders: [],
+      stale: false,
+    });
+
     const target = document.createElement('div');
 
     document.body.appendChild(target);
@@ -321,7 +547,7 @@ describe('SettingsPage', () => {
     saveController.mockResolvedValueOnce({result: 'valid'});
     getCapability.mockResolvedValueOnce({
       store: {state: 'empty'},
-      controller: {support: 'supported'},
+      controller: {support: 'supported', auth: 'token', enabled: true},
       extenders: [],
       stale: false,
     });
@@ -336,7 +562,12 @@ describe('SettingsPage', () => {
   });
 
   it('shows diagnostics regardless of persistent-session capability', async () => {
-    probeControllerTokenAuth.mockResolvedValueOnce(false);
+    getCapability.mockResolvedValueOnce({
+      store: {state: 'empty'},
+      controller: {support: 'unknown', auth: 'unknown', enabled: false},
+      extenders: [],
+      stale: false,
+    });
 
     const target = document.createElement('div');
 

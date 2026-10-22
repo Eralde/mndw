@@ -21,7 +21,7 @@ type CapabilityConfig struct {
 	Policy             Policy
 	FileSystem         journal.FileSystem
 	Locker             journal.Locker
-	SnapshotCache      *SnapshotCache
+	SessionConfigured  func() bool
 	Now                func() time.Time
 	Wait               func(context.Context, time.Duration) error
 	DesiredEnabled     func() bool
@@ -33,16 +33,17 @@ type CapabilityConfig struct {
 type Capability struct {
 	config CapabilityConfig
 
-	mu           sync.Mutex
-	enabled      bool
-	provider     journal.StorageProvider
-	history      *History
-	pipeline     *Pipeline
-	pipelineDone chan struct{}
-	status       PipelineStatus
-	retryCancel  context.CancelFunc
-	retryDone    chan struct{}
-	starting     bool
+	mu            sync.Mutex
+	enabled       bool
+	provider      journal.StorageProvider
+	history       *History
+	snapshotCache *SnapshotCache
+	pipeline      *Pipeline
+	pipelineDone  chan struct{}
+	status        PipelineStatus
+	retryCancel   context.CancelFunc
+	retryDone     chan struct{}
+	starting      bool
 }
 
 func NewCapability(config CapabilityConfig) (*Capability, error) {
@@ -103,7 +104,8 @@ func NewCapability(config CapabilityConfig) (*Capability, error) {
 		return nil, err
 	}
 
-	capability := &Capability{config: config, enabled: enabled, provider: provider, history: history}
+	snapshotCache := NewSnapshotCache(history, config.Now, config.SessionConfigured)
+	capability := &Capability{config: config, enabled: enabled, provider: provider, history: history, snapshotCache: snapshotCache}
 	capability.status = PipelineStatus{Storage: provider.CurrentStatus()}
 
 	return capability, nil
@@ -134,9 +136,7 @@ func (c *Capability) Start(ctx context.Context) error {
 		samplers[2] = c.config.TemperatureSampler
 	}
 
-	if c.config.SnapshotCache != nil {
-		c.config.SnapshotCache.SetSupportedSeries(supportedFromSamplers(samplers))
-	}
+	c.snapshotCache.SetSupportedSeries(supportedFromSamplers(samplers))
 
 	defer func() {
 		c.mu.Lock()
@@ -236,10 +236,8 @@ func (c *Capability) Start(ctx context.Context) error {
 
 	options := []PipelineOption{WithHistory(c.history), WithLogger(c.config.Logger)}
 
-	if c.config.SnapshotCache != nil {
-		refresher := &snapshotRefresher{cache: c.config.SnapshotCache}
-		options = append(options, WithSnapshotRefresher(refresher))
-	}
+	refresher := &snapshotRefresher{cache: c.snapshotCache}
+	options = append(options, WithSnapshotRefresher(refresher))
 
 	pipeline, err := NewPipeline(c.config.Policy, c.config.Clock, c.config.Evidence, c.provider, samplers, options...)
 	if err != nil {
@@ -300,34 +298,15 @@ func sessionStatus(status PipelineStatus) sessions.Status {
 	}
 }
 
-// SetSnapshotCache attaches the cache refreshed by the pipeline. It is called
-// after construction because assembly builds the cache from this capability.
-func (c *Capability) SetSnapshotCache(cache *SnapshotCache) {
-	c.mu.Lock()
-
-	defer c.mu.Unlock()
-
-	c.config.SnapshotCache = cache
-
-	if cache != nil {
-		cache.SetHistory(c.history)
-	}
+// SnapshotCache returns the cache owned by this capability.
+func (c *Capability) SnapshotCache() *SnapshotCache {
+	return c.snapshotCache
 }
 
 func (c *Capability) refreshSnapshot(ctx context.Context) error {
-	c.mu.Lock()
-
-	cache := c.config.SnapshotCache
-
-	c.mu.Unlock()
-
-	if cache == nil {
-		return nil
-	}
-
 	started := time.Now()
 
-	if _, err := cache.Refresh(ctx, c.Status()); err != nil {
+	if _, err := c.snapshotCache.Refresh(ctx, c.Status()); err != nil {
 		c.config.Logger.Warn("telemetry initial snapshot refresh failed", "error", err)
 
 		return err

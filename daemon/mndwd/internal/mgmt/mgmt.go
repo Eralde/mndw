@@ -100,6 +100,10 @@ type Handler struct {
 // New constructs a management Handler.
 
 func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr service.Manager, builtins BuiltinSource, logger *slog.Logger) *Handler {
+	if cfg.Runtime == nil {
+		panic("mgmt: Config.Runtime is required")
+	}
+
 	if cfg.ServiceActionRoot == nil {
 		cfg.ServiceActionRoot = context.Background()
 	}
@@ -342,7 +346,7 @@ func (h *Handler) entryFrom(m *manifest.Manifest, source state.Source, approval 
 		}
 	}
 
-	if h.runtime != nil && m.Backend != nil && m.Backend.Kind != nil {
+	if m.Backend != nil && m.Backend.Kind != nil {
 		status := h.runtime.Status(e.Name)
 		e.Runtime = &status
 	}

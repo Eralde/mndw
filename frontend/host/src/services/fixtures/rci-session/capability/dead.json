@@ -1,6 +1,6 @@
 {
   "store": {"state": "ok"},
-  "controller": {"support": "supported"},
+  "controller": {"support": "supported", "auth": "token", "enabled": true},
   "extenders": [{"identity": "node-1", "name": "Node 1", "eligible": true, "state": "dead", "lastError": "transient"}],
   "stale": false
 }

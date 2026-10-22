@@ -94,7 +94,7 @@ type SnapshotCache struct {
 	supportedSeries map[uint16]bool
 }
 
-func NewSnapshotCache(history *History, now func() time.Time) *SnapshotCache {
+func NewSnapshotCache(history *History, now func() time.Time, sessionConfigured func() bool) *SnapshotCache {
 	if now == nil {
 		now = time.Now
 	}
@@ -105,7 +105,7 @@ func NewSnapshotCache(history *History, now func() time.Time) *SnapshotCache {
 		specs = history.SeriesSpecs()
 	}
 
-	return &SnapshotCache{history: history, specs: specs, now: now}
+	return &SnapshotCache{history: history, specs: specs, now: now, sessionConfigured: sessionConfigured}
 }
 
 // Get returns the last published immutable snapshot. It never touches disk;
@@ -173,31 +173,6 @@ func (c *SnapshotCache) SetSupportedSeries(supported map[uint16]bool) {
 	for series, enabled := range supported {
 		c.supportedSeries[series] = enabled
 	}
-}
-
-// SetHistory attaches the canonical raw projection owned by Capability.
-func (c *SnapshotCache) SetHistory(history *History) {
-	c.mu.Lock()
-
-	defer c.mu.Unlock()
-
-	c.history = history
-	c.specs = DefaultSeriesSpecs()
-
-	if history != nil {
-		c.specs = history.SeriesSpecs()
-	}
-}
-
-// SetSessionConfigured registers the callback that reports whether the
-// persistent RCI session is configured. The telemetry API includes this
-// flag so consumers know whether durable history can be collected.
-func (c *SnapshotCache) SetSessionConfigured(fn func() bool) {
-	c.mu.Lock()
-
-	defer c.mu.Unlock()
-
-	c.sessionConfigured = fn
 }
 
 // Refresh copies raw rows and projects fine and coarse tiers before publishing

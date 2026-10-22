@@ -109,7 +109,7 @@ func TestThermalSensorSupportInSnapshot(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cache := NewSnapshotCache(nil, nil)
+			cache := NewSnapshotCache(nil, nil, nil)
 
 			cache.SetSupportedSeries(supportedFromSamplers(map[uint16]Sampler{
 				2: NewThermalSampler(tc.reader, tc.root),

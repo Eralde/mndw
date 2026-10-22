@@ -19,6 +19,7 @@ const (
 	SupportInvalid     Support = "invalid"
 	SupportUnsupported Support = "unsupported"
 	SupportUnknown     Support = "unknown"
+	SupportNeedsToken  Support = "needs-token"
 )
 
 type TokenRecord struct {

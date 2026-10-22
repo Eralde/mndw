@@ -15,7 +15,7 @@ func TestSnapshotGetDoesNotRefreshOrExposeMutableCacheState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cache := NewSnapshotCache(history, time.Now)
+	cache := NewSnapshotCache(history, time.Now, nil)
 
 	cache.SetSupportedSeries(map[uint16]bool{2: true})
 
@@ -36,7 +36,7 @@ func TestSnapshotGetDoesNotRefreshOrExposeMutableCacheState(t *testing.T) {
 }
 
 func TestSnapshotClonePreservesAndCopiesClockMetadata(t *testing.T) {
-	cache := NewSnapshotCache(nil, nil)
+	cache := NewSnapshotCache(nil, nil, nil)
 	end := int64(1_800_000_000_000)
 	mean := 12.0
 
@@ -70,7 +70,7 @@ func TestSnapshotClonePreservesAndCopiesClockMetadata(t *testing.T) {
 }
 
 func TestSnapshotCanceledRefreshKeepsLastPublishedSnapshot(t *testing.T) {
-	cache := NewSnapshotCache(nil, nil)
+	cache := NewSnapshotCache(nil, nil, nil)
 
 	cache.Publish(&Snapshot{Keys: map[string]SeriesSnapshot{"cpu": {
 		Tiers: map[string]TierSnapshot{"fine": {Samples: []Sample{{Timestamp: 10, Mean: floatPointer(20), OK: true}}}},

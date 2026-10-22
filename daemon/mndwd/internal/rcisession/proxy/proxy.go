@@ -43,6 +43,7 @@ type Response struct {
 }
 
 type Destination struct {
+	Controller      bool
 	BaseURL         string
 	Token           string
 	Client          *http.Client
@@ -107,7 +108,7 @@ func (p *Proxy) Do(ctx context.Context, request Request) (Response, error) {
 		return Response{}, ErrUnsupported
 	}
 
-	isController := destination.Token != ""
+	isController := destination.Controller
 
 	if destination.Support == "" || (!isController && destination.Client == nil) {
 		return Response{}, ErrNoSession
@@ -146,7 +147,7 @@ func (p *Proxy) Do(ctx context.Context, request Request) (Response, error) {
 
 	outbound.Header.Set("Accept", "application/json")
 
-	if isController {
+	if isController && destination.Token != "" {
 		outbound.Header.Set("X-Ndma-Tkn", destination.Token)
 	}
 

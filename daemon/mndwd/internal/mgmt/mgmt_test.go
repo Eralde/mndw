@@ -28,6 +28,51 @@ func (emptyBuiltinSource) ListBuiltinsWithError() ([]*registry.Plugin, error) {
 	return nil, nil
 }
 
+type passthroughRuntime struct{}
+
+type passthroughControl struct{}
+
+func (passthroughControl) StartPlugin(*registry.Plugin) error { return nil }
+
+func (passthroughControl) StopService() error { return nil }
+
+func (passthroughControl) IsCurrent() bool { return true }
+
+func (passthroughControl) Generation() uint64 { return 0 }
+
+func (passthroughRuntime) Reconcile(context.Context, []*registry.Plugin) {}
+
+func (passthroughRuntime) ExecuteLifecycle(
+	_ string,
+	_ backend.Operation,
+	_ backend.Intent,
+	work func(context.Context, backend.LifecycleControl) error,
+) error {
+	return work(context.Background(), passthroughControl{})
+}
+
+func (passthroughRuntime) BlocksTraffic(string) bool { return false }
+
+func (passthroughRuntime) Status(string) backend.RuntimeStatus { return backend.RuntimeStatus{} }
+
+func (passthroughRuntime) Limits() backend.RuntimeLimitsSnapshot {
+	return backend.RuntimeLimitsSnapshot{SupportedServiceProtocols: []int{}}
+}
+
+func (passthroughRuntime) BeginPlatformMaintenance(context.Context) error { return nil }
+
+func (passthroughRuntime) Shutdown(context.Context) error { return nil }
+
+func TestNewPanicsWithoutRuntime(t *testing.T) {
+	defer func() {
+		if recovered := recover(); recovered != "mgmt: Config.Runtime is required" {
+			t.Fatalf("New panic = %v, want %q", recovered, "mgmt: Config.Runtime is required")
+		}
+	}()
+
+	New(Config{}, nil, nil, nil, nil, discardLogger())
+}
+
 type permissionTestController struct {
 	available bool
 	changeErr error
@@ -161,6 +206,7 @@ func newTestServer(t *testing.T) (*httptest.Server, Config) {
 		UserPluginsDir:    filepath.Join(root, "user-plugins"),
 		BuiltinPluginsDir: filepath.Join(root, "builtin"),
 		MaxUploadBytes:    10 << 20,
+		Runtime:           passthroughRuntime{},
 	}
 	store, err := state.Open(filepath.Join(root, "data", "state.json"))
 	if err != nil {
@@ -192,6 +238,7 @@ func newPermissionServer(t *testing.T, controller PersistentRCIPermissionControl
 		UserPluginsDir:                    filepath.Join(root, "user-plugins"),
 		BuiltinPluginsDir:                 filepath.Join(root, "builtin"),
 		MaxUploadBytes:                    10 << 20,
+		Runtime:                           passthroughRuntime{},
 		PersistentRCIPermissionController: controller,
 	}
 	store, err := state.Open(filepath.Join(root, "data", "state.json"))
@@ -306,6 +353,7 @@ func newTestServerWithOpkg(t *testing.T, opkgMgr opkg.Manager) (*httptest.Server
 		UserPluginsDir:    filepath.Join(root, "user-plugins"),
 		BuiltinPluginsDir: filepath.Join(root, "builtin"),
 		MaxUploadBytes:    10 << 20,
+		Runtime:           passthroughRuntime{},
 	}
 	store, err := state.Open(filepath.Join(root, "data", "state.json"))
 	if err != nil {
@@ -811,6 +859,7 @@ func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
 		StagingDir:        filepath.Join(root, "staging"),
 		UserPluginsDir:    filepath.Join(root, "user-plugins"),
 		BuiltinPluginsDir: filepath.Join(root, "builtin"),
+		Runtime:           passthroughRuntime{},
 	}
 	store, err := state.Open(filepath.Join(root, "data", "state.json"))
 	if err != nil {

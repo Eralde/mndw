@@ -170,7 +170,7 @@ func newProjectionFixture(t *testing.T, now time.Time) (*History, *SnapshotCache
 		t.Fatal(err)
 	}
 
-	cache := NewSnapshotCache(history, func() time.Time { return now })
+	cache := NewSnapshotCache(history, func() time.Time { return now }, nil)
 
 	cache.SetSupportedSeries(map[uint16]bool{1: true, 2: true})
 

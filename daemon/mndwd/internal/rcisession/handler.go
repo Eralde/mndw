@@ -3,6 +3,7 @@ package rcisession
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -28,6 +29,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/mndw/rci-session/controller/test", h.handleControllerTest)
 	mux.HandleFunc("POST /api/mndw/rci-session/controller", h.handleControllerSave)
 	mux.HandleFunc("DELETE /api/mndw/rci-session/controller", h.handleControllerDelete)
+	mux.HandleFunc("PUT /api/mndw/rci-session/enabled", h.handleEnabled)
 	mux.HandleFunc("/api/mndw/rci-session/extenders", h.handleExtenders)
 }
 
@@ -85,6 +87,8 @@ func (h *Handler) handleCapability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.service.DetectAuthMode(r.Context())
+
 	state, document := h.service.Capability()
 	extenders := make([]ExtenderCapability, 0)
 
@@ -114,10 +118,10 @@ func (h *Handler) handleCapability(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	controller := ControllerCapability{Support: model.SupportUnknown}
+	mode := h.service.AuthMode()
+	controller := ControllerCapability{Support: h.service.ControllerSupport(), Auth: mode, Enabled: h.service.Enabled()}
 
-	if document.Controller != nil {
-		controller.Support = document.Controller.Support
+	if mode == AuthModeToken && document.Controller != nil {
 		controller.LastCheckedAt = document.Controller.LastCheckedAt
 	}
 
@@ -147,6 +151,8 @@ func (h *Handler) handleCapability(w http.ResponseWriter, r *http.Request) {
 }
 
 type ControllerCapability struct {
+	Auth          AuthMode      `json:"auth"`
+	Enabled       bool          `json:"enabled"`
 	Support       model.Support `json:"support"`
 	LastCheckedAt *time.Time    `json:"lastCheckedAt,omitempty"`
 }
@@ -238,6 +244,59 @@ func (h *Handler) handleControllerDelete(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"result": "cleared"})
+}
+
+func (h *Handler) handleEnabled(w http.ResponseWriter, r *http.Request) {
+	if !h.csrf(w, r) {
+		return
+	}
+
+	var request struct {
+		Enabled *bool `json:"enabled"`
+	}
+
+	if err := decodeJSON(w, r, &request); err != nil {
+		return
+	}
+
+	if request.Enabled == nil {
+		writeSessionError(w, http.StatusBadRequest, httpx.CodeBadRequest, "enabled must be a boolean")
+
+		return
+	}
+
+	verdict, err := h.service.SetTokenlessEnabled(r.Context(), h.tester, *request.Enabled)
+	if errors.Is(err, ErrAuthModeMismatch) {
+		writeSessionError(w, http.StatusConflict, httpx.CodeRCIAuthModeMismatch, "controller auth mode does not support tokenless sessions")
+
+		return
+	}
+
+	if err != nil || verdict == ControllerUnreachable {
+		writeSessionError(w, http.StatusBadGateway, httpx.CodeRCIDeviceUnreachable, "controller is unreachable")
+
+		return
+	}
+
+	if verdict == ControllerInvalidToken || verdict == ControllerUnsupported {
+		writeSessionError(w, http.StatusUnprocessableEntity, httpx.CodeRCIFirmwareUnsupported, "controller firmware does not support tokenless sessions")
+
+		return
+	}
+
+	if verdict != ControllerValid {
+		writeSessionError(w, http.StatusBadGateway, httpx.CodeRCIDeviceUnreachable, "controller is unreachable")
+
+		return
+	}
+
+	result := "disabled"
+
+	if *request.Enabled {
+		result = "enabled"
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"result": result})
 }
 
 func (h *Handler) csrf(w http.ResponseWriter, r *http.Request) bool {

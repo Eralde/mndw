@@ -52,7 +52,7 @@ func (m *fakeServiceManager) SetEnabled(ctx context.Context, name string, enable
 }
 
 func newServiceTestHandler(manager service.Manager, timeout time.Duration) *Handler {
-	return New(Config{ServiceActionRoot: context.Background(), ServiceActionTimeout: timeout}, nil, nil, manager, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return New(Config{ServiceActionRoot: context.Background(), ServiceActionTimeout: timeout, Runtime: passthroughRuntime{}}, nil, nil, manager, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 func TestServiceListEmptyDirectoryResponse(t *testing.T) {

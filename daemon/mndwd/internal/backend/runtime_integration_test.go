@@ -99,7 +99,7 @@ func TestLinuxRealBackendLifecycle(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	gateway := NewGateway(GatewayConfig{MaxRequestBytes: 1024, ServiceHTTPTimeout: 2 * time.Second}, reg, nil, runtime.ExecRunner(), runtime.Supervisor(), nil)
+	gateway := NewGateway(GatewayConfig{MaxRequestBytes: 1024, ServiceHTTPTimeout: 2 * time.Second}, reg, nil, runtime, nil)
 
 	gateway.Register(mux)
 

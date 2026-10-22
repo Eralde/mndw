@@ -6,8 +6,25 @@ import (
 	"testing"
 	"time"
 
+	"mndwd/internal/backend"
 	"mndwd/internal/rcisession"
 )
+
+func TestParseFlagsLimitDefaultsMatchBackend(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defaults := backend.DefaultLimits()
+
+	if cfg.MaxConcurrentExecTotal != defaults.MaxConcurrentExecTotal ||
+		cfg.MaxConcurrentExecPerPlugin != defaults.MaxConcurrentExecPerPlugin ||
+		cfg.MaxSupervisedServices != defaults.MaxSupervisedServices {
+		t.Fatalf("config limits = total:%d plugin:%d services:%d, want %+v",
+			cfg.MaxConcurrentExecTotal, cfg.MaxConcurrentExecPerPlugin, cfg.MaxSupervisedServices, defaults)
+	}
+}
 
 func TestParseDefaultsUserPluginsDirUsesDurableDataRoot(t *testing.T) {
 	t.Setenv("MNDW_USER_PLUGINS_DIR", "")
@@ -289,6 +306,17 @@ func TestParseDevAcceptsExplicitHTTPControllerURL(t *testing.T) {
 
 	if cfg.ControllerURL != "http://192.168.1.1:80" {
 		t.Fatalf("controller URL = %q", cfg.ControllerURL)
+	}
+}
+
+func TestParseFlagsNormalizesControllerURL(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--dev", "--controller-url", "http://192.0.2.1:79/", "--data-dir", "/tmp/mndw-dev-data"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := cfg.ControllerURL, "http://192.0.2.1:79"; got != want {
+		t.Fatalf("ControllerURL = %q, want %q", got, want)
 	}
 }
 

@@ -50,6 +50,67 @@ func TestOpenCreatesEmptyStateFile(t *testing.T) {
 	}
 }
 
+func TestPersistentRCIEnabledUnsetByDefault(t *testing.T) {
+	store, _ := newStore(t)
+
+	enabled, set := store.PersistentRCIEnabled()
+	if enabled || set {
+		t.Fatalf("PersistentRCIEnabled() = (%t, %t), want (false, false)", enabled, set)
+	}
+}
+
+func TestSetPersistentRCIEnabledPersistsAndAudits(t *testing.T) {
+	store, path := newStore(t)
+
+	if err := store.SetPersistentRCIEnabled(true); err != nil {
+		t.Fatalf("enable persistent RCI: %v", err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	if enabled, set := reopened.PersistentRCIEnabled(); !enabled || !set {
+		t.Fatalf("enabled PersistentRCIEnabled() = (%t, %t), want (true, true)", enabled, set)
+	}
+	if got := reopened.Snapshot().Audit; len(got) != 1 || got[0].Action != "persistent-rci-enable" || got[0].Plugin != "" {
+		t.Fatalf("enable audit = %+v", got)
+	}
+
+	if err := reopened.SetPersistentRCIEnabled(false); err != nil {
+		t.Fatalf("disable persistent RCI: %v", err)
+	}
+	if enabled, set := reopened.PersistentRCIEnabled(); enabled || !set {
+		t.Fatalf("disabled PersistentRCIEnabled() = (%t, %t), want (false, true)", enabled, set)
+	}
+	if got := reopened.Snapshot().Audit; len(got) != 2 || got[1].Action != "persistent-rci-disable" || got[1].Plugin != "" {
+		t.Fatalf("disable audit = %+v", got)
+	}
+}
+
+func TestPersistentRCIEnabledReadsStateWithoutField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.json")
+	legacy := `{"version":1,"plugins":{},"settings":{"backgroundTelemetry":true},"audit":[]}`
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatalf("open state: %v", err)
+	}
+	if enabled, set := store.PersistentRCIEnabled(); enabled || set {
+		t.Fatalf("PersistentRCIEnabled() = (%t, %t), want (false, false)", enabled, set)
+	}
+	if !store.Snapshot().Settings.BackgroundTelemetry {
+		t.Fatal("backgroundTelemetry was lost")
+	}
+	if _, err := os.Stat(path + ".bak"); !os.IsNotExist(err) {
+		t.Fatalf("state backup stat error = %v, want no backup", err)
+	}
+}
+
 func TestSetGrantPersistsAndAudits(t *testing.T) {
 	store, path := newStore(t)
 

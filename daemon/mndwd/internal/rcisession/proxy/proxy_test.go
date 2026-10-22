@@ -17,7 +17,7 @@ func TestProxyInjectsTokenAndSupportsFutureMethods(t *testing.T) {
 		Header:     make(http.Header),
 		Body:       io.NopCloser(strings.NewReader("ok")),
 	}}
-	resolver := &fakeResolver{destination: Destination{BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
+	resolver := &fakeResolver{destination: Destination{Controller: true, BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
 	proxy := New(resolver, &http.Client{Transport: transport}, 1024, 0)
 
 	response, err := proxy.Do(context.Background(), Request{Target: "node-1", Method: "LINK", Path: "rci/show/version", Body: []byte(`{"x":1}`), AllowWrite: true})
@@ -36,7 +36,7 @@ func TestProxyInjectsTokenAndSupportsFutureMethods(t *testing.T) {
 
 func TestProxyRejectsUnsafePathBeforeResolution(t *testing.T) {
 	transport := &fakeRoundTripper{}
-	resolver := &fakeResolver{destination: Destination{BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
+	resolver := &fakeResolver{destination: Destination{Controller: true, BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
 	proxy := New(resolver, &http.Client{Transport: transport}, 1024, 0)
 
 	for _, path := range []string{"/rci/show/version", "http://evil/rci", "rci/../secret", "rci/show?x=1"} {
@@ -51,7 +51,7 @@ func TestProxyRejectsUnsafePathBeforeResolution(t *testing.T) {
 }
 
 func TestProxyRejectsWriteWithoutWriteGrantBeforeResolution(t *testing.T) {
-	resolver := &fakeResolver{destination: Destination{BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
+	resolver := &fakeResolver{destination: Destination{Controller: true, BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
 	proxy := New(resolver, &http.Client{Transport: &fakeRoundTripper{}}, 1024, 0)
 
 	_, err := proxy.Do(context.Background(), Request{
@@ -88,7 +88,7 @@ func TestProxyBoundsResponseBody(t *testing.T) {
 		Header:     make(http.Header),
 		Body:       io.NopCloser(strings.NewReader("too long")),
 	}}
-	resolver := &fakeResolver{destination: Destination{BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
+	resolver := &fakeResolver{destination: Destination{Controller: true, BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported, AllowInsecure: true}}
 	proxy := New(resolver, &http.Client{Transport: transport}, 3, 0)
 
 	if _, err := proxy.Do(context.Background(), Request{Target: "node-1", Method: "GET", Path: "rci/show/version"}); !errors.Is(err, ErrResponseTooLarge) {
@@ -98,7 +98,7 @@ func TestProxyBoundsResponseBody(t *testing.T) {
 
 func TestProxyRejectsInsecureTokenDestinationWithoutOutboundRequest(t *testing.T) {
 	transport := &fakeRoundTripper{}
-	resolver := &fakeResolver{destination: Destination{BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported}}
+	resolver := &fakeResolver{destination: Destination{Controller: true, BaseURL: "http://192.168.1.2", Token: "secret-token", Support: model.SupportSupported}}
 	proxy := New(resolver, &http.Client{Transport: transport}, 1024, 0)
 
 	_, err := proxy.Do(context.Background(), Request{Target: "node-1", Method: "GET", Path: "rci/show/version"})
@@ -108,6 +108,24 @@ func TestProxyRejectsInsecureTokenDestinationWithoutOutboundRequest(t *testing.T
 
 	if transport.request != nil {
 		t.Fatalf("insecure destination made outbound request: %#v", transport.request)
+	}
+}
+
+func TestProxyControllerWithoutToken(t *testing.T) {
+	transport := &fakeRoundTripper{response: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader("ok")),
+	}}
+	resolver := &fakeResolver{destination: Destination{Controller: true, BaseURL: "http://192.168.1.2", Support: model.SupportSupported, AllowInsecure: true}}
+	proxy := New(resolver, &http.Client{Transport: transport}, 1024, 0)
+
+	if _, err := proxy.Do(context.Background(), Request{Target: "controller", Method: "GET", Path: "rci/show/version"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if transport.request == nil || transport.request.Header.Get("X-Ndma-Tkn") != "" {
+		t.Fatalf("tokenless controller request = %#v", transport.request)
 	}
 }
 

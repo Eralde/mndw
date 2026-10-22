@@ -56,6 +56,22 @@ const timeDomain = computed(() => {
 
 const valueFormatter = (value: number): string => `${value.toFixed(1)}°C`;
 
+const DATED_RANGES: ReadonlySet<ProjectRange> = new Set(['1d', '7d', '30d']);
+
+const pad = (value: number): string => String(value).padStart(2, '0');
+
+// Day-scale ranges span midnight, so the tooltip and axis need the date as well as the time.
+const timeFormatter = computed(() => {
+  const dated = DATED_RANGES.has(selectedRange.value);
+
+  return (epochMs: number): string => {
+    const date = new Date(epochMs);
+    const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+
+    return dated ? `${pad(date.getDate())}.${pad(date.getMonth() + 1)} ${time}` : `${time}:${pad(date.getSeconds())}`;
+  };
+});
+
 const stopLoop = (): void => {
   refreshLoop?.stop();
   refreshLoop = null;
@@ -142,6 +158,7 @@ onUnmounted(() => {
           :valueDomain.prop="temp.valueDomain"
           :value-label="t('title')"
           :valueFormatter.prop="valueFormatter"
+          :timeFormatter.prop="timeFormatter"
           :empty-label="t('empty')"
           :aria-label="t('title')"
         />

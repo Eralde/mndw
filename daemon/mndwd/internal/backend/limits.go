@@ -2,6 +2,14 @@ package backend
 
 import "sync"
 
+func DefaultLimits() Limits {
+	return Limits{
+		MaxConcurrentExecTotal:     8,
+		MaxConcurrentExecPerPlugin: 4,
+		MaxSupervisedServices:      8,
+	}
+}
+
 type Admission struct {
 	mu            sync.Mutex
 	limits        Limits

@@ -92,7 +92,7 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 		return response
 	}
 
-	if *plugin.Manifest.Backend.Kind != manifest.BackendKindService || g.supervisor == nil {
+	if *plugin.Manifest.Backend.Kind != manifest.BackendKindService || g.runtime == nil {
 		response.State = "unavailable"
 
 		return response
@@ -104,9 +104,9 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 		requiredProtocol = *plugin.Manifest.Backend.ProtocolVersion
 	}
 
-	supportedProtocols := g.supervisor.SupportedProtocols()
+	supportedProtocols := g.runtime.SupportedProtocols()
 
-	if plugin.Manifest.Backend.ProtocolVersion == nil || !supportsProtocol(requiredProtocol, supportedProtocols) {
+	if plugin.Manifest.Backend.ProtocolVersion == nil || !g.runtime.SupportsProtocol(requiredProtocol) {
 		response.State = "incompatible"
 		response.RequiredProtocol = intPointer(requiredProtocol)
 		response.SupportedProtocols = &supportedProtocols
@@ -114,7 +114,7 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 		return response
 	}
 
-	status := g.supervisor.Status(plugin.Name)
+	status := g.runtime.Status(plugin.Name)
 
 	switch status.State {
 	case StateReady:
@@ -154,11 +154,13 @@ func (g *Gateway) handleStatus(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
-	now := time.Now()
+	httpx.WriteJSON(writer, g.logger, http.StatusOK, g.projectBackendStatus(plugin, g.now()))
+}
 
-	if g.supervisor != nil && g.supervisor.cfg.Now != nil {
-		now = g.supervisor.cfg.Now()
+func (g *Gateway) now() time.Time {
+	if g.runtime == nil {
+		return time.Now()
 	}
 
-	httpx.WriteJSON(writer, g.logger, http.StatusOK, g.projectBackendStatus(plugin, now))
+	return g.runtime.Now()
 }

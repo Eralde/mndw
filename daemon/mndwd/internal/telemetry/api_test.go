@@ -40,7 +40,7 @@ func apiAnnotationEvent(id string, ts int64) events.Event {
 
 func newTestCache() *SnapshotCache {
 	now := int64(1_700_000_000_000)
-	cache := NewSnapshotCache(nil, nil)
+	cache := NewSnapshotCache(nil, nil, nil)
 	snapshot := emptySnapshot(true)
 	snapshot.Keys["cpu"] = SeriesSnapshot{
 		Label:     "CPU",
@@ -57,7 +57,7 @@ func newTestCache() *SnapshotCache {
 }
 
 func TestHandleGet_NoProject_ReturnsRawTiers(t *testing.T) {
-	handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
+	handler := NewHandler(newTestCache(), func() bool { return true }, nil, slog.Default())
 
 	req := httptest.NewRequest("GET", "/api/mndw/telemetry", nil)
 	rec := httptest.NewRecorder()
@@ -95,7 +95,7 @@ func TestHandleGet_NoProject_ReturnsRawTiers(t *testing.T) {
 }
 
 func TestHandleGet_Project7d_ReturnsProjectedWithMetadata(t *testing.T) {
-	handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
+	handler := NewHandler(newTestCache(), func() bool { return true }, nil, slog.Default())
 
 	req := httptest.NewRequest("GET", "/api/mndw/telemetry?project=7d", nil)
 	rec := httptest.NewRecorder()
@@ -132,7 +132,7 @@ func TestHandleGet_Project7d_ReturnsProjectedWithMetadata(t *testing.T) {
 }
 
 func TestHandleGet_Project30d(t *testing.T) {
-	handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
+	handler := NewHandler(newTestCache(), func() bool { return true }, nil, slog.Default())
 
 	req := httptest.NewRequest("GET", "/api/mndw/telemetry?project=30d", nil)
 	rec := httptest.NewRecorder()
@@ -147,7 +147,7 @@ func TestHandleGet_Project30d(t *testing.T) {
 func TestHandleGet_ProjectRanges(t *testing.T) {
 	for _, project := range []string{"1h", "3h", "1d", "7d", "30d"} {
 		t.Run(project, func(t *testing.T) {
-			handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
+			handler := NewHandler(newTestCache(), func() bool { return true }, nil, slog.Default())
 			req := httptest.NewRequest("GET", "/api/mndw/telemetry?project="+project, nil)
 			rec := httptest.NewRecorder()
 
@@ -172,8 +172,8 @@ func TestHandleGet_ProjectRanges(t *testing.T) {
 
 func TestHandleGet_InvalidProject_ReturnsBadRequestWithoutTouchingCache(t *testing.T) {
 	// Invalid project parameters return before reading or publishing the cache.
-	cache := NewSnapshotCache(nil, nil)
-	handler := NewHandler(cache, func() bool { return true }, slog.Default())
+	cache := NewSnapshotCache(nil, nil, nil)
+	handler := NewHandler(cache, func() bool { return true }, nil, slog.Default())
 
 	for _, query := range []string{"?project=2h", "?project=", "?project=7d&project=30d", "?project=%zz"} {
 		req := httptest.NewRequest("GET", "/api/mndw/telemetry"+query, nil)
@@ -208,9 +208,7 @@ func TestHandleAnnotationsReturnsCollections(t *testing.T) {
 
 	store.Consume(apiAnnotationEvent("annotation", now.UnixMilli()))
 
-	handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
-
-	handler.SetAnnotationStore(store)
+	handler := NewHandler(newTestCache(), func() bool { return true }, store, slog.Default())
 
 	req := httptest.NewRequest("GET", "/api/mndw/telemetry/annotations", nil)
 	rec := httptest.NewRecorder()

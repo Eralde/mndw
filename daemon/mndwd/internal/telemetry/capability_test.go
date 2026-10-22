@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,6 +34,50 @@ func TestCapabilityDisabledConstructionDoesNotCreateStorage(t *testing.T) {
 
 	if len(entries) != 0 {
 		t.Fatalf("constructor created storage files: %v", entries)
+	}
+}
+
+func TestNewCapabilityOwnsSnapshotCache(t *testing.T) {
+	var configured atomic.Bool
+	capability, err := NewCapability(CapabilityConfig{
+		RRDDir:         t.TempDir(),
+		DesiredEnabled: func() bool { return false },
+		SessionConfigured: func() bool {
+			return configured.Load()
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first := capability.SnapshotCache()
+
+	if first == nil {
+		t.Fatal("snapshot cache is nil")
+	}
+
+	if second := capability.SnapshotCache(); second != first {
+		t.Fatal("SnapshotCache returned different instances")
+	}
+
+	snapshot, err := first.Get(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if snapshot.SessionConfigured {
+		t.Fatal("SessionConfigured = true before configuration")
+	}
+
+	configured.Store(true)
+
+	snapshot, err = first.Get(context.Background(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !snapshot.SessionConfigured {
+		t.Fatal("SessionConfigured = false after configuration")
 	}
 }
 
@@ -97,9 +142,9 @@ func TestCapabilityDisabledStartRestoresRetainedHistory(t *testing.T) {
 		}
 	}
 
-	cache := NewSnapshotCache(nil, func() time.Time { return time.UnixMilli(1_800_000_000_000) })
+	var capability *Capability
 	fs := &checkingFileSystem{FileSystem: journal.OSFileSystem{}, check: func() {
-		snapshot, err := cache.Get(context.Background(), true)
+		snapshot, err := capability.SnapshotCache().Get(context.Background(), true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -109,17 +154,14 @@ func TestCapabilityDisabledStartRestoresRetainedHistory(t *testing.T) {
 		}
 	}}
 
-	capability, err := NewCapability(CapabilityConfig{
+	capability, err = NewCapability(CapabilityConfig{
 		RRDDir:         dir,
 		FileSystem:     fs,
-		SnapshotCache:  cache,
 		DesiredEnabled: func() bool { return false },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	capability.SetSnapshotCache(cache)
 
 	defer func() { _ = capability.Close(context.Background()) }()
 

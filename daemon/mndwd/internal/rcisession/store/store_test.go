@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -69,6 +70,18 @@ func TestStoreMissingKeyDisablesPersistence(t *testing.T) {
 
 	if _, err := Open(config); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDisabledStoreReportsDisabled(t *testing.T) {
+	store := Disabled()
+
+	if got := store.State(); got != model.StateDisabled {
+		t.Fatalf("Disabled().State() = %q, want %q", got, model.StateDisabled)
+	}
+
+	if _, err := store.Snapshot(); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("Disabled().Snapshot() error = %v, want ErrUnavailable", err)
 	}
 }
 

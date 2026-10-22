@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"mndwd/internal/authz"
 	"mndwd/internal/backend"
@@ -17,6 +20,7 @@ import (
 	"mndwd/internal/palette"
 	"mndwd/internal/rcisession/model"
 	rcisessionstore "mndwd/internal/rcisession/store"
+	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
 
@@ -44,7 +48,20 @@ func newCleanupFixture(t *testing.T, deviceURL string) cleanupFixture {
 			return
 		}
 
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			http.Error(writer, "read body", http.StatusBadRequest)
+
+			return
+		}
+
 		writer.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(string(body), "authentication token generate") {
+			_, _ = io.WriteString(writer, `{"probe":{"found":true}}`)
+
+			return
+		}
 
 		_, _ = io.WriteString(writer, `[{"show":{"mws":{"member":[]}}}]`)
 	}))
@@ -112,6 +129,86 @@ func newCleanupFixture(t *testing.T, deviceURL string) cleanupFixture {
 		verifier:     authz.New(cfg.DeviceURL, cfg.Dev, logger, authz.Options{}),
 		logger:       logger,
 		socketPath:   paths.RCISessionSocket,
+	}
+}
+
+func TestAssembleTokenlessSurvivesStoreOpenFailure(t *testing.T) {
+	controller := newFrontDoorIPv4Server(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+
+		_, _ = io.WriteString(writer, `{"probe":{"found":false}}`)
+	}))
+
+	t.Cleanup(controller.Close)
+
+	cfg := frontDoorTestConfig(t, "", "http://127.0.0.1:80")
+	cfg.ControllerURL = controller.URL
+	cfg.RCIProxyOperationTimeout = time.Second
+	cfg.RCIProxyMaxResponseBytes = 1 << 20
+	blockedParent := filepath.Join(t.TempDir(), "not-a-directory")
+
+	if err := os.WriteFile(blockedParent, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg.RCISessionKeyDir = filepath.Join(blockedParent, "keys")
+
+	store, err := state.Open(cfg.StateFile())
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	core := daemonCore{
+		cfg:             cfg,
+		store:           store,
+		reg:             registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir),
+		activationGates: backend.NewActivationGateRegistry(),
+		logger:          logger,
+		lifetime:        context.Background(),
+	}
+	mux := http.NewServeMux()
+	registration := assembleRCISession(core, mux, nil)
+
+	if registration.close != nil {
+		t.Cleanup(registration.close)
+	}
+
+	if registration.err != nil {
+		t.Fatalf("assembleRCISession returned error: %v", registration.err)
+	}
+
+	if registration.permissionController == nil {
+		t.Fatal("assembleRCISession did not create permission controller after token store open failure")
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/mndw/rci-session/capability", nil)
+
+	request.Header.Set("X-Mndw-Csrf", "1")
+
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("capability status = %d body=%s", response.Code, response.Body.String())
+	}
+
+	var report struct {
+		Store struct {
+			State string `json:"state"`
+		} `json:"store"`
+		Controller struct {
+			Auth string `json:"auth"`
+		} `json:"controller"`
+	}
+
+	if err := json.Unmarshal(response.Body.Bytes(), &report); err != nil {
+		t.Fatalf("decode capability: %v", err)
+	}
+
+	if report.Store.State != "disabled" || report.Controller.Auth != "none" {
+		t.Fatalf("capability store=%q auth=%q, want disabled and none", report.Store.State, report.Controller.Auth)
 	}
 }
 
@@ -188,5 +285,31 @@ func TestAssembleStartupFailureUnwindsSession(t *testing.T) {
 
 	if socketExists(fixture.socketPath) {
 		t.Fatalf("persistent RCI socket %s still exists after failed assemble; the session closer did not run", fixture.socketPath)
+	}
+}
+
+func TestAssembleReportsEveryStartupError(t *testing.T) {
+	if !unixSocketAvailable(t) {
+		return
+	}
+
+	fixture := newCleanupFixture(t, "http://")
+	fixture.cfg.FrontendDir = t.TempDir()
+
+	c, err := assemble(fixture.cfg, fixture.store, fixture.paletteStore, fixture.verifier, fixture.logger, context.Background())
+	if err == nil {
+		if c != nil {
+			_ = c.Close()
+		}
+
+		t.Fatal("assemble accepted startup errors")
+	}
+
+	if !strings.Contains(err.Error(), "device URL must include scheme and host") || !strings.Contains(err.Error(), "device proxy:") {
+		t.Fatalf("assemble error = %v, want device info and front-door proxy errors", err)
+	}
+
+	if c != nil {
+		t.Fatal("assemble returned components together with an error")
 	}
 }

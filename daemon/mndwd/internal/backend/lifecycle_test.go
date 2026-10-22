@@ -9,11 +9,12 @@ import (
 )
 
 func TestLifecycleObserverPublishesTypedTransitions(t *testing.T) {
-	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	var events []LifecycleEvent
-
-	runtime.SetLifecycleObserver(func(event LifecycleEvent) {
-		events = append(events, event)
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		OnLifecycle: func(event LifecycleEvent) {
+			events = append(events, event)
+		},
 	})
 
 	if err := runtime.ExecuteLifecycle("p", OpStarting, IntentRun,
@@ -37,13 +38,14 @@ func TestLifecycleObserverPublishesTypedTransitions(t *testing.T) {
 }
 
 func TestRuntimeShutdownPublishesTypedReason(t *testing.T) {
-	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
-	runtime.supervisor.services["p"] = &serviceRecord{}
 	var got []LifecycleEvent
-
-	runtime.SetLifecycleObserver(func(event LifecycleEvent) {
-		got = append(got, event)
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		OnLifecycle: func(event LifecycleEvent) {
+			got = append(got, event)
+		},
 	})
+	runtime.supervisor.services["p"] = &serviceRecord{}
 
 	if err := runtime.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
@@ -163,8 +165,11 @@ func TestWorkPanicTerminalizesRun(t *testing.T) {
 func TestAcceptedExclusiveLifecycleClosesSocketsOnceAndGatesTraffic(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	closed := make(chan string, 1)
+	closer := &recordingCloser{onClose: func() { closed <- "p" }}
 
-	runtime.SetLifecycleHooks(func(pluginID string) { closed <- pluginID })
+	if _, ok := runtime.Traffic().Track(closer, "p"); !ok {
+		t.Fatal("Track refused connection outside platform maintenance")
+	}
 
 	block := make(chan struct{})
 	done := make(chan error, 1)
@@ -203,10 +208,41 @@ func TestAcceptedExclusiveLifecycleClosesSocketsOnceAndGatesTraffic(t *testing.T
 		t.Fatal("successful update left traffic gated")
 	}
 
+	if got := closer.closeRecords(); len(got) != 1 {
+		t.Fatalf("connection close records = %#v, want one close", got)
+	}
+
 	select {
 	case pluginID := <-closed:
-		t.Fatalf("socket hook called more than once for %q", pluginID)
+		t.Fatalf("tracked socket closed more than once for %q", pluginID)
 	default:
+	}
+}
+
+func TestRuntimeExclusiveLifecycleClosesTrackedSockets(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	pCloser := &recordingCloser{}
+	qCloser := &recordingCloser{}
+
+	if _, ok := runtime.Traffic().Track(pCloser, "p"); !ok {
+		t.Fatal("Track refused p outside platform maintenance")
+	}
+
+	if _, ok := runtime.Traffic().Track(qCloser, "q"); !ok {
+		t.Fatal("Track refused q outside platform maintenance")
+	}
+
+	if err := runtime.ExecuteLifecycle("p", OpUpdating, IntentRun,
+		func(context.Context, LifecycleControl) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := pCloser.closeRecords(); len(got) != 1 {
+		t.Fatalf("p close records = %#v, want one close", got)
+	}
+
+	if got := qCloser.closeRecords(); len(got) != 0 {
+		t.Fatalf("q close records = %#v, want none", got)
 	}
 }
 

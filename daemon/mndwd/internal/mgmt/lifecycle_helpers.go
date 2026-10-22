@@ -8,19 +8,8 @@ import (
 
 	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
-	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
-
-type localLifecycleControl struct{}
-
-func (localLifecycleControl) StartPlugin(*registry.Plugin) error { return nil }
-
-func (localLifecycleControl) StopService() error { return nil }
-
-func (localLifecycleControl) IsCurrent() bool { return true }
-
-func (localLifecycleControl) Generation() uint64 { return 0 }
 
 func (h *Handler) executeLifecycle(
 	name string,
@@ -28,10 +17,6 @@ func (h *Handler) executeLifecycle(
 	intent backend.Intent,
 	work func(context.Context, backend.LifecycleControl) error,
 ) error {
-	if h.runtime == nil {
-		return work(h.cfg.ServiceActionRoot, localLifecycleControl{})
-	}
-
 	return h.runtime.ExecuteLifecycle(name, op, intent, work)
 }
 

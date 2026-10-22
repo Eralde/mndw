@@ -1,6 +1,29 @@
 package rcisession
 
-import "testing"
+import (
+	"context"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+)
+
+func TestControllerHTTPTesterEmptyTokenOmitsHeader(t *testing.T) {
+	tester := ControllerHTTPTester{
+		BaseURL: "http://192.0.2.1",
+		Client: &http.Client{Transport: testRoundTripper(func(request *http.Request) (*http.Response, error) {
+			if request.Header.Get("X-Ndma-Tkn") != "" {
+				t.Fatalf("empty token sent header %q", request.Header.Get("X-Ndma-Tkn"))
+			}
+
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("ok"))}, nil
+		})},
+	}
+	verdict, err := tester.Test(context.Background(), "")
+	if err != nil || verdict != ControllerValid {
+		t.Fatalf("Test() = %q, %v", verdict, err)
+	}
+}
 
 func TestValidateControllerURLShape(t *testing.T) {
 	valid := []string{

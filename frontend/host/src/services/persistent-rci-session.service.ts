@@ -2,14 +2,15 @@ import {persistentFailureCategories} from './rci-session-status-categories.js';
 import {fetchWithDeadline} from './pristine-fetch.js';
 
 export type PersistentStoreState = 'ok' | 'empty' | 'disabled' | 'decrypt-failed';
-export type PersistentSupport = 'supported' | 'invalid' | 'unsupported' | 'unknown';
+export type PersistentAuthMode = 'token' | 'none' | 'unknown';
+export type PersistentSupport = 'supported' | 'invalid' | 'unsupported' | 'unknown' | 'needs-token';
 export type PersistentSessionState = 'offline' | 'establishing' | 'live' | 'dead';
 export type PersistentEligibilityReason = 'certificate-invalid' | 'no-auth-token' | 'missing-fqdn';
 export type PersistentFailureCategory = (typeof persistentFailureCategories)[number];
 
 export interface PersistentRciCapability {
   store: {state: PersistentStoreState};
-  controller: {support: PersistentSupport; lastCheckedAt?: string};
+  controller: {support: PersistentSupport; auth: PersistentAuthMode; enabled: boolean; lastCheckedAt?: string};
   extenders: Array<{
     identity: string;
     name: string;
@@ -41,37 +42,13 @@ export class PersistentRciSessionError extends Error {
 }
 
 const BASE_URL = '/api/mndw/rci-session';
-const CONTROLLER_TOKEN_PROBE = {probe: 'authentication token generate'};
 const sessionStates = ['offline', 'establishing', 'live', 'dead'] as const;
 const eligibilityReasons = ['certificate-invalid', 'no-auth-token', 'missing-fqdn'] as const;
-const supports = ['supported', 'invalid', 'unsupported', 'unknown'] as const;
+const authModes = ['token', 'none', 'unknown'] as const;
+const supports = ['supported', 'invalid', 'unsupported', 'unknown', 'needs-token'] as const;
 const storeStates = ['ok', 'empty', 'disabled', 'decrypt-failed'] as const;
 
 export class PersistentRciSessionService {
-  public async probeControllerTokenAuth(): Promise<boolean> {
-    try {
-      const response = await fetchWithDeadline('/rci/', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(CONTROLLER_TOKEN_PROBE),
-      });
-
-      if (!response.ok) {
-        return false;
-      }
-
-      const text = await response.text();
-
-      if (text === '') {
-        return false;
-      }
-
-      return this.controllerProbeFound(JSON.parse(text) as unknown);
-    } catch {
-      return false;
-    }
-  }
-
   public async getCapability(): Promise<PersistentRciCapability> {
     const payload = await this.read<unknown>(
       await fetchWithDeadline(`${BASE_URL}/capability`, {
@@ -95,6 +72,16 @@ export class PersistentRciSessionService {
       await fetchWithDeadline(`${BASE_URL}/controller`, {
         method: 'DELETE',
         headers: {'X-Mndw-Csrf': '1'},
+      }),
+    );
+  }
+
+  public async setEnabled(enabled: boolean): Promise<void> {
+    await this.read(
+      await fetchWithDeadline(`${BASE_URL}/enabled`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json', 'X-Mndw-Csrf': '1'},
+        body: JSON.stringify({enabled}),
       }),
     );
   }
@@ -131,11 +118,16 @@ export class PersistentRciSessionService {
       !this.isRecord(payload) || !this.isRecord(payload.store) || !this.isRecord(payload.controller)
       || !Array.isArray(payload.extenders) || typeof payload.stale !== 'boolean'
       || !this.isStoreState(payload.store.state) || !this.isSupport(payload.controller.support)
+      || !this.isAuthMode(payload.controller.auth) || typeof payload.controller.enabled !== 'boolean'
     ) {
       throw new PersistentRciSessionError('MALFORMED_RESPONSE', 200);
     }
 
-    const controller = {support: payload.controller.support} as PersistentRciCapability['controller'];
+    const controller: PersistentRciCapability['controller'] = {
+      support: payload.controller.support,
+      auth: payload.controller.auth,
+      enabled: payload.controller.enabled,
+    };
 
     if (payload.controller.lastCheckedAt !== undefined) {
       if (typeof payload.controller.lastCheckedAt !== 'string') {
@@ -228,10 +220,6 @@ export class PersistentRciSessionService {
     return undefined;
   }
 
-  private controllerProbeFound(payload: unknown): boolean {
-    return this.isRecord(payload) && this.isRecord(payload.probe) && payload.probe.found === true;
-  }
-
   private isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
   }
@@ -242,6 +230,10 @@ export class PersistentRciSessionService {
 
   private isSupport(value: unknown): value is PersistentSupport {
     return typeof value === 'string' && (supports as readonly string[]).includes(value);
+  }
+
+  private isAuthMode(value: unknown): value is PersistentAuthMode {
+    return typeof value === 'string' && (authModes as readonly string[]).includes(value);
   }
 
   private isSessionState(value: unknown): value is PersistentSessionState {

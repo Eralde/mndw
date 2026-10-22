@@ -27,7 +27,9 @@ const locale = services.locale;
 const persistentRci = services.persistentRci;
 
 let persistentCapability = $state<PersistentRciCapability | null>(null);
-let persistentProbeAvailable = $state(false);
+let persistentAuth = $derived.by(() =>
+  persistentCapability?.controller.auth ?? 'unknown'
+);
 
 let controllerSessionConfigured = $derived.by(() => {
   const support = persistentCapability?.controller.support;
@@ -49,10 +51,17 @@ let capabilityPollController: AbortController | null = null;
 let telemetryEnabled = $state(false);
 let telemetryLoading = $state(true);
 let telemetryError = $state('');
+// Mirrors daemon `SessionPresent()` for telemetry availability.
+let telemetrySessionPresent = $derived.by(() => {
+  const support = persistentCapability?.controller.support;
+
+  return persistentCapability?.controller.enabled === true
+    && (support === 'supported' || support === 'invalid');
+});
 
 $effect(() => {
   onPermissionStateChange({
-    visible: persistentProbeAvailable,
+    visible: persistentAuth !== 'unknown',
     available: persistentCapability?.controller.support === 'supported',
   });
 });
@@ -73,22 +82,16 @@ onDestroy(() => {
 async function refreshPersistentCapability(): Promise<void> {
   persistentLoading = true;
   persistentError = '';
-  persistentProbeAvailable = false;
 
   try {
-    if (!await persistentRci.probeControllerTokenAuth()) {
-      persistentCapability = null;
-      persistentEnabled = false;
-      return;
-    }
-
-    persistentProbeAvailable = true;
     persistentCapability = await persistentRci.getCapability();
-    persistentEnabled = controllerSessionConfigured;
+    persistentEnabled = persistentCapability.controller.enabled
+      || persistentCapability.controller.support === 'needs-token';
 
     startCapabilityPolling();
   } catch {
-    persistentError = hostT('settings.persistent-state-unavailable');
+    persistentCapability = null;
+    persistentEnabled = false;
   } finally {
     persistentLoading = false;
   }
@@ -133,6 +136,41 @@ function setPersistentEnabled(
     controllerToken = '';
     capabilityPollController?.abort();
     capabilityPollController = null;
+  }
+}
+
+async function setTokenlessEnabled(
+  event: CustomEvent<{checked?: boolean; value?: boolean}>,
+): Promise<void> {
+  const next = event.detail.checked ?? event.detail.value ?? false;
+  const previous = persistentCapability?.controller.enabled ?? false;
+
+  persistentActionLoading = true;
+
+  if (persistentCapability) {
+    persistentCapability = {
+      ...persistentCapability,
+      controller: {...persistentCapability.controller, enabled: next},
+    };
+  }
+
+  persistentError = '';
+
+  try {
+    await persistentRci.setEnabled(next);
+    await refreshPersistentCapability();
+  } catch (error) {
+    if (persistentCapability) {
+      persistentCapability = {
+        ...persistentCapability,
+        controller: {...persistentCapability.controller, enabled: previous},
+      };
+    }
+
+    await refreshPersistentCapability();
+    persistentError = persistentErrorMessage(error);
+  } finally {
+    persistentActionLoading = false;
   }
 }
 
@@ -338,100 +376,39 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
     {/if}
   </section>
 
-  {#if persistentProbeAvailable}
+  {#if !persistentLoading}
     <section aria-label={hostT('settings.persistent-rci-title')}>
       <h3>{hostT('settings.persistent-rci-title')}</h3>
-      <mndw-field label={hostT('settings.configure-persistent')}>
-        <mndw-switch
-          id="mndw-persistent-rci-enabled"
-          checked={persistentEnabled}
-          disabled={persistentLoading || persistentActionLoading}
-          onmndwchange={setPersistentEnabled}
-        >
-        </mndw-switch>
-      </mndw-field>
-
-      {#if persistentError}
-        <p role="alert">{persistentError}</p>
-      {/if}
-
-      {#if persistentCapability?.store.state === 'disabled'}
-        <p role="alert">{hostT('settings.persistent-storage-disabled')}</p>
-      {:else if persistentCapability?.store.state === 'decrypt-failed'}
-        <p role="alert">
-          {hostT('settings.persistent-storage-decrypt-failed')}
-        </p>
-      {/if}
-
-      {#if persistentEnabled}
-        <mndw-field label={hostT('settings.controller-token')}>
-          <mndw-input
-            type="password"
-            autocomplete="off"
-            placeholder={controllerTokenPlaceholder}
-            value={controllerToken}
+      {#if persistentAuth === 'unknown'}
+        <p role="alert">{hostT('settings.persistent-state-unavailable')}</p>
+        {#if persistentError}
+          <p role="alert">{persistentError}</p>
+        {/if}
+      {:else if persistentAuth === 'none'}
+        <mndw-field label={hostT('settings.persistent-tokenless-toggle')}>
+          <mndw-switch
+            id="mndw-persistent-rci-enabled"
+            checked={persistentCapability?.controller.enabled ?? false}
             disabled={persistentActionLoading}
-            onmndwinput={setControllerToken}
+            onmndwchange={(event) => void setTokenlessEnabled(event)}
           >
-          </mndw-input>
+          </mndw-switch>
         </mndw-field>
-
-        <div class="persistent-rci-actions">
-          <mndw-button
-            variant="secondary"
-            disabled={persistentActionLoading || controllerToken === ''}
-            onclick={() => void testController()}
-          >
-            {hostT('settings.test')}
-          </mndw-button>
-
-          <mndw-button
-            variant="primary"
-            disabled={persistentActionLoading || controllerToken === ''}
-            onclick={() => void saveController()}
-          >
-            {hostT('settings.save')}
-          </mndw-button>
-
-          {#if controllerSessionConfigured}
-            <mndw-button
-              variant="danger"
-              disabled={persistentActionLoading}
-              onclick={() => void clearController()}
-            >
-              {hostT('settings.clear-controller-session')}
-            </mndw-button>
-          {/if}
-        </div>
-        {#if controllerResult}
-          {#if controllerResult?.result === 'unsupported-firmware'}
-            <p
-              class="unsupported-banner"
-              role="alert"
-            >
-              {hostT('settings.update-firmware-persistent')}
-            </p>
-          {:else}
-            <p>
-              {
-                hostT('settings.controller-result', {
-                  result: controllerResult?.result,
-                })
-              }
-            </p>
-          {/if}
+        <p>{hostT('settings.persistent-tokenless-description')}</p>
+        {#if persistentError}
+          <p role="alert">{persistentError}</p>
         {/if}
         {#if persistentCapability?.controller.support === 'supported'}
           <div class="persistent-rci-extenders">
             <h4>{hostT('settings.persistent-extenders-title')}</h4>
-            {#if persistentCapability?.stale}
+            {#if persistentCapability.stale}
               <p role="status">
                 {hostT('settings.persistent-enumeration-stale')}
               </p>
             {/if}
-            {#if persistentCapability?.extenders.length > 0}
+            {#if persistentCapability.extenders.length > 0}
               <ul>
-                {#each persistentCapability?.extenders as
+                {#each persistentCapability.extenders as
                   extender
                   (extender.identity)
                 }
@@ -454,11 +431,124 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
             {/if}
           </div>
         {/if}
+      {:else}
+        <mndw-field label={hostT('settings.configure-persistent')}>
+          <mndw-switch
+            id="mndw-persistent-rci-enabled"
+            checked={persistentEnabled}
+            disabled={persistentLoading || persistentActionLoading}
+            onmndwchange={setPersistentEnabled}
+          >
+          </mndw-switch>
+        </mndw-field>
+        {#if persistentError}
+          <p role="alert">{persistentError}</p>
+        {/if}
+        {#if persistentCapability?.store.state === 'disabled'}
+          <p role="alert">{hostT('settings.persistent-storage-disabled')}</p>
+        {:else if persistentCapability?.store.state === 'decrypt-failed'}
+          <p role="alert">
+            {hostT('settings.persistent-storage-decrypt-failed')}
+          </p>
+        {/if}
+        {#if persistentCapability?.controller.support === 'needs-token'}
+          <p role="alert">{hostT('settings.persistent-needs-token')}</p>
+        {/if}
+        {#if persistentEnabled
+        || persistentCapability?.controller.support === 'needs-token'}
+          <mndw-field label={hostT('settings.controller-token')}>
+            <mndw-input
+              type="password"
+              autocomplete="off"
+              placeholder={controllerTokenPlaceholder}
+              value={controllerToken}
+              disabled={persistentActionLoading}
+              onmndwinput={setControllerToken}
+            >
+            </mndw-input>
+          </mndw-field>
+          <div class="persistent-rci-actions">
+            <mndw-button
+              variant="secondary"
+              disabled={persistentActionLoading || controllerToken === ''}
+              onclick={() => void testController()}
+            >
+              {hostT('settings.test')}
+            </mndw-button>
+            <mndw-button
+              variant="primary"
+              disabled={persistentActionLoading || controllerToken === ''}
+              onclick={() => void saveController()}
+            >
+              {hostT('settings.save')}
+            </mndw-button>
+            {#if controllerSessionConfigured}
+              <mndw-button
+                variant="danger"
+                disabled={persistentActionLoading}
+                onclick={() => void clearController()}
+              >
+                {hostT('settings.clear-controller-session')}
+              </mndw-button>
+            {/if}
+          </div>
+          {#if controllerResult}
+            {#if controllerResult.result === 'unsupported-firmware'}
+              <p
+                class="unsupported-banner"
+                role="alert"
+              >
+                {hostT('settings.update-firmware-persistent')}
+              </p>
+            {:else}
+              <p>
+                {
+                  hostT('settings.controller-result', {
+                    result: controllerResult.result,
+                  })
+                }
+              </p>
+            {/if}
+          {/if}
+          {#if persistentCapability?.controller.support === 'supported'}
+            <div class="persistent-rci-extenders">
+              <h4>{hostT('settings.persistent-extenders-title')}</h4>
+              {#if persistentCapability.stale}
+                <p role="status">
+                  {hostT('settings.persistent-enumeration-stale')}
+                </p>
+              {/if}
+              {#if persistentCapability.extenders.length > 0}
+                <ul>
+                  {#each persistentCapability.extenders as
+                    extender
+                    (extender.identity)
+                  }
+                    <li>
+                      {extender.name || extender.identity}:
+                      {#if !extender.eligible}
+                        {hostT(`settings.extender-reason-${extender.reason}`)}
+                      {:else}
+                        {
+                          hostT(
+                            `settings.extender-state-${
+                              extender.state ?? 'establishing'
+                            }`,
+                          )
+                        }
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          {/if}
+        {/if}
       {/if}
     </section>
   {/if}
 
-  {#if persistentEnabled && controllerSessionConfigured}
+  {#if telemetrySessionPresent}
     <section>
       <h3>{hostT('settings.telemetry-label')}</h3>
       <mndw-field label={hostT('settings.telemetry-toggle')}>

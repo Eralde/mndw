@@ -33,25 +33,20 @@ const (
 	heartbeatWorkers = 16
 )
 
-// Config wires a Coordinator. The caller builds Service, Enumerator, Manager,
-// and Reconciler because the session HTTP handler and proxy share them.
+// Config wires a Coordinator. The caller builds Service and Reconciler because
+// the session HTTP handler and proxy share them.
 type Config struct {
 	Registry          *registry.Registry
 	Store             *state.Store
 	RuntimeRoot       string
 	Service           *rcisession.Service
-	Enumerator        *enumeration.Cache
-	Manager           *sessionmanager.Manager
 	Establisher       establisher.Establisher
 	Heartbeat         heartbeat.Probe
 	Reconciler        *rcisessionsocket.Reconciler
 	HeartbeatInterval time.Duration
 	Logger            *slog.Logger
-	// Lifetime bounds the reconcile loop and establishment workers, and Close
-	// calls Cancel. Set both (Cancel must cancel Lifetime) or neither; when both
-	// are nil, New creates its own cancellable context.
-	Lifetime context.Context
-	Cancel   context.CancelFunc
+	Parent            context.Context
+	ActivationPoke    func()
 }
 
 // Coordinator owns the persistent-RCI socket bindings and their reconciliation
@@ -61,7 +56,7 @@ type Coordinator struct {
 	store           *state.Store
 	runtimeRoot     string
 	service         *rcisession.Service
-	enumerator      *enumeration.Cache
+	enumerator      rcisession.Enumerator
 	manager         *sessionmanager.Manager
 	establisher     establisher.Establisher
 	heartbeat       heartbeat.Probe
@@ -80,32 +75,37 @@ type Coordinator struct {
 	establishmentWG sync.WaitGroup
 }
 
-// New validates cfg and builds a Coordinator. See Config for the Lifetime and
-// Cancel pairing rule.
-func New(cfg Config) (*Coordinator, error) {
-	if (cfg.Lifetime == nil) != (cfg.Cancel == nil) {
-		return nil, errors.New("coordinator: Lifetime and Cancel must be set together")
-	}
-
+// New builds a Coordinator whose lifetime is cancelled by Close or its parent.
+func New(cfg Config) *Coordinator {
 	interval := cfg.HeartbeatInterval
 
 	if interval <= 0 {
 		interval = DefaultHeartbeatInterval
 	}
 
-	lifetime, cancel := cfg.Lifetime, cfg.Cancel
+	parent := cfg.Parent
 
-	if lifetime == nil {
-		lifetime, cancel = context.WithCancel(context.Background())
+	if parent == nil {
+		parent = context.Background()
 	}
 
-	return &Coordinator{
+	lifetime, cancel := context.WithCancel(parent)
+
+	var enumerator rcisession.Enumerator
+	var manager *sessionmanager.Manager
+
+	if cfg.Service != nil {
+		enumerator = cfg.Service.Enumerator()
+		manager = cfg.Service.SessionManager()
+	}
+
+	coordinator := &Coordinator{
 		registry:       cfg.Registry,
 		store:          cfg.Store,
 		runtimeRoot:    cfg.RuntimeRoot,
 		service:        cfg.Service,
-		enumerator:     cfg.Enumerator,
-		manager:        cfg.Manager,
+		enumerator:     enumerator,
+		manager:        manager,
 		establisher:    cfg.Establisher,
 		heartbeat:      cfg.Heartbeat,
 		lifetime:       lifetime,
@@ -115,7 +115,14 @@ func New(cfg Config) (*Coordinator, error) {
 		heartbeatEvery: interval,
 		reconciler:     cfg.Reconciler,
 		logger:         cfg.Logger,
-	}, nil
+		activationPoke: cfg.ActivationPoke,
+	}
+
+	if cfg.Service != nil {
+		cfg.Service.SubscribeMutations(coordinator.onServiceMutation)
+	}
+
+	return coordinator
 }
 
 // Service returns the session service this coordinator reconciles against.
@@ -127,10 +134,20 @@ func (c *Coordinator) Service() *rcisession.Service {
 func (c *Coordinator) Start() {
 	c.tickDone = make(chan struct{})
 
+	if c.service != nil && c.reconciler != nil {
+		c.reconcileSockets(false)
+	}
+
 	go c.loop()
 
 	c.Poke()
 }
+
+func (c *Coordinator) onServiceMutation() {
+	c.ReconcileSockets()
+	c.Poke()
+}
+
 func (c *Coordinator) loop() {
 	defer close(c.tickDone)
 
@@ -173,6 +190,10 @@ func (c *Coordinator) Poke() {
 func (c *Coordinator) tick() {
 	tickContext, cancel := context.WithCancel(c.lifetime)
 
+	if c.service != nil && c.service.AuthMode() == rcisession.AuthModeUnknown {
+		c.service.DetectAuthMode(tickContext)
+	}
+
 	c.mu.Lock()
 
 	c.activeCancel = cancel
@@ -190,7 +211,7 @@ func (c *Coordinator) tick() {
 func (c *Coordinator) reconcileSessions(ctx context.Context) {
 	controller := c.service.CaptureController()
 
-	if controller.Token != "" {
+	if controller.Active {
 		listContext, cancel := context.WithTimeout(ctx, listDeadline)
 		members, err := c.enumerator.List(listContext)
 

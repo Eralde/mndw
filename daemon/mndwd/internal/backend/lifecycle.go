@@ -89,8 +89,8 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 		return waitRun(outcome.run)
 	}
 
-	if traitsOf(op).exclusive && r.closePluginSockets != nil {
-		r.closePluginSockets(name)
+	if traitsOf(op).exclusive {
+		r.traffic.ClosePlugin(name)
 	}
 
 	if outcome.supersededWorkDone != nil {
@@ -127,7 +127,7 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 		r.supervisor.coord.fail(outcome.run, err)
 	})
 
-	if lifecycleEvent != nil && r.lifecycleObserver != nil {
+	if lifecycleEvent != nil {
 		r.lifecycleObserver(*lifecycleEvent)
 	}
 
@@ -146,8 +146,8 @@ func (r *RuntimeImpl) runLifecycleWork(
 			stack := debug.Stack()
 			err = fmt.Errorf("%w: %v", errWorkPanic, recovered)
 
-			if r.supervisor.cfg.Logger != nil {
-				r.supervisor.cfg.Logger.Error("lifecycle work panicked", "plugin", run.name, "operation", run.op, "panic", recovered, "stack", string(stack))
+			if r.logger != nil {
+				r.logger.Error("lifecycle work panicked", "plugin", run.name, "operation", run.op, "panic", recovered, "stack", string(stack))
 			}
 		}
 	}()

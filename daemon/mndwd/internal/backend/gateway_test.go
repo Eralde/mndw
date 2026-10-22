@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/coder/websocket"
+
 	"mndwd/internal/httpx"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
@@ -63,24 +65,59 @@ func TestNoCORSResponseWriterRemovesInternalHeaders(t *testing.T) {
 	}
 }
 
-func TestGatewayMaintenanceGateUsesTrafficPredicateAndPlatformScope(t *testing.T) {
-	gateway := NewGateway(GatewayConfig{}, nil, nil, nil, nil, nil)
+func TestGatewayMaintenanceGateUsesRuntimeBlockAndPlatformScope(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	gateway := NewGateway(GatewayConfig{}, nil, nil, runtime, nil)
 
 	if gateway.isMaintenance("demo") {
 		t.Fatal("fresh gateway is in maintenance")
 	}
 
-	gateway.SetTrafficBlockPredicate(func(pluginID string) bool { return pluginID == "demo" })
+	setTrafficBlockedForTest(runtime, "demo", true)
 
 	if !gateway.isMaintenance("demo") || gateway.isMaintenance("other") {
 		t.Fatal("plugin maintenance scope is incorrect")
 	}
 
-	gateway.BeginPlatformMaintenance()
+	gateway.traffic.BeginPlatformMaintenance()
 
 	if !gateway.isMaintenance("demo") || !gateway.isMaintenance("other") {
 		t.Fatal("platform maintenance scope is incorrect")
 	}
+}
+
+func TestGatewayAdmitWebSocketRefusesBlockedPlugin(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic()}
+
+	setTrafficBlockedForTest(runtime, "p", true)
+
+	refusedCloser := &recordingCloser{}
+
+	if _, ok := gateway.admitWebSocket(refusedCloser, "p"); ok {
+		t.Fatal("admitWebSocket accepted a blocked plugin")
+	}
+
+	if got := refusedCloser.closeRecords(); len(got) != 1 || got[0] != (recordedClose{code: websocket.StatusServiceRestart, reason: "mndw updating"}) {
+		t.Fatalf("refused close records = %#v, want one service-restart close", got)
+	}
+
+	runtime.Traffic().ClosePlugin("p")
+
+	if got := refusedCloser.closeRecords(); len(got) != 1 {
+		t.Fatalf("refused close records after ClosePlugin = %#v, want one close", got)
+	}
+
+	setTrafficBlockedForTest(runtime, "p", false)
+
+	acceptedCloser := &recordingCloser{}
+	untrack, ok := gateway.admitWebSocket(acceptedCloser, "p")
+
+	if !ok {
+		t.Fatal("admitWebSocket refused an unblocked plugin")
+	}
+
+	untrack()
 }
 
 func TestGatewayDevValidationAllowsSymlinkedBuiltinRoot(t *testing.T) {
@@ -104,7 +141,7 @@ func TestGatewayDevValidationAllowsSymlinkedBuiltinRoot(t *testing.T) {
 	}
 
 	plugin := &registry.Plugin{Dir: symlinkedPlugin, Source: state.SourceBuiltin}
-	dev := NewGateway(GatewayConfig{AllowSymlinkedBuiltinRoot: true}, nil, nil, nil, nil, nil)
+	dev := NewGateway(GatewayConfig{AllowSymlinkedBuiltinRoot: true}, nil, nil, nil, nil)
 
 	if _, err := dev.validateCommand(plugin, "backend/command.sh"); err != nil {
 		t.Fatalf("dev exec validation rejected a symlinked builtin root: %v", err)

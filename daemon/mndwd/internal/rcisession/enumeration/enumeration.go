@@ -36,6 +36,7 @@ type Source interface {
 }
 
 type ControllerSnapshot struct {
+	Active  bool
 	BaseURL string
 	Token   string
 	Epoch   uint64
@@ -226,23 +227,19 @@ func (s JSONSource) Enumerate(ctx context.Context) ([]Member, error) {
 
 type HTTPSource struct {
 	Client            *http.Client
-	ControllerURL     string
-	ControllerToken   func() string
 	CaptureController func() ControllerSnapshot
 	CurrentEpoch      func() uint64
 	MaxResponseBytes  int64
 }
 
 func (s HTTPSource) Enumerate(ctx context.Context) ([]Member, error) {
-	snapshot := ControllerSnapshot{BaseURL: s.ControllerURL}
-
-	if s.CaptureController != nil {
-		snapshot = s.CaptureController()
-	} else if s.ControllerToken != nil {
-		snapshot.Token = s.ControllerToken()
+	if s.CaptureController == nil {
+		return nil, fmt.Errorf("controller session unavailable")
 	}
 
-	if snapshot.Token == "" {
+	snapshot := s.CaptureController()
+
+	if !snapshot.Active {
 		return nil, fmt.Errorf("controller session unavailable")
 	}
 
@@ -258,9 +255,10 @@ func (s HTTPSource) Enumerate(ctx context.Context) ([]Member, error) {
 		limit = 1 << 20
 	}
 
-	options := []rci.HTTPOption{
-		rci.WithHeader("X-Ndma-Tkn", func() string { return snapshot.Token }),
-		rci.WithMaxResponseBytes(limit),
+	options := []rci.HTTPOption{rci.WithMaxResponseBytes(limit)}
+
+	if snapshot.Token != "" {
+		options = append(options, rci.WithHeader("X-Ndma-Tkn", func() string { return snapshot.Token }))
 	}
 
 	if s.Client != nil {

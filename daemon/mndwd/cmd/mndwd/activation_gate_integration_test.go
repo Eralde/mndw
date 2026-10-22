@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"mndwd/internal/authz"
 	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
 	"mndwd/internal/rcisession"
@@ -27,6 +28,18 @@ import (
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
+
+func TestAssembleDoesNotPokeActivationDuringAssembly(t *testing.T) {
+	fixture := newActivationIntegrationFixture(t, true)
+
+	if got := fixture.pokes.Load(); got != 0 {
+		t.Fatalf("activation pokes during assembly = %d, want 0", got)
+	}
+
+	if status := fixture.runtime.Status("demo"); status.State != backend.StateStopped {
+		t.Fatalf("runtime state during assembly = %q, want stopped", status.State)
+	}
+}
 
 func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T) {
 	if !unixSocketAvailable(t) {
@@ -63,12 +76,7 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 		t.Fatalf("ready status = %#v, want ready", status)
 	}
 
-	var pokes atomic.Int32
-
-	fixture.assembly.SetActivationPoke(func() {
-		pokes.Add(1)
-		fixture.runtime.Reconcile(context.Background(), fixture.registryPlugins())
-	})
+	base := fixture.pokes.Load()
 
 	tester := &activationControllerTester{}
 	mux := http.NewServeMux()
@@ -77,8 +85,8 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 
 	deleteController(t, mux)
 
-	if got := pokes.Load(); got != 1 {
-		t.Fatalf("controller deletion pokes = %d, want synchronous 1", got)
+	if got := fixture.pokes.Load(); got != base+1 {
+		t.Fatalf("controller deletion pokes = %d, want synchronous %d", got, base+1)
 	}
 
 	waitForReservedServices(t, fixture.runtime, 0)
@@ -97,8 +105,8 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 
 	saveController(t, mux, "controller-token")
 
-	if got := pokes.Load(); got != 2 {
-		t.Fatalf("controller save pokes = %d, want synchronous 2", got)
+	if got := fixture.pokes.Load(); got != base+2 {
+		t.Fatalf("controller save pokes = %d, want synchronous %d", got, base+2)
 	}
 
 	waitForRuntimeState(t, fixture.runtime, "demo", backend.StateReady)
@@ -110,8 +118,8 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 	fixture.assembly.Service().Unauthorized("controller", fixture.assembly.Service().ControllerEpoch())
 	fixture.assembly.Service().Unauthorized("controller", fixture.assembly.Service().ControllerEpoch())
 
-	if got := pokes.Load(); got != 2 {
-		t.Fatalf("retained-token Unauthorized pokes = %d, want 2", got)
+	if got := fixture.pokes.Load(); got != base+2 {
+		t.Fatalf("retained-token Unauthorized pokes = %d, want %d", got, base+2)
 	}
 
 	if err := fixture.store.SetGrant("demo", manifest.PersistentRCISessionWritePermission, false); err != nil {
@@ -143,12 +151,34 @@ type activationIntegrationFixture struct {
 	assembly *coordinator.Coordinator
 	gateway  *backend.Gateway
 	mux      *http.ServeMux
+	pokes    atomic.Int32
 }
 
 func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIntegrationFixture {
 	t.Helper()
 
 	root := shortTempDir(t)
+	controller := newFrontDoorIPv4Server(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			http.Error(writer, "read body", http.StatusBadRequest)
+
+			return
+		}
+
+		writer.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(string(body), "authentication token generate") {
+			_, _ = io.WriteString(writer, `{"probe":{"found":true}}`)
+
+			return
+		}
+
+		_, _ = io.WriteString(writer, `[{"show":{"mws":{"member":[]}}}]`)
+	}))
+
+	t.Cleanup(controller.Close)
+
 	cfg := Config{
 		DataDir:                    filepath.Join(root, "data"),
 		RCISessionStateDir:         filepath.Join(root, "rci"),
@@ -157,7 +187,7 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 		BuiltinPluginsDir:          filepath.Join(root, "builtins"),
 		UserPluginsDir:             filepath.Join(root, "plugins"),
 		DeviceURL:                  "http://127.0.0.1:80",
-		ControllerURL:              rcisession.DefaultControllerURL,
+		ControllerURL:              controller.URL,
 		Dev:                        true,
 		Opkg:                       "stub",
 		ExecTimeout:                time.Second,
@@ -240,26 +270,27 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 		reg:             reg,
 		runtime:         runtime,
 		activationGates: activationGates,
+		verifier:        authz.New("", true, logger, authz.Options{}),
 		logger:          logger,
 		lifetime:        context.Background(),
 	}
-	registration := assembleRCISession(core, accessMux)
+	fixture := &activationIntegrationFixture{store: store, registry: reg, runtime: runtime}
+	registration := assembleRCISession(core, accessMux, func() {
+		fixture.pokes.Add(1)
+		fixture.runtime.Reconcile(context.Background(), fixture.registry.AllBackendPlugins())
+	})
 
-	if registration.coordinator == nil {
+	assembledCoordinator, ok := registration.permissionController.(*coordinator.Coordinator)
+
+	if !ok {
 		t.Fatal("activation assembly was not wired")
 	}
 
 	gatewayMux := http.NewServeMux()
 	gateway := registerPlugins(gatewayMux, core)
-
-	fixture := &activationIntegrationFixture{
-		store:    store,
-		registry: reg,
-		runtime:  runtime,
-		assembly: registration.coordinator,
-		gateway:  gateway,
-		mux:      gatewayMux,
-	}
+	fixture.assembly = assembledCoordinator
+	fixture.gateway = gateway
+	fixture.mux = gatewayMux
 
 	t.Cleanup(func() {
 		_ = runtime.Shutdown(context.Background())

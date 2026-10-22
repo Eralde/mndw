@@ -44,7 +44,7 @@ func (s *fakeSelfUpdateService) BeginRevert(context.Context) (selfupdate.Accepte
 func newSelfUpdateHandler(t *testing.T, service selfupdate.Service) *Handler {
 	t.Helper()
 
-	return New(Config{SelfUpdate: service}, nil, nil, nil, nil, discardLogger())
+	return New(Config{SelfUpdate: service, Runtime: passthroughRuntime{}}, nil, nil, nil, nil, discardLogger())
 }
 
 func TestSelfUpdateApplyReturnsServerDerivedTarget(t *testing.T) {

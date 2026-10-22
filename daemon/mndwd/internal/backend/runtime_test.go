@@ -34,8 +34,8 @@ func TestRuntimeIgnoresPluginsWithoutServiceBackend(t *testing.T) {
 func TestNewRuntimeInitializesSupervisorClock(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 
-	if runtime.supervisor.cfg.Now == nil {
-		t.Fatal("supervisor clock is nil")
+	if runtime.Now().IsZero() {
+		t.Fatal("runtime clock returned zero")
 	}
 }
 

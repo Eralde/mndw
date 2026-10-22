@@ -89,10 +89,10 @@
           "body": "Grant the required plugin permission in Settings."
         },
         "controller-token": {
-          "body": "Configure a controller token in Settings."
+          "body": "Enable the persistent session in Settings."
         },
         "combined": {
-          "body": "Grant the required plugin permission and configure a controller token in Settings."
+          "body": "Grant the required plugin permission and enable the persistent session in Settings."
         },
         "generic": {
           "body": "Complete extra-feature setup in Settings."

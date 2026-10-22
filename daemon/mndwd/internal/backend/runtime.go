@@ -3,8 +3,12 @@ package backend
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"net/http"
 	"os"
+	"time"
 
+	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
@@ -42,6 +46,7 @@ type RuntimeConfig struct {
 	ActivationGates           *ActivationGateRegistry
 	Exec                      ExecRunnerConfig
 	Supervisor                SupervisorConfig
+	OnLifecycle               LifecycleObserver
 }
 
 type LifecycleEvent struct {
@@ -56,15 +61,16 @@ type LifecycleObserver func(LifecycleEvent)
 // long-running services. This prevents separate subsystems from exceeding a
 // shared platform limit during startup or shutdown races.
 type RuntimeImpl struct {
-	exec               *ExecRunner
-	supervisor         *Supervisor
-	limits             Limits
-	protocols          []int
-	runtimeRoot        string
-	activationGates    *ActivationGateRegistry
-	closePluginSockets func(string)
-	platform           func()
-	lifecycleObserver  LifecycleObserver
+	exec              *ExecRunner
+	supervisor        *Supervisor
+	traffic           *TrafficGate
+	limits            Limits
+	protocols         []int
+	now               func() time.Time
+	logger            *slog.Logger
+	runtimeRoot       string
+	activationGates   *ActivationGateRegistry
+	lifecycleObserver LifecycleObserver
 }
 
 func NewRuntime(config RuntimeConfig) *RuntimeImpl {
@@ -72,16 +78,18 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 		config.RuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
 	}
 
+	defaults := DefaultLimits()
+
 	if config.Limits.MaxConcurrentExecTotal <= 0 {
-		config.Limits.MaxConcurrentExecTotal = 8
+		config.Limits.MaxConcurrentExecTotal = defaults.MaxConcurrentExecTotal
 	}
 
 	if config.Limits.MaxConcurrentExecPerPlugin <= 0 {
-		config.Limits.MaxConcurrentExecPerPlugin = 4
+		config.Limits.MaxConcurrentExecPerPlugin = defaults.MaxConcurrentExecPerPlugin
 	}
 
 	if config.Limits.MaxSupervisedServices <= 0 {
-		config.Limits.MaxSupervisedServices = 8
+		config.Limits.MaxSupervisedServices = defaults.MaxSupervisedServices
 	}
 
 	if len(config.SupportedServiceProtocols) == 0 {
@@ -90,6 +98,10 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 
 	if config.ActivationGates == nil {
 		config.ActivationGates = NewActivationGateRegistry()
+	}
+
+	if config.OnLifecycle == nil {
+		config.OnLifecycle = func(LifecycleEvent) {}
 	}
 
 	config.Exec.MaxConcurrentExecTotal = config.Limits.MaxConcurrentExecTotal
@@ -109,12 +121,16 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 	admission := NewAdmission(config.Limits)
 
 	runtime := &RuntimeImpl{
-		exec:            newExecRunner(config.Exec, admission),
-		supervisor:      newSupervisor(config.Supervisor, admission),
-		limits:          config.Limits,
-		protocols:       append([]int(nil), config.SupportedServiceProtocols...),
-		runtimeRoot:     config.RuntimeRoot,
-		activationGates: config.ActivationGates,
+		exec:              newExecRunner(config.Exec, admission),
+		supervisor:        newSupervisor(config.Supervisor, admission),
+		traffic:           NewTrafficGate(),
+		limits:            config.Limits,
+		protocols:         append([]int(nil), config.SupportedServiceProtocols...),
+		now:               config.Supervisor.Now,
+		logger:            config.Supervisor.Logger,
+		runtimeRoot:       config.RuntimeRoot,
+		activationGates:   config.ActivationGates,
+		lifecycleObserver: config.OnLifecycle,
 	}
 	runtime.supervisor.startDesired = runtime.executeDesiredStartup
 
@@ -162,8 +178,8 @@ func (r *RuntimeImpl) executeStartup(plugin *registry.Plugin) {
 	err := r.executeLifecycleOutcome(plugin.Name, OpStarting,
 		func(_ context.Context, control LifecycleControl) error { return control.StartPlugin(plugin) }, outcome)
 
-	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.supervisor.cfg.Logger != nil {
-		r.supervisor.cfg.Logger.Warn("service start deferred", "plugin", plugin.Name, "error", err)
+	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.logger != nil {
+		r.logger.Warn("service start deferred", "plugin", plugin.Name, "error", err)
 	}
 }
 
@@ -180,8 +196,8 @@ func (r *RuntimeImpl) executeDesiredStartup(spec ServiceSpec) {
 			return r.supervisor.startService(concrete.run, spec)
 		}, outcome)
 
-	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.supervisor.cfg.Logger != nil {
-		r.supervisor.cfg.Logger.Warn("service retry deferred", "plugin", spec.PluginID, "error", err)
+	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.logger != nil {
+		r.logger.Warn("service retry deferred", "plugin", spec.PluginID, "error", err)
 	}
 }
 
@@ -197,8 +213,8 @@ func (r *RuntimeImpl) executeReconcileStop(pluginID string, remove bool) {
 	err := r.ExecuteLifecycle(pluginID, op, intent,
 		func(_ context.Context, control LifecycleControl) error { return control.StopService() })
 
-	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.supervisor.cfg.Logger != nil {
-		r.supervisor.cfg.Logger.Warn("service stop deferred", "plugin", pluginID, "error", err)
+	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.logger != nil {
+		r.logger.Warn("service stop deferred", "plugin", pluginID, "error", err)
 	}
 }
 
@@ -220,21 +236,17 @@ func (r *RuntimeImpl) Limits() RuntimeLimitsSnapshot {
 }
 
 func (r *RuntimeImpl) BeginPlatformMaintenance(ctx context.Context) error {
-	if r.platform != nil {
-		r.platform()
-	}
+	r.traffic.BeginPlatformMaintenance()
 
 	return r.supervisor.StopAll(ctx)
 }
 
 func (r *RuntimeImpl) Shutdown(ctx context.Context) error {
-	if r.platform != nil {
-		r.platform()
-	}
+	r.traffic.BeginPlatformMaintenance()
 
 	pluginIDs := r.supervisor.runningPluginIDs()
 	err := r.supervisor.StopAll(ctx)
-	if err == nil && r.lifecycleObserver != nil {
+	if err == nil {
 		for _, pluginID := range pluginIDs {
 			r.lifecycleObserver(LifecycleEvent{Plugin: pluginID, State: LifecycleStopped, Reason: LifecycleReasonShutdown})
 		}
@@ -242,19 +254,6 @@ func (r *RuntimeImpl) Shutdown(ctx context.Context) error {
 
 	return err
 }
-
-func (r *RuntimeImpl) SetLifecycleHooks(closePluginSockets func(string)) {
-	r.closePluginSockets = closePluginSockets
-}
-
-func (r *RuntimeImpl) SetPlatformMaintenanceHook(platform func()) {
-	r.platform = platform
-}
-
-func (r *RuntimeImpl) SetLifecycleObserver(observer LifecycleObserver) {
-	r.lifecycleObserver = observer
-}
-
 func (r *RuntimeImpl) serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
 	spec, ok := serviceSpec(plugin, r.activationGates)
 
@@ -267,12 +266,44 @@ func (r *RuntimeImpl) serviceSpec(plugin *registry.Plugin) (ServiceSpec, bool) {
 	return spec, true
 }
 
-// ExecRunner exposes request execution to the gateway without exposing its
-// admission internals.
-func (r *RuntimeImpl) ExecRunner() *ExecRunner { return r.exec }
+func (r *RuntimeImpl) Traffic() *TrafficGate { return r.traffic }
 
-// Supervisor exposes readiness/socket state to the gateway.
-func (r *RuntimeImpl) Supervisor() *Supervisor { return r.supervisor }
+func (r *RuntimeImpl) Now() time.Time { return r.now() }
+
+func (r *RuntimeImpl) SocketPath(pluginID string) (string, bool) {
+	return r.supervisor.SocketPath(pluginID)
+}
+
+func (r *RuntimeImpl) SupportsProtocol(protocol int) bool {
+	return r.supervisor.SupportsProtocol(protocol)
+}
+
+func (r *RuntimeImpl) SupportedProtocols() []int {
+	return r.supervisor.SupportedProtocols()
+}
+
+func (r *RuntimeImpl) ServeExec(ctx context.Context, request ExecRequest, writer http.ResponseWriter) *httpx.APIError {
+	request.RuntimeDir = runtimeDir(r.exec, request.PluginID)
+
+	return r.exec.Serve(ctx, request, writer)
+}
+
+func runtimeDir(runner *ExecRunner, pluginID string) string {
+	if runner == nil || runner.cfg.RuntimeRoot == "" {
+		return ""
+	}
+
+	paths, err := NewRuntimePaths(runner.cfg.RuntimeRoot, pluginID)
+	if err != nil {
+		return ""
+	}
+
+	if err := paths.Ensure(); err != nil {
+		return ""
+	}
+
+	return paths.PluginDir
+}
 
 // LiveDiagnostics exposes only the bounded service callback used by support
 // diagnostics; service paths and process identity stay inside the backend.

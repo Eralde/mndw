@@ -13,19 +13,6 @@ import (
 )
 
 func (h *Handler) handleRuntime(w http.ResponseWriter, _ *http.Request) {
-	if h.runtime == nil {
-		httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{
-			"maxConcurrentExecTotal":     0,
-			"maxConcurrentExecPerPlugin": 0,
-			"maxSupervisedServices":      0,
-			"currentExec":                0,
-			"reservedServices":           0,
-			"supportedServiceProtocols":  []int{},
-		})
-
-		return
-	}
-
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.runtime.Limits())
 }
 
@@ -34,12 +21,6 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 
 	if apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
-
-		return
-	}
-
-	if h.runtime == nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "backend runtime is unavailable"))
 
 		return
 	}

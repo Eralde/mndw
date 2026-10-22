@@ -43,6 +43,7 @@ func TestManagementLogsAndIgnoresTypedPublishFailure(t *testing.T) {
 		StagingDir:        filepath.Join(root, "staging"),
 		UserPluginsDir:    filepath.Join(root, "plugins"),
 		BuiltinPluginsDir: filepath.Join(root, "builtins"),
+		Runtime:           passthroughRuntime{},
 		EventPublisher:    &failingManagementEventPublisher{err: errors.New("bus unavailable")},
 	}
 	store, err := state.Open(filepath.Join(root, "state", "state.json"))

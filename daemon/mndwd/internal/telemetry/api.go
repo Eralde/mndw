@@ -16,12 +16,12 @@ type Handler struct {
 	annotations      *annotations.Store
 }
 
-func NewHandler(cache *SnapshotCache, gatheringEnabled func() bool, logger *slog.Logger) *Handler {
+func NewHandler(cache *SnapshotCache, gatheringEnabled func() bool, annotationStore *annotations.Store, logger *slog.Logger) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	return &Handler{cache: cache, gatheringEnabled: gatheringEnabled, logger: logger}
+	return &Handler{cache: cache, gatheringEnabled: gatheringEnabled, logger: logger, annotations: annotationStore}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -30,10 +30,6 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	if h.annotations != nil {
 		mux.HandleFunc("GET /api/mndw/telemetry/annotations", h.handleAnnotations)
 	}
-}
-
-func (h *Handler) SetAnnotationStore(store *annotations.Store) {
-	h.annotations = store
 }
 
 func (h *Handler) handleAnnotations(w http.ResponseWriter, _ *http.Request) {

@@ -47,7 +47,7 @@ func TestOpkgList(t *testing.T) {
 
 func TestOpkgContextDerivesFromServiceActionRoot(t *testing.T) {
 	root, cancelRoot := context.WithCancel(context.Background())
-	h := New(Config{ServiceActionRoot: root}, nil, nil, nil, nil, discardLogger())
+	h := New(Config{ServiceActionRoot: root, Runtime: passthroughRuntime{}}, nil, nil, nil, nil, discardLogger())
 
 	ctx, cancel := h.opkgContext()
 

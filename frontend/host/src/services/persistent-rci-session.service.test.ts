@@ -1,4 +1,6 @@
 import {beforeEach, describe, expect, it, vi} from 'vitest';
+import {readFileSync, readdirSync} from 'node:fs';
+import {resolve} from 'node:path';
 
 const {fetchWithDeadline} = vi.hoisted(() => ({
   fetchWithDeadline: vi.fn<(input: RequestInfo | URL, init?: RequestInit, timeoutMs?: number) => Promise<Response>>(),
@@ -14,7 +16,7 @@ import {
 
 const capability = {
   store: {state: 'empty'},
-  controller: {support: 'unknown'},
+  controller: {support: 'unknown', auth: 'unknown', enabled: false},
   extenders: [
     {identity: 'bad', name: 'Bad', eligible: false, reason: 'missing-fqdn'},
     {identity: 'pending', name: 'Pending', eligible: true, state: 'establishing'},
@@ -35,6 +37,62 @@ describe('PersistentRciSessionService', () => {
     await expect(new PersistentRciSessionService().getCapability()).resolves.toEqual(capability);
   });
 
+  it('parses every generated capability fixture', async () => {
+    const directory = resolve(process.cwd(), 'src/services/fixtures/rci-session/capability');
+    const service = new PersistentRciSessionService();
+
+    for (const name of readdirSync(directory).filter((entry) => entry.endsWith('.json'))) {
+      const fixture = JSON.parse(readFileSync(resolve(directory, name), 'utf8')) as unknown;
+
+      fetchWithDeadline.mockResolvedValueOnce(new Response(JSON.stringify(fixture), {status: 200}));
+      await expect(service.getCapability()).resolves.toEqual(fixture);
+    }
+  });
+
+  it('parses tokenless controller capability', async () => {
+    const tokenless = {
+      ...capability,
+      controller: {support: 'supported', auth: 'none', enabled: true},
+    };
+
+    fetchWithDeadline.mockResolvedValue(new Response(JSON.stringify(tokenless), {status: 200}));
+
+    await expect(new PersistentRciSessionService().getCapability()).resolves.toEqual(tokenless);
+  });
+
+  it('rejects capability with unknown auth mode', async () => {
+    fetchWithDeadline.mockResolvedValue(
+      new Response(JSON.stringify({...capability, controller: {support: 'supported', auth: 'basic', enabled: true}}), {
+        status: 200,
+      }),
+    );
+
+    await expect(new PersistentRciSessionService().getCapability()).rejects.toMatchObject({
+      code: 'MALFORMED_RESPONSE',
+    });
+  });
+
+  it('rejects capability without enabled boolean', async () => {
+    fetchWithDeadline.mockResolvedValue(
+      new Response(JSON.stringify({...capability, controller: {support: 'supported', auth: 'none'}}), {status: 200}),
+    );
+
+    await expect(new PersistentRciSessionService().getCapability()).rejects.toMatchObject({
+      code: 'MALFORMED_RESPONSE',
+    });
+  });
+
+  it('accepts needs-token support', async () => {
+    const needsToken = {
+      ...capability,
+      controller: {support: 'needs-token', auth: 'token', enabled: true},
+    };
+
+    fetchWithDeadline.mockResolvedValue(new Response(JSON.stringify(needsToken), {status: 200}));
+
+    await expect(new PersistentRciSessionService().getCapability()).resolves.toEqual(needsToken);
+  });
+
   it('rejects ineligible entries carrying session fields', async () => {
     fetchWithDeadline.mockResolvedValue(
       new Response(
@@ -48,13 +106,26 @@ describe('PersistentRciSessionService', () => {
     await expect(new PersistentRciSessionService().getCapability()).rejects.toMatchObject({code: 'MALFORMED_RESPONSE'});
   });
 
-  it('probes controller token authentication through authenticated controller session', async () => {
-    fetchWithDeadline.mockResolvedValue(new Response(JSON.stringify({probe: {found: true}}), {status: 200}));
-    await expect(new PersistentRciSessionService().probeControllerTokenAuth()).resolves.toBe(true);
-    expect(fetchWithDeadline).toHaveBeenCalledWith('/rci/', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: '{"probe":"authentication token generate"}',
+  it('setEnabled sends PUT with csrf header and body', async () => {
+    fetchWithDeadline.mockResolvedValue(new Response(JSON.stringify({result: 'enabled'}), {status: 200}));
+
+    await new PersistentRciSessionService().setEnabled(true);
+
+    expect(fetchWithDeadline).toHaveBeenCalledWith('/api/mndw/rci-session/enabled', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json', 'X-Mndw-Csrf': '1'},
+      body: '{"enabled":true}',
+    });
+  });
+
+  it('setEnabled maps RCI_AUTH_MODE_MISMATCH', async () => {
+    fetchWithDeadline.mockResolvedValue(
+      new Response(JSON.stringify({error: {code: 'RCI_AUTH_MODE_MISMATCH'}}), {status: 409}),
+    );
+
+    await expect(new PersistentRciSessionService().setEnabled(true)).rejects.toMatchObject({
+      code: 'RCI_AUTH_MODE_MISMATCH',
+      status: 409,
     });
   });
 

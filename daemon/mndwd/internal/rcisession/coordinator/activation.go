@@ -3,7 +3,6 @@ package coordinator
 import (
 	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
-	"mndwd/internal/rcisession/model"
 )
 
 // RegisterActivationGates makes gates consult this coordinator for both
@@ -65,18 +64,6 @@ func (c *Coordinator) ActivationBlockers(pluginName, permission string) []backen
 	}
 
 	return blockers
-}
-
-func (c *Coordinator) SetActivationPoke(poke func()) {
-	c.mu.Lock()
-
-	c.activationPoke = poke
-
-	c.mu.Unlock()
-}
-
-func controllerTokenPresent(document model.Document) bool {
-	return document.Controller != nil && document.Controller.Token != ""
 }
 
 func (c *Coordinator) publishActivationSnapshotLocked(present bool) bool {

@@ -95,26 +95,28 @@ func TestExecuteLifecycleOperationTraits(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			for _, outcome := range []string{"success", "failure"} {
 				t.Run(outcome, func(t *testing.T) {
-					runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+					var events []LifecycleEvent
+					runtime := NewRuntime(RuntimeConfig{
+						RuntimeRoot: t.TempDir(),
+						OnLifecycle: func(event LifecycleEvent) {
+							events = append(events, event)
+						},
+					})
 
 					if testCase.prior != IntentRemove {
 						if err := executeForTest(runtime, "p", OpInstalling, testCase.prior,
 							func(context.Context, LifecycleControl) error { return nil }); err != nil {
 							t.Fatalf("set prior intent: %v", err)
 						}
+
+						events = nil
 					}
 
-					var closed []string
+					closer := &recordingCloser{}
 
-					runtime.SetLifecycleHooks(func(pluginID string) {
-						closed = append(closed, pluginID)
-					})
-
-					var events []LifecycleEvent
-
-					runtime.SetLifecycleObserver(func(event LifecycleEvent) {
-						events = append(events, event)
-					})
+					if _, ok := runtime.Traffic().Track(closer, "p"); !ok {
+						t.Fatal("Track refused connection outside platform maintenance")
+					}
 
 					work := func(context.Context, LifecycleControl) error {
 						if got := runtime.BlocksTraffic("p"); got != testCase.blocksTraffic {
@@ -154,14 +156,14 @@ func TestExecuteLifecycleOperationTraits(t *testing.T) {
 						t.Errorf("success intent = %v, want %v", got, testCase.target)
 					}
 
-					wantClosed := []string(nil)
+					wantCloses := 0
 
 					if testCase.exclusive {
-						wantClosed = []string{"p"}
+						wantCloses = 1
 					}
 
-					if !reflect.DeepEqual(closed, wantClosed) {
-						t.Errorf("closed plugin sockets = %#v, want %#v", closed, wantClosed)
+					if got := len(closer.closeRecords()); got != wantCloses {
+						t.Errorf("socket close count = %d, want %d", got, wantCloses)
 					}
 
 					if !reflect.DeepEqual(events, []LifecycleEvent{testCase.successEvent}) {

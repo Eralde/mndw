@@ -51,7 +51,7 @@ func newRuntimeResolverTestHandler(t *testing.T, resolver RuntimeResolver) (*Han
 		t.Fatalf("store.Mutate: %v", err)
 	}
 
-	cfg := Config{UserPluginsDir: "/user/plugins", RuntimeResolver: resolver}
+	cfg := Config{UserPluginsDir: "/user/plugins", RuntimeResolver: resolver, Runtime: passthroughRuntime{}}
 	handler := New(cfg, store, opkg.New("stub", discardLogger()), nil, emptyBuiltinSource{}, discardLogger())
 
 	return handler, store

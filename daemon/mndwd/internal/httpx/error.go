@@ -70,6 +70,7 @@ const (
 	CodeRCITokenInvalid               = "RCI_TOKEN_INVALID"
 	CodeRCIFirmwareUnsupported        = "RCI_FIRMWARE_UNSUPPORTED"
 	CodeRCIDeviceUnreachable          = "RCI_DEVICE_UNREACHABLE"
+	CodeRCIAuthModeMismatch           = "RCI_AUTH_MODE_MISMATCH"
 	CodeControllerSessionUnavailable  = "CONTROLLER_SESSION_UNAVAILABLE"
 	CodeRCISocketStartFailed          = "RCI_SOCKET_START_FAILED"
 )

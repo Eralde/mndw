@@ -41,6 +41,13 @@ type Store struct {
 	document model.Document
 }
 
+// Disabled returns a store placeholder for configurations where encrypted
+// token storage could not be opened. It still exposes the disabled state to
+// capability callers without pretending persistence is available.
+func Disabled() *Store {
+	return &Store{state: model.StateDisabled, document: emptyDocument()}
+}
+
 func Open(config Config) (*Store, error) {
 	if config.CiphertextFile == "" || config.KeyFile == "" {
 		return nil, fmt.Errorf("persistent RCI store paths are required")

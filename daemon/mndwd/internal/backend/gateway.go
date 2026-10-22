@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -45,21 +44,16 @@ type routeDecision struct {
 }
 
 type Gateway struct {
-	cfg                 GatewayConfig
-	registry            *registry.Registry
-	auth                Authenticator
-	exec                *ExecRunner
-	supervisor          *Supervisor
-	activationGates     *ActivationGateRegistry
-	logger              *slog.Logger
-	activeMu            sync.Mutex
-	activeWS            map[*websocket.Conn]string
-	maintenanceMu       sync.RWMutex
-	trafficBlock        func(string) bool
-	platformMaintenance bool
+	cfg             GatewayConfig
+	registry        *registry.Registry
+	auth            Authenticator
+	runtime         *RuntimeImpl
+	traffic         *TrafficGate
+	activationGates *ActivationGateRegistry
+	logger          *slog.Logger
 }
 
-func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticator, execRunner *ExecRunner, supervisor *Supervisor, logger *slog.Logger) *Gateway {
+func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticator, runtime *RuntimeImpl, logger *slog.Logger) *Gateway {
 	if cfg.MaxRequestBytes <= 0 {
 		cfg.MaxRequestBytes = 1 << 20
 	}
@@ -68,15 +62,20 @@ func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticat
 		cfg.ServiceHTTPTimeout = 30 * time.Second
 	}
 
+	traffic := NewTrafficGate()
+
+	if runtime != nil {
+		traffic = runtime.Traffic()
+	}
+
 	return &Gateway{
 		cfg:             cfg,
 		registry:        registry,
 		auth:            auth,
-		exec:            execRunner,
-		supervisor:      supervisor,
+		runtime:         runtime,
+		traffic:         traffic,
 		activationGates: cfg.ActivationGates,
 		logger:          logger,
-		activeWS:        make(map[*websocket.Conn]string),
 	}
 }
 
@@ -238,7 +237,7 @@ func (g *Gateway) authenticate(writer http.ResponseWriter, request *http.Request
 }
 
 func (g *Gateway) serveExec(writer http.ResponseWriter, request *http.Request, plugin *registry.Plugin, route manifest.BackendRoute) {
-	if g.exec == nil {
+	if g.runtime == nil {
 		g.writeError(writer, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "exec backend is not configured"))
 
 		return
@@ -265,16 +264,15 @@ func (g *Gateway) serveExec(writer http.ResponseWriter, request *http.Request, p
 		return
 	}
 
-	apiErr := g.exec.Serve(request.Context(), ExecRequest{
-		PluginID:   plugin.Name,
-		RouteID:    route.ID,
-		Dir:        plugin.Dir,
-		Command:    validated.Path,
-		RuntimeDir: runtimeDir(g.exec, plugin.Name),
-		Method:     request.Method,
-		Query:      request.URL.RawQuery,
-		Body:       body,
-		Type:       request.Header.Get("Content-Type"),
+	apiErr := g.runtime.ServeExec(request.Context(), ExecRequest{
+		PluginID: plugin.Name,
+		RouteID:  route.ID,
+		Dir:      plugin.Dir,
+		Command:  validated.Path,
+		Method:   request.Method,
+		Query:    request.URL.RawQuery,
+		Body:     body,
+		Type:     request.Header.Get("Content-Type"),
 	}, writer)
 
 	if apiErr != nil {
@@ -290,42 +288,25 @@ func (g *Gateway) validateCommand(plugin *registry.Plugin, relative string) (Val
 	return ValidateCommand(plugin.Dir, relative)
 }
 
-func runtimeDir(runner *ExecRunner, pluginID string) string {
-	if runner == nil || runner.cfg.RuntimeRoot == "" {
-		return ""
-	}
-
-	paths, err := NewRuntimePaths(runner.cfg.RuntimeRoot, pluginID)
-	if err != nil {
-		return ""
-	}
-
-	if err := paths.Ensure(); err != nil {
-		return ""
-	}
-
-	return paths.PluginDir
-}
-
 func (g *Gateway) serveService(writer http.ResponseWriter, request *http.Request, plugin *registry.Plugin, route manifest.BackendRoute) {
-	if g.supervisor == nil {
+	if g.runtime == nil {
 		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendUnavailable, "service backend is unavailable"))
 
 		return
 	}
 
-	if plugin.Manifest.Backend.ProtocolVersion == nil || !g.supervisor.SupportsProtocol(*plugin.Manifest.Backend.ProtocolVersion) {
+	if plugin.Manifest.Backend.ProtocolVersion == nil || !g.runtime.SupportsProtocol(*plugin.Manifest.Backend.ProtocolVersion) {
 		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendIncompatible, "service backend protocol is unsupported"))
 
 		return
 	}
 
-	status := g.supervisor.Status(plugin.Name)
+	status := g.runtime.Status(plugin.Name)
 
 	if status.State != StateReady {
 		if status.State == StateStarting || status.State == StateBackoff {
 			if status.NextAttemptAt != nil {
-				seconds := int(time.Until(*status.NextAttemptAt).Seconds())
+				seconds := int(status.NextAttemptAt.Sub(g.runtime.Now()).Seconds())
 
 				if seconds < 1 {
 					seconds = 1
@@ -344,7 +325,7 @@ func (g *Gateway) serveService(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
-	socketPath, ok := g.supervisor.SocketPath(plugin.Name)
+	socketPath, ok := g.runtime.SocketPath(plugin.Name)
 
 	if !ok {
 		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendUnavailable, "service backend is unavailable"))
@@ -372,13 +353,13 @@ func (g *Gateway) handleWebSocket(writer http.ResponseWriter, request *http.Requ
 
 	plugin, route := decision.plugin, decision.route
 
-	if g.supervisor == nil || g.supervisor.Status(plugin.Name).State != StateReady {
+	if g.runtime == nil || g.runtime.Status(plugin.Name).State != StateReady {
 		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendUnavailable, "service backend is unavailable"))
 
 		return
 	}
 
-	socketPath, ok := g.supervisor.SocketPath(plugin.Name)
+	socketPath, ok := g.runtime.SocketPath(plugin.Name)
 
 	if !ok {
 		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendUnavailable, "service backend is unavailable"))
@@ -433,44 +414,17 @@ func (g *Gateway) handleWebSocket(writer http.ResponseWriter, request *http.Requ
 
 	defer clientConn.CloseNow()
 
-	g.trackWebSocket(clientConn, plugin.Name)
+	untrack, admitted := g.admitWebSocket(clientConn, plugin.Name)
 
-	defer g.untrackWebSocket(clientConn)
+	if !admitted {
+		return
+	}
+
+	defer untrack()
 
 	clientConn.SetReadLimit(32 << 20)
 	upstream.SetReadLimit(32 << 20)
 	proxyWebSocket(request.Context(), clientConn, upstream)
-}
-
-// ClosePluginSockets ends browser streams before a plugin update/disable stops
-// its service. The close code/reason are stable so terminal-like clients can
-// render an explicit reconnect action without silently resuming a session.
-func (g *Gateway) ClosePluginSockets(pluginID string) {
-	g.closeSockets(func(id string) bool { return id == pluginID })
-}
-
-func (g *Gateway) CloseAllSockets() {
-	g.closeSockets(func(string) bool { return true })
-}
-
-// SetTrafficBlockPredicate installs the lifecycle coordinator traffic gate.
-func (g *Gateway) SetTrafficBlockPredicate(predicate func(string) bool) {
-	g.maintenanceMu.Lock()
-
-	g.trafficBlock = predicate
-
-	g.maintenanceMu.Unlock()
-}
-
-// BeginPlatformMaintenance applies the same gate to every backend during
-// daemon shutdown or package replacement.
-func (g *Gateway) BeginPlatformMaintenance() {
-	g.maintenanceMu.Lock()
-
-	g.platformMaintenance = true
-
-	g.maintenanceMu.Unlock()
-	g.CloseAllSockets()
 }
 
 func (g *Gateway) isMaintenance(pluginID string) bool {
@@ -480,27 +434,13 @@ func (g *Gateway) isMaintenance(pluginID string) bool {
 // isPlatformMaintenance reports the coarse gate applied to every backend during
 // daemon shutdown or package replacement.
 func (g *Gateway) isPlatformMaintenance() bool {
-	g.maintenanceMu.RLock()
-
-	defer g.maintenanceMu.RUnlock()
-
-	return g.platformMaintenance
+	return g.traffic != nil && g.traffic.PlatformMaintenance()
 }
 
 // pluginTrafficBlocked reports the per-plugin lifecycle traffic gate, which is
 // held only while a plugin is stopping, restarting, or otherwise mid-operation.
 func (g *Gateway) pluginTrafficBlocked(pluginID string) bool {
-	g.maintenanceMu.RLock()
-
-	predicate := g.trafficBlock
-
-	g.maintenanceMu.RUnlock()
-
-	if predicate == nil {
-		return false
-	}
-
-	return predicate(pluginID)
+	return g.runtime != nil && g.runtime.BlocksTraffic(pluginID)
 }
 
 // activationBlockers returns the unmet activation prerequisites for a plugin's
@@ -519,36 +459,18 @@ func (g *Gateway) activationBlockers(plugin *registry.Plugin) []ActivationBlocke
 	return g.activationGates.Evaluate(plugin.Name, plugin.Manifest.Permissions)
 }
 
-func (g *Gateway) trackWebSocket(connection *websocket.Conn, pluginID string) {
-	g.activeMu.Lock()
+func (g *Gateway) admitWebSocket(connection socketCloser, pluginID string) (func(), bool) {
+	untrack, ok := g.traffic.Track(connection, pluginID)
 
-	g.activeWS[connection] = pluginID
+	if !ok || g.pluginTrafficBlocked(pluginID) {
+		untrack()
 
-	g.activeMu.Unlock()
-}
-
-func (g *Gateway) untrackWebSocket(connection *websocket.Conn) {
-	g.activeMu.Lock()
-	delete(g.activeWS, connection)
-	g.activeMu.Unlock()
-}
-
-func (g *Gateway) closeSockets(keep func(string) bool) {
-	g.activeMu.Lock()
-
-	connections := make([]*websocket.Conn, 0, len(g.activeWS))
-
-	for connection, pluginID := range g.activeWS {
-		if keep(pluginID) {
-			connections = append(connections, connection)
-		}
-	}
-
-	g.activeMu.Unlock()
-
-	for _, connection := range connections {
 		_ = connection.Close(websocket.StatusServiceRestart, "mndw updating")
+
+		return func() {}, false
 	}
+
+	return untrack, true
 }
 
 func proxyWebSocket(ctx context.Context, client, upstream *websocket.Conn) {

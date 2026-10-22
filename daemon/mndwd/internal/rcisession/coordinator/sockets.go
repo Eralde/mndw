@@ -13,6 +13,10 @@ import (
 )
 
 func (c *Coordinator) ReconcileSockets() {
+	c.reconcileSockets(true)
+}
+
+func (c *Coordinator) reconcileSockets(pokeActivation bool) {
 	c.mu.Lock()
 
 	report, changed, err := c.reconcileSocketsLocked()
@@ -28,7 +32,7 @@ func (c *Coordinator) ReconcileSockets() {
 		c.serviceLogger().Error("persistent RCI socket start failed", "plugin", plugin, "reason", "reconcile")
 	}
 
-	if changed && poke != nil {
+	if pokeActivation && changed && poke != nil {
 		poke()
 	}
 }
@@ -38,9 +42,7 @@ func (c *Coordinator) ControllerPermissionAvailable() bool {
 		return false
 	}
 
-	_, document := c.service.Capability()
-
-	return document.Controller != nil && document.Controller.Support == model.SupportSupported
+	return c.service.ControllerSupport() == model.SupportSupported
 }
 
 func (c *Coordinator) PermissionChanged(plugin string) error {
@@ -103,8 +105,7 @@ func (c *Coordinator) reconcileSocketsLocked() (rcisessionsocket.ReconcileReport
 		}
 	}
 
-	_, document := c.service.Capability()
-	present := controllerTokenPresent(document)
+	present := c.service.SessionPresent()
 
 	report, err := c.reconciler.Reconcile(context.Background(), bindings, present)
 	changed := c.publishActivationSnapshotLocked(present)

@@ -18,8 +18,8 @@ import (
 
 func TestProjectBackendStatusMapsLifecycleAndRuntimeStates(t *testing.T) {
 	now := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
-	supervisor := newStatusTestSupervisor(now)
-	gateway := &Gateway{supervisor: supervisor, activationGates: NewActivationGateRegistry()}
+	runtime := newStatusTestRuntime(now)
+	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic(), activationGates: NewActivationGateRegistry()}
 
 	service := statusTestPlugin(t, "demo", manifest.BackendKindService, 1, state.ApprovalApproved, true, nil)
 	exec := statusTestPlugin(t, "exec", manifest.BackendKindExec, 0, state.ApprovalApproved, true, nil)
@@ -45,15 +45,13 @@ func TestProjectBackendStatusMapsLifecycleAndRuntimeStates(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			supervisor.services = make(map[string]*serviceRecord)
+			runtime.supervisor.services = make(map[string]*serviceRecord)
 
 			if test.status.State != "" {
-				supervisor.services[test.plugin.Name] = &serviceRecord{status: test.status}
+				runtime.supervisor.services[test.plugin.Name] = &serviceRecord{status: test.status}
 			}
 
-			gateway.SetTrafficBlockPredicate(func(pluginID string) bool {
-				return test.maintenance && pluginID == test.plugin.Name
-			})
+			setTrafficBlockedForTest(runtime, test.plugin.Name, test.maintenance)
 
 			got := gateway.projectBackendStatus(test.plugin, now)
 
@@ -70,8 +68,8 @@ func TestProjectBackendStatusMapsLifecycleAndRuntimeStates(t *testing.T) {
 
 func TestProjectBackendStatusUsesLifecyclePrecedenceAndStaticCompatibility(t *testing.T) {
 	now := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
-	supervisor := newStatusTestSupervisor(now)
-	gateway := &Gateway{supervisor: supervisor, activationGates: NewActivationGateRegistry()}
+	runtime := newStatusTestRuntime(now)
+	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic(), activationGates: NewActivationGateRegistry()}
 
 	disabled := statusTestPlugin(t, "disabled", manifest.BackendKindService, 2, state.ApprovalApproved, false, nil)
 	notApproved := statusTestPlugin(t, "pending", manifest.BackendKindService, 2, state.ApprovalPending, true, nil)
@@ -88,9 +86,7 @@ func TestProjectBackendStatusUsesLifecyclePrecedenceAndStaticCompatibility(t *te
 		{name: "incompatible", plugin: incompatible, wantState: "incompatible"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			gateway.SetTrafficBlockPredicate(func(pluginID string) bool {
-				return test.maintenance && pluginID == test.plugin.Name
-			})
+			setTrafficBlockedForTest(runtime, test.plugin.Name, test.maintenance)
 
 			got := gateway.projectBackendStatus(test.plugin, now)
 
@@ -187,7 +183,7 @@ func TestStatusHandlerAuthenticatesBeforeResolutionAndSanitizesResponse(t *testi
 	statusTestStoreBackendless(t, store, "backendless")
 
 	auth := &statusTestAuthenticator{err: httpx.NewError(http.StatusUnauthorized, httpx.CodeUnauthorized, "unauthorized")}
-	gateway := NewGateway(GatewayConfig{}, registry, auth, nil, nil, nil)
+	gateway := NewGateway(GatewayConfig{}, registry, auth, nil, nil)
 	mux := http.NewServeMux()
 
 	gateway.Register(mux)
@@ -286,11 +282,23 @@ func statusTestStoreBackendless(t *testing.T, store *state.Store, name string) {
 	}
 }
 
-func newStatusTestSupervisor(now time.Time) *Supervisor {
-	return newSupervisor(SupervisorConfig{
-		SupportedProtocols: []int{1},
-		Now:                func() time.Time { return now },
-	}, NewAdmission(Limits{MaxSupervisedServices: 1}))
+func newStatusTestRuntime(now time.Time) *RuntimeImpl {
+	return NewRuntime(RuntimeConfig{
+		SupportedServiceProtocols: []int{1},
+		Supervisor:                SupervisorConfig{Now: func() time.Time { return now }},
+	})
+}
+
+func setTrafficBlockedForTest(runtime *RuntimeImpl, pluginID string, blocked bool) {
+	runtime.supervisor.withLock(func() {
+		if !blocked {
+			delete(runtime.supervisor.coord.records, pluginID)
+
+			return
+		}
+
+		runtime.supervisor.coord.records[pluginID] = &transition{intent: IntentStop}
+	})
 }
 
 func statusTestPlugin(t *testing.T, name string, kind manifest.BackendKind, protocol int, approval state.Approval, enabled bool, permissions []string) *registry.Plugin {

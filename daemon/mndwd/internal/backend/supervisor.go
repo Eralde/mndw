@@ -77,8 +77,18 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 }
 
 func normalizeSupervisorConfig(cfg SupervisorConfig) SupervisorConfig {
+	defaults := DefaultLimits()
+
+	if cfg.Limits.MaxConcurrentExecTotal <= 0 {
+		cfg.Limits.MaxConcurrentExecTotal = defaults.MaxConcurrentExecTotal
+	}
+
+	if cfg.Limits.MaxConcurrentExecPerPlugin <= 0 {
+		cfg.Limits.MaxConcurrentExecPerPlugin = defaults.MaxConcurrentExecPerPlugin
+	}
+
 	if cfg.Limits.MaxSupervisedServices <= 0 {
-		cfg.Limits.MaxSupervisedServices = 8
+		cfg.Limits.MaxSupervisedServices = defaults.MaxSupervisedServices
 	}
 
 	if cfg.ReadinessTimeout <= 0 {

@@ -11,6 +11,28 @@ import (
 	"mndwd/internal/registry"
 )
 
+func TestDefaultLimits(t *testing.T) {
+	if got, want := DefaultLimits(), (Limits{
+		MaxConcurrentExecTotal:     8,
+		MaxConcurrentExecPerPlugin: 4,
+		MaxSupervisedServices:      8,
+	}); got != want {
+		t.Fatalf("DefaultLimits() = %+v, want %+v", got, want)
+	}
+}
+
+func TestNewExecRunnerUsesDefaultLimits(t *testing.T) {
+	runner := NewExecRunner(ExecRunnerConfig{})
+	defaults := DefaultLimits()
+
+	if runner.cfg.MaxConcurrentExecTotal != defaults.MaxConcurrentExecTotal ||
+		runner.cfg.MaxConcurrentExecPerPlugin != defaults.MaxConcurrentExecPerPlugin {
+		t.Fatalf("exec runner limits = total:%d plugin:%d, want total:%d plugin:%d",
+			runner.cfg.MaxConcurrentExecTotal, runner.cfg.MaxConcurrentExecPerPlugin,
+			defaults.MaxConcurrentExecTotal, defaults.MaxConcurrentExecPerPlugin)
+	}
+}
+
 func TestRuntimePathsAreDeterministicAndPrivate(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "plugin-runtime")
 	paths, err := NewRuntimePaths(root, "demo-plugin")

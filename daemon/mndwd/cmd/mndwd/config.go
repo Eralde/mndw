@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"mndwd/internal/backend"
 	"mndwd/internal/pluginruntime"
 	"mndwd/internal/rcisession"
 	"mndwd/internal/rcisession/coordinator"
@@ -195,9 +196,12 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.DurationVar(&cfg.FinalReapTimeout, "final-reap-timeout", 2*time.Second, "final process group reap timeout")
 	fs.DurationVar(&cfg.InitWaitTimeout, "init-wait-timeout", 60*time.Second, "init readiness wait timeout")
 	fs.Int64Var(&cfg.MaxRequestBytes, "max-request-bytes", 1<<20, "max backend request body size in bytes")
-	fs.IntVar(&cfg.MaxConcurrentExecTotal, "max-concurrent-exec-total", 8, "global max concurrent exec requests")
-	fs.IntVar(&cfg.MaxConcurrentExecPerPlugin, "max-concurrent-exec-per-plugin", 4, "per-plugin max concurrent exec requests")
-	fs.IntVar(&cfg.MaxSupervisedServices, "max-supervised-services", 8, "global max supervised services")
+
+	defaults := backend.DefaultLimits()
+
+	fs.IntVar(&cfg.MaxConcurrentExecTotal, "max-concurrent-exec-total", defaults.MaxConcurrentExecTotal, "global max concurrent exec requests")
+	fs.IntVar(&cfg.MaxConcurrentExecPerPlugin, "max-concurrent-exec-per-plugin", defaults.MaxConcurrentExecPerPlugin, "per-plugin max concurrent exec requests")
+	fs.IntVar(&cfg.MaxSupervisedServices, "max-supervised-services", defaults.MaxSupervisedServices, "global max supervised services")
 	fs.DurationVar(&cfg.RCIEnumerationTTL, "rci-enumeration-ttl", 30*time.Second, "persistent RCI member enumeration cache TTL")
 	fs.DurationVar(&cfg.RCIHeartbeatInterval, "rci-heartbeat-interval", defaultRCIHeartbeatInterval, "persistent RCI session heartbeat interval")
 	fs.DurationVar(&cfg.RCIProxyIdleTimeout, "rci-proxy-idle-timeout", 2*time.Minute, "persistent RCI socket idle timeout")
@@ -240,9 +244,12 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 		return cfg, false, err
 	}
 
-	if err := validateControllerURL(cfg.ControllerURL); err != nil {
+	controllerURL, err := rcisession.ValidateControllerURLShape(cfg.ControllerURL)
+	if err != nil {
 		return cfg, false, err
 	}
+
+	cfg.ControllerURL = strings.TrimRight(controllerURL.String(), "/")
 
 	if !cfg.Dev && !isLoopbackControllerURL(cfg.ControllerURL) {
 		return cfg, false, fmt.Errorf("remote HTTP controller URL is not permitted outside --dev mode")

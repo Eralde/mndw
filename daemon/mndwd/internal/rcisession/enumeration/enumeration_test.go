@@ -195,9 +195,10 @@ func TestHTTPSourceUsesConfiguredControllerURL(t *testing.T) {
 		Header: make(http.Header),
 	}}
 	source := HTTPSource{
-		Client:          &http.Client{Transport: transport},
-		ControllerURL:   "http://192.168.1.1:80",
-		ControllerToken: func() string { return "controller-token" },
+		Client: &http.Client{Transport: transport},
+		CaptureController: func() ControllerSnapshot {
+			return ControllerSnapshot{BaseURL: "http://192.168.1.1:80", Token: "controller-token", Active: true}
+		},
 	}
 
 	members, err := source.Enumerate(context.Background())
@@ -229,9 +230,10 @@ func TestHTTPSourceEnumerateAcceptsRawMemberArray(t *testing.T) {
 		Header: make(http.Header),
 	}}
 	source := HTTPSource{
-		Client:          &http.Client{Transport: transport},
-		ControllerURL:   "http://192.168.1.1:80",
-		ControllerToken: func() string { return "controller-token" },
+		Client: &http.Client{Transport: transport},
+		CaptureController: func() ControllerSnapshot {
+			return ControllerSnapshot{BaseURL: "http://192.168.1.1:80", Token: "controller-token", Active: true}
+		},
 	}
 
 	members, err := source.Enumerate(context.Background())
@@ -260,7 +262,7 @@ func TestHTTPSourceReturnsCapturedControllerEpochOnUnauthorized(t *testing.T) {
 	source := HTTPSource{
 		Client: &http.Client{Transport: &enumerationRoundTripper{response: &http.Response{StatusCode: http.StatusUnauthorized, Body: io.NopCloser(strings.NewReader("{}")), Header: make(http.Header)}}},
 		CaptureController: func() ControllerSnapshot {
-			return ControllerSnapshot{BaseURL: "http://192.0.2.1", Token: "controller", Epoch: 7}
+			return ControllerSnapshot{Active: true, BaseURL: "http://192.0.2.1", Token: "controller", Epoch: 7}
 		},
 	}
 	_, err := source.Enumerate(context.Background())
@@ -280,13 +282,43 @@ func TestHTTPSourceDropsSuccessfulResponseFromStaleEpoch(t *testing.T) {
 	source := HTTPSource{
 		Client: &http.Client{Transport: transport},
 		CaptureController: func() ControllerSnapshot {
-			return ControllerSnapshot{BaseURL: "http://192.0.2.1", Token: "controller", Epoch: 7}
+			return ControllerSnapshot{Active: true, BaseURL: "http://192.0.2.1", Token: "controller", Epoch: 7}
 		},
 		CurrentEpoch: func() uint64 { return 8 },
 	}
 	_, err := source.Enumerate(context.Background())
 	if !errors.Is(err, ErrStaleResult) {
 		t.Fatalf("error = %v, want stale result", err)
+	}
+}
+
+func TestHTTPSourceTokenlessActiveSnapshot(t *testing.T) {
+	transport := &enumerationRoundTripper{response: &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`[{"cid":"node-1","mac":"aa:bb:cc:dd:ee:ff"}]`)),
+		Header:     make(http.Header),
+	}}
+	source := HTTPSource{
+		Client: &http.Client{Transport: transport},
+		CaptureController: func() ControllerSnapshot {
+			return ControllerSnapshot{Active: true, BaseURL: "http://192.0.2.1"}
+		},
+	}
+
+	if _, err := source.Enumerate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := transport.request.Header.Get("X-Ndma-Tkn"); got != "" {
+		t.Fatalf("tokenless enumeration sent token header %q", got)
+	}
+
+	source.CaptureController = func() ControllerSnapshot {
+		return ControllerSnapshot{BaseURL: "http://192.0.2.1"}
+	}
+
+	if _, err := source.Enumerate(context.Background()); err == nil || err.Error() != "controller session unavailable" {
+		t.Fatalf("inactive snapshot error = %v", err)
 	}
 }
 

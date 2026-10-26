@@ -1,16 +1,30 @@
 import {afterEach, describe, expect, it} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
-import type {PluginBackendDescriptor} from '../../../runtime/plugin-types.js';
+import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {setLocale} from '../../../services/locale.service.js';
 import CapabilityReview from './CapabilityReview.svelte';
 
-function mountReview(descriptor: PluginBackendDescriptor): {component: ReturnType<typeof mount>; target: HTMLElement} {
+const baseEntry: PluginListEntry = {
+  name: 'review-test',
+  type: 'widget',
+  version: '1.0.0',
+  label: 'Review test',
+  entry: 'index.js',
+  source: 'upload',
+  approval: 'pending',
+  enabled: false,
+  depsStatus: 'ready',
+  backend: {routes: {}},
+  size: {w: 4, h: 3},
+};
+
+function mountReview(entry: PluginListEntry): {component: ReturnType<typeof mount>; target: HTMLElement} {
   const target = document.createElement('div');
 
   document.body.appendChild(target);
 
-  const component = mount(CapabilityReview, {target, props: {descriptor}});
+  const component = mount(CapabilityReview, {target, props: {entry}});
 
   flushSync();
 
@@ -24,11 +38,14 @@ describe('CapabilityReview', () => {
 
   it('renders declared route values', () => {
     const {component, target} = mountReview({
-      routes: {
-        status: {transport: 'http', method: 'GET', path: 'status'},
-        restart: {transport: 'http', method: 'POST', path: 'restart'},
-        events: {transport: 'websocket', path: 'events', protocols: ['json', 'cbor']},
-        logs: {transport: 'websocket', path: 'logs'},
+      ...baseEntry,
+      backend: {
+        routes: {
+          status: {transport: 'http', method: 'GET', path: 'status'},
+          restart: {transport: 'http', method: 'POST', path: 'restart'},
+          events: {transport: 'websocket', path: 'events', protocols: ['json', 'cbor']},
+          logs: {transport: 'websocket', path: 'logs'},
+        },
       },
     });
 
@@ -42,7 +59,8 @@ describe('CapabilityReview', () => {
 
   it('updates capability labels after a locale commit', async () => {
     const {component, target} = mountReview({
-      routes: {status: {transport: 'http', method: 'GET', path: 'status'}},
+      ...baseEntry,
+      backend: {routes: {status: {transport: 'http', method: 'GET', path: 'status'}}},
     });
 
     try {
@@ -59,11 +77,49 @@ describe('CapabilityReview', () => {
   });
 
   it('renders no route section for an empty descriptor', () => {
-    const {component, target} = mountReview({
-      routes: {},
-    });
+    const {component, target} = mountReview(baseEntry);
 
     expect(target.textContent).not.toContain('Routes');
+
+    void unmount(component);
+  });
+});
+
+describe('CapabilityReview capability summary', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('renders backend kind, packages, args, public routes, and permissions', () => {
+    const {component, target} = mountReview({
+      ...baseEntry,
+      review: {kind: 'service', packages: ['ttyd'], args: ['--foreground'], publicRoutes: ['health']},
+      permissions: ['persistent-rci-session:read'],
+      backend: {routes: {health: {transport: 'http', method: 'GET', path: 'health'}}},
+    });
+
+    expect(target.textContent).toContain('Runs a resident background process as root');
+    expect(target.textContent).toContain('ttyd');
+    expect(target.textContent).toContain('--foreground');
+    expect(target.textContent).toContain('Public routes');
+    expect(target.textContent).toContain('health');
+    expect(target.textContent).toContain('persistent-rci-session:read');
+
+    void unmount(component);
+  });
+
+  it('omits sections the plugin does not declare', () => {
+    const {component, target} = mountReview({
+      ...baseEntry,
+      review: {kind: 'exec'},
+      backend: {routes: {run: {transport: 'http', method: 'GET', path: 'run'}}},
+    });
+
+    expect(target.textContent).toContain('Runs commands as root on each request');
+    expect(target.textContent).not.toContain('Installs packages');
+    expect(target.textContent).not.toContain('Service arguments');
+    expect(target.textContent).not.toContain('Public routes');
+    expect(target.textContent).not.toContain('Permissions');
 
     void unmount(component);
   });

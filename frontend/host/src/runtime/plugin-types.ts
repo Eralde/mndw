@@ -1,6 +1,7 @@
 export type {
   DepsStatus,
   PageListEntry,
+  PluginApprovalReview,
   PluginBackendDescriptor,
   PluginListEntry,
   WidgetListEntry,

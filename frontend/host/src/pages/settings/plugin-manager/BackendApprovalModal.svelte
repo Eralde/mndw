@@ -17,7 +17,7 @@ let {entry, close}: Props = $props();
     ({entry.name}) {hostT('settings.backend-approval-declaration')}
   </p>
 
-  <CapabilityReview descriptor={entry.backend} />
+  <CapabilityReview {entry} />
 
   <div class="mndw-approval__actions">
     <mndw-button

@@ -45,7 +45,7 @@ let {
           <span>{item.name}</span>
         </div>
 
-        <CapabilityReview descriptor={item.backend} />
+        <CapabilityReview entry={item} />
 
         {#if row !== undefined && row.message !== ''}
           <div

@@ -11,6 +11,12 @@ const sourceSchema = z.enum(['builtin', 'registry', 'upload']);
 const approvalSchema = z.enum(['pending', 'approved']);
 const depsStatusSchema = z.enum(['ready', 'installing', 'failed']);
 const runtimeStateSchema = z.enum(['stopped', 'capacity_blocked', 'starting', 'ready', 'backoff', 'failed']);
+const approvalReviewSchema = z.object({
+  kind: z.enum(['exec', 'service']),
+  packages: z.array(z.string()).optional(),
+  args: z.array(z.string()).optional(),
+  publicRoutes: z.array(z.string()).optional(),
+});
 const grantPermissionSchema = z.record(z.string(), z.boolean()).superRefine((grants, ctx) => {
   for (const permission of Object.keys(grants)) {
     if (!isPersistentRciPermission(permission)) {
@@ -70,6 +76,7 @@ const baseFields = {
   permissionGrants: grantPermissionSchema.optional(),
   depsStatus: depsStatusSchema,
   backend: backendDescriptorSchema,
+  review: approvalReviewSchema.optional(),
   i18n: i18nSchema.optional(),
   // Host-populated after decode; omitted by daemon wire responses but required by the loader.
   catalogBaseUrl: z.string().optional(),
@@ -96,6 +103,7 @@ export const mgmtListSchema = z.object({plugins: z.array(pluginListEntrySchema)}
 export type DepsStatus = z.infer<typeof depsStatusSchema>;
 /** Daemon wire-shape descriptor; the SDK `BackendDescriptor` is host-assembled input. */
 export type PluginBackendDescriptor = z.infer<typeof backendDescriptorSchema>;
+export type PluginApprovalReview = z.infer<typeof approvalReviewSchema>;
 export type WidgetListEntry = z.infer<typeof widgetListEntrySchema>;
 export type PageListEntry = z.infer<typeof pageListEntrySchema>;
 export type PluginListEntry = z.infer<typeof pluginListEntrySchema>;

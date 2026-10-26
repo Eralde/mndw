@@ -262,6 +262,13 @@ function onDrop(event: DragEvent): void {
 </script>
 
 <div class="mndw-upload">
+  <div
+    class="mndw-alert mndw-alert--warning"
+    role="note"
+  >
+    {hostT('settings.plugin-manager.upload-trust-warning')}
+  </div>
+
   <label
     class="mndw-upload__zone"
     ondragover={(event) => event.preventDefault()}

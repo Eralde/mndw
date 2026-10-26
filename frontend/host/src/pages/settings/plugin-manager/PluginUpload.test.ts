@@ -76,6 +76,17 @@ describe('PluginUpload', () => {
     document.body.innerHTML = '';
   });
 
+  it('warns that plugins get full administrator access before upload', () => {
+    const {component, target} = mountUpload();
+    const warning = target.querySelector('[role="note"]');
+
+    expect(warning).not.toBeNull();
+    expect(warning?.textContent).toContain('full administrator access');
+    expect(warning?.classList.contains('mndw-alert--warning')).toBe(true);
+
+    void unmount(component);
+  });
+
   it('rejects a non-ZIP drop without uploading', async () => {
     const uploadFile = vi.fn();
     const {component, target} = mountUpload({uploadFile});

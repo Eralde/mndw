@@ -1,17 +1,55 @@
 <script lang="ts">
-import type {PluginBackendDescriptor} from '../../../runtime/plugin-types.js';
+import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
 
 interface Props {
-  descriptor: PluginBackendDescriptor;
+  entry: PluginListEntry;
 }
 
-let {descriptor}: Props = $props();
+let {entry}: Props = $props();
 
-let routes = $derived(Object.entries(descriptor.routes ?? {}));
+let routes = $derived(Object.entries(entry.backend.routes ?? {}));
+let packages = $derived(entry.review?.packages ?? []);
+let args = $derived(entry.review?.args ?? []);
+let publicRoutes = $derived(entry.review?.publicRoutes ?? []);
+let permissions = $derived(entry.permissions ?? []);
 </script>
 
 <div class="mndw-cap">
+  {#if entry.review !== undefined}
+    <p class="mndw-cap__kind">
+      {
+        hostT(
+          entry.review.kind === 'service'
+            ? 'settings.plugin-manager.backend-kind-service'
+            : 'settings.plugin-manager.backend-kind-exec',
+        )
+      }
+    </p>
+  {/if}
+
+  {#if packages.length > 0}
+    <section class="mndw-cap__section">
+      <h4>{hostT('settings.plugin-manager.packages')}</h4>
+      <ul>
+        {#each packages as packageName (packageName)}
+          <li>{packageName}</li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
+
+  {#if args.length > 0}
+    <section class="mndw-cap__section">
+      <h4>{hostT('settings.plugin-manager.service-args')}</h4>
+      <ul>
+        {#each args as arg, index (`${index}:${arg}`)}
+          <li>{arg}</li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
+
   {#if routes.length > 0}
     <section class="mndw-cap__section">
       <h4>{hostT('settings.plugin-manager.routes')}</h4>
@@ -32,6 +70,28 @@ let routes = $derived(Object.entries(descriptor.routes ?? {}));
       </ul>
     </section>
   {/if}
+
+  {#if publicRoutes.length > 0}
+    <section class="mndw-cap__section">
+      <h4>{hostT('settings.plugin-manager.public-routes')}</h4>
+      <ul>
+        {#each publicRoutes as routeId (routeId)}
+          <li>{routeId}</li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
+
+  {#if permissions.length > 0}
+    <section class="mndw-cap__section">
+      <h4>{hostT('settings.plugin-manager.permissions')}</h4>
+      <ul>
+        {#each permissions as permission (permission)}
+          <li>{permission}</li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
 </div>
 
 <style>
@@ -47,6 +107,10 @@ let routes = $derived(Object.entries(descriptor.routes ?? {}));
 .mndw-cap__section {
   display: grid;
   gap: var(--mndw-space-1);
+}
+
+.mndw-cap__kind {
+  margin: 0;
 }
 
 .mndw-cap h4 {

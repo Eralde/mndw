@@ -1,0 +1,27 @@
+{
+  "title": "Device description",
+  "field": {
+    "label": "Device description",
+    "placeholder": "Enter a device description"
+  },
+  "action": {
+    "save": "Save",
+    "restore": "Restore original",
+    "retry": "Retry"
+  },
+  "status": {
+    "loading": "Loading device description…",
+    "saving": "Saving device description…",
+    "loaded": "Device description loaded.",
+    "saved": "Device description confirmed by device."
+  },
+  "validation": {
+    "empty": "Enter a non-empty device description.",
+    "too-long": "Description must be 64 characters or fewer."
+  },
+  "error": {
+    "load": "Could not load the device description.",
+    "save": "Could not save the device description.",
+    "restore-empty": "No non-empty original value is available to restore."
+  }
+}

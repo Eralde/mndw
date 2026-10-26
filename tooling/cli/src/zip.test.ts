@@ -25,6 +25,25 @@ function scaffold(dir: string, manifest: Record<string, unknown>): void {
   writeFileSync(join(dir, 'src', 'index.ts'), 'export const createInstance = () => ({unmount() {}});\n');
 }
 
+function findCentralDirectoryEntry(archive: Uint8Array, name: string): DataView {
+  const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+
+  for (let offset = 0; offset + 46 <= archive.length; offset += 1) {
+    if (view.getUint32(offset, true) !== 0x02014b50) {
+      continue;
+    }
+
+    const fileNameLength = view.getUint16(offset + 28, true);
+    const fileName = new TextDecoder().decode(archive.subarray(offset + 46, offset + 46 + fileNameLength));
+
+    if (fileName === name) {
+      return new DataView(archive.buffer, archive.byteOffset + offset, archive.byteLength - offset);
+    }
+  }
+
+  throw new Error(`ZIP central directory entry not found: ${name}`);
+}
+
 describe('zipDirectory', () => {
   let dir: string;
 
@@ -49,6 +68,16 @@ describe('zipDirectory', () => {
 
     expect(names).toEqual(['backend/server.sh', 'index.js', 'manifest.json']);
     expect(names).not.toContain('.DS_Store');
+  });
+
+  it('preserves executable permissions for Unix archive entries', () => {
+    mkdirSync(join(dir, 'backend'), {recursive: true});
+    writeFileSync(join(dir, 'backend', 'server.sh'), '#!/bin/sh\n', {mode: 0o755});
+
+    const entry = findCentralDirectoryEntry(zipDirectory(dir), 'backend/server.sh');
+
+    expect(Math.floor(entry.getUint16(4, true) / 256)).toBe(3);
+    expect(entry.getUint16(40, true) % 0o1000).toBe(0o755);
   });
 });
 

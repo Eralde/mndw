@@ -61,9 +61,9 @@ that exposes HTTP/WebSocket routes. Frontends call declared routes through
 `context.backend.fetch(id)` or `context.backend.socket(id)`. Backend processes
 require approval and run with daemon/device privileges.
 
-See the [plugin author guide](docs/plugin-author-guide.md) for exec backends
-and the [service backend guide](docs/service-backend.md) for service manifests,
-socket readiness, lifecycle, and security details.
+Start with the [plugin author docs](docs/plugin-author/index.md) for tutorials
+and reusable guides. See the [service backend guide](docs/service-backend.md)
+for service manifests, socket readiness, lifecycle, and security details.
 
 ## IPK build
 
@@ -115,7 +115,7 @@ docs/               documentation
 
 [Host application](docs/host-app.md) <br/>
 [Plugin system](docs/plugin-system.md) <br/>
-[Plugin author guide](docs/plugin-author-guide.md) <br/>
+[Plugin author docs](docs/plugin-author/index.md) <br/>
 [CLI and development](docs/cli-and-development.md) <br/>
 [Daemon](docs/daemon.md) <br/>
 [Deployment](docs/deployment.md) <br/>

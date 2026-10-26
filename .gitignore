@@ -9,6 +9,8 @@ dist/
 .ngc-cache/
 .eslintcache
 .cache/
+docs/plugin-author/.vitepress/cache/
+docs/plugin-author/.vitepress/dist/
 /rci-session-secrets/
 /tmp/
 /out/

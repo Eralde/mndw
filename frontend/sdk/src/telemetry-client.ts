@@ -1,12 +1,3 @@
-import {
-  type TelemetrySessionList,
-  type TelemetrySessionPage,
-  decodeSessionList,
-  decodeSessionPage,
-  validateSessionId,
-  validateSessionOptions,
-} from './telemetry-sessions.js';
-
 export interface TelemetrySample {
   readonly ts: number;
   readonly min: number | null;
@@ -41,17 +32,6 @@ export interface TelemetrySnapshot {
   readonly gathering: {readonly enabled: boolean};
   readonly clock?: TelemetryClock;
   readonly sessionConfigured: boolean;
-}
-
-export interface TelemetryAnnotation {
-  readonly id: string;
-  readonly ts: number;
-  readonly topic: string;
-  readonly label: string;
-}
-
-export interface TelemetryAnnotations {
-  readonly collections: Readonly<Record<string, readonly TelemetryAnnotation[]>>;
 }
 
 export type ProjectRange = '1h' | '3h' | '1d' | '7d' | '30d';
@@ -101,18 +81,9 @@ export interface ProjectedSnapshot {
   readonly sessionConfigured: boolean;
 }
 
-export interface TelemetrySessionFetchOptions {
-  readonly after?: string;
-  readonly limit?: number;
-  readonly signal?: AbortSignal;
-}
-
 export interface TelemetryClient {
   fetchAll(options?: {readonly signal?: AbortSignal}): Promise<TelemetrySnapshot>;
   fetchProjected(range: ProjectRange, options?: {readonly signal?: AbortSignal}): Promise<ProjectedSnapshot>;
-  fetchAnnotations(options?: {readonly signal?: AbortSignal}): Promise<TelemetryAnnotations>;
-  fetchSessions(options?: {readonly signal?: AbortSignal}): Promise<TelemetrySessionList>;
-  fetchSession(id: string, options?: TelemetrySessionFetchOptions): Promise<TelemetrySessionPage>;
 }
 
 export class TelemetryError extends Error {
@@ -280,59 +251,6 @@ export const decodeRawSnapshot = (value: unknown): TelemetrySnapshot => {
     clock: decodeClock(body.clock),
     sessionConfigured: typeof body.sessionConfigured === 'boolean' ? body.sessionConfigured : false,
   };
-};
-
-const decodeAnnotations = (value: unknown): TelemetryAnnotations => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('telemetry annotations response must be an object');
-  }
-
-  const body = value as Record<string, unknown>;
-
-  if (Object.keys(body).some((key) => key !== 'collections')) {
-    throw new Error('telemetry annotations response has unknown fields');
-  }
-
-  if (body.collections === null || typeof body.collections !== 'object' || Array.isArray(body.collections)) {
-    throw new Error('telemetry annotations collections are invalid');
-  }
-
-  const collections: Record<string, readonly TelemetryAnnotation[]> = {};
-
-  for (const [collection, rawAnnotations] of Object.entries(body.collections as Record<string, unknown>)) {
-    if (!Array.isArray(rawAnnotations)) {
-      throw new Error(`telemetry annotations collection ${collection} is invalid`);
-    }
-
-    collections[collection] = rawAnnotations.map((rawAnnotation) => {
-      if (rawAnnotation === null || typeof rawAnnotation !== 'object' || Array.isArray(rawAnnotation)) {
-        throw new Error(`telemetry annotation ${collection} is invalid`);
-      }
-
-      const annotation = rawAnnotation as Record<string, unknown>;
-
-      if (
-        Object.keys(annotation).some((key) => !['id', 'ts', 'topic', 'label'].includes(key))
-        || typeof annotation.id !== 'string'
-        || !isPositiveInteger(annotation.ts)
-        || typeof annotation.topic !== 'string'
-        || annotation.topic.length === 0
-        || typeof annotation.label !== 'string'
-        || annotation.label.length === 0
-      ) {
-        throw new Error(`telemetry annotation ${collection} is invalid`);
-      }
-
-      return {
-        id: annotation.id,
-        ts: annotation.ts,
-        topic: annotation.topic,
-        label: annotation.label,
-      };
-    });
-  }
-
-  return {collections};
 };
 
 const VALID_PROJECTED_COLORS = new Set<ProjectedChartColor>(['accent', 'success', 'warning', 'muted']);
@@ -561,59 +479,6 @@ export function createTelemetryClient(
           signal: options.signal,
           unavailableMessage: 'Projected telemetry is unavailable.',
           invalidResponseMessage: 'Invalid projected telemetry response.',
-        },
-      );
-    },
-    async fetchAnnotations(options = {}): Promise<TelemetryAnnotations> {
-      return request(
-        '/api/mndw/telemetry/annotations',
-        decodeAnnotations,
-        {
-          signal: options.signal,
-          unavailableMessage: 'Telemetry annotations are unavailable.',
-          invalidResponseMessage: 'Invalid telemetry annotations response.',
-        },
-      );
-    },
-    async fetchSessions(options = {}): Promise<TelemetrySessionList> {
-      return request(
-        '/api/mndw/telemetry/sessions',
-        decodeSessionList,
-        {
-          signal: options.signal,
-          unavailableMessage: 'Telemetry sessions are unavailable.',
-          invalidResponseMessage: 'Invalid telemetry sessions response.',
-        },
-      );
-    },
-    async fetchSession(id: string, options: TelemetrySessionFetchOptions = {}): Promise<TelemetrySessionPage> {
-      try {
-        validateSessionId(id);
-        validateSessionOptions(options);
-      } catch (error) {
-        throw new TelemetryError(400, error instanceof Error ? error.message : 'Invalid session request.');
-      }
-
-      const query = new URLSearchParams();
-
-      if (options.after !== undefined) {
-        query.set('after', options.after);
-      }
-
-      if (options.limit !== undefined) {
-        query.set('limit', String(options.limit));
-      }
-
-      const path = `/api/mndw/telemetry/sessions/${encodeURIComponent(id)}`;
-      const url = query.size > 0 ? `${path}?${query}` : path;
-
-      return request(
-        url,
-        decodeSessionPage,
-        {
-          signal: options.signal,
-          unavailableMessage: `Telemetry session ${id} is unavailable.`,
-          invalidResponseMessage: 'Invalid telemetry session response.',
         },
       );
     },

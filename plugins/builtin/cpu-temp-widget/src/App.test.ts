@@ -20,6 +20,7 @@ const supportedSnapshot = (start: number, end: number) => {
       },
     },
     gathering: {enabled: true},
+    sessionConfigured: true,
   };
 };
 
@@ -49,6 +50,8 @@ function mountApp(overrides: Record<string, unknown> = {}): void {
       'range-1d': '1D',
       'range-7d': '7D',
       'range-30d': '30D',
+      'history-catching-up': 'Catching up…',
+      'history-historical': 'Historical',
     }),
     telemetry: {
       fetchAll: vi.fn(),
@@ -176,6 +179,35 @@ describe('App', () => {
 
     expect(host.querySelector('mndw-line-chart')).toBeNull();
     expect(host.textContent).toContain('Unsupported');
+  });
+
+  it.each([
+    {replayPending: false, label: 'Historical'},
+    {replayPending: true, label: 'Catching up…'},
+  ])('renders the chart with a "$label" marker when history is not current', async ({replayPending, label}) => {
+    const fetchProjected = vi.fn().mockResolvedValue({
+      ...supportedSnapshot(1000, 2000),
+      clock: {state: 'unanchored', historyEndMs: 2000, historyCurrent: false, replayPending},
+    });
+
+    mountApp({telemetry: {fetchAll: vi.fn(), fetchProjected}});
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(host.querySelector('mndw-line-chart')).not.toBeNull();
+    expect(host.querySelector('[data-testid="history-status"]')?.textContent?.trim()).toBe(label);
+  });
+
+  it('shows no history marker when history is current', async () => {
+    const fetchProjected = vi.fn().mockResolvedValue({
+      ...supportedSnapshot(1000, 2000),
+      clock: {state: 'anchored', historyEndMs: 2000, historyCurrent: true, replayPending: false},
+    });
+
+    mountApp({telemetry: {fetchAll: vi.fn(), fetchProjected}});
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(host.querySelector('mndw-line-chart')).not.toBeNull();
+    expect(host.querySelector('[data-testid="history-status"]')).toBeNull();
   });
 
   it('renders l10n probe span', () => {

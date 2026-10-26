@@ -40,6 +40,10 @@ const validProjectedBody = {
 };
 
 describe('createTelemetryClient', () => {
+  it('exposes only snapshot fetchers', () => {
+    expect(Object.keys(createTelemetryClient(vi.fn())).sort()).toEqual(['fetchAll', 'fetchProjected']);
+  });
+
   it('decodes nullable values and forwards abort signal', async () => {
     const controller = new AbortController();
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(validBody), {status: 200}));
@@ -84,37 +88,6 @@ describe('createTelemetryClient', () => {
         ),
       ).fetchAll(),
     ).rejects.toMatchObject({status: 503});
-  });
-
-  it('fetches and strictly decodes annotation sidecars', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          collections: {
-            load: [{id: '01J5KZ00000000000000000000', ts: 1, topic: 'wan.connected', label: 'WAN connected'}],
-          },
-        }),
-        {status: 200},
-      ),
-    );
-
-    const annotations = await createTelemetryClient(fetchImpl).fetchAnnotations();
-
-    expect(annotations.collections.load?.[0]?.label).toBe('WAN connected');
-    expect(fetchImpl).toHaveBeenCalledWith(
-      '/api/mndw/telemetry/annotations',
-      expect.objectContaining({method: 'GET', cache: 'no-store'}),
-    );
-  });
-
-  it('rejects malformed annotation sidecars', async () => {
-    await expect(
-      createTelemetryClient(
-        vi.fn().mockResolvedValue(
-          new Response(JSON.stringify({collections: {load: [{id: '', ts: 0}]}}), {status: 200}),
-        ),
-      ).fetchAnnotations(),
-    ).rejects.toBeInstanceOf(TelemetryError);
   });
 
   describe('fetchProjected', () => {
@@ -234,130 +207,20 @@ it('rejects invalid clock metadata', () => {
   }
 });
 
-const validStorage = {
-  mode: 'ready',
-  issues: [],
-  journalBytes: 1024,
-  journalLimitBytes: 8388608,
-  pendingSampleCount: 0,
-  oldestPendingSession: null,
-  deliveryError: null,
-  coverage: [],
-  droppedRecords: {},
-};
+it('does not wrap aborts that happen while decoding the response body', async () => {
+  const abortError = new Error('aborted');
 
-const validSessionsBody = {sessions: [], storage: validStorage};
+  abortError.name = 'AbortError';
 
-const validSessionPageBody = {
-  samples: [{
-    sequence: '10',
-    series: 1,
-    elapsedMs: 180000,
-    utcMs: null,
-    values: [20.5, null],
-    disposition: 'retained',
-  }],
-  nextCursor: null,
-  truncated: false,
-  truncationReasons: [],
-  storage: validStorage,
-};
+  const response = {
+    ok: true,
+    status: 200,
+    json: vi.fn().mockRejectedValue(abortError),
+  } as unknown as Response;
+  const fetchImpl = vi.fn().mockResolvedValue(response);
+  const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
 
-const jsonResponse = (body: unknown, status = 200): Response =>
-  new Response(JSON.stringify(body), {status, headers: {'content-type': 'application/json'}});
-
-describe('telemetry session client', () => {
-  it('fetches the session list', async () => {
-    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse(validSessionsBody)));
-    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
-
-    const list = await client.fetchSessions();
-
-    expect(list.storage.mode).toBe('ready');
-    expect(fetchImpl).toHaveBeenCalledWith('/api/mndw/telemetry/sessions', expect.objectContaining({method: 'GET'}));
-  });
-
-  it('fetches one session page with a bounded query', async () => {
-    const fetchImpl = vi.fn((_input: string) => Promise.resolve(jsonResponse(validSessionPageBody)));
-    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
-
-    const page = await client.fetchSession('s1-01020304050607080910111213141516', {after: 'cursor', limit: 10});
-
-    expect(page.samples).toHaveLength(1);
-    expect(fetchImpl.mock.calls[0]?.[0]).toContain('limit=10');
-    expect(fetchImpl.mock.calls[0]?.[0]).toContain('after=cursor');
-  });
-
-  it('rejects an unsafe session id before fetching', async () => {
-    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse(validSessionPageBody)));
-    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
-
-    await expect(client.fetchSession('../etc/passwd')).rejects.toThrow(TelemetryError);
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('rejects an excessive page count before fetching', async () => {
-    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse(validSessionPageBody)));
-    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
-
-    await expect(
-      client.fetchSession('s1-01020304050607080910111213141516', {limit: 1001}),
-    ).rejects.toThrow(TelemetryError);
-    expect(fetchImpl).not.toHaveBeenCalled();
-  });
-
-  it('propagates non-2xx status including expired cursors', async () => {
-    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse({error: 'gone'}, 410)));
-    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
-
-    await expect(
-      client.fetchSession('s1-01020304050607080910111213141516', {after: 'stale'}),
-    ).rejects.toMatchObject({status: 410});
-  });
-
-  it('reports malformed session payloads as telemetry errors', async () => {
-    const fetchImpl = vi.fn(() => Promise.resolve(jsonResponse({sessions: 'invalid', storage: validStorage})));
-    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
-
-    await expect(client.fetchSessions()).rejects.toThrow(TelemetryError);
-  });
-
-  it('propagates cancellation through the signal', async () => {
-    const controller = new AbortController();
-
-    controller.abort();
-
-    const fetchImpl = vi.fn((_url: string, options?: {readonly signal?: AbortSignal}): Promise<Response> => {
-      if (options?.signal?.aborted) {
-        throw new Error('aborted');
-      }
-
-      return Promise.resolve(jsonResponse(validSessionsBody));
-    });
-    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
-
-    await expect(client.fetchSessions({signal: controller.signal})).rejects.toThrow();
-    expect(fetchImpl).toHaveBeenCalledWith(
-      '/api/mndw/telemetry/sessions',
-      expect.objectContaining({signal: controller.signal}),
-    );
-  });
-
-  it('does not wrap aborts that happen while decoding the response body', async () => {
-    const abortError = new Error('aborted');
-
-    abortError.name = 'AbortError';
-
-    const response = {
-      ok: true,
-      status: 200,
-      json: vi.fn().mockRejectedValue(abortError),
-    } as unknown as Response;
-    const fetchImpl = vi.fn().mockResolvedValue(response);
-    const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
-
-    await expect(client.fetchAll()).rejects.toBe(abortError);
-  });
+  await expect(client.fetchAll()).rejects.toBe(abortError);
 });
 
 const anchoredClock: TelemetryClock = {

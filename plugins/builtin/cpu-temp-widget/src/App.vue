@@ -103,8 +103,9 @@ const startLoop = (range: ProjectRange): void => {
   refreshLoop.start();
 };
 
+// Shown beside the title so a chart of non-current history stays visible.
 const historyStatusLabel = computed((): string | null => {
-  const status = historyStatus(snapshot.value?.clock);
+  const status = historyStatus(activeSnapshot.value?.clock);
 
   if (status === 'legacy' || status === 'current' || status === 'empty') {
     return null;
@@ -131,6 +132,9 @@ onUnmounted(() => {
   <div class="app">
     <header class="app__header">
       <span>{{ t('title') }}</span>
+      <span v-if="historyStatusLabel !== null" class="app__history-status" data-testid="history-status">
+        {{ historyStatusLabel }}
+      </span>
       <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
     </header>
     <div class="range-controls" role="group">
@@ -143,9 +147,6 @@ onUnmounted(() => {
     <div v-if="sessionRequired" class="app__message">{{ t('session-required') }}</div>
     <div v-else-if="loading" class="app__message">{{ t('loading') }}</div>
     <div v-else-if="!gatheringEnabled" class="app__message">{{ t('disabled') }}</div>
-    <div v-else-if="historyStatusLabel !== null" class="app__history-status" data-testid="history-status">
-      {{ historyStatusLabel }}
-    </div>
     <div v-else-if="error && !activeSnapshot" class="mndw-alert mndw-alert--danger" role="alert">{{ t('error') }}</div>
     <div v-else-if="temp && !temp.supported" class="app__message">{{ t('unsupported') }}</div>
     <template v-else-if="temp">
@@ -187,6 +188,10 @@ onUnmounted(() => {
   margin-bottom: 0.75rem;
   color: var(--mndw-text-subtle);
   font-weight: 600;
+}
+
+.app__history-status {
+  font-weight: 400;
 }
 
 .app__message {

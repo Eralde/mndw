@@ -76,9 +76,6 @@ function mockContext(instanceId = 'test:1'): PluginContext {
     telemetry: {
       fetchAll: vi.fn(),
       fetchProjected: vi.fn(),
-      fetchAnnotations: vi.fn(),
-      fetchSessions: vi.fn(),
-      fetchSession: vi.fn(),
     },
     onThemeChange: () => () => {},
     getTokens: () => MNDW_TOKENS,

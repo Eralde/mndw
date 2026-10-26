@@ -56,4 +56,3 @@ describe('createServiceFacade', () => {
     expect(Object.getPrototypeOf(facade)).toBeNull();
   });
 });
-

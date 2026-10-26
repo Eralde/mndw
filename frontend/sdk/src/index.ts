@@ -115,15 +115,6 @@ export {MNDW_SCALE, MNDW_TOKENS} from './tokens.js';
 export type {MndwThemeName} from './tokens.js';
 export {createTelemetryClient, historyStatus, TelemetryError} from './telemetry-client.js';
 export type {
-  TelemetryCoverage,
-  TelemetryRecoveryIssue,
-  TelemetrySessionList,
-  TelemetrySessionPage,
-  TelemetrySessionSample,
-  TelemetrySessionSummary,
-  TelemetryStorageStatus,
-} from './telemetry-sessions.js';
-export type {
   HistoryStatus,
   ProjectedBand,
   ProjectedBandPoint,
@@ -134,14 +125,11 @@ export type {
   ProjectedSnapshot,
   ProjectedValueDomain,
   ProjectRange,
-  TelemetryAnnotation,
-  TelemetryAnnotations,
   TelemetryClient,
   TelemetryClock,
   TelemetryClockState,
   TelemetrySample,
   TelemetrySeries,
-  TelemetrySessionFetchOptions,
   TelemetrySnapshot,
   TelemetryTier,
 } from './telemetry-client.js';

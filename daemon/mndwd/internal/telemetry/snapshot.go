@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"mndwd/internal/telemetry/clock"
+	"mndwd/internal/telemetry/system"
 )
 
 type Sample struct {
@@ -84,8 +84,6 @@ type ProjectedSnapshot struct {
 }
 
 type SnapshotCache struct {
-	history           *History
-	specs             []SeriesSpec
 	now               func() time.Time
 	sessionConfigured func() bool
 
@@ -94,18 +92,12 @@ type SnapshotCache struct {
 	supportedSeries map[uint16]bool
 }
 
-func NewSnapshotCache(history *History, now func() time.Time, sessionConfigured func() bool) *SnapshotCache {
+func NewSnapshotCache(now func() time.Time, sessionConfigured func() bool) *SnapshotCache {
 	if now == nil {
 		now = time.Now
 	}
 
-	specs := DefaultSeriesSpecs()
-
-	if history != nil {
-		specs = history.SeriesSpecs()
-	}
-
-	return &SnapshotCache{history: history, specs: specs, now: now, sessionConfigured: sessionConfigured}
+	return &SnapshotCache{now: now, sessionConfigured: sessionConfigured}
 }
 
 // Get returns the last published immutable snapshot. It never touches disk;
@@ -175,133 +167,56 @@ func (c *SnapshotCache) SetSupportedSeries(supported map[uint16]bool) {
 	}
 }
 
-// Refresh copies raw rows and projects fine and coarse tiers before publishing
-// one immutable snapshot.
-func (c *SnapshotCache) Refresh(ctx context.Context, status PipelineStatus) (*Snapshot, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
+func snapshotHistoryEnd(snapshot *Snapshot) *int64 {
+	var end *int64
+
+	if snapshot == nil {
+		return nil
 	}
 
-	c.mu.Lock()
+	for _, series := range snapshot.Keys {
+		for _, tier := range series.Tiers {
+			if len(tier.Samples) == 0 {
+				continue
+			}
 
-	history := c.history
-	specs := cloneSeriesSpecs(c.specs)
+			last := tier.Samples[len(tier.Samples)-1]
 
-	c.mu.Unlock()
+			if !last.OK || last.Mean == nil || last.Timestamp <= 0 {
+				continue
+			}
 
-	snapshot, err := c.refresh(history, specs)
-	if err != nil {
-		return nil, err
+			if end == nil || last.Timestamp > *end {
+				value := last.Timestamp
+				end = &value
+			}
+		}
 	}
 
+	return end
+}
+
+// PublishView builds and atomically publishes a snapshot from the engine's immutable view.
+func (c *SnapshotCache) PublishView(view system.View) {
 	c.mu.Lock()
 
-	supported := c.supportedSeries
+	supported := make(map[uint16]bool, len(c.supportedSeries))
 
-	c.mu.Unlock()
-	applySupportedSeries(snapshot, supported)
-
-	c.mu.Lock()
+	for series, available := range c.supportedSeries {
+		supported[series] = available
+	}
 
 	configured := c.sessionConfigured != nil && c.sessionConfigured()
 
 	c.mu.Unlock()
 
+	snapshot := buildViewSnapshot(view, supported)
+
+	applySupportedSeries(snapshot, supported)
+
 	snapshot.SessionConfigured = configured
 
-	metadata := metadataFromStatus(snapshot, status)
-	snapshot.Clock = metadata
-
 	c.Publish(snapshot)
-
-	return snapshot, nil
-}
-
-// metadataFromStatus derives clock metadata from the published snapshot and
-// pipeline state. A failed or stale series makes freshness false.
-func metadataFromStatus(snapshot *Snapshot, status PipelineStatus) *ClockMetadata {
-	var end *int64
-
-	if snapshot != nil {
-		for _, series := range snapshot.Keys {
-			for _, tier := range series.Tiers {
-				if len(tier.Samples) == 0 {
-					continue
-				}
-
-				last := tier.Samples[len(tier.Samples)-1]
-
-				if !last.OK || last.Mean == nil || last.Timestamp <= 0 {
-					continue
-				}
-
-				if end == nil || last.Timestamp > *end {
-					value := last.Timestamp
-					end = &value
-				}
-			}
-		}
-	}
-
-	state := status.Clock.State
-
-	if state == "" {
-		state = clock.Unanchored
-	}
-
-	current := end != nil && status.Clock.State == clock.Anchored && status.PendingSamples == 0
-
-	return clockMetadata(state, end, current, status.PendingSamples > 0)
-}
-
-func (c *SnapshotCache) refresh(history *History, specs []SeriesSpec) (*Snapshot, error) {
-	snapshot := emptySnapshot(true)
-
-	if history == nil {
-		return snapshot, nil
-	}
-
-	now := c.now().UTC()
-	fineStep := 3 * time.Minute
-	fineEnd := now.Truncate(fineStep)
-	fineStart := fineEnd.Add(-24 * time.Hour)
-	coarseEnd := now.Truncate(time.Hour)
-	coarseStart := coarseEnd.Add(-30 * 24 * time.Hour)
-	queries := make([]Query, 0, len(specs)*2)
-
-	for _, spec := range specs {
-		queries = append(queries,
-			Query{Series: spec.ID, Start: fineStart, End: fineEnd},
-			Query{Series: spec.ID, Start: coarseStart, End: coarseEnd},
-		)
-	}
-
-	windows, err := history.ReadMany(queries)
-	if err != nil {
-		return nil, err
-	}
-
-	for specIndex, spec := range specs {
-		fineRows := windows[specIndex*2]
-		coarseRows := windows[specIndex*2+1]
-
-		for valueIndex, valueKey := range spec.ValueKeys {
-			key, label, unit, scale, ok := snapshotValuePresentation(spec, valueKey)
-
-			if !ok {
-				continue
-			}
-
-			series := snapshot.Keys[key]
-			series.Tiers["fine"] = fineTierSnapshot(fineRows, valueIndex, spec.Step, scale)
-			series.Tiers["coarse"] = coarseTierSnapshot(coarseRows, valueIndex, spec.Step, scale)
-			series.Label = label
-			series.Unit = unit
-			snapshot.Keys[key] = series
-		}
-	}
-
-	return snapshot, nil
 }
 
 func snapshotValuePresentation(spec SeriesSpec, valueKey string) (key, label, unit string, scale float64, ok bool) {

@@ -6,41 +6,24 @@ import (
 	"net/url"
 
 	"mndwd/internal/httpx"
-	"mndwd/internal/telemetry/annotations"
 )
 
 type Handler struct {
 	cache            *SnapshotCache
 	gatheringEnabled func() bool
 	logger           *slog.Logger
-	annotations      *annotations.Store
 }
 
-func NewHandler(cache *SnapshotCache, gatheringEnabled func() bool, annotationStore *annotations.Store, logger *slog.Logger) *Handler {
+func NewHandler(cache *SnapshotCache, gatheringEnabled func() bool, logger *slog.Logger) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	return &Handler{cache: cache, gatheringEnabled: gatheringEnabled, logger: logger, annotations: annotationStore}
+	return &Handler{cache: cache, gatheringEnabled: gatheringEnabled, logger: logger}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/mndw/telemetry", h.handleGet)
-
-	if h.annotations != nil {
-		mux.HandleFunc("GET /api/mndw/telemetry/annotations", h.handleAnnotations)
-	}
-}
-
-func (h *Handler) handleAnnotations(w http.ResponseWriter, _ *http.Request) {
-	if h.annotations == nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "telemetry annotations are unavailable"))
-
-		return
-	}
-
-	w.Header().Set("Cache-Control", "no-store")
-	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"collections": h.annotations.Collections()})
 }
 
 func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {

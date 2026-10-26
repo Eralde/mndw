@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"testing"
 	"testing/fstest"
+
+	"mndwd/internal/telemetry/system"
 )
 
 type mapThermalReader fstest.MapFS
@@ -109,27 +111,21 @@ func TestThermalSensorSupportInSnapshot(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cache := NewSnapshotCache(nil, nil, nil)
+			cache := NewSnapshotCache(nil, nil)
 
 			cache.SetSupportedSeries(supportedFromSamplers(map[uint16]Sampler{
 				2: NewThermalSampler(tc.reader, tc.root),
 			}))
 
-			for _, refresh := range []bool{false, true} {
-				if refresh {
-					if _, err := cache.Refresh(context.Background(), PipelineStatus{}); err != nil {
-						t.Fatal(err)
-					}
-				}
+			cache.PublishView(system.View{})
 
-				snapshot, err := cache.Get(context.Background(), true)
-				if err != nil {
-					t.Fatal(err)
-				}
+			snapshot, err := cache.Get(context.Background(), true)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-				if got := snapshot.Keys["temp"].Supported; got != tc.want {
-					t.Fatalf("refreshed=%v: supported=%v, want %v", refresh, got, tc.want)
-				}
+			if got := snapshot.Keys["temp"].Supported; got != tc.want {
+				t.Fatalf("supported=%v, want %v", got, tc.want)
 			}
 		})
 	}

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"sort"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"mndwd/internal/registry"
 	"mndwd/internal/selfupdate"
 	"mndwd/internal/state"
-	"mndwd/internal/telemetry/annotations"
 )
 
 type selfUpdateStatusReader interface {
@@ -30,7 +28,6 @@ type eventLifecycle struct {
 	ingest             events.Publisher
 	selfUpdate         selfUpdateStatusReader
 	selfUpdateStateDir string
-	annotations        *annotations.Store
 	rciClient          *rci.Client
 	reg                *registry.Registry
 	store              *state.Store
@@ -117,14 +114,6 @@ func (l *eventLifecycle) Start(ctx context.Context) error {
 		l.logger.Warn("self-update completion record unavailable", "error", completionErr)
 	}
 
-	if l.annotations != nil {
-		if err := l.annotations.Start(eventCtx, l.bus); err != nil {
-			cancel()
-
-			return fmt.Errorf("start event annotations: %w", err)
-		}
-	}
-
 	if l.rciClient == nil {
 		l.logger.Warn("event log poller disabled: no RCI client available")
 	} else {
@@ -172,8 +161,7 @@ func (l *eventLifecycle) Stop(reason string) {
 	}
 }
 
-// Close cancels the producers and flushes the annotation store. It is safe
-// without Start and safe to call twice. Failures are logged, not returned.
+// Close cancels the producers. It is safe without Start and safe to call twice.
 func (l *eventLifecycle) Close() {
 	if l.cancel != nil {
 		l.cancel()
@@ -181,13 +169,4 @@ func (l *eventLifecycle) Close() {
 		l.cancel = nil
 	}
 
-	if l.annotations != nil {
-		closeCtx, cancel := context.WithTimeout(context.Background(), telemetryShutdownTimeout)
-
-		if err := l.annotations.Close(closeCtx); err != nil {
-			l.logger.Warn("telemetry annotations shutdown failed", "error", err)
-		}
-
-		cancel()
-	}
 }

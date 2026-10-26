@@ -3,11 +3,13 @@ import type {TelemetryClock} from '@mndw/sdk';
 import {createTelemetryService} from './telemetry.service.js';
 
 function mockFetch(body: unknown, status = 200): typeof globalThis.fetch {
-  return async () =>
-    new Response(JSON.stringify(body), {
-      status,
-      headers: {'Content-Type': 'application/json'},
-    });
+  return () =>
+    Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status,
+        headers: {'Content-Type': 'application/json'},
+      }),
+    );
 }
 
 const SNAPSHOT_WITH_CLOCK = {

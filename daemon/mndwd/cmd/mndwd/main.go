@@ -373,7 +373,6 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 		ingest:             ingestPublisher,
 		selfUpdate:         selfUpdateService,
 		selfUpdateStateDir: cfg.SelfUpdateStateDir,
-		annotations:        access.telemetry.annotations,
 		rciClient:          eventRCIClient,
 		reg:                reg,
 		store:              store,

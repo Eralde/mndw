@@ -7,40 +7,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
-
-	contractEvents "mndw.local/contracts/events"
-	"mndwd/internal/events"
-	"mndwd/internal/telemetry/annotations"
 )
-
-type apiAnnotationCatalog struct{}
-
-func (apiAnnotationCatalog) Collections() []annotations.Collection {
-	return []annotations.Collection{{Name: "load", Retention: time.Hour}, {Name: "temp", Retention: 2 * time.Hour}}
-}
-
-func (apiAnnotationCatalog) LabelFor(topic string) (string, string, bool) {
-	if topic == string(contractEvents.TopicWanConnected) {
-		return "load", "WAN connected", true
-	}
-
-	return "", "", false
-}
-
-func apiAnnotationEvent(id string, ts int64) events.Event {
-	return events.Event{
-		ID:      id,
-		Ts:      ts,
-		Topic:   contractEvents.TopicWanConnected,
-		Source:  contractEvents.SourceHook,
-		Payload: json.RawMessage(`{"interface":"ppp0","address":"192.0.2.1","mask":"255.255.255.0","gateway":"192.0.2.254"}`),
-	}
-}
 
 func newTestCache() *SnapshotCache {
 	now := int64(1_700_000_000_000)
-	cache := NewSnapshotCache(nil, nil, nil)
+	cache := NewSnapshotCache(nil, nil)
 	snapshot := emptySnapshot(true)
 	snapshot.Keys["cpu"] = SeriesSnapshot{
 		Label:     "CPU",
@@ -57,7 +28,7 @@ func newTestCache() *SnapshotCache {
 }
 
 func TestHandleGet_NoProject_ReturnsRawTiers(t *testing.T) {
-	handler := NewHandler(newTestCache(), func() bool { return true }, nil, slog.Default())
+	handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
 
 	req := httptest.NewRequest("GET", "/api/mndw/telemetry", nil)
 	rec := httptest.NewRecorder()
@@ -95,7 +66,7 @@ func TestHandleGet_NoProject_ReturnsRawTiers(t *testing.T) {
 }
 
 func TestHandleGet_Project7d_ReturnsProjectedWithMetadata(t *testing.T) {
-	handler := NewHandler(newTestCache(), func() bool { return true }, nil, slog.Default())
+	handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
 
 	req := httptest.NewRequest("GET", "/api/mndw/telemetry?project=7d", nil)
 	rec := httptest.NewRecorder()
@@ -132,7 +103,7 @@ func TestHandleGet_Project7d_ReturnsProjectedWithMetadata(t *testing.T) {
 }
 
 func TestHandleGet_Project30d(t *testing.T) {
-	handler := NewHandler(newTestCache(), func() bool { return true }, nil, slog.Default())
+	handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
 
 	req := httptest.NewRequest("GET", "/api/mndw/telemetry?project=30d", nil)
 	rec := httptest.NewRecorder()
@@ -147,7 +118,7 @@ func TestHandleGet_Project30d(t *testing.T) {
 func TestHandleGet_ProjectRanges(t *testing.T) {
 	for _, project := range []string{"1h", "3h", "1d", "7d", "30d"} {
 		t.Run(project, func(t *testing.T) {
-			handler := NewHandler(newTestCache(), func() bool { return true }, nil, slog.Default())
+			handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
 			req := httptest.NewRequest("GET", "/api/mndw/telemetry?project="+project, nil)
 			rec := httptest.NewRecorder()
 
@@ -170,10 +141,37 @@ func TestHandleGet_ProjectRanges(t *testing.T) {
 	}
 }
 
+func TestHandlerServesOnlySnapshotRoute(t *testing.T) {
+	handler := NewHandler(newTestCache(), func() bool { return true }, slog.Default())
+	mux := http.NewServeMux()
+
+	handler.Register(mux)
+
+	for _, tc := range []struct {
+		path       string
+		wantStatus int
+	}{
+		{path: "/api/mndw/" + "telemetry", wantStatus: http.StatusOK},
+		{path: "/api/mndw/" + "telemetry" + "/annotations", wantStatus: http.StatusNotFound},
+		{path: "/api/mndw/" + "telemetry" + "/sessions", wantStatus: http.StatusNotFound},
+		{path: "/api/mndw/" + "telemetry" + "/sessions/s1-00000000000000000000000000000000", wantStatus: http.StatusNotFound},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+
+			mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.path, nil))
+
+			if recorder.Code != tc.wantStatus {
+				t.Fatalf("GET %s status = %d, want %d", tc.path, recorder.Code, tc.wantStatus)
+			}
+		})
+	}
+}
+
 func TestHandleGet_InvalidProject_ReturnsBadRequestWithoutTouchingCache(t *testing.T) {
 	// Invalid project parameters return before reading or publishing the cache.
-	cache := NewSnapshotCache(nil, nil, nil)
-	handler := NewHandler(cache, func() bool { return true }, nil, slog.Default())
+	cache := NewSnapshotCache(nil, nil)
+	handler := NewHandler(cache, func() bool { return true }, slog.Default())
 
 	for _, query := range []string{"?project=2h", "?project=", "?project=7d&project=30d", "?project=%zz"} {
 		req := httptest.NewRequest("GET", "/api/mndw/telemetry"+query, nil)
@@ -192,42 +190,5 @@ func TestHandleGet_InvalidProject_ReturnsBadRequestWithoutTouchingCache(t *testi
 
 	if cache.snapshot != nil {
 		t.Error("invalid project query unexpectedly touched the snapshot cache")
-	}
-}
-
-func TestHandleAnnotationsReturnsCollections(t *testing.T) {
-	now := time.UnixMilli(1_800_000_000_000)
-	store, err := annotations.NewStore(annotations.Config{
-		RRDDir:  t.TempDir(),
-		Catalog: apiAnnotationCatalog{},
-		Now:     func() time.Time { return now },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	store.Consume(apiAnnotationEvent("annotation", now.UnixMilli()))
-
-	handler := NewHandler(newTestCache(), func() bool { return true }, store, slog.Default())
-
-	req := httptest.NewRequest("GET", "/api/mndw/telemetry/annotations", nil)
-	rec := httptest.NewRecorder()
-
-	handler.handleAnnotations(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d", rec.Code)
-	}
-
-	var body struct {
-		Collections map[string][]annotations.Annotation `json:"collections"`
-	}
-
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatal(err)
-	}
-
-	if len(body.Collections["load"]) != 1 {
-		t.Fatalf("collections = %#v", body.Collections)
 	}
 }

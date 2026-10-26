@@ -27,4 +27,3 @@ export function createServiceFacade<T extends object, K extends keyof T>(
 
   return Object.freeze(facade) as ServiceFacade<T, K>;
 }
-

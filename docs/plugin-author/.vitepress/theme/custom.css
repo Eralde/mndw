@@ -1,0 +1,52 @@
+.VPDoc.has-aside .container > .content > .content-container {
+  max-width: 880px;
+}
+
+.vp-doc > div > p,
+.vp-doc > div > ul,
+.vp-doc > div > ol {
+  max-width: 72ch;
+}
+
+.VPHome .VPHero .container {
+  max-width: 72rem;
+}
+
+.VPHome .VPFeature {
+  height: 100%;
+}
+
+.vp-doc .custom-block.tip {
+  border-color: var(--vp-c-brand-1);
+  background-color: var(--vp-c-brand-soft);
+}
+
+.vp-doc :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+
+.vp-doc div[class*='language-'] pre,
+.vp-doc div[class*='language-'] code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.vp-doc div[class*='language-'] code {
+  width: 100%;
+}
+
+@media (min-width: 1600px) {
+  :root {
+    --vp-layout-max-width: 1600px;
+  }
+}
+
+@media (max-width: 640px) {
+  .VPHome .VPHero {
+    padding-top: 2rem;
+  }
+
+  .VPHome .VPFeatures {
+    padding-top: 1rem;
+  }
+}

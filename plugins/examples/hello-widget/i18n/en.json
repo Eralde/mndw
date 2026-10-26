@@ -1,0 +1,18 @@
+{
+  "title": "Hello Widget",
+  "action": {
+    "greet": "Get greeting",
+    "loading": "Loading greeting…"
+  },
+  "status": {
+    "idle": "Ready to say hello.",
+    "loading": "Loading greeting…"
+  },
+  "error": {
+    "backend-missing": "Backend is not available for this plugin.",
+    "backend-not-approved": "Approve the backend before running it.",
+    "backend-disabled": "Enable the backend before running it.",
+    "backend-unavailable": "Backend is temporarily unavailable.",
+    "greeting-failed": "Could not load the greeting."
+  }
+}

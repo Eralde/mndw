@@ -1,4 +1,4 @@
-import {mkdirSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
+import {mkdirSync, readFileSync, readdirSync, statSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 
 import {zipSync} from 'fflate';
@@ -41,8 +41,8 @@ export function zipDirectory(dir: string): Uint8Array {
   return zipSync(collectFiles(dir), {level: 9});
 }
 
-function collectFiles(dir: string): Record<string, Uint8Array> {
-  const files: Record<string, Uint8Array> = {};
+function collectFiles(dir: string): Record<string, [Uint8Array, {os: 3; attrs: number}]> {
+  const files: Record<string, [Uint8Array, {os: 3; attrs: number}]> = {};
 
   const walk = (current: string, prefix: string): void => {
     for (const entry of readdirSync(current, {withFileTypes: true})) {
@@ -57,7 +57,9 @@ function collectFiles(dir: string): Record<string, Uint8Array> {
       if (entry.isDirectory()) {
         walk(absolute, relative);
       } else if (entry.isFile()) {
-        files[relative] = readFileSync(absolute);
+        const mode = statSync(absolute).mode % 0o1000;
+
+        files[relative] = [readFileSync(absolute), {os: 3, attrs: mode * 0x10000}];
       }
     }
   };

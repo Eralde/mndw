@@ -2,6 +2,7 @@
   "name": "mndw",
   "version": "0.0.10",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "tsx build/dev/dev.ts",
     "dev-plugin": "pnpm exec mndw dev",

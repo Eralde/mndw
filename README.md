@@ -76,6 +76,10 @@ pnpm build-ipk --all --repo
 Output: `out/mndw_<version>_<opkg-arch>.ipk` (for example,
 `mndw_<version>_mipsel-3.4.ipk`). Builds require a Go cross-compile toolchain.
 
+## License
+
+MIT. See [LICENSE](LICENSE).
+
 ## Project layout
 
 ```text

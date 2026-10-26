@@ -4,12 +4,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"testing"
 
 	contractEvents "mndw.local/contracts/events"
-	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
@@ -43,6 +41,7 @@ func TestManagementLogsAndIgnoresTypedPublishFailure(t *testing.T) {
 		StagingDir:        filepath.Join(root, "staging"),
 		UserPluginsDir:    filepath.Join(root, "plugins"),
 		BuiltinPluginsDir: filepath.Join(root, "builtins"),
+		MaxUploadBytes:    10 << 20,
 		Runtime:           passthroughRuntime{},
 		EventPublisher:    &failingManagementEventPublisher{err: errors.New("bus unavailable")},
 	}
@@ -51,28 +50,19 @@ func TestManagementLogsAndIgnoresTypedPublishFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stagingPath := filepath.Join(cfg.StagingDir, "hello")
+	mux := http.NewServeMux()
+	New(cfg, store, nil, nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger()).Register(mux)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
 
-	if err := os.MkdirAll(stagingPath, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	response := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": noBackendManifest,
+		"index.js":      "export {}",
+	}))
+	defer response.Body.Close()
 
-	if err := os.WriteFile(filepath.Join(stagingPath, "index.js"), []byte("export {}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	manifestValue, err := manifest.Validate([]byte(noBackendManifest))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	handler := New(cfg, store, nil, nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger())
-	response := httptest.NewRecorder()
-
-	handler.installDirect(response, manifestValue, []byte(noBackendManifest), stagingPath)
-
-	if response.Code != http.StatusCreated {
-		t.Fatalf("install status = %d, want %d; body=%s", response.Code, http.StatusCreated, response.Body.String())
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("install status = %d, want %d", response.StatusCode, http.StatusCreated)
 	}
 
 	if _, ok := store.Get("hello"); !ok {

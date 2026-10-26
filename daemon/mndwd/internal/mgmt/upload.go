@@ -250,60 +250,6 @@ func (h *Handler) restoreUploadRecord(name string, previous *state.Plugin, hadPr
 	})
 }
 
-// installDirect promotes a no-backend plugin straight to installed (approved+enabled)
-// — approval exists for shell execution, not static assets.
-func (h *Handler) installDirect(w http.ResponseWriter, m *manifest.Manifest, manifestBytes []byte, stagingPath string) {
-	name := *m.Name
-
-	if err := moveDir(stagingPath, filepath.Join(h.cfg.UserPluginsDir, name)); err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to install plugin"))
-
-		return
-	}
-
-	err := h.store.Mutate(func(st *state.State) error {
-		record := newRecord(m, manifestBytes, state.ApprovalApproved, true)
-		record.ActiveVersion = deref(m.Version)
-		record.ActiveVersionDir = filepath.Join(h.cfg.UserPluginsDir, name)
-		st.Plugins[name] = record
-
-		st.AppendAudit("install", name, "no backend — installed without approval")
-
-		return nil
-	})
-	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record plugin state"))
-
-		return
-	}
-
-	h.publishPluginInstalled(name, deref(m.Version))
-
-	h.logger.Info("plugin installed", "plugin", name, "backend", false)
-	httpx.WriteJSON(w, h.logger, http.StatusCreated, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
-}
-
-// stagePending records a backend plugin as pending; it stays in staging until
-// approved. The response surfaces the declared capabilities for the approval UI.
-func (h *Handler) stagePending(w http.ResponseWriter, m *manifest.Manifest, manifestBytes []byte) {
-	name := *m.Name
-	err := h.store.Mutate(func(st *state.State) error {
-		st.Plugins[name] = newRecord(m, manifestBytes, state.ApprovalPending, false)
-
-		st.AppendAudit("upload", name, "backend declared — awaiting approval")
-
-		return nil
-	})
-	if err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record plugin state"))
-
-		return
-	}
-
-	h.logger.Info("plugin uploaded, pending approval", "plugin", name, "backend", true)
-	httpx.WriteJSON(w, h.logger, http.StatusAccepted, h.entryFrom(m, state.SourceUpload, state.ApprovalPending, false))
-}
-
 // newRecord builds the durable state record from a validated manifest.
 func newRecord(m *manifest.Manifest, manifestBytes []byte, approval state.Approval, enabled bool) *state.Plugin {
 	return &state.Plugin{

@@ -40,6 +40,11 @@
       "depsStatus": "ready",
       "backend": {
         "routes": {
+          "health": {
+            "transport": "http",
+            "path": "health",
+            "method": "GET"
+          },
           "status": {
             "transport": "http",
             "path": "status",
@@ -53,6 +58,15 @@
             ]
           }
         }
+      },
+      "review": {
+        "kind": "service",
+        "args": [
+          "--foreground"
+        ],
+        "publicRoutes": [
+          "health"
+        ]
       },
       "runtime": {
         "state": "ready",
@@ -116,6 +130,9 @@
           }
         }
       },
+      "review": {
+        "kind": "service"
+      },
       "runtime": {
         "state": "backoff",
         "startedAt": "2026-09-01T10:00:00Z",
@@ -157,6 +174,12 @@
             "method": "GET"
           }
         }
+      },
+      "review": {
+        "kind": "exec",
+        "packages": [
+          "curl"
+        ]
       },
       "runtime": {
         "state": "stopped",

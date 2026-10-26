@@ -45,7 +45,7 @@ func (r *goldenRuntime) Status(name string) backend.RuntimeStatus {
 
 const goldenAlphaPageManifest = `{"manifestVersion":1,"name":"alpha-page","version":"1.2.0","type":"page","label":"Alpha","entry":"index.js","route":"/alpha","i18n":{"defaultLocale":"en","locales":{"en":"i18n/en.json","ru":"i18n/ru.json"}}}`
 
-const goldenBetaServiceManifest = `{"manifestVersion":1,"name":"beta-service","version":"2.0.0","type":"widget","label":"Beta","entry":"index.js","size":{"w":6,"h":4,"minW":3,"minH":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","routes":[{"id":"status","transport":"http","method":"GET","path":"status"},{"id":"terminal","transport":"websocket","path":"terminal","protocols":["tty"]}]}}`
+const goldenBetaServiceManifest = `{"manifestVersion":1,"name":"beta-service","version":"2.0.0","type":"widget","label":"Beta","entry":"index.js","size":{"w":6,"h":4,"minW":3,"minH":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","args":["--foreground"],"routes":[{"id":"health","transport":"http","method":"GET","path":"health","access":"public"},{"id":"status","transport":"http","method":"GET","path":"status"},{"id":"terminal","transport":"websocket","path":"terminal","protocols":["tty"]}]}}`
 
 const goldenDeltaRCIManifest = `{"manifestVersion":1,"name":"delta-rci","version":"1.0.0","type":"widget","label":"Delta","entry":"index.js","icon":"shield","size":{"w":4,"h":3},"permissions":["persistent-rci-session:read","persistent-rci-session:write","events:wan"]}`
 

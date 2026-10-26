@@ -23,6 +23,12 @@
           }
         }
       },
+      "review": {
+        "kind": "exec",
+        "packages": [
+          "curl"
+        ]
+      },
       "runtime": {
         "state": "stopped",
         "consecutiveFailures": 0,

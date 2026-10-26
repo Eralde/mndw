@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -178,6 +179,31 @@ func TestValidateExecAndDescriptorHideRuntimeDetails(t *testing.T) {
 		if strings.Contains(encoded, forbidden) {
 			t.Errorf("descriptor contains forbidden runtime field %q: %s", forbidden, encoded)
 		}
+	}
+}
+
+func TestReviewSummarizesBackendCapabilities(t *testing.T) {
+	data := []byte(`{"manifestVersion":1,"name":"service","version":"1.0.0","type":"widget","label":"Service","entry":"index.js","size":{"w":4,"h":3},"backend":{"kind":"service","protocolVersion":1,"command":"backend/server","args":["--foreground"],"packages":["ttyd"],"routes":[{"id":"health","transport":"http","method":"GET","path":"health","access":"public"},{"id":"status","transport":"http","method":"GET","path":"status"}]}}`)
+	parsed, err := Validate(data)
+	if err != nil {
+		t.Fatalf("Validate service manifest: %v", err)
+	}
+
+	got := Review(parsed)
+	want := &ApprovalReview{Kind: "service", Packages: []string{"ttyd"}, Args: []string{"--foreground"}, PublicRoutes: []string{"health"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Review() = %#v, want %#v", got, want)
+	}
+}
+
+func TestReviewIsNilWithoutBackend(t *testing.T) {
+	parsed, err := Validate([]byte(`{"manifestVersion":1,"name":"static","version":"1.0.0","type":"widget","label":"Static","entry":"index.js","size":{"w":4,"h":3}}`))
+	if err != nil {
+		t.Fatalf("Validate static manifest: %v", err)
+	}
+
+	if got := Review(parsed); got != nil {
+		t.Fatalf("Review() = %#v, want nil", got)
 	}
 }
 

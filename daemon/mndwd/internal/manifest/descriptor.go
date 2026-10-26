@@ -17,6 +17,16 @@ type BackendDescriptor struct {
 	Routes map[string]RouteDescriptor `json:"routes"`
 }
 
+// ApprovalReview summarizes what an owner approves. This projection exposes
+// backend kind, package names, arguments, and public route IDs to every same-origin
+// plugin that can read GET /api/mgmt/list. These are metadata, not secrets.
+type ApprovalReview struct {
+	Kind         string   `json:"kind"`
+	Packages     []string `json:"packages,omitempty"`
+	Args         []string `json:"args,omitempty"`
+	PublicRoutes []string `json:"publicRoutes,omitempty"`
+}
+
 // Descriptor derives the client-facing backend capability snapshot from the
 // manifest. Returns nil when the plugin declares no backend.
 func Descriptor(m *Manifest) *BackendDescriptor {
@@ -41,6 +51,35 @@ func Descriptor(m *Manifest) *BackendDescriptor {
 	}
 
 	return &BackendDescriptor{Routes: routes}
+}
+
+// Review derives the capability summary shown at backend approval. The same-origin
+// management list exposes these fields to plugins, so manifests must not put
+// secrets in arguments or package metadata.
+func Review(m *Manifest) *ApprovalReview {
+	if m == nil || m.Backend == nil {
+		return nil
+	}
+
+	b := m.Backend
+	kind := ""
+	if b.Kind != nil {
+		kind = string(*b.Kind)
+	}
+
+	review := &ApprovalReview{
+		Kind:     kind,
+		Packages: append([]string(nil), b.Packages...),
+		Args:     append([]string(nil), b.Args...),
+	}
+
+	for _, route := range b.Routes {
+		if route.Access == "public" {
+			review.PublicRoutes = append(review.PublicRoutes, route.ID)
+		}
+	}
+
+	return review
 }
 
 // HasBackend reports whether the plugin declares any server-side capability.

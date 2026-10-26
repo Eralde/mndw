@@ -234,6 +234,7 @@ type ListEntry struct {
 	// explicit approval operation, never a background startup task.
 	DepsStatus string                      `json:"depsStatus"`
 	Backend    *manifest.BackendDescriptor `json:"backend"`
+	Review     *manifest.ApprovalReview    `json:"review,omitempty"`
 	Runtime    *backend.RuntimeStatus      `json:"runtime,omitempty"`
 }
 
@@ -323,6 +324,7 @@ func (h *Handler) entryFrom(m *manifest.Manifest, source state.Source, approval 
 		Route:       deref(m.Route),
 		I18n:        m.I18n,
 		Backend:     manifest.Descriptor(m),
+		Review:      manifest.Review(m),
 	}
 	e.DepsStatus = "ready"
 

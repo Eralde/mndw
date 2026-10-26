@@ -433,8 +433,6 @@ importers:
         specifier: ^3.5.39
         version: 3.5.40(typescript@5.9.3)
 
-  packages/go-device-auth: {}
-
   packages/go-httpsocket: {}
 
   packages/go-mws-members: {}

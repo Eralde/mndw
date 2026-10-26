@@ -100,7 +100,6 @@ daemon/
   mndwd/            Go device control plane
   contracts-go/     generated Go contract bindings
 packages/
-  go-device-auth/   shared device-auth handshake
   go-httpsocket/    shared Unix-socket HTTP lifecycle
   go-mws-members/   shared mesh-member parsing
   go-rci/           shared RCI client and transport

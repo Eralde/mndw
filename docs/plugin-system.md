@@ -101,7 +101,7 @@ manifest keys are stripped by the schema output.
 ## Context API
 
 The host creates one context per plugin instance. Important surfaces include
-storage, host information, theme subscription, injector, overlay, and backend.
+storage, host information, theme subscription, overlay, and backend.
 
 The backend client resolves declared ids locally:
 

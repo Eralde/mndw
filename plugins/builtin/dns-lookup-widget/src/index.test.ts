@@ -16,7 +16,6 @@ function fakeContext(overrides?: Partial<BackendClient>): PluginContext {
     sharedStorage: {get: vi.fn(), set: vi.fn(), delete: vi.fn(), has: vi.fn(), keys: vi.fn()},
     hostInfo: {locale: 'en', theme: 'light'},
     deviceInfo: {deviceName: 'test-device', vendor: 'Keenetic'},
-    injector: {get: vi.fn(), has: vi.fn()},
     instanceId: 'test-id',
     onThemeChange: vi.fn(),
     getTokens: vi.fn(() => MNDW_TOKENS),

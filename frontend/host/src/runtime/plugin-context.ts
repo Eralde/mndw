@@ -11,7 +11,6 @@ import type {RciManager} from '@rci-tools/core';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {getLocale, subscribeLocale} from '../services/locale.service.js';
 import {type PluginCatalogCell, createPluginI18n} from '../services/plugin-catalog.service.js';
-import {injector} from '../services/injector.service.js';
 import {createPluginOverlayService} from '../services/overlay/overlay-manager.svelte.js';
 import {rciService} from '../services/rci.service.js';
 import {ScopedPluginStorage} from '../services/storage.service.js';
@@ -19,7 +18,7 @@ import {getTokens, subscribePalette} from '../services/palette.service.js';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import {type HostServices, defaultHostServices} from '../host-services.js';
 import type {PluginListEntry} from './plugin-types.js';
-import {createReadonlyInjector, createServiceFacade} from './service-facade.js';
+import {createServiceFacade} from './service-facade.js';
 import {createDeviceInfoContext, createHostInfoContext} from './device-info-context.js';
 
 export type OverlayDispose = (reason?: 'plugin-unmount' | 'host-navigation') => void;
@@ -150,7 +149,6 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
       hostInfo: createHostInfoContext(hostInfo, getHostLocale(), getTheme()),
       deviceInfo: createDeviceInfoContext(deviceInfo),
       i18n: createPluginI18n(catalogCell, getHostLocale, subscribeHostLocale),
-      injector: createReadonlyInjector(injector),
       instanceId,
       backend: backendClientFor(entry),
       onThemeChange: subscribeTheme,

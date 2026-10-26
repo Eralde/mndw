@@ -198,7 +198,6 @@ interface WidgetPluginContext {
   hostInfo: HostInfo;
   deviceInfo: DeviceInfo;
   i18n: PluginI18n;
-  injector: ServiceInjector;
   instanceId: string;
   backend?: BackendClient;
   overlay: OverlayService;
@@ -217,7 +216,6 @@ interface PagePluginContext {
   hostInfo: HostInfo;
   deviceInfo: DeviceInfo;
   i18n: PluginI18n;
-  injector: ServiceInjector;
   instanceId: string;
   backend?: BackendClient;
   overlay: OverlayService;

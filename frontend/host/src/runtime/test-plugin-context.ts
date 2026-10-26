@@ -94,10 +94,6 @@ export function createTestPluginContext(overrides: TestPluginContextOverrides = 
     hostInfo: Object.freeze({locale: 'en', theme: 'dark'}),
     deviceInfo: createTestDeviceInfo(),
     i18n: createTestI18n({}, 'en'),
-    injector: {
-      get: () => undefined,
-      has: () => false,
-    },
     instanceId: 'test:1',
     backend: undefined,
     telemetry: {

@@ -27,7 +27,6 @@ function fakeContext(backend: BackendClient | null = null): {ctx: PluginContext;
     sharedStorage: {},
     hostInfo: {locale: 'en', theme: 'light'},
     deviceInfo: {deviceName: 'Router'},
-    injector: {},
     instanceId: 'test',
     onThemeChange: vi.fn(() => unsubscribe),
     overlay: {open: vi.fn(), createLayer: vi.fn(), closeAll: vi.fn()},

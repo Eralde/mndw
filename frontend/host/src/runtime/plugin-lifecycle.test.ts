@@ -71,7 +71,6 @@ function mockContext(instanceId = 'test:1'): PluginContext {
       formatDate: (value: Date) => value.toISOString(),
       onChange: () => () => {},
     },
-    injector: {} as never,
     instanceId,
     backend: undefined,
     telemetry: {

@@ -1,6 +1,5 @@
 import type {RciManager} from '@rci-tools/core';
 import type {PluginStorage} from './storage.js';
-import type {ServiceInjector} from './injector.js';
 import type {OverlayService} from './overlay.js';
 import type {BackendClient} from './backend-client.js';
 import type {PaletteTokenMap} from './palette.js';
@@ -105,7 +104,6 @@ interface PluginContextBase {
   hostInfo: HostInfo;
   deviceInfo: DeviceInfo;
   i18n: PluginI18n;
-  injector: ServiceInjector;
   instanceId: string;
   /**
    * Typed backend client. Present only when the plugin declares a `backend`; ids resolve locally

@@ -33,7 +33,6 @@ export {parseCapabilityList} from './device-info.js';
 export type {PluginI18n, PluginManifestI18n} from './i18n.js';
 export type {Translator} from './translator.js';
 export type {PluginStorage} from './storage.js';
-export type {ServiceInjector} from './injector.js';
 export type {LoadState} from './load-state.js';
 export type {
   OverlayAnchor,

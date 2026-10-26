@@ -75,7 +75,6 @@ Each plugin instance receives a context containing:
 - per-instance `storage` and per-plugin `sharedStorage`;
 - UI locale and theme in `hostInfo`;
 - device identity, firmware capabilities, switchport inventory/layout, and USB version per physical port in `deviceInfo`;
-- host service lookup through `injector`;
 - a unique `instanceId`;
 - theme-change subscription;
 - the framework-neutral overlay service;

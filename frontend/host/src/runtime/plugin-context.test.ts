@@ -22,9 +22,6 @@ vi.mock('../services/storage.service.js', () => ({
     constructor(_prefix: string) {}
   },
 }));
-vi.mock('../services/injector.service.js', () => ({
-  injector: {get: vi.fn(() => 'service'), has: vi.fn(() => true), register: vi.fn()},
-}));
 vi.mock('../services/theme.service.js', () => ({
   getTheme: () => 'dark',
   subscribeTheme: () => () => {},
@@ -271,11 +268,10 @@ describe('createPluginContext security boundaries', () => {
     expect('sessionManager' in ctx).toBe(false);
   });
 
-  it('exposes a read-only injector without register', () => {
+  it('does not expose a service injector to plugins', () => {
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
-    expect(typeof ctx.injector.get).toBe('function');
-    expect((ctx.injector as unknown as Record<string, unknown>).register).toBeUndefined();
+    expect('injector' in ctx).toBe(false);
   });
 
   it('freezes the context and every security-boundary object on it', () => {
@@ -283,7 +279,6 @@ describe('createPluginContext security boundaries', () => {
 
     expect(Object.isFrozen(ctx)).toBe(true);
     expect(Object.isFrozen(ctx.rciManager)).toBe(true);
-    expect(Object.isFrozen(ctx.injector)).toBe(true);
     expect(Object.isFrozen(ctx.hostInfo)).toBe(true);
   });
 
@@ -292,7 +287,6 @@ describe('createPluginContext security boundaries', () => {
 
     expect(Object.getPrototypeOf(ctx)).toBeNull();
     expect(Object.getPrototypeOf(ctx.rciManager)).toBeNull();
-    expect(Object.getPrototypeOf(ctx.injector)).toBeNull();
     expect(Object.getPrototypeOf(ctx.hostInfo)).toBeNull();
   });
 

@@ -13,7 +13,6 @@ describe('createTestPluginContext', () => {
     expect(context.hostInfo.locale).toBe('en');
     expect(context.deviceInfo.deviceName).toBe('Test Device');
     expect(context.i18n.t('missing')).toBe('missing');
-    expect(context.injector.has('missing')).toBe(false);
     expect(context.instanceId).toBe('test:1');
     expect(context.kind).toBe('widget');
     expect(context.backend).toBeUndefined();

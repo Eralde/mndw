@@ -154,7 +154,6 @@ Prefer SDK and context surfaces:
   bottom sheets; their explicit `width` and `height` options are overridden, and
   the choice is made when the overlay opens;
 - `onThemeChange` for theme-sensitive rendering;
-- `injector` for approved host service tokens.
 
 Do not attach global overlays, global event listeners, or document-level focus
 management without cleanup. The host owns the top layer and calls `unmount`.

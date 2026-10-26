@@ -1,5 +1,3 @@
-import type {ServiceInjector} from '@mndw/sdk';
-
 /**
  * Builds a fresh, frozen facade over `target` exposing only `methods`, each bound to
  * `target`. Handing this to a plugin instead of the shared singleton means the plugin
@@ -30,19 +28,3 @@ export function createServiceFacade<T extends object, K extends keyof T>(
   return Object.freeze(facade) as ServiceFacade<T, K>;
 }
 
-/**
- * Wraps a {@link ServiceInjector} in a frozen, null-prototype read-only view exposing only
- * `get`/`has`. The concrete host injector also carries `register()`; this view prevents a
- * plugin from overwriting shared services at runtime.
- */
-export function createReadonlyInjector(injector: ServiceInjector): ServiceInjector {
-  const view: ServiceInjector = Object.assign(
-    Object.create(null),
-    {
-      get: <T>(token: string | symbol): T | undefined => injector.get<T>(token),
-      has: (token: string | symbol): boolean => injector.has(token),
-    },
-  );
-
-  return Object.freeze(view);
-}

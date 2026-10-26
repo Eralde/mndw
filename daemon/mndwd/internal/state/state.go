@@ -19,6 +19,9 @@ import (
 // reinstalled with an explicit provenance.
 const schemaVersion = 1
 
+// MaxAuditEntries bounds the persisted security audit trail.
+const MaxAuditEntries = 256
+
 // Approval is a plugin backend's approval status. Plugins without a backend are installed
 // directly as approved because they expose no executable server-side code.
 type Approval string
@@ -331,6 +334,10 @@ func (st *State) AppendAudit(action, plugin, detail string) {
 		Plugin: plugin,
 		Detail: detail,
 	})
+
+	if len(st.Audit) > MaxAuditEntries {
+		st.Audit = st.Audit[len(st.Audit)-MaxAuditEntries:]
+	}
 }
 
 // persist atomically writes st to disk (tmp file in the same dir, fsync, rename).

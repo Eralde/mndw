@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -50,10 +51,77 @@ func TestOpenCreatesEmptyStateFile(t *testing.T) {
 	}
 }
 
+func TestAppendAuditKeepsNewestEntries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := range MaxAuditEntries + 44 {
+		if err := store.Mutate(func(st *State) error {
+			st.AppendAudit("test", "", fmt.Sprintf("i=%d", i))
+
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	audit := reopened.Snapshot().Audit
+
+	if len(audit) != MaxAuditEntries || audit[0].Detail != "i=44" || audit[len(audit)-1].Detail != fmt.Sprintf("i=%d", MaxAuditEntries+43) {
+		t.Fatalf("audit len=%d first=%q last=%q", len(audit), audit[0].Detail, audit[len(audit)-1].Detail)
+	}
+}
+
+func TestOpenAcceptsOversizedAudit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	st := State{Version: schemaVersion, Plugins: map[string]*Plugin{}, Audit: make([]AuditEntry, MaxAuditEntries+10)}
+
+	for i := range st.Audit {
+		st.Audit[i] = AuditEntry{Action: "seed", Detail: fmt.Sprintf("i=%d", i)}
+	}
+
+	data, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := len(store.Snapshot().Audit); got != MaxAuditEntries+10 {
+		t.Fatalf("audit entries on open = %d, want %d", got, MaxAuditEntries+10)
+	}
+
+	if err := store.SetPersistentRCIEnabled(true); err != nil {
+		t.Fatal(err)
+	}
+
+	audit := store.Snapshot().Audit
+
+	if len(audit) != MaxAuditEntries || audit[len(audit)-1].Action != "persistent-rci-enable" {
+		t.Fatalf("audit after mutation len=%d last=%+v", len(audit), audit[len(audit)-1])
+	}
+}
+
 func TestPersistentRCIEnabledUnsetByDefault(t *testing.T) {
 	store, _ := newStore(t)
 
 	enabled, set := store.PersistentRCIEnabled()
+
 	if enabled || set {
 		t.Fatalf("PersistentRCIEnabled() = (%t, %t), want (false, false)", enabled, set)
 	}
@@ -70,9 +138,11 @@ func TestSetPersistentRCIEnabledPersistsAndAudits(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
+
 	if enabled, set := reopened.PersistentRCIEnabled(); !enabled || !set {
 		t.Fatalf("enabled PersistentRCIEnabled() = (%t, %t), want (true, true)", enabled, set)
 	}
+
 	if got := reopened.Snapshot().Audit; len(got) != 1 || got[0].Action != "persistent-rci-enable" || got[0].Plugin != "" {
 		t.Fatalf("enable audit = %+v", got)
 	}
@@ -80,9 +150,11 @@ func TestSetPersistentRCIEnabledPersistsAndAudits(t *testing.T) {
 	if err := reopened.SetPersistentRCIEnabled(false); err != nil {
 		t.Fatalf("disable persistent RCI: %v", err)
 	}
+
 	if enabled, set := reopened.PersistentRCIEnabled(); enabled || !set {
 		t.Fatalf("disabled PersistentRCIEnabled() = (%t, %t), want (false, true)", enabled, set)
 	}
+
 	if got := reopened.Snapshot().Audit; len(got) != 2 || got[1].Action != "persistent-rci-disable" || got[1].Plugin != "" {
 		t.Fatalf("disable audit = %+v", got)
 	}
@@ -92,6 +164,7 @@ func TestPersistentRCIEnabledReadsStateWithoutField(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.json")
 	legacy := `{"version":1,"plugins":{},"settings":{"backgroundTelemetry":true},"audit":[]}`
+
 	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
 		t.Fatalf("seed state: %v", err)
 	}
@@ -100,12 +173,15 @@ func TestPersistentRCIEnabledReadsStateWithoutField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open state: %v", err)
 	}
+
 	if enabled, set := store.PersistentRCIEnabled(); enabled || set {
 		t.Fatalf("PersistentRCIEnabled() = (%t, %t), want (false, false)", enabled, set)
 	}
+
 	if !store.Snapshot().Settings.BackgroundTelemetry {
 		t.Fatal("backgroundTelemetry was lost")
 	}
+
 	if _, err := os.Stat(path + ".bak"); !os.IsNotExist(err) {
 		t.Fatalf("state backup stat error = %v, want no backup", err)
 	}

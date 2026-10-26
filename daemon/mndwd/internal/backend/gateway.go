@@ -94,8 +94,10 @@ func (g *Gateway) Register(mux *http.ServeMux) {
 // Non-disclosure invariant: an unauthenticated caller must receive the same
 // response whether or not a route exists. Every not-found branch therefore
 // authenticates FIRST and returns the authentication error on failure; only an
-// authenticated caller is ever told a route is missing (404). Do not reorder
-// these checks or discard the authenticate() result.
+// authenticated caller is ever told a route is missing (404). Per-plugin gates
+// also run after authentication, so an unauthenticated caller cannot learn a
+// plugin's lifecycle or activation state; public routes are the deliberate
+// exception. Do not reorder these checks or discard the authenticate() result.
 func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *http.Request, kind transportKind) (routeDecision, bool) {
 	path, canonical := CanonicalRoutePath(request.PathValue("path"))
 
@@ -135,6 +137,22 @@ func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *ht
 		return routeDecision{}, false
 	}
 
+	route, matched := g.matchRoute(plugin.Manifest, request, kind, path)
+
+	if !matched {
+		if !g.authenticate(writer, request) {
+			return routeDecision{}, false
+		}
+
+		g.writeError(writer, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, noRouteMessage(kind)))
+
+		return routeDecision{}, false
+	}
+
+	if route.Access != "public" && !g.authenticate(writer, request) {
+		return routeDecision{}, false
+	}
+
 	// An unmet activation prerequisite (e.g. an unconfigured persistent-RCI
 	// controller token or an ungranted permission) is a steady state, not the
 	// transient stop the traffic gate represents. Surfacing it before the
@@ -149,22 +167,6 @@ func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *ht
 	if g.pluginTrafficBlocked(request.PathValue("name")) {
 		g.writeMaintenance(writer)
 
-		return routeDecision{}, false
-	}
-
-	route, matched := g.matchRoute(plugin.Manifest, request, kind, path)
-
-	if !matched {
-		if !g.authenticate(writer, request) {
-			return routeDecision{}, false
-		}
-
-		g.writeError(writer, httpx.NewError(http.StatusNotFound, httpx.CodeRouteNotFound, noRouteMessage(kind)))
-
-		return routeDecision{}, false
-	}
-
-	if route.Access != "public" && !g.authenticate(writer, request) {
 		return routeDecision{}, false
 	}
 

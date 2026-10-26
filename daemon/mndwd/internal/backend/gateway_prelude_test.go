@@ -40,10 +40,17 @@ func authFail() *fakeAuth {
 }
 
 // newPreludeGateway builds a Gateway backed by a real registry containing the
-// "demo" plugin (approved + enabled), plus disabled and pending state variants
-// that reuse the same validated manifest bytes. It uses a runtime for route-gate
-// state; prelude tests never dispatch to a backend.
+// "demo" and permission-gated "gated" plugins (both approved + enabled), plus
+// disabled and pending state variants that reuse the same validated manifest
+// bytes. It uses a runtime for route-gate state; prelude tests never dispatch to
+// a backend.
 func newPreludeGateway(t *testing.T, auth Authenticator, runtimes ...*RuntimeImpl) *Gateway {
+	t.Helper()
+
+	return newPreludeGatewayWithConfig(t, auth, GatewayConfig{}, runtimes...)
+}
+
+func newPreludeGatewayWithConfig(t *testing.T, auth Authenticator, cfg GatewayConfig, runtimes ...*RuntimeImpl) *Gateway {
 	t.Helper()
 
 	root := t.TempDir()
@@ -56,12 +63,20 @@ func newPreludeGateway(t *testing.T, auth Authenticator, runtimes ...*RuntimeImp
 	}
 
 	if err := store.Mutate(func(st *state.State) error {
+		gatedManifest := strings.Replace(demoManifest, `"name":"demo"`, `"name":"gated","permissions":["persistent-rci-session:read"]`, 1)
 		st.Plugins["demo"] = &state.Plugin{
 			Name:     "demo",
 			Source:   state.SourceUpload,
 			Approval: state.ApprovalApproved,
 			Enabled:  true,
 			Manifest: json.RawMessage(demoManifest),
+		}
+		st.Plugins["gated"] = &state.Plugin{
+			Name:     "gated",
+			Source:   state.SourceUpload,
+			Approval: state.ApprovalApproved,
+			Enabled:  true,
+			Manifest: json.RawMessage(gatedManifest),
 		}
 		st.Plugins["disabled"] = &state.Plugin{
 			Name:     "disabled",
@@ -88,7 +103,7 @@ func newPreludeGateway(t *testing.T, auth Authenticator, runtimes ...*RuntimeImp
 		runtime = runtimes[0]
 	}
 
-	return NewGateway(GatewayConfig{}, reg, auth, runtime, nil)
+	return NewGateway(cfg, reg, auth, runtime, nil)
 }
 
 // gateRequest builds a request with the path values the ServeMux would set.
@@ -202,31 +217,122 @@ func TestResolveAuthorizedRoute(t *testing.T) {
 	}
 }
 
-func TestResolveAuthorizedRouteMaintenanceGate(t *testing.T) {
-	for _, kind := range []transportKind{transportHTTP, transportWebSocket} {
-		t.Run(fmt.Sprintf("%d", kind), func(t *testing.T) {
+func TestResolveAuthorizedRouteMaintenanceGateAuthenticatesFirst(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		kind     transportKind
+		path     string
+		authOK   bool
+		wantCode string
+		wantAuth int
+	}{
+		{name: "http unauthenticated", kind: transportHTTP, path: "status", wantCode: httpx.CodeUnauthorized, wantAuth: 1},
+		{name: "http authenticated", kind: transportHTTP, path: "status", authOK: true, wantCode: httpx.CodeBackendMaintenance, wantAuth: 1},
+		{name: "websocket unauthenticated", kind: transportWebSocket, path: "terminal", wantCode: httpx.CodeUnauthorized, wantAuth: 1},
+		{name: "websocket authenticated", kind: transportWebSocket, path: "terminal", authOK: true, wantCode: httpx.CodeBackendMaintenance, wantAuth: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			auth := authFail()
-			gateway := newPreludeGateway(t, auth)
 
+			if tc.authOK {
+				auth = authPass()
+			}
+
+			gateway := newPreludeGateway(t, auth)
 			setTrafficBlockedForTest(gateway.runtime, "demo", true)
 
 			recorder := httptest.NewRecorder()
-			_, ok := gateway.resolveAuthorizedRoute(recorder, gateRequest(http.MethodGet, "demo", "status", ""), kind)
+			_, ok := gateway.resolveAuthorizedRoute(recorder, gateRequest(http.MethodGet, "demo", tc.path, ""), tc.kind)
 
 			if ok {
 				t.Fatal("maintenance must stop the prelude")
 			}
 
-			if recorder.Code != http.StatusServiceUnavailable {
-				t.Fatalf("status = %d, want 503", recorder.Code)
+			if recorder.Code != http.StatusUnauthorized && recorder.Code != http.StatusServiceUnavailable {
+				t.Fatalf("status = %d, want 401 or 503", recorder.Code)
 			}
 
-			if !strings.Contains(recorder.Body.String(), httpx.CodeBackendMaintenance) {
-				t.Fatalf("body = %q, want error code %q", recorder.Body.String(), httpx.CodeBackendMaintenance)
+			if !strings.Contains(recorder.Body.String(), tc.wantCode) {
+				t.Fatalf("body = %q, want error code %q", recorder.Body.String(), tc.wantCode)
 			}
 
-			if auth.calls != 0 {
-				t.Fatalf("auth calls = %d, want 0", auth.calls)
+			if !tc.authOK && strings.Contains(recorder.Body.String(), httpx.CodeBackendMaintenance) {
+				t.Fatalf("unauthenticated response disclosed plugin maintenance: %q", recorder.Body.String())
+			}
+
+			if auth.calls != tc.wantAuth {
+				t.Fatalf("auth calls = %d, want %d", auth.calls, tc.wantAuth)
+			}
+		})
+	}
+}
+
+func TestResolveAuthorizedRoutePublicRouteDuringMaintenance(t *testing.T) {
+	auth := authFail()
+	gateway := newPreludeGateway(t, auth)
+	setTrafficBlockedForTest(gateway.runtime, "demo", true)
+
+	recorder := httptest.NewRecorder()
+	_, ok := gateway.resolveAuthorizedRoute(recorder, gateRequest(http.MethodGet, "demo", "health", ""), transportHTTP)
+
+	if ok {
+		t.Fatal("maintenance must stop the prelude")
+	}
+
+	if recorder.Code != http.StatusServiceUnavailable || !strings.Contains(recorder.Body.String(), httpx.CodeBackendMaintenance) {
+		t.Fatalf("status/body = %d %q, want 503 %s", recorder.Code, recorder.Body.String(), httpx.CodeBackendMaintenance)
+	}
+
+	if auth.calls != 0 {
+		t.Fatalf("auth calls = %d, want 0", auth.calls)
+	}
+}
+
+func TestResolveAuthorizedRouteBlockedPluginAuthenticatesFirst(t *testing.T) {
+	gates := NewActivationGateRegistry()
+	gates.Register("persistent-rci-session:read", ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
+	}))
+
+	for _, tc := range []struct {
+		name     string
+		authOK   bool
+		wantCode string
+	}{
+		{name: "unauthenticated", wantCode: httpx.CodeUnauthorized},
+		{name: "authenticated", authOK: true, wantCode: httpx.CodeBackendBlocked},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			auth := authFail()
+
+			if tc.authOK {
+				auth = authPass()
+			}
+
+			gateway := newPreludeGatewayWithConfig(t, auth, GatewayConfig{ActivationGates: gates})
+			recorder := httptest.NewRecorder()
+			_, ok := gateway.resolveAuthorizedRoute(recorder, gateRequest(http.MethodGet, "gated", "status", ""), transportHTTP)
+
+			if ok {
+				t.Fatal("activation blocker must stop the prelude")
+			}
+
+			wantStatus := http.StatusUnauthorized
+
+			if tc.authOK {
+				wantStatus = http.StatusServiceUnavailable
+			}
+
+			if recorder.Code != wantStatus || !strings.Contains(recorder.Body.String(), tc.wantCode) {
+				t.Fatalf("status/body = %d %q, want %d %s", recorder.Code, recorder.Body.String(), wantStatus, tc.wantCode)
+			}
+
+			if !tc.authOK && strings.Contains(recorder.Body.String(), httpx.CodeBackendBlocked) {
+				t.Fatalf("unauthenticated response disclosed activation state: %q", recorder.Body.String())
+			}
+
+			if auth.calls != 1 {
+				t.Fatalf("auth calls = %d, want 1", auth.calls)
 			}
 		})
 	}

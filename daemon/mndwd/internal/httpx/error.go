@@ -32,6 +32,7 @@ const (
 	// (frontend/sdk/src/backend-client.ts) — never repurpose them.
 	CodeRouteNotFound           = "ROUTE_NOT_FOUND"
 	CodeNotApproved             = "NOT_APPROVED"
+	CodeApprovalRequired        = "APPROVAL_REQUIRED"
 	CodeDisabled                = "DISABLED"
 	CodeScriptFailed            = "SCRIPT_FAILED"
 	CodeScriptTimeout           = "SCRIPT_TIMEOUT"

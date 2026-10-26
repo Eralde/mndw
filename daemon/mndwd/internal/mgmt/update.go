@@ -80,6 +80,13 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if manifest.HasBackend(m) {
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusConflict, httpx.CodeApprovalRequired,
+			"updates that declare a backend require approval; delete the plugin and upload the new version"))
+
+		return
+	}
+
 	activeDir := filepath.Join(h.cfg.UserPluginsDir, name)
 	backupDir := filepath.Join(h.cfg.UserPluginsDir, name+".previous-"+safeVersion(previous.Version))
 	err = h.executeLifecycle(name, backend.OpUpdating, backend.IntentRun,

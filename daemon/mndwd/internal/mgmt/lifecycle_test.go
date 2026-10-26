@@ -2,10 +2,13 @@ package mgmt
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -228,7 +231,7 @@ func TestUpdateLifecycleStartsNewSnapshot(t *testing.T) {
 	runtime.events = nil
 	runtime.startVersions = nil
 
-	resp := postUpdate(t, srv, "2.0.0", "new")
+	resp := postUpdate(t, srv, staticServiceManifest("2.0.0"), "new")
 
 	defer resp.Body.Close()
 
@@ -261,7 +264,7 @@ func TestUpdateFailureRestoresPriorSnapshotAndDurableState(t *testing.T) {
 	runtime.startVersions = nil
 	runtime.startErrors = []error{errors.New("new readiness failed"), nil}
 
-	resp := postUpdate(t, srv, "2.0.0", "new")
+	resp := postUpdate(t, srv, staticServiceManifest("2.0.0"), "new")
 
 	defer resp.Body.Close()
 
@@ -292,7 +295,7 @@ func TestUpdateRollbackFailureLeavesPluginStoppedAndBlocked(t *testing.T) {
 	runtime.startVersions = nil
 	runtime.startErrors = []error{errors.New("new readiness failed"), errors.New("prior restart failed")}
 
-	resp := postUpdate(t, srv, "2.0.0", "new")
+	resp := postUpdate(t, srv, staticServiceManifest("2.0.0"), "new")
 
 	defer resp.Body.Close()
 
@@ -335,10 +338,97 @@ func installApprovedService(t *testing.T, srv *httptest.Server) {
 	}
 }
 
-func postUpdate(t *testing.T, srv *httptest.Server, version, index string) *http.Response {
+func TestUpdateBackendToBackendRequiresApproval(t *testing.T) {
+	runtime := &lifecycleTestRuntime{}
+	srv, store, _, cfg := newLifecycleHarness(t, runtime, nil)
+	runtime.store = store
+	installApprovedService(t, srv)
+
+	runtime.calls = nil
+	runtime.events = nil
+	manifestJSON := strings.Replace(serviceBackendManifest, `"1.0.0"`, `"2.0.0"`, 1)
+	resp := postUpdate(t, srv, manifestJSON, "new")
+
+	defer resp.Body.Close()
+
+	assertApprovalRequired(t, resp)
+	assertUpdateWasNotStarted(t, runtime, store, cfg.UserPluginsDir, "1.0.0", "old")
+}
+
+func TestUpdateAddingBackendToStaticPluginRequiresApproval(t *testing.T) {
+	runtime := &lifecycleTestRuntime{}
+	srv, store, _, cfg := newLifecycleHarness(t, runtime, nil)
+	runtime.store = store
+
+	resp := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": staticServiceManifest("1.0.0"),
+		"index.js":      "old",
+	}))
+	resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("static setup upload status = %d, want 201", resp.StatusCode)
+	}
+
+	runtime.calls = nil
+	runtime.events = nil
+	manifestJSON := strings.Replace(backendManifest, `"1.0.0"`, `"2.0.0"`, 1)
+	resp = postUpdate(t, srv, manifestJSON, "new")
+
+	defer resp.Body.Close()
+
+	assertApprovalRequired(t, resp)
+	assertUpdateWasNotStarted(t, runtime, store, cfg.UserPluginsDir, "1.0.0", "old")
+}
+
+func assertApprovalRequired(t *testing.T, resp *http.Response) {
 	t.Helper()
 
-	manifestJSON := strings.Replace(serviceBackendManifest, `"1.0.0"`, `"`+version+`"`, 1)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("update status = %d, want 409", resp.StatusCode)
+	}
+
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode update error: %v", err)
+	}
+	if body.Error.Code != "APPROVAL_REQUIRED" {
+		t.Fatalf("update error code = %q, want APPROVAL_REQUIRED", body.Error.Code)
+	}
+}
+
+func assertUpdateWasNotStarted(t *testing.T, runtime *lifecycleTestRuntime, store *state.Store, userPluginsDir, version, fileContents string) {
+	t.Helper()
+
+	if len(runtime.calls) != 0 || len(runtime.events) != 0 {
+		t.Fatalf("refused update ran lifecycle work: calls=%+v events=%v", runtime.calls, runtime.events)
+	}
+
+	record, ok := store.Get("svc")
+	if !ok || record.Version != version || !record.Enabled || record.Approval != state.ApprovalApproved {
+		t.Fatalf("state after refused update = %+v, exists=%t", record, ok)
+	}
+
+	contents, err := os.ReadFile(filepath.Join(userPluginsDir, "svc", "index.js"))
+	if err != nil {
+		t.Fatalf("read installed plugin after refused update: %v", err)
+	}
+	if string(contents) != fileContents {
+		t.Fatalf("installed plugin contents = %q, want %q", contents, fileContents)
+	}
+}
+
+func staticServiceManifest(version string) string {
+	return `{"manifestVersion":1,"name":"svc","version":"` + version + `","type":"widget","label":"Service","entry":"index.js","size":{"w":6,"h":4}}`
+}
+
+func postUpdate(t *testing.T, srv *httptest.Server, manifestJSON, index string) *http.Response {
+	t.Helper()
+
 	body := makeZip(t, map[string]string{
 		"manifest.json":  manifestJSON,
 		"index.js":       index,

@@ -466,7 +466,7 @@ func registerAccess(mux *http.ServeMux, core daemonCore) accessAssembly {
 
 	diagnostics.New(diagnostics.Config{
 		LogFile: core.cfg.DiagnosticsLogFile,
-		Plugins: diagnosticsPlugins(core.reg, core.runtime),
+		Plugins: func() []diagnostics.Plugin { return diagnosticsPlugins(core.reg, core.runtime) },
 	}).Register(accessMux)
 
 	session := assembleRCISession(core, accessMux, reconcileBackends(core))

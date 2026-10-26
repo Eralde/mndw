@@ -43,7 +43,7 @@ func TestDiagnosticsCollectsSupervisorAndReadyLiveData(t *testing.T) {
 		plugins = append(plugins, plugin)
 	}
 
-	response := responseFor(t, New(Config{LogFile: logFile, Plugins: plugins}))
+	response := responseFor(t, New(Config{LogFile: logFile, Plugins: func() []Plugin { return plugins }}))
 
 	if !called {
 		t.Fatal("ready service live callback was not called")
@@ -76,6 +76,21 @@ func TestDiagnosticsCollectsSupervisorAndReadyLiveData(t *testing.T) {
 	}
 }
 
+func TestCollectReadsPluginListPerRequest(t *testing.T) {
+	plugins := []Plugin{{ID: "first"}}
+	handler := New(Config{Plugins: func() []Plugin { return plugins }})
+
+	if got := responseFor(t, handler).Plugins; len(got) != 1 || got[0].PluginID != "first" {
+		t.Fatalf("first response plugins = %+v", got)
+	}
+
+	plugins = []Plugin{{ID: "second"}}
+
+	if got := responseFor(t, handler).Plugins; len(got) != 1 || got[0].PluginID != "second" {
+		t.Fatalf("second response plugins = %+v", got)
+	}
+}
+
 func TestDiagnosticsLiveFailuresAreIndependentAndBounded(t *testing.T) {
 	plugins := []Plugin{
 		{
@@ -102,7 +117,7 @@ func TestDiagnosticsLiveFailuresAreIndependentAndBounded(t *testing.T) {
 			Live: func(context.Context) ([]byte, error) { return []byte(`{"data":"123456789"}`), nil },
 		},
 	}
-	response := responseFor(t, New(Config{Plugins: plugins, MaxPluginBytes: 16, MaxTotalPluginBytes: 1024}))
+	response := responseFor(t, New(Config{Plugins: func() []Plugin { return plugins }, MaxPluginBytes: 16, MaxTotalPluginBytes: 1024}))
 
 	if response.Plugins[0].Live.Status != "unavailable" || !strings.Contains(response.Plugins[0].Live.Reason, "service unavailable") {
 		t.Fatalf("failed live result = %#v", response.Plugins[0].Live)
@@ -117,9 +132,11 @@ func TestDiagnosticsLiveFailuresAreIndependentAndBounded(t *testing.T) {
 	}
 
 	aggregate := New(Config{
-		Plugins: []Plugin{
-			{ID: "first", Supervisor: func() SupervisorDiagnostics { return SupervisorDiagnostics{State: "ready"} }, Live: func(context.Context) ([]byte, error) { return []byte(`{"one":1}`), nil }},
-			{ID: "second", Supervisor: func() SupervisorDiagnostics { return SupervisorDiagnostics{State: "ready"} }, Live: func(context.Context) ([]byte, error) { return []byte(`{"two":2}`), nil }},
+		Plugins: func() []Plugin {
+			return []Plugin{
+				{ID: "first", Supervisor: func() SupervisorDiagnostics { return SupervisorDiagnostics{State: "ready"} }, Live: func(context.Context) ([]byte, error) { return []byte(`{"one":1}`), nil }},
+				{ID: "second", Supervisor: func() SupervisorDiagnostics { return SupervisorDiagnostics{State: "ready"} }, Live: func(context.Context) ([]byte, error) { return []byte(`{"two":2}`), nil }},
+			}
 		},
 		MaxPluginBytes:      1024,
 		MaxTotalPluginBytes: 10,
@@ -136,7 +153,7 @@ func TestDiagnosticsRequiresObjectJSONAndAlwaysIncludesSupervisor(t *testing.T) 
 		{ID: "array", Supervisor: func() SupervisorDiagnostics { return SupervisorDiagnostics{State: "ready"} }, Live: func(context.Context) ([]byte, error) { return []byte(`[]`), nil }},
 		{ID: "missing", Supervisor: nil},
 	}
-	response := responseFor(t, New(Config{Plugins: plugins}))
+	response := responseFor(t, New(Config{Plugins: func() []Plugin { return plugins }}))
 
 	if response.Plugins[0].Live.Status != "unavailable" || !strings.Contains(response.Plugins[0].Live.Reason, "object") {
 		t.Fatalf("array result = %#v", response.Plugins[0].Live)

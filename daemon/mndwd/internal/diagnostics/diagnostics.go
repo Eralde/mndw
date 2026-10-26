@@ -65,7 +65,7 @@ type LiveDiagnostics struct {
 // Config controls diagnostics collection. LogFile is a read-only input.
 type Config struct {
 	LogFile             string
-	Plugins             []Plugin
+	Plugins             func() []Plugin
 	MaxLogBytes         int64
 	MaxPluginBytes      int64
 	MaxTotalPluginBytes int64
@@ -136,10 +136,16 @@ func (h *Handler) handle(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) collect(ctx context.Context) Response {
 	logTail, logError := readTail(h.config.LogFile, h.config.MaxLogBytes)
-	plugins := make([]PluginDiagnostics, 0, len(h.config.Plugins))
+	configuredPlugins := []Plugin(nil)
+
+	if h.config.Plugins != nil {
+		configuredPlugins = h.config.Plugins()
+	}
+
+	plugins := make([]PluginDiagnostics, 0, len(configuredPlugins))
 	var totalBytes int64
 
-	for _, plugin := range h.config.Plugins {
+	for _, plugin := range configuredPlugins {
 		result := PluginDiagnostics{
 			PluginID: plugin.ID,
 			Supervisor: SupervisorDiagnostics{

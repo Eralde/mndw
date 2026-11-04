@@ -68,6 +68,7 @@ func TestBackendExecConfigCarriesLimits(t *testing.T) {
 	}
 
 	execCfg := backendExecConfig(cfg, slog.Default())
+
 	if got, want := execCfg.MaxOutputBytes, int64(4096); got != want {
 		t.Fatalf("MaxOutputBytes = %d, want %d", got, want)
 	}

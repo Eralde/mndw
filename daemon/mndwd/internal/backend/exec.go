@@ -252,6 +252,7 @@ func (b *boundedBuffer) Write(data []byte) (int, error) {
 
 	if int64(len(data)) > remaining {
 		_, _ = b.buf.Write(data[:remaining])
+
 		b.markOverflow()
 
 		return len(data), nil

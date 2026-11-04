@@ -144,6 +144,7 @@ func TestExecRunnerStopsProcessOnOutputOverflow(t *testing.T) {
 	started := time.Now()
 	err := runner.Serve(context.Background(), ExecRequest{PluginID: "demo", RouteID: "x", Dir: dir, Command: command}, recorder)
 	elapsed := time.Since(started)
+
 	if err == nil || err.Code != CodeBackendOutputTooLarge || elapsed >= 3*time.Second {
 		t.Fatalf("Serve error = %v, elapsed = %s, want output-too-large within 3s", err, elapsed)
 	}
@@ -196,7 +197,9 @@ func TestExecRunnerDoesNotStartAfterCancellation(t *testing.T) {
 
 	runner := NewExecRunner(ExecRunnerConfig{Timeout: 5 * time.Second, KillGrace: 100 * time.Millisecond})
 	ctx, cancel := context.WithCancel(context.Background())
+
 	cancel()
+
 	recorder := httptest.NewRecorder()
 	err := runner.Serve(ctx, ExecRequest{PluginID: "demo", RouteID: "x", Dir: dir, Command: command}, recorder)
 	if err == nil || err.Code != httpx.CodeScriptTimeout || err.Status != http.StatusGatewayTimeout {
@@ -204,6 +207,7 @@ func TestExecRunnerDoesNotStartAfterCancellation(t *testing.T) {
 	}
 
 	time.Sleep(300 * time.Millisecond)
+
 	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
 		t.Fatalf("command started after cancellation, stat error = %v", statErr)
 	}
@@ -220,20 +224,27 @@ func TestExecRunnerStopsProcessCancelledDuringRun(t *testing.T) {
 
 	runner := NewExecRunner(ExecRunnerConfig{Timeout: 5 * time.Second, KillGrace: 100 * time.Millisecond})
 	ctx, cancel := context.WithCancel(context.Background())
+
 	defer cancel()
+
 	timer := time.AfterFunc(100*time.Millisecond, cancel)
+
 	defer timer.Stop()
+
 	recorder := httptest.NewRecorder()
 	started := time.Now()
 	err := runner.Serve(ctx, ExecRequest{PluginID: "demo", RouteID: "x", Dir: dir, Command: command}, recorder)
+
 	if elapsed := time.Since(started); elapsed >= time.Second {
 		t.Fatalf("Serve returned after %s, want within 1s", elapsed)
 	}
+
 	if err == nil || err.Code != httpx.CodeScriptTimeout {
 		t.Fatalf("Serve error = %v, want %s", err, httpx.CodeScriptTimeout)
 	}
 
 	time.Sleep(800 * time.Millisecond)
+
 	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
 		t.Fatalf("command completed after cancellation, stat error = %v", statErr)
 	}

@@ -14,7 +14,7 @@ it('bounds capture, freezes while paused, clears locally, filters and cleans up'
     target,
     props: {events: fixture.context.events, i18n: createTestI18n(messages)},
   });
-  const emit = (id: string): void => {
+  const emitWithoutFlush = (id: string): void => {
     fixture.emitEvent({
       id,
       ts: 1725552000123,
@@ -22,6 +22,9 @@ it('bounds capture, freezes while paused, clears locally, filters and cleans up'
       source: 'hook',
       payload: {interface: id},
     });
+  };
+  const emit = (id: string): void => {
+    emitWithoutFlush(id);
     flushSync();
   };
   const emitResync = (): void => {
@@ -42,9 +45,10 @@ it('bounds capture, freezes while paused, clears locally, filters and cleans up'
     flushSync();
 
     for (let index = 0; index < 501; index++) {
-      emit(`event-${index}`);
+      emitWithoutFlush(`event-${index}`);
     }
 
+    flushSync();
     expect(target.querySelectorAll('details')).toHaveLength(500);
     expect(target.querySelector('pre')?.textContent).toContain('event-500');
     click('Pause');

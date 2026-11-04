@@ -1,7 +1,7 @@
 // Package authz is the daemon's session gate. It has no session store
 // of its own: it replays a request's cookies against the device's /auth endpoint and
-// trusts the device's verdict, caching it per cookie for a short TTL so a burst of
-// plugin calls costs one upstream check. --dev accepts everything (the bypass is
+// trusts the device's verdict, using a bounded per-cookie TTL cache and coalesced,
+// concurrency-limited upstream checks. --dev accepts everything (the bypass is
 // logged loudly at startup). Backend route access is decided by the unified
 // backend gateway because it depends on the matched manifest capability.
 package authz
@@ -23,6 +23,12 @@ import (
 // defaultTTL is how long a positive verdict is trusted (design: ~30s).
 const defaultTTL = 30 * time.Second
 
+const maxCacheEntries = 1024
+
+const maxConcurrentChecks = 4
+
+const checkTimeout = 5 * time.Second
+
 // negativeTTL caps how long a rejection is cached: short enough that a user who has
 // just logged in is not locked out for the full positive TTL, long enough to blunt a
 // flood of invalid cookies hammering the device.
@@ -30,20 +36,30 @@ const negativeTTL = 5 * time.Second
 
 // Verifier validates that a request carries a live device session.
 type Verifier struct {
-	deviceURL string
-	client    *http.Client
-	ttl       time.Duration
-	dev       bool
-	logger    *slog.Logger
-	now       func() time.Time
+	deviceURL    string
+	client       *http.Client
+	ttl          time.Duration
+	dev          bool
+	logger       *slog.Logger
+	now          func() time.Time
+	checkTimeout time.Duration
 
-	mu    sync.Mutex
-	cache map[string]entry
+	mu         sync.Mutex
+	cache      map[string]entry
+	inflight   map[string]*check
+	checks     chan struct{}
+	maxEntries int
 }
 
 type entry struct {
 	ok      bool
 	expires time.Time
+}
+
+type check struct {
+	done      chan struct{}
+	ok        bool
+	cacheable bool
 }
 
 // Options tune a Verifier; the zero value is fine (sensible defaults applied).
@@ -54,18 +70,38 @@ type Options struct {
 	Client *http.Client
 	// Now overrides the clock (tests inject a controllable one).
 	Now func() time.Time
+	// MaxEntries bounds the number of cached verdicts (default 1024).
+	MaxEntries int
+	// MaxConcurrentChecks bounds concurrent upstream checks (default 4).
+	MaxConcurrentChecks int
 }
 
 // New constructs a Verifier. In dev mode the device is never contacted.
 func New(deviceURL string, dev bool, logger *slog.Logger, opts Options) *Verifier {
+	maxEntries := opts.MaxEntries
+
+	if maxEntries <= 0 {
+		maxEntries = maxCacheEntries
+	}
+
+	maxConcurrent := opts.MaxConcurrentChecks
+
+	if maxConcurrent <= 0 {
+		maxConcurrent = maxConcurrentChecks
+	}
+
 	v := &Verifier{
-		deviceURL: strings.TrimRight(deviceURL, "/"),
-		client:    opts.Client,
-		ttl:       opts.TTL,
-		dev:       dev,
-		logger:    logger,
-		now:       opts.Now,
-		cache:     map[string]entry{},
+		deviceURL:    strings.TrimRight(deviceURL, "/"),
+		client:       opts.Client,
+		ttl:          opts.TTL,
+		dev:          dev,
+		logger:       logger,
+		now:          opts.Now,
+		checkTimeout: checkTimeout,
+		cache:        map[string]entry{},
+		inflight:     map[string]*check{},
+		checks:       make(chan struct{}, maxConcurrent),
+		maxEntries:   maxEntries,
 	}
 
 	if v.client == nil {
@@ -106,9 +142,7 @@ func (v *Verifier) Authenticate(r *http.Request) *httpx.APIError {
 		return unauthorized()
 	}
 
-	ok := v.replay(r.Context(), cookie)
-
-	v.store(key, ok)
+	ok := v.check(r.Context(), key, cookie)
 
 	if ok {
 		return nil
@@ -192,17 +226,105 @@ func (v *Verifier) lookup(key string) (verdict, cached bool) {
 }
 
 func (v *Verifier) store(key string, ok bool) {
+	v.mu.Lock()
+
+	defer v.mu.Unlock()
+
+	v.storeLocked(key, ok)
+}
+
+func (v *Verifier) storeLocked(key string, ok bool) {
 	ttl := v.ttl
 
 	if !ok {
 		ttl = negativeTTL
 	}
 
-	v.mu.Lock()
+	if _, exists := v.cache[key]; !exists && len(v.cache) >= v.maxEntries {
+		now := v.now()
 
-	defer v.mu.Unlock()
+		for cachedKey, e := range v.cache {
+			if now.After(e.expires) {
+				delete(v.cache, cachedKey)
+			}
+		}
+
+		if len(v.cache) >= v.maxEntries {
+			var earliestKey string
+			var earliest time.Time
+			found := false
+
+			for cachedKey, e := range v.cache {
+				if !found || e.expires.Before(earliest) {
+					earliestKey = cachedKey
+					earliest = e.expires
+					found = true
+				}
+			}
+
+			if found {
+				delete(v.cache, earliestKey)
+			}
+		}
+	}
 
 	v.cache[key] = entry{ok: ok, expires: v.now().Add(ttl)}
+}
+
+func (v *Verifier) check(ctx context.Context, key, cookie string) (ok bool) {
+	v.mu.Lock()
+
+	if c, exists := v.inflight[key]; exists {
+		v.mu.Unlock()
+
+		select {
+		case <-c.done:
+			return c.ok
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	c := &check{done: make(chan struct{})}
+	v.inflight[key] = c
+
+	v.mu.Unlock()
+
+	cacheable := false
+
+	defer func() {
+		v.mu.Lock()
+		delete(v.inflight, key)
+
+		c.ok = ok
+		c.cacheable = cacheable
+
+		if cacheable {
+			v.storeLocked(key, ok)
+		}
+
+		close(c.done)
+		v.mu.Unlock()
+	}()
+
+	checkCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), v.checkTimeout)
+
+	defer cancel()
+
+	select {
+	case v.checks <- struct{}{}:
+		func() {
+			defer func() { <-v.checks }()
+
+			ok = v.replay(checkCtx, cookie)
+		}()
+
+		cacheable = true
+	case <-checkCtx.Done():
+		return false
+	}
+
+	return ok
 }
 
 // hashKey derives the cache key from the cookie header so raw session credentials are

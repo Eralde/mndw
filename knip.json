@@ -24,6 +24,14 @@
         "src/**/*.test.ts"
       ]
     },
+    "frontend/sdk-internal": {
+      "entry": [
+        "src/**/*.test.ts"
+      ],
+      "ignoreDependencies": [
+        "@mndw/sdk"
+      ]
+    },
     "frontend/ui": {
       "entry": [
         "src/**/*.test.ts",
@@ -96,6 +104,9 @@
       ]
     }
   },
+  "ignoreWorkspaces": [
+    "build/docs-snippet-env"
+  ],
   "ignoreBinaries": [
     "go"
   ],
@@ -103,7 +114,10 @@
     "build/svelte-compiler-options.d.ts"
   ],
   "ignoreDependencies": [
-    "stylelint-config-standard"
+    "stylelint-config-standard",
+    // These plugins are loaded from build/docs/typedoc.json.
+    "typedoc-plugin-markdown",
+    "typedoc-vitepress-theme"
   ],
   "ignoreIssues": {
     "frontend/ui/src/position/position.ts": [

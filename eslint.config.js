@@ -269,11 +269,14 @@ module.exports = tseslint.config(
       'tooling/cli/templates/**',
       // CLI fixture packages are test input, not host source — never lint their payloads.
       'tooling/cli/fixtures/**',
-      // Built example-plugin bundles (esbuild output) are not source — never lint them.
-      'plugins/builtin/dist/**',
-      'plugins/builtin/*/dist/**',
-      'plugins/examples/dist/**',
-      'plugins/examples/*/dist/**',
+      // Build outputs and packaged artifacts are generated content, not source.
+      '**/dist/**',
+      'out/**',
+      // SvelteKit-generated output is not authored source.
+      '**/.svelte-kit/**',
+      // Prebuilt host assets are generated bundles, not source.
+      'frontend/host/dist-dev-host/**',
+      'tooling/cli/host-dev/**',
     ],
   },
   // @see https://typescript-eslint.io/getting-started/typed-linting/
@@ -309,6 +312,7 @@ module.exports = tseslint.config(
           './frontend/*/tsconfig.json',
           './tooling/*/tsconfig.json',
           './build/tsconfig.json',
+          './build/docs-snippet-env/tsconfig.json',
           './build/palette/tsconfig.json',
           './tsconfig.example-plugins.json',
         ],
@@ -330,6 +334,31 @@ module.exports = tseslint.config(
       '@stylistic': stylistic,
     },
 
+    rules: {
+      ...JS_RULE_OVERRIDES,
+      ...TS_RULE_OVERRIDES,
+    },
+  },
+  // CLI build scripts belong to the package tsconfig, so lint them with the TypeScript parser too.
+  {
+    files: ['tooling/cli/scripts/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        'project': ['./tooling/cli/tsconfig.json'],
+        'tsconfigRootDir': __dirname,
+      },
+    },
+    extends: [
+      eslint.configs.recommended,
+      ...tseslint.configs.recommendedTypeChecked,
+      ...tseslint.configs.stylisticTypeChecked,
+    ],
+    plugins: {
+      import: fixupPluginRules(_import),
+      jsdoc,
+      'prefer-arrow': preferArrow,
+      '@stylistic': stylistic,
+    },
     rules: {
       ...JS_RULE_OVERRIDES,
       ...TS_RULE_OVERRIDES,

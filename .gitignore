@@ -1,5 +1,7 @@
 node_modules/
 dist/
+frontend/host/dist-dev-host/
+tooling/cli/host-dev/
 .env.local
 .dev-deploy.txt
 .pnpm-store
@@ -7,9 +9,14 @@ dist/
 *.zip
 *.ipk
 .ngc-cache/
+.svelte-kit/
 .eslintcache
 .cache/
+docs/plugin-author/.vitepress/cache/
+docs/plugin-author/.vitepress/dist/
+docs/plugin-author/api/
 /rci-session-secrets/
 /tmp/
 /out/
+build/npm/mndwd/*/bin/
 .dev-data/

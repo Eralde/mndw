@@ -37,6 +37,11 @@ type subscription struct {
 	closed  bool
 }
 
+type Subscription struct {
+	bus          *Bus
+	subscription *subscription
+}
+
 type Bus struct {
 	mu              sync.Mutex
 	ring            []ringEntry
@@ -83,19 +88,28 @@ func (b *Bus) Publish(event Event) {
 }
 
 func (b *Bus) Subscribe(filter TopicFilter) (<-chan Event, CancelFunc, error) {
+	subscription, err := b.SubscribeHandle(filter)
+	if err != nil {
+		return nil, func() {}, err
+	}
+
+	return subscription.Events(), subscription.Cancel, nil
+}
+
+func (b *Bus) SubscribeHandle(filter TopicFilter) (*Subscription, error) {
 	b.mu.Lock()
 
 	defer b.mu.Unlock()
 
 	if len(b.subscribers) >= MaxEventSubscribers {
-		return nil, func() {}, ErrSubscriberLimit
+		return nil, ErrSubscriberLimit
 	}
 
-	subscriber := &subscription{
+	busSubscription := &subscription{
 		channel: make(chan Event, EventSubscriberCapacity),
 		filter:  filter,
 	}
-	b.subscribers[subscriber] = struct{}{}
+	b.subscribers[busSubscription] = struct{}{}
 
 	if b.subscriberReady == nil {
 		b.subscriberReady = make(chan struct{})
@@ -105,9 +119,35 @@ func (b *Bus) Subscribe(filter TopicFilter) (<-chan Event, CancelFunc, error) {
 
 	b.subscriberReady = make(chan struct{})
 
-	return subscriber.channel, func() {
-		b.cancel(subscriber)
-	}, nil
+	return &Subscription{bus: b, subscription: busSubscription}, nil
+}
+
+func (s *Subscription) Events() <-chan Event {
+	return s.subscription.channel
+}
+
+func (s *Subscription) SetFilter(filter TopicFilter) {
+	if s == nil || s.bus == nil || s.subscription == nil {
+		return
+	}
+
+	s.bus.mu.Lock()
+
+	defer s.bus.mu.Unlock()
+
+	if s.subscription.closed {
+		return
+	}
+
+	s.subscription.filter = filter
+}
+
+func (s *Subscription) Cancel() {
+	if s == nil || s.bus == nil || s.subscription == nil {
+		return
+	}
+
+	s.bus.cancel(s.subscription)
 }
 
 func (b *Bus) subscriberReadyForTest() <-chan struct{} {

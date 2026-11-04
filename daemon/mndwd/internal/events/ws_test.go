@@ -185,6 +185,113 @@ func TestWebSocketInvalidSubscriptionPreservesPreviousFilter(t *testing.T) {
 	}
 }
 
+func TestWebSocketResubscribeKeepsQueuedEvent(t *testing.T) {
+	bus := NewBus()
+	var (
+		filter       TopicFilter
+		liveEvents   <-chan Event
+		subscription *Subscription
+		snapshot     *replaySnapshot
+	)
+
+	defer func() {
+		if subscription != nil {
+			subscription.Cancel()
+		}
+	}()
+
+	allTopics := []string{"*"}
+
+	if !handleClientMessage(nil, bus, clientMessage{Type: "subscribe", Topics: &allTopics}, &filter, &liveEvents, &subscription, &snapshot) {
+		t.Fatal("initial subscribe failed")
+	}
+
+	initialEvents := liveEvents
+	want := testEvent("01J5KZ00000000000000000021", "wan.connected")
+
+	bus.Publish(want)
+
+	wanTopics := []string{"wan"}
+
+	if !handleClientMessage(nil, bus, clientMessage{Type: "subscribe", Topics: &wanTopics}, &filter, &liveEvents, &subscription, &snapshot) {
+		t.Fatal("resubscribe failed")
+	}
+
+	if liveEvents != initialEvents {
+		t.Fatal("resubscribe replaced the channel containing the queued event")
+	}
+
+	got := <-liveEvents
+
+	if got.ID != want.ID {
+		t.Fatalf("event ID = %q, want %q", got.ID, want.ID)
+	}
+
+	select {
+	case got := <-liveEvents:
+		t.Fatalf("duplicate event: %#v", got)
+	default:
+	}
+}
+
+func TestWebSocketResubscribeDropsEventsOutsideNewFilter(t *testing.T) {
+	bus := NewBus()
+	var (
+		filter       TopicFilter
+		liveEvents   <-chan Event
+		subscription *Subscription
+		snapshot     *replaySnapshot
+	)
+
+	defer func() {
+		if subscription != nil {
+			subscription.Cancel()
+		}
+	}()
+
+	allTopics := []string{"*"}
+
+	if !handleClientMessage(nil, bus, clientMessage{Type: "subscribe", Topics: &allTopics}, &filter, &liveEvents, &subscription, &snapshot) {
+		t.Fatal("initial subscribe failed")
+	}
+
+	initialEvents := liveEvents
+
+	bus.Publish(testEvent("01J5KZ00000000000000000022", "system.x"))
+
+	want := testEvent("01J5KZ00000000000000000023", "wan.connected")
+
+	bus.Publish(want)
+
+	wanTopics := []string{"wan"}
+
+	if !handleClientMessage(nil, bus, clientMessage{Type: "subscribe", Topics: &wanTopics}, &filter, &liveEvents, &subscription, &snapshot) {
+		t.Fatal("resubscribe failed")
+	}
+
+	if liveEvents != initialEvents {
+		t.Fatal("resubscribe replaced the channel containing queued events")
+	}
+
+	var forwarded []Event
+
+	for range 2 {
+		event := <-liveEvents
+
+		if !writeLiveEvent(filter, event, func(event Event) bool {
+			forwarded = append(forwarded, event)
+
+			return true
+		}) {
+			t.Fatal("writing a live event failed")
+		}
+	}
+
+	if len(forwarded) != 1 || forwarded[0].ID != want.ID {
+		t.Fatalf("forwarded events = %#v, want only event %q", forwarded, want.ID)
+	}
+}
+
 func waitForSubscriber(t *testing.T, bus *Bus) {
 	t.Helper()
 

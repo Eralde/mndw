@@ -2,6 +2,7 @@ package events
 
 import (
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -115,4 +116,183 @@ func TestBusLimitsSubscribers(t *testing.T) {
 	if _, _, err := bus.Subscribe(filter); !errors.Is(err, ErrSubscriberLimit) {
 		t.Fatalf("subscribe error = %v, want subscriber limit", err)
 	}
+}
+
+func TestSubscriptionSetFilterKeepsBufferedEvents(t *testing.T) {
+	bus := NewBus()
+	filter, err := ParseTopicFilter([]string{"*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription, err := bus.SubscribeHandle(filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer subscription.Cancel()
+
+	event := testEvent("01J5KZ00000000000000000011", "wan.connected")
+
+	bus.Publish(event)
+
+	wanFilter, err := ParseTopicFilter([]string{"wan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription.SetFilter(wanFilter)
+
+	got := <-subscription.Events()
+
+	if got.ID != event.ID {
+		t.Fatalf("event ID = %q, want %q", got.ID, event.ID)
+	}
+}
+
+func TestSubscriptionSetFilterAppliesToLaterPublishes(t *testing.T) {
+	bus := NewBus()
+	wanFilter, err := ParseTopicFilter([]string{"wan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription, err := bus.SubscribeHandle(wanFilter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer subscription.Cancel()
+
+	systemFilter, err := ParseTopicFilter([]string{"system"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription.SetFilter(systemFilter)
+	bus.Publish(testEvent("01J5KZ00000000000000000012", "wan.connected"))
+
+	want := testEvent("01J5KZ00000000000000000013", "system.x")
+
+	bus.Publish(want)
+
+	got := <-subscription.Events()
+
+	if got.ID != want.ID {
+		t.Fatalf("event ID = %q, want %q", got.ID, want.ID)
+	}
+
+	select {
+	case got := <-subscription.Events():
+		t.Fatalf("unexpected extra event: %#v", got)
+	default:
+	}
+}
+
+func TestSubscriptionSetFilterDoesNotAddSubscriber(t *testing.T) {
+	bus := NewBus()
+	filter, err := ParseTopicFilter([]string{"wan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription, err := bus.SubscribeHandle(filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer subscription.Cancel()
+
+	before := len(bus.subscribers)
+	filter, err = ParseTopicFilter([]string{"system"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription.SetFilter(filter)
+
+	if got := len(bus.subscribers); got != before {
+		t.Fatalf("subscriber count = %d, want unchanged at %d", got, before)
+	}
+}
+
+func TestSubscriptionSetFilterAfterCancelIsNoop(t *testing.T) {
+	bus := NewBus()
+	filter, err := ParseTopicFilter([]string{"wan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription, err := bus.SubscribeHandle(filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription.Cancel()
+
+	filter, err = ParseTopicFilter([]string{"system"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription.SetFilter(filter)
+
+	if _, ok := <-subscription.Events(); ok {
+		t.Fatal("subscription channel remained open after cancel")
+	}
+}
+
+func TestSubscriptionSetFilterRacesWithPublish(t *testing.T) {
+	bus := NewBus()
+	allFilter, err := ParseTopicFilter([]string{"*"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subscription, err := bus.SubscribeHandle(allFilter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer subscription.Cancel()
+
+	filters := []TopicFilter{}
+
+	for _, topics := range [][]string{{"wan"}, {"system"}} {
+		filter, parseErr := ParseTopicFilter(topics)
+
+		if parseErr != nil {
+			t.Fatal(parseErr)
+		}
+
+		filters = append(filters, filter)
+	}
+
+	var wait sync.WaitGroup
+
+	wait.Add(2)
+
+	go func() {
+		defer wait.Done()
+
+		for index := 0; index < 1000; index++ {
+			subscription.SetFilter(filters[index%len(filters)])
+		}
+	}()
+
+	go func() {
+		defer wait.Done()
+
+		for index := 0; index < 1000; index++ {
+			topic := "wan.connected"
+
+			if index%2 == 0 {
+				topic = "system.x"
+			}
+
+			bus.Publish(testEvent("01J5KZ00000000000000000014", topic))
+		}
+	}()
+
+	wait.Wait()
 }

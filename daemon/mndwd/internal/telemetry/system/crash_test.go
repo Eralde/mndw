@@ -12,6 +12,10 @@ import (
 )
 
 func TestCrashAtEveryAcceptanceStep(t *testing.T) {
+	if testing.Short() {
+		t.Skip("crash sweep runs in the weekly CI job")
+	}
+
 	baselineFS := crashFixture(t)
 	baselineSource := &fakeNTP{bodies: [][]byte{invalidNTPBody(), validNTPBody()}}
 	baselineEngine, baselineClock, _ := startEngine(t, baselineFS, testBootA, 0, baselineSource, func(context.Context) []float32 {

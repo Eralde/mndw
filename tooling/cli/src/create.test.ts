@@ -24,6 +24,8 @@ import {packPlugin} from './pack.js';
 import {zipPlugin} from './zip.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
+// The full suites run in .github/workflows/ci-weekly.yml.
+const skipSlowTests = process.env.MNDW_SKIP_SLOW_TESTS === '1';
 
 describe('readCliMetadata', () => {
   it('uses this CLI package own ranges for Vite and framework plugins', () => {
@@ -254,7 +256,7 @@ describe('planCreate', () => {
     expect(app).not.toMatch(/\bInput\b/);
   });
 
-  it('runs generated framework locale and table tests without compiler warnings', () => {
+  it.skipIf(skipSlowTests)('runs generated framework locale and table tests without compiler warnings', () => {
     const root = mkdtempSync(join(REPO_ROOT, 'tooling', 'cli', '.generated-warning-'));
     const vitest = join(REPO_ROOT, 'tooling', 'cli', 'node_modules', '.bin', 'vitest');
 
@@ -650,7 +652,7 @@ describe('createPlugin', () => {
   ];
 
   for (const combo of combos) {
-    it(`generates a ${combo.framework} ${combo.type} that validates, packs, and zips`, async () => {
+    it.skipIf(skipSlowTests)(`generates a ${combo.framework} ${combo.type} that validates, packs, and zips`, async () => {
       const outDir = join(root, `${combo.framework}-${combo.type}`);
       const name = `gen-${combo.framework}-${combo.type}`;
 

@@ -26,6 +26,9 @@ import {CliError} from './errors.js';
 import {packExamplePlugins, packPlugin} from './pack.js';
 import {parsePackedPluginArtifact} from './packed-plugin-artifact.js';
 
+// The full suites run in .github/workflows/ci-weekly.yml.
+const skipSlowTests = process.env.MNDW_SKIP_SLOW_TESTS === '1';
+
 interface ScaffoldOptions {
   readonly manifest: Record<string, unknown>;
   readonly index?: string;
@@ -349,7 +352,7 @@ describe('packPlugin', () => {
     expect(readFileSync(join(result.outDir, 'index.css'), 'utf8')).toMatch(/color:\s*red/);
   });
 
-  it('AOT-compiles an angular plugin, keeps angular and d3 external, and emits index.css', async () => {
+  it.skipIf(skipSlowTests)('AOT-compiles an angular plugin, keeps angular and d3 external, and emits index.css', async () => {
     scaffold(dir, {
       manifest: widgetManifest({name: 'ng-widget'}),
       files: {
@@ -669,7 +672,7 @@ describe('packPlugin', () => {
   });
 });
 
-describe('packExamplePlugins', () => {
+describe.skipIf(skipSlowTests)('packExamplePlugins', () => {
   const repoRoot = resolve(import.meta.dirname, '..', '..', '..');
   let outDir: string;
   let names: string[];

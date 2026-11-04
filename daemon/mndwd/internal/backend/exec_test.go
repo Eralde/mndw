@@ -184,3 +184,69 @@ func TestExecRunnerLargeStderrDoesNotStopProcess(t *testing.T) {
 		t.Fatalf("response body = %q, want %q", got, want)
 	}
 }
+
+func TestExecRunnerDoesNotStartAfterCancellation(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "marker")
+	command := filepath.Join(dir, "helper.sh")
+
+	if err := os.WriteFile(command, []byte("#!/bin/sh\ntouch '"+marker+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewExecRunner(ExecRunnerConfig{Timeout: 5 * time.Second, KillGrace: 100 * time.Millisecond})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	recorder := httptest.NewRecorder()
+	err := runner.Serve(ctx, ExecRequest{PluginID: "demo", RouteID: "x", Dir: dir, Command: command}, recorder)
+	if err == nil || err.Code != httpx.CodeScriptTimeout || err.Status != http.StatusGatewayTimeout {
+		t.Fatalf("Serve error = %v, want %s with status %d", err, httpx.CodeScriptTimeout, http.StatusGatewayTimeout)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Fatalf("command started after cancellation, stat error = %v", statErr)
+	}
+}
+
+func TestExecRunnerStopsProcessCancelledDuringRun(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "marker")
+	command := filepath.Join(dir, "helper.sh")
+
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nsleep 0.5\ntouch '"+marker+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := NewExecRunner(ExecRunnerConfig{Timeout: 5 * time.Second, KillGrace: 100 * time.Millisecond})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	timer := time.AfterFunc(100*time.Millisecond, cancel)
+	defer timer.Stop()
+	recorder := httptest.NewRecorder()
+	started := time.Now()
+	err := runner.Serve(ctx, ExecRequest{PluginID: "demo", RouteID: "x", Dir: dir, Command: command}, recorder)
+	if elapsed := time.Since(started); elapsed >= time.Second {
+		t.Fatalf("Serve returned after %s, want within 1s", elapsed)
+	}
+	if err == nil || err.Code != httpx.CodeScriptTimeout {
+		t.Fatalf("Serve error = %v, want %s", err, httpx.CodeScriptTimeout)
+	}
+
+	time.Sleep(800 * time.Millisecond)
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Fatalf("command completed after cancellation, stat error = %v", statErr)
+	}
+}
+
+func TestExecRunnerReportsStartFailure(t *testing.T) {
+	dir := t.TempDir()
+	command := filepath.Join(dir, "missing")
+
+	runner := NewExecRunner(ExecRunnerConfig{Timeout: 5 * time.Second, KillGrace: 100 * time.Millisecond})
+	recorder := httptest.NewRecorder()
+	err := runner.Serve(context.Background(), ExecRequest{PluginID: "demo", RouteID: "x", Dir: dir, Command: command}, recorder)
+	if err == nil || err.Code != httpx.CodeScriptFailed || err.Status != http.StatusBadGateway {
+		t.Fatalf("Serve error = %v, want %s with status %d", err, httpx.CodeScriptFailed, http.StatusBadGateway)
+	}
+}

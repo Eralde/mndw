@@ -170,10 +170,18 @@ func (r *ExecRunner) Serve(ctx context.Context, request ExecRequest, writer http
 	command.Stdout = stdout
 	command.Stderr = stderr
 
+	if deadlineCtx.Err() != nil {
+		return httpx.NewError(http.StatusGatewayTimeout, httpx.CodeScriptTimeout, "backend execution timed out")
+	}
+
+	if err := command.Start(); err != nil {
+		return httpx.NewError(http.StatusBadGateway, httpx.CodeScriptFailed, "backend execution failed")
+	}
+
 	done := make(chan error, 1)
 
 	go func() {
-		done <- command.Run()
+		done <- command.Wait()
 	}()
 
 	var runErr error

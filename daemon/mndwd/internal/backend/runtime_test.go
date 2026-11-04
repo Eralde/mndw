@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"testing"
+	"time"
 
 	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
@@ -36,6 +37,26 @@ func TestNewRuntimeInitializesSupervisorClock(t *testing.T) {
 
 	if runtime.Now().IsZero() {
 		t.Fatal("runtime clock returned zero")
+	}
+}
+
+func TestNewRuntimeAppliesExecDefaults(t *testing.T) {
+	rt := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), PluginDataRoot: t.TempDir()})
+
+	if got, want := rt.exec.cfg.MaxOutputBytes, DefaultMaxOutputBytes; got != want {
+		t.Fatalf("MaxOutputBytes = %d, want %d", got, want)
+	}
+
+	if got, want := rt.exec.cfg.Timeout, 30*time.Second; got != want {
+		t.Fatalf("Timeout = %s, want %s", got, want)
+	}
+
+	if got, want := rt.exec.cfg.KillGrace, 2*time.Second; got != want {
+		t.Fatalf("KillGrace = %s, want %s", got, want)
+	}
+
+	if got, want := rt.exec.cfg.MaxBodyBytes, int64(1<<20); got != want {
+		t.Fatalf("MaxBodyBytes = %d, want %d", got, want)
 	}
 }
 

@@ -27,7 +27,14 @@ export interface LoaderDeps {
   catalogService?: PluginCatalogService;
   registry?: Pick<PluginRegistry, 'register' | 'clear'>;
   getLocale?: () => string;
+  loadTimeoutMs?: number;
 }
+
+/**
+ * Upper bound for one plugin's stylesheet, module import and initial catalog. A plugin that
+ * never settles (hung request, endless top-level await) must not keep the shell from mounting.
+ */
+const PLUGIN_LOAD_TIMEOUT_MS = 15_000;
 
 const loadedPluginStylesheets = new Set<string>();
 
@@ -139,11 +146,13 @@ interface ResolvedLoaderDeps {
   catalogService: PluginCatalogService;
   registry: Pick<PluginRegistry, 'register' | 'clear'>;
   getLocale: () => string;
+  loadTimeoutMs: number;
 }
 
 async function loadOne(
   entry: PluginListEntry,
   deps: ResolvedLoaderDeps,
+  signal: AbortSignal,
 ): Promise<void> {
   const base = entry.source === 'builtin' ? PLUGIN_SOURCE_PATHS.builtin : PLUGIN_SOURCE_PATHS.user;
   const dir = `${base}${entry.name}`;
@@ -168,6 +177,12 @@ async function loadOne(
       await deps.catalogService.loadInitialPluginCatalog(catalog, deps.getLocale());
     }
 
+    // The load already timed out and was reported; registering now would surface a plugin the
+    // rest of the startup has moved on without.
+    if (signal.aborted) {
+      return;
+    }
+
     deps.registry.register({entry, module: pluginModule, ...(catalog === undefined ? {} : {catalog})});
     console.log(`[mndw] Loaded plugin: ${entry.name} (${entry.source})`);
 
@@ -184,11 +199,29 @@ async function loadOne(
   }
 }
 
+async function loadOneWithTimeout(entry: PluginListEntry, deps: ResolvedLoaderDeps): Promise<void> {
+  const controller = new AbortController();
+  const timedOut = new Promise<void>((resolve) => {
+    controller.signal.addEventListener('abort', () => {
+      console.error(`[mndw] Plugin "${entry.name}" did not load within ${deps.loadTimeoutMs} ms; skipping it`);
+      resolve();
+    }, {once: true});
+  });
+  const timer = setTimeout(() => controller.abort(), deps.loadTimeoutMs);
+
+  try {
+    await Promise.race([loadOne(entry, deps, controller.signal), timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Loads the plugin list from the daemon (`GET /api/mgmt/list`), then imports and
  * registers every enabled plugin's module. The daemon already validated + merged
  * builtin/user plugins; name/route dedupe here is defense in depth. A single plugin
- * failing to import is logged and skipped — it never aborts the rest.
+ * failing to import, or not loading within `loadTimeoutMs`, is logged and skipped — it
+ * never aborts or stalls the rest.
  */
 export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   const fetchList = deps.fetchList ?? defaultFetchList;
@@ -199,6 +232,7 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
     catalogService: deps.catalogService ?? pluginCatalogService,
     registry: deps.registry ?? pluginRegistry,
     getLocale: deps.getLocale ?? getLocale,
+    loadTimeoutMs: deps.loadTimeoutMs ?? PLUGIN_LOAD_TIMEOUT_MS,
   };
 
   resolved.registry.clear();
@@ -224,6 +258,6 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   const runnable = dedupe(entries.filter((entry) => entry.enabled && entry.approval === 'approved'));
 
   await Promise.all(
-    runnable.map((entry) => loadOne(entry, resolved)),
+    runnable.map((entry) => loadOneWithTimeout(entry, resolved)),
   );
 }

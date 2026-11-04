@@ -191,6 +191,52 @@ describe('loadPlugins', () => {
     expect(pluginRegistry.getAll().map((p) => p.entry.name)).toEqual(['good']);
   });
 
+  it('skips a plugin whose import never settles but loads the others', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const h = harness([widget('good'), widget('stuck')]);
+    const importModule = vi.fn((url: string): Promise<unknown> => {
+      return url.startsWith('/user-plugins/stuck/') ? new Promise(() => {}) : Promise.resolve(goodModule);
+    });
+
+    await loadPlugins({...h, importModule, loadTimeoutMs: 20});
+
+    expect(pluginRegistry.getAll().map((p) => p.entry.name)).toEqual(['good']);
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('"stuck" did not load within 20 ms'));
+  });
+
+  it('skips a plugin whose stylesheet never settles', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const h = harness([widget('good'), widget('stuck')]);
+    const loadStylesheet = vi.fn((_href: string, name: string): Promise<void> => {
+      return name === 'stuck' ? new Promise(() => {}) : Promise.resolve();
+    });
+
+    await loadPlugins({...h, loadStylesheet, loadTimeoutMs: 20});
+
+    expect(pluginRegistry.getAll().map((p) => p.entry.name)).toEqual(['good']);
+  });
+
+  it('does not register a plugin that finishes loading after its timeout', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    let finishImport: (module: unknown) => void = () => {};
+    const h = harness([widget('late')]);
+    const importModule = vi.fn((): Promise<unknown> =>
+      new Promise((resolve) => {
+        finishImport = resolve;
+      })
+    );
+
+    await loadPlugins({...h, importModule, loadTimeoutMs: 20});
+    finishImport(goodModule);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(pluginRegistry.get('late')).toBeUndefined();
+    expect(h.checkVersions).not.toHaveBeenCalled();
+  });
+
   it('sets pluginLoadError when the list fetch fails', async () => {
     const fetchList = vi.fn((): Promise<PluginListEntry[]> => Promise.reject(new Error('network down')));
 

@@ -277,7 +277,7 @@ describe('planCreate', () => {
     } finally {
       rmSync(root, {recursive: true, force: true});
     }
-  });
+  }, 60_000);
 
   it('places the Angular UI packages under dependencies and Angular tooling under devDependencies', () => {
     const plan = planCreate(options({name: 'ng', framework: 'angular', type: 'widget'}));

@@ -1,0 +1,55 @@
+{
+  "name": "@mndw/sdk-internal",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./catalog": {
+      "types": "./src/catalog.ts",
+      "default": "./src/catalog.ts"
+    },
+    "./i18n-format": {
+      "types": "./src/i18n-format.ts",
+      "default": "./src/i18n-format.ts"
+    },
+    "./palette": {
+      "types": "./src/palette.ts",
+      "default": "./src/palette.ts"
+    },
+    "./shared-dependencies": {
+      "types": "./src/shared-dependencies.ts",
+      "default": "./src/shared-dependencies.ts"
+    },
+    "./manifest-schema": {
+      "types": "./src/manifest-schema.ts",
+      "default": "./src/manifest-schema.ts"
+    },
+    "./dev-sandbox": {
+      "types": "./src/dev-sandbox.ts",
+      "default": "./src/dev-sandbox.ts"
+    },
+    "./dev-proxies": {
+      "types": "./src/dev-proxies.ts",
+      "default": "./src/dev-proxies.ts"
+    }
+  },
+  "scripts": {
+    "test": "vitest run",
+    "generate-manifest-schema": "node --import tsx src/scripts/generate-manifest-schema.ts"
+  },
+  "dependencies": {
+    "@mndw/sdk": "workspace:*",
+    "tsx": "^4.23.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "vite": "^6.4.3"
+  },
+  "devDependencies": {
+    "vite": "^6.4.3"
+  }
+}

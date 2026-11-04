@@ -1,3 +1,4 @@
+/** @module @mndw/sdk/testing/vitest-project */
 import {type UserConfig, configDefaults, defineConfig} from 'vitest/config';
 
 export interface MndwVitestProjectOptions {

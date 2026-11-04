@@ -1,4 +1,4 @@
-import {SHARED_DEPENDENCIES} from '@mndw/sdk/shared-dependencies';
+import {SHARED_DEPENDENCIES} from '@mndw/sdk-internal/shared-dependencies';
 import {build} from 'esbuild';
 import {describe, expect, it} from 'vitest';
 

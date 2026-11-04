@@ -1,4 +1,5 @@
-import {type DeviceInfoData, type HostInfo, parseCapabilityList} from '@mndw/sdk';
+import type {DeviceInfoData} from '@mndw/sdk';
+import {parseCapabilityList} from '@mndw/sdk-internal';
 import {firstValueFrom, timeout} from 'rxjs';
 import {API_TIMEOUT_MS} from '../constants.js';
 import {emptySwitchports} from '../runtime/device-info-schema.js';
@@ -7,6 +8,7 @@ import type {MgmtClient} from './mgmt-client.js';
 import {getShowVersion} from './rci/show-version/index.js';
 import {getTheme} from './theme.service.js';
 import {getLocale} from './locale.service.js';
+import type {HostInfo} from '../runtime/device-info-context.js';
 
 export function fetchHostInfo(): Promise<HostInfo> {
   return Promise.resolve({

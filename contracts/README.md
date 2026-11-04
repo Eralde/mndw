@@ -4,7 +4,7 @@
 their language-specific packages:
 
 ```text
-frontend/sdk/src/manifest-schema.ts
+frontend/sdk-internal/src/manifest-schema.ts
   → contracts/manifest/manifest.schema.json
   → frontend/sdk/manifest.schema.json
 
@@ -23,7 +23,7 @@ tooling/palette-core metadata + palette authority
   → frontend/sdk/src/tokens.css
   → daemon/mndwd/internal/palette/theme_tokens_generated.go
 
-frontend/sdk/shared-dependencies.ts
+frontend/sdk-internal/src/shared-dependencies.ts
   → contracts/protocol/shared-deps.json
   → contracts/protocol/*.golden.json
 
@@ -34,7 +34,7 @@ contracts/mws-member/fixtures
   → frontend/sdk/fixtures/mws-members
   → packages/go-mws-members/fixtures
 
-The Zod member schema in `frontend/sdk/src/mws-member-schema.ts` owns member
+The Zod member schema in `frontend/sdk-internal/src/mws-member-schema.ts` owns member
 input shape and eligibility precedence. The Go sessionmanager snapshot plus
 handler JSON projection owns the capability-report shape; host runtime
 validation consumes generated capability fixtures rather than becoming a
@@ -45,7 +45,8 @@ contracts/rci-session/fixtures/capability
   → frontend/host/src/services/fixtures/rci-session/capability
   → daemon/mndwd/internal/rcisession/testdata/capability
 
-frontend/sdk/src/permissions.ts + frontend/sdk/src/event-schema.ts (EVENT_PERMISSION_PATTERN)
+frontend/sdk/src/permissions.ts + frontend/sdk/src/event-schema.ts (EVENT_PERMISSION_PATTERN),
+reached by build tooling through `frontend/sdk-internal/src/sdk-source.ts`
   → daemon/contracts-go/manifest/permissions_generated.go
 
 contracts/mgmt/fixtures

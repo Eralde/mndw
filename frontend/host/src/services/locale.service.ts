@@ -1,5 +1,5 @@
 import {setMndwUiLocale} from '@mndw/ui';
-import {formatMessage, normalizeFormatterLocale} from '@mndw/sdk/i18n-format';
+import {formatMessage, normalizeFormatterLocale} from '@mndw/sdk-internal/i18n-format';
 import enCatalog from '../i18n/en.json';
 import ruCatalog from '../i18n/ru.json';
 import {STORAGE_PREFIX, SUPPORTED_LOCALES} from '../constants.js';

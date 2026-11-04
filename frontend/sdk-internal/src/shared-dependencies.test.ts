@@ -8,7 +8,7 @@ import {
   sharedImportMap,
   sharedSpecifiers,
   versionedBundleUrl,
-} from '../shared-dependencies.js';
+} from './shared-dependencies.js';
 
 const dependencyFor = (bundle: string) => {
   const dependency = SHARED_DEPENDENCIES.find((entry) => entry.bundle === bundle);

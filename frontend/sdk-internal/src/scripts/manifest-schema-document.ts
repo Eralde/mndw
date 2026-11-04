@@ -1,6 +1,6 @@
 import {z} from 'zod';
 
-import {pluginManifestSchema} from '../src/manifest-schema.js';
+import {pluginManifestSchema} from '../manifest-schema.js';
 
 /** Builds editor-only JSON Schema from the Zod runtime authority. */
 export function createManifestSchemaDocument(): Record<string, unknown> {

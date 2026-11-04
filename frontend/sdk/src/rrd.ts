@@ -1,3 +1,4 @@
+/** @module @mndw/sdk/rrd */
 export interface RrdTick {
   t: string | number;
   v: number;

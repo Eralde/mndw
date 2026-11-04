@@ -62,5 +62,5 @@ Ownership rules:
 - Plugin packages own their declared backend payloads and static assets, not
   generic route or approval policy.
 - Shared bundle URLs use `/shared/<bundle>@<version>.js`; the bundle and version
-  table comes from `frontend/sdk/shared-dependencies.ts` and is mirrored to
+  table comes from `frontend/sdk-internal/src/shared-dependencies.ts` and is mirrored to
   `contracts/protocol/shared-deps.json`.

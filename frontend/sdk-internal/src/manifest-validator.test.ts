@@ -3,7 +3,7 @@ import {resolve} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {ManifestValidationError, validateManifest} from './manifest-validator.js';
 
-const fixturesRoot = resolve(import.meta.dirname, '..', 'fixtures', 'manifests');
+const fixturesRoot = resolve(import.meta.dirname, '..', '..', 'sdk', 'fixtures', 'manifests');
 
 const loadFixtures = (kind: 'valid' | 'invalid'): Array<{name: string; data: unknown}> => {
   const directory = resolve(fixturesRoot, kind);

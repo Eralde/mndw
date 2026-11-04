@@ -4,9 +4,9 @@ import type {Translator} from '../translator.js';
 
 export function createTranslatorSignals(i18n: PluginI18n, destroyRef: DestroyRef): Translator {
   const revision = signal(0);
-  const unsubscribe = i18n.onChange(() => revision.update((value) => value + 1));
+  const subscription = i18n.change$.subscribe(() => revision.update((value) => value + 1));
 
-  destroyRef.onDestroy(unsubscribe);
+  destroyRef.onDestroy(() => subscription.unsubscribe());
 
   return {
     t: (key, values) => {

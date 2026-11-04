@@ -1,5 +1,8 @@
 <script lang="ts">
-import {PERSISTENT_RCI_PERMISSIONS, type PluginPermission} from '@mndw/sdk';
+import {
+  PERSISTENT_RCI_PERMISSIONS,
+  type PluginPermission,
+} from '@mndw/sdk-internal';
 import type {
   PluginBackendDescriptor,
   PluginListEntry,
@@ -185,7 +188,7 @@ let {
             <p class="mndw-installed__version-warning">
               {
                 hostT(
-                  'settings.plugin-manager.version-warning',
+                  'settings.plugin-manager.load-version-warning',
                   {
                     versions: versionWarnings.join(', '),
                   },

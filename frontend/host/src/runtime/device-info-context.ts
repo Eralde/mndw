@@ -1,4 +1,9 @@
-import type {DeviceInfo, DeviceInfoData, HostInfo, MndwThemeName} from '@mndw/sdk';
+import type {DeviceInfo, DeviceInfoData, MndwThemeName} from '@mndw/sdk';
+
+export interface HostInfo {
+  locale: string;
+  theme: MndwThemeName;
+}
 
 export function deepFreeze<T>(value: T): T {
   if (value === null || (typeof value !== 'object' && typeof value !== 'function') || Object.isFrozen(value)) {
@@ -34,12 +39,4 @@ export function createDeviceInfoContext(data: DeviceInfoData): DeviceInfo {
   };
 
   return deepFreeze(deviceInfo);
-}
-
-export function createHostInfoContext(hostInfo: HostInfo, locale: string, theme: MndwThemeName): HostInfo {
-  const context: HostInfo = {...hostInfo, locale, theme};
-
-  Object.setPrototypeOf(context, null);
-
-  return deepFreeze(context);
 }

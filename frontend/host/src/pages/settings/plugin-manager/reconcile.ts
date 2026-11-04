@@ -1,4 +1,4 @@
-import type {PluginPermission} from '@mndw/sdk';
+import type {PluginPermission} from '@mndw/sdk-internal';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 

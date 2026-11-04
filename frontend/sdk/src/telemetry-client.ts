@@ -1,23 +1,3 @@
-export interface TelemetrySample {
-  readonly ts: number;
-  readonly min: number | null;
-  readonly max: number | null;
-  readonly mean: number | null;
-  readonly ok: boolean;
-}
-
-export interface TelemetryTier {
-  readonly stepMs: number;
-  readonly samples: readonly TelemetrySample[];
-}
-
-export interface TelemetrySeries {
-  readonly label?: string;
-  readonly supported: boolean;
-  readonly unit: 'percent' | 'celsius';
-  readonly tiers: Readonly<Record<'fine' | 'coarse', TelemetryTier>>;
-}
-
 export type TelemetryClockState = 'unanchored' | 'anchored' | 'suspect';
 
 export interface TelemetryClock {
@@ -25,13 +5,6 @@ export interface TelemetryClock {
   readonly historyEndMs: number | null;
   readonly historyCurrent: boolean;
   readonly replayPending: boolean;
-}
-
-export interface TelemetrySnapshot {
-  readonly keys: Readonly<Record<string, TelemetrySeries>>;
-  readonly gathering: {readonly enabled: boolean};
-  readonly clock?: TelemetryClock;
-  readonly sessionConfigured: boolean;
 }
 
 export type ProjectRange = '1h' | '3h' | '1d' | '7d' | '30d';
@@ -82,7 +55,6 @@ export interface ProjectedSnapshot {
 }
 
 export interface TelemetryClient {
-  fetchAll(options?: {readonly signal?: AbortSignal}): Promise<TelemetrySnapshot>;
   fetchProjected(range: ProjectRange, options?: {readonly signal?: AbortSignal}): Promise<ProjectedSnapshot>;
 }
 
@@ -98,91 +70,6 @@ export class TelemetryError extends Error {
 
 const isFiniteNumber = (value: unknown): value is number => {
   return typeof value === 'number' && Number.isFinite(value);
-};
-
-const isPositiveInteger = (value: unknown): value is number => {
-  return isFiniteNumber(value) && Number.isInteger(value) && value > 0;
-};
-
-const nullableFinite = (value: unknown): number | null => {
-  if (value === null) {
-    return null;
-  }
-
-  if (!isFiniteNumber(value)) {
-    throw new Error('telemetry value must be finite or null');
-  }
-
-  return value;
-};
-
-const decodeTier = (key: string, tierName: 'fine' | 'coarse', rawTier: unknown): TelemetryTier => {
-  if (rawTier === null || typeof rawTier !== 'object' || Array.isArray(rawTier)) {
-    throw new Error(`telemetry tier ${key}.${tierName} is invalid`);
-  }
-
-  const tier = rawTier as Record<string, unknown>;
-
-  if (!isPositiveInteger(tier.stepMs) || !Array.isArray(tier.samples)) {
-    throw new Error(`telemetry tier ${key}.${tierName} is invalid`);
-  }
-
-  return {
-    stepMs: tier.stepMs,
-    samples: tier.samples.map((rawSample) => {
-      if (rawSample === null || typeof rawSample !== 'object' || Array.isArray(rawSample)) {
-        throw new Error(`telemetry sample ${key}.${tierName} is invalid`);
-      }
-
-      const sample = rawSample as Record<string, unknown>;
-
-      if (!isPositiveInteger(sample.ts) || typeof sample.ok !== 'boolean') {
-        throw new Error(`telemetry sample ${key}.${tierName} is invalid`);
-      }
-
-      return {
-        ts: sample.ts,
-        min: nullableFinite(sample.min),
-        max: nullableFinite(sample.max),
-        mean: nullableFinite(sample.mean),
-        ok: sample.ok,
-      };
-    }),
-  };
-};
-
-const decodeSeries = (key: string, rawSeries: unknown): TelemetrySeries => {
-  if (rawSeries === null || typeof rawSeries !== 'object' || Array.isArray(rawSeries)) {
-    throw new Error(`telemetry series ${key} is invalid`);
-  }
-
-  const series = rawSeries as Record<string, unknown>;
-
-  if (series.unit !== 'percent' && series.unit !== 'celsius') {
-    throw new Error(`telemetry series ${key} has invalid unit`);
-  }
-
-  if (typeof series.supported !== 'boolean') {
-    throw new Error(`telemetry series ${key} support is invalid`);
-  }
-
-  const rawTiers = series.tiers;
-
-  if (rawTiers === null || typeof rawTiers !== 'object' || Array.isArray(rawTiers)) {
-    throw new Error(`telemetry series ${key} tiers are invalid`);
-  }
-
-  const tiers = rawTiers as Record<string, unknown>;
-
-  return {
-    label: typeof series.label === 'string' ? series.label : undefined,
-    supported: series.supported,
-    unit: series.unit,
-    tiers: {
-      fine: decodeTier(key, 'fine', tiers.fine),
-      coarse: decodeTier(key, 'coarse', tiers.coarse),
-    },
-  };
 };
 
 const clockStates: readonly TelemetryClockState[] = ['unanchored', 'anchored', 'suspect'];
@@ -216,41 +103,6 @@ const decodeClock = (raw: unknown): TelemetryClock | undefined => {
   }
 
   return {state: state as TelemetryClockState, historyEndMs, historyCurrent, replayPending};
-};
-
-export const decodeRawSnapshot = (value: unknown): TelemetrySnapshot => {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('telemetry response must be an object');
-  }
-
-  const body = value as Record<string, unknown>;
-  const gathering = body.gathering;
-
-  if (
-    gathering === null || typeof gathering !== 'object' || Array.isArray(gathering)
-    || typeof (gathering as Record<string, unknown>).enabled !== 'boolean'
-  ) {
-    throw new Error('telemetry gathering is invalid');
-  }
-
-  const keysValue = body.keys;
-
-  if (keysValue === null || typeof keysValue !== 'object' || Array.isArray(keysValue)) {
-    throw new Error('telemetry keys are invalid');
-  }
-
-  const keys: Record<string, TelemetrySeries> = {};
-
-  for (const [key, rawSeries] of Object.entries(keysValue as Record<string, unknown>)) {
-    keys[key] = decodeSeries(key, rawSeries);
-  }
-
-  return {
-    keys,
-    gathering: {enabled: (gathering as Record<string, unknown>).enabled as boolean},
-    clock: decodeClock(body.clock),
-    sessionConfigured: typeof body.sessionConfigured === 'boolean' ? body.sessionConfigured : false,
-  };
 };
 
 const VALID_PROJECTED_COLORS = new Set<ProjectedChartColor>(['accent', 'success', 'warning', 'muted']);
@@ -457,17 +309,6 @@ export function createTelemetryClient(
   };
 
   return {
-    async fetchAll(options = {}): Promise<TelemetrySnapshot> {
-      return request(
-        '/api/mndw/telemetry',
-        decodeRawSnapshot,
-        {
-          signal: options.signal,
-          unavailableMessage: 'Telemetry history is unavailable.',
-          invalidResponseMessage: 'Invalid telemetry response.',
-        },
-      );
-    },
     async fetchProjected(
       range: ProjectRange,
       options: {readonly signal?: AbortSignal} = {},

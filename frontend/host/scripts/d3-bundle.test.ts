@@ -1,6 +1,6 @@
 import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {join} from 'node:path';
-import {SHARED_DEPENDENCIES} from '@mndw/sdk/shared-dependencies';
+import {SHARED_DEPENDENCIES} from '@mndw/sdk-internal/shared-dependencies';
 import {type BuildResult, build} from 'esbuild';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 

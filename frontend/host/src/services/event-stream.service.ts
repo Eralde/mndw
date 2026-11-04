@@ -1,4 +1,7 @@
-import {type MndwEvent, type PluginEventFacade, type Unsubscribe, eventSchema} from '@mndw/sdk';
+import type {MndwEvent, PluginEventFacade} from '@mndw/sdk';
+import {eventSchema} from '@mndw/sdk-internal';
+import {Observable, takeUntil} from 'rxjs';
+import type {PluginLifetime} from '../runtime/plugin-lifetime.js';
 
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 5_000;
@@ -36,7 +39,12 @@ export interface EventStreamEnvironment {
 }
 
 export interface EventStreamService {
-  createFacade(instanceId: string, pluginName: string, permissions: readonly string[]): PluginEventFacade | undefined;
+  createFacade(
+    instanceId: string,
+    pluginName: string,
+    permissions: readonly string[],
+    lifetime: PluginLifetime,
+  ): PluginEventFacade | undefined;
   disposeFacade(instanceId: string): void;
 }
 
@@ -136,6 +144,7 @@ export class EventStreamManager implements EventStreamService {
     instanceId: string,
     pluginName: string,
     permissions: readonly string[],
+    lifetime: PluginLifetime,
   ): PluginEventFacade | undefined {
     const grants = validPermissions(permissions);
 
@@ -151,48 +160,54 @@ export class EventStreamManager implements EventStreamService {
       subscriptions: new Map(),
       resyncHandlers: new Map(),
     });
-    this.ensureSocket();
 
     return {
-      subscribe: (topics, handler) => {
-        const registration = this.registrations.get(instanceId);
+      select$: (topics) =>
+        new Observable<MndwEvent>((subscriber) => {
+          const registration = this.registrations.get(instanceId);
 
-        if (registration === undefined) {
-          return () => {};
-        }
+          if (registration === undefined) {
+            subscriber.complete();
 
-        const filters = effectiveFilters(splitFilters(topics), registration.grants);
-
-        if (filters.length === 0) {
-          return () => {};
-        }
-
-        const id = this.nextHandlerId++;
-
-        registration.subscriptions.set(id, {filters, handler});
-        this.updateWireSubscription();
-
-        return () => {
-          if (registration.subscriptions.delete(id)) {
-            this.updateWireSubscription();
+            return;
           }
-        };
-      },
-      onResync: (handler) => {
+
+          const filters = effectiveFilters(splitFilters(topics), registration.grants);
+
+          if (filters.length === 0) {
+            subscriber.complete();
+
+            return;
+          }
+
+          const id = this.nextHandlerId++;
+
+          registration.subscriptions.set(id, {filters, handler: (event) => subscriber.next(event)});
+          this.updateWireSubscription();
+
+          return () => {
+            if (registration.subscriptions.delete(id)) {
+              this.updateWireSubscription();
+            }
+          };
+        }).pipe(takeUntil(lifetime.ended$)),
+      resync$: new Observable<void>((subscriber) => {
         const registration = this.registrations.get(instanceId);
 
         if (registration === undefined) {
-          return () => {};
+          subscriber.complete();
+
+          return;
         }
 
         const id = this.nextHandlerId++;
 
-        registration.resyncHandlers.set(id, handler);
+        registration.resyncHandlers.set(id, () => subscriber.next());
 
         return () => {
           registration.resyncHandlers.delete(id);
         };
-      },
+      }).pipe(takeUntil(lifetime.ended$)),
     };
   }
 
@@ -521,5 +536,3 @@ export class EventStreamManager implements EventStreamService {
 export function createEventStreamService(environment: EventStreamEnvironment = {}): EventStreamService {
   return new EventStreamManager(environment);
 }
-
-export type {Unsubscribe};

@@ -1,9 +1,9 @@
 <script lang="ts">
+import type {PaletteTokenMap} from '@mndw/sdk';
 import {
   PALETTE_CSS_VARIABLES,
   type PaletteContrastWarning,
-  type PaletteTokenMap,
-} from '@mndw/sdk';
+} from '@mndw/sdk-internal/palette';
 
 interface Props {
   palette: PaletteTokenMap;

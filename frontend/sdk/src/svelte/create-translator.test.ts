@@ -1,4 +1,5 @@
 import {get} from 'svelte/store';
+import {Observable} from 'rxjs';
 import {describe, expect, it, vi} from 'vitest';
 import {createTestI18n} from '../testing/i18n.js';
 import {createTranslator} from './create-translator.js';
@@ -21,18 +22,25 @@ describe('createTranslator', () => {
 
   it('registers lazily and removes the host callback after the last unsubscribe', () => {
     const source = createTestI18n({message: 'Hello'});
-    const onChange = vi.fn(source.onChange.bind(source));
-    const i18n = {...source, onChange};
+    const subscribe = vi.fn();
+    const change$ = new Observable<void>((subscriber) => {
+      subscribe();
+
+      const subscription = source.change$.subscribe(subscriber);
+
+      return () => subscription.unsubscribe();
+    });
+    const i18n = {...source, change$};
     const store = createTranslator(i18n);
 
-    expect(onChange).not.toHaveBeenCalled();
+    expect(subscribe).not.toHaveBeenCalled();
 
     const first = store.subscribe(() => {});
     const second = store.subscribe(() => {});
 
-    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(subscribe).toHaveBeenCalledTimes(1);
     first();
-    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(subscribe).toHaveBeenCalledTimes(1);
     second();
   });
 });

@@ -46,7 +46,7 @@ export const SHARED_DEPENDENCIES: SharedDependency[] = [
   {
     specifiers: ['@rci-tools/core'],
     bundle: 'rci-tools-core',
-    version: '0.4.3',
+    version: '0.6.0',
     entryPoint: '@rci-tools/core',
     external: ['rxjs', 'hash-wasm'],
     framework: 'base',
@@ -82,7 +82,7 @@ export const SHARED_DEPENDENCIES: SharedDependency[] = [
   {
     specifiers: ['@mndw/ui'],
     bundle: 'mndw-ui',
-    version: '0.1.0',
+    version: '1.0.0',
     entryPoint: '@mndw/ui',
     external: ['d3'],
     framework: 'base',

@@ -1,4 +1,4 @@
-import {isReservedPageRoute} from '@mndw/sdk';
+import {isReservedPageRoute} from '@mndw/sdk-internal';
 import {createRouter} from 'sv-router';
 import DashboardPage from '../dashboard/DashboardPage.svelte';
 import AppShell from '../layout/AppShell.svelte';

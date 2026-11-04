@@ -2,7 +2,7 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {SHARED_DEPENDENCIES, sharedSpecifiers} from '@mndw/sdk/shared-dependencies';
+import {SHARED_DEPENDENCIES, sharedSpecifiers} from '@mndw/sdk-internal/shared-dependencies';
 import {type BuildOptions, type BuildResult, type Metafile, type Plugin, build} from 'esbuild';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 

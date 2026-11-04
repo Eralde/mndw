@@ -8,7 +8,7 @@ import {
   sharedDependencyVersions,
   sharedImportMap,
   versionedBundleUrl,
-} from '../../frontend/sdk/shared-dependencies.js';
+} from '@mndw/sdk-internal/shared-dependencies';
 
 const BUNDLE_STEM_PATTERN = '^[a-z0-9]+(?:-[a-z0-9]+)*$';
 const VERSION_PATTERN = '^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$';

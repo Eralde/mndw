@@ -4,7 +4,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import zlib from 'node:zlib';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
-import {SHARED_DEPENDENCIES} from '@mndw/sdk/shared-dependencies';
+import {SHARED_DEPENDENCIES} from '@mndw/sdk-internal/shared-dependencies';
 import {
   ARCH_MAP,
   buildControlTar,

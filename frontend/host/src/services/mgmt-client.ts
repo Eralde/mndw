@@ -1,4 +1,5 @@
-import type {PaletteTokenMap, PluginPermission, Switchports} from '@mndw/sdk';
+import type {PaletteTokenMap, Switchports} from '@mndw/sdk';
+import type {PluginPermission} from '@mndw/sdk-internal';
 import {
   API_TIMEOUT_MS,
   MGMT_APPROVE_URL,

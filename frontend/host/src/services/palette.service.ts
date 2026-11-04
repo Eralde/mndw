@@ -1,4 +1,5 @@
-import {MNDW_TOKENS, type PaletteTokenMap, paletteToCss, validateImportedPalette} from '@mndw/sdk';
+import {MNDW_TOKENS, type PaletteTokenMap} from '@mndw/sdk';
+import {paletteToCss, validateImportedPalette} from '@mndw/sdk-internal/palette';
 import {type MgmtClient, mgmtClient} from './mgmt-client.js';
 
 const OVERRIDE_ELEMENT_ID = 'mndw-palette-override';

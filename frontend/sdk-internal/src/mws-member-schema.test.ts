@@ -5,7 +5,7 @@ import {describe, expect, it} from 'vitest';
 
 import {classifyMwsMemberEligibility, mwsMemberSchema} from './mws-member-schema.js';
 
-const fixtureRoot = join(import.meta.dirname, '../fixtures/mws-members');
+const fixtureRoot = join(import.meta.dirname, '../../sdk/fixtures/mws-members');
 const expectationPath = join(fixtureRoot, 'eligibility-expectations.json');
 
 describe('mws member schema', () => {

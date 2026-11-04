@@ -1,4 +1,5 @@
-import {MNDW_TOKENS, type PluginContext, type PluginInstance} from '@mndw/sdk';
+import {type PluginContext, type PluginInstance} from '@mndw/sdk';
+import {createTestPluginContext} from '@mndw/sdk/testing';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {mountPlugin, unmountPlugin} from './plugin-lifecycle.js';
 import type {LoadedPlugin} from './plugin-registry.js';
@@ -39,49 +40,7 @@ function mockPlugin(createInstanceResult: PluginInstance | Promise<PluginInstanc
 }
 
 function mockContext(instanceId = 'test:1'): PluginContext {
-  return {
-    kind: 'widget',
-    rciManager: {} as never,
-    storage: {} as never,
-    sharedStorage: {} as never,
-    hostInfo: {locale: 'en', theme: 'dark'},
-    deviceInfo: {
-      deviceName: 'Test',
-      vendor: 'Test',
-      manufacturer: 'Test',
-      model: 'Test',
-      series: 'Test',
-      region: 'test',
-      hwId: 'test',
-      hwVersion: '1',
-      firmwareVersion: '1.0',
-      firmwareRelease: '1.0',
-      features: [],
-      components: [],
-      switchports: {list: [], layout: [], hasPortStats: false},
-      usb: {ports: []},
-      hasFeature: () => false,
-      hasComponent: () => false,
-    },
-    i18n: {
-      locale: 'en',
-      direction: 'ltr',
-      t: (key: string) => key,
-      formatNumber: (value: number) => String(value),
-      formatDate: (value: Date) => value.toISOString(),
-      onChange: () => () => {},
-    },
-    instanceId,
-    backend: undefined,
-    telemetry: {
-      fetchAll: vi.fn(),
-      fetchProjected: vi.fn(),
-    },
-    onThemeChange: () => () => {},
-    getTokens: () => MNDW_TOKENS,
-    onPaletteChange: () => () => {},
-    overlay: {createLayer: vi.fn(), open: vi.fn(), closeAll: vi.fn()} as never,
-  };
+  return createTestPluginContext({instanceId}).context;
 }
 
 describe('mountPlugin', () => {

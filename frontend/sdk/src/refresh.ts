@@ -1,3 +1,4 @@
+/** @module @mndw/sdk/refresh */
 export interface RefreshLoopOptions<T> {
   load(): Promise<T>;
   intervalMs: number;

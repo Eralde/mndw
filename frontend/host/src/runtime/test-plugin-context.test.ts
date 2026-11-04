@@ -1,4 +1,3 @@
-import {MNDW_TOKENS} from '@mndw/sdk';
 import {describe, expect, it, vi} from 'vitest';
 import {createTestI18n} from '@mndw/sdk/testing';
 import {createTestPluginContext} from './test-plugin-context.js';
@@ -10,18 +9,20 @@ describe('createTestPluginContext', () => {
     expect(context.rciManager).toBeDefined();
     expect(context.storage).toBeDefined();
     expect(context.sharedStorage).toBeDefined();
-    expect(context.hostInfo.locale).toBe('en');
-    expect(context.deviceInfo.deviceName).toBe('Test Device');
+    expect(context.locale).toBe('en');
+    expect(context.theme).toBe('light');
+    expect(context.deviceInfo.deviceName).toBe('');
     expect(context.i18n.t('missing')).toBe('missing');
     expect(context.instanceId).toBe('test:1');
     expect(context.kind).toBe('widget');
     expect(context.backend).toBeUndefined();
-    expect(context.onThemeChange(() => {})).toBeTypeOf('function');
-    expect(context.getTokens()).toEqual(MNDW_TOKENS);
-    expect(context.onPaletteChange(() => {})).toBeTypeOf('function');
+    expect(context.theme$).toBeDefined();
+    expect(context.locale$).toBeDefined();
+    expect(context.palette$).toBeDefined();
+    expect(context.palette).toBeDefined();
     expect(typeof context.overlay.closeAll).toBe('function');
     expect(context.pageRoute).toBeUndefined();
-    expect(context.setTileTitle).toBeTypeOf('function');
+    expect(context.setTileTitle).toBeUndefined();
     expect(Object.isFrozen(context)).toBe(true);
   });
 

@@ -3,7 +3,7 @@ import {
   PALETTE_CONTRAST_PAIRS as CORE_CONTRAST_PAIRS,
   PALETTE_CSS_VARIABLES as CORE_CSS_VARIABLES,
 } from '@mndw/palette-core';
-import {PALETTE_CONTRAST_PAIRS, PALETTE_CSS_VARIABLES} from '@mndw/sdk/palette';
+import {PALETTE_CONTRAST_PAIRS, PALETTE_CSS_VARIABLES} from '@mndw/sdk-internal/palette';
 import {PAIRS, buildPalette} from './index.js';
 
 describe('palette contract agreement', () => {

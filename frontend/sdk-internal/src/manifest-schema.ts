@@ -7,7 +7,7 @@
 
 import {z} from 'zod';
 import {isReservedPageRoute} from './page-routes.js';
-import {pluginPermissionSchema} from './permissions.js';
+import {pluginPermissionSchema} from './sdk-source.js';
 
 const pluginNameSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, {
   message: 'name must be lowercase alphanumeric with hyphens (e.g. my-widget)',

@@ -2,15 +2,10 @@
 import 'zone.js';
 import '@angular/compiler';
 import {defineMndwUi} from '@mndw/ui';
-import type {
-  BackendClient,
-  BackendRouteDescriptor,
-  HostInfo,
-  MndwPlugin,
-  PluginContext,
-  PluginManifestI18n,
-} from '@mndw/sdk';
-import {type PluginCatalog, parseCatalog} from '@mndw/sdk/catalog';
+import type {BackendClient, MndwPlugin, PluginContext} from '@mndw/sdk';
+import type {BackendRouteDescriptor, PluginManifestI18n} from '@mndw/sdk-internal';
+import type {HostInfo} from './device-info-context.js';
+import {type PluginCatalog, parseCatalog} from '@mndw/sdk-internal/catalog';
 import {type TestI18n, createTestI18n} from '@mndw/sdk/testing';
 import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';

@@ -1,9 +1,9 @@
 <script lang="ts">
+import type {PaletteTokenMap} from '@mndw/sdk';
 import {
   type PaletteContrastWarning,
-  type PaletteTokenMap,
   validateImportedPalette,
-} from '@mndw/sdk';
+} from '@mndw/sdk-internal/palette';
 import {hostT} from '../../../services/host-i18n.svelte.js';
 
 interface Props {

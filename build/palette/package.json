@@ -12,6 +12,7 @@
   "devDependencies": {
     "@mndw/palette-core": "workspace:*",
     "@mndw/sdk": "workspace:*",
+    "@mndw/sdk-internal": "workspace:*",
     "@mndw/ui": "workspace:*",
     "tsx": "^4.23.0",
     "typescript": "^5.7.0",

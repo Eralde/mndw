@@ -1,6 +1,6 @@
 <script lang="ts">
 import {onDestroy, onMount} from 'svelte';
-import type {MndwSelectChangeDetail} from '@mndw/ui';
+import type {MndwSelectChangeDetail, MndwSwitchChangeDetail} from '@mndw/ui';
 import PaletteManager from './palette-manager/PaletteManager.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
@@ -390,7 +390,8 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
             id="mndw-persistent-rci-enabled"
             checked={persistentCapability?.controller.enabled ?? false}
             disabled={persistentActionLoading}
-            onmndwchange={(event) => void setTokenlessEnabled(event)}
+            onmndwchange={(event: CustomEvent<MndwSwitchChangeDetail>) =>
+            void setTokenlessEnabled(event)}
           >
           </mndw-switch>
         </mndw-field>

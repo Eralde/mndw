@@ -1,4 +1,4 @@
-import type {RciManager} from '@rci-tools/core';
+import type {PluginRciManager} from './rci.js';
 import type {PluginStorage} from './storage.js';
 import type {OverlayService} from './overlay.js';
 import type {BackendClient} from './backend-client.js';
@@ -8,6 +8,7 @@ import type {Observable} from 'rxjs';
 import type {PluginI18n} from './i18n.js';
 import type {TelemetryClient} from './telemetry-client.js';
 import type {PluginEventFacade} from './event-schema.js';
+import type {Ticker} from './ticker.js';
 
 export interface PageRoute {
   readonly childPath$: Observable<string>;
@@ -88,52 +89,36 @@ export interface DeviceInfo extends DeviceInfoData {
   hasComponent(name: string): boolean;
 }
 
-export interface HostInfo {
-  /** Active UI locale at the time this context was created. */
-  locale: string;
-  /** Active UI theme at the time this context was created. */
-  theme: MndwThemeName;
-}
-
 interface PluginContextBase {
   telemetry: TelemetryClient;
   events?: PluginEventFacade;
-  rciManager: RciManager;
+  rciManager: PluginRciManager;
   storage: PluginStorage;
   sharedStorage: PluginStorage;
-  hostInfo: HostInfo;
   deviceInfo: DeviceInfo;
   i18n: PluginI18n;
   instanceId: string;
+  /** Current host theme. This getter follows changes while the plugin is mounted. */
+  readonly theme: MndwThemeName;
+  /** Emits the current theme on subscribe and completes when the plugin unmounts. */
+  readonly theme$: Observable<MndwThemeName>;
+  /** Current host locale. This getter follows changes while the plugin is mounted. */
+  readonly locale: string;
+  /** Emits the current locale on subscribe and completes when the plugin unmounts. */
+  readonly locale$: Observable<string>;
+  /** Current applied palette, including a device override when present. */
+  readonly palette: PaletteTokenMap;
+  /** Emits the current palette on subscribe and completes when the plugin unmounts. */
+  readonly palette$: Observable<PaletteTokenMap>;
   /**
    * Typed backend client. Present only when the plugin declares a `backend`; ids resolve locally
    * from the daemon's descriptor snapshot. See {@link BackendClient}.
    */
   backend?: BackendClient;
-  /**
-   * Subscribe to host theme changes. The callback fires with the new theme
-   * whenever the user toggles it. Returns an unsubscribe function; call it on
-   * plugin teardown.
-   *
-   * For colors, prefer the `--mndw-*` CSS custom properties. Where a color must be
-   * computed in JS, use {@link PluginContext.getTokens} — NOT the `MNDW_TOKENS`
-   * constant, which is the compiled default palette and ignores any device override.
-   */
-  onThemeChange(callback: (theme: MndwThemeName) => void): () => void;
-  /**
-   * Resolved color tokens for both themes: the device's imported palette when one is
-   * applied, otherwise the compiled defaults. A method rather than a snapshot because
-   * the palette can change while a plugin is mounted.
-   */
-  getTokens(): PaletteTokenMap;
-  /**
-   * Subscribe to palette changes — an import committed from Settings, a reset, or a
-   * live preview. Fires with the newly applied tokens. Returns an unsubscribe
-   * function; call it on plugin teardown.
-   */
-  onPaletteChange(callback: (tokens: PaletteTokenMap) => void): () => void;
   /** Framework-agnostic top-layer UI (modal, drawer, popover, custom). */
   overlay: OverlayService;
+  /** Creates a host-managed ticker destroyed when this plugin context ends. */
+  createTicker(): Ticker;
 }
 
 export interface WidgetPluginContext extends PluginContextBase {

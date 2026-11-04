@@ -1,4 +1,5 @@
-import type {DeviceInfoData, HostInfo, MndwThemeName} from '@mndw/sdk';
+import type {DeviceInfoData, MndwThemeName} from '@mndw/sdk';
+import type {HostInfo} from '../runtime/device-info-context.js';
 import {mobileMediaQuery} from '../layout/breakpoint.js';
 import {getLocale, subscribeLocale, subscribeLocalePending} from '../services/locale.service.js';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';

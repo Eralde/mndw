@@ -191,6 +191,7 @@ func TestReviewSummarizesBackendCapabilities(t *testing.T) {
 
 	got := Review(parsed)
 	want := &ApprovalReview{Kind: "service", Packages: []string{"ttyd"}, Args: []string{"--foreground"}, PublicRoutes: []string{"health"}}
+
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Review() = %#v, want %#v", got, want)
 	}

@@ -51,14 +51,18 @@ func TestManagementLogsAndIgnoresTypedPublishFailure(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
+
 	New(cfg, store, nil, nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger()).Register(mux)
+
 	srv := httptest.NewServer(mux)
+
 	t.Cleanup(srv.Close)
 
 	response := upload(t, srv, makeZip(t, map[string]string{
 		"manifest.json": noBackendManifest,
 		"index.js":      "export {}",
 	}))
+
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusCreated {

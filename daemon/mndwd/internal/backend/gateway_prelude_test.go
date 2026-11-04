@@ -239,6 +239,7 @@ func TestResolveAuthorizedRouteMaintenanceGateAuthenticatesFirst(t *testing.T) {
 			}
 
 			gateway := newPreludeGateway(t, auth)
+
 			setTrafficBlockedForTest(gateway.runtime, "demo", true)
 
 			recorder := httptest.NewRecorder()
@@ -270,6 +271,7 @@ func TestResolveAuthorizedRouteMaintenanceGateAuthenticatesFirst(t *testing.T) {
 func TestResolveAuthorizedRoutePublicRouteDuringMaintenance(t *testing.T) {
 	auth := authFail()
 	gateway := newPreludeGateway(t, auth)
+
 	setTrafficBlockedForTest(gateway.runtime, "demo", true)
 
 	recorder := httptest.NewRecorder()
@@ -290,6 +292,7 @@ func TestResolveAuthorizedRoutePublicRouteDuringMaintenance(t *testing.T) {
 
 func TestResolveAuthorizedRouteBlockedPluginAuthenticatesFirst(t *testing.T) {
 	gates := NewActivationGateRegistry()
+
 	gates.Register("persistent-rci-session:read", ActivationGateFunc(func(_, permission string) []ActivationBlocker {
 		return []ActivationBlocker{{Permission: permission, Reason: "not-granted"}}
 	}))

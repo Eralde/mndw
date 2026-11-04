@@ -342,6 +342,7 @@ func TestUpdateBackendToBackendRequiresApproval(t *testing.T) {
 	runtime := &lifecycleTestRuntime{}
 	srv, store, _, cfg := newLifecycleHarness(t, runtime, nil)
 	runtime.store = store
+
 	installApprovedService(t, srv)
 
 	runtime.calls = nil
@@ -364,6 +365,7 @@ func TestUpdateAddingBackendToStaticPluginRequiresApproval(t *testing.T) {
 		"manifest.json": staticServiceManifest("1.0.0"),
 		"index.js":      "old",
 	}))
+
 	resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
@@ -393,9 +395,11 @@ func assertApprovalRequired(t *testing.T, resp *http.Response) {
 			Code string `json:"code"`
 		} `json:"error"`
 	}
+
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode update error: %v", err)
 	}
+
 	if body.Error.Code != "APPROVAL_REQUIRED" {
 		t.Fatalf("update error code = %q, want APPROVAL_REQUIRED", body.Error.Code)
 	}
@@ -409,6 +413,7 @@ func assertUpdateWasNotStarted(t *testing.T, runtime *lifecycleTestRuntime, stor
 	}
 
 	record, ok := store.Get("svc")
+
 	if !ok || record.Version != version || !record.Enabled || record.Approval != state.ApprovalApproved {
 		t.Fatalf("state after refused update = %+v, exists=%t", record, ok)
 	}
@@ -417,6 +422,7 @@ func assertUpdateWasNotStarted(t *testing.T, runtime *lifecycleTestRuntime, stor
 	if err != nil {
 		t.Fatalf("read installed plugin after refused update: %v", err)
 	}
+
 	if string(contents) != fileContents {
 		t.Fatalf("installed plugin contents = %q, want %q", contents, fileContents)
 	}

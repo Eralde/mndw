@@ -146,6 +146,28 @@ describe('PluginUpload', () => {
     void unmount(component);
   });
 
+  it('shows compatibility warning after a backendless plugin installs', async () => {
+    const installedEntry: PluginListEntry = {
+      ...entry,
+      approval: 'approved',
+      enabled: true,
+      lock: {sdkVersion: '2.0.0', sharedDependencies: {}},
+    };
+    const uploadFile = vi.fn().mockResolvedValue({status: 'installed', entry: installedEntry} satisfies UploadResult);
+    const {component, target} = mountUpload({uploadFile});
+
+    await drop(target, new File(['plugin'], 'plugin.zip', {type: 'application/zip'}));
+
+    await vi.waitFor(() => {
+      expect(target.textContent).toContain('Installed "Network Tools".');
+    });
+    expect(target.textContent).toContain('Version compatibility');
+    expect(target.textContent).toContain('Built for @mndw/sdk 2.0.0');
+    expect(target.textContent).toContain('You can still install it.');
+
+    void unmount(component);
+  });
+
   it('starts only one upload while an earlier drop is pending', async () => {
     const uploadFile = vi.fn(() => new Promise<UploadResult>(() => undefined));
     const {component, target} = mountUpload({uploadFile});

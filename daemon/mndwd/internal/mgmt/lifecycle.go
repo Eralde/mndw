@@ -36,7 +36,7 @@ func (h *Handler) handleApprove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin approved", "plugin", name)
-	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
+	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true, filepath.Join(h.cfg.UserPluginsDir, name)))
 }
 
 // installDeps installs a plugin's declared opkg packages. No-op when none declared.
@@ -103,7 +103,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.Enabled {
-		h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, true))
+		h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, true, filepath.Join(h.cfg.UserPluginsDir, name)))
 
 		return
 	}
@@ -143,7 +143,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin enabled", "plugin", name)
-	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true))
+	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true, filepath.Join(h.cfg.UserPluginsDir, name)))
 }
 
 // handleDisable deactivates a plugin and marks it disabled. Routes are gated on
@@ -164,7 +164,7 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !p.Enabled {
-		h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false))
+		h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false, filepath.Join(h.cfg.UserPluginsDir, name)))
 
 		return
 	}
@@ -195,7 +195,7 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin disabled", "plugin", name)
-	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false))
+	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false, filepath.Join(h.cfg.UserPluginsDir, name)))
 }
 
 // lookupForToggle resolves a user plugin and its manifest for enable/disable,

@@ -151,7 +151,14 @@
       "installing-dependencies": "Installing dependencies…",
       "dependency-install-failed": "Dependency install failed",
       "version-mismatch": "Version mismatch",
-      "version-warning": "Built against {versions}. Plugin still loads, but may misbehave with this host.",
+      "load-version-warning": "Built against {versions}. Plugin still loads, but may misbehave with this host.",
+      "version-warning": {
+        "title": "Version compatibility",
+        "sdk-major": "Built for @mndw/sdk {pluginVersion}; this dashboard provides {hostVersion}. The plugin may not work.",
+        "sdk-newer-minor": "Built for a newer @mndw/sdk ({pluginVersion}) than this dashboard provides ({hostVersion}). Some features may not work.",
+        "shared-major": "Built for {name} {pluginVersion}; this dashboard provides {hostVersion}. The plugin may not work.",
+        "install-anyway": "You can still install it."
+      },
       "endpoint-one": "{count} endpoint",
       "endpoint-many": "{count} endpoints",
       "websocket-one": "{count} websocket",

@@ -185,7 +185,7 @@ func TestListEntryI18nJSONShape(t *testing.T) {
 		t.Fatalf("valid fixture rejected: %v", err)
 	}
 
-	entry := h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true)
+	entry := h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true, t.TempDir())
 	encoded, err := json.Marshal(entry)
 	if err != nil {
 		t.Fatalf("marshal list entry: %v", err)

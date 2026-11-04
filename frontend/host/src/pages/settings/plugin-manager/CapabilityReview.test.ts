@@ -123,4 +123,43 @@ describe('CapabilityReview capability summary', () => {
 
     void unmount(component);
   });
+
+  it('renders an SDK compatibility warning from the plugin lock', () => {
+    const {component, target} = mountReview({
+      ...baseEntry,
+      lock: {sdkVersion: '2.0.0', sharedDependencies: {}},
+    });
+
+    expect(target.textContent).toContain('Version compatibility');
+    expect(target.textContent).toContain('Built for @mndw/sdk 2.0.0');
+    expect(target.textContent).toContain('this dashboard provides 1.0.0');
+    expect(target.textContent).toContain('You can still install it.');
+
+    void unmount(component);
+  });
+
+  it('uses neutral major-mismatch copy in English and Russian', async () => {
+    const {component, target} = mountReview({
+      ...baseEntry,
+      lock: {sdkVersion: '2.0.0', sharedDependencies: {}},
+    });
+    const warning = target.querySelector<HTMLElement>('.mndw-version-warning');
+    const sdkWarning = target.querySelector<HTMLElement>('.mndw-version-warning li');
+
+    try {
+      await setLocale('en');
+      flushSync();
+
+      expect(sdkWarning?.textContent?.toLowerCase()).not.toContain('newer');
+
+      await setLocale('ru');
+      flushSync();
+
+      expect(sdkWarning?.textContent?.toLowerCase()).not.toContain('нов');
+      expect(warning?.textContent).toContain('Совместимость версий');
+    } finally {
+      await unmount(component);
+      await setLocale('en');
+    }
+  });
 });

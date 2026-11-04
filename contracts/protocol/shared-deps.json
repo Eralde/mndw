@@ -5,12 +5,12 @@
   "bundles": [
     {
       "bundle": "rci-tools-core",
-      "version": "0.4.3",
+      "version": "0.6.0",
       "specifiers": [
         "@rci-tools/core"
       ],
       "framework": "base",
-      "url": "/shared/rci-tools-core@0.4.3.js"
+      "url": "/shared/rci-tools-core@0.6.0.js"
     },
     {
       "bundle": "rxjs",
@@ -50,12 +50,12 @@
     },
     {
       "bundle": "mndw-ui",
-      "version": "0.1.0",
+      "version": "1.0.0",
       "specifiers": [
         "@mndw/ui"
       ],
       "framework": "base",
-      "url": "/shared/mndw-ui@0.1.0.js"
+      "url": "/shared/mndw-ui@1.0.0.js"
     },
     {
       "bundle": "vue",
@@ -114,12 +114,12 @@
     }
   ],
   "importMap": {
-    "@rci-tools/core": "/shared/rci-tools-core@0.4.3.js",
+    "@rci-tools/core": "/shared/rci-tools-core@0.6.0.js",
     "rxjs": "/shared/rxjs@7.8.2.js",
     "rxjs/operators": "/shared/rxjs-operators@7.8.2.js",
     "hash-wasm": "/shared/hash-wasm@4.12.0.js",
     "d3": "/shared/d3@7.9.0.js",
-    "@mndw/ui": "/shared/mndw-ui@0.1.0.js",
+    "@mndw/ui": "/shared/mndw-ui@1.0.0.js",
     "vue": "/shared/vue@3.5.39.js",
     "zone.js": "/shared/zone@0.15.1.js",
     "@angular/core": "/shared/angular-core@21.2.18.js",

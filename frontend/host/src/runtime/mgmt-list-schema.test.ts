@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest';
-import {PERSISTENT_RCI_PERMISSIONS} from '@mndw/sdk';
+import {PERSISTENT_RCI_PERMISSIONS} from '@mndw/sdk-internal';
 import {decodeMgmtList, decodeMgmtListEntry} from './mgmt-list-schema.js';
 
 const widgetEntry = {
@@ -115,6 +115,16 @@ describe('decodeMgmtList', () => {
 describe('decodeMgmtListEntry', () => {
   it('decodes a single list-shaped mutation response', () => {
     expect(decodeMgmtListEntry(widgetEntry)).toMatchObject({name: 'demo', type: 'widget'});
+  });
+
+  it('decodes an entry when optional lock is absent', () => {
+    expect(decodeMgmtListEntry(widgetEntry)).not.toHaveProperty('lock');
+  });
+
+  it('preserves an optional plugin lock', () => {
+    const lock = {sdkVersion: '1.0.0', sharedDependencies: {rxjs: '7.8.2'}};
+
+    expect(decodeMgmtListEntry({...widgetEntry, lock}).lock).toEqual(lock);
   });
 
   it('rejects malformed single-entry responses', () => {

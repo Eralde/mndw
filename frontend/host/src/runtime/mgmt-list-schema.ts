@@ -4,7 +4,8 @@ import {
   type WidgetSize,
   isPersistentRciPermission,
   pluginPermissionSchema,
-} from '@mndw/sdk';
+} from '@mndw/sdk-internal';
+import type {HostLock} from './plugin-lock.js';
 import {z} from 'zod';
 
 const sourceSchema = z.enum(['builtin', 'registry', 'upload']);
@@ -63,6 +64,11 @@ const runtimeStatusSchema = z.object({
   supportedProtocols: z.array(z.number()).optional(),
 });
 
+const lockSchema: z.ZodType<HostLock> = z.object({
+  sdkVersion: z.string(),
+  sharedDependencies: z.record(z.string(), z.string()),
+});
+
 const baseFields = {
   name: z.string(),
   version: z.string(),
@@ -81,6 +87,7 @@ const baseFields = {
   // Host-populated after decode; omitted by daemon wire responses but required by the loader.
   catalogBaseUrl: z.string().optional(),
   runtime: runtimeStatusSchema.optional(),
+  lock: lockSchema.optional(),
 };
 
 const widgetListEntrySchema = z.object({

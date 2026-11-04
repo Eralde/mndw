@@ -1,5 +1,11 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {checkPluginVersions, getPluginVersionMismatches, majorOf, readPluginLock} from './plugin-lock.js';
+import {
+  checkPluginVersions,
+  getInstallVersionWarnings,
+  getPluginVersionMismatches,
+  parseVersion,
+  readPluginLock,
+} from './plugin-lock.js';
 
 function fakeFetch(body: unknown, ok = true): typeof fetch {
   return (() => Promise.resolve({ok, json: () => Promise.resolve(body)})) as unknown as typeof fetch;
@@ -76,20 +82,21 @@ describe('readPluginLock', () => {
   });
 });
 
-describe('majorOf', () => {
-  it('parses a leading integer major', () => {
-    expect(majorOf('7.8.2')).toBe(7);
-    expect(majorOf('21.2.18')).toBe(21);
-    expect(majorOf('0.2.0')).toBe(0);
-    expect(majorOf('3')).toBe(3);
+describe('parseVersion', () => {
+  it('parses a leading major and optional minor from trimmed versions', () => {
+    expect(parseVersion('1.5.0')).toEqual({major: 1, minor: 5});
+    expect(parseVersion('1.5')).toEqual({major: 1, minor: 5});
+    expect(parseVersion('1.5.0-rc.1')).toEqual({major: 1, minor: 5});
+    expect(parseVersion('1')).toEqual({major: 1, minor: null});
+    expect(parseVersion(' 1.5.0 ')).toEqual({major: 1, minor: 5});
   });
 
-  it('returns null for unparseable versions', () => {
-    expect(majorOf('workspace:*')).toBeNull();
-    expect(majorOf('^3.5.0')).toBeNull();
-    expect(majorOf('foo')).toBeNull();
-    expect(majorOf('')).toBeNull();
-    expect(majorOf(undefined)).toBeNull();
+  it('returns null for versions without a numeric prefix', () => {
+    expect(parseVersion('v1.5.0')).toBeNull();
+    expect(parseVersion('^1.5.0')).toBeNull();
+    expect(parseVersion('')).toBeNull();
+    expect(parseVersion('latest')).toBeNull();
+    expect(parseVersion('garbage')).toBeNull();
   });
 });
 
@@ -134,6 +141,90 @@ describe('getPluginVersionMismatches', () => {
       {sdkVersion: '2.0.0', sharedDependencies: {'left-pad': '1.0.0'}},
       {rxjs: '7.8.2'},
       '2.0.0',
+    )).toEqual([]);
+  });
+});
+
+describe('getInstallVersionWarnings', () => {
+  const hostVersions = {rxjs: '7.8.2'};
+  const hostSdkVersion = '1.3.0';
+
+  it('warns when SDK major differs', () => {
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '2.0.0', sharedDependencies: {}},
+      hostVersions,
+      hostSdkVersion,
+    )).toEqual([{kind: 'sdk-major', name: '@mndw/sdk', pluginVersion: '2.0.0', hostVersion: '1.3.0'}]);
+  });
+
+  it('warns when plugin uses newer minor of same SDK major', () => {
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '1.5.0', sharedDependencies: {}},
+      hostVersions,
+      hostSdkVersion,
+    )).toEqual([{kind: 'sdk-newer-minor', name: '@mndw/sdk', pluginVersion: '1.5.0', hostVersion: '1.3.0'}]);
+  });
+
+  it('does not warn for an older minor of the same SDK major', () => {
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '1.1.0', sharedDependencies: {}},
+      hostVersions,
+      hostSdkVersion,
+    )).toEqual([]);
+  });
+
+  it('warns for an older SDK major', () => {
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '0.9.0', sharedDependencies: {}},
+      hostVersions,
+      hostSdkVersion,
+    )).toEqual([{kind: 'sdk-major', name: '@mndw/sdk', pluginVersion: '0.9.0', hostVersion: '1.3.0'}]);
+  });
+
+  it('warns when a shared dependency major differs', () => {
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '1.3.0', sharedDependencies: {rxjs: '8.0.0'}},
+      hostVersions,
+      hostSdkVersion,
+    )).toEqual([{kind: 'shared-major', name: 'rxjs', pluginVersion: '8.0.0', hostVersion: '7.8.2'}]);
+  });
+
+  it('skips a specifier the host does not provide', () => {
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '1.3.0', sharedDependencies: {'left-pad': '2.0.0'}},
+      hostVersions,
+      hostSdkVersion,
+    )).toEqual([]);
+  });
+
+  it('skips unparsable SDK versions without suppressing shared dependency warnings', () => {
+    for (const sdkVersion of ['garbage', '', 'v2.0.0']) {
+      expect(getInstallVersionWarnings(
+        {sdkVersion, sharedDependencies: {rxjs: '8.0.0'}},
+        hostVersions,
+        hostSdkVersion,
+      )).toEqual([{kind: 'shared-major', name: 'rxjs', pluginVersion: '8.0.0', hostVersion: '7.8.2'}]);
+    }
+  });
+
+  it('skips a missing minor and still checks major mismatches', () => {
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '1', sharedDependencies: {}},
+      hostVersions,
+      hostSdkVersion,
+    )).toEqual([]);
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '2', sharedDependencies: {}},
+      hostVersions,
+      hostSdkVersion,
+    )).toEqual([{kind: 'sdk-major', name: '@mndw/sdk', pluginVersion: '2', hostVersion: '1.3.0'}]);
+  });
+
+  it('skips the SDK comparison when the host SDK version is unparsable', () => {
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '2.0.0', sharedDependencies: {}},
+      hostVersions,
+      'garbage',
     )).toEqual([]);
   });
 });

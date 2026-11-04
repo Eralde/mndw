@@ -82,6 +82,18 @@ describe('PendingApprovals', () => {
     void unmount(component);
   });
 
+  it('keeps approval enabled when it displays an SDK version warning', () => {
+    const {component, target} = mountPendingApprovals({
+      items: [{...item, lock: {sdkVersion: '2.0.0', sharedDependencies: {}}}],
+    });
+    const approveButton = target.querySelector<HTMLButtonElement>('.mndw-pending__approve');
+
+    expect(target.textContent).toContain('Version compatibility');
+    expect(approveButton?.disabled).toBe(false);
+
+    void unmount(component);
+  });
+
   it('updates pending-approval labels after a locale commit', async () => {
     const {component, target} = mountPendingApprovals();
 

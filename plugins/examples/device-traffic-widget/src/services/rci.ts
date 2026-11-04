@@ -1,5 +1,6 @@
+import type {PluginRciManager} from '@mndw/sdk';
 import {firstValueFrom} from 'rxjs';
-import type {RciManager, RciQuery} from '@rci-tools/core';
+import type {RciQuery} from '@rci-tools/core';
 import type {ChartResponse, HostBar, HostClient} from '../types.js';
 
 export interface ClockDate {
@@ -14,7 +15,7 @@ export interface ClockDate {
 }
 
 export class RciService {
-  public constructor(private rci: RciManager) {}
+  public constructor(private rci: PluginRciManager) {}
 
   public async getHosts(): Promise<HostClient[]> {
     const query: RciQuery = {

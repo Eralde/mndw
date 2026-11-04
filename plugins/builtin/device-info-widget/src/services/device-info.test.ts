@@ -1,20 +1,21 @@
-import type {RciManager, RciQuery} from '@rci-tools/core';
+import type {PluginRciManager} from '@mndw/sdk';
+import type {RciQuery} from '@rci-tools/core';
 import {type Observable, forkJoin, of, throwError} from 'rxjs';
 import {describe, expect, it} from 'vitest';
 
 import {fetchDeviceHistory, fetchDeviceInfo, formatUptime} from './device-info.js';
 
-function batchRci(queue: (query: RciQuery) => Observable<unknown>): RciManager {
+function batchRci(queue: (query: RciQuery) => Observable<unknown>): PluginRciManager {
   return {
     queue: (queries: RciQuery | RciQuery[]) =>
       Array.isArray(queries)
         ? forkJoin(queries.map((query) => queue(query)))
         : queue(queries),
-  } as unknown as RciManager;
+  } as unknown as PluginRciManager;
 }
 
-/** Fake RciManager whose queue() dispatches on query paths, including batch requests. */
-function fakeRci(handler: (q: RciQuery) => unknown): RciManager {
+/** Fake PluginRciManager whose queue() dispatches on query paths, including batch requests. */
+function fakeRci(handler: (q: RciQuery) => unknown): PluginRciManager {
   return batchRci((query) => of(handler(query)));
 }
 
@@ -109,7 +110,7 @@ describe('fetchDeviceInfo', () => {
   });
 
   it('rejects when a query errors (no device)', async () => {
-    const rci = {queue: () => throwError(() => new Error('no device'))} as unknown as RciManager;
+    const rci = {queue: () => throwError(() => new Error('no device'))} as unknown as PluginRciManager;
 
     await expect(fetchDeviceInfo(rci)).rejects.toThrow('no device');
   });

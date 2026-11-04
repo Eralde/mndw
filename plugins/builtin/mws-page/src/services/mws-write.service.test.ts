@@ -1,8 +1,7 @@
 import {signal} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import type {BackendClient} from '@mndw/sdk';
-import type {RciManager} from '@rci-tools/core';
+import type {BackendClient, PluginRciManager} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {MWSD_BACKEND, RCI_MANAGER} from '../tokens';
 import {type ExtraFeaturesAvailability, MwsDataService} from './mws-data.service';
@@ -15,7 +14,7 @@ describe('MwsWriteService', () => {
     TestBed.resetTestingModule();
     queue = vi.fn();
     TestBed.configureTestingModule({providers: [
-      {provide: RCI_MANAGER, useValue: {queue} as unknown as RciManager},
+      {provide: RCI_MANAGER, useValue: {queue} as unknown as PluginRciManager},
     ]});
   });
 

@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import {createInstance} from './index';
 import enCatalog from '../i18n/en.json';
 
@@ -16,14 +16,11 @@ afterEach(() => {
 describe('createInstance', () => {
   it('renders a shared save control and persists the current count', async () => {
     const storageSet = vi.fn().mockResolvedValue(undefined);
-
-    const ctx = {
-      instanceId: 'demo-1',
-      hostInfo: {locale: 'en', theme: 'dark'},
-      deviceInfo: {deviceName: 'Router', vendor: 'Keenetic'},
-      storage: {get: vi.fn().mockResolvedValue(null), set: storageSet},
-      i18n: createTestI18n(enCatalog),
-    } as unknown as PluginContext;
+    const fixture = createTestPluginContext({instanceId: 'demo-1', i18n: createTestI18n(enCatalog)});
+    const ctx = withOverrides(fixture.context, {
+      deviceInfo: {...fixture.context.deviceInfo, deviceName: 'Router', vendor: 'Keenetic'},
+      storage: {...fixture.context.storage, get: vi.fn().mockResolvedValue(null), set: storageSet},
+    });
 
     host = document.createElement('div');
     document.body.append(host);
@@ -55,13 +52,11 @@ describe('createInstance', () => {
       'count': 'Count EN: {count}',
       'save': 'Save EN',
     });
-    const ctx = {
-      instanceId: 'demo-1',
-      hostInfo: {locale: 'en', theme: 'dark'},
-      deviceInfo: {deviceName: 'Router', vendor: 'Keenetic'},
-      storage: {get: vi.fn().mockResolvedValue(null), set: vi.fn()},
-      i18n,
-    } as unknown as PluginContext;
+    const fixture = createTestPluginContext({instanceId: 'demo-1', i18n});
+    const ctx = withOverrides(fixture.context, {
+      deviceInfo: {...fixture.context.deviceInfo, deviceName: 'Router', vendor: 'Keenetic'},
+      storage: {...fixture.context.storage, get: vi.fn().mockResolvedValue(null), set: vi.fn()},
+    });
 
     host = document.createElement('div');
     document.body.append(host);
@@ -88,3 +83,22 @@ describe('createInstance', () => {
     expect(save?.textContent).toBe('Сохранить RU');
   });
 });
+
+function withOverrides(context: PluginContext, overrides: Partial<PluginContext>): PluginContext {
+  const copy = Object.create(null) as Record<string, unknown>;
+  const descriptors = Object.getOwnPropertyDescriptors(context);
+
+  for (const descriptor of Object.values(descriptors)) {
+    descriptor.configurable = true;
+  }
+
+  Object.defineProperties(copy, descriptors);
+  Object.defineProperties(
+    copy,
+    Object.fromEntries(
+      Object.entries(overrides).map(([key, value]) => [key, {configurable: true, enumerable: true, value}]),
+    ),
+  );
+
+  return Object.freeze(copy) as unknown as PluginContext;
+}

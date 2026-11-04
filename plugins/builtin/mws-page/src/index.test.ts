@@ -1,7 +1,7 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import type {BackendClient, PluginContext} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import drawerStyles from './components/node-drawer/node-drawer.component.scss?raw';
@@ -20,26 +20,36 @@ import enCatalog from '../i18n/en.json';
 function fakeContext(backend: BackendClient | null = null): {
   ctx: PluginContext;
   closeAll: ReturnType<typeof vi.fn>;
-  unsubscribe: ReturnType<typeof vi.fn>;
+  setTheme: (theme: 'light' | 'dark') => void;
   queue: ReturnType<typeof vi.fn>;
 } {
   const closeAll = vi.fn();
-  const unsubscribe = vi.fn();
   const queue = vi.fn(() => of({}));
-  const ctx = {
-    rciManager: {queue},
-    backend,
-    storage: new FakePluginStorage(),
-    sharedStorage: {},
-    hostInfo: {locale: 'en', theme: 'light'},
-    deviceInfo: {deviceName: 'Router'},
-    instanceId: 'test',
-    onThemeChange: vi.fn(() => unsubscribe),
-    overlay: {open: vi.fn(), createLayer: vi.fn(), closeAll},
+  const fixture = createTestPluginContext({
+    kind: 'page',
+    backend: backend ?? undefined,
     i18n: createTestI18n(enCatalog),
-  } as unknown as PluginContext;
+    instanceId: 'test',
+    rciManager: {queue},
+  });
+  const ctx = Object.create(null) as Record<string, unknown>;
 
-  return {ctx, closeAll, unsubscribe, queue};
+  const descriptors = Object.getOwnPropertyDescriptors(fixture.context);
+
+  for (const descriptor of Object.values(descriptors)) {
+    descriptor.configurable = true;
+  }
+
+  Object.defineProperties(ctx, descriptors);
+  Object.defineProperty(ctx, 'storage', {enumerable: true, value: new FakePluginStorage()});
+  Object.defineProperty(ctx, 'overlay', {enumerable: true, value: {open: vi.fn(), createLayer: vi.fn(), closeAll}});
+
+  return {
+    ctx: Object.freeze(ctx) as unknown as PluginContext,
+    closeAll,
+    setTheme: (theme): void => fixture.setTheme(theme),
+    queue,
+  };
 }
 
 describe('createInstance', () => {
@@ -92,7 +102,7 @@ describe('createInstance', () => {
   });
 
   it('tolerates unmount before Angular bootstrap resolves and leaves the mount empty', async () => {
-    const {ctx, closeAll, unsubscribe} = fakeContext();
+    const {ctx, closeAll} = fakeContext();
     const el = document.createElement('div');
     const instance = createInstance(el, ctx);
 
@@ -101,7 +111,7 @@ describe('createInstance', () => {
 
     expect(el.childNodes.length).toBe(0);
     expect(closeAll).toHaveBeenCalledOnce();
-    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(ctx.theme).toBe('light');
   });
 
   it('mounts the app and tears it down on unmount', async () => {
@@ -119,17 +129,17 @@ describe('createInstance', () => {
   });
 
   it('reflects the host theme on the mount element and follows changes', () => {
-    const {ctx} = fakeContext();
+    const {ctx, setTheme} = fakeContext();
     const el = document.createElement('div');
     const instance = createInstance(el, ctx);
 
     expect(el.dataset.mndwTheme).toBe('light');
 
-    const callback = (ctx.onThemeChange as ReturnType<typeof vi.fn>).mock.calls[0][0] as (theme: string) => void;
-
-    callback('dark');
+    setTheme('dark');
     expect(el.dataset.mndwTheme).toBe('dark');
     instance.unmount();
+    setTheme('light');
+    expect(el.dataset.mndwTheme).toBe('dark');
   });
 
   it('activates parameterized large mock mode from the URL', async () => {

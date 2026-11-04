@@ -1,7 +1,7 @@
 import '@angular/compiler';
 import {ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import type {BackendClient, PluginContext} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import drawerStyles from './components/node-drawer/node-drawer.component.scss?raw';
@@ -18,22 +18,29 @@ import {FakePluginStorage} from './test-support/plugin-storage.fake';
 import enCatalog from '../i18n/en.json';
 
 function fakeContext(backend: BackendClient | null = null): {ctx: PluginContext; queue: ReturnType<typeof vi.fn>} {
-  const unsubscribe = vi.fn();
   const queue = vi.fn(() => of({}));
-  const ctx = {
-    rciManager: {queue},
-    backend,
-    storage: new FakePluginStorage(),
-    sharedStorage: {},
-    hostInfo: {locale: 'en', theme: 'light'},
-    deviceInfo: {deviceName: 'Router'},
-    instanceId: 'test',
-    onThemeChange: vi.fn(() => unsubscribe),
-    overlay: {open: vi.fn(), createLayer: vi.fn(), closeAll: vi.fn()},
+  const fixture = createTestPluginContext({
+    kind: 'page',
+    backend: backend ?? undefined,
     i18n: createTestI18n(enCatalog),
-  } as unknown as PluginContext;
+    instanceId: 'test',
+    rciManager: {queue},
+  });
+  const context = Object.create(null) as Record<string, unknown>;
+  const descriptors = Object.getOwnPropertyDescriptors(fixture.context);
 
-  return {ctx, queue};
+  for (const descriptor of Object.values(descriptors)) {
+    descriptor.configurable = true;
+  }
+
+  Object.defineProperties(context, descriptors);
+  Object.defineProperty(context, 'storage', {enumerable: true, value: new FakePluginStorage()});
+  Object.defineProperty(context, 'overlay', {
+    enumerable: true,
+    value: {open: vi.fn(), createLayer: vi.fn(), closeAll: vi.fn()},
+  });
+
+  return {ctx: Object.freeze(context) as unknown as PluginContext, queue};
 }
 
 describe('production createInstance', () => {

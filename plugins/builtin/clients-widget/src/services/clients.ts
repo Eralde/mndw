@@ -1,4 +1,5 @@
-import type {RciManager, RciQuery} from '@rci-tools/core';
+import type {PluginRciManager} from '@mndw/sdk';
+import type {RciQuery} from '@rci-tools/core';
 import {firstValueFrom} from 'rxjs';
 import {get, has, pickBy} from 'lodash-es';
 
@@ -205,6 +206,6 @@ export function filterVisibleClients(clients: ClientRecord[], showOffline: boole
   return showOffline ? clients : clients.filter((client) => client.active);
 }
 
-export async function fetchClients(rci: RciManager): Promise<ClientRecord[]> {
+export async function fetchClients(rci: PluginRciManager): Promise<ClientRecord[]> {
   return normalizeClients(await firstValueFrom(rci.queue(QUERY)));
 }

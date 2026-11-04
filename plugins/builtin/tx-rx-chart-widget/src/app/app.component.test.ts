@@ -3,9 +3,9 @@ import {DestroyRef, inject, ɵresolveComponentResources as resolveComponentResou
 import {createTranslatorSignals} from '@mndw/sdk/angular';
 import {createTestI18n} from '@mndw/sdk/testing';
 import {type ComponentFixture, TestBed} from '@angular/core/testing';
-import type {PluginStorage} from '@mndw/sdk';
+import type {PluginRciManager, PluginStorage} from '@mndw/sdk';
 import type {RrdResponse} from '@mndw/sdk/rrd';
-import type {RciManager, RciQuery} from '@rci-tools/core';
+import type {RciQuery} from '@rci-tools/core';
 import {Subject, of} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {OpenSettingsFn} from '../open-settings-dialog';
@@ -23,7 +23,7 @@ const interfaces = {
 
 let fixtures: ComponentFixture<AppComponentType>[] = [];
 
-function fakeManager(rrdResponses?: Subject<[RrdResponse, RrdResponse]>): RciManager {
+function fakeManager(rrdResponses?: Subject<[RrdResponse, RrdResponse]>): PluginRciManager {
   return {
     queue: (query: RciQuery | RciQuery[]) => {
       const path = Array.isArray(query) ? query[0]?.path : query.path;
@@ -42,7 +42,7 @@ function fakeManager(rrdResponses?: Subject<[RrdResponse, RrdResponse]>): RciMan
 
       return of([{data: []}, {data: []}]);
     },
-  } as unknown as RciManager;
+  } as unknown as PluginRciManager;
 }
 
 function fakeStorage(savedInterface: string | null, savedRefresh: string | null): PluginStorage {

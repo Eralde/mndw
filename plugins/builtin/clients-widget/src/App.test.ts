@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import type {PluginContext} from '@mndw/sdk';
+import type {PluginContext, PluginRciManager} from '@mndw/sdk';
 import type {MndwTable} from '@mndw/ui';
 import {createTestI18n} from '@mndw/sdk/testing';
-import type {RciManager, RciQuery} from '@rci-tools/core';
+import type {RciQuery} from '@rci-tools/core';
 import {Observable, of, throwError} from 'rxjs';
 import {type App as VueApp, createApp, nextTick} from 'vue';
 import fixture from './fixtures/show-device-list.json' with {type: 'json'};
@@ -27,7 +27,7 @@ let warn: ReturnType<typeof vi.spyOn>;
 
 function createContext(i18n = createTestI18n(enCatalog)): PluginContext {
   return {
-    rciManager: {queue} as unknown as RciManager,
+    rciManager: {queue} as unknown as PluginRciManager,
     storage: {
       get: storageGet,
       set: storageSet,

@@ -54,7 +54,6 @@ function mountApp(overrides: Record<string, unknown> = {}): void {
       'history-historical': 'Historical',
     }),
     telemetry: {
-      fetchAll: vi.fn(),
       fetchProjected: vi.fn().mockResolvedValue(supportedSnapshot(1000, 2000)),
     },
     storage: {get: vi.fn().mockResolvedValue(null), set: vi.fn().mockResolvedValue(undefined)},
@@ -138,7 +137,7 @@ describe('App', () => {
         })
       );
 
-    mountApp({telemetry: {fetchAll: vi.fn(), fetchProjected}});
+    mountApp({telemetry: {fetchProjected}});
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     const btn7d = Array.from(host.querySelectorAll<HTMLButtonElement>('.range-controls button'))
@@ -174,7 +173,7 @@ describe('App', () => {
       gathering: {enabled: true},
     });
 
-    mountApp({telemetry: {fetchAll: vi.fn(), fetchProjected}});
+    mountApp({telemetry: {fetchProjected}});
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(host.querySelector('mndw-line-chart')).toBeNull();
@@ -190,7 +189,7 @@ describe('App', () => {
       clock: {state: 'unanchored', historyEndMs: 2000, historyCurrent: false, replayPending},
     });
 
-    mountApp({telemetry: {fetchAll: vi.fn(), fetchProjected}});
+    mountApp({telemetry: {fetchProjected}});
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(host.querySelector('mndw-line-chart')).not.toBeNull();
@@ -203,7 +202,7 @@ describe('App', () => {
       clock: {state: 'anchored', historyEndMs: 2000, historyCurrent: true, replayPending: false},
     });
 
-    mountApp({telemetry: {fetchAll: vi.fn(), fetchProjected}});
+    mountApp({telemetry: {fetchProjected}});
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(host.querySelector('mndw-line-chart')).not.toBeNull();

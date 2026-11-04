@@ -1,5 +1,6 @@
+import type {PluginRciManager} from '@mndw/sdk';
 import {Subject} from 'rxjs';
-import type {RciBackgroundProcess, RciManager} from '@rci-tools/core';
+import type {RciBackgroundProcess} from '@rci-tools/core';
 import {describe, expect, it, vi} from 'vitest';
 import {createTransitionLogStream} from './transition-log-api';
 
@@ -9,7 +10,7 @@ describe('createTransitionLogStream', () => {
     const abort = vi.fn(() => true);
     const process = {data$: data$.asObservable(), abort} as unknown as RciBackgroundProcess;
     const queueBackgroundProcess = vi.fn(() => process);
-    const rci = {queueBackgroundProcess} as unknown as RciManager;
+    const rci = {queueBackgroundProcess} as unknown as PluginRciManager;
     const stream = createTransitionLogStream(rci, {client: 'Laptop'});
     const next = vi.fn();
 
@@ -29,7 +30,7 @@ describe('createTransitionLogStream', () => {
   it('keeps transport errors visible to consumers', () => {
     const data$ = new Subject<unknown>();
     const process = {data$: data$.asObservable(), abort: vi.fn()} as unknown as RciBackgroundProcess;
-    const stream = createTransitionLogStream({queueBackgroundProcess: () => process} as unknown as RciManager);
+    const stream = createTransitionLogStream({queueBackgroundProcess: () => process} as unknown as PluginRciManager);
     const error = new Error('transport');
     const observed = vi.fn();
 

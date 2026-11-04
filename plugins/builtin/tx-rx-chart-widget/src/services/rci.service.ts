@@ -1,7 +1,7 @@
 import {Injectable, inject} from '@angular/core';
 import {Observable, map} from 'rxjs';
 import type {RciQuery} from '@rci-tools/core';
-import type {RrdResponse, RrdTick} from '@mndw/sdk/rrd';
+import type {RrdTick} from '@mndw/sdk/rrd';
 import type {ClockDate, ShowInterfaceResponse} from '../types/rci.types';
 import {RCI_MANAGER} from '../tokens';
 
@@ -34,7 +34,7 @@ export class RciService {
       data: {name: interfaceId, detail, attribute: 'rxspeed'},
     };
 
-    return (this.rci.queue([txQuery, rxQuery]) as Observable<[RrdResponse, RrdResponse]>)
+    return (this.rci.queue([txQuery, rxQuery]))
       .pipe(
         map(([txResponse, rxResponse]) => {
           return {

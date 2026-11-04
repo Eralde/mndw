@@ -20,11 +20,11 @@ import {
   MWS_PAGE_ROUTE,
   MWS_RENAME_API,
   type MwsMockOptions,
-  ON_THEME_CHANGE,
   OVERLAY,
   PLUGIN_STORAGE,
   RCI_MANAGER,
   SHARED_PLUGIN_STORAGE,
+  THEME$,
 } from './tokens';
 
 export interface MwsInstanceOptions {
@@ -39,7 +39,9 @@ export function createMwsMapInstance(
 ): PluginInstance {
   let positions: NodePositionStore | null = null;
   let columns: NodeTableColumnsStore | null = null;
-  const onThemeChange = ctx.onThemeChange.bind(ctx);
+  const themeSubscription = ctx.theme$.subscribe((theme) => {
+    el.dataset.mndwTheme = theme;
+  });
   const dataServiceProvider = options.dataService === undefined
     ? MwsDataService
     : {provide: MwsDataService, useClass: options.dataService};
@@ -47,7 +49,7 @@ export function createMwsMapInstance(
     ? []
     : [{provide: MWS_MOCK_OPTIONS, useValue: options.mockOptions}];
 
-  el.dataset.mndwTheme = ctx.hostInfo.theme;
+  el.dataset.mndwTheme = ctx.theme;
 
   const setLocaleLabel = (): void => {
     const title = ctx.i18n.t('title');
@@ -61,11 +63,7 @@ export function createMwsMapInstance(
 
   setLocaleLabel();
 
-  const unsubscribeLocale = ctx.i18n.onChange(setLocaleLabel);
-
-  const unsubscribeTheme = onThemeChange((theme) => {
-    el.dataset.mndwTheme = theme;
-  });
+  const localeSubscription = ctx.i18n.change$.subscribe(setLocaleLabel);
 
   return createAngularPluginInstance(el, {
     rootComponent: AppComponent,
@@ -78,7 +76,7 @@ export function createMwsMapInstance(
       {provide: PLUGIN_STORAGE, useValue: ctx.storage},
       {provide: SHARED_PLUGIN_STORAGE, useValue: ctx.sharedStorage},
       ...mockOptionsProvider,
-      {provide: ON_THEME_CHANGE, useValue: onThemeChange},
+      {provide: THEME$, useValue: ctx.theme$},
       provideTranslator(ctx.i18n),
       MwsApiService,
       {provide: MWS_RENAME_API, useExisting: MwsApiService},
@@ -100,8 +98,8 @@ export function createMwsMapInstance(
       });
     },
     onUnmount: () => {
-      unsubscribeTheme();
-      unsubscribeLocale();
+      themeSubscription.unsubscribe();
+      localeSubscription.unsubscribe();
       ctx.overlay.closeAll();
       void positions?.flush();
       void columns?.flush();

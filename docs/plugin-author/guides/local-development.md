@@ -67,4 +67,4 @@ The daemon port defaults to `9090`; set `--port` if another process is using it.
 
 From the repository root, run `pnpm exec mndw dev plugins/examples/<name>`. Use `--out plugins/examples/<name>` to
 scaffold a plugin there. Workspace dependencies use `workspace:*`. Go backend work uses Go, for example
-`go run ./cmd/mndwd` from `daemon/mndwd`. See the [CLI workflow](https://github.com/Eralde/mndw/blob/master/docs/ai/cli-workflow.md).
+`go run ./cmd/mndwd` from `daemon/mndwd`. See the [repository quick start](https://github.com/Eralde/mndw/blob/master/README.md#quick-start).

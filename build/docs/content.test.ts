@@ -154,7 +154,7 @@ describe('Task 3 and 4 author pages', () => {
     expect(clone).toContain('--out plugins/examples/<name>');
     expect(clone).toContain('workspace:*');
     expect(clone).toContain('go run');
-    expect(clone).toContain('https://github.com/Eralde/mndw/blob/master/docs/ai/cli-workflow.md');
+    expect(clone).toContain('https://github.com/Eralde/mndw/blob/master/README.md#quick-start');
     expect(clone.split('\n').length).toBeLessThanOrEqual(15);
   });
 

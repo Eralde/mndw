@@ -139,7 +139,7 @@ body {
 }
 
 .mndw-header__locale-select {
-  width: 4rem;
+  width: max-content;
 }
 
 .mndw-header__logout {
@@ -267,7 +267,7 @@ body {
 
 .mndw-login__locale-select {
   align-self: flex-end;
-  width: 4.5rem;
+  width: max-content;
 }
 
 .mndw-login__form mndw-button {

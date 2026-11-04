@@ -57,6 +57,7 @@ function roots(): MwsNode[] {
 interface TableElement extends HTMLElement {
   shadowRoot: ShadowRoot;
   updateComplete: Promise<unknown>;
+  columns: {id: string}[];
 }
 
 function tableOf(fixture: ReturnType<typeof TestBed.createComponent<MwsNodesTableComponent>>): TableElement {
@@ -107,7 +108,7 @@ describe('MwsNodesTableComponent', () => {
     }).compileComponents();
   });
 
-  it('renders the eight columns and controller badge in the shared table', async () => {
+  it('renders the seven columns and controller badge in the shared table', async () => {
     const fixture = render(roots());
     const table = tableOf(fixture);
     const controls = fixture.nativeElement.querySelector('.mndw-table-controls');
@@ -116,7 +117,16 @@ describe('MwsNodesTableComponent', () => {
 
     const headers = [...table.shadowRoot.querySelectorAll('th[scope="col"]')];
 
-    expect(headers).toHaveLength(9);
+    expect(table.columns.map(({id}) => id)).toEqual([
+      'name',
+      'clients',
+      'uptime',
+      'ip',
+      'via',
+      'connection',
+      'firmware',
+    ]);
+    expect(headers).toHaveLength(8);
     expect(table.querySelector('.node-name')?.textContent).toContain('Node A');
     expect(table.querySelector('.node-name')?.textContent).toContain('Controller');
     expect(controls).not.toBeNull();
@@ -202,9 +212,16 @@ describe('MwsNodesTableComponent', () => {
     expect(menu).not.toBeNull();
     await menu?.updateComplete;
 
-    const options = menu?.shadowRoot.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]');
+    const options = [...(menu?.shadowRoot.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]') ?? [])];
 
-    expect(options).toHaveLength(7);
+    expect(options.map((option) => option.dataset.columnId)).toEqual([
+      'clients',
+      'uptime',
+      'ip',
+      'via',
+      'connection',
+      'firmware',
+    ]);
 
     menu?.shadowRoot.querySelector<HTMLButtonElement>('button[data-column-id="clients"]')?.click();
     fixture.detectChanges();

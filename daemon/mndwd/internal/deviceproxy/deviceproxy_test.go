@@ -132,6 +132,75 @@ func TestSameDeviceHostAllowsExplicitDefaultPort(t *testing.T) {
 	}
 }
 
+// upstreamOrigin sends one POST through the proxy and returns the Origin values the device saw.
+func upstreamOrigin(t *testing.T, incomingHost, origin string) (*httptest.Server, []string) {
+	t.Helper()
+
+	var got []string
+	device := newIPv4Server(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Values("Origin")
+
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+
+	t.Cleanup(device.Close)
+
+	h, err := New(device.URL, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/auth", strings.NewReader(`{"login":"admin"}`))
+	req.Host = incomingHost
+
+	if origin != "" {
+		req.Header.Set("Origin", origin)
+	}
+
+	h.ServeHTTP(httptest.NewRecorder(), req)
+
+	return device, got
+}
+
+func TestProxyRewritesDashboardOriginToDeviceOrigin(t *testing.T) {
+	device, got := upstreamOrigin(t, "192.168.1.1:99", "http://192.168.1.1:99")
+
+	if len(got) != 1 || got[0] != device.URL {
+		t.Fatalf("upstream Origin = %q, want [%q]", got, device.URL)
+	}
+}
+
+func TestProxyKeepsCrossSiteOrigin(t *testing.T) {
+	_, got := upstreamOrigin(t, "192.168.1.1:99", "http://evil.example")
+
+	if len(got) != 1 || got[0] != "http://evil.example" {
+		t.Fatalf("upstream Origin = %q, want [\"http://evil.example\"]", got)
+	}
+}
+
+func TestProxyDoesNotAddOrigin(t *testing.T) {
+	_, got := upstreamOrigin(t, "192.168.1.1:99", "")
+
+	if len(got) != 0 {
+		t.Fatalf("upstream Origin = %q, want none", got)
+	}
+}
+
+func TestDeviceOriginOmitsDefaultPort(t *testing.T) {
+	for raw, want := range map[string]string{
+		"http://192.168.1.1:80":    "http://192.168.1.1",
+		"https://router.lan:443/x": "https://router.lan",
+		"http://192.168.1.1:8080":  "http://192.168.1.1:8080",
+		"HTTP://Router.LAN":        "http://router.lan",
+	} {
+		target, _ := url.Parse(raw)
+
+		if got := deviceOrigin(target); got != want {
+			t.Errorf("deviceOrigin(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
 func TestProxyDoesNotRewriteSetCookie(t *testing.T) {
 	device := newIPv4Server(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Set-Cookie", "sid=x; Domain="+r.Host)

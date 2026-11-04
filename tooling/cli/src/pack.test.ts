@@ -1,7 +1,7 @@
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
-import {validateManifest} from '@mndw/sdk';
+import {validateManifest} from '@mndw/sdk-internal';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 const renameFailure = vi.hoisted(() => ({destination: undefined as string | undefined, remaining: 0}));
@@ -287,12 +287,14 @@ describe('packPlugin', () => {
     );
   });
 
-  it('stages a module worker imported from the SDK', async () => {
+  it('keeps the host-managed ticker worker out of the plugin bundle', async () => {
     scaffold(dir, {
-      manifest: widgetManifest({name: 'sdk-worker-widget'}),
-      index: 'import {Ticker} from "@mndw/sdk/ticker";\n'
-        + 'const ticker = new Ticker();\n'
-        + 'export const createInstance = () => ({unmount() { ticker.destroy(); }});\n',
+      manifest: widgetManifest({name: 'host-ticker-widget'}),
+      index: 'export const createInstance = (_el, ctx) => {\n'
+        + '  const ticker = ctx.createTicker();\n'
+        + '  ticker.start(1000);\n'
+        + '  return {unmount() { ticker.destroy(); }};\n'
+        + '};\n',
     });
 
     await packPlugin(dir);
@@ -300,10 +302,9 @@ describe('packPlugin', () => {
     const jsFiles = readdirSync(join(dir, 'dist')).filter((file) => file.endsWith('.js'));
     const bundle = readFileSync(join(dir, 'dist', 'index.js'), 'utf8');
 
-    expect(jsFiles).toContain('ticker.worker.js');
-    expect(bundle).toContain('./ticker.worker.js');
-    expect(bundle).not.toContain('./ticker.worker.ts');
-    expect(readFileSync(join(dir, 'dist', 'ticker.worker.js'), 'utf8')).toContain('postMessage');
+    expect(jsFiles).toEqual(['index.js']);
+    expect(bundle).toContain('createTicker');
+    expect(bundle).not.toContain('ticker.worker');
   });
 
   it('bundles a svelte plugin and emits dist/index.css', async () => {

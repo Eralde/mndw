@@ -20,12 +20,21 @@ export interface DevSessionConfig {
   readonly env: NodeJS.ProcessEnv;
   readonly hostDevice?: string;
   readonly sandboxPlugin?: string;
+  readonly launchHost?: DevHostLauncher;
   readonly isReady: (payload: unknown) => boolean;
   readonly createWatcher: (context: {
     readonly daemonUrl: string;
     readonly touchSentinel: () => void;
   }) => WatchHandle;
 }
+
+export interface DevHostHandle {
+  readonly exited: Promise<number | null>;
+  reload(): void;
+  close(): Promise<void>;
+}
+
+export type DevHostLauncher = (env: NodeJS.ProcessEnv) => DevHostHandle;
 
 export interface DevSessionChild {
   readonly pid?: number;
@@ -262,6 +271,7 @@ export async function runDevSession(config: DevSessionConfig, deps: DevSessionDe
   const children: ChildRecord[] = [];
   const readinessAbort = new AbortController();
   let reloadSentinel: ReloadSentinel | undefined;
+  let hostHandle: DevHostHandle | undefined;
   let watcher: WatchHandle | undefined;
   let unsubscribeShutdown: (() => void) | undefined;
   let terminal = false;
@@ -299,6 +309,12 @@ export async function runDevSession(config: DevSessionConfig, deps: DevSessionDe
       await watcher?.close();
     } catch (error) {
       recordCleanupFailure(error, 'mndw dev: failed to close watcher');
+    }
+
+    try {
+      await hostHandle?.close();
+    } catch (error) {
+      recordCleanupFailure(error, 'mndw dev: failed to close host');
     }
 
     try {
@@ -406,30 +422,51 @@ export async function runDevSession(config: DevSessionConfig, deps: DevSessionDe
       return;
     }
 
-    const host: ChildRecord = {
-      child: spawn('pnpm', ['--filter', '@mndw/host', 'dev'], {
-        cwd: config.repoRoot,
-        env: buildDevHostEnv(config, reloadSentinel.path),
-      }),
-      role: 'host',
-    };
+    const hostEnv = buildDevHostEnv(config, reloadSentinel.path);
 
-    children.push(host);
-    attachChild(host);
+    if (config.launchHost !== undefined) {
+      hostHandle = config.launchHost(hostEnv);
+      void hostHandle.exited.then((code) => {
+        const cause = code === 0
+          ? undefined
+          : new Error(`mndw dev: host exited with code ${code ?? 'unknown'}`);
 
-    if (terminal) {
-      if (terminalChild !== host.child) {
-        terminate(host);
+        beginShutdown(undefined, cause);
+      }, (error: unknown) => {
+        beginShutdown(undefined, asError(error, 'mndw dev: host failed'));
+      });
+    } else {
+      const host: ChildRecord = {
+        child: spawn('pnpm', ['--filter', '@mndw/host', 'dev'], {
+          cwd: config.repoRoot,
+          env: hostEnv,
+        }),
+        role: 'host',
+      };
+
+      children.push(host);
+      attachChild(host);
+
+      if (terminal) {
+        if (terminalChild !== host.child) {
+          terminate(host);
+        }
+
+        await finished;
+
+        return;
       }
-
-      await finished;
-
-      return;
     }
 
     watcher = config.createWatcher({
       daemonUrl: config.daemonUrl,
-      touchSentinel: () => reloadSentinel?.touch(),
+      touchSentinel: () => {
+        if (hostHandle !== undefined) {
+          hostHandle.reload();
+        } else {
+          reloadSentinel?.touch();
+        }
+      },
     });
   } catch (error) {
     if (!terminal) {

@@ -174,6 +174,20 @@ describe('createProgram', () => {
     expect(command?.name()).toBe('build-backend');
   });
 
+  test('documents device URL and UI port options while hiding compatibility flags', () => {
+    const command = createProgram().commands.find((entry) => entry.name() === 'dev');
+    const options = command?.options ?? [];
+
+    expect(options.map((option) => option.long)).toContain('--addr');
+    expect(options.map((option) => option.long)).toContain('--host-device');
+    expect(options.map((option) => option.long)).toContain('--ui-port');
+    expect(options.map((option) => option.long)).toContain('--prebuilt-host');
+    expect(options.find((option) => option.long === '--addr')?.description).toContain('device');
+    expect(options.find((option) => option.long === '--host-device')?.hidden).toBe(true);
+    expect(options.find((option) => option.long === '--prebuilt-host')?.hidden).toBe(true);
+    expect(options.find((option) => option.long === '--ui-port')?.defaultValue).toBe(5173);
+  });
+
   test('prints help', async () => {
     const execution = execute(['--help']);
 
@@ -321,9 +335,9 @@ describe('createProgram', () => {
 
     temporaryDirectories.push(workdir);
 
-    const result = runCliFrom(workdir, ['create', 'vue-cmd', '--framework', 'vue']);
+    const result = runCliFrom(workdir, ['create', 'vue-cmd', '--framework', 'vue', '--no-install']);
 
-    expect(result.status).toBe(0);
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
     expect(result.stdout).toContain('(vue)');
     expect(existsSync(resolve(workdir, 'vue-cmd', 'src', 'App.vue'))).toBe(true);
   });
@@ -333,9 +347,9 @@ describe('createProgram', () => {
 
     temporaryDirectories.push(workdir);
 
-    const result = runCliFrom(workdir, ['create', 'ng-cmd', '--framework', 'angular']);
+    const result = runCliFrom(workdir, ['create', 'ng-cmd', '--framework', 'angular', '--no-install']);
 
-    expect(result.status).toBe(0);
+    expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
     expect(result.stdout).toContain('(angular)');
     expect(existsSync(resolve(workdir, 'ng-cmd', 'src', 'app.component.ts'))).toBe(true);
   });
@@ -350,6 +364,8 @@ describe('createProgram', () => {
       'go-cmd',
       '--backend',
       'go',
+      '--framework',
+      'vanilla',
       '--type',
       'page',
       '--out',
@@ -364,6 +380,7 @@ describe('createProgram', () => {
     const result = runCliFrom(WORKSPACE_ROOT, ['create', '--help']);
 
     expect(result.stdout).toContain('vanilla|svelte|vue|angular');
+    expect(result.stdout).toContain('--no-install');
   });
 });
 

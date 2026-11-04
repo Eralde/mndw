@@ -1,10 +1,11 @@
-import {readFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {dirname, join} from 'node:path';
+import {tmpdir} from 'node:os';
 import {describe, expect, it} from 'vitest';
 
-import type {PluginManifestOutput} from '@mndw/sdk';
-import {sharedDependencyVersions} from '@mndw/sdk/shared-dependencies';
+import type {PluginManifestOutput} from '@mndw/sdk-internal';
+import {sharedDependencyVersions} from '@mndw/sdk-internal/shared-dependencies';
 
 import {CliError} from './errors.js';
 import {buildLock, findBundledSharedDependencies, parseLock, resolveSdkVersion, serializeLock} from './lock.js';
@@ -79,6 +80,30 @@ describe('buildLock', () => {
     expect(buildLock(widgetManifest(), 'svelte').sharedDependencies).toEqual(
       buildLock(widgetManifest(), 'vanilla').sharedDependencies,
     );
+  });
+
+  it('uses the plugin-local SDK version when building the lock', () => {
+    const pluginDir = mkdtempSync(join(tmpdir(), 'mndw-lock-plugin-sdk-'));
+    const sdkDir = join(pluginDir, 'node_modules', '@mndw', 'sdk');
+
+    try {
+      mkdirSync(sdkDir, {recursive: true});
+      writeFileSync(join(sdkDir, 'package.json'), JSON.stringify({name: '@mndw/sdk', version: '1.2.0'}));
+
+      expect(buildLock(widgetManifest(), 'vanilla', pluginDir).sdkVersion).toBe('1.2.0');
+    } finally {
+      rmSync(pluginDir, {recursive: true, force: true});
+    }
+  });
+
+  it('falls back to the CLI SDK version when the plugin has no SDK installation', () => {
+    const pluginDir = mkdtempSync(join(tmpdir(), 'mndw-lock-no-plugin-sdk-'));
+
+    try {
+      expect(buildLock(widgetManifest(), 'vanilla', pluginDir).sdkVersion).toBe(resolveSdkVersion());
+    } finally {
+      rmSync(pluginDir, {recursive: true, force: true});
+    }
   });
 });
 

@@ -1,18 +1,50 @@
 import {accessSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
+import {EventEmitter} from 'node:events';
+import {type ChildProcess, spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
-import {validateManifest} from '@mndw/sdk';
+import {PassThrough} from 'node:stream';
+import {validateManifest} from '@mndw/sdk-internal';
+import {sharedDependencyVersions} from '@mndw/sdk-internal/shared-dependencies';
 import {compile} from 'svelte/compiler';
-import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 import {CliError} from './errors.js';
-import {type CreateOptions, buildManifest, createPlugin, planCreate, toLabel} from './create.js';
+import {
+  type CreateOptions,
+  buildManifest,
+  create,
+  createPlugin,
+  planCreate,
+  readCliMetadata,
+  toLabel,
+} from './create.js';
 import {readManifest} from './manifest.js';
 import {packPlugin} from './pack.js';
 import {zipPlugin} from './zip.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
+
+describe('readCliMetadata', () => {
+  it('uses this CLI package own ranges for Vite and framework plugins', () => {
+    const pkg = JSON.parse(readFileSync(resolve(REPO_ROOT, 'tooling/cli/package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const metadata = readCliMetadata();
+    const range = (name: string): string => pkg.dependencies?.[name] ?? pkg.devDependencies?.[name] ?? '';
+
+    expect(metadata.viteRange).toBe(range('vite'));
+    expect(metadata.svelteVitePluginRange).toBe(range('@sveltejs/vite-plugin-svelte'));
+    expect(metadata.vueVitePluginRange).toBe(range('@vitejs/plugin-vue'));
+    expect(metadata.uiRange).toBe('^1.0.0');
+    expect(metadata.uiWrapperRanges).toEqual({svelte: '^1.0.0', vue: '^1.0.0', angular: '^1.0.0'});
+  });
+
+  it('throws with the missing package name instead of using a hard-coded range', () => {
+    expect(() => readCliMetadata({dependencies: {}, devDependencies: {}})).toThrow('svelte');
+  });
+});
 
 describe('toLabel', () => {
   it('title-cases a hyphenated plugin name', () => {
@@ -194,14 +226,19 @@ describe('planCreate', () => {
 
   it('renders an angular plugin with app.component.ts and angular compiler options', () => {
     const plan = planCreate(options({name: 'ng', framework: 'angular', type: 'widget'}));
+    const app = fileContents(plan, 'src/app.component.ts');
 
-    expect(fileContents(plan, 'src/app.component.ts')).toContain('Ng');
-    expect(fileContents(plan, 'src/app.component.ts')).toContain('padding:var(--mndw-space-4)');
-    expect(fileContents(plan, 'src/app.component.ts')).not.toContain('padding:16px');
+    expect(app).toContain('Ng');
+    expect(app).toContain('padding:var(--mndw-space-4)');
+    expect(app).not.toContain('padding:16px');
     expect(fileContents(plan, 'src/index.ts')).toContain('createAngularPluginInstance');
     expect(fileContents(plan, 'src/index.ts')).toContain('provideTranslator');
     expect(fileContents(plan, 'src/index.ts')).not.toContain('createApplication');
-    expect(fileContents(plan, 'src/app.component.ts')).toContain('from \'@mndw/sdk/angular\'');
+    expect(app).toContain('from \'@mndw/sdk/angular\'');
+    expect(app).toContain('MndwTableDirective, MndwCellDirective');
+    expect(app).toContain('<mndw-table');
+    expect(app).toContain('<ng-template mndwCell="name" let-row>');
+    expect(app).not.toContain('angularCell');
     expect(JSON.parse(fileContents(plan, 'tsconfig.json'))).toHaveProperty('angularCompilerOptions');
   });
 
@@ -209,23 +246,28 @@ describe('planCreate', () => {
     const plan = planCreate(options({name: 'ng', framework: 'angular', type: 'widget'}));
     const app = fileContents(plan, 'src/app.component.ts');
 
-    expect(app).toContain('import {Component, inject, input, signal} from \'@angular/core\';');
+    expect(app).toContain(
+      'import {CUSTOM_ELEMENTS_SCHEMA, Component, InjectionToken, computed, inject, input, signal} from \'@angular/core\';',
+    );
     expect(app).toContain('public readonly deviceName = input(\'\');');
     expect(app).toContain('<p>Device: {{ deviceName() }}</p>');
     expect(app).not.toMatch(/\bInput\b/);
   });
 
-  it('runs generated Svelte and Angular locale tests without compiler warnings', () => {
+  it('runs generated framework locale and table tests without compiler warnings', () => {
     const root = mkdtempSync(join(REPO_ROOT, 'tooling', 'cli', '.generated-warning-'));
     const vitest = join(REPO_ROOT, 'tooling', 'cli', 'node_modules', '.bin', 'vitest');
 
     try {
-      for (const framework of ['svelte', 'angular'] as const) {
+      for (const framework of ['svelte', 'vue', 'angular'] as const) {
         const generatedDir = join(root, framework);
 
         createPlugin({name: `warning-${framework}`, outDir: generatedDir, framework, type: 'widget'});
 
-        const result = spawnSync(vitest, ['run', 'src/l10n.test.ts'], {cwd: generatedDir, encoding: 'utf8'});
+        const result = spawnSync(vitest, ['run', 'src/l10n.test.ts', 'src/table.test.ts'], {
+          cwd: generatedDir,
+          encoding: 'utf8',
+        });
         const output = `${result.stdout}\n${result.stderr}`;
 
         expect(result.status, output).toBe(0);
@@ -237,7 +279,7 @@ describe('planCreate', () => {
     }
   });
 
-  it('places the SDK and all Angular runtime deps under devDependencies', () => {
+  it('places the Angular UI packages under dependencies and Angular tooling under devDependencies', () => {
     const plan = planCreate(options({name: 'ng', framework: 'angular', type: 'widget'}));
     const pkg = JSON.parse(fileContents(plan, 'package.json')) as {
       dependencies?: Record<string, string>;
@@ -259,10 +301,10 @@ describe('planCreate', () => {
     }
 
     expect(pkg.devDependencies['@angular/compiler-cli']).toBeUndefined();
-    expect(pkg.dependencies ?? {}).toEqual({});
+    expect(pkg.dependencies).toEqual({'@mndw/ui': '^1.0.0', '@mndw/ui-angular': '^1.0.0'});
   });
 
-  it('places @mndw/sdk and the framework under devDependencies with empty dependencies', () => {
+  it('places Vue UI packages under dependencies and framework tooling under devDependencies', () => {
     const plan = planCreate(options({name: 'vw', framework: 'vue', type: 'widget'}));
     const pkg = JSON.parse(fileContents(plan, 'package.json')) as {
       dependencies?: Record<string, string>;
@@ -272,7 +314,7 @@ describe('planCreate', () => {
     expect(pkg.devDependencies['@mndw/sdk']).toBeDefined();
     expect(pkg.devDependencies.vue).toBeDefined();
     expect(pkg.devDependencies['@mndw/cli']).toBeDefined();
-    expect(pkg.dependencies ?? {}).toEqual({});
+    expect(pkg.dependencies).toEqual({'@mndw/ui': '^1.0.0', '@mndw/ui-vue': '^1.0.0'});
   });
 
   it('generates live i18n regression tests and test dependencies from CLI metadata', () => {
@@ -409,18 +451,78 @@ describe('planCreate', () => {
     };
 
     expect(insidePkg.devDependencies['@mndw/sdk']).toBe('workspace:*');
+    expect(insidePkg.dependencies).toEqual({'@mndw/ui': 'workspace:*', '@mndw/ui-svelte': 'workspace:*'});
     expect(insidePkg.devDependencies.svelte).toBeDefined();
     expect(insidePkg.devDependencies['@mndw/cli']).toBe('workspace:*');
 
     const outsidePlan = planCreate({name: 'outside-plugin', outDir, framework: 'vanilla', type: 'widget'});
     const outsidePkg = JSON.parse(fileContents(outsidePlan, 'package.json')) as {
+      dependencies?: Record<string, string>;
       devDependencies: Record<string, string>;
     };
 
     expect(outsidePkg.devDependencies['@mndw/sdk']).toMatch(/^\^/);
     expect(outsidePkg.devDependencies.svelte).toBeUndefined();
+    expect(outsidePkg.dependencies ?? {}).toEqual({});
+  });
+
+  it('adds rxjs and @rci-tools/core as type-only devDependencies outside the repo', () => {
+    const outsidePlan = planCreate({name: 'outside-plugin', outDir, framework: 'vanilla', type: 'widget'});
+    const outsidePkg = JSON.parse(fileContents(outsidePlan, 'package.json')) as {
+      dependencies?: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    const versions = sharedDependencyVersions();
+
+    expect(outsidePkg.devDependencies.rxjs).toBe(`^${versions.rxjs}`);
+    expect(outsidePkg.devDependencies['@rci-tools/core']).toBe(`^${versions['@rci-tools/core']}`);
+    expect(outsidePkg.dependencies ?? {}).toEqual({});
   });
 });
+
+function installAngularUiCompilerFixtures(pluginDir: string): void {
+  const packageRoot = join(pluginDir, 'node_modules', '@mndw');
+  const uiRoot = join(packageRoot, 'ui');
+  const angularRoot = join(packageRoot, 'ui-angular');
+
+  mkdirSync(uiRoot, {recursive: true});
+  mkdirSync(angularRoot, {recursive: true});
+  writeFileSync(join(uiRoot, 'package.json'), JSON.stringify({name: '@mndw/ui', types: './index.ts'}));
+  writeFileSync(
+    join(uiRoot, 'index.ts'),
+    `export interface Column<Row> { id: string; label: string; accessor: (row: Row) => unknown; }
+export declare function defineMndwUi(): void;
+export declare function column<Row>(): (definition: Column<Row>) => Column<Row>;
+`,
+  );
+  writeFileSync(join(angularRoot, 'package.json'), JSON.stringify({name: '@mndw/ui-angular', types: './index.ts'}));
+  writeFileSync(
+    join(angularRoot, 'index.ts'),
+    `import {Directive, Input} from '@angular/core';
+import type {Column} from '@mndw/ui';
+
+@Directive({selector: 'mndw-table', standalone: true})
+export class MndwTableDirective {
+  @Input() public columns: Column<unknown>[] = [];
+}
+
+@Directive({selector: '[mndwCell]', standalone: true})
+export class MndwCellDirective<Row = unknown> {
+  @Input('mndwCell') public id = '';
+  public static ngTemplateContextGuard<Row>(
+    _directive: MndwCellDirective<Row>,
+    _context: unknown,
+  ): _context is {$implicit: Row} {
+    return true;
+  }
+}
+`,
+  );
+}
+
+function createStreams(): {input: PassThrough; output: PassThrough} {
+  return {input: new PassThrough(), output: new PassThrough()};
+}
 
 describe('createPlugin', () => {
   let root: string;
@@ -447,14 +549,56 @@ describe('createPlugin', () => {
     expect(existsSync(outDir)).toBe(false);
   });
 
-  it('rejects Go outside the repository and incompatible Go combinations before writing', () => {
+  it('creates Go pages outside the repository with published package ranges', async () => {
     const outside = join(root, 'outside-go');
+    const io = createStreams();
+
+    const result = await create({
+      name: 'foo',
+      outDir: outside,
+      backend: 'go',
+      framework: 'vanilla',
+      type: 'page',
+      noInstall: true,
+    }, {
+      cwd: root,
+      env: {},
+      stdin: io.input,
+      stdout: io.output,
+      spawn: vi.fn(),
+    });
+
+    const outsidePackage = JSON.parse(readFileSync(join(outside, 'package.json'), 'utf8')) as {
+      devDependencies: Record<string, string>;
+    };
+    const cliPackage = JSON.parse(readFileSync(resolve(REPO_ROOT, 'tooling/cli/package.json'), 'utf8')) as {
+      version: string;
+    };
+    const sdkPackage = JSON.parse(readFileSync(resolve(REPO_ROOT, 'frontend/sdk/package.json'), 'utf8')) as {
+      version: string;
+    };
+
+    expect(result.plan.framework).toBe('vanilla');
+    expect(outsidePackage.devDependencies['@mndw/cli']).toBe(`^${cliPackage.version}`);
+    expect(outsidePackage.devDependencies['@mndw/sdk']).toBe(`^${sdkPackage.version}`);
+    expect(JSON.stringify(outsidePackage)).not.toContain('workspace:');
+  });
+
+  it('rejects Go backends with incompatible frameworks or plugin types before writing', () => {
+    const outside = join(root, 'outside-go-widget');
     const widget = join(root, 'widget-go');
 
-    expect(() => createPlugin({name: 'foo', outDir: outside, backend: 'go', type: 'page'})).toThrow(
-      /inside the mndw repository/,
-    );
-    expect(() => createPlugin({name: 'foo', outDir: widget, backend: 'go', type: 'widget'})).toThrow(/vanilla.*page/i);
+    expect(() => createPlugin({name: 'foo', outDir: outside, backend: 'go', framework: 'svelte', type: 'page'}))
+      .toThrow('--backend go requires --framework vanilla and --type page');
+    expect(() =>
+      createPlugin({
+        name: 'foo',
+        outDir: widget,
+        backend: 'go',
+        framework: 'vanilla',
+        type: 'widget',
+      })
+    ).toThrow(/vanilla.*page/i);
     expect(existsSync(outside)).toBe(false);
     expect(existsSync(widget)).toBe(false);
   });
@@ -481,6 +625,19 @@ describe('createPlugin', () => {
     expect(() => accessSync(join(outDir, 'backend', 'main.sh'), constants.X_OK)).not.toThrow();
   });
 
+  it('writes the Go template gitignore as .gitignore', () => {
+    const outDir = join(REPO_ROOT, 'tooling/cli/.go-gitignore-scaffold');
+
+    try {
+      createPlugin({name: 'go-page', outDir, backend: 'go', framework: 'vanilla', type: 'page'});
+
+      expect(existsSync(join(outDir, '.gitignore'))).toBe(true);
+      expect(existsSync(join(outDir, 'gitignore'))).toBe(false);
+    } finally {
+      rmSync(outDir, {recursive: true, force: true});
+    }
+  });
+
   const combos: {framework: 'vanilla' | 'svelte' | 'vue' | 'angular'; type: 'widget' | 'page'}[] = [
     {framework: 'vanilla', type: 'widget'},
     {framework: 'vanilla', type: 'page'},
@@ -498,6 +655,10 @@ describe('createPlugin', () => {
       const name = `gen-${combo.framework}-${combo.type}`;
 
       createPlugin({name, outDir, framework: combo.framework, type: combo.type});
+
+      if (combo.framework === 'angular') {
+        installAngularUiCompilerFixtures(outDir);
+      }
 
       // validate
       expect(readManifest(outDir).manifest.name).toBe(name);
@@ -518,4 +679,157 @@ describe('createPlugin', () => {
       expect(existsSync(zipped.outputPath)).toBe(true);
     });
   }
+});
+
+describe('create package installation', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'mndw-create-command-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, {recursive: true, force: true});
+  });
+
+  it('installs outside the repository with the invoking package manager', async () => {
+    const outDir = join(root, 'new-plugin');
+    const io = createStreams();
+    const child = new EventEmitter() as ChildProcess;
+    const spawn = vi.fn(() => child);
+    const result = create({
+      name: 'new-plugin',
+      outDir,
+    }, {
+      cwd: root,
+      env: {npm_config_user_agent: 'pnpm/10.0.0 npm/? node/v22.0.0'},
+      stdin: io.input,
+      stdout: io.output,
+      spawn,
+    });
+
+    queueMicrotask(() => child.emit('close', 0, null));
+    await expect(result).resolves.toMatchObject({plan: {framework: 'svelte'}});
+    expect(spawn).toHaveBeenCalledWith('pnpm', ['install'], {cwd: outDir, stdio: 'inherit'});
+  });
+
+  it('does not spawn an installer with --no-install', async () => {
+    const outDir = join(root, 'no-install');
+    const io = createStreams();
+    const spawn = vi.fn();
+
+    await create({name: 'no-install', outDir, noInstall: true}, {
+      cwd: root,
+      env: {},
+      stdin: io.input,
+      stdout: io.output,
+      spawn,
+    });
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(existsSync(join(outDir, 'src', 'App.svelte'))).toBe(true);
+  });
+
+  it('keeps the scaffold when dependency installation fails', async () => {
+    const outDir = join(root, 'install-fails');
+    const io = createStreams();
+    const child = new EventEmitter() as ChildProcess;
+    const spawn = vi.fn(() => child);
+    const result = create({name: 'install-fails', outDir}, {
+      cwd: root,
+      env: {npm_config_user_agent: 'pnpm/10.0.0'},
+      stdin: io.input,
+      stdout: io.output,
+      spawn,
+    });
+
+    queueMicrotask(() => child.emit('close', 1, null));
+    await expect(result).rejects.toThrow(/pnpm install/);
+    expect(existsSync(join(outDir, 'manifest.json'))).toBe(true);
+  });
+});
+
+describe('create defaults and workspace behavior', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'mndw-create-command-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, {recursive: true, force: true});
+  });
+
+  it('uses Svelte without a prompt when stdin or stdout is not a TTY', async () => {
+    const outDir = join(root, 'non-interactive');
+    const io = createStreams();
+    const result = await create({name: 'non-interactive', outDir, noInstall: true}, {
+      cwd: root,
+      env: {},
+      stdin: io.input,
+      stdout: io.output,
+      spawn: vi.fn(),
+    });
+
+    expect(result.plan.framework).toBe('svelte');
+    expect(existsSync(join(outDir, 'src', 'App.svelte'))).toBe(true);
+  });
+
+  it('writes publishable UI dependency ranges for outside-workspace scaffolds', async () => {
+    const io = createStreams();
+
+    for (const framework of ['svelte', 'vue', 'angular'] as const) {
+      const outDir = join(root, `${framework}-outside`);
+
+      await create({name: `${framework}-outside`, framework, outDir, noInstall: true}, {
+        cwd: REPO_ROOT,
+        env: {},
+        stdin: io.input,
+        stdout: io.output,
+        spawn: vi.fn(),
+      });
+
+      const pkg = JSON.parse(readFileSync(join(outDir, 'package.json'), 'utf8')) as {
+        dependencies: Record<string, string>;
+        devDependencies: Record<string, string>;
+      };
+      const serialized = JSON.stringify(pkg);
+
+      expect(serialized).not.toContain('workspace:');
+      expect(pkg.dependencies).toMatchObject({
+        '@mndw/ui': '^1.0.0',
+        [`@mndw/ui-${framework}`]: '^1.0.0',
+      });
+    }
+  });
+
+  it('does not install inside the repository and prints the workspace instruction', async () => {
+    const outDir = mkdtempSync(join(REPO_ROOT, 'tooling/cli/.create-in-repo-'));
+    const io = createStreams();
+
+    io.output.setEncoding('utf8');
+
+    let written = '';
+
+    io.output.on('data', (chunk: string) => {
+      written += chunk;
+    });
+
+    const spawn = vi.fn();
+
+    try {
+      await create({name: 'in-repo', outDir}, {
+        cwd: REPO_ROOT,
+        env: {},
+        stdin: io.input,
+        stdout: io.output,
+        spawn,
+      });
+
+      expect(spawn).not.toHaveBeenCalled();
+      expect(written).toContain('Run pnpm install from the repository root.');
+    } finally {
+      rmSync(outDir, {recursive: true, force: true});
+    }
+  });
 });

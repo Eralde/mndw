@@ -1,9 +1,9 @@
 import {existsSync, readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
-import {dirname, join} from 'node:path';
+import {dirname, join, resolve} from 'node:path';
 
-import {type PluginManifestOutput} from '@mndw/sdk';
-import {pluginDependencies, sharedDependencyVersions} from '@mndw/sdk/shared-dependencies';
+import type {PluginManifestOutput} from '@mndw/sdk-internal';
+import {pluginDependencies, sharedDependencyVersions} from '@mndw/sdk-internal/shared-dependencies';
 
 import {CliError} from './errors.js';
 import {type PluginFramework} from './framework.js';
@@ -26,7 +26,35 @@ export interface LockFile {
  * declared dependency range. Resolves the package entry from the CLI module context, walks up to the
  * containing package root, and reads its `package.json` `version`.
  */
-export function resolveSdkVersion(): string {
+export function resolveSdkVersion(pluginDir?: string): string {
+  if (pluginDir !== undefined) {
+    let directory = resolve(pluginDir);
+
+    for (;;) {
+      const packageJsonPath = join(directory, 'node_modules', '@mndw', 'sdk', 'package.json');
+
+      if (existsSync(packageJsonPath)) {
+        const parsed = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {name?: string; version?: string};
+
+        if (parsed.name === '@mndw/sdk') {
+          if (typeof parsed.version !== 'string') {
+            throw new CliError('@mndw/sdk package.json has no version');
+          }
+
+          return parsed.version;
+        }
+      }
+
+      const parent = dirname(directory);
+
+      if (parent === directory) {
+        break;
+      }
+
+      directory = parent;
+    }
+  }
+
   const require = createRequire(import.meta.url);
   let dir = dirname(require.resolve('@mndw/sdk'));
 
@@ -85,7 +113,11 @@ export function findBundledSharedDependencies(
 }
 
 /** Builds the lock record for a packed plugin. */
-export function buildLock(manifest: PluginManifestOutput, framework: PluginFramework): LockFile {
+export function buildLock(
+  manifest: PluginManifestOutput,
+  framework: PluginFramework,
+  pluginDir?: string,
+): LockFile {
   const versions = sharedDependencyVersions();
   const specifiers = [...pluginDependencies(framework)].sort();
   const sharedDependencies: Record<string, string> = {};
@@ -98,7 +130,7 @@ export function buildLock(manifest: PluginManifestOutput, framework: PluginFrame
     lockVersion: LOCK_VERSION,
     plugin: {name: manifest.name, version: manifest.version},
     framework,
-    sdkVersion: resolveSdkVersion(),
+    sdkVersion: resolveSdkVersion(pluginDir),
     sharedDependencies,
   };
 }

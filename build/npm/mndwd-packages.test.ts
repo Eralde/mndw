@@ -24,12 +24,16 @@ describe('mndwd npm packages', () => {
       return;
     }
 
-    expect(mndwdPackageJson(platform, cliPackage.version)).toMatchObject({
-      os: ['win32'],
-      cpu: ['x64'],
+    const packageJson = mndwdPackageJson(platform, cliPackage.version);
+
+    expect(packageJson).toMatchObject({
+      publishConfig: {os: ['win32'], cpu: ['x64']},
       files: ['bin'],
       bin: {mndwd: './bin/mndwd.exe'},
     });
+    // pnpm warns about every workspace package with a foreign os/cpu; publishConfig applies them only when packed.
+    expect(packageJson).not.toHaveProperty('os');
+    expect(packageJson).not.toHaveProperty('cpu');
   });
 
   it('keeps committed package metadata in sync with CLI version and platform table', () => {

@@ -1,12 +1,6 @@
 {
   "name": "@mndw/mndwd-darwin-x64",
   "version": "1.0.0",
-  "os": [
-    "darwin"
-  ],
-  "cpu": [
-    "x64"
-  ],
   "files": [
     "bin"
   ],
@@ -17,5 +11,13 @@
   "preferUnplugged": true,
   "engines": {
     "node": ">=20.19"
+  },
+  "publishConfig": {
+    "os": [
+      "darwin"
+    ],
+    "cpu": [
+      "x64"
+    ]
   }
 }

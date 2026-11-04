@@ -32,13 +32,14 @@ export function mndwdPackageJson(platform: MndwdPlatform, version: string): Reco
   return {
     name: platform.packageName,
     version,
-    os: [platform.os],
-    cpu: [platform.cpu],
     files: ['bin'],
     bin: {mndwd: `./bin/${platform.binary}`},
     license: cliLicense(),
     preferUnplugged: true,
     engines: {node: '>=20.19'},
+    // pnpm lifts these to the top level on pack. Keeping them out of the workspace manifest stops pnpm from
+    // warning "Unsupported platform" about the four foreign packages on every command.
+    publishConfig: {os: [platform.os], cpu: [platform.cpu]},
   };
 }
 

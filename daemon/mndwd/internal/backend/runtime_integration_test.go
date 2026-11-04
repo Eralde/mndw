@@ -103,6 +103,7 @@ func TestLinuxRealBackendLifecycle(t *testing.T) {
 	execRequest := httptest.NewRequest(http.MethodPost, "/api/plugins/exec/echo?q=1", bytes.NewBufferString("body"))
 
 	execRequest.Header.Set("Content-Type", "text/plain")
+	execRequest.Header.Set("X-Mndw-Csrf", "1")
 
 	execRecorder := httptest.NewRecorder()
 

@@ -1,6 +1,6 @@
 import {fetchWithDeadline} from './pristine-fetch.js';
+import {CSRF_HEADERS} from './csrf.js';
 
-const CSRF_HEADERS = {'X-Mndw-Csrf': '1'};
 const MAX_FAILURE_TEXT = 4096;
 
 const ENDPOINTS = [

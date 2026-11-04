@@ -1,4 +1,5 @@
 import {persistentFailureCategories} from './rci-session-status-categories.js';
+import {CSRF_HEADERS} from './csrf.js';
 import {fetchWithDeadline} from './pristine-fetch.js';
 
 export type PersistentStoreState = 'ok' | 'empty' | 'disabled' | 'decrypt-failed';
@@ -52,7 +53,7 @@ export class PersistentRciSessionService {
   public async getCapability(): Promise<PersistentRciCapability> {
     const payload = await this.read<unknown>(
       await fetchWithDeadline(`${BASE_URL}/capability`, {
-        headers: {'X-Mndw-Csrf': '1'},
+        headers: {...CSRF_HEADERS},
       }),
     );
 
@@ -71,7 +72,7 @@ export class PersistentRciSessionService {
     await this.read(
       await fetchWithDeadline(`${BASE_URL}/controller`, {
         method: 'DELETE',
-        headers: {'X-Mndw-Csrf': '1'},
+        headers: {...CSRF_HEADERS},
       }),
     );
   }
@@ -80,7 +81,7 @@ export class PersistentRciSessionService {
     await this.read(
       await fetchWithDeadline(`${BASE_URL}/enabled`, {
         method: 'PUT',
-        headers: {'Content-Type': 'application/json', 'X-Mndw-Csrf': '1'},
+        headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
         body: JSON.stringify({enabled}),
       }),
     );
@@ -89,7 +90,7 @@ export class PersistentRciSessionService {
   private async post(path: string, body: unknown): Promise<Response> {
     return await fetchWithDeadline(`${BASE_URL}${path}`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-Mndw-Csrf': '1'},
+      headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
       body: JSON.stringify(body),
     });
   }

@@ -4,6 +4,7 @@ import {
   SELF_UPDATE_REVERT_URL,
   SELF_UPDATE_STATUS_URL,
 } from '../constants.js';
+import {CSRF_HEADERS} from './csrf.js';
 import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
 import {isNonEmptyString, isRecord} from './json.js';
 
@@ -143,12 +144,6 @@ function validateAccepted(body: unknown): SelfUpdateAccepted {
   return {operation: body.operation, targetVersion: body.targetVersion};
 }
 
-const csrfHeaders = (): Headers =>
-  new Headers({
-    'Content-Type': 'application/json',
-    'X-Mndw-Csrf': '1',
-  });
-
 export function createSelfUpdateClient(fetchImpl: typeof globalThis.fetch = globalThis.fetch): SelfUpdateClient {
   async function request(url: string, init: RequestInit): Promise<unknown> {
     const response = await fetchImpl(url, init);
@@ -161,7 +156,7 @@ export function createSelfUpdateClient(fetchImpl: typeof globalThis.fetch = glob
   }
 
   async function post(url: string): Promise<unknown> {
-    return request(url, {method: 'POST', headers: csrfHeaders(), body: '{}'});
+    return request(url, {method: 'POST', headers: {'Content-Type': 'application/json', ...CSRF_HEADERS}, body: '{}'});
   }
 
   return {

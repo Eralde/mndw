@@ -6,7 +6,7 @@
 > part of the service wire contract.
 
 Choose `service` when a plugin needs resident state, polling, a device session, or WebSockets.
-Choose [`exec`](plugin-author-guide.md#write-a-shell-endpoint)
+Choose [`exec`](plugin-author/guides/shell-backend.md)
 when each HTTP request is independent and should start a fresh process. The exec response path is
 CGI-like; see
 [`cgi.go`](../daemon/mndwd/internal/backend/cgi.go) for its implementation.

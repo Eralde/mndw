@@ -42,6 +42,8 @@ describe('example plugin distribution', () => {
     const names = expectedExampleArchiveNames();
 
     expect(names).toContain('device-traffic-widget.zip');
+    expect(names).toContain('hello-widget.zip');
+    expect(names).toContain('rci-device-name-widget.zip');
 
     for (const target of EXAMPLE_TARGETS) {
       expect(names).toContain(`ping-widget-${target}.zip`);

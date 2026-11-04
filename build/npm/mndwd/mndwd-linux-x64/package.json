@@ -1,0 +1,21 @@
+{
+  "name": "@mndw/mndwd-linux-x64",
+  "version": "1.0.0",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin"
+  ],
+  "bin": {
+    "mndwd": "./bin/mndwd"
+  },
+  "license": "MIT",
+  "preferUnplugged": true,
+  "engines": {
+    "node": ">=20.19"
+  }
+}

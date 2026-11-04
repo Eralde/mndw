@@ -1,0 +1,21 @@
+{
+  "name": "@mndw/mndwd-win32-x64",
+  "version": "1.0.0",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin"
+  ],
+  "bin": {
+    "mndwd": "./bin/mndwd.exe"
+  },
+  "license": "MIT",
+  "preferUnplugged": true,
+  "engines": {
+    "node": ">=20.19"
+  }
+}

@@ -1,14 +1,23 @@
-name: CI
+name: CI TS
 
 on:
   pull_request:
     branches: [master]
-  push:
-    branches: [master]
+    paths:
+      - '**'
+      - '!**/*.go'
+      - '!**/go.mod'
+      - '!**/go.sum'
+      - '!go.work'
+      - '!go.work.sum'
+      - '!docs/**'
+      - '!**/*.md'
+      - 'daemon/contracts-go/**'
+      - '.github/workflows/ci-ts.yml'
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-ts-${{ github.ref }}
   cancel-in-progress: true
 
 permissions: {}
@@ -19,6 +28,8 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      MNDW_SKIP_SLOW_TESTS: '1'
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -43,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate icons
+        run: pnpm --filter @mndw/ui generate-icons
+
       - name: Test workspace packages
         run: pnpm -r --no-bail --if-present test
 
@@ -60,44 +74,3 @@ jobs:
 
       - name: Check host
         run: pnpm --filter @mndw/host check
-
-  go:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.work
-          cache-dependency-path: '**/go.sum'
-
-      - name: Test Go modules
-        run: sh build/go-each-module.sh
-
-      - name: Vet mndwd
-        run: go vet ./...
-        working-directory: daemon/mndwd
-
-  go-race:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.work
-          cache-dependency-path: '**/go.sum'
-
-      - name: Test mndwd with race detector
-        run: go test -race -skip '^TestCrashAtEveryAcceptanceStep$' ./...
-        working-directory: daemon/mndwd

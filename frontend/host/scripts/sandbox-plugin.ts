@@ -1,5 +1,5 @@
-import fs from 'node:fs';
 import path from 'node:path';
+import {type SandboxFsDeps, renderSandboxManifest, renderSandboxModule} from '@mndw/sdk-internal/dev-sandbox';
 import type {ModuleNode, Plugin} from 'vite';
 
 /** Virtual module ids the sandbox loader imports at runtime. */
@@ -8,17 +8,6 @@ export const SANDBOX_MANIFEST_MODULE_ID = 'virtual:sandbox-manifest';
 
 const RESOLVED_PLUGIN_ID = '\0' + SANDBOX_PLUGIN_MODULE_ID;
 const RESOLVED_MANIFEST_ID = '\0' + SANDBOX_MANIFEST_MODULE_ID;
-
-/** Filesystem operations, injectable so the pure renderers are unit-testable. */
-export interface SandboxFsDeps {
-  existsSync: (filePath: string) => boolean;
-  readFileSync: (filePath: string) => string;
-}
-
-const defaultFs: SandboxFsDeps = {
-  existsSync: (filePath) => fs.existsSync(filePath),
-  readFileSync: (filePath) => fs.readFileSync(filePath, 'utf-8'),
-};
 
 /**
  * Resolves the sandbox plugin directory from the explicit `MNDW_SANDBOX_PLUGIN` value,
@@ -31,42 +20,6 @@ export function resolveSandboxPluginPath(rawPath: string | undefined, repoRoot: 
   }
 
   return path.isAbsolute(rawPath) ? rawPath : path.resolve(repoRoot, rawPath);
-}
-
-/** Source for `virtual:sandbox-plugin`: re-exports `createInstance` from the plugin source entry. */
-export function renderSandboxModule(resolvedPath: string): string {
-  const entry = path.join(resolvedPath, 'src', 'index.ts');
-
-  return `export {createInstance} from ${JSON.stringify(entry)};`;
-}
-
-/**
- * Source for `virtual:sandbox-manifest`: the parsed manifest as the default export. Throws
- * visibly when the manifest is missing or malformed so the loader never registers a fake
- * plugin over a real authoring error.
- */
-export function renderSandboxManifest(resolvedPath: string, deps: SandboxFsDeps = defaultFs): string {
-  const manifestPath = path.join(resolvedPath, 'manifest.json');
-
-  if (!deps.existsSync(manifestPath)) {
-    throw new Error(`[mndw-sandbox] No manifest.json found at ${manifestPath}`);
-  }
-
-  const raw = deps.readFileSync(manifestPath);
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    throw new Error(`[mndw-sandbox] manifest.json is not valid JSON: ${(err as Error).message}`);
-  }
-
-  const catalogBaseUrl = `/@fs${resolvedPath.replace(/\/$/, '')}`;
-
-  return `export const __catalogBaseUrl = ${JSON.stringify(catalogBaseUrl)};\nexport default ${
-    JSON.stringify(parsed)
-  };`;
 }
 
 /** True when a changed file belongs to the sandbox plugin directory (source or manifest). */
@@ -87,7 +40,7 @@ const INERT_MANIFEST_MODULE = 'export const __catalogBaseUrl = undefined; export
  * path it serves the real source/manifest, allows the plugin dir on the dev server, and
  * invalidates both virtual modules on any change (driving the runtime HMR transaction).
  */
-export function sandboxPlugin(resolvedPath: string | null, deps: SandboxFsDeps = defaultFs): Plugin {
+export function sandboxPlugin(resolvedPath: string | null, deps?: SandboxFsDeps): Plugin {
   return {
     name: 'mndw-sandbox',
     enforce: 'pre',

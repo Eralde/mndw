@@ -1,13 +1,7 @@
 import path from 'node:path';
 import {describe, expect, it, vi} from 'vitest';
-import {
-  type SandboxFsDeps,
-  isSandboxFile,
-  renderSandboxManifest,
-  renderSandboxModule,
-  resolveSandboxPluginPath,
-  sandboxPlugin,
-} from './sandbox-plugin.js';
+import type {SandboxFsDeps} from '@mndw/sdk-internal/dev-sandbox';
+import {isSandboxFile, resolveSandboxPluginPath, sandboxPlugin} from './sandbox-plugin.js';
 
 const repoRoot = '/repo';
 const pluginDir = path.resolve(repoRoot, 'plugins/examples', 'sample-page');
@@ -54,34 +48,6 @@ describe('resolveSandboxPluginPath', () => {
 
   it('passes an absolute path through unchanged', () => {
     expect(resolveSandboxPluginPath('/tmp/plugin', repoRoot)).toBe('/tmp/plugin');
-  });
-});
-
-describe('renderSandboxModule', () => {
-  it('re-exports createInstance from the plugin source entry', () => {
-    const src = renderSandboxModule(pluginDir);
-
-    expect(src).toContain('export {createInstance}');
-    expect(src).toContain(path.join(pluginDir, 'src', 'index.ts'));
-  });
-});
-
-describe('renderSandboxManifest', () => {
-  it('exports the parsed manifest JSON as the default export', () => {
-    const src = renderSandboxManifest(pluginDir, fakeFs({[manifestPath]: validManifest}));
-
-    expect(src).toContain('export default');
-    expect(src).toContain('"name":"sandbox-widget"');
-    expect(src).toContain('"i18n/en.json"');
-    expect(src).toContain('__catalogBaseUrl');
-  });
-
-  it('throws visibly when the manifest is missing (no fake fallback)', () => {
-    expect(() => renderSandboxManifest(pluginDir, fakeFs({}))).toThrow(/manifest\.json/);
-  });
-
-  it('throws visibly when the manifest is not valid JSON', () => {
-    expect(() => renderSandboxManifest(pluginDir, fakeFs({[manifestPath]: '{ not json'}))).toThrow();
   });
 });
 

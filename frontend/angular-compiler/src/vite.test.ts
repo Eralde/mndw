@@ -4,9 +4,9 @@ import {join, resolve} from 'node:path';
 
 import {afterEach, describe, expect, it, vi} from 'vitest';
 
-import type {AngularCompiler, AngularCompilerOutput} from '@mndw/angular-compiler';
+import type {AngularCompiler, AngularCompilerOutput} from './index.js';
 
-import {type AngularSandboxPluginDeps, angularSandboxPlugin} from './angular-sandbox-plugin.js';
+import {type AngularSandboxPluginDeps, angularSandboxPlugin} from './vite.js';
 
 const temporaryDirectories: string[] = [];
 
@@ -20,6 +20,7 @@ function makeCompiler(pluginDir: string, failUpdates = false): AngularCompiler {
   const sourceFile = resolve(pluginDir, 'src', 'index.ts');
   const firstOutput = mkdtempSync(join(tmpdir(), 'mndw-angular-output-'));
   const secondOutput = mkdtempSync(join(tmpdir(), 'mndw-angular-output-'));
+
   temporaryDirectories.push(firstOutput, secondOutput);
   writeFileSync(join(firstOutput, 'index.js'), 'export const version = 1;');
   writeFileSync(join(secondOutput, 'index.js'), 'export const version = 2;');
@@ -60,10 +61,15 @@ function pluginDeps(compiler: AngularCompiler): AngularSandboxPluginDeps {
 
 function makePlugin(): {pluginDir: string; sourceFile: string} {
   const pluginDir = mkdtempSync(join(tmpdir(), 'mndw-angular-sandbox-plugin-'));
+
   temporaryDirectories.push(pluginDir);
+
   const sourceDir = join(pluginDir, 'src');
+
   mkdirSync(sourceDir);
+
   const sourceFile = join(sourceDir, 'index.ts');
+
   writeFileSync(sourceFile, 'export const version = 1;');
 
   return {pluginDir, sourceFile};
@@ -135,6 +141,7 @@ describe('angularSandboxPlugin', () => {
 
     const dispose = vi.spyOn(compiler, 'dispose');
     const closeBundle = plugin.closeBundle as unknown as () => void;
+
     closeBundle();
 
     expect(dispose).toHaveBeenCalledOnce();

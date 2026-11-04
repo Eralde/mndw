@@ -1,8 +1,8 @@
 import path from 'node:path';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 
-vi.mock('./angular-sandbox-plugin.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./angular-sandbox-plugin.js')>();
+vi.mock('@mndw/angular-compiler/vite', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@mndw/angular-compiler/vite')>();
 
   return {
     ...actual,
@@ -87,5 +87,11 @@ describe('host Vite config', () => {
 
     expect(development.define?.__MNDW_PSEUDO_LOCALE_ENABLED__).toBe('true');
     expect(production.define?.__MNDW_PSEUDO_LOCALE_ENABLED__).toBe('false');
+  });
+
+  it('selects URL sandbox modules for the prebuilt dev-host build', () => {
+    const config = viteConfig({command: 'build', mode: 'dev-host', isPreview: false});
+
+    expect(config.define?.__MNDW_SANDBOX__).toBe('"url"');
   });
 });

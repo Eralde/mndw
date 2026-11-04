@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type {AngularCompiler, AngularCompilerOutput} from '@mndw/angular-compiler';
-import {createAngularCompiler} from '@mndw/angular-compiler';
+import {type AngularCompiler, type AngularCompilerOutput, createAngularCompiler} from './index.ts';
 import type {ModuleNode, Plugin, ViteDevServer} from 'vite';
 
 const GLOBAL_STYLES_PREFIX = 'virtual:mndw-angular-global-styles:';
@@ -46,6 +45,7 @@ export function angularSandboxPlugin(
     compiler.dispose();
     throw error;
   }
+
   const globalStylesId = `${GLOBAL_STYLES_PREFIX}${encodeURIComponent(resolvedPluginDir)}`;
   const resolvedGlobalStylesId = `\0${globalStylesId}.js`;
 

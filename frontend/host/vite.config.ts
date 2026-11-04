@@ -1,11 +1,11 @@
-import type {ClientRequest} from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import {type ProxyOptions, defineConfig, loadEnv} from 'vite';
+import {defineConfig, loadEnv} from 'vite';
 import {svelte} from '@sveltejs/vite-plugin-svelte';
 import vue from '@vitejs/plugin-vue';
-import {sharedImportMap, sharedSpecifiers} from '@mndw/sdk/shared-dependencies';
-import {angularSandboxPlugin, isAngularPlugin} from './scripts/angular-sandbox-plugin.js';
+import {sharedImportMap, sharedSpecifiers} from '@mndw/sdk-internal/shared-dependencies';
+import {devProxies} from '@mndw/sdk-internal/dev-proxies';
+import {angularSandboxPlugin, isAngularPlugin} from '@mndw/angular-compiler/vite';
 import {reloadOnSentinel} from './scripts/reload-on-sentinel.js';
 import {resolveSandboxPluginPath, sandboxPlugin} from './scripts/sandbox-plugin.js';
 import {createPluginServeMiddleware} from './scripts/serve-plugins.js';
@@ -19,7 +19,6 @@ export default defineConfig(({mode}) => {
 
   const deviceHost = process.env.MNDW_HOST_DEVICE || env.MNDW_HOST_DEVICE || 'http://192.168.1.1';
   const daemonHost = process.env.MNDW_DAEMON || env.MNDW_DAEMON || 'http://127.0.0.1:9090';
-  const deviceUrl = new URL(deviceHost);
 
   const builtinPluginsDir = process.env.MNDW_BUILTIN_PLUGINS_DIR
     || path.resolve(repoRoot, 'plugins/builtin', 'dist');
@@ -37,28 +36,8 @@ export default defineConfig(({mode}) => {
     ? angularSandboxPlugin(sandboxPluginPath)
     : null;
 
-  function deviceProxy(apiPath: string, ws = false): ProxyOptions {
-    return {
-      target: deviceHost,
-      changeOrigin: true,
-      ws,
-      configure: (proxy) => {
-        proxy.on('proxyReq', (proxyReq: ClientRequest) => {
-          proxyReq.setHeader('Host', deviceUrl.host);
-          proxyReq.setHeader('Origin', deviceUrl.origin);
-        });
-        proxy.on('error', (err) => {
-          console.error(`[vite proxy] [${apiPath}] error:`, err.message);
-        });
-      },
-    };
-  }
-
-  function daemonProxy(ws = false): ProxyOptions {
-    // Browser-origin headers must reach mndwd unchanged for CSRF and WebSocket
-    // origin policy. Production lighttpd has the same no-rewrite boundary.
-    return {target: daemonHost, changeOrigin: false, ws};
-  }
+  const proxy = devProxies({deviceUrl: deviceHost, daemonUrl: daemonHost});
+  const sandboxMode = mode === 'dev-host' ? 'url' : sandboxPluginPath === null ? false : 'virtual';
 
   return {
     plugins: [
@@ -120,16 +99,11 @@ export default defineConfig(({mode}) => {
       fs: {
         allow: [repoRoot],
       },
-      proxy: {
-        '/rci': deviceProxy('/rci'),
-        '/auth': deviceProxy('/auth'),
-        '/api': daemonProxy(),
-        '/ws': daemonProxy(true),
-      },
+      proxy,
     },
-    // Compile-time flag the runtime reads to pick the sandbox loader over the daemon list.
+    // Compile-time flag selects repo virtual modules, prebuilt-host URLs, or normal loading.
     define: {
-      __MNDW_SANDBOX__: JSON.stringify(sandboxPluginPath !== null),
+      __MNDW_SANDBOX__: JSON.stringify(sandboxMode),
       __MNDW_PSEUDO_LOCALE_ENABLED__: JSON.stringify(mode === 'development'),
     },
     build: {

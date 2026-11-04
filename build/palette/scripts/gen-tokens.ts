@@ -62,6 +62,7 @@ function renderStaticTokens(): string {
   --mndw-switch-h: ${SCALE.switch.height};
   --mndw-slider-track-h: ${SCALE.slider.trackHeight};
   --mndw-slider-thumb-size: ${SCALE.slider.thumbSize};
+  --mndw-heat-strip-height: ${SCALE.heatStrip.height};
   --mndw-table-sticky-top: ${SCALE.table.stickyTop};
 
   /* utilization heatmap scale (low -> critical) */

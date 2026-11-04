@@ -105,6 +105,9 @@ export const MNDW_SCALE = {
     "trackHeight": "0.25rem",
     "thumbSize": "1rem"
   },
+  "heatStrip": {
+    "height": "1rem"
+  },
   "table": {
     "stickyTop": "0"
   },

@@ -14,6 +14,7 @@ export const TOKENS_REQUIRED = [
   '--mndw-focus-w',
   '--mndw-font-mono',
   '--mndw-font-sans',
+  '--mndw-heat-strip-height',
   '--mndw-info',
   '--mndw-info-bg',
   '--mndw-leading',

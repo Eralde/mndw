@@ -53,6 +53,7 @@
   --mndw-switch-h: 1.25rem;
   --mndw-slider-track-h: 0.25rem;
   --mndw-slider-thumb-size: 1rem;
+  --mndw-heat-strip-height: 1rem;
   --mndw-table-sticky-top: 0;
 
   /* utilization heatmap scale (low -> critical) */

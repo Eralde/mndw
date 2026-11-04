@@ -9,15 +9,20 @@ One SPA. Plugins are dashboard widgets or full-page routes loaded dynamically. T
 
 ## 2. Getting Started
 
-```bash
-pnpm exec mndw create my-widget --framework svelte --type widget
+Start with the [plugin author docs](https://eralde.github.io/mndw/) and browse the [API reference](https://eralde.github.io/mndw/api/).
+
+```sh
+npm i -D @mndw/cli
+npx mndw create my-widget
+cd my-widget
+npx mndw dev --addr http://router.lan
 ```
 
-This uses the private workspace CLI from a repository checkout. npm installation is deferred; this
-guide does not promise a published `@mndw/sdk` or `@mndw/cli` package.
+## Versioning
 
-Scaffolds include `manifest.json`, `src/index.ts`, a framework entry component when applicable,
-and `src/index.css`.
+The SDK version tracks the `PluginContext` contract: a minor release adds capabilities, and a major
+release changes the contract incompatibly. SDK, UI, framework adapters, and CLI are versioned
+independently.
 
 ## 3. Manifest Reference
 
@@ -162,28 +167,30 @@ configure: ({appRef, component}) => {
 `mountComponentInOverlay` attaches the child view and registers detach/destroy cleanup with the
 layer. Direct Angular mounting remains supported when this lifecycle does not fit the plugin.
 
-## 5. Worker-backed ticker
+## 5. Host-managed ticker
 
-Use `@mndw/sdk/ticker` for drift-corrected periodic updates. Scheduling runs in a dedicated
-WebWorker, so plugin code does not own timer logic or worker protocol details.
+Use `ctx.createTicker()` for drift-corrected periodic updates. The host shares one worker across
+running plugin tickers and destroys each handle when its plugin context ends.
 
 ```ts
-import {Ticker} from '@mndw/sdk/ticker'
-
-const ticker = new Ticker()
-const unsubscribe = ticker.onTick(() => {
+const ticker = ctx.createTicker()
+const subscription = ticker.tick$.subscribe(({timestamp, drift}) => {
   // Update plugin state.
+  void timestamp
+  void drift
 })
 
 ticker.start(1000)
 
 // During plugin teardown:
-unsubscribe()
+subscription.unsubscribe()
 ticker.destroy()
 ```
 
-`Ticker.destroy()` stops and terminates its worker. The CLI packer includes the SDK worker in the
-plugin distribution automatically.
+`tick$` emits `{timestamp, drift}`. `setInterval()` changes the period, `stop()` pauses this handle,
+and `destroy()` completes its stream. The host ends every handle with its plugin context, so explicit
+destruction is optional when context teardown owns the lifecycle. Plugin bundles do not include the
+host worker.
 
 ## 6. PluginContext API
 
@@ -192,38 +199,48 @@ type PluginContext = WidgetPluginContext | PagePluginContext;
 
 interface WidgetPluginContext {
   kind: 'widget';
-  rciManager: RciManager;
+  telemetry: TelemetryClient;
+  events?: PluginEventFacade;
+  rciManager: PluginRciManager;
   storage: PluginStorage;
   sharedStorage: PluginStorage;
-  hostInfo: HostInfo;
   deviceInfo: DeviceInfo;
   i18n: PluginI18n;
   instanceId: string;
+  theme: MndwThemeName;
+  theme$: Observable<MndwThemeName>;
+  locale: string;
+  locale$: Observable<string>;
+  palette: PaletteTokenMap;
+  palette$: Observable<PaletteTokenMap>;
   backend?: BackendClient;
   overlay: OverlayService;
+  createTicker(): Ticker;
   setTileTitle?: (title: string) => void;
-  onThemeChange(callback: (theme: MndwThemeName) => void): () => void;
-  getTokens(): PaletteTokenMap;
-  onPaletteChange(callback: (tokens: PaletteTokenMap) => void): () => void;
   // pageRoute is unavailable on widget contexts.
 }
 
 interface PagePluginContext {
   kind: 'page';
-  rciManager: RciManager;
+  telemetry: TelemetryClient;
+  events?: PluginEventFacade;
+  rciManager: PluginRciManager;
   storage: PluginStorage;
   sharedStorage: PluginStorage;
-  hostInfo: HostInfo;
   deviceInfo: DeviceInfo;
   i18n: PluginI18n;
   instanceId: string;
+  theme: MndwThemeName;
+  theme$: Observable<MndwThemeName>;
+  locale: string;
+  locale$: Observable<string>;
+  palette: PaletteTokenMap;
+  palette$: Observable<PaletteTokenMap>;
   backend?: BackendClient;
   overlay: OverlayService;
+  createTicker(): Ticker;
   pageRoute: PageRoute;
   // setTileTitle is unavailable on page contexts.
-  onThemeChange(callback: (theme: MndwThemeName) => void): () => void;
-  getTokens(): PaletteTokenMap;
-  onPaletteChange(callback: (tokens: PaletteTokenMap) => void): () => void;
 }
 
 interface PageRoute {
@@ -238,11 +255,6 @@ type PageRouteErrorCode = 'INVALID_PATH' | 'COMPLETED' | 'NAVIGATION_FAILED';
 
 class PageRouteError extends Error {
   readonly code: PageRouteErrorCode;
-}
-
-interface HostInfo {
-  locale: string;
-  theme: MndwThemeName;
 }
 
 interface DeviceInfo {
@@ -295,7 +307,10 @@ interface PluginStorage {
 ```
 
 `PluginContext` is host-created. Narrow variant-specific fields with `context.kind`; plugins do not
-author the discriminant. `success` means current settled data, `refreshing` retains prior data while
+author the discriminant. `theme$`, `locale$`, and `palette$` are RxJS Observables that emit their
+current value to each subscriber and complete when the plugin unmounts. `telemetry.fetchProjected()`
+returns chart-ready data; `events`, when declared event permissions enable it, exposes `select$()` and
+`resync$` Observables. `success` means current settled data, `refreshing` retains prior data while
 a request is active, and `error` may retain prior data after a failed refresh. `unsupported` is a
 terminal capability outcome for that plugin lifetime.
 
@@ -379,18 +394,27 @@ enforces this for Svelte and Angular, with the MWS tile-label adapter as an expl
 The Vue SFC parser remains outside typed enforcement and has no textual raw-i18n rule. Generated
 locale-switch tests and the packed smoke test provide behavioral coverage for Vue.
 
-Shared catalog parsing is available from `@mndw/sdk/catalog`:
-
-```ts
-import {parseCatalog} from '@mndw/sdk/catalog';
-
-const catalog = parseCatalog({wifi: {band: {'2': '2.4 GHz Wi-Fi'}}}, '<catalog>');
-```
-
 `@mndw/sdk/testing` exports `createTestI18n`, accepting either nested catalogs like production or
 flat dotted-key maps for terse tests. Every generated/plugin/packed smoke probe must have different
 English and Russian values and assert `enValue !== ruValue` before switching; otherwise a test could
 pass without proving that the DOM reacted.
+
+`createTestPluginContext()` creates a widget context by default. It exposes `setTheme()`, `setLocale()`,
+`setPalette()`, and `unmount()` for stream and teardown tests. Enable event streams with
+`{events: true}`; use the returned fixture's `emitEvent()` and `resync()` methods to drive them. Its
+`tick()` method advances running handles created by `context.createTicker()`:
+
+```ts
+import {createTestPluginContext} from '@mndw/sdk/testing';
+
+const fixture = createTestPluginContext({events: true});
+const themeValues: string[] = [];
+const subscription = fixture.context.theme$.subscribe((theme) => themeValues.push(theme));
+
+fixture.setTheme('dark');
+fixture.unmount();
+subscription.unsubscribe();
+```
 
 ### Overlay
 
@@ -464,9 +488,8 @@ Style with `var(--mndw-*)` custom properties (auto-themed light/dark):
 
 Full reference: `@mndw/sdk/tokens` (typed) and `@mndw/sdk/tokens.css` (CSS properties).
 
-For runtime JavaScript colours, use `context.getTokens()` and subscribe with
-`context.onPaletteChange(...)`. `MNDW_TOKENS` contains compiled defaults only and does not
-include a device palette override.
+For runtime JavaScript colours, read `context.palette` or subscribe to `context.palette$`.
+`MNDW_TOKENS` contains compiled defaults only and does not include a device palette override.
 
 ## 9. Externals Policy
 

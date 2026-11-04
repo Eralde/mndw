@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -72,7 +70,7 @@ func (l *lease) Abort() error {
 	}
 
 	l.closed = true
-	unlockErr := unix.Flock(int(l.file.Fd()), unix.LOCK_UN)
+	unlockErr := unlockFile(l.file)
 	closeErr := l.file.Close()
 
 	l.releaseGate()
@@ -129,16 +127,21 @@ func (m *execManager) acquireMutation(ctx context.Context, wait bool) (*lease, e
 		return nil, err
 	}
 
-	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+	busy, err := tryLockExclusive(file)
+	if err != nil {
 		_ = file.Close()
 
 		releaseGate()
 
-		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
-			return nil, ErrBusy
-		}
-
 		return nil, err
+	}
+
+	if busy {
+		_ = file.Close()
+
+		releaseGate()
+
+		return nil, ErrBusy
 	}
 
 	return &lease{file: file, releaseGate: releaseGate}, nil
@@ -170,15 +173,16 @@ func (m *execManager) SelfUpdateLocked() (bool, error) {
 
 	defer file.Close()
 
-	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		if errors.Is(err, unix.EWOULDBLOCK) || errors.Is(err, unix.EAGAIN) {
-			return true, nil
-		}
-
+	busy, err := tryLockExclusive(file)
+	if err != nil {
 		return false, err
 	}
 
-	if err := unix.Flock(int(file.Fd()), unix.LOCK_UN); err != nil {
+	if busy {
+		return true, nil
+	}
+
+	if err := unlockFile(file); err != nil {
 		return false, err
 	}
 

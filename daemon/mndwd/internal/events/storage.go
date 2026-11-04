@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"time"
 
-	"golang.org/x/sys/unix"
 	contractEvents "mndw.local/contracts/events"
 )
 
@@ -122,14 +121,4 @@ func (m *StorageMonitor) Run(ctx context.Context) {
 			m.Check()
 		}
 	}
-}
-
-func statAvailable(path string) (uint64, error) {
-	var stat unix.Statfs_t
-
-	if err := unix.Statfs(path, &stat); err != nil {
-		return 0, err
-	}
-
-	return uint64(stat.Bavail) * uint64(stat.Bsize), nil
 }

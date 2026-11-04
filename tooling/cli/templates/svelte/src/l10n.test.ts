@@ -2,15 +2,11 @@
 
 import {flushSync, mount, unmount} from 'svelte';
 import type {PluginContext} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import {describe, expect, it} from 'vitest';
 import App from './App.svelte';
 
-const contextFor = (i18n: ReturnType<typeof createTestI18n>): PluginContext => ({
-  i18n,
-  hostInfo: {locale: 'en', theme: 'dark'},
-  deviceInfo: {deviceName: 'Test Device'},
-} as PluginContext);
+const contextFor = (i18n: ReturnType<typeof createTestI18n>): PluginContext => createTestPluginContext({i18n}).context;
 
 describe('generated Svelte locale reactivity', () => {
   it('updates the same probe node without remounting', () => {
@@ -30,5 +26,20 @@ describe('generated Svelte locale reactivity', () => {
     expect(root.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
     expect(probe?.textContent).toBe(ru.l10n.probe);
     unmount(component);
+  });
+
+  it('updates data-theme when the host theme changes', () => {
+    const fixture = createTestPluginContext();
+    const root = document.createElement('div');
+    const component = mount(App, {target: root, props: {ctx: fixture.context}});
+    flushSync();
+
+    expect(root.querySelector('.wrap')?.getAttribute('data-theme')).toBe('light');
+    fixture.setTheme('dark');
+    flushSync();
+    expect(root.querySelector('.wrap')?.getAttribute('data-theme')).toBe('dark');
+
+    unmount(component);
+    fixture.unmount();
   });
 });

@@ -96,9 +96,9 @@ func (s *Supervisor) LiveDiagnostics(ctx context.Context, pluginID string) ([]by
 
 func validateDiagnosticsObject(body []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(body))
-	var object map[string]any
+	var value any
 
-	if err := decoder.Decode(&object); err != nil {
+	if err := decoder.Decode(&value); err != nil {
 		return fmt.Errorf("response is not JSON: %w", err)
 	}
 
@@ -112,7 +112,7 @@ func validateDiagnosticsObject(body []byte) error {
 		return fmt.Errorf("response has trailing data: %w", err)
 	}
 
-	if object == nil {
+	if _, ok := value.(map[string]any); !ok {
 		return fmt.Errorf("response JSON must be an object")
 	}
 

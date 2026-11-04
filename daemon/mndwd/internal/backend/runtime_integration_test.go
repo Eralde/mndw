@@ -93,10 +93,7 @@ func TestLinuxRealBackendLifecycle(t *testing.T) {
 	defer func() { _ = runtime.Shutdown(context.Background()) }()
 
 	runtime.Reconcile(context.Background(), []*registry.Plugin{execPlugin, servicePlugin})
-
-	if status := runtime.Status("service"); status.State != StateReady {
-		t.Fatalf("service status = %+v", status)
-	}
+	waitForServiceState(t, runtime, "service", StateReady, 5*time.Second)
 
 	mux := http.NewServeMux()
 	gateway := NewGateway(GatewayConfig{MaxRequestBytes: 1024, ServiceHTTPTimeout: 2 * time.Second}, reg, nil, runtime, nil)
@@ -157,6 +154,43 @@ func TestLinuxRealBackendLifecycle(t *testing.T) {
 
 	if _, err := os.Stat(paths.ServiceLease); !os.IsNotExist(err) {
 		t.Fatalf("service lease after shutdown: %v", err)
+	}
+}
+
+func waitForServiceState(t *testing.T, runtime *RuntimeImpl, pluginID string, want ServiceState, timeout time.Duration) {
+	t.Helper()
+
+	ticker := time.NewTicker(20 * time.Millisecond)
+
+	defer ticker.Stop()
+
+	deadline := time.NewTimer(timeout)
+
+	defer deadline.Stop()
+
+	lastStatus := runtime.Status(pluginID)
+
+	if lastStatus.State == want {
+		return
+	}
+
+	for {
+		select {
+		case <-ticker.C:
+			lastStatus = runtime.Status(pluginID)
+
+			if lastStatus.State == want {
+				return
+			}
+		case <-deadline.C:
+			lastStatus = runtime.Status(pluginID)
+
+			if lastStatus.State == want {
+				return
+			}
+
+			t.Fatalf("service status = %+v", lastStatus)
+		}
 	}
 }
 

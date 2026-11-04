@@ -1,0 +1,20 @@
+{
+  "name": "@mndw/docs-snippet-env",
+  "private": true,
+  "devDependencies": {
+    "@angular/core": "^21.2.18",
+    "@mndw/sdk": "workspace:*",
+    "@mndw/ui": "workspace:*",
+    "@mndw/ui-angular": "workspace:*",
+    "@mndw/ui-svelte": "workspace:*",
+    "@mndw/ui-vue": "workspace:*",
+    "@rci-tools/core": "catalog:",
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "rxjs": "^7.8.0",
+    "svelte": "^5.56.4",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7",
+    "vue": "^3.5.39"
+  }
+}

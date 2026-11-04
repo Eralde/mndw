@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"hash/fnv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type dedupEntry struct {
 }
 
 type Deduplicator struct {
+	mu     sync.Mutex
 	now    func() time.Time
 	recent []dedupEntry
 }
@@ -55,6 +57,13 @@ func NewDeduplicator(now func() time.Time) *Deduplicator {
 
 func (d *Deduplicator) Accept(event Event) bool {
 	now := d.now()
+	category, key := dedupIdentity(event)
+	hash := hashPayload(event)
+
+	d.mu.Lock()
+
+	defer d.mu.Unlock()
+
 	cutoff := now.Add(-DedupWindow)
 	kept := d.recent[:0]
 
@@ -66,21 +75,19 @@ func (d *Deduplicator) Accept(event Event) bool {
 
 	d.recent = kept
 
-	category, key := dedupIdentity(event)
-
 	for _, entry := range d.recent {
 		if entry.category == category && entry.key == key {
 			if event.Source == "log" && entry.source == "hook" {
 				return false
 			}
 
-			if event.Source == "hook" && entry.source == "hook" && entry.payloadHash == hashPayload(event) {
+			if event.Source == "hook" && entry.source == "hook" && entry.payloadHash == hash {
 				return false
 			}
 		}
 	}
 
-	d.recent = append(d.recent, dedupEntry{category: category, key: key, source: string(event.Source), payloadHash: hashPayload(event), ts: now})
+	d.recent = append(d.recent, dedupEntry{category: category, key: key, source: string(event.Source), payloadHash: hash, ts: now})
 
 	return true
 }

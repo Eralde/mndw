@@ -1,11 +1,11 @@
-import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
 
-import {ManifestValidationError} from '@mndw/sdk';
+import {ManifestValidationError} from '@mndw/sdk-internal';
 import {afterEach, describe, expect, test} from 'vitest';
 
-import {readManifest} from './manifest.js';
+import {readManifest, unknownManifestKeys} from './manifest.js';
 import {resolvePluginDir} from './paths.js';
 
 const temporaryDirectories: string[] = [];
@@ -103,6 +103,7 @@ describe('readManifest', () => {
     expect(readManifest(pluginDir)).toEqual({
       manifest: expect.objectContaining({name: 'source-entry-plugin'}),
       path: resolve(pluginDir, 'manifest.json'),
+      warnings: [],
     });
   });
 
@@ -112,6 +113,28 @@ describe('readManifest', () => {
     expect(readManifest(pluginDir)).toEqual({
       manifest: expect.objectContaining({name: 'clock-widget'}),
       path: resolve(pluginDir, 'manifest.json'),
+      warnings: [],
     });
+  });
+});
+
+describe('unknownManifestKeys', () => {
+  test('warns once per unknown top-level key', () => {
+    expect(unknownManifestKeys({permision: []})).toEqual([
+      'unknown manifest key "permision" is ignored',
+    ]);
+  });
+
+  test('does not warn about $schema', () => {
+    expect(unknownManifestKeys({$schema: 'https://example.test/manifest.schema.json'})).toEqual([]);
+  });
+
+  test('does not warn for every key of valid widget and page manifests', () => {
+    for (const filename of ['widget-minimal.json', 'page-minimal.json']) {
+      const fixturePath = resolve(import.meta.dirname, `../../../contracts/manifest/fixtures/valid/${filename}`);
+      const manifest = JSON.parse(readFileSync(fixturePath, 'utf8')) as Record<string, unknown>;
+
+      expect(unknownManifestKeys(manifest)).toEqual([]);
+    }
   });
 });

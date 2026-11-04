@@ -1,27 +1,41 @@
 {
   "name": "@mndw/ui-svelte",
-  "version": "0.1.0",
-  "private": true,
+  "version": "1.0.0",
+  "license": "MIT",
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
     ".": {
       "types": "./src/index.ts",
+      "svelte": "./src/index.ts",
       "default": "./src/index.ts"
     }
   },
-  "files": ["src"],
+  "publishConfig": {
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "svelte": "./dist/index.js",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": ["dist", "!dist/**/*.test.*", "!dist/**/fixtures"],
   "scripts": {
+    "build": "svelte-package -i src -o dist",
+    "prepack": "pnpm run build",
     "test": "vitest run",
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@mndw/ui": "workspace:*"
+    "@mndw/ui": "workspace:^"
   },
   "peerDependencies": {
     "svelte": ">=5.0.0"
   },
   "devDependencies": {
+    "@sveltejs/package": "catalog:",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "happy-dom": "20.11.1",
     "svelte": "^5.56.4",

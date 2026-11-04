@@ -1,7 +1,7 @@
 {
   "name": "@mndw/ui-vue",
-  "version": "0.1.0",
-  "private": true,
+  "version": "1.0.0",
+  "license": "MIT",
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
@@ -10,13 +10,24 @@
       "default": "./src/index.ts"
     }
   },
-  "files": ["src"],
+  "publishConfig": {
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": ["dist"],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build",
     "test": "vitest run",
     "check": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@mndw/ui": "workspace:*"
+    "@mndw/ui": "workspace:^"
   },
   "peerDependencies": {
     "vue": ">=3.0.0"

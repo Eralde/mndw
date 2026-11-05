@@ -1,4 +1,3 @@
-import {execFileSync, spawnSync} from 'node:child_process';
 import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
@@ -14,6 +13,7 @@ vi.mock('./pack.js', async (importOriginal) => {
 });
 
 import {createProgram} from './index.js';
+import {runProcess} from './test-process.js';
 
 interface ExecutionResult {
   readonly stderr: string;
@@ -89,27 +89,26 @@ function expectExpectedError(result: CliResult, message: string, path: string): 
   expect(result.stderr).not.toMatch(/\bat\s+.+\(.+\.ts:\d+:\d+\)/);
 }
 
-function runPnpm(args: string[]): string {
-  return execFileSync('pnpm', args, {cwd: WORKSPACE_ROOT, encoding: 'utf8'});
+async function runPnpm(args: string[]): Promise<string> {
+  const result = await runProcess('pnpm', args, {cwd: WORKSPACE_ROOT});
+
+  if (result.status !== 0) {
+    throw new Error(`${result.stdout}\n${result.stderr}`);
+  }
+
+  return result.stdout;
 }
 
-function runCli(args: string[]): CliResult {
-  const result = spawnSync('pnpm', ['exec', 'mndw', ...args], {
-    cwd: WORKSPACE_ROOT,
-    encoding: 'utf8',
-  });
-
-  return {status: result.status, stderr: result.stderr, stdout: result.stdout};
+async function runCli(args: string[]): Promise<CliResult> {
+  return runProcess('pnpm', ['exec', 'mndw', ...args], {cwd: WORKSPACE_ROOT});
 }
 
-function runCliFrom(cwd: string, args: string[]): CliResult {
-  const result = spawnSync(
+async function runCliFrom(cwd: string, args: string[]): Promise<CliResult> {
+  return runProcess(
     resolve(WORKSPACE_ROOT, 'node_modules/.bin/tsx'),
     [resolve(CLI_ROOT, 'src/index.ts'), ...args],
-    {cwd, encoding: 'utf8'},
+    {cwd},
   );
-
-  return {status: result.status, stderr: result.stderr, stdout: result.stdout};
 }
 
 function execute(args: string[]): {result: ExecutionResult; run: Promise<unknown>} {
@@ -212,9 +211,9 @@ describe('createProgram', () => {
     expect(execution.result.stderr).toContain('error: missing required argument \'plugin-dir\'');
   });
 
-  test('validates plugin manifest and prints its name and resolved path', () => {
+  test('validates plugin manifest and prints its name and resolved path', async () => {
     const pluginDir = 'plugins/builtin/clock-widget';
-    const result = runCli(['validate', pluginDir]);
+    const result = await runCli(['validate', pluginDir]);
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
@@ -222,9 +221,9 @@ describe('createProgram', () => {
     expect(result.stdout).toContain(resolve(WORKSPACE_ROOT, pluginDir));
   });
 
-  test.skipIf(skipSlowTests)('prints catalog parity warnings during validation', () => {
+  test.skipIf(skipSlowTests)('prints catalog parity warnings during validation', async () => {
     const pluginDir = createLocalizedPluginDirectory();
-    const result = runCli(['validate', pluginDir]);
+    const result = await runCli(['validate', pluginDir]);
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
@@ -234,45 +233,48 @@ describe('createProgram', () => {
     expect(result.stdout).toContain('Validated localized-command-plugin');
   });
 
-  test.skipIf(skipSlowTests)('fails catalog parity validation in strict mode', () => {
+  test.skipIf(skipSlowTests)('fails catalog parity validation in strict mode', async () => {
     const pluginDir = createLocalizedPluginDirectory();
-    const result = runCli(['validate', pluginDir, '--strict']);
+    const result = await runCli(['validate', pluginDir, '--strict']);
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('localized-command-plugin locale ru has extra key extra not present in en');
     expect(result.stdout).not.toContain('Validated localized-command-plugin');
   });
 
-  test.skipIf(skipSlowTests)('exits nonzero without a stack trace for expected validation errors', () => {
-    const result = runCli(['validate', 'missing-plugin']);
+  test.skipIf(skipSlowTests)('exits nonzero without a stack trace for expected validation errors', async () => {
+    const result = await runCli(['validate', 'missing-plugin']);
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain(resolve(WORKSPACE_ROOT, 'missing-plugin'));
     expect(result.stderr).not.toMatch(/\bat\s+.+\(.+\.ts:\d+:\d+\)/);
   });
 
-  test.skipIf(skipSlowTests)('reports a file plugin directory as a manifest read error without a stack trace', () => {
-    const directory = mkdtempSync(resolve(tmpdir(), 'mndw-cli-file-'));
+  test.skipIf(skipSlowTests)(
+    'reports a file plugin directory as a manifest read error without a stack trace',
+    async () => {
+      const directory = mkdtempSync(resolve(tmpdir(), 'mndw-cli-file-'));
 
-    temporaryDirectories.push(directory);
+      temporaryDirectories.push(directory);
 
-    const pluginPath = resolve(directory, 'not-a-plugin-directory');
+      const pluginPath = resolve(directory, 'not-a-plugin-directory');
 
-    writeFileSync(pluginPath, 'not a directory');
+      writeFileSync(pluginPath, 'not a directory');
 
-    const result = runCli(['validate', pluginPath]);
+      const result = await runCli(['validate', pluginPath]);
 
-    expectExpectedError(result, 'Failed to read manifest', resolve(pluginPath, 'manifest.json'));
-  });
+      expectExpectedError(result, 'Failed to read manifest', resolve(pluginPath, 'manifest.json'));
+    },
+  );
 
-  test.skipIf(skipSlowTests)('reports missing source entry for a valid manifest without a stack trace', () => {
+  test.skipIf(skipSlowTests)('reports missing source entry for a valid manifest without a stack trace', async () => {
     const pluginDir = createPluginDirectory(VALID_MANIFEST);
-    const result = runCli(['validate', pluginDir]);
+    const result = await runCli(['validate', pluginDir]);
 
     expectExpectedError(result, 'Missing source entry', resolve(pluginDir, 'src/index.ts'));
   });
 
-  test.skipIf(skipSlowTests)('reports missing configured production entry without a stack trace', () => {
+  test.skipIf(skipSlowTests)('reports missing configured production entry without a stack trace', async () => {
     const pluginDir = createPluginDirectory(VALID_MANIFEST);
 
     mkdirSync(resolve(pluginDir, 'src'));
@@ -282,26 +284,26 @@ describe('createProgram', () => {
       JSON.stringify({mndw: {productionEntry: 'src/index.prod.ts'}}),
     );
 
-    const result = runCli(['validate', pluginDir]);
+    const result = await runCli(['validate', pluginDir]);
 
     expectExpectedError(result, 'Missing production entry', resolve(pluginDir, 'src/index.prod.ts'));
   });
 
-  test.skipIf(skipSlowTests)('reports malformed manifest JSON without a stack trace', () => {
+  test.skipIf(skipSlowTests)('reports malformed manifest JSON without a stack trace', async () => {
     const pluginDir = createPluginDirectory('{');
-    const result = runCli(['validate', pluginDir]);
+    const result = await runCli(['validate', pluginDir]);
 
     expectExpectedError(result, 'Failed to parse manifest', resolve(pluginDir, 'manifest.json'));
   });
 
-  test.skipIf(skipSlowTests)('reports SDK-invalid manifest with its path and no stack trace', () => {
+  test.skipIf(skipSlowTests)('reports SDK-invalid manifest with its path and no stack trace', async () => {
     const pluginDir = createPluginDirectory(JSON.stringify({manifestVersion: 1, name: 'broken-plugin'}));
-    const result = runCli(['validate', pluginDir]);
+    const result = await runCli(['validate', pluginDir]);
 
     expectExpectedError(result, 'Invalid manifest for "broken-plugin"', resolve(pluginDir, 'manifest.json'));
   });
 
-  test.skipIf(skipSlowTests)('resolves relative plugin directories from child process working directory', () => {
+  test.skipIf(skipSlowTests)('resolves relative plugin directories from child process working directory', async () => {
     const cwd = mkdtempSync(resolve(tmpdir(), 'mndw-cli-cwd-'));
 
     temporaryDirectories.push(cwd);
@@ -324,43 +326,43 @@ describe('createProgram', () => {
       }),
     );
 
-    const result = runCliFrom(cwd, ['validate', 'plugin']);
+    const result = await runCliFrom(cwd, ['validate', 'plugin']);
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain(resolve(pluginDir, 'manifest.json'));
   });
 
-  test.skipIf(skipSlowTests)('create --framework vue scaffolds a Vue plugin end to end', () => {
+  test.skipIf(skipSlowTests)('create --framework vue scaffolds a Vue plugin end to end', async () => {
     const workdir = mkdtempSync(resolve(tmpdir(), 'mndw-cli-create-vue-'));
 
     temporaryDirectories.push(workdir);
 
-    const result = runCliFrom(workdir, ['create', 'vue-cmd', '--framework', 'vue', '--no-install']);
+    const result = await runCliFrom(workdir, ['create', 'vue-cmd', '--framework', 'vue', '--no-install']);
 
     expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
     expect(result.stdout).toContain('(vue)');
     expect(existsSync(resolve(workdir, 'vue-cmd', 'src', 'App.vue'))).toBe(true);
   });
 
-  test.skipIf(skipSlowTests)('create --framework angular scaffolds an Angular plugin end to end', () => {
+  test.skipIf(skipSlowTests)('create --framework angular scaffolds an Angular plugin end to end', async () => {
     const workdir = mkdtempSync(resolve(tmpdir(), 'mndw-cli-create-ng-'));
 
     temporaryDirectories.push(workdir);
 
-    const result = runCliFrom(workdir, ['create', 'ng-cmd', '--framework', 'angular', '--no-install']);
+    const result = await runCliFrom(workdir, ['create', 'ng-cmd', '--framework', 'angular', '--no-install']);
 
     expect(result.status, `${result.stderr}\n${result.stdout}`).toBe(0);
     expect(result.stdout).toContain('(angular)');
     expect(existsSync(resolve(workdir, 'ng-cmd', 'src', 'app.component.ts'))).toBe(true);
   });
 
-  test.skipIf(skipSlowTests)('create --backend go forwards the backend option to the Go scaffold', () => {
+  test.skipIf(skipSlowTests)('create --backend go forwards the backend option to the Go scaffold', async () => {
     const outDir = mkdtempSync(resolve(CLI_ROOT, '.mndw-cli-go-'));
 
     temporaryDirectories.push(outDir);
 
-    const result = runCliFrom(WORKSPACE_ROOT, [
+    const result = await runCliFrom(WORKSPACE_ROOT, [
       'create',
       'go-cmd',
       '--backend',
@@ -377,8 +379,8 @@ describe('createProgram', () => {
     expect(existsSync(resolve(outDir, 'backend', 'cmd', 'go-cmdd', 'main.go'))).toBe(true);
   });
 
-  test.skipIf(skipSlowTests)('create --help lists all framework options', () => {
-    const result = runCliFrom(WORKSPACE_ROOT, ['create', '--help']);
+  test.skipIf(skipSlowTests)('create --help lists all framework options', async () => {
+    const result = await runCliFrom(WORKSPACE_ROOT, ['create', '--help']);
 
     expect(result.stdout).toContain('vanilla|svelte|vue|angular');
     expect(result.stdout).toContain('--no-install');
@@ -394,19 +396,19 @@ describe('CLI workspace integration', () => {
     expect(packageJson.devDependencies?.['@types/node']).toBeDefined();
   });
 
-  test.skipIf(skipSlowTests)('invokes mndw through pnpm exec', () => {
-    const output = runPnpm(['--filter', '@mndw/cli', 'exec', 'mndw', '--help']);
+  test.skipIf(skipSlowTests)('invokes mndw through pnpm exec', async () => {
+    const output = await runPnpm(['--filter', '@mndw/cli', 'exec', 'mndw', '--help']);
 
     expect(output).toContain('Usage: mndw');
   });
 
-  test.skipIf(skipSlowTests)('invokes linked mndw through root pnpm exec', () => {
-    const output = runPnpm(['exec', 'mndw', '--help']);
+  test.skipIf(skipSlowTests)('invokes linked mndw through root pnpm exec', async () => {
+    const output = await runPnpm(['exec', 'mndw', '--help']);
 
     expect(output).toContain('Usage: mndw');
   });
 
-  test('type checks without emitting files', () => {
-    expect(() => runPnpm(['--filter', '@mndw/cli', 'check'])).not.toThrow();
+  test('type checks without emitting files', async () => {
+    await expect(runPnpm(['--filter', '@mndw/cli', 'check'])).resolves.toBeDefined();
   });
 });

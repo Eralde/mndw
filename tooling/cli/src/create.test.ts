@@ -1,6 +1,6 @@
 import {accessSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {EventEmitter} from 'node:events';
-import {type ChildProcess, spawnSync} from 'node:child_process';
+import {type ChildProcess} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {PassThrough} from 'node:stream';
@@ -22,6 +22,7 @@ import {
 import {readManifest} from './manifest.js';
 import {packPlugin} from './pack.js';
 import {zipPlugin} from './zip.js';
+import {runProcess} from './test-process.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 // The full suites run in .github/workflows/ci-weekly.yml.
@@ -267,7 +268,7 @@ describe('planCreate', () => {
     expect(app).not.toMatch(/\bInput\b/);
   });
 
-  it.skipIf(skipSlowTests)('runs generated framework locale and table tests without compiler warnings', () => {
+  it.skipIf(skipSlowTests)('runs generated framework locale and table tests without compiler warnings', async () => {
     const root = mkdtempSync(join(REPO_ROOT, 'tooling', 'cli', '.generated-warning-'));
     const vitest = join(REPO_ROOT, 'tooling', 'cli', 'node_modules', '.bin', 'vitest');
 
@@ -277,10 +278,7 @@ describe('planCreate', () => {
 
         createPlugin({name: `warning-${framework}`, outDir: generatedDir, framework, type: 'widget'});
 
-        const result = spawnSync(vitest, ['run', 'src/l10n.test.ts', 'src/table.test.ts'], {
-          cwd: generatedDir,
-          encoding: 'utf8',
-        });
+        const result = await runProcess(vitest, ['run', 'src/l10n.test.ts', 'src/table.test.ts'], {cwd: generatedDir});
         const output = `${result.stdout}\n${result.stderr}`;
 
         expect(result.status, output).toBe(0);

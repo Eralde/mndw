@@ -2,9 +2,9 @@ import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {isBuiltin} from 'node:module';
 import {tmpdir} from 'node:os';
 import {resolve} from 'node:path';
-import {spawnSync} from 'node:child_process';
-
 import {afterEach, describe, expect, it} from 'vitest';
+
+import {runProcess} from './test-process.js';
 
 interface BuildMetadata {
   readonly outputs: Readonly<Record<string, {
@@ -39,13 +39,12 @@ describe('publishable CLI bundle dependencies', () => {
     }
   });
 
-  it('declares every external bare import and bundles private workspace internals', () => {
+  it('declares every external bare import and bundles private workspace internals', async () => {
     outDir = mkdtempSync(resolve(tmpdir(), 'mndw-cli-bundle-'));
 
     const buildScript = resolve(cliRoot, 'scripts', 'build.ts');
-    const build = spawnSync(process.execPath, ['--import', 'tsx', buildScript, '--outdir', outDir], {
+    const build = await runProcess(process.execPath, ['--import', 'tsx', buildScript, '--outdir', outDir], {
       cwd: cliRoot,
-      encoding: 'utf8',
     });
 
     expect(build.status, `${build.stdout}\n${build.stderr}`).toBe(0);

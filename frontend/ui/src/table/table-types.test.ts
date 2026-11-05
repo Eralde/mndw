@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {expect, it} from 'vitest';
 import {
   DETAIL_COL_ID,

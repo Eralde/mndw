@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeEach, describe, expect, it} from 'vitest';
 import type {PackageEntry} from '../../services/opkg-client.js';

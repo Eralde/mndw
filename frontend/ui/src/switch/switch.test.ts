@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_FIELD_TAG, MndwField} from '../field/field.js';
 import {defineComponents, mount, press, settle} from '../testing/index.js';

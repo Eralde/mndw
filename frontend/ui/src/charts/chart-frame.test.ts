@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {describe, expect, it} from 'vitest';
 import {html, render} from 'lit';
 import {chartFrameStyles, renderChartFrame, tooltipStyle} from './chart-frame.js';

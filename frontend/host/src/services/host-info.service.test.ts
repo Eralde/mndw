@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {of, throwError} from 'rxjs';
 import type {MgmtClient} from './mgmt-client.js';

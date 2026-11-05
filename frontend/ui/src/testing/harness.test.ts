@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_SWITCH_TAG, MndwSwitch} from '../switch/switch.js';
 import {defineComponents, mount, press, settle} from './index.js';

@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {getNextInstanceId, raiseInstanceCounter} from './widget-counter.js';

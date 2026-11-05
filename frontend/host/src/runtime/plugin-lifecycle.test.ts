@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {type PluginContext, type PluginInstance} from '@mndw/sdk';
 import {createTestPluginContext} from '@mndw/sdk/testing';
 import {beforeEach, describe, expect, it, vi} from 'vitest';

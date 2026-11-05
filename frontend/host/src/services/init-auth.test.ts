@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 vi.mock('./host-info.service.js', () => ({fetchHostInfo: vi.fn(), fetchDeviceInfo: vi.fn()}));

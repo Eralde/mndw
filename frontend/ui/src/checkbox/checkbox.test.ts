@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterAll, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_LABEL_CHANGE_EVENT} from '../field/field.js';
 import {defineComponents, mount} from '../testing/index.js';

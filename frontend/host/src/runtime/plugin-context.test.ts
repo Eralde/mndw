@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {MNDW_TOKENS, PLUGIN_RCI_MANAGER_METHODS, PageRouteError, type PaletteTokenMap} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {beforeEach, describe, expect, it, vi} from 'vitest';

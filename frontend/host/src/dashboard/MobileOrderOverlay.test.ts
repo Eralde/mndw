@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /* eslint id-blacklist: 0 */
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {defineMndwUi} from '@mndw/ui';

@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {nonNull, shadowOf, shadowQuery} from '@mndw/sdk/testing';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from '../checkbox/checkbox.js';

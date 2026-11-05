@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {ReactiveControllerHost} from 'lit';
 import {ChartFrameController} from './chart-frame-controller.js';

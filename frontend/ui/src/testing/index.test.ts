@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {MNDW_TABLE_TAG} from '../table/table.js';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {getMndwUiLocale, setMndwUiLocale} from '../index.js';

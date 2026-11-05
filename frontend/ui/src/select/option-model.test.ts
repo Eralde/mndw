@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {describe, expect, it, vi} from 'vitest';
 import {defineComponents} from '../testing/index.js';
 import {MNDW_OPTION_TAG, MndwOption} from './option.js';

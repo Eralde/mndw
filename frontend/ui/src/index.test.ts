@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import type {OverlayService} from '@mndw/sdk';
 import {afterEach, describe, expect, expectTypeOf, it, vi} from 'vitest';
 import {

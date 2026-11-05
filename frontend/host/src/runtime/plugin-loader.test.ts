@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {loadPlugins} from './plugin-loader.js';
 import {PluginRegistry, pluginRegistry} from './plugin-registry.js';

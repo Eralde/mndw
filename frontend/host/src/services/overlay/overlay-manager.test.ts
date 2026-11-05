@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {type OverlayRuntime, createOverlayRuntime, createPluginOverlayService} from './overlay-manager.svelte.js';
 

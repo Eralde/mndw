@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {deepActiveElement} from './focus.js';
 import {setMndwUiLocale} from './i18n.js';

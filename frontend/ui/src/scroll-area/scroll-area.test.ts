@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {defineComponents} from '../testing/index.js';
 import {MNDW_SCROLL_AREA_TAG, MndwScrollArea} from './scroll-area.js';

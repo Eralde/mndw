@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {shadowOf, shadowQuery} from '@mndw/sdk/testing';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {defineComponents} from '../testing/index.js';

@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {LitElement, html} from 'lit';
 import {repeat} from 'lit/directives/repeat.js';
 import {afterEach, expect, it} from 'vitest';

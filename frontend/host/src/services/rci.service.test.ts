@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {NEVER, Observable, Subject, of, throwError} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {RCI_HEARTBEAT_INTERVAL_MS, RciService} from './rci.service.js';

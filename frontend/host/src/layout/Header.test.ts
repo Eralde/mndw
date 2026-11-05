@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {of} from 'rxjs';
 import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';

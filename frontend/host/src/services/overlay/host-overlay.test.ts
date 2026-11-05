@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {flushSync} from 'svelte';
 import {defaultOverlayRuntime} from './overlay-manager.svelte.js';

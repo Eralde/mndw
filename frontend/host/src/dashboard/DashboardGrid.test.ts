@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /* eslint id-blacklist: 0 */
 import type {GridStackNode, GridStackWidget, SaveFcn} from 'gridstack';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';

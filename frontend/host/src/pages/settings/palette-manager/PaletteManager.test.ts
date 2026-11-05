@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {MNDW_TOKENS, type PaletteTokenMap} from '@mndw/sdk';
 import {defineMndwUi} from '@mndw/ui';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';

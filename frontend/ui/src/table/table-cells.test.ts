@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {CellRegistry} from './table-cells.js';
 import {type CellRenderer, type Column, DETAIL_COL_ID} from './table-types.js';

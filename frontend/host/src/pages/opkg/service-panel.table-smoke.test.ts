@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {defineMndwUi} from '@mndw/ui';
 import {mount, unmount} from 'svelte';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';

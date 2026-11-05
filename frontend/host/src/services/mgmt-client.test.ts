@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {type Mock, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {PaletteTokenMap} from '@mndw/sdk';
 import type {PluginPermission} from '@mndw/sdk-internal';

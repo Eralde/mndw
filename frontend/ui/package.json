@@ -1,6 +1,6 @@
 {
   "name": "@mndw/ui",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "license": "MIT",
   "homepage": "https://eralde.github.io/mndw/",
   "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "frontend/ui"},
@@ -52,7 +52,7 @@
     "lit": "^3.2.0"
   },
   "peerDependencies": {
-    "@mndw/sdk": "^1.0.0",
+    "@mndw/sdk": "^0.1.0",
     "d3": "^7",
     "@types/d3": "^7"
   },

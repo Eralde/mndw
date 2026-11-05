@@ -6,9 +6,9 @@
     "version": "1.2.3"
   },
   "framework": "vanilla",
-  "sdkVersion": "1.0.0",
+  "sdkVersion": "0.1.0",
   "sharedDependencies": {
-    "@mndw/ui": "1.0.0",
+    "@mndw/ui": "0.1.0",
     "@rci-tools/core": "0.6.0",
     "d3": "7.9.0",
     "hash-wasm": "4.12.0",

@@ -26,6 +26,13 @@ import {zipPlugin} from './zip.js';
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 // The full suites run in .github/workflows/ci-weekly.yml.
 const skipSlowTests = process.env.MNDW_SKIP_SLOW_TESTS === '1';
+const publishedRange = (directory: string): string => {
+  const manifest = JSON.parse(readFileSync(resolve(REPO_ROOT, directory, 'package.json'), 'utf8')) as {
+    version: string;
+  };
+
+  return `^${manifest.version}`;
+};
 
 describe('readCliMetadata', () => {
   it('uses this CLI package own ranges for Vite and framework plugins', () => {
@@ -39,8 +46,12 @@ describe('readCliMetadata', () => {
     expect(metadata.viteRange).toBe(range('vite'));
     expect(metadata.svelteVitePluginRange).toBe(range('@sveltejs/vite-plugin-svelte'));
     expect(metadata.vueVitePluginRange).toBe(range('@vitejs/plugin-vue'));
-    expect(metadata.uiRange).toBe('^1.0.0');
-    expect(metadata.uiWrapperRanges).toEqual({svelte: '^1.0.0', vue: '^1.0.0', angular: '^1.0.0'});
+    expect(metadata.uiRange).toBe(publishedRange('frontend/ui'));
+    expect(metadata.uiWrapperRanges).toEqual({
+      svelte: publishedRange('frontend/ui-svelte'),
+      vue: publishedRange('frontend/ui-vue'),
+      angular: publishedRange('frontend/ui-angular'),
+    });
   });
 
   it('throws with the missing package name instead of using a hard-coded range', () => {
@@ -303,7 +314,10 @@ describe('planCreate', () => {
     }
 
     expect(pkg.devDependencies['@angular/compiler-cli']).toBeUndefined();
-    expect(pkg.dependencies).toEqual({'@mndw/ui': '^1.0.0', '@mndw/ui-angular': '^1.0.0'});
+    expect(pkg.dependencies).toEqual({
+      '@mndw/ui': publishedRange('frontend/ui'),
+      '@mndw/ui-angular': publishedRange('frontend/ui-angular'),
+    });
   });
 
   it('places Vue UI packages under dependencies and framework tooling under devDependencies', () => {
@@ -316,7 +330,10 @@ describe('planCreate', () => {
     expect(pkg.devDependencies['@mndw/sdk']).toBeDefined();
     expect(pkg.devDependencies.vue).toBeDefined();
     expect(pkg.devDependencies['@mndw/cli']).toBeDefined();
-    expect(pkg.dependencies).toEqual({'@mndw/ui': '^1.0.0', '@mndw/ui-vue': '^1.0.0'});
+    expect(pkg.dependencies).toEqual({
+      '@mndw/ui': publishedRange('frontend/ui'),
+      '@mndw/ui-vue': publishedRange('frontend/ui-vue'),
+    });
   });
 
   it('generates live i18n regression tests and test dependencies from CLI metadata', () => {
@@ -652,34 +669,37 @@ describe('createPlugin', () => {
   ];
 
   for (const combo of combos) {
-    it.skipIf(skipSlowTests)(`generates a ${combo.framework} ${combo.type} that validates, packs, and zips`, async () => {
-      const outDir = join(root, `${combo.framework}-${combo.type}`);
-      const name = `gen-${combo.framework}-${combo.type}`;
+    it.skipIf(skipSlowTests)(
+      `generates a ${combo.framework} ${combo.type} that validates, packs, and zips`,
+      async () => {
+        const outDir = join(root, `${combo.framework}-${combo.type}`);
+        const name = `gen-${combo.framework}-${combo.type}`;
 
-      createPlugin({name, outDir, framework: combo.framework, type: combo.type});
+        createPlugin({name, outDir, framework: combo.framework, type: combo.type});
 
-      if (combo.framework === 'angular') {
-        installAngularUiCompilerFixtures(outDir);
-      }
+        if (combo.framework === 'angular') {
+          installAngularUiCompilerFixtures(outDir);
+        }
 
-      // validate
-      expect(readManifest(outDir).manifest.name).toBe(name);
+        // validate
+        expect(readManifest(outDir).manifest.name).toBe(name);
 
-      // pack
-      const packed = await packPlugin(outDir);
+        // pack
+        const packed = await packPlugin(outDir);
 
-      expect(packed.framework).toBe(combo.framework);
-      expect(existsSync(join(outDir, 'dist', 'index.js'))).toBe(true);
+        expect(packed.framework).toBe(combo.framework);
+        expect(existsSync(join(outDir, 'dist', 'index.js'))).toBe(true);
 
-      if (combo.framework !== 'angular') {
-        expect(existsSync(join(outDir, 'dist', 'index.css'))).toBe(true);
-      }
+        if (combo.framework !== 'angular') {
+          expect(existsSync(join(outDir, 'dist', 'index.css'))).toBe(true);
+        }
 
-      // zip
-      const zipped = await zipPlugin(outDir);
+        // zip
+        const zipped = await zipPlugin(outDir);
 
-      expect(existsSync(zipped.outputPath)).toBe(true);
-    });
+        expect(existsSync(zipped.outputPath)).toBe(true);
+      },
+    );
   }
 });
 
@@ -799,8 +819,8 @@ describe('create defaults and workspace behavior', () => {
 
       expect(serialized).not.toContain('workspace:');
       expect(pkg.dependencies).toMatchObject({
-        '@mndw/ui': '^1.0.0',
-        [`@mndw/ui-${framework}`]: '^1.0.0',
+        '@mndw/ui': publishedRange('frontend/ui'),
+        [`@mndw/ui-${framework}`]: publishedRange(`frontend/ui-${framework}`),
       });
     }
   });

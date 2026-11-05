@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
+import {SDK_VERSION} from '@mndw/sdk';
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {setLocale} from '../../../services/locale.service.js';
@@ -133,7 +134,7 @@ describe('CapabilityReview capability summary', () => {
 
     expect(target.textContent).toContain('Version compatibility');
     expect(target.textContent).toContain('Built for @mndw/sdk 2.0.0');
-    expect(target.textContent).toContain('this dashboard provides 1.0.0');
+    expect(target.textContent).toContain(`this dashboard provides ${SDK_VERSION}`);
     expect(target.textContent).toContain('You can still install it.');
 
     void unmount(component);

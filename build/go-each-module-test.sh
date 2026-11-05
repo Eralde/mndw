@@ -87,9 +87,9 @@ else
 	exit 1
 fi
 
-if ! rg -F "$fixture_root/packages/standalone" "$test_root/output.log" >/dev/null || \
-	! rg -F "$fixture_root/workspace-extra" "$test_root/output.log" >/dev/null || \
-	! rg -F 'Go module tests failed (2)' "$test_root/output.log" >/dev/null; then
+if ! grep -qF -- "$fixture_root/packages/standalone" "$test_root/output.log" || \
+	! grep -qF -- "$fixture_root/workspace-extra" "$test_root/output.log" || \
+	! grep -qF -- 'Go module tests failed (2)' "$test_root/output.log"; then
 	cat "$test_root/output.log" >&2
 	printf '%s\n' 'runner did not report the standalone module failure' >&2
 	exit 1

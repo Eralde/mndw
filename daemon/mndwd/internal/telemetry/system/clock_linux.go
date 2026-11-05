@@ -34,6 +34,10 @@ func NewOSClock() (Clock, error) {
 	return &osClock{bootID: bootID}, nil
 }
 
+func bootMillis(ts unix.Timespec) int64 {
+	return int64(ts.Sec)*1000 + int64(ts.Nsec)/1_000_000
+}
+
 func (c *osClock) Read() (timekeeper.Reading, error) {
 	var now unix.Timespec
 
@@ -41,7 +45,7 @@ func (c *osClock) Read() (timekeeper.Reading, error) {
 		return timekeeper.Reading{}, fmt.Errorf("telemetry system: read CLOCK_BOOTTIME: %w", err)
 	}
 
-	bootMs := now.Sec*1000 + now.Nsec/1_000_000
+	bootMs := bootMillis(now)
 
 	return timekeeper.Reading{BootMs: bootMs, WallMs: time.Now().UnixMilli()}, nil
 }

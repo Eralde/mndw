@@ -1,7 +1,4 @@
 {
   "name": "@mndw/go-mws-members",
-  "private": true,
-  "scripts": {
-    "test": "go test ./..."
-  }
+  "private": true
 }

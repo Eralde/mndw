@@ -1,7 +1,4 @@
 {
   "name": "@mndw/go-rci",
-  "private": true,
-  "scripts": {
-    "test": "go test ./..."
-  }
+  "private": true
 }

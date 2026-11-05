@@ -14,6 +14,7 @@ export const BUILD_VITEST_FILES: readonly string[] = [
   'build/packaging/build-ipk.test.ts',
   'build/packaging/feed-assets.test.ts',
   'build/packaging/hook-scripts.test.ts',
+  'build/packaging/init-script.test.ts',
   'build/packaging/lifecycle-scripts.test.ts',
   'build/packaging/lighttpd-install.test.ts',
   'build/targets.test.ts',

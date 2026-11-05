@@ -2,6 +2,7 @@
 
 MNDW_ROOT=${MNDW_ROOT:-/opt}
 PID_FILE="$MNDW_ROOT/var/run/mndwd.pid"
+PROC_ROOT=${MNDW_PROC_ROOT:-/proc}
 DAEMON="$MNDW_ROOT/sbin/mndwd"
 DATA_DIR="$MNDW_ROOT/var/lib/mndw"
 KEY_DIR="$MNDW_ROOT/var/lib/mndw-secrets"
@@ -23,6 +24,29 @@ export MNDW_USER_PLUGINS_DIR
 : "${MNDW_FRONTEND_LISTEN:=}"
 : "${MNDW_DEVICE_PORT:=}"
 export MNDW_DEVICE_PORT
+
+daemon_pid() {
+  if [ ! -f "$PID_FILE" ]; then
+    return 1
+  fi
+
+  raw_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+  pid="$(printf '%s' "$raw_pid" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  case "$pid" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 1
+  fi
+
+  process_name="$(tr '\000' '\n' 2>/dev/null < "$PROC_ROOT/$pid/cmdline" | head -n 1)"
+  if [ "$process_name" != "$DAEMON" ]; then
+    return 1
+  fi
+
+  printf '%s\n' "$pid"
+}
 
 wait_for_exit() {
   wait_pid="$1"
@@ -58,8 +82,12 @@ start() {
   fi
 
   # Do not start a second daemon when one is already alive.
-  if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+  if daemon_pid >/dev/null; then
     return 0
+  fi
+  if [ -f "$PID_FILE" ]; then
+    raw_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    echo "mndw: ignoring stale pid file $PID_FILE (pid $raw_pid is not mndwd)" >&2
   fi
 
   FRONTEND_LISTEN_ARG=""
@@ -119,18 +147,22 @@ stop() {
   if [ ! -f "$PID_FILE" ]; then
     return 0
   fi
-  pid="$(cat "$PID_FILE" 2>/dev/null || true)"
-  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
-    if ! wait_for_exit "$pid" 60; then
-      current_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
-      if [ "$current_pid" = "$pid" ]; then
-        kill -KILL "$pid" 2>/dev/null || true
-        wait_for_exit "$pid" 2
-      fi
+  pid="$(daemon_pid)" || {
+    raw_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    echo "mndw: ignoring stale pid file $PID_FILE (pid $raw_pid is not mndwd)" >&2
+    rm -f "$PID_FILE"
+    return 0
+  }
+
+  kill "$pid" 2>/dev/null || true
+  if ! wait_for_exit "$pid" 60; then
+    if [ "$(daemon_pid)" = "$pid" ]; then
+      kill -KILL "$pid" 2>/dev/null || true
+      wait_for_exit "$pid" 2
     fi
   fi
-  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+
+  if [ "$(daemon_pid)" = "$pid" ]; then
     return 1
   fi
   rm -f "$PID_FILE"

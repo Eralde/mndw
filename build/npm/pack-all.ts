@@ -30,7 +30,7 @@ export interface PackPlan {
   readonly cliTarball: string;
 }
 
-const PUBLISHED_PACKAGES: readonly PublishedPackageSource[] = [
+export const PUBLISHED_PACKAGES: readonly PublishedPackageSource[] = [
   {name: '@mndw/mndwd-darwin-arm64', relativeDir: 'build/npm/mndwd/mndwd-darwin-arm64'},
   {name: '@mndw/mndwd-darwin-x64', relativeDir: 'build/npm/mndwd/mndwd-darwin-x64'},
   {name: '@mndw/mndwd-linux-x64', relativeDir: 'build/npm/mndwd/mndwd-linux-x64'},

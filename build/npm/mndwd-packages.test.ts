@@ -15,6 +15,22 @@ const cliPackage = JSON.parse(readFileSync(join(repositoryRoot, 'tooling/cli/pac
 };
 
 describe('mndwd npm packages', () => {
+  it('declares release metadata and the repository directory for every platform', () => {
+    for (const platform of MNDWD_PLATFORMS) {
+      const packageName = platform.packageName.replace('@mndw/', '');
+
+      expect(mndwdPackageJson(platform, cliPackage.version)).toMatchObject({
+        license: 'MIT',
+        homepage: 'https://eralde.github.io/mndw/',
+        repository: {
+          type: 'git',
+          url: 'git+https://github.com/Eralde/mndw.git',
+          directory: `build/npm/mndwd/${packageName}`,
+        },
+      });
+    }
+  });
+
   it('limits Windows x64 package to Windows x64 and ships bin', () => {
     const platform = MNDWD_PLATFORMS.find((entry) => entry.packageName === '@mndw/mndwd-win32-x64');
 

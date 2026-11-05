@@ -1,13 +1,11 @@
 import {
   type BackendClient,
-  type BackendDescriptor,
   type DeviceInfoData,
-  type HostInfo,
+  PLUGIN_RCI_MANAGER_METHODS,
   type PageRoute,
   type PluginContext,
-  createBackendClient,
 } from '@mndw/sdk';
-import type {RciManager} from '@rci-tools/core';
+import {type BackendDescriptor, createBackendClient} from '@mndw/sdk-internal';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {getLocale, subscribeLocale} from '../services/locale.service.js';
 import {type PluginCatalogCell, createPluginI18n} from '../services/plugin-catalog.service.js';
@@ -19,7 +17,9 @@ import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import {type HostServices, defaultHostServices} from '../host-services.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {createServiceFacade} from './service-facade.js';
-import {createDeviceInfoContext, createHostInfoContext} from './device-info-context.js';
+import {type HostInfo, createDeviceInfoContext} from './device-info-context.js';
+import {createPluginLifetime, hostValue$} from './plugin-lifetime.js';
+import {hostTickerPool} from './ticker-pool.js';
 
 export type OverlayDispose = (reason?: 'plugin-unmount' | 'host-navigation') => void;
 
@@ -39,15 +39,6 @@ const createEventFacadeId = (): string => {
     ? cryptoApi.randomUUID()
     : `event-context-${++eventFacadeSequence}`;
 };
-
-// Plugin-facing method allowlists - the full current public surface of each shared
-// service (capability parity). This is the seam for future per-plugin scoping.
-const RCI_MANAGER_METHODS = [
-  'execute',
-  'queue',
-  'initBackgroundProcess',
-  'queueBackgroundProcess',
-] as const satisfies readonly (keyof RciManager)[];
 
 /**
  * Constructs the backend client from the list descriptor, or returns undefined when
@@ -88,7 +79,7 @@ export interface CreatePluginContextOptions {
 }
 
 export function createPluginContext(options: CreatePluginContextOptions): PluginContextHandle {
-  const {entry, instanceId, hostInfo, deviceInfo, setTileTitle, pageRoute, catalogCell} = options;
+  const {entry, instanceId, deviceInfo, setTileTitle, pageRoute, catalogCell} = options;
   const getHostLocale = options.services?.locale === undefined
     ? getLocale
     : () => options.services?.locale?.getLocale() ?? getLocale();
@@ -98,10 +89,6 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
   const getPaletteTokens = options.services?.palette === undefined
     ? getTokens
     : () => options.services?.palette?.getTokens() ?? getTokens();
-  const subscribeHostPalette = options.services?.palette === undefined
-    ? subscribePalette
-    : (callback: (tokens: ReturnType<typeof getTokens>) => void): () => void =>
-      options.services?.palette?.subscribePalette(callback) ?? (() => {});
   const telemetry = options.services?.telemetry ?? defaultHostServices().telemetry;
   const eventStream = options.services?.eventStream ?? defaultHostServices().eventStream;
 
@@ -109,21 +96,34 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     throw new Error(`Page plugin "${entry.name}" requires a page route`);
   }
 
+  const lifetime = createPluginLifetime();
+  const theme$ = hostValue$(getTheme, subscribeTheme, lifetime);
+  const locale$ = hostValue$(getHostLocale, (callback) =>
+    options.services?.locale === undefined
+      ? subscribeLocale(callback)
+      : options.services.locale.subscribeLocale(callback), lifetime);
+  const palette$ = hostValue$(getPaletteTokens, (callback) =>
+    options.services?.palette === undefined
+      ? subscribePalette(callback)
+      : options.services.palette.subscribePalette(callback), lifetime);
   const {service, dispose: disposeOverlay} = createPluginOverlayService(entry.name, instanceId);
   const eventFacadeId = createEventFacadeId();
-  const events = eventStream.createFacade(eventFacadeId, entry.name, entry.permissions ?? []);
+  const events = eventStream.createFacade(eventFacadeId, entry.name, entry.permissions ?? [], lifetime);
   let disposed = false;
-  const dispose: OverlayDispose = events === undefined
-    ? disposeOverlay
-    : (reason) => {
-      if (disposed) {
-        return;
-      }
+  const dispose: OverlayDispose = (reason) => {
+    if (disposed) {
+      return;
+    }
 
-      disposed = true;
+    disposed = true;
+    lifetime.end();
+
+    if (events !== undefined) {
       eventStream.disposeFacade(eventFacadeId);
-      disposeOverlay(reason);
-    };
+    }
+
+    disposeOverlay(reason);
+  };
 
   const variant = entry.type === 'page'
     ? (() => {
@@ -136,28 +136,31 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     : setTileTitle === undefined
     ? {kind: 'widget' as const}
     : {kind: 'widget' as const, setTileTitle};
-  const context: PluginContext = Object.assign(
-    Object.create(null),
-    {
-      // SDK exposes concrete classes with private fields; runtime facades intentionally contain only
-      // public methods, so cast narrowed facades at this plugin-context boundary.
-      telemetry,
-      events,
-      rciManager: createServiceFacade(rciService.driver, RCI_MANAGER_METHODS) as unknown as PluginContext['rciManager'],
-      storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
-      sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
-      hostInfo: createHostInfoContext(hostInfo, getHostLocale(), getTheme()),
-      deviceInfo: createDeviceInfoContext(deviceInfo),
-      i18n: createPluginI18n(catalogCell, getHostLocale, subscribeHostLocale),
-      instanceId,
-      backend: backendClientFor(entry),
-      onThemeChange: subscribeTheme,
-      getTokens: getPaletteTokens,
-      onPaletteChange: subscribeHostPalette,
-      overlay: service,
-    },
-    variant,
-  );
+  const contextBase = Object.assign(Object.create(null) as Record<string, unknown>, {
+    telemetry,
+    events,
+    rciManager: createServiceFacade(rciService.driver, PLUGIN_RCI_MANAGER_METHODS),
+    storage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:instance:${instanceId}:`),
+    sharedStorage: new ScopedPluginStorage(`${PLUGIN_STORAGE_PREFIX}:${entry.name}:shared:`),
+    deviceInfo: createDeviceInfoContext(deviceInfo),
+    i18n: createPluginI18n(catalogCell, getHostLocale, subscribeHostLocale, lifetime),
+    instanceId,
+    createTicker: () => hostTickerPool.create(lifetime),
+    backend: backendClientFor(entry),
+    overlay: service,
+    ...variant,
+  });
+
+  Object.defineProperties(contextBase, {
+    theme: {enumerable: true, get: getTheme},
+    theme$: {enumerable: true, value: theme$},
+    locale: {enumerable: true, get: getHostLocale},
+    locale$: {enumerable: true, value: locale$},
+    palette: {enumerable: true, get: getPaletteTokens},
+    palette$: {enumerable: true, value: palette$},
+  });
+
+  const context = contextBase as unknown as PluginContext;
 
   return {context: Object.freeze(context), dispose};
 }

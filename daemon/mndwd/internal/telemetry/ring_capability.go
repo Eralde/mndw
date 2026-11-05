@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"path/filepath"
@@ -14,6 +15,10 @@ import (
 	"mndwd/internal/telemetry/system"
 	"mndwd/internal/telemetry/timekeeper"
 )
+
+const disableStopTimeout = 10 * time.Second
+
+var errTelemetryStopping = errors.New("telemetry: previous run is still stopping")
 
 // CapabilityConfig supplies dependencies for ring-backed telemetry.
 type CapabilityConfig struct {
@@ -47,6 +52,7 @@ type Capability struct {
 	engine      *system.Engine
 	runCancel   context.CancelFunc
 	runDone     chan struct{}
+	stopping    chan struct{}
 }
 
 // NewCapability creates a ring-backed capability without touching storage.
@@ -124,6 +130,15 @@ func (c *Capability) Start(ctx context.Context) error {
 }
 
 func (c *Capability) startLocked(ctx context.Context) error {
+	if c.stopping != nil {
+		select {
+		case <-c.stopping:
+			c.stopping = nil
+		default:
+			return errTelemetryStopping
+		}
+	}
+
 	if c.runCancel != nil {
 		return nil
 	}
@@ -281,27 +296,38 @@ func waitContext(ctx context.Context, delay time.Duration) error {
 }
 
 // Close stops gathering and releases the directory lock. Repeated calls are safe.
-func (c *Capability) Close(_ context.Context) error {
+func (c *Capability) Close(ctx context.Context) error {
 	c.mu.Lock()
 
-	defer c.mu.Unlock()
-
 	if c.closed {
+		c.mu.Unlock()
+
 		return nil
 	}
 
 	c.enabled = false
-
-	c.stopLocked()
-
+	done := c.beginStopLocked()
 	c.closed = true
 
 	c.setGathering(false)
 
-	if c.lockRelease != nil {
-		release := c.lockRelease
-		c.lockRelease = nil
+	release := c.lockRelease
 
+	c.mu.Unlock()
+
+	if err := c.waitStopped(ctx, done); err != nil {
+		c.config.Logger.Warn("telemetry stop still in progress", "error", err)
+
+		return fmt.Errorf("telemetry: run did not stop: %w", err)
+	}
+
+	c.mu.Lock()
+
+	c.lockRelease = nil
+
+	c.mu.Unlock()
+
+	if release != nil {
 		return release()
 	}
 
@@ -321,29 +347,36 @@ func (c *Capability) IsEnabled() bool {
 func (c *Capability) SetEnabled(ctx context.Context, enabled bool) error {
 	c.mu.Lock()
 
-	defer c.mu.Unlock()
-
 	if c.closed {
+		c.mu.Unlock()
+
 		return errors.New("telemetry: ring capability is closed")
-	}
-
-	if c.enabled == enabled {
-		if enabled {
-			return c.startLocked(ctx)
-		}
-
-		c.setGathering(false)
-
-		return nil
 	}
 
 	if !enabled {
 		c.enabled = false
+		done := c.beginStopLocked()
 
-		c.stopLocked()
 		c.setGathering(false)
+		c.mu.Unlock()
+
+		stopCtx, cancel := context.WithTimeout(ctx, disableStopTimeout)
+
+		defer cancel()
+
+		if err := c.waitStopped(stopCtx, done); err != nil {
+			c.config.Logger.Warn("telemetry stop still in progress", "error", err)
+		}
 
 		return nil
+	}
+
+	if c.enabled {
+		err := c.startLocked(ctx)
+
+		c.mu.Unlock()
+
+		return err
 	}
 
 	c.enabled = true
@@ -352,9 +385,12 @@ func (c *Capability) SetEnabled(ctx context.Context, enabled bool) error {
 		c.enabled = false
 
 		c.setGathering(false)
+		c.mu.Unlock()
 
 		return err
 	}
+
+	c.mu.Unlock()
 
 	return nil
 }
@@ -362,17 +398,41 @@ func (c *Capability) SetEnabled(ctx context.Context, enabled bool) error {
 // SnapshotCache returns the immutable snapshot cache owned by the capability.
 func (c *Capability) SnapshotCache() *SnapshotCache { return c.cache }
 
-func (c *Capability) stopLocked() {
+func (c *Capability) beginStopLocked() <-chan struct{} {
 	if c.runCancel == nil {
-		return
+		return c.stopping
 	}
 
 	c.runCancel()
-	<-c.runDone
 
+	done := c.runDone
+	c.stopping = done
 	c.runCancel = nil
 	c.runDone = nil
 	c.engine = nil
+
+	return done
+}
+
+func (c *Capability) waitStopped(ctx context.Context, done <-chan struct{}) error {
+	if done == nil {
+		return nil
+	}
+
+	select {
+	case <-done:
+		c.mu.Lock()
+
+		if c.stopping == done {
+			c.stopping = nil
+		}
+
+		c.mu.Unlock()
+
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (c *Capability) publishEmpty(enabled bool) {

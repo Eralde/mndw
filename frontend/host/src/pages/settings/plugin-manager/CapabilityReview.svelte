@@ -1,6 +1,7 @@
 <script lang="ts">
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
+import InstallVersionWarnings from './InstallVersionWarnings.svelte';
 
 interface Props {
   entry: PluginListEntry;
@@ -16,6 +17,8 @@ let permissions = $derived(entry.permissions ?? []);
 </script>
 
 <div class="mndw-cap">
+  <InstallVersionWarnings lock={entry.lock} />
+
   {#if entry.review !== undefined}
     <p class="mndw-cap__kind">
       {

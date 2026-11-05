@@ -34,7 +34,7 @@ export class RciService {
       data: {name: interfaceId, detail, attribute: 'rxspeed'},
     };
 
-    return (this.rci.queue([txQuery, rxQuery]) as Observable<[RrdResponse, RrdResponse]>)
+    return this.rci.queue<RrdResponse>([txQuery, rxQuery])
       .pipe(
         map(([txResponse, rxResponse]) => {
           return {

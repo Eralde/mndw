@@ -1,7 +1,8 @@
 import {readFileSync, statSync} from 'node:fs';
 import {resolve} from 'node:path';
 
-import {type PluginManifestOutput, validateManifest} from '@mndw/sdk';
+import {type PluginManifestOutput, validateManifest} from '@mndw/sdk-internal';
+import {pluginManifestSchema} from '@mndw/sdk-internal/manifest-schema';
 
 import {CliError} from './errors.js';
 import {resolvePluginDir} from './paths.js';
@@ -10,6 +11,18 @@ import {resolveProductionSourceEntry} from './source-entry.js';
 export interface LoadedManifest {
   readonly manifest: PluginManifestOutput;
   readonly path: string;
+  readonly warnings: string[];
+}
+
+const knownManifestKeys = new Set([
+  '$schema',
+  ...pluginManifestSchema.options.flatMap((option) => Object.keys(option.shape)),
+]);
+
+export function unknownManifestKeys(raw: Record<string, unknown>): string[] {
+  return Object.keys(raw)
+    .filter((key) => !knownManifestKeys.has(key))
+    .map((key) => `unknown manifest key "${key}" is ignored`);
 }
 
 export function readManifest(pluginDir: string): LoadedManifest {
@@ -28,9 +41,13 @@ export function readManifest(pluginDir: string): LoadedManifest {
   }
 
   let manifest: PluginManifestOutput;
+  let warnings: string[];
 
   try {
-    manifest = validateManifest(JSON.parse(contents));
+    const raw: unknown = JSON.parse(contents);
+
+    manifest = validateManifest(raw);
+    warnings = unknownManifestKeys(raw as Record<string, unknown>);
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new CliError(`Failed to parse manifest at ${path}: ${error.message}`);
@@ -64,5 +81,5 @@ export function readManifest(pluginDir: string): LoadedManifest {
 
   resolveProductionSourceEntry(resolvedPluginDir);
 
-  return {manifest, path};
+  return {manifest, path, warnings};
 }

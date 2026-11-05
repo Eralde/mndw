@@ -570,7 +570,9 @@ func (e *Engine) poll(ctx context.Context) error {
 	}
 
 	e.keeper.Commit(outcome.State)
+
 	e.lastNTPDecline = ""
+
 	e.cfg.Logger.Info("NTP evidence accepted", "server", outcome.State.Server, "offsetMs", outcome.State.OffsetMs)
 
 	if err := e.transferPending(e.currentPendingPath(), outcome.State.OffsetMs, true); err != nil {

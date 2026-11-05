@@ -1,5 +1,5 @@
 import {SDK_VERSION} from '@mndw/sdk';
-import {sharedDependencyVersions} from '@mndw/sdk/shared-dependencies';
+import {sharedDependencyVersions} from '@mndw/sdk-internal/shared-dependencies';
 
 /** Supported lock schema version — mirrors CLI `lock.ts` `LOCK_VERSION`. */
 export const SUPPORTED_LOCK_VERSION = 1;
@@ -60,21 +60,108 @@ export async function readPluginLock(dir: string, fetchImpl: typeof fetch = fetc
   }
 }
 
-/** Leading integer major of a semver-ish string, or `null` when there is no parseable leading integer. */
-export function majorOf(version: unknown): number | null {
-  if (typeof version !== 'string') {
+/** Parses a numeric version prefix, retaining optional minor information for compatibility warnings. */
+export function parseVersion(raw: string): {major: number; minor: number | null} | null {
+  if (typeof raw !== 'string') {
     return null;
   }
 
-  const match = /^(\d+)(?:\.|$)/.exec(version.trim());
+  const match = /^(\d+)(?:\.(\d+))?(?:[.+-]|$)/.exec(raw.trim());
 
-  return match ? Number(match[1]) : null;
+  if (match === null) {
+    return null;
+  }
+
+  return {
+    major: Number(match[1]),
+    minor: match[2] === undefined ? null : Number(match[2]),
+  };
+}
+
+/** Returns the npm-caret compatibility level for a version, or null when it cannot be parsed. */
+export function compatibilityLevel(raw: string): string | null {
+  const parsed = parseVersion(raw);
+
+  if (parsed === null) {
+    return null;
+  }
+
+  if (parsed.major > 0) {
+    return String(parsed.major);
+  }
+
+  if (parsed.minor === null) {
+    return '0';
+  }
+
+  return `0.${parsed.minor}`;
+}
+
+export type InstallVersionWarningKind = 'sdk-major' | 'sdk-newer-minor' | 'shared-major';
+
+export interface InstallVersionWarning {
+  readonly kind: InstallVersionWarningKind;
+  readonly name: string;
+  readonly pluginVersion: string;
+  readonly hostVersion: string;
+}
+
+/** Collects non-blocking install warnings for SDK and host-provided shared dependency versions. */
+export function getInstallVersionWarnings(
+  lock: HostLock,
+  hostVersions: Record<string, string> = sharedDependencyVersions(),
+  hostSdkVersion: string = SDK_VERSION,
+): InstallVersionWarning[] {
+  const warnings: InstallVersionWarning[] = [];
+  const pluginSdk = parseVersion(lock.sdkVersion);
+  const hostSdk = parseVersion(hostSdkVersion);
+  const pluginSdkLevel = compatibilityLevel(lock.sdkVersion);
+  const hostSdkLevel = compatibilityLevel(hostSdkVersion);
+
+  if (pluginSdk !== null && hostSdk !== null && pluginSdkLevel !== null && hostSdkLevel !== null) {
+    if (pluginSdkLevel !== hostSdkLevel) {
+      warnings.push({
+        kind: 'sdk-major',
+        name: '@mndw/sdk',
+        pluginVersion: lock.sdkVersion,
+        hostVersion: hostSdkVersion,
+      });
+    } else if (
+      pluginSdk.major > 0 && pluginSdk.minor !== null && hostSdk.minor !== null && pluginSdk.minor > hostSdk.minor
+    ) {
+      warnings.push({
+        kind: 'sdk-newer-minor',
+        name: '@mndw/sdk',
+        pluginVersion: lock.sdkVersion,
+        hostVersion: hostSdkVersion,
+      });
+    }
+  }
+
+  for (const [specifier, pluginVersion] of Object.entries(lock.sharedDependencies)) {
+    const hostVersion = hostVersions[specifier];
+
+    if (hostVersion === undefined) {
+      continue;
+    }
+
+    const plugin = parseVersion(pluginVersion);
+    const host = parseVersion(hostVersion);
+    const pluginLevel = compatibilityLevel(pluginVersion);
+    const hostLevel = compatibilityLevel(hostVersion);
+
+    if (plugin !== null && host !== null && pluginLevel !== null && hostLevel !== null && pluginLevel !== hostLevel) {
+      warnings.push({kind: 'shared-major', name: specifier, pluginVersion, hostVersion});
+    }
+  }
+
+  return warnings;
 }
 
 /**
- * Collects non-fatal mismatches when a plugin's locked shared-dependency or SDK majors differ from
- * what the host provides. A comparison is skipped when the host lacks the specifier or either side
- * has no parseable major. The plugin still loads regardless.
+ * Collects non-fatal mismatches when a plugin's compatibility levels differ from what the host
+ * provides. A comparison is skipped when the host lacks the specifier or either side is unparsable.
+ * The plugin still loads regardless.
  */
 export function getPluginVersionMismatches(
   lock: HostLock,
@@ -90,8 +177,8 @@ export function getPluginVersionMismatches(
       continue;
     }
 
-    const a = majorOf(locked);
-    const b = majorOf(host);
+    const a = compatibilityLevel(locked);
+    const b = compatibilityLevel(host);
 
     if (a === null || b === null) {
       continue;
@@ -102,8 +189,8 @@ export function getPluginVersionMismatches(
     }
   }
 
-  const sdkA = majorOf(lock.sdkVersion);
-  const sdkB = majorOf(hostSdkVersion);
+  const sdkA = compatibilityLevel(lock.sdkVersion);
+  const sdkB = compatibilityLevel(hostSdkVersion);
 
   if (sdkA !== null && sdkB !== null && sdkA !== sdkB) {
     mismatches.push(`@mndw/sdk @${sdkA} (host provides @${sdkB})`);

@@ -11,11 +11,11 @@ describe('createTestI18n', () => {
     expect(i18n.direction).toBe('ltr');
   });
 
-  it('accepts nested catalogs and replaces locale/catalog before notifying', () => {
+  it('accepts nested catalogs and replaces locale/catalog before emitting change$', () => {
     const i18n = createTestI18n({message: {hello: 'Hello'}}, 'en');
     let observed = '';
 
-    i18n.onChange(() => {
+    i18n.change$.subscribe(() => {
       observed = `${i18n.locale}:${i18n.t('message.hello')}`;
     });
     i18n.setLocale('ru', {message: {hello: 'Привет'}});
@@ -24,15 +24,15 @@ describe('createTestI18n', () => {
     expect(i18n.t('message.hello')).toBe('Привет');
   });
 
-  it('notifies subscribers synchronously and supports teardown', () => {
+  it('emits synchronously and supports subscription teardown', () => {
     const i18n = createTestI18n({message: 'Hello'});
     const callback = vi.fn();
-    const unsubscribe = i18n.onChange(callback);
+    const subscription = i18n.change$.subscribe(callback);
 
     i18n.setLocale('ru', {message: 'Привет'});
     expect(callback).toHaveBeenCalledTimes(1);
 
-    unsubscribe();
+    subscription.unsubscribe();
     i18n.setLocale('en', {message: 'Hello again'});
     expect(callback).toHaveBeenCalledTimes(1);
   });

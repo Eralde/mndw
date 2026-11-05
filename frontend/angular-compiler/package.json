@@ -8,6 +8,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./vite": {
+      "types": "./src/vite.ts",
+      "default": "./src/vite.ts"
     }
   },
   "scripts": {
@@ -25,8 +29,12 @@
     "sass": "^1.77.0",
     "typescript": "^5.7.0"
   },
+  "peerDependencies": {
+    "vite": "^6.4.3"
+  },
   "devDependencies": {
     "@types/node": "22.19.15",
+    "vite": "^6.4.3",
     "vitest": "^3.2.7"
   }
 }

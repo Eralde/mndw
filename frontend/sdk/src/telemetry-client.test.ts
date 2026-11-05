@@ -1,28 +1,5 @@
 import {describe, expect, it, vi} from 'vitest';
-import {
-  type TelemetryClock,
-  TelemetryError,
-  createTelemetryClient,
-  decodeRawSnapshot,
-  historyStatus,
-} from './telemetry-client.js';
-
-const decodeRawSnapshotForTest = decodeRawSnapshot;
-
-const validBody = {
-  keys: {
-    cpu: {
-      label: 'CPU',
-      supported: true,
-      unit: 'percent',
-      tiers: {
-        fine: {stepMs: 180000, samples: [{ts: 1, min: null, max: null, mean: null, ok: false}]},
-        coarse: {stepMs: 3600000, samples: []},
-      },
-    },
-  },
-  gathering: {enabled: false},
-};
+import {type TelemetryClock, TelemetryError, createTelemetryClient, historyStatus} from './telemetry-client.js';
 
 const validProjectedBody = {
   keys: {
@@ -40,54 +17,8 @@ const validProjectedBody = {
 };
 
 describe('createTelemetryClient', () => {
-  it('exposes only snapshot fetchers', () => {
-    expect(Object.keys(createTelemetryClient(vi.fn())).sort()).toEqual(['fetchAll', 'fetchProjected']);
-  });
-
-  it('decodes nullable values and forwards abort signal', async () => {
-    const controller = new AbortController();
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(validBody), {status: 200}));
-    const snapshot = await createTelemetryClient(fetchImpl).fetchAll({signal: controller.signal});
-
-    expect(snapshot.keys.cpu.tiers.fine.samples[0]?.mean).toBeNull();
-    expect(fetchImpl).toHaveBeenCalledWith(
-      '/api/mndw/telemetry',
-      expect.objectContaining({
-        cache: 'no-store',
-        signal: controller.signal,
-      }),
-    );
-  });
-
-  it('rejects malformed values and HTTP errors', async () => {
-    const malformed = structuredClone(validBody);
-
-    malformed.keys.cpu.tiers.fine.samples[0].min = '0' as never;
-    await expect(
-      createTelemetryClient(
-        vi.fn().mockResolvedValue(
-          new Response(JSON.stringify(malformed), {status: 200}),
-        ),
-      ).fetchAll(),
-    ).rejects.toBeInstanceOf(TelemetryError);
-
-    const invalidSupport = structuredClone(validBody);
-
-    invalidSupport.keys.cpu.supported = 'yes' as never;
-    await expect(
-      createTelemetryClient(
-        vi.fn().mockResolvedValue(
-          new Response(JSON.stringify(invalidSupport), {status: 200}),
-        ),
-      ).fetchAll(),
-    ).rejects.toBeInstanceOf(TelemetryError);
-    await expect(
-      createTelemetryClient(
-        vi.fn().mockResolvedValue(
-          new Response('', {status: 503}),
-        ),
-      ).fetchAll(),
-    ).rejects.toMatchObject({status: 503});
+  it('exposes only fetchProjected', () => {
+    expect(Object.keys(createTelemetryClient(vi.fn()))).toEqual(['fetchProjected']);
   });
 
   describe('fetchProjected', () => {
@@ -155,58 +86,6 @@ describe('createTelemetryClient', () => {
   });
 });
 
-const clockFixture = {
-  state: 'anchored',
-  historyEndMs: 1800000000000,
-  historyCurrent: true,
-  replayPending: false,
-};
-
-it('decodes optional clock metadata when present', () => {
-  const snapshot = decodeRawSnapshotForTest({
-    keys: {},
-    gathering: {enabled: true},
-    clock: clockFixture,
-  });
-
-  expect(snapshot.clock).toEqual(clockFixture);
-});
-
-it('accepts snapshots without clock metadata', () => {
-  const snapshot = decodeRawSnapshotForTest({keys: {}, gathering: {enabled: true}});
-
-  expect(snapshot.clock).toBeUndefined();
-});
-
-it('decodes sessionConfigured from raw snapshot', () => {
-  const withTrue = decodeRawSnapshotForTest({keys: {}, gathering: {enabled: true}, sessionConfigured: true});
-
-  expect(withTrue.sessionConfigured).toBe(true);
-
-  const withFalse = decodeRawSnapshotForTest({keys: {}, gathering: {enabled: true}, sessionConfigured: false});
-
-  expect(withFalse.sessionConfigured).toBe(false);
-
-  const withoutField = decodeRawSnapshotForTest({keys: {}, gathering: {enabled: true}});
-
-  expect(withoutField.sessionConfigured).toBe(false);
-});
-
-it('rejects invalid clock metadata', () => {
-  const invalid: readonly Record<string, unknown>[] = [
-    {...clockFixture, state: 'unknown'},
-    {...clockFixture, historyEndMs: -1},
-    {...clockFixture, historyEndMs: 1.5},
-    {...clockFixture, historyCurrent: 'yes'},
-    {...clockFixture, replayPending: 0},
-    {...clockFixture, historyEndMs: null, historyCurrent: true},
-  ];
-
-  for (const clock of invalid) {
-    expect(() => decodeRawSnapshotForTest({keys: {}, gathering: {enabled: true}, clock})).toThrow();
-  }
-});
-
 it('does not wrap aborts that happen while decoding the response body', async () => {
   const abortError = new Error('aborted');
 
@@ -220,7 +99,7 @@ it('does not wrap aborts that happen while decoding the response body', async ()
   const fetchImpl = vi.fn().mockResolvedValue(response);
   const client = createTelemetryClient(fetchImpl as unknown as typeof globalThis.fetch);
 
-  await expect(client.fetchAll()).rejects.toBe(abortError);
+  await expect(client.fetchProjected('7d')).rejects.toBe(abortError);
 });
 
 const anchoredClock: TelemetryClock = {

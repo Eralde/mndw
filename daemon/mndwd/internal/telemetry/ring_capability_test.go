@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -580,5 +581,321 @@ func seedRingForCapability(t *testing.T, fsys ring.FS, path string, schema ring.
 
 	if err := fsys.SyncDir(filepath.Dir(path)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCloseReturnsWhenRunIgnoresCancellation(t *testing.T) {
+	fixture := newHungCapabilityFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
+	defer cancel()
+
+	result := make(chan error, 1)
+
+	go func() {
+		result <- fixture.capability.Close(ctx)
+	}()
+
+	err, returned := receiveStopResult(result, time.Second)
+
+	if !returned {
+		fixture.release()
+		fixture.waitForRun(t)
+		<-result
+		t.Fatal("Close() did not return after its context expired")
+	}
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Close() error = %v, want context.DeadlineExceeded", err)
+	}
+
+	if got := fixture.lockReleases.Load(); got != 0 {
+		t.Fatalf("lock releases = %d after timed-out Close(), want 0", got)
+	}
+
+	fixture.release()
+	fixture.waitForRun(t)
+}
+
+func TestSetEnabledFalseDoesNotBlockIsEnabled(t *testing.T) {
+	fixture := newHungCapabilityFixture(t)
+	result := make(chan error, 1)
+	started := make(chan struct{})
+
+	go func() {
+		close(started)
+
+		result <- fixture.capability.SetEnabled(context.Background(), false)
+	}()
+
+	<-started
+
+	probe := make(chan bool, 1)
+
+	go func() {
+		deadline := time.Now().Add(200 * time.Millisecond)
+
+		for time.Now().Before(deadline) {
+			if !fixture.capability.IsEnabled() {
+				probe <- true
+
+				return
+			}
+
+			time.Sleep(time.Millisecond)
+		}
+
+		probe <- false
+	}()
+
+	select {
+	case disabled := <-probe:
+		if !disabled {
+			fixture.release()
+			fixture.waitForRun(t)
+			<-result
+			t.Fatal("IsEnabled() did not report false while disable was waiting")
+		}
+	case <-time.After(200 * time.Millisecond):
+		fixture.release()
+		fixture.waitForRun(t)
+		<-result
+		t.Fatal("IsEnabled() blocked while disable was waiting")
+	}
+
+	select {
+	case err := <-result:
+		t.Fatalf("SetEnabled(false) returned before the run stopped: %v", err)
+	default:
+	}
+
+	fixture.release()
+	fixture.waitForRun(t)
+
+	if err := <-result; err != nil {
+		t.Fatalf("SetEnabled(false) error after run stopped = %v", err)
+	}
+}
+
+func TestSetEnabledFalseTimesOutAndAcceptsDisable(t *testing.T) {
+	fixture := newHungCapabilityFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
+	defer cancel()
+
+	result := make(chan error, 1)
+
+	go func() {
+		result <- fixture.capability.SetEnabled(ctx, false)
+	}()
+
+	err, returned := receiveStopResult(result, time.Second)
+
+	if !returned {
+		fixture.release()
+		fixture.waitForRun(t)
+		<-result
+		t.Fatal("SetEnabled(false) did not return after its context expired")
+	}
+
+	if err != nil {
+		t.Fatalf("SetEnabled(false) error = %v, want nil after timeout", err)
+	}
+
+	if fixture.capability.IsEnabled() {
+		t.Fatal("IsEnabled() = true after timed-out disable")
+	}
+
+	select {
+	case <-fixture.done:
+		t.Fatal("run stopped before the test released WaitUntil")
+	default:
+	}
+
+	fixture.release()
+	fixture.waitForRun(t)
+}
+
+func TestSetEnabledTrueRefusedWhileStopping(t *testing.T) {
+	fixture := newHungCapabilityFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
+	defer cancel()
+
+	result := make(chan error, 1)
+
+	go func() {
+		result <- fixture.capability.SetEnabled(ctx, false)
+	}()
+
+	if err, returned := receiveStopResult(result, time.Second); !returned || err != nil {
+		fixture.release()
+		fixture.waitForRun(t)
+
+		if !returned {
+			<-result
+		}
+
+		t.Fatalf("SetEnabled(false) = %v, returned=%t; want nil before run exits", err, returned)
+	}
+
+	if err := fixture.capability.SetEnabled(context.Background(), true); !errors.Is(err, errTelemetryStopping) {
+		t.Fatalf("SetEnabled(true) while stopping error = %v, want errTelemetryStopping", err)
+	}
+
+	if fixture.capability.IsEnabled() {
+		t.Fatal("IsEnabled() = true after refusing enable while stopping")
+	}
+
+	fixture.release()
+	fixture.waitForRun(t)
+
+	if err := fixture.capability.SetEnabled(context.Background(), true); err != nil {
+		t.Fatalf("SetEnabled(true) after run stopped error = %v, want nil", err)
+	}
+}
+
+func TestCloseAfterTimedOutDisableDoesNotHang(t *testing.T) {
+	fixture := newHungCapabilityFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
+	defer cancel()
+
+	disabled := make(chan error, 1)
+
+	go func() {
+		disabled <- fixture.capability.SetEnabled(ctx, false)
+	}()
+
+	if err, returned := receiveStopResult(disabled, time.Second); !returned || err != nil {
+		fixture.release()
+		fixture.waitForRun(t)
+
+		if !returned {
+			<-disabled
+		}
+
+		t.Fatalf("SetEnabled(false) = %v, returned=%t; want nil before run exits", err, returned)
+	}
+
+	closeCtx, closeCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+
+	defer closeCancel()
+
+	closed := make(chan error, 1)
+
+	go func() {
+		closed <- fixture.capability.Close(closeCtx)
+	}()
+
+	err, returned := receiveStopResult(closed, time.Second)
+
+	if !returned {
+		fixture.release()
+		fixture.waitForRun(t)
+		<-closed
+		t.Fatal("Close() after timed-out disable did not return after its context expired")
+	}
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Close() error = %v, want context.DeadlineExceeded", err)
+	}
+
+	if got := fixture.lockReleases.Load(); got != 0 {
+		t.Fatalf("lock releases = %d after timed-out Close(), want 0", got)
+	}
+
+	fixture.release()
+	fixture.waitForRun(t)
+}
+
+type hungCapabilityFixture struct {
+	capability   *Capability
+	done         <-chan struct{}
+	entered      chan struct{}
+	releaseChan  chan struct{}
+	releaseOnce  sync.Once
+	lockReleases atomic.Int32
+}
+
+func newHungCapabilityFixture(t *testing.T) *hungCapabilityFixture {
+	t.Helper()
+
+	fixture := &hungCapabilityFixture{
+		releaseChan: make(chan struct{}),
+		entered:     make(chan struct{}),
+	}
+	var enteredOnce sync.Once
+	capability := newCapabilityForTest(t, CapabilityConfig{
+		RRDDir:         "data",
+		FS:             ringtest.NewMemFS(),
+		Clock:          &capabilityClock{bootID: [16]byte{1}},
+		DesiredEnabled: func() bool { return true },
+		CheckFS:        func(string) error { return nil },
+		Lock: func(string) (func() error, error) {
+			return func() error {
+				fixture.lockReleases.Add(1)
+
+				return nil
+			}, nil
+		},
+		WaitUntil: func(context.Context, int64) error {
+			enteredOnce.Do(func() { close(fixture.entered) })
+			<-fixture.releaseChan
+
+			return context.Canceled
+		},
+	})
+
+	if err := capability.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+
+	capability.mu.Lock()
+
+	fixture.done = capability.runDone
+
+	capability.mu.Unlock()
+
+	fixture.capability = capability
+
+	t.Cleanup(func() {
+		fixture.release()
+		fixture.waitForRun(t)
+
+		if err := capability.Close(context.Background()); err != nil {
+			t.Errorf("cleanup Close() error = %v", err)
+		}
+	})
+
+	select {
+	case <-fixture.entered:
+	case <-time.After(time.Second):
+		t.Fatal("run did not enter the cancellation-ignoring WaitUntil")
+	}
+
+	return fixture
+}
+
+func (fixture *hungCapabilityFixture) release() {
+	fixture.releaseOnce.Do(func() { close(fixture.releaseChan) })
+}
+
+func (fixture *hungCapabilityFixture) waitForRun(t *testing.T) {
+	t.Helper()
+
+	select {
+	case <-fixture.done:
+	case <-time.After(time.Second):
+		t.Fatal("telemetry run did not stop after release")
+	}
+}
+
+func receiveStopResult(result <-chan error, timeout time.Duration) (error, bool) {
+	select {
+	case err := <-result:
+		return err, true
+	case <-time.After(timeout):
+		return nil, false
 	}
 }

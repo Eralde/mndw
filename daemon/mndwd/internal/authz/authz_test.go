@@ -1,14 +1,19 @@
 package authz
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"mndwd/internal/httpx"
 )
 
 // fakeDevice accepts the cookie "session=valid" and rejects everything else,
@@ -276,5 +281,393 @@ func TestDeviceUnreachableFailsClosed(t *testing.T) {
 
 	if err := v.Authenticate(req("session=valid")); err == nil {
 		t.Fatalf("expected failure when device is unreachable")
+	}
+}
+
+func TestCacheIsBounded(t *testing.T) {
+	device := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+
+	t.Cleanup(device.Close)
+
+	v := New(device.URL, false, discardLogger(), Options{MaxEntries: 16})
+
+	for i := range 200 {
+		if err := v.Authenticate(req(fmt.Sprintf("session=%d", i))); err == nil {
+			t.Fatalf("cookie %d was authenticated, want rejection", i)
+		}
+	}
+
+	v.mu.Lock()
+
+	defer v.mu.Unlock()
+
+	if got := len(v.cache); got > 16 {
+		t.Fatalf("cache contains %d entries, want at most 16", got)
+	}
+}
+
+func TestAuthenticatePositiveVerdictSurvivesInvalidCookieFlood(t *testing.T) {
+	var calls atomic.Int64
+	device := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+
+		if r.Header.Get("Cookie") == "good=1" {
+			w.WriteHeader(http.StatusOK)
+
+			return
+		}
+
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+
+	t.Cleanup(device.Close)
+
+	now := time.Unix(1_000_000, 0)
+	v := New(device.URL, false, discardLogger(), Options{
+		MaxEntries: 16,
+		Now:        func() time.Time { return now },
+	})
+
+	if err := v.Authenticate(req("good=1")); err != nil {
+		t.Fatalf("initial good cookie = %v, want nil", err)
+	}
+
+	for i := range 200 {
+		if err := v.Authenticate(req(fmt.Sprintf("bad=%d", i))); err == nil {
+			t.Fatalf("invalid cookie %d was authenticated, want rejection", i)
+		}
+	}
+
+	calls.Store(0)
+
+	if err := v.Authenticate(req("good=1")); err != nil {
+		t.Fatalf("good cookie after invalid flood = %v, want nil", err)
+	}
+
+	if got := calls.Load(); got != 0 {
+		t.Fatalf("device saw %d calls after cached good cookie, want 0", got)
+	}
+}
+
+func TestAuthenticateCoalescesConcurrentChecks(t *testing.T) {
+	var calls atomic.Int64
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	device := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			close(entered)
+		}
+
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		device.Close()
+	})
+
+	v := New(device.URL, false, discardLogger(), Options{})
+	results := make(chan *httpx.APIError, 10)
+
+	for range 10 {
+		go func() {
+			results <- v.Authenticate(req("same=1"))
+		}()
+	}
+
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("device did not receive the first auth request")
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	releaseOnce.Do(func() { close(release) })
+
+	for range 10 {
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Errorf("Authenticate() = %v, want nil", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("coalesced Authenticate calls did not finish")
+		}
+	}
+
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("device saw %d calls for concurrent same-cookie checks, want 1", got)
+	}
+
+	if err := v.Authenticate(req("same=1")); err != nil {
+		t.Fatalf("sequential Authenticate() = %v, want nil", err)
+	}
+
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("device saw %d calls after cached sequential check, want 1", got)
+	}
+}
+
+func TestAuthenticateLimitsConcurrentUpstreamChecks(t *testing.T) {
+	var current atomic.Int64
+	var peak atomic.Int64
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	device := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		active := current.Add(1)
+
+		for {
+			previous := peak.Load()
+
+			if active <= previous || peak.CompareAndSwap(previous, active) {
+				break
+			}
+		}
+
+		defer current.Add(-1)
+
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		device.Close()
+	})
+
+	v := New(device.URL, false, discardLogger(), Options{MaxConcurrentChecks: 4})
+	results := make(chan *httpx.APIError, 20)
+
+	for i := range 20 {
+		go func(i int) {
+			results <- v.Authenticate(req(fmt.Sprintf("session=%d", i)))
+		}(i)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	releaseOnce.Do(func() { close(release) })
+
+	for range 20 {
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Errorf("Authenticate() = %v, want nil", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("limited Authenticate calls did not finish")
+		}
+	}
+
+	if got := peak.Load(); got > 4 {
+		t.Fatalf("peak concurrent device calls = %d, want at most 4", got)
+	}
+}
+
+func TestAuthenticateLeaderCancellationDoesNotFailFollowers(t *testing.T) {
+	var calls atomic.Int64
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	device := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			close(entered)
+		}
+
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		device.Close()
+	})
+
+	v := New(device.URL, false, discardLogger(), Options{})
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	leaderResult := make(chan *httpx.APIError, 1)
+
+	go func() {
+		leaderResult <- v.Authenticate(req("same=1").WithContext(leaderCtx))
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("leader did not reach the device")
+	}
+
+	followerResults := make(chan *httpx.APIError, 3)
+
+	for range 3 {
+		go func() {
+			followerResults <- v.Authenticate(req("same=1"))
+		}()
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	cancelLeader()
+	releaseOnce.Do(func() { close(release) })
+
+	for range 3 {
+		select {
+		case err := <-followerResults:
+			if err != nil {
+				t.Errorf("follower Authenticate() = %v, want nil", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("followers did not finish")
+		}
+	}
+
+	<-leaderResult
+
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("device saw %d calls for leader and followers, want 1 shared check", got)
+	}
+}
+
+func TestAuthenticateFollowerCancellationReturnsPromptly(t *testing.T) {
+	var calls atomic.Int64
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	device := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+
+		entered <- struct{}{}
+
+		<-release
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		device.Close()
+	})
+
+	v := New(device.URL, false, discardLogger(), Options{})
+	leaderResult := make(chan *httpx.APIError, 1)
+
+	go func() {
+		leaderResult <- v.Authenticate(req("same=1"))
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("leader did not reach the device")
+	}
+
+	followerCtx, cancelFollower := context.WithCancel(context.Background())
+	followerResult := make(chan *httpx.APIError, 1)
+
+	go func() {
+		followerResult <- v.Authenticate(req("same=1").WithContext(followerCtx))
+	}()
+
+	time.AfterFunc(50*time.Millisecond, cancelFollower)
+
+	started := time.Now()
+
+	select {
+	case err := <-followerResult:
+		if err == nil || err.Status != http.StatusUnauthorized {
+			t.Fatalf("follower Authenticate() = %v, want 401", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("cancelled follower did not return within 500ms")
+	}
+
+	if elapsed := time.Since(started); elapsed >= 500*time.Millisecond {
+		t.Fatalf("cancelled follower returned after %s, want under 500ms", elapsed)
+	}
+
+	select {
+	case <-release:
+		t.Fatal("device was released before follower returned")
+	default:
+	}
+
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("device saw %d calls while follower was cancelled, want 1 shared check", got)
+	}
+
+	releaseOnce.Do(func() { close(release) })
+	<-leaderResult
+}
+
+func TestAuthenticateSemaphoreTimeoutIsNotCached(t *testing.T) {
+	var calls atomic.Int64
+	firstEntered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	device := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+
+		if r.Header.Get("Cookie") == "first=1" {
+			close(firstEntered)
+			<-release
+			w.WriteHeader(http.StatusOK)
+
+			return
+		}
+
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		device.Close()
+	})
+
+	v := New(device.URL, false, discardLogger(), Options{MaxConcurrentChecks: 1})
+	v.checkTimeout = time.Second
+	firstResult := make(chan *httpx.APIError, 1)
+
+	go func() {
+		firstResult <- v.Authenticate(req("first=1"))
+	}()
+
+	select {
+	case <-firstEntered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first request did not reach the device")
+	}
+
+	v.checkTimeout = 100 * time.Millisecond
+	started := time.Now()
+	err := v.Authenticate(req("second=1"))
+	if err == nil || err.Status != http.StatusUnauthorized {
+		t.Fatalf("second Authenticate() = %v, want 401", err)
+	}
+
+	if elapsed := time.Since(started); elapsed < 80*time.Millisecond || elapsed >= time.Second {
+		t.Fatalf("second Authenticate() returned after %s, want roughly 100ms", elapsed)
+	}
+
+	key := hashKey("second=1")
+
+	v.mu.Lock()
+
+	_, cached := v.cache[key]
+
+	v.mu.Unlock()
+
+	if cached {
+		t.Fatal("semaphore timeout was cached, want no cache entry")
+	}
+
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("device saw %d calls, want only first request", got)
+	}
+
+	releaseOnce.Do(func() { close(release) })
+
+	if err := <-firstResult; err != nil {
+		t.Fatalf("first Authenticate() = %v, want nil", err)
 	}
 }

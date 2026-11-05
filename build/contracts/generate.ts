@@ -3,10 +3,13 @@ import {execFileSync} from 'node:child_process';
 import {dirname, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-import {createManifestSchemaDocument} from '../../frontend/sdk/scripts/manifest-schema-document.js';
-import {EVENT_PERMISSION_PATTERN, createEventSchemaDocument} from '../../frontend/sdk/src/event-schema.js';
-import {PERSISTENT_RCI_PERMISSIONS} from '../../frontend/sdk/src/permissions.js';
-import {createMwsMemberSchemaDocument} from '../../frontend/sdk/src/mws-member-schema.js';
+import {
+  EVENT_PERMISSION_PATTERN,
+  PERSISTENT_RCI_PERMISSIONS,
+  createEventSchemaDocument,
+  createManifestSchemaDocument,
+  createMwsMemberSchemaDocument,
+} from '@mndw/sdk-internal';
 import {PALETTE_CONTRAST_PAIRS, PALETTE_CSS_VARIABLES, buildPalette} from '../../tooling/palette-core/src/index.js';
 import {renderCss, renderTs} from '../../build/palette/scripts/gen-tokens.js';
 import {SCALE} from '../../build/palette/src/scale.js';

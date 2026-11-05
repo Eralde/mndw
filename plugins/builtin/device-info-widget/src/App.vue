@@ -3,7 +3,6 @@ import {computed, onMounted, onUnmounted, ref} from 'vue';
 import {historyStatus} from '@mndw/sdk';
 import type {LoadState, PluginContext, ProjectedSeries, ProjectedSnapshot} from '@mndw/sdk';
 import {useTranslator} from '@mndw/sdk/vue';
-import {Ticker} from '@mndw/sdk/ticker';
 import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 import CopyField from './components/CopyField.vue';
 import LoadBarChart from './components/LoadBarChart.vue';
@@ -61,8 +60,8 @@ const SECTION_STORAGE_KEYS = {
 const dirtySections = new Set<string>();
 
 let baseline: UptimeBaseline | null = null;
-let ticker: Ticker | null = null;
-let unsubscribeTicker: (() => void) | null = null;
+let ticker: ReturnType<PluginContext['createTicker']> | null = null;
+let tickerSubscription: {unsubscribe(): void} | null = null;
 let refreshLoop: RefreshLoop | null = null;
 let projectedRefreshLoop: RefreshLoop | null = null;
 let projectedAbortController: AbortController | null = null;
@@ -273,9 +272,8 @@ const openSettings = (): void => {
 
 onMounted(() => {
   mounted = true;
-  ticker = new Ticker();
-
-  unsubscribeTicker = ticker.onTick(() => {
+  ticker = props.ctx.createTicker();
+  tickerSubscription = ticker.tick$.subscribe(() => {
     uptimeSeconds.value = getUptimeSeconds(baseline, Date.now());
   });
 
@@ -303,8 +301,8 @@ onUnmounted(() => {
   refreshLoop?.stop();
   refreshLoop = null;
   stopProjectedLoop();
-  unsubscribeTicker?.();
-  unsubscribeTicker = null;
+  tickerSubscription?.unsubscribe();
+  tickerSubscription = null;
   ticker?.destroy();
   ticker = null;
 });

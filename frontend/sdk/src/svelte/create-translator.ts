@@ -15,5 +15,9 @@ function snapshot(i18n: PluginI18n): Translator {
 }
 
 export function createTranslator(i18n: PluginI18n): Readable<Translator> {
-  return readable(snapshot(i18n), (set) => i18n.onChange(() => set(snapshot(i18n))));
+  return readable(snapshot(i18n), (set) => {
+    const subscription = i18n.change$.subscribe(() => set(snapshot(i18n)));
+
+    return () => subscription.unsubscribe();
+  });
 }

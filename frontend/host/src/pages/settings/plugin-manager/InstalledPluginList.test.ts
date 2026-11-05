@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import {defineMndwUi} from '@mndw/ui';
-import type {PluginPermission} from '@mndw/sdk';
+import type {PluginPermission} from '@mndw/sdk-internal';
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 

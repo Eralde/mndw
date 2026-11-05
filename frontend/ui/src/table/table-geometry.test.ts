@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {defineComponents} from '../testing/index.js';
 import {MNDW_TABLE_TAG, MndwTable} from './table.js';

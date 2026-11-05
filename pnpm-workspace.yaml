@@ -5,6 +5,11 @@ packages:
   - "plugins/builtin/*"
   - "plugins/examples/*"
   - "build/*"
+  - "build/npm/mndwd/*"
+catalog:
+  '@rci-tools/core': 0.6.0
+  '@sveltejs/package': ^2.5.8
+  ng-packagr: ^21.2.7
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - dprint

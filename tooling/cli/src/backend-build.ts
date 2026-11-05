@@ -6,6 +6,7 @@ import {isAbsolute, relative, resolve} from 'node:path';
 import {type BackendBuildResult, parseBackendArtifact} from './backend-artifact.js';
 import {CliError} from './errors.js';
 import {type ProductTarget, isProductTarget} from './go-target.js';
+import {detectPackageManager} from './package-manager.js';
 
 export type {BackendArtifact, BackendBuildResult} from './backend-artifact.js';
 
@@ -111,7 +112,8 @@ export function buildBackend(options: BackendBuildOptions): BackendBuildResult |
 
   const outDir = resolve(options.outDir);
   const spawn = options.spawn ?? ((command, args, spawnOptions) => crossSpawn.sync(command, args, spawnOptions));
-  const result = spawn('pnpm', [
+  const packageManager = detectPackageManager({cwd: options.pluginDir});
+  const result = spawn(packageManager, [
     'run',
     script,
     '--',

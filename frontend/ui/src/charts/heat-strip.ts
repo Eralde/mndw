@@ -114,7 +114,7 @@ export class MndwHeatStrip extends LitElement {
     .plot {
       position: relative;
       width: 100%;
-      height: var(--mndw-heat-strip-height, 1rem);
+      height: var(--mndw-heat-strip-height);
     }
 
     svg {
@@ -132,7 +132,7 @@ export class MndwHeatStrip extends LitElement {
 
     .empty {
       display: grid;
-      height: var(--mndw-heat-strip-height, 1rem);
+      height: var(--mndw-heat-strip-height);
       place-items: center;
       border: 1px solid var(--mndw-border);
       border-radius: var(--mndw-radius-sm);

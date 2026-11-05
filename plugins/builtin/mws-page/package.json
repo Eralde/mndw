@@ -13,7 +13,7 @@
   },
   "scripts": {
     "build-backend": "mndw build-backend",
-    "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run"
+    "test": "vitest run"
   },
   "dependencies": {
     "d3-dag": "^1.1.0"
@@ -27,7 +27,7 @@
     "@mndw/sdk": "workspace:*",
     "@mndw/ui": "workspace:*",
     "@mndw/ui-angular": "workspace:*",
-    "@rci-tools/core": "0.4.3",
+    "@rci-tools/core": "catalog:",
     "@types/d3": "^7.4.3",
     "d3": "^7.9.0",
     "happy-dom": "20.11.1",

@@ -27,15 +27,13 @@ function pendingModule(): PendingModule {
   return {received: false, value: undefined};
 }
 
-export function setupSandboxHmr(
-  services: HostServices,
-  hot: NonNullable<ImportMeta['hot']> | undefined = import.meta.hot,
-  imports: SandboxImports = sandboxVirtualImports,
-): void {
-  if (hot === undefined) {
-    return;
-  }
+export interface SandboxReloadScheduler {
+  plugin(module: unknown): void;
+  manifest(module: unknown): void;
+}
 
+/** Batches plugin and manifest updates into the existing transactional reload path. */
+export function scheduleSandboxReload(services: HostServices, imports: SandboxImports): SandboxReloadScheduler {
   let pendingPlugin = pendingModule();
   let pendingManifest = pendingModule();
   let reloadScheduled = false;
@@ -87,12 +85,33 @@ export function setupSandboxHmr(
     });
   };
 
+  return {
+    plugin: (module) => {
+      pendingPlugin = {received: true, value: module};
+      scheduleReload();
+    },
+    manifest: (module) => {
+      pendingManifest = {received: true, value: module};
+      scheduleReload();
+    },
+  };
+}
+
+export function setupSandboxHmr(
+  services: HostServices,
+  hot: NonNullable<ImportMeta['hot']> | undefined = import.meta.hot,
+  imports: SandboxImports = sandboxVirtualImports,
+): void {
+  if (hot === undefined) {
+    return;
+  }
+
+  const updates = scheduleSandboxReload(services, imports);
+
   hot.accept('virtual:sandbox-plugin', (module) => {
-    pendingPlugin = {received: true, value: module};
-    scheduleReload();
+    updates.plugin(module);
   });
   hot.accept('virtual:sandbox-manifest', (module) => {
-    pendingManifest = {received: true, value: module};
-    scheduleReload();
+    updates.manifest(module);
   });
 }

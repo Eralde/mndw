@@ -1,0 +1,88 @@
+name: CI TS
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '**'
+      - '!**/*.go'
+      - '!**/go.mod'
+      - '!**/go.sum'
+      - '!go.work'
+      - '!go.work.sum'
+      - '!docs/**'
+      - '!**/*.md'
+      - 'daemon/contracts-go/**'
+      - '.github/workflows/ci-ts.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-ts-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  ts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      MNDW_SKIP_SLOW_TESTS: '1'
+      MNDW_SKIP_PACKED_SMOKE: '1'
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: '**/go.sum'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Select test scope
+        id: scope
+        run: node --import tsx build/scripts/ci-test-scope.ts
+
+      - name: Generate icons
+        run: pnpm --filter @mndw/ui generate-icons
+
+      - name: Test workspace packages
+        env:
+          SCOPE: ${{ steps.scope.outputs.scope }}
+        run: |
+          set --
+          [ "$SCOPE" = affected ] && set -- --filter '...[HEAD~1]'
+          pnpm -r "$@" --workspace-concurrency=2 --no-bail --if-present test
+
+      - name: Test build scripts
+        run: pnpm test:build
+
+      - name: Test pixel audit
+        run: pnpm test:px-audit
+
+      - name: Test npm packaging
+        run: pnpm test:npm
+
+      - name: Test documentation
+        run: pnpm test:docs
+
+      - name: Check host
+        run: pnpm --filter @mndw/host check

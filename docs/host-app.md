@@ -73,10 +73,11 @@ Each plugin instance receives a context containing:
 
 - the RCI manager shared by the host;
 - per-instance `storage` and per-plugin `sharedStorage`;
-- UI locale and theme in `hostInfo`;
+- live UI locale and theme getters plus `locale$` and `theme$` streams;
 - device identity, firmware capabilities, switchport inventory/layout, and USB version per physical port in `deviceInfo`;
 - a unique `instanceId`;
-- theme-change subscription;
+- current applied palette plus its `palette$` stream;
+- optional permission-gated event streams and the host-managed ticker;
 - the framework-neutral overlay service;
 - an optional typed backend client.
 

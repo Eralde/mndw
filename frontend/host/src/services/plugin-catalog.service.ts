@@ -1,6 +1,8 @@
-import type {PluginI18n, PluginManifestI18n} from '@mndw/sdk';
-import {type PluginCatalog, parseCatalog} from '@mndw/sdk/catalog';
-import {formatMessage, normalizeFormatterLocale} from '@mndw/sdk/i18n-format';
+import {type PluginLifetime, hostSignal$} from '../runtime/plugin-lifetime.js';
+import type {PluginI18n} from '@mndw/sdk';
+import type {PluginManifestI18n} from '@mndw/sdk-internal';
+import {type PluginCatalog, parseCatalog} from '@mndw/sdk-internal/catalog';
+import {formatMessage, normalizeFormatterLocale} from '@mndw/sdk-internal/i18n-format';
 
 export type {PluginCatalog};
 export type PluginCatalogFallbackStatus = 'primary' | 'default' | 'key';
@@ -433,6 +435,7 @@ export function createPluginI18n(
   cell: PluginCatalogCell | undefined,
   getHostLocale: () => string,
   subscribeHostLocale: (callback: () => void) => () => void,
+  lifetime: PluginLifetime,
 ): PluginI18n {
   const facade: PluginI18n = {
     get locale(): string {
@@ -444,9 +447,7 @@ export function createPluginI18n(
       new Intl.NumberFormat(normalizeFormatterLocale(getHostLocale()), options).format(value),
     formatDate: (value, options) =>
       new Intl.DateTimeFormat(normalizeFormatterLocale(getHostLocale()), options).format(value),
-    onChange: (callback) => {
-      return cell?.subscribe(callback) ?? subscribeHostLocale(callback);
-    },
+    change$: hostSignal$(cell?.subscribe.bind(cell) ?? subscribeHostLocale, lifetime),
   };
 
   return Object.freeze(facade);

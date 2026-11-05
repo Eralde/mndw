@@ -7,6 +7,7 @@ import {
 } from '../../../services/mgmt-client.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
+import InstallVersionWarnings from './InstallVersionWarnings.svelte';
 import {openApprovalModal} from './approval-modal.js';
 import {
   type UploadTargetMismatch,
@@ -49,6 +50,7 @@ let {
 let status = $state<UploadStatus>('idle');
 let error = $state('');
 let success = $state('');
+let installedEntry = $state<PluginListEntry | null>(null);
 let approvalController: AbortController | undefined;
 let destroyed = false;
 
@@ -102,6 +104,7 @@ function showError(message: string): void {
 }
 
 function markInstalled(entry: PluginListEntry): void {
+  installedEntry = entry;
   success = hostT(
     'settings.plugin-manager.installed-success',
     {
@@ -305,6 +308,7 @@ function onDrop(event: DragEvent): void {
     >
       {success}
     </p>
+    <InstallVersionWarnings lock={installedEntry?.lock} />
   {:else if status === 'error'}
     <div
       class="mndw-alert mndw-alert--danger"

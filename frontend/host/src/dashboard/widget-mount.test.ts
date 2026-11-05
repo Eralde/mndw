@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 vi.mock('../runtime/plugin-lifecycle.js', () => ({
@@ -9,8 +10,9 @@ vi.mock('../runtime/plugin-context.js', () => ({
   createPluginContext: vi.fn(),
 }));
 
-import type {DeviceInfoData, HostInfo, PluginContext} from '@mndw/sdk';
+import type {DeviceInfoData, PluginContext} from '@mndw/sdk';
 import {FALLBACK_HOST_INFO} from '../constants.js';
+import type {HostInfo} from '../runtime/device-info-context.js';
 import {createPluginContext} from '../runtime/plugin-context.js';
 import {type MountedPlugin, mountPlugin, unmountPlugin} from '../runtime/plugin-lifecycle.js';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';

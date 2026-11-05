@@ -1,5 +1,6 @@
+import type {PluginRciManager} from '@mndw/sdk';
 import {Subject, firstValueFrom, of} from 'rxjs';
-import type {RciBackgroundProcess, RciManager, RciQuery} from '@rci-tools/core';
+import type {RciBackgroundProcess, RciQuery} from '@rci-tools/core';
 import {describe, expect, it, vi} from 'vitest';
 import validResponse from './fixtures/log-response.json';
 import {createSystemLogApi} from './system-log-api';
@@ -24,7 +25,7 @@ describe('createSystemLogApi', () => {
       return showResponse$.asObservable();
     });
     const queueBackgroundProcess = vi.fn(() => process);
-    const rci = {queue, queueBackgroundProcess} as unknown as RciManager;
+    const rci = {queue, queueBackgroundProcess} as unknown as PluginRciManager;
     const api = createSystemLogApi(rci);
 
     const oncePromise = firstValueFrom(api.showLogOnce());
@@ -63,7 +64,7 @@ describe('createSystemLogApi', () => {
     const rci = {
       queue,
       queueBackgroundProcess: vi.fn(() => process),
-    } as unknown as RciManager;
+    } as unknown as PluginRciManager;
     const api = createSystemLogApi(rci);
 
     await expect(firstValueFrom(api.showLogOnce())).resolves.toEqual([]);

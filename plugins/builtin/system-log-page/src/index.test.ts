@@ -3,8 +3,8 @@ import {flushSync} from 'svelte';
 import {NEVER, Subject} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {createTestI18n} from '@mndw/sdk/testing';
-import type {OverlayService, PluginContext} from '@mndw/sdk';
-import type {RciBackgroundProcess, RciManager} from '@rci-tools/core';
+import type {OverlayService, PluginContext, PluginRciManager} from '@mndw/sdk';
+import type {RciBackgroundProcess} from '@rci-tools/core';
 import enCatalog from '../i18n/en.json';
 import {createInstance} from './index';
 
@@ -28,7 +28,7 @@ function context(): {
 
   return {
     pluginContext: {
-      rciManager: {queue, queueBackgroundProcess} as unknown as RciManager,
+      rciManager: {queue, queueBackgroundProcess} as unknown as PluginRciManager,
       overlay: {} as OverlayService,
       i18n: createTestI18n(enCatalog),
     } as unknown as PluginContext,

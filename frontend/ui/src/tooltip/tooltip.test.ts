@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {defineComponents, mount as mountComponent, settle} from '../testing/index.js';
 import {MNDW_TOOLTIP_TAG, MndwTooltip} from './tooltip.js';

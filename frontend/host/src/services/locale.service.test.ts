@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {FALLBACK_HOST_INFO, SUPPORTED_LOCALES} from '../constants.js';
 import {

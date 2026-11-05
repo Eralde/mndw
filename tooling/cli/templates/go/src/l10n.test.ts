@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import type {BackendClient, PluginContext} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import {describe, expect, it, vi} from 'vitest';
 
 import {createInstance} from './index.js';
@@ -9,12 +9,7 @@ import {createInstance} from './index.js';
 const contextFor = (
   i18n: ReturnType<typeof createTestI18n>,
   backend?: Partial<BackendClient>,
-): PluginContext => ({
-  i18n,
-  hostInfo: {locale: 'en', theme: 'dark'},
-  deviceInfo: {deviceName: 'Test Device'},
-  backend,
-} as PluginContext);
+): PluginContext => createTestPluginContext({i18n, backend: backend as BackendClient | undefined}).context;
 
 describe('generated Go locale reactivity', () => {
   it('updates probe, control, and result without remounting', () => {
@@ -35,6 +30,19 @@ describe('generated Go locale reactivity', () => {
     expect(button?.textContent).toBe(ru.l10n.button);
     expect(result?.textContent).toBe(ru.l10n.result);
     instance.unmount();
+  });
+
+  it('updates data-theme when the host theme changes', () => {
+    const fixture = createTestPluginContext();
+    const root = document.createElement('div');
+    const instance = createInstance(root, fixture.context);
+
+    expect(root.dataset.theme).toBe('light');
+    fixture.setTheme('dark');
+    expect(root.dataset.theme).toBe('dark');
+
+    instance.unmount();
+    fixture.unmount();
   });
 
   it('updates the localized result label after a backend response', async () => {

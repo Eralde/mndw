@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {describe, expect, it} from 'vitest';
 import {defineComponents, mount} from '../testing/index.js';
 import {MNDW_BUTTON_TAG, MndwButton, type MndwButtonVariant} from './button.js';

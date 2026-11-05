@@ -6,6 +6,7 @@ import {
   SERVICE_STATUS_URL,
   SERVICE_STOP_URL,
 } from '../constants.js';
+import {CSRF_HEADERS} from './csrf.js';
 import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
 import {isRecord} from './json.js';
 
@@ -118,7 +119,7 @@ export function createServiceClient(fetchImpl: typeof globalThis.fetch = globalT
   async function action(url: string, name: string): Promise<ServiceActionResponse> {
     const body = await request(url, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
       body: JSON.stringify({name}),
     });
 
@@ -147,7 +148,7 @@ export function createServiceClient(fetchImpl: typeof globalThis.fetch = globalT
     async setEnabled(name: string, enabled: boolean): Promise<ServiceActionResponse> {
       const body = await request(SERVICE_SET_ENABLED_URL, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
         body: JSON.stringify({name, enabled}),
       });
 

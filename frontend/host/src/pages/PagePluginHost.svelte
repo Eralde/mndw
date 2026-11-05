@@ -1,8 +1,8 @@
 <script lang="ts">
-import type {HostInfo} from '@mndw/sdk';
 import {onDestroy} from 'svelte';
 import {FALLBACK_DEVICE_INFO, FALLBACK_HOST_INFO} from '../constants.js';
 import {createPluginContext} from '../runtime/plugin-context.js';
+import type {HostInfo} from '../runtime/device-info-context.js';
 import {
   type MountedPlugin,
   mountPlugin,

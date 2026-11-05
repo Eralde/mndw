@@ -48,13 +48,18 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
 
   button?.addEventListener('click', onClick);
   const teardown = bindLocale(ctx.i18n, render);
+  const themeSubscription = ctx.theme$.subscribe((theme) => {
+    container.dataset.theme = theme;
+  });
 
   return {
     unmount() {
       teardown();
+      themeSubscription.unsubscribe();
       button?.removeEventListener('click', onClick);
 
       container.innerHTML = '';
+      delete container.dataset.theme;
     },
   };
 }

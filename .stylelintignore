@@ -1,2 +1,4 @@
 dist/
+frontend/host/dist-dev-host/
+tooling/cli/host-dev/
 **/plugins/**/*.css

@@ -11,6 +11,7 @@ export interface TokenScale {
   scrollbar: {size: string; radius: string; thumbMinSize: string};
   switch: {width: string; height: string};
   slider: {trackHeight: string; thumbSize: string};
+  heatStrip: {height: string};
   table: {stickyTop: string};
   /**
    * Fixed utilization heatmap scale (theme-agnostic), low -> critical.
@@ -42,6 +43,7 @@ export const SCALE: TokenScale = {
   scrollbar: {size: '0.625rem', radius: '0.375rem', thumbMinSize: '1.5rem'},
   switch: {width: '2.25rem', height: '1.25rem'},
   slider: {trackHeight: '0.25rem', thumbSize: '1rem'},
+  heatStrip: {height: '1rem'},
   table: {stickyTop: '0'},
   utilization: {
     low: '#3fa89f',

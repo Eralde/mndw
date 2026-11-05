@@ -3,7 +3,7 @@
 import 'zone.js';
 import '@angular/compiler';
 import type {PluginContext} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import {describe, expect, it} from 'vitest';
 import {createInstance} from './index.js';
 
@@ -18,8 +18,7 @@ describe('generated Angular locale reactivity', () => {
     const ru = {l10n: {probe: 'Русский probe', button: 'Запустить', result: 'Русский результат'}};
     const i18n = createTestI18n(en, 'en');
     const root = document.createElement('div');
-    const context = {i18n, hostInfo: {locale: 'en', theme: 'dark'},
-      deviceInfo: {deviceName: 'Test Device'}} as unknown as PluginContext;
+    const context = createTestPluginContext({i18n}).context;
     const instance = createInstance(root, context);
     await stabilize();
     const probe = root.querySelector('[data-testid="l10n-probe"]');
@@ -32,5 +31,20 @@ describe('generated Angular locale reactivity', () => {
     expect(root.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
     expect(probe?.textContent).toBe(ru.l10n.probe);
     instance.unmount();
+  });
+
+  it('updates data-theme when the host theme changes', async () => {
+    const fixture = createTestPluginContext();
+    const root = document.createElement('div');
+    const instance = createInstance(root, fixture.context);
+    await stabilize();
+
+    expect(root.querySelector('[data-theme]')?.getAttribute('data-theme')).toBe('light');
+    fixture.setTheme('dark');
+    await stabilize();
+    expect(root.querySelector('[data-theme]')?.getAttribute('data-theme')).toBe('dark');
+
+    instance.unmount();
+    fixture.unmount();
   });
 });

@@ -1,7 +1,9 @@
 {
   "name": "@mndw/ui",
   "version": "0.1.0",
-  "private": true,
+  "license": "MIT",
+  "homepage": "https://eralde.github.io/mndw/",
+  "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "frontend/ui"},
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
@@ -18,22 +20,44 @@
     "./styles.css": "./src/styles/kit.css",
     "./icons.svg": "./src/icon/generated/sprite.svg"
   },
-  "files": [
-    "icons",
-    "src",
-    "README.md"
-  ],
+  "files": ["dist", "README.md"],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"},
+      "./test-geometry": {"types": "./dist/table/table-test-geometry.d.ts", "default": "./dist/table/table-test-geometry.js"},
+      "./testing": {"types": "./dist/testing/index.d.ts", "default": "./dist/testing/index.js"},
+      "./testing/setup": {"types": "./dist/testing/setup.d.ts", "default": "./dist/testing/setup.js"},
+      "./styles.css": "./dist/styles.css",
+      "./icons.svg": "./dist/icons.svg"
+    }
+  },
   "scripts": {
     "test": "vitest run",
     "check": "tsc -p tsconfig.json --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:geometry": "playwright test --config playwright.geometry.config.ts",
     "generate-icons": "tsx scripts/generate-icons.ts",
-    "check:icons": "tsx scripts/generate-icons.ts --check"
+    "check:icons": "tsx scripts/generate-icons.ts --check",
+    "build": "pnpm run generate-icons && tsc -p tsconfig.build.json && node -e \"require('node:fs').copyFileSync('src/styles/kit.css', 'dist/styles.css'); require('node:fs').copyFileSync('src/icon/generated/sprite.svg', 'dist/icons.svg')\"",
+    "prepack": "pnpm run build"
   },
   "dependencies": {
     "@lit/reactive-element": "^2.1.0",
     "lit": "^3.2.0"
+  },
+  "peerDependencies": {
+    "@mndw/sdk": "^0.1.0",
+    "d3": "^7",
+    "@types/d3": "^7"
+  },
+  "peerDependenciesMeta": {
+    "@types/d3": {"optional": true}
   },
   "devDependencies": {
     "@mndw/sdk": "workspace:*",

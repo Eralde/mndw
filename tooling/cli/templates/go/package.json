@@ -13,8 +13,6 @@
     }
   },
   "devDependencies": {
-    "@mndw/cli": "workspace:*",
-    "@mndw/sdk": "workspace:*",
     "tsx": "^4.23.0",
     "vitest": "^3.2.7",
     "happy-dom": "^20.11.1"

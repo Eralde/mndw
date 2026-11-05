@@ -33,6 +33,8 @@ func New(deviceURL string, logger *slog.Logger) (http.Handler, error) {
 		logger = slog.Default()
 	}
 
+	targetOrigin := deviceOrigin(target)
+
 	proxy := &httputil.ReverseProxy{
 		FlushInterval: -1,
 		Rewrite: func(request *httputil.ProxyRequest) {
@@ -47,6 +49,15 @@ func New(deviceURL string, logger *slog.Logger) (http.Handler, error) {
 			request.Out.URL.RawPath = incomingRawPath
 			request.Out.URL.RawQuery = incomingRawQuery
 			request.Out.Host = target.Host
+
+			// The device's web server rejects a POST whose Origin is not its own (NDW4 `POST /auth`
+			// gets 403, and repeated 403s trip its lockout). A dashboard page is same-origin with
+			// the incoming Host, so it speaks for the device; any other Origin passes through
+			// unchanged and the device keeps refusing it.
+			if origin := request.In.Header.Get("Origin"); origin != "" && sameOriginAsHost(origin, incomingHost) {
+				request.Out.Header.Set("Origin", targetOrigin)
+			}
+
 			request.Out = request.Out.WithContext(context.WithValue(request.Out.Context(), incomingHostKey, incomingHost))
 		},
 		ModifyResponse: func(response *http.Response) error {
@@ -89,6 +100,32 @@ func New(deviceURL string, logger *slog.Logger) (http.Handler, error) {
 	}
 
 	return proxy, nil
+}
+
+// deviceOrigin serializes the device URL as a browser would send it in Origin:
+// lower-case scheme and host, default port omitted.
+func deviceOrigin(target *url.URL) string {
+	scheme := strings.ToLower(target.Scheme)
+	host := strings.ToLower(target.Hostname())
+
+	if port := target.Port(); port != "" && port != effectivePort(&url.URL{Scheme: scheme}, scheme) {
+		host = net.JoinHostPort(host, port)
+	} else if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+
+	return scheme + "://" + host
+}
+
+// sameOriginAsHost reports whether origin names the authority the browser sent
+// the request to. Browsers omit default ports in both Origin and Host.
+func sameOriginAsHost(origin, host string) bool {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+
+	return strings.EqualFold(parsed.Host, host)
 }
 
 func sameDeviceHost(candidate, target *url.URL) bool {

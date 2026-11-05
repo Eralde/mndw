@@ -13,6 +13,7 @@ import {
   type DevOptions,
   type GoBuildResult,
   defaultBuildGoBackend,
+  defaultSymlinkDir,
   resolveDaemonLaunch,
   runDev,
   watchPluginBackend,
@@ -57,6 +58,15 @@ describe('defaultBuildGoBackend', () => {
 });
 
 describe('resolveDaemonLaunch', () => {
+  it('prefers an explicit --daemon binary over the source checkout', () => {
+    const launch = resolveDaemonLaunch(['--dev'], {daemonBinary: '/opt/mndwd'}, {
+      daemonPackageDir: '/repo/daemon/mndwd',
+      binaryExists: () => true,
+    });
+
+    expect(launch).toEqual({command: '/opt/mndwd', args: ['--dev']});
+  });
+
   it('runs the daemon from source with `go run` in a source checkout', () => {
     const launch = resolveDaemonLaunch(['--dev'], {}, {
       daemonPackageDir: '/repo/daemon/mndwd',
@@ -75,16 +85,30 @@ describe('resolveDaemonLaunch', () => {
     expect(launch).toEqual({command: '/usr/bin/mndwd', args: ['--dev']});
   });
 
+  it('uses a packaged daemon outside a source checkout', () => {
+    const launch = resolveDaemonLaunch(['--dev'], {}, {
+      daemonPackageDir: null,
+      binaryExists: () => false,
+      resolvePackagedDaemon: () => '/cli/node_modules/@mndw/mndwd-linux-x64/bin/mndwd',
+    });
+
+    expect(launch).toEqual({command: '/cli/node_modules/@mndw/mndwd-linux-x64/bin/mndwd', args: ['--dev']});
+  });
+
   it('rejects a missing --daemon binary before anything is launched', () => {
     expect(() =>
       resolveDaemonLaunch(['--dev'], {daemonBinary: '/nope'}, {daemonPackageDir: null, binaryExists: () => false})
     ).toThrow(CliError);
   });
 
-  it('requires a source checkout or --daemon when neither is available', () => {
-    expect(() => resolveDaemonLaunch(['--dev'], {}, {daemonPackageDir: null, binaryExists: () => false})).toThrow(
-      /source checkout|--daemon/,
-    );
+  it('uses junction symlinks on Windows and directory symlinks elsewhere', () => {
+    const symlinkSync = vi.fn();
+
+    defaultSymlinkDir('win32', symlinkSync)('/target', '/link');
+    defaultSymlinkDir('linux', symlinkSync)('/target-linux', '/link-linux');
+
+    expect(symlinkSync).toHaveBeenNthCalledWith(1, '/target', '/link', 'junction');
+    expect(symlinkSync).toHaveBeenNthCalledWith(2, '/target-linux', '/link-linux', 'dir');
   });
 });
 
@@ -426,6 +450,80 @@ describe('runDev', () => {
     expect(h.spawn).not.toHaveBeenCalled();
   });
 
+  it('stops before side effects for Windows plugins with a backend', async () => {
+    const h = harness({
+      platform: 'win32',
+      readManifest: (() => ({
+        manifest: {name: 'sample-page', backend: {kind: 'service'}},
+        path: '/p/manifest.json',
+      })) as unknown as DevDeps['readManifest'],
+    });
+
+    await expect(runDev('backend-plugin', {}, h.deps)).rejects.toThrow(
+      'mndw dev: plugins with a backend need WSL on Windows. Open a WSL terminal and run mndw dev there.',
+    );
+    expect(h.spawn).not.toHaveBeenCalled();
+    expect(h.deps.makeTempDir).not.toHaveBeenCalled();
+    expect(h.deps.buildGoBackend).not.toHaveBeenCalled();
+  });
+
+  it('continues to launch a Windows plugin without a backend', async () => {
+    const h = harness({platform: 'win32'});
+    const {dev} = await startDev(h);
+
+    expect(h.spawn).toHaveBeenCalledTimes(2);
+    h.getSignalHandler()?.();
+    await dev;
+  });
+
+  it('uses the packaged daemon and prebuilt host launcher outside a checkout', async () => {
+    const launchHost = vi.fn(() => ({
+      exited: new Promise<number | null>(() => undefined),
+      reload: vi.fn(),
+      close: vi.fn(() => Promise.resolve()),
+    }));
+    const h = harness({
+      findDaemonPackageDir: () => null,
+      resolvePackagedDaemon: () => '/installed/mndwd',
+      cliPackageRoot: () => '/installed/@mndw/cli',
+      fileExists: () => true,
+      launchHost,
+    });
+
+    const dev = runDev('plugins/examples/sample-page', {}, h.deps);
+
+    await vi.waitFor(() => expect(launchHost).toHaveBeenCalledTimes(1));
+
+    expect(h.spawn).toHaveBeenCalledWith(
+      '/installed/mndwd',
+      expect.arrayContaining(['--listen', '127.0.0.1:9090']),
+      expect.any(Object),
+    );
+    expect(launchHost).toHaveBeenCalledWith(expect.objectContaining({MNDW_DAEMON: 'http://127.0.0.1:9090'}));
+    h.getSignalHandler()?.();
+    await dev;
+  });
+
+  it('normalizes --addr for daemon controller and host proxies', async () => {
+    const launchHost = vi.fn(() => ({
+      exited: new Promise<number | null>(() => undefined),
+      reload: vi.fn(),
+      close: vi.fn(() => Promise.resolve()),
+    }));
+    const h = harness({launchHost});
+    const dev = runDev('plugins/examples/sample-page', {addr: '10.0.0.1'}, h.deps);
+
+    await vi.waitFor(() => expect(launchHost).toHaveBeenCalledTimes(1));
+
+    expect(h.spawn.mock.calls[0]?.[1]).toEqual(expect.arrayContaining([
+      '--controller-url',
+      'http://10.0.0.1',
+    ]));
+    expect(launchHost).toHaveBeenCalledWith(expect.objectContaining({MNDW_HOST_DEVICE: 'http://10.0.0.1'}));
+    h.getSignalHandler()?.();
+    await dev;
+  });
+
   it('spawns the daemon, waits for readiness, then spawns the host with sandbox env', async () => {
     const h = harness();
 
@@ -665,9 +763,14 @@ describe('runDev', () => {
   });
 
   it('cleans temporary directories when daemon resolution fails', async () => {
-    const h = harness({findDaemonPackageDir: () => null});
+    const h = harness({
+      findDaemonPackageDir: () => null,
+      resolvePackagedDaemon: () => {
+        throw new CliError('mndw dev: packaged daemon is not installed');
+      },
+    });
 
-    await expect(runDev('plugins/examples/sample-page', {}, h.deps)).rejects.toThrow(/source checkout/);
+    await expect(runDev('plugins/examples/sample-page', {}, h.deps)).rejects.toThrow(/not installed/);
 
     expect(h.removeDir).toHaveBeenCalledTimes(3);
     expect(h.spawn).not.toHaveBeenCalled();

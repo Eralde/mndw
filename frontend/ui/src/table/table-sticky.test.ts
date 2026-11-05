@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from '../checkbox/checkbox.js';
 import {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './column-menu.js';

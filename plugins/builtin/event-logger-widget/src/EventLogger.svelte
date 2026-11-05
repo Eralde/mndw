@@ -67,24 +67,20 @@ function download(): void {
 }
 
 onMount(() => {
-  const unsubscribe = events?.subscribe(
-    '*',
-    (event) => {
-      if (!paused) {
-        append({ts: event.ts, event});
-      }
-    },
-  );
-
-  const unsubscribeResync = events?.onResync(() => {
+  const eventSubscription = events?.select$('*').subscribe((event) => {
+    if (!paused) {
+      append({ts: event.ts, event});
+    }
+  });
+  const resyncSubscription = events?.resync$.subscribe(() => {
     if (!paused) {
       append({ts: Date.now(), marker: 'resync'});
     }
   });
 
   return () => {
-    unsubscribe?.();
-    unsubscribeResync?.();
+    eventSubscription?.unsubscribe();
+    resyncSubscription?.unsubscribe();
   };
 });
 </script>

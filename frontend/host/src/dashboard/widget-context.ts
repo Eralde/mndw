@@ -1,8 +1,8 @@
-import type {HostInfo} from '@mndw/sdk';
 import {FALLBACK_DEVICE_INFO, FALLBACK_HOST_INFO} from '../constants.js';
 import {type PluginContextHandle, type PluginContextServices, createPluginContext} from '../runtime/plugin-context.js';
 import type {PluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
+import type {HostInfo} from '../runtime/device-info-context.js';
 
 /**
  * Builds a plugin context for a dashboard widget instance. Resolves host info from the

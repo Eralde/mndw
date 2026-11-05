@@ -1,3 +1,4 @@
+import type {PluginRciManager} from '@mndw/sdk';
 import {
   CUSTOM_ELEMENTS_SCHEMA,
   Component,
@@ -9,7 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import type {MndwChartSample} from '@mndw/ui';
-import {type RciManager, RciResponseHelper} from '@rci-tools/core';
+import {RciResponseHelper} from '@rci-tools/core';
 import {firstValueFrom, fromEvent, takeUntil} from 'rxjs';
 import {normalizeBridgeSegments, parseNodeEditState} from '../../api/node-edit-state';
 import type {MwsNode, MwsRadioPower, MwsUtilSeries} from '../../domain/mws/mws.types';
@@ -107,7 +108,7 @@ export class NodeDrawerComponent implements OnDestroy {
   private readonly renameApi = inject<MwsRenameApi>(MWS_RENAME_API);
   private readonly data = inject(MwsDataService);
   private readonly write = inject(MwsWriteService);
-  private readonly rci = inject<RciManager>(RCI_MANAGER);
+  private readonly rci = inject<PluginRciManager>(RCI_MANAGER);
   protected readonly settingsStore = inject(NodeSettingsStore);
   private readonly nodeSettings = viewChild(NodeSettingsComponent);
 

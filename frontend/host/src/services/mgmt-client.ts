@@ -1,4 +1,5 @@
-import type {PaletteTokenMap, PluginPermission, Switchports} from '@mndw/sdk';
+import type {PaletteTokenMap, Switchports} from '@mndw/sdk';
+import type {PluginPermission} from '@mndw/sdk-internal';
 import {
   API_TIMEOUT_MS,
   MGMT_APPROVE_URL,
@@ -20,6 +21,7 @@ import {
 import {decodeMgmtList, decodeMgmtListEntry} from '../runtime/mgmt-list-schema.js';
 import {decodeDeviceHardware, emptySwitchports} from '../runtime/device-info-schema.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
+import {CSRF_HEADERS} from './csrf.js';
 import {hostT} from './locale.service.js';
 import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
 import {isNonEmptyString} from './json.js';
@@ -89,14 +91,6 @@ async function toError(response: Response): Promise<MgmtError> {
   return new MgmtError(fields.message, fields.code, fields.detail);
 }
 
-const csrfHeaders = (headers: HeadersInit = {}): Headers => {
-  const result = new Headers(headers);
-
-  result.set('X-Mndw-Csrf', '1');
-
-  return result;
-};
-
 export function classifyMutationFailure(error: unknown): MutationOutcome {
   if (error instanceof DOMException && error.name === 'TimeoutError') {
     return 'ambiguous';
@@ -138,7 +132,7 @@ export function createMgmtClient(
       url,
       {
         method: 'POST',
-        headers: csrfHeaders({'Content-Type': 'application/json'}),
+        headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
         body: JSON.stringify({name}),
         signal: timeout(kind),
       },
@@ -175,7 +169,7 @@ export function createMgmtClient(
         MGMT_UPLOAD_URL,
         {
           method: 'POST',
-          headers: csrfHeaders({'Content-Type': 'application/zip'}),
+          headers: {'Content-Type': 'application/zip', ...CSRF_HEADERS},
           body: file,
         },
       );
@@ -198,7 +192,7 @@ export function createMgmtClient(
         MGMT_PERMISSION_URL,
         {
           method: 'POST',
-          headers: csrfHeaders({'Content-Type': 'application/json'}),
+          headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
           body: JSON.stringify({name, permission, enabled}),
           signal: timeout('mutation'),
         },
@@ -289,7 +283,7 @@ export function createMgmtClient(
         MGMT_PALETTE_URL,
         {
           method: 'PUT',
-          headers: csrfHeaders({'Content-Type': 'application/json'}),
+          headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
           body: JSON.stringify(palette),
           signal: timeout('mutation'),
         },
@@ -303,7 +297,7 @@ export function createMgmtClient(
         MGMT_PALETTE_URL,
         {
           method: 'DELETE',
-          headers: csrfHeaders(),
+          headers: {...CSRF_HEADERS},
           signal: timeout('mutation'),
         },
       );
@@ -330,7 +324,7 @@ export function createMgmtClient(
     async setTelemetry(enabled: boolean): Promise<void> {
       const response = await fetchImpl(MGMT_TELEMETRY_URL, {
         method: 'PUT',
-        headers: csrfHeaders({'Content-Type': 'application/json'}),
+        headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
         body: JSON.stringify({enabled}),
         signal: timeout('mutation'),
       });

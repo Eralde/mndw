@@ -1,7 +1,9 @@
 {
   "name": "@mndw/palette-core",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "homepage": "https://eralde.github.io/mndw/",
+  "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "tooling/palette-core"},
   "type": "module",
   "description": "Shared TypeScript palette math and contract metadata.",
   "exports": {
@@ -22,8 +24,25 @@
       "default": "./src/build-palette.ts"
     }
   },
+  "files": ["dist", "README.md"],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"},
+      "./contrast": {"types": "./dist/contrast.d.ts", "default": "./dist/contrast.js"},
+      "./metadata": {"types": "./dist/metadata.d.ts", "default": "./dist/metadata.js"},
+      "./build-palette": {"types": "./dist/build-palette.d.ts", "default": "./dist/build-palette.js"}
+    }
+  },
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm run build"
   },
   "dependencies": {
     "culori": "^4.0.2"

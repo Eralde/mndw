@@ -272,13 +272,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 			MaxSupervisedServices:      cfg.MaxSupervisedServices,
 		},
 		SupportedServiceProtocols: cfg.SupportedServiceProtocols,
-		Exec: backend.ExecRunnerConfig{
-			Timeout:      cfg.ExecTimeout,
-			KillGrace:    cfg.ExecKillGrace,
-			MaxBodyBytes: cfg.MaxRequestBytes,
-			Logger:       logger,
-			Dev:          cfg.Dev,
-		},
+		Exec:                      backendExecConfig(cfg, logger),
 		Supervisor: backend.SupervisorConfig{
 			ReadinessTimeout:          cfg.ServiceHTTPTimeout,
 			StopTimeout:               cfg.ServiceStopTimeout,
@@ -397,6 +391,17 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 		events:    eventLife,
 		cleanup:   cleanup,
 	}, startupErr
+}
+
+func backendExecConfig(cfg Config, logger *slog.Logger) backend.ExecRunnerConfig {
+	return backend.ExecRunnerConfig{
+		Timeout:        cfg.ExecTimeout,
+		KillGrace:      cfg.ExecKillGrace,
+		MaxBodyBytes:   cfg.MaxRequestBytes,
+		MaxOutputBytes: cfg.MaxOutputBytes,
+		Logger:         logger,
+		Dev:            cfg.Dev,
+	}
 }
 
 func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger) error {

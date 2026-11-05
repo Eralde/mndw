@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {svelteCell} from '@mndw/ui-svelte';
 import {flushSync} from 'svelte';
 import {afterEach, describe, expect, it} from 'vitest';

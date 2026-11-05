@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {flushSync, mount, unmount} from 'svelte';
 import {SvelteMap} from 'svelte/reactivity';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';

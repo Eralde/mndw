@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {type ComponentProps, flushSync, mount, unmount} from 'svelte';
 
@@ -142,6 +143,28 @@ describe('PluginUpload', () => {
       expect(target.querySelector('.mndw-upload__success')?.textContent).toBe('Installed "Network Tools".');
     });
     expect(target.querySelector('.mndw-upload__success')?.getAttribute('role')).toBe('status');
+
+    void unmount(component);
+  });
+
+  it('shows compatibility warning after a backendless plugin installs', async () => {
+    const installedEntry: PluginListEntry = {
+      ...entry,
+      approval: 'approved',
+      enabled: true,
+      lock: {sdkVersion: '2.0.0', sharedDependencies: {}},
+    };
+    const uploadFile = vi.fn().mockResolvedValue({status: 'installed', entry: installedEntry} satisfies UploadResult);
+    const {component, target} = mountUpload({uploadFile});
+
+    await drop(target, new File(['plugin'], 'plugin.zip', {type: 'application/zip'}));
+
+    await vi.waitFor(() => {
+      expect(target.textContent).toContain('Installed "Network Tools".');
+    });
+    expect(target.textContent).toContain('Version compatibility');
+    expect(target.textContent).toContain('Built for @mndw/sdk 2.0.0');
+    expect(target.textContent).toContain('You can still install it.');
 
     void unmount(component);
   });

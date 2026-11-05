@@ -7,9 +7,11 @@ export function useTranslator(i18n: PluginI18n): Translator {
   let unsubscribe = (): void => {};
 
   onMounted(() => {
-    unsubscribe = i18n.onChange(() => {
+    const subscription = i18n.change$.subscribe(() => {
       revision.value += 1;
     });
+
+    unsubscribe = () => subscription.unsubscribe();
   });
   onUnmounted(() => unsubscribe());
 

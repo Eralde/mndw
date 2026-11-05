@@ -36,6 +36,16 @@ describe('service-client', () => {
     expect(fetchImpl).toHaveBeenCalledWith('/api/mgmt/service/list', {method: 'GET'});
   });
 
+  it('does not send the CSRF header on list', async () => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, {services: [entry]}));
+
+    await createServiceClient(fetchImpl).list();
+
+    const [, init] = fetchImpl.mock.calls[0];
+
+    expect(new Headers(init?.headers).get('X-Mndw-Csrf')).toBeNull();
+  });
+
   it('encodes status names and forwards AbortSignal', async () => {
     fetchImpl.mockResolvedValue(jsonResponse(200, {service: {...entry, name: 'S99foo bar'}}));
 
@@ -81,6 +91,8 @@ describe('service-client actions', () => {
 
     expect(url).toBe(`/api/mgmt/service/${action}`);
     expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('X-Mndw-Csrf')).toBe('1');
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
     expect(JSON.parse(init?.body as string)).toEqual({name: 'S99foo'});
   });
 
@@ -97,6 +109,8 @@ describe('service-client actions', () => {
 
     expect(url).toBe('/api/mgmt/service/set-enabled');
     expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('X-Mndw-Csrf')).toBe('1');
+    expect(new Headers(init?.headers).get('Content-Type')).toBe('application/json');
     expect(JSON.parse(init?.body as string)).toEqual({name: 'S99foo', enabled: false});
   });
 

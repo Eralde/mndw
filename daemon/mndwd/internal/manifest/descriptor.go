@@ -63,6 +63,7 @@ func Review(m *Manifest) *ApprovalReview {
 
 	b := m.Backend
 	kind := ""
+
 	if b.Kind != nil {
 		kind = string(*b.Kind)
 	}

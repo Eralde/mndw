@@ -31,7 +31,7 @@ tester.run('no-raw-plugin-i18n', rule, {
         declare const i18n: PluginI18n;
         declare const translator: Translator;
         translator.t('title');
-        i18n.onChange(() => {});
+        i18n.change$.subscribe(() => {});
         i18n.locale;
         i18n.direction;
       `,
@@ -62,7 +62,7 @@ tester.run('no-raw-plugin-i18n', rule, {
         import type {PluginI18n} from '@mndw/sdk';
         declare const ctx: {i18n: PluginI18n};
         ctx.i18n.t('title');
-        ctx.i18n.onChange(() => {});
+        ctx.i18n.change$.subscribe(() => {});
       `,
     },
     {

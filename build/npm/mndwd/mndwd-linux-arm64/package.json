@@ -1,0 +1,29 @@
+{
+  "name": "@mndw/mndwd-linux-arm64",
+  "version": "0.1.0",
+  "files": [
+    "bin"
+  ],
+  "bin": {
+    "mndwd": "./bin/mndwd"
+  },
+  "license": "MIT",
+  "homepage": "https://eralde.github.io/mndw/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eralde/mndw.git",
+    "directory": "build/npm/mndwd/mndwd-linux-arm64"
+  },
+  "preferUnplugged": true,
+  "engines": {
+    "node": ">=20.19"
+  },
+  "publishConfig": {
+    "os": [
+      "linux"
+    ],
+    "cpu": [
+      "arm64"
+    ]
+  }
+}

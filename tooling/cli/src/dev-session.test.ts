@@ -256,7 +256,7 @@ interface SessionHarness {
   readonly spawn: ReturnType<typeof vi.fn>;
   readonly sentinel: {path: string; touch: ReturnType<typeof vi.fn>; cleanup: ReturnType<typeof vi.fn>};
   readonly watcher: {onChange: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>};
-  readonly watcherFactory: ReturnType<typeof vi.fn>;
+  readonly watcherFactory: ReturnType<typeof vi.fn<DevSessionConfig['createWatcher']>>;
   readonly unsubscribe: ReturnType<typeof vi.fn>;
   getShutdown(): (() => void) | undefined;
 }
@@ -273,7 +273,7 @@ function sessionHarness(overrides: Partial<DevSessionDeps> = {}): SessionHarness
   });
   const sentinel = {path: '/repo/.dev-data/session/sentinel', touch: vi.fn(), cleanup: vi.fn()};
   const watcher = {onChange: vi.fn(), close: vi.fn(() => Promise.resolve())};
-  const watcherFactory = vi.fn(() => watcher);
+  const watcherFactory = vi.fn<DevSessionConfig['createWatcher']>(() => watcher);
   const unsubscribe = vi.fn();
   const subscribeShutdown = vi.fn((handler: () => void) => {
     shutdownHandler = handler;
@@ -318,6 +318,26 @@ describe('runDevSession', () => {
     expect(h.unsubscribe).toHaveBeenCalledTimes(1);
     expect(h.sentinel.cleanup).toHaveBeenCalledTimes(1);
     expect(h.watcher.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a custom host handle for reload and closes it during shutdown', async () => {
+    const h = sessionHarness();
+    const hostHandle = {
+      exited: new Promise<number | null>(() => undefined),
+      reload: vi.fn(),
+      close: vi.fn(() => Promise.resolve()),
+    };
+    const launchHost = vi.fn(() => hostHandle);
+    const session = runDevSession(config({launchHost, createWatcher: h.watcherFactory}), h.deps);
+
+    await vi.waitFor(() => expect(launchHost).toHaveBeenCalledTimes(1));
+    expect(h.spawn.mock.calls.map(([command]) => command as string)).toEqual(['go']);
+    h.watcherFactory.mock.calls[0]?.[0].touchSentinel();
+    expect(hostHandle.reload).toHaveBeenCalledTimes(1);
+    h.getShutdown()?.();
+    await session;
+
+    expect(hostHandle.close).toHaveBeenCalledTimes(1);
   });
 
   it('does not start host when shutdown aborts readiness', async () => {

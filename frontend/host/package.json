@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter @mndw/ui generate-icons && tsx scripts/bundle-shared.ts && vite",
     "build": "pnpm --filter @mndw/ui generate-icons && vite build && tsx scripts/bundle-shared.ts",
+    "build:dev-host": "pnpm --filter @mndw/ui generate-icons && vite build --mode dev-host --outDir dist-dev-host && node --import tsx scripts/bundle-shared.ts --out dist-dev-host/shared",
     "preview": "vite preview",
     "bundle-shared": "tsx scripts/bundle-shared.ts",
     "check": "svelte-check --tsconfig ./tsconfig.json",
@@ -13,9 +14,10 @@
   },
   "dependencies": {
     "@mndw/sdk": "workspace:*",
+    "@mndw/sdk-internal": "workspace:*",
     "@mndw/ui": "workspace:*",
     "@mndw/ui-svelte": "workspace:*",
-    "@rci-tools/core": "0.4.3",
+    "@rci-tools/core": "catalog:",
     "gridstack": "^12.6.0",
     "hash-wasm": "^4.12.0",
     "rxjs": "^7.8.0",

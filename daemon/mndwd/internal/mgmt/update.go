@@ -108,7 +108,7 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 
 	h.publishPluginInstalled(name, deref(m.Version))
 
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, previous.Source, state.ApprovalApproved, true))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, previous.Source, state.ApprovalApproved, true, activeDir))
 }
 
 func safeVersion(version string) string {

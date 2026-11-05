@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {defineMndwUi} from '@mndw/ui';
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
@@ -78,6 +79,18 @@ describe('PendingApprovals', () => {
     target.querySelector<HTMLButtonElement>('.mndw-pending__approve')?.click();
 
     expect(onApprove).toHaveBeenCalledWith('network-tools');
+
+    void unmount(component);
+  });
+
+  it('keeps approval enabled when it displays an SDK version warning', () => {
+    const {component, target} = mountPendingApprovals({
+      items: [{...item, lock: {sdkVersion: '2.0.0', sharedDependencies: {}}}],
+    });
+    const approveButton = target.querySelector<HTMLButtonElement>('.mndw-pending__approve');
+
+    expect(target.textContent).toContain('Version compatibility');
+    expect(approveButton?.disabled).toBe(false);
 
     void unmount(component);
   });

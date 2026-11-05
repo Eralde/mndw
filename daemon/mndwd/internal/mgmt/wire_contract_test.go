@@ -173,6 +173,20 @@ func TestWireGoldenFixtures(t *testing.T) {
 	seedGoldenPlugin(t, store, "delta-rci", state.ApprovalApproved, true, goldenDeltaRCIManifest)
 	seedGoldenPlugin(t, store, "gamma-exec", state.ApprovalPending, false, goldenGammaExecManifest)
 	seedGoldenPlugin(t, store, "epsilon-backoff", state.ApprovalApproved, true, goldenEpsilonBackoffManifest)
+
+	for _, pluginDir := range []string{
+		filepath.Join(cfg.UserPluginsDir, "alpha-page"),
+		filepath.Join(cfg.StagingDir, "gamma-exec"),
+	} {
+		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+			t.Fatalf("create golden plugin directory: %v", err)
+		}
+
+		if err := os.WriteFile(filepath.Join(pluginDir, "mndw.lock.json"), []byte(`{"lockVersion":1,"sdkVersion":"1.4.0","sharedDependencies":{"rxjs":"7.8.2"}}`), 0o644); err != nil {
+			t.Fatalf("write golden plugin lock: %v", err)
+		}
+	}
+
 	writeBuiltinFixture(t, cfg, "zeta-builtin", true)
 
 	if err := store.SetGrant("delta-rci", "persistent-rci-session:read", true); err != nil {

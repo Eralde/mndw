@@ -1,37 +1,13 @@
 // @vitest-environment happy-dom
-import type {PluginContext, ProjectedSnapshot} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
-import type {RciManager, RciQuery} from '@rci-tools/core';
+import type {PluginContext, PluginRciManager, ProjectedSnapshot, TickerTick} from '@mndw/sdk';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
+import type {RciQuery} from '@rci-tools/core';
 import {createApp, nextTick} from 'vue';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {Observable, Subject, forkJoin, of, throwError} from 'rxjs';
 
 import App from './App.vue';
 import enCatalog from '../i18n/en.json';
-
-interface FakeWorkerInstance {
-  messages: unknown[];
-  terminated: boolean;
-}
-
-class FakeWorker {
-  public static readonly instances: FakeWorkerInstance[] = [];
-  public onmessage: ((event: MessageEvent) => void) | null = null;
-  public readonly messages: unknown[] = [];
-  public terminated = false;
-
-  public constructor() {
-    FakeWorker.instances.push(this);
-  }
-
-  public postMessage(message: unknown): void {
-    this.messages.push(message);
-  }
-
-  public terminate(): void {
-    this.terminated = true;
-  }
-}
 
 class FakeResizeObserver {
   public observe(_element: Element): void {}
@@ -87,29 +63,39 @@ function createContext(
   queue: (query: RciQuery) => Observable<unknown>,
   i18n = createTestI18n(enCatalog),
   projected: ProjectedSnapshot = projectedTelemetrySnapshot(),
+  tickerFactory?: PluginContext['createTicker'],
 ): PluginContext {
-  return {
-    hostInfo: {locale: 'en', theme: 'dark'},
-    deviceInfo: {model: 'Keenetic Giga', firmwareVersion: '1.0.0'},
+  const fixture = createTestPluginContext({
+    i18n,
+    theme: 'dark',
     rciManager: {
       queue: (query: RciQuery | RciQuery[]) =>
         Array.isArray(query)
           ? forkJoin(query.map((item) => queue(item)))
           : queue(query),
-    } as unknown as RciManager,
+    } as unknown as Partial<PluginRciManager>,
+  });
+  const context = Object.create(null) as Record<string, unknown>;
+  const descriptors = Object.getOwnPropertyDescriptors(fixture.context);
+
+  for (const descriptor of Object.values(descriptors)) {
+    descriptor.configurable = true;
+  }
+
+  Object.defineProperties(context, descriptors);
+  Object.defineProperties(context, {
+    deviceInfo: {enumerable: true,
+      value: {...fixture.context.deviceInfo, model: 'Keenetic Giga', firmwareVersion: '1.0.0'}},
     telemetry: {
-      fetchAll: vi.fn().mockRejectedValue(new Error('fetchAll should not be called by App.vue')),
-      fetchProjected: vi.fn().mockResolvedValue(projected),
+      enumerable: true,
+      value: {
+        fetchProjected: vi.fn().mockResolvedValue(projected),
+      },
     },
-    storage: {
-      get: () => Promise.resolve(null),
-      set: () => Promise.resolve(),
-      delete: () => Promise.resolve(),
-      keys: () => Promise.resolve([]),
-    },
-    overlay: {open: vi.fn(), createLayer: vi.fn(), closeAll: vi.fn()},
-    i18n,
-  } as unknown as PluginContext;
+    ...(tickerFactory === undefined ? {} : {createTicker: {enumerable: true, value: tickerFactory}}),
+  });
+
+  return Object.freeze(context) as unknown as PluginContext;
 }
 
 function mountWidget(
@@ -149,8 +135,6 @@ async function flushPromises(): Promise<void> {
 }
 
 beforeEach(() => {
-  FakeWorker.instances.length = 0;
-  vi.stubGlobal('Worker', FakeWorker);
   vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   vi.useFakeTimers();
   vi.setSystemTime(100_000);
@@ -403,7 +387,7 @@ describe('App', () => {
     app.unmount();
   });
 
-  it('cleans up timers and worker and ignores a deferred response after unmount', async () => {
+  it('cleans up timers and ticker and ignores a deferred response after unmount', async () => {
     const identificationSubject = new Subject<unknown>();
     const systemSubject = new Subject<unknown>();
     const queue = vi.fn((query: RciQuery): Observable<unknown> => {
@@ -417,7 +401,18 @@ describe('App', () => {
       }
     });
     const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
-    const app = mountWidget(queue);
+    const tickerSubject = new Subject<TickerTick>();
+    const ticker = {
+      start: vi.fn((_intervalMs: number): void => {}),
+      setInterval: vi.fn((_intervalMs: number): void => {}),
+      stop: vi.fn((): void => {}),
+      tick$: tickerSubject.asObservable(),
+      destroy: vi.fn((): void => tickerSubject.complete()),
+    };
+    const tickerFactory = vi.fn(() => ticker);
+    const {app} = mountWidgetContext(
+      createContext(queue, createTestI18n(enCatalog), projectedTelemetrySnapshot(), tickerFactory),
+    );
 
     await flushPromises();
 
@@ -434,7 +429,8 @@ describe('App', () => {
 
     expect(queue).toHaveBeenCalledTimes(callsAtUnmount);
     expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
-    expect(FakeWorker.instances[0]?.terminated).toBe(true);
+    expect(tickerFactory).toHaveBeenCalledOnce();
+    expect(ticker.destroy).toHaveBeenCalledOnce();
   });
 
   it('calls fetchProjected with 7d when switching to the 7d range', async () => {

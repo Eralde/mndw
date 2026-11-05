@@ -1,0 +1,120 @@
+name: Plugin author docs
+
+on:
+  pull_request:
+    paths:
+      - 'docs/plugin-author/**'
+      - '.github/workflows/plugin-author-docs.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'frontend/sdk/src/**'
+      - 'frontend/sdk/package.json'
+      - 'frontend/sdk/tsconfig.json'
+      - 'frontend/ui/src/**'
+      - 'frontend/ui-*/src/**'
+      - 'tooling/cli/src/**'
+      - 'tooling/cli/templates/**'
+      - 'tooling/cli/package.json'
+      - 'plugins/examples/hello-widget/**'
+      - 'plugins/examples/rci-device-name-widget/**'
+      - 'build/docs/**'
+      - 'build/docs-snippet-env/**'
+      - 'README.md'
+      - 'frontend/sdk/README.md'
+      - 'tooling/cli/README.md'
+      - 'tsconfig.base.json'
+      - 'frontend/ui/package.json'
+      - 'frontend/ui-*/package.json'
+      - 'frontend/ui-angular/tsconfig.json'
+      - 'tooling/palette-core/src/**'
+      - 'tooling/palette-core/package.json'
+  push:
+    branches:
+      - 'master'
+    paths:
+      - 'docs/plugin-author/**'
+      - '.github/workflows/plugin-author-docs.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'frontend/sdk/src/**'
+      - 'frontend/sdk/package.json'
+      - 'frontend/sdk/tsconfig.json'
+      - 'frontend/ui/src/**'
+      - 'frontend/ui-*/src/**'
+      - 'tooling/cli/src/**'
+      - 'tooling/cli/templates/**'
+      - 'tooling/cli/package.json'
+      - 'plugins/examples/hello-widget/**'
+      - 'plugins/examples/rci-device-name-widget/**'
+      - 'build/docs/**'
+      - 'build/docs-snippet-env/**'
+      - 'README.md'
+      - 'frontend/sdk/README.md'
+      - 'tooling/cli/README.md'
+      - 'tsconfig.base.json'
+      - 'frontend/ui/package.json'
+      - 'frontend/ui-*/package.json'
+      - 'frontend/ui-angular/tsconfig.json'
+      - 'tooling/palette-core/src/**'
+      - 'tooling/palette-core/package.json'
+
+permissions: {}
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check docs
+        run: pnpm test:docs
+
+      - name: Build docs site
+        run: pnpm docs:build
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/plugin-author/.vitepress/dist
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

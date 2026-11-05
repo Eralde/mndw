@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 vi.mock('./host-info.service.js', () => ({fetchHostInfo: vi.fn(), fetchDeviceInfo: vi.fn()}));
@@ -7,11 +8,16 @@ vi.mock('../runtime/sandbox-virtual.js', () => ({
   setupSandboxHmr: vi.fn(),
   sandboxVirtualImports: {importPluginModule: vi.fn(), importManifestModule: vi.fn()},
 }));
+vi.mock('../runtime/sandbox-url.js', () => ({
+  sandboxUrlImports: vi.fn(() => ({importPluginModule: vi.fn(), importManifestModule: vi.fn()})),
+  setupSandboxUrlHmr: vi.fn(),
+}));
 vi.mock('../router/create-app-router.js', () => ({createAppRouter: vi.fn()}));
 
 import {type LoaderDeps, loadPlugins} from '../runtime/plugin-loader.js';
 import {loadSandboxPlugin} from '../runtime/sandbox-loader.js';
 import {sandboxVirtualImports, setupSandboxHmr} from '../runtime/sandbox-virtual.js';
+import {sandboxUrlImports, setupSandboxUrlHmr} from '../runtime/sandbox-url.js';
 import {createAppRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {fetchDeviceInfo, fetchHostInfo} from './host-info.service.js';
@@ -88,7 +94,7 @@ describe('initAuthenticated', () => {
   });
 
   it('loads the sandbox plugin and wires HMR instead of the daemon list in sandbox mode', async () => {
-    vi.stubGlobal('__MNDW_SANDBOX__', true);
+    vi.stubGlobal('__MNDW_SANDBOX__', 'virtual');
     vi.mocked(loadSandboxPlugin).mockResolvedValue(undefined);
 
     await initAuthenticated();
@@ -100,6 +106,23 @@ describe('initAuthenticated', () => {
     expect(setupSandboxHmr).toHaveBeenCalledTimes(1);
     expect(loadPlugins).not.toHaveBeenCalled();
     expect(createAppRouter).toHaveBeenCalledTimes(1);
+    expect(appState.ready).toBe(true);
+  });
+
+  it('loads URL sandbox modules and wires URL HMR in the prebuilt dev host', async () => {
+    vi.stubGlobal('__MNDW_SANDBOX__', 'url');
+    vi.mocked(loadSandboxPlugin).mockResolvedValue(undefined);
+
+    await initAuthenticated();
+
+    expect(sandboxUrlImports).toHaveBeenCalledTimes(1);
+    expect(loadSandboxPlugin).toHaveBeenCalledWith(expect.objectContaining({
+      importPluginModule: expect.any(Function),
+      importManifestModule: expect.any(Function),
+    }));
+    expect(setupSandboxUrlHmr).toHaveBeenCalledTimes(1);
+    expect(setupSandboxHmr).not.toHaveBeenCalled();
+    expect(loadPlugins).not.toHaveBeenCalled();
     expect(appState.ready).toBe(true);
   });
 

@@ -1,4 +1,5 @@
-import type {RciManager, RciQuery} from '@rci-tools/core';
+import type {PluginRciManager} from '@mndw/sdk';
+import type {RciQuery} from '@rci-tools/core';
 import {catchError, firstValueFrom, forkJoin, of} from 'rxjs';
 import {type RrdResponse, type RrdTick, filterValidRrdTicks, sortRrdTicks} from '@mndw/sdk/rrd';
 
@@ -90,7 +91,7 @@ function toUptimeSeconds(value: number | string | undefined): number | null {
 }
 
 /** Reads selected identity/system data and isolates optional load-history failures. */
-export async function fetchDeviceInfo(rci: RciManager, detail = 0): Promise<LiveDeviceInfo> {
+export async function fetchDeviceInfo(rci: PluginRciManager, detail = 0): Promise<LiveDeviceInfo> {
   const [cpuQuery, memoryQuery] = historyQueries(detail);
   const optional = (query: RciQuery) => rci.queue(query).pipe(catchError(() => of(undefined)));
   const responses = await firstValueFrom(forkJoin([
@@ -130,7 +131,7 @@ export async function fetchDeviceInfo(rci: RciManager, detail = 0): Promise<Live
 
 /** Reads CPU and memory history for one selected live range. */
 export async function fetchDeviceHistory(
-  rci: RciManager,
+  rci: PluginRciManager,
   detail: number,
   memoryTotal: number | null,
 ): Promise<LoadHistory> {

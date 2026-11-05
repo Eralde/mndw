@@ -1,11 +1,11 @@
 #!/usr/bin/env tsx
 
-import {Command} from 'commander';
+import {Command, Option} from 'commander';
 import {resolve} from 'node:path';
 
-import {ManifestValidationError} from '@mndw/sdk';
+import {ManifestValidationError} from '@mndw/sdk-internal';
 
-import {createPlugin} from './create.js';
+import {create} from './create.js';
 import {runDev} from './dev.js';
 import {CliError} from './errors.js';
 import {validatePluginCatalogs} from './i18n-validator.js';
@@ -22,12 +22,16 @@ interface CreateCommandOptions {
   readonly route?: string;
   readonly label?: string;
   readonly backend?: string;
+  readonly install?: boolean;
 }
 
 interface DevCommandOptions {
   readonly daemon?: string;
   readonly port?: number;
+  readonly addr?: string;
   readonly hostDevice?: string;
+  readonly uiPort?: number;
+  readonly prebuiltHost?: boolean;
 }
 
 interface ValidateCommandOptions {
@@ -53,14 +57,15 @@ export function createProgram(): Command {
   program
     .command('create <name>')
     .option('--type <type>', 'plugin type: widget|page', 'widget')
-    .option('--framework <framework>', 'UI framework: vanilla|svelte|vue|angular', 'vanilla')
+    .option('--framework <framework>', 'UI framework: vanilla|svelte|vue|angular')
     .option('--out <dir>', 'output directory (default: ./<name>)')
     .option('--route <route>', 'page route (page type only; default /<name>)')
     .option('--label <label>', 'human-readable label (default derived from name)')
     .option('--backend <runtime>', 'include a backend starter ("sh" or "go")')
-    .action((name: string, options: CreateCommandOptions) => {
+    .option('--no-install', 'skip dependency installation')
+    .action(async (name: string, options: CreateCommandOptions) => {
       const outDir = resolve(process.cwd(), options.out ?? name);
-      const result = createPlugin({
+      const result = await create({
         name,
         outDir,
         type: options.type as 'widget' | 'page' | undefined,
@@ -68,6 +73,7 @@ export function createProgram(): Command {
         route: options.route,
         label: options.label,
         backend: options.backend as 'sh' | 'go' | undefined,
+        noInstall: options.install === false,
       });
 
       process.stdout.write(
@@ -80,12 +86,21 @@ export function createProgram(): Command {
     .description('run a local daemon + host that load the plugin from source with HMR')
     .option('--daemon <binary>', 'path to a prebuilt mndwd binary (required outside a source checkout)')
     .option('--port <port>', 'local daemon port (default 9090)', (value) => Number.parseInt(value, 10))
-    .option('--host-device <url>', 'Keenetic device URL to proxy /rci and /auth to')
+    .option('--addr <device>', 'Keenetic device IP, host[:port], or http(s) URL')
+    .addOption(new Option('--host-device <url>', 'compatibility alias for --addr').hideHelp())
+    .option('--ui-port <port>', 'local UI dev-server port', (value) => Number.parseInt(value, 10), 5173)
+    .addOption(new Option('--prebuilt-host', 'use the packaged dev host').hideHelp())
     .action(async (pluginDir: string, options: DevCommandOptions) => {
+      if (options.addr !== undefined && options.hostDevice !== undefined && options.addr !== options.hostDevice) {
+        throw new CliError('--addr and --host-device cannot be used with different values');
+      }
+
       await runDev(pluginDir, {
         daemonBinary: options.daemon,
         port: options.port,
-        hostDevice: options.hostDevice,
+        addr: options.addr ?? options.hostDevice,
+        uiPort: options.uiPort,
+        prebuiltHost: options.prebuiltHost,
       });
     });
 
@@ -101,9 +116,12 @@ export function createProgram(): Command {
         rethrowManifestError(pluginDir, error);
       }
 
-      const warnings = validatePluginCatalogs(resolvePluginDir(pluginDir), result.manifest, {
-        strict: options.strict === true,
-      });
+      const warnings = [
+        ...result.warnings,
+        ...validatePluginCatalogs(resolvePluginDir(pluginDir), result.manifest, {
+          strict: options.strict === true,
+        }),
+      ];
 
       for (const warning of warnings) {
         process.stdout.write(`Warning: ${warning}\n`);

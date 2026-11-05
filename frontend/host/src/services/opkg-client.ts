@@ -6,6 +6,7 @@ import {
   OPKG_UPDATE_URL,
   OPKG_UPGRADE_URL,
 } from '../constants.js';
+import {CSRF_HEADERS} from './csrf.js';
 import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
 import {isRecord} from './json.js';
 
@@ -216,14 +217,6 @@ function validateUpdateResponse(body: unknown): {message: string} {
   return {message: body.message};
 }
 
-const csrfHeaders = (headers: HeadersInit = {}): Headers => {
-  const result = new Headers(headers);
-
-  result.set('X-Mndw-Csrf', '1');
-
-  return result;
-};
-
 export function createOpkgClient(fetchImpl: typeof globalThis.fetch = globalThis.fetch): OpkgClient {
   async function request(url: string, init: RequestInit): Promise<unknown> {
     const response = await fetchImpl(url, init);
@@ -238,7 +231,7 @@ export function createOpkgClient(fetchImpl: typeof globalThis.fetch = globalThis
   async function postPackages(url: string, packages: string[]): Promise<{message: string; packages: string[]}> {
     const body = await request(url, {
       method: 'POST',
-      headers: csrfHeaders({'Content-Type': 'application/json'}),
+      headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
       body: JSON.stringify({packages}),
     });
 
@@ -266,7 +259,7 @@ export function createOpkgClient(fetchImpl: typeof globalThis.fetch = globalThis
     async update(): Promise<{message: string}> {
       const body = await request(OPKG_UPDATE_URL, {
         method: 'POST',
-        headers: csrfHeaders({'Content-Type': 'application/json'}),
+        headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
         body: '{}',
       });
 

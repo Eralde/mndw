@@ -54,6 +54,44 @@ func TestSupervisorLiveDiagnosticsValidatesBoundedJSON(t *testing.T) {
 	}
 }
 
+func TestValidateDiagnosticsObject(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantError string
+	}{
+		{name: "empty object", body: `{}`},
+		{name: "object", body: `{"a":1}`},
+		{name: "array", body: `[]`, wantError: "must be an object"},
+		{name: "null", body: `null`, wantError: "must be an object"},
+		{name: "number", body: `1`, wantError: "must be an object"},
+		{name: "string", body: `"x"`, wantError: "must be an object"},
+		{name: "boolean", body: `true`, wantError: "must be an object"},
+		{name: "malformed json", body: `{`, wantError: "not JSON"},
+		{name: "trailing data", body: `{} {}`, wantError: "trailing"},
+	}
+
+	for _, test := range tests {
+		test := test
+
+		t.Run(test.name, func(t *testing.T) {
+			err := validateDiagnosticsObject([]byte(test.body))
+
+			if test.wantError == "" {
+				if err != nil {
+					t.Fatalf("error = %v, want nil", err)
+				}
+
+				return
+			}
+
+			if err == nil || !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(test.wantError)) {
+				t.Fatalf("error = %v, want substring %q", err, test.wantError)
+			}
+		})
+	}
+}
+
 func TestSupervisorLiveDiagnosticsHasShortTimeout(t *testing.T) {
 	socketPath := startDiagnosticsServer(t, func(writer http.ResponseWriter, request *http.Request) {
 		<-request.Context().Done()

@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 1,
+  "name": "hello-widget",
+  "version": "0.1.0",
+  "type": "widget",
+  "label": "Hello Widget",
+  "entry": "index.js",
+  "i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json", "ru": "i18n/ru.json"}},
+  "size": {"w": 4, "h": 3, "minW": 2, "minH": 2},
+  "backend": {
+    "kind": "exec",
+    "routes": [
+      {"id": "hello", "transport": "http", "method": "GET", "path": "hello", "command": "backend/main.sh"}
+    ]
+  }
+}

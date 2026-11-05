@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
@@ -38,7 +39,7 @@ func (h *Handler) handlePermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m, source, approval, enabled, apiErr := h.permissionTarget(request.Name)
+	m, source, approval, enabled, dir, apiErr := h.permissionTarget(request.Name)
 
 	if apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)
@@ -100,7 +101,7 @@ func (h *Handler) handlePermission(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, source, approval, enabled))
+	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, source, approval, enabled, dir))
 }
 
 func (h *Handler) reconcilePermission(plugin, reason string) {
@@ -113,28 +114,36 @@ func (h *Handler) reconcilePermission(plugin, reason string) {
 	}
 }
 
-func (h *Handler) permissionTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, *httpx.APIError) {
+func (h *Handler) permissionTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, string, *httpx.APIError) {
 	if plugin, ok := h.store.Get(name); ok {
 		m, err := manifest.Validate(plugin.Manifest)
 		if err != nil {
-			return nil, "", "", false, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
+			return nil, "", "", false, "", httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
 		}
 
-		return m, plugin.Source, plugin.Approval, plugin.Enabled, nil
+		dir := filepath.Join(h.cfg.UserPluginsDir, name)
+
+		if plugin.Source == state.SourceBuiltin {
+			dir = filepath.Join(h.cfg.BuiltinPluginsDir, name)
+		} else if plugin.Approval == state.ApprovalPending {
+			dir = filepath.Join(h.cfg.StagingDir, name)
+		}
+
+		return m, plugin.Source, plugin.Approval, plugin.Enabled, dir, nil
 	}
 
 	builtins, err := h.builtins.ListBuiltinsWithError()
 	if err != nil {
-		return nil, "", "", false, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
+		return nil, "", "", false, "", httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
 	}
 
 	for _, plugin := range builtins {
 		if plugin.Name == name {
-			return plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true, nil
+			return plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true, plugin.Dir, nil
 		}
 	}
 
-	return nil, "", "", false, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
+	return nil, "", "", false, "", httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
 }
 
 func declaresPermission(m *manifest.Manifest, permission string) bool {

@@ -1,4 +1,5 @@
-import {type TelemetryClient, createTelemetryClient} from '@mndw/sdk';
+import type {TelemetryClient} from '@mndw/sdk';
+import {createTelemetryClient} from '@mndw/sdk-internal';
 
 export type TelemetryService = TelemetryClient;
 

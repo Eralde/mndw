@@ -7,6 +7,9 @@ import {describe, expect, it, vi} from 'vitest';
 import {buildBackend, buildFrontend} from '../builtin-plugins.js';
 import {watchBuiltinPlugins} from './dev.js';
 
+// The full suite runs in .github/workflows/ci-weekly.yml.
+const skipSlowTests = process.env.MNDW_SKIP_SLOW_TESTS === '1';
+
 function fixture(): {root: string; sourceRoot: string; distRoot: string; pluginDir: string} {
   const root = mkdtempSync(join(tmpdir(), 'mndw-builtin-integration-'));
   const sourceRoot = join(root, 'plugins', 'builtin');
@@ -47,7 +50,7 @@ function atomicWrite(filePath: string, contents: string): void {
   renameSync(temporaryPath, filePath);
 }
 
-describe('builtin development watch integration', () => {
+describe.skipIf(skipSlowTests)('builtin development watch integration', () => {
   it('rebuilds frontend and backend artifacts through real chokidar and pack commands', async () => {
     vi.stubEnv('CHOKIDAR_USEPOLLING', '1');
 

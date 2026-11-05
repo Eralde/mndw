@@ -69,6 +69,7 @@ type Config struct {
 	FinalReapTimeout           time.Duration
 	InitWaitTimeout            time.Duration
 	MaxRequestBytes            int64
+	MaxOutputBytes             int64
 	MaxConcurrentExecTotal     int
 	MaxConcurrentExecPerPlugin int
 	MaxSupervisedServices      int
@@ -196,6 +197,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.DurationVar(&cfg.FinalReapTimeout, "final-reap-timeout", 2*time.Second, "final process group reap timeout")
 	fs.DurationVar(&cfg.InitWaitTimeout, "init-wait-timeout", 60*time.Second, "init readiness wait timeout")
 	fs.Int64Var(&cfg.MaxRequestBytes, "max-request-bytes", 1<<20, "max backend request body size in bytes")
+	fs.Int64Var(&cfg.MaxOutputBytes, "max-output-bytes", backend.DefaultMaxOutputBytes, "max backend exec response size in bytes")
 
 	defaults := backend.DefaultLimits()
 
@@ -320,6 +322,10 @@ func flagWasSet(flags *flag.FlagSet, name string) bool {
 }
 
 func validateBackendConfig(cfg Config) error {
+	if cfg.MaxOutputBytes <= 0 {
+		return fmt.Errorf("--max-output-bytes must be positive")
+	}
+
 	positive := []struct {
 		name  string
 		value int

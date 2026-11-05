@@ -5,10 +5,15 @@ import {fileURLToPath} from 'node:url';
 import crossSpawn from 'cross-spawn';
 import {CliError} from './errors.js';
 import {restartService as defaultRestartService} from './dev-reload.js';
-import {type DevSessionDeps, runDevSession} from './dev-session.js';
+import {type DevHostLauncher, type DevSessionDeps, runDevSession} from './dev-session.js';
+import {resolvePackagedDaemon} from './daemon-binary.js';
 import {type GoBuildSpawn, buildGoBackend} from './go-backend-build.js';
+import {cliPackageRoot} from './cli-package-root.js';
+import {normalizeDeviceAddress} from './device-address.js';
+import {detectFramework} from './framework.js';
 import {type LoadedManifest, readManifest} from './manifest.js';
 import {resolvePluginDir} from './paths.js';
+import {startPluginDevServer} from './dev-server/start.js';
 import {type BuildOutcome, type WatchBuildOptions, type WatchHandle, watchAndBuild} from './watch.js';
 
 export interface DevOptions {
@@ -18,6 +23,12 @@ export interface DevOptions {
   readonly port?: number;
   /** Forwarded to the host as `MNDW_HOST_DEVICE` (the Keenetic device to proxy `/rci`,`/auth` to). */
   readonly hostDevice?: string;
+  /** Preferred CLI spelling for the device URL. */
+  readonly addr?: string;
+  /** Local source-server port (default 5173). */
+  readonly uiPort?: number;
+  /** Hidden switch for exercising the bundled dev host inside a source checkout. */
+  readonly prebuiltHost?: boolean;
 }
 
 /** Injectable boundaries so the supervisor is unit-testable without real processes or fs. */
@@ -27,6 +38,7 @@ export interface DevDeps {
   symlinkDir?: (target: string, linkPath: string) => void;
   removeDir?: (dir: string) => void;
   findDaemonPackageDir?: () => string | null;
+  resolvePackagedDaemon?: () => string;
   fileExists?: (path: string) => boolean;
   buildGoBackend?: (pluginSourceDir: string) => GoBuildResult;
   repoRoot?: string;
@@ -34,6 +46,9 @@ export interface DevDeps {
   restartService?: typeof defaultRestartService;
   env?: NodeJS.ProcessEnv;
   session?: DevSessionDeps;
+  platform?: NodeJS.Platform;
+  cliPackageRoot?: () => string;
+  launchHost?: DevHostLauncher;
 }
 
 /** Outcome of a Go backend build attempt. */
@@ -51,17 +66,17 @@ export interface DaemonLaunch {
 
 /**
  * Decides how to launch the daemon: `go run ./cmd/mndwd` in a source checkout, otherwise an
- * explicit `--daemon <mndwd-binary>` (rejected before any process starts if it is missing).
+ * an installed platform binary or explicit `--daemon <mndwd-binary>` outside a source checkout.
  */
 export function resolveDaemonLaunch(
   daemonArgs: string[],
   options: DevOptions,
-  ctx: {daemonPackageDir: string | null; binaryExists: (path: string) => boolean},
+  ctx: {
+    daemonPackageDir: string | null;
+    binaryExists: (path: string) => boolean;
+    resolvePackagedDaemon?: () => string;
+  },
 ): DaemonLaunch {
-  if (ctx.daemonPackageDir !== null) {
-    return {command: 'go', args: ['run', './cmd/mndwd', ...daemonArgs], cwd: ctx.daemonPackageDir};
-  }
-
   if (options.daemonBinary !== undefined) {
     if (!ctx.binaryExists(options.daemonBinary)) {
       throw new CliError(`mndw dev: --daemon binary not found: ${options.daemonBinary}`);
@@ -70,15 +85,82 @@ export function resolveDaemonLaunch(
     return {command: options.daemonBinary, args: daemonArgs};
   }
 
-  throw new CliError('mndw dev needs a source checkout (daemon/mndwd) or --daemon <mndwd-binary>');
+  if (ctx.daemonPackageDir !== null) {
+    return {command: 'go', args: ['run', './cmd/mndwd', ...daemonArgs], cwd: ctx.daemonPackageDir};
+  }
+
+  return {command: (ctx.resolvePackagedDaemon ?? resolvePackagedDaemon)(), args: daemonArgs};
 }
 
 /** Locates `daemon/mndwd` relative to this file, or null outside a source checkout. */
 function defaultFindDaemonPackageDir(): string | null {
-  const cliSourceDir = dirname(fileURLToPath(import.meta.url));
-  const daemonDir = resolve(cliSourceDir, '..', '..', '..', 'daemon', 'mndwd');
+  const daemonDir = resolve(cliPackageRoot(), '..', '..', 'daemon', 'mndwd');
 
   return existsSync(join(daemonDir, 'go.mod')) ? daemonDir : null;
+}
+
+export function defaultSymlinkDir(
+  platform: NodeJS.Platform,
+  link: typeof symlinkSync = symlinkSync,
+): (target: string, linkPath: string) => void {
+  return (target, linkPath) => link(target, linkPath, platform === 'win32' ? 'junction' : 'dir');
+}
+
+function prebuiltHostLauncher(
+  pluginDir: string,
+  hostBundleDir: string,
+  port: number,
+  framework: ReturnType<typeof detectFramework>,
+): DevHostLauncher {
+  return (env) => {
+    let serverHandle: Awaited<ReturnType<typeof startPluginDevServer>> | undefined;
+    let resolveExit: (code: number | null) => void = () => undefined;
+    let closing = false;
+    const exited = new Promise<number | null>((resolveExitPromise) => {
+      resolveExit = resolveExitPromise;
+    });
+    const starting = startPluginDevServer({
+      pluginDir,
+      hostBundleDir,
+      port,
+      deviceUrl: env.MNDW_HOST_DEVICE,
+      daemonUrl: env.MNDW_DAEMON ?? 'http://127.0.0.1:9090',
+      framework,
+    }).then(async (handle) => {
+      serverHandle = handle;
+
+      if (closing) {
+        await handle.close();
+        resolveExit(0);
+      }
+
+      return handle;
+    })
+      .catch((error: unknown) => {
+        resolveExit(1);
+        throw error;
+      });
+
+    void starting.catch(() => undefined);
+
+    return {
+      exited,
+      reload: () => serverHandle?.reload(),
+      close: async () => {
+        closing = true;
+
+        try {
+          const handle = await starting;
+
+          await handle.close();
+        } catch {
+          // Startup failure is reported through `exited`; cleanup remains best-effort.
+        }
+
+        resolveExit(0);
+      },
+    };
+  };
 }
 
 /**
@@ -274,18 +356,43 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
   const repoRoot = deps.repoRoot ?? resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const loadManifest = deps.readManifest ?? readManifest;
   const makeTempDir = deps.makeTempDir ?? ((prefix) => mkdtempSync(join(tmpdir(), prefix)));
-  const symlinkDir = deps.symlinkDir ?? ((target, linkPath) => symlinkSync(target, linkPath, 'dir'));
+  const symlinkDir = deps.symlinkDir ?? defaultSymlinkDir(deps.platform ?? process.platform);
   const removeDir = deps.removeDir ?? ((dir) => rmSync(dir, {recursive: true, force: true}));
   const findDaemonPackageDir = deps.findDaemonPackageDir ?? defaultFindDaemonPackageDir;
   const fileExists = deps.fileExists ?? existsSync;
   const buildBackend = deps.buildGoBackend ?? defaultBuildGoBackend;
   const baseEnv = deps.env ?? process.env;
-  const hostDevice = options.hostDevice ?? baseEnv.MNDW_HOST_DEVICE;
 
   // Validate before launching anything so a bad plugin fails fast with no side effects.
   const {manifest} = loadManifest(pluginDir);
+
+  if ((deps.platform ?? process.platform) === 'win32' && manifest.backend !== undefined) {
+    throw new CliError(
+      'mndw dev: plugins with a backend need WSL on Windows. Open a WSL terminal and run mndw dev there.',
+    );
+  }
+
   const pluginName = manifest.name;
   const pluginSourceDir = resolvePluginDir(pluginDir);
+  const framework = detectFramework(pluginSourceDir);
+  const requestedDevice = options.addr ?? options.hostDevice;
+  const hostDevice = requestedDevice === undefined
+    ? baseEnv.MNDW_HOST_DEVICE
+    : normalizeDeviceAddress(requestedDevice);
+  const daemonPackageDir = findDaemonPackageDir();
+  let launchHost = deps.launchHost;
+
+  if (options.prebuiltHost === true || daemonPackageDir === null) {
+    const hostBundleDir = join((deps.cliPackageRoot ?? cliPackageRoot)(), 'host-dev');
+
+    if (!fileExists(join(hostBundleDir, 'index.html'))) {
+      throw new CliError(
+        `mndw dev: prebuilt host not found at ${hostBundleDir}; run pnpm --filter @mndw/cli build:host-dev`,
+      );
+    }
+
+    launchHost ??= prebuiltHostLauncher(pluginSourceDir, hostBundleDir, options.uiPort ?? 5173, framework);
+  }
 
   const port = options.port ?? 9090;
   const listen = `127.0.0.1:${port}`;
@@ -335,8 +442,9 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
     }
 
     const launch = resolveDaemonLaunch([], options, {
-      daemonPackageDir: findDaemonPackageDir(),
+      daemonPackageDir,
       binaryExists: fileExists,
+      resolvePackagedDaemon: deps.resolvePackagedDaemon,
     });
 
     const isReady = (payload: unknown): boolean => {
@@ -360,6 +468,7 @@ export async function runDev(pluginDir: string, options: DevOptions = {}, deps: 
       env: baseEnv,
       hostDevice,
       sandboxPlugin: pluginSourceDir,
+      launchHost,
       isReady,
       createWatcher: ({daemonUrl: watcherDaemonUrl, touchSentinel}) => {
         return watchPluginBackend({

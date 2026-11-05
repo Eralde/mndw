@@ -1,6 +1,7 @@
+import type {PluginRciManager} from '@mndw/sdk';
 import {map} from 'rxjs/operators';
 import type {Observable} from 'rxjs';
-import type {RciBackgroundProcess, RciManager} from '@rci-tools/core';
+import type {RciBackgroundProcess} from '@rci-tools/core';
 import {DEFAULT_MAX_LINES, normalizeLogResponse} from './log-normalizer';
 import type {NormalizedLogRecord} from './log-types';
 
@@ -15,7 +16,7 @@ export interface SystemLogApi {
   clearLog(): Observable<unknown>;
 }
 
-export function createSystemLogApi(rci: RciManager): SystemLogApi {
+export function createSystemLogApi(rci: PluginRciManager): SystemLogApi {
   return {
     showLogOnce(): Observable<NormalizedLogRecord[]> {
       return rci.queue({path: 'show.log', data: {'once': true, 'max-lines': DEFAULT_MAX_LINES}}).pipe(

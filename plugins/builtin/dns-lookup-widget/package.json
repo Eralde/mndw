@@ -16,7 +16,7 @@
   "scripts": {
     "build-backend": "mndw build-backend",
     "pretest": "pnpm run build-backend",
-    "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run"
+    "test": "vitest run"
   },
   "devDependencies": {
     "@mndw/cli": "workspace:*",

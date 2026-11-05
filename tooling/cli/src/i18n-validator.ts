@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import {isAbsolute, relative, resolve, sep} from 'node:path';
 
 import {parse} from '@formatjs/icu-messageformat-parser';
-import {type PluginManifestOutput} from '@mndw/sdk';
+import type {PluginManifestOutput} from '@mndw/sdk-internal';
 
 import {CliError} from './errors.js';
 

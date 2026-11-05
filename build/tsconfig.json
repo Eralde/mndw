@@ -9,6 +9,7 @@
   },
   "include": [
     "dev/**/*.ts",
+    "npm/**/*.ts",
     "packaging/**/*.ts",
     "contracts/**/*.ts",
     "artifacts/**/*.ts",
@@ -18,10 +19,15 @@
     "builtin-plugins.test.ts",
     "example-plugins.ts",
     "example-plugins.test.ts",
+    "catalog-versions.test.ts",
     "packed-plugin-artifact.test.ts",
     "scripts/audit-px.test.ts",
+    "scripts/ci-test-scope.ts",
+    "scripts/ci-test-scope.test.ts",
+    "scripts/run-build-tests.ts",
     "plugin-backends.ts",
     "targets.ts",
-    "targets.test.ts"
+    "targets.test.ts",
+    "docs/**/*.ts"
   ]
 }

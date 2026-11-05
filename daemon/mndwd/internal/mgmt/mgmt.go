@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
@@ -236,6 +237,7 @@ type ListEntry struct {
 	Backend    *manifest.BackendDescriptor `json:"backend"`
 	Review     *manifest.ApprovalReview    `json:"review,omitempty"`
 	Runtime    *backend.RuntimeStatus      `json:"runtime,omitempty"`
+	Lock       *PluginLock                 `json:"lock,omitempty"`
 }
 
 func (h *Handler) handleList(w http.ResponseWriter, _ *http.Request) {
@@ -285,7 +287,13 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 			continue
 		}
 
-		entries = append(entries, h.entryFrom(m, p.Source, p.Approval, p.Enabled))
+		dir := filepath.Join(h.cfg.UserPluginsDir, p.Name)
+
+		if p.Approval == state.ApprovalPending {
+			dir = filepath.Join(h.cfg.StagingDir, p.Name)
+		}
+
+		entries = append(entries, h.entryFrom(m, p.Source, p.Approval, p.Enabled, dir))
 	}
 
 	builtinPlugins, err := h.builtins.ListBuiltinsWithError()
@@ -298,7 +306,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 			continue
 		}
 
-		entries = append(entries, h.entryFrom(plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true))
+		entries = append(entries, h.entryFrom(plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true, plugin.Dir))
 	}
 
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
@@ -308,7 +316,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 
 // entryFrom projects a validated manifest plus runtime state into a ListEntry,
 // including its always-present depsStatus.
-func (h *Handler) entryFrom(m *manifest.Manifest, source state.Source, approval state.Approval, enabled bool) ListEntry {
+func (h *Handler) entryFrom(m *manifest.Manifest, source state.Source, approval state.Approval, enabled bool, dir string) ListEntry {
 	e := ListEntry{
 		Name:        deref(m.Name),
 		Type:        deref(m.Type),
@@ -325,6 +333,7 @@ func (h *Handler) entryFrom(m *manifest.Manifest, source state.Source, approval 
 		I18n:        m.I18n,
 		Backend:     manifest.Descriptor(m),
 		Review:      manifest.Review(m),
+		Lock:        readPluginLock(dir),
 	}
 	e.DepsStatus = "ready"
 

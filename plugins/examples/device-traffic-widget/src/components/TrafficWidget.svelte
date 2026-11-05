@@ -1,9 +1,13 @@
 <script lang="ts">
 import {onMount} from 'svelte';
 import type {Readable} from 'svelte/store';
-import type {RciManager} from '@rci-tools/core';
 import {formatSpeed} from '@mndw/ui';
-import type {PluginI18n, PluginStorage, Translator} from '@mndw/sdk';
+import type {
+  PluginI18n,
+  PluginRciManager,
+  PluginStorage,
+  Translator,
+} from '@mndw/sdk';
 import {createRefreshLoop} from '@mndw/sdk/refresh';
 import {createTranslator} from '@mndw/sdk/svelte';
 import {type ClockDate, RciService} from '../services/rci.js';
@@ -12,7 +16,7 @@ import {toDeviceTrafficChartData} from '../utils/chart-data.js';
 import type {OpenSettingsArgs} from '../open-settings-dialog.js';
 
 interface Props {
-  rci: RciManager;
+  rci: PluginRciManager;
   storage: PluginStorage;
   openSettings: (args: OpenSettingsArgs) => void;
   setTileTitle?: (title: string) => void;

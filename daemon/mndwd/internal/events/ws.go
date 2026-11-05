@@ -106,14 +106,14 @@ func serveWebSocket(parent context.Context, connection *websocket.Conn, bus *Bus
 	var (
 		filter       TopicFilter
 		liveEvents   <-chan Event
-		cancelLive   CancelFunc
+		subscription *Subscription
 		snapshot     *replaySnapshot
 		connectionOK = true
 	)
 
 	defer func() {
-		if cancelLive != nil {
-			cancelLive()
+		if subscription != nil {
+			subscription.Cancel()
 		}
 	}()
 
@@ -130,7 +130,9 @@ func serveWebSocket(parent context.Context, connection *websocket.Conn, bus *Bus
 				return
 			}
 
-			connectionOK = writeWebSocketMessage(connection, eventMessage{Type: "event", Event: event})
+			connectionOK = writeLiveEvent(filter, event, func(event Event) bool {
+				return writeWebSocketMessage(connection, eventMessage{Type: "event", Event: event})
+			})
 		case message := <-messages:
 			var incoming clientMessage
 
@@ -140,12 +142,12 @@ func serveWebSocket(parent context.Context, connection *websocket.Conn, bus *Bus
 				continue
 			}
 
-			connectionOK = handleClientMessage(connection, bus, incoming, &filter, &liveEvents, &cancelLive, &snapshot)
+			connectionOK = handleClientMessage(connection, bus, incoming, &filter, &liveEvents, &subscription, &snapshot)
 		}
 	}
 }
 
-func handleClientMessage(connection *websocket.Conn, bus *Bus, incoming clientMessage, filter *TopicFilter, liveEvents *<-chan Event, cancelLive *CancelFunc, snapshot **replaySnapshot) bool {
+func handleClientMessage(connection *websocket.Conn, bus *Bus, incoming clientMessage, filter *TopicFilter, liveEvents *<-chan Event, subscription **Subscription, snapshot **replaySnapshot) bool {
 	switch incoming.Type {
 	case "subscribe":
 		if incoming.Topics == nil {
@@ -157,32 +159,37 @@ func handleClientMessage(connection *websocket.Conn, bus *Bus, incoming clientMe
 			return writeWebSocketError(connection, webSocketErrorCode, err.Error())
 		}
 
-		var nextEvents <-chan Event
-		var nextCancel CancelFunc
+		if parsed.Empty() {
+			if *subscription != nil {
+				(*subscription).Cancel()
 
-		if !parsed.Empty() {
-			nextEvents, nextCancel, err = bus.Subscribe(parsed)
+				*subscription = nil
+			}
+
+			*liveEvents = nil
+		} else if *subscription != nil {
+			(*subscription).SetFilter(parsed)
+
+			*liveEvents = (*subscription).Events()
+		} else {
+			*subscription, err = bus.SubscribeHandle(parsed)
 			if err != nil {
 				return writeWebSocketError(connection, webSocketErrorCode, err.Error())
 			}
+
+			*liveEvents = (*subscription).Events()
 		}
 
-		if *cancelLive != nil {
-			(*cancelLive)()
-		}
-
-		*cancelLive = nextCancel
-		*liveEvents = nextEvents
 		*filter = parsed
 		*snapshot = nil
 
 		return true
 	case "unsubscribe":
-		if *cancelLive != nil {
-			(*cancelLive)()
+		if *subscription != nil {
+			(*subscription).Cancel()
 		}
 
-		*cancelLive = nil
+		*subscription = nil
 		*liveEvents = nil
 		*filter = TopicFilter{}
 		*snapshot = nil
@@ -193,6 +200,14 @@ func handleClientMessage(connection *websocket.Conn, bus *Bus, incoming clientMe
 	default:
 		return writeWebSocketError(connection, webSocketErrorCode, fmt.Sprintf("unsupported message type %q", incoming.Type))
 	}
+}
+
+func writeLiveEvent(filter TopicFilter, event Event, write func(Event) bool) bool {
+	if !filter.Matches(string(event.Topic)) {
+		return true
+	}
+
+	return write(event)
 }
 
 func handleReplay(connection *websocket.Conn, bus *Bus, incoming clientMessage, filter TopicFilter, snapshot **replaySnapshot) bool {

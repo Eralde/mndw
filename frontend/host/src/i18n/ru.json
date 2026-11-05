@@ -151,7 +151,14 @@
       "installing-dependencies": "Установка зависимостей…",
       "dependency-install-failed": "Не удалось установить зависимости",
       "version-mismatch": "Несоответствие версии",
-      "version-warning": "Собрано для версий {versions}. Плагин всё ещё загружается, но может работать неправильно с этим хостом.",
+      "load-version-warning": "Собрано для версий {versions}. Плагин всё ещё загружается, но может работать неправильно с этим хостом.",
+      "version-warning": {
+        "title": "Совместимость версий",
+        "sdk-major": "Собрано для @mndw/sdk {pluginVersion}; эта панель предоставляет {hostVersion}. Плагин может не работать.",
+        "sdk-newer-minor": "Собрано для более новой версии @mndw/sdk ({pluginVersion}), чем предоставляет эта панель ({hostVersion}). Некоторые функции могут не работать.",
+        "shared-major": "Собрано для {name} {pluginVersion}; эта панель предоставляет {hostVersion}. Плагин может не работать.",
+        "install-anyway": "Плагин всё равно можно установить."
+      },
       "endpoint-one": "{count} конечная точка",
       "endpoint-many": "{count} конечных точек",
       "websocket-one": "{count} веб-сокет",

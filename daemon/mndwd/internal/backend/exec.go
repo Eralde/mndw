@@ -10,10 +10,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"mndwd/internal/httpx"
 )
+
+const DefaultMaxOutputBytes int64 = 8 << 20
 
 type ExecRequest struct {
 	PluginID   string
@@ -46,6 +49,15 @@ type ExecRunner struct {
 }
 
 func NewExecRunner(cfg ExecRunnerConfig) *ExecRunner {
+	cfg = normalizeExecConfig(cfg)
+
+	return newExecRunner(cfg, NewAdmission(Limits{
+		MaxConcurrentExecTotal:     cfg.MaxConcurrentExecTotal,
+		MaxConcurrentExecPerPlugin: cfg.MaxConcurrentExecPerPlugin,
+	}))
+}
+
+func normalizeExecConfig(cfg ExecRunnerConfig) ExecRunnerConfig {
 	defaults := DefaultLimits()
 
 	if cfg.Timeout <= 0 {
@@ -61,7 +73,7 @@ func NewExecRunner(cfg ExecRunnerConfig) *ExecRunner {
 	}
 
 	if cfg.MaxOutputBytes <= 0 {
-		cfg.MaxOutputBytes = 8 << 20
+		cfg.MaxOutputBytes = DefaultMaxOutputBytes
 	}
 
 	if cfg.MaxConcurrentExecTotal <= 0 {
@@ -72,13 +84,12 @@ func NewExecRunner(cfg ExecRunnerConfig) *ExecRunner {
 		cfg.MaxConcurrentExecPerPlugin = defaults.MaxConcurrentExecPerPlugin
 	}
 
-	return newExecRunner(cfg, NewAdmission(Limits{
-		MaxConcurrentExecTotal:     cfg.MaxConcurrentExecTotal,
-		MaxConcurrentExecPerPlugin: cfg.MaxConcurrentExecPerPlugin,
-	}))
+	return cfg
 }
 
 func newExecRunner(cfg ExecRunnerConfig, admission *Admission) *ExecRunner {
+	cfg = normalizeExecConfig(cfg)
+
 	return &ExecRunner{cfg: cfg, admission: admission}
 }
 
@@ -150,19 +161,27 @@ func (r *ExecRunner) Serve(ctx context.Context, request ExecRequest, writer http
 		"MNDW_ROUTE_ID="+request.RouteID,
 	)
 	command.Stdin = bytes.NewReader(request.Body)
-	stdout := &boundedBuffer{limit: r.cfg.MaxOutputBytes}
-	stderr := &boundedBuffer{limit: 4 << 10}
-	command.Stdout = stdout
-	command.Stderr = stderr
-
 	deadlineCtx, cancel := context.WithTimeout(ctx, r.cfg.Timeout)
 
 	defer cancel()
 
+	stdout := &boundedBuffer{limit: r.cfg.MaxOutputBytes, onOverflow: cancel}
+	stderr := &boundedBuffer{limit: 4 << 10}
+	command.Stdout = stdout
+	command.Stderr = stderr
+
+	if deadlineCtx.Err() != nil {
+		return httpx.NewError(http.StatusGatewayTimeout, httpx.CodeScriptTimeout, "backend execution timed out")
+	}
+
+	if err := command.Start(); err != nil {
+		return httpx.NewError(http.StatusBadGateway, httpx.CodeScriptFailed, "backend execution failed")
+	}
+
 	done := make(chan error, 1)
 
 	go func() {
-		done <- command.Run()
+		done <- command.Wait()
 	}()
 
 	var runErr error
@@ -171,6 +190,10 @@ func (r *ExecRunner) Serve(ctx context.Context, request ExecRequest, writer http
 	case runErr = <-done:
 	case <-deadlineCtx.Done():
 		terminateAndReap(command, done, r.cfg.KillGrace)
+
+		if stdout.Overflowed() {
+			return httpx.NewError(http.StatusBadGateway, httpx.CodeBackendOutputTooLarge, "backend response exceeds output limit")
+		}
 
 		return httpx.NewError(http.StatusGatewayTimeout, httpx.CodeScriptTimeout, "backend execution timed out")
 	}
@@ -208,9 +231,10 @@ func (r *ExecRunner) Serve(ctx context.Context, request ExecRequest, writer http
 }
 
 type boundedBuffer struct {
-	bytes.Buffer
-	limit    int64
-	overflow bool
+	buf        bytes.Buffer
+	limit      int64
+	overflow   atomic.Bool
+	onOverflow func()
 }
 
 func (b *boundedBuffer) Write(data []byte) (int, error) {
@@ -218,25 +242,34 @@ func (b *boundedBuffer) Write(data []byte) (int, error) {
 		return len(data), nil
 	}
 
-	remaining := b.limit - int64(b.Len())
+	remaining := b.limit - int64(b.buf.Len())
 
 	if remaining <= 0 {
-		b.overflow = true
+		b.markOverflow()
 
 		return len(data), nil
 	}
 
 	if int64(len(data)) > remaining {
-		_, _ = b.Buffer.Write(data[:remaining])
-		b.overflow = true
+		_, _ = b.buf.Write(data[:remaining])
+
+		b.markOverflow()
 
 		return len(data), nil
 	}
 
-	return b.Buffer.Write(data)
+	return b.buf.Write(data)
 }
 
-func (b *boundedBuffer) Overflowed() bool { return b.overflow }
+func (b *boundedBuffer) Bytes() []byte { return b.buf.Bytes() }
+
+func (b *boundedBuffer) markOverflow() {
+	if b.overflow.CompareAndSwap(false, true) && b.onOverflow != nil {
+		b.onOverflow()
+	}
+}
+
+func (b *boundedBuffer) Overflowed() bool { return b.overflow.Load() }
 
 func redactStderr(data []byte) string {
 	return strings.Join(redactStderrLines(strings.Split(string(data), "\n")), "\n")

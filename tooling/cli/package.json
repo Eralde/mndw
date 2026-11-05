@@ -1,7 +1,9 @@
 {
   "name": "@mndw/cli",
-  "version": "2.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "license": "MIT",
+  "homepage": "https://eralde.github.io/mndw/",
+  "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "tooling/cli"},
   "type": "module",
   "bin": {
     "mndw": "./src/index.ts"
@@ -11,41 +13,78 @@
     "./backend-artifact": "./src/backend-artifact.ts",
     "./go-backend": "./src/go-backend-build.ts",
     "./go-target": "./src/go-target.ts",
+    "./mndwd-platforms": "./src/mndwd-platforms.ts",
     "./packed-plugin-artifact": "./src/packed-plugin-artifact.ts"
   },
   "scripts": {
+    "build": "node --import tsx scripts/build.ts",
+    "build:host-dev": "node --import tsx scripts/build-host-dev.ts",
+    "prepack": "pnpm run build:host-dev && pnpm run build",
     "check": "tsc --noEmit",
     "test": "vitest run"
   },
+  "files": [
+    "dist",
+    "templates",
+    "host-dev",
+    "README.md"
+  ],
+  "publishConfig": {
+    "bin": {
+      "mndw": "./dist/mndw.js"
+    },
+    "exports": {
+      "./package.json": "./package.json"
+    }
+  },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "22.19.15",
-    "@vitejs/plugin-vue": "^6.0.0",
+    "@mndw/ui": "workspace:^",
+    "@mndw/ui-angular": "workspace:^",
+    "@mndw/ui-svelte": "workspace:^",
+    "@mndw/ui-vue": "workspace:^",
+    "@mndw/angular-compiler": "workspace:*",
+    "@mndw/sdk-internal": "workspace:*",
     "happy-dom": "20.11.1",
-    "vite": "^6.4.3",
     "vitest": "3.2.7"
   },
   "dependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@angular/common": "^21.2.18",
     "@angular/compiler": "^21.2.18",
+    "@angular/compiler-cli": "^21.2.18",
     "@angular/core": "^21.2.18",
     "@angular/platform-browser": "^21.2.18",
     "@formatjs/icu-messageformat-parser": "^3.5.16",
-    "@mndw/angular-compiler": "workspace:*",
-    "@mndw/sdk": "workspace:*",
+    "@mndw/palette-core": "workspace:^",
+    "intl-messageformat": "^11.2.13",
+    "@mndw/sdk": "workspace:^",
+    "@vitejs/plugin-vue": "^6.0.0",
     "chokidar": "^5.0.0",
     "commander": "^15.0.0",
     "cross-spawn": "^7.0.6",
+    "d3": "^7.9.0",
     "esbuild": "^0.25.12",
     "esbuild-svelte": "^0.9.5",
     "fflate": "^0.8.2",
+    "hash-wasm": "^4.12.0",
     "sass": "^1.77.0",
+    "rxjs": "^7.8.0",
     "svelte": "^5.56.4",
     "tsx": "^4.23.0",
     "typescript": "^5.7.0",
     "unplugin-vue": "^7.2.0",
     "vue": "^3.5.39",
-    "zone.js": "^0.15.1"
+    "vite": "^6.4.3",
+    "zone.js": "^0.15.1",
+    "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@mndw/mndwd-darwin-arm64": "workspace:*",
+    "@mndw/mndwd-darwin-x64": "workspace:*",
+    "@mndw/mndwd-linux-arm64": "workspace:*",
+    "@mndw/mndwd-linux-x64": "workspace:*",
+    "@mndw/mndwd-win32-x64": "workspace:*"
   }
 }

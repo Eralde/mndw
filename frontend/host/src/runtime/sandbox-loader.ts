@@ -1,4 +1,5 @@
-import {type MndwPlugin, type PluginManifest, validateManifest} from '@mndw/sdk';
+import type {MndwPlugin} from '@mndw/sdk';
+import {type PluginManifest, validateManifest} from '@mndw/sdk-internal';
 import {getLocale} from '../services/locale.service.js';
 import {
   type PluginCatalogService,

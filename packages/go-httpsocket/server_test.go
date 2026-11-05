@@ -146,7 +146,7 @@ func waitForSocket(t *testing.T, socketPath string, errCh <-chan error) {
 func shortTempDir(t *testing.T) string {
 	t.Helper()
 
-	directory, err := os.MkdirTemp("/private/tmp", "httpsocket-")
+	directory, err := os.MkdirTemp("/tmp", "httpsocket-")
 	if err != nil {
 		t.Fatal(err)
 	}

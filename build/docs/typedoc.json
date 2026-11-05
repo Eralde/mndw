@@ -1,0 +1,30 @@
+{
+  "$schema": "../../node_modules/typedoc-plugin-markdown/typedoc-plugin-markdown.schema.json",
+  "entryPoints": [
+    "../../frontend/sdk/src/index.ts",
+    "../../frontend/sdk/src/tokens.ts",
+    "../../frontend/sdk/src/bind-locale.ts",
+    "../../frontend/sdk/src/refresh.ts",
+    "../../frontend/sdk/src/rrd.ts",
+    "../../frontend/sdk/src/svelte/index.ts",
+    "../../frontend/sdk/src/vue/index.ts",
+    "../../frontend/sdk/src/angular/index.ts",
+    "../../frontend/sdk/src/testing/index.ts",
+    "../../frontend/sdk/src/testing/vitest-project.ts"
+  ],
+  "tsconfig": "../../frontend/sdk/tsconfig.json",
+  "plugin": ["typedoc-plugin-markdown", "typedoc-vitepress-theme"],
+  "out": "../../docs/plugin-author/api",
+  "docsRoot": "../../docs/plugin-author",
+  "router": "module",
+  "excludeScopesInPaths": true,
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "readme": "none",
+  "entryFileName": "index.md",
+  "validation": {
+    "notExported": false,
+    "invalidLink": true
+  },
+  "treatValidationWarningsAsErrors": true
+}

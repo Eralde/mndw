@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it} from 'vitest';
 import {defineMndwUi} from '../index.js';
 import {defineComponents, mount} from '../testing/index.js';

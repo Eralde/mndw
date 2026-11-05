@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {describe, expect, it} from 'vitest';
 import {defineComponents, mount} from '../testing/index.js';
 import {MNDW_TAB_PANEL_TAG, MndwTabPanel} from './tab-panel.js';

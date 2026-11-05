@@ -1,29 +1,24 @@
 // @vitest-environment happy-dom
-import {type BackendClient, MNDW_TOKENS, type PluginContext} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {type BackendClient, type PluginContext} from '@mndw/sdk';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import type {MndwButton, MndwInput} from '@mndw/ui';
 import {describe, expect, it, vi} from 'vitest';
 import enCatalog from '../i18n/en.json';
 import ruCatalog from '../i18n/ru.json';
 import {createInstance} from './index.js';
 
-function fakeContext(overrides?: Partial<BackendClient>): PluginContext {
+function fakeContext(
+  overrides?: Partial<BackendClient>,
+  options: {backend?: boolean; i18n?: ReturnType<typeof createTestI18n>} = {},
+): PluginContext {
   const fetch = vi.fn().mockResolvedValue(new Response('{"method":"GET"}'));
 
-  return {
-    rciManager: {} as PluginContext['rciManager'],
-    storage: {get: vi.fn(), set: vi.fn(), delete: vi.fn(), has: vi.fn(), keys: vi.fn()},
-    sharedStorage: {get: vi.fn(), set: vi.fn(), delete: vi.fn(), has: vi.fn(), keys: vi.fn()},
-    hostInfo: {locale: 'en', theme: 'light'},
-    deviceInfo: {deviceName: 'test-device', vendor: 'Keenetic'},
+  return createTestPluginContext({
+    backend: options.backend === false ? undefined : {fetch, socket: vi.fn(), ...overrides} as BackendClient,
+    i18n: options.i18n ?? createTestI18n(enCatalog),
+    theme: 'light',
     instanceId: 'test-id',
-    onThemeChange: vi.fn(),
-    getTokens: vi.fn(() => MNDW_TOKENS),
-    onPaletteChange: vi.fn(() => () => {}),
-    overlay: {} as PluginContext['overlay'],
-    backend: {fetch, socket: vi.fn(), ...overrides} as BackendClient,
-    i18n: createTestI18n(enCatalog),
-  };
+  }).context;
 }
 
 function queryElement<T extends Element>(container: Element, selector: string): T {
@@ -209,9 +204,8 @@ describe('createInstance', () => {
 
   it('shows unavailable when no backend', () => {
     const container = document.createElement('div');
-    const ctx = fakeContext();
+    const ctx = fakeContext(undefined, {backend: false});
 
-    ctx.backend = undefined;
     createInstance(container, ctx);
 
     const input = queryElement<MndwInput>(container, '.mndw-dns-lookup-widget__input');
@@ -305,9 +299,8 @@ describe('createInstance', () => {
       'lookup': 'Lookup EN',
       'idle': 'Idle EN',
     });
-    const ctx = fakeContext();
+    const ctx = fakeContext(undefined, {i18n});
 
-    ctx.i18n = i18n;
     createInstance(container, ctx);
 
     const input = queryElement<MndwInput>(container, '.mndw-dns-lookup-widget__input');

@@ -1,6 +1,7 @@
-import {MNDW_TOKENS, PageRouteError, type PaletteTokenMap} from '@mndw/sdk';
+// @vitest-environment happy-dom
+import {MNDW_TOKENS, PLUGIN_RCI_MANAGER_METHODS, PageRouteError, type PaletteTokenMap} from '@mndw/sdk';
 import {of} from 'rxjs';
-import {describe, expect, it, vi} from 'vitest';
+import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {createPluginContext} from './plugin-context.js';
 import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
 import {localeService} from '../services/locale.service.js';
@@ -22,9 +23,19 @@ vi.mock('../services/storage.service.js', () => ({
     constructor(_prefix: string) {}
   },
 }));
+
+const themeState = vi.hoisted(() => ({
+  current: 'dark' as 'light' | 'dark',
+  listeners: new Set<(theme: 'light' | 'dark') => void>(),
+}));
+
 vi.mock('../services/theme.service.js', () => ({
-  getTheme: () => 'dark',
-  subscribeTheme: () => () => {},
+  getTheme: () => themeState.current,
+  subscribeTheme: (callback: (theme: 'light' | 'dark') => void) => {
+    themeState.listeners.add(callback);
+
+    return () => themeState.listeners.delete(callback);
+  },
 }));
 vi.mock('../services/overlay/overlay-manager.svelte.js', () => ({
   createPluginOverlayService: vi.fn(() => ({
@@ -34,6 +45,32 @@ vi.mock('../services/overlay/overlay-manager.svelte.js', () => ({
 }));
 
 const hostInfo = {locale: 'en', theme: 'dark'} as const;
+
+class ContextTickerWorker {
+  public static readonly instances: ContextTickerWorker[] = [];
+  public onmessage: ((event: MessageEvent) => void) | null = null;
+  public readonly messages: unknown[] = [];
+  public terminated = false;
+
+  constructor() {
+    ContextTickerWorker.instances.push(this);
+  }
+
+  public postMessage(message: unknown): void {
+    this.messages.push(message);
+  }
+
+  public terminate(): void {
+    this.terminated = true;
+  }
+}
+
+beforeEach(() => {
+  themeState.current = 'dark';
+  themeState.listeners.clear();
+  ContextTickerWorker.instances.length = 0;
+});
+
 const deviceInfo = {
   deviceName: 'Device',
   vendor: 'Vendor',
@@ -194,7 +231,103 @@ describe('createPluginContext', () => {
 });
 
 describe('createPluginContext service boundaries', () => {
-  it('uses injected locale and palette services for plugin-facing context reads', () => {
+  it('reads live theme, locale and palette through getters', () => {
+    let locale = 'en';
+    let palette: PaletteTokenMap = MNDW_TOKENS;
+    const localeListeners = new Set<(value: string) => void>();
+    const paletteListeners = new Set<(value: PaletteTokenMap) => void>();
+    const injectedLocale = {
+      ...localeService,
+      getLocale: () => locale,
+      subscribeLocale: (callback: (value: string) => void): () => void => {
+        localeListeners.add(callback);
+
+        return () => localeListeners.delete(callback);
+      },
+    };
+    const injectedPalette = {
+      ...paletteService,
+      getTokens: () => palette,
+      subscribePalette: (callback: (value: PaletteTokenMap) => void): () => void => {
+        paletteListeners.add(callback);
+
+        return () => paletteListeners.delete(callback);
+      },
+    };
+    const {context: ctx} = createPluginContext({
+      entry: widgetEntry(),
+      instanceId: 'demo:1',
+      hostInfo,
+      deviceInfo,
+      services: {locale: injectedLocale, palette: injectedPalette},
+    });
+
+    const subscriptions = [ctx.theme$.subscribe(), ctx.locale$.subscribe(), ctx.palette$.subscribe()];
+
+    themeState.current = 'light';
+
+    for (const listener of themeState.listeners) {
+      listener(themeState.current);
+    }
+
+    locale = 'ru';
+
+    for (const listener of localeListeners) {
+      listener(locale);
+    }
+
+    const nextPalette = {...MNDW_TOKENS, dark: {...MNDW_TOKENS.dark, accent: '#ff0000'}};
+
+    palette = nextPalette;
+
+    for (const listener of paletteListeners) {
+      listener(palette);
+    }
+
+    expect(ctx.theme).toBe('light');
+    expect(ctx.locale).toBe('ru');
+    expect(ctx.palette).toBe(nextPalette);
+
+    subscriptions.forEach((subscription) => subscription.unsubscribe());
+  });
+
+  it('completes theme$ on dispose', () => {
+    const handle = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+    let completeCount = 0;
+
+    handle.context.theme$.subscribe({complete: () => completeCount += 1});
+    handle.dispose('plugin-unmount');
+
+    expect(completeCount).toBe(1);
+  });
+
+  it('has no callback members', () => {
+    const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+
+    expect('onThemeChange' in ctx).toBe(false);
+    expect('onPaletteChange' in ctx).toBe(false);
+    expect('getTokens' in ctx).toBe(false);
+    expect('hostInfo' in ctx).toBe(false);
+  });
+
+  it('hands out Observables, never Subjects', () => {
+    const pageRoute = {childPath$: of(''), navigate: vi.fn(() => Promise.resolve(undefined))};
+    const {context: ctx} = createPluginContext({
+      entry: pageEntry(),
+      instanceId: 'demo:1',
+      hostInfo,
+      deviceInfo,
+      pageRoute,
+    });
+
+    expect('next' in ctx.theme$).toBe(false);
+    expect('next' in ctx.locale$).toBe(false);
+    expect('next' in ctx.palette$).toBe(false);
+    expect('next' in ctx.i18n.change$).toBe(false);
+    expect('next' in (ctx.kind === 'page' ? ctx.pageRoute.childPath$ : of(''))).toBe(false);
+  });
+
+  it('uses injected locale and palette services for plugin-facing getters', () => {
     const localeSpy = vi.fn(() => 'ru');
     const paletteSpy = vi.fn(() => MNDW_TOKENS);
     const injectedLocale = {...localeService, getLocale: localeSpy};
@@ -207,8 +340,8 @@ describe('createPluginContext service boundaries', () => {
       services: {locale: injectedLocale, palette: injectedPalette},
     });
 
-    expect(ctx.hostInfo.locale).toBe('ru');
-    expect(ctx.getTokens()).toBe(MNDW_TOKENS);
+    expect(ctx.locale).toBe('ru');
+    expect(ctx.palette).toBe(MNDW_TOKENS);
     expect(localeSpy).toHaveBeenCalled();
     expect(paletteSpy).toHaveBeenCalled();
   });
@@ -237,35 +370,55 @@ describe('createPluginContext service boundaries', () => {
   });
 });
 
-describe('palette access', () => {
-  it('exposes the applied palette and notifies on change', async () => {
-    const service = await import('../services/palette.service.js');
+describe('plugin RCI facade', () => {
+  it('exposes exactly the plugin RCI methods', () => {
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
-    expect(ctx.getTokens()).toEqual(service.getTokens());
+    expect(Object.keys(ctx.rciManager).sort()).toEqual([...PLUGIN_RCI_MANAGER_METHODS].sort());
+    expect('destroy' in ctx.rciManager).toBe(false);
+    expect('replaceBatchScheduler' in ctx.rciManager).toBe(false);
+    expect('toggleStats' in ctx.rciManager).toBe(false);
+    expect('stats$' in ctx.rciManager).toBe(false);
+    expect(Object.isFrozen(ctx.rciManager)).toBe(true);
+  });
+});
+
+describe('palette access', () => {
+  it('exposes the applied palette and notifies on change$', async () => {
+    const service = await import('../services/palette.service.js');
+    const handle = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+    const {context: ctx} = handle;
+
+    expect(ctx.palette).toEqual(service.getTokens());
 
     const seen: PaletteTokenMap[] = [];
-    const unsubscribe = ctx.onPaletteChange((tokens) => seen.push(tokens));
+    const subscription = ctx.palette$.subscribe((tokens) => seen.push(tokens));
     const next = JSON.parse(JSON.stringify(MNDW_TOKENS)) as PaletteTokenMap;
 
     next.dark.accent = '#ff0000';
     service.previewOverride(next);
 
-    expect(seen).toHaveLength(1);
-    expect(seen[0]).toEqual(next);
-    expect(ctx.getTokens()).toEqual(MNDW_TOKENS);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toEqual(MNDW_TOKENS);
+    expect(seen[1]).toEqual(next);
+    expect(ctx.palette).toEqual(MNDW_TOKENS);
 
-    unsubscribe();
+    subscription.unsubscribe();
     service.discardPreview();
-    expect(seen).toHaveLength(1);
+    expect(seen).toHaveLength(2);
+    handle.dispose('plugin-unmount');
   });
 });
 
 describe('createPluginContext security boundaries', () => {
-  it('does not expose host session lifecycle to plugins', () => {
+  it('does not expose host session lifecycle or legacy context members to plugins', () => {
     const {context: ctx} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
     expect('sessionManager' in ctx).toBe(false);
+    expect('onThemeChange' in ctx).toBe(false);
+    expect('onPaletteChange' in ctx).toBe(false);
+    expect('getTokens' in ctx).toBe(false);
+    expect('hostInfo' in ctx).toBe(false);
   });
 
   it('does not expose a service injector to plugins', () => {
@@ -279,7 +432,6 @@ describe('createPluginContext security boundaries', () => {
 
     expect(Object.isFrozen(ctx)).toBe(true);
     expect(Object.isFrozen(ctx.rciManager)).toBe(true);
-    expect(Object.isFrozen(ctx.hostInfo)).toBe(true);
   });
 
   it('gives every security-boundary object a null prototype', () => {
@@ -287,7 +439,6 @@ describe('createPluginContext security boundaries', () => {
 
     expect(Object.getPrototypeOf(ctx)).toBeNull();
     expect(Object.getPrototypeOf(ctx.rciManager)).toBeNull();
-    expect(Object.getPrototypeOf(ctx.hostInfo)).toBeNull();
   });
 
   it('gives separate instances their own facade objects', () => {
@@ -299,7 +450,30 @@ describe('createPluginContext security boundaries', () => {
 });
 
 describe('createPluginContext ownership', () => {
-  it('returns the overlay dispose alongside the context', async () => {
+  it('creates a ticker that is destroyed with the plugin lifetime', () => {
+    vi.stubGlobal('Worker', ContextTickerWorker);
+
+    try {
+      const handle = createPluginContext({entry: widgetEntry(), instanceId: 'ticker:1', hostInfo, deviceInfo});
+      const ticker = handle.context.createTicker();
+      const complete = vi.fn();
+
+      ticker.tick$.subscribe({complete});
+      ticker.start(1000);
+      handle.dispose('plugin-unmount');
+
+      expect(complete).toHaveBeenCalledOnce();
+      expect(ContextTickerWorker.instances[0]?.messages).toEqual([
+        expect.objectContaining({command: 'start', interval: 1000}),
+        expect.objectContaining({command: 'stop'}),
+      ]);
+      expect(ContextTickerWorker.instances[0]?.terminated).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('returns a disposer that ends the context and disposes the overlay', async () => {
     const {createPluginOverlayService} = await import('../services/overlay/overlay-manager.svelte.js');
     const disposeSpy = vi.fn();
 
@@ -310,7 +484,9 @@ describe('createPluginContext ownership', () => {
 
     const handle = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
 
-    expect(handle.dispose).toBe(disposeSpy);
+    handle.dispose('plugin-unmount');
+
+    expect(disposeSpy).toHaveBeenCalledWith('plugin-unmount');
   });
 
   it('gives each context an independent disposer for a shared instanceId', () => {

@@ -1,0 +1,47 @@
+name: CI Go
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '**/*.go'
+      - '**/go.mod'
+      - '**/go.sum'
+      - 'go.work'
+      - 'go.work.sum'
+      - '**/testdata/**'
+      - 'contracts/**'
+      - 'build/go-each-module.sh'
+      - '.github/workflows/ci-go.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-go-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: '**/go.sum'
+
+      - name: Test Go modules
+        run: sh build/go-each-module.sh
+        env:
+          GOFLAGS: -short
+
+      - name: Vet mndwd
+        run: go vet ./...
+        working-directory: daemon/mndwd

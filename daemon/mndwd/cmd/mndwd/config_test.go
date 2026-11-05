@@ -1,8 +1,10 @@
 package main
 
 import (
+	"log/slog"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +25,60 @@ func TestParseFlagsLimitDefaultsMatchBackend(t *testing.T) {
 		cfg.MaxSupervisedServices != defaults.MaxSupervisedServices {
 		t.Fatalf("config limits = total:%d plugin:%d services:%d, want %+v",
 			cfg.MaxConcurrentExecTotal, cfg.MaxConcurrentExecPerPlugin, cfg.MaxSupervisedServices, defaults)
+	}
+}
+
+func TestParseFlagsMaxOutputBytesDefault(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := cfg.MaxOutputBytes, backend.DefaultMaxOutputBytes; got != want {
+		t.Fatalf("MaxOutputBytes = %d, want %d", got, want)
+	}
+}
+
+func TestParseFlagsMaxOutputBytesOverride(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--max-output-bytes", "2048"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := cfg.MaxOutputBytes, int64(2048); got != want {
+		t.Fatalf("MaxOutputBytes = %d, want %d", got, want)
+	}
+}
+
+func TestParseFlagsRejectsNonPositiveMaxOutputBytes(t *testing.T) {
+	_, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--max-output-bytes", "0"})
+	if err == nil || !strings.Contains(err.Error(), "--max-output-bytes must be positive") {
+		t.Fatalf("parseFlags error = %v, want --max-output-bytes must be positive", err)
+	}
+}
+
+func TestBackendExecConfigCarriesLimits(t *testing.T) {
+	cfg, _, err := parseFlags([]string{
+		"--data-dir", "/var/lib/mndw",
+		"--max-output-bytes", "4096",
+		"--max-request-bytes", "512",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	execCfg := backendExecConfig(cfg, slog.Default())
+
+	if got, want := execCfg.MaxOutputBytes, int64(4096); got != want {
+		t.Fatalf("MaxOutputBytes = %d, want %d", got, want)
+	}
+
+	if got, want := execCfg.MaxBodyBytes, int64(512); got != want {
+		t.Fatalf("MaxBodyBytes = %d, want %d", got, want)
+	}
+
+	if got, want := execCfg.Timeout, cfg.ExecTimeout; got != want {
+		t.Fatalf("Timeout = %s, want %s", got, want)
 	}
 }
 

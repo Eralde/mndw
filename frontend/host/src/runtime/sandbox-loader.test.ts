@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {type LoadedPlugin, PluginRegistry} from './plugin-registry.js';
 import {type SandboxLoaderDeps, loadSandboxPlugin, manifestToListEntry, reloadSandboxPlugin} from './sandbox-loader.js';

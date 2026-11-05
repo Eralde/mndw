@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /* eslint id-blacklist: 0 */
 import {defineMndwUi} from '@mndw/ui';
 import type {GridItemHTMLElement} from 'gridstack';

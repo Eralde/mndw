@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {describe, expect, it, vi} from 'vitest';
 import {defineComponents, mount} from '../testing/index.js';
 import {MNDW_SEGMENT_CHANGE_EVENT, MNDW_SEGMENT_TAG, MndwSegment} from './segment.js';

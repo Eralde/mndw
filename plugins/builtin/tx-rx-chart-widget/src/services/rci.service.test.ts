@@ -1,13 +1,14 @@
+import type {PluginRciManager} from '@mndw/sdk';
 import {TestBed} from '@angular/core/testing';
-import type {RciManager, RciQuery} from '@rci-tools/core';
+import type {RciQuery} from '@rci-tools/core';
 import {firstValueFrom, of} from 'rxjs';
 import {afterEach, describe, expect, it} from 'vitest';
 
 import {RCI_MANAGER} from '../tokens.js';
 import {RciService} from './rci.service.js';
 
-function fakeRci(handler: (query: RciQuery | RciQuery[]) => unknown): RciManager {
-  return {queue: (query: RciQuery | RciQuery[]) => of(handler(query))} as unknown as RciManager;
+function fakeRci(handler: (query: RciQuery | RciQuery[]) => unknown): PluginRciManager {
+  return {queue: (query: RciQuery | RciQuery[]) => of(handler(query))} as unknown as PluginRciManager;
 }
 
 function service(handler: (query: RciQuery | RciQuery[]) => unknown): RciService {

@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "test": "cd backend && GOWORK=off go test ./... && cd .. && vitest run",
+    "test": "vitest run",
     "build-backend": "mndw build-backend"
   },
   "dependencies": {

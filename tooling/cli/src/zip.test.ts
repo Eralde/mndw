@@ -1,4 +1,4 @@
-import {existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {unzipSync} from 'fflate';
@@ -25,6 +25,26 @@ function scaffold(dir: string, manifest: Record<string, unknown>): void {
   writeFileSync(join(dir, 'src', 'index.ts'), 'export const createInstance = () => ({unmount() {}});\n');
 }
 
+function findCentralDirectoryEntry(archive: Uint8Array, name: string): DataView {
+  const archiveView = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+  const decoder = new TextDecoder();
+
+  for (let offset = archive.byteLength - 22; offset >= 0; offset--) {
+    if (archiveView.getUint32(offset, true) !== 0x02014b50) {
+      continue;
+    }
+
+    const nameLength = archiveView.getUint16(offset + 28, true);
+    const entryName = decoder.decode(archive.subarray(offset + 46, offset + 46 + nameLength));
+
+    if (entryName === name) {
+      return new DataView(archive.buffer, archive.byteOffset + offset, archive.byteLength - offset);
+    }
+  }
+
+  throw new Error(`ZIP central directory entry not found: ${name}`);
+}
+
 describe('zipDirectory', () => {
   let dir: string;
 
@@ -49,6 +69,18 @@ describe('zipDirectory', () => {
 
     expect(names).toEqual(['backend/server.sh', 'index.js', 'manifest.json']);
     expect(names).not.toContain('.DS_Store');
+  });
+
+  it('writes undeclared files as non-executable regardless of their filesystem mode', () => {
+    const indexPath = join(dir, 'index.js');
+
+    writeFileSync(indexPath, 'export {};');
+    chmodSync(indexPath, 0o755);
+
+    const entry = findCentralDirectoryEntry(zipDirectory(dir), 'index.js');
+
+    expect(Math.floor(entry.getUint16(4, true) / 0x100)).toBe(3);
+    expect(entry.getUint16(40, true) % 0o1000).toBe(0o644);
   });
 });
 
@@ -133,5 +165,58 @@ describe('zipPlugin', () => {
       rmSync(outDir, {recursive: true, force: true});
       rmSync(output, {force: true});
     }
+  });
+
+  it('marks a manifest service command executable with Unix host metadata', async () => {
+    scaffold(
+      dir,
+      widgetManifest({
+        backend: {
+          kind: 'service',
+          protocolVersion: 1,
+          command: 'backend/main.sh',
+          routes: [{id: 'hello', transport: 'http', method: 'GET', path: 'hello'}],
+        },
+      }),
+    );
+    mkdirSync(join(dir, 'backend'), {recursive: true});
+
+    const backendPath = join(dir, 'backend', 'main.sh');
+
+    writeFileSync(backendPath, '#!/bin/sh\n');
+    chmodSync(backendPath, 0o644);
+
+    const result = await zipPlugin(dir);
+    const archive = readFileSync(result.outputPath);
+    const entry = findCentralDirectoryEntry(archive, 'backend/main.sh');
+
+    expect(Math.floor(entry.getUint16(4, true) / 0x100)).toBe(3);
+    expect(entry.getUint16(40, true) % 0o1000).toBe(0o755);
+  });
+
+  it('marks a shared exec command executable when multiple routes reference it', async () => {
+    scaffold(
+      dir,
+      widgetManifest({
+        backend: {
+          kind: 'exec',
+          routes: [
+            {id: 'first', transport: 'http', method: 'GET', path: 'first', command: 'backend/main.sh'},
+            {id: 'second', transport: 'http', method: 'GET', path: 'second', command: 'backend/main.sh'},
+          ],
+        },
+      }),
+    );
+    mkdirSync(join(dir, 'backend'), {recursive: true});
+
+    const backendPath = join(dir, 'backend', 'main.sh');
+
+    writeFileSync(backendPath, '#!/bin/sh\n');
+    chmodSync(backendPath, 0o644);
+
+    const result = await zipPlugin(dir);
+    const entry = findCentralDirectoryEntry(readFileSync(result.outputPath), 'backend/main.sh');
+
+    expect(entry.getUint16(40, true) % 0o1000).toBe(0o755);
   });
 });

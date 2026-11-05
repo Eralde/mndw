@@ -1,8 +1,9 @@
+import {type SpawnSyncOptions} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
-import {afterEach, describe, expect, it} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 import {type BackendBuildResult, buildBackend} from './backend-build.js';
 
 const temporaryDirectories: string[] = [];
@@ -20,6 +21,8 @@ function pluginDirectory(script = 'build-backend'): string {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
+
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, {recursive: true, force: true});
   }
@@ -61,6 +64,37 @@ describe('buildBackend', () => {
       plugin: 'demo',
       target: 'mipsel',
       binaries: [{source: 'mndsd', destination: 'backend/mndsd'}],
+    });
+  });
+
+  it.each([
+    {userAgent: 'npm/10.0.0 node/v22.0.0', command: 'npm'},
+    {userAgent: 'yarn/4.0.0 node/v22.0.0', command: 'yarn'},
+  ])('uses the invoking package manager from $userAgent', ({userAgent, command}) => {
+    const dir = pluginDirectory();
+    const outDir = join(dir, 'out');
+    const calls: {command: string; args: readonly string[]; cwd?: SpawnSyncOptions['cwd']}[] = [];
+
+    vi.stubEnv('npm_config_user_agent', userAgent);
+
+    const spawn = (spawnCommand: string, args: readonly string[], options: SpawnSyncOptions): {status: number} => {
+      calls.push({command: spawnCommand, args, cwd: options.cwd});
+      mkdirSync(outDir, {recursive: true});
+      writeFileSync(join(outDir, 'mndsd'), 'binary');
+      writeFileSync(
+        join(outDir, 'backend-artifact.json'),
+        JSON.stringify({plugin: 'demo', target: 'mipsel', binaries: [{source: 'mndsd', destination: 'backend/mndsd'}]}),
+      );
+
+      return {status: 0};
+    };
+
+    buildBackend({pluginDir: dir, plugin: 'demo', target: 'mipsel', outDir, spawn});
+
+    expect(calls[0]).toEqual({
+      command,
+      args: ['run', 'build-backend', '--', '--target', 'mipsel', '--out-dir', outDir],
+      cwd: dir,
     });
   });
 

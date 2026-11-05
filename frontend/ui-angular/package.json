@@ -1,7 +1,9 @@
 {
   "name": "@mndw/ui-angular",
   "version": "0.1.0",
-  "private": true,
+  "license": "MIT",
+  "homepage": "https://eralde.github.io/mndw/",
+  "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "frontend/ui-angular"},
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
@@ -10,14 +12,30 @@
       "default": "./src/index.ts"
     }
   },
-  "files": ["src"],
+  "publishConfig": {
+    "types": "./dist/types/mndw-ui-angular.d.ts",
+    "typings": "./dist/types/mndw-ui-angular.d.ts",
+    "module": "./dist/fesm2022/mndw-ui-angular.mjs",
+    "exports": {
+      ".": {
+        "types": "./dist/types/mndw-ui-angular.d.ts",
+        "default": "./dist/fesm2022/mndw-ui-angular.mjs"
+      },
+      "./package.json": {
+        "default": "./package.json"
+      }
+    }
+  },
+  "files": ["dist"],
   "scripts": {
+    "build": "ng-packagr -p ng-package.json -c tsconfig.lib.json",
+    "prepack": "pnpm run build",
     "test": "vitest run",
     "check": "tsc -p tsconfig.json --noEmit",
     "check:templates": "ngc -p test-fixtures/tsconfig.json"
   },
   "dependencies": {
-    "@mndw/ui": "workspace:*"
+    "@mndw/ui": "workspace:^"
   },
   "peerDependencies": {
     "@angular/core": ">=21.0.0"
@@ -29,6 +47,7 @@
     "@angular/core": "^21.2.18",
     "@angular/platform-browser": "^21.2.18",
     "happy-dom": "20.11.1",
+    "ng-packagr": "catalog:",
     "rxjs": "^7.8.0",
     "typescript": "^5.7.0",
     "vitest": "^3.2.7",

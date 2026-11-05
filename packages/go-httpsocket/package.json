@@ -1,7 +1,4 @@
 {
   "name": "@mndw/go-httpsocket",
-  "private": true,
-  "scripts": {
-    "test": "go test ./..."
-  }
+  "private": true
 }

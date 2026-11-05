@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {setMndwUiLocale} from '../i18n.js';
 import {defineComponents} from '../testing/index.js';

@@ -20,6 +20,12 @@
       "depsStatus": "ready",
       "backend": {
         "routes": {}
+      },
+      "lock": {
+        "sdkVersion": "1.4.0",
+        "sharedDependencies": {
+          "rxjs": "7.8.2"
+        }
       }
     },
     {
@@ -185,6 +191,12 @@
         "state": "stopped",
         "consecutiveFailures": 0,
         "restartCount": 0
+      },
+      "lock": {
+        "sdkVersion": "1.4.0",
+        "sharedDependencies": {
+          "rxjs": "7.8.2"
+        }
       }
     },
     {

@@ -314,7 +314,7 @@ func TestReadyAndHostRoutes(t *testing.T) {
 }
 
 func TestRunPersistsOnceAfterCleanShutdown(t *testing.T) {
-	root, err := os.MkdirTemp("/private/tmp", "ping-httpapi-")
+	root, err := os.MkdirTemp("/tmp", "ping-httpapi-")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,9 +8,10 @@ import {anyInstalling, startDepsPolling} from '../state/deps-status.svelte.js';
 import {fetchDeviceInfo, fetchHostInfo} from './host-info.service.js';
 import {type HostServices, defaultHostServices} from '../host-services.js';
 
-/** True only in a `mndw dev` build; `typeof` guards the undefined case (e.g. under vitest). */
+/** `typeof` guards the undefined case (e.g. under vitest). */
 function isSandboxMode(): boolean {
-  return typeof __MNDW_SANDBOX__ !== 'undefined' && __MNDW_SANDBOX__ === true;
+  return typeof __MNDW_SANDBOX__ !== 'undefined'
+    && (__MNDW_SANDBOX__ === 'virtual' || __MNDW_SANDBOX__ === 'url');
 }
 
 export interface InitAuthDeps {
@@ -28,7 +29,7 @@ export interface InitAuthDeps {
  * In normal mode plugins are loaded from the daemon list (`loadPlugins` records list failures
  * itself and always resolves, so a list failure never blocks router creation). Under
  * `mndw dev` (the `__MNDW_SANDBOX__` build flag) the single plugin under development is loaded
- * from source and HMR is wired instead.
+ * from source and HMR is wired instead. A prebuilt dev host uses URL-served modules.
  */
 export async function initAuthenticated(
   services: HostServices = defaultHostServices(),
@@ -36,7 +37,6 @@ export async function initAuthenticated(
 ): Promise<void> {
   const loadPluginsFn = deps.loadPlugins ?? loadPlugins;
   const loadSandboxPluginFn = deps.loadSandboxPlugin ?? loadSandboxPlugin;
-  const setupHmrFn = deps.setupHmr ?? setupSandboxHmr;
   const createRouterFn = deps.createRouter ?? createAppRouter;
 
   try {
@@ -52,13 +52,23 @@ export async function initAuthenticated(
   }
 
   if (isSandboxMode()) {
+    let sandboxImports = sandboxVirtualImports;
+    let setupHmr: (services: HostServices) => void = deps.setupHmr ?? setupSandboxHmr;
+
+    if (__MNDW_SANDBOX__ === 'url') {
+      const sandboxUrl = await import('../runtime/sandbox-url.js');
+
+      sandboxImports = sandboxUrl.sandboxUrlImports();
+      setupHmr = deps.setupHmr ?? sandboxUrl.setupSandboxUrlHmr;
+    }
+
     await loadSandboxPluginFn({
-      ...sandboxVirtualImports,
+      ...sandboxImports,
       registry: services.registry,
       catalogService: services.catalog,
       getLocale: () => services.locale.getLocale(),
     });
-    setupHmrFn(services);
+    setupHmr(services);
   } else {
     await loadPluginsFn({
       registry: services.registry,

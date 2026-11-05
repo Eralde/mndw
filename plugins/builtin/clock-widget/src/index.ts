@@ -1,6 +1,5 @@
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {bindLocale} from '@mndw/sdk/bind-locale';
-import {Ticker} from '@mndw/sdk/ticker';
 
 /**
  * Minimal vanilla widget: a live ticking clock rendered with plain DOM against host tokens.
@@ -47,8 +46,8 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
 
   const unsubscribeLocale = bindLocale(i18n, render);
 
-  const ticker = new Ticker();
-  const unsubscribe = ticker.onTick(() => {
+  const ticker = ctx.createTicker();
+  const subscription = ticker.tick$.subscribe(() => {
     render();
   });
 
@@ -56,7 +55,7 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
 
   return {
     unmount(): void {
-      unsubscribe();
+      subscription.unsubscribe();
       unsubscribeLocale();
       ticker.destroy();
 

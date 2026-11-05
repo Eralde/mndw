@@ -1,6 +1,7 @@
 <script lang="ts">
 import {onMount} from 'svelte';
-import type {PaletteContrastWarning, PaletteTokenMap} from '@mndw/sdk';
+import type {PaletteTokenMap} from '@mndw/sdk';
+import type {PaletteContrastWarning} from '@mndw/sdk-internal/palette';
 import {messageForError} from '../../../services/mgmt-client.js';
 import PaletteExport from './PaletteExport.svelte';
 import PaletteImport from './PaletteImport.svelte';

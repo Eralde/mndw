@@ -1,5 +1,5 @@
+import type {PluginRciManager} from '@mndw/sdk';
 import {TestBed} from '@angular/core/testing';
-import type {RciManager} from '@rci-tools/core';
 import {firstValueFrom, of} from 'rxjs';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {loadFixture} from '../fixtures/load';
@@ -11,7 +11,7 @@ function serviceWith(queue: (query: unknown) => unknown): {service: MwsApiServic
   const queueMock = vi.fn(queue);
 
   TestBed.configureTestingModule({
-    providers: [MwsApiService, {provide: RCI_MANAGER, useValue: {queue: queueMock} as unknown as RciManager}],
+    providers: [MwsApiService, {provide: RCI_MANAGER, useValue: {queue: queueMock} as unknown as PluginRciManager}],
   });
 
   return {service: TestBed.inject(MwsApiService), queue: queueMock};

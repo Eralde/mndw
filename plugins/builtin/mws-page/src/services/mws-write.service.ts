@@ -1,6 +1,6 @@
 import {Injectable, inject} from '@angular/core';
-import type {BackendClient} from '@mndw/sdk';
-import {type RciManager, type RciQuery, RciResponseHelper} from '@rci-tools/core';
+import type {BackendClient, PluginRciManager} from '@mndw/sdk';
+import {type RciQuery, RciResponseHelper} from '@rci-tools/core';
 import {firstValueFrom} from 'rxjs';
 import {
   type MwsPortRole,
@@ -91,7 +91,7 @@ function normalizeRciStatus(response: unknown): MwsWriteStatus[] | null {
 @Injectable()
 export class MwsWriteService {
   private readonly backend: BackendClient | null = inject(MWSD_BACKEND);
-  private readonly rci: RciManager = inject(RCI_MANAGER);
+  private readonly rci: PluginRciManager = inject(RCI_MANAGER);
   private readonly data = inject(MwsDataService);
 
   public async setName(mac: string, name: string | null): Promise<MwsWriteResult> {

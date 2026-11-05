@@ -4,8 +4,10 @@ import {
   type PluginCatalogService,
   createPluginCatalogService,
   createPluginCatalogSource,
+  createPluginI18n,
   formatPluginTranslation,
 } from './plugin-catalog.service.js';
+import {createPluginLifetime} from '../runtime/plugin-lifetime.js';
 
 const source = createPluginCatalogSource('demo', '1.2.3', '/plugins/demo', {
   defaultLocale: 'en',
@@ -51,6 +53,17 @@ afterEach(() => {
 });
 
 describe('plugin catalog loading', () => {
+  it('completes i18n.change$ when the plugin lifetime ends', () => {
+    const lifetime = createPluginLifetime();
+    const i18n = createPluginI18n(undefined, () => 'en', () => () => {}, lifetime);
+    const complete = vi.fn();
+
+    i18n.change$.subscribe({complete});
+    lifetime.end();
+
+    expect(complete).toHaveBeenCalledOnce();
+  });
+
   it('loads catalogs when browser timers require the global receiver', async () => {
     vi.stubGlobal('setTimeout', receiverSensitiveSetTimeout);
     catalogService = createPluginCatalogService({fetchCatalog: () => Promise.resolve({title: 'Hello'})});

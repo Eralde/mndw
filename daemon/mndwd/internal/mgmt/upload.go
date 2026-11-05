@@ -190,7 +190,14 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin upload completed", "plugin", name, "backend", manifest.HasBackend(m))
-	httpx.WriteJSON(w, h.logger, status, h.entryFrom(m, state.SourceUpload, approval, enabled))
+
+	pluginDir := activePath
+
+	if approval == state.ApprovalPending {
+		pluginDir = stagingPath
+	}
+
+	httpx.WriteJSON(w, h.logger, status, h.entryFrom(m, state.SourceUpload, approval, enabled, pluginDir))
 }
 
 // readUploadBody reads the request body under the configured size cap, translating

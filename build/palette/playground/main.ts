@@ -3,7 +3,7 @@ import {defineMndwUi} from '@mndw/ui';
 // The class layer, imported rather than restated: the preview must judge the palette against the
 // same rules consumers get.
 import '@mndw/ui/styles.css';
-import {PALETTE_CSS_VARIABLES} from '@mndw/sdk/palette';
+import {PALETTE_CSS_VARIABLES} from '@mndw/sdk-internal/palette';
 import {SEED, type Seed, type ThemeName, type TokenName, buildPalette, validatePalette} from '../src/index.js';
 
 defineMndwUi();

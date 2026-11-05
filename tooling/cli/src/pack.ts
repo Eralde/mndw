@@ -16,14 +16,15 @@ import crossSpawn from 'cross-spawn';
 import {build} from 'esbuild';
 import esbuildSvelte from 'esbuild-svelte';
 import vuePlugin from 'unplugin-vue/esbuild';
-import {type PluginManifestOutput} from '@mndw/sdk';
-import {pluginDependencies} from '@mndw/sdk/shared-dependencies';
+import type {PluginManifestOutput} from '@mndw/sdk-internal';
+import {pluginDependencies} from '@mndw/sdk-internal/shared-dependencies';
 import {isMndwButtonA11yWarning} from '../../../build/svelte-compiler-options.js';
 import {type AngularCompileResult, compileAngular} from './angular-compiler.js';
 import {type ProductTarget} from './go-target.js';
 import {CliError} from './errors.js';
 import {type PluginFramework, detectFramework} from './framework.js';
 import {buildLock, findBundledSharedDependencies, serializeLock} from './lock.js';
+import {packNodePaths} from './cli-node-paths.js';
 import {readManifest} from './manifest.js';
 import {validatePluginCatalogs} from './i18n-validator.js';
 import {resolvePluginDir} from './paths.js';
@@ -31,13 +32,6 @@ import {type PackedPluginArtifact} from './packed-plugin-artifact.js';
 import {readPluginPackage} from './plugin-package.js';
 import {promoteDirectory} from './promote-directory.js';
 import {resolveDevelopmentSourceEntry, resolveProductionSourceEntry} from './source-entry.js';
-
-/**
- * The CLI's own `node_modules`, used as an esbuild resolution fallback so a plugin's bundled runtime
- * (e.g. the Svelte compiler output importing `svelte/internal/*`) resolves against the CLI's pinned
- * versions regardless of where the plugin source lives — the packer, not the plugin, owns them.
- */
-const CLI_NODE_MODULES = resolve(import.meta.dirname, '..', 'node_modules');
 
 export interface PackOptions {
   /** Output directory. Defaults to `<plugin-dir>/dist`. */
@@ -142,7 +136,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
       write: false,
       metafile: true,
       logLevel: 'silent',
-      nodePaths: [CLI_NODE_MODULES, join(resolvedDir, 'node_modules')].filter((path) => existsSync(path)),
+      nodePaths: packNodePaths(resolvedDir),
       external: pluginDependencies(framework),
       plugins: framework === 'svelte'
         ? [
@@ -176,7 +170,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
       );
     }
 
-    const lock = serializeLock(buildLock(manifest, framework));
+    const lock = serializeLock(buildLock(manifest, framework, resolvedDir));
 
     const pkg = readPluginPackage(resolvedDir);
     const buildScript = pkg?.mndw?.backendBuildScript;
@@ -423,7 +417,7 @@ async function buildWorkerAssets(
       target: 'es2022',
       write: false,
       logLevel: 'silent',
-      nodePaths: [CLI_NODE_MODULES, join(pluginDir, 'node_modules')].filter((path) => existsSync(path)),
+      nodePaths: packNodePaths(pluginDir),
       external: pluginDependencies(framework),
     });
     const output = result.outputFiles.find((file) => file.path.endsWith('.js'));

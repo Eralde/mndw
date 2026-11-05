@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import type {Observable} from 'rxjs';
 
 const ulidSchema = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/);
 const nonEmptyString = z.string().min(1);
@@ -218,11 +219,10 @@ export const eventSchema = z.union([
 export type MndwEvent = z.infer<typeof eventSchema>;
 export type EventSource = z.infer<typeof eventSourceSchema>;
 export type EventTopic = MndwEvent['topic'];
-export type Unsubscribe = () => void;
 
 export interface PluginEventFacade {
-  subscribe(topics: string | readonly string[], handler: (event: MndwEvent) => void): Unsubscribe;
-  onResync(handler: () => void): Unsubscribe;
+  select$(topics: string | readonly string[]): Observable<MndwEvent>;
+  readonly resync$: Observable<void>;
 }
 
 export function createEventSchemaDocument(): Record<string, unknown> {

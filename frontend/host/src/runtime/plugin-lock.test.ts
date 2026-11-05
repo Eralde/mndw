@@ -1,6 +1,7 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {
   checkPluginVersions,
+  compatibilityLevel,
   getInstallVersionWarnings,
   getPluginVersionMismatches,
   parseVersion,
@@ -100,6 +101,15 @@ describe('parseVersion', () => {
   });
 });
 
+describe('compatibilityLevel', () => {
+  it('uses 0.x minor as the compatibility level and major for 1.x', () => {
+    expect(compatibilityLevel('0.1.0')).toBe('0.1');
+    expect(compatibilityLevel('0')).toBe('0');
+    expect(compatibilityLevel('1.9.0')).toBe('1');
+    expect(compatibilityLevel('workspace:*')).toBeNull();
+  });
+});
+
 describe('getPluginVersionMismatches', () => {
   it('collects every shared-dep major mismatch', () => {
     expect(getPluginVersionMismatches(
@@ -142,6 +152,44 @@ describe('getPluginVersionMismatches', () => {
       {rxjs: '7.8.2'},
       '2.0.0',
     )).toEqual([]);
+  });
+});
+
+describe('getPluginVersionMismatches compatibility levels', () => {
+  it('treats 0.x minor differences as mismatches in either direction', () => {
+    expect(getPluginVersionMismatches(
+      {sdkVersion: '0.1.0', sharedDependencies: {}},
+      {},
+      '0.2.0',
+    )).toEqual(['@mndw/sdk @0.1 (host provides @0.2)']);
+
+    expect(getPluginVersionMismatches(
+      {sdkVersion: '0.2.0', sharedDependencies: {}},
+      {},
+      '0.1.0',
+    )).toEqual(['@mndw/sdk @0.2 (host provides @0.1)']);
+  });
+
+  it('keeps equal positive majors compatible and treats zero-to-one as a mismatch', () => {
+    expect(getPluginVersionMismatches(
+      {sdkVersion: '1.2.0', sharedDependencies: {}},
+      {},
+      '1.9.0',
+    )).toEqual([]);
+
+    expect(getPluginVersionMismatches(
+      {sdkVersion: '0.1.0', sharedDependencies: {}},
+      {},
+      '1.0.0',
+    )).toEqual(['@mndw/sdk @0.1 (host provides @1)']);
+  });
+
+  it('reports 0.x shared dependency minor differences', () => {
+    expect(getPluginVersionMismatches(
+      {sdkVersion: '0.1.0', sharedDependencies: {rxjs: '0.1.0'}},
+      {rxjs: '0.2.0'},
+      '0.1.0',
+    )).toEqual(['rxjs @0.1 (host provides @0.2)']);
   });
 });
 
@@ -226,6 +274,43 @@ describe('getInstallVersionWarnings', () => {
       hostVersions,
       'garbage',
     )).toEqual([]);
+  });
+});
+
+describe('getInstallVersionWarnings compatibility levels', () => {
+  const hostVersions = {rxjs: '7.8.2'};
+
+  it('keeps 1.x minor warnings and warns for differing 0.x SDK and shared levels', () => {
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '1.2.0', sharedDependencies: {}},
+      hostVersions,
+      '1.9.0',
+    )).toEqual([]);
+
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '1.9.0', sharedDependencies: {}},
+      hostVersions,
+      '1.2.0',
+    )).toEqual([{kind: 'sdk-newer-minor', name: '@mndw/sdk', pluginVersion: '1.9.0', hostVersion: '1.2.0'}]);
+
+    expect(getInstallVersionWarnings(
+      {sdkVersion: '0.1.0', sharedDependencies: {rxjs: '0.1.0'}},
+      {rxjs: '0.2.0'},
+      '0.2.0',
+    )).toEqual([
+      {kind: 'sdk-major', name: '@mndw/sdk', pluginVersion: '0.1.0', hostVersion: '0.2.0'},
+      {kind: 'shared-major', name: 'rxjs', pluginVersion: '0.1.0', hostVersion: '0.2.0'},
+    ]);
+  });
+});
+
+describe('0.x patch compatibility', () => {
+  it('keeps SDK and shared dependency versions in the same minor compatible', () => {
+    const lock = {sdkVersion: '0.1.0', sharedDependencies: {rxjs: '0.1.0'}};
+    const hostVersions = {rxjs: '0.1.5'};
+
+    expect(getPluginVersionMismatches(lock, hostVersions, '0.1.5')).toEqual([]);
+    expect(getInstallVersionWarnings(lock, hostVersions, '0.1.5')).toEqual([]);
   });
 });
 

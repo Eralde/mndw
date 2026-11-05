@@ -18,12 +18,34 @@ env:
   MNDW_FEED_KEY_ID: ${{ inputs.feed_key_id || vars.MNDW_FEED_KEY_ID }}
 
 jobs:
+  tests:
+    uses: ./.github/workflows/ci-weekly.yml
+    permissions:
+      contents: read
+
   publish-feed:
+    needs: tests
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout source repo
         uses: actions/checkout@v4
+
+      - name: Verify release tag
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const version = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
+            const tag = process.env.TAG ?? "";
+
+            if (!tag.startsWith("v") || tag.slice(1) !== version) {
+              console.error(`Release tag "${tag}" does not match package version ${version}`);
+              process.exit(1);
+            }
+          '
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

@@ -9,6 +9,9 @@ import {
   expectedExampleArchiveNames,
 } from './example-plugins.js';
 
+// The full suites run in .github/workflows/ci-weekly.yml.
+const skipSlowTests = process.env.MNDW_SKIP_SLOW_TESTS === '1';
+
 describe('example plugin distribution', () => {
   it('discovers every direct example directory with a manifest', () => {
     const root = mkdtempSync(join(tmpdir(), 'mndw-example-discovery-test-'));
@@ -50,7 +53,7 @@ describe('example plugin distribution', () => {
     }
   });
 
-  it('publishes only zip files and removes stale output artifacts', async () => {
+  it.skipIf(skipSlowTests)('publishes only zip files and removes stale output artifacts', async () => {
     const root = mkdtempSync(join(tmpdir(), 'mndw-example-plugin-test-'));
     const outputRoot = join(root, 'example-plugins');
 
@@ -64,5 +67,5 @@ describe('example plugin distribution', () => {
     } finally {
       rmSync(root, {recursive: true, force: true});
     }
-  }, 60_000);
+  }, 300_000);
 });

@@ -56,6 +56,16 @@ export class MndwBarChart extends LitElement {
   public static styles = [
     chartFrameStyles,
     css`
+      [part='hover-band'] {
+        fill: color-mix(in srgb, var(--mndw-text) 12%, transparent);
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      [part='hover-band'][data-active] {
+        opacity: 1;
+      }
+
       .tooltip {
         min-width: 6.25rem;
       }
@@ -227,6 +237,11 @@ export class MndwBarChart extends LitElement {
 
     const resolvedColor = resolveChartColor(this.color);
 
+    const hoverBand = group.append('rect')
+      .attr('part', 'hover-band')
+      .attr('y', 0)
+      .attr('height', innerHeight);
+
     for (const [index, point] of validPoints.entries()) {
       const barX = xScale(String(index)) ?? 0;
 
@@ -283,6 +298,7 @@ export class MndwBarChart extends LitElement {
       const [mouseX, mouseY] = pointerPosition(event, group.node() ?? svgElement);
 
       if (mouseX < 0 || mouseX > innerWidth || mouseY < 0 || mouseY > innerHeight) {
+        hoverBand.attr('data-active', null);
         this.tooltipState = null;
         this.requestUpdate();
 
@@ -298,6 +314,15 @@ export class MndwBarChart extends LitElement {
       if (point === undefined) {
         return;
       }
+
+      const barX = xScale(String(index)) ?? 0;
+      const bandWidth = xScale.step();
+      const bandX = Math.max(0, barX - ((bandWidth - xScale.bandwidth()) / 2));
+
+      hoverBand
+        .attr('x', bandX)
+        .attr('width', Math.min(bandWidth, innerWidth - bandX))
+        .attr('data-active', '');
 
       let left = mouseX + margin.left + 8;
       let top = mouseY - 30;
@@ -325,6 +350,7 @@ export class MndwBarChart extends LitElement {
 
     overlay.on('mousemove.chart', updateTooltip);
     overlay.on('mouseleave.chart', () => {
+      hoverBand.attr('data-active', null);
       this.tooltipState = null;
       this.requestUpdate();
     });

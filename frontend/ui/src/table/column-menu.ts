@@ -1,5 +1,5 @@
 import {LitElement, type PropertyDeclarations, css, html} from 'lit';
-import {focusRing, hostTypography} from '../styles/base.js';
+import {focusRing, hostTypography, surfaceHover} from '../styles/base.js';
 
 export const MNDW_COLUMN_MENU_TAG = 'mndw-column-menu';
 export const MNDW_COLUMN_MENU_CHECK_EVENT = 'mndwcolumnmenucheck';
@@ -57,7 +57,7 @@ export class MndwColumnMenu extends LitElement {
     }
 
     [part='option']:hover {
-      background: var(--mndw-surface-hover);
+      ${surfaceHover}
     }
 
     [part='option']:focus-visible {

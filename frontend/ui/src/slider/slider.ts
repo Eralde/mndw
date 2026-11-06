@@ -1,6 +1,6 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
 import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
-import {focusRing, hostTypography} from '../styles/base.js';
+import {accentHover, focusRing, hostTypography, surfaceHover} from '../styles/base.js';
 
 export const MNDW_SLIDER_TAG = 'mndw-slider';
 
@@ -80,6 +80,10 @@ export class MndwSlider extends LitElement {
       background: var(--mndw-surface);
     }
 
+    :host(:not([disabled]):not([aria-disabled='true']):not([invalid]):not([aria-invalid='true'])) [part='track']:hover {
+      ${surfaceHover}
+    }
+
     [part='fill'] {
       position: absolute;
       top: 0;
@@ -99,6 +103,10 @@ export class MndwSlider extends LitElement {
       background: var(--mndw-accent);
       box-sizing: border-box;
       transform: translate(-50%, -50%);
+    }
+
+    :host(:not([disabled]):not([aria-disabled='true']):not([invalid]):not([aria-invalid='true'])) [part='thumb']:hover {
+      ${accentHover}
     }
 
     :host(:focus-visible) [part='thumb'] {

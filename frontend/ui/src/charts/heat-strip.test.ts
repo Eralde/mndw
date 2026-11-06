@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {setMndwUiLocale} from '../i18n.js';
 import {defineComponents} from '../testing/index.js';
-import {MNDW_HEAT_STRIP_TAG, MndwHeatStrip} from './heat-strip.js';
+import {MNDW_HEAT_STRIP_TAG, MndwHeatStrip, clampTooltipLeft} from './heat-strip.js';
 
 defineComponents([MNDW_HEAT_STRIP_TAG, MndwHeatStrip]);
 
@@ -22,6 +22,81 @@ async function mount(values: number[]): Promise<MndwHeatStrip> {
 }
 
 describe('<mndw-heat-strip>', () => {
+  it.each([
+    {anchor: 7.5, expected: 40},
+    {anchor: 292.5, expected: 260},
+  ])('keeps the tooltip box inside the host at horizontal position $anchor', ({anchor, expected}) => {
+    const left = clampTooltipLeft(anchor, 80, 300);
+
+    expect(left - 40).toBeGreaterThanOrEqual(0);
+    expect(left + 40).toBeLessThanOrEqual(300);
+    expect(left).toBe(expected);
+  });
+
+  it.each([
+    {clientX: 1, expectedLeft: 40},
+    {clientX: 299, expectedLeft: 260},
+  ])('positions the hovered endpoint tooltip fully inside its host', async ({clientX, expectedLeft}) => {
+    const element = await mount(Array.from({length: 20}, (_value, index) => index * 5));
+    const svg = element.shadowRoot?.querySelector<SVGSVGElement>('svg');
+
+    if (svg === null || svg === undefined) {
+      throw new Error('missing heat strip plot');
+    }
+
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 16,
+      top: 0,
+      right: 300,
+      bottom: 16,
+      left: 0,
+      toJSON: () => ({}),
+    });
+    svg.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, clientX, clientY: 8}));
+    await element.updateComplete;
+
+    const plot = element.shadowRoot?.querySelector<HTMLElement>('.plot');
+    const tooltip = element.shadowRoot?.querySelector<HTMLElement>('[part="tooltip"]');
+
+    if (plot === null || plot === undefined || tooltip === null || tooltip === undefined) {
+      throw new Error('missing heat strip tooltip');
+    }
+
+    vi.spyOn(plot, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 300,
+      height: 16,
+      top: 0,
+      right: 300,
+      bottom: 16,
+      left: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(tooltip, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 80,
+      height: 16,
+      top: 0,
+      right: 80,
+      bottom: 16,
+      left: 0,
+      toJSON: () => ({}),
+    });
+    element.requestUpdate();
+    await element.updateComplete;
+
+    const left = Number.parseFloat(tooltip.style.left);
+
+    expect(left - 40).toBeGreaterThanOrEqual(0);
+    expect(left + 40).toBeLessThanOrEqual(300);
+    expect(left).toBe(expectedLeft);
+  });
+
   it('marks the host as an image only after connect', async () => {
     const element = document.createElement(MNDW_HEAT_STRIP_TAG);
 

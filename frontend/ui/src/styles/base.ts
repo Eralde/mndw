@@ -9,6 +9,27 @@ export const focusRing: CSSResult = css`
   outline-offset: 0.0625rem;
 `;
 
+/** Shared hover treatment for bordered fields. */
+export const fieldHover: CSSResult = css`
+  border-color: var(--mndw-text-subtle);
+`;
+
+/** Shared hover treatment for controls on a surface. */
+export const surfaceHover: CSSResult = css`
+  background: var(--mndw-surface-hover);
+`;
+
+/** Shared hover treatment for controls whose active state uses the accent pair. */
+export const accentHover: CSSResult = css`
+  border-color: var(--mndw-accent-hover);
+  background: var(--mndw-accent-hover);
+`;
+
+/** Shared foreground hover treatment for text and icon controls. */
+export const textHover: CSSResult = css`
+  color: var(--mndw-text);
+`;
+
 /**
  * Metrics every control shares, so a select and a button line up when adjacent.
  *

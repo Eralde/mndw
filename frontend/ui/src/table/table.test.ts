@@ -1329,6 +1329,28 @@ describe('MndwTable column menu', () => {
     expect(openCalls[0].className).toBe('demo-panel');
   });
 
+  it('opens the column menu when its nested icon receives the click', async () => {
+    const {provider, openCalls} = makeOverlayProvider();
+
+    setOverlayProvider(provider);
+
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    await el.updateComplete;
+
+    const icon = shadowQuery<HTMLElement>(el, '[part="column-menu-trigger"] mndw-icon');
+    const svg = icon.shadowRoot?.querySelector('svg');
+
+    expect(svg).not.toBeNull();
+    svg?.dispatchEvent(new MouseEvent('click', {bubbles: true, composed: true}));
+    await el.updateComplete;
+
+    expect(openCalls).toHaveLength(1);
+  });
+
   it('emits mndwcolumnvisibilitychange with the requested hidden list in controlled mode', async () => {
     const {provider, layer} = makeOverlayProvider();
 
@@ -1516,7 +1538,7 @@ describe('MndwTable node reuse (repeat migration)', () => {
 });
 
 describe('MndwTable icon migration', () => {
-  it('renders arrow icons for the active sort direction only', async () => {
+  it('keeps a stable sort-indicator box for unsorted and sorted sortable headers', async () => {
     const el = makeTable();
 
     el.columns = makeColumns();
@@ -1524,21 +1546,41 @@ describe('MndwTable icon migration', () => {
     el.rowKey = 'id';
     await el.updateComplete;
 
-    expect(shadowOf(el).querySelector('[part="sort-indicator"] mndw-icon')).toBeNull();
+    const indicator = shadowQuery<HTMLElement>(el, 'button[data-sort-column="name"] [part="sort-indicator"]');
+
+    expect(indicator?.querySelector('mndw-icon')?.getAttribute('name')).toBe('arrow-up-down');
+    const activeHeader = [...shadowOf(el).querySelectorAll<HTMLElement>('th[part~="header-cell"]')]
+      .find((header) => header.textContent?.trim() === 'Active');
+
+    expect(activeHeader?.querySelector('[part="sort-indicator"]')).toBeNull();
+
+    const styleText = Array.isArray(MndwTable.styles)
+      ? MndwTable.styles.map(String).join('\n')
+      : String(MndwTable.styles);
+
+    expect(styleText).toMatch(/\[part='sort-indicator'\]\s*\{[^}]*width:\s*1rem;[^}]*flex:\s*0\s+0\s+1rem;/u);
 
     el.sort = {columnId: 'name', direction: 'asc'};
     await el.updateComplete;
+    expect(shadowQuery(el, 'button[data-sort-column="name"] [part="sort-indicator"]')).toBe(indicator);
     expect(
-      shadowOf(el).querySelector('[part="sort-indicator"] mndw-icon')
+      indicator?.querySelector('mndw-icon')
         ?.getAttribute('name'),
     ).toBe('arrow-up');
 
     el.sort = {columnId: 'name', direction: 'desc'};
     await el.updateComplete;
     expect(
-      shadowOf(el).querySelector('[part="sort-indicator"] mndw-icon')
+      shadowQuery(el, 'button[data-sort-column="name"] [part="sort-indicator"]')?.querySelector('mndw-icon')
         ?.getAttribute('name'),
     ).toBe('arrow-down');
+
+    el.sort = null;
+    await el.updateComplete;
+    expect(shadowQuery(el, 'button[data-sort-column="name"] [part="sort-indicator"]')).toBe(indicator);
+    expect(indicator?.querySelector('mndw-icon')?.getAttribute('name')).toBe('arrow-up-down');
+    expect(shadowOf(el).querySelector('button[data-sort-column="active"]')).toBeNull();
+    expect(activeHeader?.querySelector('[part="sort-indicator"]')).toBeNull();
   });
 
   it('renders the settings icon on the column-menu trigger', async () => {

@@ -1,4 +1,4 @@
-import type {Column, MndwSortChangeDetail} from '@mndw/ui';
+import {type Column, type MndwSortChangeDetail} from '@mndw/ui';
 
 interface ClientRow {
   id: string;
@@ -9,7 +9,7 @@ interface ClientRow {
 }
 
 const columns: Column<ClientRow>[] = [
-  {id: 'name', label: 'Name', accessor: 'name', sortable: true},
+  {id: 'name', label: 'Name', accessor: 'name', sortable: true, hideable: false},
   {id: 'ip', label: 'IP address', accessor: 'ip'},
   {id: 'mac', label: 'MAC address', accessor: 'mac'},
   {id: 'traffic', label: 'Traffic (MB)', accessor: 'traffic', kind: 'number', align: 'end', sortable: true},
@@ -24,13 +24,13 @@ const rows: ClientRow[] = [
   {id: 'client-06', name: 'Network printer', ip: '192.168.1.90', mac: '24:6F:28:10:4A:06', traffic: 12.1},
 ];
 
-export function mount(root: HTMLElement): void {
+function mountTable(root: HTMLElement, demo: 'sorting' | 'visibility'): void {
   const table = document.createElement('mndw-table');
 
+  table.dataset.demo = demo;
   table.style.width = '100%';
   table.caption = 'Connected clients and recent traffic';
   table.layout = 'auto';
-  table.minWidth = '640px';
   table.rowKey = 'id';
   table.columns = columns;
   table.rows = rows;
@@ -40,4 +40,12 @@ export function mount(root: HTMLElement): void {
   });
 
   root.appendChild(table);
+}
+
+export function mountSorting(root: HTMLElement): void {
+  mountTable(root, 'sorting');
+}
+
+export function mountVisibility(root: HTMLElement): void {
+  mountTable(root, 'visibility');
 }

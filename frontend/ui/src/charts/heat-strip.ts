@@ -48,6 +48,15 @@ const LAST_STOP = UTILIZATION_STOPS[UTILIZATION_STOPS.length - 1];
 /** Width of each utilization step: samples are bucketed to 0, 10, 20 … before coloring. */
 const UTILIZATION_STEP = 10;
 
+/** Keeps a centered tooltip inside its plot, even when a slice sits at either endpoint. */
+export const clampTooltipLeft = (center: number, tooltipWidth: number, plotWidth: number): number => {
+  const halfWidth = Math.min(Math.max(tooltipWidth, 0), Math.max(plotWidth, 0)) / 2;
+  const minCenter = halfWidth;
+  const maxCenter = Math.max(minCenter, plotWidth - halfWidth);
+
+  return Math.min(Math.max(center, minCenter), maxCenter);
+};
+
 const clampPercent = (value: number, max: number): number => {
   if (!Number.isFinite(value)) {
     return 0;
@@ -160,7 +169,9 @@ export class MndwHeatStrip extends LitElement {
       color: var(--mndw-text);
       font-size: 0.6875rem;
       font-variant-numeric: tabular-nums;
-      white-space: nowrap;
+      max-width: calc(100% - 0.5rem);
+      white-space: normal;
+      overflow-wrap: anywhere;
       pointer-events: none;
     }
   `;
@@ -203,6 +214,29 @@ export class MndwHeatStrip extends LitElement {
 
   protected override updated(): void {
     this.ariaLabelState.setGenerated(this.computeAriaLabel());
+    this.positionTooltip();
+  }
+
+  private positionTooltip(): void {
+    const plot = this.shadowRoot?.querySelector<HTMLElement>('.plot');
+    const tooltip = this.shadowRoot?.querySelector<HTMLElement>('[part="tooltip"]');
+
+    if (plot === null || plot === undefined || tooltip === null || tooltip === undefined) {
+      return;
+    }
+
+    const plotBounds = plot.getBoundingClientRect();
+    const tooltipBounds = tooltip.getBoundingClientRect();
+
+    if (plotBounds.width <= 0 || tooltipBounds.width <= 0) {
+      return;
+    }
+
+    const anchorPercent = Number.parseFloat(tooltip.style.left);
+    const anchor = Number.isFinite(anchorPercent) ? (anchorPercent / 100) * plotBounds.width : plotBounds.width / 2;
+    const left = clampTooltipLeft(anchor, tooltipBounds.width, plotBounds.width);
+
+    tooltip.style.left = `${left}px`;
   }
 
   protected override render(): TemplateResult {

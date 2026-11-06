@@ -5,6 +5,10 @@ import {describe, expect, it} from 'vitest';
 import {TOKENS_REQUIRED} from './tokens-required.js';
 
 const TOKEN_REFERENCE = /var\(\s*(--mndw-[a-z0-9-]+)([^)]*)\)/g;
+const KIT_LOCAL_PERIOD_FALLBACKS = new Map([
+  ['--mndw-spinner-period', ', 900ms'],
+  ['--mndw-progress-period', ', 1.35s'],
+]);
 
 interface SourceFile {
   path: string;
@@ -30,7 +34,7 @@ async function sourceFiles(directory: string): Promise<SourceFile[]> {
 }
 
 describe('TOKENS_REQUIRED', () => {
-  it('declares every token used by shipped UI source without fallbacks', async () => {
+  it('declares design tokens and scopes local timing fallbacks to kit.css', async () => {
     const files = await sourceFiles(resolve(process.cwd(), 'src'));
     const references = new Map<string, string[]>();
 
@@ -44,12 +48,21 @@ describe('TOKENS_REQUIRED', () => {
 
         locations.push(file.path);
         references.set(token, locations);
-        expect(details, `${token} in ${file.path}`).not.toContain(',');
+        const kitLocalFallback = KIT_LOCAL_PERIOD_FALLBACKS.get(token);
+
+        if (kitLocalFallback === undefined) {
+          expect(details, `${token} in ${file.path}`).not.toContain(',');
+        } else {
+          expect(file.path.endsWith('/styles/kit.css'), `${token} is local to kit.css`).toBe(true);
+          expect(details, `${token} fallback`).toBe(kitLocalFallback);
+        }
       }
     }
 
     const required = new Set<string>(TOKENS_REQUIRED);
-    const undeclared = [...references.keys()].filter((token) => !required.has(token));
+    const undeclared = [...references.keys()].filter((token) =>
+      !required.has(token) && !KIT_LOCAL_PERIOD_FALLBACKS.has(token)
+    );
 
     expect(undeclared).toEqual([]);
     expect(TOKENS_REQUIRED.length).toBeGreaterThan(0);

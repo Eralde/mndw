@@ -80,13 +80,19 @@
   align-items: center;
   gap: 12px;
   width: 100%;
-  overflow-x: auto;
   border: 1px solid var(--vp-c-divider);
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
   padding: 20px;
   background: var(--mndw-bg);
   color: var(--mndw-text);
+}
+
+.ui-demo__preview > :is(mndw-field, mndw-slider, mndw-input, mndw-textarea, mndw-select) {
+  box-sizing: border-box;
+  flex: 1 1 100%;
+  width: 100%;
+  max-width: 24rem;
 }
 
 .vp-doc .ui-demo > div[class*='language-'] {

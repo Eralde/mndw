@@ -93,6 +93,33 @@ describe('<mndw-bar-chart>', () => {
     expect(element.getAttribute('aria-label')).not.toMatch(/TX|RX|Traffic/);
   });
 
+  it('shades the hovered bar column and clears the band on pointer leave', async () => {
+    const element = await mount();
+
+    element.points = points;
+    await element.updateComplete;
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (overlay === null || overlay === undefined) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 40, clientY: 30}));
+    await element.updateComplete;
+
+    const band = element.shadowRoot?.querySelector<SVGRectElement>('[part="hover-band"]');
+
+    expect(band).not.toBeNull();
+    expect(band?.hasAttribute('data-active')).toBe(true);
+    expect(String(MndwBarChart.styles)).toContain('color-mix(in srgb, var(--mndw-text) 12%, transparent)');
+
+    overlay.dispatchEvent(new MouseEvent('mouseleave', {bubbles: true}));
+    await element.updateComplete;
+
+    expect(band?.hasAttribute('data-active')).toBe(false);
+  });
+
   it('uses the custom time and value formatters for chart surfaces', async () => {
     const element = await mount();
 

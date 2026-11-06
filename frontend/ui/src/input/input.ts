@@ -3,7 +3,7 @@ import {FormAssociatedController} from '../forms/form-associated.js';
 import {CommitTracker, TextAnnouncementController, setOrRemove, validityFlagsFrom} from '../forms/text-control.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
-import {controlBase, focusRing, hostTypography} from '../styles/base.js';
+import {controlBase, fieldHover, focusRing, hostTypography, textHover} from '../styles/base.js';
 
 export const MNDW_INPUT_TAG = 'mndw-input';
 
@@ -61,6 +61,10 @@ export class MndwInput extends LitElement {
       color: var(--mndw-text);
     }
 
+    :host(:not([disabled]):not([readonly]):not([invalid]):not([aria-invalid='true'])) [part='field']:hover {
+      ${fieldHover}
+    }
+
     :host(:focus-within) [part='field'] {
       ${focusRing}
     }
@@ -109,8 +113,8 @@ export class MndwInput extends LitElement {
       font: inherit;
     }
 
-    [part='password-toggle']:hover {
-      color: var(--mndw-text);
+    :host(:not([disabled]):not([readonly]):not([invalid]):not([aria-invalid='true'])) [part='password-toggle']:hover {
+      ${textHover}
     }
 
     [part='password-toggle'] mndw-icon {

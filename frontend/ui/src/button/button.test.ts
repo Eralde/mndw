@@ -167,7 +167,7 @@ describe('<mndw-button> danger variant', () => {
     const {cssText} = MndwButton.styles;
 
     expect(cssText).toContain(variantRule('danger'));
-    expect(cssText).toContain(variantRule('danger', ':hover'));
+    expect(cssText).toContain(variantRule('danger', ':not(:disabled):hover'));
     expect(cssText).toContain('var(--mndw-danger-bg)');
     expect(cssText).toContain('var(--mndw-danger)');
     // The palette models `danger` as a foreground and emits no contrast pair for it, so a solid

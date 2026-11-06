@@ -41,6 +41,22 @@ describe('<mndw-segment>', () => {
     expect(element.shadowRoot?.querySelector('button, input, a, [tabindex]')).toBeNull();
   });
 
+  it('uses the validated accent pair for selected segments and an accent hover', () => {
+    const cssText = String(MndwSegment.styles);
+
+    expect(cssText).toMatch(
+      /:host\(\[aria-checked='true'\]\)\s+\[part='segment'\]\s*\{[^}]*background:\s*var\(--mndw-accent\);[^}]*color:\s*var\(--mndw-accent-contrast\);/u,
+    );
+    expect(cssText).toContain(
+      ':host([aria-checked=\'true\']:not([disabled]):not([aria-disabled=\'true\']):hover) [part=\'segment\']',
+    );
+    expect(cssText).toMatch(/:host\(\[aria-checked='true'[^\n]*\n[^}]*background:\s*var\(--mndw-accent-hover\);/u);
+    expect(cssText).toContain(
+      ':host([aria-checked=\'false\']:not([disabled]):not([aria-disabled=\'true\']):hover) [part=\'segment\']',
+    );
+    expect(cssText).toContain('var(--mndw-surface-hover)');
+  });
+
   it('announces configuration changes so its group can rewire', async () => {
     const element = await mount('<mndw-segment value="day">Day</mndw-segment>', MNDW_SEGMENT_TAG);
     const announced = vi.fn();

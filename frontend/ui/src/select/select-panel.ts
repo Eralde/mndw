@@ -1,6 +1,6 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
 import {repeat} from 'lit/directives/repeat.js';
-import {focusRing, hostTypography} from '../styles/base.js';
+import {focusRing, hostTypography, surfaceHover} from '../styles/base.js';
 import type {OptionModel} from './option-model.js';
 
 export const MNDW_SELECT_PANEL_TAG = 'mndw-select-panel';
@@ -72,8 +72,8 @@ export class MndwSelectPanel extends LitElement {
       cursor: pointer;
     }
 
-    .option:hover {
-      background: var(--mndw-surface-hover);
+    .option:not([aria-disabled='true']):hover {
+      ${surfaceHover}
     }
 
     .option:focus-visible {

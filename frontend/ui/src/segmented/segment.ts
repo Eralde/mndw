@@ -1,5 +1,5 @@
 import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
-import {controlBase, hostTypography} from '../styles/base.js';
+import {controlBase, hostTypography, surfaceHover, textHover} from '../styles/base.js';
 
 export const MNDW_SEGMENT_TAG = 'mndw-segment';
 export const MNDW_SEGMENT_CHANGE_EVENT = 'mndwsegmentchange';
@@ -46,13 +46,19 @@ export class MndwSegment extends LitElement {
     }
 
     :host([aria-checked='true']) [part='segment'] {
-      background: var(--mndw-surface-raised);
-      color: var(--mndw-text);
+      background: var(--mndw-accent);
+      color: var(--mndw-accent-contrast);
       font-weight: var(--mndw-weight-semibold);
     }
 
-    :host(:not([aria-disabled='true']):hover) [part='segment'] {
-      color: var(--mndw-text);
+    :host([aria-checked='false']:not([disabled]):not([aria-disabled='true']):hover) [part='segment'] {
+      ${surfaceHover}
+      ${textHover}
+    }
+
+    :host([aria-checked='true']:not([disabled]):not([aria-disabled='true']):hover) [part='segment'] {
+      background: var(--mndw-accent-hover);
+      color: var(--mndw-accent-contrast);
     }
   `;
 

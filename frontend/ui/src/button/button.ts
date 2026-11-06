@@ -1,6 +1,6 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html, nothing} from 'lit';
 import {FormAssociatedController} from '../forms/form-associated.js';
-import {controlBase, focusRing, hostTypography} from '../styles/base.js';
+import {accentHover, controlBase, focusRing, hostTypography, surfaceHover, textHover} from '../styles/base.js';
 
 export const MNDW_BUTTON_TAG = 'mndw-button';
 
@@ -55,9 +55,8 @@ export class MndwButton extends LitElement {
       color: var(--mndw-accent-contrast);
     }
 
-    :host([variant='primary']) button:hover {
-      border-color: var(--mndw-accent-hover);
-      background: var(--mndw-accent-hover);
+    :host([variant='primary']) button:not(:disabled):hover {
+      ${accentHover}
     }
 
     :host([variant='secondary']) button {
@@ -66,14 +65,19 @@ export class MndwButton extends LitElement {
       color: var(--mndw-text);
     }
 
+    :host([variant='secondary']) button:not(:disabled):hover {
+      ${surfaceHover}
+      border-color: var(--mndw-text-subtle);
+    }
+
     :host([variant='ghost']) button {
       background: transparent;
       color: var(--mndw-text-subtle);
     }
 
-    :host([variant='ghost']) button:hover {
+    :host([variant='ghost']) button:not(:disabled):hover {
       background: color-mix(in srgb, var(--mndw-text) 8%, transparent);
-      color: var(--mndw-text);
+      ${textHover}
     }
 
     /*
@@ -86,7 +90,7 @@ export class MndwButton extends LitElement {
       color: var(--mndw-danger);
     }
 
-    :host([variant='danger']) button:hover {
+    :host([variant='danger']) button:not(:disabled):hover {
       background: color-mix(in srgb, var(--mndw-danger) 12%, var(--mndw-danger-bg));
     }
   `;

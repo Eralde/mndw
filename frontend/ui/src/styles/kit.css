@@ -109,7 +109,7 @@
   border: var(--mndw-border-w) solid var(--mndw-border);
   border-top-color: var(--mndw-accent);
   border-radius: 50%;
-  animation: mndw-spin var(--mndw-duration-fast) var(--mndw-easing) infinite;
+  animation: mndw-spin var(--mndw-spinner-period, 900ms) linear infinite;
 }
 
 @keyframes mndw-spin {
@@ -142,7 +142,17 @@
   height: 100%;
   border-radius: inherit;
   background: var(--mndw-accent);
-  animation: mndw-progress var(--mndw-duration-base) var(--mndw-easing) infinite alternate;
+  animation: mndw-progress var(--mndw-progress-period, 1.35s) ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mndw-spinner {
+    animation-duration: 2.4s;
+  }
+
+  .mndw-progress::before {
+    animation-duration: 3s;
+  }
 }
 
 @keyframes mndw-progress {

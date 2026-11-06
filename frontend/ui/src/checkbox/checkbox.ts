@@ -3,7 +3,7 @@ import {type MndwLabelSource, dispatchLabelChange} from '../field/field.js';
 import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
-import {focusRing, hostTypography} from '../styles/base.js';
+import {accentHover, focusRing, hostTypography, surfaceHover} from '../styles/base.js';
 
 export const MNDW_CHECKBOX_TAG = 'mndw-checkbox';
 
@@ -73,6 +73,15 @@ export class MndwCheckbox extends LitElement {
         background: var(--mndw-accent);
       }
 
+      :host(:not([disabled]):not([aria-disabled='true']):not([invalid]):not([aria-invalid='true']):hover) [part='box'] {
+        ${surfaceHover}
+      }
+
+      :host([checked]:not([disabled]):not([aria-disabled='true']):not([invalid]):not([aria-invalid='true']):hover) [part='box'],
+      :host([indeterminate]:not([disabled]):not([aria-disabled='true']):not([invalid]):not([aria-invalid='true']):hover) [part='box'] {
+        ${accentHover}
+      }
+
       [part='mark'] {
         position: absolute;
         top: 50%;
@@ -98,6 +107,10 @@ export class MndwCheckbox extends LitElement {
       }
 
       :host(:focus-visible) {
+        outline: none;
+      }
+
+      :host(:focus-visible) [part='box'] {
         ${focusRing}
       }
     `;

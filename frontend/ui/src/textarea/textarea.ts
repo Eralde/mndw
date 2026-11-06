@@ -1,7 +1,7 @@
 import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
 import {FormAssociatedController} from '../forms/form-associated.js';
 import {CommitTracker, TextAnnouncementController, setOrRemove, validityFlagsFrom} from '../forms/text-control.js';
-import {focusRing, hostTypography} from '../styles/base.js';
+import {fieldHover, focusRing, hostTypography} from '../styles/base.js';
 
 export const MNDW_TEXTAREA_TAG = 'mndw-textarea';
 
@@ -48,6 +48,10 @@ export class MndwTextarea extends LitElement {
       border-radius: var(--mndw-radius-md);
       background: var(--mndw-surface-raised);
       color: var(--mndw-text);
+    }
+
+    :host(:not([disabled]):not([readonly]):not([invalid]):not([aria-invalid='true'])) [part='field']:hover {
+      ${fieldHover}
     }
 
     :host(:focus-within) [part='field'] {

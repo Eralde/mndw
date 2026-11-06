@@ -7,7 +7,7 @@ import {LocaleController} from '../locale-controller.js';
 import {type LocalizedPropertyState, createLocalizedProperty} from '../localized-property.js';
 import {type UiCloseReason, type UiLayer, type UiLayerPresentation, getOverlayProvider} from '../overlay.js';
 import {selectPresentation} from '../position/position.js';
-import {controlBase, focusRing, hostTypography} from '../styles/base.js';
+import {controlBase, fieldHover, focusRing, hostTypography} from '../styles/base.js';
 import {MNDW_OPTION_CHANGE_EVENT} from './option.js';
 import {type OptionModel, readOptions} from './option-model.js';
 import {SelectPopoverTracker, applySelectPopoverSizing} from './select-popover.js';
@@ -70,6 +70,10 @@ export class MndwSelect extends LitElement {
       color: var(--mndw-text);
       text-align: left;
       cursor: pointer;
+    }
+
+    :host(:not([disabled]):not([invalid]):not([aria-invalid='true'])) [part='trigger']:hover {
+      ${fieldHover}
     }
 
     :host(:focus-visible) {

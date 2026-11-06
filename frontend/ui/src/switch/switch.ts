@@ -1,6 +1,6 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
 import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
-import {focusRing, hostTypography} from '../styles/base.js';
+import {accentHover, focusRing, hostTypography, surfaceHover} from '../styles/base.js';
 
 export const MNDW_SWITCH_TAG = 'mndw-switch';
 
@@ -68,6 +68,14 @@ export class MndwSwitch extends LitElement {
     :host([checked]) [part='track'] {
       border-color: var(--mndw-accent);
       background: var(--mndw-accent);
+    }
+
+    :host(:not([disabled]):not([aria-disabled='true']):not([invalid]):not([aria-invalid='true']):hover) [part='track'] {
+      ${surfaceHover}
+    }
+
+    :host([checked]:not([disabled]):not([aria-disabled='true']):not([invalid]):not([aria-invalid='true']):hover) [part='track'] {
+      ${accentHover}
     }
 
     [part='thumb'] {

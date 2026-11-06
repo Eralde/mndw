@@ -3,7 +3,7 @@ import {repeat} from 'lit/directives/repeat.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
 import {type UiLayer, getOverlayProvider} from '../overlay.js';
-import {focusRing, hostTypography} from '../styles/base.js';
+import {focusRing, hostTypography, surfaceHover} from '../styles/base.js';
 import {CellRegistry} from './table-cells.js';
 import {type FocusChainEntry, resolveFocusedRowKey} from './table-focus.js';
 import {
@@ -228,7 +228,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     }
 
     [part='row']:hover [part~='cell'] {
-      background: var(--mndw-surface-hover);
+      ${surfaceHover}
     }
 
     .nowrap {
@@ -261,7 +261,17 @@ export class MndwTable<Row = unknown> extends LitElement {
     }
 
     [part='sort-indicator'] {
+      display: inline-flex;
+      width: 1rem;
+      flex: 0 0 1rem;
+      align-items: center;
+      justify-content: center;
       margin-inline-start: var(--mndw-space-1);
+      color: var(--mndw-text-subtle);
+    }
+
+    [part='sort-indicator'][data-sorted] {
+      color: var(--mndw-text);
     }
 
     [part='drag-handle'] {
@@ -705,11 +715,11 @@ export class MndwTable<Row = unknown> extends LitElement {
 
     const direction = this.effectiveSortState?.columnId === column.id ? this.effectiveSortState?.direction : undefined;
     const ariaSort = direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : nothing;
-    const indicator = direction === 'asc'
-      ? html`<mndw-icon name="arrow-up"></mndw-icon>`
+    const indicatorName = direction === 'asc'
+      ? 'arrow-up'
       : direction === 'desc'
-      ? html`<mndw-icon name="arrow-down"></mndw-icon>`
-      : nothing;
+      ? 'arrow-down'
+      : 'arrow-up-down';
 
     return html`
       <th part="header-cell" scope="col" class=${align} style=${style} aria-sort=${ariaSort}>
@@ -718,7 +728,9 @@ export class MndwTable<Row = unknown> extends LitElement {
           type="button"
           data-sort-column=${column.id}
           aria-label=${labels.sortBy(column.label)}
-        >${column.label}<span part="sort-indicator">${indicator}</span></button>
+        >${column.label}<span part="sort-indicator" ?data-sorted=${direction !== undefined}>
+          <mndw-icon name=${indicatorName}></mndw-icon>
+        </span></button>
       </th>
     `;
   }
@@ -1645,7 +1657,7 @@ export class MndwTable<Row = unknown> extends LitElement {
   };
 
   private readonly handleClick = (event: Event): void => {
-    const target = (event.composedPath()[0] ?? null) as HTMLElement | null;
+    const target = event.composedPath().find((node): node is HTMLElement => node instanceof HTMLElement) ?? null;
     const expandToggle = target?.closest?.('[part="expand-toggle"]');
 
     if (expandToggle !== null && expandToggle !== undefined) {

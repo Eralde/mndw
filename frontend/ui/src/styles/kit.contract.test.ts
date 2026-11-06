@@ -166,9 +166,20 @@ describe('kit.css class contract', () => {
 
     for (const match of css.matchAll(TOKEN_REFERENCE)) {
       const token = match[1];
+      const kitLocalPeriod = token === '--mndw-spinner-period' || token === '--mndw-progress-period';
 
-      if (!required.has(token)) {
+      if (!required.has(token) && !kitLocalPeriod) {
         undeclared.push(token);
+      }
+
+      if (token === '--mndw-spinner-period') {
+        expect(match[2]).toBe(', 900ms');
+        continue;
+      }
+
+      if (token === '--mndw-progress-period') {
+        expect(match[2]).toBe(', 1.35s');
+        continue;
       }
 
       expect(match[2]).not.toContain(',');
@@ -190,5 +201,27 @@ describe('kit.css class contract', () => {
     expect(css).toMatch(
       /\.mndw-field:has\(> mndw-switch\) > \.mndw-field__hint,[\s\S]*\.mndw-field__error[\s\S]*flex:\s*0\s+0\s+100%/u,
     );
+  });
+
+  it('uses dedicated loop periods and reduced-motion handling for spinner and progress', async () => {
+    const css = await readFile(resolve(process.cwd(), 'src/styles/kit.css'), 'utf8');
+
+    const spinner = css.match(/\.mndw-spinner\s*\{([^}]*)\}/u)?.[1] ?? '';
+    const progress = css.match(/\.mndw-progress::before\s*\{([^}]*)\}/u)?.[1] ?? '';
+
+    expect(spinner).toContain('--mndw-spinner-period');
+    expect(spinner).toMatch(/animation:\s*mndw-spin\s+var\(--mndw-spinner-period,\s*900ms\)\s+linear\s+infinite/u);
+    expect(spinner).not.toMatch(/animation:[^;]*var\(--mndw-duration-/u);
+    expect(progress).toContain('--mndw-progress-period');
+    expect(progress).toMatch(
+      /animation:\s*mndw-progress\s+var\(--mndw-progress-period,\s*1\.35s\)\s+ease-in-out\s+infinite\s+alternate/u,
+    );
+    expect(progress).not.toMatch(/animation:[^;]*var\(--mndw-duration-/u);
+
+    const reducedMotion = css.match(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{([\s\S]*?)\n\}/u)?.[1] ?? '';
+
+    expect(reducedMotion).toContain('.mndw-spinner');
+    expect(reducedMotion).toContain('.mndw-progress::before');
+    expect(reducedMotion).toMatch(/animation-duration:\s*(?:2\.4s|3s)/u);
   });
 });

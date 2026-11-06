@@ -1,14 +1,26 @@
 # `<mndw-table>`
 
-The table lists six connected clients with sortable name and traffic columns. Its column visibility menu lets readers choose which columns to show; on narrow screens, the table scrolls within its preview.
+The table lists six connected clients. Its viewport owns horizontal scrolling on narrow screens.
 
 ## Examples
 
 <script setup lang="ts">
-import {mount} from '../.vitepress/theme/ui-demos/table.js';
+import {mountSorting, mountVisibility} from '../.vitepress/theme/ui-demos/table.js';
 </script>
 
-<UiScriptDemo :mount="mount" />
+### Sorting
+
+The two-way arrow marks sortable columns; Name and Traffic are sortable, Traffic starts descending, and clicking a
+sortable header sorts then reverses it.
+
+<UiScriptDemo :mount="mountSorting" />
+
+### Column visibility
+
+The gear button at the end of the header row opens the column menu; IP address, MAC address, and Traffic (MB) can be
+hidden, while Name stays visible.
+
+<UiScriptDemo :mount="mountVisibility" />
 
 <<< ../.vitepress/theme/ui-demos/table.ts
 

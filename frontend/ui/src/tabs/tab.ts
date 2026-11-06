@@ -1,5 +1,5 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
-import {controlBase, hostTypography} from '../styles/base.js';
+import {controlBase, hostTypography, textHover} from '../styles/base.js';
 
 export const MNDW_TAB_TAG = 'mndw-tab';
 
@@ -55,8 +55,8 @@ export class MndwTab extends LitElement {
       font-weight: var(--mndw-weight-semibold);
     }
 
-    :host(:not([aria-disabled='true']):hover) [part='tab'] {
-      color: var(--mndw-text);
+    :host(:not([disabled]):not([aria-disabled='true']):hover) [part='tab'] {
+      ${textHover}
     }
   `;
 

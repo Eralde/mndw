@@ -3,7 +3,11 @@
   "version": "0.1.2",
   "license": "MIT",
   "homepage": "https://eralde.github.io/mndw/",
-  "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "tooling/palette-core"},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eralde/mndw.git",
+    "directory": "tooling/palette-core"
+  },
   "type": "module",
   "description": "Shared TypeScript palette math and contract metadata.",
   "exports": {
@@ -24,7 +28,10 @@
       "default": "./src/build-palette.ts"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "engines": {
     "node": ">=20.19"
   },
@@ -33,10 +40,22 @@
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {
-      ".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"},
-      "./contrast": {"types": "./dist/contrast.d.ts", "default": "./dist/contrast.js"},
-      "./metadata": {"types": "./dist/metadata.d.ts", "default": "./dist/metadata.js"},
-      "./build-palette": {"types": "./dist/build-palette.d.ts", "default": "./dist/build-palette.js"}
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./contrast": {
+        "types": "./dist/contrast.d.ts",
+        "default": "./dist/contrast.js"
+      },
+      "./metadata": {
+        "types": "./dist/metadata.d.ts",
+        "default": "./dist/metadata.js"
+      },
+      "./build-palette": {
+        "types": "./dist/build-palette.d.ts",
+        "default": "./dist/build-palette.js"
+      }
     }
   },
   "scripts": {

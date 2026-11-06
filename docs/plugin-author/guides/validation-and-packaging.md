@@ -27,13 +27,45 @@ them after installation.
 
 ## Versions and compatibility
 
-The `@mndw/sdk` version is the context contract version (`PluginContext`). Minor releases add context
-capabilities; major releases can change the contract. `mndw pack` records the exact SDK and shared
-dependency versions used to build the plugin in `mndw.lock.json`.
+All `@mndw/*` packages share the product version. Scaffolded plugin dependencies use a caret range based on the CLI
+version that created the project; while the product is `0.x`, breaking API, manifest, or protocol changes bump the
+minor version. See [package versioning](/guides/project-setup#package-versioning) for the coordinated upgrade rule.
+`mndw pack` records the exact SDK and shared dependency versions used to build the plugin in `mndw.lock.json`.
 
 During approval, the install screen warns if the plugin was built for a newer SDK or a different
 major version of a host-shared dependency. The warning explains the compatibility risk, but installing
 is still allowed. A plugin built against an older SDK minor version installs silently.
+
+## Shared dependencies and D3
+
+The CLI externalizes host-provided packages during packing. `@rci-tools/core`, `rxjs`, `rxjs/operators`, `hash-wasm`,
+`d3`, and `@mndw/ui` are shared across plugins; Vue plugins also externalize `vue`, and Angular plugins externalize
+`zone.js`, `@angular/core`, `@angular/common`, `@angular/platform-browser`, and `@angular/compiler`. The host supplies
+versioned bundles for these imports.
+
+The host provides the complete `d3@7.9.0` package as one shared bundle. Import its namespace and keep `d3` and
+`@types/d3` in plugin `devDependencies` for local type checking and tests:
+
+```js
+import * as d3 from 'd3';
+```
+
+Official D3 APIs, including `zoom`, come from that namespace. Third-party extensions such as `d3-dag` are not host
+provided and remain bundled with the plugin. Packages outside the shared-dependency list follow that same rule.
+
+## Manual upload
+
+Dashboard Settings is the recommended upload path. An authenticated manual request needs the persisted dashboard port
+from `/opt/var/lib/mndw/frontend-port`, an active session cookie, and the CSRF header:
+
+```sh
+curl --cookie '<authenticated-session-cookie>' \
+  -H 'X-Mndw-Csrf: 1' \
+  --data-binary @my-widget.zip \
+  http://<device>:<dashboard-port>/api/mgmt/upload
+```
+
+Each archive includes `mndw.lock.json` with exact shared dependency versions.
 
 ## Before uploading
 

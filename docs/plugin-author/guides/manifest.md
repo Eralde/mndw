@@ -35,7 +35,9 @@ most 12 columns, `h` is a positive row count, and optional `minW`/`minH` cannot 
 ```
 
 The `entry` points to the packaged module. For source development, the CLI resolves the source entry
-from the plugin package (normally `src/index.ts`) and emits the manifest entry during packing.
+from the plugin package (normally `src/index.ts`) and emits the manifest entry during packing. Page `route` is a
+single segment; `/`, `/login`, `/packages`, `/packages/services`, and `/settings` are reserved host routes and are
+rejected by SDK validation and host routing.
 
 ## Backend routes
 

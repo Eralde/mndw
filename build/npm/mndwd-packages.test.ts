@@ -1,11 +1,13 @@
 import {readFileSync} from 'node:fs';
+import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {describe, expect, it} from 'vitest';
 
 import {MNDWD_PLATFORMS} from '../../tooling/cli/src/mndwd-platforms.js';
-import {mndwdPackageJson} from './mndwd-packages.js';
+import {mndwdPackageJson, writeMndwdPackageManifests} from './mndwd-packages.js';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const packagesDir = join(repositoryRoot, 'build/npm/mndwd');
@@ -58,6 +60,29 @@ describe('mndwd npm packages', () => {
       const packageJson = JSON.parse(readFileSync(join(packagesDir, packageName, 'package.json'), 'utf8')) as unknown;
 
       expect(packageJson).toEqual(mndwdPackageJson(platform, cliPackage.version));
+    }
+  });
+
+  it('generates README and matching description for every platform package', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'mndw-mndwd-readmes-'));
+
+    try {
+      writeMndwdPackageManifests({version: cliPackage.version, packagesDir: directory});
+
+      for (const platform of MNDWD_PLATFORMS) {
+        const packageName = platform.packageName.split('/')[1];
+        const generatedDir = join(directory, packageName);
+        const metadata = JSON.parse(await readFile(join(generatedDir, 'package.json'), 'utf8')) as {
+          description: string;
+        };
+        const readme = await readFile(join(generatedDir, 'README.md'), 'utf8');
+        expect(readme.split('\n')[0]).toBe(`# ${platform.packageName}`);
+        expect(readme.split('\n\n')[1]).toBe(metadata.description);
+        expect(readme).toContain('https://eralde.github.io/mndw/');
+        expect(readme).toContain('Installed automatically by `@mndw/cli`');
+      }
+    } finally {
+      await rm(directory, {recursive: true, force: true});
     }
   });
 

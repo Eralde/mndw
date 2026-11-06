@@ -3,7 +3,11 @@
   "version": "0.1.2",
   "license": "MIT",
   "homepage": "https://eralde.github.io/mndw/",
-  "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "frontend/sdk"},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eralde/mndw.git",
+    "directory": "frontend/sdk"
+  },
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
@@ -50,7 +54,10 @@
     },
     "./manifest.schema.json": "./manifest.schema.json"
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "engines": {
     "node": ">=20.19"
   },
@@ -59,17 +66,47 @@
     "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {
-      ".": {"types": "./dist/index.d.ts", "default": "./dist/index.js"},
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
       "./tokens.css": "./dist/tokens.css",
-      "./tokens": {"types": "./dist/tokens.d.ts", "default": "./dist/tokens.js"},
-      "./testing": {"types": "./dist/testing/index.d.ts", "default": "./dist/testing/index.js"},
-      "./testing/vitest-project": {"types": "./dist/testing/vitest-project.d.ts", "default": "./dist/testing/vitest-project.js"},
-      "./svelte": {"types": "./dist/svelte/index.d.ts", "default": "./dist/svelte/index.js"},
-      "./vue": {"types": "./dist/vue/index.d.ts", "default": "./dist/vue/index.js"},
-      "./angular": {"types": "./dist/angular/index.d.ts", "default": "./dist/angular/index.js"},
-      "./bind-locale": {"types": "./dist/bind-locale.d.ts", "default": "./dist/bind-locale.js"},
-      "./refresh": {"types": "./dist/refresh.d.ts", "default": "./dist/refresh.js"},
-      "./rrd": {"types": "./dist/rrd.d.ts", "default": "./dist/rrd.js"},
+      "./tokens": {
+        "types": "./dist/tokens.d.ts",
+        "default": "./dist/tokens.js"
+      },
+      "./testing": {
+        "types": "./dist/testing/index.d.ts",
+        "default": "./dist/testing/index.js"
+      },
+      "./testing/vitest-project": {
+        "types": "./dist/testing/vitest-project.d.ts",
+        "default": "./dist/testing/vitest-project.js"
+      },
+      "./svelte": {
+        "types": "./dist/svelte/index.d.ts",
+        "default": "./dist/svelte/index.js"
+      },
+      "./vue": {
+        "types": "./dist/vue/index.d.ts",
+        "default": "./dist/vue/index.js"
+      },
+      "./angular": {
+        "types": "./dist/angular/index.d.ts",
+        "default": "./dist/angular/index.js"
+      },
+      "./bind-locale": {
+        "types": "./dist/bind-locale.d.ts",
+        "default": "./dist/bind-locale.js"
+      },
+      "./refresh": {
+        "types": "./dist/refresh.d.ts",
+        "default": "./dist/refresh.js"
+      },
+      "./rrd": {
+        "types": "./dist/rrd.d.ts",
+        "default": "./dist/rrd.js"
+      },
       "./manifest.schema.json": "./dist/manifest.schema.json"
     }
   },
@@ -94,11 +131,21 @@
     "vitest": "^3"
   },
   "peerDependenciesMeta": {
-    "@angular/core": {"optional": true},
-    "@angular/platform-browser": {"optional": true},
-    "svelte": {"optional": true},
-    "vue": {"optional": true},
-    "vitest": {"optional": true}
+    "@angular/core": {
+      "optional": true
+    },
+    "@angular/platform-browser": {
+      "optional": true
+    },
+    "svelte": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    },
+    "vitest": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@angular/common": "^21.2.18",
@@ -113,5 +160,6 @@
     "vitest": "^3.2.7",
     "vue": "^3.5.39",
     "zone.js": "^0.15.1"
-  }
+  },
+  "description": "Types, PluginContext, framework entry helpers, and design tokens for mndw plugins."
 }

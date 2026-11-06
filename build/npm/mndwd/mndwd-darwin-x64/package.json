@@ -1,6 +1,7 @@
 {
   "name": "@mndw/mndwd-darwin-x64",
   "version": "0.1.2",
+  "description": "Prebuilt mndwd daemon binary for macOS x64.",
   "files": [
     "bin"
   ],

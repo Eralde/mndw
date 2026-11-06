@@ -39,10 +39,11 @@ to that device, for example `MNDW_HOST_DEVICE=http://192.168.1.1`.
 From a plugin project, install the CLI and scaffold a plugin:
 
 ```bash
+mkdir my-plugins && cd my-plugins
+npm init -y
 npm i -D @mndw/cli
 npx mndw create my-widget
-cd my-widget
-npx mndw dev --addr http://router.lan
+npx mndw dev my-widget --addr http://router.lan
 ```
 
 See the [published plugin author site](https://eralde.github.io/mndw/) for

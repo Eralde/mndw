@@ -9,7 +9,17 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const extraFiles = [
   'docs/plugin-author/.vitepress/config.mts',
   'frontend/sdk/README.md',
+  'frontend/ui/README.md',
+  'frontend/ui-svelte/README.md',
+  'frontend/ui-vue/README.md',
+  'frontend/ui-angular/README.md',
+  'tooling/palette-core/README.md',
   'tooling/cli/README.md',
+  'build/npm/mndwd/mndwd-darwin-arm64/README.md',
+  'build/npm/mndwd/mndwd-darwin-x64/README.md',
+  'build/npm/mndwd/mndwd-linux-x64/README.md',
+  'build/npm/mndwd/mndwd-linux-arm64/README.md',
+  'build/npm/mndwd/mndwd-win32-x64/README.md',
   'README.md',
 ];
 

@@ -3,7 +3,11 @@
   "version": "0.1.2",
   "license": "MIT",
   "homepage": "https://eralde.github.io/mndw/",
-  "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "frontend/ui-angular"},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eralde/mndw.git",
+    "directory": "frontend/ui-angular"
+  },
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
@@ -26,7 +30,9 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "ng-packagr -p ng-package.json -c tsconfig.lib.json",
     "prepack": "pnpm run build",
@@ -52,5 +58,6 @@
     "typescript": "^5.7.0",
     "vitest": "^3.2.7",
     "zone.js": "^0.15.1"
-  }
+  },
+  "description": "Angular table cell adapters for mndw UI."
 }

@@ -71,3 +71,11 @@ If npm reports that the platform package is missing after you reuse a `package-l
 
 Next, try the [local development guide](/guides/local-development), the [Hello Widget tutorial](/tutorials/hello-widget),
 or the [RCI tutorial](/tutorials/rci-device-name-widget). For all CLI commands, see the [CLI reference](/reference/cli).
+
+
+## Package versioning
+
+All `@mndw/*` packages share the product version. `mndw create` uses a caret range based on the creating CLI version
+for `@mndw/sdk`, `@mndw/cli`, `@mndw/ui`, and the selected UI adapter (for example, `^0.1.2`). While the product is
+`0.x`, breaking API, manifest, or protocol changes bump the minor version. npm caret ranges on `0.x` stay within that
+minor, so they receive fixes; moving to a new minor is a deliberate coordinated upgrade of all `@mndw/*` packages.

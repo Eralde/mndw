@@ -456,7 +456,9 @@ describe('Task 5 plugin reference guides', () => {
     expect(packaging).toContain('npx mndw pack');
     expect(packaging).toContain('npx mndw zip');
     expect(packaging).toContain('0755');
-    expect(packaging).toContain('context contract version');
+    expect(packaging).toContain('All `@mndw/*` packages share the product version');
+    expect(packaging).toContain('breaking API, manifest, or protocol changes bump the');
+    expect(packaging).toContain('/guides/project-setup#package-versioning');
     expect(packaging).toContain('mndw.lock.json');
     expect(packaging).toContain('newer SDK');
     expect(packaging).toContain('major version of a host-shared dependency');

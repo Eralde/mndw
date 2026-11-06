@@ -3,7 +3,11 @@
   "version": "0.1.2",
   "license": "MIT",
   "homepage": "https://eralde.github.io/mndw/",
-  "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "tooling/cli"},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eralde/mndw.git",
+    "directory": "tooling/cli"
+  },
   "type": "module",
   "bin": {
     "mndw": "./src/index.ts"
@@ -86,5 +90,6 @@
     "@mndw/mndwd-linux-arm64": "workspace:*",
     "@mndw/mndwd-linux-x64": "workspace:*",
     "@mndw/mndwd-win32-x64": "workspace:*"
-  }
+  },
+  "description": "Command-line tools to create, validate, develop, and package mndw plugins."
 }

@@ -57,6 +57,7 @@ export function mndwdPackageJson(platform: MndwdPlatform, version: string): Reco
   return {
     name: platform.packageName,
     version,
+    description: platformDescription(platform),
     files: ['bin'],
     bin: {mndwd: `./bin/${platform.binary}`},
     license: metadata.license,
@@ -74,6 +75,26 @@ export function mndwdPackageJson(platform: MndwdPlatform, version: string): Reco
   };
 }
 
+function platformDescription(platform: MndwdPlatform): string {
+  const os = platform.os === 'darwin' ? 'macOS' : platform.os === 'win32' ? 'Windows' : 'Linux';
+  return `Prebuilt mndwd daemon binary for ${os} ${platform.cpu}.`;
+}
+
+function platformReadme(platform: MndwdPlatform): string {
+  return `# ${platform.packageName}
+
+${platformDescription(platform)}
+
+## Part of mndw
+
+mndw is a modular web dashboard for Keenetic/Netcraze routers. Everything in it is a plugin: a dashboard widget or a full page. See [the plugin author site](https://eralde.github.io/mndw/).
+
+Installed automatically by \`@mndw/cli\` as an optional dependency for your platform; do not install it directly.
+
+See [Local development](https://eralde.github.io/mndw/guides/local-development).
+`;
+}
+
 export function writeMndwdPackageManifests(options: {readonly version: string; readonly packagesDir: string}): void {
   const {version, packagesDir} = options;
 
@@ -86,6 +107,7 @@ export function writeMndwdPackageManifests(options: {readonly version: string; r
       join(packageDir, 'package.json'),
       `${JSON.stringify(mndwdPackageJson(platform, version), null, 2)}\n`,
     );
+    writeFileSync(join(packageDir, 'README.md'), platformReadme(platform));
   }
 }
 

@@ -70,3 +70,11 @@ hello-widget/
 - `src/index.ts` exports the frontend plugin entry.
 - `src/l10n.test.ts` and `src/table.test.ts` cover the generated view and table cell.
 - `vitest.config.ts` configures the scaffold's test runner.
+
+
+## Example plugins
+
+Built-in plugins in `plugins/builtin/` include `device-info-widget`, `cpu-temp-widget`, `tx-rx-chart-widget`,
+`terminal-page`, `clock-widget`, `dns-lookup-widget`, `mws-page`, `clients-widget`, and `system-log-page`.
+Uploadable examples in `plugins/examples/` include `backend-echo`, `demo-page`, `device-traffic-widget`, and
+`ping-widget`.

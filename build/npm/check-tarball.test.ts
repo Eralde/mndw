@@ -14,6 +14,7 @@ const makeTarball = async (
   packageJson: Record<string, unknown>,
   files: Record<string, string> = {},
   modes: Record<string, number> = {},
+  includeReadme = true,
 ): Promise<string> => {
   const directory = await mkdtemp(join(tmpdir(), 'mndw-check-tarball-'));
 
@@ -21,7 +22,11 @@ const makeTarball = async (
 
   const tarballPath = join(directory, 'fixture.tgz');
   const archive = pack();
-  const entries = {'package/package.json': JSON.stringify(packageJson), ...files};
+  const entries = {
+    'package/package.json': JSON.stringify(packageJson),
+    ...(includeReadme ? {'package/README.md': '# fixture'} : {}),
+    ...files,
+  };
 
   for (const [name, contents] of Object.entries(entries)) {
     archive.entry({name, mode: modes[name] ?? 0o644}, contents);
@@ -54,6 +59,11 @@ describe('checkTarball', () => {
     });
 
     await expect(checkTarball(tarball)).resolves.toEqual([]);
+  });
+
+  it('reports a missing README', async () => {
+    const tarball = await makeTarball({name: '@mndw/fixture'}, {}, {}, false);
+    await expect(checkTarball(tarball)).resolves.toMatchObject([{kind: 'missing-readme'}]);
   });
 
   it('reports workspace ranges in dependency fields', async () => {

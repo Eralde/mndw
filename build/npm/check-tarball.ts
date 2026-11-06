@@ -8,7 +8,14 @@ import {extract} from 'tar-stream';
 import ts from 'typescript';
 
 export interface TarballProblem {
-  kind: 'workspace-range' | 'ts-target' | 'missing-target' | 'non-executable-bin' | 'private' | 'undeclared-import';
+  kind:
+    | 'missing-readme'
+    | 'workspace-range'
+    | 'ts-target'
+    | 'missing-target'
+    | 'non-executable-bin'
+    | 'private'
+    | 'undeclared-import';
   detail: string;
 }
 
@@ -177,6 +184,10 @@ export const checkTarball = async (tgzPath: string): Promise<TarballProblem[]> =
   const metadata = JSON.parse(packageJson.toString('utf8')) as PackageMetadata;
   const packageName = typeof metadata.name === 'string' ? metadata.name : '';
   const problems: TarballProblem[] = [];
+
+  if (!entries.has('package/README.md')) {
+    problems.push({kind: 'missing-readme', detail: `${packageName || '<unnamed>'} is missing package/README.md`});
+  }
 
   if (metadata.private === true) {
     problems.push({kind: 'private', detail: `${packageName || '<unnamed>'} declares private: true`});

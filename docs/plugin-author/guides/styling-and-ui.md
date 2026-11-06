@@ -33,8 +33,7 @@ Use `@mndw/ui` components for controls, charts, and tables it provides. Shared c
 plugins a consistent visual style and accessible interaction behavior. The package is a
 host-provided shared dependency; use the custom elements directly. The host is the only code that
 registers them because `customElements.define` is page-global. See the
-[component guide](/ui/) for the catalog and plugin examples, or the
-[`@mndw/ui` README](https://github.com/Eralde/mndw/blob/master/frontend/ui/README.md) for detailed APIs.
+[component guide](/ui/) for the catalog, examples, properties, events, and styling hooks.
 
 The [Hello widget](https://github.com/Eralde/mndw/tree/master/plugins/examples/hello-widget) is a
 small example of scoped CSS using host tokens.

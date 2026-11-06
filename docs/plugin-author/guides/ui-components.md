@@ -12,8 +12,8 @@ register the elements with `@mndw/ui/testing/setup`; see the [`hello-widget` tes
 
 Use custom elements directly in Svelte, Vue, Angular, or vanilla code. UI events use lowercase,
 hyphen-free names such as `mndwinput` and `mndwchange`. Assign arrays and objects through DOM
-properties rather than string attributes. The [`@mndw/ui` README](https://github.com/Eralde/mndw/blob/master/frontend/ui/README.md)
-documents full properties, events, accessibility behavior, and styling hooks.
+properties rather than string attributes. The [UI component pages](/ui/) document properties, events,
+accessibility behavior, and styling hooks.
 
 For example, the [Hello widget](https://github.com/Eralde/mndw/tree/master/plugins/examples/hello-widget)
 uses a shared button for its backend action:
@@ -124,4 +124,5 @@ export class TableExampleComponent {
 
 For a reusable Angular cell component, `angularCell` adapts a component to the table renderer API.
 
-See the [UI components](/ui/) section for the complete component catalog, interactive examples, and API reference.
+See the [UI components](/ui/) section for the component catalog, interactive examples, and API reference. Each
+component page documents its properties, events, accessibility behavior, and styling hooks.

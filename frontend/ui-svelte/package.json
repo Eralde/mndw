@@ -3,7 +3,11 @@
   "version": "0.1.2",
   "license": "MIT",
   "homepage": "https://eralde.github.io/mndw/",
-  "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "frontend/ui-svelte"},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eralde/mndw.git",
+    "directory": "frontend/ui-svelte"
+  },
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
@@ -23,7 +27,11 @@
       }
     }
   },
-  "files": ["dist", "!dist/**/*.test.*", "!dist/**/fixtures"],
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "!dist/**/fixtures"
+  ],
   "scripts": {
     "build": "svelte-package -i src -o dist",
     "prepack": "pnpm run build",
@@ -44,5 +52,6 @@
     "svelte-check": "^4.7.2",
     "typescript": "^5.7.0",
     "vitest": "^3.2.7"
-  }
+  },
+  "description": "Svelte table cell adapters for mndw UI."
 }

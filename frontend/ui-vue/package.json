@@ -3,7 +3,11 @@
   "version": "0.1.2",
   "license": "MIT",
   "homepage": "https://eralde.github.io/mndw/",
-  "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "frontend/ui-vue"},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eralde/mndw.git",
+    "directory": "frontend/ui-vue"
+  },
   "type": "module",
   "types": "./src/index.ts",
   "exports": {
@@ -21,7 +25,9 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepack": "pnpm run build",
@@ -40,5 +46,6 @@
     "typescript": "^5.7.0",
     "vitest": "^3.2.7",
     "vue": "^3.5.39"
-  }
+  },
+  "description": "Vue table cell adapters for mndw UI."
 }

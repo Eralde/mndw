@@ -1,6 +1,7 @@
 {
   "name": "@mndw/mndwd-linux-arm64",
   "version": "0.1.2",
+  "description": "Prebuilt mndwd daemon binary for Linux arm64.",
   "files": [
     "bin"
   ],

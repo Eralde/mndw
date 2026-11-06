@@ -4,9 +4,17 @@ import {type Page, expect, test} from '@playwright/test';
 import {UI_CATALOG} from '../../docs/plugin-author/.vitepress/ui-catalog.js';
 
 const UI_PAGES = ['ui/', ...UI_CATALOG.map((entry) => `ui/${entry.slug}`)];
-const SCREENSHOT_DIR = '/private/tmp/ui-playground-screenshots';
+// Review screenshots are opt-in: set MNDW_DOCS_SCREENSHOTS to a writable directory to capture them.
+const SCREENSHOT_DIR = process.env.MNDW_DOCS_SCREENSHOTS;
 
-mkdirSync(SCREENSHOT_DIR, {recursive: true});
+async function capture(page: Page, name: string, fullPage = false): Promise<void> {
+  if (!SCREENSHOT_DIR) {
+    return;
+  }
+
+  mkdirSync(SCREENSHOT_DIR, {recursive: true});
+  await page.screenshot({path: resolve(SCREENSHOT_DIR, name), fullPage});
+}
 
 async function assertPreviews(page: Page, path: string): Promise<void> {
   await page.waitForFunction(() => {
@@ -290,7 +298,7 @@ test('mobile select uses host sheet, restores focus, and updates value', async (
     })
   ).toBeGreaterThan(0);
 
-  await page.screenshot({path: resolve(SCREENSHOT_DIR, 'select-sheet-390-light.png')});
+  await capture(page, 'select-sheet-390-light.png');
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await expect(select).toBeFocused();
@@ -305,7 +313,7 @@ test('mobile select uses host sheet, restores focus, and updates value', async (
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await select.click();
   await expect(dialog).toBeVisible();
-  await page.screenshot({path: resolve(SCREENSHOT_DIR, 'select-sheet-390-dark.png')});
+  await capture(page, 'select-sheet-390-dark.png');
 });
 
 test('desktop select uses anchored popover and updates value', async ({page}) => {
@@ -327,7 +335,7 @@ test('desktop select uses anchored popover and updates value', async ({page}) =>
   expect(selectBounds).not.toBeNull();
   expect(panelBounds).not.toBeNull();
   expect(panelBounds?.y).toBeGreaterThanOrEqual((selectBounds?.y ?? 0) + (selectBounds?.height ?? 0));
-  await page.screenshot({path: resolve(SCREENSHOT_DIR, 'select-popover-1280-light.png')});
+  await capture(page, 'select-popover-1280-light.png');
 
   await panel.getByRole('option', {name: 'Guest'}).click();
   await expect.poll(() => selectValue(select)).toBe('guest');
@@ -366,11 +374,12 @@ test('all UI pages avoid device endpoints', async ({page}) => {
 });
 
 test('captures requested UI playground review screenshots', async ({page}) => {
+  test.skip(!SCREENSHOT_DIR, 'Set MNDW_DOCS_SCREENSHOTS to capture review screenshots.');
   await page.setViewportSize({width: 1280, height: 900});
   await page.goto('ui/css-classes');
   await assertPreviews(page, 'ui/css-classes');
   await selectTheme(page, 'light');
-  await page.screenshot({path: resolve(SCREENSHOT_DIR, 'css-classes-1280-light.png'), fullPage: true});
+  await capture(page, 'css-classes-1280-light.png', true);
 
   await page.goto('ui/button');
 
@@ -378,7 +387,7 @@ test('captures requested UI playground review screenshots', async ({page}) => {
 
   await button.waitFor();
   await button.evaluate((element) => customElements.whenDefined(element.localName));
-  await page.screenshot({path: resolve(SCREENSHOT_DIR, 'sidebar-ui-1280-light.png'), fullPage: true});
+  await capture(page, 'sidebar-ui-1280-light.png', true);
 });
 
 test('icon sprite and catalog links stay under the base path', async ({page}) => {

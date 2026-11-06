@@ -15,6 +15,8 @@ const CONTENT_TYPES: Record<string, string> = {
   '.woff2': 'font/woff2',
 };
 
+const LOOPBACK_ORIGIN = /^https?:\/\/(?:(?:[^:]+\.)?localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i;
+
 function isWithin(root: string, path: string): boolean {
   const rel = relative(root, path);
 
@@ -27,6 +29,25 @@ function existingFile(path: string): boolean {
   } catch {
     return false;
   }
+}
+
+function addLoopbackCorsHeaders(
+  request: import('node:http').IncomingMessage,
+  response: import('node:http').ServerResponse,
+): void {
+  const origin = request.headers.origin;
+
+  response.setHeader('Vary', 'Origin');
+
+  if (typeof origin === 'string' && LOOPBACK_ORIGIN.test(origin)) {
+    response.setHeader('Access-Control-Allow-Origin', origin);
+  }
+}
+
+function sendStaticFile(path: string, response: import('node:http').ServerResponse): void {
+  response.statusCode = 200;
+  response.setHeader('Content-Type', CONTENT_TYPES[extname(path)] ?? 'application/octet-stream');
+  createReadStream(path).pipe(response);
 }
 
 /** Serves prebuilt host assets and history routes ahead of Vite's plugin-root middleware. */
@@ -73,10 +94,10 @@ export function prebuiltHost(dir: string): Plugin {
         }
 
         if (pathname.startsWith('/assets/') || pathname.startsWith('/shared/')) {
+          addLoopbackCorsHeaders(request, response);
+
           if (existingFile(hostPath)) {
-            response.statusCode = 200;
-            response.setHeader('Content-Type', CONTENT_TYPES[extname(hostPath)] ?? 'application/octet-stream');
-            createReadStream(hostPath).pipe(response);
+            sendStaticFile(hostPath, response);
 
             return;
           }

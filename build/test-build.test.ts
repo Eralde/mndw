@@ -1,4 +1,4 @@
-import {readdirSync, readFileSync} from 'node:fs';
+import {readFileSync, readdirSync} from 'node:fs';
 import {join, relative, resolve, sep} from 'node:path';
 import {describe, expect, it} from 'vitest';
 import {BUILD_NODE_FILES, BUILD_VITEST_FILES} from './scripts/run-build-tests.js';

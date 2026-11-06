@@ -3,7 +3,10 @@ import type {Plugin, ResolvedConfig, ViteDevServer} from 'vite';
 
 import type {PluginFramework} from '../framework.js';
 
-/** Rewrites host-provided bare imports to absolute URLs understood by Vite import analysis. */
+/**
+ * Rewrites host-provided bare imports to absolute URLs for Vite import analysis. prebuiltHost serves them with loopback
+ * CORS because localhost and 127.0.0.1 are distinct origins.
+ */
 export function sharedExternals(framework: PluginFramework): Plugin {
   const urls = sharedImportMap();
   let config: ResolvedConfig | undefined;

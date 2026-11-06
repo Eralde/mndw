@@ -59,7 +59,7 @@ mkdir -p "$(dirname "$FAKE_PORT_FILE")"
 temporary="$FAKE_PORT_FILE.$$"
 printf '%s\n' 99 > "$temporary"
 mv "$temporary" "$FAKE_PORT_FILE"
-sleep 1
+exec sleep 30
 `,
   );
   writeExecutable(path.join(root, 'bin', 'ip'), '#!/bin/sh\nprintf \'%s\\n\' \'inet 192.0.2.1/24 br0\'\n');
@@ -80,6 +80,7 @@ const runInit = (
       ...process.env,
       PATH: `${path.join(fixture.root, 'bin')}:${process.env.PATH ?? ''}`,
       MNDW_ROOT: fixture.root,
+      MNDW_PROC_ROOT: path.join(fixture.root, 'proc'),
       MNDW_DEVICE_PORT_HELPER: fixture.deviceHelper,
       MNDW_DAEMON: fixture.daemon,
       FAKE_DAEMON_ARGS: fixture.args,
@@ -89,8 +90,29 @@ const runInit = (
     },
   });
 
+const writeProcCmdline = (fixture: InitFixture, pid: number): void => {
+  const directory = path.join(fixture.root, 'proc', `${pid}`);
+
+  fs.mkdirSync(directory, {recursive: true});
+  fs.writeFileSync(path.join(directory, 'cmdline'), `${fixture.daemon}\0`);
+};
+
 afterEach(() => {
   for (const root of fixtures.splice(0)) {
+    try {
+      const pid = Number(fs.readFileSync(path.join(root, 'var', 'run', 'mndwd.pid'), 'utf8').trim());
+
+      if (Number.isSafeInteger(pid) && pid > 0) {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          // The daemon may already have exited.
+        }
+      }
+    } catch {
+      // The daemon may not have written a PID file.
+    }
+
     fs.rmSync(root, {recursive: true, force: true});
   }
 });
@@ -111,9 +133,15 @@ describe('S70mndwd front door', () => {
     expect(args).not.toContain('--listen');
     expect(fs.existsSync(path.join(fixture.root, 'var', 'lib', 'mndw', 'proxy-target.conf'))).toBe(false);
 
+    const daemonPid = Number(fs.readFileSync(fixture.daemonPid, 'utf8').trim());
+
+    writeProcCmdline(fixture, daemonPid);
+
     const stop = runInit(fixture, 'stop');
 
     expect(stop.status, `${stop.stdout}\n${stop.stderr}`).toBe(0);
+    expect(() => process.kill(daemonPid, 0)).toThrow();
+    expect(fs.existsSync(fixture.daemonPid)).toBe(false);
   }, 10000);
 
   it('fails and removes the PID file when daemon does not report a port', () => {
@@ -133,9 +161,15 @@ describe('S70mndwd front door', () => {
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
 
+    const daemonPid = Number(fs.readFileSync(fixture.daemonPid, 'utf8').trim());
+
+    writeProcCmdline(fixture, daemonPid);
+
     const stop = runInit(fixture, 'stop');
 
     expect(stop.status, `${stop.stdout}\n${stop.stderr}`).toBe(0);
+    expect(() => process.kill(daemonPid, 0)).toThrow();
+    expect(fs.existsSync(fixture.daemonPid)).toBe(false);
   }, 10000);
 });
 

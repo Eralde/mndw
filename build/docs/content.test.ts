@@ -33,6 +33,28 @@ function contributorSection(markdown: string): string {
   return markdown.slice(start, nextHeading === null ? undefined : start + nextHeading.index);
 }
 
+function assertNpmOnlyCommands(page: string): void {
+  const markdown = readFileSync(resolve(repoRoot, page), 'utf8');
+  const exempt = contributorSection(markdown);
+  const exemptStart = exempt.length > 0 ? markdown.indexOf(exempt) : -1;
+  const exemptEnd = exemptStart < 0 ? -1 : exemptStart + exempt.length;
+  const publicMarkdown = exempt.length > 0 ? markdown.replace(exempt, '') : markdown;
+
+  expect(publicMarkdown, page).not.toContain('::: code-group');
+
+  for (const block of readFencedBlocks(page, markdown)) {
+    const blockStart = markdown.split('\n').slice(0, block.line - 1)
+      .join('\n').length
+      + (block.line > 1 ? 1 : 0);
+
+    if (blockStart >= exemptStart && blockStart < exemptEnd) {
+      continue;
+    }
+
+    expect(block.code, `${page}:${block.line}`).not.toMatch(/pnpm exec mndw|pnpm add|yarn mndw|yarn add/);
+  }
+}
+
 function contentErrors(page: string, markdown: string): string[] {
   const exempt = contributorSection(markdown);
   const blocks = readFencedBlocks(page, markdown);
@@ -185,24 +207,7 @@ describe('Task 3 and 4 author pages', () => {
 
   it('uses npm-only commands in public code examples', () => {
     for (const page of authorDocPages(repoRoot)) {
-      const markdown = readFileSync(resolve(repoRoot, page), 'utf8');
-      const exempt = contributorSection(markdown);
-      const exemptStart = exempt.length > 0 ? markdown.indexOf(exempt) : -1;
-      const exemptEnd = exemptStart < 0 ? -1 : exemptStart + exempt.length;
-      const publicMarkdown = exempt.length > 0 ? markdown.replace(exempt, '') : markdown;
-
-      expect(publicMarkdown, page).not.toContain('::: code-group');
-
-      for (const block of readFencedBlocks(page, markdown)) {
-        const blockStart = markdown.split('\n').slice(0, block.line - 1).join('\n').length
-          + (block.line > 1 ? 1 : 0);
-
-        if (blockStart >= exemptStart && blockStart < exemptEnd) {
-          continue;
-        }
-
-        expect(block.code, `${page}:${block.line}`).not.toMatch(/pnpm exec mndw|pnpm add|yarn mndw|yarn add/);
-      }
+      assertNpmOnlyCommands(page);
     }
   });
 
@@ -216,7 +221,9 @@ describe('Task 3 and 4 author pages', () => {
     expect(cli).toContain('/guides/local-development');
     expect(cli).toContain('/guides/validation-and-packaging');
   });
+});
 
+describe('Task 3 and 4 sidebar documentation', () => {
   it('lists the documentation pages in the main sidebar', () => {
     const config = readFileSync(resolve(repoRoot, 'docs/plugin-author/.vitepress/config.mts'), 'utf8');
     const expectedPaths = [
@@ -457,7 +464,9 @@ describe('Task 5 plugin reference guides', () => {
     expect(packaging).toContain('older SDK minor');
     expect(packaging).not.toContain('from the repository root');
   });
+});
 
+describe('Task 5 plugin CLI examples', () => {
   it('passes the plugin folder from the plugins project in public CLI examples', () => {
     const errors: string[] = [];
     const pages = authorDocPages(repoRoot);
@@ -506,6 +515,15 @@ describe('Task 5 plugin reference guides', () => {
 
     expect(shell).toContain('ctx.rciManager');
     expect(shell).not.toContain('context.rciManager');
+  });
+});
+
+describe('Task 5 shared UI guide', () => {
+  it('links the shared UI guide to the component reference section', () => {
+    const ui = readFileSync(resolve(repoRoot, 'docs/plugin-author/guides/ui-components.md'), 'utf8');
+
+    expect(ui).not.toContain('## Component catalog');
+    expect(ui).toContain('[UI components](/ui/)');
   });
 
   it('uses public commands and documents framework table cells', () => {

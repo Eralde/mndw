@@ -2,8 +2,13 @@ import {existsSync, readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {defineConfig} from 'vitepress';
+import {svelte} from '@sveltejs/vite-plugin-svelte';
+
+import {uiDemoFence} from './ui-demo-fence.js';
+import {UI_CATALOG} from './ui-catalog.js';
 
 const typedocSidebarPath = resolve(import.meta.dirname, '../api/typedoc-sidebar.json');
+const hostRoot = resolve(import.meta.dirname, '../../../frontend/host');
 const apiSidebar = existsSync(typedocSidebarPath)
   ? (JSON.parse(readFileSync(typedocSidebarPath, 'utf8')) as unknown[])
   : [];
@@ -13,7 +18,44 @@ export default defineConfig({
   description: 'Modular web UI for Keenetic/Netcraze routers.',
   lang: 'en-US',
   base: '/mndw/',
+  head: [
+    [
+      'script',
+      {},
+      `(() => {
+  let appearance = 'auto';
+  try {
+    appearance = localStorage.getItem('vitepress-theme-appearance') || 'auto';
+  } catch {
+    // Keep the system appearance when local storage is unavailable.
+  }
+  const isDark = appearance === 'auto'
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches
+    : appearance === 'dark';
+  document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+})();`,
+    ],
+  ],
+  vue: {
+    template: {
+      compilerOptions: {
+        isCustomElement: (tag) => tag.startsWith('mndw-'),
+      },
+    },
+  },
+  markdown: {
+    config: (markdown) => {
+      uiDemoFence(markdown);
+    },
+  },
   vite: {
+    plugins: [
+      svelte({
+        configFile: resolve(hostRoot, 'svelte.config.js'),
+        include: [resolve(hostRoot, 'src/**/*.svelte'), resolve(hostRoot, 'src/**/*.svelte.ts')],
+        preprocess: [],
+      }),
+    ],
     resolve: {
       alias: [
         {
@@ -57,6 +99,14 @@ export default defineConfig({
             {text: 'RCI API', link: '/guides/rci-api'},
             {text: 'Local development', link: '/guides/local-development'},
             {text: 'Validation and packaging', link: '/guides/validation-and-packaging'},
+          ],
+        },
+        {
+          text: 'UI components',
+          collapsed: false,
+          items: [
+            {text: 'Overview', link: '/ui/'},
+            ...UI_CATALOG.map((entry) => ({text: entry.sidebarTitle, link: `/ui/${entry.slug}`})),
           ],
         },
         {

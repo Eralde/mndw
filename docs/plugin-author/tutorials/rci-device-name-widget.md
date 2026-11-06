@@ -1,4 +1,4 @@
-# Build a device-name widget with direct RCI
+# Build a device-name widget with RCI
 
 Build a Svelte widget that reads `show.version`, edits `system.description`,
 and confirms every write with a new device read. You will create the plugin in
@@ -16,21 +16,9 @@ is optional further reading.
 Keep this project outside the mndw repository. From its directory, create a
 widget with the CLI:
 
-::: code-group
-
-```sh [npm]
+```sh
 npx mndw create rci-device-name-widget --type widget --framework svelte
 ```
-
-```sh [pnpm]
-pnpm exec mndw create rci-device-name-widget --type widget --framework svelte
-```
-
-```sh [Yarn]
-yarn mndw create rci-device-name-widget --type widget --framework svelte
-```
-
-:::
 
 The scaffold includes `@mndw/sdk`, RxJS, Vitest, and the Svelte tooling in its
 `devDependencies`. It also provides starter component tests; remove
@@ -56,21 +44,9 @@ rci-device-name-widget/
 
 Run the starter tests from the project directory:
 
-::: code-group
-
-```sh [npm]
+```sh
 npm test
 ```
-
-```sh [pnpm]
-pnpm test
-```
-
-```sh [Yarn]
-yarn test
-```
-
-:::
 
 ## 2. Set the manifest size and messages
 
@@ -325,21 +301,9 @@ it('reads the description and sends a write query', () => {
 
 Run the package tests from the project directory:
 
-::: code-group
-
-```sh [npm]
+```sh
 npm test
 ```
-
-```sh [pnpm]
-pnpm test
-```
-
-```sh [Yarn]
-yarn test
-```
-
-:::
 
 **Checkpoint:** the test passes without a device. `of` emits mock responses
 synchronously; the assertions check request shapes and emitted values. The
@@ -1219,21 +1183,9 @@ it('saves a new description and displays the read-back value', async () => {
 
 Run the package tests from the project directory:
 
-::: code-group
-
-```sh [npm]
+```sh
 npm test
 ```
-
-```sh [pnpm]
-pnpm test
-```
-
-```sh [Yarn]
-yarn test
-```
-
-:::
 
 **Checkpoint:** the adapter and UI smoke tests pass without a device. The UI
 test checks initial read → trimmed write → confirmation read, and displays the

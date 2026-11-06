@@ -1,4 +1,4 @@
-import {readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {describe, expect, it} from 'vitest';
@@ -81,6 +81,29 @@ function contentErrors(page: string, markdown: string): string[] {
   return errors;
 }
 
+function missingPluginFolderArguments(page: string, markdown: string): string[] {
+  const errors: string[] = [];
+  const commands = /\bnpx\s+mndw\s+(dev|validate|pack|zip)\b/g;
+  const nonArguments = new Set(['and', 'for', 'from', 'in', 'then', 'to', 'with']);
+
+  for (const match of markdown.matchAll(commands)) {
+    const tail = markdown.slice((match.index ?? 0) + match[0].length);
+    const argumentToken = /^\s+([^\s`]+)/.exec(tail)?.[1];
+    const argument = argumentToken?.replace(/[.,;:!?]+$/, '');
+
+    if (
+      argument === undefined
+      || (argument.length === 0 && argumentToken !== '.')
+      || argument.startsWith('--')
+      || nonArguments.has(argument.toLowerCase())
+    ) {
+      errors.push(`${page}: npx mndw ${match[1]} needs a plugin folder argument`);
+    }
+  }
+
+  return errors;
+}
+
 describe('author documentation content constraints', () => {
   it('allows workspace syntax inside the contributor section', () => {
     const markdown =
@@ -122,13 +145,17 @@ describe('Task 3 and 4 author pages', () => {
   it('documents the published project setup and Windows workflow', () => {
     const setup = readFileSync(resolve(repoRoot, 'docs/plugin-author/guides/project-setup.md'), 'utf8');
     const windows = readFileSync(resolve(repoRoot, 'docs/plugin-author/guides/windows.md'), 'utf8');
+    const setupProse = setup.replace(/```[\s\S]*?```/g, '');
 
     expect(setup).toContain('Node.js 22 or newer');
     expect(setup).toContain('/guides/windows');
     expect(setup).toContain('npm i -D @mndw/cli');
-    expect(setup).toContain('pnpm add -D @mndw/cli');
-    expect(setup).toContain('yarn add -D @mndw/cli');
     expect(setup).toContain('nodeLinker: node-modules');
+    expect(setup).toContain('node_modules/.bin');
+    expect(setup).toContain('/install');
+    expect(setup).toContain('/reference/cli');
+    expect(setupProse).toContain('pnpm exec mndw');
+    expect(setupProse).toContain('yarn mndw');
     expect(windows).toContain('0755');
     expect(windows).toContain(
       'mndw dev: plugins with a backend need WSL on Windows. Open a WSL terminal and run mndw dev there.',
@@ -142,8 +169,6 @@ describe('Task 3 and 4 author pages', () => {
     const clone = contributorSection(markdown);
 
     expect(markdown).toContain('npx mndw dev hello-widget');
-    expect(markdown).toContain('pnpm exec mndw dev hello-widget');
-    expect(markdown).toContain('yarn mndw dev hello-widget');
     expect(markdown).toContain('--addr <device>');
     expect(markdown).toContain('stub device');
     expect(markdown).toContain('5173');
@@ -158,21 +183,131 @@ describe('Task 3 and 4 author pages', () => {
     expect(clone.split('\n').length).toBeLessThanOrEqual(15);
   });
 
-  it('adds the published RxJS guide to author navigation in Task 4', () => {
-    const index = readFileSync(resolve(repoRoot, 'docs/plugin-author/index.md'), 'utf8');
-    const config = readFileSync(resolve(repoRoot, 'docs/plugin-author/.vitepress/config.mts'), 'utf8');
-    const sidebar = config.slice(config.indexOf('sidebar:'));
-    const startIndex = sidebar.indexOf('Start');
-    const tutorialsIndex = sidebar.indexOf('Tutorials');
-    const guidesIndex = sidebar.indexOf('Guides');
+  it('uses npm-only commands in public code examples', () => {
+    for (const page of authorDocPages(repoRoot)) {
+      const markdown = readFileSync(resolve(repoRoot, page), 'utf8');
+      const exempt = contributorSection(markdown);
+      const exemptStart = exempt.length > 0 ? markdown.indexOf(exempt) : -1;
+      const exemptEnd = exemptStart < 0 ? -1 : exemptStart + exempt.length;
+      const publicMarkdown = exempt.length > 0 ? markdown.replace(exempt, '') : markdown;
 
-    expect(index).toContain('[RxJS for plugin authors](/guides/rxjs)');
-    expect(config).toContain('{text: \'RxJS for plugin authors\', link: \'/guides/rxjs\'}');
-    expect(startIndex).toBeGreaterThanOrEqual(0);
-    expect(tutorialsIndex).toBeGreaterThan(startIndex);
-    expect(guidesIndex).toBeGreaterThan(tutorialsIndex);
-    expect(config).toMatch(/\{text: 'Project setup', link: '\/guides\/project-setup'\}/);
-    expect(config).toMatch(/\{text: 'Windows', link: '\/guides\/windows'\}/);
+      expect(publicMarkdown, page).not.toContain('::: code-group');
+
+      for (const block of readFencedBlocks(page, markdown)) {
+        const blockStart = markdown.split('\n').slice(0, block.line - 1).join('\n').length
+          + (block.line > 1 ? 1 : 0);
+
+        if (blockStart >= exemptStart && blockStart < exemptEnd) {
+          continue;
+        }
+
+        expect(block.code, `${page}:${block.line}`).not.toMatch(/pnpm exec mndw|pnpm add|yarn mndw|yarn add/);
+      }
+    }
+  });
+
+  it('lists every CLI command on the reference page', () => {
+    const cli = readFileSync(resolve(repoRoot, 'docs/plugin-author/reference/cli.md'), 'utf8');
+
+    for (const command of ['npx mndw create', 'npx mndw dev', 'npx mndw validate', 'npx mndw pack', 'npx mndw zip']) {
+      expect(cli).toContain(command);
+    }
+
+    expect(cli).toContain('/guides/local-development');
+    expect(cli).toContain('/guides/validation-and-packaging');
+  });
+
+  it('lists the documentation pages in the main sidebar', () => {
+    const config = readFileSync(resolve(repoRoot, 'docs/plugin-author/.vitepress/config.mts'), 'utf8');
+    const expectedPaths = [
+      '/',
+      '/install',
+      '/guides/project-setup',
+      '/guides/windows',
+      '/tutorials/hello-widget',
+      '/tutorials/rci-device-name-widget',
+      '/guides/rxjs',
+      '/guides/rci-api',
+      '/reference/cli',
+      '/api/',
+    ];
+
+    for (const path of expectedPaths) {
+      expect(config).toContain(`link: '${path}'`);
+    }
+
+    expect(config).toContain('{text: \'What is mndw\', link: \'/\'}');
+    expect(config).toMatch(/nav:\s*\[\s*\]/);
+  });
+});
+
+describe('Task 5 author terminology', () => {
+  it('does not call RCI direct', () => {
+    const config = readFileSync(resolve(repoRoot, 'docs/plugin-author/.vitepress/config.mts'), 'utf8');
+    const guide = readFileSync(resolve(repoRoot, 'docs/plugin-author-guide.md'), 'utf8');
+    const pages = authorDocPages(repoRoot).map((page) => readFileSync(resolve(repoRoot, page), 'utf8'));
+
+    for (const content of [...pages, config, guide]) {
+      expect(content).not.toMatch(/\bdirect RCI\b/i);
+    }
+  });
+});
+
+describe('Project home and install pages', () => {
+  function read(path: string): string {
+    const absolute = resolve(repoRoot, path);
+
+    return existsSync(absolute) ? readFileSync(absolute, 'utf8') : '';
+  }
+
+  it('presents the project home as a regular documentation page', () => {
+    const config = read('docs/plugin-author/.vitepress/config.mts');
+    const home = read('docs/plugin-author/index.md');
+
+    expect(config).toContain('title: \'mndw\'');
+    expect(home).not.toMatch(/^layout:\s*home\s*$/m);
+    expect(home).not.toContain('features:');
+    expect(home).not.toContain('Build a plugin in your own Node.js project');
+    expect(home).toContain('<HomeHero');
+    expect(home).toContain('Entware');
+    expect(home).toContain('curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh');
+    expect(home).toContain('(/install)');
+    expect(home).toContain('(/guides/project-setup)');
+    expect(home).not.toMatch(/^opkg\s/m);
+    expect(home).not.toContain('href="/');
+  });
+
+  it('uses base-aware navigation in the home hero', () => {
+    const hero = read('docs/plugin-author/.vitepress/theme/components/HomeHero.vue');
+
+    expect(hero).toContain('VPButton');
+    expect(hero).not.toContain('href="/');
+  });
+
+  it('explains install, upgrade, and dashboard troubleshooting', () => {
+    const install = read('docs/plugin-author/install.md');
+
+    expect(install).toContain('curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh');
+    expect(install).toContain('opkg update');
+    expect(install).toContain('aarch64-3.10');
+    expect(install).toContain('mips-3.4');
+    expect(install).toContain('mipsel-3.4');
+    expect(install).toContain('cat /opt/var/lib/mndw/frontend-port');
+    expect(install).toContain('opkg upgrade mndw');
+    expect(install).toContain('System update');
+    expect(install).toContain('MNDW_DEVICE_PORT');
+    expect(install).toContain('https://github.com/Eralde/mndw-opkg-feed');
+    expect(install).toContain('/guides/validation-and-packaging');
+    expect(install).toContain('First-time installs use the `curl` command above.');
+    expect(install).not.toContain('opkg update && opkg install mndw');
+    expect(install).not.toContain('If mndw is not installed yet');
+    expect(install).not.toContain('lighttpd');
+  });
+
+  it('keeps the installation overview on the home page', () => {
+    const home = readFileSync(resolve(repoRoot, 'docs/plugin-author/index.md'), 'utf8');
+
+    expect(home).not.toMatch(/^#{1,6}\s+Before you start\s*$/m);
   });
 });
 
@@ -218,16 +353,24 @@ describe('Task 4 Observable contract docs', () => {
     for (const operator of ['map', 'filter', 'switchMap', 'exhaustMap', 'concatMap', 'catchError', 'takeUntil']) {
       expect(rxjs).toContain(`https://rxjs.dev/api/operators/${operator}`);
     }
+
+    expect(rxjs).toContain('https://learnrxjs.io');
+    expect(rxjs).toContain('https://rxjs.dev/guide/overview');
+    expect(rxjs).toMatch(/```ts[\s\S]*?exhaustMap\([\s\S]*?concatMap\([\s\S]*?```/);
+    expect(rxjs).not.toContain('createInstance(_ctx');
   });
 
   it('uses firstValueFrom for one-off RCI calls and keeps stream sequencing guidance', () => {
     const rci = readFileSync(resolve(repoRoot, 'docs/plugin-author/guides/rci-api.md'), 'utf8');
 
     expect(rci).toContain('firstValueFrom');
-    expect(rci).toContain('exhaustMap');
-    expect(rci).toContain('switchMap');
+    expect(rci).toContain('status: "error"');
     expect(rci).toContain('execute');
+    expect(rci).toContain('queue');
+    expect(rci).toContain('initBackgroundProcess');
     expect(rci).toContain('queueBackgroundProcess');
+    expect(rci).toContain('https://github.com/Eralde/rci-tools/tree/master/docs');
+    expect(rci).toContain('/guides/rxjs');
     expect(rci).not.toContain('rciManager.destroy');
   });
 
@@ -254,6 +397,41 @@ describe('Task 5 plugin reference guides', () => {
     expect(anatomy).toContain('@mndw/ui');
     expect(anatomy).toContain('framework wrapper');
     expect(anatomy).toContain('`dist/`');
+    expect(anatomy).toContain('/api/sdk#plugincontext');
+    expect(anatomy).toContain('`overlay` presents modals and drawers');
+    expect(anatomy).toContain('`createTicker()`');
+    expect(anatomy).toContain('`pageRoute`');
+    expect(anatomy).toContain('`setTileTitle`');
+
+    const sectionOrder = [
+      '## What a plugin contains',
+      '## What the host provides',
+      '## A plugin\'s path',
+      '## Scaffold tree',
+    ].map((heading) => anatomy.indexOf(heading));
+
+    expect(sectionOrder.every((index) => index >= 0)).toBe(true);
+    expect(sectionOrder).toEqual([...sectionOrder].sort((left, right) => left - right));
+    expect(anatomy.indexOf('<!-- docs-check: scaffold')).toBeGreaterThan(sectionOrder[3] ?? -1);
+
+    for (
+      const contract of ['createInstance(container, ctx)', 'PluginInstance', 'unmount', 'onResize', 'mndwd', 'mndw zip']
+    ) {
+      expect(anatomy).toContain(contract);
+    }
+
+    for (
+      const link of [
+        '/guides/manifest',
+        '/guides/frontend-lifecycle',
+        '/guides/rci-api',
+        '/guides/shell-backend',
+        '/guides/validation-and-packaging',
+        '/install',
+      ]
+    ) {
+      expect(anatomy).toContain(link);
+    }
   });
 
   it('documents the published schema path and unknown manifest keys', () => {
@@ -277,6 +455,57 @@ describe('Task 5 plugin reference guides', () => {
     expect(packaging).toContain('major version of a host-shared dependency');
     expect(packaging).toContain('still allowed');
     expect(packaging).toContain('older SDK minor');
+    expect(packaging).not.toContain('from the repository root');
+  });
+
+  it('passes the plugin folder from the plugins project in public CLI examples', () => {
+    const errors: string[] = [];
+    const pages = authorDocPages(repoRoot);
+
+    for (const page of pages) {
+      errors.push(...missingPluginFolderArguments(page, readFileSync(resolve(repoRoot, page), 'utf8')));
+    }
+
+    expect(errors).toEqual([]);
+
+    for (
+      const path of [
+        'docs/plugin-author/guides/project-setup.md',
+        'docs/plugin-author/guides/local-development.md',
+        'docs/plugin-author/reference/cli.md',
+        'docs/plugin-author/guides/validation-and-packaging.md',
+        'docs/plugin-author/guides/shell-backend.md',
+        'docs/plugin-author/guides/manifest.md',
+        'docs/plugin-author/install.md',
+      ]
+    ) {
+      const markdown = readFileSync(resolve(repoRoot, path), 'utf8');
+
+      expect(markdown, path).toContain('plugins project');
+      expect(markdown, path).toContain('plugin folder');
+      expect(markdown, path).not.toContain('plugin project root');
+      expect(markdown, path).not.toContain('outer project');
+    }
+
+    for (
+      const path of [
+        'docs/plugin-author/reference/cli.md',
+        'docs/plugin-author/guides/validation-and-packaging.md',
+        'docs/plugin-author/guides/shell-backend.md',
+        'docs/plugin-author/guides/manifest.md',
+      ]
+    ) {
+      const markdown = readFileSync(resolve(repoRoot, path), 'utf8');
+
+      expect(markdown, path).toContain('npx mndw validate hello-widget');
+    }
+  });
+
+  it('uses the public RCI manager name in shell backend guidance', () => {
+    const shell = readFileSync(resolve(repoRoot, 'docs/plugin-author/guides/shell-backend.md'), 'utf8');
+
+    expect(shell).toContain('ctx.rciManager');
+    expect(shell).not.toContain('context.rciManager');
   });
 
   it('uses public commands and documents framework table cells', () => {

@@ -1,17 +1,28 @@
-# Direct RCI API
+# RCI API
 
-`PluginContext.rciManager` is the host's typed integration point for Keenetic RCI. Use it for device
-operations that are part of the host/device API, not to create a shell or service backend route.
-Direct RCI calls are not declared in `manifest.json` and do not use `ctx.backend.fetch()`.
+## What RCI is
 
-The plugin facade exposes `execute`, `queue`, `initBackgroundProcess`, and
-`queueBackgroundProcess` from the underlying RCI manager. It does not expose manager lifecycle or
-destruction methods.
+RCI is the router's HTTP API for reading and changing configuration, also used by its web interface. Plugins call it
+through the host's `ctx.rciManager`; they do not need their own backend route. RCI calls are not declared in
+`manifest.json` and do not use `ctx.backend.fetch()`.
 
-## Read one response
+## Request shape and responses
 
-`queue()` accepts one `RciTask` and returns an RxJS `Observable` for its response. Use
-`firstValueFrom` when one request should produce one result that you can `await`:
+An RCI query has a dot-separated `path`, such as `show.version`. A write can pass its value in `data`:
+
+```json
+{"path":"system.description","data":"Office router"}
+```
+
+The response contains the requested data and may include a `status` list. A successful HTTP response can still contain
+an RCI status entry with `status: "error"`; handle that device-level error separately from an Observable error such as
+a network or HTTP failure. The [full RCI reference](https://github.com/Eralde/rci-tools/tree/master/docs) documents
+paths, request data, response values, and status entries.
+
+## Read one value
+
+`queue()` returns an RxJS `Observable`. Use `firstValueFrom` when one request should produce one result that you can
+`await`:
 
 ```ts
 import {firstValueFrom} from 'rxjs';
@@ -26,29 +37,27 @@ export async function readVersion(): Promise<void> {
 }
 ```
 
-The manager batches independent `queue()` calls made close together (20 ms by default). Batching does
-not mean passing an array to `queue()`; follow the installed `@rci-tools/core` types and send one task
-per call. Transport and protocol failures reject `firstValueFrom` through the Observable error
-channel. An HTTP-level response can still contain an RCI `status` entry with `status: "error"`; check
-the response shape and handle that device error separately. The device-name example does this in
-[`device-description.ts`](https://github.com/Eralde/mndw/blob/master/plugins/examples/rci-device-name-widget/src/device-description.ts).
+## Write deliberately and check the response
 
-## Read and write deliberately
+Start with read-only queries and validate the returned value. Device writes can have persistent or disruptive effects;
+validate and explain the change, require an explicit user action, and handle both Observable errors and an RCI
+`status: "error"` response. Do not issue configuration writes during mount or as a side effect of rendering. The
+[device-name tutorial](/tutorials/rci-device-name-widget) shows a validated write, response checking, read-after-write
+confirmation, and error handling.
 
-Start with read-only queries and validate the returned value. Device writes can have persistent or
-disruptive effects; validate and explain the change, require an explicit user action, and handle a
-rejected write separately from a transport failure. Do not issue configuration writes during mount or
-as a side effect of rendering.
+## Choose a request method
 
-For sequences and user-intent streams, keep the work in Observables. Choose an operator that matches
-the UI intent: `exhaustMap` can ignore duplicate saves while one is active; `switchMap` can make a
-read-after-write depend on the write completing; `concatMap` sequences queued work. Keep errors inside
-the relevant inner stream when the outer intent stream should remain usable. Unsubscribe plugin-owned
-subscriptions during `unmount()`; teardown prevents later UI updates but cannot undo a write already
-accepted by the device.
+The plugin-facing manager exposes `execute`, `queue`, `initBackgroundProcess`, and `queueBackgroundProcess`:
 
-Inject or wrap the manager behind a small interface so tests can supply a fake Observable-based
-implementation. The [device-name tutorial](/tutorials/rci-device-name-widget) shows read, validated
-write, read-after-write confirmation, error handling, and subscription cleanup. Its
-[test helpers](https://github.com/Eralde/mndw/tree/master/plugins/examples/rci-device-name-widget/src)
-provide a reference for faking the manager without contacting hardware.
+| Method | Use it for |
+| --- | --- |
+| `execute(query)` | A request that should run directly when its Observable is subscribed, without entering the manager's batch queue. Accepts one query or an array. |
+| `queue(query)` | Regular requests that can join the manager's batch queue. Calls are batched with other queued work; accepts one query or an array. |
+| `initBackgroundProcess(query)` | Creating a background-process handle that the caller starts with `.start()` or attaches to a running process with `.attachToRunning()`. Observe its `data$`, `result$`, `state$`, and `done$` streams. |
+| `queueBackgroundProcess(query)` | Scheduling background processes in sequence with other queued processes for the same command path. It returns a process handle to observe or abort. |
+
+The two background methods return handles with lifecycle methods and streams; they are not one-shot request Observables.
+Processes returned by `initBackgroundProcess` are owned by their caller. Use the full
+[RCI reference](https://github.com/Eralde/rci-tools/tree/master/docs) for the router-side command and background
+process behavior. For Observable composition, cleanup, and Save-button operator choices, see
+[RxJS for plugin authors](/guides/rxjs).

@@ -20,21 +20,9 @@ On Windows, run shell-backend and `mndw dev` commands in WSL; read the
 
 Run the command from your project directory:
 
-::: code-group
-
-```sh [npm]
+```sh
 npx mndw create hello-widget --type widget --framework svelte --backend sh
 ```
-
-```sh [pnpm]
-pnpm exec mndw create hello-widget --type widget --framework svelte --backend sh
-```
-
-```sh [Yarn]
-yarn mndw create hello-widget --type widget --framework svelte --backend sh
-```
-
-:::
 
 Your project now contains:
 
@@ -63,21 +51,9 @@ section 6.
 
 Run the starter test from `hello-widget/`:
 
-::: code-group
-
-```sh [npm]
+```sh
 npm test
 ```
-
-```sh [pnpm]
-pnpm test
-```
-
-```sh [Yarn]
-yarn test
-```
-
-:::
 
 ## 3. Understand the shell route
 
@@ -398,21 +374,9 @@ Remove `src/l10n.test.ts` and `src/table.test.ts`; both mount the starter
 component, which this tutorial replaced. Restart the development host from the
 project directory:
 
-::: code-group
-
-```sh [npm]
+```sh
 npx mndw dev hello-widget
 ```
-
-```sh [pnpm]
-pnpm exec mndw dev hello-widget
-```
-
-```sh [Yarn]
-yarn mndw dev hello-widget
-```
-
-:::
 
 **Checkpoint:** the widget starts with “Ready to say hello.” Select **Get
 greeting**; it should show `hello from hello-widget`. No device is needed for
@@ -487,21 +451,9 @@ it('calls the route id and displays its greeting', async () => {
 
 Run the package tests from `hello-widget/`:
 
-::: code-group
-
-```sh [npm]
+```sh
 npm test
 ```
-
-```sh [pnpm]
-pnpm test
-```
-
-```sh [Yarn]
-yarn test
-```
-
-:::
 
 **Checkpoint:** the smoke test passes without a router or daemon. It mounts
 the component, clicks the button, and checks the backend route id and greeting.
@@ -545,6 +497,6 @@ Upload `hello-widget.zip` through the device's plugin-management flow, then
 review and approve/enable its shell backend before requesting a greeting.
 Rebuild the ZIP after source edits; do not edit `dist/` by hand.
 
-Continue with the [direct RCI tutorial](/tutorials/rci-device-name-widget) to
+Continue with the [RCI tutorial](/tutorials/rci-device-name-widget) to
 read and update a device setting. The [UI guide](/guides/ui-components) covers
 shared controls.

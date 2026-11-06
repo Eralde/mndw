@@ -8,12 +8,48 @@
   max-width: 72ch;
 }
 
-.VPHome .VPHero .container {
-  max-width: 72rem;
+.home-hero {
+  padding: 1rem 0 0.5rem;
 }
 
-.VPHome .VPFeature {
-  height: 100%;
+.vp-doc .home-hero .home-hero__name {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--vp-c-brand-1);
+  font-size: clamp(3rem, 9vw, 4.5rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.vp-doc .home-hero .home-hero__headline {
+  max-width: 24ch;
+  margin: 0.5rem 0 0;
+  color: var(--vp-c-text-1);
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.vp-doc .home-hero .VPButton {
+  text-decoration: none;
+}
+
+.vp-doc .home-hero .home-hero__tagline {
+  max-width: 58ch;
+  margin: 1.25rem 0 0;
+  color: var(--vp-c-text-2);
+  font-size: 1.125rem;
+  line-height: 1.7;
+}
+
+.home-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
 }
 
 .vp-doc .custom-block.tip {
@@ -25,14 +61,12 @@
   overflow-wrap: anywhere;
 }
 
-.vp-doc div[class*='language-'] pre,
-.vp-doc div[class*='language-'] code {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.vp-doc div[class*='language-'] code {
-  width: 100%;
+.sidebar-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--vp-c-divider);
+  padding: 16px 24px 24px;
 }
 
 @media (min-width: 1600px) {
@@ -42,11 +76,37 @@
 }
 
 @media (max-width: 640px) {
-  .VPHome .VPHero {
-    padding-top: 2rem;
+  .home-hero {
+    padding-top: 0.5rem;
   }
 
-  .VPHome .VPFeatures {
-    padding-top: 1rem;
+  .vp-doc .home-hero .home-hero__name {
+    font-size: 2.75rem;
+  }
+}
+
+@media (max-width: 959px) {
+  header.VPNav.VPNav {
+    position: sticky;
+    top: 0;
+    z-index: calc(var(--vp-z-index-backdrop) + 1);
+  }
+
+  .VPLocalNav.VPLocalNav {
+    top: var(--vp-nav-height);
+  }
+
+  .VPNavBarExtra.VPNavBarExtra {
+    display: none;
+  }
+
+  .VPLocalNav .menu {
+    display: none;
+  }
+}
+
+@media (min-width: 960px) {
+  .sidebar-footer {
+    display: none;
   }
 }

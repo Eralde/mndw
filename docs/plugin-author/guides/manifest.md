@@ -69,10 +69,10 @@ does not, because the service owns its declared route table.
 
 ## Validate changes
 
-Run the public CLI from the plugin project root:
+Run the public CLI from the plugins project, passing the plugin folder:
 
 ```bash
-npx mndw validate .
+npx mndw validate hello-widget
 ```
 
 The CLI validates the manifest, source entry, and locale catalogs; `--strict` makes catalog parity

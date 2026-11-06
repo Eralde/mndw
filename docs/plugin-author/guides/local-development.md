@@ -1,22 +1,10 @@
 # Local development
 
-Run a plugin from source with the public CLI. Start in the outer project directory that contains the plugin folder.
+Run a plugin from source with the public CLI. Start in the plugins project that contains the plugin folder.
 
-::: code-group
-
-```sh [npm]
+```sh
 npx mndw dev hello-widget
 ```
-
-```sh [pnpm]
-pnpm exec mndw dev hello-widget
-```
-
-```sh [yarn]
-yarn mndw dev hello-widget
-```
-
-:::
 
 The CLI starts a local `mndwd` daemon, the packaged host UI, and Vite serving your plugin source. Vite provides HMR
 (hot module replacement) while you edit the frontend. A plugin remount resets its in-memory state.
@@ -24,21 +12,9 @@ The CLI starts a local `mndwd` daemon, the packaged host UI, and Vite serving yo
 Without a device address, the host uses a stub device. To use a router, pass its IP address, `host[:port]`, or HTTP(S)
 URL with `--addr <device>`. The address overrides `MNDW_HOST_DEVICE` from your environment.
 
-::: code-group
-
-```sh [npm]
+```sh
 npx mndw dev hello-widget --addr 192.168.1.1
 ```
-
-```sh [pnpm]
-pnpm exec mndw dev hello-widget --addr 192.168.1.1
-```
-
-```sh [yarn]
-yarn mndw dev hello-widget --addr 192.168.1.1
-```
-
-:::
 
 The local daemon listens on port `9090` by default. Vite serves the local UI on port `5173`. Set `--port` or
 `--ui-port` if either port is already in use. The local host proxies device RCI and authentication requests through

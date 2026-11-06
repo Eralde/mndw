@@ -8,12 +8,12 @@ Use three CLI commands for the source-to-upload flow:
 | `mndw pack <plugin-dir>` | Builds the frontend and stages declared runtime files. | `<plugin-dir>/dist/` |
 | `mndw zip <plugin-dir>` | Packs, then creates an upload archive. | `<plugin-dir>/<plugin-name>.zip` |
 
-Run these commands from the plugin project root:
+Run these commands from the plugins project, passing the plugin folder as the argument:
 
 ```bash
-npx mndw validate .
-npx mndw pack .
-npx mndw zip .
+npx mndw validate hello-widget
+npx mndw pack hello-widget
+npx mndw zip hello-widget
 ```
 
 `pack` emits the manifest, bundled entry, optional `index.css`, `mndw.lock.json`, artifact metadata,
@@ -37,10 +37,10 @@ is still allowed. A plugin built against an older SDK minor version installs sil
 
 ## Before uploading
 
-1. Run the plugin's tests and `mndw validate` from the repository root.
-2. Run `mndw pack` and inspect the output: confirm manifest/entry paths, locale files, CSS if
+1. Run the plugin's tests from its plugin folder, then run `mndw validate hello-widget` from the plugins project.
+2. Run `mndw pack hello-widget` and inspect the output: confirm manifest/entry paths, locale files, CSS if
    expected, and every declared backend command are present.
-3. Run `mndw zip`; inspect the archive and confirm `manifest.json` is at its root, not under `dist/`.
+3. Run `mndw zip hello-widget`; inspect the archive and confirm `manifest.json` is at its root, not under `dist/`.
 4. Review the backend source and declared routes. Device approval runs backend code with daemon
    privileges; only upload and approve code you trust.
 5. Test read-only behavior first. Exercise device writes only with an intentional, reversible test

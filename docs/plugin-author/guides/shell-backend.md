@@ -67,15 +67,16 @@ are limited to `GET` and `HEAD`, and public access does not bypass backend appro
 - Invalid JSON or a response with headers in its body usually means stdout contains a debug line,
   the CGI header separator is missing, or JSON was assembled without escaping.
 - A command that works from an interactive shell may still fail if it is missing from the package,
-  has the wrong relative path, or is not executable. Run `npx mndw validate` then `npx mndw pack`.
+  has the wrong relative path, or is not executable. Run `npx mndw validate hello-widget` then
+  `npx mndw pack hello-widget`.
 
-For a hands-on walkthrough, follow the [Hello widget tutorial](/tutorials/hello-widget). Direct RCI
-calls use `context.rciManager`; they are not declared as shell/service backend routes. See the
-[direct RCI guide](/guides/rci-api).
+For a hands-on walkthrough, follow the [Hello widget tutorial](/tutorials/hello-widget). RCI calls
+use `ctx.rciManager` and go through the host rather than a plugin backend. See the
+[RCI API guide](/guides/rci-api).
 
-From the plugin project root, validate and package the backend with:
+From the plugins project, pass the plugin folder to validate and package the backend:
 
 ```bash
-npx mndw validate .
-npx mndw pack .
+npx mndw validate hello-widget
+npx mndw pack hello-widget
 ```

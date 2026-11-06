@@ -43,6 +43,9 @@ Your project now contains:
 hello-widget/
   backend/
     main.sh
+  i18n/
+    en.json
+    ru.json
   manifest.json
   package.json
   src/
@@ -122,7 +125,8 @@ on stderr; stdout becomes the HTTP response.
 
 ## 4. Declare UI translations
 
-Replace `i18n/en.json` with this catalog:
+The scaffold already declares English and Russian locales in `manifest.json`
+and creates both catalog files. Replace `i18n/en.json` with this catalog:
 
 <!-- docs-check: file plugins/examples/hello-widget/i18n/en.json -->
 ```json
@@ -146,14 +150,31 @@ Replace `i18n/en.json` with this catalog:
 }
 ```
 
-Add this top-level field to `manifest.json`, preserving its generated fields:
+Replace `i18n/ru.json` with the matching Russian catalog:
 
+<!-- docs-check: file plugins/examples/hello-widget/i18n/ru.json -->
 ```json
-"i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json"}}
+{
+  "title": "Виджет приветствия",
+  "action": {
+    "greet": "Получить приветствие",
+    "loading": "Загружаем приветствие…"
+  },
+  "status": {
+    "idle": "Готовы поздороваться.",
+    "loading": "Загружаем приветствие…"
+  },
+  "error": {
+    "backend-missing": "Серверная часть плагина недоступна.",
+    "backend-not-approved": "Одобрите серверную часть перед запуском.",
+    "backend-disabled": "Включите серверную часть перед запуском.",
+    "backend-unavailable": "Серверная часть временно недоступна.",
+    "greeting-failed": "Не удалось загрузить приветствие."
+  }
+}
 ```
 
-Use a comma between adjacent JSON fields. The host loads this catalog and
-exposes its messages through `ctx.i18n`.
+The host loads both catalogs and exposes their messages through `ctx.i18n`.
 
 ## 5. Pass host services into Svelte
 

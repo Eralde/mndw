@@ -40,6 +40,9 @@ component.
 <!-- docs-check: scaffold rci-device-name-widget --type widget --framework svelte -->
 ```text
 rci-device-name-widget/
+  i18n/
+    en.json
+    ru.json
   manifest.json
   package.json
   src/
@@ -69,15 +72,16 @@ yarn test
 
 :::
 
-## 2. Add the manifest and messages
+## 2. Set the manifest size and messages
 
 Keep the generated plugin name, type, entry, and version in `manifest.json`.
-Set its size and add the English locale:
+Set its size, keeping the generated English and Russian locale declaration:
 
 ```json
 "size": {"w": 4, "h": 4, "minW": 3, "minH": 3},
-"i18n": {"defaultLocale": "en", "locales": {"en": "i18n/en.json"}}
 ```
+
+The scaffold creates both catalog files.
 
 Replace `i18n/en.json` with this catalog:
 
@@ -112,8 +116,41 @@ Replace `i18n/en.json` with this catalog:
 }
 ```
 
-The host loads this catalog through `ctx.i18n`. One locale is enough for this
-tutorial; add more locale files and manifest entries when you translate it.
+Replace `i18n/ru.json` with the matching Russian catalog:
+
+<!-- docs-check: file plugins/examples/rci-device-name-widget/i18n/ru.json -->
+```json
+{
+  "title": "Описание устройства",
+  "field": {
+    "label": "Описание устройства",
+    "placeholder": "Введите описание устройства"
+  },
+  "action": {
+    "save": "Сохранить",
+    "restore": "Восстановить исходное",
+    "retry": "Повторить"
+  },
+  "status": {
+    "loading": "Загрузка описания устройства…",
+    "saving": "Сохранение описания устройства…",
+    "loaded": "Описание устройства загружено.",
+    "saved": "Описание подтверждено устройством."
+  },
+  "validation": {
+    "empty": "Введите непустое описание устройства.",
+    "too-long": "Описание должно содержать не более 64 символов."
+  },
+  "error": {
+    "load": "Не удалось загрузить описание устройства.",
+    "save": "Не удалось сохранить описание устройства.",
+    "restore-empty": "Нет непустого исходного значения для восстановления."
+  }
+}
+```
+
+The generated manifest declares both locales. The host loads both catalogs
+through `ctx.i18n`.
 
 ## 3. Isolate RCI requests in an adapter
 

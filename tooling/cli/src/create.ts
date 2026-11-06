@@ -131,6 +131,13 @@ export function buildManifest(options: CreateOptions): Record<string, unknown> {
     manifest.route = normalized.route;
   }
 
+  if (normalized.backend !== 'go') {
+    manifest.i18n = {
+      defaultLocale: 'en',
+      locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'},
+    };
+  }
+
   if (normalized.backend === 'go') {
     manifest.backend = {
       kind: 'service',

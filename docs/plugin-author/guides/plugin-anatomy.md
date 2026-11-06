@@ -1,13 +1,16 @@
 # Plugin anatomy
 
-The CLI creates a starting project with its framework, tests, manifest, and optional backend. This is
-the `hello-widget` scaffold tree:
+The CLI creates a starting project with its framework, tests, manifest, localization catalogs, and
+optional backend. This is the `hello-widget` scaffold tree:
 
 <!-- docs-check: scaffold hello-widget --type widget --framework svelte --backend sh -->
 ```text
 hello-widget/
   backend/
     main.sh
+  i18n/
+    en.json
+    ru.json
   manifest.json
   package.json
   src/

@@ -2,7 +2,7 @@ import {accessSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync,
 import {EventEmitter} from 'node:events';
 import {type ChildProcess} from 'node:child_process';
 import {tmpdir} from 'node:os';
-import {join, resolve} from 'node:path';
+import {dirname, join, resolve} from 'node:path';
 import {PassThrough} from 'node:stream';
 import {validateManifest} from '@mndw/sdk-internal';
 import {sharedDependencyVersions} from '@mndw/sdk-internal/shared-dependencies';
@@ -22,6 +22,7 @@ import {
 import {readManifest} from './manifest.js';
 import {packPlugin} from './pack.js';
 import {zipPlugin} from './zip.js';
+import {validatePluginCatalogs} from './i18n-validator.js';
 import {runProcess} from './test-process.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
@@ -351,6 +352,75 @@ describe('planCreate', () => {
       expect(pkg.devDependencies).not.toHaveProperty('intl-messageformat');
     }
   });
+
+  it.each(['svelte', 'vue', 'angular', 'vanilla'] as const)(
+    'generates matching English and Russian catalogs for %s',
+    (framework) => {
+      const plan = planCreate(options({name: `${framework}-plugin`, framework, type: 'widget'}));
+      const files = new Map(plan.files.map((file) => [file.path, file]));
+      const rawManifest = JSON.parse(files.get('manifest.json')?.contents ?? '{}') as {
+        i18n?: {defaultLocale: string; locales: Record<string, string>};
+      };
+
+      expect(rawManifest.i18n).toEqual({
+        defaultLocale: 'en',
+        locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'},
+      });
+
+      const i18n = rawManifest.i18n;
+
+      if (i18n === undefined) {
+        return;
+      }
+
+      const manifest = validateManifest(rawManifest);
+      const pluginDir = join(outDir, framework);
+      const catalogs = new Map<string, Record<string, unknown>>();
+
+      for (const [locale, catalogPath] of Object.entries(i18n.locales)) {
+        const file = files.get(catalogPath);
+
+        expect(file, `${framework} plan is missing ${catalogPath}`).toBeDefined();
+
+        if (file === undefined) {
+          continue;
+        }
+
+        const destination = join(pluginDir, catalogPath);
+
+        mkdirSync(dirname(destination), {recursive: true});
+        writeFileSync(destination, file.contents);
+        catalogs.set(locale, JSON.parse(file.contents) as Record<string, unknown>);
+      }
+
+      const source = plan.files
+        .filter((file) =>
+          file.path.startsWith('src/') && /\.(?:ts|tsx|js|vue|svelte)$/.test(file.path)
+          && !file.path.includes('.test.')
+        )
+        .map((file) => file.contents)
+        .join('\n');
+      const keys = [...source.matchAll(/\bt\(\s*'([^']+)'/g)].map((match) => match[1] ?? '');
+
+      expect(keys.length).toBeGreaterThan(0);
+
+      for (const [locale, catalog] of catalogs) {
+        for (const key of keys) {
+          const message = key.split('.').reduce<unknown>((value, segment) => {
+            if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+              return undefined;
+            }
+
+            return (value as Record<string, unknown>)[segment];
+          }, catalog);
+
+          expect(message, `${framework} ${locale} is missing ${key}`).toBeTypeOf('string');
+        }
+      }
+
+      expect(validatePluginCatalogs(pluginDir, manifest, {strict: false})).toEqual([]);
+    },
+  );
 
   it('requires ctx.i18n in every generated framework entry', () => {
     for (const framework of ['vanilla', 'svelte', 'vue', 'angular'] as const) {

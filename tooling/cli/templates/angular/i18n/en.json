@@ -1,0 +1,13 @@
+{
+  "l10n": {
+    "probe": "Translation check",
+    "button": "Clicks:",
+    "result": "Click count:"
+  },
+  "table": {
+    "caption": "Starter table",
+    "column": "Name",
+    "first": "First row",
+    "second": "Second row"
+  }
+}

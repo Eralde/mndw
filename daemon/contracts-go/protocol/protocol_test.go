@@ -92,7 +92,7 @@ func TestSharedDependencyVectors(t *testing.T) {
 			t.Fatalf("decode lockfile: %v", err)
 		}
 
-		if vector.LockVersion != 1 || vector.SDKVersion != "0.1.1" || vector.SharedDependencies["rxjs"] != "7.8.2" {
+		if vector.LockVersion != 1 || vector.SDKVersion != "0.1.2" || vector.SharedDependencies["rxjs"] != "7.8.2" {
 			t.Fatalf("unexpected lockfile: %+v", vector)
 		}
 	})

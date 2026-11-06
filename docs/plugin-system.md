@@ -133,7 +133,7 @@ server consume that same table and import map. `mndw.lock.json` records the
 versions used to build a plugin. Major-version mismatches warn but do not block
 loading.
 
-The base shared set includes `@mndw/ui@0.1.1` and the complete `d3@7.9.0`
+The base shared set includes `@mndw/ui@0.1.2` and the complete `d3@7.9.0`
 package under the `d3` specifier. Official d3 APIs therefore share one browser
 module and one prototype identity. Third-party extensions such as `d3-dag`
 remain plugin-bundled unless a later shared-dependency decision promotes them.

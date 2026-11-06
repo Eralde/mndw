@@ -1,6 +1,6 @@
 {
   "name": "@mndw/ui",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "homepage": "https://eralde.github.io/mndw/",
   "repository": {"type": "git", "url": "git+https://github.com/Eralde/mndw.git", "directory": "frontend/ui"},

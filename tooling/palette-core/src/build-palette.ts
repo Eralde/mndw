@@ -81,10 +81,10 @@ function enforceContrast(palette: Record<TokenName, string>): void {
   nudge('textSubtle', worseSurface('textSubtle'), 4.5);
   nudge('border', worseSurface('border'), 3);
   nudge('focusRing', 'surfaceRaised', 3);
-  nudge('dangerBg', 'danger', 4.5);
-  nudge('successBg', 'success', 4.5);
-  nudge('warningBg', 'warning', 4.5);
-  nudge('infoBg', 'info', 4.5);
+  nudge('danger', 'dangerBg', 4.5);
+  nudge('success', 'successBg', 4.5);
+  nudge('warning', 'warningBg', 4.5);
+  nudge('info', 'infoBg', 4.5);
 }
 
 export function buildPalette(theme: ThemeName, seed: Seed = SEED): Record<TokenName, string> {

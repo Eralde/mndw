@@ -67,9 +67,15 @@ describe('validatePalette (WCAG gate)', () => {
     ]));
   });
 
-  it('defaults info to primary and accepts an explicit info seed', () => {
-    expect(buildPalette('dark').info).toBe(SEED.primary);
-    expect(buildPalette('dark', {...SEED, info: '#7a3fb3'}).info).toBe('#7a3fb3');
+  it('keeps passing info seeds and adjusts dark info for its dark background', () => {
+    const lightDefault = buildPalette('light');
+    const darkDefault = buildPalette('dark');
+    const lightCustom = buildPalette('light', {...SEED, info: '#7a3fb3'});
+
+    expect(lightDefault.info).toBe(SEED.primary);
+    expect(lightCustom.info).toBe('#7a3fb3');
+    expect(darkDefault.info).not.toBe(SEED.primary);
+    expect(contrastRatio(darkDefault.info, darkDefault.infoBg)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('keeps raised surfaces visibly lighter than surfaces', () => {

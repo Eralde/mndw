@@ -1,5 +1,14 @@
 import {describe, expect, it} from 'vitest';
+import {contrastRatio} from './contrast.js';
 import {SEED, buildPalette, validatePalette} from './build-palette.js';
+import {oklchOf} from './ramp.js';
+
+const statusPairs = [
+  {foreground: 'danger', background: 'dangerBg'},
+  {foreground: 'success', background: 'successBg'},
+  {foreground: 'warning', background: 'warningBg'},
+  {foreground: 'info', background: 'infoBg'},
+] as const;
 
 describe('buildPalette', () => {
   it('preserves deterministic default values and contrast guarantees', () => {
@@ -12,5 +21,46 @@ describe('buildPalette', () => {
 
     expect(validatePalette(buildPalette('dark')).filter((result) => !result.pass)).toEqual([]);
     expect(validatePalette(buildPalette('light')).filter((result) => !result.pass)).toEqual([]);
+  });
+
+  it.each(['light', 'dark'] as const)('keeps %s status backgrounds on the theme side with readable pairs', (theme) => {
+    const palette = buildPalette(theme);
+
+    for (const {foreground, background} of statusPairs) {
+      const lightness = oklchOf(palette[background]).l;
+
+      if (theme === 'light') {
+        expect(lightness, `${theme} ${background}`).toBeGreaterThanOrEqual(0.85);
+      } else {
+        expect(lightness, `${theme} ${background}`).toBeLessThanOrEqual(0.35);
+      }
+
+      expect(contrastRatio(palette[foreground], palette[background]), `${theme} ${foreground} on ${background}`)
+        .toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it.each(['light', 'dark'] as const)(
+    'keeps custom-seed %s status backgrounds on the theme side with readable pairs',
+    (theme) => {
+      const palette = buildPalette(theme, {...SEED, warning: '#e6c229'});
+
+      for (const {foreground, background} of statusPairs) {
+        const lightness = oklchOf(palette[background]).l;
+
+        if (theme === 'light') {
+          expect(lightness, `${theme} ${background}`).toBeGreaterThanOrEqual(0.85);
+        } else {
+          expect(lightness, `${theme} ${background}`).toBeLessThanOrEqual(0.35);
+        }
+
+        expect(contrastRatio(palette[foreground], palette[background]), `${theme} ${foreground} on ${background}`)
+          .toBeGreaterThanOrEqual(4.5);
+      }
+    },
+  );
+
+  it('keeps the default light warning background pale', () => {
+    expect(oklchOf(buildPalette('light').warningBg).l).toBeGreaterThanOrEqual(0.85);
   });
 });

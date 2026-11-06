@@ -254,7 +254,7 @@ describe('shipped default palette', () => {
 
   it.each(
     [
-      ['dark', 'danger', 'dangerBg', 4.53],
+      ['dark', 'danger', 'dangerBg', 4.55],
       ['dark', 'border', 'surface', 3.26],
       ['light', 'border', 'surface', 3.23],
       ['dark', 'text', 'surface', 17.12],

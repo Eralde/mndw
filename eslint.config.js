@@ -274,6 +274,8 @@ module.exports = tseslint.config(
       'out/**',
       // SvelteKit-generated output is not authored source.
       '**/.svelte-kit/**',
+      // VitePress dependency bundles are generated output, not authored source.
+      'docs/plugin-author/.vitepress/cache/**',
       // Prebuilt host assets are generated bundles, not source.
       'frontend/host/dist-dev-host/**',
       'tooling/cli/host-dev/**',
@@ -290,7 +292,7 @@ module.exports = tseslint.config(
     },
   },
   {
-    files: ['**/*.ts'],
+    files: ['**/*.ts', 'docs/plugin-author/.vitepress/config.mts'],
     ignores: [
       'frontend/*/scripts/**/*.ts',
       'frontend/*/vite.config.ts',
@@ -313,6 +315,7 @@ module.exports = tseslint.config(
           './tooling/*/tsconfig.json',
           './build/tsconfig.json',
           './build/docs-snippet-env/tsconfig.json',
+          './docs/plugin-author/.vitepress/tsconfig.json',
           './build/palette/tsconfig.json',
           './tsconfig.example-plugins.json',
         ],

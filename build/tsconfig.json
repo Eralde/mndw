@@ -28,6 +28,7 @@
     "plugin-backends.ts",
     "targets.ts",
     "targets.test.ts",
-    "docs/**/*.ts"
+    "docs/**/*.ts",
+    "docs-e2e/**/*.ts"
   ]
 }

@@ -20,3 +20,4 @@ docs/plugin-author/api/
 /out/
 build/npm/mndwd/*/bin/
 .dev-data/
+/test-results/

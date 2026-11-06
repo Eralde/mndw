@@ -151,6 +151,14 @@ describe('kit.css class contract', () => {
     expect(css).toContain(selector);
   });
 
+  it('resets toolbar heading margins', async () => {
+    const css = await readFile(resolve(process.cwd(), 'src/styles/kit.css'), 'utf8');
+
+    expect(css).toMatch(
+      /\.mndw-toolbar\s*>\s*:is\(\s*h1,\s*h2,\s*h3,\s*h4,\s*h5,\s*h6\s*\)\s*\{\s*margin:\s*0\s*;\s*\}/u,
+    );
+  });
+
   it('uses declared design tokens without raw colors or var fallbacks', async () => {
     const css = await readFile(resolve(process.cwd(), 'src/styles/kit.css'), 'utf8');
     const required = new Set<string>(TOKENS_REQUIRED);

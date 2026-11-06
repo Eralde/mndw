@@ -18,6 +18,7 @@ on:
       - 'plugins/examples/hello-widget/**'
       - 'plugins/examples/rci-device-name-widget/**'
       - 'build/docs/**'
+      - 'build/docs-e2e/**'
       - 'build/docs-snippet-env/**'
       - 'README.md'
       - 'frontend/sdk/README.md'
@@ -47,6 +48,7 @@ on:
       - 'plugins/examples/hello-widget/**'
       - 'plugins/examples/rci-device-name-widget/**'
       - 'build/docs/**'
+      - 'build/docs-e2e/**'
       - 'build/docs-snippet-env/**'
       - 'README.md'
       - 'frontend/sdk/README.md'
@@ -93,6 +95,12 @@ jobs:
 
       - name: Build docs site
         run: pnpm docs:build
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run docs browser tests
+        run: pnpm test:docs:e2e:run
 
       - name: Upload Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'

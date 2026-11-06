@@ -41,6 +41,7 @@ const requiredPaths = [
   'plugins/examples/hello-widget/**',
   'plugins/examples/rci-device-name-widget/**',
   'build/docs/**',
+  'build/docs-e2e/**',
   'build/docs-snippet-env/**',
   'README.md',
   'frontend/sdk/README.md',
@@ -71,9 +72,13 @@ describe('plugin author docs workflow', () => {
     const build = indentedSection(workflow.split(/^jobs:\s*$/m)[1] ?? '', 'build');
     const checkIndex = build.indexOf('run: pnpm test:docs');
     const buildIndex = build.indexOf('run: pnpm docs:build');
+    const browserInstallIndex = build.indexOf('run: pnpm exec playwright install --with-deps chromium');
+    const e2eIndex = build.indexOf('run: pnpm test:docs:e2e:run');
 
     expect(checkIndex).toBeGreaterThanOrEqual(0);
     expect(buildIndex).toBeGreaterThan(checkIndex);
+    expect(browserInstallIndex).toBeGreaterThan(buildIndex);
+    expect(e2eIndex).toBeGreaterThan(browserInstallIndex);
   });
 
   it('triggers both pull requests and pushes for every checked input', () => {

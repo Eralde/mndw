@@ -19,6 +19,11 @@ export const surfaceHover: CSSResult = css`
   background: var(--mndw-surface-hover);
 `;
 
+/** Shared hover treatment for controls whose surface needs a stronger contrast shift. */
+export const controlHover: CSSResult = css`
+  background: var(--mndw-control-hover);
+`;
+
 /** Shared hover treatment for controls whose active state uses the accent pair. */
 export const accentHover: CSSResult = css`
   border-color: var(--mndw-accent-hover);

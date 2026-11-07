@@ -61,6 +61,15 @@
   overflow-wrap: anywhere;
 }
 
+.vp-doc div[class*='language-'] pre:focus-visible {
+  outline: none;
+}
+
+.vp-doc div[class*='language-']:has(pre:focus-visible) {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 3px;
+}
+
 .sidebar-footer {
   display: flex;
   justify-content: space-between;

@@ -58,4 +58,25 @@ describe('icon sprite configuration', () => {
     expect(first).toHaveBeenCalledTimes(1);
     expect(second).toHaveBeenCalledTimes(2);
   });
+
+  it('shares the URL and subscribers across independent module instances', async () => {
+    const firstInstance = await import('./sprite-config.js');
+    const listener = vi.fn();
+    const unsubscribe = firstInstance.subscribeIconSpriteUrl(listener);
+
+    try {
+      vi.resetModules();
+
+      const secondInstance = await import('./sprite-config.js');
+
+      expect(secondInstance).not.toBe(firstInstance);
+
+      secondInstance.setIconSpriteUrl(URL_A);
+
+      expect(firstInstance.getIconSpriteUrl()).toBe(URL_A);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      unsubscribe();
+    }
+  });
 });

@@ -33,6 +33,9 @@ reference when data changes. Complex values (`columns`, `rows`, `rowKey`, `selec
 `rowLabel`, and `labels`) are property-only. String and enum attributes are `row-key` (string form only),
 `sort-mode`, `empty-label`, `caption`, `column-menu-panel-class`, `layout`, `min-width`, and `sticky-header`.
 
+Use `caption` for a visible table caption. When a table has no visible caption, set `label` to give its inner
+`<table>` an accessible name. If both are set, the caption names the table and `label` is omitted.
+
 `rowKey` is required and resolves to a non-empty string for each row, using a field name or function. Empty or
 duplicate keys and duplicate column ids drop offending rows or columns, show the `error` part with `role="alert"`,
 and emit `mndwerror` once per changed set of violations. Sorting and selection are controlled: render `sort` and

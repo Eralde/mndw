@@ -1,4 +1,13 @@
-import {LitElement, type PropertyDeclarations, type SVGTemplateResult, type TemplateResult, css, html, svg} from 'lit';
+import {
+  LitElement,
+  type PropertyDeclarations,
+  type SVGTemplateResult,
+  type TemplateResult,
+  css,
+  html,
+  nothing,
+  svg,
+} from 'lit';
 import type {MndwChartSample, MndwChartTimeFormatter, MndwChartValueFormatter} from './chart-types.js';
 import {
   defaultPercentFormatter,
@@ -133,12 +142,6 @@ export class MndwHeatStrip extends LitElement {
       border-radius: var(--mndw-radius-sm);
     }
 
-    .slice[data-active] {
-      stroke: var(--mndw-text);
-      stroke-width: 1;
-      vector-effect: non-scaling-stroke;
-    }
-
     .empty {
       display: grid;
       height: var(--mndw-heat-strip-height);
@@ -264,6 +267,19 @@ export class MndwHeatStrip extends LitElement {
             @pointerleave=${this.onPointerLeave}
           >
             ${samples.map((sample, index) => this.renderSlice(sample.value, index))}
+            ${
+      this.hoverIndex === null ? nothing : svg`
+              <rect
+                part="hover-cell"
+                fill="color-mix(in srgb, var(--mndw-text) 22%, transparent)"
+                pointer-events="none"
+                x=${this.hoverIndex}
+                y="0"
+                width="1.02"
+                height="1"
+              ></rect>
+            `
+    }
           </svg>
           ${
       tooltip === null ? '' : html`

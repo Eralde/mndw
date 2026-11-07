@@ -29,7 +29,13 @@ function mountTable(root: HTMLElement, demo: 'sorting' | 'visibility'): void {
 
   table.dataset.demo = demo;
   table.style.width = '100%';
-  table.caption = 'Connected clients and recent traffic';
+
+  if (demo === 'sorting') {
+    table.caption = 'Connected clients and recent traffic';
+  } else {
+    table.label = 'Connected clients without a visible caption';
+  }
+
   table.layout = 'auto';
   table.rowKey = 'id';
   table.columns = columns;

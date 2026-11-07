@@ -5,6 +5,7 @@
   "sourceUrlTemplate": "https://raw.githubusercontent.com/lucide-icons/lucide/{release}/icons/{name}.svg",
   "licenseFile": "LICENSE",
   "names": [
+    "activity",
     "arrow-down",
     "arrow-left",
     "arrow-right",
@@ -16,6 +17,7 @@
     "chevron-right",
     "chevron-up",
     "circle-alert",
+    "circle-arrow-up",
     "circle-question-mark",
     "circle-x",
     "copy",
@@ -36,6 +38,7 @@
     "settings",
     "sun",
     "trash",
+    "unlink",
     "x"
   ]
 }

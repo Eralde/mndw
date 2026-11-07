@@ -5,6 +5,7 @@ export const TOKENS_REQUIRED = [
   '--mndw-border',
   '--mndw-border-w',
   '--mndw-control-h',
+  '--mndw-control-hover',
   '--mndw-danger',
   '--mndw-danger-bg',
   '--mndw-duration-base',

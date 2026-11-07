@@ -19,6 +19,9 @@ Renders one Lucide symbol from the shared sprite; `name` and `label` configure i
 <mndw-icon name="refresh-cw"></mndw-icon>
 <mndw-icon name="download"></mndw-icon>
 <mndw-icon name="trash"></mndw-icon>
+<mndw-icon name="circle-arrow-up" label="Update available"></mndw-icon>
+<mndw-icon name="activity" label="Telemetry problem"></mndw-icon>
+<mndw-icon name="unlink" label="Remote control unavailable"></mndw-icon>
 <mndw-icon name="x"></mndw-icon>
 ```
 
@@ -35,6 +38,40 @@ Renders one Lucide symbol from the shared sprite; `name` and `label` configure i
 ```html demo
 <mndw-icon name="info" label="Information"></mndw-icon>
 <mndw-button aria-label="Settings"><mndw-icon name="settings"></mndw-icon></mndw-button>
+```
+
+## Icons inside your own SVG
+
+Use `mndwIconHref` for `<use>` references in a custom SVG. Set the SVG and `<use>` dimensions, and let the icon
+inherit color through `currentColor`. Call the update function once, then subscribe so it refreshes when the host
+changes the sprite URL.
+
+```ts
+import {mndwIconHref, subscribeMndwIconSprite} from '@mndw/ui';
+
+const svgNamespace = 'http://www.w3.org/2000/svg';
+const svg = document.createElementNS(svgNamespace, 'svg');
+svg.setAttribute('width', '24');
+svg.setAttribute('height', '24');
+svg.style.color = 'var(--mndw-text)';
+svg.style.stroke = 'currentColor';
+
+const use = document.createElementNS(svgNamespace, 'use');
+use.setAttribute('width', '24');
+use.setAttribute('height', '24');
+svg.append(use);
+
+const updateHref = (): void => {
+  const href = mndwIconHref('activity');
+  if (href === '') {
+    use.removeAttribute('href');
+  } else {
+    use.setAttribute('href', href);
+  }
+};
+
+updateHref();
+const unsubscribe = subscribeMndwIconSprite(updateHref);
 ```
 
 ## Reference

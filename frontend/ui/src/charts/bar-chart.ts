@@ -35,12 +35,6 @@ interface ChartSize {
   height: number;
 }
 
-const pointerPosition = (event: MouseEvent, element: SVGGraphicsElement): [number, number] => {
-  const rect = element.getBoundingClientRect();
-
-  return [event.clientX - rect.left, event.clientY - rect.top];
-};
-
 export class MndwBarChart extends LitElement {
   public static override readonly shadowRootOptions: ShadowRootInit = {mode: 'open'};
 
@@ -295,7 +289,13 @@ export class MndwBarChart extends LitElement {
       .style('cursor', 'crosshair');
 
     const updateTooltip = (event: MouseEvent): void => {
-      const [mouseX, mouseY] = pointerPosition(event, group.node() ?? svgElement);
+      const groupNode = group.node();
+
+      if (groupNode === null) {
+        return;
+      }
+
+      const [mouseX, mouseY] = d3.pointer(event, groupNode);
 
       if (mouseX < 0 || mouseX > innerWidth || mouseY < 0 || mouseY > innerHeight) {
         hoverBand.attr('data-active', null);
@@ -305,10 +305,10 @@ export class MndwBarChart extends LitElement {
         return;
       }
 
-      const index = Math.min(
-        Math.max(Math.floor((mouseX / innerWidth) * validPoints.length), 0),
-        validPoints.length - 1,
-      );
+      const step = xScale.step();
+      const firstBarX = xScale(String(0)) ?? 0;
+      const bandOffset = (step - xScale.bandwidth()) / 2;
+      const index = Math.min(Math.max(Math.floor((mouseX - firstBarX + bandOffset) / step), 0), validPoints.length - 1);
       const point = validPoints[index];
 
       if (point === undefined) {
@@ -316,7 +316,7 @@ export class MndwBarChart extends LitElement {
       }
 
       const barX = xScale(String(index)) ?? 0;
-      const bandWidth = xScale.step();
+      const bandWidth = step;
       const bandX = Math.max(0, barX - ((bandWidth - xScale.bandwidth()) / 2));
 
       hoverBand

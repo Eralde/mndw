@@ -1,5 +1,5 @@
 import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
-import {controlBase, hostTypography, surfaceHover, textHover} from '../styles/base.js';
+import {controlBase, controlHover, hostTypography, textHover} from '../styles/base.js';
 
 export const MNDW_SEGMENT_TAG = 'mndw-segment';
 export const MNDW_SEGMENT_CHANGE_EVENT = 'mndwsegmentchange';
@@ -52,7 +52,7 @@ export class MndwSegment extends LitElement {
     }
 
     :host([aria-checked='false']:not([disabled]):not([aria-disabled='true']):hover) [part='segment'] {
-      ${surfaceHover}
+      ${controlHover}
       ${textHover}
     }
 

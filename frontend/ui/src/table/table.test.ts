@@ -468,6 +468,38 @@ describe('MndwTable rendering and properties', () => {
     expect(shadow.querySelector('[part="table"]')).not.toBeNull();
   });
 
+  it('uses label as the inner table accessible name when no caption is set', async () => {
+    const el = makeTable();
+
+    el.setAttribute('label', 'Connected devices');
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    await el.updateComplete;
+
+    const table = shadowQuery<HTMLTableElement>(el, 'table');
+
+    expect(el.label).toBe('Connected devices');
+    expect(table.getAttribute('aria-label')).toBe('Connected devices');
+    expect(table.querySelector('caption')).toBeNull();
+  });
+
+  it('lets caption take precedence over label', async () => {
+    const el = makeTable();
+
+    el.setAttribute('label', 'Ignored label');
+    el.caption = 'Connected devices';
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    await el.updateComplete;
+
+    const table = shadowQuery<HTMLTableElement>(el, 'table');
+
+    expect(table.getAttribute('aria-label')).toBeNull();
+    expect(table.querySelector('caption')?.textContent).toBe('Connected devices');
+  });
+
   it('uses table-layout fixed and internal viewport overflow', async () => {
     const el = makeTable();
 
@@ -546,12 +578,14 @@ describe('MndwTable rendering and properties', () => {
     el.setAttribute('sort-mode', 'manual');
     el.setAttribute('empty-label', 'Nothing');
     el.setAttribute('column-menu-panel-class', 'demo');
+    el.setAttribute('label', 'Devices');
     await el.updateComplete;
 
     expect(el.rowKey).toBe('id');
     expect(el.sortMode).toBe('manual');
     expect(el.emptyLabel).toBe('Nothing');
     expect(el.columnMenuPanelClass).toBe('demo');
+    expect(el.label).toBe('Devices');
   });
 
   it('renders the empty part when rows is empty', async () => {
@@ -828,6 +862,14 @@ describe('MndwTable rendering and properties', () => {
 });
 
 describe('MndwTable built-in cells', () => {
+  it('uses tabular digits without switching number cells to the mono font', () => {
+    const styles = String(MndwTable.styles);
+    const numberCellRule = styles.match(/\.cell-kind-number\s*\{([^}]*)\}/u)?.[1] ?? '';
+
+    expect(numberCellRule).not.toContain('font-family: var(--mndw-font-mono)');
+    expect(numberCellRule).toContain('font-variant-numeric: tabular-nums;');
+  });
+
   it('renders text, number, and boolean icon cells', async () => {
     const el = makeTable();
 

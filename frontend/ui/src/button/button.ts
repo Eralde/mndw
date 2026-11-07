@@ -1,6 +1,14 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html, nothing} from 'lit';
 import {FormAssociatedController} from '../forms/form-associated.js';
-import {accentHover, controlBase, focusRing, hostTypography, surfaceHover, textHover} from '../styles/base.js';
+import {
+  accentHover,
+  controlBase,
+  controlHover,
+  focusRing,
+  hostTypography,
+  surfaceHover,
+  textHover,
+} from '../styles/base.js';
 
 export const MNDW_BUTTON_TAG = 'mndw-button';
 
@@ -76,7 +84,7 @@ export class MndwButton extends LitElement {
     }
 
     :host([variant='ghost']) button:not(:disabled):hover {
-      background: color-mix(in srgb, var(--mndw-text) 8%, transparent);
+      ${controlHover}
       ${textHover}
     }
 

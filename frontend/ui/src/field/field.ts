@@ -118,7 +118,7 @@ export class MndwField extends ReactiveElement {
     hint.id = `${this.fieldId}-hint`;
     hint.hidden = true;
 
-    error.className = 'mndw-field__error mndw-alert mndw-alert--danger';
+    error.className = 'mndw-field__error';
     error.id = `${this.fieldId}-error`;
     error.setAttribute('role', 'alert');
     error.hidden = true;

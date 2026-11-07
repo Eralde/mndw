@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from 'vitest';
-import {defineMndwUi} from '../index.js';
+import {afterEach, describe, expect, it, vi} from 'vitest';
+import {defineMndwUi, mndwIconHref, subscribeMndwIconSprite} from '../index.js';
 import {defineComponents, mount} from '../testing/index.js';
 import {MNDW_ICON_TAG, MndwIcon} from './icon.js';
 import {getIconSpriteUrl, setIconSpriteUrl} from './sprite-config.js';
@@ -159,6 +159,35 @@ describe('<mndw-icon> rendering', () => {
     await icon.updateComplete;
 
     expect(useEl(icon)?.getAttribute('href')).toBe(`${SPRITE_URL}#mndw-icon-x`);
+  });
+});
+
+describe('public icon sprite helpers', () => {
+  it('returns an empty href without a sprite and matches the rendered icon href', async () => {
+    expect(mndwIconHref('activity')).toBe('');
+
+    defineMndwUi({iconSpriteUrl: SPRITE_URL});
+
+    expect(mndwIconHref('activity')).toBe('/assets/icons.svg#mndw-icon-activity');
+
+    const icon = await mount('<mndw-icon name="activity"></mndw-icon>', MNDW_ICON_TAG);
+
+    expect(useEl(icon)?.getAttribute('href')).toBe(mndwIconHref('activity'));
+  });
+
+  it('notifies subscribers when the sprite URL changes and stops after unsubscribe', () => {
+    const callback = vi.fn();
+    const unsubscribe = subscribeMndwIconSprite(callback);
+
+    defineMndwUi({iconSpriteUrl: SPRITE_URL});
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    defineMndwUi({iconSpriteUrl: '/assets/changed.svg'});
+    expect(callback).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+    defineMndwUi({iconSpriteUrl: '/assets/final.svg'});
+    expect(callback).toHaveBeenCalledTimes(2);
   });
 });
 

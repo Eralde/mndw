@@ -6,6 +6,12 @@ export const MNDW_ICON_TAG = 'mndw-icon';
 
 const ICON_VIEW_BOX = '0 0 24 24';
 
+export function mndwIconHref(name: MndwIconName): string {
+  const url = getIconSpriteUrl();
+
+  return url === '' ? '' : `${url}#mndw-icon-${name}`;
+}
+
 /**
  * Renders one symbol from the shared sprite. The sprite URL is host configuration; without it the
  * element renders an empty SVG rather than requesting an asset.
@@ -80,13 +86,7 @@ export class MndwIcon extends LitElement {
   }
 
   private _href(): string {
-    const url = getIconSpriteUrl();
-
-    if (url === '' || !isMndwIconName(this.name)) {
-      return '';
-    }
-
-    return `${url}#mndw-icon-${this.name}`;
+    return isMndwIconName(this.name) ? mndwIconHref(this.name) : '';
   }
 }
 

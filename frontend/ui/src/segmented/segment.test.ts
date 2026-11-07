@@ -54,7 +54,7 @@ describe('<mndw-segment>', () => {
     expect(cssText).toContain(
       ':host([aria-checked=\'false\']:not([disabled]):not([aria-disabled=\'true\']):hover) [part=\'segment\']',
     );
-    expect(cssText).toContain('var(--mndw-surface-hover)');
+    expect(cssText).toContain('var(--mndw-control-hover)');
   });
 
   it('announces configuration changes so its group can rewire', async () => {

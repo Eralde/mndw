@@ -39,6 +39,7 @@ import {
   type MndwColumnMenu,
   MndwHeatStrip,
   type MndwHeatStripProps,
+  type MndwIconName,
   MndwLineChart,
   type MndwLineChartProps,
   type MndwOption,
@@ -55,8 +56,10 @@ import {
   defineMndwUi,
   formatSpeed,
   getMndwUiText,
+  mndwIconHref,
   resolveSizing,
   setMndwUiLocale,
+  subscribeMndwIconSprite,
   tabbableElements,
 } from './index.js';
 import {getOverlayProvider, setOverlayProvider} from './overlay.js';
@@ -187,5 +190,14 @@ describe('positioning exports', () => {
     expect(typeof computePopoverCoords).toBe('function');
     expect(typeof computeTooltipCoords).toBe('function');
     expect(typeof resolveSizing).toBe('function');
+  });
+});
+
+describe('icon sprite exports', () => {
+  it('publishes typed href and sprite change helpers', () => {
+    expect(mndwIconHref('activity')).toBe('');
+    expect(typeof subscribeMndwIconSprite).toBe('function');
+    expectTypeOf(mndwIconHref).toEqualTypeOf<(name: MndwIconName) => string>();
+    expectTypeOf(subscribeMndwIconSprite).toEqualTypeOf<(callback: () => void) => () => void>();
   });
 });

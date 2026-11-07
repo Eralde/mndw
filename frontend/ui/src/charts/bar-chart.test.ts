@@ -26,6 +26,39 @@ async function mount(markup = ''): Promise<MndwBarChart> {
   return element;
 }
 
+function dispatchMouseMove(overlay: SVGRectElement, clientX: number, clientY: number): void {
+  // happy-dom's SVGPoint lacks matrixTransform. Keep local coordinates here;
+  // Chromium e2e covers real SVG coordinate transforms.
+  const svg = overlay.ownerSVGElement;
+  const group = overlay.parentElement;
+
+  if (svg !== null) {
+    Object.defineProperty(svg, 'createSVGPoint', {
+      configurable: true,
+      value: () => {
+        const point = {
+          ['x']: 0,
+          ['y']: 0,
+          matrixTransform() {
+            return {['x']: Reflect.get(this, 'x'), ['y']: Reflect.get(this, 'y')};
+          },
+        };
+
+        return point;
+      },
+    });
+  }
+
+  if (group !== null) {
+    Object.defineProperty(group, 'getScreenCTM', {
+      configurable: true,
+      value: () => ({inverse: () => ({})}),
+    });
+  }
+
+  overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX, clientY}));
+}
+
 const points = [
   {time: 1000, value: 100},
   {time: 2000, value: 200},
@@ -105,7 +138,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 40, clientY: 30}));
+    dispatchMouseMove(overlay, 40, 30);
     await element.updateComplete;
 
     const band = element.shadowRoot?.querySelector<SVGRectElement>('[part="hover-band"]');
@@ -143,7 +176,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 300, clientY: 100}));
+    dispatchMouseMove(overlay, 300, 100);
     await element.updateComplete;
 
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent).toContain('T2000');
@@ -214,7 +247,7 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 100, clientY: 100}));
+    dispatchMouseMove(overlay, 100, 100);
     await element.updateComplete;
 
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(true);
@@ -241,7 +274,7 @@ describe('<mndw-bar-chart>', () => {
 
     const requestUpdate = vi.spyOn(element, 'requestUpdate');
 
-    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 100, clientY: 100}));
+    dispatchMouseMove(overlay, 100, 100);
 
     expect(requestUpdate).not.toHaveBeenCalled();
   });
@@ -348,13 +381,16 @@ describe('<mndw-bar-chart>', () => {
       throw new Error('missing chart pointer overlay');
     }
 
-    overlay.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 100, clientY: 100}));
+    dispatchMouseMove(overlay, 100, 100);
     await element.updateComplete;
     callback?.([{contentRect: {width: 299, height: 180}} as ResizeObserverEntry]);
 
     const refreshedOverlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
 
-    refreshedOverlay?.dispatchEvent(new MouseEvent('mousemove', {bubbles: true, clientX: 100, clientY: 100}));
+    if (refreshedOverlay !== null && refreshedOverlay !== undefined) {
+      dispatchMouseMove(refreshedOverlay, 100, 100);
+    }
+
     await element.updateComplete;
 
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(true);

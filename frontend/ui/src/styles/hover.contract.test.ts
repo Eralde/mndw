@@ -13,7 +13,7 @@ import {MndwTab} from '../tabs/tab.js';
 import {MndwTable} from '../table/table.js';
 import {MndwColumnMenu} from '../table/column-menu.js';
 import {MndwTextarea} from '../textarea/textarea.js';
-import {accentHover, fieldHover, surfaceHover, textHover} from './base.js';
+import {accentHover, controlHover, fieldHover, surfaceHover, textHover} from './base.js';
 
 function stylesText(styles: unknown): string {
   if (Array.isArray(styles)) {
@@ -30,7 +30,7 @@ const hoverRules = [
     selector: ':host([variant=\'secondary\']) button:not(:disabled):hover', token: '--mndw-surface-hover',
     guarded: true},
   {element: 'ghost button', part: 'button', styles: MndwButton.styles,
-    selector: ':host([variant=\'ghost\']) button:not(:disabled):hover', token: '--mndw-text', guarded: true},
+    selector: ':host([variant=\'ghost\']) button:not(:disabled):hover', token: '--mndw-control-hover', guarded: true},
   {element: 'danger button', part: 'button', styles: MndwButton.styles,
     selector: ':host([variant=\'danger\']) button:not(:disabled):hover', token: '--mndw-danger', guarded: true},
   {element: 'input', part: 'field', styles: MndwInput.styles,
@@ -86,13 +86,13 @@ const hoverRules = [
     token: '--mndw-accent-hover', guarded: true},
   {element: 'unselected segment', part: 'segment', styles: MndwSegment.styles,
     selector: ':host([aria-checked=\'false\']:not([disabled]):not([aria-disabled=\'true\']):hover) [part=\'segment\']',
-    token: '--mndw-surface-hover', guarded: true},
+    token: '--mndw-control-hover', guarded: true},
   {element: 'selected segment', part: 'segment', styles: MndwSegment.styles,
     selector: ':host([aria-checked=\'true\']:not([disabled]):not([aria-disabled=\'true\']):hover) [part=\'segment\']',
     token: '--mndw-accent-hover', guarded: true},
   {element: 'tab', part: 'tab', styles: MndwTab.styles,
-    selector: ':host(:not([disabled]):not([aria-disabled=\'true\']):hover) [part=\'tab\']', token: '--mndw-text',
-    guarded: true},
+    selector: ':host(:not([disabled]):not([aria-disabled=\'true\']):hover) [part=\'tab\']',
+    token: '--mndw-control-hover', guarded: true},
   {element: 'column menu option', part: 'option', styles: MndwColumnMenu.styles, selector: '[part=\'option\']:hover',
     token: '--mndw-surface-hover', guarded: false},
   {element: 'table row', part: 'cell', styles: MndwTable.styles, selector: '[part=\'row\']:hover [part~=\'cell\']',
@@ -126,6 +126,7 @@ describe('interactive hover contract', () => {
   it('keeps shared field, surface, accent, and text hover declarations on existing tokens', () => {
     expect(String(fieldHover)).toContain('var(--mndw-text-subtle)');
     expect(String(surfaceHover)).toContain('var(--mndw-surface-hover)');
+    expect(String(controlHover)).toContain('var(--mndw-control-hover)');
     expect(String(accentHover)).toContain('var(--mndw-accent-hover)');
     expect(String(textHover)).toContain('var(--mndw-text)');
   });

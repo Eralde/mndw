@@ -25,7 +25,7 @@ Provides a light-DOM label, hint, and error wrapper for a single control.
 Field takes a control as a light-DOM child and wires its labeling. Properties are `label`, `hint`, `error`, and
 `required`; empty strings hide their nodes. Field creates `.mndw-field__label`, `.mndw-field__hint`, and
 `.mndw-field__error` once and places them around the control in label, control, hint, error order. The error has
-`role="alert"` and the `.mndw-alert--danger` classes. Field renders into light DOM and exposes classes rather than
+`role="alert"` and uses plain danger-colored text. Field renders into light DOM and exposes classes rather than
 `::part()` hooks.
 
 The first child that is an `Element` becomes the control; comments, whitespace, and placeholder nodes are skipped.

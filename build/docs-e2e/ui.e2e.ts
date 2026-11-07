@@ -101,6 +101,40 @@ async function computedStyle(locator: Locator, property: string): Promise<string
   return locator.evaluate((element, cssProperty) => getComputedStyle(element).getPropertyValue(cssProperty), property);
 }
 
+function colorChannels(color: string): [number, number, number] {
+  const hex = /^#([\da-f]{6})$/iu.exec(color.trim());
+
+  if (hex?.[1] !== undefined) {
+    return [0, 2, 4].map((offset) => Number.parseInt(hex[1].slice(offset, offset + 2), 16)) as [number, number, number];
+  }
+
+  const channels = color.match(/[\d.]+/gu)?.slice(0, 3)
+    .map(Number);
+
+  if (channels?.length !== 3) {
+    throw new Error(`Cannot parse CSS color: ${color}`);
+  }
+
+  return channels as [number, number, number];
+}
+
+function relativeLuminance(color: string): number {
+  const [red, green, blue] = colorChannels(color).map((channel) => {
+    const value = channel / 255;
+
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+
+  return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue);
+}
+
+function contrastRatio(first: string, second: string): number {
+  const firstLuminance = relativeLuminance(first);
+  const secondLuminance = relativeLuminance(second);
+
+  return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance, secondLuminance) + 0.05);
+}
+
 async function menuTriggerOffset(menu: Locator, trigger: Locator): Promise<number> {
   const [menuBounds, triggerBounds] = await Promise.all([menu.boundingBox(), trigger.boundingBox()]);
 
@@ -125,10 +159,6 @@ async function expectUncheckedIndicatorDiffers(unchecked: Locator, checked: Loca
     .evaluate((indicatorElement) => getComputedStyle(indicatorElement).backgroundColor);
 
   expect(uncheckedBackground).not.toBe(checkedBackground);
-}
-
-async function hoverFirstBar(overlay: Locator): Promise<void> {
-  await overlay.hover({position: {x: 12, y: 30}});
 }
 
 async function expectHoverChange(page: Page, hostSelector: string, part: string, property: string): Promise<void> {
@@ -230,6 +260,11 @@ async function addHoverContractFixture(page: Page): Promise<void> {
       <mndw-segmented id="hover-segments-disabled" label="Disabled range" value="disabled">
         <mndw-segment id="hover-segment-disabled" value="disabled" disabled>Disabled</mndw-segment>
       </mndw-segmented>
+      <mndw-button id="hover-ghost" variant="ghost">Ghost</mndw-button>
+      <mndw-tabs id="hover-tabs" value="hover-tab-selected">
+        <mndw-tab id="hover-tab-unselected">Other</mndw-tab>
+        <mndw-tab id="hover-tab-selected">Selected</mndw-tab>
+      </mndw-tabs>
     `;
     document.body.append(fixture);
 
@@ -665,8 +700,29 @@ test('table sorting, visibility menu, and sort affordance stay stable at desktop
   await page.goto('ui/table');
   await assertPreviews(page, 'ui/table');
   await selectTheme(page, 'light');
+  await expect(
+    page.getByRole('table', {name: 'Connected clients without a visible caption'}),
+  ).toHaveCount(1);
 
   const sortingTable = page.locator('.ui-demo__preview mndw-table[data-demo="sorting"]');
+  const firstRowCells = sortingTable
+    .locator('tbody tr')
+    .first()
+    .locator('td');
+  const nameCell = firstRowCells.nth(0);
+  const trafficCell = firstRowCells.nth(3);
+  const [nameFontFamily, trafficStyles] = await Promise.all([
+    nameCell.evaluate((element) => getComputedStyle(element).fontFamily),
+    trafficCell.evaluate((element) => {
+      const styles = getComputedStyle(element);
+
+      return {fontFamily: styles.fontFamily, fontVariantNumeric: styles.fontVariantNumeric};
+    }),
+  ]);
+
+  expect(trafficStyles.fontFamily).toBe(nameFontFamily);
+  expect(trafficStyles.fontVariantNumeric).toContain('tabular-nums');
+
   const nameHeader = sortingTable.locator('button[data-sort-column="name"]');
   const indicator = nameHeader.locator('[part="sort-indicator"]');
   const indicatorWidths: number[] = [];
@@ -708,6 +764,7 @@ test('heat-strip tooltips remain inside their chart host and preview at both end
 
   const chart = page.locator('.ui-demo__preview mndw-heat-strip').first();
   const slices = chart.locator('svg rect.slice');
+  const overlay = chart.locator('[part="hover-cell"]');
   const preview = chart.locator('xpath=ancestor::div[contains(@class,"ui-demo__preview")]');
 
   for (
@@ -720,9 +777,16 @@ test('heat-strip tooltips remain inside their chart host and preview at both end
     const slice = index === -1 ? slices.last() : slices.nth(index);
 
     await slice.hover();
+
     const plot = chart.locator('.plot');
     const tooltip = chart.locator('[part="tooltip"]');
+
     await expect(tooltip).toBeVisible();
+    await expect(overlay).toHaveAttribute('x', await slice.getAttribute('x') ?? '');
+    await expect.poll(() => overlay.evaluate((element) => element.parentElement?.lastElementChild === element)).toBe(
+      true,
+    );
+    await expect.poll(() => computedStyle(overlay, 'pointer-events')).toBe('none');
 
     const plotBounds = await plot.boundingBox();
     const tooltipBounds = await tooltip.boundingBox();
@@ -745,6 +809,20 @@ test('heat-strip tooltips remain inside their chart host and preview at both end
       await capture(page, screenshot);
     }
   }
+
+  await selectTheme(page, 'dark');
+  await slices.nth(8).hover();
+  await expect(overlay).toHaveAttribute('x', await slices.nth(8).getAttribute('x') ?? '');
+  await capture(page, 'heat-strip-hover-high-1280-dark.png');
+  await slices.first().hover();
+  await expect(overlay).toHaveAttribute('x', await slices.first().getAttribute('x') ?? '');
+  await capture(page, 'heat-strip-hover-low-1280-dark.png');
+
+  await selectTheme(page, 'light');
+  await slices.nth(8).hover();
+  await capture(page, 'heat-strip-hover-high-1280-light.png');
+  await slices.first().hover();
+  await capture(page, 'heat-strip-hover-low-1280-light.png');
 });
 
 test('slider controls fill narrow documentation previews without overflow', async ({page}) => {
@@ -755,6 +833,7 @@ test('slider controls fill narrow documentation previews without overflow', asyn
   const sliders = page.locator('.ui-demo__preview mndw-slider');
 
   await expect(sliders).toHaveCount(3);
+
   for (const slider of await sliders.all()) {
     expect((await slider.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(300);
   }
@@ -806,6 +885,157 @@ test('interactive controls change hover styles and disabled controls stay unchan
   }
 });
 
+test('segment, tabs and ghost button hover backgrounds have visible contrast in both themes', async ({page}) => {
+  await page.setViewportSize({width: 1280, height: 900});
+  await page.goto('ui/');
+  await addHoverContractFixture(page);
+  await expect(page.locator('#hover-tab-unselected')).toHaveAttribute('aria-selected', 'false');
+  await expect(page.locator('#hover-tab-selected')).toHaveAttribute('aria-selected', 'true');
+
+  for (const theme of ['light', 'dark'] as const) {
+    await page.locator('html').evaluate((element, selectedTheme) => {
+      element.setAttribute('data-theme', selectedTheme);
+    }, theme);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+
+    const palette = await page.evaluate(() => {
+      const sample = document.createElement('span');
+
+      document.body.append(sample);
+
+      const resolveColor = (name: string): string => {
+        sample.style.backgroundColor = `var(${name})`;
+
+        return getComputedStyle(sample).backgroundColor;
+      };
+
+      const colors = {
+        surface: resolveColor('--mndw-surface'),
+        oldHover: resolveColor('--mndw-surface-hover'),
+        controlHover: resolveColor('--mndw-control-hover'),
+      };
+
+      sample.remove();
+
+      return colors;
+    });
+
+    expect(contrastRatio(palette.oldHover, palette.surface), `${theme} old surface hover`).toBeLessThan(1.3);
+
+    for (
+      const [host, part, name] of [
+        ['#hover-segment-unselected', 'segment', 'segment'],
+        ['#hover-tab-unselected', 'tab', 'tab-unselected'],
+        ['#hover-tab-selected', 'tab', 'tab-selected'],
+        ['#hover-ghost', 'button', 'ghost'],
+      ] as const
+    ) {
+      const target = page.locator(host).locator(`[part="${part}"]`);
+
+      await target.hover();
+      await expect.poll(async () => computedStyle(target, 'background-color')).toBe(palette.controlHover);
+
+      const background = await computedStyle(target, 'background-color');
+      const ratio = contrastRatio(background, palette.surface);
+
+      expect(background, `${theme} ${name} uses control hover fill`).toBe(palette.controlHover);
+      expect(ratio, `${theme} ${name} contrast against surface`).toBeGreaterThanOrEqual(1.3);
+
+      const screenshotName = name === 'ghost' ? 'button-ghost' : name;
+
+      await capture(page, `${screenshotName}-hover-1280-${theme}.png`);
+    }
+  }
+});
+
+test('field errors are plain danger text within their field in both themes', async ({page}) => {
+  await page.setViewportSize({width: 1280, height: 900});
+  await page.goto('ui/field');
+  await assertPreviews(page, 'ui/field');
+
+  const field = page.locator('.ui-demo__preview mndw-field').nth(1);
+  const error = field.locator('.mndw-field__error');
+
+  await expect(error).toHaveAttribute('role', 'alert');
+  await expect(error).not.toHaveClass(/mndw-alert/u);
+
+  for (const theme of ['light', 'dark'] as const) {
+    await selectTheme(page, theme);
+
+    const [fieldBounds, errorBounds, errorStyle] = await Promise.all([
+      field.boundingBox(),
+      error.boundingBox(),
+      error.evaluate((element) => {
+        const style = getComputedStyle(element);
+
+        return {backgroundColor: style.backgroundColor, borderWidth: style.borderTopWidth};
+      }),
+    ]);
+
+    expect(fieldBounds).not.toBeNull();
+    expect(errorBounds).not.toBeNull();
+    expect(errorBounds?.width).toBeLessThanOrEqual(fieldBounds?.width ?? 0);
+    expect(errorStyle.backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(errorStyle.borderWidth).toBe('0px');
+    await capture(page, `field-error-1280-${theme}.png`);
+  }
+});
+
+test('table viewport with a bordered full-height part fits its parent exactly', async ({page}) => {
+  await page.setViewportSize({width: 1280, height: 900});
+  await page.goto('ui/table');
+  await assertPreviews(page, 'ui/table');
+
+  const table = page.locator('.ui-demo__preview mndw-table').first();
+  const viewport = table.locator('[part="viewport"]');
+
+  await table.evaluate((element) => {
+    (element as HTMLElement).style.height = '240px';
+
+    const viewportElement = element.shadowRoot?.querySelector<HTMLElement>('[part="viewport"]');
+
+    if (viewportElement === null || viewportElement === undefined) {
+      throw new Error('missing table viewport');
+    }
+
+    viewportElement.style.height = '100%';
+    viewportElement.style.border = '1px solid rgb(255, 0, 0)';
+  });
+
+  const [tableBounds, viewportBounds] = await Promise.all([table.boundingBox(), viewport.boundingBox()]);
+
+  expect(tableBounds).not.toBeNull();
+  expect(viewportBounds).not.toBeNull();
+  expect(Math.abs((viewportBounds?.height ?? 0) - (tableBounds?.height ?? 0))).toBeLessThanOrEqual(0.5);
+  expect(await viewport.evaluate((element) => getComputedStyle(element).boxSizing)).toBe('border-box');
+});
+
+test('plain and UI-demo code blocks focus with a wrapper outline in both themes', async ({page}) => {
+  await page.setViewportSize({width: 1280, height: 900});
+
+  for (const theme of ['light', 'dark'] as const) {
+    await page.goto('guides/ui-components');
+    await selectTheme(page, theme);
+
+    const plainCode = page.locator('.vp-doc div[class*="language-"] pre').first();
+
+    await focusWithTab(page, plainCode);
+    await expect(plainCode).toBeFocused();
+    await expect.poll(() => computedStyle(plainCode.locator('xpath=..'), 'outline-style')).toBe('solid');
+    await capture(page, `code-focus-plain-1280-${theme}.png`);
+
+    await page.goto('ui/field');
+    await selectTheme(page, theme);
+
+    const demoCode = page.locator('.ui-demo > div[class*="language-"] pre').first();
+
+    await focusWithTab(page, demoCode);
+    await expect(demoCode).toBeFocused();
+    await expect.poll(() => computedStyle(demoCode.locator('xpath=..'), 'outline-style')).toBe('solid');
+    await capture(page, `code-focus-ui-demo-1280-${theme}.png`);
+  }
+});
+
 test('checkbox keyboard focus ring stays on its box', async ({page}) => {
   await page.goto('ui/checkbox');
   await assertPreviews(page, 'ui/checkbox');
@@ -828,6 +1058,68 @@ test('checkbox keyboard focus ring stays on its box', async ({page}) => {
   expect(outlineStyles.box).not.toBe('none');
 });
 
+interface BarBounds {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+async function readBarChartSamples(
+  chart: Locator,
+): Promise<{barBounds: BarBounds[]; expectedValues: string[]}> {
+  const barBounds = await chart.locator('svg rect[data-bar="true"]').evaluateAll((bars) =>
+    bars.map((bar) => {
+      const bounds = bar.getBoundingClientRect();
+
+      return {left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height};
+    })
+  );
+  const expectedValues = await chart.evaluate((element) => {
+    const chartElement = element as HTMLElement & {
+      points: readonly {value: number}[];
+      valueFormatter: (value: number) => string;
+    };
+
+    return chartElement.points.map((point) => chartElement.valueFormatter(point.value));
+  });
+
+  return {barBounds, expectedValues};
+}
+
+async function assertBarHover(
+  page: Page,
+  chart: Locator,
+  band: Locator,
+  bars: readonly BarBounds[],
+  expectedValues: readonly string[],
+  theme: string,
+  barIndex: number,
+  edge: string,
+  pointerX: number,
+  pointerY: number,
+  screenshotName: string | null,
+): Promise<void> {
+  await page.mouse.move(pointerX, pointerY);
+  await expect(chart.locator('[part="tooltip"]')).toHaveAttribute('data-visible', '');
+  await expect(band).toHaveAttribute('data-active', '');
+
+  const bandBounds = await band.boundingBox();
+  const activeIndex = bars.findIndex((candidate) => {
+    const bandLeft = bandBounds?.x ?? 0;
+    const bandRight = bandLeft + (bandBounds?.width ?? 0);
+
+    return bandLeft < candidate.left + candidate.width && bandRight > candidate.left;
+  });
+
+  expect(activeIndex, `${theme} ${edge} edge of bar ${barIndex}`).toBe(barIndex);
+  await expect(chart.locator('[part="tooltip"] strong')).toHaveText(expectedValues[barIndex] ?? '');
+
+  if (screenshotName !== null) {
+    await capture(page, screenshotName);
+  }
+}
+
 test('bar chart hover highlights its column and keeps the tooltip', async ({page}) => {
   await page.setViewportSize({width: 1280, height: 900});
   await page.goto('ui/bar-chart');
@@ -836,31 +1128,57 @@ test('bar chart hover highlights its column and keeps the tooltip', async ({page
   const chart = page.locator('.ui-demo__preview mndw-bar-chart').first();
   const overlay = chart.locator('svg rect[fill="transparent"]');
   const band = chart.locator('[part="hover-band"]');
+  const {barBounds, expectedValues} = await readBarChartSamples(chart);
+  const overlayBounds = await overlay.boundingBox();
+  const step = (barBounds[1]?.left ?? 0) - (barBounds[0]?.left ?? 0);
 
-  await hoverFirstBar(overlay);
-  await expect(chart.locator('[part="tooltip"]')).toHaveAttribute('data-visible', '');
-  await expect(band).toHaveAttribute('data-active', '');
-  await expect.poll(async () => computedStyle(band, 'opacity')).toBe('1');
+  expect(step).toBeGreaterThan(0);
 
-  const bandBounds = await band.boundingBox();
-  const barBounds = await chart.locator('svg rect[data-bar="true"]').evaluateAll((bars) =>
-    bars.map((bar) => {
-      const bounds = bar.getBoundingClientRect();
+  const middleIndex = Math.floor(barBounds.length / 2);
 
-      return {left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height};
-    })
-  );
+  expect(overlayBounds).not.toBeNull();
+  expect(barBounds.length).toBeGreaterThan(2);
 
-  expect(bandBounds).not.toBeNull();
+  for (const theme of ['light', 'dark'] as const) {
+    await selectTheme(page, theme);
 
-  const overlappingBars = barBounds.filter((bar) => (
-    (bandBounds?.x ?? 0) < bar.left + bar.width
-    && (bandBounds?.x ?? 0) + (bandBounds?.width ?? 0) > bar.left
-    && (bandBounds?.y ?? 0) < bar.top + bar.height
-    && (bandBounds?.y ?? 0) + (bandBounds?.height ?? 0) > bar.top
-  ));
+    for (const index of [...new Set([0, middleIndex, barBounds.length - 1])]) {
+      const bar = barBounds[index];
 
-  expect(overlappingBars).toHaveLength(1);
+      expect(bar).toBeDefined();
+
+      if (bar === undefined) {
+        continue;
+      }
+
+      for (
+        const [edge, pointerX] of [
+          ['left', Math.max(overlayBounds?.x ?? 0, bar.left + 1)],
+          ['center', bar.left + (bar.width / 2)],
+          ['right', bar.left + bar.width - 1],
+        ] as const
+      ) {
+        const screenshotName = index === middleIndex && edge === 'center'
+          ? `bar-chart-hover-1280-${theme}.png`
+          : null;
+
+        await assertBarHover(
+          page,
+          chart,
+          band,
+          barBounds,
+          expectedValues,
+          theme,
+          index,
+          edge,
+          pointerX,
+          (overlayBounds?.y ?? 0) + 5,
+          screenshotName,
+        );
+      }
+    }
+  }
+
   expect(await chart.locator('svg rect[part="hover-band"] ~ rect[data-bar="true"]').count()).toBeGreaterThan(0);
 
   await chart.evaluate(async (element) => {
@@ -870,13 +1188,6 @@ test('bar chart hover highlights its column and keeps the tooltip', async ({page
     await chartElement.updateComplete;
   });
   await expect.poll(async () => computedStyle(band, 'opacity')).toBe('1');
-
-  await selectTheme(page, 'light');
-  await hoverFirstBar(overlay);
-  await capture(page, 'bar-chart-hover-1280-light.png');
-  await selectTheme(page, 'dark');
-  await hoverFirstBar(overlay);
-  await capture(page, 'bar-chart-hover-1280-dark.png');
 
   await page.mouse.move(0, 0);
   await expect.poll(async () => computedStyle(band, 'opacity')).toBe('0');

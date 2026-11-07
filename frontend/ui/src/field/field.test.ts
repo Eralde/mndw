@@ -109,7 +109,7 @@ describe('<mndw-field> rendering', () => {
 
     expect(labelNode(element).className).toBe('mndw-field__label');
     expect(hintNode(element).className).toBe('mndw-field__hint');
-    expect(errorNode(element).className).toBe('mndw-field__error mndw-alert mndw-alert--danger');
+    expect(errorNode(element).className).toBe('mndw-field__error');
     expect(errorNode(element).getAttribute('role')).toBe('alert');
     expect(element.querySelectorAll('.mndw-field__label, .mndw-field__hint, .mndw-field__error')).toHaveLength(3);
   });
@@ -146,7 +146,7 @@ describe('<mndw-field> rendering', () => {
       'mndw-field__label',
       'host',
       'mndw-field__hint',
-      'mndw-field__error mndw-alert mndw-alert--danger',
+      'mndw-field__error',
     ]);
   });
 

@@ -1,5 +1,5 @@
 import {LitElement, type PropertyDeclarations, type TemplateResult, css, html} from 'lit';
-import {controlBase, hostTypography, textHover} from '../styles/base.js';
+import {controlBase, controlHover, hostTypography, textHover} from '../styles/base.js';
 
 export const MNDW_TAB_TAG = 'mndw-tab';
 
@@ -41,7 +41,8 @@ export class MndwTab extends LitElement {
       border-radius: var(--mndw-radius-sm) var(--mndw-radius-sm) 0 0;
       color: var(--mndw-text-subtle);
       white-space: nowrap;
-      transition: color var(--mndw-duration-fast) var(--mndw-easing);
+      transition: background var(--mndw-duration-fast) var(--mndw-easing),
+        color var(--mndw-duration-fast) var(--mndw-easing);
     }
 
     :host(:focus-visible) [part='tab'] {
@@ -56,6 +57,7 @@ export class MndwTab extends LitElement {
     }
 
     :host(:not([disabled]):not([aria-disabled='true']):hover) [part='tab'] {
+      ${controlHover}
       ${textHover}
     }
   `;

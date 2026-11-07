@@ -109,6 +109,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     columnMenu: {type: Boolean, attribute: false},
     columnMenuPanelClass: {type: String, attribute: 'column-menu-panel-class'},
     caption: {type: String},
+    label: {type: String},
     rowLabel: {type: Object, attribute: false},
     labels: {type: Object, attribute: false},
     emptyLabel: {type: String, attribute: 'empty-label'},
@@ -125,6 +126,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     }
 
     [part='viewport'] {
+      box-sizing: border-box;
       overflow: auto;
       min-height: 0;
       overflow-anchor: none;
@@ -318,7 +320,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     }
 
     .cell-kind-number {
-      font-family: var(--mndw-font-mono);
+      font-variant-numeric: tabular-nums;
     }
 
     .sort-button {
@@ -360,6 +362,7 @@ export class MndwTable<Row = unknown> extends LitElement {
   declare public columnMenu: boolean;
   declare public columnMenuPanelClass: string;
   declare public caption: string;
+  declare public label: string;
   declare public rowLabel: ((row: Row) => string) | undefined;
   declare public labels: Partial<MndwTableLabels> | undefined;
   declare public emptyLabel: string;
@@ -433,6 +436,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     this.columnMenu = true;
     this.columnMenuPanelClass = '';
     this.caption = '';
+    this.label = '';
     this.rowLabel = undefined;
     this.labels = undefined;
     this.emptyLabel = '';
@@ -606,6 +610,7 @@ export class MndwTable<Row = unknown> extends LitElement {
             <table
               part="table"
               style=${this.tableStyle()}
+              aria-label=${this.caption ? nothing : this.label || nothing}
               aria-rowcount=${this.virtual ? this.logicalRowCount() : nothing}
             >
               ${this.caption ? html`<caption part="caption">${this.caption}</caption>` : nothing}

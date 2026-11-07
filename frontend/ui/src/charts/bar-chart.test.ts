@@ -109,7 +109,24 @@ describe('<mndw-bar-chart>', () => {
     element.points = points;
     await element.updateComplete;
 
-    expect(element.getAttribute('aria-label')).toContain('Throughput: latest 200 b/s');
+    expect(element.getAttribute('aria-label')).toContain('Throughput: latest 200');
+    expect(element.valueFormatter(1234.5)).toBe(new Intl.NumberFormat('en').format(1234.5));
+  });
+
+  it('uses an explicit value domain', async () => {
+    const element = await mount();
+
+    element.points = points;
+    element.valueDomain = {min: 5, max: 10};
+    await element.updateComplete;
+
+    const labels = [...element.shadowRoot?.querySelectorAll('[part="axis"] text') ?? []]
+      .map((node) => node.textContent);
+    const numericLabels = labels.map(Number).filter(Number.isFinite);
+
+    expect(labels).toContain('10');
+    expect(numericLabels.every((label) => label >= 5)).toBe(true);
+    expect(labels).not.toContain('0');
   });
 
   it('renders positional accent bars and timestamp labels', async () => {

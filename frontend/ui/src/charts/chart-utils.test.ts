@@ -1,11 +1,14 @@
 import {describe, expect, it} from 'vitest';
+import {setMndwUiLocale} from '../i18n.js';
 import type {MndwChartColor, MndwChartSeries} from './chart-types.js';
 import {
   buildBarAriaLabel,
   buildLineAriaLabel,
   filterFinitePoints,
   formatChartRange,
+  formatNumber,
   formatSpeed,
+  getNiceUpperLimit,
   getSpeedUpperLimit,
   normalizeChartSamples,
   resolveChartColor,
@@ -27,6 +30,25 @@ describe('getSpeedUpperLimit', () => {
     expect(getSpeedUpperLimit(0)).toBe(5000);
     expect(getSpeedUpperLimit(1234)).toBe(5000);
     expect(getSpeedUpperLimit(73000)).toBe(80000);
+  });
+});
+
+describe('neutral chart defaults', () => {
+  it('formats locale-aware numbers without a unit', () => {
+    setMndwUiLocale('en');
+    expect(formatNumber(1234.5)).toBe(new Intl.NumberFormat('en').format(1234.5));
+    setMndwUiLocale('ru');
+    expect(formatNumber(1234.5)).toBe(new Intl.NumberFormat('ru').format(1234.5));
+    setMndwUiLocale('en');
+  });
+
+  it.each([
+    [23, 25],
+    [123456, 150000],
+    [42, 50],
+    [0, 1],
+  ])('chooses a nice upper limit for %s without a speed floor', (max, expected) => {
+    expect(getNiceUpperLimit(max)).toBe(expected);
   });
 });
 
@@ -79,13 +101,13 @@ describe('accessibility fallback labels', () => {
 
   it('derives line labels from series labels', () => {
     expect(buildLineAriaLabel(series, 'No data')).toContain(
-      'Upload: latest 200 b/s; range 100 b/s to 200 b/s',
+      'Upload: latest 200; range 100 to 200',
     );
   });
 
   it('derives bar labels from the supplied noun', () => {
     expect(buildBarAriaLabel(series[0]?.data ?? [], 'Values', 'No data')).toContain(
-      'Values: latest 200 b/s; range 100 b/s to 200 b/s',
+      'Values: latest 200; range 100 to 200',
     );
   });
 

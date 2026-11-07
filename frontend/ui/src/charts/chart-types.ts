@@ -22,6 +22,7 @@ export interface MndwLineChartProps extends MndwChartPresentationProps {
 
 export interface MndwBarChartProps extends MndwChartPresentationProps {
   points?: readonly MndwChartPoint[];
+  valueDomain?: MndwChartValueDomain;
   color?: MndwChartColor;
 }
 

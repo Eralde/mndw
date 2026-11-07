@@ -1,7 +1,7 @@
 <script lang="ts">
 import {onMount} from 'svelte';
 import type {Readable} from 'svelte/store';
-import {formatSpeed} from '@mndw/ui';
+import {formatSpeed, getSpeedUpperLimit} from '@mndw/ui';
 import type {
   PluginI18n,
   PluginRciManager,
@@ -62,6 +62,11 @@ const timeLoop = createRefreshLoop({
 });
 
 let chartData = $derived(toDeviceTrafficChartData(rawChartData, deviceTime));
+let trafficValueDomain = $derived.by(() => {
+  const max = Math.max(...chartData.points.map((point) => point.value), 0);
+
+  return {min: 0, max: getSpeedUpperLimit(max)};
+});
 
 $effect(() => {
   const name = hosts.find((h) => h.mac === selectedMac)?.name || selectedMac;
@@ -287,6 +292,8 @@ onMount(() => {
         <div class="chart-wrap">
           <mndw-bar-chart
             points={chartData.points}
+            valueFormatter={formatSpeed}
+            valueDomain={trafficValueDomain}
             empty-label={t('status.no-data')}
             aria-label={t('aria.history')}
           ></mndw-bar-chart>

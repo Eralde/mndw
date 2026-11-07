@@ -13,6 +13,7 @@ import {
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {CommonModule} from '@angular/common';
 import {Subscription, switchMap, timer} from 'rxjs';
+import {formatSpeed, getSpeedUpperLimit} from '@mndw/ui';
 import type {RrdTick} from '@mndw/sdk/rrd';
 import type {ClockDate, NetworkInterface} from '../types/rci.types';
 import {RciService} from '../services/rci.service';
@@ -60,6 +61,13 @@ export class AppComponent implements OnInit, OnDestroy {
       this.clockTime(),
       this.deviceTimeRrdTimestamp(),
     );
+  });
+  protected readonly valueFormatter = formatSpeed;
+  protected readonly valueDomain = computed(() => {
+    const values = this.chartData().series.flatMap((series) => series.data.map((point) => point.value));
+    const max = Math.max(...values, 0);
+
+    return {min: 0, max: getSpeedUpperLimit(max)};
   });
 
   private pollingSub: Subscription | null = null;

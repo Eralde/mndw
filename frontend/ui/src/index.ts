@@ -52,7 +52,7 @@ export type {
   MndwLineChartProps,
   MndwSparklineProps,
 } from './charts/chart-types.js';
-export {formatSpeed} from './charts/chart-utils.js';
+export {formatSpeed, getSpeedUpperLimit} from './charts/chart-utils.js';
 export {MNDW_CHECKBOX_TAG, MndwCheckbox} from './checkbox/checkbox.js';
 export type {MndwCheckboxChangeDetail} from './checkbox/checkbox.js';
 export {MNDW_FIELD_TAG, MNDW_LABEL_CHANGE_EVENT, MndwField} from './field/field.js';

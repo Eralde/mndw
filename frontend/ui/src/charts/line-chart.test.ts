@@ -100,7 +100,8 @@ describe('<mndw-line-chart>', () => {
     element.series = [uploadSeries];
     await element.updateComplete;
 
-    expect(element.getAttribute('aria-label')).toContain('Upload: latest 200 b/s');
+    expect(element.getAttribute('aria-label')).toContain('Upload: latest 200');
+    expect(element.valueFormatter(1234.5)).toBe(new Intl.NumberFormat('en').format(1234.5));
     expect(element.getAttribute('aria-label')).not.toMatch(/TX|RX|Traffic/);
   });
 
@@ -116,7 +117,7 @@ describe('<mndw-line-chart>', () => {
     expect(element.getAttribute('aria-label')).toContain('Temperature');
     expect(element.getAttribute('aria-label')).toContain('20.0 °C');
     expect([...element.shadowRoot?.querySelectorAll('[part="axis"] text') ?? []]
-      .map((node) => node.textContent)).toContain('1000.0 °C');
+      .map((node) => node.textContent)).toContain('10.0 °C');
 
     const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
 

@@ -237,6 +237,8 @@ describe('AppComponent', () => {
     const chart = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart') as HTMLElement & {
       series?: Array<{label?: string; color?: string}>;
       domain?: {start: number; end: number};
+      valueFormatter?: (value: number) => string;
+      valueDomain?: {min: number; max: number};
     };
 
     expect(chart.series?.map((series) => [series.label, series.color])).toEqual([
@@ -244,6 +246,9 @@ describe('AppComponent', () => {
       ['RX', 'success'],
     ]);
     expect(chart.domain?.end).toBe(new Date(2026, 0, 1, 12).getTime());
+    expect(chart.valueFormatter?.(1500)).toBe('1.5 Kb/s');
+    expect(chart.valueDomain?.min).toBe(0);
+    expect(chart.valueDomain?.max).toBeGreaterThanOrEqual(5000);
     expect(chart.getAttribute('aria-label')).toBe('Interface traffic for WAN');
   });
 

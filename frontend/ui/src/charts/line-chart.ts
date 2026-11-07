@@ -5,8 +5,8 @@ import {
   buildLineAriaLabel,
   filterFinitePoints,
   formatClockTime,
-  formatSpeed,
-  getSpeedUpperLimit,
+  formatNumber,
+  getNiceUpperLimit,
   resolveDomain,
   splitFinitePoints,
 } from './chart-utils.js';
@@ -18,6 +18,7 @@ import type {
   MndwChartPoint,
   MndwChartSeries,
   MndwChartTimeFormatter,
+  MndwChartValueDomain,
   MndwChartValueFormatter,
 } from './chart-types.js';
 import {ChartFrameController} from './chart-frame-controller.js';
@@ -86,7 +87,7 @@ export class MndwLineChart extends LitElement {
   declare public series: readonly MndwChartSeries[];
   declare public bands: readonly MndwChartBand[];
   declare public domain: MndwChartDomain | undefined;
-  declare public valueDomain: {min: number; max: number} | undefined;
+  declare public valueDomain: MndwChartValueDomain | undefined;
   declare public emptyLabel: string | undefined;
   declare public valueLabel: string | undefined;
   declare public valueFormatter: MndwChartValueFormatter;
@@ -112,7 +113,7 @@ export class MndwLineChart extends LitElement {
     this.series = [];
     this.bands = [];
     this.domain = undefined;
-    this.valueFormatter = formatSpeed;
+    this.valueFormatter = formatNumber;
     this.timeFormatter = formatClockTime;
     this.emptyLabelState = createLocalizedProperty<string | undefined>(this, 'emptyLabel', 'empty-label');
     this.valueLabelState = createLocalizedProperty<string | undefined>(this, 'valueLabel', 'value-label');
@@ -231,7 +232,7 @@ export class MndwLineChart extends LitElement {
 
     const maxValue = Math.max(...allPoints.map((point) => point.value), 1);
     const lowerLimit = this.valueDomain?.min ?? 0;
-    const upperLimit = this.valueDomain?.max ?? getSpeedUpperLimit(maxValue);
+    const upperLimit = this.valueDomain?.max ?? getNiceUpperLimit(maxValue);
     const xScale = d3.scaleTime()
       .domain([new Date(resolvedDomain.start), new Date(resolvedDomain.end)])
       .range([padding.left, Math.max(width - padding.right, padding.left + 1)]);

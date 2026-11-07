@@ -6,6 +6,7 @@ import type {
   MndwChartSeries,
   MndwChartValueFormatter,
 } from './chart-types.js';
+import {getMndwUiLocale} from '../i18n.js';
 
 export const MIN_Y_AXIS_UPPER_LIMIT = 5000;
 
@@ -37,6 +38,23 @@ export const getSpeedUpperLimit = (speed: number): number => {
   const limit = Math.ceil(speed / multiplier) * multiplier;
 
   return Math.max(limit, MIN_Y_AXIS_UPPER_LIMIT);
+};
+
+export const formatNumber: MndwChartValueFormatter = (value) => {
+  return new Intl.NumberFormat(getMndwUiLocale()).format(value);
+};
+
+export const getNiceUpperLimit = (max: number): number => {
+  if (!Number.isFinite(max) || max <= 0) {
+    return 1;
+  }
+
+  const magnitude = Math.pow(10, Math.floor(Math.log10(max)));
+  const scaled = max / magnitude;
+  const multiplier = [1, 1.5, 2, 2.5, 5, 10].find((candidate) => candidate >= scaled) ?? 10;
+  const limit = multiplier * magnitude;
+
+  return Number.isFinite(limit) ? limit : max;
 };
 
 /** Formats an epoch-ms timestamp as a local `HH:MM:SS` clock label for compact chart axes. */
@@ -156,7 +174,7 @@ export const formatChartRange = (
 export const buildLineAriaLabel = (
   series: readonly MndwChartSeries[],
   emptyLabel: string,
-  formatter: MndwChartValueFormatter = formatSpeed,
+  formatter: MndwChartValueFormatter = formatNumber,
   valueLabel?: string,
 ): string => {
   const segments = series
@@ -176,7 +194,7 @@ export const buildBarAriaLabel = (
   points: readonly MndwChartPoint[],
   valueLabel: string,
   emptyLabel: string,
-  formatter: MndwChartValueFormatter = formatSpeed,
+  formatter: MndwChartValueFormatter = formatNumber,
 ): string => {
   return formatChartRange(points, valueLabel, formatter) ?? emptyLabel;
 };

@@ -100,6 +100,8 @@ describe('TrafficWidget shared controls', () => {
       | (HTMLElement & {
         points?: Array<{time: number; value: number}>;
         valueLabel?: string;
+        valueFormatter?: (value: number) => string;
+        valueDomain?: {min: number; max: number};
       })
       | null;
 
@@ -107,6 +109,8 @@ describe('TrafficWidget shared controls', () => {
     expect(chart?.points?.map((point) => point.value)).toEqual([100, 200]);
     expect(chart?.getAttribute('aria-label')).toBe('Device traffic history');
     expect(chart?.valueLabel).toBe('Values');
+    expect(chart?.valueFormatter?.(1500)).toBe('1.5 Kb/s');
+    expect(chart?.valueDomain).toEqual({min: 0, max: 5000});
     expect(host.querySelector('.traffic-summary')?.textContent).toContain('↓ 150 b/s ↑ 300 b/s');
 
     expect(host.querySelectorAll('button')).toHaveLength(0);

@@ -71,6 +71,8 @@
                 <mndw-line-chart
                     [series]="chartData().series"
                     [domain]="chartData().domain"
+                    [valueFormatter]="valueFormatter"
+                    [valueDomain]="valueDomain()"
                     [empty-label]="t('status.no-data')"
                     [attr.aria-label]="t('a11y.chart-label', { interface: activeInterfaceName() })"
                 ></mndw-line-chart>

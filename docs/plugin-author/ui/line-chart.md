@@ -20,9 +20,12 @@ import {mount} from '../.vitepress/theme/ui-demos/line-chart.js';
 and formatter callbacks are property-only; replace arrays with new references when data changes. `*Props` interfaces
 are optional assignment bags, while initialized elements have concrete defaults.
 
-Line values default to network-speed formatting; `valueFormatter(value)` and `timeFormatter(epochMs)` customize
-tooltip and axis text. Use `value-label` and `empty-label` for chart text. The chart has `role="img"`; an authored
+Line values default to locale-aware numbers, and the Y domain uses a rounded ceiling based on the data. Set
+`valueFormatter(value)` and `valueDomain` to opt into units such as network speed; `getSpeedUpperLimit(max)` keeps
+the existing 5000 minimum for speed axes. For example, set `valueFormatter = formatSpeed` and
+`valueDomain = {min: 0, max: getSpeedUpperLimit(maxValue)}`. `timeFormatter(epochMs)` customizes time labels. Use
+`value-label` and `empty-label` for chart text. The chart has `role="img"`; an authored
 `aria-label` wins, otherwise its accessible name uses each series' `label` or `id`. The `container`, `plot`, `grid`,
 `axis`, `tooltip`, and `empty` parts are available for styling. Tooltips stay local to the plot; redrawing data clears
-stale tooltip state without replaying it until the pointer moves again. `formatSpeed` is exported for matching text
-outside the chart.
+stale tooltip state without replaying it until the pointer moves again. Import `formatSpeed` and
+`getSpeedUpperLimit` from `@mndw/ui` for speed axes.

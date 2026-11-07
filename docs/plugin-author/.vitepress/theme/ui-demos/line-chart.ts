@@ -1,4 +1,4 @@
-import type {MndwChartSeries} from '@mndw/ui';
+import {type MndwChartSeries, formatSpeed, getSpeedUpperLimit} from '@mndw/ui';
 
 const START_TIME = 1_730_000_000_000;
 const MINUTE = 60_000;
@@ -17,6 +17,8 @@ export function mount(root: HTMLElement): void {
 
   chart.setAttribute('aria-label', 'Receive and transmit throughput over ten minutes');
   chart.style.width = '100%';
+  chart.valueFormatter = formatSpeed;
+  chart.valueDomain = {min: 0, max: getSpeedUpperLimit(Math.max(...rxValues, ...txValues))};
   chart.series = series;
   chart.domain = {start: START_TIME, end: START_TIME + 10 * MINUTE};
   root.appendChild(chart);

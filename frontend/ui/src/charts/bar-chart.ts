@@ -5,11 +5,17 @@ import {
   buildBarAriaLabel,
   filterFinitePoints,
   formatClockTime,
-  formatSpeed,
-  getSpeedUpperLimit,
+  formatNumber,
+  getNiceUpperLimit,
   resolveChartColor,
 } from './chart-utils.js';
-import type {MndwChartColor, MndwChartPoint, MndwChartTimeFormatter, MndwChartValueFormatter} from './chart-types.js';
+import type {
+  MndwChartColor,
+  MndwChartPoint,
+  MndwChartTimeFormatter,
+  MndwChartValueDomain,
+  MndwChartValueFormatter,
+} from './chart-types.js';
 import {ChartFrameController} from './chart-frame-controller.js';
 import {chartFrameStyles, renderChartFrame} from './chart-frame.js';
 import {getMndwUiText} from '../i18n.js';
@@ -40,6 +46,7 @@ export class MndwBarChart extends LitElement {
 
   public static properties: PropertyDeclarations = {
     points: {attribute: false},
+    valueDomain: {attribute: false},
     emptyLabel: {type: String, attribute: 'empty-label'},
     valueLabel: {type: String, attribute: 'value-label'},
     valueFormatter: {attribute: false},
@@ -67,6 +74,7 @@ export class MndwBarChart extends LitElement {
   ];
 
   declare public points: readonly MndwChartPoint[];
+  declare public valueDomain: MndwChartValueDomain | undefined;
   declare public emptyLabel: string | undefined;
   declare public valueLabel: string | undefined;
   declare public valueFormatter: MndwChartValueFormatter;
@@ -90,7 +98,8 @@ export class MndwBarChart extends LitElement {
     super();
 
     this.points = [];
-    this.valueFormatter = formatSpeed;
+    this.valueDomain = undefined;
+    this.valueFormatter = formatNumber;
     this.timeFormatter = formatClockTime;
     this.color = 'accent';
     this.emptyLabelState = createLocalizedProperty<string | undefined>(this, 'emptyLabel', 'empty-label');
@@ -115,6 +124,7 @@ export class MndwBarChart extends LitElement {
   protected override willUpdate(changedProperties: Map<PropertyKey, unknown>): void {
     if (
       changedProperties.has('points')
+      || changedProperties.has('valueDomain')
       || changedProperties.has('emptyLabel')
       || changedProperties.has('valueLabel')
       || changedProperties.has('valueFormatter')
@@ -128,6 +138,7 @@ export class MndwBarChart extends LitElement {
   protected override updated(changedProperties: Map<PropertyKey, unknown>): void {
     if (
       changedProperties.has('points')
+      || changedProperties.has('valueDomain')
       || changedProperties.has('emptyLabel')
       || changedProperties.has('valueLabel')
       || changedProperties.has('valueFormatter')
@@ -190,13 +201,14 @@ export class MndwBarChart extends LitElement {
     const innerWidth = Math.max(width - margin.left - margin.right, 50);
     const innerHeight = Math.max(height - margin.top - margin.bottom, 50);
     const maxValue = Math.max(...validPoints.map((point) => point.value), 1);
-    const upperLimit = getSpeedUpperLimit(maxValue);
+    const lowerLimit = this.valueDomain?.min ?? 0;
+    const upperLimit = this.valueDomain?.max ?? getNiceUpperLimit(maxValue);
     const xScale = d3.scaleBand<string>()
       .domain(validPoints.map((_point, index) => String(index)))
       .range([0, innerWidth])
       .padding(0.15);
     const yScale = d3.scaleLinear()
-      .domain([0, upperLimit])
+      .domain([lowerLimit, upperLimit])
       .range([innerHeight, 0]);
     const svg = d3.select(svgElement)
       .attr('width', width)
@@ -245,7 +257,7 @@ export class MndwBarChart extends LitElement {
         .attr('x', barX)
         .attr('y', yScale(point.value))
         .attr('width', xScale.bandwidth())
-        .attr('height', yScale(0) - yScale(point.value))
+        .attr('height', yScale(lowerLimit) - yScale(point.value))
         .style('fill', `var(--mndw-${resolvedColor})`);
     }
 

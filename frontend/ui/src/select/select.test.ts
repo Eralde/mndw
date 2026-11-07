@@ -54,6 +54,28 @@ async function nextAnimationFrame(): Promise<void> {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+function keydown(
+  target: HTMLElement | null,
+  key: string,
+  options: {altKey?: boolean} = {},
+): KeyboardEvent {
+  if (!target) {
+    throw new Error('missing keydown target');
+  }
+
+  const event = new KeyboardEvent('keydown', {
+    key,
+    altKey: options.altKey ?? false,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  });
+
+  target.dispatchEvent(event);
+
+  return event;
+}
+
 function panel(): MndwSelectPanel | null {
   return document.querySelector(MNDW_SELECT_PANEL_TAG);
 }
@@ -127,13 +149,16 @@ function fakeProvider(): {
 }
 
 describe('<mndw-select> trigger', () => {
-  it('is form-associated and exposes combobox semantics on the host', async () => {
+  it('is form-associated and exposes listbox button semantics on the trigger', async () => {
     const element = await mount();
+    const button = trigger(element);
 
     expect(MndwSelect.formAssociated).toBe(true);
-    expect(element.getAttribute('role')).toBe('combobox');
-    expect(element.getAttribute('aria-expanded')).toBe('false');
-    expect(element.getAttribute('tabindex')).toBe('0');
+    expect(button.tagName).toBe('BUTTON');
+    expect(button.getAttribute('aria-label')).toBe('Interface');
+    expect(button.getAttribute('aria-haspopup')).toBe('listbox');
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    expect(element.hasAttribute('tabindex')).toBe(false);
   });
 
   it('opens when the host receives activation', async () => {
@@ -191,12 +216,12 @@ describe('<mndw-select> trigger', () => {
     expect(trigger(element).textContent).toContain('Wireless');
   });
 
-  it('is a combobox that reports collapsed state', async () => {
+  it('has a named button trigger that reports collapsed state', async () => {
     const element = await mount();
 
-    expect(element.getAttribute('role')).toBe('combobox');
-    expect(element.getAttribute('aria-haspopup')).toBe('listbox');
-    expect(element.getAttribute('aria-expanded')).toBe('false');
+    expect(trigger(element).getAttribute('aria-label')).toBe('Interface');
+    expect(trigger(element).getAttribute('aria-haspopup')).toBe('listbox');
+    expect(trigger(element).getAttribute('aria-expanded')).toBe('false');
   });
 
   it('names the trigger from the label', async () => {
@@ -224,99 +249,34 @@ describe('<mndw-select> trigger', () => {
     expect(element.value).toBe('saved-value');
   });
 
-  it('announces required and invalid state on the host', async () => {
+  it('announces invalid state on the trigger', async () => {
     const element = await mount();
 
     element.required = true;
     element.invalid = true;
     await element.updateComplete;
 
-    expect(element.getAttribute('aria-required')).toBe('true');
-    expect(element.getAttribute('aria-invalid')).toBe('true');
+    expect(trigger(element).getAttribute('aria-invalid')).toBe('true');
   });
 });
 
 describe('<mndw-select> opening', () => {
-  it('retries initial focus until the provider accepts it and stops after success', async () => {
-    const probe = fakeProvider();
-    const provider: UiOverlayProvider = {
-      open(options: UiLayerOptions) {
-        const layer = probe.provider.open(options) as FakeLayer;
-
-        layer.contentElement.style.opacity = '0';
-        requestAnimationFrame(() => {
-          layer.contentElement.style.opacity = '1';
-        });
-
-        return layer;
-      },
-    };
-
-    setOverlayProvider(provider);
-
+  it('moves DOM focus into the listbox while its popup is open', async () => {
+    const element = await mount();
     const nativeFocus = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'focus')?.value as (
       this: HTMLElement,
     ) => void;
-    let optionFocusAttempts = 0;
+    let optionFocusCalls = 0;
     const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function(this: HTMLElement): void {
       if (this.getAttribute('role') === 'option') {
-        optionFocusAttempts += 1;
-
-        const panelRoot = this.getRootNode();
-
-        const panelHost = panelRoot instanceof ShadowRoot ? panelRoot.host : null;
-
-        if (panelHost?.parentElement?.style.opacity === '0') {
-          return;
-        }
+        optionFocusCalls += 1;
       }
 
       nativeFocus.call(this);
     });
-    const element = await mount();
-    const opened = await openPanel(element);
-    const activeOption = opened.renderRoot.querySelector<HTMLElement>('[role="option"]');
 
-    expect(activeOption).not.toBeNull();
-    expect(deepActiveElement()).not.toBe(activeOption);
-    expect(optionFocusAttempts).toBe(1);
-
-    await nextAnimationFrame();
-
-    expect(deepActiveElement()).toBe(activeOption);
-    expect(optionFocusAttempts).toBe(2);
-
-    await nextAnimationFrame();
-
-    expect(optionFocusAttempts).toBe(2);
-    focusSpy.mockRestore();
-  });
-
-  it('stops initial focus retries when the provider closes before accepting focus', async () => {
-    const probe = fakeProvider();
-
-    setOverlayProvider(probe.provider);
-
-    const nativeFocus = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'focus')?.value as (
-      this: HTMLElement,
-    ) => void;
-    let optionFocusAttempts = 0;
-    const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function(this: HTMLElement): void {
-      if (this.getAttribute('role') === 'option') {
-        optionFocusAttempts += 1;
-
-        return;
-      }
-
-      nativeFocus.call(this);
-    });
-    const element = await mount();
-
-    element.focus();
-
-    const elementFocus = vi.spyOn(element, 'focus');
-
-    trigger(element).dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown'}));
+    trigger(element).focus();
+    keydown(trigger(element), 'ArrowDown');
 
     const opened = panel();
 
@@ -327,15 +287,9 @@ describe('<mndw-select> opening', () => {
     await opened.updateComplete;
     await Promise.resolve();
 
-    expect(optionFocusAttempts).toBe(1);
-
-    probe.layers[0].settle('escape');
-    await probe.layers[0].closed;
-
-    await nextAnimationFrame();
-
-    expect(optionFocusAttempts).toBe(1);
-    expect(elementFocus).not.toHaveBeenCalled();
+    expect(deepActiveElement()).toBe(opened.listboxElement);
+    expect(optionFocusCalls).toBe(0);
+    expect(opened.listboxElement?.getAttribute('aria-activedescendant')).toBe(opened.activeOptionElement?.id);
     focusSpy.mockRestore();
   });
 
@@ -345,7 +299,7 @@ describe('<mndw-select> opening', () => {
     await openPanel(element);
 
     expect(element.open).toBe(true);
-    expect(element.getAttribute('aria-expanded')).toBe('true');
+    expect(trigger(element).getAttribute('aria-expanded')).toBe('true');
   });
 
   it('passes the option model to the panel', async () => {
@@ -370,13 +324,29 @@ describe('<mndw-select> opening', () => {
     expect(panel()).toBeNull();
   });
 
-  it('opens on ArrowDown from the trigger', async () => {
+  it.each([
+    {key: 'ArrowDown', index: 0, label: 'Down opens on first'},
+    {key: 'ArrowUp', index: 1, label: 'Up opens on last'},
+    {key: 'Enter', index: 0, label: 'Enter opens on selected'},
+    {key: ' ', index: 0, label: 'Space opens on selected'},
+    {key: 'ArrowDown', altKey: true, index: 0, label: 'Alt+Down opens on selected'},
+  ])('$label', async ({key, altKey, index}) => {
     const element = await mount();
 
-    trigger(element).dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown'}));
+    trigger(element).focus();
+    keydown(trigger(element), key, {altKey});
     await element.updateComplete;
 
-    expect(panel()).not.toBeNull();
+    const opened = panel();
+
+    if (!opened) {
+      throw new Error('panel did not open');
+    }
+
+    await opened.updateComplete;
+
+    expect(opened.activeIndex).toBe(index);
+    expect(deepActiveElement()).toBe(opened.listboxElement);
   });
 
   it.each([
@@ -390,7 +360,7 @@ describe('<mndw-select> opening', () => {
       await element.updateComplete;
     }
 
-    trigger(element).dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true}));
+    keydown(trigger(element), key);
     await element.updateComplete;
 
     const opened = panel();
@@ -402,6 +372,48 @@ describe('<mndw-select> opening', () => {
     await opened.updateComplete;
 
     expect(opened.activeIndex).toBe(activeIndex);
+  });
+
+  it('opens on printable typeahead and makes the matching option active', async () => {
+    const element = await mount();
+
+    trigger(element).focus();
+    keydown(trigger(element), 'w');
+    await element.updateComplete;
+
+    const opened = panel();
+
+    if (!opened) {
+      throw new Error('panel did not open');
+    }
+
+    await opened.updateComplete;
+
+    expect(opened.activeIndex).toBe(1);
+    expect(deepActiveElement()).toBe(opened.listboxElement);
+  });
+
+  it('moves among enabled options without wrapping', async () => {
+    const element = await mount(`
+      <mndw-select label="Interface">
+        <mndw-option value="isp">Wired</mndw-option>
+        <mndw-option value="disabled" disabled>Disabled</mndw-option>
+        <mndw-option value="wifi">Wireless</mndw-option>
+      </mndw-select>
+    `);
+    const opened = await openPanel(element);
+
+    keydown(opened.listboxElement, 'ArrowDown');
+    await opened.updateComplete;
+    expect(opened.activeIndex).toBe(2);
+
+    keydown(opened.listboxElement, 'ArrowDown');
+    expect(opened.activeIndex).toBe(2);
+
+    keydown(opened.listboxElement, 'ArrowUp');
+    await opened.updateComplete;
+    expect(opened.activeIndex).toBe(0);
+    expect(deepActiveElement()).toBe(opened.listboxElement);
   });
 
   it('does not emit aria-controls when ElementInternals support is absent', async () => {
@@ -635,54 +647,17 @@ describe('<mndw-select> opening', () => {
     expect(probe.calls).toHaveLength(1);
   });
 
-  it('registers the current panel through ariaControlsElements when supported', async () => {
-    const TAG = 'mndw-select-internals-probe';
-    const previous = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'attachInternals');
-    let controlled: Element[] = [];
+  it('keeps listbox focus and updates its active descendant', async () => {
+    const element = await mount();
+    const opened = await openPanel(element);
 
-    Object.defineProperty(HTMLElement.prototype, 'attachInternals', {
-      configurable: true,
-      writable: true,
-      value(): ElementInternals {
-        return {
-          get ariaControlsElements(): Element[] {
-            return controlled;
-          },
-          set ariaControlsElements(value: Element[]) {
-            controlled = value;
-          },
-          setFormValue(): void {},
-          setValidity(): void {},
-        } as unknown as ElementInternals;
-      },
-    });
+    expect(deepActiveElement()).toBe(opened.listboxElement);
+    expect(opened.listboxElement?.getAttribute('aria-activedescendant')).toBe(opened.activeOptionElement?.id);
 
-    try {
-      if (!customElements.get(TAG)) {
-        customElements.define(TAG, class extends MndwSelect {});
-      }
+    keydown(opened.listboxElement, 'ArrowDown');
+    await opened.updateComplete;
 
-      document.body.innerHTML = `<${TAG} label="Interface"><mndw-option value="a">A</mndw-option></${TAG}>`;
-
-      const element = document.body.firstElementChild as MndwSelect;
-
-      await element.updateComplete;
-
-      const opened = await openPanel(element);
-
-      expect(controlled).toEqual([opened]);
-
-      trigger(element).click();
-      await element.updateComplete;
-
-      expect(controlled).toEqual([]);
-    } finally {
-      if (previous) {
-        Object.defineProperty(HTMLElement.prototype, 'attachInternals', previous);
-      } else {
-        Reflect.deleteProperty(HTMLElement.prototype, 'attachInternals');
-      }
-    }
+    expect(opened.listboxElement?.getAttribute('aria-activedescendant')).toBe(opened.activeOptionElement?.id);
   });
 
   it('repositions the layer only after the panel has rendered', async () => {
@@ -795,6 +770,7 @@ describe('<mndw-select> externally closed layers', () => {
     const focus = vi.spyOn(element, 'focus');
 
     await openPanel(element);
+    focus.mockClear();
 
     (probe.layers[0].contentElement.firstElementChild as HTMLElement).dispatchEvent(
       new FocusEvent('focusout', {bubbles: true, relatedTarget: elsewhere}),
@@ -838,6 +814,7 @@ describe('<mndw-select> externally closed layers', () => {
     const focus = vi.spyOn(element, 'focus');
 
     await openPanel(element);
+    focus.mockClear();
     element.remove();
     await Promise.resolve();
 

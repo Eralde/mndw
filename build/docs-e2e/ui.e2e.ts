@@ -606,47 +606,175 @@ test('desktop select uses anchored popover and updates value', async ({page}) =>
   await expect.poll(() => selectValue(select)).toBe('guest');
 });
 
-test('desktop select supports keyboard navigation in its anchored popover', async ({page}) => {
+test('select follows select-only combobox keyboard behavior', async ({page}) => {
   await page.setViewportSize({width: 1280, height: 900});
   await page.goto('ui/select');
   await assertPreviews(page, 'ui/select');
 
-  const select = page.locator('.ui-demo__preview mndw-select').first();
-  const panel = page.locator('.mndw-overlay-positioner--popover mndw-select-panel');
+  await page.evaluate(() => {
+    const fixture = document.createElement('div');
 
-  await select.focus();
-  await page.keyboard.press('ArrowDown');
+    fixture.innerHTML = `
+      <mndw-select id="apg-select" label="Network" value="lan">
+        <mndw-option value="lan">LAN</mndw-option>
+        <mndw-option value="guest">Guest</mndw-option>
+        <mndw-option value="gateway">Gateway</mndw-option>
+        <mndw-option value="disabled" disabled>Disabled</mndw-option>
+        <mndw-option value="iot">IoT</mndw-option>
+      </mndw-select>
+      <button id="apg-select-next">Next control</button>
+    `;
+    document.body.append(fixture);
+  });
 
+  const select = page.locator('#apg-select');
+  const trigger = select.locator('button[part="trigger"]');
+  const panel = page.locator('mndw-select-panel');
+  const listbox = panel.getByRole('listbox');
   const options = panel.getByRole('option');
 
+  await expect(trigger).toHaveAttribute('aria-haspopup', 'listbox');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await trigger.focus();
+  await page.keyboard.press('ArrowDown');
   await expect(panel).toBeVisible();
-  await expect(options.nth(0)).toBeFocused();
-  await page.keyboard.press('ArrowDown');
-  await expect(options.nth(1)).toBeFocused();
-  await page.keyboard.press('Enter');
-  await expect.poll(() => selectValue(select)).toBe('guest');
-  await expect(panel).toBeHidden();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(listbox).toBeFocused();
+  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
 
-  await select.focus();
+  const hasActiveOptionInListboxShadowRoot = await listbox.evaluate((element) => {
+    const activeId = element.getAttribute('aria-activedescendant');
+    const root = element.getRootNode();
+
+    if (!(root instanceof ShadowRoot)) {
+      return false;
+    }
+
+    return [...root.querySelectorAll<HTMLElement>('[role="option"]')].some(
+      (option) => option.id === activeId && option.getRootNode() === root,
+    );
+  });
+
+  expect(hasActiveOptionInListboxShadowRoot).toBe(true);
+
+  // The listbox owns DOM focus and exposes its active option by ID.
   await page.keyboard.press('ArrowDown');
-  await expect(options.nth(1)).toBeFocused();
+  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowDown');
+  await expect(options.nth(2)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowDown');
+  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowDown');
+  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowUp');
+  await expect(options.nth(2)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Home');
+  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('End');
+  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('PageUp');
+  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('PageDown');
+  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Home');
+  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('g');
+  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('g');
+  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(listbox).toBeFocused();
+
+  // Escape closes without committing the active item.
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
-  await expect(select).toBeFocused();
+  await expect(trigger).toBeFocused();
+  await expect.poll(() => selectValue(select)).toBe('lan');
+
+  await page.waitForTimeout(550);
+
+  // Closed Home/End open on their edge options; Enter commits.
+  await page.keyboard.press('Home');
+  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => selectValue(select)).toBe('lan');
+  await expect(panel).toBeHidden();
+
+  await page.keyboard.press('End');
+  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press(' ');
+  await expect.poll(() => selectValue(select)).toBe('iot');
+  await expect(panel).toBeHidden();
+
+  // Closed Up and Alt+Down open; Alt+Up commits and closes.
+  await page.keyboard.press('ArrowUp');
+  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowUp');
+  await expect(options.nth(2)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Alt+ArrowUp');
+  await expect.poll(() => selectValue(select)).toBe('gateway');
+  await expect(panel).toBeHidden();
+
+  await page.keyboard.press('Alt+ArrowDown');
+  await expect(panel).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect.poll(() => selectValue(select)).toBe('gateway');
+  await expect(panel).toBeHidden();
+  await expect(page.locator('#apg-select-next')).toBeFocused();
+
+  // Printable type-ahead also opens a closed select.
+  await trigger.focus();
+  await page.keyboard.press('i');
+  await expect(panel).toBeVisible();
+  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Escape');
+  await expect.poll(() => selectValue(select)).toBe('gateway');
+
+  // Repeated letters cycle through matching labels.
+  const addressSelect = page.locator('.ui-demo__preview mndw-select').nth(1);
+  const addressPanel = page.locator('mndw-select-panel');
+
+  await addressSelect.locator('button[part="trigger"]').focus();
+  await page.keyboard.press('i');
+  await expect(addressPanel.getByRole('option', {name: 'IPv6'})).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('i');
+  await expect(addressPanel.getByRole('option', {name: 'IPv4'})).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Escape');
+
+  // Pointer selection commits; an outside click only dismisses.
+  await trigger.click();
+  await options.nth(0).click();
+  await expect.poll(() => selectValue(select)).toBe('lan');
+  await trigger.click();
+  await page.locator('#apg-select-next').click({force: true});
+  await expect(panel).toBeHidden();
+  await expect.poll(() => selectValue(select)).toBe('lan');
 });
 
-test('tooltip trigger can receive focus and shows tooltip text', async ({page}) => {
+test('tooltip supports focus, hover, and Escape dismissal', async ({page}) => {
   await page.setViewportSize({width: 1280, height: 900});
   await page.goto('ui/tooltip');
   await assertPreviews(page, 'ui/tooltip');
 
   const tooltip = page.locator('.ui-demo__preview mndw-tooltip').nth(1);
-  const trigger = tooltip
-    .locator('mndw-button');
+  const trigger = tooltip.locator('mndw-button');
+  const button = trigger.locator('button');
+  const tooltipId = await tooltip.getAttribute('id');
 
-  await trigger.locator('button').focus();
+  await button.focus();
   await expect(tooltip).toHaveAttribute('open', '');
   await expect(tooltip).toHaveAttribute('text', 'Refresh status');
+  await expect(trigger).toHaveAttribute('aria-describedby', tooltipId ?? '');
+  await page.keyboard.press('Escape');
+  await expect(tooltip).not.toHaveAttribute('open', '');
+  await expect(button).toBeFocused();
+
+  await button.blur();
+  await button.hover();
+  await expect(tooltip).toHaveAttribute('open', '');
+  await page.mouse.move(0, 0);
+  await expect(tooltip).not.toHaveAttribute('open', '');
+  await expect(button).not.toBeFocused();
 });
 
 async function exerciseColumnVisibilityMenu(page: Page): Promise<void> {
@@ -783,6 +911,63 @@ test('table sorting, visibility menu, and sort affordance stay stable at desktop
   await nameHeader.click();
   await expect(sortingTable.locator('tbody tr').first()).toContainText('Game console');
   await capture(page, 'table-1280-light.png');
+});
+
+test('table column menu follows menu button keyboard behavior', async ({page}) => {
+  await page.setViewportSize({width: 1280, height: 900});
+  await page.goto('ui/table');
+  await assertPreviews(page, 'ui/table');
+
+  const table = page.locator('.ui-demo__preview mndw-table[data-demo="visibility"]');
+  const trigger = table.locator('[part="column-menu-trigger"]');
+  const menu = page.locator('mndw-column-menu');
+  const items = menu.getByRole('menuitemcheckbox');
+
+  await trigger.focus();
+  await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await page.keyboard.press('Enter');
+  await expect(menu).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(items.nth(0)).toBeFocused();
+
+  await page.keyboard.press('End');
+  await expect(items.nth(2)).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(items.nth(0)).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(items.nth(2)).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(items.nth(0)).toBeFocused();
+  await page.keyboard.press('i');
+  await expect(menu.getByRole('menuitemcheckbox', {name: 'IP address'})).toBeFocused();
+  await page.keyboard.press(' ');
+  await expect(menu.getByRole('menuitemcheckbox', {name: 'IP address'})).toHaveAttribute('aria-checked', 'false');
+  await expect(menu).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Enter');
+  await expect(menu).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(
+    table.locator('thead th[part~="header-cell"]').filter({hasText: 'IP address'}),
+  ).toHaveCount(1);
+
+  await page.keyboard.press(' ');
+  await expect(menu).toBeVisible();
+  await expect(items.nth(0)).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  await expect(trigger).toBeFocused();
+
+  await page.keyboard.press('ArrowUp');
+  await expect(menu).toBeVisible();
+  await expect(items.nth(2)).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(menu).toBeHidden();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(trigger).not.toBeFocused();
+  await expect.poll(() => page.evaluate(() => document.activeElement !== document.body)).toBe(true);
 });
 
 test('heat-strip tooltips remain inside their chart host and preview at both endpoints', async ({page}) => {

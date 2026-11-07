@@ -1,4 +1,6 @@
 import {LitElement, type PropertyDeclarations, css, html} from 'lit';
+import {AriaKeyManager, type KeyManagerList} from '../aria/key-manager.js';
+import {deepActiveElement} from '../focus.js';
 import {focusRing, hostTypography, surfaceHover} from '../styles/base.js';
 
 export const MNDW_COLUMN_MENU_TAG = 'mndw-column-menu';
@@ -15,12 +17,17 @@ export interface MndwColumnMenuCheckDetail {
 
 export interface MndwPanelDismissDetail {
   restoreFocus: boolean;
+  defer?: boolean;
+  tabDirection?: 'backward' | 'forward';
 }
+
+export type MndwColumnMenuInitialFocus = 'first' | 'last';
 
 export class MndwColumnMenu extends LitElement {
   public static readonly properties: PropertyDeclarations = {
     columns: {type: Array, attribute: false},
     hiddenColumns: {type: Array, attribute: false},
+    initialFocus: {type: String, attribute: false},
   };
 
   public static override readonly styles = css`
@@ -92,13 +99,19 @@ export class MndwColumnMenu extends LitElement {
 
   declare public columns: MndwColumnMenuOption[];
   declare public hiddenColumns: string[];
+  declare public initialFocus: MndwColumnMenuInitialFocus;
 
   private workingHidden = new Set<string>();
+  private readonly keyManager = new AriaKeyManager<MndwColumnMenuOption>({
+    getLabel: (column) => column.label,
+    isDisabled: () => false,
+  });
 
   constructor() {
     super();
     this.columns = [];
     this.hiddenColumns = [];
+    this.initialFocus = 'first';
   }
 
   public override connectedCallback(): void {
@@ -107,7 +120,7 @@ export class MndwColumnMenu extends LitElement {
   }
 
   protected override firstUpdated(): void {
-    this.focusOption(0);
+    this.focusInitialOption();
   }
 
   protected override render(): unknown {
@@ -164,6 +177,10 @@ export class MndwColumnMenu extends LitElement {
     this.focusOption(0);
   }
 
+  public focusInitialOption(): void {
+    this.focusOption(this.initialFocus === 'last' ? this.columns.length - 1 : 0);
+  }
+
   private focusOption(index: number): void {
     const buttons = [...this.renderRoot.querySelectorAll<HTMLButtonElement>('button[data-column-id]')];
 
@@ -176,45 +193,72 @@ export class MndwColumnMenu extends LitElement {
 
   private readonly handleKeydown = (event: KeyboardEvent): void => {
     const buttons = [...this.renderRoot.querySelectorAll<HTMLButtonElement>('button[data-column-id]')];
-    const currentIndex = buttons.indexOf(event.target as HTMLButtonElement);
+    const focused = deepActiveElement();
+    let activeIndex = buttons.indexOf(focused as HTMLButtonElement);
 
-    switch (event.key) {
-      case 'ArrowDown':
-        event.preventDefault();
-        this.focusOption(currentIndex + 1);
-        break;
-      case 'ArrowUp':
-        event.preventDefault();
-        this.focusOption(currentIndex - 1);
-        break;
-      case 'Home':
-        event.preventDefault();
-        this.focusOption(0);
-        break;
-      case 'End':
-        event.preventDefault();
-        this.focusOption(buttons.length - 1);
-        break;
-      case 'Escape':
-        event.preventDefault();
-        event.stopPropagation();
-        this.dismiss(true);
-        break;
-      case 'Tab':
-        event.preventDefault();
-        this.dismiss(false);
-        break;
-      default:
-        break;
+    if (activeIndex < 0) {
+      activeIndex = 0;
     }
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      buttons[activeIndex]?.click();
+      this.dismiss(true);
+
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      this.dismiss(true);
+
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      this.dismiss(false, true, event.shiftKey ? 'backward' : 'forward');
+
+      return;
+    }
+
+    const list: KeyManagerList<MndwColumnMenuOption> = {
+      items: this.columns,
+      wrap: true,
+      mode: 'roving-focus',
+      get activeIndex(): number {
+        return activeIndex;
+      },
+      set activeIndex(index: number) {
+        activeIndex = index;
+      },
+      setActiveIndex(index: number): void {
+        activeIndex = index;
+      },
+      focusItem(index: number): void {
+        buttons[index]?.focus();
+      },
+    };
+
+    this.keyManager.handleKeydown(event, list);
   };
 
-  private dismiss(restoreFocus: boolean): void {
+  private dismiss(
+    restoreFocus: boolean,
+    defer = false,
+    tabDirection?: 'backward' | 'forward',
+  ): void {
+    const detail: MndwPanelDismissDetail = defer && tabDirection !== undefined
+      ? {restoreFocus, defer: true, tabDirection}
+      : defer
+      ? {restoreFocus, defer: true}
+      : {restoreFocus};
+
     this.dispatchEvent(
       new CustomEvent<MndwPanelDismissDetail>('mndwpaneldismiss', {
         bubbles: true,
         composed: true,
-        detail: {restoreFocus},
+        detail,
       }),
     );
   }

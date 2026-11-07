@@ -1,7 +1,7 @@
 import {LitElement, type PropertyDeclarations, css, html, nothing} from 'lit';
 import {repeat} from 'lit/directives/repeat.js';
 import {getMndwUiText} from '../i18n.js';
-import {focusWithinWithRetry} from '../focus.js';
+import {focusWithinWithRetry, tabbableElements} from '../focus.js';
 import {LocaleController} from '../locale-controller.js';
 import {type UiLayer, getOverlayProvider} from '../overlay.js';
 import {focusRing, hostTypography, surfaceHover} from '../styles/base.js';
@@ -108,6 +108,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     sortMode: {type: String, attribute: 'sort-mode'},
     hiddenColumns: {type: Array, attribute: false},
     columnMenu: {type: Boolean, attribute: false},
+    columnMenuOpen: {state: true},
     columnMenuPanelClass: {type: String, attribute: 'column-menu-panel-class'},
     caption: {type: String},
     label: {type: String},
@@ -361,6 +362,7 @@ export class MndwTable<Row = unknown> extends LitElement {
   declare public sortMode: 'client' | 'manual';
   declare public hiddenColumns: string[] | undefined;
   declare public columnMenu: boolean;
+  declare private columnMenuOpen: boolean;
   declare public columnMenuPanelClass: string;
   declare public caption: string;
   declare public label: string;
@@ -389,6 +391,7 @@ export class MndwTable<Row = unknown> extends LitElement {
   private readonly localeController = new LocaleController(this);
   private menuLayer: UiLayer | null = null;
   private cancelMenuFocusRetry: (() => void) | null = null;
+  private menuTrigger: HTMLElement | null = null;
 
   private effectiveColumns: Column<Row>[] = [];
   private displayRows: Row[] = [];
@@ -436,6 +439,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     this.sortMode = 'client';
     this.hiddenColumns = undefined;
     this.columnMenu = true;
+    this.columnMenuOpen = false;
     this.columnMenuPanelClass = '';
     this.caption = '';
     this.label = '';
@@ -697,6 +701,8 @@ export class MndwTable<Row = unknown> extends LitElement {
                 class="sort-button"
                 type="button"
                 aria-label=${labels.columnMenu}
+                aria-haspopup="menu"
+                aria-expanded=${String(this.columnMenuOpen)}
               ><mndw-icon name="settings"></mndw-icon></button>
             </th>`
         : nothing
@@ -1734,6 +1740,17 @@ export class MndwTable<Row = unknown> extends LitElement {
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    const menuTrigger = event.composedPath().find((node): node is HTMLElement =>
+      node instanceof HTMLElement && node.getAttribute('part') === 'column-menu-trigger'
+    );
+
+    if (menuTrigger && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      event.preventDefault();
+      this.openColumnMenu(menuTrigger, event.key === 'ArrowUp' ? 'last' : 'first');
+
+      return;
+    }
+
     const handle = (event.composedPath()[0] ?? null) as HTMLElement | null;
 
     if (handle?.getAttribute('part') !== 'drag-handle') {
@@ -1865,7 +1882,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     return true;
   }
 
-  private openColumnMenu(trigger: HTMLElement): void {
+  private openColumnMenu(trigger: HTMLElement, initialFocus: 'first' | 'last' = 'first'): void {
     if (this.menuLayer !== null) {
       return;
     }
@@ -1886,17 +1903,20 @@ export class MndwTable<Row = unknown> extends LitElement {
 
     menu.columns = options;
     menu.hiddenColumns = [...this.effectiveHidden];
+    menu.initialFocus = initialFocus;
     menu.addEventListener(MNDW_COLUMN_MENU_CHECK_EVENT, this.onColumnMenuCheck);
     menu.addEventListener('mndwpaneldismiss', this.onColumnMenuDismiss);
     layer.contentElement.appendChild(menu);
     this.menuLayer = layer;
+    this.menuTrigger = trigger;
+    this.columnMenuOpen = true;
 
     void menu.updateComplete.then(() => {
       if (this.menuLayer === layer) {
         layer.reposition();
         this.cancelMenuFocusRetry = focusWithinWithRetry(
           menu,
-          () => menu.focusFirstOption(),
+          () => menu.focusInitialOption(),
           () => this.menuLayer === layer,
           () => {},
         );
@@ -1917,6 +1937,8 @@ export class MndwTable<Row = unknown> extends LitElement {
     this.cancelMenuFocusRetry?.();
     this.cancelMenuFocusRetry = null;
     this.menuLayer = null;
+    this.menuTrigger = null;
+    this.columnMenuOpen = false;
   }
 
   private readonly onColumnMenuCheck = (event: Event): void => {
@@ -1935,14 +1957,52 @@ export class MndwTable<Row = unknown> extends LitElement {
   };
 
   private readonly onColumnMenuDismiss = (event: Event): void => {
-    const restoreFocus = (event as CustomEvent<MndwPanelDismissDetail>).detail.restoreFocus;
+    const detail = (event as CustomEvent<MndwPanelDismissDetail>).detail;
+    const layer = this.menuLayer;
+
+    if (detail.defer && layer) {
+      const trigger = this.menuTrigger;
+      const tabDestination = trigger === null ? null : this.tabDestination(trigger, detail.tabDirection ?? 'forward');
+
+      window.setTimeout(() => {
+        if (this.menuLayer === layer) {
+          this.closeColumnMenu();
+
+          if (tabDestination !== null) {
+            void layer.closed.then(() => {
+              if (tabDestination.isConnected) {
+                tabDestination.focus();
+              }
+            });
+          }
+        }
+      }, 0);
+
+      return;
+    }
+
+    const trigger = this.menuTrigger;
 
     this.closeColumnMenu();
 
-    if (restoreFocus) {
-      this.shadowRoot?.querySelector<HTMLElement>('[part="column-menu-trigger"]')?.focus();
+    if (detail.restoreFocus) {
+      trigger?.focus();
     }
   };
+
+  private tabDestination(trigger: HTMLElement, direction: 'backward' | 'forward'): HTMLElement | null {
+    const tabbable = tabbableElements(document.body);
+    const triggerIndex = tabbable.indexOf(trigger);
+
+    if (triggerIndex < 0 || tabbable.length < 2) {
+      return null;
+    }
+
+    const offset = direction === 'forward' ? 1 : -1;
+    const index = (triggerIndex + offset + tabbable.length) % tabbable.length;
+
+    return tabbable[index] ?? null;
+  }
 }
 
 export type MndwTableElement = MndwTable<unknown>;

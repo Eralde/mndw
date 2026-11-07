@@ -22,13 +22,13 @@ function ruleBody(css: string, selector: string): string {
 }
 
 describe('interactive focus contract', () => {
-  it('keeps the select focus ring on a host rounded to match its trigger', () => {
+  it('keeps the select focus ring on its focused trigger', () => {
     const css = stylesText(MndwSelect.styles);
 
     expect(ruleBody(css, ':host {')).toContain('border-radius: var(--mndw-radius-md);');
     expect(ruleBody(css, '[part=\'trigger\'] {')).toContain('border-radius: var(--mndw-radius-md);');
 
-    const focusRule = ruleBody(css, ':host(:focus-visible) {');
+    const focusRule = ruleBody(css, '[part=\'trigger\']:focus-visible {');
 
     expect(focusRule).toContain('outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);');
     expect(focusRule).toContain('outline-offset: 0.0625rem;');

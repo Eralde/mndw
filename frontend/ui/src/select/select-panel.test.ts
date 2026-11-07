@@ -36,13 +36,6 @@ function items(panel: MndwSelectPanel): HTMLElement[] {
   return Array.from(panel.shadowRoot?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
 }
 
-async function press(panel: MndwSelectPanel, key: string): Promise<void> {
-  const listbox = panel.shadowRoot?.querySelector('[role="listbox"]');
-
-  listbox?.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true}));
-  await panel.updateComplete;
-}
-
 describe('<mndw-select-panel>', () => {
   it('renders rich label nodes without HTML string interpolation', async () => {
     const panel = await mount();
@@ -120,11 +113,18 @@ describe('<mndw-select-panel>', () => {
     );
   });
 
-  it('marks the selected option', async () => {
-    const rendered = items(await mount('wifi'));
+  it('marks the active option as selected for the combobox', async () => {
+    const panel = await mount('wifi');
+    const rendered = items(panel);
 
     expect(rendered[0].getAttribute('aria-selected')).toBe('false');
     expect(rendered[1].getAttribute('aria-selected')).toBe('true');
+
+    panel.activeIndex = 0;
+    await panel.updateComplete;
+
+    expect(items(panel)[0].getAttribute('aria-selected')).toBe('true');
+    expect(items(panel)[1].getAttribute('aria-selected')).toBe('false');
   });
 
   it('renders a shared check icon only on the selected option', async () => {
@@ -142,54 +142,10 @@ describe('<mndw-select-panel>', () => {
     expect((await mount()).activeIndex).toBe(0);
   });
 
-  it('gives only the active option tabindex 0', async () => {
+  it('does not put popup options in the tab order', async () => {
     const rendered = items(await mount('wifi'));
 
-    expect(rendered.map((item) => item.getAttribute('tabindex'))).toEqual(['-1', '0', '-1']);
-  });
-
-  it('moves active down on ArrowDown', async () => {
-    const panel = await mount();
-
-    await press(panel, 'ArrowDown');
-
-    expect(panel.activeIndex).toBe(1);
-  });
-
-  it('skips disabled options when moving', async () => {
-    const panel = await mount('wifi');
-
-    await press(panel, 'ArrowDown');
-
-    expect(panel.activeIndex).toBe(0);
-  });
-
-  it('wraps from the first option on ArrowUp', async () => {
-    const panel = await mount();
-
-    await press(panel, 'ArrowUp');
-
-    expect(panel.activeIndex).toBe(1);
-  });
-
-  it('jumps to first and last on Home and End', async () => {
-    const panel = await mount('wifi');
-
-    await press(panel, 'End');
-    expect(panel.activeIndex).toBe(1);
-
-    await press(panel, 'Home');
-    expect(panel.activeIndex).toBe(0);
-  });
-
-  it('emits mndwpanelselect on Enter', async () => {
-    const panel = await mount();
-    const onSelect = vi.fn();
-
-    panel.addEventListener('mndwpanelselect', onSelect);
-    await press(panel, 'Enter');
-
-    expect((onSelect.mock.calls[0][0] as CustomEvent<{value: string}>).detail).toEqual({value: 'isp'});
+    expect(rendered.map((item) => item.hasAttribute('tabindex'))).toEqual([false, false, false]);
   });
 
   it('emits mndwpanelselect on click', async () => {
@@ -208,63 +164,6 @@ describe('<mndw-select-panel>', () => {
 
     panel.addEventListener('mndwpanelselect', onSelect);
     items(panel)[2].click();
-
-    expect(onSelect).not.toHaveBeenCalled();
-  });
-
-  it('emits dismiss with restoreFocus on Escape', async () => {
-    const panel = await mount();
-    const onDismiss = vi.fn();
-
-    panel.addEventListener('mndwpaneldismiss', onDismiss);
-    await press(panel, 'Escape');
-
-    expect((onDismiss.mock.calls[0][0] as CustomEvent<{restoreFocus: boolean}>).detail).toEqual({
-      restoreFocus: true,
-    });
-  });
-
-  it('stops Escape propagation after dismissing', async () => {
-    const panel = await mount();
-    const listbox = panel.shadowRoot?.querySelector('[role="listbox"]');
-    const event = new KeyboardEvent('keydown', {
-      key: 'Escape',
-      bubbles: true,
-      composed: true,
-      cancelable: true,
-    });
-
-    listbox?.dispatchEvent(event);
-
-    expect(event.cancelBubble).toBe(true);
-  });
-
-  it('emits dismiss with restoreFocus on Tab', async () => {
-    const panel = await mount();
-    const onDismiss = vi.fn();
-
-    panel.addEventListener('mndwpaneldismiss', onDismiss);
-    await press(panel, 'Tab');
-
-    expect(onDismiss).toHaveBeenCalledTimes(1);
-  });
-
-  it('prevents browser Tab navigation before dismissing', async () => {
-    const panel = await mount();
-    const listbox = panel.shadowRoot?.querySelector('[role="listbox"]');
-    const event = new KeyboardEvent('keydown', {key: 'Tab', bubbles: true, cancelable: true});
-
-    listbox?.dispatchEvent(event);
-
-    expect(event.defaultPrevented).toBe(true);
-  });
-
-  it('keeps internal events inside the panel', async () => {
-    const panel = await mount();
-    const onSelect = vi.fn();
-
-    document.body.addEventListener('mndwpanelselect', onSelect);
-    await press(panel, 'Enter');
 
     expect(onSelect).not.toHaveBeenCalled();
   });

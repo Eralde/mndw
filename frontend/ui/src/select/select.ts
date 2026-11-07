@@ -1,7 +1,8 @@
-import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
+import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html, nothing} from 'lit';
 import {type MndwLabelSource, dispatchLabelChange} from '../field/field.js';
-import {deepActiveElement, focusWithinWithRetry} from '../focus.js';
-import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
+import {deepActiveElement, tabbableElements} from '../focus.js';
+import {AriaKeyManager, type KeyManagerList} from '../aria/key-manager.js';
+import {FormAssociatedController} from '../forms/form-associated.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
 import {type LocalizedPropertyState, createLocalizedProperty} from '../localized-property.js';
@@ -24,10 +25,12 @@ export interface MndwSelectChangeDetail {
   value: string;
 }
 
-type SelectOpenFocus = 'selected' | 'first' | 'last';
+type SelectOpenFocus = 'selected' | 'first' | 'last' | 'active';
 
 export class MndwSelect extends LitElement {
   public static readonly formAssociated = true;
+
+  public static override readonly shadowRootOptions = {...LitElement.shadowRootOptions, delegatesFocus: true};
 
   /** A non-empty `label` is the accessible name; its children are options, never labels. */
   public static readonly mndwLabelSource: MndwLabelSource = 'label-property';
@@ -77,7 +80,7 @@ export class MndwSelect extends LitElement {
       ${fieldHover}
     }
 
-    :host(:focus-visible) {
+    [part='trigger']:focus-visible {
       ${focusRing}
     }
 
@@ -109,9 +112,11 @@ export class MndwSelect extends LitElement {
 
   private layer: UiLayer | null = null;
   private panel: MndwSelectPanel | null = null;
-  private cancelInitialFocusRetry: (() => void) | null = null;
-  private panelHadFocus = false;
   private presentation: UiLayerPresentation | null = null;
+  private readonly keyManager = new AriaKeyManager<OptionModel>({
+    getLabel: (option) => option.label,
+    isDisabled: (option) => option.disabled,
+  });
   private readonly placeholderState: LocalizedPropertyState<string | undefined>;
   private readonly localeController = new LocaleController(this, {
     applyLocale: (): void => {
@@ -126,7 +131,6 @@ export class MndwSelect extends LitElement {
       this.requestUpdate();
     },
   });
-  private readonly labelController = new FormLabelController(this);
   private readonly popoverTracker = new SelectPopoverTracker({
     isActive: () => this.presentation === 'popover' && this.layer !== null,
     isConnected: () => this.layer?.contentElement.isConnected === true,
@@ -152,6 +156,10 @@ export class MndwSelect extends LitElement {
     this.open = false;
     this.addEventListener('click', this.onTriggerClick);
     this.addEventListener('keydown', this.onTriggerKeydown);
+  }
+
+  public override focus(options?: FocusOptions): void {
+    this.triggerElement()?.focus(options);
   }
 
   public override connectedCallback(): void {
@@ -184,57 +192,31 @@ export class MndwSelect extends LitElement {
 
   protected override render(): TemplateResult {
     const selected = this.options().find((option) => option.value === this.value);
+    const effectiveDisabled = this.formState.effectiveDisabled;
+    const invalid = this.isInvalid(selected);
 
     return html`
-      <div
+      <button
+        type="button"
         part="trigger"
-        aria-hidden="true"
-        @keydown=${this.onTriggerKeydown}
+        aria-label=${this.triggerLabel() ?? nothing}
+        aria-haspopup="listbox"
+        aria-expanded=${String(this.open)}
+        aria-invalid=${String(invalid)}
+        ?disabled=${effectiveDisabled}
       >
         <span class="value ${selected ? '' : 'placeholder'}" part="value">
           ${selected ? selected.label : this.placeholder ?? getMndwUiText('select.placeholder')}
         </span>
         <span class="indicator" part="indicator" aria-hidden="true"><mndw-icon name="chevron-down"></mndw-icon></span>
-      </div>
+      </button>
       <slot hidden @slotchange=${this.onSlotChange}></slot>
     `;
   }
 
   protected override updated(changed: PropertyValues): void {
-    const effectiveDisabled = this.formState.effectiveDisabled;
     const selected = this.options().find((option) => option.value === this.value);
     const submittedValue = selected ? selected.value : null;
-
-    this.setAttribute('role', 'combobox');
-    this.setAttribute('aria-haspopup', 'listbox');
-    this.setAttribute('aria-expanded', String(this.open));
-    this.setAttribute('aria-disabled', String(effectiveDisabled));
-    this.setAttribute('aria-required', String(this.required));
-    this.tabIndex = effectiveDisabled ? -1 : 0;
-
-    if (this.formState.internals) {
-      this.formState.internals.ariaLabel = this.label || null;
-      this.formState.internals.ariaExpanded = String(this.open);
-      this.formState.internals.ariaHasPopup = 'listbox';
-      this.formState.internals.ariaDisabled = String(effectiveDisabled);
-      this.formState.internals.ariaRequired = String(this.required);
-
-      if (this.label) {
-        this.setAttribute('aria-label', this.label);
-        this.removeAttribute('aria-labelledby');
-        this.formState.internals.ariaLabelledByElements = [];
-      } else {
-        this.removeAttribute('aria-label');
-
-        const labels = this.formState.labels;
-
-        this.labelController.sync(labels, this.formState.internals);
-      }
-    } else if (this.label) {
-      this.setAttribute('aria-label', this.label);
-    } else {
-      this.removeAttribute('aria-label');
-    }
 
     this.formState.setFormValue(submittedValue, this.value);
 
@@ -242,17 +224,6 @@ export class MndwSelect extends LitElement {
       this.formState.setValidity({valueMissing: true}, getMndwUiText('select.validation.required'));
     } else {
       this.formState.clearValidity();
-    }
-
-    const invalid = this.invalid
-      || (this.required && !selected)
-      || (this.formState.internals?.validity?.valid === false);
-
-    this.setAttribute('aria-invalid', String(invalid));
-
-    if (this.formState.internals) {
-      this.formState.internals.role = 'combobox';
-      this.formState.internals.ariaInvalid = String(invalid);
     }
 
     // A label source that changes after mount would leave a wrapping field's suppression stale.
@@ -286,7 +257,17 @@ export class MndwSelect extends LitElement {
     }
   }
 
-  private onTriggerClick = (): void => {
+  private onTriggerClick = (event: MouseEvent): void => {
+    const trigger = this.triggerElement();
+
+    if (trigger !== null && !event.composedPath().includes(trigger)) {
+      this.focus();
+    }
+
+    if (this.formState.effectiveDisabled) {
+      return;
+    }
+
     if (this.open) {
       this.closePanel(true);
 
@@ -297,30 +278,110 @@ export class MndwSelect extends LitElement {
   };
 
   private onTriggerKeydown = (event: KeyboardEvent): void => {
-    const fromShadowTrigger = event.currentTarget !== this;
+    if (this.formState.effectiveDisabled) {
+      return;
+    }
 
-    if (!['ArrowDown', 'ArrowUp', 'Enter', ' ', 'Home', 'End'].includes(event.key)) {
+    if (this.open) {
+      return;
+    }
+
+    let focus: SelectOpenFocus = 'selected';
+
+    switch (event.key) {
+      case 'ArrowDown':
+        focus = event.altKey ? 'selected' : 'first';
+        break;
+      case 'ArrowUp':
+        focus = 'last';
+        break;
+      case 'Home':
+        focus = 'first';
+        break;
+      case 'End':
+        focus = 'last';
+        break;
+      case 'Enter':
+      case ' ':
+        break;
+      default: {
+        const options = this.options();
+        let activeIndex = this.selectedEnabledIndex(options);
+        const list: KeyManagerList<OptionModel> = {
+          items: options,
+          wrap: false,
+          mode: 'active-descendant',
+          get activeIndex(): number {
+            return activeIndex;
+          },
+          set activeIndex(index: number) {
+            activeIndex = index;
+          },
+          setActiveIndex(index: number): void {
+            activeIndex = index;
+          },
+        };
+
+        if (!this.keyManager.handleKeydown(event, list)) {
+          return;
+        }
+
+        this.openPanel('active', activeIndex);
+
+        return;
+      }
+    }
+
+    if (event.altKey && event.key !== 'ArrowDown') {
       return;
     }
 
     event.preventDefault();
+    this.openPanel(focus);
+  };
 
-    if (!this.open) {
-      const focus: SelectOpenFocus = event.key === 'Home'
-        ? 'first'
-        : event.key === 'End'
-        ? 'last'
-        : 'selected';
+  private handleOpenKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.closePanel(true);
 
-      this.openPanel(focus);
+      return;
     }
 
-    if (fromShadowTrigger) {
-      event.stopPropagation();
+    if (event.key === 'Tab') {
+      this.commitActiveOption(event.shiftKey ? 'backward' : 'forward');
+
+      return;
+    }
+
+    if (event.altKey && event.key === 'ArrowUp') {
+      event.preventDefault();
+      this.commitActiveOption();
+
+      return;
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      this.commitActiveOption();
+
+      return;
+    }
+
+    if (event.altKey || !this.panel) {
+      return;
+    }
+
+    this.keyManager.handleKeydown(event, this.keyList(this.panel));
+  }
+
+  private readonly onPanelKeydown = (event: KeyboardEvent): void => {
+    if (this.open) {
+      this.handleOpenKeydown(event);
     }
   };
 
-  private openPanel(focus: SelectOpenFocus = 'selected'): void {
+  private openPanel(focus: SelectOpenFocus = 'selected', activeIndex?: number): void {
     if (this.formState.effectiveDisabled || this.open || !this.isConnected) {
       return;
     }
@@ -347,12 +408,8 @@ export class MndwSelect extends LitElement {
     panel.sheet = presentation === 'sheet';
     panel.addEventListener('mndwpanelselect', this.onPanelSelect);
     panel.addEventListener('mndwpaneldismiss', this.onPanelDismiss);
-    panel.addEventListener('focusout', this.onPanelFocusOut);
+    panel.addEventListener('keydown', this.onPanelKeydown);
     layer.contentElement.appendChild(panel);
-
-    if (this.formState.internals && 'ariaControlsElements' in this.formState.internals) {
-      this.formState.internals.ariaControlsElements = [panel];
-    }
 
     this.layer = layer;
     this.panel = panel;
@@ -363,25 +420,21 @@ export class MndwSelect extends LitElement {
       this.startPopoverTracking();
     }
 
-    void panel.updateComplete.then(() => {
+    void panel.updateComplete.then(async () => {
       if (this.layer !== layer) {
         return;
       }
 
-      if (focus === 'first') {
+      if (focus === 'active' && activeIndex !== undefined) {
+        panel.activeIndex = activeIndex;
+      } else if (focus === 'first') {
         panel.activeIndex = this.firstEnabledIndex(panel.options);
       } else if (focus === 'last') {
         panel.activeIndex = this.lastEnabledIndex(panel.options);
       }
 
-      this.cancelInitialFocusRetry = focusWithinWithRetry(
-        panel,
-        () => panel.focusActive(),
-        () => this.layer === layer,
-        () => {
-          this.panelHadFocus = true;
-        },
-      );
+      await panel.updateComplete;
+      panel.focusListbox();
     });
 
     void layer.closed.then((reason) => {
@@ -389,10 +442,8 @@ export class MndwSelect extends LitElement {
         return;
       }
 
-      const hadFocus = this.panelHadFocus;
-
       this.forgetLayer();
-      this.restoreFocus(reason, hadFocus);
+      this.restoreFocus(reason);
     });
   }
 
@@ -422,7 +473,7 @@ export class MndwSelect extends LitElement {
     layer.reposition();
   };
 
-  private restoreFocus(reason: UiCloseReason, hadFocus: boolean): void {
+  private restoreFocus(reason: UiCloseReason): void {
     if (reason === 'detached' || !this.isConnected) {
       return;
     }
@@ -430,20 +481,12 @@ export class MndwSelect extends LitElement {
     const active = deepActiveElement();
     const orphaned = active === null || active === document.body;
 
-    if (!hadFocus && !orphaned) {
+    if (reason !== 'escape' && !orphaned) {
       return;
     }
 
     this.focus();
   }
-
-  private readonly onPanelFocusOut = (event: FocusEvent): void => {
-    const next = event.relatedTarget;
-
-    if (next instanceof Node && this.panel?.contains(next) !== true) {
-      this.panelHadFocus = false;
-    }
-  };
 
   private readonly onPanelSelect = (event: Event): void => {
     const detail = (event as CustomEvent<PanelSelectDetail>).detail;
@@ -465,6 +508,123 @@ export class MndwSelect extends LitElement {
     this.closePanel(detail.restoreFocus);
   };
 
+  private commitActiveOption(tabDirection?: 'backward' | 'forward'): void {
+    const option = this.panel?.options[this.panel.activeIndex];
+
+    if (!option || option.disabled) {
+      if (tabDirection === undefined) {
+        this.closePanel(true);
+      } else {
+        this.closePanelAfterTab(tabDirection);
+      }
+
+      return;
+    }
+
+    this.value = option.value;
+    this.dispatchChange(option.value);
+
+    if (tabDirection === undefined) {
+      this.closePanel(true);
+    } else {
+      this.closePanelAfterTab(tabDirection);
+    }
+  }
+
+  private dispatchChange(value: string): void {
+    this.dispatchEvent(
+      new CustomEvent<MndwSelectChangeDetail>('mndwchange', {
+        bubbles: true,
+        composed: true,
+        detail: {value},
+      }),
+    );
+  }
+
+  private keyList(panel: MndwSelectPanel): KeyManagerList<OptionModel> {
+    return {
+      items: panel.options,
+      wrap: false,
+      mode: 'active-descendant',
+      get activeIndex(): number {
+        return panel.activeIndex;
+      },
+      set activeIndex(index: number) {
+        panel.activeIndex = index;
+      },
+      setActiveIndex: (index): void => {
+        panel.activeIndex = index;
+      },
+    };
+  }
+
+  private closePanelAfterTab(direction: 'backward' | 'forward'): void {
+    const layer = this.layer;
+
+    if (layer === null) {
+      return;
+    }
+
+    const destination = this.tabDestination(direction);
+
+    window.setTimeout(() => {
+      if (this.layer !== layer) {
+        return;
+      }
+
+      this.forgetLayer();
+      layer.close();
+      void layer.closed.then(() => {
+        if (destination?.isConnected) {
+          destination.focus();
+        }
+      });
+    }, 0);
+  }
+
+  private tabDestination(direction: 'backward' | 'forward'): HTMLElement | null {
+    const trigger = this.triggerElement();
+
+    if (trigger === null) {
+      return null;
+    }
+
+    const tabbable = tabbableElements(document.body);
+    const triggerIndex = tabbable.indexOf(trigger);
+
+    if (triggerIndex < 0 || tabbable.length < 2) {
+      return null;
+    }
+
+    const offset = direction === 'forward' ? 1 : -1;
+    const index = (triggerIndex + offset + tabbable.length) % tabbable.length;
+
+    return tabbable[index] ?? null;
+  }
+
+  private triggerElement(): HTMLButtonElement | null {
+    return this.renderRoot.querySelector<HTMLButtonElement>('[part="trigger"]');
+  }
+
+  private triggerLabel(): string | undefined {
+    const label = this.label.trim();
+
+    if (label !== '') {
+      return label;
+    }
+
+    const associatedLabel = this.formState.labels
+      .map((item) => item.textContent?.trim() ?? '')
+      .filter((text) => text !== '')
+      .join(' ');
+
+    return associatedLabel === '' ? undefined : associatedLabel;
+  }
+
+  private isInvalid(selected: OptionModel | undefined): boolean {
+    return this.invalid || (this.required && !selected);
+  }
+
   private closePanel(wantsFocus: boolean): void {
     const layer = this.layer;
 
@@ -472,35 +632,32 @@ export class MndwSelect extends LitElement {
       return;
     }
 
-    const hadFocus = this.panelHadFocus;
-
     this.forgetLayer();
     layer.close();
 
     if (wantsFocus) {
-      this.restoreFocus('api', hadFocus);
+      this.focus();
     }
   }
 
   private forgetLayer(): void {
-    this.cancelInitialFocusRetry?.();
-    this.cancelInitialFocusRetry = null;
     this.cancelPopoverTracking();
     window.removeEventListener('resize', this.onViewportChange);
     window.removeEventListener('scroll', this.onViewportChange, true);
     this.panel?.removeEventListener('mndwpanelselect', this.onPanelSelect);
     this.panel?.removeEventListener('mndwpaneldismiss', this.onPanelDismiss);
-    this.panel?.removeEventListener('focusout', this.onPanelFocusOut);
-
-    if (this.formState.internals && 'ariaControlsElements' in this.formState.internals) {
-      this.formState.internals.ariaControlsElements = [];
-    }
+    this.panel?.removeEventListener('keydown', this.onPanelKeydown);
 
     this.panel = null;
     this.layer = null;
     this.presentation = null;
     this.open = false;
-    this.panelHadFocus = false;
+  }
+
+  private selectedEnabledIndex(options: OptionModel[]): number {
+    const selected = options.findIndex((option) => option.value === this.value && !option.disabled);
+
+    return selected >= 0 ? selected : this.firstEnabledIndex(options);
   }
 
   private firstEnabledIndex(options: OptionModel[]): number {

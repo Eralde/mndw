@@ -5,12 +5,15 @@ import type {OptionModel} from './option-model.js';
 
 export const MNDW_SELECT_PANEL_TAG = 'mndw-select-panel';
 
+let nextPanelId = 0;
+
 export interface PanelSelectDetail {
   value: string;
 }
 
 export interface PanelDismissDetail {
   restoreFocus: boolean;
+  defer?: boolean;
 }
 
 export class MndwSelectPanel extends LitElement {
@@ -52,6 +55,11 @@ export class MndwSelectPanel extends LitElement {
       font-size: inherit;
     }
 
+    .listbox:focus-visible {
+      ${focusRing}
+      outline-offset: -2px;
+    }
+
     :host([sheet]) {
       display: flex;
       flex-direction: column;
@@ -76,10 +84,6 @@ export class MndwSelectPanel extends LitElement {
       ${surfaceHover}
     }
 
-    .option:focus-visible {
-      ${focusRing}
-    }
-
     .option[aria-selected='true'] {
       color: var(--mndw-accent);
     }
@@ -96,6 +100,8 @@ export class MndwSelectPanel extends LitElement {
   declare public sheet: boolean;
   declare public activeIndex: number;
 
+  private readonly panelId = nextPanelId++;
+
   constructor() {
     super();
     this.options = [];
@@ -105,17 +111,23 @@ export class MndwSelectPanel extends LitElement {
     this.activeIndex = -1;
   }
 
-  public focusActive(): void {
-    const nodes = this.renderRoot.querySelectorAll<HTMLElement>('[role="option"]');
+  public get listboxElement(): HTMLElement | null {
+    return this.renderRoot.querySelector<HTMLElement>('[role="listbox"]');
+  }
 
-    nodes.item(this.activeIndex)?.focus();
+  public get activeOptionElement(): HTMLElement | null {
+    return this.renderRoot.querySelector<HTMLElement>(`#${this.optionId(this.activeIndex)}`);
+  }
+
+  public focusListbox(): void {
+    this.listboxElement?.focus();
   }
 
   protected override willUpdate(changed: Map<string, unknown>): void {
     if (changed.has('options') || changed.has('value')) {
       const selected = this.options.findIndex((option) => option.value === this.value);
 
-      this.activeIndex = selected >= 0 ? selected : this.firstEnabledIndex();
+      this.activeIndex = selected >= 0 && !this.options[selected]?.disabled ? selected : this.firstEnabledIndex();
     }
   }
 
@@ -127,7 +139,8 @@ export class MndwSelectPanel extends LitElement {
           part="listbox"
           role="listbox"
           aria-label=${this.label}
-          @keydown=${this.onKeydown}
+          aria-activedescendant=${this.optionId(this.activeIndex)}
+          tabindex="0"
         >
           ${
       repeat(
@@ -143,13 +156,13 @@ export class MndwSelectPanel extends LitElement {
                 class="option"
                 part="option"
                 role="option"
-                tabindex=${index === this.activeIndex ? 0 : -1}
-                aria-selected=${String(option.value === this.value)}
+                id=${this.optionId(index)}
+                aria-selected=${String(index === this.activeIndex)}
                 aria-disabled=${String(option.disabled)}
                 @click=${() => this.select(index)}
               >
                 <span>${labelHtml}</span>
-                ${option.value === this.value ? html`<mndw-icon name="check" aria-hidden="true"></mndw-icon>` : null}
+                ${index === this.activeIndex ? html`<mndw-icon name="check" aria-hidden="true"></mndw-icon>` : null}
               </div>
             `;
         },
@@ -164,82 +177,8 @@ export class MndwSelectPanel extends LitElement {
     return this.options.findIndex((option) => !option.disabled);
   }
 
-  private readonly onKeydown = (event: KeyboardEvent): void => {
-    switch (event.key) {
-      case 'ArrowDown':
-        event.preventDefault();
-        this.move(1);
-        break;
-      case 'ArrowUp':
-        event.preventDefault();
-        this.move(-1);
-        break;
-      case 'Home':
-        event.preventDefault();
-        this.moveTo(this.firstEnabledIndex());
-        break;
-      case 'End':
-        event.preventDefault();
-        this.moveTo(this.lastEnabledIndex());
-        break;
-      case 'Enter':
-      case ' ':
-        event.preventDefault();
-        this.select(this.activeIndex);
-        break;
-      case 'Escape':
-        event.preventDefault();
-        event.stopPropagation();
-        this.dismiss();
-        break;
-      case 'Tab':
-        event.preventDefault();
-        this.dismiss();
-        break;
-      default:
-        break;
-    }
-  };
-
-  private lastEnabledIndex(): number {
-    for (let index = this.options.length - 1; index >= 0; index -= 1) {
-      if (!this.options[index].disabled) {
-        return index;
-      }
-    }
-
-    return -1;
-  }
-
-  private move(direction: number): void {
-    const count = this.options.length;
-
-    if (count === 0) {
-      return;
-    }
-
-    let next = this.activeIndex;
-
-    for (let step = 0; step < count; step += 1) {
-      next = (next + direction + count) % count;
-
-      if (!this.options[next].disabled) {
-        this.moveTo(next);
-
-        return;
-      }
-    }
-  }
-
-  private moveTo(index: number): void {
-    if (index < 0) {
-      return;
-    }
-
-    this.activeIndex = index;
-    void this.updateComplete.then(() => {
-      this.focusActive();
-    });
+  private optionId(index: number): string {
+    return `mndw-select-${this.panelId}-option-${index}`;
   }
 
   private select(index: number): void {

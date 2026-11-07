@@ -91,7 +91,58 @@ describe('MndwColumnMenu interaction', () => {
     expect(shadowOf(menu).activeElement).toBe(shadowOf(menu).querySelector('button[data-column-id="clients"]'));
   });
 
-  it('dismisses with restoreFocus on Escape and without on Tab', async () => {
+  it('supports Home, End, and typeahead navigation', async () => {
+    const menu = makeMenu(columns);
+
+    await menu.updateComplete;
+
+    shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="ip"]').dispatchEvent(
+      new KeyboardEvent('keydown', {key: 'End', bubbles: true}),
+    );
+    expect(shadowOf(menu).activeElement).toBe(shadowOf(menu).querySelector('button[data-column-id="clients"]'));
+
+    shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="clients"]').dispatchEvent(
+      new KeyboardEvent('keydown', {key: 'm', bubbles: true}),
+    );
+    expect(shadowOf(menu).activeElement).toBe(shadowOf(menu).querySelector('button[data-column-id="mac"]'));
+
+    shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="mac"]').dispatchEvent(
+      new KeyboardEvent('keydown', {key: 'Home', bubbles: true}),
+    );
+    expect(shadowOf(menu).activeElement).toBe(shadowOf(menu).querySelector('button[data-column-id="ip"]'));
+  });
+
+  it('keeps the menu open when Space toggles the focused checkbox', async () => {
+    const menu = makeMenu(columns);
+
+    await menu.updateComplete;
+
+    const option = shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="ip"]');
+
+    option.dispatchEvent(new KeyboardEvent('keydown', {key: ' ', bubbles: true, cancelable: true}));
+    option.click();
+    await menu.updateComplete;
+
+    expect(option.getAttribute('aria-checked')).toBe('false');
+    expect(document.querySelector(MNDW_COLUMN_MENU_TAG)).toBe(menu);
+  });
+
+  it('toggles and closes on Enter', async () => {
+    const menu = makeMenu(columns);
+    const dismissListener = vi.fn();
+
+    menu.addEventListener('mndwpaneldismiss', dismissListener);
+    await menu.updateComplete;
+    shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="ip"]').dispatchEvent(
+      new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}),
+    );
+    await menu.updateComplete;
+
+    expect(shadowQuery(menu, 'button[data-column-id="ip"]').getAttribute('aria-checked')).toBe('false');
+    expect((dismissListener.mock.calls[0][0] as CustomEvent<{restoreFocus: boolean}>).detail.restoreFocus).toBe(true);
+  });
+
+  it('dismisses with restoreFocus on Escape and lets Tab proceed', async () => {
     const menu = makeMenu(columns);
 
     await menu.updateComplete;
@@ -104,9 +155,18 @@ describe('MndwColumnMenu interaction', () => {
 
     expect((dismissListener.mock.calls[0][0] as CustomEvent<{restoreFocus: boolean}>).detail.restoreFocus).toBe(true);
 
-    shadowQuery(menu, '[role="menu"]').dispatchEvent(new KeyboardEvent('keydown', {key: 'Tab', bubbles: true}));
+    const tab = new KeyboardEvent('keydown', {key: 'Tab', bubbles: true, cancelable: true});
 
-    expect((dismissListener.mock.calls[1][0] as CustomEvent<{restoreFocus: boolean}>).detail.restoreFocus).toBe(false);
+    shadowQuery(menu, '[role="menu"]').dispatchEvent(tab);
+
+    expect(tab.defaultPrevented).toBe(false);
+    expect(
+      (dismissListener.mock.calls[1][0] as CustomEvent<{
+        restoreFocus: boolean;
+        defer?: boolean;
+        tabDirection?: 'backward' | 'forward';
+      }>).detail,
+    ).toEqual({restoreFocus: false, defer: true, tabDirection: 'forward'});
   });
 });
 

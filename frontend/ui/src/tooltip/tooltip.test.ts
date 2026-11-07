@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {defineComponents, mount as mountComponent, settle} from '../testing/index.js';
+import {deepActiveElement} from '../focus.js';
 import {MNDW_TOOLTIP_TAG, MndwTooltip} from './tooltip.js';
 
 defineComponents([MNDW_TOOLTIP_TAG, MndwTooltip]);
@@ -295,6 +296,21 @@ describe('<mndw-tooltip> visibility', () => {
 
     expect(element.hasAttribute('open')).toBe(false);
     expect(escape.defaultPrevented).toBe(false);
+  });
+
+  it('keeps focus on the trigger when Escape hides it', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
+    );
+    const button = trigger(element);
+
+    button.focus();
+    await show(element, 'focusin');
+    button.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, composed: true}));
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
+    expect(deepActiveElement()).toBe(button);
   });
 
   it('never opens while text is empty', async () => {

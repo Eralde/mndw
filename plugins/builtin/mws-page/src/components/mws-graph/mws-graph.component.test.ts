@@ -36,6 +36,26 @@ function fixtureRoots(): MwsNode[] {
   return buildMap(normalizeMembers(loadFixture('show-mws-member.json')), [], CONTROLLER);
 }
 
+function mockComputedTextLength(measure: (value: string) => number): () => void {
+  const original = Object.getOwnPropertyDescriptor(SVGTextElement.prototype, 'getComputedTextLength');
+
+  Object.defineProperty(SVGTextElement.prototype, 'getComputedTextLength', {
+    configurable: true,
+    value(this: SVGTextElement): number {
+      return measure(this.textContent ?? '');
+    },
+  });
+
+  return () => {
+    if (original === undefined) {
+      delete (SVGTextElement.prototype as SVGTextElement & {getComputedTextLength?: () => number})
+        .getComputedTextLength;
+    } else {
+      Object.defineProperty(SVGTextElement.prototype, 'getComputedTextLength', original);
+    }
+  };
+}
+
 describe('MwsGraphComponent', () => {
   beforeEach(async () => {
     TestBed.resetTestingModule();
@@ -434,6 +454,116 @@ describe('MwsGraphComponent', () => {
       } else {
         Object.defineProperty(SVGTextElement.prototype, 'getComputedTextLength', original);
       }
+    }
+  });
+
+  it('re-fits pending node text after resize without a data change and stops retrying after success', () => {
+    let measurable = false;
+    let resizeCallback: ResizeObserverCallback | null = null;
+    const restoreTextMeasurement = mockComputedTextLength((value) => measurable ? value.length * 20 : 0);
+    const frames: FrameRequestCallback[] = [];
+    const requestFrame = vi.fn((callback: FrameRequestCallback): number => {
+      frames.push(callback);
+
+      return frames.length;
+    });
+    const cancelFrame = vi.fn();
+
+    vi.stubGlobal('requestAnimationFrame', requestFrame);
+    vi.stubGlobal('cancelAnimationFrame', cancelFrame);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        public constructor(callback: ResizeObserverCallback) {
+          resizeCallback = callback;
+        }
+
+        public observe(): void {}
+        public disconnect(): void {}
+      },
+    );
+
+    const roots = fixtureRoots();
+    const controller = roots[0];
+
+    if (controller === undefined) {
+      throw new Error('fixture roots missing controller');
+    }
+
+    const originalName = 'A deliberately long controller name that must be refitted';
+
+    controller.name = originalName;
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    try {
+      fixture.componentRef.setInput('roots', roots);
+      fixture.detectChanges();
+
+      const name = fixture.nativeElement.querySelector('g.node.controller text.name') as SVGTextElement;
+      const fallbackName = name.textContent ?? '';
+      const scheduledFrame = (fixture.componentInstance as unknown as {textFitFrame: number | null}).textFitFrame;
+      const requestCount = requestFrame.mock.calls.length;
+
+      expect(fallbackName.endsWith('…')).toBe(true);
+      expect(scheduledFrame).not.toBeNull();
+      expect(requestCount).toBeGreaterThan(0);
+
+      measurable = true;
+      Object.defineProperties(name.ownerSVGElement?.parentElement, {
+        clientWidth: {configurable: true, value: 400},
+        clientHeight: {configurable: true, value: 300},
+      });
+      resizeCallback?.([], {} as ResizeObserver);
+
+      expect(name.textContent?.endsWith('…')).toBe(true);
+      expect(name.textContent?.length).toBeLessThan(fallbackName.length);
+      expect(controller.name).toBe(originalName);
+      expect(cancelFrame).toHaveBeenCalledWith(scheduledFrame);
+
+      if (scheduledFrame !== null) {
+        frames[scheduledFrame - 1]?.(0);
+      }
+
+      expect(requestFrame).toHaveBeenCalledTimes(requestCount);
+    } finally {
+      fixture.destroy();
+      vi.unstubAllGlobals();
+      restoreTextMeasurement();
+    }
+  });
+
+  it('keeps the zero-measurement fallback within the estimated text width', () => {
+    const restoreTextMeasurement = mockComputedTextLength(() => 0);
+    const roots = fixtureRoots();
+    const controller = roots[0];
+
+    if (controller === undefined) {
+      throw new Error('fixture roots missing controller');
+    }
+
+    controller.name = 'An exceptionally long node name that exceeds its card width';
+    controller.model = 'An exceptionally long model name that exceeds its card width';
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    try {
+      fixture.componentRef.setInput('roots', roots);
+      fixture.detectChanges();
+
+      const node = fixture.nativeElement.querySelector('g.node.controller') as SVGGElement;
+      const iconWidth = node.querySelectorAll('svg.node-icon').length > 0 ? 22 : 0;
+      const maxWidth = DEFAULT_LAYOUT_CONFIG.nodeWidth - 24 - iconWidth;
+      const name = node.querySelector('text.name')?.textContent ?? '';
+      const model = node.querySelector('text.model')?.textContent ?? '';
+
+      expect(name.length * 8.5).toBeLessThanOrEqual(maxWidth);
+      expect(model.length * 7.5).toBeLessThanOrEqual(maxWidth);
+      expect(name.endsWith('…')).toBe(true);
+      expect(model.endsWith('…')).toBe(true);
+    } finally {
+      fixture.destroy();
+      restoreTextMeasurement();
     }
   });
 

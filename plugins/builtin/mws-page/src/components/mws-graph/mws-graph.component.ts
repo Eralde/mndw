@@ -34,6 +34,9 @@ import {type GraphSelectionState, edgePath, effectivePosition, nodeClass, pathSe
 
 export const FIT_PADDING = 40;
 export const CLICK_SLOP = 4;
+const MAX_TEXT_FIT_RETRIES = 2;
+const NAME_AVERAGE_GLYPH_WIDTH = 8.5;
+const DETAIL_AVERAGE_GLYPH_WIDTH = 7.5;
 
 interface Position {
   x: number;
@@ -54,18 +57,37 @@ interface NodeIcon {
   color: string;
 }
 
-function truncateText(value: string, maxLength: number): string {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}…`;
+function truncateTextByEstimatedWidth(value: string, maxWidth: number, averageGlyphWidth: number): string {
+  const maxCharacters = Math.floor(maxWidth / averageGlyphWidth);
+
+  if (value.length <= maxCharacters) {
+    return value;
+  }
+
+  if (maxCharacters < 1) {
+    return '';
+  }
+
+  return `${value.slice(0, maxCharacters - 1)}…`;
 }
 
 function truncateSvgText(
   element: SVGTextElement,
   value: string,
   maxWidth: number,
-  fallbackMaxLength: number,
-): string {
-  if (typeof element.getComputedTextLength !== 'function' || value === '') {
-    return truncateText(value, fallbackMaxLength);
+  averageGlyphWidth: number,
+): {text: string; pending: boolean} {
+  const fallback = (): {text: string; pending: boolean} => ({
+    text: truncateTextByEstimatedWidth(value, maxWidth, averageGlyphWidth),
+    pending: true,
+  });
+
+  if (value === '') {
+    return {text: '', pending: false};
+  }
+
+  if (typeof element.getComputedTextLength !== 'function') {
+    return fallback();
   }
 
   const widthOf = (text: string): number | null => {
@@ -83,11 +105,11 @@ function truncateSvgText(
   const fullWidth = widthOf(value);
 
   if (fullWidth === null) {
-    return truncateText(value, fallbackMaxLength);
+    return fallback();
   }
 
   if (fullWidth <= maxWidth) {
-    return value;
+    return {text: value, pending: false};
   }
 
   let low = 0;
@@ -97,7 +119,11 @@ function truncateSvgText(
     const middle = Math.ceil((low + high) / 2);
     const candidateWidth = widthOf(`${value.slice(0, middle)}…`);
 
-    if (candidateWidth !== null && candidateWidth <= maxWidth) {
+    if (candidateWidth === null) {
+      return fallback();
+    }
+
+    if (candidateWidth <= maxWidth) {
       low = middle;
     } else {
       high = middle - 1;
@@ -106,7 +132,7 @@ function truncateSvgText(
 
   const result = `${value.slice(0, low)}…`;
 
-  return widthOf(result) === null ? truncateText(value, fallbackMaxLength) : result;
+  return widthOf(result) === null ? fallback() : {text: result, pending: false};
 }
 
 @Component({
@@ -176,6 +202,10 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
   private zoom: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private unsubscribeIconSprite: (() => void) | null = null;
+  private pendingNodeTextFit = false;
+  private textFitFrame: number | null = null;
+  private textFitRetryCount = 0;
+  private destroyed = false;
   private lastTopologySignature: string | null = null;
   private layout: GraphLayout | null = null;
   private previousPositionsLoadOutcome: PositionsLoadOutcome = 'pending';
@@ -241,9 +271,17 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     this.svg.call(this.zoom);
     this.observeResize(svgElement);
     this.render();
+
+    const fontsReady = document.fonts?.ready;
+
+    if (fontsReady !== undefined) {
+      void fontsReady.then(() => this.refitPendingNodeText());
+    }
   }
 
   public ngOnDestroy(): void {
+    this.destroyed = true;
+    this.cancelTextFitRetry();
     this.unsubscribeIconSprite?.();
     this.unsubscribeIconSprite = null;
     this.resizeObserver?.disconnect();
@@ -313,6 +351,10 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       if (this.pendingFit && width > 0 && height > 0) {
         this.pendingFit = false;
         this.fitToContent(false);
+      }
+
+      if (this.pendingNodeTextFit && width > 0 && height > 0) {
+        this.fitNodeText();
       }
     });
     this.resizeObserver.observe(host);
@@ -543,64 +585,9 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       .attr('text-anchor', 'start')
       .attr('x', textStart);
 
-    nodeGroups.select<SVGTextElement>('text.name')
-      .attr('y', -11)
-      .each((positioned, index, elements) => {
-        const element = elements[index];
-
-        if (element === undefined) {
-          return;
-        }
-
-        const hasIcons = this.nodeIcons(positioned.node).length > 0;
-        const maxWidth = nodeWidth - 24 - (hasIcons ? 14 + 8 : 0);
-
-        element.textContent = truncateSvgText(
-          element,
-          positioned.node.name,
-          maxWidth,
-          hasIcons ? 16 : 28,
-        );
-      });
-
-    nodeGroups.select<SVGTextElement>('text.model')
-      .attr('y', 5)
-      .each((positioned, index, elements) => {
-        const element = elements[index];
-
-        if (element === undefined) {
-          return;
-        }
-
-        const hasIcons = this.nodeIcons(positioned.node).length > 0;
-        const maxWidth = nodeWidth - 24 - (hasIcons ? 14 + 8 : 0);
-
-        element.textContent = truncateSvgText(element, positioned.node.model ?? '', maxWidth, hasIcons ? 20 : Infinity);
-      });
-
-    nodeGroups.select<SVGTextElement>('text.status-line')
-      .attr('y', 20)
-      .each((positioned, index, elements) => {
-        const element = elements[index];
-
-        if (element === undefined) {
-          return;
-        }
-
-        const hasIcons = this.nodeIcons(positioned.node).length > 0;
-        const value = positioned.node.isOnline
-          ? positioned.node.clients.length > 0
-            ? this.t('status.clients', {count: positioned.node.clients.length})
-            : ''
-          : this.t('graph.offline');
-
-        element.textContent = truncateSvgText(
-          element,
-          value,
-          nodeWidth - 24 - (hasIcons ? 14 + 8 : 0),
-          hasIcons ? 16 : Infinity,
-        );
-      });
+    nodeGroups.select<SVGTextElement>('text.name').attr('y', -11);
+    nodeGroups.select<SVGTextElement>('text.model').attr('y', 5);
+    nodeGroups.select<SVGTextElement>('text.status-line').attr('y', 20);
 
     const icons = nodeGroups.select('g.node-icons')
       .selectAll<SVGSVGElement, NodeIcon>('svg.node-icon')
@@ -635,7 +622,108 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
         return href === '' ? null : href;
       });
 
+    this.fitNodeText();
     this.applyDragBehavior(nodeGroups);
+  }
+
+  private fitNodeText(): void {
+    const group = this.zoomGroup;
+
+    if (group === null) {
+      return;
+    }
+
+    const {nodeWidth} = DEFAULT_LAYOUT_CONFIG;
+    let pending = false;
+
+    group.selectAll<SVGGElement, PositionedNode>('g.node')
+      .each((positioned, index, elements) => {
+        const node = elements[index];
+
+        if (node === undefined) {
+          return;
+        }
+
+        const hasIcons = this.nodeIcons(positioned.node).length > 0;
+        const maxWidth = nodeWidth - 24 - (hasIcons ? 14 + 8 : 0);
+        const name = node.querySelector<SVGTextElement>('text.name');
+        const model = node.querySelector<SVGTextElement>('text.model');
+        const status = node.querySelector<SVGTextElement>('text.status-line');
+
+        if (name !== null) {
+          const fit = truncateSvgText(name, positioned.node.name, maxWidth, NAME_AVERAGE_GLYPH_WIDTH);
+
+          name.textContent = fit.text;
+          pending ||= fit.pending;
+        }
+
+        if (model !== null) {
+          const fit = truncateSvgText(model, positioned.node.model ?? '', maxWidth, DETAIL_AVERAGE_GLYPH_WIDTH);
+
+          model.textContent = fit.text;
+          pending ||= fit.pending;
+        }
+
+        if (status !== null) {
+          const value = positioned.node.isOnline
+            ? positioned.node.clients.length > 0
+              ? this.t('status.clients', {count: positioned.node.clients.length})
+              : ''
+            : this.t('graph.offline');
+          const fit = truncateSvgText(status, value, maxWidth, DETAIL_AVERAGE_GLYPH_WIDTH);
+
+          status.textContent = fit.text;
+          pending ||= fit.pending;
+        }
+      });
+
+    this.pendingNodeTextFit = pending;
+
+    if (pending) {
+      this.scheduleTextFitRetry();
+    } else {
+      this.cancelTextFitRetry();
+      this.textFitRetryCount = 0;
+    }
+  }
+
+  private refitPendingNodeText(): void {
+    if (!this.pendingNodeTextFit || this.destroyed) {
+      return;
+    }
+
+    this.fitNodeText();
+  }
+
+  private scheduleTextFitRetry(): void {
+    if (
+      this.destroyed
+      || !this.pendingNodeTextFit
+      || this.textFitFrame !== null
+      || this.textFitRetryCount >= MAX_TEXT_FIT_RETRIES
+      || typeof requestAnimationFrame !== 'function'
+    ) {
+      return;
+    }
+
+    this.textFitFrame = requestAnimationFrame(() => {
+      this.textFitFrame = null;
+
+      if (!this.pendingNodeTextFit || this.destroyed) {
+        return;
+      }
+
+      this.textFitRetryCount += 1;
+      this.fitNodeText();
+    });
+  }
+
+  private cancelTextFitRetry(): void {
+    if (this.textFitFrame !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.textFitFrame);
+    }
+
+    this.textFitFrame = null;
   }
 
   private applyDragBehavior(nodeGroups: d3.Selection<SVGGElement, PositionedNode, SVGGElement, unknown>): void {

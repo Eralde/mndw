@@ -74,7 +74,7 @@ func (t ControllerHTTPTester) Test(ctx context.Context, token string) (Controlle
 
 	response, err := client.Do(request)
 	if err != nil {
-		return ControllerUnreachable, fmt.Errorf("controller test request failed")
+		return ControllerUnreachable, fmt.Errorf("controller test request failed: %w", err)
 	}
 
 	defer response.Body.Close()
@@ -82,18 +82,14 @@ func (t ControllerHTTPTester) Test(ctx context.Context, token string) (Controlle
 	_, _ = io.CopyN(io.Discard, response.Body, 512<<10)
 
 	switch response.StatusCode {
-	case http.StatusUnauthorized:
+	case http.StatusUnauthorized, http.StatusForbidden:
 		return ControllerInvalidToken, nil
 	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
 		return ControllerUnsupported, nil
 	case http.StatusOK:
 		return ControllerValid, nil
 	default:
-		if response.StatusCode >= 500 || response.StatusCode == http.StatusRequestTimeout {
-			return ControllerUnreachable, fmt.Errorf("controller test returned status")
-		}
-
-		return ControllerInvalidToken, nil
+		return ControllerUnreachable, fmt.Errorf("controller test returned status %d", response.StatusCode)
 	}
 }
 
@@ -128,6 +124,10 @@ func (s *Service) TestController(ctx context.Context, tester ControllerTester, t
 	}
 
 	verdict, err := tester.Test(ctx, token)
+	if err != nil {
+		s.logControllerTesterFailure("test", verdict, err)
+	}
+
 	if err == nil && verdict == ControllerValid {
 		document, snapshotErr := s.store.Snapshot()
 
@@ -155,6 +155,10 @@ func (s *Service) SaveController(ctx context.Context, tester ControllerTester, t
 	}
 
 	verdict, err := tester.Test(ctx, token)
+	if err != nil {
+		s.logControllerTesterFailure("save", verdict, err)
+	}
+
 	if err != nil || verdict != ControllerValid {
 		return verdict, err
 	}
@@ -201,6 +205,19 @@ func (s *Service) SaveController(ctx context.Context, tester ControllerTester, t
 	s.notifyMutation("controller-token-saved")
 
 	return verdict, nil
+}
+
+func (s *Service) logControllerTesterFailure(operation string, verdict ControllerVerdict, err error) {
+	if s.logger == nil {
+		return
+	}
+
+	host := ""
+	if controllerURL, parseErr := url.Parse(s.controllerURL); parseErr == nil {
+		host = controllerURL.Host
+	}
+
+	s.logger.Warn("controller "+operation+" failed", "verdict", verdict, "error", err, "host", host)
 }
 
 func (s *Service) DeleteController() error {

@@ -1,9 +1,11 @@
 package rcisession
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,6 +68,56 @@ func TestServiceSaveAndDeleteControllerBumpRuntimeTrust(t *testing.T) {
 
 	if service.ControllerEpoch() != 2 {
 		t.Fatalf("epoch after delete = %d", service.ControllerEpoch())
+	}
+}
+
+func TestControllerTesterErrorsAreLoggedWithoutToken(t *testing.T) {
+	for _, operation := range []struct {
+		name string
+		call func(*Service, ControllerTester, string) (ControllerVerdict, error)
+	}{
+		{
+			name: "test",
+			call: func(service *Service, tester ControllerTester, token string) (ControllerVerdict, error) {
+				return service.TestController(context.Background(), tester, token)
+			},
+		},
+		{
+			name: "save",
+			call: func(service *Service, tester ControllerTester, token string) (ControllerVerdict, error) {
+				return service.SaveController(context.Background(), tester, token)
+			},
+		},
+	} {
+		t.Run(operation.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			service := newTestService(t, ServiceConfig{
+				Store:         &testServiceStore{},
+				ControllerURL: "http://192.0.2.7:79",
+				Logger:        logger,
+			})
+			tester := serviceTestTesterFunc(func(context.Context, string) (ControllerVerdict, error) {
+				return ControllerUnreachable, errors.New("connection refused")
+			})
+			const token = "controller-secret-must-not-be-logged"
+
+			verdict, err := operation.call(service, tester, token)
+			if verdict != ControllerUnreachable || err == nil {
+				t.Fatalf("controller operation = %q, %v; want unreachable error", verdict, err)
+			}
+
+			output := logs.String()
+			for _, field := range []string{"WARN", "controller " + operation.name + " failed", "verdict=unreachable", `error="connection refused"`, "host=192.0.2.7:79"} {
+				if !strings.Contains(output, field) {
+					t.Errorf("warning log %q missing %q", output, field)
+				}
+			}
+
+			if strings.Contains(output, token) {
+				t.Fatalf("warning log leaked controller token: %q", output)
+			}
+		})
 	}
 }
 

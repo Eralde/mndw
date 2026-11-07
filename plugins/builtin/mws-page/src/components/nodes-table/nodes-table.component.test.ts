@@ -68,6 +68,10 @@ function shadowRows(table: TableElement): HTMLTableRowElement[] {
   return [...table.shadowRoot.querySelectorAll<HTMLTableRowElement>('tbody tr')];
 }
 
+function rowKeys(table: TableElement): (string | null)[] {
+  return shadowRows(table).map((row) => row.getAttribute('data-row-key'));
+}
+
 function render(
   value: MwsNode[],
 ): ReturnType<typeof TestBed.createComponent<MwsNodesTableComponent>> {
@@ -129,8 +133,38 @@ describe('MwsNodesTableComponent', () => {
     expect(headers).toHaveLength(8);
     expect(table.querySelector('.node-name')?.textContent).toContain('Node A');
     expect(table.querySelector('.node-name')?.textContent).toContain('Controller');
+    expect(table.shadowRoot.querySelector('caption')).toBeNull();
+    expect(table.shadowRoot.querySelector('table')?.getAttribute('aria-label')).toBe('All mesh nodes');
+    expect(table.getAttribute('aria-label')).toBeNull();
     expect(controls).not.toBeNull();
     expect(controls?.contains(table)).toBe(false);
+  });
+
+  it('starts unsorted with the controller first and restores natural order when sorting is cleared', async () => {
+    const fixture = render([node('node-a', 'Z Controller', [node('node-b', 'A Extender')])]);
+    const table = tableOf(fixture);
+
+    await settle(table);
+
+    expect(table.shadowRoot.querySelector('th[aria-sort]')).toBeNull();
+    expect(rowKeys(table)).toEqual(['node-a', 'node-b']);
+
+    table.shadowRoot.querySelector<HTMLButtonElement>('button[data-sort-column="name"]')?.click();
+    fixture.detectChanges();
+    await settle(table);
+
+    expect(table.shadowRoot.querySelector('th[aria-sort="ascending"]')).not.toBeNull();
+    expect(rowKeys(table)).toEqual(['node-b', 'node-a']);
+
+    table.shadowRoot.querySelector<HTMLButtonElement>('button[data-sort-column="name"]')?.click();
+    fixture.detectChanges();
+    await settle(table);
+    table.shadowRoot.querySelector<HTMLButtonElement>('button[data-sort-column="name"]')?.click();
+    fixture.detectChanges();
+    await settle(table);
+
+    expect(table.shadowRoot.querySelector('th[aria-sort]')).toBeNull();
+    expect(rowKeys(table)).toEqual(['node-a', 'node-b']);
   });
 
   it('emits node ID from the Node name activation button', async () => {
@@ -231,8 +265,20 @@ describe('MwsNodesTableComponent', () => {
     expect(table.shadowRoot.querySelector('button[data-sort-column="name"]')).not.toBeNull();
   });
 
-  it('resets sorting to Node name when hiding the active sort column', async () => {
-    const fixture = render(roots());
+  it('clears sorting and restores controller-first order when hiding the active sort column', async () => {
+    const controller = node('node-a', 'Z Controller', [node('node-b', 'A Extender')]);
+
+    controller.clients.push({
+      mac: 'client-1',
+      name: 'Laptop',
+      ip: null,
+      uptime: null,
+      lastSeen: null,
+      wired: false,
+      active: true,
+    });
+
+    const fixture = render([controller]);
     const table = tableOf(fixture);
 
     await settle(table);
@@ -240,6 +286,9 @@ describe('MwsNodesTableComponent', () => {
     table.shadowRoot.querySelector<HTMLButtonElement>('button[data-sort-column="clients"]')?.click();
     fixture.detectChanges();
     await settle(table);
+
+    expect(table.shadowRoot.querySelector('th[aria-sort="ascending"]')?.textContent).toContain('Clients');
+    expect(rowKeys(table)).toEqual(['node-b', 'node-a']);
 
     table.shadowRoot.querySelector<HTMLButtonElement>('[part="column-menu-trigger"]')?.click();
     await settle(table);
@@ -251,6 +300,7 @@ describe('MwsNodesTableComponent', () => {
     fixture.detectChanges();
     await settle(table);
 
-    expect(table.shadowRoot.querySelector('th[aria-sort="ascending"]')?.textContent).toContain('Node name');
+    expect(table.shadowRoot.querySelector('th[aria-sort]')).toBeNull();
+    expect(rowKeys(table)).toEqual(['node-a', 'node-b']);
   });
 });

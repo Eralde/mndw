@@ -41,20 +41,25 @@ const fakeLayer = (): OverlayLayer => {
   } as unknown as OverlayLayer;
 };
 
+const context = (open: ReturnType<typeof vi.fn>): PluginContext => {
+  return {overlay: {open}} as unknown as PluginContext;
+};
+
 describe('openNodeDrawer', () => {
   beforeEach(() => mountComponentInOverlay.mockReset());
 
   it('opens a drawer and delegates Angular mounting to the SDK helper', () => {
     const open = vi.fn(() => ({onClose: vi.fn()}));
-    const ctx = {overlay: {open}} as unknown as PluginContext;
+    const ctx = context(open);
     const appRef = {} as never;
     const source: NodeDetailsSource = {open: vi.fn(() => new Subject<MwsNode | null>())};
 
-    openNodeDrawer(ctx, appRef, source, 'node-1', 'Node 1');
+    openNodeDrawer(ctx, appRef, source, 'node-1', 'Mesh node');
 
     const openOpts = mountOptions(open);
 
     expect(openOpts.kind).toBe('drawer');
+    expect(openOpts.title).toBe('Mesh node');
 
     const target = document.createElement('div');
     const layer = fakeLayer();
@@ -72,15 +77,25 @@ describe('openNodeDrawer', () => {
     expect(typeof helperArgs.setup).toBe('function');
   });
 
+  it('uses the localized generic title supplied by the app', () => {
+    const open = vi.fn(() => ({onClose: vi.fn()}));
+    const ctx = context(open);
+    const source: NodeDetailsSource = {open: vi.fn(() => new Subject<MwsNode | null>())};
+
+    openNodeDrawer(ctx, {} as never, source, 'node-1', 'Узел сети');
+
+    expect(mountOptions(open).title).toBe('Узел сети');
+  });
+
   it('setup subscribes with the layer signal and returns an unsubscribe', () => {
     const open = vi.fn(() => ({onClose: vi.fn()}));
-    const ctx = {overlay: {open}} as unknown as PluginContext;
+    const ctx = context(open);
     const subject = new Subject<MwsNode | null>();
     const sourceOpen = vi.fn(() => subject);
     const source: NodeDetailsSource = {open: sourceOpen};
     const setInput = vi.fn();
 
-    openNodeDrawer(ctx, {} as never, source, 'node-1', 'Node 1');
+    openNodeDrawer(ctx, {} as never, source, 'node-1', 'Mesh node');
 
     const openOpts = mountOptions(open);
     const layer = fakeLayer();
@@ -96,41 +111,15 @@ describe('openNodeDrawer', () => {
     expect(subject.observed).toBe(false);
   });
 
-  it('setup updates the overlay title through the component setTitle input', () => {
+  it('keeps the generic overlay title when a later node snapshot changes the name', () => {
     const update = vi.fn();
     const open = vi.fn(() => ({onClose: vi.fn(), update}));
-    const ctx = {overlay: {open}} as unknown as PluginContext;
-    const source: NodeDetailsSource = {open: vi.fn(() => new Subject<MwsNode | null>())};
-    const setInput = vi.fn();
-
-    openNodeDrawer(ctx, {} as never, source, 'node-1', 'Node 1');
-
-    const openOpts = mountOptions(open);
-    const layer = fakeLayer();
-
-    openOpts.mount(document.createElement('div'), layer, layer.signal);
-
-    const {setup} = mountComponentInOverlay.mock.calls[0][0];
-
-    setup({setInput, instance: {}});
-
-    const setTitle = setInput.mock.calls.find(([name]) => name === 'setTitle')?.[1] as
-      | ((title: string) => void)
-      | undefined;
-
-    setTitle?.('Renamed Router');
-    expect(update).toHaveBeenCalledWith({title: 'Renamed Router'});
-  });
-
-  it('setup updates the overlay title when a later node snapshot changes the name', () => {
-    const update = vi.fn();
-    const open = vi.fn(() => ({onClose: vi.fn(), update}));
-    const ctx = {overlay: {open}} as unknown as PluginContext;
+    const ctx = context(open);
     const snapshots = new Subject<MwsNode | null>();
     const source: NodeDetailsSource = {open: vi.fn(() => snapshots)};
     const setInput = vi.fn();
 
-    openNodeDrawer(ctx, {} as never, source, 'node-1', 'Node 1');
+    openNodeDrawer(ctx, {} as never, source, 'node-1', 'Mesh node');
 
     const openOpts = mountOptions(open);
     const layer = fakeLayer();
@@ -146,6 +135,8 @@ describe('openNodeDrawer', () => {
     snapshots.next(renamed);
 
     expect(setInput).toHaveBeenCalledWith('node', renamed);
-    expect(update).toHaveBeenCalledWith({title: 'Externally renamed'});
+    expect(update).not.toHaveBeenCalled();
+    expect(openOpts.title).toBe('Mesh node');
+    expect(setInput.mock.calls.some(([name]) => name === 'setTitle')).toBe(false);
   });
 });

@@ -5,43 +5,58 @@
 
   <div [hidden]="loading || loadError || settings === null" class="settings-sections">
     <section class="setting-section">
-      <h3>{{ t('settings.backhaul-title') }}</h3>
-      <p class="setting-description">{{ t('settings.backhaul-description') }}</p>
-      <mndw-field [label]="t('settings.backhaul')">
-        <mndw-switch
-          data-field="backhaul"
-          [checked]="settings?.backhaulEnabled === true"
-          [disabled]="savingField !== null"
-          (mndwchange)="onBackhaulChange($event)"
-        ></mndw-switch>
-      </mndw-field>
+      <div class="setting-copy">
+        <h3 id="setting-backhaul-title">{{ t('settings.backhaul-title') }}</h3>
+        <p id="setting-backhaul-description" class="setting-description">{{ t('settings.backhaul-description') }}</p>
+      </div>
+      <mndw-switch
+        data-field="backhaul"
+        [attr.aria-label]="t('settings.backhaul-title')"
+        aria-describedby="setting-backhaul-description"
+        [checked]="settings?.backhaulEnabled === true"
+        [disabled]="savingField !== null"
+        (mndwchange)="onBackhaulChange($event)"
+      ></mndw-switch>
     </section>
 
     <section class="setting-section">
-      <h3>{{ t('settings.auto-ap-shutdown-title') }}</h3>
-      <p class="setting-description">{{ t('settings.auto-ap-shutdown-description') }}</p>
-      <mndw-field [label]="t('settings.auto-ap-shutdown')">
-        <mndw-switch
-          data-field="auto-ap-shutdown"
-          [checked]="settings?.autoApShutdownEnabled === true"
-          [disabled]="savingField !== null"
-          (mndwchange)="onAutoApShutdownChange($event)"
-        ></mndw-switch>
-      </mndw-field>
+      <div class="setting-copy">
+        <h3 id="setting-auto-ap-shutdown-title">{{ t('settings.auto-ap-shutdown-title') }}</h3>
+        <p id="setting-auto-ap-shutdown-description" class="setting-description">
+          {{ t('settings.auto-ap-shutdown-description') }}
+        </p>
+      </div>
+      <mndw-switch
+        data-field="auto-ap-shutdown"
+        [attr.aria-label]="t('settings.auto-ap-shutdown-title')"
+        aria-describedby="setting-auto-ap-shutdown-description"
+        [checked]="settings?.autoApShutdownEnabled === true"
+        [disabled]="savingField !== null"
+        (mndwchange)="onAutoApShutdownChange($event)"
+      ></mndw-switch>
     </section>
 
     <section class="setting-section">
-      <h3>{{ t('settings.auto-update-title') }}</h3>
-      <p class="setting-description">{{ t('settings.auto-update-description') }}</p>
-      <mndw-field [label]="t('settings.auto-update')">
-        <mndw-switch
-          data-field="auto-update"
-          [checked]="settings?.autoUpdateEnabled === true"
-          [disabled]="savingField !== null"
-          (mndwchange)="onAutoUpdateChange($event)"
-        ></mndw-switch>
-      </mndw-field>
-      <mndw-field data-field="schedule-field" [label]="t('settings.auto-update-schedule')" [hint]="schedulePreview(selectedSchedule())">
+      <div class="setting-copy">
+        <h3 id="setting-auto-update-title">{{ t('settings.auto-update-title') }}</h3>
+        <p id="setting-auto-update-description" class="setting-description">
+          {{ t('settings.auto-update-description') }}
+        </p>
+      </div>
+      <mndw-switch
+        data-field="auto-update"
+        [attr.aria-label]="t('settings.auto-update-title')"
+        aria-describedby="setting-auto-update-description"
+        [checked]="settings?.autoUpdateEnabled === true"
+        [disabled]="savingField !== null"
+        (mndwchange)="onAutoUpdateChange($event)"
+      ></mndw-switch>
+      <mndw-field
+        class="schedule-field"
+        data-field="schedule-field"
+        [label]="t('settings.schedule')"
+        [hint]="schedulePreview(selectedSchedule())"
+      >
         <mndw-select
           data-field="auto-update-schedule"
           [value]="settings?.autoUpdateSchedule ?? ''"
@@ -49,9 +64,9 @@
           (mndwchange)="onScheduleChange($event)"
         >
           <mndw-option value="">{{ t('settings.always-on') }}</mndw-option>
-        @for (entry of scheduleEntries(); track entry[0]) {
+          @for (entry of scheduleEntries(); track entry[0]) {
             <mndw-option [value]="entry[0]">{{ scheduleLabel(entry[0], entry[1]) }}</mndw-option>
-        }
+          }
         </mndw-select>
       </mndw-field>
     </section>

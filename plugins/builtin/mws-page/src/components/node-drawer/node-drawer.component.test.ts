@@ -1,4 +1,5 @@
 import '@angular/compiler';
+import {readFileSync} from 'node:fs';
 import {signal, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
 import {TestBed} from '@angular/core/testing';
 import {type TestI18n, createTestI18n} from '@mndw/sdk/testing';
@@ -11,11 +12,12 @@ import {loadFixture} from '../../fixtures/load';
 import {type ExtraFeaturesAvailability, MwsDataService} from '../../services/mws-data.service';
 import {MwsWriteService} from '../../services/mws-write.service';
 import {MWS_RENAME_API, RCI_MANAGER, TRANSLATOR} from '../../tokens';
-import drawerStyles from './node-drawer.component.scss?raw';
 import drawerTemplate from './node-drawer.component.html?raw';
 import {NodeDrawerComponent} from './node-drawer.component';
 import enCatalog from '../../../i18n/en.json';
 import ruCatalog from '../../../i18n/ru.json';
+
+const drawerStyles = readFileSync('src/components/node-drawer/node-drawer.component.scss', 'utf8');
 
 const CONTROLLER: ControllerInfo = {
   mac: '02:7d:4a:91:c3:10',
@@ -57,6 +59,12 @@ function slider(
   }
 
   return element;
+}
+
+function flushPendingFocus(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
 }
 
 describe('NodeDrawerComponent', () => {
@@ -119,7 +127,7 @@ describe('NodeDrawerComponent', () => {
     TestBed.resetTestingModule();
   });
 
-  it('renders identity, wireless backhaul, and clients for an extender', () => {
+  it('renders identity, a compact wireless backhaul row, and clients for an extender', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
 
     fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
@@ -127,11 +135,11 @@ describe('NodeDrawerComponent', () => {
 
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
 
-    expect(text).toContain('Mesh Extender A');
+    expect(fixture.nativeElement.querySelector('.identity-heading h3')?.textContent).toBe('Mesh Extender A');
     expect(text).toContain('Buddy 6 (KN-3411)');
+    expect(text).toContain('Wi-Fi 5 GHz');
     expect(text).toContain('−35 dBm');
-    expect(text).toContain('1.2 Gbit/s');
-    expect(text).toContain('11ax');
+    expect(fixture.nativeElement.querySelector('.backhaul')).toBeNull();
   });
 
   it('wraps identity details in detail-pair elements for 2-column layout', () => {
@@ -151,28 +159,40 @@ describe('NodeDrawerComponent', () => {
       throw new Error('expected identity details list');
     }
 
-    expect(dl.querySelectorAll('.detail-pair')).toHaveLength(7);
+    expect(dl.querySelectorAll('.detail-pair')).toHaveLength(8);
+    expect(dl.querySelector('.detail-pair:last-child dt')?.textContent).toContain('Backhaul');
   });
 
-  it('preserves backhaul detail list structure without detail-pair wrappers', () => {
+  it('renders the node name, icon-only Rename action, and controller badge in order', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
-    const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
-
-    if (node === null) {
-      throw new Error('expected extender fixture node');
-    }
+    const node = findNodeById(roots(), CONTROLLER.mac);
 
     fixture.componentRef.setInput('node', node);
     fixture.detectChanges();
 
-    const backhaulDl = fixture.nativeElement.querySelector('.backhaul dl');
+    const heading = fixture.nativeElement.querySelector('.identity-heading') as HTMLElement | null;
+    const name = heading?.querySelector('h3');
+    const rename = heading?.querySelector('[data-action="edit-name"]');
+    const badge = heading?.querySelector('.role-badge');
 
-    if (backhaulDl === null) {
-      throw new Error('expected backhaul details list');
-    }
+    expect(name?.textContent).toBe('Router');
+    expect(name?.parentElement?.classList.contains('identity-name')).toBe(true);
+    expect(name?.parentElement?.children[1]).toBe(rename);
+    expect(heading?.children[1]).toBe(badge);
+    expect(badge?.parentElement).toBe(heading);
+    expect(rename?.getAttribute('aria-label')).toBe('Rename');
+    expect(rename?.getAttribute('title')).toBe('Rename');
+    expect(rename?.textContent?.trim()).toBe('');
+    expect(rename?.querySelector('mndw-icon[name="pencil"]')).not.toBeNull();
+  });
 
-    expect(backhaulDl.querySelector('.detail-pair')).toBeNull();
-    expect(backhaulDl.querySelectorAll('dt').length).toBeGreaterThan(0);
+  it('keeps a compact name and Rename gap, normal row spacing, and details separation', () => {
+    expect(drawerStyles).toMatch(/\.identity-name\s*\{[^}]*gap:\s*0\.25rem;/s);
+    expect(drawerStyles).toMatch(/\.identity-heading\s*\{[^}]*gap:\s*0\.5rem;/s);
+    expect(drawerStyles).not.toMatch(/margin-inline-start:\s*calc\(0px\s*-\s*var\(--mndw-space-3\)\)/);
+    expect(drawerStyles).toMatch(
+      /&\s*\+\s*dl\.identity-details\s*\{[^}]*margin-top:\s*0\.25rem;/s,
+    );
   });
 
   it('shows a device-panel action only for online extenders', async () => {
@@ -246,7 +266,7 @@ describe('NodeDrawerComponent', () => {
     open.mockRestore();
   });
 
-  it('renders Status, Settings, and Clients inline for extender nodes', () => {
+  it('renders Telemetry, Settings, and Clients inline while keeping the status tab id', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
 
     fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
@@ -254,7 +274,7 @@ describe('NodeDrawerComponent', () => {
 
     expect(fixture.nativeElement.querySelector('mndw-tabs')).not.toBeNull();
     expect(fixture.nativeElement.querySelectorAll('mndw-tab')).toHaveLength(3);
-    expect(fixture.nativeElement.querySelector('mndw-tab#status')?.textContent).toContain('Status');
+    expect(fixture.nativeElement.querySelector('mndw-tab#status')?.textContent).toContain('Telemetry');
     expect(fixture.nativeElement.querySelector('mndw-tab#settings')?.textContent).toContain('Settings');
     expect(fixture.nativeElement.querySelector('mndw-tab#clients')?.textContent).toContain('Clients');
     expect(fixture.nativeElement.querySelector('mndw-tab-panel[for="settings"] mws-node-settings')).not.toBeNull();
@@ -455,16 +475,16 @@ describe('NodeDrawerComponent', () => {
     expect(fixture.nativeElement.querySelector('mndw-tab-panel[for="settings"] .wifi-power')).not.toBeNull();
   });
 
-  it('renders wired backhaul details for the wired extender', () => {
+  it('renders the wired label as one identity detail for the wired extender', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
 
     fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:32'));
     fixture.detectChanges();
 
-    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    const backhaul = fixture.nativeElement.querySelector('.identity-details .detail-pair:last-child');
 
-    expect(text).toContain('1 Gbit/s');
-    expect(text).toContain('full');
+    expect(backhaul?.querySelector('dt')?.textContent).toContain('Backhaul');
+    expect(backhaul?.querySelector('dd')?.textContent).toContain('Wired');
   });
 
   it('labels the controller and lists its directly-attached clients', () => {
@@ -501,7 +521,7 @@ describe('NodeDrawerComponent', () => {
     expect(fixture.nativeElement.querySelector('.health')).toBeNull();
   });
 
-  it('badges the controller and hides its backhaul section', () => {
+  it('badges the controller and does not render an extender backhaul row', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
 
     fixture.componentRef.setInput('node', findNodeById(roots(), CONTROLLER.mac));
@@ -511,6 +531,66 @@ describe('NodeDrawerComponent', () => {
 
     expect(badge?.textContent).toContain('Controller');
     expect(fixture.nativeElement.querySelector('.backhaul')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.identity-details .detail-pair:last-child dt')?.textContent)
+      .not.toContain('Backhaul');
+  });
+
+  it('shows a telemetry empty state for the controller when it has no telemetry', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), CONTROLLER.mac));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.telemetry-empty')?.textContent)
+      .toContain('Telemetry is not available for this node.');
+    expect(fixture.nativeElement.querySelector('.telemetry-empty')?.textContent)
+      .not.toContain('Turn on extra features');
+  });
+
+  it('explains that extra features must be enabled when telemetry is unavailable globally', () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    availability.set('limited');
+    fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.telemetry-empty')?.textContent)
+      .toContain('Telemetry is not available for this node.');
+    expect(fixture.nativeElement.querySelector('.telemetry-empty')?.textContent)
+      .toContain('Turn on extra features to see it.');
+  });
+
+  it('renders the offline backhaul text in the identity details row', () => {
+    const offlineOnly = buildMap(normalizeMembers([{cid: 'c1', mac: 'aa:00:00:00:00:01'}]), [], CONTROLLER);
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(offlineOnly, 'aa:00:00:00:00:01'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.identity-details .detail-pair:last-child dd')?.textContent)
+      .toContain('Offline — no backhaul reported.');
+  });
+
+  it('moves focus into rename input and restores it to Rename after cancel', async () => {
+    const fixture = TestBed.createComponent(NodeDrawerComponent);
+
+    fixture.componentRef.setInput('node', findNodeById(roots(), CONTROLLER.mac));
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector<HTMLElement>('[data-action="edit-name"]')?.click();
+    fixture.detectChanges();
+    await flushPendingFocus();
+
+    const input = fixture.nativeElement.querySelector<HTMLElement>('mndw-input');
+
+    expect(input.shadowRoot?.activeElement).toBe(input.shadowRoot?.querySelector('input'));
+
+    fixture.nativeElement.querySelector<HTMLElement>('[data-action="cancel-name"]')?.click();
+    fixture.detectChanges();
+    await flushPendingFocus();
+
+    const rename = fixture.nativeElement.querySelector<HTMLElement>('[data-action="edit-name"]');
+
+    expect(rename?.shadowRoot?.activeElement).toBe(rename?.shadowRoot?.querySelector('button'));
   });
 
   it('shows a live-utilization panel with per-metric sparklines only for an active session', () => {
@@ -592,13 +672,14 @@ describe('NodeDrawerComponent', () => {
     expect(panel?.textContent).toContain('12%');
   });
 
-  it('renders a backhaul section for an extender', () => {
+  it('renders a Backhaul row only for extender nodes', () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
 
     fixture.componentRef.setInput('node', findNodeById(roots(), '02:7d:4a:91:c3:21'));
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('.backhaul')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.identity-details .detail-pair:last-child dt')?.textContent)
+      .toContain('Backhaul');
     expect(fixture.nativeElement.querySelector('.role-badge')).toBeNull();
   });
 
@@ -656,32 +737,39 @@ describe('NodeDrawerComponent', () => {
     expect(setPower).not.toHaveBeenCalled();
   });
 
-  it('submits a trimmed controller name and updates the title without mutating the node', () => {
+  it('submits a trimmed controller name, updates the heading, and restores focus after save', async () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
     const node = findNodeById(roots(), '02:7d:4a:91:c3:10');
-    const setTitle = vi.fn();
     const renamed = vi.fn();
 
     fixture.componentRef.setInput('node', node);
-    fixture.componentRef.setInput('setTitle', setTitle);
     fixture.componentInstance.renamed.subscribe(renamed);
     fixture.detectChanges();
 
     (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('[data-action="edit-name"]')?.click();
     fixture.detectChanges();
+    await flushPendingFocus();
 
     const input = fixture.nativeElement.querySelector<HTMLElement & {value: string}>('mndw-input');
+
+    expect(input.shadowRoot?.activeElement).toBe(input.shadowRoot?.querySelector('input'));
 
     input.value = '  Renamed Router  ';
     input.dispatchEvent(new CustomEvent('mndwinput', {detail: {value: input.value}, bubbles: true, composed: true}));
     input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, composed: true}));
     fixture.detectChanges();
+    await fixture.whenStable();
+    await flushPendingFocus();
 
     expect(renameNode).toHaveBeenCalledWith('02:7d:4a:91:c3:10', true, 'Renamed Router');
     expect(refreshNow).toHaveBeenCalledOnce();
-    expect(setTitle).toHaveBeenCalledWith('Renamed Router');
     expect(renamed).toHaveBeenCalledWith('Renamed Router');
     expect(node?.name).toBe('Router');
+    expect(fixture.nativeElement.querySelector('.identity-heading h3')?.textContent).toBe('Renamed Router');
+
+    const rename = fixture.nativeElement.querySelector<HTMLElement>('[data-action="edit-name"]');
+
+    expect(rename?.shadowRoot?.activeElement).toBe(rename?.shadowRoot?.querySelector('button'));
   });
 
   it('uses the extender rename path through the injected port', () => {

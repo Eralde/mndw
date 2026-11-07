@@ -21,14 +21,7 @@ import type {MwsNode} from '../../domain/mws/mws.types';
 import {DASH, formatRate, formatSpeed, formatUptime} from '../../format';
 import {NodeTableColumnsStore, OPTIONAL_NODE_COLUMN_IDS} from '../../services/node-table-columns.store';
 import {TRANSLATOR} from '../../tokens';
-import {
-  type NodeRow,
-  type NodeSortDir,
-  type NodeSortKey,
-  buildNodeRows,
-  compareIpStrings,
-  filterNodeRows,
-} from './node-rows';
+import {type NodeRow, buildNodeRows, compareIpStrings, filterNodeRows} from './node-rows';
 
 @Component({
   selector: 'mws-nodes-table',
@@ -46,8 +39,7 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
   public readonly nodeActivated = output<string>();
 
   protected readonly search = signal('');
-  protected readonly sortKey = signal<NodeSortKey>('name');
-  protected readonly sortDir = signal<NodeSortDir>('asc');
+  protected readonly sort = signal<SortState | null>(null);
 
   protected readonly columns = [
     column<NodeRow>()({
@@ -115,7 +107,6 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
   protected readonly hiddenColumns = computed(() =>
     OPTIONAL_NODE_COLUMN_IDS.filter((id) => !this.columnsStore.visibleColumns().has(id))
   );
-  protected readonly sort = computed<SortState>(() => ({columnId: this.sortKey(), direction: this.sortDir()}));
 
   public ngOnInit(): void {
     void this.columnsStore.load();
@@ -132,15 +123,7 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
   protected onSortChange(event: Event): void {
     const sort = (event as CustomEvent<MndwSortChangeDetail>).detail.sort;
 
-    if (sort === null) {
-      this.sortKey.set('name');
-      this.sortDir.set('asc');
-
-      return;
-    }
-
-    this.sortKey.set(sort.columnId as NodeSortKey);
-    this.sortDir.set(sort.direction);
+    this.sort.set(sort);
   }
 
   protected onVisibilityChange(event: Event): void {
@@ -154,9 +137,10 @@ export class MwsNodesTableComponent implements OnDestroy, OnInit {
       }
     }
 
-    if (this.sortKey() !== 'name' && hidden.has(this.sortKey())) {
-      this.sortKey.set('name');
-      this.sortDir.set('asc');
+    const sort = this.sort();
+
+    if (sort !== null && sort.columnId !== 'name' && hidden.has(sort.columnId)) {
+      this.sort.set(null);
     }
   }
 

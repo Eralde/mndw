@@ -35,18 +35,29 @@
       </mndw-select>
     </mndw-field>
   </div>
-  <fieldset class="event-filters">
-    <legend>{{ t('transition-log.event-types') }}</legend>
-    @for (type of eventTypes; track type) {
-      <mndw-checkbox
-        [attr.data-event-type]="type"
-        [checked]="selectedEventTypes.includes(type)"
-        (mndwchange)="onEventTypeChange(type, $event)"
-      >{{ eventLabel(type) }}</mndw-checkbox>
-    }
-  </fieldset>
-  <div class="actions">
-    <mndw-button variant="secondary" data-action="download-csv" (click)="downloadCsv()">{{ t('transition-log.download-csv') }}</mndw-button>
+  <div class="event-filter-row">
+    <fieldset class="event-filters">
+      <legend class="mndw-field__label">{{ t('transition-log.event-types') }}</legend>
+      <div class="event-options">
+        @for (type of eventTypes; track type) {
+          <mndw-checkbox
+            [attr.data-event-type]="type"
+            [checked]="selectedEventTypes.includes(type)"
+            (mndwchange)="onEventTypeChange(type, $event)"
+          >{{ eventLabel(type) }}</mndw-checkbox>
+        }
+      </div>
+    </fieldset>
+    <div class="actions">
+      <mndw-button
+        variant="secondary"
+        data-action="download-csv"
+        [disabled]="visibleEntries().length === 0"
+        (click)="downloadCsv()"
+      >
+        {{ t('transition-log.download-csv') }}
+      </mndw-button>
+    </div>
   </div>
   @if (streamError) {
     <p class="error" role="alert">{{ streamError }}</p>
@@ -56,5 +67,6 @@
     [rows]="visibleEntries()"
     rowKey="id"
     [caption]="t('transition-log.title')"
+    [emptyLabel]="entries().size > 0 && visibleEntries().length === 0 ? t('transition-log.no-match') : t('transition-log.empty')"
   ></mndw-table>
 </section>

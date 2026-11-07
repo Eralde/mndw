@@ -4,6 +4,7 @@
   width: 100%;
   height: 100%;
   min-height: 20rem;
+  border-radius: var(--mndw-radius-md);
 }
 
 .graph-view-controls {
@@ -59,7 +60,7 @@
 }
 
 :host.editing {
-  .mws-graph {
+  .mws-graph:not(:focus-visible) {
     outline: 1px dashed var(--mndw-accent);
   }
 
@@ -73,6 +74,7 @@
   width: 100%;
   height: 100%;
   font-family: var(--mndw-font-sans);
+  border-radius: inherit;
 
   &:focus {
     outline: none;
@@ -81,6 +83,7 @@
   &:focus-visible {
     outline: var(--mndw-focus-w) solid var(--mndw-focus-ring);
     outline-offset: -0.125rem;
+    border-radius: inherit;
   }
 
   .edge {
@@ -145,6 +148,10 @@
     display: none;
   }
 
+  .zoom-hide-indicators .node-icon {
+    display: none;
+  }
+
   .node {
     cursor: pointer;
 
@@ -160,12 +167,31 @@
       stroke-width: 2;
     }
 
+    rect.focus-ring {
+      display: none;
+      fill: none;
+      stroke: var(--mndw-focus-ring);
+      stroke-width: var(--mndw-focus-w);
+      pointer-events: none;
+    }
+
     text {
       font-size: 0.75rem;
       fill: var(--mndw-text);
 
+      &.name {
+        font-size: 0.8125rem;
+        font-weight: 600;
+        fill: var(--mndw-text);
+      }
+
       &.model {
-        font-size: 0.625rem;
+        font-size: 0.6875rem;
+        fill: var(--mndw-text-subtle);
+      }
+
+      &.status-line {
+        font-size: 0.6875rem;
         fill: var(--mndw-text-subtle);
       }
 
@@ -176,51 +202,8 @@
       }
     }
 
-    .client-badge {
-      circle {
-        fill: var(--mndw-accent);
-      }
-
-      text {
-        font-size: 0.625rem;
-        fill: var(--mndw-surface-raised);
-      }
-    }
-
-    .update-dot {
-      fill: var(--mndw-success);
-    }
-
-    .mwsd-status-dot {
-      &.mwsd-starting {
-        fill: var(--mndw-info);
-      }
-
-      &.mwsd-live {
-        fill: var(--mndw-success);
-      }
-
-      &.mwsd-stale {
-        fill: var(--mndw-warning);
-      }
-
-      &.mwsd-offline {
-        fill: var(--mndw-danger);
-      }
-
-      &.mwsd-unavailable {
-        fill: var(--mndw-text-muted);
-      }
-    }
-
-    .persistent-session-dot {
-      &.persistent-live {
-        fill: var(--mndw-success);
-      }
-
-      &.persistent-failing {
-        fill: var(--mndw-warning);
-      }
+    .node-icon {
+      stroke: currentColor;
     }
 
     &.controller rect.node-body {
@@ -229,11 +212,21 @@
     }
 
     &.offline {
-      opacity: 0.6;
+      // Owner chose a muted offline color for border and text (2026-11-07); the text stays above 3:1.
+      --mws-offline-color: color-mix(in srgb, var(--mndw-danger) 55%, var(--mndw-border));
 
       rect.node-body {
-        stroke: var(--mndw-danger);
+        stroke: var(--mws-offline-color);
       }
+
+      text.status-line {
+        fill: var(--mws-offline-color);
+      }
+    }
+
+    &.offline text.name,
+    &.offline text.model {
+      fill: var(--mndw-text-subtle);
     }
 
     &.on-path rect.node-body {
@@ -246,9 +239,16 @@
       filter: drop-shadow(0 0 6px var(--mndw-accent));
     }
 
-    &:focus-visible rect {
-      outline: 2px solid var(--mndw-accent);
-      outline-offset: 0.125rem;
+    &:focus {
+      outline: none;
+    }
+
+    &:focus-visible rect.focus-ring {
+      display: block;
+    }
+
+    &.selected:focus-visible rect.selection-ring {
+      display: none;
     }
   }
 

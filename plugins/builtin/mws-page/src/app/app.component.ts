@@ -255,7 +255,7 @@ export class AppComponent implements OnDestroy, OnInit {
     }
 
     this.selectedNodeId.set(nodeId);
-    this.openNodeDrawer()(nodeId, node.name, () => this.selectedNodeId.set(null));
+    this.openNodeDrawer()(nodeId, this.t('drawer.title'), () => this.selectedNodeId.set(null));
   }
 
   protected onNodePositionChanged(position: {id: string; x: number; y: number}): void {

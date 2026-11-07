@@ -106,6 +106,9 @@ describe('MwsClientsTableComponent', () => {
     expect(table.shadowRoot.querySelector('th[aria-sort="ascending"] button[data-sort-column="name"]')).not.toBeNull();
     expect(table.querySelector('.name-text')?.textContent).toContain('Alpha');
     expect(shadowRows(table)[0]?.textContent).toContain('Node A');
+    expect(table.shadowRoot.querySelector('caption')).toBeNull();
+    expect(table.shadowRoot.querySelector('table')?.getAttribute('aria-label')).toBe('All mesh clients');
+    expect(table.getAttribute('aria-label')).toBeNull();
     expect(controls).not.toBeNull();
     expect(controls?.contains(table)).toBe(false);
   });

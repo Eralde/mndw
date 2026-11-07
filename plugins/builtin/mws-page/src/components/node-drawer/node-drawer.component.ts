@@ -2,6 +2,7 @@ import type {PluginRciManager} from '@mndw/sdk';
 import {
   CUSTOM_ELEMENTS_SCHEMA,
   Component,
+  ElementRef,
   type OnDestroy,
   effect,
   inject,
@@ -105,6 +106,7 @@ const NODE_NAME_ERROR_KEYS: Record<NodeNameValidationErrorCode, Exclude<ErrorTra
 })
 export class NodeDrawerComponent implements OnDestroy {
   private readonly translator = inject(TRANSLATOR);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly renameApi = inject<MwsRenameApi>(MWS_RENAME_API);
   private readonly data = inject(MwsDataService);
   private readonly write = inject(MwsWriteService);
@@ -122,9 +124,9 @@ export class NodeDrawerComponent implements OnDestroy {
   };
 
   public readonly node = input<MwsNode | null>(null);
-  public readonly setTitle = input<(title: string) => void>(() => undefined);
   public readonly renamed = output<string>();
   private observedNode: MwsNode | null | undefined;
+  private renamedName: string | null = null;
 
   protected selectedTab = 'status';
   protected editing = false;
@@ -137,6 +139,7 @@ export class NodeDrawerComponent implements OnDestroy {
   private renameErrorKey: ErrorTranslationKey | null = null;
   private powerErrorKey: 'error.tx-power-failed' | null = null;
   private renameStartName: string | null = null;
+  private pendingFocus: number | null = null;
 
   public constructor() {
     effect(() => {
@@ -154,6 +157,9 @@ export class NodeDrawerComponent implements OnDestroy {
     if (this.observedMac !== node?.mac) {
       this.resetPowerControls();
       this.observedMac = node?.mac ?? null;
+      this.renamedName = null;
+    } else if (this.renamedName !== null && node?.name !== this.observedNode?.name) {
+      this.renamedName = null;
     }
 
     this.observedNode = node;
@@ -171,7 +177,8 @@ export class NodeDrawerComponent implements OnDestroy {
   }
 
   protected displayName(node: MwsNode): string {
-    return node.isController ? node.name : this.settingsStore.draft()?.name ?? node.name;
+    return this.renamedName
+      ?? (node.isController ? node.name : this.settingsStore.draft()?.name ?? node.name);
   }
 
   private observeSettings(node: MwsNode | null): void {
@@ -312,6 +319,7 @@ export class NodeDrawerComponent implements OnDestroy {
 
     this.clearRenameError();
     this.editing = true;
+    this.focusAfterRender('mndw-input');
   }
 
   protected cancelRename(): void {
@@ -326,6 +334,7 @@ export class NodeDrawerComponent implements OnDestroy {
     this.editing = false;
     this.renameStartName = null;
     this.clearRenameError();
+    this.focusAfterRender('[data-action="edit-name"]');
   }
 
   protected onNameInput(event: CustomEvent<{value: string}>): void {
@@ -435,6 +444,7 @@ export class NodeDrawerComponent implements OnDestroy {
     this.pending = false;
     this.editing = false;
     this.renameStartName = null;
+    this.renamedName = name;
 
     if (!this.node()?.isController && this.settingsStore.baseline() !== null) {
       this.settingsStore.setName(name);
@@ -442,8 +452,28 @@ export class NodeDrawerComponent implements OnDestroy {
     }
 
     this.renamed.emit(name);
-    this.setTitle()(name);
     this.data.refreshNow();
+    this.focusAfterRender('[data-action="edit-name"]');
+  }
+
+  private focusAfterRender(selector: string): void {
+    if (this.pendingFocus !== null) {
+      window.clearTimeout(this.pendingFocus);
+    }
+
+    this.pendingFocus = window.setTimeout(() => {
+      this.pendingFocus = null;
+
+      const target = this.host.nativeElement.querySelector<HTMLElement>(selector);
+
+      if (target === null || !this.host.nativeElement.isConnected) {
+        return;
+      }
+
+      const interactive = target.shadowRoot?.querySelector<HTMLElement>('input, button');
+
+      (interactive ?? target).focus({preventScroll: true});
+    }, 0);
   }
 
   private failRename(error: unknown): void {
@@ -513,6 +543,31 @@ export class NodeDrawerComponent implements OnDestroy {
     // Extenders show live telemetry once their persistent session is up; the
     // controller has no session but carries telemetry from direct RCI calls.
     return node.liveTelemetry !== undefined || (!node.isController && node.persistentSession === true);
+  }
+
+  protected extraFeaturesOff(): boolean {
+    return this.data.extraFeaturesAvailability() !== 'active';
+  }
+
+  protected backhaulSummary(node: MwsNode): string {
+    const backhaul = node.backhaul;
+
+    if (backhaul === null) {
+      return this.t('drawer.offline-backhaul');
+    }
+
+    if (!this.isWirelessBackhaul(node)) {
+      return this.t('drawer.wired');
+    }
+
+    const radio = backhaul.ap ?? backhaul.uplink ?? '';
+    const band = radio.startsWith('WifiMaster1/')
+      ? this.t('drawer.util-wifi-5')
+      : radio.startsWith('WifiMaster0/')
+      ? this.t('drawer.util-wifi-24')
+      : this.t('drawer.wireless');
+
+    return `${band} · ${this.rssi(backhaul.rssi)}`;
   }
 
   protected utilizationMetrics(node: MwsNode): UtilizationMetric[] {
@@ -795,6 +850,11 @@ export class NodeDrawerComponent implements OnDestroy {
   }
 
   public ngOnDestroy(): void {
+    if (this.pendingFocus !== null) {
+      window.clearTimeout(this.pendingFocus);
+      this.pendingFocus = null;
+    }
+
     this.cancelSettingsLoad();
   }
 

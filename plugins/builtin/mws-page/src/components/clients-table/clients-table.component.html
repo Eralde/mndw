@@ -21,7 +21,7 @@
     min-width="900px"
     [sort]="sort()"
     [columnMenu]="false"
-    [caption]="t('clients.caption')"
+    [label]="t('clients.caption')"
     (mndwsortchange)="onSortChange($event)"
   >
     <ng-template mndwCell="name" [mndwCellRows]="rows" let-row>

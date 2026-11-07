@@ -332,7 +332,19 @@ describe('AppComponent', () => {
 
     expect(node).not.toBeNull();
     node?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-    expect(open).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.any(Function));
+    expect(open).toHaveBeenCalledWith(expect.any(String), 'Mesh node', expect.any(Function));
+  });
+
+  it('opens the drawer with the translated generic title', () => {
+    const open = vi.fn();
+    const fixture = render(fakeData('ready', fixtureRoots()), undefined, open);
+    const node = (fixture.nativeElement as HTMLElement).querySelector<SVGGElement>('g.node');
+
+    testI18n.setLocale('ru', ruCatalog);
+    fixture.detectChanges();
+    node?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+
+    expect(open).toHaveBeenCalledWith(expect.any(String), 'Узел сети', expect.any(Function));
   });
 
   it('renders Map, Nodes, and Clients tabs when ready', () => {
@@ -416,7 +428,7 @@ describe('AppComponent', () => {
     button?.click();
     fixture.detectChanges();
 
-    expect(open).toHaveBeenCalledWith('02:7d:4a:91:c3:10', 'Router', expect.any(Function));
+    expect(open).toHaveBeenCalledWith('02:7d:4a:91:c3:10', 'Mesh node', expect.any(Function));
     expect(fixture.nativeElement.querySelector('mws-map-graph g.node.selected')).not.toBeNull();
   });
 

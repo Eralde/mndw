@@ -1,5 +1,7 @@
 import '@angular/compiler';
+import {readFileSync} from 'node:fs';
 import {DestroyRef, inject, ɵresolveComponentResources as resolveComponentResources} from '@angular/core';
+import {defineMndwUi} from '@mndw/ui';
 import {createTranslatorSignals} from '@mndw/sdk/angular';
 import {TestBed} from '@angular/core/testing';
 import {createTestI18n} from '@mndw/sdk/testing';
@@ -10,12 +12,15 @@ import type {ControllerInfo, MwsNode} from '../../domain/mws/mws.types';
 import {loadFixture} from '../../fixtures/load';
 import {DEFAULT_LAYOUT_CONFIG} from './graph-layout';
 import {MwsGraphComponent} from './mws-graph.component';
-import graphStyles from './mws-graph.component.scss?raw';
 import {TRANSLATOR} from '../../tokens';
 import enCatalog from '../../../i18n/en.json';
 import ruCatalog from '../../../i18n/ru.json';
 
+const graphStyles = readFileSync('src/components/mws-graph/mws-graph.component.scss', 'utf8');
+
 let testI18n = createTestI18n(enCatalog);
+
+const ICON_SPRITE_URL = '/assets/test-icons.svg';
 
 const CONTROLLER: ControllerInfo = {
   mac: '02:7d:4a:91:c3:10',
@@ -35,6 +40,7 @@ describe('MwsGraphComponent', () => {
   beforeEach(async () => {
     TestBed.resetTestingModule();
     testI18n = createTestI18n(enCatalog);
+    defineMndwUi({iconSpriteUrl: ICON_SPRITE_URL});
     await resolveComponentResources((url: string) => {
       if (url.endsWith('mws-graph.component.scss')) {
         return Promise.resolve(graphStyles);
@@ -76,6 +82,7 @@ describe('MwsGraphComponent', () => {
     const element: HTMLElement = fixture.nativeElement;
 
     expect(element.querySelectorAll('rect.selection-ring')).toHaveLength(3);
+    expect(element.querySelectorAll('rect.focus-ring')).toHaveLength(3);
     expect(element.querySelectorAll('rect.node-body')).toHaveLength(3);
     expect(element.querySelector('rect.node-body')?.getAttribute('width')).toBe(
       String(DEFAULT_LAYOUT_CONFIG.nodeWidth),
@@ -86,6 +93,36 @@ describe('MwsGraphComponent', () => {
     expect(DEFAULT_LAYOUT_CONFIG.nodeWidth).toBe(180);
     expect([...element.querySelectorAll<SVGRectElement>('rect.selection-ring')]
       .every((ring) => ring.style.display === 'none')).toBe(true);
+    expect(graphStyles).not.toMatch(/:focus-visible\s+rect\s*\{/);
+    expect(graphStyles).toContain('rect.focus-ring');
+    expect(graphStyles).toContain('outline: none');
+  });
+
+  it('aligns node text to a padded left edge with balanced baselines and readable sizes', () => {
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', fixtureRoots());
+    fixture.detectChanges();
+
+    const node = fixture.nativeElement.querySelector('g.node') as SVGGElement;
+    const name = node.querySelector('text.name');
+    const model = node.querySelector('text.model');
+    const status = node.querySelector('text.status-line');
+
+    expect([name, model, status].map((text) => text?.getAttribute('text-anchor'))).toEqual([
+      'start',
+      'start',
+      'start',
+    ]);
+    expect([name, model, status].map((text) => text?.getAttribute('x'))).toEqual(['-78', '-78', '-78']);
+    expect([name, model, status].map((text) => text?.getAttribute('y'))).toEqual(['-11', '5', '20']);
+    expect(graphStyles).toMatch(
+      /\.name\s*\{[^}]*font-size:\s*0\.8125rem;[^}]*font-weight:\s*600;[^}]*fill:\s*var\(--mndw-text\);/s,
+    );
+    expect(graphStyles).toMatch(/\.model\s*\{[^}]*font-size:\s*0\.6875rem;[^}]*fill:\s*var\(--mndw-text-subtle\);/s);
+    expect(graphStyles).toMatch(
+      /\.status-line\s*\{[^}]*font-size:\s*0\.6875rem;[^}]*fill:\s*var\(--mndw-text-subtle\);/s,
+    );
   });
 
   it('refreshes imperative SVG translations after a locale switch', () => {
@@ -149,47 +186,132 @@ describe('MwsGraphComponent', () => {
     expect(node.getAttribute('aria-label')).toBeTruthy();
   });
 
-  it('renders accessible mwsd dots for extenders and updates state without topology changes', () => {
+  it('hides telemetry and remote-control markers while extra features are inactive', () => {
     const roots = fixtureRoots();
-    const extenders = roots
-      .flatMap((root) => collectNodes(root))
-      .filter((node) => !node.isController);
+    const extender = roots.flatMap((root) => collectNodes(root)).find((node) => !node.isController);
+
+    if (extender === undefined) {
+      throw new Error('fixture roots missing an extender');
+    }
+
+    extender.mwsdStatus = {state: 'stale', lastTelemetryAt: Date.now() - 100_000};
+    extender.persistentSession = false;
+
     const fixture = TestBed.createComponent(MwsGraphComponent);
 
-    extenders[0].mwsdStatus = {state: 'live', lastTelemetryAt: Date.now()};
-    extenders[1].mwsdStatus = {state: 'stale', lastTelemetryAt: Date.now() - 100_000};
     fixture.componentRef.setInput('roots', roots);
+    fixture.componentRef.setInput('extraFeaturesAvailability', 'limited');
+    fixture.detectChanges();
+
+    const node = fixture.nativeElement.querySelector(`g.node[data-node-id="${extender.id}"]`) as SVGGElement;
+
+    expect(node.querySelectorAll('svg.node-icon')).toHaveLength(0);
+    expect(
+      fixture.nativeElement.querySelectorAll(
+        'circle.update-dot, circle.mwsd-status-dot, circle.persistent-session-dot',
+      ),
+    )
+      .toHaveLength(0);
+    expect(node.getAttribute('aria-label')).not.toContain('Telemetry: stale');
+    expect(node.getAttribute('aria-label')).not.toContain('Remote control: disconnected');
+  });
+
+  it('shows only online problem markers when extra features are active and names visible markers', () => {
+    const roots = fixtureRoots();
+    const extenders = roots.flatMap((root) => collectNodes(root)).filter((node) => !node.isController);
+    const first = extenders[0];
+    const second = extenders[1];
+
+    if (first === undefined || second === undefined) {
+      throw new Error('fixture roots missing expected extenders');
+    }
+
+    const variants = ['live', 'starting', 'stale', 'offline', 'unavailable'].map((state) => ({
+      ...first,
+      id: `status-${state}`,
+      name: `Status ${state}`,
+      isOnline: true,
+      parent: null,
+      children: [],
+      mwsdStatus: {state: state as 'live' | 'starting' | 'stale' | 'offline' | 'unavailable', lastTelemetryAt: null},
+      persistentSession: state !== 'stale',
+    }));
+    const offlineNode = {
+      ...second,
+      id: 'offline-node',
+      name: 'Offline node',
+      isOnline: false,
+      parent: null,
+      children: [],
+      mwsdStatus: {state: 'stale' as const, lastTelemetryAt: null},
+      persistentSession: false,
+      fw: '1.0',
+      fwAvailable: '2.0',
+      clients: [{
+        mac: '02:00:00:00:00:01',
+        name: 'Test client',
+        ip: null,
+        uptime: null,
+        lastSeen: null,
+        wired: false,
+        active: true,
+      }],
+    };
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', [...roots, ...variants, offlineNode]);
+    fixture.componentRef.setInput('extraFeaturesAvailability', 'active');
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
-    const controllerDot = element.querySelector('g.node.controller circle.mwsd-status-dot');
 
-    expect(element.querySelectorAll('circle.mwsd-status-dot')).toHaveLength(3);
-    expect(controllerDot).not.toBeNull();
-    expect(controllerDot?.style.display).toBe('none');
-    expect(element.querySelector('circle.mwsd-status-dot.mwsd-live')).not.toBeNull();
-    expect(element.querySelector('circle.mwsd-status-dot.mwsd-stale')).not.toBeNull();
-    expect(element.querySelector('g.node.mwsd-live')?.getAttribute('aria-label')).toContain('Telemetry: live');
-    expect(element.querySelector('g.node.mwsd-stale')?.getAttribute('aria-label')).toContain('Telemetry: stale');
-    expect(element.querySelector('circle.mwsd-status-dot.mwsd-live title')?.textContent).toBe('Telemetry: live');
-    expect(element.querySelector('circle.mwsd-status-dot.mwsd-stale title')?.textContent).toBe('Telemetry: stale');
+    expect(element.querySelectorAll('circle.update-dot, circle.mwsd-status-dot, circle.persistent-session-dot'))
+      .toHaveLength(0);
+    expect(element.querySelectorAll('g.node[data-node-id="status-live"] svg.node-icon')).toHaveLength(0);
+    expect(element.querySelectorAll('g.node[data-node-id="status-starting"] svg.node-icon')).toHaveLength(0);
+    expect(element.querySelectorAll('g.node[data-node-id="status-unavailable"] svg.node-icon')).toHaveLength(0);
+    expect(element.querySelector('g.node[data-node-id="status-stale"] svg.node-icon[data-icon="activity"]'))
+      .not.toBeNull();
+    expect(element.querySelector('g.node[data-node-id="status-offline"] svg.node-icon[data-icon="activity"]'))
+      .not.toBeNull();
+    expect(element.querySelector('g.node[data-node-id="status-stale"] svg.node-icon[data-icon="unlink"]'))
+      .not.toBeNull();
+    expect(element.querySelectorAll('g.node[data-node-id="status-live"] svg.node-icon[data-icon="unlink"]'))
+      .toHaveLength(0);
+    expect(element.querySelector('g.node[data-node-id="offline-node"]')?.classList.contains('offline')).toBe(true);
+    expect(element.querySelectorAll('g.node[data-node-id="offline-node"] svg.node-icon')).toHaveLength(0);
+    expect(element.querySelector('g.node[data-node-id="status-stale"]')?.getAttribute('aria-label'))
+      .toContain('Telemetry: stale');
+    expect(element.querySelector('g.node[data-node-id="status-stale"]')?.getAttribute('aria-label'))
+      .toContain('Remote control: disconnected');
+    expect(element.querySelector('g.node[data-node-id="status-live"]')?.getAttribute('aria-label'))
+      .not.toContain('Telemetry: live');
+    expect(element.querySelector('g.node[data-node-id="offline-node"]')?.getAttribute('aria-label'))
+      .not.toContain('Telemetry: stale');
+    expect(element.querySelector('g.node[data-node-id="offline-node"]')?.getAttribute('aria-label'))
+      .toContain('Offline');
+    expect(element.querySelector('g.node[data-node-id="offline-node"] text.status-line')?.textContent)
+      .toBe('Offline');
+    expect(element.querySelector('g.node[data-node-id="offline-node"] text.status-line')?.textContent)
+      .not.toContain('client');
+    expect(element.querySelector('g.node[data-node-id="offline-node"] text.status-line')?.getAttribute('fill'))
+      .toBeNull();
 
-    const updatedRoots = fixtureRoots();
-    const updatedExtenders = updatedRoots
-      .flatMap((root) => collectNodes(root))
-      .filter((node) => !node.isController);
+    const offlineStart = graphStyles.indexOf('&.offline {');
+    const offlineEnd = graphStyles.indexOf('&.on-path', offlineStart);
+    const offlineStyles = graphStyles.slice(offlineStart, offlineEnd);
 
-    updatedExtenders[0].mwsdStatus = {state: 'stale', lastTelemetryAt: Date.now() - 100_000};
-    updatedExtenders[1].mwsdStatus = {state: 'offline', lastTelemetryAt: null};
-    fixture.componentRef.setInput('roots', updatedRoots);
-    fixture.detectChanges();
-
-    expect(element.querySelector('circle.mwsd-status-dot.mwsd-live')).toBeNull();
-    expect(element.querySelectorAll('circle.mwsd-status-dot.mwsd-stale')).toHaveLength(1);
-    expect(element.querySelectorAll('circle.mwsd-status-dot.mwsd-offline')).toHaveLength(1);
+    expect(offlineStyles).toContain(
+      '--mws-offline-color: color-mix(in srgb, var(--mndw-danger) 55%, var(--mndw-border));',
+    );
+    expect(offlineStyles).toMatch(/rect\.node-body\s*\{[^}]*stroke:\s*var\(--mws-offline-color\);/s);
+    expect(offlineStyles).toMatch(/text\.status-line\s*\{[^}]*fill:\s*var\(--mws-offline-color\);/s);
+    expect(graphStyles).toMatch(
+      /&?\.offline\s+text\.name,\s*&?\.offline\s+text\.model\s*\{[^}]*fill:\s*var\(--mndw-text-subtle\);/s,
+    );
   });
 
-  it('renders persistent-session state only for configured extenders', () => {
+  it('renders only failing remote-control state for configured extenders when active', () => {
     const roots = fixtureRoots();
     const nodes = roots.flatMap((root) => collectNodes(root));
     const extenders = nodes.filter((node) => !node.isController);
@@ -200,25 +322,206 @@ describe('MwsGraphComponent', () => {
     const fixture = TestBed.createComponent(MwsGraphComponent);
 
     fixture.componentRef.setInput('roots', roots);
+    fixture.componentRef.setInput('extraFeaturesAvailability', 'active');
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;
-    const dots = element.querySelectorAll('circle.persistent-session-dot');
 
-    expect(dots).toHaveLength(nodes.length);
-    expect(element.querySelector('circle.persistent-session-dot.persistent-live')).not.toBeNull();
-    expect(element.querySelector('circle.persistent-session-dot.persistent-failing')).not.toBeNull();
-    expect(element.querySelector('g.node.controller circle.persistent-session-dot')?.style.display).toBe('none');
-    expect(element.querySelector('g.node.persistent-live')?.getAttribute('aria-label')).toContain(
+    expect(element.querySelectorAll('circle.persistent-session-dot')).toHaveLength(0);
+    expect(element.querySelectorAll('g.node svg.node-icon[data-icon="unlink"]')).toHaveLength(1);
+    expect(element.querySelector('g.node.persistent-failing svg.node-icon[data-icon="unlink"]')).not.toBeNull();
+    expect(element.querySelector('g.node.controller svg.node-icon[data-icon="unlink"]')).toBeNull();
+    expect(element.querySelector('g.node.persistent-live')?.getAttribute('aria-label')).not.toContain(
       'Remote control: connected',
     );
     expect(element.querySelector('g.node.persistent-failing')?.getAttribute('aria-label')).toContain(
       'Remote control: disconnected',
     );
-    expect(element.querySelector('circle.persistent-session-dot.persistent-live title')?.textContent)
-      .toBe('Remote control: connected');
-    expect(element.querySelector('circle.persistent-session-dot.persistent-failing title')?.textContent)
+    expect(element.querySelector('svg.node-icon[data-icon="unlink"] title')?.textContent)
       .toBe('Remote control: disconnected');
+  });
+
+  it('stacks update, telemetry, and remote-control icons in order with sprite hrefs', () => {
+    const roots = fixtureRoots();
+    const extender = roots[0]?.children[0]?.node;
+
+    if (extender === undefined) {
+      throw new Error('fixture roots missing an extender');
+    }
+
+    extender.fw = '1.0';
+    extender.fwAvailable = '2.0';
+    extender.mwsdStatus = {state: 'stale', lastTelemetryAt: null};
+    extender.persistentSession = false;
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', roots);
+    fixture.componentRef.setInput('extraFeaturesAvailability', 'active');
+    fixture.detectChanges();
+
+    const node = fixture.nativeElement.querySelector(`g.node[data-node-id="${extender.id}"]`) as SVGGElement;
+    const icons = [...node.querySelectorAll<SVGSVGElement>('svg.node-icon')];
+
+    expect(icons.map((icon) => icon.getAttribute('data-icon'))).toEqual([
+      'circle-arrow-up',
+      'activity',
+      'unlink',
+    ]);
+    expect(icons.map((icon) => icon.getAttribute('x'))).toEqual(['64', '64', '64']);
+    expect(icons.map((icon) => icon.getAttribute('y'))).toEqual(['-22', '-6', '10']);
+    expect(icons.map((icon) => [icon.getAttribute('width'), icon.getAttribute('height')])).toEqual([
+      ['14', '14'],
+      ['14', '14'],
+      ['14', '14'],
+    ]);
+    expect(icons.map((icon) => icon.querySelector('use')?.getAttribute('href'))).toEqual([
+      `${ICON_SPRITE_URL}#mndw-icon-circle-arrow-up`,
+      `${ICON_SPRITE_URL}#mndw-icon-activity`,
+      `${ICON_SPRITE_URL}#mndw-icon-unlink`,
+    ]);
+    expect(icons.map((icon) => icon.querySelector('title')?.textContent)).toEqual([
+      'Update available',
+      'Telemetry: stale',
+      'Remote control: disconnected',
+    ]);
+    expect(icons.map((icon) => icon.style.color)).toEqual([
+      'var(--mndw-info)',
+      'var(--mndw-warning)',
+      'var(--mndw-warning)',
+    ]);
+    expect(icons.every((icon) => icon.style.stroke === 'currentColor')).toBe(true);
+    expect(node.querySelector('text.name')?.textContent?.length).toBeLessThanOrEqual(16);
+    expect(node.getAttribute('aria-label')).toContain('Update available');
+    expect(node.getAttribute('aria-label')).toContain('Telemetry: stale');
+    expect(node.getAttribute('aria-label')).toContain('Remote control: disconnected');
+  });
+
+  it('uses computed SVG text width to truncate when the browser exposes it', () => {
+    const original = Object.getOwnPropertyDescriptor(SVGTextElement.prototype, 'getComputedTextLength');
+
+    Object.defineProperty(SVGTextElement.prototype, 'getComputedTextLength', {
+      configurable: true,
+      value(this: SVGElement): number {
+        return (this.textContent?.length ?? 0) * 20;
+      },
+    });
+
+    try {
+      const roots = fixtureRoots();
+      const controller = roots[0];
+
+      if (controller === undefined) {
+        throw new Error('fixture roots missing controller');
+      }
+
+      controller.name = 'A very long controller name';
+
+      const fixture = TestBed.createComponent(MwsGraphComponent);
+
+      fixture.componentRef.setInput('roots', roots);
+      fixture.detectChanges();
+
+      const name = fixture.nativeElement.querySelector('g.node.controller text.name')?.textContent ?? '';
+
+      expect(name.endsWith('…')).toBe(true);
+      expect(name.length).toBeLessThan('A very long controller name'.length);
+      fixture.destroy();
+    } finally {
+      if (original === undefined) {
+        delete (SVGTextElement.prototype as SVGTextElement & {getComputedTextLength?: () => number})
+          .getComputedTextLength;
+      } else {
+        Object.defineProperty(SVGTextElement.prototype, 'getComputedTextLength', original);
+      }
+    }
+  });
+
+  it('refreshes icon hrefs when the sprite changes and unsubscribes on destroy', () => {
+    const roots = fixtureRoots();
+    const controller = roots[0];
+
+    if (controller === undefined) {
+      throw new Error('fixture roots missing controller');
+    }
+
+    controller.fw = '1.0';
+    controller.fwAvailable = '2.0';
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+
+    fixture.componentRef.setInput('roots', roots);
+    fixture.detectChanges();
+
+    const use = fixture.nativeElement.querySelector<SVGUseElement>('svg.node-icon use');
+
+    expect(use?.getAttribute('href')).toBe(`${ICON_SPRITE_URL}#mndw-icon-circle-arrow-up`);
+
+    defineMndwUi({iconSpriteUrl: '/assets/second-icons.svg'});
+
+    expect(use?.getAttribute('href')).toBe('/assets/second-icons.svg#mndw-icon-circle-arrow-up');
+
+    fixture.destroy();
+    defineMndwUi({iconSpriteUrl: '/assets/third-icons.svg'});
+
+    expect(use?.getAttribute('href')).toBe('/assets/second-icons.svg#mndw-icon-circle-arrow-up');
+  });
+
+  it('removes the client badge, pluralizes counts, and names the update marker', () => {
+    const roots = fixtureRoots();
+    const controller = roots[0];
+
+    if (controller === undefined) {
+      throw new Error('fixture roots missing controller');
+    }
+
+    const fixture = TestBed.createComponent(MwsGraphComponent);
+    const element = fixture.nativeElement as HTMLElement;
+
+    for (
+      const [locale, catalog, count, expected, updateLabel] of [
+        ['en', enCatalog, 1, '1 client', 'Update available'],
+        ['en', enCatalog, 2, '2 clients', 'Update available'],
+        ['en', enCatalog, 5, '5 clients', 'Update available'],
+        ['ru', ruCatalog, 1, '1 клиент', 'Доступно обновление'],
+        ['ru', ruCatalog, 2, '2 клиента', 'Доступно обновление'],
+        ['ru', ruCatalog, 5, '5 клиентов', 'Доступно обновление'],
+      ] as const
+    ) {
+      testI18n.setLocale(locale, catalog);
+      controller.clients = Array.from({length: count}, (_, index) => ({
+        mac: `02:00:00:00:00:${String(index).padStart(2, '0')}`,
+        name: `Client ${index + 1}`,
+        ip: null,
+        uptime: null,
+        lastSeen: null,
+        wired: false,
+        active: true,
+      }));
+      controller.fw = '1.0';
+      controller.fwAvailable = '2.0';
+      fixture.componentRef.setInput('roots', [...roots]);
+      fixture.detectChanges();
+
+      const node = element.querySelector<SVGGElement>('g.node.controller');
+
+      if (node === null) {
+        throw new Error('controller node missing');
+      }
+
+      expect(node.querySelector('text.client-count')?.textContent).toBe(expected);
+      expect(node.querySelector('g.client-badge')).toBeNull();
+      expect(node.getAttribute('aria-label')).toContain(updateLabel);
+    }
+
+    const updateIcon = element.querySelector<SVGSVGElement>(
+      'g.node.controller svg.node-icon[data-icon="circle-arrow-up"]',
+    );
+
+    expect(updateIcon?.style.color).toBe('var(--mndw-info)');
+    expect(updateIcon?.querySelector('title')?.textContent).toBe('Доступно обновление');
+    expect(updateIcon?.querySelector('use')?.getAttribute('href'))
+      .toBe(`${ICON_SPRITE_URL}#mndw-icon-circle-arrow-up`);
   });
 
   it('emits nodeSelected on click and on Enter', () => {

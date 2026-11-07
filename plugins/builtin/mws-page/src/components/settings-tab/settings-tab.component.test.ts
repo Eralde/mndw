@@ -94,6 +94,27 @@ describe('SettingsTabComponent', () => {
     );
 
     expect(backhaulSwitch.checked).toBe(true);
+
+    for (
+      const [field, titleId, descriptionId] of [
+        ['backhaul', 'setting-backhaul-title', 'setting-backhaul-description'],
+        ['auto-ap-shutdown', 'setting-auto-ap-shutdown-title', 'setting-auto-ap-shutdown-description'],
+        ['auto-update', 'setting-auto-update-title', 'setting-auto-update-description'],
+      ]
+    ) {
+      const control = requiredElement<HTMLElement>(fixture.nativeElement, `mndw-switch[data-field="${field}"]`);
+      const title = requiredElement<HTMLElement>(fixture.nativeElement, `#${titleId}`);
+      const description = requiredElement<HTMLElement>(fixture.nativeElement, `#${descriptionId}`);
+
+      expect(control.getAttribute('aria-label')).toBe(title.textContent?.trim());
+      expect(title.tagName.toLowerCase()).toBe('h3');
+      expect(title.textContent?.trim()).not.toBe('');
+      expect(control.getAttribute('aria-describedby')).toBe(descriptionId);
+      expect(description.textContent?.trim()).not.toBe('');
+    }
+
+    expect(fixture.nativeElement.querySelector('mndw-field[data-field="schedule-field"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('mndw-field:not([data-field="schedule-field"]) mndw-switch')).toBeNull();
     expect(fixture.nativeElement.querySelectorAll('[data-field="auto-update-schedule"] mndw-option')).toHaveLength(3);
 
     const scheduleField = requiredElement<HTMLElement & {hint: string}>(
@@ -102,6 +123,24 @@ describe('SettingsTabComponent', () => {
     );
 
     expect(scheduleField.hint).toContain('start 01:00');
+    expect(scheduleField.textContent).toContain('Schedule');
+  });
+
+  it('keeps the schedule disabled when automatic updates are off', async () => {
+    api.showSystemSettings.mockReturnValue(of({...settings, autoUpdateEnabled: false}));
+
+    const fixture = TestBed.createComponent(SettingsTabComponent);
+
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+
+    const schedule = requiredElement<HTMLElement & {disabled: boolean}>(
+      fixture.nativeElement,
+      'mndw-select[data-field="auto-update-schedule"]',
+    );
+
+    expect(schedule.disabled).toBe(true);
   });
 
   it('writes toggles and Always on clears schedule', async () => {

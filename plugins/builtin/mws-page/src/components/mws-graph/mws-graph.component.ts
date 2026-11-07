@@ -16,6 +16,7 @@ import * as d3 from 'd3';
 import type {MwsNode} from '../../domain/mws/mws.types';
 import {findNodeById, hasUpdate} from '../../domain/mws/map-builder';
 import type {PositionsLoadOutcome} from '../../services/node-position.store';
+import type {ExtraFeaturesAvailability} from '../../services/mwsd-status.service';
 import {
   DEFAULT_LAYOUT_CONFIG,
   type GraphLayout,
@@ -27,6 +28,7 @@ import {
 import {edgeTooltip, edgeType, linkQuality} from './link-quality';
 import {TRANSLATOR} from '../../tokens';
 import {getNodeStatusLabels} from '../../status-labels';
+import {type MndwIconName, mndwIconHref, subscribeMndwIconSprite} from '@mndw/ui';
 import {dragPosition, isClickWithinSlop} from './graph-interaction';
 import {type GraphSelectionState, edgePath, effectivePosition, nodeClass, pathSelectionClass} from './graph-rendering';
 
@@ -44,6 +46,67 @@ interface DragState {
   pointerOrigin: Position;
   screenOrigin: Position;
   moved: boolean;
+}
+
+interface NodeIcon {
+  name: MndwIconName;
+  label: string;
+  color: string;
+}
+
+function truncateText(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}…`;
+}
+
+function truncateSvgText(
+  element: SVGTextElement,
+  value: string,
+  maxWidth: number,
+  fallbackMaxLength: number,
+): string {
+  if (typeof element.getComputedTextLength !== 'function' || value === '') {
+    return truncateText(value, fallbackMaxLength);
+  }
+
+  const widthOf = (text: string): number | null => {
+    element.textContent = text;
+
+    try {
+      const width = element.getComputedTextLength();
+
+      return Number.isFinite(width) && (width > 0 || text === '') ? width : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const fullWidth = widthOf(value);
+
+  if (fullWidth === null) {
+    return truncateText(value, fallbackMaxLength);
+  }
+
+  if (fullWidth <= maxWidth) {
+    return value;
+  }
+
+  let low = 0;
+  let high = value.length - 1;
+
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const candidateWidth = widthOf(`${value.slice(0, middle)}…`);
+
+    if (candidateWidth !== null && candidateWidth <= maxWidth) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+
+  const result = `${value.slice(0, low)}…`;
+
+  return widthOf(result) === null ? truncateText(value, fallbackMaxLength) : result;
 }
 
 @Component({
@@ -84,6 +147,8 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
   public readonly positionsLoadOutcome = input<PositionsLoadOutcome>('pending');
 
+  public readonly extraFeaturesAvailability = input<ExtraFeaturesAvailability>('checking');
+
   public readonly editMode = input(false);
 
   public readonly selectedNodeId = input<string | null>(null);
@@ -110,6 +175,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
   private zoomGroup: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
   private zoom: d3.ZoomBehavior<SVGSVGElement, unknown> | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private unsubscribeIconSprite: (() => void) | null = null;
   private lastTopologySignature: string | null = null;
   private layout: GraphLayout | null = null;
   private previousPositionsLoadOutcome: PositionsLoadOutcome = 'pending';
@@ -128,6 +194,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
     this.roots();
     this.nodePositions();
     this.positionsLoadOutcome();
+    this.extraFeaturesAvailability();
     void this.translator.locale;
 
     const editMode = this.editMode();
@@ -157,6 +224,7 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
 
     this.svg = d3.select(svgElement);
     this.zoomGroup = this.svg.append('g');
+    this.unsubscribeIconSprite = subscribeMndwIconSprite(() => this.refreshNodeIconHrefs());
     this.zoom = d3.zoom<SVGSVGElement, unknown>()
       .scaleExtent([0.1, 10])
       .on('start', (event) => {
@@ -176,6 +244,8 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
   }
 
   public ngOnDestroy(): void {
+    this.unsubscribeIconSprite?.();
+    this.unsubscribeIconSprite = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.svg?.on('.zoom', null);
@@ -388,20 +458,12 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
         nodeGroup.append('title').attr('class', 'node-name-title');
         nodeGroup.append('rect').attr('class', 'selection-ring');
         nodeGroup.append('rect').attr('class', 'node-body');
+        nodeGroup.append('rect').attr('class', 'focus-ring');
         nodeGroup.append('text').attr('class', 'controller-badge');
         nodeGroup.append('text').attr('class', 'name');
         nodeGroup.append('text').attr('class', 'model');
-        nodeGroup.append('text').attr('class', 'client-count');
-        nodeGroup.append('g').attr('class', 'client-badge')
-          .call((badge) => {
-            badge.append('circle');
-            badge.append('text');
-          });
-        nodeGroup.append('circle').attr('class', 'update-dot');
-        nodeGroup.append('circle').attr('class', 'mwsd-status-dot')
-          .append('title');
-        nodeGroup.append('circle').attr('class', 'persistent-session-dot')
-          .append('title');
+        nodeGroup.append('text').attr('class', 'client-count status-line');
+        nodeGroup.append('g').attr('class', 'node-icons');
 
         return nodeGroup;
       })
@@ -457,6 +519,13 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       .attr('height', nodeHeight)
       .attr('rx', 6);
 
+    nodeGroups.select('rect.focus-ring')
+      .attr('x', -(nodeWidth / 2 + 5))
+      .attr('y', -(nodeHeight / 2 + 5))
+      .attr('width', nodeWidth + 10)
+      .attr('height', nodeHeight + 10)
+      .attr('rx', 11);
+
     nodeGroups.select('title.node-name-title')
       .text((positioned) => positioned.node.name);
 
@@ -465,83 +534,106 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       .attr('y', -(nodeHeight / 2) - 6)
       .text((positioned) => positioned.node.isController ? `(${this.t('graph.controller')})` : '');
 
-    nodeGroups.select('text.name')
-      .attr('text-anchor', 'middle')
-      .attr('y', -15)
-      .text((positioned) => truncateNodeName(positioned.node.name));
+    const textStart = -nodeWidth / 2 + 12;
+    const textSelection = nodeGroups.selectAll<SVGTextElement, PositionedNode>(
+      'text.name, text.model, text.status-line',
+    );
 
-    nodeGroups.select('text.model')
-      .attr('text-anchor', 'middle')
-      .attr('y', 2)
-      .text((positioned) => positioned.node.model ?? '');
+    textSelection
+      .attr('text-anchor', 'start')
+      .attr('x', textStart);
 
-    nodeGroups.select('text.client-count')
-      .attr('text-anchor', 'middle')
-      .attr('y', 18)
-      .text((positioned) =>
-        positioned.node.clients.length > 0
-          ? `${positioned.node.clients.length} ${this.t('graph.clients')}`
-          : ''
-      );
+    nodeGroups.select<SVGTextElement>('text.name')
+      .attr('y', -11)
+      .each((positioned, index, elements) => {
+        const element = elements[index];
 
-    nodeGroups.select('g.client-badge')
-      .attr('transform', `translate(${nodeWidth / 2 - 4},${-nodeHeight / 2 + 4})`)
-      .style('display', (positioned) => positioned.node.clients.length > 0 ? null : 'none')
-      .call((badge) => {
-        badge.select('circle').attr('r', 11);
-        badge.select('text')
-          .attr('text-anchor', 'middle')
-          .attr('dy', 4)
-          .text((positioned) => positioned.node.clients.length);
+        if (element === undefined) {
+          return;
+        }
+
+        const hasIcons = this.nodeIcons(positioned.node).length > 0;
+        const maxWidth = nodeWidth - 24 - (hasIcons ? 14 + 8 : 0);
+
+        element.textContent = truncateSvgText(
+          element,
+          positioned.node.name,
+          maxWidth,
+          hasIcons ? 16 : 28,
+        );
       });
 
-    nodeGroups.select('circle.update-dot')
-      .attr('cx', -nodeWidth / 2 + 8)
-      .attr('cy', -nodeHeight / 2 + 8)
-      .attr('r', 4)
-      .style('display', (positioned) => hasUpdate(positioned.node) ? null : 'none');
+    nodeGroups.select<SVGTextElement>('text.model')
+      .attr('y', 5)
+      .each((positioned, index, elements) => {
+        const element = elements[index];
 
-    nodeGroups.select<SVGCircleElement>('circle.mwsd-status-dot')
-      .attr('class', (positioned) => {
-        const state = positioned.node.mwsdStatus?.state;
+        if (element === undefined) {
+          return;
+        }
 
-        return state === undefined ? 'mwsd-status-dot' : `mwsd-status-dot mwsd-${state}`;
+        const hasIcons = this.nodeIcons(positioned.node).length > 0;
+        const maxWidth = nodeWidth - 24 - (hasIcons ? 14 + 8 : 0);
+
+        element.textContent = truncateSvgText(element, positioned.node.model ?? '', maxWidth, hasIcons ? 20 : Infinity);
+      });
+
+    nodeGroups.select<SVGTextElement>('text.status-line')
+      .attr('y', 20)
+      .each((positioned, index, elements) => {
+        const element = elements[index];
+
+        if (element === undefined) {
+          return;
+        }
+
+        const hasIcons = this.nodeIcons(positioned.node).length > 0;
+        const value = positioned.node.isOnline
+          ? positioned.node.clients.length > 0
+            ? this.t('status.clients', {count: positioned.node.clients.length})
+            : ''
+          : this.t('graph.offline');
+
+        element.textContent = truncateSvgText(
+          element,
+          value,
+          nodeWidth - 24 - (hasIcons ? 14 + 8 : 0),
+          hasIcons ? 16 : Infinity,
+        );
+      });
+
+    const icons = nodeGroups.select('g.node-icons')
+      .selectAll<SVGSVGElement, NodeIcon>('svg.node-icon')
+      .data((positioned) => this.nodeIcons(positioned.node))
+      .join((enter) => {
+        const icon = enter.append('svg');
+
+        icon.append('title');
+        icon.append('use');
+
+        return icon;
       })
-      .attr('cx', -nodeWidth / 2 + 8)
-      .attr('cy', nodeHeight / 2 - 8)
-      .attr('r', 4)
-      .style(
-        'display',
-        (positioned) => positioned.node.isController || positioned.node.mwsdStatus === undefined ? 'none' : null,
-      )
-      .select('title')
-      .text((positioned) =>
-        positioned.node.isController
-          ? ''
-          : getNodeStatusLabels(positioned.node, (key, values) => this.t(key, values)).telemetry
-      );
+      .attr('class', 'node-icon')
+      .attr('viewBox', '0 0 24 24')
+      .attr('x', nodeWidth / 2 - 12 - 14)
+      .attr('y', (_icon, index) => -nodeHeight / 2 + 10 + index * 16)
+      .attr('width', 14)
+      .attr('height', 14)
+      .attr('focusable', 'false')
+      .attr('aria-hidden', 'true')
+      .attr('data-icon', (icon) => icon.name)
+      .style('color', (icon) => icon.color)
+      .style('stroke', 'currentColor');
 
-    nodeGroups.select<SVGCircleElement>('circle.persistent-session-dot')
-      .attr('class', (positioned) => {
-        const state = positioned.node.persistentSession;
+    icons.select('title').text((icon) => icon.label);
+    icons.select('use')
+      .attr('width', 24)
+      .attr('height', 24)
+      .attr('href', (icon) => {
+        const href = mndwIconHref(icon.name);
 
-        return state === undefined
-          ? 'persistent-session-dot'
-          : `persistent-session-dot ${state ? 'persistent-live' : 'persistent-failing'}`;
-      })
-      .attr('cx', nodeWidth / 2 - 8)
-      .attr('cy', nodeHeight / 2 - 8)
-      .attr('r', 4)
-      .style(
-        'display',
-        (positioned) => positioned.node.isController || positioned.node.persistentSession === undefined ? 'none' : null,
-      )
-      .select('title')
-      .text((positioned) =>
-        positioned.node.isController
-          ? ''
-          : getNodeStatusLabels(positioned.node, (key, values) => this.t(key, values)).remoteControl
-      );
+        return href === '' ? null : href;
+      });
 
     this.applyDragBehavior(nodeGroups);
   }
@@ -824,12 +916,69 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       node.model ?? '',
       node.isController ? this.t('graph.controller') : this.t('graph.extender'),
       labels.online,
-      node.isController ? '' : labels.telemetry,
-      node.isController ? '' : labels.remoteControl,
+      this.hasTelemetryMarker(node) ? labels.telemetry : '',
+      this.hasRemoteControlMarker(node) ? labels.remoteControl : '',
+      hasUpdate(node) ? this.t('nodes.update-available') : '',
       labels.clients,
     ];
 
     return parts.filter((part) => part !== '').join(', ');
+  }
+
+  private hasTelemetryMarker(node: MwsNode): boolean {
+    const state = node.mwsdStatus?.state;
+
+    return this.extraFeaturesAvailability() === 'active' && !node.isController && node.isOnline
+      && (state === 'stale' || state === 'offline');
+  }
+
+  private hasRemoteControlMarker(node: MwsNode): boolean {
+    return this.extraFeaturesAvailability() === 'active' && !node.isController && node.isOnline
+      && node.persistentSession === false;
+  }
+
+  private nodeIcons(node: MwsNode): NodeIcon[] {
+    const icons: NodeIcon[] = [];
+
+    if (node.isOnline && hasUpdate(node)) {
+      icons.push({
+        name: 'circle-arrow-up',
+        label: this.t('nodes.update-available'),
+        color: 'var(--mndw-info)',
+      });
+    }
+
+    if (this.hasTelemetryMarker(node)) {
+      const labels = getNodeStatusLabels(node, (key, values) => this.t(key, values));
+
+      icons.push({
+        name: 'activity',
+        label: labels.telemetry,
+        color: node.mwsdStatus?.state === 'offline' ? 'var(--mndw-danger)' : 'var(--mndw-warning)',
+      });
+    }
+
+    if (this.hasRemoteControlMarker(node)) {
+      const labels = getNodeStatusLabels(node, (key, values) => this.t(key, values));
+
+      icons.push({
+        name: 'unlink',
+        label: labels.remoteControl,
+        color: 'var(--mndw-warning)',
+      });
+    }
+
+    return icons;
+  }
+
+  private refreshNodeIconHrefs(): void {
+    this.zoomGroup?.selectAll<SVGSVGElement, NodeIcon>('svg.node-icon')
+      .select('use')
+      .attr('href', (icon) => {
+        const href = mndwIconHref(icon.name);
+
+        return href === '' ? null : href;
+      });
   }
 
   protected t(key: string, values?: Record<string, unknown>): string {
@@ -889,8 +1038,4 @@ export class MwsGraphComponent implements AfterViewInit, OnDestroy {
       height: host?.clientHeight || svgElement?.clientHeight || 0,
     };
   }
-}
-
-function truncateNodeName(name: string): string {
-  return name.length <= 28 ? name : `${name.slice(0, 28)}…`;
 }

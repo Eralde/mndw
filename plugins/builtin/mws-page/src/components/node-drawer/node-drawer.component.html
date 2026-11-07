@@ -38,20 +38,24 @@
         </div>
       } @else {
         <div class="identity-heading">
-          <h3>{{ displayName(n) }}</h3>
+          <div class="identity-name">
+            <h3>{{ displayName(n) }}</h3>
+            <mndw-button
+              variant="ghost"
+              data-action="edit-name"
+              [attr.aria-label]="t('drawer.edit')"
+              [attr.title]="t('drawer.edit')"
+              (click)="beginRename()"
+            ><mndw-icon name="pencil"></mndw-icon></mndw-button>
+          </div>
           @if (n.isController) {
             <span class="role-badge">{{ t('drawer.controller') }}</span>
           }
-          <mndw-button
-            variant="ghost"
-            data-action="edit-name"
-            [attr.aria-label]="t('drawer.edit-name')"
-            (click)="beginRename()"
-          >{{ t('drawer.edit') }}</mndw-button>
           @if (canOpenWebPanel(n)) {
             <mndw-button
               variant="ghost"
               data-action="open-web-panel"
+              class="open-web-panel"
               [disabled]="webPanelPending"
               (click)="openWebPanel(n)"
             >{{ webPanelPending ? t('drawer.loading-url') : t('drawer.open-web-panel') }}</mndw-button>
@@ -89,85 +93,68 @@
         <div class="detail-pair">
           <dt>{{ t('drawer.memory') }}</dt><dd>{{ memory(n) }}</dd>
         </div>
+        @if (!n.isController) {
+          <div class="detail-pair">
+            <dt>{{ t('drawer.backhaul') }}</dt><dd>{{ backhaulSummary(n) }}</dd>
+          </div>
+        }
       </dl>
     </section>
 
     <mndw-tabs [value]="selectedTab" (mndwchange)="onTabChanged($event)">
-      <mndw-tab id="status">{{ t('drawer.status') }}</mndw-tab>
+      <mndw-tab id="status">{{ t('drawer.telemetry') }}</mndw-tab>
       @if (!n.isController) {
         <mndw-tab id="settings">{{ t('tab.settings') }}</mndw-tab>
       }
       <mndw-tab id="clients">{{ t('drawer.clients', {count: n.clients.length}) }}</mndw-tab>
 
       <mndw-tab-panel for="status">
-    @if (showUtilization(n)) {
-      <section class="utilization">
-        <h4>{{ t('drawer.utilization') }}</h4>
-        @for (metric of utilizationMetrics(n); track metric.key) {
-          <div class="util-metric">
-            <div class="util-head">
-              <span class="util-label">{{ metric.label }}</span>
-              <span class="util-value">{{ metric.valueText }}</span>
-            </div>
-            @if (metric.kind === 'heat') {
-              <mndw-heat-strip
-                [points]="metric.points"
-                [attr.value-label]="metric.label"
-                [attr.aria-label]="metric.label"
-                [attr.empty-label]="t('drawer.util-no-data')"
-              >
-              </mndw-heat-strip>
-            } @else {
-              <mndw-sparkline
-                [points]="metric.points"
-                [attr.value-label]="metric.label"
-                [attr.aria-label]="metric.label"
-                [attr.empty-label]="t('drawer.util-no-data')"
-              >
-              </mndw-sparkline>
+        @if (showUtilization(n)) {
+          <section class="utilization">
+            <h4>{{ t('drawer.utilization') }}</h4>
+            @for (metric of utilizationMetrics(n); track metric.key) {
+              <div class="util-metric">
+                <div class="util-head">
+                  <span class="util-label">{{ metric.label }}</span>
+                  <span class="util-value">{{ metric.valueText }}</span>
+                </div>
+                @if (metric.kind === 'heat') {
+                  <mndw-heat-strip
+                    [points]="metric.points"
+                    [attr.value-label]="metric.label"
+                    [attr.aria-label]="metric.label"
+                    [attr.empty-label]="t('drawer.util-no-data')"
+                  >
+                  </mndw-heat-strip>
+                } @else {
+                  <mndw-sparkline
+                    [points]="metric.points"
+                    [attr.value-label]="metric.label"
+                    [attr.aria-label]="metric.label"
+                    [attr.empty-label]="t('drawer.util-no-data')"
+                  >
+                  </mndw-sparkline>
+                }
+              </div>
             }
-          </div>
+            <div class="util-legend" aria-hidden="true">
+              <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-low)"></span>≤10%</span>
+              <span class="util-legend-item"><span class="util-legend-swatch" style="background: color-mix(in srgb, var(--mndw-util-low), var(--mndw-util-moderate))"></span>20%</span>
+              <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-moderate)"></span>30%</span>
+              <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-elevated)"></span>40%</span>
+              <span class="util-legend-item"><span class="util-legend-swatch" style="background: color-mix(in srgb, var(--mndw-util-elevated), var(--mndw-util-high))"></span>50%</span>
+              <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-high)"></span>60%</span>
+              <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-critical)"></span>≥70%</span>
+            </div>
+          </section>
+        } @else {
+          <p class="telemetry-empty">
+            {{ t('drawer.telemetry-unavailable') }}
+            @if (extraFeaturesOff()) {
+              {{ t('drawer.telemetry-enable-extra') }}
+            }
+          </p>
         }
-        <div class="util-legend" aria-hidden="true">
-          <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-low)"></span>≤10%</span>
-          <span class="util-legend-item"><span class="util-legend-swatch" style="background: color-mix(in srgb, var(--mndw-util-low), var(--mndw-util-moderate))"></span>20%</span>
-          <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-moderate)"></span>30%</span>
-          <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-elevated)"></span>40%</span>
-          <span class="util-legend-item"><span class="util-legend-swatch" style="background: color-mix(in srgb, var(--mndw-util-elevated), var(--mndw-util-high))"></span>50%</span>
-          <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-high)"></span>60%</span>
-          <span class="util-legend-item"><span class="util-legend-swatch" style="background: var(--mndw-util-critical)"></span>≥70%</span>
-        </div>
-      </section>
-    }
-
-    @if (!n.isController) {
-    <section class="backhaul">
-      <h4>{{ t('drawer.backhaul') }}</h4>
-      @if (!n.backhaul) {
-        <p>{{ t('drawer.offline-backhaul') }}</p>
-      } @else if (isWirelessBackhaul(n)) {
-        <dl>
-          <dt>{{ t('drawer.type') }}</dt><dd>{{ t('drawer.wireless') }}</dd>
-          <dt>{{ t('drawer.uplink') }}</dt><dd>{{ dash(n.backhaul.uplink) }}</dd>
-          <dt>{{ t('drawer.ap') }}</dt><dd>{{ dash(n.backhaul.ap) }}</dd>
-          <dt>{{ t('drawer.mode') }}</dt><dd>{{ dash(n.backhaul.mode) }}</dd>
-          <dt>{{ t('drawer.rssi') }}</dt><dd>{{ rssi(n.backhaul.rssi) }}</dd>
-          <dt>{{ t('drawer.tx-rate') }}</dt><dd>{{ rate(n.backhaul.txrate) }}</dd>
-          <dt>{{ t('drawer.security') }}</dt><dd>{{ dash(n.backhaul.security) }}</dd>
-          <dt>{{ t('drawer.stp-cost') }}</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
-        </dl>
-      } @else {
-        <dl>
-          <dt>{{ t('drawer.type') }}</dt><dd>{{ t('drawer.wired') }}</dd>
-          <dt>{{ t('drawer.speed') }}</dt><dd>{{ speed(n.backhaul.speed) }}</dd>
-          <dt>{{ t('drawer.duplex') }}</dt><dd>{{ dash(n.backhaul.duplex) }}</dd>
-          <dt>{{ t('drawer.port') }}</dt><dd>{{ dash(n.backhaul.portLabel) }}</dd>
-          <dt>{{ t('drawer.stp-cost') }}</dt><dd>{{ dash(n.backhaul.cost) }}</dd>
-        </dl>
-      }
-    </section>
-    }
-
       </mndw-tab-panel>
 
       @if (!n.isController) {

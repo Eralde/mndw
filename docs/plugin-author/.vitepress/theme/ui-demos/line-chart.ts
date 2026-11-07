@@ -1,4 +1,7 @@
-import {type MndwChartSeries, formatSpeed, getSpeedUpperLimit} from '@mndw/ui';
+import type {MndwChartSeries} from '@mndw/ui';
+
+// Value imports from @mndw/ui are dynamic: a static one would evaluate the custom elements during the
+// docs SSR build, where HTMLElement does not exist. The theme has already loaded @mndw/ui by now.
 
 const START_TIME = 1_730_000_000_000;
 const MINUTE = 60_000;
@@ -17,9 +20,11 @@ export function mount(root: HTMLElement): void {
 
   chart.setAttribute('aria-label', 'Receive and transmit throughput over ten minutes');
   chart.style.width = '100%';
-  chart.valueFormatter = formatSpeed;
-  chart.valueDomain = {min: 0, max: getSpeedUpperLimit(Math.max(...rxValues, ...txValues))};
-  chart.series = series;
-  chart.domain = {start: START_TIME, end: START_TIME + 10 * MINUTE};
-  root.appendChild(chart);
+  void import('@mndw/ui').then(({formatSpeed, getSpeedUpperLimit}) => {
+    chart.valueFormatter = formatSpeed;
+    chart.valueDomain = {min: 0, max: getSpeedUpperLimit(Math.max(...rxValues, ...txValues))};
+    chart.series = series;
+    chart.domain = {start: START_TIME, end: START_TIME + 10 * MINUTE};
+    root.appendChild(chart);
+  });
 }

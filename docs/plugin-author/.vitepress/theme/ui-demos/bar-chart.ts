@@ -1,4 +1,7 @@
-import {type MndwChartPoint, formatSpeed, getSpeedUpperLimit} from '@mndw/ui';
+import type {MndwChartPoint} from '@mndw/ui';
+
+// Value imports from @mndw/ui are dynamic: a static one would evaluate the custom elements during the
+// docs SSR build, where HTMLElement does not exist. The theme has already loaded @mndw/ui by now.
 
 const START_TIME = 1_730_000_000_000;
 const MINUTE = 60_000;
@@ -14,8 +17,10 @@ export function mount(root: HTMLElement): void {
   chart.setAttribute('value-label', 'Traffic per minute');
   chart.setAttribute('aria-label', 'Traffic per minute over ten minutes');
   chart.style.width = '100%';
-  chart.valueFormatter = formatSpeed;
-  chart.valueDomain = {min: 0, max: getSpeedUpperLimit(Math.max(...values))};
-  chart.points = points;
-  root.appendChild(chart);
+  void import('@mndw/ui').then(({formatSpeed, getSpeedUpperLimit}) => {
+    chart.valueFormatter = formatSpeed;
+    chart.valueDomain = {min: 0, max: getSpeedUpperLimit(Math.max(...values))};
+    chart.points = points;
+    root.appendChild(chart);
+  });
 }

@@ -165,6 +165,7 @@ interface CliMetadata {
   readonly vueVitePluginRange: string;
   readonly angular: Record<string, string>;
   readonly viteRange: string;
+  readonly tsxRange: string | undefined;
   readonly vitestRange: string;
   readonly happyDomRange: string;
 }
@@ -248,6 +249,7 @@ export function readCliMetadata(metadata?: CliPackageMetadata): CliMetadata {
       packageRange('@mndw/ui-angular', dependencies, devDependencies),
     ),
   };
+  const tsxVersion = dependencies.tsx ?? devDependencies.tsx;
 
   return {
     version: parsed.version ?? '0.0.0',
@@ -266,6 +268,7 @@ export function readCliMetadata(metadata?: CliPackageMetadata): CliMetadata {
       'typescript': packageRange('typescript', dependencies, devDependencies),
     },
     viteRange: packageRange('vite', dependencies, devDependencies),
+    tsxRange: tsxVersion,
     vitestRange: caretRange('vitest', packageRange('vitest', dependencies, devDependencies)),
     happyDomRange: caretRange('happy-dom', packageRange('happy-dom', dependencies, devDependencies)),
   };
@@ -353,6 +356,7 @@ function renderTemplateDir(framework: PluginFramework, normalized: NormalizedOpt
 
 function renderGoTemplate(normalized: NormalizedOptions): GeneratedFile[] {
   const generatedDevDependencies = buildPackageJson(normalized).devDependencies as Record<string, string>;
+  const cli = readCliMetadata();
 
   return walkTemplate(join(TEMPLATES_DIR, 'go'), '').map(({rel, abs}) => {
     let contents = renderPlaceholders(readFileSync(abs, 'utf8'), normalized);
@@ -362,6 +366,14 @@ function renderGoTemplate(normalized: NormalizedOptions): GeneratedFile[] {
 
       packageJson.devDependencies['@mndw/cli'] = generatedDevDependencies['@mndw/cli'];
       packageJson.devDependencies['@mndw/sdk'] = generatedDevDependencies['@mndw/sdk'];
+
+      if (cli.tsxRange === undefined) {
+        throw new CliError('CLI package is missing dependency range for tsx');
+      }
+
+      packageJson.devDependencies.tsx = cli.tsxRange;
+      packageJson.devDependencies.vitest = cli.vitestRange;
+      packageJson.devDependencies['happy-dom'] = cli.happyDomRange;
       contents = `${JSON.stringify(packageJson, null, 2)}\n`;
     }
 

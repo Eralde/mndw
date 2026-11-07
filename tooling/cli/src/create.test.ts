@@ -664,10 +664,14 @@ describe('createPlugin', () => {
     const sdkPackage = JSON.parse(readFileSync(resolve(REPO_ROOT, 'frontend/sdk/package.json'), 'utf8')) as {
       version: string;
     };
+    const cliMetadata = readCliMetadata();
 
     expect(result.plan.framework).toBe('vanilla');
     expect(outsidePackage.devDependencies['@mndw/cli']).toBe(`^${cliPackage.version}`);
     expect(outsidePackage.devDependencies['@mndw/sdk']).toBe(`^${sdkPackage.version}`);
+    expect(outsidePackage.devDependencies.tsx).toBe(cliMetadata.tsxRange);
+    expect(outsidePackage.devDependencies.vitest).toBe(cliMetadata.vitestRange);
+    expect(outsidePackage.devDependencies['happy-dom']).toBe(cliMetadata.happyDomRange);
     expect(JSON.stringify(outsidePackage)).not.toContain('workspace:');
   });
 

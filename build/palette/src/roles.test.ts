@@ -56,10 +56,11 @@ describe('validatePalette (WCAG gate)', () => {
   });
 
   it('exports all contrast pairs, including new status and surface relationships', () => {
-    expect(PAIRS).toHaveLength(16);
+    expect(PAIRS).toHaveLength(17);
     expect(PAIRS).toEqual(expect.arrayContaining([
       {fg: 'text', bg: 'surfaceRaised', min: 4.5},
       {fg: 'text', bg: 'surfaceHover', min: 4.5},
+      {fg: 'text', bg: 'controlHover', min: 4.5},
       {fg: 'focusRing', bg: 'surfaceRaised', min: 3},
       {fg: 'success', bg: 'successBg', min: 4.5},
       {fg: 'warning', bg: 'warningBg', min: 4.5},

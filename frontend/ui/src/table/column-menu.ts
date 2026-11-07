@@ -63,6 +63,31 @@ export class MndwColumnMenu extends LitElement {
     [part='option']:focus-visible {
       ${focusRing}
     }
+
+    [part='indicator'] {
+      display: inline-grid;
+      width: 1.125rem;
+      height: 1.125rem;
+      place-items: center;
+      border: 1px solid var(--mndw-border);
+      border-radius: var(--mndw-radius-sm);
+      background: var(--mndw-surface);
+      color: var(--mndw-accent-contrast);
+      flex: 0 0 auto;
+    }
+
+    [part='indicator'][data-checked='true'] {
+      border-color: var(--mndw-accent);
+      background: var(--mndw-accent);
+    }
+
+    [part='checkmark'] {
+      width: 0.3rem;
+      height: 0.55rem;
+      border: solid currentColor;
+      border-width: 0 2px 2px 0;
+      transform: translateY(-0.0625rem) rotate(45deg);
+    }
   `;
 
   declare public columns: MndwColumnMenuOption[];
@@ -93,19 +118,26 @@ export class MndwColumnMenu extends LitElement {
         @keydown=${this.handleKeydown}
       >
         ${
-      this.columns.map((column) =>
-        html`
+      this.columns.map((column) => {
+        const checked = !this.workingHidden.has(column.id);
+
+        return html`
           <button
             type="button"
             part="option"
             role="menuitemcheckbox"
             tabindex="-1"
             data-column-id=${column.id}
-            aria-checked=${String(!this.workingHidden.has(column.id))}
+            aria-checked=${String(checked)}
             @click=${() => this.toggle(column.id)}
-          >${column.label}</button>
-        `
-      )
+          >
+            <span part="indicator" data-checked=${String(checked)} aria-hidden="true">
+              ${checked ? html`<span part="checkmark"></span>` : null}
+            </span>
+            ${column.label}
+          </button>
+        `;
+      })
     }
       </div>
     `;

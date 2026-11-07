@@ -1380,6 +1380,52 @@ describe('MndwTable column menu', () => {
     expect(visibilityListener).toHaveBeenCalledTimes(1);
     expect((visibilityListener.mock.calls[0][0] as CustomEvent<MndwColumnVisibilityChangeDetail>).detail.hidden)
       .toEqual(['name']);
+    expect(el.hiddenColumns).toEqual([]);
+    expect(el.getVisibleColumnIds()).toContain('name');
+  });
+
+  it('updates internal visibility immediately after an uncontrolled menu toggle', async () => {
+    const {provider, layer} = makeOverlayProvider();
+
+    setOverlayProvider(provider);
+
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    await el.updateComplete;
+
+    expect(el.hiddenColumns).toBeUndefined();
+    expect(el.getVisibleColumnIds()).toContain('name');
+
+    shadowQuery<HTMLButtonElement>(el, '[part="column-menu-trigger"]').click();
+    await el.updateComplete;
+
+    const menu = nonNull(layer.contentElement.querySelector('mndw-column-menu'), 'mndw-column-menu');
+
+    await menu.updateComplete;
+    shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="name"]').click();
+    await el.updateComplete;
+
+    const hasNameHeader = (): boolean => {
+      return [...shadowOf(el).querySelectorAll('thead th')].some((header) => header.textContent?.trim() === 'Name');
+    };
+    const hasNameCell = (): boolean => {
+      return [...shadowOf(el).querySelectorAll('tbody td[part~="cell"]')]
+        .some((cell) => cell.textContent?.trim() === 'cherry');
+    };
+
+    expect(hasNameHeader()).toBe(false);
+    expect(hasNameCell()).toBe(false);
+    expect(el.getVisibleColumnIds()).not.toContain('name');
+
+    shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="name"]').click();
+    await el.updateComplete;
+
+    expect(hasNameHeader()).toBe(true);
+    expect(hasNameCell()).toBe(true);
+    expect(el.getVisibleColumnIds()).toContain('name');
   });
 
   it('renders no trigger or panel when columnMenu is false', async () => {

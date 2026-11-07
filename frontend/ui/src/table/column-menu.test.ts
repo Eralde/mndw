@@ -25,13 +25,13 @@ function makeMenu(columns: {id: string; label: string}[], hidden: string[] = [])
   return menu;
 }
 
-describe('MndwColumnMenu', () => {
-  const columns = [
-    {id: 'ip', label: 'IP'},
-    {id: 'mac', label: 'MAC'},
-    {id: 'clients', label: 'Clients'},
-  ];
+const columns = [
+  {id: 'ip', label: 'IP'},
+  {id: 'mac', label: 'MAC'},
+  {id: 'clients', label: 'Clients'},
+];
 
+describe('MndwColumnMenu', () => {
   it('renders a menu of menuitemcheckbox options with checked state', async () => {
     const menu = makeMenu(columns, ['mac']);
 
@@ -56,7 +56,9 @@ describe('MndwColumnMenu', () => {
 
     expect(shadowOf(menu).activeElement).toBe(shadowOf(menu).querySelector('button[data-column-id="ip"]'));
   });
+});
 
+describe('MndwColumnMenu interaction', () => {
   it('emits a single user-intent hidden list on toggle', async () => {
     const menu = makeMenu(columns, ['mac']);
 
@@ -105,5 +107,38 @@ describe('MndwColumnMenu', () => {
     shadowQuery(menu, '[role="menu"]').dispatchEvent(new KeyboardEvent('keydown', {key: 'Tab', bubbles: true}));
 
     expect((dismissListener.mock.calls[1][0] as CustomEvent<{restoreFocus: boolean}>).detail.restoreFocus).toBe(false);
+  });
+});
+
+describe('MndwColumnMenu visual indicator', () => {
+  it('renders and updates a visual indicator for every option', async () => {
+    const menu = makeMenu([
+      {id: 'ip', label: 'IP'},
+      {id: 'mac', label: 'MAC'},
+    ], ['mac']);
+
+    await menu.updateComplete;
+
+    const ipOption = shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="ip"]');
+    const macOption = shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="mac"]');
+    const ipIndicator = ipOption.querySelector<HTMLElement>('[part="indicator"]');
+    const macIndicator = macOption.querySelector<HTMLElement>('[part="indicator"]');
+
+    expect(ipOption.getAttribute('aria-checked')).toBe('true');
+    expect(ipIndicator?.getAttribute('data-checked')).toBe('true');
+    expect(ipIndicator?.querySelector('[part="checkmark"]')).not.toBeNull();
+    expect(macOption.getAttribute('aria-checked')).toBe('false');
+    expect(macIndicator?.getAttribute('data-checked')).toBe('false');
+    expect(macIndicator?.querySelector('[part="checkmark"]')).toBeNull();
+
+    macOption.click();
+    await menu.updateComplete;
+
+    const updatedMacOption = shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="mac"]');
+    const updatedMacIndicator = updatedMacOption.querySelector<HTMLElement>('[part="indicator"]');
+
+    expect(updatedMacOption.getAttribute('aria-checked')).toBe('true');
+    expect(updatedMacIndicator?.getAttribute('data-checked')).toBe('true');
+    expect(updatedMacIndicator?.querySelector('[part="checkmark"]')).not.toBeNull();
   });
 });

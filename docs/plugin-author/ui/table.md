@@ -40,10 +40,11 @@ and emit `mndwerror` once per changed set of violations. Sorting and selection a
 emits `mndwrowreorder`, `mndwcolumnvisibilitychange`, and `mndwerror`; these events bubble and cross shadow
 boundaries. Selection includes checkboxes and select-all. Row reordering supports drag and keyboard interaction.
 
-Column visibility is controlled when `hiddenColumns` is supplied. Otherwise the built-in menu tracks visibility
-internally and emits changes for information. The menu opens portaled `<mndw-column-menu>`; set `columnMenu` to
-`false` to hide its trigger. Since its panel is portaled, style it with the global class named by
-`column-menu-panel-class`, not `::part()` selectors.
+Column visibility is controlled when `hiddenColumns` is defined, including when set to an empty array. Listen for
+`mndwcolumnvisibilitychange` and write its `hidden` list back to `hiddenColumns`. When `hiddenColumns` is `undefined`,
+the built-in menu owns visibility state and emits the same event as a notification. The menu opens portaled
+`<mndw-column-menu>`; set `columnMenu` to `false` to hide its trigger. Since its panel is portaled, style it with the
+global class named by `column-menu-panel-class`, not `::part()` selectors.
 
 Expandable rows use `expandable`, `expandOn`, and `expandedRenderer`. Set `toggleCell` to `leading` or `trailing`, or
 `toggleAfterColumn` to place the chevron beside a visible column. Column `width` applies to header and body cells;

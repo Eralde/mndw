@@ -388,6 +388,7 @@ export class MndwTable<Row = unknown> extends LitElement {
   private effectiveColumns: Column<Row>[] = [];
   private displayRows: Row[] = [];
   private effectiveHidden = new Set<string>();
+  private internalVisibilityNeedsReconcile = false;
   private effectiveSortState: SortState | null = null;
   private selectedKeySet = new Set<string>();
   private lastCellReconcileSignature: string | null = null;
@@ -460,7 +461,8 @@ export class MndwTable<Row = unknown> extends LitElement {
   }
 
   public override willUpdate(changedProperties: Map<string | number | symbol, unknown>): void {
-    if (!this.hasUpdated || changedProperties.size > 0) {
+    if (!this.hasUpdated || changedProperties.size > 0 || this.internalVisibilityNeedsReconcile) {
+      this.internalVisibilityNeedsReconcile = false;
       this.reconcileState(true);
     } else {
       this.updateVirtualWindow();
@@ -578,6 +580,8 @@ export class MndwTable<Row = unknown> extends LitElement {
   }
 
   protected override updated(_changedProperties: Map<string | number | symbol, unknown>): void {
+    this.menuLayer?.reposition();
+
     if (!this.isVirtualRenderingActive()) {
       this.teardownGeometry();
 
@@ -1911,6 +1915,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     }
 
     this.visibilityState.applyInternal(hidden);
+    this.internalVisibilityNeedsReconcile = true;
     this.requestUpdate();
     this.applyColumnVisibility(hidden);
   };

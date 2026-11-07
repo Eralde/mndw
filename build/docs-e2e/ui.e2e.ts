@@ -101,6 +101,32 @@ async function computedStyle(locator: Locator, property: string): Promise<string
   return locator.evaluate((element, cssProperty) => getComputedStyle(element).getPropertyValue(cssProperty), property);
 }
 
+async function menuTriggerOffset(menu: Locator, trigger: Locator): Promise<number> {
+  const [menuBounds, triggerBounds] = await Promise.all([menu.boundingBox(), trigger.boundingBox()]);
+
+  if (menuBounds === null || triggerBounds === null) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  return menuBounds.x - triggerBounds.x;
+}
+
+async function expectMenuTriggerOffset(menu: Locator, trigger: Locator, expectedOffset: number): Promise<void> {
+  await expect.poll(
+    async () => Math.abs(await menuTriggerOffset(menu, trigger) - expectedOffset),
+    'column menu stays aligned with its trigger after hiding a column',
+  ).toBeLessThanOrEqual(2);
+}
+
+async function expectUncheckedIndicatorDiffers(unchecked: Locator, checked: Locator): Promise<void> {
+  const uncheckedBackground = await unchecked.locator('[part="indicator"]')
+    .evaluate((indicatorElement) => getComputedStyle(indicatorElement).backgroundColor);
+  const checkedBackground = await checked.locator('[part="indicator"]')
+    .evaluate((indicatorElement) => getComputedStyle(indicatorElement).backgroundColor);
+
+  expect(uncheckedBackground).not.toBe(checkedBackground);
+}
+
 async function hoverFirstBar(overlay: Locator): Promise<void> {
   await overlay.hover({position: {x: 12, y: 30}});
 }
@@ -559,6 +585,81 @@ test('tooltip trigger can receive focus and shows tooltip text', async ({page}) 
   await expect(tooltip).toHaveAttribute('text', 'Refresh status');
 });
 
+async function exerciseColumnVisibilityMenu(page: Page): Promise<void> {
+  const visibilityTable = page.locator('.ui-demo__preview mndw-table[data-demo="visibility"]');
+  const menuTrigger = visibilityTable.locator('[part="column-menu-trigger"]');
+  const preview = visibilityTable.locator('xpath=ancestor::div[contains(@class,"ui-demo__preview")]');
+  const triggerBounds = await menuTrigger.boundingBox();
+  const previewBounds = await preview.boundingBox();
+
+  expect(triggerBounds).not.toBeNull();
+  expect(previewBounds).not.toBeNull();
+  expect(triggerBounds?.x).toBeGreaterThanOrEqual(previewBounds?.x ?? 0);
+  expect((triggerBounds?.x ?? 0) + (triggerBounds?.width ?? 0))
+    .toBeLessThanOrEqual((previewBounds?.x ?? 0) + (previewBounds?.width ?? 0));
+  await menuTrigger.click();
+
+  const menu = page.locator('mndw-column-menu');
+
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitemcheckbox')).toHaveCount(3);
+
+  const openedMenuTriggerOffset = await menuTriggerOffset(menu, menuTrigger);
+
+  expect(Number.isFinite(openedMenuTriggerOffset)).toBe(true);
+
+  const ipHeader = visibilityTable
+    .locator('thead th[part~="header-cell"]')
+    .filter({hasText: 'IP address'});
+  const ipCell = visibilityTable
+    .locator('tbody tr')
+    .first()
+    .locator('td[part~="cell"]')
+    .filter({hasText: '192.168.1.24'});
+  const ipOption = menu.getByRole('menuitemcheckbox', {name: 'IP address'});
+  const macOption = menu.getByRole('menuitemcheckbox', {name: 'MAC address'});
+
+  await expect(ipHeader).toHaveCount(1);
+  await expect(ipCell).toHaveCount(1);
+  await ipOption.click();
+  await expect(ipOption).toHaveAttribute('aria-checked', 'false');
+  await expect(menu).toBeVisible();
+  await expect(ipHeader).toHaveCount(0);
+  await expect(ipCell).toHaveCount(0);
+  await expectMenuTriggerOffset(menu, menuTrigger, openedMenuTriggerOffset);
+
+  await expectUncheckedIndicatorDiffers(ipOption, macOption);
+  await capture(page, 'table-column-menu-1280-light.png');
+  await selectTheme(page, 'dark');
+
+  await menuTrigger.click();
+
+  const darkMenu = page.locator('mndw-column-menu');
+  const darkIpOption = darkMenu.getByRole('menuitemcheckbox', {name: 'IP address'});
+
+  await expect(darkIpOption).toHaveAttribute('aria-checked', 'false');
+  await expect(ipHeader).toHaveCount(0);
+  await capture(page, 'table-column-menu-1280-dark.png');
+
+  await darkIpOption.click();
+  await expect(darkIpOption).toHaveAttribute('aria-checked', 'true');
+  await expect(ipHeader).toHaveCount(1);
+  await expect(ipCell).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(darkMenu).not.toBeVisible();
+
+  await menuTrigger.click();
+
+  const reopenedMenu = page.locator('mndw-column-menu');
+
+  await expect(reopenedMenu.getByRole('menuitemcheckbox', {name: 'IP address'})).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await page.keyboard.press('Escape');
+  await expect(reopenedMenu).not.toBeVisible();
+}
+
 test('table sorting, visibility menu, and sort affordance stay stable at desktop width', async ({page}) => {
   await page.setViewportSize({width: 1280, height: 900});
   await page.goto('ui/table');
@@ -572,6 +673,7 @@ test('table sorting, visibility menu, and sort affordance stay stable at desktop
 
   for (const expectedSort of ['ascending', 'descending', null]) {
     await nameHeader.click();
+
     if (expectedSort === null) {
       await expect(nameHeader.locator('mndw-icon')).toHaveAttribute('name', 'arrow-up-down');
       await expect.poll(() =>
@@ -590,24 +692,9 @@ test('table sorting, visibility menu, and sort affordance stay stable at desktop
   expect(new Set(indicatorWidths).size).toBe(1);
   await capture(page, 'table-sort-states-1280-light.png');
 
-  const visibilityTable = page.locator('.ui-demo__preview mndw-table[data-demo="visibility"]');
-  const menuTrigger = visibilityTable.locator('[part="column-menu-trigger"]');
-  const preview = visibilityTable.locator('xpath=ancestor::div[contains(@class,"ui-demo__preview")]');
-  const triggerBounds = await menuTrigger.boundingBox();
-  const previewBounds = await preview.boundingBox();
+  await exerciseColumnVisibilityMenu(page);
 
-  expect(triggerBounds).not.toBeNull();
-  expect(previewBounds).not.toBeNull();
-  expect(triggerBounds?.x).toBeGreaterThanOrEqual(previewBounds?.x ?? 0);
-  expect((triggerBounds?.x ?? 0) + (triggerBounds?.width ?? 0))
-    .toBeLessThanOrEqual((previewBounds?.x ?? 0) + (previewBounds?.width ?? 0));
-  await menuTrigger.click();
-  const menu = page.locator('mndw-column-menu');
-  await expect(menu).toBeVisible();
-  await expect(menu.getByRole('menuitemcheckbox')).toHaveCount(3);
-  await page.keyboard.press('Escape');
-  await expect(menu).not.toBeVisible();
-
+  await selectTheme(page, 'light');
   await nameHeader.click();
   await expect(sortingTable.locator('tbody tr').first()).toContainText('Game console');
   await capture(page, 'table-1280-light.png');

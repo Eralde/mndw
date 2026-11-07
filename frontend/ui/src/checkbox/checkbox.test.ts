@@ -215,6 +215,17 @@ describe('<mndw-checkbox>', () => {
     expect(element.indeterminate).toBe(false);
   });
 
+  it('does not toggle or consume Enter', async () => {
+    const element = await mount('<mndw-checkbox>Some</mndw-checkbox>', MNDW_CHECKBOX_TAG);
+    const event = new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true});
+
+    element.dispatchEvent(event);
+    await element.updateComplete;
+
+    expect(element.checked).toBe(false);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it('ignores interaction when disabled', async () => {
     const element = await mount('<mndw-checkbox disabled>Off</mndw-checkbox>', MNDW_CHECKBOX_TAG);
     const onChange = vi.fn();

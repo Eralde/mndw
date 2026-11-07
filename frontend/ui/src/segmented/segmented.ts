@@ -17,7 +17,6 @@ const OWNED_SEGMENT_ATTRIBUTES = ['role', 'aria-checked', 'aria-disabled', 'tabi
 
 const FORWARD_KEYS = ['ArrowRight', 'ArrowDown'];
 const BACKWARD_KEYS = ['ArrowLeft', 'ArrowUp'];
-const ACTIVATION_KEYS = [' ', 'Enter'];
 
 export class MndwSegmented extends LitElement {
   public static readonly formAssociated = true;
@@ -184,12 +183,10 @@ export class MndwSegmented extends LitElement {
     const invalid = this.invalid || (this.required && !selected);
 
     this.setAttribute('role', 'radiogroup');
+    this.setAttribute('aria-orientation', 'horizontal');
     this.setAttribute('aria-disabled', String(effectiveDisabled));
     this.setAttribute('aria-required', String(this.required));
     this.setAttribute('aria-invalid', String(invalid));
-    // Never a tab stop — the checked or first enabled segment is — but focusable so that
-    // `form.reportValidity()` has an anchor.
-    this.tabIndex = -1;
     this.syncAccessibleLabel();
 
     const internals = this.formState.internals;
@@ -199,6 +196,7 @@ export class MndwSegmented extends LitElement {
     }
 
     internals.role = 'radiogroup';
+    internals.ariaOrientation = 'horizontal';
     internals.ariaLabel = this.label || null;
     internals.ariaDisabled = String(effectiveDisabled);
     internals.ariaRequired = String(this.required);
@@ -234,7 +232,9 @@ export class MndwSegmented extends LitElement {
     this.formState.setFormValue(selected ? selected.value : null, this.value);
 
     if (this.required && !selected) {
-      this.formState.setValidity({valueMissing: true}, getMndwUiText('segmented.validation.required'));
+      const anchor = this.segments().find((segment) => !this.isSegmentDisabled(segment));
+
+      this.formState.setValidity({valueMissing: true}, getMndwUiText('segmented.validation.required'), anchor);
     } else {
       this.formState.clearValidity();
     }
@@ -291,15 +291,7 @@ export class MndwSegmented extends LitElement {
       return focusable[current <= 0 ? last : current - 1];
     }
 
-    if (key === 'Home') {
-      return focusable[0];
-    }
-
-    if (key === 'End') {
-      return focusable[last];
-    }
-
-    if (ACTIVATION_KEYS.includes(key) && current >= 0) {
+    if (key === ' ' && current >= 0) {
       return focusable[current];
     }
 

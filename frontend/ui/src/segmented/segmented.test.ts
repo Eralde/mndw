@@ -50,12 +50,13 @@ describe('<mndw-segmented> semantics', () => {
     expect(element.name).toBe('');
   });
 
-  it('carries radiogroup semantics on the host and keeps it out of the tab order', async () => {
+  it('carries horizontal radiogroup semantics without a host tabindex', async () => {
     const element = await mount(THREE_SEGMENTS);
 
     expect(element.getAttribute('role')).toBe('radiogroup');
+    expect(element.getAttribute('aria-orientation')).toBe('horizontal');
     expect(element.getAttribute('aria-disabled')).toBe('false');
-    expect(element.tabIndex).toBe(-1);
+    expect(element.hasAttribute('tabindex')).toBe(false);
     expect(element.shadowRoot?.querySelector('[part="group"]')).not.toBeNull();
   });
 
@@ -145,9 +146,9 @@ describe('<mndw-segmented> activation', () => {
     expect(changes).not.toHaveBeenCalled();
   });
 
-  it('selects with Space and Enter on the focused segment', async () => {
+  it('selects with Space but ignores Enter', async () => {
     const element = await mount(THREE_SEGMENTS);
-    const [, week] = segments(element);
+    const [, week, month] = segments(element);
 
     await press(element, 'ArrowRight', segments(element)[0]);
 
@@ -157,9 +158,10 @@ describe('<mndw-segmented> activation', () => {
 
     expect(element.value).toBe('week');
 
-    await press(element, 'Enter', week);
+    const enter = await press(element, 'Enter', month);
 
     expect(element.value).toBe('week');
+    expect(enter.defaultPrevented).toBe(false);
   });
 
   it('emits nothing for a programmatic value change', async () => {
@@ -201,16 +203,21 @@ describe('<mndw-segmented> keyboard navigation', () => {
     expect(element.value).toBe('month');
   });
 
-  it('treats ArrowDown and ArrowUp as forward and backward', async () => {
+  it('moves focus and selection with ArrowDown and ArrowUp', async () => {
     const element = await mount(THREE_SEGMENTS, 'value="day"');
+    const [day, week] = segments(element);
 
-    await press(element, 'ArrowDown', segments(element)[0]);
+    const down = await press(element, 'ArrowDown', day);
 
     expect(element.value).toBe('week');
+    expect(document.activeElement).toBe(week);
+    expect(down.defaultPrevented).toBe(true);
 
-    await press(element, 'ArrowUp', segments(element)[1]);
+    const up = await press(element, 'ArrowUp', week);
 
     expect(element.value).toBe('day');
+    expect(document.activeElement).toBe(day);
+    expect(up.defaultPrevented).toBe(true);
   });
 
   it('skips disabled segments while navigating', async () => {
@@ -226,7 +233,7 @@ describe('<mndw-segmented> keyboard navigation', () => {
     expect(element.value).toBe('month');
   });
 
-  it('jumps to the first and last enabled segment with Home and End', async () => {
+  it('ignores Home and End', async () => {
     const element = await mount(
       '<mndw-segment value="day" disabled>Day</mndw-segment>'
         + '<mndw-segment value="week">Week</mndw-segment>'
@@ -234,13 +241,15 @@ describe('<mndw-segmented> keyboard navigation', () => {
       'value="month"',
     );
 
-    await press(element, 'Home', segments(element)[2]);
-
-    expect(element.value).toBe('week');
-
-    await press(element, 'End', segments(element)[1]);
+    const home = await press(element, 'Home', segments(element)[2]);
 
     expect(element.value).toBe('month');
+    expect(home.defaultPrevented).toBe(false);
+
+    const end = await press(element, 'End', segments(element)[1]);
+
+    expect(element.value).toBe('month');
+    expect(end.defaultPrevented).toBe(false);
   });
 
   it('ignores keys it does not own', async () => {
@@ -392,22 +401,37 @@ interface FakeInternals {
   message: string;
   role: string | null;
   ariaLabel: string | null;
+  anchor: HTMLElement | null;
+  reportValidity: () => boolean;
 }
 
 const INTERNALS_TAG = 'mndw-segmented-internals-probe';
 let latestInternals: FakeInternals | null = null;
 
 function createFakeInternals(): ElementInternals & {record: FakeInternals} {
-  const record: FakeInternals = {values: [], flags: {}, message: '', role: null, ariaLabel: null};
+  const record: FakeInternals = {
+    values: [],
+    flags: {},
+    message: '',
+    role: null,
+    ariaLabel: null,
+    anchor: null,
+    reportValidity: () => {
+      record.anchor?.focus();
+
+      return Object.keys(record.flags).length === 0;
+    },
+  };
 
   return {
     record,
     setFormValue(value: string | File | FormData | null): void {
       record.values.push(value);
     },
-    setValidity(flags: ValidityStateFlags, message = ''): void {
+    setValidity(flags: ValidityStateFlags, message = '', anchor?: HTMLElement): void {
       record.flags = flags;
       record.message = message;
+      record.anchor = anchor ?? null;
     },
     set role(value: string | null) {
       record.role = value;
@@ -498,6 +522,21 @@ describe('<mndw-segmented> against ElementInternals', () => {
     await element.updateComplete;
 
     expect(latestInternals?.flags.valueMissing ?? false).toBe(false);
+  });
+
+  it('focuses the first enabled segment when required validation fails', async () => {
+    const element = await mountProbe(
+      'required',
+    );
+    const firstEnabled = segments(element)[0];
+
+    if (!firstEnabled) {
+      throw new Error('missing first segment');
+    }
+
+    expect(latestInternals?.anchor).toBe(firstEnabled);
+    expect(latestInternals?.reportValidity()).toBe(false);
+    expect(document.activeElement).toBe(firstEnabled);
   });
 
   it('publishes its role and author-facing label through internals', async () => {

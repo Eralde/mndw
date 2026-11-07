@@ -18,9 +18,8 @@ const OWNED_PANEL_ATTRIBUTES = ['role', 'aria-labelledby', 'hidden'];
 /** Relationship inputs the group cannot see as property changes. */
 const OBSERVED_ATTRIBUTES = ['id', 'for', 'disabled'];
 
-const FORWARD_KEYS = ['ArrowRight', 'ArrowDown'];
-const BACKWARD_KEYS = ['ArrowLeft', 'ArrowUp'];
-const ACTIVATION_KEYS = [' ', 'Enter'];
+const FORWARD_KEYS = ['ArrowRight'];
+const BACKWARD_KEYS = ['ArrowLeft'];
 
 interface Pairing {
   tabs: MndwTab[];
@@ -290,10 +289,6 @@ export class MndwTabs extends LitElement {
 
     if (key === 'End') {
       return focusable[last];
-    }
-
-    if (ACTIVATION_KEYS.includes(key) && current >= 0) {
-      return focusable[current];
     }
 
     return null;

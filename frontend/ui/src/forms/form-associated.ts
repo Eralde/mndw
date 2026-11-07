@@ -140,7 +140,7 @@ export class FormAssociatedController<Host extends HTMLElement> {
     }
   }
 
-  public setValidity(flags: ValidityStateFlags, message = ''): void {
+  public setValidity(flags: ValidityStateFlags, message = '', anchor?: HTMLElement): void {
     if (!this.internals) {
       return;
     }
@@ -148,7 +148,7 @@ export class FormAssociatedController<Host extends HTMLElement> {
     if (Object.keys(flags).length === 0) {
       this.internals.setValidity({});
     } else {
-      this.internals.setValidity(flags, message);
+      this.internals.setValidity(flags, message, anchor);
     }
   }
 

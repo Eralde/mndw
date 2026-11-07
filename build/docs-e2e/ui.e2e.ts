@@ -213,6 +213,26 @@ async function focusWithTab(page: Page, target: Locator): Promise<void> {
   throw new Error('Could not focus checkbox with keyboard Tab');
 }
 
+async function addKeyboardFixture(page: Page, markup: string): Promise<void> {
+  await page.evaluate(async (fixtureMarkup) => {
+    const fixture = document.createElement('section');
+
+    fixture.id = 'keyboard-contract-fixture';
+    fixture.style.cssText = 'position:fixed;z-index:999999;top:0;left:0;padding:16px;background:white;color:black';
+    fixture.innerHTML = fixtureMarkup;
+    document.body.append(fixture);
+
+    const components = Array.from(fixture.querySelectorAll('*'))
+      .filter((element) =>
+        element.localName.startsWith('mndw-')
+      ) as (HTMLElement & {updateComplete: Promise<unknown>})[];
+
+    for (let turn = 0; turn < 3; turn += 1) {
+      await Promise.all(components.map((element) => element.updateComplete));
+    }
+  }, markup);
+}
+
 async function addHoverContractFixture(page: Page): Promise<void> {
   await page.waitForFunction(() => customElements.get('mndw-button') !== undefined);
   await page.evaluate(async () => {
@@ -1270,6 +1290,125 @@ test('checkbox keyboard focus ring stays on its box', async ({page}) => {
 
   expect(outlineStyles.host).toBe('none');
   expect(outlineStyles.box).not.toBe('none');
+});
+
+test('segmented participates in Tab order and leaves after arrow navigation', async ({page}) => {
+  await page.goto('ui/segmented');
+  await assertPreviews(page, 'ui/segmented');
+  await addKeyboardFixture(
+    page,
+    `
+    <button id="segmented-before">Before</button>
+    <mndw-segmented id="keyboard-segments" label="Range" value="week">
+      <mndw-segment id="segment-disabled" value="disabled" disabled>Disabled</mndw-segment>
+      <mndw-segment id="segment-day" value="day">Day</mndw-segment>
+      <mndw-segment id="segment-week" value="week">Week</mndw-segment>
+    </mndw-segmented>
+    <button id="segmented-after">After</button>
+  `,
+  );
+
+  await page.locator('#segmented-before').focus();
+  await page.keyboard.press('Tab');
+
+  const week = page.locator('#segment-week');
+  const group = page.locator('#keyboard-segments');
+
+  await expect(week).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#segment-day')).toBeFocused();
+  await expect.poll(async () => group.evaluate((element) => (element as HTMLElement & {value: string}).value))
+    .toBe('day');
+  await page.keyboard.press('ArrowDown');
+  await expect(week).toBeFocused();
+  await expect.poll(async () => group.evaluate((element) => (element as HTMLElement & {value: string}).value))
+    .toBe('week');
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#segment-day')).toBeFocused();
+  await expect.poll(async () => group.evaluate((element) => (element as HTMLElement & {value: string}).value))
+    .toBe('day');
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#segmented-after')).toBeFocused();
+});
+
+test('horizontal tabs leave vertical arrows to the page and support Home and End', async ({page}) => {
+  await page.goto('ui/tabs');
+  await assertPreviews(page, 'ui/tabs');
+  await addKeyboardFixture(
+    page,
+    `
+    <mndw-tabs id="keyboard-tabs">
+      <mndw-tab id="keyboard-general">General</mndw-tab>
+      <mndw-tab id="keyboard-network">Network</mndw-tab>
+      <mndw-tab-panel for="keyboard-general">General panel</mndw-tab-panel>
+      <mndw-tab-panel for="keyboard-network">Network panel</mndw-tab-panel>
+    </mndw-tabs>
+  `,
+  );
+
+  const tabs = page.locator('#keyboard-tabs');
+  const general = page.locator('#keyboard-general');
+
+  await general.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect.poll(async () => tabs.evaluate((element) => (element as HTMLElement & {value: string}).value))
+    .toBe('keyboard-general');
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(async () => tabs.evaluate((element) => (element as HTMLElement & {value: string}).value))
+    .toBe('keyboard-general');
+  await page.keyboard.press('End');
+  await expect(page.locator('#keyboard-network')).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(general).toBeFocused();
+});
+
+test('checkbox uses Space and leaves Enter available for form submission', async ({page}) => {
+  await page.goto('ui/checkbox');
+  await assertPreviews(page, 'ui/checkbox');
+  await addKeyboardFixture(
+    page,
+    `
+    <form id="keyboard-form">
+      <input id="keyboard-input" aria-label="Name">
+      <mndw-checkbox id="keyboard-checkbox">Remember</mndw-checkbox>
+      <button type="submit">Submit</button>
+    </form>
+  `,
+  );
+  await page.evaluate(() => {
+    const form = document.querySelector<HTMLFormElement>('#keyboard-form');
+
+    if (!form) {
+      throw new Error('missing keyboard form');
+    }
+
+    (window as typeof window & {keyboardSubmissions?: number}).keyboardSubmissions = 0;
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+
+      const state = window as typeof window & {keyboardSubmissions: number};
+
+      state.keyboardSubmissions += 1;
+    });
+  });
+
+  const checkbox = page.locator('#keyboard-checkbox');
+
+  await page.locator('#keyboard-input').focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(() =>
+    page.evaluate(() => (window as typeof window & {keyboardSubmissions: number}).keyboardSubmissions)
+  )
+    .toBe(1);
+  await checkbox.focus();
+  await page.keyboard.press('Enter');
+  await expect(checkbox).not.toHaveJSProperty('checked', true);
+  await expect.poll(() =>
+    page.evaluate(() => (window as typeof window & {keyboardSubmissions: number}).keyboardSubmissions)
+  )
+    .toBe(1);
+  await page.keyboard.press('Space');
+  await expect(checkbox).toHaveJSProperty('checked', true);
 });
 
 interface BarBounds {

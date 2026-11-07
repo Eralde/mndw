@@ -105,6 +105,7 @@ describe('OverlayHost', () => {
 
       expect(positioner?.classList.contains('mndw-overlay-positioner--sheet')).toBe(true);
       expect(dialog?.classList.contains('mndw-overlay-dialog--sheet')).toBe(true);
+      expect(dialog?.getAttribute('aria-modal')).toBe('true');
       expect(dialog?.getAttribute('style')).toContain('width: 100%');
       expect(dialog?.getAttribute('style')).toContain('height: auto');
       expect(dialog?.getAttribute('style')).toContain('max-height: 100dvh');
@@ -179,6 +180,7 @@ describe('OverlayHost', () => {
 
       expect(positioner?.classList.contains('mndw-overlay-positioner--sheet')).toBe(true);
       expect(dialog?.classList.contains('mndw-overlay-dialog--sheet')).toBe(true);
+      expect(dialog?.getAttribute('aria-modal')).toBe('true');
       expect(dialog?.getAttribute('style')).toContain('width: 100%');
       expect(dialog?.getAttribute('style')).toContain('height: auto');
 
@@ -255,6 +257,8 @@ describe('OverlayHost', () => {
 
     const positioner = harness.root.querySelector<HTMLElement>('.mndw-overlay-positioner');
 
+    expect(harness.root.querySelector('[role="dialog"]')).toBeNull();
+    expect(harness.root.querySelector('[aria-modal]')).toBeNull();
     expect(positioner?.classList.contains('mndw-overlay-positioner--unpositioned')).toBe(true);
     expect(positioner?.getAttribute('style')).toContain('opacity: 0');
     expect(positioner?.getAttribute('style')).toContain('pointer-events: none');

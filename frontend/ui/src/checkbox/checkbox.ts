@@ -261,7 +261,7 @@ export class MndwCheckbox extends LitElement {
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    if (this.formState.effectiveDisabled || (event.key !== ' ' && event.key !== 'Enter')) {
+    if (this.formState.effectiveDisabled || event.key !== ' ') {
       return;
     }
 

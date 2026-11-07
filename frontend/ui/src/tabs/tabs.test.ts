@@ -380,6 +380,18 @@ describe('<mndw-tabs> activation', () => {
     expect(element.value).toBe('general');
   });
 
+  it('leaves vertical arrows and activation keys to the page', async () => {
+    const element = await mount(THREE_TABS);
+    const general = tabOf(element, 'general');
+
+    for (const key of ['ArrowUp', 'ArrowDown', ' ', 'Enter']) {
+      const event = await press(element, key, general);
+
+      expect(element.value, `${key} keeps the active tab`).toBe('general');
+      expect(event.defaultPrevented, `${key} is not consumed`).toBe(false);
+    }
+  });
+
   it('ignores keys outside the tabs matrix', async () => {
     const element = await mount(THREE_TABS);
     const other = await press(element, 'a', tabOf(element, 'general'));

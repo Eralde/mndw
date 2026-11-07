@@ -50,6 +50,7 @@ export class MndwSelect extends LitElement {
 
       display: inline-block;
       width: 100%;
+      border-radius: var(--mndw-radius-md);
     }
 
     :host([disabled]) {

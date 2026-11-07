@@ -336,7 +336,8 @@ describe('packPlugin', () => {
         + '  return {unmount() { app.unmount(); }};\n'
         + '};\n',
       files: {
-        'src/App.vue': '<script setup lang="ts"></script>\n<template><h1>hi</h1></template>\n'
+        'src/App.vue': '<script setup lang="ts"></script>\n<template><h1>hi</h1>'
+          + '<mndw-segmented label="Range"><mndw-segment value="day">Day</mndw-segment></mndw-segmented></template>\n'
           + '<style scoped>h1{color:red}</style>\n',
       },
     });
@@ -348,6 +349,7 @@ describe('packPlugin', () => {
     const js = readFileSync(join(result.outDir, 'index.js'), 'utf8');
 
     expect(js).toMatch(/from\s*["']vue["']/);
+    expect(js).not.toMatch(/resolveComponent\(["']mndw-(?:segmented|segment)["']\)/);
     expect(existsSync(join(result.outDir, 'index.css'))).toBe(true);
     expect(readFileSync(join(result.outDir, 'index.css'), 'utf8')).toMatch(/color:\s*red/);
   });

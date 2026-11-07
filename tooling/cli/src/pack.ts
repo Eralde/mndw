@@ -148,7 +148,10 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
           }),
         ]
         : framework === 'vue'
-        ? [vuePlugin({sourceMap: false})]
+        ? [vuePlugin({
+          sourceMap: false,
+          template: {compilerOptions: {isCustomElement: (tag) => tag.startsWith('mndw-')}},
+        })]
         : [],
     });
 

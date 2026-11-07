@@ -145,8 +145,24 @@ describe('fallback provider', () => {
     await expect(layer.closed).resolves.toBe('escape');
   });
 
-  it('stays hidden until the first reposition', () => {
-    expect(openFallback().contentElement.style.visibility).toBe('hidden');
+  it('stays transparent and ignores pointers until the first reposition while remaining focusable', () => {
+    const layer = openFallback();
+    const button = document.createElement('button');
+
+    layer.contentElement.appendChild(button);
+
+    expect(layer.contentElement.style.opacity).toBe('0');
+    expect(layer.contentElement.style.pointerEvents).toBe('none');
+    expect(layer.contentElement.style.visibility).toBe('');
+
+    button.focus();
+
+    expect(deepActiveElement()).toBe(button);
+
+    layer.reposition();
+
+    expect(layer.contentElement.style.opacity).toBe('1');
+    expect(layer.contentElement.style.pointerEvents).toBe('auto');
   });
 
   it('positions against the anchor only when repositioned', () => {
@@ -161,7 +177,8 @@ describe('fallback provider', () => {
 
     expect(layer.contentElement.style.top).toBe('108px');
     expect(layer.contentElement.style.left).toBe('40px');
-    expect(layer.contentElement.style.visibility).toBe('visible');
+    expect(layer.contentElement.style.opacity).toBe('1');
+    expect(layer.contentElement.style.pointerEvents).toBe('auto');
   });
 
   it('uses the canonical flip order when the preferred side is clipped', () => {

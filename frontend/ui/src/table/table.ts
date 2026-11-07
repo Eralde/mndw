@@ -1,6 +1,7 @@
 import {LitElement, type PropertyDeclarations, css, html, nothing} from 'lit';
 import {repeat} from 'lit/directives/repeat.js';
 import {getMndwUiText} from '../i18n.js';
+import {focusWithinWithRetry} from '../focus.js';
 import {LocaleController} from '../locale-controller.js';
 import {type UiLayer, getOverlayProvider} from '../overlay.js';
 import {focusRing, hostTypography, surfaceHover} from '../styles/base.js';
@@ -387,6 +388,7 @@ export class MndwTable<Row = unknown> extends LitElement {
   private cellRegistry: CellRegistry<Row> | null = null;
   private readonly localeController = new LocaleController(this);
   private menuLayer: UiLayer | null = null;
+  private cancelMenuFocusRetry: (() => void) | null = null;
 
   private effectiveColumns: Column<Row>[] = [];
   private displayRows: Row[] = [];
@@ -1892,7 +1894,12 @@ export class MndwTable<Row = unknown> extends LitElement {
     void menu.updateComplete.then(() => {
       if (this.menuLayer === layer) {
         layer.reposition();
-        menu.focusFirstOption();
+        this.cancelMenuFocusRetry = focusWithinWithRetry(
+          menu,
+          () => menu.focusFirstOption(),
+          () => this.menuLayer === layer,
+          () => {},
+        );
       }
     });
 
@@ -1907,6 +1914,8 @@ export class MndwTable<Row = unknown> extends LitElement {
   }
 
   private forgetColumnMenu(): void {
+    this.cancelMenuFocusRetry?.();
+    this.cancelMenuFocusRetry = null;
     this.menuLayer = null;
   }
 

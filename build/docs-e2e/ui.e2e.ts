@@ -606,6 +606,35 @@ test('desktop select uses anchored popover and updates value', async ({page}) =>
   await expect.poll(() => selectValue(select)).toBe('guest');
 });
 
+test('desktop select supports keyboard navigation in its anchored popover', async ({page}) => {
+  await page.setViewportSize({width: 1280, height: 900});
+  await page.goto('ui/select');
+  await assertPreviews(page, 'ui/select');
+
+  const select = page.locator('.ui-demo__preview mndw-select').first();
+  const panel = page.locator('.mndw-overlay-positioner--popover mndw-select-panel');
+
+  await select.focus();
+  await page.keyboard.press('ArrowDown');
+
+  const options = panel.getByRole('option');
+
+  await expect(panel).toBeVisible();
+  await expect(options.nth(0)).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(options.nth(1)).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => selectValue(select)).toBe('guest');
+  await expect(panel).toBeHidden();
+
+  await select.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(options.nth(1)).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await expect(select).toBeFocused();
+});
+
 test('tooltip trigger can receive focus and shows tooltip text', async ({page}) => {
   await page.setViewportSize({width: 1280, height: 900});
   await page.goto('ui/tooltip');

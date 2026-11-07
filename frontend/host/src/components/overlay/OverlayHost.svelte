@@ -28,10 +28,10 @@ function isBlocking(layer: OverlayLayerView): boolean {
 function positionerStyle(layer: OverlayLayerView): string {
   if (layer.kind === 'popover') {
     // Position is computed from measured content on first render (see renderLayer);
-    // keep the popover hidden until then so it never flashes at the corner (0,0).
+    // keep the popover transparent and pointer-inert until then so it never flashes at (0,0).
     return layer.position
       ? `position:absolute;top:${layer.position.top}px;left:${layer.position.left}px`
-      : 'position:absolute;visibility:hidden';
+      : 'position:absolute;opacity:0;pointer-events:none';
   }
 
   return '';
@@ -163,7 +163,7 @@ $effect(() => {
     {/if}
 
     <div
-      class="mndw-overlay-positioner mndw-overlay-positioner--{layer.kind} mndw-overlay-positioner--{layer.placement} {layer.mobileSheet ? 'mndw-overlay-positioner--sheet' : ''}"
+      class="mndw-overlay-positioner mndw-overlay-positioner--{layer.kind} mndw-overlay-positioner--{layer.placement} {layer.mobileSheet ? 'mndw-overlay-positioner--sheet' : ''} {layer.kind === 'popover' && !layer.position ? 'mndw-overlay-positioner--unpositioned' : ''}"
       style={positionerStyle(layer)}
       use:renderLayer={layer}
     >
@@ -192,6 +192,10 @@ $effect(() => {
 .mndw-overlay-positioner :global(.mndw-overlay-content),
 .mndw-overlay-positioner :global(.mndw-overlay-dialog) {
   pointer-events: auto;
+}
+.mndw-overlay-positioner--unpositioned :global(.mndw-overlay-content),
+.mndw-overlay-positioner--unpositioned :global(.mndw-overlay-dialog) {
+  pointer-events: none;
 }
 .mndw-overlay-positioner--modal {
   align-items: center;

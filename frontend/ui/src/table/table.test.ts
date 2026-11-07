@@ -1371,6 +1371,62 @@ describe('MndwTable column menu', () => {
     expect(openCalls[0].className).toBe('demo-panel');
   });
 
+  it('retries initial focus when provider content becomes visible after a frame', async () => {
+    const {provider, layer} = makeOverlayProvider();
+
+    layer.contentElement.style.opacity = '0';
+    layer.reposition = vi.fn(() => {
+      requestAnimationFrame(() => {
+        layer.contentElement.style.opacity = '1';
+      });
+    });
+    setOverlayProvider(provider);
+
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    await el.updateComplete;
+
+    const nativeFocus = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'focus')?.value as (
+      this: HTMLElement,
+    ) => void;
+    let focusAttempts = 0;
+    const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function(this: HTMLElement): void {
+      if (this.getAttribute('role') === 'menuitemcheckbox') {
+        focusAttempts += 1;
+
+        if (layer.contentElement.style.opacity === '0') {
+          return;
+        }
+      }
+
+      nativeFocus.call(this);
+    });
+
+    shadowQuery<HTMLButtonElement>(el, '[part="column-menu-trigger"]').click();
+    await el.updateComplete;
+
+    const menu = layer.contentElement.querySelector<MndwColumnMenu>(MNDW_COLUMN_MENU_TAG);
+
+    if (!menu) {
+      throw new Error('column menu did not open');
+    }
+
+    await menu.updateComplete;
+
+    const firstOption = shadowQuery<HTMLButtonElement>(menu, 'button[data-column-id="name"]');
+
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    expect(focusAttempts).toBeGreaterThanOrEqual(2);
+    expect(shadowOf(menu).activeElement).toBe(firstOption);
+
+    focusSpy.mockRestore();
+  });
+
   it('opens the column menu when its nested icon receives the click', async () => {
     const {provider, openCalls} = makeOverlayProvider();
 

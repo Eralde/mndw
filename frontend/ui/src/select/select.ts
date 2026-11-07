@@ -1,6 +1,6 @@
 import {LitElement, type PropertyDeclarations, type PropertyValues, type TemplateResult, css, html} from 'lit';
 import {type MndwLabelSource, dispatchLabelChange} from '../field/field.js';
-import {deepActiveElement} from '../focus.js';
+import {deepActiveElement, focusWithinWithRetry} from '../focus.js';
 import {FormAssociatedController, FormLabelController} from '../forms/form-associated.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
@@ -109,6 +109,7 @@ export class MndwSelect extends LitElement {
 
   private layer: UiLayer | null = null;
   private panel: MndwSelectPanel | null = null;
+  private cancelInitialFocusRetry: (() => void) | null = null;
   private panelHadFocus = false;
   private presentation: UiLayerPresentation | null = null;
   private readonly placeholderState: LocalizedPropertyState<string | undefined>;
@@ -373,8 +374,14 @@ export class MndwSelect extends LitElement {
         panel.activeIndex = this.lastEnabledIndex(panel.options);
       }
 
-      panel.focusActive();
-      this.panelHadFocus = true;
+      this.cancelInitialFocusRetry = focusWithinWithRetry(
+        panel,
+        () => panel.focusActive(),
+        () => this.layer === layer,
+        () => {
+          this.panelHadFocus = true;
+        },
+      );
     });
 
     void layer.closed.then((reason) => {
@@ -476,6 +483,8 @@ export class MndwSelect extends LitElement {
   }
 
   private forgetLayer(): void {
+    this.cancelInitialFocusRetry?.();
+    this.cancelInitialFocusRetry = null;
     this.cancelPopoverTracking();
     window.removeEventListener('resize', this.onViewportChange);
     window.removeEventListener('scroll', this.onViewportChange, true);

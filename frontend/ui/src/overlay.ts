@@ -39,7 +39,8 @@ export function createFallbackProvider(): UiOverlayProvider {
       contentElement.className = options.className ?? '';
       contentElement.style.position = 'fixed';
       contentElement.style.zIndex = '1000';
-      contentElement.style.visibility = 'hidden';
+      contentElement.style.opacity = '0';
+      contentElement.style.pointerEvents = 'none';
       document.body.appendChild(contentElement);
 
       let settle = (_reason: UiCloseReason): void => {};
@@ -99,7 +100,8 @@ export function createFallbackProvider(): UiOverlayProvider {
 
         contentElement.style.left = `${coords.left}px`;
         contentElement.style.top = `${coords.top}px`;
-        contentElement.style.visibility = 'visible';
+        contentElement.style.opacity = '1';
+        contentElement.style.pointerEvents = 'auto';
       }
 
       document.addEventListener('pointerdown', onPointerDown, true);

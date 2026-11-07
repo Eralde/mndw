@@ -4,6 +4,7 @@ import {MNDW_OPTION_TAG, MndwOption} from './option.js';
 import {MNDW_ICON_TAG, MndwIcon} from '../icon/icon.js';
 import {MNDW_SELECT_PANEL_TAG, MndwSelectPanel} from './select-panel.js';
 import {MNDW_SELECT_TAG, MndwSelect} from './select.js';
+import {deepActiveElement} from '../focus.js';
 import {setMndwUiLocale} from '../i18n.js';
 import {type UiCloseReason, type UiLayerOptions, type UiOverlayProvider, setOverlayProvider} from '../overlay.js';
 import {defineComponents, mount as mountComponent, resetUiTestState} from '../testing/index.js';
@@ -236,6 +237,108 @@ describe('<mndw-select> trigger', () => {
 });
 
 describe('<mndw-select> opening', () => {
+  it('retries initial focus until the provider accepts it and stops after success', async () => {
+    const probe = fakeProvider();
+    const provider: UiOverlayProvider = {
+      open(options: UiLayerOptions) {
+        const layer = probe.provider.open(options) as FakeLayer;
+
+        layer.contentElement.style.opacity = '0';
+        requestAnimationFrame(() => {
+          layer.contentElement.style.opacity = '1';
+        });
+
+        return layer;
+      },
+    };
+
+    setOverlayProvider(provider);
+
+    const nativeFocus = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'focus')?.value as (
+      this: HTMLElement,
+    ) => void;
+    let optionFocusAttempts = 0;
+    const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function(this: HTMLElement): void {
+      if (this.getAttribute('role') === 'option') {
+        optionFocusAttempts += 1;
+
+        const panelRoot = this.getRootNode();
+
+        const panelHost = panelRoot instanceof ShadowRoot ? panelRoot.host : null;
+
+        if (panelHost?.parentElement?.style.opacity === '0') {
+          return;
+        }
+      }
+
+      nativeFocus.call(this);
+    });
+    const element = await mount();
+    const opened = await openPanel(element);
+    const activeOption = opened.renderRoot.querySelector<HTMLElement>('[role="option"]');
+
+    expect(activeOption).not.toBeNull();
+    expect(deepActiveElement()).not.toBe(activeOption);
+    expect(optionFocusAttempts).toBe(1);
+
+    await nextAnimationFrame();
+
+    expect(deepActiveElement()).toBe(activeOption);
+    expect(optionFocusAttempts).toBe(2);
+
+    await nextAnimationFrame();
+
+    expect(optionFocusAttempts).toBe(2);
+    focusSpy.mockRestore();
+  });
+
+  it('stops initial focus retries when the provider closes before accepting focus', async () => {
+    const probe = fakeProvider();
+
+    setOverlayProvider(probe.provider);
+
+    const nativeFocus = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'focus')?.value as (
+      this: HTMLElement,
+    ) => void;
+    let optionFocusAttempts = 0;
+    const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function(this: HTMLElement): void {
+      if (this.getAttribute('role') === 'option') {
+        optionFocusAttempts += 1;
+
+        return;
+      }
+
+      nativeFocus.call(this);
+    });
+    const element = await mount();
+
+    element.focus();
+
+    const elementFocus = vi.spyOn(element, 'focus');
+
+    trigger(element).dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown'}));
+
+    const opened = panel();
+
+    if (!opened) {
+      throw new Error('panel did not open');
+    }
+
+    await opened.updateComplete;
+    await Promise.resolve();
+
+    expect(optionFocusAttempts).toBe(1);
+
+    probe.layers[0].settle('escape');
+    await probe.layers[0].closed;
+
+    await nextAnimationFrame();
+
+    expect(optionFocusAttempts).toBe(1);
+    expect(elementFocus).not.toHaveBeenCalled();
+    focusSpy.mockRestore();
+  });
+
   it('opens on click and reports expanded', async () => {
     const element = await mount();
 

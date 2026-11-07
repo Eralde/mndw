@@ -49,6 +49,66 @@ export function composedContains(container: Node, node: Node | null): boolean {
   return false;
 }
 
+/** Focus `container`'s active control again on animation frames until focus lands or the owner changes. */
+export function focusWithinWithRetry(
+  container: HTMLElement,
+  focus: () => void,
+  isCurrent: () => boolean,
+  onFocus: () => void,
+  maxFrames = 5,
+): () => void {
+  let cancelled = false;
+  let frameId: number | null = null;
+  let framesRemaining = maxFrames;
+
+  const cancel = (): void => {
+    cancelled = true;
+
+    if (frameId !== null) {
+      cancelAnimationFrame(frameId);
+      frameId = null;
+    }
+  };
+
+  const attempt = (): void => {
+    frameId = null;
+
+    if (cancelled || !isCurrent()) {
+      cancel();
+
+      return;
+    }
+
+    focus();
+
+    if (cancelled || !isCurrent()) {
+      cancel();
+
+      return;
+    }
+
+    if (composedContains(container, deepActiveElement())) {
+      onFocus();
+      cancel();
+
+      return;
+    }
+
+    if (framesRemaining <= 0) {
+      cancel();
+
+      return;
+    }
+
+    framesRemaining -= 1;
+    frameId = requestAnimationFrame(attempt);
+  };
+
+  attempt();
+
+  return cancel;
+}
+
 // Deterministic across browsers and happy-dom: derive the tab index from markup
 // rather than the `tabIndex` property, whose defaults differ between environments.
 function isEditingHost(element: HTMLElement): boolean {

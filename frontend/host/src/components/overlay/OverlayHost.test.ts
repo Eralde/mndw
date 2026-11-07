@@ -236,7 +236,7 @@ describe('OverlayHost', () => {
     anchor.remove();
   });
 
-  it('keeps an anchored popover hidden until its content has measurable geometry', async () => {
+  it('keeps an unpositioned anchored popover transparent, inert to pointers, and focusable', async () => {
     const harness = mountHost();
     const anchor = document.createElement('button');
 
@@ -245,13 +245,24 @@ describe('OverlayHost', () => {
     const {service} = createTestService('probe', 'probe:1');
     const layer = service.createLayer({kind: 'popover', anchor: {element: anchor}});
 
+    const button = document.createElement('button');
+
+    button.textContent = 'Focusable content';
+    layer.contentElement.appendChild(button);
     layer.markReady();
     await Promise.resolve();
     await Promise.resolve();
 
     const positioner = harness.root.querySelector<HTMLElement>('.mndw-overlay-positioner');
 
-    expect(positioner?.getAttribute('style')).toContain('visibility: hidden');
+    expect(positioner?.classList.contains('mndw-overlay-positioner--unpositioned')).toBe(true);
+    expect(positioner?.getAttribute('style')).toContain('opacity: 0');
+    expect(positioner?.getAttribute('style')).toContain('pointer-events: none');
+    expect(positioner?.getAttribute('style')).not.toContain('visibility: hidden');
+
+    button.focus();
+
+    expect(document.activeElement).toBe(button);
 
     layer.close();
     await layer.closed;
@@ -279,12 +290,15 @@ describe('OverlayHost', () => {
 
     const positioner = harness.root.querySelector<HTMLElement>('.mndw-overlay-positioner');
 
-    expect(positioner?.getAttribute('style')).toContain('visibility: hidden');
+    expect(positioner?.getAttribute('style')).toContain('opacity: 0');
+    expect(positioner?.getAttribute('style')).toContain('pointer-events: none');
 
     await nextAnimationFrame();
 
     expect(positioner?.getAttribute('style')).toContain('top:');
-    expect(positioner?.getAttribute('style')).not.toContain('visibility: hidden');
+    expect(positioner?.classList.contains('mndw-overlay-positioner--unpositioned')).toBe(false);
+    expect(positioner?.getAttribute('style')).not.toContain('opacity: 0');
+    expect(positioner?.getAttribute('style')).not.toContain('pointer-events: none');
 
     layer.close();
     await layer.closed;

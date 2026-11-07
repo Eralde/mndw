@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {ref} from 'vue';
 import type {Translator} from '@mndw/sdk';
 import type {MndwCheckboxChangeDetail, MndwSliderInputDetail} from '@mndw/ui';
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const refreshIntervalSeconds = ref(props.refreshIntervalSeconds);
 
 const COLUMNS: readonly {key: string; label: string}[] = [
   {key: 'ip', label: 'column.ip'},
@@ -24,6 +26,7 @@ function onToggle(key: string, event: CustomEvent<MndwCheckboxChangeDetail>): vo
 }
 
 function onInterval(event: CustomEvent<MndwSliderInputDetail>): void {
+  refreshIntervalSeconds.value = event.detail.value;
   props.onRefreshIntervalChange(event.detail.value);
 }
 </script>
@@ -46,15 +49,14 @@ function onInterval(event: CustomEvent<MndwSliderInputDetail>): void {
     <div class="clients-settings__group">
       <mndw-field :label="props.translator.t('refresh-interval')">
         <mndw-slider
-        min="1"
-        max="10"
-        step="1"
-        :value="refreshIntervalSeconds"
-        :value-text="`${refreshIntervalSeconds}s`"
-        @mndwinput="onInterval"
+          min="1"
+          max="10"
+          step="1"
+          :value="refreshIntervalSeconds"
+          :value-text="`${refreshIntervalSeconds}s`"
+          @mndwinput="onInterval"
         ></mndw-slider>
       </mndw-field>
-      <span class="clients-settings__value">{{ refreshIntervalSeconds }}s</span>
     </div>
   </div>
 </template>
@@ -82,7 +84,4 @@ function onInterval(event: CustomEvent<MndwSliderInputDetail>): void {
   align-items: center;
 }
 
-.clients-settings__value {
-  color: var(--mndw-text-muted);
-}
 </style>

@@ -6,6 +6,8 @@ import {type App as VueApp, createApp} from 'vue';
 import ColumnSettings from './ColumnSettings.vue';
 
 type MndwCheckboxHost = HTMLElement & {checked: boolean};
+type MndwCheckboxWithUpdate = MndwCheckboxHost & {updateComplete: Promise<unknown>};
+type MndwSliderHost = HTMLElement & {updateComplete: Promise<unknown>};
 
 let host: HTMLElement;
 let app: VueApp | null = null;
@@ -69,6 +71,23 @@ describe('ColumnSettings shared controls', () => {
     expect(onChange).toHaveBeenCalledWith('ip', false);
   });
 
+  it('keeps a column checkbox visibly toggled after its change callback', async () => {
+    mountSettings();
+
+    const checkbox = host.querySelector<MndwCheckboxWithUpdate>('mndw-checkbox');
+
+    if (checkbox === null) {
+      throw new Error('column checkbox was not rendered');
+    }
+
+    await checkbox.updateComplete;
+    checkbox.click();
+    await checkbox.updateComplete;
+
+    expect(checkbox.getAttribute('aria-checked')).toBe('false');
+    expect(onChange).toHaveBeenCalledWith('ip', false);
+  });
+
   it('forwards slider values from mndwinput detail', () => {
     mountSettings();
 
@@ -86,6 +105,31 @@ describe('ColumnSettings shared controls', () => {
       }),
     );
 
+    expect(onRefreshIntervalChange).toHaveBeenCalledWith(7);
+  });
+
+  it('updates the slider value text without showing a duplicate value', async () => {
+    mountSettings();
+
+    const slider = host.querySelector<MndwSliderHost>('mndw-slider');
+
+    if (slider === null) {
+      throw new Error('refresh slider was not rendered');
+    }
+
+    await slider.updateComplete;
+    slider.dispatchEvent(
+      new CustomEvent('mndwinput', {
+        bubbles: true,
+        composed: true,
+        detail: {value: 7},
+      }),
+    );
+    await Promise.resolve();
+    await slider.updateComplete;
+
+    expect(slider.shadowRoot?.querySelector('[part="output"]')?.textContent).toBe('7s');
+    expect(host.querySelector('.clients-settings__value')).toBeNull();
     expect(onRefreshIntervalChange).toHaveBeenCalledWith(7);
   });
 });

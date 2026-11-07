@@ -14,6 +14,7 @@ import {
   type ThemeName,
   type TokenName,
   contrastRatio,
+  deriveControlHover,
   paletteToCss,
 } from '@mndw/palette-core';
 
@@ -43,7 +44,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function validateTheme(input: unknown, theme: ThemeName, errors: string[]): boolean {
   if (!isPlainObject(input)) {
-    errors.push(`"${theme}" must be an object of 21 colour tokens.`);
+    errors.push(`"${theme}" must be an object of palette colour tokens.`);
 
     return false;
   }
@@ -54,6 +55,10 @@ function validateTheme(input: unknown, theme: ThemeName, errors: string[]): bool
     const value = input[token];
 
     if (value === undefined) {
+      if (token === 'controlHover') {
+        continue;
+      }
+
       errors.push(`"${theme}" is missing the token "${token}".`);
       ok = false;
 
@@ -150,7 +155,11 @@ export function validateImportedPalette(input: unknown): PaletteValidation {
     const source = input[theme] as Record<string, string>;
 
     for (const token of TOKENS) {
-      palette[theme][token] = source[token];
+      if (token === 'controlHover' && source[token] === undefined) {
+        palette[theme].controlHover = deriveControlHover(source.surface, source.text, theme);
+      } else {
+        palette[theme][token] = source[token];
+      }
     }
   }
 

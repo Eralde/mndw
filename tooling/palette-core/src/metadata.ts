@@ -21,6 +21,7 @@ export type TokenName =
   | 'infoBg'
   | 'focusRing'
   | 'surfaceHover'
+  | 'controlHover'
   | 'shadowColor';
 
 export type PaletteTokenMap = Record<ThemeName, Record<TokenName, string>>;
@@ -51,6 +52,7 @@ export const PALETTE_CSS_VARIABLES: readonly PaletteCssVariable[] = [
   {token: 'infoBg', cssVar: '--mndw-info-bg'},
   {token: 'focusRing', cssVar: '--mndw-focus-ring'},
   {token: 'surfaceHover', cssVar: '--mndw-surface-hover'},
+  {token: 'controlHover', cssVar: '--mndw-control-hover'},
   {token: 'shadowColor', cssVar: '--mndw-shadow-color'},
 ] as const;
 
@@ -70,6 +72,7 @@ export const PALETTE_CONTRAST_PAIRS: readonly PaletteContrastPair[] = [
   {fg: 'danger', bg: 'dangerBg', min: 4.5},
   {fg: 'text', bg: 'surfaceRaised', min: 4.5},
   {fg: 'text', bg: 'surfaceHover', min: 4.5},
+  {fg: 'text', bg: 'controlHover', min: 4.5},
   {fg: 'textSubtle', bg: 'surfaceRaised', min: 4.5},
   {fg: 'textMuted', bg: 'surfaceRaised', min: 4.5},
   {fg: 'border', bg: 'surfaceRaised', min: 3},

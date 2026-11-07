@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {contrastRatio} from './contrast.js';
-import {SEED, buildPalette, validatePalette} from './build-palette.js';
+import {SEED, buildPalette, deriveControlHover, validatePalette} from './build-palette.js';
 import {oklchOf} from './ramp.js';
 
 const statusPairs = [
@@ -21,6 +21,17 @@ describe('buildPalette', () => {
 
     expect(validatePalette(buildPalette('dark')).filter((result) => !result.pass)).toEqual([]);
     expect(validatePalette(buildPalette('light')).filter((result) => !result.pass)).toEqual([]);
+  });
+
+  it.each(['light', 'dark'] as const)('builds a readable control hover surface for %s', (theme) => {
+    const palette = buildPalette(theme);
+
+    expect(palette.controlHover).toMatch(/^#[0-9a-f]{6}$/u);
+    expect(contrastRatio(palette.text, palette.controlHover)).toBeGreaterThanOrEqual(4.5);
+    expect(Math.abs(oklchOf(palette.controlHover).l - oklchOf(palette.surface).l)).toBeGreaterThan(0.05);
+    expect(Math.abs(oklchOf(palette.controlHover).l - oklchOf(palette.surface).l))
+      .toBeGreaterThan(Math.abs(oklchOf(palette.surfaceHover).l - oklchOf(palette.surface).l));
+    expect(deriveControlHover(palette.surface, palette.text, theme)).toBe(palette.controlHover);
   });
 
   it.each(['light', 'dark'] as const)('keeps %s status backgrounds on the theme side with readable pairs', (theme) => {

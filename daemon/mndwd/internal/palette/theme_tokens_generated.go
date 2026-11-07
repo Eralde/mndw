@@ -22,5 +22,6 @@ type ThemeTokens struct {
 	InfoBg         string `json:"infoBg"`
 	FocusRing      string `json:"focusRing"`
 	SurfaceHover   string `json:"surfaceHover"`
+	ControlHover   string `json:"controlHover"`
 	ShadowColor    string `json:"shadowColor"`
 }

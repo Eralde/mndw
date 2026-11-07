@@ -42,6 +42,7 @@ const ACCENT_SHIFT = {
 } as const;
 
 const SURFACE_HOVER_SHIFT = {dark: 0.04, light: -0.03} as const;
+const CONTROL_HOVER_SHIFT = {dark: 0.12, light: -0.12} as const;
 
 const SHADOW = {
   shift: {dark: -0.02, light: -0.6},
@@ -49,6 +50,12 @@ const SHADOW = {
 } as const;
 
 const TEXT_INDEX = {border: 5, textSubtle: 9, textMuted: 10} as const;
+
+export function deriveControlHover(surface: string, text: string, theme: ThemeName): string {
+  const candidate = shiftLightness(surface, CONTROL_HOVER_SHIFT[theme]);
+
+  return contrastRatio(candidate, text) >= 4.5 ? candidate : nudgeHexForContrast(candidate, text, 4.5);
+}
 
 function statusBg(color: string, theme: ThemeName): string {
   const {c, h} = oklchOf(color);
@@ -71,6 +78,7 @@ function enforceContrast(palette: Record<TokenName, string>): void {
 
   nudge('surfaceRaised', 'text', 4.5);
   nudge('surfaceHover', 'text', 4.5);
+  nudge('controlHover', 'text', 4.5);
 
   const worseSurface = (token: TokenName): TokenName =>
     contrastRatio(palette[token], palette.surface) <= contrastRatio(palette[token], palette.surfaceRaised)
@@ -116,6 +124,7 @@ export function buildPalette(theme: ThemeName, seed: Seed = SEED): Record<TokenN
 
   const focusRing = shiftLightness(accent, ACCENT_SHIFT.focus[theme]);
   const surfaceHover = shiftLightness(surfaceRaised, SURFACE_HOVER_SHIFT[theme]);
+  const controlHover = deriveControlHover(surface, text, theme);
   const shadowColor = withAlpha(shiftLightness(bg, SHADOW.shift[theme]), SHADOW.alpha[theme]);
 
   const palette: Record<TokenName, string> = {
@@ -139,6 +148,7 @@ export function buildPalette(theme: ThemeName, seed: Seed = SEED): Record<TokenN
     infoBg,
     focusRing,
     surfaceHover,
+    controlHover,
     shadowColor,
   };
 

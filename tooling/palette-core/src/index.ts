@@ -1,6 +1,6 @@
 export {contrastRatio, meetsContrast} from './contrast.js';
 export {paletteToCss} from './css.js';
-export {buildPalette, PAIRS, SEED, validatePalette} from './build-palette.js';
+export {buildPalette, deriveControlHover, PAIRS, SEED, validatePalette} from './build-palette.js';
 export type {Seed} from './build-palette.js';
 export {PALETTE_CONTRAST_PAIRS, PALETTE_CSS_VARIABLES} from './metadata.js';
 export type {PaletteContrastPair, PaletteCssVariable, PaletteTokenMap, ThemeName, TokenName} from './metadata.js';

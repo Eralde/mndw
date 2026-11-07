@@ -22,6 +22,7 @@ export const MNDW_TOKENS = {
     "infoBg": "#e0f1ff",
     "focusRing": "#004f7a",
     "surfaceHover": "#e8edee",
+    "controlHover": "#c6cbcc",
     "shadowColor": "#4145462e"
   },
   "dark": {
@@ -45,6 +46,7 @@ export const MNDW_TOKENS = {
     "infoBg": "#021d2f",
     "focusRing": "#338ac5",
     "surfaceHover": "#1e2022",
+    "controlHover": "#292b2c",
     "shadowColor": "#0102038c"
   }
 } as const;

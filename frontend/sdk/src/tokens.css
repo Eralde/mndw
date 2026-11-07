@@ -86,6 +86,7 @@
   --mndw-info-bg: #021d2f;
   --mndw-focus-ring: #338ac5;
   --mndw-surface-hover: #1e2022;
+  --mndw-control-hover: #292b2c;
   --mndw-shadow-color: #0102038c;
 }
 
@@ -110,5 +111,6 @@
   --mndw-info-bg: #e0f1ff;
   --mndw-focus-ring: #004f7a;
   --mndw-surface-hover: #e8edee;
+  --mndw-control-hover: #c6cbcc;
   --mndw-shadow-color: #4145462e;
 }

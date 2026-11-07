@@ -1,5 +1,6 @@
 import {readFile, readdir} from 'node:fs/promises';
 import {describe, expect, it} from 'vitest';
+import {deriveControlHover} from '@mndw/palette-core';
 import {MNDW_TOKENS} from './tokens.js';
 import {
   PALETTE_CONTRAST_PAIRS,
@@ -31,6 +32,7 @@ const TOKEN_NAMES = [
   'infoBg',
   'focusRing',
   'surfaceHover',
+  'controlHover',
   'shadowColor',
 ] as const;
 
@@ -43,6 +45,7 @@ function validMap(): PaletteTokenMap {
   dark.surface = '#000000';
   dark.surfaceRaised = '#000000';
   dark.surfaceHover = '#000000';
+  dark.controlHover = '#000000';
   dark.accent = '#000000';
   dark.dangerBg = '#000000';
   dark.successBg = '#000000';
@@ -52,6 +55,7 @@ function validMap(): PaletteTokenMap {
   light.surface = '#ffffff';
   light.surfaceRaised = '#ffffff';
   light.surfaceHover = '#ffffff';
+  light.controlHover = '#ffffff';
   light.accent = '#ffffff';
   light.dangerBg = '#ffffff';
   light.successBg = '#ffffff';
@@ -62,7 +66,7 @@ function validMap(): PaletteTokenMap {
 }
 
 describe('metadata', () => {
-  it('lists all 21 tokens in canonical order with kebab-case css vars', () => {
+  it('lists all 22 tokens in canonical order with kebab-case css vars', () => {
     expect(PALETTE_CSS_VARIABLES.map((entry) => entry.token)).toEqual([...TOKEN_NAMES]);
     expect(PALETTE_CSS_VARIABLES.map((entry) => entry.cssVar)).toEqual([
       '--mndw-bg',
@@ -85,12 +89,13 @@ describe('metadata', () => {
       '--mndw-info-bg',
       '--mndw-focus-ring',
       '--mndw-surface-hover',
+      '--mndw-control-hover',
       '--mndw-shadow-color',
     ]);
   });
 
-  it('declares all 16 audited contrast pairs', () => {
-    expect(PALETTE_CONTRAST_PAIRS).toHaveLength(16);
+  it('declares all 17 audited contrast pairs', () => {
+    expect(PALETTE_CONTRAST_PAIRS).toHaveLength(17);
     expect(PALETTE_CONTRAST_PAIRS[0]).toEqual({fg: 'text', bg: 'surface', min: 4.5});
   });
 });
@@ -117,6 +122,25 @@ describe('validateImportedPalette structural rules', () => {
     expect(result.structuralErrors).toEqual([]);
     expect(result.contrastWarnings).toEqual([]);
     expect(result.palette).not.toBeNull();
+  });
+
+  it('accepts a legacy palette without controlHover and derives it from each surface', () => {
+    const map = validMap() as unknown as Record<string, Record<string, string>>;
+
+    delete map.dark.controlHover;
+    delete map.light.controlHover;
+
+    const result = validateImportedPalette(map);
+
+    expect(result.structuralErrors).toEqual([]);
+    expect(result.palette?.dark.controlHover).toBe(deriveControlHover(map.dark.surface, map.dark.text, 'dark'));
+    expect(result.palette?.light.controlHover).toBe(deriveControlHover(map.light.surface, map.light.text, 'light'));
+    expect(result.palette?.dark.controlHover).not.toBe(map.dark.surface);
+    expect(result.palette?.light.controlHover).not.toBe(map.light.surface);
+    expect(contrastRatio(result.palette?.dark.text ?? '', result.palette?.dark.controlHover ?? ''))
+      .toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(result.palette?.light.text ?? '', result.palette?.light.controlHover ?? ''))
+      .toBeGreaterThanOrEqual(4.5);
   });
 
   it('accepts 3-, 6- and 8-digit hex and preserves the value verbatim', () => {
@@ -187,7 +211,18 @@ describe('validateImportedPalette structural rules', () => {
     const map = validMap() as unknown as Record<string, Record<string, string>>;
 
     for (const theme of ['dark', 'light']) {
-      for (const token of ['successBg', 'warningBg', 'info', 'infoBg', 'focusRing', 'surfaceHover', 'shadowColor']) {
+      for (
+        const token of [
+          'successBg',
+          'warningBg',
+          'info',
+          'infoBg',
+          'focusRing',
+          'surfaceHover',
+          'controlHover',
+          'shadowColor',
+        ]
+      ) {
         delete map[theme][token];
       }
     }
@@ -320,6 +355,8 @@ describe('shared fixture corpus', () => {
         if (kind === 'valid') {
           expect(result.structuralErrors, `${kind}/${name}`).toEqual([]);
           expect(result.palette, `${kind}/${name}`).not.toBeNull();
+          expect(result.palette?.dark.controlHover, `${kind}/${name} dark controlHover`).toMatch(/^#[0-9a-f]{6}$/i);
+          expect(result.palette?.light.controlHover, `${kind}/${name} light controlHover`).toMatch(/^#[0-9a-f]{6}$/i);
         } else {
           expect(result.structuralErrors, `${kind}/${name}`).not.toEqual([]);
           expect(result.palette, `${kind}/${name}`).toBeNull();

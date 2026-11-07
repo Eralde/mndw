@@ -94,6 +94,32 @@ describe('initPalette', () => {
   });
 });
 
+describe('legacy palette compatibility', () => {
+  it('derives controlHover before applying CSS', async () => {
+    const legacy = {
+      dark: {...MNDW_TOKENS.dark},
+      light: {...MNDW_TOKENS.light},
+    };
+
+    delete (legacy.dark as Partial<typeof legacy.dark>).controlHover;
+    delete (legacy.light as Partial<typeof legacy.light>).controlHover;
+    expect(Object.keys(legacy.dark)).toHaveLength(21);
+    expect(Object.keys(legacy.light)).toHaveLength(21);
+    getPalette.mockResolvedValue(legacy);
+
+    await service.initPalette();
+
+    const applied = service.getApplied();
+    const css = overrideElement()?.textContent ?? '';
+
+    expect(applied?.dark.controlHover).toBe(MNDW_TOKENS.dark.controlHover);
+    expect(applied?.light.controlHover).toBe(MNDW_TOKENS.light.controlHover);
+    expect(css).toContain(`--mndw-control-hover: ${MNDW_TOKENS.dark.controlHover};`);
+    expect(css).not.toContain('undefined');
+    expect(Object.keys(service.getExportable().dark)).toHaveLength(22);
+  });
+});
+
 describe('refreshPalette', () => {
   it('propagates errors so Settings can offer retry', async () => {
     getPalette.mockRejectedValue(new Error('offline'));
@@ -171,7 +197,7 @@ describe('getExportable, getTokens, and notifications', () => {
   it('uses compiled defaults without an applied override and ignores preview for reads', () => {
     expect(service.getExportable()).toEqual(MNDW_TOKENS);
     expect(service.getTokens()).toEqual(MNDW_TOKENS);
-    expect(Object.keys(service.getExportable().dark)).toHaveLength(21);
+    expect(Object.keys(service.getExportable().dark)).toHaveLength(22);
 
     service.previewOverride(override);
 

@@ -106,7 +106,7 @@ func run(cfg Config) (err error) {
 	var listener net.Listener
 
 	if cfg.FrontDoorMode() {
-		selected, port, selectErr := listen.Select(listen.Config{
+		selection, selectErr := listen.Select(listen.Config{
 			BindAddr:      cfg.FrontendListen,
 			PersistPath:   filepath.Join(cfg.DataDir, "frontend-port"),
 			SeedPath:      filepath.Join(cfg.DataDir, "lighttpd-port"),
@@ -120,9 +120,13 @@ func run(cfg Config) (err error) {
 			return selectErr
 		}
 
-		listener = selected
+		listener = selection.Listener
 
-		logger.Info("mndwd front door", "url", fmt.Sprintf("http://<device-ip>:%d/", port), "port", port)
+		if selection.UsedFallback {
+			logger.Warn("front door port busy, using fallback", "preferred", selection.PreferredPort, "port", selection.Port)
+		}
+
+		logger.Info("mndwd front door", "url", fmt.Sprintf("http://<device-ip>:%d/", selection.Port), "port", selection.Port)
 	}
 
 	// Dependency installation is an explicit management operation. Startup only

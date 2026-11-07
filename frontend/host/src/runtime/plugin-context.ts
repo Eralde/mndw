@@ -136,7 +136,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     : setTileTitle === undefined
     ? {kind: 'widget' as const}
     : {kind: 'widget' as const, setTileTitle};
-  const contextBase = Object.assign(Object.create(null) as Record<string, unknown>, {
+  const context = {
     telemetry,
     events,
     rciManager: createServiceFacade(rciService.driver, PLUGIN_RCI_MANAGER_METHODS),
@@ -149,18 +149,21 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     backend: backendClientFor(entry),
     overlay: service,
     ...variant,
-  });
+    get theme() {
+      return getTheme();
+    },
+    theme$,
+    get locale(): string {
+      return getHostLocale();
+    },
+    locale$,
+    get palette(): PluginContext['palette'] {
+      return getPaletteTokens();
+    },
+    palette$,
+  } satisfies PluginContext;
 
-  Object.defineProperties(contextBase, {
-    theme: {enumerable: true, get: getTheme},
-    theme$: {enumerable: true, value: theme$},
-    locale: {enumerable: true, get: getHostLocale},
-    locale$: {enumerable: true, value: locale$},
-    palette: {enumerable: true, get: getPaletteTokens},
-    palette$: {enumerable: true, value: palette$},
-  });
-
-  const context = contextBase as unknown as PluginContext;
+  Object.setPrototypeOf(context, null);
 
   return {context: Object.freeze(context), dispose};
 }

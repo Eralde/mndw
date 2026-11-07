@@ -123,7 +123,7 @@ describe('ClientsTable', () => {
     await el?.updateComplete;
 
     expect(el?.getAttribute('layout')).toBe('auto');
-    expect(el?.getAttribute('min-width')).toBe('44rem');
+    expect(el?.getAttribute('min-width')).toBe('36rem');
     expect(el?.hasAttribute('sticky-header')).toBe(true);
   });
 

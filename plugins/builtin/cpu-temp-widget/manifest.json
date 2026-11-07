@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "name": "cpu-temp-widget",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "widget",
   "label": "CPU Temperature",
   "entry": "index.js",

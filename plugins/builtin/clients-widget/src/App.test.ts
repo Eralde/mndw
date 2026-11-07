@@ -326,6 +326,7 @@ describe('empty states', () => {
 
 describe('cell formatting', () => {
   it('renders uptime as a duration and last-seen as elapsed time', async () => {
+    store.set('column-visibility', JSON.stringify({lastSeen: true}));
     mountWidget();
     await flush();
 
@@ -354,11 +355,11 @@ describe('cell formatting', () => {
 });
 
 describe('storage', () => {
-  it('defaults to all columns visible, offline off, 3s', async () => {
+  it('hides Last Seen by default, with offline off and 3s refresh', async () => {
     mountWidget();
     await flush();
 
-    expect(headers()).toEqual(['Name', 'IP Address', 'Connection', 'Uptime', 'Last Seen']);
+    expect(headers()).toEqual(['Name', 'IP Address', 'Connection', 'Uptime']);
     expect(offlineToggle().checked).toBe(false);
   });
 
@@ -374,6 +375,7 @@ describe('storage', () => {
     await flush();
 
     expect(headers()).not.toContain('IP Address');
+    expect(headers()).toContain('Last Seen');
     expect(offlineToggle().checked).toBe(true);
 
     const afterInitial = queue.mock.calls.length;
@@ -429,13 +431,14 @@ describe('storage', () => {
     expect(offlineToggle().checked).toBe(false);
   });
 
-  it('merges a partial column config onto all-visible', async () => {
+  it('merges a partial column config onto defaults with Last Seen hidden', async () => {
     store.set('column-visibility', JSON.stringify({connection: false, unknownColumn: true}));
     mountWidget();
     await flush();
 
     expect(headers()).not.toContain('Connection');
     expect(headers()).toContain('IP Address');
+    expect(headers()).not.toContain('Last Seen');
   });
 
   it('stays usable when a write rejects, without showing a table error', async () => {
@@ -465,12 +468,29 @@ describe('settings', () => {
       vi.mocked(openSettingsDialog).mock.calls[0];
 
     expect(visibility).toMatchObject({ip: true, connection: true});
+    expect(visibility.lastSeen).toBe(false);
     expect(intervalSeconds).toBe(3);
 
     onChange('connection', false);
     await flush();
     expect(headers()).not.toContain('Connection');
     expect(storageSet).toHaveBeenCalledWith('column-visibility', expect.stringContaining('"connection":false'));
+  });
+
+  it('shows Last Seen and persists it when enabled in settings', async () => {
+    mountWidget();
+    await flush();
+
+    host.querySelector<HTMLElement>('header mndw-button')?.click();
+    await flush();
+
+    const [, , , onChange] = vi.mocked(openSettingsDialog).mock.calls[0];
+
+    onChange('lastSeen', true);
+    await flush();
+
+    expect(headers()).toContain('Last Seen');
+    expect(storageSet).toHaveBeenCalledWith('column-visibility', expect.stringContaining('"lastSeen":true'));
   });
 
   it('applies an interval change without an extra RCI call', async () => {

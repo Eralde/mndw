@@ -110,14 +110,14 @@ const ramLoadHistory = computed(() => {
 const cpuHistory = computed(() => {
   const currentInfo = info.value;
 
-  return currentInfo === null || isDurableRange.value || liveHistoryLoading.value
+  return currentInfo === null || isDurableRange.value
       ? []
       : currentInfo.cpuHistory;
 });
 const ramHistory = computed(() => {
   const currentInfo = info.value;
 
-  return currentInfo === null || isDurableRange.value || liveHistoryLoading.value
+  return currentInfo === null || isDurableRange.value
       ? []
       : currentInfo.ramHistory;
 });
@@ -381,6 +381,8 @@ onUnmounted(() => {
 .app {
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
+  container-name: device-info-card;
   min-height: 100%;
   box-sizing: border-box;
   padding: 1rem;
@@ -441,9 +443,18 @@ onUnmounted(() => {
 }
 
 .range-scroll {
+  flex: none;
   min-width: 0;
   overflow-x: auto;
   margin-bottom: 0.75rem;
+}
+
+@container device-info-card (min-width: 22rem) {
+  .app__grid {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: baseline;
+  }
 }
 
 </style>

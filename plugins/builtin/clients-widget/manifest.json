@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
   "name": "clients-widget",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "widget",
   "label": "Clients",
   "entry": "index.js",

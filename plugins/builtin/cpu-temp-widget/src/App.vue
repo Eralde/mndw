@@ -27,7 +27,7 @@ let refreshLoop: RefreshLoop | null = null;
 let abortController: AbortController | null = null;
 
 const activeSnapshot = computed(() => loadedRange.value === selectedRange.value ? snapshot.value : null);
-const temp = computed<ProjectedSeries | null>(() => activeSnapshot.value?.keys.temp ?? null);
+const temp = computed<ProjectedSeries | null>(() => snapshot.value?.keys.temp ?? null);
 const gatheringEnabled = computed(() => activeSnapshot.value?.gathering.enabled ?? true);
 const hasData = computed(() => (temp.value?.segments.length ?? 0) > 0);
 const sessionRequired = computed(() => {
@@ -154,12 +154,15 @@ onUnmounted(() => {
       </mndw-segmented>
     </div>
     <div v-if="sessionRequired" class="app__message">{{ t('session-required') }}</div>
-    <div v-else-if="loading" class="app__message">{{ t('loading') }}</div>
+    <div v-else-if="loading && (temp === null || !temp.supported)" class="app__message" role="status">
+      {{ t('loading') }}
+    </div>
     <div v-else-if="!gatheringEnabled" class="app__message">{{ t('disabled') }}</div>
     <div v-else-if="error && !activeSnapshot" class="mndw-alert mndw-alert--danger" role="alert">{{ t('error') }}</div>
-    <div v-else-if="temp && !temp.supported" class="app__message">{{ t('unsupported') }}</div>
+    <div v-else-if="!loading && temp && !temp.supported" class="app__message">{{ t('unsupported') }}</div>
     <template v-else-if="temp">
-      <div class="chart-wrapper">
+      <div class="chart-wrapper" :class="{'chart-wrapper--loading': loading}" :aria-busy="loading">
+        <span v-if="loading" class="app__sr-only" role="status">{{ t('loading') }}</span>
         <span v-if="!hasData" class="app__message">{{ t('empty') }}</span>
         <mndw-line-chart
           :series.prop="[{id: 'mean', label: t('title'), data: temp.points, segments: temp.segments, color: 'accent'}]"
@@ -208,12 +211,16 @@ onUnmounted(() => {
 }
 
 .range-scroll {
+  flex: none;
   min-width: 0;
   overflow-x: auto;
   margin-bottom: 0.75rem;
+  padding-bottom: 0.25rem;
 }
 
 .chart-wrapper {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
@@ -221,6 +228,25 @@ onUnmounted(() => {
 
 mndw-line-chart {
   display: block;
+  flex: 1 1 auto;
   width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.chart-wrapper--loading mndw-line-chart {
+  opacity: 0.55;
+}
+
+.app__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

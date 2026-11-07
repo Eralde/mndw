@@ -34,12 +34,11 @@ const timeFormatter = (time: number): string => {
       <span class="load-bar-chart__label">{{ label }}</span>
       <span class="load-bar-chart__value">{{ value }}%</span>
     </div>
-    <div class="load-bar-chart__chart" :aria-busy="loading === true">
-      <span v-if="loading === true" class="load-bar-chart__loading" data-testid="history-loading" role="status">
+    <span v-if="loading === true" class="load-bar-chart__sr-only" data-testid="history-loading" role="status">
         {{ t('loading') }}
-      </span>
+    </span>
+    <div class="load-bar-chart__chart" :aria-busy="loading === true">
       <mndw-sparkline
-        v-else
         :points.prop="points"
         :timeDomain.prop="timeDomain"
         :timeFormatter.prop="timeFormatter"
@@ -80,12 +79,26 @@ const timeFormatter = (time: number): string => {
 .load-bar-chart__chart {
   display: block;
   width: 100%;
-  min-height: 1.5rem;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  box-sizing: border-box;
+  flex: none;
 }
 
-.load-bar-chart__loading {
-  display: block;
-  color: var(--mndw-text-subtle);
+.load-bar-chart__chart[aria-busy='true'] :deep(mndw-sparkline) {
+  opacity: 0.55;
+}
+
+.load-bar-chart__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @container device-info-loads (max-width: 200px) {

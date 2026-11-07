@@ -46,6 +46,7 @@
 
 .clients-table__status-indicator {
   display: inline-block;
+  flex: none;
   width: 0.625rem;
   height: 0.625rem;
   border-radius: 50%;

@@ -97,16 +97,22 @@ describe('App', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     const appElement = host.querySelector<HTMLElement>('.app');
+    const rangeScroll = host.querySelector<HTMLElement>('.range-scroll');
     const chartWrapper = host.querySelector<HTMLElement>('.chart-wrapper');
+    const chart = host.querySelector<HTMLElement>('mndw-line-chart');
 
-    if (appElement === null || chartWrapper === null) {
+    if (appElement === null || rangeScroll === null || chartWrapper === null || chart === null) {
       throw new Error('chart layout was not rendered');
     }
 
     expect(getComputedStyle(appElement).height).toBe('100%');
     expect(getComputedStyle(appElement).minHeight).toBe('0');
+    expect(getComputedStyle(rangeScroll).flexShrink).toBe('0');
+    expect(getComputedStyle(rangeScroll).paddingBottom).toBe('4px');
+    expect(getComputedStyle(chartWrapper).display).toBe('flex');
     expect(getComputedStyle(chartWrapper).flexGrow).toBe('1');
     expect(getComputedStyle(chartWrapper).minHeight).toBe('0');
+    expect(getComputedStyle(chart).height).toBe('100%');
   });
 
   it('marks the default range selected and follows later range changes', async () => {
@@ -147,7 +153,7 @@ describe('App', () => {
     expect(ctx.telemetry.fetchProjected).toHaveBeenCalledWith('7d', expect.any(Object));
   });
 
-  it('does not render the previous range while the new range is loading', async () => {
+  it('keeps the previous chart mounted and marks it busy while the new range loads', async () => {
     let resolveSecond: ((value: unknown) => void) | undefined;
     const fetchProjected = vi.fn()
       .mockResolvedValueOnce(supportedSnapshot(1000, 2000))
@@ -160,6 +166,8 @@ describe('App', () => {
     mountApp({telemetry: {fetchProjected}});
     await new Promise((resolve) => setTimeout(resolve, 10));
 
+    const previousChart = host.querySelector('mndw-line-chart');
+
     const segmented = host.querySelector<HTMLElement>('mndw-segmented');
 
     if (segmented === null) {
@@ -169,8 +177,10 @@ describe('App', () => {
     segmented.dispatchEvent(new CustomEvent('mndwchange', {detail: {value: '7d'}}));
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(host.querySelector('mndw-line-chart')).toBeNull();
-    expect(host.textContent).toContain('Loading…');
+    expect(host.querySelector('mndw-line-chart')).toBe(previousChart);
+    expect(host.querySelector('.chart-wrapper')?.getAttribute('aria-busy')).toBe('true');
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('Loading…');
+    expect(getComputedStyle(previousChart as HTMLElement).opacity).toBe('0.55');
 
     resolveSecond?.(supportedSnapshot(3000, 4000));
     await new Promise((resolve) => setTimeout(resolve, 10));

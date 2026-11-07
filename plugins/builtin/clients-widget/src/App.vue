@@ -22,7 +22,7 @@ const loadState = ref<LoadState<ClientRecord[], ClientLoadError>>({status: 'load
 const showOffline = ref(false);
 const refreshIntervalSeconds = ref(DEFAULT_INTERVAL_SECONDS);
 const columnVisibility = ref<Record<string, boolean>>(
-  Object.fromEntries(COLUMN_KEYS.map((key) => [key, true])),
+  Object.fromEntries(COLUMN_KEYS.map((key) => [key, key !== 'lastSeen'])),
 );
 const dirty = new Set<string>();
 const translator = useTranslator(props.ctx.i18n);

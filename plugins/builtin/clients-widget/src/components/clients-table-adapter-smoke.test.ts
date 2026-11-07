@@ -29,6 +29,33 @@ afterEach(() => {
 });
 
 describe('ClientNameCell through vueCell', () => {
+  it('keeps the status indicator round without shrinking', () => {
+    const node = document.createElement('div');
+
+    document.body.appendChild(node);
+    parkedNodes.push(node);
+
+    const renderer = vueCell<ClientRecord, ClientNameView>()(ClientNameCell)();
+
+    renderer.mount({
+      node,
+      row: record({displayName: 'A very long client name that would otherwise squeeze the status dot'}),
+      value: {
+        displayName: 'A very long client name that would otherwise squeeze the status dot',
+        link: {tone: 'up', label: 'Online'},
+      },
+      colId: 'name',
+    });
+
+    const indicator = node.querySelector<HTMLElement>('.clients-table__status-indicator');
+    const style = indicator === null ? null : getComputedStyle(indicator);
+
+    expect(style?.flexShrink).toBe('0');
+    expect(style?.width).toBe(style?.height);
+
+    renderer.destroy();
+  });
+
   it('renders, updates on fresh VNodes, and destroys without leaking cell props', () => {
     const node = document.createElement('div');
 

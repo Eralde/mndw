@@ -40,7 +40,7 @@ const emptyMessage = computed(() =>
     v-else
     class="clients-table"
     layout="auto"
-    min-width="44rem"
+    min-width="36rem"
     sticky-header
     :columns.prop="columns"
     :rows.prop="clients"

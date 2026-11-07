@@ -41,6 +41,14 @@ describe('LoadBarChart', () => {
     expect(chart.timeDomain).toEqual({start: 1_000, end: 3_000});
     expect(chart.getAttribute('value-label')).toBe('CPU');
     expect(chart.getAttribute('aria-label')).toBe('CPU');
+
+    const chartContainer = host.querySelector<HTMLElement>('.load-bar-chart__chart');
+
+    if (chartContainer === null) {
+      throw new Error('chart container was not rendered');
+    }
+
+    expect(getComputedStyle(chartContainer).height).toBe('40px');
   });
 
   it('uses date labels for a multi-day time domain', async () => {
@@ -79,7 +87,7 @@ describe('LoadBarChart', () => {
     ]);
   });
 
-  it('shows history loading state without hiding current value', async () => {
+  it('keeps the sparkline mounted and announces loading without changing chart height', async () => {
     host = document.createElement('div');
     document.body.append(host);
     app = createApp(LoadBarChart, {
@@ -92,8 +100,14 @@ describe('LoadBarChart', () => {
     app.mount(host);
     await nextTick();
 
+    const chart = host.querySelector<MndwSparkline>('mndw-sparkline');
+    const chartContainer = host.querySelector<HTMLElement>('.load-bar-chart__chart');
+
     expect(host.querySelector('.load-bar-chart__value')?.textContent).toBe('20%');
     expect(host.querySelector('[data-testid="history-loading"]')?.textContent).toBe('Loading…');
-    expect(host.querySelector('mndw-sparkline')).toBeNull();
+    expect(chart?.points).toEqual<MndwChartSample[]>([{value: 10}]);
+    expect(chartContainer?.getAttribute('aria-busy')).toBe('true');
+    expect(chartContainer === null ? '' : getComputedStyle(chartContainer).height).toBe('40px');
+    expect(chart === null ? '' : getComputedStyle(chart).opacity).toBe('0.55');
   });
 });

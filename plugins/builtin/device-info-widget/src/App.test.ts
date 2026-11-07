@@ -207,6 +207,19 @@ describe('App', () => {
     app.unmount();
   });
 
+  it('renders both identity grids and keeps the range row from shrinking', async () => {
+    const app = mountWidget(successfulResponse);
+
+    await flushPromises();
+
+    const rangeScroll = document.querySelector<HTMLElement>('.range-scroll');
+
+    expect(rangeScroll === null ? '' : getComputedStyle(rangeScroll).flexShrink).toBe('0');
+    expect(document.querySelectorAll('.app__grid')).toHaveLength(2);
+
+    app.unmount();
+  });
+
   it('loads only selected live history and shows chart loading while changing range', async () => {
     const queries: RciQuery[] = [];
     const oneHourCpu = new Subject<unknown>();
@@ -235,10 +248,18 @@ describe('App', () => {
       {path: 'show.system.rrd.memory', data: {detail: 0, attribute: 'used'}},
     ]);
 
+    const previousCharts = [...document.querySelectorAll('mndw-sparkline')] as Array<HTMLElement & {
+      points?: unknown[];
+    }>;
+    const previousCpuPoints = previousCharts[0]?.points;
+
     changeRange(document, '1h');
     await flushPromises();
 
+    expect(document.querySelector('mndw-sparkline')).toBe(previousCharts[0]);
+    expect(previousCharts[0]?.points).toEqual(previousCpuPoints);
     expect(document.querySelectorAll('[data-testid="history-loading"]')).toHaveLength(2);
+    expect(document.querySelector('.load-bar-chart__chart')?.getAttribute('aria-busy')).toBe('true');
     expect(queries.slice(-2)).toEqual([
       {path: 'show.system.rrd.cpu', data: {detail: 1, attribute: 'avg'}},
       {path: 'show.system.rrd.memory', data: {detail: 1, attribute: 'used'}},

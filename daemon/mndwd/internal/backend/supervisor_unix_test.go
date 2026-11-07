@@ -4,7 +4,6 @@ package backend
 
 import (
 	"errors"
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,18 +11,10 @@ import (
 )
 
 func TestSupervisorStartIncompatibleStopsExistingRuntimeAndRestampsProtocol(t *testing.T) {
-	runtimeRoot, err := os.MkdirTemp("", "mndw-supervisor-")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Cleanup(func() { _ = os.RemoveAll(runtimeRoot) })
+	runtimeRoot := shortUnixSocketDir(t)
 
 	probePath := filepath.Join(runtimeRoot, "probe.sock")
-	listener, err := net.Listen("unix", probePath)
-	if err != nil {
-		t.Skipf("sandbox disallows Unix listeners: %v", err)
-	}
+	listener := listenUnixForTest(t, probePath)
 
 	_ = listener.Close()
 	_ = os.Remove(probePath)

@@ -5,29 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
-	"os"
-	"path/filepath"
-	"syscall"
 	"testing"
 	"time"
 )
 
 func TestProbeReadinessValidatesIdentityAndProtocol(t *testing.T) {
-	socket := filepath.Join("/tmp", fmt.Sprintf("mndw-ready-%d.sock", os.Getpid()))
-	_ = os.Remove(socket)
-
-	defer os.Remove(socket)
-
-	listener, err := net.Listen("unix", socket)
-	if err != nil {
-		if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
-			t.Skipf("sandbox disallows Unix listeners: %v", err)
-		}
-
-		t.Fatal(err)
-	}
+	socket := shortUnixSocketPath(t, "ready.sock")
+	listener := listenUnixForTest(t, socket)
 
 	defer listener.Close()
 
@@ -78,21 +63,12 @@ func TestProbeReadinessWaitsForLateSocket(t *testing.T) {
 
 func TestProbeReadinessRejectsOversizeOrMalformedResponses(t *testing.T) {
 	for index, body := range []string{"not-json", fmt.Sprintf("%0200d", 1)} {
-		socket := filepath.Join("/tmp", fmt.Sprintf("mndw-ready-%d-%d.sock", os.Getpid(), index))
-		_ = os.Remove(socket)
-		listener, err := net.Listen("unix", socket)
-		if err != nil {
-			if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
-				t.Skipf("sandbox disallows Unix listeners: %v", err)
-			}
-
-			t.Fatal(err)
-		}
+		socket := shortUnixSocketPath(t, fmt.Sprintf("ready-%d.sock", index))
+		listener := listenUnixForTest(t, socket)
 
 		server := &http.Server{Handler: http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 			_, _ = writer.Write([]byte(body))
 		})}
-
 		go func() { _ = server.Serve(listener) }()
 
 		if err := ProbeReadiness(context.Background(), socket, "demo", 1, time.Second); err == nil {
@@ -100,6 +76,6 @@ func TestProbeReadinessRejectsOversizeOrMalformedResponses(t *testing.T) {
 		}
 
 		_ = server.Shutdown(context.Background())
-		_ = os.Remove(socket)
+		_ = listener.Close()
 	}
 }

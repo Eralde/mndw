@@ -2,9 +2,7 @@ package backend
 
 import (
 	"context"
-	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -125,12 +123,8 @@ func supervisorForDiagnosticsSocket(socketPath string) *Supervisor {
 func startDiagnosticsServer(t *testing.T, handler http.HandlerFunc) string {
 	t.Helper()
 
-	directory := t.TempDir()
-	socketPath := filepath.Join(directory, "backend.sock")
-	listener, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Skipf("sandbox disallows Unix listeners: %v", err)
-	}
+	socketPath := shortUnixSocketPath(t, "backend.sock")
+	listener := listenUnixForTest(t, socketPath)
 
 	server := &http.Server{Handler: handler}
 
@@ -139,7 +133,6 @@ func startDiagnosticsServer(t *testing.T, handler http.HandlerFunc) string {
 	t.Cleanup(func() {
 		_ = server.Close()
 		_ = listener.Close()
-		_ = os.Remove(socketPath)
 	})
 
 	return socketPath

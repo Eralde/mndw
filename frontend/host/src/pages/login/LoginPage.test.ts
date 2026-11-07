@@ -93,6 +93,44 @@ describe('LoginPage', () => {
     expect(setLocale).toHaveBeenCalledWith('ru');
   });
 
+  it('keeps the language selector focused while a locale loads', async () => {
+    const switchControl: {finish?: () => void} = {};
+    const switching = new Promise<void>((resolve) => {
+      switchControl.finish = resolve;
+    });
+    const setLocale = vi.fn(async (locale: string): Promise<void> => {
+      appState.localeSwitchPending = true;
+      flushSync();
+      await switching;
+      appState.locale = locale;
+      appState.localeSwitchPending = false;
+      flushSync();
+    });
+    const services = defaultHostServices();
+
+    render(createHostServicesContext({...services, locale: {...services.locale, setLocale}}));
+
+    const select = target.querySelector<HTMLElement & {disabled: boolean; updateComplete: Promise<unknown>}>(
+      '.mndw-login__locale-select',
+    );
+
+    await select?.updateComplete;
+    select?.focus();
+    select?.dispatchEvent(new CustomEvent('mndwchange', {bubbles: true, detail: {value: 'ru'}}));
+    flushSync();
+
+    expect(select?.disabled).toBe(false);
+    expect(select?.getAttribute('aria-busy')).toBe('true');
+    expect(document.activeElement).toBe(select);
+
+    switchControl.finish?.();
+    await setLocale.mock.results[0]?.value;
+    flushSync();
+
+    expect(select?.getAttribute('aria-busy')).toBe('false');
+    expect(document.activeElement).toBe(select);
+  });
+
   it('renders both credentials as kit text controls inside labelled fields', async () => {
     render();
 

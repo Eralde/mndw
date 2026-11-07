@@ -81,16 +81,51 @@ describe('Header locale controls', () => {
     void unmount(component);
   });
 
-  it('disables language controls during an atomic locale switch', () => {
-    appState.localeSwitchPending = true;
-
+  it('keeps language selector focus through an atomic locale switch', async () => {
+    const switchControl: {finish?: () => void} = {};
+    const switching = new Promise<void>((resolve) => {
+      switchControl.finish = resolve;
+    });
+    const setLocale = vi.fn(async (locale: string): Promise<void> => {
+      appState.localeSwitchPending = true;
+      flushSync();
+      await switching;
+      appState.locale = locale;
+      appState.localeSwitchPending = false;
+      flushSync();
+    });
+    const services = defaultHostServices();
     const target = document.createElement('div');
 
     document.body.appendChild(target);
 
-    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
+    const component = mount(Header, {
+      target,
+      context: createHostServicesContext({...services, locale: {...services.locale, setLocale}}),
+    });
+    const select = target.querySelector<HTMLElement & {disabled: boolean; updateComplete: Promise<unknown>}>(
+      '.mndw-header__locale-select',
+    );
 
-    expect(target.querySelector<HTMLElement & {disabled: boolean}>('.mndw-header__locale-select')?.disabled).toBe(true);
+    expect(select).not.toBeNull();
+    await select?.updateComplete;
+    select?.focus();
+    select?.dispatchEvent(
+      new CustomEvent('mndwchange', {bubbles: true, detail: {value: 'ru'}}),
+    );
+    flushSync();
+
+    expect(select?.disabled).toBe(false);
+    expect(select?.getAttribute('aria-busy')).toBe('true');
+    expect(document.activeElement).toBe(select);
+
+    switchControl.finish?.();
+    await setLocale.mock.results[0]?.value;
+    flushSync();
+
+    expect(select?.disabled).toBe(false);
+    expect(select?.getAttribute('aria-busy')).toBe('false');
+    expect(document.activeElement).toBe(select);
 
     void unmount(component);
   });

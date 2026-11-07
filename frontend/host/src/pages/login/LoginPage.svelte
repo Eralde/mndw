@@ -22,6 +22,10 @@ function canSubmit(): boolean {
 }
 
 function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
+  if (appState.localeSwitchPending) {
+    return;
+  }
+
   void services.locale.setLocale(event.detail.value).catch(() => {});
 }
 
@@ -106,7 +110,7 @@ function handleSubmit(e: Event): void {
       class="mndw-login__locale-select"
       label={hostT('nav.language')}
       value={appState.locale}
-      disabled={appState.localeSwitchPending}
+      aria-busy={String(appState.localeSwitchPending)}
       onmndwchange={handleLocaleChange}
     >
       <mndw-option value="en">EN</mndw-option>

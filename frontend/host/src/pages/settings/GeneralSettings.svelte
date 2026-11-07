@@ -339,7 +339,7 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
     <mndw-field label={hostT('settings.language.label')}>
       <mndw-select
         value={appState.locale}
-        disabled={appState.localeSwitchPending}
+        aria-busy={String(appState.localeSwitchPending)}
         onmndwchange={handleLocaleChange}
       >
         <mndw-option value="en">

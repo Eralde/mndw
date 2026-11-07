@@ -4,6 +4,32 @@ import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import EventLogger from './EventLogger.svelte';
 import messages from '../i18n/en.json';
 
+it('keeps filter separate from a wrapping toolbar actions group', async () => {
+  const fixture = createTestPluginContext({events: true});
+  const target = document.createElement('div');
+  const app = mount(EventLogger, {
+    target,
+    props: {events: fixture.context.events, i18n: createTestI18n(messages)},
+  });
+
+  try {
+    flushSync();
+
+    const header = target.querySelector('header');
+    const filter = header?.querySelector('mndw-input');
+    const actions = header?.querySelector('.actions');
+
+    expect(filter?.parentElement).toBe(header);
+    expect(actions).not.toBeNull();
+    expect(actions?.querySelectorAll('mndw-button')).toHaveLength(3);
+    expect(actions?.contains(filter ?? null)).toBe(false);
+  } finally {
+    await unmount(app);
+    fixture.unmount();
+    target.remove();
+  }
+});
+
 it('bounds capture, freezes while paused, clears locally, filters and cleans up', async () => {
   const fixture = createTestPluginContext({events: true});
   const target = document.createElement('div');

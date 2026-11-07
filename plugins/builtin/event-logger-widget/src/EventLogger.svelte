@@ -103,17 +103,19 @@ onMount(() => {
         }}
       >
       </mndw-input>
-      <mndw-button onclick={toggle}>
-        {$translator.t(paused ? 'resume' : 'pause')}
-      </mndw-button>
-      <mndw-button
-        onclick={() => {
-          rows = [];
-        }}
-      >{$translator.t('clear')}</mndw-button>
-      <mndw-button onclick={download}>
-        {$translator.t('download')}
-      </mndw-button>
+      <div class="actions">
+        <mndw-button onclick={toggle}>
+          {$translator.t(paused ? 'resume' : 'pause')}
+        </mndw-button>
+        <mndw-button
+          onclick={() => {
+            rows = [];
+          }}
+        >{$translator.t('clear')}</mndw-button>
+        <mndw-button onclick={download}>
+          {$translator.t('download')}
+        </mndw-button>
+      </div>
     </header>
     <div
       class="entries"
@@ -159,8 +161,14 @@ header {
   gap: var(--mndw-space-2);
 }
 
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mndw-space-2);
+}
+
 mndw-input {
-  flex: 1;
+  flex: 1 1 12rem;
   min-width: 0;
 }
 

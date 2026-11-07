@@ -69,7 +69,9 @@ The table exposes parts `viewport`, `table`, `caption`, `header`, `header-cell`,
 Rich cells use a `CellRenderer` with `mount`, `update`, and `destroy`, supplied through `column.renderer`. Renderers
 mount into parked light-DOM nodes so plugin cell styles apply. The `@mndw/ui-svelte`, `@mndw/ui-vue`, and
 `@mndw/ui-angular` adapters render on mount/update and unmount on destroy. Host startup registers `@mndw/ui` before
-plugins mount, so adapters do not wait for `customElements.whenDefined()`.
+plugins mount, so adapters do not wait for `customElements.whenDefined()`. Component-local state survives an `update`
+while the cell keeps the same row key and column; the adapter passes the replacement row and value to the existing
+component instance.
 
 #### Dynamic virtualization
 
@@ -82,7 +84,8 @@ Attributes are `estimated-row-height` and `overscan`.
 Virtual mode needs a bounded viewport for bounded DOM work. It uses positive-height native spacer rows, direct `<tr>`
 measurement, `ResizeObserver`, and keyed anchor correction. The viewport owns scrolling and enforces
 `overflow-anchor: none`, instant internal movement, and `scrollbar-gutter: stable`. Renderers outside the live window
-are destroyed and mounted again when rows return, so data that must survive belongs in consumer state.
+are destroyed and mounted again when rows return. The table keys renderers by row key and column, so it does not reuse
+one cell node for another row; data that must survive while a row is offscreen belongs in consumer state.
 `scrollToRow(key, {align})` supports `start`, `center`, `end`, or `nearest` (default), returns `false` for an absent
 valid key, and corrects deep estimated targets after measurement.
 `virtual && reorderable` falls back to full rendering with `data-mndw-virtual-inactive="reorderable"`; missing

@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import {TestBed} from '@angular/core/testing';
 import {describe, expect, expectTypeOf, it, vi} from 'vitest';
+import {StatefulCell, angularCellLifecycle} from './fixtures/stateful-cell.js';
 import {type AngularCellEnv, type AngularCellShape, type AngularInput, angularCell} from './angular-cell.js';
 
 interface TestRow {
@@ -67,6 +68,15 @@ function compileComponent<T>(component: Type<T>): void {
 
 function context(row: TestRow = {id: 'a', name: 'A'}): {node: HTMLElement; row: TestRow; value: string; colId: string} {
   return {node: document.createElement('div'), row, value: 'V', colId: 'name'};
+}
+
+function resetStatefulCellLifecycle(): void {
+  const fixture = TestBed.createComponent(StatefulCell);
+
+  fixture.destroy();
+  angularCellLifecycle.constructed = 0;
+  angularCellLifecycle.mounted = 0;
+  angularCellLifecycle.destroyed = 0;
 }
 
 type IsAssignable<A, B> = A extends B ? true : false;
@@ -158,5 +168,53 @@ describe('angularCell runtime', () => {
 
     expect(attachSpy).toHaveBeenCalledTimes(1);
     expect(detachSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('angularCell stateful lifecycle', () => {
+  it('keeps local state and component instance across update', () => {
+    resetStatefulCellLifecycle();
+
+    const renderer = angularCell<TestRow, string>()(StatefulCell, env())();
+    const ctx = context();
+
+    renderer.mount(ctx);
+
+    const button = ctx.node.querySelector<HTMLButtonElement>('.stateful-cell');
+
+    button?.click();
+
+    renderer.update({...ctx, row: {...ctx.row, name: 'A updated'}, value: 'V2'});
+
+    expect(ctx.node.querySelector('.stateful-cell')).toBe(button);
+    expect(ctx.node.textContent).toBe('1|V2|A updated|name');
+    expect(angularCellLifecycle.constructed).toBe(1);
+    expect(angularCellLifecycle.mounted).toBe(1);
+
+    renderer.destroy();
+  });
+
+  it('destroys exactly once and remounts with fresh local state', () => {
+    resetStatefulCellLifecycle();
+
+    const renderer = angularCell<TestRow, string>()(StatefulCell, env())();
+    const ctx = context();
+
+    renderer.mount(ctx);
+    ctx.node.querySelector<HTMLButtonElement>('.stateful-cell')?.click();
+    renderer.destroy();
+    renderer.destroy();
+
+    expect(angularCellLifecycle.destroyed).toBe(1);
+
+    renderer.mount(ctx);
+
+    expect(ctx.node.textContent).toBe('0|V|A|name');
+    expect(angularCellLifecycle.constructed).toBe(2);
+    expect(angularCellLifecycle.mounted).toBe(2);
+
+    renderer.destroy();
+
+    expect(angularCellLifecycle.destroyed).toBe(2);
   });
 });

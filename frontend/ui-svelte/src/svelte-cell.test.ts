@@ -1,8 +1,10 @@
 import type {CellRenderer} from '@mndw/ui';
 import {compileModule} from 'svelte/compiler';
 import {flushSync} from 'svelte';
-import {afterEach, describe, expect, it} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it} from 'vitest';
+import StatefulCell from './fixtures/StatefulCell.svelte';
 import TestCell from './fixtures/TestCell.svelte';
+import {svelteCellLifecycle} from './fixtures/stateful-cell-lifecycle.js';
 import {svelteCell} from './svelte-cell.svelte.js';
 
 interface TestRow {
@@ -15,6 +17,12 @@ afterEach(() => {
   for (const node of parkedNodes.splice(0)) {
     node.remove();
   }
+});
+
+beforeEach(() => {
+  svelteCellLifecycle.created = 0;
+  svelteCellLifecycle.mounted = 0;
+  svelteCellLifecycle.destroyed = 0;
 });
 
 function parkedNode(): HTMLDivElement {
@@ -110,5 +118,56 @@ describe('svelteCell runtime', () => {
     renderer.destroy();
 
     expect(node.textContent).toBe('');
+  });
+});
+
+describe('svelteCell stateful lifecycle', () => {
+  it('keeps local state and component instance across update', () => {
+    const node = parkedNode();
+    const renderer = svelteCell<{id: string; name: string}, string>()(StatefulCell)();
+    const row = {id: 'a', name: 'Alpha'};
+
+    renderer.mount({node, row, value: 'alpha', colId: 'name'});
+
+    const button = node.querySelector<HTMLButtonElement>('.stateful-cell');
+
+    button?.click();
+    flushSync();
+
+    renderer.update({node, row: {...row, name: 'Alpha updated'}, value: 'updated', colId: 'name'});
+    flushSync();
+
+    expect(node.querySelector('.stateful-cell')).toBe(button);
+    expect(node.textContent).toBe('1|updated|Alpha updated|name');
+    expect(svelteCellLifecycle.created).toBe(1);
+    expect(svelteCellLifecycle.mounted).toBe(1);
+
+    renderer.destroy();
+  });
+
+  it('destroys exactly once and remounts with fresh local state', () => {
+    const node = parkedNode();
+    const renderer = svelteCell<{id: string; name: string}, string>()(StatefulCell)();
+    const row = {id: 'a', name: 'Alpha'};
+
+    renderer.mount({node, row, value: 'alpha', colId: 'name'});
+    node.querySelector<HTMLButtonElement>('.stateful-cell')?.click();
+    flushSync();
+    renderer.destroy();
+    renderer.destroy();
+
+    expect(svelteCellLifecycle.destroyed).toBe(1);
+    expect(node.textContent).toBe('');
+
+    renderer.mount({node, row, value: 'remounted', colId: 'name'});
+    flushSync();
+
+    expect(node.textContent).toBe('0|remounted|Alpha|name');
+    expect(svelteCellLifecycle.created).toBe(2);
+    expect(svelteCellLifecycle.mounted).toBe(2);
+
+    renderer.destroy();
+
+    expect(svelteCellLifecycle.destroyed).toBe(2);
   });
 });

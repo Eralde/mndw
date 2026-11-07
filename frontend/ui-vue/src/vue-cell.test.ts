@@ -1,7 +1,8 @@
 import type {CellRenderer} from '@mndw/ui';
 import * as vue from 'vue';
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import TestCell from './fixtures/TestCell.vue';
+import {StatefulCell, vueCellLifecycle} from './fixtures/stateful-cell.js';
 import {vueCell} from './vue-cell.js';
 
 vi.mock('vue', async (importOriginal) => {
@@ -11,6 +12,7 @@ vi.mock('vue', async (importOriginal) => {
 });
 
 interface TestRow {
+  id: string;
   name: string;
 }
 
@@ -33,6 +35,12 @@ afterEach(() => {
   }
 });
 
+beforeEach(() => {
+  vueCellLifecycle.setup = 0;
+  vueCellLifecycle.mounted = 0;
+  vueCellLifecycle.destroyed = 0;
+});
+
 function parkedNode(): HTMLDivElement {
   const node = document.createElement('div');
 
@@ -51,7 +59,7 @@ describe('vueCell runtime', () => {
     const node = parkedNode();
     const renderer = rendererFactory()();
 
-    renderer.mount({node, row: {name: 'Alpha'}, value: 'a', colId: 'name'});
+    renderer.mount({node, row: {id: 'a', name: 'Alpha'}, value: 'a', colId: 'name'});
 
     expect(node.textContent).toBe('a|Alpha|name');
   });
@@ -60,8 +68,8 @@ describe('vueCell runtime', () => {
     const node = parkedNode();
     const renderer = rendererFactory()();
 
-    renderer.mount({node, row: {name: 'Alpha'}, value: 'a', colId: 'name'});
-    renderer.update({node, row: {name: 'Beta'}, value: 'b', colId: 'name'});
+    renderer.mount({node, row: {id: 'a', name: 'Alpha'}, value: 'a', colId: 'name'});
+    renderer.update({node, row: {id: 'a', name: 'Beta'}, value: 'b', colId: 'name'});
 
     expect(node.textContent).toBe('b|Beta|name');
   });
@@ -69,7 +77,7 @@ describe('vueCell runtime', () => {
   it('copies the context into a fresh props object so stale references do not re-render', () => {
     const node = parkedNode();
     const renderer = rendererFactory()();
-    const ctx = {node, row: {name: 'Alpha'} as TestRow, value: 'a', colId: 'name'};
+    const ctx = {node, row: {id: 'a', name: 'Alpha'} as TestRow, value: 'a', colId: 'name'};
 
     renderer.mount(ctx);
     ctx.value = 'mutated';
@@ -82,7 +90,7 @@ describe('vueCell runtime', () => {
     const renderer = rendererFactory()();
     const renderMock = vi.mocked(vue.render);
 
-    renderer.mount({node, row: {name: 'Alpha'}, value: 'a', colId: 'name'});
+    renderer.mount({node, row: {id: 'a', name: 'Alpha'}, value: 'a', colId: 'name'});
     renderMock.mockClear();
     renderer.destroy();
 
@@ -94,7 +102,7 @@ describe('vueCell runtime', () => {
     const node = parkedNode();
     const renderer = vueCell<TestRow, string>()(TestCell)();
 
-    renderer.mount({node, row: {name: 'Alpha'}, value: 'a', colId: 'name'});
+    renderer.mount({node, row: {id: 'a', name: 'Alpha'}, value: 'a', colId: 'name'});
 
     const span = node.querySelector('span.vue-cell');
 
@@ -106,12 +114,59 @@ describe('vueCell runtime', () => {
     const node = parkedNode();
     const renderer = rendererFactory()();
 
-    renderer.mount({node, row: {name: 'Alpha'}, value: 'a', colId: 'name'});
+    renderer.mount({node, row: {id: 'a', name: 'Alpha'}, value: 'a', colId: 'name'});
 
     const span = node.querySelector('.declared-cell');
 
     expect(span?.getAttribute('row')).toBeNull();
     expect(span?.getAttribute('value')).toBeNull();
     expect(span?.getAttribute('colId')).toBeNull();
+  });
+});
+
+describe('vueCell stateful lifecycle', () => {
+  it('keeps local state and component instance across update', () => {
+    const node = parkedNode();
+    const renderer = vueCell<TestRow, string>()(StatefulCell)();
+    const row = {id: 'a', name: 'Alpha'};
+
+    renderer.mount({node, row, value: 'alpha', colId: 'name'});
+
+    const button = node.querySelector<HTMLButtonElement>('.stateful-cell');
+
+    button?.click();
+
+    renderer.update({node, row: {...row, name: 'Alpha updated'}, value: 'updated', colId: 'name'});
+
+    expect(node.querySelector('.stateful-cell')).toBe(button);
+    expect(node.textContent).toBe('1|updated|Alpha updated|name');
+    expect(vueCellLifecycle.setup).toBe(1);
+    expect(vueCellLifecycle.mounted).toBe(1);
+
+    renderer.destroy();
+  });
+
+  it('destroys exactly once and remounts with fresh local state', () => {
+    const node = parkedNode();
+    const renderer = vueCell<TestRow, string>()(StatefulCell)();
+    const row = {id: 'a', name: 'Alpha'};
+
+    renderer.mount({node, row, value: 'alpha', colId: 'name'});
+    node.querySelector<HTMLButtonElement>('.stateful-cell')?.click();
+    renderer.destroy();
+    renderer.destroy();
+
+    expect(vueCellLifecycle.destroyed).toBe(1);
+    expect(node.textContent).toBe('');
+
+    renderer.mount({node, row, value: 'remounted', colId: 'name'});
+
+    expect(node.textContent).toBe('0|remounted|Alpha|name');
+    expect(vueCellLifecycle.setup).toBe(2);
+    expect(vueCellLifecycle.mounted).toBe(2);
+
+    renderer.destroy();
+
+    expect(vueCellLifecycle.destroyed).toBe(2);
   });
 });

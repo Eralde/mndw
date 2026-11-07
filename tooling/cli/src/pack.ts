@@ -18,7 +18,7 @@ import esbuildSvelte from 'esbuild-svelte';
 import vuePlugin from 'unplugin-vue/esbuild';
 import type {PluginManifestOutput} from '@mndw/sdk-internal';
 import {pluginDependencies} from '@mndw/sdk-internal/shared-dependencies';
-import {isMndwButtonA11yWarning} from '../../../build/svelte-compiler-options.js';
+import {isMndwButtonA11yWarning} from './svelte-warning-filter.js';
 import {type AngularCompileResult, compileAngular} from './angular-compiler.js';
 import {type ProductTarget} from './go-target.js';
 import {CliError} from './errors.js';

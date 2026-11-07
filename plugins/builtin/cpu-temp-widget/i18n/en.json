@@ -11,6 +11,7 @@
   "range-1d": "1D",
   "range-7d": "7D",
   "range-30d": "30D",
+  "history-range": "History range",
   "session-required": "Extended history requires a configured persistent session.",
   "history-catching-up": "Catching up…",
   "history-historical": "Historical"

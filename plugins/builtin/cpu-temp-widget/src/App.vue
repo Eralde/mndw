@@ -119,6 +119,15 @@ const setRange = (range: ProjectRange): void => {
   startLoop(range);
 };
 
+const onRangeChange = (event: Event): void => {
+  const requestedRange = (event as CustomEvent<{value: string}>).detail?.value;
+  const range = RANGES.find((option) => option.key === requestedRange)?.key;
+
+  if (range !== undefined) {
+    setRange(range);
+  }
+};
+
 onMounted(() => {
   startLoop(selectedRange.value);
 });
@@ -137,12 +146,12 @@ onUnmounted(() => {
       </span>
       <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
     </header>
-    <div class="range-controls" role="group">
-      <button v-for="range in RANGES" :key="range.key" type="button"
-              :class="{selected: selectedRange === range.key}"
-              @click="setRange(range.key)">
-        {{ t(range.label) }}
-      </button>
+    <div class="range-scroll">
+      <mndw-segmented :label="t('history-range')" :value.prop="selectedRange" @mndwchange="onRangeChange">
+        <mndw-segment v-for="range in RANGES" :key="range.key" :value="range.key">
+          {{ t(range.label) }}
+        </mndw-segment>
+      </mndw-segmented>
     </div>
     <div v-if="sessionRequired" class="app__message">{{ t('session-required') }}</div>
     <div v-else-if="loading" class="app__message">{{ t('loading') }}</div>
@@ -198,25 +207,10 @@ onUnmounted(() => {
   color: var(--mndw-text-subtle);
 }
 
-.range-controls {
-  display: flex;
-  gap: 0.25rem;
-  flex-wrap: wrap;
+.range-scroll {
+  min-width: 0;
+  overflow-x: auto;
   margin-bottom: 0.75rem;
-}
-
-.range-controls button {
-  border: 1px solid var(--mndw-border);
-  border-radius: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  color: var(--mndw-text-subtle);
-  background: transparent;
-  cursor: pointer;
-}
-
-.range-controls button.selected {
-  color: var(--mndw-text);
-  background: var(--mndw-surface-raised);
 }
 
 .chart-wrapper {

@@ -50,6 +50,7 @@ function mountApp(overrides: Record<string, unknown> = {}): void {
       'range-1d': '1D',
       'range-7d': '7D',
       'range-30d': '30D',
+      'history-range': 'History range',
       'history-catching-up': 'Catching up…',
       'history-historical': 'Historical',
     }),
@@ -108,18 +109,37 @@ describe('App', () => {
     expect(getComputedStyle(chartWrapper).minHeight).toBe('0');
   });
 
+  it('marks the default range selected and follows later range changes', async () => {
+    mountApp();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(host.querySelector('mndw-segment[value="1d"]')?.getAttribute('aria-checked')).toBe('true');
+    expect(host.querySelector('mndw-segment[value="7d"]')?.getAttribute('aria-checked')).toBe('false');
+
+    const segmented = host.querySelector<HTMLElement>('mndw-segmented');
+
+    if (segmented === null) {
+      throw new Error('range segmented control was not rendered');
+    }
+
+    segmented.dispatchEvent(new CustomEvent('mndwchange', {detail: {value: '7d'}}));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(host.querySelector('mndw-segment[value="1d"]')?.getAttribute('aria-checked')).toBe('false');
+    expect(host.querySelector('mndw-segment[value="7d"]')?.getAttribute('aria-checked')).toBe('true');
+  });
+
   it('switching range calls fetchProjected with the new range', async () => {
     mountApp();
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    const btn7d = Array.from(host.querySelectorAll<HTMLButtonElement>('.range-controls button'))
-      .find((button) => button.textContent?.trim() === '7D');
+    const segmented = host.querySelector<HTMLElement>('mndw-segmented');
 
-    if (btn7d === undefined) {
-      throw new Error('7D range button was not rendered');
+    if (segmented === null) {
+      throw new Error('range segmented control was not rendered');
     }
 
-    btn7d.click();
+    segmented.dispatchEvent(new CustomEvent('mndwchange', {detail: {value: '7d'}}));
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     const ctx = (app as any)._instance?.props?.ctx;
@@ -140,14 +160,13 @@ describe('App', () => {
     mountApp({telemetry: {fetchProjected}});
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    const btn7d = Array.from(host.querySelectorAll<HTMLButtonElement>('.range-controls button'))
-      .find((button) => button.textContent?.trim() === '7D');
+    const segmented = host.querySelector<HTMLElement>('mndw-segmented');
 
-    if (btn7d === undefined) {
-      throw new Error('7D range button was not rendered');
+    if (segmented === null) {
+      throw new Error('range segmented control was not rendered');
     }
 
-    btn7d.click();
+    segmented.dispatchEvent(new CustomEvent('mndwchange', {detail: {value: '7d'}}));
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(host.querySelector('mndw-line-chart')).toBeNull();

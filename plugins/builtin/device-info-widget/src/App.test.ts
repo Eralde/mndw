@@ -134,6 +134,20 @@ async function flushPromises(): Promise<void> {
   await nextTick();
 }
 
+function changeRange(root: ParentNode, range: string): void {
+  const segmented = root.querySelector<HTMLElement>('mndw-segmented');
+
+  if (segmented === null) {
+    throw new Error('range segmented control was not rendered');
+  }
+
+  segmented.dispatchEvent(new CustomEvent('mndwchange', {detail: {value: range}}));
+}
+
+function getRangeSegment(root: ParentNode, range: string): Element | null {
+  return root.querySelector(`mndw-segment[value="${range}"]`);
+}
+
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   vi.useFakeTimers();
@@ -147,6 +161,23 @@ afterEach(() => {
 });
 
 describe('App', () => {
+  it('marks the default range selected and follows later range changes', async () => {
+    const app = mountWidget(successfulResponse);
+
+    await flushPromises();
+
+    expect(getRangeSegment(document, '3m')?.getAttribute('aria-checked')).toBe('true');
+    expect(getRangeSegment(document, '1h')?.getAttribute('aria-checked')).toBe('false');
+
+    changeRange(document, '1h');
+    await flushPromises();
+
+    expect(getRangeSegment(document, '3m')?.getAttribute('aria-checked')).toBe('false');
+    expect(getRangeSegment(document, '1h')?.getAttribute('aria-checked')).toBe('true');
+
+    app.unmount();
+  });
+
   it('updates the same probe after a locale switch', async () => {
     const i18n = createTestI18n({l10n: {probe: 'Device English'}});
     const app = mountWidget(() => new Observable<unknown>(() => {}), i18n);
@@ -204,10 +235,7 @@ describe('App', () => {
       {path: 'show.system.rrd.memory', data: {detail: 0, attribute: 'used'}},
     ]);
 
-    const range1h = [...document.querySelectorAll<HTMLButtonElement>('.range-controls button')]
-      .find((button) => button.textContent?.includes('1h'));
-
-    range1h?.dispatchEvent(new Event('click'));
+    changeRange(document, '1h');
     await flushPromises();
 
     expect(document.querySelectorAll('[data-testid="history-loading"]')).toHaveLength(2);
@@ -251,11 +279,9 @@ describe('App', () => {
 
     await flushPromises();
 
-    const buttons = [...document.querySelectorAll('.range-controls button')];
-
-    buttons.find((button) => button.textContent?.includes('1h'))?.dispatchEvent(new Event('click'));
+    changeRange(document, '1h');
     await flushPromises();
-    buttons.find((button) => button.textContent?.includes('3h'))?.dispatchEvent(new Event('click'));
+    changeRange(document, '3h');
     await flushPromises();
 
     pending.oneHour.cpu.next({data: [{t: 2, v: 24}]});
@@ -310,11 +336,7 @@ describe('App', () => {
 
     await flushPromises();
 
-    const buttons = [...document.querySelectorAll('button')];
-    const range7d = buttons.find((button) => button.textContent?.trim() === '7d');
-    const range30d = buttons.find((button) => button.textContent?.trim() === '30d');
-
-    range7d?.click();
+    changeRange(document, '7d');
     await flushPromises();
 
     expect(document.querySelectorAll('.load-bar-chart')).toHaveLength(2);
@@ -331,7 +353,7 @@ describe('App', () => {
     expect(charts[0]?.shadowRoot?.querySelectorAll('rect.bar')).toHaveLength(1);
     expect(charts[1]?.shadowRoot?.querySelectorAll('rect.bar')).toHaveLength(1);
 
-    range30d?.click();
+    changeRange(document, '30d');
     await flushPromises();
 
     expect(document.querySelectorAll('.load-bar-chart')).toHaveLength(2);
@@ -350,20 +372,12 @@ describe('App', () => {
 
     await flushPromises();
 
-    const range1h = [...document.querySelectorAll<HTMLButtonElement>('.range-controls button')]
-      .find((button) => button.textContent?.includes('1h'));
-
-    expect(range1h).not.toBeUndefined();
-    range1h?.click();
+    changeRange(document, '1h');
     await flushPromises();
 
-    const range7d = [...document.querySelectorAll<HTMLButtonElement>('.range-controls button')]
-      .find((button) => button.textContent?.includes('7d'));
-
-    expect(range7d).not.toBeUndefined();
-    range7d?.click();
+    changeRange(document, '7d');
     await flushPromises();
-    expect(range7d?.classList.contains('selected')).toBe(true);
+    expect(getRangeSegment(document, '7d')?.getAttribute('aria-checked')).toBe('true');
 
     vi.advanceTimersByTime(30_000);
     await flushPromises();
@@ -443,10 +457,7 @@ describe('App', () => {
 
     await flushPromises();
 
-    const buttons = host.querySelectorAll('.range-controls button');
-
-    Array.from(buttons).find((button) => button.textContent?.includes('7d'))
-      ?.dispatchEvent(new Event('click'));
+    changeRange(host, '7d');
     await flushPromises();
 
     expect(fetchProjected).toHaveBeenCalledWith('7d', expect.objectContaining({signal: expect.any(AbortSignal)}));
@@ -465,10 +476,7 @@ describe('App', () => {
 
     await flushPromises();
 
-    const buttons = host.querySelectorAll('.range-controls button');
-
-    Array.from(buttons).find((button) => button.textContent?.includes('30d'))
-      ?.dispatchEvent(new Event('click'));
+    changeRange(host, '30d');
     await flushPromises();
 
     expect(fetchProjected).toHaveBeenCalledWith('30d', expect.objectContaining({signal: expect.any(AbortSignal)}));
@@ -487,16 +495,12 @@ describe('App', () => {
 
     await flushPromises();
 
-    const buttons = host.querySelectorAll('.range-controls button');
-
-    Array.from(buttons).find((button) => button.textContent?.includes('7d'))
-      ?.dispatchEvent(new Event('click'));
+    changeRange(host, '7d');
     await flushPromises();
 
     const callCount = fetchProjected.mock.calls.length;
 
-    Array.from(buttons).find((button) => button.textContent?.includes('3m'))
-      ?.dispatchEvent(new Event('click'));
+    changeRange(host, '3m');
     await flushPromises();
 
     vi.advanceTimersByTime(16 * 60_000);
@@ -530,10 +534,7 @@ describe('App', () => {
 
     await flushPromises();
 
-    const buttons = host.querySelectorAll('.range-controls button');
-
-    Array.from(buttons).find((button) => button.textContent?.includes('7d'))
-      ?.dispatchEvent(new Event('click'));
+    changeRange(host, '7d');
     await flushPromises();
     resolveFirst?.(projectedTelemetrySnapshot());
     await flushPromises();
@@ -545,8 +546,7 @@ describe('App', () => {
     expect(charts[0]?.timeDomain).toEqual({start: projectionStart, end: projectionEnd});
     expect(charts[1]?.timeDomain).toEqual({start: projectionStart, end: projectionEnd});
 
-    Array.from(buttons).find((button) => button.textContent?.includes('30d'))
-      ?.dispatchEvent(new Event('click'));
+    changeRange(host, '30d');
     await flushPromises();
 
     expect(charts[0]?.timeDomain).toBeUndefined();

@@ -11,6 +11,7 @@
   "range-1d": "1Д",
   "range-7d": "7Д",
   "range-30d": "30Д",
+  "history-range": "Период истории",
   "session-required": "Расширенная история требует настроенной постоянной сессии.",
   "history-catching-up": "Догоняет…",
   "history-historical": "Исторические данные"

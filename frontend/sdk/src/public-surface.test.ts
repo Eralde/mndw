@@ -7,6 +7,7 @@ const EXPECTED_TYPE_EXPORTS = [
   'BackendApprovalStatus',
   'BackendBlocker',
   'BackendClient',
+  'BackendErrorCode',
   'BackendFetchOptions',
   'BackendSocketOptions',
   'BackendStatus',
@@ -18,6 +19,7 @@ const EXPECTED_TYPE_EXPORTS = [
   'EventSource',
   'EventTopic',
   'HistoryStatus',
+  'KnownTelemetryUnit',
   'LoadState',
   'MndwEvent',
   'MndwPlugin',
@@ -59,6 +61,7 @@ const EXPECTED_TYPE_EXPORTS = [
   'TelemetryClient',
   'TelemetryClock',
   'TelemetryClockState',
+  'TelemetryUnit',
   'ThemeName',
   'Ticker',
   'TickerTick',
@@ -68,6 +71,7 @@ const EXPECTED_TYPE_EXPORTS = [
 ];
 
 const EXPECTED_RUNTIME_EXPORTS = [
+  'BackendError',
   'BackendBadGateway',
   'BackendBlocked',
   'BackendDisabled',
@@ -81,12 +85,14 @@ const EXPECTED_RUNTIME_EXPORTS = [
   'BackendUnknownId',
   'MNDW_SCALE',
   'MNDW_TOKENS',
+  'KNOWN_TELEMETRY_UNITS',
   'PLUGIN_RCI_MANAGER_METHODS',
   'PageRouteError',
   'SDK_VERSION',
   'TelemetryError',
   'historyStatus',
   'isBackendMaintenanceClose',
+  'isKnownTelemetryUnit',
 ];
 
 const EXPECTED_SUBPATHS = [

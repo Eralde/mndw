@@ -1,5 +1,12 @@
 import {describe, expect, it, vi} from 'vitest';
-import {type TelemetryClock, TelemetryError, createTelemetryClient, historyStatus} from './telemetry-client.js';
+import {
+  KNOWN_TELEMETRY_UNITS,
+  type TelemetryClock,
+  TelemetryError,
+  createTelemetryClient,
+  historyStatus,
+  isKnownTelemetryUnit,
+} from './telemetry-client.js';
 
 const validProjectedBody = {
   keys: {
@@ -52,6 +59,29 @@ describe('createTelemetryClient', () => {
       );
     });
 
+    it('accepts and preserves an unknown non-empty unit', async () => {
+      const body = structuredClone(validProjectedBody);
+
+      (body.keys.cpu as Record<string, unknown>).unit = 'widgets/hour';
+
+      const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), {status: 200}));
+      const result = await createTelemetryClient(fetchImpl).fetchProjected('1h');
+
+      expect(result.keys.cpu.unit).toBe('widgets/hour');
+    });
+
+    it.each(['', 17, null, undefined])('rejects an invalid unit value: %s', async (unit) => {
+      const body = structuredClone(validProjectedBody);
+
+      (body.keys.cpu as Record<string, unknown>).unit = unit;
+
+      await expect(
+        createTelemetryClient(
+          vi.fn().mockResolvedValue(new Response(JSON.stringify(body), {status: 200})),
+        ).fetchProjected('1h'),
+      ).rejects.toBeInstanceOf(TelemetryError);
+    });
+
     it('rejects malformed projected series', async () => {
       const malformed = structuredClone(validProjectedBody);
 
@@ -83,6 +113,15 @@ describe('createTelemetryClient', () => {
         ).fetchProjected('7d'),
       ).rejects.toMatchObject({status: 503});
     });
+  });
+});
+
+describe('telemetry units', () => {
+  it('lists known units and identifies them with the guard', () => {
+    expect(KNOWN_TELEMETRY_UNITS).toEqual(['percent', 'celsius']);
+    expect(isKnownTelemetryUnit('percent')).toBe(true);
+    expect(isKnownTelemetryUnit('celsius')).toBe(true);
+    expect(isKnownTelemetryUnit('widgets/hour')).toBe(false);
   });
 });
 

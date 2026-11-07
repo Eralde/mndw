@@ -143,105 +143,142 @@ export const isBackendMaintenanceClose = (event: Pick<CloseEvent, 'code' | 'reas
 // Typed errors
 // ------------------------------------
 
-export class BackendUnknownId extends Error {
-  public readonly code = 'UNKNOWN_ID';
+export type BackendErrorCode =
+  | 'UNKNOWN_ID'
+  | 'NOT_APPROVED'
+  | 'DISABLED'
+  | 'TRANSPORT_MISMATCH'
+  | 'BACKEND_STARTING'
+  | 'BACKEND_UNAVAILABLE'
+  | 'BACKEND_INCOMPATIBLE'
+  | 'BACKEND_MAINTENANCE'
+  | 'BACKEND_BLOCKED'
+  | 'BAD_GATEWAY'
+  | 'STATUS_QUERY_FAILED';
 
-  constructor(public readonly id: string) {
-    super(`Unknown backend binding id: "${id}"`);
+export class BackendError extends Error {
+  public readonly id: string | undefined;
+  public readonly code: BackendErrorCode;
+
+  constructor(message: string, code: BackendErrorCode, id?: string) {
+    super(message);
+    this.name = 'BackendError';
+    this.code = code;
+    this.id = id;
+  }
+}
+
+export class BackendUnknownId extends BackendError {
+  public override readonly code = 'UNKNOWN_ID';
+
+  constructor(id: string) {
+    super(`Unknown backend binding id: "${id}"`, 'UNKNOWN_ID', id);
     this.name = 'BackendUnknownId';
   }
 }
 
-export class BackendNotApproved extends Error {
-  public readonly code = 'NOT_APPROVED';
+export class BackendNotApproved extends BackendError {
+  public override readonly code = 'NOT_APPROVED';
 
-  constructor(public readonly id: string) {
-    super(`Backend "${id}" is not approved`);
+  constructor(id: string) {
+    super(`Backend "${id}" is not approved`, 'NOT_APPROVED', id);
     this.name = 'BackendNotApproved';
   }
 }
 
-export class BackendDisabled extends Error {
-  public readonly code = 'DISABLED';
+export class BackendDisabled extends BackendError {
+  public override readonly code = 'DISABLED';
 
-  constructor(public readonly id: string) {
-    super(`Backend "${id}" is disabled`);
+  constructor(id: string) {
+    super(`Backend "${id}" is disabled`, 'DISABLED', id);
     this.name = 'BackendDisabled';
   }
 }
 
-export class BackendTransportMismatch extends Error {
-  public readonly code = 'TRANSPORT_MISMATCH';
+export class BackendTransportMismatch extends BackendError {
+  public override readonly code = 'TRANSPORT_MISMATCH';
 
-  constructor(public readonly id: string, public readonly expected: BackendRouteTransport) {
-    super(`Backend route "${id}" is not an ${expected} route`);
+  constructor(id: string, public readonly expected: BackendRouteTransport) {
+    super(`Backend route "${id}" is not an ${expected} route`, 'TRANSPORT_MISMATCH', id);
     this.name = 'BackendTransportMismatch';
   }
 }
 
-export class BackendStarting extends Error {
+export class BackendStarting extends BackendError {
+  public override readonly code = 'BACKEND_STARTING';
+  /** @deprecated Use code. Removed in 0.2.0. */
   public readonly daemonCode = 'BACKEND_STARTING';
 
-  constructor(public readonly id: string, public readonly retryAfterSeconds: number | null) {
-    super(`Backend "${id}" is starting`);
+  constructor(id: string, public readonly retryAfterSeconds: number | null) {
+    super(`Backend "${id}" is starting`, 'BACKEND_STARTING', id);
     this.name = 'BackendStarting';
   }
 }
 
-export class BackendUnavailable extends Error {
+export class BackendUnavailable extends BackendError {
+  public override readonly code = 'BACKEND_UNAVAILABLE';
+  /** @deprecated Use code. Removed in 0.2.0. */
   public readonly daemonCode = 'BACKEND_UNAVAILABLE';
 
-  constructor(public readonly id: string) {
-    super(`Backend "${id}" is unavailable`);
+  constructor(id: string) {
+    super(`Backend "${id}" is unavailable`, 'BACKEND_UNAVAILABLE', id);
     this.name = 'BackendUnavailable';
   }
 }
 
-export class BackendIncompatible extends Error {
+export class BackendIncompatible extends BackendError {
+  public override readonly code = 'BACKEND_INCOMPATIBLE';
+  /** @deprecated Use code. Removed in 0.2.0. */
   public readonly daemonCode = 'BACKEND_INCOMPATIBLE';
 
-  constructor(public readonly id: string) {
-    super(`Backend "${id}" is incompatible`);
+  constructor(id: string) {
+    super(`Backend "${id}" is incompatible`, 'BACKEND_INCOMPATIBLE', id);
     this.name = 'BackendIncompatible';
   }
 }
 
-export class BackendMaintenance extends Error {
+export class BackendMaintenance extends BackendError {
+  public override readonly code = 'BACKEND_MAINTENANCE';
+  /** @deprecated Use code. Removed in 0.2.0. */
   public readonly daemonCode = 'BACKEND_MAINTENANCE';
 
-  constructor(public readonly id: string, public readonly retryAfterSeconds: number | null) {
-    super(`Backend "${id}" is under maintenance`);
+  constructor(id: string, public readonly retryAfterSeconds: number | null) {
+    super(`Backend "${id}" is under maintenance`, 'BACKEND_MAINTENANCE', id);
     this.name = 'BackendMaintenance';
   }
 }
 
-export class BackendBlocked extends Error {
+export class BackendBlocked extends BackendError {
+  public override readonly code = 'BACKEND_BLOCKED';
+  /** @deprecated Use code. Removed in 0.2.0. */
   public readonly daemonCode = 'BACKEND_BLOCKED';
 
   constructor(
-    public readonly id: string,
+    id: string,
     public readonly blockers: BackendBlocker[],
     public readonly retryAfterSeconds: number | null,
   ) {
-    super(`Backend "${id}" is blocked on an unmet activation prerequisite`);
+    super(`Backend "${id}" is blocked on an unmet activation prerequisite`, 'BACKEND_BLOCKED', id);
     this.name = 'BackendBlocked';
   }
 }
 
-export class BackendBadGateway extends Error {
+export class BackendBadGateway extends BackendError {
+  public override readonly code = 'BAD_GATEWAY';
+  /** @deprecated Use code. Removed in 0.2.0. */
   public readonly daemonCode = 'BAD_GATEWAY';
 
-  constructor(public readonly id: string) {
-    super(`Backend "${id}" returned a bad gateway response`);
+  constructor(id: string) {
+    super(`Backend "${id}" returned a bad gateway response`, 'BAD_GATEWAY', id);
     this.name = 'BackendBadGateway';
   }
 }
 
-export class BackendStatusQueryError extends Error {
-  public readonly code = 'STATUS_QUERY_FAILED';
+export class BackendStatusQueryError extends BackendError {
+  public override readonly code = 'STATUS_QUERY_FAILED';
 
   constructor(public readonly httpStatus: number | null, message: string) {
-    super(message);
+    super(message, 'STATUS_QUERY_FAILED');
     this.name = 'BackendStatusQueryError';
   }
 }

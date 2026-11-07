@@ -1,19 +1,52 @@
 import {describe, expect, it, vi} from 'vitest';
+import * as sdk from './index.js';
 import {
   BackendBadGateway,
   BackendBlocked,
   type BackendDescriptor,
   BackendDisabled,
+  BackendError,
   BackendIncompatible,
   BackendMaintenance,
   BackendNotApproved,
   BackendStarting,
   BackendStatusQueryError,
+  BackendTransportMismatch,
   BackendUnavailable,
   BackendUnknownId,
   createBackendClient,
   isBackendMaintenanceClose,
 } from './backend-client.js';
+
+describe('backend errors', () => {
+  const errors: ReadonlyArray<[string, Error]> = [
+    ['UNKNOWN_ID', new BackendUnknownId('stats')],
+    ['NOT_APPROVED', new BackendNotApproved('stats')],
+    ['DISABLED', new BackendDisabled('stats')],
+    ['TRANSPORT_MISMATCH', new BackendTransportMismatch('stats', 'http')],
+    ['BACKEND_STARTING', new BackendStarting('stats', null)],
+    ['BACKEND_UNAVAILABLE', new BackendUnavailable('stats')],
+    ['BACKEND_INCOMPATIBLE', new BackendIncompatible('stats')],
+    ['BACKEND_MAINTENANCE', new BackendMaintenance('stats', null)],
+    ['BACKEND_BLOCKED', new BackendBlocked('stats', [], null)],
+    ['BAD_GATEWAY', new BackendBadGateway('stats')],
+    ['STATUS_QUERY_FAILED', new BackendStatusQueryError(null, 'status failed')],
+  ];
+
+  it.each(errors)('%s extends BackendError and exposes matching code', (code, error) => {
+    expect(error).toBeInstanceOf(BackendError);
+    expect(Reflect.get(error, 'code')).toBe(code);
+
+    if ('daemonCode' in error) {
+      expect(Reflect.get(error, 'daemonCode')).toBe(code);
+    }
+  });
+
+  it('exports BackendError from the package entry and leaves status query id unset', () => {
+    expect(sdk).toHaveProperty('BackendError', BackendError);
+    expect(Reflect.get(new BackendStatusQueryError(null, 'status failed'), 'id')).toBeUndefined();
+  });
+});
 
 const descriptor = (over: Partial<BackendDescriptor> = {}): BackendDescriptor => ({
   routes: {

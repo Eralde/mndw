@@ -75,6 +75,27 @@ if (ctx.backend !== undefined) {
 
 `ctx.telemetry.fetchProjected(range)` returns a Promise for projected telemetry data, not a stream. It
 accepts an `AbortSignal` when the request should be cancelled during teardown.
+Each projected series carries a `unit` string. Known units are `percent` and `celsius`; future or
+plugin-specific units pass through unchanged. Show an unknown unit as received, and use
+`isKnownTelemetryUnit` when behavior depends on a known unit:
+
+```ts
+import {isKnownTelemetryUnit} from '@mndw/sdk';
+
+const unitLabel = (unit: string): string => {
+  if (isKnownTelemetryUnit(unit)) {
+    return ({percent: '%', celsius: '°C'} as const)[unit];
+  }
+
+  return unit;
+};
+
+const readUnitLabels = async (): Promise<string[]> => {
+  const snapshot = await ctx.telemetry.fetchProjected('1h');
+
+  return Object.values(snapshot.keys).map((series) => unitLabel(series.unit));
+};
+```
 
 ## Framework helpers
 
@@ -251,10 +272,15 @@ child pathname without query or hash, preserves ordinary percent encoding such a
 ambiguous paths. Failures use `PageRouteError` codes `INVALID_PATH`, `COMPLETED`, or `NAVIGATION_FAILED`;
 `scrollToTop` defaults to `true`.
 
-The optional `ctx.backend` client exposes `fetch`, `socket`, and `status`. It throws typed descriptor errors
-(`BackendNotApproved`, `BackendDisabled`, `BackendUnknownId`, `BackendTransportMismatch`) and daemon lifecycle errors
-(`BackendStarting`, `BackendUnavailable`, `BackendIncompatible`, `BackendMaintenance`, `BackendBadGateway`). Lifecycle
-errors carry the backend `id` and literal `daemonCode`; starting and maintenance errors also carry parsed integer
-`retryAfterSeconds` or `null`. Handle approval/disabled states as configuration, starting/maintenance as retryable,
+The optional `ctx.backend` client exposes `fetch`, `socket`, and `status`. Every backend failure extends
+`BackendError` and exposes a `code`; switch on it or use `instanceof BackendError`. Codes are
+`UNKNOWN_ID` (`BackendUnknownId`), `NOT_APPROVED` (`BackendNotApproved`), `DISABLED` (`BackendDisabled`),
+`TRANSPORT_MISMATCH` (`BackendTransportMismatch`), `BACKEND_STARTING` (`BackendStarting`),
+`BACKEND_UNAVAILABLE` (`BackendUnavailable`), `BACKEND_INCOMPATIBLE` (`BackendIncompatible`),
+`BACKEND_MAINTENANCE` (`BackendMaintenance`), `BACKEND_BLOCKED` (`BackendBlocked`), `BAD_GATEWAY`
+(`BackendBadGateway`), and `STATUS_QUERY_FAILED` (`BackendStatusQueryError`). Errors tied to a route carry its
+`id`; `BackendStatusQueryError` has no `id` and includes `httpStatus`. Starting and maintenance errors also carry
+parsed integer `retryAfterSeconds` or `null`. Lifecycle errors retain `daemonCode` for compatibility, but it is
+deprecated; use `code` instead. Handle approval/disabled states as configuration, starting/maintenance as retryable,
 and unavailable/incompatible/bad gateway as lifecycle or transport failure. The full error types are in the
 [SDK API](/api/sdk).

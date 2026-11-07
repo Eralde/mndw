@@ -28,6 +28,7 @@ export {
   BackendBadGateway,
   BackendBlocked,
   BackendDisabled,
+  BackendError,
   BackendIncompatible,
   BackendMaintenance,
   BackendNotApproved,
@@ -42,6 +43,7 @@ export type {
   BackendApprovalStatus,
   BackendBlocker,
   BackendClient,
+  BackendErrorCode,
   BackendFetchOptions,
   BackendSocketOptions,
   BackendStatus,
@@ -55,9 +57,10 @@ export type {
  */
 export {MNDW_SCALE, MNDW_TOKENS} from './tokens.js';
 export type {MndwThemeName} from './tokens.js';
-export {historyStatus, TelemetryError} from './telemetry-client.js';
+export {historyStatus, isKnownTelemetryUnit, KNOWN_TELEMETRY_UNITS, TelemetryError} from './telemetry-client.js';
 export type {
   HistoryStatus,
+  KnownTelemetryUnit,
   ProjectedBand,
   ProjectedBandPoint,
   ProjectedChartColor,
@@ -70,6 +73,7 @@ export type {
   TelemetryClient,
   TelemetryClock,
   TelemetryClockState,
+  TelemetryUnit,
 } from './telemetry-client.js';
 export type {PaletteTokenMap, ThemeName, TokenName} from './palette.js';
 export {SDK_VERSION} from './version.js';

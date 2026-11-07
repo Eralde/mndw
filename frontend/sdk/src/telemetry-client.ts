@@ -37,10 +37,19 @@ export interface ProjectedValueDomain {
   readonly max: number;
 }
 
+export type KnownTelemetryUnit = 'percent' | 'celsius';
+export type TelemetryUnit = KnownTelemetryUnit | (string & {});
+
+export const KNOWN_TELEMETRY_UNITS: readonly KnownTelemetryUnit[] = ['percent', 'celsius'];
+
+export const isKnownTelemetryUnit = (unit: string): unit is KnownTelemetryUnit => {
+  return KNOWN_TELEMETRY_UNITS.includes(unit as KnownTelemetryUnit);
+};
+
 export interface ProjectedSeries {
   readonly label?: string;
   readonly supported: boolean;
-  readonly unit: 'percent' | 'celsius';
+  readonly unit: TelemetryUnit;
   readonly points: readonly ProjectedPoint[];
   readonly segments: readonly ProjectedSegment[];
   readonly bands: readonly ProjectedBand[];
@@ -158,7 +167,7 @@ const decodeProjectedSeries = (key: string, raw: unknown): ProjectedSeries => {
     throw new Error(`projected series ${key} supported is invalid`);
   }
 
-  if (series.unit !== 'percent' && series.unit !== 'celsius') {
+  if (typeof series.unit !== 'string' || series.unit.length === 0) {
     throw new Error(`projected series ${key} has invalid unit`);
   }
 

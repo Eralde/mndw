@@ -151,6 +151,7 @@
       "installing-dependencies": "Installing dependencies…",
       "dependency-install-failed": "Dependency install failed",
       "version-mismatch": "Version mismatch",
+      "sdk-major-badge": "Built for another SDK version",
       "load-version-warning": "Built against {versions}. Plugin still loads, but may misbehave with this host.",
       "version-warning": {
         "title": "Version compatibility",

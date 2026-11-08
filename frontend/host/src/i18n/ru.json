@@ -151,6 +151,7 @@
       "installing-dependencies": "Установка зависимостей…",
       "dependency-install-failed": "Не удалось установить зависимости",
       "version-mismatch": "Несоответствие версии",
+      "sdk-major-badge": "Собран для другой версии SDK",
       "load-version-warning": "Собрано для версий {versions}. Плагин всё ещё загружается, но может работать неправильно с этим хостом.",
       "version-warning": {
         "title": "Совместимость версий",

@@ -3,6 +3,7 @@ import {
   PERSISTENT_RCI_PERMISSIONS,
   type PluginPermission,
 } from '@mndw/sdk-internal';
+import {getInstallVersionWarnings} from '../../../runtime/plugin-lock.js';
 import type {
   PluginBackendDescriptor,
   PluginListEntry,
@@ -84,6 +85,27 @@ function permissionLabel(permission: PluginPermission): string {
     : hostT('settings.plugin-manager.persistent-rci-read');
 }
 
+function sdkMajorWarningText(
+  lock: PluginListEntry['lock'],
+): string | undefined {
+  if (lock === undefined) {
+    return undefined;
+  }
+
+  const warning = getInstallVersionWarnings(lock).find((entry) =>
+    entry.kind === 'sdk-major'
+  );
+
+  if (warning === undefined) {
+    return undefined;
+  }
+
+  return hostT('settings.plugin-manager.version-warning.sdk-major', {
+    pluginVersion: warning.pluginVersion,
+    hostVersion: warning.hostVersion,
+  });
+}
+
 type RuntimeState = NonNullable<PluginListEntry['runtime']>['state'];
 
 function runtimeStateLabel(state: RuntimeState): string {
@@ -137,6 +159,7 @@ let {
       {#each items as item (item.name)}
         {@const summary = backendSummary(item.backend)}
         {@const versionWarnings = getPluginVersionWarnings(item.name)}
+        {@const sdkMajorWarning = sdkMajorWarningText(item.lock)}
         {@const deps = getDepsStatus(item.name)}
         {@const row = rowStateFor(item.name)}
         {@const busy = row?.state === 'working' || row?.state === 'reconciling'}
@@ -182,6 +205,11 @@ let {
                 {hostT('settings.plugin-manager.version-mismatch')}
               </span>
             {/if}
+            {#if sdkMajorWarning !== undefined}
+              <span class="mndw-installed__version-badge">
+                {hostT('settings.plugin-manager.sdk-major-badge')}
+              </span>
+            {/if}
           </div>
 
           {#if versionWarnings.length > 0}
@@ -195,6 +223,10 @@ let {
                 )
               }
             </p>
+          {/if}
+
+          {#if sdkMajorWarning !== undefined}
+            <p class="mndw-installed__version-warning">{sdkMajorWarning}</p>
           {/if}
 
           {#if summary.length > 0}

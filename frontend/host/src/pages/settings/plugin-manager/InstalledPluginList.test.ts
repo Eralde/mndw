@@ -4,6 +4,12 @@ import type {PluginPermission} from '@mndw/sdk-internal';
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 
+vi.mock('@mndw/sdk', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@mndw/sdk')>();
+
+  return {...actual, SDK_VERSION: '0.2.0'};
+});
+
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 import {replaceDepsStatuses} from '../../../state/deps-status.svelte.js';
@@ -306,6 +312,52 @@ describe('InstalledPluginList', () => {
     expect(target.querySelector('.mndw-installed__version-warning')?.textContent).toContain('rxjs @6');
 
     void unmount(component);
+  });
+
+  it('shows a localized SDK-major badge and visible warning for an installed plugin with an older SDK major', async () => {
+    const {component, target} = mountInstalledPluginList({
+      items: [plugin({lock: {sdkVersion: '0.1.6', sharedDependencies: {}}})],
+    });
+    const badge = target.querySelector<HTMLElement>('.mndw-installed__version-badge');
+    const warning = target.querySelector<HTMLElement>('.mndw-installed__version-warning');
+
+    try {
+      expect(badge?.textContent?.trim()).toBe('Built for another SDK version');
+      expect(warning?.textContent?.trim())
+        .toBe('Built for @mndw/sdk 0.1.6; this dashboard provides 0.2.0. The plugin may not work.');
+      expect(badge?.getAttribute('role')).toBeNull();
+      expect(badge?.getAttribute('aria-label')).toBeNull();
+      expect(badge?.getAttribute('title')).toBeNull();
+      expect(warning?.getAttribute('role')).toBeNull();
+      expect(warning?.getAttribute('aria-label')).toBeNull();
+      expect(warning?.getAttribute('title')).toBeNull();
+
+      await setLocale('ru');
+      flushSync();
+
+      expect(badge?.textContent?.trim()).toBe('Собран для другой версии SDK');
+      expect(warning?.textContent?.trim())
+        .toBe('Собрано для @mndw/sdk 0.1.6; эта панель предоставляет 0.2.0. Плагин может не работать.');
+    } finally {
+      await unmount(component);
+      await setLocale('en');
+    }
+  });
+
+  it('does not show an SDK-major badge for a matching SDK version or a missing lock', () => {
+    const matching = mountInstalledPluginList({
+      items: [plugin({lock: {sdkVersion: '0.2.0', sharedDependencies: {}}})],
+    });
+
+    expect(matching.target.querySelector('.mndw-installed__version-badge')).toBeNull();
+    expect(matching.target.querySelector('.mndw-installed__version-warning')).toBeNull();
+    void unmount(matching.component);
+
+    const missing = mountInstalledPluginList();
+
+    expect(missing.target.querySelector('.mndw-installed__version-badge')).toBeNull();
+    expect(missing.target.querySelector('.mndw-installed__version-warning')).toBeNull();
+    void unmount(missing.component);
   });
 
   it('renders dependency badges from the shared status store', () => {

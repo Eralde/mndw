@@ -1,10 +1,85 @@
 # mndw
 
-mndw is a modular, plugin-based web dashboard for Keenetic/Netcraze network devices.
-The browser host provides the dashboard and plugin UI; `mndwd` provides
-device-side plugin management and backend execution.
+A modular, plugin-based web dashboard for Keenetic/Netcraze network devices.
 
-## Architecture
+[![npm version: @mndw/cli](https://img.shields.io/npm/v/%40mndw%2Fcli)](https://www.npmjs.com/package/@mndw/cli)
+[![npm version: @mndw/sdk](https://img.shields.io/npm/v/%40mndw%2Fsdk)](https://www.npmjs.com/package/@mndw/sdk)
+[Documentation](https://eralde.github.io/mndw/)
+
+## Install on a router
+
+Install Entware first. Follow the [Entware installation guide][entware].
+
+[entware]: https://support.keenetic.com/titan/kn-1811/en/20980-installing-the-entware-repository-on-a-usb-drive.html
+
+Run this command in the router's OPKG shell:
+
+```sh
+opkg update && opkg install wget-ssl ca-bundle && wget -qO- https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh
+```
+
+The script prints the dashboard address, typically `http://<router>:1189`; sign in with the router account. See the
+[upgrade and removal instructions](https://eralde.github.io/mndw/install).
+
+## Write a plugin
+
+No repository clone is needed. Build plugins from npm packages in your own Node.js project:
+
+```sh
+mkdir my-plugins && cd my-plugins
+npm init -y
+npm i -D @mndw/cli
+npx mndw create my-widget
+npx mndw dev my-widget --addr http://router.lan
+```
+
+For `--addr`, use an IP, hostname, `host[:port]`, or an HTTP(S) origin. Then run `npx mndw validate my-widget`, create
+an upload archive with `npx mndw zip my-widget`, and upload the ZIP in Settings.
+
+Start with the [plugin author site](https://eralde.github.io/mndw/), including the
+[Hello Widget tutorial](https://eralde.github.io/mndw/tutorials/hello-widget),
+[CLI reference](https://eralde.github.io/mndw/reference/cli), and
+[SDK API reference](https://eralde.github.io/mndw/api/sdk).
+
+Plugins can declare `exec` backends for request-scoped commands or `service` backends for long-running processes;
+backends need approval before they run. See the
+[shell backend guide](https://eralde.github.io/mndw/guides/shell-backend) and, for `service` backends,
+[`docs/service-backend.md`](docs/service-backend.md).
+
+## npm packages
+
+| Package | What it is for | When you need it |
+| --- | --- | --- |
+| `@mndw/cli` | Create, validate, develop, and package plugins. | When building plugins. |
+| `@mndw/sdk` | Plugin types, framework helpers, and design tokens. | When using the host context or SDK helpers. |
+| `@mndw/ui` | Framework-agnostic custom elements. | When using mndw controls, tables, or charts. |
+| `@mndw/ui-svelte` | Svelte table cell adapters for mndw UI. | When rendering Svelte components in mndw tables. |
+| `@mndw/ui-vue` | Vue table cell adapters for mndw UI. | When rendering Vue components in mndw tables. |
+| `@mndw/ui-angular` | Angular table cell adapters for mndw UI. | When rendering Angular components in mndw tables. |
+| `@mndw/palette-core` | Palette math and contract metadata. | Usually pulled in by SDK, CLI, or palette tooling. |
+
+`@mndw/cli` installs the local `mndwd` for your OS through optional `@mndw/mndwd-<os>-<arch>` dependencies: macOS
+(arm64 and x64), Linux (arm64 and x64), and Windows (x64). You never install these packages by hand.
+
+All `@mndw/*` packages share one version; `mndw create` writes compatible version ranges.
+
+## Develop mndw
+
+### Quick start
+
+Prerequisites: Node.js 22+, pnpm 10+, and Go 1.26.2+. Older Go 1.26.x builds produce MIPS and MIPSel binaries that
+crash at startup on Linux kernels before 5.0 ([golang/go#77730](https://github.com/golang/go/issues/77730)).
+
+```sh
+git clone https://github.com/Eralde/mndw.git
+cd mndw
+pnpm install
+pnpm dev
+```
+
+Set `MNDW_HOST_DEVICE=http://192.168.1.1` to proxy browser requests to a reachable router during development.
+
+### Architecture
 
 ```text
 browser
@@ -14,43 +89,58 @@ browser
       └─ API and WebSocket gateway
 ```
 
-The Svelte 5 host owns login state, routing, dashboard tiles, plugin rendering,
-overlays, theme, and settings. `mndwd` owns plugin files, manifests, approval,
-backend processes, HTTP endpoints, WebSockets, and management APIs.
-Request routing, listener ports, and upstream targets are owned by
-[`contracts/routing.md`](contracts/routing.md).
+The Svelte 5 host owns login state, routing, dashboard tiles, plugin rendering, overlays, theme, and settings. `mndwd`
+owns plugin files, manifests, approval, backend processes, HTTP endpoints, WebSockets, and management APIs. Request
+routing, listener ports, and upstream targets are defined in [`contracts/routing.md`](contracts/routing.md).
 
-## Quick start
+### Project layout
 
-Prerequisites: Node 22+, pnpm 10+, Go 1.26+.
-
-```bash
-git clone git@github.com:Eralde/mndw.git
-pnpm install
-pnpm dev
+```text
+contracts/            shared schemas, API contracts, and fixtures
+frontend/
+  angular-compiler/   shared Angular build-time compiler
+  sdk/                published plugin types, helpers, and tokens
+  sdk-internal/       internal manifest and package contracts
+  host/               Svelte 5 host application
+  ui/                 reusable custom elements
+  ui-svelte/          Svelte table cell adapter
+  ui-vue/             Vue table cell adapter
+  ui-angular/         Angular table cell adapter
+tooling/
+  cli/                `mndw` CLI and plugin packaging
+  eslint/             shared ESLint rules
+  go-blanklr/         Go blank-line formatter
+  palette-core/       dependency-free palette library
+daemon/
+  mndwd/              Go device control plane
+  contracts-go/       generated Go contract bindings
+internal/             RCI session lifecycle and state
+packages/
+  go-httpsocket/      Unix-socket HTTP lifecycle
+  go-mws-members/     mesh-member parsing
+  go-rci/             shared RCI client and transport
+  go-rcisock/         persistent RCI-session framing and client
+plugins/
+  builtin/            shipped built-in plugins
+  examples/           uploadable example plugins
+build/                repository build orchestration, npm packaging, and IPK tooling
+docs/                 project and plugin-author documentation
 ```
 
-Development starts the host and connects browser traffic to a local `mndwd --dev`
-daemon and a real device. Set `MNDW_HOST_DEVICE=<DEVICE_URL>` to proxy requests
-to that device, for example `MNDW_HOST_DEVICE=http://192.168.1.1`.
-
-## Plugin authoring
-
-From a plugin project, install the CLI and scaffold a plugin:
+### IPK build
 
 ```bash
-mkdir my-plugins && cd my-plugins
-npm init -y
-npm i -D @mndw/cli
-npx mndw create my-widget
-npx mndw dev my-widget --addr http://router.lan
+pnpm build-ipk --arch mipsel
+pnpm build-ipk --all
+pnpm build-ipk --all --repo
 ```
 
-See the [published plugin author site](https://eralde.github.io/mndw/) for
-tutorials and the complete development workflow. Repository readers can use
-the [plugin author source docs](docs/plugin-author/index.md).
+Output: `out/mndw_<version>_<opkg-arch>.ipk` (for example, `mndw_<version>_mipsel-3.4.ipk`). Builds require a Go
+cross-compile toolchain.
 
-For work inside this repository, the workspace CLI is also available:
+### Plugins in this repository
+
+Use the workspace CLI:
 
 ```bash
 pnpm exec mndw create my-widget --framework svelte --type widget
@@ -60,82 +150,17 @@ pnpm exec mndw pack my-widget
 pnpm exec mndw zip my-widget
 ```
 
-The normal loop is `create -> dev -> validate -> pack -> zip -> upload`.
-Plugins use `@mndw/sdk`, implement `createInstance`, and declare a `manifest.json`.
-Widgets use grid-unit dimensions; pages declare one root route. Plugin frontend
-can be vanilla TypeScript, Svelte, Vue, or Angular. For more details see the
-[SDK plugin-author guide](frontend/sdk/README.md).
+### Documentation
 
-Plugins can use the host-provided `context.rciManager` to access the existing
-device `rci/` API.
-
-### Backends
-
-Plugins may declare an optional backend in `manifest.json`. `exec` backends run
-one command per declared HTTP route; `service` backends run a resident process
-that exposes HTTP/WebSocket routes. Frontends call declared routes through
-`context.backend.fetch(id)` or `context.backend.socket(id)`. Backend processes
-require approval and run with daemon/device privileges.
-
-Repository readers can start with the [plugin author source docs](docs/plugin-author/index.md)
-for tutorials and reusable guides. See the [published plugin author site](https://eralde.github.io/mndw/)
-for the public workflow, or the [service backend guide](docs/service-backend.md) for service manifests,
-socket readiness, lifecycle, and security details.
-
-## IPK build
-
-```bash
-pnpm build-ipk --arch mipsel
-pnpm build-ipk --all
-pnpm build-ipk --all --repo
-```
-
-Output: `out/mndw_<version>_<opkg-arch>.ipk` (for example,
-`mndw_<version>_mipsel-3.4.ipk`). Builds require a Go cross-compile toolchain.
+- [Host application](docs/host-app.md)
+- [Plugin system](docs/plugin-system.md)
+- [CLI and development](docs/cli-and-development.md)
+- [Daemon](docs/daemon.md)
+- [Deployment](docs/deployment.md)
+- [Service backend](docs/service-backend.md)
+- [Plugin-author site source](docs/plugin-author/index.md)
+- [SDK package README](frontend/sdk/README.md) and [SDK API manual](https://eralde.github.io/mndw/api/sdk)
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-## Project layout
-
-```text
-frontend/
-  angular-compiler/ shared Angular build-time compiler
-  sdk/              plugin contracts, manifest schema, backend client, and design tokens
-  host/             Svelte 5 host application
-  ui/               reusable Lit custom elements and components
-  ui-angular/       Angular UI adapter
-  ui-svelte/        Svelte UI adapter
-  ui-vue/           Vue UI adapter
-tooling/
-  cli/              `mndw` CLI and plugin packaging
-  eslint/           shared ESLint rules
-  go-blanklr/       Go blank-line formatter
-  palette-core/     dependency-free palette leaf
-daemon/
-  mndwd/            Go device control plane
-  contracts-go/     generated Go contract bindings
-packages/
-  go-httpsocket/    shared Unix-socket HTTP lifecycle
-  go-mws-members/   shared mesh-member parsing
-  go-rci/           shared RCI client and transport
-  go-rcisock/       shared persistent RCI transport
-plugins/
-  builtin/          shipped built-in plugins
-  examples/         uploadable example plugins
-build/
-  palette/          palette engine and token generator
-  packaging/        web server init, IPK, and install scripts
-  ...               repository build orchestration and helpers
-docs/               documentation
-```
-
-## Documentation
-
-[Host application](docs/host-app.md) <br/>
-[Plugin system](docs/plugin-system.md) <br/>
-[Plugin author docs](docs/plugin-author/index.md) <br/>
-[CLI and development](docs/cli-and-development.md) <br/>
-[Daemon](docs/daemon.md) <br/>
-[Deployment](docs/deployment.md) <br/>

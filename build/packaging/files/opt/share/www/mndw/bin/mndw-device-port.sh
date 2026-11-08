@@ -141,6 +141,7 @@ probe_device_auth() {
           -S \
           -O /dev/null \
           -T "$MNDW_DEVICE_PROBE_TIMEOUT" \
+          -t 1 \
           "$auth_url" 2>&1
       ) || true
       ;;

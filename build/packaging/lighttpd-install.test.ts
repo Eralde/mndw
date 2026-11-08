@@ -222,6 +222,60 @@ esac
     expect(result.stdout.trim()).toBe('8081');
   });
 
+  it('limits wget auth probes to one try per candidate port', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-device-port-test-'));
+
+    fixtures.push(root);
+
+    const bin = path.join(root, 'bin');
+    const netstat = path.join(bin, 'netstat');
+    const wget = path.join(bin, 'wget');
+    const wgetLog = path.join(root, 'wget.log');
+
+    fs.mkdirSync(bin, {recursive: true});
+    writeExecutable(
+      netstat,
+      `#!/bin/sh
+cat <<'EOF'
+tcp 0 0 192.0.2.1:23 0.0.0.0:* LISTEN
+tcp 0 0 192.0.2.1:53 0.0.0.0:* LISTEN
+tcp 0 0 192.0.2.1:80 0.0.0.0:* LISTEN
+EOF
+`,
+    );
+    writeExecutable(
+      wget,
+      `#!/bin/sh
+printf '%s\\n' "$*" >> "$WGET_LOG"
+case "$*" in
+  *http://192.0.2.1:80/auth) printf '%s\\n' 'WWW-Authenticate: x-ndw4-interactive' ;;
+  *) exit 1 ;;
+esac
+`,
+    );
+
+    const result = spawnSync('/bin/sh', [devicePortHelper, 'detect', '192.0.2.1'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH ?? ''}`,
+        MNDW_ROOT: root,
+        MNDW_NETSTAT: netstat,
+        MNDW_WGET: wget,
+        MNDW_DEVICE_PROBE_TIMEOUT: '4',
+        WGET_LOG: wgetLog,
+      },
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout.trim()).toBe('80');
+    expect(fs.readFileSync(wgetLog, 'utf8')).toBe(
+      '-S -O /dev/null -T 4 -t 1 http://192.0.2.1:23/auth\n'
+        + '-S -O /dev/null -T 4 -t 1 http://192.0.2.1:53/auth\n'
+        + '-S -O /dev/null -T 4 -t 1 http://192.0.2.1:80/auth\n',
+    );
+  });
+
   it('accepts canonical device port override without probing', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-device-port-test-'));
 

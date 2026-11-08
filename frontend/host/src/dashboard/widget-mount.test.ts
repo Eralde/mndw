@@ -72,6 +72,10 @@ const pluginContextServices = {
   palette: hostServices.palette,
   telemetry: hostServices.telemetry,
   eventStream: hostServices.eventStream,
+  navigation: () => ({
+    pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},
+    navigate: () => undefined,
+  }),
 };
 
 function fakeMounted(): MountedPlugin {

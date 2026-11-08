@@ -73,6 +73,36 @@ if (ctx.backend !== undefined) {
 }
 ```
 
+## Linking to host pages
+
+Use `ctx.navigation` to link to the dashboard, packages, settings (optionally a tab), or an installed, routable page
+plugin by manifest name. A plugin-page `path` is relative to that page's base route: no leading slash, `.` or `..`
+segments, query (`?`) or fragment (`#`), URL scheme, or backslash. For an unknown target, including an uninstalled or
+non-routable page plugin, `href()` returns `undefined` and `navigate()` returns `false`; neither throws.
+
+Render an anchor only when `href()` returns a URL. Prevent its default action only when `navigate()` handles the click:
+
+<!-- docs-check: skip -->
+```vue
+<script setup lang="ts">
+import type {PluginContext} from '@mndw/sdk';
+
+const {ctx} = defineProps<{ctx: PluginContext}>();
+const target = {kind: 'settings', tab: 'general'} as const;
+const href = ctx.navigation.href(target);
+
+function openSettings(event: MouseEvent): void {
+  if (ctx.navigation.navigate(target)) {
+    event.preventDefault();
+  }
+}
+</script>
+
+<template>
+  <a v-if="href !== undefined" :href="href" @click="openSettings">General settings</a>
+</template>
+```
+
 `ctx.telemetry.fetchProjected(range)` returns a Promise for projected telemetry data, not a stream. It
 accepts an `AbortSignal` when the request should be cancelled during teardown.
 Each projected series carries a `unit` string. Known units are `percent` and `celsius`; future or

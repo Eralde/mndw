@@ -1,6 +1,14 @@
 import {BehaviorSubject, ReplaySubject, Subject, filter, of, takeUntil} from 'rxjs';
 import type {BackendClient} from '../backend-client.js';
-import type {DeviceInfo, PagePluginContext, PageRoute, PluginContext, WidgetPluginContext} from '../context.js';
+import type {
+  DeviceInfo,
+  HostNavigation,
+  HostTarget,
+  PagePluginContext,
+  PageRoute,
+  PluginContext,
+  WidgetPluginContext,
+} from '../context.js';
 import type {MndwEvent, PluginEventFacade} from '../event-schema.js';
 import type {PluginI18n} from '../i18n.js';
 import {MNDW_TOKENS, type MndwThemeName} from '../tokens.js';
@@ -28,6 +36,7 @@ export interface TestPluginContextOptions {
 
 export interface TestPluginContext<C extends PluginContext = PluginContext> {
   readonly context: C;
+  readonly navigationCalls: HostTarget[];
   setTheme(theme: MndwThemeName): void;
   setLocale(locale: string): void;
   setPalette(palette: PaletteTokenMap): void;
@@ -138,6 +147,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
   const eventSubject = new Subject<MndwEvent>();
   const resyncSubject = new Subject<void>();
   const tickers = new Set<{tick(timestamp: number): void; destroy(): void}>();
+  const navigationCalls: HostTarget[] = [];
   let unmounted = false;
   const createTicker = (): Ticker => {
     const subject = new Subject<TickerTick>();
@@ -189,7 +199,16 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
       resync$: resyncSubject.asObservable().pipe(takeUntil(ended.asObservable())),
     }
     : undefined;
+  const navigation: HostNavigation = {
+    href: () => undefined,
+    navigate: (target): boolean => {
+      navigationCalls.push(target);
+
+      return true;
+    },
+  };
   const base = Object.assign(Object.create(null) as Record<string, unknown>, {
+    navigation,
     telemetry: createTelemetry(options.telemetry),
     rciManager: createRciManager(options.rciManager),
     storage: createStorage(),
@@ -227,6 +246,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
 
   return {
     context: Object.freeze(context),
+    navigationCalls,
     setTheme: (next): void => theme.next(next),
     setLocale: (next): void => {
       locale.next(next);

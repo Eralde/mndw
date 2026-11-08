@@ -121,4 +121,12 @@ describe('createTestPluginContext', () => {
     expect(fixture.context.kind).toBe('page');
     expect(fixture.context.pageRoute).toBeDefined();
   });
+
+  it('provides a navigation test double that records calls and accepts navigation', () => {
+    const fixture = createTestPluginContext();
+    const target = {kind: 'settings', tab: 'general'} as const;
+
+    expect(fixture.context.navigation.navigate(target)).toBe(true);
+    expect(fixture.navigationCalls).toEqual([target]);
+  });
 });

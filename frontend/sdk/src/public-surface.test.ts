@@ -18,6 +18,8 @@ const EXPECTED_TYPE_EXPORTS = [
   'DeviceUsb',
   'EventSource',
   'EventTopic',
+  'HostNavigation',
+  'HostTarget',
   'HistoryStatus',
   'KnownTelemetryUnit',
   'LoadState',

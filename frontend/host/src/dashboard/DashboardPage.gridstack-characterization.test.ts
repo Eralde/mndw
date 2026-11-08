@@ -9,6 +9,7 @@ import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
+import {createAppRouter} from '../router/create-app-router.js';
 import {type WidgetTileHandle} from './widget-mount.js';
 import DashboardPage from './DashboardPage.svelte';
 
@@ -240,6 +241,7 @@ describe('DashboardPage real GridStack persistence characterization', () => {
 
     registry.clear();
     registerPrimaryWidgets();
+    createAppRouter(registry);
     localStorage.removeItem(GRID_LAYOUT_KEY);
     replaceDepsStatuses([]);
     mobileMatches = false;

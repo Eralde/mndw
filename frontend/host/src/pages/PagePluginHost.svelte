@@ -17,6 +17,7 @@ import {PageRouteController} from '../router/page-route-controller.js';
 import {
   appRouter,
   getPageRouteDefinitions,
+  getPluginNavigationRouter,
   resolvePageRoute,
 } from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
@@ -45,6 +46,7 @@ const pluginContextServices = {
   palette: services.palette,
   telemetry: services.telemetry,
   eventStream: services.eventStream,
+  navigation: getPluginNavigationRouter,
 };
 
 // Capture the host node via an action (not bind:this) so host-managed child containers

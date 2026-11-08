@@ -3,10 +3,11 @@ import {MNDW_TOKENS, PLUGIN_RCI_MANAGER_METHODS, PageRouteError, type PaletteTok
 import {of} from 'rxjs';
 import {beforeEach, describe, expect, expectTypeOf, it, vi} from 'vitest';
 import {
-  createPluginContext as createPluginContextImpl,
   type CreatePluginContextOptions,
   type PluginContextServices,
+  createPluginContext as createPluginContextImpl,
 } from './plugin-context.js';
+import type {PluginNavigationRouter} from './plugin-navigation.js';
 import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
 import {createHostServices} from '../host-services.js';
 import type {PageListEntry, PluginBackendDescriptor, WidgetListEntry} from './plugin-types.js';
@@ -49,11 +50,21 @@ vi.mock('../services/overlay/overlay-manager.svelte.js', () => ({
 
 const hostInfo = {locale: 'en', theme: 'dark'} as const;
 const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const pluginPageRoutes = new Map([['mws-page', '/mws'], ['demo', '/demo']]);
+const routerNavigate = vi.fn((_pathname: string): Promise<void> => Promise.resolve());
 const pluginContextServices: PluginContextServices = {
   locale: hostServices.locale,
   palette: hostServices.palette,
   telemetry: hostServices.telemetry,
   eventStream: hostServices.eventStream,
+  navigation: () => ({
+    pageTable: {
+      baseRouteOf: (pluginName: string): string | undefined => pluginPageRoutes.get(pluginName),
+      pluginNameOf: (baseRoute: string): string | undefined =>
+        [...pluginPageRoutes].find(([, route]) => route === baseRoute)?.[0],
+    },
+    navigate: routerNavigate,
+  }),
 };
 
 type TestPluginContextOptions = Omit<CreatePluginContextOptions, 'services'> & {
@@ -243,6 +254,48 @@ describe('createPluginContext', () => {
     expect(pageContext.kind).toBe('page');
     expect(widgetContext.pageRoute).toBeUndefined();
     expect(widgetContext.kind).toBe('widget');
+  });
+
+  it('wires host navigation for this plugin and disables navigation after disposal', () => {
+    const handle = createPluginContext({entry: pageEntry(), instanceId: 'demo:1', hostInfo, deviceInfo,
+      pageRoute: {childPath$: of(''), navigate: vi.fn(() => Promise.resolve())}});
+
+    expect(handle.context.navigation.href({kind: 'plugin-page', plugin: 'demo'})).toBe('/demo');
+    expect(handle.context.navigation.navigate({kind: 'settings', tab: 'general'})).toBe(true);
+    expect(routerNavigate).toHaveBeenCalledWith('/settings/general');
+
+    handle.dispose();
+
+    expect(handle.context.navigation.navigate({kind: 'dashboard'})).toBe(false);
+    expect(routerNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('resolves the navigation router lazily when it becomes ready', () => {
+    const routerState: {router?: PluginNavigationRouter} = {};
+    const navigationProvider = vi.fn(() => routerState.router);
+    const handle = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo,
+      services: {navigation: navigationProvider}});
+
+    expect(navigationProvider).not.toHaveBeenCalled();
+    expect(handle.context.navigation.href({kind: 'plugin-page', plugin: 'demo'})).toBeUndefined();
+    expect(navigationProvider).toHaveBeenCalledTimes(1);
+
+    const previousNavigateCalls = routerNavigate.mock.calls.length;
+
+    expect(handle.context.navigation.navigate({kind: 'dashboard'})).toBe(false);
+    expect(routerNavigate).toHaveBeenCalledTimes(previousNavigateCalls);
+
+    routerState.router = {
+      pageTable: {
+        baseRouteOf: (pluginName: string): string | undefined => pluginPageRoutes.get(pluginName),
+        pluginNameOf: (baseRoute: string): string | undefined =>
+          [...pluginPageRoutes].find(([, route]) => route === baseRoute)?.[0],
+      },
+      navigate: routerNavigate,
+    };
+
+    expect(handle.context.navigation.href({kind: 'plugin-page', plugin: 'demo'})).toBe('/demo');
+    expect(navigationProvider).toHaveBeenCalledTimes(3);
   });
 
   it('rejects page contexts without a host-created route', () => {

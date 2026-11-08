@@ -17,6 +17,7 @@ import type {PluginListEntry} from './plugin-types.js';
 import {createServiceFacade} from './service-facade.js';
 import {type HostInfo, createDeviceInfoContext} from './device-info-context.js';
 import {createPluginLifetime, hostValue$} from './plugin-lifetime.js';
+import {type PluginNavigationRouter, createPluginNavigation} from './plugin-navigation.js';
 import {hostTickerPool} from './ticker-pool.js';
 
 export type OverlayDispose = (reason?: 'plugin-unmount' | 'host-navigation') => void;
@@ -26,7 +27,9 @@ export interface PluginContextHandle {
   dispose: OverlayDispose;
 }
 
-export type PluginContextServices = Pick<HostServices, 'locale' | 'palette' | 'telemetry' | 'eventStream'>;
+export type PluginContextServices = Pick<HostServices, 'locale' | 'palette' | 'telemetry' | 'eventStream'> & {
+  navigation(): PluginNavigationRouter | undefined;
+};
 
 let eventFacadeSequence = 0;
 
@@ -79,9 +82,8 @@ export interface CreatePluginContextOptions {
 export function createPluginContext(options: CreatePluginContextOptions): PluginContextHandle {
   const {entry, instanceId, deviceInfo, setTileTitle, pageRoute, catalogCell, services} = options;
   const getHostLocale = (): string => services.locale.getLocale();
-  const subscribeHostLocale = (callback: () => void): (() => void) =>
-    services.locale.subscribeLocale(() => callback());
-  const subscribeHostLocaleValue = (callback: (locale: string) => void): (() => void) =>
+  const subscribeHostLocale = (callback: () => void): () => void => services.locale.subscribeLocale(() => callback());
+  const subscribeHostLocaleValue = (callback: (locale: string) => void): () => void =>
     services.locale.subscribeLocale(callback);
   const getPaletteTokens = (): PluginContext['palette'] => services.palette.getTokens();
   const telemetry = services.telemetry;
@@ -99,6 +101,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
   const eventFacadeId = createEventFacadeId();
   const events = eventStream.createFacade(eventFacadeId, entry.name, entry.permissions ?? [], lifetime);
   let disposed = false;
+  const navigation = createPluginNavigation({getRouter: () => services.navigation(), isDisposed: () => disposed});
   const dispose: OverlayDispose = (reason) => {
     if (disposed) {
       return;
@@ -126,6 +129,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     ? {kind: 'widget' as const}
     : {kind: 'widget' as const, setTileTitle};
   const context = {
+    navigation,
     telemetry,
     events,
     rciManager: createServiceFacade(rciService.driver, PLUGIN_RCI_MANAGER_METHODS),

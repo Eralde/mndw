@@ -2,7 +2,7 @@ import {type LoaderDeps, loadPlugins} from '../runtime/plugin-loader.js';
 import {type SandboxLoaderDeps, loadSandboxPlugin} from '../runtime/sandbox-loader.js';
 import {sandboxVirtualImports, setupSandboxHmr} from '../runtime/sandbox-virtual.js';
 import {type PluginRegistry} from '../runtime/plugin-registry.js';
-import {createAppRouter} from '../router/create-app-router.js';
+import {createAppRouter, getPluginNavigationRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {anyInstalling, startDepsPolling} from '../state/deps-status.svelte.js';
 import {fetchDeviceInfo, fetchHostInfo} from './host-info.service.js';
@@ -72,6 +72,7 @@ export async function initAuthenticated(
         palette: services.palette,
         telemetry: services.telemetry,
         eventStream: services.eventStream,
+        navigation: getPluginNavigationRouter,
       },
     });
     setupHmr(services);

@@ -1,5 +1,6 @@
 import {type SandboxImports, reloadSandboxPlugin} from './sandbox-loader.js';
 import type {HostServices} from '../host-services.js';
+import {getPluginNavigationRouter} from '../router/create-app-router.js';
 
 /**
  * The one place the `virtual:sandbox-*` specifiers appear as literals so Vite's sandbox
@@ -75,6 +76,7 @@ export function scheduleSandboxReload(services: HostServices, imports: SandboxIm
               palette: services.palette,
               telemetry: services.telemetry,
               eventStream: services.eventStream,
+              navigation: getPluginNavigationRouter,
             },
           })
         )

@@ -6,6 +6,7 @@ import PagePluginHost from '../pages/PagePluginHost.svelte';
 import PackageManagerPage from '../pages/PackageManagerPage.svelte';
 import SettingsPage from '../pages/settings/SettingsPage.svelte';
 import {type PluginRegistry, pluginRegistry} from '../runtime/plugin-registry.js';
+import type {PluginNavigationRouter} from '../runtime/plugin-navigation.js';
 import {HOST_PATHS, type PluginPageTable} from './host-routes.js';
 
 export interface PageRouteDefinition {
@@ -197,4 +198,18 @@ export function createAppRouter(
   repairMalformedPagePath();
 
   return appRouter;
+}
+
+/** Supplies the live app router to plugin contexts after the registry has built its route table. */
+export function getPluginNavigationRouter(): PluginNavigationRouter | undefined {
+  const router = appRouter;
+
+  if (router === undefined) {
+    return undefined;
+  }
+
+  return {
+    pageTable: router.pluginPages,
+    navigate: (pathname: string): unknown => router.navigate(pathname as never),
+  };
 }

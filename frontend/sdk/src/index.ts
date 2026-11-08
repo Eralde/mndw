@@ -4,7 +4,15 @@ export type {EventSource, EventTopic, MndwEvent, PluginEventFacade} from './even
 export {PageRouteError} from './context.js';
 export {PLUGIN_RCI_MANAGER_METHODS} from './rci.js';
 export type {PluginRciManager, PluginRciManagerMethod} from './rci.js';
-export type {PagePluginContext, PageRoute, PageRouteErrorCode, PluginContext, WidgetPluginContext} from './context.js';
+export type {
+  HostNavigation,
+  HostTarget,
+  PagePluginContext,
+  PageRoute,
+  PageRouteErrorCode,
+  PluginContext,
+  WidgetPluginContext,
+} from './context.js';
 export type {DeviceInfo, DeviceInfoData, DeviceUsb, Switchport, Switchports} from './context.js';
 export type {PluginI18n} from './i18n.js';
 export type {Translator} from './translator.js';

@@ -2,6 +2,7 @@
 import {parseWidgetTileId} from './grid-layout-persistence.js';
 import {ensureTileController} from './tile-controller.js';
 import {getHostServices} from '../host-services-context.js';
+import {getPluginNavigationRouter} from '../router/create-app-router.js';
 
 interface Props {
   order: string[];
@@ -16,6 +17,7 @@ const pluginContextServices = {
   palette: services.palette,
   telemetry: services.telemetry,
   eventStream: services.eventStream,
+  navigation: getPluginNavigationRouter,
 };
 
 /**

@@ -23,6 +23,17 @@ export interface PageRoute {
 
 export type PageRouteErrorCode = 'INVALID_PATH' | 'COMPLETED' | 'NAVIGATION_FAILED';
 
+export type HostTarget =
+  | {readonly kind: 'dashboard'}
+  | {readonly kind: 'packages'}
+  | {readonly kind: 'settings'; readonly tab?: 'general' | 'diagnostics' | 'plugins' | 'self-update'}
+  | {readonly kind: 'plugin-page'; readonly plugin: string; readonly path?: string};
+
+export interface HostNavigation {
+  href(target: HostTarget): string | undefined;
+  navigate(target: HostTarget): boolean;
+}
+
 export class PageRouteError extends Error {
   public readonly code: PageRouteErrorCode;
 
@@ -90,6 +101,7 @@ export interface DeviceInfo extends DeviceInfoData {
 }
 
 interface PluginContextBase {
+  readonly navigation: HostNavigation;
   telemetry: TelemetryClient;
   events?: PluginEventFacade;
   rciManager: PluginRciManager;

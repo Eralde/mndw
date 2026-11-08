@@ -49,6 +49,10 @@ function deps(overrides: Partial<SandboxLoaderDeps> = {}): SandboxLoaderDeps {
       palette: services.palette,
       telemetry: services.telemetry,
       eventStream: services.eventStream,
+      navigation: () => ({
+        pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},
+        navigate: () => undefined,
+      }),
     },
     remountWidgets: vi.fn(() => Promise.resolve(true)),
     reloadPage: vi.fn(() => Promise.resolve(true)),
@@ -190,6 +194,10 @@ describe('reloadSandboxPlugin', () => {
       palette: services.palette,
       telemetry: services.telemetry,
       eventStream: services.eventStream,
+      navigation: () => ({
+        pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},
+        navigate: () => undefined,
+      }),
     };
 
     seed(registry);

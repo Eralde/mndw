@@ -27,6 +27,7 @@ import type {WidgetSize} from './widget-size.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {appState} from '../state/app.svelte.js';
 import {getHostServices} from '../host-services-context.js';
+import {getPluginNavigationRouter} from '../router/create-app-router.js';
 
 const PERSIST_DEBOUNCE_MS = 500;
 const services = getHostServices();
@@ -36,6 +37,7 @@ const pluginContextServices = {
   palette: services.palette,
   telemetry: services.telemetry,
   eventStream: services.eventStream,
+  navigation: getPluginNavigationRouter,
 };
 
 function resolveWidgetSize(pluginName: string): WidgetSize | undefined {

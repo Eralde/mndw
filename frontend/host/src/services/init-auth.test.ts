@@ -12,7 +12,7 @@ vi.mock('../runtime/sandbox-url.js', () => ({
   sandboxUrlImports: vi.fn(() => ({importPluginModule: vi.fn(), importManifestModule: vi.fn()})),
   setupSandboxUrlHmr: vi.fn(),
 }));
-vi.mock('../router/create-app-router.js', () => ({createAppRouter: vi.fn()}));
+vi.mock('../router/create-app-router.js', () => ({createAppRouter: vi.fn(), getPluginNavigationRouter: vi.fn()}));
 
 import {type LoaderDeps, loadPlugins} from '../runtime/plugin-loader.js';
 import {loadSandboxPlugin} from '../runtime/sandbox-loader.js';

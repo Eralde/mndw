@@ -3,6 +3,7 @@ import type {Observable} from 'rxjs';
 import type {
   BackendClient,
   DeviceInfo,
+  HostNavigation,
   MndwThemeName,
   OverlayService,
   PageRoute,
@@ -14,6 +15,7 @@ import type {
 export {TRANSLATOR} from '@mndw/sdk/angular';
 
 export const RCI_MANAGER = new InjectionToken<PluginRciManager>('RCI_MANAGER');
+export const HOST_NAVIGATION = new InjectionToken<HostNavigation>('HOST_NAVIGATION');
 export const OVERLAY = new InjectionToken<OverlayService>('OVERLAY');
 export const DEVICE_INFO = new InjectionToken<DeviceInfo>('DEVICE_INFO');
 export const THEME$ = new InjectionToken<Observable<MndwThemeName>>('THEME$');

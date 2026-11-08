@@ -1,4 +1,4 @@
-import type {OverlayCloseEvent, OverlayService} from '@mndw/sdk';
+import type {HostNavigation, HostTarget, OverlayCloseEvent, OverlayService} from '@mndw/sdk';
 import type {ExtraFeaturesAvailability, ExtraFeaturesSetupReason} from '../services/mws-data.service';
 import type {TranslatorFn} from '../status-labels';
 
@@ -15,6 +15,7 @@ export function openExtraFeaturesPopover(
   anchor: HTMLElement,
   availability: ExtraFeaturesAvailability,
   t: TranslatorFn,
+  navigation: HostNavigation,
   setupReasons: readonly ExtraFeaturesSetupReason[] = [],
 ): ExtraFeaturesPopoverController {
   const layer = overlay.createLayer({
@@ -31,6 +32,7 @@ export function openExtraFeaturesPopover(
   const title = document.createElement('h3');
   const body = document.createElement('p');
   const action = document.createElement('a');
+  const settingsTarget: HostTarget = {kind: 'settings', tab: 'general'};
   let cleaned = false;
 
   group.className = 'extra-features-popover';
@@ -50,6 +52,12 @@ export function openExtraFeaturesPopover(
   group.style.borderRadius = 'var(--mndw-radius-md)';
   group.style.boxShadow = 'var(--mndw-shadow-2)';
   group.append(title, body);
+
+  action.addEventListener('click', (event) => {
+    if (navigation.navigate(settingsTarget)) {
+      event.preventDefault();
+    }
+  });
 
   const render = (
     next: ExtraFeaturesAvailability,
@@ -72,9 +80,16 @@ export function openExtraFeaturesPopover(
       : `extra-features.popover.${next}.body`;
 
     body.textContent = t(bodyKey);
-    action.textContent = t('extra-features.popover.view-settings');
-    action.href = '/settings/general';
-    group.append(action);
+
+    const href = navigation.href(settingsTarget);
+
+    if (href === undefined) {
+      action.remove();
+    } else {
+      action.textContent = t('extra-features.popover.view-settings');
+      action.href = href;
+      group.append(action);
+    }
   };
 
   const cleanup = (): void => {

@@ -8,7 +8,7 @@ import {
   ɵresolveComponentResources as resolveComponentResources,
 } from '@angular/core';
 import {TestBed} from '@angular/core/testing';
-import type {OverlayCloseEvent, OverlayLayer, OverlayService, PageRoute} from '@mndw/sdk';
+import type {HostNavigation, OverlayCloseEvent, OverlayLayer, OverlayService, PageRoute} from '@mndw/sdk';
 import {createTranslatorSignals} from '@mndw/sdk/angular';
 import {createTestI18n} from '@mndw/sdk/testing';
 import {BehaviorSubject, type Observable, Subject, of} from 'rxjs';
@@ -33,6 +33,7 @@ import {NodeTableColumnsStore} from '../services/node-table-columns.store';
 import {MwsWriteService} from '../services/mws-write.service';
 import {
   DEVICE_INFO,
+  HOST_NAVIGATION,
   MWSD_BACKEND,
   MWS_MOCK_OPTIONS,
   MWS_PAGE_ROUTE,
@@ -122,12 +123,17 @@ function render(
   data: FakeData,
   pageRoute?: PageRoute,
   openNodeDrawer: ReturnType<typeof vi.fn> = vi.fn(),
+  navigation?: HostNavigation,
 ): ReturnType<typeof TestBed.createComponent<AppComponent>> {
   TestBed.overrideProvider(MwsDataService, {useValue: data});
   TestBed.overrideProvider(MwsdStatusService, {useValue: data.statusService});
 
   if (pageRoute !== undefined) {
     TestBed.overrideProvider(MWS_PAGE_ROUTE, {useValue: pageRoute});
+  }
+
+  if (navigation !== undefined) {
+    TestBed.overrideProvider(HOST_NAVIGATION, {useValue: navigation});
   }
 
   const fixture = TestBed.createComponent(AppComponent);
@@ -223,6 +229,7 @@ describe('AppComponent', () => {
         {provide: MwsDataService, useValue: undefined},
         {provide: MwsdStatusService, useValue: undefined},
         {provide: DEVICE_INFO, useValue: HOST},
+        {provide: HOST_NAVIGATION, useValue: {href: () => undefined, navigate: () => false}},
         {provide: MWSD_BACKEND, useValue: null},
         ExtraFeaturesBannerStore,
         {provide: PLUGIN_STORAGE, useValue: new FakePluginStorage()},
@@ -546,6 +553,45 @@ describe('AppComponent', () => {
 
   it('shows and dismisses the unavailable setup banner after storage load', async () => {
     const data = fakeData('ready', fixtureRoots());
+    const target = {kind: 'settings', tab: 'general'} as const;
+    const href = vi.fn(() => '/host/settings/general');
+    const navigate = vi.fn(() => true);
+    const navigation: HostNavigation = {
+      href,
+      navigate,
+    };
+
+    data.statusService.extraFeaturesPresentation.set('unavailable');
+
+    const fixture = render(data, undefined, vi.fn(), navigation);
+
+    await vi.waitFor(() => {
+      expect(fixture.nativeElement.querySelector('.extra-features-setup')).not.toBeNull();
+    });
+
+    const banner = fixture.nativeElement.querySelector<HTMLElement>('.extra-features-setup');
+
+    expect(banner?.getAttribute('role')).toBe('status');
+
+    const link = banner?.querySelector<HTMLAnchorElement>('a');
+
+    expect(href).toHaveBeenCalledWith(target);
+    expect(link?.getAttribute('href')).toBe('/host/settings/general');
+
+    const click = new MouseEvent('click', {bubbles: true, cancelable: true});
+
+    link?.dispatchEvent(click);
+
+    expect(navigate).toHaveBeenCalledWith(target);
+    expect(click.defaultPrevented).toBe(true);
+    banner?.querySelector<HTMLButtonElement>('[data-action="dismiss-extra-features"]')?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.extra-features-setup')).toBeNull();
+  });
+
+  it('omits the Settings action when host navigation has no href', async () => {
+    const data = fakeData('ready', fixtureRoots());
 
     data.statusService.extraFeaturesPresentation.set('unavailable');
 
@@ -555,14 +601,7 @@ describe('AppComponent', () => {
       expect(fixture.nativeElement.querySelector('.extra-features-setup')).not.toBeNull();
     });
 
-    const banner = fixture.nativeElement.querySelector<HTMLElement>('.extra-features-setup');
-
-    expect(banner?.getAttribute('role')).toBe('status');
-    expect(banner?.querySelector('a[href="/settings/general"]')).not.toBeNull();
-    banner?.querySelector<HTMLButtonElement>('[data-action="dismiss-extra-features"]')?.click();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('.extra-features-setup')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.extra-features-setup a')).toBeNull();
   });
 
   it('does not show setup banner when unavailable state has no extenders', async () => {

@@ -23,7 +23,7 @@ import {ExtraFeaturesBannerStore} from '../services/extra-features-banner.store'
 import {MwsDataService} from '../services/mws-data.service';
 import {openAutoLayoutConfirmation} from './auto-layout-confirmation';
 import {type ExtraFeaturesPopoverController, openExtraFeaturesPopover} from './extra-features-popover';
-import {MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, TRANSLATOR} from '../tokens';
+import {HOST_NAVIGATION, MWS_MOCK_OPTIONS, MWS_PAGE_ROUTE, OVERLAY, TRANSLATOR} from '../tokens';
 
 interface MapSummary {
   total: number;
@@ -68,6 +68,7 @@ export class AppComponent implements OnDestroy, OnInit {
   public readonly openNodeDrawer = input.required<
     (nodeId: string, title: string, onClose: () => void) => void
   >();
+  protected readonly navigation = inject(HOST_NAVIGATION);
 
   @ViewChild(MwsGraphComponent)
   private graph?: MwsGraphComponent;
@@ -230,6 +231,7 @@ export class AppComponent implements OnDestroy, OnInit {
       anchor,
       this.data.extraFeaturesAvailability(),
       (key, values) => this.t(key, values),
+      this.navigation,
       this.data.extraFeaturesSetupReasons(),
     );
 
@@ -241,6 +243,16 @@ export class AppComponent implements OnDestroy, OnInit {
         this.popoverOpen.set(false);
       }
     });
+  }
+
+  protected hostSettingsHref(): string | undefined {
+    return this.navigation.href({kind: 'settings', tab: 'general'});
+  }
+
+  protected navigateToHostSettings(event: Event): void {
+    if (this.navigation.navigate({kind: 'settings', tab: 'general'})) {
+      event.preventDefault();
+    }
   }
 
   protected t(key: string, values?: Record<string, unknown>): string {

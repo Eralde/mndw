@@ -23,7 +23,9 @@
         <div>
           <strong>{{ t('extra-features.setup.title') }}</strong>
           <span>{{ extraFeaturesSetupBody() }}</span>
-          <a href="/settings/general">{{ t('extra-features.setup.action') }}</a>
+          @if (hostSettingsHref(); as settingsHref) {
+            <a [href]="settingsHref" (click)="navigateToHostSettings($event)">{{ t('extra-features.setup.action') }}</a>
+          }
         </div>
         <button
           type="button"

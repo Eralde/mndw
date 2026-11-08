@@ -15,6 +15,7 @@ import {NodePositionStore} from './services/node-position.store';
 import {NodeTableColumnsStore} from './services/node-table-columns.store';
 import {
   DEVICE_INFO,
+  HOST_NAVIGATION,
   MWSD_BACKEND,
   MWS_MOCK_OPTIONS,
   MWS_PAGE_ROUTE,
@@ -69,6 +70,7 @@ export function createMwsMapInstance(
     rootComponent: AppComponent,
     providers: [
       {provide: RCI_MANAGER, useValue: ctx.rciManager},
+      {provide: HOST_NAVIGATION, useValue: ctx.navigation},
       {provide: OVERLAY, useValue: ctx.overlay},
       {provide: DEVICE_INFO, useValue: ctx.deviceInfo},
       {provide: MWSD_BACKEND, useValue: ctx.backend ?? null},

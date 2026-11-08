@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, describe, expect, it, vi} from 'vitest';
 
 vi.mock('../runtime/plugin-registry.js', () => ({
   pluginRegistry: {getPages: vi.fn(() => []), getWidgets: vi.fn(() => [])},
@@ -8,13 +8,7 @@ vi.mock('../runtime/plugin-registry.js', () => ({
 import {type LoadedPage, type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import PagePluginHost from '../pages/PagePluginHost.svelte';
-import {
-  buildPluginRoutes,
-  createAppRouter,
-  getPageRouteDefinitions,
-  resolvePageRoute,
-  routeToPluginName,
-} from './create-app-router.js';
+import {buildPluginRoutes, createAppRouter, resolvePageRoute} from './create-app-router.js';
 
 const emptyBackend = {routes: {}};
 
@@ -55,10 +49,6 @@ function widget(name: string): LoadedPlugin {
 }
 
 describe('buildPluginRoutes', () => {
-  beforeEach(() => {
-    routeToPluginName.clear();
-  });
-
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -70,7 +60,7 @@ describe('buildPluginRoutes', () => {
       page('alpha-status', 'Status', '/alpha-status'),
     ]);
 
-    const routes = buildPluginRoutes();
+    const {routes} = buildPluginRoutes();
 
     // Status/Status tie broken by name; Traffic last.
     expect(Object.keys(routes)).toEqual([
@@ -87,10 +77,24 @@ describe('buildPluginRoutes', () => {
   it('uses an injected registry instead of the production singleton', () => {
     const injectedRegistry = {getPages: vi.fn(() => [page('injected', 'Injected', '/injected')])};
 
-    const routes = buildPluginRoutes(injectedRegistry);
+    const {routes} = buildPluginRoutes(injectedRegistry);
 
     expect(Object.keys(routes)).toEqual(['/injected', '/injected/*child']);
     expect(injectedRegistry.getPages).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds a fresh plugin page table from each registry snapshot', () => {
+    const firstRegistry = {getPages: vi.fn(() => [page('mws-page', 'MWS', '/MWS/')])};
+    const firstBuild = buildPluginRoutes(firstRegistry);
+
+    expect(firstBuild.pageTable.baseRouteOf('mws-page')).toBe('/mws');
+    expect(firstBuild.pageTable.pluginNameOf('/mws')).toBe('mws-page');
+    expect(firstBuild.pageTable.baseRouteOf('missing-page')).toBeUndefined();
+
+    const nextBuild = buildPluginRoutes({getPages: vi.fn(() => [])});
+
+    expect(nextBuild.pageTable.baseRouteOf('mws-page')).toBeUndefined();
+    expect(nextBuild.pageTable.pluginNameOf('/mws')).toBeUndefined();
   });
 
   it('records each entry.route -> entry.name lookup, excluding widgets', () => {
@@ -98,44 +102,47 @@ describe('buildPluginRoutes', () => {
       page('status', 'Status', '/status'),
     ]);
 
-    buildPluginRoutes();
+    const {pageTable} = buildPluginRoutes();
 
-    expect([...routeToPluginName.entries()]).toEqual([['/status', 'status']]);
+    expect(pageTable.pluginNameOf('/status')).toBe('status');
+    expect(pageTable.baseRouteOf('status')).toBe('/status');
   });
 
   it('does not turn widget plugins into routes', () => {
     vi.mocked(pluginRegistry).getPages.mockReturnValue([]);
 
     // getPages already excludes widgets; a widget in the registry must not appear.
-    const routes = buildPluginRoutes();
+    const {routes, pageTable} = buildPluginRoutes();
 
     expect(Object.keys(routes)).toEqual([]);
-    expect(routeToPluginName.size).toBe(0);
+    expect(pageTable.baseRouteOf('unused-widget')).toBeUndefined();
     // The widget helper exists to document intent; it is never routed.
     void widget;
   });
 
   it('clears stale mappings on rebuild', () => {
     vi.mocked(pluginRegistry).getPages.mockReturnValue([page('old', 'Old', '/old')]);
-    buildPluginRoutes();
 
-    expect(routeToPluginName.has('/old')).toBe(true);
+    const oldBuild = buildPluginRoutes();
+
+    expect(oldBuild.pageTable.pluginNameOf('/old')).toBe('old');
 
     vi.mocked(pluginRegistry).getPages.mockReturnValue([page('new', 'New', '/new')]);
-    buildPluginRoutes();
 
-    expect(routeToPluginName.has('/old')).toBe(false);
-    expect([...routeToPluginName.keys()]).toEqual(['/new']);
+    const newBuild = buildPluginRoutes();
+
+    expect(newBuild.pageTable.pluginNameOf('/old')).toBeUndefined();
+    expect(newBuild.pageTable.pluginNameOf('/new')).toBe('new');
   });
 
   it('uses canonical base routes and adds exact and child routes', () => {
     vi.mocked(pluginRegistry).getPages.mockReturnValue([page('map', 'Map', '/Foo/')]);
 
-    const routes = buildPluginRoutes();
+    const {routes, pageTable} = buildPluginRoutes();
 
     expect(Object.keys(routes)).toEqual(['/foo', '/foo/*child']);
-    expect([...routeToPluginName.entries()]).toEqual([['/foo', 'map']]);
-    expect(getPageRouteDefinitions()).toEqual([{route: '/foo', name: 'map'}]);
+    expect(pageTable.pluginNameOf('/foo')).toBe('map');
+    expect(pageTable.baseRouteOf('map')).toBe('/foo');
   });
 
   it.each(['/foo/', '/Foo'])('rejects canonical collision for %s', (route) => {
@@ -161,10 +168,8 @@ describe('buildPluginRoutes', () => {
 
   it('keeps the previous snapshot when route construction fails', () => {
     vi.mocked(pluginRegistry).getPages.mockReturnValue([page('old', 'Old', '/old')]);
-    buildPluginRoutes();
 
-    const oldMappings = [...routeToPluginName.entries()];
-    const oldDefinitions = [...getPageRouteDefinitions()];
+    const oldBuild = buildPluginRoutes();
 
     vi.mocked(pluginRegistry).getPages.mockReturnValue([
       page('first', 'First', '/foo'),
@@ -172,8 +177,7 @@ describe('buildPluginRoutes', () => {
     ]);
 
     expect(() => buildPluginRoutes()).toThrow();
-    expect([...routeToPluginName.entries()]).toEqual(oldMappings);
-    expect(getPageRouteDefinitions()).toEqual(oldDefinitions);
+    expect(oldBuild.pageTable.pluginNameOf('/old')).toBe('old');
   });
 });
 
@@ -241,7 +245,7 @@ describe('createAppRouter', () => {
     await router.navigate('/mws/clients%20archive//');
 
     expect(router.route.pathname).toBe('/mws/clients%20archive//');
-    expect(resolvePageRoute(router.route.pathname, getPageRouteDefinitions())).toEqual({
+    expect(resolvePageRoute(router.route.pathname, router.pluginPages)).toEqual({
       name: 'mws-page',
       childPath: '/clients%20archive/',
     });

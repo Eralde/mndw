@@ -1,4 +1,5 @@
 import {SETTINGS_TAB_DEFS, type SettingsPath, type SettingsTabId} from './settings-tabs.js';
+import {HOST_PATHS} from '../../router/host-routes.js';
 
 export {SETTINGS_TAB_DEFS} from './settings-tabs.js';
 export type {SettingsPath, SettingsTabId} from './settings-tabs.js';
@@ -6,7 +7,7 @@ export type {SettingsPath, SettingsTabId} from './settings-tabs.js';
 export const SETTINGS_DEFAULT_TAB: SettingsTabId = 'general';
 
 export function settingsPath(tab: SettingsTabId): SettingsPath {
-  return SETTINGS_TAB_DEFS.find((candidate) => candidate.id === tab)?.route ?? `/settings/${tab}`;
+  return SETTINGS_TAB_DEFS.find((candidate) => candidate.id === tab)?.route ?? HOST_PATHS.settingsTab[tab];
 }
 
 export function settingsTabFromPath(pathname: string): SettingsTabId | null {

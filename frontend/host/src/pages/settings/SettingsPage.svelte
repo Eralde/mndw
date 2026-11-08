@@ -6,6 +6,7 @@ import GeneralSettings from './GeneralSettings.svelte';
 import PluginSettings from './PluginSettings.svelte';
 import SelfUpdateSettings from './self-update/SelfUpdateSettings.svelte';
 import {appRouter} from '../../router/create-app-router.js';
+import {HOST_PATHS} from '../../router/host-routes.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
 import {
@@ -32,7 +33,7 @@ const activeTab = $derived.by(() => {
 onMount(() => {
   const router = appRouter;
 
-  if (router?.route.pathname === '/settings') {
+  if (router?.route.pathname === HOST_PATHS.settings) {
     void router.navigate(settingsPath(SETTINGS_DEFAULT_TAB), {replace: true});
   }
 });

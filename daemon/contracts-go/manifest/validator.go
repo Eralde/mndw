@@ -103,7 +103,7 @@ var (
 	nameRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 	packageRe = regexp.MustCompile(`^[a-z0-9][a-z0-9+_.-]*$`)
 	methods   = map[string]struct{}{"GET": {}, "HEAD": {}, "POST": {}, "PUT": {}, "PATCH": {}, "DELETE": {}}
-	reserved  = map[string]struct{}{"/": {}, "/login": {}, "/packages": {}, "/settings": {}}
+	reserved  = map[string]struct{}{"/": {}, "/login": {}, "/packages": {}, "/packages/services": {}, "/settings": {}}
 )
 
 const gridColumns = 12

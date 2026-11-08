@@ -1,5 +1,7 @@
-export type SettingsTabId = 'general' | 'diagnostics' | 'plugins' | 'self-update';
-export type SettingsPath = `/settings/${SettingsTabId}`;
+import {HOST_PATHS, type SettingsPath, type SettingsTabId} from '../../router/host-routes.js';
+
+export type {SettingsTabId} from '../../router/host-routes.js';
+export type {SettingsPath};
 
 export interface SettingsTab {
   readonly id: SettingsTabId;
@@ -9,8 +11,18 @@ export interface SettingsTab {
 }
 
 export const SETTINGS_TAB_DEFS = [
-  {id: 'general', route: '/settings/general', labelKey: 'settings.general-tab', icon: 'settings'},
-  {id: 'diagnostics', route: '/settings/diagnostics', labelKey: 'settings.diagnostics-tab', icon: 'diagnostics'},
-  {id: 'plugins', route: '/settings/plugins', labelKey: 'settings.plugins-tab', icon: 'plugins'},
-  {id: 'self-update', route: '/settings/self-update', labelKey: 'settings.self-update-tab', icon: 'refresh'},
+  {id: 'general', route: HOST_PATHS.settingsTab.general, labelKey: 'settings.general-tab', icon: 'settings'},
+  {
+    id: 'diagnostics',
+    route: HOST_PATHS.settingsTab.diagnostics,
+    labelKey: 'settings.diagnostics-tab',
+    icon: 'diagnostics',
+  },
+  {id: 'plugins', route: HOST_PATHS.settingsTab.plugins, labelKey: 'settings.plugins-tab', icon: 'plugins'},
+  {
+    id: 'self-update',
+    route: HOST_PATHS.settingsTab['self-update'],
+    labelKey: 'settings.self-update-tab',
+    icon: 'refresh',
+  },
 ] as const satisfies readonly SettingsTab[];

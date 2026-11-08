@@ -6,6 +6,7 @@ import {mobileMediaQuery} from './breakpoint.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {getHostServices} from '../host-services-context.js';
 import {appRouter} from '../router/create-app-router.js';
+import {HOST_PATHS} from '../router/host-routes.js';
 
 const registry = getHostServices().registry;
 const mobileQuery = mobileMediaQuery();
@@ -88,20 +89,20 @@ onMount(() => {
   use:focusTrap={{enabled: isMobile && appState.mobileSidebarOpen}}
 >
   <a
-    href="/"
+    href={HOST_PATHS.dashboard}
     class="mndw-sidebar__link"
-    class:active={isActive('/')}
-    aria-current={isActive('/') ? 'page' : undefined}
+    class:active={isActive(HOST_PATHS.dashboard)}
+    aria-current={isActive(HOST_PATHS.dashboard) ? 'page' : undefined}
     onclick={closeOnMobile}
   >
     {hostT('nav.dashboard')}
   </a>
 
   <a
-    href="/packages"
+    href={HOST_PATHS.packages}
     class="mndw-sidebar__link"
-    class:active={isActive('/packages')}
-    aria-current={isActive('/packages') ? 'page' : undefined}
+    class:active={isActive(HOST_PATHS.packages)}
+    aria-current={isActive(HOST_PATHS.packages) ? 'page' : undefined}
     onclick={closeOnMobile}
   >
     {hostT('nav.package-manager')}
@@ -124,10 +125,10 @@ onMount(() => {
 
   <div class="mndw-sidebar__spacer"></div>
   <a
-    href="/settings"
+    href={HOST_PATHS.settings}
     class="mndw-sidebar__link"
-    class:active={isActive('/settings')}
-    aria-current={isActive('/settings') ? 'page' : undefined}
+    class:active={isActive(HOST_PATHS.settings)}
+    aria-current={isActive(HOST_PATHS.settings) ? 'page' : undefined}
     onclick={closeOnMobile}
   >
     {hostT('nav.settings')}

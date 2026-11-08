@@ -1,24 +1,26 @@
 import {isReservedPageRoute} from '@mndw/sdk-internal';
-import {createRouter} from 'sv-router';
+import {type RouteComponent, createRouter} from 'sv-router';
 import DashboardPage from '../dashboard/DashboardPage.svelte';
 import AppShell from '../layout/AppShell.svelte';
 import PagePluginHost from '../pages/PagePluginHost.svelte';
 import PackageManagerPage from '../pages/PackageManagerPage.svelte';
 import SettingsPage from '../pages/settings/SettingsPage.svelte';
-import {SETTINGS_TAB_DEFS} from '../pages/settings/settings-tabs.js';
 import {type PluginRegistry, pluginRegistry} from '../runtime/plugin-registry.js';
+import {HOST_PATHS, type PluginPageTable} from './host-routes.js';
 
 export interface PageRouteDefinition {
   readonly route: string;
   readonly name: string;
 }
 
-/** Maps a page plugin's canonical absolute base route to its canonical entry name. */
-export const routeToPluginName = new Map<string, string>();
+export interface PluginRoutesBuild {
+  readonly routes: Record<string, RouteComponent>;
+  readonly pageTable: PluginPageTable;
+}
 
-let pageRouteDefinitions: readonly PageRouteDefinition[] = [];
+export type AppRouter = ReturnType<typeof createRouter> & {readonly pluginPages: PluginPageTable};
 
-export let appRouter: ReturnType<typeof createRouter>;
+export let appRouter: AppRouter;
 
 function canonicalBaseRoute(route: string): string {
   const withoutTrailingSlash = route.length > 1 && route.endsWith('/') ? route.slice(0, -1) : route;
@@ -44,15 +46,14 @@ function assertRouteIsAvailable(route: string, name: string): void {
  */
 export function buildPluginRoutes(
   registry: Pick<PluginRegistry, 'getPages'> = pluginRegistry,
-): Record<string, typeof PagePluginHost> {
+): PluginRoutesBuild {
   const pages = registry
     .getPages()
     .slice()
     .sort((a, b) => a.entry.label.localeCompare(b.entry.label) || a.entry.name.localeCompare(b.entry.name));
 
-  const nextRoutes: Record<string, typeof PagePluginHost> = {};
+  const nextRoutes: Record<string, RouteComponent> = {};
   const nextMappings = new Map<string, string>();
-  const nextDefinitions: PageRouteDefinition[] = [];
 
   for (const page of pages) {
     const {name, route} = page.entry;
@@ -73,22 +74,52 @@ export function buildPluginRoutes(
     nextRoutes[baseRoute] = PagePluginHost;
     nextRoutes[wildcardRoute] = PagePluginHost;
     nextMappings.set(baseRoute, name);
-    nextDefinitions.push({route: baseRoute, name});
   }
 
-  routeToPluginName.clear();
+  const pluginNameToBaseRoute = new Map<string, string>();
 
   for (const [route, name] of nextMappings) {
-    routeToPluginName.set(route, name);
+    pluginNameToBaseRoute.set(name, route);
   }
 
-  pageRouteDefinitions = nextDefinitions;
+  const pageTable: PluginPageTable = {
+    baseRouteOf(pluginName: string): string | undefined {
+      return pluginNameToBaseRoute.get(pluginName);
+    },
+    pluginNameOf(baseRoute: string): string | undefined {
+      return nextMappings.get(canonicalBaseRoute(baseRoute));
+    },
+  };
 
-  return nextRoutes;
+  return {routes: nextRoutes, pageTable};
 }
 
 export function getPageRouteDefinitions(): readonly PageRouteDefinition[] {
-  return pageRouteDefinitions;
+  return pluginRegistry.getPages().flatMap((page) => {
+    const route = appRouter.pluginPages.baseRouteOf(page.entry.name);
+
+    if (route === undefined) {
+      return [];
+    }
+
+    return [{route, name: page.entry.name}];
+  });
+}
+
+/** Build all authenticated route entries except the shared AppShell layout wrapper. */
+export function buildHostRouteTable(
+  pluginRoutes: Record<string, RouteComponent>,
+): Record<string, RouteComponent> {
+  return {
+    [HOST_PATHS.dashboard]: DashboardPage,
+    [HOST_PATHS.login]: DashboardPage,
+    [HOST_PATHS.packages]: PackageManagerPage,
+    [HOST_PATHS.packageServices]: PackageManagerPage,
+    [HOST_PATHS.settings]: SettingsPage,
+    ...Object.fromEntries(Object.values(HOST_PATHS.settingsTab).map((path) => [path, SettingsPage])),
+    ...pluginRoutes,
+    '*': DashboardPage,
+  };
 }
 
 function stripOneTrailingSlash(pathname: string): string {
@@ -97,35 +128,32 @@ function stripOneTrailingSlash(pathname: string): string {
 
 export function resolvePageRoute(
   pathname: string,
-  routes: readonly PageRouteDefinition[],
+  routesOrPageTable: readonly PageRouteDefinition[] | PluginPageTable,
 ): {name: string; childPath: string} | null {
   const normalizedPathname = stripOneTrailingSlash(pathname);
-  const lowerPathname = normalizedPathname.toLowerCase();
+  const segmentEnd = normalizedPathname.indexOf('/', 1);
+  const baseRoute = segmentEnd === -1 ? normalizedPathname : normalizedPathname.slice(0, segmentEnd);
+  let name: string | undefined;
 
-  for (const route of routes) {
-    const baseRoute = canonicalBaseRoute(route.route);
-    const lowerBaseRoute = baseRoute.toLowerCase();
-
-    if (lowerPathname === lowerBaseRoute) {
-      return {name: route.name, childPath: ''};
-    }
-
-    const prefix = `${lowerBaseRoute}/`;
-
-    if (lowerPathname.startsWith(prefix)) {
-      const childPath = normalizedPathname.slice(baseRoute.length);
-
-      return {name: route.name, childPath: childPath === '/' ? '' : childPath};
-    }
+  if ('pluginNameOf' in routesOrPageTable) {
+    name = routesOrPageTable.pluginNameOf(baseRoute);
+  } else {
+    name = routesOrPageTable.find((route) => canonicalBaseRoute(route.route) === canonicalBaseRoute(baseRoute))?.name;
   }
 
-  return null;
+  if (name === undefined) {
+    return null;
+  }
+
+  const childPath = normalizedPathname.slice(baseRoute.length);
+
+  return {name, childPath: childPath === '/' ? '' : childPath};
 }
 
 /** Repair malformed raw browser paths before sv-router decodes wildcard captures. */
 export function repairMalformedPagePath(): void {
   const pathname = globalThis.location.pathname;
-  const match = resolvePageRoute(pathname, pageRouteDefinitions);
+  const match = resolvePageRoute(pathname, appRouter.pluginPages);
 
   if (match === null) {
     return;
@@ -134,16 +162,16 @@ export function repairMalformedPagePath(): void {
   try {
     decodeURIComponent(pathname);
   } catch (_error) {
-    const definition = pageRouteDefinitions.find((route) => route.name === match.name);
+    const baseRoute = appRouter.pluginPages.baseRouteOf(match.name);
 
-    if (definition === undefined) {
+    if (baseRoute === undefined) {
       return;
     }
 
     globalThis.history.replaceState(
       globalThis.history.state,
       '',
-      `${definition.route}${globalThis.location.search}${globalThis.location.hash}`,
+      `${baseRoute}${globalThis.location.search}${globalThis.location.hash}`,
     );
   }
 }
@@ -154,24 +182,19 @@ export function repairMalformedPagePath(): void {
  */
 export function createAppRouter(
   registry: Pick<PluginRegistry, 'getPages'> = pluginRegistry,
-): ReturnType<typeof createRouter> {
-  const pluginRoutes = buildPluginRoutes(registry);
+): AppRouter {
+  const {routes: pluginRoutes, pageTable} = buildPluginRoutes(registry);
+  const hostRoutes = buildHostRouteTable(pluginRoutes);
 
   const router = createRouter({
-    '/': {
-      'layout': AppShell,
-      '/': DashboardPage,
-      '/packages': PackageManagerPage,
-      '/packages/services': PackageManagerPage,
-      '/settings': SettingsPage,
-      ...Object.fromEntries(SETTINGS_TAB_DEFS.map((tab) => [tab.route, SettingsPage])),
-      ...pluginRoutes,
-      '*': DashboardPage,
+    [HOST_PATHS.dashboard]: {
+      layout: AppShell,
+      ...hostRoutes,
     },
   });
 
-  appRouter = router;
+  appRouter = Object.assign(router, {pluginPages: pageTable});
   repairMalformedPagePath();
 
-  return router;
+  return appRouter;
 }

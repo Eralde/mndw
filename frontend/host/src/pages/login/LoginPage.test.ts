@@ -18,7 +18,7 @@ vi.mock('../../services/init-auth.js', () => ({
 
 import LoginPage from './LoginPage.svelte';
 import {appState} from '../../state/app.svelte.js';
-import {defaultHostServices} from '../../host-services.js';
+import {createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
 
 type LoginInput = HTMLElement & {
@@ -30,7 +30,7 @@ type LoginInput = HTMLElement & {
 let target: HTMLDivElement;
 let component: ReturnType<typeof mount>;
 
-function render(context = createHostServicesContext(defaultHostServices())): void {
+function render(context = createHostServicesContext(createHostServices())): void {
   target = document.createElement('div');
   document.body.appendChild(target);
   component = mount(LoginPage, {target, context});
@@ -79,7 +79,7 @@ afterEach(() => {
 describe('LoginPage', () => {
   it('offers a language selector before authentication', () => {
     const setLocale = vi.fn().mockResolvedValue(undefined);
-    const services = defaultHostServices();
+    const services = createHostServices();
 
     render(createHostServicesContext({...services, locale: {...services.locale, setLocale}}));
 
@@ -113,7 +113,7 @@ describe('LoginPage', () => {
       appState.localeSwitchPending = false;
       flushSync();
     });
-    const services = defaultHostServices();
+    const services = createHostServices();
 
     render(createHostServicesContext({...services, locale: {...services.locale, setLocale}}));
 

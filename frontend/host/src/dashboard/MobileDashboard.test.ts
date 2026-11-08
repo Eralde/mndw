@@ -23,7 +23,7 @@ vi.mock('./tile-controller.js', () => ({
 
 import {ensureTileController} from './tile-controller.js';
 import MobileDashboard from './MobileDashboard.svelte';
-import {defaultHostServices} from '../host-services.js';
+import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 
 function mountList(order: string[], onRemoveRequest = vi.fn()) {
@@ -34,7 +34,7 @@ function mountList(order: string[], onRemoveRequest = vi.fn()) {
   const component = mount(MobileDashboard, {
     target,
     props: {order, onRemoveRequest},
-    context: createHostServicesContext(defaultHostServices()),
+    context: createHostServicesContext(createHostServices()),
   });
 
   flushSync();

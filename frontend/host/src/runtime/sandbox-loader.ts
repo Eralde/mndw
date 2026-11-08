@@ -1,14 +1,8 @@
 import type {MndwPlugin} from '@mndw/sdk';
 import {type PluginManifest, validateManifest} from '@mndw/sdk-internal';
-import {getLocale} from '../services/locale.service.js';
-import {
-  type PluginCatalogService,
-  createPluginCatalogSource,
-  pluginCatalogService,
-} from '../services/plugin-catalog.service.js';
-import {type LoadedPlugin, pluginRegistry} from './plugin-registry.js';
+import {type PluginCatalogService, createPluginCatalogSource} from '../services/plugin-catalog.service.js';
+import type {LoadedPlugin} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
-import {defaultHostServices} from '../host-services.js';
 import type {PluginContextServices} from './plugin-context.js';
 
 /** Window event the sandbox HMR transaction dispatches so the active page host remounts. */
@@ -46,18 +40,18 @@ export interface SandboxImports {
 }
 
 /** Injected boundaries so the loader is unit-testable without Vite virtual modules or the DOM. */
-export interface SandboxLoaderDeps extends Partial<SandboxImports> {
+export interface SandboxLoaderDeps extends SandboxImports {
   catalogBaseUrl?: string;
-  registry?: SandboxRegistry;
-  catalogService?: PluginCatalogService;
-  getLocale?: () => string;
-  pluginContextServices?: Partial<PluginContextServices>;
+  registry: SandboxRegistry;
+  catalogService: PluginCatalogService;
+  getLocale: () => string;
+  pluginContextServices: PluginContextServices;
   remountWidgets?: (
     name: string,
     next: LoadedPlugin,
     prior: LoadedPlugin,
     registry: SandboxRegistry,
-    pluginContextServices: Partial<PluginContextServices>,
+    pluginContextServices: PluginContextServices,
   ) => Promise<boolean>;
   reloadPage?: (name: string, next: LoadedPlugin, prior: LoadedPlugin) => Promise<boolean>;
 }
@@ -127,10 +121,6 @@ export function manifestToListEntry(manifest: PluginManifest, catalogBaseUrl?: s
 }
 
 async function buildLoadedPlugin(deps: SandboxLoaderDeps): Promise<LoadedPlugin> {
-  if (deps.importPluginModule === undefined || deps.importManifestModule === undefined) {
-    throw new Error('Sandbox imports were not provided');
-  }
-
   const module = validateModule(await deps.importPluginModule());
   const manifestModule = await deps.importManifestModule();
 
@@ -141,8 +131,8 @@ async function buildLoadedPlugin(deps: SandboxLoaderDeps): Promise<LoadedPlugin>
   const manifest = validateManifest(manifestModule.default);
   const catalogBaseUrl = deps.catalogBaseUrl ?? manifestModule.__catalogBaseUrl;
   const entry = manifestToListEntry(manifest, catalogBaseUrl);
-  const catalogService = deps.catalogService ?? pluginCatalogService;
-  const localeOf = deps.getLocale ?? getLocale;
+  const catalogService = deps.catalogService;
+  const localeOf = deps.getLocale;
   const source = createPluginCatalogSource(
     entry.name,
     entry.version,
@@ -164,8 +154,8 @@ async function buildLoadedPlugin(deps: SandboxLoaderDeps): Promise<LoadedPlugin>
  * registers it. A missing/invalid module or manifest is logged and nothing is registered —
  * never a placeholder plugin masking the authoring error.
  */
-export async function loadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise<void> {
-  const registry = deps.registry ?? pluginRegistry;
+export async function loadSandboxPlugin(deps: SandboxLoaderDeps): Promise<void> {
+  const registry = deps.registry;
 
   try {
     const plugin = await buildLoadedPlugin(deps);
@@ -184,20 +174,11 @@ export async function loadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise<v
  * registry is rolled back to the prior module and the previous live plugin is retained;
  * a topology-changing manifest returns `restart-required` without disturbing the live plugin.
  */
-export async function reloadSandboxPlugin(deps: SandboxLoaderDeps = {}): Promise<SandboxReloadResult> {
-  const registry = deps.registry ?? pluginRegistry;
+export async function reloadSandboxPlugin(deps: SandboxLoaderDeps): Promise<SandboxReloadResult> {
+  const registry = deps.registry;
   const remountWidgets = deps.remountWidgets ?? defaultRemountWidgets;
   const reloadPage = deps.reloadPage ?? defaultReloadPage;
-  const pluginContextServices = deps.pluginContextServices ?? (() => {
-    const services = defaultHostServices();
-
-    return {
-      locale: services.locale,
-      palette: services.palette,
-      telemetry: services.telemetry,
-      eventStream: services.eventStream,
-    };
-  })();
+  const pluginContextServices = deps.pluginContextServices;
 
   let candidate: LoadedPlugin;
 
@@ -254,7 +235,7 @@ async function defaultRemountWidgets(
   next: LoadedPlugin,
   prior: LoadedPlugin,
   registry: SandboxRegistry,
-  pluginContextServices: Partial<PluginContextServices>,
+  pluginContextServices: PluginContextServices,
 ): Promise<boolean> {
   const {remountWidgetTiles} = await import('../dashboard/tile-controller.js');
 

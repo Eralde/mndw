@@ -29,7 +29,8 @@ vi.mock('./breakpoint.js', () => ({
   mobileMediaQuery: vi.fn(() => mobileState),
 }));
 
-vi.mock('../runtime/plugin-registry.js', () => ({
+vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
   pluginRegistry: {getPages: vi.fn(() => [])},
 }));
 
@@ -38,7 +39,7 @@ import type {PageListEntry} from '../runtime/plugin-types.js';
 import {setLocale} from '../services/locale.service.js';
 import {appState} from '../state/app.svelte.js';
 import Sidebar from './Sidebar.svelte';
-import {defaultHostServices} from '../host-services.js';
+import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 
 const emptyBackend = {routes: {}};
@@ -66,7 +67,10 @@ function mountSidebar(): {component: ReturnType<typeof mount>; target: HTMLEleme
 
   document.body.appendChild(target);
 
-  const component = mount(Sidebar, {target, context: createHostServicesContext(defaultHostServices())});
+  const component = mount(Sidebar, {
+    target,
+    context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
+  });
 
   flushSync();
 

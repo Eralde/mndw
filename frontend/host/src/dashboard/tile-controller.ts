@@ -120,7 +120,7 @@ function buildTileFrame(
  * switches reparent instead of remount — the second renderer gets the same frame.
  */
 export function ensureTileController(
-  pluginContextServices: Partial<PluginContextServices>,
+  pluginContextServices: PluginContextServices,
   registry: Pick<PluginRegistry, 'get'>,
   pluginName: string,
   instanceId: string,
@@ -179,7 +179,7 @@ export function getTileController(tileId: string): TileController | undefined {
 
 /** Mounts pending placeholders when dependency status transitions to ready or failed. */
 export function hydratePendingTiles(
-  pluginContextServices: Partial<PluginContextServices>,
+  pluginContextServices: PluginContextServices,
   registry: Pick<PluginRegistry, 'get'>,
 ): void {
   for (const controller of controllers.values()) {
@@ -264,7 +264,7 @@ function refreshTileFrame(frame: HTMLElement, label: string): void {
  * `false` in that case. No-op returning `true` when no tile matches.
  */
 export async function remountWidgetTiles(
-  pluginContextServices: Partial<PluginContextServices>,
+  pluginContextServices: PluginContextServices,
   _registry: Pick<PluginRegistry, 'get'>, // kept to keep signature aligned with `defaultRemountWidgets`
   pluginName: string,
   next: LoadedPlugin,

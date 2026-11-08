@@ -1,11 +1,14 @@
 // @vitest-environment happy-dom
 import {MNDW_TOKENS, PLUGIN_RCI_MANAGER_METHODS, PageRouteError, type PaletteTokenMap} from '@mndw/sdk';
 import {of} from 'rxjs';
-import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {createPluginContext} from './plugin-context.js';
+import {beforeEach, describe, expect, expectTypeOf, it, vi} from 'vitest';
+import {
+  createPluginContext as createPluginContextImpl,
+  type CreatePluginContextOptions,
+  type PluginContextServices,
+} from './plugin-context.js';
 import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
-import {localeService} from '../services/locale.service.js';
-import {paletteService} from '../services/palette.service.js';
+import {createHostServices} from '../host-services.js';
 import type {PageListEntry, PluginBackendDescriptor, WidgetListEntry} from './plugin-types.js';
 
 vi.mock('../services/rci.service.js', () => ({
@@ -45,6 +48,25 @@ vi.mock('../services/overlay/overlay-manager.svelte.js', () => ({
 }));
 
 const hostInfo = {locale: 'en', theme: 'dark'} as const;
+const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const pluginContextServices: PluginContextServices = {
+  locale: hostServices.locale,
+  palette: hostServices.palette,
+  telemetry: hostServices.telemetry,
+  eventStream: hostServices.eventStream,
+};
+
+type TestPluginContextOptions = Omit<CreatePluginContextOptions, 'services'> & {
+  services?: Partial<PluginContextServices>;
+};
+type IsRequired<T, K extends keyof T> = T extends Required<Pick<T, K>> ? true : false;
+
+function createPluginContext(options: TestPluginContextOptions): ReturnType<typeof createPluginContextImpl> {
+  return createPluginContextImpl({
+    ...options,
+    services: {...pluginContextServices, ...options.services},
+  });
+}
 
 class ContextTickerWorker {
   public static readonly instances: ContextTickerWorker[] = [];
@@ -231,13 +253,17 @@ describe('createPluginContext', () => {
 });
 
 describe('createPluginContext service boundaries', () => {
+  it('requires host services', () => {
+    expectTypeOf<IsRequired<Parameters<typeof createPluginContextImpl>[0], 'services'>>().toEqualTypeOf<true>();
+  });
+
   it('reads live theme, locale and palette through getters', () => {
     let locale = 'en';
     let palette: PaletteTokenMap = MNDW_TOKENS;
     const localeListeners = new Set<(value: string) => void>();
     const paletteListeners = new Set<(value: PaletteTokenMap) => void>();
     const injectedLocale = {
-      ...localeService,
+      ...hostServices.locale,
       getLocale: () => locale,
       subscribeLocale: (callback: (value: string) => void): () => void => {
         localeListeners.add(callback);
@@ -246,7 +272,7 @@ describe('createPluginContext service boundaries', () => {
       },
     };
     const injectedPalette = {
-      ...paletteService,
+      ...hostServices.palette,
       getTokens: () => palette,
       subscribePalette: (callback: (value: PaletteTokenMap) => void): () => void => {
         paletteListeners.add(callback);
@@ -287,6 +313,7 @@ describe('createPluginContext service boundaries', () => {
     expect(ctx.theme).toBe('light');
     expect(ctx.locale).toBe('ru');
     expect(ctx.palette).toBe(nextPalette);
+    expect(ctx.telemetry).toBe(pluginContextServices.telemetry);
 
     subscriptions.forEach((subscription) => subscription.unsubscribe());
   });
@@ -330,8 +357,8 @@ describe('createPluginContext service boundaries', () => {
   it('uses injected locale and palette services for plugin-facing getters', () => {
     const localeSpy = vi.fn(() => 'ru');
     const paletteSpy = vi.fn(() => MNDW_TOKENS);
-    const injectedLocale = {...localeService, getLocale: localeSpy};
-    const injectedPalette = {...paletteService, getTokens: paletteSpy};
+    const injectedLocale = {...hostServices.locale, getLocale: localeSpy};
+    const injectedPalette = {...hostServices.palette, getTokens: paletteSpy};
     const {context: ctx} = createPluginContext({
       entry: widgetEntry(),
       instanceId: 'demo:1',
@@ -384,9 +411,15 @@ describe('plugin RCI facade', () => {
 });
 
 describe('palette access', () => {
-  it('exposes the applied palette and notifies on change$', async () => {
-    const service = await import('../services/palette.service.js');
-    const handle = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+  it('exposes the applied palette and notifies on change$', () => {
+    const service = hostServices.palette;
+    const handle = createPluginContext({
+      entry: widgetEntry(),
+      instanceId: 'demo:1',
+      hostInfo,
+      deviceInfo,
+      services: {palette: service},
+    });
     const {context: ctx} = handle;
 
     expect(ctx.palette).toEqual(service.getTokens());

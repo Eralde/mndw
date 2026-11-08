@@ -2,7 +2,7 @@
 import {defineMndwUi} from '@mndw/ui';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
-import {defaultHostServices, type HostServices} from '../../host-services.js';
+import {createHostServices, type HostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
 import type {PersistentRciCapability} from '../../services/persistent-rci-session.service.js';
 import GeneralSettings from './GeneralSettings.svelte';
@@ -28,13 +28,15 @@ let target: HTMLDivElement;
 let component: ReturnType<typeof mount> | undefined;
 
 function createServices(): HostServices {
-  const services = defaultHostServices();
+  const services = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+
+  vi.spyOn(services.persistentRci, 'getCapability').mockImplementation(getCapability);
 
   return {
     ...services,
     mgmtClient: {...services.mgmtClient, getTelemetry, setTelemetry},
     palette: {...services.palette, refreshPalette},
-    persistentRci: {...services.persistentRci, getCapability},
+    persistentRci: services.persistentRci,
   };
 }
 

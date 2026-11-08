@@ -101,7 +101,8 @@ vi.mock('./widget-counter.js', () => ({
   raiseInstanceCounter: vi.fn(),
 }));
 
-vi.mock('../runtime/plugin-registry.js', () => ({
+vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
   pluginRegistry: {get: vi.fn(), getWidgets: vi.fn(() => [])},
 }));
 
@@ -112,7 +113,7 @@ import {pluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {raiseInstanceCounter} from './widget-counter.js';
 import DashboardPage from './DashboardPage.svelte';
-import {defaultHostServices} from '../host-services.js';
+import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 
 const emptyBackend = {routes: {}};
@@ -158,7 +159,7 @@ function mountPage(): {component: ReturnType<typeof mount>; target: HTMLElement}
 
   const component = mount(DashboardPage, {
     target,
-    context: createHostServicesContext(defaultHostServices()),
+    context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
   });
 
   flushSync();
@@ -301,7 +302,7 @@ describe('DashboardPage', () => {
     expect(() => {
       component = mount(DashboardPage, {
         target,
-        context: createHostServicesContext(defaultHostServices()),
+        context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
       });
       flushSync();
     }).toThrow('add failed');

@@ -11,7 +11,7 @@ import type {HostInfo} from '../runtime/device-info-context.js';
  * list `entry` (the daemon is authoritative for the backend descriptor).
  */
 export function createWidgetContext(
-  pluginContextServices: Partial<PluginContextServices>,
+  pluginContextServices: PluginContextServices,
   registry: Pick<PluginRegistry, 'get'>,
   pluginName: string,
   instanceId: string,

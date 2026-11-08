@@ -11,7 +11,8 @@ const commitOverride = vi.fn<(palette: PaletteTokenMap) => Promise<void>>();
 const resetToDefault = vi.fn<() => Promise<void>>();
 const getExportable = vi.fn<() => PaletteTokenMap>();
 
-vi.mock('../../../services/palette.service.js', () => ({
+vi.mock('../../../services/palette.service.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../services/palette.service.js')>(),
   refreshPalette: (): Promise<void> => refreshPalette(),
   previewOverride: (palette: PaletteTokenMap): void => previewOverride(palette),
   discardPreview: (): void => discardPreview(),
@@ -30,7 +31,8 @@ vi.mock('../../../services/palette.service.js', () => ({
 }));
 
 import PaletteManager from './PaletteManager.svelte';
-import {defaultHostServices} from '../../../host-services.js';
+import {createHostServices} from '../../../host-services.js';
+import {paletteService} from '../../../services/palette.service.js';
 import {createHostServicesContext} from '../../../host-services-context.js';
 
 const valid = JSON.parse(JSON.stringify(MNDW_TOKENS)) as PaletteTokenMap;
@@ -44,7 +46,10 @@ function render(): void {
   component = mount(PaletteManager, {
     target,
     props: {},
-    context: createHostServicesContext(defaultHostServices()),
+    context: createHostServicesContext({
+      ...createHostServices({fetch: vi.fn<typeof globalThis.fetch>()}),
+      palette: paletteService,
+    }),
   });
   flushSync();
 }

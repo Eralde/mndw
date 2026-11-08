@@ -34,7 +34,8 @@ vi.mock('../../router/create-app-router.js', () => ({
   },
 }));
 
-vi.mock('../../services/mgmt-client.js', () => ({
+vi.mock('../../services/mgmt-client.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../services/mgmt-client.js')>(),
   mgmtClient: {
     listPlugins: vi.fn().mockResolvedValue([]),
     uploadPlugin: vi.fn(),
@@ -52,7 +53,8 @@ vi.mock('../../services/theme.service.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../services/theme.service.js')>(),
   toggleTheme: vi.fn(),
 }));
-vi.mock('../../services/palette.service.js', () => ({
+vi.mock('../../services/palette.service.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../services/palette.service.js')>(),
   refreshPalette: vi.fn().mockResolvedValue(undefined),
   previewOverride: vi.fn(),
   discardPreview: vi.fn(),
@@ -96,12 +98,25 @@ vi.mock('../../services/self-update-client.js', () => ({
 import SettingsPage from './SettingsPage.svelte';
 import generalSettingsSource from './GeneralSettings.svelte?raw';
 import {toggleTheme} from '../../services/theme.service.js';
-import {defaultHostServices} from '../../host-services.js';
+import {createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
-import {PersistentRciSessionError} from '../../services/persistent-rci-session.service.js';
+import {mgmtClient} from '../../services/mgmt-client.js';
+import {paletteService} from '../../services/palette.service.js';
+import {PersistentRciSessionError, persistentRciSessionService} from '../../services/persistent-rci-session.service.js';
 
-const mount = (component: typeof SettingsPage, options: {target: HTMLElement}) =>
-  mountComponent(component, {...options, context: createHostServicesContext(defaultHostServices())});
+const mount = (component: typeof SettingsPage, options: {target: HTMLElement}) => {
+  const services = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+
+  return mountComponent(component, {
+    ...options,
+    context: createHostServicesContext({
+      ...services,
+      mgmtClient,
+      palette: paletteService,
+      persistentRci: persistentRciSessionService,
+    }),
+  });
+};
 
 beforeAll(() => {
   defineMndwUi();

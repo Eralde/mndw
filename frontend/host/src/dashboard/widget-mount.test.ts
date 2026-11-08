@@ -18,8 +18,7 @@ import {type MountedPlugin, mountPlugin, unmountPlugin} from '../runtime/plugin-
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {appState} from '../state/app.svelte.js';
-import {localeService} from '../services/locale.service.js';
-import {paletteService} from '../services/palette.service.js';
+import {createHostServices} from '../host-services.js';
 import {createWidgetContext} from './widget-context.js';
 import {mountWidgetTile} from './widget-mount.js';
 
@@ -67,7 +66,13 @@ const explicitDeviceInfo: DeviceInfoData = {
 
 const dispose = vi.fn();
 const handle = {context: {instanceId: 'traffic:1'} as PluginContext, dispose};
-const pluginContextServices = {locale: localeService, palette: paletteService};
+const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const pluginContextServices = {
+  locale: hostServices.locale,
+  palette: hostServices.palette,
+  telemetry: hostServices.telemetry,
+  eventStream: hostServices.eventStream,
+};
 
 function fakeMounted(): MountedPlugin {
   return {pluginName: 'traffic', instanceId: 'traffic:1', instance: {unmount: vi.fn()}};

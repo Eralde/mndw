@@ -3,14 +3,15 @@ import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest
 import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
 
-vi.mock('../runtime/plugin-registry.js', () => ({
+vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
   pluginRegistry: {getWidgets: vi.fn()},
 }));
 
 import {type LoadedWidget, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
-import {defaultHostServices} from '../host-services.js';
+import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import FloatingAddPanel from './FloatingAddPanel.svelte';
 
@@ -53,7 +54,7 @@ function mountPanel(open = true): PanelHandles {
   const component = mount(FloatingAddPanel, {
     target,
     props: {open, onAddWidget, onClose},
-    context: createHostServicesContext(defaultHostServices()),
+    context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
   });
 
   flushSync();

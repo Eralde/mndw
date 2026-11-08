@@ -11,9 +11,9 @@ import './services/pristine-fetch.js';
 import {initTheme} from './services/theme.service.js';
 import {appState, resetToLogin} from './state/app.svelte.js';
 import {initialize} from './startup.js';
-import {defaultHostServices} from './host-services.js';
+import {appHostServices} from './host-services.js';
 
-const services = defaultHostServices();
+const services = appHostServices();
 
 // A broken plugin must never take down the host. These window-level guards swallow
 // errors originating from plugin bundle URLs; the per-widget error boundary

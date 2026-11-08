@@ -22,7 +22,7 @@ vi.mock('../services/rci.service.js', () => ({
 import Header from './Header.svelte';
 import * as localeService from '../services/locale.service.js';
 import {appState} from '../state/app.svelte.js';
-import {defaultHostServices} from '../host-services.js';
+import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 
 const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
@@ -55,7 +55,7 @@ afterEach(() => {
 describe('Header locale controls', () => {
   it('offers one language selector with EN and RU options', () => {
     const setLocale = vi.fn().mockResolvedValue(undefined);
-    const services = defaultHostServices();
+    const services = createHostServices();
     const target = document.createElement('div');
 
     document.body.appendChild(target);
@@ -94,7 +94,7 @@ describe('Header locale controls', () => {
       appState.localeSwitchPending = false;
       flushSync();
     });
-    const services = defaultHostServices();
+    const services = createHostServices();
     const target = document.createElement('div');
 
     document.body.appendChild(target);
@@ -135,7 +135,7 @@ describe('Header locale controls', () => {
 
     document.body.appendChild(target);
 
-    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
+    const component = mount(Header, {target, context: createHostServicesContext(createHostServices())});
 
     try {
       expect(target.querySelector('.mndw-header__logout')?.textContent?.trim()).toBe('Logout');
@@ -158,7 +158,7 @@ describe('Header locale controls', () => {
     document.body.appendChild(target);
     appState.theme = 'dark';
 
-    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
+    const component = mount(Header, {target, context: createHostServicesContext(createHostServices())});
     const toggle = target.querySelector('.mndw-header__theme-toggle');
 
     try {
@@ -181,7 +181,7 @@ describe('Header locale controls', () => {
 
     document.body.appendChild(target);
 
-    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
+    const component = mount(Header, {target, context: createHostServicesContext(createHostServices())});
     const logoutButton = target.querySelector('.mndw-header__logout');
 
     try {
@@ -201,7 +201,7 @@ describe('Header logout', () => {
 
     document.body.appendChild(target);
 
-    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
+    const component = mount(Header, {target, context: createHostServicesContext(createHostServices())});
 
     target.querySelector('.mndw-header__logout')?.dispatchEvent(new Event('click', {bubbles: true}));
     await vi.waitFor(() => expect(logout).toHaveBeenCalledTimes(1));
@@ -222,7 +222,7 @@ describe('Header menu toggle', () => {
 
     document.body.appendChild(target);
 
-    const component = mount(Header, {target, context: createHostServicesContext(defaultHostServices())});
+    const component = mount(Header, {target, context: createHostServicesContext(createHostServices())});
     const menu = target.querySelector<HTMLElement>('.mndw-header__menu-toggle');
 
     menu?.click();

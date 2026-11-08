@@ -46,6 +46,10 @@ const deviceInfo = {
   usb: {ports: []},
 };
 
+function testHostServices() {
+  return createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+}
+
 describe('initAuthenticated', () => {
   beforeEach(() => {
     appState.ready = false;
@@ -63,7 +67,7 @@ describe('initAuthenticated', () => {
   });
 
   it('loads plugins from the daemon and never touches the sandbox loader in normal mode', async () => {
-    await initAuthenticated();
+    await initAuthenticated(testHostServices());
 
     expect(loadPlugins).toHaveBeenCalledTimes(1);
     expect(loadSandboxPlugin).not.toHaveBeenCalled();
@@ -71,7 +75,7 @@ describe('initAuthenticated', () => {
   });
 
   it('loads and routes through the injected host service graph', async () => {
-    const services = createHostServices();
+    const services = testHostServices();
     const loaded: LoaderDeps[] = [];
     let routedRegistry: unknown;
 
@@ -97,7 +101,7 @@ describe('initAuthenticated', () => {
     vi.stubGlobal('__MNDW_SANDBOX__', 'virtual');
     vi.mocked(loadSandboxPlugin).mockResolvedValue(undefined);
 
-    await initAuthenticated();
+    await initAuthenticated(testHostServices());
 
     expect(loadSandboxPlugin).toHaveBeenCalledWith(expect.objectContaining({
       ...sandboxVirtualImports,
@@ -113,7 +117,7 @@ describe('initAuthenticated', () => {
     vi.stubGlobal('__MNDW_SANDBOX__', 'url');
     vi.mocked(loadSandboxPlugin).mockResolvedValue(undefined);
 
-    await initAuthenticated();
+    await initAuthenticated(testHostServices());
 
     expect(sandboxUrlImports).toHaveBeenCalledTimes(1);
     expect(loadSandboxPlugin).toHaveBeenCalledWith(expect.objectContaining({
@@ -135,7 +139,7 @@ describe('initAuthenticated', () => {
       }),
     );
 
-    const pending = initAuthenticated();
+    const pending = initAuthenticated(testHostServices());
 
     // Let the awaited host-info settle so we are parked on loadPlugins.
     await Promise.resolve();
@@ -159,7 +163,7 @@ describe('initAuthenticated', () => {
 
     vi.mocked(fetchHostInfo).mockRejectedValue(new Error('rci down'));
 
-    await initAuthenticated();
+    await initAuthenticated(testHostServices());
 
     expect(errorSpy).toHaveBeenCalled();
     expect(appState.hostInfo).toBeNull();
@@ -176,7 +180,7 @@ describe('initAuthenticated', () => {
 
     vi.mocked(fetchDeviceInfo).mockRejectedValue(new Error('device info down'));
 
-    await initAuthenticated();
+    await initAuthenticated(testHostServices());
 
     expect(errorSpy).toHaveBeenCalled();
     expect(appState.deviceInfo).toBeNull();
@@ -189,7 +193,7 @@ describe('initAuthenticated', () => {
     // loadPlugins captures list failures internally and resolves; startup must proceed.
     vi.mocked(loadPlugins).mockResolvedValue(undefined);
 
-    await initAuthenticated();
+    await initAuthenticated(testHostServices());
 
     expect(createAppRouter).toHaveBeenCalledTimes(1);
     expect(appState.ready).toBe(true);

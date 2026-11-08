@@ -7,14 +7,12 @@ import {
 } from '@mndw/sdk';
 import {type BackendDescriptor, createBackendClient} from '@mndw/sdk-internal';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
-import {getLocale, subscribeLocale} from '../services/locale.service.js';
 import {type PluginCatalogCell, createPluginI18n} from '../services/plugin-catalog.service.js';
 import {createPluginOverlayService} from '../services/overlay/overlay-manager.svelte.js';
 import {rciService} from '../services/rci.service.js';
 import {ScopedPluginStorage} from '../services/storage.service.js';
-import {getTokens, subscribePalette} from '../services/palette.service.js';
 import {getTheme, subscribeTheme} from '../services/theme.service.js';
-import {type HostServices, defaultHostServices} from '../host-services.js';
+import type {HostServices} from '../host-services.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {createServiceFacade} from './service-facade.js';
 import {type HostInfo, createDeviceInfoContext} from './device-info-context.js';
@@ -75,22 +73,19 @@ export interface CreatePluginContextOptions {
   setTileTitle?: (title: string) => void;
   pageRoute?: PageRoute;
   catalogCell?: PluginCatalogCell;
-  services?: Partial<PluginContextServices>;
+  services: PluginContextServices;
 }
 
 export function createPluginContext(options: CreatePluginContextOptions): PluginContextHandle {
-  const {entry, instanceId, deviceInfo, setTileTitle, pageRoute, catalogCell} = options;
-  const getHostLocale = options.services?.locale === undefined
-    ? getLocale
-    : () => options.services?.locale?.getLocale() ?? getLocale();
-  const subscribeHostLocale = options.services?.locale === undefined
-    ? (callback: () => void): () => void => subscribeLocale(() => callback())
-    : (callback: () => void): () => void => options.services?.locale?.subscribeLocale(() => callback()) ?? (() => {});
-  const getPaletteTokens = options.services?.palette === undefined
-    ? getTokens
-    : () => options.services?.palette?.getTokens() ?? getTokens();
-  const telemetry = options.services?.telemetry ?? defaultHostServices().telemetry;
-  const eventStream = options.services?.eventStream ?? defaultHostServices().eventStream;
+  const {entry, instanceId, deviceInfo, setTileTitle, pageRoute, catalogCell, services} = options;
+  const getHostLocale = (): string => services.locale.getLocale();
+  const subscribeHostLocale = (callback: () => void): (() => void) =>
+    services.locale.subscribeLocale(() => callback());
+  const subscribeHostLocaleValue = (callback: (locale: string) => void): (() => void) =>
+    services.locale.subscribeLocale(callback);
+  const getPaletteTokens = (): PluginContext['palette'] => services.palette.getTokens();
+  const telemetry = services.telemetry;
+  const eventStream = services.eventStream;
 
   if (entry.type === 'page' && pageRoute === undefined) {
     throw new Error(`Page plugin "${entry.name}" requires a page route`);
@@ -98,14 +93,8 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
 
   const lifetime = createPluginLifetime();
   const theme$ = hostValue$(getTheme, subscribeTheme, lifetime);
-  const locale$ = hostValue$(getHostLocale, (callback) =>
-    options.services?.locale === undefined
-      ? subscribeLocale(callback)
-      : options.services.locale.subscribeLocale(callback), lifetime);
-  const palette$ = hostValue$(getPaletteTokens, (callback) =>
-    options.services?.palette === undefined
-      ? subscribePalette(callback)
-      : options.services.palette.subscribePalette(callback), lifetime);
+  const locale$ = hostValue$(getHostLocale, subscribeHostLocaleValue, lifetime);
+  const palette$ = hostValue$(getPaletteTokens, (callback) => services.palette.subscribePalette(callback), lifetime);
   const {service, dispose: disposeOverlay} = createPluginOverlayService(entry.name, instanceId);
   const eventFacadeId = createEventFacadeId();
   const events = eventStream.createFacade(eventFacadeId, entry.name, entry.permissions ?? [], lifetime);

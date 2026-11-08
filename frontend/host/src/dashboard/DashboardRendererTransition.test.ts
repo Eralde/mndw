@@ -33,7 +33,8 @@ vi.mock('gridstack', () => ({
   GridStack: {init: vi.fn(() => fakeGrid)},
 }));
 
-vi.mock('../runtime/plugin-registry.js', () => ({
+vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
   pluginRegistry: {get: vi.fn()},
 }));
 
@@ -67,16 +68,20 @@ vi.mock('./tile-controller.js', () => ({
 }));
 
 import {pluginRegistry} from '../runtime/plugin-registry.js';
-import {localeService} from '../services/locale.service.js';
-import {paletteService} from '../services/palette.service.js';
-import {defaultHostServices} from '../host-services.js';
+import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import {addWidgetTile} from './grid-dashboard-setup.js';
 import DashboardGrid from './DashboardGrid.svelte';
 import MobileDashboard from './MobileDashboard.svelte';
 import {getTileController, removeTileController} from './tile-controller.js';
 
-const pluginContextServices = {locale: localeService, palette: paletteService};
+const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const pluginContextServices = {
+  locale: hostServices.locale,
+  palette: hostServices.palette,
+  telemetry: hostServices.telemetry,
+  eventStream: hostServices.eventStream,
+};
 
 const plugin = {
   entry: {
@@ -147,7 +152,7 @@ describe('dashboard renderer transition', () => {
     const mobile = mount(MobileDashboard, {
       target: mobileTarget,
       props: {order: [id], onRemoveRequest: vi.fn()},
-      context: createHostServicesContext(defaultHostServices()),
+      context: createHostServicesContext(hostServices),
     });
 
     flushSync();
@@ -171,7 +176,7 @@ describe('dashboard renderer transition', () => {
     const mobile = mount(MobileDashboard, {
       target: mobileTarget,
       props: {order: ['widget-traffic:1'], onRemoveRequest: vi.fn()},
-      context: createHostServicesContext(defaultHostServices()),
+      context: createHostServicesContext(hostServices),
     });
 
     flushSync();

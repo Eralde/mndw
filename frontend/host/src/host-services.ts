@@ -1,29 +1,17 @@
 import type {OverlayService} from '@mndw/sdk';
-import {type MgmtClient, createMgmtClient, mgmtClient as defaultMgmtClient} from './services/mgmt-client.js';
-import {
-  type PaletteService,
-  createPaletteService,
-  paletteService as defaultPaletteService,
-} from './services/palette.service.js';
+import {type MgmtClient, createMgmtClient, mgmtClient} from './services/mgmt-client.js';
+import {type PaletteService, createPaletteService, paletteService} from './services/palette.service.js';
 import {
   type PluginCatalogService,
   createPluginCatalogService,
-  pluginCatalogService as defaultCatalogService,
+  pluginCatalogService,
 } from './services/plugin-catalog.service.js';
-import {
-  type LocaleService,
-  createLocaleService,
-  localeService as defaultLocaleService,
-} from './services/locale.service.js';
-import {
-  type PluginRegistry,
-  createPluginRegistry,
-  pluginRegistry as defaultRegistry,
-} from './runtime/plugin-registry.js';
+import {type LocaleService, createLocaleService, localeService} from './services/locale.service.js';
+import {type PluginRegistry, createPluginRegistry, pluginRegistry} from './runtime/plugin-registry.js';
 import {
   type PersistentRciSessionService,
   createPersistentRciSessionService,
-  persistentRciSessionService as defaultPersistentRci,
+  persistentRciSessionService,
 } from './services/persistent-rci-session.service.js';
 import {type RciService, rciService} from './services/rci.service.js';
 import {uiOverlayService} from './services/overlay/ui-overlay.js';
@@ -37,7 +25,6 @@ export interface HostEnv {
   setUiLocale?: (locale: string) => void;
   now?: () => number;
 }
-
 export interface HostServices {
   mgmtClient: MgmtClient;
   palette: PaletteService;
@@ -51,10 +38,31 @@ export interface HostServices {
   overlay: OverlayService;
 }
 
+let applicationServices: HostServices | undefined;
+
+export function appHostServices(): HostServices {
+  if (applicationServices === undefined) {
+    applicationServices = Object.freeze({
+      mgmtClient,
+      palette: paletteService,
+      catalog: pluginCatalogService,
+      locale: localeService,
+      registry: pluginRegistry,
+      persistentRci: persistentRciSessionService,
+      rci: rciService,
+      telemetry: telemetryService,
+      eventStream: createEventStreamService(),
+      overlay: uiOverlayService,
+    });
+  }
+
+  return applicationServices;
+}
+
 export function createHostServices(env: HostEnv = {}): HostServices {
-  const mgmtClient = createMgmtClient(env.fetch ?? globalThis.fetch);
+  const isolatedMgmtClient = createMgmtClient(env.fetch ?? globalThis.fetch);
   const catalog = createPluginCatalogService({now: env.now});
-  const palette = createPaletteService({mgmtClient, document: env.document});
+  const palette = createPaletteService({mgmtClient: isolatedMgmtClient, document: env.document});
   const locale = createLocaleService({
     catalog,
     storage: env.storage,
@@ -64,7 +72,7 @@ export function createHostServices(env: HostEnv = {}): HostServices {
   const registry = createPluginRegistry({catalog});
 
   return Object.freeze({
-    mgmtClient,
+    mgmtClient: isolatedMgmtClient,
     palette,
     catalog,
     locale,
@@ -75,21 +83,4 @@ export function createHostServices(env: HostEnv = {}): HostServices {
     eventStream: createEventStreamService(),
     overlay: uiOverlayService,
   });
-}
-
-const DEFAULT_HOST_SERVICES: HostServices = Object.freeze({
-  mgmtClient: defaultMgmtClient,
-  palette: defaultPaletteService,
-  catalog: defaultCatalogService,
-  locale: defaultLocaleService,
-  registry: defaultRegistry,
-  persistentRci: defaultPersistentRci,
-  rci: rciService,
-  telemetry: telemetryService,
-  eventStream: createEventStreamService(),
-  overlay: uiOverlayService,
-});
-
-export function defaultHostServices(): HostServices {
-  return DEFAULT_HOST_SERVICES;
 }

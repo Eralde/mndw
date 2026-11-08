@@ -15,7 +15,8 @@ const getTileController = vi.hoisted(() => vi.fn());
 
 vi.mock('./tile-controller.js', () => ({ensureTileController, getTileController}));
 
-vi.mock('../runtime/plugin-registry.js', () => ({
+vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
   pluginRegistry: {get: vi.fn()},
 }));
 
@@ -25,13 +26,18 @@ vi.mock('./widget-counter.js', () => ({
 
 import type {PluginInstance} from '@mndw/sdk';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
-import {localeService} from '../services/locale.service.js';
-import {paletteService} from '../services/palette.service.js';
+import {createHostServices} from '../host-services.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import {getNextInstanceId} from './widget-counter.js';
 import {type RestoredTilePosition, addWidgetTile, resizeWidgetTile} from './grid-dashboard-setup.js';
 
-const pluginContextServices = {locale: localeService, palette: paletteService};
+const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const pluginContextServices = {
+  locale: hostServices.locale,
+  palette: hostServices.palette,
+  telemetry: hostServices.telemetry,
+  eventStream: hostServices.eventStream,
+};
 
 const emptyBackend = {routes: {}};
 

@@ -6,7 +6,7 @@ import {createAppRouter} from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {anyInstalling, startDepsPolling} from '../state/deps-status.svelte.js';
 import {fetchDeviceInfo, fetchHostInfo} from './host-info.service.js';
-import {type HostServices, defaultHostServices} from '../host-services.js';
+import type {HostServices} from '../host-services.js';
 
 /** `typeof` guards the undefined case (e.g. under vitest). */
 function isSandboxMode(): boolean {
@@ -32,7 +32,7 @@ export interface InitAuthDeps {
  * from source and HMR is wired instead. A prebuilt dev host uses URL-served modules.
  */
 export async function initAuthenticated(
-  services: HostServices = defaultHostServices(),
+  services: HostServices,
   deps: InitAuthDeps = {},
 ): Promise<void> {
   const loadPluginsFn = deps.loadPlugins ?? loadPlugins;
@@ -67,6 +67,12 @@ export async function initAuthenticated(
       registry: services.registry,
       catalogService: services.catalog,
       getLocale: () => services.locale.getLocale(),
+      pluginContextServices: {
+        locale: services.locale,
+        palette: services.palette,
+        telemetry: services.telemetry,
+        eventStream: services.eventStream,
+      },
     });
     setupHmr(services);
   } else {

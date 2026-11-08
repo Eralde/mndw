@@ -36,10 +36,20 @@ const backendManifest = {
 const sandboxModule = {createInstance: () => ({unmount: () => {}})};
 
 function deps(overrides: Partial<SandboxLoaderDeps> = {}): SandboxLoaderDeps {
+  const services = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+
   return {
     importPluginModule: () => Promise.resolve(sandboxModule),
     importManifestModule: () => Promise.resolve({default: widgetManifest}),
     registry: new PluginRegistry() as unknown as SandboxLoaderDeps['registry'],
+    catalogService: services.catalog,
+    getLocale: () => services.locale.getLocale(),
+    pluginContextServices: {
+      locale: services.locale,
+      palette: services.palette,
+      telemetry: services.telemetry,
+      eventStream: services.eventStream,
+    },
     remountWidgets: vi.fn(() => Promise.resolve(true)),
     reloadPage: vi.fn(() => Promise.resolve(true)),
     ...overrides,
@@ -174,7 +184,13 @@ describe('reloadSandboxPlugin', () => {
 
   it('replaces the registry module and remounts widgets on a compatible reload', async () => {
     const registry = new PluginRegistry();
-    const services = createHostServices();
+    const services = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+    const pluginContextServices = {
+      locale: services.locale,
+      palette: services.palette,
+      telemetry: services.telemetry,
+      eventStream: services.eventStream,
+    };
 
     seed(registry);
 
@@ -183,7 +199,7 @@ describe('reloadSandboxPlugin', () => {
     const result = await reloadSandboxPlugin(deps({
       registry: registry as never,
       remountWidgets,
-      pluginContextServices: {locale: services.locale, palette: services.palette},
+      pluginContextServices,
     }));
 
     expect(result).toBe('reloaded');
@@ -193,7 +209,7 @@ describe('reloadSandboxPlugin', () => {
       expect.anything(),
       expect.anything(),
       registry,
-      {locale: services.locale, palette: services.palette},
+      pluginContextServices,
     );
   });
 

@@ -4,7 +4,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 const mountWidgetTile = vi.hoisted(() => vi.fn());
 
-vi.mock('../runtime/plugin-registry.js', () => ({
+vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
   pluginRegistry: {get: vi.fn()},
 }));
 
@@ -33,8 +34,7 @@ vi.mock('./widget-mount.js', () => ({mountWidgetTile}));
 
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
-import {localeService} from '../services/locale.service.js';
-import {paletteService} from '../services/palette.service.js';
+import {createHostServices} from '../host-services.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {
@@ -46,7 +46,13 @@ import {
   removeTileController,
 } from './tile-controller.js';
 
-const pluginContextServices = {locale: localeService, palette: paletteService};
+const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
+const pluginContextServices = {
+  locale: hostServices.locale,
+  palette: hostServices.palette,
+  telemetry: hostServices.telemetry,
+  eventStream: hostServices.eventStream,
+};
 
 const emptyBackend = {routes: {}};
 

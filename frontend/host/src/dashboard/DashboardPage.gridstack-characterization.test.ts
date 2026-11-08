@@ -7,7 +7,7 @@ import {flushSync, mount, unmount} from 'svelte';
 import {PluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
-import {defaultHostServices} from '../host-services.js';
+import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import {type WidgetTileHandle} from './widget-mount.js';
 import DashboardPage from './DashboardPage.svelte';
@@ -49,7 +49,7 @@ const catalog = {
   clearPluginCatalogCells: vi.fn(),
 };
 const registry = new PluginRegistry({catalog});
-const services = {...defaultHostServices(), registry};
+const services = {...createHostServices(), registry};
 
 let mobileListener: ((event: MediaQueryListEvent) => void) | undefined;
 let mobileMatches = false;

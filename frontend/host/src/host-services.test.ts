@@ -1,8 +1,23 @@
 // @vitest-environment happy-dom
 import {describe, expect, it, vi} from 'vitest';
-import {createHostServices} from './host-services.js';
+import {appHostServices, createHostServices} from './host-services.js';
+import {localeService} from './services/locale.service.js';
+import {mgmtClient} from './services/mgmt-client.js';
+import {paletteService} from './services/palette.service.js';
+import {pluginRegistry} from './runtime/plugin-registry.js';
 
 describe('host service composition', () => {
+  it('uses the application singletons in one memoized service graph', () => {
+    const services = appHostServices();
+
+    expect(services.locale).toBe(localeService);
+    expect(services.palette).toBe(paletteService);
+    expect(services.registry).toBe(pluginRegistry);
+    expect(services.mgmtClient).toBe(mgmtClient);
+    expect(appHostServices()).toBe(services);
+    expect(Object.isFrozen(services)).toBe(true);
+  });
+
   it('creates isolated migratable service instances and caches production graph', () => {
     const first = createHostServices();
     const second = createHostServices();

@@ -277,10 +277,12 @@ describe('Project home and install pages', () => {
     expect(home).not.toContain('Build a plugin in your own Node.js project');
     expect(home).toContain('<HomeHero');
     expect(home).toContain('Entware');
-    expect(home).toContain('curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh');
+    expect(home).toContain(
+      'opkg update && opkg install curl && curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh',
+    );
     expect(home).toContain('(/install)');
     expect(home).toContain('(/guides/project-setup)');
-    expect(home).not.toMatch(/^opkg\s/m);
+    expect(home).not.toContain('opkg update && opkg install mndw');
     expect(home).not.toContain('href="/');
   });
 
@@ -294,7 +296,10 @@ describe('Project home and install pages', () => {
   it('explains install, upgrade, and dashboard troubleshooting', () => {
     const install = read('docs/plugin-author/install.md');
 
-    expect(install).toContain('curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh');
+    expect(install).toContain(
+      'opkg update && opkg install curl && curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh',
+    );
+    expect(install).toContain('so the command below installs `curl` first.');
     expect(install).toContain('opkg update');
     expect(install).toContain('aarch64-3.10');
     expect(install).toContain('mips-3.4');
@@ -309,6 +314,11 @@ describe('Project home and install pages', () => {
     expect(install).not.toContain('opkg update && opkg install mndw');
     expect(install).not.toContain('If mndw is not installed yet');
     expect(install).not.toContain('lighttpd');
+
+    const deployment = read('docs/deployment.md');
+
+    expect(deployment).toContain('The bootstrap command runs `opkg update`, installs `curl`, then downloads and');
+    expect(deployment).toContain('runs `add_repo.sh`.');
   });
 
   it('keeps the installation overview on the home page', () => {

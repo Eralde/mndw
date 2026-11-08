@@ -7,7 +7,7 @@ test('hero buttons stay under the base path', async ({page}) => {
   await page.getByRole('link', {name: 'Install mndw'}).click();
   await expect(page).toHaveURL(/\/mndw\/install(?:\.html)?$/);
   await expect(page.locator('.vp-doc')).toContainText(
-    'curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh',
+    'opkg update && opkg install curl && curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh',
   );
 
   await page.goBack();

@@ -46,6 +46,7 @@ if [ ! -f "$KEY_FILE" ]; then
   if [ -n "${MNDW_FETCH:-}" ]; then
     "$MNDW_FETCH" "$FEED_URL/$FEED_KEY_ID.pub" > "$KEY_TMP" || fail "public key download failed"
   else
+    command -v curl >/dev/null 2>&1 || fail "curl is missing: run opkg install curl"
     curl -fsSL "$FEED_URL/$FEED_KEY_ID.pub" > "$KEY_TMP" || fail "public key download failed"
   fi
 

@@ -4,14 +4,15 @@
 
 Install Entware (OPKG) on the router and make sure you have shell access to it. Follow the
 [Entware installation guide](https://support.keenetic.com/titan/kn-1811/en/20980-installing-the-entware-repository-on-a-usb-drive.html);
-this guide covers installing mndw after Entware is ready.
+this guide covers installing mndw after Entware is ready. A clean Entware install has no downloader with HTTPS support,
+so the command below installs `curl` first.
 
 ## Install
 
 Run this command in the OPKG shell:
 
 ```sh
-curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh
+opkg update && opkg install curl && curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh
 ```
 
 The script detects the router architecture (`aarch64-3.10`, `mips-3.4`, or `mipsel-3.4`), installs the feed's public

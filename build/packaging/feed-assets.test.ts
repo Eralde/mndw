@@ -34,23 +34,23 @@ const substituteKeyId = (root: string, keyId: string): string => {
   return script;
 };
 
-const runBootstrap = (script: string, root: string, extraEnv: NodeJS.ProcessEnv = {}) =>
-  spawnSync(
-    '/bin/sh',
-    [script],
-    {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        PATH: path.join(root, 'bin') + ':' + (process.env.PATH ?? ''),
-        MNDW_OPKG_CONF_DIR: path.join(root, 'etc', 'opkg'),
-        MNDW_OPKG_CACHE_DIR: path.join(root, 'var', 'mndw', 'opkg-cache'),
-        MNDW_KEY_DIR: path.join(root, 'etc', 'opkg', 'keys'),
-        MNDW_FEED_URL: 'https://feed.example.test/mndw',
-        ...extraEnv,
-      },
-    },
-  );
+const runBootstrap = (script: string, root: string, extraEnv: NodeJS.ProcessEnv = {}) => {
+  const env = {
+    ...process.env,
+    PATH: path.join(root, 'bin') + ':' + (process.env.PATH ?? ''),
+    MNDW_OPKG_CONF_DIR: path.join(root, 'etc', 'opkg'),
+    MNDW_OPKG_CACHE_DIR: path.join(root, 'var', 'mndw', 'opkg-cache'),
+    MNDW_KEY_DIR: path.join(root, 'etc', 'opkg', 'keys'),
+    MNDW_FEED_URL: 'https://feed.example.test/mndw',
+    ...extraEnv,
+  };
+
+  if (!Object.hasOwn(extraEnv, 'MNDW_FETCH')) {
+    delete env.MNDW_FETCH;
+  }
+
+  return spawnSync('/bin/sh', [script], {encoding: 'utf8', env});
+};
 
 afterEach(() => {
   for (const root of fixtures.splice(0)) {
@@ -131,6 +131,37 @@ describe('hosted feed bootstrap assets', () => {
     expect(fs.existsSync(path.join(root, 'etc', 'opkg', 'mndw-feed.conf'))).toBe(false);
   });
 
+  it('reports when curl is missing and no custom fetcher is configured', () => {
+    const root = makeFixture();
+    const fakeBin = path.join(root, 'bin');
+
+    fs.mkdirSync(fakeBin, {recursive: true});
+    writeExecutable(
+      path.join(fakeBin, 'opkg'),
+      '#!/bin/sh\nset -eu\n[ "$1" = print-architecture ] || exit 1\necho "arch aarch64-3.10 150"\n',
+    );
+
+    for (const command of ['awk', 'sed', 'mkdir', 'rm']) {
+      const executable = (process.env.PATH ?? '').split(path.delimiter)
+        .map((entry) => path.join(entry, command))
+        .find((candidate) => fs.existsSync(candidate));
+
+      if (!executable) {
+        throw new Error(`Could not find ${command} to build curl-free test PATH`);
+      }
+
+      fs.symlinkSync(executable, path.join(fakeBin, command));
+    }
+
+    const result = runBootstrap(substituteKeyId(root, 'TESTKEY'), root, {
+      PATH: fakeBin,
+    });
+    const output = String(result.stdout) + '\n' + String(result.stderr);
+
+    expect(result.status).not.toBe(0);
+    expect(output).toContain('curl is missing: run opkg install curl');
+  });
+
   it('refuses to run with an unresolved key token', () => {
     const root = makeFixture();
     const result = runBootstrap(addRepoSource, root);
@@ -143,6 +174,9 @@ describe('hosted feed bootstrap assets', () => {
     const page = fs.readFileSync(path.join(feedRoot, 'index.html'), 'utf8');
 
     expect(page).toContain('add_repo.sh');
+    expect(page).toContain(
+      'opkg update &amp;&amp; opkg install curl &amp;&amp; curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh',
+    );
     expect(page).toContain('aarch64-3.10');
     expect(page).toContain('mips-3.4');
     expect(page).toContain('mipsel-3.4');

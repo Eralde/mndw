@@ -13,11 +13,14 @@ import type {
   MndwChartColor,
   MndwChartPoint,
   MndwChartTimeFormatter,
+  MndwChartTooltipContent,
+  MndwChartTooltipContext,
+  MndwChartTooltipFormatter,
   MndwChartValueDomain,
   MndwChartValueFormatter,
 } from './chart-types.js';
 import {ChartFrameController} from './chart-frame-controller.js';
-import {chartFrameStyles, renderChartFrame} from './chart-frame.js';
+import {chartFrameStyles, measureChartTooltip, renderChartFrame} from './chart-frame.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
 import {
@@ -32,8 +35,14 @@ export const MNDW_BAR_CHART_TAG = 'mndw-bar-chart';
 interface TooltipState {
   left: number;
   top: number;
+  anchorX: number;
+  anchorY: number;
+  chartWidth: number;
+  bottomLimit: number;
+  horizontalOffset: number;
   time: string;
   value: string;
+  content?: MndwChartTooltipContent;
 }
 
 interface ChartSize {
@@ -51,6 +60,7 @@ export class MndwBarChart extends LitElement {
     valueLabel: {type: String, attribute: 'value-label'},
     valueFormatter: {attribute: false},
     timeFormatter: {attribute: false},
+    tooltipFormatter: {attribute: false},
     color: {type: String, reflect: true},
   };
 
@@ -79,9 +89,11 @@ export class MndwBarChart extends LitElement {
   declare public valueLabel: string | undefined;
   declare public valueFormatter: MndwChartValueFormatter;
   declare public timeFormatter: MndwChartTimeFormatter;
+  declare public tooltipFormatter: MndwChartTooltipFormatter | undefined;
   declare public color: MndwChartColor;
 
   private tooltipState: TooltipState | null = null;
+  private formatterErrorLogged = false;
   private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
   private readonly valueLabelState: LocalizedPropertyState<string | undefined>;
   private readonly ariaLabelState: GeneratedAttributeState;
@@ -109,15 +121,23 @@ export class MndwBarChart extends LitElement {
 
   protected override render(): TemplateResult {
     const hasValidPoints = filterFinitePoints(this.points).length > 0;
+    const tooltip = this.tooltipState;
 
     return renderChartFrame({
       hasContent: hasValidPoints,
       emptyLabel: this.emptyLabel ?? getMndwUiText('chart.empty'),
-      tooltip: this.tooltipState,
-      tooltipBody: this.tooltipState === null ? '' : html`
-        <div>${this.tooltipState.time}</div>
-        <div>${this.valueLabel ?? getMndwUiText('chart.values')}: <strong>${this.tooltipState.value}</strong></div>
-      `,
+      tooltip,
+      tooltipBody: tooltip === null
+        ? ''
+        : tooltip.content === undefined
+        ? html`
+          <div>${tooltip.time}</div>
+          <div>${this.valueLabel ?? getMndwUiText('chart.values')}: <strong>${tooltip.value}</strong></div>
+        `
+        : html`
+          <div>${tooltip.content.title ?? tooltip.time}</div>
+          ${tooltip.content.rows.map((item) => html`<div>${item.label}: <strong>${item.value}</strong></div>`)}
+        `,
     });
   }
 
@@ -129,6 +149,7 @@ export class MndwBarChart extends LitElement {
       || changedProperties.has('valueLabel')
       || changedProperties.has('valueFormatter')
       || changedProperties.has('timeFormatter')
+      || changedProperties.has('tooltipFormatter')
       || changedProperties.has('color')
     ) {
       this.tooltipState = null;
@@ -143,12 +164,20 @@ export class MndwBarChart extends LitElement {
       || changedProperties.has('valueLabel')
       || changedProperties.has('valueFormatter')
       || changedProperties.has('timeFormatter')
+      || changedProperties.has('tooltipFormatter')
       || changedProperties.has('color')
       || this.frame.plotElement === null
     ) {
       this.updateAccessibilityLabel();
       this.drawChart();
     }
+
+    this.updateTooltipPosition();
+  }
+
+  public override disconnectedCallback(): void {
+    this.formatterErrorLogged = false;
+    super.disconnectedCallback();
   }
 
   private updateAccessibilityLabel(): void {
@@ -311,6 +340,7 @@ export class MndwBarChart extends LitElement {
 
       if (mouseX < 0 || mouseX > innerWidth || mouseY < 0 || mouseY > innerHeight) {
         hoverBand.attr('data-active', null);
+        this.formatterErrorLogged = false;
         this.tooltipState = null;
         this.requestUpdate();
 
@@ -336,26 +366,31 @@ export class MndwBarChart extends LitElement {
         .attr('width', Math.min(bandWidth, innerWidth - bandX))
         .attr('data-active', '');
 
-      let left = mouseX + margin.left + 8;
-      let top = mouseY - 30;
+      const label = this.valueLabel ?? getMndwUiText('chart.values');
+      const context: MndwChartTooltipContext = {
+        time: point.time,
+        samples: [{seriesId: 'value', label, value: point.value, time: point.time}],
+      };
+      const content = this.formatTooltip(context);
 
-      if (left + 120 > width) {
-        left = mouseX + margin.left - 128;
-      }
+      if (content === null) {
+        this.tooltipState = null;
+        this.requestUpdate();
 
-      if (top < 0) {
-        top = 0;
-      }
-
-      if (top + 50 > height) {
-        top = Math.max(0, height - 50);
+        return;
       }
 
       this.tooltipState = {
-        left,
-        top,
+        left: mouseX + margin.left + 8,
+        top: mouseY - 30,
+        anchorX: mouseX + margin.left,
+        anchorY: mouseY,
+        chartWidth: width,
+        bottomLimit: height,
+        horizontalOffset: 8,
         time: this.timeFormatter(point.time),
         value: this.valueFormatter(point.value),
+        ...(content === undefined ? {} : {content}),
       };
       this.requestUpdate();
     };
@@ -363,6 +398,7 @@ export class MndwBarChart extends LitElement {
     overlay.on('mousemove.chart', updateTooltip);
     overlay.on('mouseleave.chart', () => {
       hoverBand.attr('data-active', null);
+      this.formatterErrorLogged = false;
       this.tooltipState = null;
       this.requestUpdate();
     });
@@ -370,6 +406,57 @@ export class MndwBarChart extends LitElement {
     this.frame.setPlot(svgElement, (): void => {
       overlay.on('.chart', null);
     });
+  }
+
+  private updateTooltipPosition(): void {
+    const tooltip = this.renderRoot.querySelector<HTMLElement>('[part="tooltip"][data-visible]');
+    const state = this.tooltipState;
+
+    if (tooltip === null || state === null) {
+      return;
+    }
+
+    const {width, height} = measureChartTooltip(tooltip);
+    let left = state.anchorX + state.horizontalOffset;
+
+    if (left + width > state.chartWidth) {
+      left = state.anchorX - width - state.horizontalOffset;
+    }
+
+    left = Math.max(0, Math.min(left, state.chartWidth - width));
+
+    const top = Math.min(Math.max(state.anchorY - 30, 0), Math.max(0, state.bottomLimit - height));
+
+    if (left === state.left && top === state.top) {
+      return;
+    }
+
+    this.tooltipState = {...state, left, top};
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+  }
+
+  private formatTooltip(context: MndwChartTooltipContext): MndwChartTooltipContent | null | undefined {
+    const formatter = this.tooltipFormatter;
+
+    if (formatter === undefined) {
+      return undefined;
+    }
+
+    try {
+      const content = formatter(context);
+
+      this.formatterErrorLogged = false;
+
+      return content;
+    } catch (error) {
+      if (!this.formatterErrorLogged) {
+        console.error('Chart tooltip formatter failed', error);
+        this.formatterErrorLogged = true;
+      }
+
+      return undefined;
+    }
   }
 }
 

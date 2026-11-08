@@ -34,6 +34,10 @@ import {
   type MndwChartPoint,
   type MndwChartSample,
   type MndwChartSeries,
+  type MndwChartTooltipContent,
+  type MndwChartTooltipContext,
+  type MndwChartTooltipFormatter,
+  type MndwChartTooltipSample,
   type MndwChartValueFormatter,
   type MndwCheckbox,
   type MndwColumnMenu,
@@ -181,6 +185,32 @@ describe('defineMndwUi', () => {
     defineMndwUi({initialLocale: 'ru'});
 
     expect(getMndwUiText('select.placeholder')).toBe('Выберите…');
+  });
+});
+
+describe('chart tooltip formatter exports', () => {
+  it('exports the chart tooltip formatter contract as a property-only option', () => {
+    expect(MndwLineChart.properties.tooltipFormatter).toEqual({attribute: false});
+    expect(MndwBarChart.properties.tooltipFormatter).toEqual({attribute: false});
+    expectTypeOf<MndwChartTooltipSample>().toEqualTypeOf<{
+      readonly seriesId: string;
+      readonly label: string;
+      readonly value: number;
+      readonly time: number;
+    }>();
+    expectTypeOf<MndwChartTooltipContext>().toEqualTypeOf<{
+      readonly time: number;
+      readonly samples: readonly MndwChartTooltipSample[];
+    }>();
+    expectTypeOf<MndwChartTooltipContent>().toEqualTypeOf<{
+      readonly title?: string;
+      readonly rows: readonly {readonly label: string; readonly value: string}[];
+    }>();
+    expectTypeOf<MndwChartTooltipFormatter>().toEqualTypeOf<
+      (context: MndwChartTooltipContext) => MndwChartTooltipContent | null
+    >();
+    expectTypeOf<MndwLineChartProps['tooltipFormatter']>().toEqualTypeOf<MndwChartTooltipFormatter | undefined>();
+    expectTypeOf<MndwBarChartProps['tooltipFormatter']>().toEqualTypeOf<MndwChartTooltipFormatter | undefined>();
   });
 });
 

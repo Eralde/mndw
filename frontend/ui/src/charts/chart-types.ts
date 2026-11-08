@@ -6,6 +6,25 @@ export interface MndwChartSample {
 export type MndwChartValueFormatter = (value: number) => string;
 export type MndwChartTimeFormatter = (epochMs: number) => string;
 
+export interface MndwChartTooltipSample {
+  readonly seriesId: string;
+  readonly label: string;
+  readonly value: number;
+  readonly time: number;
+}
+
+export interface MndwChartTooltipContext {
+  readonly time: number;
+  readonly samples: readonly MndwChartTooltipSample[];
+}
+
+export interface MndwChartTooltipContent {
+  readonly title?: string;
+  readonly rows: readonly {readonly label: string; readonly value: string}[];
+}
+
+export type MndwChartTooltipFormatter = (context: MndwChartTooltipContext) => MndwChartTooltipContent | null;
+
 export interface MndwChartPresentationProps {
   emptyLabel?: string;
   valueLabel?: string;
@@ -18,12 +37,14 @@ export interface MndwLineChartProps extends MndwChartPresentationProps {
   bands?: readonly MndwChartBand[];
   domain?: MndwChartDomain;
   valueDomain?: MndwChartValueDomain;
+  tooltipFormatter?: MndwChartTooltipFormatter;
 }
 
 export interface MndwBarChartProps extends MndwChartPresentationProps {
   points?: readonly MndwChartPoint[];
   valueDomain?: MndwChartValueDomain;
   color?: MndwChartColor;
+  tooltipFormatter?: MndwChartTooltipFormatter;
 }
 
 export interface MndwSparklineProps extends MndwChartPresentationProps {

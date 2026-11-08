@@ -26,6 +26,10 @@ async function mount(markup = ''): Promise<MndwBarChart> {
   return element;
 }
 
+const tooltipText = (element: MndwBarChart): string | undefined => {
+  return element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent?.replace(/\s+/g, ' ').trim();
+};
+
 function dispatchMouseMove(overlay: SVGRectElement, clientX: number, clientY: number): void {
   // happy-dom's SVGPoint lacks matrixTransform. Keep local coordinates here;
   // Chromium e2e covers real SVG coordinate transforms.
@@ -198,6 +202,200 @@ describe('<mndw-bar-chart>', () => {
 
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent).toContain('T2000');
     expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.textContent).toContain('20.0 °C');
+  });
+
+  it('keeps the default tooltip text when no tooltip formatter is set', async () => {
+    const element = await mount();
+
+    element.timeFormatter = (time) => `T${time}`;
+    element.valueFormatter = (value) => `V${value}`;
+    element.valueLabel = 'Throughput';
+    element.points = points;
+    await element.updateComplete;
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (overlay === null || overlay === undefined) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    dispatchMouseMove(overlay, 300, 100);
+    await element.updateComplete;
+
+    expect(element.tooltipFormatter).toBeUndefined();
+    expect(tooltipText(element)).toBe('T2000 Throughput: V200');
+  });
+
+  it('renders formatter rows and supplies the raw value sample', async () => {
+    const element = await mount();
+    let received:
+      | {time: number; samples: readonly {seriesId: string; label: string; value: number; time: number}[]}
+      | null = null;
+
+    element.timeFormatter = (time) => `T${time}`;
+    element.valueLabel = 'Throughput';
+    element.points = points;
+    element.tooltipFormatter = (context) => {
+      received = context;
+
+      return {rows: [{label: 'Rate', value: String(context.samples[0]?.value)}]};
+    };
+    await element.updateComplete;
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (overlay === null || overlay === undefined) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    dispatchMouseMove(overlay, 300, 100);
+    await element.updateComplete;
+
+    expect(received).toEqual({
+      time: 2000,
+      samples: [{seriesId: 'value', label: 'Throughput', value: 200, time: 2000}],
+    });
+    expect(tooltipText(element)).toBe('T2000 Rate: 200');
+  });
+
+  it('uses a custom formatter title', async () => {
+    const element = await mount();
+
+    element.points = points;
+    element.tooltipFormatter = () => ({title: 'Traffic sample', rows: [{label: 'Rate', value: 'fast'}]});
+    await element.updateComplete;
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (overlay === null || overlay === undefined) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    dispatchMouseMove(overlay, 300, 100);
+    await element.updateComplete;
+
+    expect(tooltipText(element)).toBe('Traffic sample Rate: fast');
+  });
+
+  it('renders formatter strings as text', async () => {
+    const element = await mount();
+
+    element.points = points;
+    element.tooltipFormatter = () => ({title: '<i>title</i>', rows: [{label: '<b>x</b>', value: '<img>'}]});
+    await element.updateComplete;
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (overlay === null || overlay === undefined) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    dispatchMouseMove(overlay, 300, 100);
+    await element.updateComplete;
+
+    const tooltip = element.shadowRoot?.querySelector('[part="tooltip"]');
+
+    expect(tooltip?.textContent?.replace(/\s+/g, ' ').trim()).toBe('<i>title</i> <b>x</b>: <img>');
+    expect(tooltip?.querySelector('i, b, img')).toBeNull();
+  });
+
+  it('hides only the tooltip when the formatter returns null', async () => {
+    const element = await mount();
+
+    element.points = points;
+    element.tooltipFormatter = () => null;
+    await element.updateComplete;
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (overlay === null || overlay === undefined) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    dispatchMouseMove(overlay, 300, 100);
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('[part="tooltip"]')?.hasAttribute('data-visible')).toBe(false);
+    expect(element.shadowRoot?.querySelector('[part="hover-band"]')?.hasAttribute('data-active')).toBe(true);
+  });
+
+  it('logs a formatter error once and falls back to the default tooltip', async () => {
+    const element = await mount();
+    const error = new Error('format failed');
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    element.timeFormatter = (time) => `T${time}`;
+    element.points = points;
+    element.tooltipFormatter = () => {
+      throw error;
+    };
+    await element.updateComplete;
+
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (overlay === null || overlay === undefined) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    dispatchMouseMove(overlay, 300, 100);
+    await element.updateComplete;
+
+    expect(consoleError).toHaveBeenCalledOnce();
+    expect(consoleError).toHaveBeenCalledWith('Chart tooltip formatter failed', error);
+    expect(tooltipText(element)).toBe('T2000 Values: 200');
+
+    dispatchMouseMove(overlay, 300, 100);
+    await element.updateComplete;
+    expect(consoleError).toHaveBeenCalledOnce();
+
+    overlay.dispatchEvent(new MouseEvent('mouseleave', {bubbles: true}));
+    dispatchMouseMove(overlay, 300, 100);
+    await element.updateComplete;
+    expect(consoleError).toHaveBeenCalledTimes(2);
+  });
+
+  it('measures tooltip bounds when placing a tall tooltip near the plot edge', async () => {
+    const element = await mount();
+
+    element.points = points;
+    element.tooltipFormatter = () => ({
+      rows: Array.from({length: 6}, (_, index) => ({label: `Row ${index}`, value: 'value'})),
+    });
+    await element.updateComplete;
+
+    const tooltip = element.shadowRoot?.querySelector<HTMLElement>('[part="tooltip"]');
+
+    if (tooltip === null || tooltip === undefined) {
+      throw new Error('missing chart tooltip');
+    }
+
+    const getBounds = vi.spyOn(tooltip, 'getBoundingClientRect').mockReturnValue({
+      // eslint-disable-next-line id-blacklist -- DOMRect field required by getBoundingClientRect
+      x: 0,
+      y: 0,
+      width: 180,
+      height: 130,
+      top: 0,
+      right: 180,
+      bottom: 130,
+      left: 0,
+      toJSON: () => ({}),
+    });
+    const overlay = element.shadowRoot?.querySelector<SVGRectElement>('svg rect[fill="transparent"]');
+
+    if (overlay === null || overlay === undefined) {
+      throw new Error('missing chart pointer overlay');
+    }
+
+    dispatchMouseMove(overlay, 300, 140);
+    await element.updateComplete;
+
+    const left = Number.parseFloat(tooltip.style.left);
+    const top = Number.parseFloat(tooltip.style.top);
+
+    expect(getBounds).toHaveBeenCalled();
+    expect(left + 180).toBeLessThanOrEqual(400);
+    expect(top + 130).toBeLessThanOrEqual(200);
   });
 
   it('uses the configured semantic color', async () => {

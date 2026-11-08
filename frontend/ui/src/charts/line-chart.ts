@@ -18,11 +18,15 @@ import type {
   MndwChartPoint,
   MndwChartSeries,
   MndwChartTimeFormatter,
+  MndwChartTooltipContent,
+  MndwChartTooltipContext,
+  MndwChartTooltipFormatter,
+  MndwChartTooltipSample,
   MndwChartValueDomain,
   MndwChartValueFormatter,
 } from './chart-types.js';
 import {ChartFrameController} from './chart-frame-controller.js';
-import {chartFrameStyles, renderChartFrame} from './chart-frame.js';
+import {chartFrameStyles, measureChartTooltip, renderChartFrame} from './chart-frame.js';
 import {getMndwUiText} from '../i18n.js';
 import {LocaleController} from '../locale-controller.js';
 import {
@@ -42,8 +46,15 @@ interface TooltipSeriesValue {
 interface TooltipState {
   left: number;
   top: number;
+  anchorX: number;
+  anchorY: number;
+  chartWidth: number;
+  topMin: number;
+  bottomLimit: number;
+  horizontalOffset: number;
   time: string;
   values: TooltipSeriesValue[];
+  content?: MndwChartTooltipContent;
 }
 
 interface ChartSize {
@@ -73,6 +84,7 @@ export class MndwLineChart extends LitElement {
     valueLabel: {type: String, attribute: 'value-label'},
     valueFormatter: {attribute: false},
     timeFormatter: {attribute: false},
+    tooltipFormatter: {attribute: false},
   };
 
   public static styles = [
@@ -92,9 +104,11 @@ export class MndwLineChart extends LitElement {
   declare public valueLabel: string | undefined;
   declare public valueFormatter: MndwChartValueFormatter;
   declare public timeFormatter: MndwChartTimeFormatter;
+  declare public tooltipFormatter: MndwChartTooltipFormatter | undefined;
 
   private tooltipState: TooltipState | null = null;
   private lastPointerPosition: [number, number] | null = null;
+  private formatterErrorLogged = false;
   private readonly emptyLabelState: LocalizedPropertyState<string | undefined>;
   private readonly valueLabelState: LocalizedPropertyState<string | undefined>;
   private readonly ariaLabelState: GeneratedAttributeState;
@@ -123,15 +137,23 @@ export class MndwLineChart extends LitElement {
   protected override render(): TemplateResult {
     const validSeries = this.series.some((item) => filterFinitePoints(item.data).length > 0)
       || this.bands.some((item) => item.data.length > 0);
+    const tooltip = this.tooltipState;
 
     return renderChartFrame({
       hasContent: validSeries,
       emptyLabel: this.emptyLabel ?? getMndwUiText('chart.empty'),
-      tooltip: this.tooltipState,
-      tooltipBody: this.tooltipState === null ? '' : html`
-        <div>${this.tooltipState.time}</div>
-        ${this.tooltipState.values.map((item) => html`<div>${item.label}: <strong>${item.value}</strong></div>`)}
-      `,
+      tooltip,
+      tooltipBody: tooltip === null
+        ? ''
+        : tooltip.content === undefined
+        ? html`
+          <div>${tooltip.time}</div>
+          ${tooltip.values.map((item) => html`<div>${item.label}: <strong>${item.value}</strong></div>`)}
+        `
+        : html`
+          <div>${tooltip.content.title ?? tooltip.time}</div>
+          ${tooltip.content.rows.map((item) => html`<div>${item.label}: <strong>${item.value}</strong></div>`)}
+        `,
     });
   }
 
@@ -145,6 +167,7 @@ export class MndwLineChart extends LitElement {
       || changedProperties.has('valueLabel')
       || changedProperties.has('valueFormatter')
       || changedProperties.has('timeFormatter')
+      || changedProperties.has('tooltipFormatter')
     ) {
       const hasValidSeries = this.series.some((item) => filterFinitePoints(item.data).length > 0)
         || this.bands.some((item) => item.data.length > 0);
@@ -169,15 +192,19 @@ export class MndwLineChart extends LitElement {
       || changedProperties.has('valueLabel')
       || changedProperties.has('valueFormatter')
       || changedProperties.has('timeFormatter')
+      || changedProperties.has('tooltipFormatter')
       || this.frame.plotElement === null
     ) {
       this.updateAccessibilityLabel();
       this.drawChart();
     }
+
+    this.updateTooltipPosition();
   }
 
   public override disconnectedCallback(): void {
     this.lastPointerPosition = null;
+    this.formatterErrorLogged = false;
     super.disconnectedCallback();
   }
 
@@ -356,6 +383,7 @@ export class MndwLineChart extends LitElement {
         || mouseY > height - padding.bottom
       ) {
         this.lastPointerPosition = null;
+        this.formatterErrorLogged = false;
         cursorLine.style('display', 'none');
         this.tooltipState = null;
         this.requestUpdate();
@@ -366,44 +394,53 @@ export class MndwLineChart extends LitElement {
       this.lastPointerPosition = [mouseX, mouseY];
 
       const hoverTime = xScale.invert(mouseX);
-      const values = validSeries.map((item) => {
-        const closest = item.data.reduce((current, point) => {
+      const samples: MndwChartTooltipSample[] = validSeries.map((item) => {
+        const points = filterFinitePoints(item.data);
+        const closest = points.reduce((current, point) => {
           return Math.abs(point.time - hoverTime.getTime()) < Math.abs(current.time - hoverTime.getTime())
             ? point
             : current;
         });
 
         return {
+          seriesId: item.id,
           label: item.label ?? item.id,
-          value: this.valueFormatter(closest.value),
+          value: closest.value,
+          time: closest.time,
         };
       });
+      const values = samples.map((sample) => ({
+        label: sample.label,
+        value: this.valueFormatter(sample.value),
+      }));
 
       cursorLine
         .style('display', null)
         .attr('x1', mouseX)
         .attr('x2', mouseX);
 
-      let left = mouseX + 12;
-      let top = mouseY - 30;
+      const context: MndwChartTooltipContext = {time: hoverTime.getTime(), samples};
+      const content = this.formatTooltip(context);
 
-      if (left + 140 > width) {
-        left = mouseX - 152;
-      }
+      if (content === null) {
+        this.tooltipState = null;
+        this.requestUpdate();
 
-      if (top < padding.top) {
-        top = padding.top + 4;
-      }
-
-      if (top + 60 > height - padding.bottom) {
-        top = Math.max(padding.top, height - padding.bottom - 64);
+        return;
       }
 
       this.tooltipState = {
-        left,
-        top,
+        left: mouseX + 12,
+        top: mouseY - 30,
+        anchorX: mouseX,
+        anchorY: mouseY,
+        chartWidth: width,
+        topMin: padding.top,
+        bottomLimit: height - padding.bottom,
+        horizontalOffset: 12,
         time: this.timeFormatter(hoverTime.getTime()),
         values,
+        ...(content === undefined ? {} : {content}),
       };
       this.requestUpdate();
     };
@@ -417,6 +454,7 @@ export class MndwLineChart extends LitElement {
     overlay.on('mousemove.chart', updateTooltip);
     overlay.on('mouseleave.chart', () => {
       this.lastPointerPosition = null;
+      this.formatterErrorLogged = false;
       cursorLine.style('display', 'none');
       this.tooltipState = null;
       this.requestUpdate();
@@ -428,6 +466,58 @@ export class MndwLineChart extends LitElement {
 
     if (this.lastPointerPosition !== null) {
       updateTooltipAtPosition(...this.lastPointerPosition);
+    }
+  }
+
+  private updateTooltipPosition(): void {
+    const tooltip = this.renderRoot.querySelector<HTMLElement>('[part="tooltip"][data-visible]');
+    const state = this.tooltipState;
+
+    if (tooltip === null || state === null) {
+      return;
+    }
+
+    const {width, height} = measureChartTooltip(tooltip);
+    let left = state.anchorX + state.horizontalOffset;
+
+    if (left + width > state.chartWidth) {
+      left = state.anchorX - width - state.horizontalOffset;
+    }
+
+    left = Math.max(0, Math.min(left, state.chartWidth - width));
+
+    const maxTop = Math.max(state.topMin, state.bottomLimit - height);
+    const top = Math.min(Math.max(state.anchorY - 30, state.topMin), maxTop);
+
+    if (left === state.left && top === state.top) {
+      return;
+    }
+
+    this.tooltipState = {...state, left, top};
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+  }
+
+  private formatTooltip(context: MndwChartTooltipContext): MndwChartTooltipContent | null | undefined {
+    const formatter = this.tooltipFormatter;
+
+    if (formatter === undefined) {
+      return undefined;
+    }
+
+    try {
+      const content = formatter(context);
+
+      this.formatterErrorLogged = false;
+
+      return content;
+    } catch (error) {
+      if (!this.formatterErrorLogged) {
+        console.error('Chart tooltip formatter failed', error);
+        this.formatterErrorLogged = true;
+      }
+
+      return undefined;
     }
   }
 }

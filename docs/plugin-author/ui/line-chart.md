@@ -29,3 +29,7 @@ the existing 5000 minimum for speed axes. For example, set `valueFormatter = for
 `axis`, `tooltip`, and `empty` parts are available for styling. Tooltips stay local to the plot; redrawing data clears
 stale tooltip state without replaying it until the pointer moves again. Import `formatSpeed` and
 `getSpeedUpperLimit` from `@mndw/ui` for speed axes.
+
+`tooltipFormatter(context)` is a property-only callback. It receives hovered `time` and raw `samples` for each series
+with finite points; return `{title?, rows}` to replace the body, or `null` to hide the tooltip while keeping the cursor.
+An omitted title uses `timeFormatter(time)`. Formatter errors are logged and fall back to the default tooltip.

@@ -20,6 +20,10 @@ export function mount(root: HTMLElement): void {
   void import('@mndw/ui').then(({formatSpeed, getSpeedUpperLimit}) => {
     chart.valueFormatter = formatSpeed;
     chart.valueDomain = {min: 0, max: getSpeedUpperLimit(Math.max(...values))};
+    chart.tooltipFormatter = ({samples}) => ({
+      title: 'Traffic sample',
+      rows: [{label: 'Rate', value: formatSpeed(samples[0]?.value ?? 0)}],
+    });
     chart.points = points;
     root.appendChild(chart);
   });

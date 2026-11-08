@@ -6,6 +6,11 @@ export interface ChartTooltipAnchor {
   top: number;
 }
 
+export interface ChartTooltipSize {
+  width: number;
+  height: number;
+}
+
 export interface ChartFrameOptions {
   /** True when there is finite data to plot; false renders the empty state. */
   hasContent: boolean;
@@ -94,6 +99,12 @@ export const tooltipStyle = (anchor: ChartTooltipAnchor | null): string => {
   }
 
   return `left: ${anchor.left}px; top: ${anchor.top}px;`;
+};
+
+export const measureChartTooltip = (tooltip: HTMLElement): ChartTooltipSize => {
+  const bounds = tooltip.getBoundingClientRect();
+
+  return {width: bounds.width, height: bounds.height};
 };
 
 export const renderChartFrame = (options: ChartFrameOptions): TemplateResult => {

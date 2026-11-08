@@ -28,3 +28,7 @@ the existing 5000 minimum. `timeFormatter(epochMs)` customizes time labels. The 
 `container`, `plot`, `grid`, `axis`, `tooltip`, and `empty` parts are available for styling. Tooltips stay local to
 the plot; data redraw clears stale tooltip state until the pointer moves again. Import `formatSpeed` and
 `getSpeedUpperLimit` from `@mndw/ui` for speed charts.
+
+`tooltipFormatter(context)` is a property-only callback with the bar's `time` and one raw sample (`seriesId: 'value'`).
+Return `{title?, rows}` to replace the tooltip, or `null` to hide it while keeping the hover band. An omitted title
+uses `timeFormatter(time)`. Formatter errors are logged and fall back to the default tooltip.

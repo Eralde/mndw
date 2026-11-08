@@ -278,7 +278,7 @@ describe('Project home and install pages', () => {
     expect(home).toContain('<HomeHero');
     expect(home).toContain('Entware');
     expect(home).toContain(
-      'opkg update && opkg install curl && curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh',
+      'opkg update && opkg install wget-ssl ca-bundle && wget -qO- https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh',
     );
     expect(home).toContain('(/install)');
     expect(home).toContain('(/guides/project-setup)');
@@ -297,9 +297,11 @@ describe('Project home and install pages', () => {
     const install = read('docs/plugin-author/install.md');
 
     expect(install).toContain(
-      'opkg update && opkg install curl && curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh',
+      'opkg update && opkg install wget-ssl ca-bundle && wget -qO- https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh',
     );
-    expect(install).toContain('so the command below installs `curl` first.');
+    expect(install).toContain('The feed is served over HTTPS');
+    expect(install).toContain('Entware\'s default `wget` has');
+    expect(install).toContain('no HTTPS support, so the command below installs `wget-ssl` and `ca-bundle` first.');
     expect(install).toContain('opkg update');
     expect(install).toContain('aarch64-3.10');
     expect(install).toContain('mips-3.4');
@@ -310,15 +312,15 @@ describe('Project home and install pages', () => {
     expect(install).toContain('MNDW_DEVICE_PORT');
     expect(install).toContain('https://github.com/Eralde/mndw-opkg-feed');
     expect(install).toContain('/guides/validation-and-packaging');
-    expect(install).toContain('First-time installs use the `curl` command above.');
+    expect(install).toContain('First-time installs use the `wget` command above.');
     expect(install).not.toContain('opkg update && opkg install mndw');
     expect(install).not.toContain('If mndw is not installed yet');
     expect(install).not.toContain('lighttpd');
 
     const deployment = read('docs/deployment.md');
 
-    expect(deployment).toContain('The bootstrap command runs `opkg update`, installs `curl`, then downloads and');
-    expect(deployment).toContain('runs `add_repo.sh`.');
+    expect(deployment).toContain('The bootstrap command runs `opkg update`, installs `wget-ssl` and');
+    expect(deployment).toContain('`ca-bundle`, then downloads and runs `add_repo.sh`.');
   });
 
   it('keeps the installation overview on the home page', () => {

@@ -190,7 +190,7 @@ for (const width of [390, 800]) {
       expect(overflows).toBe(false);
 
       if (width === 390 && route === 'install') {
-        const command = page.locator('.vp-doc pre').filter({hasText: 'curl -fsSL'})
+        const command = page.locator('.vp-doc pre').filter({hasText: 'wget -qO-'})
           .first();
         const dimensions = await command.evaluate((element) => ({
           clientWidth: element.clientWidth,

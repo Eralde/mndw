@@ -23,7 +23,7 @@ You need [Entware](https://support.keenetic.com/titan/kn-1811/en/20980-installin
 installed on the router. In its shell:
 
 ```sh
-opkg update && opkg install curl && curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh
+opkg update && opkg install wget-ssl ca-bundle && wget -qO- https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh
 ```
 
 The script adds the mndw package feed for your router's architecture and installs mndw. When it finishes, it prints

@@ -8,7 +8,7 @@
   <body>
     <h1>mndw OPKG feed</h1>
     <p>Install the hosted feed bootstrap:</p>
-    <pre><code>opkg update &amp;&amp; opkg install curl &amp;&amp; curl -fsSL https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh</code></pre>
+    <pre><code>opkg update &amp;&amp; opkg install wget-ssl ca-bundle &amp;&amp; wget -qO- https://eralde.github.io/mndw-opkg-feed/add_repo.sh | sh</code></pre>
     <p>Manual feed paths:</p>
     <ul>
       <li><code>/aarch64-3.10</code></li>

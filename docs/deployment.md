@@ -72,8 +72,9 @@ not enable `check_signature`, so existing unrelated feeds keep current
 behavior. Legacy `build/packaging/install.sh` is local-feed-only and must not
 be copied to hosted feed.
 
-The bootstrap command runs `opkg update`, installs `curl`, then downloads and
-runs `add_repo.sh`.
+The feed is served over HTTPS, and Entware's default `wget` has no HTTPS
+support. The bootstrap command runs `opkg update`, installs `wget-ssl` and
+`ca-bundle`, then downloads and runs `add_repo.sh`.
 
 Settings -> System update uses server-derived targets. Apply downloads one exact
 target IPK into `/opt/var/mndw/pending/`, starts packaged helper with held lock,

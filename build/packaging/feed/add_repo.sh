@@ -32,6 +32,18 @@ esac
 
 FEED_URL=${FEED_URL%/}
 
+if [ -z "${MNDW_FETCH:-}" ]; then
+  if ! command -v wget >/dev/null 2>&1; then
+    fail "wget without HTTPS: run opkg install wget-ssl ca-bundle"
+  fi
+
+  WGET_VERSION=$(wget --version 2>&1) || WGET_VERSION=
+  case "$WGET_VERSION" in
+    *+ssl*) ;;
+    *) fail "wget without HTTPS: run opkg install wget-ssl ca-bundle" ;;
+  esac
+fi
+
 "$OPKG" print-architecture > "$ARCH_FILE" || fail "opkg print-architecture failed"
 FEED_ARCH=$(awk '$1 == "arch" && ($2 == "aarch64-3.10" || $2 == "mips-3.4" || $2 == "mipsel-3.4") {print $2}' "$ARCH_FILE" | sed -n '1p')
 
@@ -46,8 +58,7 @@ if [ ! -f "$KEY_FILE" ]; then
   if [ -n "${MNDW_FETCH:-}" ]; then
     "$MNDW_FETCH" "$FEED_URL/$FEED_KEY_ID.pub" > "$KEY_TMP" || fail "public key download failed"
   else
-    command -v curl >/dev/null 2>&1 || fail "curl is missing: run opkg install curl"
-    curl -fsSL "$FEED_URL/$FEED_KEY_ID.pub" > "$KEY_TMP" || fail "public key download failed"
+    wget -qO- "$FEED_URL/$FEED_KEY_ID.pub" > "$KEY_TMP" || fail "public key download failed"
   fi
 
   [ -s "$KEY_TMP" ] || fail "public key download was empty"

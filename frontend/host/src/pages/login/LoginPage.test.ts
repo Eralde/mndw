@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {defineMndwUi} from '@mndw/ui';
+import {deepActiveElement, defineMndwUi} from '@mndw/ui';
 import {type Observable, Subject, of, throwError} from 'rxjs';
 import {flushSync, mount, unmount} from 'svelte';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -21,6 +21,12 @@ import {appState} from '../../state/app.svelte.js';
 import {defaultHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
 
+type LoginInput = HTMLElement & {
+  value: string;
+  disabled: boolean;
+  updateComplete: Promise<unknown>;
+};
+
 let target: HTMLDivElement;
 let component: ReturnType<typeof mount>;
 
@@ -30,8 +36,8 @@ function render(context = createHostServicesContext(defaultHostServices())): voi
   component = mount(LoginPage, {target, context});
 }
 
-function inputs(): (HTMLElement & {value: string; disabled: boolean})[] {
-  return [...target.querySelectorAll<HTMLElement & {value: string; disabled: boolean}>('mndw-input')];
+function inputs(): LoginInput[] {
+  return [...target.querySelectorAll<LoginInput>('mndw-input')];
 }
 
 function type(element: HTMLElement, value: string): void {
@@ -65,6 +71,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   void unmount(component);
   document.body.innerHTML = '';
 });
@@ -113,8 +120,13 @@ describe('LoginPage', () => {
     const select = target.querySelector<HTMLElement & {disabled: boolean; updateComplete: Promise<unknown>}>(
       '.mndw-login__locale-select',
     );
+    const username = inputs()[0];
 
-    await select?.updateComplete;
+    await Promise.all([select?.updateComplete, username.updateComplete]);
+    await vi.waitFor(() => {
+      expect(deepActiveElement()).toBe(username.shadowRoot?.querySelector('input'));
+    });
+
     select?.focus();
     select?.dispatchEvent(new CustomEvent('mndwchange', {bubbles: true, detail: {value: 'ru'}}));
     flushSync();
@@ -128,6 +140,62 @@ describe('LoginPage', () => {
     flushSync();
 
     expect(select?.getAttribute('aria-busy')).toBe('false');
+    expect(target.querySelector('.mndw-login')?.getAttribute('data-locale')).toBe('ru');
+    expect(document.activeElement).toBe(select);
+  });
+
+  it('focuses the username input after it upgrades', async () => {
+    render();
+
+    const username = inputs()[0];
+
+    await customElements.whenDefined('mndw-input');
+    await username.updateComplete;
+
+    const innerInput = username.shadowRoot?.querySelector('input');
+
+    await vi.waitFor(() => {
+      expect(deepActiveElement()).toBe(innerInput);
+    });
+
+    expect(deepActiveElement()).toBe(innerInput);
+  });
+
+  it('keeps focus on the language selector when it is focused before the input upgrades', async () => {
+    const originalWhenDefined = customElements.whenDefined.bind(customElements);
+    let finishInputUpgrade: (constructor: CustomElementConstructor) => void = () => {};
+    const inputUpgrade = new Promise<CustomElementConstructor>((resolve) => {
+      finishInputUpgrade = resolve;
+    });
+
+    vi.spyOn(customElements, 'whenDefined').mockImplementation((name) => {
+      if (name === 'mndw-input') {
+        return inputUpgrade;
+      }
+
+      return originalWhenDefined(name);
+    });
+
+    render();
+
+    const select = target.querySelector<HTMLElement & {updateComplete: Promise<unknown>}>(
+      '.mndw-login__locale-select',
+    );
+    const username = inputs()[0];
+    const inputConstructor = customElements.get('mndw-input');
+
+    await select?.updateComplete;
+    select?.focus();
+    expect(inputConstructor).toBeDefined();
+
+    if (!inputConstructor) {
+      throw new Error('mndw-input was not defined');
+    }
+
+    finishInputUpgrade(inputConstructor);
+    await inputUpgrade;
+    await username.updateComplete;
+
     expect(document.activeElement).toBe(select);
   });
 
@@ -210,12 +278,17 @@ describe('LoginPage', () => {
     expect(initAuthenticated).toHaveBeenCalledWith();
   });
 
-  it('announces rejected credentials as a danger alert', () => {
+  it('announces rejected credentials as a danger alert without moving focus', async () => {
     login.mockReturnValue(of(false));
     render();
     type(inputs()[0], 'admin');
     type(inputs()[1], 'wrong');
-    pressEnter(inputs()[1]);
+
+    const password = inputs()[1];
+
+    await password.updateComplete;
+    password.focus();
+    pressEnter(password);
 
     const alert = target.querySelector('.mndw-alert');
 
@@ -225,6 +298,7 @@ describe('LoginPage', () => {
     expect(target.querySelector('.mndw-login__error')).toBeNull();
     expect(target.querySelector('mndw-button')?.disabled).toBe(true);
     expect(appState.authenticated).toBe(false);
+    expect(deepActiveElement()).toBe(password.shadowRoot?.querySelector('input'));
   });
 
   it('announces a transport failure the same way', () => {

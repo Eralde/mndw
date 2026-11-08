@@ -1,5 +1,6 @@
 <script lang="ts">
-import type {MndwSelectChangeDetail} from '@mndw/ui';
+import {type MndwSelectChangeDetail, deepActiveElement} from '@mndw/ui';
+import {onMount} from 'svelte';
 import {initAuthenticated} from '../../services/init-auth.js';
 import {appState, resetToLogin} from '../../state/app.svelte.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
@@ -12,6 +13,41 @@ let password = $state('');
 let error = $state('');
 let loading = $state(false);
 let loginBlocked = $state(false);
+let usernameInput:
+  | (HTMLElement & {updateComplete: Promise<unknown>})
+  | undefined;
+
+onMount(() => {
+  let mounted = true;
+
+  const focusUsername = async (): Promise<void> => {
+    await customElements.whenDefined('mndw-input');
+
+    const input = usernameInput;
+
+    if (!mounted || !input) {
+      return;
+    }
+
+    await input.updateComplete;
+
+    if (!mounted) {
+      return;
+    }
+
+    const activeElement = deepActiveElement();
+
+    if (activeElement === null || activeElement === document.body) {
+      input.focus();
+    }
+  };
+
+  void focusUsername();
+
+  return () => {
+    mounted = false;
+  };
+});
 
 function hasCredentials(): boolean {
   return username.trim() !== '' && password !== '';
@@ -120,6 +156,7 @@ function handleSubmit(e: Event): void {
     <mndw-field label={hostT('login.username')}>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <mndw-input
+        bind:this={usernameInput}
         name="username"
         autocomplete="username"
         value={username}

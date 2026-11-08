@@ -363,9 +363,7 @@ onUnmounted(() => {
           <span class="app__value">{{ firmware }}</span>
           <span class="app__label">{{ t('uptime') }}:</span>
           <span class="app__value">{{ uptime }}</span>
-        </div>
-        <hr class="app__divider">
-        <div class="app__grid">
+          <hr class="app__divider app__divider--span">
           <CopyField :label="t('serial')" :value="info.serial" :translator="translator"/>
           <CopyField :label="t('service-tag')" :value="info.serviceTag" :translator="translator"/>
           <CopyField :label="t('mac')" :value="info.mac" :translator="translator"/>
@@ -429,6 +427,11 @@ onUnmounted(() => {
   margin: 0.75rem 0;
 }
 
+.app__divider--span {
+  align-self: stretch;
+  margin: 0.5rem 0;
+}
+
 .app__loads {
   container-type: inline-size;
   container-name: device-info-loads;
@@ -453,7 +456,12 @@ onUnmounted(() => {
   .app__grid {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: 1.25rem;
     align-items: baseline;
+  }
+
+  .app__divider--span {
+    grid-column: 1 / -1;
   }
 }
 

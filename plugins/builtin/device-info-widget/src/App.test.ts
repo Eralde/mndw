@@ -207,15 +207,26 @@ describe('App', () => {
     app.unmount();
   });
 
-  it('renders both identity grids and keeps the range row from shrinking', async () => {
+  it('renders identity labels in one grid with a full-width divider and keeps the range row from shrinking', async () => {
     const app = mountWidget(successfulResponse);
 
     await flushPromises();
 
     const rangeScroll = document.querySelector<HTMLElement>('.range-scroll');
+    const identity = document.querySelector<HTMLElement>('.app__identity');
+    const identityGrid = identity?.querySelector<HTMLElement>('.app__grid');
+    const identityLabels = identity?.querySelectorAll('.app__label, .copy-field__label');
+    const middleDivider = identity?.querySelector<HTMLElement>('.app__divider--span');
 
     expect(rangeScroll === null ? '' : getComputedStyle(rangeScroll).flexShrink).toBe('0');
-    expect(document.querySelectorAll('.app__grid')).toHaveLength(2);
+    expect(identity?.querySelectorAll('.app__grid')).toHaveLength(1);
+    expect(identityLabels).toHaveLength(8);
+    expect([...identityLabels ?? []].every((label) => label.closest('.app__grid') === identityGrid)).toBe(true);
+    expect(middleDivider?.parentElement).toBe(identityGrid);
+    expect(middleDivider?.classList.contains('app__divider--span')).toBe(true);
+    expect(middleDivider === undefined || middleDivider === null ? '' : getComputedStyle(middleDivider).alignSelf).toBe(
+      'stretch',
+    );
 
     app.unmount();
   });

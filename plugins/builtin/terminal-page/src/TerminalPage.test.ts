@@ -4,13 +4,14 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {BackendClient, PluginI18n} from '@mndw/sdk';
 import {createTestI18n} from '@mndw/sdk/testing';
 import enCatalog from '../i18n/en.json';
+import ruCatalog from '../i18n/ru.json';
 import TerminalPage from './TerminalPage.svelte';
 
 afterEach(() => vi.restoreAllMocks());
 
 function notInstalledBackend(): {backend: BackendClient; fetch: ReturnType<typeof vi.fn>} {
   const fetch = vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({success: false, code: 'TTYD_START_FAILED', error: 'ttyd is not installed'}), {
+    new Response(JSON.stringify({success: false, error: 'TTYD_NOT_INSTALLED', message: 'ttyd is not installed'}), {
       status: 200,
       headers: {'content-type': 'application/json'},
     }),
@@ -120,6 +121,37 @@ describe('TerminalPage (dev path)', () => {
     host.remove();
   });
 
+  it('renders localized ttyd installation guidance and the copyable command', async () => {
+    const {backend} = notInstalledBackend();
+    const i18n = createTestI18n(enCatalog);
+    const host = document.createElement('div');
+
+    document.body.appendChild(host);
+
+    const app = mount(TerminalPage, {target: host, props: {backend, i18n}});
+
+    flushSync();
+    clickButton(host, /router cli/i);
+
+    await vi.waitFor(() =>
+      expect(host.textContent ?? '').toContain(
+        'The terminal needs the ttyd package, which is not installed. Install it on the router:',
+      )
+    );
+    expect(host.querySelector('code')?.textContent).toBe('opkg install ttyd');
+
+    i18n.setLocale('ru', ruCatalog);
+    await vi.waitFor(() =>
+      expect(host.textContent ?? '').toContain(
+        'Для терминала нужен пакет ttyd, а он не установлен. Установите его на роутере:',
+      )
+    );
+    expect(host.querySelector('code')?.textContent).toBe('opkg install ttyd');
+
+    void unmount(app);
+    host.remove();
+  });
+
   it('reuses the selected console when Retry is clicked after a spawn error', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -134,7 +166,7 @@ describe('TerminalPage (dev path)', () => {
     clickButton(host, /entware shell/i);
 
     await vi.waitFor(() => expect(host.textContent ?? '').toMatch(/not installed/i));
-    expect(host.textContent ?? '').toMatch(/could not be started/i);
+    expect(host.querySelector('code')?.textContent).toBe('opkg install ttyd');
     clickButton(host, /retry/i);
     await vi.waitFor(() => expect(fetch.mock.calls.filter((c) => c[0] === 'spawn').length).toBe(2));
 

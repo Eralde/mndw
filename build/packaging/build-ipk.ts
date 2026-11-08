@@ -9,6 +9,7 @@ import {pack as tarPack} from 'tar-stream';
 import crossSpawn from 'cross-spawn';
 import {GO_TARGETS} from '@mndw/cli/go-target';
 import {PRODUCT_TARGETS, PRODUCT_TARGET_CONFIG, type ProductTarget, isProductTarget} from '../targets.js';
+import {discoverBuiltinPlugins} from '../builtin-plugins.js';
 import {buildProductTargetWithDefaults} from '../index.js';
 import type {ArtifactDescriptor, SharedArtifacts} from '../artifacts/descriptor.js';
 
@@ -115,8 +116,62 @@ function collectEntries(root: string, rel = '', into: StagedEntries = {dirs: [],
   return into;
 }
 
-export function substituteControl(template: string, version: string, arch: string): string {
-  return template.replace(/__VERSION__/g, version).replace(/__ARCH__/g, arch);
+export function substituteControl(
+  template: string,
+  version: string,
+  arch: string,
+  dependencies: readonly string[] = [],
+): string {
+  const dependencyLine = dependencies.length > 0 ? `Depends: ${dependencies.join(', ')}\n` : '';
+
+  return template
+    .replace(/__VERSION__/g, version)
+    .replace(/__ARCH__/g, arch)
+    .replace(/^Depends: __DEPENDS__\r?\n?/m, dependencyLine);
+}
+
+function stagedBuiltinPluginNames(repoRoot: string): string[] {
+  const distRoot = path.join(repoRoot, 'plugins/builtin/dist');
+
+  if (!fs.existsSync(distRoot)) {
+    return discoverBuiltinPlugins(path.join(repoRoot, 'plugins/builtin'));
+  }
+
+  return fs.readdirSync(distRoot)
+    .filter((name) => fs.statSync(path.join(distRoot, name)).isDirectory())
+    .filter((name) => fs.existsSync(path.join(distRoot, name, 'manifest.json')))
+    .sort();
+}
+
+export function collectBuiltinDependencies(
+  repoRoot: string,
+  pluginNames: readonly string[] = stagedBuiltinPluginNames(repoRoot),
+): string[] {
+  const packages = new Set<string>();
+
+  for (const pluginName of pluginNames) {
+    const manifestPath = path.join(repoRoot, 'plugins/builtin', pluginName, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      backend?: {packages?: unknown};
+    };
+    const declaredPackages = manifest.backend?.packages;
+
+    if (declaredPackages === undefined) { continue; }
+
+    if (!Array.isArray(declaredPackages)) {
+      throw new Error(`Invalid backend.packages in builtin manifest: ${manifestPath}`);
+    }
+
+    for (const packageName of declaredPackages) {
+      if (typeof packageName !== 'string' || !/^[a-z0-9][a-z0-9+.-]*$/.test(packageName)) {
+        throw new Error(`Invalid opkg package name ${String(packageName)} in builtin manifest: ${manifestPath}`);
+      }
+
+      packages.add(packageName);
+    }
+  }
+
+  return [...packages].sort();
 }
 
 export function collectStagePaths(): {
@@ -356,10 +411,15 @@ export async function buildControlTar(
   outDir: string,
   version: string,
   arch: string,
+  dependencies: readonly string[] = [],
 ): Promise<string> {
   const template = fs.readFileSync(path.join(ipkDir, 'control'), 'utf8');
   const entries: TarFileEntry[] = [
-    {name: './control', mode: 0o644, content: Buffer.from(substituteControl(template, version, arch))},
+    {
+      name: './control',
+      mode: 0o644,
+      content: Buffer.from(substituteControl(template, version, arch, dependencies)),
+    },
   ];
 
   for (const s of ['conffiles', 'preinst', 'postinst', 'prerm', 'postrm']) {
@@ -415,13 +475,14 @@ export interface IpkInfo {
 
 type FeedIpkInfo = IpkInfo & {readonly sourcePath: string};
 
-export function generateFeed(version: string, ipks: IpkInfo[]): string {
+export function generateFeed(version: string, ipks: IpkInfo[], dependencies: readonly string[] = []): string {
   return ipks.map((ipk) =>
     [
       'Package: mndw',
       `Version: ${version}`,
       'Section: web',
       `Architecture: ${ipk.arch}`,
+      ...(dependencies.length > 0 ? [`Depends: ${dependencies.join(', ')}`] : []),
       `Filename: ${ipk.filename}`,
       `Size: ${ipk.size}`,
       `SHA256sum: ${ipk.sha256}`,
@@ -430,7 +491,12 @@ export function generateFeed(version: string, ipks: IpkInfo[]): string {
   ).join('\n\n') + '\n';
 }
 
-export function writeFeed(ipkPaths: string[], version: string, repoDir: string): void {
+export function writeFeed(
+  ipkPaths: string[],
+  version: string,
+  repoDir: string,
+  dependencies: readonly string[] = [],
+): void {
   const ipks: FeedIpkInfo[] = [];
   const supportedOpkgArches = new Set(PRODUCT_TARGETS.map((target) => opkgArchForTarget(target)));
   const seenArches = new Set<string>();
@@ -483,7 +549,7 @@ export function writeFeed(ipkPaths: string[], version: string, repoDir: string):
   for (const arch of [...byArch.keys()].sort()) {
     const archDir = path.join(repoDir, arch);
     const entries = byArch.get(arch) ?? [];
-    const packages = generateFeed(version, entries);
+    const packages = generateFeed(version, entries, dependencies);
 
     fs.mkdirSync(archDir, {recursive: true});
 
@@ -604,7 +670,12 @@ function stageTargetArtifacts(
   }
 }
 
-export async function buildOneArch(arch: string, repoRoot: string, version: string): Promise<string> {
+export async function buildOneArch(
+  arch: string,
+  repoRoot: string,
+  version: string,
+  dependencies: readonly string[] = collectBuiltinDependencies(repoRoot),
+): Promise<string> {
   if (!isProductTarget(arch)) { throw new Error(`Unknown architecture: ${arch}`); }
 
   const targetConfig = PRODUCT_TARGET_CONFIG[arch];
@@ -638,6 +709,7 @@ export async function buildOneArch(arch: string, repoRoot: string, version: stri
       buildDir,
       version,
       targetConfig.opkgArch,
+      dependencies,
     );
 
     return await buildIpk(dataTarPath, controlTarPath, outDir, version, targetConfig.opkgArch);
@@ -655,13 +727,15 @@ export async function main(args: string[]): Promise<void> {
 
   ensureBuildPrereqs(repoRoot);
 
+  const dependencies = collectBuiltinDependencies(repoRoot);
+
   const arches = all ? [...PRODUCT_TARGETS] : arch === null ? [] : [arch];
   const ipkPaths: string[] = [];
 
   for (const a of arches) {
     console.log(`Building for ${a}...`);
 
-    const ipkPath = await buildOneArch(a, repoRoot, version);
+    const ipkPath = await buildOneArch(a, repoRoot, version, dependencies);
 
     ipkPaths.push(ipkPath);
     console.log(`  -> ${ipkPath}`);
@@ -671,7 +745,7 @@ export async function main(args: string[]): Promise<void> {
     const repoDir = path.join(repoRoot, 'out', 'repo');
 
     console.log(`Generating feed at ${repoDir}...`);
-    writeFeed(ipkPaths, version, repoDir);
+    writeFeed(ipkPaths, version, repoDir, dependencies);
   }
 }
 

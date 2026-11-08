@@ -27,19 +27,19 @@ describe('cli.service', () => {
     expect(fetch).toHaveBeenCalledWith('spawn', expect.objectContaining({body: {console: 'router'}}));
   });
 
-  it('spawnCli maps "ttyd is not installed" to a spawn failure', async () => {
+  it('spawnCli classifies the backend TTYD_NOT_INSTALLED error', async () => {
     const fetch = vi.fn().mockResolvedValue(jsonResponse({
       success: false,
-      code: 'TTYD_START_FAILED',
-      error: 'ttyd is not installed',
+      error: 'TTYD_NOT_INSTALLED',
+      message: 'ttyd is not installed',
     }));
 
     const result = await spawnCli(backend(fetch), 'entware');
 
     expect(result.success).toBe(false);
     expect(result.errorType).toBe('SPAWN_FAILED');
-    expect(result.errorCode).toBe('TTYD_START_FAILED');
-    expect(result.error).toMatch(/not installed/i);
+    expect(result.errorCode).toBe('TTYD_NOT_INSTALLED');
+    expect(result.error).toBe('ttyd is not installed');
     expect(fetch).toHaveBeenCalledWith('spawn', expect.objectContaining({body: {console: 'entware'}}));
   });
 

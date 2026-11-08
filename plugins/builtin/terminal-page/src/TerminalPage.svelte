@@ -40,6 +40,7 @@ let terminalInstance: TerminalInstance | null = null;
 let spawnDelayId: ReturnType<typeof setTimeout> | undefined;
 let disconnectExpected = false;
 const terminalErrorCopy: Record<string, string> = {
+  TTYD_NOT_INSTALLED: 'error.ttyd-not-installed',
   TTYD_START_FAILED: 'error.ttyd-start-failed',
   TTYD_UNAVAILABLE: 'error.ttyd-unavailable',
 };
@@ -200,8 +201,15 @@ onMount(() => {
         class="mndw-alert mndw-alert--danger"
         role="alert"
       >
-        <strong>{terminalErrorSummary()}</strong>
-        <span class="terminal-error-detail">{errorMessage}</span>
+        {#if errorCode === 'TTYD_NOT_INSTALLED'}
+          <span class="terminal-error-detail">{
+            t('error.ttyd-not-installed')
+          }</span>
+          <code>opkg install ttyd</code>
+        {:else}
+          <strong>{terminalErrorSummary()}</strong>
+          <span class="terminal-error-detail">{errorMessage}</span>
+        {/if}
       </div>
       <mndw-button
         variant="primary"

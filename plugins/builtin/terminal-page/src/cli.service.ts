@@ -92,10 +92,13 @@ function classifyFetchError(error: unknown): ConnectionError {
 }
 
 function buildSpawnError(result: SpawnApiResponse): SpawnResult {
-  const error = result.error || result.message || 'Failed to spawn ttyd';
+  const directErrorCode = result.error === 'TTYD_NOT_INSTALLED' ? result.error : undefined;
+  const error = directErrorCode === undefined
+    ? result.error || result.message || 'Failed to spawn ttyd'
+    : result.message || result.error;
   const lower = error.toLowerCase();
 
-  const backendErrorCode = result.code ?? result.errorCode ?? result.daemonCode;
+  const backendErrorCode = result.code ?? result.errorCode ?? result.daemonCode ?? directErrorCode;
 
   if (backendErrorCode === undefined && lower.includes('already')) {
     return {

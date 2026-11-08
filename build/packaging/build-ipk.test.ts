@@ -10,6 +10,7 @@ import {
   buildControlTar,
   buildDataTar,
   buildIpk,
+  collectBuiltinDependencies,
   collectStagePaths,
   generateFeed,
   isMainModule,
@@ -164,6 +165,82 @@ describe('substituteControl', () => {
     const result = substituteControl('__VERSION__ __VERSION__ __ARCH__ __ARCH__', '2.0.0', 'aarch64-3.10');
 
     expect(result).toBe('2.0.0 2.0.0 aarch64-3.10 aarch64-3.10');
+  });
+});
+
+describe('builtin opkg dependencies', () => {
+  it('collects current builtin dependencies in sorted unique order', () => {
+    const repoRoot = path.resolve(import.meta.dirname, '../..');
+
+    expect(collectBuiltinDependencies(repoRoot)).toEqual(['ttyd']);
+  });
+
+  it('omits Depends from control and feed when no builtin declares packages', () => {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-builtin-deps-empty-'));
+    const pluginDir = path.join(repoRoot, 'plugins', 'builtin', 'plain-plugin');
+
+    fs.mkdirSync(pluginDir, {recursive: true});
+    fs.writeFileSync(path.join(pluginDir, 'manifest.json'), JSON.stringify({name: 'plain-plugin'}));
+
+    try {
+      const dependencies = collectBuiltinDependencies(repoRoot);
+      const template = fs.readFileSync(path.resolve(import.meta.dirname, 'ipk/control'), 'utf8');
+      const control = substituteControl(template, '1.0.0', 'all', dependencies);
+      const feed = generateFeed('1.0.0', [{
+        arch: 'all',
+        filename: 'mndw_1.0.0_all.ipk',
+        size: 1,
+        sha256: 'abc',
+      }], dependencies);
+
+      expect(dependencies).toEqual([]);
+      expect(control).not.toMatch(/^Depends:/m);
+      expect(feed).not.toMatch(/^Depends:/m);
+    } finally {
+      fs.rmSync(repoRoot, {recursive: true, force: true});
+    }
+  });
+
+  it('deduplicates and sorts package names across builtin manifests', () => {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-builtin-deps-dedup-'));
+
+    try {
+      for (
+        const [plugin, packages] of [
+          ['alpha', ['ttyd', 'zlib', 'ttyd']],
+          ['beta', ['ca-bundle', 'zlib']],
+        ] as const
+      ) {
+        const pluginDir = path.join(repoRoot, 'plugins', 'builtin', plugin);
+
+        fs.mkdirSync(pluginDir, {recursive: true});
+        fs.writeFileSync(
+          path.join(pluginDir, 'manifest.json'),
+          JSON.stringify({name: plugin, backend: {packages}}),
+        );
+      }
+
+      expect(collectBuiltinDependencies(repoRoot)).toEqual(['ca-bundle', 'ttyd', 'zlib']);
+    } finally {
+      fs.rmSync(repoRoot, {recursive: true, force: true});
+    }
+  });
+
+  it('rejects invalid opkg package names', () => {
+    const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-builtin-deps-invalid-'));
+    const pluginDir = path.join(repoRoot, 'plugins', 'builtin', 'bad-plugin');
+
+    fs.mkdirSync(pluginDir, {recursive: true});
+    fs.writeFileSync(
+      path.join(pluginDir, 'manifest.json'),
+      JSON.stringify({name: 'bad-plugin', backend: {packages: ['Invalid_Name']}}),
+    );
+
+    try {
+      expect(() => collectBuiltinDependencies(repoRoot)).toThrow(/Invalid opkg package name.*Invalid_Name/);
+    } finally {
+      fs.rmSync(repoRoot, {recursive: true, force: true});
+    }
   });
 });
 
@@ -332,6 +409,18 @@ describe('readVersion', () => {
 });
 
 describe('generateFeed', () => {
+  it('includes the current builtin dependency in Packages', () => {
+    const repoRoot = path.resolve(import.meta.dirname, '../..');
+    const packages = generateFeed('1.0.0', [{
+      arch: 'mipsel-3.4',
+      filename: 'mndw_1.0.0_mipsel-3.4.ipk',
+      size: 1,
+      sha256: 'abc',
+    }], collectBuiltinDependencies(repoRoot));
+
+    expect(packages.match(/^Depends:.*$/m)?.[0]).toBe('Depends: ttyd');
+  });
+
   it('generates Packages with correct stanza for one arch', () => {
     const ipks = [{
       arch: 'mipsel-3.4',
@@ -498,7 +587,7 @@ describe('buildControlTar', () => {
   const writeControlFixture = (dir: string, includePostinst = true): void => {
     fs.writeFileSync(
       path.join(dir, 'control'),
-      'Package: test\nVersion: 1.0.0\nDepends: test\nArchitecture: all\nDescription: test\n',
+      'Package: test\nVersion: 1.0.0\nArchitecture: all\n__DEPENDS__\nDescription: test\n',
     );
     fs.writeFileSync(path.join(dir, 'conffiles'), '');
     fs.writeFileSync(path.join(dir, 'preinst'), '#!/bin/sh\nexit 0\n');
@@ -508,6 +597,27 @@ describe('buildControlTar', () => {
     fs.writeFileSync(path.join(dir, 'prerm'), '#!/bin/sh\nexit 0\n');
     fs.writeFileSync(path.join(dir, 'postrm'), '#!/bin/sh\nexit 0\n');
   };
+
+  it('writes the current builtin dependency into the IPK control file', async () => {
+    const repoRoot = path.resolve(import.meta.dirname, '../..');
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-ctrl-deps-'));
+
+    try {
+      const dependencies = collectBuiltinDependencies(repoRoot);
+      const tarPath = await buildControlTar(
+        path.join(repoRoot, 'build', 'packaging', 'ipk'),
+        outDir,
+        '1.0.0',
+        'all',
+        dependencies,
+      );
+      const control = readTarFile(tarPath, './control').toString('utf8');
+
+      expect(control.match(/^Depends:.*$/m)?.[0]).toBe('Depends: ttyd');
+    } finally {
+      fs.rmSync(outDir, {recursive: true, force: true});
+    }
+  });
 
   it('throws when a required control file is missing', async () => {
     const tmpIpk = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-ctrl-test-'));

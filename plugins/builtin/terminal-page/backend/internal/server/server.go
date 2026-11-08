@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
@@ -103,6 +105,14 @@ func (server *Server) spawn(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	if err := server.process.Start(request.Context(), console); err != nil {
+		fmt.Fprintf(os.Stderr, "[terminal-page] failed to start ttyd: %v\n", err)
+
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, exec.ErrNotFound) {
+			writeJSON(writer, http.StatusBadGateway, map[string]any{"error": "TTYD_NOT_INSTALLED", "message": "ttyd is not installed"})
+
+			return
+		}
+
 		writeJSON(writer, http.StatusBadGateway, map[string]any{"error": "TTYD_START_FAILED", "message": "failed to start terminal"})
 
 		return

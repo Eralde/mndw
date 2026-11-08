@@ -1,12 +1,36 @@
 package ttyd
 
 import (
+	"context"
+	"errors"
+	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestProcessStartReportsMissingBinaryFromEnvironment(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing-ttyd")
+	process := New(func(name string) string {
+		if name == "MNDW_TTYD_BIN" {
+			return missing
+		}
+
+		return ""
+	})
+
+	err := process.Start(context.Background(), "router")
+	if err == nil {
+		t.Fatal("Start() error = nil, want missing ttyd error")
+	}
+
+	if !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, exec.ErrNotFound) {
+		t.Fatalf("Start() error = %v, want fs.ErrNotExist or exec.ErrNotFound", err)
+	}
+}
 
 func TestProcessUsesPrivateLoopbackAndStopsOwnedGroup(t *testing.T) {
 	dir := t.TempDir()

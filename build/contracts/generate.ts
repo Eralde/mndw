@@ -212,7 +212,11 @@ const goFieldName = (name: string): string => {
     .join('');
 };
 
-const goType = (schema: JsonSchema): string => {
+export const goType = (schema: JsonSchema, path: string): string => {
+  if (schema.anyOf !== undefined || schema.enum !== undefined || Array.isArray(schema.type)) {
+    throw new Error(`unsupported JSON schema construct at ${path}`);
+  }
+
   const schemaType = schema.type;
 
   if (schemaType === 'string') {
@@ -228,10 +232,16 @@ const goType = (schema: JsonSchema): string => {
   }
 
   if (schemaType === 'array') {
-    return `[]${goType(asJsonSchema(schema.items, 'array items'))}`;
+    const itemsPath = `${path}.items`;
+
+    return `[]${goType(asJsonSchema(schema.items, itemsPath), itemsPath)}`;
   }
 
-  return 'json.RawMessage';
+  if (schemaType === 'object') {
+    return 'json.RawMessage';
+  }
+
+  throw new Error(`unsupported JSON schema construct at ${path}`);
 };
 
 const topicTypeName = (topic: string): string => {
@@ -261,8 +271,9 @@ function renderGoEvents(document: JsonSchema): string {
   const payloadStructs = rows.map((row) => {
     const fields = Object.entries(row.payloadProperties).map(([name, rawSchema]) => {
       const schema = asJsonSchema(rawSchema, `payload field ${row.topic}.${name}`);
+      const path = `payload field ${row.topic}.${name}`;
       const optional = !row.required.has(name);
-      const type = optional ? `*${goType(schema)}` : goType(schema);
+      const type = optional ? `*${goType(schema, path)}` : goType(schema, path);
       const jsonTag = optional ? `${name},omitempty` : name;
 
       return `\t${goFieldName(name).padEnd(20)} ${type.padEnd(18)} \`json:"${jsonTag}"\``;

@@ -1,4 +1,5 @@
 import {readFileSync, readdirSync} from 'node:fs';
+import {z} from 'zod';
 import {describe, expect, it} from 'vitest';
 
 import {
@@ -102,6 +103,10 @@ describe('event contract', () => {
     expect(document.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
     expect(document.title).toBe('mndw unified event');
     expect(JSON.stringify(document)).toContain('daemon.updated');
+  });
+
+  it('throws when the event schema contains an unrepresentable Zod type', () => {
+    expect(() => createEventSchemaDocument(z.date())).toThrow();
   });
 
   it('accepts shared valid fixtures and rejects shared invalid fixtures', () => {

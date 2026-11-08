@@ -3,8 +3,20 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import assert from 'node:assert/strict';
 
+import * as generator from './generate.js';
 import {generateContracts} from './generate.js';
 import {createProtocolDocuments} from './generate-shared-deps.js';
+
+type JsonSchema = Record<string, unknown>;
+type GoType = (schema: JsonSchema, path: string) => string;
+
+const getGoType = (): GoType => {
+  const goType = (generator as unknown as Record<string, unknown>).goType;
+
+  assert.equal(typeof goType, 'function', 'goType must be exported for focused tests');
+
+  return goType as GoType;
+};
 
 const repoRoot = resolve(import.meta.dirname, '../..');
 
@@ -65,7 +77,25 @@ const generatedPaths = [
   ),
 ];
 
+const testUnsupportedGoSchemas = (): void => {
+  const goType = getGoType();
+  const unsupportedSchemas: readonly JsonSchema[] = [
+    {anyOf: [{type: 'string'}]},
+    {enum: ['one', 'two']},
+    {type: ['string', 'null']},
+  ];
+
+  for (const schema of unsupportedSchemas) {
+    assert.throws(
+      () => goType(schema, 'payload field test.value'),
+      /unsupported JSON schema construct at payload field test\.value/,
+    );
+  }
+};
+
 const run = (): void => {
+  testUnsupportedGoSchemas();
+
   const outputRoot = mkdtempSync(join(tmpdir(), 'mndw-contracts-'));
 
   generateContracts({repoRoot, outputRoot});

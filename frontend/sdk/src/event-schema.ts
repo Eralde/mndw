@@ -225,8 +225,8 @@ export interface PluginEventFacade {
   readonly resync$: Observable<void>;
 }
 
-export function createEventSchemaDocument(): Record<string, unknown> {
-  const jsonSchema = z.toJSONSchema(eventSchema, {unrepresentable: 'any'});
+export function createEventSchemaDocument(schema: z.ZodTypeAny = eventSchema): Record<string, unknown> {
+  const jsonSchema = z.toJSONSchema(schema, {unrepresentable: 'throw'});
 
   return {
     $schema: 'https://json-schema.org/draft/2020-12/schema',

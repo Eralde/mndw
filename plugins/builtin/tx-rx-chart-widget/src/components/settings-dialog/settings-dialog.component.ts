@@ -36,6 +36,7 @@ export class SettingsDialogComponent {
   public readonly closeDialogEvent = new EventEmitter<void>();
 
   protected readonly refreshMsToSeconds = refreshMsToSeconds;
+  protected readonly refreshSecondsFormatter = (value: number): string => `${value} ${this.t('field.seconds')}`;
 
   protected t(key: string): string {
     return this.translator.t(key);

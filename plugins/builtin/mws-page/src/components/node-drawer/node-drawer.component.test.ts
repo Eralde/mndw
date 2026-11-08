@@ -49,8 +49,20 @@ function withPower(
 function slider(
   fixture: {nativeElement: HTMLElement},
   interfaceName: string,
-): HTMLElement & {disabled: boolean; value: number} {
-  const element = fixture.nativeElement.querySelector<HTMLElement & {disabled: boolean; value: number}>(
+): HTMLElement & {
+  disabled: boolean;
+  value: number;
+  valueFormatter: (value: number) => string;
+  updateComplete: Promise<unknown>;
+} {
+  const element = fixture.nativeElement.querySelector<
+    HTMLElement & {
+      disabled: boolean;
+      value: number;
+      valueFormatter: (value: number) => string;
+      updateComplete: Promise<unknown>;
+    }
+  >(
     `mndw-slider[data-radio="${interfaceName}"]`,
   );
 
@@ -891,7 +903,7 @@ describe('NodeDrawerComponent', () => {
     );
   });
 
-  it('renders one slider for a single-band extender and two for a dual-band extender', () => {
+  it('renders one slider for a single-band extender and two for a dual-band extender', async () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
     const singleBand = findNodeById(roots(), '02:7d:4a:91:c3:32');
     const dualBand = findNodeById(roots(), '02:7d:4a:91:c3:21');
@@ -902,7 +914,14 @@ describe('NodeDrawerComponent', () => {
     );
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelectorAll('mndw-slider')).toHaveLength(1);
-    expect(slider(fixture, 'WifiMaster0').value).toBe(75);
+
+    const radio24Slider = slider(fixture, 'WifiMaster0');
+
+    expect(radio24Slider.value).toBe(75);
+    radio24Slider.value = 82;
+    await radio24Slider.updateComplete;
+    expect(radio24Slider.getAttribute('aria-valuetext')).toBe('82');
+    expect(radio24Slider.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('82');
 
     fixture.componentRef.setInput(
       'node',
@@ -910,7 +929,14 @@ describe('NodeDrawerComponent', () => {
     );
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelectorAll('mndw-slider')).toHaveLength(2);
-    expect(slider(fixture, 'WifiMaster1').value).toBe(50);
+
+    const radio5Slider = slider(fixture, 'WifiMaster1');
+
+    expect(radio5Slider.value).toBe(50);
+    radio5Slider.value = 57;
+    await radio5Slider.updateComplete;
+    expect(radio5Slider.getAttribute('aria-valuetext')).toBe('57');
+    expect(radio5Slider.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('57');
   });
 
   it('does not render TX-power sliders for the controller', () => {
@@ -922,7 +948,7 @@ describe('NodeDrawerComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('mndw-slider')).toHaveLength(0);
   });
 
-  it('renders missing power as enabled 100 and failed reads as disabled Unavailable', () => {
+  it('renders missing power as enabled 100 and failed reads as disabled Unavailable', async () => {
     const fixture = TestBed.createComponent(NodeDrawerComponent);
     const node = findNodeById(roots(), '02:7d:4a:91:c3:21');
 
@@ -939,9 +965,14 @@ describe('NodeDrawerComponent', () => {
       node === null ? null : withPower(node, true, {value: 75, available: false}),
     );
     fixture.detectChanges();
-    expect(slider(fixture, 'WifiMaster0').value).toBe(75);
-    expect(slider(fixture, 'WifiMaster0').disabled).toBe(true);
-    expect(slider(fixture, 'WifiMaster0').getAttribute('value-text')).toBe('Unavailable');
+
+    const radioSlider = slider(fixture, 'WifiMaster0');
+
+    expect(radioSlider.value).toBe(75);
+    expect(radioSlider.disabled).toBe(true);
+    await radioSlider.updateComplete;
+    expect(radioSlider.getAttribute('aria-valuetext')).toBe('Unavailable');
+    expect(radioSlider.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('Unavailable');
   });
 
   it('disables live controls when persistent session is not live', () => {

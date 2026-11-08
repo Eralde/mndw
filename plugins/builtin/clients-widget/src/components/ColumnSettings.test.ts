@@ -7,7 +7,11 @@ import ColumnSettings from './ColumnSettings.vue';
 
 type MndwCheckboxHost = HTMLElement & {checked: boolean};
 type MndwCheckboxWithUpdate = MndwCheckboxHost & {updateComplete: Promise<unknown>};
-type MndwSliderHost = HTMLElement & {updateComplete: Promise<unknown>};
+type MndwSliderHost = HTMLElement & {
+  updateComplete: Promise<unknown>;
+  value: number;
+  valueFormatter: (value: number) => string;
+};
 
 let host: HTMLElement;
 let app: VueApp | null = null;
@@ -108,7 +112,7 @@ describe('ColumnSettings shared controls', () => {
     expect(onRefreshIntervalChange).toHaveBeenCalledWith(7);
   });
 
-  it('updates the slider value text without showing a duplicate value', async () => {
+  it('formats the current slider value without showing a duplicate value', async () => {
     mountSettings();
 
     const slider = host.querySelector<MndwSliderHost>('mndw-slider');
@@ -125,10 +129,13 @@ describe('ColumnSettings shared controls', () => {
         detail: {value: 7},
       }),
     );
+    slider.value = 7;
     await Promise.resolve();
     await slider.updateComplete;
 
+    expect(slider.valueFormatter(slider.value)).toBe('7s');
     expect(slider.shadowRoot?.querySelector('[part="output"]')?.textContent).toBe('7s');
+    expect(slider.getAttribute('aria-valuetext')).toBe('7s');
     expect(host.querySelector('.clients-settings__value')).toBeNull();
     expect(onRefreshIntervalChange).toHaveBeenCalledWith(7);
   });

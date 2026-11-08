@@ -38,9 +38,7 @@ export class MndwSlider extends LitElement {
     min: {type: Number, reflect: true},
     max: {type: Number, reflect: true},
     step: {type: Number, reflect: true},
-    // Author-supplied announcement text. It does not reflect, because reflecting the empty default
-    // would put a `value-text=""` attribute on every slider that never sets one.
-    valueText: {type: String, attribute: 'value-text'},
+    valueFormatter: {attribute: false},
     disabled: {type: Boolean, reflect: true},
     required: {type: Boolean, reflect: true},
     invalid: {type: Boolean, reflect: true},
@@ -134,7 +132,7 @@ export class MndwSlider extends LitElement {
   declare public min: number;
   declare public max: number;
   declare public step: number;
-  declare public valueText: string;
+  declare public valueFormatter: ((value: number) => string) | undefined;
   declare public disabled: boolean;
   declare public required: boolean;
   declare public invalid: boolean;
@@ -158,7 +156,6 @@ export class MndwSlider extends LitElement {
     this.min = DEFAULT_MIN;
     this.max = DEFAULT_MAX;
     this.step = DEFAULT_STEP;
-    this.valueText = '';
     this.disabled = false;
     this.required = false;
     this.invalid = false;
@@ -213,7 +210,7 @@ export class MndwSlider extends LitElement {
         <div part="fill" style="width: ${percent}%"></div>
         <div part="thumb" style="left: ${percent}%"></div>
       </div>
-      <span part="output" aria-hidden="true">${this.valueText || String(this.value)}</span>
+      <span part="output" aria-hidden="true">${this.formatValue(this.value)}</span>
     `;
   }
 
@@ -228,10 +225,8 @@ export class MndwSlider extends LitElement {
     this.setAttribute('aria-disabled', String(effectiveDisabled));
     this.tabIndex = effectiveDisabled ? -1 : 0;
 
-    // An empty `valueText` leaves `aria-valuetext` absent so the browser announces `aria-valuenow`;
-    // an empty one would be announced as the name of the value by some engines.
-    if (this.valueText) {
-      this.setAttribute('aria-valuetext', this.valueText);
+    if (this.valueFormatter) {
+      this.setAttribute('aria-valuetext', this.formatValue(this.value));
     } else {
       this.removeAttribute('aria-valuetext');
     }
@@ -251,6 +246,16 @@ export class MndwSlider extends LitElement {
     }
 
     return Math.min(Math.max(((this.value - this.min) / range) * 100, 0), 100);
+  }
+
+  private formatValue(value: number): string {
+    try {
+      const formatted = this.valueFormatter?.(value);
+
+      return typeof formatted === 'string' ? formatted : String(value);
+    } catch {
+      return String(value);
+    }
   }
 
   /** Clamps into range and onto the step grid measured from `min`, as a native `range` does. */
@@ -283,7 +288,7 @@ export class MndwSlider extends LitElement {
     internals.ariaValueNow = String(this.value);
     internals.ariaValueMin = String(this.min);
     internals.ariaValueMax = String(this.max);
-    internals.ariaValueText = this.valueText || null;
+    internals.ariaValueText = this.valueFormatter ? this.formatValue(this.value) : null;
     internals.ariaOrientation = 'horizontal';
     internals.ariaDisabled = String(this.formState.effectiveDisabled);
   }

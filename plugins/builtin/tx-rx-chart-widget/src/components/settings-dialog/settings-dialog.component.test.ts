@@ -25,6 +25,12 @@ function queryElement<T extends Element>(root: Element, selector: string): T {
   return element;
 }
 
+type MndwSliderHost = HTMLElement & {
+  value: number;
+  valueFormatter: (value: number) => string;
+  updateComplete: Promise<unknown>;
+};
+
 async function createFixture(
   selectedInterface: string,
   refresh: number,
@@ -92,13 +98,17 @@ describe('SettingsDialogComponent', () => {
 
     fixture.detectChanges();
 
-    const slider = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-slider');
+    const slider = queryElement<MndwSliderHost>(fixture.nativeElement, 'mndw-slider');
+
+    await slider.updateComplete;
 
     expect(slider.getAttribute('min')).toBe('1');
     expect(slider.getAttribute('max')).toBe('5');
     expect(slider.getAttribute('step')).toBe('0.5');
-    expect((slider as unknown as {value: number}).value).toBe(2.5);
-    expect(slider.getAttribute('value-text')).toBe('2.5 seconds');
+    expect(slider.value).toBe(2.5);
+    expect(slider.valueFormatter(slider.value)).toBe('2.5 seconds');
+    expect(slider.getAttribute('aria-valuetext')).toBe('2.5 seconds');
+    expect(slider.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('2.5 seconds');
   });
 
   it('emits slider values as milliseconds', async () => {
@@ -108,7 +118,7 @@ describe('SettingsDialogComponent', () => {
     fixture.componentInstance.refreshChange.subscribe((value: number) => emitted = value);
     fixture.detectChanges();
 
-    const slider = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-slider');
+    const slider = queryElement<MndwSliderHost>(fixture.nativeElement, 'mndw-slider');
 
     slider.dispatchEvent(
       new CustomEvent('mndwinput', {
@@ -123,7 +133,7 @@ describe('SettingsDialogComponent', () => {
 
   it('updates displayed refresh seconds while the slider moves', async () => {
     const fixture = await createFixture('', 3000);
-    const slider = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-slider');
+    const slider = queryElement<MndwSliderHost>(fixture.nativeElement, 'mndw-slider');
 
     slider.dispatchEvent(
       new CustomEvent('mndwinput', {
@@ -133,7 +143,11 @@ describe('SettingsDialogComponent', () => {
       }),
     );
     fixture.detectChanges();
+    await slider.updateComplete;
 
-    expect(slider.getAttribute('value-text')).toBe('4.5 seconds');
+    expect(slider.value).toBe(4.5);
+    expect(slider.valueFormatter(slider.value)).toBe('4.5 seconds');
+    expect(slider.getAttribute('aria-valuetext')).toBe('4.5 seconds');
+    expect(slider.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('4.5 seconds');
   });
 });

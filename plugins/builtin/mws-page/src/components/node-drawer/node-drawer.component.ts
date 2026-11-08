@@ -122,6 +122,12 @@ export class NodeDrawerComponent implements OnDestroy {
     WifiMaster0: this.newPowerControl(),
     WifiMaster1: this.newPowerControl(),
   };
+  protected readonly wifi24PowerFormatter = (value: number): string => {
+    return this.formatPowerValue(value, 'WifiMaster0');
+  };
+  protected readonly wifi5PowerFormatter = (value: number): string => {
+    return this.formatPowerValue(value, 'WifiMaster1');
+  };
 
   public readonly node = input<MwsNode | null>(null);
   public readonly renamed = output<string>();
@@ -690,10 +696,10 @@ export class NodeDrawerComponent implements OnDestroy {
     return state.optimistic ?? this.powerFor(node, interfaceName).value ?? 100;
   }
 
-  protected powerValueText(node: MwsNode, interfaceName: MwsWifiInterface): string {
-    const power = this.powerFor(node, interfaceName);
+  private formatPowerValue(value: number, interfaceName: MwsWifiInterface): string {
+    const power = this.powerFor(this.node(), interfaceName);
 
-    return power.available ? String(this.powerValue(node, interfaceName)) : this.t('drawer.unavailable');
+    return power.available ? String(value) : this.t('drawer.unavailable');
   }
 
   protected powerDisabled(node: MwsNode, interfaceName: MwsWifiInterface): boolean {

@@ -173,7 +173,7 @@
                 max="100"
                 step="1"
                 [value]="powerValue(n, 'WifiMaster0')"
-                [attr.value-text]="powerValueText(n, 'WifiMaster0')"
+                [valueFormatter]="wifi24PowerFormatter"
                 [disabled]="powerDisabled(n, 'WifiMaster0')"
                 (mndwchange)="onPowerChange(n, 'WifiMaster0', $any($event))"
               ></mndw-slider>
@@ -186,7 +186,7 @@
                   max="100"
                   step="1"
                   [value]="powerValue(n, 'WifiMaster1')"
-                  [attr.value-text]="powerValueText(n, 'WifiMaster1')"
+                  [valueFormatter]="wifi5PowerFormatter"
                   [disabled]="powerDisabled(n, 'WifiMaster1')"
                   (mndwchange)="onPowerChange(n, 'WifiMaster1', $any($event))"
                 ></mndw-slider>

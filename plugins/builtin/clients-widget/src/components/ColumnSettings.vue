@@ -29,6 +29,10 @@ function onInterval(event: CustomEvent<MndwSliderInputDetail>): void {
   refreshIntervalSeconds.value = event.detail.value;
   props.onRefreshIntervalChange(event.detail.value);
 }
+
+function formatRefreshInterval(value: number): string {
+  return `${value}s`;
+}
 </script>
 
 <template>
@@ -53,7 +57,7 @@ function onInterval(event: CustomEvent<MndwSliderInputDetail>): void {
           max="10"
           step="1"
           :value="refreshIntervalSeconds"
-          :value-text="`${refreshIntervalSeconds}s`"
+          :valueFormatter.prop="formatRefreshInterval"
           @mndwinput="onInterval"
         ></mndw-slider>
       </mndw-field>

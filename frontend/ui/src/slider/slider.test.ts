@@ -44,7 +44,7 @@ describe('<mndw-slider> semantics', () => {
     expect(element.max).toBe(100);
     expect(element.step).toBe(1);
     expect(element.value).toBe(0);
-    expect(element.valueText).toBe('');
+    expect(element.valueFormatter).toBeUndefined();
     expect(element.disabled).toBe(false);
     expect(element.required).toBe(false);
     expect(element.invalid).toBe(false);
@@ -69,32 +69,32 @@ describe('<mndw-slider> semantics', () => {
     expect(element.tabIndex).toBe(0);
   });
 
-  it('omits aria-valuetext while valueText is empty', async () => {
+  it('omits aria-valuetext without a valueFormatter while keeping numeric output', async () => {
     const element = await mount('<mndw-slider value="30"></mndw-slider>', MNDW_SLIDER_TAG);
 
     expect(element.hasAttribute('aria-valuetext')).toBe(false);
+    expect(element.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('30');
 
-    element.valueText = '30 percent';
+    element.valueFormatter = (value) => `${value} percent`;
     await element.updateComplete;
 
     expect(element.getAttribute('aria-valuetext')).toBe('30 percent');
 
-    element.valueText = '';
+    element.valueFormatter = undefined;
     await element.updateComplete;
 
     expect(element.hasAttribute('aria-valuetext')).toBe(false);
+    expect(element.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('30');
   });
 
-  it('takes valueText from its attribute without reflecting an empty one back', async () => {
-    const element = await mount('<mndw-slider value="30" value-text="Balanced"></mndw-slider>', MNDW_SLIDER_TAG);
+  it('keeps valueFormatter property-only', async () => {
+    const element = await mount('<mndw-slider value="30"></mndw-slider>', MNDW_SLIDER_TAG);
 
-    expect(element.valueText).toBe('Balanced');
-
-    element.valueText = '';
+    element.valueFormatter = (value) => `${value} percent`;
     await element.updateComplete;
 
-    expect(element.hasAttribute('value-text')).toBe(true);
-    expect(element.getAttribute('value-text')).toBe('Balanced');
+    expect(element.hasAttribute('value-formatter')).toBe(false);
+    expect(element.hasAttribute('valueFormatter')).toBe(false);
   });
 
   it('reflects configuration but never the value', async () => {
@@ -122,10 +122,46 @@ describe('<mndw-slider> semantics', () => {
     expect(root?.querySelector('[part="output"]')?.textContent?.trim()).toBe('25');
   });
 
-  it('shows valueText in the output when it is set', async () => {
-    const element = await mount('<mndw-slider value="25" value-text="Quarter"></mndw-slider>', MNDW_SLIDER_TAG);
+  it('formats output and aria-valuetext after keyboard and programmatic changes', async () => {
+    const element = await mount('<mndw-slider max="10" value="2"></mndw-slider>', MNDW_SLIDER_TAG);
 
-    expect(element.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('Quarter');
+    element.valueFormatter = (value) => `${value} dBm`;
+    await element.updateComplete;
+
+    const expectCurrentValue = async (value: number): Promise<void> => {
+      await element.updateComplete;
+      expect(element.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe(`${value} dBm`);
+      expect(element.getAttribute('aria-valuetext')).toBe(`${value} dBm`);
+    };
+
+    await expectCurrentValue(2);
+
+    await press(element, 'ArrowRight');
+    await expectCurrentValue(3);
+
+    await press(element, 'End');
+    await expectCurrentValue(10);
+
+    element.value = 6;
+    await expectCurrentValue(6);
+  });
+
+  it('falls back to the numeric value when valueFormatter throws or returns a non-string', async () => {
+    const element = await mount('<mndw-slider value="25"></mndw-slider>', MNDW_SLIDER_TAG);
+
+    element.valueFormatter = () => {
+      throw new Error('format failed');
+    };
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('25');
+    expect(element.getAttribute('aria-valuetext')).toBe('25');
+
+    element.valueFormatter = (() => 25) as unknown as (value: number) => string;
+    await element.updateComplete;
+
+    expect(element.shadowRoot?.querySelector('[part="output"]')?.textContent?.trim()).toBe('25');
+    expect(element.getAttribute('aria-valuetext')).toBe('25');
   });
 
   it('keeps no interactive descendant inside the shadow root', async () => {
@@ -636,10 +672,10 @@ describe('<mndw-slider> against ElementInternals', () => {
     expect(latestInternals?.ariaOrientation).toBe('horizontal');
     expect(latestInternals?.ariaValueText).toBeNull();
 
-    element.valueText = 'Ten of twenty-five';
+    element.valueFormatter = (value) => `Value ${value} of twenty-five`;
     await element.updateComplete;
 
-    expect(latestInternals?.ariaValueText).toBe('Ten of twenty-five');
+    expect(latestInternals?.ariaValueText).toBe('Value 10 of twenty-five');
   });
 
   it('sets no validity flag for a normal configuration, required included', async () => {

@@ -1,5 +1,6 @@
 import '@mndw/sdk/tokens.css';
 import {defineMndwUi} from '@mndw/ui';
+import type {MndwSlider} from '@mndw/ui';
 // The class layer, imported rather than restated: the preview must judge the palette against the
 // same rules consumers get.
 import '@mndw/ui/styles.css';
@@ -27,6 +28,10 @@ const PANES: Pane[] = [
   {theme: 'light', el: document.getElementById('preview-light') as HTMLElement},
   {theme: 'dark', el: document.getElementById('preview-dark') as HTMLElement},
 ];
+
+function formatTransmitPower(value: number): string {
+  return `${value} dBm`;
+}
 
 // Mutable working copy of the seed; HEX inputs edit it live.
 let seed: Seed = structuredClone(SEED);
@@ -77,7 +82,7 @@ function gallery(prefix: string): string {
         </mndw-segmented>
       </div>
       <mndw-field label="Transmit power">
-        <mndw-slider min="0" max="20" step="5" value="10" value-text="10 dBm"></mndw-slider>
+        <mndw-slider min="0" max="20" step="5" value="10"></mndw-slider>
       </mndw-field>
 
       <p class="gallery__heading">Native-delegating — a real button inside the shadow root</p>
@@ -231,6 +236,13 @@ resetBtn.addEventListener('click', () => {
 // interaction state a reviewer is looking at — the open tab, the focused field, the dragged slider.
 for (const pane of PANES) {
   pane.el.insertAdjacentHTML('beforeend', gallery(pane.theme));
+  const slider = pane.el.querySelector<MndwSlider>('mndw-slider');
+
+  if (slider === null) {
+    throw new Error('palette gallery slider was not rendered');
+  }
+
+  slider.valueFormatter = formatTransmitPower;
 }
 
 render();

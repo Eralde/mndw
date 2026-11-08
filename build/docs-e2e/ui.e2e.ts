@@ -482,20 +482,35 @@ test('mobile menu shows UI titles as text', async ({page}) => {
   expect(liveTags).toEqual([]);
 });
 
-test('declarative demos preserve attributes after SPA navigation and full load', async ({page}) => {
+test('slider formatter property survives SPA navigation and full load', async ({page}) => {
   await page.setViewportSize({width: 1280, height: 900});
   await page.goto('ui/button');
   await page.locator('.VPSidebar a[href="/mndw/ui/slider.html"]').click();
   await expect(page).toHaveURL(/\/mndw\/ui\/slider(?:\.html)?$/u);
+  await assertPreviews(page, 'ui/slider');
 
   const secondSlider = page.locator('.ui-demo__preview mndw-slider').nth(1);
 
   await expect(secondSlider).toHaveAttribute('aria-valuemax', '20');
   await expect(secondSlider).toHaveAttribute('aria-valuenow', '10');
+  await expect(secondSlider).toHaveAttribute('aria-valuetext', '10 dBm');
+  await secondSlider.press('ArrowRight');
+  await expect(secondSlider).toHaveAttribute('aria-valuenow', '15');
+  await expect(secondSlider).toHaveAttribute('aria-valuetext', '15 dBm');
+  await expect(secondSlider.locator('[part="output"]')).toHaveText('15 dBm');
 
   await page.goto('ui/slider');
-  await expect(page.locator('.ui-demo__preview mndw-slider').nth(1)).toHaveAttribute('aria-valuemax', '20');
-  await expect(page.locator('.ui-demo__preview mndw-slider').nth(1)).toHaveAttribute('aria-valuenow', '10');
+  await assertPreviews(page, 'ui/slider');
+
+  const loadedSlider = page.locator('.ui-demo__preview mndw-slider').nth(1);
+
+  await expect(loadedSlider).toHaveAttribute('aria-valuemax', '20');
+  await expect(loadedSlider).toHaveAttribute('aria-valuenow', '10');
+  await expect(loadedSlider).toHaveAttribute('aria-valuetext', '10 dBm');
+  await loadedSlider.press('ArrowRight');
+  await expect(loadedSlider).toHaveAttribute('aria-valuenow', '15');
+  await expect(loadedSlider).toHaveAttribute('aria-valuetext', '15 dBm');
+  await expect(loadedSlider.locator('[part="output"]')).toHaveText('15 dBm');
 
   await page.locator('.VPSidebar a[href="/mndw/ui/icon.html"]').click();
   await expect(page.locator('.ui-demo__preview mndw-icon use').first()).toHaveAttribute('href', /.+/u);

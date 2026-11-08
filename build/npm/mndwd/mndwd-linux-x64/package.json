@@ -1,6 +1,6 @@
 {
   "name": "@mndw/mndwd-linux-x64",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Prebuilt mndwd daemon binary for Linux x64.",
   "files": [
     "bin"

@@ -280,7 +280,6 @@ The optional `ctx.backend` client exposes `fetch`, `socket`, and `status`. Every
 `BACKEND_MAINTENANCE` (`BackendMaintenance`), `BACKEND_BLOCKED` (`BackendBlocked`), `BAD_GATEWAY`
 (`BackendBadGateway`), and `STATUS_QUERY_FAILED` (`BackendStatusQueryError`). Errors tied to a route carry its
 `id`; `BackendStatusQueryError` has no `id` and includes `httpStatus`. Starting and maintenance errors also carry
-parsed integer `retryAfterSeconds` or `null`. Lifecycle errors retain `daemonCode` for compatibility, but it is
-deprecated; use `code` instead. Handle approval/disabled states as configuration, starting/maintenance as retryable,
-and unavailable/incompatible/bad gateway as lifecycle or transport failure. The full error types are in the
-[SDK API](/api/sdk).
+parsed integer `retryAfterSeconds` or `null`. Handle approval/disabled states as configuration, starting/maintenance
+as retryable, and unavailable/incompatible/bad gateway as lifecycle or transport failure. The full error types are in
+the [SDK API](/api/sdk).

@@ -36,10 +36,7 @@ describe('backend errors', () => {
   it.each(errors)('%s extends BackendError and exposes matching code', (code, error) => {
     expect(error).toBeInstanceOf(BackendError);
     expect(Reflect.get(error, 'code')).toBe(code);
-
-    if ('daemonCode' in error) {
-      expect(Reflect.get(error, 'daemonCode')).toBe(code);
-    }
+    expect('daemonCode' in error).toBe(false);
   });
 
   it('exports BackendError from the package entry and leaves status query id unset', () => {
@@ -167,7 +164,7 @@ describe('createBackendClient.fetch', () => {
 
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
       id: 'stats',
-      daemonCode: code,
+      code,
     });
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toBeInstanceOf(ErrorType);
   });
@@ -187,7 +184,7 @@ describe('createBackendClient.fetch', () => {
 
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
       id: 'stats',
-      daemonCode: code,
+      code,
       retryAfterSeconds: 4,
     });
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toBeInstanceOf(ErrorType);
@@ -203,7 +200,7 @@ describe('createBackendClient.fetch', () => {
 
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
       id: 'stats',
-      daemonCode: 'BACKEND_STARTING',
+      code: 'BACKEND_STARTING',
       retryAfterSeconds: null,
     });
   });
@@ -224,7 +221,7 @@ describe('createBackendClient.fetch', () => {
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toBeInstanceOf(BackendBlocked);
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
       id: 'stats',
-      daemonCode: 'BACKEND_BLOCKED',
+      code: 'BACKEND_BLOCKED',
       retryAfterSeconds: 2,
       blockers: detail,
     });
@@ -236,17 +233,9 @@ describe('createBackendClient.fetch', () => {
     );
 
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
-      daemonCode: 'BACKEND_BLOCKED',
+      code: 'BACKEND_BLOCKED',
       blockers: [],
     });
-  });
-
-  it('does not add daemonCode to existing backend errors', async () => {
-    await expect(client({enabled: false}).fetch('stats')).rejects.toMatchObject({
-      id: 'stats',
-      code: 'DISABLED',
-    });
-    await expect(client({enabled: false}).fetch('stats')).rejects.not.toHaveProperty('daemonCode');
   });
 
   it('passes non-envelope error responses through to the caller', async () => {

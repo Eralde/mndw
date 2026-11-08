@@ -56,11 +56,7 @@ const backendErrorCode = (error: unknown): string | null => {
     return null;
   }
 
-  const candidate = error as {code?: unknown; daemonCode?: unknown};
-
-  if (typeof candidate.daemonCode === 'string') {
-    return candidate.daemonCode;
-  }
+  const candidate = error as {code?: unknown};
 
   return typeof candidate.code === 'string' ? candidate.code : null;
 };

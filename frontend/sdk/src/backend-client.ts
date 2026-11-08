@@ -206,8 +206,6 @@ export class BackendTransportMismatch extends BackendError {
 
 export class BackendStarting extends BackendError {
   public override readonly code = 'BACKEND_STARTING';
-  /** @deprecated Use code. Removed in 0.2.0. */
-  public readonly daemonCode = 'BACKEND_STARTING';
 
   constructor(id: string, public readonly retryAfterSeconds: number | null) {
     super(`Backend "${id}" is starting`, 'BACKEND_STARTING', id);
@@ -217,8 +215,6 @@ export class BackendStarting extends BackendError {
 
 export class BackendUnavailable extends BackendError {
   public override readonly code = 'BACKEND_UNAVAILABLE';
-  /** @deprecated Use code. Removed in 0.2.0. */
-  public readonly daemonCode = 'BACKEND_UNAVAILABLE';
 
   constructor(id: string) {
     super(`Backend "${id}" is unavailable`, 'BACKEND_UNAVAILABLE', id);
@@ -228,8 +224,6 @@ export class BackendUnavailable extends BackendError {
 
 export class BackendIncompatible extends BackendError {
   public override readonly code = 'BACKEND_INCOMPATIBLE';
-  /** @deprecated Use code. Removed in 0.2.0. */
-  public readonly daemonCode = 'BACKEND_INCOMPATIBLE';
 
   constructor(id: string) {
     super(`Backend "${id}" is incompatible`, 'BACKEND_INCOMPATIBLE', id);
@@ -239,8 +233,6 @@ export class BackendIncompatible extends BackendError {
 
 export class BackendMaintenance extends BackendError {
   public override readonly code = 'BACKEND_MAINTENANCE';
-  /** @deprecated Use code. Removed in 0.2.0. */
-  public readonly daemonCode = 'BACKEND_MAINTENANCE';
 
   constructor(id: string, public readonly retryAfterSeconds: number | null) {
     super(`Backend "${id}" is under maintenance`, 'BACKEND_MAINTENANCE', id);
@@ -250,8 +242,6 @@ export class BackendMaintenance extends BackendError {
 
 export class BackendBlocked extends BackendError {
   public override readonly code = 'BACKEND_BLOCKED';
-  /** @deprecated Use code. Removed in 0.2.0. */
-  public readonly daemonCode = 'BACKEND_BLOCKED';
 
   constructor(
     id: string,
@@ -265,8 +255,6 @@ export class BackendBlocked extends BackendError {
 
 export class BackendBadGateway extends BackendError {
   public override readonly code = 'BAD_GATEWAY';
-  /** @deprecated Use code. Removed in 0.2.0. */
-  public readonly daemonCode = 'BAD_GATEWAY';
 
   constructor(id: string) {
     super(`Backend "${id}" returned a bad gateway response`, 'BAD_GATEWAY', id);

@@ -228,7 +228,7 @@ describe('MwsdStatusService', () => {
   )('classifies backend error code %s without relying on SDK error identity', async (expected, code) => {
     const error = code === 'DISABLED' || code === 'NOT_APPROVED'
       ? Object.assign(new Error(code), {code})
-      : Object.assign(new Error(code), {daemonCode: code});
+      : Object.assign(new Error(code), {code});
     const service = makeStatusService(fakeBackend(vi.fn().mockRejectedValue(error)));
 
     service.resetForStart();

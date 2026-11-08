@@ -32,7 +32,6 @@ interface SpawnApiResponse {
   message?: string;
   code?: string;
   errorCode?: string;
-  daemonCode?: string;
 }
 
 const SPAWN_TIMEOUT_MS = 10000;
@@ -98,7 +97,7 @@ function buildSpawnError(result: SpawnApiResponse): SpawnResult {
     : result.message || result.error;
   const lower = error.toLowerCase();
 
-  const backendErrorCode = result.code ?? result.errorCode ?? result.daemonCode ?? directErrorCode;
+  const backendErrorCode = result.code ?? result.errorCode ?? directErrorCode;
 
   if (backendErrorCode === undefined && lower.includes('already')) {
     return {

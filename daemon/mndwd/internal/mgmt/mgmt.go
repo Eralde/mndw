@@ -53,6 +53,7 @@ type ManagementEventPublisher interface {
 	PublishPluginInstalled(contractEvents.PluginInstalledPayload) error
 	PublishPluginApproved(contractEvents.PluginApprovedPayload) error
 	PublishPluginRemoved(contractEvents.PluginRemovedPayload) error
+	PublishTelemetryGatheringChanged(contractEvents.TelemetryGatheringChangedPayload) error
 }
 
 // Config carries the on-disk locations the handlers operate over.
@@ -159,6 +160,16 @@ func (h *Handler) publishPluginRemoved(name string) {
 
 	if err := h.eventPublisher.PublishPluginRemoved(contractEvents.PluginRemovedPayload{Name: name}); err != nil {
 		h.logPublishError("plugin.removed", err)
+	}
+}
+
+func (h *Handler) publishTelemetryGatheringChanged(enabled bool) {
+	if h.eventPublisher == nil {
+		return
+	}
+
+	if err := h.eventPublisher.PublishTelemetryGatheringChanged(contractEvents.TelemetryGatheringChangedPayload{Enabled: enabled}); err != nil {
+		h.logPublishError("telemetry.gathering_changed", err)
 	}
 }
 

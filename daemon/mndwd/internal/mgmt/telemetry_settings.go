@@ -105,5 +105,7 @@ func (h *Handler) handleTelemetryPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.publishTelemetryGatheringChanged(incoming.Enabled)
+
 	w.WriteHeader(http.StatusNoContent)
 }

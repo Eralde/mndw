@@ -14,32 +14,33 @@ const (
 type Topic string
 
 const (
-	TopicWanConnected      Topic = "wan.connected"
-	TopicWanDisconnected   Topic = "wan.disconnected"
-	TopicNetIPChanged      Topic = "net.ip_changed"
-	TopicNetDhcpLease      Topic = "net.dhcp_lease"
-	TopicNetDnsChanged     Topic = "net.dns_changed"
-	TopicWifiClientJoin    Topic = "wifi.client_join"
-	TopicWifiClientLeave   Topic = "wifi.client_leave"
-	TopicFirewallRebuilt   Topic = "firewall.rebuilt"
-	TopicUSBAttached       Topic = "usb.attached"
-	TopicUSBDetached       Topic = "usb.detached"
-	TopicFsMounted         Topic = "fs.mounted"
-	TopicFsUnmounted       Topic = "fs.unmounted"
-	TopicClockSynced       Topic = "clock.synced"
-	TopicScheduleFired     Topic = "schedule.fired"
-	TopicButtonPressed     Topic = "button.pressed"
-	TopicAuthLogin         Topic = "auth.login"
-	TopicFirmwareAvailable Topic = "firmware.available"
-	TopicPluginInstalled   Topic = "plugin.installed"
-	TopicPluginRemoved     Topic = "plugin.removed"
-	TopicPluginApproved    Topic = "plugin.approved"
-	TopicPluginStarted     Topic = "plugin.started"
-	TopicPluginStopped     Topic = "plugin.stopped"
-	TopicDaemonStarted     Topic = "daemon.started"
-	TopicDaemonStopping    Topic = "daemon.stopping"
-	TopicDaemonUpdated     Topic = "daemon.updated"
-	TopicStorageLow        Topic = "storage.low"
+	TopicWanConnected              Topic = "wan.connected"
+	TopicWanDisconnected           Topic = "wan.disconnected"
+	TopicNetIPChanged              Topic = "net.ip_changed"
+	TopicNetDhcpLease              Topic = "net.dhcp_lease"
+	TopicNetDnsChanged             Topic = "net.dns_changed"
+	TopicWifiClientJoin            Topic = "wifi.client_join"
+	TopicWifiClientLeave           Topic = "wifi.client_leave"
+	TopicFirewallRebuilt           Topic = "firewall.rebuilt"
+	TopicUSBAttached               Topic = "usb.attached"
+	TopicUSBDetached               Topic = "usb.detached"
+	TopicFsMounted                 Topic = "fs.mounted"
+	TopicFsUnmounted               Topic = "fs.unmounted"
+	TopicClockSynced               Topic = "clock.synced"
+	TopicScheduleFired             Topic = "schedule.fired"
+	TopicButtonPressed             Topic = "button.pressed"
+	TopicAuthLogin                 Topic = "auth.login"
+	TopicFirmwareAvailable         Topic = "firmware.available"
+	TopicPluginInstalled           Topic = "plugin.installed"
+	TopicPluginRemoved             Topic = "plugin.removed"
+	TopicPluginApproved            Topic = "plugin.approved"
+	TopicPluginStarted             Topic = "plugin.started"
+	TopicPluginStopped             Topic = "plugin.stopped"
+	TopicDaemonStarted             Topic = "daemon.started"
+	TopicDaemonStopping            Topic = "daemon.stopping"
+	TopicDaemonUpdated             Topic = "daemon.updated"
+	TopicStorageLow                Topic = "storage.low"
+	TopicTelemetryGatheringChanged Topic = "telemetry.gathering_changed"
 )
 
 type Event struct {
@@ -186,4 +187,8 @@ type StorageLowPayload struct {
 	Path           string `json:"path"`
 	AvailableBytes int64  `json:"available_bytes"`
 	ThresholdBytes int64  `json:"threshold_bytes"`
+}
+
+type TelemetryGatheringChangedPayload struct {
+	Enabled bool `json:"enabled"`
 }

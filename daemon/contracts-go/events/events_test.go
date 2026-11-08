@@ -28,8 +28,8 @@ func TestValidFixturesDecodeAsEvents(t *testing.T) {
 
 	sort.Strings(files)
 
-	if len(files) != 26 {
-		t.Fatalf("valid event fixture count = %d, want 26", len(files))
+	if len(files) != 27 {
+		t.Fatalf("valid event fixture count = %d, want 27", len(files))
 	}
 
 	seenTopics := make(map[Topic]bool, len(files))
@@ -54,8 +54,8 @@ func TestValidFixturesDecodeAsEvents(t *testing.T) {
 		seenTopics[event.Topic] = true
 	}
 
-	if len(seenTopics) != 26 {
-		t.Fatalf("fixture topics = %d, want 26", len(seenTopics))
+	if len(seenTopics) != 27 {
+		t.Fatalf("fixture topics = %d, want 27", len(seenTopics))
 	}
 }
 

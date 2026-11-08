@@ -156,6 +156,8 @@ func encodePayload(topic contractEvents.Topic, payload any) ([]byte, error) {
 		return encodeTypedPayload[contractEvents.DaemonUpdatedPayload](topic, payload)
 	case contractEvents.TopicStorageLow:
 		return encodeTypedPayload[contractEvents.StorageLowPayload](topic, payload)
+	case contractEvents.TopicTelemetryGatheringChanged:
+		return encodeTypedPayload[contractEvents.TelemetryGatheringChangedPayload](topic, payload)
 	default:
 		return nil, fmt.Errorf("unknown event topic %q", topic)
 	}

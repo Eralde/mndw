@@ -35,6 +35,12 @@ func (p *failingManagementEventPublisher) PublishPluginRemoved(contractEvents.Pl
 	return p.err
 }
 
+func (p *failingManagementEventPublisher) PublishTelemetryGatheringChanged(contractEvents.TelemetryGatheringChangedPayload) error {
+	p.calls = append(p.calls, "telemetry.gathering_changed")
+
+	return p.err
+}
+
 func TestManagementLogsAndIgnoresTypedPublishFailure(t *testing.T) {
 	root := t.TempDir()
 	cfg := Config{

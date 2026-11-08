@@ -59,3 +59,7 @@ func (p *InternalPublisher) PublishDaemonUpdated(payload contractEvents.DaemonUp
 func (p *InternalPublisher) PublishStorageLow(payload contractEvents.StorageLowPayload) error {
 	return p.publishPayload(contractEvents.TopicStorageLow, payload)
 }
+
+func (p *InternalPublisher) PublishTelemetryGatheringChanged(payload contractEvents.TelemetryGatheringChangedPayload) error {
+	return p.publishPayload(contractEvents.TopicTelemetryGatheringChanged, payload)
+}

@@ -74,6 +74,12 @@ func TestInternalPublisherEmitsTypedPayloads(t *testing.T) {
 				return p.PublishStorageLow(contractEvents.StorageLowPayload{Path: "/opt", AvailableBytes: 5, ThresholdBytes: 10})
 			},
 		},
+		{
+			name: "telemetry gathering changed", topic: contractEvents.TopicTelemetryGatheringChanged, payload: `{"enabled":false}`,
+			publish: func(p *InternalPublisher) error {
+				return p.PublishTelemetryGatheringChanged(contractEvents.TelemetryGatheringChangedPayload{Enabled: false})
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -166,32 +172,33 @@ func TestInternalPublisherUsesFixedClock(t *testing.T) {
 
 func TestEncodePayloadMatchesEveryContractFixture(t *testing.T) {
 	payloadTypes := map[contractEvents.Topic]reflect.Type{
-		contractEvents.TopicWanConnected:      reflect.TypeOf(contractEvents.WanConnectedPayload{}),
-		contractEvents.TopicWanDisconnected:   reflect.TypeOf(contractEvents.WanDisconnectedPayload{}),
-		contractEvents.TopicNetIPChanged:      reflect.TypeOf(contractEvents.NetIPChangedPayload{}),
-		contractEvents.TopicNetDhcpLease:      reflect.TypeOf(contractEvents.NetDhcpLeasePayload{}),
-		contractEvents.TopicNetDnsChanged:     reflect.TypeOf(contractEvents.NetDnsChangedPayload{}),
-		contractEvents.TopicWifiClientJoin:    reflect.TypeOf(contractEvents.WifiClientJoinPayload{}),
-		contractEvents.TopicWifiClientLeave:   reflect.TypeOf(contractEvents.WifiClientLeavePayload{}),
-		contractEvents.TopicFirewallRebuilt:   reflect.TypeOf(contractEvents.FirewallRebuiltPayload{}),
-		contractEvents.TopicUSBAttached:       reflect.TypeOf(contractEvents.USBAttachedPayload{}),
-		contractEvents.TopicUSBDetached:       reflect.TypeOf(contractEvents.USBDetachedPayload{}),
-		contractEvents.TopicFsMounted:         reflect.TypeOf(contractEvents.FsMountedPayload{}),
-		contractEvents.TopicFsUnmounted:       reflect.TypeOf(contractEvents.FsUnmountedPayload{}),
-		contractEvents.TopicClockSynced:       reflect.TypeOf(contractEvents.ClockSyncedPayload{}),
-		contractEvents.TopicScheduleFired:     reflect.TypeOf(contractEvents.ScheduleFiredPayload{}),
-		contractEvents.TopicButtonPressed:     reflect.TypeOf(contractEvents.ButtonPressedPayload{}),
-		contractEvents.TopicAuthLogin:         reflect.TypeOf(contractEvents.AuthLoginPayload{}),
-		contractEvents.TopicFirmwareAvailable: reflect.TypeOf(contractEvents.FirmwareAvailablePayload{}),
-		contractEvents.TopicPluginInstalled:   reflect.TypeOf(contractEvents.PluginInstalledPayload{}),
-		contractEvents.TopicPluginRemoved:     reflect.TypeOf(contractEvents.PluginRemovedPayload{}),
-		contractEvents.TopicPluginApproved:    reflect.TypeOf(contractEvents.PluginApprovedPayload{}),
-		contractEvents.TopicPluginStarted:     reflect.TypeOf(contractEvents.PluginStartedPayload{}),
-		contractEvents.TopicPluginStopped:     reflect.TypeOf(contractEvents.PluginStoppedPayload{}),
-		contractEvents.TopicDaemonStarted:     reflect.TypeOf(contractEvents.DaemonStartedPayload{}),
-		contractEvents.TopicDaemonStopping:    reflect.TypeOf(contractEvents.DaemonStoppingPayload{}),
-		contractEvents.TopicDaemonUpdated:     reflect.TypeOf(contractEvents.DaemonUpdatedPayload{}),
-		contractEvents.TopicStorageLow:        reflect.TypeOf(contractEvents.StorageLowPayload{}),
+		contractEvents.TopicWanConnected:              reflect.TypeOf(contractEvents.WanConnectedPayload{}),
+		contractEvents.TopicWanDisconnected:           reflect.TypeOf(contractEvents.WanDisconnectedPayload{}),
+		contractEvents.TopicNetIPChanged:              reflect.TypeOf(contractEvents.NetIPChangedPayload{}),
+		contractEvents.TopicNetDhcpLease:              reflect.TypeOf(contractEvents.NetDhcpLeasePayload{}),
+		contractEvents.TopicNetDnsChanged:             reflect.TypeOf(contractEvents.NetDnsChangedPayload{}),
+		contractEvents.TopicWifiClientJoin:            reflect.TypeOf(contractEvents.WifiClientJoinPayload{}),
+		contractEvents.TopicWifiClientLeave:           reflect.TypeOf(contractEvents.WifiClientLeavePayload{}),
+		contractEvents.TopicFirewallRebuilt:           reflect.TypeOf(contractEvents.FirewallRebuiltPayload{}),
+		contractEvents.TopicUSBAttached:               reflect.TypeOf(contractEvents.USBAttachedPayload{}),
+		contractEvents.TopicUSBDetached:               reflect.TypeOf(contractEvents.USBDetachedPayload{}),
+		contractEvents.TopicFsMounted:                 reflect.TypeOf(contractEvents.FsMountedPayload{}),
+		contractEvents.TopicFsUnmounted:               reflect.TypeOf(contractEvents.FsUnmountedPayload{}),
+		contractEvents.TopicClockSynced:               reflect.TypeOf(contractEvents.ClockSyncedPayload{}),
+		contractEvents.TopicScheduleFired:             reflect.TypeOf(contractEvents.ScheduleFiredPayload{}),
+		contractEvents.TopicButtonPressed:             reflect.TypeOf(contractEvents.ButtonPressedPayload{}),
+		contractEvents.TopicAuthLogin:                 reflect.TypeOf(contractEvents.AuthLoginPayload{}),
+		contractEvents.TopicFirmwareAvailable:         reflect.TypeOf(contractEvents.FirmwareAvailablePayload{}),
+		contractEvents.TopicPluginInstalled:           reflect.TypeOf(contractEvents.PluginInstalledPayload{}),
+		contractEvents.TopicPluginRemoved:             reflect.TypeOf(contractEvents.PluginRemovedPayload{}),
+		contractEvents.TopicPluginApproved:            reflect.TypeOf(contractEvents.PluginApprovedPayload{}),
+		contractEvents.TopicPluginStarted:             reflect.TypeOf(contractEvents.PluginStartedPayload{}),
+		contractEvents.TopicPluginStopped:             reflect.TypeOf(contractEvents.PluginStoppedPayload{}),
+		contractEvents.TopicDaemonStarted:             reflect.TypeOf(contractEvents.DaemonStartedPayload{}),
+		contractEvents.TopicDaemonStopping:            reflect.TypeOf(contractEvents.DaemonStoppingPayload{}),
+		contractEvents.TopicDaemonUpdated:             reflect.TypeOf(contractEvents.DaemonUpdatedPayload{}),
+		contractEvents.TopicStorageLow:                reflect.TypeOf(contractEvents.StorageLowPayload{}),
+		contractEvents.TopicTelemetryGatheringChanged: reflect.TypeOf(contractEvents.TelemetryGatheringChangedPayload{}),
 	}
 
 	entries, err := os.ReadDir("fixtures/valid")

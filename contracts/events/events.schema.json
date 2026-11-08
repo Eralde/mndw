@@ -1318,6 +1318,48 @@
         "payload"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "ts": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "topic": {
+          "type": "string",
+          "const": "telemetry.gathering_changed"
+        },
+        "source": {
+          "type": "string",
+          "const": "internal"
+        },
+        "payload": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "ts",
+        "topic",
+        "source",
+        "payload"
+      ],
+      "additionalProperties": false
     }
   ]
 }

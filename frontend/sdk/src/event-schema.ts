@@ -208,6 +208,7 @@ export const eventSchema = z.union([
       threshold_bytes: nonNegativeInteger,
     }).strict(),
   ),
+  eventBranch('telemetry.gathering_changed', 'internal', z.object({enabled: z.boolean()}).strict()),
 ]).superRefine((event, context) => {
   const encoded = new TextEncoder().encode(JSON.stringify(event.payload));
 

@@ -53,9 +53,10 @@ describe('event contract', () => {
       validEvent('daemon.stopping', 'internal', {reason: 'signal'}),
       validEvent('daemon.updated', 'internal', {version: '2.0.0'}),
       validEvent('storage.low', 'internal', {path: '/opt', available_bytes: 1, threshold_bytes: 5242880}),
+      validEvent('telemetry.gathering_changed', 'internal', {enabled: false}),
     ];
 
-    expect(events).toHaveLength(26);
+    expect(events).toHaveLength(27);
 
     for (const event of events) {
       expect(eventSchema.parse(event)).toEqual(event);
@@ -66,6 +67,14 @@ describe('event contract', () => {
     expect(eventSchema.parse(validEvent('clock.synced', 'hook', {}))).toEqual(
       validEvent('clock.synced', 'hook', {}),
     );
+  });
+
+  it('accepts telemetry gathering changes and rejects invalid sources or payloads', () => {
+    const event = validEvent('telemetry.gathering_changed', 'internal', {enabled: false});
+
+    expect(eventSchema.parse(event)).toEqual(event);
+    expect(() => eventSchema.parse({...event, payload: {enabled: false, extra: true}})).toThrow();
+    expect(() => eventSchema.parse({...event, source: 'hook'})).toThrow();
   });
 
   it('rejects malformed envelopes and payloads', () => {

@@ -1,5 +1,5 @@
 import {fetchWithDeadline} from './pristine-fetch.js';
-import {CSRF_HEADERS} from './csrf.js';
+import {HostApiError, createRestClient} from './rest.js';
 
 const MAX_FAILURE_TEXT = 4096;
 
@@ -65,13 +65,20 @@ export async function downloadDiagnostics(
 ): Promise<void> {
   const settled = await Promise.allSettled(
     ENDPOINTS.map(async (endpoint) => {
-      const init: RequestInit = {headers: CSRF_HEADERS};
+      const init: RequestInit & {csrf?: boolean} = {};
 
       if ('method' in endpoint) {
         init.method = endpoint.method;
+      } else {
+        init.csrf = true;
       }
 
-      return await readJSON(await dependencies.request(endpoint.path, init));
+      const rest = createRestClient(
+        dependencies.request,
+        (message, code, detail, status) => new HostApiError(message, code, detail, status),
+      );
+
+      return await rest.request(endpoint.path, init);
     }),
   );
   const sections: DiagnosticsSection[] = settled.map((result, index) => {
@@ -130,22 +137,6 @@ export function formatDiagnosticsReport(
   }
 
   return redact(lines.join('\n'));
-}
-
-async function readJSON(response: Response): Promise<unknown> {
-  if (!response.ok) {
-    let detail = '';
-
-    try {
-      detail = limitText(await response.text());
-    } catch {
-      detail = '';
-    }
-
-    throw new Error(`HTTP ${response.status}${detail === '' ? '' : `: ${detail}`}`);
-  }
-
-  return await response.json();
 }
 
 function errorMessage(error: unknown): string {

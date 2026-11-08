@@ -90,6 +90,40 @@ describe('mgmt-client', () => {
     expect(result.map((p) => p.name)).toEqual(['a', 'b']);
   });
 
+  it('validates getRuntime responses', async () => {
+    const runtime = {
+      maxConcurrentExecTotal: 8,
+      maxConcurrentExecPerPlugin: 2,
+      maxSupervisedServices: 4,
+      currentExec: 1,
+      reservedServices: 1,
+      supportedServiceProtocols: [1, 2],
+    };
+
+    fetchImpl.mockResolvedValue(jsonResponse(200, runtime));
+
+    await expect(createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch).getRuntime()).resolves.toEqual(
+      runtime,
+    );
+  });
+
+  it.each([
+    {maxConcurrentExecTotal: 8},
+    {
+      maxConcurrentExecTotal: 8,
+      maxConcurrentExecPerPlugin: 2,
+      maxSupervisedServices: 4,
+      currentExec: 1,
+      reservedServices: 1,
+      supportedServiceProtocols: [1, '2'],
+    },
+  ])('rejects malformed getRuntime response %j', async (runtime) => {
+    fetchImpl.mockResolvedValue(jsonResponse(200, runtime));
+
+    await expect(createMgmtClient(fetchImpl as unknown as typeof globalThis.fetch).getRuntime()).rejects
+      .toMatchObject({name: 'MgmtError', code: 'UNKNOWN', message: 'Malformed response'});
+  });
+
   it('rejects malformed list responses instead of returning a cast payload', async () => {
     fetchImpl.mockResolvedValue(jsonResponse(200, {plugins: [{}]}));
 

@@ -6,9 +6,8 @@ import {
   SERVICE_STATUS_URL,
   SERVICE_STOP_URL,
 } from '../constants.js';
-import {CSRF_HEADERS} from './csrf.js';
-import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
 import {isRecord} from './json.js';
+import {HostApiError, createRestClient, malformedApiResponse} from './rest.js';
 
 export type ServiceState = 'running' | 'stopped' | 'unknown';
 
@@ -27,35 +26,20 @@ export interface ServiceActionResponse {
   service: ServiceEntry;
 }
 
-export class ServiceError extends Error {
-  public readonly code: string;
-
-  constructor(message: string, code: string) {
-    super(message);
+export class ServiceError extends HostApiError {
+  constructor(message: string, code: string, status?: number, detail?: unknown) {
+    super(message, code, detail, status);
     this.name = 'ServiceError';
-    this.code = code;
   }
 }
 
-const malformedResponse = (): ServiceError => new ServiceError('Malformed response', 'UNKNOWN');
-
-async function parseJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    throw malformedResponse();
-  }
-}
-
-async function errorFromResponse(response: Response): Promise<ServiceError> {
-  const fields = decodeErrorEnvelope(await readErrorBody(response), response.statusText);
-
-  return new ServiceError(fields.message, fields.code);
-}
+const makeServiceError = (message: string, code: string, detail?: unknown, status?: number): ServiceError => {
+  return new ServiceError(message, code, status, detail);
+};
 
 function validateService(value: unknown): ServiceEntry {
   if (!isRecord(value)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeServiceError);
   }
 
   if (
@@ -66,7 +50,7 @@ function validateService(value: unknown): ServiceEntry {
     || typeof value.autostartPinned !== 'boolean'
     || typeof value.protected !== 'boolean'
   ) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeServiceError);
   }
 
   return {
@@ -82,7 +66,7 @@ function validateService(value: unknown): ServiceEntry {
 
 function validateList(value: unknown): ServiceEntry[] {
   if (!isRecord(value) || !Array.isArray(value.services)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeServiceError);
   }
 
   return value.services.map((service) => validateService(service));
@@ -90,7 +74,7 @@ function validateList(value: unknown): ServiceEntry[] {
 
 function validateAction(value: unknown): ServiceActionResponse {
   if (!isRecord(value) || value.ok !== true || value.service === undefined) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeServiceError);
   }
 
   return {ok: true, service: validateService(value.service)};
@@ -106,21 +90,12 @@ export interface ServiceClient {
 }
 
 export function createServiceClient(fetchImpl: typeof globalThis.fetch = globalThis.fetch): ServiceClient {
-  async function request(url: string, init: RequestInit): Promise<unknown> {
-    const response = await fetchImpl(url, init);
-
-    if (!response.ok) {
-      throw await errorFromResponse(response);
-    }
-
-    return parseJson(response);
-  }
+  const rest = createRestClient(fetchImpl, makeServiceError);
 
   async function action(url: string, name: string): Promise<ServiceActionResponse> {
-    const body = await request(url, {
+    const body = await rest.request(url, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
-      body: JSON.stringify({name}),
+      json: {name},
     });
 
     return validateAction(body);
@@ -128,15 +103,15 @@ export function createServiceClient(fetchImpl: typeof globalThis.fetch = globalT
 
   return {
     async list(): Promise<ServiceEntry[]> {
-      return validateList(await request(SERVICE_LIST_URL, {method: 'GET'}));
+      return validateList(await rest.request(SERVICE_LIST_URL, {method: 'GET'}));
     },
 
     async status(name: string, signal?: AbortSignal): Promise<ServiceEntry> {
       const params = new URLSearchParams({name});
-      const body = await request(`${SERVICE_STATUS_URL}?${params.toString()}`, {method: 'GET', signal});
+      const body = await rest.request(`${SERVICE_STATUS_URL}?${params.toString()}`, {method: 'GET', signal});
 
       if (!isRecord(body) || body.service === undefined) {
-        throw malformedResponse();
+        throw malformedApiResponse(makeServiceError);
       }
 
       return validateService(body.service);
@@ -146,10 +121,9 @@ export function createServiceClient(fetchImpl: typeof globalThis.fetch = globalT
     stop: (name) => action(SERVICE_STOP_URL, name),
     restart: (name) => action(SERVICE_RESTART_URL, name),
     async setEnabled(name: string, enabled: boolean): Promise<ServiceActionResponse> {
-      const body = await request(SERVICE_SET_ENABLED_URL, {
+      const body = await rest.request(SERVICE_SET_ENABLED_URL, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
-        body: JSON.stringify({name, enabled}),
+        json: {name, enabled},
       });
 
       return validateAction(body);

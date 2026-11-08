@@ -6,9 +6,8 @@ import {
   OPKG_UPDATE_URL,
   OPKG_UPGRADE_URL,
 } from '../constants.js';
-import {CSRF_HEADERS} from './csrf.js';
-import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
 import {isRecord} from './json.js';
+import {HostApiError, createRestClient, malformedApiResponse} from './rest.js';
 
 export interface PackageEntry {
   name: string;
@@ -34,17 +33,16 @@ export interface PackageInfo {
   installedTime?: string;
 }
 
-export class OpkgError extends Error {
-  public readonly code: string;
-  public readonly detail: unknown;
-
-  constructor(message: string, code: string, detail?: unknown) {
-    super(message);
+export class OpkgError extends HostApiError {
+  constructor(message: string, code: string, detail?: unknown, status?: number) {
+    super(message, code, detail, status);
     this.name = 'OpkgError';
-    this.code = code;
-    this.detail = detail;
   }
 }
+
+const makeOpkgError = (message: string, code: string, detail?: unknown, status?: number): OpkgError => {
+  return new OpkgError(message, code, detail, status);
+};
 
 // DependencyConflictDetail is the structured payload the daemon attaches to a
 // DEPENDENCY_CONFLICT error: the package whose removal was refused and the installed
@@ -81,27 +79,9 @@ export function dependencyConflictDetail(error: OpkgError): DependencyConflictDe
   return {package: pkg, dependents: validDependents ? dependents : []};
 }
 
-function malformedResponse(): OpkgError {
-  return new OpkgError('Malformed response', 'UNKNOWN');
-}
-
-async function parseJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    throw malformedResponse();
-  }
-}
-
-async function errorFromResponse(response: Response): Promise<OpkgError> {
-  const fields = decodeErrorEnvelope(await readErrorBody(response), response.statusText);
-
-  return new OpkgError(fields.message, fields.code, fields.detail);
-}
-
 function validatePackageEntry(value: unknown): PackageEntry {
   if (!isRecord(value)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   const name = value.name;
@@ -115,19 +95,19 @@ function validatePackageEntry(value: unknown): PackageEntry {
     typeof name !== 'string' || name.length === 0 || typeof version !== 'string' || typeof description !== 'string'
     || !validStatus
   ) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   if ((status === 'available' || status === 'update_available') && version.length === 0) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   if (status === 'update_available') {
     if (typeof newVersion !== 'string' || newVersion.length === 0) {
-      throw malformedResponse();
+      throw malformedApiResponse(makeOpkgError);
     }
   } else if (newVersion !== undefined) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   return {
@@ -141,17 +121,17 @@ function validatePackageEntry(value: unknown): PackageEntry {
 
 function validateListResponse(body: unknown): PackageList {
   if (!isRecord(body) || !Array.isArray(body.packages)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   const metadataUpdatedAt = body.metadataUpdatedAt;
 
   if (metadataUpdatedAt !== null && typeof metadataUpdatedAt !== 'string') {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   if (typeof metadataUpdatedAt === 'string' && Number.isNaN(Date.parse(metadataUpdatedAt))) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   return {packages: body.packages.map((entry) => validatePackageEntry(entry)), metadataUpdatedAt};
@@ -159,7 +139,7 @@ function validateListResponse(body: unknown): PackageList {
 
 function validatePackageInfo(value: unknown): PackageInfo {
   if (!isRecord(value)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   const status = value.status;
@@ -170,14 +150,14 @@ function validatePackageInfo(value: unknown): PackageInfo {
     || !value.dependencies.every((dependency): dependency is string => typeof dependency === 'string')
     || (status !== 'installed' && status !== 'update_available' && status !== 'available')
   ) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   const optionalStrings = ['size', 'installedSize', 'installedTime'] as const;
 
   for (const field of optionalStrings) {
     if (value[field] !== undefined && typeof value[field] !== 'string') {
-      throw malformedResponse();
+      throw malformedApiResponse(makeOpkgError);
     }
   }
 
@@ -199,11 +179,11 @@ function validatePackageInfo(value: unknown): PackageInfo {
 
 function validateActionResponse(body: unknown): {message: string; packages: string[]} {
   if (!isRecord(body) || body.ok !== true || typeof body.message !== 'string' || !Array.isArray(body.packages)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   if (!body.packages.every((value): value is string => typeof value === 'string')) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   return {message: body.message, packages: body.packages};
@@ -211,28 +191,19 @@ function validateActionResponse(body: unknown): {message: string; packages: stri
 
 function validateUpdateResponse(body: unknown): {message: string} {
   if (!isRecord(body) || body.ok !== true || typeof body.message !== 'string') {
-    throw malformedResponse();
+    throw malformedApiResponse(makeOpkgError);
   }
 
   return {message: body.message};
 }
 
 export function createOpkgClient(fetchImpl: typeof globalThis.fetch = globalThis.fetch): OpkgClient {
-  async function request(url: string, init: RequestInit): Promise<unknown> {
-    const response = await fetchImpl(url, init);
-
-    if (!response.ok) {
-      throw await errorFromResponse(response);
-    }
-
-    return parseJson(response);
-  }
+  const rest = createRestClient(fetchImpl, makeOpkgError);
 
   async function postPackages(url: string, packages: string[]): Promise<{message: string; packages: string[]}> {
-    const body = await request(url, {
+    const body = await rest.request(url, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
-      body: JSON.stringify({packages}),
+      json: {packages},
     });
 
     return validateActionResponse(body);
@@ -240,14 +211,14 @@ export function createOpkgClient(fetchImpl: typeof globalThis.fetch = globalThis
 
   return {
     async list(): Promise<PackageList> {
-      const body = await request(OPKG_LIST_URL, {method: 'GET'});
+      const body = await rest.request(OPKG_LIST_URL, {method: 'GET'});
 
       return validateListResponse(body);
     },
 
     async info(name: string): Promise<PackageInfo> {
       const params = new URLSearchParams({name});
-      const body = await request(`${OPKG_INFO_URL}?${params.toString()}`, {method: 'GET'});
+      const body = await rest.request(`${OPKG_INFO_URL}?${params.toString()}`, {method: 'GET'});
 
       return validatePackageInfo(body);
     },
@@ -257,10 +228,9 @@ export function createOpkgClient(fetchImpl: typeof globalThis.fetch = globalThis
     upgrade: (packages) => postPackages(OPKG_UPGRADE_URL, packages),
 
     async update(): Promise<{message: string}> {
-      const body = await request(OPKG_UPDATE_URL, {
+      const body = await rest.request(OPKG_UPDATE_URL, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
-        body: '{}',
+        json: {},
       });
 
       return validateUpdateResponse(body);

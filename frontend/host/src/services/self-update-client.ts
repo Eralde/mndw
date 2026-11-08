@@ -4,9 +4,8 @@ import {
   SELF_UPDATE_REVERT_URL,
   SELF_UPDATE_STATUS_URL,
 } from '../constants.js';
-import {CSRF_HEADERS} from './csrf.js';
-import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
 import {isNonEmptyString, isRecord} from './json.js';
+import {HostApiError, createRestClient, malformedApiResponse} from './rest.js';
 
 export interface SelfUpdateStatus {
   state: 'idle' | 'in-progress' | 'failed';
@@ -37,50 +36,35 @@ export interface SelfUpdateClient {
   revert(): Promise<SelfUpdateAccepted>;
 }
 
-export class SelfUpdateError extends Error {
-  public readonly code: string;
-
-  constructor(message: string, code: string) {
-    super(message);
+export class SelfUpdateError extends HostApiError {
+  constructor(message: string, code: string, status?: number, detail?: unknown) {
+    super(message, code, detail, status);
     this.name = 'SelfUpdateError';
-    this.code = code;
   }
 }
+
+const makeSelfUpdateError = (message: string, code: string, detail?: unknown, status?: number): SelfUpdateError => {
+  return new SelfUpdateError(message, code, status, detail);
+};
 
 const isOperation = (value: unknown): value is 'update' | 'revert' => value === 'update' || value === 'revert';
 
-const malformedResponse = (): SelfUpdateError => new SelfUpdateError('Malformed response', 'UNKNOWN');
-
-async function parseJson(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    throw malformedResponse();
-  }
-}
-
-async function errorFromResponse(response: Response): Promise<SelfUpdateError> {
-  const fields = decodeErrorEnvelope(await readErrorBody(response), response.statusText);
-
-  return new SelfUpdateError(fields.message, fields.code);
-}
-
 function validateStatus(body: unknown): SelfUpdateStatus {
   if (!isRecord(body) || (body.state !== 'idle' && body.state !== 'in-progress' && body.state !== 'failed')) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeSelfUpdateError);
   }
 
   if (!isNonEmptyString(body.version)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeSelfUpdateError);
   }
 
   if (body.operation !== undefined && !isOperation(body.operation)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeSelfUpdateError);
   }
 
   for (const field of ['targetVersion', 'failureCode', 'rollbackVersion'] as const) {
     if (body[field] !== undefined && !isNonEmptyString(body[field])) {
-      throw malformedResponse();
+      throw malformedApiResponse(makeSelfUpdateError);
     }
   }
 
@@ -105,23 +89,23 @@ function validateCheck(body: unknown): SelfUpdateCheck {
     || typeof body.updateAvailable !== 'boolean'
     || typeof body.rollbackAvailable !== 'boolean'
   ) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeSelfUpdateError);
   }
 
   if (body.targetVersion !== undefined && !isNonEmptyString(body.targetVersion)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeSelfUpdateError);
   }
 
   if (body.rollbackVersion !== undefined && !isNonEmptyString(body.rollbackVersion)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeSelfUpdateError);
   }
 
   if (body.updateAvailable !== (body.targetVersion !== undefined)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeSelfUpdateError);
   }
 
   if (body.rollbackAvailable !== (body.rollbackVersion !== undefined)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeSelfUpdateError);
   }
 
   const targetVersion = body.targetVersion === undefined ? undefined : body.targetVersion;
@@ -138,30 +122,22 @@ function validateCheck(body: unknown): SelfUpdateCheck {
 
 function validateAccepted(body: unknown): SelfUpdateAccepted {
   if (!isRecord(body) || !isOperation(body.operation) || !isNonEmptyString(body.targetVersion)) {
-    throw malformedResponse();
+    throw malformedApiResponse(makeSelfUpdateError);
   }
 
   return {operation: body.operation, targetVersion: body.targetVersion};
 }
 
 export function createSelfUpdateClient(fetchImpl: typeof globalThis.fetch = globalThis.fetch): SelfUpdateClient {
-  async function request(url: string, init: RequestInit): Promise<unknown> {
-    const response = await fetchImpl(url, init);
-
-    if (!response.ok) {
-      throw await errorFromResponse(response);
-    }
-
-    return parseJson(response);
-  }
+  const rest = createRestClient(fetchImpl, makeSelfUpdateError);
 
   async function post(url: string): Promise<unknown> {
-    return request(url, {method: 'POST', headers: {'Content-Type': 'application/json', ...CSRF_HEADERS}, body: '{}'});
+    return rest.request(url, {method: 'POST', json: {}});
   }
 
   return {
     async status(): Promise<SelfUpdateStatus> {
-      return validateStatus(await request(SELF_UPDATE_STATUS_URL, {method: 'GET'}));
+      return validateStatus(await rest.request(SELF_UPDATE_STATUS_URL, {method: 'GET'}));
     },
 
     async check(): Promise<SelfUpdateCheck> {

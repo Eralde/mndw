@@ -21,10 +21,9 @@ import {
 import {decodeMgmtList, decodeMgmtListEntry} from '../runtime/mgmt-list-schema.js';
 import {decodeDeviceHardware, emptySwitchports} from '../runtime/device-info-schema.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
-import {CSRF_HEADERS} from './csrf.js';
 import {hostT} from './locale.service.js';
-import {decodeErrorEnvelope, readErrorBody} from './error-envelope.js';
-import {isNonEmptyString} from './json.js';
+import {isNonEmptyString, isRecord} from './json.js';
+import {HostApiError, createRestClient, malformedApiResponse} from './rest.js';
 
 export interface UploadResult {
   status: 'installed' | 'pending';
@@ -40,17 +39,16 @@ export interface RuntimeLimits {
   supportedServiceProtocols: number[];
 }
 
-export class MgmtError extends Error {
-  public readonly code: string;
-  public readonly detail: unknown;
-
-  constructor(message: string, code: string, detail?: unknown) {
-    super(message);
+export class MgmtError extends HostApiError {
+  constructor(message: string, code: string, detail?: unknown, status?: number) {
+    super(message, code, detail, status);
     this.name = 'MgmtError';
-    this.code = code;
-    this.detail = detail;
   }
 }
+
+const makeMgmtError = (message: string, code: string, detail?: unknown, status?: number): MgmtError => {
+  return new MgmtError(message, code, detail, status);
+};
 
 export interface MgmtClient {
   listPlugins(): Promise<PluginListEntry[]>;
@@ -85,10 +83,32 @@ function timeoutMs(kind: MgmtTimeoutKind): number {
   }
 }
 
-async function toError(response: Response): Promise<MgmtError> {
-  const fields = decodeErrorEnvelope(await readErrorBody(response), response.statusText);
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
 
-  return new MgmtError(fields.message, fields.code, fields.detail);
+function validateRuntimeLimits(value: unknown): RuntimeLimits {
+  if (
+    !isRecord(value)
+    || !isNonNegativeInteger(value.maxConcurrentExecTotal)
+    || !isNonNegativeInteger(value.maxConcurrentExecPerPlugin)
+    || !isNonNegativeInteger(value.maxSupervisedServices)
+    || !isNonNegativeInteger(value.currentExec)
+    || !isNonNegativeInteger(value.reservedServices)
+    || !Array.isArray(value.supportedServiceProtocols)
+    || !value.supportedServiceProtocols.every(isNonNegativeInteger)
+  ) {
+    throw malformedApiResponse(makeMgmtError);
+  }
+
+  return {
+    maxConcurrentExecTotal: value.maxConcurrentExecTotal,
+    maxConcurrentExecPerPlugin: value.maxConcurrentExecPerPlugin,
+    maxSupervisedServices: value.maxSupervisedServices,
+    currentExec: value.currentExec,
+    reservedServices: value.reservedServices,
+    supportedServiceProtocols: value.supportedServiceProtocols,
+  };
 }
 
 export function classifyMutationFailure(error: unknown): MutationOutcome {
@@ -111,6 +131,8 @@ export function createMgmtClient(
   fetchImpl: typeof globalThis.fetch = globalThis.fetch,
   makeSignal: (kind: MgmtTimeoutKind) => AbortSignal = (kind) => AbortSignal.timeout(timeoutMs(kind)),
 ): MgmtClient {
+  const rest = createRestClient(fetchImpl, makeMgmtError);
+
   function timeout(kind: MgmtTimeoutKind): AbortSignal {
     return makeSignal(kind);
   }
@@ -121,66 +143,49 @@ export function createMgmtClient(
     }
 
     if (!response.ok) {
-      throw await toError(response);
+      throw await rest.errorFromResponse(response);
     }
 
     throw new MgmtError('The device returned an unexpected response.', 'UNKNOWN');
   }
 
   async function postName(url: string, name: string, kind: MgmtTimeoutKind): Promise<Response> {
-    const response = await fetchImpl(
-      url,
-      {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
-        body: JSON.stringify({name}),
-        signal: timeout(kind),
-      },
-    );
-
-    if (!response.ok) {
-      throw await toError(response);
-    }
-
-    return response;
+    return await rest.request(url, {
+      method: 'POST',
+      json: {name},
+      signal: timeout(kind),
+      response: 'raw',
+    });
   }
 
   async function mutateEntry(url: string, name: string): Promise<PluginListEntry> {
     const response = await postName(url, name, url === MGMT_APPROVE_URL ? 'install' : 'mutation');
 
-    return decodeMgmtListEntry(await response.json());
+    return decodeMgmtListEntry(await rest.parseJson(response));
   }
 
   return {
     async listPlugins(): Promise<PluginListEntry[]> {
-      const response = await fetchImpl(MGMT_LIST_URL, {method: 'GET', signal: timeout('read')});
-
-      if (!response.ok) {
-        throw await toError(response);
-      }
-
-      return decodeMgmtList(await response.json());
+      return decodeMgmtList(await rest.request(MGMT_LIST_URL, {method: 'GET', signal: timeout('read')}));
     },
 
     async uploadPlugin(file: File): Promise<UploadResult> {
       // Deliberately unbounded: a 10 MB plugin over a slow link legitimately outlives
       // API_TIMEOUT_MS, and aborting a partial upload would be a regression.
-      const response = await fetchImpl(
-        MGMT_UPLOAD_URL,
-        {
-          method: 'POST',
-          headers: {'Content-Type': 'application/zip', ...CSRF_HEADERS},
-          body: file,
-        },
-      );
+      const response = await rest.request(MGMT_UPLOAD_URL, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/zip'},
+        body: file,
+        response: 'raw',
+      });
 
       if (response.status === 201 || response.status === 202) {
-        const entry = decodeMgmtListEntry(await response.json());
+        const entry = decodeMgmtListEntry(await rest.parseJson(response));
 
         return {status: response.status === 201 ? 'installed' : 'pending', entry};
       }
 
-      throw await toError(response);
+      throw await rest.errorFromResponse(response);
     },
 
     approvePlugin: (name) => mutateEntry(MGMT_APPROVE_URL, name),
@@ -188,21 +193,13 @@ export function createMgmtClient(
     disablePlugin: (name) => mutateEntry(MGMT_DISABLE_URL, name),
 
     async setPluginPermission(name: string, permission: PluginPermission, enabled: boolean): Promise<PluginListEntry> {
-      const response = await fetchImpl(
-        MGMT_PERMISSION_URL,
-        {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
-          body: JSON.stringify({name, permission, enabled}),
-          signal: timeout('mutation'),
-        },
-      );
+      const body = await rest.request(MGMT_PERMISSION_URL, {
+        method: 'POST',
+        json: {name, permission, enabled},
+        signal: timeout('mutation'),
+      });
 
-      if (!response.ok) {
-        throw await toError(response);
-      }
-
-      return decodeMgmtListEntry(await response.json());
+      return decodeMgmtListEntry(body);
     },
 
     async denyPlugin(name: string): Promise<void> {
@@ -218,53 +215,27 @@ export function createMgmtClient(
     },
 
     async getRuntime(): Promise<RuntimeLimits> {
-      const response = await fetchImpl(
-        MGMT_RUNTIME_URL,
-        {method: 'GET', signal: timeout('read')},
-      );
+      const body = await rest.request(MGMT_RUNTIME_URL, {method: 'GET', signal: timeout('read')});
 
-      if (!response.ok) {
-        throw await toError(response);
-      }
-
-      return (await response.json()) as RuntimeLimits;
+      return validateRuntimeLimits(body);
     },
 
     async getDeviceHardware(): Promise<{switchports: Switchports; usbPortCount: number}> {
       try {
-        const response = await fetchImpl(
-          MGMT_DEVICE_HARDWARE_URL,
-          {
-            method: 'GET',
-            signal: timeout('read'),
-          },
-        );
+        const body = await rest.request(MGMT_DEVICE_HARDWARE_URL, {method: 'GET', signal: timeout('read')});
 
-        if (!response.ok) {
-          return {switchports: emptySwitchports(), usbPortCount: 0};
-        }
-
-        return decodeDeviceHardware(await response.json());
+        return decodeDeviceHardware(body);
       } catch {
         return {switchports: emptySwitchports(), usbPortCount: 0};
       }
     },
 
     async getPalette(): Promise<PaletteTokenMap | null> {
-      const response = await fetchImpl(
-        MGMT_PALETTE_URL,
-        {
-          method: 'GET',
-          cache: 'no-store',
-          signal: timeout('read'),
-        },
-      );
-
-      if (!response.ok) {
-        throw await toError(response);
-      }
-
-      const body: unknown = await response.json().catch(() => null);
+      const body = await rest.request(MGMT_PALETTE_URL, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: timeout('read'),
+      });
 
       if (
         body === null
@@ -279,40 +250,28 @@ export function createMgmtClient(
     },
 
     async putPalette(palette: PaletteTokenMap): Promise<void> {
-      const response = await fetchImpl(
-        MGMT_PALETTE_URL,
-        {
-          method: 'PUT',
-          headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
-          body: JSON.stringify(palette),
-          signal: timeout('mutation'),
-        },
-      );
+      const response = await rest.request(MGMT_PALETTE_URL, {
+        method: 'PUT',
+        json: palette,
+        signal: timeout('mutation'),
+        response: 'raw',
+      });
 
       await expectNoContent(response);
     },
 
     async deletePalette(): Promise<void> {
-      const response = await fetchImpl(
-        MGMT_PALETTE_URL,
-        {
-          method: 'DELETE',
-          headers: {...CSRF_HEADERS},
-          signal: timeout('mutation'),
-        },
-      );
+      const response = await rest.request(MGMT_PALETTE_URL, {
+        method: 'DELETE',
+        signal: timeout('mutation'),
+        response: 'raw',
+      });
 
       await expectNoContent(response);
     },
 
     async getTelemetry(): Promise<{enabled: boolean}> {
-      const response = await fetchImpl(MGMT_TELEMETRY_URL, {method: 'GET', signal: timeout('read')});
-
-      if (!response.ok) {
-        throw await toError(response);
-      }
-
-      const body: unknown = await response.json();
+      const body = await rest.request(MGMT_TELEMETRY_URL, {method: 'GET', signal: timeout('read')});
 
       if (body === null || typeof body !== 'object' || typeof (body as {enabled?: unknown}).enabled !== 'boolean') {
         throw new MgmtError('The device returned an unexpected telemetry response.', 'UNKNOWN');
@@ -322,11 +281,11 @@ export function createMgmtClient(
     },
 
     async setTelemetry(enabled: boolean): Promise<void> {
-      const response = await fetchImpl(MGMT_TELEMETRY_URL, {
+      const response = await rest.request(MGMT_TELEMETRY_URL, {
         method: 'PUT',
-        headers: {'Content-Type': 'application/json', ...CSRF_HEADERS},
-        body: JSON.stringify({enabled}),
+        json: {enabled},
         signal: timeout('mutation'),
+        response: 'raw',
       });
 
       await expectNoContent(response);

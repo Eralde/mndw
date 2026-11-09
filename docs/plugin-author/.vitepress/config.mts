@@ -99,6 +99,7 @@ export default defineConfig({
             {text: 'RCI API', link: '/guides/rci-api'},
             {text: 'Local development', link: '/guides/local-development'},
             {text: 'Validation and packaging', link: '/guides/validation-and-packaging'},
+            {text: 'Upgrading to 0.2', link: '/guides/upgrading-to-0-2'},
           ],
         },
         {

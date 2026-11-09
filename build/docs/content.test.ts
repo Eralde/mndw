@@ -248,6 +248,16 @@ describe('Task 3 and 4 sidebar documentation', () => {
   });
 });
 
+describe('Task 12 upgrade guide', () => {
+  it('exists and is linked from the main sidebar', () => {
+    const guide = resolve(repoRoot, 'docs/plugin-author/guides/upgrading-to-0-2.md');
+    const config = readFileSync(resolve(repoRoot, 'docs/plugin-author/.vitepress/config.mts'), 'utf8');
+
+    expect(existsSync(guide)).toBe(true);
+    expect(config).toContain('{text: \'Upgrading to 0.2\', link: \'/guides/upgrading-to-0-2\'}');
+  });
+});
+
 describe('Task 5 author terminology', () => {
   it('does not call RCI direct', () => {
     const config = readFileSync(resolve(repoRoot, 'docs/plugin-author/.vitepress/config.mts'), 'utf8');

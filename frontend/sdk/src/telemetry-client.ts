@@ -1,3 +1,5 @@
+import type {Observable} from 'rxjs';
+
 export type TelemetryClockState = 'unanchored' | 'anchored' | 'suspect';
 
 export interface TelemetryClock {
@@ -65,6 +67,15 @@ export interface ProjectedSnapshot {
 
 export interface TelemetryClient {
   fetchProjected(range: ProjectRange, options?: {readonly signal?: AbortSignal}): Promise<ProjectedSnapshot>;
+}
+
+export interface TelemetryGathering {
+  readonly enabled: boolean;
+}
+
+export interface PluginTelemetry extends TelemetryClient {
+  /** Emits the current gathering state once it is known, then every change; completes on unmount. */
+  readonly gathering$: Observable<TelemetryGathering>;
 }
 
 export class TelemetryError extends Error {

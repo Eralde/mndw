@@ -1,3 +1,4 @@
+import {Subject} from 'rxjs';
 import {describe, expect, it} from 'vitest';
 import {createTestI18n} from './i18n.js';
 import {createTestPluginContext} from './plugin-context.js';
@@ -43,6 +44,34 @@ describe('createTestPluginContext', () => {
     fixture.unmount();
 
     expect(completeCount).toBe(1);
+  });
+
+  it('drives telemetry.gathering$ from the telemetry test option and completes on unmount', () => {
+    const gathering = new Subject<{enabled: boolean}>();
+    const fixture = createTestPluginContext({telemetry: {gathering$: gathering.asObservable()}});
+    const values: boolean[] = [];
+    let completeCount = 0;
+
+    fixture.context.telemetry.gathering$.subscribe({
+      next: ({enabled}) => values.push(enabled),
+      complete: () => completeCount += 1,
+    });
+    gathering.next({enabled: true});
+
+    expect(values).toEqual([true]);
+    fixture.unmount();
+
+    expect(completeCount).toBe(1);
+  });
+
+  it('does not emit telemetry gathering state by default', () => {
+    const fixture = createTestPluginContext();
+    const values: boolean[] = [];
+
+    fixture.context.telemetry.gathering$.subscribe(({enabled}) => values.push(enabled));
+    fixture.unmount();
+
+    expect(values).toEqual([]);
   });
 
   it('exposes optional event streams and controls them through the fixture', () => {

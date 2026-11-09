@@ -6,7 +6,7 @@ import type {PaletteTokenMap} from './palette.js';
 import type {MndwThemeName} from './tokens.js';
 import type {Observable} from 'rxjs';
 import type {PluginI18n} from './i18n.js';
-import type {TelemetryClient} from './telemetry-client.js';
+import type {PluginTelemetry} from './telemetry-client.js';
 import type {PluginEventFacade} from './event-schema.js';
 import type {Ticker} from './ticker.js';
 
@@ -102,7 +102,7 @@ export interface DeviceInfo extends DeviceInfoData {
 
 interface PluginContextBase {
   readonly navigation: HostNavigation;
-  telemetry: TelemetryClient;
+  readonly telemetry: PluginTelemetry;
   events?: PluginEventFacade;
   rciManager: PluginRciManager;
   storage: PluginStorage;

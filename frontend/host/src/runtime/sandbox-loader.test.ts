@@ -48,6 +48,7 @@ function deps(overrides: Partial<SandboxLoaderDeps> = {}): SandboxLoaderDeps {
       locale: services.locale,
       palette: services.palette,
       telemetry: services.telemetry,
+      telemetryGathering: services.telemetryGathering,
       eventStream: services.eventStream,
       navigation: () => ({
         pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},
@@ -193,6 +194,7 @@ describe('reloadSandboxPlugin', () => {
       locale: services.locale,
       palette: services.palette,
       telemetry: services.telemetry,
+      telemetryGathering: services.telemetryGathering,
       eventStream: services.eventStream,
       navigation: () => ({
         pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},

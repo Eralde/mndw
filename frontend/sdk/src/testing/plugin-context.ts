@@ -1,4 +1,4 @@
-import {BehaviorSubject, ReplaySubject, Subject, filter, of, takeUntil} from 'rxjs';
+import {BehaviorSubject, NEVER, ReplaySubject, Subject, filter, of, takeUntil} from 'rxjs';
 import type {BackendClient} from '../backend-client.js';
 import type {
   DeviceInfo,
@@ -14,7 +14,7 @@ import type {PluginI18n} from '../i18n.js';
 import {MNDW_TOKENS, type MndwThemeName} from '../tokens.js';
 import type {PaletteTokenMap} from '../palette.js';
 import type {PluginRciManager} from '../rci.js';
-import type {TelemetryClient} from '../telemetry-client.js';
+import type {PluginTelemetry} from '../telemetry-client.js';
 import type {OverlayService} from '../overlay.js';
 import type {PluginStorage} from '../storage.js';
 import type {Ticker, TickerTick} from '../ticker.js';
@@ -28,7 +28,7 @@ export interface TestPluginContextOptions {
   i18n?: PluginI18n;
   rciManager?: Partial<PluginRciManager>;
   backend?: BackendClient;
-  telemetry?: Partial<TelemetryClient>;
+  telemetry?: Partial<PluginTelemetry>;
   pageRoute?: PageRoute;
   instanceId?: string;
   events?: boolean;
@@ -125,10 +125,11 @@ function createRciManager(overrides: Partial<PluginRciManager> | undefined): Plu
   return Object.freeze({...methods, ...overrides});
 }
 
-function createTelemetry(overrides: Partial<TelemetryClient> = {}): TelemetryClient {
+function createTelemetry(ended: ReplaySubject<void>, overrides: Partial<PluginTelemetry> = {}): PluginTelemetry {
   return {
     fetchProjected: () => Promise.reject(new Error('test telemetry.fetchProjected not configured')),
     ...overrides,
+    gathering$: (overrides.gathering$ ?? NEVER).pipe(takeUntil(ended.asObservable())),
   };
 }
 
@@ -209,7 +210,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
   };
   const base = Object.assign(Object.create(null) as Record<string, unknown>, {
     navigation,
-    telemetry: createTelemetry(options.telemetry),
+    telemetry: createTelemetry(ended, options.telemetry),
     rciManager: createRciManager(options.rciManager),
     storage: createStorage(),
     sharedStorage: createStorage(),

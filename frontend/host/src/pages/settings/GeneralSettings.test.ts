@@ -2,7 +2,7 @@
 import {defineMndwUi} from '@mndw/ui';
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
-import {createHostServices, type HostServices} from '../../host-services.js';
+import {type HostServices, createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
 import type {PersistentRciCapability} from '../../services/persistent-rci-session.service.js';
 import GeneralSettings from './GeneralSettings.svelte';
@@ -10,6 +10,7 @@ import GeneralSettings from './GeneralSettings.svelte';
 const getCapability = vi.fn<() => Promise<PersistentRciCapability>>();
 const getTelemetry = vi.fn<() => Promise<{enabled: boolean}>>();
 const setTelemetry = vi.fn<(enabled: boolean) => Promise<void>>();
+const reportTelemetryGathering = vi.fn<(enabled: boolean) => void>();
 const refreshPalette = vi.fn<() => Promise<void>>();
 
 const disabledCapability: PersistentRciCapability = {
@@ -35,6 +36,7 @@ function createServices(): HostServices {
   return {
     ...services,
     mgmtClient: {...services.mgmtClient, getTelemetry, setTelemetry},
+    telemetryGathering: {...services.telemetryGathering, report: reportTelemetryGathering},
     palette: {...services.palette, refreshPalette},
     persistentRci: services.persistentRci,
   };
@@ -80,6 +82,7 @@ beforeEach(() => {
   getCapability.mockReset().mockResolvedValue(disabledCapability);
   getTelemetry.mockReset().mockResolvedValue({enabled: false});
   setTelemetry.mockReset().mockResolvedValue(undefined);
+  reportTelemetryGathering.mockReset();
   refreshPalette.mockReset().mockResolvedValue(undefined);
 });
 
@@ -122,6 +125,7 @@ describe('GeneralSettings telemetry section', () => {
     changeTelemetry(true);
 
     await vi.waitFor(() => expect(setTelemetry).toHaveBeenCalledWith(true));
+    await vi.waitFor(() => expect(reportTelemetryGathering).toHaveBeenCalledWith(true));
   });
 
   it('restores the switch and shows an alert when saving telemetry fails', async () => {
@@ -145,5 +149,6 @@ describe('GeneralSettings telemetry section', () => {
       expect(telemetrySwitch().checked).toBe(false);
     });
     expect(target.textContent).not.toContain('private failure detail');
+    expect(reportTelemetryGathering).not.toHaveBeenCalled();
   });
 });

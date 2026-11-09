@@ -80,6 +80,7 @@ const pluginContextServices = {
   locale: hostServices.locale,
   palette: hostServices.palette,
   telemetry: hostServices.telemetry,
+  telemetryGathering: hostServices.telemetryGathering,
   eventStream: hostServices.eventStream,
   navigation: () => ({
     pageTable: {baseRouteOf: () => undefined, pluginNameOf: () => undefined},

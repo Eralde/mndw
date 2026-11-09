@@ -4,8 +4,10 @@ import {
   PLUGIN_RCI_MANAGER_METHODS,
   type PageRoute,
   type PluginContext,
+  type TelemetryGathering,
 } from '@mndw/sdk';
 import {type BackendDescriptor, createBackendClient} from '@mndw/sdk-internal';
+import {filter} from 'rxjs';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {type PluginCatalogCell, createPluginI18n} from '../services/plugin-catalog.service.js';
 import {createPluginOverlayService} from '../services/overlay/overlay-manager.svelte.js';
@@ -27,9 +29,14 @@ export interface PluginContextHandle {
   dispose: OverlayDispose;
 }
 
-export type PluginContextServices = Pick<HostServices, 'locale' | 'palette' | 'telemetry' | 'eventStream'> & {
-  navigation(): PluginNavigationRouter | undefined;
-};
+export type PluginContextServices =
+  & Pick<
+    HostServices,
+    'locale' | 'palette' | 'telemetry' | 'telemetryGathering' | 'eventStream'
+  >
+  & {
+    navigation(): PluginNavigationRouter | undefined;
+  };
 
 let eventFacadeSequence = 0;
 
@@ -86,7 +93,6 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
   const subscribeHostLocaleValue = (callback: (locale: string) => void): () => void =>
     services.locale.subscribeLocale(callback);
   const getPaletteTokens = (): PluginContext['palette'] => services.palette.getTokens();
-  const telemetry = services.telemetry;
   const eventStream = services.eventStream;
 
   if (entry.type === 'page' && pageRoute === undefined) {
@@ -97,6 +103,16 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
   const theme$ = hostValue$(getTheme, subscribeTheme, lifetime);
   const locale$ = hostValue$(getHostLocale, subscribeHostLocaleValue, lifetime);
   const palette$ = hostValue$(getPaletteTokens, (callback) => services.palette.subscribePalette(callback), lifetime);
+  const gathering$ = hostValue$(
+    () => services.telemetryGathering.get(),
+    (listener) => services.telemetryGathering.subscribe(() => listener(services.telemetryGathering.get())),
+    lifetime,
+  ).pipe(filter((value): value is TelemetryGathering => value !== null));
+  const telemetry = {
+    fetchProjected: (...args: Parameters<typeof services.telemetry.fetchProjected>) =>
+      services.telemetry.fetchProjected(...args),
+    gathering$,
+  };
   const {service, dispose: disposeOverlay} = createPluginOverlayService(entry.name, instanceId);
   const eventFacadeId = createEventFacadeId();
   const events = eventStream.createFacade(eventFacadeId, entry.name, entry.permissions ?? [], lifetime);

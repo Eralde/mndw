@@ -17,6 +17,10 @@ import {type RciService, rciService} from './services/rci.service.js';
 import {uiOverlayService} from './services/overlay/ui-overlay.js';
 import {type TelemetryService, createTelemetryService, telemetryService} from './services/telemetry.service.js';
 import {type EventStreamService, createEventStreamService} from './services/event-stream.service.js';
+import {
+  type TelemetryGatheringService,
+  createTelemetryGatheringService,
+} from './services/telemetry-gathering.service.js';
 
 export interface HostEnv {
   fetch?: typeof globalThis.fetch;
@@ -34,6 +38,7 @@ export interface HostServices {
   persistentRci: PersistentRciSessionService;
   rci: RciService;
   telemetry: TelemetryService;
+  telemetryGathering: TelemetryGatheringService;
   eventStream: EventStreamService;
   overlay: OverlayService;
 }
@@ -42,6 +47,8 @@ let applicationServices: HostServices | undefined;
 
 export function appHostServices(): HostServices {
   if (applicationServices === undefined) {
+    const eventStream = createEventStreamService();
+
     applicationServices = Object.freeze({
       mgmtClient,
       palette: paletteService,
@@ -51,7 +58,11 @@ export function appHostServices(): HostServices {
       persistentRci: persistentRciSessionService,
       rci: rciService,
       telemetry: telemetryService,
-      eventStream: createEventStreamService(),
+      telemetryGathering: createTelemetryGatheringService({
+        getTelemetry: () => mgmtClient.getTelemetry(),
+        eventStream,
+      }),
+      eventStream,
       overlay: uiOverlayService,
     });
   }
@@ -70,6 +81,7 @@ export function createHostServices(env: HostEnv = {}): HostServices {
     setUiLocale: env.setUiLocale,
   });
   const registry = createPluginRegistry({catalog});
+  const eventStream = createEventStreamService();
 
   return Object.freeze({
     mgmtClient: isolatedMgmtClient,
@@ -80,7 +92,11 @@ export function createHostServices(env: HostEnv = {}): HostServices {
     persistentRci: createPersistentRciSessionService(),
     rci: rciService,
     telemetry: createTelemetryService(env.fetch ?? globalThis.fetch),
-    eventStream: createEventStreamService(),
+    telemetryGathering: createTelemetryGatheringService({
+      getTelemetry: () => isolatedMgmtClient.getTelemetry(),
+      eventStream,
+    }),
+    eventStream,
     overlay: uiOverlayService,
   });
 }

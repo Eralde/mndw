@@ -45,6 +45,7 @@ const pluginContextServices = {
   locale: services.locale,
   palette: services.palette,
   telemetry: services.telemetry,
+  telemetryGathering: services.telemetryGathering,
   eventStream: services.eventStream,
   navigation: getPluginNavigationRouter,
 };

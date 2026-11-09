@@ -1,5 +1,12 @@
 // @vitest-environment happy-dom
-import {MNDW_TOKENS, PLUGIN_RCI_MANAGER_METHODS, PageRouteError, type PaletteTokenMap} from '@mndw/sdk';
+import {
+  MNDW_TOKENS,
+  PLUGIN_RCI_MANAGER_METHODS,
+  PageRouteError,
+  type PaletteTokenMap,
+  type TelemetryClient,
+  type TelemetryGathering,
+} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {beforeEach, describe, expect, expectTypeOf, it, vi} from 'vitest';
 import {
@@ -52,10 +59,27 @@ const hostInfo = {locale: 'en', theme: 'dark'} as const;
 const hostServices = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
 const pluginPageRoutes = new Map([['mws-page', '/mws'], ['demo', '/demo']]);
 const routerNavigate = vi.fn((_pathname: string): Promise<void> => Promise.resolve());
+let gatheringValue: TelemetryGathering | null = null;
+const gatheringListeners = new Set<() => void>();
 const pluginContextServices: PluginContextServices = {
   locale: hostServices.locale,
   palette: hostServices.palette,
   telemetry: hostServices.telemetry,
+  telemetryGathering: {
+    get: () => gatheringValue,
+    subscribe: (listener) => {
+      gatheringListeners.add(listener);
+
+      return () => gatheringListeners.delete(listener);
+    },
+    report: (enabled) => {
+      gatheringValue = {enabled};
+
+      for (const listener of gatheringListeners) {
+        listener();
+      }
+    },
+  },
   eventStream: hostServices.eventStream,
   navigation: () => ({
     pageTable: {
@@ -102,6 +126,8 @@ beforeEach(() => {
   themeState.current = 'dark';
   themeState.listeners.clear();
   ContextTickerWorker.instances.length = 0;
+  gatheringValue = null;
+  gatheringListeners.clear();
 });
 
 const deviceInfo = {
@@ -366,7 +392,8 @@ describe('createPluginContext service boundaries', () => {
     expect(ctx.theme).toBe('light');
     expect(ctx.locale).toBe('ru');
     expect(ctx.palette).toBe(nextPalette);
-    expect(ctx.telemetry).toBe(pluginContextServices.telemetry);
+    expect(typeof ctx.telemetry.fetchProjected).toBe('function');
+    expect(ctx.telemetry.gathering$).toBeDefined();
 
     subscriptions.forEach((subscription) => subscription.unsubscribe());
   });
@@ -379,6 +406,65 @@ describe('createPluginContext service boundaries', () => {
     handle.dispose('plugin-unmount');
 
     expect(completeCount).toBe(1);
+  });
+
+  it('emits known gathering state changes and completes on dispose', () => {
+    const {context, dispose} = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+    const values: TelemetryGathering[] = [];
+    let completeCount = 0;
+
+    context.telemetry.gathering$.subscribe({
+      next: (value) => values.push(value),
+      complete: () => completeCount += 1,
+    });
+
+    expect(values).toEqual([]);
+    pluginContextServices.telemetryGathering.report(true);
+    pluginContextServices.telemetryGathering.report(false);
+
+    expect(values).toEqual([{enabled: true}, {enabled: false}]);
+
+    dispose('plugin-unmount');
+
+    expect(completeCount).toBe(1);
+  });
+
+  it('emits the latest known gathering state immediately to each context', () => {
+    pluginContextServices.telemetryGathering.report(true);
+
+    const first = createPluginContext({entry: widgetEntry(), instanceId: 'demo:1', hostInfo, deviceInfo});
+    const second = createPluginContext({entry: widgetEntry(), instanceId: 'demo:2', hostInfo, deviceInfo});
+    const firstValues: TelemetryGathering[] = [];
+    const secondValues: TelemetryGathering[] = [];
+
+    first.context.telemetry.gathering$.subscribe((value) => firstValues.push(value));
+    second.context.telemetry.gathering$.subscribe((value) => secondValues.push(value));
+
+    expect(firstValues).toEqual([{enabled: true}]);
+    expect(secondValues).toEqual([{enabled: true}]);
+
+    pluginContextServices.telemetryGathering.report(false);
+
+    expect(firstValues).toEqual([{enabled: true}, {enabled: false}]);
+    expect(secondValues).toEqual([{enabled: true}, {enabled: false}]);
+
+    first.dispose('plugin-unmount');
+    second.dispose('plugin-unmount');
+  });
+
+  it('delegates projected telemetry fetches through the per-context telemetry object', async () => {
+    const snapshot = {} as Awaited<ReturnType<TelemetryClient['fetchProjected']>>;
+    const fetchProjected = vi.fn<TelemetryClient['fetchProjected']>().mockResolvedValue(snapshot);
+    const {context} = createPluginContext({
+      entry: widgetEntry(),
+      instanceId: 'demo:1',
+      hostInfo,
+      deviceInfo,
+      services: {telemetry: {fetchProjected}},
+    });
+
+    await expect(context.telemetry.fetchProjected('1h')).resolves.toBe(snapshot);
+    expect(fetchProjected).toHaveBeenCalledWith('1h');
   });
 
   it('has no callback members', () => {

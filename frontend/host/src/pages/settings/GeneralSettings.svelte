@@ -117,7 +117,9 @@ function setTelemetryEnabled(
   telemetryEnabled = next;
   telemetryError = '';
   telemetryLoading = true;
-  void services.mgmtClient.setTelemetry(next).catch(() => {
+  void services.mgmtClient.setTelemetry(next).then(() => {
+    services.telemetryGathering.report(next);
+  }).catch(() => {
     telemetryEnabled = previous;
     telemetryError = hostT('settings.telemetry-error');
   }).finally(() => {

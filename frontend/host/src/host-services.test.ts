@@ -14,6 +14,7 @@ describe('host service composition', () => {
     expect(services.palette).toBe(paletteService);
     expect(services.registry).toBe(pluginRegistry);
     expect(services.mgmtClient).toBe(mgmtClient);
+    expect(services.telemetryGathering).toBeDefined();
     expect(appHostServices()).toBe(services);
     expect(Object.isFrozen(services)).toBe(true);
   });
@@ -28,6 +29,7 @@ describe('host service composition', () => {
     expect(first.registry).not.toBe(second.registry);
     expect(first.catalog).not.toBe(second.catalog);
     expect(first.persistentRci).not.toBe(second.persistentRci);
+    expect(first.telemetryGathering).not.toBe(second.telemetryGathering);
   });
 
   it('connects injected environment boundaries to one service graph', () => {

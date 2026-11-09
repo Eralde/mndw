@@ -69,6 +69,7 @@ export {historyStatus, isKnownTelemetryUnit, KNOWN_TELEMETRY_UNITS, TelemetryErr
 export type {
   HistoryStatus,
   KnownTelemetryUnit,
+  PluginTelemetry,
   ProjectedBand,
   ProjectedBandPoint,
   ProjectedChartColor,
@@ -81,6 +82,7 @@ export type {
   TelemetryClient,
   TelemetryClock,
   TelemetryClockState,
+  TelemetryGathering,
   TelemetryUnit,
 } from './telemetry-client.js';
 export type {PaletteTokenMap, ThemeName, TokenName} from './palette.js';

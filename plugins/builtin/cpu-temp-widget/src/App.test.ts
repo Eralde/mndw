@@ -1,13 +1,19 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {type App as VueApp, createApp} from 'vue';
-import {createTestI18n} from '@mndw/sdk/testing';
+import type {PluginTelemetry, TelemetryGathering} from '@mndw/sdk';
+import {type TestPluginContext, createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import App from './App.vue';
 
 let host: HTMLElement;
 let app: VueApp | null = null;
+let fixture: TestPluginContext | null = null;
 
-const supportedSnapshot = (start: number, end: number) => {
+const supportedSnapshot = (
+  start: number,
+  end: number,
+  options: {gatheringEnabled?: boolean; sessionConfigured?: boolean} = {},
+) => {
   return {
     keys: {
       temp: {
@@ -19,31 +25,64 @@ const supportedSnapshot = (start: number, end: number) => {
         valueDomain: {min: 45, max: 55},
       },
     },
-    gathering: {enabled: true},
-    sessionConfigured: true,
+    gathering: {enabled: options.gatheringEnabled ?? true},
+    sessionConfigured: options.sessionConfigured ?? true,
   };
 };
+
+function createGatheringStream(): {
+  gathering$: PluginTelemetry['gathering$'];
+  emit(enabled: boolean): void;
+} {
+  const observers = new Set<(value: TelemetryGathering) => void>();
+  const source = {
+    subscribe: (
+      observer: ((value: TelemetryGathering) => void) | {next(value: TelemetryGathering): void},
+    ): {unsubscribe(): void} => {
+      const listener = typeof observer === 'function' ? observer : (value: TelemetryGathering) => observer.next(value);
+
+      observers.add(listener);
+
+      return {
+        unsubscribe: (): void => {
+          observers.delete(listener);
+        },
+      };
+    },
+    pipe: (..._operators: unknown[]): unknown => source,
+  };
+
+  return {
+    gathering$: source as unknown as PluginTelemetry['gathering$'],
+    emit: (enabled): void => {
+      for (const observer of [...observers]) {
+        observer({enabled});
+      }
+    },
+  };
+}
 
 afterEach(() => {
   app?.unmount();
   app = null;
+  fixture?.unmount();
+  fixture = null;
   host?.remove();
 });
 
-function mountApp(overrides: Record<string, unknown> = {}): void {
+function mountApp(overrides: {telemetry?: Partial<PluginTelemetry>} = {}): TestPluginContext {
   host = document.createElement('div');
   host.style.height = '190px';
 
   document.body.append(host);
 
-  const ctx = {
+  fixture = createTestPluginContext({
     i18n: createTestI18n({
       'title': 'CPU Temperature',
       'l10n.probe': 'l10n-ok',
       'loading': 'Loading…',
       'empty': 'Gathering data…',
       'error': 'Error',
-      'disabled': 'Disabled',
       'unsupported': 'Unsupported',
       'range-1h': '1H',
       'range-3h': '3H',
@@ -53,26 +92,34 @@ function mountApp(overrides: Record<string, unknown> = {}): void {
       'history-range': 'History range',
       'history-catching-up': 'Catching up…',
       'history-historical': 'Historical',
+      'telemetry-note.off-with-data': 'Telemetry collection is off. The chart shows data up to {time}.',
+      'telemetry-note.off': 'Telemetry collection is off.',
+      'telemetry-note.link': 'Turn it on in Settings',
+      'telemetry-note.no-session': 'Set up a persistent RCI session to collect telemetry.',
+      'telemetry-note.session-link': 'Open Settings',
     }),
     telemetry: {
       fetchProjected: vi.fn().mockResolvedValue(supportedSnapshot(1000, 2000)),
+      ...overrides.telemetry,
     },
-    storage: {get: vi.fn().mockResolvedValue(null), set: vi.fn().mockResolvedValue(undefined)},
-    ...overrides,
-  };
+  });
 
-  app = createApp(App, {ctx});
+  fixture.context.navigation.href = (): string => '/settings/general';
+
+  app = createApp(App, {ctx: fixture.context});
   app.mount(host);
+
+  return fixture;
 }
 
 describe('App', () => {
   it('calls fetchProjected with default range on mount', async () => {
-    mountApp();
+    const fetchProjected = vi.fn().mockResolvedValue(supportedSnapshot(1000, 2000));
+
+    mountApp({telemetry: {fetchProjected}});
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    const ctx = (app as any)._instance?.props?.ctx;
-
-    expect(ctx.telemetry.fetchProjected).toHaveBeenCalledWith('1d', expect.any(Object));
+    expect(fetchProjected).toHaveBeenCalledWith('1d', expect.any(Object));
   });
 
   it('renders mndw-line-chart with domain prop after data loads', async () => {
@@ -136,7 +183,9 @@ describe('App', () => {
   });
 
   it('switching range calls fetchProjected with the new range', async () => {
-    mountApp();
+    const fetchProjected = vi.fn().mockResolvedValue(supportedSnapshot(1000, 2000));
+
+    mountApp({telemetry: {fetchProjected}});
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     const segmented = host.querySelector<HTMLElement>('mndw-segmented');
@@ -148,9 +197,7 @@ describe('App', () => {
     segmented.dispatchEvent(new CustomEvent('mndwchange', {detail: {value: '7d'}}));
     await new Promise((resolve) => setTimeout(resolve, 10));
 
-    const ctx = (app as any)._instance?.props?.ctx;
-
-    expect(ctx.telemetry.fetchProjected).toHaveBeenCalledWith('7d', expect.any(Object));
+    expect(fetchProjected).toHaveBeenCalledWith('7d', expect.any(Object));
   });
 
   it('keeps the previous chart mounted and marks it busy while the new range loads', async () => {
@@ -236,6 +283,85 @@ describe('App', () => {
 
     expect(host.querySelector('mndw-line-chart')).not.toBeNull();
     expect(host.querySelector('[data-testid="history-status"]')).toBeNull();
+  });
+
+  it('keeps the chart visible when gathering is off and shows the formatted last point time', async () => {
+    const end = new Date(2025, 10, 8, 9, 42).getTime();
+    const fetchProjected = vi.fn().mockResolvedValue(
+      supportedSnapshot(1000, end, {gatheringEnabled: false}),
+    );
+
+    mountApp({telemetry: {fetchProjected}});
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(host.querySelector('mndw-line-chart')).not.toBeNull();
+    expect(host.querySelector('.telemetry-note')?.textContent).toContain(
+      'Telemetry collection is off. The chart shows data up to 08.11 09:42.',
+    );
+  });
+
+  it('links the telemetry note to general settings through host navigation', async () => {
+    const testContext = mountApp({
+      telemetry: {fetchProjected: vi.fn().mockResolvedValue(supportedSnapshot(1000, 2000, {gatheringEnabled: false}))},
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const link = host.querySelector<HTMLAnchorElement>('.telemetry-note a');
+
+    expect(link?.getAttribute('href')).toBe('/settings/general');
+
+    if (link === null) {
+      throw new Error('Settings link was not rendered');
+    }
+
+    link.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+
+    expect(testContext.navigationCalls).toEqual([{kind: 'settings', tab: 'general'}]);
+  });
+
+  it('refetches the selected range and follows gathering stream changes immediately', async () => {
+    const gathering = createGatheringStream();
+    const fetchProjected = vi.fn().mockResolvedValue(supportedSnapshot(1000, 2000));
+
+    mountApp({telemetry: {fetchProjected, gathering$: gathering.gathering$}});
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetchProjected).toHaveBeenCalledTimes(1);
+
+    gathering.emit(false);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(fetchProjected).toHaveBeenCalledTimes(2);
+    expect(host.querySelector('.telemetry-note')?.textContent).toContain('Telemetry collection is off.');
+
+    gathering.emit(true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(fetchProjected).toHaveBeenCalledTimes(3);
+    expect(host.querySelector('.telemetry-note')).toBeNull();
+  });
+
+  it('adds a Settings link to the existing long-range session requirement', async () => {
+    const fetchProjected = vi.fn()
+      .mockResolvedValueOnce(supportedSnapshot(1000, 2000))
+      .mockResolvedValueOnce(supportedSnapshot(1000, 2000, {sessionConfigured: false}));
+
+    mountApp({telemetry: {fetchProjected}});
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const segmented = host.querySelector<HTMLElement>('mndw-segmented');
+
+    if (segmented === null) {
+      throw new Error('range segmented control was not rendered');
+    }
+
+    segmented.dispatchEvent(new CustomEvent('mndwchange', {detail: {value: '7d'}}));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(host.querySelector('.telemetry-note')?.textContent).toContain(
+      'Set up a persistent RCI session to collect telemetry.',
+    );
+    expect(host.querySelector<HTMLAnchorElement>('.telemetry-note a')?.getAttribute('href')).toBe('/settings/general');
   });
 
   it('renders l10n probe span', () => {

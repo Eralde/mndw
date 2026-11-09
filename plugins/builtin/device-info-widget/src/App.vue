@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted, ref} from 'vue';
+import {computed, onMounted, onUnmounted, provide, ref} from 'vue';
 import {historyStatus} from '@mndw/sdk';
 import type {LoadState, PluginContext, ProjectedSeries, ProjectedSnapshot} from '@mndw/sdk';
 import {useTranslator} from '@mndw/sdk/vue';
 import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 import CopyField from './components/CopyField.vue';
 import LoadBarChart from './components/LoadBarChart.vue';
+import TelemetryNote from './components/TelemetryNote.vue';
 import {
   type DeviceInfoRange,
   type LiveDeviceInfo,
@@ -16,6 +17,7 @@ import {
 } from './services/device-info.js';
 import {createUptimeBaseline, getUptimeSeconds, type UptimeBaseline} from './services/uptime.js';
 import {
+  formatTelemetryTime,
   sparklineSamplesFromProjection,
   sparklineTimeDomainFromProjection,
   type DurableRange,
@@ -23,6 +25,7 @@ import {
 import {openSettingsDialog} from './services/open-settings-dialog.js';
 
 const props = defineProps<{ctx: PluginContext}>();
+provide('mndw:plugin-i18n', props.ctx.i18n);
 
 const translator = useTranslator(props.ctx.i18n);
 const t = (key: string): string => translator.t(key);
@@ -32,6 +35,7 @@ const liveHistoryLoading = ref(false);
 const uptimeSeconds = ref<number | null>(null);
 const projectedSnapshot = ref<ProjectedSnapshot | null>(null);
 const projectedLoadedRange = ref<DurableRange | null>(null);
+const gatheringOverride = ref<boolean | undefined>(undefined);
 
 type DisplayRange = DeviceInfoRange | DurableRange;
 
@@ -64,8 +68,10 @@ let ticker: ReturnType<PluginContext['createTicker']> | null = null;
 let tickerSubscription: {unsubscribe(): void} | null = null;
 let refreshLoop: RefreshLoop | null = null;
 let projectedRefreshLoop: RefreshLoop | null = null;
+let gatheringSubscription: {unsubscribe(): void} | null = null;
 let projectedAbortController: AbortController | null = null;
 let pendingProjectedRange: DurableRange | null = null;
+let projectedLoopGeneration = 0;
 let liveHistoryGeneration = 0;
 let mounted = false;
 
@@ -80,9 +86,6 @@ const info = computed<LiveDeviceInfo | null>(() => {
 });
 
 const isDurableRange = computed(() => selectedRange.value === '7d' || selectedRange.value === '30d');
-const sessionRequired = computed(() => {
-  return isDurableRange.value && projectedSnapshot.value != null && !projectedSnapshot.value.sessionConfigured;
-});
 const durableRange = computed<DurableRange>(() => selectedRange.value === '30d' ? '30d' : '7d');
 const activeProjection = computed<ProjectedSnapshot | null>(() => {
   return isDurableRange.value && projectedLoadedRange.value === durableRange.value
@@ -91,6 +94,40 @@ const activeProjection = computed<ProjectedSnapshot | null>(() => {
 });
 const projectedCpu = computed<ProjectedSeries | null>(() => activeProjection.value?.keys.cpu ?? null);
 const projectedRam = computed<ProjectedSeries | null>(() => activeProjection.value?.keys.ram ?? null);
+const gatheringEnabled = computed(() => gatheringOverride.value ?? activeProjection.value?.gathering.enabled ?? null);
+// Unknown session state counts as configured, so a failed projection request falls back to the gathering stream.
+const sessionConfigured = computed(() => activeProjection.value?.sessionConfigured ?? true);
+const telemetryNoteVisible = computed(() => {
+  return isDurableRange.value && (!sessionConfigured.value || gatheringEnabled.value === false);
+});
+const lastProjectedPoint = computed((): {time: number; series: ProjectedSeries} | null => {
+  let latest: {time: number; series: ProjectedSeries} | null = null;
+
+  for (const series of [projectedCpu.value, projectedRam.value]) {
+    if (series === null) {
+      continue;
+    }
+
+    for (const point of series.points) {
+      if (!Number.isFinite(point.time) || !Number.isFinite(point.value)) {
+        continue;
+      }
+
+      if (latest === null || point.time > latest.time) {
+        latest = {time: point.time, series};
+      }
+    }
+  }
+
+  return latest;
+});
+const lastPointTime = computed(() => {
+  const point = lastProjectedPoint.value;
+
+  return point === null
+    ? null
+    : formatTelemetryTime(translator, point.time, sparklineTimeDomainFromProjection(point.series));
+});
 const cpuLoadTimeDomain = computed(() => {
   return projectedCpu.value === null ? undefined : sparklineTimeDomainFromProjection(projectedCpu.value);
 });
@@ -208,6 +245,7 @@ const loadLiveHistory = (range: DeviceInfoRange): void => {
 };
 
 const stopProjectedLoop = (): void => {
+  projectedLoopGeneration += 1;
   projectedRefreshLoop?.stop();
   projectedRefreshLoop = null;
   projectedAbortController?.abort();
@@ -215,16 +253,27 @@ const stopProjectedLoop = (): void => {
   pendingProjectedRange = null;
 };
 
-const startProjectedLoop = (range: DurableRange): void => {
+const startProjectedLoop = (range: DurableRange, preserveLoadedRange = false): void => {
   stopProjectedLoop();
-  projectedLoadedRange.value = null;
+  const generation = projectedLoopGeneration;
+  if (!preserveLoadedRange) {
+    projectedLoadedRange.value = null;
+  }
   pendingProjectedRange = range;
   projectedAbortController = new AbortController();
   projectedRefreshLoop = createRefreshLoop({
     load: () => props.ctx.telemetry.fetchProjected(range, {signal: projectedAbortController?.signal}),
     intervalMs: 15 * 60_000,
-    onSuccess: handleProjectedTelemetrySuccess,
-    onError: handleProjectedTelemetryError,
+    onSuccess: (snapshot) => {
+      if (generation === projectedLoopGeneration) {
+        handleProjectedTelemetrySuccess(snapshot);
+      }
+    },
+    onError: (loadError, isInitial) => {
+      if (generation === projectedLoopGeneration) {
+        handleProjectedTelemetryError(loadError, isInitial);
+      }
+    },
   });
   projectedRefreshLoop.start();
 };
@@ -281,6 +330,14 @@ const openSettings = (): void => {
 
 onMounted(() => {
   mounted = true;
+  gatheringSubscription = props.ctx.telemetry.gathering$.subscribe(({enabled}) => {
+    gatheringOverride.value = enabled;
+
+    if (isDurableRange.value) {
+      startProjectedLoop(durableRange.value, true);
+    }
+  });
+
   ticker = props.ctx.createTicker();
   tickerSubscription = ticker.tick$.subscribe(() => {
     uptimeSeconds.value = getUptimeSeconds(baseline, Date.now());
@@ -310,6 +367,8 @@ onUnmounted(() => {
   refreshLoop?.stop();
   refreshLoop = null;
   stopProjectedLoop();
+  gatheringSubscription?.unsubscribe();
+  gatheringSubscription = null;
   tickerSubscription?.unsubscribe();
   tickerSubscription = null;
   ticker?.destroy();
@@ -338,7 +397,12 @@ onUnmounted(() => {
           </mndw-segment>
         </mndw-segmented>
       </div>
-      <span v-if="sessionRequired" class="app__history-status">{{ t('session-required') }}</span>
+      <TelemetryNote
+        v-if="telemetryNoteVisible"
+        :sessionConfigured="sessionConfigured"
+        :lastPointTime="lastPointTime"
+        :navigation="props.ctx.navigation"
+      />
       <span v-else-if="historyStatusLabel !== null" class="app__history-status" data-testid="history-status">
         {{ historyStatusLabel }}
       </span>

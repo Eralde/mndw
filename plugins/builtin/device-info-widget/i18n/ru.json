@@ -30,6 +30,11 @@
   "range-7d": "7д",
   "range-30d": "30д",
   "session-required": "Расширенная история требует настроенной постоянной сессии.",
+  "telemetry-note.off-with-data": "Сбор телеметрии выключен. На графике данные до {time}.",
+  "telemetry-note.off": "Сбор телеметрии выключен.",
+  "telemetry-note.link": "Включить в настройках",
+  "telemetry-note.no-session": "Чтобы собирать телеметрию, настройте постоянную RCI-сессию.",
+  "telemetry-note.session-link": "Открыть настройки",
   "history-catching-up": "Догоняет…",
   "history-historical": "Исторические данные"
 }

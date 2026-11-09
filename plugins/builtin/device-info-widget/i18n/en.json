@@ -30,6 +30,11 @@
   "range-7d": "7d",
   "range-30d": "30d",
   "session-required": "Extended history requires a configured persistent session.",
+  "telemetry-note.off-with-data": "Telemetry collection is off. The chart shows data up to {time}.",
+  "telemetry-note.off": "Telemetry collection is off.",
+  "telemetry-note.link": "Turn it on in Settings",
+  "telemetry-note.no-session": "Set up a persistent RCI session to collect telemetry.",
+  "telemetry-note.session-link": "Open Settings",
   "history-catching-up": "Catching up…",
   "history-historical": "Historical"
 }

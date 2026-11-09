@@ -1,5 +1,12 @@
 // @vitest-environment happy-dom
-import type {PluginContext, PluginRciManager, ProjectedSnapshot, TickerTick} from '@mndw/sdk';
+import type {
+  HostTarget,
+  PluginContext,
+  PluginRciManager,
+  ProjectedSnapshot,
+  TelemetryGathering,
+  TickerTick,
+} from '@mndw/sdk';
 import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import type {RciQuery} from '@rci-tools/core';
 import {createApp, nextTick} from 'vue';
@@ -42,6 +49,7 @@ const projectedTelemetrySnapshot = (): ProjectedSnapshot => ({
     },
   },
   gathering: {enabled: true},
+  sessionConfigured: true,
 });
 
 function successfulResponse(query: RciQuery): Observable<unknown> {
@@ -59,15 +67,19 @@ function successfulResponse(query: RciQuery): Observable<unknown> {
   }
 }
 
+type WidgetTestContext = PluginContext & {navigationCalls: HostTarget[]};
+
 function createContext(
   queue: (query: RciQuery) => Observable<unknown>,
   i18n = createTestI18n(enCatalog),
   projected: ProjectedSnapshot = projectedTelemetrySnapshot(),
   tickerFactory?: PluginContext['createTicker'],
-): PluginContext {
+  gathering$?: Observable<TelemetryGathering>,
+): WidgetTestContext {
   const fixture = createTestPluginContext({
     i18n,
     theme: 'dark',
+    telemetry: gathering$ === undefined ? {} : {gathering$},
     rciManager: {
       queue: (query: RciQuery | RciQuery[]) =>
         Array.isArray(query)
@@ -86,16 +98,22 @@ function createContext(
   Object.defineProperties(context, {
     deviceInfo: {enumerable: true,
       value: {...fixture.context.deviceInfo, model: 'Keenetic Giga', firmwareVersion: '1.0.0'}},
-    telemetry: {
-      enumerable: true,
-      value: {
-        fetchProjected: vi.fn().mockResolvedValue(projected),
-      },
-    },
+    navigation: {enumerable: true, value: fixture.context.navigation},
+    navigationCalls: {enumerable: false, value: fixture.navigationCalls},
+    telemetry: {enumerable: true, value: {
+      ...fixture.context.telemetry,
+      fetchProjected: vi.fn().mockResolvedValue(projected),
+    }},
     ...(tickerFactory === undefined ? {} : {createTicker: {enumerable: true, value: tickerFactory}}),
   });
 
-  return Object.freeze(context) as unknown as PluginContext;
+  const widgetContext = Object.freeze(context) as unknown as WidgetTestContext;
+
+  widgetContext.navigation.href = (target): string | undefined => {
+    return target.kind === 'settings' && target.tab === 'general' ? '/settings/general' : undefined;
+  };
+
+  return widgetContext;
 }
 
 function mountWidget(
@@ -389,6 +407,156 @@ describe('App', () => {
     await flushPromises();
 
     expect(document.querySelectorAll('.load-bar-chart')).toHaveLength(2);
+    app.unmount();
+    host.remove();
+  });
+
+  it.each(['7d', '30d'])('shows the telemetry note only for %s when collection is off', async (range) => {
+    const snapshot = {...projectedTelemetrySnapshot(), gathering: {enabled: false}};
+    const ctx = createContext(successfulResponse, createTestI18n(enCatalog), snapshot);
+    const {app, host} = mountWidgetContext(ctx);
+
+    await flushPromises();
+    expect(host.querySelector('.telemetry-note')).toBeNull();
+
+    changeRange(host, range);
+    await flushPromises();
+
+    const note = host.querySelector<HTMLElement>('.telemetry-note');
+    const expectedTime = createTestI18n(enCatalog).formatDate(
+      new Date(projectionEnd),
+      {month: 'short', day: 'numeric'},
+    );
+    const link = note?.querySelector<HTMLAnchorElement>('a');
+
+    expect(note?.getAttribute('role')).toBe('status');
+    expect(note?.textContent).toContain(`The chart shows data up to ${expectedTime}.`);
+    expect(link?.getAttribute('href')).toBe('/settings/general');
+
+    const click = new MouseEvent('click', {bubbles: true, cancelable: true});
+
+    link?.dispatchEvent(click);
+
+    expect(click.defaultPrevented).toBe(true);
+    expect(ctx.navigationCalls).toEqual([{kind: 'settings', tab: 'general'}]);
+
+    app.unmount();
+    host.remove();
+  });
+
+  it('does not show the telemetry note on live ranges', async () => {
+    const snapshot = {...projectedTelemetrySnapshot(), gathering: {enabled: false}};
+    const {app, host} = mountWidgetContext(createContext(successfulResponse, createTestI18n(enCatalog), snapshot));
+
+    await flushPromises();
+
+    for (const range of ['3m', '1h', '3h', '1d']) {
+      changeRange(host, range);
+      await flushPromises();
+      expect(host.querySelector('.telemetry-note')).toBeNull();
+    }
+
+    app.unmount();
+    host.remove();
+  });
+
+  it('shows session setup guidance and the Settings link when no persistent session is configured', async () => {
+    const snapshot = {...projectedTelemetrySnapshot(), gathering: {enabled: true}, sessionConfigured: false};
+    const ctx = createContext(successfulResponse, createTestI18n(enCatalog), snapshot);
+    const {app, host} = mountWidgetContext(ctx);
+
+    await flushPromises();
+    changeRange(host, '7d');
+    await flushPromises();
+
+    expect(host.querySelector('.telemetry-note')?.textContent)
+      .toContain('Set up a persistent RCI session to collect telemetry.');
+    expect(host.querySelector('.telemetry-note a')?.getAttribute('href')).toBe('/settings/general');
+
+    app.unmount();
+    host.remove();
+  });
+
+  it('uses gathering stream updates over snapshot state and refetches the selected range', async () => {
+    const gathering = new Subject<TelemetryGathering>();
+    const snapshot = {...projectedTelemetrySnapshot(), gathering: {enabled: false}};
+    const ctx = createContext(
+      successfulResponse,
+      createTestI18n(enCatalog),
+      snapshot,
+      undefined,
+      gathering.asObservable(),
+    );
+    const fetchProjected = vi.spyOn(ctx.telemetry, 'fetchProjected');
+    const {app, host} = mountWidgetContext(ctx);
+
+    await flushPromises();
+    changeRange(host, '7d');
+    await flushPromises();
+
+    expect(host.querySelector('.telemetry-note')).not.toBeNull();
+    expect(fetchProjected).toHaveBeenCalledTimes(1);
+
+    gathering.next({enabled: true});
+    await flushPromises();
+
+    expect(host.querySelector('.telemetry-note')).toBeNull();
+    expect(fetchProjected).toHaveBeenCalledTimes(2);
+
+    gathering.next({enabled: false});
+    await flushPromises();
+
+    expect(host.querySelector('.telemetry-note')).not.toBeNull();
+    expect(fetchProjected).toHaveBeenCalledTimes(3);
+
+    app.unmount();
+    host.remove();
+  });
+
+  it('shows the telemetry note from the gathering stream when the projection request fails', async () => {
+    const ctx = createContext(
+      successfulResponse,
+      createTestI18n(enCatalog),
+      projectedTelemetrySnapshot(),
+      undefined,
+      of({enabled: false}),
+    );
+
+    (ctx.telemetry as unknown as {fetchProjected: () => Promise<never>}).fetchProjected = vi.fn()
+      .mockRejectedValue(new Error('projection unavailable'));
+
+    const {app, host} = mountWidgetContext(ctx);
+
+    await flushPromises();
+    expect(host.querySelector('.telemetry-note')).toBeNull();
+
+    changeRange(host, '7d');
+    await flushPromises();
+
+    const note = host.querySelector<HTMLElement>('.telemetry-note');
+
+    expect(note?.textContent).toContain('Telemetry collection is off.');
+    expect(note?.textContent).not.toContain('The chart shows data up to');
+    expect(note?.querySelector('a')?.getAttribute('href')).toBe('/settings/general');
+
+    app.unmount();
+    host.remove();
+  });
+
+  it('does not show the telemetry note when the projection fails and gathering state is unknown', async () => {
+    const ctx = createContext(successfulResponse, createTestI18n(enCatalog), projectedTelemetrySnapshot());
+
+    (ctx.telemetry as unknown as {fetchProjected: () => Promise<never>}).fetchProjected = vi.fn()
+      .mockRejectedValue(new Error('projection unavailable'));
+
+    const {app, host} = mountWidgetContext(ctx);
+
+    await flushPromises();
+    changeRange(host, '7d');
+    await flushPromises();
+
+    expect(host.querySelector('.telemetry-note')).toBeNull();
+
     app.unmount();
     host.remove();
   });

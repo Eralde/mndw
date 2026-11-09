@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted, ref} from 'vue';
+import {computed, onMounted, onUnmounted, provide, ref} from 'vue';
 import type {PluginContext, ProjectedSeries, ProjectedSnapshot, ProjectRange} from '@mndw/sdk';
 import {historyStatus} from '@mndw/sdk';
 import {useTranslator} from '@mndw/sdk/vue';
 import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
+import TelemetryNote from './components/TelemetryNote.vue';
 
 const props = defineProps<{ctx: PluginContext}>();
+provide('mndw:plugin-i18n', props.ctx.i18n);
 const translator = useTranslator(props.ctx.i18n);
 const t = (key: string): string => translator.t(key);
 
@@ -22,13 +24,20 @@ const snapshot = ref<ProjectedSnapshot | null>(null);
 const loadedRange = ref<ProjectRange | null>(null);
 const loading = ref(true);
 const error = ref(false);
+const gatheringFromStream = ref<boolean | null>(null);
 
 let refreshLoop: RefreshLoop | null = null;
 let abortController: AbortController | null = null;
+let gatheringSubscription: {unsubscribe(): void} | null = null;
 
 const activeSnapshot = computed(() => loadedRange.value === selectedRange.value ? snapshot.value : null);
 const temp = computed<ProjectedSeries | null>(() => snapshot.value?.keys.temp ?? null);
-const gatheringEnabled = computed(() => activeSnapshot.value?.gathering.enabled ?? true);
+const gatheringEnabled = computed(() => {
+  return gatheringFromStream.value ?? activeSnapshot.value?.gathering.enabled ?? true;
+});
+const sessionConfigured = computed(() => {
+  return activeSnapshot.value?.sessionConfigured ?? snapshot.value?.sessionConfigured ?? true;
+});
 const hasData = computed(() => (temp.value?.segments.length ?? 0) > 0);
 const sessionRequired = computed(() => {
   return (selectedRange.value === '7d' || selectedRange.value === '30d') && activeSnapshot.value != null && !activeSnapshot.value.sessionConfigured;
@@ -71,6 +80,14 @@ const timeFormatter = computed(() => {
     return dated ? `${pad(date.getDate())}.${pad(date.getMonth() + 1)} ${time}` : `${time}:${pad(date.getSeconds())}`;
   };
 });
+
+const lastPointTime = computed(() => {
+  const points = temp.value?.points;
+  const lastPoint = points?.[points.length - 1];
+
+  return lastPoint === undefined ? null : timeFormatter.value(lastPoint.time);
+});
+const showTelemetryNote = computed(() => sessionRequired.value || !gatheringEnabled.value);
 
 const stopLoop = (): void => {
   refreshLoop?.stop();
@@ -129,10 +146,21 @@ const onRangeChange = (event: Event): void => {
 };
 
 onMounted(() => {
+  let started = false;
+  gatheringSubscription = props.ctx.telemetry.gathering$.subscribe((state) => {
+    gatheringFromStream.value = state.enabled;
+
+    if (started) {
+      startLoop(selectedRange.value);
+    }
+  });
   startLoop(selectedRange.value);
+  started = true;
 });
 
 onUnmounted(() => {
+  gatheringSubscription?.unsubscribe();
+  gatheringSubscription = null;
   stopLoop();
 });
 </script>
@@ -153,29 +181,37 @@ onUnmounted(() => {
         </mndw-segment>
       </mndw-segmented>
     </div>
-    <div v-if="sessionRequired" class="app__message">{{ t('session-required') }}</div>
-    <div v-else-if="loading && (temp === null || !temp.supported)" class="app__message" role="status">
-      {{ t('loading') }}
-    </div>
-    <div v-else-if="!gatheringEnabled" class="app__message">{{ t('disabled') }}</div>
-    <div v-else-if="error && !activeSnapshot" class="mndw-alert mndw-alert--danger" role="alert">{{ t('error') }}</div>
-    <div v-else-if="!loading && temp && !temp.supported" class="app__message">{{ t('unsupported') }}</div>
-    <template v-else-if="temp">
-      <div class="chart-wrapper" :class="{'chart-wrapper--loading': loading}" :aria-busy="loading">
-        <span v-if="loading" class="app__sr-only" role="status">{{ t('loading') }}</span>
-        <span v-if="!hasData" class="app__message">{{ t('empty') }}</span>
-        <mndw-line-chart
-          :series.prop="[{id: 'mean', label: t('title'), data: temp.points, segments: temp.segments, color: 'accent'}]"
-          :bands.prop="temp.bands"
-          :domain.prop="timeDomain"
-          :valueDomain.prop="temp.valueDomain"
-          :value-label="t('title')"
-          :valueFormatter.prop="valueFormatter"
-          :timeFormatter.prop="timeFormatter"
-          :empty-label="t('empty')"
-          :aria-label="t('title')"
-        />
+    <TelemetryNote
+      v-if="showTelemetryNote"
+      :session-configured="sessionConfigured"
+      :last-point-time="lastPointTime"
+      :navigation="props.ctx.navigation"
+    />
+    <template v-if="!sessionRequired">
+      <div v-if="loading && (temp === null || !temp.supported)" class="app__message" role="status">
+        {{ t('loading') }}
       </div>
+      <div v-else-if="error && !activeSnapshot" class="mndw-alert mndw-alert--danger" role="alert">
+        {{ t('error') }}
+      </div>
+      <div v-else-if="!loading && temp && !temp.supported" class="app__message">{{ t('unsupported') }}</div>
+      <template v-else-if="temp">
+        <div class="chart-wrapper" :class="{'chart-wrapper--loading': loading}" :aria-busy="loading">
+          <span v-if="loading" class="app__sr-only" role="status">{{ t('loading') }}</span>
+          <span v-if="!hasData" class="app__message">{{ t('empty') }}</span>
+          <mndw-line-chart
+            :series.prop="[{id: 'mean', label: t('title'), data: temp.points, segments: temp.segments, color: 'accent'}]"
+            :bands.prop="temp.bands"
+            :domain.prop="timeDomain"
+            :valueDomain.prop="temp.valueDomain"
+            :value-label="t('title')"
+            :valueFormatter.prop="valueFormatter"
+            :timeFormatter.prop="timeFormatter"
+            :empty-label="t('empty')"
+            :aria-label="t('title')"
+          />
+        </div>
+      </template>
     </template>
   </div>
 </template>

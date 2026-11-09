@@ -4,7 +4,6 @@
   "loading": "Loading…",
   "error": "Temperature data is unavailable.",
   "unsupported": "Temperature monitoring is not supported on this device.",
-  "disabled": "Telemetry gathering is disabled.",
   "empty": "Gathering data…",
   "range-1h": "1H",
   "range-3h": "3H",
@@ -12,7 +11,11 @@
   "range-7d": "7D",
   "range-30d": "30D",
   "history-range": "History range",
-  "session-required": "Extended history requires a configured persistent session.",
+  "telemetry-note.off-with-data": "Telemetry collection is off. The chart shows data up to {time}.",
+  "telemetry-note.off": "Telemetry collection is off.",
+  "telemetry-note.link": "Turn it on in Settings",
+  "telemetry-note.no-session": "Set up a persistent RCI session to collect telemetry.",
+  "telemetry-note.session-link": "Open Settings",
   "history-catching-up": "Catching up…",
   "history-historical": "Historical"
 }

@@ -2,6 +2,7 @@
 import {computed} from 'vue';
 import type {Translator} from '@mndw/sdk';
 import type {MndwChartDomain, MndwChartSample} from '@mndw/ui';
+import {formatTelemetryTime} from '../services/telemetry.js';
 
 const props = defineProps<{
   label: string;
@@ -19,12 +20,7 @@ const points = computed<MndwChartSample[]>(() => {
 });
 
 const timeFormatter = (time: number): string => {
-  const span = props.timeDomain === undefined ? 0 : props.timeDomain.end - props.timeDomain.start;
-  const options: Intl.DateTimeFormatOptions = span >= 24 * 60 * 60 * 1000
-    ? {month: 'short', day: 'numeric'}
-    : {hour: '2-digit', minute: '2-digit', second: '2-digit'};
-
-  return props.translator.formatDate(new Date(time), options);
+  return formatTelemetryTime(props.translator, time, props.timeDomain);
 };
 </script>
 

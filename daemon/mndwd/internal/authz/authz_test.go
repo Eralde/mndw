@@ -163,6 +163,68 @@ func TestAuthenticateDoesNotFollowAuthRedirect(t *testing.T) {
 	}
 }
 
+func TestAuthenticateUsesInjectedClientWithoutMutatingRedirectPolicy(t *testing.T) {
+	var paths []string
+	var redirectCalls int
+	client := &http.Client{
+		Timeout: 173 * time.Millisecond,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			redirectCalls++
+
+			return http.ErrUseLastResponse
+		},
+		Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			paths = append(paths, request.URL.Path)
+			header := make(http.Header)
+			header.Set("Location", "http://device.test/login")
+
+			return &http.Response{
+				StatusCode: http.StatusFound,
+				Header:     header,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Request:    request,
+			}, nil
+		}),
+	}
+
+	verifier := New("http://device.test", false, discardLogger(), Options{Client: client})
+	err := verifier.Authenticate(req("session=client-options"))
+	if err == nil || err.Status != http.StatusUnauthorized {
+		t.Fatalf("Authenticate() = %v, want 401", err)
+	}
+
+	if len(paths) != 1 || paths[0] != "/auth" {
+		t.Fatalf("injected transport paths after Authenticate = %v, want only /auth", paths)
+	}
+
+	if client.Timeout != 173*time.Millisecond {
+		t.Fatalf("injected client timeout = %s, want %s", client.Timeout, 173*time.Millisecond)
+	}
+
+	if redirectCalls != 0 {
+		t.Fatalf("caller CheckRedirect ran %d times during Authenticate, want 0", redirectCalls)
+	}
+
+	probe, requestErr := http.NewRequest(http.MethodGet, "http://device.test/probe", nil)
+	if requestErr != nil {
+		t.Fatal(requestErr)
+	}
+
+	response, doErr := client.Do(probe)
+	if doErr != nil {
+		t.Fatalf("client.Do(probe): %v", doErr)
+	}
+	response.Body.Close()
+
+	if redirectCalls != 1 {
+		t.Fatalf("caller CheckRedirect ran %d times after probe, want 1", redirectCalls)
+	}
+
+	if len(paths) != 2 || paths[1] != "/probe" {
+		t.Fatalf("injected transport paths after probe = %v, want /auth then /probe", paths)
+	}
+}
+
 func TestAuthenticateNoCookieShortCircuits(t *testing.T) {
 	device, calls := fakeDevice(t)
 	v := New(device.URL, false, discardLogger(), Options{})

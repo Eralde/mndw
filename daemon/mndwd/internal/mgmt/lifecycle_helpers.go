@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"mndwd/internal/backend"
@@ -69,6 +72,30 @@ func (h *Handler) removePluginFiles(name, path string) error {
 		}
 
 		return err
+	}
+}
+
+func (h *Handler) removePluginBackups(name string) {
+	entries, err := os.ReadDir(h.cfg.UserPluginsDir)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) && h.logger != nil {
+			h.logger.Warn("failed to list plugin backups", "plugin", name, "path", h.cfg.UserPluginsDir, "error", err)
+		}
+
+		return
+	}
+
+	prefix := name + ".previous-"
+
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) {
+			continue
+		}
+
+		path := filepath.Join(h.cfg.UserPluginsDir, entry.Name())
+		if err := h.removePluginFiles(name, path); err != nil && h.logger != nil {
+			h.logger.Warn("failed to remove plugin backup", "plugin", name, "path", path, "error", err)
+		}
 	}
 }
 

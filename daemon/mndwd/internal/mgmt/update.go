@@ -20,9 +20,9 @@ import (
 )
 
 // handleUpdate installs one validated archive over an existing user plugin. The
-// old directory is retained under a versioned backup name until the next update;
-// state changes only after the new directory is in place and is restored if the
-// service cannot pass its activation gate.
+// old directory is retained under a versioned backup name until the new version
+// starts; state changes only after the new directory is in place and is restored
+// if the service cannot pass its activation gate.
 func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	data, apiErr := h.readUploadBody(w, r)
 
@@ -274,6 +274,10 @@ func (h *Handler) executeUpdate(
 
 	if err := ctrl.StartPlugin(desired); err != nil {
 		return fail(err)
+	}
+
+	if err := h.removePluginFiles(name, backupDir); err != nil && h.logger != nil {
+		h.logger.Warn("failed to remove previous plugin backup", "plugin", name, "path", backupDir, "error", err)
 	}
 
 	return nil

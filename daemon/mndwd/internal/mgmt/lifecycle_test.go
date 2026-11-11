@@ -252,6 +252,75 @@ func TestUpdateLifecycleStartsNewSnapshot(t *testing.T) {
 	}
 }
 
+func TestSuccessfulUpdatesRemovePreviousVersionBackups(t *testing.T) {
+	runtime := &lifecycleTestRuntime{}
+	srv, store, _, cfg := newLifecycleHarness(t, runtime, nil)
+	runtime.store = store
+
+	initial := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": noBackendManifest,
+		"index.js":      "one",
+	}))
+	initial.Body.Close()
+	if initial.StatusCode != http.StatusCreated {
+		t.Fatalf("initial upload status = %d, want 201", initial.StatusCode)
+	}
+
+	for _, version := range []string{"2.0.0", "3.0.0"} {
+		manifestJSON := strings.Replace(staticServiceManifest(version), `"name":"svc"`, `"name":"hello"`, 1)
+		resp := postUpdate(t, srv, manifestJSON, version)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("update to %s status = %d, want 200", version, resp.StatusCode)
+		}
+	}
+
+	entries, err := os.ReadDir(cfg.UserPluginsDir)
+	if err != nil {
+		t.Fatalf("read user plugins directory: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "hello" || !entries[0].IsDir() {
+		t.Fatalf("user plugin entries after updates = %v, want only hello directory", entries)
+	}
+}
+
+func TestUpdateBackupCleanupFailureDoesNotFailUpdate(t *testing.T) {
+	runtime := &lifecycleTestRuntime{}
+	srv, store, handler, cfg := newLifecycleHarness(t, runtime, nil)
+	runtime.store = store
+
+	initial := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": noBackendManifest,
+		"index.js":      "old",
+	}))
+	initial.Body.Close()
+	if initial.StatusCode != http.StatusCreated {
+		t.Fatalf("initial upload status = %d, want 201", initial.StatusCode)
+	}
+
+	removeErr := errors.New("disk unavailable")
+	var removedPath string
+	handler.removeAll = func(path string) error {
+		removedPath = path
+		return removeErr
+	}
+
+	manifestJSON := strings.Replace(staticServiceManifest("2.0.0"), `"name":"svc"`, `"name":"hello"`, 1)
+	resp := postUpdate(t, srv, manifestJSON, "new")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("update status = %d, want 200", resp.StatusCode)
+	}
+
+	wantBackup := filepath.Join(cfg.UserPluginsDir, "hello.previous-1.0.0")
+	if removedPath != wantBackup {
+		t.Fatalf("removed path = %q, want %q", removedPath, wantBackup)
+	}
+	if _, err := os.Stat(wantBackup); err != nil {
+		t.Fatalf("backup should remain after simulated cleanup failure: %v", err)
+	}
+}
+
 func TestUpdateFailureRestoresPriorSnapshotAndDurableState(t *testing.T) {
 	runtime := &lifecycleTestRuntime{}
 	srv, store := newLifecycleServer(t, runtime, nil)

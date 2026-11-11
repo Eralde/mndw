@@ -683,6 +683,54 @@ func TestDeleteInstalledPlugin(t *testing.T) {
 	}
 }
 
+func TestDeleteRemovesOnlyPluginBackups(t *testing.T) {
+	srv, cfg := newTestServer(t)
+
+	initial := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": noBackendManifest,
+		"index.js":      "x",
+	}))
+	initial.Body.Close()
+	if initial.StatusCode != http.StatusCreated {
+		t.Fatalf("upload status = %d, want 201", initial.StatusCode)
+	}
+
+	for _, name := range []string{
+		"hello.previous-1.0.0",
+		"hello-other",
+		"hello-other.previous-1.0.0",
+	} {
+		if err := os.MkdirAll(filepath.Join(cfg.UserPluginsDir, name), 0o755); err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+	}
+
+	matchingFile := filepath.Join(cfg.UserPluginsDir, "hello.previous-not-a-directory")
+	if err := os.WriteFile(matchingFile, []byte("keep"), 0o644); err != nil {
+		t.Fatalf("create matching file: %v", err)
+	}
+
+	resp := postName(t, srv, "/api/mgmt/delete", "hello")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200", resp.StatusCode)
+	}
+
+	for _, name := range []string{"hello", "hello.previous-1.0.0"} {
+		if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, name)); !os.IsNotExist(err) {
+			t.Errorf("%s remains after delete (stat error: %v)", name, err)
+		}
+	}
+	for _, name := range []string{"hello-other", "hello-other.previous-1.0.0"} {
+		if info, err := os.Stat(filepath.Join(cfg.UserPluginsDir, name)); err != nil || !info.IsDir() {
+			t.Errorf("sibling %s was not preserved (info=%v, err=%v)", name, info, err)
+		}
+	}
+	if contents, err := os.ReadFile(matchingFile); err != nil || string(contents) != "keep" {
+		t.Errorf("matching non-directory entry changed (contents=%q, err=%v)", contents, err)
+	}
+}
+
 func TestDeleteStalePluginRecordAfterFilesDisappear(t *testing.T) {
 	srv, cfg := newTestServer(t)
 

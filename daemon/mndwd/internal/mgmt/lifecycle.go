@@ -339,6 +339,10 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 				return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to remove plugin files")
 			}
 
+			if p.Approval == state.ApprovalApproved {
+				h.removePluginBackups(name)
+			}
+
 			if apiErr := h.dropRecord(name, "delete", "plugin removed by operator; permission grants purged"); apiErr != nil {
 				return apiErr
 			}

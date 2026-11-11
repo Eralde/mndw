@@ -113,18 +113,70 @@ describe('<mndw-select-panel>', () => {
     );
   });
 
-  it('marks the active option as selected for the combobox', async () => {
+  it('keeps the first option active without selecting an option when value is empty', async () => {
+    const panel = await mount();
+    const rendered = items(panel);
+
+    expect(rendered.map((item) => item.getAttribute('aria-selected'))).toEqual(['false', 'false', 'false']);
+    expect(rendered.map((item) => item.getAttribute('data-active'))).toEqual(['true', 'false', 'false']);
+    expect(rendered.map((item) => item.querySelector('mndw-icon'))).toEqual([null, null, null]);
+    expect(panel.listboxElement?.getAttribute('aria-activedescendant')).toBe(rendered[0].id);
+  });
+
+  it('keeps selection on the value while active option moves', async () => {
     const panel = await mount('wifi');
     const rendered = items(panel);
 
-    expect(rendered[0].getAttribute('aria-selected')).toBe('false');
-    expect(rendered[1].getAttribute('aria-selected')).toBe('true');
+    expect(rendered.map((item) => item.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false']);
+    expect(rendered.map((item) => item.getAttribute('data-active'))).toEqual(['false', 'true', 'false']);
 
     panel.activeIndex = 0;
     await panel.updateComplete;
 
-    expect(items(panel)[0].getAttribute('aria-selected')).toBe('true');
-    expect(items(panel)[1].getAttribute('aria-selected')).toBe('false');
+    expect(items(panel).map((item) => item.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false']);
+    expect(items(panel).map((item) => item.getAttribute('data-active'))).toEqual(['true', 'false', 'false']);
+    expect(items(panel).map((item) => item.querySelector('mndw-icon')?.getAttribute('name') ?? null)).toEqual([
+      null,
+      'check',
+      null,
+    ]);
+    expect(panel.listboxElement?.getAttribute('aria-activedescendant')).toBe(items(panel)[0].id);
+  });
+
+  it('selects an empty-valued option when it matches the empty value', async () => {
+    const panel = await mount();
+
+    panel.options = [
+      {value: '', label: 'Always on', labelNodes: [], disabled: false},
+      {value: 'hourly', label: 'Hourly', labelNodes: [], disabled: false},
+    ];
+    await panel.updateComplete;
+
+    expect(items(panel).map((item) => item.getAttribute('aria-selected'))).toEqual(['true', 'false']);
+    expect(items(panel)[0].querySelector('mndw-icon')?.getAttribute('name')).toBe('check');
+    expect(items(panel)[1].querySelector('mndw-icon')).toBeNull();
+  });
+
+  it('keeps only the first matching value selected when duplicate values exist', async () => {
+    const panel = await mount('eth0');
+
+    panel.options = [
+      {value: 'eth0', label: 'LAN', labelNodes: [], disabled: false},
+      {value: 'eth0', label: 'LAN (bridged)', labelNodes: [], disabled: false},
+    ];
+    await panel.updateComplete;
+    panel.activeIndex = 1;
+    await panel.updateComplete;
+
+    expect(items(panel).map((item) => item.getAttribute('aria-selected'))).toEqual(['true', 'false']);
+    expect(items(panel).filter((item) => item.querySelector('mndw-icon'))).toHaveLength(1);
+  });
+
+  it('styles the active option with the hover surface', () => {
+    const styles = String(MndwSelectPanel.styles);
+
+    expect(styles).toMatch(/\.option\[data-active='true'\]:not\(\[aria-disabled='true'\]\)/);
+    expect(styles).toContain('var(--mndw-surface-hover)');
   });
 
   it('renders a shared check icon only on the selected option', async () => {

@@ -80,7 +80,8 @@ export class MndwSelectPanel extends LitElement {
       cursor: pointer;
     }
 
-    .option:not([aria-disabled='true']):hover {
+    .option:not([aria-disabled='true']):hover,
+    .option[data-active='true']:not([aria-disabled='true']) {
       ${surfaceHover}
     }
 
@@ -132,6 +133,8 @@ export class MndwSelectPanel extends LitElement {
   }
 
   protected override render(): TemplateResult {
+    const selectedIndex = this.options.findIndex((option) => option.value === this.value);
+
     return html`
       <mndw-scroll-area exportparts="viewport,scrollbar,track,thumb">
         <div
@@ -150,6 +153,8 @@ export class MndwSelectPanel extends LitElement {
           const labelHtml = option.labelNodes.length > 0
             ? option.labelNodes.map((node) => node.cloneNode(true))
             : option.label;
+          const selected = index === selectedIndex;
+          const active = index === this.activeIndex;
 
           return html`
               <div
@@ -157,12 +162,13 @@ export class MndwSelectPanel extends LitElement {
                 part="option"
                 role="option"
                 id=${this.optionId(index)}
-                aria-selected=${String(index === this.activeIndex)}
+                aria-selected=${String(selected)}
+                data-active=${String(active)}
                 aria-disabled=${String(option.disabled)}
                 @click=${() => this.select(index)}
               >
                 <span>${labelHtml}</span>
-                ${index === this.activeIndex ? html`<mndw-icon name="check" aria-hidden="true"></mndw-icon>` : null}
+                ${selected ? html`<mndw-icon name="check" aria-hidden="true"></mndw-icon>` : null}
               </div>
             `;
         },

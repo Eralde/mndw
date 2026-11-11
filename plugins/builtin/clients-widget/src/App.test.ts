@@ -277,11 +277,20 @@ describe('errors', () => {
 
     expect(text()).toContain('Failed to show device list');
     expect(text()).not.toMatch(/Clients \(/);
+    expect(host.querySelector('.clients-widget__stale--sr-only')).not.toBeNull();
+    expect(host.querySelector('.clients-widget__stale')?.textContent).not.toContain('Data may be out of date');
+    expect(host.querySelector('.clients-widget__stale mndw-button')).toBeNull();
   });
 
-  it('retains stale rows and warns when a background refresh fails', async () => {
+  it('retains stale rows and shows a stale indicator with the last success time', async () => {
+    vi.setSystemTime(new Date(2026, 0, 2, 10, 20, 30));
     mountWidget();
     await flush();
+
+    const liveRegion = host.querySelector<HTMLElement>('.clients-widget__stale [role="status"]');
+
+    expect(liveRegion).not.toBeNull();
+    expect(liveRegion?.textContent?.trim()).toBe('');
     expect(rowNames()).toEqual(['Client A']);
 
     queue.mockImplementation(() => throwError(() => new Error('flaky')));
@@ -291,7 +300,48 @@ describe('errors', () => {
     expect(rowNames()).toEqual(['Client A']);
     expect(text()).toContain('Clients (1)');
     expect(text()).not.toContain('Failed to show device list');
+
+    const indicator = host.querySelector<HTMLElement>('.clients-widget__stale');
+    const status = indicator?.querySelector<HTMLElement>('[role="status"]');
+    const retryButton = indicator?.querySelector<HTMLElement>('mndw-button');
+
+    expect(status).toBe(liveRegion);
+    expect(indicator?.classList.contains('clients-widget__stale--sr-only')).toBe(false);
+    expect(indicator?.classList.contains('mndw-alert--warning')).toBe(true);
+    expect(status?.textContent).toContain('Data may be out of date — last updated at 10:20:30.');
+    expect(retryButton?.textContent?.trim()).toBe('Retry');
+    expect(status?.contains(retryButton ?? null)).toBe(false);
     expect(warn).toHaveBeenCalled();
+  });
+
+  it('refetches immediately on Retry and clears the indicator on the next success', async () => {
+    mountWidget();
+    await flush();
+    expect(queue).toHaveBeenCalledTimes(1);
+
+    const liveRegion = host.querySelector<HTMLElement>('.clients-widget__stale [role="status"]');
+
+    queue.mockImplementation(() => throwError(() => new Error('flaky')));
+    vi.advanceTimersByTime(3000);
+    await flush();
+    expect(queue).toHaveBeenCalledTimes(2);
+    expect(host.querySelector('.clients-widget__stale--sr-only')).toBeNull();
+
+    queue.mockImplementation(() => of(fixture));
+    host.querySelector<HTMLElement>('.clients-widget__stale mndw-button')?.click();
+
+    expect(queue).toHaveBeenCalledTimes(3);
+    await flush();
+
+    expect(host.querySelector('.clients-widget__stale--sr-only')).not.toBeNull();
+    expect(text()).not.toContain('Data may be out of date');
+    expect(rowNames()).toEqual(['Client A']);
+    expect(host.querySelector('.clients-widget__stale [role="status"]')).toBe(liveRegion);
+    expect(liveRegion?.textContent?.trim()).toBe('');
+
+    vi.advanceTimersByTime(3000);
+    await flush();
+    expect(queue).toHaveBeenCalledTimes(4);
   });
 
   it('recovers on a later success after an initial failure', async () => {

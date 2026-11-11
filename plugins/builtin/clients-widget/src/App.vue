@@ -19,6 +19,8 @@ const DEFAULT_INTERVAL_SECONDS = 3;
 type ClientLoadError = string;
 
 const loadState = ref<LoadState<ClientRecord[], ClientLoadError>>({status: 'loading'});
+const lastSuccessAt = ref<number | null>(null);
+const refreshFailed = ref(false);
 const showOffline = ref(false);
 const refreshIntervalSeconds = ref(DEFAULT_INTERVAL_SECONDS);
 const columnVisibility = ref<Record<string, boolean>>(
@@ -26,7 +28,7 @@ const columnVisibility = ref<Record<string, boolean>>(
 );
 const dirty = new Set<string>();
 const translator = useTranslator(props.ctx.i18n);
-const t = (key: string): string => translator.t(key);
+const t = (key: string, values?: Record<string, unknown>): string => translator.t(key, values);
 
 let refreshLoop: RefreshLoop | null = null;
 
@@ -50,6 +52,19 @@ const tableError = computed<string | null>(() => {
   const state = loadState.value;
 
   return state.status === 'error' && state.data === undefined ? state.error : null;
+});
+const stale = computed(() => refreshFailed.value && lastSuccessAt.value !== null);
+const lastUpdatedTime = computed(() => {
+  const updatedAt = lastSuccessAt.value;
+
+  return updatedAt === null
+    ? ''
+    : translator.formatDate(new Date(updatedAt), {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    });
 });
 const visibleClients = computed(() => filterVisibleClients(allClients.value, showOffline.value));
 const headerLabel = computed(() => {
@@ -90,6 +105,11 @@ function openSettings(): void {
     onIntervalChange,
     translator,
   );
+}
+
+function retry(): void {
+  refreshLoop?.stop();
+  refreshLoop?.start();
 }
 
 function applyStoredColumns(raw: string): void {
@@ -173,6 +193,8 @@ onMounted(() => {
     intervalMs: refreshIntervalSeconds.value * 1000,
     onSuccess: (clients) => {
       loadState.value = {status: 'success', data: clients};
+      lastSuccessAt.value = Date.now();
+      refreshFailed.value = false;
     },
     onError: (caught, isInitial) => {
       const errorMessage = caught instanceof Error ? caught.message : String(caught);
@@ -180,6 +202,7 @@ onMounted(() => {
 
       if (state.status === 'refreshing') {
         loadState.value = {status: 'error', error: errorMessage, data: state.data};
+        refreshFailed.value = true;
       } else if (isInitial || state.status === 'loading') {
         loadState.value = {status: 'error', error: errorMessage};
       }
@@ -202,7 +225,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="clients-widget">
+  <div class="clients-widget" :class="{'clients-widget--stale': stale}">
     <header class="clients-widget__header mndw-table-controls">
       <span>{{ headerLabel }}</span>
       <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
@@ -217,6 +240,15 @@ onUnmounted(() => {
         <mndw-icon name="settings"></mndw-icon>
       </mndw-button>
     </header>
+    <div
+      class="clients-widget__stale"
+      :class="stale ? 'mndw-alert mndw-alert--warning' : 'clients-widget__stale--sr-only'"
+    >
+      <span class="clients-widget__stale-text" role="status">
+        <template v-if="stale">{{ t('stale.message', {time: lastUpdatedTime}) }}</template>
+      </span>
+      <mndw-button v-if="stale" variant="secondary" @click="retry">{{ t('stale.retry') }}</mndw-button>
+    </div>
     <ClientsTable
       :clients="visibleClients"
       :column-visibility="columnVisibility"
@@ -239,6 +271,30 @@ onUnmounted(() => {
   overflow: hidden;
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
+}
+
+.clients-widget--stale {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.clients-widget__stale {
+  display: flex;
+  gap: var(--mndw-space-2);
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--mndw-text-sm);
+}
+
+.clients-widget__stale--sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .clients-widget__header {

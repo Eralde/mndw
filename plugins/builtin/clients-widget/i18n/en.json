@@ -20,6 +20,10 @@
   },
   "loading": "Loading clients…",
   "error": "Failed to show device list",
+  "stale": {
+    "message": "Data may be out of date — last updated at {time}.",
+    "retry": "Retry"
+  },
   "port": "Port",
   "rssi": "RSSI",
   "link": {

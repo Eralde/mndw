@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"mndwd/internal/httpx"
 )
 
 const defaultLiveDiagnosticsBytes int64 = 256 * 1024
@@ -42,12 +44,7 @@ func (s *Supervisor) LiveDiagnostics(ctx context.Context, pluginID string) ([]by
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 	}}
-	client := &http.Client{
-		Transport: transport,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	client := &http.Client{Transport: transport, CheckRedirect: httpx.NoRedirect}
 
 	defer transport.CloseIdleConnections()
 

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"mndwd/internal/httpx"
 	"mndwd/internal/rcisession/model"
 	"mndwd/internal/target"
 )
@@ -72,7 +73,7 @@ func New(resolver Resolver, client interface {
 	Do(*http.Request) (*http.Response, error)
 }, maxResponse int64, operationTime time.Duration) *Proxy {
 	if client == nil {
-		client = &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+		client = &http.Client{CheckRedirect: httpx.NoRedirect}
 	}
 
 	if maxResponse <= 0 {

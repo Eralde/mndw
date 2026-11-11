@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"mndwd/internal/httpx"
 )
 
 func filteredServiceHeaders(source http.Header) http.Header {
@@ -26,7 +28,7 @@ func proxyServiceHTTP(ctx context.Context, writer http.ResponseWriter, request *
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 	}}
-	client := &http.Client{Transport: transport, Timeout: timeout}
+	client := &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: httpx.NoRedirect}
 
 	defer transport.CloseIdleConnections()
 

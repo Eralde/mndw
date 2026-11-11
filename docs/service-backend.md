@@ -70,6 +70,8 @@ Routes use session access by default. A public HTTP route must be `GET` or
 [`manifest.ts`](../frontend/sdk/src/manifest.ts), and the complete service fixture is
 [`backend-service.json`](../contracts/manifest/fixtures/valid/backend-service.json).
 
+The gateway does not follow redirects: it returns 3xx and `Location` to the browser as-is, so `Location` must be a URL valid from the browser (for example, under `/api/plugins/<name>/...`) and the browser's follow-up request goes through normal route and access checks.
+
 ## Request flow
 
 ```mermaid

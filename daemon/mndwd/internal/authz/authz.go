@@ -105,7 +105,7 @@ func New(deviceURL string, dev bool, logger *slog.Logger, opts Options) *Verifie
 	}
 
 	if v.client == nil {
-		v.client = &http.Client{Timeout: 5 * time.Second}
+		v.client = &http.Client{Timeout: 5 * time.Second, CheckRedirect: httpx.NoRedirect}
 	}
 
 	if v.ttl == 0 {
@@ -191,7 +191,9 @@ func (v *Verifier) replay(ctx context.Context, cookie string) bool {
 
 	req.Header.Set("Cookie", cookie)
 
-	resp, err := v.client.Do(req)
+	client := *v.client
+	client.CheckRedirect = httpx.NoRedirect
+	resp, err := client.Do(req)
 	if err != nil {
 		v.logger.Warn("authz: device auth request failed", "error", err)
 

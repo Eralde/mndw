@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"mndwd/internal/httpx"
 	"mndwd/internal/mgmt"
 	"mndwd/internal/rcisession"
 	"mndwd/internal/rcisession/coordinator"
@@ -45,10 +46,8 @@ func assembleRCISession(core daemonCore, accessMux *http.ServeMux, activationPok
 	}
 
 	deviceClient := &http.Client{
-		Timeout: cfg.RCIProxyOperationTimeout,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+		Timeout:       cfg.RCIProxyOperationTimeout,
+		CheckRedirect: httpx.NoRedirect,
 	}
 	// The session keeps its own lifetime rather than core.lifetime: in-flight
 	// requests still proxy through it while the HTTP server drains after the

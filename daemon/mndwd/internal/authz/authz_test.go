@@ -119,6 +119,50 @@ func TestAuthenticateInvalidCookieRejected(t *testing.T) {
 	}
 }
 
+func TestAuthenticateDoesNotFollowAuthRedirect(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		client *http.Client
+	}{
+		{name: "default client"},
+		{name: "injected client", client: &http.Client{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var authCalls, loginCalls atomic.Int64
+			device := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/auth":
+					authCalls.Add(1)
+					writer.Header().Set("Location", "/login")
+					writer.WriteHeader(http.StatusFound)
+				case "/login":
+					loginCalls.Add(1)
+					writer.WriteHeader(http.StatusOK)
+				default:
+					writer.WriteHeader(http.StatusNotFound)
+				}
+			}))
+			t.Cleanup(device.Close)
+
+			verifier := New(device.URL, false, discardLogger(), Options{Client: test.client})
+			for range 2 {
+				err := verifier.Authenticate(req("session=redirect"))
+				if err == nil || err.Status != http.StatusUnauthorized {
+					t.Fatalf("Authenticate() = %v, want 401", err)
+				}
+			}
+
+			if got := loginCalls.Load(); got != 0 {
+				t.Fatalf("/login requested %d times, want 0", got)
+			}
+
+			if got := authCalls.Load(); got == 0 {
+				t.Fatal("/auth was never requested")
+			}
+		})
+	}
+}
+
 func TestAuthenticateNoCookieShortCircuits(t *testing.T) {
 	device, calls := fakeDevice(t)
 	v := New(device.URL, false, discardLogger(), Options{})

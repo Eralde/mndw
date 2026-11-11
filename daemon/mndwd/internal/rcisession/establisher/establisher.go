@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	rci "mndw.local/rci"
+	"mndwd/internal/httpx"
 	"mndwd/internal/rcisession/enumeration"
 	"mndwd/internal/target"
 )
@@ -108,12 +109,12 @@ func (e *Establisher) Establish(ctx context.Context, member enumeration.Member) 
 		return EstablishResult{}, EstablishError{Kind: "redemption-failed", Epoch: epoch}
 	}
 
-	client := &http.Client{Jar: jar, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Jar: jar, CheckRedirect: httpx.NoRedirect}
 
 	if e.HTTPClient != nil {
 		clone := *e.HTTPClient
 		clone.Jar = jar
-		clone.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+		clone.CheckRedirect = httpx.NoRedirect
 		client = &clone
 	}
 

@@ -2,17 +2,21 @@
 import {type PluginContext, type PluginInstance} from '@mndw/sdk';
 import {createTestPluginContext} from '@mndw/sdk/testing';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {mountPlugin, unmountPlugin} from './plugin-lifecycle.js';
+import {mountPlugin, mountPluginWithContext, unmountPlugin} from './plugin-lifecycle.js';
+import type {PluginContextHandle} from './plugin-context.js';
 import type {LoadedPlugin} from './plugin-registry.js';
 
-vi.mock('../services/storage.service.js', () => ({
-  clearInstanceStorage: vi.fn(),
-}));
+vi.mock('../services/storage.service.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/storage.service.js')>();
+
+  return {...actual, clearInstanceStorage: vi.fn(actual.clearInstanceStorage)};
+});
 
 beforeEach(async () => {
   const {clearInstanceStorage} = await import('../services/storage.service.js');
 
   vi.mocked(clearInstanceStorage).mockClear();
+  localStorage.clear();
 });
 
 function mockInstance(): {instance: PluginInstance; unmountSpy: ReturnType<typeof vi.fn>} {
@@ -42,6 +46,10 @@ function mockPlugin(createInstanceResult: PluginInstance | Promise<PluginInstanc
 
 function mockContext(instanceId = 'test:1'): PluginContext {
   return createTestPluginContext({instanceId}).context;
+}
+
+function mockContextHandle(instanceId = 'test:1'): PluginContextHandle {
+  return {context: mockContext(instanceId), dispose: vi.fn()};
 }
 
 describe('mountPlugin', () => {
@@ -270,5 +278,64 @@ describe('unmountPlugin', () => {
     });
 
     consoleError.mockRestore();
+  });
+});
+
+describe('mountPluginWithContext', () => {
+  it('clears failed mount storage on explicit disposal without touching other storage', async () => {
+    const {clearInstanceStorage} = await import('../services/storage.service.js');
+    const plugin = mockPlugin(mockInstance().instance);
+    plugin.module.createInstance = vi.fn(() => {
+      throw new Error('sync fail');
+    });
+    const contextHandle = mockContextHandle('test:1');
+    const container = document.createElement('div');
+    localStorage.setItem('mndw:plugin:test-plugin:instance:test:1:settings', 'remove');
+    localStorage.setItem('mndw:plugin:test-plugin:instance:test:2:settings', 'keep');
+    localStorage.setItem('mndw:plugin:test-plugin:shared:settings', 'keep');
+
+    const handle = mountPluginWithContext(container, plugin, contextHandle);
+
+    expect(handle.getMounted()).toBeNull();
+    handle.dispose({clearStorage: true});
+
+    expect(clearInstanceStorage).toHaveBeenCalledWith('test-plugin', 'test:1');
+    expect(localStorage.getItem('mndw:plugin:test-plugin:instance:test:1:settings')).toBeNull();
+    expect(localStorage.getItem('mndw:plugin:test-plugin:instance:test:2:settings')).toBe('keep');
+    expect(localStorage.getItem('mndw:plugin:test-plugin:shared:settings')).toBe('keep');
+  });
+
+  it('clears storage when a pending mount later fails after explicit disposal', async () => {
+    const {clearInstanceStorage} = await import('../services/storage.service.js');
+    let rejectMount: (error: Error) => void = () => {
+      throw new Error('mount rejection handler was not initialized');
+    };
+    const pending = new Promise<PluginInstance>((_resolve, reject) => {
+      rejectMount = reject;
+    });
+    const contextHandle = mockContextHandle('test:1');
+    const container = document.createElement('div');
+    localStorage.setItem('mndw:plugin:test-plugin:instance:test:1:settings', 'remove');
+    const handle = mountPluginWithContext(container, mockPlugin(pending), contextHandle);
+
+    handle.dispose({clearStorage: true});
+    rejectMount(new Error('async fail'));
+    await handle.whenReady();
+
+    expect(clearInstanceStorage).toHaveBeenCalledWith('test-plugin', 'test:1');
+    expect(localStorage.getItem('mndw:plugin:test-plugin:instance:test:1:settings')).toBeNull();
+  });
+
+  it('keeps failed mount storage when disposal explicitly disables clearing', () => {
+    const plugin = mockPlugin(mockInstance().instance);
+    plugin.module.createInstance = vi.fn(() => {
+      throw new Error('sync fail');
+    });
+    localStorage.setItem('mndw:plugin:test-plugin:instance:test:1:settings', 'keep');
+    const handle = mountPluginWithContext(document.createElement('div'), plugin, mockContextHandle('test:1'));
+
+    handle.dispose({clearStorage: false});
+
+    expect(localStorage.getItem('mndw:plugin:test-plugin:instance:test:1:settings')).toBe('keep');
   });
 });

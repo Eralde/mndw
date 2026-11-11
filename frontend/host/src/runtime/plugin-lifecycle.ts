@@ -176,6 +176,10 @@ export function mountPluginWithContext(
         if (resolved !== null) {
           cleanupMountedPlugin(resolved, container, disposeOptions, false);
         } else {
+          if (disposeOptions?.clearStorage === true) {
+            clearInstanceStorage(plugin.entry.name, contextHandle.context.instanceId);
+          }
+
           container.innerHTML = '';
         }
 
@@ -216,6 +220,12 @@ export function mountPluginWithContext(
         }
 
         container.innerHTML = '';
+
+        return;
+      }
+
+      if (unmountOptions?.clearStorage === true) {
+        clearInstanceStorage(plugin.entry.name, contextHandle.context.instanceId);
       }
     },
   };

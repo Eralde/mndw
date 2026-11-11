@@ -2,7 +2,7 @@
 import {type MndwSelectChangeDetail, deepActiveElement} from '@mndw/ui';
 import {onMount} from 'svelte';
 import {initAuthenticated} from '../../services/init-auth.js';
-import {appState, resetToLogin} from '../../state/app.svelte.js';
+import {appState, getAuthRunGeneration, resetToLogin} from '../../state/app.svelte.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {getHostServices} from '../../host-services-context.js';
 
@@ -119,7 +119,14 @@ function handleSubmit(e: Event): void {
         const submittedUsername = username;
 
         appState.authenticated = true;
-        void initAuthenticated(services).catch(() => {
+        const initialization = initAuthenticated(services);
+        const generation = getAuthRunGeneration();
+
+        void initialization.catch(() => {
+          if (generation !== getAuthRunGeneration()) {
+            return;
+          }
+
           // This instance is unmounted by now (App swaps to its loading branch when
           // authenticated flips true), so the retry affordances go to appState: the next
           // LoginPage mount prefills the username and shows the error. Password never leaves.

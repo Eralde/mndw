@@ -7,6 +7,7 @@ export interface StartupDeps {
   setAuthenticated: (authenticated: boolean) => void;
   /** Init resolves with the generation of its auth run; startup ignores the value. */
   initAuthenticated: () => Promise<unknown>;
+  getAuthRunGeneration: () => number;
   subscribeAuthErrors: (callback: () => void) => void;
   resetToLogin: () => void;
   mountApp: () => void;
@@ -44,10 +45,16 @@ export async function initialize(deps: StartupDeps): Promise<void> {
   deps.mountApp();
 
   if (authenticated && !authErrorReceived) {
+    let generation: number | undefined;
+
     try {
-      await deps.initAuthenticated();
+      const initialization = deps.initAuthenticated();
+      generation = deps.getAuthRunGeneration();
+      await initialization;
     } catch {
-      deps.resetToLogin();
+      if (generation === undefined || generation === deps.getAuthRunGeneration()) {
+        deps.resetToLogin();
+      }
     }
   }
 }

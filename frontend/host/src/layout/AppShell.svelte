@@ -38,11 +38,16 @@ async function retryPluginLoad(): Promise<void> {
   // which would blur it before the remount check runs.
   const hadFocus = focusIsInsideAlert();
   let generation: number | undefined;
+  let startedGeneration: number | undefined;
 
   try {
-    generation = await initAuthenticated(services, {preservePluginLoadError: true});
+    const initialization = initAuthenticated(services, {preservePluginLoadError: true});
+    startedGeneration = getAuthRunGeneration();
+    generation = await initialization;
   } catch {
-    resetToLogin();
+    if (startedGeneration === undefined || startedGeneration === getAuthRunGeneration()) {
+      resetToLogin();
+    }
 
     return;
   }

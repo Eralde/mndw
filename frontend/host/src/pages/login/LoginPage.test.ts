@@ -17,7 +17,7 @@ vi.mock('../../services/init-auth.js', () => ({
 }));
 
 import LoginPage from './LoginPage.svelte';
-import {appState} from '../../state/app.svelte.js';
+import {appState, beginAuthRun, resetToLogin} from '../../state/app.svelte.js';
 import {createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
 
@@ -348,6 +348,34 @@ describe('LoginPage', () => {
     });
     expect(appState.loginUsername).toBe('admin');
     expect(appState.authenticated).toBe(false);
+  });
+
+  it('ignores a login init failure after a newer auth run starts', async () => {
+    login.mockReturnValue(of(true));
+    let rejectInitialization: (error: Error) => void = () => {};
+    const initialization = new Promise<void>((_, reject) => {
+      rejectInitialization = reject;
+    });
+
+    initAuthenticated.mockImplementation(() => {
+      beginAuthRun();
+
+      return initialization;
+    });
+    render();
+    type(inputs()[0], 'admin');
+    type(inputs()[1], 'secret');
+    submit();
+
+    resetToLogin();
+    appState.authenticated = true;
+    beginAuthRun();
+    rejectInitialization(new Error('stale failure'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(appState.authenticated).toBe(true);
+    expect(appState.loginError).toBeNull();
+    expect(appState.loginUsername).toBe('');
   });
 
   it('disables both controls and the button while the request is in flight', () => {

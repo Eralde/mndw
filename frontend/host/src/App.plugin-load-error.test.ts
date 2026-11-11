@@ -6,7 +6,7 @@ import {initAuthenticated} from './services/init-auth.js';
 import {loadPlugins} from './runtime/plugin-loader.js';
 import type {PluginListEntry} from './runtime/plugin-types.js';
 import {uiOverlayService} from './services/overlay/ui-overlay.js';
-import {appState, getAuthRunGeneration, resetToLogin} from './state/app.svelte.js';
+import {appState, beginAuthRun, getAuthRunGeneration, resetToLogin} from './state/app.svelte.js';
 import {createHostServices, type HostEnv} from './host-services.js';
 import {appRouter, createAppRouter} from './router/create-app-router.js';
 import {pluginRegistry} from './runtime/plugin-registry.js';
@@ -397,6 +397,50 @@ describe('plugin list failure alert', () => {
 
     expect(appState.pluginLoadRevision).toBe(revisionBefore);
     expect(target.querySelector('.mndw-app-shell')).toBe(shellBefore);
+  });
+
+  it('does not reset login when a superseded plugin retry rejects', async () => {
+    let rejectRetry: (error: Error) => void = () => {};
+    const staleRetry = new Promise<number | undefined>((_, reject) => {
+      rejectRetry = reject;
+    });
+
+    vi.mocked(initAuthenticated).mockImplementation(() => {
+      beginAuthRun(true);
+
+      return staleRetry;
+    });
+    appState.ready = true;
+    render();
+    await vi.waitFor(() => expect(retryButton(target)).not.toBeNull());
+
+    retryButton(target)?.click();
+    resetToLogin();
+    appState.authenticated = true;
+    beginAuthRun();
+    appState.ready = true;
+    rejectRetry(new Error('stale failure'));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(appState.authenticated).toBe(true);
+    expect(appState.loginError).toBeNull();
+    expect(target.querySelector('.mndw-plugin-load-alert')).toBeNull();
+  });
+
+  it('resets login when the current plugin retry rejects', async () => {
+    vi.mocked(initAuthenticated).mockImplementation(() => {
+      beginAuthRun(true);
+
+      return Promise.reject(new Error('current failure'));
+    });
+    appState.ready = true;
+    render();
+    await vi.waitFor(() => expect(retryButton(target)).not.toBeNull());
+
+    retryButton(target)?.click();
+    await vi.waitFor(() => expect(appState.authenticated).toBe(false));
+
+    expect(appState.ready).toBe(false);
   });
 
   it('clears the previous list error when logout returns to login', async () => {

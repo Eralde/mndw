@@ -1,7 +1,14 @@
 import {describe, expect, it, vi} from 'vitest';
 import {type StartupDeps, initialize} from './startup.js';
 
-function depsFor(events: string[], authenticated = false, triggerAuthError = false): StartupDeps {
+type TestStartupDeps = StartupDeps & {
+  getAuthRunGeneration: () => number;
+  startAuthRun: () => number;
+};
+
+function depsFor(events: string[], authenticated = false, triggerAuthError = false): TestStartupDeps {
+  let generation = 0;
+
   return {
     initLocale: () => {
       events.push('locale');
@@ -20,9 +27,18 @@ function depsFor(events: string[], authenticated = false, triggerAuthError = fal
         return authenticated;
       }),
     setAuthenticated: (value) => events.push(`set-auth:${value}`),
-    initAuthenticated: () =>
-      Promise.resolve().then(() => events.push('authenticated-init'))
-        .then(() => undefined),
+    initAuthenticated: () => {
+      generation += 1;
+
+      return Promise.resolve().then(() => events.push('authenticated-init'))
+        .then(() => undefined);
+    },
+    getAuthRunGeneration: () => generation,
+    startAuthRun: () => {
+      generation += 1;
+
+      return generation;
+    },
     subscribeAuthErrors: (callback) => {
       events.push('auth-subscribe');
 
@@ -45,6 +61,7 @@ describe('initialize', () => {
     const deps = depsFor(events, true);
 
     deps.initAuthenticated = () => {
+      deps.startAuthRun();
       events.push('authenticated-init-start');
 
       return initialization;
@@ -98,6 +115,7 @@ describe('initialize', () => {
       checkAuthenticated: () => Promise.resolve(false),
       setAuthenticated: () => undefined,
       initAuthenticated: () => Promise.resolve(),
+      getAuthRunGeneration: () => 0,
       subscribeAuthErrors: () => undefined,
       resetToLogin: () => undefined,
       mountApp: () => order.push('mountApp'),
@@ -157,5 +175,51 @@ describe('initialize', () => {
     expect(events).toContain('mount');
     expect(events).toContain('reset-login');
     expect(events).not.toContain('authenticated-init');
+  });
+
+  it('does not reset login when a superseded startup auth run rejects', async () => {
+    const events: string[] = [];
+    let authenticatedState = false;
+    let rejectInitialization: (error: Error) => void = () => {};
+    const initialization = new Promise<void>((_, reject) => {
+      rejectInitialization = reject;
+    });
+    const deps = depsFor(events, true);
+
+    deps.setAuthenticated = (value) => {
+      authenticatedState = value;
+      events.push(`set-auth:${value}`);
+    };
+    deps.initAuthenticated = () => {
+      deps.startAuthRun();
+      events.push('authenticated-init-start');
+
+      return initialization;
+    };
+
+    const pending = initialize(deps);
+    await vi.waitFor(() => expect(events).toContain('authenticated-init-start'));
+
+    deps.startAuthRun();
+    rejectInitialization(new Error('stale failure'));
+    await pending;
+
+    expect(events).not.toContain('reset-login');
+    expect(authenticatedState).toBe(true);
+  });
+
+  it('resets login when the current startup auth run rejects', async () => {
+    const events: string[] = [];
+    const deps = depsFor(events, true);
+
+    deps.initAuthenticated = () => {
+      deps.startAuthRun();
+
+      return Promise.reject(new Error('current failure'));
+    };
+
+    await initialize(deps);
+
+    expect(events).toContain('reset-login');
   });
 });

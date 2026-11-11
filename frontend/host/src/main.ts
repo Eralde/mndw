@@ -9,7 +9,7 @@ import App from './App.svelte';
 import {initAuthenticated} from './services/init-auth.js';
 import './services/pristine-fetch.js';
 import {initTheme} from './services/theme.service.js';
-import {appState, resetToLogin} from './state/app.svelte.js';
+import {appState, getAuthRunGeneration, resetToLogin} from './state/app.svelte.js';
 import {initialize} from './startup.js';
 import {appHostServices} from './host-services.js';
 
@@ -82,6 +82,7 @@ async function init(): Promise<void> {
       appState.authenticated = authenticated;
     },
     initAuthenticated: () => initAuthenticated(services),
+    getAuthRunGeneration,
     subscribeAuthErrors,
     resetToLogin,
     mountApp,

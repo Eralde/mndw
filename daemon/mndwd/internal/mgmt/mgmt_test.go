@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"mndwd/internal/backend"
@@ -728,6 +729,78 @@ func TestDeleteRemovesOnlyPluginBackups(t *testing.T) {
 	}
 	if contents, err := os.ReadFile(matchingFile); err != nil || string(contents) != "keep" {
 		t.Errorf("matching non-directory entry changed (contents=%q, err=%v)", contents, err)
+	}
+}
+
+func TestDeleteSucceedsWhenBackupRemovalFails(t *testing.T) {
+	runtime := &lifecycleTestRuntime{}
+	srv, store, handler, cfg := newLifecycleHarness(t, runtime, nil)
+	runtime.store = store
+
+	initial := upload(t, srv, makeZip(t, map[string]string{
+		"manifest.json": noBackendManifest,
+		"index.js":      "x",
+	}))
+	initial.Body.Close()
+	if initial.StatusCode != http.StatusCreated {
+		t.Fatalf("upload status = %d, want 201", initial.StatusCode)
+	}
+
+	record, ok := store.Get("hello")
+	if !ok || record.Approval != state.ApprovalApproved {
+		t.Fatalf("plugin record = %+v, exists=%t, want approved", record, ok)
+	}
+
+	backupPath := filepath.Join(cfg.UserPluginsDir, "hello.previous-1.0.0")
+	for _, path := range []string{
+		backupPath,
+		filepath.Join(cfg.UserPluginsDir, "hello-other"),
+		filepath.Join(cfg.UserPluginsDir, "hello-other.previous-1.0.0"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatalf("create %s: %v", path, err)
+		}
+	}
+
+	backupErr := errors.New("backup removal failed")
+	handler.removeAll = func(path string) error {
+		if path == backupPath {
+			return backupErr
+		}
+
+		return os.RemoveAll(path)
+	}
+	var logs bytes.Buffer
+	handler.logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	resp := postName(t, srv, "/api/mgmt/delete", "hello")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200", resp.StatusCode)
+	}
+
+	if _, exists := store.Get("hello"); exists {
+		t.Fatal("deleted plugin state record remains")
+	}
+
+	if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, "hello")); !os.IsNotExist(err) {
+		t.Errorf("main plugin directory remains after delete (stat error: %v)", err)
+	}
+	if info, err := os.Stat(backupPath); err != nil || !info.IsDir() {
+		t.Errorf("failed backup removal changed backup (info=%v, err=%v)", info, err)
+	}
+	for _, path := range []string{
+		filepath.Join(cfg.UserPluginsDir, "hello-other"),
+		filepath.Join(cfg.UserPluginsDir, "hello-other.previous-1.0.0"),
+	} {
+		if info, err := os.Stat(path); err != nil || !info.IsDir() {
+			t.Errorf("sibling plugin directory %s was not preserved (info=%v, err=%v)", path, info, err)
+		}
+	}
+
+	output := logs.String()
+	if !strings.Contains(output, "level=WARN") || !strings.Contains(output, "failed to remove plugin backup") || !strings.Contains(output, "backup removal failed") {
+		t.Errorf("backup cleanup warning missing from logs: %q", output)
 	}
 }
 

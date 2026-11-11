@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Button aria forwarding fixture</title>
+    <style>
+      body {
+        display: grid;
+        gap: 12px;
+        padding: 24px;
+        font-family: system-ui, sans-serif;
+        color: var(--mndw-text);
+        background: var(--mndw-bg);
+      }
+
+      nav,
+      section {
+        padding: 12px;
+        border: 1px solid var(--mndw-border);
+      }
+    </style>
+  </head>
+  <body>
+    <mndw-button id="toggle" aria-controls="mndw-sidebar" aria-expanded="false">Toggle menu</mndw-button>
+    <nav id="mndw-sidebar"><a href="#">Dashboard</a></nav>
+    <section id="other-panel">Other panel</section>
+    <script type="module" src="./button-aria.ts"></script>
+  </body>
+</html>

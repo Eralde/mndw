@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {describe, expect, it} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 import {defineComponents, mount} from '../testing/index.js';
 import {MNDW_BUTTON_TAG, MndwButton, type MndwButtonVariant} from './button.js';
 
@@ -38,6 +38,115 @@ describe('<mndw-button>', () => {
     await element.updateComplete;
 
     expect(innerButton(element).getAttribute('aria-label')).toBe('Settings');
+  });
+
+  it('forwards authored expanded/pressed/haspopup states to the native button', async () => {
+    const element = await mount(
+      '<mndw-button aria-expanded="true" aria-pressed="false" aria-haspopup="menu">Filter</mndw-button>',
+      MNDW_BUTTON_TAG,
+    );
+
+    await element.updateComplete;
+
+    const inner = innerButton(element);
+
+    expect(inner.getAttribute('aria-expanded')).toBe('true');
+    expect(inner.getAttribute('aria-pressed')).toBe('false');
+    expect(inner.getAttribute('aria-haspopup')).toBe('menu');
+  });
+
+  it('keeps forwarded aria state in sync with host attribute changes and removals', async () => {
+    const element = await mount('<mndw-button aria-expanded="false">Toggle</mndw-button>', MNDW_BUTTON_TAG);
+
+    await element.updateComplete;
+    expect(innerButton(element).getAttribute('aria-expanded')).toBe('false');
+
+    element.setAttribute('aria-expanded', 'true');
+    await vi.waitFor(() => expect(innerButton(element).getAttribute('aria-expanded')).toBe('true'));
+
+    element.removeAttribute('aria-expanded');
+    await vi.waitFor(() => expect(innerButton(element).hasAttribute('aria-expanded')).toBe(false));
+  });
+
+  it('resolves aria-controls to the referenced elements on the native button', async () => {
+    const nav = document.createElement('nav');
+
+    nav.id = 'mndw-sidebar';
+    document.body.appendChild(nav);
+
+    try {
+      const element = await mount(
+        '<mndw-button aria-controls="mndw-sidebar">Toggle</mndw-button>',
+        MNDW_BUTTON_TAG,
+      );
+
+      await vi.waitFor(() => {
+        const inner = innerButton(element);
+        const supportsElements = 'ariaControlsElements' in (inner as unknown as object);
+
+        if (supportsElements) {
+          expect([...(inner.ariaControlsElements ?? [])]).toEqual([nav]);
+        } else {
+          expect(inner.getAttribute('aria-controls')).toBe('mndw-sidebar');
+        }
+      });
+
+      element.removeAttribute('aria-controls');
+      await vi.waitFor(() => {
+        const inner = innerButton(element);
+        const supportsElements = 'ariaControlsElements' in (inner as unknown as object);
+
+        if (supportsElements) {
+          expect(inner.ariaControlsElements?.length ?? 0).toBe(0);
+        } else {
+          expect(inner.hasAttribute('aria-controls')).toBe(false);
+        }
+      });
+    } finally {
+      nav.remove();
+    }
+  });
+
+  it('re-resolves aria-controls when the host attribute changes to another id', async () => {
+    const first = document.createElement('nav');
+    const second = document.createElement('section');
+
+    first.id = 'first-panel';
+    second.id = 'second-panel';
+    document.body.append(first, second);
+
+    try {
+      const element = await mount(
+        '<mndw-button aria-controls="first-panel">Toggle</mndw-button>',
+        MNDW_BUTTON_TAG,
+      );
+
+      await vi.waitFor(() => {
+        const inner = innerButton(element);
+        const supportsElements = 'ariaControlsElements' in (inner as unknown as object);
+
+        if (supportsElements) {
+          expect([...(inner.ariaControlsElements ?? [])]).toEqual([first]);
+        } else {
+          expect(inner.getAttribute('aria-controls')).toBe('first-panel');
+        }
+      });
+
+      element.setAttribute('aria-controls', 'second-panel');
+      await vi.waitFor(() => {
+        const inner = innerButton(element);
+        const supportsElements = 'ariaControlsElements' in (inner as unknown as object);
+
+        if (supportsElements) {
+          expect([...(inner.ariaControlsElements ?? [])]).toEqual([second]);
+        } else {
+          expect(inner.getAttribute('aria-controls')).toBe('second-panel');
+        }
+      });
+    } finally {
+      first.remove();
+      second.remove();
+    }
   });
 
   it('reads variant from the attribute', async () => {

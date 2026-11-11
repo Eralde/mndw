@@ -27,6 +27,10 @@ export class MndwButton extends LitElement {
     disabled: {type: Boolean, reflect: true},
     type: {type: String},
     ariaLabel: {type: String, attribute: 'aria-label'},
+    ariaExpanded: {type: String, attribute: 'aria-expanded'},
+    ariaPressed: {type: String, attribute: 'aria-pressed'},
+    ariaHaspopup: {type: String, attribute: 'aria-haspopup'},
+    ariaControls: {type: String, attribute: 'aria-controls'},
   };
 
   public static styles = css`
@@ -107,6 +111,10 @@ export class MndwButton extends LitElement {
   declare public disabled: boolean;
   declare public type: 'button' | 'submit' | 'reset';
   declare public ariaLabel: string;
+  declare public ariaExpanded: string;
+  declare public ariaPressed: string;
+  declare public ariaHaspopup: string;
+  declare public ariaControls: string;
 
   private readonly formState = new FormAssociatedController(this, {
     isExplicitlyDisabled: () => this.disabled,
@@ -124,6 +132,10 @@ export class MndwButton extends LitElement {
     this.disabled = false;
     this.type = 'button';
     this.ariaLabel = '';
+    this.ariaExpanded = '';
+    this.ariaPressed = '';
+    this.ariaHaspopup = '';
+    this.ariaControls = '';
     this.addEventListener('click', this.onClick);
   }
 
@@ -145,6 +157,9 @@ export class MndwButton extends LitElement {
         part="button"
         type="button"
         aria-label=${this.ariaLabel || nothing}
+        aria-expanded=${this.ariaExpanded || nothing}
+        aria-pressed=${this.ariaPressed || nothing}
+        aria-haspopup=${this.ariaHaspopup || nothing}
         ?disabled=${this.formState.effectiveDisabled}
       >
         <slot></slot>
@@ -160,6 +175,45 @@ export class MndwButton extends LitElement {
     }
 
     inner.disabled = this.formState.effectiveDisabled;
+    this.syncAriaControls(inner);
+  }
+
+  /**
+   * `aria-controls` is an IDREF list, so it cannot cross the shadow boundary as a plain
+   * attribute: the inner button lives in the shadow root while the controlled element is in
+   * the light DOM. Where the platform supports `ariaControlsElements` the references are
+   * resolved in the document and exposed on the inner button directly. Browsers without it
+   * get the string attribute copied over; it may not reach assistive technology there.
+   */
+  private syncAriaControls(inner: HTMLButtonElement): void {
+    const ids = this.ariaControls
+      ?.trim()
+      .split(/\s+/)
+      .filter((id) => id !== '')
+      ?? [];
+
+    // The cast is only for feature detection: with the property present in the DOM lib typings,
+    // a plain `in` check would narrow the else branch to `never`.
+    const supportsAriaControlsElements = 'ariaControlsElements' in (inner as unknown as object);
+
+    if (supportsAriaControlsElements) {
+      const elements = ids
+        .map((id) => this.ownerDocument.getElementById(id))
+        .filter((element): element is HTMLElement => element !== null);
+
+      // The setter manages the content attribute itself: per the HTML spec, any change or
+      // removal of the attribute afterwards would null the explicitly set elements, so the
+      // attribute must not be touched here. Clearing the relation means assigning null.
+      inner.ariaControlsElements = elements.length > 0 ? elements : null;
+    } else {
+      const value = ids.join(' ');
+
+      if (value === '') {
+        inner.removeAttribute('aria-controls');
+      } else {
+        inner.setAttribute('aria-controls', value);
+      }
+    }
   }
 
   private readonly onClick = (event: Event): void => {

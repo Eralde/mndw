@@ -37,6 +37,14 @@ Buttons support four visual variants and native button types.
 `submit`, or `reset` and defaults to `button`. `disabled` disables the control. The inner native button exposes
 `part="button"`; `aria-label` names it when its slotted content is only an icon.
 
+ARIA state attributes authored on the host — `aria-label`, `aria-expanded`, `aria-pressed`, `aria-haspopup` — are
+forwarded to the inner native button and follow later attribute changes and removals. `aria-controls` is forwarded too:
+where the browser implements `Element.ariaControlsElements`, the referenced element ids are resolved in
+the document and exposed on the inner button through `ariaControlsElements`; on browsers without it the string
+attribute is copied to the inner button, but ARIA IDREFs do not cross the shadow boundary, so the association may not
+reach assistive technology there. The ids are resolved when the button renders, not live: a controlled element that is
+added or replaced after that point only becomes linked on the button's next render.
+
 `danger` is for destructive actions and uses a tinted `--mndw-danger-bg` background with `--mndw-danger` text and
 border. It is not a solid fill; the palette does not define a validated contrast pair for a solid danger background.
 

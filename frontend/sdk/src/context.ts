@@ -101,6 +101,13 @@ export interface DeviceInfo extends DeviceInfoData {
 }
 
 interface PluginContextBase {
+  /**
+   * Aborted with a standard `AbortError` DOMException when the host disposes this context
+   * (widget removal, leaving a page, reload, or disable). Pass it to fetch, backend,
+   * telemetry, or RCI calls that accept a signal; use it to stop plugin-owned retry and
+   * polling loops. Check `signal.aborted` after every await in asynchronous `createInstance` work.
+   */
+  readonly signal: AbortSignal;
   readonly navigation: HostNavigation;
   readonly telemetry: PluginTelemetry;
   events?: PluginEventFacade;

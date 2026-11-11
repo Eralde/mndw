@@ -1,6 +1,6 @@
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {clearInstanceStorage} from '../services/storage.service.js';
-import type {OverlayDispose} from './plugin-context.js';
+import type {OverlayDispose, PluginContextHandle} from './plugin-context.js';
 import type {LoadedPlugin} from './plugin-registry.js';
 
 export type OverlayTeardownReason = 'plugin-unmount' | 'host-navigation';
@@ -10,21 +10,28 @@ export interface MountedPlugin {
   instanceId: string;
   instance: PluginInstance;
   /**
-   * Closes any overlays this instance opened. Runs before `instance.unmount()` so
-   * overlay `closed` reasons reflect the teardown cause. Optional so test fixtures
-   * may omit it.
+   * Disposes this instance's context, including its overlays. Runs before
+   * `instance.unmount()` so overlay `closed` reasons reflect teardown cause.
+   * Optional so test fixtures may omit it.
    */
   disposeOverlayService?: (reason?: OverlayTeardownReason) => void;
 }
 
-interface MountOptions {
+export interface PluginMountOptions {
   errorText?: string;
 }
 
-interface UnmountOptions {
+export interface PluginUnmountOptions {
   clearStorage?: boolean;
   /** Teardown cause propagated to plugin-owned overlays. Defaults to 'plugin-unmount'. */
   closeReason?: OverlayTeardownReason;
+}
+
+export interface PluginMountHandle {
+  getMounted(): MountedPlugin | null;
+  dispose(options?: PluginUnmountOptions): void;
+  /** Resolves once createInstance settles; true on success, false on failure. */
+  whenReady(): Promise<boolean>;
 }
 
 function isPromiseLike<T>(value: T | PromiseLike<T>): value is PromiseLike<T> {
@@ -40,7 +47,7 @@ export function mountPlugin(
   plugin: LoadedPlugin,
   context: PluginContext,
   disposeOverlayService: OverlayDispose,
-  options?: MountOptions,
+  options?: PluginMountOptions,
 ): Promise<MountedPlugin | null> | MountedPlugin | null {
   const name = plugin.entry.name;
 
@@ -88,23 +95,20 @@ export function mountPlugin(
   }
 }
 
-export function unmountPlugin(
-  mounted: MountedPlugin | null,
+function cleanupMountedPlugin(
+  mounted: MountedPlugin,
   container: HTMLElement,
-  options?: UnmountOptions,
+  options: PluginUnmountOptions | undefined,
+  disposeContext: boolean,
 ): void {
-  if (!mounted) {
-    container.innerHTML = '';
-
-    return;
-  }
-
-  // Close plugin-owned overlays before the instance tears down so their `closed`
-  // reason is the host cause (plugin-unmount / host-navigation), not a stale 'api'.
-  try {
-    mounted.disposeOverlayService?.(options?.closeReason ?? 'plugin-unmount');
-  } catch (err) {
-    console.error(`[mndw] Plugin "${mounted.pluginName}" overlay teardown failed:`, err);
+  // Dispose context before instance teardown so overlays receive host cause
+  // (plugin-unmount / host-navigation), not stale 'api'.
+  if (disposeContext) {
+    try {
+      mounted.disposeOverlayService?.(options?.closeReason ?? 'plugin-unmount');
+    } catch (err) {
+      console.error(`[mndw] Plugin "${mounted.pluginName}" overlay teardown failed:`, err);
+    }
   }
 
   try {
@@ -122,4 +126,97 @@ export function unmountPlugin(
   }
 
   container.innerHTML = '';
+}
+
+export function unmountPlugin(
+  mounted: MountedPlugin | null,
+  container: HTMLElement,
+  options?: PluginUnmountOptions,
+): void {
+  if (mounted === null) {
+    container.innerHTML = '';
+
+    return;
+  }
+
+  cleanupMountedPlugin(mounted, container, options, true);
+}
+
+/** Mounts a plugin and owns context disposal across both pending and completed mounts. */
+export function mountPluginWithContext(
+  container: HTMLElement,
+  plugin: LoadedPlugin,
+  contextHandle: PluginContextHandle,
+  options?: PluginMountOptions,
+): PluginMountHandle {
+  let mounted: MountedPlugin | null = null;
+  let mountSettled = false;
+  let disposed = false;
+  let disposeOptions: PluginUnmountOptions | undefined;
+  let contextDisposed = false;
+
+  const disposeContext: OverlayDispose = (reason) => {
+    if (contextDisposed) {
+      return;
+    }
+
+    contextDisposed = true;
+    contextHandle.dispose(reason);
+  };
+
+  const result = mountPlugin(container, plugin, contextHandle.context, disposeContext, options);
+  let ready: Promise<boolean>;
+
+  if (result instanceof Promise) {
+    ready = result.then((resolved) => {
+      mountSettled = true;
+      mounted = resolved;
+
+      if (disposed) {
+        if (resolved !== null) {
+          cleanupMountedPlugin(resolved, container, disposeOptions, false);
+        } else {
+          container.innerHTML = '';
+        }
+
+        mounted = null;
+      }
+
+      return resolved !== null;
+    });
+  } else {
+    mountSettled = true;
+    mounted = result;
+    ready = Promise.resolve(result !== null);
+  }
+
+  return {
+    getMounted: () => mounted,
+    whenReady: () => ready,
+    dispose(unmountOptions) {
+      if (disposed) {
+        return;
+      }
+
+      disposed = true;
+      disposeOptions = unmountOptions;
+
+      if (mounted !== null) {
+        cleanupMountedPlugin(mounted, container, unmountOptions, true);
+        mounted = null;
+
+        return;
+      }
+
+      if (!mountSettled) {
+        try {
+          disposeContext(unmountOptions?.closeReason ?? 'plugin-unmount');
+        } catch (err) {
+          console.error(`[mndw] Plugin "${plugin.entry.name}" context teardown failed:`, err);
+        }
+
+        container.innerHTML = '';
+      }
+    },
+  };
 }

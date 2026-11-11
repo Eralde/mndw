@@ -622,6 +622,19 @@ describe('createPluginContext security boundaries', () => {
 });
 
 describe('createPluginContext ownership', () => {
+  it('aborts the context signal on disposal with an AbortError reason', () => {
+    const handle = createPluginContext({entry: widgetEntry(), instanceId: 'signal:1', hostInfo, deviceInfo});
+
+    expect(handle.context.signal).toBeInstanceOf(AbortSignal);
+    expect(handle.context.signal.aborted).toBe(false);
+
+    handle.dispose('host-navigation');
+
+    expect(handle.context.signal.aborted).toBe(true);
+    expect(handle.context.signal.reason).toBeInstanceOf(DOMException);
+    expect(handle.context.signal.reason.name).toBe('AbortError');
+  });
+
   it('creates a ticker that is destroyed with the plugin lifetime', () => {
     vi.stubGlobal('Worker', ContextTickerWorker);
 

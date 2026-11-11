@@ -4,6 +4,19 @@ import {createTestI18n} from './i18n.js';
 import {createTestPluginContext} from './plugin-context.js';
 
 describe('createTestPluginContext', () => {
+  it('aborts its signal when the fixture unmounts', () => {
+    const fixture = createTestPluginContext();
+
+    expect(fixture.context.signal).toBeInstanceOf(AbortSignal);
+    expect(fixture.context.signal.aborted).toBe(false);
+
+    fixture.unmount();
+
+    expect(fixture.context.signal.aborted).toBe(true);
+    expect(fixture.context.signal.reason).toBeInstanceOf(DOMException);
+    expect(fixture.context.signal.reason.name).toBe('AbortError');
+  });
+
   it('updates theme getters and streams', () => {
     const fixture = createTestPluginContext();
     const seen: string[] = [];

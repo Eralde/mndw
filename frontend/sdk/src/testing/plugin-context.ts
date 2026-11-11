@@ -149,6 +149,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
   const resyncSubject = new Subject<void>();
   const tickers = new Set<{tick(timestamp: number): void; destroy(): void}>();
   const navigationCalls: HostTarget[] = [];
+  const abortController = new AbortController();
   let unmounted = false;
   const createTicker = (): Ticker => {
     const subject = new Subject<TickerTick>();
@@ -209,6 +210,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
     },
   };
   const base = Object.assign(Object.create(null) as Record<string, unknown>, {
+    signal: abortController.signal,
     navigation,
     telemetry: createTelemetry(ended, options.telemetry),
     rciManager: createRciManager(options.rciManager),
@@ -270,6 +272,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
       }
 
       unmounted = true;
+      abortController.abort();
 
       for (const ticker of [...tickers]) {
         ticker.destroy();

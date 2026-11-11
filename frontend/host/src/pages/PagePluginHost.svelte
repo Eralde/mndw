@@ -4,9 +4,8 @@ import {FALLBACK_DEVICE_INFO, FALLBACK_HOST_INFO} from '../constants.js';
 import {createPluginContext} from '../runtime/plugin-context.js';
 import type {HostInfo} from '../runtime/device-info-context.js';
 import {
-  type MountedPlugin,
-  mountPlugin,
-  unmountPlugin,
+  type PluginMountHandle,
+  mountPluginWithContext,
 } from '../runtime/plugin-lifecycle.js';
 import type {LoadedPlugin} from '../runtime/plugin-registry.js';
 import {
@@ -29,7 +28,7 @@ interface ActiveMount {
   pluginName: string;
   child: HTMLElement;
   controller: PageRouteController;
-  mounted: MountedPlugin | null;
+  mount: PluginMountHandle | null;
 }
 
 const UNMOUNT_OPTIONS = {clearStorage: false,
@@ -84,7 +83,7 @@ function disposeActive(): void {
   }
 
   active.controller.complete();
-  unmountPlugin(active.mounted, active.child, UNMOUNT_OPTIONS);
+  active.mount?.dispose(UNMOUNT_OPTIONS);
   active.child.remove();
   active = null;
 }
@@ -156,14 +155,14 @@ function mountPluginRecord(
     pluginName: plugin.entry.name,
     child,
     controller,
-    mounted: null,
+    mount: null,
   };
 
   active = record;
 
   const hostInfo: HostInfo = appState.hostInfo ?? FALLBACK_HOST_INFO;
   const deviceInfo = appState.deviceInfo ?? FALLBACK_DEVICE_INFO;
-  const {context, dispose} = createPluginContext({
+  const contextHandle = createPluginContext({
     entry: plugin.entry,
     instanceId: `${plugin.entry.name}:1`,
     hostInfo,
@@ -172,28 +171,18 @@ function mountPluginRecord(
     catalogCell: plugin.catalog,
     services: pluginContextServices,
   });
-  const result = mountPlugin(child, plugin, context, dispose);
+  const mount = mountPluginWithContext(child, plugin, contextHandle);
 
-  if (result instanceof Promise) {
-    return result.then((nextMounted) => {
-      if (thisGeneration !== generation) {
-        // Superseded by a newer navigation before resolving: dispose against this
-        // generation's own child so the current page's DOM is untouched.
-        unmountPlugin(nextMounted, child, UNMOUNT_OPTIONS);
-        child.remove();
+  record.mount = mount;
 
-        return nextMounted !== null;
-      }
+  return mount.whenReady().then((ready) => {
+    if (thisGeneration !== generation) {
+      // The shared mount handle tears down late instances against their own child.
+      child.remove();
+    }
 
-      record.mounted = nextMounted;
-
-      return nextMounted !== null;
-    });
-  }
-
-  record.mounted = result;
-
-  return Promise.resolve(result !== null);
+    return ready;
+  });
 }
 
 /**

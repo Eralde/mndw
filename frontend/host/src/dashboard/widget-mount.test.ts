@@ -2,8 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 vi.mock('../runtime/plugin-lifecycle.js', () => ({
-  mountPlugin: vi.fn(),
-  unmountPlugin: vi.fn(),
+  mountPluginWithContext: vi.fn(),
 }));
 
 vi.mock('../runtime/plugin-context.js', () => ({
@@ -14,7 +13,7 @@ import type {DeviceInfoData, PluginContext} from '@mndw/sdk';
 import {FALLBACK_HOST_INFO} from '../constants.js';
 import type {HostInfo} from '../runtime/device-info-context.js';
 import {createPluginContext} from '../runtime/plugin-context.js';
-import {type MountedPlugin, mountPlugin, unmountPlugin} from '../runtime/plugin-lifecycle.js';
+import {type MountedPlugin, type PluginMountHandle, mountPluginWithContext} from '../runtime/plugin-lifecycle.js';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {appState} from '../state/app.svelte.js';
@@ -81,6 +80,14 @@ const pluginContextServices = {
 
 function fakeMounted(): MountedPlugin {
   return {pluginName: 'traffic', instanceId: 'traffic:1', instance: {unmount: vi.fn()}};
+}
+
+function fakeMountHandle(mounted: MountedPlugin | null): PluginMountHandle {
+  return {
+    getMounted: () => mounted,
+    dispose: vi.fn(),
+    whenReady: () => Promise.resolve(mounted !== null),
+  };
 }
 
 describe('createWidgetContext', () => {
@@ -187,26 +194,30 @@ describe('mountWidgetTile', () => {
   const plugin = {} as LoadedPlugin;
 
   beforeEach(() => {
-    vi.mocked(mountPlugin).mockReset();
-    vi.mocked(unmountPlugin).mockReset();
+    vi.mocked(mountPluginWithContext).mockReset();
+    dispose.mockClear();
   });
 
-  it('requests the generic "Error loading widget" text from mountPlugin', () => {
-    vi.mocked(mountPlugin).mockReturnValue(fakeMounted());
+  it('requests the generic "Error loading widget" text from the shared lifecycle primitive', () => {
+    const mountHandle = fakeMountHandle(fakeMounted());
+
+    vi.mocked(mountPluginWithContext).mockReturnValue(mountHandle);
 
     const container = document.createElement('div');
 
-    mountWidgetTile(container, plugin, handle);
+    const tileHandle = mountWidgetTile(container, plugin, handle);
 
-    expect(mountPlugin).toHaveBeenCalledWith(container, plugin, handle.context, dispose, {
+    expect(tileHandle).toBe(mountHandle);
+    expect(mountPluginWithContext).toHaveBeenCalledWith(container, plugin, handle, {
       errorText: 'Error loading widget',
     });
   });
 
-  it('routes sync mounts through unmountPlugin on dispose', () => {
+  it('forwards teardown options to the shared lifecycle handle', () => {
     const mounted = fakeMounted();
+    const mountHandle = fakeMountHandle(mounted);
 
-    vi.mocked(mountPlugin).mockReturnValue(mounted);
+    vi.mocked(mountPluginWithContext).mockReturnValue(mountHandle);
 
     const container = document.createElement('div');
     const tileHandle = mountWidgetTile(container, plugin, handle);
@@ -215,69 +226,22 @@ describe('mountWidgetTile', () => {
 
     tileHandle.dispose({clearStorage: true, closeReason: 'plugin-unmount'});
 
-    expect(unmountPlugin).toHaveBeenCalledWith(mounted, container, {
+    expect(mountHandle.dispose).toHaveBeenCalledWith({
       clearStorage: true,
       closeReason: 'plugin-unmount',
     });
   });
 
-  it('immediately disposes an async mount that resolves after disposal', async () => {
-    const mounted = fakeMounted();
-    let resolveMount!: (value: MountedPlugin | null) => void;
-    const pending = new Promise<MountedPlugin | null>((resolve) => {
-      resolveMount = resolve;
-    });
+  it('delegates pending mount disposal without keeping duplicate state', () => {
+    const mountHandle = fakeMountHandle(null);
 
-    vi.mocked(mountPlugin).mockReturnValue(pending);
+    vi.mocked(mountPluginWithContext).mockReturnValue(mountHandle);
 
-    const container = document.createElement('div');
-    const tileHandle = mountWidgetTile(container, plugin, handle);
+    const tileHandle = mountWidgetTile(document.createElement('div'), plugin, handle);
 
     tileHandle.dispose({clearStorage: false, closeReason: 'host-navigation'});
-    expect(unmountPlugin).not.toHaveBeenCalled();
 
-    resolveMount(mounted);
-    await pending;
-    await Promise.resolve();
-
-    expect(unmountPlugin).toHaveBeenCalledWith(mounted, container, {
-      clearStorage: false,
-      closeReason: 'host-navigation',
-    });
-    expect(tileHandle.getMounted()).toBeNull();
-  });
-
-  it('unmounts async mounts that resolved before disposal', async () => {
-    const mounted = fakeMounted();
-    const pending = Promise.resolve<MountedPlugin | null>(mounted);
-
-    vi.mocked(mountPlugin).mockReturnValue(pending);
-
-    const container = document.createElement('div');
-    const tileHandle = mountWidgetTile(container, plugin, handle);
-
-    await pending;
-    await Promise.resolve();
-
-    expect(tileHandle.getMounted()).toBe(mounted);
-
-    tileHandle.dispose();
-
-    expect(unmountPlugin).toHaveBeenCalledWith(mounted, container, undefined);
-  });
-
-  it('is idempotent across repeated disposal', () => {
-    const mounted = fakeMounted();
-
-    vi.mocked(mountPlugin).mockReturnValue(mounted);
-
-    const container = document.createElement('div');
-    const tileHandle = mountWidgetTile(container, plugin, handle);
-
-    tileHandle.dispose({clearStorage: true});
-    tileHandle.dispose({clearStorage: false});
-
-    expect(unmountPlugin).toHaveBeenCalledTimes(1);
-    expect(unmountPlugin).toHaveBeenCalledWith(mounted, container, {clearStorage: true});
+    expect(tileHandle).toBe(mountHandle);
+    expect(mountHandle.dispose).toHaveBeenCalledWith({clearStorage: false, closeReason: 'host-navigation'});
   });
 });

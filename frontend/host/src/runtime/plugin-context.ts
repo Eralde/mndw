@@ -100,6 +100,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
   }
 
   const lifetime = createPluginLifetime();
+  const abortController = new AbortController();
   const theme$ = hostValue$(getTheme, subscribeTheme, lifetime);
   const locale$ = hostValue$(getHostLocale, subscribeHostLocaleValue, lifetime);
   const palette$ = hostValue$(getPaletteTokens, (callback) => services.palette.subscribePalette(callback), lifetime);
@@ -124,6 +125,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     }
 
     disposed = true;
+    abortController.abort();
     lifetime.end();
 
     if (events !== undefined) {
@@ -145,6 +147,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     ? {kind: 'widget' as const}
     : {kind: 'widget' as const, setTileTitle};
   const context = {
+    signal: abortController.signal,
     navigation,
     telemetry,
     events,

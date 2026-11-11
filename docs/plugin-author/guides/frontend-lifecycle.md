@@ -73,6 +73,52 @@ if (ctx.backend !== undefined) {
 }
 ```
 
+## Cancellation and resource ownership
+
+The host aborts `ctx.signal` with a standard `AbortError` DOMException when it disposes a context: widget removal,
+leaving a page, plugin reload, or disable. Pass it to cancellable requests, and check `ctx.signal.aborted` after every
+`await` in asynchronous `createInstance` work before updating UI or starting more work.
+
+```ts
+import type {PluginContext, PluginInstance} from '@mndw/sdk';
+
+export async function createInstance(container: HTMLElement, ctx: PluginContext): Promise<PluginInstance> {
+  if (ctx.backend === undefined) {
+    throw new Error('This plugin needs a backend route');
+  }
+
+  try {
+    const response = await ctx.backend.fetch('status', {signal: ctx.signal});
+    if (ctx.signal.aborted) {
+      return {unmount() {}};
+    }
+
+    const status = await response.json();
+    if (ctx.signal.aborted) {
+      return {unmount() {}};
+    }
+
+    container.textContent = JSON.stringify(status);
+  } catch (error) {
+    if (!ctx.signal.aborted) {
+      throw error;
+    }
+
+    return {unmount() {}};
+  }
+
+  return {unmount() { container.replaceChildren(); }};
+}
+```
+
+| Resource owner | Resources | Cleanup |
+| --- | --- | --- |
+| Host | Context streams, tickers, overlays, event facades | Ended or disposed automatically with context |
+| Plugin | Fetch/backend/telemetry requests, sockets, retry/polling loops, own timers, RCI subscriptions | Pass `ctx.signal` where supported; otherwise listen for its `abort` event or clean up in `unmount()` |
+
+The host disposes context immediately even while `createInstance` is pending. If initialization later returns an instance,
+the host calls its `unmount()`; `ctx.signal` lets the plugin stop work before that promise settles.
+
 ## Linking to host pages
 
 Use `ctx.navigation` to link to the dashboard, packages, settings (optionally a tab), or an installed, routable page

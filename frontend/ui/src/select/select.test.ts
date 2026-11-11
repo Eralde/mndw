@@ -433,6 +433,23 @@ describe('<mndw-select> opening', () => {
     expect(panel()).toBeNull();
   });
 
+  it('closes an open panel without changing the value when the host becomes disabled', async () => {
+    const element = await mount();
+
+    await openPanel(element);
+
+    const change = vi.fn();
+
+    element.addEventListener('mndwchange', change);
+    element.disabled = true;
+    await element.updateComplete;
+
+    expect(element.open).toBe(false);
+    expect(panel()).toBeNull();
+    expect(element.value).toBe('');
+    expect(change).not.toHaveBeenCalled();
+  });
+
   it('forwards panelClass to the overlay provider', async () => {
     const probe = fakeProvider();
 

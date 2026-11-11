@@ -291,6 +291,14 @@ export class MndwSegmented extends LitElement {
       return focusable[current <= 0 ? last : current - 1];
     }
 
+    if (key === 'Home') {
+      return focusable[0] ?? null;
+    }
+
+    if (key === 'End') {
+      return focusable[last] ?? null;
+    }
+
     if (key === ' ' && current >= 0) {
       return focusable[current];
     }

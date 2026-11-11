@@ -62,7 +62,7 @@ const FORM_ASSOCIATED_CONTROLS: readonly FormAssociatedControlCase[] = [
   {name: 'input', selector: '#form-input', innerSelector: 'input'},
   {name: 'textarea', selector: '#form-textarea', innerSelector: 'textarea'},
   {name: 'checkbox', selector: '#checkbox'},
-  {name: 'select', selector: '#select'},
+  {name: 'select', selector: '#select', innerSelector: '[part="trigger"]'},
   {name: 'switch', selector: '#theme-switch'},
   {name: 'slider', selector: '#volume'},
   {name: 'segmented', selector: '#range'},
@@ -149,13 +149,16 @@ test('renders reusable charts, accessibility state, and responsive geometry', as
 
 test('queries semantic control state from hosts', async ({page}) => {
   const checkbox = await hostSemantics(page.locator('#checkbox'));
-  const select = await hostSemantics(page.locator('#select'));
+  const selectTrigger = page.locator('#select [part="trigger"]');
 
   expect(checkbox).toMatchObject({role: 'checkbox', checked: 'false', disabled: 'false'});
-  expect(select).toMatchObject({role: 'combobox', expanded: 'false', disabled: 'false'});
   await expect(page.getByRole('checkbox', {name: 'Feature'})).toBeVisible();
-  await expect(page.getByRole('combobox', {name: 'Interface', exact: true})).toBeVisible();
-  await expect(page.getByRole('combobox', {name: 'Field interface', exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Interface', exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: 'Field interface', exact: true})).toBeVisible();
+  await expect(selectTrigger).toHaveAttribute('aria-haspopup', 'listbox');
+  await expect(selectTrigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(selectTrigger).toHaveAttribute('aria-invalid', 'false');
+  await expect(selectTrigger).toBeEnabled();
 });
 
 test('keeps a checkbox host geometrically stable across checked-state changes', async ({page}) => {
@@ -304,13 +307,14 @@ test('re-enabled custom controls accept real pointer input', async ({page}) => {
   );
 
   const select = page.locator('#select');
+  const selectTrigger = select.locator('[part="trigger"]');
 
   await setHostDisabled(select, true);
   await setHostDisabled(select, false);
-  await select.locator('[part="trigger"]').click();
-  await expect(select).toHaveAttribute('aria-expanded', 'true');
+  await selectTrigger.click();
+  await expect(selectTrigger).toHaveAttribute('aria-expanded', 'true');
   await page.keyboard.press('Escape');
-  await expect(select).toHaveAttribute('aria-expanded', 'false');
+  await expect(selectTrigger).toHaveAttribute('aria-expanded', 'false');
 });
 
 test('activates checkbox from its external label and focuses the host', async ({page}) => {
@@ -383,7 +387,7 @@ test('updates effective disabled state when fieldset disabled toggles', async ({
   await page.locator('#fieldset').evaluate((element) => element.setAttribute('disabled', ''));
   await page.locator('#secondary-fieldset').evaluate((element) => element.setAttribute('disabled', ''));
   await expect(page.locator('#checkbox')).toHaveAttribute('aria-disabled', 'true');
-  await expect(page.locator('#select')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#select [part="trigger"]')).toBeDisabled();
   await expect(page.locator('#theme-switch')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.locator('#volume')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.locator('#range')).toHaveAttribute('aria-disabled', 'true');
@@ -397,14 +401,18 @@ test('updates effective disabled state when fieldset disabled toggles', async ({
   await page.locator('#checkbox').evaluate((element) => {
     (element as HTMLElement & {disabled: boolean}).disabled = true;
   });
+  await setHostDisabled(page.locator('#select'), true);
+  await page.locator('#button').evaluate((element) => {
+    (element as HTMLElement & {disabled: boolean}).disabled = true;
+  });
   await page.locator('#fieldset').evaluate((element) => element.removeAttribute('disabled'));
   await page.locator('#secondary-fieldset').evaluate((element) => element.removeAttribute('disabled'));
   await expect(page.locator('#checkbox')).toHaveAttribute('aria-disabled', 'true');
-  await expect(page.locator('#select')).toHaveAttribute('aria-disabled', 'false');
+  await expect(page.locator('#select [part="trigger"]')).toBeDisabled();
   await expect(page.locator('#theme-switch')).toHaveAttribute('aria-disabled', 'false');
   await expect(page.locator('#volume')).toHaveAttribute('aria-disabled', 'false');
   await expect(page.locator('#range')).toHaveAttribute('aria-disabled', 'false');
-  await expect(page.locator('#button').locator('button')).not.toBeDisabled();
+  await expect(page.locator('#button').locator('button')).toBeDisabled();
   await expect(page.locator('#submit-button').locator('button')).not.toBeDisabled();
   await expect(page.locator('#reset-button').locator('button')).not.toBeDisabled();
   await expect(page.locator('#form-input').locator('input')).not.toBeDisabled();
@@ -414,6 +422,197 @@ test('updates effective disabled state when fieldset disabled toggles', async ({
     (element as HTMLElement & {disabled: boolean}).disabled = false;
   });
   await expect(page.locator('#checkbox')).toHaveAttribute('aria-disabled', 'false');
+  await page.locator('#button').evaluate((element) => {
+    (element as HTMLElement & {disabled: boolean}).disabled = false;
+  });
+  await expect(page.locator('#button').locator('button')).not.toBeDisabled();
+  await setHostDisabled(page.locator('#select'), false);
+  await expect(page.locator('#select [part="trigger"]')).toBeEnabled();
+
+  await page.locator('#fieldset').evaluate((element) => element.setAttribute('disabled', ''));
+  await expect(page.locator('#select [part="trigger"]')).toBeDisabled();
+  await page.locator('#fieldset').evaluate((element) => element.removeAttribute('disabled'));
+  await expect(page.locator('#select [part="trigger"]')).toBeEnabled();
+});
+
+test('closes an open select without selecting when explicitly disabled', async ({page}) => {
+  const select = page.locator('#select');
+  const trigger = select.locator('[part="trigger"]');
+  const panel = page.locator('mndw-select-panel');
+
+  await page.evaluate(() => {
+    const host = document.querySelector('#select');
+    const events: string[] = [];
+
+    if (!host) {
+      throw new Error('missing select');
+    }
+
+    Object.assign(window, {selectDisabledEvents: events});
+
+    for (const eventName of ['mndwchange', 'input', 'change']) {
+      host.addEventListener(eventName, () => events.push(eventName));
+    }
+  });
+
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('[part="option"]')).toHaveCount(2);
+
+  await select.evaluate((element) => {
+    const host = element as HTMLElement & {disabled: boolean};
+    const option = document.querySelector('mndw-select-panel')?.shadowRoot
+      ?.querySelectorAll<HTMLElement>('[part="option"]')[1];
+
+    if (!option) {
+      throw new Error('missing second select option');
+    }
+
+    host.disabled = true;
+    option.dispatchEvent(new MouseEvent('click', {bubbles: true, composed: true}));
+  });
+
+  await expect(trigger).toBeDisabled();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(panel).toHaveCount(0);
+  await expect.poll(async () => select.evaluate((element) => (element as HTMLElement & {value: string}).value)).toBe('');
+  expect(await page.evaluate(() => (window as unknown as {selectDisabledEvents: string[]}).selectDisabledEvents))
+    .toEqual([]);
+});
+
+test('closes an open select without selecting when its fieldset becomes disabled', async ({page}) => {
+  const select = page.locator('#select');
+  const trigger = select.locator('[part="trigger"]');
+  const panel = page.locator('mndw-select-panel');
+
+  await page.evaluate(() => {
+    const host = document.querySelector('#select');
+    const events: string[] = [];
+
+    if (!host) {
+      throw new Error('missing select');
+    }
+
+    Object.assign(window, {selectDisabledEvents: events});
+
+    for (const eventName of ['mndwchange', 'input', 'change']) {
+      host.addEventListener(eventName, () => events.push(eventName));
+    }
+  });
+
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('[part="option"]')).toHaveCount(2);
+
+  await select.evaluate((element) => {
+    const fieldset = document.querySelector('#fieldset');
+    const option = document.querySelector('mndw-select-panel')?.shadowRoot
+      ?.querySelectorAll<HTMLElement>('[part="option"]')[1];
+
+    if (!fieldset || !option) {
+      throw new Error('missing fieldset or second select option');
+    }
+
+    fieldset.setAttribute('disabled', '');
+    option.dispatchEvent(new MouseEvent('click', {bubbles: true, composed: true}));
+  });
+
+  await expect(trigger).toBeDisabled();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(panel).toHaveCount(0);
+  await expect.poll(async () => select.evaluate((element) => (element as HTMLElement & {value: string}).value)).toBe('');
+  expect(await page.evaluate(() => (window as unknown as {selectDisabledEvents: string[]}).selectDisabledEvents))
+    .toEqual([]);
+});
+
+test('does not commit an open select from keyboard after it becomes disabled', async ({page}) => {
+  const select = page.locator('#select');
+  const trigger = select.locator('[part="trigger"]');
+  const panel = page.locator('mndw-select-panel');
+
+  await page.evaluate(() => {
+    const host = document.querySelector('#select');
+    const events: string[] = [];
+
+    if (!host) {
+      throw new Error('missing select');
+    }
+
+    Object.assign(window, {selectDisabledEvents: events});
+
+    for (const eventName of ['mndwchange', 'input', 'change']) {
+      host.addEventListener(eventName, () => events.push(eventName));
+    }
+  });
+
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(panel).toBeVisible();
+
+  await select.evaluate((element) => {
+    const host = element as HTMLElement & {disabled: boolean};
+    const openedPanel = document.querySelector('mndw-select-panel');
+
+    if (!openedPanel) {
+      throw new Error('missing select panel');
+    }
+
+    host.disabled = true;
+    openedPanel.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }));
+  });
+
+  await expect(trigger).toBeDisabled();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(panel).toHaveCount(0);
+  await expect.poll(async () => select.evaluate((element) => (element as HTMLElement & {value: string}).value)).toBe('');
+  expect(await page.evaluate(() => (window as unknown as {selectDisabledEvents: string[]}).selectDisabledEvents))
+    .toEqual([]);
+});
+
+test('closes an open select when own or fieldset disabled changes without selection', async ({page}) => {
+  const select = page.locator('#select');
+  const trigger = select.locator('[part="trigger"]');
+  const panel = page.locator('mndw-select-panel');
+
+  await page.evaluate(() => {
+    const host = document.querySelector('#select');
+    const events: string[] = [];
+
+    if (!host) {
+      throw new Error('missing select');
+    }
+
+    Object.assign(window, {selectDisabledEvents: events});
+
+    for (const eventName of ['mndwchange', 'input', 'change']) {
+      host.addEventListener(eventName, () => events.push(eventName));
+    }
+  });
+
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await setHostDisabled(select, true);
+  await expect(trigger).toBeDisabled();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(panel).toHaveCount(0);
+
+  await setHostDisabled(select, false);
+  await trigger.click();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await page.locator('#fieldset').evaluate((element) => element.setAttribute('disabled', ''));
+  await expect(trigger).toBeDisabled();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(panel).toHaveCount(0);
+  await expect.poll(async () => select.evaluate((element) => (element as HTMLElement & {value: string}).value)).toBe('');
+  expect(await page.evaluate(() => (window as unknown as {selectDisabledEvents: string[]}).selectDisabledEvents))
+    .toEqual([]);
 });
 
 test('names a native control from its field label and activates it on click', async ({page}) => {
@@ -466,8 +665,9 @@ test('names a self-labelling checkbox once inside a labelled field', async ({pag
 test('suppresses and restores field label around a select label source', async ({page}) => {
   const field = page.locator('#field-select-label');
   const select = page.locator('#select-label');
+  const trigger = select.locator('[part="trigger"]');
 
-  await expect(select).toHaveAccessibleName('Select label');
+  await expect(trigger).toHaveAccessibleName('Select label');
   await expect(field.locator('label.mndw-field__label')).toBeHidden();
 
   await select.evaluate(async (element) => {
@@ -475,7 +675,7 @@ test('suppresses and restores field label around a select label source', async (
     await (element as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete;
   });
 
-  await expect(select).toHaveAccessibleName('Field select label');
+  await expect(trigger).toHaveAccessibleName('Field select label');
   await expect(field.locator('label.mndw-field__label')).toBeVisible();
 
   await select.evaluate(async (element) => {
@@ -483,7 +683,7 @@ test('suppresses and restores field label around a select label source', async (
     await (element as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete;
   });
 
-  await expect(select).toHaveAccessibleName('Select label');
+  await expect(trigger).toHaveAccessibleName('Select label');
   await expect(field.locator('label.mndw-field__label')).toBeHidden();
 });
 
@@ -785,7 +985,19 @@ test('drives a segmented group with roving tabindex and arrow keys', async ({pag
   const month = page.getByRole('radio', {name: 'Month'});
 
   await expect(group).toBeVisible();
-  await expect(group).toHaveAttribute('tabindex', '-1');
+  await group.evaluate((element) => {
+    const sentinel = document.createElement('button');
+
+    sentinel.id = 'range-tab-order-sentinel';
+    element.before(sentinel);
+  });
+  const sentinel = page.locator('#range-tab-order-sentinel');
+
+  await sentinel.focus();
+  await page.keyboard.press('Tab');
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('value') ?? null)).toBe('day');
+  await sentinel.evaluate((element) => element.remove());
+
   await expect(month).toHaveAttribute('aria-disabled', 'true');
   await expect(day).toHaveAttribute('tabindex', '0');
 
@@ -811,8 +1023,12 @@ test('drives a segmented group with roving tabindex and arrow keys', async ({pag
 
   await expect(week).toBeChecked();
 
+  await page.keyboard.press('Home');
+
+  await expect(day).toBeChecked();
+
   expect(await page.locator('#range').evaluate((element) => (element as HTMLElement & {value: string}).value))
-    .toBe('week');
+    .toBe('day');
 });
 
 test('drives a slider with the keyboard and a real pointer drag', async ({page}) => {

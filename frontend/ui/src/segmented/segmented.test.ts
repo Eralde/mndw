@@ -233,7 +233,7 @@ describe('<mndw-segmented> keyboard navigation', () => {
     expect(element.value).toBe('month');
   });
 
-  it('ignores Home and End', async () => {
+  it('moves to the first and last enabled segment with Home and End', async () => {
     const element = await mount(
       '<mndw-segment value="day" disabled>Day</mndw-segment>'
         + '<mndw-segment value="week">Week</mndw-segment>'
@@ -243,13 +243,13 @@ describe('<mndw-segmented> keyboard navigation', () => {
 
     const home = await press(element, 'Home', segments(element)[2]);
 
-    expect(element.value).toBe('month');
-    expect(home.defaultPrevented).toBe(false);
+    expect(element.value).toBe('week');
+    expect(home.defaultPrevented).toBe(true);
 
     const end = await press(element, 'End', segments(element)[1]);
 
     expect(element.value).toBe('month');
-    expect(end.defaultPrevented).toBe(false);
+    expect(end.defaultPrevented).toBe(true);
   });
 
   it('ignores keys it does not own', async () => {

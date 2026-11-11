@@ -33,7 +33,7 @@ user activation only. Each `<mndw-segment>` carries required `value` and `disabl
 
 The group writes `role="radiogroup"`; each segment receives `role="radio"`, `aria-checked`, `aria-disabled`, and a
 roving `tabindex`. These attributes are removed from a segment when it leaves the group. The checked segment is the
-tab stop, or the first enabled segment if none is checked; the host stays at `tabindex="-1"`. Arrow keys move and
+tab stop, or the first enabled segment if none is checked; the host itself stays outside the Tab order. Arrow keys move and
 select with wraparound; Home and End jump to the first and last enabled choice. Space and Enter select the focused
 segment, skipping disabled choices.
 

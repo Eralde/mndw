@@ -215,6 +215,24 @@ export class MndwSelect extends LitElement {
   }
 
   protected override updated(changed: PropertyValues): void {
+    const trigger = this.triggerElement();
+
+    if (trigger !== null) {
+      trigger.disabled = this.formState.effectiveDisabled;
+    }
+
+    if (this.formState.effectiveDisabled && this.open) {
+      // Close outside the update cycle: closePanel writes `open`, which would
+      // schedule another update from inside `updated`. Re-check on the microtask:
+      // the control may have been re-enabled meanwhile. No focus restore: the
+      // trigger is disabled.
+      void Promise.resolve().then(() => {
+        if (this.formState.effectiveDisabled) {
+          this.closePanel(false);
+        }
+      });
+    }
+
     const selected = this.options().find((option) => option.value === this.value);
     const submittedValue = selected ? selected.value : null;
 
@@ -489,6 +507,12 @@ export class MndwSelect extends LitElement {
   }
 
   private readonly onPanelSelect = (event: Event): void => {
+    if (this.formState.effectiveDisabled) {
+      this.closePanel(false);
+
+      return;
+    }
+
     const detail = (event as CustomEvent<PanelSelectDetail>).detail;
 
     this.value = detail.value;
@@ -509,6 +533,12 @@ export class MndwSelect extends LitElement {
   };
 
   private commitActiveOption(tabDirection?: 'backward' | 'forward'): void {
+    if (this.formState.effectiveDisabled) {
+      this.closePanel(false);
+
+      return;
+    }
+
     const option = this.panel?.options[this.panel.activeIndex];
 
     if (!option || option.disabled) {
@@ -614,7 +644,13 @@ export class MndwSelect extends LitElement {
     }
 
     const associatedLabel = this.formState.labels
-      .map((item) => item.textContent?.trim() ?? '')
+      .map((item) => {
+        const clone = item.cloneNode(true) as HTMLLabelElement;
+
+        clone.querySelectorAll('[aria-hidden="true"], [hidden]').forEach((element) => element.remove());
+
+        return clone.textContent?.trim() ?? '';
+      })
       .filter((text) => text !== '')
       .join(' ');
 

@@ -188,3 +188,84 @@ func TestFrontDoorAssembly(t *testing.T) {
 		t.Fatalf("self-update apply with CSRF = %d %q", code, body)
 	}
 }
+
+func TestFrontDoorUserPluginAssetsRequireSession(t *testing.T) {
+	frontendDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(frontendDir, "index.html"), []byte("<spa/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	device := newFrontDoorIPv4Server(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/auth" {
+			if request.Header.Get("Cookie") == "session=valid" {
+				writer.WriteHeader(http.StatusOK)
+			} else {
+				http.Error(writer, "unauthorized", http.StatusUnauthorized)
+			}
+
+			return
+		}
+
+		writer.WriteHeader(http.StatusNotFound)
+	}))
+	defer device.Close()
+
+	cfg := frontDoorTestConfig(t, frontendDir, device.URL)
+	cfg.Dev = false
+	pluginDir := filepath.Join(cfg.UserPluginsDir, "demo")
+	if err := os.MkdirAll(pluginDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "index.js"), []byte("export const loaded = true"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := state.Open(cfg.StateFile())
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+
+	paletteStore, err := palette.Open(cfg.PaletteFile())
+	if err != nil {
+		t.Fatalf("palette.Open: %v", err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	verifier := authz.New(cfg.DeviceURL, false, logger, authz.Options{})
+	c, err := assemble(cfg, store, paletteStore, verifier, logger, context.Background())
+	if err != nil {
+		t.Fatalf("assemble: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+
+	server := newFrontDoorIPv4Server(c.handler)
+	defer server.Close()
+
+	request := func(cookie string) (int, string) {
+		req, err := http.NewRequest(http.MethodGet, server.URL+"/user-plugins/demo/index.js", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cookie != "" {
+			req.Header.Set("Cookie", cookie)
+		}
+
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("GET user plugin: %v", err)
+		}
+		defer response.Body.Close()
+
+		body, _ := io.ReadAll(response.Body)
+
+		return response.StatusCode, string(body)
+	}
+
+	if code, body := request(""); code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated user plugin request = %d %q, want 401", code, body)
+	}
+
+	if code, body := request("session=valid"); code != http.StatusOK || body != "export const loaded = true" {
+		t.Fatalf("authenticated user plugin request = %d %q, want 200 with asset", code, body)
+	}
+}

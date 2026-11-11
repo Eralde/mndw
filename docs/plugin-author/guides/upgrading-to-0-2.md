@@ -29,6 +29,14 @@ Change both SDK and UI packages to `^0.2.0`:
 An installed plugin built for SDK 0.1 shows a warning badge in **Settings → Plugins** when the host provides SDK 0.2.
 A warning below the badge identifies both SDK versions. The plugin can still load, but may not work correctly.
 
+Plugins with asynchronous setup can use new optional `ctx.signal` API to cancel requests or initialization when host disposes the context; plugins with no author-owned async work need no change.
+
+## Keep backend commands under `backend/`
+
+Set `backend.command` and every `backend.routes[].command` to a safe relative path beginning with `backend/`, such
+as `backend/run.sh`. The daemon does not serve files from `backend/` as browser assets, and user-plugin assets now
+require an authenticated device session.
+
 ## Read backend error codes from `code`
 
 `BackendError.daemonCode` was removed. Check the error's `code` instead:

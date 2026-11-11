@@ -506,7 +506,7 @@ func safeRelativePath(value string) bool {
 }
 
 func safeCommand(value string) bool {
-	if !safeRelativePath(value) || !hasFileName(value) {
+	if !safeRelativePath(value) || !strings.HasPrefix(value, "backend/") || !hasFileName(value) {
 		return false
 	}
 

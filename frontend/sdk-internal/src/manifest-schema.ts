@@ -143,6 +143,7 @@ const safeBackendRoutePath = (value: string): boolean => {
 };
 
 const commandSchema = safeRelativePathSchema
+  .regex(/^backend\//, {message: 'command must start with backend/'})
   .refine(hasFileName, {message: 'command must include a file name'})
   .refine((command) => {
     return !command.split('/').some((segment) => segment === '.' || segment === '..');

@@ -225,6 +225,42 @@ func TestValidateServiceAndReservedRules(t *testing.T) {
 	}
 }
 
+func TestValidateBackendCommandsMustBeUnderBackendDirectory(t *testing.T) {
+	tests := []struct {
+		name  string
+		data  string
+		valid bool
+	}{
+		{
+			name: "service command outside backend",
+			data: `{"manifestVersion":1,"name":"service","version":"1.0.0","type":"widget","label":"Service","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"service","protocolVersion":1,"command":"bin/run.sh","routes":[{"id":"health","transport":"http","method":"GET","path":"health"}]}}`,
+		},
+		{
+			name:  "service command inside backend",
+			data:  `{"manifestVersion":1,"name":"service","version":"1.0.0","type":"widget","label":"Service","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"service","protocolVersion":1,"command":"backend/run.sh","routes":[{"id":"health","transport":"http","method":"GET","path":"health"}]}}`,
+			valid: true,
+		},
+		{
+			name: "exec route command outside backend",
+			data: `{"manifestVersion":1,"name":"exec","version":"1.0.0","type":"widget","label":"Exec","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"exec","routes":[{"id":"run","transport":"http","method":"GET","path":"run","command":"bin/run.sh"}]}}`,
+		},
+		{
+			name:  "exec route command inside backend",
+			data:  `{"manifestVersion":1,"name":"exec","version":"1.0.0","type":"widget","label":"Exec","entry":"index.js","size":{"w":2,"h":2},"backend":{"kind":"exec","routes":[{"id":"run","transport":"http","method":"GET","path":"run","command":"backend/run.sh"}]}}`,
+			valid: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := Validate([]byte(test.data))
+			if (err == nil) != test.valid {
+				t.Fatalf("Validate() error = %v, valid = %v", err, test.valid)
+			}
+		})
+	}
+}
+
 func mustJSON(t *testing.T, value any) []byte {
 	t.Helper()
 

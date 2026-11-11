@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 1,
+  "name": "service-command-outside-directory",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Service command outside directory",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3},
+  "backend": {
+    "kind": "service",
+    "protocolVersion": 1,
+    "command": "bin/run.sh",
+    "routes": [{"id": "health", "transport": "http", "method": "GET", "path": "health"}]
+  }
+}

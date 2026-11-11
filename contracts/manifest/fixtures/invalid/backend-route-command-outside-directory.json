@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "name": "exec-command-outside-directory",
+  "version": "1.0.0",
+  "type": "widget",
+  "label": "Exec route command outside directory",
+  "entry": "index.js",
+  "size": {"w": 4, "h": 3},
+  "backend": {
+    "kind": "exec",
+    "routes": [{"id": "run", "transport": "http", "method": "GET", "path": "run", "command": "bin/run.sh"}]
+  }
+}

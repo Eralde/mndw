@@ -69,6 +69,35 @@ describe('validateManifest behavior', () => {
     expect(() => validateManifest({...base, permissions: ['events:']})).toThrow(ManifestValidationError);
   });
 
+  it('requires service and exec commands under backend/', () => {
+    const service = {
+      ...base,
+      backend: {
+        kind: 'service' as const,
+        protocolVersion: 1,
+        command: 'backend/run.sh',
+        routes: [{id: 'health', transport: 'http' as const, method: 'GET', path: 'health'}],
+      },
+    };
+    const exec = {
+      ...base,
+      backend: {
+        kind: 'exec' as const,
+        routes: [{id: 'run', transport: 'http' as const, method: 'GET', path: 'run', command: 'backend/run.sh'}],
+      },
+    };
+
+    expect(() => validateManifest(service)).not.toThrow();
+    expect(() => validateManifest(exec)).not.toThrow();
+    expect(() => validateManifest({...service, backend: {...service.backend, command: 'bin/run.sh'}})).toThrow(
+      ManifestValidationError,
+    );
+    expect(() => validateManifest({
+      ...exec,
+      backend: {...exec.backend, routes: [{...exec.backend.routes[0], command: 'bin/run.sh'}]},
+    })).toThrow(ManifestValidationError);
+  });
+
   it.each([
     ['persistent-rci-session:read', 'duplicate read'],
     ['persistent-rci-session:write', 'duplicate write'],

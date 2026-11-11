@@ -132,7 +132,8 @@
                       },
                       "command": {
                         "type": "string",
-                        "minLength": 1
+                        "minLength": 1,
+                        "pattern": "^backend\\/"
                       }
                     },
                     "required": [
@@ -167,7 +168,8 @@
                 },
                 "command": {
                   "type": "string",
-                  "minLength": 1
+                  "minLength": 1,
+                  "pattern": "^backend\\/"
                 },
                 "args": {
                   "type": "array",
@@ -460,7 +462,8 @@
                       },
                       "command": {
                         "type": "string",
-                        "minLength": 1
+                        "minLength": 1,
+                        "pattern": "^backend\\/"
                       }
                     },
                     "required": [
@@ -495,7 +498,8 @@
                 },
                 "command": {
                   "type": "string",
-                  "minLength": 1
+                  "minLength": 1,
+                  "pattern": "^backend\\/"
                 },
                 "args": {
                   "type": "array",

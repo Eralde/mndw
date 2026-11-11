@@ -43,9 +43,12 @@ rejected by SDK validation and host routing.
 
 `backend` is optional. An `exec` backend defines request-scoped HTTP routes; each route has a unique
 `id`, `transport: "http"`, a supported `method`, a safe relative `path`, and a `command` relative to
-the plugin root. A `service` backend instead declares one foreground `command`, a positive
+the plugin root. Every backend command must start with `backend/`, such as `backend/main.sh`. A
+`service` backend instead declares one foreground `command`, a positive
 `protocolVersion`, and HTTP or WebSocket routes. Both may set `access` to `session` or `public`; it
 defaults to `session`. Public HTTP routes may only use `GET` or `HEAD`.
+
+The daemon runs files under `backend/`; it does not serve that directory as browser assets.
 
 ```json
 {

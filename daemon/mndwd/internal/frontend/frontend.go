@@ -7,8 +7,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+var pluginNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // Handler serves static assets and the SPA fallback.
 type Handler struct {
@@ -36,8 +39,12 @@ func New(frontendDir, userPluginsDir string) (*Handler, error) {
 
 // Register mounts the user-plugin alias and the SPA catch-all. More specific
 // API, WebSocket, and HTTP-router patterns must be registered by the caller first.
-func (h *Handler) Register(mux *http.ServeMux) {
-	mux.HandleFunc("/user-plugins/", h.serveUserPlugin)
+func (h *Handler) Register(mux *http.ServeMux, userPluginGate ...func(http.Handler) http.Handler) {
+	userPluginHandler := http.Handler(http.HandlerFunc(h.serveUserPlugin))
+	if len(userPluginGate) > 0 && userPluginGate[0] != nil {
+		userPluginHandler = userPluginGate[0](userPluginHandler)
+	}
+	mux.Handle("/user-plugins/", userPluginHandler)
 	mux.HandleFunc("/", h.serveStatic)
 }
 
@@ -49,7 +56,28 @@ func (h *Handler) serveUserPlugin(writer http.ResponseWriter, request *http.Requ
 	}
 
 	relative := strings.TrimPrefix(request.URL.Path, "/user-plugins/")
-	full, ok := safeJoin(h.userPluginsDir, relative)
+	segments := strings.Split(relative, "/")
+	if len(segments) < 2 || !pluginNamePattern.MatchString(segments[0]) {
+		http.NotFound(writer, request)
+
+		return
+	}
+
+	for _, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." {
+			http.NotFound(writer, request)
+
+			return
+		}
+	}
+
+	if segments[1] == "backend" {
+		http.NotFound(writer, request)
+
+		return
+	}
+
+	full, ok := safePluginJoin(h.userPluginsDir, segments[0], relative)
 
 	if !ok {
 		http.NotFound(writer, request)
@@ -68,6 +96,11 @@ func (h *Handler) serveStatic(writer http.ResponseWriter, request *http.Request)
 	}
 
 	relative := strings.TrimPrefix(request.URL.Path, "/")
+	if isBuiltinBackendPath(relative) {
+		http.NotFound(writer, request)
+
+		return
+	}
 
 	if relative == "" {
 		h.serveIndex(writer, request)
@@ -75,7 +108,13 @@ func (h *Handler) serveStatic(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 
-	full, ok := safeJoin(h.frontendDir, relative)
+	var full string
+	var ok bool
+	if pluginName, isPluginFile := builtinPluginPath(relative); isPluginFile {
+		full, ok = safePluginJoin(h.frontendDir, filepath.Join("plugins", pluginName), relative)
+	} else {
+		full, ok = safeJoin(h.frontendDir, relative)
+	}
 
 	if !ok {
 		http.NotFound(writer, request)
@@ -97,6 +136,92 @@ func (h *Handler) serveStatic(writer http.ResponseWriter, request *http.Request)
 	}
 
 	h.serveFile(writer, request, full)
+}
+
+func isBuiltinBackendPath(relative string) bool {
+	cleaned := strings.TrimPrefix(path.Clean("/"+relative), "/")
+	segments := strings.Split(cleaned, "/")
+
+	return len(segments) >= 3 && segments[0] == "plugins" && segments[2] == "backend"
+}
+
+func builtinPluginPath(relative string) (string, bool) {
+	cleaned := strings.TrimPrefix(path.Clean("/"+relative), "/")
+	segments := strings.Split(cleaned, "/")
+	if len(segments) < 3 || segments[0] != "plugins" || segments[1] == "" {
+		return "", false
+	}
+
+	return segments[1], true
+}
+
+func safePluginJoin(root, pluginRootRelative, relative string) (string, bool) {
+	full, ok := safeJoin(root, relative)
+	if !ok {
+		return "", false
+	}
+
+	pluginRoot, err := resolvePath(filepath.Join(root, filepath.FromSlash(pluginRootRelative)))
+	if err != nil {
+		return "", false
+	}
+
+	resolvedFull, err := resolvePath(full)
+	if err != nil {
+		return "", false
+	}
+
+	withinPlugin, err := filepath.Rel(pluginRoot, resolvedFull)
+	if err != nil || withinPlugin == ".." || strings.HasPrefix(withinPlugin, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+
+	firstSegment := strings.SplitN(filepath.ToSlash(withinPlugin), "/", 2)[0]
+	if firstSegment == "backend" {
+		return "", false
+	}
+
+	return full, true
+}
+
+// resolvePath resolves symlinks in the existing part of a path and appends any
+// remaining path segments. This lets missing static assets retain SPA fallback
+// behavior while still recognizing a symlinked parent directory.
+func resolvePath(full string) (string, error) {
+	absolute, err := filepath.Abs(full)
+	if err != nil {
+		return "", err
+	}
+
+	current := absolute
+	var missing []string
+	for {
+		resolved, resolveErr := filepath.EvalSymlinks(current)
+		if resolveErr == nil {
+			resolved, err = filepath.Abs(resolved)
+			if err != nil {
+				return "", err
+			}
+
+			for i := len(missing) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, missing[i])
+			}
+
+			return filepath.Clean(resolved), nil
+		}
+
+		if !os.IsNotExist(resolveErr) {
+			return "", resolveErr
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", resolveErr
+		}
+
+		missing = append(missing, filepath.Base(current))
+		current = parent
+	}
 }
 
 func (h *Handler) serveFile(writer http.ResponseWriter, request *http.Request, full string) {

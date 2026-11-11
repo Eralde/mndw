@@ -27,6 +27,14 @@ func setup(t *testing.T) (*Handler, string, string) {
 		t.Fatal(err)
 	}
 
+	if err := os.MkdirAll(filepath.Join(fdir, "plugins", "demo", "backend"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(fdir, "plugins", "demo", "backend", "private.bin"), []byte("private"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := os.MkdirAll(filepath.Join(udir, "myplugin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +105,155 @@ func TestUserPluginsAlias(t *testing.T) {
 
 	if rec.Code != http.StatusOK || rec.Body.String() != "// user" {
 		t.Fatalf("got %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUserPluginsAliasRejectsBackendBackupsAndInvalidNames(t *testing.T) {
+	h, _, udir := setup(t)
+
+	for _, entry := range []struct {
+		path string
+		body string
+	}{
+		{path: "myplugin/backend/x", body: "private backend"},
+		{path: "myplugin.previous-1.0.0/index.js", body: "old version"},
+		{path: "Name/index.js", body: "invalid name"},
+	} {
+		full := filepath.Join(udir, filepath.FromSlash(entry.path))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(entry.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, target := range []string{
+		"/user-plugins/myplugin/backend/x",
+		"/user-plugins/myplugin/backend",
+		"/user-plugins/myplugin.previous-1.0.0/index.js",
+		"/user-plugins/Name/index.js",
+		"/user-plugins/myplugin",
+		"/user-plugins/myplugin/",
+	} {
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			rec := serve(h, method, target)
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("%s %s = %d %q, want 404", method, target, rec.Code, rec.Body.String())
+			}
+		}
+	}
+}
+
+func TestBuiltinBackendFilesAreNotServed(t *testing.T) {
+	h, _, _ := setup(t)
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		rec := serve(h, method, "/plugins/demo/backend/private.bin")
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s builtin backend = %d %q, want 404", method, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestPluginSymlinkAliasesCannotExposeDeniedFiles(t *testing.T) {
+	h, fdir, udir := setup(t)
+
+	userBackend := filepath.Join(udir, "myplugin", "backend")
+	if err := os.MkdirAll(userBackend, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userBackend, "private.bin"), []byte("user private"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("backend", filepath.Join(udir, "myplugin", "public")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	builtinDir := filepath.Join(fdir, "plugins", "demo")
+	if err := os.Symlink("backend", filepath.Join(builtinDir, "public")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	backup := filepath.Join(udir, "demo.previous-1.0.0")
+	if err := os.MkdirAll(backup, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backup, "index.js"), []byte("backup"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../demo.previous-1.0.0", filepath.Join(udir, "myplugin", "old")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	siblingPlugin := filepath.Join(udir, "sibling")
+	if err := os.MkdirAll(siblingPlugin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(siblingPlugin, "index.js"), []byte("sibling"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../sibling", filepath.Join(udir, "myplugin", "other")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	builtinSibling := filepath.Join(fdir, "plugins", "sibling")
+	if err := os.MkdirAll(builtinSibling, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(builtinSibling, "index.js"), []byte("builtin sibling"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../sibling", filepath.Join(builtinDir, "other")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	for _, test := range []struct {
+		name    string
+		handler http.HandlerFunc
+		path    string
+	}{
+		{name: "user backend alias", handler: h.serveUserPlugin, path: "/user-plugins/myplugin/public/private.bin"},
+		{name: "builtin backend alias", handler: h.serveStatic, path: "/plugins/demo/public/private.bin"},
+		{name: "user backup alias", handler: h.serveUserPlugin, path: "/user-plugins/myplugin/old/index.js"},
+		{name: "user sibling plugin alias", handler: h.serveUserPlugin, path: "/user-plugins/myplugin/other/index.js"},
+		{name: "builtin sibling plugin alias", handler: h.serveStatic, path: "/plugins/demo/other/index.js"},
+		{name: "encoded backend segment", handler: h.serveUserPlugin, path: "/user-plugins/myplugin/%62ackend/private.bin"},
+		{name: "double slash before backend", handler: h.serveUserPlugin, path: "/user-plugins/myplugin//backend/private.bin"},
+		{name: "trailing slash directory", handler: h.serveUserPlugin, path: "/user-plugins/myplugin/"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, method := range []string{http.MethodGet, http.MethodHead} {
+				req := httptest.NewRequest(method, test.path, nil)
+				rec := httptest.NewRecorder()
+				test.handler(rec, req)
+				if rec.Code != http.StatusNotFound {
+					t.Errorf("%s %s = %d %q, want 404", method, test.path, rec.Code, rec.Body.String())
+				}
+			}
+		})
+	}
+}
+
+func TestUserPluginPackageRootSymlinkStillServesIndex(t *testing.T) {
+	h, _, udir := setup(t)
+
+	devPlugin := filepath.Join(udir, "dev", "myplugin")
+	if err := os.MkdirAll(devPlugin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(devPlugin, "index.js"), []byte("dev plugin"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(udir, "myplugin")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("dev", "myplugin"), filepath.Join(udir, "myplugin")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	rec := serve(h, http.MethodGet, "/user-plugins/myplugin/index.js")
+	if rec.Code != http.StatusOK || rec.Body.String() != "dev plugin" {
+		t.Fatalf("GET symlinked package index = %d %q, want 200 %q", rec.Code, rec.Body.String(), "dev plugin")
 	}
 }
 

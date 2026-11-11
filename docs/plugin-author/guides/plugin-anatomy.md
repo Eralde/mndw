@@ -13,6 +13,8 @@ calls it with a DOM container and `PluginContext`; it returns a `PluginInstance`
 A backend is optional. Shell and Go backends expose declared routes through the typed `ctx.backend` client; device
 management calls use `ctx.rciManager` through the host. Read the [shell backend guide](/guides/shell-backend) and
 [RCI API guide](/guides/rci-api) for those boundaries.
+Backend commands must use relative paths under `backend/`, and the daemon does not serve files in that directory as
+browser assets.
 
 ## What the host provides
 

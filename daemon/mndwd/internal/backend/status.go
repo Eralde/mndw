@@ -47,14 +47,17 @@ func (g *Gateway) projectBackendStatus(plugin *registry.Plugin, now time.Time) b
 
 	response.Kind = string(*plugin.Manifest.Backend.Kind)
 
-	if !plugin.Enabled {
-		response.State = "disabled"
+	// Approval precedes the enabled flag: uploaded backends are stored as
+	// pending with enabled=false, so checking enabled first would report the
+	// normal pending state as "disabled" and make "not-approved" unreachable.
+	if plugin.Approval != state.ApprovalApproved {
+		response.State = "not-approved"
 
 		return response
 	}
 
-	if plugin.Approval != state.ApprovalApproved {
-		response.State = "not-approved"
+	if !plugin.Enabled {
+		response.State = "disabled"
 
 		return response
 	}

@@ -103,6 +103,68 @@ func TestProjectBackendStatusUsesLifecyclePrecedenceAndStaticCompatibility(t *te
 	}
 }
 
+func TestProjectBackendStatusApprovalPrecedesEnabled(t *testing.T) {
+	now := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
+	runtime := newStatusTestRuntime(now)
+	gates := NewActivationGateRegistry()
+
+	gates.Register(manifest.PersistentRCISessionReadPermission, ActivationGateFunc(func(_, permission string) []ActivationBlocker {
+		return []ActivationBlocker{{Permission: permission, Reason: BlockerNotGranted}}
+	}))
+
+	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic(), activationGates: gates}
+
+	approvedEnabled := statusTestPlugin(t, "approved-enabled", manifest.BackendKindService, 1, state.ApprovalApproved, true, nil)
+	approvedDisabled := statusTestPlugin(t, "approved-disabled", manifest.BackendKindService, 1, state.ApprovalApproved, false, nil)
+	pendingEnabled := statusTestPlugin(t, "pending-enabled", manifest.BackendKindService, 1, state.ApprovalPending, true, nil)
+	pendingDisabled := statusTestPlugin(t, "pending-disabled", manifest.BackendKindService, 1, state.ApprovalPending, false, nil)
+	pendingGated := statusTestPlugin(t, "pending-gated", manifest.BackendKindService, 1, state.ApprovalPending, true, []string{manifest.PersistentRCISessionReadPermission})
+	approvedGated := statusTestPlugin(t, "approved-gated", manifest.BackendKindService, 1, state.ApprovalApproved, true, []string{manifest.PersistentRCISessionReadPermission})
+	// Durable state only records pending/approved, but any non-approved value
+	// must project as not-approved rather than fall through to the enabled gate.
+	unrecognizedApproval := statusTestPlugin(t, "unrecognized", manifest.BackendKindService, 1, state.Approval("revoked"), false, nil)
+	backendless := statusTestBackendlessPlugin(t, "backendless")
+
+	for _, test := range []struct {
+		name        string
+		plugin      *registry.Plugin
+		status      RuntimeStatus
+		maintenance bool
+		wantState   string
+	}{
+		{name: "no plugin", wantState: "unavailable"},
+		{name: "no backend", plugin: backendless, wantState: "unavailable"},
+		{name: "pending and disabled", plugin: pendingDisabled, wantState: "not-approved"},
+		{name: "pending and enabled", plugin: pendingEnabled, wantState: "not-approved"},
+		{name: "pending while maintenance", plugin: pendingDisabled, maintenance: true, wantState: "not-approved"},
+		{name: "pending behind activation gate", plugin: pendingGated, wantState: "not-approved"},
+		{name: "unrecognized approval", plugin: unrecognizedApproval, wantState: "not-approved"},
+		{name: "approved and disabled", plugin: approvedDisabled, status: RuntimeStatus{State: StateReady}, wantState: "disabled"},
+		{name: "approved and disabled while maintenance", plugin: approvedDisabled, maintenance: true, wantState: "disabled"},
+		{name: "approved and enabled", plugin: approvedEnabled, status: RuntimeStatus{State: StateReady}, wantState: "ready"},
+		{name: "approved and enabled while maintenance", plugin: approvedEnabled, maintenance: true, wantState: "maintenance"},
+		{name: "approved and enabled behind activation gate", plugin: approvedGated, wantState: "blocked"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runtime.supervisor.services = make(map[string]*serviceRecord)
+
+			if test.status.State != "" {
+				runtime.supervisor.services[test.plugin.Name] = &serviceRecord{status: test.status}
+			}
+
+			if test.plugin != nil {
+				setTrafficBlockedForTest(runtime, test.plugin.Name, test.maintenance)
+			}
+
+			got := gateway.projectBackendStatus(test.plugin, now)
+
+			if got.State != test.wantState {
+				t.Fatalf("state = %q, want %q", got.State, test.wantState)
+			}
+		})
+	}
+}
+
 func TestProjectBackendStatusExecSkipsActivationEvaluation(t *testing.T) {
 	now := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
 	var calls int
@@ -299,6 +361,18 @@ func setTrafficBlockedForTest(runtime *RuntimeImpl, pluginID string, blocked boo
 
 		runtime.supervisor.coord.records[pluginID] = &transition{intent: IntentStop}
 	})
+}
+
+func statusTestBackendlessPlugin(t *testing.T, name string) *registry.Plugin {
+	t.Helper()
+
+	data := []byte(fmt.Sprintf(`{"manifestVersion":1,"name":"%s","version":"1.0.0","type":"page","label":"%s","entry":"index.js","route":"/%s"}`, name, name, name))
+	parsed, err := manifest.Validate(data)
+	if err != nil {
+		t.Fatalf("validate backendless status plugin: %v", err)
+	}
+
+	return &registry.Plugin{Name: name, Dir: t.TempDir(), Manifest: parsed, Approval: state.ApprovalApproved, Enabled: true}
 }
 
 func statusTestPlugin(t *testing.T, name string, kind manifest.BackendKind, protocol int, approval state.Approval, enabled bool, permissions []string) *registry.Plugin {

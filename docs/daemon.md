@@ -45,6 +45,16 @@ Service activation is owned by `backend.Runtime`; startup reconciles approved
 and enabled services without background package-install retries. `enable`,
 `disable`, `delete`, `restart`, `list`, and `pending` complete management.
 
+### Plugin file layout
+
+An installed plugin is one tree under the user plugins directory: frontend
+assets, `backend/` commands, and update backups (`<name>.previous-<version>`)
+live side by side. `/user-plugins/` serves that tree only to authenticated
+sessions and filters what it exposes: plugin names must match the manifest
+name pattern, the `backend/` segment and backups are never served, and checks
+apply to symlink-resolved paths. The manifest contract keeps every backend
+command under `backend/`. Package contents are still not a place for secrets.
+
 ## Exec backends
 
 Exec routes accept HTTP only. The daemon buffers request bodies before spawn,
@@ -67,11 +77,13 @@ resolution; unknown and backendless names return `404` only after
 authentication. The specific route is separate from generic plugin path
 canonicalization, so an ordinary manifest route named `status` remains valid.
 
-Projection precedence is `disabled`, `not-approved`, `maintenance`; exec then
-returns `ready`; service backends continue through static protocol
-`incompatible`, structured activation `blocked`, and supervisor runtime
-projection. Activation blockers apply only to services because activation gates
-control service scheduling; exec request admission has no equivalent gate.
+Projection precedence is `not-approved`, `disabled`, `maintenance`; approval
+precedes the enabled flag, so a persisted pending backend reports `not-approved`
+even though upload also stores it as disabled. Exec then returns `ready`; service
+backends continue through static protocol `incompatible`, structured activation
+`blocked`, and supervisor runtime projection. Activation blockers apply only to
+services because activation gates control service scheduling; exec request
+admission has no equivalent gate.
 
 Service `starting` and `backoff` map to `starting`, with a future
 `NextAttemptAt` rounded up to whole seconds. Missing, equal, or expired

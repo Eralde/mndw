@@ -7,7 +7,10 @@ import enCatalog from '../i18n/en.json';
 import ruCatalog from '../i18n/ru.json';
 import TerminalPage from './TerminalPage.svelte';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 function notInstalledBackend(): {backend: BackendClient; fetch: ReturnType<typeof vi.fn>} {
   const fetch = vi.fn().mockResolvedValue(
@@ -176,5 +179,55 @@ describe('TerminalPage (dev path)', () => {
 
     void unmount(app);
     host.remove();
+  });
+
+  it('does not call kill when the page unmounts', async () => {
+    const {backend, fetch} = notInstalledBackend();
+    const host = document.createElement('div');
+
+    document.body.appendChild(host);
+
+    const app = mount(TerminalPage, {target: host, props: {backend, i18n: createTestI18n(enCatalog)}});
+
+    flushSync();
+    void unmount(app);
+
+    await Promise.resolve();
+
+    expect(fetch.mock.calls.filter((c) => c[0] === 'kill')).toHaveLength(0);
+    host.remove();
+  });
+
+  it('aborts pending spawn retries when the page unmounts', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.useFakeTimers();
+
+    try {
+      const fetch = vi.fn().mockRejectedValue(new TypeError('network error: failed to fetch'));
+      const backend = {fetch, socket: vi.fn()} as unknown as BackendClient;
+      const host = document.createElement('div');
+
+      document.body.appendChild(host);
+
+      const app = mount(TerminalPage, {target: host, props: {backend, i18n: createTestI18n(enCatalog)}});
+
+      flushSync();
+      clickButton(host, /router cli/i);
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      const spawnCalls = (): number => fetch.mock.calls.filter((call) => call[0] === 'spawn').length;
+
+      expect(spawnCalls()).toBe(1);
+
+      void unmount(app);
+
+      await vi.advanceTimersByTimeAsync(10000);
+
+      expect(spawnCalls()).toBe(1);
+      host.remove();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

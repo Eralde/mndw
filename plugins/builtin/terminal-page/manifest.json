@@ -15,7 +15,8 @@
     "routes": [
       {"id": "spawn", "transport": "http", "method": "POST", "path": "spawn"},
       {"id": "kill", "transport": "http", "method": "POST", "path": "kill"},
-      {"id": "terminal", "transport": "websocket", "path": "terminal", "protocols": ["tty"]}
+      {"id": "terminal", "transport": "websocket", "path": "terminal", "protocols": ["tty"]},
+      {"id": "terminal-entware", "transport": "websocket", "path": "terminal-entware", "protocols": ["tty"]}
     ]
   }
 }

@@ -19,14 +19,18 @@ import (
 	"terminal-page/internal/ttyd"
 )
 
-const ttydPort = "127.0.0.1:7681"
 const ttydReadyTimeout = 5 * time.Second
 const ttydReadyInterval = 25 * time.Millisecond
+
+// terminal-entware is the console-specific websocket route. The host forwards
+// it as X-Mndw-Route-Id; the plain terminal route stays on ndmc for backward
+// compatibility. A direct console=<name> query is also accepted.
+const entwareTerminalRoute = "terminal-entware"
 
 type Server struct {
 	getenv  func(string) string
 	socket  string
-	process *ttyd.Process
+	manager *ttyd.Manager
 	mu      sync.Mutex
 }
 
@@ -41,7 +45,7 @@ func New(getenv func(string) string) (*Server, error) {
 		return nil, fmt.Errorf("MNDW_BACKEND_SOCKET is required")
 	}
 
-	return &Server{getenv: getenv, socket: socket, process: ttyd.New(getenv)}, nil
+	return &Server{getenv: getenv, socket: socket, manager: ttyd.NewManager(getenv)}, nil
 }
 
 func (server *Server) Run(ctx context.Context) error {
@@ -58,19 +62,13 @@ func (server *Server) Run(ctx context.Context) error {
 	defer func() { _ = listener.Close(); _ = os.Remove(server.socket) }()
 
 	_ = os.Chmod(server.socket, 0o600)
-	mux := http.NewServeMux()
 
-	mux.HandleFunc("GET /_mndw/ready", server.ready)
-	mux.HandleFunc("POST /spawn", server.spawn)
-	mux.HandleFunc("POST /kill", server.kill)
-	mux.HandleFunc("GET /terminal", server.terminal)
-
-	web := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	web := &http.Server{Handler: server.handler(), ReadHeaderTimeout: 5 * time.Second}
 
 	go func() {
 		<-ctx.Done()
 
-		_ = server.process.Stop(context.Background())
+		_ = server.manager.Shutdown(context.Background())
 		_ = web.Shutdown(context.Background())
 	}()
 
@@ -80,6 +78,21 @@ func (server *Server) Run(ctx context.Context) error {
 	}
 
 	return err
+}
+
+// handler is the backend route table. It is separate from Run so tests can
+// exercise the real mux, including the console-specific websocket paths the
+// daemon gateway dials.
+func (server *Server) handler() http.Handler {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("GET /_mndw/ready", server.ready)
+	mux.HandleFunc("POST /spawn", server.spawn)
+	mux.HandleFunc("POST /kill", server.kill)
+	mux.HandleFunc("GET /terminal", server.terminal)
+	mux.HandleFunc("GET /terminal-entware", server.terminal)
+
+	return mux
 }
 
 func (server *Server) ready(writer http.ResponseWriter, _ *http.Request) {
@@ -98,13 +111,14 @@ func (server *Server) spawn(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	console := input.Console
+	console, ok := ttyd.ParseConsole(input.Console)
+	if !ok {
+		writeJSON(writer, http.StatusBadRequest, map[string]any{"error": "BAD_REQUEST", "message": "invalid console request"})
 
-	if console != "entware" {
-		console = "router"
+		return
 	}
 
-	if err := server.process.Start(request.Context(), console); err != nil {
+	if err := server.manager.Start(request.Context(), console); err != nil {
 		fmt.Fprintf(os.Stderr, "[terminal-page] failed to start ttyd: %v\n", err)
 
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, exec.ErrNotFound) {
@@ -119,39 +133,75 @@ func (server *Server) spawn(writer http.ResponseWriter, request *http.Request) {
 	}
 
 	readyContext, cancel := context.WithTimeout(request.Context(), ttydReadyTimeout)
-	err := waitForTCP(readyContext, ttydPort)
+	err := waitForTCP(readyContext, server.manager.Port(console))
 
 	cancel()
 
 	if err != nil {
-		_ = server.process.Stop(context.Background())
+		server.manager.StopIfIdle(console)
 
 		writeJSON(writer, http.StatusBadGateway, map[string]any{"error": "TTYD_UNAVAILABLE", "message": "terminal did not start listening"})
 
 		return
 	}
 
-	writeJSON(writer, http.StatusOK, map[string]any{"success": true, "console": console})
+	writeJSON(writer, http.StatusOK, map[string]any{"success": true, "console": string(console)})
 }
 
+// kill is a compatibility endpoint. It only stops a console that currently
+// has no proxied client connection; closing a websocket is the real release,
+// and an active session is never torn down by another tab. A body-less request
+// is a pure no-op (legacy callers still receive success).
 func (server *Server) kill(writer http.ResponseWriter, request *http.Request) {
-	if err := server.process.Stop(request.Context()); err != nil {
-		writeJSON(writer, http.StatusBadGateway, map[string]any{"error": "TTYD_STOP_FAILED", "message": "failed to stop terminal"})
+	request.Body = http.MaxBytesReader(writer, request.Body, 32<<10)
+	var input struct {
+		Console string `json:"console"`
+	}
+
+	if err := json.NewDecoder(request.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+		writeJSON(writer, http.StatusBadRequest, map[string]any{"error": "BAD_REQUEST", "message": "invalid console request"})
 
 		return
+	}
+
+	if input.Console != "" {
+		console, ok := ttyd.ParseConsole(input.Console)
+		if !ok {
+			writeJSON(writer, http.StatusBadRequest, map[string]any{"error": "BAD_REQUEST", "message": "invalid console request"})
+
+			return
+		}
+
+		server.manager.StopIfIdle(console)
 	}
 
 	writeJSON(writer, http.StatusOK, map[string]any{"success": true})
 }
 
 func (server *Server) terminal(writer http.ResponseWriter, request *http.Request) {
-	upstream, _, err := websocket.Dial(request.Context(), ttydWebSocketURL(), ttydDialOptions())
+	console, ok := consoleForRequest(request)
+	if !ok {
+		writeJSON(writer, http.StatusBadRequest, map[string]any{"error": "BAD_REQUEST", "message": "invalid console request"})
+
+		return
+	}
+
+	upstream, _, err := websocket.Dial(request.Context(), ttydWebSocketURL(server.manager.Port(console)), ttydDialOptions())
 	if err != nil {
 		writeJSON(writer, http.StatusBadGateway, map[string]any{"error": "TTYD_UNAVAILABLE", "message": "terminal is not running"})
 
 		return
 	}
 
+	if !server.manager.Acquire(console) {
+		upstream.CloseNow()
+
+		writeJSON(writer, http.StatusBadGateway, map[string]any{"error": "TTYD_UNAVAILABLE", "message": "terminal is not running"})
+
+		return
+	}
+
+	defer server.manager.Release(console)
 	defer upstream.CloseNow()
 
 	client, err := websocket.Accept(writer, request, &websocket.AcceptOptions{Subprotocols: []string{"tty"}})
@@ -166,12 +216,26 @@ func (server *Server) terminal(writer http.ResponseWriter, request *http.Request
 	proxy(request.Context(), client, upstream)
 }
 
+func consoleForRequest(request *http.Request) (ttyd.Console, bool) {
+	if request.URL.Path == "/terminal-entware" {
+		return ttyd.ConsoleEntware, true
+	}
+
+	raw := request.URL.Query().Get("console")
+
+	if raw == "" && request.Header.Get("X-Mndw-Route-Id") == entwareTerminalRoute {
+		raw = string(ttyd.ConsoleEntware)
+	}
+
+	return ttyd.ParseConsole(raw)
+}
+
 func ttydDialOptions() *websocket.DialOptions {
 	return &websocket.DialOptions{Subprotocols: []string{"tty"}}
 }
 
-func ttydWebSocketURL() string {
-	return "ws://" + ttydPort + "/"
+func ttydWebSocketURL(address string) string {
+	return "ws://" + address + "/"
 }
 
 func waitForTCP(ctx context.Context, address string) error {

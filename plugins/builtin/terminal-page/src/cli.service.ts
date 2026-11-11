@@ -23,6 +23,16 @@ export interface SpawnResult {
   error?: string;
   errorType?: ConnectionError;
   errorCode?: string;
+  cancelled?: boolean;
+}
+
+export interface SpawnOptions {
+  signal?: AbortSignal;
+}
+
+export interface ConnectOptions {
+  console?: ConsoleChoice;
+  onDisconnect?: (event: CloseEvent) => void;
 }
 
 interface SpawnApiResponse {
@@ -37,9 +47,37 @@ interface SpawnApiResponse {
 const SPAWN_TIMEOUT_MS = 10000;
 const MAX_RETRIES = 3;
 const RETRY_DELAYS_MS = [1000, 2000, 4000];
+const CONSOLE_ROUTES: Record<ConsoleChoice, string> = {
+  router: 'terminal',
+  entware: 'terminal-entware',
+};
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function abortError(): DOMException {
+  return new DOMException('The operation was aborted', 'AbortError');
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(abortError());
+
+      return;
+    }
+
+    const pending = {
+      timer: undefined as ReturnType<typeof setTimeout> | undefined,
+    };
+    const onAbort = () => {
+      clearTimeout(pending.timer);
+      reject(abortError());
+    };
+
+    pending.timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, {once: true});
+  });
 }
 
 function isJsonResponse(response: Response): boolean {
@@ -50,12 +88,24 @@ function isJsonResponse(response: Response): boolean {
 
 async function callTtydApi(
   backend: BackendClient,
-  id: 'spawn' | 'kill',
+  id: 'spawn',
   timeoutMs: number,
   body: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<Response | null> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const abort = () => {
+    controller.abort();
+  };
+  const timeoutId = setTimeout(abort, timeoutMs);
+
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener('abort', abort, {once: true});
+    }
+  }
 
   try {
     const response = await backend.fetch(id, {body, signal: controller.signal});
@@ -65,6 +115,7 @@ async function callTtydApi(
     }
   } finally {
     clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abort);
   }
 
   return null;
@@ -94,7 +145,7 @@ function buildSpawnError(result: SpawnApiResponse): SpawnResult {
   const directErrorCode = result.error === 'TTYD_NOT_INSTALLED' ? result.error : undefined;
   const error = directErrorCode === undefined
     ? result.error || result.message || 'Failed to spawn ttyd'
-    : result.message || result.error;
+    : result.message || result.error || 'Failed to spawn ttyd';
   const lower = error.toLowerCase();
 
   const backendErrorCode = result.code ?? result.errorCode ?? directErrorCode;
@@ -114,13 +165,27 @@ function buildSpawnError(result: SpawnApiResponse): SpawnResult {
   };
 }
 
+function cancelledResult(): SpawnResult {
+  return {
+    success: false,
+    cancelled: true,
+    error: 'Cancelled',
+    errorType: 'UNKNOWN',
+  };
+}
+
 export async function spawnCli(
   backend: BackendClient,
   consoleChoice: ConsoleChoice,
+  options: SpawnOptions = {},
   retryIndex = 0,
 ): Promise<SpawnResult> {
   try {
-    const response = await callTtydApi(backend, 'spawn', SPAWN_TIMEOUT_MS, {console: consoleChoice});
+    const response = await callTtydApi(backend, 'spawn', SPAWN_TIMEOUT_MS, {console: consoleChoice}, options.signal);
+
+    if (options.signal?.aborted) {
+      return cancelledResult();
+    }
 
     if (!response) {
       return {
@@ -140,6 +205,10 @@ export async function spawnCli(
 
     const result = await response.json() as SpawnApiResponse;
 
+    if (options.signal?.aborted) {
+      return cancelledResult();
+    }
+
     if (result.success) {
       return {
         success: true,
@@ -149,14 +218,26 @@ export async function spawnCli(
 
     return buildSpawnError(result);
   } catch (error) {
+    if (options.signal?.aborted) {
+      return cancelledResult();
+    }
+
     const errorType = classifyFetchError(error);
 
     if (retryIndex < MAX_RETRIES) {
       const delay = RETRY_DELAYS_MS[retryIndex] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1];
 
-      await sleep(delay);
+      try {
+        await sleep(delay, options.signal);
+      } catch {
+        return cancelledResult();
+      }
 
-      return spawnCli(backend, consoleChoice, retryIndex + 1);
+      if (options.signal?.aborted) {
+        return cancelledResult();
+      }
+
+      return spawnCli(backend, consoleChoice, options, retryIndex + 1);
     }
 
     return {
@@ -167,28 +248,14 @@ export async function spawnCli(
   }
 }
 
-export async function killCli(backend: BackendClient): Promise<{success: boolean}> {
-  try {
-    const response = await callTtydApi(backend, 'kill', SPAWN_TIMEOUT_MS, {});
-
-    if (!response) {
-      return {success: false};
-    }
-
-    return await response.json() as {success: boolean};
-  } catch {
-    return {success: false};
-  }
-}
-
 export function connectToCli(
   backend: BackendClient,
   element: HTMLElement,
   TerminalCtor: typeof Terminal,
   FitAddonCtor: typeof FitAddon,
-  onDisconnect?: (event: CloseEvent) => void,
+  options: ConnectOptions = {},
 ): TerminalInstance {
-  const socket = backend.socket('terminal');
+  const socket = backend.socket(CONSOLE_ROUTES[options.console ?? 'router']);
 
   socket.binaryType = 'arraybuffer';
 
@@ -274,7 +341,7 @@ export function connectToCli(
     socketReady = false;
 
     if (!disposed) {
-      onDisconnect?.(event);
+      options.onDisconnect?.(event);
     }
   });
 

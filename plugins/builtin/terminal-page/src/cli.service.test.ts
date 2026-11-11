@@ -2,7 +2,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {BackendClient} from '@mndw/sdk';
 import type {FitAddon} from '@xterm/addon-fit';
 import type {Terminal} from '@xterm/xterm';
-import {connectToCli, killCli, spawnCli} from './cli.service';
+import {connectToCli, spawnCli} from './cli.service';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -80,11 +80,49 @@ describe('cli.service', () => {
     }
   });
 
-  it('killCli returns the parsed success flag', async () => {
-    const fetch = vi.fn().mockResolvedValue(jsonResponse({success: true}));
+  it('stops retrying when aborted during the retry sleep', async () => {
+    vi.useFakeTimers();
 
-    expect(await killCli(backend(fetch))).toEqual({success: true});
-    expect(fetch).toHaveBeenCalledWith('kill', expect.objectContaining({body: {}}));
+    try {
+      const fetch = vi.fn().mockRejectedValue(new TypeError('network error: failed to fetch'));
+      const controller = new AbortController();
+      const pending = spawnCli(backend(fetch), 'router', {signal: controller.signal});
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      controller.abort();
+
+      const result = await pending;
+
+      expect(result.cancelled).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops the in-flight spawn when aborted', async () => {
+    const fetch = vi.fn((_id: string, options: {signal: AbortSignal}) => {
+      return new Promise<Response>((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted', 'AbortError'));
+        });
+      });
+    });
+    const controller = new AbortController();
+    const pending = spawnCli(backend(fetch), 'router', {signal: controller.signal});
+
+    await Promise.resolve();
+    controller.abort();
+
+    const result = await pending;
+
+    expect(result.cancelled).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('focuses the terminal when the websocket opens', () => {
@@ -95,9 +133,10 @@ describe('cli.service', () => {
       close: vi.fn(),
       send: vi.fn(),
     } as unknown as WebSocket;
+    const socketFn = vi.fn(() => socket);
     const backendClient = {
       fetch: vi.fn(),
-      socket: vi.fn(() => socket),
+      socket: socketFn,
     } as unknown as BackendClient;
     const focus = vi.fn();
     const terminal = {
@@ -118,7 +157,46 @@ describe('cli.service', () => {
 
     listeners.get('open')?.(new Event('open'));
 
+    expect(socketFn).toHaveBeenCalledWith('terminal');
     expect(focus).toHaveBeenCalledOnce();
+    instance.dispose();
+  });
+
+  it('opens the entware route for the entware console', () => {
+    const socket = {
+      addEventListener: vi.fn(),
+      binaryType: '',
+      close: vi.fn(),
+      send: vi.fn(),
+    } as unknown as WebSocket;
+    const socketFn = vi.fn(() => socket);
+    const backendClient = {
+      fetch: vi.fn(),
+      socket: socketFn,
+    } as unknown as BackendClient;
+    const terminal = {
+      cols: 80,
+      dispose: vi.fn(),
+      focus: vi.fn(),
+      loadAddon: vi.fn(),
+      onData: vi.fn(),
+      onResize: vi.fn(),
+      open: vi.fn(),
+      rows: 24,
+    } as unknown as Terminal;
+    const fitAddon = {fit: vi.fn()} as unknown as FitAddon;
+    const TerminalCtor = vi.fn(() => terminal) as unknown as typeof Terminal;
+    const FitAddonCtor = vi.fn(() => fitAddon) as unknown as typeof FitAddon;
+
+    const instance = connectToCli(
+      backendClient,
+      document.createElement('div'),
+      TerminalCtor,
+      FitAddonCtor,
+      {console: 'entware'},
+    );
+
+    expect(socketFn).toHaveBeenCalledWith('terminal-entware');
     instance.dispose();
   });
 

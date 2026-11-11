@@ -6,21 +6,18 @@ import {createTranslator} from '@mndw/sdk/svelte';
 import {Terminal} from '@xterm/xterm';
 import {FitAddon} from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
-import {
-  type TerminalInstance,
-  connectToCli,
-  killCli,
-  spawnCli,
-} from './cli.service.js';
+import {type TerminalInstance, connectToCli, spawnCli} from './cli.service.js';
 
 interface Props {
   backend?: BackendClient;
   i18n: PluginI18n;
+  signal?: AbortSignal;
 }
 
 let {
   backend,
   i18n,
+  signal: externalSignal,
 }: Props = $props();
 // svelte-ignore state_referenced_locally
 const translator = createTranslator(i18n);
@@ -34,9 +31,13 @@ type PageState = 'idle' | 'starting' | 'connected' | 'error' | 'disconnected';
 let state = $state<PageState>('idle');
 let errorMessage = $state('');
 let errorCode = $state<string | null>(null);
+let disconnectReason = $state<'connection-lost' | 'update-ended'>(
+  'connection-lost',
+);
 let consoleChoice = $state<import('./cli.service.js').ConsoleChoice>('router');
 let terminalElement = $state<HTMLDivElement | undefined>(undefined);
 let terminalInstance: TerminalInstance | null = null;
+let activeRun: AbortController | null = null;
 let spawnDelayId: ReturnType<typeof setTimeout> | undefined;
 let disconnectExpected = false;
 const terminalErrorCopy: Record<string, string> = {
@@ -49,11 +50,26 @@ function terminalErrorSummary(): string {
   return t(terminalErrorCopy[errorCode ?? ''] ?? 'error.start-failed');
 }
 
-function sleep(ms: number): Promise<void> {
+function delay(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+
+      return;
+    }
+
+    const onAbort = () => {
+      clearSpawnDelay();
+      resolve();
+    };
+
     spawnDelayId = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      spawnDelayId = undefined;
       resolve();
     }, ms);
+
+    signal.addEventListener('abort', onAbort, {once: true});
   });
 }
 
@@ -66,28 +82,74 @@ function clearSpawnDelay(): void {
   spawnDelayId = undefined;
 }
 
+function linkAbort(
+  source: AbortSignal | undefined,
+  target: AbortController,
+): () => void {
+  if (!source) {
+    return () => {};
+  }
+
+  if (source.aborted) {
+    target.abort();
+
+    return () => {};
+  }
+
+  const onAbort = () => {
+    target.abort();
+  };
+
+  source.addEventListener('abort', onAbort, {once: true});
+
+  return () => {
+    source.removeEventListener('abort', onAbort);
+  };
+}
+
 function disposeTerminal(): void {
   terminalInstance?.dispose();
   terminalInstance = null;
 }
 
 async function startTerminal(): Promise<void> {
+  activeRun?.abort();
   clearSpawnDelay();
-  disconnectExpected = false;
+  disconnectExpected = true;
   disposeTerminal();
+  disconnectExpected = false;
 
+  const run = new AbortController();
+  const runSignal = run.signal;
+  const unlink = linkAbort(externalSignal, run);
+
+  activeRun = run;
   state = 'starting';
   errorMessage = '';
   errorCode = null;
 
   try {
+    if (runSignal.aborted) {
+      return;
+    }
+
     if (!backend) {
       throw new Error(t('error.backend-missing'));
     }
 
-    const spawnResult = await spawnCli(backend, consoleChoice);
+    const spawnResult = await spawnCli(backend, consoleChoice, {
+      signal: runSignal,
+    });
+
+    if (runSignal.aborted) {
+      return;
+    }
 
     if (!spawnResult.success) {
+      if (spawnResult.cancelled) {
+        return;
+      }
+
       errorCode = spawnResult.errorCode ?? null;
       errorMessage = spawnResult.error || t('error.start-failed');
       state = 'error';
@@ -95,11 +157,18 @@ async function startTerminal(): Promise<void> {
       return;
     }
 
-    await sleep(1000);
-    clearSpawnDelay();
+    await delay(1000, runSignal);
+
+    if (runSignal.aborted) {
+      return;
+    }
 
     state = 'connected';
     await tick();
+
+    if (runSignal.aborted) {
+      return;
+    }
 
     if (!terminalElement) {
       throw new Error('Terminal container is not available');
@@ -110,34 +179,50 @@ async function startTerminal(): Promise<void> {
       terminalElement,
       Terminal,
       FitAddon,
-      (event) => {
-        if (!disconnectExpected) {
-          state = 'disconnected';
-          errorMessage = isBackendMaintenanceClose(event)
+      {
+        console: consoleChoice,
+        onDisconnect: (event) => {
+          if (disconnectExpected || runSignal.aborted) {
+            return;
+          }
+
+          disconnectReason = isBackendMaintenanceClose(event)
+            ? 'update-ended'
+            : 'connection-lost';
+          errorMessage = disconnectReason === 'update-ended'
             ? t('status.update-ended')
             : t('status.connection-lost');
-        }
+          state = 'disconnected';
+        },
       },
     );
     requestAnimationFrame(() => {
       terminalInstance?.fitAddon.fit();
     });
   } catch (error) {
-    clearSpawnDelay();
+    if (runSignal.aborted) {
+      return;
+    }
+
     state = 'error';
     errorCode = null;
     errorMessage = error instanceof Error ? error.message : t('error.unknown');
     console.error('[terminal-page] Failed to start terminal:', error);
+  } finally {
+    unlink();
+
+    if (activeRun === run) {
+      activeRun = null;
+    }
   }
 }
 
-async function stopTerminal(): Promise<void> {
+function stopTerminal(): void {
   disconnectExpected = true;
+  activeRun?.abort();
+  activeRun = null;
   clearSpawnDelay();
   disposeTerminal();
-  if (backend) {
-    await killCli(backend);
-  }
   state = 'idle';
   disconnectExpected = false;
 }
@@ -154,11 +239,10 @@ function selectConsole(choice: import('./cli.service.js').ConsoleChoice): void {
 onMount(() => {
   return () => {
     disconnectExpected = true;
+    activeRun?.abort();
+    activeRun = null;
     clearSpawnDelay();
     disposeTerminal();
-    if (backend) {
-      void killCli(backend);
-    }
   };
 });
 </script>
@@ -224,7 +308,11 @@ onMount(() => {
         class="mndw-alert mndw-alert--danger"
         role="alert"
       >
-        {t('status.connection-lost')}
+        {
+          disconnectReason === 'update-ended'
+          ? t('status.update-ended')
+          : t('status.connection-lost')
+        }
       </div>
       <mndw-button
         variant="primary"

@@ -4,46 +4,78 @@ import (
 	"context"
 	"io"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
 
+// Console identifies one independent ttyd server. Each console owns its own
+// process, port and terminal command; starting one never stops another.
+type Console string
+
+const (
+	ConsoleNDMC    Console = "ndmc"
+	ConsoleEntware Console = "entware"
+)
+
+const (
+	ndmcPort    = "7681"
+	entwarePort = "7682"
+)
+
+// ParseConsole validates a console name. The empty value and the legacy
+// "router" name map to ndmc for backward compatibility.
+func ParseConsole(value string) (Console, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "ndmc", "router":
+		return ConsoleNDMC, true
+	case "entware":
+		return ConsoleEntware, true
+	default:
+		return "", false
+	}
+}
+
+func (console Console) port() string {
+	if console == ConsoleEntware {
+		return entwarePort
+	}
+
+	return ndmcPort
+}
+
+// Address is the loopback address ttyd listens on for this console.
+func (console Console) Address() string { return "127.0.0.1:" + console.port() }
+
+func (console Console) terminalCommand() string {
+	if console == ConsoleEntware {
+		return "/opt/bin/sh"
+	}
+
+	return "ndmc"
+}
+
 type Process struct {
 	getenv  func(string) string
+	console Console
 	mu      sync.Mutex
 	command *exec.Cmd
 	done    chan error
-	console string
 }
 
-func New(getenv func(string) string) *Process { return &Process{getenv: getenv} }
+func New(getenv func(string) string, console Console) *Process {
+	return &Process{getenv: getenv, console: console}
+}
 
-func (process *Process) Start(_ context.Context, console string) error {
+func (process *Process) Start(_ context.Context) error {
 	process.mu.Lock()
 
 	defer process.mu.Unlock()
 
-	if process.command != nil && process.command.Process != nil {
-		select {
-		case <-process.done:
-			process.command = nil
-			process.done = nil
-			process.console = ""
-		default:
-		}
-	}
+	process.clearExitedLocked()
 
 	if process.command != nil && process.command.Process != nil {
-		if process.console == console {
-			return nil
-		}
-
-		if err := stopCommand(process.command, process.done, 2*time.Second); err != nil {
-			return err
-		}
-
-		process.command = nil
-		process.done = nil
+		return nil
 	}
 
 	binary := process.getenv("MNDW_TTYD_BIN")
@@ -52,13 +84,13 @@ func (process *Process) Start(_ context.Context, console string) error {
 		binary = "/opt/bin/ttyd"
 	}
 
-	terminalCommand := "ndmc"
-
-	if console == "entware" {
-		terminalCommand = "/opt/bin/sh"
-	}
-
-	command := exec.Command(binary, "-i", "127.0.0.1", "-p", "7681", "-W", terminalCommand)
+	command := exec.Command(
+		binary,
+		"-i", "127.0.0.1",
+		"-p", process.console.port(),
+		"-W",
+		process.console.terminalCommand(),
+	)
 
 	configure(command)
 
@@ -75,9 +107,20 @@ func (process *Process) Start(_ context.Context, console string) error {
 
 	process.command = command
 	process.done = done
-	process.console = console
 
 	return nil
+}
+
+// Running reports whether the owned process is still alive. An exited process
+// is forgotten so a later Start can launch a fresh one.
+func (process *Process) Running() bool {
+	process.mu.Lock()
+
+	defer process.mu.Unlock()
+
+	process.clearExitedLocked()
+
+	return process.command != nil && process.command.Process != nil
 }
 
 func (process *Process) Stop(_ context.Context) error {
@@ -92,9 +135,21 @@ func (process *Process) Stop(_ context.Context) error {
 	err := stopCommand(process.command, process.done, 2*time.Second)
 	process.command = nil
 	process.done = nil
-	process.console = ""
 
 	return err
+}
+
+func (process *Process) clearExitedLocked() {
+	if process.command == nil || process.command.Process == nil || process.done == nil {
+		return
+	}
+
+	select {
+	case <-process.done:
+		process.command = nil
+		process.done = nil
+	default:
+	}
 }
 
 func stopCommand(command *exec.Cmd, done <-chan error, grace time.Duration) error {
@@ -103,6 +158,7 @@ func stopCommand(command *exec.Cmd, done <-chan error, grace time.Duration) erro
 	}
 
 	_ = terminate(command.Process)
+
 	timer := time.NewTimer(grace)
 
 	defer timer.Stop()

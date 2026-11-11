@@ -1,5 +1,6 @@
 <script lang="ts">
 import type {PaletteTokenMap} from '@mndw/sdk';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 
 interface Props {
   disabled: boolean;
@@ -27,5 +28,5 @@ function download(): void {
   {disabled}
   onclick={download}
 >
-  Export palette
+  {hostT('settings.palette.export')}
 </mndw-button>

@@ -18,6 +18,7 @@ import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {appState} from '../state/app.svelte.js';
 import {createHostServices} from '../host-services.js';
+import {hostT} from '../services/locale.service.js';
 import {createWidgetContext} from './widget-context.js';
 import {mountWidgetTile} from './widget-mount.js';
 
@@ -198,7 +199,7 @@ describe('mountWidgetTile', () => {
     dispose.mockClear();
   });
 
-  it('requests the generic "Error loading widget" text from the shared lifecycle primitive', () => {
+  it('requests the localized widget error text from the shared lifecycle primitive', () => {
     const mountHandle = fakeMountHandle(fakeMounted());
 
     vi.mocked(mountPluginWithContext).mockReturnValue(mountHandle);
@@ -209,7 +210,7 @@ describe('mountWidgetTile', () => {
 
     expect(tileHandle).toBe(mountHandle);
     expect(mountPluginWithContext).toHaveBeenCalledWith(container, plugin, handle, {
-      errorText: 'Error loading widget',
+      errorText: hostT('dashboard.widget-error'),
     });
   });
 

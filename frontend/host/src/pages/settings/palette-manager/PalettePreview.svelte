@@ -4,6 +4,7 @@ import {
   PALETTE_CSS_VARIABLES,
   type PaletteContrastWarning,
 } from '@mndw/sdk-internal/palette';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 
 interface Props {
   palette: PaletteTokenMap;
@@ -23,17 +24,20 @@ let byTheme = $derived.by(() => {
     entries: warnings.filter((warning) => warning.theme === theme),
   }));
 });
+
+function themeLabel(theme: (typeof themes)[number]): string {
+  return theme === 'dark'
+    ? hostT('settings.palette.theme-dark')
+    : hostT('settings.palette.theme-light');
+}
 </script>
 
 <div class="mndw-palette-preview">
-  <p>
-    Previewing the imported palette. Nothing is saved to the device until you
-    confirm.
-  </p>
+  <p>{hostT('settings.palette.preview-note')}</p>
 
   {#each themes as theme (theme)}
     <div>
-      <h4>{theme}</h4>
+      <h4>{themeLabel(theme)}</h4>
       <ul class="mndw-palette-preview__swatches">
         {#each PALETTE_CSS_VARIABLES as variable (variable.token)}
           <li>
@@ -51,10 +55,10 @@ let byTheme = $derived.by(() => {
   {#each byTheme as group (group.theme)}
     {#if group.entries.length > 0}
       <div class="mndw-palette-preview__warnings">
-        <h4>Contrast warnings ({group.theme})</h4>
+        <h4>{hostT('settings.palette.contrast-warnings', {theme: themeLabel(group.theme)})}</h4>
         <ul>
           {#each group.entries as warning (warning.pair)}
-            <li>{warning.pair}: {warning.ratio} (needs {warning.min})</li>
+            <li>{hostT('settings.palette.warning-item', {pair: warning.pair, ratio: warning.ratio, min: warning.min})}</li>
           {/each}
         </ul>
       </div>
@@ -76,14 +80,14 @@ let byTheme = $derived.by(() => {
       disabled={busy}
       onclick={onConfirm}
     >
-      Confirm
+      {hostT('settings.palette.confirm')}
     </mndw-button>
     <mndw-button
       variant="ghost"
       disabled={busy}
       onclick={onDiscard}
     >
-      Discard
+      {hostT('settings.palette.discard')}
     </mndw-button>
   </div>
 </div>

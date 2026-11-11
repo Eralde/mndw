@@ -23,8 +23,9 @@ async function read(file: File): Promise<void> {
 
   try {
     text = await file.text();
-  } catch {
-    onErrors(['Could not read palette file.']);
+  } catch (error) {
+    console.error('[mndw] Could not read palette file:', error);
+    onErrors([hostT('settings.palette.read-failed')]);
 
     return;
   }
@@ -33,8 +34,9 @@ async function read(file: File): Promise<void> {
 
   try {
     parsed = JSON.parse(text);
-  } catch {
-    onErrors(['Invalid JSON file.']);
+  } catch (error) {
+    console.error('[mndw] Could not parse palette JSON:', error);
+    onErrors([hostT('settings.palette.invalid-json')]);
 
     return;
   }
@@ -42,7 +44,10 @@ async function read(file: File): Promise<void> {
   const validation = validateImportedPalette(parsed);
 
   if (validation.palette === null) {
-    onErrors(validation.structuralErrors);
+    // Structural errors carry arbitrary SDK wording; keep details in the
+    // console and show a localized generic message.
+    console.error('[mndw] Imported palette is invalid:', validation.structuralErrors);
+    onErrors([hostT('settings.palette.invalid-structure')]);
 
     return;
   }
@@ -92,7 +97,7 @@ function onDrop(event: DragEvent): void {
     type="file"
     onchange={onInput}
   />
-  <span>Drop a palette JSON file here or choose one.</span>
+  <span>{hostT('settings.palette.drop')}</span>
 </label>
 
 <style>

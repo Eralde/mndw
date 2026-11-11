@@ -104,6 +104,7 @@ describe('BackendApprovalModal', () => {
 
     try {
       expect(text()).toContain('declares a backend. Review its capabilities before approving.');
+      expect(text()).toContain('The backend of an approved plugin runs on the router with the same privileges as mndw itself. Approve only plugins you trust.');
       expect(text()).toContain('Deny');
       expect(text()).toContain('Approve');
 
@@ -111,6 +112,7 @@ describe('BackendApprovalModal', () => {
       flushSync();
 
       expect(text()).toContain('объявляет серверную часть. Проверьте её возможности перед подтверждением.');
+      expect(text()).toContain('Бэкенд одобренного плагина работает на роутере с теми же правами, что и сам mndw. Одобряйте только плагины, которым доверяете.');
       expect(text()).toContain('Отклонить');
       expect(text()).toContain('Подтвердить');
     } finally {

@@ -22,6 +22,7 @@ import {
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {getHostServices} from '../host-services-context.js';
+import {hostT} from '../services/host-i18n.svelte.js';
 
 interface ActiveMount {
   generation: number;
@@ -254,8 +255,8 @@ onDestroy(disposeActive);
     >
       {
         depsState === 'installing'
-        ? 'Preparing… installing dependencies'
-        : 'Dependency install failed'
+        ? hostT('dashboard.preparing-dependencies')
+        : hostT('dashboard.dependency-install-failed')
       }
     </div>
   {/if}

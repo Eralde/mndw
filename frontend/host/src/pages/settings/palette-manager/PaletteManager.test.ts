@@ -34,6 +34,8 @@ import PaletteManager from './PaletteManager.svelte';
 import {createHostServices} from '../../../host-services.js';
 import {paletteService} from '../../../services/palette.service.js';
 import {createHostServicesContext} from '../../../host-services-context.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
+import {setLocale} from '../../../services/locale.service.js';
 
 const valid = JSON.parse(JSON.stringify(MNDW_TOKENS)) as PaletteTokenMap;
 
@@ -137,10 +139,10 @@ describe('PaletteManager', () => {
     refreshPalette.mockImplementationOnce(() => pending.promise);
     render();
 
-    expect(target.querySelector('[role="status"]')?.textContent).toContain('Loading palette');
+    expect(target.querySelector('[role="status"]')?.textContent).toContain(hostT('settings.palette.loading'));
     expect(target.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
-    expect(button('Export palette').disabled).toBe(true);
-    expect(button('Reset to default').disabled).toBe(true);
+    expect(button(hostT('settings.palette.export')).disabled).toBe(true);
+    expect(button(hostT('settings.palette.reset')).disabled).toBe(true);
 
     pending.resolve(undefined);
   });
@@ -170,7 +172,7 @@ describe('PaletteManager', () => {
     await waitForIdle();
     await chooseFile(JSON.stringify(valid));
 
-    button('Discard').click();
+    button(hostT('settings.palette.discard')).click();
     flushSync();
 
     expect(discardPreview).toHaveBeenCalledTimes(1);
@@ -182,27 +184,32 @@ describe('PaletteManager', () => {
     await waitForIdle();
     await chooseFile(JSON.stringify(valid));
 
-    button('Confirm').click();
+    button(hostT('settings.palette.confirm')).click();
     await vi.waitFor(() => expect(commitOverride).toHaveBeenCalledWith(valid));
-    await vi.waitFor(() => expect(target.textContent).toContain('Saved'));
+    await vi.waitFor(() => expect(target.textContent).toContain(hostT('settings.palette.saved')));
     flushSync();
 
-    expect(target.textContent).toContain('Saved');
+    expect(target.textContent).toContain(hostT('settings.palette.saved'));
   });
 
   it('stays on the preview when the commit fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     commitOverride.mockRejectedValue(new Error('device offline'));
 
     render();
     await waitForIdle();
     await chooseFile(JSON.stringify(valid));
 
-    button('Confirm').click();
-    await vi.waitFor(() => expect(target.textContent).toContain('device offline'));
+    button(hostT('settings.palette.confirm')).click();
+    await vi.waitFor(() => expect(target.textContent).toContain(hostT('settings.palette.operation-failed')));
     flushSync();
 
-    expect(button('Confirm')).toBeTruthy();
+    expect(consoleError).toHaveBeenCalled();
+    expect(target.textContent).not.toContain('device offline');
+    expect(button(hostT('settings.palette.confirm'))).toBeTruthy();
     expect(discardPreview).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it('disables the file input while a file is being read', async () => {
@@ -225,7 +232,7 @@ describe('PaletteManager', () => {
     flushSync();
 
     expect(input.disabled).toBe(true);
-    expect(target.querySelector('[role="status"]')?.textContent).toContain('Reading palette');
+    expect(target.querySelector('[role="status"]')?.textContent).toContain(hostT('settings.palette.reading'));
     text.resolve(JSON.stringify(valid));
 
     await vi.waitFor(() => expect(previewOverride).toHaveBeenCalledWith(valid));
@@ -239,17 +246,19 @@ describe('PaletteManager', () => {
     await waitForIdle();
     await chooseFile(JSON.stringify(valid));
 
-    button('Confirm').click();
+    button(hostT('settings.palette.confirm')).click();
     flushSync();
 
-    expect(button('Confirm').disabled).toBe(true);
-    expect(button('Discard').disabled).toBe(true);
+    expect(button(hostT('settings.palette.confirm')).disabled).toBe(true);
+    expect(button(hostT('settings.palette.discard')).disabled).toBe(true);
 
     commit.resolve(undefined);
-    await vi.waitFor(() => expect(target.textContent).toContain('Saved'));
+    await vi.waitFor(() => expect(target.textContent).toContain(hostT('settings.palette.saved')));
   });
 
   it('reports a structurally invalid file without calling the daemon', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     render();
     await waitForIdle();
     await chooseFile(JSON.stringify({dark: {bg: 'nope'}}));
@@ -257,23 +266,30 @@ describe('PaletteManager', () => {
     const alert = target.querySelector('[role="alert"]');
 
     expect(alert).not.toBeNull();
+    expect(alert?.textContent).toContain(hostT('settings.palette.invalid-structure'));
+    expect(consoleError).toHaveBeenCalled();
     expect(previewOverride).not.toHaveBeenCalled();
     expect(commitOverride).not.toHaveBeenCalled();
     expect(target.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(false);
-    expect(button('Export palette').disabled).toBe(true);
-    expect(button('Reset to default').disabled).toBe(true);
+    expect(button(hostT('settings.palette.export')).disabled).toBe(true);
+    expect(button(hostT('settings.palette.reset')).disabled).toBe(true);
 
-    button('Dismiss').click();
+    button(hostT('settings.plugin-manager.dismiss')).click();
     flushSync();
-    expect(button('Export palette').disabled).toBe(false);
+    expect(button(hostT('settings.palette.export')).disabled).toBe(false);
+    consoleError.mockRestore();
   });
 
   it('reports a file that is not JSON at all', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     render();
     await waitForIdle();
     await chooseFile('not json');
 
-    expect(target.querySelector('[role="alert"]')?.textContent).toContain('Invalid JSON file.');
+    expect(target.querySelector('[role="alert"]')?.textContent).toContain(hostT('settings.palette.invalid-json'));
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it('resets to default and disables the button while the request is in flight', async () => {
@@ -288,41 +304,46 @@ describe('PaletteManager', () => {
     render();
     await waitForIdle();
 
-    button('Reset to default').click();
+    button(hostT('settings.palette.reset')).click();
     flushSync();
-    button('Yes, reset').click();
+    button(hostT('settings.palette.reset-confirm')).click();
     flushSync();
 
-    const resetButton = button('Reset to default');
+    const resetButton = button(hostT('settings.palette.reset'));
 
     expect(resetButton.disabled).toBe(true);
     expect(target.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(true);
-    expect(button('Export palette').disabled).toBe(true);
+    expect(button(hostT('settings.palette.export')).disabled).toBe(true);
     resetButton.click();
     flushSync();
     expect(resetToDefault).toHaveBeenCalledTimes(1);
 
     release();
-    await vi.waitFor(() => expect(button('Reset to default').disabled).toBe(false));
+    await vi.waitFor(() => expect(button(hostT('settings.palette.reset')).disabled).toBe(false));
   });
 
   it('shows a retryable banner when the initial load fails, and stays usable', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     refreshPalette.mockRejectedValueOnce(new Error('device offline'));
 
     render();
-    await vi.waitFor(() => expect(target.textContent).toContain('device offline'));
+    await vi.waitFor(() => expect(target.textContent).toContain(hostT('settings.palette.load-failed')));
     flushSync();
 
+    expect(consoleError).toHaveBeenCalled();
+    expect(target.textContent).not.toContain('device offline');
     expect(target.querySelector('input[type="file"]')).not.toBeNull();
-    expect(button('Export palette').disabled).toBe(false);
+    expect(button(hostT('settings.palette.export')).disabled).toBe(false);
 
     const retry = deferred<void>();
 
     refreshPalette.mockImplementationOnce(() => retry.promise);
-    button('Retry').click();
+    button(hostT('common.retry')).click();
     await vi.waitFor(() => expect(refreshPalette).toHaveBeenCalledTimes(2));
-    expect(button('Retry').disabled).toBe(true);
+    expect(button(hostT('common.retry')).disabled).toBe(true);
     retry.resolve(undefined);
+    consoleError.mockRestore();
   });
 
   it('downloads the exportable palette while idle and disables export during preview', async () => {
@@ -344,7 +365,7 @@ describe('PaletteManager', () => {
     try {
       render();
       await waitForIdle();
-      button('Export palette').click();
+      button(hostT('settings.palette.export')).click();
       flushSync();
 
       expect(clicks).toHaveLength(1);
@@ -354,7 +375,7 @@ describe('PaletteManager', () => {
       await chooseFile(JSON.stringify(valid));
       expect(
         [...target.querySelectorAll('mndw-button')].some((candidate) =>
-          candidate.textContent?.trim().startsWith('Export palette')
+          candidate.textContent?.trim().startsWith(hostT('settings.palette.export'))
         ),
       )
         .toBe(false);
@@ -362,6 +383,57 @@ describe('PaletteManager', () => {
       HTMLAnchorElement.prototype.click = realClick;
       URL.createObjectURL = realCreate;
       URL.revokeObjectURL = realRevoke;
+    }
+  });
+
+  it('renders Russian labels when the locale is ru', async () => {
+    try {
+      await setLocale('ru');
+      render();
+      await waitForIdle();
+
+      expect(target.textContent).toContain('Палитра');
+      expect(target.textContent).toContain('Экспорт палитры');
+      expect(target.textContent).toContain('Перетащите JSON-файл палитры сюда или выберите файл.');
+      expect(button('Сбросить к встроенным цветам')).toBeTruthy();
+      expect(target.textContent).not.toContain('Export palette');
+      expect(target.textContent).not.toContain('Reset to default');
+    } finally {
+      await setLocale('en');
+    }
+  });
+
+  it('renders Russian labels in the preview and reset confirmation', async () => {
+    const warned = JSON.parse(JSON.stringify(valid)) as PaletteTokenMap;
+
+    warned.dark.text = warned.dark.surface;
+
+    try {
+      await setLocale('ru');
+      render();
+      await waitForIdle();
+      await chooseFile(JSON.stringify(warned));
+
+      expect(target.textContent).toContain('Тёмная тема');
+      expect(target.textContent).toContain('Светлая тема');
+      expect(target.textContent).toContain('Предупреждения о контрасте (Тёмная тема)');
+      expect(button('Подтвердить')).toBeTruthy();
+      expect(button('Не применять')).toBeTruthy();
+
+      button('Не применять').click();
+      flushSync();
+      expect(discardPreview).toHaveBeenCalledTimes(1);
+
+      button('Сбросить к встроенным цветам').click();
+      flushSync();
+
+      expect(target.textContent).toContain(
+        'Сбросить импортированную палитру и вернуться к встроенным цветам?',
+      );
+      expect(button('Да, сбросить')).toBeTruthy();
+      expect(button('Отмена')).toBeTruthy();
+    } finally {
+      await setLocale('en');
     }
   });
 });

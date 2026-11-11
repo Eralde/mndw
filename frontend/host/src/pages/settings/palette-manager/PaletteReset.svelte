@@ -1,4 +1,6 @@
 <script lang="ts">
+import {hostT} from '../../../services/host-i18n.svelte.js';
+
 interface Props {
   busy: boolean;
   disabled: boolean;
@@ -25,20 +27,20 @@ function confirm(): void {
 
 <div class="mndw-palette-reset">
   {#if confirming}
-    <p>Discard the imported palette and return to the built-in colours?</p>
+    <p>{hostT('settings.palette.reset-confirmation')}</p>
     <mndw-button
       variant="danger"
       disabled={busy || disabled}
       onclick={confirm}
     >
-      Yes, reset
+      {hostT('settings.palette.reset-confirm')}
     </mndw-button>
     <mndw-button
       variant="secondary"
       disabled={busy || disabled}
       onclick={() => (confirming = false)}
     >
-      Cancel
+      {hostT('common.cancel')}
     </mndw-button>
   {:else}
     <mndw-button
@@ -46,7 +48,7 @@ function confirm(): void {
       disabled={busy || disabled}
       onclick={start}
     >
-      Reset to default{busy ? '...' : ''}
+      {hostT('settings.palette.reset')}{busy ? '…' : ''}
     </mndw-button>
   {/if}
 

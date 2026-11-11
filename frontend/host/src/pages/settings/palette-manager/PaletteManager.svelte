@@ -3,6 +3,7 @@ import {onMount} from 'svelte';
 import type {PaletteTokenMap} from '@mndw/sdk';
 import type {PaletteContrastWarning} from '@mndw/sdk-internal/palette';
 import {messageForError} from '../../../services/mgmt-client.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
 import PaletteExport from './PaletteExport.svelte';
 import PaletteImport from './PaletteImport.svelte';
 import PalettePreview from './PalettePreview.svelte';
@@ -38,6 +39,25 @@ let importDisabled = $derived.by(() => {
 let exportDisabled = $derived(paletteState !== 'idle');
 let resetDisabled = $derived(paletteState !== 'idle');
 
+/**
+ * Localizes palette operation failures. `messageForError` already maps known
+ * error kinds (timeouts, mapped MgmtError codes) to catalog keys; anything it
+ * passes through verbatim is arbitrary exception text, which must not reach the
+ * UI. Those details stay in the console under a localized message that names
+ * the failed operation.
+ */
+function paletteErrorMessage(error: unknown, fallbackKey: string): string {
+  const message = messageForError(error);
+
+  if (error instanceof Error && message === error.message) {
+    console.error('[mndw] Palette operation failed:', error);
+
+    return hostT(fallbackKey);
+  }
+
+  return message;
+}
+
 async function load(): Promise<void> {
   if (paletteState !== 'loading' && paletteState !== 'idle') {
     return;
@@ -49,7 +69,7 @@ async function load(): Promise<void> {
     await paletteService.refreshPalette();
     refreshError = '';
   } catch (caught) {
-    refreshError = messageForError(caught);
+    refreshError = paletteErrorMessage(caught, 'settings.palette.load-failed');
   } finally {
     paletteState = 'idle';
   }
@@ -108,7 +128,7 @@ async function confirm(): Promise<void> {
     saved = true;
     paletteState = 'idle';
   } catch (caught) {
-    commitError = messageForError(caught);
+    commitError = paletteErrorMessage(caught, 'settings.palette.operation-failed');
     paletteState = 'previewing';
   }
 }
@@ -129,7 +149,7 @@ async function reset(): Promise<void> {
     await paletteService.resetToDefault();
     saved = false;
   } catch (caught) {
-    resetError = messageForError(caught);
+    resetError = paletteErrorMessage(caught, 'settings.palette.operation-failed');
   } finally {
     paletteState = 'idle';
   }
@@ -137,7 +157,7 @@ async function reset(): Promise<void> {
 </script>
 
 <section class="mndw-palette-manager">
-  <h3>Palette</h3>
+  <h3>{hostT('settings.palette.title')}</h3>
 
   {#if refreshError}
     <div
@@ -150,19 +170,19 @@ async function reset(): Promise<void> {
         disabled={paletteState !== 'idle'}
         onclick={() => void load()}
       >
-        Retry
+        {hostT('common.retry')}
       </mndw-button>
       <mndw-button
         variant="ghost"
         onclick={dismissRefreshError}
       >
-        Dismiss
+        {hostT('settings.plugin-manager.dismiss')}
       </mndw-button>
     </div>
   {/if}
 
   {#if paletteState === 'loading'}
-    <p role="status">Loading palette...</p>
+    <p role="status">{hostT('settings.palette.loading')}</p>
   {/if}
 
   {#if paletteState === 'previewing' || paletteState === 'committing'}
@@ -178,7 +198,7 @@ async function reset(): Promise<void> {
     {/if}
   {:else}
     {#if paletteState === 'importing'}
-      <p role="status">Reading palette...</p>
+      <p role="status">{hostT('settings.palette.reading')}</p>
     {/if}
 
     <PaletteImport
@@ -202,13 +222,13 @@ async function reset(): Promise<void> {
           variant="ghost"
           onclick={dismissImportError}
         >
-          Dismiss
+          {hostT('settings.plugin-manager.dismiss')}
         </mndw-button>
       </div>
     {/if}
 
     {#if saved}
-      <p role="status">Saved.</p>
+      <p role="status">{hostT('settings.palette.saved')}</p>
     {/if}
 
     <div class="mndw-palette-manager__actions">

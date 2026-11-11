@@ -39,6 +39,7 @@ import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import PagePluginHost from './PagePluginHost.svelte';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
+import {hostT} from '../services/host-i18n.svelte.js';
 
 const emptyBackend = {routes: {}};
 
@@ -258,14 +259,16 @@ describe('PagePluginHost', () => {
     const {component, target} = await setup();
 
     expect(target.querySelector('.mndw-page-plugin__notice')?.textContent).toBe(
-      'Preparing… installing dependencies',
+      hostT('dashboard.preparing-dependencies'),
     );
     expect(target.querySelector('.mndw-page-plugin-wrap .mndw-page-plugin')).not.toBeNull();
     expect(createInstanceMock(pageA)).not.toHaveBeenCalled();
 
     replaceDepsStatuses([{name: 'page-a', depsStatus: 'failed'}]);
     flushSync();
-    expect(target.querySelector('.mndw-page-plugin__notice')?.textContent).toBe('Dependency install failed');
+    expect(target.querySelector('.mndw-page-plugin__notice')?.textContent).toBe(
+      hostT('dashboard.dependency-install-failed'),
+    );
     expect(createInstanceMock(pageA)).not.toHaveBeenCalled();
     void component;
   });

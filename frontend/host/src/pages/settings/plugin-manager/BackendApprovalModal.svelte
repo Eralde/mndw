@@ -17,6 +17,13 @@ let {entry, close}: Props = $props();
     ({entry.name}) {hostT('settings.backend-approval-declaration')}
   </p>
 
+  <p
+    class="mndw-alert mndw-alert--warning"
+    role="note"
+  >
+    {hostT('settings.backend-approval-warning')}
+  </p>
+
   <CapabilityReview {entry} />
 
   <div class="mndw-approval__actions">

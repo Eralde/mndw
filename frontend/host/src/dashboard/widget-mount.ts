@@ -5,6 +5,7 @@ import {
 } from '../runtime/plugin-lifecycle.js';
 import type {PluginContextHandle} from '../runtime/plugin-context.js';
 import type {LoadedPlugin} from '../runtime/plugin-registry.js';
+import {hostT} from '../services/locale.service.js';
 
 export type WidgetTileDisposeOptions = PluginUnmountOptions;
 
@@ -16,5 +17,5 @@ export function mountWidgetTile(
   plugin: LoadedPlugin,
   handle: PluginContextHandle,
 ): WidgetTileHandle {
-  return mountPluginWithContext(container, plugin, handle, {errorText: 'Error loading widget'});
+  return mountPluginWithContext(container, plugin, handle, {errorText: hostT('dashboard.widget-error')});
 }

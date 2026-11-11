@@ -5,8 +5,15 @@ import {type DnsErrorCode, type DnsLookupResult, type DnsView, WIDGET_CLASS, ren
 
 import './index.css';
 
+function idToken(instanceId: string): string {
+  return instanceId.replace(/[^A-Za-z0-9_-]/g, '-') || 'instance';
+}
+
 export function createInstance(container: HTMLElement, context: PluginContext): PluginInstance {
   const i18n = context.i18n;
+  const instanceToken = idToken(context.instanceId);
+  const hostnameInputId = `${WIDGET_CLASS}__${instanceToken}__hostname`;
+  const hostnameHintId = `${hostnameInputId}-hint`;
 
   container.replaceChildren();
 
@@ -25,13 +32,13 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
   const fieldLabel = document.createElement('label');
 
   fieldLabel.className = `${WIDGET_CLASS}__label`;
-  fieldLabel.htmlFor = `${WIDGET_CLASS}__hostname`;
+  fieldLabel.htmlFor = hostnameInputId;
   fieldLabel.textContent = i18n.t('hostname-label');
 
   const hostnameInput: MndwInput = document.createElement('mndw-input');
 
   hostnameInput.type = 'text';
-  hostnameInput.id = `${WIDGET_CLASS}__hostname`;
+  hostnameInput.id = hostnameInputId;
   hostnameInput.name = 'hostname';
   hostnameInput.className = `${WIDGET_CLASS}__input`;
   hostnameInput.placeholder = i18n.t('hostname');
@@ -39,7 +46,7 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
   const hostnameHint = document.createElement('span');
 
   hostnameHint.className = `${WIDGET_CLASS}__hint`;
-  hostnameHint.id = `${WIDGET_CLASS}__hostname-hint`;
+  hostnameHint.id = hostnameHintId;
   hostnameHint.textContent = i18n.t('hostname-hint');
   hostnameInput.setAttribute('aria-describedby', hostnameHint.id);
 

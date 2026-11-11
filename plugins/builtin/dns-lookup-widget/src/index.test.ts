@@ -9,7 +9,7 @@ import {createInstance} from './index.js';
 
 function fakeContext(
   overrides?: Partial<BackendClient>,
-  options: {backend?: boolean; i18n?: ReturnType<typeof createTestI18n>} = {},
+  options: {backend?: boolean; i18n?: ReturnType<typeof createTestI18n>; instanceId?: string} = {},
 ): PluginContext {
   const fetch = vi.fn().mockResolvedValue(new Response('{"method":"GET"}'));
 
@@ -17,7 +17,7 @@ function fakeContext(
     backend: options.backend === false ? undefined : {fetch, socket: vi.fn(), ...overrides} as BackendClient,
     i18n: options.i18n ?? createTestI18n(enCatalog),
     theme: 'light',
-    instanceId: 'test-id',
+    instanceId: options.instanceId ?? 'test-id',
   }).context;
 }
 
@@ -55,19 +55,60 @@ describe('createInstance', () => {
     const button = queryElement<MndwButton>(container, '.mndw-dns-lookup-widget__btn');
     const controlRow = queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__control-row');
 
-    const label = queryElement<HTMLLabelElement>(container, 'label[for="mndw-dns-lookup-widget__hostname"]');
+    const label = queryElement<HTMLLabelElement>(container, '.mndw-dns-lookup-widget__label');
 
     expect(label.htmlFor).toBe(input.id);
+    expect(input.id).toBe('mndw-dns-lookup-widget__test-id__hostname');
     expect(controlRow.contains(input)).toBe(true);
     expect(controlRow.contains(button)).toBe(true);
     expect(input.name).toBe('hostname');
     expect(input.type).toBe('text');
     expect(button.type).toBe('submit');
     expect(button.variant).toBe('primary');
-    expect(input.getAttribute('aria-describedby')).toBe('mndw-dns-lookup-widget__hostname-hint');
+    expect(input.getAttribute('aria-describedby')).toBe('mndw-dns-lookup-widget__test-id__hostname-hint');
 
     instance.unmount();
     expect(container.children.length).toBe(0);
+  });
+
+  it('uses unique ids and instance-scoped label references when mounted twice', () => {
+    const firstContainer = document.createElement('div');
+    const secondContainer = document.createElement('div');
+
+    document.body.append(firstContainer, secondContainer);
+
+    const first = createInstance(firstContainer, fakeContext(undefined, {instanceId: 'dash:1'}));
+    const second = createInstance(secondContainer, fakeContext(undefined, {instanceId: 'dash:2'}));
+
+    const ids = [...document.querySelectorAll('[id]')].map((element) => element.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(ids).size).toBe(4);
+
+    const firstInput = queryElement<MndwInput>(firstContainer, '.mndw-dns-lookup-widget__input');
+    const firstLabel = queryElement<HTMLLabelElement>(firstContainer, '.mndw-dns-lookup-widget__label');
+    const firstHint = queryElement<HTMLElement>(firstContainer, '.mndw-dns-lookup-widget__hint');
+    const secondInput = queryElement<MndwInput>(secondContainer, '.mndw-dns-lookup-widget__input');
+    const secondLabel = queryElement<HTMLLabelElement>(secondContainer, '.mndw-dns-lookup-widget__label');
+    const secondHint = queryElement<HTMLElement>(secondContainer, '.mndw-dns-lookup-widget__hint');
+
+    expect(firstInput.id).toBe('mndw-dns-lookup-widget__dash-1__hostname');
+    expect(secondInput.id).toBe('mndw-dns-lookup-widget__dash-2__hostname');
+    expect(firstLabel.htmlFor).toBe(firstInput.id);
+    expect(secondLabel.htmlFor).toBe(secondInput.id);
+    expect(firstInput.getAttribute('aria-describedby')).toBe(firstHint.id);
+    expect(secondInput.getAttribute('aria-describedby')).toBe(secondHint.id);
+    expect(document.getElementById(firstInput.id)).toBe(firstInput);
+    expect(document.getElementById(secondInput.id)).toBe(secondInput);
+    expect(document.getElementById(firstHint.id)).toBe(firstHint);
+    expect(document.getElementById(secondHint.id)).toBe(secondHint);
+    expect(firstContainer.contains(secondInput)).toBe(false);
+    expect(secondContainer.contains(firstInput)).toBe(false);
+
+    first.unmount();
+    second.unmount();
+    firstContainer.remove();
+    secondContainer.remove();
   });
 
   it('shows loading state when lookup is clicked', async () => {

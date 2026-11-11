@@ -3,7 +3,13 @@ import {nonNull, shadowOf, shadowQuery} from '@mndw/sdk/testing';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {MNDW_CHECKBOX_TAG, MndwCheckbox} from '../checkbox/checkbox.js';
 import {setMndwUiLocale} from '../i18n.js';
-import {type UiLayer, type UiLayerOptions, type UiOverlayProvider, setOverlayProvider} from '../overlay.js';
+import {
+  type UiCloseReason,
+  type UiLayer,
+  type UiLayerOptions,
+  type UiOverlayProvider,
+  setOverlayProvider,
+} from '../overlay.js';
 import {defineComponents, resetUiTestState} from '../testing/index.js';
 import {column} from './table-builder.js';
 import {MNDW_COLUMN_MENU_TAG, MndwColumnMenu} from './column-menu.js';
@@ -1371,6 +1377,103 @@ describe('MndwTable column menu', () => {
     expect(openCalls[0].className).toBe('demo-panel');
   });
 
+  it('does not restore focus from an old close after a newer menu closes outside', async () => {
+    const layers: UiLayer[] = [];
+    const resolveClosed: Array<(reason: UiCloseReason) => void> = [];
+    const provider: UiOverlayProvider = {
+      open(options: UiLayerOptions): UiLayer {
+        const contentElement = document.createElement('div');
+
+        document.body.appendChild(contentElement);
+
+        let settle!: (reason: UiCloseReason) => void;
+        const closed = new Promise<UiCloseReason>((resolve) => {
+          settle = resolve;
+        });
+        const onPointerDown = (event: Event): void => {
+          const path = event.composedPath();
+
+          if (path.includes(contentElement) || path.includes(options.anchor)) {
+            return;
+          }
+
+          document.removeEventListener('pointerdown', onPointerDown, true);
+          contentElement.remove();
+          settle('outside');
+        };
+        const layer: UiLayer = {
+          contentElement,
+          closed,
+          close: vi.fn(() => {
+            document.removeEventListener('pointerdown', onPointerDown, true);
+            contentElement.remove();
+          }),
+          reposition: vi.fn(),
+        };
+
+        layers.push(layer);
+        resolveClosed.push(settle);
+        document.addEventListener('pointerdown', onPointerDown, true);
+
+        return layer;
+      },
+    };
+
+    setOverlayProvider(provider);
+
+    const el = makeTable();
+
+    el.columns = makeColumns();
+    el.rows = rows;
+    el.rowKey = 'id';
+    await el.updateComplete;
+    const outside = document.createElement('button');
+
+    document.body.appendChild(outside);
+
+    shadowQuery<HTMLButtonElement>(el, '[part="column-menu-trigger"]').click();
+    await el.updateComplete;
+    const firstLayer = layers[0];
+    const firstMenu = firstLayer?.contentElement.querySelector<MndwColumnMenu>(MNDW_COLUMN_MENU_TAG);
+
+    if (!firstLayer || !firstMenu) {
+      throw new Error('first column menu did not open');
+    }
+
+    await firstMenu.updateComplete;
+    shadowQuery<HTMLButtonElement>(firstMenu, 'button[data-column-id="name"]').focus();
+    firstMenu.dispatchEvent(new CustomEvent('mndwpaneldismiss', {
+      bubbles: true,
+      composed: true,
+      detail: {restoreFocus: false},
+    }));
+    await el.updateComplete;
+
+    shadowQuery<HTMLButtonElement>(el, '[part="column-menu-trigger"]').click();
+    await el.updateComplete;
+    const secondLayer = layers[1];
+    const secondMenu = secondLayer?.contentElement.querySelector<MndwColumnMenu>(MNDW_COLUMN_MENU_TAG);
+
+    if (!secondLayer || !secondMenu) {
+      throw new Error('second column menu did not open');
+    }
+
+    await secondMenu.updateComplete;
+    const secondOption = shadowQuery<HTMLButtonElement>(secondMenu, 'button[data-column-id="name"]');
+
+    secondOption.focus();
+    expect(document.activeElement).toBe(secondMenu);
+    outside.focus();
+    outside.dispatchEvent(new Event('pointerdown', {bubbles: true, composed: true}));
+    await secondLayer.closed;
+    expect(document.activeElement).toBe(outside);
+
+    resolveClosed[0]?.('api');
+    await firstLayer.closed;
+
+    expect(document.activeElement).toBe(outside);
+  });
+
   it('retries initial focus when provider content becomes visible after a frame', async () => {
     const {provider, layer} = makeOverlayProvider();
 
@@ -1447,6 +1550,7 @@ describe('MndwTable column menu', () => {
     await el.updateComplete;
 
     expect(openCalls).toHaveLength(1);
+    expect(openCalls[0].anchor).toBe(shadowQuery<HTMLButtonElement>(el, '[part="column-menu-trigger"]'));
   });
 
   it('emits mndwcolumnvisibilitychange with the requested hidden list in controlled mode', async () => {

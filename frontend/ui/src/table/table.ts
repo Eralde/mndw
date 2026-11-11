@@ -1,7 +1,7 @@
 import {LitElement, type PropertyDeclarations, css, html, nothing} from 'lit';
 import {repeat} from 'lit/directives/repeat.js';
 import {getMndwUiText} from '../i18n.js';
-import {focusWithinWithRetry, tabbableElements} from '../focus.js';
+import {composedContains, deepActiveElement, focusWithinWithRetry, tabbableElements} from '../focus.js';
 import {LocaleController} from '../locale-controller.js';
 import {type UiLayer, getOverlayProvider} from '../overlay.js';
 import {focusRing, hostTypography, surfaceHover} from '../styles/base.js';
@@ -392,6 +392,9 @@ export class MndwTable<Row = unknown> extends LitElement {
   private menuLayer: UiLayer | null = null;
   private cancelMenuFocusRetry: (() => void) | null = null;
   private menuTrigger: HTMLElement | null = null;
+  // Delayed close callbacks from prior menus must not steal focus after reopening.
+  private menuOpenGeneration = 0;
+  private readonly menuApiCloseHadFocus = new WeakMap<UiLayer, boolean>();
 
   private effectiveColumns: Column<Row>[] = [];
   private displayRows: Row[] = [];
@@ -1714,11 +1717,10 @@ export class MndwTable<Row = unknown> extends LitElement {
       return;
     }
 
-    if (
-      target?.closest?.('[part="column-menu-trigger"]') !== null
-      && target?.closest?.('[part="column-menu-trigger"]') !== undefined
-    ) {
-      this.openColumnMenu(target);
+    const columnMenuTrigger = target?.closest?.('[part="column-menu-trigger"]');
+
+    if (columnMenuTrigger instanceof HTMLElement) {
+      this.openColumnMenu(columnMenuTrigger);
     }
   };
 
@@ -1890,6 +1892,7 @@ export class MndwTable<Row = unknown> extends LitElement {
     const options: MndwColumnMenuOption[] = this.effectiveColumns
       .filter((column) => column.hideable !== false)
       .map((column) => ({id: column.id, label: column.label}));
+    const generation = ++this.menuOpenGeneration;
 
     const layer = getOverlayProvider().open({
       anchor: trigger,
@@ -1923,14 +1926,46 @@ export class MndwTable<Row = unknown> extends LitElement {
       }
     });
 
-    void layer.closed.then(() => {
-      this.forgetColumnMenu();
+    void layer.closed.then((reason) => {
+      const isCurrentLayer = this.menuLayer === layer;
+
+      if (isCurrentLayer) {
+        this.forgetColumnMenu();
+      }
+
+      const restoreFocus = generation === this.menuOpenGeneration
+        && (isCurrentLayer || this.menuLayer === null)
+        && (
+          reason === 'escape'
+          || (reason === 'api' && this.menuApiCloseHadFocus.get(layer) === true)
+        );
+
+      if (restoreFocus) {
+        this.restoreColumnMenuFocus(trigger);
+      }
     });
   }
 
-  private closeColumnMenu(): void {
-    this.menuLayer?.close();
+  private closeColumnMenu(restoreFocusOnApiClose = true): void {
+    const layer = this.menuLayer;
+
+    if (layer !== null) {
+      this.menuApiCloseHadFocus.set(
+        layer,
+        restoreFocusOnApiClose && composedContains(layer.contentElement, document.activeElement),
+      );
+      layer.close();
+    }
+
     this.forgetColumnMenu();
+  }
+
+  private restoreColumnMenuFocus(trigger: HTMLElement): void {
+    const currentTrigger = this.shadowRoot?.querySelector<HTMLElement>('[part="column-menu-trigger"]') ?? trigger;
+
+    if (this.isConnected && currentTrigger.isConnected && deepActiveElement() !== currentTrigger) {
+      currentTrigger.focus();
+    }
   }
 
   private forgetColumnMenu(): void {
@@ -1962,15 +1997,16 @@ export class MndwTable<Row = unknown> extends LitElement {
 
     if (detail.defer && layer) {
       const trigger = this.menuTrigger;
+      const generation = this.menuOpenGeneration;
       const tabDestination = trigger === null ? null : this.tabDestination(trigger, detail.tabDirection ?? 'forward');
 
       window.setTimeout(() => {
         if (this.menuLayer === layer) {
-          this.closeColumnMenu();
+          this.closeColumnMenu(false);
 
           if (tabDestination !== null) {
             void layer.closed.then(() => {
-              if (tabDestination.isConnected) {
+              if (generation === this.menuOpenGeneration && tabDestination.isConnected) {
                 tabDestination.focus();
               }
             });

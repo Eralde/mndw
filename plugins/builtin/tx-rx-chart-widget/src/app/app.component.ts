@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {CommonModule} from '@angular/common';
-import {type Observable, Subscription, catchError, map, of, switchMap, timer} from 'rxjs';
+import {type Observable, Subscription, catchError, exhaustMap, map, of, timeout, timer} from 'rxjs';
 import {formatSpeed, getSpeedUpperLimit} from '@mndw/ui';
 import type {RrdTick} from '@mndw/sdk/rrd';
 import type {ClockDate, NetworkInterface} from '../types/rci.types';
@@ -25,6 +25,7 @@ import {DEFAULT_REFRESH_MS, normalizeRefreshMs} from '../utils/refresh.utils';
 const STORAGE_KEY = 'tx-rx-rrd-chart-interface';
 const STORAGE_REFRESH = 'tx-rx-rrd-chart-refresh';
 const DEVICE_TIME_INTERVAL = 30000;
+const REQUEST_TIMEOUT_FLOOR_MS = 10000;
 
 type PollResult<T> = {ok: true; data: T} | {ok: false; error: unknown};
 
@@ -198,8 +199,9 @@ export class AppComponent implements OnInit, OnDestroy {
     return this.pollingGeneration === generation && this.selectedInterface() === interfaceId;
   }
 
-  private pollRequest<T>(request: Observable<T>): Observable<PollResult<T>> {
+  private pollRequest<T>(request: Observable<T>, timeoutMs: number): Observable<PollResult<T>> {
     return request.pipe(
+      timeout(timeoutMs),
       map((data) => ({ok: true as const, data})),
       catchError((error: unknown) => of({ok: false as const, error})),
     );
@@ -213,13 +215,15 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!interfaceId) { return; }
 
     const generation = this.pollingGeneration;
+    const trafficTimeout = Math.max(this.refresh(), REQUEST_TIMEOUT_FLOOR_MS);
+    const deviceTimeTimeout = Math.max(DEVICE_TIME_INTERVAL, REQUEST_TIMEOUT_FLOOR_MS);
 
     if (this.txData().length === 0 && this.rxData().length === 0) {
       this.awaitingFirstTick.set(true);
     }
 
     this.pollingSub = timer(0, this.refresh()).pipe(
-      switchMap(() => this.pollRequest(this.rciService.getInterfaceRrd(interfaceId, 0))),
+      exhaustMap(() => this.pollRequest(this.rciService.getInterfaceRrd(interfaceId, 0), trafficTimeout)),
       takeUntilDestroyed(this.destroyRef),
     )
       .subscribe((result) => {
@@ -247,7 +251,7 @@ export class AppComponent implements OnInit, OnDestroy {
       });
 
     this.deviceTimeSub = timer(0, DEVICE_TIME_INTERVAL).pipe(
-      switchMap(() => this.pollRequest(this.rciService.getDeviceTime())),
+      exhaustMap(() => this.pollRequest(this.rciService.getDeviceTime(), deviceTimeTimeout)),
       takeUntilDestroyed(this.destroyRef),
     )
       .subscribe((result) => {

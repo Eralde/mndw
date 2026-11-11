@@ -6,7 +6,7 @@ import {type ComponentFixture, TestBed} from '@angular/core/testing';
 import type {PluginRciManager, PluginStorage} from '@mndw/sdk';
 import type {RrdResponse} from '@mndw/sdk/rrd';
 import type {RciQuery} from '@rci-tools/core';
-import {type Observable, Subject, type Subscription, of, throwError} from 'rxjs';
+import {type Observable, Subject, type Subscription, map, of, throwError, timer} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {OpenSettingsFn} from '../open-settings-dialog';
 import {PLUGIN_STORAGE, RCI_MANAGER, TRANSLATOR} from '../tokens';
@@ -439,6 +439,62 @@ describe('AppComponent', () => {
     await vi.advanceTimersByTimeAsync(3000);
 
     expect(rrdCalls()).toBe(3);
+  });
+
+  it('waits for a slow response that outlasts the refresh interval instead of cancelling it', async () => {
+    vi.useFakeTimers();
+
+    const {manager, rrdCalls} = sequencedManager(
+      () => timer(5000).pipe(map(() => rrdPair(100, 1000, 500))),
+    );
+    const {fixture} = await createFixture('eth1', '3000', undefined, createTestI18n(enCatalog), manager);
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(rrdCalls()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    fixture.detectChanges();
+
+    expect(rrdCalls()).toBe(1);
+    expect(fixture.nativeElement.querySelector('.mndw-alert--danger')).toBeNull();
+    expect(queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart')).not.toBeNull();
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(rrdCalls()).toBe(2);
+  });
+
+  it('times out a hung traffic request, reports the error, and retries on the next tick', async () => {
+    vi.useFakeTimers();
+
+    const {manager, requests} = manualRrdManager();
+    const {fixture} = await createFixture('eth1', '3000', undefined, createTestI18n(enCatalog), manager);
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(requests).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(10000);
+    fixture.detectChanges();
+
+    expect(requests).toHaveLength(1);
+    expect(queryElement<HTMLElement>(fixture.nativeElement, '.mndw-alert--danger').textContent)
+      .toContain('Failed to load traffic data');
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(requests).toHaveLength(2);
+
+    requests[1]?.response.next(rrdPair(100, 1000, 500));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.mndw-alert--danger')).toBeNull();
+    expect(queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart')).not.toBeNull();
   });
 
   it('keeps polling device time after a transient request error and clears the error on success', async () => {

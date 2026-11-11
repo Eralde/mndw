@@ -5,21 +5,21 @@ import {flushSync, mount, unmount} from 'svelte';
 const mobileState = vi.hoisted(() => {
   const state: {
     matches: boolean;
-    listener: ((event: MediaQueryListEvent) => void) | undefined;
+    listeners: Set<(event: MediaQueryListEvent) => void>;
     addEventListener: ReturnType<typeof vi.fn>;
     removeEventListener: ReturnType<typeof vi.fn>;
   } = {
     matches: false,
-    listener: undefined,
+    listeners: new Set(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   };
 
   state.addEventListener.mockImplementation((_event: string, listener: (event: MediaQueryListEvent) => void) => {
-    state.listener = listener;
+    state.listeners.add(listener);
   });
-  state.removeEventListener.mockImplementation(() => {
-    state.listener = undefined;
+  state.removeEventListener.mockImplementation((_event: string, listener: (event: MediaQueryListEvent) => void) => {
+    state.listeners.delete(listener);
   });
 
   return state;
@@ -39,6 +39,8 @@ import type {PageListEntry} from '../runtime/plugin-types.js';
 import {setLocale} from '../services/locale.service.js';
 import {appState} from '../state/app.svelte.js';
 import Sidebar from './Sidebar.svelte';
+import Header from './Header.svelte';
+import {SIDEBAR_TOGGLE_ID} from './ids.js';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 
@@ -77,6 +79,14 @@ function mountSidebar(): {component: ReturnType<typeof mount>; target: HTMLEleme
   return {component, target};
 }
 
+function dispatchBreakpoint(matches: boolean): void {
+  mobileState.matches = matches;
+
+  for (const listener of [...mobileState.listeners]) {
+    listener({matches} as MediaQueryListEvent);
+  }
+}
+
 function links(target: HTMLElement): {text: string; href: string}[] {
   return [...target.querySelectorAll<HTMLAnchorElement>('.mndw-sidebar__link')].map((a) => ({
     text: a.textContent?.trim() ?? '',
@@ -92,7 +102,7 @@ function activeHrefs(target: HTMLElement): string[] {
 describe('Sidebar', () => {
   beforeEach(() => {
     mobileState.matches = false;
-    mobileState.listener = undefined;
+    mobileState.listeners.clear();
     mobileState.addEventListener.mockClear();
     mobileState.removeEventListener.mockClear();
     appState.mobileSidebarOpen = false;
@@ -357,14 +367,76 @@ describe('Sidebar', () => {
       void unmount(component);
     });
 
-    it('never makes the desktop nav inert', () => {
+    it('makes the collapsed desktop nav inert and the expanded one interactive', () => {
       mobileState.matches = false;
       appState.desktopSidebarCollapsed = false;
 
       const {component, target} = mountSidebar();
+      const nav = target.querySelector('.mndw-sidebar');
 
-      expect(target.querySelector('.mndw-sidebar')?.hasAttribute('inert')).toBe(false);
+      expect(nav?.hasAttribute('inert')).toBe(false);
+
+      appState.desktopSidebarCollapsed = true;
+      flushSync();
+      expect(nav?.hasAttribute('inert')).toBe(true);
+
+      appState.desktopSidebarCollapsed = false;
+      flushSync();
+      expect(nav?.hasAttribute('inert')).toBe(false);
+
       void unmount(component);
+    });
+
+    it('moves focus to the menu toggle when a focused desktop sidebar collapses', async () => {
+      mobileState.matches = false;
+
+      const {component, target} = mountSidebar();
+      const header = mount(Header, {
+        target,
+        context: createHostServicesContext(createHostServices()),
+      });
+      const link = target.querySelector<HTMLAnchorElement>('.mndw-sidebar__link');
+      const menu = target.querySelector<HTMLElement>(`#${SIDEBAR_TOGGLE_ID}`);
+
+      link?.focus();
+      expect(document.activeElement).toBe(link);
+
+      menu?.click();
+      flushSync();
+      await Promise.resolve();
+
+      expect(appState.desktopSidebarCollapsed).toBe(true);
+      expect(document.activeElement).toBe(menu);
+
+      await unmount(header);
+      await unmount(component);
+    });
+
+    it('moves focus to the menu toggle when the focused sidebar becomes inert at the mobile breakpoint', async () => {
+      mobileState.matches = false;
+
+      const {component, target} = mountSidebar();
+      const header = mount(Header, {
+        target,
+        context: createHostServicesContext(createHostServices()),
+      });
+      const link = target.querySelector<HTMLAnchorElement>('.mndw-sidebar__link');
+      const menu = target.querySelector<HTMLElement>(`#${SIDEBAR_TOGGLE_ID}`);
+
+      link?.focus();
+      expect(document.activeElement).toBe(link);
+
+      dispatchBreakpoint(true);
+      flushSync();
+      await Promise.resolve();
+
+      const nav = target.querySelector('.mndw-sidebar');
+
+      expect(nav?.hasAttribute('inert')).toBe(true);
+      expect(document.activeElement).toBe(menu);
+
+      await unmount(header);
+      await unmount(component);
     });
 
     it('moves focus to the first nav link when the mobile drawer opens', async () => {
@@ -429,7 +501,7 @@ describe('Sidebar', () => {
 
       target.querySelector<HTMLElement>('.mndw-sidebar-backdrop')?.click();
       flushSync();
-      mobileState.listener?.({matches: false} as MediaQueryListEvent);
+      dispatchBreakpoint(false);
       flushSync();
 
       expect(appState.mobileSidebarOpen).toBe(false);

@@ -20,6 +20,14 @@ interface AppState {
   deviceInfo: DeviceInfoData | null;
   /** Host-translated error kind set when the plugin list can't be loaded. */
   pluginLoadError: 'list' | null;
+  /**
+   * Host-translated message shown on the login form after the authenticated initialization
+   * started by a successful login fails. Written from the init-failure path because the
+   * LoginPage instance that submitted the credentials is already unmounted by then.
+   */
+  loginError: string | null;
+  /** Username to prefill after such a failure; the password is never kept. */
+  loginUsername: string;
   mobileSidebarOpen: boolean;
   desktopSidebarCollapsed: boolean;
   theme: MndwThemeName;
@@ -68,6 +76,8 @@ export const appState: AppState = $state({
   hostInfo: null,
   deviceInfo: null,
   pluginLoadError: null,
+  loginError: null,
+  loginUsername: '',
   mobileSidebarOpen: false,
   desktopSidebarCollapsed: false,
   theme: getTheme(),
@@ -93,6 +103,8 @@ export function resetToLogin(): void {
   appState.ready = false;
   appState.authInitInFlight = false;
   appState.pluginLoadError = null;
+  appState.loginError = null;
+  appState.loginUsername = '';
   appState.pluginLoadFailureSeq = 0;
   appState.hostInfo = null;
   appState.deviceInfo = null;

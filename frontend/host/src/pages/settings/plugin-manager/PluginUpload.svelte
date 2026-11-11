@@ -249,7 +249,11 @@ async function upload(file: File): Promise<void> {
 }
 
 function onInput(event: Event): void {
-  const file = (event.currentTarget as HTMLInputElement).files?.[0];
+  const input = event.currentTarget as HTMLInputElement;
+  const file = input.files?.[0];
+
+  input.value = '';
+
   if (file) {
     void upload(file);
   }

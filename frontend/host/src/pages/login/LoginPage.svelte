@@ -8,11 +8,17 @@ import {getHostServices} from '../../host-services-context.js';
 
 const services = getHostServices();
 
-let username = $state('');
+// A failed authenticated initialization unmounts the submitting LoginPage instance (App flips
+// to its loading branch as soon as credentials are accepted), so the failure message and the
+// kept username travel through appState instead of this instance's local state.
+let username = $state(appState.loginUsername);
 let password = $state('');
-let error = $state('');
+let error = $state(appState.loginError ?? '');
 let loading = $state(false);
 let loginBlocked = $state(false);
+
+appState.loginUsername = '';
+appState.loginError = null;
 let usernameInput:
   | (HTMLElement & {updateComplete: Promise<unknown>})
   | undefined;
@@ -110,14 +116,16 @@ function handleSubmit(e: Event): void {
   services.rci.login(username, password).subscribe({
     next(success) {
       if (success) {
+        const submittedUsername = username;
+
         appState.authenticated = true;
         void initAuthenticated(services).catch(() => {
+          // This instance is unmounted by now (App swaps to its loading branch when
+          // authenticated flips true), so the retry affordances go to appState: the next
+          // LoginPage mount prefills the username and shows the error. Password never leaves.
           resetToLogin();
-          error = hostT('login.connection-failed');
-          loading = false;
-        }).finally(() => {
-          username = '';
-          password = '';
+          appState.loginError = hostT('login.connection-failed');
+          appState.loginUsername = submittedUsername;
         });
       } else {
         error = hostT('login.invalid-credentials');
@@ -128,7 +136,7 @@ function handleSubmit(e: Event): void {
     error() {
       error = hostT('login.connection-failed');
       loading = false;
-      loginBlocked = true;
+      loginBlocked = false;
     },
   });
 }

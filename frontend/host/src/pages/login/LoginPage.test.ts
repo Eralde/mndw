@@ -68,6 +68,8 @@ beforeEach(() => {
   appState.authenticated = false;
   appState.locale = 'en';
   appState.localeSwitchPending = false;
+  appState.loginError = null;
+  appState.loginUsername = '';
 });
 
 afterEach(() => {
@@ -311,6 +313,43 @@ describe('LoginPage', () => {
     expect(target.querySelector('.mndw-alert')?.textContent?.trim()).toBe('Connection failed');
   });
 
+  it('retries a transport failure with unchanged credentials when Enter is pressed', () => {
+    login
+      .mockReturnValueOnce(throwError(() => new Error('offline')))
+      .mockReturnValueOnce(of(true));
+    render();
+    type(inputs()[0], 'admin');
+    type(inputs()[1], 'secret');
+
+    pressEnter(inputs()[1]);
+
+    expect(target.querySelector('.mndw-alert')?.textContent?.trim()).toBe('Connection failed');
+    expect(target.querySelector('mndw-button')?.disabled).toBe(false);
+
+    pressEnter(inputs()[1]);
+
+    expect(login).toHaveBeenCalledTimes(2);
+    expect(login).toHaveBeenNthCalledWith(2, 'admin', 'secret');
+  });
+
+  it('keeps the username and error in app state when authenticated initialization fails', async () => {
+    login.mockReturnValue(of(true));
+    initAuthenticated.mockRejectedValueOnce(new Error('offline'));
+    render();
+    type(inputs()[0], 'admin');
+    type(inputs()[1], 'secret');
+
+    submit();
+
+    // The submitting instance is unmounted by the failure (App swaps to its loading branch on
+    // success), so the retry affordances travel through appState for the next LoginPage mount.
+    await vi.waitFor(() => {
+      expect(appState.loginError).toBe('Connection failed');
+    });
+    expect(appState.loginUsername).toBe('admin');
+    expect(appState.authenticated).toBe(false);
+  });
+
   it('disables both controls and the button while the request is in flight', () => {
     const pending = new Subject<boolean>();
 
@@ -341,6 +380,8 @@ describe('LoginPage', () => {
     const button = target.querySelector('mndw-button');
 
     expect(button?.disabled).toBe(true);
+    pressEnter(inputs()[1]);
+    expect(login).toHaveBeenCalledTimes(1);
 
     type(inputs()[0], 'admin2');
     expect(button?.disabled).toBe(false);

@@ -1,8 +1,9 @@
 <script lang="ts">
 import {focusTrap} from '../components/focus-trap/focus-trap-action.js';
-import {onMount} from 'svelte';
+import {onMount, untrack} from 'svelte';
 import {appState} from '../state/app.svelte.js';
 import {mobileMediaQuery} from './breakpoint.js';
+import {SIDEBAR_ID, SIDEBAR_TOGGLE_ID} from './ids.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {getHostServices} from '../host-services-context.js';
 import {appRouter} from '../router/create-app-router.js';
@@ -12,6 +13,18 @@ const registry = getHostServices().registry;
 const mobileQuery = mobileMediaQuery();
 
 let isMobile = $state(mobileQuery.matches);
+let sidebarElement: HTMLElement | undefined;
+
+// The nav is inert whenever the current mode hides it: mobile drawer closed, or desktop
+// collapsed. Tracked as a derived value so the focus rescue below also covers mode flips
+// (e.g. resizing to mobile with focus inside the still-expanded sidebar).
+const navInert = $derived(
+  isMobile ? !appState.mobileSidebarOpen : appState.desktopSidebarCollapsed,
+);
+// Untracked: only the value at instantiation matters, later changes are picked up by $effect.
+let previousNavInert = untrack(() =>
+  isMobile ? !appState.mobileSidebarOpen : appState.desktopSidebarCollapsed,
+);
 
 const handleBreakpointChange = (event: MediaQueryListEvent): void => {
   isMobile = event.matches;
@@ -67,6 +80,19 @@ onMount(() => {
     mobileQuery.removeEventListener('change', handleBreakpointChange);
   };
 });
+
+$effect(() => {
+  const inert = navInert;
+  const wasInert = previousNavInert;
+
+  previousNavInert = inert;
+
+  // Focus must not stay on (or inside) a node that just became inert. The toggle is the
+  // natural place for it: it is the control that brings the sidebar back.
+  if (!wasInert && inert && sidebarElement?.contains(document.activeElement)) {
+    document.getElementById(SIDEBAR_TOGGLE_ID)?.focus();
+  }
+});
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -81,11 +107,13 @@ onMount(() => {
 {/if}
 
 <nav
+  id={SIDEBAR_ID}
+  bind:this={sidebarElement}
   class="mndw-sidebar"
   data-locale={appState.locale}
   class:collapsed={!isMobile && appState.desktopSidebarCollapsed}
   class:mobile-collapsed={isMobile && !appState.mobileSidebarOpen}
-  inert={isMobile && !appState.mobileSidebarOpen}
+  inert={navInert}
   use:focusTrap={{enabled: isMobile && appState.mobileSidebarOpen}}
 >
   <a

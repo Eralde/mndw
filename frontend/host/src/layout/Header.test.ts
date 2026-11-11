@@ -20,6 +20,7 @@ vi.mock('../services/rci.service.js', () => ({
 }));
 
 import Header from './Header.svelte';
+import {SIDEBAR_ID, SIDEBAR_TOGGLE_ID} from './ids.js';
 import * as localeService from '../services/locale.service.js';
 import {appState} from '../state/app.svelte.js';
 import {createHostServices} from '../host-services.js';
@@ -212,8 +213,23 @@ describe('Header logout', () => {
 });
 
 describe('Header menu toggle', () => {
-  it('toggles breakpoint-specific sidebar intent from the menu control', async () => {
-    const matchMedia = vi.fn(() => ({matches: true}));
+  it('exposes breakpoint-specific expansion state on the inner button and controls the sidebar', async () => {
+    const mobileQuery: {
+      matches: boolean;
+      listener: ((event: MediaQueryListEvent) => void) | undefined;
+      addEventListener: (type: string, listener: (event: MediaQueryListEvent) => void) => void;
+      removeEventListener: (type: string, listener: (event: MediaQueryListEvent) => void) => void;
+    } = {
+      matches: true,
+      listener: undefined,
+      addEventListener(_type, listener) {
+        mobileQuery.listener = listener;
+      },
+      removeEventListener() {
+        mobileQuery.listener = undefined;
+      },
+    };
+    const matchMedia = vi.fn(() => mobileQuery);
 
     vi.stubGlobal('matchMedia', matchMedia);
     Object.defineProperty(window, 'matchMedia', {configurable: true, value: matchMedia});
@@ -223,17 +239,57 @@ describe('Header menu toggle', () => {
     document.body.appendChild(target);
 
     const component = mount(Header, {target, context: createHostServicesContext(createHostServices())});
-    const menu = target.querySelector<HTMLElement>('.mndw-header__menu-toggle');
+    const menu = target.querySelector<HTMLElement & {updateComplete: Promise<unknown>}>(
+      '.mndw-header__menu-toggle',
+    );
+    // `mndw-button` forwards aria state to the native button inside its shadow root, so the
+    // expanded state must be asserted there: the host element has no role for assistive tech.
+    const innerButton = (): HTMLButtonElement | null | undefined =>
+      menu?.shadowRoot?.querySelector('button');
+
+    const expectExpanded = async (value: string): Promise<void> => {
+      await vi.waitFor(() => {
+        expect(innerButton()?.getAttribute('aria-expanded')).toBe(value);
+      });
+    };
+
+    await menu?.updateComplete;
+    await expectExpanded('false');
+    expect(menu?.getAttribute('aria-controls')).toBe(SIDEBAR_ID);
+    expect(menu?.getAttribute('id')).toBe(SIDEBAR_TOGGLE_ID);
 
     menu?.click();
     expect(appState.mobileSidebarOpen).toBe(true);
     expect(appState.desktopSidebarCollapsed).toBe(false);
+    flushSync();
+    await expectExpanded('true');
 
-    matchMedia.mockReturnValue({matches: false});
+    mobileQuery.matches = false;
+    mobileQuery.listener?.({matches: false} as MediaQueryListEvent);
+    flushSync();
+    await expectExpanded('true');
+
     menu?.click();
-
+    flushSync();
     expect(appState.mobileSidebarOpen).toBe(true);
     expect(appState.desktopSidebarCollapsed).toBe(true);
+    await expectExpanded('false');
+
+    menu?.click();
+    flushSync();
+    expect(appState.desktopSidebarCollapsed).toBe(false);
+    await expectExpanded('true');
+
+    mobileQuery.matches = true;
+    mobileQuery.listener?.({matches: true} as MediaQueryListEvent);
+    flushSync();
+    await expectExpanded('true');
+
+    menu?.click();
+    flushSync();
+    expect(appState.mobileSidebarOpen).toBe(false);
+    await expectExpanded('false');
+
     await unmount(component);
   });
 });

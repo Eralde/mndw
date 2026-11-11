@@ -1,11 +1,28 @@
 <script lang="ts">
 import type {MndwSelectChangeDetail} from '@mndw/ui';
+import {onMount} from 'svelte';
 import {toggleTheme} from '../services/theme.service.js';
 import {appState, resetToLogin, toggleSidebar} from '../state/app.svelte.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 import {getHostServices} from '../host-services-context.js';
+import {mobileMediaQuery} from './breakpoint.js';
+import {SIDEBAR_ID, SIDEBAR_TOGGLE_ID} from './ids.js';
 
 const services = getHostServices();
+const mobileQuery = mobileMediaQuery();
+let isMobile = $state(mobileQuery.matches);
+
+onMount(() => {
+  const handleBreakpointChange = (event: MediaQueryListEvent): void => {
+    isMobile = event.matches;
+  };
+
+  mobileQuery.addEventListener('change', handleBreakpointChange);
+
+  return () => {
+    mobileQuery.removeEventListener('change', handleBreakpointChange);
+  };
+});
 
 function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
   if (appState.localeSwitchPending) {
@@ -36,9 +53,12 @@ async function handleLogout(): Promise<void> {
 >
   <div class="mndw-header__left">
     <mndw-button
+      id={SIDEBAR_TOGGLE_ID}
       variant="ghost"
       class="mndw-header__menu-toggle"
       aria-label={hostT('nav.toggle-menu')}
+      aria-expanded={isMobile ? appState.mobileSidebarOpen : !appState.desktopSidebarCollapsed}
+      aria-controls={SIDEBAR_ID}
       onclick={toggleSidebar}
     >
       <mndw-icon name="menu"></mndw-icon>

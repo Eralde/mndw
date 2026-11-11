@@ -88,6 +88,39 @@ describe('PluginUpload', () => {
     void unmount(component);
   });
 
+  it('uploads the same ZIP again after the prior upload fails', async () => {
+    const file = new File(['plugin'], 'plugin.zip', {type: 'application/zip'});
+    const uploadFile = vi.fn().mockRejectedValue(new Error('offline'));
+    const {component, target} = mountUpload({uploadFile});
+    const input = target.querySelector<HTMLInputElement>('input[type="file"]');
+
+    if (!input) {
+      throw new Error('Plugin ZIP input was not rendered.');
+    }
+
+    Object.defineProperty(input, 'files', {configurable: true, value: [file]});
+    Object.defineProperty(input, 'value', {
+      configurable: true,
+      writable: true,
+      value: 'C:\\fakepath\\plugin.zip',
+    });
+    input.dispatchEvent(new Event('change', {bubbles: true}));
+
+    await vi.waitFor(() => {
+      expect(uploadFile).toHaveBeenCalledTimes(1);
+      expect(target.querySelector('[role="alert"]')).not.toBeNull();
+    });
+    expect(input.value).toBe('');
+
+    input.value = 'C:\\fakepath\\plugin.zip';
+    input.dispatchEvent(new Event('change', {bubbles: true}));
+
+    await vi.waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(2));
+    expect(uploadFile).toHaveBeenNthCalledWith(2, file);
+
+    void unmount(component);
+  });
+
   it('rejects a non-ZIP drop without uploading', async () => {
     const uploadFile = vi.fn();
     const {component, target} = mountUpload({uploadFile});

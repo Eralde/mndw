@@ -12,7 +12,7 @@ import {
 } from '@angular/core';
 import {takeUntilDestroyed} from '@angular/core/rxjs-interop';
 import {CommonModule} from '@angular/common';
-import {Subscription, switchMap, timer} from 'rxjs';
+import {type Observable, Subscription, catchError, map, of, switchMap, timer} from 'rxjs';
 import {formatSpeed, getSpeedUpperLimit} from '@mndw/ui';
 import type {RrdTick} from '@mndw/sdk/rrd';
 import type {ClockDate, NetworkInterface} from '../types/rci.types';
@@ -25,6 +25,8 @@ import {DEFAULT_REFRESH_MS, normalizeRefreshMs} from '../utils/refresh.utils';
 const STORAGE_KEY = 'tx-rx-rrd-chart-interface';
 const STORAGE_REFRESH = 'tx-rx-rrd-chart-refresh';
 const DEVICE_TIME_INTERVAL = 30000;
+
+type PollResult<T> = {ok: true; data: T} | {ok: false; error: unknown};
 
 @Component({
   selector: 'tx-rx-app',
@@ -49,7 +51,13 @@ export class AppComponent implements OnInit, OnDestroy {
   protected readonly rxData = signal<RrdTick[]>([]);
   protected readonly clockTime = signal<Date | null>(null);
   protected readonly deviceTimeRrdTimestamp = signal<number | null>(null);
-  protected readonly error = signal<string>('');
+  private readonly interfaceError = signal('');
+  private readonly trafficError = signal('');
+  private readonly deviceTimeError = signal('');
+  protected readonly storageWarning = signal('');
+  protected readonly error = computed(
+    () => this.interfaceError() || this.trafficError() || this.deviceTimeError(),
+  );
   protected readonly loadingInterfaces = signal(true);
   protected readonly refresh = signal(DEFAULT_REFRESH_MS);
   protected readonly awaitingFirstTick = signal(false);
@@ -72,6 +80,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private pollingSub: Subscription | null = null;
   private deviceTimeSub: Subscription | null = null;
+  private pollingGeneration = 0;
 
   protected readonly activeInterfaceName = computed(() => {
     const found = this.interfaceList().find((i) => i.id === this.selectedInterface());
@@ -103,7 +112,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected retryLoad(): void {
-    this.error.set('');
+    this.interfaceError.set('');
+    this.trafficError.set('');
+    this.deviceTimeError.set('');
     void this.loadInterfaces();
   }
 
@@ -119,24 +130,27 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   protected onInterfaceChange(interfaceId: string): void {
+    const interfaceChanged = interfaceId !== this.selectedInterface();
+
     this.selectedInterface.set(interfaceId);
 
+    if (interfaceChanged) {
+      this.resetChartData();
+    }
+
     if (interfaceId) {
-      this.storage.set(STORAGE_KEY, interfaceId);
+      void this.saveSetting(STORAGE_KEY, interfaceId);
       this.startPolling();
     } else {
-      this.storage.delete(STORAGE_KEY);
+      void this.saveSetting(STORAGE_KEY, null);
       this.stopPolling();
-      this.txData.set([]);
-      this.rxData.set([]);
-      this.deviceTimeRrdTimestamp.set(null);
       this.awaitingFirstTick.set(false);
     }
   }
 
   protected onRefreshChange(newRefresh: number): void {
     this.refresh.set(newRefresh);
-    this.storage.set(STORAGE_REFRESH, String(newRefresh));
+    void this.saveSetting(STORAGE_REFRESH, String(newRefresh));
 
     if (this.selectedInterface()) {
       this.startPolling();
@@ -158,7 +172,17 @@ export class AppComponent implements OnInit, OnDestroy {
       }));
   }
 
+  private resetChartData(): void {
+    this.txData.set([]);
+    this.rxData.set([]);
+    this.deviceTimeRrdTimestamp.set(null);
+    this.trafficError.set('');
+    this.awaitingFirstTick.set(this.selectedInterface() !== '');
+  }
+
   private stopPolling(): void {
+    this.pollingGeneration += 1;
+
     if (this.pollingSub) {
       this.pollingSub.unsubscribe();
       this.pollingSub = null;
@@ -170,66 +194,88 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  private isCurrentPoll(interfaceId: string, generation: number): boolean {
+    return this.pollingGeneration === generation && this.selectedInterface() === interfaceId;
+  }
+
+  private pollRequest<T>(request: Observable<T>): Observable<PollResult<T>> {
+    return request.pipe(
+      map((data) => ({ok: true as const, data})),
+      catchError((error: unknown) => of({ok: false as const, error})),
+    );
+  }
+
   private startPolling(): void {
     this.stopPolling();
 
-    if (!this.selectedInterface()) { return; }
-
     const interfaceId = this.selectedInterface();
+
+    if (!interfaceId) { return; }
+
+    const generation = this.pollingGeneration;
 
     if (this.txData().length === 0 && this.rxData().length === 0) {
       this.awaitingFirstTick.set(true);
     }
 
     this.pollingSub = timer(0, this.refresh()).pipe(
-      switchMap(() => this.rciService.getInterfaceRrd(interfaceId, 0)),
+      switchMap(() => this.pollRequest(this.rciService.getInterfaceRrd(interfaceId, 0))),
       takeUntilDestroyed(this.destroyRef),
     )
-      .subscribe({
-        next: ({tx, rx}) => {
-          const mostRecentTimestamp = getMostRecentRrdTimestamp(tx, rx);
+      .subscribe((result) => {
+        if (!this.isCurrentPoll(interfaceId, generation)) { return; }
 
-          if (this.deviceTimeRrdTimestamp() === null && this.clockTime() !== null && mostRecentTimestamp !== null) {
-            this.deviceTimeRrdTimestamp.set(mostRecentTimestamp);
-          }
+        this.awaitingFirstTick.set(false);
 
-          this.txData.set(tx);
-          this.rxData.set(rx);
-          this.awaitingFirstTick.set(false);
-          this.error.set('');
-        },
-        error: (ex) => {
-          this.awaitingFirstTick.set(false);
-          this.error.set(this.t('error.load-traffic'));
-          console.error('[tx-rx-rrd-chart] Failed to load RRD data', ex);
-        },
+        if (!result.ok) {
+          this.trafficError.set(this.t('error.load-traffic'));
+          console.error('[tx-rx-rrd-chart] Failed to load RRD data', result.error);
+
+          return;
+        }
+
+        const {tx, rx} = result.data;
+        const mostRecentTimestamp = getMostRecentRrdTimestamp(tx, rx);
+
+        if (this.deviceTimeRrdTimestamp() === null && this.clockTime() !== null && mostRecentTimestamp !== null) {
+          this.deviceTimeRrdTimestamp.set(mostRecentTimestamp);
+        }
+
+        this.txData.set(tx);
+        this.rxData.set(rx);
+        this.trafficError.set('');
       });
 
     this.deviceTimeSub = timer(0, DEVICE_TIME_INTERVAL).pipe(
-      switchMap(() => this.rciService.getDeviceTime()),
+      switchMap(() => this.pollRequest(this.rciService.getDeviceTime())),
       takeUntilDestroyed(this.destroyRef),
     )
-      .subscribe({
-        next: (d) => {
-          this.setDeviceTime(d);
-        },
-        error: (ex) => {
-          console.error('[tx-rx-rrd-chart]', ex);
-        },
+      .subscribe((result) => {
+        if (!this.isCurrentPoll(interfaceId, generation)) { return; }
+
+        if (!result.ok) {
+          this.deviceTimeError.set(this.t('error.load-device-time'));
+          console.error('[tx-rx-rrd-chart] Failed to load device time', result.error);
+
+          return;
+        }
+
+        this.deviceTimeError.set('');
+        this.setDeviceTime(result.data);
       });
   }
 
   private async loadInterfaces(): Promise<void> {
-    let savedInterface: string | null;
-    let savedRefresh: string | null;
+    let savedInterface: string | null = null;
+    let savedRefresh: string | null = null;
 
     try {
       savedInterface = await this.storage.get(STORAGE_KEY);
       savedRefresh = await this.storage.get(STORAGE_REFRESH);
-    } catch {
-      this.loadingInterfaces.set(false);
-
-      return;
+      this.storageWarning.set('');
+    } catch (ex) {
+      this.storageWarning.set(this.t('warning.storage-unavailable'));
+      console.error('[tx-rx-rrd-chart] Failed to read settings', ex);
     }
 
     if (savedRefresh) {
@@ -250,17 +296,30 @@ export class AppComponent implements OnInit, OnDestroy {
             this.selectedInterface.set(savedInterface);
             this.startPolling();
           } else if (savedInterface) {
-            void this.storage.delete(STORAGE_KEY);
+            void this.saveSetting(STORAGE_KEY, null);
           }
         },
         error: (ex) => {
           this.loadingInterfaces.set(false);
-          this.error.set(this.t('error.load-interfaces'));
+          this.interfaceError.set(this.t('error.load-interfaces'));
           console.error('[tx-rx-rrd-chart]', ex);
         },
       });
 
     this.loadDeviceTime();
+  }
+
+  private async saveSetting(key: string, value: string | null): Promise<void> {
+    try {
+      if (value === null) {
+        await this.storage.delete(key);
+      } else {
+        await this.storage.set(key, value);
+      }
+    } catch (ex) {
+      this.storageWarning.set(this.t('warning.storage-unavailable'));
+      console.error('[tx-rx-rrd-chart] Failed to save settings', ex);
+    }
   }
 
   private loadDeviceTime(): void {
@@ -269,10 +328,12 @@ export class AppComponent implements OnInit, OnDestroy {
     )
       .subscribe({
         next: (d) => {
+          this.deviceTimeError.set('');
           this.setDeviceTime(d);
         },
         error: (ex) => {
-          console.error('[tx-rx-rrd-chart]', ex);
+          this.deviceTimeError.set(this.t('error.load-device-time'));
+          console.error('[tx-rx-rrd-chart] Failed to load device time', ex);
         },
       });
   }

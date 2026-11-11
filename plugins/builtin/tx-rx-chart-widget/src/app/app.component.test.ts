@@ -6,10 +6,11 @@ import {type ComponentFixture, TestBed} from '@angular/core/testing';
 import type {PluginRciManager, PluginStorage} from '@mndw/sdk';
 import type {RrdResponse} from '@mndw/sdk/rrd';
 import type {RciQuery} from '@rci-tools/core';
-import {Subject, of} from 'rxjs';
+import {type Observable, Subject, type Subscription, of, throwError} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {OpenSettingsFn} from '../open-settings-dialog';
 import {PLUGIN_STORAGE, RCI_MANAGER, TRANSLATOR} from '../tokens';
+import type {ClockDate} from '../types/rci.types';
 import appStyles from './app.component.scss?raw';
 import appTemplate from './app.component.html?raw';
 import {AppComponent as AppComponentType} from './app.component';
@@ -20,6 +21,12 @@ const interfaces = {
   eth0: {id: 'eth0', description: 'LAN', traits: ['Ip']},
   eth1: {id: 'eth1', description: 'WAN', traits: ['Ip']},
 };
+
+const clockDate: ClockDate = {weekday: 1, day: 1, month: 1, year: 2026, hour: 12, min: 0, sec: 0, msec: 0};
+const rrdPair = (t: number, txValue: number, rxValue: number): [RrdResponse, RrdResponse] => [
+  {data: [{t, v: txValue}]},
+  {data: [{t, v: rxValue}]},
+];
 
 let fixtures: ComponentFixture<AppComponentType>[] = [];
 
@@ -57,6 +64,83 @@ function fakeStorage(savedInterface: string | null, savedRefresh: string | null)
   } as unknown as PluginStorage;
 }
 
+function sequencedManager(
+  rrd: (call: number) => Observable<[RrdResponse, RrdResponse]> = () => of([{data: []}, {data: []}]),
+  deviceTime: (call: number) => Observable<ClockDate> = () => of(clockDate),
+): {
+  manager: PluginRciManager;
+  paths: string[];
+  rrdCalls: () => number;
+  deviceTimeCalls: () => number;
+} {
+  const paths: string[] = [];
+  let rrdCount = 0;
+  let deviceTimeCount = 0;
+
+  const manager = {
+    queue: (query: RciQuery | RciQuery[]) => {
+      const first = Array.isArray(query) ? query[0] : query;
+      const path = first?.path ?? '';
+
+      paths.push(path);
+
+      if (path === 'show.interface') {
+        return of(interfaces);
+      }
+
+      if (path === 'show.clock.date') {
+        deviceTimeCount += 1;
+
+        return deviceTime(deviceTimeCount);
+      }
+
+      if (path === 'show.interface.rrd') {
+        rrdCount += 1;
+
+        return rrd(rrdCount);
+      }
+
+      return of([{data: []}, {data: []}]);
+    },
+  } as unknown as PluginRciManager;
+
+  return {manager, paths, rrdCalls: () => rrdCount, deviceTimeCalls: () => deviceTimeCount};
+}
+
+function manualRrdManager(): {
+  manager: PluginRciManager;
+  requests: Array<{interfaceId: string; response: Subject<[RrdResponse, RrdResponse]>}>;
+} {
+  const requests: Array<{interfaceId: string; response: Subject<[RrdResponse, RrdResponse]>}> = [];
+
+  const manager = {
+    queue: (query: RciQuery | RciQuery[]) => {
+      const first = Array.isArray(query) ? query[0] : query;
+
+      if (first?.path === 'show.interface') {
+        return of(interfaces);
+      }
+
+      if (first?.path === 'show.clock.date') {
+        return of(clockDate);
+      }
+
+      if (first?.path === 'show.interface.rrd') {
+        const interfaceId = String((first.data as {name?: string} | undefined)?.name ?? '');
+        const response = new Subject<[RrdResponse, RrdResponse]>();
+
+        requests.push({interfaceId, response});
+
+        return response.asObservable();
+      }
+
+      return of([{data: []}, {data: []}]);
+    },
+  } as unknown as PluginRciManager;
+
+  return {manager, requests};
+}
+
 function queryElement<T extends Element>(root: Element, selector: string): T {
   const element = root.querySelector<T>(selector);
 
@@ -81,6 +165,7 @@ async function createFixture(
   setTileTitle?: ((title: string) => void) | null,
   i18n = createTestI18n(enCatalog),
   manager = fakeManager(),
+  storage?: PluginStorage,
 ): Promise<
   {
     fixture: ComponentFixture<AppComponentType>;
@@ -107,7 +192,7 @@ async function createFixture(
     imports: [AppComponentType],
     providers: [
       {provide: RCI_MANAGER, useValue: manager},
-      {provide: PLUGIN_STORAGE, useValue: fakeStorage(savedInterface, savedRefresh)},
+      {provide: PLUGIN_STORAGE, useValue: storage ?? fakeStorage(savedInterface, savedRefresh)},
       {provide: TRANSLATOR, useFactory: () => createTranslatorSignals(i18n, inject(DestroyRef))},
     ],
   }).compileComponents();
@@ -318,5 +403,152 @@ describe('AppComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.chart-header__legend')).not.toBeNull();
+  });
+
+  it('keeps polling traffic after a transient request error and clears the error on success', async () => {
+    vi.useFakeTimers();
+
+    const {manager, rrdCalls} = sequencedManager(
+      (call) =>
+        call === 1
+          ? throwError(() => new Error('temporary'))
+          : of(rrdPair(100, 1000, 500)),
+    );
+    const {fixture} = await createFixture('eth1', '3000', undefined, createTestI18n(enCatalog), manager);
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(1);
+    fixture.detectChanges();
+
+    expect(rrdCalls()).toBe(1);
+    expect(queryElement<HTMLElement>(fixture.nativeElement, '.mndw-alert--danger').textContent)
+      .toContain('Failed to load traffic data');
+
+    await vi.advanceTimersByTimeAsync(3000);
+    fixture.detectChanges();
+
+    expect(rrdCalls()).toBe(2);
+    expect(fixture.nativeElement.querySelector('.mndw-alert--danger')).toBeNull();
+    expect(queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart')).not.toBeNull();
+
+    const pollingSub = (fixture.componentInstance as unknown as {pollingSub: Subscription | null}).pollingSub;
+
+    expect(pollingSub?.closed).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(rrdCalls()).toBe(3);
+  });
+
+  it('keeps polling device time after a transient request error and clears the error on success', async () => {
+    vi.useFakeTimers();
+
+    const {manager, deviceTimeCalls} = sequencedManager(
+      undefined,
+      (call) =>
+        call === 3
+          ? throwError(() => new Error('temporary'))
+          : of(clockDate),
+    );
+    const {fixture} = await createFixture('eth1', '3000', undefined, createTestI18n(enCatalog), manager);
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(1);
+    fixture.detectChanges();
+
+    expect(deviceTimeCalls()).toBe(3);
+    expect(queryElement<HTMLElement>(fixture.nativeElement, '.mndw-alert--danger').textContent)
+      .toContain('Failed to load device time');
+
+    await vi.advanceTimersByTimeAsync(30000);
+    fixture.detectChanges();
+
+    expect(deviceTimeCalls()).toBe(4);
+    expect(fixture.nativeElement.querySelector('.mndw-alert--danger')).toBeNull();
+
+    const deviceTimeSub = (fixture.componentInstance as unknown as {deviceTimeSub: Subscription | null}).deviceTimeSub;
+
+    expect(deviceTimeSub?.closed).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(30000);
+
+    expect(deviceTimeCalls()).toBe(5);
+  });
+
+  it('loads interfaces when settings storage fails and shows a non-blocking warning', async () => {
+    const storage = {
+      get: vi.fn(() => Promise.reject(new Error('read failed'))),
+      set: vi.fn(() => Promise.resolve()),
+      delete: vi.fn(() => Promise.resolve()),
+    } as unknown as PluginStorage;
+
+    const {manager, paths} = sequencedManager(() => of(rrdPair(100, 1000, 500)));
+    const {fixture} = await createFixture(null, null, undefined, createTestI18n(enCatalog), manager, storage);
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+
+    expect(paths).toContain('show.interface');
+    expect(fixture.nativeElement.querySelectorAll('mndw-option')).toHaveLength(2);
+    expect(queryElement<HTMLElement>(fixture.nativeElement, '[data-testid="storage-warning"]').textContent)
+      .toContain('Settings could not be loaded or saved');
+    expect(fixture.nativeElement.querySelector('.mndw-alert--danger')).toBeNull();
+
+    (fixture.componentInstance as unknown as {onInterfaceChange: (id: string) => void}).onInterfaceChange('eth1');
+    await flushFirstPoll(fixture);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.mndw-alert--danger')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="storage-warning"]')).not.toBeNull();
+    expect(queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart')).not.toBeNull();
+  });
+
+  it('resets chart data when switching interfaces and ignores the previous interface response', async () => {
+    vi.useFakeTimers();
+
+    const {manager, requests} = manualRrdManager();
+    const {fixture} = await createFixture('eth1', '3000', undefined, createTestI18n(enCatalog), manager);
+
+    await fixture.componentInstance.ngOnInit();
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.interfaceId).toBe('eth1');
+
+    requests[0]?.response.next(rrdPair(100, 1000, 500));
+    fixture.detectChanges();
+
+    expect(queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart')).not.toBeNull();
+
+    (fixture.componentInstance as unknown as {onInterfaceChange: (id: string) => void}).onInterfaceChange('eth0');
+    fixture.detectChanges();
+
+    expect(queryElement<HTMLElement>(fixture.nativeElement, '.loading').textContent).toBe('Loading traffic data…');
+    expect(fixture.nativeElement.querySelector('mndw-line-chart')).toBeNull();
+
+    requests[0]?.response.next(rrdPair(200, 9000, 8000));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('mndw-line-chart')).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.interfaceId).toBe('eth0');
+
+    requests[1]?.response.error(new Error('temporary'));
+    fixture.detectChanges();
+
+    expect(queryElement<HTMLElement>(fixture.nativeElement, '.mndw-alert--danger').textContent)
+      .toContain('Failed to load traffic data');
+
+    const chart = queryElement<HTMLElement>(fixture.nativeElement, 'mndw-line-chart') as HTMLElement & {
+      series?: Array<{data?: unknown[]}>;
+    };
+
+    expect(chart.series?.every((series) => (series.data?.length ?? 0) === 0)).toBe(true);
   });
 });

@@ -26,6 +26,10 @@
   },
   "error": {
     "load-traffic": "Failed to load traffic data",
-    "load-interfaces": "Failed to load interfaces"
+    "load-interfaces": "Failed to load interfaces",
+    "load-device-time": "Failed to load device time"
+  },
+  "warning": {
+    "storage-unavailable": "Settings could not be loaded or saved"
   }
 }

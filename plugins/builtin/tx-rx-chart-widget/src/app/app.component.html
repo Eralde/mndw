@@ -15,6 +15,15 @@
             </mndw-button>
         </div>
     }
+    @if (storageWarning()) {
+        <div
+            class="mndw-alert mndw-alert--warning notice"
+            role="status"
+            data-testid="storage-warning"
+        >
+            <span>{{ storageWarning() }}</span>
+        </div>
+    }
     @if (loadingInterfaces()) {
         <div class="loading">{{ t('status.loading-interfaces') }}</div>
     } @else if (!selectedInterface()) {

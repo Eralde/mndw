@@ -153,6 +153,17 @@ describe('loadSandboxPlugin', () => {
     expect(registry.get('sandbox-widget')?.module).toBe(sandboxModule);
   });
 
+  it('drops a sandbox result superseded while modules load', async () => {
+    const registry = new PluginRegistry();
+
+    await loadSandboxPlugin(deps({
+      registry: registry as never,
+      isCurrent: () => false,
+    }));
+
+    expect(registry.getAll()).toHaveLength(0);
+  });
+
   it('does not register when the manifest is invalid (fails visibly)', async () => {
     const registry = new PluginRegistry();
 

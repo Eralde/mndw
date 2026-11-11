@@ -21,7 +21,9 @@ setHostServices(services);
 {#if !appState.authenticated}
   <LoginPage />
 {:else if appState.ready}
-  <Router />
+  {#key appState.pluginLoadRevision}
+    <Router />
+  {/key}
 {:else}
   <div
     class="mndw-loading"

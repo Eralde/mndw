@@ -1,7 +1,8 @@
 {
   "app": {
     "loading": "Loading…",
-    "error": "Something went wrong."
+    "error": "Something went wrong.",
+    "plugin-load-error": "Couldn't load plugins."
   },
   "nav": {
     "toggle-menu": "Toggle menu",

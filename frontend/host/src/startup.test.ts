@@ -36,7 +36,33 @@ function depsFor(events: string[], authenticated = false, triggerAuthError = fal
 }
 
 describe('initialize', () => {
-  it('orders theme, palette, auth check, authenticated initialization, subscription, and mount', async () => {
+  it('mounts an authenticated shell while authenticated initialization is still pending', async () => {
+    const events: string[] = [];
+    let finishInitialization: () => void = () => {};
+    const initialization = new Promise<void>((resolve) => {
+      finishInitialization = resolve;
+    });
+    const deps = depsFor(events, true);
+
+    deps.initAuthenticated = () => {
+      events.push('authenticated-init-start');
+
+      return initialization;
+    };
+
+    const pending = initialize(deps);
+
+    try {
+      await vi.waitFor(() => expect(events).toContain('authenticated-init-start'));
+      expect(events).toContain('mount');
+      expect(events.indexOf('mount')).toBeLessThan(events.indexOf('authenticated-init-start'));
+    } finally {
+      finishInitialization();
+      await pending;
+    }
+  });
+
+  it('sets up subscriptions and mounts before authenticated initialization', async () => {
     const events: string[] = [];
 
     await initialize(depsFor(events, true));
@@ -48,9 +74,9 @@ describe('initialize', () => {
       'palette',
       'auth-check',
       'set-auth:true',
-      'authenticated-init',
       'auth-subscribe',
       'mount',
+      'authenticated-init',
     ]);
   });
 
@@ -121,5 +147,15 @@ describe('initialize', () => {
     await initialize(depsFor(events, false, true));
 
     expect(events).toContain('reset-login');
+  });
+
+  it('skips authenticated initialization when auth error arrives before mount', async () => {
+    const events: string[] = [];
+
+    await initialize(depsFor(events, true, true));
+
+    expect(events).toContain('mount');
+    expect(events).toContain('reset-login');
+    expect(events).not.toContain('authenticated-init');
   });
 });

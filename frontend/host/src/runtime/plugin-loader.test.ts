@@ -1,5 +1,12 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
+
+const {pristineFetch} = vi.hoisted(() => ({
+  pristineFetch: vi.fn<typeof globalThis.fetch>(),
+}));
+
+vi.mock('../services/pristine-fetch.js', () => ({pristineFetch}));
+
 import {loadPlugins} from './plugin-loader.js';
 import {PluginRegistry, pluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
@@ -53,7 +60,7 @@ function harness(entries: PluginListEntry[], modules: Record<string, unknown> = 
   const loadStylesheet = vi.fn((): Promise<void> => Promise.resolve());
   const fetchList = vi.fn((): Promise<PluginListEntry[]> => Promise.resolve(entries));
   const checkVersions = vi.fn((): string[] => []);
-  const catalogService = createPluginCatalogService();
+  const catalogService = createPluginCatalogService({fetchCatalog: () => Promise.resolve({})});
 
   return {importModule, loadStylesheet, fetchList, checkVersions, catalogService};
 }
@@ -243,16 +250,68 @@ describe('loadPlugins', () => {
 
     await loadPlugins({fetchList, importModule: vi.fn(), loadStylesheet: vi.fn()});
 
-    expect(appState.pluginLoadError).toBe('Failed to load plugins. Check the console for details.');
+    expect(appState.pluginLoadError).toBe('list');
     expect(pluginRegistry.getAll()).toHaveLength(0);
   });
 
+  it('fails the list load after 15 seconds when fetchList never settles', async () => {
+    vi.useFakeTimers();
+    const fetchList = vi.fn((): Promise<PluginListEntry[]> => new Promise(() => {}));
+
+    try {
+      const pending = loadPlugins({fetchList, importModule: vi.fn(), loadStylesheet: vi.fn()});
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(appState.pluginLoadError).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(appState.pluginLoadError).toBe('list');
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ignores a late result from an older load run', async () => {
+    const registry = new PluginRegistry();
+    let finishFirst: (entries: PluginListEntry[]) => void = () => {};
+    const first = loadPlugins({
+      fetchList: () => new Promise((resolve) => {
+        finishFirst = resolve;
+      }),
+      registry,
+      importModule: vi.fn(() => Promise.resolve(goodModule)),
+      loadStylesheet: vi.fn(() => Promise.resolve()),
+      checkVersions: () => [],
+    });
+
+    await loadPlugins({
+      fetchList: () => Promise.resolve([widget('current')]),
+      registry,
+      importModule: vi.fn(() => Promise.resolve(goodModule)),
+      loadStylesheet: vi.fn(() => Promise.resolve()),
+      checkVersions: () => [],
+    });
+    finishFirst([widget('stale', {depsStatus: 'failed'})]);
+    await first;
+
+    expect(registry.get('current')).toBeDefined();
+    expect(registry.get('stale')).toBeUndefined();
+    expect(getDepsStatus('current')).toBe('ready');
+    expect(getDepsStatus('stale')).toBe('ready');
+    expect(appState.pluginLoadError).toBeNull();
+  });
+
   it('fails closed when the default list fetch receives a malformed payload', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({plugins: [{}]}), {status: 200}));
+    pristineFetch.mockResolvedValue(new Response(JSON.stringify({plugins: [{}]}), {status: 200}));
 
     await loadPlugins({importModule: vi.fn(), loadStylesheet: vi.fn()});
 
-    expect(appState.pluginLoadError).toContain('Failed to load plugins');
+    expect(pristineFetch).toHaveBeenCalledWith(
+      '/api/mgmt/list',
+      {signal: expect.any(AbortSignal)},
+    );
+    expect(appState.pluginLoadError).toBe('list');
     expect(pluginRegistry.getAll()).toHaveLength(0);
   });
 });

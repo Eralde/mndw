@@ -60,8 +60,14 @@ mndw-tab-panel {
 }
 
 html,
-body,
+body {
+  height: 100%;
+}
+
+/* Column flex so the shell or the loading screen (both `flex: 1`) fills the viewport. */
 #app {
+  display: flex;
+  flex-direction: column;
   height: 100%;
 }
 
@@ -76,7 +82,8 @@ body {
 .mndw-app-shell {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .mndw-app-shell__body {
@@ -322,9 +329,10 @@ body {
 
 .mndw-loading {
   display: flex;
+  flex: 1;
+  min-height: 0;
   justify-content: center;
   align-items: center;
-  height: 100%;
   color: var(--mndw-text-subtle);
 }
 

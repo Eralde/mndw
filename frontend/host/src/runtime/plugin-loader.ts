@@ -1,8 +1,9 @@
 import type {MndwPlugin} from '@mndw/sdk';
-import {MGMT_LIST_URL, PLUGIN_SOURCE_PATHS} from '../constants.js';
-import {appState} from '../state/app.svelte.js';
+import {MGMT_LIST_TIMEOUT_MS, MGMT_LIST_URL, PLUGIN_SOURCE_PATHS} from '../constants.js';
+import {appState, getAuthRunGeneration, getAuthRunSignal} from '../state/app.svelte.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {getLocale} from '../services/locale.service.js';
+import {pristineFetch} from '../services/pristine-fetch.js';
 import {
   type PluginCatalogService,
   createPluginCatalogSource,
@@ -20,7 +21,7 @@ import {clearPluginVersionWarnings, setPluginVersionWarnings} from './plugin-ver
  * inject the per-plugin stylesheet.
  */
 export interface LoaderDeps {
-  fetchList?: () => Promise<PluginListEntry[]>;
+  fetchList?: (signal: AbortSignal) => Promise<PluginListEntry[]>;
   importModule?: (url: string) => Promise<unknown>;
   loadStylesheet?: (href: string, pluginName: string) => Promise<void>;
   checkVersions?: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
@@ -29,6 +30,9 @@ export interface LoaderDeps {
   getLocale?: () => string;
   loadTimeoutMs?: number;
 }
+
+let loadGeneration = 0;
+let activeListController: AbortController | undefined;
 
 /**
  * Upper bound for one plugin's stylesheet, module import and initial catalog. A plugin that
@@ -91,8 +95,10 @@ function validateModule(module: unknown, name: string): MndwPlugin {
   return m as unknown as MndwPlugin;
 }
 
-async function defaultFetchList(): Promise<PluginListEntry[]> {
-  const response = await fetch(MGMT_LIST_URL);
+async function defaultFetchList(signal: AbortSignal): Promise<PluginListEntry[]> {
+  // No deadline here: the loader's own `Promise.race` below covers the fetch AND the body
+  // read (this promise resolves only after `response.json()` settles), so one timer rules.
+  const response = await pristineFetch(MGMT_LIST_URL, {signal});
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -153,12 +159,17 @@ async function loadOne(
   entry: PluginListEntry,
   deps: ResolvedLoaderDeps,
   signal: AbortSignal,
+  isCurrent: () => boolean,
 ): Promise<void> {
   const base = entry.source === 'builtin' ? PLUGIN_SOURCE_PATHS.builtin : PLUGIN_SOURCE_PATHS.user;
   const dir = `${base}${entry.name}`;
   const assetUrl = (asset: string): string => versionedAssetUrl(dir, asset, entry.version);
 
   await deps.loadStylesheet(assetUrl('index.css'), entry.name);
+
+  if (!isCurrent() || signal.aborted) {
+    return;
+  }
 
   try {
     const module = await deps.importModule(assetUrl(entry.entry));
@@ -179,7 +190,7 @@ async function loadOne(
 
     // The load already timed out and was reported; registering now would surface a plugin the
     // rest of the startup has moved on without.
-    if (signal.aborted) {
+    if (signal.aborted || !isCurrent()) {
       return;
     }
 
@@ -189,7 +200,9 @@ async function loadOne(
     void Promise.resolve()
       .then(() => deps.checkVersions(entry, dir))
       .then((mismatches) => {
-        setPluginVersionWarnings(entry.name, mismatches);
+        if (isCurrent()) {
+          setPluginVersionWarnings(entry.name, mismatches);
+        }
       })
       .catch((err: unknown) => {
         console.error(`[mndw] Version check failed for "${entry.name}":`, err);
@@ -199,7 +212,11 @@ async function loadOne(
   }
 }
 
-async function loadOneWithTimeout(entry: PluginListEntry, deps: ResolvedLoaderDeps): Promise<void> {
+async function loadOneWithTimeout(
+  entry: PluginListEntry,
+  deps: ResolvedLoaderDeps,
+  isCurrent: () => boolean,
+): Promise<void> {
   const controller = new AbortController();
   const timedOut = new Promise<void>((resolve) => {
     controller.signal.addEventListener('abort', () => {
@@ -210,7 +227,7 @@ async function loadOneWithTimeout(entry: PluginListEntry, deps: ResolvedLoaderDe
   const timer = setTimeout(() => controller.abort(), deps.loadTimeoutMs);
 
   try {
-    await Promise.race([loadOne(entry, deps, controller.signal), timedOut]);
+    await Promise.race([loadOne(entry, deps, controller.signal, isCurrent), timedOut]);
   } finally {
     clearTimeout(timer);
   }
@@ -224,6 +241,22 @@ async function loadOneWithTimeout(entry: PluginListEntry, deps: ResolvedLoaderDe
  * never aborts or stalls the rest.
  */
 export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
+  activeListController?.abort();
+  const generation = ++loadGeneration;
+  const authGeneration = getAuthRunGeneration();
+  const authSignal = getAuthRunSignal();
+  const listController = new AbortController();
+  activeListController = listController;
+  const abortListForAuthRun = (): void => listController.abort(authSignal.reason);
+
+  if (authSignal.aborted) {
+    abortListForAuthRun();
+  } else {
+    authSignal.addEventListener('abort', abortListForAuthRun, {once: true});
+  }
+
+  const isCurrent = (): boolean =>
+    generation === loadGeneration && authGeneration === getAuthRunGeneration();
   const fetchList = deps.fetchList ?? defaultFetchList;
   const resolved: ResolvedLoaderDeps = {
     importModule: deps.importModule ?? ((url) => import(/* @vite-ignore */ url)),
@@ -237,17 +270,59 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
 
   resolved.registry.clear();
   replaceDepsStatuses([]);
-  appState.pluginLoadError = null;
   clearPluginVersionWarnings();
 
   let entries: PluginListEntry[];
 
   try {
-    entries = await fetchList();
-  } catch (err) {
-    console.error('[mndw] Failed to load plugin list:', err);
-    appState.pluginLoadError = 'Failed to load plugins. Check the console for details.';
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let rejectAborted: (reason: unknown) => void = () => {};
+    const aborted = new Promise<never>((_resolve, reject) => {
+      rejectAborted = reject;
+    });
+    const rejectForAbort = (): void => {
+      rejectAborted(
+        listController.signal.reason
+          ?? new DOMException('Plugin list request aborted', 'AbortError'),
+      );
+    };
+    listController.signal.addEventListener('abort', rejectForAbort, {once: true});
 
+    if (listController.signal.aborted) {
+      rejectForAbort();
+    }
+
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(
+        () => {
+          reject(new Error(`Plugin list fetch timed out after ${MGMT_LIST_TIMEOUT_MS} ms`));
+          listController.abort();
+        },
+        MGMT_LIST_TIMEOUT_MS,
+      );
+    });
+
+    try {
+      entries = await Promise.race([fetchList(listController.signal), deadline, aborted]);
+    } finally {
+      clearTimeout(timeout);
+      listController.signal.removeEventListener('abort', rejectForAbort);
+      authSignal.removeEventListener('abort', abortListForAuthRun);
+
+      if (activeListController === listController) {
+        activeListController = undefined;
+      }
+    }
+  } catch (err) {
+    if (isCurrent()) {
+      console.error('[mndw] Failed to load plugin list:', err);
+      appState.pluginLoadError = 'list';
+    }
+
+    return;
+  }
+
+  if (!isCurrent()) {
     return;
   }
 
@@ -258,6 +333,10 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   const runnable = dedupe(entries.filter((entry) => entry.enabled && entry.approval === 'approved'));
 
   await Promise.all(
-    runnable.map((entry) => loadOneWithTimeout(entry, resolved)),
+    runnable.map((entry) => loadOneWithTimeout(entry, resolved, isCurrent)),
   );
+
+  if (isCurrent()) {
+    appState.pluginLoadError = null;
+  }
 }

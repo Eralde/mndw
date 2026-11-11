@@ -41,6 +41,7 @@ export interface SandboxImports {
 
 /** Injected boundaries so the loader is unit-testable without Vite virtual modules or the DOM. */
 export interface SandboxLoaderDeps extends SandboxImports {
+  isCurrent?: () => boolean;
   catalogBaseUrl?: string;
   registry: SandboxRegistry;
   catalogService: PluginCatalogService;
@@ -159,6 +160,10 @@ export async function loadSandboxPlugin(deps: SandboxLoaderDeps): Promise<void> 
 
   try {
     const plugin = await buildLoadedPlugin(deps);
+
+    if (deps.isCurrent !== undefined && !deps.isCurrent()) {
+      return;
+    }
 
     registry.register(plugin);
     console.log(`[mndw] Sandbox plugin loaded: ${plugin.entry.name}`);

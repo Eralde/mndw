@@ -5,7 +5,8 @@ export interface StartupDeps {
   initPalette: () => Promise<void>;
   checkAuthenticated: () => Promise<boolean>;
   setAuthenticated: (authenticated: boolean) => void;
-  initAuthenticated: () => Promise<void>;
+  /** Init resolves with the generation of its auth run; startup ignores the value. */
+  initAuthenticated: () => Promise<unknown>;
   subscribeAuthErrors: (callback: () => void) => void;
   resetToLogin: () => void;
   mountApp: () => void;
@@ -33,17 +34,20 @@ export async function initialize(deps: StartupDeps): Promise<void> {
 
   deps.setAuthenticated(authenticated);
 
-  if (authenticated) {
+  let authErrorReceived = false;
+
+  deps.subscribeAuthErrors(() => {
+    authErrorReceived = true;
+    deps.resetToLogin();
+  });
+
+  deps.mountApp();
+
+  if (authenticated && !authErrorReceived) {
     try {
       await deps.initAuthenticated();
     } catch {
       deps.resetToLogin();
     }
   }
-
-  deps.subscribeAuthErrors(() => {
-    deps.resetToLogin();
-  });
-
-  deps.mountApp();
 }

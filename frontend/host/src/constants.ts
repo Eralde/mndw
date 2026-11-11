@@ -8,6 +8,7 @@ export const SUPPORTED_LOCALES = ['en', 'ru'] as const;
 export const API_TIMEOUT_MS = 5000;
 export const MGMT_MUTATION_TIMEOUT_MS = 60000;
 export const MGMT_INSTALL_TIMEOUT_MS = 240000;
+export const MGMT_LIST_TIMEOUT_MS = 15_000;
 
 /**
  * UI-session host info handed to a plugin context when neither an explicit

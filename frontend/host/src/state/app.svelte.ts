@@ -10,10 +10,16 @@ interface AppState {
   authenticated: boolean;
   /** True once the authenticated shell is built (host info fetched, router created). */
   ready: boolean;
+  /** True while the current authenticated initialization is still building the shell. */
+  authInitInFlight: boolean;
+  /** Remount key for authenticated content after the plugin registry is rebuilt. */
+  pluginLoadRevision: number;
+  /** Remount key for the alert banner; bumped when a retry fails again so the failure is re-announced. */
+  pluginLoadFailureSeq: number;
   hostInfo: HostInfo | null;
   deviceInfo: DeviceInfoData | null;
-  /** User-facing message set by the plugin loader when the plugin list can't be loaded. */
-  pluginLoadError: string | null;
+  /** Host-translated error kind set when the plugin list can't be loaded. */
+  pluginLoadError: 'list' | null;
   mobileSidebarOpen: boolean;
   desktopSidebarCollapsed: boolean;
   theme: MndwThemeName;
@@ -21,9 +27,44 @@ interface AppState {
   localeSwitchPending: boolean;
 }
 
+let authRunGeneration = 0;
+let authRunController = new AbortController();
+
+/** Starts current authenticated init run and invalidates results from older work. */
+export function beginAuthRun(preservePluginLoadError = false): number {
+  authRunController.abort();
+  authRunController = new AbortController();
+  authRunGeneration += 1;
+
+  if (!preservePluginLoadError) {
+    appState.pluginLoadError = null;
+  }
+
+  appState.authInitInFlight = true;
+
+  return authRunGeneration;
+}
+
+export function getAuthRunGeneration(): number {
+  return authRunGeneration;
+}
+
+export function getAuthRunSignal(): AbortSignal {
+  return authRunController.signal;
+}
+
+export function finishAuthRun(generation: number): void {
+  if (generation === authRunGeneration) {
+    appState.authInitInFlight = false;
+  }
+}
+
 export const appState: AppState = $state({
   authenticated: false,
   ready: false,
+  authInitInFlight: false,
+  pluginLoadRevision: 0,
+  pluginLoadFailureSeq: 0,
   hostInfo: null,
   deviceInfo: null,
   pluginLoadError: null,
@@ -44,9 +85,15 @@ export function toggleSidebar(): void {
 
 /** Resets app to login and stops dependency polling for prior session. */
 export function resetToLogin(): void {
+  authRunGeneration += 1;
+  authRunController.abort();
+  authRunController = new AbortController();
   stopDepsPolling();
   appState.authenticated = false;
   appState.ready = false;
+  appState.authInitInFlight = false;
+  appState.pluginLoadError = null;
+  appState.pluginLoadFailureSeq = 0;
   appState.hostInfo = null;
   appState.deviceInfo = null;
 }

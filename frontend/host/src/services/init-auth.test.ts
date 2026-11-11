@@ -55,6 +55,7 @@ describe('initAuthenticated', () => {
     appState.ready = false;
     appState.hostInfo = null;
     appState.deviceInfo = null;
+    appState.pluginLoadError = null;
     vi.mocked(fetchHostInfo).mockResolvedValue(hostInfo);
     vi.mocked(fetchDeviceInfo).mockResolvedValue(deviceInfo);
     vi.mocked(loadPlugins).mockResolvedValue(undefined);
@@ -64,6 +65,7 @@ describe('initAuthenticated', () => {
   afterEach(() => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
+    globalThis.history.replaceState({}, '', '/');
   });
 
   it('loads plugins from the daemon and never touches the sandbox loader in normal mode', async () => {
@@ -158,6 +160,45 @@ describe('initAuthenticated', () => {
     expect(appState.ready).toBe(true);
   });
 
+  it('does not re-match the current route when a retry rebuilds a ready router', async () => {
+    // The remount after a successful retry re-matches routes; re-navigating here would
+    // mount page plugins twice (see App.svelte retryPluginLoad / pluginLoadRevision).
+    const navigate = vi.fn();
+    const router = {navigate} as unknown as ReturnType<typeof createAppRouter>;
+
+    appState.ready = true;
+    vi.mocked(createAppRouter).mockReturnValue(router);
+
+    await initAuthenticated(testHostServices());
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(appState.ready).toBe(true);
+  });
+
+  it('drops host info and router work from an older init run', async () => {
+    let finishFirstHostInfo: (value: typeof hostInfo) => void = () => {};
+    const olderHostInfo = {locale: 'en', theme: 'dark' as const};
+    const newerHostInfo = {locale: 'ru', theme: 'light' as const};
+
+    vi.mocked(fetchHostInfo)
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        finishFirstHostInfo = resolve;
+      }))
+      .mockResolvedValueOnce(newerHostInfo);
+
+    const services = testHostServices();
+    const olderRun = initAuthenticated(services);
+    await initAuthenticated(services);
+    finishFirstHostInfo(olderHostInfo);
+    await olderRun;
+
+    expect(appState.hostInfo).toEqual(newerHostInfo);
+    expect(fetchDeviceInfo).toHaveBeenCalledTimes(1);
+    expect(loadPlugins).toHaveBeenCalledTimes(1);
+    expect(createAppRouter).toHaveBeenCalledTimes(1);
+    expect(appState.ready).toBe(true);
+  });
+
   it('continues startup when fetching host info fails', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -191,11 +232,14 @@ describe('initAuthenticated', () => {
 
   it('still creates the router when the loader records a list failure', async () => {
     // loadPlugins captures list failures internally and resolves; startup must proceed.
-    vi.mocked(loadPlugins).mockResolvedValue(undefined);
+    vi.mocked(loadPlugins).mockImplementation(async () => {
+      appState.pluginLoadError = 'list';
+    });
 
     await initAuthenticated(testHostServices());
 
     expect(createAppRouter).toHaveBeenCalledTimes(1);
     expect(appState.ready).toBe(true);
+    expect(appState.pluginLoadError).toBe('list');
   });
 });

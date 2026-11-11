@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tooltip hover fixture</title>
+    <style>
+      html,
+      body {
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: flex;
+        justify-content: center;
+        padding-top: 160px;
+      }
+
+      .fixture {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 160px;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="fixture">
+      <mndw-tooltip
+        id="hover-tip"
+        text="Network interface restarts immediately, dropping every active session and losing unsaved changes. Select this sentence to verify the tooltip text is copyable."
+        placement="bottom"
+        delay="0"
+        hide-delay="600"
+      >
+        <button id="hover-trigger">Restart interface</button>
+      </mndw-tooltip>
+      <mndw-tooltip
+        id="default-tip"
+        text="Default hide delay: cross the gap slowly and the tooltip stays open."
+        placement="bottom"
+        delay="0"
+      >
+        <button id="default-trigger">Default delay</button>
+      </mndw-tooltip>
+    </section>
+    <script type="module" src="./tooltip-hover.ts"></script>
+  </body>
+</html>

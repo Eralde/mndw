@@ -9,6 +9,9 @@ export type MndwTooltipPlacement = TooltipPlacement;
 const DESCRIBED_BY = 'aria-describedby';
 const TOKEN_SEPARATOR = /\s+/u;
 const DEFAULT_DELAY = 500;
+// Long enough for slow, deliberate pointer movement (2px per frame) to cross the 8px gap between
+// trigger and bubble, short enough not to leave the tooltip hanging after the pointer has left.
+const DEFAULT_HIDE_DELAY = 300;
 
 let nextTooltipId = 0;
 
@@ -21,12 +24,18 @@ function tokensOf(element: Element): string[] {
  * id, because an `aria-describedby` token cannot cross a shadow boundary to reach the bubble; the
  * trigger therefore sits inside the described subtree, which is why its own name is announced first
  * and this text second.
+ *
+ * The trigger and the bubble form one hover region: leaving the trigger toward the bubble does not
+ * close it, leaving both starts the `hideDelay` countdown, and re-entering either cancels it. The
+ * open bubble takes pointer events and its text is selectable, so long content can be read and
+ * copied with the mouse.
  */
 export class MndwTooltip extends LitElement {
   public static readonly properties: PropertyDeclarations = {
     text: {type: String},
     placement: {type: String, reflect: true},
     delay: {type: Number, reflect: true},
+    hideDelay: {type: Number, reflect: true, attribute: 'hide-delay'},
     // Internal, so Lit writes no attribute for it; `updated` writes `open` by hand as the styling
     // hook, the same way the semantic controls write their host state.
     visible: {type: Boolean, state: true},
@@ -41,7 +50,9 @@ export class MndwTooltip extends LitElement {
 
     /*
      * Closed means invisible, never removed: the description is resolved from this text, so
-     * \`display: none\` or \`hidden\` would leave the trigger describing nothing.
+     * \`display: none\` or \`hidden\` would leave the trigger describing nothing. The closed state
+     * also takes no pointer events, so it never blocks the page beneath it; only the open state
+     * below turns interactivity back on.
      */
     [part='tooltip'] {
       position: fixed;
@@ -57,23 +68,31 @@ export class MndwTooltip extends LitElement {
       line-height: var(--mndw-leading);
       opacity: 0;
       pointer-events: none;
+      user-select: text;
       transition: opacity var(--mndw-duration-fast) var(--mndw-easing);
     }
 
     :host([open]) [part='tooltip'] {
       opacity: 1;
+      pointer-events: auto;
     }
   `;
 
   declare public text: string;
   declare public placement: MndwTooltipPlacement;
   declare public delay: number;
+  declare public hideDelay: number;
   declare private visible: boolean;
 
   private readonly observer: MutationObserver;
   private trigger: Element | null = null;
+  private bubbleNode: HTMLElement | null = null;
   private ownedToken: string | null = null;
   private showTimer: ReturnType<typeof setTimeout> | null = null;
+  private hideTimer: ReturnType<typeof setTimeout> | null = null;
+  private selecting = false;
+  private pointerOverTrigger = false;
+  private pointerOverBubble = false;
   private warnedExtras = false;
 
   constructor() {
@@ -81,13 +100,9 @@ export class MndwTooltip extends LitElement {
     this.text = '';
     this.placement = 'top';
     this.delay = DEFAULT_DELAY;
+    this.hideDelay = DEFAULT_HIDE_DELAY;
     this.visible = false;
     this.observer = new MutationObserver(this.onMutations);
-    // Keydown bubbles, so the host sees it whenever focus is inside the trigger. Hover and focus
-    // are bound to the trigger itself in `wireTrigger`: `pointerenter` does not bubble, and this
-    // host is `display: contents`, so relying on it being in the entered ancestor chain would be
-    // relying on a subtlety.
-    this.addEventListener('keydown', this.onKeyDown);
   }
 
   public override connectedCallback(): void {
@@ -103,13 +118,30 @@ export class MndwTooltip extends LitElement {
     // trigger: a slot change also fires for the first render, where the trigger is already wired,
     // and answering that with an update would schedule one cycle per mount for nothing.
     this.observer.observe(this, {attributes: true, attributeFilter: ['id'], childList: true});
+
+    // Escape must dismiss from anywhere — with the pointer over the trigger or bubble, not only
+    // with focus inside the trigger (WCAG 1.4.13 "Dismissible") — and a selection drag can end
+    // anywhere, so both are watched at the document level. Capture phase, so an ancestor that
+    // stops propagation of Escape (the column menu does) cannot swallow the dismissal; the
+    // handler never consumes the key. `pointercancel` ends a drag exactly like `pointerup` (a
+    // pan or scroll from a touch or pen down otherwise leaves no up event).
+    document.addEventListener('keydown', this.onKeyDown, true);
+    document.addEventListener('pointerup', this.onPointerUp);
+    document.addEventListener('pointercancel', this.onPointerUp);
   }
 
   public override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.cancelShow();
+    this.cancelHide();
+    document.removeEventListener('keydown', this.onKeyDown, true);
+    document.removeEventListener('pointerup', this.onPointerUp);
+    document.removeEventListener('pointercancel', this.onPointerUp);
     this.observer.disconnect();
     this.releaseTrigger();
+    this.selecting = false;
+    this.pointerOverTrigger = false;
+    this.pointerOverBubble = false;
     this.visible = false;
   }
 
@@ -127,6 +159,7 @@ export class MndwTooltip extends LitElement {
   protected override willUpdate(): void {
     if (!this.text) {
       this.cancelShow();
+      this.cancelHide();
       this.visible = false;
     }
   }
@@ -144,6 +177,7 @@ export class MndwTooltip extends LitElement {
 
     this.toggleAttribute('open', this.visible);
     this.wireTrigger();
+    this.wireBubble();
   }
 
   private bubble(): HTMLElement | null {
@@ -171,10 +205,10 @@ export class MndwTooltip extends LitElement {
 
       if (trigger) {
         this.observer.observe(trigger, {attributes: true, attributeFilter: [DESCRIBED_BY]});
-        trigger.addEventListener('pointerenter', this.onShowIntent);
+        trigger.addEventListener('pointerenter', this.onTriggerEnter);
         trigger.addEventListener('focusin', this.onShowIntent);
-        trigger.addEventListener('pointerleave', this.onHideIntent);
-        trigger.addEventListener('focusout', this.onHideIntent);
+        trigger.addEventListener('pointerleave', this.onTriggerLeave);
+        trigger.addEventListener('focusout', this.onFocusOut);
       }
     }
 
@@ -198,6 +232,35 @@ export class MndwTooltip extends LitElement {
     this.ownedToken = wanted;
   }
 
+  /**
+   * The bubble only exists while `text` is non-empty and Lit recreates it when that flips, so its
+   * hover listeners follow the node instead of being bound once. Pointer enter/leave do not
+   * bubble, which is why they are bound to the bubble itself, like the trigger's.
+   */
+  private wireBubble(): void {
+    const bubble = this.bubble();
+
+    if (bubble === this.bubbleNode) {
+      return;
+    }
+
+    if (this.bubbleNode) {
+      this.bubbleNode.removeEventListener('pointerenter', this.onBubbleEnter);
+      this.bubbleNode.removeEventListener('pointerleave', this.onBubbleLeave);
+      this.bubbleNode.removeEventListener('pointerdown', this.onBubblePointerDown);
+    }
+
+    // The old node is gone, so the pointer cannot still be over it.
+    this.pointerOverBubble = false;
+    this.bubbleNode = bubble;
+
+    if (bubble) {
+      bubble.addEventListener('pointerenter', this.onBubbleEnter);
+      bubble.addEventListener('pointerleave', this.onBubbleLeave);
+      bubble.addEventListener('pointerdown', this.onBubblePointerDown);
+    }
+  }
+
   private writeTokens(trigger: Element, tokens: readonly string[]): void {
     if (tokens.length === 0) {
       trigger.removeAttribute(DESCRIBED_BY);
@@ -216,10 +279,10 @@ export class MndwTooltip extends LitElement {
     const trigger = this.trigger;
 
     if (trigger) {
-      trigger.removeEventListener('pointerenter', this.onShowIntent);
+      trigger.removeEventListener('pointerenter', this.onTriggerEnter);
       trigger.removeEventListener('focusin', this.onShowIntent);
-      trigger.removeEventListener('pointerleave', this.onHideIntent);
-      trigger.removeEventListener('focusout', this.onHideIntent);
+      trigger.removeEventListener('pointerleave', this.onTriggerLeave);
+      trigger.removeEventListener('focusout', this.onFocusOut);
     }
 
     if (trigger && this.ownedToken !== null) {
@@ -228,6 +291,8 @@ export class MndwTooltip extends LitElement {
 
     this.ownedToken = null;
     this.trigger = null;
+    // The trigger the pointer sat on is gone, so the pointer cannot still be over it.
+    this.pointerOverTrigger = false;
   }
 
   private readonly onMutations = (): void => {
@@ -235,6 +300,8 @@ export class MndwTooltip extends LitElement {
   };
 
   private readonly onShowIntent = (): void => {
+    this.cancelHide();
+
     if (!this.text || this.visible || this.showTimer !== null) {
       return;
     }
@@ -245,15 +312,69 @@ export class MndwTooltip extends LitElement {
     }, Math.max(this.delay, 0));
   };
 
-  private readonly onHideIntent = (): void => {
+  private readonly onTriggerEnter = (): void => {
+    this.pointerOverTrigger = true;
+    this.onShowIntent();
+  };
+
+  private readonly onTriggerLeave = (): void => {
+    this.pointerOverTrigger = false;
     this.cancelShow();
+    this.scheduleHide();
+  };
+
+  private readonly onBubbleEnter = (): void => {
+    this.pointerOverBubble = true;
+    this.cancelHide();
+  };
+
+  private readonly onBubbleLeave = (): void => {
+    this.pointerOverBubble = false;
+    this.scheduleHide();
+  };
+
+  private readonly onBubblePointerDown = (): void => {
+    this.selecting = true;
+    this.cancelHide();
+  };
+
+  /**
+   * A selection drag may end inside the bubble (stay open) or outside it (the pointer has left
+   * the hover region for good — close after the usual delay). While the drag is in progress the
+   * bubble's own leave events must not close it, hence the flag.
+   */
+  private readonly onPointerUp = (): void => {
+    if (!this.selecting) {
+      return;
+    }
+
+    this.selecting = false;
+
+    if (!this.pointerOverTrigger && !this.pointerOverBubble) {
+      this.scheduleHide();
+    }
+  };
+
+  private readonly onFocusOut = (): void => {
+    // Pressing inside the bubble blurs the trigger in Chromium — the bubble is not focusable, so
+    // focus falls back to <body>. With the pointer still in the hover region (or down inside the
+    // bubble), the region — not focus — must govern closing, otherwise the text cannot be
+    // selected. Keyboard-only blur still closes immediately.
+    if (this.selecting || this.pointerOverTrigger || this.pointerOverBubble) {
+      return;
+    }
+
+    this.cancelShow();
+    this.cancelHide();
     this.hide();
   };
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     // Dismissal only: the key belongs to whatever else is listening, such as a dialog.
     if (event.key === 'Escape') {
-      this.onHideIntent();
+      this.cancelShow();
+      this.cancelHide();
+      this.hide();
     }
   };
 
@@ -262,6 +383,32 @@ export class MndwTooltip extends LitElement {
       clearTimeout(this.showTimer);
       this.showTimer = null;
     }
+  }
+
+  private cancelHide(): void {
+    if (this.hideTimer !== null) {
+      clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
+  }
+
+  private scheduleHide(): void {
+    if (this.selecting || !this.visible || this.hideTimer !== null) {
+      return;
+    }
+
+    this.hideTimer = setTimeout(() => {
+      this.hideTimer = null;
+      this.hide();
+    }, this.hideDelayValue());
+  }
+
+  /**
+   * `hide-delay` may be removed (property becomes `null`) or unparseable (`NaN`); both mean
+   * "use the default". Negative values mean "close as soon as the pointer leaves".
+   */
+  private hideDelayValue(): number {
+    return Number.isFinite(this.hideDelay) ? Math.max(this.hideDelay, 0) : DEFAULT_HIDE_DELAY;
   }
 
   private show(): void {
@@ -274,6 +421,9 @@ export class MndwTooltip extends LitElement {
   }
 
   private hide(): void {
+    this.cancelShow();
+    this.cancelHide();
+    this.selecting = false;
     this.visible = false;
   }
 

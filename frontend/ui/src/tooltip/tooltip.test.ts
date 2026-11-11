@@ -60,6 +60,17 @@ async function dispatch(element: MndwTooltip, event: string): Promise<void> {
   await element.updateComplete;
 }
 
+async function dispatchBubble(element: MndwTooltip, event: string): Promise<void> {
+  const node = bubble(element);
+
+  if (!node) {
+    throw new Error('missing bubble');
+  }
+
+  node.dispatchEvent(new Event(event, {bubbles: true, composed: true}));
+  await element.updateComplete;
+}
+
 describe('<mndw-tooltip> semantics', () => {
   it('applies the documented defaults', async () => {
     const element = await mount('<mndw-tooltip><button>Restart</button></mndw-tooltip>');
@@ -67,6 +78,7 @@ describe('<mndw-tooltip> semantics', () => {
     expect(element.text).toBe('');
     expect(element.placement).toBe('top');
     expect(element.delay).toBe(500);
+    expect(element.hideDelay).toBe(300);
   });
 
   it('generates a stable host id and keeps a consumer one', async () => {
@@ -108,20 +120,23 @@ describe('<mndw-tooltip> semantics', () => {
     expect(bubble(element)?.textContent?.trim()).toBe('Restarts now');
   });
 
-  it('reflects placement and delay as configuration', async () => {
+  it('reflects placement, delay, and hide delay as configuration', async () => {
     const element = await mount(
-      '<mndw-tooltip text="Restarts now" placement="right" delay="0"><button>Restart</button></mndw-tooltip>',
+      '<mndw-tooltip text="Restarts now" placement="right" delay="0" hide-delay="0"><button>Restart</button></mndw-tooltip>',
     );
 
     expect(element.placement).toBe('right');
     expect(element.delay).toBe(0);
+    expect(element.hideDelay).toBe(0);
 
     element.placement = 'bottom';
     element.delay = 200;
+    element.hideDelay = 240;
     await settle(element, 2);
 
     expect(element.getAttribute('placement')).toBe('bottom');
     expect(element.getAttribute('delay')).toBe('200');
+    expect(element.getAttribute('hide-delay')).toBe('240');
   });
 
   it('is not form-associated', () => {
@@ -234,7 +249,7 @@ describe('<mndw-tooltip> trigger ownership', () => {
 });
 
 describe('<mndw-tooltip> visibility', () => {
-  it('shows on hover after the delay and hides on pointer leave', async () => {
+  it('shows on hover after the delay and closes after the hide delay on pointer leave', async () => {
     const element = await mountOpenable(
       '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
     );
@@ -252,6 +267,16 @@ describe('<mndw-tooltip> visibility', () => {
 
     await dispatch(element, 'pointerleave');
 
+    expect(element.hasAttribute('open')).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(element.hideDelay - 1);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await element.updateComplete;
+
     expect(element.hasAttribute('open')).toBe(false);
   });
 
@@ -263,6 +288,184 @@ describe('<mndw-tooltip> visibility', () => {
     trigger(element).dispatchEvent(new Event('pointerenter', {bubbles: true, composed: true}));
     trigger(element).dispatchEvent(new Event('pointerleave', {bubbles: true, composed: true}));
     await vi.advanceTimersByTimeAsync(element.delay * 2);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
+  });
+
+  it('keeps the tooltip open when the pointer moves from the trigger onto the bubble', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
+    );
+
+    await show(element);
+    await dispatch(element, 'pointerleave');
+    await dispatchBubble(element, 'pointerenter');
+    await vi.advanceTimersByTimeAsync(element.hideDelay * 2);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(true);
+
+    await dispatchBubble(element, 'pointerleave');
+    await vi.advanceTimersByTimeAsync(element.hideDelay);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
+  });
+
+  it('cancels the pending close when the pointer re-enters the trigger', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
+    );
+
+    await show(element);
+    await dispatch(element, 'pointerleave');
+    await vi.advanceTimersByTimeAsync(element.hideDelay - 1);
+    await dispatch(element, 'pointerenter');
+    await vi.advanceTimersByTimeAsync(element.hideDelay * 2);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(true);
+  });
+
+  it('treats a negative hide delay as zero', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now" hide-delay="-50"><button>Restart</button></mndw-tooltip>',
+    );
+
+    expect(element.hideDelay).toBe(-50);
+
+    await show(element);
+    await dispatch(element, 'pointerleave');
+    await vi.advanceTimersByTimeAsync(0);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
+  });
+
+  it('falls back to the default hide delay when hide-delay is unparseable or removed', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now" hide-delay="abc"><button>Restart</button></mndw-tooltip>',
+    );
+
+    await show(element);
+    await dispatch(element, 'pointerleave');
+    await vi.advanceTimersByTimeAsync(299);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
+
+    element.removeAttribute('hide-delay');
+    await element.updateComplete;
+
+    expect(element.hideDelay).toBeNull();
+
+    await show(element);
+    await dispatch(element, 'pointerleave');
+    await vi.advanceTimersByTimeAsync(300);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
+  });
+
+  it('does not close while a selection drag is in progress, even if the pointer leaves the bubble', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
+    );
+
+    await show(element);
+    await dispatch(element, 'pointerleave');
+    await dispatchBubble(element, 'pointerenter');
+    await dispatchBubble(element, 'pointerdown');
+    await dispatchBubble(element, 'pointerleave');
+    await vi.advanceTimersByTimeAsync(element.hideDelay * 2);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(true);
+
+    document.dispatchEvent(new Event('pointerup', {bubbles: true}));
+    await element.updateComplete;
+
+    await vi.advanceTimersByTimeAsync(element.hideDelay - 1);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
+  });
+
+  it('does not close on focusout while the pointer is down inside the bubble', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
+    );
+
+    await show(element, 'focusin');
+    await dispatchBubble(element, 'pointerenter');
+    await dispatchBubble(element, 'pointerdown');
+
+    // A mousedown in the bubble blurs the trigger; the region, not focus, must govern closing.
+    await dispatch(element, 'focusout');
+
+    expect(element.hasAttribute('open')).toBe(true);
+
+    document.dispatchEvent(new Event('pointerup', {bubbles: true}));
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(true);
+
+    await dispatchBubble(element, 'pointerleave');
+    await vi.advanceTimersByTimeAsync(element.hideDelay);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
+  });
+
+  it('does not close on focusout while the pointer is over the trigger', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
+    );
+
+    await show(element, 'focusin');
+    await dispatch(element, 'pointerenter');
+    await dispatch(element, 'focusout');
+
+    expect(element.hasAttribute('open')).toBe(true);
+
+    await dispatch(element, 'pointerleave');
+    await vi.advanceTimersByTimeAsync(element.hideDelay);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
+  });
+
+  it('treats pointercancel like pointerup and does not leave the tooltip stuck open', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
+    );
+
+    await show(element);
+    await dispatch(element, 'pointerleave');
+    await dispatchBubble(element, 'pointerenter');
+    await dispatchBubble(element, 'pointerdown');
+    await dispatchBubble(element, 'pointerleave');
+    await vi.advanceTimersByTimeAsync(element.hideDelay * 2);
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(true);
+
+    // A pan or scroll ends a touch/pen drag with pointercancel and no pointerup.
+    document.dispatchEvent(new Event('pointercancel', {bubbles: true}));
+    await element.updateComplete;
+
+    await vi.advanceTimersByTimeAsync(element.hideDelay);
     await element.updateComplete;
 
     expect(element.hasAttribute('open')).toBe(false);
@@ -298,6 +501,25 @@ describe('<mndw-tooltip> visibility', () => {
     expect(escape.defaultPrevented).toBe(false);
   });
 
+  it('dismisses on Escape even when the target stops propagation', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
+    );
+    const button = trigger(element);
+
+    await show(element);
+
+    // The column menu stops propagation of Escape; the document listener must run in capture
+    // phase so such a target cannot swallow the dismissal.
+    button.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+    });
+    button.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, composed: true}));
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
+  });
+
   it('keeps focus on the trigger when Escape hides it', async () => {
     const element = await mountOpenable(
       '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
@@ -311,6 +533,29 @@ describe('<mndw-tooltip> visibility', () => {
 
     expect(element.hasAttribute('open')).toBe(false);
     expect(deepActiveElement()).toBe(button);
+  });
+
+  it('hides immediately on Escape while the pointer is over the bubble', async () => {
+    const element = await mountOpenable(
+      '<mndw-tooltip text="Restarts now"><button>Restart</button></mndw-tooltip>',
+    );
+
+    await show(element);
+    await dispatch(element, 'pointerleave');
+    await dispatchBubble(element, 'pointerenter');
+
+    expect(element.hasAttribute('open')).toBe(true);
+
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    await element.updateComplete;
+
+    expect(element.hasAttribute('open')).toBe(false);
   });
 
   it('never opens while text is empty', async () => {
@@ -382,5 +627,13 @@ describe('<mndw-tooltip> visibility', () => {
     expect(bubble(element)?.hidden).toBe(false);
     expect(MndwTooltip.styles.cssText).toContain('opacity: 0;');
     expect(MndwTooltip.styles.cssText).toContain(':host([open]) [part=\'tooltip\']');
+  });
+
+  it('keeps the open bubble interactive and its text selectable, and the closed one inert', () => {
+    const cssText = MndwTooltip.styles.cssText;
+
+    expect(cssText).toContain('user-select: text;');
+    expect(cssText).toContain('pointer-events: none;');
+    expect(cssText).toContain('pointer-events: auto;');
   });
 });

@@ -214,6 +214,7 @@ daemon filters CORS, hop-by-hop, `Set-Cookie`, and
 `Content-Length` response headers and sets `Cache-Control: no-store`. See
 [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go) and
 [`proxy.go`](../daemon/mndwd/internal/backend/proxy.go) for the current limits and filters.
+Errors after a service response starts abort the downstream connection instead of returning a JSON error.
 
 ### WebSocket routes
 

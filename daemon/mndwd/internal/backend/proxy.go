@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -11,6 +12,14 @@ import (
 
 	"mndwd/internal/httpx"
 )
+
+type serviceProxyCommittedError struct {
+	err error
+}
+
+func (e *serviceProxyCommittedError) Error() string { return e.err.Error() }
+
+func (e *serviceProxyCommittedError) Unwrap() error { return e.err }
 
 func filteredServiceHeaders(source http.Header) http.Header {
 	filtered := make(http.Header)
@@ -66,5 +75,15 @@ func proxyServiceHTTP(ctx context.Context, writer http.ResponseWriter, request *
 
 	_, copyErr := io.Copy(writer, response.Body)
 
-	return copyErr
+	if copyErr != nil {
+		return &serviceProxyCommittedError{err: copyErr}
+	}
+
+	return nil
+}
+
+func serviceProxyResponseCommitted(err error) bool {
+	var committedErr *serviceProxyCommittedError
+
+	return errors.As(err, &committedErr)
 }

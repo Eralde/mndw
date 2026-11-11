@@ -338,6 +338,18 @@ func (g *Gateway) serveService(writer http.ResponseWriter, request *http.Request
 	request.Body = http.MaxBytesReader(writer, request.Body, g.cfg.MaxRequestBytes)
 
 	if err := proxyServiceHTTP(request.Context(), writer, request, socketPath, plugin.Name, route.ID, route.Path, g.cfg.ServiceHTTPTimeout); err != nil {
+		if serviceProxyResponseCommitted(err) {
+			if request.Context().Err() != nil {
+				return
+			}
+
+			if g.logger != nil {
+				g.logger.Error("service proxy response aborted", "plugin", plugin.Name, "route", route.ID)
+			}
+
+			panic(http.ErrAbortHandler)
+		}
+
 		g.writeError(writer, httpx.NewError(http.StatusBadGateway, httpx.CodeBadGateway, "service backend is unavailable"))
 	}
 }

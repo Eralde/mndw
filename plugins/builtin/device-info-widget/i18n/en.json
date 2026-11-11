@@ -18,6 +18,7 @@
   "ram": "RAM",
   "copy": "Copy",
   "copied": "Copied!",
+  "copy-failed": "Copy failed — the text is selected, press Ctrl+C / ⌘C.",
   "no-data": "No data",
   "settings": "Settings",
   "sections": "Sections",

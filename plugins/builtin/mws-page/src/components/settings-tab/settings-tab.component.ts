@@ -8,7 +8,7 @@ import {
   inject,
   input,
 } from '@angular/core';
-import type {MndwSelectChangeDetail, MndwSwitchChangeDetail} from '@mndw/ui';
+import type {MndwSelect, MndwSelectChangeDetail, MndwSwitch, MndwSwitchChangeDetail} from '@mndw/ui';
 import {firstValueFrom} from 'rxjs';
 import {MwsApiService, type ScheduleDefinition, type SystemSettings} from '../../api/mws-api.service';
 import {type MwsWriteResult, MwsWriteService} from '../../services/mws-write.service';
@@ -80,39 +80,55 @@ export class SettingsTabComponent implements OnChanges, OnInit {
 
   protected async onBackhaulChange(event: CustomEvent<MndwSwitchChangeDetail>): Promise<void> {
     const enabled = event.detail.checked;
+    const previous = this.settings?.backhaulEnabled === true;
+    const control = event.target as MndwSwitch;
     const result = await this.saveSetting('backhaul', () => this.write.setBackhaul(enabled));
 
-    if (result?.ok === true && this.settings !== null) {
+    if (result?.ok !== true) {
+      control.checked = previous;
+    } else if (this.settings !== null) {
       this.settings = {...this.settings, backhaulEnabled: enabled};
     }
   }
 
   protected async onAutoApShutdownChange(event: CustomEvent<MndwSwitchChangeDetail>): Promise<void> {
     const enabled = event.detail.checked;
+    const previous = this.settings?.autoApShutdownEnabled === true;
+    const control = event.target as MndwSwitch;
     const result = await this.saveSetting('auto-ap-shutdown', () => this.write.setAutoApShutdown(enabled));
 
-    if (result?.ok === true && this.settings !== null) {
+    if (result?.ok !== true) {
+      control.checked = previous;
+    } else if (this.settings !== null) {
       this.settings = {...this.settings, autoApShutdownEnabled: enabled};
     }
   }
 
   protected async onAutoUpdateChange(event: CustomEvent<MndwSwitchChangeDetail>): Promise<void> {
     const enabled = event.detail.checked;
+    const previous = this.settings?.autoUpdateEnabled === true;
+    const control = event.target as MndwSwitch;
     const result = await this.saveSetting('auto-update', () => this.write.setAutoUpdate(enabled));
 
-    if (result?.ok === true && this.settings !== null) {
+    if (result?.ok !== true) {
+      control.checked = previous;
+    } else if (this.settings !== null) {
       this.settings = {...this.settings, autoUpdateEnabled: enabled};
     }
   }
 
   protected async onScheduleChange(event: CustomEvent<MndwSelectChangeDetail>): Promise<void> {
     const value = event.detail.value;
+    const previous = this.settings?.autoUpdateSchedule ?? '';
+    const control = event.target as MndwSelect;
     const result = await this.saveSetting(
       'auto-update-schedule',
       () => this.write.setAutoUpdateSchedule(value === '' ? null : value),
     );
 
-    if (result?.ok === true && this.settings !== null) {
+    if (result?.ok !== true) {
+      control.value = previous;
+    } else if (this.settings !== null) {
       this.settings = {...this.settings, autoUpdateSchedule: value === '' ? null : value};
     }
   }

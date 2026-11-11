@@ -1,5 +1,5 @@
 import '@angular/compiler';
-import {TestBed} from '@angular/core/testing';
+import {type ComponentFixture, TestBed} from '@angular/core/testing';
 import {createTestI18n} from '@mndw/sdk/testing';
 import {of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -36,6 +36,11 @@ function requiredElement<T extends Element>(root: ParentNode, selector: string):
   }
 
   return element;
+}
+
+async function settle(fixture: ComponentFixture<SettingsTabComponent>): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  fixture.detectChanges();
 }
 
 describe('SettingsTabComponent', () => {
@@ -183,5 +188,122 @@ describe('SettingsTabComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('[data-save-error]')?.textContent).toContain('rejected');
+  });
+
+  it('rolls a rejected backhaul click back to the checked model value', async () => {
+    write.setBackhaul.mockRejectedValue(new Error('backhaul rejected'));
+
+    const fixture = TestBed.createComponent(SettingsTabComponent);
+
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const backhaul = requiredElement<HTMLElement & {checked: boolean}>(
+      fixture.nativeElement,
+      'mndw-switch[data-field="backhaul"]',
+    );
+
+    expect(backhaul.checked).toBe(true);
+
+    backhaul.click();
+    await settle(fixture);
+
+    expect(write.setBackhaul).toHaveBeenCalledWith(false);
+    expect(backhaul.checked).toBe(true);
+    expect(fixture.nativeElement.querySelector('[data-save-error]')?.textContent).toContain('backhaul rejected');
+  });
+
+  it('rolls an ok:false auto-update click back and shows the write error', async () => {
+    write.setAutoUpdate.mockResolvedValue(
+      {
+        ok: false,
+        steps: [{
+          step: 'set-auto-update',
+          ok: false,
+          status: [{status: 'error', code: '1', ident: 'auto-update', message: 'router rejected'}],
+        }],
+      } satisfies MwsWriteResult,
+    );
+
+    const fixture = TestBed.createComponent(SettingsTabComponent);
+
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const autoUpdate = requiredElement<HTMLElement & {checked: boolean}>(
+      fixture.nativeElement,
+      'mndw-switch[data-field="auto-update"]',
+    );
+
+    expect(autoUpdate.checked).toBe(true);
+
+    autoUpdate.click();
+    await settle(fixture);
+
+    expect(write.setAutoUpdate).toHaveBeenCalledWith(false);
+    expect(autoUpdate.checked).toBe(true);
+    expect(fixture.nativeElement.querySelector('[data-save-error]')?.textContent).toContain('router rejected');
+  });
+
+  it('keeps a successful auto AP shutdown click toggled', async () => {
+    const fixture = TestBed.createComponent(SettingsTabComponent);
+
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const autoApShutdown = requiredElement<HTMLElement & {checked: boolean}>(
+      fixture.nativeElement,
+      'mndw-switch[data-field="auto-ap-shutdown"]',
+    );
+
+    expect(autoApShutdown.checked).toBe(false);
+
+    autoApShutdown.click();
+    await settle(fixture);
+
+    expect(write.setAutoApShutdown).toHaveBeenCalledWith(true);
+    expect(autoApShutdown.checked).toBe(true);
+    expect(fixture.nativeElement.querySelector('[data-save-success]')?.textContent).toContain('Settings saved');
+  });
+
+  it('restores the schedule select value after a rejected change', async () => {
+    write.setAutoUpdateSchedule.mockRejectedValue(new Error('schedule rejected'));
+
+    const fixture = TestBed.createComponent(SettingsTabComponent);
+    const host = fixture.nativeElement as HTMLElement;
+
+    document.body.appendChild(host);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const schedule = requiredElement<
+      HTMLElement & {value: string; shadowRoot: ShadowRoot; updateComplete: Promise<unknown>}
+    >(
+      fixture.nativeElement,
+      'mndw-select[data-field="auto-update-schedule"]',
+    );
+
+    expect(schedule.value).toBe('night');
+
+    requiredElement<HTMLElement>(schedule.shadowRoot, '[part="trigger"]').click();
+    await schedule.updateComplete;
+
+    const panel = requiredElement<HTMLElement & {renderRoot: ShadowRoot; updateComplete: Promise<unknown>}>(
+      document,
+      'mndw-select-panel',
+    );
+
+    await panel.updateComplete;
+
+    const weekendOption = panel.renderRoot.querySelectorAll<HTMLElement>('[part="option"]')[2];
+
+    weekendOption?.click();
+    await settle(fixture);
+
+    expect(write.setAutoUpdateSchedule).toHaveBeenCalledWith('weekend');
+    expect(schedule.value).toBe('night');
+    expect(fixture.nativeElement.querySelector('[data-save-error]')?.textContent).toContain('schedule rejected');
+
+    host.remove();
   });
 });

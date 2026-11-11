@@ -1,6 +1,11 @@
 <script lang="ts">
 import {onDestroy} from 'svelte';
-import {FALLBACK_DEVICE_INFO, FALLBACK_HOST_INFO} from '../constants.js';
+import {
+  FALLBACK_DEVICE_INFO,
+  FALLBACK_HOST_INFO,
+  PAGE_PLUGIN_LOADING_DELAY_MS,
+  PAGE_PLUGIN_SLOW_TIMEOUT_MS,
+} from '../constants.js';
 import {createPluginContext} from '../runtime/plugin-context.js';
 import type {HostInfo} from '../runtime/device-info-context.js';
 import {
@@ -32,6 +37,19 @@ interface ActiveMount {
   mount: PluginMountHandle | null;
 }
 
+/**
+ * Host-owned state for the current mount generation. `pending` renders nothing;
+ * `loading` is the 300 ms-grace indicator, `slow` replaces it after 10 s, and
+ * `error` replaces it when createInstance fails.
+ */
+type MountStatus = 'none' | 'pending' | 'loading' | 'slow' | 'error';
+
+/**
+ * How a mount participates in the host-owned status UI. `full` reports loading, slow,
+ * and error; `loading-only` reports loading/slow but keeps a failure silent.
+ */
+type MountStatusReporting = 'full' | 'loading-only';
+
 const UNMOUNT_OPTIONS = {clearStorage: false,
   closeReason: 'host-navigation'} as const;
 
@@ -39,6 +57,10 @@ let host: HTMLElement | undefined;
 let currentPluginName: string | null = null;
 let generation = 0;
 let active: ActiveMount | null = null;
+let mountStatus = $state<MountStatus>('none');
+let mountStatusPlugin = $state.raw<LoadedPlugin | null>(null);
+let loadingTimer: ReturnType<typeof setTimeout> | undefined;
+let slowTimer: ReturnType<typeof setTimeout> | undefined;
 const services = getHostServices();
 const registry = services.registry;
 const pluginContextServices = {
@@ -72,12 +94,73 @@ const depsState = $derived.by(() => {
 });
 const mountTarget = $derived(depsState === 'ready' ? pluginName : null);
 
+/**
+ * Title shown by the status panels. Mirrors the sidebar's `entry.label` (the host does
+ * not localize manifest labels), and is derived so a hot-reload candidate or a locale
+ * switch re-reads it instead of freezing the title captured at mount time.
+ */
+const mountStatusTitle = $derived.by(() => {
+  // Locale is a dependency so a switch re-derives the title with the panel copy.
+  void appState.locale;
+
+  return mountStatusPlugin?.entry.label ?? '';
+});
+
+/** The page region is busy while a mount is pending, loading, or past its deadline. */
+const pageBusy = $derived(
+  mountStatus === 'pending' || mountStatus === 'loading' || mountStatus === 'slow',
+);
+
+function clearMountTimers(): void {
+  if (loadingTimer !== undefined) {
+    clearTimeout(loadingTimer);
+    loadingTimer = undefined;
+  }
+
+  if (slowTimer !== undefined) {
+    clearTimeout(slowTimer);
+    slowTimer = undefined;
+  }
+}
+
+function resetMountStatus(): void {
+  clearMountTimers();
+  mountStatus = 'none';
+  mountStatusPlugin = null;
+}
+
+/**
+ * Arms the grace and slow-deadline timers for a mount generation. Both callbacks are
+ * generation-guarded so no state from a superseded mount may ever show.
+ */
+function beginMountStatus(thisGeneration: number, plugin: LoadedPlugin): void {
+  clearMountTimers();
+  mountStatus = 'pending';
+  mountStatusPlugin = plugin;
+
+  loadingTimer = setTimeout(() => {
+    if (thisGeneration === generation && mountStatus === 'pending') {
+      mountStatus = 'loading';
+    }
+  }, PAGE_PLUGIN_LOADING_DELAY_MS);
+
+  slowTimer = setTimeout(() => {
+    if (
+      thisGeneration === generation
+      && (mountStatus === 'pending' || mountStatus === 'loading')
+    ) {
+      mountStatus = 'slow';
+    }
+  }, PAGE_PLUGIN_SLOW_TIMEOUT_MS);
+}
+
 // Each mount lives in its own child container inside the stable host, so disposing a
 // stale generation only clears that generation's DOM — never the current page.
 function disposeActive(): void {
   // A dependency status change can dispose without a replacement mount. Invalidate
   // pending async createInstance calls so late resolutions are always torn down.
   generation += 1;
+  resetMountStatus();
 
   if (active === null) {
     return;
@@ -115,10 +198,15 @@ function mountCurrent(target: string | null): void {
  * resolves once the mount settles: `true` when `createInstance` succeeded, `false` on
  * failure. A navigation that supersedes this mount before an async `createInstance` resolves
  * disposes the stale instance against its own child, leaving the current page untouched.
+ *
+ * When `statusReporting` is `loading-only` (sandbox hot-reload candidate) a failed mount
+ * leaves no host-owned error panel; loading/slow still report so a hung candidate is visible
+ * while the transaction waits.
  */
 function mountPluginRecord(
   plugin: LoadedPlugin,
   initialChildPath: string,
+  statusReporting: MountStatusReporting = 'full',
 ): Promise<boolean> {
   if (host === undefined) {
     return Promise.resolve(false);
@@ -140,6 +228,8 @@ function mountPluginRecord(
 
     return Promise.resolve(false);
   }
+
+  beginMountStatus(thisGeneration, plugin);
 
   const controller = new PageRouteController(
     definition.route,
@@ -180,6 +270,23 @@ function mountPluginRecord(
     if (thisGeneration !== generation) {
       // The shared mount handle tears down late instances against their own child.
       child.remove();
+    } else {
+      clearMountTimers();
+
+      if (ready) {
+        mountStatus = 'none';
+        mountStatusPlugin = null;
+      } else if (statusReporting === 'full') {
+        // Plugin-side error DOM (a partial render before createInstance failed)
+        // must not stay visible alongside the host-owned error panel.
+        child.replaceChildren();
+        mountStatus = 'error';
+      } else {
+        // A failed hot-reload candidate stays silent: the caller immediately
+        // disposes it and mounts the prior module, whose status is the final one.
+        mountStatus = 'none';
+        mountStatusPlugin = null;
+      }
     }
 
     return ready;
@@ -191,6 +298,10 @@ function mountPluginRecord(
  * instance, mount the candidate, and on failure dispose it and remount the prior module (same
  * instance id, storage preserved). Reports success/failure back to the sandbox reload
  * coordinator so it can commit or roll back the registry.
+ *
+ * The candidate reports loading/slow but never its error: a failed candidate is followed by
+ * a rollback, and the rollback reports the full status. A broken prior module therefore shows
+ * the error panel + Retry instead of leaving the page blank.
  */
 async function remountActivePage(
   next: LoadedPlugin,
@@ -198,14 +309,23 @@ async function remountActivePage(
 ): Promise<boolean> {
   disposeActive();
 
-  if (await mountPluginRecord(next, routeMatch?.childPath ?? '')) {
+  if (await mountPluginRecord(next, routeMatch?.childPath ?? '', 'loading-only')) {
     return true;
   }
 
   disposeActive();
-  await mountPluginRecord(prior, routeMatch?.childPath ?? '');
+  await mountPluginRecord(prior, routeMatch?.childPath ?? '', 'full');
 
   return false;
+}
+
+/**
+ * Disposes the failed/pending mount (its context signal aborts) and mounts again in a fresh
+ * child container with the same instance id and preserved storage.
+ */
+function retryMount(): void {
+  disposeActive();
+  mountCurrent(mountTarget);
 }
 
 function handleSandboxReload(event: Event): void {
@@ -251,7 +371,7 @@ onDestroy(disposeActive);
   {#if pluginName !== null && depsState !== 'ready'}
     <div
       class="mndw-page-plugin__notice"
-      role="status"
+      role={depsState === 'failed' ? 'alert' : 'status'}
     >
       {
         depsState === 'installing'
@@ -259,11 +379,55 @@ onDestroy(disposeActive);
         : hostT('dashboard.dependency-install-failed')
       }
     </div>
+  {:else if mountStatus === 'loading'}
+    <div
+      class="mndw-page-plugin__notice mndw-page-plugin__panel"
+      role="status"
+    >
+      {hostT('page-plugin.opening', {title: mountStatusTitle})}
+    </div>
+  {:else if mountStatus === 'slow'}
+    <div
+      class="mndw-page-plugin__notice mndw-page-plugin__panel"
+      role="alert"
+    >
+      <span>{hostT('page-plugin.slow')}</span>
+      <mndw-button
+        variant="secondary"
+        onclick={retryMount}
+      >
+        {hostT('common.retry')}
+      </mndw-button>
+    </div>
+  {:else if mountStatus === 'error'}
+    <div
+      class="mndw-page-plugin__notice mndw-page-plugin__panel"
+      role="alert"
+    >
+      <span>{hostT('page-plugin.open-error', {title: mountStatusTitle})}</span>
+      <mndw-button
+        variant="secondary"
+        onclick={retryMount}
+      >
+        {hostT('common.retry')}
+      </mndw-button>
+    </div>
   {/if}
 
   <div
     class="mndw-page-plugin"
+    aria-busy={pageBusy ? 'true' : undefined}
     use:bindHost
   >
   </div>
 </div>
+
+<style>
+.mndw-page-plugin__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  opacity: 1;
+}
+</style>

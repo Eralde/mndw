@@ -6,6 +6,12 @@ export const PLUGIN_STORAGE_PREFIX = `${STORAGE_PREFIX}:plugin`;
 export const SUPPORTED_LOCALES = ['en', 'ru'] as const;
 
 export const API_TIMEOUT_MS = 5000;
+
+/** Grace period before the page host shows a loading indicator (no flash for fast plugins). */
+export const PAGE_PLUGIN_LOADING_DELAY_MS = 300;
+/** Deadline after which a pending page createInstance is reported as slow. */
+export const PAGE_PLUGIN_SLOW_TIMEOUT_MS = 10_000;
+
 export const MGMT_MUTATION_TIMEOUT_MS = 60000;
 export const MGMT_INSTALL_TIMEOUT_MS = 240000;
 export const MGMT_LIST_TIMEOUT_MS = 15_000;

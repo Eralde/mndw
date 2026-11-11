@@ -129,6 +129,123 @@ func TestConnectionHelloTargetsAndRequest(t *testing.T) {
 	}
 }
 
+func TestTargetsShareMaxInflightAdmission(t *testing.T) {
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	handler := &admissionHandler{
+		targetsEntered: make(chan struct{}, 1),
+		requestEntered: make(chan struct{}, 1),
+		releaseTargets: make(chan struct{}),
+	}
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(handler.releaseTargets) }) }
+	t.Cleanup(release)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- ServeConnection(context.Background(), server, Config{PluginID: "plugin", Allowed: true, MaxInflight: 1}, handler)
+	}()
+
+	writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "plugin", "proto": 1}})
+	_ = readRawFrame(t, client)
+	writeJSON(t, client, map[string]any{"id": 1, "op": "targets"})
+
+	select {
+	case <-handler.targetsEntered:
+	case <-time.After(time.Second):
+		t.Fatal("targets handler did not start")
+	}
+
+	writeJSON(t, client, map[string]any{"id": 2, "target": "node-1", "method": "GET", "path": "rci/show/version"})
+	select {
+	case <-handler.requestEntered:
+		t.Fatal("request handler started while targets occupied MaxInflight")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	release()
+	var targetsResponse, requestResponse map[string]json.RawMessage
+	if err := json.Unmarshal(readRawFrame(t, client), &targetsResponse); err != nil {
+		t.Fatal(err)
+	}
+	if string(targetsResponse["id"]) != "1" || targetsResponse["targets"] == nil {
+		t.Fatalf("targets response = %s", mustJSON(targetsResponse))
+	}
+
+	select {
+	case <-handler.requestEntered:
+	case <-time.After(time.Second):
+		t.Fatal("request handler did not start after targets completed")
+	}
+	if err := json.Unmarshal(readRawFrame(t, client), &requestResponse); err != nil {
+		t.Fatal(err)
+	}
+	if string(requestResponse["id"]) != "2" || requestResponse["status"] == nil {
+		t.Fatalf("request response = %s", mustJSON(requestResponse))
+	}
+
+	_ = client.Close()
+	if err := <-done; err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("ServeConnection error = %v", err)
+	}
+}
+
+func TestClientEOFcancelsInflightHandlers(t *testing.T) {
+	for _, op := range []string{"request", "targets"} {
+		t.Run(op, func(t *testing.T) {
+			client, server := net.Pipe()
+			defer client.Close()
+			defer server.Close()
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			handler := &cancelAwareHandler{
+				entered:   make(chan struct{}, 1),
+				cancelled: make(chan error, 1),
+			}
+			done := make(chan error, 1)
+			go func() {
+				done <- ServeConnection(ctx, server, Config{PluginID: "plugin", Allowed: true}, handler)
+			}()
+
+			writeJSON(t, client, map[string]any{"hello": map[string]any{"pluginId": "plugin", "proto": 1}})
+			_ = readRawFrame(t, client)
+			frame := map[string]any{"id": 1, "op": op}
+			if op == "request" {
+				frame = map[string]any{"id": 1, "target": "node-1", "method": "GET", "path": "rci/show/version"}
+			}
+			writeJSON(t, client, frame)
+
+			select {
+			case <-handler.entered:
+			case <-time.After(time.Second):
+				t.Fatal("handler did not start")
+			}
+
+			if err := client.Close(); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case err := <-handler.cancelled:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("handler context error = %v, want context.Canceled", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("handler context was not cancelled after client EOF")
+			}
+
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				t.Fatal("ServeConnection did not return after client EOF")
+			}
+		})
+	}
+}
+
 func TestConnectionReadGrantRejectsWriteFrame(t *testing.T) {
 	client, server := net.Pipe()
 
@@ -452,6 +569,46 @@ type fakeHandler struct {
 	response     proxy.Response
 	requestError error
 	targetsError error
+}
+
+type admissionHandler struct {
+	targetsEntered chan struct{}
+	requestEntered chan struct{}
+	releaseTargets chan struct{}
+}
+
+type cancelAwareHandler struct {
+	entered   chan struct{}
+	cancelled chan error
+}
+
+func (h *cancelAwareHandler) Do(ctx context.Context, _ proxy.Request) (proxy.Response, error) {
+	h.entered <- struct{}{}
+	<-ctx.Done()
+	h.cancelled <- ctx.Err()
+	return proxy.Response{}, ctx.Err()
+}
+
+func (h *cancelAwareHandler) Targets(ctx context.Context) ([]rcisock.Target, error) {
+	h.entered <- struct{}{}
+	<-ctx.Done()
+	h.cancelled <- ctx.Err()
+	return nil, ctx.Err()
+}
+
+func (h *admissionHandler) Do(context.Context, proxy.Request) (proxy.Response, error) {
+	h.requestEntered <- struct{}{}
+	return proxy.Response{Status: 200, Body: []byte(`{"ok":true}`)}, nil
+}
+
+func (h *admissionHandler) Targets(ctx context.Context) ([]rcisock.Target, error) {
+	h.targetsEntered <- struct{}{}
+	select {
+	case <-h.releaseTargets:
+		return []rcisock.Target{}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 func (f *fakeHandler) Do(context.Context, proxy.Request) (proxy.Response, error) {

@@ -135,6 +135,7 @@ func ServeConnection(ctx context.Context, connection net.Conn, config Config, ha
 
 		frame, err := readRequestFrame(reader)
 		if err != nil {
+			cancel()
 			workers.Wait()
 
 			return err
@@ -143,9 +144,19 @@ func ServeConnection(ctx context.Context, connection net.Conn, config Config, ha
 		if frame.ID <= 0 {
 			_ = write(rcisock.ResponseFrame{Error: &rcisock.Error{Code: "bad-request", Message: "id must be positive"}})
 
+			cancel()
 			workers.Wait()
 
 			return fmt.Errorf("invalid request id")
+		}
+
+		select {
+		case semaphore <- struct{}{}:
+		case <-connectionContext.Done():
+			cancel()
+			workers.Wait()
+
+			return connectionContext.Err()
 		}
 
 		if frame.Op == "targets" {
@@ -153,6 +164,7 @@ func ServeConnection(ctx context.Context, connection net.Conn, config Config, ha
 
 			go func(frame rcisock.RequestFrame) {
 				defer workers.Done()
+				defer func() { <-semaphore }()
 
 				targets, err := handler.Targets(connectionContext)
 				if err != nil {
@@ -172,14 +184,6 @@ func ServeConnection(ctx context.Context, connection net.Conn, config Config, ha
 			}(frame)
 
 			continue
-		}
-
-		select {
-		case semaphore <- struct{}{}:
-		case <-connectionContext.Done():
-			workers.Wait()
-
-			return connectionContext.Err()
 		}
 
 		workers.Add(1)

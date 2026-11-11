@@ -231,6 +231,7 @@ esac
     const netstat = path.join(bin, 'netstat');
     const wget = path.join(bin, 'wget');
     const wgetLog = path.join(root, 'wget.log');
+    const wgetVersionLocale = path.join(root, 'wget-version-locale');
 
     fs.mkdirSync(bin, {recursive: true});
     writeExecutable(
@@ -246,6 +247,11 @@ EOF
     writeExecutable(
       wget,
       `#!/bin/sh
+if [ "$1" = -V ]; then
+  printf '%s\\n' "$LC_ALL" > "$WGET_VERSION_LOCALE"
+  printf '%s\\n' 'GNU Wget 1.25.0'
+  exit 0
+fi
 printf '%s\\n' "$*" >> "$WGET_LOG"
 case "$*" in
   *http://192.0.2.1:80/auth) printf '%s\\n' 'WWW-Authenticate: x-ndw4-interactive' ;;
@@ -264,16 +270,235 @@ esac
         MNDW_WGET: wget,
         MNDW_DEVICE_PROBE_TIMEOUT: '4',
         WGET_LOG: wgetLog,
+        WGET_VERSION_LOCALE: wgetVersionLocale,
+        LC_ALL: 'de_DE.UTF-8',
+      },
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout.trim()).toBe('80');
+    expect(fs.readFileSync(wgetVersionLocale, 'utf8')).toBe('C\n');
+    expect(fs.readFileSync(wgetLog, 'utf8')).toBe(
+      '-S -O /dev/null -T 4 -t 1 http://192.0.2.1:23/auth\n'
+        + '-S -O /dev/null -T 4 -t 1 http://192.0.2.1:53/auth\n'
+        + '-S -O /dev/null -T 4 -t 1 http://192.0.2.1:80/auth\n',
+    );
+  });
+
+  it('finds GNU Wget auth challenge on exit 6 and skips exit 8 port', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-device-port-test-'));
+
+    fixtures.push(root);
+
+    const bin = path.join(root, 'bin');
+    const netstat = path.join(bin, 'netstat');
+    const wget = path.join(bin, 'wget');
+    const wgetLog = path.join(root, 'wget.log');
+
+    fs.mkdirSync(bin, {recursive: true});
+    writeExecutable(
+      netstat,
+      `#!/bin/sh
+cat <<'EOF'
+tcp 0 0 192.0.2.1:79 0.0.0.0:* LISTEN
+tcp 0 0 192.0.2.1:80 0.0.0.0:* LISTEN
+tcp 0 0 192.0.2.1:81 0.0.0.0:* LISTEN
+EOF
+`,
+    );
+    writeExecutable(
+      wget,
+      `#!/bin/sh
+if [ "$1" = -V ]; then
+  printf '%s\\n' 'GNU Wget 1.25.0'
+  exit 0
+fi
+printf '%s\\n' "$*" >> "$WGET_LOG"
+case "$*" in
+  *http://192.0.2.1:80/auth)
+    printf '%s\\n' '  WWW-Authenticate: x-ndw2-interactive' >&2
+    exit 6
+    ;;
+  *) exit 8 ;;
+esac
+`,
+    );
+
+    const result = spawnSync('/bin/sh', [devicePortHelper, 'detect', '192.0.2.1'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH ?? ''}`,
+        MNDW_ROOT: root,
+        MNDW_NETSTAT: netstat,
+        MNDW_WGET: wget,
+        WGET_LOG: wgetLog,
       },
     });
 
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.stdout.trim()).toBe('80');
     expect(fs.readFileSync(wgetLog, 'utf8')).toBe(
-      '-S -O /dev/null -T 4 -t 1 http://192.0.2.1:23/auth\n'
-        + '-S -O /dev/null -T 4 -t 1 http://192.0.2.1:53/auth\n'
-        + '-S -O /dev/null -T 4 -t 1 http://192.0.2.1:80/auth\n',
+      '-S -O /dev/null -T 3 -t 1 http://192.0.2.1:79/auth\n'
+        + '-S -O /dev/null -T 3 -t 1 http://192.0.2.1:80/auth\n',
     );
+  });
+
+  it('skips BusyBox wget with a clear install hint', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-device-port-test-'));
+
+    fixtures.push(root);
+
+    const bin = path.join(root, 'bin');
+    const netstat = path.join(bin, 'netstat');
+    const wget = path.join(bin, 'wget');
+    const wgetLog = path.join(root, 'wget.log');
+
+    fs.mkdirSync(bin, {recursive: true});
+    writeExecutable(netstat, '#!/bin/sh\nprintf \'%s\\n\' \'tcp 0 0 192.0.2.1:80 0.0.0.0:* LISTEN\'\n');
+    writeExecutable(
+      wget,
+      `#!/bin/sh
+if [ "$1" = -V ]; then
+  printf '%s\\n' "wget: unrecognized option '--version'" >&2
+  exit 1
+fi
+printf '%s\\n' "$*" >> "$WGET_LOG"
+`,
+    );
+
+    const result = spawnSync('/bin/sh', [devicePortHelper, 'detect', '192.0.2.1'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH ?? ''}`,
+        MNDW_ROOT: root,
+        MNDW_NETSTAT: netstat,
+        MNDW_WGET: wget,
+        WGET_LOG: wgetLog,
+      },
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      'mndw: device port detection requires curl or GNU Wget (opkg install wget-ssl); or set MNDW_DEVICE_PORT',
+    );
+    expect(result.stderr).toContain(`found wget at ${wget}`);
+    expect(fs.existsSync(wgetLog)).toBe(false);
+  });
+
+  it('falls back from BusyBox PATH wget to GNU Wget under MNDW_ROOT', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-device-port-test-'));
+
+    fixtures.push(root);
+
+    const pathBin = path.join(root, 'path-bin');
+    const toolsBin = path.join(root, 'tools-bin');
+    const mndwRoot = path.join(root, 'opt');
+    const pathWget = path.join(pathBin, 'wget');
+    const rootWget = path.join(mndwRoot, 'bin', 'wget');
+    const gnuWget = path.join(mndwRoot, 'libexec', 'wget-ssl');
+    const netstat = path.join(pathBin, 'netstat');
+    const versionLog = path.join(root, 'version.log');
+    const probeLog = path.join(root, 'probe.log');
+
+    fs.mkdirSync(pathBin, {recursive: true});
+    fs.mkdirSync(toolsBin, {recursive: true});
+    for (const tool of ['awk', 'grep', 'sed', 'sort', 'tr']) {
+      fs.symlinkSync(path.join('/usr/bin', tool), path.join(toolsBin, tool));
+    }
+    writeExecutable(netstat, '#!/bin/sh\nprintf \'%s\\n\' \'tcp 0 0 192.0.2.1:80 0.0.0.0:* LISTEN\'\n');
+
+    const busyboxWget = `#!/bin/sh
+if [ "$1" = -V ]; then
+  printf '%s\\n' "$0" >> "$VERSION_LOG"
+  exit 1
+fi
+exit 1
+`;
+
+    writeExecutable(pathWget, busyboxWget);
+    writeExecutable(rootWget, busyboxWget);
+    writeExecutable(
+      gnuWget,
+      `#!/bin/sh
+if [ "$1" = -V ]; then
+  printf '%s\\n' "$0" >> "$VERSION_LOG"
+  printf '%s\\n' 'GNU Wget 1.25.0'
+  exit 0
+fi
+printf '%s %s\\n' "$0" "$*" >> "$PROBE_LOG"
+printf '%s\\n' '  WWW-Authenticate: x-ndw4-interactive' >&2
+exit 6
+`,
+    );
+
+    const result = spawnSync('/bin/sh', [devicePortHelper, 'detect', '192.0.2.1'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${pathBin}:${toolsBin}`,
+        MNDW_ROOT: mndwRoot,
+        MNDW_NETSTAT: netstat,
+        MNDW_WGET: '',
+        VERSION_LOG: versionLog,
+        PROBE_LOG: probeLog,
+      },
+    });
+
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+    expect(result.stdout.trim()).toBe('80');
+    expect(fs.readFileSync(versionLog, 'utf8')).toBe(`${pathWget}\n${rootWget}\n${gnuWget}\n`);
+    expect(fs.readFileSync(probeLog, 'utf8')).toBe(`${gnuWget} -S -O /dev/null -T 3 -t 1 http://192.0.2.1:80/auth\n`);
+  });
+
+  it('stops after the first wget probe exits with a signal status', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-device-port-test-'));
+
+    fixtures.push(root);
+
+    const bin = path.join(root, 'bin');
+    const netstat = path.join(bin, 'netstat');
+    const wget = path.join(bin, 'wget');
+    const wgetLog = path.join(root, 'wget.log');
+
+    fs.mkdirSync(bin, {recursive: true});
+    writeExecutable(
+      netstat,
+      `#!/bin/sh
+cat <<'EOF'
+tcp 0 0 192.0.2.1:80 0.0.0.0:* LISTEN
+tcp 0 0 192.0.2.1:81 0.0.0.0:* LISTEN
+EOF
+`,
+    );
+    writeExecutable(
+      wget,
+      `#!/bin/sh
+if [ "$1" = -V ]; then
+  printf '%s\\n' 'GNU Wget 1.25.0'
+  exit 0
+fi
+printf '%s\\n' "$*" >> "$WGET_LOG"
+exit 139
+`,
+    );
+
+    const result = spawnSync('/bin/sh', [devicePortHelper, 'detect', '192.0.2.1'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH ?? ''}`,
+        MNDW_ROOT: root,
+        MNDW_NETSTAT: netstat,
+        MNDW_WGET: wget,
+        WGET_LOG: wgetLog,
+      },
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(`mndw: HTTP client ${wget} crashed (exit 139) while probing`);
+    expect(fs.readFileSync(wgetLog, 'utf8')).toBe('-S -O /dev/null -T 3 -t 1 http://192.0.2.1:80/auth\n');
   });
 
   it('accepts canonical device port override without probing', () => {

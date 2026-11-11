@@ -109,7 +109,55 @@ select_http_client() {
     return 0
   fi
 
+  if [ -x "$MNDW_ROOT/bin/wget" ]; then
+    HTTP_CLIENT=wget
+    HTTP_COMMAND=$MNDW_ROOT/bin/wget
+    return 0
+  fi
+
+  if [ -x "$MNDW_ROOT/libexec/wget-ssl" ]; then
+    HTTP_CLIENT=wget
+    HTTP_COMMAND=$MNDW_ROOT/libexec/wget-ssl
+    return 0
+  fi
+
   return 1
+}
+
+wget_is_gnu() {
+  wget_version=$(LC_ALL=C "$1" -V 2>&1)
+  wget_version_status=$?
+  [ "$wget_version_status" -eq 0 ] || return 1
+  wget_version_first_line=$(printf '%s\n' "$wget_version" | sed -n '1p')
+  case "$wget_version_first_line" in
+    'GNU Wget'*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+http_client_is_usable() {
+  case "$HTTP_CLIENT" in
+    wget)
+      selected_wget=$HTTP_COMMAND
+      wget_is_gnu "$selected_wget" && return 0
+      HTTP_REJECTED_WGET=$selected_wget
+
+      if [ -z "$MNDW_WGET" ]; then
+        for fallback_wget in "$MNDW_ROOT/bin/wget" "$MNDW_ROOT/libexec/wget-ssl"; do
+          [ -x "$fallback_wget" ] || continue
+          [ "$fallback_wget" = "$selected_wget" ] && continue
+          HTTP_COMMAND=$fallback_wget
+          wget_is_gnu "$HTTP_COMMAND" && return 0
+        done
+      fi
+
+      HTTP_COMMAND=$selected_wget
+      return 1
+      ;;
+    *)
+      return 0
+      ;;
+  esac
 }
 
 auth_challenge_present() {
@@ -133,7 +181,13 @@ probe_device_auth() {
           --dump-header - \
           --output /dev/null \
           "$auth_url" 2>/dev/null
-      ) || return 1
+      )
+      probe_status=$?
+      if [ "$probe_status" -gt 128 ]; then
+        HTTP_CLIENT_CRASH_STATUS=$probe_status
+        return 2
+      fi
+      [ "$probe_status" -eq 0 ] || return 1
       ;;
     wget)
       response=$(
@@ -143,7 +197,12 @@ probe_device_auth() {
           -T "$MNDW_DEVICE_PROBE_TIMEOUT" \
           -t 1 \
           "$auth_url" 2>&1
-      ) || true
+      )
+      probe_status=$?
+      if [ "$probe_status" -gt 128 ]; then
+        HTTP_CLIENT_CRASH_STATUS=$probe_status
+        return 2
+      fi
       ;;
     *)
       return 1
@@ -170,10 +229,15 @@ detect_device_port() {
     return 0
   fi
 
-  select_http_client || {
-    echo 'mndw: device port detection requires curl or wget' >&2
+  HTTP_REJECTED_WGET=
+  if ! select_http_client || ! http_client_is_usable; then
+    if [ -n "$HTTP_REJECTED_WGET" ]; then
+      echo "mndw: device port detection requires curl or GNU Wget (opkg install wget-ssl); or set MNDW_DEVICE_PORT (found wget at $HTTP_REJECTED_WGET, but it is not GNU Wget or failed -V)" >&2
+    else
+      echo 'mndw: device port detection requires curl or GNU Wget (opkg install wget-ssl); or set MNDW_DEVICE_PORT' >&2
+    fi
     return 1
-  }
+  fi
 
   candidate_ports=$(list_device_listener_ports "$device_ip") || {
     echo 'mndw: unable to enumerate device TCP listeners' >&2
@@ -185,11 +249,18 @@ detect_device_port() {
     return 1
   }
 
+  HTTP_CLIENT_CRASH_STATUS=
   for candidate in $candidate_ports; do
     echo "[mndw] probing device /auth on $device_ip:$candidate" >&2
     if probe_device_auth "$device_ip" "$candidate"; then
       printf '%s\n' "$candidate"
       return 0
+    else
+      probe_status=$?
+      if [ "$probe_status" -eq 2 ]; then
+        echo "mndw: HTTP client $HTTP_COMMAND crashed (exit $HTTP_CLIENT_CRASH_STATUS) while probing; reinstall it or set MNDW_DEVICE_PORT" >&2
+        return 1
+      fi
     fi
   done
 

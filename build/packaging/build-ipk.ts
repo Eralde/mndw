@@ -143,10 +143,15 @@ function stagedBuiltinPluginNames(repoRoot: string): string[] {
     .sort();
 }
 
-export function collectBuiltinDependencies(
+const BASE_PACKAGE_DEPENDENCIES = ['wget-ssl'] as const;
+
+export function collectPackageDependencies(
   repoRoot: string,
   pluginNames: readonly string[] = stagedBuiltinPluginNames(repoRoot),
 ): string[] {
+  const dependencySources: {readonly packageName: unknown; readonly source: string}[] = [
+    ...BASE_PACKAGE_DEPENDENCIES.map((packageName) => ({packageName, source: 'base package dependencies'})),
+  ];
   const packages = new Set<string>();
 
   for (const pluginName of pluginNames) {
@@ -163,12 +168,16 @@ export function collectBuiltinDependencies(
     }
 
     for (const packageName of declaredPackages) {
-      if (typeof packageName !== 'string' || !/^[a-z0-9][a-z0-9+.-]*$/.test(packageName)) {
-        throw new Error(`Invalid opkg package name ${String(packageName)} in builtin manifest: ${manifestPath}`);
-      }
-
-      packages.add(packageName);
+      dependencySources.push({packageName, source: `builtin manifest: ${manifestPath}`});
     }
+  }
+
+  for (const {packageName, source} of dependencySources) {
+    if (typeof packageName !== 'string' || !/^[a-z0-9][a-z0-9+.-]*$/.test(packageName)) {
+      throw new Error(`Invalid opkg package name ${String(packageName)} in ${source}`);
+    }
+
+    packages.add(packageName);
   }
 
   return [...packages].sort();
@@ -674,7 +683,7 @@ export async function buildOneArch(
   arch: string,
   repoRoot: string,
   version: string,
-  dependencies: readonly string[] = collectBuiltinDependencies(repoRoot),
+  dependencies: readonly string[] = collectPackageDependencies(repoRoot),
 ): Promise<string> {
   if (!isProductTarget(arch)) { throw new Error(`Unknown architecture: ${arch}`); }
 
@@ -727,7 +736,7 @@ export async function main(args: string[]): Promise<void> {
 
   ensureBuildPrereqs(repoRoot);
 
-  const dependencies = collectBuiltinDependencies(repoRoot);
+  const dependencies = collectPackageDependencies(repoRoot);
 
   const arches = all ? [...PRODUCT_TARGETS] : arch === null ? [] : [arch];
   const ipkPaths: string[] = [];

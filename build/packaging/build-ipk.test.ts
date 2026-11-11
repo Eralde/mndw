@@ -10,7 +10,7 @@ import {
   buildControlTar,
   buildDataTar,
   buildIpk,
-  collectBuiltinDependencies,
+  collectPackageDependencies,
   collectStagePaths,
   generateFeed,
   isMainModule,
@@ -168,14 +168,14 @@ describe('substituteControl', () => {
   });
 });
 
-describe('builtin opkg dependencies', () => {
-  it('collects current builtin dependencies in sorted unique order', () => {
+describe('mndw opkg dependencies', () => {
+  it('collects base and builtin package dependencies in sorted unique order', () => {
     const repoRoot = path.resolve(import.meta.dirname, '../..');
 
-    expect(collectBuiltinDependencies(repoRoot)).toEqual(['ttyd']);
+    expect(collectPackageDependencies(repoRoot)).toEqual(['ttyd', 'wget-ssl']);
   });
 
-  it('omits Depends from control and feed when no builtin declares packages', () => {
+  it('keeps the base dependency in control and feed when no builtin declares packages', () => {
     const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-builtin-deps-empty-'));
     const pluginDir = path.join(repoRoot, 'plugins', 'builtin', 'plain-plugin');
 
@@ -183,7 +183,7 @@ describe('builtin opkg dependencies', () => {
     fs.writeFileSync(path.join(pluginDir, 'manifest.json'), JSON.stringify({name: 'plain-plugin'}));
 
     try {
-      const dependencies = collectBuiltinDependencies(repoRoot);
+      const dependencies = collectPackageDependencies(repoRoot);
       const template = fs.readFileSync(path.resolve(import.meta.dirname, 'ipk/control'), 'utf8');
       const control = substituteControl(template, '1.0.0', 'all', dependencies);
       const feed = generateFeed('1.0.0', [{
@@ -193,9 +193,9 @@ describe('builtin opkg dependencies', () => {
         sha256: 'abc',
       }], dependencies);
 
-      expect(dependencies).toEqual([]);
-      expect(control).not.toMatch(/^Depends:/m);
-      expect(feed).not.toMatch(/^Depends:/m);
+      expect(dependencies).toEqual(['wget-ssl']);
+      expect(control.match(/^Depends:.*$/m)?.[0]).toBe('Depends: wget-ssl');
+      expect(feed.match(/^Depends:.*$/m)?.[0]).toBe('Depends: wget-ssl');
     } finally {
       fs.rmSync(repoRoot, {recursive: true, force: true});
     }
@@ -207,7 +207,7 @@ describe('builtin opkg dependencies', () => {
     try {
       for (
         const [plugin, packages] of [
-          ['alpha', ['ttyd', 'zlib', 'ttyd']],
+          ['alpha', ['ttyd', 'zlib', 'ttyd', 'wget-ssl']],
           ['beta', ['ca-bundle', 'zlib']],
         ] as const
       ) {
@@ -220,7 +220,7 @@ describe('builtin opkg dependencies', () => {
         );
       }
 
-      expect(collectBuiltinDependencies(repoRoot)).toEqual(['ca-bundle', 'ttyd', 'zlib']);
+      expect(collectPackageDependencies(repoRoot)).toEqual(['ca-bundle', 'ttyd', 'wget-ssl', 'zlib']);
     } finally {
       fs.rmSync(repoRoot, {recursive: true, force: true});
     }
@@ -237,7 +237,7 @@ describe('builtin opkg dependencies', () => {
     );
 
     try {
-      expect(() => collectBuiltinDependencies(repoRoot)).toThrow(/Invalid opkg package name.*Invalid_Name/);
+      expect(() => collectPackageDependencies(repoRoot)).toThrow(/Invalid opkg package name.*Invalid_Name/);
     } finally {
       fs.rmSync(repoRoot, {recursive: true, force: true});
     }
@@ -409,16 +409,16 @@ describe('readVersion', () => {
 });
 
 describe('generateFeed', () => {
-  it('includes the current builtin dependency in Packages', () => {
+  it('includes the builtin and base dependencies in Packages', () => {
     const repoRoot = path.resolve(import.meta.dirname, '../..');
     const packages = generateFeed('1.0.0', [{
       arch: 'mipsel-3.4',
       filename: 'mndw_1.0.0_mipsel-3.4.ipk',
       size: 1,
       sha256: 'abc',
-    }], collectBuiltinDependencies(repoRoot));
+    }], collectPackageDependencies(repoRoot));
 
-    expect(packages.match(/^Depends:.*$/m)?.[0]).toBe('Depends: ttyd');
+    expect(packages.match(/^Depends:.*$/m)?.[0]).toBe('Depends: ttyd, wget-ssl');
   });
 
   it('generates Packages with correct stanza for one arch', () => {
@@ -598,12 +598,12 @@ describe('buildControlTar', () => {
     fs.writeFileSync(path.join(dir, 'postrm'), '#!/bin/sh\nexit 0\n');
   };
 
-  it('writes the current builtin dependency into the IPK control file', async () => {
+  it('writes the builtin and base dependencies into the IPK control file', async () => {
     const repoRoot = path.resolve(import.meta.dirname, '../..');
     const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mndw-ipk-ctrl-deps-'));
 
     try {
-      const dependencies = collectBuiltinDependencies(repoRoot);
+      const dependencies = collectPackageDependencies(repoRoot);
       const tarPath = await buildControlTar(
         path.join(repoRoot, 'build', 'packaging', 'ipk'),
         outDir,
@@ -613,7 +613,7 @@ describe('buildControlTar', () => {
       );
       const control = readTarFile(tarPath, './control').toString('utf8');
 
-      expect(control.match(/^Depends:.*$/m)?.[0]).toBe('Depends: ttyd');
+      expect(control.match(/^Depends:.*$/m)?.[0]).toBe('Depends: ttyd, wget-ssl');
     } finally {
       fs.rmSync(outDir, {recursive: true, force: true});
     }

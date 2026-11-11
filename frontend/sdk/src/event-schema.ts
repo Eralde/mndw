@@ -217,7 +217,11 @@ export const eventSchema = z.union([
   }
 });
 
-export type MndwEvent = z.infer<typeof eventSchema>;
+type DeepReadonly<T> = T extends readonly unknown[] ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
+  : T extends object ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
+  : T;
+
+export type MndwEvent = DeepReadonly<z.infer<typeof eventSchema>>;
 export type EventSource = z.infer<typeof eventSourceSchema>;
 export type EventTopic = MndwEvent['topic'];
 

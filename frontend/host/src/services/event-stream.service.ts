@@ -59,11 +59,19 @@ const matchesFilter = (filter: string, topic: string): boolean => {
 };
 
 const narrowerFilter = (left: string, right: string): string | undefined => {
-  if (left === '*' || left === right || left.startsWith(`${right}.`)) {
+  if (left === '*') {
+    return right;
+  }
+
+  if (right === '*') {
     return left;
   }
 
-  if (right === '*' || right.startsWith(`${left}.`)) {
+  if (left === right || left.startsWith(`${right}.`)) {
+    return left;
+  }
+
+  if (right.startsWith(`${left}.`)) {
     return right;
   }
 
@@ -112,6 +120,35 @@ const asObject = (value: unknown): Record<string, unknown> | undefined => {
     : undefined;
 };
 
+const deepFreezeEvent = (value: unknown): void => {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      deepFreezeEvent(item);
+    }
+
+    Object.freeze(value);
+
+    return;
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+
+  // Event payloads are schema-validated JSON; non-plain instances are outside this contract.
+  if (prototype !== Object.prototype && prototype !== null) {
+    return;
+  }
+
+  for (const property of Object.values(value)) {
+    deepFreezeEvent(property);
+  }
+
+  Object.freeze(value);
+};
+
 export class EventStreamManager implements EventStreamService {
   private readonly socketFactory: typeof WebSocket | undefined;
   private readonly schedule: typeof globalThis.setTimeout;
@@ -123,6 +160,7 @@ export class EventStreamManager implements EventStreamService {
   private readonly deliveredOrder: string[] = [];
   private readonly liveBuffer: MndwEvent[] = [];
   private socket: WebSocket | undefined;
+  private lastSentWireFilters: readonly string[] | undefined;
   private reconnectTimer: Timer | undefined;
   private reconnectAttempt = 0;
   private nextHandlerId = 1;
@@ -266,6 +304,7 @@ export class EventStreamManager implements EventStreamService {
     }
 
     this.reconnectAttempt = 0;
+    this.lastSentWireFilters = undefined;
     this.sendSubscribe();
     this.catchingUp = true;
     this.replaying = false;
@@ -279,6 +318,7 @@ export class EventStreamManager implements EventStreamService {
     }
 
     this.socket = undefined;
+    this.lastSentWireFilters = undefined;
 
     if (this.registrations.size > 0 && !this.closing) {
       this.scheduleReconnect();
@@ -431,6 +471,8 @@ export class EventStreamManager implements EventStreamService {
       }
     }
 
+    deepFreezeEvent(event);
+
     for (const registration of this.registrations.values()) {
       for (const subscription of registration.subscriptions.values()) {
         if (!subscription.filters.some((filter) => matchesFilter(filter, event.topic))) {
@@ -446,8 +488,18 @@ export class EventStreamManager implements EventStreamService {
     }
   }
 
-  private sendSubscribe(): void {
-    this.send({type: 'subscribe', topics: this.effectiveWireFilters()});
+  private sendSubscribe(filters: readonly string[] = this.effectiveWireFilters()): void {
+    const previous = this.lastSentWireFilters;
+
+    if (
+      previous !== undefined && previous.length === filters.length
+      && previous.every((filter, index) => filter === filters[index])
+    ) {
+      return;
+    }
+
+    this.send({type: 'subscribe', topics: [...filters]});
+    this.lastSentWireFilters = [...filters];
   }
 
   private updateWireSubscription(): void {
@@ -461,8 +513,8 @@ export class EventStreamManager implements EventStreamService {
 
     const socket = this.socket;
 
-    if (socket?.readyState === 1 && !this.catchingUp) {
-      this.send({type: 'subscribe', topics: filters});
+    if (socket?.readyState === 1) {
+      this.sendSubscribe(filters);
     }
 
     this.ensureSocket();
@@ -522,6 +574,7 @@ export class EventStreamManager implements EventStreamService {
     this.catchingUp = false;
     this.replaying = false;
     this.liveBuffer.length = 0;
+    this.lastSentWireFilters = undefined;
 
     const socket = this.socket;
 

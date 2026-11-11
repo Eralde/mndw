@@ -120,6 +120,101 @@ describe('EventStreamManager', () => {
     expect(handler.mock.calls[0]?.[0]?.topic).toBe('net.dns_changed');
   });
 
+  it.each([
+    {
+      name: 'wildcard grant narrows to each requested topic',
+      permissions: ['events:*'],
+      request: 'net,plugin',
+      topics: ['net', 'plugin'],
+    },
+    {
+      name: 'wildcard request narrows to each granted topic',
+      permissions: ['events:wan'],
+      request: '*',
+      topics: ['wan'],
+    },
+    {
+      name: 'both wildcards remain wildcard',
+      permissions: ['events:*'],
+      request: '*',
+      topics: ['*'],
+    },
+    {
+      name: 'parent grant narrows to child request',
+      permissions: ['events:net'],
+      request: 'net.dns_changed',
+      topics: ['net.dns_changed'],
+    },
+    {
+      name: 'child grant narrows parent request',
+      permissions: ['events:plugin.started'],
+      request: 'plugin',
+      topics: ['plugin.started'],
+    },
+    {
+      name: 'disjoint grants and requests produce no wire subscription',
+      permissions: ['events:net'],
+      request: 'plugin',
+      topics: [],
+    },
+    {
+      name: 'comma lists and multiple grants and requests narrow together',
+      permissions: ['events:wan,plugin', 'events:net'],
+      request: 'plugin,net.dns_changed,wan.connected,usb',
+      topics: ['net.dns_changed', 'plugin', 'wan.connected'],
+    },
+    {
+      name: 'multiple grants intersect a wildcard request',
+      permissions: ['events:wan,plugin', 'events:net'],
+      request: '*,usb',
+      topics: ['net', 'plugin', 'wan'],
+    },
+  ])('narrows $name', ({permissions, request, topics}) => {
+    const sockets: FakeWebSocket[] = [];
+    const manager = new EventStreamManager({
+      WebSocket: class extends FakeWebSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      } as unknown as typeof WebSocket,
+    });
+    const facade = manager.createFacade('instance-1', 'demo', permissions, createPluginLifetime());
+
+    facade?.select$(request).subscribe();
+
+    if (topics.length === 0) {
+      expect(sockets).toHaveLength(0);
+
+      return;
+    }
+
+    sockets[0]?.open();
+
+    expect(JSON.parse(sockets[0]?.sent[0] ?? '{}')).toEqual({type: 'subscribe', topics});
+  });
+
+  it('does not deliver topics outside the effective filter for a wildcard request', () => {
+    const sockets: FakeWebSocket[] = [];
+    const manager = new EventStreamManager({
+      WebSocket: class extends FakeWebSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      } as unknown as typeof WebSocket,
+    });
+    const handler = vi.fn<(event: MndwEvent) => void>();
+    const facade = manager.createFacade('instance-1', 'demo', ['events:wan'], createPluginLifetime());
+
+    facade?.select$('*').subscribe(handler);
+    sockets[0]?.open();
+    sockets[0]?.receive({type: 'replay', events: [], hasMore: false});
+    sockets[0]?.receive({type: 'event', event: event('01J5KZ00000000000000000000', 'plugin.started')});
+
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it('drains replay pages, deduplicates overlap, and calls resync after buffered live events', () => {
     const sockets: FakeWebSocket[] = [];
     const manager = new EventStreamManager({
@@ -150,6 +245,235 @@ describe('EventStreamManager', () => {
       after: '01J5KZ00000000000000000000',
       limit: 100,
     });
+  });
+
+  it('subscribes immediately during replay and deduplicates replay/live overlap for new topics', () => {
+    const sockets: FakeWebSocket[] = [];
+    const manager = new EventStreamManager({
+      WebSocket: class extends FakeWebSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      } as unknown as typeof WebSocket,
+    });
+    const netHandler = vi.fn<(event: MndwEvent) => void>();
+    const pluginHandler = vi.fn<(event: MndwEvent) => void>();
+    const netFacade = manager.createFacade('instance-net', 'net-plugin', ['events:net'], createPluginLifetime());
+    const pluginFacade = manager.createFacade(
+      'instance-plugin',
+      'plugin-listener',
+      ['events:plugin'],
+      createPluginLifetime(),
+    );
+
+    netFacade?.select$('net').subscribe(netHandler);
+    sockets[0]?.open();
+
+    pluginFacade?.select$('plugin').subscribe(pluginHandler);
+
+    expect(JSON.parse(sockets[0]?.sent[2] ?? '{}')).toEqual({type: 'subscribe', topics: ['net', 'plugin']});
+
+    const netEvent = event('01J5KZ00000000000000000000', 'net.dns_changed');
+    const pluginEvent = event('01J5KZ00000000000000000001', 'plugin.started');
+
+    sockets[0]?.receive({type: 'replay', events: [netEvent], hasMore: true});
+    sockets[0]?.receive({type: 'event', event: pluginEvent});
+    sockets[0]?.receive({type: 'replay', events: [pluginEvent], hasMore: false});
+
+    expect(netHandler).toHaveBeenCalledTimes(1);
+    expect(pluginHandler).toHaveBeenCalledTimes(1);
+    expect(pluginHandler.mock.calls[0]?.[0]?.id).toBe(pluginEvent.id);
+
+    const nextPluginEvent = event('01J5KZ00000000000000000002', 'plugin.started');
+
+    sockets[0]?.receive({type: 'event', event: nextPluginEvent});
+
+    expect(pluginHandler).toHaveBeenCalledTimes(2);
+    expect(pluginHandler.mock.calls[1]?.[0]?.id).toBe(nextPluginEvent.id);
+  });
+
+  it('does not resend when subscriptions leave the sorted wire filter set unchanged', () => {
+    const sockets: FakeWebSocket[] = [];
+    const manager = new EventStreamManager({
+      WebSocket: class extends FakeWebSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      } as unknown as typeof WebSocket,
+    });
+    const facade = manager.createFacade('instance-1', 'demo', ['events:net,plugin'], createPluginLifetime());
+    const first = facade?.select$('net,plugin').subscribe();
+
+    sockets[0]?.open();
+
+    const second = facade?.select$('plugin,net').subscribe();
+
+    first?.unsubscribe();
+
+    expect(sockets[0]?.sent.map((message) => JSON.parse(message))).toEqual([
+      {type: 'subscribe', topics: ['net', 'plugin']},
+      {type: 'replay', after: '', limit: 100},
+    ]);
+
+    second?.unsubscribe();
+  });
+
+  it('reopens after unsubscribe-to-empty during replay and resumes from last delivered event', () => {
+    const sockets: FakeWebSocket[] = [];
+    const reconnects: Array<() => void> = [];
+    const manager = new EventStreamManager({
+      WebSocket: class extends FakeWebSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      } as unknown as typeof WebSocket,
+      setTimeout: ((handler: () => void) => {
+        reconnects.push(handler);
+
+        return reconnects.length as unknown as ReturnType<typeof globalThis.setTimeout>;
+      }) as typeof globalThis.setTimeout,
+      clearTimeout: (() => undefined) as typeof globalThis.clearTimeout,
+    });
+    const handler = vi.fn<(event: MndwEvent) => void>();
+    const facade = manager.createFacade('instance-1', 'demo', ['events:net'], createPluginLifetime());
+    const subscription = facade?.select$('net').subscribe(handler);
+
+    sockets[0]?.open();
+
+    const deliveredEvent = event('01J5KZ00000000000000000000', 'net.dns_changed');
+    const bufferedEvent = event('01J5KZ00000000000000000001', 'net.dns_changed');
+
+    sockets[0]?.receive({type: 'replay', events: [deliveredEvent], hasMore: true});
+    sockets[0]?.receive({type: 'event', event: bufferedEvent});
+    subscription?.unsubscribe();
+
+    expect(sockets[0]?.readyState).toBe(3);
+    expect(reconnects).toHaveLength(0);
+    expect(handler).toHaveBeenCalledOnce();
+
+    facade?.select$('net').subscribe(handler);
+
+    expect(sockets).toHaveLength(2);
+
+    sockets[1]?.open();
+
+    expect(JSON.parse(sockets[1]?.sent[0] ?? '{}')).toEqual({type: 'subscribe', topics: ['net']});
+    expect(JSON.parse(sockets[1]?.sent[1] ?? '{}')).toEqual({
+      type: 'replay',
+      after: deliveredEvent.id,
+      limit: 100,
+    });
+
+    sockets[1]?.receive({type: 'replay', events: [bufferedEvent], hasMore: false});
+
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(handler.mock.calls[1]?.[0]?.id).toBe(bufferedEvent.id);
+  });
+
+  it('keeps current filters after cursor expiry and sends them on reconnect', () => {
+    const sockets: FakeWebSocket[] = [];
+    const reconnects: Array<() => void> = [];
+    const manager = new EventStreamManager({
+      WebSocket: class extends FakeWebSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      } as unknown as typeof WebSocket,
+      setTimeout: ((handler: () => void) => {
+        reconnects.push(handler);
+
+        return reconnects.length as unknown as ReturnType<typeof globalThis.setTimeout>;
+      }) as typeof globalThis.setTimeout,
+      clearTimeout: (() => undefined) as typeof globalThis.clearTimeout,
+    });
+    const handler = vi.fn<(event: MndwEvent) => void>();
+    const netFacade = manager.createFacade('instance-net', 'net-plugin', ['events:net'], createPluginLifetime());
+    const pluginFacade = manager.createFacade(
+      'instance-plugin',
+      'plugin-listener',
+      ['events:plugin'],
+      createPluginLifetime(),
+    );
+
+    netFacade?.select$('net').subscribe();
+    sockets[0]?.open();
+    pluginFacade?.select$('plugin').subscribe(handler);
+    sockets[0]?.receive({type: 'error', code: 'CURSOR_EXPIRED', message: 'expired'});
+    sockets[0]?.receive({type: 'event', event: event('01J5KZ00000000000000000000', 'plugin.started')});
+
+    expect(handler).toHaveBeenCalledOnce();
+    expect(JSON.parse(sockets[0]?.sent[2] ?? '{}')).toEqual({type: 'subscribe', topics: ['net', 'plugin']});
+
+    sockets[0]?.close();
+    reconnects[0]?.();
+    sockets[1]?.open();
+
+    expect(JSON.parse(sockets[1]?.sent[0] ?? '{}')).toEqual({type: 'subscribe', topics: ['net', 'plugin']});
+  });
+
+  it('freezes each event before sharing it with subscribers and filtering later events', () => {
+    const sockets: FakeWebSocket[] = [];
+    const manager = new EventStreamManager({
+      WebSocket: class extends FakeWebSocket {
+        constructor() {
+          super();
+          sockets.push(this);
+        }
+      } as unknown as typeof WebSocket,
+    });
+    const mutationErrors: unknown[] = [];
+    const allFacade = manager.createFacade('instance-all', 'all-events', ['events:*'], createPluginLifetime());
+    const netFacade = manager.createFacade('instance-net', 'net-events', ['events:net'], createPluginLifetime());
+    const allEvents: MndwEvent[] = [];
+    const netEvents: MndwEvent[] = [];
+
+    allFacade?.select$('*').subscribe((received) => {
+      allEvents.push(received);
+
+      const mutable = received as unknown as {topic: string; payload: {resolvers: string[]}};
+
+      try {
+        mutable.payload.resolvers = ['9.9.9.9'];
+      } catch (error) {
+        mutationErrors.push(error);
+      }
+
+      try {
+        mutable.payload.resolvers[0] = '9.9.9.9';
+      } catch (error) {
+        mutationErrors.push(error);
+      }
+
+      try {
+        mutable.topic = 'plugin.started';
+      } catch (error) {
+        mutationErrors.push(error);
+      }
+    });
+    netFacade?.select$('net').subscribe((received) => netEvents.push(received));
+    sockets[0]?.open();
+    sockets[0]?.receive({type: 'replay', events: [], hasMore: false});
+
+    const firstEvent = event('01J5KZ00000000000000000000', 'net.dns_changed');
+    const secondEvent = event('01J5KZ00000000000000000001', 'net.dns_changed');
+
+    sockets[0]?.receive({type: 'event', event: firstEvent});
+    sockets[0]?.receive({type: 'event', event: secondEvent});
+
+    expect(mutationErrors).toHaveLength(6);
+    expect(mutationErrors.every((error) => error instanceof TypeError)).toBe(true);
+    expect(netEvents).toHaveLength(2);
+    expect(netEvents[0]).toBe(allEvents[0]);
+    expect(netEvents[1]).toBe(allEvents[1]);
+    expect(netEvents.map(({topic}) => topic)).toEqual(['net.dns_changed', 'net.dns_changed']);
+    expect(netEvents.map(({payload}) => payload)).toEqual([
+      {resolvers: ['1.1.1.1']},
+      {resolvers: ['1.1.1.1']},
+    ]);
   });
 
   it('completes select$ and resync$ when the lifetime ends', () => {

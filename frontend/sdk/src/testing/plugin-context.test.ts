@@ -1,5 +1,6 @@
 import {Subject} from 'rxjs';
 import {describe, expect, it} from 'vitest';
+import type {MndwEvent} from '../event-schema.js';
 import {createTestI18n} from './i18n.js';
 import {createTestPluginContext} from './plugin-context.js';
 
@@ -127,6 +128,46 @@ describe('createTestPluginContext', () => {
 
     expect(eventsComplete).toBe(1);
     expect(resyncComplete).toBe(1);
+  });
+
+  it('deep-freezes events emitted through the test fixture', () => {
+    const fixture = createTestPluginContext({events: true});
+    const mutationErrors: unknown[] = [];
+    const event: MndwEvent = {
+      id: '01J5KZ00000000000000000000',
+      ts: 1725552000123,
+      topic: 'net.dns_changed',
+      source: 'log',
+      payload: {resolvers: ['1.1.1.1']},
+    };
+
+    fixture.context.events?.select$('net').subscribe((received) => {
+      const mutable = received as unknown as {topic: string; payload: {resolvers: string[]}};
+
+      try {
+        mutable.payload.resolvers[0] = '9.9.9.9';
+      } catch (error) {
+        mutationErrors.push(error);
+      }
+
+      try {
+        mutable.topic = 'plugin.started';
+      } catch (error) {
+        mutationErrors.push(error);
+      }
+    });
+
+    fixture.emitEvent(event);
+
+    expect(mutationErrors).toHaveLength(2);
+    expect(mutationErrors.every((error) => error instanceof TypeError)).toBe(true);
+    expect(Object.isFrozen(event)).toBe(true);
+    expect(Object.isFrozen(event.payload)).toBe(true);
+
+    if (event.topic === 'net.dns_changed') {
+      expect(event.payload.resolvers).toEqual(['1.1.1.1']);
+      expect(Object.isFrozen(event.payload.resolvers)).toBe(true);
+    }
   });
 
   it('provides manual tickers and destroys them when the fixture unmounts', () => {

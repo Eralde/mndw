@@ -135,6 +135,115 @@ func TestWebSocketReplayPaginatesRetainedSnapshot(t *testing.T) {
 	}
 }
 
+func TestWebSocketSubscribeDuringReplayResetsSnapshotAndUpdatesLiveFilter(t *testing.T) {
+	bus := NewBus()
+	netEvent := testEvent("01J5KZ00000000000000000000", "net.dns_changed")
+	pluginReplayEvent := testEvent("01J5KZ00000000000000000001", "plugin.started")
+	nextNetEvent := testEvent("01J5KZ00000000000000000002", "net.dhcp_lease")
+
+	for _, event := range []Event{netEvent, pluginReplayEvent, nextNetEvent} {
+		bus.Publish(event)
+	}
+
+	server := newWebSocketTestServer(t, NewWebSocketHandler(bus, func(*http.Request) bool { return true }))
+
+	defer server.Close()
+
+	connection, _, err := websocket.Dial(context.Background(), "ws"+server.URL[4:], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer connection.Close(websocket.StatusNormalClosure, "")
+
+	writeJSON := func(value any) {
+		t.Helper()
+
+		encoded, encodeErr := json.Marshal(value)
+
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+
+		if writeErr := connection.Write(context.Background(), websocket.MessageText, encoded); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}
+	readMessage := func() []byte {
+		t.Helper()
+
+		readContext, cancel := context.WithTimeout(context.Background(), time.Second)
+
+		defer cancel()
+
+		_, message, readErr := connection.Read(readContext)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+
+		return message
+	}
+	readReplay := func() (events []Event, hasMore bool) {
+		t.Helper()
+
+		var response struct {
+			Type    string  `json:"type"`
+			Events  []Event `json:"events"`
+			HasMore bool    `json:"hasMore"`
+		}
+
+		if unmarshalErr := json.Unmarshal(readMessage(), &response); unmarshalErr != nil {
+			t.Fatal(unmarshalErr)
+		}
+
+		if response.Type != "replay" {
+			t.Fatalf("response type = %q", response.Type)
+		}
+
+		return response.Events, response.HasMore
+	}
+
+	writeJSON(map[string]any{"type": "subscribe", "topics": []string{"net"}})
+	waitForSubscriber(t, bus)
+	writeJSON(map[string]any{"type": "replay", "after": "", "limit": 1})
+
+	first, hasMore := readReplay()
+	if len(first) != 1 || first[0].ID != netEvent.ID || !hasMore {
+		t.Fatalf("first replay = %#v, hasMore=%v", first, hasMore)
+	}
+
+	writeJSON(map[string]any{"type": "subscribe", "topics": []string{"net", "plugin"}})
+	writeJSON(map[string]any{"type": "replay", "after": first[0].ID, "limit": 1})
+
+	second, hasMore := readReplay()
+	if len(second) != 1 || second[0].ID != pluginReplayEvent.ID || !hasMore {
+		t.Fatalf("replay after updated subscribe = %#v, hasMore=%v", second, hasMore)
+	}
+
+	writeJSON(map[string]any{"type": "replay", "after": second[0].ID, "limit": 1})
+
+	third, hasMore := readReplay()
+	if len(third) != 1 || third[0].ID != nextNetEvent.ID || hasMore {
+		t.Fatalf("next replay = %#v, hasMore=%v", third, hasMore)
+	}
+
+	livePluginEvent := testEvent("01J5KZ00000000000000000003", "plugin.started")
+	bus.Publish(livePluginEvent)
+
+	var liveResponse struct {
+		Type  string `json:"type"`
+		Event Event  `json:"event"`
+	}
+
+	if unmarshalErr := json.Unmarshal(readMessage(), &liveResponse); unmarshalErr != nil {
+		t.Fatal(unmarshalErr)
+	}
+
+	if liveResponse.Type != "event" || liveResponse.Event.ID != livePluginEvent.ID {
+		t.Fatalf("live response = %#v", liveResponse)
+	}
+}
+
 func TestWebSocketInvalidSubscriptionPreservesPreviousFilter(t *testing.T) {
 	bus := NewBus()
 	server := newWebSocketTestServer(t, NewWebSocketHandler(bus, func(*http.Request) bool { return true }))

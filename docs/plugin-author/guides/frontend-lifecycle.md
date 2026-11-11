@@ -73,6 +73,13 @@ if (ctx.backend !== undefined) {
 }
 ```
 
+Each connection, including initial connections and reconnects, first replays retained events after the host cursor, then
+switches to live delivery. The host buffers live events during replay and delivers them afterward, in order; overlapping
+replay/live event IDs are deduplicated. A subscription added while replay runs also receives matching events from the
+remaining replay, so it may see events published before it subscribed. `ctx.events.resync$` emits after replay finishes
+or when retained history no longer covers the gap; refresh plugin state when it emits. Events are deeply frozen; do not
+mutate them.
+
 ## Cancellation and resource ownership
 
 The host aborts `ctx.signal` with a standard `AbortError` DOMException when it disposes a context: widget removal,

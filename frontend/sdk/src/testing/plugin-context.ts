@@ -54,6 +54,35 @@ function eventMatchesTopics(topics: string | readonly string[], topic: string): 
   });
 }
 
+function deepFreezeEvent(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      deepFreezeEvent(item);
+    }
+
+    Object.freeze(value);
+
+    return;
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+
+  // Test events follow the SDK schema; non-plain instances are outside the contract.
+  if (prototype !== Object.prototype && prototype !== null) {
+    return;
+  }
+
+  for (const property of Object.values(value)) {
+    deepFreezeEvent(property);
+  }
+
+  Object.freeze(value);
+}
+
 function createStorage(): PluginStorage {
   const values = new Map<string, string>();
 
@@ -264,7 +293,10 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
         ticker.tick(timestamp);
       }
     },
-    emitEvent: (event): void => eventSubject.next(event),
+    emitEvent: (event): void => {
+      deepFreezeEvent(event);
+      eventSubject.next(event);
+    },
     resync: (): void => resyncSubject.next(),
     unmount: (): void => {
       if (unmounted) {

@@ -10,6 +10,18 @@ import {
   eventSchema,
 } from './event-schema.js';
 
+const checkReadonlyEventType = (topicEvent: MndwEvent, payloadEvent: MndwEvent): void => {
+  // @ts-expect-error SDK events must not allow topic mutation.
+  topicEvent.topic = 'plugin.started';
+
+  if (payloadEvent.topic === 'net.dns_changed') {
+    // @ts-expect-error SDK events must not allow nested payload mutation.
+    payloadEvent.payload.resolvers[0] = '9.9.9.9';
+  }
+};
+
+void checkReadonlyEventType;
+
 const validEvent = (topic: string, source: MndwEvent['source'], payload: Record<string, unknown>): MndwEvent => {
   return {
     id: '01J5KZ00000000000000000000',

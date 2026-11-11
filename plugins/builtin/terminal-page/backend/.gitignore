@@ -1,0 +1,2 @@
+# Locally compiled backend binary; packaging rebuilds it from cmd/terminal-backend
+/terminal-backend

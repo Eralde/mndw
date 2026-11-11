@@ -28,6 +28,7 @@ import {hostT} from '../services/host-i18n.svelte.js';
 import {appState} from '../state/app.svelte.js';
 import {getHostServices} from '../host-services-context.js';
 import {getPluginNavigationRouter} from '../router/create-app-router.js';
+import {HOST_PATHS} from '../router/host-routes.js';
 
 const PERSIST_DEBOUNCE_MS = 500;
 const services = getHostServices();
@@ -334,7 +335,7 @@ onDestroy(() => {
   data-locale={appState.locale}
 >
   <div class="mndw-dashboard__toolbar">
-    {#if registry.getWidgets().length > 0}
+    {#if registry.getWidgets().length > 0 && tiles.length > 0}
       <mndw-button
         variant="secondary"
         onclick={() => (addPanelOpen = true)}
@@ -350,12 +351,51 @@ onDestroy(() => {
           {hostT('dashboard.arrange-widgets')}
         </mndw-button>
       {/if}
-    {:else}
-      <span class="mndw-dashboard__toolbar--empty">
-        {hostT('dashboard.no-widgets')}
-      </span>
     {/if}
   </div>
+
+  {#if appState.pluginLoadError !== null}
+    <!-- Regular region, not an alert: the AppShell banner (role="alert") above is the
+         assertive announcement; this block only explains what the banner means. -->
+    <section class="mndw-dashboard__empty">
+      <h2 class="mndw-dashboard__empty-title">
+        {hostT('dashboard.empty-error-title')}
+      </h2>
+      <p class="mndw-dashboard__empty-text">
+        {hostT('dashboard.empty-error-text')}
+      </p>
+    </section>
+  {:else if registry.getWidgets().length === 0}
+    <section class="mndw-dashboard__empty">
+      <h2 class="mndw-dashboard__empty-title">
+        {hostT('dashboard.no-widgets')}
+      </h2>
+      <p class="mndw-dashboard__empty-text">
+        {hostT('dashboard.empty-no-plugins')}
+      </p>
+      <a
+        class="mndw-dashboard__empty-link"
+        href={HOST_PATHS.settingsTab.plugins}
+      >
+        {hostT('dashboard.empty-install-plugins')}
+      </a>
+    </section>
+  {:else if tiles.length === 0}
+    <section class="mndw-dashboard__empty">
+      <h2 class="mndw-dashboard__empty-title">
+        {hostT('dashboard.empty-title')}
+      </h2>
+      <p class="mndw-dashboard__empty-text">
+        {hostT('dashboard.empty-add-widget')}
+      </p>
+      <mndw-button
+        variant="primary"
+        onclick={() => (addPanelOpen = true)}
+      >
+        {hostT('dashboard.add-widget')}
+      </mndw-button>
+    </section>
+  {/if}
 
   {#if isMobile}
     <MobileDashboard

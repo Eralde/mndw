@@ -201,7 +201,7 @@ describe('plugin list failure alert', () => {
     retryButton(target)?.click();
 
     await vi.waitFor(() => {
-      expect(target.querySelector('.mndw-dashboard__toolbar mndw-button')?.textContent)
+      expect(target.querySelector('.mndw-dashboard__empty mndw-button')?.textContent)
         .toContain('Add Widget');
       expect(target.querySelector('a[href="/retry-page"]')?.textContent)
         .toContain('Retry page');
@@ -217,7 +217,7 @@ describe('plugin list failure alert', () => {
 
     await appRouter.navigate('/', {replace: true});
 
-    target.querySelector<HTMLElement>('.mndw-dashboard__toolbar mndw-button')?.click();
+    target.querySelector<HTMLElement>('.mndw-dashboard__empty mndw-button')?.click();
 
     await vi.waitFor(() => {
       expect(target.querySelector('.mndw-floating-panel')?.textContent)

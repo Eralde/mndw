@@ -28,6 +28,8 @@ setHostServices(services);
   <div
     class="mndw-loading"
     data-locale={appState.locale}
+    role="status"
+    aria-busy="true"
   >
     {hostT('app.loading')}
   </div>

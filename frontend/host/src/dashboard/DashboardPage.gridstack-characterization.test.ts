@@ -141,7 +141,11 @@ function setMobile(matches: boolean): void {
 }
 
 function addWidgetByLabel(target: HTMLElement, label: string): void {
-  target.querySelector<HTMLElement>('.mndw-dashboard__toolbar mndw-button')?.click();
+  // Empty dashboard: the CTA lives in the empty state; once tiles exist, the toolbar.
+  const addButton = target.querySelector<HTMLElement>('.mndw-dashboard__toolbar mndw-button')
+    ?? target.querySelector<HTMLElement>('.mndw-dashboard__empty mndw-button');
+
+  addButton?.click();
   flushSync();
 
   const button = [...document.body.querySelectorAll<HTMLElement>('.mndw-floating-panel mndw-button')]

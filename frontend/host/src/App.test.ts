@@ -91,3 +91,18 @@ describe('App login overlays', () => {
     expect(renderedSelectPanel()).not.toBeNull();
   });
 });
+
+describe('App loading state', () => {
+  it('announces busy status while the authenticated shell is initializing', () => {
+    appState.authenticated = true;
+    appState.ready = false;
+    render();
+
+    const loading = target.querySelector('.mndw-loading');
+
+    expect(loading).not.toBeNull();
+    expect(loading?.getAttribute('role')).toBe('status');
+    expect(loading?.getAttribute('aria-busy')).toBe('true');
+    expect(loading?.textContent?.trim()).toBe('Loading…');
+  });
+});

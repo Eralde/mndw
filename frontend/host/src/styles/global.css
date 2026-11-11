@@ -570,9 +570,38 @@ body {
   font-size: 0.8125rem;
 }
 
-.mndw-dashboard__toolbar--empty {
+/* Explanatory empty states (plugin load failure / no widget plugins / none added).
+   Overlay pattern matches .mndw-dashboard__loading: the grid stays mounted underneath
+   so restoration behaviour is untouched. */
+.mndw-dashboard__empty {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  padding: 1.5rem;
+  text-align: center;
+  background: var(--mndw-bg);
+}
+
+.mndw-dashboard__empty-title {
+  margin: 0;
+  color: var(--mndw-text);
+  font-size: 1rem;
+}
+
+.mndw-dashboard__empty-text {
+  margin: 0;
   color: var(--mndw-text-subtle);
-  font-size: 0.8125rem;
+}
+
+/* Text colour + underline: --mndw-accent on --mndw-bg is below 4.5:1 in the dark theme. */
+.mndw-dashboard__empty-link {
+  color: var(--mndw-text);
+  text-decoration: underline;
 }
 
 /* === Floating Add Panel === */

@@ -198,6 +198,23 @@ describe('tile controller', () => {
     expect(controller?.body.textContent).toBe('Preparing… installing dependencies');
   });
 
+  it('marks per-tile dependency notices with live status roles', () => {
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', noop));
+    replaceDepsStatuses([{name: 'traffic', depsStatus: 'installing'}]);
+
+    const installing = ensureTileController(pluginContextServices, pluginRegistry, 'traffic', 'traffic:1', vi.fn());
+
+    expect(installing?.body.querySelector('.mndw-grid-tile__notice')?.getAttribute('role')).toBe('status');
+
+    destroyAllTiles();
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('traffic', noop));
+    replaceDepsStatuses([{name: 'traffic', depsStatus: 'failed'}]);
+
+    const failed = ensureTileController(pluginContextServices, pluginRegistry, 'traffic', 'traffic:2', vi.fn());
+
+    expect(failed?.body.querySelector('.mndw-grid-tile__notice')?.getAttribute('role')).toBe('alert');
+  });
+
   it('returns the existing controller (same frame element) for a repeated ensure', () => {
     vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
 
@@ -280,6 +297,7 @@ describe('tile controller', () => {
     hydratePendingTiles(pluginContextServices, pluginRegistry);
 
     expect(controller?.body.textContent).toBe('Dependency install failed');
+    expect(controller?.body.querySelector('.mndw-grid-tile__notice')?.getAttribute('role')).toBe('alert');
     expect(createInstance).not.toHaveBeenCalled();
   });
 

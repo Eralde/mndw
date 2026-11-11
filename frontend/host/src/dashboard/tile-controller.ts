@@ -49,6 +49,9 @@ function renderTileNotice(body: HTMLElement, kind: 'installing' | 'failed'): voi
   const notice = document.createElement('div');
 
   notice.className = `mndw-grid-tile__notice mndw-grid-tile__notice--${kind}`;
+  // Live status semantics: installation progress is a polite status, a failed
+  // install is assertive — screen readers announce both without moving focus.
+  notice.setAttribute('role', kind === 'installing' ? 'status' : 'alert');
   notice.textContent = kind === 'installing'
     ? hostT('dashboard.preparing-dependencies')
     : hostT('dashboard.dependency-install-failed');

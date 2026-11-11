@@ -110,6 +110,7 @@ import {addWidgetTile, resizeWidgetTile} from './grid-dashboard-setup.js';
 import {destroyAllTiles, ensureTileController, removeTileController} from './tile-controller.js';
 import {loadDashboardLayout, saveDashboardLayout} from './grid-layout-persistence.js';
 import {pluginRegistry} from '../runtime/plugin-registry.js';
+import {appState} from '../state/app.svelte.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {raiseInstanceCounter} from './widget-counter.js';
 import DashboardPage from './DashboardPage.svelte';
@@ -178,6 +179,8 @@ describe('DashboardPage', () => {
     mobileState.listener = undefined;
     mobileState.addEventListener.mockClear();
     mobileState.removeEventListener.mockClear();
+    appState.locale = 'en';
+    appState.pluginLoadError = null;
     removeCallbacks.clear();
     mobileFrames.clear();
     currentTitles.clear();
@@ -437,7 +440,7 @@ describe('DashboardPage', () => {
 
     const {component, target} = mountPage();
 
-    target.querySelector<HTMLElement>('.mndw-dashboard__toolbar mndw-button')?.click();
+    target.querySelector<HTMLElement>('.mndw-dashboard__empty mndw-button')?.click();
     flushSync();
     document.body.querySelector<HTMLElement>('.mndw-floating-panel mndw-button:not(.mndw-floating-panel__close)')
       ?.click();
@@ -468,7 +471,7 @@ describe('DashboardPage', () => {
 
     const {component, target} = mountPage();
 
-    target.querySelector<HTMLElement>('.mndw-dashboard__toolbar mndw-button')?.click();
+    target.querySelector<HTMLElement>('.mndw-dashboard__empty mndw-button')?.click();
     flushSync();
     document.body.querySelector<HTMLElement>(
       '.mndw-floating-panel mndw-button:not(.mndw-floating-panel__close)',
@@ -506,6 +509,90 @@ describe('DashboardPage', () => {
     const toolbar = page?.querySelector('.mndw-dashboard__toolbar');
 
     expect(page?.firstElementChild).toBe(toolbar);
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('points at the banner and offers no CTA when the plugin catalog failed to load', () => {
+    appState.pluginLoadError = 'list';
+
+    const {component, target} = mountPage();
+
+    const empty = target.querySelector('.mndw-dashboard__empty');
+
+    expect(empty?.getAttribute('role')).toBeNull();
+    expect(empty?.textContent).toContain('Widgets unavailable');
+    expect(empty?.textContent).toContain('Plugins could not be loaded — see the message above.');
+    expect(target.querySelector('.mndw-dashboard__empty a')).toBeNull();
+    expect(target.querySelector('.mndw-dashboard__empty mndw-button')).toBeNull();
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('explains and links to the plugin manager when no installed plugins provide widgets', () => {
+    const {component, target} = mountPage();
+
+    const empty = target.querySelector('.mndw-dashboard__empty');
+
+    expect(empty?.getAttribute('role')).toBeNull();
+    expect(empty?.textContent).toContain('No widgets available');
+    expect(empty?.textContent).toContain('No enabled plugins provide widgets.');
+    const link = empty?.querySelector<HTMLAnchorElement>('a');
+    expect(link?.getAttribute('href')).toBe('/settings/plugins');
+    expect(link?.textContent?.trim()).toBe('Manage plugins');
+    expect([...target.querySelectorAll('mndw-button')].some(
+      (button) => button.textContent?.includes('Add Widget'),
+    )).toBe(false);
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('explains the next step with a primary add button when widgets exist but none were added', async () => {
+    vi.mocked(pluginRegistry).getWidgets.mockReturnValue([{
+      entry: widgetEntry('clock'),
+      module: {createInstance: vi.fn()},
+    }]);
+
+    const {component, target} = mountPage();
+
+    // Custom element upgrade reflects the variant attribute asynchronously.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const empty = target.querySelector('.mndw-dashboard__empty');
+
+    expect(empty?.getAttribute('role')).toBeNull();
+    expect(empty?.textContent).toContain('Dashboard is empty');
+    expect(empty?.textContent).toContain('Add a widget to get started.');
+    const button = empty?.querySelector('mndw-button');
+    expect(button?.textContent).toContain('Add Widget');
+    expect(button?.getAttribute('variant')).toBe('primary');
+    // The empty state owns the CTA; the toolbar keeps no duplicate button.
+    expect(target.querySelector('.mndw-dashboard__toolbar mndw-button')).toBeNull();
+
+    button?.click();
+    flushSync();
+
+    expect(document.querySelector('.mndw-floating-panel')).not.toBeNull();
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('renders the no-widget-plugins empty state in Russian', () => {
+    appState.locale = 'ru';
+
+    const {component, target} = mountPage();
+
+    const empty = target.querySelector('.mndw-dashboard__empty');
+
+    expect(empty?.textContent).toContain('Нет доступных виджетов');
+    expect(empty?.textContent).toContain('Ни один включённый плагин не предоставляет виджетов.');
+    expect(empty?.querySelector<HTMLAnchorElement>('a')?.textContent?.trim())
+      .toBe('Управление плагинами');
 
     void unmount(component);
     target.remove();

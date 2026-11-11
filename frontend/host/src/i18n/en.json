@@ -33,8 +33,8 @@
     "widget-error": "Error loading widget",
     "empty-error-title": "Widgets unavailable",
     "empty-error-text": "Plugins could not be loaded — see the message above.",
-    "empty-no-plugins": "No installed plugins provide widgets.",
-    "empty-install-plugins": "Install plugins",
+    "empty-no-plugins": "No enabled plugins provide widgets.",
+    "empty-install-plugins": "Manage plugins",
     "empty-title": "Dashboard is empty",
     "empty-add-widget": "Add a widget to get started."
   },
@@ -239,6 +239,11 @@
       "zip-too-large": "The ZIP file exceeds the 10 MB upload limit.",
       "upload-target-mismatch": "{filename} targets {archiveTarget}, but this device reports {deviceTarget}. Choose the matching archive."
     }
+  },
+  "page-plugin": {
+    "opening": "Opening {title}…",
+    "open-error": "Could not open the page of plugin {title}.",
+    "slow": "The plugin is taking too long to respond."
   },
   "common": {
     "cancel": "Cancel",

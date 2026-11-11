@@ -301,9 +301,10 @@ receive a service-unavailable response and may include `Retry-After`. Unexpected
 exponential retry; repeated failures reach `failed`.
 
 Disable, delete, update, maintenance, and daemon shutdown stop the supervised process group and
-remove socket/lease evidence. The child should handle
-`SIGTERM`, stop accepting new work, close listeners, and persist only intentional application state.
-It must not depend on a separate reaper.
+remove socket/lease evidence. When the service context is canceled, the shared Go `go-httpsocket`
+package stops accepting requests and waits up to 10 seconds for in-flight handlers; it then closes
+remaining connections. The child should handle `SIGTERM` and persist only intentional application
+state. It must not depend on a separate reaper.
 
 ## Implement the service
 

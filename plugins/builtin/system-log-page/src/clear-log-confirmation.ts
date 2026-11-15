@@ -1,14 +1,17 @@
-import type {OverlayCloseEvent, OverlayService} from '@mndw/sdk';
+import type {OverlayCloseEvent, OverlayService, Translator} from '@mndw/sdk';
 
 export interface ClearResult {
   readonly confirmed: boolean;
 }
 
-export function openClearConfirmation(overlay: OverlayService): Promise<OverlayCloseEvent<ClearResult>> {
+export function openClearConfirmation(
+  overlay: OverlayService,
+  translator: Translator,
+): Promise<OverlayCloseEvent<ClearResult>> {
   const session = overlay.open<ClearResult>({
     kind: 'modal',
-    title: 'Clear system log',
-    description: 'Remove all current router system-log records?',
+    title: translator.t('confirm.clear-log.title'),
+    description: translator.t('confirm.clear-log.description'),
     closeOnEscape: true,
     closeOnOutsideClick: true,
     trapFocus: true,
@@ -22,11 +25,11 @@ export function openClearConfirmation(overlay: OverlayService): Promise<OverlayC
       const cancelButton = document.createElement('mndw-button');
 
       dialog.setAttribute('role', 'dialog');
-      dialog.setAttribute('aria-label', 'Clear system log');
-      copy.textContent = 'Clear all records from the router system log?';
-      confirmButton.textContent = 'Clear log';
+      dialog.setAttribute('aria-label', translator.t('aria.clear-log-confirmation'));
+      copy.textContent = translator.t('confirm.clear-log.question');
+      confirmButton.textContent = translator.t('action.clear');
       confirmButton.setAttribute('variant', 'danger');
-      cancelButton.textContent = 'Cancel';
+      cancelButton.textContent = translator.t('action.cancel');
       cancelButton.setAttribute('variant', 'secondary');
       actions.append(confirmButton, cancelButton);
       dialog.append(copy, actions);

@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import type {OverlayCloseEvent, OverlayOpenOptions, OverlayService, OverlaySession} from '@mndw/sdk';
+import {get} from 'svelte/store';
+import type {OverlayCloseEvent, OverlayOpenOptions, OverlayService, OverlaySession, Translator} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
+import {createTranslator} from '@mndw/sdk/svelte';
+import enCatalog from '../i18n/en.json';
+import ruCatalog from '../i18n/ru.json';
 import {type ClearResult, openClearConfirmation} from './clear-log-confirmation';
 
 interface Opened {
@@ -53,6 +58,10 @@ function createOverlay(): {overlay: OverlayService; opened: Opened[]} {
   return {overlay, opened};
 }
 
+function translatorFor(catalog: Record<string, unknown>): Translator {
+  return get(createTranslator(createTestI18n(catalog)));
+}
+
 describe('openClearConfirmation', () => {
   let opened: Opened[] = [];
 
@@ -65,12 +74,46 @@ describe('openClearConfirmation', () => {
     opened = [];
   });
 
+  it('renders English clear confirmation copy unchanged', () => {
+    const fake = createOverlay();
+
+    opened = fake.opened;
+    openClearConfirmation(fake.overlay, translatorFor(enCatalog));
+
+    const dialog = fake.opened[0];
+    const content = dialog?.target.querySelector('[role="dialog"]');
+    const buttons = [...(dialog?.target.querySelectorAll<HTMLElement>('mndw-button') ?? [])];
+
+    expect(dialog?.options.title).toBe('Clear system log');
+    expect(dialog?.options.description).toBe('Remove all current router system-log records?');
+    expect(content?.getAttribute('aria-label')).toBe('Clear system log');
+    expect(content?.querySelector('p')?.textContent).toBe('Clear all records from the router system log?');
+    expect(buttons.map((button) => button.textContent)).toEqual(['Clear log', 'Cancel']);
+  });
+
+  it('renders all clear confirmation copy in Russian for the Russian locale', () => {
+    const fake = createOverlay();
+
+    opened = fake.opened;
+    openClearConfirmation(fake.overlay, translatorFor(ruCatalog));
+
+    const dialog = fake.opened[0];
+    const content = dialog?.target.querySelector('[role="dialog"]');
+    const buttons = [...(dialog?.target.querySelectorAll<HTMLElement>('mndw-button') ?? [])];
+
+    expect(dialog?.options.title).toBe('Очистить системный журнал');
+    expect(dialog?.options.description).toBe('Удалить все текущие записи системного журнала роутера?');
+    expect(content?.getAttribute('aria-label')).toBe('Очистить системный журнал');
+    expect(content?.querySelector('p')?.textContent).toBe('Очистить все записи системного журнала роутера?');
+    expect(buttons.map((button) => button.textContent)).toEqual(['Очистить журнал', 'Отмена']);
+  });
+
   it('composes a modal from host overlay primitives and returns confirm action', async () => {
     const fake = createOverlay();
 
     opened = fake.opened;
 
-    const resultPromise = openClearConfirmation(fake.overlay);
+    const resultPromise = openClearConfirmation(fake.overlay, translatorFor(enCatalog));
     const dialog = fake.opened[0];
 
     expect(dialog.options.kind).toBe('modal');
@@ -91,7 +134,7 @@ describe('openClearConfirmation', () => {
 
     opened = cancelFake.opened;
 
-    const cancelPromise = openClearConfirmation(cancelFake.overlay);
+    const cancelPromise = openClearConfirmation(cancelFake.overlay, translatorFor(enCatalog));
 
     cancelFake.opened[0]?.target.querySelectorAll<HTMLElement>('mndw-button')[1]?.click();
     await expect(cancelPromise).resolves.toEqual({reason: 'api', result: {confirmed: false}});
@@ -100,7 +143,7 @@ describe('openClearConfirmation', () => {
 
     opened.push(...dismissFake.opened);
 
-    const dismissPromise = openClearConfirmation(dismissFake.overlay);
+    const dismissPromise = openClearConfirmation(dismissFake.overlay, translatorFor(enCatalog));
 
     dismissFake.opened[0]?.emitClose({reason: 'escape'});
     await expect(dismissPromise).resolves.toEqual({reason: 'escape'});
@@ -110,7 +153,7 @@ describe('openClearConfirmation', () => {
     const fake = createOverlay();
 
     opened = fake.opened;
-    openClearConfirmation(fake.overlay);
+    openClearConfirmation(fake.overlay, translatorFor(enCatalog));
 
     expect(fake.opened[0]?.cleanup).toBeTypeOf('function');
     fake.opened[0]?.cleanup?.();

@@ -125,7 +125,7 @@ function updateConnectionState(next: LogConnectionState): void {
 
 async function requestClear(): Promise<void> {
   try {
-    const result = await openClearConfirmation(_overlay);
+    const result = await openClearConfirmation(_overlay, $translator);
 
     if (result.result?.confirmed !== true) {
       return;

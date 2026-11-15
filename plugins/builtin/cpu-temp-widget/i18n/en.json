@@ -3,6 +3,8 @@
   "l10n.probe": "l10n-ok",
   "loading": "Loading…",
   "error": "Temperature data is unavailable.",
+  "stale.message": "Not updated since {time}",
+  "stale.retry": "Retry",
   "unsupported": "Temperature monitoring is not supported on this device.",
   "empty": "Gathering data…",
   "range-1h": "1H",

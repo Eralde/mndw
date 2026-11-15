@@ -28,11 +28,18 @@ const props = defineProps<{ctx: PluginContext}>();
 provide('mndw:plugin-i18n', props.ctx.i18n);
 
 const translator = useTranslator(props.ctx.i18n);
-const t = (key: string): string => translator.t(key);
+const t = (key: string, values?: Record<string, unknown>): string => translator.t(key, values);
 
 const loadState = ref<LoadState<LiveDeviceInfo>>({status: 'loading'});
 const liveHistoryLoading = ref(false);
 const uptimeSeconds = ref<number | null>(null);
+const lastSuccessAt = ref<number | null>(null);
+const projectedLastSuccessAt = ref<number | null>(null);
+const refreshAttemptAt = ref(Date.now());
+const refreshFailed = ref(false);
+const projectedRefreshFailed = ref(false);
+const requestInFlight = ref(false);
+const projectedRequestInFlight = ref(false);
 const projectedSnapshot = ref<ProjectedSnapshot | null>(null);
 const projectedLoadedRange = ref<DurableRange | null>(null);
 const gatheringOverride = ref<boolean | undefined>(undefined);
@@ -91,6 +98,40 @@ const activeProjection = computed<ProjectedSnapshot | null>(() => {
   return isDurableRange.value && projectedLoadedRange.value === durableRange.value
       ? projectedSnapshot.value
       : null;
+});
+const liveStale = computed(() => refreshFailed.value && lastSuccessAt.value !== null);
+const projectedStale = computed(() => {
+  return isDurableRange.value && projectedRefreshFailed.value && activeProjection.value !== null;
+});
+const stale = computed(() => liveStale.value || projectedStale.value);
+const retryInFlight = computed(() => {
+  return (liveStale.value && requestInFlight.value) || (projectedStale.value && projectedRequestInFlight.value);
+});
+const lastStaleSuccessAt = computed(() => {
+  const staleTimes = [
+    liveStale.value ? lastSuccessAt.value : null,
+    projectedStale.value ? projectedLastSuccessAt.value : null,
+  ].filter((time): time is number => time !== null);
+
+  return staleTimes.length === 0 ? null : Math.min(...staleTimes);
+});
+const lastSuccessTime = computed(() => {
+  const updatedAt = lastStaleSuccessAt.value;
+
+  if (updatedAt === null) {
+    return '';
+  }
+
+  const date = new Date(updatedAt);
+  const now = new Date(refreshAttemptAt.value);
+  const isToday = date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+  const timeOptions: Intl.DateTimeFormatOptions = {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'};
+
+  return translator.formatDate(date, isToday
+    ? timeOptions
+    : {...timeOptions, year: 'numeric', month: 'short', day: 'numeric'});
 });
 const projectedCpu = computed<ProjectedSeries | null>(() => activeProjection.value?.keys.cpu ?? null);
 const projectedRam = computed<ProjectedSeries | null>(() => activeProjection.value?.keys.ram ?? null);
@@ -161,17 +202,23 @@ const ramHistory = computed(() => {
 
 const uptime = computed(() => {
   return uptimeSeconds.value !== null
-      ? formatUptime(uptimeSeconds.value)
+      ? liveStale.value
+        ? t('uptime.estimated', {uptime: formatUptime(uptimeSeconds.value)})
+        : formatUptime(uptimeSeconds.value)
       : t('unknown');
 });
 
 const handleInfoSuccess = ({range, info: nextInfo}: LiveInfoRefresh): void => {
+  requestInFlight.value = false;
   if (selectedLiveRange.value !== range) {
     return;
   }
 
   const syncedAtMs = Date.now();
 
+  refreshAttemptAt.value = syncedAtMs;
+  lastSuccessAt.value = syncedAtMs;
+  refreshFailed.value = false;
   loadState.value = {status: 'success', data: nextInfo};
   baseline = createUptimeBaseline(nextInfo.uptimeSeconds, syncedAtMs);
   uptimeSeconds.value = getUptimeSeconds(baseline, syncedAtMs);
@@ -179,9 +226,28 @@ const handleInfoSuccess = ({range, info: nextInfo}: LiveInfoRefresh): void => {
 
 const handleLoadError = (loadError: unknown, isInitial: boolean): void => {
   console.error('[device-info-widget] device info refresh failed', loadError);
+  refreshAttemptAt.value = Date.now();
+  requestInFlight.value = false;
 
-  if (isInitial) {
+  if (lastSuccessAt.value !== null) {
+    refreshFailed.value = true;
+  } else if (isInitial) {
     loadState.value = {status: 'error', error: loadError};
+  }
+};
+
+const retry = (): void => {
+  if (retryInFlight.value) {
+    return;
+  }
+
+  if (liveStale.value) {
+    refreshLoop?.stop();
+    refreshLoop?.start();
+  }
+
+  if (projectedStale.value) {
+    startProjectedLoop(durableRange.value, true);
   }
 };
 
@@ -192,6 +258,10 @@ const handleProjectedTelemetrySuccess = (snapshot: ProjectedSnapshot): void => {
     return;
   }
 
+  projectedRequestInFlight.value = false;
+  refreshAttemptAt.value = Date.now();
+  projectedLastSuccessAt.value = refreshAttemptAt.value;
+  projectedRefreshFailed.value = false;
   projectedSnapshot.value = snapshot;
   projectedLoadedRange.value = range;
 };
@@ -208,6 +278,9 @@ const historyStatusLabel = computed((): string | null => {
 
 const handleProjectedTelemetryError = (loadError: unknown, _isInitial: boolean): void => {
   console.error('[device-info-widget] projected telemetry refresh failed', loadError);
+  refreshAttemptAt.value = Date.now();
+  projectedRequestInFlight.value = false;
+  projectedRefreshFailed.value = projectedLastSuccessAt.value !== null;
 };
 
 const loadLiveHistory = (range: DeviceInfoRange): void => {
@@ -251,6 +324,7 @@ const stopProjectedLoop = (): void => {
   projectedAbortController?.abort();
   projectedAbortController = null;
   pendingProjectedRange = null;
+  projectedRequestInFlight.value = false;
 };
 
 const startProjectedLoop = (range: DurableRange, preserveLoadedRange = false): void => {
@@ -258,11 +332,18 @@ const startProjectedLoop = (range: DurableRange, preserveLoadedRange = false): v
   const generation = projectedLoopGeneration;
   if (!preserveLoadedRange) {
     projectedLoadedRange.value = null;
+    projectedLastSuccessAt.value = null;
+    projectedRefreshFailed.value = false;
   }
   pendingProjectedRange = range;
   projectedAbortController = new AbortController();
   projectedRefreshLoop = createRefreshLoop({
-    load: () => props.ctx.telemetry.fetchProjected(range, {signal: projectedAbortController?.signal}),
+    load: () => {
+      projectedRequestInFlight.value = true;
+      refreshAttemptAt.value = Date.now();
+
+      return props.ctx.telemetry.fetchProjected(range, {signal: projectedAbortController?.signal});
+    },
     intervalMs: 15 * 60_000,
     onSuccess: (snapshot) => {
       if (generation === projectedLoopGeneration) {
@@ -347,6 +428,8 @@ onMounted(() => {
 
   refreshLoop = createRefreshLoop({
     load: async (): Promise<LiveInfoRefresh> => {
+      requestInFlight.value = true;
+      refreshAttemptAt.value = Date.now();
       const range = selectedLiveRange.value;
 
       return {range, info: await fetchDeviceInfo(props.ctx.rciManager, deviceInfoDetail(range))};
@@ -397,6 +480,16 @@ onUnmounted(() => {
           </mndw-segment>
         </mndw-segmented>
       </div>
+      <div v-if="stale" class="app__stale mndw-alert mndw-alert--warning" role="status">
+        <span class="app__stale-message">{{ t('stale.message', {time: lastSuccessTime}) }}</span>
+        <mndw-button
+          class="app__stale-retry"
+          variant="ghost"
+          :disabled="retryInFlight"
+          :aria-busy="retryInFlight ? 'true' : null"
+          @click="retry"
+        >{{ t('stale.retry') }}</mndw-button>
+      </div>
       <TelemetryNote
         v-if="telemetryNoteVisible"
         :sessionConfigured="sessionConfigured"
@@ -426,7 +519,7 @@ onUnmounted(() => {
           <span class="app__label">{{ t('firmware') }}:</span>
           <span class="app__value">{{ firmware }}</span>
           <span class="app__label">{{ t('uptime') }}:</span>
-          <span class="app__value">{{ uptime }}</span>
+          <span class="app__value" :title="liveStale ? t('uptime.estimated-title') : undefined">{{ uptime }}</span>
           <hr class="app__divider app__divider--span">
           <CopyField :label="t('serial')" :value="info.serial" :translator="translator"/>
           <CopyField :label="t('service-tag')" :value="info.serviceTag" :translator="translator"/>
@@ -465,6 +558,33 @@ onUnmounted(() => {
 .app__loading {
   padding: 1rem;
   color: var(--mndw-text-subtle);
+}
+
+.app__stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mndw-space-2);
+  min-width: 0;
+  margin-bottom: 0.75rem;
+  font-size: var(--mndw-text-sm);
+}
+
+.app__stale-message {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app__stale-retry {
+  flex: 0 0 auto;
+  font-size: var(--mndw-text-xs);
+}
+
+.app__stale-retry::part(button) {
+  min-height: var(--mndw-control-h-sm);
+  padding: 0 var(--mndw-space-2);
 }
 
 .app__grid {

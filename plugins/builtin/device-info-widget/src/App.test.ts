@@ -27,30 +27,34 @@ const system = {model: 'Keenetic Giga', uptime: 61, cpuload: 27, memtotal: 1000,
 const projectionEnd = 1_800_000_000_000;
 const projectionStart = projectionEnd - 7 * 24 * 60 * 60 * 1000;
 
-const projectedTelemetrySnapshot = (): ProjectedSnapshot => ({
-  keys: {
-    cpu: {
-      label: 'CPU',
-      supported: true,
-      unit: 'percent',
-      points: [{time: projectionStart, value: Number.NaN}, {time: projectionEnd, value: 25}],
-      segments: [{data: [{time: 1_800_000_000_000, value: 25}]}],
-      bands: [{id: 'range-0', data: [{time: 1_800_000_000_000, min: 20, max: 30}], color: 'accent'}],
-      valueDomain: {min: 0, max: 100},
+const projectedTelemetrySnapshot = (end = projectionEnd): ProjectedSnapshot => {
+  const start = end - 7 * 24 * 60 * 60 * 1000;
+
+  return {
+    keys: {
+      cpu: {
+        label: 'CPU',
+        supported: true,
+        unit: 'percent',
+        points: [{time: start, value: Number.NaN}, {time: end, value: 25}],
+        segments: [{data: [{time: end, value: 25}]}],
+        bands: [{id: 'range-0', data: [{time: end, min: 20, max: 30}], color: 'accent'}],
+        valueDomain: {min: 0, max: 100},
+      },
+      ram: {
+        label: 'RAM',
+        supported: true,
+        unit: 'percent',
+        points: [{time: start, value: Number.NaN}, {time: end, value: 45}],
+        segments: [{data: [{time: end, value: 45}]}],
+        bands: [{id: 'range-0', data: [{time: end, min: 40, max: 50}], color: 'accent'}],
+        valueDomain: {min: 0, max: 100},
+      },
     },
-    ram: {
-      label: 'RAM',
-      supported: true,
-      unit: 'percent',
-      points: [{time: projectionStart, value: Number.NaN}, {time: projectionEnd, value: 45}],
-      segments: [{data: [{time: 1_800_000_000_000, value: 45}]}],
-      bands: [{id: 'range-0', data: [{time: 1_800_000_000_000, min: 40, max: 50}], color: 'accent'}],
-      valueDomain: {min: 0, max: 100},
-    },
-  },
-  gathering: {enabled: true},
-  sessionConfigured: true,
-});
+    gathering: {enabled: true},
+    sessionConfigured: true,
+  };
+};
 
 function successfulResponse(query: RciQuery): Observable<unknown> {
   switch (query.path) {
@@ -378,6 +382,418 @@ describe('App', () => {
     expect(document.body.textContent).toContain('Keenetic Giga');
 
     app.unmount();
+  });
+
+  it('shows stale data with estimated uptime and retries without delaying the next refresh', async () => {
+    vi.setSystemTime(new Date(2025, 10, 15, 9, 42));
+
+    let systemAttempts = 0;
+    const pendingRetry = new Subject<unknown>();
+    const queue = (query: RciQuery): Observable<unknown> => {
+      if (query.path === 'show.system') {
+        systemAttempts += 1;
+
+        if (systemAttempts === 2) {
+          return throwError(() => new Error('scheduled refresh failed'));
+        }
+
+        if (systemAttempts === 3) {
+          return throwError(() => new Error('retry failed'));
+        }
+
+        if (systemAttempts === 4) {
+          return pendingRetry.asObservable();
+        }
+      }
+
+      return successfulResponse(query);
+    };
+    const app = mountWidget(queue);
+
+    await flushPromises();
+    vi.advanceTimersByTime(30_000);
+    await flushPromises();
+
+    const notice = document.querySelector<HTMLElement>('.app__stale');
+    const uptimeLabel = [...document.querySelectorAll('.app__label')].find((label) =>
+      label.textContent?.includes('Uptime')
+    );
+    const uptimeValue = uptimeLabel?.nextElementSibling;
+
+    expect(notice?.getAttribute('role')).toBe('status');
+    expect(notice?.textContent).toContain('Not updated since 09:42');
+    expect(notice?.textContent).toContain('Retry');
+    expect(document.body.textContent).toContain('Keenetic Giga');
+    expect(uptimeValue?.textContent).toContain('≈');
+    expect(uptimeValue?.getAttribute('title')).toBe('Estimated, not confirmed by the router');
+
+    if (notice === null) {
+      throw new Error('Stale notice was not rendered');
+    }
+
+    expect(getComputedStyle(notice).flexWrap).toBe('wrap');
+
+    notice?.querySelector<HTMLElement>('mndw-button')?.click();
+    await flushPromises();
+
+    expect(systemAttempts).toBe(3);
+    expect(document.querySelector('.app__stale')?.textContent).toContain('Not updated since 09:42');
+
+    document.querySelector<HTMLElement>('.app__stale mndw-button')?.click();
+    await nextTick();
+
+    const retryButton = document.querySelector<HTMLElement>('.app__stale mndw-button');
+
+    expect(systemAttempts).toBe(4);
+    expect(retryButton?.hasAttribute('disabled')).toBe(true);
+    expect(retryButton?.getAttribute('aria-busy')).toBe('true');
+
+    pendingRetry.next(system);
+    pendingRetry.complete();
+    await flushPromises();
+
+    expect(document.querySelector('.app__stale')).toBeNull();
+    expect(uptimeValue?.textContent).not.toContain('≈');
+    expect(uptimeValue?.hasAttribute('title')).toBe(false);
+
+    vi.advanceTimersByTime(30_000 - 1);
+    await flushPromises();
+    expect(systemAttempts).toBe(4);
+
+    vi.advanceTimersByTime(1);
+    await flushPromises();
+    expect(systemAttempts).toBe(5);
+
+    app.unmount();
+  });
+
+  it('shows and retries stale live data while a durable projection stays fresh', async () => {
+    vi.setSystemTime(new Date(2025, 10, 15, 10, 0));
+
+    let systemAttempts = 0;
+    const queue = (query: RciQuery): Observable<unknown> => {
+      if (query.path === 'show.system') {
+        systemAttempts += 1;
+
+        if (systemAttempts > 1) {
+          return throwError(() => new Error('live refresh failed'));
+        }
+      }
+
+      return successfulResponse(query);
+    };
+    const fetchProjected = vi.fn().mockResolvedValue(projectedTelemetrySnapshot());
+    const ctx = createContext(queue);
+
+    (ctx.telemetry as unknown as {fetchProjected: typeof fetchProjected}).fetchProjected = fetchProjected;
+
+    const {app, host} = mountWidgetContext(ctx);
+
+    await flushPromises();
+    changeRange(host, '7d');
+    await flushPromises();
+    vi.advanceTimersByTime(30_000);
+    await flushPromises();
+
+    expect(host.querySelector('.app__stale')?.textContent).toContain('Not updated since 10:00');
+    expect(host.querySelectorAll('.load-bar-chart')).toHaveLength(2);
+
+    host.querySelector<HTMLElement>('.app__stale mndw-button')?.click();
+    await flushPromises();
+
+    expect(systemAttempts).toBe(3);
+    expect(fetchProjected).toHaveBeenCalledTimes(1);
+    expect(host.querySelector('.app__stale')?.textContent).toContain('Not updated since 10:00');
+
+    app.unmount();
+    host.remove();
+  });
+
+  it('retries both stale sources and keeps the oldest stale time until both settle', async () => {
+    vi.setSystemTime(new Date(2025, 10, 15, 10, 0));
+
+    let resolveInitialProjection: ((snapshot: ProjectedSnapshot) => void) | undefined;
+    const initialProjection = new Promise<ProjectedSnapshot>((resolve) => {
+      resolveInitialProjection = resolve;
+    });
+    let resolveProjectionRetry: ((snapshot: ProjectedSnapshot) => void) | undefined;
+    const projectionRetry = new Promise<ProjectedSnapshot>((resolve) => {
+      resolveProjectionRetry = resolve;
+    });
+    const fetchProjected = vi.fn()
+      .mockImplementationOnce(() => initialProjection)
+      .mockRejectedValueOnce(new Error('scheduled projection failed'))
+      .mockImplementationOnce(() => projectionRetry);
+    let systemAttempts = 0;
+    let retryStarted = false;
+    const pendingLiveRetry = new Subject<unknown>();
+    const queue = (query: RciQuery): Observable<unknown> => {
+      if (query.path === 'show.system') {
+        systemAttempts += 1;
+
+        if (retryStarted) {
+          return pendingLiveRetry.asObservable();
+        }
+
+        if (systemAttempts > 1) {
+          return throwError(() => new Error('scheduled live refresh failed'));
+        }
+      }
+
+      return successfulResponse(query);
+    };
+    const ctx = createContext(queue);
+
+    (ctx.telemetry as unknown as {fetchProjected: typeof fetchProjected}).fetchProjected = fetchProjected;
+
+    const {app, host} = mountWidgetContext(ctx);
+
+    await flushPromises();
+    changeRange(host, '7d');
+    await flushPromises();
+    vi.advanceTimersByTime(30_000);
+    await flushPromises();
+
+    vi.setSystemTime(new Date(2025, 10, 15, 10, 5));
+    resolveInitialProjection?.(projectedTelemetrySnapshot());
+    await flushPromises();
+
+    vi.advanceTimersByTime(15 * 60_000);
+    await flushPromises();
+
+    const notice = host.querySelector<HTMLElement>('.app__stale');
+
+    expect(notice?.textContent).toContain('Not updated since 10:00');
+    expect(notice?.textContent).not.toContain('10:05');
+    expect(fetchProjected).toHaveBeenCalledTimes(2);
+
+    const previousAttempts = systemAttempts;
+
+    retryStarted = true;
+    notice?.querySelector<HTMLElement>('mndw-button')?.click();
+    await flushPromises();
+
+    const retryButton = host.querySelector<HTMLElement>('.app__stale mndw-button');
+
+    expect(systemAttempts).toBe(previousAttempts + 1);
+    expect(fetchProjected).toHaveBeenCalledTimes(3);
+    expect(retryButton?.hasAttribute('disabled')).toBe(true);
+
+    resolveProjectionRetry?.(projectedTelemetrySnapshot());
+    await flushPromises();
+
+    expect(host.querySelector('.app__stale')?.textContent).toContain('Not updated since 10:00');
+    expect(host.querySelector('.app__stale mndw-button')?.hasAttribute('disabled')).toBe(true);
+
+    pendingLiveRetry.error(new Error('live Retry failed'));
+    await flushPromises();
+
+    expect(host.querySelector('.app__stale')?.textContent).toContain('Not updated since 10:00');
+    expect(host.querySelector('.app__stale mndw-button')?.hasAttribute('disabled')).toBe(false);
+
+    app.unmount();
+    host.remove();
+  });
+
+  it('keeps a live stale notice after switching to a fresh durable range', async () => {
+    vi.setSystemTime(new Date(2025, 10, 15, 9, 42));
+
+    let systemAttempts = 0;
+    const queue = (query: RciQuery): Observable<unknown> => {
+      if (query.path === 'show.system') {
+        systemAttempts += 1;
+
+        if (systemAttempts > 1) {
+          return throwError(() => new Error('live refresh failed'));
+        }
+      }
+
+      return successfulResponse(query);
+    };
+    const {app, host} = mountWidgetContext(createContext(queue));
+
+    await flushPromises();
+    vi.advanceTimersByTime(30_000);
+    await flushPromises();
+
+    expect(host.querySelector('.app__stale')?.textContent).toContain('Not updated since 09:42');
+
+    changeRange(host, '7d');
+    await flushPromises();
+
+    expect(host.querySelectorAll('.load-bar-chart')).toHaveLength(2);
+    expect(host.querySelector('.app__stale')?.textContent).toContain('Not updated since 09:42');
+
+    app.unmount();
+    host.remove();
+  });
+
+  it('tracks durable projection freshness separately from live refreshes', async () => {
+    vi.setSystemTime(new Date(2025, 10, 15, 10, 0));
+
+    const fetchProjected = vi.fn()
+      .mockResolvedValueOnce(projectedTelemetrySnapshot())
+      .mockRejectedValueOnce(new Error('scheduled projection failed'))
+      .mockResolvedValue(projectedTelemetrySnapshot());
+    const ctx = createContext(successfulResponse);
+
+    (ctx.telemetry as unknown as {fetchProjected: typeof fetchProjected}).fetchProjected = fetchProjected;
+
+    const {app, host} = mountWidgetContext(ctx);
+
+    await flushPromises();
+    changeRange(host, '7d');
+    await flushPromises();
+
+    vi.advanceTimersByTime(15 * 60_000);
+    await flushPromises();
+
+    const notice = host.querySelector<HTMLElement>('.app__stale');
+    const uptimeLabel = [...host.querySelectorAll('.app__label')].find((label) =>
+      label.textContent?.includes('Uptime')
+    );
+    const uptimeValue = uptimeLabel?.nextElementSibling;
+
+    expect(notice?.getAttribute('role')).toBe('status');
+    expect(notice?.textContent).toContain('Not updated since 10:00');
+    expect(host.querySelectorAll('.load-bar-chart')).toHaveLength(2);
+    expect(uptimeValue?.textContent).not.toContain('≈');
+
+    vi.advanceTimersByTime(30_000);
+    await flushPromises();
+
+    expect(host.querySelector('.app__stale')?.textContent).toContain('Not updated since 10:00');
+
+    host.querySelector<HTMLElement>('.app__stale mndw-button')?.click();
+    await flushPromises();
+
+    expect(fetchProjected).toHaveBeenLastCalledWith('7d', expect.objectContaining({signal: expect.any(AbortSignal)}));
+    expect(host.querySelector('.app__stale')).toBeNull();
+
+    app.unmount();
+    host.remove();
+  });
+
+  it('ignores an in-flight projection Retry after switching durable ranges', async () => {
+    vi.setSystemTime(new Date(2025, 10, 15, 9, 42));
+
+    let resolveRetry: ((value: ProjectedSnapshot) => void) | undefined;
+    const retryRequest = new Promise<ProjectedSnapshot>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const fetchProjected = vi.fn()
+      .mockResolvedValueOnce(projectedTelemetrySnapshot())
+      .mockRejectedValueOnce(new Error('scheduled projection failed'))
+      .mockImplementationOnce(() => retryRequest)
+      .mockResolvedValueOnce(projectedTelemetrySnapshot(projectionEnd + 1_000));
+    const ctx = createContext(successfulResponse);
+
+    (ctx.telemetry as unknown as {fetchProjected: typeof fetchProjected}).fetchProjected = fetchProjected;
+
+    const {app, host} = mountWidgetContext(ctx);
+
+    await flushPromises();
+    changeRange(host, '7d');
+    await flushPromises();
+    vi.advanceTimersByTime(15 * 60_000);
+    await flushPromises();
+
+    host.querySelector<HTMLElement>('.app__stale mndw-button')?.click();
+    await flushPromises();
+
+    const retrySignal = fetchProjected.mock.calls[2]?.[1]?.signal;
+
+    expect(fetchProjected).toHaveBeenCalledTimes(3);
+
+    changeRange(host, '30d');
+    await flushPromises();
+
+    expect(retrySignal?.aborted).toBe(true);
+    expect(fetchProjected).toHaveBeenLastCalledWith('30d', expect.objectContaining({signal: expect.any(AbortSignal)}));
+
+    resolveRetry?.(projectedTelemetrySnapshot(9_000));
+    await flushPromises();
+
+    const charts = [...host.querySelectorAll('mndw-sparkline')] as Array<HTMLElement & {timeDomain?: unknown}>;
+    const expectedDomain = {start: projectionEnd + 1_000 - 7 * 24 * 60 * 60 * 1000, end: projectionEnd + 1_000};
+
+    expect(getRangeSegment(host, '30d')?.getAttribute('aria-checked')).toBe('true');
+    expect(charts[0]?.timeDomain).toEqual(expectedDomain);
+    expect(charts[1]?.timeDomain).toEqual(expectedDomain);
+
+    app.unmount();
+    host.remove();
+  });
+
+  it('aborts an in-flight projection Retry when unmounted', async () => {
+    let resolveRetry: ((value: ProjectedSnapshot) => void) | undefined;
+    const retryRequest = new Promise<ProjectedSnapshot>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const fetchProjected = vi.fn()
+      .mockResolvedValueOnce(projectedTelemetrySnapshot())
+      .mockRejectedValueOnce(new Error('scheduled projection failed'))
+      .mockImplementationOnce(() => retryRequest);
+    const ctx = createContext(successfulResponse);
+
+    (ctx.telemetry as unknown as {fetchProjected: typeof fetchProjected}).fetchProjected = fetchProjected;
+
+    const {app, host} = mountWidgetContext(ctx);
+
+    await flushPromises();
+    changeRange(host, '7d');
+    await flushPromises();
+    vi.advanceTimersByTime(15 * 60_000);
+    await flushPromises();
+
+    host.querySelector<HTMLElement>('.app__stale mndw-button')?.click();
+    await flushPromises();
+
+    const retrySignal = fetchProjected.mock.calls[2]?.[1]?.signal;
+
+    expect(fetchProjected).toHaveBeenCalledTimes(3);
+    app.unmount();
+    expect(retrySignal?.aborted).toBe(true);
+
+    resolveRetry?.(projectedTelemetrySnapshot(9_000));
+    await flushPromises();
+
+    expect(host.querySelector('.app')).toBeNull();
+    host.remove();
+  });
+
+  it('adds the date to an existing live stale notice after midnight', async () => {
+    vi.setSystemTime(new Date(2025, 10, 15, 23, 40));
+
+    let systemAttempts = 0;
+    const queue = (query: RciQuery): Observable<unknown> => {
+      if (query.path === 'show.system') {
+        systemAttempts += 1;
+
+        if (systemAttempts > 1) {
+          return throwError(() => new Error('scheduled refresh failed'));
+        }
+      }
+
+      return successfulResponse(query);
+    };
+    const {app, host} = mountWidgetContext(createContext(queue));
+
+    await flushPromises();
+    vi.advanceTimersByTime(30_000);
+    await flushPromises();
+
+    expect(host.querySelector('.app__stale')?.textContent).toContain('23:40');
+    expect(host.querySelector('.app__stale')?.textContent).not.toContain('2025');
+
+    vi.setSystemTime(new Date(2025, 10, 16, 0, 5));
+    vi.advanceTimersByTime(30_000);
+    await flushPromises();
+
+    expect(host.querySelector('.app__stale')?.textContent).toContain('2025');
+
+    app.unmount();
+    host.remove();
   });
 
   it('uses LoadBarChart for CPU and RAM in durable ranges', async () => {

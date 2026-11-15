@@ -9,7 +9,7 @@ import TelemetryNote from './components/TelemetryNote.vue';
 const props = defineProps<{ctx: PluginContext}>();
 provide('mndw:plugin-i18n', props.ctx.i18n);
 const translator = useTranslator(props.ctx.i18n);
-const t = (key: string): string => translator.t(key);
+const t = (key: string, values?: Record<string, unknown>): string => translator.t(key, values);
 
 const RANGES: readonly {key: ProjectRange; label: string}[] = [
   {key: '1h', label: 'range-1h'},
@@ -22,8 +22,12 @@ const RANGES: readonly {key: ProjectRange; label: string}[] = [
 const selectedRange = ref<ProjectRange>('1d');
 const snapshot = ref<ProjectedSnapshot | null>(null);
 const loadedRange = ref<ProjectRange | null>(null);
+const lastSuccessAt = ref<number | null>(null);
+const refreshAttemptAt = ref(Date.now());
 const loading = ref(true);
 const error = ref(false);
+const refreshFailed = ref(false);
+const requestInFlight = ref(false);
 const gatheringFromStream = ref<boolean | null>(null);
 
 let refreshLoop: RefreshLoop | null = null;
@@ -31,6 +35,25 @@ let abortController: AbortController | null = null;
 let gatheringSubscription: {unsubscribe(): void} | null = null;
 
 const activeSnapshot = computed(() => loadedRange.value === selectedRange.value ? snapshot.value : null);
+const stale = computed(() => refreshFailed.value && lastSuccessAt.value !== null && activeSnapshot.value !== null);
+const lastSuccessTime = computed(() => {
+  const updatedAt = lastSuccessAt.value;
+
+  if (updatedAt === null) {
+    return '';
+  }
+
+  const date = new Date(updatedAt);
+  const now = new Date(refreshAttemptAt.value);
+  const isToday = date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+  const timeOptions: Intl.DateTimeFormatOptions = {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'};
+
+  return translator.formatDate(date, isToday
+    ? timeOptions
+    : {...timeOptions, year: 'numeric', month: 'short', day: 'numeric'});
+});
 const temp = computed<ProjectedSeries | null>(() => snapshot.value?.keys.temp ?? null);
 const gatheringEnabled = computed(() => {
   return gatheringFromStream.value ?? activeSnapshot.value?.gathering.enabled ?? true;
@@ -97,27 +120,54 @@ const stopLoop = (): void => {
 };
 
 const startLoop = (range: ProjectRange): void => {
+  const preserveCurrentRange = loadedRange.value === range;
   stopLoop();
-  loadedRange.value = null;
+  if (!preserveCurrentRange) {
+    loadedRange.value = null;
+    lastSuccessAt.value = null;
+    refreshFailed.value = false;
+  }
   loading.value = true;
   error.value = false;
+  requestInFlight.value = false;
   abortController = new AbortController();
   refreshLoop = createRefreshLoop({
-    load: () => props.ctx.telemetry.fetchProjected(range, {signal: abortController?.signal}),
+    load: () => {
+      requestInFlight.value = true;
+      refreshAttemptAt.value = Date.now();
+
+      return props.ctx.telemetry.fetchProjected(range, {signal: abortController?.signal});
+    },
     intervalMs: 15 * 60_000,
     onSuccess: (result: ProjectedSnapshot) => {
       snapshot.value = result;
       loadedRange.value = range;
+      lastSuccessAt.value = Date.now();
       loading.value = false;
       error.value = false;
+      refreshFailed.value = false;
+      requestInFlight.value = false;
     },
     onError: (err: unknown) => {
       console.error('[cpu-temp-widget] fetch failed', err);
+      refreshAttemptAt.value = Date.now();
       loading.value = false;
       error.value = true;
+      refreshFailed.value = lastSuccessAt.value !== null;
+      requestInFlight.value = false;
     },
   });
   refreshLoop.start();
+};
+
+const retry = (): void => {
+  if (requestInFlight.value) {
+    return;
+  }
+
+  loading.value = true;
+  refreshLoop?.stop();
+  refreshLoop?.start();
 };
 
 // Shown beside the title so a chart of non-current history stays visible.
@@ -181,6 +231,16 @@ onUnmounted(() => {
         </mndw-segment>
       </mndw-segmented>
     </div>
+    <div v-if="stale" class="app__stale mndw-alert mndw-alert--warning" role="status">
+      <span class="app__stale-message">{{ t('stale.message', {time: lastSuccessTime}) }}</span>
+      <mndw-button
+        class="app__stale-retry"
+        variant="ghost"
+        :disabled="requestInFlight"
+        :aria-busy="requestInFlight ? 'true' : null"
+        @click="retry"
+      >{{ t('stale.retry') }}</mndw-button>
+    </div>
     <TelemetryNote
       v-if="showTelemetryNote"
       :session-configured="sessionConfigured"
@@ -188,11 +248,18 @@ onUnmounted(() => {
       :navigation="props.ctx.navigation"
     />
     <template v-if="!sessionRequired">
-      <div v-if="loading && (temp === null || !temp.supported)" class="app__message" role="status">
+      <div v-if="loading && !error && (temp === null || !temp.supported)" class="app__message" role="status">
         {{ t('loading') }}
       </div>
-      <div v-else-if="error && !activeSnapshot" class="mndw-alert mndw-alert--danger" role="alert">
-        {{ t('error') }}
+      <div v-else-if="error && !activeSnapshot" class="app__error mndw-alert mndw-alert--danger" role="alert">
+        <span>{{ t('error') }}</span>
+        <mndw-button
+          class="app__stale-retry"
+          variant="ghost"
+          :disabled="requestInFlight"
+          :aria-busy="requestInFlight ? 'true' : null"
+          @click="retry"
+        >{{ t('stale.retry') }}</mndw-button>
       </div>
       <div v-else-if="!loading && temp && !temp.supported" class="app__message">{{ t('unsupported') }}</div>
       <template v-else-if="temp">
@@ -244,6 +311,33 @@ onUnmounted(() => {
 
 .app__message {
   color: var(--mndw-text-subtle);
+}
+
+.app__error,
+.app__stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mndw-space-2);
+  min-width: 0;
+  font-size: var(--mndw-text-sm);
+}
+
+.app__stale-message {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app__stale-retry {
+  flex: 0 0 auto;
+  font-size: var(--mndw-text-xs);
+}
+
+.app__stale-retry::part(button) {
+  min-height: var(--mndw-control-h-sm);
+  padding: 0 var(--mndw-space-2);
 }
 
 .range-scroll {

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {type App as VueApp, createApp} from 'vue';
+import {type App as VueApp, createApp, nextTick} from 'vue';
 import type {PluginTelemetry, TelemetryGathering} from '@mndw/sdk';
 import {type TestPluginContext, createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import App from './App.vue';
@@ -68,7 +68,16 @@ afterEach(() => {
   fixture?.unmount();
   fixture = null;
   host?.remove();
+  vi.useRealTimers();
 });
+
+async function flushPromises(): Promise<void> {
+  for (let index = 0; index < 8; index += 1) {
+    await Promise.resolve();
+  }
+
+  await nextTick();
+}
 
 function mountApp(overrides: {telemetry?: Partial<PluginTelemetry>} = {}): TestPluginContext {
   host = document.createElement('div');
@@ -83,6 +92,8 @@ function mountApp(overrides: {telemetry?: Partial<PluginTelemetry>} = {}): TestP
       'loading': 'Loading…',
       'empty': 'Gathering data…',
       'error': 'Error',
+      'stale.message': 'Not updated since {time}',
+      'stale.retry': 'Retry',
       'unsupported': 'Unsupported',
       'range-1h': '1H',
       'range-3h': '3H',
@@ -113,6 +124,201 @@ function mountApp(overrides: {telemetry?: Partial<PluginTelemetry>} = {}): TestP
 }
 
 describe('App', () => {
+  it('keeps stale chart data, retries immediately, and restarts the refresh interval', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2025, 10, 15, 9, 42));
+
+    let resolveRetry: ((value: ReturnType<typeof supportedSnapshot>) => void) | undefined;
+    const retryRequest = new Promise<ReturnType<typeof supportedSnapshot>>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const fetchProjected = vi.fn()
+      .mockResolvedValueOnce(supportedSnapshot(1000, 2000))
+      .mockRejectedValueOnce(new Error('scheduled refresh failed'))
+      .mockRejectedValueOnce(new Error('retry failed'))
+      .mockImplementationOnce(() => retryRequest)
+      .mockResolvedValue(supportedSnapshot(3000, 4000));
+
+    mountApp({telemetry: {fetchProjected}});
+    await flushPromises();
+
+    vi.advanceTimersByTime(15 * 60_000);
+    await flushPromises();
+
+    const notice = host.querySelector<HTMLElement>('.app__stale');
+
+    expect(notice?.getAttribute('role')).toBe('status');
+    expect(notice?.textContent).toContain('Not updated since 09:42');
+    expect(host.querySelector('mndw-line-chart')).not.toBeNull();
+
+    host.querySelector<HTMLElement>('.app__stale mndw-button')?.click();
+    await flushPromises();
+
+    expect(fetchProjected).toHaveBeenCalledTimes(3);
+    expect(host.querySelector('.app__stale')?.textContent).toContain('Not updated since 09:42');
+
+    const retryButton = host.querySelector<HTMLElement>('.app__stale mndw-button');
+
+    retryButton?.click();
+    await nextTick();
+
+    expect(fetchProjected).toHaveBeenCalledTimes(4);
+    expect(retryButton?.hasAttribute('disabled')).toBe(true);
+    expect(retryButton?.getAttribute('aria-busy')).toBe('true');
+
+    resolveRetry?.(supportedSnapshot(3000, 4000));
+    await flushPromises();
+
+    expect(host.querySelector('.app__stale')).toBeNull();
+    expect(host.querySelector('mndw-line-chart')).not.toBeNull();
+
+    vi.advanceTimersByTime(15 * 60_000 - 1);
+    await flushPromises();
+    expect(fetchProjected).toHaveBeenCalledTimes(4);
+
+    vi.advanceTimersByTime(1);
+    await flushPromises();
+    expect(fetchProjected).toHaveBeenCalledTimes(5);
+  });
+
+  it('offers Retry from the initial error view and recovers', async () => {
+    vi.useFakeTimers();
+
+    const fetchProjected = vi.fn()
+      .mockRejectedValueOnce(new Error('initial load failed'))
+      .mockResolvedValue(supportedSnapshot(1000, 2000));
+
+    mountApp({telemetry: {fetchProjected}});
+    await flushPromises();
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Error');
+
+    const retryButton = host.querySelector<HTMLElement>('[role="alert"] mndw-button');
+
+    expect(retryButton).not.toBeNull();
+
+    if (retryButton === null) {
+      throw new Error('Retry button was not rendered');
+    }
+
+    expect(retryButton.textContent).toContain('Retry');
+    retryButton.click();
+    await nextTick();
+
+    expect(fetchProjected).toHaveBeenCalledTimes(2);
+    expect(retryButton.hasAttribute('disabled')).toBe(true);
+    expect(retryButton.getAttribute('aria-busy')).toBe('true');
+
+    await flushPromises();
+
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(host.querySelector('mndw-line-chart')).not.toBeNull();
+  });
+
+  it('includes the date when the last successful refresh was not today', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2025, 10, 15, 23, 40));
+
+    const fetchProjected = vi.fn()
+      .mockResolvedValueOnce(supportedSnapshot(1000, 2000))
+      .mockRejectedValue(new Error('scheduled refresh failed'));
+
+    mountApp({telemetry: {fetchProjected}});
+    await flushPromises();
+
+    vi.advanceTimersByTime(15 * 60_000);
+    await flushPromises();
+
+    expect(host.querySelector('.app__stale')?.textContent).toContain('23:40');
+    expect(host.querySelector('.app__stale')?.textContent).not.toContain('2025');
+
+    vi.setSystemTime(new Date(2025, 10, 16, 0, 5));
+    vi.advanceTimersByTime(15 * 60_000);
+    await flushPromises();
+
+    const notice = host.querySelector('.app__stale');
+
+    expect(notice?.textContent).toContain('2025');
+    expect(notice?.textContent).toContain('23:40');
+  });
+
+  it('ignores an in-flight Retry after switching ranges', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2025, 10, 15, 9, 42));
+
+    let resolveRetry: ((value: ReturnType<typeof supportedSnapshot>) => void) | undefined;
+    const retryRequest = new Promise<ReturnType<typeof supportedSnapshot>>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const fetchProjected = vi.fn()
+      .mockResolvedValueOnce(supportedSnapshot(1000, 2000))
+      .mockRejectedValueOnce(new Error('scheduled refresh failed'))
+      .mockImplementationOnce(() => retryRequest)
+      .mockResolvedValueOnce(supportedSnapshot(3000, 4000));
+
+    mountApp({telemetry: {fetchProjected}});
+    await flushPromises();
+
+    vi.advanceTimersByTime(15 * 60_000);
+    await flushPromises();
+
+    host.querySelector<HTMLElement>('.app__stale mndw-button')?.click();
+    await nextTick();
+
+    const retrySignal = fetchProjected.mock.calls[2]?.[1]?.signal;
+    const segmented = host.querySelector<HTMLElement>('mndw-segmented');
+
+    if (segmented === null) {
+      throw new Error('range segmented control was not rendered');
+    }
+
+    segmented.dispatchEvent(new CustomEvent('mndwchange', {detail: {value: '7d'}}));
+    await flushPromises();
+
+    expect(retrySignal?.aborted).toBe(true);
+    expect(fetchProjected).toHaveBeenLastCalledWith('7d', expect.any(Object));
+
+    resolveRetry?.(supportedSnapshot(9000, 10_000));
+    await flushPromises();
+
+    const chart = host.querySelector<HTMLElement & {domain?: {start: number; end: number}}>('mndw-line-chart');
+
+    expect(chart?.domain).toEqual({start: 3000, end: 4000});
+  });
+
+  it('aborts an in-flight Retry when unmounted', async () => {
+    vi.useFakeTimers();
+
+    let resolveRetry: ((value: ReturnType<typeof supportedSnapshot>) => void) | undefined;
+    const retryRequest = new Promise<ReturnType<typeof supportedSnapshot>>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const fetchProjected = vi.fn()
+      .mockResolvedValueOnce(supportedSnapshot(1000, 2000))
+      .mockRejectedValueOnce(new Error('scheduled refresh failed'))
+      .mockImplementationOnce(() => retryRequest);
+
+    mountApp({telemetry: {fetchProjected}});
+    await flushPromises();
+
+    vi.advanceTimersByTime(15 * 60_000);
+    await flushPromises();
+
+    host.querySelector<HTMLElement>('.app__stale mndw-button')?.click();
+    await nextTick();
+
+    const retrySignal = fetchProjected.mock.calls[2]?.[1]?.signal;
+
+    app?.unmount();
+    app = null;
+    expect(retrySignal?.aborted).toBe(true);
+
+    resolveRetry?.(supportedSnapshot(3000, 4000));
+    await flushPromises();
+
+    expect(host.querySelector('.app')).toBeNull();
+  });
+
   it('calls fetchProjected with default range on mount', async () => {
     const fetchProjected = vi.fn().mockResolvedValue(supportedSnapshot(1000, 2000));
 

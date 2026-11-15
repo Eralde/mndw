@@ -11,6 +11,9 @@ vi.mock('@mndw/sdk', async (importOriginal) => {
 });
 
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
+import * as pluginLoader from '../../../runtime/plugin-loader.js';
+import {PLUGIN_LOAD_TIMEOUT_MS} from '../../../runtime/plugin-loader.js';
+import {replacePluginLoadStates, setPluginLoadState} from '../../../runtime/plugin-load-state.svelte.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 import {replaceDepsStatuses} from '../../../state/deps-status.svelte.js';
 import {setLocale} from '../../../services/locale.service.js';
@@ -85,6 +88,8 @@ describe('InstalledPluginList', () => {
   afterEach(() => {
     clearPluginVersionWarnings();
     replaceDepsStatuses([]);
+    replacePluginLoadStates([]);
+    vi.restoreAllMocks();
     document.body.innerHTML = '';
   });
 
@@ -376,6 +381,116 @@ describe('InstalledPluginList', () => {
     expect(failed.target.querySelector('.mndw-installed__deps-badge--failed')?.textContent)
       .toContain('Dependency install failed');
     void unmount(failed.component);
+  });
+
+  it.each(
+    [
+      ['timeout', `Did not load within ${PLUGIN_LOAD_TIMEOUT_MS / 1_000} seconds`],
+      ['error', 'The plugin file did not load or contains an error'],
+    ] as const,
+  )('shows failed-load marker and reason for %s failures', (failureKind, reason) => {
+    const entry = plugin();
+
+    replacePluginLoadStates([entry]);
+    setPluginLoadState(entry.name, 'failed', failureKind);
+
+    const {component, target} = mountInstalledPluginList({items: [entry]});
+
+    expect(target.querySelector('.mndw-installed__load-failed-badge')?.textContent ?? '')
+      .toContain('Failed to load');
+    expect(target.querySelector('.mndw-installed__load-failed-reason')?.textContent ?? '')
+      .toContain(reason);
+    expect(target.querySelector('.mndw-installed__load-retry')?.textContent ?? '')
+      .toContain('Retry');
+
+    void unmount(component);
+  });
+
+  it('does not show failed-load marker for loaded, disabled, or pending plugins', () => {
+    const loadedEntry = plugin();
+
+    replacePluginLoadStates([loadedEntry]);
+    setPluginLoadState(loadedEntry.name, 'loaded');
+
+    const loaded = mountInstalledPluginList({items: [loadedEntry]});
+
+    expect(loaded.target.querySelector('.mndw-installed__load-failed-badge')).toBeNull();
+    void unmount(loaded.component);
+
+    const disabledEntry = plugin({enabled: false});
+
+    replacePluginLoadStates([plugin()]);
+    setPluginLoadState(disabledEntry.name, 'failed', 'error');
+
+    const disabled = mountInstalledPluginList({items: [disabledEntry]});
+
+    expect(disabled.target.querySelector('.mndw-installed__load-failed-badge')).toBeNull();
+    void unmount(disabled.component);
+
+    const pendingEntry = plugin({approval: 'pending'});
+
+    replacePluginLoadStates([plugin()]);
+    setPluginLoadState(pendingEntry.name, 'failed', 'error');
+
+    const pending = mountInstalledPluginList({items: [pendingEntry]});
+
+    expect(pending.target.querySelector('.mndw-installed__load-failed-badge')).toBeNull();
+    void unmount(pending.component);
+  });
+
+  it('keeps retry busy while in flight and removes marker after a successful retry', async () => {
+    const entry = plugin();
+    let resolveRetry: ((loaded: boolean) => void) | undefined;
+    const retryPromise = new Promise<boolean>((resolve) => {
+      resolveRetry = resolve;
+    });
+    const retry = vi.spyOn(pluginLoader, 'retryPluginLoad').mockReturnValue(retryPromise);
+
+    replacePluginLoadStates([entry]);
+    setPluginLoadState(entry.name, 'failed', 'error');
+
+    const {component, target} = mountInstalledPluginList({items: [entry]});
+    const button = target.querySelector<HTMLElement & {disabled: boolean}>('.mndw-installed__load-retry');
+
+    expect(button).not.toBeNull();
+    button?.click();
+    flushSync();
+
+    expect(retry).toHaveBeenCalledWith(entry.name);
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute('aria-busy')).toBe('true');
+
+    setPluginLoadState(entry.name, 'loaded');
+    resolveRetry?.(true);
+
+    await vi.waitFor(() => {
+      expect(target.querySelector('.mndw-installed__load-failed-badge')).toBeNull();
+      expect(target.querySelector('.mndw-installed__load-failed-reason')).toBeNull();
+      expect(target.querySelector('.mndw-installed__load-retry')).toBeNull();
+    });
+
+    await unmount(component);
+  });
+
+  it('keeps failed-load marker after retry fails', async () => {
+    const entry = plugin();
+    const retry = vi.spyOn(pluginLoader, 'retryPluginLoad').mockResolvedValue(false);
+
+    replacePluginLoadStates([entry]);
+    setPluginLoadState(entry.name, 'failed', 'error');
+
+    const {component, target} = mountInstalledPluginList({items: [entry]});
+    const button = target.querySelector<HTMLElement & {disabled: boolean}>('.mndw-installed__load-retry');
+
+    expect(button).not.toBeNull();
+    button?.click();
+
+    expect(retry).toHaveBeenCalledWith(entry.name);
+    await vi.waitFor(() => expect(button?.disabled).toBe(false));
+    expect(target.querySelector('.mndw-installed__load-failed-badge')).not.toBeNull();
+    expect(target.querySelector('.mndw-installed__load-failed-reason')).not.toBeNull();
+
+    await unmount(component);
   });
 
   it('renders protocol incompatibility and bounds runtime errors', () => {

@@ -56,7 +56,7 @@ let activePluginLoadToastAuthBinding: {
  * Upper bound for one plugin's stylesheet, module import and initial catalog. A plugin that
  * never settles (hung request, endless top-level await) must not keep the shell from mounting.
  */
-const PLUGIN_LOAD_TIMEOUT_MS = 15_000;
+export const PLUGIN_LOAD_TIMEOUT_MS = 15_000;
 
 const loadedPluginStylesheets = new Set<string>();
 

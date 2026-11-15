@@ -4,6 +4,14 @@ import {
   type PluginPermission,
 } from '@mndw/sdk-internal';
 import {getInstallVersionWarnings} from '../../../runtime/plugin-lock.js';
+import {
+  PLUGIN_LOAD_TIMEOUT_MS,
+  retryPluginLoad,
+} from '../../../runtime/plugin-loader.js';
+import {
+  type PluginLoadFailureKind,
+  getPluginLoadState,
+} from '../../../runtime/plugin-load-state.svelte.js';
 import type {
   PluginBackendDescriptor,
   PluginListEntry,
@@ -70,6 +78,19 @@ function backendSummary(backend: PluginBackendDescriptor): string[] {
 
 function boundedError(value: string): string {
   return value.length > 240 ? `${value.slice(0, 240)}…` : value;
+}
+
+function pluginLoadFailureText(
+  kind: PluginLoadFailureKind,
+): string | undefined {
+  switch (kind) {
+    case 'timeout':
+      return hostT('settings.plugin-manager.plugin-load-timeout', {
+        seconds: PLUGIN_LOAD_TIMEOUT_MS / 1_000,
+      });
+    case 'error':
+      return hostT('settings.plugin-manager.plugin-load-error');
+  }
 }
 
 function permissionGranted(
@@ -140,6 +161,26 @@ let {
   onCancelConfirm,
   onRefresh = () => {},
 }: Props = $props();
+
+let retryingPlugins = $state<Record<string, PluginLoadFailureKind>>({});
+
+function retryPlugin(name: string): void {
+  const failureKind = getPluginLoadState(name)?.failureKind;
+
+  if (failureKind === undefined || retryingPlugins[name] !== undefined) {
+    return;
+  }
+
+  retryingPlugins[name] = failureKind;
+
+  void retryPluginLoad(name)
+    .catch(() => {
+      return false;
+    })
+    .finally(() => {
+      delete retryingPlugins[name];
+    });
+}
 </script>
 
 <section
@@ -163,6 +204,19 @@ let {
         {@const deps = getDepsStatus(item.name)}
         {@const row = rowStateFor(item.name)}
         {@const busy = row?.state === 'working' || row?.state === 'reconciling'}
+        {@const loadState = getPluginLoadState(item.name)}
+        {@const loadRunnable = item.enabled
+        && item.approval === 'approved'
+        && loadState?.runnable === true}
+        {@const loadFailed = loadRunnable && loadState?.status === 'failed'}
+        {@const loadRetrying = retryingPlugins[item.name] !== undefined}
+        {@const showLoadFailure = loadRunnable && (loadFailed || loadRetrying)}
+        {@const loadFailureKind = loadFailed
+        ? loadState?.failureKind
+        : retryingPlugins[item.name]}
+        {@const loadFailureReason = loadFailureKind === undefined
+        ? undefined
+        : pluginLoadFailureText(loadFailureKind)}
         <li class="mndw-installed__item">
           <div class="mndw-installed__identity">
             <strong>{item.label}</strong>
@@ -200,6 +254,13 @@ let {
                 }
               </span>
             {/if}
+            {#if showLoadFailure}
+              <span
+                class="mndw-installed__deps-badge mndw-installed__deps-badge--failed mndw-installed__load-failed-badge"
+              >
+                {hostT('settings.plugin-manager.plugin-load-failed')}
+              </span>
+            {/if}
             {#if versionWarnings.length > 0}
               <span class="mndw-installed__version-badge">
                 {hostT('settings.plugin-manager.version-mismatch')}
@@ -211,6 +272,25 @@ let {
               </span>
             {/if}
           </div>
+
+          {#if showLoadFailure}
+            {#if loadFailureReason !== undefined}
+              <p class="mndw-installed__load-failed-reason">
+                {loadFailureReason}
+              </p>
+            {/if}
+            <div class="mndw-installed__actions">
+              <mndw-button
+                class="mndw-installed__load-retry"
+                variant="secondary"
+                disabled={loadRetrying}
+                aria-busy={loadRetrying}
+                onclick={() => retryPlugin(item.name)}
+              >
+                {hostT('settings.plugin-manager.retry')}
+              </mndw-button>
+            </div>
+          {/if}
 
           {#if versionWarnings.length > 0}
             <p class="mndw-installed__version-warning">
@@ -458,6 +538,11 @@ let {
 
 .mndw-installed__deps-badge--failed {
   color: var(--mndw-danger);
+}
+
+.mndw-installed__load-failed-reason {
+  color: var(--mndw-text-muted);
+  font-size: var(--mndw-text-sm);
 }
 
 .mndw-installed__version-warning {

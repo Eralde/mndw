@@ -23,7 +23,7 @@ func TestBodyIntakeClearsDeadlineBeforeHandlerForKnownAndChunkedBodies(t *testin
 		request string
 	}{
 		{name: "known length", request: "POST / HTTP/1.1\r\nHost: localhost\r\nContent-Length: 4\r\n\r\ndata"},
-		{name: "chunked", request: "POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n4\r\ndata\r\n0\r\n\r\n"},
+		{name: "chunked", request: "POST / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n4\r\ndata\r\n0\r\nX-Discarded-Trailer: value\r\n\r\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			intake := NewBodyIntake(1)
@@ -41,6 +41,18 @@ func TestBodyIntakeClearsDeadlineBeforeHandlerForKnownAndChunkedBodies(t *testin
 					t.Errorf("handler body = %q, %v; want data", body, err)
 
 					return
+				}
+
+				if len(request.TransferEncoding) != 0 {
+					t.Errorf("handler TransferEncoding = %v, want empty", request.TransferEncoding)
+				}
+
+				if request.ContentLength != int64(len(body)) {
+					t.Errorf("handler ContentLength = %d, want %d", request.ContentLength, len(body))
+				}
+
+				if request.Trailer != nil {
+					t.Errorf("handler Trailer = %v, want nil after buffering", request.Trailer)
 				}
 
 				timer := time.NewTimer(350 * time.Millisecond)

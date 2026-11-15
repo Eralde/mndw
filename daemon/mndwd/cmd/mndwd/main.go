@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 	_ "time/tzdata"
@@ -433,12 +434,9 @@ func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger, veri
 		return fmt.Errorf("device proxy: %w", err)
 	}
 
-	proxyHandler := httpx.ClearBodyDeadline(proxy)
+	proxyIntake := httpx.NewBodyIntake(cfg.BodyIntakeLimit)
 
-	for _, prefix := range deviceProxyPrefixes {
-		mux.Handle(prefix, proxyHandler)
-		mux.Handle(prefix+"/", proxyHandler)
-	}
+	registerDeviceProxyRoutes(mux, proxy, proxyIntake, httpx.JSONBodyTimeout)
 
 	apiReserved := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		http.NotFound(writer, request)
@@ -457,6 +455,31 @@ func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger, veri
 	handler.Register(mux, verifier.Middleware)
 
 	return nil
+}
+
+func registerDeviceProxyRoutes(mux *http.ServeMux, proxy http.Handler, intake *httpx.BodyIntake, timeout time.Duration) {
+	proxyHandler := intake.Middleware(func(request *http.Request) httpx.BodyLimit {
+		return deviceProxyBodyLimit(request, timeout)
+	}, proxy)
+
+	for _, prefix := range deviceProxyPrefixes {
+		mux.Handle(prefix, proxyHandler)
+		mux.Handle(prefix+"/", proxyHandler)
+	}
+}
+
+func deviceProxyBodyLimit(request *http.Request, timeout time.Duration) httpx.BodyLimit {
+	maxBytes := int64(1 << 20)
+
+	for _, prefix := range []string{"/auth", "/ci"} {
+		if request.URL.Path == prefix || strings.HasPrefix(request.URL.Path, prefix+"/") {
+			maxBytes = 16 << 10
+
+			break
+		}
+	}
+
+	return httpx.BodyLimit{MaxBytes: maxBytes, Timeout: timeout, TooLargeCode: httpx.CodeBodyTooLarge}
 }
 
 func rejectWebSocketBody(next http.Handler) http.Handler {

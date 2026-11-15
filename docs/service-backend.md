@@ -282,14 +282,18 @@ exact symbol/expression so a source review can verify each value quickly.
 | Restart delay                       |      1 s, then doubles | `time.Second << (consecutiveFailures - 1)`                                        | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go)                                                                              |
 | Failure threshold                   | 5 consecutive failures | `ConsecutiveFailures >= 5`                                                        | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go)                                                                              |
 
-The daemon reads request bodies in full after route authentication and before calling handlers. Intake
-rejects oversized bodies with `413`, timed-out reads with `408 REQUEST_TIMEOUT`, and unreadable bodies
-with `400 BAD_REQUEST`. If all `-body-intake-limit` slots are occupied, it returns `503 SERVER_BUSY`
-with `Retry-After: 1`. Intake failures and WebSocket body rejections set `Connection: close`. Other
-early rejections, including auth, CSRF, routing, and exec `GET`/`HEAD` requests with bodies, remain
-bounded by the root body read deadline. The deadline is cleared only after routing selects a device
-proxy, preserving its streaming body behavior. Successful body intake also clears the read deadline
-before handler work starts.
+The daemon reads management and plugin request bodies in full after route authentication and before
+calling handlers. Routed `/auth`, `/rci`, and `/ci` device-proxy bodies also pass through intake before
+proxying: `/auth` and `/ci` are limited to 16 KiB, `/rci` to 1 MiB, and each has a 15-second read
+timeout. The proxy has its own `-body-intake-limit` slots, separate from management and plugin intake.
+Proxy paths, headers, and upstream responses remain transparent; request bodies are bounded.
+
+Intake rejects oversized bodies with `413 BODY_TOO_LARGE`, timed-out reads with `408 REQUEST_TIMEOUT`,
+and unreadable bodies with `400 BAD_REQUEST`. If all intake slots are occupied, it returns
+`503 SERVER_BUSY` with `Retry-After: 1`. Intake failures and WebSocket body rejections set
+`Connection: close`. Other early rejections, including auth, CSRF, routing, and exec `GET`/`HEAD`
+requests with bodies, remain bounded by the root body read deadline. Successful body intake clears
+the read deadline before handler work starts.
 
 Exec `GET` and `HEAD` requests with a declared body receive `400 BAD_REQUEST`.
 

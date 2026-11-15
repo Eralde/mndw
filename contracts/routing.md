@@ -13,9 +13,9 @@ inside their owning runtime.
 | `/plugins/<name>/**` | `mndwd` static frontend | Vite plugin static middleware | Builtin plugin assets |
 | `/user-plugins/<name>/**` | `mndwd` static alias | Vite plugin static middleware | Approved user-plugin assets |
 | `/shared/<bundle>@<version>.js` | `mndwd` static frontend | Vite shared-bundle middleware | Host-provided shared JavaScript bundles and import-map targets |
-| `/rci/**` | `mndwd` in-process device proxy | Vite device proxy | Network-device RCI API; transparent pass-through |
-| `/ci/**` | `mndwd` in-process device proxy | Not proxied or exposed by Vite | Network-device CI API; transparent pass-through |
-| `/auth/**` | `mndwd` in-process device proxy | Vite device proxy | Network-device authentication API and session validation upstream |
+| `/rci/**` | `mndwd` in-process device proxy | Vite device proxy | Network-device RCI API; transparent paths, headers, and responses; request bodies bounded |
+| `/ci/**` | `mndwd` in-process device proxy | Not proxied or exposed by Vite | Network-device CI API; transparent paths, headers, and responses; request bodies bounded |
+| `/auth/**` | `mndwd` in-process device proxy | Vite device proxy | Network-device authentication API and session validation upstream; request bodies bounded |
 
 ## Listener and upstream targets
 

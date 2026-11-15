@@ -135,9 +135,8 @@ func (i *BodyIntake) Middleware(limitFor func(*http.Request) BodyLimit, next htt
 	})
 }
 
-// ArmBodyDeadline bounds reads of bodies rejected before body intake. Streaming
-// proxies are the exception; ClearBodyDeadline removes this deadline only after
-// routing selects them.
+// ArmBodyDeadline bounds reads of bodies rejected before body intake. BodyIntake
+// replaces this connection deadline when routing admits a body.
 func ArmBodyDeadline(next http.Handler, timeout time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hasBody := r.Body != nil && r.Body != http.NoBody && r.ContentLength != 0
@@ -150,19 +149,12 @@ func ArmBodyDeadline(next http.Handler, timeout time.Duration) http.Handler {
 	})
 }
 
-// ClearBodyDeadline removes the root body deadline for a streaming handler that
-// manages its own request body reads.
-func ClearBodyDeadline(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
-
-		next.ServeHTTP(w, r)
-	})
-}
-
+// replaceBody installs a length-delimited buffered body. Request trailers are not forwarded after buffering.
 func (i *BodyIntake) replaceBody(r *http.Request, body []byte) {
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	r.ContentLength = int64(len(body))
+	r.TransferEncoding = nil
+	r.Trailer = nil
 	r.GetBody = nil
 }
 

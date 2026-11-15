@@ -44,7 +44,7 @@ mndwd serves all browser-facing traffic from one listener:
 
 - static SPA and plugin assets, with fallback to `index.html`;
 - `/user-plugins/` alias for durable user-plugin files;
-- transparent `/rci`, `/ci`, and `/auth` device proxy;
+- transparent `/rci`, `/ci`, and `/auth` device proxy with bounded request bodies;
 - session-gated `/api` and WebSocket plugin routes.
 
 "Serve all" mode is enabled with `--frontend-dir`; `--frontend-listen` controls

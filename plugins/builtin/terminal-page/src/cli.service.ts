@@ -1,10 +1,12 @@
 import type {FitAddon} from '@xterm/addon-fit';
 import type {Terminal} from '@xterm/xterm';
-import type {BackendClient} from '@mndw/sdk';
+import {type BackendClient, isBackendMaintenanceClose} from '@mndw/sdk';
 
 export interface TerminalInstance {
   terminal: Terminal;
   fitAddon: FitAddon;
+  ready: Promise<void>;
+  activate: () => void;
   dispose: () => void;
 }
 
@@ -32,6 +34,7 @@ export interface SpawnOptions {
 
 export interface ConnectOptions {
   console?: ConsoleChoice;
+  signal?: AbortSignal;
   onDisconnect?: (event: CloseEvent) => void;
 }
 
@@ -47,6 +50,7 @@ interface SpawnApiResponse {
 const SPAWN_TIMEOUT_MS = 10000;
 const MAX_RETRIES = 3;
 const RETRY_DELAYS_MS = [1000, 2000, 4000];
+const SOCKET_RETRY_DELAY_MS = 100;
 const CONSOLE_ROUTES: Record<ConsoleChoice, string> = {
   router: 'terminal',
   entware: 'terminal-entware',
@@ -255,19 +259,28 @@ export function connectToCli(
   FitAddonCtor: typeof FitAddon,
   options: ConnectOptions = {},
 ): TerminalInstance {
-  const socket = backend.socket(CONSOLE_ROUTES[options.console ?? 'router']);
-
-  socket.binaryType = 'arraybuffer';
-
   const terminal = new TerminalCtor();
   const fitAddon = new FitAddonCtor();
 
+  terminal.options.disableStdin = true;
   terminal.loadAddon(fitAddon);
   terminal.open(element);
 
   let socketReady = false;
   let gotFirstMessage = false;
+  let receivedServerMessage = false;
+  let handshakeSent = false;
   let disposed = false;
+  let readySettled = false;
+  let socket: WebSocket | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let removeSocketListeners: (() => void) | undefined;
+  let resolveReady: (() => void) | undefined;
+  let rejectReady: ((error: unknown) => void) | undefined;
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
   const resizeObserver = new ResizeObserver(() => {
     if (!disposed) {
       fitAddon.fit();
@@ -276,45 +289,192 @@ export function connectToCli(
 
   resizeObserver.observe(element);
 
-  socket.addEventListener('open', () => {
-    if (disposed) {
+  const resetSocket = (currentSocket: WebSocket, close: boolean): void => {
+    if (socket !== currentSocket) {
+      return;
+    }
+
+    removeSocketListeners?.();
+    removeSocketListeners = undefined;
+    socket = null;
+    socketReady = false;
+    receivedServerMessage = false;
+    handshakeSent = false;
+
+    if (close) {
+      currentSocket.close();
+    }
+  };
+
+  const resolveReadiness = (): void => {
+    if (disposed || readySettled || !handshakeSent || !receivedServerMessage) {
       return;
     }
 
     socketReady = true;
+    readySettled = true;
+    resolveReady?.();
+  };
 
-    const handshake = JSON.stringify({
-      columns: terminal.cols,
-      rows: terminal.rows,
-    });
-
-    socket.send(new TextEncoder().encode(handshake));
-    terminal.focus();
-  });
-
-  socket.addEventListener('message', (event) => {
+  const dispose = (): void => {
     if (disposed) {
       return;
     }
 
-    if (!gotFirstMessage) {
-      gotFirstMessage = true;
-      requestAnimationFrame(() => {
-        fitAddon.fit();
+    disposed = true;
+    options.signal?.removeEventListener('abort', dispose);
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
+    resizeObserver.disconnect();
+
+    if (socket) {
+      resetSocket(socket, true);
+    }
+
+    terminal.dispose();
+
+    if (!readySettled) {
+      readySettled = true;
+      rejectReady?.(abortError());
+    }
+  };
+
+  const scheduleRetry = (retry: () => void): void => {
+    if (disposed || retryTimer !== undefined) {
+      return;
+    }
+
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      retry();
+    }, SOCKET_RETRY_DELAY_MS);
+  };
+
+  const openSocket = (): void => {
+    if (disposed) {
+      return;
+    }
+
+    let currentSocket: WebSocket;
+
+    try {
+      currentSocket = backend.socket(CONSOLE_ROUTES[options.console ?? 'router']);
+      currentSocket.binaryType = 'arraybuffer';
+    } catch {
+      scheduleRetry(openSocket);
+
+      return;
+    }
+
+    socket = currentSocket;
+
+    const onOpen = (): void => {
+      if (disposed || socket !== currentSocket) {
+        return;
+      }
+
+      const handshake = JSON.stringify({
+        columns: terminal.cols,
+        rows: terminal.rows,
       });
-    }
 
-    const data = new Uint8Array(event.data as ArrayBuffer);
-    const command = String.fromCharCode(data[0]);
-    const payload = data.slice(1);
+      try {
+        currentSocket.send(new TextEncoder().encode(handshake));
+      } catch {
+        resetSocket(currentSocket, true);
+        scheduleRetry(openSocket);
 
-    if (command === '0') {
-      terminal.write(payload);
-    }
-  });
+        return;
+      }
+
+      handshakeSent = true;
+      resolveReadiness();
+    };
+
+    const onMessage = (event: MessageEvent): void => {
+      if (disposed || socket !== currentSocket) {
+        return;
+      }
+
+      if (!gotFirstMessage) {
+        gotFirstMessage = true;
+        requestAnimationFrame(() => {
+          if (!disposed) {
+            fitAddon.fit();
+          }
+        });
+      }
+
+      receivedServerMessage = true;
+
+      const data = new Uint8Array(event.data as ArrayBuffer);
+      const command = String.fromCharCode(data[0]);
+      const payload = data.slice(1);
+
+      if (command === '0') {
+        terminal.write(payload);
+      }
+
+      resolveReadiness();
+    };
+
+    const onClose = (event: CloseEvent): void => {
+      if (disposed || socket !== currentSocket) {
+        return;
+      }
+
+      if (!readySettled) {
+        resetSocket(currentSocket, false);
+
+        if (isBackendMaintenanceClose(event)) {
+          readySettled = true;
+          rejectReady?.(abortError());
+          options.onDisconnect?.(event);
+          dispose();
+
+          return;
+        }
+
+        scheduleRetry(openSocket);
+
+        return;
+      }
+
+      socketReady = false;
+      options.onDisconnect?.(event);
+    };
+
+    const onError = (): void => {
+      if (!readySettled && socket === currentSocket) {
+        resetSocket(currentSocket, true);
+        scheduleRetry(openSocket);
+      }
+    };
+
+    currentSocket.addEventListener('open', onOpen);
+    currentSocket.addEventListener('message', onMessage);
+    currentSocket.addEventListener('close', onClose);
+    currentSocket.addEventListener('error', onError);
+    removeSocketListeners = () => {
+      currentSocket.removeEventListener('open', onOpen);
+      currentSocket.removeEventListener('message', onMessage);
+      currentSocket.removeEventListener('close', onClose);
+      currentSocket.removeEventListener('error', onError);
+    };
+  };
+
+  openSocket();
+
+  if (options.signal?.aborted) {
+    dispose();
+  } else {
+    options.signal?.addEventListener('abort', dispose, {once: true});
+  }
 
   terminal.onData((data) => {
-    if (!socketReady || disposed) {
+    const currentSocket = socket;
+
+    if (!socketReady || disposed || !currentSocket) {
       return;
     }
 
@@ -323,36 +483,34 @@ export function connectToCli(
 
     packet[0] = '0'.charCodeAt(0);
     packet.set(encoded, 1);
-    socket.send(packet);
+    currentSocket.send(packet);
   });
 
   terminal.onResize(({cols, rows}) => {
-    if (!socketReady || disposed) {
+    const currentSocket = socket;
+
+    if (!socketReady || disposed || !currentSocket) {
       return;
     }
 
     const resizePayload = JSON.stringify({columns: cols, rows});
     const packet = new TextEncoder().encode('1' + resizePayload);
 
-    socket.send(packet);
-  });
-
-  socket.addEventListener('close', (event) => {
-    socketReady = false;
-
-    if (!disposed) {
-      options.onDisconnect?.(event);
-    }
+    currentSocket.send(packet);
   });
 
   return {
     terminal,
     fitAddon,
-    dispose: () => {
-      disposed = true;
-      resizeObserver.disconnect();
-      socket.close();
-      terminal.dispose();
+    ready,
+    activate: () => {
+      if (disposed || !socketReady) {
+        return;
+      }
+
+      terminal.options.disableStdin = false;
+      terminal.focus();
     },
+    dispose,
   };
 }

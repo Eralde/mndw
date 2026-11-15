@@ -12,6 +12,7 @@
   },
   "status": {
     "starting": "Starting terminal…",
+    "connecting": "Connecting…",
     "connection-lost": "Connection lost",
     "update-ended": "Session ended during update",
     "connected": "Connected"
@@ -22,6 +23,7 @@
     "ttyd-not-installed": "The terminal needs the ttyd package, which is not installed. Install it on the router:",
     "ttyd-start-failed": "The terminal service could not be started.",
     "ttyd-unavailable": "The terminal service is unavailable on this device.",
+    "connect-timeout": "Terminal did not connect within {seconds} seconds",
     "unknown": "Unknown error"
   }
 }

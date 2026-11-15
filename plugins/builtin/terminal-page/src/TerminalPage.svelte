@@ -26,7 +26,14 @@ function t(key: string, values?: Record<string, unknown>): string {
   return $translator.t(key, values);
 }
 
-type PageState = 'idle' | 'starting' | 'connected' | 'error' | 'disconnected';
+type PageState =
+  | 'idle'
+  | 'starting'
+  | 'connecting'
+  | 'connected'
+  | 'error'
+  | 'disconnected';
+const TERMINAL_CONNECT_TIMEOUT_MS = 3000;
 
 let state = $state<PageState>('idle');
 let errorMessage = $state('');
@@ -38,48 +45,32 @@ let consoleChoice = $state<import('./cli.service.js').ConsoleChoice>('router');
 let terminalElement = $state<HTMLDivElement | undefined>(undefined);
 let terminalInstance: TerminalInstance | null = null;
 let activeRun: AbortController | null = null;
-let spawnDelayId: ReturnType<typeof setTimeout> | undefined;
+let connectionTimeoutId: ReturnType<typeof setTimeout> | undefined;
 let disconnectExpected = false;
 const terminalErrorCopy: Record<string, string> = {
   TTYD_NOT_INSTALLED: 'error.ttyd-not-installed',
   TTYD_START_FAILED: 'error.ttyd-start-failed',
   TTYD_UNAVAILABLE: 'error.ttyd-unavailable',
+  TERMINAL_CONNECT_TIMEOUT: 'error.connect-timeout',
 };
 
 function terminalErrorSummary(): string {
+  if (errorCode === 'TERMINAL_CONNECT_TIMEOUT') {
+    return t(terminalErrorCopy.TERMINAL_CONNECT_TIMEOUT, {
+      seconds: TERMINAL_CONNECT_TIMEOUT_MS / 1000,
+    });
+  }
+
   return t(terminalErrorCopy[errorCode ?? ''] ?? 'error.start-failed');
 }
 
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve();
-
-      return;
-    }
-
-    const onAbort = () => {
-      clearSpawnDelay();
-      resolve();
-    };
-
-    spawnDelayId = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort);
-      spawnDelayId = undefined;
-      resolve();
-    }, ms);
-
-    signal.addEventListener('abort', onAbort, {once: true});
-  });
-}
-
-function clearSpawnDelay(): void {
-  if (!spawnDelayId) {
+function clearConnectionTimeout(): void {
+  if (connectionTimeoutId === undefined) {
     return;
   }
 
-  clearTimeout(spawnDelayId);
-  spawnDelayId = undefined;
+  clearTimeout(connectionTimeoutId);
+  connectionTimeoutId = undefined;
 }
 
 function linkAbort(
@@ -114,7 +105,7 @@ function disposeTerminal(): void {
 
 async function startTerminal(): Promise<void> {
   activeRun?.abort();
-  clearSpawnDelay();
+  clearConnectionTimeout();
   disconnectExpected = true;
   disposeTerminal();
   disconnectExpected = false;
@@ -127,6 +118,7 @@ async function startTerminal(): Promise<void> {
   state = 'starting';
   errorMessage = '';
   errorCode = null;
+  let connectionTimedOut = false;
 
   try {
     if (runSignal.aborted) {
@@ -157,13 +149,17 @@ async function startTerminal(): Promise<void> {
       return;
     }
 
-    await delay(1000, runSignal);
+    state = 'connecting';
+    connectionTimeoutId = setTimeout(() => {
+      connectionTimeoutId = undefined;
+      connectionTimedOut = true;
+      errorCode = 'TERMINAL_CONNECT_TIMEOUT';
+      errorMessage = '';
+      state = 'error';
+      run.abort();
+      disposeTerminal();
+    }, TERMINAL_CONNECT_TIMEOUT_MS);
 
-    if (runSignal.aborted) {
-      return;
-    }
-
-    state = 'connected';
     await tick();
 
     if (runSignal.aborted) {
@@ -181,11 +177,15 @@ async function startTerminal(): Promise<void> {
       FitAddon,
       {
         console: consoleChoice,
+        signal: runSignal,
         onDisconnect: (event) => {
           if (disconnectExpected || runSignal.aborted) {
             return;
           }
 
+          const wasConnecting = state === 'connecting';
+
+          clearConnectionTimeout();
           disconnectReason = isBackendMaintenanceClose(event)
             ? 'update-ended'
             : 'connection-lost';
@@ -193,13 +193,37 @@ async function startTerminal(): Promise<void> {
             ? t('status.update-ended')
             : t('status.connection-lost');
           state = 'disconnected';
+
+          if (wasConnecting) {
+            run.abort();
+          }
         },
       },
     );
+
+    await terminalInstance.ready;
+    clearConnectionTimeout();
+
+    if (runSignal.aborted) {
+      return;
+    }
+
+    state = 'connected';
+    await tick();
+
+    if (runSignal.aborted) {
+      return;
+    }
+
+    terminalInstance.activate();
     requestAnimationFrame(() => {
       terminalInstance?.fitAddon.fit();
     });
   } catch (error) {
+    if (connectionTimedOut) {
+      return;
+    }
+
     if (runSignal.aborted) {
       return;
     }
@@ -211,7 +235,9 @@ async function startTerminal(): Promise<void> {
   } finally {
     unlink();
 
-    if (activeRun === run) {
+    if (
+      activeRun === run && state !== 'connected' && state !== 'disconnected'
+    ) {
       activeRun = null;
     }
   }
@@ -221,7 +247,7 @@ function stopTerminal(): void {
   disconnectExpected = true;
   activeRun?.abort();
   activeRun = null;
-  clearSpawnDelay();
+  clearConnectionTimeout();
   disposeTerminal();
   state = 'idle';
   disconnectExpected = false;
@@ -241,7 +267,7 @@ onMount(() => {
     disconnectExpected = true;
     activeRun?.abort();
     activeRun = null;
-    clearSpawnDelay();
+    clearConnectionTimeout();
     disposeTerminal();
   };
 });
@@ -253,23 +279,24 @@ onMount(() => {
     data-testid="l10n-probe"
     hidden
   >{t('l10n.probe')}</span>
+  <div class="console-choice">
+    <mndw-button
+      variant="primary"
+      aria-pressed={consoleChoice === 'router'}
+      onclick={() => selectConsole('router')}
+    >
+      {t('action.router-cli')}
+    </mndw-button>
+    <mndw-button
+      variant="primary"
+      aria-pressed={consoleChoice === 'entware'}
+      onclick={() => selectConsole('entware')}
+    >
+      {t('action.entware-shell')}
+    </mndw-button>
+  </div>
   {#if state === 'idle'}
-    <div class="screen">
-      <div class="console-choice">
-        <mndw-button
-          variant="primary"
-          onclick={() => selectConsole('router')}
-        >
-          {t('action.router-cli')}
-        </mndw-button>
-        <mndw-button
-          variant="primary"
-          onclick={() => selectConsole('entware')}
-        >
-          {t('action.entware-shell')}
-        </mndw-button>
-      </div>
-    </div>
+    <div class="screen"></div>
   {:else if state === 'starting'}
     <div class="screen">
       <div
@@ -278,6 +305,46 @@ onMount(() => {
       >
       </div>
       <span>{t('status.starting')}</span>
+    </div>
+  {:else if state === 'connecting' || state === 'connected'}
+    <div class="terminal-wrap">
+      <div class="terminal-header">
+        <span class="status">{#if state === 'connected'}{
+              t('status.connected')
+            }{/if}</span>
+        {#if state === 'connected'}
+          <mndw-button
+            variant="secondary"
+            onclick={stopTerminal}
+          >
+            {t('action.disconnect')}
+          </mndw-button>
+        {/if}
+      </div>
+      <div
+        class="terminal-content"
+        class:connecting={state === 'connecting'}
+      >
+        <div
+          class="terminal-output"
+          bind:this={terminalElement}
+          inert={state === 'connecting'}
+        >
+        </div>
+        {#if state === 'connecting'}
+          <div
+            class="connection-pending"
+            role="status"
+          >
+            <div
+              class="spinner"
+              aria-hidden="true"
+            >
+            </div>
+            <span>{t('status.connecting')}</span>
+          </div>
+        {/if}
+      </div>
     </div>
   {:else if state === 'error'}
     <div class="screen">
@@ -292,7 +359,9 @@ onMount(() => {
           <code>opkg install ttyd</code>
         {:else}
           <strong>{terminalErrorSummary()}</strong>
-          <span class="terminal-error-detail">{errorMessage}</span>
+          {#if errorMessage}
+            <span class="terminal-error-detail">{errorMessage}</span>
+          {/if}
         {/if}
       </div>
       <mndw-button
@@ -302,7 +371,7 @@ onMount(() => {
         {t('action.retry')}
       </mndw-button>
     </div>
-  {:else if state === 'disconnected'}
+  {:else}
     <div class="screen">
       <div
         class="mndw-alert mndw-alert--danger"
@@ -320,23 +389,6 @@ onMount(() => {
       >
         {t('action.reconnect')}
       </mndw-button>
-    </div>
-  {:else}
-    <div class="terminal-wrap">
-      <div class="terminal-header">
-        <span class="status">{t('status.connected')}</span>
-        <mndw-button
-          variant="secondary"
-          onclick={stopTerminal}
-        >
-          {t('action.disconnect')}
-        </mndw-button>
-      </div>
-      <div
-        class="terminal-content"
-        bind:this={terminalElement}
-      >
-      </div>
     </div>
   {/if}
 </div>
@@ -357,6 +409,7 @@ onMount(() => {
 
 .screen {
   width: 100%;
+  flex: 1 1 0%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -378,6 +431,10 @@ onMount(() => {
 .console-choice {
   display: flex;
   gap: 0.75rem;
+  flex: 0 0 auto;
+  padding: 0.5rem 0.625rem;
+  background: #1f242d;
+  border-bottom: 1px solid #2a3039;
 }
 
 .ttyd-terminal :global(mndw-button) {
@@ -411,6 +468,7 @@ onMount(() => {
 }
 
 .terminal-content {
+  position: relative;
   flex: 1 1 0%;
   height: 0;
   min-height: 0;
@@ -419,6 +477,25 @@ onMount(() => {
   overflow-anchor: none;
   contain: layout paint;
   box-sizing: border-box;
+}
+
+.terminal-output {
+  position: absolute;
+  inset: 0;
+}
+
+.terminal-content.connecting :global(.xterm) {
+  visibility: hidden;
+}
+
+.connection-pending {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
 }
 
 .terminal-content :global(.xterm) {

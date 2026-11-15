@@ -6,7 +6,7 @@ import type {OverlayLayer, OverlayOpenOptions, OverlayService, PluginI18n} from 
 import {createTestI18n} from '@mndw/sdk/testing';
 import enCatalog from '../i18n/en.json';
 import type {RciBackgroundProcess} from '@rci-tools/core';
-import type {SystemLogApi} from './system-log-api';
+import type {SystemLogApi, SystemLogStream} from './system-log-api';
 import type {NormalizedLogRecord} from './log-types';
 import type {ClearResult} from './clear-log-confirmation';
 import SystemLogPage from './SystemLogPage.svelte';
@@ -30,10 +30,79 @@ function process(): {value: RciBackgroundProcess; abort: ReturnType<typeof vi.fn
   };
 }
 
+interface StreamSession {
+  stream: SystemLogStream;
+  data: Subject<NormalizedLogRecord[]>;
+  done: Subject<void>;
+  abort: ReturnType<typeof vi.fn>;
+}
+
+function streamSession(): StreamSession {
+  const data = new Subject<NormalizedLogRecord[]>();
+  const done = new Subject<void>();
+  const abort = vi.fn(() => true);
+  const backgroundProcess = {
+    data$: data.asObservable(),
+    done$: done.asObservable(),
+    state$: NEVER,
+    abort,
+  } as unknown as RciBackgroundProcess;
+
+  return {
+    stream: {process: backgroundProcess, data$: data.asObservable()},
+    data,
+    done,
+    abort,
+  };
+}
+
+function reconnectingApi(snapshot: () => Observable<NormalizedLogRecord[]> = () => NEVER): {
+  api: SystemLogApi;
+  sessions: StreamSession[];
+  showLogOnce: ReturnType<typeof vi.fn>;
+  startLogStream: ReturnType<typeof vi.fn>;
+} {
+  const sessions: StreamSession[] = [];
+  const showLogOnce = vi.fn(snapshot);
+  const startLogStream = vi.fn(() => {
+    const nextSession = streamSession();
+
+    sessions.push(nextSession);
+
+    return nextSession.stream;
+  });
+
+  return {
+    api: {showLogOnce, startLogStream, clearLog: () => of({})},
+    sessions,
+    showLogOnce,
+    startLogStream,
+  };
+}
+
+function mountLogPage(target: HTMLElement, api: SystemLogApi): ReturnType<typeof mount> {
+  document.body.appendChild(target);
+
+  return mount(SystemLogPage, {
+    target,
+    props: {api, overlay: {} as OverlayService, i18n: createTestI18n(enCatalog)},
+  });
+}
+
 function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
   const messages = {
-    en: {'title': 'System Log', 'filter.label': 'Filters', 'l10n': {probe: 'System Log English'}},
-    ru: {'title': 'Системный журнал', 'filter.label': 'Фильтры', 'l10n': {probe: 'Системный журнал русский'}},
+    en: {
+      'title': 'System Log',
+      'filter.label': 'Filters',
+      'l10n': {probe: 'System Log English'},
+      'status': {connection: {connected: 'Connected'}},
+    },
+    ru: {
+      'title': 'Системный журнал',
+      'filter.label': 'Фильтры',
+      'l10n': {probe: 'Системный журнал русский'},
+      'status': {connection: {connected: 'Подключено'}},
+    },
   };
   const i18n = createTestI18n(messages.en);
 
@@ -107,6 +176,7 @@ describe('SystemLogPage lifecycle', () => {
 
     flushSync();
     expect(host.querySelector('h1')?.textContent).toBe('System Log English');
+    expect(host.querySelector('[data-connection-status]')?.textContent).toContain('Connected');
 
     const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
 
@@ -124,6 +194,7 @@ describe('SystemLogPage lifecycle', () => {
     expect(enValue).not.toBe('Системный журнал русский');
     expect(probe?.textContent).toBe('Системный журнал русский');
     expect(host.querySelector('h1')?.textContent).toBe('Системный журнал русский');
+    expect(host.querySelector('[data-connection-status]')?.textContent).toContain('Подключено');
     expect(host.querySelector('[data-filter-panel]')?.textContent).toContain('Фильтры');
     void unmount(app);
   });
@@ -294,7 +365,113 @@ describe('SystemLogPage lifecycle', () => {
     host.querySelector<HTMLElement>('[data-clear-log]')?.click();
     await vi.waitFor(() => expect(host.textContent).toMatch(/clear failed/i));
     expect(host.textContent).toContain('preserve me');
+    expect(host.querySelector('[data-clear-error]')?.textContent).toMatch(/clear failed/i);
+    expect(host.querySelector('[data-connection-status]')?.textContent).toContain('Connected');
     await unmount(failedApp);
+  });
+
+  it('clears a prior clear failure after a later clear succeeds', async () => {
+    host = document.createElement('div');
+
+    const clearLog = vi.fn()
+      .mockImplementationOnce(() => throwError(() => new Error('clear failed')))
+      .mockImplementationOnce(() => of({success: true}));
+    const api: SystemLogApi = {
+      showLogOnce: () => NEVER,
+      startLogStream: () => ({process: process().value, data$: NEVER}),
+      clearLog,
+    };
+    const app = mount(SystemLogPage, {
+      target: host,
+      props: {api, overlay: immediateConfirmationOverlay(true), i18n: createTestI18n(enCatalog)},
+    });
+
+    await settled();
+    host.querySelector<HTMLElement>('[data-clear-log]')?.click();
+    await vi.waitFor(() => expect(host.querySelector('[data-clear-error]')).not.toBeNull());
+    host.querySelector<HTMLElement>('[data-clear-log]')?.click();
+    await vi.waitFor(() => expect(clearLog).toHaveBeenCalledTimes(2));
+
+    expect(host.querySelector('[data-clear-error]')).toBeNull();
+    await unmount(app);
+  });
+});
+
+describe('SystemLogPage stream reconnection', () => {
+  let host: HTMLElement;
+
+  afterEach(() => {
+    vi.useRealTimers();
+    host?.remove();
+  });
+
+  it('restarts the stream and snapshot after a stream error and reconciles duplicate rows', async () => {
+    vi.useFakeTimers();
+
+    const snapshots = [
+      of([record(1), record(2)]),
+      of([record(1), record(2), record(3)]),
+    ];
+    const setup = reconnectingApi(() => snapshots.shift() ?? NEVER);
+
+    host = document.createElement('div');
+
+    const app = mountLogPage(host, setup.api);
+
+    flushSync();
+    setup.sessions[0]?.data.next([record(1), record(2)]);
+    setup.sessions[0]?.data.error(new Error('stream closed'));
+    flushSync();
+
+    expect(host.querySelector('[data-reconnect-countdown]')?.textContent).toContain('1 s');
+
+    await vi.advanceTimersByTimeAsync(1000);
+    flushSync();
+    setup.sessions[1]?.data.next([record(2), record(3), record(4)]);
+    flushSync();
+
+    expect(setup.startLogStream).toHaveBeenCalledTimes(2);
+    expect(setup.showLogOnce).toHaveBeenCalledTimes(2);
+    expect(host.querySelector('[data-loaded-count]')?.textContent).toContain('4');
+    expect(host.querySelectorAll('[data-log-id]')).toHaveLength(4);
+
+    await unmount(app);
+  });
+
+  it('does not put the countdown or Reconnect action inside the live region', async () => {
+    vi.useFakeTimers();
+
+    const setup = reconnectingApi();
+
+    host = document.createElement('div');
+
+    const app = mountLogPage(host, setup.api);
+
+    flushSync();
+    setup.sessions[0]?.data.error(new Error('stream closed'));
+    flushSync();
+    vi.advanceTimersByTime(1000);
+    flushSync();
+    setup.sessions[1]?.data.error(new Error('stream closed again'));
+    flushSync();
+
+    const status = host.querySelector('[role="status"]');
+    const countdown = host.querySelector('[data-reconnect-countdown]');
+
+    expect(status?.querySelector('[data-reconnect]')).toBeNull();
+    expect(status?.textContent?.trim()).toBe('Reconnecting');
+    expect(status?.textContent).not.toContain('2 s');
+    expect(countdown?.closest('[role="status"]')).toBeNull();
+    expect(countdown?.textContent).toContain('2 s');
+
+    vi.advanceTimersByTime(1000);
+    flushSync();
+
+    expect(host.querySelector('[role="status"]')).toBe(status);
+    expect(status?.textContent?.trim()).toBe('Reconnecting');
+    expect(host.querySelector('[data-reconnect-countdown]')?.textContent).toContain('1 s');
+    expect(host.querySelector('[data-reconnect]')?.closest('[role="status"]')).toBeNull();
+    await unmount(app);
   });
 });
 
@@ -304,5 +481,10 @@ describe('SystemLogPage scrollbar contract', () => {
       /scrollbar-color:\s*var\(--mndw-scrollbar-thumb\)\s+var\(--mndw-scrollbar-track\)/u,
     );
     expect(systemLogPageSource).toMatch(/system-log-page__viewport::-webkit-scrollbar-thumb/u);
+  });
+
+  it('wraps connection content and long errors on narrow layouts', () => {
+    expect(systemLogPageSource).toMatch(/\.system-log-page__connection\s*\{[^}]*flex-wrap:\s*wrap/su);
+    expect(systemLogPageSource).toMatch(/\.system-log-page__connection-error\s*\{[^}]*overflow-wrap:\s*anywhere/su);
   });
 });

@@ -5,11 +5,23 @@
   "title": "System Log",
   "action": {
     "download": "Download",
-    "clear": "Clear log"
+    "clear": "Clear log",
+    "reconnect": "Reconnect"
   },
   "status": {
     "loading": "Loading system log…",
-    "empty": "No log records match current filters."
+    "empty": "No log records match current filters.",
+    "connection": {
+      "connected": "Connected",
+      "reconnecting": "Reconnecting",
+      "error": "Connection error",
+      "error-detail": "Details: {message}",
+      "retry-countdown": "Next attempt in {seconds} s"
+    }
+  },
+  "error": {
+    "snapshot": "Unable to load system log snapshot: {message}",
+    "clear": "Unable to clear system log: {message}"
   },
   "aria": {
     "entries": "System log entries"

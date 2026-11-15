@@ -10,6 +10,10 @@ import {ALL_LOG_LEVELS, type FilterState, filterRecords} from './log-filters';
 import LogFilters from './LogFilters.svelte';
 import LogRow from './LogRow.svelte';
 import {createLogReconciler} from './log-reconciler';
+import {
+  type LogConnectionState,
+  createLogConnectionController,
+} from './log-connection';
 import {type DownloadBrowser, downloadLog} from './log-download';
 import {isNearBottom, readScrollMetrics} from './log-scroll';
 import type {SystemLogApi} from './system-log-api';
@@ -29,13 +33,21 @@ function t(key: string, values?: Record<string, unknown>): string {
   return $translator.t(key, values);
 }
 let records = $state<NormalizedLogRecord[]>([]);
-let errorMessage = $state('');
+let connectionState = $state<'connected' | 'reconnecting' | 'error'>(
+  'connected',
+);
+let reconnectSeconds = $state(0);
+let streamError = $state('');
+let snapshotError = $state('');
+let clearError = $state('');
+let downloadError = $state('');
 let loading = $state(true);
 let filterState = $state<FilterState>({query: '',
   levels: new SvelteSet(ALL_LOG_LEVELS)});
 let logViewport = $state<HTMLElement | undefined>(undefined);
 let shouldStickToBottom = $state(true);
 let reconciler: ReturnType<typeof createLogReconciler> | undefined;
+let connection: ReturnType<typeof createLogConnectionController> | undefined;
 const filteredRecords = $derived(filterRecords(records, filterState));
 
 function updateStickiness(): void {
@@ -76,10 +88,38 @@ function browserDownload(): DownloadBrowser {
 function downloadAll(): void {
   try {
     downloadLog(records, browserDownload());
+    downloadError = '';
   } catch (error) {
-    errorMessage = error instanceof Error
+    downloadError = error instanceof Error
       ? error.message
       : 'Log download failed';
+  }
+}
+
+function reconnectNow(): void {
+  connection?.reconnectNow();
+}
+
+function connectionAnnouncementText(): string {
+  if (connectionState === 'connected') {
+    return t('status.connection.connected');
+  }
+
+  if (connectionState === 'reconnecting') {
+    return t('status.connection.reconnecting');
+  }
+
+  return t('status.connection.error');
+}
+
+function updateConnectionState(next: LogConnectionState): void {
+  connectionState = next.status;
+  reconnectSeconds = next.reconnectSeconds;
+  streamError = next.streamError;
+  snapshotError = next.snapshotError;
+
+  if (snapshotError) {
+    loading = false;
   }
 }
 
@@ -93,9 +133,9 @@ async function requestClear(): Promise<void> {
 
     await firstValueFrom(api.clearLog());
     records = reconciler?.reset() ?? [];
-    errorMessage = '';
+    clearError = '';
   } catch (error) {
-    errorMessage = error instanceof Error
+    clearError = error instanceof Error
       ? error.message
       : 'System log clear failed';
   }
@@ -103,32 +143,20 @@ async function requestClear(): Promise<void> {
 
 onMount(() => {
   reconciler = createLogReconciler();
-  const stream = api.startLogStream();
-  const streamSubscription = stream.data$.subscribe({
-    next: (batch) => {
-      mergeBatch(reconciler, batch, 'stream');
+  connection = createLogConnectionController({
+    api,
+    onBatch: (batch, source) => {
+      if (reconciler) {
+        mergeBatch(reconciler, batch, source);
+      }
     },
-    error: (error: unknown) => {
-      errorMessage = error instanceof Error
-        ? error.message
-        : 'System log stream failed';
-    },
+    onState: updateConnectionState,
   });
-  const snapshotSubscription = api.showLogOnce().subscribe({
-    next: (batch) => {
-      mergeBatch(reconciler, batch, 'snapshot');
-    },
-    error: (error: unknown) => {
-      errorMessage = error instanceof Error
-        ? error.message
-        : 'System log snapshot failed';
-    },
-  });
+  connection.start();
 
   return () => {
-    streamSubscription.unsubscribe();
-    snapshotSubscription.unsubscribe();
-    stream.process.abort();
+    connection?.dispose();
+    connection = undefined;
   };
 });
 </script>
@@ -154,30 +182,92 @@ onMount(() => {
         onChange={(next) => filterState = next}
       />
       <div class="system-log-page__actions">
-        <mndw-button
-          data-download-log
-          variant="secondary"
-          onclick={downloadAll}
-        >
-          {t('action.download')}
-        </mndw-button>
-        <mndw-button
-          data-clear-log
-          variant="danger"
-          onclick={requestClear}
-        >
-          {t('action.clear')}
-        </mndw-button>
+        <div class="system-log-page__actions-row">
+          <mndw-button
+            data-download-log
+            variant="secondary"
+            onclick={downloadAll}
+          >
+            {t('action.download')}
+          </mndw-button>
+          <mndw-button
+            data-clear-log
+            variant="danger"
+            onclick={requestClear}
+          >
+            {t('action.clear')}
+          </mndw-button>
+        </div>
+        {#if downloadError}
+          <p
+            class="system-log-page__action-error"
+            role="alert"
+          >
+            {downloadError}
+          </p>
+        {/if}
+        {#if clearError}
+          <p
+            class="system-log-page__action-error"
+            data-clear-error
+            role="alert"
+          >
+            {t('error.clear', {message: clearError})}
+          </p>
+        {/if}
       </div>
+    </div>
+    <div
+      class="system-log-page__connection"
+      data-connection-status
+      data-connection-state={connectionState}
+    >
+      <span
+        data-connection-announcement
+        role="status"
+      >
+        {connectionAnnouncementText()}
+      </span>
+      {#if streamError}
+        <span
+          class="system-log-page__connection-error"
+          data-connection-error
+        >
+          {
+            t('status.connection.error-detail', {
+              message: streamError,
+            })
+          }
+        </span>
+      {/if}
+      {#if reconnectSeconds > 0}
+        <span data-reconnect-countdown>
+          {
+            t('status.connection.retry-countdown', {
+              seconds: reconnectSeconds,
+            })
+          }
+        </span>
+      {/if}
+      {#if connectionState !== 'connected'}
+        <mndw-button
+          data-reconnect
+          variant="secondary"
+          onclick={reconnectNow}
+        >
+          {t('action.reconnect')}
+        </mndw-button>
+      {/if}
     </div>
   </header>
 
-  {#if errorMessage}
+  {#if snapshotError}
     <p
       class="system-log-page__status system-log-page__status--error"
+      data-snapshot-error
       role="alert"
     >
-      {errorMessage}
+      {t('error.snapshot', {message: snapshotError})}
     </p>
   {:else if loading}
     <p class="system-log-page__status">{t('status.loading')}</p>
@@ -261,22 +351,56 @@ p {
   font-size: var(--mndw-text-sm);
 }
 
+.system-log-page__connection {
+  display: flex;
+  align-items: center;
+  gap: var(--mndw-space-2);
+  flex-wrap: wrap;
+  padding-top: var(--mndw-space-2);
+  color: var(--mndw-text-muted);
+  font-size: var(--mndw-text-xs);
+}
+
+.system-log-page__connection-error {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.system-log-page__connection[data-connection-state='error'] {
+  color: var(--mndw-danger);
+}
+
 .system-log-page__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--mndw-space-1);
+  flex: 0 0 auto;
+}
+
+.system-log-page__actions-row {
   display: flex;
   gap: var(--mndw-space-2);
   flex-wrap: wrap;
   justify-content: flex-end;
-  flex: 0 0 auto;
 }
 
-.system-log-page__actions mndw-button::part(button) {
+.system-log-page__actions-row mndw-button::part(button),
+.system-log-page__connection mndw-button::part(button) {
   min-height: 1.75rem;
   padding: var(--mndw-space-1) var(--mndw-space-2);
   font-size: var(--mndw-text-xs);
 }
 
-.system-log-page__status--error {
+.system-log-page__status--error,
+.system-log-page__action-error {
   color: var(--mndw-danger);
+}
+
+.system-log-page__action-error {
+  max-width: 22rem;
+  font-size: var(--mndw-text-xs);
+  text-align: right;
 }
 
 .system-log-page__viewport {
@@ -324,6 +448,15 @@ p {
   .system-log-page__actions {
     width: 100%;
     justify-content: flex-start;
+    align-items: flex-start;
+  }
+
+  .system-log-page__actions-row {
+    justify-content: flex-start;
+  }
+
+  .system-log-page__action-error {
+    text-align: left;
   }
 }
 </style>

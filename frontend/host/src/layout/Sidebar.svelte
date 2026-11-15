@@ -8,6 +8,7 @@ import {hostT} from '../services/host-i18n.svelte.js';
 import {getHostServices} from '../host-services-context.js';
 import {appRouter} from '../router/create-app-router.js';
 import {HOST_PATHS} from '../router/host-routes.js';
+import {getPagePluginCandidates} from '../runtime/page-plugin-candidates.js';
 
 const registry = getHostServices().registry;
 const mobileQuery = mobileMediaQuery();
@@ -23,22 +24,19 @@ const navInert = $derived(
 );
 // Untracked: only the value at instantiation matters, later changes are picked up by $effect.
 let previousNavInert = untrack(() =>
-  isMobile ? !appState.mobileSidebarOpen : appState.desktopSidebarCollapsed,
+  isMobile ? !appState.mobileSidebarOpen : appState.desktopSidebarCollapsed
 );
 
 const handleBreakpointChange = (event: MediaQueryListEvent): void => {
   isMobile = event.matches;
 };
 
-// The registry is populated before authenticated startup builds this shell, so a plain
-// copy-and-sort (label, then name) matches the router/picker ordering without a store.
-const pagePlugins = registry
-  .getPages()
-  .slice()
-  .sort((a, b) => {
-    return a.entry.label.localeCompare(b.entry.label)
-      || a.entry.name.localeCompare(b.entry.name);
-  });
+const pagePlugins = $derived.by(() => {
+  return getPagePluginCandidates(registry).map((page) => ({
+    ...page,
+    failed: page.status !== 'loaded',
+  }));
+});
 
 const currentPath = $derived.by(() => {
   return appRouter?.route.pathname ?? globalThis.location.pathname;
@@ -138,15 +136,26 @@ $effect(() => {
 
   {#if pagePlugins.length > 0}
     <div class="mndw-sidebar__section-label">{hostT('nav.plugins')}</div>
-    {#each pagePlugins as plugin (plugin.entry.name)}
+    {#each pagePlugins as plugin (plugin.name)}
       <a
-        href={plugin.entry.route}
+        href={plugin.route}
         class="mndw-sidebar__link"
-        class:active={isActive(plugin.entry.route)}
-        aria-current={isActive(plugin.entry.route) ? 'page' : undefined}
+        class:active={isActive(plugin.route)}
+        aria-current={isActive(plugin.route) ? 'page' : undefined}
         onclick={closeOnMobile}
       >
-        {plugin.entry.label}
+        {plugin.label}
+        {#if plugin.failed}
+          <mndw-icon
+            class="mndw-sidebar__warning"
+            name="circle-alert"
+            title={hostT('nav.page-load-failed')}
+            aria-hidden="true"
+          ></mndw-icon>
+          <span class="mndw-visually-hidden">{
+            hostT('nav.page-load-failed')
+          }</span>
+        {/if}
       </a>
     {/each}
   {/if}
@@ -162,3 +171,24 @@ $effect(() => {
     {hostT('nav.settings')}
   </a>
 </nav>
+
+<style>
+.mndw-sidebar__warning {
+  width: 1rem;
+  height: 1rem;
+  margin-inline-start: 0.375rem;
+  vertical-align: middle;
+}
+
+.mndw-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+</style>

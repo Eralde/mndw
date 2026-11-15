@@ -7,6 +7,8 @@ vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
   pluginRegistry: {get: vi.fn(), getPages: vi.fn(() => []), getWidgets: vi.fn(() => [])},
 }));
 
+vi.mock('../runtime/plugin-loader.js', () => ({retryPluginLoad: vi.fn()}));
+
 vi.mock('../runtime/plugin-context.js', () => ({
   createPluginContext: vi.fn((options: {instanceId: string; pageRoute: unknown}) => {
     const controller = new AbortController();
@@ -37,6 +39,8 @@ import {PAGE_PLUGIN_LOADING_DELAY_MS, PAGE_PLUGIN_SLOW_TIMEOUT_MS} from '../cons
 import {appState} from '../state/app.svelte.js';
 import {createAppRouter} from '../router/create-app-router.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
+import {replacePluginLoadStates, setPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
+import {retryPluginLoad} from '../runtime/plugin-loader.js';
 import PagePluginHost from './PagePluginHost.svelte';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
@@ -66,7 +70,12 @@ function pagePlugin(name: string): LoadedPage {
 }
 
 function createInstanceMock(plugin: LoadedPage) {
-  return vi.mocked(plugin.module.createInstance);
+  const createInstance = Reflect.get(plugin.module, 'createInstance') as (
+    this: void,
+    ...args: Parameters<MndwPlugin['createInstance']>
+  ) => ReturnType<MndwPlugin['createInstance']>;
+
+  return vi.mocked(createInstance);
 }
 
 function contextFor(plugin: LoadedPage, callIndex = -1): PluginContext {
@@ -89,16 +98,6 @@ function contextHandleFor(context: PluginContext): PluginContextHandle {
   }
 
   return result.value as PluginContextHandle;
-}
-
-function instanceFor(plugin: LoadedPage, callIndex = -1): PluginInstance {
-  const instance = createInstanceMock(plugin).mock.results.at(callIndex)?.value;
-
-  if (instance === undefined || instance instanceof Promise) {
-    throw new Error(`No synchronous instance returned by ${plugin.entry.name}`);
-  }
-
-  return instance as PluginInstance;
 }
 
 function deferred<T>(): {
@@ -160,6 +159,9 @@ describe('PagePluginHost', () => {
   beforeEach(async () => {
     appState.hostInfo = null;
     replaceDepsStatuses([]);
+    replacePluginLoadStates([]);
+    vi.mocked(retryPluginLoad).mockReset();
+
     for (const plugin of [pageA, pageB]) {
       createInstanceMock(plugin).mockReset().mockImplementation(() => ({unmount: vi.fn()}));
     }
@@ -168,6 +170,7 @@ describe('PagePluginHost', () => {
     vi.mocked(pluginRegistry).get.mockImplementation((name: string) =>
       name === 'page-a' ? pageA : name === 'page-b' ? pageB : undefined
     );
+
     vi.mocked(createPluginContext).mockClear();
     const {clearInstanceStorage} = await import('../services/storage.service.js');
 
@@ -182,6 +185,7 @@ describe('PagePluginHost', () => {
     await router?.navigate('/');
     vi.clearAllMocks();
     replaceDepsStatuses([]);
+    replacePluginLoadStates([]);
     document.body.innerHTML = '';
     appState.hostInfo = null;
   });
@@ -200,8 +204,76 @@ describe('PagePluginHost', () => {
       expect.objectContaining({instanceId: 'page-a:1', pageRoute: expect.anything()}),
     );
 
-    await unmountTracked(components[0]!);
+    const [component] = components;
+
+    if (component === undefined) {
+      throw new Error('Page component was not mounted');
+    }
+
+    await unmountTracked(component);
     expect(pageUnmount).toHaveBeenCalledOnce();
+  });
+
+  it('shows a failed-load placeholder and mounts after a successful retry', async () => {
+    replacePluginLoadStates([pageA.entry]);
+    setPluginLoadState('page-a', 'failed', 'error');
+
+    let finishRetry: ((loaded: boolean) => void) | undefined;
+
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([pageB]);
+
+    vi.mocked(pluginRegistry).get.mockImplementation((name: string) => name === 'page-b' ? pageB : undefined);
+
+    vi.mocked(retryPluginLoad).mockImplementation((name: string) => {
+      setPluginLoadState(name, 'loading');
+
+      return new Promise((resolve) => {
+        finishRetry = resolve;
+      });
+    });
+
+    router = createAppRouter();
+    await router.navigate('/page-a');
+
+    const target = document.createElement('div');
+
+    document.body.appendChild(target);
+
+    const component = mount(PagePluginHost, {
+      target,
+      context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
+    });
+
+    components.push(component);
+    flushSync();
+
+    expect(target.textContent).toContain('Page “page-a” failed to load');
+    expect(target.querySelector('mndw-button')?.textContent).toContain('Retry');
+    expect(target.querySelector('.mndw-page-plugin__mount')).toBeNull();
+
+    target.querySelector('mndw-button')?.click();
+    await Promise.resolve();
+    flushSync();
+
+    expect(retryPluginLoad).toHaveBeenCalledWith('page-a');
+    expect(target.querySelector('mndw-button')?.hasAttribute('disabled')).toBe(true);
+    expect(target.querySelector('mndw-button')?.getAttribute('aria-busy')).toBe('true');
+
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([pageA, pageB]);
+
+    vi.mocked(pluginRegistry).get.mockImplementation((pluginName: string) =>
+      pluginName === 'page-a' ? pageA : pluginName === 'page-b' ? pageB : undefined
+    );
+
+    setPluginLoadState('page-a', 'loaded');
+    finishRetry?.(true);
+    await Promise.resolve();
+    flushSync();
+
+    expect(createInstanceMock(pageA)).toHaveBeenCalledOnce();
+    expect(target.textContent).not.toContain('failed to load');
+
+    await unmountTracked(component);
   });
 
   it('keeps one page instance while child routes change and exposes controller navigation', async () => {

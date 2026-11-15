@@ -10,6 +10,7 @@
     "dashboard": "Панель управления",
     "package-manager": "Entware",
     "plugins": "Плагины",
+    "page-load-failed": "Не удалось загрузить страницу",
     "settings": "Настройки",
     "light-theme": "Включить светлую тему",
     "dark-theme": "Включить тёмную тему",
@@ -246,7 +247,12 @@
   "page-plugin": {
     "opening": "Открываем {title}…",
     "open-error": "Не удалось открыть страницу плагина {title}.",
+    "load-failed": "Не удалось загрузить страницу «{title}»",
     "slow": "Плагин долго не отвечает."
+  },
+  "plugin-load": {
+    "failed": "Не удалось загрузить плагины: {names}",
+    "loaded": "Плагины загружены"
   },
   "common": {
     "cancel": "Отмена",

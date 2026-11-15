@@ -36,6 +36,7 @@ vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
 
 import {type LoadedPage, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry} from '../runtime/plugin-types.js';
+import {replacePluginLoadStates, setPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
 import {setLocale} from '../services/locale.service.js';
 import {appState} from '../state/app.svelte.js';
 import Sidebar from './Sidebar.svelte';
@@ -108,6 +109,7 @@ describe('Sidebar', () => {
     appState.mobileSidebarOpen = false;
     appState.desktopSidebarCollapsed = false;
     appState.locale = 'en';
+    replacePluginLoadStates([]);
   });
 
   afterEach(() => {
@@ -117,6 +119,7 @@ describe('Sidebar', () => {
     appState.mobileSidebarOpen = false;
     appState.desktopSidebarCollapsed = false;
     appState.locale = 'en';
+    replacePluginLoadStates([]);
   });
 
   describe('with page plugins', () => {
@@ -185,6 +188,47 @@ describe('Sidebar', () => {
         {text: 'Entware', href: '/packages'},
         {text: 'Settings', href: '/settings'},
       ]);
+
+      void unmount(component);
+    });
+
+    it('lists failed pages with an accessible warning until they load', () => {
+      const failedPage = page('failed-page', 'Failed page', '/failed-page');
+
+      replacePluginLoadStates([failedPage.entry]);
+      setPluginLoadState('failed-page', 'failed', 'error');
+
+      const {component, target} = mountSidebar();
+      const link = target.querySelector<HTMLAnchorElement>('a[href="/failed-page"]');
+      const warning = link?.querySelector('mndw-icon[name="circle-alert"]');
+
+      expect(link).not.toBeNull();
+      expect(link?.textContent ?? '').toContain('Failed page');
+      expect(warning?.getAttribute('title')).toBe('Page failed to load');
+      expect(link?.querySelector('.mndw-visually-hidden')?.textContent).toBe('Page failed to load');
+
+      vi.mocked(pluginRegistry).getPages.mockReturnValue([failedPage]);
+      setPluginLoadState('failed-page', 'loaded');
+      flushSync();
+
+      expect(target.querySelector('a[href="/failed-page"] mndw-icon[name="circle-alert"]')).toBeNull();
+
+      void unmount(component);
+    });
+
+    it('omits a dedupe-rejected page with a duplicate route', () => {
+      const acceptedPage = page('accepted-page', 'Accepted page', '/shared');
+      const rejectedPage = page('rejected-page', 'Rejected page', '/shared');
+
+      vi.mocked(pluginRegistry).getPages.mockReturnValue([acceptedPage]);
+      replacePluginLoadStates([acceptedPage.entry, rejectedPage.entry]);
+      setPluginLoadState('accepted-page', 'loaded');
+      setPluginLoadState('rejected-page', 'not-runnable');
+
+      const {component, target} = mountSidebar();
+
+      expect(links(target)).toContainEqual({text: 'Accepted page', href: '/shared'});
+      expect(links(target)).not.toContainEqual({text: 'Rejected page', href: '/shared'});
 
       void unmount(component);
     });

@@ -10,6 +10,7 @@
     "dashboard": "Dashboard",
     "package-manager": "Entware",
     "plugins": "Plugins",
+    "page-load-failed": "Page failed to load",
     "settings": "Settings",
     "light-theme": "Switch to light theme",
     "dark-theme": "Switch to dark theme",
@@ -246,7 +247,12 @@
   "page-plugin": {
     "opening": "Opening {title}…",
     "open-error": "Could not open the page of plugin {title}.",
+    "load-failed": "Page “{title}” failed to load",
     "slow": "The plugin is taking too long to respond."
+  },
+  "plugin-load": {
+    "failed": "Plugins failed to load: {names}",
+    "loaded": "Plugins loaded"
   },
   "common": {
     "cancel": "Cancel",

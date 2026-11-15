@@ -7,6 +7,7 @@ import PackageManagerPage from '../pages/PackageManagerPage.svelte';
 import SettingsPage from '../pages/settings/SettingsPage.svelte';
 import {type PluginRegistry, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {PluginNavigationRouter} from '../runtime/plugin-navigation.js';
+import {getPagePluginCandidates} from '../runtime/page-plugin-candidates.js';
 import {HOST_PATHS, type PluginPageTable} from './host-routes.js';
 
 export interface PageRouteDefinition {
@@ -48,16 +49,13 @@ function assertRouteIsAvailable(route: string, name: string): void {
 export function buildPluginRoutes(
   registry: Pick<PluginRegistry, 'getPages'> = pluginRegistry,
 ): PluginRoutesBuild {
-  const pages = registry
-    .getPages()
-    .slice()
-    .sort((a, b) => a.entry.label.localeCompare(b.entry.label) || a.entry.name.localeCompare(b.entry.name));
+  const pages = getPagePluginCandidates(registry);
 
   const nextRoutes: Record<string, RouteComponent> = {};
   const nextMappings = new Map<string, string>();
 
   for (const page of pages) {
-    const {name, route} = page.entry;
+    const {name, route} = page;
 
     assertPageBaseRoute(route, name);
     assertRouteIsAvailable(canonicalBaseRoute(route), name);
@@ -96,14 +94,14 @@ export function buildPluginRoutes(
 }
 
 export function getPageRouteDefinitions(): readonly PageRouteDefinition[] {
-  return pluginRegistry.getPages().flatMap((page) => {
-    const route = appRouter.pluginPages.baseRouteOf(page.entry.name);
+  return getPagePluginCandidates(pluginRegistry).flatMap((page) => {
+    const route = appRouter.pluginPages.baseRouteOf(page.name);
 
     if (route === undefined) {
       return [];
     }
 
-    return [{route, name: page.entry.name}];
+    return [{route, name: page.name}];
   });
 }
 

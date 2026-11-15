@@ -3,6 +3,7 @@ import type {WidgetSize} from '../dashboard/widget-size.js';
 
 export type PluginLoadListOutcome = 'pending' | 'ok' | 'failed';
 export type PluginLoadStatus = 'loaded' | 'failed' | 'loading' | 'not-runnable';
+export type PluginLoadFailureKind = 'timeout' | 'error';
 
 export interface PluginLoadState {
   runnable: boolean;
@@ -10,6 +11,8 @@ export interface PluginLoadState {
   type: PluginListEntry['type'];
   label: string;
   size?: WidgetSize;
+  route?: string;
+  failureKind?: PluginLoadFailureKind;
 }
 
 const pluginLoadStates = $state<Record<string, PluginLoadState>>({});
@@ -36,15 +39,26 @@ export function replacePluginLoadStates(entries: PluginListEntry[]): void {
       type: entry.type,
       label: entry.label,
       ...(entry.type === 'widget' ? {size: entry.size} : {}),
+      ...(entry.type === 'page' ? {route: entry.route} : {}),
     };
   }
 }
 
-export function setPluginLoadState(name: string, status: PluginLoadStatus): void {
+export function setPluginLoadState(
+  name: string,
+  status: PluginLoadStatus,
+  failureKind?: PluginLoadFailureKind,
+): void {
   const current = pluginLoadStates[name];
 
   if (current !== undefined) {
-    pluginLoadStates[name] = {...current, status};
+    const {failureKind: _previousFailureKind, ...rest} = current;
+    pluginLoadStates[name] = {
+      ...rest,
+      ...(status === 'not-runnable' ? {runnable: false} : {}),
+      status,
+      ...(status === 'failed' && failureKind !== undefined ? {failureKind} : {}),
+    };
   }
 }
 

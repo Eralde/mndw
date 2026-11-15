@@ -7,12 +7,13 @@ vi.mock('../runtime/plugin-registry.js', () => ({
 
 import {type LoadedPage, type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
+import {replacePluginLoadStates, setPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
 import PagePluginHost from '../pages/PagePluginHost.svelte';
 import {buildPluginRoutes, createAppRouter, resolvePageRoute} from './create-app-router.js';
 
 const emptyBackend = {routes: {}};
 
-function page(name: string, label: string, route: string): LoadedPage {
+function page(name: string, label: string, route: string, over: Partial<PageListEntry> = {}): LoadedPage {
   const entry: PageListEntry = {
     name,
     version: '1.0.0',
@@ -25,6 +26,7 @@ function page(name: string, label: string, route: string): LoadedPage {
     backend: emptyBackend,
     type: 'page',
     route,
+    ...over,
   };
 
   return {entry, module: {createInstance: vi.fn()}};
@@ -50,6 +52,7 @@ function widget(name: string): LoadedPlugin {
 
 describe('buildPluginRoutes', () => {
   afterEach(() => {
+    replacePluginLoadStates([]);
     vi.clearAllMocks();
   });
 
@@ -106,6 +109,39 @@ describe('buildPluginRoutes', () => {
 
     expect(pageTable.pluginNameOf('/status')).toBe('status');
     expect(pageTable.baseRouteOf('status')).toBe('/status');
+  });
+
+  it('routes runnable failed pages from their list entries', () => {
+    const failedPage = page('broken-page', 'Broken page', '/broken');
+
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([]);
+    replacePluginLoadStates([failedPage.entry]);
+    setPluginLoadState('broken-page', 'failed', 'error');
+
+    const {routes, pageTable} = buildPluginRoutes();
+
+    expect(Object.keys(routes)).toEqual(['/broken', '/broken/*child']);
+    expect(pageTable.pluginNameOf('/broken')).toBe('broken-page');
+  });
+
+  it('does not route non-runnable failed pages', () => {
+    const disabledPage = page('disabled-page', 'Disabled page', '/disabled', {enabled: false});
+
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([]);
+    replacePluginLoadStates([disabledPage.entry]);
+    setPluginLoadState('disabled-page', 'failed', 'error');
+
+    expect(Object.keys(buildPluginRoutes().routes)).toEqual([]);
+  });
+
+  it('applies collision checks between loaded and failed page routes', () => {
+    const failedPage = page('failed-page', 'Failed page', '/same');
+
+    vi.mocked(pluginRegistry).getPages.mockReturnValue([page('loaded-page', 'Loaded page', '/same')]);
+    replacePluginLoadStates([failedPage.entry]);
+    setPluginLoadState('failed-page', 'failed', 'error');
+
+    expect(() => buildPluginRoutes()).toThrow(/loaded-page.*same.*failed-page/i);
   });
 
   it('does not turn widget plugins into routes', () => {

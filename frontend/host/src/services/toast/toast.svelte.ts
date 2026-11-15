@@ -11,9 +11,17 @@ import {SvelteMap} from 'svelte/reactivity';
 
 export type ToastVariant = 'success' | 'info' | 'error';
 
+export interface ToastAction {
+  label: string;
+  onAction: () => void | Promise<void>;
+  busy?: boolean;
+}
+
 export interface ToastOptions {
   message: string;
   variant?: ToastVariant;
+  key?: string;
+  action?: ToastAction;
   /**
    * Milliseconds before auto-dismiss. `0` means sticky (dismissed only by the user).
    * Omitted falls back to the per-variant default: errors are sticky, the rest
@@ -27,6 +35,8 @@ export interface Toast {
   readonly message: string;
   readonly variant: ToastVariant;
   readonly duration: number;
+  readonly key?: string;
+  readonly action?: ToastAction;
 }
 
 const DEFAULT_DURATIONS: Record<ToastVariant, number> = {
@@ -69,16 +79,55 @@ export class ToastStore {
   public show(options: ToastOptions): number {
     const variant = options.variant ?? 'info';
     const duration = options.duration ?? DEFAULT_DURATIONS[variant];
+    const keyedIndex = options.key === undefined
+      ? -1
+      : this.toasts.findIndex((toast) => toast.key === options.key);
+
+    if (keyedIndex !== -1) {
+      const current = this.toasts[keyedIndex];
+
+      if (current === undefined) {
+        return this.add(options, variant, duration);
+      }
+
+      this.clearTimer(current.id);
+      this.toasts[keyedIndex] = {
+        id: current.id,
+        message: options.message,
+        variant,
+        duration,
+        ...(options.key === undefined ? {} : {key: options.key}),
+        ...(options.action === undefined ? {} : {action: options.action}),
+      };
+      this.startTimer(current.id, duration);
+
+      return current.id;
+    }
+
+    return this.add(options, variant, duration);
+  }
+
+  private add(options: ToastOptions, variant: ToastVariant, duration: number): number {
     const id = this.nextId++;
 
-    this.toasts.push({id, message: options.message, variant, duration});
+    this.toasts.push({
+      id,
+      message: options.message,
+      variant,
+      duration,
+      ...(options.key === undefined ? {} : {key: options.key}),
+      ...(options.action === undefined ? {} : {action: options.action}),
+    });
     this.enforceCap();
+    this.startTimer(id, duration);
 
+    return id;
+  }
+
+  private startTimer(id: number, duration: number): void {
     if (duration > 0) {
       this.timers.set(id, setTimeout(() => this.dismiss(id), duration));
     }
-
-    return id;
   }
 
   public success(message: string, options?: Omit<ToastOptions, 'message' | 'variant'>): number {
@@ -101,6 +150,15 @@ export class ToastStore {
 
     if (index !== -1) {
       this.toasts.splice(index, 1);
+    }
+  }
+
+  /** Remove the currently displayed toast with this key, if any. */
+  public dismissKey(key: string): void {
+    const current = this.toasts.find((toast) => toast.key === key);
+
+    if (current !== undefined) {
+      this.dismiss(current.id);
     }
   }
 

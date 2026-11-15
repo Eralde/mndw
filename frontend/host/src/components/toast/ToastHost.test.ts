@@ -74,6 +74,30 @@ describe('ToastHost', () => {
     expect(toastEl?.getAttribute('role')).toBe('status');
   });
 
+  it('renders and fires an action button', () => {
+    const onAction = vi.fn();
+
+    store.error('failed', {action: {label: 'Retry', onAction}});
+    render();
+
+    const button = target.querySelector<HTMLButtonElement>('.mndw-toast__action');
+
+    expect(button?.textContent).toBe('Retry');
+    button?.click();
+
+    expect(onAction).toHaveBeenCalledOnce();
+  });
+
+  it('disables a busy action and exposes aria-busy', () => {
+    store.error('failed', {action: {label: 'Retry', onAction: vi.fn(), busy: true}});
+    render();
+
+    const button = target.querySelector<HTMLButtonElement>('.mndw-toast__action');
+
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute('aria-busy')).toBe('true');
+  });
+
   it('removes a toast when its dismiss button is clicked', () => {
     store.error('boom');
     render();

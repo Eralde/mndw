@@ -44,6 +44,38 @@ describe('ToastStore', () => {
     expect(store.toasts.find((toast) => toast.id === id)).toBeUndefined();
   });
 
+  it('replaces a keyed toast in place and restarts its timer', () => {
+    const firstId = store.show({key: 'plugin-load', message: 'first', duration: 1000});
+
+    vi.advanceTimersByTime(500);
+
+    const onAction = vi.fn();
+    const secondId = store.show({
+      key: 'plugin-load',
+      message: 'second',
+      variant: 'error',
+      duration: 1000,
+      action: {label: 'Retry', onAction},
+    });
+
+    expect(secondId).toBe(firstId);
+    expect(store.toasts).toHaveLength(1);
+    expect(store.toasts[0]).toMatchObject({
+      id: firstId,
+      key: 'plugin-load',
+      message: 'second',
+      variant: 'error',
+      duration: 1000,
+      action: {label: 'Retry', onAction},
+    });
+
+    vi.advanceTimersByTime(999);
+    expect(store.toasts).toHaveLength(1);
+
+    vi.advanceTimersByTime(1);
+    expect(store.toasts).toHaveLength(0);
+  });
+
   it('dismisses by id and cancels its timer', () => {
     const id = store.info('hello');
 

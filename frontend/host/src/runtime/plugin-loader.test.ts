@@ -5,7 +5,10 @@ const {pristineFetch} = vi.hoisted(() => ({
   pristineFetch: vi.fn<typeof globalThis.fetch>(),
 }));
 
-vi.mock('../services/pristine-fetch.js', () => ({pristineFetch}));
+vi.mock('../services/pristine-fetch.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../services/pristine-fetch.js')>(),
+  pristineFetch,
+}));
 
 import {loadPlugins, retryPluginLoad} from './plugin-loader.js';
 import {PluginRegistry, pluginRegistry} from './plugin-registry.js';
@@ -17,9 +20,11 @@ import {
   replacePluginLoadStates,
   setPluginLoadListOutcome,
 } from './plugin-load-state.svelte.js';
-import {appState} from '../state/app.svelte.js';
+import {appState, beginAuthRun, resetToLogin} from '../state/app.svelte.js';
 import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
+import {toast} from '../services/toast/toast.svelte.js';
+import {buildPluginRoutes} from '../router/create-app-router.js';
 
 const emptyBackend: PluginBackendDescriptor = {
   routes: {},
@@ -72,6 +77,7 @@ function harness(entries: PluginListEntry[], modules: Record<string, unknown> = 
 }
 
 afterEach(() => {
+  toast.clear();
   clearPluginVersionWarnings();
   pluginRegistry.clear();
   replacePluginLoadStates([]);
@@ -146,8 +152,18 @@ describe('loadPlugins', () => {
 
       expect(getPluginLoadListOutcome()).toBe('ok');
       expect(getPluginLoadState('loaded')).toMatchObject({runnable: true, status: 'loaded', type: 'widget'});
-      expect(getPluginLoadState('failed')).toMatchObject({runnable: true, status: 'failed', type: 'widget'});
-      expect(getPluginLoadState('timeout')).toMatchObject({runnable: true, status: 'failed', type: 'widget'});
+      expect(getPluginLoadState('failed')).toMatchObject({
+        runnable: true,
+        status: 'failed',
+        failureKind: 'error',
+        type: 'widget',
+      });
+      expect(getPluginLoadState('timeout')).toMatchObject({
+        runnable: true,
+        status: 'failed',
+        failureKind: 'timeout',
+        type: 'widget',
+      });
       expect(getPluginLoadState('disabled')).toMatchObject({runnable: false, status: 'not-runnable', type: 'widget'});
     } finally {
       vi.useRealTimers();
@@ -169,10 +185,15 @@ describe('loadPlugins', () => {
     await loadPlugins(h);
     expect(getPluginLoadState('retry')).toMatchObject({runnable: true, status: 'failed'});
 
-    await expect(retryPluginLoad('retry')).resolves.toBe(true);
+    const retry = retryPluginLoad('retry');
+
+    expect(getPluginLoadState('retry')).toMatchObject({runnable: true, status: 'loading'});
+    expect(getPluginLoadState('retry')?.failureKind).toBeUndefined();
+    await expect(retry).resolves.toBe(true);
 
     expect(pluginRegistry.get('retry')).toBeDefined();
     expect(getPluginLoadState('retry')).toMatchObject({runnable: true, status: 'loaded'});
+    expect(getPluginLoadState('retry')?.failureKind).toBeUndefined();
   });
 
   it('keeps a plugin failed when its retry fails', async () => {
@@ -302,6 +323,68 @@ describe('loadPlugins', () => {
       .sort();
 
     expect(names).toEqual(['dup', 'p1']);
+    expect(getPluginLoadState('p2')).toMatchObject({runnable: false, status: 'not-runnable'});
+
+    const {routes, pageTable} = buildPluginRoutes(pluginRegistry);
+
+    expect(Object.keys(routes)).toEqual(['/same', '/same/*child']);
+    expect(pageTable.pluginNameOf('/same')).toBe('p1');
+  });
+
+  it('dismisses the failure toast when the owning auth run logs out', async () => {
+    const h = harness([widget('failure')]);
+
+    h.importModule.mockRejectedValue(new Error('broken import'));
+
+    await loadPlugins(h);
+
+    expect(toast.toasts[0]).toMatchObject({key: 'plugin-load', variant: 'error'});
+
+    resetToLogin();
+
+    expect(toast.toasts).toHaveLength(0);
+  });
+
+  it('dismisses an in-flight retry on logout and preserves the next auth run toast', async () => {
+    const oldHarness = harness([widget('old-failure')]);
+
+    oldHarness.importModule.mockRejectedValueOnce(new Error('broken import'));
+
+    await loadPlugins(oldHarness);
+
+    let finishRetry: (module: unknown) => void = () => {};
+
+    oldHarness.importModule.mockImplementationOnce(() =>
+      new Promise((resolve) => {
+        finishRetry = resolve;
+      })
+    );
+
+    const retry = retryPluginLoad('old-failure');
+
+    expect(toast.toasts[0]?.action?.busy).toBe(true);
+
+    resetToLogin();
+
+    expect(toast.toasts).toHaveLength(0);
+
+    beginAuthRun();
+
+    const newHarness = harness([widget('new-failure')]);
+
+    newHarness.importModule.mockRejectedValue(new Error('new broken import'));
+    await loadPlugins(newHarness);
+
+    expect(toast.toasts[0]).toMatchObject({
+      key: 'plugin-load',
+      variant: 'error',
+      message: 'Plugins failed to load: new-failure',
+    });
+
+    finishRetry(goodModule);
+    await retry;
+
+    expect(toast.toasts[0]?.message).toBe('Plugins failed to load: new-failure');
   });
 
   it('skips a module missing createInstance but keeps the others', async () => {
@@ -368,6 +451,7 @@ describe('loadPlugins', () => {
     expect(appState.pluginLoadError).toBe('list');
     expect(getPluginLoadListOutcome()).toBe('failed');
     expect(pluginRegistry.getAll()).toHaveLength(0);
+    expect(toast.toasts).toHaveLength(0);
   });
 
   it('fails the list load after 15 seconds when fetchList never settles', async () => {

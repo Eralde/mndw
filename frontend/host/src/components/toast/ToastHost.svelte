@@ -4,6 +4,7 @@ import {mobileMediaQuery} from '../../layout/breakpoint.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {
   type Toast,
+  type ToastAction,
   type ToastStore,
   shouldDismissSwipe,
   toast as defaultStore,
@@ -22,6 +23,20 @@ const handleBreakpointChange = (event: MediaQueryListEvent): void => {
 // Errors demand attention; success/info are advisory. Maps onto the alert kit.
 function severity(variant: Toast['variant']): 'danger' | 'success' | 'info' {
   return variant === 'error' ? 'danger' : variant;
+}
+
+function invokeAction(action: ToastAction): void {
+  try {
+    const result = action.onAction();
+
+    if (result !== undefined) {
+      void result.catch((error: unknown) => {
+        console.error('[mndw] Toast action failed:', error);
+      });
+    }
+  } catch (error) {
+    console.error('[mndw] Toast action failed:', error);
+  }
 }
 
 interface SwipeParams {
@@ -139,6 +154,21 @@ onMount(() => {
         use:swipeToDismiss={{enabled: isMobile, onDismiss: () => store.dismiss(toast.id)}}
       >
         <span class="mndw-toast__body">{toast.message}</span>
+        {#if toast.action !== undefined}
+          <button
+            type="button"
+            class="mndw-toast__action"
+            disabled={toast.action.busy === true}
+            aria-busy={toast.action.busy === true ? 'true' : undefined}
+            onclick={() => {
+              if (toast.action !== undefined) {
+                invokeAction(toast.action);
+              }
+            }}
+          >
+            {toast.action.label}
+          </button>
+        {/if}
         <button
           type="button"
           class="mndw-toast__dismiss"
@@ -200,6 +230,29 @@ onMount(() => {
 
 .mndw-toast__dismiss:hover {
   background: rgb(0 0 0 / 0.08);
+}
+
+.mndw-toast__action {
+  flex: none;
+  align-self: center;
+  padding: var(--mndw-space-1) var(--mndw-space-2);
+  border: 0;
+  border-radius: var(--mndw-radius-sm, 0.25rem);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.mndw-toast__action:hover:not(:disabled) {
+  background: rgb(0 0 0 / 0.08);
+}
+
+.mndw-toast__action:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 .mndw-toast-host--mobile {

@@ -26,6 +26,8 @@ import {
 } from '../router/create-app-router.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
+import {getPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
+import {retryPluginLoad} from '../runtime/plugin-loader.js';
 import {getHostServices} from '../host-services-context.js';
 import {hostT} from '../services/host-i18n.svelte.js';
 
@@ -92,7 +94,20 @@ const pluginName = $derived(routeMatch?.name ?? null);
 const depsState = $derived.by(() => {
   return pluginName === null ? 'ready' : getDepsStatus(pluginName);
 });
-const mountTarget = $derived(depsState === 'ready' ? pluginName : null);
+const pluginLoadState = $derived.by(() => {
+  return pluginName === null ? undefined : getPluginLoadState(pluginName);
+});
+const pluginLoadRetrying = $derived(pluginLoadState?.status === 'loading');
+const pluginLoadFailed = $derived(pluginLoadState?.status === 'failed');
+const mountTarget = $derived(
+  depsState === 'ready' && !pluginLoadRetrying && !pluginLoadFailed
+    ? pluginName
+    : null,
+);
+const pluginLoadTitle = $derived.by(() => {
+  return pluginLoadState?.label
+    ?? (pluginName === null ? '' : registry.get(pluginName)?.entry.label ?? '');
+});
 
 /**
  * Title shown by the status panels. Mirrors the sidebar's `entry.label` (the host does
@@ -108,8 +123,18 @@ const mountStatusTitle = $derived.by(() => {
 
 /** The page region is busy while a mount is pending, loading, or past its deadline. */
 const pageBusy = $derived(
-  mountStatus === 'pending' || mountStatus === 'loading' || mountStatus === 'slow',
+  pluginLoadRetrying || mountStatus === 'pending' || mountStatus === 'loading'
+    || mountStatus === 'slow',
 );
+
+async function retryFailedPlugin(): Promise<void> {
+  if (
+    pluginName !== null && pluginLoadState?.runnable === true
+    && !pluginLoadRetrying
+  ) {
+    await retryPluginLoad(pluginName);
+  }
+}
 
 function clearMountTimers(): void {
   if (loadingTimer !== undefined) {
@@ -309,7 +334,9 @@ async function remountActivePage(
 ): Promise<boolean> {
   disposeActive();
 
-  if (await mountPluginRecord(next, routeMatch?.childPath ?? '', 'loading-only')) {
+  if (
+    await mountPluginRecord(next, routeMatch?.childPath ?? '', 'loading-only')
+  ) {
     return true;
   }
 
@@ -378,6 +405,21 @@ onDestroy(disposeActive);
         ? hostT('dashboard.preparing-dependencies')
         : hostT('dashboard.dependency-install-failed')
       }
+    </div>
+  {:else if pluginLoadFailed || pluginLoadRetrying}
+    <div
+      class="mndw-page-plugin__notice mndw-page-plugin__panel"
+      role={pluginLoadRetrying ? 'status' : 'alert'}
+    >
+      <span>{hostT('page-plugin.load-failed', {title: pluginLoadTitle})}</span>
+      <mndw-button
+        variant="secondary"
+        disabled={pluginLoadRetrying}
+        aria-busy={pluginLoadRetrying ? 'true' : undefined}
+        onclick={retryFailedPlugin}
+      >
+        {hostT('common.retry')}
+      </mndw-button>
     </div>
   {:else if mountStatus === 'loading'}
     <div

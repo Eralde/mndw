@@ -15,6 +15,14 @@ import {decodeMgmtList} from './mgmt-list-schema.js';
 import type {PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, setPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
 import {
+  beginPluginLoadRetry,
+  dismissPluginLoadFailureToast,
+  finishPluginLoadRetry,
+  resetPluginLoadFailureToast,
+  syncPluginLoadFailureToast,
+} from './plugin-load-toast.svelte.js';
+import {
+  type PluginLoadFailureKind,
   getPluginLoadState,
   replacePluginLoadStates,
   setPluginLoadListOutcome,
@@ -39,6 +47,10 @@ export interface LoaderDeps {
 
 let loadGeneration = 0;
 let activeListController: AbortController | undefined;
+let activePluginLoadToastAuthBinding: {
+  signal: AbortSignal;
+  handler: () => void;
+} | undefined;
 
 /**
  * Upper bound for one plugin's stylesheet, module import and initial catalog. A plugin that
@@ -127,10 +139,13 @@ async function defaultCheckVersions(entry: PluginListEntry, dir: string): Promis
 function dedupe(entries: PluginListEntry[]): PluginListEntry[] {
   const seenNames = new Set<string>();
   const seenRoutes = new Set<string>();
+  const acceptedNames = new Set<string>();
+  const rejectedNames = new Set<string>();
 
-  return entries.filter((entry) => {
+  const accepted = entries.filter((entry) => {
     if (seenNames.has(entry.name)) {
       console.error(`[mndw] Skipping duplicate plugin "${entry.name}"`);
+      rejectedNames.add(entry.name);
 
       return false;
     }
@@ -140,6 +155,7 @@ function dedupe(entries: PluginListEntry[]): PluginListEntry[] {
     if (entry.type === 'page') {
       if (seenRoutes.has(entry.route)) {
         console.error(`[mndw] Skipping duplicate page route "${entry.route}"`);
+        rejectedNames.add(entry.name);
 
         return false;
       }
@@ -147,8 +163,18 @@ function dedupe(entries: PluginListEntry[]): PluginListEntry[] {
       seenRoutes.add(entry.route);
     }
 
+    acceptedNames.add(entry.name);
+
     return true;
   });
+
+  for (const name of rejectedNames) {
+    if (!acceptedNames.has(name)) {
+      setPluginLoadState(name, 'not-runnable');
+    }
+  }
+
+  return accepted;
 }
 
 interface ResolvedLoaderDeps {
@@ -172,12 +198,17 @@ interface ActiveLoaderRun {
 let activeLoaderRun: ActiveLoaderRun | undefined;
 const retryPromises = new Map<string, Promise<boolean>>();
 
+interface PluginLoadResult {
+  loaded: boolean;
+  failureKind?: PluginLoadFailureKind;
+}
+
 async function loadOne(
   entry: PluginListEntry,
   deps: ResolvedLoaderDeps,
   signal: AbortSignal,
   isCurrent: () => boolean,
-): Promise<boolean> {
+): Promise<PluginLoadResult> {
   const base = entry.source === 'builtin' ? PLUGIN_SOURCE_PATHS.builtin : PLUGIN_SOURCE_PATHS.user;
   const dir = `${base}${entry.name}`;
   const assetUrl = (asset: string): string => versionedAssetUrl(dir, asset, entry.version);
@@ -186,7 +217,7 @@ async function loadOne(
     await deps.loadStylesheet(assetUrl('index.css'), entry.name);
 
     if (!isCurrent() || signal.aborted) {
-      return false;
+      return {loaded: false};
     }
 
     const module = await deps.importModule(assetUrl(entry.entry));
@@ -208,7 +239,7 @@ async function loadOne(
     // The load already timed out and was reported; registering now would surface a plugin the
     // rest of the startup has moved on without.
     if (signal.aborted || !isCurrent()) {
-      return false;
+      return {loaded: false};
     }
 
     deps.registry.register({entry, module: pluginModule, ...(catalog === undefined ? {} : {catalog})});
@@ -225,11 +256,11 @@ async function loadOne(
         console.error(`[mndw] Version check failed for "${entry.name}":`, err);
       });
 
-    return true;
+    return {loaded: true};
   } catch (err) {
     console.error(`[mndw] Failed to load plugin "${entry.name}":`, err);
 
-    return false;
+    return {loaded: false, failureKind: 'error'};
   }
 }
 
@@ -237,12 +268,12 @@ async function loadOneWithTimeout(
   entry: PluginListEntry,
   deps: ResolvedLoaderDeps,
   isCurrent: () => boolean,
-): Promise<boolean> {
+): Promise<PluginLoadResult> {
   const controller = new AbortController();
-  const timedOut = new Promise<boolean>((resolve) => {
+  const timedOut = new Promise<PluginLoadResult>((resolve) => {
     controller.signal.addEventListener('abort', () => {
       console.error(`[mndw] Plugin "${entry.name}" did not load within ${deps.loadTimeoutMs} ms; skipping it`);
-      resolve(false);
+      resolve({loaded: false, failureKind: 'timeout'});
     }, {once: true});
   });
   const timer = setTimeout(() => controller.abort(), deps.loadTimeoutMs);
@@ -263,13 +294,13 @@ function isRunCurrent(run: ActiveLoaderRun): boolean {
 async function loadAndTrack(entry: PluginListEntry, run: ActiveLoaderRun): Promise<boolean> {
   setPluginLoadState(entry.name, 'loading');
 
-  const loaded = await loadOneWithTimeout(entry, run.deps, () => isRunCurrent(run));
+  const result = await loadOneWithTimeout(entry, run.deps, () => isRunCurrent(run));
 
   if (isRunCurrent(run)) {
-    setPluginLoadState(entry.name, loaded ? 'loaded' : 'failed');
+    setPluginLoadState(entry.name, result.loaded ? 'loaded' : 'failed', result.failureKind);
   }
 
-  return loaded;
+  return result.loaded;
 }
 
 /** Retries one runnable plugin using the latest successful list and its active loader dependencies. */
@@ -288,9 +319,17 @@ export async function retryPluginLoad(name: string): Promise<boolean> {
     return existing;
   }
 
+  const isCurrent = (): boolean => isRunCurrent(run);
+
+  beginPluginLoadRetry(retryPluginLoad, isCurrent);
+
   const retry = loadAndTrack(entry, run).finally(() => {
     if (retryPromises.get(name) === retry) {
       retryPromises.delete(name);
+    }
+
+    if (isCurrent()) {
+      finishPluginLoadRetry(retryPluginLoad, isCurrent);
     }
   });
 
@@ -308,6 +347,7 @@ export async function retryPluginLoad(name: string): Promise<boolean> {
  */
 export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   activeListController?.abort();
+
   const generation = ++loadGeneration;
   const authGeneration = getAuthRunGeneration();
   const authSignal = getAuthRunSignal();
@@ -335,6 +375,31 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
 
   activeLoaderRun = undefined;
   retryPromises.clear();
+
+  if (activePluginLoadToastAuthBinding !== undefined) {
+    activePluginLoadToastAuthBinding.signal.removeEventListener(
+      'abort',
+      activePluginLoadToastAuthBinding.handler,
+    );
+    activePluginLoadToastAuthBinding = undefined;
+  }
+
+  const toastOwnerGeneration = resetPluginLoadFailureToast();
+  const dismissToastOnAuthAbort = (): void => {
+    if (activePluginLoadToastAuthBinding?.handler === dismissToastOnAuthAbort) {
+      activePluginLoadToastAuthBinding = undefined;
+    }
+
+    dismissPluginLoadFailureToast(toastOwnerGeneration);
+  };
+
+  if (authSignal.aborted) {
+    dismissToastOnAuthAbort();
+  } else {
+    activePluginLoadToastAuthBinding = {signal: authSignal, handler: dismissToastOnAuthAbort};
+    authSignal.addEventListener('abort', dismissToastOnAuthAbort, {once: true});
+  }
+
   setPluginLoadListOutcome('pending');
   replacePluginLoadStates([]);
 
@@ -421,5 +486,6 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
 
   if (isCurrent()) {
     appState.pluginLoadError = null;
+    syncPluginLoadFailureToast(retryPluginLoad, isCurrent);
   }
 }

@@ -344,6 +344,13 @@ onMount(() => {
     >
       {hostT('services.load-failed')}
     </div>
+  {:else if loading && services.length === 0}
+    <div
+      class="empty"
+      role="status"
+    >
+      {hostT('packages.loading')}
+    </div>
   {:else if !loading && services.length === 0}
     <div
       class="empty"

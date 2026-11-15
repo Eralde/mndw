@@ -11,9 +11,10 @@ interface Props {
   open: boolean;
   cards: OrderCard[];
   onCommit: (order: string[]) => void;
+  onClose: () => void;
 }
 
-let {open, cards, onCommit}: Props = $props();
+let {open, cards, onCommit, onClose}: Props = $props();
 
 let draft = $state<OrderCard[]>([]);
 let dragIndex: number | null = $state(null);
@@ -48,7 +49,7 @@ function move(index: number, delta: number): void {
 
 function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
-    commit();
+    onClose();
   }
 }
 
@@ -91,7 +92,7 @@ function handlePointerUp(): void {
 {#if open}
   <div
     class="mndw-floating-panel-backdrop"
-    onclick={commit}
+    onclick={onClose}
     role="presentation"
   >
     <div
@@ -110,7 +111,7 @@ function handlePointerUp(): void {
         <mndw-button
           variant="ghost"
           class="mndw-floating-panel__close"
-          onclick={commit}
+          onclick={onClose}
           aria-label={hostT('common.close')}
         >
           <mndw-icon name="x"></mndw-icon>
@@ -154,6 +155,16 @@ function handlePointerUp(): void {
           </li>
         {/each}
       </ul>
+      <div class="mndw-order-overlay__actions">
+        <mndw-button
+          variant="primary"
+          onclick={commit}
+        >{hostT('common.save')}</mndw-button>
+      </div>
     </div>
   </div>
 {/if}
+
+<style>
+.mndw-order-overlay__actions { display: flex; justify-content: flex-end; margin-top: 0.75rem; }
+</style>

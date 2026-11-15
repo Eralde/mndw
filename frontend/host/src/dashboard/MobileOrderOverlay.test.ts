@@ -19,16 +19,35 @@ interface TestHost {
   reopen: (cards: {id: string; label: string}[]) => void;
 }
 
-function mountOverlay(props: Partial<{open: boolean; onCommit: (order: string[]) => void}> = {}) {
+function mountOverlay(
+  props: Partial<{open: boolean; onCommit: (order: string[]) => void; onClose: () => void}> = {},
+) {
   const onCommit = props.onCommit ?? vi.fn();
+  const onClose = props.onClose ?? vi.fn();
   const target = document.createElement('div');
 
   document.body.appendChild(target);
 
   const component = mount(MobileOrderOverlay, {
     target,
-    props: {open: props.open ?? true, cards: CARDS, onCommit},
+    props: {open: props.open ?? true, cards: CARDS, onCommit, onClose},
   });
+
+  flushSync();
+
+  return {component, target, onCommit};
+}
+
+function mountTestHost() {
+  const onCommit = vi.fn<(order: string[]) => void>();
+  const target = document.createElement('div');
+
+  document.body.appendChild(target);
+
+  const component = mount(MobileOrderOverlayTestHost, {
+    target,
+    props: {cards: CARDS, onCommit},
+  }) as unknown as TestHost;
 
   flushSync();
 
@@ -38,15 +57,15 @@ function mountOverlay(props: Partial<{open: boolean; onCommit: (order: string[])
 const cardLabels = (target: HTMLElement): string[] =>
   [...target.querySelectorAll('.mndw-order-card__label')].map((el) => el.textContent ?? '');
 
+beforeAll(() => {
+  defineMndwUi();
+});
+
+afterEach(() => {
+  document.body.innerHTML = '';
+});
+
 describe('MobileOrderOverlay', () => {
-  beforeAll(() => {
-    defineMndwUi();
-  });
-
-  afterEach(() => {
-    document.body.innerHTML = '';
-  });
-
   it('renders one card per widget instance with distinguishable duplicate labels', () => {
     const {component, target} = mountOverlay();
 
@@ -69,7 +88,7 @@ describe('MobileOrderOverlay', () => {
     outside.remove();
   });
 
-  it('move-down reorders the draft without committing until close', () => {
+  it('move-down reorders the draft without committing until Save', () => {
     const {component, target, onCommit} = mountOverlay();
 
     target
@@ -93,7 +112,9 @@ describe('MobileOrderOverlay', () => {
 
     void unmount(component);
   });
+});
 
+describe('MobileOrderOverlay save behavior', () => {
   it.each([
     [
       'close button',
@@ -104,19 +125,42 @@ describe('MobileOrderOverlay', () => {
       target.querySelector<HTMLElement>('.mndw-floating-panel')?.dispatchEvent(
         new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}),
       )],
-  ])('commits the draft order on %s', (_path, close) => {
-    const {component, target, onCommit} = mountOverlay();
+  ])('discards draft changes on %s', (_path, close) => {
+    const {component, target, onCommit} = mountTestHost();
 
     target.querySelectorAll<HTMLElement>('[aria-label="Move Clock down"]')[0]?.click();
     flushSync();
     close(target);
     flushSync();
 
-    expect(onCommit).toHaveBeenCalledWith(['widget-traffic:1', 'widget-clock:1', 'widget-traffic:2']);
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(target.querySelector('[role="dialog"]')).toBeNull();
 
     void unmount(component);
   });
 
+  it('applies the draft order and closes only when Save is pressed', () => {
+    const {component, target, onCommit} = mountTestHost();
+
+    target.querySelectorAll<HTMLElement>('[aria-label="Move Clock down"]')[0]?.click();
+    flushSync();
+
+    const saveButton = [...target.querySelectorAll('mndw-button')].find((button) =>
+      button.textContent?.trim() === 'Save'
+    );
+
+    expect(saveButton).not.toBeNull();
+    saveButton?.click();
+    flushSync();
+
+    expect(onCommit).toHaveBeenCalledWith(['widget-traffic:1', 'widget-clock:1', 'widget-traffic:2']);
+    expect(target.querySelector('[role="dialog"]')).toBeNull();
+
+    void unmount(component);
+  });
+});
+
+describe('MobileOrderOverlay lifecycle', () => {
   it('reopening refreshes the draft from the current cards prop', () => {
     const onCommit = vi.fn();
     const target = document.createElement('div');

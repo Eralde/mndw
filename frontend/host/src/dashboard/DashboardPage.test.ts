@@ -1074,24 +1074,82 @@ describe('DashboardPage', () => {
     void unmount(component);
   });
 
-  it('committing the overlay updates mobileOrder, closes it, and persists immediately', () => {
+  it('Save commits the overlay mobileOrder, closes it, and persists immediately', () => {
     configureTwoClockWidgets();
+    currentTitles.set('widget-clock:1', 'first clock');
+    currentTitles.set('widget-clock:2', 'second clock');
     mobileState.matches = true;
 
     const {component, target} = mountPage();
 
     arrangeButton(target)?.click();
     flushSync();
-    target.querySelector<HTMLButtonElement>('[aria-label="Move clock down"]')?.click();
-    flushSync();
-    target.querySelector<HTMLButtonElement>('.mndw-floating-panel__close')?.click();
+    expect([...target.querySelectorAll('.mndw-order-card__label')].map((label) => label.textContent)).toEqual([
+      'first clock',
+      'second clock',
+    ]);
+    vi.mocked(saveDashboardLayout).mockClear();
+
+    target.querySelector<HTMLButtonElement>('[aria-label="Move first clock down"]')?.click();
     flushSync();
 
+    const saveButton = [...target.querySelectorAll('mndw-button')].find((button) =>
+      button.textContent?.trim() === 'Save'
+    );
+
+    expect(saveButton).not.toBeNull();
+    saveButton?.click();
+    flushSync();
+
+    expect(saveDashboardLayout).toHaveBeenCalledTimes(1);
     expect(saveDashboardLayout).toHaveBeenCalledWith({
       tiles: expect.any(Array),
       mobileOrder: ['widget-clock:2', 'widget-clock:1'],
     });
     expect(document.querySelector('.mndw-order-overlay')).toBeNull();
+
+    arrangeButton(target)?.click();
+    flushSync();
+    expect([...target.querySelectorAll('.mndw-order-card__label')].map((label) => label.textContent)).toEqual([
+      'second clock',
+      'first clock',
+    ]);
+
+    void unmount(component);
+  });
+
+  it('closing the arrange overlay with × discards the draft and leaves mobileOrder unchanged', () => {
+    configureTwoClockWidgets();
+    currentTitles.set('widget-clock:1', 'first clock');
+    currentTitles.set('widget-clock:2', 'second clock');
+    mobileState.matches = true;
+
+    const {component, target} = mountPage();
+
+    arrangeButton(target)?.click();
+    flushSync();
+    expect([...target.querySelectorAll('.mndw-order-card__label')].map((label) => label.textContent)).toEqual([
+      'first clock',
+      'second clock',
+    ]);
+    vi.mocked(saveDashboardLayout).mockClear();
+
+    target.querySelector<HTMLButtonElement>('[aria-label="Move first clock down"]')?.click();
+    flushSync();
+    target.querySelector<HTMLButtonElement>('.mndw-floating-panel__close')?.click();
+    flushSync();
+
+    expect(document.querySelector('.mndw-order-overlay')).toBeNull();
+    expect(saveDashboardLayout).not.toHaveBeenCalled();
+
+    arrangeButton(target)?.click();
+    flushSync();
+
+    expect([...target.querySelectorAll('.mndw-order-card__label')].map((label) => label.textContent)).toEqual([
+      'first clock',
+      'second clock',
+    ]);
+    expect(saveDashboardLayout).not.toHaveBeenCalled();
 
     void unmount(component);
   });

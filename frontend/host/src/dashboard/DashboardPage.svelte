@@ -502,6 +502,10 @@ function handleOrderCommit(order: string[]): void {
   persistNow();
 }
 
+function handleOrderClose(): void {
+  orderOverlayOpen = false;
+}
+
 let previousPluginListOutcome = getPluginLoadListOutcome();
 let hasReconciledSuccessfulPluginList = false;
 
@@ -696,4 +700,5 @@ onDestroy(() => {
   open={isMobile && orderOverlayOpen}
   cards={overlayCards}
   onCommit={handleOrderCommit}
+  onClose={handleOrderClose}
 />

@@ -18,6 +18,15 @@ export function close(): void {
   open = false;
 }
 
+function handleClose(): void {
+  open = false;
+}
+
+function handleCommit(order: string[]): void {
+  onCommit(order);
+  open = false;
+}
+
 export function reopen(nextCards: Card[]): void {
   cards = nextCards;
   open = true;
@@ -27,5 +36,6 @@ export function reopen(nextCards: Card[]): void {
 <MobileOrderOverlay
   {open}
   {cards}
-  {onCommit}
+  onClose={handleClose}
+  onCommit={handleCommit}
 />

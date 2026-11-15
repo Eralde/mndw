@@ -106,6 +106,71 @@ beforeEach(() => {
   openHostModal.mockReturnValue({closed: Promise.resolve({result: true})});
 });
 
+describe('ServicesPanel loading', () => {
+  it('shows loading during the first request and the empty state only after it succeeds', async () => {
+    let resolveList: ((rows: ServiceEntry[]) => void) | undefined;
+
+    mockList.mockImplementation(() =>
+      new Promise((resolve) => {
+        resolveList = resolve;
+      })
+    );
+
+    const target = createTarget();
+    const app = mount(ServicesPanel, {target});
+
+    await vi.waitFor(() => expect(mockList).toHaveBeenCalledOnce());
+
+    const status = target.querySelector('[role="status"]');
+
+    expect(status).not.toBeNull();
+    expect(status?.textContent).toContain('Loading…');
+    expect(target.textContent).not.toContain('No services found');
+
+    if (resolveList === undefined) {
+      throw new Error('service list request was not started');
+    }
+
+    resolveList([]);
+
+    await vi.waitFor(() => expect(target.querySelector('[role="status"]')?.textContent).toContain('No services found'));
+    await unmount(app);
+    target.remove();
+  });
+
+  it('keeps loaded rows visible while refreshing', async () => {
+    const row = entry('S01a', 'running');
+    let resolveRefresh: ((rows: ServiceEntry[]) => void) | undefined;
+
+    mockList.mockResolvedValueOnce([row]).mockImplementationOnce(() =>
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      })
+    );
+    mockStatus.mockResolvedValue(row);
+
+    const target = createTarget();
+    const app = mount(ServicesPanel, {target});
+
+    await vi.waitFor(() => expect(mockStatus).toHaveBeenCalledOnce());
+    await waitForTable(target);
+    target.querySelector<HTMLElement>('.mndw-table-controls mndw-button')?.click();
+    await vi.waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+
+    expect(target.querySelector('mndw-table')).not.toBeNull();
+    expect(target.textContent).toContain('S01a');
+    expect(target.textContent).not.toContain('Loading…');
+
+    if (resolveRefresh === undefined) {
+      throw new Error('service refresh request was not started');
+    }
+
+    resolveRefresh([row]);
+    await unmount(app);
+    target.remove();
+  });
+});
+
 describe('ServicesPanel', () => {
   it('keeps refresh controls outside the bounded table viewport', async () => {
     const row = entry('S01a', 'running');

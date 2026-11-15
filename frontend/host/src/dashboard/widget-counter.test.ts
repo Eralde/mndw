@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
+import {parseWidgetTileId} from './grid-layout-persistence.js';
 import {getNextInstanceId, raiseInstanceCounter} from './widget-counter.js';
 
 const counterKey = (pluginName: string): string => `${PLUGIN_STORAGE_PREFIX}:${pluginName}:counter`;
@@ -97,6 +98,18 @@ describe('widget instance counters', () => {
     });
 
     expect(getNextInstanceId(pluginName)).toBe(`${pluginName}:5`);
+  });
+
+  it('allocates above an instance restored from a dormant tile id', () => {
+    const dormantTile = parseWidgetTileId('widget-disabled-widget:7');
+
+    if (dormantTile === null) {
+      throw new Error('expected a valid dormant tile id');
+    }
+
+    raiseInstanceCounter(dormantTile.pluginName, dormantTile.counter);
+
+    expect(getNextInstanceId(dormantTile.pluginName)).toBe('disabled-widget:8');
   });
 
   it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1, Number.NaN])(

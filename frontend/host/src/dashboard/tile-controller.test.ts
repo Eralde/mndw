@@ -3,6 +3,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 const mountWidgetTile = vi.hoisted(() => vi.fn());
+const retryPluginLoad = vi.hoisted(() => vi.fn());
 
 vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../runtime/plugin-registry.js')>(),
@@ -31,17 +32,24 @@ vi.mock('./widget-context.js', () => ({
 }));
 
 vi.mock('./widget-mount.js', () => ({mountWidgetTile}));
+vi.mock('../runtime/plugin-loader.js', () => ({retryPluginLoad}));
 
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import {createHostServices} from '../host-services.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
+import {
+  replacePluginLoadStates,
+  setPluginLoadListOutcome,
+  setPluginLoadState,
+} from '../runtime/plugin-load-state.svelte.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {
   destroyAllTiles,
   ensureTileController,
   getTileController,
   hydratePendingTiles,
+  refreshPluginLoadPlaceholders,
   remountWidgetTiles,
   removeTileController,
 } from './tile-controller.js';
@@ -116,6 +124,9 @@ describe('tile controller', () => {
   beforeEach(() => {
     vi.mocked(pluginRegistry).get.mockReset();
     mountWidgetTile.mockReset();
+    retryPluginLoad.mockReset();
+    replacePluginLoadStates([]);
+    setPluginLoadListOutcome('pending');
     mountWidgetTile.mockImplementation((body: HTMLElement, plugin: LoadedPlugin) => {
       body.textContent = '';
 
@@ -141,6 +152,8 @@ describe('tile controller', () => {
   afterEach(() => {
     destroyAllTiles();
     replaceDepsStatuses([]);
+    replacePluginLoadStates([]);
+    setPluginLoadListOutcome('pending');
     vi.clearAllMocks();
     document.body.innerHTML = '';
   });
@@ -232,6 +245,160 @@ describe('tile controller', () => {
 
     vi.mocked(pluginRegistry).get.mockReturnValueOnce(pagePlugin('settings'));
     expect(ensureTileController(pluginContextServices, pluginRegistry, 'settings', 'settings:1', vi.fn())).toBeNull();
+  });
+
+  it('shows failed plugin controls and retries the same tile controller', async () => {
+    const entry = widgetPlugin('retry', noop).entry;
+    const onRemove = vi.fn();
+    let resolveRetry: ((loaded: boolean) => void) | undefined;
+
+    replacePluginLoadStates([entry]);
+    setPluginLoadState('retry', 'failed');
+    vi.mocked(pluginRegistry).get.mockReturnValue(undefined);
+    retryPluginLoad.mockImplementation(() =>
+      new Promise<boolean>((resolve) => {
+        resolveRetry = resolve;
+      })
+    );
+
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'retry', 'retry:1', onRemove);
+    const frame = controller?.frame;
+    const notice = controller?.body.querySelector<HTMLElement>('[role="alert"]');
+    const retryButton = notice?.querySelector<HTMLButtonElement>('.mndw-grid-tile__retry');
+
+    expect(notice?.querySelector('h3')?.textContent).toBe('Plugin «retry» failed to load');
+    expect(retryButton?.textContent).toBe('Retry');
+    expect(retryButton?.disabled).toBe(false);
+    expect(notice?.querySelector('.mndw-grid-tile__remove-failed')?.textContent).toBe('Remove');
+
+    retryButton?.click();
+
+    expect(retryPluginLoad).toHaveBeenCalledWith('retry');
+    expect(retryButton?.disabled).toBe(true);
+    expect(notice?.getAttribute('aria-busy')).toBe('true');
+
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('retry', noop));
+    setPluginLoadState('retry', 'loaded');
+    refreshPluginLoadPlaceholders(pluginContextServices, pluginRegistry);
+    resolveRetry?.(true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(controller?.frame).toBe(frame);
+    expect(controller?.pluginLoadPlaceholder).toBe(false);
+    expect(controller?.body.querySelector('[role="alert"]')).toBeNull();
+    expect(mountWidgetTile).toHaveBeenCalledTimes(1);
+
+    const mountedHandle = mountWidgetTile.mock.results[0]?.value as {dispose: ReturnType<typeof vi.fn>};
+
+    removeTileController('widget-retry:1');
+
+    expect(mountedHandle.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('hydrates concurrent retries once per tile and disposes each mounted handle once', async () => {
+    const entry = widgetPlugin('retry', noop).entry;
+    let finishRetry: ((loaded: boolean) => void) | undefined;
+    const retryResult = new Promise<boolean>((resolve) => {
+      finishRetry = resolve;
+    });
+
+    replacePluginLoadStates([entry]);
+    setPluginLoadState('retry', 'failed');
+    vi.mocked(pluginRegistry).get.mockReturnValue(undefined);
+    retryPluginLoad.mockReturnValue(retryResult);
+
+    const first = ensureTileController(pluginContextServices, pluginRegistry, 'retry', 'retry:1', vi.fn());
+    const second = ensureTileController(pluginContextServices, pluginRegistry, 'retry', 'retry:2', vi.fn());
+
+    first?.body.querySelector<HTMLButtonElement>('.mndw-grid-tile__retry')?.click();
+    second?.body.querySelector<HTMLButtonElement>('.mndw-grid-tile__retry')?.click();
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('retry', noop));
+    setPluginLoadState('retry', 'loaded');
+    refreshPluginLoadPlaceholders(pluginContextServices, pluginRegistry);
+
+    expect(mountWidgetTile).toHaveBeenCalledTimes(2);
+
+    finishRetry?.(true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mountWidgetTile).toHaveBeenCalledTimes(2);
+
+    const firstHandle = mountWidgetTile.mock.results[0]?.value as {dispose: ReturnType<typeof vi.fn>};
+    const secondHandle = mountWidgetTile.mock.results[1]?.value as {dispose: ReturnType<typeof vi.fn>};
+
+    removeTileController('widget-retry:1');
+    removeTileController('widget-retry:2');
+
+    expect(firstHandle.dispose).toHaveBeenCalledTimes(1);
+    expect(secondHandle.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a retried plugin pending until dependencies become ready', async () => {
+    const entry = widgetPlugin('retry', noop).entry;
+
+    replacePluginLoadStates([entry]);
+    setPluginLoadState('retry', 'failed');
+    replaceDepsStatuses([{name: 'retry', depsStatus: 'installing'}]);
+    vi.mocked(pluginRegistry).get.mockReturnValue(undefined);
+    retryPluginLoad.mockResolvedValue(true);
+
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'retry', 'retry:1', vi.fn());
+
+    controller?.body.querySelector<HTMLButtonElement>('.mndw-grid-tile__retry')?.click();
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('retry', noop));
+    setPluginLoadState('retry', 'loaded');
+    refreshPluginLoadPlaceholders(pluginContextServices, pluginRegistry);
+
+    expect(controller?.pending).toBe(true);
+    expect(controller?.body.textContent).toBe('Preparing… installing dependencies');
+    expect(mountWidgetTile).not.toHaveBeenCalled();
+
+    replaceDepsStatuses([{name: 'retry', depsStatus: 'ready'}]);
+    hydratePendingTiles(pluginContextServices, pluginRegistry);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(controller?.pending).toBe(false);
+    expect(mountWidgetTile).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows dependency failure when a retried plugin has failed dependencies', async () => {
+    const entry = widgetPlugin('retry', noop).entry;
+
+    replacePluginLoadStates([entry]);
+    setPluginLoadState('retry', 'failed');
+    replaceDepsStatuses([{name: 'retry', depsStatus: 'failed'}]);
+    vi.mocked(pluginRegistry).get.mockReturnValue(undefined);
+    retryPluginLoad.mockResolvedValue(true);
+
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'retry', 'retry:1', vi.fn());
+
+    controller?.body.querySelector<HTMLButtonElement>('.mndw-grid-tile__retry')?.click();
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('retry', noop));
+    setPluginLoadState('retry', 'loaded');
+    refreshPluginLoadPlaceholders(pluginContextServices, pluginRegistry);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(controller?.pending).toBe(false);
+    expect(controller?.body.textContent).toBe('Dependency install failed');
+    expect(controller?.body.querySelector('[role="alert"]')).not.toBeNull();
+    expect(mountWidgetTile).not.toHaveBeenCalled();
+  });
+
+  it('routes failed tile removal through the dashboard callback', () => {
+    replacePluginLoadStates([widgetPlugin('retry', noop).entry]);
+    setPluginLoadState('retry', 'failed');
+    vi.mocked(pluginRegistry).get.mockReturnValue(undefined);
+
+    const onRemove = vi.fn();
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'retry', 'retry:4', onRemove);
+
+    controller?.body.querySelector<HTMLButtonElement>('.mndw-grid-tile__remove-failed')?.click();
+
+    expect(onRemove).toHaveBeenCalledWith('widget-retry:4');
   });
 
   it('renders the installing notice and hydrates once deps become ready', () => {

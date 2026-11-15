@@ -3,7 +3,12 @@ import {ensureTileController, getTileController} from './tile-controller.js';
 import {getNextInstanceId} from './widget-counter.js';
 import {getWidgetSize} from './widget-size.js';
 import type {PluginContextServices} from '../runtime/plugin-context.js';
-import type {PluginRegistry} from '../runtime/plugin-registry.js';
+import type {LoadedPlugin, LoadedWidget, PluginRegistry} from '../runtime/plugin-registry.js';
+import {getPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
+
+function isLoadedWidget(plugin: LoadedPlugin | undefined): plugin is LoadedWidget {
+  return plugin?.entry.type === 'widget';
+}
 
 /** A restored tile's persisted geometry plus its parsed instance id. */
 export interface RestoredTilePosition {
@@ -34,8 +39,13 @@ export function addWidgetTile(
   position?: RestoredTilePosition,
 ): string | null {
   const plugin = registry.get(pluginName);
+  const loadedWidget = isLoadedWidget(plugin) ? plugin : undefined;
+  const loadState = getPluginLoadState(pluginName);
+  const failedWidget = loadState?.runnable === true
+    && loadState.type === 'widget'
+    && (loadState.status === 'failed' || loadState.status === 'loading');
 
-  if (plugin?.entry.type !== 'widget') {
+  if (loadedWidget === undefined && !failedWidget) {
     return null;
   }
 
@@ -46,15 +56,18 @@ export function addWidgetTile(
     return null;
   }
 
-  const size = getWidgetSize(plugin.entry.size);
+  const size = loadedWidget !== undefined
+    ? getWidgetSize(loadedWidget.entry.size)
+    : position === undefined
+    ? getWidgetSize(loadState?.size ?? {w: 4, h: 3})
+    : {w: position.w, h: position.h};
   const gridItem = grid.addWidget({
     id: controller.id,
     x: position?.x,
     y: position?.y,
     w: position?.w ?? size.w,
     h: position?.h ?? size.h,
-    minW: size.minW,
-    minH: size.minH,
+    ...(loadedWidget === undefined ? {} : {minW: size.minW, minH: size.minH}),
   });
 
   const contentEl = gridItem.querySelector<HTMLElement>('.grid-stack-item-content');

@@ -20,15 +20,22 @@ import {
   ensureTileController,
   getTileController,
   hydratePendingTiles,
+  refreshPluginLoadPlaceholders,
   removeTileController,
 } from './tile-controller.js';
 import {getNextInstanceId, raiseInstanceCounter} from './widget-counter.js';
 import type {WidgetSize} from './widget-size.js';
 import {hostT} from '../services/host-i18n.svelte.js';
+import {clearInstanceStorage} from '../services/storage.service.js';
 import {appState} from '../state/app.svelte.js';
 import {getHostServices} from '../host-services-context.js';
 import {getPluginNavigationRouter} from '../router/create-app-router.js';
 import {HOST_PATHS} from '../router/host-routes.js';
+import {
+  getPluginLoadListOutcome,
+  getPluginLoadState,
+  getPluginLoadStates,
+} from '../runtime/plugin-load-state.svelte.js';
 
 const PERSIST_DEBOUNCE_MS = 500;
 const services = getHostServices();
@@ -56,6 +63,14 @@ let orderOverlayOpen = $state(false);
 let isMobile = $state(mobileQuery.matches);
 let tiles: PersistedGridTile[] = $state([]);
 let mobileOrder: string[] = $state([]);
+let visibleTiles = $derived.by(() =>
+  tiles.filter((tile) => isTileVisible(tile.id))
+);
+let visibleMobileOrder = $derived.by(() => {
+  const visibleIds = new Set(visibleTiles.map((tile) => tile.id));
+
+  return mobileOrder.filter((id) => visibleIds.has(id));
+});
 let restoring = false;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 // @dprint-ignore
@@ -64,7 +79,10 @@ let pendingPersist: {tiles: PersistedGridTile[]; mobileOrder: string[]} | null =
 // Load once, synchronously, before either renderer mounts (children mount before
 // the parent's onMount, so handleGridReady needs `tiles` populated already).
 {
-  const layout = loadDashboardLayout(resolveWidgetSize);
+  const layout = loadDashboardLayout(resolveWidgetSize, {
+    listOutcome: getPluginLoadListOutcome(),
+    getPlugin: getPluginLoadState,
+  });
 
   if (layout !== null) {
     tiles = layout.tiles;
@@ -90,12 +108,83 @@ let pendingPersist: {tiles: PersistedGridTile[]; mobileOrder: string[]} | null =
   }
 }
 
+function isTileVisible(tileId: string): boolean {
+  const parsed = parseWidgetTileId(tileId);
+
+  if (parsed === null) {
+    return false;
+  }
+
+  const status = getPluginLoadState(parsed.pluginName);
+
+  if (status !== undefined) {
+    return status.runnable && status.type === 'widget'
+      && status.status !== 'not-runnable';
+  }
+
+  return registry.get(parsed.pluginName)?.entry.type === 'widget';
+}
+
+function isHiddenTile(tile: PersistedGridTile): boolean {
+  const parsed = parseWidgetTileId(tile.id);
+
+  if (parsed === null) {
+    return false;
+  }
+
+  const status = getPluginLoadState(parsed.pluginName);
+
+  return status !== undefined && status.type === 'widget' && !status.runnable;
+}
+
+function mergeHiddenTiles(
+  visibleLayout: PersistedGridTile[],
+): PersistedGridTile[] {
+  const visibleIds = new Set(visibleLayout.map((tile) => tile.id));
+  const hiddenTiles = tiles.filter((tile) =>
+    isHiddenTile(tile) && !visibleIds.has(tile.id)
+  );
+
+  return [...visibleLayout, ...hiddenTiles];
+}
+
+function mergeVisibleMobileOrder(nextVisibleOrder: string[]): string[] {
+  const visibleIds = new Set(visibleMobileOrder);
+  let nextIndex = 0;
+  const merged = mobileOrder.map((id) => {
+    if (!visibleIds.has(id)) {
+      return id;
+    }
+
+    const next = nextVisibleOrder[nextIndex];
+
+    nextIndex += 1;
+
+    return next ?? id;
+  });
+
+  for (const id of nextVisibleOrder.slice(nextIndex)) {
+    if (!merged.includes(id)) {
+      merged.push(id);
+    }
+  }
+
+  return merged;
+}
+
 function persistNow(
   layout = {
     tiles: $state.snapshot(tiles),
     mobileOrder: $state.snapshot(mobileOrder),
   },
 ): void {
+  if (getPluginLoadListOutcome() !== 'ok') {
+    clearTimeout(debounceTimer);
+    pendingPersist = null;
+
+    return;
+  }
+
   clearTimeout(debounceTimer);
 
   pendingPersist = null;
@@ -104,6 +193,10 @@ function persistNow(
 }
 
 function scheduleSave(): void {
+  if (getPluginLoadListOutcome() !== 'ok') {
+    return;
+  }
+
   clearTimeout(debounceTimer);
 
   pendingPersist = {
@@ -122,7 +215,20 @@ function scheduleSave(): void {
 }
 
 function handleWidgetRemoved(tileId: string): void {
-  removeTileController(tileId);
+  if (restoring || getPluginLoadListOutcome() !== 'ok') {
+    return;
+  }
+
+  removeTileController(tileId, {clearStorage: true});
+
+  const parsed = parseWidgetTileId(tileId);
+
+  if (parsed !== null) {
+    clearInstanceStorage(
+      parsed.pluginName,
+      `${parsed.pluginName}:${parsed.counter}`,
+    );
+  }
 
   tiles = tiles.filter((tile) => tile.id !== tileId);
   mobileOrder = mobileOrder.filter((id) => id !== tileId);
@@ -131,6 +237,10 @@ function handleWidgetRemoved(tileId: string): void {
 }
 
 function requestRemoveTile(tileId: string): void {
+  if (getPluginLoadListOutcome() !== 'ok') {
+    return;
+  }
+
   const activeGrid = grid;
 
   if (!isMobile && activeGrid !== null) {
@@ -154,7 +264,7 @@ function handleGridReady(readyGrid: GridStackType): void {
   restoring = true;
 
   try {
-    for (const tile of tiles) {
+    for (const tile of visibleTiles) {
       const parsed = parseWidgetTileId(tile.id);
 
       if (parsed === null) {
@@ -181,17 +291,92 @@ function handleGridReady(readyGrid: GridStackType): void {
   }
 }
 
+function syncDesktopGridToTiles(): void {
+  if (isMobile || grid === null) {
+    return;
+  }
+
+  const desiredTiles = new Map(
+    tiles.filter((tile) => isTileVisible(tile.id)).map((
+      tile,
+    ) => [tile.id, tile]),
+  );
+  const existingIds: string[] = [];
+
+  restoring = true;
+
+  try {
+    for (const item of grid.getGridItems()) {
+      const id = item.gridstackNode?.id;
+
+      if (typeof id !== 'string') {
+        grid.removeWidget(item, true, false);
+
+        continue;
+      }
+
+      const tile = desiredTiles.get(id);
+
+      if (tile === undefined) {
+        grid.removeWidget(item, true, false);
+
+        const parsed = parseWidgetTileId(id);
+        const status = parsed === null
+          ? undefined
+          : getPluginLoadState(parsed.pluginName);
+        const preserveStorage = status?.type === 'widget' && !status.runnable;
+
+        removeTileController(id, {clearStorage: !preserveStorage});
+
+        continue;
+      }
+
+      existingIds.push(id);
+      grid.update(item, {x: tile.x, y: tile.y, w: tile.w, h: tile.h});
+    }
+
+    for (const tile of desiredTiles.values()) {
+      if (existingIds.includes(tile.id)) {
+        continue;
+      }
+
+      const parsed = parseWidgetTileId(tile.id);
+
+      if (parsed === null) {
+        continue;
+      }
+
+      addWidgetTile(
+        pluginContextServices,
+        registry,
+        grid,
+        parsed.pluginName,
+        requestRemoveTile,
+        {
+          x: tile.x,
+          y: tile.y,
+          w: tile.w,
+          h: tile.h,
+          instanceId: `${parsed.pluginName}:${parsed.counter}`,
+        },
+      );
+    }
+  } finally {
+    restoring = false;
+  }
+}
+
 function handleGridDestroyed(): void {
   grid = null;
 }
 
 function handleLayoutChanged(layout: PersistedGridTile[]): void {
   // Restored tiles are added programmatically; their change events must not persist.
-  if (restoring) {
+  if (restoring || getPluginLoadListOutcome() !== 'ok') {
     return;
   }
 
-  tiles = layout;
+  tiles = mergeHiddenTiles(layout);
 
   scheduleSave();
 }
@@ -203,6 +388,10 @@ function handleWidgetResized(id: string, size: {w: number; h: number}): void {
 }
 
 function addMobileWidget(pluginName: string): void {
+  if (getPluginLoadListOutcome() !== 'ok') {
+    return;
+  }
+
   const size = resolveWidgetSize(pluginName);
 
   if (size === undefined) {
@@ -232,6 +421,10 @@ function addMobileWidget(pluginName: string): void {
 
 function handleAddWidget(pluginName: string): void {
   addPanelOpen = false;
+
+  if (getPluginLoadListOutcome() !== 'ok') {
+    return;
+  }
 
   if (isMobile) {
     addMobileWidget(pluginName);
@@ -278,7 +471,7 @@ const overlayCards = $derived.by(() => {
     return [];
   }
 
-  return mobileOrder.flatMap((id) => {
+  return visibleMobileOrder.flatMap((id) => {
     const parsed = parseWidgetTileId(id);
 
     if (parsed === null) {
@@ -298,18 +491,96 @@ const overlayCards = $derived.by(() => {
 });
 
 function handleOrderCommit(order: string[]): void {
-  mobileOrder = order;
   orderOverlayOpen = false;
 
+  if (getPluginLoadListOutcome() !== 'ok') {
+    return;
+  }
+
+  mobileOrder = mergeVisibleMobileOrder(order);
+
   persistNow();
+}
+
+let previousPluginListOutcome = getPluginLoadListOutcome();
+let hasReconciledSuccessfulPluginList = false;
+
+function reconcileTilesWithPluginList(): boolean {
+  const nextTiles = tiles.filter((tile) => {
+    const parsed = parseWidgetTileId(tile.id);
+
+    return parsed !== null
+      && getPluginLoadState(parsed.pluginName)?.type === 'widget';
+  });
+  const tileIds = new Set(nextTiles.map((tile) => tile.id));
+  const nextMobileOrder = mobileOrder.filter((id) => tileIds.has(id));
+  const tilesChanged = nextTiles.length !== tiles.length;
+  const orderChanged = nextMobileOrder.length !== mobileOrder.length;
+
+  for (const tile of tiles) {
+    const parsed = parseWidgetTileId(tile.id);
+
+    if (parsed === null || !tileIds.has(tile.id)) {
+      removeTileController(tile.id, {clearStorage: true});
+
+      if (parsed !== null) {
+        clearInstanceStorage(
+          parsed.pluginName,
+          `${parsed.pluginName}:${parsed.counter}`,
+        );
+      }
+
+      continue;
+    }
+
+    const status = getPluginLoadState(parsed.pluginName);
+
+    if (status?.type === 'widget' && !status.runnable) {
+      removeTileController(tile.id, {clearStorage: false});
+    }
+  }
+
+  if (!tilesChanged && !orderChanged) {
+    return false;
+  }
+
+  tiles = nextTiles;
+  mobileOrder = nextMobileOrder;
+
+  return true;
 }
 
 $effect(() => {
   // Read the reactive map so status transitions re-run this effect even when no tile
   // is pending yet; hydration itself is idempotent and cheap.
   void [...depsStatusMap.entries()];
+  void Object.values(getPluginLoadStates()).map((state) =>
+    `${state.status}:${state.runnable}`
+  );
+
+  const listOutcome = getPluginLoadListOutcome();
 
   hydratePendingTiles(pluginContextServices, registry);
+  refreshPluginLoadPlaceholders(pluginContextServices, registry);
+
+  if (listOutcome === 'ok') {
+    if (
+      !hasReconciledSuccessfulPluginList || previousPluginListOutcome !== 'ok'
+    ) {
+      const recoveredList = previousPluginListOutcome !== 'ok';
+      const layoutChanged = reconcileTilesWithPluginList();
+      hasReconciledSuccessfulPluginList = true;
+      syncDesktopGridToTiles();
+
+      if (recoveredList || layoutChanged) {
+        persistNow();
+      }
+    }
+  } else {
+    hasReconciledSuccessfulPluginList = false;
+  }
+
+  previousPluginListOutcome = listOutcome;
 });
 
 onMount(() => {
@@ -321,7 +592,7 @@ onMount(() => {
 
 onDestroy(() => {
   // Flush any pending layout change before host navigation tears down this page.
-  if (pendingPersist !== null) {
+  if (pendingPersist !== null && getPluginLoadListOutcome() === 'ok') {
     persistNow(pendingPersist);
   }
   // Leaving the dashboard view is a host navigation, not instance disposal, so
@@ -335,7 +606,7 @@ onDestroy(() => {
   data-locale={appState.locale}
 >
   <div class="mndw-dashboard__toolbar">
-    {#if registry.getWidgets().length > 0 && tiles.length > 0}
+    {#if registry.getWidgets().length > 0 && visibleTiles.length > 0}
       <mndw-button
         variant="secondary"
         onclick={() => (addPanelOpen = true)}
@@ -343,7 +614,7 @@ onDestroy(() => {
         {hostT('dashboard.add-widget')}
       </mndw-button>
 
-      {#if isMobile && mobileOrder.length > 1}
+      {#if isMobile && visibleMobileOrder.length > 1}
         <mndw-button
           variant="secondary"
           onclick={() => (orderOverlayOpen = true)}
@@ -365,7 +636,7 @@ onDestroy(() => {
         {hostT('dashboard.empty-error-text')}
       </p>
     </section>
-  {:else if registry.getWidgets().length === 0}
+  {:else if registry.getWidgets().length === 0 && visibleTiles.length === 0}
     <section class="mndw-dashboard__empty">
       <h2 class="mndw-dashboard__empty-title">
         {hostT('dashboard.no-widgets')}
@@ -380,7 +651,7 @@ onDestroy(() => {
         {hostT('dashboard.empty-install-plugins')}
       </a>
     </section>
-  {:else if tiles.length === 0}
+  {:else if visibleTiles.length === 0}
     <section class="mndw-dashboard__empty">
       <h2 class="mndw-dashboard__empty-title">
         {hostT('dashboard.empty-title')}
@@ -399,7 +670,7 @@ onDestroy(() => {
 
   {#if isMobile}
     <MobileDashboard
-      order={mobileOrder}
+      order={visibleMobileOrder}
       onRemoveRequest={requestRemoveTile}
     />
   {:else}

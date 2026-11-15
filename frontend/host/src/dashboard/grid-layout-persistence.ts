@@ -1,5 +1,6 @@
 /* eslint-disable id-blacklist */
 import {type WidgetSize, getWidgetSize} from './widget-size.js';
+import type {PluginLoadListOutcome, PluginLoadState} from '../runtime/plugin-load-state.svelte.js';
 
 const GRID_LAYOUT_KEY = 'mndw:dashboard:grid-layout';
 const WIDGET_TILE_ID = /^widget-(.+):([1-9]\d*)$/;
@@ -137,6 +138,7 @@ export function placeTileBelowLayout(
 function sanitizeTiles(
   rawTiles: unknown[],
   resolveWidgetSize: (pluginName: string) => WidgetSize | undefined,
+  pluginState?: (pluginName: string) => PluginLoadState | undefined,
 ): PersistedGridTile[] {
   const tileIds = new Set<string>();
   const tiles: PersistedGridTile[] = [];
@@ -152,7 +154,20 @@ function sanitizeTiles(
       continue;
     }
 
-    const size = resolveWidgetSize(widget.pluginName);
+    const state = pluginState?.(widget.pluginName);
+
+    if (pluginState !== undefined && state?.type !== 'widget') {
+      continue;
+    }
+
+    if (state !== undefined && (!state.runnable || state.status !== 'loaded')) {
+      tileIds.add(tile.id);
+      tiles.push({id: tile.id, x: tile.x, y: tile.y, w: tile.w, h: tile.h});
+
+      continue;
+    }
+
+    const size = state?.size ?? resolveWidgetSize(widget.pluginName);
 
     if (size === undefined) {
       continue;
@@ -163,6 +178,22 @@ function sanitizeTiles(
 
     tileIds.add(tile.id);
     tiles.push({id: tile.id, x: Math.min(tile.x, 12 - w), y: tile.y, w, h});
+  }
+
+  return tiles;
+}
+
+function preserveStoredTiles(rawTiles: unknown[]): PersistedGridTile[] {
+  const tileIds = new Set<string>();
+  const tiles: PersistedGridTile[] = [];
+
+  for (const tile of rawTiles) {
+    if (!isPersistedTile(tile) || tileIds.has(tile.id) || parseWidgetTileId(tile.id) === null) {
+      continue;
+    }
+
+    tileIds.add(tile.id);
+    tiles.push({id: tile.id, x: tile.x, y: tile.y, w: tile.w, h: tile.h});
   }
 
   return tiles;
@@ -189,6 +220,10 @@ export function saveDashboardLayout(layout: DashboardLayout): void {
 
 export function loadDashboardLayout(
   resolveWidgetSize: (pluginName: string) => WidgetSize | undefined,
+  pluginState?: {
+    listOutcome: PluginLoadListOutcome;
+    getPlugin: (pluginName: string) => PluginLoadState | undefined;
+  },
 ): DashboardLayout | null {
   let raw: string | null;
 
@@ -222,7 +257,15 @@ export function loadDashboardLayout(
     return null;
   }
 
-  const tiles = sanitizeTiles(parsed.tiles, resolveWidgetSize);
+  const pluginListFailed = pluginState?.listOutcome === 'failed'
+    || pluginState?.listOutcome === 'pending';
+  const tiles = pluginListFailed
+    ? preserveStoredTiles(parsed.tiles)
+    : sanitizeTiles(
+      parsed.tiles,
+      resolveWidgetSize,
+      pluginState === undefined ? undefined : pluginState.getPlugin,
+    );
 
   return {
     tiles,

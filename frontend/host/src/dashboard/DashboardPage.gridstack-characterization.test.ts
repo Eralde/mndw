@@ -1,15 +1,22 @@
 // @vitest-environment happy-dom
 /* eslint id-blacklist: 0 */
 import {defineMndwUi} from '@mndw/ui';
-import type {GridItemHTMLElement} from 'gridstack';
+import {type GridItemHTMLElement, GridStack} from 'gridstack';
 import {afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {flushSync, mount, unmount} from 'svelte';
 import {PluginRegistry} from '../runtime/plugin-registry.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
+import {
+  replacePluginLoadStates,
+  setPluginLoadListOutcome,
+  setPluginLoadState,
+} from '../runtime/plugin-load-state.svelte.js';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import {createAppRouter} from '../router/create-app-router.js';
+import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
+import {getTileController} from './tile-controller.js';
 import {type WidgetTileHandle} from './widget-mount.js';
 import DashboardPage from './DashboardPage.svelte';
 
@@ -93,14 +100,15 @@ let activeComponent: ReturnType<typeof mount> | undefined;
 let activeTarget: HTMLElement;
 
 function widgetEntry(
-  widget: (typeof PRIMARY_WIDGETS)[number],
+  widget: {name: string; label: string; size: {w: number; h: number; minW?: number; minH?: number}},
+  options: {enabled?: boolean} = {},
 ): WidgetListEntry {
   return {
     version: '0.1.0',
     entry: 'index.js',
     source: 'builtin',
     approval: 'approved',
-    enabled: true,
+    enabled: options.enabled ?? true,
     depsStatus: 'ready',
     backend: {routes: {}},
     type: 'widget',
@@ -108,12 +116,16 @@ function widgetEntry(
   };
 }
 
+function registerWidget(widget: Parameters<typeof widgetEntry>[0]): void {
+  registry.register({
+    entry: widgetEntry(widget),
+    module: {createInstance: vi.fn()},
+  });
+}
+
 function registerPrimaryWidgets(): void {
   for (const widget of PRIMARY_WIDGETS) {
-    registry.register({
-      entry: widgetEntry(widget),
-      module: {createInstance: vi.fn()},
-    });
+    registerWidget(widget);
   }
 }
 
@@ -171,6 +183,28 @@ function readDesktopIds(target: HTMLElement): string[] {
   return [...target.querySelectorAll<GridItemHTMLElement>('.grid-stack-item')]
     .map((item) => item.gridstackNode?.id)
     .filter((id): id is string => typeof id === 'string');
+}
+
+function getDesktopGrid(target: HTMLElement): ReturnType<typeof GridStack.init> {
+  const element = target.querySelector<HTMLElement>('.grid-stack');
+
+  if (element === null) {
+    throw new Error('expected the desktop grid to be mounted');
+  }
+
+  return GridStack.init({}, element);
+}
+
+function storedTile(id: string, x: number, y: number): StoredTile {
+  return {id, x, y, w: 4, h: 3};
+}
+
+function seedInstanceStorage(pluginName: string, instanceId: string): string {
+  const key = `${PLUGIN_STORAGE_PREFIX}:${pluginName}:instance:${instanceId}:settings`;
+
+  localStorage.setItem(key, `settings for ${pluginName}`);
+
+  return key;
 }
 
 function readMobileLabels(target: HTMLElement): string[] {
@@ -245,6 +279,13 @@ describe('DashboardPage real GridStack persistence characterization', () => {
 
     registry.clear();
     registerPrimaryWidgets();
+    replacePluginLoadStates(PRIMARY_WIDGETS.map((widget) => widgetEntry(widget)));
+
+    for (const widget of PRIMARY_WIDGETS) {
+      setPluginLoadState(widget.name, 'loaded');
+    }
+
+    setPluginLoadListOutcome('ok');
     createAppRouter(registry);
     localStorage.removeItem(GRID_LAYOUT_KEY);
     replaceDepsStatuses([]);
@@ -265,6 +306,8 @@ describe('DashboardPage real GridStack persistence characterization', () => {
     }
 
     registry.clear();
+    replacePluginLoadStates([]);
+    setPluginLoadListOutcome('pending');
     restoreClientWidth();
     vi.unstubAllGlobals();
     document.body.innerHTML = '';
@@ -327,5 +370,244 @@ describe('DashboardPage real GridStack persistence characterization', () => {
     localStorage.setItem(GRID_LAYOUT_KEY, stored ?? '');
 
     assertDesktopIdentity(activeTarget);
+  });
+
+  it('keeps dormant geometry and mobile slot through list recovery after a pending grid change', async () => {
+    const clock = PRIMARY_WIDGETS[2];
+    const dormant = {name: 'dormant-widget', label: 'Dormant', size: {w: 4, h: 3}};
+    const clockTile = storedTile('widget-clock-widget:1', 0, 0);
+    const dormantTile = storedTile('widget-dormant-widget:1', 0, 4);
+    const originalLayout = {
+      tiles: [clockTile, dormantTile],
+      mobileOrder: [dormantTile.id, clockTile.id],
+    };
+
+    registerWidget(dormant);
+    replacePluginLoadStates([widgetEntry(clock), widgetEntry(dormant)]);
+    setPluginLoadState(clock.name, 'loaded');
+    setPluginLoadState(dormant.name, 'loaded');
+    localStorage.setItem(GRID_LAYOUT_KEY, JSON.stringify(originalLayout));
+    mountPage();
+
+    const setItemSpy = vi.spyOn(localStorage, 'setItem');
+
+    setPluginLoadListOutcome('pending');
+    flushSync();
+
+    const grid = getDesktopGrid(activeTarget);
+    const clockItem = grid.getGridItems().find((item) => item.gridstackNode?.id === clockTile.id);
+
+    if (clockItem === undefined) {
+      throw new Error('expected clock widget to be restored');
+    }
+
+    grid.update(clockItem, {x: 1});
+    flushSync();
+
+    expect(localStorage.getItem(GRID_LAYOUT_KEY)).toBe(JSON.stringify(originalLayout));
+    expect(setItemSpy.mock.calls.filter(([key]) => key === GRID_LAYOUT_KEY)).toHaveLength(0);
+
+    replacePluginLoadStates([
+      widgetEntry(clock),
+      widgetEntry(dormant, {enabled: false}),
+    ]);
+    setPluginLoadState(clock.name, 'loaded');
+    setPluginLoadListOutcome('ok');
+    flushSync();
+    await waitForPersist();
+
+    expect(readDesktopIds(activeTarget)).toEqual([clockTile.id]);
+    expect(readStoredTiles()).toEqual(originalLayout.tiles);
+    expect(readStoredIds()).toEqual([clockTile.id, dormantTile.id]);
+
+    const persistedLayout = JSON.parse(localStorage.getItem(GRID_LAYOUT_KEY) ?? '') as {mobileOrder: string[]};
+
+    expect(persistedLayout.mobileOrder).toEqual(originalLayout.mobileOrder);
+    expect(setItemSpy.mock.calls.filter(([key]) => key === GRID_LAYOUT_KEY)).toHaveLength(1);
+  });
+
+  it('removes deleted and disabled controllers on recovery and keeps only dormant storage after later grid changes', async () => {
+    const clock = PRIMARY_WIDGETS[2];
+    const dormant = {name: 'dormant-widget', label: 'Dormant', size: {w: 4, h: 3}};
+    const deleted = {name: 'deleted-widget', label: 'Deleted', size: {w: 4, h: 3}};
+    const clockTile = storedTile('widget-clock-widget:1', 0, 0);
+    const dormantTile = storedTile('widget-dormant-widget:1', 0, 4);
+    const deletedTile = storedTile('widget-deleted-widget:1', 0, 8);
+
+    registerWidget(dormant);
+    registerWidget(deleted);
+    replacePluginLoadStates([
+      widgetEntry(clock),
+      widgetEntry(dormant),
+      widgetEntry(deleted),
+    ]);
+    setPluginLoadState(clock.name, 'loaded');
+    setPluginLoadState(dormant.name, 'loaded');
+    setPluginLoadState(deleted.name, 'loaded');
+    localStorage.setItem(
+      GRID_LAYOUT_KEY,
+      JSON.stringify({
+        tiles: [clockTile, dormantTile, deletedTile],
+        mobileOrder: [clockTile.id, dormantTile.id, deletedTile.id],
+      }),
+    );
+    mountPage();
+
+    expect(readDesktopIds(activeTarget)).toEqual([clockTile.id, dormantTile.id, deletedTile.id]);
+    expect(getTileController(dormantTile.id)).toBeDefined();
+    expect(getTileController(deletedTile.id)).toBeDefined();
+
+    setPluginLoadListOutcome('failed');
+    flushSync();
+    replacePluginLoadStates([
+      widgetEntry(clock),
+      widgetEntry(dormant, {enabled: false}),
+    ]);
+    setPluginLoadState(clock.name, 'loaded');
+    setPluginLoadListOutcome('ok');
+    flushSync();
+
+    expect(readDesktopIds(activeTarget)).toEqual([clockTile.id]);
+    expect(getTileController(dormantTile.id)).toBeUndefined();
+    expect(getTileController(deletedTile.id)).toBeUndefined();
+    expect(disposeWidget).toHaveBeenCalledTimes(2);
+    expect(disposeWidget).toHaveBeenNthCalledWith(1, {
+      clearStorage: false,
+      closeReason: 'plugin-unmount',
+    });
+    expect(disposeWidget).toHaveBeenNthCalledWith(2, {
+      clearStorage: true,
+      closeReason: 'plugin-unmount',
+    });
+    expect(readStoredIds()).toEqual([clockTile.id, dormantTile.id]);
+    expect(readStoredTiles().find((tile) => tile.id === dormantTile.id)).toEqual(dormantTile);
+
+    const grid = getDesktopGrid(activeTarget);
+    const clockItem = grid.getGridItems().find((item) => item.gridstackNode?.id === clockTile.id);
+
+    if (clockItem === undefined) {
+      throw new Error('expected clock widget to remain in the grid');
+    }
+
+    grid.update(clockItem, {x: 1});
+    flushSync();
+    await waitForPersist();
+
+    expect(readDesktopIds(activeTarget)).toEqual([clockTile.id]);
+    expect(readStoredIds()).toEqual([clockTile.id, dormantTile.id]);
+    expect(readStoredTiles().find((tile) => tile.id === dormantTile.id)).toEqual(dormantTile);
+  });
+
+  it('clears storage when previously loaded and initially dormant tiles are later deleted', () => {
+    const clock = PRIMARY_WIDGETS[2];
+    const previouslyLoaded = {name: 'previously-loaded-widget', label: 'Previously Loaded', size: {w: 4, h: 3}};
+    const initiallyDormant = {name: 'initially-dormant-widget', label: 'Initially Dormant', size: {w: 4, h: 3}};
+    const clockTile = storedTile('widget-clock-widget:1', 0, 0);
+    const loadedTile = storedTile('widget-previously-loaded-widget:1', 0, 4);
+    const dormantTile = storedTile('widget-initially-dormant-widget:1', 0, 8);
+    const loadedStorageKey = seedInstanceStorage(previouslyLoaded.name, 'previously-loaded-widget:1');
+    const dormantStorageKey = seedInstanceStorage(initiallyDormant.name, 'initially-dormant-widget:1');
+
+    registerWidget(previouslyLoaded);
+    registerWidget(initiallyDormant);
+    replacePluginLoadStates([
+      widgetEntry(clock),
+      widgetEntry(previouslyLoaded),
+      widgetEntry(initiallyDormant, {enabled: false}),
+    ]);
+    setPluginLoadState(clock.name, 'loaded');
+    setPluginLoadState(previouslyLoaded.name, 'loaded');
+    localStorage.setItem(
+      GRID_LAYOUT_KEY,
+      JSON.stringify({
+        tiles: [clockTile, loadedTile, dormantTile],
+        mobileOrder: [clockTile.id, loadedTile.id, dormantTile.id],
+      }),
+    );
+    mountPage();
+
+    expect(getTileController(dormantTile.id)).toBeUndefined();
+    expect(localStorage.getItem(loadedStorageKey)).toBe('settings for previously-loaded-widget');
+    expect(localStorage.getItem(dormantStorageKey)).toBe('settings for initially-dormant-widget');
+
+    setPluginLoadListOutcome('failed');
+    flushSync();
+    replacePluginLoadStates([
+      widgetEntry(clock),
+      widgetEntry(previouslyLoaded, {enabled: false}),
+      widgetEntry(initiallyDormant, {enabled: false}),
+    ]);
+    setPluginLoadState(clock.name, 'loaded');
+    setPluginLoadListOutcome('ok');
+    flushSync();
+
+    expect(localStorage.getItem(loadedStorageKey)).toBe('settings for previously-loaded-widget');
+    expect(localStorage.getItem(dormantStorageKey)).toBe('settings for initially-dormant-widget');
+
+    setPluginLoadListOutcome('failed');
+    flushSync();
+    replacePluginLoadStates([widgetEntry(clock)]);
+    setPluginLoadState(clock.name, 'loaded');
+    setPluginLoadListOutcome('ok');
+    flushSync();
+
+    expect(localStorage.getItem(loadedStorageKey)).toBeNull();
+    expect(localStorage.getItem(dormantStorageKey)).toBeNull();
+    expect(readStoredIds()).toEqual([clockTile.id]);
+  });
+
+  it('clears storage when the user removes a failed-load placeholder', () => {
+    const pluginName = 'failed-placeholder-widget';
+    const tile = storedTile(`widget-${pluginName}:1`, 0, 0);
+    const storageKey = seedInstanceStorage(pluginName, `${pluginName}:1`);
+
+    replacePluginLoadStates([widgetEntry({name: pluginName, label: 'Failed Placeholder', size: {w: 4, h: 3}})]);
+    setPluginLoadState(pluginName, 'failed');
+    localStorage.setItem(
+      GRID_LAYOUT_KEY,
+      JSON.stringify({tiles: [tile], mobileOrder: [tile.id]}),
+    );
+    mountPage();
+
+    expect(getTileController(tile.id)?.body.querySelector('.mndw-grid-tile__notice--plugin-load-failed'))
+      .not.toBeNull();
+    expect(localStorage.getItem(storageKey)).toBe('settings for failed-placeholder-widget');
+
+    activeTarget.querySelector<HTMLButtonElement>('.mndw-grid-tile__remove-failed')?.click();
+    flushSync();
+
+    expect(localStorage.getItem(storageKey)).toBeNull();
+    expect(readStoredIds()).toEqual([]);
+    expect(getTileController(tile.id)).toBeUndefined();
+  });
+
+  it('clears storage when a deleted plugin has a dependency placeholder', () => {
+    const plugin = {name: 'dependency-placeholder-widget', label: 'Dependency Placeholder', size: {w: 4, h: 3}};
+    const tile = storedTile(`widget-${plugin.name}:1`, 0, 0);
+    const storageKey = seedInstanceStorage(plugin.name, `${plugin.name}:1`);
+
+    registerWidget(plugin);
+    replacePluginLoadStates([widgetEntry(plugin)]);
+    setPluginLoadState(plugin.name, 'loaded');
+    replaceDepsStatuses([{name: plugin.name, depsStatus: 'installing'}]);
+    localStorage.setItem(
+      GRID_LAYOUT_KEY,
+      JSON.stringify({tiles: [tile], mobileOrder: [tile.id]}),
+    );
+    mountPage();
+
+    expect(getTileController(tile.id)?.body.querySelector('.mndw-grid-tile__notice--installing'))
+      .not.toBeNull();
+    expect(localStorage.getItem(storageKey)).toBe('settings for dependency-placeholder-widget');
+
+    setPluginLoadListOutcome('failed');
+    flushSync();
+    replacePluginLoadStates([]);
+    setPluginLoadListOutcome('ok');
+    flushSync();
+
+    expect(localStorage.getItem(storageKey)).toBeNull();
+    expect(readStoredIds()).toEqual([]);
+    expect(getTileController(tile.id)).toBeUndefined();
   });
 });

@@ -2,6 +2,8 @@ import {FALLBACK_DEVICE_INFO, FALLBACK_HOST_INFO} from '../constants.js';
 import {type PluginContextServices, createPluginContext} from '../runtime/plugin-context.js';
 import type {OverlayTeardownReason} from '../runtime/plugin-lifecycle.js';
 import {type LoadedPlugin, type PluginRegistry} from '../runtime/plugin-registry.js';
+import {getPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
+import {retryPluginLoad} from '../runtime/plugin-loader.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {hostT} from '../services/locale.service.js';
@@ -25,6 +27,10 @@ export interface TileController {
   getTileTitle: () => string;
   /** True while the tile shows the installing placeholder awaiting hydration. */
   pending: boolean;
+  /** True while no plugin module is mounted and the host shows a load failure placeholder. */
+  pluginLoadPlaceholder: boolean;
+  retrying: boolean;
+  onRemoveRequest: (tileId: string) => void;
 }
 
 const controllers = new Map<string, TileController>();
@@ -56,6 +62,78 @@ function renderTileNotice(body: HTMLElement, kind: 'installing' | 'failed'): voi
     ? hostT('dashboard.preparing-dependencies')
     : hostT('dashboard.dependency-install-failed');
   body.appendChild(notice);
+}
+
+function renderPluginLoadFailure(
+  controller: TileController,
+  onRemoveRequest: (tileId: string) => void,
+  retry: () => void,
+): void {
+  const state = getPluginLoadState(controller.pluginName);
+  const retrying = state?.status === 'loading';
+  const label = state?.label ?? controller.pluginName;
+
+  const currentNotice = controller.body.querySelector<HTMLElement>('.mndw-grid-tile__notice--plugin-load-failed');
+
+  if (
+    currentNotice?.getAttribute('aria-busy') === String(retrying)
+    && currentNotice.querySelector('h3')?.textContent === hostT('dashboard.plugin-load-failed', {label})
+  ) {
+    return;
+  }
+
+  const notice = document.createElement('section');
+
+  notice.className = 'mndw-grid-tile__notice mndw-grid-tile__notice--plugin-load-failed';
+  notice.setAttribute('role', 'alert');
+  notice.setAttribute('aria-busy', String(retrying));
+
+  const heading = document.createElement('h3');
+
+  heading.textContent = hostT('dashboard.plugin-load-failed', {label});
+
+  const retryButton = document.createElement('button');
+
+  retryButton.type = 'button';
+  retryButton.className = 'mndw-grid-tile__retry';
+  retryButton.textContent = hostT('dashboard.retry-plugin-load');
+  retryButton.disabled = retrying;
+  retryButton.setAttribute('aria-busy', String(retrying));
+  retryButton.onclick = () => {
+    if (retryButton.disabled) {
+      return;
+    }
+
+    retryButton.disabled = true;
+    retryButton.setAttribute('aria-busy', 'true');
+    notice.setAttribute('aria-busy', 'true');
+    retry();
+  };
+
+  const removeButton = document.createElement('button');
+
+  removeButton.type = 'button';
+  removeButton.className = 'mndw-grid-tile__remove-failed';
+  removeButton.textContent = hostT('dashboard.remove-failed-plugin');
+  removeButton.onclick = () => onRemoveRequest(controller.id);
+
+  notice.append(heading, retryButton, removeButton);
+  controller.body.replaceChildren(notice);
+  controller.retrying = retrying;
+}
+
+async function retryFailedPlugin(controller: TileController): Promise<void> {
+  if (controller.retrying) {
+    return;
+  }
+
+  controller.retrying = true;
+
+  try {
+    await retryPluginLoad(controller.pluginName);
+  } finally {
+    controller.retrying = false;
+  }
 }
 
 /** Builds the host-owned tile frame and returns the frame root and plugin body. */
@@ -116,6 +194,49 @@ function buildTileFrame(
   return {frame, body, setTileTitle, getTileTitle};
 }
 
+function hydrateLoadedPlugin(
+  controller: TileController,
+  plugin: LoadedPlugin,
+  pluginContextServices: PluginContextServices,
+  registry: Pick<PluginRegistry, 'get'>,
+): void {
+  const status = getDepsStatus(controller.pluginName);
+
+  controller.pluginLoadPlaceholder = false;
+  controller.retrying = false;
+
+  if (status === 'installing') {
+    renderTileNotice(controller.body, 'installing');
+    controller.handle = placeholderTileHandle();
+    controller.pending = true;
+
+    return;
+  }
+
+  if (status === 'failed') {
+    renderTileNotice(controller.body, 'failed');
+    controller.handle = placeholderTileHandle();
+    controller.pending = false;
+
+    return;
+  }
+
+  controller.body.textContent = '';
+  controller.handle = mountWidgetTile(
+    controller.body,
+    plugin,
+    createWidgetContext(
+      pluginContextServices,
+      registry,
+      controller.pluginName,
+      controller.instanceId,
+      undefined,
+      controller.setTileTitle,
+    ),
+  );
+  controller.pending = false;
+}
+
 /**
  * Returns the registered controller for `widget-<instanceId>` or creates one: builds
  * the frame, mounts the plugin (or a deps notice), and registers it. Returns `null`
@@ -137,43 +258,94 @@ export function ensureTileController(
   }
 
   const plugin = registry.get(pluginName);
+  const loadedWidget = plugin?.entry.type === 'widget' ? plugin : undefined;
+  const loadState = getPluginLoadState(pluginName);
 
-  if (plugin?.entry.type !== 'widget') {
+  if (
+    loadedWidget === undefined
+    && !(loadState?.runnable === true
+      && loadState.type === 'widget'
+      && (loadState.status === 'failed' || loadState.status === 'loading'))
+  ) {
     return null;
   }
 
-  const {frame, body, setTileTitle, getTileTitle} = buildTileFrame(plugin.entry.label, () => onRemoveRequest(id));
-  const status = getDepsStatus(pluginName);
-
-  let handle: WidgetTileHandle;
-
-  if (status === 'ready') {
-    handle = mountWidgetTile(
-      body,
-      plugin,
-      createWidgetContext(pluginContextServices, registry, pluginName, instanceId, undefined, setTileTitle),
-    );
-  } else {
-    renderTileNotice(body, status);
-
-    handle = placeholderTileHandle();
-  }
-
+  const label = loadedWidget?.entry.label ?? loadState?.label ?? pluginName;
+  const {frame, body, setTileTitle, getTileTitle} = buildTileFrame(label, () => onRemoveRequest(id));
   const controller: TileController = {
     id,
     pluginName,
     instanceId,
     frame,
     body,
-    handle,
+    handle: placeholderTileHandle(),
     setTileTitle,
     getTileTitle,
-    pending: status === 'installing',
+    pending: false,
+    pluginLoadPlaceholder: loadedWidget === undefined,
+    retrying: loadState?.status === 'loading',
+    onRemoveRequest,
   };
 
   controllers.set(id, controller);
 
+  if (controller.pluginLoadPlaceholder) {
+    renderPluginLoadFailure(controller, onRemoveRequest, () => {
+      void retryFailedPlugin(controller);
+    });
+  } else if (loadedWidget !== undefined) {
+    hydrateLoadedPlugin(controller, loadedWidget, pluginContextServices, registry);
+  }
+
   return controller;
+}
+
+function refreshPluginLoadPlaceholder(
+  controller: TileController,
+  onRemoveRequest: (tileId: string) => void,
+  registry: Pick<PluginRegistry, 'get'>,
+  pluginContextServices: PluginContextServices,
+): void {
+  if (controllers.get(controller.id) !== controller || !controller.pluginLoadPlaceholder) {
+    return;
+  }
+
+  const state = getPluginLoadState(controller.pluginName);
+
+  if (state?.status === 'loaded') {
+    const plugin = registry.get(controller.pluginName);
+
+    if (plugin?.entry.type === 'widget') {
+      hydrateLoadedPlugin(controller, plugin, pluginContextServices, registry);
+    }
+
+    return;
+  }
+
+  if (state?.status === 'failed' || state?.status === 'loading') {
+    renderPluginLoadFailure(controller, onRemoveRequest, () => {
+      void retryFailedPlugin(controller);
+    });
+  }
+}
+
+/** Refreshes failure placeholders after a retry or a newer loader generation completes. */
+export function refreshPluginLoadPlaceholders(
+  pluginContextServices: PluginContextServices,
+  registry: Pick<PluginRegistry, 'get'>,
+): void {
+  for (const controller of controllers.values()) {
+    if (!controller.pluginLoadPlaceholder) {
+      continue;
+    }
+
+    refreshPluginLoadPlaceholder(
+      controller,
+      controller.onRemoveRequest,
+      registry,
+      pluginContextServices,
+    );
+  }
 }
 
 export function getTileController(tileId: string): TileController | undefined {
@@ -190,19 +362,6 @@ export function hydratePendingTiles(
       continue;
     }
 
-    const status = getDepsStatus(controller.pluginName);
-
-    if (status === 'installing') {
-      continue;
-    }
-
-    if (status === 'failed') {
-      renderTileNotice(controller.body, 'failed');
-      controller.pending = false;
-
-      continue;
-    }
-
     const plugin = registry.get(controller.pluginName);
 
     if (plugin?.entry.type !== 'widget') {
@@ -211,20 +370,7 @@ export function hydratePendingTiles(
       continue;
     }
 
-    controller.body.textContent = '';
-    controller.handle = mountWidgetTile(
-      controller.body,
-      plugin,
-      createWidgetContext(
-        pluginContextServices,
-        registry,
-        controller.pluginName,
-        controller.instanceId,
-        undefined,
-        controller.setTileTitle,
-      ),
-    );
-    controller.pending = false;
+    hydrateLoadedPlugin(controller, plugin, pluginContextServices, registry);
   }
 }
 
@@ -232,7 +378,10 @@ export function hydratePendingTiles(
  * Disposes a single tile: unmounts its plugin, closes its overlays, clears only that
  * instance's storage, and detaches its frame from whichever shell holds it.
  */
-export function removeTileController(tileId: string): void {
+export function removeTileController(
+  tileId: string,
+  options: {clearStorage?: boolean} = {},
+): void {
   const controller = controllers.get(tileId);
 
   if (controller === undefined) {
@@ -241,7 +390,10 @@ export function removeTileController(tileId: string): void {
 
   controllers.delete(tileId);
   controller.frame.remove();
-  controller.handle.dispose({clearStorage: true, closeReason: 'plugin-unmount'});
+  controller.handle.dispose({
+    clearStorage: options.clearStorage ?? true,
+    closeReason: 'plugin-unmount',
+  });
 }
 
 /** Refreshes frame title/close label after a hot-reload swaps the plugin module. */

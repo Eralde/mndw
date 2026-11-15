@@ -7,10 +7,16 @@ const {pristineFetch} = vi.hoisted(() => ({
 
 vi.mock('../services/pristine-fetch.js', () => ({pristineFetch}));
 
-import {loadPlugins} from './plugin-loader.js';
+import {loadPlugins, retryPluginLoad} from './plugin-loader.js';
 import {PluginRegistry, pluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, getPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
+import {
+  getPluginLoadListOutcome,
+  getPluginLoadState,
+  replacePluginLoadStates,
+  setPluginLoadListOutcome,
+} from './plugin-load-state.svelte.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus, replaceDepsStatuses} from '../state/deps-status.svelte.js';
 import {createPluginCatalogService} from '../services/plugin-catalog.service.js';
@@ -68,6 +74,8 @@ function harness(entries: PluginListEntry[], modules: Record<string, unknown> = 
 afterEach(() => {
   clearPluginVersionWarnings();
   pluginRegistry.clear();
+  replacePluginLoadStates([]);
+  setPluginLoadListOutcome('pending');
   replaceDepsStatuses([]);
   appState.pluginLoadError = null;
   vi.restoreAllMocks();
@@ -100,6 +108,113 @@ describe('loadPlugins', () => {
     ).toEqual(['alpha', 'beta']);
     expect(h.importModule).toHaveBeenCalledWith('/user-plugins/alpha/index.js?v=1.0.0');
     expect(h.importModule).toHaveBeenCalledWith('/plugins/beta/index.js?v=1.0.0');
+  });
+
+  it('records loaded, failed, timed out, and non-runnable plugin states', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const entries = [
+      widget('loaded'),
+      widget('failed'),
+      widget('timeout'),
+      widget('disabled', {enabled: false}),
+    ];
+    const importModule = vi.fn((url: string): Promise<unknown> => {
+      if (url.includes('/failed/')) {
+        return Promise.reject(new Error('broken import'));
+      }
+
+      if (url.includes('/timeout/')) {
+        return new Promise(() => {});
+      }
+
+      return Promise.resolve(goodModule);
+    });
+
+    try {
+      const pending = loadPlugins({
+        fetchList: () => Promise.resolve(entries),
+        importModule,
+        loadStylesheet: () => Promise.resolve(),
+        checkVersions: () => [],
+        loadTimeoutMs: 10,
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      await pending;
+
+      expect(getPluginLoadListOutcome()).toBe('ok');
+      expect(getPluginLoadState('loaded')).toMatchObject({runnable: true, status: 'loaded', type: 'widget'});
+      expect(getPluginLoadState('failed')).toMatchObject({runnable: true, status: 'failed', type: 'widget'});
+      expect(getPluginLoadState('timeout')).toMatchObject({runnable: true, status: 'failed', type: 'widget'});
+      expect(getPluginLoadState('disabled')).toMatchObject({runnable: false, status: 'not-runnable', type: 'widget'});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('retries a failed plugin and registers it when the retry succeeds', async () => {
+    const h = harness([widget('retry')]);
+    let attempts = 0;
+
+    h.importModule.mockImplementation(() => {
+      attempts += 1;
+
+      return attempts === 1
+        ? Promise.reject(new Error('first import failed'))
+        : Promise.resolve(goodModule);
+    });
+
+    await loadPlugins(h);
+    expect(getPluginLoadState('retry')).toMatchObject({runnable: true, status: 'failed'});
+
+    await expect(retryPluginLoad('retry')).resolves.toBe(true);
+
+    expect(pluginRegistry.get('retry')).toBeDefined();
+    expect(getPluginLoadState('retry')).toMatchObject({runnable: true, status: 'loaded'});
+  });
+
+  it('keeps a plugin failed when its retry fails', async () => {
+    const h = harness([widget('retry')]);
+
+    h.importModule.mockRejectedValue(new Error('broken import'));
+
+    await loadPlugins(h);
+
+    await expect(retryPluginLoad('retry')).resolves.toBe(false);
+
+    expect(getPluginLoadState('retry')).toMatchObject({runnable: true, status: 'failed'});
+  });
+
+  it('does not let a retry from an older generation overwrite current status', async () => {
+    const h = harness([widget('retry')]);
+
+    h.importModule.mockRejectedValueOnce(new Error('first import failed'));
+
+    await loadPlugins(h);
+
+    let finishRetry: (module: unknown) => void = () => {};
+
+    h.importModule.mockImplementationOnce(() =>
+      new Promise((resolve) => {
+        finishRetry = resolve;
+      })
+    );
+
+    const retry = retryPluginLoad('retry');
+
+    await loadPlugins({
+      fetchList: () => Promise.resolve([widget('retry')]),
+      importModule: () => Promise.resolve(goodModule),
+      loadStylesheet: () => Promise.resolve(),
+      checkVersions: () => [],
+    });
+    finishRetry(goodModule);
+    await retry;
+
+    expect(getPluginLoadState('retry')).toMatchObject({runnable: true, status: 'loaded'});
+    expect(pluginRegistry.get('retry')).toBeDefined();
   });
 
   it('seeds dependency statuses from the daemon list', async () => {
@@ -251,6 +366,7 @@ describe('loadPlugins', () => {
     await loadPlugins({fetchList, importModule: vi.fn(), loadStylesheet: vi.fn()});
 
     expect(appState.pluginLoadError).toBe('list');
+    expect(getPluginLoadListOutcome()).toBe('failed');
     expect(pluginRegistry.getAll()).toHaveLength(0);
   });
 
@@ -276,9 +392,10 @@ describe('loadPlugins', () => {
     const registry = new PluginRegistry();
     let finishFirst: (entries: PluginListEntry[]) => void = () => {};
     const first = loadPlugins({
-      fetchList: () => new Promise((resolve) => {
-        finishFirst = resolve;
-      }),
+      fetchList: () =>
+        new Promise((resolve) => {
+          finishFirst = resolve;
+        }),
       registry,
       importModule: vi.fn(() => Promise.resolve(goodModule)),
       loadStylesheet: vi.fn(() => Promise.resolve()),

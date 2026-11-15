@@ -176,6 +176,114 @@ describe('dashboard layout', () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
+  it('keeps failed runnable tiles at their stored dimensions for placeholders', () => {
+    localStorage.setItem(
+      GRID_LAYOUT_KEY,
+      JSON.stringify({
+        tiles: [{id: 'widget-weather:1', x: 10, y: 2, w: 2, h: 1}],
+        mobileOrder: ['widget-weather:1'],
+      }),
+    );
+
+    const layout = loadDashboardLayout(widgetSize, {
+      listOutcome: 'ok',
+      getPlugin: (name) =>
+        name === 'weather'
+          ? {runnable: true, status: 'failed', type: 'widget', label: 'weather', size: {w: 4, h: 3, minW: 3, minH: 2}}
+          : undefined,
+    });
+
+    expect(layout).toEqual({
+      tiles: [{id: 'widget-weather:1', x: 10, y: 2, w: 2, h: 1}],
+      mobileOrder: ['widget-weather:1'],
+    });
+  });
+
+  it('preserves dormant tiles and their mobile positions alongside visible tiles', () => {
+    const stored = {
+      tiles: [
+        {id: 'widget-weather:1', x: 0, y: 0, w: 4, h: 3},
+        {id: 'widget-clock:7', x: 5, y: 2, w: 2, h: 1},
+      ],
+      mobileOrder: ['widget-clock:7', 'widget-weather:1'],
+    };
+
+    localStorage.setItem(GRID_LAYOUT_KEY, JSON.stringify(stored));
+
+    const resolvePlugin = (name: string) =>
+      name === 'clock'
+        ? {runnable: false, status: 'not-runnable' as const, type: 'widget' as const, label: 'clock',
+          size: {w: 2, h: 1}}
+        : name === 'weather'
+        ? {runnable: true, status: 'loaded' as const, type: 'widget' as const, label: 'weather', size: {w: 4, h: 3}}
+        : undefined;
+    const layout = loadDashboardLayout(widgetSize, {listOutcome: 'ok', getPlugin: resolvePlugin});
+
+    expect(layout).toEqual(stored);
+
+    const dormantTile = layout?.tiles.find((tile) => tile.id === 'widget-clock:7');
+
+    if (dormantTile === undefined) {
+      throw new Error('expected dormant tile to remain in the layout');
+    }
+
+    saveDashboardLayout({
+      tiles: [
+        {id: 'widget-weather:1', x: 1, y: 0, w: 4, h: 3},
+        dormantTile,
+      ],
+      mobileOrder: layout?.mobileOrder ?? [],
+    });
+
+    expect(JSON.parse(localStorage.getItem(GRID_LAYOUT_KEY) ?? '')).toEqual({
+      tiles: [
+        {id: 'widget-weather:1', x: 1, y: 0, w: 4, h: 3},
+        {id: 'widget-clock:7', x: 5, y: 2, w: 2, h: 1},
+      ],
+      mobileOrder: ['widget-clock:7', 'widget-weather:1'],
+    });
+  });
+
+  it('drops tiles for plugins deleted from a successfully loaded list', () => {
+    localStorage.setItem(
+      GRID_LAYOUT_KEY,
+      JSON.stringify({
+        tiles: [
+          {id: 'widget-weather:1', x: 0, y: 0, w: 4, h: 3},
+          {id: 'widget-gone:2', x: 0, y: 3, w: 4, h: 3},
+        ],
+        mobileOrder: ['widget-gone:2', 'widget-weather:1'],
+      }),
+    );
+
+    expect(loadDashboardLayout(widgetSize, {
+      listOutcome: 'ok',
+      getPlugin: (name) =>
+        name === 'weather'
+          ? {runnable: true, status: 'loaded', type: 'widget', label: 'weather', size: {w: 4, h: 3}}
+          : undefined,
+    })).toEqual({
+      tiles: [{id: 'widget-weather:1', x: 0, y: 0, w: 4, h: 3}],
+      mobileOrder: ['widget-weather:1'],
+    });
+  });
+
+  it('returns stored layout unchanged while the plugin list failed', () => {
+    const stored = {
+      tiles: [{id: 'widget-missing:1', x: 8, y: 4, w: 2, h: 1}],
+      mobileOrder: ['widget-missing:1'],
+    };
+    const serialized = JSON.stringify(stored);
+
+    localStorage.setItem(GRID_LAYOUT_KEY, serialized);
+
+    const getPlugin = vi.fn();
+
+    expect(loadDashboardLayout(widgetSize, {listOutcome: 'failed', getPlugin})).toEqual(stored);
+    expect(getPlugin).not.toHaveBeenCalled();
+    expect(localStorage.getItem(GRID_LAYOUT_KEY)).toBe(serialized);
+  });
+
   it('clamps restored dimensions to plugin minimums and the twelve-column grid', () => {
     localStorage.setItem(
       GRID_LAYOUT_KEY,

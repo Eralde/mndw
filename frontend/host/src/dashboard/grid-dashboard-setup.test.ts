@@ -28,6 +28,11 @@ import type {PluginInstance} from '@mndw/sdk';
 import {type LoadedPlugin, pluginRegistry} from '../runtime/plugin-registry.js';
 import {createHostServices} from '../host-services.js';
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
+import {
+  replacePluginLoadStates,
+  setPluginLoadListOutcome,
+  setPluginLoadState,
+} from '../runtime/plugin-load-state.svelte.js';
 import {getNextInstanceId} from './widget-counter.js';
 import {type RestoredTilePosition, addWidgetTile, resizeWidgetTile} from './grid-dashboard-setup.js';
 
@@ -142,6 +147,8 @@ describe('grid-dashboard-setup', () => {
   beforeEach(() => {
     controllers.clear();
     vi.mocked(pluginRegistry).get.mockReset();
+    replacePluginLoadStates([]);
+    setPluginLoadListOutcome('pending');
     vi.mocked(getNextInstanceId).mockReset();
     vi.mocked(getNextInstanceId).mockReturnValue('traffic:1');
     ensureTileController.mockReset();
@@ -153,6 +160,8 @@ describe('grid-dashboard-setup', () => {
   });
 
   afterEach(() => {
+    replacePluginLoadStates([]);
+    setPluginLoadListOutcome('pending');
     vi.clearAllMocks();
     document.body.innerHTML = '';
   });
@@ -203,6 +212,28 @@ describe('grid-dashboard-setup', () => {
     });
     expect(document.querySelector('.grid-stack-item-content')?.contains(controller.frame)).toBe(true);
     expect(prepareDragDrop).toHaveBeenCalledWith(expect.anything(), true);
+  });
+
+  it('restores a failed plugin placeholder with exact geometry and no manifest minimums', () => {
+    replacePluginLoadStates([widgetPlugin('traffic').entry]);
+    setPluginLoadState('traffic', 'failed');
+    vi.mocked(pluginRegistry).get.mockReturnValue(undefined);
+
+    const {grid, added} = createFakeGrid();
+    const controller = createController('traffic');
+
+    ensureTileController.mockReturnValue(controller);
+
+    const id = addWidgetTile(pluginContextServices, pluginRegistry, grid, 'traffic', vi.fn(), {
+      x: 10,
+      y: 5,
+      w: 2,
+      h: 1,
+      instanceId: 'traffic:9',
+    });
+
+    expect(id).toBe('widget-traffic:1');
+    expect(added[0]).toEqual({id: 'widget-traffic:1', x: 10, y: 5, w: 2, h: 1});
   });
 
   it('uses manifest defaults and allocates a new instance for a new tile', () => {

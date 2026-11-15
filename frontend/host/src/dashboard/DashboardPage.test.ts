@@ -84,6 +84,7 @@ vi.mock('./tile-controller.js', () => ({
   }),
   hydratePendingTiles: vi.fn(),
   destroyAllTiles: vi.fn(() => teardownLog.push('destroyAll')),
+  refreshPluginLoadPlaceholders: vi.fn(),
 }));
 
 vi.mock('../layout/breakpoint.js', () => ({
@@ -108,11 +109,19 @@ vi.mock('../runtime/plugin-registry.js', async (importOriginal) => ({
 
 import {addWidgetTile, resizeWidgetTile} from './grid-dashboard-setup.js';
 import {destroyAllTiles, ensureTileController, removeTileController} from './tile-controller.js';
-import {loadDashboardLayout, saveDashboardLayout} from './grid-layout-persistence.js';
+import {loadDashboardLayout, parseWidgetTileId, saveDashboardLayout} from './grid-layout-persistence.js';
 import {pluginRegistry} from '../runtime/plugin-registry.js';
 import {appState} from '../state/app.svelte.js';
 import type {WidgetListEntry} from '../runtime/plugin-types.js';
 import {raiseInstanceCounter} from './widget-counter.js';
+import {
+  getPluginLoadListOutcome,
+  getPluginLoadState,
+  getPluginLoadStates,
+  replacePluginLoadStates,
+  setPluginLoadListOutcome,
+  setPluginLoadState,
+} from '../runtime/plugin-load-state.svelte.js';
 import DashboardPage from './DashboardPage.svelte';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
@@ -136,6 +145,13 @@ function widgetEntry(name: string): WidgetListEntry {
 }
 
 function configureTwoClockWidgets(): void {
+  replacePluginLoadStates([widgetEntry('clock')]);
+  setPluginLoadState('clock', 'loaded');
+  vi.mocked(pluginRegistry).get.mockImplementation((name: string) =>
+    name === 'clock'
+      ? {entry: widgetEntry(name), module: {createInstance: vi.fn()}}
+      : undefined
+  );
   vi.mocked(pluginRegistry).getWidgets.mockReturnValue([
     {entry: widgetEntry('clock'), module: {createInstance: vi.fn()}},
   ]);
@@ -154,6 +170,31 @@ function arrangeButton(target: HTMLElement): HTMLElement | undefined {
 }
 
 function mountPage(): {component: ReturnType<typeof mount>; target: HTMLElement} {
+  if (Object.keys(getPluginLoadStates()).length === 0 && getPluginLoadListOutcome() === 'ok') {
+    const layout = vi.mocked(loadDashboardLayout).getMockImplementation()?.(
+      () => undefined,
+      {listOutcome: 'ok', getPlugin: getPluginLoadState},
+    );
+    const entries = new Map<string, WidgetListEntry>();
+
+    for (const tile of layout?.tiles ?? []) {
+      const parsed = parseWidgetTileId(tile.id);
+      const plugin = parsed === null ? undefined : pluginRegistry.get(parsed.pluginName);
+
+      if (plugin?.entry.type === 'widget') {
+        entries.set(plugin.entry.name, plugin.entry);
+      }
+    }
+
+    if (entries.size > 0) {
+      replacePluginLoadStates([...entries.values()]);
+
+      for (const name of entries.keys()) {
+        setPluginLoadState(name, 'loaded');
+      }
+    }
+  }
+
   const target = document.createElement('div');
 
   document.body.appendChild(target);
@@ -181,6 +222,8 @@ describe('DashboardPage', () => {
     mobileState.removeEventListener.mockClear();
     appState.locale = 'en';
     appState.pluginLoadError = null;
+    replacePluginLoadStates([]);
+    setPluginLoadListOutcome('ok');
     removeCallbacks.clear();
     mobileFrames.clear();
     currentTitles.clear();
@@ -199,6 +242,8 @@ describe('DashboardPage', () => {
   });
 
   afterEach(() => {
+    replacePluginLoadStates([]);
+    setPluginLoadListOutcome('pending');
     vi.clearAllMocks();
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -253,6 +298,217 @@ describe('DashboardPage', () => {
     expect(raiseInstanceCounter).toHaveBeenCalledWith('traffic', 5);
     // Restoration must not eagerly persist the normalized layout.
     expect(saveDashboardLayout).not.toHaveBeenCalled();
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('restores failed runnable placeholders and removes them from both saved collections', () => {
+    replacePluginLoadStates([widgetEntry('broken')]);
+    setPluginLoadState('broken', 'failed');
+    vi.mocked(loadDashboardLayout).mockReturnValue({
+      tiles: [{id: 'widget-broken:5', x: 9, y: 3, w: 2, h: 1}],
+      mobileOrder: ['widget-broken:5'],
+    });
+
+    const desktop = mountPage();
+
+    expect(addWidgetTile).toHaveBeenCalledWith(
+      expect.anything(),
+      pluginRegistry,
+      fakeGrid,
+      'broken',
+      expect.any(Function),
+      {x: 9, y: 3, w: 2, h: 1, instanceId: 'broken:5'},
+    );
+    expect(desktop.target.querySelector('.mndw-dashboard__empty')).toBeNull();
+
+    const onRemove = vi.mocked(addWidgetTile).mock.calls[0]?.[4];
+
+    onRemove?.('widget-broken:5');
+
+    expect(saveDashboardLayout).toHaveBeenCalledWith({tiles: [], mobileOrder: []});
+    void unmount(desktop.component);
+    desktop.target.remove();
+
+    mobileState.matches = true;
+
+    const mobile = mountPage();
+
+    expect(ensureTileController).toHaveBeenCalledWith(
+      expect.anything(),
+      pluginRegistry,
+      'broken',
+      'broken:5',
+      expect.any(Function),
+    );
+    expect(mobile.target.querySelector('.mndw-mobile-tile')).not.toBeNull();
+    expect(mobile.target.querySelector('.mndw-dashboard__empty')).toBeNull();
+
+    void unmount(mobile.component);
+    mobile.target.remove();
+  });
+
+  it('keeps dormant tiles and their mobile-order slots when visible desktop geometry changes', () => {
+    const dormantEntry = {...widgetEntry('dormant'), enabled: false};
+
+    replacePluginLoadStates([widgetEntry('clock'), dormantEntry]);
+    setPluginLoadState('clock', 'loaded');
+    vi.mocked(pluginRegistry).get.mockImplementation((name: string) =>
+      name === 'clock'
+        ? {entry: widgetEntry(name), module: {createInstance: vi.fn()}}
+        : undefined
+    );
+    vi.mocked(loadDashboardLayout).mockReturnValue({
+      tiles: [
+        {id: 'widget-clock:1', x: 0, y: 0, w: 2, h: 1},
+        {id: 'widget-dormant:7', x: 5, y: 2, w: 3, h: 2},
+      ],
+      mobileOrder: ['widget-dormant:7', 'widget-clock:1'],
+    });
+    save.mockReturnValue([{id: 'widget-clock:1', x: 1, y: 0, w: 2, h: 1}]);
+
+    const {component, target} = mountPage();
+
+    gridHandlers.get('change')?.(new Event('change'));
+    vi.advanceTimersByTime(500);
+
+    expect(saveDashboardLayout).toHaveBeenCalledWith({
+      tiles: [
+        {id: 'widget-clock:1', x: 1, y: 0, w: 2, h: 1},
+        {id: 'widget-dormant:7', x: 5, y: 2, w: 3, h: 2},
+      ],
+      mobileOrder: ['widget-dormant:7', 'widget-clock:1'],
+    });
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('does not save layout while the plugin list request has failed', () => {
+    setPluginLoadListOutcome('failed');
+    appState.pluginLoadError = 'list';
+    vi.mocked(loadDashboardLayout).mockReturnValue({
+      tiles: [{id: 'widget-clock:2', x: 4, y: 1, w: 3, h: 2}],
+      mobileOrder: ['widget-clock:2'],
+    });
+
+    const {component, target} = mountPage();
+
+    gridHandlers.get('change')?.(new Event('change'));
+    vi.advanceTimersByTime(500);
+    void unmount(component);
+
+    expect(saveDashboardLayout).not.toHaveBeenCalled();
+    target.remove();
+  });
+
+  it('restores stored tiles when a failed plugin-list request later succeeds', () => {
+    setPluginLoadListOutcome('failed');
+    vi.mocked(loadDashboardLayout).mockReturnValue({
+      tiles: [{id: 'widget-clock:2', x: 4, y: 1, w: 3, h: 2}],
+      mobileOrder: ['widget-clock:2'],
+    });
+
+    const {component, target} = mountPage();
+
+    expect(addWidgetTile).not.toHaveBeenCalled();
+
+    replacePluginLoadStates([widgetEntry('clock')]);
+    setPluginLoadListOutcome('ok');
+    flushSync();
+
+    expect(addWidgetTile).toHaveBeenCalledWith(
+      expect.anything(),
+      pluginRegistry,
+      fakeGrid,
+      'clock',
+      expect.any(Function),
+      {x: 4, y: 1, w: 3, h: 2, instanceId: 'clock:2'},
+    );
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it.each([
+    {renderer: 'desktop', mobile: false},
+    {renderer: 'mobile', mobile: true},
+  ])('drops deleted tiles and retains dormant tiles after list recovery on $renderer', ({mobile}) => {
+    const dormantEntry = {...widgetEntry('dormant'), enabled: false};
+
+    setPluginLoadListOutcome('failed');
+    vi.mocked(loadDashboardLayout).mockReturnValue({
+      tiles: [
+        {id: 'widget-clock:1', x: 0, y: 0, w: 4, h: 3},
+        {id: 'widget-deleted:1', x: 4, y: 0, w: 4, h: 3},
+        {id: 'widget-dormant:7', x: 8, y: 0, w: 3, h: 2},
+      ],
+      mobileOrder: ['widget-deleted:1', 'widget-dormant:7', 'widget-clock:1'],
+    });
+    mobileState.matches = mobile;
+
+    const {component, target} = mountPage();
+
+    expect(saveDashboardLayout).not.toHaveBeenCalled();
+    expect(target.querySelectorAll('.mndw-mobile-tile')).toHaveLength(0);
+
+    replacePluginLoadStates([widgetEntry('clock'), dormantEntry]);
+    setPluginLoadState('clock', 'loaded');
+    setPluginLoadListOutcome('ok');
+    flushSync();
+
+    expect(saveDashboardLayout).toHaveBeenCalledWith({
+      tiles: [
+        {id: 'widget-clock:1', x: 0, y: 0, w: 4, h: 3},
+        {id: 'widget-dormant:7', x: 8, y: 0, w: 3, h: 2},
+      ],
+      mobileOrder: ['widget-dormant:7', 'widget-clock:1'],
+    });
+
+    if (mobile) {
+      expect(target.querySelectorAll('.mndw-mobile-tile')).toHaveLength(1);
+      expect(ensureTileController).toHaveBeenCalledTimes(1);
+      expect(ensureTileController).toHaveBeenCalledWith(
+        expect.anything(),
+        pluginRegistry,
+        'clock',
+        'clock:1',
+        expect.any(Function),
+      );
+    } else {
+      expect(addWidgetTile).toHaveBeenCalledTimes(1);
+      expect(addWidgetTile).toHaveBeenCalledWith(
+        expect.anything(),
+        pluginRegistry,
+        fakeGrid,
+        'clock',
+        expect.any(Function),
+        {x: 0, y: 0, w: 4, h: 3, instanceId: 'clock:1'},
+      );
+    }
+
+    void unmount(component);
+    target.remove();
+  });
+
+  it('removes tiles absent from an initially successful plugin list', () => {
+    replacePluginLoadStates([widgetEntry('clock')]);
+    setPluginLoadState('clock', 'loaded');
+    vi.mocked(loadDashboardLayout).mockReturnValue({
+      tiles: [
+        {id: 'widget-clock:1', x: 0, y: 0, w: 4, h: 3},
+        {id: 'widget-deleted:1', x: 4, y: 0, w: 4, h: 3},
+      ],
+      mobileOrder: ['widget-deleted:1', 'widget-clock:1'],
+    });
+
+    const {component, target} = mountPage();
+
+    expect(saveDashboardLayout).toHaveBeenCalledWith({
+      tiles: [{id: 'widget-clock:1', x: 0, y: 0, w: 4, h: 3}],
+      mobileOrder: ['widget-clock:1'],
+    });
 
     void unmount(component);
     target.remove();
@@ -539,7 +795,9 @@ describe('DashboardPage', () => {
     expect(empty?.getAttribute('role')).toBeNull();
     expect(empty?.textContent).toContain('No widgets available');
     expect(empty?.textContent).toContain('No enabled plugins provide widgets.');
+
     const link = empty?.querySelector<HTMLAnchorElement>('a');
+
     expect(link?.getAttribute('href')).toBe('/settings/plugins');
     expect(link?.textContent?.trim()).toBe('Manage plugins');
     expect([...target.querySelectorAll('mndw-button')].some(
@@ -567,7 +825,9 @@ describe('DashboardPage', () => {
     expect(empty?.getAttribute('role')).toBeNull();
     expect(empty?.textContent).toContain('Dashboard is empty');
     expect(empty?.textContent).toContain('Add a widget to get started.');
+
     const button = empty?.querySelector('mndw-button');
+
     expect(button?.textContent).toContain('Add Widget');
     expect(button?.getAttribute('variant')).toBe('primary');
     // The empty state owns the CTA; the toolbar keeps no duplicate button.
@@ -692,6 +952,8 @@ describe('DashboardPage', () => {
 
   it('mobile remove updates tiles and mobileOrder and persists immediately', () => {
     mobileState.matches = true;
+    replacePluginLoadStates([widgetEntry('clock')]);
+    setPluginLoadState('clock', 'loaded');
     vi.mocked(loadDashboardLayout).mockReturnValue({
       tiles: [{id: 'widget-clock:1', x: 0, y: 0, w: 2, h: 1}],
       mobileOrder: ['widget-clock:1'],
@@ -702,8 +964,56 @@ describe('DashboardPage', () => {
     removeCallbacks.get('widget-clock:1')?.('widget-clock:1');
     flushSync();
 
-    expect(removeTileController).toHaveBeenCalledWith('widget-clock:1');
+    expect(removeTileController).toHaveBeenCalledWith('widget-clock:1', {clearStorage: true});
     expect(saveDashboardLayout).toHaveBeenCalledWith({tiles: [], mobileOrder: []});
+
+    void unmount(component);
+  });
+
+  it('keeps desktop removal and mobile ordering frozen until plugin list recovery', () => {
+    configureTwoClockWidgets();
+    currentTitles.set('widget-clock:1', 'first clock');
+    currentTitles.set('widget-clock:2', 'second clock');
+    setPluginLoadListOutcome('failed');
+
+    const {component, target} = mountPage();
+
+    gridHandlers.get('removed')?.(new Event('removed'), [{id: 'widget-clock:1'}]);
+    expect(removeTileController).not.toHaveBeenCalled();
+    expect(saveDashboardLayout).not.toHaveBeenCalled();
+
+    mobileState.listener?.({matches: true} as MediaQueryListEvent);
+    flushSync();
+    removeCallbacks.get('widget-clock:1')?.('widget-clock:1');
+    arrangeButton(target)?.click();
+    flushSync();
+    target.querySelector<HTMLButtonElement>('[aria-label="Move first clock down"]')?.click();
+    flushSync();
+    target.querySelector<HTMLButtonElement>('.mndw-floating-panel__close')?.click();
+    flushSync();
+
+    expect(removeTileController).not.toHaveBeenCalled();
+    expect(saveDashboardLayout).not.toHaveBeenCalled();
+
+    replacePluginLoadStates([widgetEntry('clock')]);
+    setPluginLoadState('clock', 'loaded');
+    setPluginLoadListOutcome('ok');
+    flushSync();
+
+    expect(saveDashboardLayout).toHaveBeenCalledWith({
+      tiles: [
+        {id: 'widget-clock:1', x: 0, y: 0, w: 2, h: 1},
+        {id: 'widget-clock:2', x: 2, y: 0, w: 2, h: 1},
+      ],
+      mobileOrder: ['widget-clock:1', 'widget-clock:2'],
+    });
+
+    arrangeButton(target)?.click();
+    flushSync();
+    expect([...target.querySelectorAll('.mndw-order-card__label')].map((label) => label.textContent)).toEqual([
+      'first clock',
+      'second clock',
+    ]);
 
     void unmount(component);
   });

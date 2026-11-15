@@ -103,9 +103,18 @@ func (h *Handler) handleSelfUpdateAction(w http.ResponseWriter, ctx context.Cont
 
 func decodeSelfUpdateEmptyObject(w http.ResponseWriter, r *http.Request) bool {
 	var object map[string]json.RawMessage
+
+	defer r.Body.Close()
+
 	decoder := json.NewDecoder(r.Body)
 
-	if err := decoder.Decode(&object); err != nil || object == nil {
+	if err := decoder.Decode(&object); err != nil {
+		httpx.WriteError(w, nil, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be an empty JSON object"))
+
+		return false
+	}
+
+	if object == nil {
 		httpx.WriteError(w, nil, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be an empty JSON object"))
 
 		return false

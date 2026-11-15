@@ -267,6 +267,9 @@ exact symbol/expression so a source review can verify each value quickly.
 | Concurrent exec requests per plugin |                      4 | `Limits.MaxConcurrentExecPerPlugin`; `NewRuntime` fallback `4`                    | [`runtime.go`](../daemon/mndwd/internal/backend/runtime.go)                                                                                    |
 | Supervised services                 |                      8 | `Limits.MaxSupervisedServices`; `NewRuntime`/`NewSupervisor` fallback `8`         | [`runtime.go`](../daemon/mndwd/internal/backend/runtime.go), [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go)                 |
 | HTTP request body                   |                  1 MiB | `GatewayConfig.MaxRequestBytes`; `NewGateway` fallback `1 << 20`                  | [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go)                                                                                    |
+| Backend request body read           |                   15 s | `GatewayConfig.BodyReadTimeout`; `NewGateway` fallback `15 * time.Second`; `-backend-body-timeout` | [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go), [`config.go`](../daemon/mndwd/cmd/mndwd/config.go)                                |
+| Concurrent request body intake      |                     16 | `-body-intake-limit`; `BodyIntakeLimit` default                                     | [`config.go`](../daemon/mndwd/cmd/mndwd/config.go), [`body.go`](../daemon/mndwd/internal/httpx/body.go)                                         |
+| HTTP keep-alive idle connection     |                  120 s | `-http-idle-timeout`; `http.Server.IdleTimeout`                                  | [`main.go`](../daemon/mndwd/cmd/mndwd/main.go), [`config.go`](../daemon/mndwd/cmd/mndwd/config.go)                                             |
 | Service HTTP request                |                   30 s | `GatewayConfig.ServiceHTTPTimeout`; `NewGateway` fallback `30 * time.Second`      | [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go)                                                                                    |
 | Readiness                           |                   30 s | `SupervisorConfig.ReadinessTimeout`; `NewSupervisor` fallback `30 * time.Second`  | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go), [`runtime.go`](../daemon/mndwd/internal/backend/runtime.go)                 |
 | Service diagnostics request         |                    2 s | `SupervisorConfig.DiagnosticsTimeout`; `NewSupervisor` fallback `2 * time.Second` | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go), [`backend/diagnostics.go`](../daemon/mndwd/internal/backend/diagnostics.go) |
@@ -278,6 +281,17 @@ exact symbol/expression so a source review can verify each value quickly.
 | Final service reap                  |                    2 s | `SupervisorConfig.FinalReapTimeout`; `NewSupervisor` fallback `2 * time.Second`   | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go), [`runtime.go`](../daemon/mndwd/internal/backend/runtime.go)                 |
 | Restart delay                       |      1 s, then doubles | `time.Second << (consecutiveFailures - 1)`                                        | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go)                                                                              |
 | Failure threshold                   | 5 consecutive failures | `ConsecutiveFailures >= 5`                                                        | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go)                                                                              |
+
+The daemon reads request bodies in full after route authentication and before calling handlers. Intake
+rejects oversized bodies with `413`, timed-out reads with `408 REQUEST_TIMEOUT`, and unreadable bodies
+with `400 BAD_REQUEST`. If all `-body-intake-limit` slots are occupied, it returns `503 SERVER_BUSY`
+with `Retry-After: 1`. Intake failures and WebSocket body rejections set `Connection: close`. Other
+early rejections, including auth, CSRF, routing, and exec `GET`/`HEAD` requests with bodies, remain
+bounded by the root body read deadline. The deadline is cleared only after routing selects a device
+proxy, preserving its streaming body behavior. Successful body intake also clears the read deadline
+before handler work starts.
+
+Exec `GET` and `HEAD` requests with a declared body receive `400 BAD_REQUEST`.
 
 ### Shutdown, restart, and failure states
 

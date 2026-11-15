@@ -62,6 +62,8 @@ type Config struct {
 	// Exec/service runtime limits and timeouts.
 	ExecTimeout                time.Duration
 	ExecKillGrace              time.Duration
+	BackendBodyTimeout         time.Duration
+	HTTPIdleTimeout            time.Duration
 	ServiceHTTPTimeout         time.Duration
 	HTTPDrainTimeout           time.Duration
 	WebSocketCloseTimeout      time.Duration
@@ -70,6 +72,7 @@ type Config struct {
 	InitWaitTimeout            time.Duration
 	MaxRequestBytes            int64
 	MaxOutputBytes             int64
+	BodyIntakeLimit            int
 	MaxConcurrentExecTotal     int
 	MaxConcurrentExecPerPlugin int
 	MaxSupervisedServices      int
@@ -190,6 +193,8 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.DurationVar(&cfg.TelemetryMaxUnsynced, "telemetry-max-unsynced", 3*time.Minute, "maximum duration acquired telemetry may stay unsynced (3m-15m)")
 	fs.DurationVar(&cfg.ExecTimeout, "exec-timeout", 30*time.Second, "per-request exec timeout")
 	fs.DurationVar(&cfg.ExecKillGrace, "exec-kill-grace", 2*time.Second, "grace period after terminating an exec process group")
+	fs.DurationVar(&cfg.BackendBodyTimeout, "backend-body-timeout", 15*time.Second, "max time to receive a plugin backend request body")
+	fs.DurationVar(&cfg.HTTPIdleTimeout, "http-idle-timeout", 120*time.Second, "keep-alive idle connection timeout")
 	fs.DurationVar(&cfg.ServiceHTTPTimeout, "service-http-timeout", 30*time.Second, "service backend HTTP timeout")
 	fs.DurationVar(&cfg.HTTPDrainTimeout, "http-drain-timeout", 35*time.Second, "HTTP drain timeout during maintenance")
 	fs.DurationVar(&cfg.WebSocketCloseTimeout, "websocket-close-timeout", 2*time.Second, "WebSocket maintenance close grace")
@@ -198,6 +203,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.DurationVar(&cfg.InitWaitTimeout, "init-wait-timeout", 60*time.Second, "init readiness wait timeout")
 	fs.Int64Var(&cfg.MaxRequestBytes, "max-request-bytes", 1<<20, "max backend request body size in bytes")
 	fs.Int64Var(&cfg.MaxOutputBytes, "max-output-bytes", backend.DefaultMaxOutputBytes, "max backend exec response size in bytes")
+	fs.IntVar(&cfg.BodyIntakeLimit, "body-intake-limit", 16, "max request bodies buffered concurrently")
 
 	defaults := backend.DefaultLimits()
 
@@ -330,6 +336,7 @@ func validateBackendConfig(cfg Config) error {
 		name  string
 		value int
 	}{
+		{"body-intake-limit", cfg.BodyIntakeLimit},
 		{"max-concurrent-exec-total", cfg.MaxConcurrentExecTotal},
 		{"max-concurrent-exec-per-plugin", cfg.MaxConcurrentExecPerPlugin},
 		{"max-supervised-services", cfg.MaxSupervisedServices},
@@ -347,6 +354,8 @@ func validateBackendConfig(cfg Config) error {
 	}{
 		{"exec-timeout", cfg.ExecTimeout},
 		{"exec-kill-grace", cfg.ExecKillGrace},
+		{"backend-body-timeout", cfg.BackendBodyTimeout},
+		{"http-idle-timeout", cfg.HTTPIdleTimeout},
 		{"service-http-timeout", cfg.ServiceHTTPTimeout},
 		{"http-drain-timeout", cfg.HTTPDrainTimeout},
 		{"websocket-close-timeout", cfg.WebSocketCloseTimeout},

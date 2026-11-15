@@ -58,6 +58,7 @@ Handle `BackendNotApproved`, `BackendDisabled`, and `BackendUnavailable` separat
 tell approval, disabled capability, and runtime connectivity apart. A declared ID can still be
 unavailable when state changes after the UI loads. Session access is the default; public HTTP routes
 are limited to `GET` and `HEAD`, and public access does not bypass backend approval.
+GET and HEAD requests that include a body are rejected with `400 BAD_REQUEST`.
 
 ## Troubleshooting
 

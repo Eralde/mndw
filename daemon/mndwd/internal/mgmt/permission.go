@@ -27,6 +27,8 @@ type permissionRequest struct {
 func (h *Handler) handlePermission(w http.ResponseWriter, r *http.Request) {
 	var request permissionRequest
 
+	defer r.Body.Close()
+
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must contain name, permission, and enabled"))
 

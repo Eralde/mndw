@@ -282,10 +282,18 @@ func (r *RuntimeImpl) SupportedProtocols() []int {
 	return r.supervisor.SupportedProtocols()
 }
 
-func (r *RuntimeImpl) ServeExec(ctx context.Context, request ExecRequest, writer http.ResponseWriter) *httpx.APIError {
+func (r *RuntimeImpl) TryAcquireExec(pluginID string) (*Reservation, bool) {
+	if r.exec == nil {
+		return nil, false
+	}
+
+	return r.exec.admission.TryAcquireExec(pluginID)
+}
+
+func (r *RuntimeImpl) ServeExec(ctx context.Context, request ExecRequest, writer http.ResponseWriter, reservation *Reservation) *httpx.APIError {
 	request.RuntimeDir = runtimeDir(r.exec, request.PluginID)
 
-	return r.exec.Serve(ctx, request, writer)
+	return r.exec.ServeReserved(ctx, request, writer, reservation)
 }
 
 func runtimeDir(runner *ExecRunner, pluginID string) string {

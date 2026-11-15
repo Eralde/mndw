@@ -26,6 +26,21 @@ func TestParseFlagsLimitDefaultsMatchBackend(t *testing.T) {
 		t.Fatalf("config limits = total:%d plugin:%d services:%d, want %+v",
 			cfg.MaxConcurrentExecTotal, cfg.MaxConcurrentExecPerPlugin, cfg.MaxSupervisedServices, defaults)
 	}
+
+	if cfg.BodyIntakeLimit != 16 {
+		t.Fatalf("BodyIntakeLimit = %d, want 16", cfg.BodyIntakeLimit)
+	}
+}
+
+func TestParseFlagsRejectsNonPositiveBodyIntakeLimit(t *testing.T) {
+	for _, value := range []string{"0", "-1"} {
+		t.Run(value, func(t *testing.T) {
+			_, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--body-intake-limit", value})
+			if err == nil || !strings.Contains(err.Error(), "--body-intake-limit must be positive") {
+				t.Fatalf("parseFlags error = %v, want positive body intake limit", err)
+			}
+		})
+	}
 }
 
 func TestParseFlagsMaxOutputBytesDefault(t *testing.T) {
@@ -36,6 +51,21 @@ func TestParseFlagsMaxOutputBytesDefault(t *testing.T) {
 
 	if got, want := cfg.MaxOutputBytes, backend.DefaultMaxOutputBytes; got != want {
 		t.Fatalf("MaxOutputBytes = %d, want %d", got, want)
+	}
+}
+
+func TestParseBackendBodyAndHTTPIdleTimeoutDefaults(t *testing.T) {
+	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.BackendBodyTimeout != 15*time.Second {
+		t.Fatalf("backend body timeout = %s, want 15s", cfg.BackendBodyTimeout)
+	}
+
+	if cfg.HTTPIdleTimeout != 120*time.Second {
+		t.Fatalf("HTTP idle timeout = %s, want 120s", cfg.HTTPIdleTimeout)
 	}
 }
 
@@ -233,6 +263,10 @@ func TestParseRejectsInvalidBackendConfig(t *testing.T) {
 		{"--max-supervised-services", "0"},
 		{"--exec-kill-grace", "0s"},
 		{"--service-http-timeout", "0s"},
+		{"--backend-body-timeout", "0s"},
+		{"--backend-body-timeout", "-1s"},
+		{"--http-idle-timeout", "0s"},
+		{"--http-idle-timeout", "-1s"},
 		{"--http-drain-timeout", "1s"},
 	} {
 		if _, _, err := parseFlags(args); err == nil {

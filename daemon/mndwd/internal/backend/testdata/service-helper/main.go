@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -22,9 +23,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	defer listener.Close()
 
 	mux := http.NewServeMux()
+
 	mux.HandleFunc("GET /_mndw/ready", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(writer, http.StatusOK, map[string]any{"pluginId": pluginID, "protocolVersion": protocol})
 	})
@@ -34,21 +37,44 @@ func main() {
 	mux.HandleFunc("GET /status", func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(writer, http.StatusOK, map[string]any{"pluginId": pluginID, "protocolVersion": protocol})
 	})
+	mux.HandleFunc("POST /consume", func(writer http.ResponseWriter, request *http.Request) {
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			return
+		}
+
+		_, _ = writer.Write(body)
+	})
+	mux.HandleFunc("POST /slow", func(writer http.ResponseWriter, request *http.Request) {
+		if _, err := io.Copy(io.Discard, request.Body); err != nil {
+			return
+		}
+
+		time.Sleep(200 * time.Millisecond)
+		writer.WriteHeader(http.StatusOK)
+	})
+
 	server := &http.Server{Handler: mux}
+
 	go func() { _ = server.Serve(listener) }()
 
 	child := exec.Command("sleep", "60")
+
 	if err := child.Start(); err != nil {
 		panic(fmt.Sprintf("start descendant: %v", err))
 	}
 
 	signals := make(chan os.Signal, 1)
+
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
 	<-signals
 	signal.Stop(signals)
+
 	shutdownContext, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	_ = server.Shutdown(shutdownContext)
+
 	cancel()
+
 	_ = child.Process.Signal(syscall.SIGTERM)
 	_, _ = child.Process.Wait()
 }
@@ -56,5 +82,6 @@ func main() {
 func writeJSON(writer http.ResponseWriter, status int, value any) {
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
+
 	_ = json.NewEncoder(writer).Encode(value)
 }

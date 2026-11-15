@@ -52,8 +52,18 @@ func BodyLimit(limit int64) func(http.Handler) http.Handler {
 				return
 			}
 
-			body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
+
+			body, err := io.ReadAll(r.Body)
 			if err != nil {
+				var tooLarge *http.MaxBytesError
+
+				if errors.As(err, &tooLarge) {
+					writeSessionError(w, http.StatusRequestEntityTooLarge, httpx.CodeBadRequest, "request body is too large")
+
+					return
+				}
+
 				writeSessionError(w, http.StatusBadRequest, httpx.CodeBadRequest, "request body could not be read")
 
 				return
@@ -66,6 +76,7 @@ func BodyLimit(limit int64) func(http.Handler) http.Handler {
 			}
 
 			r.Body = io.NopCloser(bytes.NewReader(body))
+			r.ContentLength = int64(len(body))
 
 			next.ServeHTTP(w, r)
 		})
@@ -316,7 +327,9 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, destination any) error {
 		return io.EOF
 	}
 
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	defer r.Body.Close()
+
+	decoder := json.NewDecoder(r.Body)
 
 	decoder.DisallowUnknownFields()
 

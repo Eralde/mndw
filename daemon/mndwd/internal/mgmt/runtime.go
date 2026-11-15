@@ -17,7 +17,7 @@ func (h *Handler) handleRuntime(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
-	name, apiErr := decodeName(r)
+	name, apiErr := decodeName(w, r)
 
 	if apiErr != nil {
 		httpx.WriteError(w, h.logger, apiErr)

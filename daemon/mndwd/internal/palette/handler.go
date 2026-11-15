@@ -51,6 +51,8 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxPaletteBytes)
 
+	defer r.Body.Close()
+
 	var incoming Palette
 	decoder := json.NewDecoder(r.Body)
 

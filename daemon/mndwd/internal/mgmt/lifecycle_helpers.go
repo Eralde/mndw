@@ -93,6 +93,7 @@ func (h *Handler) removePluginBackups(name string) {
 		}
 
 		path := filepath.Join(h.cfg.UserPluginsDir, entry.Name())
+
 		if err := h.removePluginFiles(name, path); err != nil && h.logger != nil {
 			h.logger.Warn("failed to remove plugin backup", "plugin", name, "path", path, "error", err)
 		}
@@ -100,7 +101,7 @@ func (h *Handler) removePluginBackups(name string) {
 }
 
 func (h *Handler) decodeLifecycleName(w http.ResponseWriter, r *http.Request) (string, bool) {
-	name, apiErr := decodeName(r)
+	name, apiErr := decodeName(w, r)
 
 	if apiErr != nil {
 		h.writeLifecycleError(w, apiErr)

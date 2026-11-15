@@ -44,6 +44,8 @@ var version = "dev"
 
 const telemetryShutdownTimeout = 30 * time.Second
 
+var deviceProxyPrefixes = []string{"/rci", "/ci", "/auth"}
+
 func main() {
 	cfg, showVersion, err := parseFlags(os.Args[1:])
 	if err != nil {
@@ -149,6 +151,7 @@ func run(cfg Config) (err error) {
 	srv := &http.Server{
 		Handler:           c.handler,
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       cfg.HTTPIdleTimeout,
 	}
 
 	if listener != nil {
@@ -248,6 +251,10 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) (*components, error) {
 	cfg = cfg.withDefaults()
 
+	if cfg.BodyIntakeLimit == 0 {
+		cfg.BodyIntakeLimit = 16
+	}
+
 	eventBus := events.NewBus()
 	normalizer := events.NewNormalizer(time.Now, nil)
 	internalPublisher := events.NewInternalPublisher(eventBus, normalizer)
@@ -306,6 +313,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 	})
 
 	mux := http.NewServeMux()
+	intake := httpx.NewBodyIntake(cfg.BodyIntakeLimit)
 	core := daemonCore{
 		cfg:             cfg,
 		store:           store,
@@ -317,10 +325,14 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 		lifetime:        lifetime,
 	}
 
-	mux.Handle("POST /_internal/hook", events.NewHookHandler(ingestPublisher, normalizer))
-	mux.Handle("GET /ws/events", verifier.Middleware(events.NewWebSocketHandler(eventBus, backend.ValidWebSocketOrigin)))
+	hookLimit := func(*http.Request) httpx.BodyLimit {
+		return httpx.BodyLimit{MaxBytes: events.MaxEventPayloadBytes * 4, Timeout: httpx.JSONBodyTimeout, TooLargeCode: httpx.CodeBodyTooLarge}
+	}
 
-	access := registerAccess(mux, core)
+	mux.Handle("POST /_internal/hook", intake.Middleware(hookLimit, events.NewHookHandler(ingestPublisher, normalizer)))
+	mux.Handle("GET /ws/events", verifier.Middleware(rejectWebSocketBody(events.NewWebSocketHandler(eventBus, backend.ValidWebSocketOrigin))))
+
+	access := registerAccess(mux, core, intake)
 	var eventRCIClient *rci.Client
 	var eventClientErr error
 
@@ -339,7 +351,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 		return nil
 	})
 
-	mgmtMux := registerMgmt(mux, core, mgmtServices{
+	mgmtMux := registerMgmt(mux, core, intake, mgmtServices{
 		opkg:                 opkgMgr,
 		selfUpdate:           selfUpdateService,
 		service:              serviceMgr,
@@ -355,7 +367,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 
 	registerPalette(mux, mgmtMux, paletteStore, logger)
 
-	gateway := registerPlugins(mux, core)
+	gateway := registerPlugins(mux, core, intake)
 	frontDoorErr := registerFrontDoor(mux, cfg, logger, verifier)
 
 	var routed http.Handler = mux
@@ -387,7 +399,10 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 	startupErr := errors.Join(access.session.err, access.telemetry.err, eventClientErr, frontDoorErr, deviceInfoErr)
 
 	return &components{
-		handler:   httpx.NoCORSHandler(httpx.LogMiddleware(logger, routed)),
+		handler: httpx.ArmBodyDeadline(
+			httpx.NoCORSHandler(httpx.LogMiddleware(logger, routed)),
+			httpx.JSONBodyTimeout,
+		),
 		reg:       reg,
 		runtime:   runtime,
 		gateway:   gateway,
@@ -418,9 +433,11 @@ func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger, veri
 		return fmt.Errorf("device proxy: %w", err)
 	}
 
-	for _, prefix := range []string{"/rci", "/ci", "/auth"} {
-		mux.Handle(prefix, proxy)
-		mux.Handle(prefix+"/", proxy)
+	proxyHandler := httpx.ClearBodyDeadline(proxy)
+
+	for _, prefix := range deviceProxyPrefixes {
+		mux.Handle(prefix, proxyHandler)
+		mux.Handle(prefix+"/", proxyHandler)
 	}
 
 	apiReserved := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -442,9 +459,22 @@ func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger, veri
 	return nil
 }
 
+func rejectWebSocketBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.ContentLength != 0 {
+			writer.Header().Set("Connection", "close")
+			httpx.WriteError(writer, nil, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "websocket requests must not have a body"))
+
+			return
+		}
+
+		next.ServeHTTP(writer, request)
+	})
+}
+
 // registerMgmt mounts the session-gated management surface and returns its mux so
 // other session-gated routes (e.g. protected palette) can share the gate.
-func registerMgmt(mux *http.ServeMux, core daemonCore, services mgmtServices) *http.ServeMux {
+func registerMgmt(mux *http.ServeMux, core daemonCore, intake *httpx.BodyIntake, services mgmtServices) *http.ServeMux {
 	mgmtHandler := mgmt.New(mgmt.Config{
 		StagingDir:                        core.cfg.StagingDir(),
 		UserPluginsDir:                    core.cfg.UserPluginsDir,
@@ -462,14 +492,14 @@ func registerMgmt(mux *http.ServeMux, core daemonCore, services mgmtServices) *h
 	mgmtMux := http.NewServeMux()
 
 	mgmtHandler.Register(mgmtMux)
-	mux.Handle("/api/mgmt/", core.verifier.Middleware(mgmtMux))
+	mux.Handle("/api/mgmt/", core.verifier.Middleware(intake.Middleware(mgmt.BodyLimitForRequest(maxUploadBytes), mgmtMux)))
 
 	return mgmtMux
 }
 
 // registerAccess mounts the consent/diagnostics surface and assembles the
 // persistent RCI session and telemetry subsystems.
-func registerAccess(mux *http.ServeMux, core daemonCore) accessAssembly {
+func registerAccess(mux *http.ServeMux, core daemonCore, intake *httpx.BodyIntake) accessAssembly {
 	accessMux := http.NewServeMux()
 
 	diagnostics.New(diagnostics.Config{
@@ -482,7 +512,11 @@ func registerAccess(mux *http.ServeMux, core daemonCore) accessAssembly {
 
 	// Keep the route mounted in dev so the host exercises the same consent contract;
 	// the verifier still bypasses only session validation when core.cfg.Dev is true.
-	mux.Handle("/api/mndw/", core.verifier.Middleware(accessMux))
+	accessLimit := func(*http.Request) httpx.BodyLimit {
+		return httpx.BodyLimit{MaxBytes: httpx.MaxJSONBodyBytes, Timeout: httpx.JSONBodyTimeout, TooLargeCode: httpx.CodeBodyTooLarge}
+	}
+
+	mux.Handle("/api/mndw/", core.verifier.Middleware(intake.Middleware(accessLimit, accessMux)))
 
 	return accessAssembly{session: session, telemetry: telemetry}
 }
@@ -496,9 +530,11 @@ func registerPalette(mux *http.ServeMux, mgmtMux *http.ServeMux, paletteStore *p
 }
 
 // registerPlugins mounts the single manifest backend gateway.
-func registerPlugins(mux *http.ServeMux, core daemonCore) *backend.Gateway {
+func registerPlugins(mux *http.ServeMux, core daemonCore, intake *httpx.BodyIntake) *backend.Gateway {
 	gateway := backend.NewGateway(backend.GatewayConfig{
+		BodyIntake:                intake,
 		MaxRequestBytes:           core.cfg.MaxRequestBytes,
+		BodyReadTimeout:           core.cfg.BackendBodyTimeout,
 		ServiceHTTPTimeout:        core.cfg.ServiceHTTPTimeout,
 		AllowSymlinkedBuiltinRoot: core.cfg.Dev,
 		ActivationGates:           core.activationGates,

@@ -37,6 +37,8 @@ const (
 	CodeScriptFailed            = "SCRIPT_FAILED"
 	CodeScriptTimeout           = "SCRIPT_TIMEOUT"
 	CodeBodyTooLarge            = "BODY_TOO_LARGE"
+	CodeRequestTimeout          = "REQUEST_TIMEOUT"
+	CodeServerBusy              = "SERVER_BUSY"
 	CodeTooManyRequests         = "TOO_MANY_REQUESTS"
 	CodeBackendBusy             = "BACKEND_BUSY"
 	CodeServiceCapacityExceeded = "SERVICE_CAPACITY_EXCEEDED"

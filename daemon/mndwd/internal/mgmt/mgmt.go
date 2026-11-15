@@ -35,6 +35,7 @@ import (
 const opkgTimeout = 3 * time.Minute
 const serviceStatusTimeout = 3 * time.Second
 const serviceActionTimeout = 30 * time.Second
+const uploadBodyTimeout = 120 * time.Second
 
 // BuiltinSource supplies validated builtin plugins and owns builtin discovery
 // warnings/errors. Satisfied by *registry.Registry.
@@ -391,8 +392,10 @@ type nameRequest struct {
 
 // decodeName reads and lightly validates the {name} body common to the lifecycle
 // endpoints.
-func decodeName(r *http.Request) (string, *httpx.APIError) {
+func decodeName(w http.ResponseWriter, r *http.Request) (string, *httpx.APIError) {
 	var req nameRequest
+
+	defer r.Body.Close()
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return "", httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be JSON with a name field")

@@ -94,10 +94,6 @@ func newExecRunner(cfg ExecRunnerConfig, admission *Admission) *ExecRunner {
 }
 
 func (r *ExecRunner) Serve(ctx context.Context, request ExecRequest, writer http.ResponseWriter) *httpx.APIError {
-	if int64(len(request.Body)) > r.cfg.MaxBodyBytes {
-		return httpx.NewError(http.StatusRequestEntityTooLarge, httpx.CodeBackendBodyTooLarge, "request body exceeds backend limit")
-	}
-
 	reservation, admitted := r.admission.TryAcquireExec(request.PluginID)
 
 	if !admitted {
@@ -105,6 +101,20 @@ func (r *ExecRunner) Serve(ctx context.Context, request ExecRequest, writer http
 	}
 
 	defer reservation.Release()
+
+	return r.ServeReserved(ctx, request, writer, reservation)
+}
+
+// ServeReserved executes a request while its caller owns the matching exec
+// reservation. The caller must release the reservation on every exit path.
+func (r *ExecRunner) ServeReserved(ctx context.Context, request ExecRequest, writer http.ResponseWriter, reservation *Reservation) *httpx.APIError {
+	if reservation == nil || reservation.admission != r.admission || reservation.kind != reservationExec || reservation.pluginID != request.PluginID {
+		return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "backend execution reservation is invalid")
+	}
+
+	if int64(len(request.Body)) > r.cfg.MaxBodyBytes {
+		return httpx.NewError(http.StatusRequestEntityTooLarge, httpx.CodeBackendBodyTooLarge, "request body exceeds backend limit")
+	}
 
 	command := exec.Command(request.Command)
 

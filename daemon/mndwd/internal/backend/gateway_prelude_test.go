@@ -495,3 +495,28 @@ func TestHandleWebSocketDoesNotDiscloseRouteExistence(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleWebSocketRejectsRequestBodyBeforeUpgrade(t *testing.T) {
+	auth := authPass()
+	gateway := newPreludeGateway(t, auth)
+	mux := http.NewServeMux()
+
+	gateway.Register(mux)
+
+	request := httptest.NewRequest(http.MethodGet, "/ws/plugins/demo/terminal", strings.NewReader("body"))
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), httpx.CodeBadRequest) {
+		t.Fatalf("response = %d %q, want 400 BAD_REQUEST", response.Code, response.Body.String())
+	}
+
+	if response.Header().Get("Connection") != "close" {
+		t.Fatalf("Connection = %q, want close", response.Header().Get("Connection"))
+	}
+
+	if auth.calls != 1 {
+		t.Fatalf("auth calls = %d, want 1", auth.calls)
+	}
+}

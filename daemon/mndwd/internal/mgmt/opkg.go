@@ -134,6 +134,8 @@ func opkgActionMessage(action string, count int) string {
 func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action string, run func(context.Context, []string) error) {
 	var req packagesRequest
 
+	defer r.Body.Close()
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body must be JSON with a packages array"))
 

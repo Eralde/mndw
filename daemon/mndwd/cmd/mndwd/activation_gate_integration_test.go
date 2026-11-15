@@ -20,6 +20,7 @@ import (
 
 	"mndwd/internal/authz"
 	"mndwd/internal/backend"
+	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/rcisession"
 	"mndwd/internal/rcisession/coordinator"
@@ -287,7 +288,7 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 	}
 
 	gatewayMux := http.NewServeMux()
-	gateway := registerPlugins(gatewayMux, core)
+	gateway := registerPlugins(gatewayMux, core, httpx.NewBodyIntake(16))
 	fixture.assembly = assembledCoordinator
 	fixture.gateway = gateway
 	fixture.mux = gatewayMux

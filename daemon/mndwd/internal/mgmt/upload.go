@@ -204,6 +204,7 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 // an over-limit body into the UPLOAD_TOO_LARGE envelope.
 func (h *Handler) readUploadBody(w http.ResponseWriter, r *http.Request) ([]byte, *httpx.APIError) {
 	r.Body = http.MaxBytesReader(w, r.Body, h.cfg.MaxUploadBytes)
+
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		var tooLarge *http.MaxBytesError

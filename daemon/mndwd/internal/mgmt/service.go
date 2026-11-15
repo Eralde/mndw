@@ -88,6 +88,8 @@ func (h *Handler) handleServiceSetEnabled(w http.ResponseWriter, r *http.Request
 
 	var req serviceEnableRequest
 
+	defer r.Body.Close()
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeServiceError(w, &service.InvalidServiceError{Name: ""})
 
@@ -116,6 +118,8 @@ func (h *Handler) handleServiceAction(w http.ResponseWriter, r *http.Request, ac
 	}
 
 	var req serviceRequest
+
+	defer r.Body.Close()
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeServiceError(w, &service.InvalidServiceError{Name: ""})

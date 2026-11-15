@@ -2,7 +2,6 @@ package backend
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -21,7 +20,9 @@ import (
 )
 
 type GatewayConfig struct {
+	BodyIntake                *httpx.BodyIntake
 	MaxRequestBytes           int64
+	BodyReadTimeout           time.Duration
 	ServiceHTTPTimeout        time.Duration
 	AllowSymlinkedBuiltinRoot bool
 	ActivationGates           *ActivationGateRegistry
@@ -54,8 +55,16 @@ type Gateway struct {
 }
 
 func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticator, runtime *RuntimeImpl, logger *slog.Logger) *Gateway {
+	if cfg.BodyIntake == nil {
+		cfg.BodyIntake = httpx.NewBodyIntake(16)
+	}
+
 	if cfg.MaxRequestBytes <= 0 {
 		cfg.MaxRequestBytes = 1 << 20
+	}
+
+	if cfg.BodyReadTimeout <= 0 {
+		cfg.BodyReadTimeout = 15 * time.Second
 	}
 
 	if cfg.ServiceHTTPTimeout <= 0 {
@@ -239,22 +248,47 @@ func (g *Gateway) authenticate(writer http.ResponseWriter, request *http.Request
 }
 
 func (g *Gateway) serveExec(writer http.ResponseWriter, request *http.Request, plugin *registry.Plugin, route manifest.BackendRoute) {
+	if (request.Method == http.MethodGet || request.Method == http.MethodHead) && request.ContentLength != 0 {
+		g.writeError(writer, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "GET and HEAD requests must not have a body"))
+
+		return
+	}
+
 	if g.runtime == nil {
 		g.writeError(writer, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "exec backend is not configured"))
 
 		return
 	}
 
-	request.Body = http.MaxBytesReader(writer, request.Body, g.cfg.MaxRequestBytes)
+	if g.runtime.exec == nil {
+		g.writeError(writer, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "exec backend is not configured"))
+
+		return
+	}
+
+	reservation, admitted := g.runtime.TryAcquireExec(plugin.Name)
+
+	if !admitted {
+		g.writeError(writer, httpx.NewError(http.StatusTooManyRequests, httpx.CodeBackendBusy, "backend execution capacity is busy"))
+
+		return
+	}
+
+	defer reservation.Release()
+
+	if apiErr := g.cfg.BodyIntake.Read(writer, request, httpx.BodyLimit{
+		MaxBytes:     g.cfg.MaxRequestBytes,
+		Timeout:      g.cfg.BodyReadTimeout,
+		TooLargeCode: httpx.CodeBackendBodyTooLarge,
+	}); apiErr != nil {
+		g.writeError(writer, apiErr)
+
+		return
+	}
+
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
-		if errors.Is(err, http.ErrBodyReadAfterClose) {
-			g.writeError(writer, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body is unreadable"))
-
-			return
-		}
-
-		g.writeError(writer, httpx.NewError(http.StatusRequestEntityTooLarge, httpx.CodeBackendBodyTooLarge, "request body exceeds backend limit"))
+		g.writeError(writer, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "request body is unreadable"))
 
 		return
 	}
@@ -275,7 +309,7 @@ func (g *Gateway) serveExec(writer http.ResponseWriter, request *http.Request, p
 		Query:    request.URL.RawQuery,
 		Body:     body,
 		Type:     request.Header.Get("Content-Type"),
-	}, writer)
+	}, writer, reservation)
 
 	if apiErr != nil {
 		g.writeError(writer, apiErr)
@@ -335,7 +369,15 @@ func (g *Gateway) serveService(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
-	request.Body = http.MaxBytesReader(writer, request.Body, g.cfg.MaxRequestBytes)
+	if apiErr := g.cfg.BodyIntake.Read(writer, request, httpx.BodyLimit{
+		MaxBytes:     g.cfg.MaxRequestBytes,
+		Timeout:      g.cfg.BodyReadTimeout,
+		TooLargeCode: httpx.CodeBackendBodyTooLarge,
+	}); apiErr != nil {
+		g.writeError(writer, apiErr)
+
+		return
+	}
 
 	if err := proxyServiceHTTP(request.Context(), writer, request, socketPath, plugin.Name, route.ID, route.Path, g.cfg.ServiceHTTPTimeout); err != nil {
 		if serviceProxyResponseCommitted(err) {
@@ -366,6 +408,13 @@ func (g *Gateway) handleWebSocket(writer http.ResponseWriter, request *http.Requ
 	}
 
 	plugin, route := decision.plugin, decision.route
+
+	if request.ContentLength != 0 {
+		writer.Header().Set("Connection", "close")
+		g.writeError(writer, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "websocket requests must not have a body"))
+
+		return
+	}
 
 	if g.runtime == nil || g.runtime.Status(plugin.Name).State != StateReady {
 		g.writeError(writer, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeBackendUnavailable, "service backend is unavailable"))

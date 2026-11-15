@@ -40,12 +40,17 @@ func (h *Handler) handleTelemetryPut(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var incoming telemetrySettingsDTO
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1024)
+
+	defer r.Body.Close()
+
+	decoder := json.NewDecoder(r.Body)
 
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(&incoming); err != nil {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "invalid telemetry settings"))
+		h.writeTelemetryDecodeError(w, err)
 
 		return
 	}
@@ -53,7 +58,7 @@ func (h *Handler) handleTelemetryPut(w http.ResponseWriter, r *http.Request) {
 	var trailing any
 
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "invalid telemetry settings"))
+		h.writeTelemetryDecodeError(w, err)
 
 		return
 	}
@@ -108,4 +113,16 @@ func (h *Handler) handleTelemetryPut(w http.ResponseWriter, r *http.Request) {
 	h.publishTelemetryGatheringChanged(incoming.Enabled)
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) writeTelemetryDecodeError(w http.ResponseWriter, err error) {
+	var tooLarge *http.MaxBytesError
+
+	if errors.As(err, &tooLarge) {
+		httpx.WriteError(w, h.logger, httpx.NewError(http.StatusRequestEntityTooLarge, httpx.CodeBodyTooLarge, "request body is too large"))
+
+		return
+	}
+
+	httpx.WriteError(w, h.logger, httpx.NewError(http.StatusBadRequest, httpx.CodeBadRequest, "invalid telemetry settings"))
 }

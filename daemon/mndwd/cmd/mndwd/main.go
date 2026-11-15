@@ -283,8 +283,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 			MaxConcurrentExecPerPlugin: cfg.MaxConcurrentExecPerPlugin,
 			MaxSupervisedServices:      cfg.MaxSupervisedServices,
 		},
-		SupportedServiceProtocols: cfg.SupportedServiceProtocols,
-		Exec:                      backendExecConfig(cfg, logger),
+		Exec: backendExecConfig(cfg, logger),
 		Supervisor: backend.SupervisorConfig{
 			ReadinessTimeout:          cfg.ServiceHTTPTimeout,
 			StopTimeout:               cfg.ServiceStopTimeout,

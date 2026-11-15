@@ -19,6 +19,87 @@ func TestReconcileSeedsEnabledStartupCandidate(t *testing.T) {
 	}
 }
 
+func TestReconcileReservesBuiltinServicesBeforeUserServices(t *testing.T) {
+	admission := NewAdmission(Limits{MaxSupervisedServices: 3})
+	supervisor := newSupervisor(testSupervisorConfig(t), admission)
+	specs := []ServiceSpec{
+		{PluginID: "user-c", ProtocolVersion: 1, Enabled: true},
+		{PluginID: "builtin-z", ProtocolVersion: 1, Builtin: true, Enabled: true},
+		{PluginID: "user-a", ProtocolVersion: 1, Enabled: true},
+		{PluginID: "builtin-a", ProtocolVersion: 1, Builtin: true, Enabled: true},
+		{PluginID: "user-b", ProtocolVersion: 1, Enabled: true},
+	}
+
+	plan := supervisor.Reconcile(context.Background(), specs)
+
+	wantStarts := []string{"builtin-a", "builtin-z", "user-a"}
+
+	if !reflect.DeepEqual(plan.startIDs, wantStarts) {
+		t.Fatalf("start IDs = %#v, want %#v", plan.startIDs, wantStarts)
+	}
+
+	for _, pluginID := range []string{"user-b", "user-c"} {
+		if got := supervisor.Status(pluginID).State; got != StateCapacityBlocked {
+			t.Errorf("%s state = %q, want %q", pluginID, got, StateCapacityBlocked)
+		}
+	}
+
+	if _, got, _ := admission.Snapshot(); got != 3 {
+		t.Fatalf("reserved service slots = %d, want 3", got)
+	}
+}
+
+func TestReconcileReleasesReservedSlotWhenStartupIsSupersededOrRemoved(t *testing.T) {
+	tests := []struct {
+		name       string
+		superseded bool
+	}{
+		{name: "disabled before launch", superseded: true},
+		{name: "removed before launch"},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			admission := NewAdmission(Limits{MaxSupervisedServices: 1})
+			supervisor := newSupervisor(testSupervisorConfig(t), admission)
+
+			supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("svc")})
+
+			if _, got, _ := admission.Snapshot(); got != 1 {
+				t.Fatalf("reserved service slots before superseding = %d, want 1", got)
+			}
+
+			if testCase.superseded {
+				disabled := enabledSpec("svc")
+				disabled.Enabled = false
+				plan := supervisor.Reconcile(context.Background(), []ServiceSpec{disabled})
+
+				if !containsID(plan.stopIDs, "svc") {
+					t.Fatalf("superseded service was not planned for cleanup: %+v", plan)
+				}
+			} else {
+				plan := supervisor.Reconcile(context.Background(), nil)
+
+				if !containsID(plan.removeIDs, "svc") {
+					t.Fatalf("removed service was not planned for cleanup: %+v", plan)
+				}
+			}
+
+			if err := supervisor.stopRecord(context.Background(), "svc"); err != nil {
+				t.Fatalf("execute planned cleanup: %v", err)
+			}
+
+			if outcome := supervisor.beginDesiredStartup(enabledSpec("svc")); !outcome.conflict {
+				t.Fatal("superseded startup was still eligible after cleanup")
+			}
+
+			if _, got, _ := admission.Snapshot(); got != 0 {
+				t.Fatalf("reserved service slots after superseding = %d, want 0", got)
+			}
+		})
+	}
+}
+
 func TestServiceSpecEqual(t *testing.T) {
 	base := ServiceSpec{
 		PluginID:         "svc",

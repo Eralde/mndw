@@ -62,7 +62,6 @@ func frontDoorTestConfig(t *testing.T, frontendDir, deviceURL string) Config {
 		MaxConcurrentExecTotal:     1,
 		MaxConcurrentExecPerPlugin: 1,
 		MaxSupervisedServices:      1,
-		SupportedServiceProtocols:  []int{1},
 	}
 }
 
@@ -191,6 +190,7 @@ func TestFrontDoorAssembly(t *testing.T) {
 
 func TestFrontDoorUserPluginAssetsRequireSession(t *testing.T) {
 	frontendDir := t.TempDir()
+
 	if err := os.WriteFile(filepath.Join(frontendDir, "index.html"), []byte("<spa/>"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -208,14 +208,17 @@ func TestFrontDoorUserPluginAssetsRequireSession(t *testing.T) {
 
 		writer.WriteHeader(http.StatusNotFound)
 	}))
+
 	defer device.Close()
 
 	cfg := frontDoorTestConfig(t, frontendDir, device.URL)
 	cfg.Dev = false
 	pluginDir := filepath.Join(cfg.UserPluginsDir, "demo")
+
 	if err := os.MkdirAll(pluginDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := os.WriteFile(filepath.Join(pluginDir, "index.js"), []byte("export const loaded = true"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -236,9 +239,11 @@ func TestFrontDoorUserPluginAssetsRequireSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
+
 	t.Cleanup(func() { _ = c.Close() })
 
 	server := newFrontDoorIPv4Server(c.handler)
+
 	defer server.Close()
 
 	request := func(cookie string) (int, string) {
@@ -246,6 +251,7 @@ func TestFrontDoorUserPluginAssetsRequireSession(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if cookie != "" {
 			req.Header.Set("Cookie", cookie)
 		}
@@ -254,6 +260,7 @@ func TestFrontDoorUserPluginAssetsRequireSession(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GET user plugin: %v", err)
 		}
+
 		defer response.Body.Close()
 
 		body, _ := io.ReadAll(response.Body)

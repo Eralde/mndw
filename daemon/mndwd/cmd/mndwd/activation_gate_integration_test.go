@@ -200,7 +200,6 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 		MaxConcurrentExecTotal:     1,
 		MaxConcurrentExecPerPlugin: 1,
 		MaxSupervisedServices:      1,
-		SupportedServiceProtocols:  []int{1},
 	}
 
 	store, err := state.Open(cfg.StateFile())

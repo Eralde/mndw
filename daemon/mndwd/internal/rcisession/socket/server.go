@@ -15,9 +15,10 @@ import (
 )
 
 type Server struct {
-	path    string
-	config  Config
-	handler Handler
+	path         string
+	config       Config
+	handler      Handler
+	waitForRetry func(context.Context, time.Duration) bool
 
 	mu       sync.Mutex
 	listener net.Listener
@@ -36,7 +37,13 @@ func NewServer(path string, config Config, handler Handler) *Server {
 		config.Grants.CanRead = true
 	}
 
-	return &Server{path: path, config: config, handler: handler, conns: make(map[net.Conn]struct{})}
+	return &Server{
+		path:         path,
+		config:       config,
+		handler:      handler,
+		waitForRetry: waitForAcceptRetry,
+		conns:        make(map[net.Conn]struct{}),
+	}
 }
 
 func (s *Server) Grants() Grants {
@@ -157,17 +164,37 @@ func (s *Server) Close() error {
 func (s *Server) acceptLoop(ctx context.Context, listener net.Listener) {
 	defer s.wait.Done()
 
+	const initialRetryDelay = 5 * time.Millisecond
+	const maxRetryDelay = time.Second
+	retryDelay := initialRetryDelay
+
 	for {
 		connection, err := listener.Accept()
 		if err != nil {
-			select {
-			case <-ctx.Done():
+			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
 				return
-			default:
+			}
+
+			waitForRetry := s.waitForRetry
+
+			if waitForRetry == nil {
+				waitForRetry = waitForAcceptRetry
+			}
+
+			if !waitForRetry(ctx, retryDelay) {
+				return
+			}
+
+			retryDelay *= 2
+
+			if retryDelay > maxRetryDelay {
+				retryDelay = maxRetryDelay
 			}
 
 			continue
 		}
+
+		retryDelay = initialRetryDelay
 
 		s.mu.Lock()
 
@@ -220,6 +247,19 @@ func (s *Server) acceptLoop(ctx context.Context, listener net.Listener) {
 
 			s.config.Logger.Debug("persistent RCI socket connection ended", "plugin", s.config.PluginID, "reason", "closed")
 		}()
+	}
+}
+
+func waitForAcceptRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

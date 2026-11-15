@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -129,6 +130,125 @@ func TestServerClosesConnectionAcceptedDuringShutdown(t *testing.T) {
 		t.Fatal("late-accepted connection remained open after Server.Close()")
 	}
 }
+
+func TestAcceptLoopBackoffGrowsCapsAndResetsAfterAccept(t *testing.T) {
+	results := make([]acceptResult, 0, 13)
+	acceptErr := errors.New("temporary accept failure")
+
+	for range 10 {
+		results = append(results, acceptResult{err: acceptErr})
+	}
+
+	client, peer := net.Pipe()
+	_ = client.Close()
+	results = append(results,
+		acceptResult{connection: peer},
+		acceptResult{err: acceptErr},
+		acceptResult{err: net.ErrClosed},
+	)
+	listener := &scriptedListener{results: results}
+	server := NewServer("", Config{PluginID: "test", Allowed: true}, &fakeHandler{})
+	delays := make([]time.Duration, 0, 11)
+	server.waitForRetry = func(_ context.Context, delay time.Duration) bool {
+		delays = append(delays, delay)
+
+		return true
+	}
+
+	server.wait.Add(1)
+	server.acceptLoop(context.Background(), listener)
+	server.wait.Wait()
+
+	want := []time.Duration{5, 10, 20, 40, 80, 160, 320, 640, 1000, 1000, 5}
+
+	for index := range want {
+		want[index] *= time.Millisecond
+	}
+
+	if !reflect.DeepEqual(delays, want) {
+		t.Fatalf("retry delays = %v, want %v", delays, want)
+	}
+}
+
+func TestAcceptLoopStopsOnClosedListenerWithoutRetry(t *testing.T) {
+	server := NewServer("", Config{PluginID: "test", Allowed: true}, &fakeHandler{})
+	retried := false
+	server.waitForRetry = func(context.Context, time.Duration) bool {
+		retried = true
+
+		return true
+	}
+
+	server.wait.Add(1)
+	server.acceptLoop(context.Background(), &scriptedListener{results: []acceptResult{{err: net.ErrClosed}}})
+	server.wait.Wait()
+
+	if retried {
+		t.Fatal("accept loop retried a closed listener")
+	}
+}
+
+func TestAcceptLoopRetryWaitStopsOnContextCancellation(t *testing.T) {
+	server := NewServer("", Config{PluginID: "test", Allowed: true}, &fakeHandler{})
+	retryStarted := make(chan struct{})
+	var retrySignal sync.Once
+	server.waitForRetry = func(ctx context.Context, _ time.Duration) bool {
+		retrySignal.Do(func() { close(retryStarted) })
+
+		return waitForAcceptRetry(ctx, time.Hour)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	listener := &scriptedListener{repeatErr: errors.New("persistent accept failure")}
+
+	server.wait.Add(1)
+
+	done := make(chan struct{})
+
+	go func() {
+		server.acceptLoop(ctx, listener)
+		close(done)
+	}()
+
+	<-retryStarted
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("accept retry wait did not stop promptly after cancellation")
+	}
+
+	server.wait.Wait()
+}
+
+type acceptResult struct {
+	connection net.Conn
+	err        error
+}
+
+type scriptedListener struct {
+	results   []acceptResult
+	repeatErr error
+	index     int
+}
+
+func (l *scriptedListener) Accept() (net.Conn, error) {
+	if l.index < len(l.results) {
+		result := l.results[l.index]
+		l.index++
+
+		return result.connection, result.err
+	}
+
+	if l.repeatErr != nil {
+		return nil, l.repeatErr
+	}
+
+	return nil, net.ErrClosed
+}
+
+func (*scriptedListener) Close() error   { return nil }
+func (*scriptedListener) Addr() net.Addr { return lateAcceptAddr("scripted") }
 
 func TestServerCloseUnlinksBeforeBoundedDrain(t *testing.T) {
 	path := shortSocketPath(t)

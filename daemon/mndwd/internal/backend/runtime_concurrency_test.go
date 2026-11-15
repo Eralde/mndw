@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"mndwd/internal/registry"
+	"mndwd/internal/state"
 )
 
 func TestLifecycleRunsForDifferentPluginsDoNotSerialize(t *testing.T) {
@@ -57,6 +58,249 @@ func TestReconcileStartupFailureTerminalizes(t *testing.T) {
 
 	if got := runtime.Status(plugin.Name).State; got != StateBackoff {
 		t.Fatalf("failed startup state = %q, want backoff", got)
+	}
+}
+
+func TestReconcileAdmitsBuiltinsBeforeUserServices(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		Limits:      Limits{MaxSupervisedServices: 3},
+	})
+
+	plugins := []*registry.Plugin{
+		testServicePlugin(t, "user-c", nil, "backend/missing", true),
+		testServicePlugin(t, "builtin-z", nil, "backend/missing", true),
+		testServicePlugin(t, "user-a", nil, "backend/missing", true),
+		testServicePlugin(t, "builtin-a", nil, "backend/missing", true),
+		testServicePlugin(t, "user-b", nil, "backend/missing", true),
+	}
+
+	for _, plugin := range plugins {
+		if plugin.Name == "builtin-a" || plugin.Name == "builtin-z" {
+			plugin.Source = state.SourceBuiltin
+		}
+	}
+
+	runtime.Reconcile(context.Background(), plugins)
+
+	for _, pluginID := range []string{"builtin-a", "builtin-z", "user-a"} {
+		waitForLifecycleAttempt(t, runtime, pluginID)
+
+		if got := runtime.Status(pluginID).State; got != StateBackoff {
+			t.Errorf("%s state = %q, want %q", pluginID, got, StateBackoff)
+		}
+	}
+
+	for _, pluginID := range []string{"user-b", "user-c"} {
+		if got := runtime.Status(pluginID).State; got != StateCapacityBlocked {
+			t.Errorf("%s state = %q, want %q", pluginID, got, StateCapacityBlocked)
+		}
+	}
+
+	if got := runtime.Limits().ReservedServices; got != 3 {
+		t.Fatalf("reserved service slots = %d, want 3", got)
+	}
+}
+
+func TestLifecycleReleasesReservationWhenStartupDoesNotLaunch(t *testing.T) {
+	t.Run("initially admitted", func(t *testing.T) {
+		runtime := NewRuntime(RuntimeConfig{
+			RuntimeRoot: t.TempDir(),
+			Limits:      Limits{MaxSupervisedServices: 1},
+		})
+		plugin := testServicePlugin(t, "never-started", nil, "backend/missing", true)
+		spec, ok := runtime.serviceSpec(plugin)
+
+		if !ok {
+			t.Fatal("service plugin did not produce a spec")
+		}
+
+		plan := runtime.supervisor.Reconcile(context.Background(), []ServiceSpec{spec})
+
+		if len(plan.startIDs) != 1 || plan.startIDs[0] != plugin.Name {
+			t.Fatalf("start IDs = %#v, want [%q]", plan.startIDs, plugin.Name)
+		}
+
+		if got := runtime.Limits().ReservedServices; got != 1 {
+			t.Fatalf("reserved services before lifecycle = %d, want 1", got)
+		}
+
+		outcome := runtime.supervisor.beginDesiredStartup(spec)
+
+		if outcome.conflict {
+			t.Fatal("desired startup conflicted")
+		}
+
+		if err := runtime.executeLifecycleOutcome(plugin.Name, OpStarting,
+			func(context.Context, LifecycleControl) error { return nil }, outcome); err != nil {
+			t.Fatalf("startup lifecycle = %v", err)
+		}
+
+		if got := runtime.Limits().ReservedServices; got != 0 {
+			t.Fatalf("reserved services after unused startup = %d, want 0", got)
+		}
+
+		if got := runtime.Status(plugin.Name).State; got != StateStopped {
+			t.Fatalf("service state after unused startup = %q, want stopped", got)
+		}
+	})
+
+	t.Run("promoted service releases its slot for the next waiter", func(t *testing.T) {
+		runtime := NewRuntime(RuntimeConfig{
+			RuntimeRoot: t.TempDir(),
+			Limits:      Limits{MaxSupervisedServices: 1},
+		})
+		runtime.supervisor.startDesired = func(ServiceSpec) {}
+
+		specs := []ServiceSpec{enabledSpec("first"), enabledSpec("second"), enabledSpec("third")}
+		plan := runtime.supervisor.Reconcile(context.Background(), specs)
+
+		if len(plan.startIDs) != 1 || plan.startIDs[0] != "first" {
+			t.Fatalf("initial start IDs = %#v, want [first]", plan.startIDs)
+		}
+
+		for _, pluginID := range []string{"second", "third"} {
+			if got := runtime.Status(pluginID).State; got != StateCapacityBlocked {
+				t.Fatalf("%s initial state = %q, want %q", pluginID, got, StateCapacityBlocked)
+			}
+		}
+
+		if err := runtime.supervisor.stopRecord(context.Background(), "first"); err != nil {
+			t.Fatalf("release first service slot: %v", err)
+		}
+
+		secondSpec := enabledSpec("second")
+		outcome := runtime.supervisor.beginDesiredStartup(secondSpec)
+
+		if outcome.conflict {
+			t.Fatal("promoted startup conflicted")
+		}
+
+		if err := runtime.executeLifecycleOutcome("second", OpStarting,
+			func(context.Context, LifecycleControl) error { return nil }, outcome); err != nil {
+			t.Fatalf("promoted startup lifecycle = %v", err)
+		}
+
+		if got := runtime.Status("second").State; got != StateStopped {
+			t.Fatalf("unused promoted service state = %q, want stopped", got)
+		}
+
+		if got := runtime.Status("third").State; got != StateCapacityBlocked {
+			t.Fatalf("next promoted service state = %q, want %q", got, StateCapacityBlocked)
+		}
+
+		if got := runtime.Limits().ReservedServices; got != 1 {
+			t.Fatalf("reserved services after next promotion = %d, want 1", got)
+		}
+	})
+}
+
+func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		Limits:      Limits{MaxSupervisedServices: 2},
+	})
+	runtime.supervisor.startDesired = nil
+
+	specs := []ServiceSpec{
+		enabledSpec("service-a"),
+		enabledSpec("service-b"),
+		enabledSpec("service-c"),
+		enabledSpec("service-d"),
+	}
+	plan := runtime.supervisor.Reconcile(context.Background(), specs)
+
+	if len(plan.startIDs) != 2 || plan.startIDs[0] != "service-a" || plan.startIDs[1] != "service-b" {
+		t.Fatalf("initial start IDs = %#v, want [service-a service-b]", plan.startIDs)
+	}
+
+	for _, pluginID := range []string{"service-a", "service-b"} {
+		if err := runtime.supervisor.stopRecord(context.Background(), pluginID); err != nil {
+			t.Fatalf("release %s service slot: %v", pluginID, err)
+		}
+	}
+
+	firstStartupEntered := make(chan struct{})
+	releaseFirstStartup := make(chan struct{})
+	promotedDone := make(chan struct{})
+	queuedStartPlan := make(chan startPlan, 1)
+	runtime.supervisor.startDesired = func(spec ServiceSpec) {
+		if spec.PluginID == "service-c" {
+			close(firstStartupEntered)
+			<-releaseFirstStartup
+
+			return
+		}
+
+		queuedStartPlan <- runtime.supervisor.planStart(spec, RuntimePaths{})
+	}
+
+	go func() {
+		runtime.supervisor.promoteBlocked()
+		close(promotedDone)
+	}()
+
+	defer func() {
+		select {
+		case <-releaseFirstStartup:
+		default:
+			close(releaseFirstStartup)
+		}
+
+		select {
+		case <-promotedDone:
+		case <-time.After(time.Second):
+			t.Error("blocked service promotion did not finish")
+		}
+	}()
+
+	select {
+	case <-firstStartupEntered:
+	case <-time.After(time.Second):
+		t.Fatal("first promoted startup did not reach its wait point")
+	}
+
+	runtime.supervisor.Reconcile(context.Background(), specs)
+
+	fourth := testServicePlugin(t, "service-d", nil, "backend/missing", true)
+	gateway := &Gateway{runtime: runtime, traffic: runtime.Traffic(), activationGates: runtime.activationGates}
+	status := gateway.projectBackendStatus(fourth, runtime.Now())
+
+	if got := runtime.Status("service-d").State; got != StateCapacityBlocked {
+		t.Fatalf("queued promoted service runtime state = %q, want %q", got, StateCapacityBlocked)
+	}
+
+	if status.State != "starting" {
+		t.Fatalf("queued promoted service public state = %q, want starting", status.State)
+	}
+
+	if got := runtime.Limits().ReservedServices; got != 2 {
+		t.Fatalf("reserved slots while second startup is queued = %d, want 2", got)
+	}
+
+	close(releaseFirstStartup)
+
+	select {
+	case <-promotedDone:
+	case <-time.After(time.Second):
+		t.Fatal("queued promoted startup did not run after first startup was released")
+	}
+
+	select {
+	case queuedPlan := <-queuedStartPlan:
+		if queuedPlan.action != startProceed {
+			t.Fatalf("queued promoted start action = %v, want startProceed", queuedPlan.action)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("queued promoted startup did not produce a start plan")
+	}
+
+	if got := runtime.Limits().ReservedServices; got != 2 {
+		t.Fatalf("reserved slots after queued start planning = %d, want 2", got)
+	}
+
+	if got := runtime.Status("service-d").State; got != StateStarting {
+		t.Fatalf("queued promoted service state after planning = %q, want %q", got, StateStarting)
 	}
 }
 

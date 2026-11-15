@@ -66,17 +66,14 @@ type Config struct {
 	HTTPIdleTimeout            time.Duration
 	ServiceHTTPTimeout         time.Duration
 	HTTPDrainTimeout           time.Duration
-	WebSocketCloseTimeout      time.Duration
 	ServiceStopTimeout         time.Duration
 	FinalReapTimeout           time.Duration
-	InitWaitTimeout            time.Duration
 	MaxRequestBytes            int64
 	MaxOutputBytes             int64
 	BodyIntakeLimit            int
 	MaxConcurrentExecTotal     int
 	MaxConcurrentExecPerPlugin int
 	MaxSupervisedServices      int
-	SupportedServiceProtocols  []int
 
 	// Persistent RCI session limits.
 	RCIEnumerationTTL        time.Duration
@@ -197,10 +194,8 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.DurationVar(&cfg.HTTPIdleTimeout, "http-idle-timeout", 120*time.Second, "keep-alive idle connection timeout")
 	fs.DurationVar(&cfg.ServiceHTTPTimeout, "service-http-timeout", 30*time.Second, "service backend HTTP timeout")
 	fs.DurationVar(&cfg.HTTPDrainTimeout, "http-drain-timeout", 35*time.Second, "HTTP drain timeout during maintenance")
-	fs.DurationVar(&cfg.WebSocketCloseTimeout, "websocket-close-timeout", 2*time.Second, "WebSocket maintenance close grace")
 	fs.DurationVar(&cfg.ServiceStopTimeout, "service-stop-timeout", 15*time.Second, "service process group stop timeout")
 	fs.DurationVar(&cfg.FinalReapTimeout, "final-reap-timeout", 2*time.Second, "final process group reap timeout")
-	fs.DurationVar(&cfg.InitWaitTimeout, "init-wait-timeout", 60*time.Second, "init readiness wait timeout")
 	fs.Int64Var(&cfg.MaxRequestBytes, "max-request-bytes", 1<<20, "max backend request body size in bytes")
 	fs.Int64Var(&cfg.MaxOutputBytes, "max-output-bytes", backend.DefaultMaxOutputBytes, "max backend exec response size in bytes")
 	fs.IntVar(&cfg.BodyIntakeLimit, "body-intake-limit", 16, "max request bodies buffered concurrently")
@@ -307,8 +302,6 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 		return cfg, false, err
 	}
 
-	cfg.SupportedServiceProtocols = []int{1}
-
 	return cfg, false, nil
 }
 
@@ -358,10 +351,8 @@ func validateBackendConfig(cfg Config) error {
 		{"http-idle-timeout", cfg.HTTPIdleTimeout},
 		{"service-http-timeout", cfg.ServiceHTTPTimeout},
 		{"http-drain-timeout", cfg.HTTPDrainTimeout},
-		{"websocket-close-timeout", cfg.WebSocketCloseTimeout},
 		{"service-stop-timeout", cfg.ServiceStopTimeout},
 		{"final-reap-timeout", cfg.FinalReapTimeout},
-		{"init-wait-timeout", cfg.InitWaitTimeout},
 	} {
 		if item.value <= 0 {
 			return fmt.Errorf("--%s must be positive", item.name)

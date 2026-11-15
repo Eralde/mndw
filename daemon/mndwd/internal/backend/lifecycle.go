@@ -99,6 +99,11 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 
 	control := &lifecycleControl{runtime: r, run: outcome.run}
 	err := r.runLifecycleWork(outcome.run, control, work)
+
+	if r.supervisor.releaseUnstartedReservation(outcome.run) {
+		r.supervisor.promoteBlocked()
+	}
+
 	var lifecycleEvent *LifecycleEvent
 
 	r.supervisor.withLock(func() {

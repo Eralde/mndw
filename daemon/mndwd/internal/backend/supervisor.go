@@ -61,13 +61,14 @@ type Supervisor struct {
 }
 
 type serviceRecord struct {
-	spec        ServiceSpec
-	paths       RuntimePaths
-	status      RuntimeStatus
-	reservation *Reservation
-	command     *exec.Cmd
-	done        *processExit
-	stderr      *StderrRing
+	spec               ServiceSpec
+	paths              RuntimePaths
+	status             RuntimeStatus
+	reservation        *Reservation
+	reservationPending bool
+	command            *exec.Cmd
+	done               *processExit
+	stderr             *StderrRing
 }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
@@ -289,15 +290,17 @@ func (s *Supervisor) Reconcile(_ context.Context, specs []ServiceSpec) reconcile
 		service := s.services[spec.PluginID]
 
 		if transitionRecord.intent == IntentStop {
-			if service != nil && service.status.State != StateStopped {
+			if service != nil && (service.status.State != StateStopped || service.reservation != nil) {
 				plan.stopIDs = append(plan.stopIDs, spec.PluginID)
 			}
 
 			continue
 		}
 
-		if service == nil || service.status.State == StateStopped || !service.spec.Equal(spec) {
-			plan.startIDs = append(plan.startIDs, spec.PluginID)
+		if service == nil || service.status.State == StateStopped || service.status.State == StateCapacityBlocked || !service.spec.Equal(spec) {
+			if s.reserveForReconcileLocked(spec) {
+				plan.startIDs = append(plan.startIDs, spec.PluginID)
+			}
 		}
 	}
 
@@ -324,11 +327,61 @@ func (s *Supervisor) Reconcile(_ context.Context, specs []ServiceSpec) reconcile
 		plan.removeIDs = append(plan.removeIDs, pluginID)
 	}
 
-	sort.Strings(plan.startIDs)
 	sort.Strings(plan.stopIDs)
 	sort.Strings(plan.removeIDs)
 
 	return plan
+}
+
+// reserveForReconcileLocked makes service admission follow the sorted Reconcile order.
+// The returned candidate already owns its slot before Runtime launches startup work.
+func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
+	record := s.services[spec.PluginID]
+
+	if record == nil {
+		record = &serviceRecord{spec: spec, status: RuntimeStatus{State: StateStopped}}
+		s.services[spec.PluginID] = record
+	} else if record.command == nil && (record.status.State == StateStopped || record.status.State == StateCapacityBlocked) {
+		// No process is using the old spec, so a pre-launch update can safely
+		// replace the record spec without forcing a stop/re-reserve cycle.
+		record.spec = spec
+	}
+
+	compatible := s.supportedProtocol(spec.ProtocolVersion)
+
+	if !compatible {
+		if record.status.State == StateCapacityBlocked {
+			record.status.State = StateStopped
+			record.status.NextAttemptAt = nil
+		}
+
+		return true
+	}
+
+	if record.reservation != nil {
+		if record.status.State == StateCapacityBlocked {
+			record.reservationPending = record.command == nil
+		}
+
+		return true
+	}
+
+	reservation, admitted := s.admission.TryReserveService(spec.PluginID)
+
+	if !admitted {
+		record.status.State = StateCapacityBlocked
+		record.status.NextAttemptAt = nil
+		record.status.RequiredProtocol = spec.ProtocolVersion
+		record.status.SupportedProtocols = append([]int(nil), s.cfg.SupportedProtocols...)
+		record.status.Compatible = &compatible
+
+		return false
+	}
+
+	record.reservation = reservation
+	record.reservationPending = record.status.State == StateStopped || record.status.State == StateCapacityBlocked
+
+	return true
 }
 
 type startAction int
@@ -416,6 +469,8 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 	if record.status.State == StateBackoff && record.status.NextAttemptAt != nil && now.Before(*record.status.NextAttemptAt) {
 		return startPlan{action: startNoop, err: fmt.Errorf("service is in backoff until %s", record.status.NextAttemptAt.Format(time.RFC3339))}
 	}
+
+	record.reservationPending = false
 
 	if record.reservation == nil {
 		reservation, admitted := s.admission.TryReserveService(spec.PluginID)
@@ -793,6 +848,39 @@ func (s *Supervisor) stopRecord(ctx context.Context, pluginID string) error {
 	return s.stopProcess(ctx, pluginID, true)
 }
 
+func (s *Supervisor) releaseUnstartedReservation(run *operationRun) bool {
+	var reservation *Reservation
+
+	s.withLock(func() {
+		if !s.coord.isCurrent(run) {
+			return
+		}
+
+		record := s.services[run.name]
+
+		if record == nil || record.command != nil || !record.reservationPending || record.reservation == nil {
+			return
+		}
+
+		reservation = record.reservation
+		record.reservation = nil
+		record.reservationPending = false
+
+		if record.status.State == StateCapacityBlocked {
+			record.status.State = StateStopped
+			record.status.NextAttemptAt = nil
+		}
+	})
+
+	if reservation == nil {
+		return false
+	}
+
+	reservation.Release()
+
+	return true
+}
+
 func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseReservation bool) error {
 	s.mu.Lock()
 
@@ -809,6 +897,7 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 
 	if releaseReservation {
 		record.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
+		record.reservationPending = false
 	}
 
 	record.command = nil
@@ -852,6 +941,12 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 func (s *Supervisor) promoteBlocked() {
 	s.mu.Lock()
 
+	if s.startDesired == nil {
+		s.mu.Unlock()
+
+		return
+	}
+
 	blocked := make([]ServiceSpec, 0)
 
 	for pluginID, spec := range s.desired {
@@ -865,10 +960,30 @@ func (s *Supervisor) promoteBlocked() {
 		return lessServiceSpec(blocked[left], blocked[right])
 	})
 
+	admitted := make([]ServiceSpec, 0, len(blocked))
+
+	s.mu.Lock()
+
 	for _, spec := range blocked {
-		if s.startDesired != nil {
-			s.startDesired(spec)
+		desired, exists := s.desired[spec.PluginID]
+		record := s.services[spec.PluginID]
+		transitionRecord := s.coord.records[spec.PluginID]
+
+		if !exists || !desired.Equal(spec) || record == nil || record.reservation != nil ||
+			record.status.State != StateCapacityBlocked || transitionRecord == nil ||
+			transitionRecord.operation != OpNone || transitionRecord.intent != IntentRun {
+			continue
 		}
+
+		if s.reserveForReconcileLocked(spec) {
+			admitted = append(admitted, spec)
+		}
+	}
+
+	s.mu.Unlock()
+
+	for _, spec := range admitted {
+		s.startDesired(spec)
 	}
 }
 

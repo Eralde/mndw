@@ -82,6 +82,20 @@ async function selectValue(select: ReturnType<Page['locator']>): Promise<string>
   return select.evaluate((element) => (element as HTMLElement & {value?: string}).value ?? '');
 }
 
+async function expectActiveOption(listbox: Locator, option: Locator): Promise<void> {
+  await expect(option).toHaveAttribute('id', /.+/);
+
+  const optionId = await option.getAttribute('id');
+
+  await expect(listbox).toHaveAttribute('aria-activedescendant', optionId ?? '');
+  await expect(option).toHaveAttribute('data-active', 'true');
+}
+
+async function expectSelectedOption(panel: Locator, option: Locator): Promise<void> {
+  await expect(option).toHaveAttribute('aria-selected', 'true');
+  await expect(panel.getByRole('option', {selected: true})).toHaveCount(1);
+}
+
 async function forceReviewHover(page: Page): Promise<void> {
   const session = await page.context().newCDPSession(page);
 
@@ -675,7 +689,8 @@ test('select follows select-only combobox keyboard behavior', async ({page}) => 
   await expect(panel).toBeVisible();
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   await expect(listbox).toBeFocused();
-  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(0));
+  await expectSelectedOption(panel, options.nth(0));
 
   const hasActiveOptionInListboxShadowRoot = await listbox.evaluate((element) => {
     const activeId = element.getAttribute('aria-activedescendant');
@@ -694,30 +709,33 @@ test('select follows select-only combobox keyboard behavior', async ({page}) => 
 
   // The listbox owns DOM focus and exposes its active option by ID.
   await page.keyboard.press('ArrowDown');
-  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(1));
+  await expectSelectedOption(panel, options.nth(0));
   await page.keyboard.press('ArrowDown');
-  await expect(options.nth(2)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(2));
+  await expectSelectedOption(panel, options.nth(0));
   await page.keyboard.press('ArrowDown');
-  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(4));
+  await expectSelectedOption(panel, options.nth(0));
   await page.keyboard.press('ArrowDown');
-  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(4));
   await page.keyboard.press('ArrowUp');
-  await expect(options.nth(2)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(2));
   await page.keyboard.press('Home');
-  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(0));
   await page.keyboard.press('End');
-  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(4));
   await page.keyboard.press('PageUp');
-  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(0));
   await page.keyboard.press('PageDown');
-  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(4));
   await page.keyboard.press('Home');
-  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(0));
   await page.keyboard.press('g');
-  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(1));
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('g');
-  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(1));
   await expect(listbox).toBeFocused();
 
   // Escape closes without committing the active item.
@@ -730,28 +748,34 @@ test('select follows select-only combobox keyboard behavior', async ({page}) => 
 
   // Closed Home/End open on their edge options; Enter commits.
   await page.keyboard.press('Home');
-  await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(0));
+  await expectSelectedOption(panel, options.nth(0));
   await page.keyboard.press('Enter');
   await expect.poll(() => selectValue(select)).toBe('lan');
   await expect(panel).toBeHidden();
 
   await page.keyboard.press('End');
-  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(4));
+  await expectSelectedOption(panel, options.nth(0));
   await page.keyboard.press(' ');
   await expect.poll(() => selectValue(select)).toBe('iot');
   await expect(panel).toBeHidden();
 
   // Closed Up and Alt+Down open; Alt+Up commits and closes.
   await page.keyboard.press('ArrowUp');
-  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(4));
+  await expectSelectedOption(panel, options.nth(4));
   await page.keyboard.press('ArrowUp');
-  await expect(options.nth(2)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(2));
+  await expectSelectedOption(panel, options.nth(4));
   await page.keyboard.press('Alt+ArrowUp');
   await expect.poll(() => selectValue(select)).toBe('gateway');
   await expect(panel).toBeHidden();
 
   await page.keyboard.press('Alt+ArrowDown');
   await expect(panel).toBeVisible();
+  await expectActiveOption(listbox, options.nth(2));
+  await expectSelectedOption(panel, options.nth(2));
   await page.keyboard.press('Tab');
   await expect.poll(() => selectValue(select)).toBe('gateway');
   await expect(panel).toBeHidden();
@@ -761,19 +785,21 @@ test('select follows select-only combobox keyboard behavior', async ({page}) => 
   await trigger.focus();
   await page.keyboard.press('i');
   await expect(panel).toBeVisible();
-  await expect(options.nth(4)).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(listbox, options.nth(4));
+  await expectSelectedOption(panel, options.nth(2));
   await page.keyboard.press('Escape');
   await expect.poll(() => selectValue(select)).toBe('gateway');
 
   // Repeated letters cycle through matching labels.
   const addressSelect = page.locator('.ui-demo__preview mndw-select').nth(1);
   const addressPanel = page.locator('mndw-select-panel');
+  const addressListbox = addressPanel.getByRole('listbox');
 
   await addressSelect.locator('button[part="trigger"]').focus();
   await page.keyboard.press('i');
-  await expect(addressPanel.getByRole('option', {name: 'IPv6'})).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(addressListbox, addressPanel.getByRole('option', {name: 'IPv6'}));
   await page.keyboard.press('i');
-  await expect(addressPanel.getByRole('option', {name: 'IPv4'})).toHaveAttribute('aria-selected', 'true');
+  await expectActiveOption(addressListbox, addressPanel.getByRole('option', {name: 'IPv4'}));
   await page.keyboard.press('Escape');
 
   // Pointer selection commits; an outside click only dismisses.

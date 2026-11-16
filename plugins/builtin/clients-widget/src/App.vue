@@ -228,7 +228,6 @@ onUnmounted(() => {
   <div class="clients-widget" :class="{'clients-widget--stale': stale}">
     <header class="clients-widget__header mndw-table-controls">
       <span>{{ headerLabel }}</span>
-      <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
       <mndw-checkbox
         class="clients-widget__toggle"
         :checked="showOffline"

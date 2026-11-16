@@ -35,10 +35,8 @@ function clickButton(host: HTMLElement, label: RegExp): void {
 
 function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
   const messages = {
-    en: {'action.router-cli': 'Router CLI', 'action.entware-shell': 'Entware Shell',
-      'l10n': {probe: 'Terminal English'}},
-    ru: {'action.router-cli': 'CLI роутера', 'action.entware-shell': 'Оболочка Entware',
-      'l10n': {probe: 'Терминал русский'}},
+    en: {'action.router-cli': 'Router CLI', 'action.entware-shell': 'Entware Shell'},
+    ru: {'action.router-cli': 'CLI роутера', 'action.entware-shell': 'Оболочка Entware'},
   };
   const i18n = createTestI18n(messages.en);
 
@@ -81,23 +79,12 @@ describe('TerminalPage (dev path)', () => {
 
     flushSync();
     expect(host.textContent).toContain('Router CLI');
-
-    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
-
-    expect(probe).not.toBeNull();
-    expect(probe?.hidden).toBe(true);
-
-    const enValue = probe?.textContent;
-
-    expect(enValue).toBe('Terminal English');
+    expect(host.querySelectorAll('mndw-button')[0]?.textContent).toContain('Router CLI');
 
     changing.setLocale('ru');
     flushSync();
 
-    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(enValue).not.toBe('Терминал русский');
-    expect(probe?.textContent).toBe('Терминал русский');
-    expect(host.textContent).toContain('CLI роутера');
+    expect(host.querySelectorAll('mndw-button')[0]?.textContent).toContain('CLI роутера');
 
     void unmount(app);
     host.remove();

@@ -86,10 +86,6 @@ onMount(() => {
 </script>
 
 <section class="logger">
-  <span
-    hidden
-    data-testid="l10n-probe"
-  >{$translator.t('l10n.probe')}</span>
   {#if !events}
     <p>{$translator.t('unavailable')}</p>
   {:else}
@@ -120,7 +116,7 @@ onMount(() => {
     <div
       class="entries"
       role="region"
-      aria-label={$translator.t('l10n.probe')}
+      aria-label={$translator.t('entries')}
     >
       {#each visible as row (row.key)}
         {#if row.event}

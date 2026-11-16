@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "Device info English probe"
-  },
   "title": "Device Info",
   "loading": "Loading…",
   "error": "Failed to load device info",

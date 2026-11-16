@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "Terminal English probe"
-  },
   "title": "Terminal",
   "action": {
     "router-cli": "Router CLI",

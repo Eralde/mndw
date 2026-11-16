@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "Traffic English probe"
-  },
   "title": "Device Traffic Monitor",
   "action": {
     "retry": "Retry",

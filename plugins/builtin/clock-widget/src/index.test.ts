@@ -37,20 +37,18 @@ describe('createInstance', () => {
     expect(host.innerHTML).toBe('');
   });
 
-  it('updates the same probe and time surface after a locale switch', () => {
+  it('updates the visible clock and accessible label after a locale switch', () => {
     const host = document.createElement('div');
-    const i18n = createTestI18n({title: 'Clock EN', l10n: {probe: 'Clock English'}});
+    const i18n = createTestI18n({title: 'Clock EN'});
     const fixture = createTestPluginContext({i18n});
     const instance = createInstance(host, fixture.context);
-    const probe = host.querySelector('[data-testid="l10n-probe"]');
     const time = host.querySelector('[data-mndw-clock]');
 
-    expect(probe?.textContent).toBe('Clock English');
-    i18n.setLocale('ru', {title: 'Часы RU', l10n: {probe: 'Часы русский'}});
+    expect(time?.textContent).toBe(i18n.formatDate(new Date(), {timeStyle: 'medium'}));
+    i18n.setLocale('ru', {title: 'Часы RU'});
 
-    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe('Часы русский');
     expect(host.querySelector('[data-mndw-clock]')).toBe(time);
+    expect(time?.textContent).toBe(i18n.formatDate(new Date(), {timeStyle: 'medium'}));
     expect(time?.getAttribute('aria-label')).toBe('Часы RU');
     instance.unmount();
   });

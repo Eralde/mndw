@@ -189,7 +189,8 @@ describe('planCreate', () => {
     const css = fileContents(plan, 'src/index.css');
 
     expect(index).toContain('@mndw/sdk');
-    expect(index).toContain('My Widget');
+    expect(index).toContain('mndw-my-widget');
+    expect(index).not.toContain('l10n-probe');
     expect(index).not.toContain('__MNDW_');
     expect(css).toContain('var(--mndw-');
     expect(css).not.toContain('__MNDW_');
@@ -233,7 +234,7 @@ describe('planCreate', () => {
   it('renders a vue plugin with an App.vue component and env shim', () => {
     const plan = planCreate(options({name: 'vw', framework: 'vue', type: 'widget'}));
 
-    expect(fileContents(plan, 'src/App.vue')).toContain('Vw');
+    expect(fileContents(plan, 'src/App.vue')).toContain('translator.t(\'l10n.result\')');
     expect(fileContents(plan, 'src/App.vue')).not.toContain('__MNDW_LABEL__');
     expect(fileContents(plan, 'src/index.ts')).toContain('App.vue');
     expect(fileContents(plan, 'src/env.d.ts')).toContain('declare module \'*.vue\'');
@@ -243,7 +244,8 @@ describe('planCreate', () => {
     const plan = planCreate(options({name: 'ng', framework: 'angular', type: 'widget'}));
     const app = fileContents(plan, 'src/app.component.ts');
 
-    expect(app).toContain('Ng');
+    expect(app).toContain('translator.t(\'l10n.button\')');
+    expect(app).toContain('translator.t(\'l10n.result\')');
     expect(app).toContain('padding:var(--mndw-space-4)');
     expect(app).not.toContain('padding:16px');
     expect(fileContents(plan, 'src/index.ts')).toContain('createAngularPluginInstance');

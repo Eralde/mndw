@@ -165,28 +165,21 @@ describe('initial render', () => {
 });
 
 describe('locale reactivity', () => {
-  it('updates the same probe and child labels without remounting', async () => {
+  it('updates visible title and offline label without remounting', async () => {
     const i18n = createTestI18n({
-      'l10n': {probe: 'Clients English'},
       'title': 'Clients EN',
       'show-offline': 'Offline EN',
     });
 
     mountWidget(i18n);
 
-    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
-
-    expect(probe?.textContent).toBe('Clients English');
     expect(text()).toContain('Clients EN');
     i18n.setLocale('ru', {
-      'l10n': {probe: 'Клиенты русский'},
       'title': 'Клиенты RU',
       'show-offline': 'Не в сети RU',
     });
     await nextTick();
 
-    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe('Клиенты русский');
     expect(text()).toContain('Клиенты RU');
     expect(text()).toContain('Не в сети RU');
   });

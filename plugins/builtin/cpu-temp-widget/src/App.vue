@@ -222,7 +222,6 @@ onUnmounted(() => {
       <span v-if="historyStatusLabel !== null" class="app__history-status" data-testid="history-status">
         {{ historyStatusLabel }}
       </span>
-      <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
     </header>
     <div class="range-scroll">
       <mndw-segmented :label="t('history-range')" :value.prop="selectedRange" @mndwchange="onRangeChange">

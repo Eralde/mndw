@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "Clients English probe"
-  },
   "title": "Clients",
   "show-offline": "Show offline",
   "settings": "Client settings",

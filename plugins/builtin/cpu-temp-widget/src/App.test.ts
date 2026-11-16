@@ -88,7 +88,6 @@ function mountApp(overrides: {telemetry?: Partial<PluginTelemetry>} = {}): TestP
   fixture = createTestPluginContext({
     i18n: createTestI18n({
       'title': 'CPU Temperature',
-      'l10n.probe': 'l10n-ok',
       'loading': 'Loading…',
       'empty': 'Gathering data…',
       'error': 'Error',
@@ -570,9 +569,16 @@ describe('App', () => {
     expect(host.querySelector<HTMLAnchorElement>('.telemetry-note a')?.getAttribute('href')).toBe('/settings/general');
   });
 
-  it('renders l10n probe span', () => {
+  it('updates the visible title after a locale switch', async () => {
     mountApp();
 
-    expect(host.querySelector('[data-testid="l10n-probe"]')).not.toBeNull();
+    const title = host.querySelector('.app__header > span');
+
+    expect(title?.textContent).toBe('CPU Temperature');
+
+    fixture?.context.i18n.setLocale('ru', {title: 'Температура CPU'});
+    await nextTick();
+
+    expect(title?.textContent).toBe('Температура CPU');
   });
 });

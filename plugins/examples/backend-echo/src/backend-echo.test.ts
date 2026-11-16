@@ -127,8 +127,7 @@ describe('mountEchoWidget', () => {
   });
 
   it('updates controls and result surface without remounting', () => {
-    const i18n = createTestI18n({l10n: {probe: 'Echo English'}, status: 'Status EN', get: 'Get EN', post: 'Post EN',
-      idle: 'Idle EN'});
+    const i18n = createTestI18n({status: 'Status EN', get: 'Get EN', post: 'Post EN', idle: 'Idle EN'});
     const el = container();
 
     mountEchoWidget(el, undefined, i18n);
@@ -137,15 +136,13 @@ describe('mountEchoWidget', () => {
     const get = el.querySelector<HTMLButtonElement>('.mndw-echo__get');
     const post = el.querySelector<HTMLButtonElement>('.mndw-echo__post');
     const result = el.querySelector<HTMLElement>('.mndw-echo__result');
-    const probe = el.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
 
-    expect(probe?.textContent).toBe('Echo English');
+    expect(input?.placeholder).toBe('Status EN');
+    expect(get?.textContent).toBe('Get EN');
+    expect(post?.textContent).toBe('Post EN');
     expect(result?.textContent).toContain('Idle EN');
-    i18n.setLocale('ru', {l10n: {probe: 'Эхо русский'}, status: 'Статус RU', get: 'Получить RU', post: 'Отправить RU',
-      idle: 'Простой RU'});
+    i18n.setLocale('ru', {status: 'Статус RU', get: 'Получить RU', post: 'Отправить RU', idle: 'Простой RU'});
 
-    expect(el.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe('Эхо русский');
     expect(input?.placeholder).toBe('Статус RU');
     expect(get?.textContent).toBe('Получить RU');
     expect(post?.textContent).toBe('Отправить RU');

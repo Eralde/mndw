@@ -92,15 +92,13 @@ function mountLogPage(target: HTMLElement, api: SystemLogApi): ReturnType<typeof
 function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
   const messages = {
     en: {
-      'title': 'System Log',
+      'action.download': 'Download log',
       'filter.label': 'Filters',
-      'l10n': {probe: 'System Log English'},
       'status': {connection: {connected: 'Connected'}},
     },
     ru: {
-      'title': 'Системный журнал',
+      'action.download': 'Скачать журнал',
       'filter.label': 'Фильтры',
-      'l10n': {probe: 'Системный журнал русский'},
       'status': {connection: {connected: 'Подключено'}},
     },
   };
@@ -175,25 +173,13 @@ describe('SystemLogPage lifecycle', () => {
     });
 
     flushSync();
-    expect(host.querySelector('h1')?.textContent).toBe('System Log English');
+    expect(host.querySelector('[data-download-log]')?.textContent).toContain('Download');
     expect(host.querySelector('[data-connection-status]')?.textContent).toContain('Connected');
-
-    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
-
-    expect(probe).not.toBeNull();
-    expect(probe?.hidden).toBe(true);
-
-    const enValue = probe?.textContent;
-
-    expect(enValue).toBe('System Log English');
 
     changing.setLocale('ru');
     flushSync();
 
-    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(enValue).not.toBe('Системный журнал русский');
-    expect(probe?.textContent).toBe('Системный журнал русский');
-    expect(host.querySelector('h1')?.textContent).toBe('Системный журнал русский');
+    expect(host.querySelector('[data-download-log]')?.textContent).toContain('Скачать журнал');
     expect(host.querySelector('[data-connection-status]')?.textContent).toContain('Подключено');
     expect(host.querySelector('[data-filter-panel]')?.textContent).toContain('Фильтры');
     void unmount(app);
@@ -227,7 +213,7 @@ describe('SystemLogPage lifecycle', () => {
     expect(header?.querySelector('[data-download-log]')).not.toBeNull();
     expect(header?.querySelector('[data-clear-log]')).not.toBeNull();
     expect(host.querySelector('.system-log-page > [data-filter-panel]')).toBeNull();
-    expect(host.querySelector('h1')?.textContent).toContain('System log English');
+    expect(host.querySelector('[data-download-log]')?.textContent).toContain('Download');
     expect(host.textContent).not.toMatch(/refresh/i);
 
     await unmount(app);

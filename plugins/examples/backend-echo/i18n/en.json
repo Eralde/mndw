@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "Echo English probe"
-  },
   "title": "Backend Echo",
   "status": "Status code",
   "get": "GET /echo",

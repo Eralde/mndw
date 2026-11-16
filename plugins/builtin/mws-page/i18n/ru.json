@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "Проба MWS"
-  },
   "title": "MWS",
   "summary": {
     "mock-data": "Тестовые данные: экстендеров — {extenders}, клиентов — {clients}",

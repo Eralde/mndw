@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "Traffic English probe"
-  },
   "title": "Network Traffic Monitor",
   "a11y": {
     "chart-label": "Interface traffic for {interface}"

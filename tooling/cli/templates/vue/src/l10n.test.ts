@@ -9,22 +9,20 @@ import App from './App.vue';
 const contextFor = (i18n: ReturnType<typeof createTestI18n>): PluginContext => createTestPluginContext({i18n}).context;
 
 describe('generated Vue locale reactivity', () => {
-  it('updates the same probe node without remounting', async () => {
-    const en = {l10n: {probe: 'English probe', result: 'English result'}};
-    const ru = {l10n: {probe: 'Русский probe', result: 'Русский результат'}};
+  it('updates visible result without remounting', async () => {
+    const en = {l10n: {result: 'English result'}};
+    const ru = {l10n: {result: 'Русский результат'}};
     const i18n = createTestI18n(en, 'en');
     const root = document.createElement('div');
     const app = createApp(App, {ctx: contextFor(i18n)});
     app.mount(root);
-    const probe = root.querySelector('[data-testid="l10n-probe"]');
+    const result = root.querySelector('.result');
 
-    expect(en.l10n.probe).not.toBe(ru.l10n.probe);
-    expect(probe?.textContent).toBe(en.l10n.probe);
+    expect(result?.textContent).toBe(en.l10n.result);
     i18n.setLocale('ru', ru);
     await nextTick();
 
-    expect(root.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe(ru.l10n.probe);
+    expect(result?.textContent).toBe(ru.l10n.result);
     app.unmount();
   });
 

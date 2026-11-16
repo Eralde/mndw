@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "DNS English probe"
-  },
   "title": "DNS Lookup",
   "hostname-label": "Hostname",
   "hostname-hint": "Example: google.com",

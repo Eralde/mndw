@@ -333,7 +333,6 @@ describe('createInstance', () => {
   it('updates controls and result surface without remounting', () => {
     const container = document.createElement('div');
     const i18n = createTestI18n({
-      'l10n': {probe: 'DNS English'},
       'hostname-label': 'Hostname label EN',
       'hostname-hint': 'Hostname hint EN',
       'hostname': 'Hostname EN',
@@ -349,14 +348,11 @@ describe('createInstance', () => {
     const label = queryElement<HTMLLabelElement>(container, '.mndw-dns-lookup-widget__label');
     const hint = queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__hint');
     const result = queryElement<HTMLElement>(container, '.mndw-dns-lookup-widget__result');
-    const probe = queryElement<HTMLElement>(container, '[data-testid="l10n-probe"]');
 
-    expect(probe.textContent).toBe('DNS English');
     expect(label.textContent).toBe('Hostname label EN');
     expect(hint.textContent).toBe('Hostname hint EN');
     expect(result.textContent).toContain('Idle EN');
     i18n.setLocale('ru', {
-      'l10n': {probe: 'DNS русский'},
       'hostname-label': 'Имя RU',
       'hostname-hint': 'Подсказка RU',
       'hostname': 'Имя RU',
@@ -364,8 +360,6 @@ describe('createInstance', () => {
       'idle': 'Простой RU',
     });
 
-    expect(container.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe.textContent).toBe('DNS русский');
     expect(input.placeholder).toBe('Имя RU');
     expect(label.textContent).toBe('Имя RU');
     expect(hint.textContent).toBe('Подсказка RU');

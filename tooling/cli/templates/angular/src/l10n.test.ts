@@ -13,23 +13,24 @@ async function stabilize(): Promise<void> {
 }
 
 describe('generated Angular locale reactivity', () => {
-  it('updates the same probe node without remounting', async () => {
-    const en = {l10n: {probe: 'English probe', button: 'Run English', result: 'English result'}};
-    const ru = {l10n: {probe: 'Русский probe', button: 'Запустить', result: 'Русский результат'}};
+  it('updates visible control and result without remounting', async () => {
+    const en = {l10n: {button: 'Run English', result: 'English result'}};
+    const ru = {l10n: {button: 'Запустить', result: 'Русский результат'}};
     const i18n = createTestI18n(en, 'en');
     const root = document.createElement('div');
     const context = createTestPluginContext({i18n}).context;
     const instance = createInstance(root, context);
     await stabilize();
-    const probe = root.querySelector('[data-testid="l10n-probe"]');
+    const button = root.querySelector('button');
+    const result = root.querySelector('[data-testid="l10n-result"]');
 
-    expect(en.l10n.probe).not.toBe(ru.l10n.probe);
-    expect(probe?.textContent).toBe(en.l10n.probe);
+    expect(button?.textContent).toContain(en.l10n.button);
+    expect(result?.textContent).toBe(en.l10n.result);
     i18n.setLocale('ru', ru);
     await stabilize();
 
-    expect(root.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe(ru.l10n.probe);
+    expect(button?.textContent).toContain(ru.l10n.button);
+    expect(result?.textContent).toBe(ru.l10n.result);
     instance.unmount();
   });
 

@@ -9,13 +9,13 @@ import type {Translator} from '@mndw/sdk';
 import {describe, expect, it} from 'vitest';
 import {createTranslatorSignals} from '@mndw/sdk/angular';
 
-const TRANSLATOR = new InjectionToken<Translator>('ANGULAR_PROBE_TRANSLATOR');
+const TRANSLATOR = new InjectionToken<Translator>('ANGULAR_TRANSLATOR');
 
 @Component({
   standalone: true,
-  template: '<span data-testid="l10n-probe">{{ translator.t("l10n.probe") }}</span>',
+  template: '<button>{{ translator.t("action.run") }}</button>',
 })
-class ProbeComponent {
+class LocalizedActionComponent {
   public readonly translator = inject(TRANSLATOR);
 }
 
@@ -25,8 +25,8 @@ async function stabilize(): Promise<void> {
 }
 
 describe('Angular i18n createApplication path', () => {
-  it('repaints the same node after a signal-driven locale change', async () => {
-    const i18n = createTestI18n({l10n: {probe: 'English probe'}}, 'en');
+  it('updates a visible action after a signal-driven locale change', async () => {
+    const i18n = createTestI18n({action: {run: 'Run in English'}}, 'en');
     const host = document.createElement('div');
     const application = await createApplication({
       providers: [{
@@ -34,7 +34,7 @@ describe('Angular i18n createApplication path', () => {
         useFactory: () => createTranslatorSignals(i18n, inject(DestroyRef)),
       }],
     });
-    const component = createComponent(ProbeComponent, {
+    const component = createComponent(LocalizedActionComponent, {
       hostElement: host,
       environmentInjector: application.injector,
     });
@@ -42,17 +42,17 @@ describe('Angular i18n createApplication path', () => {
     application.attachView(component.hostView);
     await stabilize();
 
-    const node = host.querySelector('[data-testid="l10n-probe"]');
-    const enValue = i18n.t('l10n.probe');
-    const ruValue = 'Русский probe';
+    const button = host.querySelector('button');
+    const enValue = i18n.t('action.run');
+    const ruValue = 'Запустить';
 
     expect(enValue).not.toBe(ruValue);
-    expect(node?.textContent).toBe(enValue);
-    i18n.setLocale('ru', {l10n: {probe: ruValue}});
+    expect(button?.textContent).toBe(enValue);
+    i18n.setLocale('ru', {action: {run: ruValue}});
     await stabilize();
 
-    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(node);
-    expect(node?.textContent).toBe(ruValue);
+    expect(host.querySelector('button')).toBe(button);
+    expect(button?.textContent).toBe(ruValue);
 
     component.destroy();
     application.destroy();

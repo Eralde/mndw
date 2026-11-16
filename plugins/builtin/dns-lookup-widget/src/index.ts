@@ -69,12 +69,7 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
 
   resultEl.className = `${WIDGET_CLASS}__result`;
 
-  const probeEl = document.createElement('span');
-
-  probeEl.dataset.testid = 'l10n-probe';
-  probeEl.hidden = true;
-
-  rootEl.append(probeEl, controls, resultEl);
+  rootEl.append(controls, resultEl);
   container.append(rootEl);
 
   let currentView: DnsView = {state: 'idle'};
@@ -85,7 +80,6 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
   };
 
   const renderLocale = (): void => {
-    probeEl.textContent = i18n.t('l10n.probe');
     fieldLabel.textContent = i18n.t('hostname-label');
     hostnameInput.placeholder = i18n.t('hostname');
     hostnameHint.textContent = i18n.t('hostname-hint');

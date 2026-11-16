@@ -1,10 +1,10 @@
 {
-  "l10n": {"probe": "Event Logger"},
   "pause": "Pause",
   "resume": "Resume",
   "clear": "Clear",
   "download": "Download log",
   "filter": "Filter events",
+  "entries": "Event log entries",
   "empty": "No matching events",
   "unavailable": "Event stream unavailable",
   "resumed": "Capture resumed",

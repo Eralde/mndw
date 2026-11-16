@@ -166,13 +166,6 @@ onMount(() => {
   data-system-log-page
 >
   <header class="system-log-page__header">
-    <h1
-      class="system-log-page__title"
-      data-testid="l10n-probe"
-      hidden
-    >
-      {t('l10n.probe')}
-    </h1>
     <div class="system-log-page__header-row">
       <LogFilters
         state={filterState}

@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "Demo English probe"
-  },
   "title": "Demo Page",
   "device": "Device",
   "vendor": "Vendor",

@@ -274,11 +274,6 @@ onMount(() => {
 </script>
 
 <div class="ttyd-terminal">
-  <span
-    class="sr-only"
-    data-testid="l10n-probe"
-    hidden
-  >{t('l10n.probe')}</span>
   <div class="console-choice">
     <mndw-button
       variant="primary"

@@ -222,20 +222,33 @@ afterEach(() => {
 });
 
 describe('AppComponent', () => {
-  it('updates the same probe after a locale switch', async () => {
+  it('updates the visible empty state after a locale switch', async () => {
     const i18n = createTestI18n(enCatalog);
-    const {fixture} = await createFixture(null, null, undefined, i18n);
+    const emptyManager = {
+      queue: (query: RciQuery | RciQuery[]) => {
+        const path = Array.isArray(query) ? query[0]?.path : query.path;
 
-    fixture.detectChanges();
+        return path === 'show.interface' ? of({}) : of([]);
+      },
+    } as unknown as PluginRciManager;
+    const {fixture} = await createFixture(null, null, undefined, i18n, emptyManager);
 
-    const probe = fixture.nativeElement.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+    await vi.waitFor(() => {
+      fixture.detectChanges();
 
-    expect(probe?.textContent).toBe('Traffic English probe');
+      expect(queryElement<HTMLElement>(fixture.nativeElement, '.empty-state__heading').textContent)
+        .toBe(enCatalog.title);
+    });
+
+    expect(queryElement<HTMLElement>(fixture.nativeElement, '.empty-state__subtitle').textContent)
+      .toBe(enCatalog.status['select-interface']);
     i18n.setLocale('ru', ruCatalog);
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe('Проба трафика');
+    expect(queryElement<HTMLElement>(fixture.nativeElement, '.empty-state__heading').textContent)
+      .toBe(ruCatalog.title);
+    expect(queryElement<HTMLElement>(fixture.nativeElement, '.empty-state__subtitle').textContent)
+      .toBe(ruCatalog.status['select-interface']);
   });
   it('passes normalized persisted refresh to settings opener', async () => {
     const {fixture, openSettings} = await createFixture('eth1', '6000');

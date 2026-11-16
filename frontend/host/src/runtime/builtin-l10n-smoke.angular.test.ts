@@ -315,8 +315,8 @@ smoke('packed Angular built-in l10n smoke', () => {
   it('switches tx-rx-chart-widget without remounting', async () => {
     const en = packedCatalog('tx-rx-chart-widget', 'en');
     const ru = packedCatalog('tx-rx-chart-widget', 'ru');
-    const enValue = en['l10n.probe'];
-    const ruValue = ru['l10n.probe'];
+    const enValue = en.title;
+    const ruValue = ru.title;
 
     expect(enValue).not.toBe(ruValue);
 
@@ -334,23 +334,23 @@ smoke('packed Angular built-in l10n smoke', () => {
     expect(await handle.whenReady()).toBe(true);
     await stabilizeAngular(4);
 
-    const probe = container.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+    const heading = container.querySelector<HTMLElement>('.empty-state__heading');
 
-    expect(probe?.textContent).toBe(enValue);
+    expect(heading?.textContent?.trim()).toBe(enValue);
     testI18n.setLocale('ru', ru);
     await stabilizeAngular();
-    expect(container.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe(ruValue);
+    expect(container.querySelector('.empty-state__heading')).toBe(heading);
+    expect(heading?.textContent?.trim()).toBe(ruValue);
 
     handle.dispose();
     expect(container.childElementCount).toBe(0);
   });
 
-  it('switches mws-page root and child without remounting and updates tile labels', async () => {
+  it('switches mws-page graph controls without remounting and updates tile labels', async () => {
     const en = packedCatalog('mws-page', 'en');
     const ru = packedCatalog('mws-page', 'ru');
-    const enValue = en['l10n.probe'];
-    const ruValue = ru['l10n.probe'];
+    const enValue = en['graph.view-controls'];
+    const ruValue = ru['graph.view-controls'];
 
     expect(enValue).not.toBe(ruValue);
 
@@ -372,19 +372,15 @@ smoke('packed Angular built-in l10n smoke', () => {
 
     await stabilizeAngular(4);
 
-    const rootProbe = queryDeep(target, '[data-testid="l10n-probe"]');
-    const childProbe = queryDeep(target, '[data-testid="l10n-child-probe"]');
+    const controls = queryDeep(target, '.graph-view-controls');
 
-    expect(rootProbe?.textContent).toBe(enValue);
-    expect(childProbe).not.toBeNull();
+    expect(controls?.getAttribute('aria-label')).toBe(enValue);
     expect(tileTitles.get('mws-page')).toBe(en.title);
     testI18n.setLocale('ru', ru);
     await stabilizeAngular();
 
-    expect(queryDeep(target, '[data-testid="l10n-probe"]')).toBe(rootProbe);
-    expect(queryDeep(target, '[data-testid="l10n-child-probe"]')).toBe(childProbe);
-    expect(rootProbe?.textContent).toBe(ruValue);
-    expect(childProbe?.textContent).toBe(ruValue);
+    expect(queryDeep(target, '.graph-view-controls')).toBe(controls);
+    expect(controls?.getAttribute('aria-label')).toBe(ruValue);
     expect(tileTitles.get('mws-page')).toBe(ru.title);
 
     unmountPlugin(mounted, target);

@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "MWS English probe"
-  },
   "title": "MWS",
   "summary": {
     "mock-data": "Mock data: {extenders} extenders · {clients} clients",

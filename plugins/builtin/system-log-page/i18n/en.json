@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "System log English probe"
-  },
   "title": "System Log",
   "action": {
     "download": "Download",

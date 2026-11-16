@@ -12,27 +12,27 @@ import {packPlugin} from './pack.js';
 const temporaryDirectories: string[] = [];
 
 function createFixture(): string {
-  const root = mkdtempSync(join(tmpdir(), 'mndw-svelte-i18n-probe-'));
+  const root = mkdtempSync(join(tmpdir(), 'mndw-svelte-i18n-action-'));
 
   temporaryDirectories.push(root);
   mkdirSync(join(root, 'src'));
   mkdirSync(join(root, 'i18n'));
-  writeFileSync(join(root, 'package.json'), JSON.stringify({name: 'svelte-probe', version: '0.1.0'}));
+  writeFileSync(join(root, 'package.json'), JSON.stringify({name: 'svelte-action', version: '0.1.0'}));
   writeFileSync(
     join(root, 'manifest.json'),
     JSON.stringify({
       manifestVersion: 1,
-      name: 'svelte-probe',
+      name: 'svelte-action',
       version: '0.1.0',
       type: 'widget',
-      label: 'Svelte Probe',
+      label: 'Svelte Action',
       entry: 'index.js',
       size: {w: 4, h: 3},
       i18n: {defaultLocale: 'en', locales: {en: 'i18n/en.json', ru: 'i18n/ru.json'}},
     }),
   );
-  writeFileSync(join(root, 'i18n/en.json'), JSON.stringify({l10n: {probe: 'English probe'}}));
-  writeFileSync(join(root, 'i18n/ru.json'), JSON.stringify({l10n: {probe: 'Русский probe'}}));
+  writeFileSync(join(root, 'i18n/en.json'), JSON.stringify({action: {run: 'Run in English'}}));
+  writeFileSync(join(root, 'i18n/ru.json'), JSON.stringify({action: {run: 'Запустить'}}));
   writeFileSync(
     join(root, 'src/App.svelte'),
     `<script lang="ts">
@@ -43,7 +43,7 @@ let {i18n}: {i18n: PluginI18n} = $props();
 const translator = createTranslator(i18n);
 </script>
 
-<span data-testid="l10n-probe">{$translator.t('l10n.probe')}</span>
+<button>{$translator.t('action.run')}</button>
 `,
   );
   writeFileSync(
@@ -69,7 +69,7 @@ afterEach(() => {
 });
 
 describe('Svelte i18n pack path', () => {
-  it('updates the same DOM node after a packed locale change', async () => {
+  it('updates a visible action after a packed locale change', async () => {
     const source = createFixture();
     const outDir = join(source, 'dist');
     const result = await packPlugin(source, {outDir});
@@ -77,7 +77,7 @@ describe('Svelte i18n pack path', () => {
     const bundle = await import(`data:text/javascript;base64,${Buffer.from(bundleSource).toString('base64')}`) as {
       createInstance: (host: HTMLElement, context: PluginContext) => PluginInstance;
     };
-    const i18n = createTestI18n({l10n: {probe: 'English probe'}}, 'en');
+    const i18n = createTestI18n({action: {run: 'Run in English'}}, 'en');
     const host = document.createElement('div');
     const context = {i18n} as unknown as PluginContext;
 
@@ -85,18 +85,18 @@ describe('Svelte i18n pack path', () => {
 
     flushSync();
 
-    const node = host.querySelector('[data-testid="l10n-probe"]');
-    const enValue = i18n.t('l10n.probe');
-    const ruValue = 'Русский probe';
+    const button = host.querySelector('button');
+    const enValue = i18n.t('action.run');
+    const ruValue = 'Запустить';
 
     expect(enValue).not.toBe(ruValue);
-    expect(node?.textContent).toBe(enValue);
-    i18n.setLocale('ru', {l10n: {probe: ruValue}});
+    expect(button?.textContent).toBe(enValue);
+    i18n.setLocale('ru', {action: {run: ruValue}});
     await Promise.resolve();
     flushSync();
 
-    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(node);
-    expect(node?.textContent).toBe(ruValue);
+    expect(host.querySelector('button')).toBe(button);
+    expect(button?.textContent).toBe(ruValue);
     void instance.unmount();
   });
 

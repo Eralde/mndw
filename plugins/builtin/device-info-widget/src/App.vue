@@ -463,7 +463,6 @@ onUnmounted(() => {
   <div class="app">
     <header class="app__header">
       <span>{{ t('title') }}</span>
-      <span data-testid="l10n-probe" hidden>{{ translator.t('l10n.probe') }}</span>
       <mndw-button variant="ghost" :aria-label="t('settings')" @click="openSettings">
         <mndw-icon name="settings"></mndw-icon>
       </mndw-button>

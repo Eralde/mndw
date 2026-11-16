@@ -14,7 +14,6 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
       <div class="demo-page__content" style="display: grid; gap: var(--mndw-space-2);">
         <div><b id="hello-page-instance-label"></b> ${ctx.instanceId}</div>
 
-        <h2 data-testid="l10n-probe" hidden></h2>
         <p id="hello-page-device"></p>
         <p id="hello-page-vendor"></p>
         <div id="hello-page-counter"></div>
@@ -27,14 +26,13 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
   `;
 
   const instanceLabelEl = el.querySelector('#hello-page-instance-label');
-  const titleEl = el.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
   const deviceEl = el.querySelector('#hello-page-device');
   const vendorEl = el.querySelector('#hello-page-vendor');
   const counterEl = el.querySelector('#hello-page-counter');
   const storedEl = el.querySelector('#hello-page-stored');
   const saveBtn = el.querySelector('#hello-page-save');
 
-  if (!instanceLabelEl || !titleEl || !deviceEl || !vendorEl || !counterEl || !storedEl || !saveBtn) {
+  if (!instanceLabelEl || !deviceEl || !vendorEl || !counterEl || !storedEl || !saveBtn) {
     return {unmount() {}};
   }
 
@@ -42,7 +40,6 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
 
   const render = (): void => {
     instanceLabelEl.textContent = i18n.t('instance-id');
-    titleEl.textContent = i18n.t('l10n.probe');
     deviceEl.textContent = `${i18n.t('device')}: ${ctx.deviceInfo.deviceName}`;
     vendorEl.textContent = `${i18n.t('vendor')}: ${ctx.deviceInfo.vendor}`;
     counterEl.textContent = i18n.t('count', {count});

@@ -25,20 +25,14 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
 
   el.innerHTML = `
     <div style="${containerStyle}">
-      <span data-testid="l10n-probe" hidden></span>
       <time data-mndw-clock style="${timeStyle}"></time>
     </div>
   `;
 
   const timeEl = el.querySelector<HTMLTimeElement>('[data-mndw-clock]');
-  const probeEl = el.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
 
   const render = (): void => {
     if (timeEl) {
-      if (probeEl) {
-        probeEl.textContent = i18n.t('l10n.probe');
-      }
-
       timeEl.textContent = i18n.formatDate(new Date(), {timeStyle: 'medium'});
       timeEl.setAttribute('aria-label', i18n.t('title'));
     }

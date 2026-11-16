@@ -43,9 +43,8 @@ describe('createInstance', () => {
     expect(host.textContent).toContain('(saved: 0)');
   });
 
-  it('updates the same control and probe after a locale switch', async () => {
+  it('updates visible text and control after a locale switch', async () => {
     const i18n = createTestI18n({
-      'l10n': {probe: 'Demo English'},
       'instance-id': 'Instance EN',
       'device': 'Device EN',
       'vendor': 'Vendor EN',
@@ -62,14 +61,12 @@ describe('createInstance', () => {
     document.body.append(host);
     instance = await createInstance(host, ctx);
 
-    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
     const save = host.querySelector<HTMLElement>('#hello-page-save');
+    const device = host.querySelector('#hello-page-device');
 
-    expect(probe?.textContent).toBe('Demo English');
-    expect(probe?.hidden).toBe(true);
     expect(save?.textContent).toBe('Save EN');
+    expect(device?.textContent).toContain('Device EN');
     i18n.setLocale('ru', {
-      'l10n': {probe: 'Демо русский'},
       'instance-id': 'Экземпляр RU',
       'device': 'Устройство RU',
       'vendor': 'Производитель RU',
@@ -77,10 +74,9 @@ describe('createInstance', () => {
       'save': 'Сохранить RU',
     });
 
-    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe('Демо русский');
     expect(host.querySelector('#hello-page-save')).toBe(save);
     expect(save?.textContent).toBe('Сохранить RU');
+    expect(device?.textContent).toContain('Устройство RU');
   });
 });
 

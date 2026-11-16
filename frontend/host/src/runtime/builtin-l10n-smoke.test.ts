@@ -5,7 +5,7 @@ import type {BackendRouteDescriptor, PluginManifestI18n} from '@mndw/sdk-interna
 import type {HostInfo} from './device-info-context.js';
 import {type PluginCatalog, parseCatalog} from '@mndw/sdk-internal/catalog';
 import {type TestI18n, createTestI18n} from '@mndw/sdk/testing';
-import {of} from 'rxjs';
+import {NEVER, of} from 'rxjs';
 import {flushSync, mount, unmount} from 'svelte';
 import {nextTick} from 'vue';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -73,6 +73,33 @@ const EXPECTED_PLUGINS = [
   'terminal-page',
 ] as const;
 const VUE_PLUGINS = new Set(['clients-widget', 'cpu-temp-widget', 'device-info-widget']);
+
+interface VisibleLocaleTarget {
+  readonly selector: string;
+  readonly key: string;
+  readonly attribute?: 'aria-label';
+}
+
+const VISIBLE_LOCALE_TARGETS: Record<(typeof EXPECTED_PLUGINS)[number], VisibleLocaleTarget> = {
+  'clients-widget': {selector: '.clients-widget__header > span', key: 'title'},
+  'clock-widget': {selector: '[data-mndw-clock]', key: 'title', attribute: 'aria-label'},
+  'cpu-temp-widget': {selector: '.app__header > span', key: 'title'},
+  'device-info-widget': {selector: '.app__header > span', key: 'title'},
+  'dns-lookup-widget': {selector: '.mndw-dns-lookup-widget__label', key: 'hostname-label'},
+  'event-logger-widget': {selector: '[role="region"]', key: 'entries', attribute: 'aria-label'},
+  'system-log-page': {selector: '[data-download-log]', key: 'action.download'},
+  'terminal-page': {selector: 'mndw-button', key: 'action.router-cli'},
+};
+
+function visibleLocaleValue(root: ParentNode, target: VisibleLocaleTarget): string | null {
+  const element = root.querySelector<HTMLElement>(target.selector);
+
+  if (element === null) {
+    return null;
+  }
+
+  return target.attribute === undefined ? element.textContent?.trim() ?? null : element.getAttribute(target.attribute);
+}
 
 interface PackedManifest {
   name: string;
@@ -198,7 +225,7 @@ function pluginEntry(name: string): PluginListEntry {
   } as WidgetListEntry;
 }
 
-function createSmokeContext(i18n: PluginContext['i18n']): PluginContext {
+function createSmokeContext(i18n: PluginContext['i18n'], withEvents = false): PluginContext {
   const queue = vi.fn((query: {path?: string}) => {
     switch (query.path) {
       case 'show.identification':
@@ -228,6 +255,7 @@ function createSmokeContext(i18n: PluginContext['i18n']): PluginContext {
   return createTestPluginContext({
     i18n,
     backend,
+    ...(withEvents ? {events: {select$: () => NEVER, resync$: NEVER}} : {}),
     rciManager: {
       execute: queue,
       queue,
@@ -297,9 +325,9 @@ smoke('packed built-in l10n smoke', () => {
   it.each(EXPECTED_PLUGINS)('switches %s without remounting', async (name) => {
     const en = packedCatalog(name, 'en');
     const ru = packedCatalog(name, 'ru');
-    const probeKey = 'l10n.probe';
-    const enValue = en[probeKey];
-    const ruValue = ru[probeKey];
+    const localeTarget = VISIBLE_LOCALE_TARGETS[name];
+    const enValue = en[localeTarget.key];
+    const ruValue = ru[localeTarget.key];
 
     expect(enValue).toBeTypeOf('string');
     expect(ruValue).toBeTypeOf('string');
@@ -314,21 +342,21 @@ smoke('packed built-in l10n smoke', () => {
       document.body.append(container);
 
       const handle = mountWidgetTile(container, loaded, {
-        context: createSmokeContext(testI18n),
+        context: createSmokeContext(testI18n, name === 'event-logger-widget'),
         dispose: (): void => {},
       });
 
       expect(await handle.whenReady()).toBe(true);
       await flushPlugin(name);
 
-      const probe = container.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+      const target = container.querySelector<HTMLElement>(localeTarget.selector);
 
-      expect(probe).not.toBeNull();
-      expect(probe?.textContent).toBe(enValue);
+      expect(target).not.toBeNull();
+      expect(visibleLocaleValue(container, localeTarget)).toContain(enValue);
       testI18n.setLocale('ru', ru);
       await flushPlugin(name);
-      expect(container.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-      expect(probe?.textContent).toBe(ruValue);
+      expect(container.querySelector(localeTarget.selector)).toBe(target);
+      expect(visibleLocaleValue(container, localeTarget)).toContain(ruValue);
 
       handle.dispose();
       expect(container.childElementCount).toBe(0);
@@ -358,14 +386,14 @@ smoke('packed built-in l10n smoke', () => {
     flushSync();
     await flushPlugin(name);
 
-    const probe = target.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+    const localeElement = target.querySelector<HTMLElement>(localeTarget.selector);
 
-    expect(probe).not.toBeNull();
-    expect(probe?.textContent).toBe(enValue);
+    expect(localeElement).not.toBeNull();
+    expect(visibleLocaleValue(target, localeTarget)).toContain(enValue);
     testI18n.setLocale('ru', ru);
     await flushPlugin(name);
-    expect(target.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe(ruValue);
+    expect(target.querySelector(localeTarget.selector)).toBe(localeElement);
+    expect(visibleLocaleValue(target, localeTarget)).toContain(ruValue);
 
     void unmount(component);
     await router.navigate('/');

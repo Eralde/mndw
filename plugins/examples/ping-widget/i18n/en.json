@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "Ping English probe"
-  },
   "title": "Ping Utility",
   "action": {
     "refresh": "Refresh now",

@@ -1,6 +1,5 @@
 {
   "l10n": {
-    "probe": "Go backend page",
     "button": "Call backend",
     "result": "Backend response",
     "error": "Backend unavailable"

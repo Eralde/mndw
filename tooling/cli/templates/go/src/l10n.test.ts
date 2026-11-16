@@ -12,21 +12,19 @@ const contextFor = (
 ): PluginContext => createTestPluginContext({i18n, backend: backend as BackendClient | undefined}).context;
 
 describe('generated Go locale reactivity', () => {
-  it('updates probe, control, and result without remounting', () => {
-    const en = {l10n: {probe: 'English probe', button: 'Run English', result: 'English result'}};
-    const ru = {l10n: {probe: 'Русский probe', button: 'Запустить', result: 'Русский result'}};
+  it('updates visible control and result without remounting', () => {
+    const en = {l10n: {button: 'Run English', result: 'English result'}};
+    const ru = {l10n: {button: 'Запустить', result: 'Русский result'}};
     const i18n = createTestI18n(en, 'en');
     const root = document.createElement('div');
     const instance = createInstance(root, contextFor(i18n));
-    const probe = root.querySelector('[data-testid="l10n-probe"]');
     const button = root.querySelector('button');
     const result = root.querySelector('[data-testid="l10n-result"]');
 
-    expect(probe?.textContent).toBe(en.l10n.probe);
+    expect(button?.textContent).toBe(en.l10n.button);
+    expect(result?.textContent).toBe(en.l10n.result);
     i18n.setLocale('ru', ru);
 
-    expect(root.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe(ru.l10n.probe);
     expect(button?.textContent).toBe(ru.l10n.button);
     expect(result?.textContent).toBe(ru.l10n.result);
     instance.unmount();
@@ -46,8 +44,8 @@ describe('generated Go locale reactivity', () => {
   });
 
   it('updates the localized result label after a backend response', async () => {
-    const en = {l10n: {probe: 'English probe', button: 'Run English', result: 'English result'}};
-    const ru = {l10n: {probe: 'Русский probe', button: 'Запустить', result: 'Русский result'}};
+    const en = {l10n: {button: 'Run English', result: 'English result'}};
+    const ru = {l10n: {button: 'Запустить', result: 'Русский result'}};
     const i18n = createTestI18n(en, 'en');
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({message: 'hello', plugin: 'p'})));
     const root = document.createElement('div');

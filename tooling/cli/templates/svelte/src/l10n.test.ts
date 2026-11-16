@@ -9,22 +9,23 @@ import App from './App.svelte';
 const contextFor = (i18n: ReturnType<typeof createTestI18n>): PluginContext => createTestPluginContext({i18n}).context;
 
 describe('generated Svelte locale reactivity', () => {
-  it('updates the same probe node without remounting', () => {
-    const en = {l10n: {probe: 'English probe', button: 'Run English', result: 'English result'}};
-    const ru = {l10n: {probe: 'Русский probe', button: 'Запустить', result: 'Русский результат'}};
+  it('updates visible control and result without remounting', () => {
+    const en = {l10n: {button: 'Run English', result: 'English result'}};
+    const ru = {l10n: {button: 'Запустить', result: 'Русский результат'}};
     const i18n = createTestI18n(en, 'en');
     const root = document.createElement('div');
     const component = mount(App, {target: root, props: {ctx: contextFor(i18n)}});
     flushSync();
-    const probe = root.querySelector('[data-testid="l10n-probe"]');
+    const button = root.querySelector('button');
+    const result = root.querySelector('.result');
 
-    expect(en.l10n.probe).not.toBe(ru.l10n.probe);
-    expect(probe?.textContent).toBe(en.l10n.probe);
+    expect(button?.textContent).toContain(en.l10n.button);
+    expect(result?.textContent).toBe(en.l10n.result);
     i18n.setLocale('ru', ru);
     flushSync();
 
-    expect(root.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe(ru.l10n.probe);
+    expect(button?.textContent).toContain(ru.l10n.button);
+    expect(result?.textContent).toBe(ru.l10n.result);
     unmount(component);
   });
 

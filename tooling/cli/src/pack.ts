@@ -13,7 +13,7 @@ import {
 } from 'node:fs';
 import {basename, dirname, extname, isAbsolute, join, relative, resolve, sep} from 'node:path';
 import crossSpawn from 'cross-spawn';
-import {build} from 'esbuild';
+import {build, transform} from 'esbuild';
 import esbuildSvelte from 'esbuild-svelte';
 import vuePlugin from 'unplugin-vue/esbuild';
 import type {PluginManifestOutput} from '@mndw/sdk-internal';
@@ -92,6 +92,29 @@ interface WorkerReference {
   readonly sourceSpecifier: string;
 }
 
+async function sanitizeBundleOutput(
+  contents: Uint8Array,
+  loader: 'js' | 'css',
+  production: boolean,
+): Promise<Buffer> {
+  if (!production) {
+    return Buffer.from(contents);
+  }
+
+  const source = Buffer.from(contents).toString('utf8');
+  const result = loader === 'js'
+    ? await transform(source, {
+      loader: 'js',
+      minify: true,
+      legalComments: 'inline',
+      format: 'esm',
+      target: 'es2022',
+    })
+    : await transform(source, {loader: 'css', minify: true, legalComments: 'inline'});
+
+  return Buffer.from(result.code);
+}
+
 /**
  * Builds a vanilla, Svelte, Vue, or Angular plugin into an isolated output directory: bundles its entry to a
  * browser ESM module at `dist/<manifest.entry>` (host-shared deps kept external), writes any emitted
@@ -130,6 +153,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
       entryPoints,
       outdir: outDir,
       bundle: true,
+      legalComments: 'inline',
       format: 'esm',
       platform: 'browser',
       target: 'es2022',
@@ -149,6 +173,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
         ]
         : framework === 'vue'
         ? [vuePlugin({
+          isProduction: !options.development,
           sourceMap: false,
           template: {compilerOptions: {isCustomElement: (tag) => tag.startsWith('mndw-')}},
         })]
@@ -223,8 +248,18 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
     };
     const catalogAssets = collectCatalogAssets(manifest, resolvedDir);
     const workerReferences = collectWorkerReferences(manifest.entry, result.metafile);
-    const workerAssets = await buildWorkerAssets(workerReferences, outDir, resolvedDir, framework);
-    const mainBundle = rewriteWorkerSpecifiers(jsOutput.contents, workerReferences);
+    const workerAssets = await buildWorkerAssets(
+      workerReferences,
+      outDir,
+      resolvedDir,
+      framework,
+      !options.development,
+    );
+    const mainBundle = await sanitizeBundleOutput(
+      rewriteWorkerSpecifiers(jsOutput.contents, workerReferences),
+      'js',
+      !options.development,
+    );
 
     const parent = dirname(outDir);
 
@@ -236,7 +271,11 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
       writeStaged(staging, manifest.entry, mainBundle);
 
       if (cssOutput !== undefined) {
-        writeStaged(staging, 'index.css', Buffer.from(cssOutput.contents));
+        writeStaged(
+          staging,
+          'index.css',
+          await sanitizeBundleOutput(cssOutput.contents, 'css', !options.development),
+        );
       }
 
       writeStaged(staging, 'manifest.json', Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`));
@@ -255,7 +294,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
             throw new CliError(`esbuild output escapes plugin directory: ${output.path}`);
           }
 
-          writeStaged(staging, rel, Buffer.from(output.contents));
+          writeStaged(staging, rel, await sanitizeBundleOutput(output.contents, 'js', !options.development));
         }
       }
 
@@ -402,6 +441,7 @@ async function buildWorkerAssets(
   outDir: string,
   pluginDir: string,
   framework: PluginFramework,
+  production: boolean,
 ): Promise<StagedAsset[]> {
   const assets: StagedAsset[] = [];
   const built = new Set<string>();
@@ -429,7 +469,10 @@ async function buildWorkerAssets(
       throw new CliError(`esbuild produced no JavaScript bundle for worker: ${reference.sourcePath}`);
     }
 
-    assets.push({rel: reference.outputRel, contents: Buffer.from(output.contents)});
+    assets.push({
+      rel: reference.outputRel,
+      contents: await sanitizeBundleOutput(output.contents, 'js', production),
+    });
     built.add(reference.outputRel);
   }
 

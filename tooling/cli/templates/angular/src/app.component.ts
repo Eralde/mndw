@@ -24,10 +24,9 @@ export const PLUGIN_CONTEXT = new InjectionToken<PluginContext>('PLUGIN_CONTEXT'
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
   template: `
     <div [attr.data-theme]="theme()" style="padding:var(--mndw-space-4);font-family:sans-serif">
-      <h3 data-testid="l10n-probe" data-plugin-label="__MNDW_LABEL__">{{ translator.t('l10n.probe') }}</h3>
       <p>Device: {{ deviceName() }}</p>
       <button (click)="count.set(count() + 1)">{{ translator.t('l10n.button') }} {{ count() }}</button>
-      <p>{{ translator.t('l10n.result') }}</p>
+      <p data-testid="l10n-result">{{ translator.t('l10n.result') }}</p>
       <mndw-table [columns]="columns()" [rows]="rows()" rowKey="id" [caption]="translator.t('table.caption')"
         [columnMenu]="false">
         <ng-template mndwCell="name" let-row>

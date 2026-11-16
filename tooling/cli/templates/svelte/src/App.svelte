@@ -48,13 +48,6 @@ let count = $state(0);
   class="wrap"
   data-theme={$theme$}
 >
-  <h3
-    class="title"
-    data-testid="l10n-probe"
-    data-plugin-label="__MNDW_LABEL__"
-  >
-    {$translator.t('l10n.probe')}
-  </h3>
   <p class="device">Device: {ctx.deviceInfo.deviceName}</p>
   <button
     class="count"
@@ -73,12 +66,6 @@ let count = $state(0);
   font-family: var(--mndw-font-sans);
   color: var(--mndw-text);
   background: var(--mndw-surface);
-}
-
-.title {
-  margin: 0 0 var(--mndw-space-2);
-  font-size: var(--mndw-text-lg);
-  font-weight: var(--mndw-weight-semibold);
 }
 
 .device {

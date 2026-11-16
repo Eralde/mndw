@@ -3,6 +3,33 @@ import {expect, it} from 'vitest';
 import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import EventLogger from './EventLogger.svelte';
 import messages from '../i18n/en.json';
+import ruMessages from '../i18n/ru.json';
+
+it('translates visible accessibility labels', async () => {
+  const fixture = createTestPluginContext({events: true});
+  const target = document.createElement('div');
+  const i18n = createTestI18n(messages);
+  const app = mount(EventLogger, {
+    target,
+    props: {events: fixture.context.events, i18n},
+  });
+
+  try {
+    flushSync();
+    expect(target.querySelector('[role="region"]')?.getAttribute('aria-label')).toBe('Event log entries');
+    expect(target.querySelector('mndw-input')?.getAttribute('aria-label')).toBe('Filter events');
+
+    i18n.setLocale('ru', ruMessages);
+    flushSync();
+
+    expect(target.querySelector('[role="region"]')?.getAttribute('aria-label')).toBe('Записи журнала событий');
+    expect(target.querySelector('mndw-input')?.getAttribute('aria-label')).toBe('Фильтр событий');
+  } finally {
+    await unmount(app);
+    fixture.unmount();
+    target.remove();
+  }
+});
 
 it('keeps filter separate from a wrapping toolbar actions group', async () => {
   const fixture = createTestPluginContext({events: true});

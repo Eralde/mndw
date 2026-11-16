@@ -44,12 +44,7 @@ export function mountEchoWidget(container: HTMLElement, backend: Backend, i18n: 
 
   resultEl.className = 'mndw-echo__result';
 
-  const probeEl = document.createElement('span');
-
-  probeEl.dataset.testid = 'l10n-probe';
-  probeEl.hidden = true;
-
-  rootEl.append(probeEl, controls, resultEl);
+  rootEl.append(controls, resultEl);
   container.append(rootEl);
 
   let currentView: EchoView = {state: 'idle'};
@@ -60,7 +55,6 @@ export function mountEchoWidget(container: HTMLElement, backend: Backend, i18n: 
   };
 
   const renderLocale = (): void => {
-    probeEl.textContent = i18n.t('l10n.probe');
     statusInput.placeholder = i18n.t('status');
     getBtn.textContent = i18n.t('get');
     postBtn.textContent = i18n.t('post');

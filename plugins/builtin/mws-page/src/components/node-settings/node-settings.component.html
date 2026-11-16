@@ -1,5 +1,4 @@
 <section class="node-settings" [attr.aria-label]="t('edit-dialog.title')">
-  <span data-testid="l10n-edit-dialog-probe" hidden>{{ t('edit-dialog.title') }}</span>
   @if (store.loadState() === 'loading') {
     <p class="state" role="status">{{ t('edit-dialog.loading') }}</p>
   } @else if (store.loadState() === 'error') {

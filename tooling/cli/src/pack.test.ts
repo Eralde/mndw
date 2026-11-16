@@ -95,6 +95,29 @@ describe('packPlugin', () => {
     expect(packedManifest.name).toBe('sample-widget');
   });
 
+  it('removes build-path comments from JS and CSS while preserving license notices', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({name: 'css-comments-widget'}),
+      index:
+        '/*! plugin license */\n// /Users/build-machine/plugin/src/index.ts\nimport "./index.css";\nexport const createInstance = () => ({unmount() {}});\n',
+      files: {
+        'src/index.css':
+          '/* /private/var/folders/build-cache/styles.css */ .widget { color: red; } /*! third-party license */\n',
+      },
+    });
+
+    await packPlugin(dir);
+
+    const js = readFileSync(join(dir, 'dist', 'index.js'), 'utf8');
+    const css = readFileSync(join(dir, 'dist', 'index.css'), 'utf8');
+
+    expect(js).not.toContain('/Users/build-machine');
+    expect(js).toContain('/*! plugin license */');
+    expect(css).not.toContain('/private/var/folders/build-cache');
+    expect(css).toContain('/*! third-party license */');
+    expect(css).toMatch(/color:\s*red/);
+  });
+
   it('stages every manifest-declared catalog without adding artifact metadata', async () => {
     scaffold(dir, {
       manifest: widgetManifest({
@@ -266,12 +289,39 @@ describe('packPlugin', () => {
     expect(bundle).not.toContain('PRODUCTION_ENTRY');
   });
 
+  it('keeps development JavaScript and CSS readable', async () => {
+    scaffold(dir, {
+      manifest: widgetManifest({name: 'readable-development-widget'}),
+      index: 'import "./index.css";\n'
+        + 'export function createInstance(element: HTMLElement) {\n'
+        + '  const readableDevelopmentValue = "readable";\n'
+        + '  return {unmount() {}, element, readableDevelopmentValue};\n'
+        + '}\n',
+      files: {
+        'src/index.css': '.widget {\n  color: red;\n}\n',
+      },
+    });
+
+    await packPlugin(dir, {development: true});
+
+    const js = readFileSync(join(dir, 'dist', 'index.js'), 'utf8');
+    const css = readFileSync(join(dir, 'dist', 'index.css'), 'utf8');
+
+    expect(js).toMatch(/function createInstance\(element\)/);
+    expect(js).toMatch(/const readableDevelopmentValue\s*=\s*["']readable["']/);
+    expect(css).toContain('.widget {');
+    expect(css).toContain('  color: red;');
+  });
+
   it('stages a module worker emitted alongside the main bundle', async () => {
     scaffold(dir, {
       manifest: widgetManifest({name: 'worker-widget'}),
       index: 'const worker = new Worker(new URL("./ticker.worker.ts", import.meta.url), {type: "module"});\n'
         + 'export const createInstance = () => ({unmount() { worker.terminate(); }});\n',
-      files: {'src/ticker.worker.ts': 'self.postMessage("tick");\n'},
+      files: {
+        'src/ticker.worker.ts': '/*! worker license */\n// /Users/build-machine/plugin/ticker.worker.ts\n'
+          + 'self.postMessage("tick");\n',
+      },
     });
 
     await packPlugin(dir);
@@ -285,9 +335,14 @@ describe('packPlugin', () => {
     expect(workerFile).toBeDefined();
     expect(bundle).toContain('./ticker.worker.js');
     expect(bundle).not.toContain('./ticker.worker.ts');
-    expect(workerFile === undefined ? '' : readFileSync(join(dir, 'dist', workerFile), 'utf8')).toContain(
-      'postMessage',
-    );
+
+    const workerBundle = workerFile === undefined
+      ? ''
+      : readFileSync(join(dir, 'dist', workerFile), 'utf8');
+
+    expect(workerBundle).toContain('postMessage');
+    expect(workerBundle).not.toContain('/Users/build-machine');
+    expect(workerBundle).toContain('/*! worker license */');
   });
 
   it('keeps the host-managed ticker worker out of the plugin bundle', async () => {
@@ -314,7 +369,9 @@ describe('packPlugin', () => {
     scaffold(dir, {
       manifest: widgetManifest({name: 'svelte-widget'}),
       index: 'import App from "./App.svelte";\nexport const createInstance = () => ({unmount() {}, App});\n',
-      files: {'src/App.svelte': '<style>h1{color:red}</style>\n<h1>hi</h1>\n'},
+      files: {
+        'src/App.svelte': '<style>/* build note */h1{color:red}/*! third-party license */</style>\n<h1>hi</h1>\n',
+      },
     });
 
     const result = await packPlugin(dir);
@@ -322,7 +379,12 @@ describe('packPlugin', () => {
     expect(result.framework).toBe('svelte');
     expect(existsSync(join(dir, 'dist', 'index.js'))).toBe(true);
     expect(existsSync(join(dir, 'dist', 'index.css'))).toBe(true);
-    expect(readFileSync(join(dir, 'dist', 'index.css'), 'utf8')).toContain('color');
+
+    const css = readFileSync(join(dir, 'dist', 'index.css'), 'utf8');
+
+    expect(css).toContain('color');
+    expect(css).not.toContain('build note');
+    expect(css).toContain('/*! third-party license */');
   });
 
   it('bundles a vue plugin, keeps vue external, and emits dist/index.css', async () => {
@@ -349,6 +411,7 @@ describe('packPlugin', () => {
     const js = readFileSync(join(result.outDir, 'index.js'), 'utf8');
 
     expect(js).toMatch(/from\s*["']vue["']/);
+    expect(js).not.toContain(dir);
     expect(js).not.toMatch(/resolveComponent\(["']mndw-(?:segmented|segment)["']\)/);
     expect(existsSync(join(result.outDir, 'index.css'))).toBe(true);
     expect(readFileSync(join(result.outDir, 'index.css'), 'utf8')).toMatch(/color:\s*red/);
@@ -442,7 +505,7 @@ describe('packPlugin', () => {
 
     const bundle = readFileSync(join(dir, 'dist', 'index.js'), 'utf8');
 
-    expect(bundle).toContain('from "rxjs"');
+    expect(bundle).toMatch(/from\s*"rxjs"/);
   });
 
   it('writes the bundle at a nested manifest entry path', async () => {

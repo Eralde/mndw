@@ -162,8 +162,8 @@ function backendReturning(byId: Record<string, unknown>) {
 
 function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
   const messages = {
-    en: {title: 'Ping Utility', unavailable: 'Backend unavailable', l10n: {probe: 'Ping English'}},
-    ru: {title: 'Утилита ping', unavailable: 'Сервис недоступен', l10n: {probe: 'Пинг русский'}},
+    en: {title: 'Ping Utility', unavailable: 'Backend unavailable', action: {refresh: 'Refresh EN'}},
+    ru: {title: 'Утилита ping', unavailable: 'Сервис недоступен', action: {refresh: 'Обновить RU'}},
   };
   const i18n = createTestI18n(messages.en);
 
@@ -227,29 +227,23 @@ describe('PingWidget', () => {
     void unmount(app);
   });
 
-  it('updates mounted translated controls when locale changes', () => {
+  it('updates the visible refresh control when locale changes', () => {
     const changing = changingI18n();
     const app = mount(PingWidget, {target: host, props: {backend: undefined, i18n: changing.i18n}});
 
     flushSync();
-    expect(host.querySelector('h3')?.textContent).toBe('Ping English');
 
-    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+    const refresh = host.querySelector('mndw-button');
 
-    expect(probe).not.toBeNull();
-    expect(probe?.hidden).toBe(true);
-
-    const enValue = probe?.textContent;
-
-    expect(enValue).toBe('Ping English');
+    expect(refresh?.textContent).toContain('Refresh EN');
 
     changing.setLocale('ru');
+
     flushSync();
 
-    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(enValue).not.toBe('Пинг русский');
-    expect(probe?.textContent).toBe('Пинг русский');
-    expect(host.querySelector('h3')?.textContent).toBe('Пинг русский');
+    expect(host.querySelector('mndw-button')).toBe(refresh);
+    expect(refresh?.textContent).toContain('Обновить RU');
+
     void unmount(app);
   });
 

@@ -1,6 +1,5 @@
 {
   "title": "CPU Temperature",
-  "l10n.probe": "l10n-ok",
   "loading": "Loading…",
   "error": "Temperature data is unavailable.",
   "stale.message": "Not updated since {time}",

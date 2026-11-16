@@ -139,7 +139,6 @@ function truncateSvgText(
   selector: 'mws-map-graph',
   standalone: true,
   template: `
-    <span data-testid="l10n-child-probe" hidden>{{ t('l10n.probe') }}</span>
     <div class="graph-view-controls" [attr.aria-label]="t('graph.view-controls')">
       <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-in')" (click)="zoomIn()">+</mndw-button>
       <mndw-button variant="secondary" [attr.aria-label]="t('action.zoom-out')" (click)="zoomOut()">−</mndw-button>

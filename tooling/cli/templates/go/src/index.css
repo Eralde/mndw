@@ -5,12 +5,6 @@
   font-family: var(--mndw-font-sans);
 }
 
-.mndw-__MNDW_NAME____title {
-  margin: 0 0 var(--mndw-space-2);
-  font-weight: var(--mndw-weight-semibold);
-  font-size: var(--mndw-text-lg);
-}
-
 .mndw-__MNDW_NAME____device {
   margin: 0 0 var(--mndw-space-3);
   color: var(--mndw-text-muted);

@@ -157,20 +157,15 @@ function fixtureRoots(): MwsNode[] {
 }
 
 describe('AppComponent', () => {
-  it('updates root and child probes after a locale switch without recreation', () => {
+  it('updates the visible graph controls after a locale switch', () => {
     const fixture = render(fakeData('ready', fixtureRoots()));
-    const rootProbe = fixture.nativeElement.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
-    const childProbe = fixture.nativeElement.querySelector<HTMLElement>('[data-testid="l10n-child-probe"]');
+    const controls = fixture.nativeElement.querySelector<HTMLElement>('mws-map-graph .graph-view-controls');
 
-    expect(rootProbe?.textContent).toBe('MWS English probe');
-    expect(childProbe?.textContent).toBe('MWS English probe');
+    expect(controls?.getAttribute('aria-label')).toBe('View controls');
     testI18n.setLocale('ru', ruCatalog);
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('[data-testid="l10n-probe"]')).toBe(rootProbe);
-    expect(fixture.nativeElement.querySelector('[data-testid="l10n-child-probe"]')).toBe(childProbe);
-    expect(rootProbe?.textContent).toBe('Проба MWS');
-    expect(childProbe?.textContent).toBe('Проба MWS');
+    expect(controls?.getAttribute('aria-label')).toBe('Управление видом');
   });
 
   beforeEach(async () => {

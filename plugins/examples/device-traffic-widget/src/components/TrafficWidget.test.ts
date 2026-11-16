@@ -5,6 +5,7 @@ import type {PluginRciManager, PluginStorage} from '@mndw/sdk';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {createTestI18n} from '@mndw/sdk/testing';
 import enCatalog from '../../i18n/en.json';
+import ruCatalog from '../../i18n/ru.json';
 import {of} from 'rxjs';
 import TrafficWidget from './TrafficWidget.svelte';
 
@@ -138,8 +139,8 @@ describe('TrafficWidget shared controls', () => {
     expect(storage.set).toHaveBeenCalledWith('detail', '3');
   });
 
-  it('updates the mounted probe when locale changes', () => {
-    const i18n = createTestI18n({l10n: {probe: 'Traffic English'}});
+  it('updates the visible title when locale changes', async () => {
+    const i18n = createTestI18n(enCatalog);
     const queue = vi.fn(() => of({host: []}));
     const storage = {
       get: vi.fn().mockResolvedValue(null),
@@ -155,20 +156,13 @@ describe('TrafficWidget shared controls', () => {
       target: host,
       props: {rci: fakeRci(queue), storage, openSettings, i18n},
     });
+    await vi.waitFor(() => {
+      expect(host.querySelector('.empty-state__heading')?.textContent).toBe(enCatalog.title);
+    });
+
+    i18n.setLocale('ru', ruCatalog);
     flushSync();
 
-    const probe = host.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
-
-    expect(probe?.textContent).toBe('Traffic English');
-    expect(probe?.hasAttribute('hidden')).toBe(true);
-
-    const enValue = probe?.textContent;
-
-    i18n.setLocale('ru', {l10n: {probe: 'Трафик русский'}});
-    flushSync();
-
-    expect(enValue).not.toBe('Трафик русский');
-    expect(host.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe('Трафик русский');
+    expect(host.querySelector('.empty-state__heading')?.textContent).toBe(ruCatalog.title);
   });
 });

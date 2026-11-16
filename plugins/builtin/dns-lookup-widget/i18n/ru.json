@@ -1,7 +1,4 @@
 {
-  "l10n": {
-    "probe": "Проба DNS"
-  },
   "title": "Поиск DNS",
   "hostname-label": "Имя хоста",
   "hostname-hint": "Например, google.com",

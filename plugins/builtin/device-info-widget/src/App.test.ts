@@ -15,6 +15,7 @@ import {Observable, Subject, forkJoin, of, throwError} from 'rxjs';
 
 import App from './App.vue';
 import enCatalog from '../i18n/en.json';
+import ruCatalog from '../i18n/ru.json';
 
 class FakeResizeObserver {
   public observe(_element: Element): void {}
@@ -200,17 +201,16 @@ describe('App', () => {
     app.unmount();
   });
 
-  it('updates the same probe after a locale switch', async () => {
-    const i18n = createTestI18n({l10n: {probe: 'Device English'}});
+  it('updates the visible title after a locale switch', async () => {
+    const i18n = createTestI18n(enCatalog);
     const app = mountWidget(() => new Observable<unknown>(() => {}), i18n);
-    const probe = document.querySelector<HTMLElement>('[data-testid="l10n-probe"]');
+    const title = document.querySelector('.app__header > span');
 
-    expect(probe?.textContent).toBe('Device English');
-    i18n.setLocale('ru', {l10n: {probe: 'Устройство русский'}});
+    expect(title?.textContent).toBe(enCatalog.title);
+    i18n.setLocale('ru', ruCatalog);
     await nextTick();
 
-    expect(document.querySelector('[data-testid="l10n-probe"]')).toBe(probe);
-    expect(probe?.textContent).toBe('Устройство русский');
+    expect(title?.textContent).toBe(ruCatalog.title);
     app.unmount();
   });
 

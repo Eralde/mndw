@@ -112,7 +112,13 @@ interface PluginContextBase {
   readonly telemetry: PluginTelemetry;
   events?: PluginEventFacade;
   rciManager: PluginRciManager;
+  /**
+   * Storage scoped to this plugin context; each widget instance has its own scope. The host clears widget data
+   * when its dashboard tile is removed or its plugin no longer appears as a widget. Leaving the dashboard or a
+   * plugin page preserves it.
+   */
   storage: PluginStorage;
+  /** Storage shared by all instances of this plugin. The host does not clear it when the plugin is disabled or removed. */
   sharedStorage: PluginStorage;
   deviceInfo: DeviceInfo;
   i18n: PluginI18n;

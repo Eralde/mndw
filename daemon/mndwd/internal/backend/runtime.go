@@ -57,9 +57,8 @@ type LifecycleEvent struct {
 
 type LifecycleObserver func(LifecycleEvent)
 
-// RuntimeImpl owns one admission ledger for both request-scoped commands and
-// long-running services. This prevents separate subsystems from exceeding a
-// shared platform limit during startup or shutdown races.
+// RuntimeImpl owns request-scoped exec admission and the supervised-service
+// runtime that enforces each subsystem's configured capacity.
 type RuntimeImpl struct {
 	exec              *ExecRunner
 	supervisor        *Supervisor
@@ -201,7 +200,8 @@ func (r *RuntimeImpl) Status(pluginID string) RuntimeStatus {
 }
 
 func (r *RuntimeImpl) Limits() RuntimeLimitsSnapshot {
-	execTotal, services, _ := r.supervisor.admission.Snapshot()
+	execTotal, _ := r.supervisor.admission.Snapshot()
+	services := r.supervisor.reservedServiceCount()
 
 	return RuntimeLimitsSnapshot{
 		MaxConcurrentExecTotal:     r.limits.MaxConcurrentExecTotal,

@@ -127,18 +127,12 @@ func TestShutdownHonorsDeadlineAndReapsAllServices(t *testing.T) {
 	for _, pluginID := range pluginIDs {
 		command, done, _ := startTermIgnoringProcess(t, true)
 
-		reservation, ok := runtime.supervisor.admission.TryReserveService(pluginID)
-
-		if !ok {
-			t.Fatalf("reserve %s", pluginID)
-		}
-
 		spec := enabledSpec(pluginID)
 
 		seedSupervisorStateForTest(runtime.supervisor, pluginID, &spec, &serviceRecord{
 			spec:        spec,
 			status:      RuntimeStatus{State: StateReady},
-			reservation: reservation,
+			serviceHeld: true,
 			command:     command,
 			done:        done,
 		}, &transition{intent: IntentRun})
@@ -182,6 +176,8 @@ func TestShutdownHonorsDeadlineAndReapsAllServices(t *testing.T) {
 	if got := runtime.Limits().ReservedServices; got != 0 {
 		t.Fatalf("reserved services after shutdown = %d, want 0", got)
 	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, runtime.supervisor)
 }
 
 func TestStopProcessLogsUnreapedPID(t *testing.T) {
@@ -198,12 +194,6 @@ func TestStopProcessLogsUnreapedPID(t *testing.T) {
 	})
 	command, done, startWait := startTermIgnoringProcess(t, false)
 	pluginID := "unreaped-service"
-	reservation, ok := runtime.supervisor.admission.TryReserveService(pluginID)
-
-	if !ok {
-		t.Fatalf("reserve %s", pluginID)
-	}
-
 	paths, err := NewRuntimePaths(runtime.runtimeRoot, pluginID)
 	if err != nil {
 		t.Fatalf("runtime paths: %v", err)
@@ -213,7 +203,7 @@ func TestStopProcessLogsUnreapedPID(t *testing.T) {
 		spec:        enabledSpec(pluginID),
 		paths:       paths,
 		status:      RuntimeStatus{State: StateReady},
-		reservation: reservation,
+		serviceHeld: true,
 		command:     command,
 		done:        done,
 	}, nil)

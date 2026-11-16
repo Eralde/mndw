@@ -11,34 +11,29 @@ func DefaultLimits() Limits {
 }
 
 type Admission struct {
-	mu            sync.Mutex
-	limits        Limits
-	totalExec     int
-	pluginExec    map[string]int
-	services      int
-	serviceOwners map[string]bool
+	mu                sync.Mutex
+	maxConcurrentExec int
+	maxExecPerPlugin  int
+	totalExec         int
+	pluginExec        map[string]int
 }
 
 type Reservation struct {
 	admission *Admission
 	pluginID  string
 	kind      reservationKind
-	owner     bool
 	once      sync.Once
 }
 
 type reservationKind uint8
 
-const (
-	reservationExec reservationKind = iota + 1
-	reservationService
-)
+const reservationExec reservationKind = iota + 1
 
 func NewAdmission(limits Limits) *Admission {
 	return &Admission{
-		limits:        limits,
-		pluginExec:    make(map[string]int),
-		serviceOwners: make(map[string]bool),
+		maxConcurrentExec: limits.MaxConcurrentExecTotal,
+		maxExecPerPlugin:  limits.MaxConcurrentExecPerPlugin,
+		pluginExec:        make(map[string]int),
 	}
 }
 
@@ -47,11 +42,11 @@ func (a *Admission) TryAcquireExec(pluginID string) (*Reservation, bool) {
 
 	defer a.mu.Unlock()
 
-	if a.totalExec >= a.limits.MaxConcurrentExecTotal {
+	if a.totalExec >= a.maxConcurrentExec {
 		return nil, false
 	}
 
-	if a.pluginExec[pluginID] >= a.limits.MaxConcurrentExecPerPlugin {
+	if a.pluginExec[pluginID] >= a.maxExecPerPlugin {
 		return nil, false
 	}
 
@@ -61,58 +56,26 @@ func (a *Admission) TryAcquireExec(pluginID string) (*Reservation, bool) {
 	return &Reservation{admission: a, pluginID: pluginID, kind: reservationExec}, true
 }
 
-func (a *Admission) TryReserveService(pluginID string) (*Reservation, bool) {
-	a.mu.Lock()
-
-	defer a.mu.Unlock()
-
-	if a.serviceOwners[pluginID] {
-		return &Reservation{admission: a, pluginID: pluginID, kind: reservationService}, true
-	}
-
-	if a.services >= a.limits.MaxSupervisedServices {
-		return nil, false
-	}
-
-	a.services++
-	a.serviceOwners[pluginID] = true
-
-	return &Reservation{admission: a, pluginID: pluginID, kind: reservationService, owner: true}, true
-}
-
 func (r *Reservation) Release() {
 	if r == nil || r.admission == nil {
 		return
 	}
 
 	r.once.Do(func() {
-		if r.kind == reservationService && !r.owner {
-			return
-		}
-
 		r.admission.mu.Lock()
 
 		defer r.admission.mu.Unlock()
 
-		switch r.kind {
-		case reservationExec:
-			r.admission.totalExec--
-			r.admission.pluginExec[r.pluginID]--
+		r.admission.totalExec--
+		r.admission.pluginExec[r.pluginID]--
 
-			if r.admission.pluginExec[r.pluginID] == 0 {
-				delete(r.admission.pluginExec, r.pluginID)
-			}
-		case reservationService:
-			if r.admission.serviceOwners[r.pluginID] {
-				delete(r.admission.serviceOwners, r.pluginID)
-
-				r.admission.services--
-			}
+		if r.admission.pluginExec[r.pluginID] == 0 {
+			delete(r.admission.pluginExec, r.pluginID)
 		}
 	})
 }
 
-func (a *Admission) Snapshot() (execTotal, services int, perPlugin map[string]int) {
+func (a *Admission) Snapshot() (execTotal int, perPlugin map[string]int) {
 	a.mu.Lock()
 
 	defer a.mu.Unlock()
@@ -123,5 +86,5 @@ func (a *Admission) Snapshot() (execTotal, services int, perPlugin map[string]in
 		perPlugin[pluginID] = count
 	}
 
-	return a.totalExec, a.services, perPlugin
+	return a.totalExec, perPlugin
 }

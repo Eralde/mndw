@@ -101,29 +101,6 @@ func TestAdmissionChecksGlobalBeforePluginAndReleasesImmediately(t *testing.T) {
 
 	second.Release()
 
-	service, ok := admission.TryReserveService("svc")
-
-	if !ok {
-		t.Fatal("service reservation rejected")
-	}
-
-	duplicate, ok := admission.TryReserveService("svc")
-
-	if !ok {
-		t.Fatal("duplicate service reservation was not idempotent")
-	}
-
-	duplicate.Release()
-
-	if _, services, _ := admission.Snapshot(); services != 1 {
-		t.Fatalf("duplicate service release changed service count to %d", services)
-	}
-
-	if _, ok := admission.TryReserveService("other"); ok {
-		t.Fatal("service ceiling did not reject second service")
-	}
-
-	service.Release()
 }
 
 func TestChildEnvironmentIsFreshAndAllowlisted(t *testing.T) {

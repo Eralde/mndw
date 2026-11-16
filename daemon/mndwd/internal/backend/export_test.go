@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"testing"
 	"time"
 
 	"mndwd/internal/httpx"
@@ -35,7 +36,7 @@ type serviceRecord struct {
 	spec               ServiceSpec
 	paths              RuntimePaths
 	status             RuntimeStatus
-	reservation        *Reservation
+	serviceHeld        bool
 	reservationPending bool
 	command            *exec.Cmd
 	done               *processExit
@@ -133,7 +134,7 @@ func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 	if record := s.serviceRecordLocked(name); record != nil {
 		snapshot.servicePresent = true
 		snapshot.status = cloneRuntimeStatus(record.status)
-		snapshot.serviceSlotHeld = record.reservation != nil
+		snapshot.serviceSlotHeld = record.serviceHeld
 		snapshot.reservationPending = record.reservationPending
 		snapshot.startupQueued = record.startupQueued
 		snapshot.startupSeq = record.startupSeq
@@ -217,7 +218,15 @@ func setSupervisorServiceRecordLockedForTest(s *Supervisor, pluginID string, fix
 	record.serviceSpec = fixture.spec
 	record.paths = fixture.paths
 	record.status = fixture.status
-	record.reservation = fixture.reservation
+
+	if fixture.serviceHeld && !record.serviceHeld {
+		if !s.acquireServiceSlotLocked(record) {
+			panic("test service slot exceeds configured capacity")
+		}
+	} else if !fixture.serviceHeld && record.serviceHeld {
+		s.releaseServiceSlotLocked(record)
+	}
+
 	record.reservationPending = fixture.reservationPending
 	record.command = fixture.command
 	record.done = fixture.done
@@ -268,12 +277,13 @@ func resetSupervisorServicesForTest(s *Supervisor) {
 	defer s.mu.Unlock()
 
 	for pluginID, record := range s.plugins {
+		s.releaseServiceSlotLocked(record)
+
 		record.servicePresent = false
 		record.serviceSpec = ServiceSpec{}
 		record.paths = RuntimePaths{}
 		record.status = RuntimeStatus{}
 		record.recentStderr = nil
-		record.reservation = nil
 		record.reservationPending = false
 		record.command = nil
 		record.done = nil
@@ -285,6 +295,26 @@ func resetSupervisorServicesForTest(s *Supervisor) {
 		record.startupSeq = 0
 
 		s.prunePluginRecordLocked(pluginID)
+	}
+}
+
+func assertSupervisorServiceSlotsInvariantForTest(t *testing.T, s *Supervisor) {
+	t.Helper()
+
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	held := 0
+
+	for _, record := range s.plugins {
+		if record.serviceHeld {
+			held++
+		}
+	}
+
+	if s.reservedServices != held {
+		t.Fatalf("reserved service count = %d, records holding slots = %d", s.reservedServices, held)
 	}
 }
 

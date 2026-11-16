@@ -101,6 +101,8 @@ func TestReconcileAdmitsBuiltinsBeforeUserServices(t *testing.T) {
 	if got := runtime.Limits().ReservedServices; got != 3 {
 		t.Fatalf("reserved service slots = %d, want 3", got)
 	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, runtime.supervisor)
 }
 
 func TestLifecycleReleasesReservationWhenStartupDoesNotLaunch(t *testing.T) {
@@ -144,6 +146,8 @@ func TestLifecycleReleasesReservationWhenStartupDoesNotLaunch(t *testing.T) {
 		if got := runtime.Status(plugin.Name).State; got != StateStopped {
 			t.Fatalf("service state after unused startup = %q, want stopped", got)
 		}
+
+		assertSupervisorServiceSlotsInvariantForTest(t, runtime.supervisor)
 	})
 
 	t.Run("promoted service releases its slot for the next waiter", func(t *testing.T) {
@@ -193,6 +197,8 @@ func TestLifecycleReleasesReservationWhenStartupDoesNotLaunch(t *testing.T) {
 		if got := runtime.Limits().ReservedServices; got != 1 {
 			t.Fatalf("reserved services after next promotion = %d, want 1", got)
 		}
+
+		assertSupervisorServiceSlotsInvariantForTest(t, runtime.supervisor)
 	})
 }
 
@@ -329,6 +335,8 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 			t.Fatal("promoted startup callback did not finish")
 		}
 	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, runtime.supervisor)
 }
 
 func TestPromotedBlockedReservationSurvivesRepeatedReconcileAndReleasesOnce(t *testing.T) {
@@ -481,6 +489,8 @@ func TestPromotedBlockedReservationSurvivesRepeatedReconcileAndReleasesOnce(t *t
 			if got := runtime.Limits().ReservedServices; got != 1 {
 				t.Fatalf("reserved slots after repeated cleanup = %d, want first service's single slot", got)
 			}
+
+			assertSupervisorServiceSlotsInvariantForTest(t, runtime.supervisor)
 		})
 	}
 }
@@ -707,6 +717,8 @@ func TestDisableDoesNotWaitForPromotedServiceReadiness(t *testing.T) {
 	if got := runtime.Status("service-b").State; got != StateReady {
 		t.Fatalf("promoted service state = %q, want ready", got)
 	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, runtime.supervisor)
 }
 
 func TestDeleteWinsOverSlowStartupIntegration(t *testing.T) {

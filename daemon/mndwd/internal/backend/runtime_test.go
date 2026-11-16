@@ -22,6 +22,37 @@ func TestRuntimeLimitsExposeConfiguredCapacityWithoutProcessDetails(t *testing.T
 	}
 }
 
+func TestRuntimeLimitsCombineExecAndSupervisorServiceCounts(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		Limits:      Limits{MaxConcurrentExecTotal: 1, MaxConcurrentExecPerPlugin: 1, MaxSupervisedServices: 1},
+	})
+
+	execReservation, ok := runtime.TryAcquireExec("exec")
+
+	if !ok {
+		t.Fatal("exec reservation rejected")
+	}
+
+	runtime.supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("service")})
+
+	if got := runtime.Limits(); got.CurrentExec != 1 || got.ReservedServices != 1 {
+		t.Fatalf("limits with reservations = %+v, want one exec and one service", got)
+	}
+
+	execReservation.Release()
+
+	if err := runtime.supervisor.stopRecord(context.Background(), "service"); err != nil {
+		t.Fatalf("release service slot: %v", err)
+	}
+
+	if got := runtime.Limits(); got.CurrentExec != 0 || got.ReservedServices != 0 {
+		t.Fatalf("limits after releases = %+v, want zero reservations", got)
+	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, runtime.supervisor)
+}
+
 func TestRuntimeIgnoresPluginsWithoutServiceBackend(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 

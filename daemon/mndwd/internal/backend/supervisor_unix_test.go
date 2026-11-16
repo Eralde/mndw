@@ -54,7 +54,7 @@ func TestSupervisorStartIncompatibleStopsExistingRuntimeAndRestampsProtocol(t *t
 		t.Fatalf("initial state = %q, want ready", status.State)
 	}
 
-	_, services, _ := supervisor.admission.Snapshot()
+	services := supervisor.reservedServiceCount()
 
 	if services != 1 {
 		t.Fatalf("initial service reservations = %d, want 1", services)
@@ -77,11 +77,13 @@ func TestSupervisorStartIncompatibleStopsExistingRuntimeAndRestampsProtocol(t *t
 		t.Fatalf("supported protocols = %#v, want [1]", status.SupportedProtocols)
 	}
 
-	_, services, _ = supervisor.admission.Snapshot()
+	services = supervisor.reservedServiceCount()
 
 	if services != 0 {
 		t.Fatalf("service reservations after stop = %d, want 0", services)
 	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, supervisor)
 
 	paths, err := NewRuntimePaths(runtimeRoot, "svc")
 	if err != nil {

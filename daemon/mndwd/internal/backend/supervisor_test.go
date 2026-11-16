@@ -36,9 +36,11 @@ func TestReconcileDoesNotReserveServicesForCanceledContext(t *testing.T) {
 		t.Fatalf("canceled reconcile state = %q, want stopped", got)
 	}
 
-	if _, got, _ := supervisor.admission.Snapshot(); got != 0 {
+	if got := supervisor.reservedServiceCount(); got != 0 {
 		t.Fatalf("canceled reconcile reserved %d service slots, want 0", got)
 	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, supervisor)
 }
 
 func TestRetryTimerStopsWhenLifetimeEnds(t *testing.T) {
@@ -65,8 +67,9 @@ func TestRetryTimerStopsWhenLifetimeEnds(t *testing.T) {
 }
 
 func TestReconcileReservesBuiltinServicesBeforeUserServices(t *testing.T) {
-	admission := NewAdmission(Limits{MaxSupervisedServices: 3})
-	supervisor := newSupervisor(testSupervisorConfig(t), admission)
+	cfg := testSupervisorConfig(t)
+	cfg.Limits.MaxSupervisedServices = 3
+	supervisor := newSupervisor(cfg, NewAdmission(Limits{MaxSupervisedServices: 3}))
 	specs := []ServiceSpec{
 		{PluginID: "user-c", ProtocolVersion: 1, Enabled: true},
 		{PluginID: "builtin-z", ProtocolVersion: 1, Builtin: true, Enabled: true},
@@ -89,9 +92,11 @@ func TestReconcileReservesBuiltinServicesBeforeUserServices(t *testing.T) {
 		}
 	}
 
-	if _, got, _ := admission.Snapshot(); got != 3 {
+	if got := supervisor.reservedServiceCount(); got != 3 {
 		t.Fatalf("reserved service slots = %d, want 3", got)
 	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, supervisor)
 }
 
 func TestReconcileReleasesReservedSlotWhenStartupIsSupersededOrRemoved(t *testing.T) {
@@ -105,12 +110,11 @@ func TestReconcileReleasesReservedSlotWhenStartupIsSupersededOrRemoved(t *testin
 
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			admission := NewAdmission(Limits{MaxSupervisedServices: 1})
-			supervisor := newSupervisor(testSupervisorConfig(t), admission)
+			supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
 
 			supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("svc")})
 
-			if _, got, _ := admission.Snapshot(); got != 1 {
+			if got := supervisor.reservedServiceCount(); got != 1 {
 				t.Fatalf("reserved service slots before superseding = %d, want 1", got)
 			}
 
@@ -138,9 +142,11 @@ func TestReconcileReleasesReservedSlotWhenStartupIsSupersededOrRemoved(t *testin
 				t.Fatal("superseded startup was still eligible after cleanup")
 			}
 
-			if _, got, _ := admission.Snapshot(); got != 0 {
+			if got := supervisor.reservedServiceCount(); got != 0 {
 				t.Fatalf("reserved service slots after superseding = %d, want 0", got)
 			}
+
+			assertSupervisorServiceSlotsInvariantForTest(t, supervisor)
 		})
 	}
 }
@@ -296,17 +302,21 @@ func TestSupervisorStartsWithStoppedStatusAndReportsCapacity(t *testing.T) {
 		t.Fatalf("missing state = %q", got)
 	}
 
-	first, ok := supervisor.admission.TryReserveService("first")
+	plan := supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("first"), enabledSpec("second")})
 
-	if !ok {
-		t.Fatal("first service reservation rejected")
+	if !reflect.DeepEqual(plan.startIDs, []string{"first"}) {
+		t.Fatalf("start IDs = %#v, want [first]", plan.startIDs)
 	}
 
-	defer first.Release()
-
-	if _, ok := supervisor.admission.TryReserveService("second"); ok {
-		t.Fatal("second service reservation accepted")
+	if got := supervisor.Status("second").State; got != StateCapacityBlocked {
+		t.Fatalf("second state = %q, want %q", got, StateCapacityBlocked)
 	}
+
+	if got := supervisor.reservedServiceCount(); got != 1 {
+		t.Fatalf("reserved service slots = %d, want 1", got)
+	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, supervisor)
 }
 
 func TestSupervisorDevValidationAllowsSymlinkedBuiltinRoot(t *testing.T) {
@@ -364,13 +374,8 @@ func TestSupervisorStartReturnsBareServiceCapacitySentinel(t *testing.T) {
 		Limits:             Limits{MaxSupervisedServices: 1},
 		SupportedProtocols: []int{1},
 	})
-	reservation, ok := supervisor.admission.TryReserveService("occupied")
 
-	if !ok {
-		t.Fatal("occupied service reservation rejected")
-	}
-
-	defer reservation.Release()
+	supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("occupied")})
 
 	err := startSupervisorForTest(supervisor, ServiceSpec{
 		PluginID:        "blocked",
@@ -383,6 +388,8 @@ func TestSupervisorStartReturnsBareServiceCapacitySentinel(t *testing.T) {
 	if err != ErrServiceCapacityExceeded {
 		t.Fatalf("capacity error = %v, want bare ErrServiceCapacityExceeded", err)
 	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, supervisor)
 }
 
 func TestSupervisorRecordsIncompatibleServiceWithoutStartingIt(t *testing.T) {
@@ -623,13 +630,8 @@ func TestPlanStartCapacityBlocked(t *testing.T) {
 		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}}),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
-	occupied, ok := supervisor.admission.TryReserveService("occupied")
 
-	if !ok {
-		t.Fatal("occupied reservation rejected")
-	}
-
-	defer occupied.Release()
+	supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("occupied")})
 
 	paths, err := NewRuntimePaths(t.TempDir(), "svc")
 	if err != nil {
@@ -646,9 +648,11 @@ func TestPlanStartCapacityBlocked(t *testing.T) {
 		t.Fatalf("state = %q, want capacity_blocked", supervisor.Status("svc").State)
 	}
 
-	if _, reserved, _ := supervisor.admission.Snapshot(); reserved != 1 {
+	if reserved := supervisor.reservedServiceCount(); reserved != 1 {
 		t.Fatalf("reserved service slots = %d, want occupied slot only", reserved)
 	}
+
+	assertSupervisorServiceSlotsInvariantForTest(t, supervisor)
 }
 
 func TestRecentStderrSurvivesExit(t *testing.T) {

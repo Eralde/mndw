@@ -133,6 +133,29 @@ func TestTrafficGateFreshIsNotInMaintenance(t *testing.T) {
 	}
 }
 
+func TestSocketTrackDoesNotCreateLifecycleRecord(t *testing.T) {
+	// Tracking a socket creates neither service nor lifecycle presence.
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	closer := &recordingCloser{}
+
+	if _, ok := runtime.Traffic().Track(closer, "socket-only"); !ok {
+		t.Fatal("Track refused a socket outside platform maintenance")
+	}
+
+	snapshot := runtime.supervisor.pluginSnapshot("socket-only")
+	if snapshot.desiredPresent || snapshot.servicePresent || snapshot.transitionPresent {
+		t.Fatal("socket tracking created a service or lifecycle record")
+	}
+
+	if got := runtime.Status("socket-only").State; got != StateStopped {
+		t.Fatalf("socket-only status = %q, want %q", got, StateStopped)
+	}
+
+	if path, ok := runtime.SocketPath("socket-only"); ok || path != "" {
+		t.Fatalf("socket-only path = %q, %v, want empty and absent", path, ok)
+	}
+}
+
 func TestTrafficGateTrackRefusedDuringPlatformMaintenance(t *testing.T) {
 	gate := NewTrafficGate()
 

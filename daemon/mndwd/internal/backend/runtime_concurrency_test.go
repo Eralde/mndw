@@ -228,7 +228,7 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 	releaseSecondStartup := make(chan struct{})
 	secondStartupFinished := make(chan struct{})
 	promotedDone := make(chan struct{})
-	queuedStartPlan := make(chan startPlan, 1)
+	queuedStartPlan := make(chan startPlanSnapshot, 1)
 	runtime.supervisor.startDesired = func(spec ServiceSpec) {
 		if spec.PluginID == "service-c" {
 			close(firstStartupEntered)
@@ -329,6 +329,289 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 			t.Fatal("promoted startup callback did not finish")
 		}
 	}
+}
+
+func TestPromotedBlockedReservationSurvivesRepeatedReconcileAndReleasesOnce(t *testing.T) {
+	// A promoted service keeps its reserved slot while blocked, until startup is superseded or removed.
+	tests := []struct {
+		name   string
+		remove bool
+	}{
+		{name: "superseded"},
+		{name: "removed", remove: true},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			runtime := NewRuntime(RuntimeConfig{
+				RuntimeRoot: t.TempDir(),
+				Limits:      Limits{MaxSupervisedServices: 1},
+			})
+			releaseSecond := make(chan struct{})
+			secondEntered := make(chan struct{}, 1)
+			var releaseOnce sync.Once
+			release := func() {
+				releaseOnce.Do(func() { close(releaseSecond) })
+			}
+
+			t.Cleanup(func() {
+				release()
+
+				waited := make(chan struct{})
+
+				go func() {
+					runtime.supervisor.startupWG.Wait()
+					close(waited)
+				}()
+
+				select {
+				case <-waited:
+				case <-time.After(time.Second):
+					t.Error("startup callbacks did not drain during cleanup")
+				}
+			})
+
+			runtime.supervisor.startDesired = func(spec ServiceSpec) {
+				if spec.PluginID != "second" {
+					return
+				}
+
+				select {
+				case secondEntered <- struct{}{}:
+				default:
+				}
+
+				<-releaseSecond
+			}
+
+			specs := []ServiceSpec{enabledSpec("first"), enabledSpec("second")}
+			plan := runtime.supervisor.Reconcile(context.Background(), specs)
+
+			if len(plan.startIDs) != 1 || plan.startIDs[0] != "first" {
+				t.Fatalf("initial start IDs = %#v, want [first]", plan.startIDs)
+			}
+
+			if got := runtime.Status("second").State; got != StateCapacityBlocked {
+				t.Fatalf("second initial state = %q, want %q", got, StateCapacityBlocked)
+			}
+
+			if err := runtime.supervisor.stopRecord(context.Background(), "first"); err != nil {
+				t.Fatalf("release first service slot: %v", err)
+			}
+
+			select {
+			case <-secondEntered:
+			case <-time.After(time.Second):
+				t.Fatal("promoted startup did not reach its wait point")
+			}
+
+			assertPendingReservation := func() {
+				t.Helper()
+
+				snapshot := runtime.supervisor.pluginSnapshot("second")
+
+				if !snapshot.servicePresent || snapshot.status.State != StateCapacityBlocked || !snapshot.serviceSlotHeld || !snapshot.reservationPending {
+					t.Fatalf("promoted reservation snapshot = %+v, want blocked service with pending owned slot", snapshot)
+				}
+
+				if !snapshot.startupQueued || snapshot.startupSeq != 1 {
+					t.Fatalf("promoted startup queue = queued %v sequence %d, want one queued startup", snapshot.startupQueued, snapshot.startupSeq)
+				}
+
+				if got := runtime.Limits().ReservedServices; got != 1 {
+					t.Fatalf("reserved slots while startup is paused = %d, want 1", got)
+				}
+			}
+
+			assertPendingReservation()
+
+			repeated := runtime.supervisor.Reconcile(context.Background(), specs)
+
+			if !containsID(repeated.startIDs, "second") {
+				t.Fatalf("repeated reconcile start IDs = %#v, want second candidate", repeated.startIDs)
+			}
+
+			for _, pluginID := range repeated.startIDs {
+				runtime.supervisor.launchDesiredStartup(enabledSpec(pluginID))
+			}
+
+			runtime.supervisor.promoteBlocked()
+			assertPendingReservation()
+
+			if testCase.remove {
+				removed := runtime.supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("first")})
+
+				if !containsID(removed.removeIDs, "second") {
+					t.Fatalf("remove plan = %+v, want second", removed)
+				}
+			} else {
+				disabled := enabledSpec("second")
+				disabled.Enabled = false
+				superseded := runtime.supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("first"), disabled})
+
+				if !containsID(superseded.stopIDs, "second") {
+					t.Fatalf("supersede plan = %+v, want second stop", superseded)
+				}
+			}
+
+			if err := runtime.supervisor.stopRecord(context.Background(), "second"); err != nil {
+				t.Fatalf("release second service slot: %v", err)
+			}
+
+			second := runtime.supervisor.pluginSnapshot("second")
+
+			if second.serviceSlotHeld || second.reservationPending || second.status.State != StateStopped {
+				t.Fatalf("second after cleanup = %+v, want stopped with no reservation", second)
+			}
+
+			first := runtime.supervisor.pluginSnapshot("first")
+
+			if !first.serviceSlotHeld {
+				t.Fatalf("first promoted snapshot = %+v, want it to own released slot", first)
+			}
+
+			if got := runtime.Limits().ReservedServices; got != 1 {
+				t.Fatalf("reserved slots after promotion = %d, want 1", got)
+			}
+
+			if err := runtime.supervisor.stopRecord(context.Background(), "second"); err != nil {
+				t.Fatalf("repeat second cleanup: %v", err)
+			}
+
+			if got := runtime.Limits().ReservedServices; got != 1 {
+				t.Fatalf("reserved slots after repeated cleanup = %d, want first service's single slot", got)
+			}
+		})
+	}
+}
+
+func TestDirectStartupWinsBeforeRetryTimerWithoutDuplicate(t *testing.T) {
+	// Direct startup owns the transition before retry eligibility, so the timer cannot queue another start.
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		Limits:      Limits{MaxSupervisedServices: 1},
+	})
+	spec := enabledSpec("retry")
+
+	if plan := runtime.supervisor.Reconcile(context.Background(), []ServiceSpec{spec}); len(plan.startIDs) != 1 {
+		t.Fatalf("initial start IDs = %#v, want one candidate", plan.startIDs)
+	}
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	startCalls := make(chan struct{}, 2)
+	retryCallbackDone := make(chan struct{}, 1)
+	runtime.supervisor.retryCallbackDone = func(pluginID string) {
+		if pluginID == spec.PluginID {
+			retryCallbackDone <- struct{}{}
+		}
+	}
+	var releaseOnce sync.Once
+	closeRelease := func() {
+		releaseOnce.Do(func() { close(release) })
+	}
+
+	t.Cleanup(func() {
+		closeRelease()
+
+		waited := make(chan struct{})
+
+		go func() {
+			runtime.supervisor.startupWG.Wait()
+			close(waited)
+		}()
+
+		select {
+		case <-waited:
+		case <-time.After(time.Second):
+			t.Error("startup callback did not drain during cleanup")
+		}
+	})
+
+	finished := make(chan error, 1)
+	runtime.supervisor.startDesired = func(startSpec ServiceSpec) {
+		startCalls <- struct{}{}
+		outcome := runtime.supervisor.beginDesiredStartup(startSpec)
+
+		if outcome.conflict {
+			return
+		}
+
+		close(entered)
+		<-release
+
+		finished <- runtime.executeLifecycleOutcome(startSpec.PluginID, OpStarting,
+			func(context.Context, LifecycleControl) error { return nil }, outcome)
+	}
+
+	runtime.supervisor.withLock(func() {
+		record := runtime.supervisor.services[spec.PluginID]
+		record.status.State = StateBackoff
+	})
+	runtime.supervisor.launchDesiredStartup(spec)
+
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("direct startup did not begin before retry timer")
+	}
+
+	select {
+	case <-startCalls:
+	default:
+		t.Fatal("direct startup callback was not observed")
+	}
+
+	const retryDelay = 10 * time.Millisecond
+
+	runtime.supervisor.withLock(func() {
+		runtime.supervisor.scheduleRetry(spec.PluginID, retryDelay)
+	})
+
+	select {
+	case <-retryCallbackDone:
+	case <-time.After(time.Second):
+		t.Fatal("retry callback did not complete")
+	}
+
+	if runtime.supervisor.pluginSnapshot(spec.PluginID).retryTimerPresent {
+		t.Error("retry timer remained scheduled after its callback completed")
+	}
+
+	if got := runtime.supervisor.pluginSnapshot(spec.PluginID).startupSeq; got != 1 {
+		t.Fatalf("startup sequence after retry callback = %d, want one direct startup", got)
+	}
+
+	select {
+	case <-startCalls:
+		t.Fatal("retry callback queued another startup")
+	default:
+	}
+
+	closeRelease()
+
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Fatalf("direct startup lifecycle = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("direct startup did not finish after release")
+	}
+
+	waited := make(chan struct{})
+
+	go func() {
+		runtime.supervisor.startupWG.Wait()
+		close(waited)
+	}()
+
+	select {
+	case <-waited:
+	case <-time.After(time.Second):
+		t.Fatal("startup callbacks did not drain")
+	}
+
 }
 
 func TestDisableDoesNotWaitForPromotedServiceReadiness(t *testing.T) {

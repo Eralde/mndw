@@ -58,6 +58,110 @@ func TestRuntimeShutdownPublishesTypedReason(t *testing.T) {
 	}
 }
 
+func TestLifecycleAndServicePresence(t *testing.T) {
+	// Lifecycle-only records and tombstones do not create service presence.
+	tests := []struct {
+		name        string
+		op          Operation
+		intent      Intent
+		wantPresent bool
+	}{
+		{name: "absent"},
+		{name: "lifecycle-only", op: OpUpdating, intent: IntentRun, wantPresent: true},
+		{name: "tombstone", op: OpDeleting, intent: IntentRemove, wantPresent: true},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+
+			if testCase.wantPresent {
+				if err := runtime.ExecuteLifecycle("p", testCase.op, testCase.intent,
+					func(context.Context, LifecycleControl) error { return nil }); err != nil {
+					t.Fatalf("create lifecycle record: %v", err)
+				}
+			}
+
+			snapshot := runtime.supervisor.pluginSnapshot("p")
+			present := snapshot.desiredPresent || snapshot.servicePresent || snapshot.transitionPresent
+
+			if present != testCase.wantPresent {
+				t.Fatalf("snapshot presence = %v, want %v", present, testCase.wantPresent)
+			}
+
+			if present && (!snapshot.transitionPresent || snapshot.servicePresent || snapshot.intent != testCase.intent) {
+				t.Fatalf("lifecycle-only snapshot = %+v", snapshot)
+			}
+
+			if got := runtime.Status("p").State; got != StateStopped {
+				t.Fatalf("absent-service status = %q, want %q", got, StateStopped)
+			}
+
+			if path, ok := runtime.SocketPath("p"); ok || path != "" {
+				t.Fatalf("absent-service socket path = %q, %v, want empty and absent", path, ok)
+			}
+
+			if got := runtime.supervisor.runningPluginIDs(); len(got) != 0 {
+				t.Fatalf("service membership for lifecycle-only record = %#v, want none", got)
+			}
+		})
+	}
+}
+
+func TestStopAllAndShutdownObserverMembership(t *testing.T) {
+	// StopAll emits no lifecycle events; shutdown observer membership follows service presence.
+	var events []LifecycleEvent
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		OnLifecycle: func(event LifecycleEvent) { events = append(events, event) },
+	})
+	runtime.supervisor.startDesired = nil
+
+	for _, record := range []struct {
+		pluginID string
+		op       Operation
+		intent   Intent
+	}{
+		{pluginID: "lifecycle-only", op: OpUpdating, intent: IntentRun},
+		{pluginID: "tombstone", op: OpDeleting, intent: IntentRemove},
+	} {
+		if err := runtime.ExecuteLifecycle(record.pluginID, record.op, record.intent,
+			func(context.Context, LifecycleControl) error { return nil }); err != nil {
+			t.Fatalf("create %s lifecycle record: %v", record.pluginID, err)
+		}
+	}
+
+	if plan := runtime.supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("service")}); len(plan.startIDs) != 1 {
+		t.Fatalf("service start IDs = %#v, want service", plan.startIDs)
+	}
+
+	events = nil
+	if err := runtime.supervisor.StopAll(context.Background()); err != nil {
+		t.Fatalf("StopAll: %v", err)
+	}
+
+	if len(events) != 0 {
+		t.Fatalf("StopAll emitted lifecycle events = %#v, want none", events)
+	}
+
+	for _, pluginID := range []string{"lifecycle-only", "tombstone"} {
+		snapshot := runtime.supervisor.pluginSnapshot(pluginID)
+
+		if !snapshot.transitionPresent || snapshot.servicePresent {
+			t.Errorf("%s after StopAll = %+v, want lifecycle-only record retained", pluginID, snapshot)
+		}
+	}
+
+	if err := runtime.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+
+	want := []LifecycleEvent{{Plugin: "service", State: LifecycleStopped, Reason: LifecycleReasonShutdown}}
+	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("shutdown observer events = %#v, want service membership only: %#v", events, want)
+	}
+}
+
 func TestExecuteLifecycleConflictSurfaces(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 	block := make(chan struct{})

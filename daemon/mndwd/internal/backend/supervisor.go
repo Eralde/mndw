@@ -64,8 +64,10 @@ type Supervisor struct {
 	retryTimers  map[string]*time.Timer
 	coord        *coordinator
 	startDesired func(ServiceSpec)
-	startupWG    sync.WaitGroup
-	shuttingDown bool
+	// retryCallbackDone synchronizes tests with retry timer callback completion.
+	retryCallbackDone func(string)
+	startupWG         sync.WaitGroup
+	shuttingDown      bool
 }
 
 type serviceRecord struct {
@@ -978,6 +980,10 @@ func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 
 	var timer *time.Timer
 	timer = time.AfterFunc(delay, func() {
+		if callbackDone := s.retryCallbackDone; callbackDone != nil {
+			defer callbackDone(pluginID)
+		}
+
 		s.mu.Lock()
 
 		if s.retryTimers[pluginID] != timer {

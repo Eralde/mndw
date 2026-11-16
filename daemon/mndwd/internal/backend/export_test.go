@@ -9,6 +9,27 @@ import (
 	"mndwd/internal/httpx"
 )
 
+type startPlanSnapshot struct {
+	action startAction
+	err    error
+}
+
+type pluginSnapshot struct {
+	desiredPresent     bool
+	desired            ServiceSpec
+	servicePresent     bool
+	status             RuntimeStatus
+	serviceSlotHeld    bool
+	reservationPending bool
+	startupQueued      bool
+	startupSeq         uint64
+	retryTimerPresent  bool
+	transitionPresent  bool
+	intent             Intent
+	operation          Operation
+	generation         uint64
+}
+
 func NewExecRunner(cfg ExecRunnerConfig) *ExecRunner {
 	cfg = normalizeExecConfig(cfg)
 
@@ -53,25 +74,80 @@ func (c *coordinator) intentOf(name string) Intent {
 }
 
 func (s *Supervisor) operationOf(name string) Operation {
-	return withLockValue(s, func() Operation {
-		record := s.coord.records[name]
-
-		if record == nil {
-			return OpNone
-		}
-
-		return record.operation
-	})
+	return s.pluginSnapshot(name).operation
 }
 
 func (s *Supervisor) intentOf(name string) Intent {
-	return withLockValue(s, func() Intent { return s.coord.intentOf(name) })
+	return s.pluginSnapshot(name).intent
 }
 
-func (s *Supervisor) planStart(spec ServiceSpec, paths RuntimePaths) startPlan {
-	return withLockValue(s, func() startPlan {
-		return s.planStartLocked(spec, paths)
+func (s *Supervisor) planStart(spec ServiceSpec, paths RuntimePaths) startPlanSnapshot {
+	return withLockValue(s, func() startPlanSnapshot {
+		plan := s.planStartLocked(spec, paths)
+
+		return startPlanSnapshot{action: plan.action, err: plan.err}
 	})
+}
+
+func (s *Supervisor) pluginSnapshot(name string) pluginSnapshot {
+	return withLockValue(s, func() pluginSnapshot {
+		return s.pluginSnapshotLocked(name)
+	})
+}
+
+func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
+	snapshot := pluginSnapshot{intent: IntentRemove}
+
+	if desired, ok := s.desired[name]; ok {
+		snapshot.desiredPresent = true
+		snapshot.desired = desired
+		snapshot.desired.Args = append([]string(nil), desired.Args...)
+	}
+
+	if record := s.services[name]; record != nil {
+		snapshot.servicePresent = true
+		snapshot.status = cloneRuntimeStatus(record.status)
+		snapshot.serviceSlotHeld = record.reservation != nil
+		snapshot.reservationPending = record.reservationPending
+		snapshot.startupQueued = record.startupQueued
+		snapshot.startupSeq = record.startupSeq
+	}
+
+	if record := s.coord.records[name]; record != nil {
+		snapshot.transitionPresent = true
+		snapshot.intent = record.intent
+		snapshot.operation = record.operation
+
+		if record.run != nil {
+			snapshot.generation = record.run.generation
+		}
+	}
+
+	snapshot.retryTimerPresent = s.retryTimers[name] != nil
+
+	return snapshot
+}
+
+func cloneRuntimeStatus(status RuntimeStatus) RuntimeStatus {
+	if status.StartedAt != nil {
+		startedAt := *status.StartedAt
+		status.StartedAt = &startedAt
+	}
+
+	if status.NextAttemptAt != nil {
+		nextAttemptAt := *status.NextAttemptAt
+		status.NextAttemptAt = &nextAttemptAt
+	}
+
+	if status.Compatible != nil {
+		compatible := *status.Compatible
+		status.Compatible = &compatible
+	}
+
+	status.RecentStderr = append([]string(nil), status.RecentStderr...)
+	status.SupportedProtocols = append([]int(nil), status.SupportedProtocols...)
+
+	return status
 }
 
 func (r *RuntimeImpl) operationOf(name string) Operation {
@@ -83,13 +159,5 @@ func (r *RuntimeImpl) intentOf(name string) Intent {
 }
 
 func (r *RuntimeImpl) generationOf(name string) uint64 {
-	return withLockValue(r.supervisor, func() uint64 {
-		record := r.supervisor.coord.records[name]
-
-		if record == nil || record.run == nil {
-			return 0
-		}
-
-		return record.run.generation
-	})
+	return r.supervisor.pluginSnapshot(name).generation
 }

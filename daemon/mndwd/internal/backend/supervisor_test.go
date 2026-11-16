@@ -655,6 +655,43 @@ func TestPlanStartCapacityBlocked(t *testing.T) {
 	if supervisor.Status("svc").State != StateCapacityBlocked {
 		t.Fatalf("state = %q, want capacity_blocked", supervisor.Status("svc").State)
 	}
+
+	if _, reserved, _ := supervisor.admission.Snapshot(); reserved != 1 {
+		t.Fatalf("reserved service slots = %d, want occupied slot only", reserved)
+	}
+}
+
+func TestRecentStderrSurvivesExit(t *testing.T) {
+	// Status retains redacted stderr after process exit.
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
+	t.Cleanup(func() {
+		if err := supervisor.StopAll(context.Background()); err != nil {
+			t.Errorf("stop supervisor: %v", err)
+		}
+	})
+	done := newProcessExit()
+	done.err = errors.New("service exited")
+	close(done.done)
+	stderr := NewStderrRing(1024, 8)
+	_, _ = stderr.Write([]byte("startup token=super-secret failed\n"))
+	supervisor.services["svc"] = &serviceRecord{
+		done:   done,
+		stderr: stderr,
+		status: RuntimeStatus{State: StateReady},
+	}
+
+	supervisor.observeExit("svc", done)
+
+	status := supervisor.Status("svc")
+
+	if status.State != StateBackoff {
+		t.Fatalf("state after exit = %q, want %q", status.State, StateBackoff)
+	}
+
+	if !reflect.DeepEqual(status.RecentStderr, []string{"startup token=[redacted] failed"}) {
+		t.Fatalf("recent stderr after exit = %#v, want retained redacted output", status.RecentStderr)
+	}
+
 }
 
 func TestPlanStartProceedReservesAndMarksStarting(t *testing.T) {

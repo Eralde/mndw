@@ -22,11 +22,11 @@ import (
 	contractEvents "mndw.local/contracts/events"
 	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
+	"mndwd/internal/initd"
 	"mndwd/internal/manifest"
 	"mndwd/internal/opkg"
 	"mndwd/internal/registry"
 	"mndwd/internal/selfupdate"
-	"mndwd/internal/service"
 	"mndwd/internal/state"
 )
 
@@ -86,7 +86,7 @@ type Handler struct {
 	cfg                  Config
 	store                StateStore
 	opkg                 opkg.Manager
-	service              service.Manager
+	service              initd.Manager
 	builtins             BuiltinSource
 	runtimeResolver      RuntimeResolver
 	logger               *slog.Logger
@@ -103,7 +103,7 @@ type Handler struct {
 
 // New constructs a management Handler.
 
-func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr service.Manager, builtins BuiltinSource, logger *slog.Logger) *Handler {
+func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr initd.Manager, builtins BuiltinSource, logger *slog.Logger) *Handler {
 	if cfg.Runtime == nil {
 		panic("mgmt: Config.Runtime is required")
 	}

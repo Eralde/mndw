@@ -1,5 +1,5 @@
-// Package service manages Entware init.d scripts.
-package service
+// Package initd manages Entware init.d scripts.
+package initd
 
 import (
 	"bytes"

@@ -27,6 +27,7 @@ import (
 	"mndwd/internal/events"
 	"mndwd/internal/frontend"
 	"mndwd/internal/httpx"
+	"mndwd/internal/initd"
 	"mndwd/internal/listen"
 	"mndwd/internal/manifest"
 	"mndwd/internal/mgmt"
@@ -34,7 +35,6 @@ import (
 	"mndwd/internal/palette"
 	"mndwd/internal/registry"
 	"mndwd/internal/selfupdate"
-	"mndwd/internal/service"
 	"mndwd/internal/state"
 	"mndwd/internal/telemetry"
 )
@@ -218,7 +218,7 @@ type daemonCore struct {
 type mgmtServices struct {
 	opkg                 opkg.Manager
 	selfUpdate           selfupdate.Service
-	service              service.Manager
+	service              initd.Manager
 	permissionController mgmt.PersistentRCIPermissionController
 	telemetryController  mgmt.TelemetryController
 	events               *events.InternalPublisher
@@ -280,7 +280,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 		RunningVersion: version,
 		Logger:         logger,
 	}, opkgMgr)
-	serviceMgr := service.New(cfg.Service, logger)
+	serviceMgr := initd.New(cfg.Service, logger)
 	activationGates := backend.NewActivationGateRegistry()
 	runtime := backend.NewRuntime(backend.RuntimeConfig{
 		RuntimeRoot:     cfg.PluginRuntimeRoot,

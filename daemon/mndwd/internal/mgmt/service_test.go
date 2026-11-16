@@ -10,53 +10,53 @@ import (
 	"testing"
 	"time"
 
-	"mndwd/internal/service"
+	"mndwd/internal/initd"
 )
 
 type fakeServiceManager struct {
 	listErr      error
-	startFn      func(context.Context, string) (service.ServiceEntry, error)
-	setEnabledFn func(context.Context, string, bool) (service.ServiceEntry, error)
-	services     []service.ServiceEntry
+	startFn      func(context.Context, string) (initd.ServiceEntry, error)
+	setEnabledFn func(context.Context, string, bool) (initd.ServiceEntry, error)
+	services     []initd.ServiceEntry
 }
 
-func (m *fakeServiceManager) List(context.Context) ([]service.ServiceEntry, error) {
+func (m *fakeServiceManager) List(context.Context) ([]initd.ServiceEntry, error) {
 	return m.services, m.listErr
 }
-func (m *fakeServiceManager) Status(context.Context, string) (service.ServiceEntry, error) {
+func (m *fakeServiceManager) Status(context.Context, string) (initd.ServiceEntry, error) {
 	if len(m.services) == 0 {
-		return service.ServiceEntry{}, &service.InvalidServiceError{Name: "missing"}
+		return initd.ServiceEntry{}, &initd.InvalidServiceError{Name: "missing"}
 	}
 
 	return m.services[0], nil
 }
-func (m *fakeServiceManager) Start(ctx context.Context, name string) (service.ServiceEntry, error) {
+func (m *fakeServiceManager) Start(ctx context.Context, name string) (initd.ServiceEntry, error) {
 	if m.startFn != nil {
 		return m.startFn(ctx, name)
 	}
 
-	return service.ServiceEntry{Name: name, Label: name, State: "running"}, nil
+	return initd.ServiceEntry{Name: name, Label: name, State: "running"}, nil
 }
-func (m *fakeServiceManager) Stop(context.Context, string) (service.ServiceEntry, error) {
-	return service.ServiceEntry{}, nil
+func (m *fakeServiceManager) Stop(context.Context, string) (initd.ServiceEntry, error) {
+	return initd.ServiceEntry{}, nil
 }
-func (m *fakeServiceManager) Restart(context.Context, string) (service.ServiceEntry, error) {
-	return service.ServiceEntry{}, nil
+func (m *fakeServiceManager) Restart(context.Context, string) (initd.ServiceEntry, error) {
+	return initd.ServiceEntry{}, nil
 }
-func (m *fakeServiceManager) SetEnabled(ctx context.Context, name string, enabled bool) (service.ServiceEntry, error) {
+func (m *fakeServiceManager) SetEnabled(ctx context.Context, name string, enabled bool) (initd.ServiceEntry, error) {
 	if m.setEnabledFn != nil {
 		return m.setEnabledFn(ctx, name, enabled)
 	}
 
-	return service.ServiceEntry{}, nil
+	return initd.ServiceEntry{}, nil
 }
 
-func newServiceTestHandler(manager service.Manager, timeout time.Duration) *Handler {
+func newServiceTestHandler(manager initd.Manager, timeout time.Duration) *Handler {
 	return New(Config{ServiceActionRoot: context.Background(), ServiceActionTimeout: timeout, Runtime: passthroughRuntime{}}, nil, nil, manager, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
 func TestServiceListEmptyDirectoryResponse(t *testing.T) {
-	h := newServiceTestHandler(&fakeServiceManager{services: []service.ServiceEntry{}}, time.Second)
+	h := newServiceTestHandler(&fakeServiceManager{services: []initd.ServiceEntry{}}, time.Second)
 	mux := http.NewServeMux()
 
 	h.Register(mux)
@@ -71,7 +71,7 @@ func TestServiceListEmptyDirectoryResponse(t *testing.T) {
 }
 
 func TestServiceListUnavailableResponse(t *testing.T) {
-	h := newServiceTestHandler(&fakeServiceManager{listErr: service.ErrServiceUnavailable}, time.Second)
+	h := newServiceTestHandler(&fakeServiceManager{listErr: initd.ErrServiceUnavailable}, time.Second)
 	mux := http.NewServeMux()
 
 	h.Register(mux)
@@ -87,10 +87,10 @@ func TestServiceListUnavailableResponse(t *testing.T) {
 
 func TestServiceActionIgnoresRequestCancellation(t *testing.T) {
 	called := make(chan struct{})
-	h := newServiceTestHandler(&fakeServiceManager{startFn: func(_ context.Context, name string) (service.ServiceEntry, error) {
+	h := newServiceTestHandler(&fakeServiceManager{startFn: func(_ context.Context, name string) (initd.ServiceEntry, error) {
 		close(called)
 
-		return service.ServiceEntry{Name: name, State: "running"}, nil
+		return initd.ServiceEntry{Name: name, State: "running"}, nil
 	}}, time.Second)
 	mux := http.NewServeMux()
 
@@ -111,10 +111,10 @@ func TestServiceActionIgnoresRequestCancellation(t *testing.T) {
 }
 
 func TestServiceActionTimeoutResponse(t *testing.T) {
-	h := newServiceTestHandler(&fakeServiceManager{startFn: func(ctx context.Context, _ string) (service.ServiceEntry, error) {
+	h := newServiceTestHandler(&fakeServiceManager{startFn: func(ctx context.Context, _ string) (initd.ServiceEntry, error) {
 		<-ctx.Done()
 
-		return service.ServiceEntry{}, ctx.Err()
+		return initd.ServiceEntry{}, ctx.Err()
 	}}, 5*time.Millisecond)
 	mux := http.NewServeMux()
 
@@ -130,8 +130,8 @@ func TestServiceActionTimeoutResponse(t *testing.T) {
 }
 
 func TestServiceActionMapsProtectedError(t *testing.T) {
-	h := newServiceTestHandler(&fakeServiceManager{startFn: func(context.Context, string) (service.ServiceEntry, error) {
-		return service.ServiceEntry{}, &service.ProtectedServiceError{Name: "S70mndwd"}
+	h := newServiceTestHandler(&fakeServiceManager{startFn: func(context.Context, string) (initd.ServiceEntry, error) {
+		return initd.ServiceEntry{}, &initd.ProtectedServiceError{Name: "S70mndwd"}
 	}}, time.Second)
 	mux := http.NewServeMux()
 
@@ -147,12 +147,12 @@ func TestServiceActionMapsProtectedError(t *testing.T) {
 }
 
 func TestServiceSetEnabledResponse(t *testing.T) {
-	h := newServiceTestHandler(&fakeServiceManager{setEnabledFn: func(_ context.Context, name string, enabled bool) (service.ServiceEntry, error) {
+	h := newServiceTestHandler(&fakeServiceManager{setEnabledFn: func(_ context.Context, name string, enabled bool) (initd.ServiceEntry, error) {
 		if name != "S99foo" || enabled {
 			t.Fatalf("SetEnabled(%q, %v), want (S99foo, false)", name, enabled)
 		}
 
-		return service.ServiceEntry{Name: "K99foo", EnabledAtBoot: false}, nil
+		return initd.ServiceEntry{Name: "K99foo", EnabledAtBoot: false}, nil
 	}}, time.Second)
 	mux := http.NewServeMux()
 
@@ -168,8 +168,8 @@ func TestServiceSetEnabledResponse(t *testing.T) {
 }
 
 func TestServiceSetEnabledMapsPinnedErrorToConflict(t *testing.T) {
-	h := newServiceTestHandler(&fakeServiceManager{setEnabledFn: func(context.Context, string, bool) (service.ServiceEntry, error) {
-		return service.ServiceEntry{}, &service.EnabledPinnedError{Name: "S99foo"}
+	h := newServiceTestHandler(&fakeServiceManager{setEnabledFn: func(context.Context, string, bool) (initd.ServiceEntry, error) {
+		return initd.ServiceEntry{}, &initd.EnabledPinnedError{Name: "S99foo"}
 	}}, time.Second)
 	mux := http.NewServeMux()
 
@@ -185,8 +185,8 @@ func TestServiceSetEnabledMapsPinnedErrorToConflict(t *testing.T) {
 }
 
 func TestServiceSetEnabledMapsProtectedError(t *testing.T) {
-	h := newServiceTestHandler(&fakeServiceManager{setEnabledFn: func(context.Context, string, bool) (service.ServiceEntry, error) {
-		return service.ServiceEntry{}, &service.ProtectedServiceError{Name: "S70mndwd"}
+	h := newServiceTestHandler(&fakeServiceManager{setEnabledFn: func(context.Context, string, bool) (initd.ServiceEntry, error) {
+		return initd.ServiceEntry{}, &initd.ProtectedServiceError{Name: "S70mndwd"}
 	}}, time.Second)
 	mux := http.NewServeMux()
 

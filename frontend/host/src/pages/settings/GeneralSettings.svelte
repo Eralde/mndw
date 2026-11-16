@@ -505,13 +505,23 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
               >
                 {hostT('settings.update-firmware-persistent')}
               </p>
-            {:else}
+            {:else if controllerResult.result === 'valid'}
               <p>
-                {
-                  hostT('settings.controller-result', {
-                    result: controllerResult.result,
-                  })
-                }
+                {hostT('settings.controller-token-valid')}
+              </p>
+            {:else if controllerResult.result === 'invalid-token'}
+              <p
+                class="unsupported-banner"
+                role="alert"
+              >
+                {hostT('settings.controller-token-rejected')}
+              </p>
+            {:else if controllerResult.result === 'unreachable'}
+              <p
+                class="unsupported-banner"
+                role="alert"
+              >
+                {hostT('settings.device-unreachable')}
               </p>
             {/if}
           {/if}

@@ -84,13 +84,38 @@ const canUpdate = $derived(
 const freshnessLabel = $derived.by(() => {
   if (metadataUpdatedAt === null) { return hostT('packages.never-refreshed'); }
   if (freshnessComputedAt === null) { return ''; }
-  const age = Math.max(
+  const ageMs = Math.max(
     0,
-    Math.floor(
-      (freshnessComputedAt.getTime() - Date.parse(metadataUpdatedAt)) / 60000,
-    ),
+    freshnessComputedAt.getTime() - Date.parse(metadataUpdatedAt),
   );
-  return hostT('packages.refreshed-ago', {minutes: age});
+
+  if (ageMs < 60_000) {
+    return hostT('packages.just-now');
+  }
+
+  const relativeTime = new Intl.RelativeTimeFormat(appState.locale, {
+    numeric: 'auto',
+  });
+  const ageMinutes = Math.floor(ageMs / 60_000);
+
+  if (ageMinutes < 60) {
+    return hostT('packages.refreshed-ago', {
+      age: relativeTime.format(-ageMinutes, 'minute'),
+    });
+  }
+
+  const ageHours = Math.floor(ageMs / 3_600_000);
+
+  if (ageHours < 24) {
+    return hostT('packages.refreshed-ago', {
+      age: relativeTime.format(-ageHours, 'hour'),
+    });
+  }
+
+  const ageDays = Math.floor(ageMs / 86_400_000);
+  return hostT('packages.refreshed-ago', {
+    age: relativeTime.format(-ageDays, 'day'),
+  });
 });
 const freshnessStale = $derived.by(() => {
   if (metadataUpdatedAt === null || freshnessComputedAt === null) {

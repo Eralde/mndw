@@ -130,8 +130,8 @@ describe('InstalledPluginList', () => {
 
     expect(target.textContent).toContain('Network Tools');
     expect(target.textContent).toContain('1.0.0');
-    expect(target.textContent).toContain('widget');
-    expect(target.textContent).toContain('upload');
+    expect(target.textContent).toContain('Widget');
+    expect(target.textContent).not.toContain('Source:');
 
     target.querySelector<HTMLButtonElement>('.mndw-installed__toggle')?.click();
 
@@ -306,6 +306,84 @@ describe('InstalledPluginList', () => {
     expect(target.textContent).toContain('1 websocket');
 
     void unmount(component);
+  });
+
+  it.each([
+    {locale: 'en', count: 1, expectedEndpoint: '1 endpoint', expectedWebsocket: '1 websocket'},
+    {locale: 'en', count: 2, expectedEndpoint: '2 endpoints', expectedWebsocket: '2 websockets'},
+    {locale: 'ru', count: 1, expectedEndpoint: '1 конечная точка', expectedWebsocket: '1 веб-сокет'},
+    {locale: 'ru', count: 2, expectedEndpoint: '2 конечные точки', expectedWebsocket: '2 веб-сокета'},
+    {locale: 'ru', count: 5, expectedEndpoint: '5 конечных точек', expectedWebsocket: '5 веб-сокетов'},
+    {locale: 'ru', count: 21, expectedEndpoint: '21 конечная точка', expectedWebsocket: '21 веб-сокет'},
+  ])('formats $locale backend counts for $count routes', async ({
+    locale,
+    count,
+    expectedEndpoint,
+    expectedWebsocket,
+  }) => {
+    await setLocale(locale);
+
+    const routes: Record<string, {transport: 'http' | 'websocket'; path: string}> = {};
+
+    for (let index = 0; index < count; index += 1) {
+      routes[`http-${index}`] = {transport: 'http', path: `http-${index}`};
+      routes[`websocket-${index}`] = {transport: 'websocket', path: `websocket-${index}`};
+    }
+
+    const {component, target} = mountInstalledPluginList({
+      items: [plugin({backend: {routes}})],
+    });
+
+    try {
+      expect(target.textContent).toContain(expectedEndpoint);
+      expect(target.textContent).toContain(expectedWebsocket);
+    } finally {
+      await unmount(component);
+      await setLocale('en');
+    }
+  });
+
+  it.each([
+    {locale: 'en', type: 'widget', expected: 'Widget'},
+    {locale: 'ru', type: 'widget', expected: 'Виджет'},
+    {locale: 'en', type: 'page', expected: 'Page'},
+    {locale: 'ru', type: 'page', expected: 'Страница'},
+  ])('translates $type plugin type in $locale', async ({locale, type, expected}) => {
+    await setLocale(locale);
+
+    const {component, target} = mountInstalledPluginList({
+      items: [plugin({type} as Partial<PluginListEntry>)],
+    });
+
+    try {
+      expect(target.textContent).toContain(expected);
+      expect(target.textContent).not.toContain('Type:');
+      expect(target.textContent).not.toContain('Source:');
+    } finally {
+      await unmount(component);
+      await setLocale('en');
+    }
+  });
+
+  it('shows built-in source once and no source marker for uploaded plugins', async () => {
+    await setLocale('en');
+
+    const builtin = mountInstalledPluginList({
+      items: [plugin({source: 'builtin'})],
+    });
+
+    expect(builtin.target.querySelectorAll('.mndw-installed__builtin')).toHaveLength(1);
+    expect(builtin.target.textContent).not.toContain('Source:');
+    void unmount(builtin.component);
+
+    const uploaded = mountInstalledPluginList({
+      items: [plugin({source: 'upload'})],
+    });
+
+    expect(uploaded.target.querySelector('.mndw-installed__builtin')).toBeNull();
+    expect(uploaded.target.textContent).not.toContain('Source:');
+    await unmount(uploaded.component);
+    await setLocale('en');
   });
 
   it('renders a persistent version mismatch badge on the matching plugin row', () => {

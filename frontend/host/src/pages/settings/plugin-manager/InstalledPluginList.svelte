@@ -41,14 +41,6 @@ interface Props {
   onRefresh: () => void;
 }
 
-function countLabel(
-  count: number,
-  singularKey: string,
-  pluralKey: string,
-): string {
-  return hostT(count === 1 ? singularKey : pluralKey, {count});
-}
-
 function backendSummary(backend: PluginBackendDescriptor): string[] {
   const parts: string[] = [];
   const routeEntries = Object.values(backend.routes ?? {});
@@ -58,19 +50,15 @@ function backendSummary(backend: PluginBackendDescriptor): string[] {
     routeEntries.filter((route) => route.transport === 'websocket').length;
 
   if (endpointCount > 0) {
-    parts.push(countLabel(
-      endpointCount,
-      'settings.plugin-manager.endpoint-one',
-      'settings.plugin-manager.endpoint-many',
-    ));
+    parts.push(
+      hostT('settings.plugin-manager.endpoint', {count: endpointCount}),
+    );
   }
 
   if (websocketCount > 0) {
-    parts.push(countLabel(
-      websocketCount,
-      'settings.plugin-manager.websocket-one',
-      'settings.plugin-manager.websocket-many',
-    ));
+    parts.push(
+      hostT('settings.plugin-manager.websocket', {count: websocketCount}),
+    );
   }
 
   return parts;
@@ -227,9 +215,14 @@ function retryPlugin(name: string): void {
             <span>
               {hostT('settings.plugin-manager.version')}: {item.version}</span>
             <span>
-              {hostT('settings.plugin-manager.type')}: {item.type}</span>
-            <span>
-              {hostT('settings.plugin-manager.source')}: {item.source}</span>
+              {
+                hostT(
+                  item.type === 'widget'
+                    ? 'settings.plugin-manager.type-widget'
+                    : 'settings.plugin-manager.type-page',
+                )
+              }
+            </span>
             {#if item.source === 'builtin'}
               <span class="mndw-installed__builtin">
                 {hostT('settings.plugin-manager.builtin')}

@@ -5,10 +5,11 @@ import {flushSync, mount, unmount} from 'svelte';
 import {type HostServices, createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
 import {setLocale} from '../../services/locale.service.js';
-import type {PersistentRciCapability} from '../../services/persistent-rci-session.service.js';
+import type {ControllerTestResult, PersistentRciCapability} from '../../services/persistent-rci-session.service.js';
 import GeneralSettings from './GeneralSettings.svelte';
 
 const getCapability = vi.fn<() => Promise<PersistentRciCapability>>();
+const testController = vi.fn<(token: string) => Promise<ControllerTestResult>>();
 const getTelemetry = vi.fn<() => Promise<{enabled: boolean}>>();
 const setTelemetry = vi.fn<(enabled: boolean) => Promise<void>>();
 const reportTelemetryGathering = vi.fn<(enabled: boolean) => void>();
@@ -33,6 +34,7 @@ function createServices(): HostServices {
   const services = createHostServices({fetch: vi.fn<typeof globalThis.fetch>()});
 
   vi.spyOn(services.persistentRci, 'getCapability').mockImplementation(getCapability);
+  vi.spyOn(services.persistentRci, 'testController').mockImplementation(testController);
 
   return {
     ...services,
@@ -81,6 +83,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   getCapability.mockReset().mockResolvedValue(disabledCapability);
+  testController.mockReset();
   getTelemetry.mockReset().mockResolvedValue({enabled: false});
   setTelemetry.mockReset().mockResolvedValue(undefined);
   reportTelemetryGathering.mockReset();
@@ -195,5 +198,81 @@ describe('GeneralSettings controller-token placeholder', () => {
     });
 
     expect(target.querySelector('mndw-input[type="password"]')?.getAttribute('placeholder')).toBe('');
+  });
+});
+
+describe('GeneralSettings controller-test results', () => {
+  it.each(
+    [
+      {locale: 'en', result: 'valid', expected: 'Controller token is valid', alert: false},
+      {locale: 'ru', result: 'valid', expected: 'Токен контроллера действителен', alert: false},
+      {locale: 'en', result: 'invalid-token', expected: 'Controller token rejected', alert: true},
+      {locale: 'ru', result: 'invalid-token', expected: 'Токен контроллера отклонён', alert: true},
+      {
+        locale: 'en',
+        result: 'unsupported-firmware',
+        expected: 'Update device firmware to enable persistent RCI sessions.',
+        alert: true,
+      },
+      {
+        locale: 'ru',
+        result: 'unsupported-firmware',
+        expected: 'Обновите прошивку устройства для включения постоянных сеансов rci/.',
+        alert: true,
+      },
+      {locale: 'en', result: 'unreachable', expected: 'Device unreachable', alert: true},
+      {locale: 'ru', result: 'unreachable', expected: 'Устройство недоступно', alert: true},
+    ] as const,
+  )('shows translated $result result in $locale', async ({locale, result, expected, alert}) => {
+    await setLocale(locale);
+    getCapability.mockResolvedValueOnce({
+      ...enabledCapability,
+      controller: {support: 'needs-token', auth: 'token', enabled: true},
+    });
+    testController.mockResolvedValueOnce({result});
+    render();
+
+    try {
+      await vi.waitFor(() => {
+        expect(target.querySelector('mndw-input[type="password"]')).not.toBeNull();
+      });
+
+      const tokenInput = target.querySelector<HTMLElement>('mndw-input[type="password"]');
+
+      tokenInput?.dispatchEvent(
+        new CustomEvent('mndwinput', {
+          bubbles: true,
+          composed: true,
+          detail: {value: 'test-token'},
+        }),
+      );
+      flushSync();
+
+      const testButtonLabel = locale === 'en' ? 'Test' : 'Проверить';
+      const testButton = [...target.querySelectorAll('mndw-button')].find((button) =>
+        button.textContent?.trim() === testButtonLabel
+      );
+
+      testButton?.click();
+
+      await vi.waitFor(() => expect(testController).toHaveBeenCalledWith('test-token'));
+
+      await vi.waitFor(() => {
+        flushSync();
+
+        const resultParagraph = [...target.querySelectorAll('p')].find((paragraph) =>
+          paragraph.textContent?.trim() === expected
+        );
+
+        expect(resultParagraph).toBeDefined();
+        expect(resultParagraph?.getAttribute('role') === 'alert').toBe(alert);
+
+        if (alert && result !== 'unsupported-firmware') {
+          expect(resultParagraph?.classList.contains('unsupported-banner')).toBe(true);
+        }
+      });
+    } finally {
+      await setLocale('en');
+    }
   });
 });

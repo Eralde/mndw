@@ -170,14 +170,8 @@ func (r *RuntimeImpl) Reconcile(ctx context.Context, plugins []*registry.Plugin)
 func (r *RuntimeImpl) executeDesiredStartup(spec ServiceSpec) {
 	outcome := r.supervisor.beginDesiredStartup(spec)
 	err := r.executeLifecycleOutcome(spec.PluginID, OpStarting,
-		func(_ context.Context, control LifecycleControl) error {
-			concrete, ok := control.(*lifecycleControl)
-
-			if !ok || !concrete.IsCurrent() {
-				return errSuperseded
-			}
-
-			return r.supervisor.startService(concrete.run, spec)
+		func(_ context.Context, _ LifecycleControl) error {
+			return r.supervisor.startDesiredService(outcome.token, spec)
 		}, outcome)
 
 	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.logger != nil {

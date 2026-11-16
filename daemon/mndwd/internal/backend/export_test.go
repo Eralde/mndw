@@ -30,6 +30,16 @@ type pluginSnapshot struct {
 	generation         uint64
 }
 
+type lifecycleReadinessMarker interface {
+	markServiceReady(*serviceRecord) bool
+}
+
+func markLifecycleServiceReady(control LifecycleControl, record *serviceRecord) bool {
+	marker, ok := control.(lifecycleReadinessMarker)
+
+	return ok && marker.markServiceReady(record)
+}
+
 func NewExecRunner(cfg ExecRunnerConfig) *ExecRunner {
 	cfg = normalizeExecConfig(cfg)
 
@@ -113,14 +123,13 @@ func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 		snapshot.startupSeq = record.startupSeq
 	}
 
-	if record := s.coord.records[name]; record != nil {
-		snapshot.transitionPresent = true
-		snapshot.intent = record.intent
-		snapshot.operation = record.operation
+	transition := s.transitionStateLocked(name)
 
-		if record.run != nil {
-			snapshot.generation = record.run.generation
-		}
+	if transition.present {
+		snapshot.transitionPresent = true
+		snapshot.intent = transition.intent
+		snapshot.operation = transition.operation
+		snapshot.generation = transition.generation
 	}
 
 	snapshot.retryTimerPresent = s.retryTimers[name] != nil

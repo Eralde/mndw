@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime/debug"
 
 	"mndwd/internal/registry"
 )
@@ -24,7 +23,7 @@ type LifecycleControl interface {
 
 type lifecycleControl struct {
 	runtime *RuntimeImpl
-	run     *operationRun
+	token   *lifecycleToken
 }
 
 func (c *lifecycleControl) StartPlugin(plugin *registry.Plugin) error {
@@ -38,7 +37,7 @@ func (c *lifecycleControl) StartPlugin(plugin *registry.Plugin) error {
 		return nil
 	}
 
-	return c.runtime.supervisor.startService(c.run, spec)
+	return c.runtime.supervisor.startServiceForLifecycle(c.token, spec)
 }
 
 func (c *lifecycleControl) StopService() error {
@@ -46,11 +45,15 @@ func (c *lifecycleControl) StopService() error {
 		return errSuperseded
 	}
 
-	return c.runtime.supervisor.stopService(c.run)
+	return c.runtime.supervisor.stopServiceForLifecycle(c.token)
 }
 
 func (c *lifecycleControl) IsCurrent() bool {
-	return c.runtime.supervisor.isCurrent(c.run)
+	return c.runtime.supervisor.isLifecycleCurrent(c.token)
+}
+
+func (c *lifecycleControl) markServiceReady(record *serviceRecord) bool {
+	return c.runtime.supervisor.markLifecycleServiceReady(c.token, record)
 }
 
 // ExecuteLifecycle admits, executes, and terminalizes one plugin lifecycle run.
@@ -64,7 +67,7 @@ func (r *RuntimeImpl) ExecuteLifecycle(
 		return fmt.Errorf("%w: %d", errUnknownOperation, op)
 	}
 
-	outcome := r.supervisor.beginLifecycle(name, op, intent)
+	outcome := r.supervisor.beginLifecycleOperation(name, op, intent)
 
 	return r.executeLifecycleOutcome(name, op, work, outcome)
 }
@@ -73,7 +76,7 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 	name string,
 	op Operation,
 	work func(context.Context, LifecycleControl) error,
-	outcome beginOutcome,
+	outcome lifecycleOperation,
 ) error {
 
 	if outcome.conflict {
@@ -81,7 +84,7 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 	}
 
 	if outcome.joined {
-		return waitRun(outcome.run)
+		return r.supervisor.waitLifecycle(outcome.token)
 	}
 
 	if traitsOf(op).exclusive {
@@ -92,82 +95,29 @@ func (r *RuntimeImpl) executeLifecycleOutcome(
 		<-outcome.supersededWorkDone
 	}
 
-	control := &lifecycleControl{runtime: r, run: outcome.run}
-	err := r.runLifecycleWork(outcome.run, control, work)
+	control := &lifecycleControl{runtime: r, token: outcome.token}
+	err := r.supervisor.runLifecycleWork(outcome.token, control, work)
 
-	if r.supervisor.releaseUnstartedReservation(outcome.run) {
+	if r.supervisor.releaseUnstartedReservationForLifecycle(outcome.token) {
 		r.supervisor.promoteBlocked()
 	}
 
 	var lifecycleEvent *LifecycleEvent
 
-	r.supervisor.withLock(func() {
-		if errors.Is(err, ErrForceStopTerminal) {
-			r.supervisor.coord.forceStop(outcome.run, err)
-
-			return
-		}
-
-		if err == nil {
-			r.supervisor.coord.commit(outcome.run)
-
-			state := LifecycleStopped
-			reason := lifecycleStopReason(op, outcome.run.targetIntent)
-
-			if outcome.run.targetIntent == IntentRun {
-				state = LifecycleStarted
-				reason = LifecycleReasonReconciled
-			}
-
-			lifecycleEvent = &LifecycleEvent{Plugin: name, State: state, Reason: reason}
-
-			return
-		}
-
-		r.supervisor.coord.fail(outcome.run, err)
-	})
+	if err == nil {
+		lifecycleEvent = r.supervisor.finishLifecycle(outcome.token, op)
+	} else {
+		r.supervisor.failLifecycle(outcome.token, err)
+	}
 
 	if lifecycleEvent != nil {
 		r.lifecycleObserver(*lifecycleEvent)
 	}
 
-	return waitRun(outcome.run)
-}
-
-func (r *RuntimeImpl) runLifecycleWork(
-	run *operationRun,
-	control LifecycleControl,
-	work func(context.Context, LifecycleControl) error,
-) (err error) {
-	defer close(run.workDone)
-
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			stack := debug.Stack()
-			err = fmt.Errorf("%w: %v", errWorkPanic, recovered)
-
-			if r.logger != nil {
-				r.logger.Error("lifecycle work panicked", "plugin", run.name, "operation", run.op, "panic", recovered, "stack", string(stack))
-			}
-		}
-	}()
-
-	return work(run.ctx, control)
+	return r.supervisor.waitLifecycle(outcome.token)
 }
 
 // BlocksTraffic reports whether plugin traffic must remain gated.
 func (r *RuntimeImpl) BlocksTraffic(pluginID string) bool {
-	return withLockValue(r.supervisor, func() bool {
-		record := r.supervisor.coord.records[pluginID]
-
-		if record == nil {
-			return false
-		}
-
-		if record.intent == IntentStop || record.intent == IntentRemove {
-			return true
-		}
-
-		return traitsOf(record.operation).exclusive
-	})
+	return r.supervisor.blocksTraffic(pluginID)
 }

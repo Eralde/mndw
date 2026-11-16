@@ -671,9 +671,7 @@ func TestDisableDoesNotWaitForPromotedServiceReadiness(t *testing.T) {
 				close(readinessEntered)
 				<-readinessRelease
 
-				lifecycle, ok := control.(*lifecycleControl)
-
-				if !ok || !runtime.supervisor.markServiceReady(lifecycle.run, promotedRecord) {
+				if !markLifecycleServiceReady(control, promotedRecord) {
 					return errSuperseded
 				}
 

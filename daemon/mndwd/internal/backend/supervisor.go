@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"runtime/debug"
 	"slices"
 	"sync"
 	"time"
@@ -26,6 +27,24 @@ type ServiceSpec struct {
 	Builtin          bool
 	Enabled          bool
 	RemovalPending   bool
+}
+
+type lifecycleToken struct {
+	run *operationRun
+}
+
+type lifecycleOperation struct {
+	token              *lifecycleToken
+	joined             bool
+	conflict           bool
+	supersededWorkDone <-chan struct{}
+}
+
+type transitionSnapshot struct {
+	present    bool
+	intent     Intent
+	operation  Operation
+	generation uint64
 }
 
 func (s ServiceSpec) Equal(other ServiceSpec) bool {
@@ -160,7 +179,25 @@ func (s *Supervisor) beginLifecycle(name string, op Operation, intent Intent) be
 	return withLockValue(s, func() beginOutcome { return s.coord.begin(name, op, intent) })
 }
 
-func (s *Supervisor) beginDesiredStartup(spec ServiceSpec) beginOutcome {
+func lifecycleOperationFromOutcome(outcome beginOutcome) lifecycleOperation {
+	operation := lifecycleOperation{
+		joined:             outcome.joined,
+		conflict:           outcome.conflict,
+		supersededWorkDone: outcome.supersededWorkDone,
+	}
+
+	if outcome.run != nil {
+		operation.token = &lifecycleToken{run: outcome.run}
+	}
+
+	return operation
+}
+
+func (s *Supervisor) beginLifecycleOperation(name string, op Operation, intent Intent) lifecycleOperation {
+	return lifecycleOperationFromOutcome(s.beginLifecycle(name, op, intent))
+}
+
+func (s *Supervisor) beginDesiredStartupOutcome(spec ServiceSpec) beginOutcome {
 	return withLockValue(s, func() beginOutcome {
 		desired, exists := s.desired[spec.PluginID]
 		record := s.coord.records[spec.PluginID]
@@ -176,6 +213,158 @@ func (s *Supervisor) beginDesiredStartup(spec ServiceSpec) beginOutcome {
 
 		return s.coord.begin(spec.PluginID, OpStarting, IntentRun)
 	})
+}
+
+func (s *Supervisor) beginDesiredStartup(spec ServiceSpec) lifecycleOperation {
+	return lifecycleOperationFromOutcome(s.beginDesiredStartupOutcome(spec))
+}
+
+func (s *Supervisor) isLifecycleCurrent(token *lifecycleToken) bool {
+	return token != nil && s.isCurrent(token.run)
+}
+
+func (s *Supervisor) waitLifecycle(token *lifecycleToken) error {
+	if token == nil {
+		return nil
+	}
+
+	return waitRun(token.run)
+}
+
+func (s *Supervisor) startDesiredService(token *lifecycleToken, spec ServiceSpec) error {
+	if !s.isLifecycleCurrent(token) {
+		return errSuperseded
+	}
+
+	return s.startService(token.run, spec)
+}
+
+func (s *Supervisor) startServiceForLifecycle(token *lifecycleToken, spec ServiceSpec) error {
+	if token == nil {
+		return errSuperseded
+	}
+
+	return s.startService(token.run, spec)
+}
+
+func (s *Supervisor) stopServiceForLifecycle(token *lifecycleToken) error {
+	if token == nil {
+		return errSuperseded
+	}
+
+	return s.stopService(token.run)
+}
+
+func (s *Supervisor) markLifecycleServiceReady(token *lifecycleToken, record *serviceRecord) bool {
+	return token != nil && s.markServiceReady(token.run, record)
+}
+
+func (s *Supervisor) releaseUnstartedReservationForLifecycle(token *lifecycleToken) bool {
+	return token != nil && s.releaseUnstartedReservation(token.run)
+}
+
+func (s *Supervisor) runLifecycleWork(
+	token *lifecycleToken,
+	control LifecycleControl,
+	work func(context.Context, LifecycleControl) error,
+) (err error) {
+	if token == nil {
+		return errSuperseded
+	}
+
+	run := token.run
+
+	defer close(run.workDone)
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			stack := debug.Stack()
+			err = fmt.Errorf("%w: %v", errWorkPanic, recovered)
+
+			if s.cfg.Logger != nil {
+				s.cfg.Logger.Error("lifecycle work panicked", "plugin", run.name, "operation", run.op, "panic", recovered, "stack", string(stack))
+			}
+		}
+	}()
+
+	return work(run.ctx, control)
+}
+
+func (s *Supervisor) finishLifecycle(token *lifecycleToken, op Operation) *LifecycleEvent {
+	if token == nil {
+		return nil
+	}
+
+	run := token.run
+	var lifecycleEvent *LifecycleEvent
+
+	s.withLock(func() {
+		s.coord.commit(run)
+
+		state := LifecycleStopped
+		reason := lifecycleStopReason(op, run.targetIntent)
+
+		if run.targetIntent == IntentRun {
+			state = LifecycleStarted
+			reason = LifecycleReasonReconciled
+		}
+
+		lifecycleEvent = &LifecycleEvent{Plugin: run.name, State: state, Reason: reason}
+	})
+
+	return lifecycleEvent
+}
+
+func (s *Supervisor) failLifecycle(token *lifecycleToken, err error) {
+	if token == nil {
+		return
+	}
+
+	s.withLock(func() {
+		if errors.Is(err, ErrForceStopTerminal) {
+			s.coord.forceStop(token.run, err)
+
+			return
+		}
+
+		s.coord.fail(token.run, err)
+	})
+}
+
+func (s *Supervisor) blocksTraffic(pluginID string) bool {
+	return withLockValue(s, func() bool {
+		record := s.coord.records[pluginID]
+
+		if record == nil {
+			return false
+		}
+
+		if record.intent == IntentStop || record.intent == IntentRemove {
+			return true
+		}
+
+		return traitsOf(record.operation).exclusive
+	})
+}
+
+func (s *Supervisor) transitionStateLocked(pluginID string) transitionSnapshot {
+	record := s.coord.records[pluginID]
+
+	if record == nil {
+		return transitionSnapshot{intent: IntentRemove}
+	}
+
+	snapshot := transitionSnapshot{
+		present:   true,
+		intent:    record.intent,
+		operation: record.operation,
+	}
+
+	if record.run != nil {
+		snapshot.generation = record.run.generation
+	}
+
+	return snapshot
 }
 
 func (s *Supervisor) trackDesiredStartupLocked(spec ServiceSpec) func() {

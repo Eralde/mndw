@@ -53,16 +53,7 @@ func TestRetryTimerStopsWhenLifetimeEnds(t *testing.T) {
 	supervisor.startDesired = func(ServiceSpec) { retried <- struct{}{} }
 	spec := enabledSpec("retry")
 
-	supervisor.withLock(func() {
-		supervisor.desired[spec.PluginID] = spec
-		supervisor.services[spec.PluginID] = &serviceRecord{
-			spec:   spec,
-			status: RuntimeStatus{State: StateBackoff},
-		}
-		supervisor.coord.records[spec.PluginID] = &transition{intent: IntentRun}
-
-		supervisor.scheduleRetry(spec.PluginID, 10*time.Millisecond)
-	})
+	seedSupervisorRetryForTest(supervisor, spec, 10*time.Millisecond)
 
 	cancelLifetime()
 
@@ -219,7 +210,7 @@ func TestServiceSpecEqualCoversEveryField(t *testing.T) {
 func TestReconcileSkipsRemoveIntent(t *testing.T) {
 	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 4}))
 
-	supervisor.withLock(func() { supervisor.coord.begin("svc", OpDeleting, IntentRemove) })
+	supervisor.beginLifecycle("svc", OpDeleting, IntentRemove)
 
 	plan := supervisor.Reconcile(context.Background(), []ServiceSpec{enabledSpec("svc")})
 
@@ -464,13 +455,14 @@ func startSupervisorForTest(supervisor *Supervisor, spec ServiceSpec) error {
 	err := supervisor.startService(outcome.run, spec)
 
 	close(outcome.run.workDone)
-	supervisor.withLock(func() {
-		if err == nil {
-			supervisor.coord.commit(outcome.run)
-		} else {
-			supervisor.coord.failRestore(outcome.run, err)
-		}
-	})
+
+	token := &lifecycleToken{run: outcome.run}
+
+	if err == nil {
+		supervisor.finishLifecycle(token, OpStarting)
+	} else {
+		supervisor.failLifecycle(token, err)
+	}
 
 	return err
 }
@@ -480,13 +472,14 @@ func stopSupervisorForTest(supervisor *Supervisor, pluginID string) error {
 	err := supervisor.stopService(outcome.run)
 
 	close(outcome.run.workDone)
-	supervisor.withLock(func() {
-		if err == nil {
-			supervisor.coord.commit(outcome.run)
-		} else {
-			supervisor.coord.fail(outcome.run, err)
-		}
-	})
+
+	token := &lifecycleToken{run: outcome.run}
+
+	if err == nil {
+		supervisor.finishLifecycle(token, OpDeleting)
+	} else {
+		supervisor.failLifecycle(token, err)
+	}
 
 	return err
 }
@@ -664,14 +657,18 @@ func TestPlanStartCapacityBlocked(t *testing.T) {
 func TestRecentStderrSurvivesExit(t *testing.T) {
 	// Status retains redacted stderr after process exit.
 	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
+
 	t.Cleanup(func() {
 		if err := supervisor.StopAll(context.Background()); err != nil {
 			t.Errorf("stop supervisor: %v", err)
 		}
 	})
+
 	done := newProcessExit()
 	done.err = errors.New("service exited")
+
 	close(done.done)
+
 	stderr := NewStderrRing(1024, 8)
 	_, _ = stderr.Write([]byte("startup token=super-secret failed\n"))
 	supervisor.services["svc"] = &serviceRecord{

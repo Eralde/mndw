@@ -544,10 +544,7 @@ func TestDirectStartupWinsBeforeRetryTimerWithoutDuplicate(t *testing.T) {
 			func(context.Context, LifecycleControl) error { return nil }, outcome)
 	}
 
-	runtime.supervisor.withLock(func() {
-		record := runtime.supervisor.services[spec.PluginID]
-		record.status.State = StateBackoff
-	})
+	setSupervisorServiceStateForTest(runtime.supervisor, spec.PluginID, StateBackoff)
 	runtime.supervisor.launchDesiredStartup(spec)
 
 	select {
@@ -564,9 +561,7 @@ func TestDirectStartupWinsBeforeRetryTimerWithoutDuplicate(t *testing.T) {
 
 	const retryDelay = 10 * time.Millisecond
 
-	runtime.supervisor.withLock(func() {
-		runtime.supervisor.scheduleRetry(spec.PluginID, retryDelay)
-	})
+	scheduleSupervisorRetryForTest(runtime.supervisor, spec.PluginID, retryDelay)
 
 	select {
 	case <-retryCallbackDone:
@@ -626,12 +621,9 @@ func TestDisableDoesNotWaitForPromotedServiceReadiness(t *testing.T) {
 		t.Fatalf("initial start IDs = %#v, want [service-a]", plan.startIDs)
 	}
 
-	var promotedRecord *serviceRecord
+	setSupervisorServiceStateForTest(runtime.supervisor, "service-a", StateReady)
 
-	runtime.supervisor.withLock(func() {
-		runtime.supervisor.services["service-a"].status.State = StateReady
-		promotedRecord = runtime.supervisor.services["service-b"]
-	})
+	promotedRecord := supervisorServiceForTest(runtime.supervisor, "service-b")
 
 	readinessEntered := make(chan struct{})
 	readinessRelease := make(chan struct{})
@@ -665,9 +657,7 @@ func TestDisableDoesNotWaitForPromotedServiceReadiness(t *testing.T) {
 
 		promotedDone <- runtime.executeLifecycleOutcome(spec.PluginID, OpStarting,
 			func(_ context.Context, control LifecycleControl) error {
-				runtime.supervisor.withLock(func() {
-					runtime.supervisor.services[spec.PluginID].status.State = StateStarting
-				})
+				setSupervisorServiceStateForTest(runtime.supervisor, spec.PluginID, StateStarting)
 				close(readinessEntered)
 				<-readinessRelease
 
@@ -777,14 +767,10 @@ func TestReconcileChangedSpecRestartsExistingService(t *testing.T) {
 		Enabled:         true,
 	}
 
-	runtime.supervisor.withLock(func() {
-		runtime.supervisor.coord.records[plugin.Name] = &transition{intent: IntentRun, operation: OpNone}
-		runtime.supervisor.desired[plugin.Name] = oldSpec
-		runtime.supervisor.services[plugin.Name] = &serviceRecord{
-			spec:   oldSpec,
-			status: RuntimeStatus{State: StateReady},
-		}
-	})
+	seedSupervisorStateForTest(runtime.supervisor, plugin.Name, &oldSpec, &serviceRecord{
+		spec:   oldSpec,
+		status: RuntimeStatus{State: StateReady},
+	}, &transition{intent: IntentRun, operation: OpNone})
 
 	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
 	waitForLifecycleAttempt(t, runtime, plugin.Name)

@@ -69,20 +69,6 @@ func NewSupervisor(cfg SupervisorConfig) *Supervisor {
 	return newSupervisor(cfg, NewAdmission(cfg.Limits))
 }
 
-func newCoordinator(lifetimeCtx context.Context) *coordinator {
-	return newCoordinatorWithClock(lifetimeCtx, time.Now)
-}
-
-func (c *coordinator) intentOf(name string) Intent {
-	record := c.records[name]
-
-	if record == nil {
-		return IntentRemove
-	}
-
-	return record.intent
-}
-
 func (s *Supervisor) operationOf(name string) Operation {
 	return s.pluginSnapshot(name).operation
 }
@@ -92,17 +78,21 @@ func (s *Supervisor) intentOf(name string) Intent {
 }
 
 func (s *Supervisor) planStart(spec ServiceSpec, paths RuntimePaths) startPlanSnapshot {
-	return withLockValue(s, func() startPlanSnapshot {
-		plan := s.planStartLocked(spec, paths)
+	s.mu.Lock()
 
-		return startPlanSnapshot{action: plan.action, err: plan.err}
-	})
+	defer s.mu.Unlock()
+
+	plan := s.planStartLocked(spec, paths)
+
+	return startPlanSnapshot{action: plan.action, err: plan.err}
 }
 
 func (s *Supervisor) pluginSnapshot(name string) pluginSnapshot {
-	return withLockValue(s, func() pluginSnapshot {
-		return s.pluginSnapshotLocked(name)
-	})
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	return s.pluginSnapshotLocked(name)
 }
 
 func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
@@ -169,4 +159,84 @@ func (r *RuntimeImpl) intentOf(name string) Intent {
 
 func (r *RuntimeImpl) generationOf(name string) uint64 {
 	return r.supervisor.pluginSnapshot(name).generation
+}
+
+func seedSupervisorStateForTest(
+	s *Supervisor,
+	pluginID string,
+	desired *ServiceSpec,
+	service *serviceRecord,
+	transition *transition,
+) {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	if desired != nil {
+		s.desired[pluginID] = *desired
+	}
+
+	if service != nil {
+		s.services[pluginID] = service
+	}
+
+	if transition != nil {
+		s.transitions[pluginID] = transition
+	}
+}
+
+func setSupervisorServiceStateForTest(s *Supervisor, pluginID string, state ServiceState) *serviceRecord {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	record := s.services[pluginID]
+
+	if record != nil {
+		record.status.State = state
+	}
+
+	return record
+}
+
+func supervisorServiceForTest(s *Supervisor, pluginID string) *serviceRecord {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	return s.services[pluginID]
+}
+
+func setSupervisorTransitionForTest(s *Supervisor, pluginID string, record *transition) {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	if record == nil {
+		delete(s.transitions, pluginID)
+
+		return
+	}
+
+	s.transitions[pluginID] = record
+}
+
+func scheduleSupervisorRetryForTest(s *Supervisor, pluginID string, delay time.Duration) {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	s.scheduleRetry(pluginID, delay)
+}
+
+func seedSupervisorRetryForTest(s *Supervisor, spec ServiceSpec, delay time.Duration) {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	s.desired[spec.PluginID] = spec
+	s.services[spec.PluginID] = &serviceRecord{spec: spec, status: RuntimeStatus{State: StateBackoff}}
+	s.transitions[spec.PluginID] = &transition{intent: IntentRun}
+
+	s.scheduleRetry(spec.PluginID, delay)
 }

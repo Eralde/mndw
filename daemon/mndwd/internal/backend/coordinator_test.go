@@ -11,10 +11,10 @@ var (
 	errRemovalFailedForTest = errors.New("removal failed")
 )
 
-func TestCoordinatorAbsentRecordIsRemove(t *testing.T) {
-	c := newCoordinator(context.Background())
+func TestSupervisorAbsentTransitionIsRemove(t *testing.T) {
+	s := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
 
-	if got := c.intentOf("absent"); got != IntentRemove {
+	if got := s.intentOf("absent"); got != IntentRemove {
 		t.Fatalf("absent intent = %v, want IntentRemove", got)
 	}
 }
@@ -23,11 +23,11 @@ func TestBeginOperationPairMatrix(t *testing.T) {
 	for running := OpStarting; running <= OpInstalling; running++ {
 		for incoming := OpStarting; incoming <= OpInstalling; incoming++ {
 			t.Run(operationName(running)+"/"+operationName(incoming), func(t *testing.T) {
-				c := newCoordinator(context.Background())
+				s := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
 
-				c.begin("p", running, targetFor(running))
+				s.beginLifecycle("p", running, targetFor(running))
 
-				outcome := c.begin("p", incoming, targetFor(incoming))
+				outcome := s.beginLifecycle("p", incoming, targetFor(incoming))
 				wantJoined := incoming == running &&
 					(running == OpStopping || running == OpRestarting || running == OpDeleting)
 				wantSuperseded := !wantJoined &&
@@ -100,9 +100,9 @@ func operationName(op Operation) string {
 }
 
 func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
-	c := newCoordinator(context.Background())
-	start := c.begin("p", OpStarting, IntentRun)
-	del := c.begin("p", OpDeleting, IntentRemove)
+	s := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
+	start := s.beginLifecycle("p", OpStarting, IntentRun)
+	del := s.beginLifecycle("p", OpDeleting, IntentRemove)
 
 	if del.conflict {
 		t.Fatal("delete must win over starting")
@@ -122,52 +122,52 @@ func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
 		t.Fatal("delete did not return superseded work completion")
 	}
 
-	c2 := newCoordinator(context.Background())
+	s2 := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
 
-	c2.begin("p", OpUpdating, IntentRun)
+	s2.beginLifecycle("p", OpUpdating, IntentRun)
 
-	if got := c2.begin("p", OpDeleting, IntentRemove); !got.conflict {
+	if got := s2.beginLifecycle("p", OpDeleting, IntentRemove); !got.conflict {
 		t.Fatal("delete during update must conflict")
 	}
 
-	c3 := newCoordinator(context.Background())
-	firstRestart := c3.begin("p", OpRestarting, IntentRun)
-	secondRestart := c3.begin("p", OpRestarting, IntentRun)
+	s3 := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
+	firstRestart := s3.beginLifecycle("p", OpRestarting, IntentRun)
+	secondRestart := s3.beginLifecycle("p", OpRestarting, IntentRun)
 
 	if !secondRestart.joined || secondRestart.run != firstRestart.run {
 		t.Fatal("restart during restart must join existing run")
 	}
 
-	c4 := newCoordinator(context.Background())
+	s4 := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
 
-	c4.begin("p", OpUpdating, IntentRun)
+	s4.beginLifecycle("p", OpUpdating, IntentRun)
 
-	if got := c4.begin("p", OpUpdating, IntentRun); !got.conflict {
+	if got := s4.beginLifecycle("p", OpUpdating, IntentRun); !got.conflict {
 		t.Fatal("second update must conflict")
 	}
 }
 
 func TestCompletionIsGenerationFenced(t *testing.T) {
-	c := newCoordinator(context.Background())
-	start := c.begin("p", OpStarting, IntentRun)
+	s := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
+	start := s.beginLifecycle("p", OpStarting, IntentRun)
 
-	c.begin("p", OpDeleting, IntentRemove)
-	c.commit(start.run)
+	s.beginLifecycle("p", OpDeleting, IntentRemove)
+	s.finishLifecycle(&lifecycleToken{run: start.run}, OpStarting)
 
-	if c.intentOf("p") == IntentRun {
+	if s.intentOf("p") == IntentRun {
 		t.Fatal("stale startup completion published run")
 	}
 }
 
 func TestTerminalizationIsOneShot(t *testing.T) {
-	c := newCoordinator(context.Background())
-	inst := c.begin("p", OpInstalling, IntentRun)
+	s := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
+	inst := s.beginLifecycle("p", OpInstalling, IntentRun)
 
-	c.commit(inst.run)
-	c.failRestore(inst.run, errApproveFailedForTest)
-	c.commit(inst.run)
+	s.finishLifecycle(&lifecycleToken{run: inst.run}, OpInstalling)
+	s.failLifecycle(&lifecycleToken{run: inst.run}, errApproveFailedForTest)
+	s.finishLifecycle(&lifecycleToken{run: inst.run}, OpInstalling)
 
-	if got := c.intentOf("p"); got != IntentRun {
+	if got := s.intentOf("p"); got != IntentRun {
 		t.Fatalf("intent after duplicate completion = %v, want IntentRun", got)
 	}
 
@@ -177,12 +177,12 @@ func TestTerminalizationIsOneShot(t *testing.T) {
 }
 
 func TestDeleteFailKeepsTombstone(t *testing.T) {
-	c := newCoordinator(context.Background())
-	del := c.begin("p", OpDeleting, IntentRemove)
+	s := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
+	del := s.beginLifecycle("p", OpDeleting, IntentRemove)
 
-	c.fail(del.run, errRemovalFailedForTest)
+	s.failLifecycle(&lifecycleToken{run: del.run}, errRemovalFailedForTest)
 
-	if got := c.intentOf("p"); got != IntentRemove {
+	if got := s.intentOf("p"); got != IntentRemove {
 		t.Fatalf("delete failure intent = %v, want IntentRemove", got)
 	}
 
@@ -192,13 +192,13 @@ func TestDeleteFailKeepsTombstone(t *testing.T) {
 }
 
 func TestReinstallABAKeepsGenerationMonotonic(t *testing.T) {
-	c := newCoordinator(context.Background())
-	start := c.begin("p", OpStarting, IntentRun)
-	del := c.begin("p", OpDeleting, IntentRemove)
+	s := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
+	start := s.beginLifecycle("p", OpStarting, IntentRun)
+	del := s.beginLifecycle("p", OpDeleting, IntentRemove)
 
-	c.commit(del.run)
+	s.finishLifecycle(&lifecycleToken{run: del.run}, OpDeleting)
 
-	reinstall := c.begin("p", OpInstalling, IntentRun)
+	reinstall := s.beginLifecycle("p", OpInstalling, IntentRun)
 
 	if reinstall.conflict {
 		t.Fatal("reinstall from stable tombstone must be allowed")
@@ -208,25 +208,21 @@ func TestReinstallABAKeepsGenerationMonotonic(t *testing.T) {
 		t.Fatalf("reinstall generation = %d, delete generation = %d", reinstall.run.generation, del.run.generation)
 	}
 
-	if c.isCurrent(start.run) {
+	if s.isCurrent(start.run) {
 		t.Fatal("stale startup current after delete and reinstall")
 	}
 }
 
 func TestFailedApprovalReturnsToPending(t *testing.T) {
-	c := newCoordinator(context.Background())
+	s := NewSupervisor(SupervisorConfig{LifetimeCtx: context.Background()})
 
-	c.seedIntentForTest("p", IntentStop)
+	setSupervisorTransitionForTest(s, "p", &transition{intent: IntentStop, operation: OpNone})
 
-	inst := c.begin("p", OpInstalling, IntentRun)
+	inst := s.beginLifecycle("p", OpInstalling, IntentRun)
 
-	c.failRestore(inst.run, errApproveFailedForTest)
+	s.failLifecycle(&lifecycleToken{run: inst.run}, errApproveFailedForTest)
 
-	if got := c.intentOf("p"); got != IntentStop {
+	if got := s.intentOf("p"); got != IntentStop {
 		t.Fatalf("failed approval intent = %v, want IntentStop", got)
 	}
-}
-
-func (c *coordinator) seedIntentForTest(name string, intent Intent) {
-	c.records[name] = &transition{intent: intent, operation: OpNone}
 }

@@ -352,15 +352,13 @@ func newStatusTestRuntime(now time.Time) *RuntimeImpl {
 }
 
 func setTrafficBlockedForTest(runtime *RuntimeImpl, pluginID string, blocked bool) {
-	runtime.supervisor.withLock(func() {
-		if !blocked {
-			delete(runtime.supervisor.coord.records, pluginID)
+	if !blocked {
+		setSupervisorTransitionForTest(runtime.supervisor, pluginID, nil)
 
-			return
-		}
+		return
+	}
 
-		runtime.supervisor.coord.records[pluginID] = &transition{intent: IntentStop}
-	})
+	setSupervisorTransitionForTest(runtime.supervisor, pluginID, &transition{intent: IntentStop})
 }
 
 func statusTestBackendlessPlugin(t *testing.T, name string) *registry.Plugin {

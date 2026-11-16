@@ -135,17 +135,13 @@ func TestShutdownHonorsDeadlineAndReapsAllServices(t *testing.T) {
 
 		spec := enabledSpec(pluginID)
 
-		runtime.supervisor.withLock(func() {
-			runtime.supervisor.services[pluginID] = &serviceRecord{
-				spec:        spec,
-				status:      RuntimeStatus{State: StateReady},
-				reservation: reservation,
-				command:     command,
-				done:        done,
-			}
-			runtime.supervisor.desired[pluginID] = spec
-			runtime.supervisor.coord.records[pluginID] = &transition{intent: IntentRun}
-		})
+		seedSupervisorStateForTest(runtime.supervisor, pluginID, &spec, &serviceRecord{
+			spec:        spec,
+			status:      RuntimeStatus{State: StateReady},
+			reservation: reservation,
+			command:     command,
+			done:        done,
+		}, &transition{intent: IntentRun})
 
 		services = append(services, command)
 		dones = append(dones, done)
@@ -213,16 +209,14 @@ func TestStopProcessLogsUnreapedPID(t *testing.T) {
 		t.Fatalf("runtime paths: %v", err)
 	}
 
-	runtime.supervisor.withLock(func() {
-		runtime.supervisor.services[pluginID] = &serviceRecord{
-			spec:        enabledSpec(pluginID),
-			paths:       paths,
-			status:      RuntimeStatus{State: StateReady},
-			reservation: reservation,
-			command:     command,
-			done:        done,
-		}
-	})
+	seedSupervisorStateForTest(runtime.supervisor, pluginID, nil, &serviceRecord{
+		spec:        enabledSpec(pluginID),
+		paths:       paths,
+		status:      RuntimeStatus{State: StateReady},
+		reservation: reservation,
+		command:     command,
+		done:        done,
+	}, nil)
 
 	stopErr := runtime.supervisor.stopProcess(context.Background(), pluginID, true)
 

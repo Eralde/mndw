@@ -16,12 +16,12 @@ func TestStorageMonitorThresholdTransitions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	channel, cancel, err := bus.Subscribe(filter)
+	subscription, err := bus.SubscribeHandle(filter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer cancel()
+	defer subscription.Cancel()
 
 	available := StorageLowThreshold - 1
 	normalizer := NewNormalizer(func() time.Time { return time.UnixMilli(1) }, func(time.Time) string { return "01J5KZ00000000000000000000" })
@@ -30,12 +30,12 @@ func TestStorageMonitorThresholdTransitions(t *testing.T) {
 	monitor.Check()
 	monitor.Check()
 
-	if event := receiveStorageEvent(t, channel); event.Topic != contractEvents.TopicStorageLow {
+	if event := receiveStorageEvent(t, subscription.Events()); event.Topic != contractEvents.TopicStorageLow {
 		t.Fatalf("topic = %q", event.Topic)
 	}
 
 	select {
-	case event := <-channel:
+	case event := <-subscription.Events():
 		t.Fatalf("duplicate low event = %#v", event)
 	default:
 	}
@@ -49,7 +49,7 @@ func TestStorageMonitorThresholdTransitions(t *testing.T) {
 	monitor.Check()
 
 	select {
-	case event := <-channel:
+	case event := <-subscription.Events():
 		t.Fatalf("equality rearmed storage monitor = %#v", event)
 	default:
 	}
@@ -62,7 +62,7 @@ func TestStorageMonitorThresholdTransitions(t *testing.T) {
 
 	monitor.Check()
 
-	if receiveStorageEvent(t, channel).Topic != contractEvents.TopicStorageLow {
+	if receiveStorageEvent(t, subscription.Events()).Topic != contractEvents.TopicStorageLow {
 		t.Fatal("strictly-above value did not rearm monitor")
 	}
 }
@@ -70,19 +70,19 @@ func TestStorageMonitorThresholdTransitions(t *testing.T) {
 func TestStorageMonitorIgnoresFailedChecks(t *testing.T) {
 	bus := NewBus()
 	filter, _ := ParseTopicFilter([]string{"*"})
-	channel, cancel, err := bus.Subscribe(filter)
+	subscription, err := bus.SubscribeHandle(filter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer cancel()
+	defer subscription.Cancel()
 
 	monitor := NewStorageMonitor("/opt", func(string) (uint64, error) { return 0, errors.New("stat failed") }, nil, nil)
 
 	monitor.Check()
 
 	select {
-	case event := <-channel:
+	case event := <-subscription.Events():
 		t.Fatalf("failed check published event = %#v", event)
 	default:
 	}

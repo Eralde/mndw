@@ -2,6 +2,8 @@ package backend
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -63,7 +65,7 @@ func TestExecRunnerRejectsBodyBeforeSpawn(t *testing.T) {
 		t.Fatalf("Serve error = %v, want body-too-large", err)
 	}
 
-	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(marker); !errors.Is(statErr, fs.ErrNotExist) {
 		t.Fatalf("command spawned on rejected body, stat error = %v", statErr)
 	}
 }
@@ -208,7 +210,7 @@ func TestExecRunnerDoesNotStartAfterCancellation(t *testing.T) {
 
 	time.Sleep(300 * time.Millisecond)
 
-	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(marker); !errors.Is(statErr, fs.ErrNotExist) {
 		t.Fatalf("command started after cancellation, stat error = %v", statErr)
 	}
 }
@@ -245,7 +247,7 @@ func TestExecRunnerStopsProcessCancelledDuringRun(t *testing.T) {
 
 	time.Sleep(800 * time.Millisecond)
 
-	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(marker); !errors.Is(statErr, fs.ErrNotExist) {
 		t.Fatalf("command completed after cancellation, stat error = %v", statErr)
 	}
 }

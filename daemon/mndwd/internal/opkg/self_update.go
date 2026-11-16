@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -151,10 +152,6 @@ func (m *execManager) tryMutation(ctx context.Context) (*lease, error) {
 	return m.acquireMutation(ctx, false)
 }
 
-func (m *execManager) lockForSelfUpdate(ctx context.Context) (LeaseHandle, error) {
-	return m.LockForSelfUpdate(ctx)
-}
-
 func (m *execManager) LockForSelfUpdate(ctx context.Context) (LeaseHandle, error) {
 	return m.tryMutation(ctx)
 }
@@ -163,7 +160,7 @@ func (m *execManager) SelfUpdateLocked() (bool, error) {
 	m.defaults()
 
 	file, err := os.OpenFile(m.lockPath, os.O_RDWR, 0o644)
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) {
 		return false, nil
 	}
 
@@ -209,7 +206,7 @@ func execRunInDir(ctx context.Context, dir string, args ...string) (string, int,
 		return stdout.String(), 0, nil
 	}
 
-	if errors.Is(err, exec.ErrNotFound) || os.IsNotExist(err) {
+	if errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
 		return "", 0, fmt.Errorf("%w: %v", ErrOpkgUnavailable, err)
 	}
 

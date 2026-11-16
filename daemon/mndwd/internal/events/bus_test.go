@@ -73,18 +73,18 @@ func TestBusClosesSlowSubscriber(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	channel, cancel, err := bus.Subscribe(filter)
+	subscription, err := bus.SubscribeHandle(filter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer cancel()
+	defer subscription.Cancel()
 
 	for index := 0; index < EventSubscriberCapacity+1; index++ {
 		bus.Publish(testEvent("01J5KZ0000000000000000"+string(rune('A'+index)), "net.dns_changed"))
 	}
 
-	for range channel {
+	for range subscription.Events() {
 	}
 }
 
@@ -95,25 +95,25 @@ func TestBusLimitsSubscribers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cancels := make([]CancelFunc, 0, MaxEventSubscribers)
+	subscriptions := make([]*Subscription, 0, MaxEventSubscribers)
 
 	for index := 0; index < MaxEventSubscribers; index++ {
-		_, cancel, subscribeErr := bus.Subscribe(filter)
+		subscription, subscribeErr := bus.SubscribeHandle(filter)
 
 		if subscribeErr != nil {
 			t.Fatal(subscribeErr)
 		}
 
-		cancels = append(cancels, cancel)
+		subscriptions = append(subscriptions, subscription)
 	}
 
 	defer func() {
-		for _, cancel := range cancels {
-			cancel()
+		for _, subscription := range subscriptions {
+			subscription.Cancel()
 		}
 	}()
 
-	if _, _, err := bus.Subscribe(filter); !errors.Is(err, ErrSubscriberLimit) {
+	if _, err := bus.SubscribeHandle(filter); !errors.Is(err, ErrSubscriberLimit) {
 		t.Fatalf("subscribe error = %v, want subscriber limit", err)
 	}
 }

@@ -55,6 +55,7 @@ type coordinator struct {
 	records     map[string]*transition
 	nextGen     uint64
 	lifetimeCtx context.Context
+	now         func() time.Time
 }
 
 type beginOutcome struct {
@@ -64,22 +65,12 @@ type beginOutcome struct {
 	supersededWorkDone <-chan struct{}
 }
 
-func newCoordinator(lifetimeCtx context.Context) *coordinator {
+func newCoordinatorWithClock(lifetimeCtx context.Context, now func() time.Time) *coordinator {
 	return &coordinator{
 		records:     make(map[string]*transition),
 		lifetimeCtx: lifetimeCtx,
+		now:         now,
 	}
-}
-
-// intentOf requires Supervisor.mu held when used by a Supervisor.
-func (c *coordinator) intentOf(name string) Intent {
-	record := c.records[name]
-
-	if record == nil {
-		return IntentRemove
-	}
-
-	return record.intent
 }
 
 // begin requires Supervisor.mu held when used by a Supervisor.
@@ -103,7 +94,7 @@ func (c *coordinator) begin(name string, op Operation, want Intent) beginOutcome
 				operation:   op,
 				priorIntent: record.intent,
 				run:         run,
-				phaseSince:  time.Now(),
+				phaseSince:  c.now(),
 			}
 
 			return beginOutcome{run: run, supersededWorkDone: oldRun.workDone}
@@ -128,7 +119,7 @@ func (c *coordinator) begin(name string, op Operation, want Intent) beginOutcome
 		operation:   op,
 		priorIntent: priorIntent,
 		run:         run,
-		phaseSince:  time.Now(),
+		phaseSince:  c.now(),
 	}
 
 	return beginOutcome{run: run}
@@ -230,7 +221,7 @@ func (c *coordinator) terminalize(run *operationRun, intent Intent, err error) {
 	record := c.records[run.name]
 	record.intent = intent
 	record.operation = OpNone
-	record.phaseSince = time.Now()
+	record.phaseSince = c.now()
 	run.result = err
 	run.completed = true
 

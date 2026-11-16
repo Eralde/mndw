@@ -1,9 +1,10 @@
 package telemetry
 
 import (
+	"cmp"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 )
 
 const oneDayMs = 24 * 60 * 60 * 1000
@@ -40,8 +41,8 @@ func projectSeries(series SeriesSnapshot, rangeMs int64) ProjectedSeries {
 	}
 
 	if fineOnly {
-		sort.SliceStable(fineSamples, func(i, j int) bool {
-			return fineSamples[i].Timestamp < fineSamples[j].Timestamp
+		slices.SortStableFunc(fineSamples, func(left, right Sample) int {
+			return cmp.Compare(left.Timestamp, right.Timestamp)
 		})
 
 		return buildProjected(series, fineSamples)
@@ -65,8 +66,8 @@ func projectSeries(series SeriesSnapshot, rangeMs int64) ProjectedSeries {
 
 	merged = append(merged, fineSamples...)
 
-	sort.SliceStable(merged, func(i, j int) bool {
-		return merged[i].Timestamp < merged[j].Timestamp
+	slices.SortStableFunc(merged, func(left, right Sample) int {
+		return cmp.Compare(left.Timestamp, right.Timestamp)
 	})
 
 	return buildProjected(series, merged)

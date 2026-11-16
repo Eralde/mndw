@@ -57,7 +57,7 @@ func TestManagerClassifiesEligibilityAndResolveStates(t *testing.T) {
 }
 
 func TestManagerEpochAndGenerationFenceStaleResults(t *testing.T) {
-	manager := New()
+	manager := New(Options{})
 
 	manager.ApplyEnumeration([]enumeration.Member{{Identity: "node", IP: "192.0.2.1", FQDN: "node.keenetic.io", FQDNCertificateValid: true, AuthTokenCapable: true}})
 

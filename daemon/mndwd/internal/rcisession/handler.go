@@ -20,7 +20,7 @@ type Handler struct {
 	tester  ControllerTester
 }
 
-func NewHandler(service *Service, tester ControllerTester, _ ...any) *Handler {
+func NewHandler(service *Service, tester ControllerTester) *Handler {
 	return &Handler{service: service, tester: tester}
 }
 

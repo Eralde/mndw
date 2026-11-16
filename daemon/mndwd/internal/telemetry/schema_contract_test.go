@@ -1,49 +1,45 @@
 package telemetry
 
 import (
-	"reflect"
 	"testing"
 	"time"
 )
 
-func TestSnapshotAssumptionsMatchSeriesSpecs(t *testing.T) {
-	specs := DefaultSeriesSpecs()
-	want := []SeriesSpec{
-		{ID: 1, Step: 3 * time.Minute, ValueKeys: []string{"cpu", "ram"}},
-		{ID: 2, Step: 3 * time.Minute, ValueKeys: []string{"temperature"}},
-	}
-
-	if !reflect.DeepEqual(specs, want) {
-		t.Fatalf("default series specs = %+v, want %+v", specs, want)
-	}
-
+func TestEmptySnapshotMatchesSeriesContract(t *testing.T) {
 	snapshot := emptySnapshot(true)
+	want := map[string]struct {
+		label     string
+		unit      string
+		supported bool
+	}{
+		"cpu":  {label: "CPU", unit: "percent", supported: true},
+		"ram":  {label: "RAM", unit: "percent", supported: true},
+		"temp": {label: "cpu-thermal", unit: "celsius", supported: false},
+	}
 
-	for _, spec := range specs {
-		for _, valueKey := range spec.ValueKeys {
-			key, _, _, _, ok := snapshotValuePresentation(spec, valueKey)
+	if len(snapshot.Keys) != len(want) {
+		t.Fatalf("snapshot keys = %v, want %d keys", snapshot.Keys, len(want))
+	}
 
-			if !ok {
-				t.Errorf("series %d value %q has no snapshot mapping", spec.ID, valueKey)
+	for key, expected := range want {
+		series, exists := snapshot.Keys[key]
 
-				continue
-			}
+		if !exists {
+			t.Errorf("snapshot is missing API key %q", key)
 
-			series, exists := snapshot.Keys[key]
+			continue
+		}
 
-			if !exists {
-				t.Errorf("series %d value %q maps to missing API key %q", spec.ID, valueKey, key)
+		if series.Label != expected.label || series.Unit != expected.unit || series.Supported != expected.supported {
+			t.Errorf("API key %q = %+v, want label=%q unit=%q supported=%t", key, series, expected.label, expected.unit, expected.supported)
+		}
 
-				continue
-			}
-
-			for _, tier := range []struct {
-				name string
-				step time.Duration
-			}{{"fine", spec.Step}, {"coarse", time.Hour}} {
-				if got := series.Tiers[tier.name].StepMs; got != tier.step.Milliseconds() {
-					t.Errorf("API key %q tier %q step=%d, want %d", key, tier.name, got, tier.step.Milliseconds())
-				}
+		for _, tier := range []struct {
+			name string
+			step time.Duration
+		}{{"fine", 3 * time.Minute}, {"coarse", time.Hour}} {
+			if got := series.Tiers[tier.name].StepMs; got != tier.step.Milliseconds() {
+				t.Errorf("API key %q tier %q step=%d, want %d", key, tier.name, got, tier.step.Milliseconds())
 			}
 		}
 	}

@@ -4,7 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"sort"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -195,7 +196,7 @@ func (m *stubManager) ListInstalled(ctx context.Context) ([]string, error) {
 		out = append(out, p)
 	}
 
-	sort.Strings(out)
+	slices.Sort(out)
 
 	return out, nil
 }
@@ -225,7 +226,7 @@ func (m *stubManager) ListAvailable(ctx context.Context) ([]string, error) {
 		out = append(out, p)
 	}
 
-	sort.Strings(out)
+	slices.Sort(out)
 
 	return out, nil
 }
@@ -271,7 +272,7 @@ func (m *stubManager) List(ctx context.Context) (PackageList, error) {
 		entries = append(entries, PackageEntry{Name: name, Version: version, Status: "installed"})
 	}
 
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+	slices.SortFunc(entries, func(left, right PackageEntry) int { return strings.Compare(left.Name, right.Name) })
 
 	return PackageList{Packages: entries, MetadataUpdatedAt: m.metadataUpdatedAt}, nil
 }

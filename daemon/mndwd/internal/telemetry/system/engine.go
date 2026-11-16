@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"math"
@@ -111,7 +112,7 @@ func NewEngine(cfg Config) *Engine {
 	}
 
 	if cfg.Logger == nil {
-		cfg.Logger = slog.New(slog.NewTextHandler(ioDiscard{}, nil))
+		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 
 	return &Engine{cfg: cfg}
@@ -764,10 +765,4 @@ func parsePendingName(name string) ([16]byte, bool) {
 	copy(bootID[:], decoded)
 
 	return bootID, true
-}
-
-type ioDiscard struct{}
-
-func (ioDiscard) Write(data []byte) (int, error) {
-	return len(data), nil
 }

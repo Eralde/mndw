@@ -45,7 +45,7 @@ type Store struct {
 // token storage could not be opened. It still exposes the disabled state to
 // capability callers without pretending persistence is available.
 func Disabled() *Store {
-	return &Store{state: model.StateDisabled, document: emptyDocument()}
+	return &Store{state: model.StateDisabled, document: model.Document{}}
 }
 
 func Open(config Config) (*Store, error) {
@@ -57,7 +57,7 @@ func Open(config Config) (*Store, error) {
 		return nil, err
 	}
 
-	store := &Store{state: model.StateEmpty, file: config.CiphertextFile, document: emptyDocument()}
+	store := &Store{state: model.StateEmpty, file: config.CiphertextFile, document: model.Document{}}
 	key, present, err := loadOrCreateKey(config.KeyFile, config.CiphertextFile)
 	if err != nil {
 		return nil, err
@@ -82,21 +82,15 @@ func Open(config Config) (*Store, error) {
 		return store, nil
 	}
 
-	document, legacyExtenders, err := decryptDocument(store.key, ciphertext)
+	document, err := decryptDocument(store.key, ciphertext)
 	if err != nil {
 		store.state = model.StateDecryptFailed
 
 		return store, nil
 	}
 
-	store.document = normalizeDocument(document)
+	store.document = document
 	store.state = model.StateOK
-
-	if legacyExtenders {
-		if err := store.persistLocked(); err != nil {
-			return nil, fmt.Errorf("migrate persistent RCI store: unable to remove legacy extender records")
-		}
-	}
 
 	return store, nil
 }
@@ -166,7 +160,7 @@ func (s *Store) persistLocked() error {
 		return err
 	}
 
-	plaintext, err := json.Marshal(normalizeDocument(s.document))
+	plaintext, err := json.Marshal(s.document)
 	if err != nil {
 		return fmt.Errorf("encode persistent RCI store: %w", err)
 	}
@@ -274,38 +268,30 @@ func readSecureFile(path string, expectedSize int) ([]byte, error) {
 	return data, nil
 }
 
-func decryptDocument(key, ciphertext []byte) (model.Document, bool, error) {
+func decryptDocument(key, ciphertext []byte) (model.Document, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return model.Document{}, false, err
+		return model.Document{}, err
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil || len(ciphertext) < gcm.NonceSize() {
-		return model.Document{}, false, fmt.Errorf("persistent RCI ciphertext is invalid")
+		return model.Document{}, fmt.Errorf("persistent RCI ciphertext is invalid")
 	}
 
 	nonce := ciphertext[:gcm.NonceSize()]
 	plaintext, err := gcm.Open(nil, nonce, ciphertext[gcm.NonceSize():], nil)
 	if err != nil {
-		return model.Document{}, false, fmt.Errorf("persistent RCI ciphertext authentication failed")
-	}
-
-	var raw map[string]json.RawMessage
-
-	if err := json.Unmarshal(plaintext, &raw); err != nil {
-		return model.Document{}, false, fmt.Errorf("persistent RCI document is invalid")
+		return model.Document{}, fmt.Errorf("persistent RCI ciphertext authentication failed")
 	}
 
 	var document model.Document
 
 	if err := json.Unmarshal(plaintext, &document); err != nil {
-		return model.Document{}, false, fmt.Errorf("persistent RCI document is invalid")
+		return model.Document{}, fmt.Errorf("persistent RCI document is invalid")
 	}
 
-	_, legacyExtenders := raw["extenders"]
-
-	return document, legacyExtenders, nil
+	return document, nil
 }
 
 func writeAtomic(path string, data []byte) error {
@@ -370,12 +356,6 @@ func ensureDirectory(path string) error {
 
 	return nil
 }
-
-func emptyDocument() model.Document {
-	return model.Document{}
-}
-
-func normalizeDocument(document model.Document) model.Document { return document }
 
 func cloneRecordPtr(record *model.TokenRecord) *model.TokenRecord {
 	if record == nil {

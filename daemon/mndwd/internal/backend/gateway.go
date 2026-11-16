@@ -19,6 +19,12 @@ import (
 	"mndwd/internal/state"
 )
 
+const (
+	routeTransportHTTP      = "http"
+	routeTransportWebSocket = "websocket"
+	routeAccessPublic       = "public"
+)
+
 type GatewayConfig struct {
 	BodyIntake                *httpx.BodyIntake
 	MaxRequestBytes           int64
@@ -158,7 +164,7 @@ func (g *Gateway) resolveAuthorizedRoute(writer http.ResponseWriter, request *ht
 		return routeDecision{}, false
 	}
 
-	if route.Access != "public" && !g.authenticate(writer, request) {
+	if route.Access != routeAccessPublic && !g.authenticate(writer, request) {
 		return routeDecision{}, false
 	}
 
@@ -217,7 +223,7 @@ func (g *Gateway) handle(writer http.ResponseWriter, request *http.Request) {
 
 	plugin, route := decision.plugin, decision.route
 
-	if route.Transport == "http" && route.Access != "public" && request.Method != http.MethodGet && request.Method != http.MethodHead {
+	if route.Transport == routeTransportHTTP && route.Access != routeAccessPublic && request.Method != http.MethodGet && request.Method != http.MethodHead {
 		if !httpx.RequireCSRF(writer, g.logger, request) {
 			return
 		}
@@ -602,7 +608,7 @@ func resolveRoute(m *manifest.Manifest, method, path string) (manifest.BackendRo
 	}
 
 	for _, route := range m.Backend.Routes {
-		if route.Path != path || route.Transport != "http" || !strings.EqualFold(route.Method, method) {
+		if route.Path != path || route.Transport != routeTransportHTTP || !strings.EqualFold(route.Method, method) {
 			continue
 		}
 
@@ -618,7 +624,7 @@ func resolveWebSocketRoute(m *manifest.Manifest, path string) (manifest.BackendR
 	}
 
 	for _, route := range m.Backend.Routes {
-		if route.Transport == "websocket" && route.Path == path {
+		if route.Transport == routeTransportWebSocket && route.Path == path {
 			return route, true
 		}
 	}

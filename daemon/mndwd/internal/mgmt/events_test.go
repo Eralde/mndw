@@ -58,7 +58,7 @@ func TestManagementLogsAndIgnoresTypedPublishFailure(t *testing.T) {
 
 	mux := http.NewServeMux()
 
-	New(cfg, store, nil, nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger()).Register(mux)
+	New(cfg, store, nil, nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, nil), discardLogger()).Register(mux)
 
 	srv := httptest.NewServer(mux)
 

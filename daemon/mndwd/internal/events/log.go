@@ -1,10 +1,11 @@
 package events
 
 import (
+	"cmp"
 	"context"
 	"hash/fnv"
 	"log/slog"
-	"sort"
+	"slices"
 	"strconv"
 	"time"
 
@@ -190,7 +191,7 @@ func (p *LogParser) Parse(records map[string]RawLogRecord, observedAt time.Time)
 		return nil, nil
 	}
 
-	sort.Slice(sorted, func(left, right int) bool { return sorted[left].id < sorted[right].id })
+	slices.SortFunc(sorted, func(left, right idRecord) int { return cmp.Compare(left.id, right.id) })
 
 	byID := make(map[int]RawLogRecord, len(sorted))
 

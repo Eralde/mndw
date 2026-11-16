@@ -20,7 +20,6 @@ type LifecycleControl interface {
 	StartPlugin(plugin *registry.Plugin) error
 	StopService() error
 	IsCurrent() bool
-	Generation() uint64
 }
 
 type lifecycleControl struct {
@@ -52,10 +51,6 @@ func (c *lifecycleControl) StopService() error {
 
 func (c *lifecycleControl) IsCurrent() bool {
 	return c.runtime.supervisor.isCurrent(c.run)
-}
-
-func (c *lifecycleControl) Generation() uint64 {
-	return c.run.generation
 }
 
 // ExecuteLifecycle admits, executes, and terminalizes one plugin lifecycle run.
@@ -158,26 +153,6 @@ func (r *RuntimeImpl) runLifecycleWork(
 	}()
 
 	return work(run.ctx, control)
-}
-
-func (r *RuntimeImpl) operationOf(name string) Operation {
-	return r.supervisor.operationOf(name)
-}
-
-func (r *RuntimeImpl) intentOf(name string) Intent {
-	return r.supervisor.intentOf(name)
-}
-
-func (r *RuntimeImpl) generationOf(name string) uint64 {
-	return withLockValue(r.supervisor, func() uint64 {
-		record := r.supervisor.coord.records[name]
-
-		if record == nil || record.run == nil {
-			return 0
-		}
-
-		return record.run.generation
-	})
 }
 
 // BlocksTraffic reports whether plugin traffic must remain gated.

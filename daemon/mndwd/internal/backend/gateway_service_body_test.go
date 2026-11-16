@@ -65,7 +65,7 @@ func TestGatewayServiceBodyTimeoutAndBodyEOFDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reg := registry.New(store, userDir, "")
+	reg := registry.NewWithLogger(store, userDir, "", nil)
 	plugin, ok := reg.Resolve("service")
 
 	if !ok {

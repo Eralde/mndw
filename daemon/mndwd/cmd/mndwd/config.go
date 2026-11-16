@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"mndwd/internal/backend"
-	"mndwd/internal/pluginruntime"
 	"mndwd/internal/rcisession"
 	"mndwd/internal/rcisession/coordinator"
 )
@@ -22,6 +21,7 @@ const maxUploadBytes = 10 << 20
 
 const defaultDiagnosticsLogFile = "/opt/var/log/mndwd.log"
 const defaultPluginRuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
+const pluginRuntimeRootEnv = "MNDW_PLUGIN_RUNTIME_ROOT"
 const defaultSelfUpdateStateDir = "/opt/var/mndw"
 const defaultSelfUpdateHelper = "/opt/share/www/mndw/bin/mndw-self-update.sh"
 const defaultRRDDir = "/opt/var/lib/mndw/rrd"
@@ -228,7 +228,7 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	controllerURLOverride := flagWasSet(fs, "controller-url")
 
 	if cfg.PluginRuntimeRoot == "" {
-		cfg.PluginRuntimeRoot = os.Getenv(pluginruntime.RuntimeRootEnv)
+		cfg.PluginRuntimeRoot = os.Getenv(pluginRuntimeRootEnv)
 	}
 
 	if !cfg.Dev && controllerURLOverride {
@@ -367,14 +367,6 @@ func validateBackendConfig(cfg Config) error {
 
 	if cfg.HTTPDrainTimeout < minimumDrain {
 		return fmt.Errorf("--http-drain-timeout must be at least %s", minimumDrain)
-	}
-
-	return nil
-}
-
-func validateControllerURL(raw string) error {
-	if _, err := rcisession.ValidateControllerURLShape(raw); err != nil {
-		return fmt.Errorf("--controller-url must be an absolute HTTP(S) URL, got %q", raw)
 	}
 
 	return nil

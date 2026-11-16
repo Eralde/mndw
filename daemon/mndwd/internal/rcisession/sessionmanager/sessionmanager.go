@@ -1,9 +1,10 @@
 package sessionmanager
 
 import (
+	"cmp"
 	"context"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -102,12 +103,7 @@ type Manager struct {
 	nextHandle  uint64
 }
 
-func New(options ...Options) *Manager {
-	config := Options{}
-
-	if len(options) > 0 {
-		config = options[0]
-	}
+func New(config Options) *Manager {
 
 	if config.Now == nil {
 		config.Now = time.Now
@@ -300,7 +296,7 @@ func (m *Manager) LiveHeartbeatTargets() []heartbeat.Target {
 		targets = append(targets, heartbeat.Target{Identity: identity, Client: current.client, Generation: current.generation, Context: ctx})
 	}
 
-	sort.Slice(targets, func(i, j int) bool { return targets[i].Identity < targets[j].Identity })
+	slices.SortFunc(targets, func(left, right heartbeat.Target) int { return cmp.Compare(left.Identity, right.Identity) })
 
 	return targets
 }
@@ -432,7 +428,7 @@ func (m *Manager) Snapshot() Snapshot {
 		identities = append(identities, identity)
 	}
 
-	sort.Strings(identities)
+	slices.Sort(identities)
 
 	result := Snapshot{Members: make([]SnapshotMember, 0, len(identities))}
 

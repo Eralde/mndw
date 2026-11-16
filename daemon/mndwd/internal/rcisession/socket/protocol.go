@@ -22,11 +22,8 @@ type Grants struct {
 }
 
 type Config struct {
-	PluginID string
-	Grants   Grants
-	// Allowed is retained for source compatibility with older in-process tests.
-	// Production callers must provide Grants.
-	Allowed      bool
+	PluginID     string
+	Grants       Grants
 	Logger       *slog.Logger
 	MaxLineBytes int
 	MaxInflight  int
@@ -103,10 +100,6 @@ func ServeConnection(ctx context.Context, connection net.Conn, config Config, ha
 
 	grants := config.Grants
 
-	if config.Allowed && !grants.CanRead && !grants.CanWrite {
-		grants = Grants{CanRead: true, CanWrite: true}
-	}
-
 	if grants.CanWrite {
 		grants.CanRead = true
 	}
@@ -164,6 +157,7 @@ func ServeConnection(ctx context.Context, connection net.Conn, config Config, ha
 
 			go func(frame rcisock.RequestFrame) {
 				defer workers.Done()
+
 				defer func() { <-semaphore }()
 
 				targets, err := handler.Targets(connectionContext)

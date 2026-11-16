@@ -20,7 +20,7 @@ import (
 
 func TestServiceResolveUsesManagerClassification(t *testing.T) {
 	store := &testServiceStore{document: model.Document{Controller: &model.TokenRecord{Token: "controller", Support: model.SupportSupported}}}
-	manager := sessionmanager.New()
+	manager := sessionmanager.New(sessionmanager.Options{})
 	service := newTestService(t, ServiceConfig{Store: store, Manager: manager})
 
 	manager.ApplyEnumeration([]enumeration.Member{{Identity: "bad", MAC: "aa:bb:cc:dd:ee:01", FQDN: "bad.keenetic.io"}})
@@ -108,6 +108,7 @@ func TestControllerTesterErrorsAreLoggedWithoutToken(t *testing.T) {
 			}
 
 			output := logs.String()
+
 			for _, field := range []string{"WARN", "controller " + operation.name + " failed", "verdict=unreachable", `error="connection refused"`, "host=192.0.2.7:79"} {
 				if !strings.Contains(output, field) {
 					t.Errorf("warning log %q missing %q", output, field)
@@ -355,7 +356,7 @@ func TestServiceDeleteControllerTokenlessSkipsTokenStore(t *testing.T) {
 
 func TestServiceDeleteControllerTokenlessFlagWriteFailureRetry(t *testing.T) {
 	enabled := &testEnabledStore{enabled: true, set: true, setErr: errors.New("state write failed")}
-	manager := sessionmanager.New()
+	manager := sessionmanager.New(sessionmanager.Options{})
 
 	manager.ApplyEnumeration([]enumeration.Member{{Identity: "node", MAC: "aa:bb:cc:dd:ee:01", FQDN: "node.keenetic.io", FQDNCertificateValid: true, AuthTokenCapable: true}})
 

@@ -10,8 +10,6 @@ import (
 	"net"
 	"net/url"
 	"strings"
-
-	"mndwd/internal/discovery"
 )
 
 type Access int
@@ -136,46 +134,6 @@ func containsArray(value any) bool {
 	return false
 }
 
-type Target struct {
-	ID      string
-	FQDN    string
-	Address net.IP
-	BaseURL string
-	Secure  bool
-}
-
-// Resolve prefers the controller-reported FQDN because the controller's DNS proxy
-// resolves it for the daemon. It deliberately does not resolve or pin the name locally.
-func Resolve(member discovery.Member) (Target, error) {
-	if strings.TrimSpace(member.FQDN) != "" {
-		fqdn, err := normalizeFQDN(member.FQDN)
-		if err != nil {
-			return Target{}, err
-		}
-
-		return Target{
-			ID:      member.Identity(),
-			FQDN:    fqdn,
-			BaseURL: (&url.URL{Scheme: "https", Host: fqdn}).String(),
-			Secure:  true,
-		}, nil
-	}
-
-	ip := net.ParseIP(strings.TrimSpace(member.IP))
-
-	if ip == nil || !AllowedIP(ip) {
-		return Target{}, fmt.Errorf("node has unsafe address")
-	}
-
-	host := ip.String()
-
-	if ip.To4() == nil {
-		host = "[" + host + "]"
-	}
-
-	return Target{ID: member.Identity(), Address: ip, BaseURL: "http://" + host}, nil
-}
-
 func NormalizeFQDN(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	value = strings.TrimRight(value, ".")
@@ -208,34 +166,6 @@ func NormalizeFQDN(value string) (string, error) {
 	return value, nil
 }
 
-func normalizeFQDN(value string) (string, error) {
-	return NormalizeFQDN(value)
-}
-
-func AllowedIP(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-
-	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() {
-		return false
-	}
-
-	return ip.IsPrivate() || ip.IsLinkLocalUnicast()
-}
-
-func (t Target) URL(path string) (*url.URL, error) {
-	if !t.Secure && !AllowedIP(t.Address) {
-		return nil, fmt.Errorf("unsafe target")
-	}
-
-	if err := ValidateRCIPath(path); err != nil {
-		return nil, err
-	}
-
-	return url.Parse(strings.TrimRight(t.BaseURL, "/") + "/" + strings.TrimLeft(path, "/"))
-}
-
 func ValidateRCIPath(path string) error {
 	if path == "" || !strings.HasPrefix(path, "rci/") {
 		return fmt.Errorf("path must start with rci/")
@@ -256,19 +186,6 @@ func ValidateRCIPath(path string) error {
 		if segment == "" {
 			return fmt.Errorf("path contains an empty segment")
 		}
-	}
-
-	return nil
-}
-
-type ClientPolicy struct {
-	MaxResponseBytes int64
-	NoRedirect       bool
-}
-
-func (p ClientPolicy) ValidateResponse(status int, location string) error {
-	if p.NoRedirect && status >= 300 && status < 400 && location != "" {
-		return fmt.Errorf("target redirect rejected")
 	}
 
 	return nil

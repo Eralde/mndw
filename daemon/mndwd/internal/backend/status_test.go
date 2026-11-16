@@ -304,7 +304,7 @@ func statusTestRegistry(t *testing.T) (*registry.Registry, *state.Store) {
 		t.Fatalf("open status registry: %v", err)
 	}
 
-	return registry.New(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins")), store
+	return registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), nil), store
 }
 
 func statusTestStorePlugin(t *testing.T, store *state.Store, plugin *registry.Plugin) {

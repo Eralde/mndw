@@ -169,7 +169,10 @@ func TestListBuiltins(t *testing.T) {
 		}
 	}
 
-	plugins := reg.ListBuiltins()
+	plugins, err := reg.ListBuiltins()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(plugins) != 2 {
 		t.Fatalf("expected 2 builtins, got %d", len(plugins))
@@ -215,7 +218,10 @@ func TestListBuiltinsIncludesDirectorySymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plugins := reg.ListBuiltins()
+	plugins, err := reg.ListBuiltins()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(plugins) != 1 {
 		t.Fatalf("expected 1 builtin, got %d", len(plugins))
@@ -249,7 +255,10 @@ func TestListBuiltinsSkipsInvalidManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plugins := reg.ListBuiltins()
+	plugins, err := reg.ListBuiltins()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(plugins) != 1 {
 		t.Fatalf("expected 1 builtin (bad skipped), got %d", len(plugins))
@@ -373,7 +382,7 @@ func TestAllBackendPluginsSkipsInvalidAndNonBackendPlugins(t *testing.T) {
 	}
 }
 
-func TestListBuiltinsWithErrorReportsUnreadableDirectory(t *testing.T) {
+func TestListBuiltinsReportsUnreadableDirectory(t *testing.T) {
 	reg, _, _, _ := newRegistry(t)
 	file := filepath.Join(t.TempDir(), "builtin-file")
 
@@ -383,16 +392,12 @@ func TestListBuiltinsWithErrorReportsUnreadableDirectory(t *testing.T) {
 
 	reg.builtinDir = file
 
-	if _, err := reg.ListBuiltinsWithError(); err == nil {
-		t.Fatal("ListBuiltinsWithError succeeded for regular file")
-	}
-
-	if plugins := reg.ListBuiltins(); len(plugins) != 0 {
-		t.Fatalf("best-effort builtins = %#v, want empty", plugins)
+	if _, err := reg.ListBuiltins(); err == nil {
+		t.Fatal("ListBuiltins succeeded for regular file")
 	}
 }
 
-func TestListBuiltinsWithErrorLogsInvalidManifest(t *testing.T) {
+func TestListBuiltinsLogsInvalidManifest(t *testing.T) {
 	reg, _, _, builtinDir := newRegistry(t)
 	var logs bytes.Buffer
 	reg = NewWithLogger(reg.store, reg.userDir, reg.builtinDir, slog.New(slog.NewTextHandler(&logs, nil)))
@@ -406,7 +411,7 @@ func TestListBuiltinsWithErrorLogsInvalidManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := reg.ListBuiltinsWithError(); err != nil {
+	if _, err := reg.ListBuiltins(); err != nil {
 		t.Fatal(err)
 	}
 

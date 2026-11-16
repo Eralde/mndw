@@ -52,7 +52,7 @@ func newRuntimeResolverTestHandler(t *testing.T, resolver RuntimeResolver) (*Han
 	}
 
 	cfg := Config{UserPluginsDir: "/user/plugins", RuntimeResolver: resolver, Runtime: passthroughRuntime{}}
-	handler := New(cfg, store, opkg.New("stub", discardLogger()), nil, emptyBuiltinSource{}, discardLogger())
+	handler := New(cfg, store, opkg.NewStub(discardLogger()), nil, emptyBuiltinSource{}, discardLogger())
 
 	return handler, store
 }
@@ -103,7 +103,7 @@ func TestRuntimeResolverAbsentUsesStoreFallback(t *testing.T) {
 func TestRestartUsesExplicitRuntimeResolver(t *testing.T) {
 	resolver := &testRuntimeResolver{ok: true}
 	handler, store := newRuntimeResolverTestHandler(t, resolver)
-	resolved, ok := registry.New(store, "/user/plugins", "").Resolve("svc")
+	resolved, ok := registry.NewWithLogger(store, "/user/plugins", "", nil).Resolve("svc")
 
 	if !ok {
 		t.Fatal("registry did not resolve seeded service")

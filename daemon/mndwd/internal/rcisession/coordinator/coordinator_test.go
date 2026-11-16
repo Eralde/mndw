@@ -89,7 +89,7 @@ func TestReconcileSocketsOpensForTokenlessEnabled(t *testing.T) {
 }
 
 func TestReconcileSocketsClosesWhenTokenlessDisabled(t *testing.T) {
-	manager := sessionmanager.New()
+	manager := sessionmanager.New(sessionmanager.Options{})
 
 	manager.ApplyEnumeration([]enumeration.Member{{Identity: "node", IP: "192.0.2.1", FQDN: "node.keenetic.io", FQDNCertificateValid: true, AuthTokenCapable: true}})
 
@@ -133,7 +133,7 @@ func TestReconcileSocketsClosesWhenTokenlessDisabled(t *testing.T) {
 		t.Fatalf("SetTokenlessEnabled(false): %v", err)
 	}
 
-	if _, err := os.Stat(paths.RCISessionSocket); !os.IsNotExist(err) {
+	if _, err := os.Stat(paths.RCISessionSocket); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("socket after disabling tokenless session = %v, want absent", err)
 	}
 
@@ -144,7 +144,7 @@ func TestReconcileSocketsClosesWhenTokenlessDisabled(t *testing.T) {
 
 func TestTickDetectsUnknownAuthModeOutsideLock(t *testing.T) {
 	source := &coordinatorAuthModeSource{mode: rcisession.AuthModeUnknown}
-	manager := sessionmanager.New()
+	manager := sessionmanager.New(sessionmanager.Options{})
 	serviceConfig := rcisession.ServiceConfig{
 		Manager:        manager,
 		Enumerator:     enumeration.NewCache(coordinatorEnumerationSource{}, time.Minute, time.Now),
@@ -258,7 +258,7 @@ func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 	}}
 	service := newCoordinatorService(t, rcisession.ServiceConfig{Store: sessionStore})
 	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond}, service)
-	pluginRegistry := registry.New(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"))
+	pluginRegistry := registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), nil)
 
 	if plugins := pluginRegistry.AllBackendPlugins(); len(plugins) != 2 {
 		t.Fatalf("backend plugins = %d, want 2", len(plugins))
@@ -299,7 +299,7 @@ func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 
 	assembly.ReconcileSockets()
 
-	if _, err := os.Stat(goodPath.RCISessionSocket); !os.IsNotExist(err) {
+	if _, err := os.Stat(goodPath.RCISessionSocket); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("good socket after session removal = %v", err)
 	}
 }
@@ -570,7 +570,7 @@ func newStartedCoordinator(t *testing.T, poke func()) (*Coordinator, *rcisession
 	service := newCoordinatorService(t, rcisession.ServiceConfig{Store: sessionStore, Enumerator: &activationEnumerator{}})
 	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond}, service)
 	assembly := New(Config{
-		Registry:       registry.New(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins")),
+		Registry:       registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), nil),
 		Store:          store,
 		RuntimeRoot:    filepath.Join(root, "runtime"),
 		Service:        service,
@@ -608,7 +608,7 @@ func newActivationSnapshotAssembly(t *testing.T, grants map[string]bool) *Coordi
 		t.Fatalf("seed state: %v", err)
 	}
 
-	pluginRegistry := registry.New(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"))
+	pluginRegistry := registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), nil)
 	service := newCoordinatorService(t, rcisession.ServiceConfig{Store: &assemblySessionStore{}, Enumerator: &activationEnumerator{}})
 
 	return &Coordinator{registry: pluginRegistry, store: store, service: service}
@@ -668,7 +668,7 @@ func newSocketAssemblyWithServiceConfig(t *testing.T, serviceConfig rcisession.S
 	service := newCoordinatorService(t, serviceConfig)
 	reconciler := socket.NewReconciler(socket.Config{DrainTimeout: 100 * time.Millisecond}, service)
 	assembly := &Coordinator{
-		registry:    registry.New(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins")),
+		registry:    registry.NewWithLogger(store, filepath.Join(root, "plugins"), filepath.Join(root, "builtins"), nil),
 		store:       store,
 		runtimeRoot: filepath.Join(root, "runtime"),
 		service:     service,

@@ -106,21 +106,6 @@ func validAuthorityPort(host string) bool {
 	return !strings.Contains(host, ":")
 }
 
-func normalizeAuthority(scheme, host string) string {
-	hostname := strings.ToLower(strings.TrimSuffix(hostnameOnly(host), "."))
-	port := portOnly(host)
-
-	if port == "" {
-		if scheme == "https" {
-			port = "443"
-		} else {
-			port = "80"
-		}
-	}
-
-	return strings.ToLower(scheme) + "://" + hostname + ":" + port
-}
-
 func hostnameOnly(host string) string {
 	if strings.HasPrefix(host, "[") {
 		if end := strings.IndexByte(host, ']'); end >= 0 {

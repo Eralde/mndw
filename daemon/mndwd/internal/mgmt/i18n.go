@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sort"
+	"slices"
 
 	"mndwd/internal/manifest"
 )
@@ -24,7 +24,7 @@ func (h *Handler) validateCatalogArchive(zr *zip.Reader, m *manifest.Manifest) e
 		locales = append(locales, locale)
 	}
 
-	sort.Strings(locales)
+	slices.Sort(locales)
 
 	for _, locale := range locales {
 		declaredPath := m.I18n.Locales[locale]

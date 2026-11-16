@@ -23,14 +23,6 @@ type SeriesSpec struct {
 	ValueKeys []string
 }
 
-// DefaultSeriesSpecs returns copies of the built-in telemetry series layout.
-func DefaultSeriesSpecs() []SeriesSpec {
-	return []SeriesSpec{
-		{ID: 1, Step: 3 * time.Minute, ValueKeys: []string{"cpu", "ram"}},
-		{ID: 2, Step: 3 * time.Minute, ValueKeys: []string{"temperature"}},
-	}
-}
-
 // Row is one aligned UTC interval and its complete value vector.
 type Row struct {
 	Slot     time.Time

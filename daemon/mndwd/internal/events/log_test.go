@@ -293,12 +293,14 @@ func TestLogPollerEndToEndDecodesAndPublishes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	busEvents, cancelBus, err := bus.Subscribe(filter)
+	subscription, err := bus.SubscribeHandle(filter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer cancelBus()
+	defer subscription.Cancel()
+
+	busEvents := subscription.Events()
 
 	now := time.Date(2026, time.September, 5, 10, 0, 0, 0, time.UTC)
 	transport := &fakeRciTransport{responses: []json.RawMessage{
@@ -390,12 +392,14 @@ func TestLogPollerRunContinuesAfterPollError(t *testing.T) {
 
 	bus := NewBus()
 	filter, _ := ParseTopicFilter([]string{"*"})
-	busEvents, cancelBus, err := bus.Subscribe(filter)
+	subscription, err := bus.SubscribeHandle(filter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer cancelBus()
+	defer subscription.Cancel()
+
+	busEvents := subscription.Events()
 
 	poller := NewLogPoller(LogPollerConfig{
 		Source:    NewRCILogSource(client),

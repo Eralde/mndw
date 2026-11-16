@@ -59,12 +59,6 @@ type realStorageTicker struct{ *time.Ticker }
 
 func (t realStorageTicker) C() <-chan time.Time { return t.Ticker.C }
 
-func (m *StorageMonitor) SetTickerFactory(factory StorageTickerFactory) {
-	if factory != nil {
-		m.ticker = factory
-	}
-}
-
 func (m *StorageMonitor) Check() {
 	available, err := m.stat(m.path)
 	if err != nil {

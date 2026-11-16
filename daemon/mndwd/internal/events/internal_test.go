@@ -90,12 +90,12 @@ func TestInternalPublisherEmitsTypedPayloads(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			events, cancel, err := bus.Subscribe(filter)
+			subscription, err := bus.SubscribeHandle(filter)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			defer cancel()
+			defer subscription.Cancel()
 
 			publisher := NewInternalPublisher(bus, fixedNormalizer())
 
@@ -103,7 +103,7 @@ func TestInternalPublisherEmitsTypedPayloads(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			got := <-events
+			got := <-subscription.Events()
 
 			if got.Topic != test.topic || got.Source != contractEvents.SourceInternal || string(got.Payload) != test.payload {
 				t.Fatalf("event = %#v, payload = %s; want topic %q source %q payload %s", got, got.Payload, test.topic, contractEvents.SourceInternal, test.payload)
@@ -154,18 +154,18 @@ func TestInternalPublisherUsesFixedClock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	events, cancel, err := bus.Subscribe(filter)
+	subscription, err := bus.SubscribeHandle(filter)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer cancel()
+	defer subscription.Cancel()
 
 	if err := NewInternalPublisher(bus, fixedNormalizer()).PublishDaemonStarted(contractEvents.DaemonStartedPayload{Version: "2"}); err != nil {
 		t.Fatal(err)
 	}
 
-	if got := (<-events).Ts; got != time.UnixMilli(1725552000123).UnixMilli() {
+	if got := (<-subscription.Events()).Ts; got != time.UnixMilli(1725552000123).UnixMilli() {
 		t.Fatalf("timestamp = %d", got)
 	}
 }

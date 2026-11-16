@@ -74,7 +74,7 @@ func (m failingListManager) List(context.Context) (opkg.PackageList, error) {
 }
 
 func TestOpkgListOpkgFailure(t *testing.T) {
-	base := opkg.New("stub", discardLogger())
+	base := opkg.NewStub(discardLogger())
 	srv, _ := newTestServerWithOpkg(t, failingListManager{Manager: base})
 	resp, err := http.Get(srv.URL + "/api/mgmt/opkg/list")
 	if err != nil {
@@ -129,7 +129,7 @@ type busyOpkgManager struct {
 func (m busyOpkgManager) Install(context.Context, []string) error { return opkg.ErrBusy }
 
 func TestOpkgInstallBusy(t *testing.T) {
-	base := opkg.New("stub", discardLogger())
+	base := opkg.NewStub(discardLogger())
 	srv, _ := newTestServerWithOpkg(t, busyOpkgManager{Manager: base})
 	body, _ := json.Marshal(map[string][]string{"packages": {"curl"}})
 	resp, err := http.Post(srv.URL+"/api/mgmt/opkg/install", "application/json", bytes.NewReader(body))
@@ -155,7 +155,7 @@ func (m dependencyConflictManager) Remove(context.Context, []string) error {
 }
 
 func TestOpkgRemoveDependencyConflict(t *testing.T) {
-	base := opkg.New("stub", discardLogger())
+	base := opkg.NewStub(discardLogger())
 	srv, _ := newTestServerWithOpkg(t, dependencyConflictManager{Manager: base})
 	body, _ := json.Marshal(map[string][]string{"packages": {"curl"}})
 	resp, err := http.Post(srv.URL+"/api/mgmt/opkg/remove", "application/json", bytes.NewReader(body))

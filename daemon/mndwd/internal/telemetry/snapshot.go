@@ -219,19 +219,6 @@ func (c *SnapshotCache) PublishView(view system.View) {
 	c.Publish(snapshot)
 }
 
-func snapshotValuePresentation(spec SeriesSpec, valueKey string) (key, label, unit string, scale float64, ok bool) {
-	switch {
-	case spec.ID == 1 && valueKey == "cpu":
-		return "cpu", "CPU", "percent", 1, true
-	case spec.ID == 1 && valueKey == "ram":
-		return "ram", "RAM", "percent", 1, true
-	case spec.ID == 2 && valueKey == "temperature":
-		return "temp", "cpu-thermal", "celsius", 1000, true
-	default:
-		return "", "", "", 1, false
-	}
-}
-
 func fineTierSnapshot(rows []Row, valueIndex int, step time.Duration, scale float64) TierSnapshot {
 	tier := TierSnapshot{StepMs: step.Milliseconds(), Samples: make([]Sample, 0, len(rows))}
 

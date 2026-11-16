@@ -107,7 +107,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 	manager := cfg.Manager
 
 	if manager == nil {
-		manager = sessionmanager.New()
+		manager = sessionmanager.New(sessionmanager.Options{})
 	}
 
 	service := &Service{

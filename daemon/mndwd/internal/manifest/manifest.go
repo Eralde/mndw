@@ -23,10 +23,6 @@ func IsPersistentRCIPermission(permission string) bool {
 	return contractmanifest.IsPersistentRCIPermission(permission)
 }
 
-func IsEventPermission(permission string) bool {
-	return contractmanifest.IsEventPermission(permission)
-}
-
 type Size = contractmanifest.Size
 type BackendKind = contractmanifest.BackendKind
 type BackendRoute = contractmanifest.BackendRoute

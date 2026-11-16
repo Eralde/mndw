@@ -19,7 +19,6 @@ var (
 )
 
 type Event = contractEvents.Event
-type CancelFunc func()
 
 type ReplayResult struct {
 	Events  []Event
@@ -87,15 +86,6 @@ func (b *Bus) Publish(event Event) {
 	}
 }
 
-func (b *Bus) Subscribe(filter TopicFilter) (<-chan Event, CancelFunc, error) {
-	subscription, err := b.SubscribeHandle(filter)
-	if err != nil {
-		return nil, func() {}, err
-	}
-
-	return subscription.Events(), subscription.Cancel, nil
-}
-
 func (b *Bus) SubscribeHandle(filter TopicFilter) (*Subscription, error) {
 	b.mu.Lock()
 
@@ -148,22 +138,6 @@ func (s *Subscription) Cancel() {
 	}
 
 	s.bus.cancel(s.subscription)
-}
-
-func (b *Bus) subscriberReadyForTest() <-chan struct{} {
-	b.mu.Lock()
-
-	defer b.mu.Unlock()
-
-	if len(b.subscribers) > 0 {
-		ready := make(chan struct{})
-
-		close(ready)
-
-		return ready
-	}
-
-	return b.subscriberReady
 }
 
 func (b *Bus) cancel(subscriber *subscription) {
@@ -245,20 +219,4 @@ func (b *Bus) Snapshot(after string, filter TopicFilter) ([]Event, error) {
 	}
 
 	return events, nil
-}
-
-func (b *Bus) setRingCapacityForTest(capacity int) {
-	b.mu.Lock()
-
-	defer b.mu.Unlock()
-
-	if capacity < 1 {
-		capacity = 1
-	}
-
-	b.ringCapacity = capacity
-
-	if len(b.ring) > capacity {
-		b.ring = b.ring[len(b.ring)-capacity:]
-	}
 }

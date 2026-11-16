@@ -3,6 +3,7 @@ package mgmt
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -78,7 +79,7 @@ func (h *Handler) removePluginFiles(name, path string) error {
 func (h *Handler) removePluginBackups(name string) {
 	entries, err := os.ReadDir(h.cfg.UserPluginsDir)
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) && h.logger != nil {
+		if !errors.Is(err, fs.ErrNotExist) && h.logger != nil {
 			h.logger.Warn("failed to list plugin backups", "plugin", name, "path", h.cfg.UserPluginsDir, "error", err)
 		}
 

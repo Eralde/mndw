@@ -144,8 +144,7 @@ func (c *Capability) startLocked(ctx context.Context) error {
 	}
 
 	if !c.enabled {
-		entries, err := c.config.FS.ReadDir(c.dir)
-		_ = entries
+		_, err := c.config.FS.ReadDir(c.dir)
 
 		if errors.Is(err, fs.ErrNotExist) {
 			c.publishEmpty(false)
@@ -228,10 +227,6 @@ func (c *Capability) startLocked(ctx context.Context) error {
 		c.publishEmpty(true)
 
 		return err
-	}
-
-	if err := cleanupJournalArtifacts(c.config.FS, c.config.RRDDir); err != nil {
-		c.config.Logger.Error("telemetry legacy cleanup failed", "error", err)
 	}
 
 	runCtx, runCancel := context.WithCancel(c.config.Lifetime)

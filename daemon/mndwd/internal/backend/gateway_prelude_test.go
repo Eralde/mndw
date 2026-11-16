@@ -96,7 +96,7 @@ func newPreludeGatewayWithConfig(t *testing.T, auth Authenticator, cfg GatewayCo
 		t.Fatalf("seed plugin: %v", err)
 	}
 
-	reg := registry.New(store, userDir, builtinDir)
+	reg := registry.NewWithLogger(store, userDir, builtinDir, nil)
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
 
 	if len(runtimes) > 0 {

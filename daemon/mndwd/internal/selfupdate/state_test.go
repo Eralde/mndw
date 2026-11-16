@@ -1,6 +1,7 @@
 package selfupdate
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -39,7 +40,7 @@ func TestStatusUsesVersionThenFailureThenLock(t *testing.T) {
 		t.Fatalf("completed status = %+v", got)
 	}
 
-	if _, err := os.Stat(store.intentPath()); !os.IsNotExist(err) {
+	if _, err := os.Stat(store.intentPath()); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("intent remains after completion: %v", err)
 	}
 

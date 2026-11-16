@@ -4,7 +4,6 @@ package enumeration
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -14,8 +13,8 @@ import (
 	"sync"
 	"time"
 
+	mwsmembers "mndw.local/mws-members"
 	rci "mndw.local/rci"
-	"mndwd/internal/discovery"
 	"mndwd/internal/rcisession/status"
 )
 
@@ -156,7 +155,7 @@ func (c *Cache) Status() CacheStatus {
 }
 
 func ParseMembers(data []byte) ([]Member, error) {
-	members, err := discovery.ParseMembers(data)
+	members, err := mwsmembers.ParseMembers(data)
 	if err != nil {
 		return nil, err
 	}
@@ -204,25 +203,6 @@ func validateMembers(members []Member) error {
 
 func cloneMembers(members []Member) []Member {
 	return append([]Member(nil), members...)
-}
-
-type JSONSource struct {
-	Fetch func(context.Context) ([]byte, error)
-}
-
-func (s JSONSource) Enumerate(ctx context.Context) ([]Member, error) {
-	if s.Fetch == nil {
-		return nil, fmt.Errorf("enumeration fetch unavailable")
-	}
-
-	data, err := s.Fetch(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	var raw json.RawMessage = data
-
-	return ParseMembers(raw)
 }
 
 type HTTPSource struct {

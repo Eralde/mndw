@@ -261,11 +261,19 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 	internalPublisher := events.NewInternalPublisher(eventBus, normalizer)
 	ingestPublisher := events.NewDeduplicatingPublisher(eventBus, events.NewDeduplicator(time.Now))
 	reg := registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, logger)
-	opkgMgr := opkg.NewWithPaths(cfg.Opkg, logger, opkg.Paths{
+	opkgPaths := opkg.Paths{
 		StateDir:   cfg.SelfUpdateStateDir,
 		PendingDir: filepath.Join(cfg.SelfUpdateStateDir, "pending"),
 		LockPath:   filepath.Join(cfg.SelfUpdateStateDir, "self-update.lock"),
-	})
+	}
+	var opkgMgr opkg.SelfUpdateManager
+
+	if cfg.Opkg == "stub" {
+		opkgMgr = opkg.NewStub(logger)
+	} else {
+		opkgMgr = opkg.NewExecWithPaths(logger, opkgPaths)
+	}
+
 	selfUpdateService := selfupdate.New(selfupdate.Config{
 		StateDir:       cfg.SelfUpdateStateDir,
 		PackagedHelper: cfg.SelfUpdateHelper,

@@ -48,15 +48,6 @@ type ExecRunner struct {
 	admission *Admission
 }
 
-func NewExecRunner(cfg ExecRunnerConfig) *ExecRunner {
-	cfg = normalizeExecConfig(cfg)
-
-	return newExecRunner(cfg, NewAdmission(Limits{
-		MaxConcurrentExecTotal:     cfg.MaxConcurrentExecTotal,
-		MaxConcurrentExecPerPlugin: cfg.MaxConcurrentExecPerPlugin,
-	}))
-}
-
 func normalizeExecConfig(cfg ExecRunnerConfig) ExecRunnerConfig {
 	defaults := DefaultLimits()
 
@@ -91,18 +82,6 @@ func newExecRunner(cfg ExecRunnerConfig, admission *Admission) *ExecRunner {
 	cfg = normalizeExecConfig(cfg)
 
 	return &ExecRunner{cfg: cfg, admission: admission}
-}
-
-func (r *ExecRunner) Serve(ctx context.Context, request ExecRequest, writer http.ResponseWriter) *httpx.APIError {
-	reservation, admitted := r.admission.TryAcquireExec(request.PluginID)
-
-	if !admitted {
-		return httpx.NewError(http.StatusTooManyRequests, httpx.CodeBackendBusy, "backend execution capacity is busy")
-	}
-
-	defer reservation.Release()
-
-	return r.ServeReserved(ctx, request, writer, reservation)
 }
 
 // ServeReserved executes a request while its caller owns the matching exec

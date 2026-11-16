@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -182,7 +183,7 @@ func TestPersistentRCIEnabledReadsStateWithoutField(t *testing.T) {
 		t.Fatal("backgroundTelemetry was lost")
 	}
 
-	if _, err := os.Stat(path + ".bak"); !os.IsNotExist(err) {
+	if _, err := os.Stat(path + ".bak"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("state backup stat error = %v, want no backup", err)
 	}
 }

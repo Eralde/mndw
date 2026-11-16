@@ -3,6 +3,7 @@ package backend
 import (
 	"bufio"
 	"bytes"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -47,7 +48,7 @@ func (r *StderrRing) Bytes() []byte {
 
 	defer r.mu.Unlock()
 
-	return append([]byte(nil), r.data...)
+	return slices.Clone(r.data)
 }
 
 func (r *StderrRing) Lines() []string {

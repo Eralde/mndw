@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -78,7 +80,7 @@ func TestGatewayExecRejectsGETBodyBeforeRunningCommand(t *testing.T) {
 		_ = response.Body.Close()
 	}
 
-	if _, err := os.Stat(filepath.Join(pluginDir, "ran")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(pluginDir, "ran")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("command marker stat error = %v, want not-exist", err)
 	}
 }
@@ -137,7 +139,7 @@ func TestGatewayExecOversizedBodyUsesBackendCode(t *testing.T) {
 		t.Fatalf("oversize response = %d %q, want 413 %q", response.StatusCode, payload.Error.Code, CodeBackendBodyTooLarge)
 	}
 
-	if _, err := os.Stat(filepath.Join(pluginDir, "ran")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(pluginDir, "ran")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("command marker stat error = %v, want not-exist", err)
 	}
 }
@@ -179,7 +181,7 @@ func TestGatewayExecSlowBodyTimesOutAndReleasesAdmission(t *testing.T) {
 		t.Fatalf("timeout response = %d %q, want 408 %q", response.StatusCode, payload.Error.Code, httpx.CodeRequestTimeout)
 	}
 
-	if _, err := os.Stat(filepath.Join(pluginDir, "ran")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(pluginDir, "ran")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("command marker stat error = %v, want not-exist", err)
 	}
 
@@ -287,7 +289,7 @@ func newExecBodyTestHandler(t *testing.T, gatewayConfig GatewayConfig, limits Li
 		t.Fatal(err)
 	}
 
-	reg := registry.New(store, userDir, "")
+	reg := registry.NewWithLogger(store, userDir, "", nil)
 	runtime := NewRuntime(RuntimeConfig{
 		RuntimeRoot: t.TempDir(),
 		Limits:      limits,

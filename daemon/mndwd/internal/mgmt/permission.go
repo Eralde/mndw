@@ -134,7 +134,7 @@ func (h *Handler) permissionTarget(name string) (*manifest.Manifest, state.Sourc
 		return m, plugin.Source, plugin.Approval, plugin.Enabled, dir, nil
 	}
 
-	builtins, err := h.builtins.ListBuiltinsWithError()
+	builtins, err := h.builtins.ListBuiltins()
 	if err != nil {
 		return nil, "", "", false, "", httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
 	}

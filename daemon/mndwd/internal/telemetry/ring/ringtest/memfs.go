@@ -6,7 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -334,7 +334,7 @@ func (m *MemFS) ReadDir(name string) ([]fs.DirEntry, error) {
 		entries = append(entries, memDirEntry{name: name, isDir: isDir})
 	}
 
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	slices.SortFunc(entries, func(left, right fs.DirEntry) int { return strings.Compare(left.Name(), right.Name()) })
 
 	return entries, nil
 }

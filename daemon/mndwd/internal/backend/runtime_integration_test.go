@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -63,7 +65,7 @@ func TestLinuxRealBackendLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reg := registry.New(store, userDir, "")
+	reg := registry.NewWithLogger(store, userDir, "", nil)
 	servicePlugin, ok := reg.Resolve("service")
 
 	if !ok {
@@ -149,11 +151,11 @@ func TestLinuxRealBackendLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := os.Stat(paths.BackendSocket); !os.IsNotExist(err) {
+	if _, err := os.Stat(paths.BackendSocket); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("backend socket after shutdown: %v", err)
 	}
 
-	if _, err := os.Stat(paths.ServiceLease); !os.IsNotExist(err) {
+	if _, err := os.Stat(paths.ServiceLease); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("service lease after shutdown: %v", err)
 	}
 }

@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 )
@@ -272,7 +272,7 @@ func jsonDifference(path string, got, want any) (string, any, any, bool) {
 			}
 		}
 
-		sort.Strings(keys)
+		slices.Sort(keys)
 
 		for _, key := range keys {
 			if diffPath, gotPart, wantPart, ok := jsonDifference(path+"."+key, gotObject[key], wantObject[key]); ok {

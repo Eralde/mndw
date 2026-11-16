@@ -8,13 +8,14 @@
 package mgmt
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -40,7 +41,7 @@ const uploadBodyTimeout = 120 * time.Second
 // BuiltinSource supplies validated builtin plugins and owns builtin discovery
 // warnings/errors. Satisfied by *registry.Registry.
 type BuiltinSource interface {
-	ListBuiltinsWithError() ([]*registry.Plugin, error)
+	ListBuiltins() ([]*registry.Plugin, error)
 }
 
 // RuntimeResolver resolves an installed plugin snapshot for lifecycle operations.
@@ -308,7 +309,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 		entries = append(entries, h.entryFrom(m, p.Source, p.Approval, p.Enabled, dir))
 	}
 
-	builtinPlugins, err := h.builtins.ListBuiltinsWithError()
+	builtinPlugins, err := h.builtins.ListBuiltins()
 	if err != nil {
 		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
 	}
@@ -321,7 +322,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 		entries = append(entries, h.entryFrom(plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, true, plugin.Dir))
 	}
 
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+	slices.SortFunc(entries, func(left, right ListEntry) int { return cmp.Compare(left.Name, right.Name) })
 
 	return entries, nil
 }

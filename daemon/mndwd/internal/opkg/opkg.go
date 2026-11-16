@@ -10,18 +10,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
-
-	"mndwd/internal/output"
 )
+
+const tailOutputBytes = 4 << 10
+
+func tailOutput[T ~[]byte | ~string](value T) T {
+	if len(value) <= tailOutputBytes {
+		return value
+	}
+
+	return value[len(value)-tailOutputBytes:]
+}
 
 // pkgNameRe accepts a conservative opkg package name. Every name is shell-adjacent
 // (passed to exec), so it must stay within this character set.
@@ -112,18 +121,19 @@ type Manager interface {
 	Info(ctx context.Context, name string) (PackageInfo, error)
 }
 
-// New returns an exec-backed Manager, or a stub when mode is "stub".
-func New(mode string, logger *slog.Logger) SelfUpdateManager {
-	return NewWithPaths(mode, logger, Paths{})
-}
-
-func NewWithPaths(mode string, logger *slog.Logger, paths Paths) SelfUpdateManager {
+// NewStub returns an in-memory manager for development and tests.
+func NewStub(logger *slog.Logger) SelfUpdateManager {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	if mode == "stub" {
-		return newStub(logger)
+	return newStub(logger)
+}
+
+// NewExecWithPaths returns a manager backed by the device's opkg executable.
+func NewExecWithPaths(logger *slog.Logger, paths Paths) SelfUpdateManager {
+	if logger == nil {
+		logger = slog.Default()
 	}
 
 	return &execManager{
@@ -221,7 +231,7 @@ func execRun(ctx context.Context, args ...string) (string, int, error) {
 		return stdout.String(), 0, nil
 	}
 
-	if errors.Is(err, exec.ErrNotFound) || os.IsNotExist(err) {
+	if errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
 		return "", 0, fmt.Errorf("%w: %v", ErrOpkgUnavailable, err)
 	}
 
@@ -245,26 +255,6 @@ func (m *execManager) run(ctx context.Context, args ...string) (string, int, err
 	}
 
 	return execRun(ctx, args...)
-}
-
-// acquire takes the mutation gate, aborting immediately when ctx is done. The
-// pre-check matters because with an empty gate and a done context both select
-// cases are ready and Go picks randomly.
-func (m *execManager) acquire(ctx context.Context) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	select {
-	case m.gate <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (m *execManager) release() {
-	<-m.gate
 }
 
 func (m *execManager) mutate(ctx context.Context, action string, packages []string, args ...string) error {
@@ -294,17 +284,17 @@ func (m *execManager) mutateOutput(ctx context.Context, action string, packages 
 	commandArgs = append(commandArgs, packages...)
 	out, exitCode, err := m.run(ctx, commandArgs...)
 	if err != nil {
-		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", output.Tail(out))
+		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", tailOutput(out))
 
 		return out, fmt.Errorf("opkg %s: %w", action, err)
 	}
 
 	if exitCode != 0 {
-		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", output.Tail(out), "exitCode", exitCode)
+		m.logger.Error("opkg command failed", "action", action, "packages", packages, "output", tailOutput(out), "exitCode", exitCode)
 
 		// Include opkg's own output (its failure reason lives there) so the surfaced
 		// error is actionable instead of an opaque exit code.
-		if reason := strings.TrimSpace(output.Tail(out)); reason != "" {
+		if reason := strings.TrimSpace(tailOutput(out)); reason != "" {
 			return out, fmt.Errorf("opkg %s exited %d: %s", action, exitCode, reason)
 		}
 
@@ -332,7 +322,7 @@ func (m *execManager) Remove(ctx context.Context, packages []string) error {
 	// and surface a typed, actionable error regardless of the exit code.
 	if conflict := detectDependents(out); conflict != nil {
 		m.logger.Error("opkg remove refused: reverse dependencies",
-			"packages", packages, "output", output.Tail(out))
+			"packages", packages, "output", tailOutput(out))
 
 		return conflict
 	}
@@ -420,13 +410,13 @@ func (m *execManager) Update(ctx context.Context) error {
 
 	out, exitCode, err := m.run(ctx, "opkg", "update")
 	if err != nil {
-		m.logger.Error("opkg update failed", "output", output.Tail(out))
+		m.logger.Error("opkg update failed", "output", tailOutput(out))
 
 		return fmt.Errorf("opkg update: %w", err)
 	}
 
 	if exitCode != 0 {
-		m.logger.Error("opkg update failed", "output", output.Tail(out), "exitCode", exitCode)
+		m.logger.Error("opkg update failed", "output", tailOutput(out), "exitCode", exitCode)
 
 		return fmt.Errorf("opkg update exited %d", exitCode)
 	}
@@ -455,13 +445,13 @@ func (m *execManager) ListAvailable(ctx context.Context) ([]string, error) {
 func (m *execManager) list(ctx context.Context, verb string) ([]string, error) {
 	out, exitCode, err := m.run(ctx, "opkg", verb)
 	if err != nil {
-		m.logger.Error("opkg list failed", "verb", verb, "output", output.Tail(out))
+		m.logger.Error("opkg list failed", "verb", verb, "output", tailOutput(out))
 
 		return nil, fmt.Errorf("opkg %s: %w", verb, err)
 	}
 
 	if exitCode != 0 {
-		m.logger.Error("opkg list failed", "verb", verb, "output", output.Tail(out), "exitCode", exitCode)
+		m.logger.Error("opkg list failed", "verb", verb, "output", tailOutput(out), "exitCode", exitCode)
 
 		return nil, fmt.Errorf("opkg %s exited %d", verb, exitCode)
 	}
@@ -531,7 +521,7 @@ func mergePackageMaps(installedMap, availableMap map[string]PackageEntry) []Pack
 		combined = append(combined, installed)
 	}
 
-	sort.Slice(combined, func(i, j int) bool { return combined[i].Name < combined[j].Name })
+	slices.SortFunc(combined, func(left, right PackageEntry) int { return strings.Compare(left.Name, right.Name) })
 
 	return combined
 }
@@ -720,7 +710,7 @@ func (m *execManager) metadataUpdatedAt() (*time.Time, error) {
 	m.defaults()
 
 	entries, err := os.ReadDir(m.listsDir)
-	if errors.Is(err, os.ErrNotExist) {
+	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 

@@ -227,14 +227,6 @@ func (v *Verifier) lookup(key string) (verdict, cached bool) {
 	return e.ok, true
 }
 
-func (v *Verifier) store(key string, ok bool) {
-	v.mu.Lock()
-
-	defer v.mu.Unlock()
-
-	v.storeLocked(key, ok)
-}
-
 func (v *Verifier) storeLocked(key string, ok bool) {
 	ttl := v.ttl
 

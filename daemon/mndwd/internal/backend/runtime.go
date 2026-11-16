@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"os"
+	"slices"
 	"time"
 
 	"mndwd/internal/httpx"
@@ -115,7 +115,7 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 
 	config.Supervisor.PluginDataRoot = config.PluginDataRoot
 	config.Supervisor.Limits = config.Limits
-	config.Supervisor.SupportedProtocols = append([]int(nil), config.SupportedServiceProtocols...)
+	config.Supervisor.SupportedProtocols = slices.Clone(config.SupportedServiceProtocols)
 	config.Supervisor = normalizeSupervisorConfig(config.Supervisor)
 
 	admission := NewAdmission(config.Limits)
@@ -125,7 +125,7 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 		supervisor:        newSupervisor(config.Supervisor, admission),
 		traffic:           NewTrafficGate(),
 		limits:            config.Limits,
-		protocols:         append([]int(nil), config.SupportedServiceProtocols...),
+		protocols:         slices.Clone(config.SupportedServiceProtocols),
 		now:               config.Supervisor.Now,
 		logger:            config.Supervisor.Logger,
 		runtimeRoot:       config.RuntimeRoot,
@@ -215,7 +215,7 @@ func (r *RuntimeImpl) Limits() RuntimeLimitsSnapshot {
 		MaxSupervisedServices:      r.limits.MaxSupervisedServices,
 		CurrentExec:                execTotal,
 		ReservedServices:           services,
-		SupportedServiceProtocols:  append([]int(nil), r.protocols...),
+		SupportedServiceProtocols:  slices.Clone(r.protocols),
 	}
 }
 
@@ -330,7 +330,7 @@ func serviceSpec(plugin *registry.Plugin, gates *ActivationGateRegistry) (Servic
 		PluginID:        plugin.Name,
 		Dir:             plugin.Dir,
 		Command:         *backend.Command,
-		Args:            append([]string(nil), backend.Args...),
+		Args:            slices.Clone(backend.Args),
 		ProtocolVersion: protocolVersion,
 		Builtin:         plugin.Source == state.SourceBuiltin,
 		Enabled:         enabled,
@@ -353,12 +353,4 @@ func persistentRCISocket(runtimeRoot string, plugin *registry.Plugin) string {
 	}
 
 	return ""
-}
-
-// RuntimePathExists is a small startup helper kept here so callers can avoid
-// probing or creating arbitrary paths when runtime root is unavailable.
-func RuntimePathExists(root string) bool {
-	_, err := os.Stat(root)
-
-	return err == nil
 }

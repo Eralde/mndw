@@ -2,12 +2,13 @@ package deviceinfo
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"math"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -90,12 +91,12 @@ func parsePortMap(raw json.RawMessage, snapshot *Snapshot) {
 		}})
 	}
 
-	sort.Slice(parsed, func(i, j int) bool {
-		if parsed[i].port.Index != parsed[j].port.Index {
-			return parsed[i].port.Index < parsed[j].port.Index
+	slices.SortFunc(parsed, func(left, right parsedPort) int {
+		if indexOrder := cmp.Compare(left.port.Index, right.port.Index); indexOrder != 0 {
+			return indexOrder
 		}
 
-		return parsed[i].port.ID < parsed[j].port.ID
+		return strings.Compare(left.port.ID, right.port.ID)
 	})
 
 	for _, candidate := range parsed {

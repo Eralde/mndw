@@ -75,8 +75,6 @@ func ValidateServiceLease(lease ServiceLease, reader ProcessReader) (bool, error
 	return true, nil
 }
 
-func ownProcessID() int { return os.Getpid() }
-
 func (s *Supervisor) prepareStart(paths RuntimePaths, spec ServiceSpec) (ValidatedCommand, error) {
 	if err := paths.Ensure(); err != nil {
 		return ValidatedCommand{}, err

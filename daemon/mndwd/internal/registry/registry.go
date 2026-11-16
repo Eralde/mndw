@@ -3,11 +3,14 @@
 package registry
 
 import (
+	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
+	"strings"
 
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
@@ -52,11 +55,6 @@ type Registry struct {
 	userDir    string
 	builtinDir string
 	logger     *slog.Logger
-}
-
-// New constructs a Registry over the given state store and plugin directories.
-func New(store *state.Store, userDir, builtinDir string) *Registry {
-	return NewWithLogger(store, userDir, builtinDir, nil)
 }
 
 // NewWithLogger constructs a Registry with an optional logger for builtin
@@ -122,28 +120,16 @@ func pluginDir(userDir string, record *state.Plugin) string {
 	return record.ActiveVersionDir
 }
 
-// ListBuiltins returns every plugin discovered in the builtin directory. Builtins are
-// always treated as approved+enabled. The caller is responsible for filtering (e.g.
-// for the management list).
-func (r *Registry) ListBuiltins() []*Plugin {
-	plugins, err := r.ListBuiltinsWithError()
-	if err != nil {
-		return nil
-	}
-
-	return plugins
-}
-
-// ListBuiltinsWithError returns every valid builtin plugin and reports an
+// ListBuiltins returns every valid builtin plugin and reports an
 // unreadable builtin directory. Missing directories remain an empty result.
-func (r *Registry) ListBuiltinsWithError() ([]*Plugin, error) {
+func (r *Registry) ListBuiltins() ([]*Plugin, error) {
 	if r.builtinDir == "" {
 		return nil, nil
 	}
 
 	entries, err := os.ReadDir(r.builtinDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
 
@@ -203,7 +189,7 @@ func (r *Registry) AllBackendPlugins() []*Plugin {
 		userNames = append(userNames, name)
 	}
 
-	sort.Strings(userNames)
+	slices.Sort(userNames)
 
 	plugins := make([]*Plugin, 0)
 
@@ -223,9 +209,9 @@ func (r *Registry) AllBackendPlugins() []*Plugin {
 		plugins = append(plugins, plugin)
 	}
 
-	builtins := r.ListBuiltins()
+	builtins, _ := r.ListBuiltins()
 
-	sort.Slice(builtins, func(left, right int) bool { return builtins[left].Name < builtins[right].Name })
+	slices.SortFunc(builtins, func(left, right *Plugin) int { return strings.Compare(left.Name, right.Name) })
 
 	for _, plugin := range builtins {
 		if _, exists := reserved[plugin.Name]; exists || !manifest.HasBackend(plugin.Manifest) {

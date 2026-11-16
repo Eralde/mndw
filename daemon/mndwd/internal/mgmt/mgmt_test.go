@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +26,7 @@ import (
 
 type emptyBuiltinSource struct{}
 
-func (emptyBuiltinSource) ListBuiltinsWithError() ([]*registry.Plugin, error) {
+func (emptyBuiltinSource) ListBuiltins() ([]*registry.Plugin, error) {
 	return nil, nil
 }
 
@@ -38,8 +39,6 @@ func (passthroughControl) StartPlugin(*registry.Plugin) error { return nil }
 func (passthroughControl) StopService() error { return nil }
 
 func (passthroughControl) IsCurrent() bool { return true }
-
-func (passthroughControl) Generation() uint64 { return 0 }
 
 func (passthroughRuntime) Reconcile(context.Context, []*registry.Plugin) {}
 
@@ -151,8 +150,6 @@ func (c *lifecycleTestControl) StopService() error {
 
 func (*lifecycleTestControl) IsCurrent() bool { return true }
 
-func (*lifecycleTestControl) Generation() uint64 { return 1 }
-
 func (r *lifecycleTestRuntime) ExecuteLifecycle(
 	name string,
 	op backend.Operation,
@@ -217,7 +214,7 @@ func newTestServer(t *testing.T) (*httptest.Server, Config) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mux := http.NewServeMux()
 
-	New(cfg, store, opkg.New("stub", logger), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
+	New(cfg, store, opkg.NewStub(logger), nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, nil), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -249,7 +246,7 @@ func newPermissionServer(t *testing.T, controller PersistentRCIPermissionControl
 
 	mux := http.NewServeMux()
 
-	New(cfg, store, opkg.New("stub", discardLogger()), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger()).Register(mux)
+	New(cfg, store, opkg.NewStub(discardLogger()), nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, nil), discardLogger()).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -284,7 +281,7 @@ func newLifecycleHarness(t *testing.T, runtime backend.Runtime, controller Persi
 	logger := discardLogger()
 	mux := http.NewServeMux()
 
-	handler := New(cfg, store, opkg.New("stub", logger), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger)
+	handler := New(cfg, store, opkg.NewStub(logger), nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, nil), logger)
 
 	handler.Register(mux)
 
@@ -364,7 +361,7 @@ func newTestServerWithOpkg(t *testing.T, opkgMgr opkg.Manager) (*httptest.Server
 	logger := discardLogger()
 	mux := http.NewServeMux()
 
-	New(cfg, store, opkgMgr, nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), logger).Register(mux)
+	New(cfg, store, opkgMgr, nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, nil), logger).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -532,7 +529,7 @@ func TestUploadNoBackendInstallsDirectly(t *testing.T) {
 		t.Errorf("expected installed file in user-plugins: %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(cfg.StagingDir, "hello")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(cfg.StagingDir, "hello")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("staging should be empty after direct install")
 	}
 }
@@ -620,7 +617,7 @@ func TestDenyRemovesStaging(t *testing.T) {
 		t.Fatalf("deny status = %d, want 200", dn.StatusCode)
 	}
 
-	if _, err := os.Stat(filepath.Join(cfg.StagingDir, "svc")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(cfg.StagingDir, "svc")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("staging should be gone after deny")
 	}
 
@@ -675,7 +672,7 @@ func TestDeleteInstalledPlugin(t *testing.T) {
 		t.Fatalf("delete status = %d, want 200", del.StatusCode)
 	}
 
-	if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, "hello")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, "hello")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("plugin files should be gone after delete")
 	}
 
@@ -691,7 +688,9 @@ func TestDeleteRemovesOnlyPluginBackups(t *testing.T) {
 		"manifest.json": noBackendManifest,
 		"index.js":      "x",
 	}))
+
 	initial.Body.Close()
+
 	if initial.StatusCode != http.StatusCreated {
 		t.Fatalf("upload status = %d, want 201", initial.StatusCode)
 	}
@@ -707,26 +706,31 @@ func TestDeleteRemovesOnlyPluginBackups(t *testing.T) {
 	}
 
 	matchingFile := filepath.Join(cfg.UserPluginsDir, "hello.previous-not-a-directory")
+
 	if err := os.WriteFile(matchingFile, []byte("keep"), 0o644); err != nil {
 		t.Fatalf("create matching file: %v", err)
 	}
 
 	resp := postName(t, srv, "/api/mgmt/delete", "hello")
+
 	resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("delete status = %d, want 200", resp.StatusCode)
 	}
 
 	for _, name := range []string{"hello", "hello.previous-1.0.0"} {
-		if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, name)); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, name)); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("%s remains after delete (stat error: %v)", name, err)
 		}
 	}
+
 	for _, name := range []string{"hello-other", "hello-other.previous-1.0.0"} {
 		if info, err := os.Stat(filepath.Join(cfg.UserPluginsDir, name)); err != nil || !info.IsDir() {
 			t.Errorf("sibling %s was not preserved (info=%v, err=%v)", name, info, err)
 		}
 	}
+
 	if contents, err := os.ReadFile(matchingFile); err != nil || string(contents) != "keep" {
 		t.Errorf("matching non-directory entry changed (contents=%q, err=%v)", contents, err)
 	}
@@ -741,17 +745,21 @@ func TestDeleteSucceedsWhenBackupRemovalFails(t *testing.T) {
 		"manifest.json": noBackendManifest,
 		"index.js":      "x",
 	}))
+
 	initial.Body.Close()
+
 	if initial.StatusCode != http.StatusCreated {
 		t.Fatalf("upload status = %d, want 201", initial.StatusCode)
 	}
 
 	record, ok := store.Get("hello")
+
 	if !ok || record.Approval != state.ApprovalApproved {
 		t.Fatalf("plugin record = %+v, exists=%t, want approved", record, ok)
 	}
 
 	backupPath := filepath.Join(cfg.UserPluginsDir, "hello.previous-1.0.0")
+
 	for _, path := range []string{
 		backupPath,
 		filepath.Join(cfg.UserPluginsDir, "hello-other"),
@@ -774,7 +782,9 @@ func TestDeleteSucceedsWhenBackupRemovalFails(t *testing.T) {
 	handler.logger = slog.New(slog.NewTextHandler(&logs, nil))
 
 	resp := postName(t, srv, "/api/mgmt/delete", "hello")
+
 	resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("delete status = %d, want 200", resp.StatusCode)
 	}
@@ -783,12 +793,14 @@ func TestDeleteSucceedsWhenBackupRemovalFails(t *testing.T) {
 		t.Fatal("deleted plugin state record remains")
 	}
 
-	if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, "hello")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(cfg.UserPluginsDir, "hello")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("main plugin directory remains after delete (stat error: %v)", err)
 	}
+
 	if info, err := os.Stat(backupPath); err != nil || !info.IsDir() {
 		t.Errorf("failed backup removal changed backup (info=%v, err=%v)", info, err)
 	}
+
 	for _, path := range []string{
 		filepath.Join(cfg.UserPluginsDir, "hello-other"),
 		filepath.Join(cfg.UserPluginsDir, "hello-other.previous-1.0.0"),
@@ -799,6 +811,7 @@ func TestDeleteSucceedsWhenBackupRemovalFails(t *testing.T) {
 	}
 
 	output := logs.String()
+
 	if !strings.Contains(output, "level=WARN") || !strings.Contains(output, "failed to remove plugin backup") || !strings.Contains(output, "backup removal failed") {
 		t.Errorf("backup cleanup warning missing from logs: %q", output)
 	}
@@ -1002,7 +1015,7 @@ func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
 
 	writeBuiltinFixture(t, cfg, "core-demo", false)
 
-	handler := New(cfg, store, opkg.New("stub", discardLogger()), nil, registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir), discardLogger())
+	handler := New(cfg, store, opkg.NewStub(discardLogger()), nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, nil), discardLogger())
 	mux := http.NewServeMux()
 
 	handler.Register(mux)

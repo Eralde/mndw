@@ -2,6 +2,7 @@
 package frontend
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -41,9 +42,11 @@ func New(frontendDir, userPluginsDir string) (*Handler, error) {
 // API, WebSocket, and HTTP-router patterns must be registered by the caller first.
 func (h *Handler) Register(mux *http.ServeMux, userPluginGate ...func(http.Handler) http.Handler) {
 	userPluginHandler := http.Handler(http.HandlerFunc(h.serveUserPlugin))
+
 	if len(userPluginGate) > 0 && userPluginGate[0] != nil {
 		userPluginHandler = userPluginGate[0](userPluginHandler)
 	}
+
 	mux.Handle("/user-plugins/", userPluginHandler)
 	mux.HandleFunc("/", h.serveStatic)
 }
@@ -57,6 +60,7 @@ func (h *Handler) serveUserPlugin(writer http.ResponseWriter, request *http.Requ
 
 	relative := strings.TrimPrefix(request.URL.Path, "/user-plugins/")
 	segments := strings.Split(relative, "/")
+
 	if len(segments) < 2 || !pluginNamePattern.MatchString(segments[0]) {
 		http.NotFound(writer, request)
 
@@ -96,6 +100,7 @@ func (h *Handler) serveStatic(writer http.ResponseWriter, request *http.Request)
 	}
 
 	relative := strings.TrimPrefix(request.URL.Path, "/")
+
 	if isBuiltinBackendPath(relative) {
 		http.NotFound(writer, request)
 
@@ -110,6 +115,7 @@ func (h *Handler) serveStatic(writer http.ResponseWriter, request *http.Request)
 
 	var full string
 	var ok bool
+
 	if pluginName, isPluginFile := builtinPluginPath(relative); isPluginFile {
 		full, ok = safePluginJoin(h.frontendDir, filepath.Join("plugins", pluginName), relative)
 	} else {
@@ -148,6 +154,7 @@ func isBuiltinBackendPath(relative string) bool {
 func builtinPluginPath(relative string) (string, bool) {
 	cleaned := strings.TrimPrefix(path.Clean("/"+relative), "/")
 	segments := strings.Split(cleaned, "/")
+
 	if len(segments) < 3 || segments[0] != "plugins" || segments[1] == "" {
 		return "", false
 	}
@@ -157,6 +164,7 @@ func builtinPluginPath(relative string) (string, bool) {
 
 func safePluginJoin(root, pluginRootRelative, relative string) (string, bool) {
 	full, ok := safeJoin(root, relative)
+
 	if !ok {
 		return "", false
 	}
@@ -177,6 +185,7 @@ func safePluginJoin(root, pluginRootRelative, relative string) (string, bool) {
 	}
 
 	firstSegment := strings.SplitN(filepath.ToSlash(withinPlugin), "/", 2)[0]
+
 	if firstSegment == "backend" {
 		return "", false
 	}
@@ -195,8 +204,10 @@ func resolvePath(full string) (string, error) {
 
 	current := absolute
 	var missing []string
+
 	for {
 		resolved, resolveErr := filepath.EvalSymlinks(current)
+
 		if resolveErr == nil {
 			resolved, err = filepath.Abs(resolved)
 			if err != nil {
@@ -210,11 +221,12 @@ func resolvePath(full string) (string, error) {
 			return filepath.Clean(resolved), nil
 		}
 
-		if !os.IsNotExist(resolveErr) {
+		if !errors.Is(resolveErr, os.ErrNotExist) {
 			return "", resolveErr
 		}
 
 		parent := filepath.Dir(current)
+
 		if parent == current {
 			return "", resolveErr
 		}

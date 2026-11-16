@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"mndwd/internal/backend"
@@ -268,7 +269,7 @@ func newRecord(m *manifest.Manifest, manifestBytes []byte, approval state.Approv
 		Label:            deref(m.Label),
 		Approval:         approval,
 		Enabled:          enabled,
-		Manifest:         append([]byte(nil), manifestBytes...),
+		Manifest:         slices.Clone(manifestBytes),
 		InstalledAt:      time.Now().UTC(),
 		InstalledVersion: deref(m.Version),
 	}

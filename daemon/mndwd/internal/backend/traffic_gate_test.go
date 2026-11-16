@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func (c *recordingCloser) closeRecords() []recordedClose {
 
 	defer c.mu.Unlock()
 
-	return append([]recordedClose(nil), c.closes...)
+	return slices.Clone(c.closes)
 }
 
 func TestTrafficGateClosePluginClosesOnlyMatching(t *testing.T) {

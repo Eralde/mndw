@@ -162,7 +162,7 @@ func TestAssembleTokenlessSurvivesStoreOpenFailure(t *testing.T) {
 	core := daemonCore{
 		cfg:             cfg,
 		store:           store,
-		reg:             registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir),
+		reg:             registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, nil),
 		activationGates: backend.NewActivationGateRegistry(),
 		logger:          logger,
 		lifetime:        context.Background(),

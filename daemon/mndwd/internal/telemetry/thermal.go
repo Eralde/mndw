@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -62,7 +62,7 @@ func (s *ThermalSampler) Poll(_ context.Context) ([]Value, error) {
 		return []Value{{}}, fmt.Errorf("read thermal zones: %w", err)
 	}
 
-	sort.Slice(entries, func(left, right int) bool { return entries[left].Name() < entries[right].Name() })
+	slices.SortFunc(entries, func(left, right fs.DirEntry) int { return strings.Compare(left.Name(), right.Name()) })
 
 	type candidate struct {
 		preferred bool

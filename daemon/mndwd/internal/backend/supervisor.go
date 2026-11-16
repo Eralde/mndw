@@ -7,9 +7,13 @@ import (
 	"log/slog"
 	"os/exec"
 	"slices"
-	"sort"
 	"sync"
 	"time"
+)
+
+const (
+	maxConsecutiveFailures = 5
+	healthyServiceDuration = 60 * time.Second
 )
 
 type ServiceSpec struct {
@@ -81,12 +85,6 @@ type serviceRecord struct {
 	startupSeq         uint64
 }
 
-func NewSupervisor(cfg SupervisorConfig) *Supervisor {
-	cfg = normalizeSupervisorConfig(cfg)
-
-	return newSupervisor(cfg, NewAdmission(cfg.Limits))
-}
-
 func normalizeSupervisorConfig(cfg SupervisorConfig) SupervisorConfig {
 	defaults := DefaultLimits()
 
@@ -138,7 +136,7 @@ func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
 		services:    make(map[string]*serviceRecord),
 		desired:     make(map[string]ServiceSpec),
 		retryTimers: make(map[string]*time.Timer),
-		coord:       newCoordinator(cfg.LifetimeCtx),
+		coord:       newCoordinatorWithClock(cfg.LifetimeCtx, cfg.Now),
 	}
 
 	if cfg.LifetimeCtx.Done() != nil {
@@ -236,22 +234,6 @@ func (s *Supervisor) isCurrent(run *operationRun) bool {
 	return withLockValue(s, func() bool { return s.coord.isCurrent(run) })
 }
 
-func (s *Supervisor) operationOf(name string) Operation {
-	return withLockValue(s, func() Operation {
-		record := s.coord.records[name]
-
-		if record == nil {
-			return OpNone
-		}
-
-		return record.operation
-	})
-}
-
-func (s *Supervisor) intentOf(name string) Intent {
-	return withLockValue(s, func() Intent { return s.coord.intentOf(name) })
-}
-
 // withLock runs fn with the supervisor mutex held, guaranteeing release even
 // if fn panics. Use it for a single, self-contained critical section.
 func (s *Supervisor) withLock(fn func()) {
@@ -303,7 +285,7 @@ func (s *Supervisor) StopAll(ctx context.Context) error {
 	}
 
 	s.mu.Unlock()
-	sort.Strings(pluginIDs)
+	slices.Sort(pluginIDs)
 
 	stopErrors := make([]error, len(pluginIDs))
 	var stops sync.WaitGroup
@@ -336,7 +318,7 @@ func (s *Supervisor) runningPluginIDs() []string {
 		pluginIDs = append(pluginIDs, pluginID)
 	}
 
-	sort.Strings(pluginIDs)
+	slices.Sort(pluginIDs)
 
 	return pluginIDs
 }
@@ -366,10 +348,18 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 		return reconcilePlan{}
 	}
 
-	ordered := append([]ServiceSpec(nil), specs...)
+	ordered := slices.Clone(specs)
 
-	sort.SliceStable(ordered, func(left, right int) bool {
-		return lessServiceSpec(ordered[left], ordered[right])
+	slices.SortStableFunc(ordered, func(left, right ServiceSpec) int {
+		if lessServiceSpec(left, right) {
+			return -1
+		}
+
+		if lessServiceSpec(right, left) {
+			return 1
+		}
+
+		return 0
 	})
 
 	s.mu.Lock()
@@ -462,8 +452,8 @@ func (s *Supervisor) Reconcile(ctx context.Context, specs []ServiceSpec) reconci
 		plan.removeIDs = append(plan.removeIDs, pluginID)
 	}
 
-	sort.Strings(plan.stopIDs)
-	sort.Strings(plan.removeIDs)
+	slices.Sort(plan.stopIDs)
+	slices.Sort(plan.removeIDs)
 
 	return plan
 }
@@ -511,7 +501,7 @@ func (s *Supervisor) reserveForReconcileLocked(spec ServiceSpec) bool {
 		record.status.State = StateCapacityBlocked
 		record.status.NextAttemptAt = nil
 		record.status.RequiredProtocol = spec.ProtocolVersion
-		record.status.SupportedProtocols = append([]int(nil), s.cfg.SupportedProtocols...)
+		record.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
 		record.status.Compatible = &compatible
 
 		return false
@@ -542,15 +532,6 @@ type startPlan struct {
 	record *serviceRecord
 	action startAction
 	err    error
-}
-
-// planStart applies the start state/admission decision under one held lock and
-// performs no process or socket I/O. The caller executes the external side
-// effects implied by the returned action.
-func (s *Supervisor) planStart(spec ServiceSpec, paths RuntimePaths) startPlan {
-	return withLockValue(s, func() startPlan {
-		return s.planStartLocked(spec, paths)
-	})
 }
 
 func (s *Supervisor) planStartForRun(run *operationRun, spec ServiceSpec, paths RuntimePaths) startPlan {
@@ -589,7 +570,7 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 	}
 
 	record.status.RequiredProtocol = spec.ProtocolVersion
-	record.status.SupportedProtocols = append([]int(nil), s.cfg.SupportedProtocols...)
+	record.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
 	compatible := s.supportedProtocol(spec.ProtocolVersion)
 	record.status.Compatible = &compatible
 
@@ -653,7 +634,7 @@ func (s *Supervisor) restampIncompatible(run *operationRun, spec ServiceSpec) {
 		}
 
 		record.status.RequiredProtocol = spec.ProtocolVersion
-		record.status.SupportedProtocols = append([]int(nil), s.cfg.SupportedProtocols...)
+		record.status.SupportedProtocols = slices.Clone(s.cfg.SupportedProtocols)
 		compatible := s.supportedProtocol(spec.ProtocolVersion)
 		record.status.Compatible = &compatible
 	})
@@ -877,13 +858,7 @@ func (s *Supervisor) supportedProtocol(protocol int) bool {
 }
 
 func supportsProtocol(required int, supported []int) bool {
-	for _, candidate := range supported {
-		if candidate == required {
-			return true
-		}
-	}
-
-	return len(supported) == 0 && required == 1
+	return slices.Contains(supported, required) || (len(supported) == 0 && required == 1)
 }
 
 // SupportsProtocol reports exact membership in daemon-supported protocol versions.
@@ -934,7 +909,7 @@ func (s *Supervisor) observeExit(pluginID string, done *processExit) {
 			return
 		}
 
-		healthy := record.status.StartedAt != nil && s.cfg.Now().Sub(*record.status.StartedAt) >= 60*time.Second
+		healthy := record.status.StartedAt != nil && s.cfg.Now().Sub(*record.status.StartedAt) >= healthyServiceDuration
 
 		if healthy {
 			record.status.ConsecutiveFailures = 0
@@ -955,7 +930,7 @@ func recordFailure(status *RuntimeStatus, now time.Time, lastExit string, err er
 		status.LastError = err.Error()
 	}
 
-	if status.ConsecutiveFailures >= 5 {
+	if status.ConsecutiveFailures >= maxConsecutiveFailures {
 		status.State = StateFailed
 		status.NextAttemptAt = nil
 
@@ -1230,8 +1205,16 @@ func (s *Supervisor) promoteBlocked() {
 		}
 	}
 
-	sort.SliceStable(blocked, func(left, right int) bool {
-		return lessServiceSpec(blocked[left], blocked[right])
+	slices.SortStableFunc(blocked, func(left, right ServiceSpec) int {
+		if lessServiceSpec(left, right) {
+			return -1
+		}
+
+		if lessServiceSpec(right, left) {
+			return 1
+		}
+
+		return 0
 	})
 
 	launches := make([]func(), 0, len(blocked))

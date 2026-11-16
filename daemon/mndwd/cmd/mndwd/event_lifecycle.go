@@ -66,7 +66,7 @@ func publishActivePluginEvents(reg *registry.Registry, store *state.Store, publi
 		}
 	}
 
-	builtins, err := reg.ListBuiltinsWithError()
+	builtins, err := reg.ListBuiltins()
 	if err != nil {
 		logger.Warn("builtin plugin discovery failed", "error", err)
 

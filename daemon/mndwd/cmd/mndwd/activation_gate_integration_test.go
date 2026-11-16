@@ -82,7 +82,7 @@ func TestAssembleActivationGateStartupAndSynchronousControllerPoke(t *testing.T)
 	tester := &activationControllerTester{}
 	mux := http.NewServeMux()
 
-	rcisession.NewHandler(fixture.assembly.Service(), tester, nil).Register(mux)
+	rcisession.NewHandler(fixture.assembly.Service(), tester).Register(mux)
 
 	deleteController(t, mux)
 
@@ -248,7 +248,7 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 		}
 	}
 
-	reg := registry.New(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir)
+	reg := registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, nil)
 	activationGates := backend.NewActivationGateRegistry()
 	runtime := backend.NewRuntime(backend.RuntimeConfig{
 		RuntimeRoot:               cfg.PluginRuntimeRoot,

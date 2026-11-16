@@ -1,4 +1,6 @@
 <script lang="ts">
+import {hostT} from '../../services/host-i18n.svelte.js';
+
 interface Props {
   message: string;
   confirmLabel: string;
@@ -14,7 +16,7 @@ let {message, confirmLabel, close}: Props = $props();
     <mndw-button
       variant="secondary"
       onclick={() => close(false)}
-    >Cancel</mndw-button>
+    >{hostT('common.cancel')}</mndw-button>
     <mndw-button
       variant="danger"
       onclick={() => close(true)}

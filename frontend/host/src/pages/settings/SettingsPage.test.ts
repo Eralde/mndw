@@ -571,7 +571,7 @@ describe('SettingsPage', () => {
 
     await vi.waitFor(() => expect(saveController).toHaveBeenCalled());
     await vi.waitFor(() =>
-      expect(target.querySelector('mndw-input[type="password"]')?.getAttribute('placeholder')).toBe('<TOKEN SET>')
+      expect(target.querySelector('mndw-input[type="password"]')?.getAttribute('placeholder')).toBe('Token is set')
     );
 
     void unmount(component);

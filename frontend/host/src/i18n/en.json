@@ -107,6 +107,7 @@
     "persistent-storage-disabled": "Persistent session storage is disabled.",
     "persistent-storage-decrypt-failed": "Persistent session storage could not be decrypted.",
     "controller-token": "Controller token",
+    "controller-token-set-placeholder": "Token is set",
     "test": "Test",
     "save": "Save",
     "clear-controller-session": "Clear controller session",

@@ -4,6 +4,7 @@ import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest
 import {flushSync, mount, unmount} from 'svelte';
 import {type HostServices, createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
+import {setLocale} from '../../services/locale.service.js';
 import type {PersistentRciCapability} from '../../services/persistent-rci-session.service.js';
 import GeneralSettings from './GeneralSettings.svelte';
 
@@ -86,13 +87,14 @@ beforeEach(() => {
   refreshPalette.mockReset().mockResolvedValue(undefined);
 });
 
-afterEach(() => {
+afterEach(async () => {
   if (component !== undefined) {
-    void unmount(component);
+    await unmount(component);
     component = undefined;
   }
 
   document.body.innerHTML = '';
+  await setLocale('en');
 });
 
 describe('GeneralSettings telemetry section', () => {
@@ -150,5 +152,48 @@ describe('GeneralSettings telemetry section', () => {
     });
     expect(target.textContent).not.toContain('private failure detail');
     expect(reportTelemetryGathering).not.toHaveBeenCalled();
+  });
+});
+
+describe('GeneralSettings controller-token placeholder', () => {
+  it('localizes the configured-token placeholder', async () => {
+    getCapability.mockResolvedValueOnce({
+      ...enabledCapability,
+      controller: {support: 'supported', auth: 'token', enabled: true},
+    });
+    await setLocale('en');
+
+    render();
+
+    await vi.waitFor(() => {
+      expect(target.querySelector('mndw-input[type="password"]')).not.toBeNull();
+    });
+
+    const tokenInput = target.querySelector('mndw-input[type="password"]');
+
+    expect(tokenInput?.getAttribute('placeholder')).toBe('Token is set');
+
+    await setLocale('ru');
+    flushSync();
+
+    expect(target.firstElementChild?.getAttribute('data-locale')).toBe('ru');
+    await vi.waitFor(() => {
+      expect(target.querySelector('mndw-input[type="password"]')?.getAttribute('placeholder')).toBe('Токен задан');
+    });
+  });
+
+  it('keeps the placeholder empty when no controller token is configured', async () => {
+    getCapability.mockResolvedValueOnce({
+      ...enabledCapability,
+      controller: {support: 'needs-token', auth: 'token', enabled: true},
+    });
+
+    render();
+
+    await vi.waitFor(() => {
+      expect(target.querySelector('mndw-input[type="password"]')).not.toBeNull();
+    });
+
+    expect(target.querySelector('mndw-input[type="password"]')?.getAttribute('placeholder')).toBe('');
   });
 });

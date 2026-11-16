@@ -38,7 +38,9 @@ let controllerSessionConfigured = $derived.by(() => {
 });
 
 let controllerTokenPlaceholder = $derived.by(() => {
-  return controllerSessionConfigured ? '<TOKEN SET>' : '';
+  return controllerSessionConfigured
+    ? hostT('settings.controller-token-set-placeholder')
+    : '';
 });
 
 let persistentEnabled = $state(false);

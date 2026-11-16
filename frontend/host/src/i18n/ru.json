@@ -107,6 +107,7 @@
     "persistent-storage-disabled": "Хранилище постоянных сеансов отключено.",
     "persistent-storage-decrypt-failed": "Не удалось расшифровать хранилище постоянных сеансов.",
     "controller-token": "Токен контроллера",
+    "controller-token-set-placeholder": "Токен задан",
     "test": "Проверить",
     "save": "Сохранить",
     "clear-controller-session": "Очистить сеанс контроллера",

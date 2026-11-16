@@ -52,7 +52,7 @@ func (c *lifecycleControl) IsCurrent() bool {
 	return c.runtime.supervisor.isLifecycleCurrent(c.token)
 }
 
-func (c *lifecycleControl) markServiceReady(record *serviceRecord) bool {
+func (c *lifecycleControl) markServiceReady(record *pluginRecord) bool {
 	return c.runtime.supervisor.markLifecycleServiceReady(c.token, record)
 }
 

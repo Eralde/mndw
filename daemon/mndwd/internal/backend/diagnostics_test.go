@@ -112,10 +112,11 @@ func TestSupervisorLiveDiagnosticsHasShortTimeout(t *testing.T) {
 
 func supervisorForDiagnosticsSocket(socketPath string) *Supervisor {
 	supervisor := NewSupervisor(SupervisorConfig{RuntimeRoot: filepath.Dir(socketPath)})
-	supervisor.services["demo"] = &serviceRecord{
+
+	setSupervisorServiceRecordForTest(supervisor, "demo", &serviceRecord{
 		paths:  RuntimePaths{BackendSocket: socketPath},
 		status: RuntimeStatus{State: StateReady},
-	}
+	})
 
 	return supervisor
 }

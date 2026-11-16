@@ -45,10 +45,10 @@ func TestProjectBackendStatusMapsLifecycleAndRuntimeStates(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			runtime.supervisor.services = make(map[string]*serviceRecord)
+			resetSupervisorServicesForTest(runtime.supervisor)
 
 			if test.status.State != "" {
-				runtime.supervisor.services[test.plugin.Name] = &serviceRecord{status: test.status}
+				setSupervisorServiceRecordForTest(runtime.supervisor, test.plugin.Name, &serviceRecord{status: test.status})
 			}
 
 			setTrafficBlockedForTest(runtime, test.plugin.Name, test.maintenance)
@@ -146,10 +146,10 @@ func TestProjectBackendStatusApprovalPrecedesEnabled(t *testing.T) {
 		{name: "approved and enabled behind activation gate", plugin: approvedGated, wantState: "blocked"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			runtime.supervisor.services = make(map[string]*serviceRecord)
+			resetSupervisorServicesForTest(runtime.supervisor)
 
 			if test.status.State != "" {
-				runtime.supervisor.services[test.plugin.Name] = &serviceRecord{status: test.status}
+				setSupervisorServiceRecordForTest(runtime.supervisor, test.plugin.Name, &serviceRecord{status: test.status})
 			}
 
 			if test.plugin != nil {

@@ -237,8 +237,7 @@ func TestReconcileSeedsDurableRemovalMarker(t *testing.T) {
 func TestStaleStartupCannotPublishFailureOrReadiness(t *testing.T) {
 	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 4}))
 	start := supervisor.beginLifecycle("svc", OpStarting, IntentRun)
-	record := &serviceRecord{status: RuntimeStatus{State: StateStarting}}
-	supervisor.services["svc"] = record
+	record := setSupervisorServiceRecordForTest(supervisor, "svc", &serviceRecord{status: RuntimeStatus{State: StateStarting}})
 
 	supervisor.beginLifecycle("svc", OpDeleting, IntentRemove)
 	supervisor.failStart(start.run, "svc", errors.New("late failure"))
@@ -521,8 +520,7 @@ func TestTransitionFailureLockedBackoffProgression(t *testing.T) {
 		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return base }}),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
-	record := &serviceRecord{status: RuntimeStatus{State: StateStarting}}
-	supervisor.services["svc"] = record
+	record := setSupervisorServiceRecordForTest(supervisor, "svc", &serviceRecord{status: RuntimeStatus{State: StateStarting}})
 
 	wantDelays := []time.Duration{
 		1 * time.Second,
@@ -576,8 +574,7 @@ func TestTransitionFailureLockedRecordsExitAndError(t *testing.T) {
 		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }}),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
-	record := &serviceRecord{status: RuntimeStatus{State: StateReady, ConsecutiveFailures: 0}}
-	supervisor.services["svc"] = record
+	record := setSupervisorServiceRecordForTest(supervisor, "svc", &serviceRecord{status: RuntimeStatus{State: StateReady, ConsecutiveFailures: 0}})
 
 	supervisor.mu.Lock()
 	supervisor.transitionFailureLocked(record, "svc", "start failed", errors.New("no binary"))
@@ -671,11 +668,12 @@ func TestRecentStderrSurvivesExit(t *testing.T) {
 
 	stderr := NewStderrRing(1024, 8)
 	_, _ = stderr.Write([]byte("startup token=super-secret failed\n"))
-	supervisor.services["svc"] = &serviceRecord{
+
+	setSupervisorServiceRecordForTest(supervisor, "svc", &serviceRecord{
 		done:   done,
 		stderr: stderr,
 		status: RuntimeStatus{State: StateReady},
-	}
+	})
 
 	supervisor.observeExit("svc", done)
 
@@ -719,7 +717,8 @@ func TestPlanStartBackoffNotElapsedIsNoop(t *testing.T) {
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 	future := now.Add(5 * time.Second)
-	supervisor.services["svc"] = &serviceRecord{status: RuntimeStatus{State: StateBackoff, NextAttemptAt: &future}}
+
+	setSupervisorServiceRecordForTest(supervisor, "svc", &serviceRecord{status: RuntimeStatus{State: StateBackoff, NextAttemptAt: &future}})
 
 	paths, err := NewRuntimePaths(t.TempDir(), "svc")
 	if err != nil {

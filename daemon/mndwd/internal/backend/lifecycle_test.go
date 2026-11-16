@@ -45,7 +45,8 @@ func TestRuntimeShutdownPublishesTypedReason(t *testing.T) {
 			got = append(got, event)
 		},
 	})
-	runtime.supervisor.services["p"] = &serviceRecord{}
+
+	setSupervisorServiceRecordForTest(runtime.supervisor, "p", &serviceRecord{})
 
 	if err := runtime.Shutdown(context.Background()); err != nil {
 		t.Fatal(err)
@@ -136,6 +137,7 @@ func TestStopAllAndShutdownObserverMembership(t *testing.T) {
 	}
 
 	events = nil
+
 	if err := runtime.supervisor.StopAll(context.Background()); err != nil {
 		t.Fatalf("StopAll: %v", err)
 	}
@@ -157,6 +159,7 @@ func TestStopAllAndShutdownObserverMembership(t *testing.T) {
 	}
 
 	want := []LifecycleEvent{{Plugin: "service", State: LifecycleStopped, Reason: LifecycleReasonShutdown}}
+
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("shutdown observer events = %#v, want service membership only: %#v", events, want)
 	}

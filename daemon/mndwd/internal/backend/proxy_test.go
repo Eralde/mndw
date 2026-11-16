@@ -17,36 +17,44 @@ func TestServiceProxyAbortsDownstreamAfterPartialResponse(t *testing.T) {
 	socketPath := startProxyTestService(t, http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Length", "20000")
 		writer.WriteHeader(http.StatusOK)
+
 		_, _ = writer.Write(partial)
 	}))
 
 	var logs bytes.Buffer
 	gateway := proxyTestGateway(t, socketPath, slog.New(slog.NewTextHandler(&logs, nil)))
 	frontDoor := httptest.NewServer(gateway)
+
 	t.Cleanup(frontDoor.Close)
 
 	response, err := frontDoor.Client().Get(frontDoor.URL + "/api/plugins/demo/health")
 	if err != nil {
 		t.Fatalf("GET service route: %v", err)
 	}
+
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err == nil {
 		t.Fatal("reading truncated service response succeeded")
 	}
+
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusOK)
 	}
+
 	if len(body) == 0 {
 		t.Fatal("client received no partial response body")
 	}
+
 	if bytes.Contains(body, []byte(`"error"`)) {
 		t.Fatalf("partial response contains appended JSON error: %q", body)
 	}
+
 	if !strings.Contains(logs.String(), "service proxy response aborted") {
 		t.Fatalf("abort was not logged: %q", logs.String())
 	}
+
 	if strings.Contains(logs.String(), string(partial)) {
 		t.Fatal("proxy log contains response body")
 	}
@@ -56,21 +64,25 @@ func TestServiceProxyReturnsBadGatewayBeforeResponseCommit(t *testing.T) {
 	socketPath := shortUnixSocketPath(t, "missing.sock")
 	gateway := proxyTestGateway(t, socketPath, nil)
 	frontDoor := httptest.NewServer(gateway)
+
 	t.Cleanup(frontDoor.Close)
 
 	response, err := frontDoor.Client().Get(frontDoor.URL + "/api/plugins/demo/health")
 	if err != nil {
 		t.Fatalf("GET service route: %v", err)
 	}
+
 	defer response.Body.Close()
 
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		t.Fatalf("read gateway error response: %v", err)
 	}
+
 	if response.StatusCode != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusBadGateway)
 	}
+
 	if !bytes.Contains(body, []byte(`"error"`)) || !bytes.Contains(body, []byte(httpx.CodeBadGateway)) {
 		t.Fatalf("body = %q, want 502 JSON error envelope", body)
 	}
@@ -80,14 +92,17 @@ func proxyTestGateway(t *testing.T, socketPath string, logger *slog.Logger) http
 	t.Helper()
 
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
-	runtime.supervisor.services["demo"] = &serviceRecord{
+
+	setSupervisorServiceRecordForTest(runtime.supervisor, "demo", &serviceRecord{
 		paths:  RuntimePaths{BackendSocket: socketPath},
 		status: RuntimeStatus{State: StateReady},
-	}
+	})
+
 	gateway := newPreludeGateway(t, authPass(), runtime)
 	gateway.logger = logger
 
 	mux := http.NewServeMux()
+
 	gateway.Register(mux)
 
 	return mux
@@ -99,7 +114,9 @@ func startProxyTestService(t *testing.T, handler http.Handler) string {
 	socketPath := shortUnixSocketPath(t, "backend.sock")
 	listener := listenUnixForTest(t, socketPath)
 	server := &http.Server{Handler: handler}
+
 	go func() { _ = server.Serve(listener) }()
+
 	t.Cleanup(func() {
 		_ = server.Close()
 		_ = listener.Close()

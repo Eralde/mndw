@@ -3,7 +3,6 @@ package backend
 import (
 	"context"
 	"errors"
-	"time"
 )
 
 // Intent is the desired runtime state for one plugin.
@@ -41,14 +40,6 @@ type operationRun struct {
 	completed    bool
 	workDone     chan struct{}
 	cancel       context.CancelFunc
-}
-
-type transition struct {
-	intent      Intent
-	operation   Operation
-	priorIntent Intent
-	run         *operationRun
-	phaseSince  time.Time
 }
 
 type beginOutcome struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"os/exec"
 	"time"
 
 	"mndwd/internal/httpx"
@@ -30,11 +31,36 @@ type pluginSnapshot struct {
 	generation         uint64
 }
 
-type lifecycleReadinessMarker interface {
-	markServiceReady(*serviceRecord) bool
+type serviceRecord struct {
+	spec               ServiceSpec
+	paths              RuntimePaths
+	status             RuntimeStatus
+	reservation        *Reservation
+	reservationPending bool
+	command            *exec.Cmd
+	done               *processExit
+	stderr             *StderrRing
+	stopping           bool
+	stopDone           chan struct{}
+	stopErr            error
+	releaseOnStop      bool
+	startupQueued      bool
+	startupSeq         uint64
 }
 
-func markLifecycleServiceReady(control LifecycleControl, record *serviceRecord) bool {
+type transition struct {
+	intent      Intent
+	operation   Operation
+	priorIntent Intent
+	run         *operationRun
+	phaseSince  time.Time
+}
+
+type lifecycleReadinessMarker interface {
+	markServiceReady(*pluginRecord) bool
+}
+
+func markLifecycleServiceReady(control LifecycleControl, record *pluginRecord) bool {
 	marker, ok := control.(lifecycleReadinessMarker)
 
 	return ok && marker.markServiceReady(record)
@@ -98,13 +124,13 @@ func (s *Supervisor) pluginSnapshot(name string) pluginSnapshot {
 func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 	snapshot := pluginSnapshot{intent: IntentRemove}
 
-	if desired, ok := s.desired[name]; ok {
+	if record := s.plugins[name]; record != nil && record.desired != nil {
 		snapshot.desiredPresent = true
-		snapshot.desired = desired
-		snapshot.desired.Args = append([]string(nil), desired.Args...)
+		snapshot.desired = *record.desired
+		snapshot.desired.Args = append([]string(nil), record.desired.Args...)
 	}
 
-	if record := s.services[name]; record != nil {
+	if record := s.serviceRecordLocked(name); record != nil {
 		snapshot.servicePresent = true
 		snapshot.status = cloneRuntimeStatus(record.status)
 		snapshot.serviceSlotHeld = record.reservation != nil
@@ -173,24 +199,53 @@ func seedSupervisorStateForTest(
 	defer s.mu.Unlock()
 
 	if desired != nil {
-		s.desired[pluginID] = *desired
+		s.setDesiredLocked(pluginID, desired)
 	}
 
 	if service != nil {
-		s.services[pluginID] = service
+		setSupervisorServiceRecordLockedForTest(s, pluginID, service)
 	}
 
 	if transition != nil {
-		s.transitions[pluginID] = transition
+		setSupervisorTransitionLockedForTest(s, pluginID, transition)
 	}
 }
 
-func setSupervisorServiceStateForTest(s *Supervisor, pluginID string, state ServiceState) *serviceRecord {
+func setSupervisorServiceRecordLockedForTest(s *Supervisor, pluginID string, fixture *serviceRecord) *pluginRecord {
+	record := s.ensurePluginRecordLocked(pluginID)
+	record.servicePresent = true
+	record.serviceSpec = fixture.spec
+	record.paths = fixture.paths
+	record.status = fixture.status
+	record.reservation = fixture.reservation
+	record.reservationPending = fixture.reservationPending
+	record.command = fixture.command
+	record.done = fixture.done
+	record.recentStderr = fixture.stderr
+	record.stopping = fixture.stopping
+	record.stopDone = fixture.stopDone
+	record.stopErr = fixture.stopErr
+	record.releaseOnStop = fixture.releaseOnStop
+	record.startupQueued = fixture.startupQueued
+	record.startupSeq = fixture.startupSeq
+
+	return record
+}
+
+func setSupervisorServiceRecordForTest(s *Supervisor, pluginID string, fixture *serviceRecord) *pluginRecord {
 	s.mu.Lock()
 
 	defer s.mu.Unlock()
 
-	record := s.services[pluginID]
+	return setSupervisorServiceRecordLockedForTest(s, pluginID, fixture)
+}
+
+func setSupervisorServiceStateForTest(s *Supervisor, pluginID string, state ServiceState) *pluginRecord {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	record := s.serviceRecordLocked(pluginID)
 
 	if record != nil {
 		record.status.State = state
@@ -199,12 +254,65 @@ func setSupervisorServiceStateForTest(s *Supervisor, pluginID string, state Serv
 	return record
 }
 
-func supervisorServiceForTest(s *Supervisor, pluginID string) *serviceRecord {
+func supervisorServiceForTest(s *Supervisor, pluginID string) *pluginRecord {
 	s.mu.Lock()
 
 	defer s.mu.Unlock()
 
-	return s.services[pluginID]
+	return s.serviceRecordLocked(pluginID)
+}
+
+func resetSupervisorServicesForTest(s *Supervisor) {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	for pluginID, record := range s.plugins {
+		record.servicePresent = false
+		record.serviceSpec = ServiceSpec{}
+		record.paths = RuntimePaths{}
+		record.status = RuntimeStatus{}
+		record.recentStderr = nil
+		record.reservation = nil
+		record.reservationPending = false
+		record.command = nil
+		record.done = nil
+		record.stopping = false
+		record.stopDone = nil
+		record.stopErr = nil
+		record.releaseOnStop = false
+		record.startupQueued = false
+		record.startupSeq = 0
+
+		s.prunePluginRecordLocked(pluginID)
+	}
+}
+
+func setSupervisorTransitionLockedForTest(s *Supervisor, pluginID string, fixture *transition) {
+	record := s.plugins[pluginID]
+
+	if fixture == nil {
+		if record != nil {
+			record.transitionPresent = false
+			record.intent = IntentRun
+			record.operation = OpNone
+			record.priorIntent = IntentRun
+			record.run = nil
+			record.phaseSince = time.Time{}
+
+			s.prunePluginRecordLocked(pluginID)
+		}
+
+		return
+	}
+
+	record = s.ensurePluginRecordLocked(pluginID)
+	record.transitionPresent = true
+	record.intent = fixture.intent
+	record.operation = fixture.operation
+	record.priorIntent = fixture.priorIntent
+	record.run = fixture.run
+	record.phaseSince = fixture.phaseSince
 }
 
 func setSupervisorTransitionForTest(s *Supervisor, pluginID string, record *transition) {
@@ -212,13 +320,7 @@ func setSupervisorTransitionForTest(s *Supervisor, pluginID string, record *tran
 
 	defer s.mu.Unlock()
 
-	if record == nil {
-		delete(s.transitions, pluginID)
-
-		return
-	}
-
-	s.transitions[pluginID] = record
+	setSupervisorTransitionLockedForTest(s, pluginID, record)
 }
 
 func scheduleSupervisorRetryForTest(s *Supervisor, pluginID string, delay time.Duration) {
@@ -234,9 +336,12 @@ func seedSupervisorRetryForTest(s *Supervisor, spec ServiceSpec, delay time.Dura
 
 	defer s.mu.Unlock()
 
-	s.desired[spec.PluginID] = spec
-	s.services[spec.PluginID] = &serviceRecord{spec: spec, status: RuntimeStatus{State: StateBackoff}}
-	s.transitions[spec.PluginID] = &transition{intent: IntentRun}
+	s.setDesiredLocked(spec.PluginID, &spec)
+	setSupervisorServiceRecordLockedForTest(s, spec.PluginID, &serviceRecord{
+		spec:   spec,
+		status: RuntimeStatus{State: StateBackoff},
+	})
+	setSupervisorTransitionLockedForTest(s, spec.PluginID, &transition{intent: IntentRun})
 
 	s.scheduleRetry(spec.PluginID, delay)
 }

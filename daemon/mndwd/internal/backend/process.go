@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -167,6 +168,92 @@ func waitForProcessExit(done <-chan struct{}, timeout time.Duration) bool {
 		return true
 	case <-timer.C:
 		return false
+	}
+}
+
+func waitForProcessExitContext(ctx context.Context, done <-chan struct{}, timeout time.Duration) (bool, error) {
+	select {
+	case <-done:
+		return true, nil
+	default:
+	}
+
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
+	if timeout <= 0 {
+		return false, nil
+	}
+
+	timer := time.NewTimer(timeout)
+
+	defer timer.Stop()
+
+	select {
+	case <-done:
+		return true, nil
+	case <-ctx.Done():
+		select {
+		case <-done:
+			return true, nil
+		default:
+		}
+
+		return false, ctx.Err()
+	case <-timer.C:
+		select {
+		case <-done:
+			return true, nil
+		default:
+		}
+
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+
+		return false, nil
+	}
+}
+
+func waitForProcessReap(ctx context.Context, done <-chan struct{}, timeout time.Duration) (bool, error) {
+	select {
+	case <-done:
+		return true, nil
+	default:
+	}
+
+	if timeout <= 0 {
+		return false, ctx.Err()
+	}
+
+	timer := time.NewTimer(timeout)
+
+	defer timer.Stop()
+
+	ctxDone := ctx.Done()
+	var ctxErr error
+
+	for {
+		select {
+		case <-done:
+			return true, ctxErr
+		case <-ctxDone:
+			ctxErr = ctx.Err()
+			ctxDone = nil
+		case <-timer.C:
+			select {
+			case <-done:
+				return true, ctxErr
+			default:
+			}
+
+			if ctxErr == nil {
+				ctxErr = ctx.Err()
+			}
+
+			return false, ctxErr
+		}
 	}
 }
 

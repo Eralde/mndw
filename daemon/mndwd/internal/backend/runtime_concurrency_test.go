@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -222,17 +223,27 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 
 	firstStartupEntered := make(chan struct{})
 	releaseFirstStartup := make(chan struct{})
+	firstStartupFinished := make(chan struct{})
+	secondStartupEntered := make(chan struct{})
+	releaseSecondStartup := make(chan struct{})
+	secondStartupFinished := make(chan struct{})
 	promotedDone := make(chan struct{})
 	queuedStartPlan := make(chan startPlan, 1)
 	runtime.supervisor.startDesired = func(spec ServiceSpec) {
 		if spec.PluginID == "service-c" {
 			close(firstStartupEntered)
 			<-releaseFirstStartup
+			close(firstStartupFinished)
 
 			return
 		}
 
+		close(secondStartupEntered)
+		<-releaseSecondStartup
+
 		queuedStartPlan <- runtime.supervisor.planStart(spec, RuntimePaths{})
+
+		close(secondStartupFinished)
 	}
 
 	go func() {
@@ -248,6 +259,12 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 		}
 
 		select {
+		case <-releaseSecondStartup:
+		default:
+			close(releaseSecondStartup)
+		}
+
+		select {
 		case <-promotedDone:
 		case <-time.After(time.Second):
 			t.Error("blocked service promotion did not finish")
@@ -258,6 +275,12 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 	case <-firstStartupEntered:
 	case <-time.After(time.Second):
 		t.Fatal("first promoted startup did not reach its wait point")
+	}
+
+	select {
+	case <-secondStartupEntered:
+	case <-time.After(time.Second):
+		t.Fatal("second promoted startup did not dispatch while first startup was blocked")
 	}
 
 	runtime.supervisor.Reconcile(context.Background(), specs)
@@ -278,13 +301,7 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 		t.Fatalf("reserved slots while second startup is queued = %d, want 2", got)
 	}
 
-	close(releaseFirstStartup)
-
-	select {
-	case <-promotedDone:
-	case <-time.After(time.Second):
-		t.Fatal("queued promoted startup did not run after first startup was released")
-	}
+	close(releaseSecondStartup)
 
 	select {
 	case queuedPlan := <-queuedStartPlan:
@@ -301,6 +318,123 @@ func TestPromotedServiceQueuedBehindStartupProjectsAsStarting(t *testing.T) {
 
 	if got := runtime.Status("service-d").State; got != StateStarting {
 		t.Fatalf("queued promoted service state after planning = %q, want %q", got, StateStarting)
+	}
+
+	close(releaseFirstStartup)
+
+	for _, finished := range []<-chan struct{}{firstStartupFinished, secondStartupFinished, promotedDone} {
+		select {
+		case <-finished:
+		case <-time.After(time.Second):
+			t.Fatal("promoted startup callback did not finish")
+		}
+	}
+}
+
+func TestDisableDoesNotWaitForPromotedServiceReadiness(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		Limits:      Limits{MaxSupervisedServices: 1},
+	})
+	specs := []ServiceSpec{enabledSpec("service-a"), enabledSpec("service-b")}
+	plan := runtime.supervisor.Reconcile(context.Background(), specs)
+
+	if len(plan.startIDs) != 1 || plan.startIDs[0] != "service-a" {
+		t.Fatalf("initial start IDs = %#v, want [service-a]", plan.startIDs)
+	}
+
+	var promotedRecord *serviceRecord
+
+	runtime.supervisor.withLock(func() {
+		runtime.supervisor.services["service-a"].status.State = StateReady
+		promotedRecord = runtime.supervisor.services["service-b"]
+	})
+
+	readinessEntered := make(chan struct{})
+	readinessRelease := make(chan struct{})
+	promotedDone := make(chan error, 1)
+	var releaseOnce sync.Once
+	releaseReadiness := func() {
+		releaseOnce.Do(func() { close(readinessRelease) })
+	}
+	promotedFinished := false
+
+	defer func() {
+		releaseReadiness()
+
+		if !promotedFinished {
+			select {
+			case <-promotedDone:
+			case <-time.After(time.Second):
+				t.Error("promoted service startup did not finish during cleanup")
+			}
+		}
+	}()
+
+	runtime.supervisor.startDesired = func(spec ServiceSpec) {
+		outcome := runtime.supervisor.beginDesiredStartup(spec)
+
+		if outcome.conflict {
+			promotedDone <- ErrLifecycleConflict
+
+			return
+		}
+
+		promotedDone <- runtime.executeLifecycleOutcome(spec.PluginID, OpStarting,
+			func(_ context.Context, control LifecycleControl) error {
+				runtime.supervisor.withLock(func() {
+					runtime.supervisor.services[spec.PluginID].status.State = StateStarting
+				})
+				close(readinessEntered)
+				<-readinessRelease
+
+				lifecycle, ok := control.(*lifecycleControl)
+
+				if !ok || !runtime.supervisor.markServiceReady(lifecycle.run, promotedRecord) {
+					return errSuperseded
+				}
+
+				return nil
+			}, outcome)
+	}
+
+	disableDone := make(chan error, 1)
+
+	go func() {
+		disableDone <- runtime.ExecuteLifecycle("service-a", OpStopping, IntentStop,
+			func(_ context.Context, control LifecycleControl) error { return control.StopService() })
+	}()
+
+	select {
+	case <-readinessEntered:
+	case <-time.After(time.Second):
+		t.Fatal("promoted service did not enter readiness")
+	}
+
+	select {
+	case err := <-disableDone:
+		if err != nil {
+			t.Fatalf("disable service-a: %v", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("disable waited for promoted service readiness")
+	}
+
+	releaseReadiness()
+
+	select {
+	case err := <-promotedDone:
+		promotedFinished = true
+
+		if err != nil {
+			t.Fatalf("promoted service startup: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("promoted service did not finish after readiness was released")
+	}
+
+	if got := runtime.Status("service-b").State; got != StateReady {
+		t.Fatalf("promoted service state = %q, want ready", got)
 	}
 }
 

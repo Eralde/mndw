@@ -19,6 +19,60 @@ func TestReconcileSeedsEnabledStartupCandidate(t *testing.T) {
 	}
 }
 
+func TestReconcileDoesNotReserveServicesForCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	cancel()
+
+	supervisor := newSupervisor(testSupervisorConfig(t), NewAdmission(Limits{MaxSupervisedServices: 1}))
+
+	plan := supervisor.Reconcile(ctx, []ServiceSpec{enabledSpec("svc")})
+
+	if len(plan.startIDs) != 0 {
+		t.Fatalf("canceled reconcile start IDs = %#v, want none", plan.startIDs)
+	}
+
+	if got := supervisor.Status("svc").State; got != StateStopped {
+		t.Fatalf("canceled reconcile state = %q, want stopped", got)
+	}
+
+	if _, got, _ := supervisor.admission.Snapshot(); got != 0 {
+		t.Fatalf("canceled reconcile reserved %d service slots, want 0", got)
+	}
+}
+
+func TestRetryTimerStopsWhenLifetimeEnds(t *testing.T) {
+	lifetime, cancelLifetime := context.WithCancel(context.Background())
+
+	defer cancelLifetime()
+
+	cfg := testSupervisorConfig(t)
+	cfg.LifetimeCtx = lifetime
+	supervisor := newSupervisor(cfg, NewAdmission(Limits{MaxSupervisedServices: 1}))
+	retried := make(chan struct{}, 1)
+	supervisor.startDesired = func(ServiceSpec) { retried <- struct{}{} }
+	spec := enabledSpec("retry")
+
+	supervisor.withLock(func() {
+		supervisor.desired[spec.PluginID] = spec
+		supervisor.services[spec.PluginID] = &serviceRecord{
+			spec:   spec,
+			status: RuntimeStatus{State: StateBackoff},
+		}
+		supervisor.coord.records[spec.PluginID] = &transition{intent: IntentRun}
+
+		supervisor.scheduleRetry(spec.PluginID, 10*time.Millisecond)
+	})
+
+	cancelLifetime()
+
+	select {
+	case <-retried:
+		t.Fatal("retry started after daemon lifetime ended")
+	case <-time.After(30 * time.Millisecond):
+	}
+}
+
 func TestReconcileReservesBuiltinServicesBeforeUserServices(t *testing.T) {
 	admission := NewAdmission(Limits{MaxSupervisedServices: 3})
 	supervisor := newSupervisor(testSupervisorConfig(t), admission)

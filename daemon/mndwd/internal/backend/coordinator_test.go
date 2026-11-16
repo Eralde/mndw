@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -11,7 +12,7 @@ var (
 )
 
 func TestCoordinatorAbsentRecordIsRemove(t *testing.T) {
-	c := newCoordinator()
+	c := newCoordinator(context.Background())
 
 	if got := c.intentOf("absent"); got != IntentRemove {
 		t.Fatalf("absent intent = %v, want IntentRemove", got)
@@ -22,7 +23,7 @@ func TestBeginOperationPairMatrix(t *testing.T) {
 	for running := OpStarting; running <= OpInstalling; running++ {
 		for incoming := OpStarting; incoming <= OpInstalling; incoming++ {
 			t.Run(operationName(running)+"/"+operationName(incoming), func(t *testing.T) {
-				c := newCoordinator()
+				c := newCoordinator(context.Background())
 
 				c.begin("p", running, targetFor(running))
 
@@ -99,7 +100,7 @@ func operationName(op Operation) string {
 }
 
 func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
-	c := newCoordinator()
+	c := newCoordinator(context.Background())
 	start := c.begin("p", OpStarting, IntentRun)
 	del := c.begin("p", OpDeleting, IntentRemove)
 
@@ -121,7 +122,7 @@ func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
 		t.Fatal("delete did not return superseded work completion")
 	}
 
-	c2 := newCoordinator()
+	c2 := newCoordinator(context.Background())
 
 	c2.begin("p", OpUpdating, IntentRun)
 
@@ -129,7 +130,7 @@ func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
 		t.Fatal("delete during update must conflict")
 	}
 
-	c3 := newCoordinator()
+	c3 := newCoordinator(context.Background())
 	firstRestart := c3.begin("p", OpRestarting, IntentRun)
 	secondRestart := c3.begin("p", OpRestarting, IntentRun)
 
@@ -137,7 +138,7 @@ func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
 		t.Fatal("restart during restart must join existing run")
 	}
 
-	c4 := newCoordinator()
+	c4 := newCoordinator(context.Background())
 
 	c4.begin("p", OpUpdating, IntentRun)
 
@@ -147,7 +148,7 @@ func TestBeginMatrixAndSupersedeClosesOldRun(t *testing.T) {
 }
 
 func TestCompletionIsGenerationFenced(t *testing.T) {
-	c := newCoordinator()
+	c := newCoordinator(context.Background())
 	start := c.begin("p", OpStarting, IntentRun)
 
 	c.begin("p", OpDeleting, IntentRemove)
@@ -159,7 +160,7 @@ func TestCompletionIsGenerationFenced(t *testing.T) {
 }
 
 func TestTerminalizationIsOneShot(t *testing.T) {
-	c := newCoordinator()
+	c := newCoordinator(context.Background())
 	inst := c.begin("p", OpInstalling, IntentRun)
 
 	c.commit(inst.run)
@@ -176,7 +177,7 @@ func TestTerminalizationIsOneShot(t *testing.T) {
 }
 
 func TestDeleteFailKeepsTombstone(t *testing.T) {
-	c := newCoordinator()
+	c := newCoordinator(context.Background())
 	del := c.begin("p", OpDeleting, IntentRemove)
 
 	c.fail(del.run, errRemovalFailedForTest)
@@ -191,7 +192,7 @@ func TestDeleteFailKeepsTombstone(t *testing.T) {
 }
 
 func TestReinstallABAKeepsGenerationMonotonic(t *testing.T) {
-	c := newCoordinator()
+	c := newCoordinator(context.Background())
 	start := c.begin("p", OpStarting, IntentRun)
 	del := c.begin("p", OpDeleting, IntentRemove)
 
@@ -213,7 +214,7 @@ func TestReinstallABAKeepsGenerationMonotonic(t *testing.T) {
 }
 
 func TestFailedApprovalReturnsToPending(t *testing.T) {
-	c := newCoordinator()
+	c := newCoordinator(context.Background())
 
 	c.seedIntentForTest("p", IntentStop)
 

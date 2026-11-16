@@ -64,13 +64,7 @@ type beginOutcome struct {
 	supersededWorkDone <-chan struct{}
 }
 
-func newCoordinator(parent ...context.Context) *coordinator {
-	lifetimeCtx := context.Background()
-
-	if len(parent) > 0 && parent[0] != nil {
-		lifetimeCtx = parent[0]
-	}
-
+func newCoordinator(lifetimeCtx context.Context) *coordinator {
 	return &coordinator{
 		records:     make(map[string]*transition),
 		lifetimeCtx: lifetimeCtx,

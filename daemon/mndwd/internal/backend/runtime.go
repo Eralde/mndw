@@ -139,22 +139,22 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 
 func (r *RuntimeImpl) Reconcile(ctx context.Context, plugins []*registry.Plugin) {
 	specs := make([]ServiceSpec, 0, len(plugins))
-	pluginsByID := make(map[string]*registry.Plugin, len(plugins))
+	specsByID := make(map[string]ServiceSpec, len(plugins))
 
 	for _, plugin := range plugins {
 		if spec, ok := r.serviceSpec(plugin); ok {
 			specs = append(specs, spec)
-			pluginsByID[plugin.Name] = plugin
+			specsByID[plugin.Name] = spec
 		}
 	}
 
 	plan := r.supervisor.Reconcile(ctx, specs)
 
 	for _, pluginID := range plan.startIDs {
-		plugin := pluginsByID[pluginID]
+		spec, exists := specsByID[pluginID]
 
-		if plugin != nil {
-			go r.executeStartup(plugin)
+		if exists {
+			r.supervisor.launchDesiredStartup(spec)
 		}
 	}
 
@@ -164,22 +164,6 @@ func (r *RuntimeImpl) Reconcile(ctx context.Context, plugins []*registry.Plugin)
 
 	for _, pluginID := range plan.removeIDs {
 		go r.executeReconcileStop(pluginID, true)
-	}
-}
-
-func (r *RuntimeImpl) executeStartup(plugin *registry.Plugin) {
-	spec, ok := r.serviceSpec(plugin)
-
-	if !ok {
-		return
-	}
-
-	outcome := r.supervisor.beginDesiredStartup(spec)
-	err := r.executeLifecycleOutcome(plugin.Name, OpStarting,
-		func(_ context.Context, control LifecycleControl) error { return control.StartPlugin(plugin) }, outcome)
-
-	if err != nil && !errors.Is(err, errSuperseded) && !errors.Is(err, ErrLifecycleConflict) && r.logger != nil {
-		r.logger.Warn("service start deferred", "plugin", plugin.Name, "error", err)
 	}
 }
 

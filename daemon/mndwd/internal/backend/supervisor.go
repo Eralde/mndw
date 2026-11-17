@@ -80,7 +80,6 @@ type Supervisor struct {
 	admission        *Admission
 	reservedServices int
 	plugins          map[string]*pluginRecord
-	retryTimers      map[string]*time.Timer
 	nextGen          uint64
 	lifetimeCtx      context.Context
 	now              func() time.Time
@@ -116,6 +115,7 @@ type pluginRecord struct {
 	releaseOnStop      bool
 	startupQueued      bool
 	startupSeq         uint64
+	retryTimer         *time.Timer
 }
 
 func normalizeSupervisorConfig(cfg SupervisorConfig) SupervisorConfig {
@@ -167,7 +167,6 @@ func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
 		cfg:         cfg,
 		admission:   admission,
 		plugins:     make(map[string]*pluginRecord),
-		retryTimers: make(map[string]*time.Timer),
 		lifetimeCtx: cfg.LifetimeCtx,
 		now:         cfg.Now,
 	}
@@ -303,7 +302,7 @@ func (s *Supervisor) prunePluginRecordLocked(pluginID string) {
 
 	if record == nil || record.desired != nil || record.servicePresent || record.transitionPresent || record.run != nil ||
 		record.operation != OpNone || record.serviceHeld || record.reservationPending || record.command != nil ||
-		record.done != nil || record.stopping || record.stopDone != nil || record.startupQueued || s.retryTimers[pluginID] != nil {
+		record.done != nil || record.stopping || record.stopDone != nil || record.startupQueued || record.retryTimer != nil {
 		return
 	}
 
@@ -1469,18 +1468,24 @@ func (s *Supervisor) transitionFailureLocked(record *pluginRecord, pluginID, las
 }
 
 func (s *Supervisor) stopRetryTimerLocked(pluginID string) {
-	if timer := s.retryTimers[pluginID]; timer != nil {
-		timer.Stop()
-		delete(s.retryTimers, pluginID)
-		s.prunePluginRecordLocked(pluginID)
+	record := s.plugins[pluginID]
+
+	if record == nil || record.retryTimer == nil {
+		return
 	}
+
+	record.retryTimer.Stop()
+
+	record.retryTimer = nil
+
+	s.prunePluginRecordLocked(pluginID)
 }
 
 func (s *Supervisor) stopRetryTimersLocked() {
-	for pluginID, timer := range s.retryTimers {
-		timer.Stop()
-		delete(s.retryTimers, pluginID)
-		s.prunePluginRecordLocked(pluginID)
+	for pluginID, record := range s.plugins {
+		if record.retryTimer != nil {
+			s.stopRetryTimerLocked(pluginID)
+		}
 	}
 }
 
@@ -1491,6 +1496,8 @@ func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 		return
 	}
 
+	record := s.ensurePluginRecordLocked(pluginID)
+
 	var timer *time.Timer
 	timer = time.AfterFunc(delay, func() {
 		if callbackDone := s.retryCallbackDone; callbackDone != nil {
@@ -1499,18 +1506,20 @@ func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 
 		s.mu.Lock()
 
-		if s.retryTimers[pluginID] != timer {
+		if s.plugins[pluginID] != record || record.retryTimer != timer {
 			s.mu.Unlock()
 
 			return
 		}
 
-		delete(s.retryTimers, pluginID)
+		record.retryTimer = nil
+
 		s.prunePluginRecordLocked(pluginID)
 
 		plugin := s.plugins[pluginID]
 		service := s.serviceRecordLocked(pluginID)
 		transitionRecord := s.transitionRecordLocked(pluginID)
+
 		eligible := plugin != nil && plugin.desired != nil && plugin.desired.Enabled && service != nil &&
 			service.status.State == StateBackoff && transitionRecord != nil && transitionRecord.operation == OpNone &&
 			transitionRecord.intent == IntentRun
@@ -1527,7 +1536,7 @@ func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 			launch()
 		}
 	})
-	s.retryTimers[pluginID] = timer
+	record.retryTimer = timer
 }
 
 func (s *Supervisor) stopRecord(ctx context.Context, pluginID string) error {

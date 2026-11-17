@@ -149,7 +149,9 @@ func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 		snapshot.generation = transition.generation
 	}
 
-	snapshot.retryTimerPresent = s.retryTimers[name] != nil
+	if record := s.plugins[name]; record != nil {
+		snapshot.retryTimerPresent = record.retryTimer != nil
+	}
 
 	return snapshot
 }

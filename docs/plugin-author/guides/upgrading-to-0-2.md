@@ -229,6 +229,9 @@ continue to be followed, but any response with `redirected === true` remains plu
 ```ts
 import {BackendError} from '@mndw/sdk';
 
+declare function showError(message: string): void;
+declare function showRetryButton(): void;
+
 if (ctx.backend === undefined) {
   throw new Error('This plugin needs its declared backend');
 }
@@ -257,6 +260,9 @@ status/body handling, or streaming. Check `ok` and parse the body for plugin-own
 
 ```ts
 import {BackendError} from '@mndw/sdk';
+
+declare function handlePluginResponse(response: Response): void;
+declare function showCommandError(message: string): void;
 
 if (ctx.backend === undefined) {
   throw new Error('This plugin needs its declared backend');

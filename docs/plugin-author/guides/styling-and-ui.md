@@ -46,8 +46,8 @@ Use the plugin class in every framework. For a plugin named `status-widget`, the
 </style>
 ```
 
-```ts
-// Angular component stylesheet
+```css
+/* Angular component stylesheet */
 .status-widget .status {
   color: var(--mndw-success);
 }

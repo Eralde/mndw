@@ -21,9 +21,8 @@ npx mndw create rci-device-name-widget --type widget --framework svelte
 ```
 
 The scaffold includes `@mndw/sdk`, RxJS, Vitest, and the Svelte tooling in its
-`devDependencies`. It also provides starter component tests; remove
-`src/l10n.test.ts` and `src/table.test.ts` when section 5 replaces the starter
-component.
+`devDependencies`. It also provides a starter component test; remove
+`src/l10n.test.ts` when section 5 replaces the starter component.
 
 <!-- docs-check: scaffold rci-device-name-widget --type widget --framework svelte -->
 ```text
@@ -35,14 +34,15 @@ rci-device-name-widget/
   package.json
   src/
     App.svelte
-    TableNameCell.svelte
     index.ts
     l10n.test.ts
-    table.test.ts
+  svelte.config.js
   vitest.config.ts
 ```
 
-Run the starter tests from the project directory:
+`svelte.config.js` configures the Svelte compiler.
+
+Run the starter test from the project directory:
 
 ```sh
 npm test
@@ -537,10 +537,7 @@ request.
 Append the controls and feedback:
 
 ```svelte
-<section
-  class="device-description"
->
-
+<section class="device-description">
   <label for="device-description-input">{$translator.t('field.label')}</label>
   <input
     id="device-description-input"
@@ -664,14 +661,8 @@ Finish the component with token-based styles:
   font-family: var(--mndw-font-sans);
 }
 
-h2,
 p {
   margin: 0;
-}
-
-h2 {
-  font-size: var(--mndw-text-lg);
-  font-weight: var(--mndw-weight-semibold);
 }
 
 label {
@@ -904,10 +895,7 @@ onDestroy(() => {
 });
 </script>
 
-<section
-  class="device-description"
->
-
+<section class="device-description">
   <label for="device-description-input">{$translator.t('field.label')}</label>
   <input
     id="device-description-input"
@@ -1022,14 +1010,8 @@ onDestroy(() => {
   font-family: var(--mndw-font-sans);
 }
 
-h2,
 p {
   margin: 0;
-}
-
-h2 {
-  font-size: var(--mndw-text-lg);
-  font-weight: var(--mndw-weight-semibold);
 }
 
 label {
@@ -1111,7 +1093,8 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
 
 The host owns authentication and transport. The plugin receives its RCI
 manager rather than constructing device URLs or storing credentials. The host
-draws the widget title; `setTileTitle` keeps it translated when locale changes.
+draws the widget title, so `src/App.svelte` has no in-widget heading;
+`setTileTitle` in `src/index.ts` keeps it translated when locale changes.
 
 ## 7. Check the Save flow
 
@@ -1129,8 +1112,8 @@ export default defineConfig({
 });
 ```
 
-Replace the starter tests `src/l10n.test.ts` and `src/table.test.ts` with this
-smoke test at `src/App.smoke.test.ts`:
+Replace the starter test `src/l10n.test.ts` with this smoke test at
+`src/App.smoke.test.ts`:
 
 <!-- docs-check: file plugins/examples/rci-device-name-widget/src/App.smoke.test.ts -->
 ```ts

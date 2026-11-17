@@ -29,9 +29,9 @@ browser assets.
   `palette$`; `i18n` provides localized messages. See the [frontend lifecycle guide](/guides/frontend-lifecycle).
 - `telemetry` fetches projected data; `events` is optional and appears when the manifest declares event permissions.
 - `overlay` presents modals and drawers, and `createTicker()` creates a host-managed ticker.
-- `pageRoute` provides navigation within page plugins. The host draws each widget's tile title; set its translated
-  value with `ctx.setTileTitle?.(ctx.i18n.t('title'))` and update it when the locale changes. Do not draw a second
-  widget title inside the plugin. Pages should keep their own visible `<h2>` heading.
+- `pageRoute` provides navigation within page plugins. The host draws each widget's tile title; use `setTileTitle`
+  (`ctx.setTileTitle?.(ctx.i18n.t('title'))`) to set its translated value on mount and when the locale changes. Do not
+  draw a second widget title inside the plugin. Pages should keep their own visible `<h2>` heading.
 
 The SDK reference documents the complete [`PluginContext`](/api/sdk#plugincontext) contract.
 
@@ -59,10 +59,9 @@ hello-widget/
   package.json
   src/
     App.svelte
-    TableNameCell.svelte
     index.ts
     l10n.test.ts
-    table.test.ts
+  svelte.config.js
   vitest.config.ts
 ```
 
@@ -72,9 +71,9 @@ hello-widget/
 - `package.json` is the plugin npm package manifest; it lists `@mndw/sdk`, `@mndw/ui`, the framework wrapper such as
   `@mndw/ui-svelte`, and the build and test tools.
 - `src/App.svelte` implements the widget view.
-- `src/TableNameCell.svelte` renders a table cell used by the scaffold.
 - `src/index.ts` exports the frontend plugin entry.
-- `src/l10n.test.ts` and `src/table.test.ts` cover the generated view and table cell.
+- `src/l10n.test.ts` checks that the generated view updates when the locale changes.
+- `svelte.config.js` configures the Svelte compiler.
 - `vitest.config.ts` configures the scaffold's test runner.
 
 

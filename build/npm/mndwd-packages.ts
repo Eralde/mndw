@@ -14,6 +14,7 @@ interface CliPackage {
   readonly version?: string;
   readonly homepage?: string;
   readonly repository?: {readonly url?: string};
+  readonly engines?: {readonly node?: string};
 }
 
 function readCliPackage(): CliPackage {
@@ -24,6 +25,7 @@ interface CliReleaseMetadata {
   readonly license: string;
   readonly homepage: string;
   readonly repositoryUrl: string;
+  readonly nodeEngine: string;
 }
 
 function cliReleaseMetadata(): CliReleaseMetadata {
@@ -47,7 +49,13 @@ function cliReleaseMetadata(): CliReleaseMetadata {
     throw new Error('tooling/cli/package.json must declare repository.url');
   }
 
-  return {license, homepage, repositoryUrl};
+  const nodeEngine = cliPackage.engines?.node;
+
+  if (typeof nodeEngine !== 'string' || nodeEngine.length === 0) {
+    throw new Error('tooling/cli/package.json must declare engines.node');
+  }
+
+  return {license, homepage, repositoryUrl, nodeEngine};
 }
 
 export function mndwdPackageJson(platform: MndwdPlatform, version: string): Record<string, unknown> {
@@ -68,7 +76,7 @@ export function mndwdPackageJson(platform: MndwdPlatform, version: string): Reco
       directory: `build/npm/mndwd/${packageName}`,
     },
     preferUnplugged: true,
-    engines: {node: '>=20.19'},
+    engines: {node: metadata.nodeEngine},
     // pnpm lifts these to the top level on pack. Keeping them out of the workspace manifest stops pnpm from
     // warning "Unsupported platform" about the four foreign packages on every command.
     publishConfig: {os: [platform.os], cpu: [platform.cpu]},

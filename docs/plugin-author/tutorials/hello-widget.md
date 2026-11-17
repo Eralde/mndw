@@ -38,16 +38,16 @@ hello-widget/
   package.json
   src/
     App.svelte
-    TableNameCell.svelte
     index.ts
     l10n.test.ts
-    table.test.ts
+  svelte.config.js
   vitest.config.ts
 ```
 
-The starter tests in `src/l10n.test.ts` and `src/table.test.ts` cover the
-scaffold component. You will remove them when replacing that component in
-section 6.
+`svelte.config.js` configures the Svelte compiler.
+
+The starter test in `src/l10n.test.ts` covers locale changes in the scaffold
+component. You will remove it when replacing that component in section 6.
 
 Run the starter test from `hello-widget/`:
 
@@ -181,9 +181,9 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
 ```
 
 The host calls `createInstance` with a container and `PluginContext`. Pass only
-the services the component needs, including `ctx.signal` for request cancellation. When the host removes the widget,
-`setTileTitle` updates the host's widget title on mount and locale changes. `unmount()` removes the locale listener and
-delegates to Svelte so component cleanup runs too.
+the services the component needs, including `ctx.signal` for request cancellation. The host draws the widget title;
+`setTileTitle` updates it on mount and locale changes. `unmount()` removes the locale listener and delegates to Svelte
+so component cleanup runs too.
 
 ## 6. Build the greeting component
 
@@ -253,14 +253,13 @@ async function loadGreeting(): Promise<void> {
 `unknown` until validated. Passing `signal` cancels the request when the host disposes the context. The loading guard
 prevents concurrent clicks.
 
+The host draws the widget title, so `src/App.svelte` has no in-widget heading.
 The markup uses the shared button and announces loading, results, and failures
 through live regions.
 
 <!-- docs-check: file plugins/examples/hello-widget/src/App.svelte -->
 ```svelte
-<section
-  class="hello-widget"
->
+<section class="hello-widget">
   <mndw-button
     variant="primary"
     type="button"
@@ -304,14 +303,8 @@ Append the style to use the host's theme tokens:
   font-family: var(--mndw-font-sans);
 }
 
-h2,
 p {
   margin: 0;
-}
-
-h2 {
-  font-size: var(--mndw-text-lg);
-  font-weight: var(--mndw-weight-semibold);
 }
 
 mndw-button {
@@ -327,9 +320,8 @@ mndw-button {
 The host aborts `ctx.signal` when it disposes the context, and the component checks that signal before updating state.
 `createTranslator` returns a Svelte store, so `$translator.t(...)` follows locale changes.
 
-Remove `src/l10n.test.ts` and `src/table.test.ts`; both mount the starter
-component, which this tutorial replaced. Restart the development host from the
-project directory:
+Remove `src/l10n.test.ts`; it mounts the starter component, which this tutorial
+replaced. Restart the development host from the project directory:
 
 ```sh
 npx mndw dev hello-widget
@@ -379,9 +371,8 @@ import App from './App.svelte';
 import en from '../i18n/en.json';
 
 it('calls the route id and displays its greeting', async () => {
-  const fetch = vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({message: 'Hello test'})),
-  );
+  const call = vi.fn().mockResolvedValue({message: 'Hello test'});
+  const signal = new AbortController().signal;
   const root = document.createElement('div');
 
   document.body.append(root);
@@ -389,8 +380,9 @@ it('calls the route id and displays its greeting', async () => {
   const app = mount(App, {
     target: root,
     props: {
-      backend: {fetch} as unknown as BackendClient,
+      backend: {call} as unknown as BackendClient,
       i18n: createTestI18n(en),
+      signal,
     },
   });
 
@@ -398,7 +390,7 @@ it('calls the route id and displays its greeting', async () => {
     flushSync();
     root.querySelector<HTMLElement>('[data-testid="greet"]')?.click();
     await vi.waitFor(() => expect(root.textContent).toContain('Hello test'));
-    expect(fetch).toHaveBeenCalledWith('hello');
+    expect(call).toHaveBeenCalledWith('hello', {as: 'json', signal});
   } finally {
     await unmount(app);
     root.remove();
@@ -430,7 +422,7 @@ cleanup while a request is pending.
 | `Backend is temporarily unavailable.` | Inspect the dev terminal or device backend state; retry when available. |
 | `Could not load the greeting.` | Check HTTP status, shell output, JSON validity, and non-empty `message`. |
 | Button does not work in tests | Check `vitest.setup.ts` and `setupFiles`; shared elements need registration in isolated tests. |
-| Tests still mention `ctx` or `l10n-probe` | Remove both generated starter tests after replacing the component. |
+| Tests still mention `ctx` or `l10n-probe` | Remove the generated starter test after replacing the component. |
 | Dev server reports `EADDRINUSE` | Choose another daemon port, for example `npx mndw dev hello-widget --port 9091`. |
 
 The browser console helps diagnose frontend rendering and module errors. The

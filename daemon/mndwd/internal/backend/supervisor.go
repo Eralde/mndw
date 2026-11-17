@@ -85,6 +85,9 @@ type Supervisor struct {
 	lifetimeCtx         context.Context
 	now                 func() time.Time
 	startDesired        func(ServiceSpec)
+	launchServiceFunc   func(ServiceSpec, RuntimePaths, ValidatedCommand) (*exec.Cmd, *StderrRing, error)
+	waitProcessFunc     func(*exec.Cmd) error
+	beforeRegistration  func()
 	platformMaintenance bool
 	// retryCallbackDone synchronizes tests with retry timer callback completion.
 	retryCallbackDone func(string)
@@ -109,7 +112,9 @@ type pluginRecord struct {
 
 	serviceHeld        bool
 	reservationPending bool
+	launch             *launchIdentity
 	process            *registeredProcess
+	processRegistered  bool
 	stopping           bool
 	stopDone           chan struct{}
 	stopErr            error
@@ -177,6 +182,8 @@ func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
 		lifetimeCtx: cfg.LifetimeCtx,
 		now:         cfg.Now,
 	}
+	supervisor.launchServiceFunc = supervisor.launchService
+	supervisor.waitProcessFunc = func(command *exec.Cmd) error { return command.Wait() }
 
 	if supervisor.lifetimeCtx.Done() != nil {
 		context.AfterFunc(supervisor.lifetimeCtx, func() {
@@ -259,7 +266,7 @@ func (s *Supervisor) acquireServiceSlotLocked(record *pluginRecord) bool {
 }
 
 func (s *Supervisor) releaseServiceSlotLocked(record *pluginRecord) bool {
-	if !record.serviceHeld {
+	if !record.serviceHeld || record.launch != nil || record.process != nil {
 		return false
 	}
 
@@ -402,7 +409,8 @@ func (s *Supervisor) prunePluginRecordLocked(pluginID string) {
 	record := s.plugins[pluginID]
 
 	if record == nil || record.desired != nil || record.servicePresent || record.transitionPresent || record.run != nil ||
-		record.operation != OpNone || record.serviceHeld || record.reservationPending || record.process != nil || record.stopping ||
+		record.operation != OpNone || record.serviceHeld || record.reservationPending || record.launch != nil ||
+		record.process != nil || record.stopping ||
 		record.stopDone != nil || record.startupQueued || record.pendingStart || record.retryTimer != nil ||
 		len(record.sockets) > 0 {
 		return
@@ -798,7 +806,8 @@ func (s *Supervisor) trackDesiredStartupLocked(spec ServiceSpec) func() {
 		return nil
 	}
 
-	if serviceRecord.stopping || (serviceRecord.process != nil && serviceRecord.serviceSpec.Equal(spec)) {
+	if serviceRecord.launch != nil || serviceRecord.stopping ||
+		(serviceRecord.process != nil && serviceRecord.serviceSpec.Equal(spec)) {
 		s.markPendingStartLocked(serviceRecord, spec, false)
 
 		return nil
@@ -1213,7 +1222,7 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 		record.paths = paths
 		record.serviceSpec = spec
 	} else {
-		if record.process == nil {
+		if record.process == nil && record.launch == nil {
 			record.serviceSpec = spec
 		}
 
@@ -1228,16 +1237,28 @@ func (s *Supervisor) planStartLocked(spec ServiceSpec, paths RuntimePaths) start
 	if !compatible {
 		unsupported := fmt.Errorf("unsupported service protocol %d", spec.ProtocolVersion)
 
-		if record.process != nil || record.serviceHeld {
+		if record.launch != nil || record.process != nil || record.serviceHeld {
 			return startPlan{record: record, action: startStopIncompatible, err: unsupported}
 		}
 
 		return startPlan{record: record, action: startNoop, err: unsupported}
 	}
 
+	if record.launch != nil {
+		if !previousSpec.Equal(spec) {
+			s.markPendingStartLocked(record, spec, false)
+		}
+
+		return startPlan{action: startNoop}
+	}
+
 	if record.process != nil {
 		if !previousSpec.Equal(spec) {
 			s.markPendingStartLocked(record, spec, false)
+
+			if !record.processRegistered {
+				return startPlan{action: startNoop}
+			}
 
 			return startPlan{record: record, action: startReplace}
 		}
@@ -1384,25 +1405,49 @@ func (s *Supervisor) startService(run *operationRun, spec ServiceSpec) error {
 		return err
 	}
 
-	command, stderr, err := s.launchService(spec, paths, validated)
+	launch, admitted := s.beginServiceLaunch(run, record)
+
+	if !admitted {
+		return errSuperseded
+	}
+
+	command, stderr, err := s.launchServiceFunc(spec, paths, validated)
 	if err != nil {
+		resumePending := s.finishFailedLaunch(spec.PluginID, record, launch)
+
 		s.failStart(run, spec.PluginID, err)
+
+		if resumePending {
+			s.resumePendingStartup(spec.PluginID)
+		}
 
 		return err
 	}
 
 	done := newProcessExit()
+	process := &registeredProcess{
+		id:            launch.id,
+		runGeneration: launch.runGeneration,
+		command:       command,
+		exit:          done,
+	}
+
+	s.attachStartedProcess(record, launch, process)
 
 	go func() {
-		done.err = command.Wait()
+		done.err = s.waitProcessFunc(command)
 
 		close(done.done)
 	}()
 
-	process, registered := s.registerServiceProcess(run, record, spec.PluginID, paths, command, stderr, done)
+	if s.beforeRegistration != nil {
+		s.beforeRegistration()
+	}
+
+	registered := s.registerServiceProcess(run, record, spec.PluginID, paths, process, stderr)
 
 	if !registered {
-		s.reapUnregisteredProcess(command, done)
+		s.reapUnregisteredProcess(spec.PluginID, process)
 
 		return errSuperseded
 	}
@@ -1428,6 +1473,60 @@ func (s *Supervisor) startService(run *operationRun, spec ServiceSpec) error {
 	return nil
 }
 
+func (s *Supervisor) beginServiceLaunch(run *operationRun, record *pluginRecord) (*launchIdentity, bool) {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	if !s.isCurrentLocked(run) || run.ctx.Err() != nil || s.shuttingDown || s.lifetimeCtx.Err() != nil ||
+		s.plugins[run.name] != record || record.launch != nil || record.process != nil || !record.serviceHeld {
+		return nil, false
+	}
+
+	s.nextProcessID++
+	launch := &launchIdentity{
+		id:            s.nextProcessID,
+		runGeneration: run.generation,
+		done:          make(chan struct{}),
+	}
+	record.launch = launch
+
+	return launch, true
+}
+
+func (s *Supervisor) finishFailedLaunch(pluginID string, record *pluginRecord, launch *launchIdentity) bool {
+	s.mu.Lock()
+
+	resumePending := false
+
+	if s.plugins[pluginID] == record && record.launch == launch {
+		record.launch = nil
+		resumePending = record.pendingStart
+
+		close(launch.done)
+	}
+
+	s.mu.Unlock()
+
+	return resumePending
+}
+
+func (s *Supervisor) attachStartedProcess(record *pluginRecord, launch *launchIdentity, process *registeredProcess) {
+	s.mu.Lock()
+
+	// The launch record remains on its plugin until this child identity takes ownership.
+	if record.launch == launch {
+		record.launch = nil
+
+		close(launch.done)
+	}
+
+	record.process = process
+	record.processRegistered = false
+
+	s.mu.Unlock()
+}
+
 func (s *Supervisor) cleanupFailedStart(pluginID string) {
 	cleanupCtx, cancel := context.WithTimeout(s.lifetimeCtx, s.cfg.StopTimeout+s.cfg.FinalReapTimeout)
 
@@ -1441,38 +1540,30 @@ func (s *Supervisor) registerServiceProcess(
 	record *pluginRecord,
 	pluginID string,
 	paths RuntimePaths,
-	command *exec.Cmd,
+	process *registeredProcess,
 	stderr *StderrRing,
-	done *processExit,
-) (*registeredProcess, bool) {
+) bool {
 	s.mu.Lock()
 
-	registered := s.isCurrentLocked(run) && record.process == nil
-	var process *registeredProcess
+	registered := s.isCurrentLocked(run) && run.ctx.Err() == nil && !s.shuttingDown && s.lifetimeCtx.Err() == nil &&
+		record.process == process && !record.processRegistered
 
 	if registered {
-		s.nextProcessID++
-		process = &registeredProcess{
-			id:            s.nextProcessID,
-			runGeneration: run.generation,
-			command:       command,
-			exit:          done,
-		}
-		record.process = process
+		record.processRegistered = true
 		record.recentStderr = stderr
 	}
 
 	s.mu.Unlock()
 
 	if !registered {
-		return nil, false
+		return false
 	}
 
-	if err := writeProcessLease(paths.ServiceLease, command.Process.Pid); err != nil && s.cfg.Logger != nil {
+	if err := writeProcessLease(paths.ServiceLease, process.command.Process.Pid); err != nil && s.cfg.Logger != nil {
 		s.cfg.Logger.Warn("service lease unavailable", "plugin", pluginID, "error", err)
 	}
 
-	return process, true
+	return true
 }
 
 func (s *Supervisor) probeServiceReadiness(ctx context.Context, paths RuntimePaths, spec ServiceSpec) error {
@@ -1632,6 +1723,7 @@ func (s *Supervisor) observeProcessExit(pluginID string, process *registeredProc
 	}
 
 	record.process = nil
+	record.processRegistered = false
 
 	plugin := s.plugins[pluginID]
 	transition := s.transitionRecordLocked(pluginID)
@@ -1823,7 +1915,7 @@ func (s *Supervisor) scheduleRetry(pluginID string, delay time.Duration) {
 			return
 		}
 
-		if service.process != nil || service.stopping {
+		if service.launch != nil || service.process != nil || service.stopping {
 			s.markPendingStartLocked(record, retrySpec, true)
 
 			s.mu.Unlock()
@@ -1861,7 +1953,7 @@ func (s *Supervisor) resumePendingStartup(pluginID string) {
 		return
 	}
 
-	if record.process != nil || record.stopping || transition.operation != OpNone {
+	if record.launch != nil || record.process != nil || record.stopping || transition.operation != OpNone {
 		s.mu.Unlock()
 
 		return
@@ -1933,7 +2025,7 @@ func (s *Supervisor) takeUnstartedReservationLocked(run *operationRun) bool {
 
 	record := s.serviceRecordLocked(run.name)
 
-	if record == nil || record.process != nil || !record.reservationPending || !record.serviceHeld {
+	if record == nil || record.launch != nil || record.process != nil || !record.reservationPending || !record.serviceHeld {
 		return false
 	}
 
@@ -1962,6 +2054,27 @@ func (s *Supervisor) stopProcess(ctx context.Context, pluginID string, releaseRe
 		s.mu.Unlock()
 
 		return nil
+	}
+
+	if record.launch != nil {
+		launchDone := record.launch.done
+		restartCount := record.status.RestartCount
+
+		s.stopRetryTimerLocked(pluginID)
+
+		if releaseReservation {
+			record.status = RuntimeStatus{State: StateStopped, RestartCount: restartCount}
+			record.reservationPending = false
+		}
+
+		s.mu.Unlock()
+
+		select {
+		case <-launchDone:
+			return s.stopProcess(ctx, pluginID, releaseReservation)
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	if record.stopping {
@@ -2112,6 +2225,7 @@ func (s *Supervisor) finishStop(
 
 	if process != nil {
 		record.process = nil
+		record.processRegistered = false
 	}
 
 	if releaseOnStop {

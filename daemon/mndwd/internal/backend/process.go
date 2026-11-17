@@ -25,6 +25,12 @@ type registeredProcess struct {
 	exit          *processExit
 }
 
+type launchIdentity struct {
+	id            uint64
+	runGeneration uint64
+	done          chan struct{}
+}
+
 func newProcessExit() *processExit {
 	return &processExit{done: make(chan struct{})}
 }
@@ -130,15 +136,23 @@ func (s *Supervisor) launchService(spec ServiceSpec, paths RuntimePaths, validat
 	return command, stderr, nil
 }
 
-func (s *Supervisor) reapUnregisteredProcess(command *exec.Cmd, done *processExit) {
-	_ = terminateExecProcess(command.Process)
+func (s *Supervisor) reapUnregisteredProcess(pluginID string, process *registeredProcess) {
+	s.mu.Lock()
 
-	if waitForProcessExit(done.done, s.cfg.StopTimeout) {
+	record := s.serviceRecordLocked(pluginID)
+	owned := record != nil && record.process == process && !record.processRegistered
+
+	s.mu.Unlock()
+
+	if !owned {
 		return
 	}
 
-	_ = killExecProcess(command.Process)
-	_ = waitForProcessExit(done.done, s.cfg.FinalReapTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), s.cfg.StopTimeout+s.cfg.FinalReapTimeout)
+
+	defer cancel()
+
+	_ = s.stopProcess(ctx, pluginID, true)
 }
 
 func serviceDataDir(root string, spec ServiceSpec) string {

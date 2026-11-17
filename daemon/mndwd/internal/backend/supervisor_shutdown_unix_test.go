@@ -12,12 +12,231 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	goruntime "runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
+
+	"mndwd/internal/registry"
 )
+
+func waitForShutdownAdmission(t *testing.T, supervisor *Supervisor) {
+	t.Helper()
+
+	deadline := time.NewTimer(time.Second)
+
+	defer deadline.Stop()
+
+	for {
+		supervisor.mu.Lock()
+
+		shuttingDown := supervisor.shuttingDown
+
+		supervisor.mu.Unlock()
+
+		if shuttingDown {
+			return
+		}
+
+		select {
+		case <-deadline.C:
+			t.Fatal("StopAll did not close startup admission")
+		default:
+			goruntime.Gosched()
+		}
+	}
+}
+
+func TestStopAllOwnsStartupPausedBeforeCommandStart(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		Limits:      Limits{MaxSupervisedServices: 1},
+		Supervisor: SupervisorConfig{
+			StopTimeout:      10 * time.Millisecond,
+			FinalReapTimeout: 10 * time.Millisecond,
+		},
+	})
+	plugin, _ := gatedStartupPlugin(t, runtime, "shutdown-before-command-start")
+	launchEntered := make(chan struct{})
+	releaseLaunch := make(chan struct{})
+	var releaseLaunchOnce sync.Once
+	releaseLaunchGate := func() { releaseLaunchOnce.Do(func() { close(releaseLaunch) }) }
+	waitEntered := make(chan struct{})
+	releaseWait := make(chan struct{})
+	var releaseWaitOnce sync.Once
+	releaseWaitGate := func() { releaseWaitOnce.Do(func() { close(releaseWait) }) }
+	var waitCalls atomic.Int32
+	launch := runtime.supervisor.launchServiceFunc
+	runtime.supervisor.launchServiceFunc = func(spec ServiceSpec, paths RuntimePaths, validated ValidatedCommand) (*exec.Cmd, *StderrRing, error) {
+		close(launchEntered)
+		<-releaseLaunch
+
+		return launch(spec, paths, validated)
+	}
+	runtime.supervisor.waitProcessFunc = func(command *exec.Cmd) error {
+		waitCalls.Add(1)
+		close(waitEntered)
+		<-releaseWait
+
+		return command.Wait()
+	}
+
+	defer releaseLaunchGate()
+
+	defer releaseWaitGate()
+
+	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
+	awaitTestSignal(t, launchEntered, "startup to reach the pre-Start gate")
+
+	if got := runtime.Limits().ReservedServices; got != 1 {
+		t.Fatalf("reserved services during launch = %d, want 1", got)
+	}
+
+	previous := NewStderrRing(1024, 8)
+	_, _ = previous.Write([]byte("previous service output\n"))
+
+	setRecentStderrForTest(runtime.supervisor, plugin.Name, previous)
+
+	stopResult := make(chan error, 1)
+	stopContext, cancel := context.WithTimeout(context.Background(), 70*time.Millisecond)
+
+	defer cancel()
+
+	go func() { stopResult <- runtime.supervisor.StopAll(stopContext) }()
+
+	waitForShutdownAdmission(t, runtime.supervisor)
+
+	select {
+	case err := <-stopResult:
+		t.Fatalf("StopAll returned before admitted startup finished: %v", err)
+	case <-time.After(5 * time.Millisecond):
+	}
+
+	if got := runtime.Limits().ReservedServices; got != 1 {
+		t.Fatalf("reserved services while launch is in flight = %d, want 1", got)
+	}
+
+	releaseLaunchGate()
+	awaitTestSignal(t, waitEntered, "the late child to enter exact Wait")
+
+	select {
+	case err := <-stopResult:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("StopAll error = %v, want deadline exceeded while exact Wait is gated", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("StopAll did not finish its bounded process stop")
+	}
+
+	if got := runtime.Limits().ReservedServices; got != 1 {
+		t.Fatalf("reserved services before exact Wait = %d, want 1", got)
+	}
+
+	releaseWaitGate()
+	waitForSupervisorStopForTest(t, runtime.supervisor, plugin.Name)
+
+	if got := runtime.Limits().ReservedServices; got != 0 {
+		t.Fatalf("reserved services after exact Wait = %d, want 0", got)
+	}
+
+	if got := waitCalls.Load(); got != 1 {
+		t.Fatalf("exact Wait calls = %d, want 1", got)
+	}
+
+	if got := runtime.Status(plugin.Name).RecentStderr; len(got) != 1 || got[0] != "previous service output" {
+		t.Fatalf("recent stderr after rejected shutdown launch = %#v, want prior output", got)
+	}
+}
+
+func TestStopAllOwnsStartupPausedAfterStartBeforeRegistration(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		Limits:      Limits{MaxSupervisedServices: 1},
+		Supervisor: SupervisorConfig{
+			StopTimeout:      10 * time.Millisecond,
+			FinalReapTimeout: 10 * time.Millisecond,
+		},
+	})
+	plugin, _ := gatedStartupPlugin(t, runtime, "shutdown-after-command-start")
+	registrationEntered := make(chan struct{})
+	releaseRegistration := make(chan struct{})
+	var releaseRegistrationOnce sync.Once
+	releaseRegistrationGate := func() { releaseRegistrationOnce.Do(func() { close(releaseRegistration) }) }
+	waitEntered := make(chan struct{})
+	releaseWait := make(chan struct{})
+	var releaseWaitOnce sync.Once
+	releaseWaitGate := func() { releaseWaitOnce.Do(func() { close(releaseWait) }) }
+	var waitCalls atomic.Int32
+	runtime.supervisor.beforeRegistration = func() {
+		close(registrationEntered)
+		<-releaseRegistration
+	}
+	runtime.supervisor.waitProcessFunc = func(command *exec.Cmd) error {
+		waitCalls.Add(1)
+		close(waitEntered)
+		<-releaseWait
+
+		return command.Wait()
+	}
+
+	defer releaseRegistrationGate()
+
+	defer releaseWaitGate()
+
+	previous := NewStderrRing(1024, 8)
+	_, _ = previous.Write([]byte("previous service output\n"))
+
+	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
+	awaitTestSignal(t, registrationEntered, "startup to reach the post-Start registration gate")
+	awaitTestSignal(t, waitEntered, "the started child to enter exact Wait")
+	setRecentStderrForTest(runtime.supervisor, plugin.Name, previous)
+
+	stopResult := make(chan error, 1)
+	stopContext, cancel := context.WithTimeout(context.Background(), 70*time.Millisecond)
+
+	defer cancel()
+
+	go func() { stopResult <- runtime.supervisor.StopAll(stopContext) }()
+
+	waitForShutdownAdmission(t, runtime.supervisor)
+
+	if got := runtime.Limits().ReservedServices; got != 1 {
+		t.Fatalf("reserved services while child is awaiting registration = %d, want 1", got)
+	}
+
+	releaseRegistrationGate()
+
+	select {
+	case err := <-stopResult:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("StopAll error = %v, want deadline exceeded while exact Wait is gated", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("StopAll did not finish its bounded process stop")
+	}
+
+	if got := runtime.Limits().ReservedServices; got != 1 {
+		t.Fatalf("reserved services before exact Wait = %d, want 1", got)
+	}
+
+	releaseWaitGate()
+	waitForSupervisorStopForTest(t, runtime.supervisor, plugin.Name)
+
+	if got := runtime.Limits().ReservedServices; got != 0 {
+		t.Fatalf("reserved services after exact Wait = %d, want 0", got)
+	}
+
+	if got := waitCalls.Load(); got != 1 {
+		t.Fatalf("exact Wait calls = %d, want 1", got)
+	}
+
+	if got := runtime.Status(plugin.Name).RecentStderr; len(got) != 1 || got[0] != "previous service output" {
+		t.Fatalf("recent stderr after rejected shutdown registration = %#v, want prior output", got)
+	}
+}
 
 func TestShutdownTermIgnoringHelper(t *testing.T) {
 	if os.Getenv("MNDW_BACKEND_IGNORE_TERM_HELPER") != "1" {

@@ -7,12 +7,56 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"mndwd/internal/registry"
 	"mndwd/internal/state"
 )
+
+func setRecentStderrForTest(supervisor *Supervisor, pluginID string, stderr *StderrRing) {
+	supervisor.mu.Lock()
+
+	defer supervisor.mu.Unlock()
+
+	if record := supervisor.serviceRecordLocked(pluginID); record != nil {
+		record.recentStderr = stderr
+	}
+}
+
+func awaitTestSignal(t *testing.T, signal <-chan struct{}, description string) {
+	t.Helper()
+
+	select {
+	case <-signal:
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for %s", description)
+	}
+}
+
+func gatedStartupPlugin(t *testing.T, runtime *RuntimeImpl, pluginID string) (*registry.Plugin, ServiceSpec) {
+	t.Helper()
+
+	plugin := testServicePlugin(t, pluginID, nil, "backend/service.sh", true)
+	commandPath := filepath.Join(plugin.Dir, "backend", "service.sh")
+
+	if err := os.MkdirAll(filepath.Dir(commandPath), 0o700); err != nil {
+		t.Fatalf("create service command directory: %v", err)
+	}
+
+	if err := os.WriteFile(commandPath, []byte("#!/bin/sh\nexec sleep 60\n"), 0o700); err != nil {
+		t.Fatalf("write service command: %v", err)
+	}
+
+	spec, ok := runtime.serviceSpec(plugin)
+
+	if !ok {
+		t.Fatal("service plugin did not produce a spec")
+	}
+
+	return plugin, spec
+}
 
 func TestLifecycleRunsForDifferentPluginsDoNotSerialize(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
@@ -41,6 +85,224 @@ func TestLifecycleRunsForDifferentPluginsDoNotSerialize(t *testing.T) {
 
 	if err := <-firstDone; err != nil {
 		t.Fatalf("first lifecycle = %v", err)
+	}
+}
+
+func TestSupersededStartupRetainsRejectedChildUntilExactWait(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		Limits:      Limits{MaxSupervisedServices: 1},
+		Supervisor: SupervisorConfig{
+			StopTimeout:      10 * time.Millisecond,
+			FinalReapTimeout: 10 * time.Millisecond,
+		},
+	})
+	plugin, _ := gatedStartupPlugin(t, runtime, "superseded-startup-child")
+
+	registrationEntered := make(chan struct{})
+	releaseRegistration := make(chan struct{})
+	var releaseRegistrationOnce sync.Once
+	releaseRegistrationGate := func() { releaseRegistrationOnce.Do(func() { close(releaseRegistration) }) }
+	waitEntered := make(chan struct{})
+	releaseWait := make(chan struct{})
+	var releaseWaitOnce sync.Once
+	releaseWaitGate := func() { releaseWaitOnce.Do(func() { close(releaseWait) }) }
+	var launches atomic.Int32
+	var waits atomic.Int32
+	launch := runtime.supervisor.launchServiceFunc
+	runtime.supervisor.launchServiceFunc = func(spec ServiceSpec, paths RuntimePaths, validated ValidatedCommand) (*exec.Cmd, *StderrRing, error) {
+		launches.Add(1)
+
+		return launch(spec, paths, validated)
+	}
+	runtime.supervisor.beforeRegistration = func() {
+		close(registrationEntered)
+		<-releaseRegistration
+	}
+	runtime.supervisor.waitProcessFunc = func(command *exec.Cmd) error {
+		waits.Add(1)
+		close(waitEntered)
+		<-releaseWait
+
+		return command.Wait()
+	}
+
+	defer releaseRegistrationGate()
+
+	defer releaseWaitGate()
+
+	runtime.Reconcile(context.Background(), []*registry.Plugin{plugin})
+	awaitTestSignal(t, registrationEntered, "startup to reach registration")
+	awaitTestSignal(t, waitEntered, "the child waiter to start")
+
+	previous := NewStderrRing(1024, 8)
+	_, _ = previous.Write([]byte("previous service output\n"))
+
+	setRecentStderrForTest(runtime.supervisor, plugin.Name, previous)
+
+	stopResult := make(chan error, 1)
+
+	go func() {
+		stopResult <- runtime.ExecuteLifecycle(plugin.Name, OpStopping, IntentStop,
+			func(_ context.Context, control LifecycleControl) error { return control.StopService() })
+	}()
+
+	waitForOperation(t, runtime, plugin.Name, OpStopping)
+	releaseRegistrationGate()
+	runtime.supervisor.startupWG.Wait()
+
+	if got := runtime.Limits().ReservedServices; got != 1 {
+		t.Fatalf("reserved services before exact Wait = %d, want 1", got)
+	}
+
+	if got := launches.Load(); got != 1 {
+		t.Fatalf("child launches before exact Wait = %d, want 1", got)
+	}
+
+	if got := waits.Load(); got != 1 {
+		t.Fatalf("exact Wait calls before release = %d, want 1", got)
+	}
+
+	if got := runtime.Status(plugin.Name).RecentStderr; len(got) != 1 || got[0] != "previous service output" {
+		t.Fatalf("recent stderr after rejected registration = %#v, want prior output", got)
+	}
+
+	releaseWaitGate()
+
+	select {
+	case err := <-stopResult:
+		if err == nil {
+			t.Fatal("superseding stop succeeded although exact Wait stayed gated through final reap")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("superseding stop did not finish after exact Wait")
+	}
+
+	waitForSupervisorStopForTest(t, runtime.supervisor, plugin.Name)
+	runtime.supervisor.startupWG.Wait()
+
+	if got := runtime.Limits().ReservedServices; got != 0 {
+		t.Fatalf("reserved services after exact Wait = %d, want 0", got)
+	}
+
+	if got := launches.Load(); got != 1 {
+		t.Fatalf("child launches total = %d, want 1", got)
+	}
+
+	if got := waits.Load(); got != 1 {
+		t.Fatalf("exact Wait calls total = %d, want 1", got)
+	}
+}
+
+func TestStopDeadlineRetainsLaunchReservationUntilExactWait(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		Limits:      Limits{MaxSupervisedServices: 1},
+		Supervisor: SupervisorConfig{
+			ReadinessTimeout: 20 * time.Millisecond,
+			StopTimeout:      20 * time.Millisecond,
+			FinalReapTimeout: 20 * time.Millisecond,
+		},
+	})
+	first, _ := gatedStartupPlugin(t, runtime, "launch-owner")
+	competing, _ := gatedStartupPlugin(t, runtime, "launch-contender")
+
+	launchEntered := make(chan struct{})
+	releaseLaunch := make(chan struct{})
+	waitEntered := make(chan struct{})
+	releaseWait := make(chan struct{})
+	competingLaunchEntered := make(chan struct{})
+	var releaseLaunchOnce sync.Once
+	var releaseWaitOnce sync.Once
+	releaseLaunchGate := func() { releaseLaunchOnce.Do(func() { close(releaseLaunch) }) }
+	releaseWaitGate := func() { releaseWaitOnce.Do(func() { close(releaseWait) }) }
+	var launches atomic.Int32
+	var waits atomic.Int32
+	launch := runtime.supervisor.launchServiceFunc
+	runtime.supervisor.launchServiceFunc = func(
+		spec ServiceSpec,
+		paths RuntimePaths,
+		validated ValidatedCommand,
+	) (*exec.Cmd, *StderrRing, error) {
+		if launches.Add(1) == 1 {
+			close(launchEntered)
+			<-releaseLaunch
+		} else if spec.PluginID == competing.Name {
+			close(competingLaunchEntered)
+		}
+
+		return launch(spec, paths, validated)
+	}
+	runtime.supervisor.waitProcessFunc = func(command *exec.Cmd) error {
+		if waits.Add(1) == 1 {
+			close(waitEntered)
+			<-releaseWait
+		}
+
+		return command.Wait()
+	}
+
+	t.Cleanup(func() {
+		releaseLaunchGate()
+		releaseWaitGate()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+
+		defer cancel()
+
+		_ = runtime.Shutdown(ctx)
+	})
+
+	runtime.Reconcile(context.Background(), []*registry.Plugin{first})
+	awaitTestSignal(t, launchEntered, "first service to enter its pre-Start launcher gate")
+
+	stopCtx, cancelStop := context.WithTimeout(context.Background(), 35*time.Millisecond)
+	err := runtime.supervisor.stopProcess(stopCtx, first.Name, true)
+
+	cancelStop()
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("explicit stop while launch was gated = %v, want context deadline", err)
+	}
+
+	if got := runtime.Limits().ReservedServices; got != 1 {
+		t.Fatalf("reserved services after stop deadline = %d, want 1", got)
+	}
+
+	runtime.Reconcile(context.Background(), []*registry.Plugin{first, competing})
+
+	if got := runtime.Status(competing.Name).State; got != StateCapacityBlocked {
+		t.Fatalf("competing service state before exact Wait = %q, want capacity blocked", got)
+	}
+
+	if got := launches.Load(); got != 1 {
+		t.Fatalf("child launches while first launcher is gated = %d, want 1", got)
+	}
+
+	releaseLaunchGate()
+	awaitTestSignal(t, waitEntered, "first child's exact Wait to enter its gate")
+
+	if err := runtime.supervisor.stopProcess(context.Background(), first.Name, true); err == nil {
+		t.Fatal("stop succeeded while the child's exact Wait remained gated")
+	}
+
+	if got := runtime.Limits().ReservedServices; got != 1 {
+		t.Fatalf("reserved services while exact Wait is gated = %d, want 1", got)
+	}
+
+	if got := runtime.Status(competing.Name).State; got != StateCapacityBlocked {
+		t.Fatalf("competing service state while exact Wait is gated = %q, want capacity blocked", got)
+	}
+
+	if got := launches.Load(); got != 1 {
+		t.Fatalf("child launches before exact Wait = %d, want 1", got)
+	}
+
+	releaseWaitGate()
+	awaitTestSignal(t, competingLaunchEntered, "competing service to launch after exact Wait")
+
+	if got := launches.Load(); got != 2 {
+		t.Fatalf("child launches after exact Wait = %d, want first and promoted competitor", got)
 	}
 }
 

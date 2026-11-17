@@ -167,16 +167,16 @@ func TestSupersededStartupRetainsRejectedChildUntilExactWait(t *testing.T) {
 		t.Fatalf("recent stderr after rejected registration = %#v, want prior output", got)
 	}
 
-	releaseWaitGate()
-
 	select {
 	case err := <-stopResult:
 		if err == nil {
-			t.Fatal("superseding stop succeeded although exact Wait stayed gated through final reap")
+			t.Fatal("superseding stop succeeded although exact Wait stayed gated through the final reap timeout")
 		}
 	case <-time.After(time.Second):
-		t.Fatal("superseding stop did not finish after exact Wait")
+		t.Fatal("superseding stop did not report the final reap timeout while exact Wait stayed gated")
 	}
+
+	releaseWaitGate()
 
 	waitForSupervisorStopForTest(t, runtime.supervisor, plugin.Name)
 	runtime.supervisor.startupWG.Wait()

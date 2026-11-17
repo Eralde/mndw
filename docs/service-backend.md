@@ -277,8 +277,9 @@ exact symbol/expression so a source review can verify each value quickly.
 | Aggregate diagnostics per plugin    |                256 KiB | `defaultMaxPluginBytes = 256 * 1024`                                              | [`diagnostics.go`](../daemon/mndwd/internal/diagnostics/diagnostics.go)                                                                        |
 | Aggregate diagnostics total         |                  1 MiB | `defaultMaxTotalPluginBytes = 1024 * 1024`                                        | [`diagnostics.go`](../daemon/mndwd/internal/diagnostics/diagnostics.go)                                                                        |
 | WebSocket read buffer               |                 32 MiB | `SetReadLimit(32 << 20)`                                                          | [`gateway.go`](../daemon/mndwd/internal/backend/gateway.go)                                                                                    |
-| Graceful service stop               | 15 s daemon default; 10 s standalone fallback | `service-stop-timeout` default; `NewSupervisor` fallback `10 * time.Second` | [`config.go`](../daemon/mndwd/cmd/mndwd/config.go), [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go) |
+| TERM grace before KILL              | 15 s daemon default; 10 s standalone fallback | `service-stop-timeout` default; `NewSupervisor` fallback `10 * time.Second` | [`config.go`](../daemon/mndwd/cmd/mndwd/config.go), [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go) |
 | Final service reap                  |                    2 s | `SupervisorConfig.FinalReapTimeout`; `NewSupervisor` fallback `2 * time.Second`   | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go), [`runtime.go`](../daemon/mndwd/internal/backend/runtime.go)                 |
+| Daemon shutdown stop phase        | Up to 19 s (15 s + 2 × 2 s) | `StopTimeout + 2 * FinalReapTimeout`; one shared, context-bounded finalizer grace | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go) |
 | Restart delay                       |      1 s, then doubles | `time.Second << (consecutiveFailures - 1)`                                        | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go)                                                                              |
 | Failure threshold                   | 5 consecutive failures | `ConsecutiveFailures >= 5`                                                        | [`supervisor.go`](../daemon/mndwd/internal/backend/supervisor.go)                                                                              |
 
@@ -318,11 +319,14 @@ requests receive `BACKEND_INCOMPATIBLE`. While a service is starting or backing 
 receive a service-unavailable response and may include `Retry-After`. Unexpected exits use bounded
 exponential retry; repeated failures reach `failed`.
 
-Disable, delete, update, maintenance, and daemon shutdown stop the supervised process group and
-remove socket/lease evidence. When the service context is canceled, the shared Go `go-httpsocket`
-package stops accepting requests and waits up to 10 seconds for in-flight handlers; it then closes
-remaining connections. The child should handle `SIGTERM` and persist only intentional application
-state. It must not depend on a separate reaper.
+Disable, delete, update, maintenance, and daemon shutdown stop the supervised process group. Once
+exact `Wait` confirms exit, the daemon removes any remaining socket and its lease. When the service
+context is canceled, the shared Go `go-httpsocket` package stops accepting requests and waits up to
+10 seconds for in-flight handlers; it then closes remaining connections. The child should handle
+`SIGTERM` and persist only intentional application state. The daemon shutdown stop phase can last
+up to 19 seconds at defaults: 15 seconds before KILL, up to two seconds for the initial reap, then
+one shared two-second wait for pending finalizers. A process whose exact `Wait` remains pending
+keeps its lease and slot until exit. It must not depend on a separate reaper.
 
 ## Implement the service
 

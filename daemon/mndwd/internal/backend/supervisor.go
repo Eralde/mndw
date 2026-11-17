@@ -885,6 +885,12 @@ func (s *Supervisor) isCurrent(run *operationRun) bool {
 	return s.isCurrentLocked(run)
 }
 
+type stopOperationResult struct {
+	err    error
+	record *pluginRecord
+	done   <-chan struct{}
+}
+
 // StopAll stops every supervised service and removes its runtime evidence.
 func (s *Supervisor) StopAll(ctx context.Context) error {
 	if ctx == nil {
@@ -921,7 +927,7 @@ func (s *Supervisor) StopAll(ctx context.Context) error {
 	s.mu.Unlock()
 	slices.Sort(pluginIDs)
 
-	stopErrors := make([]error, len(pluginIDs))
+	stopResults := make([]stopOperationResult, len(pluginIDs))
 	var stops sync.WaitGroup
 
 	for index, pluginID := range pluginIDs {
@@ -930,15 +936,88 @@ func (s *Supervisor) StopAll(ctx context.Context) error {
 		go func(index int, pluginID string) {
 			defer stops.Done()
 
-			stopErrors[index] = s.stopRecord(ctx, pluginID)
+			s.mu.Lock()
+
+			record := s.plugins[pluginID]
+
+			s.mu.Unlock()
+
+			stopErr := s.stopRecord(ctx, pluginID)
+
+			var stopDone <-chan struct{}
+
+			if record != nil {
+				s.mu.Lock()
+
+				stopDone = record.stopDone
+
+				s.mu.Unlock()
+			}
+
+			stopResults[index] = stopOperationResult{err: stopErr, record: record, done: stopDone}
 		}(index, pluginID)
 	}
 
 	stops.Wait()
+	s.waitForStopFinalizers(ctx, stopResults)
+
+	stopErrors := make([]error, len(stopResults))
+
+	for index, result := range stopResults {
+		stopErrors[index] = result.err
+	}
 
 	stopErrors = append(stopErrors, ctx.Err())
 
 	return errors.Join(stopErrors...)
+}
+
+func (s *Supervisor) waitForStopFinalizers(ctx context.Context, results []stopOperationResult) {
+	waitCtx, cancel := context.WithTimeout(ctx, s.cfg.FinalReapTimeout)
+
+	defer cancel()
+
+	var waiters sync.WaitGroup
+
+	for index, result := range results {
+		if result.record == nil {
+			continue
+		}
+
+		if result.done == nil {
+			s.mu.Lock()
+
+			results[index].err = result.record.stopErr
+
+			s.mu.Unlock()
+
+			continue
+		}
+
+		waiters.Add(1)
+
+		go func(index int, result stopOperationResult) {
+			defer waiters.Done()
+
+			select {
+			case <-result.done:
+			case <-waitCtx.Done():
+				select {
+				case <-result.done:
+				default:
+					return
+				}
+			}
+
+			s.mu.Lock()
+
+			results[index].err = result.record.stopErr
+
+			s.mu.Unlock()
+		}(index, result)
+	}
+
+	waiters.Wait()
 }
 
 func (s *Supervisor) runningPluginIDs() []string {
@@ -2185,18 +2264,12 @@ func (s *Supervisor) finishStopAfterExit(
 	stopDone chan struct{},
 ) {
 	// One finalizer and retained record remain per never-exiting process until it or the daemon exits.
-	// Shutdown intentionally does not wait for finalizers.
 	if process != nil {
 		<-process.exit.done
 	}
 
-	s.mu.Lock()
-
-	stopErr := record.stopErr
-
-	s.mu.Unlock()
-
-	s.finishStop(pluginID, record, process, paths, stopDone, stopErr)
+	// Exact Wait completed, so a deferred reap timeout no longer makes stop incomplete.
+	s.finishStop(pluginID, record, process, paths, stopDone, nil)
 }
 
 func (s *Supervisor) finishStop(

@@ -50,6 +50,51 @@ func waitForShutdownAdmission(t *testing.T, supervisor *Supervisor) {
 	}
 }
 
+func waitForDeferredStopForTest(t *testing.T, supervisor *Supervisor, pluginID string) {
+	t.Helper()
+
+	timer := time.NewTimer(time.Second)
+
+	defer timer.Stop()
+
+	for {
+		supervisor.mu.Lock()
+
+		record := supervisor.plugins[pluginID]
+		deferred := record != nil && record.stopping && record.stopDone != nil && record.stopErr != nil
+
+		supervisor.mu.Unlock()
+
+		if deferred {
+			return
+		}
+
+		select {
+		case <-timer.C:
+			t.Fatal("stop did not defer finalization")
+		default:
+			goruntime.Gosched()
+		}
+	}
+}
+
+func writeServiceLeaseFileForTest(t *testing.T, path string, pid int) {
+	t.Helper()
+
+	err := WriteServiceLease(path, ServiceLease{
+		BootID:         "test-boot",
+		PID:            pid,
+		PGID:           pid,
+		StartTimeTicks: 1,
+		ExecutablePath: "/test/service",
+		ExecutableDev:  1,
+		ExecutableIno:  1,
+	})
+	if err != nil {
+		t.Fatalf("write service lease: %v", err)
+	}
+}
+
 func TestStopAllOwnsStartupPausedBeforeCommandStart(t *testing.T) {
 	runtime := NewRuntime(RuntimeConfig{
 		RuntimeRoot: t.TempDir(),
@@ -459,7 +504,18 @@ func TestStopAllReturnsWhileDeferredReapWaitRemainsBlocked(t *testing.T) {
 		},
 	})
 	spec := enabledSpec("shutdown-joins-deferred-reap")
-	_, _, startWait := seedTermIgnoringService(t, runtime, spec)
+	command, _, startWait := seedTermIgnoringService(t, runtime, spec)
+	paths, err := NewRuntimePaths(runtime.runtimeRoot, spec.PluginID)
+	if err != nil {
+		t.Fatalf("runtime paths: %v", err)
+	}
+
+	if err := paths.Ensure(); err != nil {
+		t.Fatalf("ensure runtime paths: %v", err)
+	}
+
+	writeServiceLeaseFileForTest(t, paths.ServiceLease, command.Process.Pid)
+
 	stopDone := timeoutTermIgnoringService(t, runtime, spec.PluginID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
@@ -467,7 +523,7 @@ func TestStopAllReturnsWhileDeferredReapWaitRemainsBlocked(t *testing.T) {
 	defer cancel()
 
 	started := time.Now()
-	err := runtime.supervisor.StopAll(ctx)
+	err = runtime.supervisor.StopAll(ctx)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("StopAll error = %v, want deadline exceeded", err)
 	}
@@ -480,12 +536,107 @@ func TestStopAllReturnsWhileDeferredReapWaitRemainsBlocked(t *testing.T) {
 		t.Fatalf("reserved services before exact Wait = %d, want 1", got)
 	}
 
+	if _, err := os.Stat(paths.ServiceLease); err != nil {
+		t.Fatalf("service lease before exact Wait: %v", err)
+	}
+
 	startWait()
 
 	select {
 	case <-stopDone:
 	case <-time.After(time.Second):
 		t.Fatal("stop finalizer did not complete after exact Wait")
+	}
+
+	if _, err := os.Stat(paths.ServiceLease); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("service lease after exact Wait: %v", err)
+	}
+}
+
+func TestStopAllRefreshesResultAfterDeferredFinalizerCompletes(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{
+		RuntimeRoot: t.TempDir(),
+		Limits:      Limits{MaxSupervisedServices: 2},
+		Supervisor: SupervisorConfig{
+			StopTimeout:      5 * time.Millisecond,
+			FinalReapTimeout: 20 * time.Millisecond,
+		},
+	})
+	firstSpec := enabledSpec("shutdown-finalizer-completes-before-reconcile")
+	firstCommand, _, firstStartWait := seedTermIgnoringService(t, runtime, firstSpec)
+	blockerSpec := enabledSpec("shutdown-result-reconciliation-blocker")
+	blockerCommand, _, blockerStartWait := seedTermIgnoringService(t, runtime, blockerSpec)
+	firstPaths, err := NewRuntimePaths(runtime.runtimeRoot, firstSpec.PluginID)
+	if err != nil {
+		t.Fatalf("first runtime paths: %v", err)
+	}
+
+	blockerPaths, err := NewRuntimePaths(runtime.runtimeRoot, blockerSpec.PluginID)
+	if err != nil {
+		t.Fatalf("blocker runtime paths: %v", err)
+	}
+
+	writeServiceLeaseFileForTest(t, firstPaths.ServiceLease, firstCommand.Process.Pid)
+	writeServiceLeaseFileForTest(t, blockerPaths.ServiceLease, blockerCommand.Process.Pid)
+
+	blockerStopDone := timeoutTermIgnoringService(t, runtime, blockerSpec.PluginID)
+
+	stopResult := make(chan error, 1)
+
+	go func() { stopResult <- runtime.supervisor.StopAll(context.Background()) }()
+
+	waitForShutdownAdmission(t, runtime.supervisor)
+	waitForDeferredStopForTest(t, runtime.supervisor, firstSpec.PluginID)
+	runtime.supervisor.mu.Lock()
+
+	firstRecord := runtime.supervisor.plugins[firstSpec.PluginID]
+	var firstStopDone chan struct{}
+
+	if firstRecord != nil {
+		firstStopDone = firstRecord.stopDone
+	}
+
+	runtime.supervisor.mu.Unlock()
+
+	if firstStopDone == nil {
+		t.Fatal("first stop did not retain its finalizer channel")
+	}
+
+	firstStartWait()
+
+	select {
+	case <-firstStopDone:
+	case <-time.After(time.Second):
+		t.Fatal("first stop finalizer did not complete after exact Wait")
+	}
+
+	select {
+	case err := <-stopResult:
+		t.Fatalf("StopAll returned before the blocker finalizer completed: %v", err)
+	default:
+	}
+
+	blockerStartWait()
+
+	select {
+	case <-blockerStopDone:
+	case <-time.After(time.Second):
+		t.Fatal("blocker stop finalizer did not complete after exact Wait")
+	}
+
+	select {
+	case err := <-stopResult:
+		if err != nil {
+			t.Fatalf("StopAll error after both finalizers completed: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("StopAll did not finish after both stop finalizers removed runtime evidence")
+	}
+
+	for _, path := range []string{firstPaths.ServiceLease, blockerPaths.ServiceLease} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("service lease after StopAll at %s: %v", path, err)
+		}
 	}
 }
 

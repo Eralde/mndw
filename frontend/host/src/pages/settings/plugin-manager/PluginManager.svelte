@@ -310,6 +310,12 @@ onMount(() => {
       >
         <span>{refreshError}</span>
         <mndw-button
+          variant="secondary"
+          onclick={() => void refresh()}
+        >
+          {hostT('settings.plugin-manager.retry')}
+        </mndw-button>
+        <mndw-button
           variant="ghost"
           onclick={() => (refreshError = '')}
         >

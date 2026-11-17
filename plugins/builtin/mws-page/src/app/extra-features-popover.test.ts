@@ -1,5 +1,8 @@
 import type {HostNavigation, HostTarget, OverlayCloseEvent, OverlayLayer, OverlayService} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {describe, expect, it, vi} from 'vitest';
+import enCatalog from '../../i18n/en.json';
+import ruCatalog from '../../i18n/ru.json';
 import type {ExtraFeaturesAvailability, ExtraFeaturesSetupReason} from '../services/mws-data.service';
 import {openExtraFeaturesPopover} from './extra-features-popover';
 
@@ -201,6 +204,40 @@ describe('openExtraFeaturesPopover', () => {
     openPopover(overlay, anchor, 'blocked', (key) => key, hiddenNavigation, reasons);
 
     expect(layer.contentElement.textContent).toContain('extra-features.popover.blocked.combined.body');
+  });
+
+  it('points controller-session blockers to background router access in both locales', () => {
+    const cases = [
+      {
+        catalog: enCatalog,
+        controller: 'Turn on background router access in settings.',
+        combined: 'Grant the required plugin permission and turn on background router access in settings.',
+      },
+      {
+        catalog: ruCatalog,
+        controller: 'Включите фоновый доступ к роутеру в настройках.',
+        combined: 'Выдайте плагину необходимое разрешение и включите фоновый доступ к роутеру в настройках.',
+      },
+    ];
+
+    for (const {catalog, controller, combined} of cases) {
+      const i18n = createTestI18n(catalog);
+      const translate = (key: string): string => i18n.t(key);
+      const controllerPopover = createOverlay();
+
+      openPopover(controllerPopover.overlay, controllerPopover.anchor, 'blocked', translate, hiddenNavigation, [
+        'controller-token',
+      ]);
+      expect(controllerPopover.layer.contentElement.querySelector('p')?.textContent).toBe(controller);
+
+      const combinedPopover = createOverlay();
+
+      openPopover(combinedPopover.overlay, combinedPopover.anchor, 'blocked', translate, hiddenNavigation, [
+        'permission',
+        'controller-token',
+      ]);
+      expect(combinedPopover.layer.contentElement.querySelector('p')?.textContent).toBe(combined);
+    }
   });
 
   it('renders extender-session setup copy for unavailable availability', () => {

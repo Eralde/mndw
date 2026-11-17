@@ -4,7 +4,9 @@ import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest
 import {flushSync, mount, unmount} from 'svelte';
 import {type HostServices, createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
+import {hostT} from '../../services/host-i18n.svelte.js';
 import {setLocale} from '../../services/locale.service.js';
+import {toast} from '../../services/toast/toast.svelte.js';
 import type {ControllerTestResult, PersistentRciCapability} from '../../services/persistent-rci-session.service.js';
 import GeneralSettings from './GeneralSettings.svelte';
 
@@ -84,6 +86,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  toast.clear();
   getCapability.mockReset().mockResolvedValue(disabledCapability);
   testController.mockReset();
   getTelemetry.mockReset().mockResolvedValue({enabled: false});
@@ -99,6 +102,7 @@ afterEach(async () => {
   }
 
   document.body.innerHTML = '';
+  toast.clear();
   await setLocale('en');
 });
 
@@ -218,7 +222,7 @@ describe('GeneralSettings telemetry section', () => {
     await vi.waitFor(() => expect(reportTelemetryGathering).toHaveBeenCalledWith(true));
   });
 
-  it('restores the switch and shows an alert when saving telemetry fails', async () => {
+  it('restores the switch and shows a toast when saving telemetry fails', async () => {
     getCapability.mockResolvedValueOnce(enabledCapability);
     setTelemetry.mockRejectedValueOnce(new Error('private failure detail'));
 
@@ -229,21 +233,91 @@ describe('GeneralSettings telemetry section', () => {
     await vi.waitFor(() => expect(setTelemetry).toHaveBeenCalledWith(true));
 
     await vi.waitFor(() => {
-      flushSync();
-
-      const errorAlert = [...target.querySelectorAll('[role="alert"]')].find((alert) => {
-        return alert.textContent?.includes('Could not update background telemetry.');
+      expect(toast.toasts[0]).toMatchObject({
+        variant: 'error',
+        message: 'Could not update background telemetry.',
       });
-
-      expect(errorAlert).toBeDefined();
       expect(telemetrySwitch().checked).toBe(false);
     });
+    expect(target.querySelector('.mndw-alert[role="alert"]')).toBeNull();
     expect(target.textContent).not.toContain('private failure detail');
     expect(reportTelemetryGathering).not.toHaveBeenCalled();
+  });
+
+  it('offers Retry when the initial telemetry load fails', async () => {
+    getTelemetry.mockRejectedValueOnce(new Error('private failure detail'))
+      .mockResolvedValueOnce({enabled: true});
+
+    render();
+
+    await vi.waitFor(() => expect(target.textContent).toContain(hostT('settings.telemetry-error')));
+
+    const alert = [...target.querySelectorAll('[role="alert"]')].find((node) => {
+      return node.textContent?.includes(hostT('settings.telemetry-error'));
+    });
+    const retry = [...(alert?.querySelectorAll('mndw-button') ?? [])].find((button) => {
+      return button.textContent?.trim() === 'Retry';
+    });
+
+    expect(retry).toBeDefined();
+    retry?.click();
+    await vi.waitFor(() => expect(getTelemetry).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(telemetrySwitch().checked).toBe(true));
+    expect(target.querySelector('.mndw-alert[role="alert"]')).toBeNull();
+  });
+
+  it('offers Retry when background router access cannot be loaded', async () => {
+    getCapability.mockRejectedValueOnce(new Error('private failure detail'))
+      .mockResolvedValueOnce(disabledCapability);
+
+    render();
+
+    await vi.waitFor(() => expect(target.textContent).toContain(hostT('settings.persistent-state-unavailable')));
+
+    const alert = [...target.querySelectorAll('[role="alert"]')].find((node) => {
+      return node.textContent?.includes(hostT('settings.persistent-state-unavailable'));
+    });
+    const retry = [...(alert?.querySelectorAll('mndw-button') ?? [])].find((button) => {
+      return button.textContent?.trim() === 'Retry';
+    });
+
+    expect(retry).toBeDefined();
+    retry?.click();
+    await vi.waitFor(() => expect(getCapability).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(target.querySelector('.mndw-alert[role="alert"]')).toBeNull());
   });
 });
 
 describe('GeneralSettings controller-token placeholder', () => {
+  it('links the localized token setup hint to the token input', async () => {
+    getCapability.mockResolvedValueOnce({
+      ...enabledCapability,
+      controller: {support: 'needs-token', auth: 'token', enabled: true},
+    });
+    await setLocale('en');
+
+    render();
+
+    await vi.waitFor(() => {
+      expect(target.querySelector('mndw-input[type="password"]')).not.toBeNull();
+    });
+
+    const tokenInput = target.querySelector('mndw-input[type="password"]');
+    const hintId = tokenInput?.getAttribute('aria-describedby');
+
+    expect(hintId).toBe('mndw-controller-token-hint');
+    expect(target.querySelector(`#${hintId}`)?.textContent?.trim()).toBe(
+      'Create a token in the router\'s web interface on the Users & Access page, or in the router\'s command line.',
+    );
+
+    await setLocale('ru');
+    flushSync();
+
+    expect(target.querySelector(`#${hintId}`)?.textContent?.trim()).toBe(
+      'Токен создаётся в веб-интерфейсе роутера на странице «Пользователи и доступ» или в командной строке роутера.',
+    );
+  });
+
   it('localizes the configured-token placeholder', async () => {
     getCapability.mockResolvedValueOnce({
       ...enabledCapability,
@@ -289,26 +363,18 @@ describe('GeneralSettings controller-token placeholder', () => {
 describe('GeneralSettings controller-test results', () => {
   it.each(
     [
-      {locale: 'en', result: 'valid', expected: 'Controller token is valid', alert: false},
-      {locale: 'ru', result: 'valid', expected: 'Токен контроллера действителен', alert: false},
-      {locale: 'en', result: 'invalid-token', expected: 'Controller token rejected', alert: true},
-      {locale: 'ru', result: 'invalid-token', expected: 'Токен контроллера отклонён', alert: true},
+      {locale: 'en', result: 'valid', expected: 'Controller token is valid', feedback: 'toast'},
+      {locale: 'en', result: 'invalid-token', expected: 'Controller token rejected', feedback: 'alert'},
       {
         locale: 'en',
         result: 'unsupported-firmware',
         expected: 'Update device firmware to enable background router access.',
-        alert: true,
+        feedback: 'status',
       },
-      {
-        locale: 'ru',
-        result: 'unsupported-firmware',
-        expected: 'Обновите прошивку устройства, чтобы включить фоновый доступ к роутеру.',
-        alert: true,
-      },
-      {locale: 'en', result: 'unreachable', expected: 'Device unreachable', alert: true},
-      {locale: 'ru', result: 'unreachable', expected: 'Устройство недоступно', alert: true},
+      {locale: 'en', result: 'unreachable', expected: 'Device unreachable', feedback: 'toast'},
+      {locale: 'ru', result: 'unreachable', expected: 'Устройство недоступно', feedback: 'toast'},
     ] as const,
-  )('shows translated $result result in $locale', async ({locale, result, expected, alert}) => {
+  )('shows translated $result result in $locale', async ({locale, result, expected, feedback}) => {
     await setLocale(locale);
     getCapability.mockResolvedValueOnce({
       ...enabledCapability,
@@ -349,10 +415,18 @@ describe('GeneralSettings controller-test results', () => {
           paragraph.textContent?.trim() === expected
         );
 
-        expect(resultParagraph).toBeDefined();
-        expect(resultParagraph?.getAttribute('role') === 'alert').toBe(alert);
+        if (feedback === 'toast') {
+          expect(resultParagraph).toBeUndefined();
+          expect(toast.toasts[0]).toMatchObject({
+            variant: result === 'valid' ? 'success' : 'error',
+            message: expected,
+          });
+        } else {
+          expect(resultParagraph).toBeDefined();
+          expect(resultParagraph?.getAttribute('role')).toBe(feedback);
+        }
 
-        if (alert && result !== 'unsupported-firmware') {
+        if (feedback === 'alert') {
           expect(resultParagraph?.classList.contains('unsupported-banner')).toBe(true);
         }
       });

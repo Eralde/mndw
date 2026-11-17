@@ -20,6 +20,7 @@
     "example-plugins.ts",
     "example-plugins.test.ts",
     "catalog-versions.test.ts",
+    "catalog-text-style.test.ts",
     "packed-plugin-artifact.test.ts",
     "scripts/audit-px.test.ts",
     "scripts/ci-test-scope.ts",

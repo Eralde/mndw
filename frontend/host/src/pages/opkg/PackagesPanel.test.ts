@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import {defineMndwUi} from '@mndw/ui';
 import {flushSync, mount, unmount} from 'svelte';
-import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {setLocale} from '../../services/locale.service.js';
-import {type PackageEntry, type PackageInfo, opkgClient} from '../../services/opkg-client.js';
+import {OpkgError, type PackageEntry, type PackageInfo, opkgClient} from '../../services/opkg-client.js';
+import {toast} from '../../services/toast/toast.svelte.js';
 
 const {openHostModal} = vi.hoisted(() => ({openHostModal: vi.fn()}));
 
@@ -73,6 +74,10 @@ describe('PackagesPanel controls', () => {
     defineMndwUi();
   });
 
+  beforeEach(() => {
+    toast.clear();
+  });
+
   afterEach(async () => {
     if (component !== undefined) {
       await unmount(component);
@@ -80,6 +85,7 @@ describe('PackagesPanel controls', () => {
     }
 
     openHostModal.mockReset();
+    toast.clear();
     vi.restoreAllMocks();
     host?.remove();
     document.body.innerHTML = '';
@@ -140,15 +146,20 @@ describe('PackagesPanel controls', () => {
     expect(host.querySelector('.bulk-bar')?.textContent).toContain('With selected:');
   });
 
-  it('offers Retry after the package list fails to load', async () => {
+  it.each([
+    {error: new OpkgError('Package index is unavailable', 'OPKG_FAILED'), expected: 'Package index is unavailable'},
+    {error: new Error('private failure detail'), expected: 'Failed to load packages'},
+  ])('offers Retry and shows the selected load error', async ({error, expected}) => {
     const list = vi.spyOn(opkgClient, 'list')
-      .mockRejectedValueOnce(new Error('private failure detail'))
+      .mockRejectedValueOnce(error)
       .mockResolvedValue({packages: [], metadataUpdatedAt: null});
 
     renderPanel();
 
-    await vi.waitFor(() => expect(host.textContent).toContain('Failed to load packages'));
+    await vi.waitFor(() => expect(host.textContent).toContain(expected));
     expect(host.textContent).not.toContain('private failure detail');
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    expect(toast.toasts).toHaveLength(0);
 
     const retry = [...host.querySelectorAll('mndw-button')].find((button) => {
       return button.textContent?.trim() === 'Retry';
@@ -157,7 +168,58 @@ describe('PackagesPanel controls', () => {
     expect(retry).toBeDefined();
     retry?.click();
     await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(host.querySelector('.mndw-empty-state')).not.toBeNull());
+  });
+
+  it('shows an actionable empty state when no packages are installed', async () => {
+    const list = vi.spyOn(opkgClient, 'list').mockResolvedValue({packages: [], metadataUpdatedAt: null});
+
+    renderPanel();
+
+    await vi.waitFor(() => expect(host.querySelector('.mndw-empty-state')).not.toBeNull());
+
+    const emptyState = host.querySelector('.mndw-empty-state');
+
+    expect(emptyState).not.toBeNull();
+    expect(emptyState?.textContent).toContain('No packages found');
+
+    const refresh = host.querySelector<HTMLElement>('.mndw-empty-state mndw-button');
+
+    expect(refresh?.textContent?.trim()).toBe('Check for updates');
+    refresh?.click();
+    await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+  });
+
+  it('clears search and shows all packages from the no-match empty state', async () => {
+    vi.spyOn(opkgClient, 'list').mockResolvedValue({
+      packages: [{name: 'curl', version: '1', description: '', status: 'installed'}],
+      metadataUpdatedAt: null,
+    });
+
+    renderPanel();
+
     await vi.waitFor(() => expect(host.querySelector('mndw-table')).not.toBeNull());
+
+    const search = host.querySelector<HTMLElement>('mndw-input[type="search"]');
+
+    search?.dispatchEvent(new CustomEvent('mndwinput', {bubbles: true, detail: {value: 'missing'}}));
+    flushSync();
+
+    const emptyState = host.querySelector('.mndw-empty-state');
+
+    expect(emptyState).not.toBeNull();
+    expect(emptyState?.textContent).toContain('No packages match your filter');
+
+    const showAll = emptyState?.querySelector<HTMLElement>('mndw-button');
+
+    showAll?.focus();
+    showAll?.click();
+    flushSync();
+
+    const table = host.querySelector('mndw-table') as (HTMLElement & {rows: PackageEntry[]}) | null;
+
+    expect(table?.rows.map((pkg) => pkg.name)).toEqual(['curl']);
+    await vi.waitFor(() => expect(document.activeElement).toBe(search));
   });
 
   it('returns focus to the package action after its row reloads', async () => {

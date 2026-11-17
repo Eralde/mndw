@@ -1,5 +1,5 @@
 {
-  "title": "Hello Widget",
+  "title": "Hello widget",
   "action": {
     "greet": "Get greeting",
     "loading": "Loading greeting…"

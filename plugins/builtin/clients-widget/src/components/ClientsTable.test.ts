@@ -11,10 +11,10 @@ let app: VueApp | null = null;
 
 const translator = createTestI18n({
   'column.name': 'Name',
-  'column.ip': 'IP Address',
+  'column.ip': 'IP address',
   'column.connection': 'Connection',
   'column.uptime': 'Uptime',
-  'column.last-seen': 'Last Seen',
+  'column.last-seen': 'Last seen',
   'empty.found': 'No clients found',
   'empty.connected': 'No clients connected',
   'loading': 'Loading clients…',

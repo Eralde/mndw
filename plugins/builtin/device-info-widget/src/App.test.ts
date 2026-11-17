@@ -186,6 +186,15 @@ afterEach(() => {
 });
 
 describe('App', () => {
+  it('uses background router access wording for extended-history setup in both locales', () => {
+    expect(enCatalog['session-required']).toBe(
+      'Turn on background router access in settings to view extended history.',
+    );
+    expect(ruCatalog['session-required']).toBe(
+      'Чтобы просматривать расширенную историю, включите фоновый доступ к роутеру в настройках.',
+    );
+  });
+
   it('marks the default range selected and follows later range changes', async () => {
     const app = mountWidget(successfulResponse);
 
@@ -899,7 +908,7 @@ describe('App', () => {
     await flushPromises();
 
     expect(host.querySelector('.telemetry-note')?.textContent)
-      .toContain('Set up a persistent RCI session to collect telemetry.');
+      .toContain('Turn on background router access in settings to collect telemetry.');
     expect(host.querySelector('.telemetry-note a')?.getAttribute('href')).toBe('/settings/general');
 
     app.unmount();

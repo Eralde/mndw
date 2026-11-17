@@ -4,11 +4,10 @@ import {hostT} from '../../../services/host-i18n.svelte.js';
 interface Props {
   busy: boolean;
   disabled: boolean;
-  error: string;
   onReset: () => void;
 }
 
-let {busy, disabled, error, onReset}: Props = $props();
+let {busy, disabled, onReset}: Props = $props();
 let confirming = $state(false);
 
 function start(): void {
@@ -50,15 +49,6 @@ function confirm(): void {
     >
       {hostT('settings.palette.reset')}{busy ? '…' : ''}
     </mndw-button>
-  {/if}
-
-  {#if error}
-    <div
-      class="mndw-alert mndw-alert--danger"
-      role="alert"
-    >
-      {error}
-    </div>
   {/if}
 </div>
 

@@ -7,6 +7,7 @@ import type {ServiceEntry} from '../../services/service-client.js';
 import {openHostModal} from '../../services/overlay/host-overlay.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {appState} from '../../state/app.svelte.js';
+import EmptyState from '../../components/EmptyState.svelte';
 import ConfirmActionModal from './ConfirmActionModal.svelte';
 import ServiceNameCell from './ServiceNameCell.svelte';
 import ServiceStateCell from './ServiceStateCell.svelte';
@@ -330,7 +331,7 @@ onMount(() => {
   </div>
   {#if unavailable}
     <div
-      class="empty capability"
+      class="capability"
       role="status"
     >
       <strong>{hostT('services.unavailable')}</strong><span>{
@@ -339,25 +340,27 @@ onMount(() => {
     </div>
   {:else if loadError}
     <div
-      class="empty"
-      role="status"
+      class="mndw-alert mndw-alert--danger services-load-error"
+      role="alert"
     >
-      {hostT('services.load-failed')}
+      <p>{hostT('services.load-failed')}</p>
+      <mndw-button
+        variant="secondary"
+        onclick={() => void loadServices()}
+      >{hostT('common.retry')}</mndw-button>
     </div>
   {:else if loading && services.length === 0}
-    <div
-      class="empty"
-      role="status"
-    >
+    <p role="status">
       {hostT('packages.loading')}
-    </div>
+    </p>
   {:else if !loading && services.length === 0}
-    <div
-      class="empty"
-      role="status"
-    >
-      {hostT('services.empty')}
-    </div>
+    <EmptyState
+      mode="compact"
+      title={hostT('services.empty')}
+      text={hostT('services.empty-next')}
+      action={{label: hostT('services.refresh'),
+      onActivate: () => void loadServices(), variant: 'secondary'}}
+    />
   {:else}
     <div class="table-wrap">
       <mndw-table
@@ -380,5 +383,7 @@ onMount(() => {
 mndw-table { display: block; min-width: 0; font-size: .8125rem; }
 mndw-table::part(viewport) { max-height: calc(100vh - 250px); overflow: auto; }
 mndw-table::part(header-cell) { position: sticky; top: 0; z-index: 1; background: var(--mndw-surface); }
-.empty { display: grid; gap: 0.5rem; padding: 2.5rem 1rem; text-align: center; color: var(--mndw-text-subtle); }.capability strong { color: var(--mndw-text); }
+.capability { display: grid; gap: 0.5rem; padding: 2.5rem 1rem; text-align: center; color: var(--mndw-text-subtle); }.capability strong { color: var(--mndw-text); }
+.services-load-error { display: grid; justify-items: center; gap: 0.5rem; }
+.services-load-error p { margin: 0; }
 </style>

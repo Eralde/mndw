@@ -61,8 +61,8 @@ function openDialog(): {
     onRefreshIntervalChange,
     useTranslator(
       createTestI18n({'settings': 'Client settings', 'columns': 'Columns', 'refresh-interval': 'Refresh interval',
-        'column.ip': 'IP Address', 'column.connection': 'Connection', 'column.uptime': 'Uptime',
-        'column.last-seen': 'Last Seen'}),
+        'column.ip': 'IP address', 'column.connection': 'Connection', 'column.uptime': 'Uptime',
+        'column.last-seen': 'Last seen'}),
     ),
   );
 
@@ -111,7 +111,7 @@ describe('column checkboxes', () => {
     const labels = [...opened.target.querySelectorAll('mndw-checkbox')]
       .map((checkbox) => checkbox.textContent?.trim());
 
-    expect(labels).toEqual(['IP Address', 'Connection', 'Uptime', 'Last Seen']);
+    expect(labels).toEqual(['IP address', 'Connection', 'Uptime', 'Last seen']);
     expect(opened.target.textContent).not.toContain('Name');
     expect(opened.target.textContent).not.toContain('Link');
   });

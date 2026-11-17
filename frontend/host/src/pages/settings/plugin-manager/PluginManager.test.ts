@@ -6,6 +6,8 @@ import {flushSync, mount, unmount} from 'svelte';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {type MgmtClient, MgmtError, type UploadResult} from '../../../services/mgmt-client.js';
 import {setLocale} from '../../../services/locale.service.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
+import {toast} from '../../../services/toast/toast.svelte.js';
 import {pluginRegistry} from '../../../runtime/plugin-registry.js';
 import PluginManager from './PluginManager.svelte';
 
@@ -106,6 +108,7 @@ describe('PluginManager', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    toast.clear();
   });
 
   it('uses a Settings subsection heading hierarchy', async () => {
@@ -194,9 +197,8 @@ describe('PluginManager', () => {
     const {component, target} = await mountManager(client);
 
     dropPlugin(target);
-    await vi.waitFor(() => {
-      expect(target.querySelector('.mndw-upload__success')?.textContent).toContain('Installed');
-    });
+    await vi.waitFor(() => expect(toast.toasts[0]?.message).toContain('Installed'));
+    expect(target.querySelector('.mndw-upload__success')).toBeNull();
 
     expect(client.uploadPlugin.mock.calls).toHaveLength(1);
 
@@ -299,6 +301,33 @@ describe('PluginManager', () => {
 
     expect(target.querySelector('.mndw-alert--danger')?.textContent).toContain('Disable failed');
     expect(target.querySelector('.mndw-reload')).toBeNull();
+
+    void unmount(component);
+  });
+
+  it('offers Retry after a refresh failure and clears the alert when recovered', async () => {
+    const client = clientWith([plugin()]);
+    const {component, target} = await mountManager(client);
+
+    client.listPlugins.mockClear()
+      .mockRejectedValueOnce(new Error('private refresh detail'))
+      .mockResolvedValueOnce([plugin({enabled: false})]);
+
+    target.querySelector<HTMLButtonElement>('.mndw-installed__toggle')?.click();
+
+    await vi.waitFor(() =>
+      expect(target.querySelector('[role="alert"]')?.textContent).toContain('private refresh detail')
+    );
+
+    const alert = target.querySelector('[role="alert"]');
+    const retry = [...(alert?.querySelectorAll('mndw-button') ?? [])].find((button) => {
+      return button.textContent?.trim() === 'Retry';
+    });
+
+    expect(retry).toBeDefined();
+    retry?.click();
+    await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(2));
+    await vi.waitFor(() => expect(target.querySelector('[role="alert"]')).toBeNull());
 
     void unmount(component);
   });
@@ -413,7 +442,7 @@ describe('PluginManager', () => {
     await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
     await vi.waitFor(() =>
       expect(target.querySelector('.mndw-installed__item > .mndw-alert--danger')?.textContent).toContain(
-        'session socket',
+        hostT('errors.rci-socket-start-failed'),
       )
     );
 

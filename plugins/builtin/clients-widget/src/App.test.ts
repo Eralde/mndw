@@ -403,11 +403,11 @@ describe('cell formatting', () => {
 });
 
 describe('storage', () => {
-  it('hides Last Seen by default, with offline off and 3s refresh', async () => {
+  it('hides Last seen by default, with offline off and 3s refresh', async () => {
     mountWidget();
     await flush();
 
-    expect(headers()).toEqual(['Name', 'IP Address', 'Connection', 'Uptime']);
+    expect(headers()).toEqual(['Name', 'IP address', 'Connection', 'Uptime']);
     expect(offlineToggle().checked).toBe(false);
   });
 
@@ -422,8 +422,8 @@ describe('storage', () => {
     mountWidget();
     await flush();
 
-    expect(headers()).not.toContain('IP Address');
-    expect(headers()).toContain('Last Seen');
+    expect(headers()).not.toContain('IP address');
+    expect(headers()).toContain('Last seen');
     expect(offlineToggle().checked).toBe(true);
 
     const afterInitial = queue.mock.calls.length;
@@ -475,18 +475,18 @@ describe('storage', () => {
     await flush();
 
     expect(warn).toHaveBeenCalled();
-    expect(headers()).toContain('IP Address');
+    expect(headers()).toContain('IP address');
     expect(offlineToggle().checked).toBe(false);
   });
 
-  it('merges a partial column config onto defaults with Last Seen hidden', async () => {
+  it('merges a partial column config onto defaults with Last seen hidden', async () => {
     store.set('column-visibility', JSON.stringify({connection: false, unknownColumn: true}));
     mountWidget();
     await flush();
 
     expect(headers()).not.toContain('Connection');
-    expect(headers()).toContain('IP Address');
-    expect(headers()).not.toContain('Last Seen');
+    expect(headers()).toContain('IP address');
+    expect(headers()).not.toContain('Last seen');
   });
 
   it('stays usable when a write rejects, without showing a table error', async () => {
@@ -525,7 +525,7 @@ describe('settings', () => {
     expect(storageSet).toHaveBeenCalledWith('column-visibility', expect.stringContaining('"connection":false'));
   });
 
-  it('shows Last Seen and persists it when enabled in settings', async () => {
+  it('shows Last seen and persists it when enabled in settings', async () => {
     mountWidget();
     await flush();
 
@@ -537,7 +537,7 @@ describe('settings', () => {
     onChange('lastSeen', true);
     await flush();
 
-    expect(headers()).toContain('Last Seen');
+    expect(headers()).toContain('Last seen');
     expect(storageSet).toHaveBeenCalledWith('column-visibility', expect.stringContaining('"lastSeen":true'));
   });
 

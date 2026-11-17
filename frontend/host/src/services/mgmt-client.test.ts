@@ -3,6 +3,7 @@ import {type Mock, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {PaletteTokenMap} from '@mndw/sdk';
 import type {PluginPermission} from '@mndw/sdk-internal';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
+import {setLocale} from './locale.service.js';
 import {
   MgmtError,
   type MgmtTimeoutKind,
@@ -321,11 +322,27 @@ describe('mgmt-client', () => {
     expect(second.switchports.layout).not.toBe(first.switchports.layout);
   });
 
-  it('messageForError maps known codes and includes MANIFEST_INVALID detail', () => {
-    expect(messageForError(new MgmtError('x', 'UPLOAD_TOO_LARGE'))).toContain('10 MB');
+  it('messageForError maps known codes and includes MANIFEST_INVALID detail', async () => {
+    try {
+      await setLocale('en');
+      expect(messageForError(new MgmtError('x', 'UPLOAD_TOO_LARGE'))).toBe(
+        'The plugin exceeds the 10 MiB upload limit.',
+      );
+      expect(messageForError(new MgmtError('x', 'RCI_SOCKET_START_FAILED'))).toBe(
+        'Background router access could not start. Try again.',
+      );
+      await setLocale('ru');
+      expect(messageForError(new MgmtError('x', 'UPLOAD_TOO_LARGE'))).toBe('Плагин превышает лимит загрузки 10 МБ.');
+      expect(messageForError(new MgmtError('x', 'RCI_SOCKET_START_FAILED'))).toBe(
+        'Не удалось запустить фоновый доступ к роутеру. Повторите попытку.',
+      );
+      await setLocale('en');
+    } finally {
+      await setLocale('en');
+    }
+
     expect(messageForError(new MgmtError('x', 'MANIFEST_INVALID', 'route reserved'))).toContain('route reserved');
     expect(messageForError(new MgmtError('x', 'CONTROLLER_SESSION_UNAVAILABLE'))).toContain('Controller token session');
-    expect(messageForError(new MgmtError('x', 'RCI_SOCKET_START_FAILED'))).toContain('session socket');
     expect(messageForError(new Error('boom'))).toBe('boom');
   });
 

@@ -35,7 +35,7 @@ function clickButton(host: HTMLElement, label: RegExp): void {
 
 function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
   const messages = {
-    en: {'action.router-cli': 'Router CLI', 'action.entware-shell': 'Entware Shell'},
+    en: {'action.router-cli': 'Router CLI', 'action.entware-shell': 'Entware shell'},
     ru: {'action.router-cli': 'CLI роутера', 'action.entware-shell': 'Оболочка Entware'},
   };
   const i18n = createTestI18n(messages.en);

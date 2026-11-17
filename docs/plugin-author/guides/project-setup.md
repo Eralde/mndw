@@ -69,7 +69,7 @@ Go to run `mndw dev` for a shell or backendless plugin. Go is needed only for a 
 If npm reports that the platform package is missing after you reuse a `package-lock.json` made on another OS, delete
 `package-lock.json` and `node_modules`, then run `npm install` again.
 
-Next, try the [local development guide](/guides/local-development), the [Hello Widget tutorial](/tutorials/hello-widget),
+Next, try the [local development guide](/guides/local-development), the [Hello widget tutorial](/tutorials/hello-widget),
 or the [RCI tutorial](/tutorials/rci-device-name-widget). For all CLI commands, see the [CLI reference](/reference/cli).
 
 

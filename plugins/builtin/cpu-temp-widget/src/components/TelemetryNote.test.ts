@@ -2,23 +2,28 @@
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import {type App as VueApp, createApp} from 'vue';
 import {type TestPluginContext, createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
+import enCatalog from '../../i18n/en.json';
+import ruCatalog from '../../i18n/ru.json';
 import TelemetryNote from './TelemetryNote.vue';
 
 let host: HTMLElement;
 let app: VueApp | null = null;
 let fixture: TestPluginContext | null = null;
 
-const mountNote = (options: {sessionConfigured?: boolean; lastPointTime?: string | null; href?: string} = {}): void => {
+const mountNote = (
+  options: {sessionConfigured?: boolean; lastPointTime?: string | null; href?: string} = {},
+  catalog: Record<string, string> = {
+    'telemetry-note.off-with-data': 'Telemetry collection is off. The chart shows data up to {time}.',
+    'telemetry-note.off': 'Telemetry collection is off.',
+    'telemetry-note.link': 'Turn it on in settings',
+    'telemetry-note.no-session': 'Turn on background router access in settings to collect telemetry.',
+    'telemetry-note.session-link': 'Open settings',
+  },
+): void => {
   host = document.createElement('div');
   document.body.append(host);
   fixture = createTestPluginContext({
-    i18n: createTestI18n({
-      'telemetry-note.off-with-data': 'Telemetry collection is off. The chart shows data up to {time}.',
-      'telemetry-note.off': 'Telemetry collection is off.',
-      'telemetry-note.link': 'Turn it on in Settings',
-      'telemetry-note.no-session': 'Set up a persistent RCI session to collect telemetry.',
-      'telemetry-note.session-link': 'Open Settings',
-    }),
+    i18n: createTestI18n(catalog),
   });
   fixture.context.navigation.href = () => options.href;
   app = createApp(TelemetryNote, {
@@ -46,7 +51,7 @@ describe('TelemetryNote', () => {
     const link = host.querySelector<HTMLAnchorElement>('a');
 
     expect(note?.textContent).toContain('Telemetry collection is off. The chart shows data up to 08.11 09:42.');
-    expect(link?.textContent).toBe('Turn it on in Settings');
+    expect(link?.textContent).toBe('Turn it on in settings');
     expect(link?.getAttribute('href')).toBe('/settings/general');
   });
 
@@ -54,9 +59,18 @@ describe('TelemetryNote', () => {
     mountNote({sessionConfigured: false, lastPointTime: '08.11 09:42', href: '/settings/general'});
 
     expect(host.querySelector('p[role="status"]')?.textContent).toContain(
-      'Set up a persistent RCI session to collect telemetry.',
+      'Turn on background router access in settings to collect telemetry.',
     );
-    expect(host.querySelector('a')?.textContent).toBe('Open Settings');
+    expect(host.querySelector('a')?.textContent).toBe('Open settings');
+  });
+
+  it.each([
+    ['English', enCatalog, 'Turn on background router access in settings to collect telemetry.'],
+    ['Russian', ruCatalog, 'Чтобы собирать телеметрию, включите фоновый доступ к роутеру в настройках.'],
+  ])('shows background router access guidance with the %s catalog', (_locale, catalog, expected) => {
+    mountNote({sessionConfigured: false}, catalog);
+
+    expect(host.querySelector('p[role="status"]')?.textContent).toContain(expected);
   });
 
   it('hides the Settings link when host navigation has no href', () => {

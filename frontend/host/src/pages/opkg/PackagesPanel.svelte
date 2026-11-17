@@ -8,7 +8,7 @@ import {
   column,
 } from '@mndw/ui';
 import {svelteCell} from '@mndw/ui-svelte';
-import {onMount, tick} from 'svelte';
+import {onDestroy, onMount, tick} from 'svelte';
 import {untrack} from 'svelte';
 import {SvelteMap, SvelteSet} from 'svelte/reactivity';
 import {
@@ -33,6 +33,7 @@ import type {
 } from './PackageDetailCell.svelte';
 import {compareVersions} from './compare-versions.js';
 import ConfirmActionModal from './ConfirmActionModal.svelte';
+import EmptyState from '../../components/EmptyState.svelte';
 
 interface Props {
   now?: () => Date;
@@ -41,6 +42,15 @@ interface Props {
 interface ActionFocusTarget {
   packageName: string;
   source: 'primary' | 'detail';
+}
+
+const PACKAGE_LIST_TOAST_KEY = 'packages.list';
+const PACKAGE_REFRESH_TOAST_KEY = 'packages.refresh';
+
+function packageActionToastKey(
+  action: 'install' | 'remove' | 'upgrade',
+): string {
+  return `packages.${action}`;
 }
 
 let {now = () => new Date()}: Props = $props();
@@ -52,8 +62,15 @@ let filter = $state('');
 let filterMode = $state<'all' | 'installed' | 'updates'>('installed');
 let loading = $state(false);
 let loadError = $state(false);
+let loadErrorMessage = $state('');
 let tableElement = $state<MndwTable<unknown> | null>(null);
+let searchInput: HTMLElement | undefined;
 let filterSequence = 0;
+let destroyed = false;
+
+onDestroy(() => {
+  destroyed = true;
+});
 
 // @dprint-ignore
 const detailCache: PackageDetailCache = new SvelteMap<string, PackageDetailState>();
@@ -130,9 +147,13 @@ const freshnessStale = $derived.by(() => {
   return freshnessComputedAt.getTime() - Date.parse(metadataUpdatedAt)
     > 60 * 60 * 1000;
 });
-const emptyLabel = $derived(
-  packages.length === 0 ? hostT('packages.empty') : hostT('packages.no-match'),
-);
+
+async function showAllPackages(): Promise<void> {
+  filter = '';
+  filterMode = 'all';
+  await tick();
+  searchInput?.focus();
+}
 
 function isProtected(name: string): boolean {
   return name === 'mndw' || name === 'lighttpd';
@@ -187,26 +208,36 @@ async function fetchPackages(suppressStatus = false): Promise<void> {
   loading = true;
   try {
     const result = await opkgClient.list();
+    if (destroyed) {
+      return;
+    }
     packages = result.packages;
     metadataUpdatedAt = result.metadataUpdatedAt;
     freshnessComputedAt = now();
     invalidateDetailCache();
     loadError = false;
+    loadErrorMessage = '';
     checked.clear();
+    toast.dismissKey(PACKAGE_LIST_TOAST_KEY);
     if (!suppressStatus) {
-      toast.info(hostT('packages.loaded', {count: packages.length}));
+      toast.info(hostT('packages.loaded', {count: packages.length}), {
+        key: PACKAGE_LIST_TOAST_KEY,
+      });
     }
   } catch (error) {
+    if (destroyed) {
+      return;
+    }
     packages = [];
     checked.clear();
     loadError = true;
-    toast.error(
-      error instanceof OpkgError
-        ? error.message
-        : hostT('packages.load-failed'),
-    );
+    loadErrorMessage = error instanceof OpkgError
+      ? error.message
+      : hostT('packages.load-failed');
   } finally {
-    loading = false;
+    if (!destroyed) {
+      loading = false;
+    }
   }
 }
 
@@ -232,6 +263,9 @@ async function runAction(
       },
     });
     const event = await session.closed;
+    if (destroyed) {
+      return;
+    }
     if (event.result) { await executeAction('remove', names); }
     return;
   }
@@ -249,19 +283,31 @@ async function executeAction(
     : action === 'remove'
     ? 'packages.removing'
     : 'packages.updating';
+  const toastKey = packageActionToastKey(action);
   try {
     const result = action === 'install'
       ? await opkgClient.install(names)
       : action === 'remove'
       ? await opkgClient.remove(names)
       : await opkgClient.upgrade(names);
+    if (destroyed) {
+      return;
+    }
     await fetchPackages(true);
-    toast.success(result.message);
+    if (destroyed) {
+      return;
+    }
+    toast.success(result.message, {key: toastKey});
   } catch (error) {
-    toast.error(actionErrorMessage(error, actionKey));
+    if (destroyed) {
+      return;
+    }
+    toast.error(actionErrorMessage(error, actionKey), {key: toastKey});
   } finally {
-    loading = false;
-    if (focusTarget !== undefined) {
+    if (!destroyed) {
+      loading = false;
+    }
+    if (!destroyed && focusTarget !== undefined) {
       await restoreActionFocus(focusTarget);
     }
   }
@@ -269,6 +315,9 @@ async function executeAction(
 
 async function restoreActionFocus(target: ActionFocusTarget): Promise<void> {
   await tick();
+  if (destroyed) {
+    return;
+  }
 
   const table = tableElement as MndwTable<PackageEntry> | null;
 
@@ -330,14 +379,26 @@ async function handleRefresh(): Promise<void> {
   loading = true;
   try {
     const result = await opkgClient.update();
+    if (destroyed) {
+      return;
+    }
     await fetchPackages(true);
-    toast.success(result.message);
+    if (destroyed) {
+      return;
+    }
+    toast.success(result.message, {key: PACKAGE_REFRESH_TOAST_KEY});
   } catch (error) {
+    if (destroyed) {
+      return;
+    }
     toast.error(
       error instanceof OpkgError ? error.message : hostT('app.error'),
+      {key: PACKAGE_REFRESH_TOAST_KEY},
     );
   } finally {
-    loading = false;
+    if (!destroyed) {
+      loading = false;
+    }
   }
 }
 
@@ -366,6 +427,9 @@ async function removeOne(
       },
     );
   const event = await session.closed;
+  if (destroyed) {
+    return;
+  }
   if (event.result) {
     await executeAction('remove', [name], {packageName: name, source});
   }
@@ -505,6 +569,7 @@ onMount(() => {
       label={hostT('packages.search-label')}
     >
       <mndw-input
+        bind:this={searchInput}
         type="search"
         value={filter}
         placeholder={hostT('packages.search')}
@@ -550,15 +615,40 @@ onMount(() => {
   {/if}
   <div class="table-wrap">
     {#if loading}
-      <div class="msg-cell">{hostT('packages.loading')}</div>
+      <div
+        class="msg-cell"
+        role="status"
+      >
+        {hostT('packages.loading')}
+      </div>
     {:else if loadError}
-      <div class="msg-cell">{hostT('packages.load-failed')}</div>
-      <div class="retry-row">
+      <div
+        class="mndw-alert mndw-alert--danger package-load-error"
+        role="alert"
+      >
+        <p>{loadErrorMessage}</p>
         <mndw-button
           variant="secondary"
           onclick={() => void fetchPackages()}
         >{hostT('common.retry')}</mndw-button>
       </div>
+    {:else if filtered.length === 0}
+      <EmptyState
+        mode="compact"
+        title={hostT(
+          packages.length === 0 ? 'packages.empty' : 'packages.no-match',
+        )}
+        text={hostT(
+          packages.length === 0
+            ? 'packages.empty-next'
+            : 'packages.no-match-next',
+        )}
+        action={packages.length === 0
+        ? {label: hostT('packages.refresh'),
+          onActivate: () => void fetchPackages(), variant: 'secondary'}
+        : {label: hostT('packages.show-all'), onActivate: showAllPackages,
+          variant: 'secondary'}}
+      />
     {:else}
       <mndw-table
         bind:this={tableElement}
@@ -577,7 +667,6 @@ onMount(() => {
         columnMenu={false}
         sortMode="client"
         sort={sortState}
-        emptyLabel={emptyLabel}
         labels={tableLabels}
         onmndwselectionchange={handleSelectionChange}
         onmndwsortchange={handleSortChange}
@@ -604,5 +693,6 @@ mndw-table { display: block; min-width: 0; font-size: .8125rem; }
 mndw-table::part(viewport) { max-height: calc(100vh - 250px); overflow: auto; }
 mndw-table::part(header-cell) { position: sticky; top: 0; z-index: 1; background: var(--mndw-surface); }
 .msg-cell { text-align: center; padding: 2rem 0.625rem; color: var(--mndw-text-subtle); font-style: italic; }
-.retry-row { display: flex; justify-content: center; padding-bottom: 1rem; }
+.package-load-error { display: grid; justify-items: center; gap: 0.5rem; }
+.package-load-error p { margin: 0; }
 </style>

@@ -15,6 +15,7 @@ export const PAGE_PLUGIN_SLOW_TIMEOUT_MS = 10_000;
 export const MGMT_MUTATION_TIMEOUT_MS = 60000;
 export const MGMT_INSTALL_TIMEOUT_MS = 240000;
 export const MGMT_LIST_TIMEOUT_MS = 15_000;
+export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 /**
  * UI-session host info handed to a plugin context when neither an explicit

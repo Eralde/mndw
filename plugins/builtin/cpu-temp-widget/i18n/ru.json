@@ -15,7 +15,7 @@
   "telemetry-note.off-with-data": "Сбор телеметрии выключен. На графике данные до {time}.",
   "telemetry-note.off": "Сбор телеметрии выключен.",
   "telemetry-note.link": "Включить в настройках",
-  "telemetry-note.no-session": "Чтобы собирать телеметрию, настройте постоянную RCI-сессию.",
+  "telemetry-note.no-session": "Чтобы собирать телеметрию, включите фоновый доступ к роутеру в настройках.",
   "telemetry-note.session-link": "Открыть настройки",
   "history-catching-up": "Догоняет…",
   "history-historical": "Исторические данные"

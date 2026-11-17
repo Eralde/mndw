@@ -12,9 +12,10 @@ const mockInstall = vi.fn<(...args: unknown[]) => Promise<{message: string}>>();
 const mockRemove = vi.fn<(...args: unknown[]) => Promise<{message: string}>>();
 const mockUpgrade = vi.fn<(...args: unknown[]) => Promise<{message: string}>>();
 const mockInfo = vi.hoisted(() => vi.fn());
+const MockOpkgError = vi.hoisted(() => class extends Error {});
 
 vi.mock('../services/opkg-client.js', () => ({
-  OpkgError: Error,
+  OpkgError: MockOpkgError,
   get opkgClient() {
     return {
       list: mockList,
@@ -71,10 +72,10 @@ describe('PackageManager', () => {
     flushSync();
     await vi.waitFor(() => {
       flushSync();
-      expect(tableRoot(host).textContent).toContain('No packages found');
+      expect(host.textContent).toContain('No packages found');
     });
 
-    expect(tableRoot(host).textContent).toContain('No packages found');
+    expect(host.textContent).toContain('No packages found');
     await unmount(app);
   });
 
@@ -87,15 +88,13 @@ describe('PackageManager', () => {
       flushSync();
       await vi.waitFor(() => {
         flushSync();
-        expect(tableRoot(host).textContent).toContain('No packages found');
+        expect(host.textContent).toContain('No packages found');
       });
 
       await setLocale('ru');
       flushSync();
-      await (host.querySelector('mndw-table') as HTMLElement & {updateComplete: Promise<unknown>}).updateComplete;
-
-      expect(tableRoot(host).textContent).toContain('Пакеты не найдены');
-      expect(host.textContent).toContain('Менеджер пакетов');
+      await vi.waitFor(() => expect(host.textContent).toContain('Пакеты не найдены'));
+      expect(host.textContent).toContain('Пакеты Entware');
     } finally {
       await unmount(app);
       await setLocale('en');
@@ -126,7 +125,7 @@ describe('PackageManager', () => {
     flushSync();
     await vi.waitFor(() => {
       flushSync();
-      expect(tableRoot(host).textContent).toContain('No packages found');
+      expect(host.textContent).toContain('No packages found');
     });
 
     const refreshButton = [...host.querySelectorAll('mndw-button')].find((button) =>

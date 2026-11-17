@@ -7,6 +7,7 @@ const REPO_ROOT = resolve(import.meta.dirname, '../..');
 export const BUILD_VITEST_FILES: readonly string[] = [
   'build/builtin-plugins.test.ts',
   'build/catalog-versions.test.ts',
+  'build/catalog-text-style.test.ts',
   'build/scripts/ci-test-scope.test.ts',
   'build/dev/dev.integration.test.ts',
   'build/dev/dev.test.ts',

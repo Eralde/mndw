@@ -8,7 +8,7 @@ aside: false
 ## What is mndw
 
 mndw is a modular web UI that you install on your router as an Entware package. It runs alongside the stock web
-interface on its own port, and you sign in with the same router account.
+interface on its own port, and you log in with the same router account.
 
 Everything in mndw is a plugin: a **widget** tile on the dashboard or a whole **page**. Plugins read and change router
 settings through the router's API. A plugin can also bring a backend (a shell script or a Go program) that runs on the
@@ -32,7 +32,7 @@ the dashboard address. [Full install guide →](/install)
 ## Build your own plugin
 
 1. [Set up a project](/guides/project-setup): Node.js 22+ and the `mndw` CLI
-2. [Hello Widget](/tutorials/hello-widget): your first plugin, from scaffold to upload ZIP
+2. [Hello widget](/tutorials/hello-widget): your first plugin, from scaffold to upload ZIP
 3. [Device name](/tutorials/rci-device-name-widget): read and change a router setting through RCI
 
 [Guides](/guides/plugin-anatomy) · [CLI commands](/reference/cli) · [SDK API](/api/)

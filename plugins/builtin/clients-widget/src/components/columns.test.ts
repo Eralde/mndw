@@ -8,10 +8,10 @@ import {buildColumns} from './columns.js';
 
 const translator = createTestI18n({
   'column.name': 'Name',
-  'column.ip': 'IP Address',
+  'column.ip': 'IP address',
   'column.connection': 'Connection',
   'column.uptime': 'Uptime',
-  'column.last-seen': 'Last Seen',
+  'column.last-seen': 'Last seen',
   'link.online': 'Online',
   'link.offline': 'Offline',
   'link.unavailable': 'Unavailable',

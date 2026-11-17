@@ -28,11 +28,11 @@ the selected port later, run:
 cat /opt/var/lib/mndw/frontend-port
 ```
 
-Sign in with the router account.
+Log in with the router account.
 
 ## Upgrade
 
-In the dashboard, open **Settings → System update**. From a terminal, update the package lists and upgrade mndw:
+In the dashboard, open **Settings → mndw update**. From a terminal, update the package lists and upgrade mndw:
 
 ```sh
 opkg update && opkg upgrade mndw

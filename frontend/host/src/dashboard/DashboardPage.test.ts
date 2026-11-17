@@ -878,7 +878,7 @@ describe('DashboardPage', () => {
 
     try {
       const addButton = [...target.querySelectorAll('mndw-button')].find(
-        (btn) => btn.textContent?.includes('Add Widget'),
+        (btn) => btn.textContent?.includes('Add widget'),
       );
 
       addButton?.focus();
@@ -1037,7 +1037,7 @@ describe('DashboardPage', () => {
     expect(link?.getAttribute('href')).toBe('/settings/plugins');
     expect(link?.textContent?.trim()).toBe('Manage plugins');
     expect([...target.querySelectorAll('mndw-button')].some(
-      (button) => button.textContent?.includes('Add Widget'),
+      (button) => button.textContent?.includes('Add widget'),
     )).toBe(false);
 
     void unmount(component);
@@ -1064,7 +1064,7 @@ describe('DashboardPage', () => {
 
     const button = empty?.querySelector('mndw-button');
 
-    expect(button?.textContent).toContain('Add Widget');
+    expect(button?.textContent).toContain('Add widget');
     expect(button?.getAttribute('variant')).toBe('primary');
     // The empty state owns the CTA; the toolbar keeps no duplicate button.
     expect(target.querySelector('.mndw-dashboard__toolbar mndw-button')).toBeNull();

@@ -8,6 +8,7 @@ import {
   selfUpdateClient,
 } from '../../../services/self-update-client.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
+import {toast} from '../../../services/toast/toast.svelte.js';
 import ConfirmActionModal from '../../opkg/ConfirmActionModal.svelte';
 import {openHostModal} from '../../../services/overlay/host-overlay.js';
 import {appState} from '../../../state/app.svelte.js';
@@ -30,6 +31,11 @@ let {
   pollIntervalMs = 2_000,
   pollAttempts = 90,
 }: Props = $props();
+
+const SELF_UPDATE_CHECK_TOAST_KEY = 'settings.self-update.check';
+const SELF_UPDATE_APPLY_TOAST_KEY = 'settings.self-update.apply';
+const SELF_UPDATE_REVERT_TOAST_KEY = 'settings.self-update.revert';
+const SELF_UPDATE_STATUS_TOAST_KEY = 'settings.self-update.status';
 
 let client = $derived(providedClient ?? selfUpdateClient);
 
@@ -82,7 +88,14 @@ function setStatus(next: SelfUpdateStatus): void {
 
     closeProgressModal();
   } else if (next.state === 'idle' && awaitingCompletion) {
-    outcome = 'success';
+    awaitingCompletion = false;
+    outcome = 'idle';
+    toast.success(
+      hostT('settings.self-update-success', {version: next.version}),
+      {
+        key: selfUpdateToastKey(acceptedOperation),
+      },
+    );
 
     closeProgressModal();
   } else if (next.state === 'in-progress') {
@@ -202,6 +215,16 @@ function errorCode(error: unknown): string {
   return error instanceof SelfUpdateError ? error.code : 'UNKNOWN';
 }
 
+function selfUpdateToastKey(operation: SelfUpdateOperation | ''): string {
+  if (operation === 'update') {
+    return SELF_UPDATE_APPLY_TOAST_KEY;
+  }
+  if (operation === 'revert') {
+    return SELF_UPDATE_REVERT_TOAST_KEY;
+  }
+  return SELF_UPDATE_STATUS_TOAST_KEY;
+}
+
 interface ConfirmationProps {
   message: string;
   confirmLabel: string;
@@ -281,7 +304,7 @@ function closeProgressModal(): void {
   progressSession?.close(undefined, 'api');
 }
 
-async function recoverBusy(): Promise<void> {
+async function recoverBusy(toastKey: string): Promise<void> {
   try {
     const next = await client.status();
 
@@ -296,10 +319,15 @@ async function recoverBusy(): Promise<void> {
 
       startPolling();
     } else {
-      outcome = 'busy';
+      outcome = 'idle';
+      toast.info(hostT('settings.self-update-busy'), {key: toastKey});
     }
   } catch {
-    outcome = 'busy';
+    if (destroyed) {
+      return;
+    }
+    outcome = 'idle';
+    toast.info(hostT('settings.self-update-busy'), {key: toastKey});
   }
 }
 
@@ -312,18 +340,39 @@ async function handleCheck(): Promise<void> {
   failureCode = '';
 
   try {
-    checked = await client.check();
+    const result = await client.check();
+
+    if (destroyed) {
+      return;
+    }
+
+    checked = result;
     outcome = 'idle';
+    if (result.updateAvailable) {
+      toast.dismissKey(SELF_UPDATE_CHECK_TOAST_KEY);
+    } else {
+      toast.info(hostT('settings.self-update-no-update'), {
+        key: SELF_UPDATE_CHECK_TOAST_KEY,
+      });
+    }
   } catch (error) {
+    if (destroyed) {
+      return;
+    }
     checked = null;
 
     if (errorCode(error) === 'OPKG_BUSY') {
-      await recoverBusy();
+      await recoverBusy(SELF_UPDATE_CHECK_TOAST_KEY);
     } else {
-      outcome = 'error';
+      outcome = 'idle';
+      toast.error(hostT('settings.self-update-failure-generic'), {
+        key: SELF_UPDATE_CHECK_TOAST_KEY,
+      });
     }
   } finally {
-    loading = false;
+    if (!destroyed) {
+      loading = false;
+    }
   }
 }
 
@@ -342,6 +391,10 @@ async function handleApply(): Promise<void> {
     return;
   }
 
+  if (destroyed) {
+    return;
+  }
+
   await beginAction('update', () => client.apply());
 }
 
@@ -351,6 +404,10 @@ async function handleRevert(): Promise<void> {
   }
 
   if (!await requestConfirmation('revert', rollbackVersion)) {
+    return;
+  }
+
+  if (destroyed) {
     return;
   }
 
@@ -371,6 +428,10 @@ function resetActionState(operation: SelfUpdateOperation): void {
 async function acceptAction(action: SelfUpdateAction): Promise<void> {
   const accepted = await action();
 
+  if (destroyed) {
+    return;
+  }
+
   acceptedTarget = accepted.targetVersion;
   acceptedOperation = accepted.operation;
 
@@ -385,24 +446,37 @@ async function acceptAction(action: SelfUpdateAction): Promise<void> {
   startPolling();
 }
 
-async function handleActionError(error: unknown): Promise<void> {
+async function handleActionError(
+  error: unknown,
+  operation: SelfUpdateOperation,
+): Promise<void> {
+  if (destroyed) {
+    return;
+  }
+
+  const toastKey = selfUpdateToastKey(operation);
   closeProgressModal();
 
   switch (errorCode(error)) {
     case 'OPKG_BUSY':
-      await recoverBusy();
+      await recoverBusy(toastKey);
       return;
     case 'SELF_UPDATE_NOT_AVAILABLE':
-      failureCode = 'no-update';
+      toast.info(hostT('settings.self-update-no-update'), {key: toastKey});
       break;
     case 'SELF_UPDATE_ROLLBACK_UNAVAILABLE':
-      failureCode = 'rollback-unavailable';
+      toast.info(hostT('settings.self-update-rollback-unavailable'), {
+        key: toastKey,
+      });
       break;
     default:
-      failureCode = '';
+      toast.error(hostT('settings.self-update-failure-generic'), {
+        key: toastKey,
+      });
   }
 
-  outcome = 'error';
+  failureCode = '';
+  outcome = 'idle';
 }
 
 async function beginAction(
@@ -415,9 +489,11 @@ async function beginAction(
   try {
     await acceptAction(action);
   } catch (error) {
-    await handleActionError(error);
+    await handleActionError(error, operation);
   } finally {
-    loading = false;
+    if (!destroyed) {
+      loading = false;
+    }
   }
 }
 
@@ -472,7 +548,7 @@ const canRevert = $derived.by(() => {
     <p role="status">{hostT('settings.self-update-checking')}</p>
   {:else if outcome === 'preparing'}
     <p role="status">{hostT('settings.self-update-preparing')}</p>
-  {:else if status?.state === 'in-progress'}
+  {:else if status?.state === 'in-progress' && outcome !== 'unconfirmed'}
     <p role="status">
       {
         hostT(
@@ -483,20 +559,10 @@ const canRevert = $derived.by(() => {
         )
       }
     </p>
-  {:else if outcome === 'success'}
-    <p role="status">
-      {hostT('settings.self-update-success', {version: currentVersion})}
-    </p>
   {:else if outcome === 'failure'}
     <p role="alert">{failureMessage(failureCode)}</p>
-  {:else if outcome === 'unconfirmed'}
-    <p role="alert">{hostT('settings.self-update-unconfirmed')}</p>
-  {:else if outcome === 'busy'}
-    <p role="alert">{hostT('settings.self-update-busy')}</p>
-  {:else if outcome === 'error' && failureCode === 'no-update'}
-    <p role="alert">{hostT('settings.self-update-no-update')}</p>
-  {:else if outcome === 'error' && failureCode === 'rollback-unavailable'}
-    <p role="alert">{hostT('settings.self-update-rollback-unavailable')}</p>
+  {:else if outcome === 'unconfirmed' && progress === null}
+    <p role="status">{hostT('settings.self-update-unconfirmed')}</p>
   {:else if outcome === 'error'}
     <p role="alert">{hostT('settings.self-update-failure-generic')}</p>
   {/if}

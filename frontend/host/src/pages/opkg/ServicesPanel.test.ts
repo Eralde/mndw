@@ -133,7 +133,37 @@ describe('ServicesPanel loading', () => {
 
     resolveList([]);
 
-    await vi.waitFor(() => expect(target.querySelector('[role="status"]')?.textContent).toContain('No services found'));
+    await vi.waitFor(() =>
+      expect(target.querySelector('.mndw-empty-state')?.textContent).toContain('No services found')
+    );
+    await unmount(app);
+    target.remove();
+  });
+
+  it('keeps unsupported service capability as a muted status', async () => {
+    mockList.mockRejectedValue(Object.assign(new Error('unsupported'), {code: 'SERVICE_UNAVAILABLE'}));
+
+    const target = createTarget();
+    const app = mount(ServicesPanel, {target});
+
+    await vi.waitFor(() => expect(target.querySelector('.capability[role="status"]')).not.toBeNull());
+    expect(target.querySelector('[role="alert"]')).toBeNull();
+    await unmount(app);
+    target.remove();
+  });
+
+  it('marks a failed service list as an alert and offers retry in place', async () => {
+    mockList.mockRejectedValueOnce(new Error('offline')).mockResolvedValue([]);
+
+    const target = createTarget();
+    const app = mount(ServicesPanel, {target});
+
+    await vi.waitFor(() => expect(target.querySelector('[role="alert"]')).not.toBeNull());
+    expect(target.querySelector('[role="alert"]')?.textContent).toContain('Failed to load services');
+    expect(target.querySelector('[role="alert"]')?.classList.contains('mndw-alert--danger')).toBe(true);
+    target.querySelector<HTMLElement>('[role="alert"] mndw-button')?.click();
+    await vi.waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(target.querySelector('.mndw-empty-state')).not.toBeNull());
     await unmount(app);
     target.remove();
   });

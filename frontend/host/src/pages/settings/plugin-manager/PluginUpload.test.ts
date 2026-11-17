@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {type ComponentProps, flushSync, mount, unmount} from 'svelte';
 
+import {MAX_UPLOAD_BYTES} from '../../../constants.js';
 import type {UploadResult} from '../../../services/mgmt-client.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {setLocale} from '../../../services/locale.service.js';
+import {toast} from '../../../services/toast/toast.svelte.js';
 import PluginUpload from './PluginUpload.svelte';
 
 const entry: PluginListEntry = {
@@ -73,7 +75,12 @@ function deferred<T>(): {promise: Promise<T>; resolve: (value: T) => void} {
 }
 
 describe('PluginUpload', () => {
+  beforeEach(() => {
+    toast.clear();
+  });
+
   afterEach(() => {
+    toast.clear();
     document.body.innerHTML = '';
   });
 
@@ -138,6 +145,32 @@ describe('PluginUpload', () => {
     void unmount(component);
   });
 
+  it('shows the localized upload limit from the shared byte cap', async () => {
+    const uploadFile = vi.fn();
+    const {component, target} = mountUpload({uploadFile});
+    const file = new File([new Uint8Array(MAX_UPLOAD_BYTES + 1)], 'plugin.zip', {type: 'application/zip'});
+
+    try {
+      await setLocale('en');
+      await drop(target, file);
+
+      expect(uploadFile).not.toHaveBeenCalled();
+      expect(target.querySelector('.mndw-alert--danger')?.textContent).toBe(
+        'The ZIP file exceeds the 10 MiB upload limit.',
+      );
+
+      await setLocale('ru');
+      await drop(target, file);
+
+      expect(target.querySelector('.mndw-alert--danger')?.textContent).toBe(
+        'Размер ZIP-файла превышает лимит загрузки 10 МБ.',
+      );
+    } finally {
+      await unmount(component);
+      await setLocale('en');
+    }
+  });
+
   it('updates upload labels and validation errors after a locale commit', async () => {
     const {component, target} = mountUpload();
 
@@ -176,10 +209,13 @@ describe('PluginUpload', () => {
     await drop(target, new File(['plugin'], 'plugin.zip', {type: 'application/zip'}));
 
     expect(onInstalled).toHaveBeenCalledOnce();
-    await vi.waitFor(() => {
-      expect(target.querySelector('.mndw-upload__success')?.textContent).toBe('Installed "Network Tools".');
-    });
-    expect(target.querySelector('.mndw-upload__success')?.getAttribute('role')).toBe('status');
+    await vi.waitFor(() =>
+      expect(toast.toasts[0]).toMatchObject({
+        variant: 'success',
+        message: 'Installed “Network Tools”.',
+      })
+    );
+    expect(target.querySelector('.mndw-upload__success')).toBeNull();
 
     void unmount(component);
   });
@@ -197,7 +233,7 @@ describe('PluginUpload', () => {
     await drop(target, new File(['plugin'], 'plugin.zip', {type: 'application/zip'}));
 
     await vi.waitFor(() => {
-      expect(target.textContent).toContain('Installed "Network Tools".');
+      expect(toast.toasts[0]?.message).toBe('Installed “Network Tools”.');
     });
     expect(target.textContent).toContain('Version compatibility');
     expect(target.textContent).toContain('Built for @mndw/sdk 2.0.0');
@@ -214,7 +250,7 @@ describe('PluginUpload', () => {
     await drop(target, new File(['second'], 'second.zip', {type: 'application/zip'}));
 
     expect(uploadFile).toHaveBeenCalledOnce();
-    expect(target.querySelector('.mndw-upload__status')?.textContent).toBe('Uploading plugin...');
+    expect(target.querySelector('.mndw-upload__status')?.textContent).toBe('Uploading plugin…');
     expect(target.querySelector('.mndw-upload__status')?.getAttribute('role')).toBe('status');
 
     void unmount(component);
@@ -254,7 +290,7 @@ describe('PluginUpload', () => {
 
     await drop(target, new File(['plugin'], 'plugin.zip', {type: 'application/zip'}));
     await vi.waitFor(() => {
-      expect(target.querySelector('.mndw-upload__status')?.textContent).toBe('Waiting for approval...');
+      expect(target.querySelector('.mndw-upload__status')?.textContent).toBe('Waiting for approval…');
     });
     expect(target.querySelector('.mndw-upload__status')?.getAttribute('role')).toBe('status');
 
@@ -267,8 +303,12 @@ describe('PluginUpload', () => {
 
     expect(onDeny).not.toHaveBeenCalled();
     await vi.waitFor(() => {
-      expect(target.querySelector('.mndw-upload__success')?.textContent).toBe('Approved "Network Tools".');
+      expect(toast.toasts[0]).toMatchObject({
+        variant: 'success',
+        message: 'Approved “Network Tools”.',
+      });
     });
+    expect(target.querySelector('.mndw-upload__success')).toBeNull();
 
     void unmount(component);
   });

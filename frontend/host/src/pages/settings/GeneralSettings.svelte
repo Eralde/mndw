@@ -4,6 +4,7 @@ import type {MndwSelectChangeDetail, MndwSwitchChangeDetail} from '@mndw/ui';
 import PaletteManager from './palette-manager/PaletteManager.svelte';
 import {toggleTheme} from '../../services/theme.service.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
+import {toast} from '../../services/toast/toast.svelte.js';
 import {appState} from '../../state/app.svelte.js';
 import {getHostServices} from '../../host-services-context.js';
 import {
@@ -20,6 +21,12 @@ interface PermissionState {
 interface Props {
   onPermissionStateChange: (state: PermissionState) => void;
 }
+
+const TELEMETRY_SAVE_TOAST_KEY = 'settings.telemetry.save';
+const TOKENLESS_TOGGLE_TOAST_KEY = 'settings.router-access.toggle';
+const CONTROLLER_TEST_TOAST_KEY = 'settings.controller.test';
+const CONTROLLER_SAVE_TOAST_KEY = 'settings.controller.save';
+const CONTROLLER_CLEAR_TOAST_KEY = 'settings.controller.clear';
 
 let {onPermissionStateChange}: Props = $props();
 const services = getHostServices();
@@ -46,10 +53,10 @@ let controllerTokenPlaceholder = $derived.by(() => {
 let persistentEnabled = $state(false);
 let persistentLoading = $state(true);
 let persistentActionLoading = $state(false);
-let persistentError = $state('');
 let controllerToken = $state('');
 let controllerResult = $state<ControllerTestResult | null>(null);
 let capabilityPollController: AbortController | null = null;
+let destroyed = false;
 let telemetryEnabled = $state(false);
 let telemetryLoading = $state(true);
 let telemetryError = $state('');
@@ -84,6 +91,7 @@ onMount(() => {
 });
 
 onDestroy(() => {
+  destroyed = true;
   controllerToken = '';
 
   capabilityPollController?.abort();
@@ -93,19 +101,29 @@ onDestroy(() => {
 
 async function refreshPersistentCapability(): Promise<void> {
   persistentLoading = true;
-  persistentError = '';
 
   try {
-    persistentCapability = await persistentRci.getCapability();
+    const capability = await persistentRci.getCapability();
+
+    if (destroyed) {
+      return;
+    }
+
+    persistentCapability = capability;
     persistentEnabled = persistentCapability.controller.enabled
       || persistentCapability.controller.support === 'needs-token';
 
     startCapabilityPolling();
   } catch {
+    if (destroyed) {
+      return;
+    }
     persistentCapability = null;
     persistentEnabled = false;
   } finally {
-    persistentLoading = false;
+    if (!destroyed) {
+      persistentLoading = false;
+    }
   }
 }
 
@@ -113,11 +131,22 @@ async function refreshTelemetry(): Promise<void> {
   telemetryLoading = true;
   telemetryError = '';
   try {
-    telemetryEnabled = (await services.mgmtClient.getTelemetry()).enabled;
+    const result = await services.mgmtClient.getTelemetry();
+
+    if (destroyed) {
+      return;
+    }
+
+    telemetryEnabled = result.enabled;
   } catch {
+    if (destroyed) {
+      return;
+    }
     telemetryError = hostT('settings.telemetry-error');
   } finally {
-    telemetryLoading = false;
+    if (!destroyed) {
+      telemetryLoading = false;
+    }
   }
 }
 
@@ -130,12 +159,25 @@ function setTelemetryEnabled(
   telemetryError = '';
   telemetryLoading = true;
   void services.mgmtClient.setTelemetry(next).then(() => {
+    if (destroyed) {
+      return;
+    }
+
     services.telemetryGathering.report(next);
+    toast.dismissKey(TELEMETRY_SAVE_TOAST_KEY);
   }).catch(() => {
+    if (destroyed) {
+      return;
+    }
+
     telemetryEnabled = previous;
-    telemetryError = hostT('settings.telemetry-error');
+    toast.error(hostT('settings.telemetry-error'), {
+      key: TELEMETRY_SAVE_TOAST_KEY,
+    });
   }).finally(() => {
-    telemetryLoading = false;
+    if (!destroyed) {
+      telemetryLoading = false;
+    }
   });
 }
 
@@ -144,7 +186,6 @@ function setPersistentEnabled(
 ): void {
   persistentEnabled = event.detail.checked ?? event.detail.value ?? false;
   controllerResult = null;
-  persistentError = '';
 
   if (!persistentEnabled) {
     controllerToken = '';
@@ -168,12 +209,20 @@ async function setTokenlessEnabled(
     };
   }
 
-  persistentError = '';
-
   try {
     await persistentRci.setEnabled(next);
+    if (destroyed) {
+      return;
+    }
     await refreshPersistentCapability();
+    if (destroyed) {
+      return;
+    }
+    toast.dismissKey(TOKENLESS_TOGGLE_TOAST_KEY);
   } catch (error) {
+    if (destroyed) {
+      return;
+    }
     if (persistentCapability) {
       persistentCapability = {
         ...persistentCapability,
@@ -182,9 +231,16 @@ async function setTokenlessEnabled(
     }
 
     await refreshPersistentCapability();
-    persistentError = persistentErrorMessage(error);
+    if (destroyed) {
+      return;
+    }
+    toast.error(persistentErrorMessage(error), {
+      key: TOKENLESS_TOGGLE_TOAST_KEY,
+    });
   } finally {
-    persistentActionLoading = false;
+    if (!destroyed) {
+      persistentActionLoading = false;
+    }
   }
 }
 
@@ -210,53 +266,102 @@ function persistentErrorMessage(error: unknown): string {
 
 async function testController(): Promise<void> {
   persistentActionLoading = true;
-  persistentError = '';
   controllerResult = null;
 
   try {
-    controllerResult = await persistentRci.testController(controllerToken);
+    const result = await persistentRci.testController(controllerToken);
+
+    if (destroyed) {
+      return;
+    }
+
+    showControllerResult(result, CONTROLLER_TEST_TOAST_KEY);
   } catch (error) {
-    persistentError = persistentErrorMessage(error);
+    if (!destroyed) {
+      toast.error(persistentErrorMessage(error), {
+        key: CONTROLLER_TEST_TOAST_KEY,
+      });
+    }
   } finally {
-    persistentActionLoading = false;
+    if (!destroyed) {
+      persistentActionLoading = false;
+    }
   }
 }
 
 async function saveController(): Promise<void> {
   persistentActionLoading = true;
-  persistentError = '';
   controllerResult = null;
 
   try {
-    // @dprint-ignore
-    controllerResult = await persistentRci.saveController(controllerToken);
+    const result = await persistentRci.saveController(controllerToken);
+
+    if (destroyed) {
+      return;
+    }
+
+    showControllerResult(result, CONTROLLER_SAVE_TOAST_KEY);
     controllerToken = '';
 
     await refreshPersistentCapability();
   } catch (error) {
-    persistentError = persistentErrorMessage(error);
+    if (!destroyed) {
+      toast.error(persistentErrorMessage(error), {
+        key: CONTROLLER_SAVE_TOAST_KEY,
+      });
+    }
   } finally {
-    controllerToken = '';
-    persistentActionLoading = false;
+    if (!destroyed) {
+      controllerToken = '';
+      persistentActionLoading = false;
+    }
   }
 }
 
 async function clearController(): Promise<void> {
   persistentActionLoading = true;
-  persistentError = '';
 
   try {
     await persistentRci.clearController();
+
+    if (destroyed) {
+      return;
+    }
 
     persistentEnabled = false;
     controllerToken = '';
     controllerResult = null;
 
     await refreshPersistentCapability();
+    if (destroyed) {
+      return;
+    }
+    toast.dismissKey(CONTROLLER_CLEAR_TOAST_KEY);
   } catch (error) {
-    persistentError = persistentErrorMessage(error);
+    if (!destroyed) {
+      toast.error(persistentErrorMessage(error), {
+        key: CONTROLLER_CLEAR_TOAST_KEY,
+      });
+    }
   } finally {
-    persistentActionLoading = false;
+    if (!destroyed) {
+      persistentActionLoading = false;
+    }
+  }
+}
+
+function showControllerResult(
+  result: ControllerTestResult,
+  toastKey: string,
+): void {
+  controllerResult = result;
+
+  if (result.result === 'valid') {
+    toast.success(hostT('settings.controller-token-valid'), {key: toastKey});
+  } else if (result.result === 'unreachable') {
+    toast.error(hostT('settings.device-unreachable'), {key: toastKey});
+  } else {
+    toast.dismissKey(toastKey);
   }
 }
 
@@ -414,10 +519,18 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
       <p role="status">{hostT('settings.persistent-loading')}</p>
     {:else}
       {#if persistentAuth === 'unknown'}
-        <p role="alert">{hostT('settings.persistent-state-unavailable')}</p>
-        {#if persistentError}
-          <p role="alert">{persistentError}</p>
-        {/if}
+        <div
+          class="mndw-alert mndw-alert--danger"
+          role="alert"
+        >
+          <p>{hostT('settings.persistent-state-unavailable')}</p>
+          <mndw-button
+            variant="secondary"
+            onclick={() => void refreshPersistentCapability()}
+          >
+            {hostT('common.retry')}
+          </mndw-button>
+        </div>
       {:else if persistentAuth === 'none'}
         <mndw-field label={hostT('settings.persistent-tokenless-toggle')}>
           <mndw-switch
@@ -430,9 +543,6 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
           </mndw-switch>
         </mndw-field>
         <p>{hostT('settings.persistent-tokenless-description')}</p>
-        {#if persistentError}
-          <p role="alert">{persistentError}</p>
-        {/if}
       {:else}
         <mndw-field label={hostT('settings.configure-persistent')}>
           <mndw-switch
@@ -443,18 +553,15 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
           >
           </mndw-switch>
         </mndw-field>
-        {#if persistentError}
-          <p role="alert">{persistentError}</p>
-        {/if}
         {#if persistentCapability?.store.state === 'disabled'}
-          <p role="alert">{hostT('settings.persistent-storage-disabled')}</p>
+          <p role="status">{hostT('settings.persistent-storage-disabled')}</p>
         {:else if persistentCapability?.store.state === 'decrypt-failed'}
           <p role="alert">
             {hostT('settings.persistent-storage-decrypt-failed')}
           </p>
         {/if}
         {#if persistentCapability?.controller.support === 'needs-token'}
-          <p role="alert">{hostT('settings.persistent-needs-token')}</p>
+          <p role="status">{hostT('settings.persistent-needs-token')}</p>
         {/if}
         {#if persistentEnabled
         || persistentCapability?.controller.support === 'needs-token'}
@@ -462,6 +569,7 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
             <mndw-input
               type="password"
               autocomplete="off"
+              aria-describedby="mndw-controller-token-hint"
               placeholder={controllerTokenPlaceholder}
               value={controllerToken}
               disabled={persistentActionLoading}
@@ -469,6 +577,12 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
             >
             </mndw-input>
           </mndw-field>
+          <p
+            id="mndw-controller-token-hint"
+            class="persistent-rci-hint"
+          >
+            {hostT('settings.controller-token-hint')}
+          </p>
           <div class="persistent-rci-actions">
             <mndw-button
               variant="secondary"
@@ -496,15 +610,8 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
           </div>
           {#if controllerResult}
             {#if controllerResult.result === 'unsupported-firmware'}
-              <p
-                class="unsupported-banner"
-                role="alert"
-              >
+              <p role="status">
                 {hostT('settings.update-firmware-persistent')}
-              </p>
-            {:else if controllerResult.result === 'valid'}
-              <p>
-                {hostT('settings.controller-token-valid')}
               </p>
             {:else if controllerResult.result === 'invalid-token'}
               <p
@@ -512,13 +619,6 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
                 role="alert"
               >
                 {hostT('settings.controller-token-rejected')}
-              </p>
-            {:else if controllerResult.result === 'unreachable'}
-              <p
-                class="unsupported-banner"
-                role="alert"
-              >
-                {hostT('settings.device-unreachable')}
               </p>
             {/if}
           {/if}
@@ -598,7 +698,18 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
     {/if}
     <p>{hostT('settings.telemetry-wear-note')}</p>
     {#if telemetryError}
-      <p role="alert">{telemetryError}</p>
+      <div
+        class="mndw-alert mndw-alert--danger"
+        role="alert"
+      >
+        <p>{telemetryError}</p>
+        <mndw-button
+          variant="secondary"
+          onclick={() => void refreshTelemetry()}
+        >
+          {hostT('common.retry')}
+        </mndw-button>
+      </div>
     {/if}
   </section>
 </div>
@@ -613,6 +724,11 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0.75rem 0;
+}
+
+.persistent-rci-hint {
+  color: var(--mndw-text-muted);
+  font-size: var(--mndw-text-sm);
 }
 
 .persistent-rci-extenders {

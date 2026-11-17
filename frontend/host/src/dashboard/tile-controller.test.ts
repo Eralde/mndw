@@ -286,7 +286,7 @@ describe('tile controller', () => {
     const notice = controller?.body.querySelector<HTMLElement>('[role="alert"]');
     const retryButton = notice?.querySelector<HTMLButtonElement>('.mndw-grid-tile__retry');
 
-    expect(notice?.querySelector('h3')?.textContent).toBe('Plugin «retry» failed to load');
+    expect(notice?.querySelector('h3')?.textContent).toBe('Plugin “retry” failed to load');
     expect(retryButton?.textContent).toBe('Retry');
     expect(retryButton?.disabled).toBe(false);
     expect(notice?.querySelector('.mndw-grid-tile__remove-failed')?.textContent).toBe('Remove');

@@ -1,9 +1,10 @@
 <script lang="ts">
-import {onMount} from 'svelte';
+import {onDestroy, onMount} from 'svelte';
 import type {PaletteTokenMap} from '@mndw/sdk';
 import type {PaletteContrastWarning} from '@mndw/sdk-internal/palette';
 import {messageForError} from '../../../services/mgmt-client.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
+import {toast} from '../../../services/toast/toast.svelte.js';
 import PaletteExport from './PaletteExport.svelte';
 import PaletteImport from './PaletteImport.svelte';
 import PalettePreview from './PalettePreview.svelte';
@@ -19,15 +20,21 @@ type State =
   | 'resetting'
   | 'importError';
 
+const PALETTE_COMMIT_TOAST_KEY = 'settings.palette.commit';
+const PALETTE_RESET_TOAST_KEY = 'settings.palette.reset';
+
 let paletteState = $state<State>('loading');
 const paletteService = getHostServices().palette;
 let refreshError = $state('');
 let importErrors = $state<string[]>([]);
 let commitError = $state('');
-let resetError = $state('');
-let saved = $state(false);
 let pending = $state<PaletteTokenMap | null>(null);
 let warnings = $state<PaletteContrastWarning[]>([]);
+let destroyed = false;
+
+onDestroy(() => {
+  destroyed = true;
+});
 
 let importDisabled = $derived.by(() => {
   return paletteState === 'loading'
@@ -67,11 +74,19 @@ async function load(): Promise<void> {
 
   try {
     await paletteService.refreshPalette();
+    if (destroyed) {
+      return;
+    }
     refreshError = '';
   } catch (caught) {
+    if (destroyed) {
+      return;
+    }
     refreshError = paletteErrorMessage(caught, 'settings.palette.load-failed');
   } finally {
-    paletteState = 'idle';
+    if (!destroyed) {
+      paletteState = 'idle';
+    }
   }
 }
 
@@ -86,7 +101,6 @@ onMount(() => {
 function onImportStart(): void {
   importErrors = [];
   commitError = '';
-  saved = false;
   paletteState = 'importing';
 }
 
@@ -96,7 +110,6 @@ function onPreview(
 ): void {
   importErrors = [];
   commitError = '';
-  saved = false;
   pending = palette;
   warnings = next;
   paletteService.previewOverride(palette);
@@ -123,12 +136,23 @@ async function confirm(): Promise<void> {
 
   try {
     await paletteService.commitOverride(pending);
+    if (destroyed) {
+      return;
+    }
     pending = null;
     warnings = [];
-    saved = true;
+    toast.success(hostT('settings.palette.saved'), {
+      key: PALETTE_COMMIT_TOAST_KEY,
+    });
     paletteState = 'idle';
   } catch (caught) {
-    commitError = paletteErrorMessage(caught, 'settings.palette.operation-failed');
+    if (destroyed) {
+      return;
+    }
+    commitError = paletteErrorMessage(
+      caught,
+      'settings.palette.operation-failed',
+    );
     paletteState = 'previewing';
   }
 }
@@ -143,15 +167,27 @@ function discard(): void {
 
 async function reset(): Promise<void> {
   paletteState = 'resetting';
-  resetError = '';
 
   try {
     await paletteService.resetToDefault();
-    saved = false;
+    if (destroyed) {
+      return;
+    }
+    toast.dismissKey(PALETTE_RESET_TOAST_KEY);
   } catch (caught) {
-    resetError = paletteErrorMessage(caught, 'settings.palette.operation-failed');
+    if (destroyed) {
+      return;
+    }
+    toast.error(
+      paletteErrorMessage(caught, 'settings.palette.operation-failed'),
+      {
+        key: PALETTE_RESET_TOAST_KEY,
+      },
+    );
   } finally {
-    paletteState = 'idle';
+    if (!destroyed) {
+      paletteState = 'idle';
+    }
   }
 }
 </script>
@@ -227,10 +263,6 @@ async function reset(): Promise<void> {
       </div>
     {/if}
 
-    {#if saved}
-      <p role="status">{hostT('settings.palette.saved')}</p>
-    {/if}
-
     <div class="mndw-palette-manager__actions">
       <PaletteExport
         disabled={exportDisabled}
@@ -239,7 +271,6 @@ async function reset(): Promise<void> {
       <PaletteReset
         busy={paletteState === 'resetting'}
         disabled={resetDisabled}
-        error={resetError}
         onReset={() => void reset()}
       />
     </div>

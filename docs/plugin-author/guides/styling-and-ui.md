@@ -92,3 +92,9 @@ registers them because `customElements.define` is page-global. See the
 
 The [Hello widget](https://github.com/Eralde/mndw/tree/master/plugins/examples/hello-widget) is a
 small example of scoped CSS using host tokens.
+
+## Texts
+
+Use sentence case for English labels and titles, keep product names capitalized, and use `…` for ellipses. Use
+English curly quotes (`“…”`) and Russian guillemets (`«…»`) in localized strings. Write button labels as actions and
+render icons in markup instead of including icon glyphs in translated text.

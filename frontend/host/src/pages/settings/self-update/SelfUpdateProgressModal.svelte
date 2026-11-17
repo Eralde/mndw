@@ -25,7 +25,7 @@ const message = $derived.by((): string => {
 </script>
 
 <div class="mndw-self-update-progress-modal">
-  <p role={progress.phase === 'unconfirmed' ? 'alert' : 'status'}>{message}</p>
+  <p role="status">{message}</p>
 
   {#if progress.phase === 'unconfirmed'}
     <mndw-button

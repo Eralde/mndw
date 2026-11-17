@@ -2,7 +2,7 @@
   "title": "Terminal",
   "action": {
     "router-cli": "Router CLI",
-    "entware-shell": "Entware Shell",
+    "entware-shell": "Entware shell",
     "retry": "Retry",
     "reconnect": "Reconnect",
     "disconnect": "Disconnect"

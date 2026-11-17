@@ -139,7 +139,7 @@ describe('Header locale controls', () => {
     const component = mount(Header, {target, context: createHostServicesContext(createHostServices())});
 
     try {
-      expect(target.querySelector('.mndw-header__logout')?.textContent?.trim()).toBe('Logout');
+      expect(target.querySelector('.mndw-header__logout')?.textContent?.trim()).toBe('Log out');
 
       await localeService.localeService.setLocale('ru');
       flushSync();
@@ -189,7 +189,7 @@ describe('Header locale controls', () => {
       await Promise.resolve();
       expect(logoutButton?.getAttribute('variant')).toBe('ghost');
       expect(logoutButton?.querySelector('mndw-icon')?.getAttribute('name')).toBe('log-out');
-      expect(logoutButton?.textContent?.trim()).toBe('Logout');
+      expect(logoutButton?.textContent?.trim()).toBe('Log out');
     } finally {
       await unmount(component);
     }
@@ -244,8 +244,7 @@ describe('Header menu toggle', () => {
     );
     // `mndw-button` forwards aria state to the native button inside its shadow root, so the
     // expanded state must be asserted there: the host element has no role for assistive tech.
-    const innerButton = (): HTMLButtonElement | null | undefined =>
-      menu?.shadowRoot?.querySelector('button');
+    const innerButton = (): HTMLButtonElement | null | undefined => menu?.shadowRoot?.querySelector('button');
 
     const expectExpanded = async (value: string): Promise<void> => {
       await vi.waitFor(() => {

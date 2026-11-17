@@ -1,11 +1,14 @@
 <script lang="ts">
 import {onDestroy} from 'svelte';
 
+import {MAX_UPLOAD_BYTES} from '../../../constants.js';
 import {
   type UploadResult,
   messageForError,
 } from '../../../services/mgmt-client.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
+import {toast} from '../../../services/toast/toast.svelte.js';
+import {getUploadLimitLabel} from '../../../services/upload-limit.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import InstallVersionWarnings from './InstallVersionWarnings.svelte';
 import {openApprovalModal} from './approval-modal.js';
@@ -14,10 +17,11 @@ import {
   validateExampleUploadTarget,
 } from './upload-target.js';
 
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-
 type UploadStatus = 'idle' | 'uploading' | 'busy' | 'success' | 'error';
 type ApprovalDecision = 'approve' | 'deny' | undefined;
+
+const PLUGIN_INSTALL_TOAST_KEY = 'settings.plugin-manager.install';
+const PLUGIN_APPROVAL_TOAST_KEY = 'settings.plugin-manager.approval';
 
 interface ApprovalOutcome {
   decision: ApprovalDecision;
@@ -49,7 +53,6 @@ let {
 
 let status = $state<UploadStatus>('idle');
 let error = $state('');
-let success = $state('');
 let installedEntry = $state<PluginListEntry | null>(null);
 let approvalController: AbortController | undefined;
 let destroyed = false;
@@ -69,7 +72,9 @@ function validate(file: File): string | undefined {
   }
 
   if (file.size > MAX_UPLOAD_BYTES) {
-    return hostT('settings.plugin-manager.zip-too-large');
+    return hostT('settings.plugin-manager.zip-too-large', {
+      limit: getUploadLimitLabel(),
+    });
   }
 }
 
@@ -105,11 +110,14 @@ function showError(message: string): void {
 
 function markInstalled(entry: PluginListEntry): void {
   installedEntry = entry;
-  success = hostT(
-    'settings.plugin-manager.installed-success',
-    {
-      label: entry.label,
-    },
+  toast.success(
+    hostT(
+      'settings.plugin-manager.installed-success',
+      {
+        label: entry.label,
+      },
+    ),
+    {key: PLUGIN_INSTALL_TOAST_KEY},
   );
 
   status = 'success';
@@ -158,11 +166,14 @@ async function resolvePending(
       return;
     }
 
-    success = hostT(
-      'settings.plugin-manager.approved-success',
-      {
-        label: entry.label,
-      },
+    toast.success(
+      hostT(
+        'settings.plugin-manager.approved-success',
+        {
+          label: entry.label,
+        },
+      ),
+      {key: PLUGIN_APPROVAL_TOAST_KEY},
     );
 
     status = 'success';
@@ -277,6 +288,7 @@ function onDrop(event: DragEvent): void {
   </div>
 
   <label
+    id="mndw-plugin-upload"
     class="mndw-upload__zone"
     ondragover={(event) => event.preventDefault()}
     ondrop={onDrop}
@@ -306,13 +318,9 @@ function onDrop(event: DragEvent): void {
       {hostT('settings.plugin-manager.waiting-approval')}
     </p>
   {:else if status === 'success'}
-    <p
-      class="mndw-upload__success"
-      role="status"
-    >
-      {success}
-    </p>
-    <InstallVersionWarnings lock={installedEntry?.lock} />
+    {#if installedEntry}
+      <InstallVersionWarnings lock={installedEntry.lock} />
+    {/if}
   {:else if status === 'error'}
     <div
       class="mndw-alert mndw-alert--danger"
@@ -347,13 +355,8 @@ function onDrop(event: DragEvent): void {
   max-width: 100%;
 }
 
-.mndw-upload__status,
-.mndw-upload__success {
+.mndw-upload__status {
   margin: 0;
   font-size: var(--mndw-text-sm);
-}
-
-.mndw-upload__success {
-  color: var(--mndw-success, var(--mndw-text));
 }
 </style>

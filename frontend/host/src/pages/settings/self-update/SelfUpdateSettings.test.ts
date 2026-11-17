@@ -2,8 +2,10 @@
 import {afterEach, beforeAll, describe, expect, it, vi} from 'vitest';
 import {mount, unmount} from 'svelte';
 import {defineMndwUi} from '@mndw/ui';
-import type {SelfUpdateClient} from '../../../services/self-update-client.js';
+import {type SelfUpdateClient, SelfUpdateError} from '../../../services/self-update-client.js';
 import {defaultOverlayRuntime} from '../../../services/overlay/overlay-manager.svelte.js';
+import {hostT} from '../../../services/host-i18n.svelte.js';
+import {toast} from '../../../services/toast/toast.svelte.js';
 import SelfUpdateSettings from './SelfUpdateSettings.svelte';
 
 const mountSettings = (client: SelfUpdateClient, options: {pollIntervalMs?: number; pollAttempts?: number} = {}) => {
@@ -26,6 +28,7 @@ afterEach(() => {
   }
 
   document.body.innerHTML = '';
+  toast.clear();
   vi.useRealTimers();
 });
 
@@ -54,6 +57,30 @@ describe('SelfUpdateSettings', () => {
     expect(target.textContent).toContain('Rollback version: 0.0.2');
 
     void unmount(component);
+  });
+
+  it('shows an info toast when Check completes with no update available', async () => {
+    const client = fakeClient({
+      check: vi.fn().mockResolvedValue({
+        currentVersion: '0.0.3',
+        updateAvailable: false,
+        rollbackAvailable: false,
+      }),
+    });
+    const {component, target} = mountSettings(client);
+
+    await vi.waitFor(() => expect(target.textContent).toContain('Running version: 0.0.3'));
+    target.querySelectorAll('mndw-button')[0]?.click();
+
+    await vi.waitFor(() =>
+      expect(toast.toasts[0]).toMatchObject({
+        key: 'settings.self-update.check',
+        variant: 'info',
+        message: hostT('settings.self-update-no-update'),
+      })
+    );
+    expect(target.textContent).not.toContain('Update available:');
+    await unmount(component);
   });
 });
 
@@ -85,7 +112,13 @@ it('uses accepted apply target and terminal status version', async () => {
   resolveApply?.({operation: 'update', targetVersion: '0.0.5'});
   await vi.advanceTimersByTimeAsync(10);
   await vi.advanceTimersByTimeAsync(10);
-  await vi.waitFor(() => expect(target.textContent).toContain('Update complete. Running version: 0.0.5'));
+  await vi.waitFor(() =>
+    expect(toast.toasts[0]).toMatchObject({
+      variant: 'success',
+      message: 'Update complete. Running version: 0.0.5',
+    })
+  );
+  expect(target.querySelector('[role="status"]')).toBeNull();
   expect(status).toHaveBeenCalledTimes(3);
 
   void unmount(component);
@@ -177,12 +210,18 @@ it('makes the progress modal closable when completion cannot be confirmed', asyn
 
   const [progress] = defaultOverlayRuntime.store.layers;
 
+  expect(progress?.contentElement.querySelector('[role="status"]')).not.toBeNull();
+  expect(progress?.contentElement.querySelector('[role="alert"]')).toBeNull();
   expect(progress?.closeOnEscape).toBe(false);
   expect(progress?.shell?.showCloseButton).toBe(false);
   expect(progress?.contentElement.querySelector('mndw-button')).not.toBeNull();
 
   progress?.contentElement.querySelector('mndw-button')?.click();
   await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(0));
+  expect(target.querySelector('[role="status"]')?.textContent).toContain(
+    hostT('settings.self-update-unconfirmed'),
+  );
+  expect(target.querySelector('[role="alert"]')).toBeNull();
 
   void unmount(component);
 });
@@ -195,7 +234,37 @@ describe('SelfUpdateSettings errors', () => {
     const {component, target} = mountSettings(client);
 
     await vi.waitFor(() => expect(target.textContent).toContain('Update package installation failed.'));
+    expect(target.querySelector('[role="alert"]')).not.toBeNull();
     expect(target.textContent).not.toContain('opkg-install-failed');
+
+    void unmount(component);
+  });
+
+  it.each(
+    [
+      {code: 'SELF_UPDATE_NOT_AVAILABLE', variant: 'info', messageKey: 'settings.self-update-no-update'},
+      {code: 'SELF_UPDATE_ROLLBACK_UNAVAILABLE', variant: 'info',
+        messageKey: 'settings.self-update-rollback-unavailable'},
+      {code: 'UNKNOWN', variant: 'error', messageKey: 'settings.self-update-failure-generic'},
+    ] as const,
+  )('shows $code action outcome as a toast', async ({code, variant, messageKey}) => {
+    const client = fakeClient({apply: vi.fn().mockRejectedValue(new SelfUpdateError('private detail', code))});
+    const {component, target} = mountSettings(client);
+
+    target.querySelectorAll('mndw-button')[0]?.click();
+    await vi.waitFor(() => expect(target.textContent).toContain('Update available: 0.0.4'));
+    target.querySelectorAll('mndw-button')[1]?.click();
+    await vi.waitFor(() => expect(defaultOverlayRuntime.store.layers).toHaveLength(1));
+    defaultOverlayRuntime.store.layers[0]?.contentElement.querySelectorAll('mndw-button')[1]?.click();
+
+    await vi.waitFor(() =>
+      expect(toast.toasts[0]).toMatchObject({
+        variant,
+        message: hostT(messageKey),
+      })
+    );
+    expect(target.querySelector('[role="alert"]')).toBeNull();
+    expect(target.textContent).not.toContain('private detail');
 
     void unmount(component);
   });

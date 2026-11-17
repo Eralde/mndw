@@ -102,6 +102,7 @@ import {createHostServices} from '../../host-services.js';
 import {createHostServicesContext} from '../../host-services-context.js';
 import {mgmtClient} from '../../services/mgmt-client.js';
 import {paletteService} from '../../services/palette.service.js';
+import {toast} from '../../services/toast/toast.svelte.js';
 import {PersistentRciSessionError, persistentRciSessionService} from '../../services/persistent-rci-session.service.js';
 
 const mount = (component: typeof SettingsPage, options: {target: HTMLElement}) => {
@@ -125,6 +126,7 @@ beforeAll(() => {
 describe('SettingsPage', () => {
   afterEach(() => {
     document.body.innerHTML = '';
+    toast.clear();
     vi.mocked(toggleTheme).mockClear();
     getCapability.mockReset().mockResolvedValue({
       store: {state: 'empty'},
@@ -416,7 +418,7 @@ describe('SettingsPage', () => {
       }),
     );
 
-    await vi.waitFor(() => expect(target.textContent).toContain('Device unreachable'));
+    await vi.waitFor(() => expect(toast.toasts[0]?.message).toBe('Device unreachable'));
     await vi.waitFor(() => {
       const current = target.querySelector<HTMLElement & {checked: boolean}>('#mndw-persistent-rci-enabled');
 
@@ -463,7 +465,7 @@ describe('SettingsPage', () => {
 
     await vi.waitFor(() => {
       expect(target.textContent).toContain('Background router access state unavailable');
-      expect(target.textContent).toContain('Device unreachable');
+      expect(toast.toasts[0]?.message).toBe('Device unreachable');
     });
 
     void unmount(component);
@@ -632,7 +634,7 @@ describe('SettingsPage', () => {
 
     downloadDiagnostics.mockRejectedValueOnce(new Error('DO_NOT_EXPORT'));
     button.dispatchEvent(new Event('click', {bubbles: true}));
-    await vi.waitFor(() => expect(target.textContent).toContain('Diagnostics download failed'));
+    await vi.waitFor(() => expect(toast.toasts[0]?.message).toBe('Diagnostics download failed'));
     expect(target.textContent).not.toContain('DO_NOT_EXPORT');
 
     void unmount(component);

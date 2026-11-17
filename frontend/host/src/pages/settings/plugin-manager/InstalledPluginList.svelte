@@ -19,6 +19,7 @@ import type {
 import {getPluginVersionWarnings} from '../../../runtime/plugin-version-warnings.svelte.js';
 import {getDepsStatus} from '../../../state/deps-status.svelte.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
+import EmptyState from '../../../components/EmptyState.svelte';
 import type {PluginRowState} from './reconcile.js';
 
 interface Props {
@@ -178,9 +179,13 @@ function retryPlugin(name: string): void {
   </h3>
 
   {#if items.length === 0}
-    <p class="mndw-installed__empty">
-      {hostT('settings.plugin-manager.no-installed')}
-    </p>
+    <EmptyState
+      mode="compact"
+      title={hostT('settings.plugin-manager.no-installed')}
+      text={hostT('settings.plugin-manager.no-installed-next')}
+      action={{label: hostT('settings.upload-plugin-zip'),
+      href: '#mndw-plugin-upload'}}
+    />
   {:else}
     <ul class="mndw-installed__list">
       {#each items as item (item.name)}
@@ -463,7 +468,6 @@ function retryPlugin(name: string): void {
   font-weight: var(--mndw-weight-semibold);
 }
 
-.mndw-installed__empty,
 .mndw-installed__backend,
 .mndw-installed__metadata {
   color: var(--mndw-text-muted);

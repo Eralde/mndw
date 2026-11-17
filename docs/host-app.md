@@ -100,6 +100,17 @@ inventing a separate visual system.
 The settings area contains appearance and device controls.
 It also manages plugin upload, approval, enable/disable, and delete operations.
 
+## Texts
+
+Use sentence case for English text, keeping names such as mndw, Entware, Keenetic, RCI, and Users & Access
+capitalized. Use `…` for ellipses, English curly quotes (`“…”`) in English, and guillemets (`«…»`) in Russian.
+Button labels should describe an action, such as “Log in” or “Log out”. Keep icon glyphs out of translated strings;
+render icons in markup.
+
+## Feedback: toasts and messages in place
+
+Use toasts for one-off action outcomes. Error toasts stay until dismissed. Keep in-place alerts for failures that need recovery, with a direct retry or correction path. Use muted `role="status"` messages for progress and non-blocking explanations. An action that changes a lasting state shows the toast and the new state; do not repeat the same outcome in an in-place message.
+
 ## Development sandbox
 
 `mndw dev <plugin>` runs a source plugin through a Vite virtual module and a

@@ -31,10 +31,10 @@ function mountSettings(): void {
     translator: useTranslator(createTestI18n({
       'columns': 'Columns',
       'refresh-interval': 'Refresh interval',
-      'column.ip': 'IP Address',
+      'column.ip': 'IP address',
       'column.connection': 'Connection',
       'column.uptime': 'Uptime',
-      'column.last-seen': 'Last Seen',
+      'column.last-seen': 'Last seen',
     })),
   });
   app.mount(host);

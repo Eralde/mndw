@@ -841,6 +841,10 @@ onDestroy(() => {
         variant="secondary"
         onclick={openAddWidgetModal}
       >
+        <mndw-icon
+          name="plus"
+          aria-hidden="true"
+        ></mndw-icon>
         {hostT('dashboard.add-widget')}
       </mndw-button>
 

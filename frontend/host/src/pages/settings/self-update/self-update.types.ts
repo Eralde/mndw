@@ -12,9 +12,7 @@ export type Outcome =
   | 'idle'
   | 'checking'
   | 'preparing'
-  | 'busy'
   | 'error'
-  | 'success'
   | 'failure'
   | 'unconfirmed';
 

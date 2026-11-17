@@ -406,10 +406,10 @@ describe('LoginPage', () => {
     flushSync();
 
     expect(inputs().some((control) => control.disabled)).toBe(false);
-    expect(target.querySelector('mndw-button')?.textContent?.trim()).toBe('Login');
+    expect(target.querySelector('mndw-button')?.textContent?.trim()).toBe('Log in');
   });
 
-  it('disables Login after failure and re-enables it when either input changes', () => {
+  it('disables Log in after failure and re-enables it when either input changes', () => {
     login.mockReturnValue(of(false));
     render();
     type(inputs()[0], 'admin');

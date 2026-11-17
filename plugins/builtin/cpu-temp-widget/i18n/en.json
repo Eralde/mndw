@@ -1,5 +1,5 @@
 {
-  "title": "CPU Temperature",
+  "title": "CPU temperature",
   "loading": "Loading…",
   "error": "Temperature data is unavailable.",
   "stale.message": "Not updated since {time}",
@@ -14,9 +14,9 @@
   "history-range": "History range",
   "telemetry-note.off-with-data": "Telemetry collection is off. The chart shows data up to {time}.",
   "telemetry-note.off": "Telemetry collection is off.",
-  "telemetry-note.link": "Turn it on in Settings",
-  "telemetry-note.no-session": "Set up a persistent RCI session to collect telemetry.",
-  "telemetry-note.session-link": "Open Settings",
+  "telemetry-note.link": "Turn it on in settings",
+  "telemetry-note.no-session": "Turn on background router access in settings to collect telemetry.",
+  "telemetry-note.session-link": "Open settings",
   "history-catching-up": "Catching up…",
   "history-historical": "Historical"
 }

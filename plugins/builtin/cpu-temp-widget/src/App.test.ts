@@ -89,7 +89,7 @@ function mountApp(
 
   fixture = createTestPluginContext({
     i18n: createTestI18n({
-      'title': 'CPU Temperature',
+      'title': 'CPU temperature',
       'loading': 'Loading…',
       'empty': 'Gathering data…',
       'error': 'Error',
@@ -106,9 +106,9 @@ function mountApp(
       'history-historical': 'Historical',
       'telemetry-note.off-with-data': 'Telemetry collection is off. The chart shows data up to {time}.',
       'telemetry-note.off': 'Telemetry collection is off.',
-      'telemetry-note.link': 'Turn it on in Settings',
-      'telemetry-note.no-session': 'Set up a persistent RCI session to collect telemetry.',
-      'telemetry-note.session-link': 'Open Settings',
+      'telemetry-note.link': 'Turn it on in settings',
+      'telemetry-note.no-session': 'Turn on background router access in settings to collect telemetry.',
+      'telemetry-note.session-link': 'Open settings',
     }),
     telemetry: {
       fetchProjected: vi.fn().mockResolvedValue(supportedSnapshot(1000, 2000)),
@@ -570,7 +570,7 @@ describe('App', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(host.querySelector('.telemetry-note')?.textContent).toContain(
-      'Set up a persistent RCI session to collect telemetry.',
+      'Turn on background router access in settings to collect telemetry.',
     );
     expect(host.querySelector<HTMLAnchorElement>('.telemetry-note a')?.getAttribute('href')).toBe('/settings/general');
   });
@@ -589,7 +589,7 @@ describe('App', () => {
     });
     await flushPromises();
 
-    expect(setTileTitle).toHaveBeenLastCalledWith('CPU Temperature');
+    expect(setTileTitle).toHaveBeenLastCalledWith('CPU temperature');
     expect(host.querySelector('.app__header')).toBeNull();
     expect(host.querySelector('[data-testid="history-status"]')).not.toBeNull();
 

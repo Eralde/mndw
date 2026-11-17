@@ -22,6 +22,7 @@ import {decodeMgmtList, decodeMgmtListEntry} from '../runtime/mgmt-list-schema.j
 import {decodeDeviceHardware, emptySwitchports} from '../runtime/device-info-schema.js';
 import type {PluginListEntry} from '../runtime/plugin-types.js';
 import {hostT} from './locale.service.js';
+import {getUploadLimitLabel} from './upload-limit.js';
 import {isNonEmptyString, isRecord} from './json.js';
 import {HostApiError, createRestClient, malformedApiResponse} from './rest.js';
 
@@ -170,7 +171,7 @@ export function createMgmtClient(
     },
 
     async uploadPlugin(file: File): Promise<UploadResult> {
-      // Deliberately unbounded: a 10 MB plugin over a slow link legitimately outlives
+      // Deliberately unbounded: a 10 MiB plugin over a slow link legitimately outlives
       // API_TIMEOUT_MS, and aborting a partial upload would be a regression.
       const response = await rest.request(MGMT_UPLOAD_URL, {
         method: 'POST',
@@ -327,7 +328,12 @@ export function messageForError(error: unknown): string {
 
     const message = MESSAGE_KEYS[error.code] === undefined
       ? error.message
-      : hostT(MESSAGE_KEYS[error.code]);
+      : hostT(
+        MESSAGE_KEYS[error.code],
+        error.code === 'UPLOAD_TOO_LARGE'
+          ? {limit: getUploadLimitLabel()}
+          : undefined,
+      );
 
     return message || hostT('app.error');
   }

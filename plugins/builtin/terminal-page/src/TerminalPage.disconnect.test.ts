@@ -42,6 +42,10 @@ afterEach(() => {
 });
 
 describe('TerminalPage disconnect reason', () => {
+  it('uses session wording for the Russian update-ended message', () => {
+    expect(ruCatalog.status['update-ended']).toBe('Сессия завершена во время обновления');
+  });
+
   let onDisconnect: ((event: CloseEvent) => void) | undefined;
 
   beforeEach(() => {

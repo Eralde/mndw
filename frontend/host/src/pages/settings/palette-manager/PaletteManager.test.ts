@@ -36,6 +36,7 @@ import {paletteService} from '../../../services/palette.service.js';
 import {createHostServicesContext} from '../../../host-services-context.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
 import {setLocale} from '../../../services/locale.service.js';
+import {toast} from '../../../services/toast/toast.svelte.js';
 
 const valid = JSON.parse(JSON.stringify(MNDW_TOKENS)) as PaletteTokenMap;
 
@@ -116,6 +117,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  toast.clear();
   refreshPalette.mockReset().mockResolvedValue(undefined);
   previewOverride.mockReset();
   discardPreview.mockReset();
@@ -125,6 +127,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  toast.clear();
+
   if (component) {
     void unmount(component);
   }
@@ -186,10 +190,10 @@ describe('PaletteManager', () => {
 
     button(hostT('settings.palette.confirm')).click();
     await vi.waitFor(() => expect(commitOverride).toHaveBeenCalledWith(valid));
-    await vi.waitFor(() => expect(target.textContent).toContain(hostT('settings.palette.saved')));
+    await vi.waitFor(() => expect(toast.toasts[0]?.message).toBe(hostT('settings.palette.saved')));
     flushSync();
 
-    expect(target.textContent).toContain(hostT('settings.palette.saved'));
+    expect(target.querySelector('[role="status"]')).toBeNull();
   });
 
   it('stays on the preview when the commit fails', async () => {
@@ -253,7 +257,7 @@ describe('PaletteManager', () => {
     expect(button(hostT('settings.palette.discard')).disabled).toBe(true);
 
     commit.resolve(undefined);
-    await vi.waitFor(() => expect(target.textContent).toContain(hostT('settings.palette.saved')));
+    await vi.waitFor(() => expect(button(hostT('settings.palette.reset')).disabled).toBe(false));
   });
 
   it('reports a structurally invalid file without calling the daemon', async () => {
@@ -320,6 +324,28 @@ describe('PaletteManager', () => {
 
     release();
     await vi.waitFor(() => expect(button(hostT('settings.palette.reset')).disabled).toBe(false));
+  });
+
+  it('shows reset failure as an error toast without a lasting alert', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    resetToDefault.mockRejectedValueOnce(new Error('device offline'));
+    render();
+    await waitForIdle();
+
+    button(hostT('settings.palette.reset')).click();
+    flushSync();
+    button(hostT('settings.palette.reset-confirm')).click();
+
+    await vi.waitFor(() =>
+      expect(toast.toasts[0]).toMatchObject({
+        variant: 'error',
+        message: hostT('settings.palette.operation-failed'),
+      })
+    );
+    expect(target.querySelector('[role="alert"]')).toBeNull();
+    expect(target.textContent).not.toContain('device offline');
+    consoleError.mockRestore();
   });
 
   it('shows a retryable banner when the initial load fails, and stays usable', async () => {

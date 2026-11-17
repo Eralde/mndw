@@ -149,7 +149,7 @@ function backendReturning(byId: Record<string, unknown>) {
 
 function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
   const messages = {
-    en: {title: 'Ping Utility', unavailable: 'Backend unavailable', action: {refresh: 'Refresh EN'}},
+    en: {title: 'Ping utility', unavailable: 'Backend unavailable', action: {refresh: 'Refresh EN'}},
     ru: {title: 'Утилита ping', unavailable: 'Сервис недоступен', action: {refresh: 'Обновить RU'}},
   };
   const i18n = createTestI18n(messages.en);
@@ -182,7 +182,7 @@ describe('PingWidget', () => {
     const instance = createInstance(host, context);
 
     flushSync();
-    expect(setTileTitle).toHaveBeenLastCalledWith('Ping Utility');
+    expect(setTileTitle).toHaveBeenLastCalledWith('Ping utility');
     expect(host.querySelector('h2')).toBeNull();
     changing.setLocale('ru');
     flushSync();

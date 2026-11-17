@@ -83,23 +83,23 @@
         "title": "Extra features need access",
         "body": "Plugin access for extra features is not enabled.",
         "permission": {
-          "body": "Grant the required plugin permission in Settings."
+          "body": "Grant the required plugin permission in settings."
         },
         "controller-token": {
-          "body": "Enable the persistent session in Settings."
+          "body": "Turn on background router access in settings."
         },
         "combined": {
-          "body": "Grant the required plugin permission and enable the persistent session in Settings."
+          "body": "Grant the required plugin permission and turn on background router access in settings."
         },
         "generic": {
-          "body": "Complete extra-feature setup in Settings."
+          "body": "Complete extra-feature setup in settings."
         }
       },
       "incompatible": {
         "title": "Extra features need an update",
         "body": "Installed components need a system update."
       },
-      "view-settings": "Open Settings."
+      "view-settings": "Open settings."
     }
   },
   "action": {
@@ -148,8 +148,8 @@
     "ip": "IP",
     "mac": "MAC",
     "uptime": "Uptime",
-    "wired": "wired",
-    "wireless": "wireless"
+    "wired": "Wired",
+    "wireless": "Wireless"
   },
   "nodes": {
     "search": "Filter nodes",
@@ -266,11 +266,11 @@
     "title": "System settings",
     "loading": "Loading system settings…",
     "load-failed": "Failed to load system settings.",
-    "backhaul-title": "Backhaul Connection",
+    "backhaul-title": "Backhaul connection",
     "backhaul-description": "A hidden Wi-Fi network used by nodes in your Wi-Fi System to communicate with each other. When enabled, the Wi-Fi LED stays illuminated even if all visible networks are switched off.",
-    "auto-ap-shutdown-title": "Conditional Wi-Fi Broadcast",
+    "auto-ap-shutdown-title": "Conditional Wi-Fi broadcast",
     "auto-ap-shutdown-description": "Extenders stop wireless network broadcasting when the Controller is inaccessible.",
-    "auto-update-title": "Automatic Updates",
+    "auto-update-title": "Automatic updates",
     "auto-update-description": "KeeneticOS updates automatically on all nodes in the Wi-Fi System.",
     "schedule": "Schedule",
     "always-on": "Always on",

@@ -95,11 +95,16 @@ describe('InstalledPluginList', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders empty state when no plugins are installed', () => {
+  it('shows a shared empty state with a link to upload the first plugin', () => {
     const {component, target} = mountInstalledPluginList({items: []});
 
     expect(target.textContent).toContain('Installed plugins');
-    expect(target.querySelector('.mndw-installed__empty')?.textContent).toBe('No plugins installed.');
+
+    const emptyState = target.querySelector('.mndw-empty-state');
+
+    expect(emptyState).not.toBeNull();
+    expect(emptyState?.textContent).toContain('No plugins installed.');
+    expect(target.querySelector('.mndw-empty-state__link')?.getAttribute('href')).toBe('#mndw-plugin-upload');
 
     void unmount(component);
   });

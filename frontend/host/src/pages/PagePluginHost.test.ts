@@ -700,7 +700,7 @@ describe('PagePluginHost', () => {
 
       const panel = target.querySelector('.mndw-page-plugin__notice');
 
-      expect(panel?.getAttribute('role')).toBe('alert');
+      expect(panel?.getAttribute('role')).toBe('status');
       expect(panel?.textContent).toContain(hostT('page-plugin.slow'));
       expect(panel?.textContent).toContain(hostT('common.retry'));
       expect(target.querySelector('.mndw-page-plugin')?.getAttribute('aria-busy')).toBe('true');
@@ -925,7 +925,7 @@ describe('PagePluginHost', () => {
 
       const panel = target.querySelector('.mndw-page-plugin__notice');
 
-      expect(panel?.getAttribute('role')).toBe('alert');
+      expect(panel?.getAttribute('role')).toBe('status');
       expect(panel?.textContent).toContain(hostT('page-plugin.slow'));
       expect(panel?.querySelector('mndw-button')).not.toBeNull();
       expect(target.querySelector('.mndw-page-plugin')?.getAttribute('aria-busy')).toBe('true');

@@ -203,7 +203,7 @@ describe('plugin list failure alert', () => {
 
     await vi.waitFor(() => {
       expect(target.querySelector('.mndw-empty-state mndw-button')?.textContent)
-        .toContain('Add Widget');
+        .toContain('Add widget');
       expect(target.querySelector('a[href="/retry-page"]')?.textContent)
         .toContain('Retry page');
       expect(appRouter.pluginPages.baseRouteOf('retry-page')).toBe('/retry-page');

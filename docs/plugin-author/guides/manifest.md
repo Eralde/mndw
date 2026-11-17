@@ -42,7 +42,7 @@ rejected by SDK validation and host routing.
 ## Permissions and trust
 
 `permissions` describes capabilities a plugin requests. Event permissions control which topics are available through
-`ctx.events`; persistent RCI permissions can be granted for host-managed persistent sessions. These declarations do
+`ctx.events`; persistent RCI permissions can be granted for the **Background router access** setting. These declarations do
 not sandbox plugin code. A plugin page runs inside the dashboard and can call the router API; when present, a plugin
 backend runs on the router as root. Install plugins only from authors you trust.
 

@@ -6,10 +6,10 @@
   "refresh-interval": "Refresh interval",
   "column": {
     "name": "Name",
-    "ip": "IP Address",
+    "ip": "IP address",
     "connection": "Connection",
     "uptime": "Uptime",
-    "last-seen": "Last Seen"
+    "last-seen": "Last seen"
   },
   "empty": {
     "found": "No clients found",

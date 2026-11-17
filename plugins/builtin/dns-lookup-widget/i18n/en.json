@@ -1,5 +1,5 @@
 {
-  "title": "DNS Lookup",
+  "title": "DNS lookup",
   "hostname-label": "Hostname",
   "hostname-hint": "Example: google.com",
   "hostname": "Hostname (e.g. google.com)",
@@ -8,7 +8,7 @@
   "idle": "Enter a hostname and press Lookup.",
   "unavailable": "This plugin has no backend available.",
   "loading": "Looking up {hostname}…",
-  "not-found": "Hostname \"{hostname}\" not found.",
+  "not-found": "Hostname “{hostname}” not found.",
   "error": {
     "lookup-failed": "Lookup failed. Check the hostname and try again."
   },

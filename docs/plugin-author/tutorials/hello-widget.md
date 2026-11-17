@@ -1,4 +1,4 @@
-# Build a shell-backed Hello Widget
+# Build a shell-backed Hello widget
 
 Build a Svelte widget that calls a shell backend, displays its JSON greeting,
 and handles failures. Finish with a ZIP ready for the device's plugin uploader.
@@ -107,7 +107,7 @@ and creates both catalog files. Replace `i18n/en.json` with this catalog:
 <!-- docs-check: file plugins/examples/hello-widget/i18n/en.json -->
 ```json
 {
-  "title": "Hello Widget",
+  "title": "Hello widget",
   "action": {
     "greet": "Get greeting",
     "loading": "Loading greeting…"

@@ -440,7 +440,7 @@ onDestroy(disposeActive);
   {:else if mountStatus === 'slow'}
     <div
       class="mndw-page-plugin__notice mndw-page-plugin__panel"
-      role="alert"
+      role="status"
     >
       <span>{hostT('page-plugin.slow')}</span>
       <mndw-button

@@ -26,6 +26,9 @@ type pluginSnapshot struct {
 	startupQueued      bool
 	startupSeq         uint64
 	retryTimerPresent  bool
+	pendingStart       bool
+	processPresent     bool
+	processID          uint64
 	transitionPresent  bool
 	intent             Intent
 	operation          Operation
@@ -138,6 +141,12 @@ func (s *Supervisor) pluginSnapshotLocked(name string) pluginSnapshot {
 		snapshot.reservationPending = record.reservationPending
 		snapshot.startupQueued = record.startupQueued
 		snapshot.startupSeq = record.startupSeq
+		snapshot.pendingStart = record.pendingStart
+		snapshot.processPresent = record.process != nil
+
+		if record.process != nil {
+			snapshot.processID = record.process.id
+		}
 	}
 
 	transition := s.transitionStateLocked(name)
@@ -230,8 +239,18 @@ func setSupervisorServiceRecordLockedForTest(s *Supervisor, pluginID string, fix
 	}
 
 	record.reservationPending = fixture.reservationPending
-	record.command = fixture.command
-	record.done = fixture.done
+	record.process = nil
+
+	if fixture.done != nil {
+		s.nextProcessID++
+		record.process = &registeredProcess{
+			id:            s.nextProcessID,
+			runGeneration: s.transitionGenerationLocked(pluginID),
+			command:       fixture.command,
+			exit:          fixture.done,
+		}
+	}
+
 	record.recentStderr = fixture.stderr
 	record.stopping = fixture.stopping
 	record.stopDone = fixture.stopDone
@@ -273,6 +292,31 @@ func supervisorServiceForTest(s *Supervisor, pluginID string) *pluginRecord {
 	return s.serviceRecordLocked(pluginID)
 }
 
+func waitForSupervisorStopForTest(t *testing.T, s *Supervisor, pluginID string) {
+	t.Helper()
+
+	s.mu.Lock()
+
+	record := s.serviceRecordLocked(pluginID)
+	var stopDone <-chan struct{}
+
+	if record != nil {
+		stopDone = record.stopDone
+	}
+
+	s.mu.Unlock()
+
+	if stopDone == nil {
+		return
+	}
+
+	select {
+	case <-stopDone:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("service %q stop did not finish exact process reap", pluginID)
+	}
+}
+
 func supervisorPluginRecordPresentForTest(s *Supervisor, pluginID string) bool {
 	s.mu.Lock()
 
@@ -295,12 +339,14 @@ func resetSupervisorServicesForTest(s *Supervisor) {
 		record.status = RuntimeStatus{}
 		record.recentStderr = nil
 		record.reservationPending = false
-		record.command = nil
-		record.done = nil
+		record.process = nil
 		record.stopping = false
 		record.stopDone = nil
 		record.stopErr = nil
 		record.releaseOnStop = false
+
+		s.clearPendingStartLocked(record)
+
 		record.startupQueued = false
 		record.startupSeq = 0
 

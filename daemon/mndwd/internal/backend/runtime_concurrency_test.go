@@ -2,7 +2,9 @@ package backend
 
 import (
 	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -617,6 +619,283 @@ func TestDirectStartupWinsBeforeRetryTimerWithoutDuplicate(t *testing.T) {
 		t.Fatal("startup callbacks did not drain")
 	}
 
+}
+
+func TestRetryTimerBeforeRegisteredProcessExitKeepsRetryPending(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), Limits: Limits{MaxSupervisedServices: 1}})
+	spec := enabledSpec("timer-before-exit")
+	done := newProcessExit()
+
+	seedRegisteredServiceForTest(runtime.supervisor, spec, RuntimeStatus{State: StateBackoff}, &exec.Cmd{}, done)
+
+	started := make(chan ServiceSpec, 2)
+	runtime.supervisor.startDesired = func(startSpec ServiceSpec) { started <- startSpec }
+	callbackDone := make(chan struct{}, 1)
+	runtime.supervisor.retryCallbackDone = func(string) { callbackDone <- struct{}{} }
+
+	scheduleSupervisorRetryForTest(runtime.supervisor, spec.PluginID, time.Nanosecond)
+
+	select {
+	case <-callbackDone:
+	case <-time.After(time.Second):
+		t.Fatal("retry timer callback did not complete")
+	}
+
+	runtime.supervisor.startupWG.Wait()
+
+	select {
+	case got := <-started:
+		t.Fatalf("retry launched before exact Wait completed: %+v", got)
+	default:
+	}
+
+	done.err = errors.New("old process exited")
+
+	close(done.done)
+	runtime.supervisor.observeExit(spec.PluginID, done)
+
+	select {
+	case got := <-started:
+		if !got.Equal(spec) {
+			t.Fatalf("retry spec = %+v, want %+v", got, spec)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("retry was lost after the exact Wait completed")
+	}
+
+	runtime.supervisor.startupWG.Wait()
+
+	select {
+	case got := <-started:
+		t.Fatalf("retry launched more than once: %+v", got)
+	default:
+	}
+}
+
+func TestRegisteredProcessExitBeforeRetryTimerLaunchesOnce(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), Limits: Limits{MaxSupervisedServices: 1}})
+	spec := enabledSpec("exit-before-timer")
+	done := newProcessExit()
+
+	seedRegisteredServiceForTest(runtime.supervisor, spec, RuntimeStatus{State: StateReady}, &exec.Cmd{}, done)
+
+	started := make(chan ServiceSpec, 2)
+	runtime.supervisor.startDesired = func(startSpec ServiceSpec) { started <- startSpec }
+	callbackDone := make(chan struct{}, 1)
+	runtime.supervisor.retryCallbackDone = func(string) { callbackDone <- struct{}{} }
+	done.err = errors.New("old process exited")
+
+	close(done.done)
+	runtime.supervisor.observeExit(spec.PluginID, done)
+	scheduleSupervisorRetryForTest(runtime.supervisor, spec.PluginID, time.Nanosecond)
+
+	select {
+	case <-callbackDone:
+	case <-time.After(time.Second):
+		t.Fatal("retry timer callback did not complete")
+	}
+
+	runtime.supervisor.startupWG.Wait()
+
+	select {
+	case got := <-started:
+		if !got.Equal(spec) {
+			t.Fatalf("retry spec = %+v, want %+v", got, spec)
+		}
+	default:
+		t.Fatal("retry did not launch after the process exit")
+	}
+
+	select {
+	case got := <-started:
+		t.Fatalf("retry launched more than once: %+v", got)
+	default:
+	}
+}
+
+func TestDirectDesiredStartDuringRegisteredProcessReapRunsAfterExit(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), Limits: Limits{MaxSupervisedServices: 1}})
+	spec := enabledSpec("direct-during-reap")
+	done := newProcessExit()
+
+	seedRegisteredServiceForTest(runtime.supervisor, spec, RuntimeStatus{State: StateBackoff}, &exec.Cmd{}, done)
+
+	started := make(chan ServiceSpec, 2)
+	runtime.supervisor.startDesired = func(startSpec ServiceSpec) { started <- startSpec }
+
+	runtime.supervisor.launchDesiredStartup(spec)
+	runtime.supervisor.startupWG.Wait()
+
+	select {
+	case got := <-started:
+		t.Fatalf("direct start launched before exact Wait completed: %+v", got)
+	default:
+	}
+
+	done.err = errors.New("old process exited")
+
+	close(done.done)
+	runtime.supervisor.observeExit(spec.PluginID, done)
+
+	select {
+	case got := <-started:
+		if !got.Equal(spec) {
+			t.Fatalf("direct start spec = %+v, want %+v", got, spec)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("direct start was lost while the old process was being reaped")
+	}
+
+	runtime.supervisor.startupWG.Wait()
+
+	select {
+	case got := <-started:
+		t.Fatalf("direct start launched more than once: %+v", got)
+	default:
+	}
+}
+
+func TestDesiredOrIntentChangeDuringRegisteredProcessReap(t *testing.T) {
+	t.Run("changed desired spec starts after reap", func(t *testing.T) {
+		runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), Limits: Limits{MaxSupervisedServices: 1}})
+		oldSpec := enabledSpec("desired-during-reap")
+		oldSpec.Command = "backend/old"
+		done := newProcessExit()
+
+		seedRegisteredServiceForTest(runtime.supervisor, oldSpec, RuntimeStatus{State: StateReady}, &exec.Cmd{}, done)
+
+		started := make(chan ServiceSpec, 2)
+		runtime.supervisor.startDesired = func(startSpec ServiceSpec) { started <- startSpec }
+
+		newSpec := oldSpec
+		newSpec.Command = "backend/new"
+		plan := runtime.supervisor.Reconcile(context.Background(), []ServiceSpec{newSpec})
+
+		if len(plan.startIDs) != 1 || plan.startIDs[0] != oldSpec.PluginID {
+			t.Fatalf("replacement request IDs while old process is owned = %#v, want one replacement request", plan.startIDs)
+		}
+
+		if startPlan := runtime.supervisor.planStart(newSpec, RuntimePaths{}); startPlan.action != startReplace {
+			t.Fatalf("replacement start action while old process is owned = %d, want stop-before-replace", startPlan.action)
+		}
+
+		select {
+		case got := <-started:
+			t.Fatalf("replacement launched before exact Wait completed: %+v", got)
+		default:
+		}
+
+		done.err = errors.New("old process exited")
+
+		close(done.done)
+		runtime.supervisor.observeExit(oldSpec.PluginID, done)
+
+		select {
+		case got := <-started:
+			if !got.Equal(newSpec) {
+				t.Fatalf("replacement spec = %+v, want %+v", got, newSpec)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("changed desired service did not launch after reap")
+		}
+
+		runtime.supervisor.startupWG.Wait()
+	})
+
+	t.Run("stop intent suppresses pending direct start", func(t *testing.T) {
+		runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), Limits: Limits{MaxSupervisedServices: 1}})
+		spec := enabledSpec("intent-during-reap")
+		done := newProcessExit()
+
+		seedRegisteredServiceForTest(runtime.supervisor, spec, RuntimeStatus{State: StateBackoff}, &exec.Cmd{}, done)
+
+		started := make(chan ServiceSpec, 2)
+		runtime.supervisor.startDesired = func(startSpec ServiceSpec) { started <- startSpec }
+
+		runtime.supervisor.launchDesiredStartup(spec)
+
+		disabled := spec
+		disabled.Enabled = false
+
+		runtime.supervisor.Reconcile(context.Background(), []ServiceSpec{disabled})
+		runtime.supervisor.startupWG.Wait()
+
+		select {
+		case got := <-started:
+			t.Fatalf("direct start launched before stop intent: %+v", got)
+		default:
+		}
+
+		done.err = errors.New("old process exited")
+
+		close(done.done)
+		runtime.supervisor.observeExit(spec.PluginID, done)
+		runtime.supervisor.startupWG.Wait()
+
+		select {
+		case got := <-started:
+			t.Fatalf("pending start survived stop intent: %+v", got)
+		default:
+		}
+	})
+}
+
+func TestOldProcessExitCannotMutateNewRegisteredProcess(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir(), Limits: Limits{MaxSupervisedServices: 1}})
+	spec := enabledSpec("old-process-identity")
+	oldExit := newProcessExit()
+	oldExit.err = errors.New("old process exited")
+
+	close(oldExit.done)
+
+	oldCommand := &exec.Cmd{}
+
+	seedRegisteredServiceForTest(runtime.supervisor, spec, RuntimeStatus{State: StateReady}, oldCommand, oldExit)
+
+	oldRecord := supervisorServiceForTest(runtime.supervisor, spec.PluginID)
+	oldProcess := oldRecord.process
+	newCommand := &exec.Cmd{}
+	newExit := newProcessExit()
+
+	seedRegisteredServiceForTest(runtime.supervisor, spec, RuntimeStatus{State: StateReady}, newCommand, newExit)
+
+	currentBeforeExit := supervisorServiceForTest(runtime.supervisor, spec.PluginID)
+
+	if currentBeforeExit.process == nil || currentBeforeExit.process.id <= oldProcess.id {
+		t.Fatal("new registered process did not receive a newer immutable identity")
+	}
+
+	runtime.supervisor.observeProcessExit(spec.PluginID, oldProcess)
+
+	current := supervisorServiceForTest(runtime.supervisor, spec.PluginID)
+
+	if current.process == nil || current.process.command != newCommand || current.process.exit != newExit {
+		t.Fatal("old process exit replaced the current process identity")
+	}
+
+	if current.status.State != StateReady {
+		t.Fatalf("new process status after stale exit = %q, want ready", current.status.State)
+	}
+
+	if got := runtime.supervisor.reservedServiceCount(); got != 1 {
+		t.Fatalf("reserved service slots after stale exit = %d, want 1", got)
+	}
+}
+
+func seedRegisteredServiceForTest(
+	s *Supervisor,
+	spec ServiceSpec,
+	status RuntimeStatus,
+	command *exec.Cmd,
+	done *processExit,
+) {
+	seedSupervisorStateForTest(s, spec.PluginID, &spec, &serviceRecord{
+		spec:        spec,
+		status:      status,
+		serviceHeld: true,
+		command:     command,
+		done:        done,
+	}, &transition{intent: IntentRun, operation: OpNone})
 }
 
 func TestDisableDoesNotWaitForPromotedServiceReadiness(t *testing.T) {

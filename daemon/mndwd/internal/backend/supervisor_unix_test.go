@@ -77,6 +77,8 @@ func TestSupervisorStartIncompatibleStopsExistingRuntimeAndRestampsProtocol(t *t
 		t.Fatalf("supported protocols = %#v, want [1]", status.SupportedProtocols)
 	}
 
+	waitForSupervisorStopForTest(t, supervisor, "svc")
+
 	services = supervisor.reservedServiceCount()
 
 	if services != 0 {

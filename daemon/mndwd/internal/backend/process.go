@@ -17,6 +17,14 @@ type processExit struct {
 	err  error
 }
 
+// registeredProcess owns one exact command.Wait result until the exit is consumed.
+type registeredProcess struct {
+	id            uint64
+	runGeneration uint64
+	command       *exec.Cmd
+	exit          *processExit
+}
+
 func newProcessExit() *processExit {
 	return &processExit{done: make(chan struct{})}
 }

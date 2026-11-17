@@ -8,6 +8,7 @@ import {type MwsWriteResult, MwsWriteService} from '../../services/mws-write.ser
 import {type NodeEditState, NodeSettingsStore} from '../../services/node-settings.store';
 import {TRANSLATOR} from '../../tokens';
 import enCatalog from '../../../i18n/en.json';
+import ruCatalog from '../../../i18n/ru.json';
 import settingsTemplate from './node-settings.component.html?raw';
 import settingsStyles from './node-settings.component.scss?raw';
 import {NodeSettingsComponent} from './node-settings.component';
@@ -57,6 +58,7 @@ describe('NodeSettingsComponent', () => {
   let setStaticIP: ReturnType<typeof vi.fn>;
   let setUpdateChannel: ReturnType<typeof vi.fn>;
   let setPortRole: ReturnType<typeof vi.fn>;
+  let testI18n: ReturnType<typeof createTestI18n>;
 
   beforeEach(async () => {
     TestBed.resetTestingModule();
@@ -64,6 +66,7 @@ describe('NodeSettingsComponent', () => {
     setStaticIP = vi.fn(() => Promise.resolve(okResult()));
     setUpdateChannel = vi.fn(() => Promise.resolve(okResult()));
     setPortRole = vi.fn(() => Promise.resolve(okResult()));
+    testI18n = createTestI18n(enCatalog);
     await resolveComponentResources((url: string) => {
       if (url.endsWith('node-settings.component.html')) {
         return Promise.resolve(settingsTemplate);
@@ -80,7 +83,7 @@ describe('NodeSettingsComponent', () => {
       providers: [
         NodeSettingsStore,
         {provide: MwsWriteService, useValue: {setName, setStaticIP, setUpdateChannel, setPortRole}},
-        {provide: TRANSLATOR, useValue: createTestI18n(enCatalog)},
+        {provide: TRANSLATOR, useValue: testI18n},
       ],
     }).compileComponents();
   });
@@ -139,6 +142,19 @@ describe('NodeSettingsComponent', () => {
     expect(fixture.nativeElement.querySelector('mndw-checkbox[data-field="static-ip-toggle"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelectorAll('mndw-select')).toHaveLength(3);
     expect(fixture.nativeElement.querySelectorAll('input, select')).toHaveLength(0);
+  });
+
+  it('uses Russian retransmitter terminology in settings labels', () => {
+    testI18n.setLocale('ru', ruCatalog);
+
+    const fixture = render();
+
+    expect(fixture.nativeElement.querySelector('.node-settings')?.getAttribute('aria-label'))
+      .toBe('Настройки ретранслятора');
+    expect(
+      (fixture.nativeElement.querySelector('[data-field="name"]') as HTMLElement & {placeholder: string}).placeholder,
+    )
+      .toBe('Имя ретранслятора');
   });
 
   it('maps Bridge0 to Primary and renders only Disabled plus loaded segments', () => {

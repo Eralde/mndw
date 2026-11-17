@@ -2,7 +2,11 @@
 import {type MndwSelectChangeDetail, deepActiveElement} from '@mndw/ui';
 import {onMount} from 'svelte';
 import {initAuthenticated} from '../../services/init-auth.js';
-import {appState, getAuthRunGeneration, resetToLogin} from '../../state/app.svelte.js';
+import {
+  appState,
+  getAuthRunGeneration,
+  resetToLogin,
+} from '../../state/app.svelte.js';
 import {hostT} from '../../services/host-i18n.svelte.js';
 import {getHostServices} from '../../host-services-context.js';
 
@@ -192,6 +196,7 @@ function handleSubmit(e: Event): void {
         onkeydown={handleKeydown}
       ></mndw-input>
     </mndw-field>
+    <p class="mndw-login__hint">{hostT('login.hint')}</p>
     {#if error}
       <div
         class="mndw-alert mndw-alert--danger"

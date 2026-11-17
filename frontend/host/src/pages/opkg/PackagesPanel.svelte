@@ -8,7 +8,7 @@ import {
   column,
 } from '@mndw/ui';
 import {svelteCell} from '@mndw/ui-svelte';
-import {onMount} from 'svelte';
+import {onMount, tick} from 'svelte';
 import {untrack} from 'svelte';
 import {SvelteMap, SvelteSet} from 'svelte/reactivity';
 import {
@@ -25,6 +25,7 @@ import PackageNameCell from './PackageNameCell.svelte';
 import PackageVersionCell from './PackageVersionCell.svelte';
 import PackageStatusCell from './PackageStatusCell.svelte';
 import {packageActionsRenderer} from './package-actions-renderer.svelte.js';
+import type {PackageRowAction} from './package-actions-renderer.svelte.js';
 import {packageDetailRenderer} from './package-detail-renderer.svelte.js';
 import type {
   PackageDetailCache,
@@ -35,6 +36,11 @@ import ConfirmActionModal from './ConfirmActionModal.svelte';
 
 interface Props {
   now?: () => Date;
+}
+
+interface ActionFocusTarget {
+  packageName: string;
+  source: 'primary' | 'detail';
 }
 
 let {now = () => new Date()}: Props = $props();
@@ -235,6 +241,7 @@ async function runAction(
 async function executeAction(
   action: 'install' | 'remove' | 'upgrade',
   names: string[],
+  focusTarget?: ActionFocusTarget,
 ): Promise<void> {
   loading = true;
   const actionKey = action === 'install'
@@ -254,7 +261,40 @@ async function executeAction(
     toast.error(actionErrorMessage(error, actionKey));
   } finally {
     loading = false;
+    if (focusTarget !== undefined) {
+      await restoreActionFocus(focusTarget);
+    }
   }
+}
+
+async function restoreActionFocus(target: ActionFocusTarget): Promise<void> {
+  await tick();
+
+  const table = tableElement as MndwTable<PackageEntry> | null;
+
+  if (table !== null) {
+    await table.updateComplete;
+  }
+
+  await tick();
+
+  const packageActions = [
+    ...document.querySelectorAll<HTMLElement & {disabled: boolean}>(
+      'mndw-button[data-package][data-package-action]',
+    ),
+  ].filter((button) => {
+    return button.dataset.package === target.packageName && !button.disabled;
+  });
+  const targetAction = packageActions.find((button) => {
+    return button.dataset.packageAction === target.source;
+  });
+  const action = targetAction
+    ?? packageActions[0]
+    ?? document.querySelector<HTMLElement>(
+      '.packages-panel .header-actions mndw-button',
+    );
+
+  action?.focus();
 }
 
 function actionErrorMessage(error: unknown, actionKey: string): string {
@@ -308,7 +348,14 @@ function handleFilterChange(event: CustomEvent<{value: string}>): void {
   ) { filterMode = value; }
 }
 
-async function removeOne(name: string): Promise<void> {
+function handleSearchChange(event: CustomEvent<{value: string}>): void {
+  filter = event.detail.value;
+}
+
+async function removeOne(
+  name: string,
+  source: ActionFocusTarget['source'] = 'primary',
+): Promise<void> {
   const session = openHostModal<boolean,
     {message: string; confirmLabel: string; close: (result: boolean) => void}>(
       ConfirmActionModal,
@@ -319,7 +366,9 @@ async function removeOne(name: string): Promise<void> {
       },
     );
   const event = await session.closed;
-  if (event.result) { await executeAction('remove', [name]); }
+  if (event.result) {
+    await executeAction('remove', [name], {packageName: name, source});
+  }
 }
 
 const STATUS_ORDER: Record<PackageEntry['status'], number> = {
@@ -333,8 +382,18 @@ const statusRenderer = svelteCell<PackageEntry, PackageEntry['status']>()(
   PackageStatusCell,
 );
 const detailRenderer = packageDetailRenderer({cache: detailCache,
-  load: loadDetail, retry: retryDetail});
-const actionsRenderer = packageActionsRenderer(removeOne);
+  load: loadDetail, retry: retryDetail, onRemove: (name) =>
+    removeOne(name, 'detail')});
+const actionsRenderer = packageActionsRenderer(
+  (action: PackageRowAction, name: string) => {
+    if (action === 'remove') {
+      void removeOne(name);
+      return;
+    }
+
+    void executeAction(action, [name], {packageName: name, source: 'primary'});
+  },
+);
 const columns = $derived.by(() => [
   column<PackageEntry>()({
     id: 'name',
@@ -438,20 +497,20 @@ onMount(() => {
         disabled={loading}
         onclick={() => void handleRefresh()}
       >{hostT('packages.refresh')}</mndw-button>
-      <mndw-button
-        variant="secondary"
-        disabled={loading}
-        onclick={() => void fetchPackages()}
-      >{hostT('packages.reload')}</mndw-button>
     </div>
   </div>
   <div class="filter-row mndw-table-controls">
-    <input
-      type="search"
-      bind:value={filter}
-      placeholder={hostT('packages.search')}
-      class="filter-input"
-    />
+    <mndw-field
+      class="search-field"
+      label={hostT('packages.search-label')}
+    >
+      <mndw-input
+        type="search"
+        value={filter}
+        placeholder={hostT('packages.search')}
+        onmndwinput={handleSearchChange}
+      ></mndw-input>
+    </mndw-field>
     <mndw-tabs
       value={filterMode}
       onmndwchange={handleFilterChange}
@@ -463,35 +522,43 @@ onMount(() => {
       }</mndw-tab>
     </mndw-tabs>
   </div>
-  <div class="bulk-bar mndw-table-controls">
-    <span class="bulk-label">{hostT('packages.with-selected')}</span>
-    <mndw-button
-      variant="primary"
-      disabled={loading || !canInstall}
-      onclick={() => void runAction('install', (p) => p.status === 'available')}
-    >{hostT('packages.install')}</mndw-button>
-    <mndw-button
-      variant="danger"
-      disabled={loading || !canRemove}
-      onclick={() =>
-      void runAction('remove', (p) =>
-        p.status !== 'available' && !isProtected(p.name))}
-    >{hostT('packages.remove')}</mndw-button>
-    <mndw-button
-      variant="primary"
-      disabled={loading || !canUpdate}
-      onclick={() =>
-      void runAction('upgrade', (p) => p.status === 'update_available')}
-    >{hostT('packages.update')}</mndw-button>
-    {#if selectedCount > 0}<span class="selected-count">{
-        hostT('packages.selected', {count: selectedCount})
-      }</span>{/if}
-  </div>
+  {#if selectedCount > 0}
+    <div class="bulk-bar mndw-table-controls">
+      <span class="bulk-label">{hostT('packages.with-selected')}</span>
+      <mndw-button
+        variant="primary"
+        disabled={loading || !canInstall}
+        onclick={() => void runAction('install', (p) => p.status === 'available')}
+      >{hostT('packages.install')}</mndw-button>
+      <mndw-button
+        variant="secondary"
+        disabled={loading || !canRemove}
+        onclick={() =>
+        void runAction('remove', (p) =>
+          p.status !== 'available' && !isProtected(p.name))}
+      >{hostT('packages.remove')}</mndw-button>
+      <mndw-button
+        variant="primary"
+        disabled={loading || !canUpdate}
+        onclick={() =>
+        void runAction('upgrade', (p) => p.status === 'update_available')}
+      >{hostT('packages.update')}</mndw-button>
+      {#if selectedCount > 0}<span class="selected-count">{
+          hostT('packages.selected', {count: selectedCount})
+        }</span>{/if}
+    </div>
+  {/if}
   <div class="table-wrap">
     {#if loading}
       <div class="msg-cell">{hostT('packages.loading')}</div>
     {:else if loadError}
       <div class="msg-cell">{hostT('packages.load-failed')}</div>
+      <div class="retry-row">
+        <mndw-button
+          variant="secondary"
+          onclick={() => void fetchPackages()}
+        >{hostT('common.retry')}</mndw-button>
+      </div>
     {:else}
       <mndw-table
         bind:this={tableElement}
@@ -529,7 +596,7 @@ h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
 .freshness { color: var(--mndw-text-subtle); font-size: .75rem; }
 .freshness.stale { color: var(--mndw-warning); }
 .filter-row { min-width: 0; margin-bottom: 0.5rem; flex-wrap: wrap; }
-.filter-input { flex: 1; max-width: 20rem; padding: 0.375rem 0.625rem; font-size: .8125rem; border: 1px solid var(--mndw-border); border-radius: 0.25rem; background: var(--mndw-surface-raised); color: var(--mndw-text); }
+.search-field { flex: 1; max-width: 20rem; }
 .bulk-bar { margin-bottom: 0.5rem; font-size: .8125rem; }
 .bulk-label, .selected-count { color: var(--mndw-text-subtle); }
 .table-wrap { min-width: 0; border: 1px solid var(--mndw-border); border-radius: 0.375rem; overflow: hidden; }
@@ -537,4 +604,5 @@ mndw-table { display: block; min-width: 0; font-size: .8125rem; }
 mndw-table::part(viewport) { max-height: calc(100vh - 250px); overflow: auto; }
 mndw-table::part(header-cell) { position: sticky; top: 0; z-index: 1; background: var(--mndw-surface); }
 .msg-cell { text-align: center; padding: 2rem 0.625rem; color: var(--mndw-text-subtle); font-style: italic; }
+.retry-row { display: flex; justify-content: center; padding-bottom: 1rem; }
 </style>

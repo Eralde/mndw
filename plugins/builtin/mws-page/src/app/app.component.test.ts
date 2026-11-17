@@ -736,5 +736,11 @@ describe('AppComponent', () => {
     const fixture = render(data);
 
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Mock data: 20 extenders · 100 clients');
+
+    testI18n.setLocale('ru', ruCatalog);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent)
+      .toContain('Тестовые данные: ретрансляторов — 20, клиентов — 100');
   });
 });

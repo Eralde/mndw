@@ -56,8 +56,10 @@ function render(): void {
   flushSync();
 }
 
-function telemetrySwitch(): HTMLElement & {checked: boolean} {
-  const control = target.querySelector<HTMLElement & {checked: boolean}>('#mndw-telemetry-enabled');
+function telemetrySwitch(): HTMLElement & {checked: boolean; disabled: boolean} {
+  const control = target.querySelector<HTMLElement & {checked: boolean; disabled: boolean}>(
+    '#mndw-telemetry-enabled',
+  );
 
   if (control === null) {
     throw new Error('telemetry switch not rendered');
@@ -101,14 +103,97 @@ afterEach(async () => {
 });
 
 describe('GeneralSettings telemetry section', () => {
-  it('hides telemetry when no persistent session is enabled', async () => {
+  it('keeps telemetry visible and disabled until background router access is enabled', async () => {
+    let resolveCapability: (capability: PersistentRciCapability) => void = () => {};
+
+    getCapability.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCapability = resolve;
+      }),
+    );
+
     render();
 
-    await vi.waitFor(() => {
-      expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull();
+    const routerAccessSection = target.querySelector<HTMLElement>(
+      '#mndw-background-router-access',
+    );
+    const telemetrySection = target.querySelector<HTMLElement>('#mndw-telemetry');
+
+    expect(routerAccessSection).not.toBeNull();
+    expect(routerAccessSection?.textContent).toContain('Loading background router access…');
+    expect(telemetrySection).not.toBeNull();
+
+    resolveCapability(disabledCapability);
+    await vi.waitFor(() => expect(telemetrySwitch().disabled).toBe(true));
+    expect(telemetrySection?.textContent).toContain(
+      'A background router access session is needed for telemetry.',
+    );
+
+    const scrollIntoView = vi.fn();
+
+    if (routerAccessSection) {
+      Object.defineProperty(routerAccessSection, 'scrollIntoView', {value: scrollIntoView});
+    }
+
+    target.querySelector<HTMLAnchorElement>('#mndw-telemetry a')?.click();
+
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(routerAccessSection);
+  });
+
+  it('puts language in Interface and keeps Device to device facts', () => {
+    render();
+
+    const sections = [...target.querySelectorAll('section')];
+    const interfaceSection = sections.find((section) => section.querySelector('h3')?.textContent === 'Interface');
+    const deviceSection = sections.find((section) => section.querySelector('h3')?.textContent === 'Device');
+
+    expect(interfaceSection?.querySelector('mndw-select')).not.toBeNull();
+    expect(deviceSection?.querySelector('mndw-select')).toBeNull();
+  });
+
+  it('shows extender count and access problems in a collapsed summary', async () => {
+    getCapability.mockResolvedValueOnce({
+      ...enabledCapability,
+      extenders: [
+        {identity: 'live', name: 'Live extender', eligible: true, state: 'live'},
+        {identity: 'blocked', name: 'Blocked extender', eligible: false, reason: 'no-auth-token'},
+      ],
     });
 
-    expect(target.querySelector('#mndw-telemetry-enabled')).toBeNull();
+    render();
+
+    await vi.waitFor(() => expect(target.querySelector('details')).not.toBeNull());
+
+    const details = target.querySelector<HTMLDetailsElement>('details');
+
+    expect(details?.open).toBe(false);
+    expect(details?.querySelector('summary')?.textContent).toContain('Extenders (2)');
+    expect(details?.querySelector('summary')?.textContent).toContain('1 without access');
+    expect(details?.textContent).toContain('Blocked extender');
+
+    await setLocale('ru');
+    await vi.waitFor(() => expect(details?.querySelector('summary')?.textContent).toContain('Ретрансляторы (2)'));
+    expect(details?.querySelector('summary')?.textContent).toContain('без доступа: 1');
+  });
+
+  it('counts eligible extenders still establishing access in the collapsed summary', async () => {
+    getCapability.mockResolvedValueOnce({
+      ...enabledCapability,
+      extenders: [
+        {identity: 'pending', name: 'Pending extender', eligible: true, state: 'establishing'},
+        {identity: 'coming-online', name: 'Coming online', eligible: true},
+      ],
+    });
+
+    render();
+
+    await vi.waitFor(() => expect(target.querySelector('details')).not.toBeNull());
+
+    const details = target.querySelector<HTMLDetailsElement>('details');
+
+    expect(details?.querySelector('summary')?.textContent).toContain('Extenders (2)');
+    expect(details?.querySelector('summary')?.textContent).toContain('2 without access');
   });
 
   it('reflects the telemetry state returned by the management client', async () => {
@@ -211,13 +296,13 @@ describe('GeneralSettings controller-test results', () => {
       {
         locale: 'en',
         result: 'unsupported-firmware',
-        expected: 'Update device firmware to enable persistent RCI sessions.',
+        expected: 'Update device firmware to enable background router access.',
         alert: true,
       },
       {
         locale: 'ru',
         result: 'unsupported-firmware',
-        expected: 'Обновите прошивку устройства для включения постоянных сеансов rci/.',
+        expected: 'Обновите прошивку устройства, чтобы включить фоновый доступ к роутеру.',
         alert: true,
       },
       {locale: 'en', result: 'unreachable', expected: 'Device unreachable', alert: true},

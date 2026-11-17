@@ -297,11 +297,13 @@ describe('SettingsPage', () => {
 
     const component = mount(SettingsPage, {target});
 
-    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull());
+    await vi.waitFor(() =>
+      expect(target.querySelector('section[aria-label="Background router access"]')).not.toBeNull()
+    );
 
     const headings = [...target.querySelectorAll('h3')].map((heading) => heading.textContent?.trim());
 
-    expect(headings.slice(0, 3)).toEqual(['Appearance', 'Palette', 'Device']);
+    expect(headings.slice(0, 3)).toEqual(['Interface', 'Palette', 'Device']);
     expect(target.querySelector('.mndw-palette-manager')).not.toBeNull();
     expect(target.querySelector('.mndw-plugin-manager')).not.toBeNull();
 
@@ -322,13 +324,16 @@ describe('SettingsPage', () => {
 
     const component = mount(SettingsPage, {target});
 
-    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull());
+    await vi.waitFor(() =>
+      expect(target.querySelector('section[aria-label="Background router access"]')).not.toBeNull()
+    );
+    await vi.waitFor(() => expect(target.textContent).toContain('Controller and extender access'));
 
     const control = target.querySelector<HTMLElement & {checked: boolean}>('#mndw-persistent-rci-enabled');
 
     expect(control?.checked).toBe(true);
     expect(target.querySelector('mndw-input[type="password"]')).toBeNull();
-    expect(target.textContent).toContain('Persistent session with controller and extenders');
+    expect(target.textContent).toContain('Controller and extender access');
 
     void unmount(component);
   });
@@ -457,7 +462,7 @@ describe('SettingsPage', () => {
     );
 
     await vi.waitFor(() => {
-      expect(target.textContent).toContain('Persistent RCI session state unavailable');
+      expect(target.textContent).toContain('Background router access state unavailable');
       expect(target.textContent).toContain('Device unreachable');
     });
 
@@ -479,7 +484,7 @@ describe('SettingsPage', () => {
     const component = mount(SettingsPage, {target});
 
     await vi.waitFor(() =>
-      expect(target.textContent).toContain('Firmware was updated and now requires a controller token.')
+      expect(target.textContent).toContain('Firmware now requires a controller token for background router access.')
     );
     expect(target.querySelector('mndw-input[type="password"]')).not.toBeNull();
 
@@ -493,9 +498,7 @@ describe('SettingsPage', () => {
 
     const component = mount(SettingsPage, {target});
 
-    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull());
-    expect(target.querySelector('section[aria-label="Persistent RCI session"]')?.textContent)
-      .toContain('Persistent RCI session state unavailable');
+    await vi.waitFor(() => expect(target.textContent).toContain('Background router access state unavailable'));
     expect(target.querySelector('#mndw-persistent-rci-enabled')).toBeNull();
 
     void unmount(component);
@@ -510,15 +513,13 @@ describe('SettingsPage', () => {
 
     const component = mount(SettingsPage, {target});
 
-    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull());
-    expect(target.querySelector('section[aria-label="Persistent RCI session"]')?.textContent)
-      .toContain('Persistent RCI session state unavailable');
+    await vi.waitFor(() => expect(target.textContent).toContain('Background router access state unavailable'));
     expect(target.querySelector('#mndw-persistent-rci-enabled')).toBeNull();
 
     void unmount(component);
   });
 
-  it('shows telemetry section when tokenless session is enabled', async () => {
+  it('shows telemetry section when background router access is enabled', async () => {
     getCapability.mockResolvedValueOnce({
       store: {state: 'empty'},
       controller: {support: 'supported', auth: 'none', enabled: true},
@@ -532,7 +533,9 @@ describe('SettingsPage', () => {
 
     const component = mount(SettingsPage, {target});
 
-    await vi.waitFor(() => expect(target.textContent).toContain('Background telemetry'));
+    await vi.waitFor(() => {
+      expect(target.querySelector<HTMLElement & {disabled: boolean}>('#mndw-telemetry-enabled')?.disabled).toBe(false);
+    });
 
     void unmount(component);
   });
@@ -551,7 +554,7 @@ describe('SettingsPage', () => {
 
     const component = mount(SettingsPage, {target});
 
-    await vi.waitFor(() => expect(target.querySelector('section[aria-label="Persistent RCI session"]')).not.toBeNull());
+    await vi.waitFor(() => expect(target.querySelector('#mndw-persistent-rci-enabled')).not.toBeNull());
     target.querySelector<HTMLElement>('#mndw-persistent-rci-enabled')?.dispatchEvent(
       new CustomEvent('mndwchange', {bubbles: true, composed: true, detail: {checked: true}}),
     );

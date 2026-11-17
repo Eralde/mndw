@@ -79,6 +79,17 @@ afterEach(() => {
 });
 
 describe('LoginPage', () => {
+  it.each([
+    {locale: 'en', hint: 'Use the router\'s administrator username and password.'},
+    {locale: 'ru', hint: 'Используйте логин и пароль администратора роутера.'},
+  ])('shows the router credential hint in $locale', ({locale, hint}) => {
+    appState.locale = locale;
+
+    render();
+
+    expect(target.textContent).toContain(hint);
+  });
+
   it('offers a language selector before authentication', () => {
     const setLocale = vi.fn().mockResolvedValue(undefined);
     const services = createHostServices();

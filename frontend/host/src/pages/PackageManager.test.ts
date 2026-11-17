@@ -130,7 +130,7 @@ describe('PackageManager', () => {
     });
 
     const refreshButton = [...host.querySelectorAll('mndw-button')].find((button) =>
-      button.textContent?.trim() === 'Refresh Metadata'
+      button.textContent?.trim() === 'Check for updates'
     );
 
     refreshButton?.click();
@@ -220,7 +220,7 @@ describe('PackageManager', () => {
     await unmount(app);
   });
 
-  it('disables bulk actions when their selected package set is unavailable', async () => {
+  it('hides bulk actions until a package is selected', async () => {
     const packages = [
       {name: 'installed', version: '1.0.0', status: 'installed', description: 'Installed package'},
     ] satisfies PackageEntry[];
@@ -235,9 +235,7 @@ describe('PackageManager', () => {
 
     expect(tableRoot(host).querySelectorAll('mndw-checkbox')).toHaveLength(2);
 
-    const actions = [...host.querySelectorAll<HTMLElement & {disabled: boolean}>('.bulk-bar mndw-button')];
-
-    expect(actions.map((action) => action.disabled)).toEqual([true, true, true]);
+    expect(host.querySelector('.bulk-bar')).toBeNull();
 
     await unmount(app);
   });

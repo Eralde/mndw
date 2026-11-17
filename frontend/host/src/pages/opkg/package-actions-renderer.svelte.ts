@@ -4,18 +4,20 @@ import type {ComponentProps} from 'svelte';
 import type {PackageEntry} from '../../services/opkg-client.js';
 import PackageActionsCell from './PackageActionsCell.svelte';
 
+export type PackageRowAction = 'install' | 'upgrade' | 'remove';
+
 export function packageActionsRenderer(
-  onRemove: (name: string) => void,
+  onAction: (action: PackageRowAction, name: string) => void,
 ): () => CellRenderer<PackageEntry> {
   return svelteCellWith<
     PackageEntry,
     unknown,
-    {onRemove: () => void},
+    {onAction: (action: PackageRowAction) => void},
     ComponentProps<typeof PackageActionsCell>
   >(
     PackageActionsCell,
     (state) => ({
-      onRemove: () => onRemove(state.row.name),
+      onAction: (action) => onAction(action, state.row.name),
     }),
   );
 }

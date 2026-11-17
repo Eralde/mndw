@@ -60,6 +60,16 @@ let telemetrySessionPresent = $derived.by(() => {
   return persistentCapability?.controller.enabled === true
     && (support === 'supported' || support === 'invalid');
 });
+let extenders = $derived(
+  persistentCapability?.controller.support === 'supported'
+    ? persistentCapability.extenders
+    : [],
+);
+let extendersWithoutAccess = $derived(
+  extenders.filter((extender) => {
+    return !extender.eligible || extender.state !== 'live';
+  }).length,
+);
 
 $effect(() => {
   onPermissionStateChange({
@@ -258,6 +268,19 @@ function handleLocaleChange(event: CustomEvent<MndwSelectChangeDetail>): void {
   void locale.setLocale(event.detail.value).catch(() => {});
 }
 
+function focusBackgroundRouterAccess(event: MouseEvent): void {
+  event.preventDefault();
+
+  const section = document.getElementById('mndw-background-router-access');
+
+  if (!section) {
+    return;
+  }
+
+  section.scrollIntoView({behavior: 'smooth', block: 'start'});
+  section.focus({preventScroll: true});
+}
+
 function startCapabilityPolling(): void {
   capabilityPollController?.abort();
 
@@ -334,12 +357,6 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
       >
       </mndw-switch>
     </mndw-field>
-  </section>
-
-  <PaletteManager />
-
-  <section>
-    <h3>{hostT('settings.device')}</h3>
     <mndw-field label={hostT('settings.language.label')}>
       <mndw-select
         value={appState.locale}
@@ -360,6 +377,12 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
         <span role="status">{hostT('settings.language.pending')}</span>
       {/if}
     </mndw-field>
+  </section>
+
+  <PaletteManager />
+
+  <section>
+    <h3>{hostT('settings.device')}</h3>
     {#if appState.deviceInfo}
       <ul>
         <li>
@@ -380,9 +403,16 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
     {/if}
   </section>
 
-  {#if !persistentLoading}
-    <section aria-label={hostT('settings.persistent-rci-title')}>
-      <h3>{hostT('settings.persistent-rci-title')}</h3>
+  <section
+    id="mndw-background-router-access"
+    aria-label={hostT('settings.persistent-rci-title')}
+    tabindex="-1"
+  >
+    <h3>{hostT('settings.persistent-rci-title')}</h3>
+    <p>{hostT('settings.persistent-rci-description')}</p>
+    {#if persistentLoading}
+      <p role="status">{hostT('settings.persistent-loading')}</p>
+    {:else}
       {#if persistentAuth === 'unknown'}
         <p role="alert">{hostT('settings.persistent-state-unavailable')}</p>
         {#if persistentError}
@@ -402,39 +432,6 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
         <p>{hostT('settings.persistent-tokenless-description')}</p>
         {#if persistentError}
           <p role="alert">{persistentError}</p>
-        {/if}
-        {#if persistentCapability?.controller.support === 'supported'}
-          <div class="persistent-rci-extenders">
-            <h4>{hostT('settings.persistent-extenders-title')}</h4>
-            {#if persistentCapability.stale}
-              <p role="status">
-                {hostT('settings.persistent-enumeration-stale')}
-              </p>
-            {/if}
-            {#if persistentCapability.extenders.length > 0}
-              <ul>
-                {#each persistentCapability.extenders as
-                  extender
-                  (extender.identity)
-                }
-                  <li>
-                    {extender.name || extender.identity}:
-                    {#if !extender.eligible}
-                      {hostT(`settings.extender-reason-${extender.reason}`)}
-                    {:else}
-                      {
-                        hostT(
-                          `settings.extender-state-${
-                            extender.state ?? 'establishing'
-                          }`,
-                        )
-                      }
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-          </div>
         {/if}
       {:else}
         <mndw-field label={hostT('settings.configure-persistent')}>
@@ -525,64 +522,85 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
               </p>
             {/if}
           {/if}
-          {#if persistentCapability?.controller.support === 'supported'}
-            <div class="persistent-rci-extenders">
-              <h4>{hostT('settings.persistent-extenders-title')}</h4>
-              {#if persistentCapability.stale}
-                <p role="status">
-                  {hostT('settings.persistent-enumeration-stale')}
-                </p>
-              {/if}
-              {#if persistentCapability.extenders.length > 0}
-                <ul>
-                  {#each persistentCapability.extenders as
-                    extender
-                    (extender.identity)
-                  }
-                    <li>
-                      {extender.name || extender.identity}:
-                      {#if !extender.eligible}
-                        {hostT(`settings.extender-reason-${extender.reason}`)}
-                      {:else}
-                        {
-                          hostT(
-                            `settings.extender-state-${
-                              extender.state ?? 'establishing'
-                            }`,
-                          )
-                        }
-                      {/if}
-                    </li>
-                  {/each}
-                </ul>
-              {/if}
-            </div>
-          {/if}
         {/if}
       {/if}
-    </section>
-  {/if}
-
-  {#if telemetrySessionPresent}
-    <section>
-      <h3>{hostT('settings.telemetry-label')}</h3>
-      <mndw-field label={hostT('settings.telemetry-toggle')}>
-        <mndw-switch
-          id="mndw-telemetry-enabled"
-          checked={telemetryEnabled}
-          disabled={telemetryLoading}
-          onmndwchange={setTelemetryEnabled}
-        >
-        </mndw-switch>
-      </mndw-field>
-      <p>{hostT('settings.telemetry-description')}</p>
-      <p>{hostT('settings.telemetry-session-note')}</p>
-      <p>{hostT('settings.telemetry-wear-note')}</p>
-      {#if telemetryError}
-        <p role="alert">{telemetryError}</p>
+      {#if persistentCapability?.controller.support === 'supported'}
+        <details class="persistent-rci-extenders">
+          <summary>
+            {#if extendersWithoutAccess > 0}
+              {
+                hostT('settings.persistent-extenders-summary-problems', {
+                  count: extenders.length,
+                  problems: extendersWithoutAccess,
+                })
+              }
+            {:else}
+              {
+                hostT('settings.persistent-extenders-summary', {
+                  count: extenders.length,
+                })
+              }
+            {/if}
+            {#if persistentCapability.stale}
+              <span> — {hostT('settings.persistent-enumeration-stale')}</span>
+            {/if}
+          </summary>
+          {#if extenders.length > 0}
+            <ul>
+              {#each extenders as extender (extender.identity)}
+                <li>
+                  {extender.name || extender.identity}:
+                  {#if !extender.eligible}
+                    {hostT(`settings.extender-reason-${extender.reason}`)}
+                  {:else}
+                    {
+                      hostT(
+                        `settings.extender-state-${
+                          extender.state ?? 'establishing'
+                        }`,
+                      )
+                    }
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </details>
       {/if}
-    </section>
-  {/if}
+    {/if}
+  </section>
+
+  <section
+    id="mndw-telemetry"
+    aria-label={hostT('settings.telemetry-label')}
+  >
+    <h3>{hostT('settings.telemetry-label')}</h3>
+    <mndw-field label={hostT('settings.telemetry-toggle')}>
+      <mndw-switch
+        id="mndw-telemetry-enabled"
+        checked={telemetryEnabled}
+        disabled={telemetryLoading || !telemetrySessionPresent}
+        onmndwchange={setTelemetryEnabled}
+      >
+      </mndw-switch>
+    </mndw-field>
+    <p>{hostT('settings.telemetry-description')}</p>
+    {#if !telemetrySessionPresent}
+      <p>
+        {hostT('settings.telemetry-session-note')}
+        <a
+          href="#mndw-background-router-access"
+          onclick={focusBackgroundRouterAccess}
+        >
+          {hostT('settings.telemetry-session-link')}
+        </a>
+      </p>
+    {/if}
+    <p>{hostT('settings.telemetry-wear-note')}</p>
+    {#if telemetryError}
+      <p role="alert">{telemetryError}</p>
+    {/if}
+  </section>
 </div>
 
 <style>
@@ -601,6 +619,10 @@ async function pollCapability(signal: AbortSignal): Promise<void> {
   margin-top: 1.5rem;
   padding-left: 1rem;
   border-left: 2px solid var(--mndw-color-border, currentColor);
+}
+
+.persistent-rci-extenders summary {
+  cursor: pointer;
 }
 
 .unsupported-banner {

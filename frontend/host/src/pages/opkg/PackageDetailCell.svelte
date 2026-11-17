@@ -17,10 +17,12 @@ type Props = {
   cache: PackageDetailCache;
   load: (name: string) => void;
   retry: (name: string) => void;
+  onRemove: () => void;
 };
 
-let {row, value, colId, cache, load, retry}: Props = $props();
+let {row, value, colId, cache, load, retry, onRemove}: Props = $props();
 let packageName = $derived(value.name);
+const isProtected = $derived(row.name === 'mndw' || row.name === 'lighttpd');
 let detail = $derived.by(() => {
   return cache.get(packageName);
 });
@@ -64,6 +66,15 @@ $effect(() => {
           {hostT('packages.dependencies')}
         </dt><dd>{detail.info.dependencies.join(', ')}</dd>{/if}
     </dl>
+  {/if}
+  {#if row.status === 'update_available' && !isProtected}
+    <mndw-button
+      variant="secondary"
+      data-package={packageName}
+      data-package-action="detail"
+      data-no-expand
+      onclick={() => onRemove()}
+    >{hostT('packages.remove')}</mndw-button>
   {/if}
 </div>
 

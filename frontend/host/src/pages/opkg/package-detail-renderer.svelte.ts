@@ -9,12 +9,14 @@ export interface PackageDetailRendererOptions {
   cache: PackageDetailCache;
   load(name: string): void;
   retry(name: string): void;
+  onRemove(name: string): void;
 }
 
 interface PackageDetailExtra {
   cache: PackageDetailCache;
   load: (name: string) => void;
   retry: (name: string) => void;
+  onRemove: () => void;
 }
 
 export function packageDetailRenderer(
@@ -27,10 +29,11 @@ export function packageDetailRenderer(
     ComponentProps<typeof PackageDetailCell>
   >(
     PackageDetailCell,
-    () => ({
+    (state) => ({
       cache: options.cache,
       load: options.load,
       retry: options.retry,
+      onRemove: () => options.onRemove(state.row.name),
     }),
   );
 }

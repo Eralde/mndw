@@ -33,7 +33,7 @@ describe('packageDetailRenderer cache', () => {
       requests += 1;
       cache.set(name, {status: 'success', info});
     };
-    const rendererFactory = packageDetailRenderer({cache, load, retry: (): void => {}});
+    const rendererFactory = packageDetailRenderer({cache, load, retry: (): void => {}, onRemove: (): void => {}});
     const context = (node: HTMLElement): CellContext<PackageEntry, PackageEntry> => ({
       node,
       row,
@@ -83,6 +83,7 @@ describe('packageDetailRenderer updates', () => {
       cache,
       load: () => {},
       retry: () => {},
+      onRemove: () => {},
     })();
     const node = document.createElement('div');
 

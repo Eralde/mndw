@@ -39,6 +39,25 @@ func TestManagerClassifiesEligibilityAndResolveStates(t *testing.T) {
 		t.Fatalf("snapshot members = %#v", snapshot.Members)
 	}
 
+	eligible := snapshot.Member("eligible")
+	wantStatus := MemberStatus{
+		Identity:         "eligible",
+		Name:             "Eligible",
+		Eligible:         true,
+		Online:           true,
+		FQDN:             "eligible.keenetic.io",
+		CertValid:        true,
+		AuthTokenCapable: true,
+	}
+
+	if eligible.MemberStatus != wantStatus {
+		t.Fatalf("eligible member status = %#v, want %#v", eligible.MemberStatus, wantStatus)
+	}
+
+	if snapshot.Member("missing").Identity != "missing" {
+		t.Fatalf("missing member identity = %q, want %q", snapshot.Member("missing").Identity, "missing")
+	}
+
 	if snapshot.Member("unsupported").Reason != "certificate-invalid" {
 		t.Fatalf("unsupported reason = %q", snapshot.Member("unsupported").Reason)
 	}

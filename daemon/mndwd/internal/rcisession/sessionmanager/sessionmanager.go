@@ -63,19 +63,12 @@ type session struct {
 }
 
 type SnapshotMember struct {
-	Identity         string
-	Name             string
-	Eligible         bool
-	Reason           string
-	Online           bool
-	FQDN             string
-	CertValid        bool
-	AuthTokenCapable bool
-	State            State
-	Generation       uint64
-	LastError        status.Category
-	LastHeartbeatAt  *time.Time
-	HasSession       bool
+	MemberStatus
+	State           State
+	Generation      uint64
+	LastError       status.Category
+	LastHeartbeatAt *time.Time
+	HasSession      bool
 }
 
 type Snapshot struct {
@@ -89,7 +82,7 @@ func (s Snapshot) Member(identity string) SnapshotMember {
 		}
 	}
 
-	return SnapshotMember{Identity: identity}
+	return SnapshotMember{MemberStatus: MemberStatus{Identity: identity}}
 }
 
 type Manager struct {
@@ -434,16 +427,7 @@ func (m *Manager) Snapshot() Snapshot {
 
 	for _, identity := range identities {
 		member := m.members[identity]
-		item := SnapshotMember{
-			Identity:         member.Identity,
-			Name:             member.Name,
-			Eligible:         member.Eligible,
-			Reason:           member.Reason,
-			Online:           member.Online,
-			FQDN:             member.FQDN,
-			CertValid:        member.CertValid,
-			AuthTokenCapable: member.AuthTokenCapable,
-		}
+		item := SnapshotMember{MemberStatus: member}
 
 		if member.Eligible {
 			item.State = StateOffline

@@ -18,6 +18,7 @@ import (
 	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
 	"mndwd/internal/palette"
+	"mndwd/internal/rcisession"
 	"mndwd/internal/rcisession/model"
 	rcisessionstore "mndwd/internal/rcisession/store"
 	"mndwd/internal/registry"
@@ -144,7 +145,7 @@ func TestAssembleTokenlessSurvivesStoreOpenFailure(t *testing.T) {
 	cfg := frontDoorTestConfig(t, "", "http://127.0.0.1:80")
 	cfg.ControllerURL = controller.URL
 	cfg.RCIProxyOperationTimeout = time.Second
-	cfg.RCIProxyMaxResponseBytes = 1 << 20
+	cfg.RCIProxyMaxResponseBytes = rcisession.DefaultMaxResponseBytes
 	blockedParent := filepath.Join(t.TempDir(), "not-a-directory")
 
 	if err := os.WriteFile(blockedParent, []byte("file"), 0o600); err != nil {

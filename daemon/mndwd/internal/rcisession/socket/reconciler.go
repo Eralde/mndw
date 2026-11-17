@@ -28,10 +28,6 @@ type Reconciler struct {
 }
 
 func NewReconciler(config Config, handler Handler) *Reconciler {
-	if config.DrainTimeout <= 0 {
-		config.DrainTimeout = DefaultDrainTimeout
-	}
-
 	return &Reconciler{config: config, handler: handler, servers: make(map[string]*Server)}
 }
 

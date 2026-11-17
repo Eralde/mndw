@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	MaxJSONBodyBytes int64         = 64 << 10
-	JSONBodyTimeout  time.Duration = 15 * time.Second
+	MaxJSONBodyBytes       int64         = 64 << 10
+	DefaultBodyReadTimeout time.Duration = 15 * time.Second
+	JSONBodyTimeout        time.Duration = DefaultBodyReadTimeout
+	DefaultBodyIntakeLimit               = 16
 )
 
 // BodyLimit selects the size and time bounds for one request body.

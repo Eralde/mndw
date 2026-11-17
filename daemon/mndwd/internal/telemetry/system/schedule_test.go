@@ -21,7 +21,7 @@ func TestSyncEveryWindow(t *testing.T) {
 	source := &fakeNTP{bodies: [][]byte{invalidNTPBody()}}
 	clock := &fakeClock{bootID: testBootA, reading: testReading(0)}
 	engine := NewEngine(testConfig(fsys, clock, source, &viewRecorder{}, nil))
-	engine.cfg.SyncEvery = 3 * time.Minute
+	engine.cfg.SyncEvery = DefaultSyncEvery
 
 	if err := engine.Start(context.Background()); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -48,7 +48,7 @@ func TestSyncEveryWindow(t *testing.T) {
 		t.Fatal("pending ring synced before SyncEvery elapsed")
 	}
 
-	clock.set(testReading(firstWrite + int64(3*time.Minute/time.Millisecond)))
+	clock.set(testReading(firstWrite + int64(DefaultSyncEvery/time.Millisecond)))
 
 	if err := engine.Handle(context.Background(), EventSync); err != nil {
 		t.Fatalf("Handle(EventSync) error = %v", err)
@@ -66,13 +66,13 @@ func TestSyncEveryWindow(t *testing.T) {
 		t.Fatal("repeated sync event without writes synced again")
 	}
 
-	clock.set(testReading(firstWrite + 2*int64(3*time.Minute/time.Millisecond)))
+	clock.set(testReading(firstWrite + 2*int64(DefaultSyncEvery/time.Millisecond)))
 
 	if err := engine.Handle(context.Background(), EventTick); err != nil {
 		t.Fatalf("second Handle(EventTick) error = %v", err)
 	}
 
-	clock.set(testReading(firstWrite + 3*int64(3*time.Minute/time.Millisecond)))
+	clock.set(testReading(firstWrite + 3*int64(DefaultSyncEvery/time.Millisecond)))
 
 	if err := engine.Handle(context.Background(), EventSync); err != nil {
 		t.Fatalf("second due Handle(EventSync) error = %v", err)

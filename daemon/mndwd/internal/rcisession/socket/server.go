@@ -29,9 +29,7 @@ type Server struct {
 }
 
 func NewServer(path string, config Config, handler Handler) *Server {
-	if config.DrainTimeout <= 0 {
-		config.DrainTimeout = DefaultDrainTimeout
-	}
+	config = config.withDefaults()
 
 	if config.Grants.CanWrite {
 		config.Grants.CanRead = true
@@ -227,7 +225,7 @@ func (s *Server) acceptLoop(ctx context.Context, listener net.Listener) {
 				_ = connection.Close()
 			}()
 
-			err := ServeConnection(ctx, connection, s.config, s.handler)
+			err := serveConnection(ctx, connection, s.config, s.handler)
 
 			if s.config.Logger == nil {
 				return

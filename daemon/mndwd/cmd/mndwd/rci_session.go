@@ -61,7 +61,6 @@ func assembleRCISession(core daemonCore, accessMux *http.ServeMux, activationPok
 		ControllerURL:    cfg.ControllerURL,
 		MaxResponseBytes: cfg.RCIProxyMaxResponseBytes,
 		OperationTimeout: cfg.RCIProxyOperationTimeout,
-		EnumerationTTL:   cfg.RCIEnumerationTTL,
 		Manager:          manager,
 		EnabledStore:     store,
 		AuthModeSource:   detector,
@@ -84,25 +83,22 @@ func assembleRCISession(core daemonCore, accessMux *http.ServeMux, activationPok
 	accessMux.Handle("/api/mndw/rci-session/", rcisession.BodyLimit(4096)(rciMux))
 
 	socketReconciler := rcisessionsocket.NewReconciler(rcisessionsocket.Config{
-		Logger:      logger,
-		MaxInflight: cfg.RCIProxyMaxInflight,
-		IdleTimeout: cfg.RCIProxyIdleTimeout,
+		Logger: logger,
 	}, sessionService)
 
 	sessionService.DetectAuthMode(core.lifetime)
 
 	sessionCoordinator := coordinator.New(coordinator.Config{
-		Registry:          core.reg,
-		Store:             store,
-		RuntimeRoot:       cfg.PluginRuntimeRoot,
-		Service:           sessionService,
-		Establisher:       establisher.Establisher{AuthURLer: sessionService, HTTPClient: deviceClient, MaxResponseBytes: cfg.RCIProxyMaxResponseBytes},
-		Heartbeat:         heartbeat.Probe{Timeout: rciHeartbeatTimeout, MaxResponseBytes: cfg.RCIProxyMaxResponseBytes},
-		Reconciler:        socketReconciler,
-		HeartbeatInterval: cfg.RCIHeartbeatInterval,
-		Logger:            logger,
-		Parent:            lifetime,
-		ActivationPoke:    activationPoke,
+		Registry:       core.reg,
+		Store:          store,
+		RuntimeRoot:    cfg.PluginRuntimeRoot,
+		Service:        sessionService,
+		Establisher:    establisher.Establisher{AuthURLer: sessionService, HTTPClient: deviceClient, MaxResponseBytes: cfg.RCIProxyMaxResponseBytes},
+		Heartbeat:      heartbeat.Probe{Timeout: rciHeartbeatTimeout, MaxResponseBytes: cfg.RCIProxyMaxResponseBytes},
+		Reconciler:     socketReconciler,
+		Logger:         logger,
+		Parent:         lifetime,
+		ActivationPoke: activationPoke,
 	})
 
 	sessionCoordinator.RegisterActivationGates(core.activationGates)

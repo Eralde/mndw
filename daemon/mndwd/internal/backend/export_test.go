@@ -71,7 +71,7 @@ func markLifecycleServiceReady(control LifecycleControl, record *pluginRecord) b
 }
 
 func NewExecRunner(cfg ExecRunnerConfig) *ExecRunner {
-	cfg = normalizeExecConfig(cfg)
+	cfg = cfg.withDefaults()
 
 	return newExecRunner(cfg, NewAdmission(Limits{
 		MaxConcurrentExecTotal:     cfg.MaxConcurrentExecTotal,
@@ -94,7 +94,7 @@ func (r *ExecRunner) Serve(ctx context.Context, request ExecRequest, writer http
 func ownProcessID() int { return os.Getpid() }
 
 func NewSupervisor(cfg SupervisorConfig) *Supervisor {
-	cfg = normalizeSupervisorConfig(cfg)
+	cfg = cfg.withDefaults()
 
 	return newSupervisor(cfg, NewAdmission(cfg.Limits))
 }

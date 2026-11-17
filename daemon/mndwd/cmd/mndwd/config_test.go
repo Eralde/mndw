@@ -10,6 +10,7 @@ import (
 
 	"mndwd/internal/backend"
 	"mndwd/internal/rcisession"
+	"mndwd/internal/telemetry/system"
 )
 
 func TestParseFlagsLimitDefaultsMatchBackend(t *testing.T) {
@@ -27,19 +28,11 @@ func TestParseFlagsLimitDefaultsMatchBackend(t *testing.T) {
 			cfg.MaxConcurrentExecTotal, cfg.MaxConcurrentExecPerPlugin, cfg.MaxSupervisedServices, defaults)
 	}
 
-	if cfg.BodyIntakeLimit != 16 {
-		t.Fatalf("BodyIntakeLimit = %d, want 16", cfg.BodyIntakeLimit)
-	}
 }
 
-func TestParseFlagsRejectsNonPositiveBodyIntakeLimit(t *testing.T) {
-	for _, value := range []string{"0", "-1"} {
-		t.Run(value, func(t *testing.T) {
-			_, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--body-intake-limit", value})
-			if err == nil || !strings.Contains(err.Error(), "--body-intake-limit must be positive") {
-				t.Fatalf("parseFlags error = %v, want positive body intake limit", err)
-			}
-		})
+func TestParseRejectsRemovedExecTimeoutFlag(t *testing.T) {
+	if _, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--exec-timeout", "1s"}); err == nil {
+		t.Fatal("removed exec timeout flag was accepted")
 	}
 }
 
@@ -51,21 +44,6 @@ func TestParseFlagsMaxOutputBytesDefault(t *testing.T) {
 
 	if got, want := cfg.MaxOutputBytes, backend.DefaultMaxOutputBytes; got != want {
 		t.Fatalf("MaxOutputBytes = %d, want %d", got, want)
-	}
-}
-
-func TestParseBackendBodyAndHTTPIdleTimeoutDefaults(t *testing.T) {
-	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if cfg.BackendBodyTimeout != 15*time.Second {
-		t.Fatalf("backend body timeout = %s, want 15s", cfg.BackendBodyTimeout)
-	}
-
-	if cfg.HTTPIdleTimeout != 120*time.Second {
-		t.Fatalf("HTTP idle timeout = %s, want 120s", cfg.HTTPIdleTimeout)
 	}
 }
 
@@ -207,22 +185,16 @@ func TestParseDefaultsPluginRuntimeRootUsesDisposableRoot(t *testing.T) {
 	}
 }
 
-func TestParseDefaultsBackendLimitsAndTimeouts(t *testing.T) {
+func TestParseDefaultsBackendLimits(t *testing.T) {
 	cfg, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if cfg.MaxConcurrentExecTotal != 8 || cfg.MaxConcurrentExecPerPlugin != 4 || cfg.MaxSupervisedServices != 8 {
-		t.Fatalf("backend limits = total:%d plugin:%d services:%d", cfg.MaxConcurrentExecTotal, cfg.MaxConcurrentExecPerPlugin, cfg.MaxSupervisedServices)
-	}
+	defaults := backend.DefaultLimits()
 
-	if cfg.ExecKillGrace != 2*time.Second || cfg.ServiceHTTPTimeout != 30*time.Second || cfg.HTTPDrainTimeout != 35*time.Second {
-		t.Fatalf("backend timeouts = grace:%s service:%s drain:%s", cfg.ExecKillGrace, cfg.ServiceHTTPTimeout, cfg.HTTPDrainTimeout)
-	}
-
-	if cfg.ServiceStopTimeout != 15*time.Second || cfg.FinalReapTimeout != 2*time.Second {
-		t.Fatalf("backend lifecycle timeouts = stop:%s reap:%s", cfg.ServiceStopTimeout, cfg.FinalReapTimeout)
+	if cfg.MaxConcurrentExecTotal != defaults.MaxConcurrentExecTotal || cfg.MaxConcurrentExecPerPlugin != defaults.MaxConcurrentExecPerPlugin || cfg.MaxSupervisedServices != defaults.MaxSupervisedServices {
+		t.Fatalf("backend limits = total:%d plugin:%d services:%d, want %+v", cfg.MaxConcurrentExecTotal, cfg.MaxConcurrentExecPerPlugin, cfg.MaxSupervisedServices, defaults)
 	}
 }
 
@@ -257,13 +229,6 @@ func TestParseRejectsInvalidBackendConfig(t *testing.T) {
 		{"--max-concurrent-exec-total", "0"},
 		{"--max-concurrent-exec-per-plugin", "0"},
 		{"--max-supervised-services", "0"},
-		{"--exec-kill-grace", "0s"},
-		{"--service-http-timeout", "0s"},
-		{"--backend-body-timeout", "0s"},
-		{"--backend-body-timeout", "-1s"},
-		{"--http-idle-timeout", "0s"},
-		{"--http-idle-timeout", "-1s"},
-		{"--http-drain-timeout", "1s"},
 	} {
 		if _, _, err := parseFlags(args); err == nil {
 			t.Errorf("parseFlags(%v) succeeded", args)
@@ -338,36 +303,12 @@ func TestParseDefaultsPersistentSessionConfig(t *testing.T) {
 		t.Fatalf("RCI key file = %q, want %q", got, want)
 	}
 
-	if cfg.RCIEnumerationTTL != 30*time.Second {
-		t.Fatalf("RCI enumeration TTL = %s, want 30s", cfg.RCIEnumerationTTL)
-	}
-
-	if cfg.RCIHeartbeatInterval != 60*time.Second {
-		t.Fatalf("RCI heartbeat interval = %s, want 60s", cfg.RCIHeartbeatInterval)
-	}
-
-	if cfg.RCIProxyIdleTimeout != 2*time.Minute {
-		t.Fatalf("RCI proxy idle timeout = %s, want 2m", cfg.RCIProxyIdleTimeout)
-	}
-
 	if cfg.RCIProxyOperationTimeout != cfg.ExecTimeout {
 		t.Fatalf("RCI proxy operation timeout = %s, want exec timeout %s", cfg.RCIProxyOperationTimeout, cfg.ExecTimeout)
 	}
 
-	if cfg.RCIProxyMaxInflight != 8 {
-		t.Fatalf("RCI proxy max inflight = %d, want 8", cfg.RCIProxyMaxInflight)
-	}
-
-	if cfg.RCIProxyMaxResponseBytes != 1<<20 {
+	if cfg.RCIProxyMaxResponseBytes != rcisession.DefaultMaxResponseBytes {
 		t.Fatalf("RCI proxy max response bytes = %d, want 1 MiB", cfg.RCIProxyMaxResponseBytes)
-	}
-}
-
-func TestParseRejectsHeartbeatIntervalOutsideBounds(t *testing.T) {
-	for _, value := range []string{"44s", "148s"} {
-		if _, _, err := parseFlags([]string{"--data-dir", "/var/lib/mndw", "--rci-heartbeat-interval", value}); err == nil {
-			t.Fatalf("heartbeat interval %s accepted", value)
-		}
 	}
 }
 
@@ -475,11 +416,6 @@ func TestParseRejectsProductionControllerURLOverride(t *testing.T) {
 		"--rci-session-state-dir", "/var/lib/mndw-rci",
 		"--rci-session-key-dir", "/var/secure/mndw",
 		"--controller-url", "http://192.168.1.1:80",
-		"--rci-enumeration-ttl", "45s",
-		"--rci-proxy-idle-timeout", "3m",
-		"--rci-proxy-operation-timeout", "17s",
-		"--rci-proxy-max-inflight", "4",
-		"--rci-proxy-max-response-bytes", "2048",
 	})
 	if err == nil {
 		t.Fatal("production controller override accepted")
@@ -492,10 +428,6 @@ func TestParseRejectsInvalidPersistentSessionConfig(t *testing.T) {
 		args []string
 	}{
 		{name: "key directory nested in state", args: []string{"--data-dir", "/var/lib/mndw", "--rci-session-key-dir", "/var/lib/mndw/secrets"}},
-		{name: "zero enumeration ttl", args: []string{"--rci-enumeration-ttl", "0s"}},
-		{name: "negative idle timeout", args: []string{"--rci-proxy-idle-timeout", "-1s"}},
-		{name: "zero inflight", args: []string{"--rci-proxy-max-inflight", "0"}},
-		{name: "zero response limit", args: []string{"--rci-proxy-max-response-bytes", "0"}},
 	}
 
 	for _, test := range tests {
@@ -508,7 +440,7 @@ func TestParseRejectsInvalidPersistentSessionConfig(t *testing.T) {
 }
 
 func TestWithDefaultsFillsUnsetFields(t *testing.T) {
-	cfg := Config{DataDir: "/data/mndw", Opkg: "stub", ExecTimeout: 7 * time.Second}.withDefaults()
+	cfg := Config{DataDir: "/data/mndw", Opkg: "stub"}.withDefaults()
 
 	for _, check := range []struct {
 		name string
@@ -531,8 +463,34 @@ func TestWithDefaultsFillsUnsetFields(t *testing.T) {
 		}
 	}
 
-	if cfg.RCIProxyOperationTimeout != 7*time.Second {
-		t.Errorf("RCIProxyOperationTimeout = %s, want exec timeout 7s", cfg.RCIProxyOperationTimeout)
+	if cfg.RCIProxyOperationTimeout != cfg.ExecTimeout {
+		t.Errorf("RCIProxyOperationTimeout = %s, want exec timeout %s", cfg.RCIProxyOperationTimeout, cfg.ExecTimeout)
+	}
+
+	if cfg.TelemetryMaxUnsynced != system.DefaultSyncEvery || cfg.ExecTimeout != backend.DefaultExecTimeout ||
+		cfg.ServiceHTTPTimeout != backend.DefaultServiceHTTPTimeout || cfg.ServiceStopTimeout != backend.DefaultDaemonServiceStopTimeout ||
+		cfg.FinalReapTimeout != backend.DefaultFinalReapTimeout || cfg.MaxRequestBytes != backend.DefaultMaxRequestBytes ||
+		cfg.MaxOutputBytes != backend.DefaultMaxOutputBytes || cfg.RCIProxyMaxResponseBytes != rcisession.DefaultMaxResponseBytes {
+		t.Errorf("withDefaults omitted E2 values: %+v", cfg)
+	}
+
+	limits := backend.DefaultLimits()
+
+	if cfg.MaxConcurrentExecTotal != limits.MaxConcurrentExecTotal || cfg.MaxConcurrentExecPerPlugin != limits.MaxConcurrentExecPerPlugin ||
+		cfg.MaxSupervisedServices != limits.MaxSupervisedServices {
+		t.Errorf("withDefaults omitted backend capacity defaults: %+v", cfg)
+	}
+}
+
+func TestDefaultHTTPDrainTimeoutCoversShutdownWindows(t *testing.T) {
+	minimumDrain := backend.DefaultExecTimeout + backend.DefaultExecKillGrace
+
+	if backend.DefaultServiceHTTPTimeout > minimumDrain {
+		minimumDrain = backend.DefaultServiceHTTPTimeout
+	}
+
+	if defaultHTTPDrainTimeout < minimumDrain {
+		t.Fatalf("HTTP drain timeout = %s, want at least %s", defaultHTTPDrainTimeout, minimumDrain)
 	}
 }
 
@@ -546,20 +504,30 @@ func TestWithDefaultsDevKeyDirSitsBesideDataDir(t *testing.T) {
 
 func TestWithDefaultsKeepsExplicitValues(t *testing.T) {
 	explicit := Config{
-		DataDir:                  "/d",
-		UserPluginsDir:           "/u",
-		PluginRuntimeRoot:        "/r",
-		SelfUpdateStateDir:       "/s",
-		SelfUpdateHelper:         "/h",
-		DiagnosticsLogFile:       "/l",
-		RRDDir:                   "/rrd",
-		RCISessionStateDir:       "/state",
-		RCISessionKeyDir:         "/keys",
-		ControllerURL:            "http://192.0.2.1",
-		RCIProxyOperationTimeout: 3 * time.Second,
-		ExecTimeout:              9 * time.Second,
-		Opkg:                     "exec",
-		Service:                  "stub",
+		DataDir:                    "/d",
+		UserPluginsDir:             "/u",
+		PluginRuntimeRoot:          "/r",
+		SelfUpdateStateDir:         "/s",
+		SelfUpdateHelper:           "/h",
+		DiagnosticsLogFile:         "/l",
+		RRDDir:                     "/rrd",
+		RCISessionStateDir:         "/state",
+		RCISessionKeyDir:           "/keys",
+		ControllerURL:              "http://192.0.2.1",
+		TelemetryMaxUnsynced:       4 * time.Minute,
+		RCIProxyOperationTimeout:   3 * time.Second,
+		ExecTimeout:                9 * time.Second,
+		ServiceHTTPTimeout:         12 * time.Second,
+		ServiceStopTimeout:         11 * time.Second,
+		FinalReapTimeout:           time.Second,
+		RCIProxyMaxResponseBytes:   2048,
+		MaxRequestBytes:            4096,
+		MaxOutputBytes:             8192,
+		MaxConcurrentExecTotal:     1,
+		MaxConcurrentExecPerPlugin: 1,
+		MaxSupervisedServices:      1,
+		Opkg:                       "exec",
+		Service:                    "stub",
 	}
 
 	if got := explicit.withDefaults(); !reflect.DeepEqual(got, explicit) {
@@ -572,17 +540,5 @@ func TestWithDefaultsIsIdempotent(t *testing.T) {
 
 	if twice := once.withDefaults(); !reflect.DeepEqual(twice, once) {
 		t.Fatalf("second withDefaults changed config:\n got %#v\nwant %#v", twice, once)
-	}
-}
-
-func TestParseStillRejectsExplicitZeroDurations(t *testing.T) {
-	for _, args := range [][]string{
-		{"--rci-heartbeat-interval", "0"},
-		{"--http-drain-timeout", "0"},
-		{"--rci-proxy-operation-timeout", "-1s"},
-	} {
-		if _, _, err := parseFlags(append([]string{"--data-dir", "/var/lib/mndw"}, args...)); err == nil {
-			t.Errorf("parseFlags accepted %v", args)
-		}
 	}
 }

@@ -15,7 +15,7 @@ const readinessRetryInterval = 25 * time.Millisecond
 
 func ProbeReadiness(ctx context.Context, socketPath, pluginID string, protocolVersion int, timeout time.Duration) error {
 	if timeout <= 0 {
-		timeout = 30 * time.Second
+		timeout = DefaultServiceHTTPTimeout
 	}
 
 	readinessCtx, cancel := context.WithTimeout(ctx, timeout)

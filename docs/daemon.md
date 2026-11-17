@@ -117,9 +117,9 @@ children receive `MNDW_BACKEND_SOCKET`, `MNDW_BACKEND_PROTOCOL`,
 
 Runtime states are `stopped`, `capacity_blocked`, `starting`, `ready`,
 `backoff`, and `failed`. Limits default to 8 total exec requests, 4 per
-plugin, and 8 supervised services. Service HTTP timeout is 30s; drain is 35s;
-daemon service-stop phase is up to 19s at defaults (`service-stop-timeout` 15s,
-up to 2s initial reap, then one shared 2s finalizer wait).
+plugin, and 8 supervised services. Service HTTP timeout is 30s; HTTP drain is
+35s; daemon service-stop phase is up to 19s at defaults
+(`DefaultDaemonServiceStopTimeout` 15s, up to 2s initial reap, then one shared 2s finalizer wait).
 Unsupported protocols remain enabled in state but never start
 and report `BACKEND_INCOMPATIBLE`.
 

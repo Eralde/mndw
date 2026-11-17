@@ -13,7 +13,7 @@ type TrafficGate struct {
 }
 
 func NewTrafficGate() *TrafficGate {
-	config := normalizeSupervisorConfig(SupervisorConfig{})
+	config := (SupervisorConfig{}).withDefaults()
 
 	return newTrafficGate(newSupervisor(config, NewAdmission(config.Limits)))
 }

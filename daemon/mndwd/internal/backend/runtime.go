@@ -72,7 +72,7 @@ type RuntimeImpl struct {
 	lifecycleObserver LifecycleObserver
 }
 
-func NewRuntime(config RuntimeConfig) *RuntimeImpl {
+func (config RuntimeConfig) withDefaults() RuntimeConfig {
 	if config.RuntimeRoot == "" {
 		config.RuntimeRoot = "/opt/tmp/mndw/plugin-runtime"
 	}
@@ -107,6 +107,7 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 	config.Exec.MaxConcurrentExecPerPlugin = config.Limits.MaxConcurrentExecPerPlugin
 	config.Exec.RuntimeRoot = config.RuntimeRoot
 	config.Exec.PluginDataRoot = config.PluginDataRoot
+	config.Exec = config.Exec.withDefaults()
 
 	if config.Supervisor.RuntimeRoot == "" {
 		config.Supervisor.RuntimeRoot = config.RuntimeRoot
@@ -115,7 +116,13 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 	config.Supervisor.PluginDataRoot = config.PluginDataRoot
 	config.Supervisor.Limits = config.Limits
 	config.Supervisor.SupportedProtocols = slices.Clone(config.SupportedServiceProtocols)
-	config.Supervisor = normalizeSupervisorConfig(config.Supervisor)
+	config.Supervisor = config.Supervisor.withDefaults()
+
+	return config
+}
+
+func NewRuntime(config RuntimeConfig) *RuntimeImpl {
+	config = config.withDefaults()
 
 	admission := NewAdmission(config.Limits)
 	supervisor := newSupervisor(config.Supervisor, admission)
@@ -126,7 +133,7 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 		traffic:           newTrafficGate(supervisor),
 		limits:            config.Limits,
 		protocols:         slices.Clone(config.SupportedServiceProtocols),
-		now:               config.Supervisor.Now,
+		now:               supervisor.now,
 		logger:            config.Supervisor.Logger,
 		runtimeRoot:       config.RuntimeRoot,
 		activationGates:   config.ActivationGates,

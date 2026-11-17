@@ -58,7 +58,7 @@ func frontDoorTestConfig(t *testing.T, frontendDir, deviceURL string) Config {
 		ServiceStopTimeout:         time.Second,
 		FinalReapTimeout:           time.Second,
 		RCIProxyOperationTimeout:   time.Second,
-		RCIProxyMaxResponseBytes:   1 << 20,
+		RCIProxyMaxResponseBytes:   rcisession.DefaultMaxResponseBytes,
 		MaxConcurrentExecTotal:     1,
 		MaxConcurrentExecPerPlugin: 1,
 		MaxSupervisedServices:      1,

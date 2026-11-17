@@ -18,7 +18,7 @@ import (
 )
 
 const defaultDelay = 10 * time.Second
-const defaultSyncEvery = 3 * time.Minute
+const DefaultSyncEvery = 3 * time.Minute
 
 // Clock pairs the operating-system boot clock with the wall clock.
 type Clock interface {
@@ -104,7 +104,7 @@ func NewEngine(cfg Config) *Engine {
 	}
 
 	if cfg.SyncEvery <= 0 {
-		cfg.SyncEvery = defaultSyncEvery
+		cfg.SyncEvery = DefaultSyncEvery
 	}
 
 	if cfg.Keeper.MinValidUTC.IsZero() || cfg.Keeper.MaxValidUTC.IsZero() {

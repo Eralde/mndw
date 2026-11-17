@@ -48,19 +48,19 @@ type ExecRunner struct {
 	admission *Admission
 }
 
-func normalizeExecConfig(cfg ExecRunnerConfig) ExecRunnerConfig {
+func (cfg ExecRunnerConfig) withDefaults() ExecRunnerConfig {
 	defaults := DefaultLimits()
 
 	if cfg.Timeout <= 0 {
-		cfg.Timeout = 30 * time.Second
+		cfg.Timeout = DefaultExecTimeout
 	}
 
 	if cfg.KillGrace <= 0 {
-		cfg.KillGrace = 2 * time.Second
+		cfg.KillGrace = DefaultExecKillGrace
 	}
 
 	if cfg.MaxBodyBytes <= 0 {
-		cfg.MaxBodyBytes = 1 << 20
+		cfg.MaxBodyBytes = DefaultMaxRequestBytes
 	}
 
 	if cfg.MaxOutputBytes <= 0 {
@@ -79,8 +79,6 @@ func normalizeExecConfig(cfg ExecRunnerConfig) ExecRunnerConfig {
 }
 
 func newExecRunner(cfg ExecRunnerConfig, admission *Admission) *ExecRunner {
-	cfg = normalizeExecConfig(cfg)
-
 	return &ExecRunner{cfg: cfg, admission: admission}
 }
 

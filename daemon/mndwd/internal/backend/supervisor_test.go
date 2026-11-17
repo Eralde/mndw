@@ -257,11 +257,11 @@ func TestStaleStartupCannotPublishFailureOrReadiness(t *testing.T) {
 func testSupervisorConfig(t *testing.T) SupervisorConfig {
 	t.Helper()
 
-	return normalizeSupervisorConfig(SupervisorConfig{
+	return (SupervisorConfig{
 		RuntimeRoot:        t.TempDir(),
 		SupportedProtocols: []int{1},
 		Limits:             Limits{MaxSupervisedServices: 4},
-	})
+	}).withDefaults()
 }
 
 func enabledSpec(pluginID string) ServiceSpec {
@@ -278,15 +278,16 @@ func containsID(ids []string, want string) bool {
 	return false
 }
 
-func TestNormalizeSupervisorConfigAppliesDefaults(t *testing.T) {
+func TestSupervisorConfigAppliesDefaults(t *testing.T) {
 	now := func() time.Time { return time.Unix(123, 0) }
-	cfg := normalizeSupervisorConfig(SupervisorConfig{Now: now})
+	cfg := (SupervisorConfig{Now: now}).withDefaults()
 
 	if cfg.Limits.MaxSupervisedServices != 8 {
 		t.Fatalf("MaxSupervisedServices = %d, want 8", cfg.Limits.MaxSupervisedServices)
 	}
 
-	if cfg.ReadinessTimeout != 30*time.Second || cfg.StopTimeout != 10*time.Second || cfg.DiagnosticsTimeout != 2*time.Second || cfg.FinalReapTimeout != 2*time.Second {
+	if cfg.ReadinessTimeout != DefaultServiceHTTPTimeout || cfg.StopTimeout != DefaultStandaloneStopTimeout ||
+		cfg.DiagnosticsTimeout != 2*time.Second || cfg.FinalReapTimeout != DefaultFinalReapTimeout {
 		t.Fatalf("timeouts = %#v", cfg)
 	}
 
@@ -524,7 +525,7 @@ func TestRecordFailureDelaysAndCutoff(t *testing.T) {
 func TestTransitionFailureLockedBackoffProgression(t *testing.T) {
 	base := time.Unix(1_000, 0)
 	supervisor := newSupervisor(
-		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return base }}),
+		(SupervisorConfig{Now: func() time.Time { return base }}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 	record := setSupervisorServiceRecordForTest(supervisor, "svc", &serviceRecord{status: RuntimeStatus{State: StateStarting}})
@@ -578,7 +579,7 @@ func TestTransitionFailureLockedBackoffProgression(t *testing.T) {
 
 func TestTransitionFailureLockedRecordsExitAndError(t *testing.T) {
 	supervisor := newSupervisor(
-		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }}),
+		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 	record := setSupervisorServiceRecordForTest(supervisor, "svc", &serviceRecord{status: RuntimeStatus{State: StateReady, ConsecutiveFailures: 0}})
@@ -600,7 +601,7 @@ func TestTransitionFailureLockedRecordsExitAndError(t *testing.T) {
 
 func TestPlanStartIncompatibleWithoutRuntimeIsNoop(t *testing.T) {
 	supervisor := newSupervisor(
-		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}}),
+		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 	paths, err := NewRuntimePaths(t.TempDir(), "svc")
@@ -627,7 +628,7 @@ func TestPlanStartIncompatibleWithoutRuntimeIsNoop(t *testing.T) {
 
 func TestPlanStartCapacityBlocked(t *testing.T) {
 	supervisor := newSupervisor(
-		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}}),
+		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 
@@ -695,7 +696,7 @@ func TestRecentStderrSurvivesExit(t *testing.T) {
 
 func TestPlanStartProceedReservesAndMarksStarting(t *testing.T) {
 	supervisor := newSupervisor(
-		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 2}}),
+		(SupervisorConfig{Now: func() time.Time { return time.Unix(1_000, 0) }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 2}}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 2}),
 	)
 	paths, err := NewRuntimePaths(t.TempDir(), "svc")
@@ -717,7 +718,7 @@ func TestPlanStartProceedReservesAndMarksStarting(t *testing.T) {
 func TestPlanStartBackoffNotElapsedIsNoop(t *testing.T) {
 	now := time.Unix(1_000, 0)
 	supervisor := newSupervisor(
-		normalizeSupervisorConfig(SupervisorConfig{Now: func() time.Time { return now }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}}),
+		(SupervisorConfig{Now: func() time.Time { return now }, SupportedProtocols: []int{1}, Limits: Limits{MaxSupervisedServices: 1}}).withDefaults(),
 		NewAdmission(Limits{MaxSupervisedServices: 1}),
 	)
 	future := now.Add(5 * time.Second)

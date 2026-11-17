@@ -60,22 +60,28 @@ type Gateway struct {
 	logger          *slog.Logger
 }
 
-func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticator, runtime *RuntimeImpl, logger *slog.Logger) *Gateway {
+func (cfg GatewayConfig) withDefaults() GatewayConfig {
 	if cfg.BodyIntake == nil {
-		cfg.BodyIntake = httpx.NewBodyIntake(16)
+		cfg.BodyIntake = httpx.NewBodyIntake(httpx.DefaultBodyIntakeLimit)
 	}
 
 	if cfg.MaxRequestBytes <= 0 {
-		cfg.MaxRequestBytes = 1 << 20
+		cfg.MaxRequestBytes = DefaultMaxRequestBytes
 	}
 
 	if cfg.BodyReadTimeout <= 0 {
-		cfg.BodyReadTimeout = 15 * time.Second
+		cfg.BodyReadTimeout = DefaultBackendBodyReadTimeout
 	}
 
 	if cfg.ServiceHTTPTimeout <= 0 {
-		cfg.ServiceHTTPTimeout = 30 * time.Second
+		cfg.ServiceHTTPTimeout = DefaultServiceHTTPTimeout
 	}
+
+	return cfg
+}
+
+func NewGateway(cfg GatewayConfig, registry *registry.Registry, auth Authenticator, runtime *RuntimeImpl, logger *slog.Logger) *Gateway {
+	cfg = cfg.withDefaults()
 
 	traffic := NewTrafficGate()
 

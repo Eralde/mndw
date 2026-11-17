@@ -13,7 +13,7 @@ import (
 
 	"mndwd/internal/backend"
 	"mndwd/internal/rcisession"
-	"mndwd/internal/rcisession/coordinator"
+	"mndwd/internal/telemetry/system"
 )
 
 // maxUploadBytes caps an upload request body at 10 MB.
@@ -28,9 +28,8 @@ const defaultRRDDir = "/opt/var/lib/mndw/rrd"
 const defaultRCISessionKeyDir = "/opt/var/lib/mndw-secrets"
 
 const (
-	defaultRCIHeartbeatInterval = coordinator.DefaultHeartbeatInterval
-	minRCIHeartbeatInterval     = 45 * time.Second
-	maxRCIHeartbeatInterval     = 147 * time.Second
+	defaultHTTPIdleTimeout  = 120 * time.Second
+	defaultHTTPDrainTimeout = 35 * time.Second
 )
 
 // Config is the daemon's fully-resolved runtime configuration, including package
@@ -61,26 +60,17 @@ type Config struct {
 
 	// Exec/service runtime limits and timeouts.
 	ExecTimeout                time.Duration
-	ExecKillGrace              time.Duration
-	BackendBodyTimeout         time.Duration
-	HTTPIdleTimeout            time.Duration
 	ServiceHTTPTimeout         time.Duration
-	HTTPDrainTimeout           time.Duration
 	ServiceStopTimeout         time.Duration
 	FinalReapTimeout           time.Duration
 	MaxRequestBytes            int64
 	MaxOutputBytes             int64
-	BodyIntakeLimit            int
 	MaxConcurrentExecTotal     int
 	MaxConcurrentExecPerPlugin int
 	MaxSupervisedServices      int
 
 	// Persistent RCI session limits.
-	RCIEnumerationTTL        time.Duration
-	RCIHeartbeatInterval     time.Duration
-	RCIProxyIdleTimeout      time.Duration
 	RCIProxyOperationTimeout time.Duration
-	RCIProxyMaxInflight      int
 	RCIProxyMaxResponseBytes int64
 }
 
@@ -104,10 +94,54 @@ func (c Config) RCISessionKeyFile() string {
 }
 
 // withDefaults fills unset configuration fields without reading environment
-// variables. Environment and --dev policy stay in parseFlags. Explicit zero
-// values rejected by parseFlags (RCIHeartbeatInterval and HTTPDrainTimeout)
-// are deliberately left unchanged.
+// variables. Environment and --dev policy stay in parseFlags.
 func (c Config) withDefaults() Config {
+	if c.TelemetryMaxUnsynced <= 0 {
+		c.TelemetryMaxUnsynced = system.DefaultSyncEvery
+	}
+
+	if c.ExecTimeout <= 0 {
+		c.ExecTimeout = backend.DefaultExecTimeout
+	}
+
+	if c.ServiceHTTPTimeout <= 0 {
+		c.ServiceHTTPTimeout = backend.DefaultServiceHTTPTimeout
+	}
+
+	if c.ServiceStopTimeout <= 0 {
+		c.ServiceStopTimeout = backend.DefaultDaemonServiceStopTimeout
+	}
+
+	if c.FinalReapTimeout <= 0 {
+		c.FinalReapTimeout = backend.DefaultFinalReapTimeout
+	}
+
+	if c.MaxRequestBytes <= 0 {
+		c.MaxRequestBytes = backend.DefaultMaxRequestBytes
+	}
+
+	if c.MaxOutputBytes <= 0 {
+		c.MaxOutputBytes = backend.DefaultMaxOutputBytes
+	}
+
+	limits := backend.DefaultLimits()
+
+	if c.MaxConcurrentExecTotal <= 0 {
+		c.MaxConcurrentExecTotal = limits.MaxConcurrentExecTotal
+	}
+
+	if c.MaxConcurrentExecPerPlugin <= 0 {
+		c.MaxConcurrentExecPerPlugin = limits.MaxConcurrentExecPerPlugin
+	}
+
+	if c.MaxSupervisedServices <= 0 {
+		c.MaxSupervisedServices = limits.MaxSupervisedServices
+	}
+
+	if c.RCIProxyMaxResponseBytes <= 0 {
+		c.RCIProxyMaxResponseBytes = rcisession.DefaultMaxResponseBytes
+	}
+
 	if c.UserPluginsDir == "" {
 		c.UserPluginsDir = filepath.Join(c.DataDir, "user-plugins")
 	}
@@ -187,38 +221,23 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	fs.StringVar(&cfg.Service, "service", "", "service mode: exec|stub; defaults to --opkg")
 	fs.StringVar(&cfg.LogLevel, "log-level", "info", "log level: debug|info|warn|error")
 	fs.StringVar(&cfg.RRDDir, "rrd-dir", defaultRRDDir, "private durable telemetry directory")
-	fs.DurationVar(&cfg.TelemetryMaxUnsynced, "telemetry-max-unsynced", 3*time.Minute, "maximum duration acquired telemetry may stay unsynced (3m-15m)")
-	fs.DurationVar(&cfg.ExecTimeout, "exec-timeout", 30*time.Second, "per-request exec timeout")
-	fs.DurationVar(&cfg.ExecKillGrace, "exec-kill-grace", 2*time.Second, "grace period after terminating an exec process group")
-	fs.DurationVar(&cfg.BackendBodyTimeout, "backend-body-timeout", 15*time.Second, "max time to receive a plugin backend request body")
-	fs.DurationVar(&cfg.HTTPIdleTimeout, "http-idle-timeout", 120*time.Second, "keep-alive idle connection timeout")
-	fs.DurationVar(&cfg.ServiceHTTPTimeout, "service-http-timeout", 30*time.Second, "service backend HTTP timeout")
-	fs.DurationVar(&cfg.HTTPDrainTimeout, "http-drain-timeout", 35*time.Second, "HTTP drain timeout during maintenance")
-	fs.DurationVar(&cfg.ServiceStopTimeout, "service-stop-timeout", 15*time.Second, "service process group stop timeout")
-	fs.DurationVar(&cfg.FinalReapTimeout, "final-reap-timeout", 2*time.Second, "final process group reap timeout")
-	fs.Int64Var(&cfg.MaxRequestBytes, "max-request-bytes", 1<<20, "max backend request body size in bytes")
+
+	limits := backend.DefaultLimits()
+
+	fs.Int64Var(&cfg.MaxRequestBytes, "max-request-bytes", backend.DefaultMaxRequestBytes, "max backend request body size in bytes")
 	fs.Int64Var(&cfg.MaxOutputBytes, "max-output-bytes", backend.DefaultMaxOutputBytes, "max backend exec response size in bytes")
-	fs.IntVar(&cfg.BodyIntakeLimit, "body-intake-limit", 16, "max request bodies buffered concurrently")
 
-	defaults := backend.DefaultLimits()
-
-	fs.IntVar(&cfg.MaxConcurrentExecTotal, "max-concurrent-exec-total", defaults.MaxConcurrentExecTotal, "global max concurrent exec requests")
-	fs.IntVar(&cfg.MaxConcurrentExecPerPlugin, "max-concurrent-exec-per-plugin", defaults.MaxConcurrentExecPerPlugin, "per-plugin max concurrent exec requests")
-	fs.IntVar(&cfg.MaxSupervisedServices, "max-supervised-services", defaults.MaxSupervisedServices, "global max supervised services")
-	fs.DurationVar(&cfg.RCIEnumerationTTL, "rci-enumeration-ttl", 30*time.Second, "persistent RCI member enumeration cache TTL")
-	fs.DurationVar(&cfg.RCIHeartbeatInterval, "rci-heartbeat-interval", defaultRCIHeartbeatInterval, "persistent RCI session heartbeat interval")
-	fs.DurationVar(&cfg.RCIProxyIdleTimeout, "rci-proxy-idle-timeout", 2*time.Minute, "persistent RCI socket idle timeout")
-	fs.DurationVar(&cfg.RCIProxyOperationTimeout, "rci-proxy-operation-timeout", 0, "persistent RCI outbound operation timeout; defaults to exec-timeout")
-	fs.IntVar(&cfg.RCIProxyMaxInflight, "rci-proxy-max-inflight", 8, "max persistent RCI requests in flight per socket")
-	fs.Int64Var(&cfg.RCIProxyMaxResponseBytes, "rci-proxy-max-response-bytes", 1<<20, "max persistent RCI response body size in bytes")
+	fs.IntVar(&cfg.MaxConcurrentExecTotal, "max-concurrent-exec-total", limits.MaxConcurrentExecTotal, "global max concurrent exec requests")
+	fs.IntVar(&cfg.MaxConcurrentExecPerPlugin, "max-concurrent-exec-per-plugin", limits.MaxConcurrentExecPerPlugin, "per-plugin max concurrent exec requests")
+	fs.IntVar(&cfg.MaxSupervisedServices, "max-supervised-services", limits.MaxSupervisedServices, "global max supervised services")
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 
 	if err = fs.Parse(args); err != nil {
 		return cfg, false, err
 	}
 
-	if cfg.TelemetryMaxUnsynced < 3*time.Minute || cfg.TelemetryMaxUnsynced > 15*time.Minute {
-		return cfg, false, errors.New("telemetry-max-unsynced must be between 3m and 15m")
+	if err := validateBackendConfig(cfg); err != nil {
+		return cfg, false, err
 	}
 
 	if showVersion {
@@ -242,6 +261,10 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 	}
 
 	cfg = cfg.withDefaults()
+
+	if cfg.TelemetryMaxUnsynced > 15*time.Minute {
+		return cfg, false, errors.New("telemetry maximum unsynced duration must not exceed 15m")
+	}
 
 	if err := validatePersistentSessionConfig(cfg); err != nil {
 		return cfg, false, err
@@ -298,10 +321,6 @@ func parseFlags(args []string) (cfg Config, showVersion bool, err error) {
 		*item.target = parsed
 	}
 
-	if err := validateBackendConfig(cfg); err != nil {
-		return cfg, false, err
-	}
-
 	return cfg, false, nil
 }
 
@@ -321,6 +340,10 @@ func flagWasSet(flags *flag.FlagSet, name string) bool {
 }
 
 func validateBackendConfig(cfg Config) error {
+	if cfg.MaxRequestBytes <= 0 {
+		return fmt.Errorf("--max-request-bytes must be positive")
+	}
+
 	if cfg.MaxOutputBytes <= 0 {
 		return fmt.Errorf("--max-output-bytes must be positive")
 	}
@@ -329,7 +352,6 @@ func validateBackendConfig(cfg Config) error {
 		name  string
 		value int
 	}{
-		{"body-intake-limit", cfg.BodyIntakeLimit},
 		{"max-concurrent-exec-total", cfg.MaxConcurrentExecTotal},
 		{"max-concurrent-exec-per-plugin", cfg.MaxConcurrentExecPerPlugin},
 		{"max-supervised-services", cfg.MaxSupervisedServices},
@@ -339,34 +361,6 @@ func validateBackendConfig(cfg Config) error {
 		if item.value <= 0 {
 			return fmt.Errorf("--%s must be positive", item.name)
 		}
-	}
-
-	for _, item := range []struct {
-		name  string
-		value time.Duration
-	}{
-		{"exec-timeout", cfg.ExecTimeout},
-		{"exec-kill-grace", cfg.ExecKillGrace},
-		{"backend-body-timeout", cfg.BackendBodyTimeout},
-		{"http-idle-timeout", cfg.HTTPIdleTimeout},
-		{"service-http-timeout", cfg.ServiceHTTPTimeout},
-		{"http-drain-timeout", cfg.HTTPDrainTimeout},
-		{"service-stop-timeout", cfg.ServiceStopTimeout},
-		{"final-reap-timeout", cfg.FinalReapTimeout},
-	} {
-		if item.value <= 0 {
-			return fmt.Errorf("--%s must be positive", item.name)
-		}
-	}
-
-	minimumDrain := cfg.ExecTimeout + cfg.ExecKillGrace
-
-	if cfg.ServiceHTTPTimeout > minimumDrain {
-		minimumDrain = cfg.ServiceHTTPTimeout
-	}
-
-	if cfg.HTTPDrainTimeout < minimumDrain {
-		return fmt.Errorf("--http-drain-timeout must be at least %s", minimumDrain)
 	}
 
 	return nil
@@ -401,28 +395,12 @@ func validatePersistentSessionConfig(cfg Config) error {
 		return fmt.Errorf("--rci-session-key-dir must be outside --rci-session-state-dir")
 	}
 
-	if cfg.RCIEnumerationTTL <= 0 {
-		return fmt.Errorf("--rci-enumeration-ttl must be positive")
-	}
-
-	if cfg.RCIHeartbeatInterval < minRCIHeartbeatInterval || cfg.RCIHeartbeatInterval > maxRCIHeartbeatInterval {
-		return fmt.Errorf("--rci-heartbeat-interval must be between %s and %s", minRCIHeartbeatInterval, maxRCIHeartbeatInterval)
-	}
-
-	if cfg.RCIProxyIdleTimeout <= 0 {
-		return fmt.Errorf("--rci-proxy-idle-timeout must be positive")
-	}
-
 	if cfg.RCIProxyOperationTimeout <= 0 {
-		return fmt.Errorf("--rci-proxy-operation-timeout must be positive")
-	}
-
-	if cfg.RCIProxyMaxInflight <= 0 {
-		return fmt.Errorf("--rci-proxy-max-inflight must be positive")
+		return fmt.Errorf("RCI proxy operation timeout must be positive")
 	}
 
 	if cfg.RCIProxyMaxResponseBytes <= 0 {
-		return fmt.Errorf("--rci-proxy-max-response-bytes must be positive")
+		return fmt.Errorf("RCI proxy max response bytes must be positive")
 	}
 
 	return nil

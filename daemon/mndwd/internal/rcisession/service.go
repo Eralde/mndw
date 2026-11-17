@@ -13,12 +13,15 @@ import (
 
 	rci "mndw.local/rci"
 	"mndw.local/rcisock"
+	rcidefaults "mndwd/internal/rcisession/defaults"
 	"mndwd/internal/rcisession/enumeration"
 	"mndwd/internal/rcisession/establisher"
 	"mndwd/internal/rcisession/model"
 	"mndwd/internal/rcisession/proxy"
 	"mndwd/internal/rcisession/sessionmanager"
 )
+
+const DefaultMaxResponseBytes = rcidefaults.MaxResponseBytes
 
 var (
 	ErrControllerInvalid = errors.New("controller session invalid")
@@ -515,7 +518,7 @@ func (s *Service) AuthURL(ctx context.Context, identity string) (string, uint64,
 
 	controllerClient := s.controllerClient
 
-	options := []rci.HTTPOption{rci.WithMaxResponseBytes(1 << 20)}
+	options := []rci.HTTPOption{rci.WithMaxResponseBytes(DefaultMaxResponseBytes)}
 
 	if snapshot.Token != "" {
 		options = append(options, rci.WithHeader("X-Ndma-Tkn", func() string { return snapshot.Token }))

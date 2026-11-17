@@ -130,7 +130,7 @@ type pluginRecord struct {
 	sockets            map[socketCloser]struct{}
 }
 
-func normalizeSupervisorConfig(cfg SupervisorConfig) SupervisorConfig {
+func (cfg SupervisorConfig) withDefaults() SupervisorConfig {
 	defaults := DefaultLimits()
 
 	if cfg.Limits.MaxConcurrentExecTotal <= 0 {
@@ -146,11 +146,11 @@ func normalizeSupervisorConfig(cfg SupervisorConfig) SupervisorConfig {
 	}
 
 	if cfg.ReadinessTimeout <= 0 {
-		cfg.ReadinessTimeout = 30 * time.Second
+		cfg.ReadinessTimeout = DefaultServiceHTTPTimeout
 	}
 
 	if cfg.StopTimeout <= 0 {
-		cfg.StopTimeout = 10 * time.Second
+		cfg.StopTimeout = DefaultStandaloneStopTimeout
 	}
 
 	if cfg.DiagnosticsTimeout <= 0 {
@@ -158,7 +158,7 @@ func normalizeSupervisorConfig(cfg SupervisorConfig) SupervisorConfig {
 	}
 
 	if cfg.FinalReapTimeout <= 0 {
-		cfg.FinalReapTimeout = 2 * time.Second
+		cfg.FinalReapTimeout = DefaultFinalReapTimeout
 	}
 
 	if cfg.Now == nil {
@@ -173,8 +173,6 @@ func normalizeSupervisorConfig(cfg SupervisorConfig) SupervisorConfig {
 }
 
 func newSupervisor(cfg SupervisorConfig, admission *Admission) *Supervisor {
-	cfg = normalizeSupervisorConfig(cfg)
-
 	supervisor := &Supervisor{
 		cfg:         cfg,
 		admission:   admission,

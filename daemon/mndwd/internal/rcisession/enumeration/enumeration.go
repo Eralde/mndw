@@ -15,8 +15,11 @@ import (
 
 	mwsmembers "mndw.local/mws-members"
 	rci "mndw.local/rci"
+	rcidefaults "mndwd/internal/rcisession/defaults"
 	"mndwd/internal/rcisession/status"
 )
+
+const DefaultCacheTTL = 30 * time.Second
 
 var ErrTargetUnreachable = errors.New("target unreachable")
 
@@ -71,6 +74,10 @@ type Cache struct {
 }
 
 func NewCache(source Source, ttl time.Duration, now func() time.Time) *Cache {
+	if ttl <= 0 {
+		ttl = DefaultCacheTTL
+	}
+
 	if now == nil {
 		now = time.Now
 	}
@@ -232,7 +239,7 @@ func (s HTTPSource) Enumerate(ctx context.Context) ([]Member, error) {
 	limit := s.MaxResponseBytes
 
 	if limit <= 0 {
-		limit = 1 << 20
+		limit = rcidefaults.MaxResponseBytes
 	}
 
 	options := []rci.HTTPOption{rci.WithMaxResponseBytes(limit)}

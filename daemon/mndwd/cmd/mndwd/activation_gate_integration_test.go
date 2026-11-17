@@ -196,7 +196,7 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 		ServiceStopTimeout:         time.Second,
 		FinalReapTimeout:           time.Second,
 		RCIProxyOperationTimeout:   time.Second,
-		RCIProxyMaxResponseBytes:   1 << 20,
+		RCIProxyMaxResponseBytes:   rcisession.DefaultMaxResponseBytes,
 		MaxConcurrentExecTotal:     1,
 		MaxConcurrentExecPerPlugin: 1,
 		MaxSupervisedServices:      1,
@@ -287,7 +287,7 @@ func newActivationIntegrationFixture(t *testing.T, withToken bool) *activationIn
 	}
 
 	gatewayMux := http.NewServeMux()
-	gateway := registerPlugins(gatewayMux, core, httpx.NewBodyIntake(16))
+	gateway := registerPlugins(gatewayMux, core, httpx.NewBodyIntake(httpx.DefaultBodyIntakeLimit))
 	fixture.assembly = assembledCoordinator
 	fixture.gateway = gateway
 	fixture.mux = gatewayMux

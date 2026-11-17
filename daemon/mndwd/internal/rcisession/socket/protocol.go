@@ -31,7 +31,31 @@ type Config struct {
 	DrainTimeout time.Duration
 }
 
-const DefaultDrainTimeout = 2 * time.Second
+const (
+	DefaultMaxInflight  = 8
+	DefaultIdleTimeout  = 2 * time.Minute
+	DefaultDrainTimeout = 2 * time.Second
+)
+
+func (c Config) withDefaults() Config {
+	if c.MaxLineBytes <= 0 {
+		c.MaxLineBytes = 64 * 1024
+	}
+
+	if c.MaxInflight <= 0 {
+		c.MaxInflight = DefaultMaxInflight
+	}
+
+	if c.IdleTimeout <= 0 {
+		c.IdleTimeout = DefaultIdleTimeout
+	}
+
+	if c.DrainTimeout <= 0 {
+		c.DrainTimeout = DefaultDrainTimeout
+	}
+
+	return c
+}
 
 type Handler interface {
 	Do(context.Context, proxy.Request) (proxy.Response, error)
@@ -39,13 +63,10 @@ type Handler interface {
 }
 
 func ServeConnection(ctx context.Context, connection net.Conn, config Config, handler Handler) error {
-	if config.MaxLineBytes <= 0 {
-		config.MaxLineBytes = 64 * 1024
-	}
+	return serveConnection(ctx, connection, config.withDefaults(), handler)
+}
 
-	if config.MaxInflight <= 0 {
-		config.MaxInflight = 8
-	}
+func serveConnection(ctx context.Context, connection net.Conn, config Config, handler Handler) error {
 
 	reader := rcisock.NewReader[rcisock.RequestFrame](connection, config.MaxLineBytes)
 	connectionContext, cancel := context.WithCancel(ctx)

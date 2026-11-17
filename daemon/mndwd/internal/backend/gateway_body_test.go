@@ -26,8 +26,8 @@ import (
 const execBodyManifest = `{"manifestVersion":1,"name":"demo","version":"1.0.0","type":"page","label":"Demo","entry":"index.js","route":"/demo","backend":{"kind":"exec","routes":[{"id":"get","transport":"http","method":"GET","path":"get","command":"backend/command.sh","access":"public"},{"id":"head","transport":"http","method":"HEAD","path":"get","command":"backend/command.sh","access":"public"},{"id":"post","transport":"http","method":"POST","path":"post","command":"backend/command.sh"}]}}`
 
 func TestGatewayBodyReadTimeoutDefault(t *testing.T) {
-	if got := NewGateway(GatewayConfig{}, nil, nil, nil, nil).cfg.BodyReadTimeout; got != 15*time.Second {
-		t.Fatalf("body read timeout = %s, want 15s", got)
+	if got := (GatewayConfig{}).withDefaults().BodyReadTimeout; got != DefaultBackendBodyReadTimeout {
+		t.Fatalf("body read timeout = %s, want %s", got, DefaultBackendBodyReadTimeout)
 	}
 }
 

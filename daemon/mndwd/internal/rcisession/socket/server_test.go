@@ -48,6 +48,22 @@ func TestConnectionRequiresHelloFirst(t *testing.T) {
 	}
 }
 
+func TestSocketConfigAppliesDefaults(t *testing.T) {
+	config := (Config{}).withDefaults()
+
+	if got, want := config.MaxInflight, DefaultMaxInflight; got != want {
+		t.Errorf("MaxInflight = %d, want %d", got, want)
+	}
+
+	if got, want := config.IdleTimeout, DefaultIdleTimeout; got != want {
+		t.Errorf("IdleTimeout = %s, want %s", got, want)
+	}
+
+	if got, want := config.DrainTimeout, DefaultDrainTimeout; got != want {
+		t.Errorf("DrainTimeout = %s, want %s", got, want)
+	}
+}
+
 func TestConnectionTimesOutBeforeHello(t *testing.T) {
 	client, server := net.Pipe()
 

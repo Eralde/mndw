@@ -88,7 +88,7 @@ func TestParseMembersRejectsDuplicateIdentity(t *testing.T) {
 func TestCacheUsesFreshMembersAndFailsClosedWhenStale(t *testing.T) {
 	clock := time.Unix(100, 0)
 	source := &fakeSource{members: []Member{{Identity: "node-1", Name: "A", IP: "192.168.1.2", MAC: "aa:bb:cc:dd:ee:ff"}}}
-	cache := NewCache(source, 30*time.Second, func() time.Time { return clock })
+	cache := NewCache(source, DefaultCacheTTL, func() time.Time { return clock })
 
 	first, err := cache.List(context.Background())
 	if err != nil {
@@ -111,6 +111,26 @@ func TestCacheUsesFreshMembersAndFailsClosedWhenStale(t *testing.T) {
 
 	if _, err := cache.List(context.Background()); !errors.Is(err, ErrTargetUnreachable) {
 		t.Fatalf("stale cache error = %v, want ErrTargetUnreachable", err)
+	}
+}
+
+func TestCacheUsesDefaultTTLWhenZero(t *testing.T) {
+	clock := time.Unix(100, 0)
+	source := &fakeSource{members: []Member{{Identity: "node-1", MAC: "aa:bb:cc:dd:ee:ff"}}}
+	cache := NewCache(source, 0, func() time.Time { return clock })
+
+	if _, err := cache.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	clock = clock.Add(DefaultCacheTTL - time.Second)
+
+	if _, err := cache.List(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if source.calls != 1 {
+		t.Fatalf("enumeration calls = %d, want 1 within default TTL", source.calls)
 	}
 }
 
@@ -145,6 +165,7 @@ func TestCacheRetainsLastGoodMembersAndReportsSafeStaleStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	clock = clock.Add(DefaultCacheTTL)
 	source.err = errors.New("controller token secret and URL must not escape")
 
 	if _, err := cache.List(context.Background()); err == nil {
@@ -165,13 +186,15 @@ func TestCacheRetainsLastGoodMembersAndReportsSafeStaleStatus(t *testing.T) {
 }
 
 func TestCacheSuccessClearsStaleMetadata(t *testing.T) {
+	clock := time.Now()
 	source := &fakeSource{members: []Member{{Identity: "node-1", MAC: "aa:bb:cc:dd:ee:ff"}}}
-	cache := NewCache(source, 0, time.Now)
+	cache := NewCache(source, 0, func() time.Time { return clock })
 
 	if _, err := cache.List(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
+	clock = clock.Add(DefaultCacheTTL)
 	source.err = errors.New("down")
 	_, _ = cache.List(context.Background())
 	source.err = nil

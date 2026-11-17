@@ -152,7 +152,7 @@ func run(cfg Config) (err error) {
 	srv := &http.Server{
 		Handler:           c.handler,
 		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       cfg.HTTPIdleTimeout,
+		IdleTimeout:       defaultHTTPIdleTimeout,
 	}
 
 	if listener != nil {
@@ -163,7 +163,7 @@ func run(cfg Config) (err error) {
 
 	return serveWithDrain(ctx, srv, listener, logger, func() {
 		c.events.Stop("shutdown")
-	}, cfg.HTTPDrainTimeout)
+	}, defaultHTTPDrainTimeout)
 }
 
 // components is the fully-wired daemon. Close releases everything assemble
@@ -252,10 +252,6 @@ func assemble(cfg Config, store *state.Store, paletteStore *palette.Store, verif
 func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store, verifier *authz.Verifier, logger *slog.Logger, lifetime context.Context) (*components, error) {
 	cfg = cfg.withDefaults()
 
-	if cfg.BodyIntakeLimit == 0 {
-		cfg.BodyIntakeLimit = 16
-	}
-
 	eventBus := events.NewBus()
 	normalizer := events.NewNormalizer(time.Now, nil)
 	internalPublisher := events.NewInternalPublisher(eventBus, normalizer)
@@ -321,7 +317,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 	})
 
 	mux := http.NewServeMux()
-	intake := httpx.NewBodyIntake(cfg.BodyIntakeLimit)
+	intake := httpx.NewBodyIntake(httpx.DefaultBodyIntakeLimit)
 	core := daemonCore{
 		cfg:             cfg,
 		store:           store,
@@ -423,7 +419,6 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 func backendExecConfig(cfg Config, logger *slog.Logger) backend.ExecRunnerConfig {
 	return backend.ExecRunnerConfig{
 		Timeout:        cfg.ExecTimeout,
-		KillGrace:      cfg.ExecKillGrace,
 		MaxBodyBytes:   cfg.MaxRequestBytes,
 		MaxOutputBytes: cfg.MaxOutputBytes,
 		Logger:         logger,
@@ -441,7 +436,7 @@ func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger, veri
 		return fmt.Errorf("device proxy: %w", err)
 	}
 
-	proxyIntake := httpx.NewBodyIntake(cfg.BodyIntakeLimit)
+	proxyIntake := httpx.NewBodyIntake(httpx.DefaultBodyIntakeLimit)
 
 	registerDeviceProxyRoutes(mux, proxy, proxyIntake, httpx.JSONBodyTimeout)
 
@@ -568,7 +563,6 @@ func registerPlugins(mux *http.ServeMux, core daemonCore, intake *httpx.BodyInta
 	gateway := backend.NewGateway(backend.GatewayConfig{
 		BodyIntake:                intake,
 		MaxRequestBytes:           core.cfg.MaxRequestBytes,
-		BodyReadTimeout:           core.cfg.BackendBodyTimeout,
 		ServiceHTTPTimeout:        core.cfg.ServiceHTTPTimeout,
 		AllowSymlinkedBuiltinRoot: core.cfg.Dev,
 		ActivationGates:           core.activationGates,
@@ -618,7 +612,7 @@ func diagnosticsPlugins(reg *registry.Registry, runtime *backend.RuntimeImpl) []
 
 func serveWithDrain(ctx context.Context, srv *http.Server, listener net.Listener, logger *slog.Logger, onShutdown func(), drainTimeout time.Duration) error {
 	if drainTimeout <= 0 {
-		drainTimeout = 35 * time.Second
+		drainTimeout = defaultHTTPDrainTimeout
 	}
 
 	errCh := make(chan error, 1)

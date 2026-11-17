@@ -67,7 +67,7 @@ The daemon runs files under `backend/`; it does not serve that directory as brow
 }
 ```
 
-The frontend calls the stable route id (`context.backend.fetch('hello')`), not a hard-coded daemon
+The frontend calls the stable route id (`context.backend.call('hello', {as: 'json'})`), not a hard-coded daemon
 URL. Route paths are canonical, relative, and cannot use the daemon-reserved `_mndw` namespace.
 Route IDs and route tuples must be unique. An `exec` route always needs a command; a `service` route
 does not, because the service owns its declared route table.

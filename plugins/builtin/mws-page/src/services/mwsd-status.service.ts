@@ -161,29 +161,22 @@ export class MwsdStatusService {
 
   private fetchMwsdStatus(backend: BackendClient): Observable<MwsdPollOutcome> {
     const controller = new AbortController();
-    const nodesObs$ = from(backend.fetch('nodes', {signal: controller.signal}));
+    const nodesObs$ = from(backend.call<unknown>('nodes', {as: 'json', signal: controller.signal}));
 
     return defer(() => nodesObs$)
       .pipe(
         timeout({each: MWSD_STATUS_REQUEST_TIMEOUT_MS}),
-        switchMap((response) =>
-          response.ok
-            ? defer(() => from(response.json())).pipe(
-              timeout({each: MWSD_STATUS_REQUEST_TIMEOUT_MS}),
-              map((value): MwsdPollOutcome => {
-                const snapshot = parsePersistentSessionsResponse(value, this.lastPersistentSessions);
+        map((value): MwsdPollOutcome => {
+          const snapshot = parsePersistentSessionsResponse(value, this.lastPersistentSessions);
 
-                return snapshot === null
-                  ? {kind: 'availability', availability: 'limited'}
-                  : {kind: 'snapshot', snapshot};
-              }),
-              switchMap((outcome) =>
-                outcome.kind === 'snapshot'
-                  ? this.classifyPersistentSnapshot(backend, controller.signal, outcome.snapshot)
-                  : of(outcome)
-              ),
-            )
-            : this.queryBackendStatus(backend, controller.signal)
+          return snapshot === null
+            ? {kind: 'availability', availability: 'limited'}
+            : {kind: 'snapshot', snapshot};
+        }),
+        switchMap((outcome) =>
+          outcome.kind === 'snapshot'
+            ? this.classifyPersistentSnapshot(backend, controller.signal, outcome.snapshot)
+            : of(outcome)
         ),
         catchError((error: unknown) => this.queryBackendStatus(backend, controller.signal, error)),
         finalize(() => controller.abort()),

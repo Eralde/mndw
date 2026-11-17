@@ -7,6 +7,7 @@ const EXPECTED_TYPE_EXPORTS = [
   'BackendApprovalStatus',
   'BackendBlocker',
   'BackendClient',
+  'BackendCallOptions',
   'BackendErrorCode',
   'BackendFetchOptions',
   'BackendSocketOptions',

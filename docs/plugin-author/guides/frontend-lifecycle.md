@@ -69,7 +69,7 @@ ctx.events?.select$('wan').subscribe((event) => {
 });
 
 if (ctx.backend !== undefined) {
-  void ctx.backend.fetch('status');
+  // Use ctx.backend.call('status', {as: 'json', signal: ctx.signal}) for decoded responses.
 }
 ```
 
@@ -87,7 +87,7 @@ leaving a page, plugin reload, or disable. Pass it to cancellable requests, and 
 `await` in asynchronous `createInstance` work before updating UI or starting more work.
 
 ```ts
-import type {PluginContext, PluginInstance} from '@mndw/sdk';
+import {BackendError, type PluginContext, type PluginInstance} from '@mndw/sdk';
 
 export async function createInstance(container: HTMLElement, ctx: PluginContext): Promise<PluginInstance> {
   if (ctx.backend === undefined) {
@@ -95,23 +95,25 @@ export async function createInstance(container: HTMLElement, ctx: PluginContext)
   }
 
   try {
-    const response = await ctx.backend.fetch('status', {signal: ctx.signal});
-    if (ctx.signal.aborted) {
-      return {unmount() {}};
-    }
-
-    const status = await response.json();
+    const status = await ctx.backend.call<unknown>('status', {as: 'json', signal: ctx.signal});
     if (ctx.signal.aborted) {
       return {unmount() {}};
     }
 
     container.textContent = JSON.stringify(status);
   } catch (error) {
-    if (!ctx.signal.aborted) {
-      throw error;
+    if (ctx.signal.aborted) {
+      return {unmount() {}};
     }
 
-    return {unmount() {}};
+    if (error instanceof BackendError) {
+      console.error(error.message, {code: error.code, retryable: error.retryable});
+      container.textContent = error.message;
+
+      return {unmount() { container.replaceChildren(); }};
+    }
+
+    throw error;
   }
 
   return {unmount() { container.replaceChildren(); }};
@@ -125,6 +127,13 @@ export async function createInstance(container: HTMLElement, ctx: PluginContext)
 
 The host disposes context immediately even while `createInstance` is pending. If initialization later returns an instance,
 the host calls its `unmount()`; `ctx.signal` lets the plugin stop work before that promise settles.
+
+`ctx.backend.call()` is the usual choice for route requests: it decodes JSON, text, or blob data and reports platform
+failures and plugin-owned non-OK responses as `BackendError`. `ctx.backend.fetch()` also throws `BackendError` for
+platform failures, but returns the raw plugin response, including its own non-OK status. The daemon marks platform
+errors with `X-Mndw-Error: 1`, so plugin backends may return any JSON shape. Read `message`, `code`, and `retryable` to
+present failures or decide whether retrying can help. Use `fetch()` when code needs raw headers, exact status/body
+handling, or a streaming body.
 
 ## Linking to host pages
 

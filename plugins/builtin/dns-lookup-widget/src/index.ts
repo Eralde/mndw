@@ -114,8 +114,10 @@ export function createInstance(container: HTMLElement, context: PluginContext): 
     renderView({state: 'loading', hostname});
 
     try {
-      const response = await backend.fetch('lookup', {query: {hostname}});
-      const payload = (await response.json()) as DnsLookupResult & {success?: boolean; error?: string};
+      const payload = await backend.call<DnsLookupResult & {success?: boolean; error?: string}>('lookup', {
+        as: 'json',
+        query: {hostname},
+      });
 
       if (payload.error === 'NXDOMAIN') {
         renderView({state: 'not-found', hostname});

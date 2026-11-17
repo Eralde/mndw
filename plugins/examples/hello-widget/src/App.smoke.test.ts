@@ -6,9 +6,8 @@ import App from './App.svelte';
 import en from '../i18n/en.json';
 
 it('calls the route id and displays its greeting', async () => {
-  const fetch = vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({message: 'Hello test'})),
-  );
+  const call = vi.fn().mockResolvedValue({message: 'Hello test'});
+  const signal = new AbortController().signal;
   const root = document.createElement('div');
 
   document.body.append(root);
@@ -16,8 +15,9 @@ it('calls the route id and displays its greeting', async () => {
   const app = mount(App, {
     target: root,
     props: {
-      backend: {fetch} as unknown as BackendClient,
+      backend: {call} as unknown as BackendClient,
       i18n: createTestI18n(en),
+      signal,
     },
   });
 
@@ -25,7 +25,7 @@ it('calls the route id and displays its greeting', async () => {
     flushSync();
     root.querySelector<HTMLElement>('[data-testid="greet"]')?.click();
     await vi.waitFor(() => expect(root.textContent).toContain('Hello test'));
-    expect(fetch).toHaveBeenCalledWith('hello');
+    expect(call).toHaveBeenCalledWith('hello', {as: 'json', signal});
   } finally {
     await unmount(app);
     root.remove();

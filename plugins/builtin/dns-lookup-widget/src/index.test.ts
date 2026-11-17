@@ -11,10 +11,10 @@ function fakeContext(
   overrides?: Partial<BackendClient>,
   options: {backend?: boolean; i18n?: ReturnType<typeof createTestI18n>; instanceId?: string} = {},
 ): PluginContext {
-  const fetch = vi.fn().mockResolvedValue(new Response('{"method":"GET"}'));
+  const call = vi.fn().mockResolvedValue({method: 'GET'});
 
   return createTestPluginContext({
-    backend: options.backend === false ? undefined : {fetch, socket: vi.fn(), ...overrides} as BackendClient,
+    backend: options.backend === false ? undefined : {call, socket: vi.fn(), ...overrides} as BackendClient,
     i18n: options.i18n ?? createTestI18n(enCatalog),
     theme: 'light',
     instanceId: options.instanceId ?? 'test-id',
@@ -133,9 +133,9 @@ describe('createInstance', () => {
     );
 
     await vi.waitFor(() => {
-      const backendFetch = backend === undefined ? undefined : Reflect.get(backend, 'fetch');
+      const backendCall = backend === undefined ? undefined : Reflect.get(backend, 'call');
 
-      expect(backendFetch).toHaveBeenCalledWith('lookup', {query: {hostname: 'example.com'}});
+      expect(backendCall).toHaveBeenCalledWith('lookup', {as: 'json', query: {hostname: 'example.com'}});
     });
   });
 
@@ -153,9 +153,9 @@ describe('createInstance', () => {
     form.dispatchEvent(new SubmitEvent('submit', {bubbles: true, cancelable: true}));
 
     await vi.waitFor(() => {
-      const backendFetch = backend === undefined ? undefined : Reflect.get(backend, 'fetch');
+      const backendCall = backend === undefined ? undefined : Reflect.get(backend, 'call');
 
-      expect(backendFetch).toHaveBeenCalledTimes(1);
+      expect(backendCall).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -175,13 +175,11 @@ describe('createInstance', () => {
     const ctx = fakeContext();
 
     if (ctx.backend !== undefined) {
-      ctx.backend.fetch = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({
-          success: false,
-          error: 'LOOKUP_FAILED',
-          message: 'lookup nope.invalid on 127.0.0.1:53: i/o timeout',
-        })),
-      );
+      ctx.backend.call = vi.fn().mockResolvedValue({
+        success: false,
+        error: 'LOOKUP_FAILED',
+        message: 'lookup nope.invalid on 127.0.0.1:53: i/o timeout',
+      });
     }
 
     createInstance(container, ctx);
@@ -205,13 +203,11 @@ describe('createInstance', () => {
     const ctx = fakeContext();
 
     if (ctx.backend !== undefined) {
-      ctx.backend.fetch = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({
-          success: false,
-          error: 'UNKNOWN_CODE',
-          message: 'internal resolver details',
-        })),
-      );
+      ctx.backend.call = vi.fn().mockResolvedValue({
+        success: false,
+        error: 'UNKNOWN_CODE',
+        message: 'internal resolver details',
+      });
     }
 
     createInstance(container, ctx);
@@ -264,14 +260,12 @@ describe('createInstance', () => {
     const backend = ctx.backend;
 
     if (backend !== undefined) {
-      backend.fetch = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({
-          success: true,
-          hostname: 'localhost',
-          addresses: ['127.0.0.1', '::1'],
-          durationMs: 1.5,
-        })),
-      );
+      backend.call = vi.fn().mockResolvedValue({
+        success: true,
+        hostname: 'localhost',
+        addresses: ['127.0.0.1', '::1'],
+        durationMs: 1.5,
+      });
     }
 
     createInstance(container, ctx);
@@ -297,14 +291,12 @@ describe('createInstance', () => {
     const backend = ctx.backend;
 
     if (backend !== undefined) {
-      backend.fetch = vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({
-          success: false,
-          error: 'NXDOMAIN',
-          message: 'hostname not found',
-          hostname: 'nope.invalid',
-        })),
-      );
+      backend.call = vi.fn().mockResolvedValue({
+        success: false,
+        error: 'NXDOMAIN',
+        message: 'hostname not found',
+        hostname: 'nope.invalid',
+      });
     }
 
     createInstance(container, ctx);

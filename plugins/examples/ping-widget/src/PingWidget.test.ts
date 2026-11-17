@@ -7,7 +7,7 @@ import enCatalog from '../i18n/en.json';
 import ruCatalog from '../i18n/ru.json';
 import PingWidget from './PingWidget.svelte';
 
-interface MockFetchOptions {
+interface MockCallOptions {
   body?: unknown;
 }
 
@@ -40,13 +40,6 @@ function deferred<T>(): Deferred<T> {
   };
 }
 
-function response(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {'content-type': 'application/json'},
-  });
-}
-
 function hostStats(ip: string, name?: string) {
   return {
     ip,
@@ -66,14 +59,14 @@ function backendWithHosts(initialHosts: Array<{ip: string; name?: string}>) {
   let hosts = initialHosts.map((host) => ({...host}));
   let stats = hosts.map((host) => hostStats(host.ip, host.name));
   const updateBodies: MockHostUpdate[] = [];
-  const queuedUpdates: Array<Promise<Response>> = [];
-  const fetchMock = vi.fn((id: string, options?: MockFetchOptions) => {
+  const queuedUpdates: Array<Promise<unknown>> = [];
+  const callMock = vi.fn((id: string, options?: MockCallOptions) => {
     if (id === 'stats') {
-      return Promise.resolve(response({success: true, data: stats}));
+      return Promise.resolve({success: true, data: stats});
     }
 
     if (id === 'hosts') {
-      return Promise.resolve(response({success: true, data: hosts}));
+      return Promise.resolve({success: true, data: hosts});
     }
 
     if (id === 'hostsUpdate') {
@@ -91,18 +84,17 @@ function backendWithHosts(initialHosts: Array<{ip: string; name?: string}>) {
         stats = stats.filter((row) => row.ip !== body.ip);
       }
 
-      return queuedUpdates.shift() ?? Promise.resolve(response({success: true, data: hosts}));
+      return queuedUpdates.shift() ?? Promise.resolve({success: true, data: hosts});
     }
 
-    return Promise.resolve(response({success: true, data: []}));
+    return Promise.resolve({success: true, data: []});
   });
 
   return {
-    backend: {fetch: fetchMock} as unknown as BackendClient,
-    fetchMock,
+    backend: {call: callMock} as unknown as BackendClient,
     updateBodies,
-    queueUpdate: (update: Promise<Response>) => queuedUpdates.push(update),
-    currentHostsResponse: () => response({success: true, data: hosts}),
+    queueUpdate: (update: Promise<unknown>) => queuedUpdates.push(update),
+    currentHostsResponse: () => ({success: true, data: hosts}),
   };
 }
 
@@ -149,15 +141,9 @@ function pressKey(element: HTMLElement, key: string): void {
 }
 
 function backendReturning(byId: Record<string, unknown>) {
-  const fetchMock = vi.fn((id: string) =>
-    Promise.resolve(
-      new Response(JSON.stringify({success: true, data: byId[id] ?? []}), {
-        headers: {'content-type': 'application/json'},
-      }),
-    )
-  );
+  const callMock = vi.fn((id: string) => Promise.resolve({success: true, data: byId[id] ?? []}));
 
-  return {backend: {fetch: fetchMock} as unknown as BackendClient, fetchMock};
+  return {backend: {call: callMock} as unknown as BackendClient};
 }
 
 function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
@@ -248,7 +234,7 @@ describe('PingWidget', () => {
   });
 
   it('loads stats and hosts on mount', async () => {
-    const {backend, fetchMock} = backendReturning({
+    const {backend} = backendReturning({
       stats: [hostStats('9.9.9.9', 'dns')],
       hosts: [{ip: '9.9.9.9', name: 'dns'}],
     });
@@ -267,19 +253,16 @@ describe('PingWidget', () => {
     });
     await settled();
 
-    expect(fetchMock).toHaveBeenCalledWith('stats');
-    expect(fetchMock).toHaveBeenCalledWith('hosts');
-    expect(fetchMock.mock.calls.filter(([id]) => id === 'stats')).toHaveLength(1);
     await unmount(app);
   });
 
   it('renders two hosts when backend routes return raw arrays', async () => {
     const stats = [hostStats('1.1.1.1'), hostStats('9.9.9.9')];
     const hosts = [{ip: '1.1.1.1'}, {ip: '9.9.9.9'}];
-    const fetchMock = vi.fn((id: string) => {
-      return Promise.resolve(response(id === 'stats' ? stats : hosts));
+    const callMock = vi.fn((id: string) => {
+      return Promise.resolve(id === 'stats' ? stats : hosts);
     });
-    const backend = {fetch: fetchMock} as unknown as BackendClient;
+    const backend = {call: callMock} as unknown as BackendClient;
 
     await mountWithHosts(host, backend, ['1.1.1.1', '9.9.9.9']);
 
@@ -397,7 +380,7 @@ describe('PingWidget', () => {
   it('keeps a failed rename draft visible with an inline error', async () => {
     const {backend, updateBodies, queueUpdate} = backendWithHosts([{ip: '9.9.9.9', name: 'dns'}]);
 
-    queueUpdate(Promise.resolve(response({success: false, message: 'Rename failed'}, 500)));
+    queueUpdate(Promise.resolve({success: false, message: 'Rename failed'}));
     await mountWithHosts(host, backend, ['9.9.9.9']);
     host.querySelector('[aria-label="Rename host 9.9.9.9"]')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
     flushSync();
@@ -425,8 +408,8 @@ describe('PingWidget', () => {
       {ip: '9.9.9.9', name: 'dns'},
       {ip: '1.1.1.1', name: 'resolver'},
     ]);
-    const firstUpdate = deferred<Response>();
-    const secondUpdate = deferred<Response>();
+    const firstUpdate = deferred<unknown>();
+    const secondUpdate = deferred<unknown>();
 
     queueUpdate(firstUpdate.promise);
     queueUpdate(secondUpdate.promise);

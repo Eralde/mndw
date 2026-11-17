@@ -246,6 +246,7 @@ function createSmokeContext(i18n: PluginContext['i18n'], withEvents = false): Pl
   const queueBackgroundProcess = vi.fn(() => ({data$: of({data: []}), abort: vi.fn()}));
   const backend: BackendClient = {
     fetch: vi.fn(() => Promise.resolve(new Response(JSON.stringify({success: true, data: []})))),
+    call: vi.fn().mockResolvedValue({lastRefreshAt: null, persistentAvailable: true, persistentSessions: []}),
     status: vi.fn(() => Promise.resolve({kind: 'exec', state: 'ready', retryAfterSeconds: null} as const)),
     socket: vi.fn(() => {
       throw new Error('Smoke test socket was not expected');

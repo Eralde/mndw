@@ -47,17 +47,22 @@ That is the actual endpoint in the [Hello widget](https://github.com/Eralde/mndw
 Its UI uses the route id with the typed client:
 
 ```ts
-const response = await ctx.backend?.fetch('hello');
-if (response === undefined || !response.ok) {
-  throw new Error('Greeting request failed');
+if (ctx.backend === undefined) {
+  throw new Error('This plugin needs its declared backend');
 }
-const payload: unknown = await response.json();
+
+const payload = await ctx.backend.call<{message: string}>('hello', {as: 'json', signal: ctx.signal});
+console.info(payload.message);
 ```
 
-Handle `BackendNotApproved`, `BackendDisabled`, and `BackendUnavailable` separately so users can
-tell approval, disabled capability, and runtime connectivity apart. A declared ID can still be
-unavailable when state changes after the UI loads. Session access is the default; public HTTP routes
-are limited to `GET` and `HEAD`, and public access does not bypass backend approval.
+`call()` decodes JSON and turns platform errors and non-OK plugin responses into `BackendError`; its
+`message`, `code`, `id`, `status`, `retryable`, and `details` fields describe the failure. `fetch()` also
+throws `BackendError` for platform errors, but returns the plugin's raw response, including its own
+non-OK responses. The daemon marks platform errors with `X-Mndw-Error: 1`; plugin backends may return any
+JSON, including an `error.code` object, without being mistaken for a platform error. A declared ID can
+still become unavailable after the UI loads. Use `fetch()` when the plugin needs raw headers, exact
+status/body handling, or a streaming body; otherwise prefer `call()`. Session access is the default;
+public HTTP routes are limited to `GET` and `HEAD`, and public access does not bypass backend approval.
 GET and HEAD requests that include a body are rejected with `400 BAD_REQUEST`.
 
 ## Troubleshooting

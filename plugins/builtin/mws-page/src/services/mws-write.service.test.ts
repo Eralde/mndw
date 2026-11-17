@@ -5,7 +5,7 @@ import type {BackendClient, PluginRciManager} from '@mndw/sdk';
 import {of} from 'rxjs';
 import {MWSD_BACKEND, RCI_MANAGER} from '../tokens';
 import {type ExtraFeaturesAvailability, MwsDataService} from './mws-data.service';
-import {MwsWriteService} from './mws-write.service';
+import {type MwsWriteResult, MwsWriteService} from './mws-write.service';
 
 describe('MwsWriteService', () => {
   let queue: ReturnType<typeof vi.fn>;
@@ -23,16 +23,11 @@ describe('MwsWriteService', () => {
   });
 
   it('calls the declared write route with typed set-power parameters', async () => {
-    const fetch = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          ok: false,
-          steps: [{step: 'set-power', ok: true, status: []}, {step: 'save', ok: false, status: []}],
-        }),
-        {status: 200, headers: {'Content-Type': 'application/json'}},
-      ),
-    );
-    const backend = {fetch, socket: vi.fn()} as unknown as BackendClient;
+    const call = vi.fn().mockResolvedValue({
+      ok: false,
+      steps: [{step: 'set-power', ok: true, status: []}, {step: 'save', ok: false, status: []}],
+    });
+    const backend = {call, socket: vi.fn()} as unknown as BackendClient;
 
     TestBed.configureTestingModule({providers: [
       MwsWriteService,
@@ -42,7 +37,8 @@ describe('MwsWriteService', () => {
 
     const result = await TestBed.inject(MwsWriteService).setPower('cid-1', 'WifiMaster0', 75, true);
 
-    expect(fetch).toHaveBeenCalledWith('write', {
+    expect(call).toHaveBeenCalledWith('write', {
+      as: 'json',
       body: {
         operation: 'wifi.set-power',
         nodeId: 'cid-1',
@@ -63,8 +59,8 @@ describe('MwsWriteService', () => {
       'incompatible',
     ] as const,
   )('rejects %s availability before dispatch', async (availability) => {
-    const fetch = vi.fn();
-    const backend = {fetch, socket: vi.fn()} as unknown as BackendClient;
+    const call = vi.fn();
+    const backend = {call, socket: vi.fn()} as unknown as BackendClient;
 
     TestBed.configureTestingModule({providers: [
       MwsWriteService,
@@ -74,17 +70,17 @@ describe('MwsWriteService', () => {
 
     await expect(TestBed.inject(MwsWriteService).setPower('cid-1', 'WifiMaster0', 75, true))
       .rejects.toThrow('mws-page extra features are unavailable');
-    expect(fetch).not.toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
   });
 
   it('allows a dispatched write to settle after availability changes', async () => {
     const availability = signal<ExtraFeaturesAvailability>('active');
-    let resolveResponse = (_response: Response): void => {};
-    const pending = new Promise<Response>((resolve) => {
+    let resolveResponse = (_response: MwsWriteResult): void => {};
+    const pending = new Promise<MwsWriteResult>((resolve) => {
       resolveResponse = resolve;
     });
-    const fetch = vi.fn(() => pending);
-    const backend = {fetch, socket: vi.fn()} as unknown as BackendClient;
+    const callMock = vi.fn(() => pending);
+    const backend = {call: callMock, socket: vi.fn()} as unknown as BackendClient;
 
     TestBed.configureTestingModule({providers: [
       MwsWriteService,
@@ -95,7 +91,7 @@ describe('MwsWriteService', () => {
     const call = TestBed.inject(MwsWriteService).setPower('cid-1', 'WifiMaster0', 75, true);
 
     availability.set('limited');
-    resolveResponse(new Response(JSON.stringify({ok: true, steps: []}), {status: 200}));
+    resolveResponse({ok: true, steps: []});
 
     await expect(call).resolves.toEqual({ok: true, steps: []});
   });
@@ -106,8 +102,8 @@ describe('MwsWriteService', () => {
       {status: [{status: 'message', code: '2', ident: 'StartupConfig', message: 'saved'}]},
     ]));
 
-    const fetch = vi.fn();
-    const backend = {fetch, socket: vi.fn()} as unknown as BackendClient;
+    const call = vi.fn();
+    const backend = {call, socket: vi.fn()} as unknown as BackendClient;
 
     TestBed.configureTestingModule({providers: [
       MwsWriteService,
@@ -122,7 +118,7 @@ describe('MwsWriteService', () => {
       {path: 'known.host', data: {mac: '02:7d:4a:91:c3:21', name: 'Extender'}},
       {path: 'system.configuration.save'},
     ]);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
   });
 
   it('normalizes a direct-RCI device error into a failed write result', async () => {
@@ -131,8 +127,8 @@ describe('MwsWriteService', () => {
       {status: [{status: 'message', code: '2', ident: 'StartupConfig', message: 'saved'}]},
     ]));
 
-    const fetch = vi.fn();
-    const backend = {fetch, socket: vi.fn()} as unknown as BackendClient;
+    const call = vi.fn();
+    const backend = {call, socket: vi.fn()} as unknown as BackendClient;
 
     TestBed.configureTestingModule({providers: [
       MwsWriteService,
@@ -144,7 +140,7 @@ describe('MwsWriteService', () => {
 
     expect(result.ok).toBe(false);
     expect(result.steps[0]?.status[0]?.message).toBe('name rejected');
-    expect(fetch).not.toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
   });
 
   it('sends port and automatic-update settings through direct RCI', async () => {

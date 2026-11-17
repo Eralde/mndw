@@ -4,7 +4,7 @@
 
 RCI is the router's HTTP API for reading and changing configuration, also used by its web interface. Plugins call it
 through the host's `ctx.rciManager`; they do not need their own backend route. RCI calls are not declared in
-`manifest.json` and do not use `ctx.backend.fetch()`.
+`manifest.json` and do not use `ctx.backend.call()`.
 
 ## Request shape and responses
 

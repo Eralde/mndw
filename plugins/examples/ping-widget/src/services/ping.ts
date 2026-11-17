@@ -33,22 +33,13 @@ interface Envelope<T> {
 
 type ApiPayload<T> = Envelope<T> | T;
 
-async function parseEnvelope<T>(response: Response): Promise<ApiPayload<T>> {
-  const text = await response.text();
-  let payload: ApiPayload<T>;
-
-  try {
-    payload = JSON.parse(text) as ApiPayload<T>;
-  } catch {
-    throw new Error('Backend returned non-JSON response');
-  }
-
+function parseEnvelope<T>(payload: ApiPayload<T>): ApiPayload<T> {
   const envelope = !Array.isArray(payload) && typeof payload === 'object' && payload !== null
     ? payload
     : undefined;
 
-  if (!response.ok || envelope?.success === false) {
-    throw new Error(envelope?.message ?? envelope?.error ?? `Request failed with ${response.status}`);
+  if (envelope?.success === false) {
+    throw new Error(envelope.message ?? envelope.error ?? 'Backend request failed');
   }
 
   return payload;
@@ -63,13 +54,13 @@ function dataArray<T>(payload: ApiPayload<T[]>): T[] {
 }
 
 export async function fetchStats(backend: BackendClient): Promise<HostStats[]> {
-  return dataArray(await parseEnvelope<HostStats[]>(await backend.fetch('stats')));
+  return dataArray(parseEnvelope(await backend.call<ApiPayload<HostStats[]>>('stats', {as: 'json'})));
 }
 
 export async function fetchHosts(backend: BackendClient): Promise<Host[]> {
-  return dataArray(await parseEnvelope<Host[]>(await backend.fetch('hosts')));
+  return dataArray(parseEnvelope(await backend.call<ApiPayload<Host[]>>('hosts', {as: 'json'})));
 }
 
 export async function updateHosts(backend: BackendClient, body: HostUpdateBody): Promise<Host[]> {
-  return dataArray(await parseEnvelope<Host[]>(await backend.fetch('hostsUpdate', {body})));
+  return dataArray(parseEnvelope(await backend.call<ApiPayload<Host[]>>('hostsUpdate', {as: 'json', body})));
 }

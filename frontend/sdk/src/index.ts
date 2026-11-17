@@ -50,6 +50,7 @@ export {
 export type {
   BackendApprovalStatus,
   BackendBlocker,
+  BackendCallOptions,
   BackendClient,
   BackendErrorCode,
   BackendFetchOptions,

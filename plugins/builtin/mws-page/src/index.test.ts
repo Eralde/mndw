@@ -145,8 +145,8 @@ describe('createInstance', () => {
   it('activates parameterized large mock mode from the URL', async () => {
     window.history.replaceState({}, '', '/mws?mock=large&extenders=3&clients=7');
 
-    const fetch = vi.fn();
-    const backend = {fetch, socket: vi.fn(), status: vi.fn()} as unknown as BackendClient;
+    const call = vi.fn();
+    const backend = {call, socket: vi.fn(), status: vi.fn()} as unknown as BackendClient;
     const {ctx, queue} = fakeContext(backend);
     const el = document.createElement('div');
     const instance = createInstance(el, ctx);
@@ -156,23 +156,18 @@ describe('createInstance', () => {
     });
 
     expect(queue).not.toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(call).not.toHaveBeenCalled();
     instance.unmount();
   });
 
   it('uses live RCI service when mock query is absent', async () => {
     window.history.replaceState({}, '', '/mws');
 
-    const fetch = vi.fn(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({lastRefreshAt: new Date().toISOString(), persistentAvailable: true, persistentSessions: []}),
-          {status: 200},
-        ),
-      )
+    const call = vi.fn(() =>
+      Promise.resolve({lastRefreshAt: new Date().toISOString(), persistentAvailable: true, persistentSessions: []})
     );
     const backend = {
-      fetch,
+      call,
       socket: vi.fn(),
       status: vi.fn(),
     } as unknown as BackendClient;
@@ -184,7 +179,7 @@ describe('createInstance', () => {
       expect(queue).toHaveBeenCalled();
     });
     await vi.waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('nodes', expect.anything());
+      expect(call).toHaveBeenCalledWith('nodes', {as: 'json', signal: expect.any(AbortSignal)});
     });
 
     instance.unmount();

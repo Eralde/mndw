@@ -3,7 +3,7 @@ import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import App from './App.svelte';
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
-  const app = mount(App, {target: container, props: {backend: ctx.backend, i18n: ctx.i18n}});
+  const app = mount(App, {target: container, props: {backend: ctx.backend, i18n: ctx.i18n, signal: ctx.signal}});
 
   return {
     unmount(): void {

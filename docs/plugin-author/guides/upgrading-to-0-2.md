@@ -193,3 +193,85 @@ if (chart !== null) {
   });
 }
 ```
+
+## Use decoded backend calls
+
+SDK 0.2 adds decoded backend calls and consistent backend errors. Use `ctx.backend.call()` when code wants parsed
+response data. Choose `as: 'json'`, `as: 'text'`, or `as: 'blob'` to select the result type; without `as`, the client
+uses the response content type. The JSON generic describes the value your plugin expects, so validate untrusted fields
+before using them. Narrow optional `ctx.backend` before calling it, and pass `ctx.signal` to requests so context
+disposal cancels pending work; see the [frontend lifecycle guide](/guides/frontend-lifecycle) for cancellation details.
+
+```ts
+interface Greeting {
+  message: string;
+}
+
+if (ctx.backend === undefined) {
+  throw new Error('This plugin needs its declared backend');
+}
+
+const greeting = await ctx.backend.call<Greeting>('hello', {as: 'json', signal: ctx.signal});
+console.info(greeting.message);
+```
+
+Both `fetch()` and `call()` throw `BackendError` for platform errors. The daemon marks its errors with
+`X-Mndw-Error: 1`; the SDK maps known error codes and uses `INTERNAL` for an unknown marked code. `retryable` marks
+errors for which retrying may help; it does not schedule retries. `fetch()` returns a plugin backend's own response,
+including non-OK responses. `call()` reports a plugin-owned non-OK response with code `HTTP_ERROR`, its HTTP status,
+and the original body text in `details`.
+
+The marker distinguishes platform failures from plugin output. Plugin backends may return any JSON, including objects
+such as `{error: {code: 'BAD_REQUEST'}}`; that shape alone does not make a response a platform error. Redirects
+continue to be followed, but any response with `redirected === true` remains plugin-owned even if it carries
+`X-Mndw-Error: 1`.
+
+```ts
+import {BackendError} from '@mndw/sdk';
+
+if (ctx.backend === undefined) {
+  throw new Error('This plugin needs its declared backend');
+}
+
+try {
+  await ctx.backend.call('hello', {as: 'json', signal: ctx.signal});
+} catch (error: unknown) {
+  if (error instanceof BackendError) {
+    showError(`${error.message} (${error.code})`);
+    if (error.retryable) {
+      showRetryButton();
+    }
+  } else {
+    throw error;
+  }
+}
+```
+
+### Migrate raw fetch error handling
+
+Keep using `ctx.backend.fetch()` when the plugin needs the raw `Response`, including custom response headers, exact
+status/body handling, or streaming. Check `ok` and parse the body for plugin-owned responses. If existing code checks
+`!response.ok` and parses the body to find platform codes such as `SCRIPT_FAILED`, `SCRIPT_TIMEOUT`, `BACKEND_BUSY`,
+`BACKEND_BODY_TOO_LARGE`, `BACKEND_OUTPUT_TOO_LARGE`, `CSRF_REQUIRED`, or `UNAUTHORIZED`, move those checks into a
+`catch` around `fetch()` and inspect `BackendError.code`:
+
+```ts
+import {BackendError} from '@mndw/sdk';
+
+if (ctx.backend === undefined) {
+  throw new Error('This plugin needs its declared backend');
+}
+
+try {
+  const response = await ctx.backend.fetch('run', {signal: ctx.signal});
+  if (!response.ok) {
+    handlePluginResponse(response);
+  }
+} catch (error: unknown) {
+  if (error instanceof BackendError && error.code === 'SCRIPT_FAILED') {
+    showCommandError(error.message);
+  } else {
+    throw error;
+  }
+}
+```

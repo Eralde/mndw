@@ -1,105 +1,57 @@
 <script lang="ts">
-import {onDestroy} from 'svelte';
-import {
-  type BackendClient,
-  BackendDisabled,
-  BackendNotApproved,
-  BackendUnavailable,
-  type PluginI18n,
-} from '@mndw/sdk';
+import {type BackendClient, BackendError, type PluginI18n} from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
 
 interface Props {
   backend: BackendClient | undefined;
   i18n: PluginI18n;
+  signal: AbortSignal;
 }
 
 type ViewState = 'idle' | 'loading' | 'success' | 'error';
 
-let {backend, i18n}: Props = $props();
+let {backend, i18n, signal}: Props = $props();
 const translator = $derived(createTranslator(i18n));
 let state = $state<ViewState>('idle');
 let message = $state('');
-let disposed = false;
-let requestGeneration = 0;
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof BackendNotApproved) {
-    return $translator.t('error.backend-not-approved');
-  }
-
-  if (error instanceof BackendDisabled) {
-    return $translator.t('error.backend-disabled');
-  }
-
-  if (error instanceof BackendUnavailable) {
-    return $translator.t('error.backend-unavailable');
-  }
-
-  return $translator.t('error.greeting-failed');
-}
-
-function readGreeting(payload: unknown): string | undefined {
-  if (
-    payload === null || typeof payload !== 'object' || Array.isArray(payload)
-  ) {
-    return undefined;
-  }
-
-  const candidate = (payload as Record<string, unknown>).message;
-
-  return typeof candidate === 'string' && candidate.trim() !== ''
-    ? candidate.trim()
-    : undefined;
-}
 
 async function loadGreeting(): Promise<void> {
-  if (state === 'loading') {
-    return;
-  }
-
+  if (state === 'loading') { return; }
   if (!backend) {
     state = 'error';
     message = $translator.t('error.backend-missing');
-
     return;
   }
-
-  const generation = ++requestGeneration;
-
   state = 'loading';
   message = '';
-
   try {
-    const response = await backend.fetch('hello');
-
-    if (!response.ok) {
-      throw new Error('Hello backend returned a non-OK response');
-    }
-
-    const payload: unknown = await response.json();
-    const greeting = readGreeting(payload);
-
-    if (greeting === undefined) {
+    const payload = await backend.call<{message?: unknown}>('hello', {
+      as: 'json',
+      signal,
+    });
+    if (signal.aborted) { return; }
+    const greeting = typeof payload.message === 'string'
+      ? payload.message.trim()
+      : '';
+    if (greeting === '') {
       throw new Error('Hello backend returned an invalid greeting');
     }
-
-    if (!disposed && generation === requestGeneration) {
-      state = 'success';
-      message = greeting;
-    }
+    state = 'success';
+    message = greeting;
   } catch (error) {
-    if (!disposed && generation === requestGeneration) {
-      state = 'error';
-      message = getErrorMessage(error);
-    }
+    if (signal.aborted) { return; }
+    const code = error instanceof BackendError ? error.code : undefined;
+    state = 'error';
+    message = code === 'NOT_APPROVED'
+      ? $translator.t('error.backend-not-approved')
+      : code === 'DISABLED'
+      ? $translator.t('error.backend-disabled')
+      : code === 'BACKEND_STARTING' || code === 'BACKEND_UNAVAILABLE'
+          || code === 'BACKEND_MAINTENANCE'
+      ? $translator.t('error.backend-unavailable')
+      : $translator.t('error.greeting-failed');
   }
 }
-
-onDestroy(() => {
-  disposed = true;
-  requestGeneration++;
-});
 </script>
 
 <section

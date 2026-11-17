@@ -6,6 +6,7 @@ import {
   type BackendDescriptor,
   BackendDisabled,
   BackendError,
+  type BackendErrorCode,
   BackendIncompatible,
   BackendMaintenance,
   BackendNotApproved,
@@ -70,6 +71,18 @@ const client = (over?: Partial<BackendDescriptor>, fetchImpl?: typeof globalThis
     WebSocketCtor: FakeWebSocket as unknown as typeof WebSocket,
     origin: 'https://host',
   });
+
+const DAEMON_ERROR_HEADER = 'X-Mndw-Error';
+const BAD_REQUEST_COLLISION = {error: {code: 'BAD_REQUEST'}};
+const BAD_REQUEST_COLLISION_BODY = JSON.stringify(BAD_REQUEST_COLLISION);
+
+const markedDaemonError = (body: unknown, init: ResponseInit = {}): Response => {
+  const headers = new Headers(init.headers);
+
+  headers.set(DAEMON_ERROR_HEADER, '1');
+
+  return new Response(JSON.stringify(body), {...init, headers});
+};
 
 describe('backend maintenance close', () => {
   it('classifies intentional update closure without reconnecting', () => {
@@ -137,7 +150,7 @@ describe('createBackendClient.fetch', () => {
 
   it('maps a daemon NOT_APPROVED envelope onto BackendNotApproved', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({error: {code: 'NOT_APPROVED', message: 'x'}}), {status: 403}),
+      markedDaemonError({error: {code: 'NOT_APPROVED', message: 'x'}}, {status: 403}),
     );
 
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toBeInstanceOf(BackendNotApproved);
@@ -145,10 +158,70 @@ describe('createBackendClient.fetch', () => {
 
   it('maps a daemon ROUTE_NOT_FOUND envelope onto BackendUnknownId', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({error: {code: 'ROUTE_NOT_FOUND'}}), {status: 404}),
+      markedDaemonError({error: {code: 'ROUTE_NOT_FOUND'}}, {status: 404}),
     );
 
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toBeInstanceOf(BackendUnknownId);
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({code: 'ROUTE_NOT_FOUND'});
+  });
+
+  it.each(
+    [
+      ['BAD_REQUEST', false],
+      ['INTERNAL', false],
+      ['SERVER_BUSY', true],
+      ['REQUEST_TIMEOUT', true],
+      ['SCRIPT_FAILED', false],
+      ['SCRIPT_TIMEOUT', true],
+      ['BACKEND_BUSY', true],
+      ['BACKEND_BODY_TOO_LARGE', false],
+      ['BACKEND_OUTPUT_TOO_LARGE', false],
+      ['CSRF_REQUIRED', false],
+      ['UNAUTHORIZED', false],
+    ] as const,
+  )('maps daemon exec/proxy code %s with status, details, and retryable=%s', async (code, retryable) => {
+    const detail = code === 'SCRIPT_FAILED' ? 'command stderr' : {source: 'daemon'};
+    const fetchImpl = vi.fn().mockResolvedValue(
+      markedDaemonError({error: {code, message: 'Platform request failed', detail}}, {status: 500}),
+    );
+
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
+      name: 'BackendError',
+      code,
+      message: 'Platform request failed',
+      status: 500,
+      id: 'stats',
+      retryable,
+      details: detail,
+    });
+  });
+
+  it.each(
+    [
+      ['ROUTE_NOT_FOUND', false],
+      ['NOT_APPROVED', false],
+      ['DISABLED', false],
+      ['BACKEND_STARTING', true],
+      ['BACKEND_UNAVAILABLE', true],
+      ['BACKEND_INCOMPATIBLE', false],
+      ['BACKEND_MAINTENANCE', true],
+      ['BACKEND_BLOCKED', false],
+      ['BAD_GATEWAY', true],
+    ] as const,
+  )('maps daemon lifecycle code %s with retryable=%s', async (code, retryable) => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      markedDaemonError({error: {code, message: 'Lifecycle request failed', detail: 'details'}}, {
+        status: 503,
+      }),
+    );
+
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
+      code,
+      status: 503,
+      id: 'stats',
+      retryable,
+      details: 'details',
+    });
   });
 
   it.each(
@@ -159,7 +232,7 @@ describe('createBackendClient.fetch', () => {
     ] as const,
   )('maps daemon %s envelopes', async (code, ErrorType) => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({error: {code, message: 'x'}}), {status: 503}),
+      markedDaemonError({error: {code, message: 'x'}}, {status: 503}),
     );
 
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
@@ -176,7 +249,7 @@ describe('createBackendClient.fetch', () => {
     ] as const,
   )('maps %s with a valid retry delay', async (code, ErrorType) => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({error: {code, message: 'x'}}), {
+      markedDaemonError({error: {code, message: 'x'}}, {
         status: 503,
         headers: {'Retry-After': '4'},
       }),
@@ -192,7 +265,7 @@ describe('createBackendClient.fetch', () => {
 
   it.each([undefined, '', '-1', '1.5', 'soon'])('maps invalid retry delay %s to null', async (retryAfter) => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({error: {code: 'BACKEND_STARTING', message: 'x'}}), {
+      markedDaemonError({error: {code: 'BACKEND_STARTING', message: 'x'}}, {
         status: 503,
         headers: retryAfter === undefined ? undefined : {'Retry-After': retryAfter},
       }),
@@ -212,7 +285,7 @@ describe('createBackendClient.fetch', () => {
         prerequisite: 'controller-token'},
     ];
     const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({error: {code: 'BACKEND_BLOCKED', message: 'x', detail}}), {
+      markedDaemonError({error: {code: 'BACKEND_BLOCKED', message: 'x', detail}}, {
         status: 503,
         headers: {'Retry-After': '2'},
       }),
@@ -229,7 +302,7 @@ describe('createBackendClient.fetch', () => {
 
   it('maps BACKEND_BLOCKED with a malformed detail to an empty blocker list', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({error: {code: 'BACKEND_BLOCKED', message: 'x', detail: 'nope'}}), {status: 503}),
+      markedDaemonError({error: {code: 'BACKEND_BLOCKED', message: 'x', detail: 'nope'}}, {status: 503}),
     );
 
     await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
@@ -245,6 +318,212 @@ describe('createBackendClient.fetch', () => {
 
     expect(res.status).toBe(500);
     expect(await res.text()).toBe('boom');
+  });
+
+  it('passes an unknown error envelope through as a plugin response', async () => {
+    const body = JSON.stringify({error: {code: 'PLUGIN_SPECIFIC', message: 'plugin error'}});
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(body, {status: 500}));
+
+    const response = await client(undefined, fetchImpl).fetch('stats');
+
+    expect(response.ok).toBe(false);
+    expect(await response.text()).toBe(body);
+  });
+
+  it('returns a daemon-shaped plugin error when the platform marker is absent', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(BAD_REQUEST_COLLISION_BODY, {status: 422}));
+
+    const response = await client(undefined, fetchImpl).fetch('stats');
+
+    expect(response.status).toBe(422);
+    await expect(response.text()).resolves.toBe(BAD_REQUEST_COLLISION_BODY);
+  });
+
+  it('maps a daemon-shaped error when the platform marker is present', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(markedDaemonError(BAD_REQUEST_COLLISION, {status: 422}));
+
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
+      name: 'BackendError',
+      code: 'BAD_REQUEST',
+      status: 422,
+    });
+  });
+
+  it('keeps marked redirected errors as plugin responses for fetch and call', async () => {
+    const redirectedResponse = (): Response => {
+      const response = markedDaemonError(BAD_REQUEST_COLLISION, {status: 422});
+
+      Object.defineProperty(response, 'redirected', {value: true});
+
+      return response;
+    };
+    const fetchImpl = vi.fn<typeof globalThis.fetch>().mockImplementation(() => Promise.resolve(redirectedResponse()));
+    const backend = client(undefined, fetchImpl);
+
+    const response = await backend.fetch('stats');
+
+    expect(response.redirected).toBe(true);
+    await expect(response.text()).resolves.toBe(BAD_REQUEST_COLLISION_BODY);
+    await expect(backend.call('stats')).rejects.toMatchObject({
+      code: 'HTTP_ERROR',
+      status: 422,
+      details: BAD_REQUEST_COLLISION_BODY,
+    });
+  });
+
+  it('uses INTERNAL for a marked daemon error with an unknown code', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(markedDaemonError(
+      {error: {code: 'FUTURE_PLATFORM_CODE', message: 'Platform failed', detail: 'unmapped'}},
+      {status: 502},
+    ));
+
+    await expect(client(undefined, fetchImpl).fetch('stats')).rejects.toMatchObject({
+      name: 'BackendError',
+      code: 'INTERNAL',
+      message: 'Platform failed',
+      status: 502,
+      details: 'unmapped',
+    });
+  });
+});
+
+describe('createBackendClient.call', () => {
+  it('selects JSON, text, or Blob from Content-Type', async () => {
+    const fetchImpl = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        new Response('{"message":"hello"}', {headers: {'content-type': 'application/vnd.mndw+json'}}),
+      )
+      .mockResolvedValueOnce(new Response('plain output', {headers: {'content-type': 'text/plain; charset=utf-8'}}))
+      .mockResolvedValueOnce(new Response('binary output', {headers: {'content-type': 'application/octet-stream'}}));
+    const backend = client(undefined, fetchImpl);
+
+    await expect(backend.call('stats')).resolves.toEqual({message: 'hello'});
+    await expect(backend.call('stats')).resolves.toBe('plain output');
+
+    const blob = await backend.call('stats');
+
+    expect(blob).toBeInstanceOf(Blob);
+
+    if (!(blob instanceof Blob)) {
+      throw new Error('Expected a Blob response');
+    }
+
+    await expect(blob.text()).resolves.toBe('binary output');
+  });
+
+  it('honors explicit JSON, text, and Blob formats', async () => {
+    const fetchImpl = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(new Response('{"value":1}', {headers: {'content-type': 'text/plain'}}))
+      .mockResolvedValueOnce(new Response('{"value":2}', {headers: {'content-type': 'application/json'}}))
+      .mockResolvedValueOnce(new Response('raw', {headers: {'content-type': 'text/plain'}}));
+    const backend = client(undefined, fetchImpl);
+
+    await expect(backend.call<{value: number}>('stats', {as: 'json'})).resolves.toEqual({value: 1});
+    await expect(backend.call('stats', {as: 'text'})).resolves.toBe('{"value":2}');
+
+    const blob = await backend.call('stats', {as: 'blob'});
+
+    expect(blob).toBeInstanceOf(Blob);
+    await expect(blob.text()).resolves.toBe('raw');
+  });
+
+  it('rejects a plugin non-OK response with HTTP_ERROR and the response text', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response('plugin failed', {status: 422}));
+
+    await expect(client(undefined, fetchImpl).call('stats')).rejects.toMatchObject({
+      name: 'BackendError',
+      code: 'HTTP_ERROR',
+      status: 422,
+      id: 'stats',
+      retryable: false,
+      details: 'plugin failed',
+    });
+  });
+
+  it('keeps a daemon-shaped plugin error as HTTP_ERROR without the platform marker', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(BAD_REQUEST_COLLISION_BODY, {status: 422}));
+
+    await expect(client(undefined, fetchImpl).call('stats')).rejects.toMatchObject({
+      code: 'HTTP_ERROR',
+      status: 422,
+      details: BAD_REQUEST_COLLISION_BODY,
+    });
+  });
+
+  it('maps a marked daemon error before call decodes its body', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(markedDaemonError(BAD_REQUEST_COLLISION, {status: 422}));
+
+    await expect(client(undefined, fetchImpl).call('stats')).rejects.toMatchObject({
+      code: 'BAD_REQUEST',
+      status: 422,
+    });
+  });
+
+  it('rejects malformed selected JSON with INVALID_RESPONSE', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response('not-json', {status: 200, headers: {'content-type': 'application/json'}}),
+    );
+
+    await expect(client(undefined, fetchImpl).call('stats')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+      status: 200,
+      id: 'stats',
+    });
+  });
+
+  it('propagates native abort errors without wrapping them', async () => {
+    const abort = new DOMException('Aborted', 'AbortError');
+    const fetchImpl = vi.fn<typeof globalThis.fetch>().mockRejectedValue(abort);
+
+    await expect(client(undefined, fetchImpl).call('stats')).rejects.toBe(abort);
+  });
+
+  it.each(
+    [
+      ['BACKEND_BUSY', true],
+      ['BACKEND_STARTING', true],
+      ['SCRIPT_TIMEOUT', true],
+      ['SCRIPT_FAILED', false],
+      ['UNAUTHORIZED', false],
+    ] as const,
+  )('reports retryable=%s for %s', async (code, retryable) => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      markedDaemonError({error: {code, message: 'platform failure'}}, {status: 500}),
+    );
+
+    await expect(client(undefined, fetchImpl).call('stats')).rejects.toMatchObject({code, retryable});
+  });
+
+  it('uses BackendErrorCode for the complete public code union', () => {
+    const codes: BackendErrorCode[] = [
+      'UNKNOWN_ID',
+      'NOT_APPROVED',
+      'DISABLED',
+      'TRANSPORT_MISMATCH',
+      'BACKEND_STARTING',
+      'BACKEND_UNAVAILABLE',
+      'BACKEND_INCOMPATIBLE',
+      'BACKEND_MAINTENANCE',
+      'BACKEND_BLOCKED',
+      'BAD_GATEWAY',
+      'STATUS_QUERY_FAILED',
+      'ROUTE_NOT_FOUND',
+      'BAD_REQUEST',
+      'INTERNAL',
+      'REQUEST_TIMEOUT',
+      'SCRIPT_FAILED',
+      'SCRIPT_TIMEOUT',
+      'SERVER_BUSY',
+      'BACKEND_BUSY',
+      'BACKEND_BODY_TOO_LARGE',
+      'BACKEND_OUTPUT_TOO_LARGE',
+      'CSRF_REQUIRED',
+      'UNAUTHORIZED',
+      'HTTP_ERROR',
+      'INVALID_RESPONSE',
+    ];
+
+    expect(codes).toHaveLength(25);
   });
 });
 

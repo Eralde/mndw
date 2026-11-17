@@ -108,21 +108,28 @@ interface PluginContextBase {
    * polling loops. Check `signal.aborted` after every await in asynchronous `createInstance` work.
    */
   readonly signal: AbortSignal;
+  /** Host navigation helpers for links and destinations outside the plugin. */
   readonly navigation: HostNavigation;
+  /** Host telemetry client scoped to this plugin context. */
   readonly telemetry: PluginTelemetry;
-  events?: PluginEventFacade;
-  rciManager: PluginRciManager;
+  /** Typed event facade for subscribing to host and plugin events. */
+  readonly events?: PluginEventFacade;
+  /** RCI manager for interacting with the router's command interface. */
+  readonly rciManager: PluginRciManager;
   /**
-   * Storage scoped to this plugin context; each widget instance has its own scope. The host clears widget data
+   * Browser storage scoped to this plugin context; each widget instance has its own scope. The host clears widget data
    * when its dashboard tile is removed or its plugin no longer appears as a widget. Leaving the dashboard or a
    * plugin page preserves it.
    */
-  storage: PluginStorage;
-  /** Storage shared by all instances of this plugin. The host does not clear it when the plugin is disabled or removed. */
-  sharedStorage: PluginStorage;
-  deviceInfo: DeviceInfo;
-  i18n: PluginI18n;
-  instanceId: string;
+  readonly storage: PluginStorage;
+  /** Browser storage shared by all plugin instances; it survives disablement and removal. */
+  readonly sharedStorage: PluginStorage;
+  /** Snapshot of device details, including feature and component helpers. */
+  readonly deviceInfo: DeviceInfo;
+  /** Translation API bound to the plugin's current locale. */
+  readonly i18n: PluginI18n;
+  /** Stable identifier for this mounted plugin instance. */
+  readonly instanceId: string;
   /** Current host theme. This getter follows changes while the plugin is mounted. */
   readonly theme: MndwThemeName;
   /** Emits the current theme on subscribe and completes when the plugin unmounts. */
@@ -139,14 +146,15 @@ interface PluginContextBase {
    * Typed backend client. Present only when the plugin declares a `backend`; ids resolve locally
    * from the daemon's descriptor snapshot. See {@link BackendClient}.
    */
-  backend?: BackendClient;
+  readonly backend?: BackendClient;
   /** Framework-agnostic top-layer UI (modal, drawer, popover, custom). */
-  overlay: OverlayService;
+  readonly overlay: OverlayService;
   /** Creates a host-managed ticker destroyed when this plugin context ends. */
   createTicker(): Ticker;
 }
 
 export interface WidgetPluginContext extends PluginContextBase {
+  /** Discriminator for a dashboard widget context. */
   readonly kind: 'widget';
   /** Widgets do not receive page navigation. */
   readonly pageRoute?: never;
@@ -155,6 +163,7 @@ export interface WidgetPluginContext extends PluginContextBase {
 }
 
 export interface PagePluginContext extends PluginContextBase {
+  /** Discriminator for a page plugin context. */
   readonly kind: 'page';
   /** Navigate within the plugin's page route. */
   readonly pageRoute: PageRoute;

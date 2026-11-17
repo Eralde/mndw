@@ -95,16 +95,11 @@ describe('production createInstance', () => {
   it('uses live RCI even when large mock query is present', async () => {
     window.history.replaceState({}, '', '/mws?mock=large&extenders=3&clients=7');
 
-    const fetch = vi.fn(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({lastRefreshAt: new Date().toISOString(), persistentAvailable: true, persistentSessions: []}),
-          {status: 200},
-        ),
-      )
+    const call = vi.fn(() =>
+      Promise.resolve({lastRefreshAt: new Date().toISOString(), persistentAvailable: true, persistentSessions: []})
     );
     const backend = {
-      fetch,
+      call,
       socket: vi.fn(),
       status: vi.fn(),
     } as unknown as BackendClient;
@@ -116,7 +111,7 @@ describe('production createInstance', () => {
       expect(queue).toHaveBeenCalled();
     });
     await vi.waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('nodes', expect.anything());
+      expect(call).toHaveBeenCalledWith('nodes', {as: 'json', signal: expect.any(AbortSignal)});
     });
 
     instance.unmount();

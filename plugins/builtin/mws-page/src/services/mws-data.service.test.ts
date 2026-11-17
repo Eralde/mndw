@@ -7,15 +7,11 @@ import {findNodeById} from '../domain/mws/map-builder';
 import {fakeBackend, goodApi, makeLiveService, makeLiveServiceWithBackend} from '../test-support/mws-data-test-support';
 import {MWSD_STATUS_POLL_INTERVAL_MS, MWSD_STATUS_REQUEST_TIMEOUT_MS, POLL_INTERVAL_MS} from './mws-data.service';
 
-const activeResponse = (): Response =>
-  new Response(
-    JSON.stringify({
-      lastRefreshAt: new Date().toISOString(),
-      persistentAvailable: true,
-      persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true, telemetry: {sampledAt: new Date().toISOString()}}],
-    }),
-    {status: 200},
-  );
+const activeResponse = () => ({
+  lastRefreshAt: new Date().toISOString(),
+  persistentAvailable: true,
+  persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true, telemetry: {sampledAt: new Date().toISOString()}}],
+});
 
 describe('MwsDataService', () => {
   beforeEach(() => {
@@ -347,17 +343,11 @@ describe('MwsDataService', () => {
   it('polls mwsd independently and annotates a ready RCI map', async () => {
     const api = goodApi();
     const fetch = vi.fn(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            lastRefreshAt: new Date().toISOString(),
-            persistentAvailable: true,
-            persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true,
-              telemetry: {sampledAt: new Date().toISOString()}}],
-          }),
-          {status: 200, headers: {'content-type': 'application/json'}},
-        ),
-      )
+      Promise.resolve({
+        lastRefreshAt: new Date().toISOString(),
+        persistentAvailable: true,
+        persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true, telemetry: {sampledAt: new Date().toISOString()}}],
+      })
     );
     const status = vi.fn();
     const backend = fakeBackend(fetch, status);
@@ -367,7 +357,7 @@ describe('MwsDataService', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(service.phase()).toBe('ready');
-    expect(fetch).toHaveBeenCalledWith('nodes', expect.objectContaining({signal: expect.any(AbortSignal)}));
+    expect(fetch).toHaveBeenCalledWith('nodes', expect.objectContaining({as: 'json', signal: expect.any(AbortSignal)}));
     expect(status).not.toHaveBeenCalled();
     expect(findNodeById(service.roots(), '02:7d:4a:91:c3:21')?.mwsdStatus?.state).toBe('live');
   });
@@ -376,17 +366,11 @@ describe('MwsDataService', () => {
     const api = goodApi();
     const fetch = vi.fn()
       .mockRejectedValueOnce(new Error('backend unavailable'))
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            lastRefreshAt: new Date().toISOString(),
-            persistentAvailable: true,
-            persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true,
-              telemetry: {sampledAt: new Date().toISOString()}}],
-          }),
-          {status: 200},
-        ),
-      );
+      .mockResolvedValueOnce({
+        lastRefreshAt: new Date().toISOString(),
+        persistentAvailable: true,
+        persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true, telemetry: {sampledAt: new Date().toISOString()}}],
+      });
     const service = makeLiveServiceWithBackend(api, fakeBackend(fetch));
 
     service.start();
@@ -403,15 +387,14 @@ describe('MwsDataService', () => {
 
   it('times out an ignored-abort request without blocking later status polls', async () => {
     const api = goodApi();
-    const pending = new Promise<Response>(() => undefined);
+    const pending = new Promise<unknown>(() => undefined);
     const fetch = vi.fn()
       .mockReturnValueOnce(pending)
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({lastRefreshAt: new Date().toISOString(), persistentAvailable: true, persistentSessions: []}),
-          {status: 200},
-        ),
-      );
+      .mockResolvedValueOnce({
+        lastRefreshAt: new Date().toISOString(),
+        persistentAvailable: true,
+        persistentSessions: [],
+      });
     const service = makeLiveServiceWithBackend(api, fakeBackend(fetch));
 
     service.start();
@@ -426,17 +409,11 @@ describe('MwsDataService', () => {
   it('reapplies the last good mwsd status after an RCI refresh rebuilds the map', async () => {
     const api = goodApi();
     const backend = fakeBackend(vi.fn(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            lastRefreshAt: new Date().toISOString(),
-            persistentAvailable: true,
-            persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true,
-              telemetry: {sampledAt: new Date().toISOString()}}],
-          }),
-          {status: 200},
-        ),
-      )
+      Promise.resolve({
+        lastRefreshAt: new Date().toISOString(),
+        persistentAvailable: true,
+        persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true, telemetry: {sampledAt: new Date().toISOString()}}],
+      })
     ));
     const service = makeLiveServiceWithBackend(api, backend);
 
@@ -453,16 +430,11 @@ describe('MwsDataService', () => {
   it('merges credential-independent persistent session state and reapplies it after topology rebuild', async () => {
     const api = goodApi();
     const backend = fakeBackend(vi.fn(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            lastRefreshAt: new Date().toISOString(),
-            persistentAvailable: true,
-            persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true}],
-          }),
-          {status: 200},
-        ),
-      )
+      Promise.resolve({
+        lastRefreshAt: new Date().toISOString(),
+        persistentAvailable: true,
+        persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true}],
+      })
     ));
     const service = makeLiveServiceWithBackend(api, backend);
 

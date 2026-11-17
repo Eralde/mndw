@@ -76,8 +76,8 @@ The generated `manifest.json` declares this route:
 
 `kind: "exec"` runs a fresh command for each request. The `command` path is
 relative to the plugin root; `path` declares the HTTP endpoint. Frontend code
-calls `backend.fetch('hello')` with the route **id**. The client resolves the
-URL and applies the host's backend authorization rules.
+calls `backend.call('hello', {as: 'json'})` with the route **id**. The client resolves the URL and applies the host's
+backend authorization rules.
 
 Replace `backend/main.sh` with this response, keeping its executable bit:
 
@@ -163,7 +163,7 @@ import type {PluginContext, PluginInstance} from '@mndw/sdk';
 import App from './App.svelte';
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
-  const app = mount(App, {target: container, props: {backend: ctx.backend, i18n: ctx.i18n}});
+  const app = mount(App, {target: container, props: {backend: ctx.backend, i18n: ctx.i18n, signal: ctx.signal}});
 
   return {
     unmount(): void {
@@ -174,124 +174,76 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
 ```
 
 The host calls `createInstance` with a container and `PluginContext`. Pass only
-the services the component needs. When the host removes the widget,
+the services the component needs, including `ctx.signal` for request cancellation. When the host removes the widget,
 `unmount()` delegates to Svelte so component cleanup runs too.
 
 ## 6. Build the greeting component
 
 Replace all of `src/App.svelte` with these three parts in order. The script
-validates backend responses and ignores stale completions after teardown.
+validates backend responses and ignores completions after the host aborts the context.
 
 <!-- docs-check: file plugins/examples/hello-widget/src/App.svelte -->
 ```svelte
 <script lang="ts">
-import {onDestroy} from 'svelte';
-import {
-  type BackendClient,
-  BackendDisabled,
-  BackendNotApproved,
-  BackendUnavailable,
-  type PluginI18n,
-} from '@mndw/sdk';
+import {type BackendClient, BackendError, type PluginI18n} from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
 
 interface Props {
   backend: BackendClient | undefined;
   i18n: PluginI18n;
+  signal: AbortSignal;
 }
 
 type ViewState = 'idle' | 'loading' | 'success' | 'error';
 
-let {backend, i18n}: Props = $props();
+let {backend, i18n, signal}: Props = $props();
 const translator = $derived(createTranslator(i18n));
 let state = $state<ViewState>('idle');
 let message = $state('');
-let disposed = false;
-let requestGeneration = 0;
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof BackendNotApproved) {
-    return $translator.t('error.backend-not-approved');
-  }
-
-  if (error instanceof BackendDisabled) {
-    return $translator.t('error.backend-disabled');
-  }
-
-  if (error instanceof BackendUnavailable) {
-    return $translator.t('error.backend-unavailable');
-  }
-
-  return $translator.t('error.greeting-failed');
-}
-
-function readGreeting(payload: unknown): string | undefined {
-  if (
-    payload === null || typeof payload !== 'object' || Array.isArray(payload)
-  ) {
-    return undefined;
-  }
-
-  const candidate = (payload as Record<string, unknown>).message;
-
-  return typeof candidate === 'string' && candidate.trim() !== ''
-    ? candidate.trim()
-    : undefined;
-}
 
 async function loadGreeting(): Promise<void> {
-  if (state === 'loading') {
-    return;
-  }
-
+  if (state === 'loading') { return; }
   if (!backend) {
     state = 'error';
     message = $translator.t('error.backend-missing');
-
     return;
   }
-
-  const generation = ++requestGeneration;
-
   state = 'loading';
   message = '';
-
   try {
-    const response = await backend.fetch('hello');
-
-    if (!response.ok) {
-      throw new Error('Hello backend returned a non-OK response');
-    }
-
-    const payload: unknown = await response.json();
-    const greeting = readGreeting(payload);
-
-    if (greeting === undefined) {
+    const payload = await backend.call<{message?: unknown}>('hello', {
+      as: 'json',
+      signal,
+    });
+    if (signal.aborted) { return; }
+    const greeting = typeof payload.message === 'string'
+      ? payload.message.trim()
+      : '';
+    if (greeting === '') {
       throw new Error('Hello backend returned an invalid greeting');
     }
-
-    if (!disposed && generation === requestGeneration) {
-      state = 'success';
-      message = greeting;
-    }
+    state = 'success';
+    message = greeting;
   } catch (error) {
-    if (!disposed && generation === requestGeneration) {
-      state = 'error';
-      message = getErrorMessage(error);
-    }
+    if (signal.aborted) { return; }
+    const code = error instanceof BackendError ? error.code : undefined;
+    state = 'error';
+    message = code === 'NOT_APPROVED'
+      ? $translator.t('error.backend-not-approved')
+      : code === 'DISABLED'
+      ? $translator.t('error.backend-disabled')
+      : code === 'BACKEND_STARTING' || code === 'BACKEND_UNAVAILABLE'
+          || code === 'BACKEND_MAINTENANCE'
+      ? $translator.t('error.backend-unavailable')
+      : $translator.t('error.greeting-failed');
   }
 }
-
-onDestroy(() => {
-  disposed = true;
-  requestGeneration++;
-});
 </script>
 ```
 
-`backend.fetch` returns a standard `Response`. Check both its HTTP status and
-the shape of its JSON; keep untrusted response data typed as `unknown` until
-validated. The loading guard prevents concurrent clicks.
+`backend.call` decodes JSON and rejects non-OK responses as `BackendError`; keep untrusted response data typed as
+`unknown` until validated. Passing `signal` cancels the request when the host disposes the context. The loading guard
+prevents concurrent clicks.
 
 The markup uses the shared button and announces loading, results, and failures
 through live regions.
@@ -366,9 +318,8 @@ mndw-button {
 </style>
 ```
 
-The `onDestroy` handler prevents an in-flight request from updating a disposed
-component; it does not cancel the request. `createTranslator` returns a Svelte
-store, so `$translator.t(...)` follows locale changes.
+The host aborts `ctx.signal` when it disposes the context, and the component checks that signal before updating state.
+`createTranslator` returns a Svelte store, so `$translator.t(...)` follows locale changes.
 
 Remove `src/l10n.test.ts` and `src/table.test.ts`; both mount the starter
 component, which this tutorial replaced. Restart the development host from the

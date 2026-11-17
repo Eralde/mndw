@@ -10,7 +10,7 @@ import {persistentRciPermissionSchema} from './permissions.js';
  * no per-call lookup. Two error layers:
  *  - client-side pre-check from the snapshot - a typo (`BackendUnknownId`) throws synchronously;
  *    a known-unapproved / disabled binding rejects fast (`BackendNotApproved` / `BackendDisabled`);
- *  - the daemon is authoritative - its structured error envelope codes
+ *  - the daemon is authoritative for responses it marks as platform errors - its structured error envelope codes
  *    `NOT_APPROVED`, `DISABLED`, `ROUTE_NOT_FOUND`, `BACKEND_STARTING`,
  *    `BACKEND_UNAVAILABLE`, `BACKEND_INCOMPATIBLE`, `BACKEND_MAINTENANCE`,
  *    `BACKEND_BLOCKED`, and `BAD_GATEWAY` map onto the same typed errors when
@@ -120,13 +120,22 @@ export interface BackendFetchOptions {
   signal?: AbortSignal;
 }
 
+export interface BackendCallOptions extends BackendFetchOptions {
+  as?: 'json' | 'text' | 'blob';
+}
+
 export interface BackendSocketOptions {
   protocols?: string[];
 }
 
 export interface BackendClient {
-  /** Resolve `id` to its URL + method and issue the request. Throws `BackendUnknownId` synchronously. */
+  /** Resolve and issue the request. Returns plugin responses, including non-OK; throws for marked platform errors. */
   fetch(id: string, options?: BackendFetchOptions): Promise<Response>;
+  /** Fetch and decode a route response, rejecting plugin-owned non-OK responses and marked platform errors. */
+  call<T = unknown>(id: string, options: BackendCallOptions & {as: 'json'}): Promise<T>;
+  call(id: string, options: BackendCallOptions & {as: 'text'}): Promise<string>;
+  call(id: string, options: BackendCallOptions & {as: 'blob'}): Promise<Blob>;
+  call<T = unknown>(id: string, options?: BackendCallOptions): Promise<T | string | Blob>;
   /** Open a websocket to the declared target. Throws synchronously on a bad/blocked id. */
   socket(id: string, options?: BackendSocketOptions): WebSocket;
   /** Query live daemon-owned backend availability without executing a backend route. */
@@ -154,25 +163,74 @@ export type BackendErrorCode =
   | 'BACKEND_MAINTENANCE'
   | 'BACKEND_BLOCKED'
   | 'BAD_GATEWAY'
-  | 'STATUS_QUERY_FAILED';
+  | 'STATUS_QUERY_FAILED'
+  | 'ROUTE_NOT_FOUND'
+  | 'BAD_REQUEST'
+  | 'INTERNAL'
+  | 'SERVER_BUSY'
+  | 'REQUEST_TIMEOUT'
+  | 'SCRIPT_FAILED'
+  | 'SCRIPT_TIMEOUT'
+  | 'BACKEND_BUSY'
+  | 'BACKEND_BODY_TOO_LARGE'
+  | 'BACKEND_OUTPUT_TOO_LARGE'
+  | 'CSRF_REQUIRED'
+  | 'UNAUTHORIZED'
+  | 'HTTP_ERROR'
+  | 'INVALID_RESPONSE';
+
+interface BackendErrorOptions {
+  status?: number;
+  retryable?: boolean;
+  details?: unknown;
+}
+
+const RETRYABLE_CODES = new Set<BackendErrorCode>([
+  'BACKEND_BUSY',
+  'BACKEND_STARTING',
+  'BACKEND_UNAVAILABLE',
+  'BACKEND_MAINTENANCE',
+  'BAD_GATEWAY',
+  'SERVER_BUSY',
+  'REQUEST_TIMEOUT',
+  'SCRIPT_TIMEOUT',
+  'STATUS_QUERY_FAILED',
+]);
+
+const isRetryable = (code: BackendErrorCode, status?: number): boolean => {
+  if (code === 'HTTP_ERROR') {
+    return status === 408 || status === 425 || status === 429 || (status !== undefined && status >= 500);
+  }
+
+  return RETRYABLE_CODES.has(code);
+};
 
 export class BackendError extends Error {
   public readonly id: string | undefined;
   public readonly code: BackendErrorCode;
+  public readonly status: number | undefined;
+  public readonly retryable: boolean;
+  public readonly details: unknown;
 
-  constructor(message: string, code: BackendErrorCode, id?: string) {
+  constructor(message: string, code: BackendErrorCode, id?: string, options: BackendErrorOptions = {}) {
     super(message);
     this.name = 'BackendError';
     this.code = code;
     this.id = id;
+    this.status = options.status;
+    this.retryable = options.retryable ?? isRetryable(code, options.status);
+    this.details = options.details;
   }
 }
 
 export class BackendUnknownId extends BackendError {
-  public override readonly code = 'UNKNOWN_ID';
+  public override readonly code: 'UNKNOWN_ID' | 'ROUTE_NOT_FOUND';
 
-  constructor(id: string) {
-    super(`Unknown backend binding id: "${id}"`, 'UNKNOWN_ID', id);
+  constructor(id: string, options: BackendErrorOptions & {code?: 'UNKNOWN_ID' | 'ROUTE_NOT_FOUND'} = {}) {
+    const code = options.code ?? 'UNKNOWN_ID';
+
+    super(`Unknown backend binding id: "${id}"`, code, id, options);
+    this.code = code;
     this.name = 'BackendUnknownId';
   }
 }
@@ -180,8 +238,8 @@ export class BackendUnknownId extends BackendError {
 export class BackendNotApproved extends BackendError {
   public override readonly code = 'NOT_APPROVED';
 
-  constructor(id: string) {
-    super(`Backend "${id}" is not approved`, 'NOT_APPROVED', id);
+  constructor(id: string, options: BackendErrorOptions = {}) {
+    super(`Backend "${id}" is not approved`, 'NOT_APPROVED', id, options);
     this.name = 'BackendNotApproved';
   }
 }
@@ -189,8 +247,8 @@ export class BackendNotApproved extends BackendError {
 export class BackendDisabled extends BackendError {
   public override readonly code = 'DISABLED';
 
-  constructor(id: string) {
-    super(`Backend "${id}" is disabled`, 'DISABLED', id);
+  constructor(id: string, options: BackendErrorOptions = {}) {
+    super(`Backend "${id}" is disabled`, 'DISABLED', id, options);
     this.name = 'BackendDisabled';
   }
 }
@@ -198,8 +256,8 @@ export class BackendDisabled extends BackendError {
 export class BackendTransportMismatch extends BackendError {
   public override readonly code = 'TRANSPORT_MISMATCH';
 
-  constructor(id: string, public readonly expected: BackendRouteTransport) {
-    super(`Backend route "${id}" is not an ${expected} route`, 'TRANSPORT_MISMATCH', id);
+  constructor(id: string, public readonly expected: BackendRouteTransport, options: BackendErrorOptions = {}) {
+    super(`Backend route "${id}" is not an ${expected} route`, 'TRANSPORT_MISMATCH', id, options);
     this.name = 'BackendTransportMismatch';
   }
 }
@@ -207,8 +265,12 @@ export class BackendTransportMismatch extends BackendError {
 export class BackendStarting extends BackendError {
   public override readonly code = 'BACKEND_STARTING';
 
-  constructor(id: string, public readonly retryAfterSeconds: number | null) {
-    super(`Backend "${id}" is starting`, 'BACKEND_STARTING', id);
+  constructor(
+    id: string,
+    public readonly retryAfterSeconds: number | null,
+    options: BackendErrorOptions = {},
+  ) {
+    super(`Backend "${id}" is starting`, 'BACKEND_STARTING', id, options);
     this.name = 'BackendStarting';
   }
 }
@@ -216,8 +278,8 @@ export class BackendStarting extends BackendError {
 export class BackendUnavailable extends BackendError {
   public override readonly code = 'BACKEND_UNAVAILABLE';
 
-  constructor(id: string) {
-    super(`Backend "${id}" is unavailable`, 'BACKEND_UNAVAILABLE', id);
+  constructor(id: string, options: BackendErrorOptions = {}) {
+    super(`Backend "${id}" is unavailable`, 'BACKEND_UNAVAILABLE', id, options);
     this.name = 'BackendUnavailable';
   }
 }
@@ -225,8 +287,8 @@ export class BackendUnavailable extends BackendError {
 export class BackendIncompatible extends BackendError {
   public override readonly code = 'BACKEND_INCOMPATIBLE';
 
-  constructor(id: string) {
-    super(`Backend "${id}" is incompatible`, 'BACKEND_INCOMPATIBLE', id);
+  constructor(id: string, options: BackendErrorOptions = {}) {
+    super(`Backend "${id}" is incompatible`, 'BACKEND_INCOMPATIBLE', id, options);
     this.name = 'BackendIncompatible';
   }
 }
@@ -234,8 +296,12 @@ export class BackendIncompatible extends BackendError {
 export class BackendMaintenance extends BackendError {
   public override readonly code = 'BACKEND_MAINTENANCE';
 
-  constructor(id: string, public readonly retryAfterSeconds: number | null) {
-    super(`Backend "${id}" is under maintenance`, 'BACKEND_MAINTENANCE', id);
+  constructor(
+    id: string,
+    public readonly retryAfterSeconds: number | null,
+    options: BackendErrorOptions = {},
+  ) {
+    super(`Backend "${id}" is under maintenance`, 'BACKEND_MAINTENANCE', id, options);
     this.name = 'BackendMaintenance';
   }
 }
@@ -247,8 +313,9 @@ export class BackendBlocked extends BackendError {
     id: string,
     public readonly blockers: BackendBlocker[],
     public readonly retryAfterSeconds: number | null,
+    options: BackendErrorOptions = {},
   ) {
-    super(`Backend "${id}" is blocked on an unmet activation prerequisite`, 'BACKEND_BLOCKED', id);
+    super(`Backend "${id}" is blocked on an unmet activation prerequisite`, 'BACKEND_BLOCKED', id, options);
     this.name = 'BackendBlocked';
   }
 }
@@ -256,8 +323,8 @@ export class BackendBlocked extends BackendError {
 export class BackendBadGateway extends BackendError {
   public override readonly code = 'BAD_GATEWAY';
 
-  constructor(id: string) {
-    super(`Backend "${id}" returned a bad gateway response`, 'BAD_GATEWAY', id);
+  constructor(id: string, options: BackendErrorOptions = {}) {
+    super(`Backend "${id}" returned a bad gateway response`, 'BAD_GATEWAY', id, options);
     this.name = 'BackendBadGateway';
   }
 }
@@ -266,7 +333,7 @@ export class BackendStatusQueryError extends BackendError {
   public override readonly code = 'STATUS_QUERY_FAILED';
 
   constructor(public readonly httpStatus: number | null, message: string) {
-    super(message, 'STATUS_QUERY_FAILED');
+    super(message, 'STATUS_QUERY_FAILED', undefined, {status: httpStatus ?? undefined});
     this.name = 'BackendStatusQueryError';
   }
 }
@@ -299,6 +366,7 @@ const parseRetryAfterSeconds = (response: Response): number | null => {
 // activation blockers carried by `BACKEND_BLOCKED`).
 interface DaemonError {
   code?: string;
+  message?: string;
   detail?: unknown;
 }
 
@@ -313,16 +381,48 @@ const parseBlockers = (detail: unknown): BackendBlocker[] => {
 // Single source of truth for the daemon's structured error codes: each maps to the typed error it
 // throws. Membership (`code in ERROR_BY_CODE`) replaces a separate code Set — adding a code here is
 // enough to both recognize and handle it.
-const ERROR_BY_CODE: Record<string, (id: string, res: Response, error: DaemonError) => Error> = {
-  DISABLED: (id) => new BackendDisabled(id),
-  NOT_APPROVED: (id) => new BackendNotApproved(id),
-  ROUTE_NOT_FOUND: (id) => new BackendUnknownId(id),
-  BACKEND_STARTING: (id, res) => new BackendStarting(id, parseRetryAfterSeconds(res)),
-  BACKEND_UNAVAILABLE: (id) => new BackendUnavailable(id),
-  BACKEND_INCOMPATIBLE: (id) => new BackendIncompatible(id),
-  BACKEND_MAINTENANCE: (id, res) => new BackendMaintenance(id, parseRetryAfterSeconds(res)),
-  BACKEND_BLOCKED: (id, res, error) => new BackendBlocked(id, parseBlockers(error.detail), parseRetryAfterSeconds(res)),
-  BAD_GATEWAY: (id) => new BackendBadGateway(id),
+type ErrorFactory = (id: string, res: Response, error: DaemonError, options: BackendErrorOptions) => BackendError;
+
+const genericErrorFactory = (code: BackendErrorCode, fallback: string): ErrorFactory => {
+  return (id, response, error, options) =>
+    new BackendError(
+      error.message ?? fallback,
+      code,
+      id,
+      {...options, status: response.status},
+    );
+};
+
+const ERROR_BY_CODE: Record<string, ErrorFactory> = {
+  DISABLED: (id, _res, _error, options) => new BackendDisabled(id, options),
+  NOT_APPROVED: (id, _res, _error, options) => new BackendNotApproved(id, options),
+  ROUTE_NOT_FOUND: (id, _res, _error, options) => new BackendUnknownId(id, {...options, code: 'ROUTE_NOT_FOUND'}),
+  BACKEND_STARTING: (id, res, _error, options) => new BackendStarting(id, parseRetryAfterSeconds(res), options),
+  BACKEND_UNAVAILABLE: (id, _res, _error, options) => new BackendUnavailable(id, options),
+  BACKEND_INCOMPATIBLE: (id, _res, _error, options) => new BackendIncompatible(id, options),
+  BACKEND_MAINTENANCE: (id, res, _error, options) => new BackendMaintenance(id, parseRetryAfterSeconds(res), options),
+  BACKEND_BLOCKED: (id, res, error, options) =>
+    new BackendBlocked(id, parseBlockers(error.detail), parseRetryAfterSeconds(res), options),
+  BAD_GATEWAY: (id, _res, _error, options) => new BackendBadGateway(id, options),
+  BAD_REQUEST: genericErrorFactory('BAD_REQUEST', 'Backend request was rejected'),
+  INTERNAL: genericErrorFactory('INTERNAL', 'Backend request failed'),
+  SERVER_BUSY: genericErrorFactory('SERVER_BUSY', 'Backend request intake is busy'),
+  REQUEST_TIMEOUT: genericErrorFactory('REQUEST_TIMEOUT', 'Backend request timed out'),
+  SCRIPT_FAILED: genericErrorFactory('SCRIPT_FAILED', 'Backend script failed'),
+  SCRIPT_TIMEOUT: genericErrorFactory('SCRIPT_TIMEOUT', 'Backend script timed out'),
+  BACKEND_BUSY: genericErrorFactory('BACKEND_BUSY', 'Backend is busy'),
+  BACKEND_BODY_TOO_LARGE: genericErrorFactory('BACKEND_BODY_TOO_LARGE', 'Backend request body is too large'),
+  BACKEND_OUTPUT_TOO_LARGE: genericErrorFactory('BACKEND_OUTPUT_TOO_LARGE', 'Backend output is too large'),
+  CSRF_REQUIRED: genericErrorFactory('CSRF_REQUIRED', 'Backend request requires CSRF protection'),
+  UNAUTHORIZED: genericErrorFactory('UNAUTHORIZED', 'Backend request is unauthorized'),
+};
+
+const DAEMON_ERROR_HEADER = 'X-Mndw-Error';
+const UNKNOWN_DAEMON_ERROR_CODE: BackendErrorCode = 'INTERNAL';
+const UNKNOWN_DAEMON_ERROR_MESSAGE = 'Backend platform request failed';
+
+const getDaemonCode = (value: string): BackendErrorCode | undefined => {
+  return Object.prototype.hasOwnProperty.call(ERROR_BY_CODE, value) ? value as BackendErrorCode : undefined;
 };
 
 const buildQuery = (query: BackendFetchOptions['query']): string => {
@@ -378,32 +478,43 @@ const gate = (descriptor: BackendDescriptor, id: string): BackendNotApproved | B
   return null;
 };
 
-// Map the daemon's structured error envelope onto the typed errors. Non-matching responses pass
-// through unchanged so plugins still see their command's own error output.
+// The marker distinguishes daemon errors from plugin responses that may use the same JSON shape.
 const mapResponse = async (id: string, res: Response): Promise<Response> => {
-  if (res.ok) {
+  if (res.ok || res.redirected !== false || !res.headers.has(DAEMON_ERROR_HEADER)) {
     return res;
   }
 
-  let error: DaemonError | undefined;
+  let payload: unknown;
 
   try {
-    // Read daemon error envelopes defensively. Preserve non-matching responses so plugins
-    // still receive their backend's own error output.
-    const payload = await res.clone().json() as {error?: DaemonError};
-
-    error = payload.error;
+    payload = await res.clone().json();
   } catch {
-    return res;
+    payload = undefined;
   }
 
-  const make = error?.code ? ERROR_BY_CODE[error.code] : undefined;
+  const rawError = isRecord(payload) && isRecord(payload.error) ? payload.error : undefined;
+  const error: DaemonError = {
+    code: typeof rawError?.code === 'string' ? rawError.code : undefined,
+    message: typeof rawError?.message === 'string' ? rawError.message : undefined,
+    detail: rawError?.detail,
+  };
+  const code = error.code ? getDaemonCode(error.code) : undefined;
+  const options: BackendErrorOptions = {status: res.status, details: error.detail};
 
-  if (!make || !error) {
-    return res;
+  if (!code) {
+    throw new BackendError(
+      error.message ?? UNKNOWN_DAEMON_ERROR_MESSAGE,
+      UNKNOWN_DAEMON_ERROR_CODE,
+      id,
+      options,
+    );
   }
 
-  throw make(id, res, error);
+  throw ERROR_BY_CODE[code](id, res, error, options);
+};
+
+const isAbortError = (error: unknown): boolean => {
+  return isRecord(error) && error.name === 'AbortError';
 };
 
 const doFetch = async (
@@ -451,26 +562,84 @@ export function createBackendClient(
     origin: deps.origin ?? (typeof location !== 'undefined' ? location.origin : 'http://localhost'),
   };
 
+  const fetchRoute = (id: string, options: BackendFetchOptions = {}): Promise<Response> => {
+    const binding = descriptor.routes[id];
+
+    if (!binding) {
+      throw new BackendUnknownId(id);
+    }
+
+    if (binding.transport !== 'http' || !binding.method) {
+      throw new BackendTransportMismatch(id, 'http');
+    }
+
+    const blocked = gate(descriptor, id);
+
+    if (blocked) {
+      return Promise.reject(blocked);
+    }
+
+    return doFetch(ctx, binding, id, options);
+  };
+
+  function call<T = unknown>(id: string, options: BackendCallOptions & {as: 'json'}): Promise<T>;
+  function call(id: string, options: BackendCallOptions & {as: 'text'}): Promise<string>;
+  function call(id: string, options: BackendCallOptions & {as: 'blob'}): Promise<Blob>;
+  function call<T = unknown>(id: string, options?: BackendCallOptions): Promise<T | string | Blob>;
+  function call<T = unknown>(id: string, options: BackendCallOptions = {}): Promise<T | string | Blob> {
+    return fetchRoute(id, options).then(async (response) => {
+      if (!response.ok) {
+        const details = await response.text();
+
+        throw new BackendError(
+          `Backend route "${id}" returned HTTP ${response.status}`,
+          'HTTP_ERROR',
+          id,
+          {status: response.status, details},
+        );
+      }
+
+      const mediaType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() ?? '';
+      const format = options.as
+        ?? (mediaType === 'application/json' || mediaType.endsWith('+json')
+          ? 'json'
+          : mediaType.startsWith('text/')
+          ? 'text'
+          : 'blob');
+
+      if (format === 'text') {
+        return response.text();
+      }
+
+      if (format === 'blob') {
+        return response.blob();
+      }
+
+      const body = await response.text();
+
+      try {
+        return JSON.parse(body) as T;
+      } catch (error) {
+        if (isAbortError(error)) {
+          throw error;
+        }
+
+        throw new BackendError(
+          `Backend route "${id}" returned invalid JSON`,
+          'INVALID_RESPONSE',
+          id,
+          {status: response.status, details: body},
+        );
+      }
+    });
+  }
+
   return {
     fetch(id: string, options: BackendFetchOptions = {}): Promise<Response> {
-      const binding = descriptor.routes[id];
-
-      if (!binding) {
-        throw new BackendUnknownId(id);
-      }
-
-      if (binding.transport !== 'http' || !binding.method) {
-        throw new BackendTransportMismatch(id, 'http');
-      }
-
-      const blocked = gate(descriptor, id);
-
-      if (blocked) {
-        return Promise.reject(blocked);
-      }
-
-      return doFetch(ctx, binding, id, options);
+      return fetchRoute(id, options);
     },
+
+    call,
 
     socket(id: string, options: BackendSocketOptions = {}): WebSocket {
       const binding = descriptor.routes[id];

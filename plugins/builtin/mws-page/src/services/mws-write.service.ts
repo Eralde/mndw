@@ -165,19 +165,14 @@ export class MwsWriteService {
       throw new Error('mws-page write backend is unavailable');
     }
 
-    const response = await this.backend.fetch('write', {
+    return this.backend.call<MwsWriteResult>('write', {
+      as: 'json',
       body: {
         operation: 'wifi.set-power',
         nodeId,
         params: {interface: interfaceName, power, persist},
       },
     });
-
-    if (!response.ok) {
-      throw new Error(`mws-page write failed with HTTP ${response.status}`);
-    }
-
-    return await response.json() as MwsWriteResult;
   }
 
   private async executeRciWrite(queries: RciQuery[], stepNames: string[]): Promise<MwsWriteResult> {

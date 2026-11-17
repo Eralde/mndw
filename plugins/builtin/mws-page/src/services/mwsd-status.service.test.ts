@@ -21,18 +21,14 @@ import {
   MwsdStatusService,
 } from './mwsd-status.service';
 
-const activeResponse = (): Response =>
-  new Response(
-    JSON.stringify({
-      lastRefreshAt: new Date().toISOString(),
-      persistentAvailable: true,
-      persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true}],
-    }),
-    {status: 200},
-  );
+const activeResponse = () => ({
+  lastRefreshAt: new Date().toISOString(),
+  persistentAvailable: true,
+  persistentSessions: [{mac: '02:7d:4a:91:c3:21', live: true}],
+});
 
-function fakeBackend(fetch: BackendClient['fetch'], status?: BackendClient['status']): BackendClient {
-  const backend = {fetch, socket: vi.fn()} as unknown as BackendClient;
+function fakeBackend(call: BackendClient['call'], status?: BackendClient['status']): BackendClient {
+  const backend = {call, socket: vi.fn()} as unknown as BackendClient;
 
   if (status !== undefined) {
     backend.status = status;
@@ -124,10 +120,7 @@ describe('MwsdStatusService', () => {
   });
 
   it('maps a valid unavailable persistent snapshot to unavailable presentation', async () => {
-    const response = new Response(
-      JSON.stringify({lastRefreshAt: null, persistentAvailable: false, persistentSessions: []}),
-      {status: 200},
-    );
+    const response = {lastRefreshAt: null, persistentAvailable: false, persistentSessions: []};
     const service = makeStatusService(fakeBackend(vi.fn().mockResolvedValue(response)));
 
     service.resetForStart();
@@ -172,16 +165,13 @@ describe('MwsdStatusService', () => {
   });
 
   it('reports extender-session setup when backend is ready but has no sessions', async () => {
-    const response = new Response(
-      JSON.stringify({
-        lastRefreshAt: new Date().toISOString(),
-        persistentAvailable: true,
-        persistentTargetCount: 2,
-        persistentSessionCount: 0,
-        persistentSessions: [],
-      }),
-      {status: 200},
-    );
+    const response = {
+      lastRefreshAt: new Date().toISOString(),
+      persistentAvailable: true,
+      persistentTargetCount: 2,
+      persistentSessionCount: 0,
+      persistentSessions: [],
+    };
     const status = vi.fn().mockResolvedValue(
       {kind: 'service', state: 'ready', retryAfterSeconds: null} as BackendStatus,
     );
@@ -340,7 +330,7 @@ describe('MwsdStatusService', () => {
   });
 
   it('continues polling after an ignored-abort request times out', async () => {
-    const pending = new Promise<Response>(() => undefined);
+    const pending = new Promise<unknown>(() => undefined);
     const fetch = vi.fn()
       .mockReturnValueOnce(pending)
       .mockResolvedValueOnce(activeResponse());
@@ -356,18 +346,13 @@ describe('MwsdStatusService', () => {
 
   it('continues polling after a backend status request ignores abort', async () => {
     const fetch = vi.fn(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            lastRefreshAt: new Date().toISOString(),
-            persistentAvailable: true,
-            persistentTargetCount: 2,
-            persistentSessionCount: 0,
-            persistentSessions: [],
-          }),
-          {status: 200},
-        ),
-      )
+      Promise.resolve({
+        lastRefreshAt: new Date().toISOString(),
+        persistentAvailable: true,
+        persistentTargetCount: 2,
+        persistentSessionCount: 0,
+        persistentSessions: [],
+      })
     );
     const pending = new Promise<BackendStatus>(() => undefined);
     const status = vi.fn()
@@ -386,18 +371,15 @@ describe('MwsdStatusService', () => {
   });
 
   it('retains current nodes and derives merged status using the supplied timestamp', async () => {
-    const response = new Response(
-      JSON.stringify({
-        lastRefreshAt: '1970-01-01T00:00:00.000Z',
-        persistentAvailable: true,
-        persistentSessions: [{
-          mac: '02:7d:4a:91:c3:21',
-          live: true,
-          telemetry: {sampledAt: '1970-01-01T00:00:00.000Z'},
-        }],
-      }),
-      {status: 200},
-    );
+    const response = {
+      lastRefreshAt: '1970-01-01T00:00:00.000Z',
+      persistentAvailable: true,
+      persistentSessions: [{
+        mac: '02:7d:4a:91:c3:21',
+        live: true,
+        telemetry: {sampledAt: '1970-01-01T00:00:00.000Z'},
+      }],
+    };
     const service = makeStatusService(fakeBackend(vi.fn().mockResolvedValue(response)));
     const node: MwsNode = {
       id: '02:7d:4a:91:c3:21',

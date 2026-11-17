@@ -228,6 +228,19 @@ func TestFrontDoorUserPluginAssetsRequireSession(t *testing.T) {
 		t.Fatalf("state.Open: %v", err)
 	}
 
+	if err := store.Mutate(func(st *state.State) error {
+		st.Plugins["demo"] = &state.Plugin{
+			Name: "demo", Source: state.SourceUpload, Type: "widget", Version: "1.0.0",
+			Label: "Demo", Approval: state.ApprovalApproved, Enabled: true,
+			Manifest:    []byte(`{"manifestVersion":1,"name":"demo","version":"1.0.0","type":"widget","label":"Demo","entry":"index.js","size":{"w":4,"h":3}}`),
+			InstalledAt: time.Now().UTC(),
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatalf("store.Mutate: %v", err)
+	}
+
 	paletteStore, err := palette.Open(cfg.PaletteFile())
 	if err != nil {
 		t.Fatalf("palette.Open: %v", err)

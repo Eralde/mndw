@@ -64,12 +64,16 @@ func NewWithLogger(store *state.Store, userDir, builtinDir string, logger *slog.
 }
 
 // Resolve returns the named plugin, or false if no such plugin is installed. User
-// plugins come from state (their exact validated manifest bytes); builtins are read
-// from disk and treated as always approved+enabled. A stored manifest
-// that no longer validates is treated as not found — a tampered state file must not
-// open a backend route.
+// plugins come from state (their exact validated manifest bytes); builtins always
+// use their shipped manifest and use state only for the enabled flag. A stored user
+// manifest that no longer validates is treated as not found — a tampered state file
+// must not open a backend route.
 func (r *Registry) Resolve(name string) (*Plugin, bool) {
 	if rec, ok := r.store.Get(name); ok {
+		if rec.Source == state.SourceBuiltin {
+			return r.resolveBuiltin(name, rec.Enabled && !rec.RemovalPending)
+		}
+
 		m, err := manifest.Validate(rec.Manifest)
 		if err != nil {
 			return nil, false
@@ -86,23 +90,33 @@ func (r *Registry) Resolve(name string) (*Plugin, bool) {
 		}, true
 	}
 
-	if r.builtinDir != "" {
-		data, err := os.ReadFile(filepath.Join(r.builtinDir, name, "manifest.json"))
-		if err == nil {
-			if m, verr := manifest.Validate(data); verr == nil {
-				return &Plugin{
-					Name:     name,
-					Dir:      filepath.Join(r.builtinDir, name),
-					Manifest: m,
-					Source:   state.SourceBuiltin,
-					Approval: state.ApprovalApproved,
-					Enabled:  true,
-				}, true
-			}
-		}
+	return r.resolveBuiltin(name, true)
+}
+
+func (r *Registry) resolveBuiltin(name string, enabled bool) (*Plugin, bool) {
+	if r.builtinDir == "" {
+		return nil, false
 	}
 
-	return nil, false
+	dir := filepath.Join(r.builtinDir, name)
+	data, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	if err != nil {
+		return nil, false
+	}
+
+	m, err := manifest.Validate(data)
+	if err != nil {
+		return nil, false
+	}
+
+	return &Plugin{
+		Name:     name,
+		Dir:      dir,
+		Manifest: m,
+		Source:   state.SourceBuiltin,
+		Approval: state.ApprovalApproved,
+		Enabled:  enabled,
+	}, true
 }
 
 func pluginDir(userDir string, record *state.Plugin) string {
@@ -163,13 +177,19 @@ func (r *Registry) ListBuiltins() ([]*Plugin, error) {
 			continue
 		}
 
+		enabled := true
+
+		if record, exists := r.store.Get(name); exists && record.Source == state.SourceBuiltin {
+			enabled = record.Enabled && !record.RemovalPending
+		}
+
 		plugins = append(plugins, &Plugin{
 			Name:     name,
 			Dir:      pluginDir,
 			Manifest: m,
 			Source:   state.SourceBuiltin,
 			Approval: state.ApprovalApproved,
-			Enabled:  true,
+			Enabled:  enabled,
 		})
 	}
 
@@ -214,7 +234,7 @@ func (r *Registry) AllBackendPlugins() []*Plugin {
 	slices.SortFunc(builtins, func(left, right *Plugin) int { return strings.Compare(left.Name, right.Name) })
 
 	for _, plugin := range builtins {
-		if _, exists := reserved[plugin.Name]; exists || !manifest.HasBackend(plugin.Manifest) {
+		if _, exists := reserved[plugin.Name]; exists || !plugin.Enabled || !manifest.HasBackend(plugin.Manifest) {
 			continue
 		}
 

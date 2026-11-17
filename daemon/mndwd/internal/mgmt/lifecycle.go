@@ -2,10 +2,12 @@ package mgmt
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
@@ -103,13 +105,13 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if p.Enabled {
-		h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, true, filepath.Join(h.cfg.UserPluginsDir, name)))
+		h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, p.Source, p.Approval, true, h.togglePluginDir(p)))
 
 		return
 	}
 
 	desired := &registry.Plugin{
-		Name: name, Dir: filepath.Join(h.cfg.UserPluginsDir, name), Manifest: m,
+		Name: name, Dir: h.togglePluginDir(p), Manifest: m,
 		Source: p.Source, Approval: state.ApprovalApproved, Enabled: true,
 	}
 	err := h.executeLifecycle(name, backend.OpStarting, backend.IntentRun,
@@ -126,7 +128,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 				return backend.ErrLifecycleConflict
 			}
 
-			if apiErr := h.setEnabled(name, true, "enable", "plugin enabled by operator"); apiErr != nil {
+			if apiErr := h.setEnabled(name, true, "enable", "plugin enabled by operator", p); apiErr != nil {
 				_ = ctrl.StopService()
 
 				return apiErr
@@ -143,7 +145,7 @@ func (h *Handler) handleEnable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin enabled", "plugin", name)
-	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, state.ApprovalApproved, true, filepath.Join(h.cfg.UserPluginsDir, name)))
+	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, p.Source, state.ApprovalApproved, true, h.togglePluginDir(p)))
 }
 
 // handleDisable deactivates a plugin and marks it disabled. Routes are gated on
@@ -164,7 +166,7 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !p.Enabled {
-		h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false, filepath.Join(h.cfg.UserPluginsDir, name)))
+		h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, p.Source, p.Approval, false, h.togglePluginDir(p)))
 
 		return
 	}
@@ -172,7 +174,7 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 	err := h.executeLifecycle(name, backend.OpStopping, backend.IntentStop,
 		func(_ context.Context, ctrl backend.LifecycleControl) error {
 			stopErr := ctrl.StopService()
-			persistErr := h.setEnabled(name, false, "disable", "plugin disabled by operator")
+			persistErr := h.setEnabled(name, false, "disable", "plugin disabled by operator", p)
 
 			if persistErr == nil {
 				h.reconcilePermission(name, "plugin disable")
@@ -195,20 +197,39 @@ func (h *Handler) handleDisable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("plugin disabled", "plugin", name)
-	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, state.SourceUpload, p.Approval, false, filepath.Join(h.cfg.UserPluginsDir, name)))
+	h.writeLifecycleJSON(w, http.StatusOK, h.entryFrom(m, p.Source, p.Approval, false, h.togglePluginDir(p)))
 }
 
-// lookupForToggle resolves a user plugin and its manifest for enable/disable,
-// mapping the builtin and unknown cases to their errors.
+// lookupForToggle resolves a user or builtin plugin and its manifest for enable/disable.
 func (h *Handler) lookupForToggle(name string) (*state.Plugin, *manifest.Manifest, *httpx.APIError) {
 	p, ok := h.store.Get(name)
 
-	if !ok {
-		if h.isBuiltin(name) {
-			return nil, nil, httpx.NewError(http.StatusConflict, httpx.CodeConflict, "builtin plugins are always enabled")
+	if !ok || p.Source == state.SourceBuiltin {
+		builtin, apiErr := h.lookupBuiltin(name)
+
+		if apiErr != nil {
+			return nil, nil, apiErr
 		}
 
-		return nil, nil, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
+		if builtin == nil {
+			if !ok {
+				return nil, nil, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
+			}
+
+			return nil, nil, httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
+		}
+
+		builtinState, err := stateForBuiltin(builtin)
+		if err != nil {
+			return nil, nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot encode builtin manifest")
+		}
+
+		if ok {
+			builtinState.Enabled = p.Enabled && !p.RemovalPending
+			builtinState.RemovalPending = p.RemovalPending
+		}
+
+		return builtinState, builtin.Manifest, nil
 	}
 
 	m, err := manifest.Validate(p.Manifest)
@@ -219,13 +240,77 @@ func (h *Handler) lookupForToggle(name string) (*state.Plugin, *manifest.Manifes
 	return p, m, nil
 }
 
-// setEnabled flips the enabled flag and audits the change.
-func (h *Handler) setEnabled(name string, enabled bool, action, detail string) *httpx.APIError {
+func (h *Handler) lookupBuiltin(name string) (*registry.Plugin, *httpx.APIError) {
+	if h.builtins != nil {
+		plugins, err := h.builtins.ListBuiltins()
+		if err != nil {
+			return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
+		}
+
+		for _, plugin := range plugins {
+			if plugin.Name == name {
+				return plugin, nil
+			}
+		}
+
+		return nil, nil
+	}
+
+	if h.cfg.BuiltinPluginsDir == "" {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(filepath.Join(h.cfg.BuiltinPluginsDir, name, manifestFileName))
+	if err != nil {
+		return nil, nil
+	}
+
+	m, err := manifest.Validate(data)
+	if err != nil {
+		return nil, nil
+	}
+
+	return &registry.Plugin{
+		Name: name, Dir: filepath.Join(h.cfg.BuiltinPluginsDir, name), Manifest: m,
+		Source: state.SourceBuiltin, Approval: state.ApprovalApproved, Enabled: true,
+	}, nil
+}
+
+func stateForBuiltin(plugin *registry.Plugin) (*state.Plugin, error) {
+	manifestJSON, err := json.Marshal(plugin.Manifest)
+	if err != nil {
+		return nil, err
+	}
+
+	return &state.Plugin{
+		Name: plugin.Name, Source: state.SourceBuiltin, Type: deref(plugin.Manifest.Type),
+		Version: deref(plugin.Manifest.Version), Label: deref(plugin.Manifest.Label),
+		Approval: state.ApprovalApproved, Enabled: true, Manifest: manifestJSON, InstalledAt: time.Now().UTC(),
+	}, nil
+}
+
+func (h *Handler) togglePluginDir(plugin *state.Plugin) string {
+	if plugin.Source == state.SourceBuiltin {
+		return filepath.Join(h.cfg.BuiltinPluginsDir, plugin.Name)
+	}
+
+	return filepath.Join(h.cfg.UserPluginsDir, plugin.Name)
+}
+
+// setEnabled flips the enabled flag and audits the change. A builtin fallback is
+// inserted when the first disable transition creates its persisted state record.
+func (h *Handler) setEnabled(name string, enabled bool, action, detail string, fallback ...*state.Plugin) *httpx.APIError {
 	return h.mutateWithAudit(action, name, detail, func(st *state.State) error {
 		rec, exists := st.Plugins[name]
 
 		if !exists {
-			return httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "plugin vanished")
+			if len(fallback) == 0 || fallback[0] == nil || fallback[0].Source != state.SourceBuiltin {
+				return httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "plugin vanished")
+			}
+
+			copy := *fallback[0]
+			rec = &copy
+			st.Plugins[name] = rec
 		}
 
 		rec.Enabled = enabled

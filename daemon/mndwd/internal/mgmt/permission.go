@@ -118,6 +118,20 @@ func (h *Handler) reconcilePermission(plugin, reason string) {
 
 func (h *Handler) permissionTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, string, *httpx.APIError) {
 	if plugin, ok := h.store.Get(name); ok {
+		if plugin.Source == state.SourceBuiltin {
+			builtin, apiErr := h.lookupBuiltin(name)
+
+			if apiErr != nil {
+				return nil, "", "", false, "", apiErr
+			}
+
+			if builtin == nil {
+				return nil, "", "", false, "", httpx.NewError(http.StatusNotFound, httpx.CodeNotFound, "no such plugin: "+name)
+			}
+
+			return builtin.Manifest, state.SourceBuiltin, plugin.Approval, plugin.Enabled, builtin.Dir, nil
+		}
+
 		m, err := manifest.Validate(plugin.Manifest)
 		if err != nil {
 			return nil, "", "", false, "", httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
@@ -125,9 +139,7 @@ func (h *Handler) permissionTarget(name string) (*manifest.Manifest, state.Sourc
 
 		dir := filepath.Join(h.cfg.UserPluginsDir, name)
 
-		if plugin.Source == state.SourceBuiltin {
-			dir = filepath.Join(h.cfg.BuiltinPluginsDir, name)
-		} else if plugin.Approval == state.ApprovalPending {
+		if plugin.Approval == state.ApprovalPending {
 			dir = filepath.Join(h.cfg.StagingDir, name)
 		}
 

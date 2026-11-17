@@ -5,9 +5,11 @@ regular Node.js project.
 
 ## What a plugin contains
 
-The [`manifest.json`](/guides/manifest) identifies the plugin, selects `widget` or `page`, points to its entry, and
-declares permissions and any backend commands. The frontend entry exports `createInstance(container, ctx)`. The host
-calls it with a DOM container and `PluginContext`; it returns a `PluginInstance` with `unmount()` and optional
+The [`manifest.json`](/guides/manifest) identifies the plugin, selects `widget` or `page`, points to its entry, lists
+requested permissions, and declares any backend commands. Permissions do not sandbox plugin code; see the
+[manifest trust guidance](/guides/manifest#permissions-and-trust). The frontend entry exports
+`createInstance(container, ctx)`. The host calls it with a DOM container and `PluginContext`; it returns a
+`PluginInstance` with `unmount()` and optional
 `onResize()` for widgets. See the [frontend lifecycle guide](/guides/frontend-lifecycle).
 
 A backend is optional. Shell and Go backends expose declared routes through the typed `ctx.backend` client; device

@@ -4,7 +4,10 @@ import {SvelteMap} from 'svelte/reactivity';
 
 import {appState} from '../../../state/app.svelte.js';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
+import {syncPlugins} from '../../../runtime/plugin-loader.js';
+import {pluginRegistry} from '../../../runtime/plugin-registry.js';
 import {hostT} from '../../../services/host-i18n.svelte.js';
+import {refreshPluginRoutes} from '../../../router/create-app-router.js';
 import {
   type MgmtClient,
   type RuntimeLimits,
@@ -55,6 +58,19 @@ function rowStateFor(name: string): PluginRowState | undefined {
   return rowStates.get(name);
 }
 
+function hasRuntimeVersionMismatch(list: PluginListEntry[]): boolean {
+  return list.some((entry) => {
+    if (!entry.enabled || entry.approval !== 'approved') {
+      return false;
+    }
+
+    const runtimePlugin = pluginRegistry.get(entry.name);
+
+    return runtimePlugin !== undefined
+      && runtimePlugin.entry.version !== entry.version;
+  });
+}
+
 function clearSatisfiedNotices(list: PluginListEntry[]): void {
   for (const [name, row] of rowStates) {
     if (
@@ -75,6 +91,7 @@ async function load(): Promise<void> {
     const listed = await client.listPlugins();
     if (request === latestRequest) {
       plugins = listed;
+      reloadPrompt = reloadPrompt || hasRuntimeVersionMismatch(listed);
       refreshError = '';
       clearSatisfiedNotices(listed);
     }
@@ -89,8 +106,9 @@ async function load(): Promise<void> {
   }
 }
 
-async function refresh(): Promise<void> {
+async function refresh(): Promise<boolean> {
   const request = ++latestRequest;
+  let reloadRequired = false;
 
   try {
     const listed = await client.listPlugins();
@@ -100,6 +118,12 @@ async function refresh(): Promise<void> {
       refreshError = '';
       loading = false;
       clearSatisfiedNotices(listed);
+      const sync = syncPlugins(listed);
+      refreshPluginRoutes();
+      reloadRequired = await sync;
+      reloadPrompt = reloadPrompt || reloadRequired
+        || hasRuntimeVersionMismatch(listed);
+      refreshPluginRoutes();
     }
   } catch (caught) {
     if (request === latestRequest) {
@@ -109,6 +133,13 @@ async function refresh(): Promise<void> {
   }
 
   void loadRuntime();
+  return reloadRequired;
+}
+
+async function refreshAfterMutation(): Promise<void> {
+  if (await refresh()) {
+    reloadPrompt = true;
+  }
 }
 
 async function loadRuntime(): Promise<void> {
@@ -124,7 +155,6 @@ async function mutate(
   name: string,
   operation: LifecycleOp,
   run: () => Promise<unknown>,
-  reload: boolean,
 ): Promise<boolean> {
   const existing = rowStates.get(name);
 
@@ -139,10 +169,7 @@ async function mutate(
     await run();
     succeeded = true;
     rowStates.delete(name);
-    if (reload) {
-      reloadPrompt = true;
-    }
-    await refresh();
+    await refreshAfterMutation();
   } catch (caught) {
     const outcome = classifyMutationFailure(caught);
 
@@ -170,10 +197,7 @@ async function mutate(
         if (result === 'ok') {
           rowStates.delete(name);
           succeeded = true;
-          if (reload) {
-            reloadPrompt = true;
-          }
-          await refresh();
+          await refreshAfterMutation();
         } else if (result === 'notice-finishing') {
           rowStates.set(name, {
             state: 'notice-finishing',
@@ -207,12 +231,15 @@ async function mutate(
 }
 
 function onInstalled(): void {
-  reloadPrompt = true;
-  void refresh();
+  void refreshAfterMutation();
 }
 
 function dismissed(): void {
-  void refresh();
+  void refreshAfterMutation();
+}
+
+function keepNotice(name: string): void {
+  rowStates.delete(name);
 }
 
 onMount(() => {
@@ -229,7 +256,7 @@ onMount(() => {
       class="mndw-reload"
       role="status"
     >
-      <span>{hostT('settings.plugin-manager.reload-notice')}</span>
+      <span>{hostT('settings.plugin-manager.plugin-updated-notice')}</span>
       <mndw-button
         variant="primary"
         onclick={() => window.location.reload()}
@@ -250,14 +277,8 @@ onMount(() => {
     uploadFile={(file) => client.uploadPlugin(file)}
     {onInstalled}
     onApprove={(name) =>
-    mutate(
-      name,
-      {kind: 'approve'},
-      () => client.approvePlugin(name),
-      true,
-    )}
-    onDeny={(name) =>
-    mutate(name, {kind: 'deny'}, () => client.denyPlugin(name), false)}
+    mutate(name, {kind: 'approve'}, () => client.approvePlugin(name))}
+    onDeny={(name) => mutate(name, {kind: 'deny'}, () => client.denyPlugin(name))}
     onDismiss={dismissed}
   />
 
@@ -297,38 +318,72 @@ onMount(() => {
       </div>
     {/if}
 
-    {#if runtimeLimits}
-      <section
-        class="mndw-runtime-capacity"
-        aria-label={hostT('settings.backend-capacity')}
-      >
-        <strong>{hostT('settings.backend-capacity')}</strong>
-        <span>
-          {hostT('settings.plugin-manager.exec')}:
-          {runtimeLimits.currentExec}/{runtimeLimits.maxConcurrentExecTotal}
-        </span>
-        <span>
-          {hostT('settings.plugin-manager.services')}:
-          {runtimeLimits.reservedServices}/{runtimeLimits.maxSupervisedServices}
-        </span>
-        <span>
-          {hostT('settings.plugin-manager.per-plugin-exec-limit')}:
-          {runtimeLimits.maxConcurrentExecPerPlugin}
-        </span>
-        <span>
-          {hostT('settings.plugin-manager.service-protocols')}:
-          {runtimeLimits.supportedServiceProtocols.join(', ')}
-        </span>
-      </section>
-    {:else if runtimeError}
-      <p class="mndw-plugin-manager__runtime-error">
-        {
-          hostT('settings.plugin-manager.runtime-status-unavailable', {
-            error: runtimeError,
-          })
-        }
-      </p>
-    {/if}
+    <details class="mndw-plugin-diagnostics">
+      <summary>{hostT('settings.plugin-manager.diagnostics')}</summary>
+      {#if runtimeLimits}
+        <section aria-label={hostT('settings.backend-capacity')}>
+          <strong>{hostT('settings.backend-capacity')}</strong>
+          <span>
+            {hostT('settings.plugin-manager.exec')}:
+            {runtimeLimits.currentExec}/{runtimeLimits.maxConcurrentExecTotal}
+          </span>
+          <span>
+            {hostT('settings.plugin-manager.services')}:
+            {runtimeLimits.reservedServices}/{
+              runtimeLimits.maxSupervisedServices
+            }
+          </span>
+          <span>
+            {hostT('settings.plugin-manager.per-plugin-exec-limit')}:
+            {runtimeLimits.maxConcurrentExecPerPlugin}
+          </span>
+          <span>
+            {hostT('settings.plugin-manager.service-protocols')}:
+            {runtimeLimits.supportedServiceProtocols.join(', ')}
+          </span>
+        </section>
+      {:else if runtimeError}
+        <p>
+          {
+            hostT('settings.plugin-manager.runtime-status-unavailable', {
+              error: runtimeError,
+            })
+          }
+        </p>
+      {/if}
+      {#each installed.filter((item) => item.runtime !== undefined) as
+        item
+        (item.name)
+      }
+        {@const runtime = item.runtime}
+        <section class="mndw-plugin-diagnostics__item">
+          <strong>{item.name}</strong>
+          {#if runtime?.requiredProtocol !== undefined}
+            <span>{hostT('settings.plugin-manager.protocol')}: {
+                runtime.requiredProtocol
+              }</span>
+          {/if}
+          {#if runtime?.compatible === false}
+            <span>{hostT('settings.plugin-manager.incompatible')}</span>
+          {/if}
+          {#if runtime?.lastError}
+            <span>{hostT('settings.plugin-manager.last-error')}: {
+                runtime.lastError
+              }</span>
+          {/if}
+          {#if runtime?.compatible === false && runtime.supportedProtocols}
+            <span>
+              {
+                hostT(
+                  'settings.plugin-manager.supported-service-protocols',
+                )
+              }:
+              {runtime.supportedProtocols.join(', ')}
+            </span>
+          {/if}
+        </section>
+      {/each}
+    </details>
 
     {#if pending.length > 0}
       <PendingApprovals
@@ -336,17 +391,12 @@ onMount(() => {
         {confirmingName}
         {rowStateFor}
         onApprove={(name) =>
-        mutate(
-          name,
-          {kind: 'approve'},
-          () => client.approvePlugin(name),
-          true,
-        )}
-        onDeny={(name) =>
-        mutate(name, {kind: 'deny'}, () => client.denyPlugin(name), false)}
+        mutate(name, {kind: 'approve'}, () => client.approvePlugin(name))}
+        onDeny={(name) => mutate(name, {kind: 'deny'}, () => client.denyPlugin(name))}
         onRequestConfirm={(name) => (confirmingName = name)}
         onCancelConfirm={() => (confirmingName = null)}
         onRefresh={() => void refresh()}
+        onKeepNotice={keepNotice}
       />
     {/if}
 
@@ -357,25 +407,24 @@ onMount(() => {
       {permissionVisible}
       {permissionAvailable}
       onEnable={(name) =>
-      mutate(name, {kind: 'enable'}, () => client.enablePlugin(name), true)}
+      mutate(name, {kind: 'enable'}, () => client.enablePlugin(name))}
       onDisable={(name) =>
       mutate(
         name,
         {kind: 'disable'},
         () => client.disablePlugin(name),
-        true,
       )}
       onPermissionChange={(name, permission, enabled) =>
       mutate(name, {kind: 'permission', permission, enabled}, () =>
-        client.setPluginPermission(name, permission, enabled), false)}
+        client.setPluginPermission(name, permission, enabled))}
       onRestart={(name) =>
-      mutate(name, {kind: 'restart'}, () =>
-        client.restartPlugin(name), false)}
+      mutate(name, {kind: 'restart'}, () => client.restartPlugin(name))}
       onDelete={(name) =>
-      mutate(name, {kind: 'delete'}, () => client.deletePlugin(name), true)}
+      mutate(name, {kind: 'delete'}, () => client.deletePlugin(name))}
       onRequestConfirm={(name) => (confirmingName = name)}
       onCancelConfirm={() => (confirmingName = null)}
       onRefresh={() => void refresh()}
+      onKeepNotice={keepNotice}
     />
   {/if}
 </section>
@@ -409,21 +458,27 @@ onMount(() => {
   font-size: var(--mndw-text-sm);
 }
 
-.mndw-runtime-capacity {
-  display: flex;
+.mndw-plugin-diagnostics {
+  display: grid;
   flex-wrap: wrap;
   gap: var(--mndw-space-2);
   color: var(--mndw-text-muted);
   font-size: var(--mndw-text-sm);
 }
 
-.mndw-runtime-capacity strong {
-  color: var(--mndw-text);
+.mndw-plugin-diagnostics summary {
+  width: fit-content;
+  cursor: pointer;
 }
 
-.mndw-plugin-manager__runtime-error {
-  color: var(--mndw-warning);
-  font-size: var(--mndw-text-sm);
+.mndw-plugin-diagnostics section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mndw-space-2);
+}
+
+.mndw-plugin-diagnostics__item {
+  padding-inline-start: var(--mndw-space-3);
 }
 
 /* Layout only. `.mndw-alert--danger` owns the box and the severity colours. */

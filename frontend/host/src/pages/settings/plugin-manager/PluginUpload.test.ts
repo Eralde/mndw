@@ -77,12 +77,16 @@ describe('PluginUpload', () => {
     document.body.innerHTML = '';
   });
 
-  it('warns that plugins get full administrator access before upload', () => {
+  it('explains plugin access and manifest permission limits before upload', () => {
     const {component, target} = mountUpload();
     const warning = target.querySelector('[role="note"]');
 
     expect(warning).not.toBeNull();
-    expect(warning?.textContent).toContain('full administrator access');
+    expect(warning?.textContent).toContain('Plugins run with full access.');
+    expect(warning?.textContent).toContain('can call the router API');
+    expect(warning?.textContent).toContain('runs on the router as root');
+    expect(warning?.textContent).toContain('they are not a sandbox');
+    expect(warning?.textContent).toContain('authors you trust');
     expect(warning?.classList.contains('mndw-alert--warning')).toBe(true);
 
     void unmount(component);

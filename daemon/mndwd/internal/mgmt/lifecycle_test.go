@@ -142,6 +142,91 @@ func TestDisablePersistsDisabledWhenStopFails(t *testing.T) {
 	}
 }
 
+func TestBuiltinCanBeDisabledAndEnabledWithoutBecomingDeletable(t *testing.T) {
+	runtime := &lifecycleTestRuntime{}
+	srv, store, _, cfg := newLifecycleHarness(t, runtime, nil)
+
+	writeBuiltinFixture(t, cfg, "core-demo", false)
+
+	disabled := postName(t, srv, "/api/mgmt/disable", "core-demo")
+
+	if disabled.StatusCode != http.StatusOK {
+		disabled.Body.Close()
+		t.Fatalf("disable status = %d, want 200", disabled.StatusCode)
+	}
+
+	disabled.Body.Close()
+
+	record, ok := store.Get("core-demo")
+
+	if !ok || record.Source != state.SourceBuiltin || record.Enabled {
+		t.Fatalf("persisted builtin toggle = %+v, exists=%t", record, ok)
+	}
+
+	entry, found := findEntry(listPlugins(t, srv, "/api/mgmt/list"), "core-demo")
+
+	if !found || entry.Source != state.SourceBuiltin || entry.Enabled {
+		t.Fatalf("listed builtin = %+v, found=%t; want builtin disabled", entry, found)
+	}
+
+	enabled := postName(t, srv, "/api/mgmt/enable", "core-demo")
+
+	if enabled.StatusCode != http.StatusOK {
+		enabled.Body.Close()
+		t.Fatalf("enable status = %d, want 200", enabled.StatusCode)
+	}
+
+	enabled.Body.Close()
+
+	record, ok = store.Get("core-demo")
+
+	if !ok || record.Source != state.SourceBuiltin || !record.Enabled {
+		t.Fatalf("enabled builtin state = %+v, exists=%t", record, ok)
+	}
+
+	deleted := postName(t, srv, "/api/mgmt/delete", "core-demo")
+
+	defer deleted.Body.Close()
+
+	if deleted.StatusCode != http.StatusConflict {
+		t.Fatalf("delete status = %d, want 409", deleted.StatusCode)
+	}
+}
+
+func TestBuiltinPermissionUsesCurrentShippedManifestAfterDisable(t *testing.T) {
+	runtime := &lifecycleTestRuntime{}
+	srv, store, _, cfg := newLifecycleHarness(t, runtime, &permissionTestController{available: true})
+
+	writeBuiltinFixture(t, cfg, "core-demo", false)
+
+	disabled := postName(t, srv, "/api/mgmt/disable", "core-demo")
+
+	if disabled.StatusCode != http.StatusOK {
+		disabled.Body.Close()
+		t.Fatalf("disable status = %d, want 200", disabled.StatusCode)
+	}
+
+	disabled.Body.Close()
+
+	manifestPath := filepath.Join(cfg.BuiltinPluginsDir, "core-demo", "manifest.json")
+
+	if err := os.WriteFile(manifestPath, []byte(permissionManifest("core-demo")), 0o644); err != nil {
+		t.Fatalf("write updated builtin manifest: %v", err)
+	}
+
+	resp := postPermission(t, srv, "core-demo", "persistent-rci-session:write", true)
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("permission status = %d, want 200", resp.StatusCode)
+	}
+
+	if !store.HasGrant("core-demo", "persistent-rci-session:write") {
+		t.Fatal("updated builtin permission was not persisted")
+	}
+}
+
 func TestDeletePersistsRemovalMarkerBeforeStopAndRetainsItOnCleanupFailure(t *testing.T) {
 	runtime := &lifecycleTestRuntime{}
 	srv, store, handler, _ := newLifecycleHarness(t, runtime, nil)
@@ -261,7 +346,9 @@ func TestSuccessfulUpdatesRemovePreviousVersionBackups(t *testing.T) {
 		"manifest.json": noBackendManifest,
 		"index.js":      "one",
 	}))
+
 	initial.Body.Close()
+
 	if initial.StatusCode != http.StatusCreated {
 		t.Fatalf("initial upload status = %d, want 201", initial.StatusCode)
 	}
@@ -269,7 +356,9 @@ func TestSuccessfulUpdatesRemovePreviousVersionBackups(t *testing.T) {
 	for _, version := range []string{"2.0.0", "3.0.0"} {
 		manifestJSON := strings.Replace(staticServiceManifest(version), `"name":"svc"`, `"name":"hello"`, 1)
 		resp := postUpdate(t, srv, manifestJSON, version)
+
 		resp.Body.Close()
+
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("update to %s status = %d, want 200", version, resp.StatusCode)
 		}
@@ -279,6 +368,7 @@ func TestSuccessfulUpdatesRemovePreviousVersionBackups(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read user plugins directory: %v", err)
 	}
+
 	if len(entries) != 1 || entries[0].Name() != "hello" || !entries[0].IsDir() {
 		t.Fatalf("user plugin entries after updates = %v, want only hello directory", entries)
 	}
@@ -293,7 +383,9 @@ func TestUpdateBackupCleanupFailureDoesNotFailUpdate(t *testing.T) {
 		"manifest.json": noBackendManifest,
 		"index.js":      "old",
 	}))
+
 	initial.Body.Close()
+
 	if initial.StatusCode != http.StatusCreated {
 		t.Fatalf("initial upload status = %d, want 201", initial.StatusCode)
 	}
@@ -302,20 +394,25 @@ func TestUpdateBackupCleanupFailureDoesNotFailUpdate(t *testing.T) {
 	var removedPath string
 	handler.removeAll = func(path string) error {
 		removedPath = path
+
 		return removeErr
 	}
 
 	manifestJSON := strings.Replace(staticServiceManifest("2.0.0"), `"name":"svc"`, `"name":"hello"`, 1)
 	resp := postUpdate(t, srv, manifestJSON, "new")
+
 	resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("update status = %d, want 200", resp.StatusCode)
 	}
 
 	wantBackup := filepath.Join(cfg.UserPluginsDir, "hello.previous-1.0.0")
+
 	if removedPath != wantBackup {
 		t.Fatalf("removed path = %q, want %q", removedPath, wantBackup)
 	}
+
 	if _, err := os.Stat(wantBackup); err != nil {
 		t.Fatalf("backup should remain after simulated cleanup failure: %v", err)
 	}

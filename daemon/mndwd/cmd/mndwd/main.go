@@ -376,7 +376,7 @@ func buildComponents(cfg Config, store *state.Store, paletteStore *palette.Store
 	registerPalette(mux, mgmtMux, paletteStore, logger)
 
 	gateway := registerPlugins(mux, core, intake)
-	frontDoorErr := registerFrontDoor(mux, cfg, logger, verifier)
+	frontDoorErr := registerFrontDoor(mux, cfg, logger, verifier, reg)
 
 	var routed http.Handler = mux
 
@@ -431,7 +431,7 @@ func backendExecConfig(cfg Config, logger *slog.Logger) backend.ExecRunnerConfig
 	}
 }
 
-func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger, verifier *authz.Verifier) error {
+func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger, verifier *authz.Verifier, reg *registry.Registry) error {
 	if !cfg.FrontDoorMode() {
 		return nil
 	}
@@ -454,7 +454,11 @@ func registerFrontDoor(mux *http.ServeMux, cfg Config, logger *slog.Logger, veri
 		mux.Handle(prefix+"/", apiReserved)
 	}
 
-	handler, err := frontend.New(cfg.FrontendDir, cfg.UserPluginsDir)
+	handler, err := frontend.New(cfg.FrontendDir, cfg.UserPluginsDir, func(name string) bool {
+		plugin, exists := reg.Resolve(name)
+
+		return exists && plugin.BackendServable() == nil
+	})
 	if err != nil {
 		return fmt.Errorf("frontend handler: %w", err)
 	}

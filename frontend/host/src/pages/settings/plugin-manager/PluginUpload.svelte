@@ -273,7 +273,7 @@ function onDrop(event: DragEvent): void {
     class="mndw-alert mndw-alert--warning"
     role="note"
   >
-    {hostT('settings.plugin-manager.upload-trust-warning')}
+    {hostT('settings.plugin-risk-warning')}
   </div>
 
   <label

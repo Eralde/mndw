@@ -153,6 +153,28 @@ describe('PluginRegistry', () => {
     expect(registry.getAll()).toHaveLength(2);
   });
 
+  it('remove() unregisters a plugin and its catalog cell', () => {
+    const cell = {} as PluginCatalogCell;
+    const unregistered: PluginCatalogCell[] = [];
+    const catalog = {
+      registerPluginCatalogCell: (): void => {},
+      unregisterPluginCatalogCell: (value: PluginCatalogCell): void => {
+        unregistered.push(value);
+      },
+      clearPluginCatalogCells: (): void => {},
+    };
+    const injected = new PluginRegistry({catalog});
+    const plugin = {...widgetPlugin('removed'), catalog: cell};
+
+    injected.register(plugin);
+
+    expect(injected.remove('removed')).toBe(plugin);
+    expect(injected.get('removed')).toBeUndefined();
+    expect(injected.getWidgets()).toEqual([]);
+    expect(unregistered).toEqual([cell]);
+    expect(injected.remove('missing')).toBeUndefined();
+  });
+
   it('clear() empties the registry', () => {
     registry.register(widgetPlugin('w1'));
     expect(registry.getAll()).toHaveLength(1);

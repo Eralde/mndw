@@ -13,6 +13,7 @@ interface Props {
   onRequestConfirm: (name: string) => void;
   onCancelConfirm: () => void;
   onRefresh: () => void;
+  onKeepNotice: (name: string) => void;
 }
 
 let {
@@ -24,6 +25,7 @@ let {
   onRequestConfirm,
   onCancelConfirm,
   onRefresh = () => {},
+  onKeepNotice = () => {},
 }: Props = $props();
 </script>
 
@@ -38,6 +40,12 @@ let {
   <ul class="mndw-pending__list">
     {#each items as item (item.name)}
       {@const row = rowStateFor(item.name)}
+      {@const rowTone = row?.state === 'error'
+        ? 'danger'
+        : row?.state === 'notice-rejected'
+        ? 'warning'
+        : 'info'}
+      {@const rowRole = row?.state === 'error' ? 'alert' : 'status'}
       {@const busy = row?.state === 'working' || row?.state === 'reconciling'}
       <li class="mndw-pending__item">
         <div class="mndw-pending__identity">
@@ -49,17 +57,25 @@ let {
 
         {#if row !== undefined && row.message !== ''}
           <div
-            class="mndw-alert mndw-alert--danger"
-            role="alert"
+            class="mndw-alert mndw-alert--{rowTone}"
+            role={rowRole}
           >
-            {row.message}
-            {#if row.state === 'notice-finishing'}
+            <span>{row.message}</span>
+            {#if row.state === 'notice-finishing'
+            || row.state === 'outcome-unknown'}
               <mndw-button
                 class="mndw-pending__refresh"
                 variant="ghost"
                 onclick={onRefresh}
               >
                 {hostT('settings.plugin-manager.refresh')}
+              </mndw-button>
+              <mndw-button
+                class="mndw-pending__keep"
+                variant="ghost"
+                onclick={() => onKeepNotice(item.name)}
+              >
+                {hostT('settings.plugin-manager.keep-notice')}
               </mndw-button>
             {/if}
           </div>

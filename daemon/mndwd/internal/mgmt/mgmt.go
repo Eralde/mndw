@@ -283,14 +283,37 @@ func (h *Handler) handlePending(w http.ResponseWriter, _ *http.Request) {
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"plugins": pending})
 }
 
-// buildList merges user plugins (from state) with builtin plugins (scanned from
-// disk, always approved+enabled) into a single, name-sorted view.
+// buildList merges uploaded plugins (from state) with builtin plugins (scanned from
+// disk) into a single, name-sorted view. Builtin manifests always come from disk;
+// state supplies their persisted enabled flag.
 func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 	snap := h.store.Snapshot()
+	builtinPlugins, err := h.builtins.ListBuiltins()
+	if err != nil {
+		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
+	}
+
+	builtinsByName := make(map[string]*registry.Plugin, len(builtinPlugins))
+
+	for _, plugin := range builtinPlugins {
+		builtinsByName[plugin.Name] = plugin
+	}
 
 	entries := make([]ListEntry, 0, len(snap.Plugins))
 
 	for _, p := range snap.Plugins {
+		if p.Source == state.SourceBuiltin {
+			plugin, exists := builtinsByName[p.Name]
+
+			if !exists {
+				continue
+			}
+
+			entries = append(entries, h.entryFrom(plugin.Manifest, state.SourceBuiltin, state.ApprovalApproved, plugin.Enabled, plugin.Dir))
+
+			continue
+		}
+
 		m, err := manifest.Validate(p.Manifest)
 		if err != nil {
 			// Stored manifests were validated at upload; a failure here means the
@@ -307,11 +330,6 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 		}
 
 		entries = append(entries, h.entryFrom(m, p.Source, p.Approval, p.Enabled, dir))
-	}
-
-	builtinPlugins, err := h.builtins.ListBuiltins()
-	if err != nil {
-		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "cannot read builtin plugins dir")
 	}
 
 	for _, plugin := range builtinPlugins {

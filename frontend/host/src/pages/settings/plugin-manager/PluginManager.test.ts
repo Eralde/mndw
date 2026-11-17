@@ -6,6 +6,7 @@ import {flushSync, mount, unmount} from 'svelte';
 import type {PluginListEntry} from '../../../runtime/plugin-types.js';
 import {type MgmtClient, MgmtError, type UploadResult} from '../../../services/mgmt-client.js';
 import {setLocale} from '../../../services/locale.service.js';
+import {pluginRegistry} from '../../../runtime/plugin-registry.js';
 import PluginManager from './PluginManager.svelte';
 
 const emptyBackend = {routes: {}};
@@ -155,6 +156,34 @@ describe('PluginManager', () => {
     void unmount(component);
   });
 
+  it('shows reload after remount when runtime still has an older approved plugin version', async () => {
+    const name = 'plugin-manager-remount';
+    const runtimeEntry = plugin({name, version: '1.0.0'});
+
+    pluginRegistry.register({
+      entry: runtimeEntry,
+      module: {createInstance: () => ({unmount: () => {}})},
+    });
+
+    try {
+      const client = clientWith([plugin({name, version: '1.0.0'})]);
+      const first = await mountManager(client);
+
+      expect(first.target.querySelector('.mndw-reload')).toBeNull();
+      await unmount(first.component);
+
+      client.listPlugins.mockResolvedValue([plugin({name, version: '2.0.0'})]);
+
+      const second = await mountManager(client);
+
+      await vi.waitFor(() => expect(second.target.querySelector('.mndw-reload')).not.toBeNull());
+
+      await unmount(second.component);
+    } finally {
+      pluginRegistry.remove(name);
+    }
+  });
+
   it('calls injected upload client with its receiver bound', async () => {
     const client = clientWith([plugin()]);
 
@@ -206,7 +235,7 @@ describe('PluginManager', () => {
     void unmount(component);
   });
 
-  it('disables a plugin, refreshes the list, and offers reload', async () => {
+  it('disables a plugin and refreshes the list without offering reload', async () => {
     const client = clientWith([plugin()]);
     const {component, target} = await mountManager(client);
 
@@ -216,7 +245,7 @@ describe('PluginManager', () => {
     await vi.waitFor(() => expect(client.disablePlugin.mock.calls).toContainEqual(['network-tools']));
     await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
 
-    expect(target.querySelector('.mndw-reload')).not.toBeNull();
+    expect(target.querySelector('.mndw-reload')).toBeNull();
 
     void unmount(component);
   });
@@ -398,7 +427,7 @@ describe('PluginManager', () => {
     void unmount(component);
   });
 
-  it('approves a plugin and offers reload after refreshing', async () => {
+  it('approves a plugin and refreshes without offering reload', async () => {
     const client = clientWith([plugin({approval: 'pending', enabled: false})]);
     const {component, target} = await mountManager(client);
 
@@ -408,7 +437,7 @@ describe('PluginManager', () => {
     await vi.waitFor(() => expect(client.approvePlugin.mock.calls).toContainEqual(['network-tools']));
     await vi.waitFor(() => expect(client.listPlugins.mock.calls).toHaveLength(1));
 
-    expect(target.querySelector('.mndw-reload')).not.toBeNull();
+    expect(target.querySelector('.mndw-reload')).toBeNull();
 
     void unmount(component);
   });

@@ -10,6 +10,7 @@ import (
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
 	"mndwd/internal/registry"
+	"mndwd/internal/state"
 )
 
 func (h *Handler) handleRuntime(w http.ResponseWriter, _ *http.Request) {
@@ -69,7 +70,11 @@ func (h *Handler) resolveRuntimePlugin(name string) (*registry.Plugin, bool) {
 	dir := pluginState.ActiveVersionDir
 
 	if dir == "" {
-		dir = filepath.Join(h.cfg.UserPluginsDir, name)
+		if pluginState.Source == state.SourceBuiltin {
+			dir = filepath.Join(h.cfg.BuiltinPluginsDir, name)
+		} else {
+			dir = filepath.Join(h.cfg.UserPluginsDir, name)
+		}
 	}
 
 	return &registry.Plugin{

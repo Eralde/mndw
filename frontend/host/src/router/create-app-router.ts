@@ -23,6 +23,9 @@ export interface PluginRoutesBuild {
 export type AppRouter = ReturnType<typeof createRouter> & {readonly pluginPages: PluginPageTable};
 
 export let appRouter: AppRouter;
+let currentPageTable: PluginPageTable;
+let routeRegistry: Pick<PluginRegistry, 'getPages'> = pluginRegistry;
+let authenticatedRouteBranch: Record<string, RouteComponent> | undefined;
 
 function canonicalBaseRoute(route: string): string {
   const withoutTrailingSlash = route.length > 1 && route.endsWith('/') ? route.slice(0, -1) : route;
@@ -184,18 +187,48 @@ export function createAppRouter(
 ): AppRouter {
   const {routes: pluginRoutes, pageTable} = buildPluginRoutes(registry);
   const hostRoutes = buildHostRouteTable(pluginRoutes);
+  const branch = {layout: AppShell, ...hostRoutes} as Record<string, RouteComponent>;
+  const routeTree = {[HOST_PATHS.dashboard]: branch};
 
-  const router = createRouter({
-    [HOST_PATHS.dashboard]: {
-      layout: AppShell,
-      ...hostRoutes,
-    },
-  });
+  routeRegistry = registry;
+  currentPageTable = pageTable;
+  authenticatedRouteBranch = branch;
 
-  appRouter = Object.assign(router, {pluginPages: pageTable});
+  const router = createRouter(routeTree);
+
+  appRouter = Object.defineProperty(router, 'pluginPages', {
+    configurable: true,
+    enumerable: true,
+    get: () => currentPageTable,
+  }) as AppRouter;
   repairMalformedPagePath();
 
   return appRouter;
+}
+
+/** Applies registry route additions and removals to the existing router instance. */
+export function refreshPluginRoutes(): void {
+  if (authenticatedRouteBranch === undefined || appRouter === undefined) {
+    return;
+  }
+
+  const previousPageTable = currentPageTable;
+  const currentPage = resolvePageRoute(appRouter.route.pathname, previousPageTable);
+  const {routes: pluginRoutes, pageTable} = buildPluginRoutes(routeRegistry);
+  const nextHostRoutes = buildHostRouteTable(pluginRoutes);
+
+  for (const key of Object.keys(authenticatedRouteBranch)) {
+    if (key !== 'layout') {
+      delete authenticatedRouteBranch[key];
+    }
+  }
+
+  Object.assign(authenticatedRouteBranch, nextHostRoutes);
+  currentPageTable = pageTable;
+
+  if (currentPage !== null && pageTable.baseRouteOf(currentPage.name) === undefined) {
+    void appRouter.navigate(HOST_PATHS.dashboard);
+  }
 }
 
 /** Supplies the live app router to plugin contexts after the registry has built its route table. */

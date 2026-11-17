@@ -33,6 +33,7 @@ function mountPendingApprovals(props: Partial<{
   onRequestConfirm: (name: string) => void;
   onCancelConfirm: () => void;
   onRefresh: () => void;
+  onKeepNotice: (name: string) => void;
 }> = {}): {component: ReturnType<typeof mount>; target: HTMLElement} {
   const target = document.createElement('div');
 
@@ -49,6 +50,7 @@ function mountPendingApprovals(props: Partial<{
       onRequestConfirm: vi.fn(),
       onCancelConfirm: vi.fn(),
       onRefresh: vi.fn(),
+      onKeepNotice: vi.fn(),
       ...props,
     },
   });

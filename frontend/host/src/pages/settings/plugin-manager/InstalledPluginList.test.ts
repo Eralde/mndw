@@ -51,6 +51,7 @@ function mountInstalledPluginList(props: Partial<{
   onRequestConfirm: (name: string) => void;
   onCancelConfirm: () => void;
   onRefresh: () => void;
+  onKeepNotice: (name: string) => void;
 }> = {}): {component: ReturnType<typeof mount>; target: HTMLElement} {
   const target = document.createElement('div');
 
@@ -71,6 +72,7 @@ function mountInstalledPluginList(props: Partial<{
       onRequestConfirm: vi.fn(),
       onCancelConfirm: vi.fn(),
       onRefresh: vi.fn(),
+      onKeepNotice: vi.fn(),
       ...props,
     },
   });
@@ -181,14 +183,19 @@ describe('InstalledPluginList', () => {
     void unmount(component);
   });
 
-  it('renders builtin plugin badge without user controls', () => {
+  it('renders builtin plugin badge with enablement control and no delete control', () => {
+    const onDisable = vi.fn();
     const {component, target} = mountInstalledPluginList({
       items: [plugin({source: 'builtin'})],
+      onDisable,
     });
 
     expect(target.querySelector('.mndw-installed__builtin')?.textContent).toContain('Built-in');
-    expect(target.querySelector('.mndw-installed__toggle')).toBeNull();
+    expect(target.querySelector<HTMLButtonElement>('.mndw-installed__toggle')?.textContent).toContain('Disable');
     expect(target.querySelector('.mndw-installed__delete')).toBeNull();
+
+    target.querySelector<HTMLButtonElement>('.mndw-installed__toggle')?.click();
+    expect(onDisable).toHaveBeenCalledWith('network-tools');
 
     void unmount(component);
   });
@@ -257,7 +264,7 @@ describe('InstalledPluginList', () => {
     void unmount(checked.component);
   });
 
-  it('renders permission control for builtins without lifecycle controls', () => {
+  it('renders permission and enablement controls for builtins without delete control', () => {
     const {component, target} = mountInstalledPluginList({
       permissionVisible: true,
       permissionAvailable: true,
@@ -265,7 +272,7 @@ describe('InstalledPluginList', () => {
     });
 
     expect(target.querySelector('.mndw-installed__permission-switch')).not.toBeNull();
-    expect(target.querySelector('.mndw-installed__toggle')).toBeNull();
+    expect(target.querySelector('.mndw-installed__toggle')).not.toBeNull();
     expect(target.querySelector('.mndw-installed__delete')).toBeNull();
 
     void unmount(component);
@@ -365,7 +372,7 @@ describe('InstalledPluginList', () => {
     }
   });
 
-  it('shows built-in source once and no source marker for uploaded plugins', async () => {
+  it('shows a source badge for built-in and uploaded plugins', async () => {
     await setLocale('en');
 
     const builtin = mountInstalledPluginList({
@@ -380,7 +387,7 @@ describe('InstalledPluginList', () => {
       items: [plugin({source: 'upload'})],
     });
 
-    expect(uploaded.target.querySelector('.mndw-installed__builtin')).toBeNull();
+    expect(uploaded.target.querySelector('.mndw-installed__builtin')?.textContent).toContain('Uploaded');
     expect(uploaded.target.textContent).not.toContain('Source:');
     await unmount(uploaded.component);
     await setLocale('en');
@@ -571,7 +578,7 @@ describe('InstalledPluginList', () => {
     await unmount(component);
   });
 
-  it('renders protocol incompatibility and bounds runtime errors', () => {
+  it('shows short runtime state without protocol details or error text', () => {
     const {component, target} = mountInstalledPluginList({
       items: [plugin({
         runtime: {
@@ -586,11 +593,12 @@ describe('InstalledPluginList', () => {
       })],
     });
 
-    expect(target.textContent).toContain('Protocol 2');
-    expect(target.textContent).toContain('incompatible');
-    expect(target.textContent).toContain('Supported service protocols: 1');
+    expect(target.textContent).toContain('Stopped');
+    expect(target.textContent).not.toContain('Protocol 2');
+    expect(target.textContent).not.toContain('incompatible');
+    expect(target.textContent).not.toContain('Supported service protocols: 1');
     expect(target.textContent).not.toContain('x'.repeat(300));
-    expect(target.textContent).toContain('…');
+    expect(target.textContent).not.toContain('…');
 
     void unmount(component);
   });

@@ -18,10 +18,11 @@ var pluginNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 type Handler struct {
 	frontendDir    string
 	userPluginsDir string
+	pluginEnabled  func(string) bool
 }
 
 // New validates the document root and builds a frontend handler.
-func New(frontendDir, userPluginsDir string) (*Handler, error) {
+func New(frontendDir, userPluginsDir string, pluginEnabled ...func(string) bool) (*Handler, error) {
 	if strings.TrimSpace(frontendDir) == "" {
 		return nil, fmt.Errorf("frontend dir is required in front-door mode")
 	}
@@ -35,7 +36,13 @@ func New(frontendDir, userPluginsDir string) (*Handler, error) {
 		return nil, fmt.Errorf("frontend dir %q is not a directory", frontendDir)
 	}
 
-	return &Handler{frontendDir: frontendDir, userPluginsDir: userPluginsDir}, nil
+	handler := &Handler{frontendDir: frontendDir, userPluginsDir: userPluginsDir}
+
+	if len(pluginEnabled) > 0 {
+		handler.pluginEnabled = pluginEnabled[0]
+	}
+
+	return handler, nil
 }
 
 // Register mounts the user-plugin alias and the SPA catch-all. More specific
@@ -62,6 +69,12 @@ func (h *Handler) serveUserPlugin(writer http.ResponseWriter, request *http.Requ
 	segments := strings.Split(relative, "/")
 
 	if len(segments) < 2 || !pluginNamePattern.MatchString(segments[0]) {
+		http.NotFound(writer, request)
+
+		return
+	}
+
+	if !h.isPluginEnabled(segments[0]) {
 		http.NotFound(writer, request)
 
 		return
@@ -117,6 +130,12 @@ func (h *Handler) serveStatic(writer http.ResponseWriter, request *http.Request)
 	var ok bool
 
 	if pluginName, isPluginFile := builtinPluginPath(relative); isPluginFile {
+		if !h.isPluginEnabled(pluginName) {
+			http.NotFound(writer, request)
+
+			return
+		}
+
 		full, ok = safePluginJoin(h.frontendDir, filepath.Join("plugins", pluginName), relative)
 	} else {
 		full, ok = safeJoin(h.frontendDir, relative)
@@ -142,6 +161,10 @@ func (h *Handler) serveStatic(writer http.ResponseWriter, request *http.Request)
 	}
 
 	h.serveFile(writer, request, full)
+}
+
+func (h *Handler) isPluginEnabled(name string) bool {
+	return h.pluginEnabled == nil || h.pluginEnabled(name)
 }
 
 func isBuiltinBackendPath(relative string) bool {

@@ -144,6 +144,87 @@ func TestResolveBuiltin(t *testing.T) {
 	}
 }
 
+func TestResolveDisabledBuiltinUsesShippedManifestAndDirectory(t *testing.T) {
+	reg, store, userDir, builtinDir := newRegistry(t)
+	dir := filepath.Join(builtinDir, "core")
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	shippedManifest := `{"manifestVersion":1,"name":"core","version":"2.0.0","type":"page","label":"Current","entry":"index.js","route":"/core"}`
+
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(shippedManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	staleManifest := `{"manifestVersion":1,"name":"core","version":"1.0.0","type":"page","label":"Old","entry":"index.js","route":"/core"}`
+
+	if err := store.Mutate(func(st *state.State) error {
+		st.Plugins["core"] = &state.Plugin{
+			Name: "core", Source: state.SourceBuiltin, Approval: state.ApprovalApproved,
+			Enabled: false, Manifest: json.RawMessage(staleManifest),
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	plugin, ok := reg.Resolve("core")
+
+	if !ok {
+		t.Fatal("expected disabled builtin to resolve for list and gates")
+	}
+
+	if plugin.Enabled || plugin.Source != state.SourceBuiltin {
+		t.Fatalf("resolved state = %+v, want disabled builtin", plugin)
+	}
+
+	if plugin.Dir != dir || plugin.Dir == filepath.Join(userDir, "core") {
+		t.Fatalf("resolved dir = %q, want shipped builtin dir %q", plugin.Dir, dir)
+	}
+
+	if got := *plugin.Manifest.Version; got != "2.0.0" {
+		t.Fatalf("resolved version = %q, want current shipped version", got)
+	}
+}
+
+func TestListBuiltinsProjectsPersistedEnabledState(t *testing.T) {
+	reg, store, _, builtinDir := newRegistry(t)
+	dir := filepath.Join(builtinDir, "core")
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	manifestJSON := `{"manifestVersion":1,"name":"core","version":"1.0.0","type":"widget","label":"Core","entry":"index.js","size":{"w":4,"h":3}}`
+
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte(manifestJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.Mutate(func(st *state.State) error {
+		st.Plugins["core"] = &state.Plugin{
+			Name: "core", Source: state.SourceBuiltin, Approval: state.ApprovalApproved,
+			Enabled: false, Manifest: json.RawMessage(manifestJSON),
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	plugins, err := reg.ListBuiltins()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(plugins) != 1 || plugins[0].Enabled {
+		t.Fatalf("builtins = %+v, want one disabled builtin", plugins)
+	}
+}
+
 func TestResolveUnknown(t *testing.T) {
 	reg, _, _, _ := newRegistry(t)
 

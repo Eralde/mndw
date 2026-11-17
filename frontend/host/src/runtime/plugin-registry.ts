@@ -1,4 +1,5 @@
 import type {MndwPlugin} from '@mndw/sdk';
+import {SvelteMap} from 'svelte/reactivity';
 import {
   type PluginCatalogCell,
   type PluginCatalogService,
@@ -31,7 +32,7 @@ export interface PluginRegistryDeps {
 }
 
 export class PluginRegistry {
-  private plugins = new Map<string, LoadedPlugin>();
+  private plugins = new SvelteMap<string, LoadedPlugin>();
   private readonly catalog: RegistryCatalog;
 
   constructor(deps: PluginRegistryDeps = {catalog: pluginCatalogService}) {
@@ -96,6 +97,22 @@ export class PluginRegistry {
 
   public get(name: string): LoadedPlugin | undefined {
     return this.plugins.get(name);
+  }
+
+  public remove(name: string): LoadedPlugin | undefined {
+    const plugin = this.plugins.get(name);
+
+    if (plugin === undefined) {
+      return undefined;
+    }
+
+    this.plugins.delete(name);
+
+    if (plugin.catalog !== undefined) {
+      this.catalog.unregisterPluginCatalogCell(plugin.catalog);
+    }
+
+    return plugin;
   }
 
   public getWidgets(): LoadedWidget[] {

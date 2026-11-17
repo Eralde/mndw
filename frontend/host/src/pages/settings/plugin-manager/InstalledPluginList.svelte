@@ -39,6 +39,7 @@ interface Props {
   onRequestConfirm: (name: string) => void;
   onCancelConfirm: () => void;
   onRefresh: () => void;
+  onKeepNotice: (name: string) => void;
 }
 
 function backendSummary(backend: PluginBackendDescriptor): string[] {
@@ -62,10 +63,6 @@ function backendSummary(backend: PluginBackendDescriptor): string[] {
   }
 
   return parts;
-}
-
-function boundedError(value: string): string {
-  return value.length > 240 ? `${value.slice(0, 240)}…` : value;
 }
 
 function pluginLoadFailureText(
@@ -148,6 +145,7 @@ let {
   onRequestConfirm,
   onCancelConfirm,
   onRefresh = () => {},
+  onKeepNotice = () => {},
 }: Props = $props();
 
 let retryingPlugins = $state<Record<string, PluginLoadFailureKind>>({});
@@ -191,6 +189,12 @@ function retryPlugin(name: string): void {
         {@const sdkMajorWarning = sdkMajorWarningText(item.lock)}
         {@const deps = getDepsStatus(item.name)}
         {@const row = rowStateFor(item.name)}
+        {@const rowTone = row?.state === 'error'
+        ? 'danger'
+        : row?.state === 'notice-rejected'
+        ? 'warning'
+        : 'info'}
+        {@const rowRole = row?.state === 'error' ? 'alert' : 'status'}
         {@const busy = row?.state === 'working' || row?.state === 'reconciling'}
         {@const loadState = getPluginLoadState(item.name)}
         {@const loadRunnable = item.enabled
@@ -223,9 +227,15 @@ function retryPlugin(name: string): void {
                 )
               }
             </span>
-            {#if item.source === 'builtin'}
+            {#if item.source === 'builtin' || item.source === 'upload'}
               <span class="mndw-installed__builtin">
-                {hostT('settings.plugin-manager.builtin')}
+                {
+                  hostT(
+                    item.source === 'builtin'
+                      ? 'settings.plugin-manager.builtin'
+                      : 'settings.plugin-manager.uploaded',
+                  )
+                }
               </span>
             {/if}
             {#if deps === 'installing'}
@@ -333,11 +343,12 @@ function retryPlugin(name: string): void {
 
           {#if row !== undefined && row?.message !== ''}
             <div
-              class="mndw-alert mndw-alert--danger"
-              role="alert"
+              class="mndw-alert mndw-alert--{rowTone}"
+              role={rowRole}
             >
-              {row?.message}
-              {#if row?.state === 'notice-finishing'}
+              <span>{row.message}</span>
+              {#if row.state === 'notice-finishing'
+            || row.state === 'outcome-unknown'}
                 <mndw-button
                   class="mndw-installed__refresh"
                   variant="ghost"
@@ -345,25 +356,32 @@ function retryPlugin(name: string): void {
                 >
                   {hostT('settings.plugin-manager.refresh')}
                 </mndw-button>
+                <mndw-button
+                  class="mndw-installed__keep"
+                  variant="ghost"
+                  onclick={() => onKeepNotice(item.name)}
+                >
+                  {hostT('settings.plugin-manager.keep-notice')}
+                </mndw-button>
               {/if}
             </div>
           {/if}
 
-          {#if item.source !== 'builtin'}
-            <div class="mndw-installed__actions">
-              <mndw-button
-                class="mndw-installed__toggle"
-                variant="primary"
-                disabled={busy}
-                onclick={() =>
-                item.enabled ? onDisable(item.name) : onEnable(item.name)}
-              >
-                {
-                  item.enabled
-                  ? hostT('settings.plugin-manager.disable')
-                  : hostT('settings.plugin-manager.enable')
-                }
-              </mndw-button>
+          <div class="mndw-installed__actions">
+            <mndw-button
+              class="mndw-installed__toggle"
+              variant={item.enabled ? 'secondary' : 'primary'}
+              disabled={busy}
+              onclick={() =>
+              item.enabled ? onDisable(item.name) : onEnable(item.name)}
+            >
+              {
+                item.enabled
+                ? hostT('settings.plugin-manager.disable')
+                : hostT('settings.plugin-manager.enable')
+              }
+            </mndw-button>
+            {#if item.source !== 'builtin'}
               {#if item.runtime && item.runtime.state !== 'stopped'}
                 <mndw-button
                   class="mndw-installed__restart"
@@ -411,37 +429,15 @@ function retryPlugin(name: string): void {
                   {hostT('settings.plugin-manager.delete')}
                 </mndw-button>
               {/if}
-            </div>
-          {/if}
+            {/if}
+          </div>
 
           {#if item.runtime}
             <p class="mndw-installed__runtime">
               {hostT('settings.plugin-manager.backend')}: {
                 runtimeStateLabel(item.runtime.state)
               }
-              {#if item.runtime.requiredProtocol !== undefined}
-                <span>
-                  · {hostT('settings.plugin-manager.protocol')} {
-                    item.runtime.requiredProtocol
-                  }</span>
-              {/if}
-              {#if item.runtime.compatible === false}
-                <span class="mndw-installed__runtime-warning">
-                  · {hostT('settings.plugin-manager.incompatible')}</span>
-              {/if}
-              {#if item.runtime.lastError}
-                — {boundedError(item.runtime.lastError)}{/if}
             </p>
-            {#if item.runtime.compatible === false
-          && item.runtime.supportedProtocols}
-              <p class="mndw-installed__runtime-warning">
-                {
-                  hostT(
-                    'settings.plugin-manager.supported-service-protocols',
-                  )
-                }: {item.runtime.supportedProtocols.join(', ')}
-              </p>
-            {/if}
           {/if}
         </li>
       {/each}

@@ -21,7 +21,7 @@ let {entry, close}: Props = $props();
     class="mndw-alert mndw-alert--warning"
     role="note"
   >
-    {hostT('settings.backend-approval-warning')}
+    {hostT('settings.plugin-risk-warning')}
   </p>
 
   <CapabilityReview {entry} />

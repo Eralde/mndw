@@ -10,11 +10,12 @@ vi.mock('../services/pristine-fetch.js', async (importOriginal) => ({
   pristineFetch,
 }));
 
-import {loadPlugins, retryPluginLoad} from './plugin-loader.js';
+import {loadPlugins, retryPluginLoad, syncPlugins} from './plugin-loader.js';
 import {PluginRegistry, pluginRegistry} from './plugin-registry.js';
 import type {PluginBackendDescriptor, PluginListEntry} from './plugin-types.js';
 import {clearPluginVersionWarnings, getPluginVersionWarnings} from './plugin-version-warnings.svelte.js';
 import {
+  getPluginListRevision,
   getPluginLoadListOutcome,
   getPluginLoadState,
   replacePluginLoadStates,
@@ -454,8 +455,28 @@ describe('loadPlugins', () => {
     expect(toast.toasts).toHaveLength(0);
   });
 
+  it('loads a successful management snapshot after startup list failure', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const h = harness([]);
+
+    h.fetchList.mockRejectedValueOnce(new Error('network down'));
+    await loadPlugins(h);
+
+    expect(getPluginLoadListOutcome()).toBe('failed');
+    expect(appState.pluginLoadError).toBe('list');
+
+    await syncPlugins([widget('recovered')]);
+
+    expect(pluginRegistry.get('recovered')).toBeDefined();
+    expect(getPluginLoadState('recovered')).toMatchObject({runnable: true, status: 'loaded'});
+    expect(getPluginLoadListOutcome()).toBe('ok');
+    expect(appState.pluginLoadError).toBeNull();
+  });
+
   it('fails the list load after 15 seconds when fetchList never settles', async () => {
     vi.useFakeTimers();
+
     const fetchList = vi.fn((): Promise<PluginListEntry[]> => new Promise(() => {}));
 
     try {
@@ -493,6 +514,7 @@ describe('loadPlugins', () => {
       loadStylesheet: vi.fn(() => Promise.resolve()),
       checkVersions: () => [],
     });
+
     finishFirst([widget('stale', {depsStatus: 'failed'})]);
     await first;
 
@@ -514,6 +536,56 @@ describe('loadPlugins', () => {
     );
     expect(appState.pluginLoadError).toBe('list');
     expect(pluginRegistry.getAll()).toHaveLength(0);
+  });
+});
+
+describe('syncPlugins', () => {
+  it('increments the successful plugin-list revision on startup and every sync', async () => {
+    const revision = getPluginListRevision();
+
+    await loadPlugins(harness([widget('first')]));
+
+    expect(getPluginListRevision()).toBe(revision + 1);
+
+    await syncPlugins([widget('first'), widget('second')]);
+
+    expect(getPluginListRevision()).toBe(revision + 2);
+
+    await syncPlugins([widget('first', {enabled: false}), widget('second')]);
+
+    expect(getPluginListRevision()).toBe(revision + 3);
+  });
+
+  it('removes disabled plugins and loads newly enabled plugins without resetting the loader', async () => {
+    const h = harness([widget('existing')]);
+
+    await loadPlugins(h);
+
+    const oldPlugin = pluginRegistry.get('existing');
+    const synced = syncPlugins([widget('existing', {enabled: false}), widget('newly-enabled')]);
+
+    await expect(synced).resolves.toBe(false);
+
+    expect(pluginRegistry.get('existing')).toBeUndefined();
+    expect(pluginRegistry.get('newly-enabled')).toBeDefined();
+    expect(getPluginLoadState('existing')).toMatchObject({runnable: false, status: 'not-runnable'});
+    expect(h.importModule).toHaveBeenCalledTimes(2);
+    expect(oldPlugin).toBeDefined();
+  });
+
+  it('keeps a loaded module when list reports a newer version and requests reload', async () => {
+    const h = harness([widget('versioned')]);
+
+    await loadPlugins(h);
+
+    const oldPlugin = pluginRegistry.get('versioned');
+    const importsBeforeSync = h.importModule.mock.calls.length;
+
+    await expect(syncPlugins([widget('versioned', {version: '2.0.0'})])).resolves.toBe(true);
+
+    expect(pluginRegistry.get('versioned')).toBe(oldPlugin);
+    expect(getPluginLoadState('versioned')).toMatchObject({runnable: true, status: 'loaded'});
+    expect(h.importModule).toHaveBeenCalledTimes(importsBeforeSync);
   });
 });
 

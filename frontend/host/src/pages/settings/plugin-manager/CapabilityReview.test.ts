@@ -100,7 +100,7 @@ describe('CapabilityReview capability summary', () => {
       backend: {routes: {health: {transport: 'http', method: 'GET', path: 'health'}}},
     });
 
-    expect(target.textContent).toContain('Runs a resident background process as root');
+    expect(target.textContent).toContain('Background process');
     expect(target.textContent).toContain('ttyd');
     expect(target.textContent).toContain('--foreground');
     expect(target.textContent).toContain('Public routes');
@@ -117,7 +117,7 @@ describe('CapabilityReview capability summary', () => {
       backend: {routes: {run: {transport: 'http', method: 'GET', path: 'run'}}},
     });
 
-    expect(target.textContent).toContain('Runs commands as root on each request');
+    expect(target.textContent).toContain('Runs a command per request');
     expect(target.textContent).not.toContain('Installs packages');
     expect(target.textContent).not.toContain('Service arguments');
     expect(target.textContent).not.toContain('Public routes');

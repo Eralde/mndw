@@ -17,6 +17,11 @@ export interface PluginLoadState {
 
 const pluginLoadStates = $state<Record<string, PluginLoadState>>({});
 let listOutcome = $state<PluginLoadListOutcome>('pending');
+let pluginListRevision = $state(0);
+
+export function getPluginListRevision(): number {
+  return pluginListRevision;
+}
 
 export function getPluginLoadListOutcome(): PluginLoadListOutcome {
   return listOutcome;
@@ -42,6 +47,11 @@ export function replacePluginLoadStates(entries: PluginListEntry[]): void {
       ...(entry.type === 'page' ? {route: entry.route} : {}),
     };
   }
+}
+
+export function applyPluginListSnapshot(entries: PluginListEntry[]): void {
+  replacePluginLoadStates(entries);
+  pluginListRevision += 1;
 }
 
 export function setPluginLoadState(

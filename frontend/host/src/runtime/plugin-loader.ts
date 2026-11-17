@@ -23,7 +23,9 @@ import {
 } from './plugin-load-toast.svelte.js';
 import {
   type PluginLoadFailureKind,
+  applyPluginListSnapshot,
   getPluginLoadState,
+  getPluginLoadStates,
   replacePluginLoadStates,
   setPluginLoadListOutcome,
   setPluginLoadState,
@@ -40,7 +42,7 @@ export interface LoaderDeps {
   loadStylesheet?: (href: string, pluginName: string) => Promise<void>;
   checkVersions?: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
   catalogService?: PluginCatalogService;
-  registry?: Pick<PluginRegistry, 'register' | 'clear'>;
+  registry?: Pick<PluginRegistry, 'register' | 'clear' | 'get' | 'remove'>;
   getLocale?: () => string;
   loadTimeoutMs?: number;
 }
@@ -182,7 +184,7 @@ interface ResolvedLoaderDeps {
   loadStylesheet: (href: string, pluginName: string) => Promise<void>;
   checkVersions: (entry: PluginListEntry, dir: string) => string[] | Promise<string[]>;
   catalogService: PluginCatalogService;
-  registry: Pick<PluginRegistry, 'register' | 'clear'>;
+  registry: Pick<PluginRegistry, 'register' | 'clear' | 'get' | 'remove'>;
   getLocale: () => string;
   loadTimeoutMs: number;
 }
@@ -193,6 +195,7 @@ interface ActiveLoaderRun {
   authSignal: AbortSignal;
   deps: ResolvedLoaderDeps;
   entries: Map<string, PluginListEntry>;
+  pluginTokens: Map<string, number>;
 }
 
 let activeLoaderRun: ActiveLoaderRun | undefined;
@@ -291,12 +294,17 @@ function isRunCurrent(run: ActiveLoaderRun): boolean {
     && !run.authSignal.aborted;
 }
 
-async function loadAndTrack(entry: PluginListEntry, run: ActiveLoaderRun): Promise<boolean> {
+async function loadAndTrack(
+  entry: PluginListEntry,
+  run: ActiveLoaderRun,
+  token = run.pluginTokens.get(entry.name) ?? 0,
+): Promise<boolean> {
   setPluginLoadState(entry.name, 'loading');
 
-  const result = await loadOneWithTimeout(entry, run.deps, () => isRunCurrent(run));
+  const isCurrent = (): boolean => isRunCurrent(run) && run.pluginTokens.get(entry.name) === token;
+  const result = await loadOneWithTimeout(entry, run.deps, isCurrent);
 
-  if (isRunCurrent(run)) {
+  if (isCurrent()) {
     setPluginLoadState(entry.name, result.loaded ? 'loaded' : 'failed', result.failureKind);
   }
 
@@ -338,6 +346,81 @@ export async function retryPluginLoad(name: string): Promise<boolean> {
   return retry;
 }
 
+/** Reconciles a fresh daemon list against the live registry without restarting the host. */
+export async function syncPlugins(entries: PluginListEntry[]): Promise<boolean> {
+  const run = activeLoaderRun;
+
+  if (run === undefined || !isRunCurrent(run)) {
+    return false;
+  }
+
+  const previousStates = {...getPluginLoadStates()};
+  const runnable = dedupe(entries.filter((entry) => entry.enabled && entry.approval === 'approved'));
+  const nextEntries = new Map(runnable.map((entry) => [entry.name, entry]));
+  let reloadRequired = false;
+
+  replaceDepsStatuses(entries);
+  applyPluginListSnapshot(entries);
+  setPluginLoadListOutcome('ok');
+
+  for (const name of run.entries.keys()) {
+    if (nextEntries.has(name)) {
+      continue;
+    }
+
+    run.pluginTokens.set(name, (run.pluginTokens.get(name) ?? 0) + 1);
+    run.entries.delete(name);
+    run.deps.registry.remove(name);
+    setPluginVersionWarnings(name, []);
+  }
+
+  const loads: Promise<boolean>[] = [];
+
+  for (const entry of runnable) {
+    const name = entry.name;
+    const previousEntry = run.entries.get(name);
+    const previousState = previousStates[name];
+    const loaded = run.deps.registry.get(name);
+    const versionChanged = previousEntry !== undefined && previousEntry.version !== entry.version;
+
+    run.entries.set(name, entry);
+
+    if (loaded !== undefined) {
+      if (loaded.entry.version !== entry.version) {
+        reloadRequired = true;
+      }
+
+      setPluginLoadState(name, 'loaded');
+      continue;
+    }
+
+    if (previousEntry === undefined || versionChanged) {
+      const token = (run.pluginTokens.get(name) ?? 0) + 1;
+
+      run.pluginTokens.set(name, token);
+      loads.push(loadAndTrack(entry, run, token));
+      continue;
+    }
+
+    if (previousState?.status === 'failed') {
+      setPluginLoadState(name, 'failed', previousState.failureKind);
+    } else if (previousState?.status === 'loading') {
+      setPluginLoadState(name, 'loading');
+    } else {
+      setPluginLoadState(name, 'failed', 'error');
+    }
+  }
+
+  await Promise.all(loads);
+
+  if (isRunCurrent(run)) {
+    appState.pluginLoadError = null;
+    syncPluginLoadFailureToast(retryPluginLoad, () => isRunCurrent(run));
+  }
+
+  return reloadRequired;
+}
+
 /**
  * Loads the plugin list from the daemon (`GET /api/mgmt/list`), then imports and
  * registers every enabled plugin's module. The daemon already validated + merged
@@ -352,7 +435,9 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   const authGeneration = getAuthRunGeneration();
   const authSignal = getAuthRunSignal();
   const listController = new AbortController();
+
   activeListController = listController;
+
   const abortListForAuthRun = (): void => listController.abort(authSignal.reason);
 
   if (authSignal.aborted) {
@@ -421,6 +506,7 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
           ?? new DOMException('Plugin list request aborted', 'AbortError'),
       );
     };
+
     listController.signal.addEventListener('abort', rejectForAbort, {once: true});
 
     if (listController.signal.aborted) {
@@ -450,6 +536,17 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
     }
   } catch (err) {
     if (isCurrent()) {
+      if (!authSignal.aborted) {
+        activeLoaderRun = {
+          generation,
+          authGeneration,
+          authSignal,
+          deps: resolved,
+          entries: new Map(),
+          pluginTokens: new Map(),
+        };
+      }
+
       console.error('[mndw] Failed to load plugin list:', err);
       appState.pluginLoadError = 'list';
       setPluginLoadListOutcome('failed');
@@ -463,7 +560,7 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
   }
 
   replaceDepsStatuses(entries);
-  replacePluginLoadStates(entries);
+  applyPluginListSnapshot(entries);
   setPluginLoadListOutcome('ok');
 
   // Only enabled+approved plugins are runnable and served on disk; pending/disabled
@@ -476,12 +573,13 @@ export async function loadPlugins(deps: LoaderDeps = {}): Promise<void> {
     authSignal,
     deps: resolved,
     entries: new Map(runnable.map((entry) => [entry.name, entry])),
+    pluginTokens: new Map(runnable.map((entry) => [entry.name, 0])),
   };
 
   activeLoaderRun = run;
 
   await Promise.all(
-    runnable.map((entry) => loadAndTrack(entry, run)),
+    runnable.map((entry) => loadAndTrack(entry, run, 0)),
   );
 
   if (isCurrent()) {

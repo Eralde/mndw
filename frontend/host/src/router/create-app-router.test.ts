@@ -9,7 +9,7 @@ import {type LoadedPage, type LoadedPlugin, pluginRegistry} from '../runtime/plu
 import type {PageListEntry, WidgetListEntry} from '../runtime/plugin-types.js';
 import {replacePluginLoadStates, setPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
 import PagePluginHost from '../pages/PagePluginHost.svelte';
-import {buildPluginRoutes, createAppRouter, resolvePageRoute} from './create-app-router.js';
+import {buildPluginRoutes, createAppRouter, refreshPluginRoutes, resolvePageRoute} from './create-app-router.js';
 
 const emptyBackend = {routes: {}};
 
@@ -286,6 +286,26 @@ describe('createAppRouter', () => {
       childPath: '/clients%20archive/',
     });
     expect(router.route.params.child).toBe('clients archive');
+  });
+
+  it('adds routes in place and returns to dashboard when current plugin page is removed', async () => {
+    let pages = [page('live-page', 'Live page', '/live')];
+    const injectedRegistry = {getPages: vi.fn(() => pages)};
+    const router = createAppRouter(injectedRegistry);
+
+    await router.navigate('/live');
+    expect(router.route.pathname).toBe('/live');
+
+    pages = [page('new-page', 'New page', '/new')];
+    refreshPluginRoutes();
+    expect(router.pluginPages.baseRouteOf('new-page')).toBe('/new');
+    await router.navigate('/new');
+    expect(router.route.pathname).toBe('/new');
+
+    pages = [];
+    refreshPluginRoutes();
+    await vi.waitFor(() => expect(router.route.pathname).toBe('/'));
+    expect(router.pluginPages.baseRouteOf('new-page')).toBeUndefined();
   });
 
   it('repairs malformed page paths before initial router navigation', () => {

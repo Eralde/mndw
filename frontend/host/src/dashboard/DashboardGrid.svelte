@@ -16,7 +16,7 @@ import {
 interface Props {
   onGridReady: (grid: GridStackType) => void;
   onGridDestroyed: () => void;
-  onWidgetRemoved: (widgetId: string) => void;
+  onWidgetRemoved: (widgetId: string, tile?: PersistedGridTile) => void;
   onLayoutChanged: (layout: PersistedGridTile[]) => void;
   onWidgetResized: (widgetId: string, size: {w: number; h: number}) => void;
 }
@@ -90,7 +90,7 @@ onMount(() => {
   grid.on('removed', (_event: Event, items: GridStackNode[]) => {
     for (const item of items) {
       if (typeof item.id === 'string') {
-        onWidgetRemoved(item.id);
+        onWidgetRemoved(item.id, projectPersistedTile(item) ?? undefined);
       }
     }
   });

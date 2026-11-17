@@ -166,7 +166,7 @@ describe('DashboardGrid', () => {
     handlers.get('removed')?.(new Event('removed'), [{id: 'widget-a:1'}, {id: undefined}]);
 
     expect(onWidgetRemoved).toHaveBeenCalledTimes(1);
-    expect(onWidgetRemoved).toHaveBeenCalledWith('widget-a:1');
+    expect(onWidgetRemoved).toHaveBeenCalledWith('widget-a:1', undefined);
 
     void unmount(component);
     target.remove();

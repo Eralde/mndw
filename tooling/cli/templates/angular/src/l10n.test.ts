@@ -18,7 +18,7 @@ describe('generated Angular locale reactivity', () => {
     const ru = {l10n: {title: 'Заголовок', button: 'Запустить', result: 'Русский результат', error: 'Ошибка'}};
     const i18n = createTestI18n(en, 'en');
     const root = document.createElement('div');
-    const context = createTestPluginContext({i18n}).context;
+    const context = createTestPluginContext({i18n, kind: 'page'}).context;
     const instance = createInstance(root, context);
     await stabilize();
     const title = root.querySelector('h2');
@@ -26,6 +26,7 @@ describe('generated Angular locale reactivity', () => {
     const result = root.querySelector('[data-testid="l10n-result"]');
 
     expect(title?.textContent).toBe(en.l10n.title);
+    expect(root.querySelector('section')?.getAttribute('aria-labelledby')).toBe(title?.id);
     expect(button?.textContent).toContain(en.l10n.button);
     expect(result?.textContent?.trim()).toBe(en.l10n.result);
     i18n.setLocale('ru', ru);
@@ -35,6 +36,28 @@ describe('generated Angular locale reactivity', () => {
     expect(title?.textContent).toBe(ru.l10n.title);
     expect(result?.textContent?.trim()).toBe(ru.l10n.result);
     instance.unmount();
+  });
+
+  it('sets a translated host title for widgets without drawing an internal heading', async () => {
+    const en = {l10n: {title: 'Plugin title', button: 'Run', result: 'Result', error: 'Error'}};
+    const ru = {l10n: {title: 'Заголовок', button: 'Запустить', result: 'Результат', error: 'Ошибка'}};
+    const i18n = createTestI18n(en, 'en');
+    const setTileTitle = vi.fn();
+    const fixture = createTestPluginContext({i18n});
+    const context = Object.assign(Object.create(fixture.context), {setTileTitle}) as PluginContext;
+    const root = document.createElement('div');
+    const instance = createInstance(root, context);
+    await stabilize();
+
+    expect(setTileTitle).toHaveBeenLastCalledWith(en.l10n.title);
+    expect(root.querySelector('h2')).toBeNull();
+    expect(root.querySelector('section')?.hasAttribute('aria-labelledby')).toBe(false);
+    i18n.setLocale('ru', ru);
+    await stabilize();
+
+    expect(setTileTitle).toHaveBeenLastCalledWith(ru.l10n.title);
+    instance.unmount();
+    fixture.unmount();
   });
 
   it('calls the backend when the shared button is clicked', async () => {

@@ -32,6 +32,10 @@ export function createInstance(el: HTMLElement, ctx: PluginContext): PluginInsta
   const timeEl = el.querySelector<HTMLTimeElement>('[data-mndw-clock]');
 
   const render = (): void => {
+    if (ctx.kind === 'widget') {
+      ctx.setTileTitle?.(i18n.t('title'));
+    }
+
     if (timeEl) {
       timeEl.textContent = i18n.formatDate(new Date(), {timeStyle: 'medium'});
       timeEl.setAttribute('aria-label', i18n.t('title'));

@@ -1,8 +1,10 @@
 <script lang="ts">
+import type {OverlaySession} from '@mndw/sdk';
 import type {GridStack as GridStackType} from 'gridstack';
-import {onDestroy, onMount} from 'svelte';
+import {onDestroy, onMount, tick} from 'svelte';
 import {mobileMediaQuery} from '../layout/breakpoint.js';
 import {depsStatusMap} from '../state/deps-status.svelte.js';
+import EmptyState from '../components/EmptyState.svelte';
 import DashboardGrid from './DashboardGrid.svelte';
 import FloatingAddPanel from './FloatingAddPanel.svelte';
 import MobileDashboard from './MobileDashboard.svelte';
@@ -26,19 +28,32 @@ import {
 import {getNextInstanceId, raiseInstanceCounter} from './widget-counter.js';
 import type {WidgetSize} from './widget-size.js';
 import {hostT} from '../services/host-i18n.svelte.js';
-import {clearInstanceStorage} from '../services/storage.service.js';
+import {
+  clearInstanceStorage,
+  finalizeInstanceStorageRemoval,
+  getInstanceStorageRevision,
+} from '../services/storage.service.js';
+import {openHostModal} from '../services/overlay/host-overlay.js';
+import {toast} from '../services/toast/toast.svelte.js';
 import {appState} from '../state/app.svelte.js';
-import {getHostServices} from '../host-services-context.js';
+import {
+  createHostServicesContext,
+  getHostServices,
+} from '../host-services-context.js';
 import {getPluginNavigationRouter} from '../router/create-app-router.js';
 import {HOST_PATHS} from '../router/host-routes.js';
 import {
+  getPluginListRevision,
   getPluginLoadListOutcome,
   getPluginLoadState,
   getPluginLoadStates,
 } from '../runtime/plugin-load-state.svelte.js';
 
 const PERSIST_DEBOUNCE_MS = 500;
+const REMOVAL_TOAST_KEY = 'dashboard-widget-removal';
+const REMOVAL_TOAST_DURATION_MS = 8000;
 const services = getHostServices();
+const hostModalContext = createHostServicesContext(services);
 const registry = services.registry;
 const pluginContextServices = {
   locale: services.locale,
@@ -57,9 +72,22 @@ function resolveWidgetSize(pluginName: string): WidgetSize | undefined {
 
 const mobileQuery = mobileMediaQuery();
 
+let dashboardRoot: HTMLDivElement | undefined;
 let grid: GridStackType | null = $state(null);
-let addPanelOpen = $state(false);
 let orderOverlayOpen = $state(false);
+let addPanelSession: OverlaySession<undefined> | null = null;
+let orderOverlaySession: OverlaySession<undefined> | null = null;
+
+type AddPanelProps = {
+  onAddWidget: (pluginName: string) => void;
+  close: (result: undefined) => void;
+};
+
+type OrderOverlayProps = {
+  cards: Array<{id: string; label: string}>;
+  onCommit: (order: string[]) => void;
+  close: (result: undefined) => void;
+};
 let isMobile = $state(mobileQuery.matches);
 let tiles: PersistedGridTile[] = $state([]);
 let mobileOrder: string[] = $state([]);
@@ -73,6 +101,16 @@ let visibleMobileOrder = $derived.by(() => {
 });
 let restoring = false;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+let pendingRemoval: {
+  tile: PersistedGridTile;
+  tileIndex: number;
+  mobileIndex: number;
+  pluginName: string;
+  instanceId: string;
+  storageRevision: symbol | undefined;
+  mountSettlement: Promise<boolean> | null;
+  toastId: number;
+} | null = $state(null);
 // @dprint-ignore
 let pendingPersist: {tiles: PersistedGridTile[]; mobileOrder: string[]} | null = null;
 
@@ -214,26 +252,117 @@ function scheduleSave(): void {
   );
 }
 
-function handleWidgetRemoved(tileId: string): void {
+function finalizePendingRemoval(): void {
+  const pending = pendingRemoval;
+
+  if (pending === null) {
+    return;
+  }
+
+  pendingRemoval = null;
+  clearInstanceStorage(pending.pluginName, pending.instanceId);
+
+  if (pending.mountSettlement !== null) {
+    void pending.mountSettlement.then(
+      () =>
+        finalizeInstanceStorageRemoval(
+          pending.pluginName,
+          pending.instanceId,
+          pending.storageRevision,
+        ),
+      () =>
+        finalizeInstanceStorageRemoval(
+          pending.pluginName,
+          pending.instanceId,
+          pending.storageRevision,
+        ),
+    );
+  }
+}
+
+function undoPendingRemoval(): void {
+  const pending = pendingRemoval;
+
+  if (pending === null) {
+    return;
+  }
+
+  pendingRemoval = null;
+  tiles = [...tiles];
+  tiles.splice(Math.min(pending.tileIndex, tiles.length), 0, pending.tile);
+  mobileOrder = [...mobileOrder];
+  mobileOrder.splice(
+    Math.min(pending.mobileIndex, mobileOrder.length),
+    0,
+    pending.tile.id,
+  );
+
+  if (!isMobile && grid !== null) {
+    syncDesktopGridToTiles();
+  }
+
+  persistNow();
+  toast.dismiss(pending.toastId);
+}
+
+function handleWidgetRemoved(
+  tileId: string,
+  removedTile?: PersistedGridTile,
+): void {
   if (restoring || getPluginLoadListOutcome() !== 'ok') {
     return;
   }
 
-  removeTileController(tileId, {clearStorage: true});
-
   const parsed = parseWidgetTileId(tileId);
+  const tileIndex = tiles.findIndex((tile) => tile.id === tileId);
+  const tile = removedTile
+    ?? tiles[tileIndex]
+    ?? {id: tileId, x: 0, y: 0, w: 1, h: 1};
 
-  if (parsed !== null) {
-    clearInstanceStorage(
-      parsed.pluginName,
-      `${parsed.pluginName}:${parsed.counter}`,
-    );
+  if (parsed === null || tileIndex === -1) {
+    removeTileController(tileId, {clearStorage: true});
+
+    return;
   }
+
+  // A keyed toast is replaced in place. Dispose the previous removed instance first
+  // so its storage cannot survive past the only Undo action that referred to it.
+  finalizePendingRemoval();
+  const controller = getTileController(tileId);
+  const mountSettlement = controller?.handle?.whenReady() ?? null;
+  const instanceId = `${parsed.pluginName}:${parsed.counter}`;
+  const plugin = registry.get(parsed.pluginName);
+  const label = controller?.getTileTitle()
+    || plugin?.entry.label
+    || parsed.pluginName;
+  const mobileIndex = mobileOrder.indexOf(tileId);
+
+  removeTileController(tileId, {clearStorage: false});
 
   tiles = tiles.filter((tile) => tile.id !== tileId);
   mobileOrder = mobileOrder.filter((id) => id !== tileId);
 
   persistNow();
+
+  const toastId = toast.info(
+    hostT('dashboard.widget-removed', {label}),
+    {
+      key: REMOVAL_TOAST_KEY,
+      duration: REMOVAL_TOAST_DURATION_MS,
+      action: {label: hostT('common.undo'), onAction: undoPendingRemoval},
+    },
+  );
+
+  pendingRemoval = {
+    tile,
+    tileIndex,
+    mobileIndex: mobileIndex === -1 ? mobileOrder.length : mobileIndex,
+    pluginName: parsed.pluginName,
+    instanceId,
+    storageRevision: getInstanceStorageRevision(parsed.pluginName, instanceId),
+    mountSettlement,
+    toastId,
+  };
 }
 
 function requestRemoveTile(tileId: string): void {
@@ -387,15 +516,15 @@ function handleWidgetResized(id: string, size: {w: number; h: number}): void {
   resizeWidgetTile(id, size);
 }
 
-function addMobileWidget(pluginName: string): void {
+function addMobileWidget(pluginName: string): boolean {
   if (getPluginLoadListOutcome() !== 'ok') {
-    return;
+    return false;
   }
 
   const size = resolveWidgetSize(pluginName);
 
   if (size === undefined) {
-    return;
+    return false;
   }
 
   const instanceId = getNextInstanceId(pluginName);
@@ -408,7 +537,7 @@ function addMobileWidget(pluginName: string): void {
   );
 
   if (controller === null) {
-    return;
+    return false;
   }
 
   // No GridStack on mobile to auto-place: compute desktop geometry below the
@@ -417,25 +546,23 @@ function addMobileWidget(pluginName: string): void {
   mobileOrder = [...mobileOrder, controller.id];
 
   persistNow();
+
+  return true;
 }
 
-function handleAddWidget(pluginName: string): void {
-  addPanelOpen = false;
-
+function handleAddWidget(pluginName: string): boolean {
   if (getPluginLoadListOutcome() !== 'ok') {
-    return;
+    return false;
   }
 
   if (isMobile) {
-    addMobileWidget(pluginName);
-
-    return;
+    return addMobileWidget(pluginName);
   }
 
   const activeGrid = grid;
 
   if (activeGrid === null) {
-    return;
+    return false;
   }
 
   const id = addWidgetTile(
@@ -453,13 +580,79 @@ function handleAddWidget(pluginName: string): void {
     mobileOrder = [...mobileOrder, id];
 
     persistNow();
+
+    return true;
   }
+
+  return false;
+}
+
+function openAddWidgetModal(): void {
+  if (addPanelSession !== null) {
+    return;
+  }
+
+  const opener = document.activeElement;
+  let widgetAdded = false;
+  const session = openHostModal<undefined, AddPanelProps>(FloatingAddPanel, {
+    title: hostT('dashboard.add-widget'),
+    props: {
+      onAddWidget: (pluginName) => {
+        widgetAdded = handleAddWidget(pluginName);
+      },
+    },
+    closeOnOutsideClick: true,
+    context: hostModalContext,
+  });
+
+  addPanelSession = session;
+  void session.closed.then(async () => {
+    if (addPanelSession === session) {
+      addPanelSession = null;
+    }
+
+    if (widgetAdded && opener instanceof HTMLElement && !opener.isConnected) {
+      await tick();
+
+      const returnTarget = dashboardRoot?.querySelector<HTMLElement>(
+        '.mndw-dashboard__toolbar mndw-button',
+      ) ?? dashboardRoot?.querySelector<HTMLElement>('.mndw-grid-tile__close');
+
+      returnTarget?.focus();
+    }
+  });
+}
+
+function openOrderModal(): void {
+  if (orderOverlaySession !== null) {
+    return;
+  }
+
+  orderOverlayOpen = true;
+  const session = openHostModal<undefined, OrderOverlayProps>(
+    MobileOrderOverlay,
+    {
+      title: hostT('dashboard.arrange-widgets'),
+      props: {cards: overlayCards, onCommit: handleOrderCommit},
+      closeOnOutsideClick: true,
+    },
+  );
+
+  orderOverlaySession = session;
+  void session.closed.then(() => {
+    if (orderOverlaySession === session) {
+      orderOverlaySession = null;
+      orderOverlayOpen = false;
+    }
+  });
 }
 
 const handleBreakpointChange = (event: MediaQueryListEvent): void => {
   isMobile = event.matches;
 
   if (!event.matches) {
+    orderOverlaySession?.close();
+    orderOverlaySession = null;
     orderOverlayOpen = false;
   }
 };
@@ -491,8 +684,6 @@ const overlayCards = $derived.by(() => {
 });
 
 function handleOrderCommit(order: string[]): void {
-  orderOverlayOpen = false;
-
   if (getPluginLoadListOutcome() !== 'ok') {
     return;
   }
@@ -502,14 +693,21 @@ function handleOrderCommit(order: string[]): void {
   persistNow();
 }
 
-function handleOrderClose(): void {
-  orderOverlayOpen = false;
-}
-
 let previousPluginListOutcome = getPluginLoadListOutcome();
+let previousPluginListRevision = getPluginListRevision();
 let hasReconciledSuccessfulPluginList = false;
 
 function reconcileTilesWithPluginList(): boolean {
+  const pending = pendingRemoval;
+
+  if (
+    pending !== null
+    && getPluginLoadState(pending.pluginName)?.type !== 'widget'
+  ) {
+    finalizePendingRemoval();
+    toast.dismiss(pending.toastId);
+  }
+
   const nextTiles = tiles.filter((tile) => {
     const parsed = parseWidgetTileId(tile.id);
 
@@ -563,13 +761,16 @@ $effect(() => {
   );
 
   const listOutcome = getPluginLoadListOutcome();
+  const pluginListRevision = getPluginListRevision();
 
   hydratePendingTiles(pluginContextServices, registry);
   refreshPluginLoadPlaceholders(pluginContextServices, registry);
 
   if (listOutcome === 'ok') {
     if (
-      !hasReconciledSuccessfulPluginList || previousPluginListOutcome !== 'ok'
+      !hasReconciledSuccessfulPluginList
+      || previousPluginListOutcome !== 'ok'
+      || previousPluginListRevision !== pluginListRevision
     ) {
       const recoveredList = previousPluginListOutcome !== 'ok';
       const layoutChanged = reconcileTilesWithPluginList();
@@ -585,20 +786,44 @@ $effect(() => {
   }
 
   previousPluginListOutcome = listOutcome;
+  previousPluginListRevision = pluginListRevision;
+});
+
+$effect(() => {
+  const pending = pendingRemoval;
+
+  if (
+    pending !== null
+    && !toast.toasts.some((item) => item.id === pending.toastId)
+  ) {
+    finalizePendingRemoval();
+  }
 });
 
 onMount(() => {
   mobileQuery.addEventListener('change', handleBreakpointChange);
+  window.addEventListener('pagehide', handlePageHide);
 
-  return () =>
+  return () => {
     mobileQuery.removeEventListener('change', handleBreakpointChange);
+    window.removeEventListener('pagehide', handlePageHide);
+  };
 });
+
+function handlePageHide(): void {
+  finalizePendingRemoval();
+  toast.dismissKey(REMOVAL_TOAST_KEY);
+}
 
 onDestroy(() => {
   // Flush any pending layout change before host navigation tears down this page.
   if (pendingPersist !== null && getPluginLoadListOutcome() === 'ok') {
     persistNow(pendingPersist);
   }
+  finalizePendingRemoval();
+  toast.dismissKey(REMOVAL_TOAST_KEY);
+  addPanelSession?.close();
+  orderOverlaySession?.close();
   // Leaving the dashboard view is a host navigation, not instance disposal, so
   // instance storage is preserved for when the persisted layout is restored.
   destroyAllTiles('host-navigation');
@@ -606,6 +831,7 @@ onDestroy(() => {
 </script>
 
 <div
+  bind:this={dashboardRoot}
   class="mndw-dashboard-page"
   data-locale={appState.locale}
 >
@@ -613,7 +839,7 @@ onDestroy(() => {
     {#if registry.getWidgets().length > 0 && visibleTiles.length > 0}
       <mndw-button
         variant="secondary"
-        onclick={() => (addPanelOpen = true)}
+        onclick={openAddWidgetModal}
       >
         {hostT('dashboard.add-widget')}
       </mndw-button>
@@ -621,7 +847,7 @@ onDestroy(() => {
       {#if isMobile && visibleMobileOrder.length > 1}
         <mndw-button
           variant="secondary"
-          onclick={() => (orderOverlayOpen = true)}
+          onclick={openOrderModal}
         >
           {hostT('dashboard.arrange-widgets')}
         </mndw-button>
@@ -632,44 +858,23 @@ onDestroy(() => {
   {#if appState.pluginLoadError !== null}
     <!-- Regular region, not an alert: the AppShell banner (role="alert") above is the
          assertive announcement; this block only explains what the banner means. -->
-    <section class="mndw-dashboard__empty">
-      <h2 class="mndw-dashboard__empty-title">
-        {hostT('dashboard.empty-error-title')}
-      </h2>
-      <p class="mndw-dashboard__empty-text">
-        {hostT('dashboard.empty-error-text')}
-      </p>
-    </section>
+    <EmptyState
+      title={hostT('dashboard.empty-error-title')}
+      text={hostT('dashboard.empty-error-text')}
+    />
   {:else if registry.getWidgets().length === 0 && visibleTiles.length === 0}
-    <section class="mndw-dashboard__empty">
-      <h2 class="mndw-dashboard__empty-title">
-        {hostT('dashboard.no-widgets')}
-      </h2>
-      <p class="mndw-dashboard__empty-text">
-        {hostT('dashboard.empty-no-plugins')}
-      </p>
-      <a
-        class="mndw-dashboard__empty-link"
-        href={HOST_PATHS.settingsTab.plugins}
-      >
-        {hostT('dashboard.empty-install-plugins')}
-      </a>
-    </section>
+    <EmptyState
+      title={hostT('dashboard.no-widgets')}
+      text={hostT('dashboard.empty-no-plugins')}
+      action={{label: hostT('dashboard.empty-install-plugins'),
+      href: HOST_PATHS.settingsTab.plugins}}
+    />
   {:else if visibleTiles.length === 0}
-    <section class="mndw-dashboard__empty">
-      <h2 class="mndw-dashboard__empty-title">
-        {hostT('dashboard.empty-title')}
-      </h2>
-      <p class="mndw-dashboard__empty-text">
-        {hostT('dashboard.empty-add-widget')}
-      </p>
-      <mndw-button
-        variant="primary"
-        onclick={() => (addPanelOpen = true)}
-      >
-        {hostT('dashboard.add-widget')}
-      </mndw-button>
-    </section>
+    <EmptyState
+      title={hostT('dashboard.empty-title')}
+      text={hostT('dashboard.empty-add-widget')}
+      action={{label: hostT('dashboard.add-widget'), onActivate: openAddWidgetModal}}
+    />
   {/if}
 
   {#if isMobile}
@@ -689,16 +894,3 @@ onDestroy(() => {
     </div>
   {/if}
 </div>
-
-<FloatingAddPanel
-  open={addPanelOpen}
-  onAddWidget={handleAddWidget}
-  onClose={() => (addPanelOpen = false)}
-/>
-
-<MobileOrderOverlay
-  open={isMobile && orderOverlayOpen}
-  cards={overlayCards}
-  onCommit={handleOrderCommit}
-  onClose={handleOrderClose}
-/>

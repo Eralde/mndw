@@ -29,9 +29,11 @@ const load = async (): Promise<void> => {
 
 <section
   class="__MNDW_NAME__"
-  aria-labelledby="plugin-title"
+  aria-labelledby={ctx.kind === 'page' ? 'plugin-title' : undefined}
 >
-  <h2 id="plugin-title">{$translator.t('l10n.title')}</h2>
+  {#if ctx.kind === 'page'}
+    <h2 id="plugin-title">{$translator.t('l10n.title')}</h2>
+  {/if}
   <p class="device">Device: {ctx.deviceInfo.deviceName}</p>
   <mndw-button
     variant="primary"

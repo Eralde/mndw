@@ -222,7 +222,7 @@ afterEach(() => {
 });
 
 describe('AppComponent', () => {
-  it('updates the visible empty state after a locale switch', async () => {
+  it('updates the host tile title after a locale switch without drawing an internal title', async () => {
     const i18n = createTestI18n(enCatalog);
     const emptyManager = {
       queue: (query: RciQuery | RciQuery[]) => {
@@ -231,22 +231,27 @@ describe('AppComponent', () => {
         return path === 'show.interface' ? of({}) : of([]);
       },
     } as unknown as PluginRciManager;
-    const {fixture} = await createFixture(null, null, undefined, i18n, emptyManager);
+    const {fixture, setTileTitle} = await createFixture(null, null, undefined, i18n, emptyManager);
 
     await vi.waitFor(() => {
       fixture.detectChanges();
 
-      expect(queryElement<HTMLElement>(fixture.nativeElement, '.empty-state__heading').textContent)
-        .toBe(enCatalog.title);
+      expect(setTileTitle).toHaveBeenLastCalledWith(enCatalog.title);
     });
+    await vi.waitFor(() => {
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.empty-state__subtitle')).not.toBeNull();
+    });
+    expect(fixture.nativeElement.querySelector('.empty-state__heading')).toBeNull();
 
     expect(queryElement<HTMLElement>(fixture.nativeElement, '.empty-state__subtitle').textContent)
       .toBe(enCatalog.status['select-interface']);
     i18n.setLocale('ru', ruCatalog);
     fixture.detectChanges();
 
-    expect(queryElement<HTMLElement>(fixture.nativeElement, '.empty-state__heading').textContent)
-      .toBe(ruCatalog.title);
+    expect(setTileTitle).toHaveBeenLastCalledWith(ruCatalog.title);
+    expect(fixture.nativeElement.querySelector('.empty-state__heading')).toBeNull();
     expect(queryElement<HTMLElement>(fixture.nativeElement, '.empty-state__subtitle').textContent)
       .toBe(ruCatalog.status['select-interface']);
   });
@@ -294,13 +299,13 @@ describe('AppComponent', () => {
     expect(setTileTitle).toHaveBeenCalledWith('WAN');
   });
 
-  it('calls setTileTitle with an empty string when no interface is selected', async () => {
+  it('calls setTileTitle with the translated plugin title when no interface is selected', async () => {
     const {fixture, setTileTitle} = await createFixture(null, '3000');
 
     await fixture.componentInstance.ngOnInit();
     fixture.detectChanges();
 
-    expect(setTileTitle).toHaveBeenCalledWith('');
+    expect(setTileTitle).toHaveBeenCalledWith(enCatalog.title);
   });
 
   it('keeps the internal interface label when setTileTitle is absent', async () => {

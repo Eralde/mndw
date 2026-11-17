@@ -60,6 +60,15 @@ Use the plugin class in every framework. For a plugin named `status-widget`, the
 }
 ```
 
+## Status and errors
+
+Disabled features, unsupported devices, and empty data are neutral statuses. For an SDK `LoadState` with
+`status: 'unsupported'`, `reason` explains why the capability or data is unavailable; show that explanation with
+`role="status"` and muted text, not as a failed request. The cpu-temp-widget follows this pattern for unsupported
+temperature data and uses `TelemetryNote.vue` for disabled telemetry and missing session setup. Reserve
+`role="alert"` and red styling for failures the user can act on, and provide a Retry action when retrying can resolve
+the failure.
+
 Keep global resets and element-only selectors out of plugin CSS. `mndw validate` warns when built
 CSS contains selectors outside the plugin prefix. Third-party selectors can be listed in
 `package.json` under `mndw.cssSelectorAllowlist`; see [validation and packaging](validation-and-packaging.md).

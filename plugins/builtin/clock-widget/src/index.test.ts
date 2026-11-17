@@ -41,15 +41,19 @@ describe('createInstance', () => {
     const host = document.createElement('div');
     const i18n = createTestI18n({title: 'Clock EN'});
     const fixture = createTestPluginContext({i18n});
-    const instance = createInstance(host, fixture.context);
+    const setTileTitle = vi.fn();
+    const context = Object.assign(Object.create(fixture.context), {setTileTitle});
+    const instance = createInstance(host, context);
     const time = host.querySelector('[data-mndw-clock]');
 
     expect(time?.textContent).toBe(i18n.formatDate(new Date(), {timeStyle: 'medium'}));
+    expect(setTileTitle).toHaveBeenLastCalledWith('Clock EN');
     i18n.setLocale('ru', {title: 'Часы RU'});
 
     expect(host.querySelector('[data-mndw-clock]')).toBe(time);
     expect(time?.textContent).toBe(i18n.formatDate(new Date(), {timeStyle: 'medium'}));
     expect(time?.getAttribute('aria-label')).toBe('Часы RU');
+    expect(setTileTitle).toHaveBeenLastCalledWith('Часы RU');
     instance.unmount();
   });
 });

@@ -1,34 +1,28 @@
 <script lang="ts">
-import {focusTrap} from '../components/focus-trap/focus-trap-action.js';
+import {untrack} from 'svelte';
 import {hostT} from '../services/host-i18n.svelte.js';
-import {appState} from '../state/app.svelte.js';
+
 interface OrderCard {
   id: string;
   label: string;
 }
 
 interface Props {
-  open: boolean;
   cards: OrderCard[];
   onCommit: (order: string[]) => void;
-  onClose: () => void;
+  close: (result: undefined) => void;
 }
 
-let {open, cards, onCommit, onClose}: Props = $props();
-
-let draft = $state<OrderCard[]>([]);
+let {cards, onCommit, close}: Props = $props();
+let draft = $state<OrderCard[]>(
+  untrack(() => cards.map((card) => ({...card}))),
+);
 let dragIndex: number | null = $state(null);
 let cardRefs: HTMLElement[] = $state([]);
 
-$effect(() => {
-  if (open) {
-    draft = cards.map((card) => ({...card}));
-    dragIndex = null;
-  }
-});
-
 function commit(): void {
   onCommit(draft.map((card) => card.id));
+  close(undefined);
 }
 
 function move(index: number, delta: number): void {
@@ -44,12 +38,6 @@ function move(index: number, delta: number): void {
   if (card !== undefined) {
     next.splice(targetIndex, 0, card);
     draft = next;
-  }
-}
-
-function handleKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    onClose();
   }
 }
 
@@ -89,82 +77,49 @@ function handlePointerUp(): void {
 }
 </script>
 
-{#if open}
-  <div
-    class="mndw-floating-panel-backdrop"
-    onclick={onClose}
-    role="presentation"
-  >
-    <div
-      class="mndw-floating-panel mndw-order-overlay"
-      onclick={(event) => event.stopPropagation()}
-      onkeydown={handleKeydown}
-      role="dialog"
-      tabindex="-1"
-      use:focusTrap
-      aria-modal="true"
-      aria-labelledby="arrange-widgets-title"
-      data-locale={appState.locale}
-    >
-      <div class="mndw-floating-panel__header">
-        <h3 id="arrange-widgets-title">{hostT('dashboard.arrange-widgets')}</h3>
-        <mndw-button
-          variant="ghost"
-          class="mndw-floating-panel__close"
-          onclick={onClose}
-          aria-label={hostT('common.close')}
+<div class="mndw-order-overlay">
+  <ul class="mndw-order-overlay__list">
+    {#each draft as card, index (card.id)}
+      <li
+        class="mndw-order-card"
+        class:mndw-order-card--dragging={dragIndex === index}
+        bind:this={cardRefs[index]}
+      >
+        <span
+          class="mndw-order-card__handle"
+          onpointerdown={(event) => handlePointerDown(event, index)}
+          onpointermove={handlePointerMove}
+          onpointerup={handlePointerUp}
+          aria-hidden="true"
         >
-          <mndw-icon name="x"></mndw-icon>
-        </mndw-button>
-      </div>
-      <ul class="mndw-order-overlay__list">
-        {#each draft as card, index (card.id)}
-          <li
-            class="mndw-order-card"
-            class:mndw-order-card--dragging={dragIndex === index}
-            bind:this={cardRefs[index]}
+          <mndw-icon name="menu"></mndw-icon>
+        </span>
+        <span class="mndw-order-card__label">{card.label}</span>
+        <span class="mndw-order-card__moves">
+          <mndw-button
+            variant="ghost"
+            onclick={() => move(index, -1)}
+            disabled={index === 0}
+            aria-label={hostT('dashboard.move-up', {label: card.label})}
           >
-            <span
-              class="mndw-order-card__handle"
-              onpointerdown={(event) => handlePointerDown(event, index)}
-              onpointermove={handlePointerMove}
-              onpointerup={handlePointerUp}
-              aria-hidden="true"
-            >
-              <mndw-icon name="menu"></mndw-icon>
-            </span>
-            <span class="mndw-order-card__label">{card.label}</span>
-            <span class="mndw-order-card__moves">
-              <mndw-button
-                variant="ghost"
-                onclick={() => move(index, -1)}
-                disabled={index === 0}
-                aria-label={hostT('dashboard.move-up', {label: card.label})}
-              >
-                <mndw-icon name="arrow-up"></mndw-icon>
-              </mndw-button>
-              <mndw-button
-                variant="ghost"
-                onclick={() => move(index, 1)}
-                disabled={index === draft.length - 1}
-                aria-label={hostT('dashboard.move-down', {label: card.label})}
-              >
-                <mndw-icon name="arrow-down"></mndw-icon>
-              </mndw-button>
-            </span>
-          </li>
-        {/each}
-      </ul>
-      <div class="mndw-order-overlay__actions">
-        <mndw-button
-          variant="primary"
-          onclick={commit}
-        >{hostT('common.save')}</mndw-button>
-      </div>
-    </div>
+            <mndw-icon name="arrow-up"></mndw-icon>
+          </mndw-button>
+          <mndw-button
+            variant="ghost"
+            onclick={() => move(index, 1)}
+            disabled={index === draft.length - 1}
+            aria-label={hostT('dashboard.move-down', {label: card.label})}
+          >
+            <mndw-icon name="arrow-down"></mndw-icon>
+          </mndw-button>
+        </span>
+      </li>
+    {/each}
+  </ul>
+  <div class="mndw-order-overlay__actions">
+    <mndw-button
+      variant="primary"
+      onclick={commit}
+    >{hostT('common.save')}</mndw-button>
   </div>
-{/if}
-
-<style>
-.mndw-order-overlay__actions { display: flex; justify-content: flex-end; margin-top: 0.75rem; }
-</style>
+</div>

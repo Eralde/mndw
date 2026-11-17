@@ -14,6 +14,7 @@ import {
 interface Props {
   backend?: BackendClient;
   i18n: PluginI18n;
+  setTileTitle?: (title: string) => void;
 }
 
 type RenameStatus =
@@ -29,13 +30,17 @@ interface RenameState {
   error: string;
 }
 
-let {backend, i18n}: Props = $props();
+let {backend, i18n, setTileTitle}: Props = $props();
 // svelte-ignore state_referenced_locally
 const translator = createTranslator(i18n);
 
 function t(key: string, values?: Record<string, unknown>): string {
   return $translator.t(key, values);
 }
+
+$effect(() => {
+  setTileTitle?.(t('title'));
+});
 
 const hasBackend = $derived(Boolean(backend));
 
@@ -520,13 +525,6 @@ onMount(() => {
   align-items: center;
   justify-content: space-between;
   gap: var(--mndw-space-2);
-}
-
-h3 {
-  min-width: 0;
-  margin: 0;
-  font-size: var(--mndw-text-lg);
-  font-weight: var(--mndw-weight-semibold);
 }
 
 .header-actions {

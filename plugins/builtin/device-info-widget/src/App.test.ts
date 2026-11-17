@@ -80,6 +80,7 @@ function createContext(
   projected: ProjectedSnapshot = projectedTelemetrySnapshot(),
   tickerFactory?: PluginContext['createTicker'],
   gathering$?: Observable<TelemetryGathering>,
+  setTileTitle?: PluginContext['setTileTitle'],
 ): WidgetTestContext {
   const fixture = createTestPluginContext({
     i18n,
@@ -110,6 +111,7 @@ function createContext(
       fetchProjected: vi.fn().mockResolvedValue(projected),
     }},
     ...(tickerFactory === undefined ? {} : {createTicker: {enumerable: true, value: tickerFactory}}),
+    ...(setTileTitle === undefined ? {} : {setTileTitle: {enumerable: true, value: setTileTitle}}),
   });
 
   const widgetContext = Object.freeze(context) as unknown as WidgetTestContext;
@@ -201,16 +203,27 @@ describe('App', () => {
     app.unmount();
   });
 
-  it('updates the visible title after a locale switch', async () => {
+  it('keeps settings access without drawing the widget title', async () => {
     const i18n = createTestI18n(enCatalog);
-    const app = mountWidget(() => new Observable<unknown>(() => {}), i18n);
-    const title = document.querySelector('.app__header > span');
+    const setTileTitle = vi.fn();
+    const ctx = createContext(
+      () => new Observable<unknown>(() => {}),
+      i18n,
+      undefined,
+      undefined,
+      undefined,
+      setTileTitle,
+    );
+    const {app, host} = mountWidgetContext(ctx);
 
-    expect(title?.textContent).toBe(enCatalog.title);
+    expect(host.querySelector('.app__header > span')).toBeNull();
+    expect(host.querySelector('.app__header mndw-button')?.getAttribute('aria-label')).toBe(enCatalog.settings);
+    expect(setTileTitle).toHaveBeenLastCalledWith(enCatalog.title);
     i18n.setLocale('ru', ruCatalog);
     await nextTick();
 
-    expect(title?.textContent).toBe(ruCatalog.title);
+    expect(host.querySelector('.app__header mndw-button')?.getAttribute('aria-label')).toBe(ruCatalog.settings);
+    expect(setTileTitle).toHaveBeenLastCalledWith(ruCatalog.title);
     app.unmount();
   });
 

@@ -1,11 +1,49 @@
 import type {PluginStorage} from '@mndw/sdk';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 
+const instanceStorageRevisions = new Map<string, symbol>();
+
+function isInstanceStoragePrefix(prefix: string): boolean {
+  return prefix.includes(':instance:');
+}
+
+function currentRevision(prefix: string): symbol | undefined {
+  return instanceStorageRevisions.get(prefix);
+}
+
+function claimRevision(prefix: string): symbol {
+  const revision = Symbol();
+
+  instanceStorageRevisions.set(prefix, revision);
+
+  return revision;
+}
+
+function clearPrefix(prefix: string): void {
+  const toRemove: string[] = [];
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+
+    if (key?.startsWith(prefix)) {
+      toRemove.push(key);
+    }
+  }
+
+  for (const key of toRemove) {
+    localStorage.removeItem(key);
+  }
+}
+
 export class ScopedPluginStorage implements PluginStorage {
   private readonly prefix: string;
+  private readonly instanceRevision: symbol | null;
 
   constructor(prefix: string) {
     this.prefix = prefix;
+    this.instanceRevision = isInstanceStoragePrefix(prefix)
+      ? claimRevision(prefix)
+      : null;
   }
 
   public async get(key: string): Promise<string | null> {
@@ -13,13 +51,17 @@ export class ScopedPluginStorage implements PluginStorage {
   }
 
   public async set(key: string, value: string): Promise<void> {
-    localStorage.setItem(this.prefix + key, value);
+    if (this.canWrite()) {
+      localStorage.setItem(this.prefix + key, value);
+    }
 
     return Promise.resolve();
   }
 
   public async delete(key: string): Promise<void> {
-    localStorage.removeItem(this.prefix + key);
+    if (this.canWrite()) {
+      localStorage.removeItem(this.prefix + key);
+    }
 
     return Promise.resolve();
   }
@@ -37,21 +79,37 @@ export class ScopedPluginStorage implements PluginStorage {
 
     return Promise.resolve(result);
   }
+
+  private canWrite(): boolean {
+    return this.instanceRevision === null
+      || currentRevision(this.prefix) === this.instanceRevision;
+  }
 }
 
 export function clearInstanceStorage(pluginName: string, instanceId: string): void {
   const prefix = `${PLUGIN_STORAGE_PREFIX}:${pluginName}:instance:${instanceId}:`;
-  const toRemove: string[] = [];
 
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
+  clearPrefix(prefix);
+}
 
-    if (k?.startsWith(prefix)) {
-      toRemove.push(k);
-    }
+export function getInstanceStorageRevision(
+  pluginName: string,
+  instanceId: string,
+): symbol | undefined {
+  return currentRevision(`${PLUGIN_STORAGE_PREFIX}:${pluginName}:instance:${instanceId}:`);
+}
+
+export function finalizeInstanceStorageRemoval(
+  pluginName: string,
+  instanceId: string,
+  expectedRevision: symbol | undefined,
+): void {
+  const prefix = `${PLUGIN_STORAGE_PREFIX}:${pluginName}:instance:${instanceId}:`;
+
+  if (currentRevision(prefix) !== expectedRevision) {
+    return;
   }
 
-  for (const k of toRemove) {
-    localStorage.removeItem(k);
-  }
+  clearPrefix(prefix);
+  instanceStorageRevisions.delete(prefix);
 }

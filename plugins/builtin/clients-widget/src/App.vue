@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {LoadState, PluginContext} from '@mndw/sdk';
+import {bindLocale} from '@mndw/sdk/bind-locale';
 import {useTranslator} from '@mndw/sdk/vue';
 import type {MndwCheckboxChangeDetail} from '@mndw/ui';
 import {computed, onMounted, onUnmounted, ref} from 'vue';
@@ -29,6 +30,11 @@ const columnVisibility = ref<Record<string, boolean>>(
 const dirty = new Set<string>();
 const translator = useTranslator(props.ctx.i18n);
 const t = (key: string, values?: Record<string, unknown>): string => translator.t(key, values);
+const unsubscribeLocale = bindLocale(props.ctx.i18n, () => {
+  if (props.ctx.kind === 'widget') {
+    props.ctx.setTileTitle?.(t('title'));
+  }
+});
 
 let refreshLoop: RefreshLoop | null = null;
 
@@ -40,13 +46,6 @@ const allClients = computed<ClientRecord[]>(() => {
     : state.status === 'error'
     ? state.data ?? []
     : [];
-});
-const hasClientData = computed(() => {
-  const state = loadState.value;
-
-  return state.status === 'success'
-    || state.status === 'refreshing'
-    || (state.status === 'error' && state.data !== undefined);
 });
 const tableError = computed<string | null>(() => {
   const state = loadState.value;
@@ -67,12 +66,6 @@ const lastUpdatedTime = computed(() => {
     });
 });
 const visibleClients = computed(() => filterVisibleClients(allClients.value, showOffline.value));
-const headerLabel = computed(() => {
-  return hasClientData.value
-    ? `${t('title')} (${visibleClients.value.length})`
-    : t('title');
-});
-
 function persist(key: string, value: string): void {
   dirty.add(key);
   void props.ctx.storage.set(key, value).catch((caught: unknown) => {
@@ -219,6 +212,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  unsubscribeLocale();
   refreshLoop?.stop();
   refreshLoop = null;
 });
@@ -227,7 +221,6 @@ onUnmounted(() => {
 <template>
   <div class="clients-widget" :class="{'clients-widget--stale': stale}">
     <header class="clients-widget__header mndw-table-controls">
-      <span>{{ headerLabel }}</span>
       <mndw-checkbox
         class="clients-widget__toggle"
         :checked="showOffline"

@@ -54,11 +54,7 @@ async function loadGreeting(): Promise<void> {
 }
 </script>
 
-<section
-  class="hello-widget"
-  aria-labelledby="hello-title"
->
-  <h2 id="hello-title">{$translator.t('title')}</h2>
+<section class="hello-widget">
   <mndw-button
     variant="primary"
     type="button"
@@ -97,14 +93,8 @@ async function loadGreeting(): Promise<void> {
   font-family: var(--mndw-font-sans);
 }
 
-h2,
 p {
   margin: 0;
-}
-
-h2 {
-  font-size: var(--mndw-text-lg);
-  font-weight: var(--mndw-weight-semibold);
 }
 
 mndw-button {

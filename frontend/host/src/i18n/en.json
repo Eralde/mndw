@@ -40,7 +40,8 @@
     "empty-no-plugins": "No enabled plugins provide widgets.",
     "empty-install-plugins": "Manage plugins",
     "empty-title": "Dashboard is empty",
-    "empty-add-widget": "Add a widget to get started."
+    "empty-add-widget": "Add a widget to get started.",
+    "widget-removed": "Widget “{label}” removed"
   },
   "settings": {
     "title": "Settings",
@@ -267,7 +268,8 @@
     "cancel": "Cancel",
     "close": "Close",
     "save": "Save",
-    "retry": "Retry"
+    "retry": "Retry",
+    "undo": "Undo"
   },
   "login": {
     "username": "Username",

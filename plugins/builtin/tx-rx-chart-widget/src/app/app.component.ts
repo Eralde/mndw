@@ -91,7 +91,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   public constructor() {
     effect(() => {
-      const title = this.activeInterfaceName();
+      const title = this.activeInterfaceName() || this.t('title');
       const setTitle = this.setTileTitle();
 
       if (setTitle) {

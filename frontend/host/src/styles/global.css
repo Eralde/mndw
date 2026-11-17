@@ -541,16 +541,6 @@ body {
   opacity: 1;
 }
 
-.mndw-dashboard-page .mndw-dashboard__loading {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: var(--mndw-bg);
-}
-
 .mndw-dashboard__toolbar {
   display: flex;
   flex-shrink: 0;
@@ -570,10 +560,8 @@ body {
   font-size: 0.8125rem;
 }
 
-/* Explanatory empty states (plugin load failure / no widget plugins / none added).
-   Overlay pattern matches .mndw-dashboard__loading: the grid stays mounted underneath
-   so restoration behaviour is untouched. */
-.mndw-dashboard__empty {
+/* Shared dashboard empty state overlays the mounted grid to preserve restoration. */
+.mndw-empty-state {
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -587,86 +575,48 @@ body {
   background: var(--mndw-bg);
 }
 
-.mndw-dashboard__empty-title {
+.mndw-empty-state__title {
   margin: 0;
   color: var(--mndw-text);
   font-size: 1rem;
 }
 
-.mndw-dashboard__empty-text {
+.mndw-empty-state__text {
   margin: 0;
   color: var(--mndw-text-subtle);
 }
 
 /* Text colour + underline: --mndw-accent on --mndw-bg is below 4.5:1 in the dark theme. */
-.mndw-dashboard__empty-link {
+.mndw-empty-state__link {
   color: var(--mndw-text);
   text-decoration: underline;
 }
 
-/* === Floating Add Panel === */
-
-.mndw-floating-panel-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
+.mndw-empty-state--compact {
+  position: static;
   display: flex;
-  justify-content: center;
-  align-items: center;
-  background: rgb(0 0 0 / 30%);
+  gap: 0.5rem;
+  padding: 1rem 0;
 }
 
 .mndw-floating-panel {
   overflow-y: auto;
   width: min(360px, calc(100vw - 32px));
   max-height: 80vh;
-  padding: 1rem;
-  border: 1px solid var(--mndw-border);
-  border-radius: 0.5rem;
-  background: var(--mndw-surface);
 }
 
-.mndw-floating-panel__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.75rem;
-}
-
-.mndw-floating-panel__header h3 {
-  margin: 0;
-  color: var(--mndw-text);
-  font-size: 1rem;
-}
-
-.mndw-floating-panel__close {
-  font-size: 1.125rem;
-}
-
-.mndw-floating-panel__close::part(button) {
-  padding: 0 0.25rem;
-  line-height: 1;
-}
-
-.mndw-floating-panel > mndw-button:not(.mndw-floating-panel__close) {
+.mndw-floating-panel > mndw-button {
   display: block;
   width: 100%;
   margin-bottom: 0.375rem;
 }
 
-.mndw-floating-panel > mndw-button:not(.mndw-floating-panel__close)::part(button) {
+.mndw-floating-panel > mndw-button::part(button) {
   justify-content: flex-start;
   width: 100%;
   padding: 0.625rem 0.75rem;
   font-size: 0.875rem;
   text-align: left;
-}
-
-.mndw-floating-panel__empty {
-  padding: 1.25rem 0;
-  color: var(--mndw-text-subtle);
-  font-size: 0.875rem;
-  text-align: center;
 }
 
 .mndw-floating-panel__deps {
@@ -687,6 +637,10 @@ body {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.mndw-order-overlay {
+  width: min(420px, calc(100vw - 32px));
 }
 
 .mndw-order-card {

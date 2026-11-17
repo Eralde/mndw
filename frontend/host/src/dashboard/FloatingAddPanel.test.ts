@@ -39,27 +39,27 @@ interface PanelHandles {
   component: ReturnType<typeof mount>;
   target: HTMLElement;
   onAddWidget: ReturnType<typeof vi.fn>;
-  onClose: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
 }
 
 type MndwButtonHost = HTMLElement & {disabled: boolean};
 
-function mountPanel(open = true): PanelHandles {
+function mountPanel(): PanelHandles {
   const target = document.createElement('div');
 
   document.body.appendChild(target);
 
   const onAddWidget = vi.fn();
-  const onClose = vi.fn();
+  const close = vi.fn();
   const component = mount(FloatingAddPanel, {
     target,
-    props: {open, onAddWidget, onClose},
+    props: {onAddWidget, close},
     context: createHostServicesContext({...createHostServices(), registry: pluginRegistry}),
   });
 
   flushSync();
 
-  return {component, target, onAddWidget, onClose};
+  return {component, target, onAddWidget, close};
 }
 
 function widgetButtons(target: HTMLElement): MndwButtonHost[] {
@@ -87,15 +87,6 @@ describe('FloatingAddPanel', () => {
     vi.clearAllMocks();
   });
 
-  it('renders nothing while closed', () => {
-    const {component, target} = mountPanel(false);
-
-    expect(target.querySelector('.mndw-floating-panel')).toBeNull();
-
-    void unmount(component);
-    target.remove();
-  });
-
   it('lists widgets sorted by label then name', () => {
     const {component, target} = mountPanel();
     const labels = widgetButtons(target).map((btn) => btn.textContent?.trim());
@@ -107,16 +98,14 @@ describe('FloatingAddPanel', () => {
     target.remove();
   });
 
-  it('passes the canonical plugin name to onAddWidget and allows repeated adds', () => {
-    const {component, target, onAddWidget} = mountPanel();
+  it('passes the canonical plugin name to onAddWidget and closes after adding', () => {
+    const {component, target, onAddWidget, close} = mountPanel();
     const [firstStatus] = widgetButtons(target);
 
     firstStatus.click();
-    firstStatus.click();
 
-    expect(onAddWidget).toHaveBeenCalledTimes(2);
-    expect(onAddWidget).toHaveBeenNthCalledWith(1, 'alpha-status');
-    expect(onAddWidget).toHaveBeenNthCalledWith(2, 'alpha-status');
+    expect(onAddWidget).toHaveBeenCalledWith('alpha-status');
+    expect(close).toHaveBeenCalledWith(undefined);
 
     void unmount(component);
     target.remove();
@@ -144,80 +133,12 @@ describe('FloatingAddPanel', () => {
     void unmount(second.component);
   });
 
-  it('keeps focus inside the open panel', () => {
-    const outside = document.createElement('button');
-
-    document.body.appendChild(outside);
-
-    const {component, target} = mountPanel(true);
-    const dialog = target.querySelector<HTMLElement>('[role="dialog"]');
-
-    outside.focus();
-
-    expect(dialog?.contains(document.activeElement)).toBe(true);
-    void unmount(component);
-  });
-
-  it('focuses the first widget button when opened', () => {
-    const {component, target} = mountPanel();
-
-    expect(document.activeElement).toBe(widgetButtons(target)[0]);
-
-    void unmount(component);
-    target.remove();
-  });
-
-  it('falls back to the close button when there are no widgets', () => {
+  it('shows the shared compact empty state when no widgets are available', () => {
     vi.mocked(pluginRegistry).getWidgets.mockReturnValue([]);
 
     const {component, target} = mountPanel();
 
-    expect(document.activeElement).toBe(target.querySelector('.mndw-floating-panel__close'));
-
-    void unmount(component);
-    target.remove();
-  });
-
-  it('closes on backdrop click', () => {
-    const {component, target, onClose} = mountPanel();
-
-    target.querySelector<HTMLElement>('.mndw-floating-panel-backdrop')?.click();
-
-    expect(onClose).toHaveBeenCalledTimes(1);
-
-    void unmount(component);
-    target.remove();
-  });
-
-  it('does not close when the dialog body is clicked', () => {
-    const {component, target, onClose} = mountPanel();
-
-    target.querySelector<HTMLElement>('.mndw-floating-panel')?.click();
-
-    expect(onClose).not.toHaveBeenCalled();
-
-    void unmount(component);
-    target.remove();
-  });
-
-  it('closes on Escape', () => {
-    const {component, target, onClose} = mountPanel();
-    const panel = target.querySelector<HTMLElement>('.mndw-floating-panel');
-
-    panel?.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
-
-    expect(onClose).toHaveBeenCalledTimes(1);
-
-    void unmount(component);
-    target.remove();
-  });
-
-  it('shows an empty message when no widgets are available', () => {
-    vi.mocked(pluginRegistry).getWidgets.mockReturnValue([]);
-
-    const {component, target} = mountPanel();
-
-    expect(target.querySelector('.mndw-floating-panel__empty')?.textContent).toContain(
+    expect(target.querySelector('.mndw-empty-state--compact')?.textContent).toContain(
       'No widgets available',
     );
 

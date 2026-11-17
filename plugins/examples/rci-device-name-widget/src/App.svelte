@@ -177,12 +177,7 @@ onDestroy(() => {
 });
 </script>
 
-<section
-  class="device-description"
-  aria-labelledby="device-description-title"
->
-  <h2 id="device-description-title">{$translator.t('title')}</h2>
-
+<section class="device-description">
   <label for="device-description-input">{$translator.t('field.label')}</label>
   <input
     id="device-description-input"
@@ -297,14 +292,8 @@ onDestroy(() => {
   font-family: var(--mndw-font-sans);
 }
 
-h2,
 p {
   margin: 0;
-}
-
-h2 {
-  font-size: var(--mndw-text-lg);
-  font-weight: var(--mndw-weight-semibold);
 }
 
 label {

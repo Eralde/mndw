@@ -6,7 +6,6 @@ import {flushSync, mount, unmount} from 'svelte';
 import MobileOrderOverlay from './MobileOrderOverlay.svelte';
 
 type MndwButtonHost = HTMLElement & {disabled: boolean};
-import MobileOrderOverlayTestHost from './MobileOrderOverlayTestHost.svelte';
 
 const CARDS = [
   {id: 'widget-clock:1', label: 'Clock'},
@@ -14,44 +13,21 @@ const CARDS = [
   {id: 'widget-traffic:2', label: 'TX/RX Traffic 2'},
 ];
 
-interface TestHost {
-  close: () => void;
-  reopen: (cards: {id: string; label: string}[]) => void;
-}
-
-function mountOverlay(
-  props: Partial<{open: boolean; onCommit: (order: string[]) => void; onClose: () => void}> = {},
-) {
-  const onCommit = props.onCommit ?? vi.fn();
-  const onClose = props.onClose ?? vi.fn();
+function mountOverlay(cards = CARDS) {
   const target = document.createElement('div');
+  const onCommit = vi.fn<(order: string[]) => void>();
+  const close = vi.fn();
 
   document.body.appendChild(target);
 
   const component = mount(MobileOrderOverlay, {
     target,
-    props: {open: props.open ?? true, cards: CARDS, onCommit, onClose},
+    props: {cards, onCommit, close},
   });
 
   flushSync();
 
-  return {component, target, onCommit};
-}
-
-function mountTestHost() {
-  const onCommit = vi.fn<(order: string[]) => void>();
-  const target = document.createElement('div');
-
-  document.body.appendChild(target);
-
-  const component = mount(MobileOrderOverlayTestHost, {
-    target,
-    props: {cards: CARDS, onCommit},
-  }) as unknown as TestHost;
-
-  flushSync();
-
-  return {component, target, onCommit};
+  return {component, target, onCommit, close};
 }
 
 const cardLabels = (target: HTMLElement): string[] =>
@@ -74,30 +50,24 @@ describe('MobileOrderOverlay', () => {
     void unmount(component);
   });
 
-  it('keeps focus inside the open overlay', () => {
-    const outside = document.createElement('button');
-
-    document.body.appendChild(outside);
-
-    const {component, target} = mountOverlay({open: true});
-
-    outside.focus();
-
-    expect(target.querySelector('[role="dialog"]')?.contains(document.activeElement)).toBe(true);
-    void unmount(component);
-    outside.remove();
-  });
-
   it('move-down reorders the draft without committing until Save', () => {
-    const {component, target, onCommit} = mountOverlay();
+    const {component, target, onCommit, close} = mountOverlay();
 
-    target
-      .querySelectorAll<HTMLElement>('[aria-label="Move Clock down"]')[0]
-      ?.click();
+    target.querySelectorAll<HTMLElement>('[aria-label="Move Clock down"]')[0]?.click();
     flushSync();
 
     expect(cardLabels(target)).toEqual(['TX/RX Traffic 1', 'Clock', 'TX/RX Traffic 2']);
     expect(onCommit).not.toHaveBeenCalled();
+
+    const saveButton = [...target.querySelectorAll('mndw-button')].find((button) =>
+      button.textContent?.trim() === 'Save'
+    );
+
+    saveButton?.click();
+    flushSync();
+
+    expect(onCommit).toHaveBeenCalledWith(['widget-traffic:1', 'widget-clock:1', 'widget-traffic:2']);
+    expect(close).toHaveBeenCalledWith(undefined);
 
     void unmount(component);
   });
@@ -111,77 +81,6 @@ describe('MobileOrderOverlay', () => {
     expect(downs[downs.length - 1]?.disabled).toBe(true);
 
     void unmount(component);
-  });
-});
-
-describe('MobileOrderOverlay save behavior', () => {
-  it.each([
-    [
-      'close button',
-      (target: HTMLElement) => target.querySelector<HTMLElement>('.mndw-floating-panel__close')?.click(),
-    ],
-    ['backdrop', (target: HTMLElement) => target.querySelector<HTMLElement>('.mndw-floating-panel-backdrop')?.click()],
-    ['Escape', (target: HTMLElement) =>
-      target.querySelector<HTMLElement>('.mndw-floating-panel')?.dispatchEvent(
-        new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}),
-      )],
-  ])('discards draft changes on %s', (_path, close) => {
-    const {component, target, onCommit} = mountTestHost();
-
-    target.querySelectorAll<HTMLElement>('[aria-label="Move Clock down"]')[0]?.click();
-    flushSync();
-    close(target);
-    flushSync();
-
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(target.querySelector('[role="dialog"]')).toBeNull();
-
-    void unmount(component);
-  });
-
-  it('applies the draft order and closes only when Save is pressed', () => {
-    const {component, target, onCommit} = mountTestHost();
-
-    target.querySelectorAll<HTMLElement>('[aria-label="Move Clock down"]')[0]?.click();
-    flushSync();
-
-    const saveButton = [...target.querySelectorAll('mndw-button')].find((button) =>
-      button.textContent?.trim() === 'Save'
-    );
-
-    expect(saveButton).not.toBeNull();
-    saveButton?.click();
-    flushSync();
-
-    expect(onCommit).toHaveBeenCalledWith(['widget-traffic:1', 'widget-clock:1', 'widget-traffic:2']);
-    expect(target.querySelector('[role="dialog"]')).toBeNull();
-
-    void unmount(component);
-  });
-});
-
-describe('MobileOrderOverlay lifecycle', () => {
-  it('reopening refreshes the draft from the current cards prop', () => {
-    const onCommit = vi.fn();
-    const target = document.createElement('div');
-
-    document.body.appendChild(target);
-
-    const host = mount(MobileOrderOverlayTestHost, {
-      target,
-      props: {cards: CARDS, onCommit},
-    }) as unknown as TestHost;
-
-    flushSync();
-
-    host.close();
-    flushSync();
-    host.reopen([CARDS[1], CARDS[0], CARDS[2]]);
-    flushSync();
-
-    expect(cardLabels(target)).toEqual(['TX/RX Traffic 1', 'Clock', 'TX/RX Traffic 2']);
-
-    void unmount(host);
   });
 
   it('renders shared arrow icons on the move buttons', async () => {

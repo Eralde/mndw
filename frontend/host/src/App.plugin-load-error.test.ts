@@ -7,7 +7,7 @@ import {loadPlugins} from './runtime/plugin-loader.js';
 import type {PluginListEntry} from './runtime/plugin-types.js';
 import {uiOverlayService} from './services/overlay/ui-overlay.js';
 import {appState, beginAuthRun, getAuthRunGeneration, resetToLogin} from './state/app.svelte.js';
-import {createHostServices, type HostEnv} from './host-services.js';
+import {type HostEnv, createHostServices} from './host-services.js';
 import {appRouter, createAppRouter} from './router/create-app-router.js';
 import {pluginRegistry} from './runtime/plugin-registry.js';
 import App from './App.svelte';
@@ -48,7 +48,7 @@ function render(withRouter = false, env: HostEnv = {}): void {
 type RetryButton = HTMLElement & {disabled: boolean};
 
 function retryButton(root: ParentNode): RetryButton | null {
-  return root.querySelector('.mndw-plugin-load-alert mndw-button') as RetryButton | null;
+  return root.querySelector<RetryButton>('.mndw-plugin-load-alert mndw-button');
 }
 
 beforeAll(() => {
@@ -77,7 +77,7 @@ afterEach(() => {
 
 describe('plugin list failure alert', () => {
   it.each([
-    ['en', "Couldn't load plugins.", 'Retry'],
+    ['en', 'Couldn\'t load plugins.', 'Retry'],
     ['ru', 'Не удалось загрузить плагины.', 'Повторить'],
   ])('renders localized alert in %s', async (locale, message, retry) => {
     appState.locale = locale;
@@ -98,13 +98,14 @@ describe('plugin list failure alert', () => {
       appState.authInitInFlight = true;
 
       await loadPlugins({
-        fetchList: () => new Promise((resolve) => {
-          finishList = resolve;
-        }),
+        fetchList: () =>
+          new Promise((resolve) => {
+            finishList = resolve;
+          }),
         registry: retryServices.registry,
         catalogService: retryServices.catalog,
         getLocale: () => retryServices.locale.getLocale(),
-        importModule: async () => ({createInstance: () => ({unmount() {}})}),
+        importModule: () => Promise.resolve({createInstance: () => ({unmount() {}})}),
         loadStylesheet: async () => {},
         checkVersions: () => [],
       });
@@ -159,7 +160,7 @@ describe('plugin list failure alert', () => {
       expect(target.querySelector('.mndw-dashboard-page')).not.toBeNull();
     });
 
-    vi.mocked(initAuthenticated).mockImplementation(async (retryServices) => {
+    vi.mocked(initAuthenticated).mockImplementation((retryServices) => {
       retryServices.registry.register({
         entry: {
           name: 'retry-widget',
@@ -195,13 +196,13 @@ describe('plugin list failure alert', () => {
       createAppRouter(retryServices.registry);
       appState.pluginLoadError = null;
 
-      return getAuthRunGeneration();
+      return Promise.resolve(getAuthRunGeneration());
     });
 
     retryButton(target)?.click();
 
     await vi.waitFor(() => {
-      expect(target.querySelector('.mndw-dashboard__empty mndw-button')?.textContent)
+      expect(target.querySelector('.mndw-empty-state mndw-button')?.textContent)
         .toContain('Add Widget');
       expect(target.querySelector('a[href="/retry-page"]')?.textContent)
         .toContain('Retry page');
@@ -217,7 +218,7 @@ describe('plugin list failure alert', () => {
 
     await appRouter.navigate('/', {replace: true});
 
-    target.querySelector<HTMLElement>('.mndw-dashboard__empty mndw-button')?.click();
+    target.querySelector<HTMLElement>('.mndw-empty-state mndw-button')?.click();
 
     await vi.waitFor(() => {
       expect(target.querySelector('.mndw-floating-panel')?.textContent)
@@ -229,31 +230,33 @@ describe('plugin list failure alert', () => {
     const actual = await vi.importActual<typeof import('./services/init-auth.js')>('./services/init-auth.js');
     const createPageInstance = vi.fn(() => ({unmount() {}}));
 
-    vi.mocked(initAuthenticated).mockImplementation(async (retryServices, deps) =>
+    vi.mocked(initAuthenticated).mockImplementation((retryServices, deps) =>
       actual.initAuthenticated(retryServices, {
         ...deps,
         loadPlugins: async (loaderDeps) => {
           await loadPlugins({
             ...loaderDeps,
-            fetchList: async () => [{
-              name: 'retry-page',
-              type: 'page',
-              version: '1.0.0',
-              label: 'Retry page',
-              entry: 'index.js',
-              source: 'builtin',
-              approval: 'approved',
-              enabled: true,
-              depsStatus: 'ready',
-              route: '/my-page',
-              backend: {routes: {}},
-            } as PluginListEntry],
-            importModule: async () => ({createInstance: createPageInstance}),
+            fetchList: () =>
+              Promise.resolve([{
+                name: 'retry-page',
+                type: 'page',
+                version: '1.0.0',
+                label: 'Retry page',
+                entry: 'index.js',
+                source: 'builtin',
+                approval: 'approved',
+                enabled: true,
+                depsStatus: 'ready',
+                route: '/my-page',
+                backend: {routes: {}},
+              } as PluginListEntry]),
+            importModule: () => Promise.resolve({createInstance: createPageInstance}),
             loadStylesheet: async () => {},
             checkVersions: () => [],
           });
         },
-      }));
+      })
+    );
 
     // Deep link to a page plugin while the list is down: the router falls back to the dashboard.
     globalThis.history.replaceState({}, '', '/my-page');
@@ -360,8 +363,8 @@ describe('plugin list failure alert', () => {
           : async (loaderDeps) => {
             await loadPlugins({
               ...loaderDeps,
-              fetchList: async () => [],
-              importModule: async () => ({createInstance: () => ({unmount() {}})}),
+              fetchList: () => Promise.resolve([]),
+              importModule: () => Promise.resolve({createInstance: () => ({unmount() {}})}),
               loadStylesheet: async () => {},
               checkVersions: () => [],
             });

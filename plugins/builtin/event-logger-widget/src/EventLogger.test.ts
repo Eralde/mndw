@@ -1,6 +1,8 @@
 import {flushSync, mount, unmount} from 'svelte';
-import {expect, it} from 'vitest';
+import {expect, it, vi} from 'vitest';
+import type {PluginContext} from '@mndw/sdk';
 import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
+import {createInstance} from './index.js';
 import EventLogger from './EventLogger.svelte';
 import messages from '../i18n/en.json';
 import ruMessages from '../i18n/ru.json';
@@ -26,6 +28,29 @@ it('translates visible accessibility labels', async () => {
     expect(target.querySelector('mndw-input')?.getAttribute('aria-label')).toBe('Фильтр событий');
   } finally {
     await unmount(app);
+    fixture.unmount();
+    target.remove();
+  }
+});
+
+it('updates the host widget title when the locale changes', async () => {
+  const i18n = createTestI18n(messages);
+  const fixture = createTestPluginContext({events: true, i18n});
+  const setTileTitle = vi.fn();
+  const context = Object.assign(Object.create(fixture.context), {setTileTitle}) as PluginContext;
+  const target = document.createElement('div');
+  const instance = createInstance(target, context);
+
+  try {
+    flushSync();
+    expect(setTileTitle).toHaveBeenLastCalledWith(messages.title);
+    expect(target.querySelector('h2')).toBeNull();
+    i18n.setLocale('ru', ruMessages);
+    flushSync();
+
+    expect(setTileTitle).toHaveBeenLastCalledWith(ruMessages.title);
+  } finally {
+    await instance.unmount();
     fixture.unmount();
     target.remove();
   }

@@ -9,7 +9,13 @@ import {createInstance} from './index.js';
 const contextFor = (
   i18n: ReturnType<typeof createTestI18n>,
   backend?: Partial<BackendClient>,
-): PluginContext => createTestPluginContext({i18n, backend: backend as BackendClient | undefined}).context;
+  kind: 'widget' | 'page' = 'page',
+  setTileTitle = vi.fn(),
+): PluginContext => {
+  const fixture = createTestPluginContext({i18n, backend: backend as BackendClient | undefined, kind});
+
+  return Object.assign(Object.create(fixture.context), {setTileTitle}) as PluginContext;
+};
 
 describe('generated Go locale reactivity', () => {
   it('updates visible control and result without remounting', () => {
@@ -23,6 +29,7 @@ describe('generated Go locale reactivity', () => {
     const result = root.querySelector('[data-testid="l10n-result"]');
 
     expect(title?.textContent).toBe(en.l10n.title);
+    expect(root.querySelector('section')?.getAttribute('aria-labelledby')).toBe(title?.id);
     expect(button?.textContent).toBe(en.l10n.button);
     expect(result?.textContent?.trim()).toBe(en.l10n.result);
     i18n.setLocale('ru', ru);
@@ -30,6 +37,23 @@ describe('generated Go locale reactivity', () => {
     expect(title?.textContent).toBe(ru.l10n.title);
     expect(button?.textContent).toBe(ru.l10n.button);
     expect(result?.textContent?.trim()).toBe(ru.l10n.result);
+    instance.unmount();
+  });
+
+  it('sets a translated host title for widgets without drawing an internal heading', () => {
+    const en = {l10n: {title: 'Plugin title', button: 'Run', result: 'Result', error: 'Error'}};
+    const ru = {l10n: {title: 'Заголовок', button: 'Запустить', result: 'Результат', error: 'Ошибка'}};
+    const i18n = createTestI18n(en, 'en');
+    const setTileTitle = vi.fn();
+    const root = document.createElement('div');
+    const instance = createInstance(root, contextFor(i18n, undefined, 'widget', setTileTitle));
+
+    expect(setTileTitle).toHaveBeenLastCalledWith(en.l10n.title);
+    expect(root.querySelector('h2')).toBeNull();
+    expect(root.firstElementChild?.hasAttribute('aria-labelledby')).toBe(false);
+    i18n.setLocale('ru', ru);
+
+    expect(setTileTitle).toHaveBeenLastCalledWith(ru.l10n.title);
     instance.unmount();
   });
 

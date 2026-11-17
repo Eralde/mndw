@@ -4,13 +4,17 @@ import {bindLocale} from '@mndw/sdk/bind-locale';
 import './index.css';
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
+  const rootTag = ctx.kind === 'page' ? 'section' : 'div';
+  const heading = ctx.kind === 'page' ? '<h2 id="plugin-title" class="mndw-__MNDW_NAME____title"></h2>' : '';
+  const labelledBy = ctx.kind === 'page' ? 'aria-labelledby="plugin-title"' : '';
+
   container.innerHTML = `
-    <div class="__MNDW_NAME__">
-      <h2 class="mndw-__MNDW_NAME____title"></h2>
+    <${rootTag} class="__MNDW_NAME__" ${labelledBy}>
+      ${heading}
       <p class="mndw-__MNDW_NAME____device">Device: <span class="mndw-__MNDW_NAME____device-name"></span></p>
       <mndw-button class="mndw-__MNDW_NAME____button" variant="primary" type="button"></mndw-button>
       <p class="mndw-__MNDW_NAME____result" data-testid="l10n-result"></p>
-    </div>
+    </${rootTag}>
   `;
 
   const title = container.querySelector('.mndw-__MNDW_NAME____title');
@@ -25,6 +29,10 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
   const render = (): void => {
     if (title !== null) {
       title.textContent = ctx.i18n.t('l10n.title');
+    }
+
+    if (ctx.kind === 'widget') {
+      ctx.setTileTitle?.(ctx.i18n.t('l10n.title'));
     }
 
     if (deviceEl !== null) {

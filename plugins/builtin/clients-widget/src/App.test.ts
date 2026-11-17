@@ -24,9 +24,12 @@ let storageGet: ReturnType<typeof vi.fn>;
 let storageSet: ReturnType<typeof vi.fn>;
 let overlayOpen: ReturnType<typeof vi.fn>;
 let warn: ReturnType<typeof vi.spyOn>;
+let setTileTitle: ReturnType<typeof vi.fn>;
 
 function createContext(i18n = createTestI18n(enCatalog)): PluginContext {
   return {
+    kind: 'widget',
+    setTileTitle,
     rciManager: {queue} as unknown as PluginRciManager,
     storage: {
       get: storageGet,
@@ -118,6 +121,7 @@ beforeEach(() => {
     return Promise.resolve();
   });
   overlayOpen = vi.fn();
+  setTileTitle = vi.fn();
   warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
   vi.mocked(openSettingsDialog).mockClear();
 });
@@ -136,8 +140,8 @@ describe('initial render', () => {
     mountWidget();
 
     expect(text()).toContain('Loading clients…');
-    expect(text()).toContain('Clients');
-    expect(text()).not.toMatch(/Clients \(/);
+    expect(host.querySelector('.clients-widget__header > span')).toBeNull();
+    expect(setTileTitle).toHaveBeenLastCalledWith('Clients');
   });
 
   it('keeps header visible while widget content scrolls', () => {
@@ -165,7 +169,7 @@ describe('initial render', () => {
 });
 
 describe('locale reactivity', () => {
-  it('updates visible title and offline label without remounting', async () => {
+  it('updates the host tile title and offline label without remounting', async () => {
     const i18n = createTestI18n({
       'title': 'Clients EN',
       'show-offline': 'Offline EN',
@@ -173,14 +177,15 @@ describe('locale reactivity', () => {
 
     mountWidget(i18n);
 
-    expect(text()).toContain('Clients EN');
+    expect(setTileTitle).toHaveBeenLastCalledWith('Clients EN');
+    expect(host.querySelector('.clients-widget__header > span')).toBeNull();
     i18n.setLocale('ru', {
       'title': 'Клиенты RU',
       'show-offline': 'Не в сети RU',
     });
     await nextTick();
 
-    expect(text()).toContain('Клиенты RU');
+    expect(setTileTitle).toHaveBeenLastCalledWith('Клиенты RU');
     expect(text()).toContain('Не в сети RU');
   });
 });
@@ -191,7 +196,7 @@ describe('successful load', () => {
     await flush();
 
     expect(rowNames()).toEqual(['Client A']);
-    expect(text()).toContain('Clients (1)');
+    expect(text()).toContain('Client A');
   });
 
   it('excludes mesh infrastructure', async () => {
@@ -229,7 +234,7 @@ describe('show offline', () => {
     await flush();
 
     expect(rowNames()).toEqual(['Client A', 'Former Client A', 'Former Mesh Extender B']);
-    expect(text()).toContain('Clients (3)');
+    expect(host.querySelector('.clients-widget__header > span')).toBeNull();
     expect(queue).toHaveBeenCalledTimes(1);
   });
 
@@ -291,7 +296,7 @@ describe('errors', () => {
     await flush();
 
     expect(rowNames()).toEqual(['Client A']);
-    expect(text()).toContain('Clients (1)');
+    expect(text()).toContain('Client A');
     expect(text()).not.toContain('Failed to show device list');
 
     const indicator = host.querySelector<HTMLElement>('.clients-widget__stale');

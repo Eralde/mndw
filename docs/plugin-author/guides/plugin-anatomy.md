@@ -29,7 +29,9 @@ browser assets.
   `palette$`; `i18n` provides localized messages. See the [frontend lifecycle guide](/guides/frontend-lifecycle).
 - `telemetry` fetches projected data; `events` is optional and appears when the manifest declares event permissions.
 - `overlay` presents modals and drawers, and `createTicker()` creates a host-managed ticker.
-- `pageRoute` provides navigation within page plugins; `setTileTitle` sets a widget's host tile title.
+- `pageRoute` provides navigation within page plugins. The host draws each widget's tile title; set its translated
+  value with `ctx.setTileTitle?.(ctx.i18n.t('title'))` and update it when the locale changes. Do not draw a second
+  widget title inside the plugin. Pages should keep their own visible `<h2>` heading.
 
 The SDK reference documents the complete [`PluginContext`](/api/sdk#plugincontext) contract.
 

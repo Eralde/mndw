@@ -160,13 +160,20 @@ Replace all of `src/index.ts`:
 ```ts
 import {mount, unmount} from 'svelte';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
+import {bindLocale} from '@mndw/sdk/bind-locale';
 import App from './App.svelte';
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
   const app = mount(App, {target: container, props: {backend: ctx.backend, i18n: ctx.i18n, signal: ctx.signal}});
+  const unsubscribeLocale = bindLocale(ctx.i18n, () => {
+    if (ctx.kind === 'widget') {
+      ctx.setTileTitle?.(ctx.i18n.t('title'));
+    }
+  });
 
   return {
     unmount(): void {
+      unsubscribeLocale();
       void unmount(app);
     },
   };
@@ -175,7 +182,8 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
 
 The host calls `createInstance` with a container and `PluginContext`. Pass only
 the services the component needs, including `ctx.signal` for request cancellation. When the host removes the widget,
-`unmount()` delegates to Svelte so component cleanup runs too.
+`setTileTitle` updates the host's widget title on mount and locale changes. `unmount()` removes the locale listener and
+delegates to Svelte so component cleanup runs too.
 
 ## 6. Build the greeting component
 
@@ -252,9 +260,7 @@ through live regions.
 ```svelte
 <section
   class="hello-widget"
-  aria-labelledby="hello-title"
 >
-  <h2 id="hello-title">{$translator.t('title')}</h2>
   <mndw-button
     variant="primary"
     type="button"

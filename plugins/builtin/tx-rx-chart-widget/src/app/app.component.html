@@ -27,7 +27,6 @@
         <div class="loading">{{ t('status.loading-interfaces') }}</div>
     } @else if (!selectedInterface()) {
         <div class="empty-state">
-            <h3 class="empty-state__heading">{{ t('title') }}</h3>
             <p class="empty-state__subtitle">{{ t('status.select-interface') }}</p>
             <mndw-select
                 [label]="t('field.interface')"

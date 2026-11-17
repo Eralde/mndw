@@ -15,6 +15,8 @@ export function openHostModal<Result, Props extends HostModalProps<Result>>(
     props: Omit<Props, 'close'>;
     showCloseButton?: boolean;
     closeOnEscape?: boolean;
+    closeOnOutsideClick?: boolean;
+    context?: Map<unknown, unknown>;
   },
 ): OverlaySession<Result> {
   return hostService.open<Result>({
@@ -22,6 +24,7 @@ export function openHostModal<Result, Props extends HostModalProps<Result>>(
     title: options.title,
     showCloseButton: options.showCloseButton ?? true,
     closeOnEscape: options.closeOnEscape ?? true,
+    closeOnOutsideClick: options.closeOnOutsideClick ?? false,
     mount(element, session) {
       let instance: ReturnType<typeof mount> | undefined;
       let finishMount: () => void = () => {};
@@ -44,7 +47,8 @@ export function openHostModal<Result, Props extends HostModalProps<Result>>(
       });
 
       try {
-        instance = mount(component, {target: element, props});
+        instance = mount(component, {target: element, props,
+          ...(options.context === undefined ? {} : {context: options.context})});
       } finally {
         finishMount();
       }

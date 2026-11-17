@@ -2,6 +2,7 @@
 import {computed, onMounted, onUnmounted, provide, ref} from 'vue';
 import type {PluginContext, ProjectedSeries, ProjectedSnapshot, ProjectRange} from '@mndw/sdk';
 import {historyStatus} from '@mndw/sdk';
+import {bindLocale} from '@mndw/sdk/bind-locale';
 import {useTranslator} from '@mndw/sdk/vue';
 import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 import TelemetryNote from './components/TelemetryNote.vue';
@@ -10,6 +11,11 @@ const props = defineProps<{ctx: PluginContext}>();
 provide('mndw:plugin-i18n', props.ctx.i18n);
 const translator = useTranslator(props.ctx.i18n);
 const t = (key: string, values?: Record<string, unknown>): string => translator.t(key, values);
+const unsubscribeLocale = bindLocale(props.ctx.i18n, () => {
+  if (props.ctx.kind === 'widget') {
+    props.ctx.setTileTitle?.(t('title'));
+  }
+});
 
 const RANGES: readonly {key: ProjectRange; label: string}[] = [
   {key: '1h', label: 'range-1h'},
@@ -170,7 +176,7 @@ const retry = (): void => {
   refreshLoop?.start();
 };
 
-// Shown beside the title so a chart of non-current history stays visible.
+// Keep this status visible when the chart shows non-current history.
 const historyStatusLabel = computed((): string | null => {
   const status = historyStatus(activeSnapshot.value?.clock);
 
@@ -209,6 +215,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  unsubscribeLocale();
   gatheringSubscription?.unsubscribe();
   gatheringSubscription = null;
   stopLoop();
@@ -217,12 +224,6 @@ onUnmounted(() => {
 
 <template>
   <div class="app">
-    <header class="app__header">
-      <span>{{ t('title') }}</span>
-      <span v-if="historyStatusLabel !== null" class="app__history-status" data-testid="history-status">
-        {{ historyStatusLabel }}
-      </span>
-    </header>
     <div class="range-scroll">
       <mndw-segmented :label="t('history-range')" :value.prop="selectedRange" @mndwchange="onRangeChange">
         <mndw-segment v-for="range in RANGES" :key="range.key" :value="range.key">
@@ -246,6 +247,9 @@ onUnmounted(() => {
       :last-point-time="lastPointTime"
       :navigation="props.ctx.navigation"
     />
+    <span v-if="historyStatusLabel !== null" class="app__history-status" data-testid="history-status">
+      {{ historyStatusLabel }}
+    </span>
     <template v-if="!sessionRequired">
       <div v-if="loading && !error && (temp === null || !temp.supported)" class="app__message" role="status">
         {{ t('loading') }}
@@ -260,7 +264,9 @@ onUnmounted(() => {
           @click="retry"
         >{{ t('stale.retry') }}</mndw-button>
       </div>
-      <div v-else-if="!loading && temp && !temp.supported" class="app__message">{{ t('unsupported') }}</div>
+      <div v-else-if="!loading && temp && !temp.supported" class="app__message" role="status">
+        {{ t('unsupported') }}
+      </div>
       <template v-else-if="temp">
         <div class="chart-wrapper" :class="{'chart-wrapper--loading': loading}" :aria-busy="loading">
           <span v-if="loading" class="app__sr-only" role="status">{{ t('loading') }}</span>
@@ -293,15 +299,6 @@ onUnmounted(() => {
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
   font-size: 0.8125rem;
-}
-
-.app__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-  color: var(--mndw-text-subtle);
-  font-weight: 600;
 }
 
 .app__history-status {

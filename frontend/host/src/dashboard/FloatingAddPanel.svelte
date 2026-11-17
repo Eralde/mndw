@@ -1,102 +1,60 @@
 <script lang="ts">
-import {focusTrap} from '../components/focus-trap/focus-trap-action.js';
+import EmptyState from '../components/EmptyState.svelte';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {hostT} from '../services/host-i18n.svelte.js';
-import {appState} from '../state/app.svelte.js';
 import {getHostServices} from '../host-services-context.js';
 
 interface Props {
-  open: boolean;
   onAddWidget: (pluginName: string) => void;
-  onClose: () => void;
+  close: (result: undefined) => void;
 }
 
-let {open, onAddWidget, onClose}: Props = $props();
-const services = getHostServices();
-const registry = services.registry;
+let {onAddWidget, close}: Props = $props();
+const registry = getHostServices().registry;
 
 // Copy before sorting so the registry's own ordering is never mutated. Sort by label,
 // then name, matching the sidebar/router page ordering.
 let availableWidgets = $derived.by(() => {
   return [...registry.getWidgets()].sort(
-    (a, b) => {
-      return a.entry.label.localeCompare(b.entry.label)
-        || a.entry.name.localeCompare(b.entry.name);
-    },
+    (a, b) =>
+      a.entry.label.localeCompare(b.entry.label)
+      || a.entry.name.localeCompare(b.entry.name),
   );
 });
 
-let buttonRefs: HTMLElement[] = [];
-let panelElement: HTMLElement | undefined = $state();
-
-function handleKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') {
-    onClose();
-  }
+function addWidget(pluginName: string): void {
+  onAddWidget(pluginName);
+  close(undefined);
 }
 </script>
 
-{#if open}
-  <div
-    class="mndw-floating-panel-backdrop"
-    onclick={onClose}
-    role="presentation"
-  >
-    <div
-      class="mndw-floating-panel"
-      bind:this={panelElement}
-      onclick={(event) => event.stopPropagation()}
-      onkeydown={handleKeydown}
-      role="dialog"
-      tabindex="-1"
-      use:focusTrap={{
-        initialFocus: () =>
-          buttonRefs[0]
-            ?? panelElement?.querySelector<HTMLElement>(
-              '.mndw-floating-panel__close',
-            ) ?? null,
-      }}
-      aria-modal="true"
-      aria-labelledby="add-widget-title"
-      data-locale={appState.locale}
-    >
-      <div class="mndw-floating-panel__header">
-        <h3 id="add-widget-title">{hostT('dashboard.add-widget')}</h3>
-        <mndw-button
-          variant="ghost"
-          class="mndw-floating-panel__close"
-          onclick={onClose}
-          aria-label={hostT('common.close')}
-        >
-          <mndw-icon name="x"></mndw-icon>
-        </mndw-button>
-      </div>
-      {#if availableWidgets.length === 0}
-        <p class="mndw-floating-panel__empty">
-          {hostT('dashboard.no-widgets')}
-        </p>
-      {:else}
-        {#each availableWidgets as widget, index (widget.entry.name)}
-          {@const deps = getDepsStatus(widget.entry.name)}
-          <mndw-button
-            variant="secondary"
-            bind:this={buttonRefs[index]}
-            onclick={() => onAddWidget(widget.entry.name)}
+<div class="mndw-floating-panel">
+  {#if availableWidgets.length === 0}
+    <EmptyState
+      mode="compact"
+      title={hostT('dashboard.no-widgets')}
+      text={hostT('dashboard.empty-no-plugins')}
+    />
+  {:else}
+    {#each availableWidgets as widget (widget.entry.name)}
+      {@const deps = getDepsStatus(widget.entry.name)}
+      <mndw-button
+        variant="secondary"
+        onclick={() => addWidget(widget.entry.name)}
+      >
+        {widget.entry.label}
+        {#if deps === 'installing'}
+          <span class="mndw-floating-panel__deps">{
+            hostT('dashboard.preparing')
+          }</span>
+        {:else if deps === 'failed'}
+          <span
+            class="mndw-floating-panel__deps mndw-floating-panel__deps--failed"
           >
-            {widget.entry.label}
-            {#if deps === 'installing'}
-              <span class="mndw-floating-panel__deps">
-                {hostT('dashboard.preparing')}</span>
-            {:else if deps === 'failed'}
-              <span
-                class="mndw-floating-panel__deps mndw-floating-panel__deps--failed"
-              >
-                {hostT('dashboard.unavailable')}
-              </span>
-            {/if}
-          </mndw-button>
-        {/each}
-      {/if}
-    </div>
-  </div>
-{/if}
+            {hostT('dashboard.unavailable')}
+          </span>
+        {/if}
+      </mndw-button>
+    {/each}
+  {/if}
+</div>

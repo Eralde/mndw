@@ -139,7 +139,7 @@ describe('TrafficWidget shared controls', () => {
     expect(storage.set).toHaveBeenCalledWith('detail', '3');
   });
 
-  it('updates the visible title when locale changes', async () => {
+  it('updates the host tile title when locale changes without drawing an internal title', async () => {
     const i18n = createTestI18n(enCatalog);
     const queue = vi.fn(() => of({host: []}));
     const storage = {
@@ -149,20 +149,23 @@ describe('TrafficWidget shared controls', () => {
       keys: vi.fn().mockResolvedValue([]),
     } as unknown as PluginStorage;
     const openSettings = vi.fn();
+    const setTileTitle = vi.fn();
 
     host = document.createElement('div');
     document.body.append(host);
     app = mount(TrafficWidget, {
       target: host,
-      props: {rci: fakeRci(queue), storage, openSettings, i18n},
+      props: {rci: fakeRci(queue), storage, openSettings, setTileTitle, i18n},
     });
-    await vi.waitFor(() => {
-      expect(host.querySelector('.empty-state__heading')?.textContent).toBe(enCatalog.title);
-    });
+    await flush();
+
+    expect(setTileTitle).toHaveBeenLastCalledWith(enCatalog.title);
+    expect(host.querySelector('.empty-state__heading')).toBeNull();
 
     i18n.setLocale('ru', ruCatalog);
     flushSync();
 
-    expect(host.querySelector('.empty-state__heading')?.textContent).toBe(ruCatalog.title);
+    expect(setTileTitle).toHaveBeenLastCalledWith(ruCatalog.title);
+    expect(host.querySelector('.empty-state__heading')).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, provide, ref} from 'vue';
 import {historyStatus} from '@mndw/sdk';
+import {bindLocale} from '@mndw/sdk/bind-locale';
 import type {LoadState, PluginContext, ProjectedSeries, ProjectedSnapshot} from '@mndw/sdk';
 import {useTranslator} from '@mndw/sdk/vue';
 import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
@@ -29,6 +30,11 @@ provide('mndw:plugin-i18n', props.ctx.i18n);
 
 const translator = useTranslator(props.ctx.i18n);
 const t = (key: string, values?: Record<string, unknown>): string => translator.t(key, values);
+const unsubscribeLocale = bindLocale(props.ctx.i18n, () => {
+  if (props.ctx.kind === 'widget') {
+    props.ctx.setTileTitle?.(t('title'));
+  }
+});
 
 const loadState = ref<LoadState<LiveDeviceInfo>>({status: 'loading'});
 const liveHistoryLoading = ref(false);
@@ -445,6 +451,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  unsubscribeLocale();
   mounted = false;
   liveHistoryGeneration += 1;
   refreshLoop?.stop();
@@ -462,7 +469,6 @@ onUnmounted(() => {
 <template>
   <div class="app">
     <header class="app__header">
-      <span>{{ t('title') }}</span>
       <mndw-button variant="ghost" :aria-label="t('settings')" @click="openSettings">
         <mndw-icon name="settings"></mndw-icon>
       </mndw-button>

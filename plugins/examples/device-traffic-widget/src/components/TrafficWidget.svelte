@@ -72,7 +72,7 @@ $effect(() => {
   const name = hosts.find((h) => h.mac === selectedMac)?.name || selectedMac;
 
   if (setTileTitle) {
-    setTileTitle(name);
+    setTileTitle(name || t('title'));
   }
 });
 
@@ -226,7 +226,6 @@ onMount(() => {
     <div class="msg">{t('status.loading')}</div>
   {:else if !selectedMac}
     <div class="empty-state">
-      <h3 class="empty-state__heading">{t('title')}</h3>
       <p class="empty-state__subtitle">{t('status.select-device')}</p>
       <mndw-select
         label={t('field.device')}
@@ -352,13 +351,6 @@ onMount(() => {
   margin: auto;
   padding: 1rem;
   text-align: center;
-}
-
-.empty-state__heading {
-  margin: 0;
-  color: var(--mndw-text);
-  font-weight: 600;
-  font-size: 1rem;
 }
 
 .empty-state__subtitle {

@@ -539,9 +539,7 @@ Append the controls and feedback:
 ```svelte
 <section
   class="device-description"
-  aria-labelledby="device-description-title"
 >
-  <h2 id="device-description-title">{$translator.t('title')}</h2>
 
   <label for="device-description-input">{$translator.t('field.label')}</label>
   <input
@@ -908,9 +906,7 @@ onDestroy(() => {
 
 <section
   class="device-description"
-  aria-labelledby="device-description-title"
 >
-  <h2 id="device-description-title">{$translator.t('title')}</h2>
 
   <label for="device-description-input">{$translator.t('field.label')}</label>
   <input
@@ -1093,13 +1089,20 @@ Replace all of `src/index.ts`:
 ```ts
 import {mount, unmount} from 'svelte';
 import type {PluginContext, PluginInstance} from '@mndw/sdk';
+import {bindLocale} from '@mndw/sdk/bind-locale';
 import App from './App.svelte';
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
   const app = mount(App, {target: container, props: {rci: ctx.rciManager, i18n: ctx.i18n}});
+  const unsubscribeLocale = bindLocale(ctx.i18n, () => {
+    if (ctx.kind === 'widget') {
+      ctx.setTileTitle?.(ctx.i18n.t('title'));
+    }
+  });
 
   return {
     unmount(): void {
+      unsubscribeLocale();
       void unmount(app);
     },
   };
@@ -1107,7 +1110,8 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
 ```
 
 The host owns authentication and transport. The plugin receives its RCI
-manager rather than constructing device URLs or storing credentials.
+manager rather than constructing device URLs or storing credentials. The host
+draws the widget title; `setTileTitle` keeps it translated when locale changes.
 
 ## 7. Check the Save flow
 

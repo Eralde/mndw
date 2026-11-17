@@ -19,6 +19,9 @@ import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
 import {getTileController} from './tile-controller.js';
 import {type WidgetTileHandle} from './widget-mount.js';
 import DashboardPage from './DashboardPage.svelte';
+import OverlayHost from '../components/overlay/OverlayHost.svelte';
+import {defaultOverlayRuntime} from '../services/overlay/overlay-manager.svelte.js';
+import {toast} from '../services/toast/toast.svelte.js';
 
 const disposeWidget = vi.hoisted(() => vi.fn());
 const getNextInstanceId = vi.hoisted(() => vi.fn((name: string) => `${name}:1`));
@@ -97,6 +100,7 @@ interface StoredTile {
 }
 
 let activeComponent: ReturnType<typeof mount> | undefined;
+let activeOverlayHost: ReturnType<typeof mount> | undefined;
 let activeTarget: HTMLElement;
 
 function widgetEntry(
@@ -155,7 +159,7 @@ function setMobile(matches: boolean): void {
 function addWidgetByLabel(target: HTMLElement, label: string): void {
   // Empty dashboard: the CTA lives in the empty state; once tiles exist, the toolbar.
   const addButton = target.querySelector<HTMLElement>('.mndw-dashboard__toolbar mndw-button')
-    ?? target.querySelector<HTMLElement>('.mndw-dashboard__empty mndw-button');
+    ?? target.querySelector<HTMLElement>('.mndw-empty-state mndw-button');
 
   addButton?.click();
   flushSync();
@@ -237,6 +241,7 @@ function mountPage(): void {
     target: activeTarget,
     context: createHostServicesContext(services),
   });
+  activeOverlayHost = mount(OverlayHost, {target: document.body});
 
   flushSync();
 }
@@ -303,6 +308,20 @@ describe('DashboardPage real GridStack persistence characterization', () => {
     if (activeComponent !== undefined) {
       await unmount(activeComponent);
       activeComponent = undefined;
+    }
+
+    for (const layer of [...defaultOverlayRuntime.store.layers]) {
+      layer.close();
+    }
+
+    await vi.waitFor(() => {
+      flushSync();
+      expect(defaultOverlayRuntime.store.layers).toHaveLength(0);
+    });
+
+    if (activeOverlayHost !== undefined) {
+      await unmount(activeOverlayHost);
+      activeOverlayHost = undefined;
     }
 
     registry.clear();
@@ -576,9 +595,13 @@ describe('DashboardPage real GridStack persistence characterization', () => {
     activeTarget.querySelector<HTMLButtonElement>('.mndw-grid-tile__remove-failed')?.click();
     flushSync();
 
-    expect(localStorage.getItem(storageKey)).toBeNull();
+    expect(localStorage.getItem(storageKey)).toBe('settings for failed-placeholder-widget');
     expect(readStoredIds()).toEqual([]);
     expect(getTileController(tile.id)).toBeUndefined();
+
+    toast.dismissKey('dashboard-widget-removal');
+    flushSync();
+    expect(localStorage.getItem(storageKey)).toBeNull();
   });
 
   it('clears storage when a deleted plugin has a dependency placeholder', () => {

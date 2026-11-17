@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 import {flushSync, mount, settled, unmount} from 'svelte';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import type {BackendClient, PluginI18n} from '@mndw/sdk';
+import type {BackendClient, PluginContext, PluginI18n} from '@mndw/sdk';
 import {createTestI18n} from '@mndw/sdk/testing';
 import enCatalog from '../i18n/en.json';
 import ruCatalog from '../i18n/ru.json';
 import PingWidget from './PingWidget.svelte';
+import {createInstance} from './index.js';
 
 interface MockCallOptions {
   body?: unknown;
@@ -167,6 +168,27 @@ describe('PingWidget', () => {
   beforeEach(() => {
     host = document.createElement('div');
     document.body.appendChild(host);
+  });
+
+  it('updates the host widget title when the locale changes', async () => {
+    const changing = changingI18n();
+    const setTileTitle = vi.fn();
+    const context = {
+      kind: 'widget',
+      backend: undefined,
+      i18n: changing.i18n,
+      setTileTitle,
+    } as unknown as PluginContext;
+    const instance = createInstance(host, context);
+
+    flushSync();
+    expect(setTileTitle).toHaveBeenLastCalledWith('Ping Utility');
+    expect(host.querySelector('h2')).toBeNull();
+    changing.setLocale('ru');
+    flushSync();
+
+    expect(setTileTitle).toHaveBeenLastCalledWith('Утилита ping');
+    await instance.unmount();
   });
 
   afterEach(async () => {

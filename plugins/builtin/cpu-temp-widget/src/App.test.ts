@@ -79,7 +79,9 @@ async function flushPromises(): Promise<void> {
   await nextTick();
 }
 
-function mountApp(overrides: {telemetry?: Partial<PluginTelemetry>} = {}): TestPluginContext {
+function mountApp(
+  overrides: {telemetry?: Partial<PluginTelemetry>; setTileTitle?: (title: string) => void} = {},
+): TestPluginContext {
   host = document.createElement('div');
   host.style.height = '190px';
 
@@ -116,7 +118,11 @@ function mountApp(overrides: {telemetry?: Partial<PluginTelemetry>} = {}): TestP
 
   fixture.context.navigation.href = (): string => '/settings/general';
 
-  app = createApp(App, {ctx: fixture.context});
+  const context = Object.assign(Object.create(fixture.context), {
+    setTileTitle: overrides.setTileTitle ?? vi.fn(),
+  }) as TestPluginContext;
+
+  app = createApp(App, {ctx: context});
   app.mount(host);
 
   return fixture;
@@ -458,7 +464,7 @@ describe('App', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(host.querySelector('mndw-line-chart')).toBeNull();
-    expect(host.textContent).toContain('Unsupported');
+    expect(host.querySelector('.app__message[role="status"]')?.textContent).toContain('Unsupported');
   });
 
   it.each([
@@ -569,16 +575,27 @@ describe('App', () => {
     expect(host.querySelector<HTMLAnchorElement>('.telemetry-note a')?.getAttribute('href')).toBe('/settings/general');
   });
 
-  it('updates the visible title after a locale switch', async () => {
-    mountApp();
+  it('updates the host tile title after a locale switch and keeps history status in the body', async () => {
+    const setTileTitle = vi.fn();
 
-    const title = host.querySelector('.app__header > span');
+    mountApp({
+      setTileTitle,
+      telemetry: {
+        fetchProjected: vi.fn().mockResolvedValue({
+          ...supportedSnapshot(1000, 2000),
+          clock: {state: 'unanchored', historyEndMs: 2000, historyCurrent: false, replayPending: false},
+        }),
+      },
+    });
+    await flushPromises();
 
-    expect(title?.textContent).toBe('CPU Temperature');
+    expect(setTileTitle).toHaveBeenLastCalledWith('CPU Temperature');
+    expect(host.querySelector('.app__header')).toBeNull();
+    expect(host.querySelector('[data-testid="history-status"]')).not.toBeNull();
 
     fixture?.context.i18n.setLocale('ru', {title: 'Температура CPU'});
     await nextTick();
 
-    expect(title?.textContent).toBe('Температура CPU');
+    expect(setTileTitle).toHaveBeenLastCalledWith('Температура CPU');
   });
 });

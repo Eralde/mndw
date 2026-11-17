@@ -14,6 +14,8 @@ import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import {createAppRouter} from '../router/create-app-router.js';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
+import {ScopedPluginStorage} from '../services/storage.service.js';
+import {toast} from '../services/toast/toast.svelte.js';
 import {getTileController} from './tile-controller.js';
 import type {DashboardLayout} from './grid-layout-persistence.js';
 import DashboardPage from './DashboardPage.svelte';
@@ -134,18 +136,22 @@ function prepareDashboard(): void {
 
   pendingMount = deferred<PluginInstance>();
   instance = {
-    unmount: () => {
-      localStorage.setItem(UNMOUNT_STORAGE_KEY, 'unmounted');
-    },
+    unmount: () => {},
   };
   registry.register({
     entry: widgetEntry,
     module: {
-      createInstance: () =>
+      createInstance: (_container, context) =>
         pendingMount?.promise.then((createdInstance) => {
-          localStorage.setItem(INITIALIZER_STORAGE_KEY, 'initialized');
+          void context.storage.set('settings', 'initialized');
 
-          return createdInstance;
+          return {
+            unmount: () => {
+              void context.storage.set('unmount', 'unmounted');
+
+              return createdInstance.unmount?.();
+            },
+          };
         }) ?? Promise.resolve(instance),
     },
   });
@@ -180,6 +186,7 @@ async function cleanupDashboard(): Promise<void> {
   localStorage.removeItem(INITIALIZER_STORAGE_KEY);
   localStorage.removeItem(UNMOUNT_STORAGE_KEY);
   localStorage.removeItem(GRID_LAYOUT_KEY);
+  toast.clear();
   registry.clear();
   replacePluginLoadStates([]);
   setPluginLoadListOutcome('pending');
@@ -199,11 +206,16 @@ const removePendingTile = async (): Promise<void> => {
   flushSync();
 
   expect(getTileController(TILE_ID)).toBeUndefined();
-  expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBeNull();
+  expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBe('before-removal');
 
   pendingMount?.resolve(instance);
   await pendingReady;
 
+  expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBe('initialized');
+  expect(localStorage.getItem(UNMOUNT_STORAGE_KEY)).toBe('unmounted');
+
+  toast.dismissKey('dashboard-widget-removal');
+  flushSync();
   expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBeNull();
   expect(localStorage.getItem(UNMOUNT_STORAGE_KEY)).toBeNull();
 };
@@ -228,6 +240,76 @@ const reconcilePendingTileDeletion = async (): Promise<void> => {
   expect(localStorage.getItem(UNMOUNT_STORAGE_KEY)).toBeNull();
 };
 
+const pagehideFinalizesPendingRemoval = async (): Promise<void> => {
+  pendingMount?.resolve(instance);
+  await pendingReady;
+  expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBe('initialized');
+
+  const removeButton = target.querySelector<HTMLButtonElement>('.mndw-grid-tile__close');
+
+  removeButton?.click();
+  flushSync();
+  expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBe('initialized');
+
+  window.dispatchEvent(new Event('pagehide'));
+  flushSync();
+
+  expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBeNull();
+  expect(toast.toasts.some((item) => item.key === 'dashboard-widget-removal')).toBe(false);
+
+  const layout = JSON.parse(localStorage.getItem(GRID_LAYOUT_KEY) ?? 'null') as DashboardLayout | null;
+
+  expect(layout?.tiles).toEqual([]);
+};
+
+const finalizedPendingMountCannotWriteIntoRestoredStorage = async (): Promise<void> => {
+  const oldReady = pendingReady;
+
+  expect(getTileController(TILE_ID)?.handle).toBeDefined();
+  expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBe('before-removal');
+
+  target.querySelector<HTMLButtonElement>('.mndw-grid-tile__close')?.click();
+  flushSync();
+  expect(getTileController(TILE_ID)).toBeUndefined();
+
+  toast.dismissKey('dashboard-widget-removal');
+  flushSync();
+  expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBeNull();
+
+  const restoredStorage = new ScopedPluginStorage(STORAGE_PREFIX);
+
+  await restoredStorage.set('settings', 'restored');
+  pendingMount?.resolve(instance);
+  await oldReady;
+
+  expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBe('restored');
+  expect(localStorage.getItem(UNMOUNT_STORAGE_KEY)).toBeNull();
+};
+
+const finalizedRemovalCleansWritesFromLatePendingMount = async (): Promise<void> => {
+  const oldReady = pendingReady;
+  const storageWrite = vi.spyOn(localStorage, 'setItem');
+
+  try {
+    target.querySelector<HTMLButtonElement>('.mndw-grid-tile__close')?.click();
+    flushSync();
+    toast.dismissKey('dashboard-widget-removal');
+    flushSync();
+
+    expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBeNull();
+
+    pendingMount?.resolve(instance);
+    await oldReady;
+
+    expect(storageWrite).toHaveBeenCalledWith(INITIALIZER_STORAGE_KEY, 'initialized');
+    expect(storageWrite).toHaveBeenCalledWith(UNMOUNT_STORAGE_KEY, 'unmounted');
+    expect(localStorage.getItem(INITIALIZER_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(UNMOUNT_STORAGE_KEY)).toBeNull();
+  } finally {
+    storageWrite.mockRestore();
+  }
+};
+
 describe('DashboardPage pending mount storage cleanup', () => {
   beforeAll(() => {
     defineMndwUi();
@@ -236,9 +318,18 @@ describe('DashboardPage pending mount storage cleanup', () => {
   beforeEach(prepareDashboard);
   afterEach(cleanupDashboard);
 
-  it('clears writes made when a pending instance settles after user removal', removePendingTile);
+  it('preserves writes until the removal toast is dismissed after pending mount settles', removePendingTile);
   it(
     'clears writes made when a pending instance settles after list reconciliation deletes it',
     reconcilePendingTileDeletion,
+  );
+  it('finalizes a pending removal on pagehide, including its Undo toast', pagehideFinalizesPendingRemoval);
+  it(
+    'keeps a late removed instance from overwriting restored instance storage',
+    finalizedPendingMountCannotWriteIntoRestoredStorage,
+  );
+  it(
+    'clears late writes after a pending removal is finalized',
+    finalizedRemovalCleansWritesFromLatePendingMount,
   );
 });

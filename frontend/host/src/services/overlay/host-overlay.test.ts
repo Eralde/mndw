@@ -41,4 +41,16 @@ describe('openHostModal', () => {
     await expect(closed).resolves.toMatchObject({event: {result: 'approve'}, teardownCalls: 1});
     expect(defaultOverlayRuntime.store.layers).toEqual([]);
   });
+
+  it('can enable outside-click dismissal for host modals', () => {
+    const session = openHostModal(HostOverlayProbe, {
+      title: 'Dashboard',
+      props: {onTeardown: vi.fn()},
+      closeOnOutsideClick: true,
+    });
+
+    expect(defaultOverlayRuntime.store.layers[0]?.closeOnOutsideClick).toBe(true);
+
+    session.close();
+  });
 });

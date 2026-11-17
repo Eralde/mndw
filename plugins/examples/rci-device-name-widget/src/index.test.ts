@@ -4,6 +4,7 @@ import {of} from 'rxjs';
 import {describe, expect, it, vi} from 'vitest';
 
 import type {PluginContext, PluginRciManager} from '@mndw/sdk';
+import {createTestI18n} from '@mndw/sdk/testing';
 import {createInstance} from './index.js';
 import {createContainer, createI18n} from './test-helpers.js';
 
@@ -22,5 +23,28 @@ describe('RCI device-description widget plugin entry', () => {
 
     instance.unmount();
     await vi.waitFor(() => expect(container.childElementCount).toBe(0));
+  });
+
+  it('updates the host widget title when the locale changes', async () => {
+    const queue = vi.fn((_query: RciQuery) => of({description: 'Original'}));
+    const i18n = createTestI18n({title: 'Device description EN'});
+    const setTileTitle = vi.fn();
+    const context = {
+      kind: 'widget',
+      rciManager: {queue} as unknown as PluginRciManager,
+      i18n,
+      setTileTitle,
+    } as unknown as PluginContext;
+    const container = createContainer();
+    const instance = createInstance(container, context);
+
+    flushSync();
+    expect(setTileTitle).toHaveBeenLastCalledWith('Device description EN');
+    expect(container.querySelector('h2')).toBeNull();
+    i18n.setLocale('ru', {title: 'Описание устройства RU'});
+    flushSync();
+
+    expect(setTileTitle).toHaveBeenLastCalledWith('Описание устройства RU');
+    await instance.unmount();
   });
 });

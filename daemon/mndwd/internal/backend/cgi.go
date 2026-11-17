@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"mndwd/internal/httpx"
 )
 
 type CGIResponse struct {
@@ -137,6 +139,10 @@ func hasControl(value string) bool {
 }
 
 func forbiddenResponseHeader(name string) bool {
+	if strings.EqualFold(name, httpx.HeaderErrorMarker) {
+		return true
+	}
+
 	if strings.HasPrefix(strings.ToLower(name), "access-control-") {
 		return true
 	}

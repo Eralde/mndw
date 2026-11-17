@@ -12,6 +12,8 @@ import (
 	"mndw.local/contracts/protocol"
 )
 
+const HeaderErrorMarker = "X-Mndw-Error"
+
 // Stable machine-readable error codes (SCREAMING_SNAKE). Clients map these to typed
 // errors / UI copy; the human-readable message is advisory only. Grow this list as
 // handlers are added — never repurpose an existing code.
@@ -128,6 +130,7 @@ func WriteError(w http.ResponseWriter, logger *slog.Logger, err *APIError) {
 			"status", err.Status, "code", err.Code, "message", err.Message)
 	}
 
+	w.Header().Set(HeaderErrorMarker, "1")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(err.Status)
 

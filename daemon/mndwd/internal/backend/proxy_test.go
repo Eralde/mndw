@@ -2,12 +2,15 @@ package backend
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/coder/websocket"
 
 	"mndwd/internal/httpx"
 )
@@ -83,8 +86,103 @@ func TestServiceProxyReturnsBadGatewayBeforeResponseCommit(t *testing.T) {
 		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusBadGateway)
 	}
 
+	if got := response.Header.Get(httpx.HeaderErrorMarker); got != "1" {
+		t.Fatalf("%s = %q, want 1", httpx.HeaderErrorMarker, got)
+	}
+
 	if !bytes.Contains(body, []byte(`"error"`)) || !bytes.Contains(body, []byte(httpx.CodeBadGateway)) {
 		t.Fatalf("body = %q, want 502 JSON error envelope", body)
+	}
+}
+
+func TestServiceProxyStripsPluginErrorMarker(t *testing.T) {
+	socketPath := startProxyTestService(t, http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set(httpx.HeaderErrorMarker, "1")
+		writer.WriteHeader(http.StatusUnprocessableEntity)
+
+		_, _ = io.WriteString(writer, `{"error":{"code":"BAD_REQUEST"}}`)
+	}))
+	gateway := proxyTestGateway(t, socketPath, nil)
+	frontDoor := httptest.NewServer(gateway)
+
+	t.Cleanup(frontDoor.Close)
+
+	response, err := frontDoor.Client().Get(frontDoor.URL + "/api/plugins/demo/health")
+	if err != nil {
+		t.Fatalf("GET service route: %v", err)
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusUnprocessableEntity)
+	}
+
+	if got := response.Header.Get(httpx.HeaderErrorMarker); got != "" {
+		t.Fatalf("plugin %s = %q, want absent", httpx.HeaderErrorMarker, got)
+	}
+}
+
+func TestWebSocketUpgradeDoesNotForwardPluginErrorMarker(t *testing.T) {
+	socketPath := startProxyTestService(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set(httpx.HeaderErrorMarker, "1")
+
+		connection, err := websocket.Accept(writer, request, &websocket.AcceptOptions{})
+		if err != nil {
+			return
+		}
+
+		_ = connection.Close(websocket.StatusNormalClosure, "")
+	}))
+	gateway := proxyTestGateway(t, socketPath, nil)
+	frontDoor := httptest.NewServer(gateway)
+
+	t.Cleanup(frontDoor.Close)
+
+	connection, response, err := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(frontDoor.URL, "http")+"/ws/plugins/demo/terminal", &websocket.DialOptions{
+		Subprotocols: []string{"tty"},
+	})
+	if err != nil {
+		var body []byte
+
+		if response != nil && response.Body != nil {
+			body, _ = io.ReadAll(response.Body)
+		}
+
+		t.Fatalf("dial plugin websocket route: %v (response %v, body %q)", err, response, body)
+	}
+
+	defer connection.CloseNow()
+
+	if got := response.Header.Get(httpx.HeaderErrorMarker); got != "" {
+		t.Fatalf("plugin websocket %s = %q, want absent", httpx.HeaderErrorMarker, got)
+	}
+}
+
+func TestWebSocketGatewayErrorIsMarked(t *testing.T) {
+	socketPath := shortUnixSocketPath(t, "missing.sock")
+	gateway := proxyTestGateway(t, socketPath, nil)
+	frontDoor := httptest.NewServer(gateway)
+
+	t.Cleanup(frontDoor.Close)
+
+	_, response, err := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(frontDoor.URL, "http")+"/ws/plugins/demo/terminal", &websocket.DialOptions{
+		Subprotocols: []string{"tty"},
+	})
+	if err == nil {
+		t.Fatal("dial unavailable plugin websocket succeeded")
+	}
+
+	if response == nil {
+		t.Fatalf("dial unavailable plugin websocket: %v (no HTTP response)", err)
+	}
+
+	if response.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", response.StatusCode, http.StatusBadGateway)
+	}
+
+	if got := response.Header.Get(httpx.HeaderErrorMarker); got != "1" {
+		t.Fatalf("%s = %q, want 1", httpx.HeaderErrorMarker, got)
 	}
 }
 

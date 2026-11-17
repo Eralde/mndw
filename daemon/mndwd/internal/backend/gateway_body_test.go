@@ -54,6 +54,47 @@ func TestGatewayExecWithoutRunnerReturnsInternal(t *testing.T) {
 	}
 }
 
+func TestGatewayExecStripsPluginErrorMarkerAndMarksDaemonError(t *testing.T) {
+	server, pluginDir, _ := newExecBodyTestServer(t, GatewayConfig{}, Limits{})
+	command := "#!/bin/sh\ncase \"$QUERY_STRING\" in fail) exit 1;; esac\nprintf 'Status: 422 Unprocessable Entity\\r\\nX-mndw-errOR: 1\\r\\nContent-Type: application/json\\r\\n\\r\\n{\\\"error\\\":{\\\"code\\\":\\\"BAD_REQUEST\\\"}}'\n"
+
+	if err := os.WriteFile(filepath.Join(pluginDir, "backend", "command.sh"), []byte(command), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	defer server.Close()
+
+	pluginResponse, err := server.Client().Get(server.URL + "/api/plugins/demo/get")
+	if err != nil {
+		t.Fatalf("GET plugin response: %v", err)
+	}
+
+	_ = pluginResponse.Body.Close()
+
+	if pluginResponse.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("plugin status = %d, want %d", pluginResponse.StatusCode, http.StatusUnprocessableEntity)
+	}
+
+	if got := pluginResponse.Header.Get(httpx.HeaderErrorMarker); got != "" {
+		t.Fatalf("plugin %s = %q, want absent", httpx.HeaderErrorMarker, got)
+	}
+
+	daemonResponse, err := server.Client().Get(server.URL + "/api/plugins/demo/get?fail")
+	if err != nil {
+		t.Fatalf("GET daemon error response: %v", err)
+	}
+
+	_ = daemonResponse.Body.Close()
+
+	if daemonResponse.StatusCode != http.StatusBadGateway {
+		t.Fatalf("daemon status = %d, want %d", daemonResponse.StatusCode, http.StatusBadGateway)
+	}
+
+	if got := daemonResponse.Header.Get(httpx.HeaderErrorMarker); got != "1" {
+		t.Fatalf("daemon %s = %q, want 1", httpx.HeaderErrorMarker, got)
+	}
+}
+
 func TestGatewayExecRejectsGETBodyBeforeRunningCommand(t *testing.T) {
 	server, pluginDir, _ := newExecBodyTestServer(t, GatewayConfig{}, Limits{})
 

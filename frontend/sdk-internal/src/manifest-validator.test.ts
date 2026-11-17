@@ -50,6 +50,29 @@ describe('validateManifest behavior', () => {
     expect(() => validateManifest({...base, manifestVersion: 999})).toThrow(ManifestValidationError);
   });
 
+  it.each(['1', '1.2', '1.2.3-01'])('reports clear validation errors for invalid version %s', (version) => {
+    expect(() => validateManifest({...base, version})).toThrow(/version.*SemVer/);
+  });
+
+  it('accepts a SemVer version with prerelease and build metadata', () => {
+    expect(() => validateManifest({...base, version: '1.2.3-alpha.1+build.5'})).not.toThrow();
+  });
+
+  it('reports clear grid-column bounds and empty-route errors', () => {
+    expect(() => validateManifest({...base, size: {w: 0, h: 2}})).toThrow(/size\.w.*1/);
+    expect(() => validateManifest({...base, size: {w: 1.5, h: 2}})).toThrow(/size\.w.*integer/);
+    expect(() => validateManifest({...base, size: {w: 13, h: 2}})).toThrow(/size\.w.*12/);
+    expect(() =>
+      validateManifest({
+        ...base,
+        backend: {
+          kind: 'exec',
+          routes: [],
+        },
+      })
+    ).toThrow(/backend\.routes.*at least one route/);
+  });
+
   it('accepts persistent RCI read and write permissions and strips editor schema metadata', () => {
     const result = validateManifest({
       ...base,
@@ -92,10 +115,12 @@ describe('validateManifest behavior', () => {
     expect(() => validateManifest({...service, backend: {...service.backend, command: 'bin/run.sh'}})).toThrow(
       ManifestValidationError,
     );
-    expect(() => validateManifest({
-      ...exec,
-      backend: {...exec.backend, routes: [{...exec.backend.routes[0], command: 'bin/run.sh'}]},
-    })).toThrow(ManifestValidationError);
+    expect(() =>
+      validateManifest({
+        ...exec,
+        backend: {...exec.backend, routes: [{...exec.backend.routes[0], command: 'bin/run.sh'}]},
+      })
+    ).toThrow(ManifestValidationError);
   });
 
   it.each([

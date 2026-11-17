@@ -1,73 +1,62 @@
 <script setup lang="ts">
-import {computed, ref, watchEffect} from 'vue';
+import {ref} from 'vue';
 import type {PluginContext} from '@mndw/sdk';
-import {column, type MndwTableProps} from '@mndw/ui';
-import {useTheme, useTranslator} from '@mndw/sdk/vue';
-import {vueCell} from '@mndw/ui-vue';
-import TableNameCell from './TableNameCell.vue';
-
-interface TableRow {
-  id: string;
-  name: string;
-}
+import {useTranslator} from '@mndw/sdk/vue';
 
 const {ctx} = defineProps<{ctx: PluginContext}>();
 const translator = useTranslator(ctx.i18n);
-const theme = useTheme(ctx);
-const rows = computed<TableRow[]>(() => [
-  {id: 'first', name: translator.t('table.first')},
-  {id: 'second', name: translator.t('table.second')},
-]);
-const columns = computed(() => [
-  column<TableRow>()({
-    id: 'name',
-    label: translator.t('table.column'),
-    accessor: (row) => row.name,
-    renderer: vueCell<TableRow, string>()(TableNameCell),
-  }),
-]);
-const table = ref<(HTMLElement & MndwTableProps<TableRow>) | null>(null);
+const backendMessage = ref<string | undefined>();
+const backendError = ref(false);
 
-watchEffect(() => {
-  if (table.value === null) {
+const load = async (): Promise<void> => {
+  if (ctx.backend === undefined) {
+    backendError.value = true;
+
     return;
   }
 
-  Object.assign(table.value, {
-    columns: columns.value,
-    rows: rows.value,
-    rowKey: 'id',
-    caption: translator.t('table.caption'),
-    columnMenu: false,
-  });
-});
+  try {
+    const response = await ctx.backend.call<{message: string}>('hello', {as: 'json'});
+    backendMessage.value = response.message;
+    backendError.value = false;
+  } catch {
+    backendMessage.value = undefined;
+    backendError.value = true;
+  }
+};
 </script>
 
 <template>
-  <div class="wrap" :data-theme="theme">
+  <section class="__MNDW_NAME__" aria-labelledby="plugin-title">
+    <h2 id="plugin-title">{{ translator.t('l10n.title') }}</h2>
     <p class="device">Device: {{ ctx.deviceInfo.deviceName }}</p>
-    <p class="result">{{ translator.t('l10n.result') }}</p>
-    <mndw-table
-      ref="table"
-      :columns.prop="columns"
-      :rows.prop="rows"
-      :rowKey.prop="'id'"
-      :caption.prop="translator.t('table.caption')"
-      :columnMenu.prop="false"
-    />
-  </div>
+    <mndw-button variant="primary" type="button" @click="void load()">
+      {{ translator.t('l10n.button') }}
+    </mndw-button>
+    <p class="result" :role="backendError ? 'alert' : 'status'" aria-live="polite">
+      <template v-if="backendError">{{ translator.t('l10n.error') }}</template>
+      <template v-else-if="backendMessage !== undefined">
+        {{ translator.t('l10n.result') }}: {{ backendMessage }}
+      </template>
+      <template v-else>{{ translator.t('l10n.result') }}</template>
+    </p>
+  </section>
 </template>
 
 <style scoped>
-.wrap {
+.__MNDW_NAME__ {
   padding: var(--mndw-space-4);
   font-family: var(--mndw-font-sans);
   color: var(--mndw-text);
   background: var(--mndw-surface);
 }
 
-.device {
-  margin: 0;
+.__MNDW_NAME__ .device {
+  margin: 0 0 var(--mndw-space-3);
   color: var(--mndw-text-muted);
+}
+
+.__MNDW_NAME__ .result {
+  margin-block: var(--mndw-space-3) 0;
 }
 </style>

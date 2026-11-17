@@ -32,6 +32,9 @@
     "!dist/**/*.test.*",
     "!dist/**/fixtures"
   ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "svelte-package -i src -o dist",
     "prepack": "pnpm run build",

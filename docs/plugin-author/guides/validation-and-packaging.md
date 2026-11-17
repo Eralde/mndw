@@ -4,7 +4,7 @@ Use three CLI commands for the source-to-upload flow:
 
 | Command | What it does | Default output |
 | --- | --- | --- |
-| `mndw validate <plugin-dir>` | Checks manifest, source entry, and locale catalogs. | No generated output. |
+| `mndw validate <plugin-dir>` | Checks manifest, source entry, locale catalogs, and built CSS selector scope. CSS scope violations are warnings. | No generated output. |
 | `mndw pack <plugin-dir>` | Builds the frontend and stages declared runtime files. | `<plugin-dir>/dist/` |
 | `mndw zip <plugin-dir>` | Packs, then creates an upload archive. | `<plugin-dir>/<plugin-name>.zip` |
 
@@ -21,6 +21,23 @@ and declared runtime assets in `dist/`. It does not create an upload ZIP. `zip` 
 whose root contains `manifest.json`; it does not wrap the files in a `dist/` directory. Hidden files
 are excluded. Both `dist/` and `*.zip` are ignored generated output in this repository; edit source
 and manifest, then regenerate instead of editing generated files.
+
+### CSS selector warnings
+
+When built `dist/index.css` is present, validation checks its selectors and warns when one is not scoped beneath
+the plugin root class, such as `.status-widget`. Warnings do not make validation fail. Selectors for
+third-party CSS can be allowlisted in `package.json`:
+
+```json
+{
+  "mndw": {
+    "cssSelectorAllowlist": [".vendor-chart", ".vendor-chart__tooltip"]
+  }
+}
+```
+
+Each entry is an exact selector string. Keep the list limited to selectors supplied by dependencies;
+plugin-authored selectors should use the prefix described in [styling and UI](styling-and-ui.md).
 
 ZIP entries for backend commands declared in the manifest use mode `0755`, so the device can execute
 them after installation.

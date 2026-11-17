@@ -5,20 +5,28 @@ import './index.css';
 
 export function createInstance(container: HTMLElement, ctx: PluginContext): PluginInstance {
   container.innerHTML = `
-    <div class="mndw-__MNDW_NAME__">
+    <div class="__MNDW_NAME__">
+      <h2 class="mndw-__MNDW_NAME____title"></h2>
       <p class="mndw-__MNDW_NAME____device">Device: <span class="mndw-__MNDW_NAME____device-name"></span></p>
-      <button class="mndw-__MNDW_NAME____count" type="button"></button>
+      <mndw-button class="mndw-__MNDW_NAME____button" variant="primary" type="button"></mndw-button>
       <p class="mndw-__MNDW_NAME____result" data-testid="l10n-result"></p>
     </div>
   `;
 
+  const title = container.querySelector('.mndw-__MNDW_NAME____title');
   const deviceEl = container.querySelector('.mndw-__MNDW_NAME____device-name');
-  const button = container.querySelector('.mndw-__MNDW_NAME____count');
+  const button = container.querySelector('.mndw-__MNDW_NAME____button');
   const result = container.querySelector('.mndw-__MNDW_NAME____result');
 
-  let count = 0;
+  let backendMessage: string | undefined;
+  let backendError = false;
+  let mounted = true;
 
   const render = (): void => {
+    if (title !== null) {
+      title.textContent = ctx.i18n.t('l10n.title');
+    }
+
     if (deviceEl !== null) {
       deviceEl.textContent = ctx.deviceInfo.deviceName;
     }
@@ -28,32 +36,52 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
     }
 
     if (result !== null) {
-      result.textContent = ctx.i18n.t('l10n.result');
+      if (backendError) {
+        result.textContent = ctx.i18n.t('l10n.error');
+      } else if (backendMessage !== undefined) {
+        result.textContent = `${ctx.i18n.t('l10n.result')}: ${backendMessage}`;
+      } else {
+        result.textContent = ctx.i18n.t('l10n.result');
+      }
+    }
+  };
+
+  const load = async (): Promise<void> => {
+    if (ctx.backend === undefined) {
+      backendError = true;
+      render();
+
+      return;
+    }
+
+    try {
+      const response = await ctx.backend.call<{message: string}>('hello', {as: 'json'});
+      backendMessage = response.message;
+      backendError = false;
+    } catch {
+      backendMessage = undefined;
+      backendError = true;
+    }
+
+    if (mounted) {
+      render();
     }
   };
 
   const onClick = (): void => {
-    count++;
-
-    if (result !== null) {
-      result.textContent = `${ctx.i18n.t('l10n.result')} ${count}`;
-    }
+    void load();
   };
 
   button?.addEventListener('click', onClick);
   const teardown = bindLocale(ctx.i18n, render);
-  const themeSubscription = ctx.theme$.subscribe((theme) => {
-    container.dataset.theme = theme;
-  });
 
   return {
     unmount() {
+      mounted = false;
       teardown();
-      themeSubscription.unsubscribe();
       button?.removeEventListener('click', onClick);
 
       container.innerHTML = '';
-      delete container.dataset.theme;
     },
   };
 }

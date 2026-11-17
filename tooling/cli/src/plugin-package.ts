@@ -10,6 +10,7 @@ export interface PluginPackage {
     readonly productionEntry?: unknown;
     readonly backendBuildScript?: unknown;
     readonly backendAssets?: readonly string[];
+    readonly cssSelectorAllowlist?: unknown;
   };
 }
 

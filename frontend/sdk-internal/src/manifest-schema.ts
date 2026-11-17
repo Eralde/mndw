@@ -207,7 +207,7 @@ const validateRoutes = <T extends {id: string; transport: string; path: string; 
 const execBackendSchema = z.object({
   kind: z.literal('exec'),
   packages: z.array(packageSchema).optional(),
-  routes: z.array(execRouteSchema).min(1),
+  routes: z.array(execRouteSchema).min(1, {message: 'backend.routes must contain at least one route'}),
 }).strict()
   .superRefine((backend, ctx) => {
     validateRoutes(backend.routes, ctx);
@@ -220,7 +220,9 @@ const serviceBackendSchema = z.object({
   command: commandSchema,
   args: z.array(literalArgumentSchema).optional(),
   packages: z.array(packageSchema).optional(),
-  routes: z.array(z.union([httpRouteSchema, websocketRouteSchema])).min(1),
+  routes: z.array(z.union([httpRouteSchema, websocketRouteSchema])).min(1, {
+    message: 'backend.routes must contain at least one route',
+  }),
 }).strict()
   .superRefine((backend, ctx) => {
     validateRoutes(backend.routes, ctx);
@@ -228,15 +230,22 @@ const serviceBackendSchema = z.object({
 
 const backendSchema = z.union([execBackendSchema, serviceBackendSchema]);
 
-const gridColumns = z.number().int()
-  .positive()
-  .max(12);
+const gridColumns = z.number()
+  .int({message: 'gridColumns must be an integer'})
+  .min(1, {message: 'gridColumns must be at least 1'})
+  .max(12, {message: 'gridColumns must be at most 12'});
 const gridRows = z.number().int()
   .positive();
 const versionSchema = z.literal(1).describe('Manifest format version. Must be 1.');
 const nameSchema = pluginNameSchema.describe('Unique plugin id used as the on-disk folder and URL segment.');
-const versionField = z.string().min(1)
-  .describe('Semver-ish version string.');
+const versionField = z.string()
+  .regex(
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+    {
+      message: 'version must be valid SemVer (for example, 1.2.3)',
+    },
+  )
+  .describe('Semantic version of this plugin.');
 const labelField = z.string().min(1)
   .describe('Human-readable name shown in the dashboard or navigation.');
 const entryField = pluginEntrySchema.describe('Relative path to the bundled entry module.');

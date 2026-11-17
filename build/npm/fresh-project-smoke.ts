@@ -297,6 +297,22 @@ export function packageManagerArgs(packageManager: PackageManager, yarnVersion?:
   return Number.parseInt(yarnVersion.split('.')[0] ?? '', 10) >= 2 ? ['install'] : ['install', '--non-interactive'];
 }
 
+export function packageManagerExecCommand(
+  packageManager: PackageManager,
+  executable: string,
+  args: readonly string[],
+): {command: PackageManager; args: string[]} {
+  if (packageManager === 'pnpm') {
+    return {command: packageManager, args: ['exec', executable, ...args]};
+  }
+
+  if (packageManager === 'npm') {
+    return {command: packageManager, args: ['exec', '--', executable, ...args]};
+  }
+
+  return {command: packageManager, args: ['run', executable, ...args]};
+}
+
 const addPackageManagerOverrides = (
   manifest: PackageJson,
   packageManager: PackageManager,
@@ -669,6 +685,14 @@ const installSvelteDemo = async (
     runCommand(installCommand(packageManager), packageManagerArgs(packageManager, yarnVersion), demoRoot, process.env);
 
     return 'installed demo dependencies from local tarballs';
+  });
+
+  await runSmokeStep(rows, 'vitest run', () => {
+    const command = packageManagerExecCommand(packageManager, 'vitest', ['run']);
+
+    runCommand(command.command, command.args, demoRoot, process.env);
+
+    return 'ran generated project tests';
   });
 
   const env = smokeCliEnvironment(projectRoot);

@@ -10,6 +10,7 @@ import {
   fetchUiSvelteImportGraph,
   localeCatalogPaths,
   packageManagerArgs,
+  packageManagerExecCommand,
   yarnBerryConfig,
   yarnBerryNeedsLockBoundary,
 } from './fresh-project-smoke.js';
@@ -53,6 +54,23 @@ describe('packageManagerArgs', () => {
     expect(packageManagerArgs('yarn', '4.9.2')).toEqual(['install']);
     expect(packageManagerArgs('yarn', '1.22.22')).toEqual(['install', '--non-interactive']);
     expect(packageManagerArgs('npm')).toEqual(['install', '--no-audit', '--no-fund']);
+  });
+});
+
+describe('packageManagerExecCommand', () => {
+  it('runs the project Vitest through the selected package manager', () => {
+    expect(packageManagerExecCommand('pnpm', 'vitest', ['run'])).toEqual({
+      command: 'pnpm',
+      args: ['exec', 'vitest', 'run'],
+    });
+    expect(packageManagerExecCommand('npm', 'vitest', ['run'])).toEqual({
+      command: 'npm',
+      args: ['exec', '--', 'vitest', 'run'],
+    });
+    expect(packageManagerExecCommand('yarn', 'vitest', ['run'])).toEqual({
+      command: 'yarn',
+      args: ['run', 'vitest', 'run'],
+    });
   });
 });
 

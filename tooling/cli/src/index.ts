@@ -9,6 +9,7 @@ import {create} from './create.js';
 import {runDev} from './dev.js';
 import {CliError} from './errors.js';
 import {validatePluginCatalogs} from './i18n-validator.js';
+import {validatePluginCss} from './css-scope-validator.js';
 import {readManifest} from './manifest.js';
 import {packPlugin} from './pack.js';
 import {resolvePluginDir} from './paths.js';
@@ -118,6 +119,7 @@ export function createProgram(): Command {
 
       const warnings = [
         ...result.warnings,
+        ...validatePluginCss(resolvePluginDir(pluginDir), result.manifest.name),
         ...validatePluginCatalogs(resolvePluginDir(pluginDir), result.manifest, {
           strict: options.strict === true,
         }),
@@ -172,14 +174,20 @@ export function createProgram(): Command {
     });
 
   program
-    .command('build-backend')
+    .command('build-backend [plugin-dir]')
     .description(
-      'build the current plugin\'s Go backend (name from manifest.json, binary/entry from package.json mndw.backend)',
+      'build a plugin\'s Go backend (defaults to current directory; name from manifest.json, binary/entry from package.json mndw.backend)',
     )
     .allowUnknownOption()
     .allowExcessArguments()
-    .action((_options: unknown, command: Command) => {
-      runBuildBackendCommand({pluginDir: process.cwd(), args: command.args});
+    .action((_pluginDir: string | undefined, _options: unknown, command: Command) => {
+      const firstArg = command.args[0];
+      const hasPluginDir = firstArg !== undefined && !firstArg.startsWith('-');
+
+      runBuildBackendCommand({
+        pluginDir: resolve(process.cwd(), hasPluginDir ? firstArg : '.'),
+        args: hasPluginDir ? command.args.slice(1) : command.args,
+      });
     });
 
   return program;

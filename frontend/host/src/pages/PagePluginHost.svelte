@@ -30,6 +30,7 @@ import {getPluginLoadState} from '../runtime/plugin-load-state.svelte.js';
 import {retryPluginLoad} from '../runtime/plugin-loader.js';
 import {getHostServices} from '../host-services-context.js';
 import {hostT} from '../services/host-i18n.svelte.js';
+import {getTheme, subscribeTheme} from '../services/theme.service.js';
 
 interface ActiveMount {
   generation: number;
@@ -37,6 +38,7 @@ interface ActiveMount {
   child: HTMLElement;
   controller: PageRouteController;
   mount: PluginMountHandle | null;
+  unsubscribeTheme: () => void;
 }
 
 /**
@@ -193,6 +195,7 @@ function disposeActive(): void {
 
   active.controller.complete();
   active.mount?.dispose(UNMOUNT_OPTIONS);
+  active.unsubscribeTheme();
   active.child.remove();
   active = null;
 }
@@ -243,12 +246,17 @@ function mountPluginRecord(
   const child = document.createElement('div');
 
   child.className = 'mndw-page-plugin__mount';
+  child.dataset.theme = getTheme();
+  const unsubscribeTheme = subscribeTheme((theme) => {
+    child.dataset.theme = theme;
+  });
   host.appendChild(child);
 
   const definition = getPageRouteDefinitions().find((route) =>
     route.name === plugin.entry.name
   );
   if (definition === undefined) {
+    unsubscribeTheme();
     child.remove();
 
     return Promise.resolve(false);
@@ -272,6 +280,7 @@ function mountPluginRecord(
     child,
     controller,
     mount: null,
+    unsubscribeTheme,
   };
 
   active = record;

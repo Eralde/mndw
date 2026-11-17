@@ -1,89 +1,74 @@
 <script lang="ts">
 import type {PluginContext} from '@mndw/sdk';
-import {type MndwTableProps, column} from '@mndw/ui';
 import {createTranslator} from '@mndw/sdk/svelte';
-import {svelteCell} from '@mndw/ui-svelte';
-import TableNameCell from './TableNameCell.svelte';
-
-interface TableRow {
-  id: string;
-  name: string;
-}
 
 let {ctx}: {ctx: PluginContext} = $props();
 const translator = $derived(createTranslator(ctx.i18n));
-const theme$ = $derived(ctx.theme$);
-const rows = $derived<TableRow[]>([
-  {id: 'first', name: $translator.t('table.first')},
-  {id: 'second', name: $translator.t('table.second')},
-]);
-const columns = $derived([
-  column<TableRow>()({
-    id: 'name',
-    label: $translator.t('table.column'),
-    accessor: (row) => row.name,
-    renderer: svelteCell<TableRow, string>()(TableNameCell),
-  }),
-]);
-let table: (HTMLElement & MndwTableProps<TableRow>) | undefined = $state();
+let backendMessage = $state<string | undefined>();
+let backendError = $state(false);
 
-$effect(() => {
-  if (table === undefined) {
+const load = async (): Promise<void> => {
+  if (ctx.backend === undefined) {
+    backendError = true;
+
     return;
   }
 
-  Object.assign(table, {
-    columns,
-    rows,
-    rowKey: 'id',
-    caption: $translator.t('table.caption'),
-    columnMenu: false,
-  });
-});
-
-let count = $state(0);
+  try {
+    const response = await ctx.backend.call<{message: string}>('hello', {
+      as: 'json',
+    });
+    backendMessage = response.message;
+    backendError = false;
+  } catch {
+    backendMessage = undefined;
+    backendError = true;
+  }
+};
 </script>
 
-<div
-  class="wrap"
-  data-theme={$theme$}
+<section
+  class="__MNDW_NAME__"
+  aria-labelledby="plugin-title"
 >
+  <h2 id="plugin-title">{$translator.t('l10n.title')}</h2>
   <p class="device">Device: {ctx.deviceInfo.deviceName}</p>
-  <button
-    class="count"
+  <mndw-button
+    variant="primary"
     type="button"
-    onclick={() => count++}
+    onclick={() => void load()}
   >
-    {$translator.t('l10n.button')} {count}
-  </button>
-  <p class="result">{$translator.t('l10n.result')}</p>
-  <mndw-table bind:this={table}></mndw-table>
-</div>
+    {$translator.t('l10n.button')}
+  </mndw-button>
+  <p
+    class="result"
+    role={backendError ? 'alert' : 'status'}
+    aria-live="polite"
+  >
+    {#if backendError}
+      {$translator.t('l10n.error')}
+    {:else if backendMessage !== undefined}
+      {$translator.t('l10n.result')}: {backendMessage}
+    {:else}
+      {$translator.t('l10n.result')}
+    {/if}
+  </p>
+</section>
 
 <style>
-.wrap {
+.__MNDW_NAME__ {
   padding: var(--mndw-space-4);
   font-family: var(--mndw-font-sans);
   color: var(--mndw-text);
   background: var(--mndw-surface);
 }
 
-.device {
+.__MNDW_NAME__ .device {
   margin: 0 0 var(--mndw-space-3);
   color: var(--mndw-text-muted);
 }
 
-.count {
-  padding: var(--mndw-space-2) var(--mndw-space-3);
-  font: inherit;
-  color: var(--mndw-accent-contrast);
-  background: var(--mndw-accent);
-  border: none;
-  border-radius: var(--mndw-radius-md);
-  cursor: pointer;
-}
-
-.count:hover {
-  background: var(--mndw-accent-hover);
+.__MNDW_NAME__ .result {
+  margin-block: var(--mndw-space-3) 0;
 }
 </style>

@@ -18,7 +18,7 @@ import esbuildSvelte from 'esbuild-svelte';
 import vuePlugin from 'unplugin-vue/esbuild';
 import type {PluginManifestOutput} from '@mndw/sdk-internal';
 import {pluginDependencies} from '@mndw/sdk-internal/shared-dependencies';
-import {isMndwButtonA11yWarning} from './svelte-warning-filter.js';
+import {mndwSvelteWarningFilter} from '@mndw/sdk/svelte';
 import {type AngularCompileResult, compileAngular} from './angular-compiler.js';
 import {type ProductTarget} from './go-target.js';
 import {CliError} from './errors.js';
@@ -167,7 +167,7 @@ export async function packPlugin(pluginDir: string, options: PackOptions = {}): 
           esbuildSvelte({
             compilerOptions: {
               css: 'external',
-              warningFilter: (warning) => !isMndwButtonA11yWarning(warning),
+              warningFilter: mndwSvelteWarningFilter,
             },
           }),
         ]

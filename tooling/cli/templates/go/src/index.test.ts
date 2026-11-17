@@ -6,41 +6,27 @@ import {createInstance} from './index.js';
 import {makeStubContext} from './test-helpers.js';
 
 describe('generated frontend', () => {
-  it('fetches \'hello\' and renders the typed message', async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({message: 'hello', plugin: 'p'})));
+  it('calls hello and renders the typed message after a button click', async () => {
+    const call = vi.fn().mockResolvedValue({message: 'hello'});
     const container = document.createElement('div');
-    const instance = createInstance(container, makeStubContext({backend: {fetch}}));
+    const instance = createInstance(container, makeStubContext({backend: {call}}));
+
+    container.querySelector('mndw-button')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
 
     await vi.waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith('hello');
+      expect(call).toHaveBeenCalledWith('hello', {as: 'json'});
       expect(container.querySelector('[data-testid="l10n-result"]')?.textContent).toBe('l10n.result: hello');
     });
 
     instance.unmount();
   });
 
-  it('requests hello again when the button is clicked', async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({message: 'hello', plugin: 'p'})));
-    const container = document.createElement('div');
-    const instance = createInstance(container, makeStubContext({backend: {fetch}}));
-
-    await vi.waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(1);
-    });
-
-    (container.querySelector('button') as HTMLButtonElement).click();
-
-    await vi.waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(2);
-    });
-
-    instance.unmount();
-  });
-
   it('renders a localized error when the backend request fails', async () => {
-    const fetch = vi.fn().mockRejectedValue(new Error('unavailable'));
+    const call = vi.fn().mockRejectedValue(new Error('unavailable'));
     const container = document.createElement('div');
-    const instance = createInstance(container, makeStubContext({backend: {fetch}}));
+    const instance = createInstance(container, makeStubContext({backend: {call}}));
+
+    container.querySelector('mndw-button')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
 
     await vi.waitFor(() => {
       expect(container.querySelector('[data-testid="l10n-result"]')?.textContent).toBe('l10n.error');
@@ -54,6 +40,8 @@ describe('generated frontend', () => {
     const instance = createInstance(container, makeStubContext({backend: undefined}));
 
     expect(container.querySelector('[data-testid="l10n-result"]')?.textContent).toBe('l10n.result');
+    container.querySelector('mndw-button')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+    expect(container.querySelector('[data-testid="l10n-result"]')?.textContent).toBe('l10n.error');
     instance.unmount();
   });
 });

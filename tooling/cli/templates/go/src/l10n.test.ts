@@ -13,52 +13,44 @@ const contextFor = (
 
 describe('generated Go locale reactivity', () => {
   it('updates visible control and result without remounting', () => {
-    const en = {l10n: {button: 'Run English', result: 'English result'}};
-    const ru = {l10n: {button: 'Запустить', result: 'Русский result'}};
+    const en = {l10n: {title: 'Plugin title', button: 'Run English', result: 'English result', error: 'Error'}};
+    const ru = {l10n: {title: 'Заголовок', button: 'Запустить', result: 'Русский result', error: 'Ошибка'}};
     const i18n = createTestI18n(en, 'en');
     const root = document.createElement('div');
     const instance = createInstance(root, contextFor(i18n));
-    const button = root.querySelector('button');
+    const title = root.querySelector('h2');
+    const button = root.querySelector('mndw-button');
     const result = root.querySelector('[data-testid="l10n-result"]');
 
+    expect(title?.textContent).toBe(en.l10n.title);
     expect(button?.textContent).toBe(en.l10n.button);
-    expect(result?.textContent).toBe(en.l10n.result);
+    expect(result?.textContent?.trim()).toBe(en.l10n.result);
     i18n.setLocale('ru', ru);
 
+    expect(title?.textContent).toBe(ru.l10n.title);
     expect(button?.textContent).toBe(ru.l10n.button);
-    expect(result?.textContent).toBe(ru.l10n.result);
+    expect(result?.textContent?.trim()).toBe(ru.l10n.result);
     instance.unmount();
-  });
-
-  it('updates data-theme when the host theme changes', () => {
-    const fixture = createTestPluginContext();
-    const root = document.createElement('div');
-    const instance = createInstance(root, fixture.context);
-
-    expect(root.dataset.theme).toBe('light');
-    fixture.setTheme('dark');
-    expect(root.dataset.theme).toBe('dark');
-
-    instance.unmount();
-    fixture.unmount();
   });
 
   it('updates the localized result label after a backend response', async () => {
-    const en = {l10n: {button: 'Run English', result: 'English result'}};
-    const ru = {l10n: {button: 'Запустить', result: 'Русский result'}};
+    const en = {l10n: {title: 'Plugin title', button: 'Run English', result: 'English result', error: 'Error'}};
+    const ru = {l10n: {title: 'Заголовок', button: 'Запустить', result: 'Русский result', error: 'Ошибка'}};
     const i18n = createTestI18n(en, 'en');
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({message: 'hello', plugin: 'p'})));
+    const call = vi.fn().mockResolvedValue({message: 'hello'});
     const root = document.createElement('div');
-    const instance = createInstance(root, contextFor(i18n, {fetch}));
+    const instance = createInstance(root, contextFor(i18n, {call}));
     const result = root.querySelector('[data-testid="l10n-result"]');
 
+    root.querySelector('mndw-button')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+
     await vi.waitFor(() => {
-      expect(result?.textContent).toBe('English result: hello');
+      expect(result?.textContent?.trim()).toBe('English result: hello');
     });
 
     i18n.setLocale('ru', ru);
 
-    expect(result?.textContent).toBe('Русский result: hello');
+    expect(result?.textContent?.trim()).toBe('Русский result: hello');
     instance.unmount();
   });
 });

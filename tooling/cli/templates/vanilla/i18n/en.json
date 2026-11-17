@@ -1,6 +1,8 @@
 {
   "l10n": {
-    "button": "Clicks:",
-    "result": "Click count:"
+    "title": "Plugin starter",
+    "button": "Call backend",
+    "result": "Backend response",
+    "error": "Backend unavailable"
   }
 }

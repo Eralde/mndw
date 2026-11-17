@@ -45,6 +45,7 @@ import PagePluginHost from './PagePluginHost.svelte';
 import {createHostServices} from '../host-services.js';
 import {createHostServicesContext} from '../host-services-context.js';
 import {hostT} from '../services/host-i18n.svelte.js';
+import {getTheme, setTheme} from '../services/theme.service.js';
 
 const emptyBackend = {routes: {}};
 
@@ -212,6 +213,30 @@ describe('PagePluginHost', () => {
 
     await unmountTracked(component);
     expect(pageUnmount).toHaveBeenCalledOnce();
+  });
+
+  it('sets the host theme on the plugin container and updates it while mounted', async () => {
+    const priorTheme = getTheme();
+
+    setTheme('dark');
+
+    const {target} = await setup();
+    const child = target.querySelector<HTMLElement>('.mndw-page-plugin__mount');
+
+    expect(child?.dataset.theme).toBe('dark');
+    setTheme('light');
+    expect(child?.dataset.theme).toBe('light');
+
+    const [component] = components;
+
+    if (component === undefined || child === null) {
+      throw new Error('Page component was not mounted');
+    }
+
+    await unmountTracked(component);
+    setTheme('dark');
+    expect(child.dataset.theme).toBe('light');
+    setTheme(priorTheme);
   });
 
   it('shows a failed-load placeholder and mounts after a successful retry', async () => {

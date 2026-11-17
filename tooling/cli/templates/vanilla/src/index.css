@@ -1,25 +1,15 @@
-.mndw-__MNDW_NAME__ {
+.__MNDW_NAME__ {
   padding: var(--mndw-space-4);
   background: var(--mndw-surface);
   color: var(--mndw-text);
   font-family: var(--mndw-font-sans);
 }
 
-.mndw-__MNDW_NAME____device {
+.__MNDW_NAME__ .mndw-__MNDW_NAME____device {
   margin: 0 0 var(--mndw-space-3);
   color: var(--mndw-text-muted);
 }
 
-.mndw-__MNDW_NAME____count {
-  padding: var(--mndw-space-2) var(--mndw-space-3);
-  border: none;
-  border-radius: var(--mndw-radius-md);
-  background: var(--mndw-accent);
-  color: var(--mndw-accent-contrast);
-  font: inherit;
-  cursor: pointer;
-}
-
-.mndw-__MNDW_NAME____count:hover {
-  background: var(--mndw-accent-hover);
+.__MNDW_NAME__ mndw-button {
+  margin-block: var(--mndw-space-3);
 }

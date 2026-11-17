@@ -1,12 +1,8 @@
 {
   "l10n": {
-    "button": "Clicks:",
-    "result": "Click count:"
-  },
-  "table": {
-    "caption": "Starter table",
-    "column": "Name",
-    "first": "First row",
-    "second": "Second row"
+    "title": "Plugin starter",
+    "button": "Call backend",
+    "result": "Backend response",
+    "error": "Backend unavailable"
   }
 }

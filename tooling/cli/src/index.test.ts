@@ -5,12 +5,15 @@ import {resolve} from 'node:path';
 import {afterEach, describe, expect, test, vi} from 'vitest';
 
 const packPluginSpy = vi.hoisted(() => vi.fn());
+const buildBackendSpy = vi.hoisted(() => vi.fn());
 
 vi.mock('./pack.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./pack.js')>();
 
   return {...actual, packPlugin: packPluginSpy};
 });
+
+vi.mock('./backend-build-run.js', () => ({runBuildBackendCommand: buildBackendSpy}));
 
 import {createProgram} from './index.js';
 import {runProcess} from './test-process.js';
@@ -80,6 +83,7 @@ afterEach(() => {
   }
 
   packPluginSpy.mockReset();
+  buildBackendSpy.mockReset();
 });
 
 function expectExpectedError(result: CliResult, message: string, path: string): void {
@@ -172,6 +176,62 @@ describe('createProgram', () => {
 
     expect(command).toBeDefined();
     expect(command?.name()).toBe('build-backend');
+    expect(command?.helpInformation()).toContain('[plugin-dir]');
+  });
+
+  test('build-backend resolves an optional plugin directory from cwd', async () => {
+    const execution = execute(['build-backend', '../plugins/examples/ping-widget']);
+
+    await execution.run;
+
+    expect(buildBackendSpy).toHaveBeenCalledWith({
+      pluginDir: resolve(process.cwd(), '../plugins/examples/ping-widget'),
+      args: [],
+    });
+  });
+
+  test('build-backend defaults its plugin directory to cwd', async () => {
+    const execution = execute(['build-backend']);
+
+    await execution.run;
+
+    expect(buildBackendSpy).toHaveBeenCalledWith({pluginDir: process.cwd(), args: []});
+  });
+
+  test.each([
+    {
+      name: 'forwards flags without a directory',
+      argv: ['--target', 'linux-mipsle', '--out-dir', '/tmp/backend-out'],
+      expectedPluginDir: process.cwd(),
+      expectedArgs: ['--target', 'linux-mipsle', '--out-dir', '/tmp/backend-out'],
+    },
+    {
+      name: 'forwards flags with a directory',
+      argv: ['/tmp/plugin', '--target', 'linux-mipsle', '--out-dir', '/tmp/backend-out'],
+      expectedPluginDir: '/tmp/plugin',
+      expectedArgs: ['--target', 'linux-mipsle', '--out-dir', '/tmp/backend-out'],
+    },
+    {
+      name: 'forwards flags after -- without a directory',
+      argv: ['--', '--target', 'linux-mipsle', '--out-dir', '/tmp/backend-out'],
+      expectedPluginDir: process.cwd(),
+      expectedArgs: ['--target', 'linux-mipsle', '--out-dir', '/tmp/backend-out'],
+    },
+    {
+      name: 'forwards flags after -- with a directory',
+      argv: ['/tmp/plugin', '--', '--target', 'linux-mipsle', '--out-dir', '/tmp/backend-out'],
+      expectedPluginDir: '/tmp/plugin',
+      expectedArgs: ['--target', 'linux-mipsle', '--out-dir', '/tmp/backend-out'],
+    },
+  ])('build-backend $name', async ({argv, expectedPluginDir, expectedArgs}) => {
+    const execution = execute(['build-backend', ...argv]);
+
+    await execution.run;
+
+    expect(buildBackendSpy).toHaveBeenCalledWith({
+      pluginDir: resolve(process.cwd(), expectedPluginDir),
+      args: expectedArgs,
+    });
   });
 
   test('documents device URL and UI port options while hiding compatibility flags', () => {
@@ -231,6 +291,75 @@ describe('createProgram', () => {
       'Warning: localized-command-plugin locale ru has extra key extra not present in en',
     );
     expect(result.stdout).toContain('Validated localized-command-plugin');
+  });
+
+  test.skipIf(skipSlowTests)(
+    'reports unscoped built CSS selectors as warnings without failing validation',
+    async () => {
+      const pluginDir = createPluginDirectory(VALID_MANIFEST);
+
+      mkdirSync(resolve(pluginDir, 'src'));
+      mkdirSync(resolve(pluginDir, 'dist'));
+      writeFileSync(resolve(pluginDir, 'src/index.ts'), 'export {}');
+      writeFileSync(resolve(pluginDir, 'dist/index.css'), '.source-entry-plugin { color: red } body { margin: 0 }');
+
+      const result = await runCli(['validate', pluginDir]);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Warning: CSS selector "body" is not scoped under .source-entry-plugin');
+      expect(result.stdout).toContain('Validated source-entry-plugin');
+    },
+  );
+
+  test.skipIf(skipSlowTests)('honors package mndw CSS selector allowlist metadata', async () => {
+    const pluginDir = createPluginDirectory(VALID_MANIFEST);
+
+    mkdirSync(resolve(pluginDir, 'src'));
+    mkdirSync(resolve(pluginDir, 'dist'));
+    writeFileSync(resolve(pluginDir, 'src/index.ts'), 'export {}');
+    writeFileSync(
+      resolve(pluginDir, 'dist/index.css'),
+      '.source-entry-plugin { color: red } .vendor-chart { color: blue }',
+    );
+    writeFileSync(
+      resolve(pluginDir, 'package.json'),
+      JSON.stringify({mndw: {cssSelectorAllowlist: ['.vendor-chart']}}),
+    );
+
+    const result = await runCli(['validate', pluginDir]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('CSS selector');
+  });
+
+  test('scaffolds, packs, and validates CSS under the manifest name', async () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'mndw-template-css-scope-'));
+
+    temporaryDirectories.push(root);
+
+    const pluginDir = resolve(root, 'scope-smoke');
+
+    const created = await runCli([
+      'create',
+      'scope-smoke',
+      '--framework',
+      'vanilla',
+      '--out',
+      pluginDir,
+      '--no-install',
+    ]);
+
+    expect(created.status).toBe(0);
+
+    const packed = await runCli(['pack', pluginDir]);
+
+    expect(packed.status).toBe(0);
+
+    const validated = await runCli(['validate', pluginDir]);
+
+    expect(validated.status).toBe(0);
+    expect(validated.stdout).toContain('Validated scope-smoke');
+    expect(validated.stdout).not.toContain('CSS selector');
   });
 
   test.skipIf(skipSlowTests)('fails catalog parity validation in strict mode', async () => {

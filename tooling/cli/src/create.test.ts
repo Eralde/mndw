@@ -7,6 +7,7 @@ import {PassThrough} from 'node:stream';
 import {validateManifest} from '@mndw/sdk-internal';
 import {sharedDependencyVersions} from '@mndw/sdk-internal/shared-dependencies';
 import {compile} from 'svelte/compiler';
+import {mndwSvelteWarningFilter} from '@mndw/sdk/svelte';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 import {CliError} from './errors.js';
@@ -24,6 +25,7 @@ import {packPlugin} from './pack.js';
 import {zipPlugin} from './zip.js';
 import {validatePluginCatalogs} from './i18n-validator.js';
 import {runProcess} from './test-process.js';
+import {findUnscopedCssSelectors, validatePluginCss} from './css-scope-validator.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 // The full suites run in .github/workflows/ci-weekly.yml.
@@ -220,12 +222,73 @@ describe('planCreate', () => {
     expect(fileContents(plan, 'src/index.ts')).toContain('App.svelte');
   });
 
+  it.each(
+    [
+      {
+        template: 'vanilla',
+        framework: 'vanilla',
+        backend: undefined,
+        type: 'widget',
+        source: 'src/index.ts',
+        styles: 'src/index.css',
+      },
+      {
+        template: 'Svelte',
+        framework: 'svelte',
+        backend: undefined,
+        type: 'widget',
+        source: 'src/App.svelte',
+        styles: 'src/App.svelte',
+      },
+      {
+        template: 'Vue',
+        framework: 'vue',
+        backend: undefined,
+        type: 'widget',
+        source: 'src/App.vue',
+        styles: 'src/App.vue',
+      },
+      {
+        template: 'Angular',
+        framework: 'angular',
+        backend: undefined,
+        type: 'widget',
+        source: 'src/app.component.ts',
+        styles: undefined,
+      },
+      {
+        template: 'Go',
+        framework: 'vanilla',
+        backend: 'go',
+        type: 'page',
+        source: 'src/index.ts',
+        styles: 'src/index.css',
+      },
+    ] as const,
+  )('scopes the $template template under its manifest name', ({framework, backend, type, source, styles}) => {
+    const plan = planCreate(options({name: 'scope-check', framework, backend, type}));
+    const manifest = JSON.parse(fileContents(plan, 'manifest.json')) as {name: string};
+    const markup = fileContents(plan, source);
+
+    expect(markup).toContain(`class="${manifest.name}"`);
+
+    if (styles !== undefined) {
+      const styleText = fileContents(plan, styles);
+      const css = styles.endsWith('.css')
+        ? styleText
+        : styleText.match(/<style[^>]*>([\s\S]*?)<\/style>/)?.[1] ?? '';
+
+      expect(findUnscopedCssSelectors(css, manifest.name)).toEqual([]);
+    }
+  });
+
   it('generates a Svelte template without state_referenced_locally warnings', () => {
     const plan = planCreate(options({name: 'sv', framework: 'svelte', type: 'widget'}));
     const result = compile(fileContents(plan, 'src/App.svelte'), {
       filename: 'src/App.svelte',
       generate: 'client',
       dev: true,
+      warningFilter: mndwSvelteWarningFilter,
     });
 
     expect(result.warnings.map((warning) => warning.code)).not.toContain('state_referenced_locally');
@@ -252,11 +315,31 @@ describe('planCreate', () => {
     expect(fileContents(plan, 'src/index.ts')).toContain('provideTranslator');
     expect(fileContents(plan, 'src/index.ts')).not.toContain('createApplication');
     expect(app).toContain('from \'@mndw/sdk/angular\'');
-    expect(app).toContain('MndwTableDirective, MndwCellDirective');
-    expect(app).toContain('<mndw-table');
-    expect(app).toContain('<ng-template mndwCell="name" let-row>');
-    expect(app).not.toContain('angularCell');
+    expect(app).toContain('<mndw-button');
+    expect(app).toContain('this.ctx.backend.call<{message: string}>(\'hello\', {as: \'json\'})');
+    expect(app).not.toContain('mndw-table');
+    expect(app).not.toContain('data-theme');
     expect(JSON.parse(fileContents(plan, 'tsconfig.json'))).toHaveProperty('angularCompilerOptions');
+  });
+
+  it.each(
+    [
+      {name: 'vanilla', framework: 'vanilla', backend: undefined, path: 'src/index.ts'},
+      {name: 'Svelte', framework: 'svelte', backend: undefined, path: 'src/App.svelte'},
+      {name: 'Vue', framework: 'vue', backend: undefined, path: 'src/App.vue'},
+      {name: 'Angular', framework: 'angular', backend: undefined, path: 'src/app.component.ts'},
+      {name: 'Go backend', framework: 'vanilla', backend: 'go', path: 'src/index.ts'},
+    ] as const,
+  )('generates a minimal $name scaffold with backend action and shared button', ({framework, backend, path}) => {
+    const plan = planCreate(options({name: 'minimal-plugin', framework, backend, type: 'widget'}));
+    const source = fileContents(plan, path);
+
+    expect(source).toContain('l10n.title');
+    expect(source).toMatch(/backend\.call<\{message: string\}>\('hello',\s*\{\s*as: 'json',?\s*\}\)/);
+    expect(source).toContain('<mndw-button');
+    expect(source).not.toContain('mndw-table');
+    expect(source).not.toContain('data-theme');
+    expect(source).not.toContain('Object.assign(');
   });
 
   it('renders the Angular device name as an input signal', () => {
@@ -264,14 +347,14 @@ describe('planCreate', () => {
     const app = fileContents(plan, 'src/app.component.ts');
 
     expect(app).toContain(
-      'import {CUSTOM_ELEMENTS_SCHEMA, Component, InjectionToken, computed, inject, input, signal} from \'@angular/core\';',
+      'import {CUSTOM_ELEMENTS_SCHEMA, Component, InjectionToken, inject, input, signal} from \'@angular/core\';',
     );
     expect(app).toContain('public readonly deviceName = input(\'\');');
     expect(app).toContain('<p>Device: {{ deviceName() }}</p>');
     expect(app).not.toMatch(/\bInput\b/);
   });
 
-  it.skipIf(skipSlowTests)('runs generated framework locale and table tests without compiler warnings', async () => {
+  it.skipIf(skipSlowTests)('runs generated framework locale tests without compiler warnings', async () => {
     const root = mkdtempSync(join(REPO_ROOT, 'tooling', 'cli', '.generated-warning-'));
     const vitest = join(REPO_ROOT, 'tooling', 'cli', 'node_modules', '.bin', 'vitest');
 
@@ -281,12 +364,16 @@ describe('planCreate', () => {
 
         createPlugin({name: `warning-${framework}`, outDir: generatedDir, framework, type: 'widget'});
 
-        const result = await runProcess(vitest, ['run', 'src/l10n.test.ts', 'src/table.test.ts'], {cwd: generatedDir});
+        const result = await runProcess(vitest, ['run', 'src/l10n.test.ts'], {cwd: generatedDir});
         const output = `${result.stdout}\n${result.stderr}`;
 
         expect(result.status, output).toBe(0);
         expect(output).not.toContain('state_referenced_locally');
         expect(output).not.toContain('NG0303');
+
+        if (framework === 'svelte') {
+          expect(output).not.toMatch(/a11y_(click_events_have_key_events|no_static_element_interactions)/);
+        }
       }
     } finally {
       rmSync(root, {recursive: true, force: true});
@@ -490,7 +577,10 @@ describe('planCreate', () => {
     });
     expect(backend?.routes.find((route) => route.id === 'hello')?.access).toBe('session');
     expect(file('backend/internal/httpapi/server.go')).toContain('mux.HandleFunc("GET /hello"');
-    expect(file('src/index.ts')).toContain('ctx.backend.fetch(\'hello\')');
+    expect(file('src/index.ts')).toContain('ctx.backend.call<{message: string}>(\'hello\', {as: \'json\'})');
+    expect(file('src/index.ts')).toContain('<mndw-button');
+    expect(file('src/index.ts')).not.toContain('mndw-table');
+    expect(file('src/index.ts')).not.toContain('data-theme');
     expect(file('src/index.ts')).toContain('button?.addEventListener(\'click\'');
     expect(file('i18n/en.json')).toContain('Backend response');
     expect(file('i18n/ru.json')).toContain('Ответ сервера');
@@ -762,6 +852,7 @@ describe('createPlugin', () => {
         const packed = await packPlugin(outDir);
 
         expect(packed.framework).toBe(combo.framework);
+        expect(validatePluginCss(outDir, name)).toEqual([]);
         expect(existsSync(join(outDir, 'dist', 'index.js'))).toBe(true);
 
         if (combo.framework !== 'angular') {

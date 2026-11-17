@@ -2,6 +2,7 @@ import {resolve} from 'node:path';
 
 import {angularSandboxPlugin} from '@mndw/angular-compiler/vite';
 import {svelte} from '@sveltejs/vite-plugin-svelte';
+import {mndwSvelteWarningFilter} from '@mndw/sdk/svelte';
 import vue from '@vitejs/plugin-vue';
 import {createServer} from 'vite';
 
@@ -30,7 +31,7 @@ export interface PluginDevServerHandle {
 /** Starts Vite as a same-origin source server beside the prebuilt URL sandbox host. */
 export async function startPluginDevServer(options: PluginDevServerOptions): Promise<PluginDevServerHandle> {
   const frameworkPlugins = options.framework === 'svelte'
-    ? [svelte()]
+    ? [svelte({compilerOptions: {warningFilter: mndwSvelteWarningFilter}})]
     : options.framework === 'vue'
     ? [vue({isProduction: true})]
     : options.framework === 'angular'

@@ -1,56 +1,54 @@
-import {CUSTOM_ELEMENTS_SCHEMA, Component, InjectionToken, computed, inject, input, signal} from '@angular/core';
-import {toSignal} from '@angular/core/rxjs-interop';
+import {CUSTOM_ELEMENTS_SCHEMA, Component, InjectionToken, inject, input, signal} from '@angular/core';
 import type {PluginContext} from '@mndw/sdk';
 import {TRANSLATOR} from '@mndw/sdk/angular';
-import {type Column, column} from '@mndw/ui';
-import {MndwCellDirective, MndwTableDirective} from '@mndw/ui-angular';
-
-interface TableRow {
-  id: string;
-  name: string;
-}
-
-function isTableRow(value: unknown): value is TableRow {
-  return typeof value === 'object' && value !== null && 'id' in value && 'name' in value
-    && typeof value.id === 'string' && typeof value.name === 'string';
-}
 
 export const PLUGIN_CONTEXT = new InjectionToken<PluginContext>('PLUGIN_CONTEXT');
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [MndwTableDirective, MndwCellDirective],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
   template: `
-    <div [attr.data-theme]="theme()" style="padding:var(--mndw-space-4);font-family:sans-serif">
+    <section class="__MNDW_NAME__" aria-labelledby="plugin-title"
+      style="padding:var(--mndw-space-4);font-family:var(--mndw-font-sans);color:var(--mndw-text);background:var(--mndw-surface)">
+      <h2 id="plugin-title">{{ translator.t('l10n.title') }}</h2>
       <p>Device: {{ deviceName() }}</p>
-      <button (click)="count.set(count() + 1)">{{ translator.t('l10n.button') }} {{ count() }}</button>
-      <p data-testid="l10n-result">{{ translator.t('l10n.result') }}</p>
-      <mndw-table [columns]="columns()" [rows]="rows()" rowKey="id" [caption]="translator.t('table.caption')"
-        [columnMenu]="false">
-        <ng-template mndwCell="name" let-row>
-          <span data-testid="table-name-cell">{{ $any(row).name }}</span>
-        </ng-template>
-      </mndw-table>
-    </div>
+      <mndw-button variant="primary" type="button" (click)="load()">
+        {{ translator.t('l10n.button') }}
+      </mndw-button>
+      <p data-testid="l10n-result" role="status" aria-live="polite">
+        @if (backendError()) {
+          {{ translator.t('l10n.error') }}
+        } @else if (backendMessage() !== undefined) {
+          {{ translator.t('l10n.result') }}: {{ backendMessage() }}
+        } @else {
+          {{ translator.t('l10n.result') }}
+        }
+      </p>
+    </section>
   `,
 })
 export class AppComponent {
   private readonly ctx = inject(PLUGIN_CONTEXT);
   protected readonly translator = inject(TRANSLATOR);
-  protected readonly theme = toSignal(this.ctx.theme$, {initialValue: this.ctx.theme});
-  protected readonly rows = computed<readonly TableRow[]>(() => [
-    {id: 'first', name: this.translator.t('table.first')},
-    {id: 'second', name: this.translator.t('table.second')},
-  ]);
-  protected readonly columns = computed<Column<unknown>[]>(() => [
-    column<unknown>()({
-      id: 'name',
-      label: this.translator.t('table.column'),
-      accessor: (row) => isTableRow(row) ? row.name : '',
-    }),
-  ]);
   public readonly deviceName = input('');
-  protected readonly count = signal(0);
+  protected readonly backendMessage = signal<string | undefined>(undefined);
+  protected readonly backendError = signal(false);
+
+  protected async load(): Promise<void> {
+    if (this.ctx.backend === undefined) {
+      this.backendError.set(true);
+
+      return;
+    }
+
+    try {
+      const response = await this.ctx.backend.call<{message: string}>('hello', {as: 'json'});
+      this.backendMessage.set(response.message);
+      this.backendError.set(false);
+    } catch {
+      this.backendMessage.set(undefined);
+      this.backendError.set(true);
+    }
+  }
 }

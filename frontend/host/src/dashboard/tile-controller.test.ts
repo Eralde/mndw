@@ -44,6 +44,7 @@ import {
   setPluginLoadState,
 } from '../runtime/plugin-load-state.svelte.js';
 import {replaceDepsStatuses} from '../state/deps-status.svelte.js';
+import {getTheme, setTheme} from '../services/theme.service.js';
 import {
   destroyAllTiles,
   ensureTileController,
@@ -167,6 +168,25 @@ describe('tile controller', () => {
     expect(controller?.frame.querySelector('.mndw-grid-tile__title')?.textContent).toBe('clock');
     expect(controller?.frame.querySelector('.mndw-grid-tile__close')).not.toBeNull();
     expect(mountWidgetTile).toHaveBeenCalledWith(controller?.body, expect.anything(), expect.anything());
+  });
+
+  it('sets the host theme on the plugin body and updates it until removal', () => {
+    const priorTheme = getTheme();
+
+    setTheme('dark');
+    vi.mocked(pluginRegistry).get.mockReturnValue(widgetPlugin('clock', noop));
+
+    const controller = ensureTileController(pluginContextServices, pluginRegistry, 'clock', 'clock:1', vi.fn());
+    const body = controller?.body;
+
+    expect(body?.dataset.theme).toBe('dark');
+    setTheme('light');
+    expect(body?.dataset.theme).toBe('light');
+
+    removeTileController('widget-clock:1');
+    setTheme('dark');
+    expect(body?.dataset.theme).toBe('light');
+    setTheme(priorTheme);
   });
 
   it('updates the tile title and close aria-label via setTileTitle', () => {

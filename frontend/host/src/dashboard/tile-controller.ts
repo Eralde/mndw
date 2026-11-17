@@ -7,6 +7,7 @@ import {retryPluginLoad} from '../runtime/plugin-loader.js';
 import {appState} from '../state/app.svelte.js';
 import {getDepsStatus} from '../state/deps-status.svelte.js';
 import {hostT} from '../services/locale.service.js';
+import {getTheme, subscribeTheme} from '../services/theme.service.js';
 import {createWidgetContext} from './widget-context.js';
 import {type WidgetTileHandle, mountWidgetTile} from './widget-mount.js';
 
@@ -23,6 +24,7 @@ export interface TileController {
   frame: HTMLElement;
   body: HTMLElement;
   handle: WidgetTileHandle;
+  themeUnsubscribe: () => void;
   setTileTitle: (title: string) => void;
   getTileTitle: () => string;
   /** True while the tile shows the installing placeholder awaiting hydration. */
@@ -272,12 +274,17 @@ export function ensureTileController(
 
   const label = loadedWidget?.entry.label ?? loadState?.label ?? pluginName;
   const {frame, body, setTileTitle, getTileTitle} = buildTileFrame(label, () => onRemoveRequest(id));
+  body.dataset.theme = getTheme();
+  const themeUnsubscribe = subscribeTheme((theme) => {
+    body.dataset.theme = theme;
+  });
   const controller: TileController = {
     id,
     pluginName,
     instanceId,
     frame,
     body,
+    themeUnsubscribe,
     handle: placeholderTileHandle(),
     setTileTitle,
     getTileTitle,
@@ -389,6 +396,7 @@ export function removeTileController(
   }
 
   controllers.delete(tileId);
+  controller.themeUnsubscribe();
   controller.frame.remove();
   controller.handle.dispose({
     clearStorage: options.clearStorage ?? true,
@@ -489,6 +497,8 @@ export function destroyAllTiles(closeReason: OverlayTeardownReason = 'plugin-unm
       controller.handle.dispose({clearStorage: false, closeReason});
     } catch (error) {
       console.error(`[mndw] Failed to unmount tile ${id}:`, error);
+    } finally {
+      controller.themeUnsubscribe();
     }
   }
 

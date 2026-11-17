@@ -4,8 +4,9 @@
 
 The host supplies CSS custom properties named `--mndw-*`, including colors, spacing, typography,
 and radii. Prefer them to copied literal theme values: they follow the active theme and imported
-device palette. Scope selectors to a plugin root so component rules do not leak into the host or
-other plugins.
+device palette. Scope every plugin selector under a root class named after the plugin,
+`.<plugin-name>`, so component rules do not leak into the host or other plugins. The host adds
+`data-theme` to the plugin container; plugin code should not set it.
 
 ```css
 .status-widget {
@@ -17,6 +18,51 @@ other plugins.
   font-family: var(--mndw-font-sans);
 }
 ```
+
+Use the plugin class in every framework. For a plugin named `status-widget`, the selector prefix is
+`.status-widget`:
+
+```svelte
+<div class="status-widget">
+  <p class="status">Online</p>
+</div>
+
+<style>
+  :global(.status-widget) .status {
+    color: var(--mndw-success);
+  }
+</style>
+```
+
+```vue
+<template>
+  <div class="status-widget"><p class="status">Online</p></div>
+</template>
+
+<style scoped>
+.status-widget .status {
+  color: var(--mndw-success);
+}
+</style>
+```
+
+```ts
+// Angular component stylesheet
+.status-widget .status {
+  color: var(--mndw-success);
+}
+```
+
+```css
+/* Vanilla TypeScript stylesheet */
+.status-widget .status {
+  color: var(--mndw-success);
+}
+```
+
+Keep global resets and element-only selectors out of plugin CSS. `mndw validate` warns when built
+CSS contains selectors outside the plugin prefix. Third-party selectors can be listed in
+`package.json` under `mndw.cssSelectorAllowlist`; see [validation and packaging](validation-and-packaging.md).
 
 Use CSS tokens for rendered colors. If JavaScript needs colors (for example, to draw on canvas), read
 the current palette from `ctx.palette` and subscribe to `ctx.palette$` to update it when the applied

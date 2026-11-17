@@ -19,8 +19,8 @@
         },
         "version": {
           "type": "string",
-          "minLength": 1,
-          "description": "Semver-ish version string."
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+          "description": "Semantic version of this plugin."
         },
         "label": {
           "type": "string",
@@ -294,7 +294,7 @@
           "properties": {
             "w": {
               "type": "integer",
-              "exclusiveMinimum": 0,
+              "minimum": 1,
               "maximum": 12
             },
             "h": {
@@ -304,7 +304,7 @@
             },
             "minW": {
               "type": "integer",
-              "exclusiveMinimum": 0,
+              "minimum": 1,
               "maximum": 12
             },
             "minH": {
@@ -349,8 +349,8 @@
         },
         "version": {
           "type": "string",
-          "minLength": 1,
-          "description": "Semver-ish version string."
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+          "description": "Semantic version of this plugin."
         },
         "label": {
           "type": "string",

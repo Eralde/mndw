@@ -6,6 +6,14 @@ Run a plugin from source with the public CLI. Start in the plugins project that 
 npx mndw dev hello-widget
 ```
 
+For a Go backend, `mndw build-backend` builds from the current plugin directory. Pass a directory to
+build a different plugin:
+
+```sh
+npx mndw build-backend
+npx mndw build-backend ../other-plugin
+```
+
 The CLI starts a local `mndwd` daemon, the packaged host UI, and Vite serving your plugin source. Vite provides HMR
 (hot module replacement) while you edit the frontend. A plugin remount resets its in-memory state.
 

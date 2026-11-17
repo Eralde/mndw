@@ -118,11 +118,12 @@ func NewRuntime(config RuntimeConfig) *RuntimeImpl {
 	config.Supervisor = normalizeSupervisorConfig(config.Supervisor)
 
 	admission := NewAdmission(config.Limits)
+	supervisor := newSupervisor(config.Supervisor, admission)
 
 	runtime := &RuntimeImpl{
 		exec:              newExecRunner(config.Exec, admission),
-		supervisor:        newSupervisor(config.Supervisor, admission),
-		traffic:           NewTrafficGate(),
+		supervisor:        supervisor,
+		traffic:           newTrafficGate(supervisor),
 		limits:            config.Limits,
 		protocols:         slices.Clone(config.SupportedServiceProtocols),
 		now:               config.Supervisor.Now,

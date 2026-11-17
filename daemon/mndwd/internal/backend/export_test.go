@@ -273,6 +273,14 @@ func supervisorServiceForTest(s *Supervisor, pluginID string) *pluginRecord {
 	return s.serviceRecordLocked(pluginID)
 }
 
+func supervisorPluginRecordPresentForTest(s *Supervisor, pluginID string) bool {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	return s.plugins[pluginID] != nil
+}
+
 func resetSupervisorServicesForTest(s *Supervisor) {
 	s.mu.Lock()
 

@@ -75,15 +75,16 @@ type SupervisorConfig struct {
 }
 
 type Supervisor struct {
-	mu               sync.Mutex
-	cfg              SupervisorConfig
-	admission        *Admission
-	reservedServices int
-	plugins          map[string]*pluginRecord
-	nextGen          uint64
-	lifetimeCtx      context.Context
-	now              func() time.Time
-	startDesired     func(ServiceSpec)
+	mu                  sync.Mutex
+	cfg                 SupervisorConfig
+	admission           *Admission
+	reservedServices    int
+	plugins             map[string]*pluginRecord
+	nextGen             uint64
+	lifetimeCtx         context.Context
+	now                 func() time.Time
+	startDesired        func(ServiceSpec)
+	platformMaintenance bool
 	// retryCallbackDone synchronizes tests with retry timer callback completion.
 	retryCallbackDone func(string)
 	startupWG         sync.WaitGroup
@@ -116,6 +117,7 @@ type pluginRecord struct {
 	startupQueued      bool
 	startupSeq         uint64
 	retryTimer         *time.Timer
+	sockets            map[socketCloser]struct{}
 }
 
 func normalizeSupervisorConfig(cfg SupervisorConfig) SupervisorConfig {
@@ -270,6 +272,93 @@ func (s *Supervisor) reservedServiceCount() int {
 	return s.reservedServices
 }
 
+func (s *Supervisor) trackSocket(conn socketCloser, pluginID string) (func(), bool) {
+	s.mu.Lock()
+
+	if s.platformMaintenance {
+		s.mu.Unlock()
+
+		return func() {}, false
+	}
+
+	for trackedPluginID, record := range s.plugins {
+		if trackedPluginID != pluginID {
+			if _, tracked := record.sockets[conn]; tracked {
+				delete(record.sockets, conn)
+				s.prunePluginRecordLocked(trackedPluginID)
+			}
+		}
+	}
+
+	record := s.ensurePluginRecordLocked(pluginID)
+
+	if record.sockets == nil {
+		record.sockets = make(map[socketCloser]struct{})
+	}
+
+	record.sockets[conn] = struct{}{}
+
+	s.mu.Unlock()
+
+	return func() {
+		s.untrackSocket(conn)
+	}, true
+}
+
+func (s *Supervisor) untrackSocket(conn socketCloser) {
+	s.mu.Lock()
+
+	for pluginID, record := range s.plugins {
+		if _, tracked := record.sockets[conn]; tracked {
+			delete(record.sockets, conn)
+			s.prunePluginRecordLocked(pluginID)
+		}
+	}
+
+	s.mu.Unlock()
+}
+
+func (s *Supervisor) closePluginSockets(pluginID string) {
+	s.mu.Lock()
+
+	connections := make([]socketCloser, 0)
+
+	if record := s.plugins[pluginID]; record != nil {
+		for conn := range record.sockets {
+			connections = append(connections, conn)
+		}
+	}
+
+	s.mu.Unlock()
+
+	closeSockets(connections)
+}
+
+func (s *Supervisor) beginPlatformMaintenance() {
+	s.mu.Lock()
+
+	s.platformMaintenance = true
+	connections := make([]socketCloser, 0)
+
+	for _, record := range s.plugins {
+		for conn := range record.sockets {
+			connections = append(connections, conn)
+		}
+	}
+
+	s.mu.Unlock()
+
+	closeSockets(connections)
+}
+
+func (s *Supervisor) platformMaintenanceActive() bool {
+	s.mu.Lock()
+
+	defer s.mu.Unlock()
+
+	return s.platformMaintenance
+}
+
 func (s *Supervisor) setDesiredLocked(pluginID string, desired *ServiceSpec) {
 	if desired == nil {
 		if record := s.plugins[pluginID]; record != nil {
@@ -296,13 +385,14 @@ func (s *Supervisor) clearDesiredLocked() {
 	}
 }
 
-// A union record remains while any desired, service, transition, process, slot, startup, or retry ownership exists.
+// A union record remains while any desired, service, transition, socket, process, slot, startup, or retry ownership exists.
 func (s *Supervisor) prunePluginRecordLocked(pluginID string) {
 	record := s.plugins[pluginID]
 
 	if record == nil || record.desired != nil || record.servicePresent || record.transitionPresent || record.run != nil ||
 		record.operation != OpNone || record.serviceHeld || record.reservationPending || record.command != nil ||
-		record.done != nil || record.stopping || record.stopDone != nil || record.startupQueued || record.retryTimer != nil {
+		record.done != nil || record.stopping || record.stopDone != nil || record.startupQueued || record.retryTimer != nil ||
+		len(record.sockets) > 0 {
 		return
 	}
 

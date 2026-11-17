@@ -1,8 +1,6 @@
 package backend
 
 import (
-	"sync"
-
 	"github.com/coder/websocket"
 )
 
@@ -11,72 +9,33 @@ type socketCloser interface {
 }
 
 type TrafficGate struct {
-	mu                  sync.Mutex
-	active              map[socketCloser]string
-	platformMaintenance bool
+	supervisor *Supervisor
 }
 
 func NewTrafficGate() *TrafficGate {
-	return &TrafficGate{active: make(map[socketCloser]string)}
+	config := normalizeSupervisorConfig(SupervisorConfig{})
+
+	return newTrafficGate(newSupervisor(config, NewAdmission(config.Limits)))
+}
+
+func newTrafficGate(supervisor *Supervisor) *TrafficGate {
+	return &TrafficGate{supervisor: supervisor}
 }
 
 func (g *TrafficGate) Track(conn socketCloser, pluginID string) (func(), bool) {
-	g.mu.Lock()
-
-	if g.platformMaintenance {
-		g.mu.Unlock()
-
-		return func() {}, false
-	}
-
-	g.active[conn] = pluginID
-
-	g.mu.Unlock()
-
-	return func() {
-		g.mu.Lock()
-		delete(g.active, conn)
-		g.mu.Unlock()
-	}, true
+	return g.supervisor.trackSocket(conn, pluginID)
 }
 
 func (g *TrafficGate) ClosePlugin(pluginID string) {
-	g.mu.Lock()
-
-	connections := make([]socketCloser, 0)
-
-	for conn, activePluginID := range g.active {
-		if activePluginID == pluginID {
-			connections = append(connections, conn)
-		}
-	}
-
-	g.mu.Unlock()
-
-	closeSockets(connections)
+	g.supervisor.closePluginSockets(pluginID)
 }
 
 func (g *TrafficGate) BeginPlatformMaintenance() {
-	g.mu.Lock()
-
-	g.platformMaintenance = true
-	connections := make([]socketCloser, 0, len(g.active))
-
-	for conn := range g.active {
-		connections = append(connections, conn)
-	}
-
-	g.mu.Unlock()
-
-	closeSockets(connections)
+	g.supervisor.beginPlatformMaintenance()
 }
 
 func (g *TrafficGate) PlatformMaintenance() bool {
-	g.mu.Lock()
-
-	defer g.mu.Unlock()
-
-	return g.platformMaintenance
+	return g.supervisor.platformMaintenanceActive()
 }
 
 func closeSockets(connections []socketCloser) {

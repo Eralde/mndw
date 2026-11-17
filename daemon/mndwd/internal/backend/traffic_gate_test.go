@@ -67,6 +67,26 @@ func TestTrafficGateClosePluginClosesOnlyMatching(t *testing.T) {
 	}
 }
 
+func TestTrafficGateRetrackingMovesSocketToLatestPlugin(t *testing.T) {
+	gate := NewTrafficGate()
+	closer := &recordingCloser{}
+
+	gate.Track(closer, "a")
+	gate.Track(closer, "b")
+
+	gate.ClosePlugin("a")
+
+	if got := closer.closeRecords(); len(got) != 0 {
+		t.Fatalf("close records after closing previous plugin = %#v, want none", got)
+	}
+
+	gate.ClosePlugin("b")
+
+	if got := closer.closeRecords(); len(got) != 1 {
+		t.Fatalf("close records after closing current plugin = %#v, want one", got)
+	}
+}
+
 func TestTrafficGateUntrackStopsClosing(t *testing.T) {
 	gate := NewTrafficGate()
 	closer := &recordingCloser{}
@@ -143,6 +163,7 @@ func TestSocketTrackDoesNotCreateLifecycleRecord(t *testing.T) {
 	}
 
 	snapshot := runtime.supervisor.pluginSnapshot("socket-only")
+
 	if snapshot.desiredPresent || snapshot.servicePresent || snapshot.transitionPresent {
 		t.Fatal("socket tracking created a service or lifecycle record")
 	}
@@ -153,6 +174,26 @@ func TestSocketTrackDoesNotCreateLifecycleRecord(t *testing.T) {
 
 	if path, ok := runtime.SocketPath("socket-only"); ok || path != "" {
 		t.Fatalf("socket-only path = %q, %v, want empty and absent", path, ok)
+	}
+}
+
+func TestSocketOnlyRecordLivesUntilLastUntrack(t *testing.T) {
+	runtime := NewRuntime(RuntimeConfig{RuntimeRoot: t.TempDir()})
+	closer := &recordingCloser{}
+	untrack, ok := runtime.Traffic().Track(closer, "socket-only")
+
+	if !ok {
+		t.Fatal("Track refused a connection outside platform maintenance")
+	}
+
+	if !supervisorPluginRecordPresentForTest(runtime.supervisor, "socket-only") {
+		t.Fatal("socket tracking did not retain a plugin record")
+	}
+
+	untrack()
+
+	if supervisorPluginRecordPresentForTest(runtime.supervisor, "socket-only") {
+		t.Fatal("last untrack retained an otherwise empty plugin record")
 	}
 }
 

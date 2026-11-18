@@ -48,7 +48,7 @@ func (s *fakeSelfUpdateService) BeginRevert(context.Context) (selfupdate.Accepte
 func newSelfUpdateHandler(t *testing.T, service SelfUpdateService) *Handler {
 	t.Helper()
 
-	return New(Config{SelfUpdate: service, Runtime: passthroughRuntime{}}, nil, nil, nil, nil, discardLogger())
+	return New(Config{SelfUpdate: service, Runtime: passthroughRuntime{}, Logger: discardLogger()})
 }
 
 func TestSelfUpdateApplyReturnsServerDerivedTarget(t *testing.T) {
@@ -57,7 +57,7 @@ func TestSelfUpdateApplyReturnsServerDerivedTarget(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/mgmt/self-update/apply", strings.NewReader(`{}`))
 
-	h.handleSelfUpdateApply(recorder, request)
+	h.selfUpdate.handleSelfUpdateApply(recorder, request)
 
 	if recorder.Code != http.StatusAccepted || !strings.Contains(recorder.Body.String(), `"targetVersion":"0.0.4"`) {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
@@ -76,7 +76,7 @@ func TestSelfUpdateRejectsNonEmptyAndTrailingBodies(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, "/api/mgmt/self-update/check", strings.NewReader(body))
 
-		h.handleSelfUpdateCheck(recorder, request)
+		h.selfUpdate.handleSelfUpdateCheck(recorder, request)
 
 		if recorder.Code != http.StatusBadRequest {
 			t.Errorf("body %q status=%d", body, recorder.Code)
@@ -91,11 +91,11 @@ func TestSelfUpdateRejectsNonEmptyAndTrailingBodies(t *testing.T) {
 func TestSelfUpdateInvalidBodyUsesHandlerLogger(t *testing.T) {
 	var logs bytes.Buffer
 	h := newSelfUpdateHandler(t, &fakeSelfUpdateService{})
-	h.logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	h.selfUpdate.logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/mgmt/self-update/check", strings.NewReader(`null`))
 
-	h.handleSelfUpdateCheck(recorder, request)
+	h.selfUpdate.handleSelfUpdateCheck(recorder, request)
 
 	if !strings.Contains(logs.String(), "code=BAD_REQUEST") {
 		t.Fatalf("handler logger did not record invalid body response: %s", logs.String())
@@ -107,7 +107,7 @@ func TestSelfUpdateStatusDoesNotCheck(t *testing.T) {
 	h := newSelfUpdateHandler(t, service)
 	recorder := httptest.NewRecorder()
 
-	h.handleSelfUpdateStatus(recorder, httptest.NewRequest(http.MethodGet, "/api/mgmt/self-update/status", nil))
+	h.selfUpdate.handleSelfUpdateStatus(recorder, httptest.NewRequest(http.MethodGet, "/api/mgmt/self-update/status", nil))
 
 	if recorder.Code != http.StatusOK || service.checkCalls != 0 {
 		t.Fatalf("status=%d check calls=%d", recorder.Code, service.checkCalls)
@@ -128,7 +128,7 @@ func TestSelfUpdateErrorMapping(t *testing.T) {
 			h := newSelfUpdateHandler(t, service)
 			recorder := httptest.NewRecorder()
 
-			h.handleSelfUpdateApply(recorder, httptest.NewRequest(http.MethodPost, "/api/mgmt/self-update/apply", strings.NewReader(`{}`)))
+			h.selfUpdate.handleSelfUpdateApply(recorder, httptest.NewRequest(http.MethodPost, "/api/mgmt/self-update/apply", strings.NewReader(`{}`)))
 
 			if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), `"code":"`+test.code+`"`) {
 				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())

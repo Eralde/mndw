@@ -34,7 +34,7 @@ type permissionRequest struct {
 	Enabled    *bool  `json:"enabled"`
 }
 
-func (h *Handler) handlePermission(w http.ResponseWriter, r *http.Request) {
+func (h *pluginsAPI) handlePermission(w http.ResponseWriter, r *http.Request) {
 	var request permissionRequest
 
 	defer r.Body.Close()
@@ -116,7 +116,7 @@ func (h *Handler) handlePermission(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, source, approval, enabled, dir))
 }
 
-func (h *Handler) reconcilePermission(plugin, reason string) {
+func (h *pluginsAPI) reconcilePermission(plugin, reason string) {
 	if h.permissionController == nil {
 		return
 	}
@@ -126,7 +126,7 @@ func (h *Handler) reconcilePermission(plugin, reason string) {
 	}
 }
 
-func (h *Handler) permissionTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, string, *httpx.APIError) {
+func (h *pluginsAPI) permissionTarget(name string) (*manifest.Manifest, state.Source, state.Approval, bool, string, *httpx.APIError) {
 	if plugin, ok := h.store.Get(name); ok {
 		if plugin.Source == state.SourceBuiltin {
 			builtin, apiErr := h.lookupBuiltin(name)
@@ -147,10 +147,10 @@ func (h *Handler) permissionTarget(name string) (*manifest.Manifest, state.Sourc
 			return nil, "", "", false, "", httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
 		}
 
-		dir := filepath.Join(h.cfg.UserPluginsDir, name)
+		dir := filepath.Join(h.userPluginsDir, name)
 
 		if plugin.Approval == state.ApprovalPending {
-			dir = filepath.Join(h.cfg.StagingDir, name)
+			dir = filepath.Join(h.stagingDir, name)
 		}
 
 		return m, plugin.Source, plugin.Approval, plugin.Enabled, dir, nil

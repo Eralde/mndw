@@ -12,6 +12,7 @@ import (
 	"slices"
 	"time"
 
+	contractEvents "mndw.local/contracts/events"
 	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
@@ -23,7 +24,7 @@ import (
 // The plugin name comes from the validated manifest, never the upload filename. The
 // flow: cap → unzip-to-memory → validate manifest → stage → (no backend) install
 // directly | (backend) leave pending for approval.
-func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
+func (h *pluginsAPI) handleUpload(w http.ResponseWriter, r *http.Request) {
 	data, apiErr := h.readUploadBody(w, r)
 
 	if apiErr != nil {
@@ -75,8 +76,8 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stagingPath := filepath.Join(h.cfg.StagingDir, name)
-	activePath := filepath.Join(h.cfg.UserPluginsDir, name)
+	stagingPath := filepath.Join(h.stagingDir, name)
+	activePath := filepath.Join(h.userPluginsDir, name)
 	previous, hadPrevious := h.store.Get(name)
 	intent := backend.IntentRun
 	approval := state.ApprovalApproved
@@ -94,14 +95,10 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 		auditAction = "upload"
 	}
 
-	err = h.executeLifecycle(name, backend.OpInstalling, intent,
+	err = h.runtime.ExecuteLifecycle(name, backend.OpInstalling, intent,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
-			if err := ctx.Err(); err != nil || !ctrl.IsCurrent() {
-				if err != nil {
-					return err
-				}
-
-				return backend.ErrLifecycleConflict
+			if err := stillCurrent(ctx, ctrl); err != nil {
+				return err
 			}
 
 			_ = h.removeAll(stagingPath)
@@ -110,7 +107,7 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 				return httpx.NewError(http.StatusBadRequest, httpx.CodeInvalidZip, "failed to extract archive: "+err.Error())
 			}
 
-			backupPath := filepath.Join(h.cfg.StagingDir, name+"-reinstall-backup")
+			backupPath := filepath.Join(h.stagingDir, name+"-reinstall-backup")
 			backedUp := false
 
 			if hadPrevious && previous.RemovalPending {
@@ -162,7 +159,9 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if installed {
-				h.publishPluginInstalled(name, m.VersionValue())
+				h.events.publish("plugin.installed", func(publisher ManagementEventPublisher) error {
+					return publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: m.VersionValue()})
+				})
 			}
 
 			if installed {
@@ -203,8 +202,8 @@ func (h *Handler) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 // readUploadBody reads the request body under the configured size cap, translating
 // an over-limit body into the UPLOAD_TOO_LARGE envelope.
-func (h *Handler) readUploadBody(w http.ResponseWriter, r *http.Request) ([]byte, *httpx.APIError) {
-	r.Body = http.MaxBytesReader(w, r.Body, h.cfg.MaxUploadBytes)
+func (h *pluginsAPI) readUploadBody(w http.ResponseWriter, r *http.Request) ([]byte, *httpx.APIError) {
+	r.Body = http.MaxBytesReader(w, r.Body, h.maxUploadBytes)
 
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -227,7 +226,7 @@ func (h *Handler) readUploadBody(w http.ResponseWriter, r *http.Request) ([]byte
 // ensureNameFree rejects an upload whose name is already installed/pending or shadows
 // a builtin. For a re-upload, explicit deny/delete is required first — predictable
 // and collision-safe.
-func (h *Handler) ensureNameFree(name string) *httpx.APIError {
+func (h *pluginsAPI) ensureNameFree(name string) *httpx.APIError {
 	if record, exists := h.store.Get(name); exists && !record.RemovalPending {
 		return httpx.NewError(http.StatusConflict, httpx.CodeConflict, "a plugin named "+name+" already exists; deny or delete it first")
 	}
@@ -239,7 +238,7 @@ func (h *Handler) ensureNameFree(name string) *httpx.APIError {
 	return nil
 }
 
-func (h *Handler) restoreUploadFiles(activePath, backupPath string, backedUp bool) {
+func (h *pluginsAPI) restoreUploadFiles(activePath, backupPath string, backedUp bool) {
 	_ = h.removeAll(activePath)
 
 	if backedUp {
@@ -247,7 +246,7 @@ func (h *Handler) restoreUploadFiles(activePath, backupPath string, backedUp boo
 	}
 }
 
-func (h *Handler) restoreUploadRecord(name string, previous *state.Plugin, hadPrevious bool) error {
+func (h *pluginsAPI) restoreUploadRecord(name string, previous *state.Plugin, hadPrevious bool) error {
 	return h.store.Mutate(func(st *state.State) error {
 		if hadPrevious {
 			st.Plugins[name] = previous

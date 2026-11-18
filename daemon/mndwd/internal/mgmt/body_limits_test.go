@@ -10,14 +10,13 @@ import (
 )
 
 func TestJSONManagementEndpointsRejectOversizedBodies(t *testing.T) {
-	handler := New(
-		Config{Runtime: passthroughRuntime{}, SelfUpdate: &fakeSelfUpdateService{}},
-		nil,
-		nil,
-		&fakeServiceManager{},
-		emptyBuiltinSource{},
-		discardLogger(),
-	)
+	handler := New(Config{
+		Runtime:        passthroughRuntime{},
+		SelfUpdate:     &fakeSelfUpdateService{},
+		ServiceManager: &fakeServiceManager{},
+		Builtins:       emptyBuiltinSource{},
+		Logger:         discardLogger(),
+	})
 	mux := http.NewServeMux()
 
 	handler.Register(mux)
@@ -57,14 +56,13 @@ func TestJSONManagementEndpointsRejectOversizedBodies(t *testing.T) {
 }
 
 func TestUploadBodyLimitUsesUploadEnvelopeThroughIntake(t *testing.T) {
-	handler := New(
-		Config{Runtime: passthroughRuntime{}, SelfUpdate: &fakeSelfUpdateService{}},
-		nil,
-		nil,
-		&fakeServiceManager{},
-		emptyBuiltinSource{},
-		discardLogger(),
-	)
+	handler := New(Config{
+		Runtime:        passthroughRuntime{},
+		SelfUpdate:     &fakeSelfUpdateService{},
+		ServiceManager: &fakeServiceManager{},
+		Builtins:       emptyBuiltinSource{},
+		Logger:         discardLogger(),
+	})
 	mux := http.NewServeMux()
 
 	handler.Register(mux)

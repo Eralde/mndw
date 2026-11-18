@@ -13,7 +13,7 @@ import (
 // validateCatalogArchive checks catalog files without interpreting their message
 // values. ICU grammar remains a CLI concern; the daemon only protects archive
 // shape, declared paths, and bounded reads.
-func (h *Handler) validateCatalogArchive(zr *zip.Reader, m *manifest.Manifest) error {
+func (h *pluginsAPI) validateCatalogArchive(zr *zip.Reader, m *manifest.Manifest) error {
 	if m == nil || m.I18n == nil {
 		return nil
 	}
@@ -87,8 +87,8 @@ func archiveFile(zr *zip.Reader, name string) *zip.File {
 	return nil
 }
 
-func (h *Handler) readCatalogFile(file *zip.File) (map[string]json.RawMessage, error) {
-	limit := h.cfg.MaxUploadBytes
+func (h *pluginsAPI) readCatalogFile(file *zip.File) (map[string]json.RawMessage, error) {
+	limit := h.maxUploadBytes
 
 	if limit <= 0 {
 		limit = maxUncompressedBytes

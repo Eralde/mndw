@@ -13,14 +13,21 @@ import (
 	"mndwd/internal/selfupdate"
 )
 
-func (h *Handler) handleSelfUpdateStatus(w http.ResponseWriter, _ *http.Request) {
-	if h.selfUpdate == nil {
+func (h *selfUpdateAPI) register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/mgmt/self-update/status", h.handleSelfUpdateStatus)
+	mux.HandleFunc("POST /api/mgmt/self-update/check", h.handleSelfUpdateCheck)
+	mux.HandleFunc("POST /api/mgmt/self-update/apply", h.handleSelfUpdateApply)
+	mux.HandleFunc("POST /api/mgmt/self-update/revert", h.handleSelfUpdateRevert)
+}
+
+func (h *selfUpdateAPI) handleSelfUpdateStatus(w http.ResponseWriter, _ *http.Request) {
+	if h.service == nil {
 		h.writeSelfUpdateError(w, errors.New("self-update service unavailable"))
 
 		return
 	}
 
-	status, err := h.selfUpdate.Status()
+	status, err := h.service.Status()
 	if err != nil {
 		h.writeSelfUpdateError(w, err)
 
@@ -30,22 +37,22 @@ func (h *Handler) handleSelfUpdateStatus(w http.ResponseWriter, _ *http.Request)
 	httpx.WriteJSON(w, h.logger, http.StatusOK, status)
 }
 
-func (h *Handler) handleSelfUpdateCheck(w http.ResponseWriter, r *http.Request) {
+func (h *selfUpdateAPI) handleSelfUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	if !decodeSelfUpdateEmptyObject(w, r, h.logger) {
 		return
 	}
 
-	if h.selfUpdate == nil {
+	if h.service == nil {
 		h.writeSelfUpdateError(w, errors.New("self-update service unavailable"))
 
 		return
 	}
 
-	ctx, cancel := h.opkgContext()
+	ctx, cancel := opkgContext(h.actionRoot)
 
 	defer cancel()
 
-	result, err := h.selfUpdate.Check(ctx)
+	result, err := h.service.Check(ctx)
 	if err != nil {
 		h.writeSelfUpdateError(w, err)
 
@@ -55,43 +62,43 @@ func (h *Handler) handleSelfUpdateCheck(w http.ResponseWriter, r *http.Request) 
 	httpx.WriteJSON(w, h.logger, http.StatusOK, result)
 }
 
-func (h *Handler) handleSelfUpdateApply(w http.ResponseWriter, r *http.Request) {
+func (h *selfUpdateAPI) handleSelfUpdateApply(w http.ResponseWriter, r *http.Request) {
 	if !decodeSelfUpdateEmptyObject(w, r, h.logger) {
 		return
 	}
 
-	if h.selfUpdate == nil {
+	if h.service == nil {
 		h.writeSelfUpdateError(w, errors.New("self-update service unavailable"))
 
 		return
 	}
 
-	ctx, cancel := h.opkgContext()
+	ctx, cancel := opkgContext(h.actionRoot)
 
 	defer cancel()
 
-	h.handleSelfUpdateAction(w, ctx, h.selfUpdate.BeginUpdate)
+	h.handleSelfUpdateAction(w, ctx, h.service.BeginUpdate)
 }
 
-func (h *Handler) handleSelfUpdateRevert(w http.ResponseWriter, r *http.Request) {
+func (h *selfUpdateAPI) handleSelfUpdateRevert(w http.ResponseWriter, r *http.Request) {
 	if !decodeSelfUpdateEmptyObject(w, r, h.logger) {
 		return
 	}
 
-	if h.selfUpdate == nil {
+	if h.service == nil {
 		h.writeSelfUpdateError(w, errors.New("self-update service unavailable"))
 
 		return
 	}
 
-	ctx, cancel := h.opkgContext()
+	ctx, cancel := opkgContext(h.actionRoot)
 
 	defer cancel()
 
-	h.handleSelfUpdateAction(w, ctx, h.selfUpdate.BeginRevert)
+	h.handleSelfUpdateAction(w, ctx, h.service.BeginRevert)
 }
 
-func (h *Handler) handleSelfUpdateAction(w http.ResponseWriter, ctx context.Context, action func(context.Context) (selfupdate.Accepted, error)) {
+func (h *selfUpdateAPI) handleSelfUpdateAction(w http.ResponseWriter, ctx context.Context, action func(context.Context) (selfupdate.Accepted, error)) {
 	accepted, err := action(ctx)
 	if err != nil {
 		h.writeSelfUpdateError(w, err)
@@ -138,7 +145,7 @@ func decodeSelfUpdateEmptyObject(w http.ResponseWriter, r *http.Request, logger 
 	return true
 }
 
-func (h *Handler) writeSelfUpdateError(w http.ResponseWriter, err error) {
+func (h *selfUpdateAPI) writeSelfUpdateError(w http.ResponseWriter, err error) {
 	status := http.StatusBadGateway
 	code := httpx.CodeSelfUpdateFailed
 	message := "self-update operation failed"

@@ -13,11 +13,11 @@ import (
 	"mndwd/internal/state"
 )
 
-func (h *Handler) handleRuntime(w http.ResponseWriter, _ *http.Request) {
+func (h *pluginsAPI) handleRuntime(w http.ResponseWriter, _ *http.Request) {
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.runtime.Limits())
 }
 
-func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
+func (h *pluginsAPI) handleRestart(w http.ResponseWriter, r *http.Request) {
 	name, apiErr := decodeName(w, r)
 
 	if apiErr != nil {
@@ -34,7 +34,7 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.executeLifecycle(name, backend.OpRestarting, backend.IntentRun,
+	err := h.runtime.ExecuteLifecycle(name, backend.OpRestarting, backend.IntentRun,
 		func(_ context.Context, ctrl backend.LifecycleControl) error {
 			if err := ctrl.StopService(); err != nil {
 				return err
@@ -51,7 +51,7 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"name": name, "runtime": h.runtime.Status(name)})
 }
 
-func (h *Handler) resolveRuntimePlugin(name string) (*registry.Plugin, bool) {
+func (h *pluginsAPI) resolveRuntimePlugin(name string) (*registry.Plugin, bool) {
 	if h.runtimeResolver != nil {
 		return h.runtimeResolver.Resolve(name)
 	}
@@ -71,9 +71,9 @@ func (h *Handler) resolveRuntimePlugin(name string) (*registry.Plugin, bool) {
 
 	if dir == "" {
 		if pluginState.Source == state.SourceBuiltin {
-			dir = filepath.Join(h.cfg.BuiltinPluginsDir, name)
+			dir = filepath.Join(h.builtinPluginsDir, name)
 		} else {
-			dir = filepath.Join(h.cfg.UserPluginsDir, name)
+			dir = filepath.Join(h.userPluginsDir, name)
 		}
 	}
 

@@ -19,8 +19,17 @@ type serviceEnableRequest struct {
 	Enabled bool   `json:"enabled"`
 }
 
-func (h *Handler) handleServiceList(w http.ResponseWriter, r *http.Request) {
-	if h.service == nil {
+func (h *serviceAPI) register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/mgmt/service/list", h.handleServiceList)
+	mux.HandleFunc("GET /api/mgmt/service/status", h.handleServiceStatus)
+	mux.HandleFunc("POST /api/mgmt/service/start", h.handleServiceStart)
+	mux.HandleFunc("POST /api/mgmt/service/stop", h.handleServiceStop)
+	mux.HandleFunc("POST /api/mgmt/service/restart", h.handleServiceRestart)
+	mux.HandleFunc("POST /api/mgmt/service/set-enabled", h.handleServiceSetEnabled)
+}
+
+func (h *serviceAPI) handleServiceList(w http.ResponseWriter, r *http.Request) {
+	if h.manager == nil {
 		h.writeServiceError(w, initd.ErrServiceUnavailable)
 
 		return
@@ -30,7 +39,7 @@ func (h *Handler) handleServiceList(w http.ResponseWriter, r *http.Request) {
 
 	defer cancel()
 
-	entries, err := h.service.List(ctx)
+	entries, err := h.manager.List(ctx)
 	if err != nil {
 		h.writeServiceError(w, err)
 
@@ -40,8 +49,8 @@ func (h *Handler) handleServiceList(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"services": entries})
 }
 
-func (h *Handler) handleServiceStatus(w http.ResponseWriter, r *http.Request) {
-	if h.service == nil {
+func (h *serviceAPI) handleServiceStatus(w http.ResponseWriter, r *http.Request) {
+	if h.manager == nil {
 		h.writeServiceError(w, initd.ErrServiceUnavailable)
 
 		return
@@ -51,7 +60,7 @@ func (h *Handler) handleServiceStatus(w http.ResponseWriter, r *http.Request) {
 
 	defer cancel()
 
-	entry, err := h.service.Status(ctx, r.URL.Query().Get("name"))
+	entry, err := h.manager.Status(ctx, r.URL.Query().Get("name"))
 	if err != nil {
 		h.writeServiceError(w, err)
 
@@ -61,26 +70,26 @@ func (h *Handler) handleServiceStatus(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"service": entry})
 }
 
-func (h *Handler) handleServiceStart(w http.ResponseWriter, r *http.Request) {
+func (h *serviceAPI) handleServiceStart(w http.ResponseWriter, r *http.Request) {
 	h.handleServiceAction(w, r, "start", func(ctx context.Context, name string) (initd.ServiceEntry, error) {
-		return h.service.Start(ctx, name)
+		return h.manager.Start(ctx, name)
 	})
 }
 
-func (h *Handler) handleServiceStop(w http.ResponseWriter, r *http.Request) {
+func (h *serviceAPI) handleServiceStop(w http.ResponseWriter, r *http.Request) {
 	h.handleServiceAction(w, r, "stop", func(ctx context.Context, name string) (initd.ServiceEntry, error) {
-		return h.service.Stop(ctx, name)
+		return h.manager.Stop(ctx, name)
 	})
 }
 
-func (h *Handler) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
+func (h *serviceAPI) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
 	h.handleServiceAction(w, r, "restart", func(ctx context.Context, name string) (initd.ServiceEntry, error) {
-		return h.service.Restart(ctx, name)
+		return h.manager.Restart(ctx, name)
 	})
 }
 
-func (h *Handler) handleServiceSetEnabled(w http.ResponseWriter, r *http.Request) {
-	if h.service == nil {
+func (h *serviceAPI) handleServiceSetEnabled(w http.ResponseWriter, r *http.Request) {
+	if h.manager == nil {
 		h.writeServiceError(w, initd.ErrServiceUnavailable)
 
 		return
@@ -96,11 +105,11 @@ func (h *Handler) handleServiceSetEnabled(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(h.cfg.ServiceActionRoot, h.cfg.ServiceActionTimeout)
+	ctx, cancel := context.WithTimeout(h.actionRoot, h.actionTimeout)
 
 	defer cancel()
 
-	entry, err := h.service.SetEnabled(ctx, req.Name, req.Enabled)
+	entry, err := h.manager.SetEnabled(ctx, req.Name, req.Enabled)
 	if err != nil {
 		h.writeServiceError(w, err)
 
@@ -110,8 +119,8 @@ func (h *Handler) handleServiceSetEnabled(w http.ResponseWriter, r *http.Request
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"ok": true, "service": entry})
 }
 
-func (h *Handler) handleServiceAction(w http.ResponseWriter, r *http.Request, action string, run func(context.Context, string) (initd.ServiceEntry, error)) {
-	if h.service == nil {
+func (h *serviceAPI) handleServiceAction(w http.ResponseWriter, r *http.Request, action string, run func(context.Context, string) (initd.ServiceEntry, error)) {
+	if h.manager == nil {
 		h.writeServiceError(w, initd.ErrServiceUnavailable)
 
 		return
@@ -127,7 +136,7 @@ func (h *Handler) handleServiceAction(w http.ResponseWriter, r *http.Request, ac
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(h.cfg.ServiceActionRoot, h.cfg.ServiceActionTimeout)
+	ctx, cancel := context.WithTimeout(h.actionRoot, h.actionTimeout)
 
 	defer cancel()
 
@@ -143,7 +152,7 @@ func (h *Handler) handleServiceAction(w http.ResponseWriter, r *http.Request, ac
 	_ = action
 }
 
-func (h *Handler) writeServiceError(w http.ResponseWriter, err error) {
+func (h *serviceAPI) writeServiceError(w http.ResponseWriter, err error) {
 	var invalid *initd.InvalidServiceError
 	var protected *initd.ProtectedServiceError
 	var pinned *initd.EnabledPinnedError

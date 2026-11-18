@@ -246,7 +246,7 @@ func TestDeletePersistsRemovalMarkerBeforeStopAndRetainsItOnCleanupFailure(t *te
 			t.Fatalf("record at stop = %+v, exists=%t", record, ok)
 		}
 	}
-	handler.removeAll = func(string) error {
+	handler.plugins.removeAll = func(string) error {
 		return errors.New("filesystem unavailable")
 	}
 
@@ -392,7 +392,7 @@ func TestUpdateBackupCleanupFailureDoesNotFailUpdate(t *testing.T) {
 
 	removeErr := errors.New("disk unavailable")
 	var removedPath string
-	handler.removeAll = func(path string) error {
+	handler.plugins.removeAll = func(path string) error {
 		removedPath = path
 
 		return removeErr
@@ -649,7 +649,7 @@ func TestRemovalWatchdogWarnsWithPluginName(t *testing.T) {
 	timer := make(chan time.Time, 1)
 	timer <- time.Now()
 	var logs bytes.Buffer
-	h := &Handler{
+	h := &pluginsAPI{
 		logger: slog.New(slog.NewTextHandler(&logs, nil)),
 		removeAll: func(string) error {
 			close(entered)
@@ -684,7 +684,7 @@ func TestRemovalWatchdogWarnsWithPluginName(t *testing.T) {
 
 func TestRemovePluginFilesReturnsRemovalError(t *testing.T) {
 	want := errors.New("remove failed")
-	h := &Handler{
+	h := &pluginsAPI{
 		logger: discardLogger(),
 		removeAll: func(string) error {
 			return want

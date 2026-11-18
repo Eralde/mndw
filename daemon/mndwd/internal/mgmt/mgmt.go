@@ -74,8 +74,13 @@ type SelfUpdateService interface {
 	BeginRevert(context.Context) (selfupdate.Accepted, error)
 }
 
-// Config carries the on-disk locations the handlers operate over.
+// Config carries the dependencies and settings used by the management API.
 type Config struct {
+	Store          StateStore
+	OpkgManager    opkg.Manager
+	ServiceManager initd.Manager
+	Builtins       BuiltinSource
+	Logger         *slog.Logger
 	// StagingDir holds uploaded-but-unapproved plugins.
 	StagingDir string
 	// UserPluginsDir holds approved user plugins, served statically.
@@ -99,27 +104,76 @@ type Config struct {
 
 // Handler serves the management API over a shared state store.
 type Handler struct {
-	cfg                  Config
+	plugins    *pluginsAPI
+	telemetry  *telemetryAPI
+	opkg       *opkgAPI
+	selfUpdate *selfUpdateAPI
+	service    *serviceAPI
+}
+
+type pluginsAPI struct {
+	stagingDir           string
+	userPluginsDir       string
+	builtinPluginsDir    string
+	maxUploadBytes       int64
 	store                StateStore
 	opkg                 opkg.Manager
-	service              initd.Manager
 	builtins             BuiltinSource
-	runtimeResolver      RuntimeResolver
-	logger               *slog.Logger
 	runtime              PluginRuntime
+	runtimeResolver      RuntimeResolver
 	permissionController PersistentRCIPermissionController
-	selfUpdate           SelfUpdateService
-	telemetry            TelemetryController
-	eventPublisher       ManagementEventPublisher
+	logger               *slog.Logger
+	events               managementPublisher
 	removeAll            func(string) error
 	newTimer             func(time.Duration) <-chan time.Time
 	removalWatchdog      time.Duration
-	telemetryMu          sync.Mutex
+}
+
+type telemetryAPI struct {
+	store      StateStore
+	logger     *slog.Logger
+	controller TelemetryController
+	events     managementPublisher
+	actionRoot context.Context
+	mu         sync.Mutex
+}
+
+type opkgAPI struct {
+	manager    opkg.Manager
+	logger     *slog.Logger
+	actionRoot context.Context
+}
+
+type selfUpdateAPI struct {
+	service    SelfUpdateService
+	logger     *slog.Logger
+	actionRoot context.Context
+}
+
+type serviceAPI struct {
+	manager       initd.Manager
+	logger        *slog.Logger
+	actionRoot    context.Context
+	actionTimeout time.Duration
+}
+
+type managementPublisher struct {
+	publisher ManagementEventPublisher
+	logger    *slog.Logger
+}
+
+func (p managementPublisher) publish(topic string, publish func(ManagementEventPublisher) error) {
+	if p.publisher == nil {
+		return
+	}
+
+	if err := publish(p.publisher); err != nil {
+		p.logger.Warn("internal event publish failed", "topic", topic, "error", err)
+	}
 }
 
 // New constructs a management Handler.
-
-func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr initd.Manager, builtins BuiltinSource, logger *slog.Logger) *Handler {
+func New(cfg Config) *Handler {
 	if cfg.Runtime == nil {
 		panic("mgmt: Config.Runtime is required")
 	}
@@ -132,76 +186,60 @@ func New(cfg Config, store StateStore, opkgMgr opkg.Manager, serviceMgr initd.Ma
 		cfg.ServiceActionTimeout = serviceActionTimeout
 	}
 
-	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
+	if cfg.Logger == nil {
+		cfg.Logger = slog.New(slog.DiscardHandler)
 	}
+
+	logger := cfg.Logger
+	publisher := managementPublisher{publisher: cfg.EventPublisher, logger: logger}
 
 	return &Handler{
-		cfg:                  cfg,
-		store:                store,
-		opkg:                 opkgMgr,
-		service:              serviceMgr,
-		builtins:             builtins,
-		runtimeResolver:      cfg.RuntimeResolver,
-		logger:               logger,
-		runtime:              cfg.Runtime,
-		permissionController: cfg.PersistentRCIPermissionController,
-		selfUpdate:           cfg.SelfUpdate,
-		telemetry:            cfg.TelemetryController,
-		eventPublisher:       cfg.EventPublisher,
-		removeAll:            os.RemoveAll,
-		newTimer:             time.After,
-		removalWatchdog:      30 * time.Second,
+		plugins: &pluginsAPI{
+			stagingDir:           cfg.StagingDir,
+			userPluginsDir:       cfg.UserPluginsDir,
+			builtinPluginsDir:    cfg.BuiltinPluginsDir,
+			maxUploadBytes:       cfg.MaxUploadBytes,
+			store:                cfg.Store,
+			opkg:                 cfg.OpkgManager,
+			builtins:             cfg.Builtins,
+			runtime:              cfg.Runtime,
+			runtimeResolver:      cfg.RuntimeResolver,
+			permissionController: cfg.PersistentRCIPermissionController,
+			logger:               logger,
+			events:               publisher,
+			removeAll:            os.RemoveAll,
+			newTimer:             time.After,
+			removalWatchdog:      30 * time.Second,
+		},
+		telemetry: &telemetryAPI{
+			store:      cfg.Store,
+			logger:     logger,
+			controller: cfg.TelemetryController,
+			events:     publisher,
+			actionRoot: cfg.ServiceActionRoot,
+		},
+		opkg:       &opkgAPI{manager: cfg.OpkgManager, logger: logger, actionRoot: cfg.ServiceActionRoot},
+		selfUpdate: &selfUpdateAPI{service: cfg.SelfUpdate, logger: logger, actionRoot: cfg.ServiceActionRoot},
+		service: &serviceAPI{
+			manager:       cfg.ServiceManager,
+			logger:        logger,
+			actionRoot:    cfg.ServiceActionRoot,
+			actionTimeout: cfg.ServiceActionTimeout,
+		},
 	}
-}
-
-func (h *Handler) publishPluginInstalled(name, version string) {
-	if h.eventPublisher == nil {
-		return
-	}
-
-	if err := h.eventPublisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: version}); err != nil {
-		h.logPublishError("plugin.installed", err)
-	}
-}
-
-func (h *Handler) publishPluginApproved(name, version string) {
-	if h.eventPublisher == nil {
-		return
-	}
-
-	if err := h.eventPublisher.PublishPluginApproved(contractEvents.PluginApprovedPayload{Name: name, Version: version}); err != nil {
-		h.logPublishError("plugin.approved", err)
-	}
-}
-
-func (h *Handler) publishPluginRemoved(name string) {
-	if h.eventPublisher == nil {
-		return
-	}
-
-	if err := h.eventPublisher.PublishPluginRemoved(contractEvents.PluginRemovedPayload{Name: name}); err != nil {
-		h.logPublishError("plugin.removed", err)
-	}
-}
-
-func (h *Handler) publishTelemetryGatheringChanged(enabled bool) {
-	if h.eventPublisher == nil {
-		return
-	}
-
-	if err := h.eventPublisher.PublishTelemetryGatheringChanged(contractEvents.TelemetryGatheringChangedPayload{Enabled: enabled}); err != nil {
-		h.logPublishError("telemetry.gathering_changed", err)
-	}
-}
-
-func (h *Handler) logPublishError(topic string, err error) {
-	h.logger.Warn("internal event publish failed", "topic", topic, "error", err)
 }
 
 // Register wires the management routes onto mux. Method-qualified patterns give a
 // 405 for the wrong verb for free (Go 1.22+ ServeMux).
 func (h *Handler) Register(mux *http.ServeMux) {
+	h.plugins.register(mux)
+	h.telemetry.register(mux)
+	h.opkg.register(mux)
+	h.selfUpdate.register(mux)
+	h.service.register(mux)
+}
+
+func (h *pluginsAPI) register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/mgmt/upload", h.handleUpload)
 	mux.HandleFunc("GET /api/mgmt/list", h.handleList)
 	mux.HandleFunc("GET /api/mgmt/pending", h.handlePending)
@@ -213,35 +251,14 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/mgmt/restart", h.handleRestart)
 	mux.HandleFunc("POST /api/mgmt/update", h.handleUpdate)
 	mux.HandleFunc("GET /api/mgmt/runtime", h.handleRuntime)
-	mux.HandleFunc("GET /api/mgmt/telemetry", h.handleTelemetryGet)
-	mux.HandleFunc("PUT /api/mgmt/telemetry", h.handleTelemetryPut)
 	mux.HandleFunc("POST /api/mgmt/permission", h.handlePermission)
-
-	mux.HandleFunc("GET /api/mgmt/opkg/list-installed", h.handleOpkgListInstalled)
-	mux.HandleFunc("GET /api/mgmt/opkg/list-available", h.handleOpkgListAvailable)
-	mux.HandleFunc("GET /api/mgmt/opkg/list", h.handleOpkgList)
-	mux.HandleFunc("GET /api/mgmt/opkg/info", h.handleOpkgInfo)
-	mux.HandleFunc("POST /api/mgmt/opkg/install", h.handleOpkgInstall)
-	mux.HandleFunc("POST /api/mgmt/opkg/remove", h.handleOpkgRemove)
-	mux.HandleFunc("POST /api/mgmt/opkg/update", h.handleOpkgUpdate)
-	mux.HandleFunc("POST /api/mgmt/opkg/upgrade", h.handleOpkgUpgrade)
-	mux.HandleFunc("GET /api/mgmt/self-update/status", h.handleSelfUpdateStatus)
-	mux.HandleFunc("POST /api/mgmt/self-update/check", h.handleSelfUpdateCheck)
-	mux.HandleFunc("POST /api/mgmt/self-update/apply", h.handleSelfUpdateApply)
-	mux.HandleFunc("POST /api/mgmt/self-update/revert", h.handleSelfUpdateRevert)
-	mux.HandleFunc("GET /api/mgmt/service/list", h.handleServiceList)
-	mux.HandleFunc("GET /api/mgmt/service/status", h.handleServiceStatus)
-	mux.HandleFunc("POST /api/mgmt/service/start", h.handleServiceStart)
-	mux.HandleFunc("POST /api/mgmt/service/stop", h.handleServiceStop)
-	mux.HandleFunc("POST /api/mgmt/service/restart", h.handleServiceRestart)
-	mux.HandleFunc("POST /api/mgmt/service/set-enabled", h.handleServiceSetEnabled)
 }
 
 // opkgContext returns a daemon-lifetime-derived context bounded by opkgTimeout,
 // so a client disconnect cannot abort a partial package operation while daemon
 // shutdown still cancels it.
-func (h *Handler) opkgContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(h.cfg.ServiceActionRoot, opkgTimeout)
+func opkgContext(root context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(root, opkgTimeout)
 }
 
 // ListEntry is one plugin as surfaced by list/pending. It merges manifest display
@@ -271,7 +288,7 @@ type ListEntry struct {
 	Lock       *PluginLock                 `json:"lock,omitempty"`
 }
 
-func (h *Handler) handleList(w http.ResponseWriter, _ *http.Request) {
+func (h *pluginsAPI) handleList(w http.ResponseWriter, _ *http.Request) {
 	entries, err := h.buildList()
 	if err != nil {
 		httpx.WriteError(w, h.logger, err)
@@ -282,7 +299,7 @@ func (h *Handler) handleList(w http.ResponseWriter, _ *http.Request) {
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"plugins": entries})
 }
 
-func (h *Handler) handlePending(w http.ResponseWriter, _ *http.Request) {
+func (h *pluginsAPI) handlePending(w http.ResponseWriter, _ *http.Request) {
 	entries, err := h.buildList()
 	if err != nil {
 		httpx.WriteError(w, h.logger, err)
@@ -304,7 +321,7 @@ func (h *Handler) handlePending(w http.ResponseWriter, _ *http.Request) {
 // buildList merges uploaded plugins (from state) with builtin plugins (scanned from
 // disk) into a single, name-sorted view. Builtin manifests always come from disk;
 // state supplies their persisted enabled flag.
-func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
+func (h *pluginsAPI) buildList() ([]ListEntry, *httpx.APIError) {
 	snap := h.store.Snapshot()
 	builtinPlugins, err := h.builtins.ListBuiltins()
 	if err != nil {
@@ -341,10 +358,10 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 			continue
 		}
 
-		dir := filepath.Join(h.cfg.UserPluginsDir, p.Name)
+		dir := filepath.Join(h.userPluginsDir, p.Name)
 
 		if p.Approval == state.ApprovalPending {
-			dir = filepath.Join(h.cfg.StagingDir, p.Name)
+			dir = filepath.Join(h.stagingDir, p.Name)
 		}
 
 		entries = append(entries, h.entryFrom(m, p.Source, p.Approval, p.Enabled, dir))
@@ -365,7 +382,7 @@ func (h *Handler) buildList() ([]ListEntry, *httpx.APIError) {
 
 // entryFrom projects a validated manifest plus runtime state into a ListEntry,
 // including its always-present depsStatus.
-func (h *Handler) entryFrom(m *manifest.Manifest, source state.Source, approval state.Approval, enabled bool, dir string) ListEntry {
+func (h *pluginsAPI) entryFrom(m *manifest.Manifest, source state.Source, approval state.Approval, enabled bool, dir string) ListEntry {
 	e := ListEntry{
 		Name:        m.NameValue(),
 		Type:        m.TypeValue(),

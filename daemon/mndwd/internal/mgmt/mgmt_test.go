@@ -66,7 +66,7 @@ func TestNewPanicsWithoutRuntime(t *testing.T) {
 		}
 	}()
 
-	New(Config{}, nil, nil, nil, nil, discardLogger())
+	New(Config{})
 }
 
 type permissionTestController struct {
@@ -209,8 +209,12 @@ func newTestServer(t *testing.T) (*httptest.Server, Config) {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mux := http.NewServeMux()
+	cfg.Store = store
+	cfg.OpkgManager = opkg.NewStub(logger)
+	cfg.Builtins = registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, discardLogger())
+	cfg.Logger = logger
 
-	New(cfg, store, opkg.NewStub(logger), nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, discardLogger()), logger).Register(mux)
+	New(cfg).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -240,9 +244,14 @@ func newPermissionServer(t *testing.T, controller PersistentRCIPermissionControl
 		t.Fatalf("state.Open: %v", err)
 	}
 
+	cfg.Store = store
+	cfg.OpkgManager = opkg.NewStub(discardLogger())
+	cfg.Builtins = registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, discardLogger())
+	cfg.Logger = discardLogger()
+
 	mux := http.NewServeMux()
 
-	New(cfg, store, opkg.NewStub(discardLogger()), nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, discardLogger()), discardLogger()).Register(mux)
+	New(cfg).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -276,8 +285,12 @@ func newLifecycleHarness(t *testing.T, runtime PluginRuntime, controller Persist
 
 	logger := discardLogger()
 	mux := http.NewServeMux()
+	cfg.Store = store
+	cfg.OpkgManager = opkg.NewStub(logger)
+	cfg.Builtins = registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, discardLogger())
+	cfg.Logger = logger
 
-	handler := New(cfg, store, opkg.NewStub(logger), nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, discardLogger()), logger)
+	handler := New(cfg)
 
 	handler.Register(mux)
 
@@ -356,8 +369,12 @@ func newTestServerWithOpkg(t *testing.T, opkgMgr opkg.Manager) (*httptest.Server
 
 	logger := discardLogger()
 	mux := http.NewServeMux()
+	cfg.Store = store
+	cfg.OpkgManager = opkgMgr
+	cfg.Builtins = registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, discardLogger())
+	cfg.Logger = logger
 
-	New(cfg, store, opkgMgr, nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, discardLogger()), logger).Register(mux)
+	New(cfg).Register(mux)
 
 	srv := httptest.NewServer(mux)
 
@@ -767,7 +784,7 @@ func TestDeleteSucceedsWhenBackupRemovalFails(t *testing.T) {
 	}
 
 	backupErr := errors.New("backup removal failed")
-	handler.removeAll = func(path string) error {
+	handler.plugins.removeAll = func(path string) error {
 		if path == backupPath {
 			return backupErr
 		}
@@ -775,7 +792,7 @@ func TestDeleteSucceedsWhenBackupRemovalFails(t *testing.T) {
 		return os.RemoveAll(path)
 	}
 	var logs bytes.Buffer
-	handler.logger = slog.New(slog.NewTextHandler(&logs, nil))
+	handler.plugins.logger = slog.New(slog.NewTextHandler(&logs, nil))
 
 	resp := postName(t, srv, "/api/mgmt/delete", "hello")
 
@@ -1011,7 +1028,12 @@ func TestStatePluginNameReservesBuiltinInList(t *testing.T) {
 
 	writeBuiltinFixture(t, cfg, "core-demo", false)
 
-	handler := New(cfg, store, opkg.NewStub(discardLogger()), nil, registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, discardLogger()), discardLogger())
+	cfg.Store = store
+	cfg.OpkgManager = opkg.NewStub(discardLogger())
+	cfg.Builtins = registry.NewWithLogger(store, cfg.UserPluginsDir, cfg.BuiltinPluginsDir, discardLogger())
+	cfg.Logger = discardLogger()
+
+	handler := New(cfg)
 	mux := http.NewServeMux()
 
 	handler.Register(mux)

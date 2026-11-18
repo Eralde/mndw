@@ -15,15 +15,6 @@ import (
 	"mndwd/internal/state"
 )
 
-func (h *Handler) executeLifecycle(
-	name string,
-	op backend.Operation,
-	intent backend.Intent,
-	work func(context.Context, backend.LifecycleControl) error,
-) error {
-	return h.runtime.ExecuteLifecycle(name, op, intent, work)
-}
-
 func lifecycleError(err error, status int, code, message string) *httpx.APIError {
 	if err == nil {
 		return nil
@@ -46,7 +37,19 @@ func lifecycleError(err error, status int, code, message string) *httpx.APIError
 	return httpx.NewError(status, code, message).WithDetail(err.Error())
 }
 
-func (h *Handler) removePluginFiles(name, path string) error {
+func stillCurrent(ctx context.Context, ctrl backend.LifecycleControl) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if !ctrl.IsCurrent() {
+		return backend.ErrLifecycleConflict
+	}
+
+	return nil
+}
+
+func (h *pluginsAPI) removePluginFiles(name, path string) error {
 	started := time.Now()
 	done := make(chan error, 1)
 
@@ -70,11 +73,11 @@ func (h *Handler) removePluginFiles(name, path string) error {
 	}
 }
 
-func (h *Handler) removePluginBackups(name string) {
-	entries, err := os.ReadDir(h.cfg.UserPluginsDir)
+func (h *pluginsAPI) removePluginBackups(name string) {
+	entries, err := os.ReadDir(h.userPluginsDir)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
-			h.logger.Warn("failed to list plugin backups", "plugin", name, "path", h.cfg.UserPluginsDir, "error", err)
+			h.logger.Warn("failed to list plugin backups", "plugin", name, "path", h.userPluginsDir, "error", err)
 		}
 
 		return
@@ -87,7 +90,7 @@ func (h *Handler) removePluginBackups(name string) {
 			continue
 		}
 
-		path := filepath.Join(h.cfg.UserPluginsDir, entry.Name())
+		path := filepath.Join(h.userPluginsDir, entry.Name())
 
 		if err := h.removePluginFiles(name, path); err != nil {
 			h.logger.Warn("failed to remove plugin backup", "plugin", name, "path", path, "error", err)
@@ -95,11 +98,11 @@ func (h *Handler) removePluginBackups(name string) {
 	}
 }
 
-func (h *Handler) decodeLifecycleName(w http.ResponseWriter, r *http.Request) (string, bool) {
+func (h *pluginsAPI) decodeLifecycleName(w http.ResponseWriter, r *http.Request) (string, bool) {
 	name, apiErr := decodeName(w, r)
 
 	if apiErr != nil {
-		h.writeLifecycleError(w, apiErr)
+		httpx.WriteError(w, h.logger, apiErr)
 
 		return "", false
 	}
@@ -107,7 +110,7 @@ func (h *Handler) decodeLifecycleName(w http.ResponseWriter, r *http.Request) (s
 	return name, true
 }
 
-func (h *Handler) lookupStoredPlugin(name string) (*state.Plugin, *httpx.APIError) {
+func (h *pluginsAPI) lookupStoredPlugin(name string) (*state.Plugin, *httpx.APIError) {
 	p, ok := h.store.Get(name)
 
 	if !ok {
@@ -117,7 +120,7 @@ func (h *Handler) lookupStoredPlugin(name string) (*state.Plugin, *httpx.APIErro
 	return p, nil
 }
 
-func (h *Handler) mutateWithAudit(action, name, detail string, mutate func(*state.State) error) *httpx.APIError {
+func (h *pluginsAPI) mutateWithAudit(action, name, detail string, mutate func(*state.State) error) *httpx.APIError {
 	err := h.store.Mutate(func(st *state.State) error {
 		if err := mutate(st); err != nil {
 			return err
@@ -132,12 +135,4 @@ func (h *Handler) mutateWithAudit(action, name, detail string, mutate func(*stat
 	}
 
 	return nil
-}
-
-func (h *Handler) writeLifecycleError(w http.ResponseWriter, apiErr *httpx.APIError) {
-	httpx.WriteError(w, h.logger, apiErr)
-}
-
-func (h *Handler) writeLifecycleJSON(w http.ResponseWriter, status int, value any) {
-	httpx.WriteJSON(w, h.logger, status, value)
 }

@@ -76,7 +76,7 @@ func openFixtureArchive(t *testing.T, relativeDir string) (*zip.Reader, *manifes
 
 func TestValidateCatalogArchiveIsStructuralOnly(t *testing.T) {
 	zr, m := openFixtureArchive(t, filepath.Join("invalid", "invalid-icu"))
-	h := &Handler{cfg: Config{MaxUploadBytes: 10 << 20}}
+	h := &pluginsAPI{maxUploadBytes: 10 << 20}
 
 	if err := h.validateCatalogArchive(zr, m); err != nil {
 		t.Fatalf("malformed ICU should pass daemon structural validation: %v", err)
@@ -132,7 +132,7 @@ func TestUploadValidatesCatalogArchives(t *testing.T) {
 
 func TestCatalogArchiveErrorNamesDeclaredPath(t *testing.T) {
 	zr, m := openFixtureArchive(t, filepath.Join("invalid", "non-string"))
-	h := &Handler{cfg: Config{MaxUploadBytes: 10 << 20}}
+	h := &pluginsAPI{maxUploadBytes: 10 << 20}
 
 	err := h.validateCatalogArchive(zr, m)
 	if err == nil || !strings.Contains(err.Error(), "i18n/en.json") {
@@ -179,7 +179,7 @@ func TestUpdateRejectsInvalidCatalogArchiveBeforeFilesystemMutation(t *testing.T
 
 func TestListEntryI18nJSONShape(t *testing.T) {
 	zr, m := openFixtureArchive(t, filepath.Join("valid", "alternate-and-default"))
-	h := &Handler{cfg: Config{MaxUploadBytes: 10 << 20}}
+	h := &pluginsAPI{maxUploadBytes: 10 << 20}
 
 	if err := h.validateCatalogArchive(zr, m); err != nil {
 		t.Fatalf("valid fixture rejected: %v", err)

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	contractEvents "mndw.local/contracts/events"
 	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
@@ -23,7 +24,7 @@ import (
 // old directory is retained under a versioned backup name until the new version
 // starts; state changes only after the new directory is in place and is restored
 // if the service cannot pass its activation gate.
-func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
+func (h *pluginsAPI) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	data, apiErr := h.readUploadBody(w, r)
 
 	if apiErr != nil {
@@ -87,9 +88,9 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	activeDir := filepath.Join(h.cfg.UserPluginsDir, name)
-	backupDir := filepath.Join(h.cfg.UserPluginsDir, name+".previous-"+safeVersion(previous.Version))
-	err = h.executeLifecycle(name, backend.OpUpdating, backend.IntentRun,
+	activeDir := filepath.Join(h.userPluginsDir, name)
+	backupDir := filepath.Join(h.userPluginsDir, name+".previous-"+safeVersion(previous.Version))
+	err = h.runtime.ExecuteLifecycle(name, backend.OpUpdating, backend.IntentRun,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
 			return h.executeUpdate(ctx, ctrl, name, previous, m, manifestBytes, zr, activeDir, backupDir)
 		})
@@ -106,7 +107,9 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.publishPluginInstalled(name, m.VersionValue())
+	h.events.publish("plugin.installed", func(publisher ManagementEventPublisher) error {
+		return publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: m.VersionValue()})
+	})
 
 	httpx.WriteJSON(w, h.logger, http.StatusOK, h.entryFrom(m, previous.Source, state.ApprovalApproved, true, activeDir))
 }
@@ -159,7 +162,7 @@ func validateCommands(dir string, m *manifest.Manifest) *httpx.APIError {
 	return nil
 }
 
-func (h *Handler) executeUpdate(
+func (h *pluginsAPI) executeUpdate(
 	ctx context.Context,
 	ctrl backend.LifecycleControl,
 	name string,
@@ -199,12 +202,12 @@ func (h *Handler) executeUpdate(
 		return fail(apiErr)
 	}
 
-	if err := os.MkdirAll(h.cfg.StagingDir, 0o700); err != nil {
+	if err := os.MkdirAll(h.stagingDir, 0o700); err != nil {
 		return fail(httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to create update staging directory"))
 	}
 
 	var err error
-	updateDir, err = os.MkdirTemp(h.cfg.StagingDir, name+"-update-")
+	updateDir, err = os.MkdirTemp(h.stagingDir, name+"-update-")
 	if err != nil {
 		return fail(httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to create update staging directory"))
 	}
@@ -223,12 +226,8 @@ func (h *Handler) executeUpdate(
 		return fail(apiErr)
 	}
 
-	if err := ctx.Err(); err != nil || !ctrl.IsCurrent() {
-		if err != nil {
-			return fail(err)
-		}
-
-		return fail(backend.ErrLifecycleConflict)
+	if err := stillCurrent(ctx, ctrl); err != nil {
+		return fail(err)
 	}
 
 	if err := moveDir(activeDir, backupDir); err != nil {
@@ -285,7 +284,7 @@ func (h *Handler) executeUpdate(
 	return nil
 }
 
-func (h *Handler) rollbackUpdate(
+func (h *pluginsAPI) rollbackUpdate(
 	ctrl backend.LifecycleControl,
 	name string,
 	previous *state.Plugin,
@@ -331,7 +330,7 @@ func (h *Handler) rollbackUpdate(
 	})
 }
 
-func (h *Handler) persistStoppedAfterRollbackFailure(name string, previous *state.Plugin) error {
+func (h *pluginsAPI) persistStoppedAfterRollbackFailure(name string, previous *state.Plugin) error {
 	return h.store.Mutate(func(st *state.State) error {
 		restored := *previous
 		restored.Manifest = append(json.RawMessage(nil), previous.Manifest...)

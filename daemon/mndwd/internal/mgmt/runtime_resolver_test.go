@@ -51,8 +51,16 @@ func newRuntimeResolverTestHandler(t *testing.T, resolver RuntimeResolver) (*Han
 		t.Fatalf("store.Mutate: %v", err)
 	}
 
-	cfg := Config{UserPluginsDir: "/user/plugins", RuntimeResolver: resolver, Runtime: passthroughRuntime{}}
-	handler := New(cfg, store, opkg.NewStub(discardLogger()), nil, emptyBuiltinSource{}, discardLogger())
+	cfg := Config{
+		UserPluginsDir:  "/user/plugins",
+		RuntimeResolver: resolver,
+		Runtime:         passthroughRuntime{},
+		Store:           store,
+		OpkgManager:     opkg.NewStub(discardLogger()),
+		Builtins:        emptyBuiltinSource{},
+		Logger:          discardLogger(),
+	}
+	handler := New(cfg)
 
 	return handler, store
 }
@@ -62,7 +70,7 @@ func TestRuntimeResolverHitUsesResolvedPlugin(t *testing.T) {
 	resolver := &testRuntimeResolver{plugin: want, ok: true}
 	handler, _ := newRuntimeResolverTestHandler(t, resolver)
 
-	got, ok := handler.resolveRuntimePlugin("svc")
+	got, ok := handler.plugins.resolveRuntimePlugin("svc")
 
 	if !ok || got != want {
 		t.Fatalf("resolved plugin = (%p, %t), want (%p, true)", got, ok, want)
@@ -77,7 +85,7 @@ func TestRuntimeResolverMissDoesNotFallBackToStore(t *testing.T) {
 	resolver := &testRuntimeResolver{ok: false}
 	handler, _ := newRuntimeResolverTestHandler(t, resolver)
 
-	if plugin, ok := handler.resolveRuntimePlugin("svc"); ok || plugin != nil {
+	if plugin, ok := handler.plugins.resolveRuntimePlugin("svc"); ok || plugin != nil {
 		t.Fatalf("resolver miss returned store plugin: (%+v, %t)", plugin, ok)
 	}
 
@@ -89,7 +97,7 @@ func TestRuntimeResolverMissDoesNotFallBackToStore(t *testing.T) {
 func TestRuntimeResolverAbsentUsesStoreFallback(t *testing.T) {
 	handler, _ := newRuntimeResolverTestHandler(t, nil)
 
-	plugin, ok := handler.resolveRuntimePlugin("svc")
+	plugin, ok := handler.plugins.resolveRuntimePlugin("svc")
 
 	if !ok || plugin == nil {
 		t.Fatalf("store fallback plugin = (%+v, %t), want a plugin", plugin, ok)
@@ -111,12 +119,12 @@ func TestRestartUsesExplicitRuntimeResolver(t *testing.T) {
 
 	resolver.plugin = resolved
 	runtime := &lifecycleTestRuntime{store: store}
-	handler.runtime = runtime
+	handler.plugins.runtime = runtime
 
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/mgmt/restart", strings.NewReader(`{"name":"svc"}`))
 
-	handler.handleRestart(response, request)
+	handler.plugins.handleRestart(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("restart status = %d, body=%s", response.Code, response.Body.String())

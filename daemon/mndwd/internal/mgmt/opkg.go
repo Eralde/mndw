@@ -16,12 +16,23 @@ type packagesRequest struct {
 	Packages []string `json:"packages"`
 }
 
-func (h *Handler) handleOpkgListInstalled(w http.ResponseWriter, _ *http.Request) {
-	ctx, cancel := h.opkgContext()
+func (h *opkgAPI) register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/mgmt/opkg/list-installed", h.handleOpkgListInstalled)
+	mux.HandleFunc("GET /api/mgmt/opkg/list-available", h.handleOpkgListAvailable)
+	mux.HandleFunc("GET /api/mgmt/opkg/list", h.handleOpkgList)
+	mux.HandleFunc("GET /api/mgmt/opkg/info", h.handleOpkgInfo)
+	mux.HandleFunc("POST /api/mgmt/opkg/install", h.handleOpkgInstall)
+	mux.HandleFunc("POST /api/mgmt/opkg/remove", h.handleOpkgRemove)
+	mux.HandleFunc("POST /api/mgmt/opkg/update", h.handleOpkgUpdate)
+	mux.HandleFunc("POST /api/mgmt/opkg/upgrade", h.handleOpkgUpgrade)
+}
+
+func (h *opkgAPI) handleOpkgListInstalled(w http.ResponseWriter, _ *http.Request) {
+	ctx, cancel := opkgContext(h.actionRoot)
 
 	defer cancel()
 
-	packages, err := h.opkg.ListInstalled(ctx)
+	packages, err := h.manager.ListInstalled(ctx)
 	if err != nil {
 		h.writeOpkgError(w, "failed to list installed packages", err)
 
@@ -31,12 +42,12 @@ func (h *Handler) handleOpkgListInstalled(w http.ResponseWriter, _ *http.Request
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"packages": packages})
 }
 
-func (h *Handler) handleOpkgListAvailable(w http.ResponseWriter, _ *http.Request) {
-	ctx, cancel := h.opkgContext()
+func (h *opkgAPI) handleOpkgListAvailable(w http.ResponseWriter, _ *http.Request) {
+	ctx, cancel := opkgContext(h.actionRoot)
 
 	defer cancel()
 
-	packages, err := h.opkg.ListAvailable(ctx)
+	packages, err := h.manager.ListAvailable(ctx)
 	if err != nil {
 		h.writeOpkgError(w, "failed to list available packages", err)
 
@@ -46,12 +57,12 @@ func (h *Handler) handleOpkgListAvailable(w http.ResponseWriter, _ *http.Request
 	httpx.WriteJSON(w, h.logger, http.StatusOK, map[string]any{"packages": packages})
 }
 
-func (h *Handler) handleOpkgList(w http.ResponseWriter, _ *http.Request) {
-	ctx, cancel := h.opkgContext()
+func (h *opkgAPI) handleOpkgList(w http.ResponseWriter, _ *http.Request) {
+	ctx, cancel := opkgContext(h.actionRoot)
 
 	defer cancel()
 
-	result, err := h.opkg.List(ctx)
+	result, err := h.manager.List(ctx)
 	if err != nil {
 		h.writeOpkgError(w, "failed to list packages", err)
 
@@ -61,13 +72,13 @@ func (h *Handler) handleOpkgList(w http.ResponseWriter, _ *http.Request) {
 	httpx.WriteJSON(w, h.logger, http.StatusOK, result)
 }
 
-func (h *Handler) handleOpkgInfo(w http.ResponseWriter, r *http.Request) {
+func (h *opkgAPI) handleOpkgInfo(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("name")
-	ctx, cancel := h.opkgContext()
+	ctx, cancel := opkgContext(h.actionRoot)
 
 	defer cancel()
 
-	info, err := h.opkg.Info(ctx, name)
+	info, err := h.manager.Info(ctx, name)
 	if err != nil {
 		var invalid *opkg.InvalidPackageError
 		var notFound *opkg.PackageNotFoundError
@@ -87,30 +98,30 @@ func (h *Handler) handleOpkgInfo(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, h.logger, http.StatusOK, info)
 }
 
-func (h *Handler) handleOpkgInstall(w http.ResponseWriter, r *http.Request) {
+func (h *opkgAPI) handleOpkgInstall(w http.ResponseWriter, r *http.Request) {
 	h.opkgMutate(w, r, "install", func(ctx context.Context, pkgs []string) error {
-		return h.opkg.Install(ctx, pkgs)
+		return h.manager.Install(ctx, pkgs)
 	})
 }
 
-func (h *Handler) handleOpkgRemove(w http.ResponseWriter, r *http.Request) {
+func (h *opkgAPI) handleOpkgRemove(w http.ResponseWriter, r *http.Request) {
 	h.opkgMutate(w, r, "remove", func(ctx context.Context, pkgs []string) error {
-		return h.opkg.Remove(ctx, pkgs)
+		return h.manager.Remove(ctx, pkgs)
 	})
 }
 
-func (h *Handler) handleOpkgUpgrade(w http.ResponseWriter, r *http.Request) {
+func (h *opkgAPI) handleOpkgUpgrade(w http.ResponseWriter, r *http.Request) {
 	h.opkgMutate(w, r, "upgrade", func(ctx context.Context, pkgs []string) error {
-		return h.opkg.Upgrade(ctx, pkgs)
+		return h.manager.Upgrade(ctx, pkgs)
 	})
 }
 
-func (h *Handler) handleOpkgUpdate(w http.ResponseWriter, _ *http.Request) {
-	ctx, cancel := h.opkgContext()
+func (h *opkgAPI) handleOpkgUpdate(w http.ResponseWriter, _ *http.Request) {
+	ctx, cancel := opkgContext(h.actionRoot)
 
 	defer cancel()
 
-	if err := h.opkg.Update(ctx); err != nil {
+	if err := h.manager.Update(ctx); err != nil {
 		h.writeOpkgError(w, "failed to refresh package metadata", err)
 
 		return
@@ -131,7 +142,7 @@ func opkgActionMessage(action string, count int) string {
 
 // opkgMutate runs the shared decode → validate → execute path for install/remove/
 // upgrade, mapping opkg's typed errors onto the envelope.
-func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action string, run func(context.Context, []string) error) {
+func (h *opkgAPI) opkgMutate(w http.ResponseWriter, r *http.Request, action string, run func(context.Context, []string) error) {
 	var req packagesRequest
 
 	defer r.Body.Close()
@@ -148,7 +159,7 @@ func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action stri
 		return
 	}
 
-	ctx, cancel := h.opkgContext()
+	ctx, cancel := opkgContext(h.actionRoot)
 
 	defer cancel()
 
@@ -185,7 +196,7 @@ func (h *Handler) opkgMutate(w http.ResponseWriter, r *http.Request, action stri
 	})
 }
 
-func (h *Handler) writeOpkgError(w http.ResponseWriter, message string, err error) {
+func (h *opkgAPI) writeOpkgError(w http.ResponseWriter, message string, err error) {
 	status := http.StatusBadGateway
 	code := httpx.CodeOpkgFailed
 

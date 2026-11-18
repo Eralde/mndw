@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	contractEvents "mndw.local/contracts/events"
 	"mndwd/internal/httpx"
 	"mndwd/internal/state"
 )
@@ -20,18 +21,23 @@ type telemetrySettingsDTO struct {
 	Enabled bool `json:"enabled"`
 }
 
-func (h *Handler) handleTelemetryGet(w http.ResponseWriter, _ *http.Request) {
+func (h *telemetryAPI) register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/mgmt/telemetry", h.handleTelemetryGet)
+	mux.HandleFunc("PUT /api/mgmt/telemetry", h.handleTelemetryPut)
+}
+
+func (h *telemetryAPI) handleTelemetryGet(w http.ResponseWriter, _ *http.Request) {
 	enabled := h.store.Snapshot().Settings.BackgroundTelemetry
 
 	httpx.WriteJSON(w, h.logger, http.StatusOK, telemetrySettingsDTO{Enabled: enabled})
 }
 
-func (h *Handler) handleTelemetryPut(w http.ResponseWriter, r *http.Request) {
+func (h *telemetryAPI) handleTelemetryPut(w http.ResponseWriter, r *http.Request) {
 	if !httpx.RequireCSRF(w, h.logger, r) {
 		return
 	}
 
-	if h.telemetry == nil {
+	if h.controller == nil {
 		httpx.WriteError(w, h.logger, httpx.NewError(
 			http.StatusServiceUnavailable, httpx.CodeInternal, "telemetry is unavailable",
 		))
@@ -63,11 +69,11 @@ func (h *Handler) handleTelemetryPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.telemetryMu.Lock()
+	h.mu.Lock()
 
-	defer h.telemetryMu.Unlock()
+	defer h.mu.Unlock()
 
-	transitionCtx, cancel := context.WithTimeout(h.cfg.ServiceActionRoot, serviceActionTimeout)
+	transitionCtx, cancel := context.WithTimeout(h.actionRoot, serviceActionTimeout)
 
 	defer cancel()
 
@@ -79,8 +85,8 @@ func (h *Handler) handleTelemetryPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.telemetry.SetEnabled(transitionCtx, incoming.Enabled); err != nil {
-		if rollbackErr := h.telemetry.SetEnabled(transitionCtx, oldEnabled); rollbackErr != nil {
+	if err := h.controller.SetEnabled(transitionCtx, incoming.Enabled); err != nil {
+		if rollbackErr := h.controller.SetEnabled(transitionCtx, oldEnabled); rollbackErr != nil {
 			h.logger.Error("telemetry runtime rollback failed", "error", rollbackErr)
 		}
 
@@ -101,7 +107,7 @@ func (h *Handler) handleTelemetryPut(w http.ResponseWriter, r *http.Request) {
 
 		return nil
 	}); err != nil {
-		if rollbackErr := h.telemetry.SetEnabled(transitionCtx, oldEnabled); rollbackErr != nil {
+		if rollbackErr := h.controller.SetEnabled(transitionCtx, oldEnabled); rollbackErr != nil {
 			h.logger.Error("telemetry rollback failed", "error", rollbackErr)
 		}
 
@@ -110,12 +116,14 @@ func (h *Handler) handleTelemetryPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.publishTelemetryGatheringChanged(incoming.Enabled)
+	h.events.publish("telemetry.gathering_changed", func(publisher ManagementEventPublisher) error {
+		return publisher.PublishTelemetryGatheringChanged(contractEvents.TelemetryGatheringChangedPayload{Enabled: incoming.Enabled})
+	})
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) writeTelemetryDecodeError(w http.ResponseWriter, err error) {
+func (h *telemetryAPI) writeTelemetryDecodeError(w http.ResponseWriter, err error) {
 	var tooLarge *http.MaxBytesError
 
 	if errors.As(err, &tooLarge) {

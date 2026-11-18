@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"path/filepath"
 
+	contractEvents "mndw.local/contracts/events"
 	"mndwd/internal/backend"
 	"mndwd/internal/httpx"
 	"mndwd/internal/manifest"
@@ -12,7 +13,7 @@ import (
 	"mndwd/internal/state"
 )
 
-func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIError) {
+func (h *pluginsAPI) executeApprove(name string) (*manifest.Manifest, *httpx.APIError) {
 	p, ok := h.store.Get(name)
 
 	if !ok {
@@ -28,13 +29,13 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 		return nil, httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "stored manifest is invalid")
 	}
 
-	stagingPath := filepath.Join(h.cfg.StagingDir, name)
-	installPath := filepath.Join(h.cfg.UserPluginsDir, name)
+	stagingPath := filepath.Join(h.stagingDir, name)
+	installPath := filepath.Join(h.userPluginsDir, name)
 	desired := &registry.Plugin{
 		Name: name, Dir: installPath, Manifest: m, Source: p.Source,
 		Approval: state.ApprovalApproved, Enabled: true,
 	}
-	err = h.executeLifecycle(name, backend.OpInstalling, backend.IntentRun,
+	err = h.runtime.ExecuteLifecycle(name, backend.OpInstalling, backend.IntentRun,
 		func(ctx context.Context, ctrl backend.LifecycleControl) error {
 			if apiErr := h.installDeps(ctx, m); apiErr != nil {
 				return apiErr
@@ -56,16 +57,12 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 				return err
 			}
 
-			if err := ctx.Err(); err != nil || !ctrl.IsCurrent() {
+			if err := stillCurrent(ctx, ctrl); err != nil {
 				_ = ctrl.StopService()
 
 				h.rollbackInstall(name, installPath, stagingPath)
 
-				if err != nil {
-					return err
-				}
-
-				return backend.ErrLifecycleConflict
+				return err
 			}
 
 			if err := h.store.Mutate(func(st *state.State) error {
@@ -92,8 +89,12 @@ func (h *Handler) executeApprove(name string) (*manifest.Manifest, *httpx.APIErr
 				return httpx.NewError(http.StatusInternalServerError, httpx.CodeInternal, "failed to record approval")
 			}
 
-			h.publishPluginInstalled(name, m.VersionValue())
-			h.publishPluginApproved(name, m.VersionValue())
+			h.events.publish("plugin.installed", func(publisher ManagementEventPublisher) error {
+				return publisher.PublishPluginInstalled(contractEvents.PluginInstalledPayload{Name: name, Version: m.VersionValue()})
+			})
+			h.events.publish("plugin.approved", func(publisher ManagementEventPublisher) error {
+				return publisher.PublishPluginApproved(contractEvents.PluginApprovedPayload{Name: name, Version: m.VersionValue()})
+			})
 
 			return nil
 		})

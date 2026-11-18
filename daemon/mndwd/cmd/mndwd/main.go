@@ -510,12 +510,17 @@ func registerMgmt(mux *http.ServeMux, core daemonCore, intake *httpx.BodyIntake,
 		MaxUploadBytes:                    maxUploadBytes,
 		Runtime:                           core.runtime,
 		RuntimeResolver:                   core.reg,
+		Store:                             core.store,
+		OpkgManager:                       services.opkg,
+		ServiceManager:                    services.service,
+		Builtins:                          core.reg,
+		Logger:                            core.logger,
 		PersistentRCIPermissionController: services.permissionController,
 		ServiceActionRoot:                 core.lifetime,
 		SelfUpdate:                        services.selfUpdate,
 		TelemetryController:               services.telemetryController,
 		EventPublisher:                    services.events,
-	}, core.store, services.opkg, services.service, core.reg, core.logger)
+	})
 
 	mgmtMux := http.NewServeMux()
 

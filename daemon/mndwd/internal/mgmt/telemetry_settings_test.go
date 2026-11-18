@@ -80,13 +80,7 @@ func TestTelemetrySettingsRequiresCSRFAndPersistsAfterRuntimeTransition(t *testi
 	controller := &telemetryControllerStub{}
 	store := &telemetryStoreStub{state: state.State{Settings: state.Settings{BackgroundTelemetry: false}}}
 	events := &telemetryEventPublisherStub{}
-	handler := &Handler{
-		cfg:            Config{ServiceActionRoot: context.Background()},
-		store:          store,
-		telemetry:      controller,
-		eventPublisher: events,
-		logger:         discardLogger(),
-	}
+	handler := newTelemetrySettingsHandler(store, controller, events)
 	mux := http.NewServeMux()
 
 	handler.Register(mux)
@@ -135,12 +129,7 @@ func TestTelemetrySettingsPublishesOnlyAfterStateTransitionSucceeds(t *testing.T
 		controller := &telemetryControllerStub{enabled: true}
 		store := &telemetryStoreStub{state: state.State{Settings: state.Settings{BackgroundTelemetry: true}}}
 		events := &telemetryEventPublisherStub{}
-		handler := &Handler{
-			cfg:            Config{ServiceActionRoot: context.Background()},
-			store:          store,
-			telemetry:      controller,
-			eventPublisher: events,
-		}
+		handler := newTelemetrySettingsHandler(store, controller, events)
 
 		response := putTelemetry(t, handler, true)
 
@@ -153,13 +142,7 @@ func TestTelemetrySettingsPublishesOnlyAfterStateTransitionSucceeds(t *testing.T
 		controller := &telemetryControllerStub{err: errors.New("runtime unavailable")}
 		store := &telemetryStoreStub{state: state.State{Settings: state.Settings{BackgroundTelemetry: false}}}
 		events := &telemetryEventPublisherStub{}
-		handler := &Handler{
-			cfg:            Config{ServiceActionRoot: context.Background()},
-			store:          store,
-			telemetry:      controller,
-			eventPublisher: events,
-			logger:         discardLogger(),
-		}
+		handler := newTelemetrySettingsHandler(store, controller, events)
 
 		response := putTelemetry(t, handler, true)
 
@@ -175,18 +158,24 @@ func TestTelemetrySettingsPublishesOnlyAfterStateTransitionSucceeds(t *testing.T
 			mutateErr: errors.New("state unavailable"),
 		}
 		events := &telemetryEventPublisherStub{}
-		handler := &Handler{
-			cfg:            Config{ServiceActionRoot: context.Background()},
-			store:          store,
-			telemetry:      controller,
-			eventPublisher: events,
-		}
+		handler := newTelemetrySettingsHandler(store, controller, events)
 
 		response := putTelemetry(t, handler, true)
 
 		if response.Code != http.StatusInternalServerError || len(events.events) != 0 {
 			t.Fatalf("PUT status=%d published events=%#v, want no event", response.Code, events.events)
 		}
+	})
+}
+
+func newTelemetrySettingsHandler(store StateStore, controller TelemetryController, events ManagementEventPublisher) *Handler {
+	return New(Config{
+		Runtime:             passthroughRuntime{},
+		Store:               store,
+		TelemetryController: controller,
+		EventPublisher:      events,
+		Logger:              discardLogger(),
+		ServiceActionRoot:   context.Background(),
 	})
 }
 

@@ -13,13 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"mndwd/internal/mgmt"
 	"mndwd/internal/telemetry/ring"
 	"mndwd/internal/telemetry/ring/ringtest"
 	"mndwd/internal/telemetry/timekeeper"
 )
-
-var _ mgmt.TelemetryController = (*Capability)(nil)
 
 type capabilityClock struct {
 	mu      sync.Mutex

@@ -16,7 +16,17 @@ type PersistentRCIPermissionController interface {
 	PermissionChanged(plugin string) error
 }
 
-var ErrPersistentRCISocketStart = errors.New("persistent RCI socket start failed")
+// PersistentRCISocketStartFailure marks an error as a persistent RCI socket start failure.
+// Providers implement this interface so management can return the socket-start-specific response.
+type PersistentRCISocketStartFailure interface {
+	PersistentRCISocketStartFailed() bool
+}
+
+func isPersistentRCISocketStartFailure(err error) bool {
+	var socketStartFailure PersistentRCISocketStartFailure
+
+	return errors.As(err, &socketStartFailure) && socketStartFailure.PersistentRCISocketStartFailed()
+}
 
 type permissionRequest struct {
 	Name       string `json:"name"`
@@ -81,7 +91,7 @@ func (h *Handler) handlePermission(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := h.permissionController.PermissionChanged(request.Name); err != nil {
-			if errors.Is(err, ErrPersistentRCISocketStart) {
+			if isPersistentRCISocketStartFailure(err) {
 				httpx.WriteError(w, h.logger, httpx.NewError(http.StatusServiceUnavailable, httpx.CodeRCISocketStartFailed, "Persistent RCI session permission granted, but its socket could not be started."))
 
 				return

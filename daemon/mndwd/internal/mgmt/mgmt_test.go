@@ -80,6 +80,12 @@ type permissionTestController struct {
 	changes   int
 }
 
+type permissionSocketStartFailure struct{}
+
+func (permissionSocketStartFailure) Error() string { return "persistent RCI socket start failed" }
+
+func (permissionSocketStartFailure) PersistentRCISocketStartFailed() bool { return true }
+
 type lifecycleTestRuntime struct {
 	store         *state.Store
 	events        []string
@@ -1297,7 +1303,7 @@ func TestOpkgInstallSuccessPreservesResponse(t *testing.T) {
 }
 
 func TestPermissionEnablePersistsBeforeReconcileFailure(t *testing.T) {
-	controller := &permissionTestController{available: true, changeErr: ErrPersistentRCISocketStart}
+	controller := &permissionTestController{available: true, changeErr: permissionSocketStartFailure{}}
 	srv, store := newPermissionServer(t, controller)
 
 	installPermissionPlugin(t, srv, "permissioned")

@@ -7,7 +7,6 @@ import (
 
 	"mndwd/internal/backend"
 	"mndwd/internal/manifest"
-	"mndwd/internal/mgmt"
 	"mndwd/internal/rcisession/model"
 	rcisessionsocket "mndwd/internal/rcisession/socket"
 )
@@ -67,11 +66,24 @@ func (c *Coordinator) PermissionChanged(plugin string) error {
 	}
 
 	if available {
-		return fmt.Errorf("%w: plugin %s socket unavailable", mgmt.ErrPersistentRCISocketStart, plugin)
+		return persistentRCISocketStartError{plugin: plugin, cause: report.StartErrors[plugin]}
 	}
 
 	return nil
 }
+
+type persistentRCISocketStartError struct {
+	plugin string
+	cause  error
+}
+
+func (e persistentRCISocketStartError) Error() string {
+	return fmt.Sprintf("persistent RCI socket start failed: plugin %s socket unavailable", e.plugin)
+}
+
+func (e persistentRCISocketStartError) Unwrap() error { return e.cause }
+
+func (persistentRCISocketStartError) PersistentRCISocketStartFailed() bool { return true }
 
 func (c *Coordinator) reconcileSocketsLocked() (rcisessionsocket.ReconcileReport, bool, error) {
 	bindings := make([]rcisessionsocket.Binding, 0)

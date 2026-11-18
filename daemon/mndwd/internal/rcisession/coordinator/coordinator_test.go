@@ -26,6 +26,8 @@ import (
 	"mndwd/internal/state"
 )
 
+var _ mgmt.PersistentRCISocketStartFailure = persistentRCISocketStartError{}
+
 func TestControllerPermissionAvailableUsesControllerSupport(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -279,8 +281,15 @@ func TestPermissionChangedReportsOnlyFocusedStartFailure(t *testing.T) {
 
 	defer assembly.Close()
 
-	if err := assembly.PermissionChanged("bad"); !errors.Is(err, mgmt.ErrPersistentRCISocketStart) {
-		t.Fatalf("bad permission change error = %v, want focused socket-start error", err)
+	err = assembly.PermissionChanged("bad")
+	var socketStartFailure mgmt.PersistentRCISocketStartFailure
+
+	if !errors.As(err, &socketStartFailure) || !socketStartFailure.PersistentRCISocketStartFailed() {
+		t.Fatalf("bad permission change error = %v, want recognized socket-start failure", err)
+	}
+
+	if errors.Unwrap(err) == nil {
+		t.Fatalf("bad permission change error = %v, want wrapped socket-start cause", err)
 	}
 
 	goodPath, err := backend.NewRuntimePaths(runtimeRoot, "good")

@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"mndwd/internal/mgmt"
 	"mndwd/internal/telemetry/ring"
 	"mndwd/internal/telemetry/system"
 	"mndwd/internal/telemetry/timekeeper"
@@ -493,5 +492,3 @@ func waitForBootDeadline(clock system.Clock) func(context.Context, int64) error 
 		}
 	}
 }
-
-var _ mgmt.TelemetryController = (*Capability)(nil)

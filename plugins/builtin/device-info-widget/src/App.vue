@@ -2,9 +2,8 @@
 import {computed, onMounted, onUnmounted, provide, ref} from 'vue';
 import {historyStatus} from '@mndw/sdk';
 import {bindLocale} from '@mndw/sdk/bind-locale';
-import type {LoadState, PluginContext, ProjectedSeries, ProjectedSnapshot} from '@mndw/sdk';
+import type {LoadState, PluginContext, ProjectedSeries, ProjectedSnapshot, RefreshLoop} from '@mndw/sdk';
 import {useTranslator} from '@mndw/sdk/vue';
-import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 import CopyField from './components/CopyField.vue';
 import LoadBarChart from './components/LoadBarChart.vue';
 import TelemetryNote from './components/TelemetryNote.vue';
@@ -82,7 +81,6 @@ let tickerSubscription: {unsubscribe(): void} | null = null;
 let refreshLoop: RefreshLoop | null = null;
 let projectedRefreshLoop: RefreshLoop | null = null;
 let gatheringSubscription: {unsubscribe(): void} | null = null;
-let projectedAbortController: AbortController | null = null;
 let pendingProjectedRange: DurableRange | null = null;
 let projectedLoopGeneration = 0;
 let liveHistoryGeneration = 0;
@@ -327,8 +325,6 @@ const stopProjectedLoop = (): void => {
   projectedLoopGeneration += 1;
   projectedRefreshLoop?.stop();
   projectedRefreshLoop = null;
-  projectedAbortController?.abort();
-  projectedAbortController = null;
   pendingProjectedRange = null;
   projectedRequestInFlight.value = false;
 };
@@ -342,13 +338,12 @@ const startProjectedLoop = (range: DurableRange, preserveLoadedRange = false): v
     projectedRefreshFailed.value = false;
   }
   pendingProjectedRange = range;
-  projectedAbortController = new AbortController();
-  projectedRefreshLoop = createRefreshLoop({
-    load: () => {
+  projectedRefreshLoop = props.ctx.timers.createRefreshLoop({
+    load: (signal) => {
       projectedRequestInFlight.value = true;
       refreshAttemptAt.value = Date.now();
 
-      return props.ctx.telemetry.fetchProjected(range, {signal: projectedAbortController?.signal});
+      return props.ctx.telemetry.fetchProjected(range, {signal});
     },
     intervalMs: 15 * 60_000,
     onSuccess: (snapshot) => {
@@ -432,7 +427,7 @@ onMounted(() => {
 
   ticker.start(1000);
 
-  refreshLoop = createRefreshLoop({
+  refreshLoop = props.ctx.timers.createRefreshLoop({
     load: async (): Promise<LiveInfoRefresh> => {
       requestInFlight.value = true;
       refreshAttemptAt.value = Date.now();
@@ -454,9 +449,7 @@ onUnmounted(() => {
   unsubscribeLocale();
   mounted = false;
   liveHistoryGeneration += 1;
-  refreshLoop?.stop();
   refreshLoop = null;
-  stopProjectedLoop();
   gatheringSubscription?.unsubscribe();
   gatheringSubscription = null;
   tickerSubscription?.unsubscribe();

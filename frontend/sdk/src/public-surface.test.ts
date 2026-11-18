@@ -52,6 +52,7 @@ const EXPECTED_TYPE_EXPORTS = [
   'PluginRciManagerMethod',
   'PluginResizeSize',
   'PluginStorage',
+  'PluginTimers',
   'ProjectRange',
   'ProjectedBand',
   'ProjectedBandPoint',
@@ -61,6 +62,8 @@ const EXPECTED_TYPE_EXPORTS = [
   'ProjectedSeries',
   'ProjectedSnapshot',
   'ProjectedValueDomain',
+  'RefreshLoop',
+  'RefreshLoopOptions',
   'Switchport',
   'Switchports',
   'TelemetryClient',
@@ -112,7 +115,7 @@ const EXPECTED_SUBPATHS = [
   './angular',
   './bind-locale',
   './manifest.schema.json',
-  './refresh',
+  './internal/timers',
   './rrd',
   './svelte',
   './testing',
@@ -121,6 +124,8 @@ const EXPECTED_SUBPATHS = [
   './tokens.css',
   './vue',
 ];
+
+const EXPECTED_PUBLISHED_SUBPATHS = EXPECTED_SUBPATHS.filter((subpath) => subpath !== './internal/timers');
 
 describe('SDK public surface', () => {
   it('exports exactly the public types and values', () => {
@@ -166,8 +171,11 @@ describe('SDK public surface', () => {
     const packagePath = fileURLToPath(new URL('../package.json', import.meta.url));
     const packageJson = JSON.parse(readFileSync(packagePath, 'utf8')) as {
       exports: Record<string, unknown>;
+      publishConfig: {exports: Record<string, unknown>};
     };
 
     expect(Object.keys(packageJson.exports).sort()).toEqual([...EXPECTED_SUBPATHS].sort());
+    expect(Object.keys(packageJson.publishConfig.exports).sort()).toEqual([...EXPECTED_PUBLISHED_SUBPATHS].sort());
+    expect(packageJson.publishConfig.exports).not.toHaveProperty('./internal/timers');
   });
 });

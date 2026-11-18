@@ -9,6 +9,7 @@ export function createInstance(container: HTMLElement, ctx: PluginContext): Plug
     props: {
       rci: ctx.device.rci,
       storage: ctx.storage.instance,
+      timers: ctx.timers,
       openSettings: (args: OpenSettingsArgs) => openSettingsDialog(ctx, args),
       setTileTitle: ctx.setTileTitle,
       i18n: ctx.i18n,

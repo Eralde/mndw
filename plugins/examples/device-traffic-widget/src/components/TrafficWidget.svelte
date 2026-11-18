@@ -6,9 +6,9 @@ import type {
   PluginI18n,
   PluginRciManager,
   PluginStorage,
+  PluginTimers,
   Translator,
 } from '@mndw/sdk';
-import {createRefreshLoop} from '@mndw/sdk/refresh';
 import {createTranslator} from '@mndw/sdk/svelte';
 import {type ClockDate, RciService} from '../services/rci.js';
 import type {HostBar, HostClient} from '../types.js';
@@ -18,12 +18,13 @@ import type {OpenSettingsArgs} from '../open-settings-dialog.js';
 interface Props {
   rci: PluginRciManager;
   storage: PluginStorage;
+  timers: PluginTimers;
   openSettings: (args: OpenSettingsArgs) => void;
   setTileTitle?: (title: string) => void;
   i18n: PluginI18n;
 }
 
-let {rci, storage, openSettings, setTileTitle, i18n}: Props = $props();
+let {rci, storage, timers, openSettings, setTileTitle, i18n}: Props = $props();
 // svelte-ignore state_referenced_locally
 const translator: Readable<Translator> = createTranslator(i18n);
 
@@ -48,17 +49,26 @@ let deviceTime = $state<Date | null>(null);
 let error = $state('');
 let isLoading = $state(true);
 
-const chartLoop = createRefreshLoop({
-  load: loadChartData,
+// Intentional: context timers are stable for this plugin lifetime.
+// svelte-ignore state_referenced_locally
+const chartLoop = timers.createRefreshLoop({
+  load: (_signal) => loadChartData(),
   intervalMs: POLL_INTERVAL,
-  onSuccess: () => {},
-  onError: () => {},
+  onSuccess: (nextData) => {
+    rawChartData = nextData;
+    error = '';
+  },
+  onError: (caught) => {
+    error = t('error.load-data');
+    console.error('[device-traffic-widget]', caught);
+  },
 });
-const timeLoop = createRefreshLoop({
-  load: loadDeviceTime,
+// svelte-ignore state_referenced_locally
+const timeLoop = timers.createRefreshLoop({
+  load: (_signal) => loadDeviceTime(),
   intervalMs: DEVICE_TIME_INTERVAL,
-  onSuccess: () => {},
-  onError: () => {},
+  onSuccess: (nextTime) => deviceTime = nextTime,
+  onError: (caught) => console.error('[device-traffic-widget]', caught),
 });
 
 let chartData = $derived(toDeviceTrafficChartData(rawChartData, deviceTime));
@@ -91,38 +101,28 @@ async function loadHosts() {
   }
 }
 
-async function loadDeviceTime() {
-  try {
-    const d: ClockDate = await rciService.getDeviceTime();
-    deviceTime = new Date(
-      d.year,
-      d.month - 1,
-      d.day,
-      d.hour,
-      d.min,
-      d.sec,
-      d.msec,
-    );
-  } catch (ex) {
-    console.error('[device-traffic-widget]', ex);
-  }
+async function loadDeviceTime(): Promise<Date> {
+  const d: ClockDate = await rciService.getDeviceTime();
+
+  return new Date(
+    d.year,
+    d.month - 1,
+    d.day,
+    d.hour,
+    d.min,
+    d.sec,
+    d.msec,
+  );
 }
 
-async function loadChartData() {
+async function loadChartData(): Promise<HostBar[]> {
   if (!selectedMac) {
-    return;
+    return [];
   }
 
-  try {
-    const rciChartData = await rciService.getChartData([selectedMac], detail);
+  const rciChartData = await rciService.getChartData([selectedMac], detail);
 
-    rawChartData = rciChartData.bar || [];
-    error = '';
-  } catch (ex) {
-    error = t('error.load-data');
-
-    console.error('[device-traffic-widget]', ex);
-  }
+  return rciChartData.bar || [];
 }
 
 function stopPolling() {
@@ -184,7 +184,11 @@ onMount(() => {
     }
 
     await loadHosts();
-    await loadDeviceTime();
+    try {
+      deviceTime = await loadDeviceTime();
+    } catch (caught) {
+      console.error('[device-traffic-widget]', caught);
+    }
 
     if (savedMac && hosts.some(h => h.mac === savedMac)) {
       selectedMac = savedMac;
@@ -193,10 +197,6 @@ onMount(() => {
 
     isLoading = false;
   })();
-
-  return () => {
-    stopPolling();
-  };
 });
 </script>
 

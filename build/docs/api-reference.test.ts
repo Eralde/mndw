@@ -11,7 +11,6 @@ const expectedModules = [
   '@mndw/sdk',
   '@mndw/sdk/angular',
   '@mndw/sdk/bind-locale',
-  '@mndw/sdk/refresh',
   '@mndw/sdk/rrd',
   '@mndw/sdk/svelte',
   '@mndw/sdk/testing',

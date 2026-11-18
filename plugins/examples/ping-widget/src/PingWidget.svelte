@@ -1,7 +1,6 @@
 <script lang="ts">
 import {onMount} from 'svelte';
-import type {BackendClient, PluginI18n} from '@mndw/sdk';
-import {createRefreshLoop} from '@mndw/sdk/refresh';
+import type {BackendClient, PluginI18n, PluginTimers} from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
 import {
   type Host,
@@ -14,6 +13,8 @@ import {
 interface Props {
   backend?: BackendClient;
   i18n: PluginI18n;
+  timers: PluginTimers;
+  signal: AbortSignal;
   setTileTitle?: (title: string) => void;
 }
 
@@ -30,7 +31,7 @@ interface RenameState {
   error: string;
 }
 
-let {backend, i18n, setTileTitle}: Props = $props();
+let {backend, i18n, timers, signal, setTileTitle}: Props = $props();
 // svelte-ignore state_referenced_locally
 const translator = createTranslator(i18n);
 
@@ -53,10 +54,12 @@ let newHostIp = $state('');
 let newHostName = $state('');
 let pollSeconds = $state(2);
 const renameStates = $state<Record<string, RenameState>>({});
-const statsLoop = createRefreshLoop({
+// Intentional: context timers are stable for this plugin lifetime.
+// svelte-ignore state_referenced_locally
+const statsLoop = timers.createRefreshLoop({
   load: loadStats,
   intervalMs: 2_000,
-  onSuccess: () => {},
+  onSuccess: applyStats,
   onError: (error) => {
     setMessage(
       error instanceof Error ? error.message : t('error.stats-polling-failed'),
@@ -146,11 +149,15 @@ async function loadHosts(): Promise<void> {
   syncRenameDrafts(hosts);
 }
 
-async function loadStats(): Promise<void> {
+async function loadStats(loadSignal: AbortSignal): Promise<HostStats[]> {
   if (!backend) {
-    return;
+    return [];
   }
-  const nextStats = await fetchStats(backend);
+
+  return fetchStats(backend, loadSignal);
+}
+
+function applyStats(nextStats: HostStats[]): void {
   for (const row of nextStats) {
     getRenameState(row.ip, row.name ?? '');
   }
@@ -165,7 +172,8 @@ async function refreshNow(showMessage = true): Promise<void> {
   loading = true;
 
   try {
-    await Promise.all([loadHosts(), loadStats()]);
+    const [, nextStats] = await Promise.all([loadHosts(), loadStats(signal)]);
+    applyStats(nextStats);
 
     if (showMessage) {
       setMessage(t('status.data-refreshed'));
@@ -300,9 +308,6 @@ onMount(() => {
   setMessage(t('status.monitoring'));
   void refreshNow();
   statsLoop.start({immediate: false});
-  return () => {
-    statsLoop.stop();
-  };
 });
 </script>
 

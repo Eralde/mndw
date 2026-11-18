@@ -9,6 +9,7 @@ import type {
   PageRoute,
   PluginRciManager,
   PluginStorage,
+  PluginTimers,
 } from '@mndw/sdk';
 
 // Preserve plugin-local imports while sharing the SDK token identity used by the provider.
@@ -20,6 +21,7 @@ export const OVERLAY = new InjectionToken<OverlayService>('OVERLAY');
 export const DEVICE_INFO = new InjectionToken<DeviceInfo>('DEVICE_INFO');
 export const THEME$ = new InjectionToken<Observable<MndwThemeName>>('THEME$');
 export const PLUGIN_STORAGE = new InjectionToken<PluginStorage>('PLUGIN_STORAGE');
+export const PLUGIN_TIMERS = new InjectionToken<PluginTimers>('PLUGIN_TIMERS');
 export const SHARED_PLUGIN_STORAGE = new InjectionToken<PluginStorage>('SHARED_PLUGIN_STORAGE');
 export const MWSD_BACKEND = new InjectionToken<BackendClient | null>('MWSD_BACKEND', {
   factory: () => null,

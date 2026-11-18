@@ -2,7 +2,7 @@
 import {flushSync, mount, settled, unmount} from 'svelte';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {BackendClient, PluginContext, PluginI18n} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import enCatalog from '../i18n/en.json';
 import ruCatalog from '../i18n/ru.json';
 import PingWidget from './PingWidget.svelte';
@@ -25,6 +25,22 @@ interface Deferred<T> {
 }
 
 let mountedApps: Array<ReturnType<typeof mount>> = [];
+const pluginContexts: Array<{unmount(): void}> = [];
+
+function mountPingWidget(
+  target: HTMLElement,
+  backend: BackendClient | undefined,
+  i18n: PluginI18n,
+): ReturnType<typeof mount<typeof PingWidget>> {
+  const fixture = createTestPluginContext();
+
+  pluginContexts.push(fixture);
+
+  return mount(PingWidget, {
+    target,
+    props: {backend, i18n, timers: fixture.context.timers, signal: fixture.context.signal},
+  });
+}
 
 function deferred<T>(): Deferred<T> {
   let resolvePromise: (value: T) => void = () => undefined;
@@ -104,7 +120,7 @@ async function mountWithHosts(
   backend: BackendClient,
   ips: string[],
 ): Promise<ReturnType<typeof mount<typeof PingWidget>>> {
-  const app = mount(PingWidget, {target, props: {backend, i18n: createTestI18n(enCatalog)}});
+  const app = mountPingWidget(target, backend, createTestI18n(enCatalog));
 
   mountedApps.push(app);
 
@@ -173,7 +189,11 @@ describe('PingWidget', () => {
   it('updates the host widget title when the locale changes', async () => {
     const changing = changingI18n();
     const setTileTitle = vi.fn();
+    const fixture = createTestPluginContext();
+
+    pluginContexts.push(fixture);
     const context = {
+      ...fixture.context,
       kind: 'widget',
       backend: undefined,
       i18n: changing.i18n,
@@ -197,11 +217,17 @@ describe('PingWidget', () => {
     }
 
     mountedApps = [];
+
+    for (const fixture of pluginContexts) {
+      fixture.unmount();
+    }
+
+    pluginContexts.length = 0;
     host.remove();
   });
 
   it('renders "unavailable" when backend is undefined', async () => {
-    const app = mount(PingWidget, {target: host, props: {backend: undefined, i18n: createTestI18n(enCatalog)}});
+    const app = mountPingWidget(host, undefined, createTestI18n(enCatalog));
 
     flushSync();
 
@@ -224,7 +250,7 @@ describe('PingWidget', () => {
   });
 
   it('marks Add control as aligned with the input control row', () => {
-    const app = mount(PingWidget, {target: host, props: {backend: undefined, i18n: createTestI18n(enCatalog)}});
+    const app = mountPingWidget(host, undefined, createTestI18n(enCatalog));
 
     flushSync();
 
@@ -237,7 +263,7 @@ describe('PingWidget', () => {
 
   it('updates the visible refresh control when locale changes', () => {
     const changing = changingI18n();
-    const app = mount(PingWidget, {target: host, props: {backend: undefined, i18n: changing.i18n}});
+    const app = mountPingWidget(host, undefined, changing.i18n);
 
     flushSync();
 
@@ -260,7 +286,7 @@ describe('PingWidget', () => {
       stats: [hostStats('9.9.9.9', 'dns')],
       hosts: [{ip: '9.9.9.9', name: 'dns'}],
     });
-    const app = mount(PingWidget, {target: host, props: {backend, i18n: createTestI18n(enCatalog)}});
+    const app = mountPingWidget(host, backend, createTestI18n(enCatalog));
 
     flushSync();
 

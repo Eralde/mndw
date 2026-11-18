@@ -7,7 +7,7 @@ import type {
   TelemetryGathering,
   TickerTick,
 } from '@mndw/sdk';
-import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
+import {type TestPluginContext, createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import type {RciQuery} from '@rci-tools/core';
 import {createApp, nextTick} from 'vue';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
@@ -73,6 +73,7 @@ function successfulResponse(query: RciQuery): Observable<unknown> {
 }
 
 type WidgetTestContext = PluginContext & {navigationCalls: HostTarget[]};
+const pluginContextFixtures: TestPluginContext[] = [];
 
 function createContext(
   queue: (query: RciQuery) => Observable<unknown>,
@@ -86,6 +87,7 @@ function createContext(
     i18n,
     appearance: {theme: 'dark'},
     telemetry: gathering$ === undefined ? {} : {gathering$},
+    ...(tickerFactory === undefined ? {} : {timers: {createTicker: tickerFactory}}),
     device: {rci: {
       queue: (query: RciQuery | RciQuery[]) =>
         Array.isArray(query)
@@ -93,6 +95,7 @@ function createContext(
           : queue(query),
     } as unknown as Partial<PluginRciManager>},
   });
+  pluginContextFixtures.push(fixture);
   const context = Object.create(null) as Record<string, unknown>;
   const descriptors = Object.getOwnPropertyDescriptors(fixture.context);
 
@@ -112,10 +115,6 @@ function createContext(
       ...fixture.context.telemetry,
       fetchProjected: vi.fn().mockResolvedValue(projected),
     }},
-    ...(tickerFactory === undefined ? {} : {timers: {enumerable: true, value: {
-      ...fixture.context.timers,
-      createTicker: tickerFactory,
-    }}}),
     ...(setTileTitle === undefined ? {} : {setTileTitle: {enumerable: true, value: setTileTitle}}),
   });
 
@@ -126,6 +125,12 @@ function createContext(
   };
 
   return widgetContext;
+}
+
+function unmountPluginContextFixtures(): void {
+  for (const fixture of pluginContextFixtures) {
+    fixture.unmount();
+  }
 }
 
 function mountWidget(
@@ -185,6 +190,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  unmountPluginContextFixtures();
+  pluginContextFixtures.length = 0;
   vi.useRealTimers();
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
@@ -780,6 +787,7 @@ describe('App', () => {
 
     expect(fetchProjected).toHaveBeenCalledTimes(3);
     app.unmount();
+    unmountPluginContextFixtures();
     expect(retrySignal?.aborted).toBe(true);
 
     resolveRetry?.(projectedTelemetrySnapshot(9_000));
@@ -1074,6 +1082,7 @@ describe('App', () => {
     await flushPromises();
 
     app.unmount();
+    unmountPluginContextFixtures();
 
     const callsAtUnmount = queue.mock.calls.length;
 
@@ -1087,7 +1096,7 @@ describe('App', () => {
     expect(queue).toHaveBeenCalledTimes(callsAtUnmount);
     expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
     expect(tickerFactory).toHaveBeenCalledOnce();
-    expect(ticker.destroy).toHaveBeenCalledOnce();
+    expect(tickerSubject.isStopped).toBe(true);
   });
 
   it('calls fetchProjected with 7d when switching to the 7d range', async () => {

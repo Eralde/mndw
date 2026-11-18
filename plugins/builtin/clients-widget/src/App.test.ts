@@ -2,7 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {PluginContext, PluginRciManager} from '@mndw/sdk';
 import type {MndwTable} from '@mndw/ui';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {type TestPluginContext, createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import type {RciQuery} from '@rci-tools/core';
 import {Observable, of, throwError} from 'rxjs';
 import {type App as VueApp, createApp, nextTick} from 'vue';
@@ -25,8 +25,13 @@ let storageSet: ReturnType<typeof vi.fn>;
 let overlayOpen: ReturnType<typeof vi.fn>;
 let warn: ReturnType<typeof vi.spyOn>;
 let setTileTitle: ReturnType<typeof vi.fn>;
+const pluginContextFixtures: TestPluginContext[] = [];
 
 function createContext(i18n = createTestI18n(enCatalog)): PluginContext {
+  const fixtureContext = createTestPluginContext({i18n});
+
+  pluginContextFixtures.push(fixtureContext);
+
   return {
     kind: 'widget',
     setTileTitle,
@@ -42,7 +47,14 @@ function createContext(i18n = createTestI18n(enCatalog)): PluginContext {
     },
     overlay: {open: overlayOpen, createLayer: vi.fn(), closeAll: vi.fn()},
     i18n,
+    timers: fixtureContext.context.timers,
   } as unknown as PluginContext;
+}
+
+function unmountPluginContextFixtures(): void {
+  for (const pluginContextFixture of pluginContextFixtures) {
+    pluginContextFixture.unmount();
+  }
 }
 
 function mountWidget(i18n = createTestI18n(enCatalog)): void {
@@ -132,6 +144,8 @@ beforeEach(() => {
 afterEach(() => {
   app?.unmount();
   app = null;
+  unmountPluginContextFixtures();
+  pluginContextFixtures.length = 0;
   host?.remove();
   warn.mockRestore();
   vi.useRealTimers();
@@ -264,6 +278,7 @@ describe('polling', () => {
 
     app?.unmount();
     app = null;
+    unmountPluginContextFixtures();
     vi.advanceTimersByTime(30_000);
     await flush();
     expect(queue).toHaveBeenCalledTimes(2);

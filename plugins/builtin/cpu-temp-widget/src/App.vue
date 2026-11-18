@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, provide, ref} from 'vue';
-import type {PluginContext, ProjectedSeries, ProjectedSnapshot, ProjectRange} from '@mndw/sdk';
+import type {PluginContext, ProjectedSeries, ProjectedSnapshot, ProjectRange, RefreshLoop} from '@mndw/sdk';
 import {historyStatus} from '@mndw/sdk';
 import {bindLocale} from '@mndw/sdk/bind-locale';
 import {useTranslator} from '@mndw/sdk/vue';
-import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 import TelemetryNote from './components/TelemetryNote.vue';
 
 const props = defineProps<{ctx: PluginContext}>();
@@ -37,7 +36,6 @@ const requestInFlight = ref(false);
 const gatheringFromStream = ref<boolean | null>(null);
 
 let refreshLoop: RefreshLoop | null = null;
-let abortController: AbortController | null = null;
 let gatheringSubscription: {unsubscribe(): void} | null = null;
 
 const activeSnapshot = computed(() => loadedRange.value === selectedRange.value ? snapshot.value : null);
@@ -121,8 +119,6 @@ const showTelemetryNote = computed(() => sessionRequired.value || !gatheringEnab
 const stopLoop = (): void => {
   refreshLoop?.stop();
   refreshLoop = null;
-  abortController?.abort();
-  abortController = null;
 };
 
 const startLoop = (range: ProjectRange): void => {
@@ -136,13 +132,12 @@ const startLoop = (range: ProjectRange): void => {
   loading.value = true;
   error.value = false;
   requestInFlight.value = false;
-  abortController = new AbortController();
-  refreshLoop = createRefreshLoop({
-    load: () => {
+  refreshLoop = props.ctx.timers.createRefreshLoop({
+    load: (signal) => {
       requestInFlight.value = true;
       refreshAttemptAt.value = Date.now();
 
-      return props.ctx.telemetry.fetchProjected(range, {signal: abortController?.signal});
+      return props.ctx.telemetry.fetchProjected(range, {signal});
     },
     intervalMs: 15 * 60_000,
     onSuccess: (result: ProjectedSnapshot) => {
@@ -218,7 +213,6 @@ onUnmounted(() => {
   unsubscribeLocale();
   gatheringSubscription?.unsubscribe();
   gatheringSubscription = null;
-  stopLoop();
 });
 </script>
 

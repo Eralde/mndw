@@ -18,6 +18,7 @@ import type {PluginTelemetry} from '../telemetry-client.js';
 import type {OverlayService} from '../overlay.js';
 import type {PluginStorage} from '../storage.js';
 import type {Ticker, TickerTick} from '../ticker.js';
+import {createPluginTimers} from '../timers.js';
 import {createTestI18n} from './i18n.js';
 
 export interface TestPluginContextOptions {
@@ -51,6 +52,7 @@ export interface TestPluginContext<C extends PluginContext = PluginContext> {
   setTheme(theme: MndwThemeName): void;
   setLocale(locale: string): void;
   setPalette(palette: PaletteTokenMap): void;
+  /** Emits a tick from each default fixture ticker; defaults to the current time. */
   tick(timestamp?: number): void;
   emitEvent(event: MndwEvent): void;
   resync(): void;
@@ -200,6 +202,7 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
   const eventSubject = new Subject<MndwEvent>();
   const resyncSubject = new Subject<void>();
   const tickers = new Set<{tick(timestamp: number): void; destroy(): void}>();
+  const injectedTickers = new Set<Ticker>();
   const navigationCalls: HostTarget[] = [];
   const abortController = new AbortController();
   let unmounted = false;
@@ -260,9 +263,21 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
     palette$: {enumerable: true, value: palette.asObservable()},
   });
   Object.freeze(appearance);
-  const timers = Object.freeze(Object.assign(Object.create(null) as PluginContext['timers'], {
-    createTicker: options.timers?.createTicker ?? createTicker,
-  }));
+  const timers = createPluginTimers(abortController.signal, () => {
+    if (options.timers?.createTicker === undefined) {
+      return createTicker();
+    }
+
+    const ticker = options.timers.createTicker();
+
+    if (unmounted) {
+      ticker.destroy();
+    } else {
+      injectedTickers.add(ticker);
+    }
+
+    return ticker;
+  });
   const events: PluginEventFacade | undefined = options.events === true
     ? {
       select$: (topics) =>
@@ -341,6 +356,11 @@ export function createTestPluginContext(options: TestPluginContextOptions = {}):
         ticker.destroy();
       }
 
+      for (const ticker of injectedTickers) {
+        ticker.destroy();
+      }
+
+      injectedTickers.clear();
       ended.next();
       ended.complete();
       theme.complete();

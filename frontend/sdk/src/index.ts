@@ -26,6 +26,7 @@ export type {PluginI18n} from './i18n.js';
 export type {Translator} from './translator.js';
 export type {PluginStorage} from './storage.js';
 export type {Ticker, TickerTick} from './ticker.js';
+export type {PluginTimers, RefreshLoop, RefreshLoopOptions} from './timers.js';
 export type {LoadState} from './load-state.js';
 export type {
   OverlayAnchor,

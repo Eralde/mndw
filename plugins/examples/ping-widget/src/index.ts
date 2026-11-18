@@ -5,7 +5,13 @@ import PingWidget from './PingWidget.svelte';
 export function createInstance(container: HTMLElement, context: PluginContext): PluginInstance {
   const app = mount(PingWidget, {
     target: container,
-    props: {backend: context.backend, i18n: context.i18n, setTileTitle: context.setTileTitle},
+    props: {
+      backend: context.backend,
+      i18n: context.i18n,
+      timers: context.timers,
+      signal: context.signal,
+      setTileTitle: context.setTileTitle,
+    },
   });
 
   return {

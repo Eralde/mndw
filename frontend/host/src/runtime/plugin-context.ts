@@ -6,6 +6,7 @@ import {
   type PluginContext,
   type TelemetryGathering,
 } from '@mndw/sdk';
+import {createPluginTimers} from '@mndw/sdk/internal/timers';
 import {type BackendDescriptor, createBackendClient} from '@mndw/sdk-internal';
 import {filter} from 'rxjs';
 import {PLUGIN_STORAGE_PREFIX} from '../constants.js';
@@ -180,9 +181,7 @@ export function createPluginContext(options: CreatePluginContextOptions): Plugin
     )),
     i18n: createPluginI18n(catalogCell, getHostLocale, subscribeHostLocaleValue, lifetime),
     instanceId,
-    timers: Object.freeze(Object.assign(Object.create(null) as PluginContext['timers'], {
-      createTicker: () => hostTickerPool.create(lifetime),
-    })),
+    timers: createPluginTimers(abortController.signal, () => hostTickerPool.create(lifetime)),
     backend: backendClientFor(entry),
     overlay: service,
     ...variant,

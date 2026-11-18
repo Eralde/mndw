@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type {LoadState, PluginContext} from '@mndw/sdk';
+import type {LoadState, PluginContext, RefreshLoop} from '@mndw/sdk';
 import {bindLocale} from '@mndw/sdk/bind-locale';
 import {useTranslator} from '@mndw/sdk/vue';
 import type {MndwCheckboxChangeDetail} from '@mndw/ui';
@@ -7,7 +7,6 @@ import {computed, onMounted, onUnmounted, ref} from 'vue';
 import ClientsTable from './components/ClientsTable.vue';
 import {type ClientRecord, fetchClients, filterVisibleClients} from './services/clients.js';
 import {openSettingsDialog} from './services/open-settings-dialog.js';
-import {createRefreshLoop, type RefreshLoop} from '@mndw/sdk/refresh';
 
 const props = defineProps<{ctx: PluginContext}>();
 
@@ -169,7 +168,7 @@ function restore(key: string, apply: (raw: string) => void): void {
 }
 
 onMounted(() => {
-  refreshLoop = createRefreshLoop({
+  refreshLoop = props.ctx.timers.createRefreshLoop({
     load: () => {
       const state = loadState.value;
 
@@ -213,7 +212,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   unsubscribeLocale();
-  refreshLoop?.stop();
   refreshLoop = null;
 });
 </script>

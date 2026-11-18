@@ -10,7 +10,7 @@ import {
 import {TestBed} from '@angular/core/testing';
 import type {HostNavigation, OverlayCloseEvent, OverlayLayer, OverlayService, PageRoute} from '@mndw/sdk';
 import {createTranslatorSignals} from '@mndw/sdk/angular';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import {BehaviorSubject, type Observable, Subject, of} from 'rxjs';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {normalizeMembers} from '../api/normalize';
@@ -39,6 +39,7 @@ import {
   MWS_PAGE_ROUTE,
   OVERLAY,
   PLUGIN_STORAGE,
+  PLUGIN_TIMERS,
   SHARED_PLUGIN_STORAGE,
   TRANSLATOR,
 } from '../tokens';
@@ -85,6 +86,7 @@ type WritableStatusServiceDouble =
   };
 
 let testI18n = createTestI18n(enCatalog);
+let testPluginContext = createTestPluginContext();
 
 function writableStatusServiceDouble(): WritableStatusServiceDouble {
   return {
@@ -171,6 +173,7 @@ describe('AppComponent', () => {
   beforeEach(async () => {
     TestBed.resetTestingModule();
     testI18n = createTestI18n(enCatalog);
+    testPluginContext = createTestPluginContext();
     await resolveComponentResources((url: string) => {
       if (url.endsWith('app.component.html')) {
         return Promise.resolve(appTemplate);
@@ -226,6 +229,7 @@ describe('AppComponent', () => {
         {provide: DEVICE_INFO, useValue: HOST},
         {provide: HOST_NAVIGATION, useValue: {href: () => undefined, navigate: () => false}},
         {provide: MWSD_BACKEND, useValue: null},
+        {provide: PLUGIN_TIMERS, useValue: testPluginContext.context.timers},
         ExtraFeaturesBannerStore,
         {provide: PLUGIN_STORAGE, useValue: new FakePluginStorage()},
         {provide: SHARED_PLUGIN_STORAGE, useValue: new FakePluginStorage()},
@@ -261,6 +265,7 @@ describe('AppComponent', () => {
 
   afterEach(() => {
     TestBed.resetTestingModule();
+    testPluginContext.unmount();
   });
 
   it('forwards status-service Signals through the real read-only data facade', () => {

@@ -320,6 +320,8 @@ describe('App', () => {
 
     app?.unmount();
     app = null;
+    fixture?.unmount();
+    fixture = null;
     expect(retrySignal?.aborted).toBe(true);
 
     resolveRetry?.(supportedSnapshot(3000, 4000));

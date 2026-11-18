@@ -53,8 +53,8 @@ function dataArray<T>(payload: ApiPayload<T[]>): T[] {
   return Array.isArray(payload.data) ? payload.data : [];
 }
 
-export async function fetchStats(backend: BackendClient): Promise<HostStats[]> {
-  return dataArray(parseEnvelope(await backend.call<ApiPayload<HostStats[]>>('stats', {as: 'json'})));
+export async function fetchStats(backend: BackendClient, signal?: AbortSignal): Promise<HostStats[]> {
+  return dataArray(parseEnvelope(await backend.call<ApiPayload<HostStats[]>>('stats', {as: 'json', signal})));
 }
 
 export async function fetchHosts(backend: BackendClient): Promise<Host[]> {

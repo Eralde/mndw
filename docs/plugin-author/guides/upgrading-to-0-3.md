@@ -68,4 +68,33 @@ const subscription = ctx.i18n.locale$.subscribe(() => {
 The initial emission handles the first render, so remove a separate initial render when it would duplicate that work.
 The [frontend lifecycle guide](/guides/frontend-lifecycle) documents context stream timing and cleanup.
 
-Further 0.3 migration notes can be added in their own sections as more APIs change.
+## Timers
+
+Remove the `createRefreshLoop` import from `@mndw/sdk/refresh` and create loops through the plugin context:
+
+```ts
+import type {
+  PluginContext as RefreshExamplePluginContext,
+  ProjectRange as RefreshExampleRange,
+  ProjectedSnapshot as RefreshExampleSnapshot,
+} from '@mndw/sdk';
+
+declare const refreshExampleContext: RefreshExamplePluginContext;
+declare const refreshExampleRange: RefreshExampleRange;
+declare function renderRefreshExample(snapshot: RefreshExampleSnapshot): void;
+declare function showRefreshExampleError(error: unknown, isInitial: boolean): void;
+
+const refreshLoop = refreshExampleContext.timers.createRefreshLoop({
+  load: (signal) => refreshExampleContext.telemetry.fetchProjected(refreshExampleRange, {signal}),
+  intervalMs: 10_000,
+  onSuccess: (snapshot) => renderRefreshExample(snapshot),
+  onError: (error, isInitial) => showRefreshExampleError(error, isInitial),
+});
+
+refreshLoop.start();
+```
+
+Pass the supplied `AbortSignal` to APIs that accept one. The loop prevents overlapping loads, ignores late results,
+and aborts the active load when stopped. All loops stop when their plugin context ends, so remove teardown calls that
+only stopped a loop during plugin unmount. Keep `stop()` for user actions that pause or replace a loop, and use
+`setIntervalMs()` when its cadence changes.

@@ -1,6 +1,7 @@
 import {EMPTY, NEVER, Observable, Subject, of, throwError} from 'rxjs';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import type {RciBackgroundProcess} from '@rci-tools/core';
+import type {PluginTimers, Ticker, TickerTick} from '@mndw/sdk';
 import type {NormalizedLogRecord} from './log-types';
 import type {SystemLogApi, SystemLogStream} from './system-log-api';
 import {type LogConnectionState, createLogConnectionController} from './log-connection';
@@ -31,6 +32,44 @@ function session(): Session {
   return {stream: {process, data$: data.asObservable()}, data, done, abort};
 }
 
+function testTimers(): Pick<PluginTimers, 'createTicker'> {
+  return {
+    createTicker: (): Ticker => {
+      const ticks = new Subject<TickerTick>();
+      let timer: ReturnType<typeof setInterval> | undefined;
+      let intervalMs = 0;
+
+      const stop = (): void => {
+        if (timer !== undefined) {
+          globalThis.clearInterval(timer);
+          timer = undefined;
+        }
+      };
+
+      return {
+        start: (nextIntervalMs): void => {
+          stop();
+          intervalMs = nextIntervalMs;
+          timer = globalThis.setInterval(() => ticks.next({timestamp: Date.now(), drift: 0}), intervalMs);
+        },
+        setInterval: (nextIntervalMs): void => {
+          if (timer !== undefined) {
+            stop();
+            intervalMs = nextIntervalMs;
+            timer = globalThis.setInterval(() => ticks.next({timestamp: Date.now(), drift: 0}), intervalMs);
+          }
+        },
+        stop,
+        tick$: ticks.asObservable(),
+        destroy: (): void => {
+          stop();
+          ticks.complete();
+        },
+      };
+    },
+  };
+}
+
 function harness(options: HarnessOptions = {}): {
   api: SystemLogApi;
   batches: Array<{batch: NormalizedLogRecord[]; source: 'snapshot' | 'stream'}>;
@@ -58,10 +97,7 @@ function harness(options: HarnessOptions = {}): {
     api,
     onBatch: (batch, source) => batches.push({batch, source}),
     onState: (state) => states.push(state),
-    timers: {
-      setInterval: (callback, delay) => globalThis.setInterval(callback, delay),
-      clearInterval: (timer) => globalThis.clearInterval(timer),
-    },
+    timers: testTimers(),
   });
 
   return {api, batches, controller, sessions, states, showLogOnce, startLogStream};

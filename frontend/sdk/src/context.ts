@@ -8,7 +8,7 @@ import type {Observable} from 'rxjs';
 import type {PluginI18n} from './i18n.js';
 import type {PluginTelemetry} from './telemetry-client.js';
 import type {PluginEventFacade} from './event-schema.js';
-import type {Ticker} from './ticker.js';
+import type {PluginTimers} from './timers.js';
 
 export interface PageRoute {
   readonly childPath$: Observable<string>;
@@ -154,11 +154,8 @@ interface PluginContextBase {
   readonly backend?: BackendClient;
   /** Framework-agnostic top-layer UI (modal, drawer, popover, custom). */
   readonly overlay: OverlayService;
-  /** Host-managed timers destroyed when this plugin context ends. */
-  readonly timers: {
-    /** Creates a host-managed ticker destroyed when this plugin context ends. */
-    createTicker(): Ticker;
-  };
+  /** Timers scoped to this plugin context and stopped when it ends. */
+  readonly timers: PluginTimers;
 }
 
 export interface WidgetPluginContext extends PluginContextBase {

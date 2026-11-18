@@ -198,6 +198,40 @@ describe('createTestPluginContext', () => {
     expect(ticks).toEqual([200, 400]);
   });
 
+  it('aborts refresh loads and prevents restarting loops when the fixture unmounts', async () => {
+    const fixture = createTestPluginContext();
+    let loadSignal: AbortSignal | undefined;
+    let release: (value: string) => void = () => {};
+    let loadCount = 0;
+    let successCount = 0;
+    const loop = fixture.context.timers.createRefreshLoop({
+      load: (signal) => {
+        loadCount += 1;
+        loadSignal = signal;
+
+        return new Promise<string>((resolve) => {
+          release = resolve;
+        });
+      },
+      intervalMs: 1000,
+      onSuccess: () => successCount += 1,
+      onError: () => {},
+    });
+
+    loop.start();
+    fixture.unmount();
+
+    expect(loadSignal?.aborted).toBe(true);
+    release('late');
+    await Promise.resolve();
+    await Promise.resolve();
+    loop.start();
+    await Promise.resolve();
+
+    expect(loadCount).toBe(1);
+    expect(successCount).toBe(0);
+  });
+
   it('freezes the grouped context objects and omits replaced top-level members', () => {
     const fixture = createTestPluginContext();
     const {context} = fixture;

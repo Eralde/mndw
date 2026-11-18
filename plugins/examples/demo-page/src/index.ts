@@ -48,10 +48,12 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
 
   const unsubscribeLocale = bindLocale(i18n, render);
 
-  const interval = setInterval(() => {
+  const ticker = ctx.timers.createTicker();
+  const tickerSubscription = ticker.tick$.subscribe(() => {
     count++;
     counterEl.textContent = i18n.t('count', {count});
-  }, 1000);
+  });
+  ticker.start(1000);
 
   saveBtn.addEventListener('click', async () => {
     await ctx.storage.instance.set('count', String(count));
@@ -61,7 +63,7 @@ export async function createInstance(el: HTMLElement, ctx: PluginContext): Promi
   return {
     unmount() {
       unsubscribeLocale();
-      clearInterval(interval);
+      tickerSubscription.unsubscribe();
       el.innerHTML = '';
     },
   };

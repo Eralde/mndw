@@ -2,8 +2,8 @@
 import {NEVER, Observable, Subject, of, throwError} from 'rxjs';
 import {flushSync, mount, settled, unmount} from 'svelte';
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import type {OverlayLayer, OverlayOpenOptions, OverlayService, PluginI18n} from '@mndw/sdk';
-import {createTestI18n} from '@mndw/sdk/testing';
+import type {OverlayLayer, OverlayOpenOptions, OverlayService, PluginI18n, Ticker, TickerTick} from '@mndw/sdk';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import enCatalog from '../i18n/en.json';
 import type {RciBackgroundProcess} from '@rci-tools/core';
 import type {SystemLogApi, SystemLogStream} from './system-log-api';
@@ -11,6 +11,46 @@ import type {NormalizedLogRecord} from './log-types';
 import type {ClearResult} from './clear-log-confirmation';
 import SystemLogPage from './SystemLogPage.svelte';
 import systemLogPageSource from './SystemLogPage.svelte?raw';
+
+const pluginContexts: Array<{unmount(): void}> = [];
+
+function createIntervalTicker(): Ticker {
+  const ticks = new Subject<TickerTick>();
+  let intervalMs = 0;
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  const stop = (): void => {
+    if (timer !== undefined) {
+      globalThis.clearInterval(timer);
+      timer = undefined;
+    }
+  };
+
+  const start = (nextIntervalMs: number): void => {
+    intervalMs = nextIntervalMs;
+    stop();
+    timer = globalThis.setInterval(() => {
+      ticks.next({timestamp: Date.now(), drift: 0});
+    }, intervalMs);
+  };
+
+  return {
+    start,
+    setInterval: (nextIntervalMs): void => {
+      if (timer !== undefined) {
+        start(nextIntervalMs);
+      } else {
+        intervalMs = nextIntervalMs;
+      }
+    },
+    stop,
+    tick$: ticks.asObservable(),
+    destroy: (): void => {
+      stop();
+      ticks.complete();
+    },
+  };
+}
 
 function record(id: number, text = `record ${id}`): NormalizedLogRecord {
   return {id, timestamp: 'Aug  1 12:00:00', ident: 'system', level: 'Info', label: 'Info', text};
@@ -80,13 +120,33 @@ function reconnectingApi(snapshot: () => Observable<NormalizedLogRecord[]> = () 
   };
 }
 
-function mountLogPage(target: HTMLElement, api: SystemLogApi): ReturnType<typeof mount> {
+function mountLogPage(
+  target: HTMLElement,
+  api: SystemLogApi,
+  options: {overlay?: OverlayService; i18n?: PluginI18n} = {},
+): ReturnType<typeof mount> {
+  const fixture = createTestPluginContext({timers: {createTicker: createIntervalTicker}});
+
+  pluginContexts.push(fixture);
   document.body.appendChild(target);
 
   return mount(SystemLogPage, {
     target,
-    props: {api, overlay: {} as OverlayService, i18n: createTestI18n(enCatalog)},
+    props: {
+      api,
+      overlay: options.overlay ?? {} as OverlayService,
+      i18n: options.i18n ?? createTestI18n(enCatalog),
+      timers: fixture.context.timers,
+    },
   });
+}
+
+function unmountPluginContexts(): void {
+  for (const fixture of pluginContexts) {
+    fixture.unmount();
+  }
+
+  pluginContexts.length = 0;
 }
 
 function changingI18n(): {i18n: PluginI18n; setLocale(locale: 'en' | 'ru'): void} {
@@ -153,6 +213,7 @@ describe('SystemLogPage lifecycle', () => {
   let host: HTMLElement;
 
   afterEach(() => {
+    unmountPluginContexts();
     host?.remove();
   });
 
@@ -167,10 +228,7 @@ describe('SystemLogPage lifecycle', () => {
       clearLog: () => of({}),
     };
     const changing = changingI18n();
-    const app = mount(SystemLogPage, {
-      target: host,
-      props: {api, overlay: {} as OverlayService, i18n: changing.i18n},
-    });
+    const app = mountLogPage(host, api, {i18n: changing.i18n});
 
     flushSync();
     expect(host.querySelector('[data-download-log]')?.textContent).toContain('Download');
@@ -199,8 +257,7 @@ describe('SystemLogPage lifecycle', () => {
       clearLog: () => of({}),
     };
 
-    const app = mount(SystemLogPage, {target: host,
-      props: {api, overlay: {} as OverlayService, i18n: createTestI18n(enCatalog)}});
+    const app = mountLogPage(host, api);
 
     flushSync();
     expect(snapshotCounters.subscriptions).toBe(1);
@@ -235,8 +292,7 @@ describe('SystemLogPage lifecycle', () => {
       startLogStream: () => ({process: streamProcess, data$: stream$.asObservable()}),
       clearLog: () => of({}),
     };
-    const app = mount(SystemLogPage, {target: host,
-      props: {api, overlay: {} as OverlayService, i18n: createTestI18n(enCatalog)}});
+    const app = mountLogPage(host, api);
 
     flushSync();
 
@@ -297,10 +353,7 @@ describe('SystemLogPage lifecycle', () => {
       startLogStream: () => ({process: streamProcess, data$: stream$.asObservable()}),
       clearLog,
     };
-    const app = mount(SystemLogPage, {
-      target: host,
-      props: {api, overlay: immediateConfirmationOverlay(true), i18n: createTestI18n(enCatalog)},
-    });
+    const app = mountLogPage(host, api, {overlay: immediateConfirmationOverlay(true)});
 
     await settled();
     host.querySelector<HTMLElement>('[data-clear-log]')?.click();
@@ -327,10 +380,7 @@ describe('SystemLogPage lifecycle', () => {
       startLogStream: () => ({process: streamProcess, data$: NEVER}),
       clearLog,
     };
-    const app = mount(SystemLogPage, {
-      target: host,
-      props: {api, overlay: immediateConfirmationOverlay(false), i18n: createTestI18n(enCatalog)},
-    });
+    const app = mountLogPage(host, api, {overlay: immediateConfirmationOverlay(false)});
 
     await settled();
     host.querySelector<HTMLElement>('[data-clear-log]')?.click();
@@ -342,10 +392,7 @@ describe('SystemLogPage lifecycle', () => {
     host = document.createElement('div');
     document.body.appendChild(host);
 
-    const failedApp = mount(SystemLogPage, {
-      target: host,
-      props: {api, overlay: immediateConfirmationOverlay(true), i18n: createTestI18n(enCatalog)},
-    });
+    const failedApp = mountLogPage(host, api, {overlay: immediateConfirmationOverlay(true)});
 
     await settled();
     host.querySelector<HTMLElement>('[data-clear-log]')?.click();
@@ -367,10 +414,7 @@ describe('SystemLogPage lifecycle', () => {
       startLogStream: () => ({process: process().value, data$: NEVER}),
       clearLog,
     };
-    const app = mount(SystemLogPage, {
-      target: host,
-      props: {api, overlay: immediateConfirmationOverlay(true), i18n: createTestI18n(enCatalog)},
-    });
+    const app = mountLogPage(host, api, {overlay: immediateConfirmationOverlay(true)});
 
     await settled();
     host.querySelector<HTMLElement>('[data-clear-log]')?.click();
@@ -388,6 +432,7 @@ describe('SystemLogPage stream reconnection', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    unmountPluginContexts();
     host?.remove();
   });
 

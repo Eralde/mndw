@@ -51,7 +51,6 @@ coordinated upgrade of all `@mndw/*` packages. See [project setup](https://erald
 | `@mndw/sdk/testing` | [Test helpers](https://eralde.github.io/mndw/api/sdk/testing) |
 | `@mndw/sdk/testing/vitest-project` | [Vitest project helper](https://eralde.github.io/mndw/api/sdk/testing/vitest-project) |
 | `@mndw/sdk/bind-locale` | [Locale binding](https://eralde.github.io/mndw/api/sdk/bind-locale) |
-| `@mndw/sdk/refresh` | [Refresh loop](https://eralde.github.io/mndw/api/sdk/refresh) |
 | `@mndw/sdk/rrd` | [RRD helpers](https://eralde.github.io/mndw/api/sdk/rrd) |
 | `@mndw/sdk/manifest.schema.json` | [Manifest guide](https://eralde.github.io/mndw/guides/manifest) |
 

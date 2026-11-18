@@ -3,7 +3,7 @@ import {flushSync, mount, settled, unmount} from 'svelte';
 import type {RciQuery} from '@rci-tools/core';
 import type {PluginRciManager, PluginStorage} from '@mndw/sdk';
 import {afterEach, describe, expect, it, vi} from 'vitest';
-import {createTestI18n} from '@mndw/sdk/testing';
+import {createTestI18n, createTestPluginContext} from '@mndw/sdk/testing';
 import enCatalog from '../../i18n/en.json';
 import ruCatalog from '../../i18n/ru.json';
 import {of} from 'rxjs';
@@ -11,6 +11,15 @@ import TrafficWidget from './TrafficWidget.svelte';
 
 let app: ReturnType<typeof mount> | null = null;
 let host: HTMLElement;
+const pluginContexts: Array<{unmount(): void}> = [];
+
+function createPluginTimers() {
+  const fixture = createTestPluginContext();
+
+  pluginContexts.push(fixture);
+
+  return fixture.context.timers;
+}
 
 function storageWithSelectedDevice(): PluginStorage & {
   get: ReturnType<typeof vi.fn>;
@@ -47,6 +56,11 @@ afterEach(() => {
     app = null;
   }
 
+  for (const fixture of pluginContexts) {
+    fixture.unmount();
+  }
+
+  pluginContexts.length = 0;
   host?.remove();
 });
 
@@ -89,6 +103,7 @@ describe('TrafficWidget shared controls', () => {
       props: {
         rci: fakeRci(queue),
         storage,
+        timers: createPluginTimers(),
         openSettings,
         i18n: createTestI18n(enCatalog),
       },
@@ -155,7 +170,7 @@ describe('TrafficWidget shared controls', () => {
     document.body.append(host);
     app = mount(TrafficWidget, {
       target: host,
-      props: {rci: fakeRci(queue), storage, openSettings, setTileTitle, i18n},
+      props: {rci: fakeRci(queue), storage, timers: createPluginTimers(), openSettings, setTileTitle, i18n},
     });
     await flush();
 

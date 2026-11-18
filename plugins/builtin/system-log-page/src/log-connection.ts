@@ -1,4 +1,5 @@
 import type {Subscription} from 'rxjs';
+import type {PluginTimers, Ticker} from '@mndw/sdk';
 import type {NormalizedLogRecord} from './log-types';
 import type {SystemLogApi, SystemLogStream} from './system-log-api';
 
@@ -11,16 +12,11 @@ export interface LogConnectionState {
   snapshotError: string;
 }
 
-export interface LogConnectionTimers {
-  setInterval(callback: () => void, delayMilliseconds: number): ReturnType<typeof setInterval>;
-  clearInterval(timer: ReturnType<typeof setInterval>): void;
-}
-
 export interface LogConnectionControllerOptions {
   api: Pick<SystemLogApi, 'showLogOnce' | 'startLogStream'>;
   onBatch(batch: NormalizedLogRecord[], source: 'snapshot' | 'stream'): void;
   onState(state: LogConnectionState): void;
-  timers?: LogConnectionTimers;
+  timers: Pick<PluginTimers, 'createTicker'>;
 }
 
 export interface LogConnectionController {
@@ -42,10 +38,6 @@ function errorText(error: unknown, fallback: string): string {
 }
 
 export function createLogConnectionController(options: LogConnectionControllerOptions): LogConnectionController {
-  const timers = options.timers ?? {
-    setInterval: (callback, delay) => globalThis.setInterval(callback, delay),
-    clearInterval: (timer) => globalThis.clearInterval(timer),
-  };
   const state: LogConnectionState = {
     status: 'connected',
     reconnectSeconds: 0,
@@ -53,7 +45,8 @@ export function createLogConnectionController(options: LogConnectionControllerOp
     snapshotError: '',
   };
   let activeAttempt: ConnectionAttempt | undefined;
-  let reconnectTimer: ReturnType<typeof setInterval> | undefined;
+  let reconnectTicker: Ticker | undefined;
+  let reconnectSubscription: Subscription | undefined;
   let retryIndex = 0;
   let started = false;
   let disposed = false;
@@ -65,10 +58,9 @@ export function createLogConnectionController(options: LogConnectionControllerOp
   }
 
   function clearReconnectTimer(): void {
-    if (reconnectTimer !== undefined) {
-      timers.clearInterval(reconnectTimer);
-      reconnectTimer = undefined;
-    }
+    reconnectSubscription?.unsubscribe();
+    reconnectSubscription = undefined;
+    reconnectTicker?.stop();
   }
 
   function stopAttempt(attempt: ConnectionAttempt): void {
@@ -109,7 +101,8 @@ export function createLogConnectionController(options: LogConnectionControllerOp
     retryIndex += 1;
     state.reconnectSeconds = delay;
     publishState();
-    reconnectTimer = timers.setInterval(() => {
+    reconnectTicker ??= options.timers.createTicker();
+    reconnectSubscription = reconnectTicker.tick$.subscribe(() => {
       if (disposed || activeAttempt !== attempt) {
         clearReconnectTimer();
 
@@ -124,7 +117,8 @@ export function createLogConnectionController(options: LogConnectionControllerOp
       } else {
         publishState();
       }
-    }, 1000);
+    });
+    reconnectTicker.start(1000);
   }
 
   function finishBatch(attempt: ConnectionAttempt, batch: NormalizedLogRecord[], source: 'snapshot' | 'stream'): void {

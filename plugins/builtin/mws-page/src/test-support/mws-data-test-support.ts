@@ -1,12 +1,14 @@
 import {TestBed} from '@angular/core/testing';
+import {DestroyRef} from '@angular/core';
 import type {BackendClient, DeviceInfo} from '@mndw/sdk';
+import {createTestPluginContext} from '@mndw/sdk/testing';
 import {of} from 'rxjs';
 import {vi} from 'vitest';
 import {MwsApiService, type MwsMemberResult} from '../api/mws-api.service';
 import {normalizeBridge, normalizeDeviceHosts, normalizeMembers, normalizeVersion} from '../api/normalize';
 import type {MwsNode} from '../domain/mws/mws.types';
 import {loadFixture} from '../fixtures/load';
-import {DEVICE_INFO, MWSD_BACKEND, MWS_MOCK_OPTIONS, type MwsMockOptions} from '../tokens';
+import {DEVICE_INFO, MWSD_BACKEND, MWS_MOCK_OPTIONS, type MwsMockOptions, PLUGIN_TIMERS} from '../tokens';
 import {MwsDataService} from '../services/mws-data.service';
 import {MwsdStatusService} from '../services/mwsd-status.service';
 import {MwsMockDataService} from '../services/mws-mock-data.service';
@@ -57,6 +59,8 @@ export function makeLiveService(api: FakeApi): MwsDataService {
 }
 
 export function makeLiveServiceWithBackend(api: FakeApi, backend: BackendClient | null): MwsDataService {
+  const fixture = createTestPluginContext();
+
   TestBed.configureTestingModule({
     providers: [
       MwsDataService,
@@ -64,10 +68,15 @@ export function makeLiveServiceWithBackend(api: FakeApi, backend: BackendClient 
       {provide: MwsApiService, useValue: api as unknown as MwsApiService},
       {provide: DEVICE_INFO, useValue: HOST},
       {provide: MWSD_BACKEND, useValue: backend},
+      {provide: PLUGIN_TIMERS, useValue: fixture.context.timers},
     ],
   });
 
-  return TestBed.inject(MwsDataService);
+  const service = TestBed.inject(MwsDataService);
+
+  TestBed.inject(DestroyRef).onDestroy(() => fixture.unmount());
+
+  return service;
 }
 
 export function fakeBackend(call: BackendClient['call'], status?: BackendClient['status']): BackendClient {
@@ -85,6 +94,8 @@ export function makeMockService(
   mockOptions: MwsMockOptions,
   backend: BackendClient | null = null,
 ): MwsMockDataService {
+  const fixture = createTestPluginContext();
+
   TestBed.configureTestingModule({
     providers: [
       MwsMockDataService,
@@ -93,10 +104,15 @@ export function makeMockService(
       {provide: DEVICE_INFO, useValue: HOST},
       {provide: MWSD_BACKEND, useValue: backend},
       {provide: MWS_MOCK_OPTIONS, useValue: mockOptions},
+      {provide: PLUGIN_TIMERS, useValue: fixture.context.timers},
     ],
   });
 
-  return TestBed.inject(MwsMockDataService);
+  const service = TestBed.inject(MwsMockDataService);
+
+  TestBed.inject(DestroyRef).onDestroy(() => fixture.unmount());
+
+  return service;
 }
 
 export function countNodes(roots: MwsNode[]): number {

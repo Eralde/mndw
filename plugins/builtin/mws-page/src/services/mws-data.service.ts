@@ -22,7 +22,7 @@ import type {ControllerTelemetry} from '../api/controller-telemetry';
 import type {BridgeInterfaceRecord, DeviceHostRecord, MwsMemberRecord, ShowVersionRecord} from '../api/rci.types';
 import {buildMap} from '../domain/mws/map-builder';
 import type {ControllerInfo, MwsNode} from '../domain/mws/mws.types';
-import {DEVICE_INFO, MWSD_BACKEND} from '../tokens';
+import {DEVICE_INFO, MWSD_BACKEND, PLUGIN_TIMERS} from '../tokens';
 import {
   type ExtraFeaturesAvailability,
   type ExtraFeaturesPresentation,
@@ -64,6 +64,7 @@ export class MwsDataService {
   private readonly api = inject(MwsApiService);
   private readonly deviceInfo = inject(DEVICE_INFO);
   private readonly backend = inject(MWSD_BACKEND);
+  private readonly timers = inject(PLUGIN_TIMERS);
   private readonly statusService = inject(MwsdStatusService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -136,10 +137,14 @@ export class MwsDataService {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.mergeCurrentMwsdStatus());
 
-    const freshnessTimer = setInterval(() => this.freshnessNow.set(Date.now()), 5_000);
+    const freshnessTicker = this.timers.createTicker();
+
+    freshnessTicker.tick$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.freshnessNow.set(Date.now()));
+    freshnessTicker.start(5_000);
 
     this.destroyRef.onDestroy(() => this.stop());
-    this.destroyRef.onDestroy(() => clearInterval(freshnessTimer));
   }
 
   public start(): void {

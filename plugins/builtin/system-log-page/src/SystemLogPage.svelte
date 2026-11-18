@@ -3,7 +3,12 @@ import {onMount, tick} from 'svelte';
 import type {Readable} from 'svelte/store';
 import {SvelteSet} from 'svelte/reactivity';
 import {firstValueFrom} from 'rxjs';
-import type {OverlayService, PluginI18n, Translator} from '@mndw/sdk';
+import type {
+  OverlayService,
+  PluginI18n,
+  PluginTimers,
+  Translator,
+} from '@mndw/sdk';
 import {createTranslator} from '@mndw/sdk/svelte';
 import {openClearConfirmation} from './clear-log-confirmation';
 import {ALL_LOG_LEVELS, type FilterState, filterRecords} from './log-filters';
@@ -23,9 +28,10 @@ interface Props {
   api: SystemLogApi;
   overlay: OverlayService;
   i18n: PluginI18n;
+  timers: PluginTimers;
 }
 
-let {api, overlay: _overlay, i18n}: Props = $props();
+let {api, overlay: _overlay, i18n, timers}: Props = $props();
 // svelte-ignore state_referenced_locally
 const translator: Readable<Translator> = createTranslator(i18n);
 
@@ -145,6 +151,7 @@ onMount(() => {
   reconciler = createLogReconciler();
   connection = createLogConnectionController({
     api,
+    timers,
     onBatch: (batch, source) => {
       if (reconciler) {
         mergeBatch(reconciler, batch, source);

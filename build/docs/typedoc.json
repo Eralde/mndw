@@ -4,7 +4,6 @@
     "../../frontend/sdk/src/index.ts",
     "../../frontend/sdk/src/tokens.ts",
     "../../frontend/sdk/src/bind-locale.ts",
-    "../../frontend/sdk/src/refresh.ts",
     "../../frontend/sdk/src/rrd.ts",
     "../../frontend/sdk/src/svelte/index.ts",
     "../../frontend/sdk/src/vue/index.ts",

@@ -1,5 +1,11 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-import {createRefreshLoop} from './refresh.js';
+import {type RefreshLoop, type RefreshLoopOptions, createPluginTimers} from './timers.js';
+
+function createRefreshLoop<T>(options: RefreshLoopOptions<T>): RefreshLoop {
+  return createPluginTimers(new AbortController().signal, () => {
+    throw new Error('createTicker is not used by refresh-loop tests');
+  }).createRefreshLoop(options);
+}
 
 let onSuccess: ReturnType<typeof vi.fn>;
 let onError: ReturnType<typeof vi.fn>;
@@ -157,6 +163,28 @@ describe('stop', () => {
     expect(onSuccess).not.toHaveBeenCalled();
   });
 
+  it('aborts the active load when stopped', async () => {
+    let signal: AbortSignal | undefined;
+    let release: (value: string) => void = () => {};
+    const load = vi.fn((loadSignal: AbortSignal) => {
+      signal = loadSignal;
+
+      return new Promise<string>((resolve) => {
+        release = resolve;
+      });
+    });
+    const loop = createRefreshLoop({load, intervalMs: 3000, onSuccess, onError});
+
+    loop.start();
+    await flush();
+    loop.stop();
+
+    expect(signal?.aborted).toBe(true);
+    release('late');
+    await flush();
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
   it('suppresses a late rejection too', async () => {
     let reject: (error: Error) => void = () => {};
     const load = vi.fn(() =>
@@ -199,6 +227,61 @@ describe('stop', () => {
     releases[1]('fresh');
     await flush();
     expect(onSuccess).toHaveBeenCalledWith('fresh');
+  });
+
+  it('tracks only active loops and unregisters a restarted loop on disposal', async () => {
+    const controller = new AbortController();
+    const activeLoopCounts: number[] = [];
+    const timers = createPluginTimers(controller.signal, () => {
+      throw new Error('createTicker is not used by refresh-loop tests');
+    }, (count) => activeLoopCounts.push(count));
+
+    for (let index = 0; index < 100; index += 1) {
+      const loop = timers.createRefreshLoop({
+        load: () => Promise.resolve('value'),
+        intervalMs: 3000,
+        onSuccess,
+        onError,
+      });
+
+      loop.start({immediate: false});
+      loop.stop();
+    }
+
+    expect(Math.max(...activeLoopCounts)).toBe(1);
+    expect(activeLoopCounts.at(-1)).toBe(0);
+
+    let loadSignal: AbortSignal | undefined;
+    const restartedLoop = timers.createRefreshLoop({
+      load: (signal) => {
+        loadSignal = signal;
+
+        return new Promise<string>((resolve) => {
+          signal.addEventListener('abort', () => resolve('aborted'), {once: true});
+        });
+      },
+      intervalMs: 3000,
+      onSuccess,
+      onError,
+    });
+
+    restartedLoop.start();
+    await flush();
+    restartedLoop.stop();
+    restartedLoop.start();
+    await flush();
+
+    expect(loadSignal?.aborted).toBe(false);
+    expect(activeLoopCounts.at(-1)).toBe(1);
+
+    controller.abort();
+
+    expect(loadSignal?.aborted).toBe(true);
+    expect(activeLoopCounts.at(-1)).toBe(0);
+
+    vi.advanceTimersByTime(30_000);
+    await flush();
+    expect(activeLoopCounts.at(-1)).toBe(0);
   });
 });
 
